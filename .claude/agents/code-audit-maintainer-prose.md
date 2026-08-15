@@ -134,7 +134,7 @@ The four dimensions above measure whether prose can be **followed**. The two cla
 
 The greppable identifier is part of the first definition rather than decoration: one identifier sweep reaches agent definitions, hooks, wiki pages, and bats suites at once, which is what makes the remedy selectable rather than open-ended. The shapes that recur on this surface are a skill file naming a path a command does not write, and an agent definition naming an exit code, a marker string, or a section heading the machinery does not use. One shape belongs to neither class: a self-referential status claim in the tree, which `.claude/rules/wiki-style.md`'s present-tense rule already governs.
 
-You assign these two and no other holistic class. A hollow assertion, an unarmed guard, a fail-open discovery, and a partial-cause report are defects of executable logic, which none of your dimensions measure. Two tie-breaks settle the near misses:
+You assign these two and no other holistic class. A hollow assertion, an unarmed guard, a fail-open discovery, and a partial-cause report are defects of executable logic, which none of your dimensions measure. A finding that matches both of them, with no tie-break below separating them, is recorded `holistic/unclassified` rather than resolved toward the one you read first. Two tie-breaks settle the near misses:
 
 A check that cannot fail is a hollow assertion; a sentence a reader would act wrongly on is an uncoupled restatement.
 

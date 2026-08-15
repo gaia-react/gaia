@@ -190,35 +190,40 @@ setup() {
 # --- Group D: tie-breaks, verbatim (grep -Fq, so a paraphrase fails) ------
 
 @test "group D: code-audit-frontend.md's section carries all three tie-break sentences verbatim" {
-  local section="$(extract_named_section "$FRONTEND" "$HEADING")"
+  local section
+  section="$(extract_named_section "$FRONTEND" "$HEADING")"
   grep -Fq -- "$TB1" <<<"$section" || { echo "TB-1 missing from $FRONTEND" >&2; return 1; }
   grep -Fq -- "$TB2" <<<"$section" || { echo "TB-2 missing from $FRONTEND" >&2; return 1; }
   grep -Fq -- "$TB3" <<<"$section" || { echo "TB-3 missing from $FRONTEND" >&2; return 1; }
 }
 
 @test "group D: code-audit-github-workflows.md's section carries all three tie-break sentences verbatim" {
-  local section="$(extract_named_section "$WORKFLOWS" "$HEADING")"
+  local section
+  section="$(extract_named_section "$WORKFLOWS" "$HEADING")"
   grep -Fq -- "$TB1" <<<"$section" || { echo "TB-1 missing from $WORKFLOWS" >&2; return 1; }
   grep -Fq -- "$TB2" <<<"$section" || { echo "TB-2 missing from $WORKFLOWS" >&2; return 1; }
   grep -Fq -- "$TB3" <<<"$section" || { echo "TB-3 missing from $WORKFLOWS" >&2; return 1; }
 }
 
 @test "group D: code-audit-maintainer-node.md's section carries all three tie-break sentences verbatim" {
-  local section="$(extract_named_section "$NODE" "$HEADING")"
+  local section
+  section="$(extract_named_section "$NODE" "$HEADING")"
   grep -Fq -- "$TB1" <<<"$section" || { echo "TB-1 missing from $NODE" >&2; return 1; }
   grep -Fq -- "$TB2" <<<"$section" || { echo "TB-2 missing from $NODE" >&2; return 1; }
   grep -Fq -- "$TB3" <<<"$section" || { echo "TB-3 missing from $NODE" >&2; return 1; }
 }
 
 @test "group D: code-audit-maintainer-shell.md's section carries all three tie-break sentences verbatim" {
-  local section="$(extract_named_section "$SHELL_MEMBER" "$HEADING")"
+  local section
+  section="$(extract_named_section "$SHELL_MEMBER" "$HEADING")"
   grep -Fq -- "$TB1" <<<"$section" || { echo "TB-1 missing from $SHELL_MEMBER" >&2; return 1; }
   grep -Fq -- "$TB2" <<<"$section" || { echo "TB-2 missing from $SHELL_MEMBER" >&2; return 1; }
   grep -Fq -- "$TB3" <<<"$section" || { echo "TB-3 missing from $SHELL_MEMBER" >&2; return 1; }
 }
 
 @test "group D: code-audit-maintainer-prose.md's section carries TB-1 and TB-2, and TB-3 appears nowhere in the whole file" {
-  local section="$(extract_named_section "$PROSE" "$HEADING")"
+  local section
+  section="$(extract_named_section "$PROSE" "$HEADING")"
   grep -Fq -- "$TB1" <<<"$section" || { echo "TB-1 missing from $PROSE" >&2; return 1; }
   grep -Fq -- "$TB2" <<<"$section" || { echo "TB-2 missing from $PROSE" >&2; return 1; }
   # TB-3 pairs fail-open-discovery with swallowed-error, neither of which the
@@ -238,7 +243,8 @@ setup() {
 # the ban is on definition lines only.
 
 @test "group E: code-audit-frontend.md's section carries none of the banned history-vocabulary phrases" {
-  local section="$(extract_named_section "$FRONTEND" "$HEADING")"
+  local section
+  section="$(extract_named_section "$FRONTEND" "$HEADING")"
   printf '%s\n' "$section" | grep -Eiq -- "$BANNED_HISTORY_RE" && {
     echo "banned history vocabulary present in $FRONTEND's Holistic class assignment section" >&2
     return 1
@@ -247,7 +253,8 @@ setup() {
 }
 
 @test "group E: code-audit-github-workflows.md's section carries none of the banned history-vocabulary phrases" {
-  local section="$(extract_named_section "$WORKFLOWS" "$HEADING")"
+  local section
+  section="$(extract_named_section "$WORKFLOWS" "$HEADING")"
   printf '%s\n' "$section" | grep -Eiq -- "$BANNED_HISTORY_RE" && {
     echo "banned history vocabulary present in $WORKFLOWS's Holistic class assignment section" >&2
     return 1
@@ -256,7 +263,8 @@ setup() {
 }
 
 @test "group E: code-audit-maintainer-node.md's section carries none of the banned history-vocabulary phrases" {
-  local section="$(extract_named_section "$NODE" "$HEADING")"
+  local section
+  section="$(extract_named_section "$NODE" "$HEADING")"
   printf '%s\n' "$section" | grep -Eiq -- "$BANNED_HISTORY_RE" && {
     echo "banned history vocabulary present in $NODE's Holistic class assignment section" >&2
     return 1
@@ -265,7 +273,8 @@ setup() {
 }
 
 @test "group E: code-audit-maintainer-shell.md's section carries none of the banned history-vocabulary phrases" {
-  local section="$(extract_named_section "$SHELL_MEMBER" "$HEADING")"
+  local section
+  section="$(extract_named_section "$SHELL_MEMBER" "$HEADING")"
   printf '%s\n' "$section" | grep -Eiq -- "$BANNED_HISTORY_RE" && {
     echo "banned history vocabulary present in $SHELL_MEMBER's Holistic class assignment section" >&2
     return 1
@@ -274,7 +283,8 @@ setup() {
 }
 
 @test "group E: code-audit-maintainer-prose.md's section carries none of the banned history-vocabulary phrases" {
-  local section="$(extract_named_section "$PROSE" "$HEADING")"
+  local section
+  section="$(extract_named_section "$PROSE" "$HEADING")"
   printf '%s\n' "$section" | grep -Eiq -- "$BANNED_HISTORY_RE" && {
     echo "banned history vocabulary present in $PROSE's Holistic class assignment section" >&2
     return 1
