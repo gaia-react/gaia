@@ -409,36 +409,6 @@ if [ "$do_supersede" = "true" ]; then
   rm -f "$refused_path" || err "warning: superseded but could not remove '$refused_path'"
 fi
 
-# -----------------------------------------------------------------------------
-# Compensating server-side signal on a refusal (LOCAL path only).
-#
-# A refusal blocks the merge path that runs .claude/hooks/pr-merge-audit-check.sh
-# and only that one. GitHub's auto-merge fires on the required GAIA-Audit status
-# alone, so a refusal written after a sibling member's clean pass already posted
-# `success` leaves that success standing and the pull request merges over a live
-# refusal, with the artifact on disk and no diagnostic anywhere. Posting
-# `failure` for the same head retracts it, which is why this call belongs to the
-# writer rather than to an agent's instructions: the one moment a refusal is
-# guaranteed to be recorded is the moment it is written.
-#
-# Runs AFTER the refusal is durably published and never affects that write:
-# `|| true` absorbs every failure, and the hook's own output goes to stderr so
-# stdout stays the marker path this script contracts to print. A post that
-# cannot happen (no gh, an un-pushed head) leaves the refusal on disk, where the
-# local gate still denies the merge.
-#
-# Skipped in CI because that workflow posts one terminal status per run and owns
-# the context; a second writer racing it is a failure mode the local path does
-# not have. The window this closes is local-specific in the same way: the local
-# path posts once per dispatch wave, so a later wave's refusal can arrive behind
-# an earlier wave's success, which a single terminal CI post cannot do.
-# -----------------------------------------------------------------------------
-if [ "$PROVENANCE" = "refused" ] && [ -z "${GITHUB_ACTIONS:-}" ] && [ -z "${CI:-}" ]; then
-  status_hook="${ROOT}/.claude/hooks/post-audit-status.sh"
-  if [ -x "$status_hook" ]; then
-    ( cd "$ROOT" && bash "$status_hook" "$target" ) >&2 || true
-  fi
-fi
 
 # -----------------------------------------------------------------------------
 # Re-run carry-forward ledger (only with --base).
@@ -600,6 +570,53 @@ if [ -n "$BASE" ]; then
         fi
       fi
     fi
+  fi
+fi
+
+# -----------------------------------------------------------------------------
+# Compensating server-side signal on a refusal (LOCAL path only).
+#
+# A refusal blocks the merge path that runs .claude/hooks/pr-merge-audit-check.sh
+# and only that one. GitHub's auto-merge fires on the required GAIA-Audit status
+# alone, so a refusal written after a sibling member's clean pass already posted
+# `success` leaves that success standing and the pull request merges over a live
+# refusal, with the artifact on disk and no diagnostic anywhere. Posting
+# `failure` for the same head retracts it, which is why this call belongs to the
+# writer rather than to an agent's instructions: the one moment a refusal is
+# guaranteed to be recorded is the moment it is written.
+#
+# Runs LAST, after both the refusal and the ledger are durably on disk. This is
+# the only step here that touches the network, and `gh` has no bound of its own,
+# so a hung call must not sit in front of the briefing a refusal exists to
+# produce. It never affects either write: `|| true` absorbs every failure, and
+# the hook's own output goes to stderr so stdout stays the marker path this
+# script contracts to print. A post that cannot happen (no gh, an un-pushed
+# head) leaves the refusal on disk, where the local gate still denies the merge.
+#
+# Anchored on $_root_toplevel, the absolute checkout root already derived and
+# validated above, rather than on $ROOT: the subshell `cd` re-bases every
+# relative path inside it, so a caller passing a relative --root from a
+# subdirectory would resolve the hook one way for the `[ -x ]` test and another
+# way for the run. $target has the same exposure, since audit_dir is built from
+# $ROOT, so the marker is re-derived here against the absolute root. Both paths
+# name the same files either way: the validation above proves $ROOT and
+# $_root_toplevel are one physical directory.
+#
+# The `cd` itself is load-bearing and cannot be dropped: the hook derives its
+# repo root, and `gh` its repository and branch, from the ambient working
+# directory, so the call has to be anchored on the audited tree.
+#
+# Skipped in CI because that workflow posts one terminal status per run and owns
+# the context; a second writer racing it is a failure mode the local path does
+# not have. The window this closes is local-specific in the same way: the local
+# path posts once per dispatch wave, so a later wave's refusal can arrive behind
+# an earlier wave's success, which a single terminal CI post cannot do.
+# -----------------------------------------------------------------------------
+if [ "$PROVENANCE" = "refused" ] && [ -z "${GITHUB_ACTIONS:-}" ] && [ -z "${CI:-}" ]; then
+  status_hook="${_root_toplevel}/.claude/hooks/post-audit-status.sh"
+  status_marker="${_root_toplevel}/.gaia/local/audit/${target##*/}"
+  if [ -x "$status_hook" ]; then
+    ( cd "$_root_toplevel" && bash "$status_hook" "$status_marker" ) >&2 || true
   fi
 fi
 

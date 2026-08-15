@@ -408,7 +408,6 @@ assert_no_post() {
   install_gh_stub "$pushed_sha"
 
   refusal=$(write_refusal code-audit-frontend)
-  digest=$(digest_of "$REPO" code-audit-frontend)
   short=$(git -C "$REPO" rev-parse --short "$pushed_sha")
 
   cd "$REPO"
@@ -420,6 +419,26 @@ assert_no_post() {
   grep -qF -- "repos/gaia-react/gaia/statuses/${pushed_sha}" "$API_CALLS" || return 1
   grep -qF -- "state=failure" "$API_CALLS" || return 1
   grep -qF -- "context=GAIA-Audit" "$API_CALLS" || return 1
+}
+
+@test "refusal posts with no .gaia/VERSION: the arm reads neither the version nor the frontend digest" {
+  # The success description's inputs are not the refusal description's, so
+  # declining a retraction over a field it never reads would withhold it while
+  # the stale success it exists to retract stands.
+  push_head_to_upstream
+  pushed_sha=$(git -C "$REPO" rev-parse HEAD)
+  install_gh_stub "$pushed_sha"
+
+  refusal=$(write_refusal code-audit-frontend)
+  rm -f "$REPO/.gaia/VERSION"
+  short=$(git -C "$REPO" rev-parse --short "$pushed_sha")
+
+  cd "$REPO"
+  run "$HOOK_ABS" "$refusal"
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "status: posted GAIA-Audit failure ${short}" ]
+  grep -qF -- "state=failure" "$API_CALLS" || return 1
 }
 
 @test "refusal description carries neither the cleared shape nor a version in field 1" {
@@ -455,6 +474,10 @@ assert_no_post() {
   write_marker code-audit-frontend >/dev/null
   refusal=$(write_refusal code-audit-frontend)
   short=$(git -C "$REPO" rev-parse --short "$pushed_sha")
+  # No resolver is executable in this fixture, so the member-aware gate is
+  # skipped here by construction (see the scope limit in this file's header);
+  # the refused-member-inside-the-gate arm lives in the sibling suite that
+  # installs the real resolver.
 
   cd "$REPO"
   run "$HOOK_ABS" "$refusal"

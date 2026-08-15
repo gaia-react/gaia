@@ -376,7 +376,16 @@ _respawn_breadcrumb() {
 digest_marker_filter() {
   local members="$1" m out="" digest cleared ledger ts branch head merge_base
 
-  if ! command -v clearance_member_cleared >/dev/null 2>&1 || ! _load_member_digests; then
+  # Both readers are probed, not just the first. An older clearance lib carries
+  # `clearance_member_cleared` without `clearance_member_refused`, and a missing
+  # function exits 127, which `!` inverts to true: the filter would then read
+  # every member as un-refused and silently revert to the cleared-only behavior
+  # this refusal read exists to correct, leaking one stderr line and nothing
+  # else. Probing both degrades the whole filter instead, which is the answer
+  # this branch already gives for every other unavailable dependency.
+  if ! command -v clearance_member_cleared >/dev/null 2>&1 \
+     || ! command -v clearance_member_refused >/dev/null 2>&1 \
+     || ! _load_member_digests; then
     printf '%s' "$members"
     return 0
   fi

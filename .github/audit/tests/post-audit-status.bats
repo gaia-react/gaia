@@ -180,6 +180,21 @@ write_body() {
     "$member" "$digest" "$tree" "$sha" "$sidecar" > "$path"
 }
 
+# Write a writer-shaped REFUSAL for MEMBER at PATH, keyed to the same
+# current-HEAD digest write_body uses. The refusal twin of write_body: the real
+# writer publishes a refusal BESIDE any same-digest earned marker rather than
+# replacing it, so a test calls both to reproduce the two-artifact state the
+# gate has to resolve by precedence.
+write_refusal_body() {
+  local path="$1" member="$2" digest tree sha
+  digest=$(digest_of "$SANDBOX" "$member")
+  tree=$(git -C "$SANDBOX" rev-parse "HEAD^{tree}")
+  sha=$(git -C "$SANDBOX" rev-parse HEAD)
+  mkdir -p "$(dirname "$path")"
+  printf '{"version":"1.2.3","schema":3,"member":"%s","provenance":"refused","digest":"%s","tree":"%s","sha":"%s","audited_at":"2026-01-01T00:00:00Z","sidecar":true}\n' \
+    "$member" "$digest" "$tree" "$sha" > "$path"
+}
+
 # Copy the real resolver script into SANDBOX so a test can exercise the
 # member-aware gate. Untracked, so it never appears in a git diff itself.
 install_resolver() {
@@ -315,6 +330,36 @@ commit_mixed_diff() {
   grep -q "statuses/${head_sha}" "$POST_LOG"
   grep -q "state=success" "$POST_LOG"
   grep -q "description=1.2.3 ${frontend_digest} ${tree}" "$POST_LOG"
+}
+
+# A refused member inside the gate. The writer publishes a refusal beside the
+# same-digest earned marker rather than replacing it, so a member that cleared
+# a digest in one wave and refused it in a later one holds both. Read cleared
+# alone and that member counts as cleared, so the next member's earned
+# handshake posts success on the same head and latest-status-wins retracts the
+# failure the refusal writer just posted, while the merge hook goes on denying.
+# The gate has to read the refusal family first, exactly as the merge hook does.
+@test "member-aware POST: declines while a dispatched member holds a refusal beside its earned marker" {
+  install_gh_mock ok
+  install_resolver
+  commit_mixed_diff
+
+  frontend_digest=$(digest_of "$SANDBOX" code-audit-frontend)
+  shell_digest=$(digest_of "$SANDBOX" code-audit-maintainer-shell)
+  mkdir -p "$SANDBOX/.gaia/local/audit"
+  marker=".gaia/local/audit/${frontend_digest}.ok"
+  write_body "$SANDBOX/$marker" code-audit-frontend
+  # The shell member cleared this digest in an earlier wave, then refused it.
+  write_body "$SANDBOX/.gaia/local/audit/${shell_digest}.code-audit-maintainer-shell.ok" code-audit-maintainer-shell
+  write_refusal_body "$SANDBOX/.gaia/local/audit/${shell_digest}.code-audit-maintainer-shell.refused" code-audit-maintainer-shell
+
+  run run_helper "$marker"
+  [ "$status" -eq 0 ]
+  [ "$output" = "status: declined: members pending code-audit-maintainer-shell" ]
+
+  # Nothing is posted, so a failure status already standing for this head is
+  # never overwritten by a success this member never earned.
+  [ ! -f "$POST_LOG" ]
 }
 
 # The order-independence the helper's header promises, and that a commit key

@@ -236,30 +236,40 @@ if command -v gaia_resolve_main_root >/dev/null 2>&1; then
 fi
 [ -n "$store_root" ] || store_root="$repo_root"
 
-version_file="${repo_root}/.gaia/VERSION"
-if [ ! -f "$version_file" ]; then
-  emit_decline "version file missing"
-  exit 0
-fi
+# The version and the frontend digest are inputs to the SUCCESS description and
+# to the member-aware gate, and the refusal arm reads neither: its description is
+# built from the caller's own member and digest, and it skips the gate. So these
+# three preconditions are scoped to the success arm rather than applied to both.
+# Declining a refusal over a field it never reads would be the wrong direction:
+# it withholds a retraction while the stale success it exists to retract stands.
+version=""
+frontend_digest=""
+if [ "$post_state" = "success" ]; then
+  version_file="${repo_root}/.gaia/VERSION"
+  if [ ! -f "$version_file" ]; then
+    emit_decline "version file missing"
+    exit 0
+  fi
 
-if ! command -v gaia_read_version >/dev/null 2>&1; then
-  emit_decline "version normalizer unavailable (lib/gaia-version.sh)"
-  exit 0
-fi
+  if ! command -v gaia_read_version >/dev/null 2>&1; then
+    emit_decline "version normalizer unavailable (lib/gaia-version.sh)"
+    exit 0
+  fi
 
-version="$(gaia_read_version "$version_file")"
-if [ -z "$version" ]; then
-  emit_decline "version file empty"
-  exit 0
-fi
+  version="$(gaia_read_version "$version_file")"
+  if [ -z "$version" ]; then
+    emit_decline "version file empty"
+    exit 0
+  fi
 
-# Frontend digest (C3 field 2). Fail closed: never post a status without a
-# real digest. Reused below by the member-aware gate for the frontend
-# member's own digest, avoiding a second tree walk.
-frontend_digest="$(audit_member_digest "$repo_root" code-audit-frontend 2>/dev/null || true)"
-if [ -z "$frontend_digest" ]; then
-  emit_decline "frontend digest unavailable"
-  exit 0
+  # Frontend digest (C3 field 2). Fail closed: never post a status without a
+  # real digest. Reused below by the member-aware gate for the frontend
+  # member's own digest, avoiding a second tree walk.
+  frontend_digest="$(audit_member_digest "$repo_root" code-audit-frontend 2>/dev/null || true)"
+  if [ -z "$frontend_digest" ]; then
+    emit_decline "frontend digest unavailable"
+    exit 0
+  fi
 fi
 
 # The sha branch protection checks is the PR head on the REMOTE, not local HEAD.
@@ -347,7 +357,18 @@ if [ "$post_state" = "success" ] && [ -x "$resolver" ]; then
     else
       member_digest="$(audit_member_digest "$repo_root" "$m" 2>/dev/null || true)"
     fi
-    if [ -z "$member_digest" ] || ! clearance_member_cleared "$store_root" "$member_digest" "$m"; then
+    # Refusal-first, mirroring the merge hook's own precedence
+    # (pr-merge-audit-check.sh's member loop). A member that cleared a digest in
+    # one wave and refused the SAME digest in a later one holds both artifacts,
+    # because the writer publishes a refusal beside an earned marker rather than
+    # replacing it. Read cleared alone and that member counts as cleared, so the
+    # next member's earned handshake posts success on the same head and
+    # latest-status-wins retracts the failure the refusal just posted. The local
+    # gate would still deny, which is the divergence: the two readers must agree
+    # about one state, and the gate's answer is the one that governs.
+    if [ -z "$member_digest" ] \
+       || clearance_member_refused "$store_root" "$member_digest" "$m" \
+       || ! clearance_member_cleared "$store_root" "$member_digest" "$m"; then
       pending="${pending}${pending:+ }${m}"
     fi
   done <<< "$members"
