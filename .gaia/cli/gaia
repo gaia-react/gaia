@@ -17410,7 +17410,7 @@ var run13 = (argv, options = {}) => {
     suppressedClass: makeLedgerSuppressionPredicate({ cwd, runLedger }),
     windowDays: WINDOW_DAYS
   });
-  pruneLedger({ cwd, runLedger, windowClasses: windowClasses(prs) });
+  if (ghOk) pruneLedger({ cwd, runLedger, windowClasses: windowClasses(prs) });
   const emitted = { ...tallyResult, gh_ok: ghOk };
   process.stdout.write(`${JSON.stringify(emitted)}
 `);
