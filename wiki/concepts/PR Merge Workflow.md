@@ -216,7 +216,7 @@ A usable rule names a disposition for **every** way the round can come back, inc
 A member can find a genuine defect in a file outside its own declared domain, a **cross-remit finding**. The member that found it applies no repair, whether or not the file's owner has already cleared it and whether or not the fix looks trivial; it reports the finding to the orchestrator instead. The orchestrator disposes of it one of two ways:
 
 - **In scope for the PR** → the orchestrator applies the repair itself. Its commit rotates the owning member's digest, invalidating that member's marker, so the owner is re-dispatched and reviews the repair made to its own file.
-- **Out of scope** → a non-security finding is recorded as **waived** (listed in the pull request body, not filed) when its path is either a gate-machinery path or a file this pull request already changes; a finding satisfying neither term, or any security-class finding, is filed as a tech-debt issue exactly as it is today, through `/gaia-debt` and the `file-tech-debt` skill.
+- **Out of scope** → a non-security finding is recorded as **waived** (listed in the pull request body, not filed) when its path is either a gate-machinery path or a file this pull request already changes and the finding itself clears both disqualifiers; a finding satisfying neither term, or any security-class finding, is filed as a tech-debt issue exactly as it is today, through `/gaia-debt` and the `file-tech-debt` skill.
 
 Either way the finding is **recorded rather than lost**.
 
@@ -244,7 +244,13 @@ The waive rule applies to every out-of-scope finding the orchestrator disposes, 
 GAIA maintainers: those surfaces are `.gaia/cli/src/**`, `.claude/skills/**`, `.gaia/scripts/**`, `.claude/hooks/**`, `.claude/rules/**`, `.gaia/**/*.bats`, and `.github/workflows/**`. The list is wrapped because the first glob names a maintainer-only tree that no adopter clone carries, and a shipped page asserting it would be describing a directory the reader does not have.
 <!-- gaia:maintainer-only:end -->
 
-Either eligibility term alone is sufficient: a gate-machinery finding stays eligible whether or not the pull request touches it. An empty eligibility set disengages the waive rather than opening it, with nothing eligible, a finding routes to the normal filing path. The security screen runs first and is unchanged: a security-class finding never waives.
+Either path term alone is sufficient: a gate-machinery finding satisfies the path condition whether or not the pull request touches it. An empty eligibility set disengages the waive rather than opening it, with nothing eligible, a finding routes to the normal filing path. The security screen runs first and is unchanged: a security-class finding never waives.
+
+Two disqualifiers narrow what may be waived inside that eligible set, and neither widens it: a finding must clear both to stay eligible. No gate checks either one; they sit on the same agent-judgment wall the non-security screen sits on.
+
+**The change authored the inconsistency.** A finding is not waive-eligible when this change is what authors the inconsistency the finding names: the finding's site sits inside this change's own diff, or it is a sibling of a set this change adds a member to, or it is a claim this change falsifies. *Pre-existing* describes a sibling this change leaves untouched, never an asymmetry this change introduces. The bound is not optional: a finding whose defect is latent at the fork point, reading the same whether or not this change lands, is untouched-sibling debt and stays eligible even when it sits in a file this change edits.
+
+**A pointer written into shipped content owes a tracked destination.** A finding is not waive-eligible when this change leaves a pointer in shipped content, a code comment, a header note, a documented limit, or a test rationale, saying that a separate change handles what the finding names. The waive is unavailable and the finding is filed, so the pointer resolves to a tracked destination rather than to prose. This is a rule rather than a standing judgment call: a finding whose destination is named in shipped content is filed, and that filing is correct even when both path terms fire. The obligation runs from the pointer to the filing, never from the filing to the pointer, so omitting the pointer removes the obligation and removes the explanation from the shipped content along with it, and the cost lands on the author's own artifact rather than on the reader.
 
 A waive files nothing: no tech-debt issue, no issue number, and no touch of the debt-count staleness sentinel (`.gaia/local/debt/refresh-requested`).
 
