@@ -248,11 +248,16 @@ grep -Eq \"\$pattern\" < <(sed -E 's/\t/ /g' input.txt)"
 # -F has no regex at all, -P is PCRE where every escape here is defined and
 # identical, and -G is a BRE, a separate class this gate does not claim.
 #
-# Each non-extended fixture carries an E for the clearing clause to act on,
-# except the bare `grep -q`. Without one, the call is already not-extended
-# before any clause runs, so the fixture passes whether or not the clause it
-# names still exists: `grep -qG` pinned nothing, and deleting G from the code
-# left every test green.
+# A fixture with no E pins nothing about the clause it appears to name: the
+# call is already not-extended before any clearing clause runs, so it passes
+# whether or not that clause still exists. `grep -qG` was exactly that, and
+# deleting G from the code left every test green. Hence the E in `-qEP` and
+# `-qEG`.
+#
+# Two lines here carry no E, both deliberately. The bare `grep -q` is the
+# no-option baseline. `grep -qF` pins nothing about F on its own, and F is
+# pinned instead by the conflicting bundle on the last two lines: dropping F
+# from the clause reds this test through those, not through the -qF line.
 #
 # The last two fixtures are a CONFLICTING bundle, pinned in both orders because
 # the platforms disagree on it and the gate must not depend on that

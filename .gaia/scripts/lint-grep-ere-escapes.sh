@@ -281,9 +281,11 @@ scan_file() {
     #
     # `-F`, `-P`, and `-G` select a DIFFERENT matcher, and any of them anywhere
     # in the bundle clears extended mode here. In all three the class does not
-    # apply: `-F` has no regex at all, `-P` is PCRE where every escape here is
-    # defined and identical, and `-G` is a BRE, whose backslash rules are a
-    # separate class this gate does not claim.
+    # apply: `-F` has no regex at all; `-P` is PCRE on GNU, where every escape
+    # here is defined and identical, and is not supported at all on BSD grep,
+    # which exits 2 with `invalid option -- P` rather than misreading the
+    # pattern; and `-G` is a BRE, whose backslash rules are a separate class
+    # this gate does not claim.
     #
     # A bundle naming TWO matchers (`-EF`, `-FE`) is therefore read as
     # not-extended rather than resolved, and that is deliberate. The two
