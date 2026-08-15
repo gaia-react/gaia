@@ -223,6 +223,8 @@ setup() {
   large="$BATS_TEST_TMPDIR/large-specialist-finding.txt"
   {
     printf -- '- **Category**: correctness\n'
+    # shellcheck disable=SC2016  # literal backticks are the finding-location
+    # token under test, not a command substitution.
     printf -- '- **Location**: `app/foo.ts:42`\n'
     printf -- '- **Issue**: a real finding near the front of a large report.\n'
     # Pad well past a pipe buffer (64KB) so a `printf | grep -q` pipe would
@@ -442,6 +444,8 @@ _noop_write_clearance() {
   large="$BATS_TEST_TMPDIR/large-finding.txt"
   {
     printf '### Critical Issues (Must Fix)\n'
+    # shellcheck disable=SC2016  # literal backticks are the finding-location
+    # token under test, not a command substitution.
     printf -- '- **Location**: `app/foo.ts:42`\n'
     printf -- '- **Issue**: a real finding near the front of a large report.\n'
     # Pad well past a pipe buffer (64KB) so a `printf | grep -q` pipe would
@@ -787,4 +791,46 @@ _noop_write_findings() {
     --expect-count 18
   [ "$status" -eq 0 ]
   [ "$output" = "real" ]
+}
+
+# An EMPTY count is a usage error, never a silently dropped assertion. A caller
+# interpolating an unset variable passes one, and gating on the value rather
+# than on the flag's presence reads that as "no count asked for": the predicate
+# collapses back to existence-plus-parses and a truncated report classifies
+# REAL, which is precisely what the flag exists to prevent. It is the fail-open
+# direction, so it is pinned in both flags and against a short report.
+
+@test "usage error: an EMPTY --expect-count exits 2, never a silently dropped assertion" {
+  run "$SCRIPT" --shape agent-report-file --path "$FIX/agent-report/real-array.json" \
+    --expect-count ""
+  [ "$status" -eq 2 ]
+}
+
+@test "usage error: an EMPTY --min-count exits 2, never a silently dropped assertion" {
+  run "$SCRIPT" --shape agent-report-file --path "$FIX/agent-report/real-array.json" \
+    --min-count ""
+  [ "$status" -eq 2 ]
+}
+
+@test "usage error: a trailing --expect-count with no value exits 2" {
+  run "$SCRIPT" --shape agent-report-file --path "$FIX/agent-report/real-array.json" \
+    --expect-count
+  [ "$status" -eq 2 ]
+}
+
+@test "usage error: an EMPTY count is rejected by name, not by a generic fallthrough" {
+  # The 3-element fixture satisfies no honest denominator of 18, so an empty
+  # count must not launder it into a REAL. Asserting the message names the
+  # offending flag is what separates this from the pre-existing
+  # unrecognized-argument path, which also exits 2.
+  run "$SCRIPT" --shape agent-report-file --path "$FIX/agent-report/real-array.json" \
+    --expect-count ""
+  [ "$status" -eq 2 ]
+  assert_contains "--expect-count must be a non-negative integer"
+}
+
+@test "usage error: both count flags passed EMPTY still trip mutual exclusion" {
+  run "$SCRIPT" --shape agent-report-file --path "$FIX/agent-report/real-array.json" \
+    --expect-count "" --min-count ""
+  [ "$status" -eq 2 ]
 }

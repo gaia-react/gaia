@@ -15,7 +15,7 @@ Exit 0 is a real result, 1 is a no-op, 2 is a usage error. On a no-op, re-dispat
 
 **Poll the file, not the notification.** Because the artifact is on disk, read it on your own schedule instead of blocking on a completion signal that may never arrive.
 
-`.claude/skills/gaia/references/spec.md` step 7a is the worked reference for the whole contract, including the hardened retry prefix. Read it there rather than reconstructing it from here.
+The `## No-op guard (detection, retry, inline fallback)` section of `.claude/skills/gaia/references/spec.md` carries the whole contract, including the literal hardened retry prefix; step 7a's lens fan-out is the worked instance of it. Read it there rather than reconstructing it from here.
 
 ## Why
 

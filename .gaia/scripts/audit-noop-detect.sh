@@ -200,6 +200,13 @@ FINDINGS_PATH=""
 REPORT_FIELD=""
 EXPECT_COUNT=""
 MIN_COUNT=""
+# Presence is tracked separately from value. A caller interpolating an unset
+# variable passes an EMPTY count, and testing the value alone reads that as
+# "no count asked for", which silently drops the assertion and collapses the
+# predicate back to existence-plus-parses. That is the exact failure this flag
+# exists to close, so it must fail closed (a usage error) rather than open.
+EXPECT_COUNT_SEEN=""
+MIN_COUNT_SEEN=""
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -229,10 +236,12 @@ while [ "$#" -gt 0 ]; do
       ;;
     --expect-count)
       EXPECT_COUNT="${2:-}"
+      EXPECT_COUNT_SEEN=1
       shift 2 2>/dev/null || shift
       ;;
     --min-count)
       MIN_COUNT="${2:-}"
+      MIN_COUNT_SEEN=1
       shift 2 2>/dev/null || shift
       ;;
     *)
@@ -264,7 +273,7 @@ esac
 # argument's form only; whether a shape honors a count is the shape's own
 # business, matching how --audit-md, --marker, and --findings are ignored
 # outside the one shape each serves.
-if [ -n "$EXPECT_COUNT" ] && [ -n "$MIN_COUNT" ]; then
+if [ -n "$EXPECT_COUNT_SEEN" ] && [ -n "$MIN_COUNT_SEEN" ]; then
   echo "audit-noop-detect: --expect-count and --min-count are mutually exclusive" >&2
   usage
   exit 2
@@ -272,17 +281,21 @@ fi
 # An unvalidated non-integer would make the jq comparison below compare a
 # number against a string, which is always false, so every run would classify
 # NO-OP and the caller would burn its one retry on a dispatch that was never
-# broken. Fail loudly on the argument instead.
-for _acd_count in "$EXPECT_COUNT" "$MIN_COUNT"; do
-  [ -n "$_acd_count" ] || continue
-  case "$_acd_count" in
+# broken. The empty string fails the other way, silently dropping the whole
+# assertion, so both are rejected here. Gate on presence, never on value.
+_acd_validate_count() {
+  # <seen-flag> <value> <flag-name>
+  [ -n "$1" ] || return 0
+  case "$2" in
     *[!0-9]*|"")
-      echo "audit-noop-detect: count must be a non-negative integer, got '$_acd_count'" >&2
+      echo "audit-noop-detect: $3 must be a non-negative integer, got '$2'" >&2
       usage
       exit 2
       ;;
   esac
-done
+}
+_acd_validate_count "$EXPECT_COUNT_SEEN" "$EXPECT_COUNT" --expect-count
+_acd_validate_count "$MIN_COUNT_SEEN" "$MIN_COUNT" --min-count
 
 # ---------- file-backed shapes: absent path is always NO-OP ----------
 case "$SHAPE" in
@@ -360,9 +373,9 @@ case "$SHAPE" in
     # shape classifies NO-OP through one path.
     # shellcheck disable=SC2016  # $f is jq's --arg binding, not a shell expansion.
     _acd_report='if $f == "" then . else (try getpath([$f]) catch null) end'
-    if [ -n "$EXPECT_COUNT" ]; then
+    if [ -n "$EXPECT_COUNT_SEEN" ]; then
       _acd_count_test="and (($_acd_report | length) == (\$n | tonumber))"
-    elif [ -n "$MIN_COUNT" ]; then
+    elif [ -n "$MIN_COUNT_SEEN" ]; then
       _acd_count_test="and (($_acd_report | length) >= (\$n | tonumber))"
     else
       _acd_count_test=""
