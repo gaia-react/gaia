@@ -429,6 +429,32 @@ check_github_status() {
   return 0
 }
 
+# resolve_pr_record: read this pull request's record once into
+# $pr_record_title and $pr_record_base. Memoized on $pr_record_read, which is
+# what distinguishes "not read yet" from "read, and the answer was nothing".
+#
+# One read rather than one per field. Both consumers below sit on the same
+# uncleared path, and `gh` carries no request timeout of its own, so a second
+# round-trip is a second OS-length stall on a blackholed network. Every failure
+# (no gh, no auth, no PR for this branch, network error) leaves both fields
+# empty and each consumer takes its own no-answer path.
+pr_record_read=""
+pr_record_title=""
+pr_record_base=""
+resolve_pr_record() {
+  [ -z "$pr_record_read" ] || return 0
+  pr_record_read=yes
+
+  command -v gh >/dev/null 2>&1 || return 0
+  pr_record=$(gh pr view --json title,baseRefName 2>/dev/null || true)
+  [ -n "$pr_record" ] || return 0
+
+  # `// ""` so a JSON null reaches the callers as the same empty string an
+  # absent record does; both are "no answer" and neither is a branch name.
+  pr_record_title=$(printf '%s' "$pr_record" | jq -r '.title // ""' 2>/dev/null || true)
+  pr_record_base=$(printf '%s' "$pr_record" | jq -r '.baseRefName // ""' 2>/dev/null || true)
+}
+
 # chore(deps) bypass: PRs whose title matches `^chore\(deps(-dev)?\):` are
 # pre-verified by the /update-deps wrapper's local quality gate (typecheck +
 # lint + vitest + playwright + build), so the audit-marker requirement is
@@ -436,23 +462,22 @@ check_github_status() {
 # .gaia/scripts/chore-deps-skip.sh, shared with the CI workflows
 # (code-review-audit.yml, tests.yml, chromatic.yml).
 #
-# Title is queried via `gh pr view`. On any failure (no gh, no auth, no PR
-# for the current branch, network error, or an unresolved repo root) the
-# bypass does not fire and the normal deny path runs, the bypass is opt-in
-# proof, not a fallback.
+# The title comes from the shared PR-record read above. On any failure (no gh,
+# no auth, no PR for the current branch, network error, or an unresolved repo
+# root) the bypass does not fire and the normal deny path runs, the bypass is
+# opt-in proof, not a fallback.
 check_chore_deps_pr() {
-  command -v gh >/dev/null 2>&1 || return 1
-  pr_title=$(gh pr view --json title --jq .title 2>/dev/null || true)
-  [ -n "$pr_title" ] || return 1
+  resolve_pr_record
+  [ -n "$pr_record_title" ] || return 1
   # tree_root, not root: the predicate is executable code, so it comes from the
   # ACTING tree that carries it. root is the main checkout, which from a linked
   # worktree is a different branch entirely and need not have the script at all.
   [ -n "$tree_root" ] || return 1
-  [ "$(bash "$tree_root/.gaia/scripts/chore-deps-skip.sh" "$pr_title")" = "true" ]
+  [ "$(bash "$tree_root/.gaia/scripts/chore-deps-skip.sh" "$pr_record_title")" = "true" ]
 }
 
 # pr_base_branch: set $pr_base to the branch this PR merges into. Memoized on
-# $pr_base, so the two bypass checks below share one resolution per run.
+# $pr_base, so the two bypass checks below share one derivation per run.
 #
 # Both of those checks scope their diff to a merge base, and the branch that
 # merge base is taken against decides what "this PR changes" means. The
@@ -465,17 +490,21 @@ check_chore_deps_pr() {
 # exported base-ref variable would let a caller shrink a fail-closed check's
 # diff until every remaining path looked out of scope; a PR's base ref is the
 # branch it actually merges into, so scoping to it concedes nothing that
-# merging the PR would not already concede. Any failure (no gh, no auth, no PR
-# for this branch, network error) falls back to the advertised default, which
-# is the wider diff and therefore the safe direction to fail in.
+# merging the PR would not already concede.
+#
+# Any failure (no gh, no auth, no PR for this branch, network error) falls back
+# to the advertised default. That is usually the wider diff but not always: a
+# backport forked from current main and targeting an older maintenance branch
+# merge-bases NEARER to HEAD against main than against its own base. It is the
+# safe direction regardless, for a reason that does not rest on the geometry.
+# Whatever the narrower answer drops sits on commits already merged to the
+# default branch, which is where they were already audited.
 pr_base=""
 pr_base_branch() {
   [ -z "$pr_base" ] || return 0
 
-  if command -v gh >/dev/null 2>&1; then
-    pr_base=$(gh pr view --json baseRefName --jq .baseRefName 2>/dev/null || true)
-  fi
-  [ "$pr_base" = "null" ] && pr_base=""
+  resolve_pr_record
+  pr_base="$pr_record_base"
 
   if [ -z "$pr_base" ]; then
     pr_base=$(git symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null \

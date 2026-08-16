@@ -86,7 +86,9 @@ current_frontend_digest() {
 # Install a fake `gh` on a prepended PATH. It dispatches on argv:
 #   - `gh api .../statuses --jq <expr>` → run the real jq (with the hook's own
 #     state-filtered expression) against the crafted statuses array.
-#   - `gh pr view --json title ...`     → print an empty title (no chore(deps)).
+#   - `gh pr view --json title,baseRefName` → the PR record the hook reads once:
+#     an empty title (so chore(deps) never fires) and whatever base ref the test
+#     declared, if any.
 #   - anything else                     → empty.
 # Returns the full JSON array so the hook's --jq state filter is what decides.
 # Also sets GITHUB_REPOSITORY so the hook skips `gh repo view`.
@@ -105,9 +107,11 @@ EOF
 args="$*"
 case "$args" in
   *baseRefName*)
-    # Empty unless a test declared a base ref, so the hook falls back to the
+    # The hook reads the record once, both fields in one call. The title is
+    # always empty, so the chore(deps) bypass never fires; the base ref is
+    # empty unless a test declared one, which makes the hook fall back to the
     # remote's advertised default exactly as it does with no PR at all.
-    cat "$base_ref_file"
+    printf '{"title":"","baseRefName":"%s"}\n' "$(cat "$base_ref_file")"
     ;;
   *statuses*)
     jq_expr=""
@@ -120,7 +124,7 @@ case "$args" in
     jq -r "$jq_expr" < "$statuses_file"
     ;;
   *"pr view"*|*"pr"*"view"*)
-    # No PR title → chore(deps) bypass never fires.
+    # Any other PR-record shape: no answer at all.
     printf '\n'
     ;;
   *)

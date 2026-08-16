@@ -142,7 +142,8 @@ jobs:
           # (proven by a GAIA-Audit commit trailer or commit status). Resolved
           # here, before the source-change check, so that check and the audit
           # share one base: everything before <base> was already cleared. Falls
-          # back to origin/main (full PR scope) when no audited ancestor exists
+          # back to the branch this PR merges into (origin/main when none is
+          # declared), full PR scope, when no audited ancestor exists
           # (first audit, prior runs cancelled/failed, or a .gaia/VERSION bump
           # invalidated them). A helper failure must never fail the audit;
           # default to full scope.

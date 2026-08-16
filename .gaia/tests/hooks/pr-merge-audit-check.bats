@@ -269,7 +269,9 @@ pool_snapshot() {
 
 # Install a gh stub on a prepended PATH. `gh issue list` prints $1 (default []).
 # GET statuses return null (so the frontend is NOT cleared via a CI status),
-# `gh pr view` returns an empty title (no chore(deps) bypass).
+# `gh pr view` returns the PR record the hook reads once: an empty title (no
+# chore(deps) bypass) and an empty base ref (so the base derivation falls back
+# to the remote's advertised default).
 install_gh_stub() {
   local issues="${1:-[]}"
   GH_BIN="$BATS_TEST_TMPDIR/bin"
@@ -283,7 +285,7 @@ EOF
 case "$1" in
   auth) exit 0 ;;
   repo) printf 'gaia-react/gaia\n'; exit 0 ;;
-  pr) printf '\n'; exit 0 ;;
+  pr) printf '{"title":"","baseRefName":""}\n'; exit 0 ;;
   issue) cat "$issues_file"; exit 0 ;;
   api) printf 'null\n'; exit 0 ;;
   *) exit 0 ;;
@@ -293,9 +295,11 @@ EOF
   export PATH="$GH_BIN:$PATH"
 }
 
-# Same stub, but `gh pr view` returns $1 as the PR title, so the chore(deps)
+# Same stub, but the PR record carries $1 as the title, so the chore(deps)
 # bypass can actually fire. Every other case above leaves the title empty, which
-# is why no test here exercised the bypass's allow path.
+# is why no test here exercised the bypass's allow path. jq builds the record
+# rather than a printf format, so a title carrying a quote or a backslash stays
+# valid JSON instead of silently emptying the field the test is pinning.
 install_gh_stub_with_title() {
   local title="$1"
   install_gh_stub "${2:-[]}"
@@ -309,7 +313,7 @@ EOF
 case "$1" in
   auth) exit 0 ;;
   repo) printf 'gaia-react/gaia\n'; exit 0 ;;
-  pr) cat "$title_file"; printf '\n'; exit 0 ;;
+  pr) jq -n --arg t "$(cat "$title_file")" '{title:$t, baseRefName:""}'; exit 0 ;;
   issue) cat "$issues_file"; exit 0 ;;
   api) printf 'null\n'; exit 0 ;;
   *) exit 0 ;;
