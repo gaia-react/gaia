@@ -529,3 +529,58 @@ assert_no_post() {
   [ "$output" = "status: declined: audited tree not on pushed head" ]
   assert_no_post || return 1
 }
+
+@test "caller's own live refusal blocks its earned marker's success post, with no resolver" {
+  # An earned write never clears a same-digest refusal (only --supersede-refusal
+  # does), so a member that refused and was then re-run plainly holds BOTH
+  # artifacts. The member-aware gate catches that for every dispatched member,
+  # but it is armed only when the resolver is executable, and this fixture has
+  # none by construction (see the scope limit in this file's header). Without a
+  # roster-independent check the fallback posts success and retracts the failure
+  # the refusal writer posted, which is the incident the refusal arm prevents.
+  push_head_to_upstream
+  pushed_sha=$(git -C "$REPO" rev-parse HEAD)
+  install_gh_stub "$pushed_sha"
+
+  marker=$(write_marker code-audit-frontend)
+  write_refusal code-audit-frontend >/dev/null
+
+  cd "$REPO"
+  run "$HOOK_ABS" "$marker"
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "status: declined: caller holds a live refusal" ]
+  assert_no_post || return 1
+}
+
+@test "an older clearance lib without the refusal reader declines rather than falling open" {
+  # The probe's own arm. A lib carrying clearance_member_cleared without
+  # clearance_member_refused makes a refusal call exit 127, which the
+  # surrounding chain consumes as "not refused" and reverts the gate to
+  # cleared-only. Without this test the probe can be deleted and every suite
+  # stays green, which is the same unarmed-guard shape this branch repairs
+  # elsewhere. The hook resolves its libs from its own directory, so a mirror
+  # with a doctored lib exercises the real script rather than a stand-in.
+  push_head_to_upstream
+  pushed_sha=$(git -C "$REPO" rev-parse HEAD)
+  install_gh_stub "$pushed_sha"
+
+  mirror="$BATS_TEST_TMPDIR/hooks"
+  mkdir -p "$mirror/lib"
+  cp "$HOOK_ABS" "$mirror/post-audit-status.sh"
+  cp "$(dirname "$HOOK_ABS")"/lib/*.sh "$mirror/lib/"
+  # Rename the function out of the lib copy; every other reader stays intact.
+  sed -i.bak 's/^clearance_member_refused()/_disabled_clearance_member_refused()/' \
+    "$mirror/lib/audit-clearance.sh"
+  rm -f "$mirror/lib/audit-clearance.sh.bak"
+  grep -qF -- "_disabled_clearance_member_refused()" "$mirror/lib/audit-clearance.sh" || return 1
+
+  marker=$(write_marker code-audit-frontend)
+
+  cd "$REPO"
+  run bash "$mirror/post-audit-status.sh" "$marker"
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "status: declined: clearance reader unavailable" ]
+  assert_no_post || return 1
+}

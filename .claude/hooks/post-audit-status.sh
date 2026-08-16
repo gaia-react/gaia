@@ -83,6 +83,7 @@
 #          version file empty
 #          frontend digest unavailable
 #          clearance reader unavailable
+#          caller holds a live refusal
 #          repo slug unresolved
 #          audited tree not on pushed head
 #          stamp not pushed
@@ -352,25 +353,42 @@ fi
 # answer, so the member set is unknown, and posting success on an unknown
 # member set is the vacuous pass this gate exists to prevent. That arm
 # declines.
+# The refusal reader is required for BOTH checks below, probed once here rather
+# than per member and OUTSIDE the resolver branch. A clearance lib carrying
+# clearance_member_cleared without clearance_member_refused makes a refusal call
+# exit 127, and the surrounding `||` chain consumes that as "not refused",
+# reverting the gate to cleared-only and posting success on a head where a
+# member holds a live refusal. That is the one degradation direction this gate
+# must never take, so an unavailable reader declines instead of falling open.
+# The earned reader's own probe sits at the marker-mode branch above, where
+# absence degrades to a decline on its own.
+if [ "$post_state" = "success" ] && ! command -v clearance_member_refused >/dev/null 2>&1; then
+  emit_decline "clearance reader unavailable"
+  exit 0
+fi
+
+# The CALLER'S OWN refusal, checked without the roster. An earned write never
+# clears a same-digest refusal (only --supersede-refusal does, as an explicit
+# recorded act), so a member that refused this digest and was then re-run with a
+# plain earned write holds BOTH artifacts. The member-aware gate below catches
+# that for every dispatched member, but it is armed only when the resolver is
+# executable, and the no-resolver fallback posts on the caller's marker alone.
+# Left to that fallback this hook retracts the failure the refusal writer
+# posted, and auto-merge completes over a live refusal, which is the whole
+# incident the refusal arm exists to prevent. The caller's own member and digest
+# are already in hand, so this needs nothing the roster provides.
+if [ "$post_state" = "success" ] \
+   && clearance_member_refused "$store_root" "$marker_digest" "$marker_member"; then
+  emit_decline "caller holds a live refusal"
+  exit 0
+fi
+
 resolver="${repo_root}/.gaia/scripts/resolve-audit-members.sh"
 if [ "$post_state" = "success" ] && [ -x "$resolver" ]; then
   resolver_rc=0
   members="$( cd "$repo_root" && bash "$resolver" 2>/dev/null )" || resolver_rc=$?
   if [ "$resolver_rc" -ne 0 ]; then
     emit_decline "member resolver could not answer"
-    exit 0
-  fi
-  # Both readers are required, probed once here rather than per member. A
-  # clearance lib carrying clearance_member_cleared without
-  # clearance_member_refused makes the refusal call below exit 127, and the
-  # loop's `||` chain consumes that as "not refused", reverting the gate to
-  # cleared-only and posting success on a head where a dispatched member holds
-  # a live refusal. That is the one degradation direction this gate must never
-  # take, so an unavailable reader declines instead of falling open. The earned
-  # reader's own probe sits at the marker-mode branch above, where absence
-  # degrades to a decline on its own.
-  if ! command -v clearance_member_refused >/dev/null 2>&1; then
-    emit_decline "clearance reader unavailable"
     exit 0
   fi
 

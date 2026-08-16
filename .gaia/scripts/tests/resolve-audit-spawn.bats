@@ -1322,3 +1322,37 @@ code-audit-maintainer-shell"
   [ "$status" -eq 0 ]
   [ "$output" = "code-audit-frontend" ]
 }
+
+@test "an older clearance lib without the refusal reader degrades the whole filter, not just the refusal read" {
+  # The probe's own arm, the twin of the hooks suite's. A missing function
+  # exits 127, which `!` inverts to true, so the filter would read every member
+  # as un-refused and silently revert to the cleared-only behavior the refusal
+  # read exists to correct. Probing both readers degrades the whole filter
+  # instead, which is what every other unavailable dependency here does.
+  # The oracle resolves its libs from its own location, so a mirror with a
+  # doctored lib exercises the real script.
+  write_full_roster
+  stage app/x.tsx; commit "feat"
+  write_marker code-audit-frontend
+  stage .gaia/scripts/token-tally.sh; commit "fix"
+
+  mirror="$BATS_TEST_TMPDIR/mirror"
+  mkdir -p "$mirror/.gaia/scripts" "$mirror/.claude/hooks/lib"
+  cp "$THIS_DIR"/../*.sh "$mirror/.gaia/scripts/"
+  cp "$LIB_DIR"/*.sh "$mirror/.claude/hooks/lib/"
+  sed -i.bak 's/^clearance_member_refused()/_disabled_clearance_member_refused()/' \
+    "$mirror/.claude/hooks/lib/audit-clearance.sh"
+  rm -f "$mirror/.claude/hooks/lib/audit-clearance.sh.bak"
+
+  # Degraded: the filter passes the list through, so the already-cleared
+  # frontend member is named rather than dropped.
+  run bash -c 'cd "$1" && "$2" 2>/dev/null' _ "$SANDBOX" "$mirror/.gaia/scripts/resolve-audit-spawn.sh"
+  [ "$status" -eq 0 ]
+  grep -qxF "code-audit-frontend" <<<"$output" || return 1
+
+  # Control: the real oracle, with both readers present, drops it.
+  run run_oracle
+  [ "$status" -eq 0 ]
+  grep -qxF "code-audit-frontend" <<<"$output" && return 1
+  return 0
+}
