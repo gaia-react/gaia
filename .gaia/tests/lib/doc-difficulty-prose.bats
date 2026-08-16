@@ -253,16 +253,25 @@ setup() {
   grep -qF -- "difficulty:easy difficulty:medium difficulty:hard wontfix; do" "$VOCAB" || return 1
 }
 
-@test "the label-loop prose count says thirteen, and the stale 'all five' / 'all eight' / 'all ten labels' phrasings are gone" {
+@test "the label-loop prose count says fourteen, and the stale 'all five' / 'all eight' / 'all ten' / 'all thirteen labels' phrasings are gone" {
   # The count in the prose and the number of entries in the loop are two
   # statements of one fact, and only the loop is executable, so the prose is
   # the half that rots. Pinning the current count plus every superseded one is
   # what makes a future label addition fail here instead of shipping a comment
   # that undercounts its own loop.
-  grep -qF -- "Create all thirteen labels idempotently" "$VOCAB" || return 1
+  grep -qF -- "Create all fourteen labels idempotently" "$VOCAB" || return 1
   assert_absent_fixed_across "all five labels" "$VOCAB"
   assert_absent_fixed_across "all eight labels" "$VOCAB"
   assert_absent_fixed_across "all ten labels" "$VOCAB"
+  assert_absent_fixed_across "all thirteen labels" "$VOCAB"
+}
+
+@test "the label loop creates fold:required, and the loop's difficulty tail is unmoved" {
+  # `fold:required` sits on its own continuation line ahead of the difficulty
+  # entries rather than appended after `wontfix`, which is what keeps the
+  # sibling assertion above it matching the tail byte-for-byte.
+  grep -qF -- "fold:required \\" "$VOCAB" || return 1
+  grep -qF -- "difficulty:easy difficulty:medium difficulty:hard wontfix; do" "$VOCAB" || return 1
 }
 
 @test "UAT-004: both gh issue create forms carry --body-file and the two mandatory non-grade labels, graded and ungraded" {

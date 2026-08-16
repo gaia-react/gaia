@@ -219,16 +219,29 @@ The class is advisory: whatever later drains the issue re-derives it from the ci
 
 Being advisory also sets how strictly it is checked. `.gaia/scripts/check-debt-issue-metadata.sh` validates at most one handler label and rejects a value outside the three above, but absence is not a finding: a human-filed issue that carries no class is legal, and the drain treats it as unclassified and grades it from code like any other.
 
+The `fold:` label records that **the repair's cost is dominated by a fixed cost the finding alone does not justify**, so draining it on its own pays that cost for a change too small to warrant it.
+
+| Label | Apply it when |
+|---|---|
+| `fold:required` | the repair should ride a change that already pays its fixed cost, and nothing about the finding on its own justifies paying that cost. |
+
+That one condition is the whole application rule. The instance it was written for is a small prose edit to a path the audit gate treats as global (`AUDIT_GLOBAL_RULES_PATHS` in `.claude/hooks/lib/audit-rules-changed.sh`), which discards every Code Audit Team member's incremental review anchor repo-wide: the repair is one sentence and the reset is not. The general form is any repair whose cost sits in the change around it rather than in the change itself.
+
+**Display-only, gating nothing.** `.claude/skills/gaia/references/debt.md` reads it in three places, `list`'s annotation, `why`'s report, and the description of that issue's option in the recommendation prompt, so the intent reaches the human making the pick. It never filters the candidate pool, never changes the ordering, and never changes the clustering pass. Which carrier a folded repair should ride is a property of the *other* change's fix, so no pure function over this issue's fields can compute it, and the ordering and clustering are deliberately model-free. An annotation on the option is enough leverage, because with two or more candidates the drain always stops for a human-approved pick anyway.
+
+Optional, and absence is the ordinary case: most repairs carry their own cost. Exactly one is permitted when present, and `.gaia/scripts/check-debt-issue-metadata.sh` validates the value the way it validates a difficulty grade.
+
 See step 7 for the difficulty label's three permitted values and the rubric for choosing between them.
 
 A finding that gets deliberately declined (closed without fixing) carries GitHub's `wontfix` label, that's what step 2 checks for to avoid re-filing it.
 
-Create all thirteen labels idempotently before the first filing in a run, a label that already exists is not an error:
+Create all fourteen labels idempotently before the first filing in a run, a label that already exists is not an error:
 
 ```bash
 for label in tech-debt severity:critical severity:important severity:suggestion \
              surface:adopter surface:maintainer \
              handler:prompt handler:plan handler:spec \
+             fold:required \
              difficulty:easy difficulty:medium difficulty:hard wontfix; do
   gh label create "$label" --color <hex> 2>/dev/null || true
 done
@@ -291,7 +304,7 @@ The marker is only accurate when applied at the moment provenance starts writing
 
 The marker changes no displayed number and no consumer gates on it, so it is additive.
 
-Do not add `debt:pre-provenance` to step 6's idempotent label-creation loop: the rollout is a one-time per-repository step, not a per-filing one, and adding it would make that loop's "all thirteen labels" comment wrong.
+Do not add `debt:pre-provenance` to step 6's idempotent label-creation loop: the rollout is a one-time per-repository step, not a per-filing one, and adding it would make that loop's "all fourteen labels" comment wrong.
 
 ## Rollout: backfill the handler class onto the existing backlog
 
@@ -349,13 +362,15 @@ The wrapped `gaia-debt-key` format (step 1) and the label spellings (step 6) are
 - Tests: `.gaia/tests/hooks/debt-sentinel-touch.bats`, `.gaia/tests/hooks/debt-session-reconcile.bats`, `.gaia/scripts/tests/debt-count-refresh.bats`, `.gaia/tests/statusline/audit-nudge-drift-suppression.bats`, `.gaia/scripts/tests/check-debt-issue-metadata.bats`
 <!-- gaia:maintainer-only:end -->
 
-`check-debt-issue-metadata.sh` is the newest member and the only one that gates on a label spelling rather than merely tolerating one. It hardcodes all four permitted value sets (`severity:`, `surface:`, `handler:`, `difficulty:`) and the key's line shape, so it is the consumer a spelling change breaks first and loudest, which is the intended direction: a rename that forgets this file fails a filing immediately instead of degrading a count silently.
+`check-debt-issue-metadata.sh` is the newest member and the only one that gates on a label spelling rather than merely tolerating one. It hardcodes all five permitted value sets (`severity:`, `surface:`, `handler:`, `fold:`, `difficulty:`) and the key's line shape, so it is the consumer a spelling change breaks first and loudest, which is the intended direction: a rename that forgets this file fails a filing immediately instead of degrading a count silently.
 
 The governed set also includes the `debt:in-progress` claim label: `.claude/skills/gaia/references/debt.md` creates and applies it as the `/gaia-debt` in-progress claim, and `.gaia/scripts/debt-count-refresh.sh` consumes it, excluding any issue that carries it from the open count. This recipe never creates or applies `debt:in-progress` itself. The same holds for `debt:spec-pending`: `debt.md` creates and applies it as the `/gaia-debt` design-first handoff park label, and `.gaia/scripts/debt-count-refresh.sh` consumes it, excluding any issue that carries it from the open count too. This recipe never creates or applies `debt:spec-pending` itself.
 
 The `surface:` namespace (step 6) is a label spelling and within this contract's scope. Verified against every consumer named above: none of them reads it. `.gaia/scripts/debt-count-refresh.sh` excludes exactly two label names and ignores the rest, `.claude/hooks/audit-disposition-check.sh` matches the dedup key in the body and parses no labels at all, `.gaia/statusline/gaia-statusline.sh` parses no labels, `.claude/hooks/debt-session-reconcile.sh` only reconciles the count downward, and `.claude/skills/gaia/references/debt.md` neither sorts, clusters, nor gates on it. The one consumer that does read it is `check-debt-issue-metadata.sh`, which is where the requirement is enforced rather than merely stated. Renaming the namespace therefore means editing step 6 and that script, and nothing else.
 
 The `handler:` namespace (step 6) is a label spelling and within this contract's scope. Re-verified against every consumer named above: two of them read it and the rest do not. `.gaia/scripts/check-debt-issue-metadata.sh` hardcodes the three permitted values, so a rename that forgets it fails a filing immediately. `.claude/skills/gaia/references/debt.md` resolves the class out of the `labels` projection its ordering query already builds and reads it in three places (the offer-time spec read, the Fix-time spec screen, and `list`/`why`'s annotations), so a rename must reach the one `startswith("handler:")` selector there. The count/statusline/hook consumers are untouched, for the same reasons the `surface:` paragraph above records: `.gaia/scripts/debt-count-refresh.sh` excludes exactly two label names and ignores the rest, `.claude/hooks/audit-disposition-check.sh` matches the dedup key in the body and parses no labels, `.gaia/statusline/gaia-statusline.sh` parses no labels, and `.claude/hooks/debt-session-reconcile.sh` only reconciles the count downward.
+
+The `fold:` namespace (step 6) is a label spelling and within this contract's scope. Verified against every consumer named above: two of them read it and the rest do not. `.gaia/scripts/check-debt-issue-metadata.sh` hardcodes the one permitted value, so a rename that forgets it fails a filing immediately. `.claude/skills/gaia/references/debt.md` resolves it out of the `labels` projection its ordering query already builds and surfaces it in three display sites (`list`'s annotation, `why`'s report, and the recommendation prompt's option description), so a rename must reach the one `startswith("fold:")` selector there. No consumer gates on it, which is the point of the label rather than an accident of its youth: the count/statusline/hook consumers are untouched for the same reasons the `surface:` and `handler:` paragraphs above record.
 
 The `difficulty:` namespace (step 7) is a label spelling, so it is within this lockstep contract's scope, but no consumer gates on it, verified against all five originally named above: `.gaia/scripts/debt-count-refresh.sh` filters by excluding two specific label names (`debt:in-progress` and `debt:spec-pending`) and ignores anything else, `.claude/hooks/audit-disposition-check.sh` matches the dedup key in the issue body and parses no labels, `.gaia/statusline/gaia-statusline.sh` parses no labels, `.claude/hooks/debt-session-reconcile.sh` only reconciles the count downward, and `.claude/skills/gaia/references/debt.md` surfaces it in output only, never to gate a path (`debt.md`'s own Guardrails: "Difficulty grading never gates anything"). Renaming the namespace therefore requires zero gating changes to any of the five.
 

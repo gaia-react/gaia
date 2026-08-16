@@ -196,6 +196,45 @@ refute_code() {
   refute_code "handler-count"
 }
 
+# ---------------------------------------------------------------------------
+# fold: validated when present, never demanded
+# ---------------------------------------------------------------------------
+
+@test "a filing with no fold: label is clean, the ordinary case" {
+  # Absence is the norm rather than an omission: the label marks the minority of
+  # findings whose repair rides another change's fixed cost, so demanding it
+  # would make every ordinary filing a finding.
+  run bash "$CHECK" --pre-file --labels "$GOOD_LABELS" --body-file "$BODY"
+  [ "$status" -eq 0 ]
+  refute_code "fold"
+}
+
+@test "fold:required is accepted" {
+  run bash "$CHECK" --pre-file --labels "$GOOD_LABELS,fold:required" --body-file "$BODY"
+  [ "$status" -eq 0 ]
+}
+
+@test "two fold: labels are rejected" {
+  run bash "$CHECK" --pre-file --labels "$GOOD_LABELS,fold:required,fold:required" --body-file "$BODY"
+  [ "$status" -eq 1 ]
+  assert_code "fold-count"
+}
+
+@test "a fold: value outside the permitted set is rejected" {
+  run bash "$CHECK" --pre-file --labels "$GOOD_LABELS,fold:optional" --body-file "$BODY"
+  [ "$status" -eq 1 ]
+  assert_code "fold-value"
+}
+
+@test "RED: an unfilled fold placeholder is a finding, not a dropped flag" {
+  run bash "$CHECK" --pre-file --labels "$GOOD_LABELS,fold:" --body-file "$BODY"
+  [ "$status" -eq 1 ]
+  assert_code "fold-value"
+  # The count check cannot catch this: `fold:` is one label, so at-most-one
+  # holds and only the value is wrong.
+  refute_code "fold-count"
+}
+
 # --- the shapes an unquoted value expansion used to let through ------------
 #
 # Each of these greened the gate before the value loop read its input line-wise.
