@@ -104,10 +104,13 @@ render_backlog() {
 @test "Arm 1: handler resolves from the labels projection, not from a body capture" {
   block="$(extract_query_fence)"
   printf '%s\n' "$block" | grep -qF -- 'map(select(startswith("handler:")) | ltrimstr("handler:"))' || return 1
-  # The bad case: the superseded body-line regex. It parses null on any body a
-  # human reformatted, which is the silent-parse the label representation exists
-  # to remove, so its return must fail this suite rather than pass unnoticed.
-  printf '%s\n' "$block" | grep -qF -- "^Handler:" && return 1
+  # The bad case: the superseded body-line regex, matched as the CLASS rather
+  # than as one frozen spelling. It parses null on any body a human reformatted,
+  # which is the silent-parse the label representation exists to remove, so its
+  # return must fail this suite rather than pass unnoticed. Pinning the literal
+  # `^Handler:` would miss a capture reintroduced as `capture("Handler:[ ]+…")`
+  # or `(?m)^Handler[: ]`, which is the same defect wearing a different regex.
+  printf '%s\n' "$block" | grep -qE 'capture\("[^"]*[Hh]andler' && return 1
   true
 }
 

@@ -285,13 +285,35 @@ setup() {
   # Not a whole-file absence check: the backfill sweep has to name the legacy
   # spelling, because reading it off pre-existing bodies is the entire job. Any
   # OTHER occurrence is the writer schema growing the body line back.
-  local start end line hits
-  read -r start end <<<"$(section_line_range "$VOCAB" '^## Rollout: backfill the handler class' '^## ')"
-  [ -n "$start" ] || {
+  local range start end line hits
+  # Split explicitly rather than through `read -r start end`. When the start
+  # pattern matches nothing, section_line_range prints a LEADING-SPACE line
+  # (" <end>"), and `read` collapses IFS whitespace, so `start` silently takes
+  # the end value and `end` comes back empty. The missing-section guard below
+  # then passes on a range that describes nothing, and the loop's
+  # `[ "$line" -gt "" ]` errors with `integer expected`; inside an `if A || B`
+  # condition `set -e` is suppressed, so the condition reads false and every
+  # out-of-section hit is accepted. That is a live path, not a hypothetical:
+  # this section is a one-time backfill sweep meant to be deleted once every
+  # repository has run it, and its deletion is exactly what would retire the
+  # guard while the body-line spelling it forbids could return unnoticed.
+  range="$(section_line_range "$VOCAB" '^## Rollout: backfill the handler class' '^## ')"
+  start="${range%% *}"
+  end="${range##* }"
+  [ -n "$start" ] && [ -n "$end" ] || {
     echo "the handler backfill rollout section is missing from SKILL.md" >&2
     return 1
   }
   hits="$(grep -n -F -- 'Handler:' "$VOCAB" | cut -d: -f1)"
+  # Presence, not just absence-outside. With no hits at all the loop never runs
+  # and the test greens through its trailing `true`, which is the same vacuous
+  # pass the missing-section guard above exists to prevent, reached by the other
+  # door: the sweep needs the legacy spelling to do its job, so zero occurrences
+  # means the backfill lost its subject.
+  [ -n "$hits" ] || {
+    echo "no Handler: spelling survives in SKILL.md at all; the backfill sweep has lost its subject" >&2
+    return 1
+  }
   for line in $hits; do
     if [ "$line" -lt "$start" ] || [ "$line" -gt "$end" ]; then
       echo "a Handler: body-line spelling survives at SKILL.md:${line}, outside the backfill section" >&2
