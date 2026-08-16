@@ -43,13 +43,20 @@
 #
 # Behavior
 #   Best-effort and fail-safe-asymmetric: when gh is absent or unauthenticated,
-#   or when a dispatched member other than the caller hasn't cleared yet, the
-#   POST is skipped (the button stays blocked) but the marker the caller
-#   already wrote is untouched. The status is never posted without every
-#   dispatched member's marker present, and an absent status never inverts
-#   into a cleared gate. Order-independent: each member calls this script
-#   after writing its own marker, so whichever member finishes last is the one
-#   whose call actually posts.
+#   or, on the SUCCESS arm, when a dispatched member other than the caller
+#   hasn't cleared yet, the POST is skipped (the button stays blocked) but the
+#   clearance the caller already wrote is untouched. A SUCCESS status is never
+#   posted without every dispatched member's marker present and none of them
+#   holding a live refusal, and an absent status never inverts into a cleared
+#   gate. Order-independent: each member calls this script after writing its
+#   own marker, so whichever member finishes last is the one whose call
+#   actually posts.
+#
+#   The REFUSAL arm skips the member-aware gate by design (see Purpose above),
+#   so none of the roster conditions above bound it. Re-arming that gate here
+#   would be a regression rather than a tightening: it would withhold the
+#   retraction on exactly the state the retraction exists for, since a refusal
+#   is itself the reason the roster is not clear.
 #
 #   Order-independence rests on the DIGEST key. Markers are named for the
 #   member's own content digest, not its commit sha, so code-audit-frontend's
