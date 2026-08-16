@@ -37,6 +37,8 @@
 #          not in a git repo
 #          already stamped
 #          frontend digest unavailable
+#          clearance reader unavailable
+#          frontend holds a live refusal
 #          members pending <list>
 #          stamp lock contended
 #   2 , Usage / unexpected error. Stderr.
@@ -234,9 +236,9 @@ fi
 # member cleared this CONTENT, not just the caller. Mirrors the member-aware
 # gate in .claude/hooks/post-audit-status.sh. Each member is keyed to its OWN
 # digest (owned files + machinery), not the frontend digest or the tree.
-# Resolver absent/non-executable, or the clearance lib unavailable, falls back
-# to the caller's own clean judgment so a partial or early-resume tree is never
-# bricked (never a fail-closed deadlock). ABSENT and FAILED are two different
+# An ABSENT or non-executable resolver falls back to the caller's own clean
+# judgment so a partial or early-resume tree is never bricked (never a
+# fail-closed deadlock). ABSENT and FAILED are two different
 # states and only the first gets that fallback: a resolver that runs and exits
 # non-zero could not resolve the audited root, so the member set is unknown,
 # and stamping a trailer that certifies an unknown set is the vacuous pass this
@@ -248,9 +250,49 @@ fi
 # SUBDIRECTORY up to the checkout root; it cannot repoint the hook at another
 # tree. Selecting the tree is the caller's job, done by invoking the hook from
 # it.
+#
+# Two checks sit AHEAD of that branch and hold whether or not a roster resolves,
+# so the never-brick fallback can no longer stamp over a refusal it never read.
 # -----------------------------------------------------------------------------
+
+# The refusal reader is required by both of them, probed once here rather than
+# per member. A clearance lib carrying clearance_member_cleared without
+# clearance_member_refused makes a refusal call exit 127, and the surrounding
+# `||` chain consumes that as "not refused", reverting the gate to cleared-only
+# and stamping on content where a member holds a live refusal. That is the one
+# degradation direction this gate must never take, so an unavailable reader
+# declines rather than falling open, matching post-audit-status.sh.
+#
+# The posture that decides this arm, stated once for both hooks: the trailer is
+# an attestation, and an attestation nobody can verify is worse than none. Fail
+# closed costs nothing a merge needs, because the trailer is one of several
+# independent signals the merge gate reads (pr-merge-audit-check.sh's
+# frontend_cleared tries the member's own marker first and the GitHub status
+# after), so withholding it leaves those standing rather than bricking anything.
+if ! command -v clearance_member_refused >/dev/null 2>&1 \
+   || ! command -v clearance_member_cleared >/dev/null 2>&1; then
+  emit_decline "clearance reader unavailable"
+  exit 0
+fi
+
+# The refusal that contradicts THIS trailer, read without the roster. Field 2
+# certifies code-audit-frontend at $frontend_digest, and that member is exactly
+# what the merge gate's trailer fallback stands in for, so a live refusal for
+# that member and digest contradicts the trailer on its own terms. An earned
+# write never clears a same-digest refusal (only --supersede-refusal does, as an
+# explicit recorded act), so a member that refused this digest and was then
+# re-run with a plain earned write holds BOTH artifacts. The member loop below
+# catches that for every dispatched member, but it is armed only when the
+# resolver is executable, and the no-resolver fallback stamps on the caller's own
+# judgment alone. Left to that fallback the trailer asserts a clean pass over a
+# live refusal, and CI's whole-team floor anchors a later round past it.
+if clearance_member_refused "$repo_root" "$frontend_digest" code-audit-frontend; then
+  emit_decline "frontend holds a live refusal"
+  exit 0
+fi
+
 resolver="${repo_root}/.gaia/scripts/resolve-audit-members.sh"
-if [ -x "$resolver" ] && command -v clearance_member_cleared >/dev/null 2>&1; then
+if [ -x "$resolver" ]; then
   resolver_rc=0
   members="$( cd "$repo_root" && bash "$resolver" 2>/dev/null )" || resolver_rc=$?
   if [ "$resolver_rc" -ne 0 ]; then
@@ -265,7 +307,15 @@ if [ -x "$resolver" ] && command -v clearance_member_cleared >/dev/null 2>&1; th
     else
       member_digest="$(audit_member_digest "$repo_root" "$m" 2>/dev/null || true)"
     fi
-    if [ -z "$member_digest" ] || ! clearance_member_cleared "$repo_root" "$member_digest" "$m"; then
+    # Refusal-first, mirroring the member loop in post-audit-status.sh and the
+    # merge hook's own precedence. A member that cleared a digest in one wave and
+    # refused the SAME digest in a later one holds both artifacts, because the
+    # writer publishes a refusal beside an earned marker rather than replacing
+    # it. Read cleared alone and that member counts as cleared, nothing lands in
+    # $pending, and the trailer stamps a clean pass over a live refusal.
+    if [ -z "$member_digest" ] \
+       || clearance_member_refused "$repo_root" "$member_digest" "$m" \
+       || ! clearance_member_cleared "$repo_root" "$member_digest" "$m"; then
       pending="${pending}${pending:+ }${m}"
     fi
   done <<< "$members"
