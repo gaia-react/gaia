@@ -145,11 +145,15 @@ jobs:
           # back to the branch this PR merges into (origin/main when none is
           # declared), full PR scope, when no audited ancestor exists
           # (first audit, prior runs cancelled/failed, or a .gaia/VERSION bump
-          # invalidated them). A helper failure must never fail the audit;
-          # default to full scope. That last-resort literal stays origin/main
+          # invalidated them). A helper failure falls back to full scope rather
+          # than failing the audit. That last-resort literal stays origin/main
           # rather than this PR's own base: it fires only when the helper itself
-          # could not run, and the widest ref certain to exist in the checkout is
-          # a safer answer there than one this step would have to re-derive.
+          # could not run, and repeating the ref the rest of this workflow
+          # already assumes is a safer answer there than one this step would
+          # have to re-derive. Where origin/main does not resolve, because the
+          # repository's default branch is named something else, the next step
+          # exits non-zero: this path fails loudly rather than reviewing a
+          # wrong scope.
           base="$(bash .github/audit/resolve-audit-base.sh || echo origin/main)"
           echo "base=${base}" >> "$GITHUB_OUTPUT"
           echo "code-review-audit: incremental review base = ${base}" >&2
@@ -610,18 +614,23 @@ jobs:
 
           # Drop claude-code-action's untrusted-PR file restore before the tree
           # is inspected or staged. The action restores a fixed set of sensitive
-          # config/hook paths from origin/main into the runner's working tree
-          # before the agent runs (it logs "Restoring ... from origin/main (PR
-          # head is untrusted)"). When this PR legitimately modifies one of them,
-          # that restore REVERTS the PR's change in the working tree; the
+          # config/hook paths from the branch this PR merges into, into the
+          # runner's working tree before the agent runs (it logs "Restoring ...
+          # from origin/<base branch> (PR head is untrusted)"). When this PR
+          # legitimately modifies one of them, that restore REVERTS the PR's
+          # change in the working tree; the
           # `git add -u` below would then stage the revert and commit it as a
           # bogus self-heal -- this is what stripped a .husky/pre-commit guard a
           # PR had just added. The agent is never an allowed editor of these
           # convention/hook surfaces, so any working-tree delta on them is either
           # the action's restore or a forbidden edit; reset each to HEAD either
-          # way. Keep this list in sync with claude-code-action's restore set.
+          # way. Keep this list in sync with claude-code-action's restore set,
+          # which leads with .claude: omitting it leaves the base branch's
+          # .claude/** in the tree on any PR that changes it, and the self-heal
+          # scope gate below then reads that revert as the agent having edited a
+          # governance surface and discards the whole self-heal.
           for restored_path in \
-            .husky .mcp.json .claude.json .gitmodules .ripgreprc \
+            .claude .husky .mcp.json .claude.json .gitmodules .ripgreprc \
             CLAUDE.md CLAUDE.local.md; do
             git checkout HEAD -- "$restored_path" 2>/dev/null || true
           done

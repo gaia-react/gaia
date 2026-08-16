@@ -476,8 +476,18 @@ check_chore_deps_pr() {
   [ "$(bash "$tree_root/.gaia/scripts/chore-deps-skip.sh" "$pr_record_title")" = "true" ]
 }
 
-# pr_base_branch: set $pr_base to the branch this PR merges into. Memoized on
-# $pr_base, so the two bypass checks below share one derivation per run.
+# pr_base_branch: set $pr_base to the branch this PR merges into. The $pr_base
+# memo is per-subshell and nothing more: both bypass checks below reach this
+# only through `base=$(pr_merge_base)`, a command substitution, so neither
+# variable it sets survives back to the parent shell. What holds the run to one
+# gh read is resolve_pr_record's own parent-level memo, which check_chore_deps_pr
+# primes in the parent on every path that reaches either bypass.
+#
+# Reach this through pr_merge_base only. $pr_base and $pr_base_from_record are a
+# coupled pair guarding the bare-name rejection below, and the memo's early
+# return fires before the flag is set, so a parent-shell caller would leave a
+# later subshell holding the record's branch name with the flag empty, which is
+# the one combination that derivation exists to forbid.
 #
 # Both of those checks scope their diff to a merge base, and the branch that
 # merge base is taken against decides what "this PR changes" means. The
