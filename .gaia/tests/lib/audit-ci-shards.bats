@@ -993,8 +993,8 @@ EOF
   require_yaml_parser
 
   replace_line "$WORKFLOW" \
-    "      - if: contains(fromJSON('[\"hooks-4\", \"lib\", \"scripts-1\", \"scripts-2\", \"scripts-3\"]'), matrix.shard) && (steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch')" \
-    "      - if: contains(fromJSON('[\"hooks-4\", \"lib\", \"scripts-1\", \"scripts-2\"]'), matrix.shard) && (steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch')" \
+    "      - if: contains(fromJSON('[\"hooks-3\", \"lib\", \"scripts-1\", \"scripts-2\", \"scripts-3\"]'), matrix.shard) && (steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch')" \
+    "      - if: contains(fromJSON('[\"hooks-3\", \"lib\", \"scripts-1\", \"scripts-2\"]'), matrix.shard) && (steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch')" \
     "$doctored"
 
   declared="$(read_wf stepshards "$doctored" shards 'Install the YAML parser and zsh')" || {
@@ -1059,8 +1059,8 @@ seam_tree_needs() {
   # under test. normalize() strips the wrapper, so the gate reaches the reader
   # exactly as GitHub would evaluate it.
   replace_line "$WORKFLOW" \
-    "      - if: contains(fromJSON('[\"hooks-4\", \"lib\", \"scripts-1\", \"scripts-2\", \"scripts-3\"]'), matrix.shard) && (steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch')" \
-    "      - if: \${{ !contains(fromJSON('[\"hooks-4\", \"lib\", \"scripts-1\", \"scripts-2\", \"scripts-3\"]'), matrix.shard) && (steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch') }}" \
+    "      - if: contains(fromJSON('[\"hooks-3\", \"lib\", \"scripts-1\", \"scripts-2\", \"scripts-3\"]'), matrix.shard) && (steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch')" \
+    "      - if: \${{ !contains(fromJSON('[\"hooks-3\", \"lib\", \"scripts-1\", \"scripts-2\", \"scripts-3\"]'), matrix.shard) && (steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch') }}" \
     "$doctored"
 
   declared="$(read_wf stepshards "$doctored" shards 'Install the YAML parser and zsh' 2>/dev/null)" || rc=$?
