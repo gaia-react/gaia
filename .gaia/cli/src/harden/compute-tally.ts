@@ -265,23 +265,25 @@ export const computeTally = ({
 };
 
 /**
- * The set of valid finding_class values with qualifying recurrence evidence
- * (>= threshold distinct PRs, any severity) in the window, before any
- * suppression/coverage filtering. Excludes the classless `unclassified`
- * bucket by construction; the ledger prune exempts a fallback-keyed entry
- * explicitly (see `handlePrune` in `ledger.ts`) rather than relying on this
- * list to preserve it. The ledger-prune pass consumes this so it can drop
- * decline entries whose class no longer recurs.
+ * The set of keys with qualifying recurrence evidence (>= threshold distinct
+ * PRs, any severity) in the window, before any suppression/coverage filtering.
+ * The ledger-prune pass consumes this so it can drop decline entries whose key
+ * no longer recurs.
+ *
+ * The classless `unclassified` bucket is included on the same terms as every
+ * seeded class. It is declinable, so its stored baseline has to be released
+ * once the cluster that justified it leaves the window; excluding it here
+ * would leave a high-water baseline governing whatever unrelated cluster
+ * arrives next. A failed window read never reaches the prune (see the `ghOk`
+ * gate in `tally.ts`), so an empty list here means evidence of absence rather
+ * than absence of evidence.
  */
 export const windowClasses = (prs: readonly TallyPrRecord[]): string[] => {
   const byClass = aggregateByClass(prs);
   const classes: string[] = [];
 
   for (const [findingClass, aggregate] of byClass) {
-    if (
-      findingClass !== OUT_OF_SCOPE_FALLBACK_FINDING_CLASS &&
-      aggregate.prNumbers.length >= RECURRENCE_THRESHOLD
-    ) {
+    if (aggregate.prNumbers.length >= RECURRENCE_THRESHOLD) {
       classes.push(findingClass);
     }
   }
