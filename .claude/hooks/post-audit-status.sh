@@ -79,12 +79,14 @@
 #          gh absent
 #          gh unauthenticated
 #          version file missing
+#          version normalizer unavailable (lib/gaia-version.sh)
 #          version file empty
 #          frontend digest unavailable
 #          clearance reader unavailable
 #          repo slug unresolved
 #          audited tree not on pushed head
 #          stamp not pushed
+#          member resolver could not answer
 #          members pending <list>
 #          post failed
 #   2 , Usage error (no marker path argument). Stderr.

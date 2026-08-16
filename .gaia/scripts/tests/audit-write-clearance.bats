@@ -1003,6 +1003,10 @@ EOF
     --root "$ROOT" --member code-audit-frontend --provenance refused
   [ "$status" -eq 0 ]
   [ ! -s "$STATUS_CALLS" ] || return 1
+  # The skip says so. A local shell exporting CI for unrelated reasons takes
+  # this arm too, and a silent skip there reproduces the incident with no
+  # diagnostic at all.
+  grep -qF -- "compensating GAIA-Audit failure status skipped" <<<"$output" || return 1
 
   run env -u GITHUB_ACTIONS CI=true bash "$WRITER" \
     --root "$ROOT" --member code-audit-frontend --provenance refused

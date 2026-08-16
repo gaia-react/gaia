@@ -40,9 +40,12 @@
 #   2. gh unauthenticated → marker untouched, no POST (fail-safe asymmetry)
 #   3. Member-aware gate (blocker COV-001): a mixed app/ + .gaia/**/*.sh diff
 #      declines ("members pending ...") while the maintainer-shell member's
-#      marker is absent, posts success once both markers are present (each
-#      member keyed to its OWN content digest, not the tree), and (resolver
-#      absent) falls back to the single-marker POST unchanged. There is no
+#      marker is absent, declines the same way while that member holds a live
+#      refusal BESIDE its earned marker (refusal-first precedence, so a
+#      sibling's success can never retract the failure a refusal posted),
+#      posts success once both markers are present and neither is refused
+#      (each member keyed to its OWN content digest, not the tree), and
+#      (resolver absent) falls back to the single-marker POST unchanged. There is no
 #      carried provenance, so the description never carries a trailing
 #      "carried" suffix.
 #   4. Status target: the POST only ever lands on a sha the remote carries, so

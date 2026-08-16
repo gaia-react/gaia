@@ -611,11 +611,20 @@ fi
 # path posts once per dispatch wave, so a later wave's refusal can arrive behind
 # an earlier wave's success, which a single terminal CI post cannot do.
 # -----------------------------------------------------------------------------
-if [ "$PROVENANCE" = "refused" ] && [ -z "${GITHUB_ACTIONS:-}" ] && [ -z "${CI:-}" ]; then
-  status_hook="${_root_toplevel}/.claude/hooks/post-audit-status.sh"
-  status_marker="${_root_toplevel}/.gaia/local/audit/${target##*/}"
-  if [ -x "$status_hook" ]; then
-    ( cd "$_root_toplevel" && bash "$status_hook" "$status_marker" ) >&2 || true
+if [ "$PROVENANCE" = "refused" ]; then
+  if [ -n "${GITHUB_ACTIONS:-}" ] || [ -n "${CI:-}" ]; then
+    # Say so rather than skipping silently. A local shell that exports CI for
+    # unrelated reasons takes this arm, and then the incident this block exists
+    # to prevent arrives with no diagnostic at all: the refusal lands, no
+    # status is posted, and nothing says why. The direction is still safe, the
+    # local gate denies on the artifact alone.
+    err "note: compensating GAIA-Audit failure status skipped (CI environment); the refusal is on disk and the local merge gate still denies"
+  else
+    status_hook="${_root_toplevel}/.claude/hooks/post-audit-status.sh"
+    status_marker="${_root_toplevel}/.gaia/local/audit/${target##*/}"
+    if [ -x "$status_hook" ]; then
+      ( cd "$_root_toplevel" && bash "$status_hook" "$status_marker" ) >&2 || true
+    fi
   fi
 fi
 

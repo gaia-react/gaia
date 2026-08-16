@@ -2,12 +2,14 @@
 
 # Tests for .claude/hooks/post-audit-status.sh.
 #
-# The hook posts the GAIA-Audit success commit status on the PUSHED PR head
-# (head_sha, resolved via `gh pr view --json headRefOid`, falling back to the
-# upstream tracking tip and then local HEAD) once every dispatched Code Audit
-# Team member has cleared. Fail-safe asymmetry is its governing invariant:
-# every precondition that fails DECLINES with a marker line on stdout and exit
-# 0, so an absent status can never invert into a cleared gate.
+# Handed an EARNED marker, the hook posts the GAIA-Audit success commit status
+# on the PUSHED PR head (head_sha, resolved via `gh pr view --json headRefOid`,
+# falling back to the upstream tracking tip and then local HEAD) once every
+# dispatched Code Audit Team member has cleared. Handed a REFUSAL it posts
+# state=failure and skips that member-aware gate entirely (case 9 below).
+# Fail-safe asymmetry is its governing invariant on both arms: every
+# precondition that fails DECLINES with a marker line on stdout and exit 0, so
+# an absent status can never invert into a cleared gate.
 #
 # Covered here:
 #   1. no marker-path argument              -> exit 2, usage on stderr
