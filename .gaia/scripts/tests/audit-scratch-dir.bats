@@ -157,6 +157,25 @@ teardown() {
   grep -qF -- "%2F" <<<"$(basename "$output")"
 }
 
+@test "a traversing base sha cannot escape the scratch root either" {
+  # The key's branch half is percent-encoded but its base-sha half is
+  # interpolated raw, and the composed path reaches both mkdir -p and rm -rf.
+  # This is the same escape as the member case, through the other positional.
+  run bash "$SCRIPT" code-audit-frontend "../../victim" "$REPO"
+  [ "$status" -eq 0 ]
+  [ -d "$output" ]
+  local parent root_real
+  parent="$(cd "$(dirname "$output")" && pwd -P)"
+  root_real="$(cd "$GAIA_AUDIT_SCRATCH_ROOT" && pwd -P)"
+  [ "$parent" = "$root_real" ]
+}
+
+@test "a traversing base sha degrades to nokey rather than being minted raw" {
+  run bash "$SCRIPT" code-audit-frontend "../../victim" "$REPO"
+  [ "$status" -eq 0 ]
+  [ "$(basename "$output")" = "nokey.code-audit-frontend" ]
+}
+
 # --- release -----------------------------------------------------------------
 
 @test "--release removes the member's directory" {

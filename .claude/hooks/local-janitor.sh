@@ -1217,17 +1217,6 @@ if [ -d "$cache_dir" ]; then
       -o -name 'spec-session-*.lock' \
     \) -type f -mtime +14 -delete 2>/dev/null
   find "$cache_dir" -maxdepth 1 -type d -name 'audit-*' -mtime +14 -exec rm -rf {} + 2>/dev/null
-  # mutation-scratch/<audit-key>.<member>/: a Code Audit Team member's private
-  # working copy for mutation evidence (.gaia/scripts/audit-scratch-dir.sh).
-  # The member releases its own directory when it finishes, so this arm only
-  # ever sees the copies a member died before releasing. Reaped one level
-  # DOWN, never the mutation-scratch/ parent: the parent's mtime moves every
-  # time any member mints or releases a child, so an aged-out copy sitting
-  # beside an active one would never come up for reap if the gate were on the
-  # parent. Each child is a whole working tree, so this is the arm that keeps
-  # an interrupted wave from costing real disk indefinitely.
-  find "$cache_dir/mutation-scratch" -mindepth 1 -maxdepth 1 -type d \
-    -mtime +14 -exec rm -rf {} + 2>/dev/null
   # react-perf run dumps: a dir at cache root containing renders.json. `dirname`
   # over a `while read` loop instead of `find -printf` for BSD/macOS find portability.
   find "$cache_dir" -maxdepth 2 -name 'renders.json' -mtime +14 -print 2>/dev/null | \
@@ -1236,18 +1225,20 @@ if [ -d "$cache_dir" ]; then
     done
 fi
 
-# --- 5b. Main-only cache globs, swept at MAIN's cache, never the invoking tree's ---
-# cache/spec-chain-*.json and cache/gh-artifact-pr*.json are both registry
-# main-only (spec-chain-guard / gh-artifact-pr-cache in
-# .gaia/state-registry.json): their sole writers (block-spec-plan-chain.sh,
-# gh-artifact-lib.sh's gaia_gh_artifact_cache_dir) always resolve MAIN's root
-# before writing, so a worktree-invoked sweep has to target
-# $main_root/.gaia/local/cache too -- never $cache_dir above, which is this
-# INVOKING tree's own .gaia/local/cache, empty for these two files on every
-# tree but main. Split out of the tree-scoped glob above rather than folded
-# in: the rest of that glob (gate1/draft/spec-session) is registry ephemeral
-# and genuinely IS the writing tree's own working state, so it stays where it
-# is written.
+# --- 5b. Main-anchored cache families, swept at MAIN's cache, never the invoking tree's ---
+# cache/spec-chain-*.json, cache/gh-artifact-pr*.json, and
+# cache/mutation-scratch/ all have writers that resolve MAIN's root before
+# writing (block-spec-plan-chain.sh, gh-artifact-lib.sh's
+# gaia_gh_artifact_cache_dir, audit-scratch-dir.sh's
+# gaia_audit_scratch_root), so a worktree-invoked sweep has to target
+# $main_root/.gaia/local/cache too, never $cache_dir above. On a PROVISIONED
+# worktree the two coincide, because that tree's whole .gaia/local is a
+# symlink to main's; they diverge on a linked-but-unprovisioned tree, whose
+# .gaia/local is its own real directory, and that divergence is the case this
+# split exists for. Split out of the tree-scoped glob above rather than
+# folded in: the rest of that glob (gate1/draft/spec-session) is registry
+# ephemeral and genuinely IS the writing tree's own working state, so it
+# stays where it is written.
 main_cache_dir="$main_root/.gaia/local/cache"
 if [ -d "$main_cache_dir" ]; then
   find "$main_cache_dir" -maxdepth 1 -type f -name 'spec-chain-*.json' \
@@ -1273,6 +1264,22 @@ if [ -d "$main_cache_dir" ]; then
   [ "$cache_artifact_days" -lt 1 ] && cache_artifact_days=1
   find "$main_cache_dir" -maxdepth 1 -type f -name 'gh-artifact-pr*.json' \
     -mtime +"$cache_artifact_days" -delete 2>/dev/null
+
+  # mutation-scratch/<audit-key>.<member>/: a Code Audit Team member's private
+  # working copy for mutation evidence (.gaia/scripts/audit-scratch-dir.sh).
+  # The member releases its own directory when it finishes, so this arm only
+  # ever sees the copies a member died before releasing. Reaped one level
+  # DOWN, never the mutation-scratch/ parent: the parent's mtime moves every
+  # time any member mints or releases a child, so an aged-out copy sitting
+  # beside an active one would never come up for reap if the gate were on the
+  # parent. Each child is a whole working tree, so this is the arm that keeps
+  # an interrupted wave from costing real disk indefinitely. The 2>/dev/null
+  # is load-bearing rather than habitual: no member has ever minted here on
+  # the overwhelming majority of machines, and without it find writes a
+  # `No such file or directory` line to the stderr this session hook shares
+  # with sweep #9's real reporting channel.
+  find "$main_cache_dir/mutation-scratch" -mindepth 1 -maxdepth 1 -type d \
+    -mtime +14 -exec rm -rf {} + 2>/dev/null
 fi
 
 # --- 6. Age-reap merged SPEC folders past the retention window -------------

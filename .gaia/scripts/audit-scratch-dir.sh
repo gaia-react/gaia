@@ -115,7 +115,18 @@ gaia_audit_scratch_path() {
 
   local key
   key="$(gaia_audit_key "$base_sha" "$dir")" || key="nokey"
-  [[ -n "$key" ]] || key="nokey"
+  # Containment is asserted on the key too, not only on the member name.
+  # gaia_audit_key percent-encodes its branch half but interpolates the base
+  # sha RAW, and that value is concatenated into a path this file passes to
+  # both `mkdir -p` and `rm -rf`. A base carrying a separator therefore
+  # escapes exactly as an unslugged member name would: `../../victim` mints
+  # and later removes a directory a level above the scratch root. Neutralise
+  # it here rather than in the shared key lib, whose `<base>.<slug>` format
+  # the findings-sidecar globs depend on. Falling back to the same `nokey`
+  # the unresolvable case uses keeps one degraded path instead of two.
+  case "$key" in
+    '' | */* | *..*) key="nokey" ;;
+  esac
 
   printf '%s' "$root/$key.$member_slug"
   return 0

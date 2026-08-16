@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 #
-# Sweep #5 of local-janitor.sh, the mutation-scratch arm: age-reap the
+# Sweep #5b of local-janitor.sh, the mutation-scratch arm: age-reap the
 # per-member working copies a Code Audit Team member takes when it needs real
 # bytes on disk (.gaia/scripts/audit-scratch-dir.sh, registry entry
 # `audit-mutation-scratch`).
@@ -62,7 +62,7 @@ seed_copy() {
   touch -t "$stamp" "$SCRATCH/$name/tree" "$SCRATCH/$name"
 }
 
-@test "sweep 5: a scratch copy past the retention window is reaped" {
+@test "sweep 5b: a scratch copy past the retention window is reaped" {
   make_repo
   seed_copy "abc123.work.code-audit-frontend" 20
   cd "$REPO"
@@ -72,7 +72,7 @@ seed_copy() {
   true
 }
 
-@test "sweep 5: a scratch copy within the retention window is kept" {
+@test "sweep 5b: a scratch copy within the retention window is kept" {
   make_repo
   seed_copy "abc123.work.code-audit-frontend" 2
   cd "$REPO"
@@ -82,7 +82,7 @@ seed_copy() {
   grep -qF -- "mutated" "$SCRATCH/abc123.work.code-audit-frontend/tree"
 }
 
-@test "sweep 5: an active sibling does not shield an aged-out copy" {
+@test "sweep 5b: an active sibling does not shield an aged-out copy" {
   make_repo
   seed_copy "abc123.work.code-audit-frontend" 20
   seed_copy "abc123.work.code-audit-maintainer-shell" 1
@@ -93,7 +93,7 @@ seed_copy() {
   [ -d "$SCRATCH/abc123.work.code-audit-maintainer-shell" ]
 }
 
-@test "sweep 5: the mutation-scratch parent itself is never reaped" {
+@test "sweep 5b: the mutation-scratch parent itself is never reaped" {
   make_repo
   seed_copy "abc123.work.code-audit-frontend" 20
   touch -t "$(jq -rn '(now - (60 * 86400)) | localtime | strftime("%Y%m%d%H%M")')" "$SCRATCH"
@@ -103,12 +103,18 @@ seed_copy() {
   [ -d "$SCRATCH" ]
 }
 
-@test "sweep 5: an absent mutation-scratch dir is a silent no-op" {
+@test "sweep 5b: an absent mutation-scratch dir is a silent no-op" {
   make_repo
   rm -rf "$SCRATCH"
   cd "$REPO"
   run bash "$HOOK_ABS"
   [ "$status" -eq 0 ]
   [ -e "$SCRATCH" ] && return 1
-  true
+  # The SILENT half, not just the no-op half. No member has ever minted here
+  # on the overwhelming majority of machines, so this is the ordinary state,
+  # and find would otherwise write `No such file or directory` to the stderr
+  # this session hook shares with sweep #9's real reporting channel. bats
+  # folds stderr into $output, and the janitor is otherwise quiet on this
+  # minimal fixture.
+  [ -z "$output" ]
 }
