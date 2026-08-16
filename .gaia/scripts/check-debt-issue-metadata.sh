@@ -47,6 +47,7 @@ readonly PROG="check-debt-issue-metadata"
 readonly SEVERITY_VALUES="critical important suggestion"
 readonly SURFACE_VALUES="adopter maintainer"
 readonly DIFFICULTY_VALUES="easy medium hard"
+readonly HANDLER_VALUES="prompt plan spec"
 
 usage() {
   cat >&2 <<'EOF'
@@ -176,6 +177,18 @@ check_labels() {
     finding "$subject" "difficulty-count" "expected at most one \`difficulty:\` label, found $n"
   fi
   check_ns_values "$subject" "$labels" 'difficulty:' "$DIFFICULTY_VALUES" "difficulty"
+
+  # Handler is optional here for a different reason than difficulty is. Every
+  # filing route this recipe governs emits one, but nothing downstream depends
+  # on the value: the drain re-derives spec-versus-implement from the cited code
+  # and grades prompt-versus-plan itself, so an absent class costs one line of
+  # `why` output and never a misroute. Demanding presence would demand a value
+  # no decision reads, and it would make every human-filed issue a finding.
+  n="$(count_ns "$labels" 'handler:')"
+  if [ "$n" -gt 1 ]; then
+    finding "$subject" "handler-count" "expected at most one \`handler:\` label, found $n"
+  fi
+  check_ns_values "$subject" "$labels" 'handler:' "$HANDLER_VALUES" "handler"
 
   return 0
 }

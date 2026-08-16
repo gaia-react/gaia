@@ -52,12 +52,12 @@ If no match exists:
    ```bash
    # Graded filing, when a grade is in hand:
    bash .gaia/scripts/check-debt-issue-metadata.sh --pre-file \
-     --labels "tech-debt,severity:<tier>,surface:<side>,difficulty:<grade>" \
+     --labels "tech-debt,severity:<tier>,surface:<side>,handler:<class>,difficulty:<grade>" \
      --body-file "$body_file"
 
    # Ungraded filing, when no grade is available:
    bash .gaia/scripts/check-debt-issue-metadata.sh --pre-file \
-     --labels "tech-debt,severity:<tier>,surface:<side>" \
+     --labels "tech-debt,severity:<tier>,surface:<side>,handler:<class>" \
      --body-file "$body_file"
    ```
 
@@ -75,13 +75,13 @@ If no match exists:
 body_file=.gaia/local/audit/issue-body-<something-unique>.md
 
 # Graded filing, when a grade is in hand:
-gh issue create --label tech-debt --label severity:<tier> --label surface:<side> --label difficulty:<grade> --body-file "$body_file"
+gh issue create --label tech-debt --label severity:<tier> --label surface:<side> --label handler:<class> --label difficulty:<grade> --body-file "$body_file"
 
 # Ungraded filing, when no grade is available:
-gh issue create --label tech-debt --label severity:<tier> --label surface:<side> --body-file "$body_file"
+gh issue create --label tech-debt --label severity:<tier> --label surface:<side> --label handler:<class> --body-file "$body_file"
 ```
 
-The `surface:<side>` flag is on both forms because the surface label is not optional the way the grade is: a filing that has not read the cited code still knows which side of the adopter/maintainer split its cited path sits on.
+The `surface:<side>` and `handler:<class>` flags are on both forms because neither is optional the way the grade is: a filing that has not read the cited code still knows which side of the adopter/maintainer split its cited path sits on, and still knows how far its own suggested fix reaches.
 
 **Never** pass `--body <argv>` here. CI runs this command with `--verbose`, and `--verbose` echoes argv into the public Actions log, so an inline `--body` string leaks the finding (and anything sensitive quoted inside it) into a public log. Always route the body through `--body-file` (or stdin); the body must never reach argv.
 
@@ -181,16 +181,12 @@ Build a self-contained issue body with these parts, in order:
 - The `file:line` location. The cited line must resolve to a real line in the named file, don't cite a location you haven't confirmed.
 - A concrete, non-empty description of the failure mode: what input or state triggers it, and what the bad outcome is. "Could be cleaner" is not a failure mode; "a null `userId` reaches this branch and throws" is.
 - A suggested fix.
-- A handler-class line, exactly one of:
-  - `Handler: prompt`, the fix is a single logical unit confined to one file, with no public-contract change and no cross-module ripple.
-  - `Handler: plan`, anything larger or more structural.
-  - `Handler: spec`, the fix must begin with a design SPEC, a new subsystem, a schema or contract decision, or a cross-cutting redesign. `/gaia-debt` resolves a spec-class issue by printing a `/gaia-spec` handoff and stopping, not by opening a fix PR.
 
-  This line is advisory, whatever later drains the issue may override it after reading the actual code.
+The body carries no classification fields of its own. Severity, surface, handler class, and difficulty are all labels (step 6), so a body line restating one of them is a second representation of a value the labels already hold, and the two drift.
 
 ## 6. Labels
 
-Every out-of-scope non-security issue this recipe files carries `tech-debt` plus **exactly one** severity label and **exactly one** surface label; a filing that carries a difficulty grade (see step 7) carries exactly one difficulty label as well. Map the finding's report tier to the severity label like this:
+Every out-of-scope non-security issue this recipe files carries `tech-debt` plus **exactly one** severity label and **exactly one** surface label, plus **exactly one** handler label; a filing that carries a difficulty grade (see step 7) carries exactly one difficulty label as well. Map the finding's report tier to the severity label like this:
 
 | Report tier | Label |
 |---|---|
@@ -209,15 +205,30 @@ Resolve it from the cited path first: a release-excluded path is `surface:mainta
 
 Unlike severity, this label has no fallback: an unlabeled issue is not sorted into a default band, it is simply unfiled against the split. Exactly one is required on every filing.
 
+The handler label records **how far the fix reaches**, which decides how the eventual drain approaches it:
+
+| Label | The fix is |
+|---|---|
+| `handler:prompt` | a single logical unit confined to one file, with no public-contract change and no cross-module ripple. |
+| `handler:plan` | anything larger or more structural. |
+| `handler:spec` | design-first: it must begin with a design SPEC, a new subsystem, a schema or contract decision, or a cross-cutting redesign. `/gaia-debt` resolves a spec-class issue by printing a `/gaia-spec` handoff and stopping, not by opening a fix PR. |
+
+The three share one color family, deepening with reach: `c2e0c6` for `handler:prompt`, `7fbf8a` for `handler:plan`, `2f7d3a` for `handler:spec`. Nothing reads the color, so this is cosmetic, but the family is stated here rather than left to each creation site: a namespace whose members are colored independently stops reading as one axis in the tracker's label list. The rollout sweep below passes these three values explicitly. The loop in this step cannot: it passes one color to every label it creates, and it carries no per-label mapping. So in a repository where a filing runs the loop before the backfill runs the sweep, the handler labels already exist, `gh label create` no-ops on them, and the family is applied with `gh label edit` rather than by re-running either site. Nothing breaks either way; a label is not less usable for being off-family.
+
+The class is advisory: whatever later drains the issue re-derives it from the cited code and may override it, in either direction, including the `spec` value. That is precisely why it rides as a label rather than as body prose. Re-grading is `gh issue edit <n> --remove-label handler:spec --add-label handler:plan`, which leaves the transition in the issue's timeline, where a body edit would have destroyed the prior value and a correcting comment would have left the body still asserting the overruled one.
+
+Being advisory also sets how strictly it is checked. `.gaia/scripts/check-debt-issue-metadata.sh` validates at most one handler label and rejects a value outside the three above, but absence is not a finding: a human-filed issue that carries no class is legal, and the drain treats it as unclassified and grades it from code like any other.
+
 See step 7 for the difficulty label's three permitted values and the rubric for choosing between them.
 
 A finding that gets deliberately declined (closed without fixing) carries GitHub's `wontfix` label, that's what step 2 checks for to avoid re-filing it.
 
-Create all ten labels idempotently before the first filing in a run, a label that already exists is not an error:
+Create all thirteen labels idempotently before the first filing in a run, a label that already exists is not an error:
 
 ```bash
 for label in tech-debt severity:critical severity:important severity:suggestion \
              surface:adopter surface:maintainer \
+             handler:prompt handler:plan handler:spec \
              difficulty:easy difficulty:medium difficulty:hard wontfix; do
   gh label create "$label" --color <hex> 2>/dev/null || true
 done
@@ -237,7 +248,7 @@ Grade the difficulty of **the fix**, never the model, agent, or tooling that wou
 
 Read the three rows top to bottom and take the first whose properties all hold. The rows are exclusive by construction: they ask how many design decisions the fix carries and whether the code answers them, and exactly one answer holds for any one fix.
 
-Difficulty adds the dimension the `Handler:` line does not capture. `Handler:` grades how far the change reaches; difficulty grades how much design the fix needs. The two often move together, and they are not meant to: a one-file fix whose correct behavior is genuinely in question is `Handler: prompt` and `difficulty:hard`, and a mechanical rename across twenty files is `Handler: plan` and `difficulty:easy`.
+Difficulty adds the dimension the handler class does not capture. `handler:` grades how far the change reaches; difficulty grades how much design the fix needs. The two often move together, and they are not meant to: a one-file fix whose correct behavior is genuinely in question is `handler:prompt` and `difficulty:hard`, and a mechanical rename across twenty files is `handler:plan` and `difficulty:easy`.
 
 Worked boundary, easy versus medium. A swallowed error the issue text says to rethrow is `difficulty:easy`: the issue determines the change. The same swallowed error, where the issue says only that it must not be swallowed and leaves the choice between rethrowing, logging and continuing, and surfacing to the caller, is `difficulty:medium`: the choice is real, and the sibling call sites settle it.
 
@@ -280,7 +291,34 @@ The marker is only accurate when applied at the moment provenance starts writing
 
 The marker changes no displayed number and no consumer gates on it, so it is additive.
 
-Do not add `debt:pre-provenance` to step 6's idempotent label-creation loop: the rollout is a one-time per-repository step, not a per-filing one, and adding it would make that loop's "all ten labels" comment wrong.
+Do not add `debt:pre-provenance` to step 6's idempotent label-creation loop: the rollout is a one-time per-repository step, not a per-filing one, and adding it would make that loop's "all thirteen labels" comment wrong.
+
+## Rollout: backfill the handler class onto the existing backlog
+
+The handler class rides as a `handler:` label (step 6). A backlog filed before that carries the class as a `Handler:` body line instead, which nothing reads any more, so those issues drain as unclassified until the label lands. Unlike the cohort marker above this is a real backfill and it is safe to be one: every stored value came from a filing route applying step 6's rubric, so copying it onto a label preserves a real conclusion rather than inventing one.
+
+1. Create the three `handler:` labels idempotently, in the shared color family step 6 states. Re-running this is free.
+2. For every open `tech-debt` issue that carries **no** `handler:` label and whose body carries a parseable `Handler:` line, add the matching label.
+3. Re-running is safe. The label test is what makes it so: an issue that already carries a class is skipped, so a drainer's re-grade between runs is never overwritten by the body's original value.
+
+```bash
+gh label create handler:prompt --color c2e0c6 2>/dev/null || true
+gh label create handler:plan   --color 7fbf8a 2>/dev/null || true
+gh label create handler:spec   --color 2f7d3a 2>/dev/null || true
+gh issue list --label tech-debt --state open --limit 1000 --json number,labels,body \
+  --jq '.[]
+        | select(([.labels[].name] | map(select(startswith("handler:"))) | length) == 0)
+        | "\(.number) handler:\(((.body // "") | capture("(?m)^Handler:[ ]+(?<h>prompt|plan|spec)")).h)"' \
+| while read -r n label; do
+    gh issue edit "$n" --add-label "$label"
+  done
+```
+
+An issue with no parseable `Handler:` line emits nothing at all, because `capture` yields no result on a non-match and drops the whole record: an unparseable line and an absent one both leave the issue unclassified, which is the legal state step 6 already allows. Nothing guesses a class from the title or the failure mode.
+
+The sweep adds a label and never edits a body. A legacy `Handler:` line is inert once the label exists, and rewriting two dozen bodies to remove it would spend a lossy edit per issue to delete text no reader consults. New filings carry no such line (step 5), so the residue does not grow.
+
+Like the cohort marker above, this is per-repository: GAIA reaches adopter clones on different dates, so the moment the label becomes the source of truth falls on a different date in every clone. It ships as an action-required release note with its literal command. An adopter that skips it loses only the stored class on its pre-existing backlog; every one of those issues still orders, clusters, and drains, and `/gaia-debt` re-derives the class from the cited code exactly as it does for a human-filed issue.
 
 ## Brake self-check
 
@@ -311,11 +349,13 @@ The wrapped `gaia-debt-key` format (step 1) and the label spellings (step 6) are
 - Tests: `.gaia/tests/hooks/debt-sentinel-touch.bats`, `.gaia/tests/hooks/debt-session-reconcile.bats`, `.gaia/scripts/tests/debt-count-refresh.bats`, `.gaia/tests/statusline/audit-nudge-drift-suppression.bats`, `.gaia/scripts/tests/check-debt-issue-metadata.bats`
 <!-- gaia:maintainer-only:end -->
 
-`check-debt-issue-metadata.sh` is the newest member and the only one that gates on a label spelling rather than merely tolerating one. It hardcodes all three permitted value sets (`severity:`, `surface:`, `difficulty:`) and the key's line shape, so it is the consumer a spelling change breaks first and loudest, which is the intended direction: a rename that forgets this file fails a filing immediately instead of degrading a count silently.
+`check-debt-issue-metadata.sh` is the newest member and the only one that gates on a label spelling rather than merely tolerating one. It hardcodes all four permitted value sets (`severity:`, `surface:`, `handler:`, `difficulty:`) and the key's line shape, so it is the consumer a spelling change breaks first and loudest, which is the intended direction: a rename that forgets this file fails a filing immediately instead of degrading a count silently.
 
 The governed set also includes the `debt:in-progress` claim label: `.claude/skills/gaia/references/debt.md` creates and applies it as the `/gaia-debt` in-progress claim, and `.gaia/scripts/debt-count-refresh.sh` consumes it, excluding any issue that carries it from the open count. This recipe never creates or applies `debt:in-progress` itself. The same holds for `debt:spec-pending`: `debt.md` creates and applies it as the `/gaia-debt` design-first handoff park label, and `.gaia/scripts/debt-count-refresh.sh` consumes it, excluding any issue that carries it from the open count too. This recipe never creates or applies `debt:spec-pending` itself.
 
 The `surface:` namespace (step 6) is a label spelling and within this contract's scope. Verified against every consumer named above: none of them reads it. `.gaia/scripts/debt-count-refresh.sh` excludes exactly two label names and ignores the rest, `.claude/hooks/audit-disposition-check.sh` matches the dedup key in the body and parses no labels at all, `.gaia/statusline/gaia-statusline.sh` parses no labels, `.claude/hooks/debt-session-reconcile.sh` only reconciles the count downward, and `.claude/skills/gaia/references/debt.md` neither sorts, clusters, nor gates on it. The one consumer that does read it is `check-debt-issue-metadata.sh`, which is where the requirement is enforced rather than merely stated. Renaming the namespace therefore means editing step 6 and that script, and nothing else.
+
+The `handler:` namespace (step 6) is a label spelling and within this contract's scope. Re-verified against every consumer named above: two of them read it and the rest do not. `.gaia/scripts/check-debt-issue-metadata.sh` hardcodes the three permitted values, so a rename that forgets it fails a filing immediately. `.claude/skills/gaia/references/debt.md` resolves the class out of the `labels` projection its ordering query already builds and reads it in three places (the offer-time spec read, the Fix-time spec screen, and `list`/`why`'s annotations), so a rename must reach the one `startswith("handler:")` selector there. The count/statusline/hook consumers are untouched, for the same reasons the `surface:` paragraph above records: `.gaia/scripts/debt-count-refresh.sh` excludes exactly two label names and ignores the rest, `.claude/hooks/audit-disposition-check.sh` matches the dedup key in the body and parses no labels, `.gaia/statusline/gaia-statusline.sh` parses no labels, and `.claude/hooks/debt-session-reconcile.sh` only reconciles the count downward.
 
 The `difficulty:` namespace (step 7) is a label spelling, so it is within this lockstep contract's scope, but no consumer gates on it, verified against all five originally named above: `.gaia/scripts/debt-count-refresh.sh` filters by excluding two specific label names (`debt:in-progress` and `debt:spec-pending`) and ignores anything else, `.claude/hooks/audit-disposition-check.sh` matches the dedup key in the issue body and parses no labels, `.gaia/statusline/gaia-statusline.sh` parses no labels, `.claude/hooks/debt-session-reconcile.sh` only reconciles the count downward, and `.claude/skills/gaia/references/debt.md` surfaces it in output only, never to gate a path (`debt.md`'s own Guardrails: "Difficulty grading never gates anything"). Renaming the namespace therefore requires zero gating changes to any of the five.
 

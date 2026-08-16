@@ -5,6 +5,8 @@
 # file: the deterministic sort every subcommand (list, why, fix) shares, and
 # the source of the `labels`, `key`, `body`, and `handler` fields the
 # clustering pass, the two security screens, and the spec screen all read.
+# `handler` is resolved out of the `labels` projection, the same way `sev` and
+# `difficulty` are; a body-line capture is the shape this suite forbids.
 #
 # Two arms.
 #
@@ -99,9 +101,17 @@ render_backlog() {
   printf '%s\n' "$block" | grep -qF -- "<!-- gaia-debt-key: v1 " || return 1
 }
 
-@test "Arm 1: the Handler: line is captured" {
+@test "Arm 1: handler resolves from the labels projection, not from a body capture" {
   block="$(extract_query_fence)"
-  printf '%s\n' "$block" | grep -qF -- "^Handler:" || return 1
+  printf '%s\n' "$block" | grep -qF -- 'map(select(startswith("handler:")) | ltrimstr("handler:"))' || return 1
+  # The bad case: the superseded body-line regex, matched as the CLASS rather
+  # than as one frozen spelling. It parses null on any body a human reformatted,
+  # which is the silent-parse the label representation exists to remove, so its
+  # return must fail this suite rather than pass unnoticed. Pinning the literal
+  # `^Handler:` would miss a capture reintroduced as `capture("Handler:[ ]+…")`
+  # or `(?m)^Handler[: ]`, which is the same defect wearing a different regex.
+  printf '%s\n' "$block" | grep -qE 'capture\("[^"]*[Hh]andler' && return 1
+  true
 }
 
 @test "Arm 1: body is emitted unconditionally, with nothing nulling it" {
@@ -154,7 +164,7 @@ render_backlog() {
   [ "$(jq '.key.line' <<<"$issue2")" = "42" ]
 }
 
-@test "Arm 2: handler resolves the parsed Handler: value" {
+@test "Arm 2: handler resolves the handler: label's value, prefix stripped" {
   bin="$(jq_bin)"
   [ -n "$bin" ] || skip "neither jq nor gojq on PATH"
   output="$(render_backlog)"
@@ -164,7 +174,7 @@ render_backlog() {
   [ "$(jq -r '.handler' <<<"$issue2")" = "plan" ]
 }
 
-@test "Arm 2: a malformed key and a keyless issue both emit key: null and handler: null" {
+@test "Arm 2: a malformed key and an unlabelled issue both emit key: null and handler: null" {
   bin="$(jq_bin)"
   [ -n "$bin" ] || skip "neither jq nor gojq on PATH"
   output="$(render_backlog)"

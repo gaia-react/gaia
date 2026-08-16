@@ -62,13 +62,11 @@ A null `userId` reaches this branch and throws.
 ## Suggested fix
 
 Guard the branch.
-
-Handler: prompt
 EOF
 }
 
 # The label set a correct graded filing carries.
-GOOD_LABELS='tech-debt,severity:important,surface:adopter,difficulty:easy'
+GOOD_LABELS='tech-debt,severity:important,surface:adopter,handler:prompt,difficulty:easy'
 
 # assert_code <finding-code>: the run's output names this finding code.
 assert_code() {
@@ -153,6 +151,49 @@ refute_code() {
   run bash "$CHECK" --pre-file --labels 'tech-debt,severity:important,surface:adopter,difficulty:trivial' --body-file "$BODY"
   [ "$status" -eq 1 ]
   assert_code "difficulty-value"
+}
+
+# ---------------------------------------------------------------------------
+# handler: validated when present, never demanded
+# ---------------------------------------------------------------------------
+
+@test "a filing with no handler: label is clean, the human-filed case" {
+  # Absence is deliberately not a finding. Nothing downstream depends on the
+  # value: the drain re-derives spec-versus-implement from the cited code and
+  # grades prompt-versus-plan itself, so demanding presence would demand a value
+  # no decision reads, and would make every hand-filed issue a finding.
+  run bash "$CHECK" --pre-file --labels 'tech-debt,severity:important,surface:adopter' --body-file "$BODY"
+  [ "$status" -eq 0 ]
+  refute_code "handler"
+}
+
+@test "each permitted handler: value is accepted" {
+  local v
+  for v in prompt plan spec; do
+    run bash "$CHECK" --pre-file --labels "tech-debt,severity:important,surface:adopter,handler:$v" --body-file "$BODY"
+    [ "$status" -eq 0 ] || return 1
+  done
+}
+
+@test "two handler: labels are rejected" {
+  run bash "$CHECK" --pre-file --labels "$GOOD_LABELS,handler:spec" --body-file "$BODY"
+  [ "$status" -eq 1 ]
+  assert_code "handler-count"
+}
+
+@test "a handler: value outside the permitted set is rejected" {
+  run bash "$CHECK" --pre-file --labels 'tech-debt,severity:important,surface:adopter,handler:agent' --body-file "$BODY"
+  [ "$status" -eq 1 ]
+  assert_code "handler-value"
+}
+
+@test "RED: an unfilled handler placeholder is a finding, not a dropped flag" {
+  run bash "$CHECK" --pre-file --labels 'tech-debt,severity:important,surface:adopter,handler:' --body-file "$BODY"
+  [ "$status" -eq 1 ]
+  assert_code "handler-value"
+  # The count check cannot catch this: `handler:` is one label, so at-most-one
+  # holds and only the value is wrong.
+  refute_code "handler-count"
 }
 
 # --- the shapes an unquoted value expansion used to let through ------------
