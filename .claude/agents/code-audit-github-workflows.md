@@ -165,6 +165,8 @@ Every candidate finding must clear these before it reaches the report at Critica
 
 Zero findings is a valid, clean outcome; it is not valid to reach zero by skimming a file in your remit.
 
+**Evidence that needs real bytes on disk goes in a scratch directory you own.** Establishing that a guard is not hollow means breaking the construct it names and watching its check go red, which cannot happen in the tree you must return byte-identical: take a private working copy from `bash .gaia/scripts/audit-scratch-dir.sh code-audit-github-workflows "$KEY_BASE"` (it prints the path), release it with the same command under `--release` when you are done, and never improvise a path in the session scratchpad every member of your wave shares.
+
 ## Output Format
 
 ### Summary

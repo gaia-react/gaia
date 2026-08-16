@@ -1217,6 +1217,17 @@ if [ -d "$cache_dir" ]; then
       -o -name 'spec-session-*.lock' \
     \) -type f -mtime +14 -delete 2>/dev/null
   find "$cache_dir" -maxdepth 1 -type d -name 'audit-*' -mtime +14 -exec rm -rf {} + 2>/dev/null
+  # mutation-scratch/<audit-key>.<member>/: a Code Audit Team member's private
+  # working copy for mutation evidence (.gaia/scripts/audit-scratch-dir.sh).
+  # The member releases its own directory when it finishes, so this arm only
+  # ever sees the copies a member died before releasing. Reaped one level
+  # DOWN, never the mutation-scratch/ parent: the parent's mtime moves every
+  # time any member mints or releases a child, so an aged-out copy sitting
+  # beside an active one would never come up for reap if the gate were on the
+  # parent. Each child is a whole working tree, so this is the arm that keeps
+  # an interrupted wave from costing real disk indefinitely.
+  find "$cache_dir/mutation-scratch" -mindepth 1 -maxdepth 1 -type d \
+    -mtime +14 -exec rm -rf {} + 2>/dev/null
   # react-perf run dumps: a dir at cache root containing renders.json. `dirname`
   # over a `while read` loop instead of `find -printf` for BSD/macOS find portability.
   find "$cache_dir" -maxdepth 2 -name 'renders.json' -mtime +14 -print 2>/dev/null | \

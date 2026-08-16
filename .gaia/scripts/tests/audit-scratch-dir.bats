@@ -1,0 +1,215 @@
+#!/usr/bin/env bats
+#
+# Tests for `.gaia/scripts/audit-scratch-dir.sh` -- the per-member mutation
+# scratch directory a Code Audit Team member gets instead of improvising a
+# name inside the session scratchpad its co-dispatched siblings share.
+#
+# The property under test throughout is WAVE SAFETY: two members resolving the
+# same audit key must never resolve the same directory. That is the whole
+# reason the name carries the member half, so the suite asserts it directly
+# rather than only asserting the path's shape.
+#
+# Every test drives the scratch root through $GAIA_AUDIT_SCRATCH_ROOT, so no
+# test resolves a real main checkout or writes anywhere under the repo's own
+# .gaia/local.
+#
+# Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
+#
+# Run under bash 5 (bash 3.2's `[[ ]]` skip-under-set-e gap is real):
+#   source .gaia/scripts/bats5.sh && bats5 .gaia/scripts/tests/audit-scratch-dir.bats
+
+setup() {
+  THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
+  SCRIPT="$THIS_DIR/../audit-scratch-dir.sh"
+  [ -f "$SCRIPT" ] || skip "audit-scratch-dir.sh missing"
+
+  TMP="$(mktemp -d)"
+  export GAIA_AUDIT_SCRATCH_ROOT="$TMP/mutation-scratch"
+
+  # A real git repo on a known branch, so gaia_audit_key resolves a real key
+  # rather than falling through to the nokey path in every test.
+  REPO="$TMP/repo"
+  mkdir -p "$REPO"
+  git -C "$REPO" init -q -b work
+  git -C "$REPO" config user.email t@example.com
+  git -C "$REPO" config user.name t
+  : >"$REPO/f"
+  git -C "$REPO" add f
+  git -C "$REPO" commit -qm init
+}
+
+teardown() {
+  [ -n "${TMP:-}" ] && rm -rf "$TMP"
+  true
+}
+
+# --- path shape --------------------------------------------------------------
+
+@test "the minted path carries the audit key AND the member name" {
+  run bash "$SCRIPT" code-audit-frontend deadbeef "$REPO"
+  [ "$status" -eq 0 ]
+  grep -qF -- "/mutation-scratch/deadbeef.work.code-audit-frontend" <<<"$output"
+}
+
+@test "the minted directory exists on disk" {
+  run bash "$SCRIPT" code-audit-frontend deadbeef "$REPO"
+  [ "$status" -eq 0 ]
+  [ -d "$output" ]
+}
+
+# --- wave safety: the property the whole file exists for ---------------------
+
+@test "two members sharing one audit key resolve DIFFERENT directories" {
+  run bash "$SCRIPT" code-audit-frontend deadbeef "$REPO"
+  [ "$status" -eq 0 ]
+  local a="$output"
+  run bash "$SCRIPT" code-audit-maintainer-shell deadbeef "$REPO"
+  [ "$status" -eq 0 ]
+  local b="$output"
+  [ "$a" != "$b" ]
+}
+
+@test "one member's mutation survives a co-dispatched member minting its own dir" {
+  local a b
+  a="$(bash "$SCRIPT" code-audit-frontend deadbeef "$REPO")"
+  printf 'mutated\n' >"$a/tree"
+  # The sibling mints (and resets) its own directory in the same wave.
+  b="$(bash "$SCRIPT" code-audit-maintainer-shell deadbeef "$REPO")"
+  printf 'pristine\n' >"$b/tree"
+  # The first member's evidence is untouched: this is the overwrite the
+  # improvised-name status quo produced.
+  grep -qF -- "mutated" "$a/tree"
+}
+
+@test "the same member asking twice in one run gets the same path back" {
+  local a b
+  a="$(bash "$SCRIPT" code-audit-frontend deadbeef "$REPO")"
+  b="$(bash "$SCRIPT" code-audit-frontend deadbeef "$REPO")"
+  [ "$a" = "$b" ]
+}
+
+@test "re-minting never destroys the asking member's own in-progress tree" {
+  # An agent runs its shell commands in separate invocations, so asking a
+  # second time to recover the path is ordinary. A destructive mint would
+  # lose exactly the evidence this helper exists to protect.
+  local a
+  a="$(bash "$SCRIPT" code-audit-frontend deadbeef "$REPO")"
+  printf 'half-mutated\n' >"$a/tree"
+  bash "$SCRIPT" code-audit-frontend deadbeef "$REPO" >/dev/null
+  [ -d "$a" ]
+  grep -qF -- "half-mutated" "$a/tree"
+}
+
+@test "release then mint is how a member gets a fresh baseline" {
+  local a
+  a="$(bash "$SCRIPT" code-audit-frontend deadbeef "$REPO")"
+  printf 'stale\n' >"$a/leftover"
+  bash "$SCRIPT" --release code-audit-frontend deadbeef "$REPO"
+  bash "$SCRIPT" code-audit-frontend deadbeef "$REPO" >/dev/null
+  [ -e "$a/leftover" ] && return 1
+  [ -d "$a" ]
+}
+
+# --- key resolution ----------------------------------------------------------
+
+@test "two branches on the same base sha resolve different directories" {
+  local a b
+  a="$(bash "$SCRIPT" code-audit-frontend deadbeef "$REPO")"
+  git -C "$REPO" checkout -q -b other
+  b="$(bash "$SCRIPT" code-audit-frontend deadbeef "$REPO")"
+  [ "$a" != "$b" ]
+}
+
+@test "an unresolvable audit key degrades to nokey rather than declining" {
+  # No base sha: gaia_audit_key returns 1, and the member still needs a dir.
+  run bash "$SCRIPT" code-audit-frontend "" "$REPO"
+  [ "$status" -eq 0 ]
+  grep -qF -- "/mutation-scratch/nokey.code-audit-frontend" <<<"$output"
+  [ -d "$output" ]
+}
+
+@test "the nokey path still separates two members" {
+  local a b
+  a="$(bash "$SCRIPT" code-audit-frontend "" "$REPO")"
+  b="$(bash "$SCRIPT" code-audit-maintainer-shell "" "$REPO")"
+  [ "$a" != "$b" ]
+}
+
+# --- containment -------------------------------------------------------------
+
+@test "a member name containing path separators cannot escape the scratch root" {
+  run bash "$SCRIPT" "../../escaped" deadbeef "$REPO"
+  [ "$status" -eq 0 ]
+  # The slug percent-encodes '/' and '.', so the result is one child of the root.
+  grep -qF -- "/mutation-scratch/deadbeef.work." <<<"$output"
+  grep -qF -- ".." <<<"$(basename "$output")" && return 1
+  [ -d "$output" ]
+}
+
+# --- release -----------------------------------------------------------------
+
+@test "--release removes the member's directory" {
+  local a
+  a="$(bash "$SCRIPT" code-audit-frontend deadbeef "$REPO")"
+  [ -d "$a" ]
+  run bash "$SCRIPT" --release code-audit-frontend deadbeef "$REPO"
+  [ "$status" -eq 0 ]
+  [ -d "$a" ] && return 1
+  true
+}
+
+@test "--release removes only the named member's directory" {
+  local a b
+  a="$(bash "$SCRIPT" code-audit-frontend deadbeef "$REPO")"
+  b="$(bash "$SCRIPT" code-audit-maintainer-shell deadbeef "$REPO")"
+  bash "$SCRIPT" --release code-audit-frontend deadbeef "$REPO"
+  [ -d "$a" ] && return 1
+  [ -d "$b" ]
+}
+
+@test "--release on a directory that was never minted is a silent no-op" {
+  run bash "$SCRIPT" --release code-audit-frontend deadbeef "$REPO"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+# --- failure modes -----------------------------------------------------------
+
+@test "an empty member name mints nothing and exits non-zero" {
+  run bash "$SCRIPT" "" deadbeef "$REPO"
+  [ "$status" -ne 0 ]
+  grep -qF -- "could not resolve a scratch directory" <<<"$output"
+}
+
+@test "a mistyped --release is refused, never minted as a member named after the typo" {
+  run bash "$SCRIPT" --relase code-audit-frontend deadbeef "$REPO"
+  [ "$status" -eq 2 ]
+  grep -qF -- "unknown option" <<<"$output"
+  [ -e "$GAIA_AUDIT_SCRATCH_ROOT" ] && return 1
+  true
+}
+
+@test "sourcing the file has no side effects" {
+  run bash -c ". '$SCRIPT'; printf 'sourced\n'"
+  [ "$status" -eq 0 ]
+  [ "$output" = "sourced" ]
+  [ -d "$GAIA_AUDIT_SCRATCH_ROOT" ] && return 1
+  true
+}
+
+@test "the sourced functions are the same ones the CLI dispatches to" {
+  run bash -c ". '$SCRIPT'; gaia_audit_scratch_dir code-audit-frontend deadbeef '$REPO'"
+  [ "$status" -eq 0 ]
+  grep -qF -- "/mutation-scratch/deadbeef.work.code-audit-frontend" <<<"$output"
+}
+
+# --- registry conformance ----------------------------------------------------
+
+@test "the on-disk layout matches the audit-mutation-scratch registry entry" {
+  local registry
+  registry="$( cd "$THIS_DIR/../.." && pwd )/state-registry.json"
+  [ -f "$registry" ] || skip "state-registry.json missing"
+  run jq -r '.entries[] | select(.id == "audit-mutation-scratch") | "\(.path)|\(.match)|\(.kind)|\(.scope)"' "$registry"
+  [ "$status" -eq 0 ]
+  [ "$output" = "cache/mutation-scratch/|prefix|dir|ephemeral" ]
+}

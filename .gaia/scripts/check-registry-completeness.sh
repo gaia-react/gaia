@@ -45,6 +45,7 @@ source "$SELF_DIR/state-registry-lib.sh"
 GAIA_REGISTRY_COMPLETENESS_ENTRY_IDS='
 audit-clearance-markers
 audit-findings-rerun-sidecars
+audit-mutation-scratch
 audit-progress-log
 audit-respawn-ledger
 audit-security-notes

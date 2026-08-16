@@ -1,0 +1,184 @@
+#!/usr/bin/env bash
+# shellcheck shell=bash
+#
+# Per-member scratch directory for a Code Audit Team member that needs real
+# bytes on disk.
+#
+# The contract this exists to serve: every member returns the audited working
+# tree unchanged, while establishing that a guard is not hollow means breaking
+# the construct the guard names and watching a check go red. Those two compose
+# into an obligation no member definition used to state -- the mutation has to
+# happen on a copy, somewhere outside the tree under review -- and the only
+# writable space a dispatched subagent is handed is the session scratchpad,
+# which every member of one parallel wave shares. A member improvising a name
+# there picks the name its co-dispatched siblings also pick, and one member's
+# pristine copy lands over another's mutated one. Neither direction announces
+# itself: a pristine tree over a mutated one makes the mutation look like it
+# did not red (a fabricated hollow-assertion finding), and a mutated tree over
+# a pristine one reds a test that has nothing to do with the change under
+# review.
+#
+# So the path is minted here rather than described in prose. The key is the
+# audit key PLUS the member name, the same pairing the findings sidecar
+# already publishes under (.gaia/local/audit/<audit-key>.<member>.findings.json):
+# the audit key alone is NOT enough, because every member of one wave resolves
+# the same key, and it is exactly the member half that makes the name
+# wave-safe by construction.
+#
+# Layout, under the MAIN checkout (.gaia/local/cache is main-anchored, the
+# same root gh-artifact-lib.sh resolves):
+#
+#   <main_root>/.gaia/local/cache/mutation-scratch/<audit-key>.<member>/
+#
+# Registered as `audit-mutation-scratch` in .gaia/state-registry.json
+# (cache/mutation-scratch/, prefix, dir, ephemeral). Two reapers, in that
+# order of preference: gaia_audit_scratch_release, which a member calls when
+# it is done, and the janitor's stale cache sweep
+# (.claude/hooks/local-janitor.sh sweep #5), which ages out a directory a
+# member died before releasing. The release path is the real one; the sweep is
+# the backstop for a member that never got there.
+#
+# Every function below prints nothing and returns 0 when it cannot resolve a
+# path, the same fail-open rule audit-key-lib.sh and gh-artifact-lib.sh
+# already apply: a caller that cannot be given a private directory must fall
+# back to its own judgment, never to a shared path this file invented.
+#
+# Usage, sourced:
+#   . .gaia/scripts/audit-scratch-dir.sh
+#   SCRATCH="$(gaia_audit_scratch_dir code-audit-frontend "$BASE_SHA")"
+#   gaia_audit_scratch_release code-audit-frontend "$BASE_SHA"
+#
+# Usage, run directly (what a member definition points at):
+#   bash .gaia/scripts/audit-scratch-dir.sh <member> [<base-sha>]
+#   bash .gaia/scripts/audit-scratch-dir.sh --release <member> [<base-sha>]
+
+# gaia_audit_scratch_root
+# Echoes <main_root>/.gaia/local/cache/mutation-scratch, or nothing when the
+# shared main-root resolver (.gaia/scripts/main-root-lib.sh) cannot resolve a
+# main checkout. Honors $GAIA_AUDIT_SCRATCH_ROOT when set (test seam).
+# Always returns 0.
+gaia_audit_scratch_root() {
+  if [[ -n "${GAIA_AUDIT_SCRATCH_ROOT:-}" ]]; then
+    printf '%s' "$GAIA_AUDIT_SCRATCH_ROOT"
+    return 0
+  fi
+  local script_dir main_root
+  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  # shellcheck disable=SC1091
+  source "$script_dir/main-root-lib.sh"
+  main_root="$(gaia_resolve_main_root)" || return 0
+  printf '%s' "$main_root/.gaia/local/cache/mutation-scratch"
+  return 0
+}
+
+# gaia_audit_scratch_path <member> [<base_sha>] [<dir>]
+# Echoes the directory this member owns for this audit, WITHOUT creating it.
+# Echoes nothing when <member> is empty or the root is unresolvable.
+# Always returns 0.
+#
+# The member name is run through gaia_key_slug rather than interpolated raw.
+# That is not cosmetic: the slug's percent-encoding of every byte outside
+# [A-Za-z0-9_-] is what makes a member argument containing `/` or `..`
+# incapable of escaping the scratch root, and this function's one caller
+# class is an LLM-driven agent passing its own name through.
+#
+# An unresolvable audit key degrades to the literal `nokey` rather than
+# declining outright, which is the one place this file's fail-open rule reads
+# differently from the findings sidecar's. The sidecar declines its write
+# because a report nobody can find under the expected key is worse than no
+# report. A scratch directory has no reader but its own member, so the
+# property that actually matters is the member half, and that half is intact
+# with or without a key. Two sessions whose key is undeterminable can still
+# collide on `nokey.<member>`; that is a strictly smaller population than the
+# wave collision this exists to remove, and declining here would put the
+# member back to improvising the name.
+gaia_audit_scratch_path() {
+  local member="${1:-}" base_sha="${2:-}" dir="${3:-.}"
+  [[ -n "$member" ]] || return 0
+  local root
+  root="$(gaia_audit_scratch_root)" || return 0
+  [[ -n "$root" ]] || return 0
+
+  local self_dir
+  self_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  # shellcheck disable=SC1091
+  source "$self_dir/audit-key-lib.sh"
+
+  # Each slug is captured and status-checked instead of being interpolated
+  # into the printf: a command substitution discards its own status, so a
+  # failing member slug inside the format arguments would still print
+  # "<key>." -- a path with the discriminator silently gone, which is the
+  # collision this file exists to remove.
+  local member_slug
+  member_slug="$(gaia_key_slug "$member")" || return 0
+  [[ -n "$member_slug" ]] || return 0
+
+  local key
+  key="$(gaia_audit_key "$base_sha" "$dir")" || key="nokey"
+  [[ -n "$key" ]] || key="nokey"
+
+  printf '%s' "$root/$key.$member_slug"
+  return 0
+}
+
+# gaia_audit_scratch_dir <member> [<base_sha>] [<dir>]
+# Echoes the member's scratch directory, creating it if it is not already
+# there. Echoes nothing (and creates nothing) when the path is unresolvable
+# or the directory cannot be created. Always returns 0.
+#
+# IDEMPOTENT, never destructive, and that is the load-bearing choice. The
+# path is deterministic, so an agent that asks a second time is asking "where
+# is my directory", not "give me a clean one" -- and an agent runs its shell
+# commands in separate invocations, so asking twice is the ordinary case
+# rather than the exceptional one. A mint that cleared the directory would
+# therefore delete the half-finished mutation tree of the member that asked,
+# which is the same silent loss of evidence this file exists to prevent,
+# merely self-inflicted instead of inflicted by a sibling.
+#
+# A member that genuinely wants a fresh baseline releases first and mints
+# again. That is two calls rather than one, and it is the right two: the
+# destructive step is the one the caller had to name.
+gaia_audit_scratch_dir() {
+  local path
+  path="$(gaia_audit_scratch_path "$@")" || return 0
+  [[ -n "$path" ]] || return 0
+  mkdir -p -- "$path" 2>/dev/null || return 0
+  printf '%s' "$path"
+  return 0
+}
+
+# gaia_audit_scratch_release <member> [<base_sha>] [<dir>]
+# Removes the member's scratch directory. A no-op when the path is
+# unresolvable or nothing is there. Always returns 0: a member finishing its
+# review must never fail on cleanup.
+gaia_audit_scratch_release() {
+  local path
+  path="$(gaia_audit_scratch_path "$@")" || return 0
+  [[ -n "$path" ]] || return 0
+  rm -rf -- "$path" 2>/dev/null
+  return 0
+}
+
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  if [[ "${1:-}" == "--release" ]]; then
+    shift
+    gaia_audit_scratch_release "$@"
+    exit 0
+  fi
+  # An unrecognized leading flag is refused rather than taken as a member
+  # name. Without this, a mistyped `--relase` mints a scratch directory named
+  # after the typo: the release the caller asked for never happens, and the
+  # directory it meant to remove is left behind under its real name with
+  # nothing but the 14-day sweep to clear it.
+  if [[ "${1:-}" == --* ]]; then
+    printf 'audit-scratch-dir: unknown option "%s" (expected a member name, or --release <member>)\n' "$1" >&2
+    exit 2
+  fi
+  out="$(gaia_audit_scratch_dir "$@")"
+  if [[ -z "$out" ]]; then
+    printf 'audit-scratch-dir: could not resolve a scratch directory (member name missing, or no main checkout)\n' >&2
+    exit 1
+  fi
+  printf '%s\n' "$out"
+  exit 0
+fi

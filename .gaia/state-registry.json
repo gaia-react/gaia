@@ -340,6 +340,18 @@
       "source": "SPEC-061 §ephemeral"
     },
     {
+      "id": "audit-mutation-scratch",
+      "path": "cache/mutation-scratch/",
+      "match": "prefix",
+      "kind": "dir",
+      "scope": "ephemeral",
+      "keyed_by": null,
+      "why": "One Code Audit Team member's private working copy for the one kind of evidence that needs real bytes on disk: breaking a construct a guard names to establish the guard is not hollow. Each child is keyed by audit key plus member name, because every member of one parallel wave resolves the same audit key and it is the member half that keeps two co-dispatched members from overwriting each other's tree. Minted and released by .gaia/scripts/audit-scratch-dir.sh.",
+      "writer": "code",
+      "reaped_by": "stale cache sweep",
+      "source": "gaia-react/gaia#1447, added after the frozen classification"
+    },
+    {
       "id": "audit-window-breadcrumb",
       "path": "cache/audit-window-*.json",
       "match": "glob",
