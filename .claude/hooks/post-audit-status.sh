@@ -74,6 +74,7 @@
 #          version file missing
 #          version file empty
 #          frontend digest unavailable
+#          clearance reader unavailable
 #          repo slug unresolved
 #          audited tree not on pushed head
 #          stamp not pushed
@@ -350,6 +351,20 @@ if [ "$post_state" = "success" ] && [ -x "$resolver" ]; then
     emit_decline "member resolver could not answer"
     exit 0
   fi
+  # Both readers are required, probed once here rather than per member. A
+  # clearance lib carrying clearance_member_cleared without
+  # clearance_member_refused makes the refusal call below exit 127, and the
+  # loop's `||` chain consumes that as "not refused", reverting the gate to
+  # cleared-only and posting success on a head where a dispatched member holds
+  # a live refusal. That is the one degradation direction this gate must never
+  # take, so an unavailable reader declines instead of falling open. The earned
+  # reader's own probe sits at the marker-mode branch above, where absence
+  # degrades to a decline on its own.
+  if ! command -v clearance_member_refused >/dev/null 2>&1; then
+    emit_decline "clearance reader unavailable"
+    exit 0
+  fi
+
   pending=""
   while IFS= read -r m; do
     [ -n "$m" ] || continue
