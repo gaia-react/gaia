@@ -48,6 +48,11 @@ readonly SEVERITY_VALUES="critical important suggestion"
 readonly SURFACE_VALUES="adopter maintainer"
 readonly DIFFICULTY_VALUES="easy medium hard"
 readonly HANDLER_VALUES="prompt plan spec"
+# One permitted value today. A single-valued namespace is still a namespace
+# rather than a bare label, because the axis it opens ("what does this repair's
+# cost depend on") admits more answers than the one case that motivated it, and
+# a bare `fold-required` label would have to be renamed to grow a second.
+readonly FOLD_VALUES="required"
 
 usage() {
   cat >&2 <<'EOF'
@@ -189,6 +194,18 @@ check_labels() {
     finding "$subject" "handler-count" "expected at most one \`handler:\` label, found $n"
   fi
   check_ns_values "$subject" "$labels" 'handler:' "$HANDLER_VALUES" "handler"
+
+  # Fold is optional in the strongest sense of the three: it marks a minority of
+  # findings, so absence is the ordinary case rather than an omission, and
+  # nothing gates on presence or absence. It is checked here for the same reason
+  # the others are: the value reaches a display surface that reads it literally,
+  # so a misspelling is silent until a drainer does not see the annotation the
+  # filer thought they left.
+  n="$(count_ns "$labels" 'fold:')"
+  if [ "$n" -gt 1 ]; then
+    finding "$subject" "fold-count" "expected at most one \`fold:\` label, found $n"
+  fi
+  check_ns_values "$subject" "$labels" 'fold:' "$FOLD_VALUES" "fold"
 
   return 0
 }
