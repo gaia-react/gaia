@@ -66,15 +66,28 @@ JSON
 
 # Every slash command the rendered line names, one per line, sorted. The
 # `Run ` prefix keeps a command named inside a segment's parameter text from
-# counting as a segment of its own.
+# counting as a segment of its own. `LC_ALL=C` so the order never depends on
+# the invoking locale's collation of the hyphen.
 rendered_commands() {
-  grep -oE 'Run /[a-z][a-z0-9-]*' <<<"$1" | sort
+  grep -oE 'Run /[a-z][a-z0-9-]*' <<<"$1" | LC_ALL=C sort
 }
 
-@test "the saturated cache renders segments to check" {
+# The saturated fixture is what gives the uniqueness test below anything to
+# check, so pin the exact set it arms rather than a cardinality floor. A floor
+# still passes on the survivors when a fixture path drifts out from under one
+# segment, and the invariant then goes unexercised over the command that
+# dropped out with nothing to say coverage shrank.
+@test "the saturated cache arms every right-side segment" {
   run_saturated_statusline
   [ "$status" -eq 0 ]
-  [ "$(rendered_commands "$output" | wc -l | tr -d ' ')" -gt 1 ]
+  expected=$(printf '%s\n' \
+    "Run /gaia-audit" \
+    "Run /gaia-debt" \
+    "Run /gaia-harden" \
+    "Run /gaia-serena-sync" \
+    "Run /update-deps" \
+    "Run /update-gaia")
+  [ "$(rendered_commands "$output")" = "$expected" ]
 }
 
 @test "no slash command appears in more than one rendered statusline segment" {
