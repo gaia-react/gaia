@@ -1,17 +1,17 @@
 [
   {
     "number": 101,
-    "title": "Keyed critical issue with a well-formed key and Handler: prompt",
-    "labels": [{ "name": "tech-debt" }, { "name": "severity:critical" }],
+    "title": "Keyed critical issue with a well-formed key and handler:prompt",
+    "labels": [{ "name": "tech-debt" }, { "name": "severity:critical" }, { "name": "handler:prompt" }],
     "createdAt": "2026-01-01T00:00:00Z",
-    "body": "A null check is missing before the property access, so a malformed payload throws instead of failing gracefully.\n\n<!-- gaia-debt-key: v1 class=holistic/unclassified path=app/foo.ts line=4 -->\n\nHandler: prompt"
+    "body": "A null check is missing before the property access, so a malformed payload throws instead of failing gracefully.\n\n<!-- gaia-debt-key: v1 class=holistic/unclassified path=app/foo.ts line=4 -->"
   },
   {
     "number": 102,
-    "title": "Keyed suggestion issue on the same path with Handler: plan",
-    "labels": [{ "name": "tech-debt" }, { "name": "severity:suggestion" }],
+    "title": "Keyed suggestion issue on the same path with handler:plan",
+    "labels": [{ "name": "tech-debt" }, { "name": "severity:suggestion" }, { "name": "handler:plan" }],
     "createdAt": "2026-01-02T00:00:00Z",
-    "body": "The same file carries a second, unrelated cleanup opportunity further down.\n\n<!-- gaia-debt-key: v1 class=holistic/unclassified path=app/foo.ts line=42 -->\n\nHandler: plan"
+    "body": "The same file carries a second, unrelated cleanup opportunity further down.\n\n<!-- gaia-debt-key: v1 class=holistic/unclassified path=app/foo.ts line=42 -->"
   },
   {
     "number": 103,
@@ -22,9 +22,9 @@
   },
   {
     "number": 104,
-    "title": "Keyless human-filed issue with no severity and no handler",
+    "title": "Keyless human-filed issue with no severity and no handler label",
     "labels": [{ "name": "tech-debt" }],
     "createdAt": "2026-01-04T00:00:00Z",
-    "body": "A human filed this directly, describing a slow query on the reports page, with no dedup key and no handler line."
+    "body": "A human filed this directly, describing a slow query on the reports page, with no dedup key and no handler class."
   }
 ]

@@ -252,8 +252,7 @@ EOF
 FIXTURE_KEY_INNER='v1 class=holistic/unclassified path=app/services/foo.ts line=42'
 FIXTURE_BODY='<!-- gaia-debt-key: v1 class=holistic/unclassified path=app/services/foo.ts line=42 -->
 <!-- gaia-debt-origin: branch=debt/1121-marker-sep mode=drain unit=1121 changed=1 head=a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2 -->
-Additional body prose.
-Handler: prompt'
+Additional body prose.'
 
 @test "4a. the wrapped-key substring test still matches with a provenance line present" {
   # Reproduces the real reader in .claude/hooks/lib/audit-dispositions.sh

@@ -246,33 +246,70 @@ setup() {
   grep -qF -- "carry no information about the finding" "$VOCAB" || return 1
 }
 
-@test "UAT-005: the label loop creates all three difficulty labels, both surface labels, and still creates the five pre-existing ones" {
+@test "UAT-005: the label loop creates all three difficulty labels, both surface labels, all three handler labels, and still creates the five pre-existing ones" {
   grep -qF -- "for label in tech-debt severity:critical severity:important severity:suggestion" "$VOCAB" || return 1
   grep -qF -- "surface:adopter surface:maintainer" "$VOCAB" || return 1
+  grep -qF -- "handler:prompt handler:plan handler:spec" "$VOCAB" || return 1
   grep -qF -- "difficulty:easy difficulty:medium difficulty:hard wontfix; do" "$VOCAB" || return 1
 }
 
-@test "the label-loop prose count says ten, and the stale 'all five labels' / 'all eight labels' phrasings are gone" {
+@test "the label-loop prose count says thirteen, and the stale 'all five' / 'all eight' / 'all ten labels' phrasings are gone" {
   # The count in the prose and the number of entries in the loop are two
   # statements of one fact, and only the loop is executable, so the prose is
   # the half that rots. Pinning the current count plus every superseded one is
   # what makes a future label addition fail here instead of shipping a comment
   # that undercounts its own loop.
-  grep -qF -- "Create all ten labels idempotently" "$VOCAB" || return 1
+  grep -qF -- "Create all thirteen labels idempotently" "$VOCAB" || return 1
   assert_absent_fixed_across "all five labels" "$VOCAB"
   assert_absent_fixed_across "all eight labels" "$VOCAB"
+  assert_absent_fixed_across "all ten labels" "$VOCAB"
 }
 
-@test "UAT-004: both gh issue create forms carry --body-file and the mandatory surface label, graded and ungraded" {
-  grep -qF -- 'gh issue create --label tech-debt --label severity:<tier> --label surface:<side> --label difficulty:<grade> --body-file "$body_file"' "$VOCAB" || return 1
-  grep -qF -- 'gh issue create --label tech-debt --label severity:<tier> --label surface:<side> --body-file "$body_file"' "$VOCAB" || return 1
+@test "UAT-004: both gh issue create forms carry --body-file and the two mandatory non-grade labels, graded and ungraded" {
+  grep -qF -- 'gh issue create --label tech-debt --label severity:<tier> --label surface:<side> --label handler:<class> --label difficulty:<grade> --body-file "$body_file"' "$VOCAB" || return 1
+  grep -qF -- 'gh issue create --label tech-debt --label severity:<tier> --label surface:<side> --label handler:<class> --body-file "$body_file"' "$VOCAB" || return 1
 }
 
-@test "UAT-004: the issue-body schema section carries no difficulty line, and no capital-D Difficulty: line exists anywhere" {
+@test "UAT-004: the issue-body schema section assigns neither namespace, and no capital-D Difficulty: line exists anywhere" {
   local section
   section="$(extract_section_or_fail "$VOCAB" '^## 5\. Issue body schema' '^## ')" || return 1
-  printf '%s\n' "$section" | grep -qi 'difficulty' && return 1
+  # Scoped to the namespace spellings rather than the bare words: the section
+  # now states, in prose, that both axes are labels and not body fields, which
+  # names them while being the opposite of the defect this pins.
+  printf '%s\n' "$section" | grep -qFi 'difficulty:' && return 1
+  printf '%s\n' "$section" | grep -qFi 'handler:' && return 1
   assert_absent_fixed_cs_across "Difficulty:" "$VOCAB"
+}
+
+@test "the superseded Handler: body line survives in SKILL.md only inside its backfill rollout section" {
+  # Not a whole-file absence check: the backfill sweep has to name the legacy
+  # spelling, because reading it off pre-existing bodies is the entire job. Any
+  # OTHER occurrence is the writer schema growing the body line back.
+  local start end line hits
+  read -r start end <<<"$(section_line_range "$VOCAB" '^## Rollout: backfill the handler class' '^## ')"
+  [ -n "$start" ] || {
+    echo "the handler backfill rollout section is missing from SKILL.md" >&2
+    return 1
+  }
+  hits="$(grep -n -F -- 'Handler:' "$VOCAB" | cut -d: -f1)"
+  for line in $hits; do
+    if [ "$line" -lt "$start" ] || [ "$line" -gt "$end" ]; then
+      echo "a Handler: body-line spelling survives at SKILL.md:${line}, outside the backfill section" >&2
+      return 1
+    fi
+  done
+  true
+}
+
+@test "SKILL.md defines all three handler labels and states one color family for them" {
+  grep -qF -- "handler:prompt" "$VOCAB" || return 1
+  grep -qF -- "handler:plan" "$VOCAB" || return 1
+  grep -qF -- "handler:spec" "$VOCAB" || return 1
+  grep -qF -- "share one color family" "$VOCAB" || return 1
+}
+
+@test "SKILL.md states the handler label is validated when present and never demanded" {
+  grep -qF -- "absence is not a finding" "$VOCAB" || return 1
 }
 
 # --- Group 2: the vocabulary lives in exactly one file, and names no model -
