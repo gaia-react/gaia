@@ -48,11 +48,17 @@ make_repo() {
 # it, back-dated so the arm's age gate is exercised for real. `touch -t` with
 # an explicit stamp, never `touch -d` (GNU-only) or `date -v` (BSD-only), per
 # the project's cross-platform rule.
+#
+# `localtime` before `strftime` is load-bearing: jq's strftime formats in UTC
+# while `touch -t` reads its argument in the machine's local timezone, so the
+# bare form back-dates every seed by the local UTC offset. The margins here
+# would absorb that, but the helper reads as a portable idiom worth copying,
+# and a suite that copies it at a tighter margin would be wrong by up to a day.
 seed_copy() {
   local name="$1" days="$2" stamp
   mkdir -p "$SCRATCH/$name"
   echo mutated > "$SCRATCH/$name/tree"
-  stamp="$(jq -rn --argjson n "$days" '(now - ($n * 86400)) | strftime("%Y%m%d%H%M")')"
+  stamp="$(jq -rn --argjson n "$days" '(now - ($n * 86400)) | localtime | strftime("%Y%m%d%H%M")')"
   touch -t "$stamp" "$SCRATCH/$name/tree" "$SCRATCH/$name"
 }
 
@@ -90,7 +96,7 @@ seed_copy() {
 @test "sweep 5: the mutation-scratch parent itself is never reaped" {
   make_repo
   seed_copy "abc123.work.code-audit-frontend" 20
-  touch -t "$(jq -rn '(now - (60 * 86400)) | strftime("%Y%m%d%H%M")')" "$SCRATCH"
+  touch -t "$(jq -rn '(now - (60 * 86400)) | localtime | strftime("%Y%m%d%H%M")')" "$SCRATCH"
   cd "$REPO"
   run bash "$HOOK_ABS"
   [ "$status" -eq 0 ]

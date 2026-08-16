@@ -160,23 +160,46 @@ gaia_audit_scratch_release() {
 }
 
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  gaia_scratch_mode=mint
   if [[ "${1:-}" == "--release" ]]; then
+    gaia_scratch_mode=release
     shift
+  fi
+
+  # Refuse a `--`-prefixed token in ANY remaining position, not just the
+  # first. No legitimate member name, base sha, or directory begins with
+  # `--`, and every position that accepts one silently absorbs a misplaced
+  # flag into a value: `<member> <base> --release` binds --release to <dir>,
+  # so gaia_audit_key fails against it, the key degrades to `nokey`, and the
+  # command MINTS `nokey.<member>` and exits 0 while the directory the caller
+  # asked to release is still there. That is the same silent
+  # mint-instead-of-release this guard exists to prevent, reached through a
+  # position rather than through a typo.
+  for gaia_scratch_arg in "$@"; do
+    if [[ "$gaia_scratch_arg" == --* ]]; then
+      printf 'audit-scratch-dir: unknown option "%s" (usage: <member> [<base-sha>], or --release <member> [<base-sha>])\n' \
+        "$gaia_scratch_arg" >&2
+      exit 2
+    fi
+  done
+
+  # Both modes refuse an empty member name out loud. Releasing nothing is
+  # indistinguishable from releasing successfully, so a silent exit 0 here
+  # would tell a caller its scratch tree was cleaned up when it was not.
+  if [[ -z "${1:-}" ]]; then
+    printf 'audit-scratch-dir: %s needs a member name\n' \
+      "$([[ "$gaia_scratch_mode" == release ]] && printf -- '--release' || printf 'mint')" >&2
+    exit 2
+  fi
+
+  if [[ "$gaia_scratch_mode" == release ]]; then
     gaia_audit_scratch_release "$@"
     exit 0
   fi
-  # An unrecognized leading flag is refused rather than taken as a member
-  # name. Without this, a mistyped `--relase` mints a scratch directory named
-  # after the typo: the release the caller asked for never happens, and the
-  # directory it meant to remove is left behind under its real name with
-  # nothing but the 14-day sweep to clear it.
-  if [[ "${1:-}" == --* ]]; then
-    printf 'audit-scratch-dir: unknown option "%s" (expected a member name, or --release <member>)\n' "$1" >&2
-    exit 2
-  fi
+
   out="$(gaia_audit_scratch_dir "$@")"
   if [[ -z "$out" ]]; then
-    printf 'audit-scratch-dir: could not resolve a scratch directory (member name missing, or no main checkout)\n' >&2
+    printf 'audit-scratch-dir: could not resolve a scratch directory (no main checkout)\n' >&2
     exit 1
   fi
   printf '%s\n' "$out"

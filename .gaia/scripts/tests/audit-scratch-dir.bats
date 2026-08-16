@@ -138,12 +138,23 @@ teardown() {
 # --- containment -------------------------------------------------------------
 
 @test "a member name containing path separators cannot escape the scratch root" {
-  run bash "$SCRIPT" "../../escaped" deadbeef "$REPO"
+  run bash "$SCRIPT" "../../../escaped" deadbeef "$REPO"
   [ "$status" -eq 0 ]
-  # The slug percent-encodes '/' and '.', so the result is one child of the root.
-  grep -qF -- "/mutation-scratch/deadbeef.work." <<<"$output"
-  grep -qF -- ".." <<<"$(basename "$output")" && return 1
   [ -d "$output" ]
+  # Assert containment against the RESOLVED parent, never against the printed
+  # string. A substring match on the printed path admits a fully-escaped
+  # result: `<root>/deadbeef.work.` is still a substring of
+  # `<root>/deadbeef.work.../../../escaped`, and that path's basename holds no
+  # `..` either, so both of those checks stay green with the slug removed and
+  # the directory landing outside the root. `pwd -P` is what collapses the
+  # traversal, so this is the only form that can see the escape.
+  local parent root_real
+  parent="$(cd "$(dirname "$output")" && pwd -P)"
+  root_real="$(cd "$GAIA_AUDIT_SCRATCH_ROOT" && pwd -P)"
+  [ "$parent" = "$root_real" ]
+  # And the separators survive as their encoded form rather than being
+  # stripped, which is what keeps the slug injective.
+  grep -qF -- "%2F" <<<"$(basename "$output")"
 }
 
 # --- release -----------------------------------------------------------------
@@ -177,8 +188,16 @@ teardown() {
 
 @test "an empty member name mints nothing and exits non-zero" {
   run bash "$SCRIPT" "" deadbeef "$REPO"
-  [ "$status" -ne 0 ]
-  grep -qF -- "could not resolve a scratch directory" <<<"$output"
+  [ "$status" -eq 2 ]
+  grep -qF -- "needs a member name" <<<"$output"
+}
+
+@test "a bare --release with no member name is refused, not a silent success" {
+  # Releasing nothing looks exactly like releasing successfully, so the CLI
+  # has to be loud here or a caller believes its tree was cleaned up.
+  run bash "$SCRIPT" --release
+  [ "$status" -eq 2 ]
+  grep -qF -- "needs a member name" <<<"$output"
 }
 
 @test "a mistyped --release is refused, never minted as a member named after the typo" {
@@ -187,6 +206,20 @@ teardown() {
   grep -qF -- "unknown option" <<<"$output"
   [ -e "$GAIA_AUDIT_SCRATCH_ROOT" ] && return 1
   true
+}
+
+@test "a TRAILING --release is refused, never absorbed into a positional and minted" {
+  # The natural misreading of "release it with the same command under
+  # --release". Absorbed as <dir>, it makes the audit key undeterminable, so
+  # the run mints nokey.<member> and exits 0 while the directory the caller
+  # asked to release is untouched.
+  local a
+  a="$(bash "$SCRIPT" code-audit-frontend deadbeef "$REPO")"
+  run bash "$SCRIPT" code-audit-frontend deadbeef --release
+  [ "$status" -eq 2 ]
+  grep -qF -- "unknown option" <<<"$output"
+  [ -e "$GAIA_AUDIT_SCRATCH_ROOT/nokey.code-audit-frontend" ] && return 1
+  [ -d "$a" ]
 }
 
 @test "sourcing the file has no side effects" {
