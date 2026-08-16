@@ -154,6 +154,22 @@ write_marker() {
     > "$SANDBOX/.gaia/local/audit/${digest}${infix}.ok"
 }
 
+# Write a writer-shaped REFUSAL for MEMBER, keyed to the same current-HEAD
+# digest write_marker uses. The real writer publishes a refusal BESIDE any
+# same-digest earned marker rather than replacing it, so a test can call both
+# and reproduce the two-artifact state the merge gate resolves by precedence.
+write_refusal() {
+  local member="$1" digest sha tree infix
+  digest="$(member_digest_for "$member")"
+  sha="$(commit_sha)"
+  tree="$(tree_sha)"
+  if [ "$member" = "code-audit-frontend" ]; then infix=""; else infix=".$member"; fi
+  mkdir -p "$SANDBOX/.gaia/local/audit"
+  printf '{"version":"1.6.1","schema":3,"member":"%s","provenance":"refused","digest":"%s","tree":"%s","sha":"%s","audited_at":"2026-07-14T10:00:00Z","sidecar":true}\n' \
+    "$member" "$digest" "$tree" "$sha" \
+    > "$SANDBOX/.gaia/local/audit/${digest}${infix}.refused"
+}
+
 # A PATH whose dir carries every binary these scripts need EXCEPT jq
 # (including a sha256 tool, so the digest engine itself still works and only
 # the jq-gated clearance reader is disabled), so `command -v jq` fails and the
@@ -663,6 +679,59 @@ code-audit-maintainer-shell"
   [ "$status" -eq 0 ]
   grep -qxF "code-audit-frontend" <<<"$output" || return 1
   grep -qxF "code-audit-maintainer-shell" <<<"$output" && return 1
+  return 0
+}
+
+# Refusal precedence. The merge hook reads the refusal family before the earned
+# family, and this filter answers a different question over the same state, so
+# the two have to agree: an oracle reporting "nobody owed" while the merge is
+# denied tells the operator there is no member left to run.
+
+@test "a live refusal outranks the same member's same-digest earned marker: the member is still spawned" {
+  write_full_roster
+  stage app/x.tsx; commit "feat"
+  write_marker code-audit-frontend
+  write_refusal code-audit-frontend
+  stage .gaia/scripts/token-tally.sh; commit "fix"
+
+  # CONTROL: both members are dispatched by the whole-branch diff.
+  members="$(resolve_members)"
+  grep -qxF "code-audit-frontend" <<<"$members" || return 1
+
+  run run_oracle
+  [ "$status" -eq 0 ]
+  grep -qxF "code-audit-frontend" <<<"$output" || return 1
+}
+
+@test "a refusal for a DIFFERENT member does not resurrect a cleared member" {
+  # The refusal read is digest-and-member keyed like the earned read, so one
+  # member's refusal never drags a cleared sibling back into the spawn set.
+  write_full_roster
+  stage app/x.tsx; commit "feat"
+  write_marker code-audit-frontend
+  stage .gaia/scripts/token-tally.sh; commit "fix"
+  write_refusal code-audit-maintainer-shell
+
+  run run_oracle
+  [ "$status" -eq 0 ]
+  grep -qxF "code-audit-frontend" <<<"$output" && return 1
+  grep -qxF "code-audit-maintainer-shell" <<<"$output" || return 1
+}
+
+@test "a malformed refusal does not resurrect a cleared member" {
+  # The refusal read is fail-closed on well-formedness the same way the earned
+  # read is: a file at the refusal path that is not writer-shaped is not a
+  # refusal, so it must not flip a genuinely cleared member back on.
+  write_full_roster
+  stage app/x.tsx; commit "feat"
+  write_marker code-audit-frontend
+  digest="$(member_digest_for code-audit-frontend)"
+  printf 'not json\n' > "$SANDBOX/.gaia/local/audit/${digest}.refused"
+  stage .gaia/scripts/token-tally.sh; commit "fix"
+
+  run run_oracle
+  [ "$status" -eq 0 ]
+  grep -qxF "code-audit-frontend" <<<"$output" && return 1
   return 0
 }
 
@@ -1252,4 +1321,38 @@ code-audit-maintainer-shell"
   run bash -c 'cd "$1" && /bin/bash "$2"' _ "$SANDBOX" "$SCRIPT"
   [ "$status" -eq 0 ]
   [ "$output" = "code-audit-frontend" ]
+}
+
+@test "an older clearance lib without the refusal reader degrades the whole filter, not just the refusal read" {
+  # The probe's own arm, the twin of the hooks suite's. A missing function
+  # exits 127, which `!` inverts to true, so the filter would read every member
+  # as un-refused and silently revert to the cleared-only behavior the refusal
+  # read exists to correct. Probing both readers degrades the whole filter
+  # instead, which is what every other unavailable dependency here does.
+  # The oracle resolves its libs from its own location, so a mirror with a
+  # doctored lib exercises the real script.
+  write_full_roster
+  stage app/x.tsx; commit "feat"
+  write_marker code-audit-frontend
+  stage .gaia/scripts/token-tally.sh; commit "fix"
+
+  mirror="$BATS_TEST_TMPDIR/mirror"
+  mkdir -p "$mirror/.gaia/scripts" "$mirror/.claude/hooks/lib"
+  cp "$THIS_DIR"/../*.sh "$mirror/.gaia/scripts/"
+  cp "$LIB_DIR"/*.sh "$mirror/.claude/hooks/lib/"
+  sed -i.bak 's/^clearance_member_refused()/_disabled_clearance_member_refused()/' \
+    "$mirror/.claude/hooks/lib/audit-clearance.sh"
+  rm -f "$mirror/.claude/hooks/lib/audit-clearance.sh.bak"
+
+  # Degraded: the filter passes the list through, so the already-cleared
+  # frontend member is named rather than dropped.
+  run bash -c 'cd "$1" && "$2" 2>/dev/null' _ "$SANDBOX" "$mirror/.gaia/scripts/resolve-audit-spawn.sh"
+  [ "$status" -eq 0 ]
+  grep -qxF "code-audit-frontend" <<<"$output" || return 1
+
+  # Control: the real oracle, with both readers present, drops it.
+  run run_oracle
+  [ "$status" -eq 0 ]
+  grep -qxF "code-audit-frontend" <<<"$output" && return 1
+  return 0
 }

@@ -97,6 +97,22 @@ extract_orchestrator_paragraph() {
   ' "$1"
 }
 
+# extract_orchestrator_paragraph_or_fail <file>
+# extract_orchestrator_paragraph, plus extract_section_or_fail's guard: fails
+# loudly rather than passing vacuously when the lead sentence matches nothing.
+# The absence assertions below need this most, since an empty paragraph makes a
+# retired-wording grep report green over prose it never read, which is the
+# failure those assertions exist to catch rather than to reproduce.
+extract_orchestrator_paragraph_or_fail() {
+  local out
+  out="$(extract_orchestrator_paragraph "$1")"
+  [ -n "$out" ] || {
+    echo "the orchestrator-owns-the-disposition paragraph matched nothing in ${1}; a scoped assertion here would pass vacuously" >&2
+    return 1
+  }
+  printf '%s\n' "$out"
+}
+
 # normalize_ws
 # Collapses newlines and runs of whitespace to single spaces and trims the
 # ends, so a paragraph wrapped at one width compares equal to the same
@@ -312,7 +328,7 @@ setup() {
 @test "Group 6: each member's routing paragraph names gate machinery and the pull request's own changed files" {
   local f para
   for f in "${ALL_AGENTS[@]}"; do
-    para="$(extract_orchestrator_paragraph "$f")"
+    para="$(extract_orchestrator_paragraph_or_fail "$f")" || return 1
     printf '%s\n' "$para" | grep -qF -- "gate machinery" || {
       echo "$f's routing paragraph does not name gate machinery" >&2
       return 1
@@ -327,9 +343,53 @@ setup() {
 @test "Group 6: no member's routing paragraph still carries the retired unconditional clause" {
   local f para
   for f in "${ALL_AGENTS[@]}"; do
-    para="$(extract_orchestrator_paragraph "$f")"
+    para="$(extract_orchestrator_paragraph_or_fail "$f")" || return 1
     printf '%s\n' "$para" | grep -qF -- "or files it as a tech-debt issue when it is not" && {
       echo "$f's routing paragraph still carries the retired unconditional clause" >&2
+      return 1
+    }
+  done
+  true
+}
+
+# The three assertions below pin the amendment the path terms alone no longer
+# decide. Group 6's identity test makes the five files agree with each other;
+# it cannot tell whether what they agree on matches the owner section, which is
+# exactly how the paragraph drifted from a two-term rule to a four-term one
+# while staying byte-identical everywhere.
+
+@test "Group 6: each member's routing paragraph requires the finding to clear both disqualifiers" {
+  local f para
+  for f in "${ALL_AGENTS[@]}"; do
+    para="$(extract_orchestrator_paragraph_or_fail "$f")" || return 1
+    printf '%s\n' "$para" | grep -qF -- "clears both disqualifiers" || {
+      echo "$f's routing paragraph does not require clearing both disqualifiers" >&2
+      return 1
+    }
+  done
+}
+
+@test "Group 6: each member's routing paragraph delegates to the owner section" {
+  local f para
+  for f in "${ALL_AGENTS[@]}"; do
+    para="$(extract_orchestrator_paragraph_or_fail "$f")" || return 1
+    printf '%s\n' "$para" | grep -qF -- 'wiki/concepts/PR Merge Workflow.md' || {
+      echo "$f's routing paragraph does not name the owner page" >&2
+      return 1
+    }
+    printf '%s\n' "$para" | grep -qF -- "governs wherever this summary and it differ" || {
+      echo "$f's routing paragraph does not defer to the owner section on a conflict" >&2
+      return 1
+    }
+  done
+}
+
+@test "Group 6: no member's routing paragraph still states the retired two-term waive rule" {
+  local f para
+  for f in "${ALL_AGENTS[@]}"; do
+    para="$(extract_orchestrator_paragraph_or_fail "$f")" || return 1
+    printf '%s\n' "$para" | grep -qF -- "and files it as a tech-debt issue otherwise" && {
+      echo "$f's routing paragraph still states the retired two-term waive rule" >&2
       return 1
     }
   done

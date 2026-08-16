@@ -944,3 +944,96 @@ write_sidecar_for() {
   grep -qF 'cannot build the carry-forward ledger' "$WRITER"
   grep -qF 'cannot update the carry-forward ledger' "$WRITER"
 }
+
+# -----------------------------------------------------------------------------
+# The compensating status post on a refusal
+# -----------------------------------------------------------------------------
+# A refusal blocks only the merge path that runs the local merge hook. GitHub's
+# auto-merge fires on the required GAIA-Audit status alone, so a refusal landing
+# behind an already-posted success has to retract it, and the one moment a
+# refusal is guaranteed to be recorded is the moment the writer writes it.
+# These arms pin that the writer makes the call, that it makes it ONLY on a
+# refusal, that CI is left to its own terminal status, and that the call can
+# never disturb the write that already landed.
+
+# Install a post-audit-status.sh stub under ROOT that records its argv.
+install_status_hook_stub() {
+  local rc="${1:-0}"
+  mkdir -p "$ROOT/.claude/hooks"
+  STATUS_CALLS="$BATS_TEST_TMPDIR/status-calls"
+  : > "$STATUS_CALLS"
+  cat > "$ROOT/.claude/hooks/post-audit-status.sh" <<EOF
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >> "$STATUS_CALLS"
+echo "status: stub"
+exit $rc
+EOF
+  chmod +x "$ROOT/.claude/hooks/post-audit-status.sh"
+}
+
+@test "a refusal write invokes the status hook with the refusal artifact's path" {
+  install_status_hook_stub
+  digest="$(member_digest "$ROOT" code-audit-frontend)"
+
+  run env -u GITHUB_ACTIONS -u CI bash "$WRITER" \
+    --root "$ROOT" --member code-audit-frontend --provenance refused
+  [ "$status" -eq 0 ]
+
+  grep -qF -- "${digest}.refused" "$STATUS_CALLS" || return 1
+}
+
+@test "an earned write never invokes the status hook: the agent still owns that call" {
+  install_status_hook_stub
+
+  run env -u GITHUB_ACTIONS -u CI bash "$WRITER" \
+    --root "$ROOT" --member code-audit-frontend --provenance earned
+  [ "$status" -eq 0 ]
+
+  [ ! -s "$STATUS_CALLS" ] || return 1
+}
+
+@test "a refusal write in CI leaves the status to the workflow's own terminal post" {
+  install_status_hook_stub
+
+  # -u CI is load-bearing: Actions sets CI=true on every step, so the guard's
+  # CI term alone would satisfy the skip on a runner and this arm could never
+  # fail there, whatever the GITHUB_ACTIONS term did. Each arm isolates the one
+  # variable it is about.
+  run env -u CI GITHUB_ACTIONS=true bash "$WRITER" \
+    --root "$ROOT" --member code-audit-frontend --provenance refused
+  [ "$status" -eq 0 ]
+  [ ! -s "$STATUS_CALLS" ] || return 1
+  # The skip says so. A local shell exporting CI for unrelated reasons takes
+  # this arm too, and a silent skip there reproduces the incident with no
+  # diagnostic at all.
+  grep -qF -- "compensating GAIA-Audit failure status skipped" <<<"$output" || return 1
+
+  run env -u GITHUB_ACTIONS CI=true bash "$WRITER" \
+    --root "$ROOT" --member code-audit-frontend --provenance refused
+  [ "$status" -eq 0 ]
+  [ ! -s "$STATUS_CALLS" ] || return 1
+}
+
+@test "a failing status hook never fails the refusal write, and never reaches stdout" {
+  install_status_hook_stub 1
+  digest="$(member_digest "$ROOT" code-audit-frontend)"
+
+  # stdout is the writer's marker-path contract; the hook's chatter goes to
+  # stderr so a caller capturing the path gets the path and nothing else.
+  out="$(env -u GITHUB_ACTIONS -u CI bash "$WRITER" \
+    --root "$ROOT" --member code-audit-frontend --provenance refused 2>/dev/null)"
+  [ "$out" = "$AUDIT_DIR/${digest}.refused" ]
+  [ -f "$AUDIT_DIR/${digest}.refused" ]
+  grep -qF -- "${digest}.refused" "$STATUS_CALLS" || return 1
+}
+
+@test "an absent status hook leaves the refusal write untouched" {
+  # An adopter tree that has not installed the hook, and every non-local caller.
+  digest="$(member_digest "$ROOT" code-audit-frontend)"
+  [ ! -e "$ROOT/.claude/hooks/post-audit-status.sh" ]
+
+  run env -u GITHUB_ACTIONS -u CI bash "$WRITER" \
+    --root "$ROOT" --member code-audit-frontend --provenance refused
+  [ "$status" -eq 0 ]
+  [ -f "$AUDIT_DIR/${digest}.refused" ]
+}

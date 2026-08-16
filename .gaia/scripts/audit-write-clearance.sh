@@ -51,6 +51,12 @@
 #   - Every write lands unconditionally: it overwrites a stale body at the
 #     same path. There is no create-only guard and no carried family to
 #     dominate; provenance is earned or refused only.
+#   - On a REFUSAL, and outside CI, also calls .claude/hooks/post-audit-status.sh
+#     with the refusal it just wrote, so the required GAIA-Audit status falls to
+#     `failure` and the merge paths that never run the local hook (GitHub's
+#     auto-merge) cannot complete over a live refusal. Best-effort: its output
+#     goes to stderr and any failure is absorbed, so stdout stays the marker
+#     path and a refusal that cannot post one is still durably on disk.
 #   - Exit 0 on write; stdout is the marker path. Exit 2 on a usage error, when
 #     the member's content digest cannot be derived, or when the body cannot be
 #     built (message on stderr) -- never a marker written keyed to an empty or
@@ -562,6 +568,62 @@ if [ -n "$BASE" ]; then
           err "warning: cannot publish the ledger to '$ledger'"
         fi
       fi
+    fi
+  fi
+fi
+
+# -----------------------------------------------------------------------------
+# Compensating server-side signal on a refusal (LOCAL path only).
+#
+# A refusal blocks the merge path that runs .claude/hooks/pr-merge-audit-check.sh
+# and only that one. GitHub's auto-merge fires on the required GAIA-Audit status
+# alone, so a refusal written after a sibling member's clean pass already posted
+# `success` leaves that success standing and the pull request merges over a live
+# refusal, with the artifact on disk and no diagnostic anywhere. Posting
+# `failure` for the same head retracts it, which is why this call belongs to the
+# writer rather than to an agent's instructions: the one moment a refusal is
+# guaranteed to be recorded is the moment it is written.
+#
+# Runs LAST, after both the refusal and the ledger are durably on disk. This is
+# the only step here that touches the network, and `gh` has no bound of its own,
+# so a hung call must not sit in front of the briefing a refusal exists to
+# produce. It never affects either write: `|| true` absorbs every failure, and
+# the hook's own output goes to stderr so stdout stays the marker path this
+# script contracts to print. A post that cannot happen (no gh, an un-pushed
+# head) leaves the refusal on disk, where the local gate still denies the merge.
+#
+# Anchored on $_root_toplevel, the absolute checkout root already derived and
+# validated above, rather than on $ROOT: the subshell `cd` re-bases every
+# relative path inside it, so a caller passing a relative --root from a
+# subdirectory would resolve the hook one way for the `[ -x ]` test and another
+# way for the run. $target has the same exposure, since audit_dir is built from
+# $ROOT, so the marker is re-derived here against the absolute root. Both paths
+# name the same files either way: the validation above proves $ROOT and
+# $_root_toplevel are one physical directory.
+#
+# The `cd` itself is load-bearing and cannot be dropped: the hook derives its
+# repo root, and `gh` its repository and branch, from the ambient working
+# directory, so the call has to be anchored on the audited tree.
+#
+# Skipped in CI because that workflow posts one terminal status per run and owns
+# the context; a second writer racing it is a failure mode the local path does
+# not have. The window this closes is local-specific in the same way: the local
+# path posts once per dispatch wave, so a later wave's refusal can arrive behind
+# an earlier wave's success, which a single terminal CI post cannot do.
+# -----------------------------------------------------------------------------
+if [ "$PROVENANCE" = "refused" ]; then
+  if [ -n "${GITHUB_ACTIONS:-}" ] || [ -n "${CI:-}" ]; then
+    # Say so rather than skipping silently. A local shell that exports CI for
+    # unrelated reasons takes this arm, and then the incident this block exists
+    # to prevent arrives with no diagnostic at all: the refusal lands, no
+    # status is posted, and nothing says why. The direction is still safe, the
+    # local gate denies on the artifact alone.
+    err "note: compensating GAIA-Audit failure status skipped (CI environment); the refusal is on disk and the local merge gate still denies"
+  else
+    status_hook="${_root_toplevel}/.claude/hooks/post-audit-status.sh"
+    status_marker="${_root_toplevel}/.gaia/local/audit/${target##*/}"
+    if [ -x "$status_hook" ]; then
+      ( cd "$_root_toplevel" && bash "$status_hook" "$status_marker" ) >&2 || true
     fi
   fi
 fi

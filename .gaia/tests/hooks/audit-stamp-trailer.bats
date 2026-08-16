@@ -19,7 +19,11 @@
 #                                               co-dispatched member withholds; stamps once
 #                                               every dispatched member has cleared; a
 #                                               single-required-member diff still stamps (no
-#                                               deadlock); resolver absent falls back unchanged
+#                                               deadlock); resolver absent falls back unchanged;
+#                                               a refusal beside a member's own .ok outranks it
+#                                               and keeps that member pending, a frontend
+#                                               refusal declines with no resolver to read, and a
+#                                               lib without the refusal reader declines
 #   11. UAT-008: stamped trailer's field 2 is the frontend content digest
 #       (64-hex) and field 3 is the real HEAD tree (40-hex), distinctly
 #
@@ -137,6 +141,27 @@ write_marker() {
   fi
   mkdir -p "$(dirname "$path")"
   printf '{"version":"1.2.3","schema":3,"member":"%s","provenance":"earned","digest":"%s","tree":"%s","sha":"%s","audited_at":"2026-01-01T00:00:00Z","sidecar":%s}\n' \
+    "$member" "$digest" "$tree" "$sha" "$sidecar" > "$path"
+}
+
+# The refusal twin of write_marker: a writer-shaped REFUSAL for MEMBER at
+# MEMBER's own content digest, published BESIDE the earned marker rather than
+# replacing it, which is the state a member reaches when it refuses a digest and
+# is then re-run with a plain earned write.
+write_refusal() {
+  local member="$1" digest tree sha path sidecar
+  digest=$(digest_of "$REPO" "$member")
+  tree=$(git -C "$REPO" rev-parse "HEAD^{tree}")
+  sha=$(git -C "$REPO" rev-parse HEAD)
+  if [ "$member" = "code-audit-frontend" ]; then
+    path="$REPO/.gaia/local/audit/${digest}.refused"
+    sidecar="true"
+  else
+    path="$REPO/.gaia/local/audit/${digest}.${member}.refused"
+    sidecar="false"
+  fi
+  mkdir -p "$(dirname "$path")"
+  printf '{"version":"1.2.3","schema":4,"member":"%s","provenance":"refused","digest":"%s","tree":"%s","sha":"%s","audited_at":"2026-01-01T00:00:00Z","sidecar":%s}\n' \
     "$member" "$digest" "$tree" "$sha" "$sidecar" > "$path"
 }
 
@@ -561,6 +586,89 @@ EOF
 
   trailer=$(trailer_on_head)
   [ "$trailer" = "GAIA-Audit: 1.2.3 ${expected_digest} ${before_tree}" ]
+}
+
+@test "member-aware gate: a refusal beside a member's own .ok keeps that member pending" {
+  install_resolver
+  commit_mixed_diff
+
+  git -C "$REPO" remote add origin "$REMOTE"
+  git -C "$REPO" push --quiet --set-upstream origin feature
+
+  before_sha=$(git -C "$REPO" rev-parse HEAD)
+  before_tree=$(git -C "$REPO" rev-parse "HEAD^{tree}")
+
+  # Both members cleared, so the cleared-only test would find nothing pending.
+  write_marker code-audit-frontend
+  write_marker code-audit-maintainer-shell
+  # ...then one of them refuses the SAME digest. A plain earned write never
+  # clears a refusal, so both artifacts stand and refusal precedence decides.
+  write_refusal code-audit-maintainer-shell
+
+  cd "$REPO"
+  AUDIT_TREE_SHA="$before_tree" AUDIT_SELF_HEALED="false" run "$HOOK_ABS"
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "stamp: declined: members pending code-audit-maintainer-shell" ]
+
+  after_sha=$(git -C "$REPO" rev-parse HEAD)
+  [ "$before_sha" = "$after_sha" ]
+  [ -z "$(trailer_on_head)" ]
+}
+
+@test "member-aware gate: a frontend refusal declines even with no resolver to read" {
+  commit_mixed_diff
+
+  before_sha=$(git -C "$REPO" rev-parse HEAD)
+  before_tree=$(git -C "$REPO" rev-parse "HEAD^{tree}")
+
+  write_marker code-audit-frontend
+  write_refusal code-audit-frontend
+
+  cd "$REPO"
+  AUDIT_TREE_SHA="$before_tree" AUDIT_SELF_HEALED="false" run "$HOOK_ABS"
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "stamp: declined: frontend holds a live refusal" ]
+
+  after_sha=$(git -C "$REPO" rev-parse HEAD)
+  [ "$before_sha" = "$after_sha" ]
+  [ -z "$(trailer_on_head)" ]
+}
+
+@test "member-aware gate: a clearance lib without the refusal reader declines rather than stamping" {
+  # A copy of the hook whose sibling lib/ carries the digest and version
+  # readers but NOT audit-clearance.sh: the shape an older or partially-updated
+  # adopter tree presents. The hook resolves its libs from its own on-disk
+  # location, so this is the only way to reach the unavailable-reader arm.
+  OUTSIDE=$(mktemp -d -t audit-stamp-nolib-XXXXXX)
+  real_lib="$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks/lib" && pwd)"
+  mkdir -p "$OUTSIDE/lib"
+  cp "$HOOK_ABS" "$OUTSIDE/audit-stamp-trailer.sh"
+  cp "$real_lib/audit-digest.sh"    "$OUTSIDE/lib/audit-digest.sh"
+  cp "$real_lib/audit-scope.sh"     "$OUTSIDE/lib/audit-scope.sh"
+  cp "$real_lib/audit-machinery.sh" "$OUTSIDE/lib/audit-machinery.sh"
+  cp "$real_lib/gaia-version.sh"    "$OUTSIDE/lib/gaia-version.sh"
+
+  install_resolver
+  commit_mixed_diff
+
+  before_sha=$(git -C "$REPO" rev-parse HEAD)
+  before_tree=$(git -C "$REPO" rev-parse "HEAD^{tree}")
+
+  write_marker code-audit-frontend
+  write_marker code-audit-maintainer-shell
+
+  cd "$REPO"
+  AUDIT_TREE_SHA="$before_tree" AUDIT_SELF_HEALED="false" \
+    run "$OUTSIDE/audit-stamp-trailer.sh"
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "stamp: declined: clearance reader unavailable" ]
+
+  after_sha=$(git -C "$REPO" rev-parse HEAD)
+  [ "$before_sha" = "$after_sha" ]
+  [ -z "$(trailer_on_head)" ]
 }
 
 @test "member-aware gate: resolver absent falls back to caller's own judgment unchanged" {
