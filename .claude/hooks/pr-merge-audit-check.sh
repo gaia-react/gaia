@@ -500,17 +500,48 @@ check_chore_deps_pr() {
 # Whatever the narrower answer drops sits on commits already merged to the
 # default branch, which is where they were already audited.
 pr_base=""
+pr_base_from_record=""
 pr_base_branch() {
   [ -z "$pr_base" ] || return 0
 
   resolve_pr_record
-  pr_base="$pr_record_base"
-
-  if [ -z "$pr_base" ]; then
-    pr_base=$(git symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null \
-      | sed 's@^refs/remotes/origin/@@')
+  # The record's answer counts only when its remote-tracking ref is present. A
+  # bare LOCAL branch of the same name is not evidence about the base branch,
+  # and taking one would invert this whole derivation: a local branch sitting on
+  # this PR's own commits puts the merge base above them, the diff never walks
+  # them, and a fail-closed check reads a PR that touches auditable source as
+  # touching nothing. Unverifiable means fall through to the advertised default,
+  # which is what the contract above promises.
+  if [ -n "$pr_record_base" ] \
+    && git rev-parse --verify --quiet "refs/remotes/origin/${pr_record_base}" >/dev/null 2>&1; then
+    pr_base="$pr_record_base"
+    pr_base_from_record=yes
+    return 0
   fi
+
+  pr_base=$(git symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null \
+    | sed 's@^refs/remotes/origin/@@')
   [ -n "$pr_base" ] || pr_base="main"
+}
+
+# pr_merge_base: print the merge base that scopes this PR's own diff, or nothing
+# when none resolves. Shared by both bypasses below so the two cannot drift.
+pr_merge_base() {
+  pr_base_branch
+
+  if [ -n "$pr_base_from_record" ]; then
+    # Verified above, so the remote-tracking ref is the only thing allowed to
+    # scope the diff. No bare-name arm here: that is precisely where a local
+    # branch would slip in and narrow the answer.
+    git merge-base HEAD "refs/remotes/origin/${pr_base}" 2>/dev/null || true
+    return 0
+  fi
+
+  # The locally-derived default branch. The bare-name arm is the pre-existing
+  # shape and stays, because here the name came from the checkout to begin with.
+  git merge-base HEAD "origin/${pr_base}" 2>/dev/null \
+    || git merge-base HEAD "${pr_base}" 2>/dev/null \
+    || true
 }
 
 # Out-of-scope bypass: accept the merge when every file this PR changes lives
@@ -531,14 +562,11 @@ pr_base_branch() {
 # never reach this bypass, it cannot mask an audit that withheld its marker
 # over unresolved findings, since that PR's diff carries in-scope paths by
 # definition. No dependence on a CI stamp; the one network read is the base
-# branch resolved by pr_base_branch() above, whose failure widens the diff.
+# branch behind pr_merge_base() above, whose failure widens the diff.
 check_out_of_scope_pr() {
   # The merge base scopes the diff to THIS PR's changes, not unrelated drift
   # already on the base branch.
-  pr_base_branch
-  base=$(git merge-base HEAD "origin/${pr_base}" 2>/dev/null \
-    || git merge-base HEAD "${pr_base}" 2>/dev/null \
-    || true)
+  base=$(pr_merge_base)
   [ -n "$base" ] || return 1
 
   # -z, so git's default core.quotePath cannot C-quote a non-ASCII path into a
@@ -580,16 +608,13 @@ check_out_of_scope_pr() {
 # workflow), an absent template, or a single non-matching byte returns 1 and
 # falls through to the normal deny. A malicious PR cannot smuggle code here, an
 # app/test/config path is in scope and unrecognized, so the loop returns 1 on
-# first sight. No CI stamp; the base branch comes from pr_base_branch() above,
+# first sight. No CI stamp; the merge base comes from pr_merge_base() above,
 # on the same terms as the sibling bypass.
 check_self_mod_only_update_pr() {
   audit_wf=".github/workflows/code-review-audit.yml"
   audit_tmpl=".gaia/cli/templates/workflows/code-review-audit.yml.tmpl"
 
-  pr_base_branch
-  base=$(git merge-base HEAD "origin/${pr_base}" 2>/dev/null \
-    || git merge-base HEAD "${pr_base}" 2>/dev/null \
-    || true)
+  base=$(pr_merge_base)
   [ -n "$base" ] || return 1
 
   # -z for the reason the sibling derivation above gives: a C-quoted path is an
