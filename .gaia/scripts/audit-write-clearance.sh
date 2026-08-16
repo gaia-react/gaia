@@ -409,7 +409,6 @@ if [ "$do_supersede" = "true" ]; then
   rm -f "$refused_path" || err "warning: superseded but could not remove '$refused_path'"
 fi
 
-
 # -----------------------------------------------------------------------------
 # Re-run carry-forward ledger (only with --base).
 #

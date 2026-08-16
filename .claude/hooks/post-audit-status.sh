@@ -187,7 +187,8 @@ fi
 post_state=""
 if clearance_acceptable "$marker" "$marker_member" "$marker_digest"; then
   post_state="success"
-elif clearance_refusal_acceptable "$marker" "$marker_member" "$marker_digest"; then
+elif command -v clearance_refusal_acceptable >/dev/null 2>&1 \
+     && clearance_refusal_acceptable "$marker" "$marker_member" "$marker_digest"; then
   post_state="failure"
 else
   emit_decline "marker not a valid clearance"

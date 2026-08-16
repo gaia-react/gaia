@@ -995,7 +995,11 @@ EOF
 @test "a refusal write in CI leaves the status to the workflow's own terminal post" {
   install_status_hook_stub
 
-  run env GITHUB_ACTIONS=true bash "$WRITER" \
+  # -u CI is load-bearing: Actions sets CI=true on every step, so the guard's
+  # CI term alone would satisfy the skip on a runner and this arm could never
+  # fail there, whatever the GITHUB_ACTIONS term did. Each arm isolates the one
+  # variable it is about.
+  run env -u CI GITHUB_ACTIONS=true bash "$WRITER" \
     --root "$ROOT" --member code-audit-frontend --provenance refused
   [ "$status" -eq 0 ]
   [ ! -s "$STATUS_CALLS" ] || return 1
