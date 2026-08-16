@@ -856,8 +856,9 @@ None of the accepted signals is present:
 To unblock:
   1. Spawn the code-audit-frontend agent locally, OR push to the PR branch
      and wait for CI's audit to stamp the GitHub commit status (CI skips
-     when the PR modifies the audit workflow file itself, in that case
-     only the local audit will satisfy the gate).
+     when the audit workflow on this head differs from the copy on the
+     default branch, whether this PR edited it or its base did, in that
+     case only the local audit will satisfy the gate).
   2. Address any Critical/Important findings; commit and push.
   3. Re-spawn the agent on the new HEAD; let it write the marker.
   4. Retry gh pr merge.

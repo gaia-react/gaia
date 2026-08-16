@@ -5,11 +5,13 @@ name: Code Review Audit
 # (a) the PR HEAD already carries a matching `GAIA-Audit:` commit trailer
 # (locally-stamped audit), (b) the un-audited delta (since the last clean
 # audit) contains no audit-relevant files (wiki, instruction files, and
-# other prose-only surfaces are out of scope), or (c) the PR modifies this
-# workflow file itself
+# other prose-only surfaces are out of scope), or (c) this workflow file on
+# the PR head differs from the copy on the repository's default branch
 # (claude-code-action's workflow-validation guardrail would refuse to
-# run, so the audit cannot complete regardless). Adopter-tunable knobs
-# live at .gaia/audit-ci.yml.
+# run, so the audit cannot complete regardless). (c) is reached both by a PR
+# that edits this file and by one on a stale base that never touched it, which
+# is why its skip status names the mismatch rather than blaming the author.
+# Adopter-tunable knobs live at .gaia/audit-ci.yml.
 #
 # Per-author mode (local vs ci): the "Resolve audit decision" step calls the
 # shared resolver (.gaia/scripts/read-audit-ci-config.sh --resolve-author)
@@ -688,27 +690,57 @@ jobs:
           # itself; the survivors accumulate in a second file rather than a
           # shell string, keeping this block free of a literal newline the
           # enclosing block scalar cannot carry.
+          # Both spellings, because neither alone is the set that matters. A
+          # bare `git diff` is worktree-vs-INDEX and `git diff --cached` is
+          # index-vs-HEAD, so a path the agent staged and never committed is
+          # missing from the first while a path staged and then reverted in the
+          # worktree is missing from the second. Their union against HEAD is
+          # exactly "differs from HEAD in the index or the worktree", which is
+          # the set `git add -u` and the commit below can carry to origin.
+          # Duplicates are harmless; the gate sorts -u.
           claude_dirty_z="$(mktemp)"
           preserved_governance_edits="$(mktemp)"
-          git diff --name-only -z -- .claude > "$claude_dirty_z"
+          {
+            git diff --name-only -z HEAD -- .claude
+            git diff --cached --name-only -z -- .claude
+          } > "$claude_dirty_z"
           base_ref="origin/${PR_BASE_REF}"
+          base_resolved=1
           if ! git rev-parse --verify --quiet "${base_ref}^{commit}" >/dev/null 2>&1; then
             # No base to compare against, so every dirty .claude/ path reads as
             # an agent edit and the self-heal refuses. That is the safe
             # direction -- refusing surfaces the run for human review, where the
             # alternative pushes an unreviewed governance-surface edit -- and it
-            # says so rather than failing silently.
+            # says so rather than failing silently. The flag is what makes the
+            # loop below honor that: without it an agent DELETION yields an
+            # empty working-tree blob, the unresolvable base yields an empty
+            # base blob, and the two compare equal, so the path this line just
+            # promised to preserve would be dropped instead.
+            base_resolved=0
             echo "code-review-audit: cannot resolve ${base_ref}; treating every uncommitted .claude/ edit as an agent edit." >&2
           fi
           while IFS= read -r -d '' restored_file; do
-            wt_blob=""
-            if [ -e "$restored_file" ]; then
-              wt_blob="$(git hash-object -- "$restored_file")"
+            if [ "$base_resolved" -eq 0 ]; then
+              printf '%s\n' "$restored_file" >> "$preserved_governance_edits"
+              continue
             fi
+            if [ ! -e "$restored_file" ]; then
+              # Deleted from the working tree. Treated as an agent edit rather
+              # than as the action's restore: the action is documented as
+              # restoring the base branch's COPIES into the tree, and nothing
+              # observed about it removes a path the base lacks. If it turns out
+              # to delete base-absent paths, this arm produces a false refusal
+              # on any PR adding a .claude/ file -- annoying, and still the safe
+              # direction, since the alternative silently pushes a self-heal
+              # that deleted a governance surface. Fix it here, not by widening
+              # the blob compare below, which cannot tell the two apart.
+              printf '%s\n' "$restored_file" >> "$preserved_governance_edits"
+              continue
+            fi
+            wt_blob="$(git hash-object -- "$restored_file")"
             base_blob="$(git rev-parse --quiet --verify "${base_ref}:${restored_file}" 2>/dev/null || true)"
             if [ "$wt_blob" = "$base_blob" ]; then
-              # The action's own restore, including the both-absent case where
-              # the base branch does not carry the file at all. Resets benignly.
+              # The action's own restore. Resets benignly.
               continue
             fi
             printf '%s\n' "$restored_file" >> "$preserved_governance_edits"
@@ -762,14 +794,29 @@ jobs:
           # past the refusal and let a self-heal edit a surface this gate exists
           # to protect. Failure posture is unchanged -- the second call keeps its
           # own `|| true`, and the group already tolerated an empty first half.
-          # The third input is the uncommitted .claude/ evidence captured above,
-          # before the untrusted-PR restore reset removed it from the first
-          # half's view. It is already newline-delimited, so it joins after the
-          # `tr` rather than inside the NUL-delimited group.
+          # The uncommitted half is read against HEAD in both spellings, for the
+          # reason the .claude capture above states: a bare `git diff` sees only
+          # worktree-vs-index, so a path the agent STAGED and never committed is
+          # invisible to it, and invisible to the committed half below too. It
+          # is not invisible to `git add -u` and the commit further down, which
+          # sweep it to origin -- so an agent that stages a refused-surface edit
+          # alongside one ordinary unstaged edit pushes the refused one with the
+          # gate never firing. The union against HEAD is the set the commit can
+          # carry, which is the set this gate has to judge.
+          #
+          # Reading the index here does not resurrect the untrusted-PR-restore
+          # false positive: `git checkout HEAD -- <path>` above clears the index
+          # for those paths as well as the worktree, so a reset path matches
+          # HEAD on both sides and drops out of both spellings.
+          #
+          # The last input is the .claude/ evidence captured before that reset
+          # removed it from view. It is already newline-delimited, so it joins
+          # after the `tr` rather than inside the NUL-delimited group.
           self_heal_paths="$(
             {
               {
-                git diff --name-only -z
+                git diff --name-only -z HEAD
+                git diff --cached --name-only -z
                 git diff --name-only -z "origin/${PR_BRANCH}..HEAD" 2>/dev/null || true
               } | tr '\0' '\n'
               cat "$preserved_governance_edits"

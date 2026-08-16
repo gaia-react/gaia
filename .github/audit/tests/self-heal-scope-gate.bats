@@ -80,6 +80,15 @@ setup() {
   git -C "$SANDBOX" push --quiet origin base-branch
   git -C "$SANDBOX" checkout --quiet pr-branch
 
+  # A governance-surface file this PR ADDS, so the base branch does not carry
+  # it. When the agent deletes one of these, the working-tree blob and the base
+  # blob are both empty, which a bare blob compare reads as the action's own
+  # restore. Pushed, so the committed half of the gate sees nothing either.
+  echo '#!/usr/bin/env bash' > "$SANDBOX/.claude/hooks/pr-added.sh"
+  git -C "$SANDBOX" add .claude/hooks/pr-added.sh
+  git -C "$SANDBOX" commit --quiet -m "PR adds a governance-surface file"
+  git -C "$SANDBOX" push --quiet origin pr-branch
+
   # Stub `git push`: record the invocation and succeed, without a real
   # network call. Every other git subcommand (diff, add, commit, rev-list,
   # rev-parse, remote set-url, config, checkout) reaches the real binary.
@@ -383,6 +392,99 @@ output_has() { grep -qF -- "$1" "$STEP_OUTPUT"; }
   grep -qF 'cannot resolve origin/no-such-base-branch' <<<"$output"
   output_has "refused=true"
   output_has "refused_reason=governance-surface"
+}
+
+@test "an unresolvable base ref refuses a .claude/ DELETION too, as its message promises" {
+  # The arm's own stderr line claims every uncommitted .claude/ edit is treated
+  # as an agent edit. A deletion leaves an empty working-tree blob, and an
+  # unresolvable base yields an empty base blob, so a bare blob compare reads
+  # the two as equal and drops the path the message just promised to keep.
+  local body
+  body="$(extract_step_body 'Commit and push self-heal')"
+  rm -f "$SANDBOX/.claude/settings.json"
+  echo "export const x = 2;" > "$SANDBOX/app/x.ts"
+
+  run run_push_fixes_step "$body" "no-such-base-branch"
+  [ "$status" -eq 0 ]
+  grep -qF '.claude/settings.json' <<<"$output"
+  output_has "refused=true"
+  output_has "refused_reason=governance-surface"
+  [ ! -s "$PUSH_LOG" ]
+}
+
+@test "deleting a .claude/ file the base branch lacks is refused, not read as the restore" {
+  # Both blobs are empty here -- the working tree because the agent deleted the
+  # file, the base because this PR is what added it -- so a bare blob compare
+  # calls them equal and the run pushes the rest of a self-heal that removed a
+  # governance surface. The reset does restore the file, so nothing forbidden
+  # reaches origin; what is lost is the refusal.
+  local body
+  body="$(extract_step_body 'Commit and push self-heal')"
+  rm -f "$SANDBOX/.claude/hooks/pr-added.sh"
+  echo "export const x = 2;" > "$SANDBOX/app/x.ts"
+
+  run run_push_fixes_step "$body"
+  [ "$status" -eq 0 ]
+  grep -qF '.claude/hooks/pr-added.sh' <<<"$output"
+  output_has "refused=true"
+  output_has "refused_reason=governance-surface"
+  [ ! -s "$PUSH_LOG" ]
+}
+
+# -----------------------------------------------------------------------------
+# The gate judges what the commit can carry, which includes the index. A bare
+# `git diff` is worktree-vs-index and the committed half reads origin..HEAD, so
+# a path the agent STAGED and never committed was invisible to both while
+# `git add -u` and the commit swept it to origin regardless.
+# -----------------------------------------------------------------------------
+
+@test "a STAGED refused-surface edit is refused, not swept in by git add -u" {
+  local body
+  body="$(extract_step_body 'Commit and push self-heal')"
+  echo "test('x', () => { /* agent weakened this */ });" > "$SANDBOX/test/x.test.ts"
+  git -C "$SANDBOX" add test/x.test.ts
+  # One ordinary unstaged edit, which is what makes `git add -u` and the commit
+  # run at all and sweep the staged path in with it.
+  echo "export const x = 2;" > "$SANDBOX/app/x.ts"
+
+  run run_push_fixes_step "$body"
+  [ "$status" -eq 0 ]
+  grep -qF 'test/x.test.ts' <<<"$output"
+  output_has "refused=true"
+  output_has "refused_reason=governance-surface"
+  [ ! -s "$PUSH_LOG" ]
+}
+
+@test "a STAGED .claude/ agent edit is refused rather than erased by the reset" {
+  local body
+  body="$(extract_step_body 'Commit and push self-heal')"
+  echo '{"settings":"agent edited this"}' > "$SANDBOX/.claude/settings.json"
+  git -C "$SANDBOX" add .claude/settings.json
+  echo "export const x = 2;" > "$SANDBOX/app/x.ts"
+
+  run run_push_fixes_step "$body"
+  [ "$status" -eq 0 ]
+  grep -qF '.claude/settings.json' <<<"$output"
+  output_has "refused=true"
+  output_has "refused_reason=governance-surface"
+  [ ! -s "$PUSH_LOG" ]
+}
+
+@test "staging the action's own .claude/ restore still resets clean and does not refuse" {
+  # The false-positive guard, carried into the staged state: reading the index
+  # must not resurrect the restore-is-a-revert misread the reset exists to fix.
+  local body
+  body="$(extract_step_body 'Commit and push self-heal')"
+  git -C "$SANDBOX" show base-branch:.claude/settings.json > "$SANDBOX/.claude/settings.json"
+  git -C "$SANDBOX" add .claude/settings.json
+  echo "export const x = 2;" > "$SANDBOX/app/x.ts"
+
+  run run_push_fixes_step "$body"
+  [ "$status" -eq 0 ]
+  output_has "pushed=true"
+  [ -s "$PUSH_LOG" ]
+  grep -qF 'refused=true' "$STEP_OUTPUT" && return 1
+  true
 }
 
 @test "the three code-review-audit.yml copies are byte-identical" {
