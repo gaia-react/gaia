@@ -837,8 +837,23 @@ report=""
 # reviewer reading it decides nothing a script has not already decided. Resolve
 # it once here rather than per member: the predicate is a repo-wide read, and
 # every member's answer to it is the same.
-self_mod_only=0
-check_self_mod_only_update_pr && self_mod_only=1
+#
+# Resolved on first need rather than up front, because the predicate reaches
+# pr_base_branch() and therefore the network, while a run whose every marker is
+# already on disk decides the whole gate from local files. Answering a question
+# that can only matter to an UNCLEARED member would put a `gh` round-trip, with
+# no timeout of its own, in front of a merge this gate would otherwise allow
+# instantly, and a blackholed network turns that into an OS-length stall.
+# Deferring changes no verdict: every call site below reaches it only after
+# that member's own clearance has already come up empty.
+self_mod_only=-1
+self_mod_only_pr() {
+  if [ "$self_mod_only" -eq -1 ]; then
+    self_mod_only=0
+    check_self_mod_only_update_pr && self_mod_only=1
+  fi
+  [ "$self_mod_only" -eq 1 ]
+}
 
 while IFS= read -r m; do
   [ -n "$m" ] || continue
@@ -859,7 +874,7 @@ while IFS= read -r m; do
     fi
     # A live refusal stays absolute (C6): a member that refused this digest is
     # never cleared by the bypass.
-    if [ "$m_refused" -eq 0 ] && [ "$member_cleared" -eq 0 ] && [ "$self_mod_only" -eq 1 ]; then
+    if [ "$m_refused" -eq 0 ] && [ "$member_cleared" -eq 0 ] && self_mod_only_pr; then
       member_cleared=1
     fi
   fi

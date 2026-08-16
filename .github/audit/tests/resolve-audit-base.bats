@@ -369,7 +369,7 @@ set_origin_ref() {
   add_commit b
   set_origin_ref main main
   set_origin_ref release main
-  export GITHUB_BASE_REF=release
+  export GITHUB_ACTIONS=true GITHUB_BASE_REF=release
   run --separate-stderr run_in_sandbox
   [ "$status" -eq 0 ]
   [ "$output" = "origin/release" ]
@@ -379,6 +379,7 @@ set_origin_ref() {
   add_commit a
   add_commit b
   set_origin_ref main main
+  export GITHUB_ACTIONS=true
   unset GITHUB_BASE_REF
   run --separate-stderr run_in_sandbox
   [ "$status" -eq 0 ]
@@ -389,7 +390,24 @@ set_origin_ref() {
   add_commit a
   add_commit b
   set_origin_ref main main
-  export GITHUB_BASE_REF=deleted-branch
+  export GITHUB_ACTIONS=true GITHUB_BASE_REF=deleted-branch
+  run --separate-stderr run_in_sandbox
+  [ "$status" -eq 0 ]
+  [ "$output" = "origin/main" ]
+}
+
+# The base ref is read only where the event sets it. Outside Actions the
+# variable belongs to whoever invoked the script, and this resolver decides how
+# much of the tree a member reviews: a value resolving at or near HEAD would
+# empty the reviewed delta and let a member earn a clearance having read
+# nothing.
+@test "a base ref declared outside Actions is ignored" {
+  add_commit a
+  add_commit b
+  set_origin_ref main main
+  set_origin_ref release main
+  unset GITHUB_ACTIONS
+  export GITHUB_BASE_REF=release
   run --separate-stderr run_in_sandbox
   [ "$status" -eq 0 ]
   [ "$output" = "origin/main" ]

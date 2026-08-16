@@ -130,7 +130,7 @@ set_origin_ref() {
   add_commit b
   set_origin_ref main main
   set_origin_ref release main
-  export GITHUB_BASE_REF=release
+  export GITHUB_ACTIONS=true GITHUB_BASE_REF=release
   run run_in_sandbox
   [ "$status" -eq 0 ]
   [ "$output" = "origin/release" ]
@@ -140,6 +140,7 @@ set_origin_ref() {
   add_commit a
   add_commit b
   set_origin_ref main main
+  export GITHUB_ACTIONS=true
   unset GITHUB_BASE_REF
   run run_in_sandbox
   [ "$status" -eq 0 ]
@@ -150,7 +151,22 @@ set_origin_ref() {
   add_commit a
   add_commit b
   set_origin_ref main main
-  export GITHUB_BASE_REF=deleted-branch
+  export GITHUB_ACTIONS=true GITHUB_BASE_REF=deleted-branch
+  run run_in_sandbox
+  [ "$status" -eq 0 ]
+  [ "$output" = "origin/main" ]
+}
+
+# Read only where the event sets it, the same gate and the same reason as the
+# sibling resolver: outside Actions the variable belongs to the caller, and a
+# value resolving near HEAD would skip work nothing proved green.
+@test "a base ref declared outside Actions is ignored" {
+  add_commit a
+  add_commit b
+  set_origin_ref main main
+  set_origin_ref release main
+  unset GITHUB_ACTIONS
+  export GITHUB_BASE_REF=release
   run run_in_sandbox
   [ "$status" -eq 0 ]
   [ "$output" = "origin/main" ]
