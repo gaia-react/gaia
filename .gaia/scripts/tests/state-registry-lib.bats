@@ -407,6 +407,7 @@ run_in_repo() {
     "cache/gate1-SPEC-042.json:ephemeral"
     "cache/spec-session-SPEC-042.json:ephemeral"
     "cache/audit-SPEC-042:ephemeral"
+    "cache/mutation-scratch/abc123.work.code-audit-frontend:ephemeral"
     "cache/audit-window-SPEC-042.json:ephemeral"
     "cache/wiki-promote/SPEC-042.json:ephemeral"
     "cache/uat-write/SPEC-042.json:ephemeral"
