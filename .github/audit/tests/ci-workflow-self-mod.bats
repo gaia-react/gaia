@@ -154,6 +154,32 @@ cut_stacked_base() {
   output_has "self_modified=true"
 }
 
+@test "a PR on a stale base is detected, pinning the two-dot range" {
+  # The step's comment calls "two-dot, not three" load-bearing, and only this
+  # shape separates them: the default branch moves on AFTER the PR forks, so
+  # merge-base(default, head) is the fork point rather than the default tip.
+  # Two-dot compares against the tip and sees the workflow differ; three-dot
+  # compares against the fork point and sees nothing, which runs an audit
+  # claude-code-action then refuses and reports it complete. Every other
+  # fixture forks from the default tip, where the two ranges agree, so without
+  # this case a `..` -> `...` revert passes the whole suite.
+  local body head
+  body="$(extract_step_body 'Check workflow self-modification')"
+  git -C "$SANDBOX" checkout --quiet -b pr-head
+  echo "export const x = 2;" > "$SANDBOX/app/x.ts"
+  git -C "$SANDBOX" commit --quiet -am "head changes source only"
+  head="$(git -C "$SANDBOX" rev-parse HEAD)"
+  # The default branch advances past the fork point, and the PR never rebases.
+  git -C "$SANDBOX" checkout --quiet main
+  printf '%s\n' "$PR_WORKFLOW" > "$SANDBOX/.github/workflows/code-review-audit.yml"
+  git -C "$SANDBOX" commit --quiet -am "default branch moves on"
+  git -C "$SANDBOX" push --quiet origin main
+
+  run run_self_mod_step "$body" "$head"
+  [ "$status" -eq 0 ]
+  output_has "self_modified=true"
+}
+
 @test "a PR touching only source, on an unstacked base, leaves the audit running" {
   local body head
   body="$(extract_step_body 'Check workflow self-modification')"

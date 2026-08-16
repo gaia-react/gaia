@@ -112,11 +112,11 @@ EOF
 }
 
 # Extract one step's `run:` shell body from the workflow YAML and dedent it.
-# Matches the `- name:` line EXACTLY. Same shape as
-# .github/audit/tests/ci-status-member-gate.bats's own helper; not sourced
-# from there (bats files do not share function definitions across files),
-# but deliberately identical so the two never disagree about what
-# "extract the real step body" means.
+# Matches the `- name:` line EXACTLY. Same shape as the helpers in
+# .github/audit/tests/ci-status-member-gate.bats and
+# .github/audit/tests/ci-workflow-self-mod.bats; not sourced from either (bats
+# files do not share function definitions across files), so the three are kept
+# in agreement about what "extract the real step body" means by hand.
 extract_step_body() {
   local step_name="$1" out="$BATS_TEST_TMPDIR/step.sh"
   awk -v want="      - name: ${step_name}" '
@@ -396,9 +396,9 @@ output_has() { grep -qF -- "$1" "$STEP_OUTPUT"; }
 
 @test "an unresolvable base ref refuses a .claude/ DELETION too, as its message promises" {
   # The arm's own stderr line claims every uncommitted .claude/ edit is treated
-  # as an agent edit. A deletion leaves an empty working-tree blob, and an
-  # unresolvable base yields an empty base blob, so a bare blob compare reads
-  # the two as equal and drops the path the message just promised to keep.
+  # as an agent edit. The missing-from-worktree arm is what keeps that promise
+  # for a deletion; this case pins the promise rather than the mechanism, so it
+  # survives a later refactor of how the loop reaches the same answer.
   local body
   body="$(extract_step_body 'Commit and push self-heal')"
   rm -f "$SANDBOX/.claude/settings.json"
