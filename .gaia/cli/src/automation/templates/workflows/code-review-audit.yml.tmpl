@@ -631,6 +631,8 @@ jobs:
           steps.trailer.outputs.skip == 'false' &&
           steps.config.outputs.push_fixes == 'true' &&
           steps.audit.outcome == 'success'
+        env:
+          PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
         run: |
           set -eu
           # Push gate: any combination of (a) commits the agent made
@@ -657,6 +659,62 @@ jobs:
           # .claude/** in the tree on any PR that changes it, and the self-heal
           # scope gate below then reads that revert as the agent having edited a
           # governance surface and discards the whole self-heal.
+          #
+          # .claude is also the ONLY entry in that list the scope gate's refusal
+          # set matches. Every other entry -- .husky, .mcp.json, .claude.json,
+          # .gitmodules, .ripgreprc, CLAUDE.md, CLAUDE.local.md -- is absent
+          # from AUDIT_SELFHEAL_REFUSE_ERE, so resetting those destroys no gate
+          # evidence. Resetting .claude does: an agent edit under .claude/ that
+          # was never committed would be reverted here and the rest of the
+          # self-heal staged and pushed, when the run should have reached the
+          # refused_reason=governance-surface arm and stood the whole self-heal
+          # down for human review. The committed case is unaffected (the reset
+          # is a no-op once HEAD carries the edit, and the gate's second half
+          # reads origin/$PR_BRANCH..HEAD), but this step's own comment names
+          # leftover uncommitted edits as routine, and the local backstop does
+          # not cover CI -- .claude/hooks/block-selfheal-paths.sh no-ops
+          # whenever the payload carries no code-audit-* agent_type, and CI runs
+          # the auditor as the main session.
+          #
+          # So capture the evidence before the reset takes it. The action's
+          # restore makes a path's working-tree content equal to the BASE
+          # branch's copy; anything else under .claude/ is the agent's own edit.
+          # Compare blob by blob and carry the mismatches into the scope gate's
+          # path set below, so the reset keeps fixing the false positive it was
+          # added for without also erasing the true one.
+          #
+          # NUL-delimited through a file rather than a command substitution,
+          # which strips NULs, so a path git would C-quote is compared as
+          # itself; the survivors accumulate in a second file rather than a
+          # shell string, keeping this block free of a literal newline the
+          # enclosing block scalar cannot carry.
+          claude_dirty_z="$(mktemp)"
+          preserved_governance_edits="$(mktemp)"
+          git diff --name-only -z -- .claude > "$claude_dirty_z"
+          base_ref="origin/${PR_BASE_REF}"
+          if ! git rev-parse --verify --quiet "${base_ref}^{commit}" >/dev/null 2>&1; then
+            # No base to compare against, so every dirty .claude/ path reads as
+            # an agent edit and the self-heal refuses. That is the safe
+            # direction -- refusing surfaces the run for human review, where the
+            # alternative pushes an unreviewed governance-surface edit -- and it
+            # says so rather than failing silently.
+            echo "code-review-audit: cannot resolve ${base_ref}; treating every uncommitted .claude/ edit as an agent edit." >&2
+          fi
+          while IFS= read -r -d '' restored_file; do
+            wt_blob=""
+            if [ -e "$restored_file" ]; then
+              wt_blob="$(git hash-object -- "$restored_file")"
+            fi
+            base_blob="$(git rev-parse --quiet --verify "${base_ref}:${restored_file}" 2>/dev/null || true)"
+            if [ "$wt_blob" = "$base_blob" ]; then
+              # The action's own restore, including the both-absent case where
+              # the base branch does not carry the file at all. Resets benignly.
+              continue
+            fi
+            printf '%s\n' "$restored_file" >> "$preserved_governance_edits"
+          done < "$claude_dirty_z"
+          rm -f "$claude_dirty_z"
+
           for restored_path in \
             .claude .husky .mcp.json .claude.json .gitmodules .ripgreprc \
             CLAUDE.md CLAUDE.local.md; do
@@ -704,12 +762,20 @@ jobs:
           # past the refusal and let a self-heal edit a surface this gate exists
           # to protect. Failure posture is unchanged -- the second call keeps its
           # own `|| true`, and the group already tolerated an empty first half.
+          # The third input is the uncommitted .claude/ evidence captured above,
+          # before the untrusted-PR restore reset removed it from the first
+          # half's view. It is already newline-delimited, so it joins after the
+          # `tr` rather than inside the NUL-delimited group.
           self_heal_paths="$(
             {
-              git diff --name-only -z
-              git diff --name-only -z "origin/${PR_BRANCH}..HEAD" 2>/dev/null || true
-            } | tr '\0' '\n' | sort -u
+              {
+                git diff --name-only -z
+                git diff --name-only -z "origin/${PR_BRANCH}..HEAD" 2>/dev/null || true
+              } | tr '\0' '\n'
+              cat "$preserved_governance_edits"
+            } | sort -u
           )"
+          rm -f "$preserved_governance_edits"
           if printf '%s\n' "$self_heal_paths" \
               | grep -qE "$AUDIT_SELFHEAL_REFUSE_ERE"; then
             echo "code-review-audit: self-heal touched a refused surface (tests, the CI pipeline, .gaia/ gate machinery, instruction/convention surfaces, or root build config) -- refusing." >&2

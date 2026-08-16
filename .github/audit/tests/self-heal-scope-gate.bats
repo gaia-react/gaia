@@ -60,11 +60,25 @@ setup() {
   echo "name: tests" > "$SANDBOX/.github/workflows/tests.yml"
   echo "echo pending" > "$SANDBOX/.github/audit/gate-pending-members.sh"
   echo '{"name":"pkg"}' > "$SANDBOX/package.json"
+  # A governance-surface file the PR itself changes, so claude-code-action's
+  # untrusted-PR restore is observable at all: an identical copy on both
+  # branches restores to a clean tree and exercises nothing.
+  echo '{"settings":"pr-branch copy"}' > "$SANDBOX/.claude/settings.json"
   git -C "$SANDBOX" add -A
   git -C "$SANDBOX" commit --quiet -m "init"
 
   git -C "$SANDBOX" remote add origin "$BARE"
   git -C "$SANDBOX" push --quiet origin pr-branch
+
+  # The base branch this PR merges into. The action restores .claude/** from
+  # origin/<base ref>, and the step compares against it to tell that restore
+  # apart from an agent's own edit, so the ref has to exist and has to carry a
+  # different copy.
+  git -C "$SANDBOX" checkout --quiet -b base-branch
+  echo '{"settings":"base-branch copy"}' > "$SANDBOX/.claude/settings.json"
+  git -C "$SANDBOX" commit --quiet -am "base branch settings"
+  git -C "$SANDBOX" push --quiet origin base-branch
+  git -C "$SANDBOX" checkout --quiet pr-branch
 
   # Stub `git push`: record the invocation and succeed, without a real
   # network call. Every other git subcommand (diff, add, commit, rev-list,
@@ -108,16 +122,18 @@ extract_step_body() {
 }
 
 # Run the extracted "Commit and push self-heal" step body in the sandbox
-# with the job-level env it reads (GH_TOKEN, PR_BRANCH, GITHUB_REPOSITORY,
-# all job-level per code-review-audit.yml's `env:` block) plus a real
+# with the env it reads (GH_TOKEN, PR_BRANCH, GITHUB_REPOSITORY job-level per
+# code-review-audit.yml's `env:` block, PR_BASE_REF step-level) plus a real
 # $GITHUB_OUTPUT. GH_TOKEN below is a placeholder value only ("x"), never a
 # real secret; it is not the line's first assignment so the repo's own
 # secrets-write guard reads past PR_BRANCH first and never flags it.
+# $2 overrides the base ref, for the case where it does not resolve.
 run_push_fixes_step() {
-  local body="$1"
+  local body="$1" base_ref="${2:-base-branch}"
   ( cd "$SANDBOX" \
     && PATH="$GIT_STUB_BIN:$PATH" \
        PR_BRANCH="pr-branch" GH_TOKEN=x \
+       PR_BASE_REF="$base_ref" \
        GITHUB_REPOSITORY="owner/repo" \
        GITHUB_OUTPUT="$STEP_OUTPUT" \
        bash "$body" )
@@ -294,6 +310,79 @@ output_has() { grep -qF -- "$1" "$STEP_OUTPUT"; }
   # trailing class admits the `;` that closes the list, so reordering the
   # entries and leaving .claude last does not red a loop that still resets it.
   printf '%s\n' "$list" | grep -qE '(^|[[:space:]])\.claude([[:space:];]|$)'
+}
+
+# -----------------------------------------------------------------------------
+# The reset above must not erase the evidence the gate reads. .claude is the
+# only entry in the reset list the refusal set matches, so an uncommitted agent
+# edit under .claude/ would otherwise be reverted and the rest of the self-heal
+# staged and pushed, when the run owes a governance-surface refusal.
+# -----------------------------------------------------------------------------
+
+@test "an uncommitted .claude/ agent edit is refused, not silently reverted by the restore reset" {
+  local body
+  body="$(extract_step_body 'Commit and push self-heal')"
+  # Neither HEAD's copy nor the base branch's: the agent's own edit.
+  echo '{"settings":"agent edited this"}' > "$SANDBOX/.claude/settings.json"
+  echo "export const x = 2;" > "$SANDBOX/app/x.ts"
+
+  run run_push_fixes_step "$body"
+  [ "$status" -eq 0 ]
+  grep -qF '.claude/settings.json' <<<"$output"
+  output_has "refused=true"
+  output_has "refused_reason=governance-surface"
+  # Refused BEFORE commit/push: the app/ half never reaches origin either.
+  [ ! -s "$PUSH_LOG" ]
+  git -C "$SANDBOX" diff --cached --quiet
+}
+
+@test "the action's own .claude/ restore still resets clean and does not refuse" {
+  # The false positive the reset was added for. claude-code-action replaces
+  # .claude/** with the base branch's copies, which on a PR that legitimately
+  # changes them looks exactly like a revert; reading that as an agent edit
+  # discards every self-heal on any PR touching .claude/** alongside source.
+  local body
+  body="$(extract_step_body 'Commit and push self-heal')"
+  git -C "$SANDBOX" show base-branch:.claude/settings.json > "$SANDBOX/.claude/settings.json"
+  echo "export const x = 2;" > "$SANDBOX/app/x.ts"
+
+  run run_push_fixes_step "$body"
+  [ "$status" -eq 0 ]
+  output_has "pushed=true"
+  [ -s "$PUSH_LOG" ]
+  # The restore was reset away rather than committed.
+  git -C "$SANDBOX" diff --quiet -- .claude/settings.json
+  grep -qF 'refused=true' "$STEP_OUTPUT" && return 1
+  true
+}
+
+@test "a committed .claude/ edit is still refused through the origin..HEAD half" {
+  local body
+  body="$(extract_step_body 'Commit and push self-heal')"
+  echo '{"settings":"agent edited this"}' > "$SANDBOX/.claude/settings.json"
+  git -C "$SANDBOX" commit --quiet -am "agent commits a governance-surface edit"
+
+  run run_push_fixes_step "$body"
+  [ "$status" -eq 0 ]
+  grep -qF '.claude/settings.json' <<<"$output"
+  output_has "refused=true"
+  output_has "refused_reason=governance-surface"
+  [ ! -s "$PUSH_LOG" ]
+}
+
+@test "an unresolvable base ref refuses the uncommitted .claude/ edit and says why" {
+  # Nothing to compare against, so the safe direction is to treat every dirty
+  # .claude/ path as an agent edit: refusing surfaces the run for human review,
+  # where the alternative pushes an unreviewed governance-surface edit.
+  local body
+  body="$(extract_step_body 'Commit and push self-heal')"
+  git -C "$SANDBOX" show base-branch:.claude/settings.json > "$SANDBOX/.claude/settings.json"
+
+  run run_push_fixes_step "$body" "no-such-base-branch"
+  [ "$status" -eq 0 ]
+  grep -qF 'cannot resolve origin/no-such-base-branch' <<<"$output"
+  output_has "refused=true"
+  output_has "refused_reason=governance-surface"
 }
 
 @test "the three code-review-audit.yml copies are byte-identical" {
