@@ -127,7 +127,27 @@ run_statusline_with_cache() {
 @test "statusline renders the unclassified segment when hardenUnclassifiedCount > 0" {
   run_statusline_with_cache 0 3
   [ "$status" -eq 0 ]
-  grep -qF -- "Run /gaia-harden (3 unclassified recurring)" <<<"$output"
+  grep -qF -- "Run /gaia-harden (3 unclassified)" <<<"$output"
+}
+
+@test "statusline renders the candidate segment alone, singular noun intact, when only hardenCandidateCount > 0" {
+  run_statusline_with_cache 1 0
+  [ "$status" -eq 0 ]
+  grep -qF -- "Run /gaia-harden (1 recurring pattern)" <<<"$output"
+  grep -qF -- "unclassified" <<<"$output" && return 1
+  return 0
+}
+
+# Both counts non-zero is the case the merged segment introduces: the two
+# reasons stack into one parameter rather than into a second segment naming
+# the same command.
+@test "statusline folds both counts into one harden segment when both are non-zero" {
+  run_statusline_with_cache 2 3
+  [ "$status" -eq 0 ]
+  grep -qF -- "Run /gaia-harden (2 recurring patterns, 3 unclassified)" <<<"$output"
+  # The statusline is one line, so `grep -c` would count that line once
+  # whether it holds one segment or two. Count the occurrences themselves.
+  [ "$(grep -oF -- "Run /gaia-harden" <<<"$output" | wc -l | tr -d ' ')" -eq 1 ]
 }
 
 @test "statusline renders no harden segment when both counts are 0" {
@@ -173,7 +193,7 @@ run_statusline_with_cache() {
   json=$(jq -n --arg d "$MAIN" '{workspace: {current_dir: $d}, cwd: $d, model: {display_name: "Test"}, context_window: {used_percentage: 10}}')
   run env HOME="$TMP_HOME" bash -c "printf '%s' '$json' | bash '$MAIN/.gaia/statusline/gaia-statusline.sh'"
   [ "$status" -eq 0 ]
-  grep -qF -- "unclassified recurring" <<<"$output" && return 1
+  grep -qF -- "unclassified" <<<"$output" && return 1
   true
 }
 
