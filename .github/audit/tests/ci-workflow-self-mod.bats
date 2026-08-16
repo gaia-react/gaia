@@ -56,10 +56,11 @@ setup() {
 }
 
 # Extract one step's `run:` shell body from the workflow YAML and dedent it.
-# Matches the `- name:` line EXACTLY. Deliberately identical to the helper in
-# .github/audit/tests/self-heal-scope-gate.bats (bats files do not share
-# function definitions across files), so the two never disagree about what
-# "extract the real step body" means.
+# Matches the `- name:` line EXACTLY. Same shape as the helpers in
+# .github/audit/tests/self-heal-scope-gate.bats and
+# .github/audit/tests/ci-status-member-gate.bats; not sourced from either (bats
+# files do not share function definitions across files), so the three are kept
+# in agreement about what "extract the real step body" means by hand.
 extract_step_body() {
   local step_name="$1" out="$BATS_TEST_TMPDIR/step.sh"
   awk -v want="      - name: ${step_name}" '
