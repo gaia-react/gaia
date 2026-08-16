@@ -5,11 +5,13 @@ name: Code Review Audit
 # (a) the PR HEAD already carries a matching `GAIA-Audit:` commit trailer
 # (locally-stamped audit), (b) the un-audited delta (since the last clean
 # audit) contains no audit-relevant files (wiki, instruction files, and
-# other prose-only surfaces are out of scope), or (c) the PR modifies this
-# workflow file itself
+# other prose-only surfaces are out of scope), or (c) this workflow file on
+# the PR head differs from the copy on the repository's default branch
 # (claude-code-action's workflow-validation guardrail would refuse to
-# run, so the audit cannot complete regardless). Adopter-tunable knobs
-# live at .gaia/audit-ci.yml.
+# run, so the audit cannot complete regardless). (c) is reached both by a PR
+# that edits this file and by one on a stale base that never touched it, which
+# is why its skip status names the mismatch rather than blaming the author.
+# Adopter-tunable knobs live at .gaia/audit-ci.yml.
 #
 # Per-author mode (local vs ci): the "Resolve audit decision" step calls the
 # shared resolver (.gaia/scripts/read-audit-ci-config.sh --resolve-author)
@@ -198,22 +200,50 @@ jobs:
           steps.gate.outputs.gated == 'false' &&
           steps.source-changes.outputs.has_source == 'true'
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -eu
           # claude-code-action enforces a workflow-validation guardrail:
           # it refuses to run when the workflow file on the PR branch
-          # differs from the version on main (security: prevents secret
-          # exfiltration via PR-modified workflows). When this PR
-          # touches the workflow itself, the audit cannot run, so skip
-          # cleanly and surface a truthful comment instead of letting
-          # the abort path post a misleading message.
+          # differs from the version on the repository's DEFAULT branch
+          # (security: prevents secret exfiltration via PR-modified
+          # workflows). The refusal is a server-side token-exchange
+          # rejection carrying error_code
+          # workflow_not_found_on_default_branch. When this PR's copy of the
+          # workflow differs from that one, the audit cannot run, so skip
+          # cleanly and surface a truthful comment instead of letting the
+          # abort path post a misleading message.
+          #
+          # The comparison is against the DEFAULT branch, not this PR's own
+          # base ref, because that is the ref the guardrail validates. The
+          # two disagree on any stacked PR, in both directions: a PR whose
+          # base and head share a workflow that differs from the default
+          # branch reads as unmodified, runs, and posts "no fixes needed"
+          # for an audit the action silently refused; a PR whose base
+          # modified the workflow and whose head matches the default branch
+          # reads as modified and is skipped for an edit its author never
+          # made.
+          #
+          # Two-dot, not three: the question is whether the head's workflow
+          # bytes match the default branch's, not who changed them, so a
+          # merge-base comparison would answer a different question.
+          #
           # -z for the same reason as the scope gate above. The path this one
           # matches is pure ASCII and git would never quote it, so this is
           # uniformity rather than a live defect; the class is cheaper to hold
           # everywhere than to re-argue per call site.
-          changed=$(set -o pipefail; git diff --name-only -z "${BASE_SHA}..${HEAD_SHA}" | tr '\0' '\n')
+          default_ref="origin/${DEFAULT_BRANCH}"
+          if ! git rev-parse --verify --quiet "${default_ref}^{commit}" >/dev/null 2>&1; then
+            # Fail loudly rather than guess. Either answer would be a lie: a
+            # false here runs an audit the action may refuse and reports it as
+            # complete, and a true skips the audit citing an edit nobody can
+            # confirm. The checkout fetches every branch (fetch-depth: 0), so
+            # this fires only on a genuinely broken checkout.
+            echo "code-review-audit: cannot resolve ${default_ref}; the workflow-validation guardrail's comparison ref is unavailable." >&2
+            exit 1
+          fi
+          changed=$(set -o pipefail; git diff --name-only -z "${default_ref}..${HEAD_SHA}" | tr '\0' '\n')
           if printf '%s\n' "$changed" | grep -qE '^\.github/workflows/code-review-audit\.yml$'; then
             echo "self_modified=true" >> "$GITHUB_OUTPUT"
           else
@@ -603,6 +633,8 @@ jobs:
           steps.trailer.outputs.skip == 'false' &&
           steps.config.outputs.push_fixes == 'true' &&
           steps.audit.outcome == 'success'
+        env:
+          PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
         run: |
           set -eu
           # Push gate: any combination of (a) commits the agent made
@@ -629,6 +661,87 @@ jobs:
           # .claude/** in the tree on any PR that changes it, and the self-heal
           # scope gate below then reads that revert as the agent having edited a
           # governance surface and discards the whole self-heal.
+          #
+          # .claude is also the ONLY entry in that list the scope gate's refusal
+          # set matches. Every other entry -- .husky, .mcp.json, .claude.json,
+          # .gitmodules, .ripgreprc, CLAUDE.md, CLAUDE.local.md -- is absent
+          # from AUDIT_SELFHEAL_REFUSE_ERE, so resetting those destroys no gate
+          # evidence. Resetting .claude does: an agent edit under .claude/ that
+          # was never committed would be reverted here and the rest of the
+          # self-heal staged and pushed, when the run should have reached the
+          # refused_reason=governance-surface arm and stood the whole self-heal
+          # down for human review. The committed case is unaffected (the reset
+          # is a no-op once HEAD carries the edit, and the gate's second half
+          # reads origin/$PR_BRANCH..HEAD), but this step's own comment names
+          # leftover uncommitted edits as routine, and the local backstop does
+          # not cover CI -- .claude/hooks/block-selfheal-paths.sh no-ops
+          # whenever the payload carries no code-audit-* agent_type, and CI runs
+          # the auditor as the main session.
+          #
+          # So capture the evidence before the reset takes it. The action's
+          # restore makes a path's working-tree content equal to the BASE
+          # branch's copy; anything else under .claude/ is the agent's own edit.
+          # Compare blob by blob and carry the mismatches into the scope gate's
+          # path set below, so the reset keeps fixing the false positive it was
+          # added for without also erasing the true one.
+          #
+          # NUL-delimited through a file rather than a command substitution,
+          # which strips NULs, so a path git would C-quote is compared as
+          # itself; the survivors accumulate in a second file rather than a
+          # shell string, keeping this block free of a literal newline the
+          # enclosing block scalar cannot carry.
+          # Two spellings of "dirty". `git diff HEAD` is worktree-vs-HEAD, so it
+          # misses a path staged and then reverted in the worktree; `git diff
+          # --cached` is index-vs-HEAD, so it misses every unstaged edit. Their
+          # union is "differs from HEAD in the index or the worktree", which is
+          # what `git add -u` and the commit below can carry to origin.
+          # Duplicates are harmless; the gate sorts -u. The `--cached` half is
+          # fail-closed redundancy rather than a live gap: a staged-then-reverted
+          # path is unstaged again by `git add -u` and never reaches the commit,
+          # so no test can red on its removal alone.
+          claude_dirty_z="$(mktemp)"
+          preserved_governance_edits="$(mktemp)"
+          {
+            git diff --name-only -z HEAD -- .claude
+            git diff --cached --name-only -z -- .claude
+          } > "$claude_dirty_z"
+          base_ref="origin/${PR_BASE_REF}"
+          if ! git rev-parse --verify --quiet "${base_ref}^{commit}" >/dev/null 2>&1; then
+            # No base to compare against, so every dirty .claude/ path reads as
+            # an agent edit and the self-heal refuses. That is the safe
+            # direction -- refusing surfaces the run for human review, where the
+            # alternative pushes an unreviewed governance-surface edit -- and it
+            # says so rather than failing silently. The loop honors that with no
+            # flag of its own: a deletion takes the missing-from-worktree arm
+            # below, and for anything still present `git hash-object` never
+            # prints the empty string the absent base blob resolves to, so the
+            # compare cannot read the two as equal.
+            echo "code-review-audit: cannot resolve ${base_ref}; treating every uncommitted .claude/ edit as an agent edit." >&2
+          fi
+          while IFS= read -r -d '' restored_file; do
+            if [ ! -e "$restored_file" ]; then
+              # Deleted from the working tree. Treated as an agent edit rather
+              # than as the action's restore: the action is documented as
+              # restoring the base branch's COPIES into the tree, and nothing
+              # observed about it removes a path the base lacks. If it turns out
+              # to delete base-absent paths, this arm produces a false refusal
+              # on any PR adding a .claude/ file -- annoying, and still the safe
+              # direction, since the alternative silently pushes a self-heal
+              # that deleted a governance surface. Fix it here, not by widening
+              # the blob compare below, which cannot tell the two apart.
+              printf '%s\n' "$restored_file" >> "$preserved_governance_edits"
+              continue
+            fi
+            wt_blob="$(git hash-object -- "$restored_file")"
+            base_blob="$(git rev-parse --quiet --verify "${base_ref}:${restored_file}" 2>/dev/null || true)"
+            if [ "$wt_blob" = "$base_blob" ]; then
+              # The action's own restore. Resets benignly.
+              continue
+            fi
+            printf '%s\n' "$restored_file" >> "$preserved_governance_edits"
+          done < "$claude_dirty_z"
+          rm -f "$claude_dirty_z"
+
           for restored_path in \
             .claude .husky .mcp.json .claude.json .gitmodules .ripgreprc \
             CLAUDE.md CLAUDE.local.md; do
@@ -676,12 +789,35 @@ jobs:
           # past the refusal and let a self-heal edit a surface this gate exists
           # to protect. Failure posture is unchanged -- the second call keeps its
           # own `|| true`, and the group already tolerated an empty first half.
+          # The uncommitted half is read in both spellings, for the reason the
+          # .claude capture above states. The pre-fix single `git diff` was
+          # worktree-vs-index, so a path the agent STAGED and never committed
+          # was invisible to it, and invisible to the committed half below too.
+          # It was not invisible to `git add -u` and the commit further down,
+          # which sweep it to origin -- so an agent that staged a refused-surface
+          # edit alongside one ordinary unstaged edit pushed the refused one with
+          # the gate never firing. The union is the set the commit can carry,
+          # which is the set this gate has to judge.
+          #
+          # Reading the index here does not resurrect the untrusted-PR-restore
+          # false positive: `git checkout HEAD -- <path>` above clears the index
+          # for those paths as well as the worktree, so a reset path matches
+          # HEAD on both sides and drops out of both spellings.
+          #
+          # The last input is the .claude/ evidence captured before that reset
+          # removed it from view. It is already newline-delimited, so it joins
+          # after the `tr` rather than inside the NUL-delimited group.
           self_heal_paths="$(
             {
-              git diff --name-only -z
-              git diff --name-only -z "origin/${PR_BRANCH}..HEAD" 2>/dev/null || true
-            } | tr '\0' '\n' | sort -u
+              {
+                git diff --name-only -z HEAD
+                git diff --cached --name-only -z
+                git diff --name-only -z "origin/${PR_BRANCH}..HEAD" 2>/dev/null || true
+              } | tr '\0' '\n'
+              cat "$preserved_governance_edits"
+            } | sort -u
           )"
+          rm -f "$preserved_governance_edits"
           if printf '%s\n' "$self_heal_paths" \
               | grep -qE "$AUDIT_SELFHEAL_REFUSE_ERE"; then
             echo "code-review-audit: self-heal touched a refused surface (tests, the CI pipeline, .gaia/ gate machinery, instruction/convention surfaces, or root build config) -- refusing." >&2
@@ -1364,10 +1500,17 @@ jobs:
           steps.gate.outputs.gated == 'false' &&
           steps.source-changes.outputs.has_source == 'true' &&
           steps.workflow-self-mod.outputs.self_modified == 'true'
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           set -eu
+          # Names the condition the check actually tests -- this PR's copy of
+          # the workflow differs from the default branch's -- rather than
+          # asserting the PR modified it. A PR on a stale base trips this
+          # without touching the workflow, and "you modified it" points such an
+          # author at an edit they never made instead of at a rebase.
           bash .github/audit/cra-status-upsert.sh "$PR_NUMBER" \
-            "code-review-audit skipped: PR modifies the audit workflow itself; claude-code-action's workflow-validation guardrail would refuse to run"
+            "code-review-audit skipped: this PR's copy of the audit workflow differs from ${DEFAULT_BRANCH}; claude-code-action's workflow-validation guardrail would refuse to run. If this PR does not change the workflow, rebase onto ${DEFAULT_BRANCH}."
 
       - name: Status - local-mode stand-down
         # Green terminal step for the local-mode stand-down path. The JOB
