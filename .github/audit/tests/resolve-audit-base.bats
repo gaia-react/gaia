@@ -346,6 +346,55 @@ EOF
   [ "$output" = "main" ]
 }
 
+# -----------------------------------------------------------------------------
+# Which ref the full-scope fallback names. A pull request stacked on a branch
+# other than the default one must fall back to ITS OWN base, not to the
+# repository default: falling back to the default hands the audit the base
+# branch's entire divergence as if this pull request had introduced it, and
+# findings raised against that history are indistinguishable, in the member's
+# output, from findings against the pull request's own code
+# (gaia-react/gaia#1057).
+#
+# `git init` leaves the sandbox with no remote at all, which is why every other
+# test here sees the bare local `main`. These write remote-tracking refs by
+# hand so an `origin/<ref>` can resolve.
+# -----------------------------------------------------------------------------
+
+set_origin_ref() {
+  git -C "$SANDBOX" update-ref "refs/remotes/origin/$1" "$(git -C "$SANDBOX" rev-parse "$2")"
+}
+
+@test "the pull request's own base ref wins over the repository default" {
+  add_commit a
+  add_commit b
+  set_origin_ref main main
+  set_origin_ref release main
+  export GITHUB_BASE_REF=release
+  run --separate-stderr run_in_sandbox
+  [ "$status" -eq 0 ]
+  [ "$output" = "origin/release" ]
+}
+
+@test "no base ref declared → the repository default" {
+  add_commit a
+  add_commit b
+  set_origin_ref main main
+  unset GITHUB_BASE_REF
+  run --separate-stderr run_in_sandbox
+  [ "$status" -eq 0 ]
+  [ "$output" = "origin/main" ]
+}
+
+@test "a base ref naming no remote branch → the repository default" {
+  add_commit a
+  add_commit b
+  set_origin_ref main main
+  export GITHUB_BASE_REF=deleted-branch
+  run --separate-stderr run_in_sandbox
+  [ "$status" -eq 0 ]
+  [ "$output" = "origin/main" ]
+}
+
 @test "trailer on parent with matching version → parent SHA" {
   add_commit a
   amend_head_with_trailer "GAIA-Audit: 1.2.3 ${DIGEST} $(git -C "$SANDBOX" rev-parse 'HEAD^{tree}')"

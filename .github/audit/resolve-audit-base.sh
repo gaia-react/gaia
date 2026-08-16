@@ -43,8 +43,11 @@
 # Output (stdout), argument-less form
 #   Exactly ONE line, suitable for a `base...HEAD` diff:
 #     <40-hex-sha>: resolved incremental base (an audited PR ancestor)
-#     origin/main: fallback: review the full PR diff
-#     (or origin/<base-ref> / main when origin/main is unavailable)
+#     origin/<base-ref>: fallback: review the full PR diff, scoped to the
+#       branch the PR merges into (GITHUB_BASE_REF, which Actions sets on
+#       every pull_request event and a local run may export)
+#     origin/main: the same fallback when no base ref is declared
+#     (or main when neither remote-tracking ref resolves)
 #
 # Output (stdout), --member form
 #   Exactly FOUR newline-terminated lines:
@@ -280,13 +283,26 @@ fi
 # -----------------------------------------------------------------------------
 
 resolve_main_ref() {
-  if git -C "$repo_root" rev-parse --verify --quiet origin/main >/dev/null 2>&1; then
-    printf 'origin/main'
-    return 0
-  fi
+  # The declared base ref comes first because it names the branch THIS pull
+  # request merges into, which the repository default does not whenever the
+  # pull request is stacked on another branch. Preferring the default there
+  # hands every consumer the base branch's entire divergence as if this pull
+  # request had introduced it, and a finding raised against that history is
+  # indistinguishable, in a member's output, from one against the pull
+  # request's own code (gaia-react/gaia#1057).
+  #
+  # Actions sets GITHUB_BASE_REF on every `pull_request` event, so CI needs no
+  # further signal; a local run declares its base by exporting it. No `gh pr
+  # view` fallback: this resolver also runs from hooks and agent bootstraps
+  # where gh may be absent or unauthenticated, and a base that resolves only
+  # sometimes is worse than one that is always the repository default.
   if [ -n "${GITHUB_BASE_REF:-}" ] \
     && git -C "$repo_root" rev-parse --verify --quiet "origin/${GITHUB_BASE_REF}" >/dev/null 2>&1; then
     printf 'origin/%s' "$GITHUB_BASE_REF"
+    return 0
+  fi
+  if git -C "$repo_root" rev-parse --verify --quiet origin/main >/dev/null 2>&1; then
+    printf 'origin/main'
     return 0
   fi
   if git -C "$repo_root" rev-parse --verify --quiet main >/dev/null 2>&1; then

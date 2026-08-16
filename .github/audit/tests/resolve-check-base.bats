@@ -112,6 +112,51 @@ EOF
 }
 
 # -----------------------------------------------------------------------------
+# 1b. Which ref the full-scope fallback names. This helper mirrors
+#     resolve-audit-base.sh's fallback contract, so a pull request stacked on a
+#     branch other than the default one falls back to ITS OWN base here too:
+#     falling back to the default would re-run the check over the base branch's
+#     whole divergence (gaia-react/gaia#1057). The sandbox has no remote, which
+#     is why every other test sees the bare local `main`; these write
+#     remote-tracking refs by hand so an `origin/<ref>` can resolve.
+# -----------------------------------------------------------------------------
+
+set_origin_ref() {
+  git -C "$SANDBOX" update-ref "refs/remotes/origin/$1" "$(git -C "$SANDBOX" rev-parse "$2")"
+}
+
+@test "the pull request's own base ref wins over the repository default" {
+  add_commit a
+  add_commit b
+  set_origin_ref main main
+  set_origin_ref release main
+  export GITHUB_BASE_REF=release
+  run run_in_sandbox
+  [ "$status" -eq 0 ]
+  [ "$output" = "origin/release" ]
+}
+
+@test "no base ref declared → the repository default" {
+  add_commit a
+  add_commit b
+  set_origin_ref main main
+  unset GITHUB_BASE_REF
+  run run_in_sandbox
+  [ "$status" -eq 0 ]
+  [ "$output" = "origin/main" ]
+}
+
+@test "a base ref naming no remote branch → the repository default" {
+  add_commit a
+  add_commit b
+  set_origin_ref main main
+  export GITHUB_BASE_REF=deleted-branch
+  run run_in_sandbox
+  [ "$status" -eq 0 ]
+  [ "$output" = "origin/main" ]
+}
+
+# -----------------------------------------------------------------------------
 # 2. Green check on the parent → that parent SHA. (A skipped-but-green run is
 #    indistinguishable here, its job check-run is also conclusion=success.)
 # -----------------------------------------------------------------------------

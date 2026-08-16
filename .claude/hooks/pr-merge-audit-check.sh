@@ -451,6 +451,39 @@ check_chore_deps_pr() {
   [ "$(bash "$tree_root/.gaia/scripts/chore-deps-skip.sh" "$pr_title")" = "true" ]
 }
 
+# pr_base_branch: set $pr_base to the branch this PR merges into. Memoized on
+# $pr_base, so the two bypass checks below share one resolution per run.
+#
+# Both of those checks scope their diff to a merge base, and the branch that
+# merge base is taken against decides what "this PR changes" means. The
+# remote's advertised default is that branch only when the PR targets it: a PR
+# stacked on another branch merges into THAT branch, and diffing against the
+# default hands the check the base branch's own history instead, denying a
+# bypass the PR had earned (gaia-react/gaia#1057).
+#
+# The answer comes from the pull request record, never from the environment. An
+# exported base-ref variable would let a caller shrink a fail-closed check's
+# diff until every remaining path looked out of scope; a PR's base ref is the
+# branch it actually merges into, so scoping to it concedes nothing that
+# merging the PR would not already concede. Any failure (no gh, no auth, no PR
+# for this branch, network error) falls back to the advertised default, which
+# is the wider diff and therefore the safe direction to fail in.
+pr_base=""
+pr_base_branch() {
+  [ -z "$pr_base" ] || return 0
+
+  if command -v gh >/dev/null 2>&1; then
+    pr_base=$(gh pr view --json baseRefName --jq .baseRefName 2>/dev/null || true)
+  fi
+  [ "$pr_base" = "null" ] && pr_base=""
+
+  if [ -z "$pr_base" ]; then
+    pr_base=$(git symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null \
+      | sed 's@^refs/remotes/origin/@@')
+  fi
+  [ -n "$pr_base" ] || pr_base="main"
+}
+
 # Out-of-scope bypass: accept the merge when every file this PR changes lives
 # on a surface outside audit scope. The agent has no rules that apply to wiki,
 # instruction files, .gaia metadata, or prose, so there is nothing to audit and
@@ -468,17 +501,14 @@ check_chore_deps_pr() {
 # through to the normal deny. A PR that touches auditable source therefore can
 # never reach this bypass, it cannot mask an audit that withheld its marker
 # over unresolved findings, since that PR's diff carries in-scope paths by
-# definition. Pure local git: no gh, no network, no dependence on a CI stamp.
+# definition. No dependence on a CI stamp; the one network read is the base
+# branch resolved by pr_base_branch() above, whose failure widens the diff.
 check_out_of_scope_pr() {
-  # Resolve the PR base, the default branch this work forks from. Prefer the
-  # remote's advertised default; fall back to main. The merge base scopes the
-  # diff to THIS PR's changes, not unrelated drift already on the base branch.
-  default_branch=$(git symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null \
-    | sed 's@^refs/remotes/origin/@@')
-  [ -n "$default_branch" ] || default_branch="main"
-
-  base=$(git merge-base HEAD "origin/${default_branch}" 2>/dev/null \
-    || git merge-base HEAD "${default_branch}" 2>/dev/null \
+  # The merge base scopes the diff to THIS PR's changes, not unrelated drift
+  # already on the base branch.
+  pr_base_branch
+  base=$(git merge-base HEAD "origin/${pr_base}" 2>/dev/null \
+    || git merge-base HEAD "${pr_base}" 2>/dev/null \
     || true)
   [ -n "$base" ] || return 1
 
@@ -521,17 +551,15 @@ check_out_of_scope_pr() {
 # workflow), an absent template, or a single non-matching byte returns 1 and
 # falls through to the normal deny. A malicious PR cannot smuggle code here, an
 # app/test/config path is in scope and unrecognized, so the loop returns 1 on
-# first sight. Pure local git: no gh, no network, no CI stamp.
+# first sight. No CI stamp; the base branch comes from pr_base_branch() above,
+# on the same terms as the sibling bypass.
 check_self_mod_only_update_pr() {
   audit_wf=".github/workflows/code-review-audit.yml"
   audit_tmpl=".gaia/cli/templates/workflows/code-review-audit.yml.tmpl"
 
-  default_branch=$(git symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null \
-    | sed 's@^refs/remotes/origin/@@')
-  [ -n "$default_branch" ] || default_branch="main"
-
-  base=$(git merge-base HEAD "origin/${default_branch}" 2>/dev/null \
-    || git merge-base HEAD "${default_branch}" 2>/dev/null \
+  pr_base_branch
+  base=$(git merge-base HEAD "origin/${pr_base}" 2>/dev/null \
+    || git merge-base HEAD "${pr_base}" 2>/dev/null \
     || true)
   [ -n "$base" ] || return 1
 

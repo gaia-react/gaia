@@ -95,13 +95,20 @@ install_gh_array_mock() {
   GH_BIN="$BATS_TEST_TMPDIR/bin"
   mkdir -p "$GH_BIN"
   printf '%s' "$payload" > "$BATS_TEST_TMPDIR/gh-statuses.json"
+  : > "$BATS_TEST_TMPDIR/gh-pr-base-ref"
   cat > "$GH_BIN/gh" <<EOF
 #!/usr/bin/env bash
 statuses_file="$BATS_TEST_TMPDIR/gh-statuses.json"
+base_ref_file="$BATS_TEST_TMPDIR/gh-pr-base-ref"
 EOF
   cat >> "$GH_BIN/gh" <<'EOF'
 args="$*"
 case "$args" in
+  *baseRefName*)
+    # Empty unless a test declared a base ref, so the hook falls back to the
+    # remote's advertised default exactly as it does with no PR at all.
+    cat "$base_ref_file"
+    ;;
   *statuses*)
     jq_expr=""
     prev=""
@@ -124,6 +131,48 @@ EOF
   chmod +x "$GH_BIN/gh"
   export PATH="$GH_BIN:$PATH"
   export GITHUB_REPOSITORY="gaia-react/gaia"
+}
+
+# Declare the base branch the mocked `gh pr view` reports for this PR.
+set_pr_base_ref() {
+  printf '%s\n' "$1" > "$BATS_TEST_TMPDIR/gh-pr-base-ref"
+}
+
+# Restack the sandbox: publish the current in-scope commit as `origin/release`
+# and put an out-of-scope-only commit on top, the shape of a PR opened against
+# `release` rather than against the repository default. The two bypass checks
+# then agree with the gate only if they scope the diff to the PR's own base:
+# against the default they still see the app/ change that `release` already
+# carries.
+restack_on_release() {
+  git -C "$SANDBOX" update-ref refs/remotes/origin/release "$(git -C "$SANDBOX" rev-parse HEAD)"
+  mkdir -p "$SANDBOX/wiki"
+  echo "# note" > "$SANDBOX/wiki/note.md"
+  git -C "$SANDBOX" add wiki/note.md
+  git -C "$SANDBOX" commit --quiet -m "docs: note"
+}
+
+@test "merge hook: the out-of-scope bypass scopes the diff to the PR's own base branch" {
+  install_gh_array_mock '[]'
+  restack_on_release
+  set_pr_base_ref release
+
+  run run_hook
+  [ "$status" -eq 0 ]
+  # Allowing is silence: the hook prints a deny JSON and nothing else.
+  [ -z "$output" ]
+}
+
+@test "merge hook: an unresolvable PR base falls back to the default branch and still denies" {
+  install_gh_array_mock '[]'
+  restack_on_release
+  # No base ref declared: the diff widens back to the default branch, which
+  # carries the in-scope app/ change, so the marker stays mandatory.
+
+  run run_hook
+  [ "$status" -eq 0 ]
+  decision=$(printf '%s' "$output" | jq -r '.hookSpecificOutput.permissionDecision')
+  [ "$decision" = "deny" ]
 }
 
 @test "merge hook: pending GAIA-Audit status with matching version+digest denies gh pr merge" {
