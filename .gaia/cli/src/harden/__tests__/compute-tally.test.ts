@@ -331,8 +331,22 @@ describe('computeTally', () => {
     expect(result.unclassified).toBeNull();
   });
 
-  test('windowClasses never includes the classless unclassified bucket (Directive #2)', () => {
+  test('windowClasses includes the classless unclassified bucket once it recurs at threshold', () => {
     const prs = [3, 2, 1].map((n) =>
+      pr(n, [
+        {
+          area_tags: [],
+          finding_class: 'holistic/unclassified',
+          severity: 'warning',
+        },
+      ])
+    );
+
+    expect(windowClasses(prs)).toEqual(['holistic/unclassified']);
+  });
+
+  test('windowClasses drops the classless unclassified bucket below threshold, so the prune releases a stale baseline', () => {
+    const prs = [2, 1].map((n) =>
       pr(n, [
         {
           area_tags: [],

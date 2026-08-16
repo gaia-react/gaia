@@ -284,7 +284,12 @@ describe('harden-ledger', () => {
       expect(ledger.declines).toHaveLength(0);
     });
 
-    test('keeps a fallback-keyed entry against a disjoint window set, still removes a non-exempt entry', () => {
+    // The classless fallback key carries no exemption here. Its suppression
+    // baseline has to be released once the cluster stops recurring, or the next
+    // unrelated classless cluster is measured against a high-water mark nothing
+    // in the window still supports. Both directions are asserted because an
+    // over-correction (always dropping the key) is as wrong as the exemption.
+    test('treats the classless fallback key like any other: kept when the window set names it, removed when it does not', () => {
       run(
         [
           'record',
@@ -296,39 +301,24 @@ describe('harden-ledger', () => {
         {cwd: sandbox.root}
       );
 
-      const code = run(['prune', '--window-classes', 'knip/exports'], {
-        cwd: sandbox.root,
-      });
+      expect(
+        run(
+          ['prune', '--window-classes', 'knip/exports,holistic/unclassified'],
+          {
+            cwd: sandbox.root,
+          }
+        )
+      ).toBe(EXIT_CODES.OK);
+      expect(
+        readLedger(sandbox.ledgerPath).declines.map((d) => d.finding_class)
+      ).toEqual(['knip/exports', 'holistic/unclassified']);
 
-      expect(code).toBe(EXIT_CODES.OK);
-
-      const ledger = readLedger(sandbox.ledgerPath);
-      const classes = ledger.declines.map((d) => d.finding_class);
-      expect(classes).toContain('knip/exports');
-      expect(classes).toContain('holistic/unclassified');
-      expect(classes).not.toContain('knip/types');
-    });
-
-    test('keeps a fallback-keyed entry against an empty window set (the failed-gh-read path)', () => {
-      run(
-        [
-          'record',
-          '--finding-class',
-          'holistic/unclassified',
-          '--pr-count',
-          '5',
-        ],
-        {cwd: sandbox.root}
-      );
-
-      const code = run(['prune', '--window-classes', ''], {cwd: sandbox.root});
-
-      expect(code).toBe(EXIT_CODES.OK);
-
-      const ledger = readLedger(sandbox.ledgerPath);
-      expect(ledger.declines).toEqual([
-        expect.objectContaining({finding_class: 'holistic/unclassified'}),
-      ]);
+      expect(
+        run(['prune', '--window-classes', 'knip/exports'], {cwd: sandbox.root})
+      ).toBe(EXIT_CODES.OK);
+      expect(
+        readLedger(sandbox.ledgerPath).declines.map((d) => d.finding_class)
+      ).toEqual(['knip/exports']);
     });
   });
 

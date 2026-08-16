@@ -95,6 +95,26 @@ const stubGh = (prs: unknown[]): ProcessResult => ({
 const parseStdout = (out: string[]): Record<string, unknown> =>
   JSON.parse(out.join('').trim()) as Record<string, unknown>;
 
+// Stubs the window read as one classless finding per named PR, so a test can
+// drive the fallback bucket's distinct-PR count directly.
+const stubClasslessWindow = (prNumbers: readonly number[]): void => {
+  vi.spyOn(runProcess, 'runGh').mockReturnValue(
+    stubGh(
+      prNumbers.map((n) =>
+        ghPr(n, [
+          findingsComment(n, 'ci', [
+            {
+              area_tags: [],
+              finding_class: 'holistic/unclassified',
+              severity: 'warning',
+            },
+          ]),
+        ])
+      )
+    )
+  );
+};
+
 type FakeLedger = {
   has: (findingClass: string) => boolean;
   runLedger: (argv: readonly string[]) => ProcessResult;
@@ -133,8 +153,10 @@ const fakeIsSuppressed = (
   return currentPrCount - entry.declined_at_pr_count < 3 ? 0 : 1;
 };
 
-// Mirrors `handlePrune`'s fallback exemption (FC-7b): a
-// `holistic/unclassified` entry survives regardless of the window-classes set.
+// Mirrors `handlePrune`: every key the window-classes set does not name is
+// dropped, the classless fallback included. `ledger.test.ts` owns the proof of
+// the real filter; this fake exists so the composed suppress-then-prune seam in
+// `run()` can be driven without spawning a process.
 const fakePrune = (store: FakeStore, argv: readonly string[]): void => {
   const windowClasses = new Set(
     (fakeFlag(argv, '--window-classes') ?? '')
@@ -144,7 +166,7 @@ const fakePrune = (store: FakeStore, argv: readonly string[]): void => {
   );
 
   for (const findingClass of [...store.keys()].filter(
-    (key) => key !== 'holistic/unclassified' && !windowClasses.has(key)
+    (key) => !windowClasses.has(key)
   )) {
     store.delete(findingClass);
   }
@@ -812,6 +834,40 @@ describe('harden-tally run', () => {
 
     expect(parseStdout(stdout.out).unclassified).toBeNull();
     expect(fake.has('holistic/unclassified')).toBe(true);
+  });
+
+  test('a fallback baseline is released once its cluster drains, so a later unrelated cluster surfaces at the threshold', () => {
+    const fake = makeFakeLedger();
+
+    // Suppress a classless cluster at a high-water count of 8.
+    stubClasslessWindow([8, 7, 6, 5, 4, 3, 2, 1]);
+    run([], {cwd: sandbox.root, runLedger: fake.runLedger});
+    fake.runLedger([
+      'harden-ledger',
+      'record',
+      '--finding-class',
+      'holistic/unclassified',
+      '--pr-count',
+      '8',
+    ]);
+
+    // The cluster ages out of the window, taking its baseline with it.
+    stubClasslessWindow([9]);
+    stdout.out.length = 0;
+    run([], {cwd: sandbox.root, runLedger: fake.runLedger});
+    expect(fake.has('holistic/unclassified')).toBe(false);
+
+    // A genuinely different classless cluster now surfaces at 3, not at 11.
+    stubClasslessWindow([12, 11, 10]);
+    stdout.out.length = 0;
+    run([], {cwd: sandbox.root, runLedger: fake.runLedger});
+
+    const unclassified = parseStdout(stdout.out).unclassified as Record<
+      string,
+      unknown
+    >;
+    expect(unclassified).not.toBeNull();
+    expect(unclassified.distinct_pr_count).toBe(3);
   });
 
   test('queries the 90-day merged-PR window via gh', () => {
