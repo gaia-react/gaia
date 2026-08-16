@@ -60,8 +60,14 @@ Playwright"`; the base is the most recent ancestor whose `check-runs`
 When no green ancestor exists (the first run on a PR, every prior run
 failed/cancelled (those leave no green signal), a `.gaia/VERSION` bump (audit
 only), or the Checks API is unreachable (fork PRs run with a token that the
-helper falls back from)), the helper emits `origin/main` and the diff covers
-the full PR scope. The helpers never anchor on an un-passed commit, so they
+helper falls back from)), the helper emits the branch the PR merges into and
+the diff covers the full PR scope. That branch is `GITHUB_BASE_REF`, read under
+Actions only, where the event sets it rather than the caller: a value that
+resolves near HEAD would shrink what a check reads, so the helpers take it
+only where it is trustworthy. A PR stacked on a branch other than `main`
+therefore falls back to its own base rather than to the repository default,
+whose divergence it never introduced; `origin/main` is the answer outside
+Actions and whenever no base ref is declared. The helpers never anchor on an un-passed commit, so they
 never skip code the check has not cleared.
 
 For `code-review-audit`, in-scope PRs by `local`-mode authors with no override

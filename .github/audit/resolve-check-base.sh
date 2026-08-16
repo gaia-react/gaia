@@ -25,8 +25,12 @@
 #
 # Output (stdout, single line; suitable for `base...HEAD` diffs)
 #   <40-hex-sha>: resolved incremental base (a green ancestor of HEAD)
-#   origin/main: fallback: diff the full PR/branch scope
-#   (or origin/<base-ref> / main when origin/main is unavailable)
+#   origin/<base-ref>: fallback: diff the full PR/branch scope, scoped to the
+#     branch the PR merges into (GITHUB_BASE_REF, read under Actions only,
+#     which sets it on every pull_request event)
+#   origin/main: the same fallback outside Actions, or when no base ref is
+#     declared
+#   (or main when neither remote-tracking ref resolves)
 #
 # Exit code
 #   0 always. Callers consume the single stdout line.
@@ -76,13 +80,23 @@ fi
 # -----------------------------------------------------------------------------
 
 resolve_main_ref() {
-  if git -C "$repo_root" rev-parse --verify --quiet origin/main >/dev/null 2>&1; then
-    printf 'origin/main'
-    return 0
-  fi
-  if [ -n "${GITHUB_BASE_REF:-}" ] \
+  # The declared base ref comes first because it names the branch THIS pull
+  # request merges into; the repository default does not whenever the pull
+  # request is stacked on another branch, and falling back to the default
+  # there re-runs the check over the base branch's whole divergence
+  # (gaia-react/gaia#1057). Read only under Actions, where the event sets the
+  # value rather than whoever invoked the script: this resolver scopes what a
+  # check re-runs over, so a value resolving near HEAD skips work nothing
+  # proved green. The sibling resolver this one mirrors keeps the same order
+  # and the same gate, and states the full reasoning.
+  if [ "${GITHUB_ACTIONS:-}" = "true" ] \
+    && [ -n "${GITHUB_BASE_REF:-}" ] \
     && git -C "$repo_root" rev-parse --verify --quiet "origin/${GITHUB_BASE_REF}" >/dev/null 2>&1; then
     printf 'origin/%s' "$GITHUB_BASE_REF"
+    return 0
+  fi
+  if git -C "$repo_root" rev-parse --verify --quiet origin/main >/dev/null 2>&1; then
+    printf 'origin/main'
     return 0
   fi
   if git -C "$repo_root" rev-parse --verify --quiet main >/dev/null 2>&1; then

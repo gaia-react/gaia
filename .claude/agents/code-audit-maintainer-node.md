@@ -74,8 +74,9 @@ full_changed=$(git -C "$AUDIT_ROOT" diff --name-only -z "${FULL_BASE}...HEAD" 2>
 # already cleared, resolved by .github/audit/resolve-audit-base.sh --member.
 # It returns the most recent ancestor carrying a clean-audit signal under the
 # current .gaia/VERSION (a GAIA-Audit trailer, a commit status, or this
-# member's own earned clearance), or origin/main when none exists, and it
-# scopes your review. KEY_BASE keys your findings sidecar and the shared
+# member's own earned clearance), or the branch this pull request merges into
+# when none exists (origin/main outside Actions, or when no base ref is
+# declared), and it scopes your review. KEY_BASE keys your findings sidecar and the shared
 # re-run ledger instead: it is the SAME shared pull-request-wide base every
 # co-dispatched member resolves, so every reader of those artifacts reaches
 # one key rather than a per-member key that would leave the consolidated

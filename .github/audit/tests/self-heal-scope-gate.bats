@@ -278,6 +278,24 @@ output_has() { grep -qF -- "$1" "$STEP_OUTPUT"; }
   grep -qF ". .claude/hooks/lib/audit-selfheal-paths.sh" "$WORKFLOW"
 }
 
+@test "the untrusted-PR restore reset covers .claude" {
+  # claude-code-action replaces a fixed set of sensitive paths with the base
+  # branch's copies before the reviewer runs, and the reset loop puts them
+  # back before the scope gate above reads the working tree. .claude leads the
+  # action's own restore set and is the one entry the refusal set matches, so
+  # dropping it from this loop leaves the action's revert in the tree and the
+  # gate reads it as a governance-surface edit, discarding every self-heal on
+  # any pull request that touches .claude/** alongside source.
+  local list
+  list="$(sed -n '/for restored_path in/,/; do/p' "$WORKFLOW")"
+  [ -n "$list" ]
+  # A standalone word: .claude.json carries its own entry and must not vouch
+  # for this one, and neither may a .claude/... path inside a comment. The
+  # trailing class admits the `;` that closes the list, so reordering the
+  # entries and leaving .claude last does not red a loop that still resets it.
+  printf '%s\n' "$list" | grep -qE '(^|[[:space:]])\.claude([[:space:];]|$)'
+}
+
 @test "the three code-review-audit.yml copies are byte-identical" {
   local src="$REPO_ROOT/.gaia/cli/src/automation/templates/workflows/code-review-audit.yml.tmpl"
   local artifact="$REPO_ROOT/.gaia/cli/templates/workflows/code-review-audit.yml.tmpl"

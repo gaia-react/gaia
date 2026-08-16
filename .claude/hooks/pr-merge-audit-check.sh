@@ -429,6 +429,32 @@ check_github_status() {
   return 0
 }
 
+# resolve_pr_record: read this pull request's record once into
+# $pr_record_title and $pr_record_base. Memoized on $pr_record_read, which is
+# what distinguishes "not read yet" from "read, and the answer was nothing".
+#
+# One read rather than one per field. Both consumers below sit on the same
+# uncleared path, and `gh` carries no request timeout of its own, so a second
+# round-trip is a second OS-length stall on a blackholed network. Every failure
+# (no gh, no auth, no PR for this branch, network error) leaves both fields
+# empty and each consumer takes its own no-answer path.
+pr_record_read=""
+pr_record_title=""
+pr_record_base=""
+resolve_pr_record() {
+  [ -z "$pr_record_read" ] || return 0
+  pr_record_read=yes
+
+  command -v gh >/dev/null 2>&1 || return 0
+  pr_record=$(gh pr view --json title,baseRefName 2>/dev/null || true)
+  [ -n "$pr_record" ] || return 0
+
+  # `// ""` so a JSON null reaches the callers as the same empty string an
+  # absent record does; both are "no answer" and neither is a branch name.
+  pr_record_title=$(printf '%s' "$pr_record" | jq -r '.title // ""' 2>/dev/null || true)
+  pr_record_base=$(printf '%s' "$pr_record" | jq -r '.baseRefName // ""' 2>/dev/null || true)
+}
+
 # chore(deps) bypass: PRs whose title matches `^chore\(deps(-dev)?\):` are
 # pre-verified by the /update-deps wrapper's local quality gate (typecheck +
 # lint + vitest + playwright + build), so the audit-marker requirement is
@@ -436,19 +462,96 @@ check_github_status() {
 # .gaia/scripts/chore-deps-skip.sh, shared with the CI workflows
 # (code-review-audit.yml, tests.yml, chromatic.yml).
 #
-# Title is queried via `gh pr view`. On any failure (no gh, no auth, no PR
-# for the current branch, network error, or an unresolved repo root) the
-# bypass does not fire and the normal deny path runs, the bypass is opt-in
-# proof, not a fallback.
+# The title comes from the shared PR-record read above. On any failure (no gh,
+# no auth, no PR for the current branch, network error, or an unresolved repo
+# root) the bypass does not fire and the normal deny path runs, the bypass is
+# opt-in proof, not a fallback.
 check_chore_deps_pr() {
-  command -v gh >/dev/null 2>&1 || return 1
-  pr_title=$(gh pr view --json title --jq .title 2>/dev/null || true)
-  [ -n "$pr_title" ] || return 1
+  resolve_pr_record
+  [ -n "$pr_record_title" ] || return 1
   # tree_root, not root: the predicate is executable code, so it comes from the
   # ACTING tree that carries it. root is the main checkout, which from a linked
   # worktree is a different branch entirely and need not have the script at all.
   [ -n "$tree_root" ] || return 1
-  [ "$(bash "$tree_root/.gaia/scripts/chore-deps-skip.sh" "$pr_title")" = "true" ]
+  [ "$(bash "$tree_root/.gaia/scripts/chore-deps-skip.sh" "$pr_record_title")" = "true" ]
+}
+
+# pr_base_branch: set $pr_base to the branch this PR merges into. The $pr_base
+# memo is per-subshell and nothing more: both bypass checks below reach this
+# only through `base=$(pr_merge_base)`, a command substitution, so neither
+# variable it sets survives back to the parent shell. What holds the run to one
+# gh read is resolve_pr_record's own parent-level memo, which check_chore_deps_pr
+# primes in the parent on every path that reaches either bypass.
+#
+# Reach this through pr_merge_base only. $pr_base and $pr_base_from_record are a
+# coupled pair guarding the bare-name rejection below, and the memo's early
+# return fires before the flag is set, so a parent-shell caller would leave a
+# later subshell holding the record's branch name with the flag empty, which is
+# the one combination that derivation exists to forbid.
+#
+# Both of those checks scope their diff to a merge base, and the branch that
+# merge base is taken against decides what "this PR changes" means. The
+# remote's advertised default is that branch only when the PR targets it: a PR
+# stacked on another branch merges into THAT branch, and diffing against the
+# default hands the check the base branch's own history instead, denying a
+# bypass the PR had earned (gaia-react/gaia#1057).
+#
+# The answer comes from the pull request record, never from the environment. An
+# exported base-ref variable would let a caller shrink a fail-closed check's
+# diff until every remaining path looked out of scope; a PR's base ref is the
+# branch it actually merges into, so scoping to it concedes nothing that
+# merging the PR would not already concede.
+#
+# Any failure (no gh, no auth, no PR for this branch, network error) falls back
+# to the advertised default. That is usually the wider diff but not always: a
+# backport forked from current main and targeting an older maintenance branch
+# merge-bases NEARER to HEAD against main than against its own base. It is the
+# safe direction regardless, for a reason that does not rest on the geometry.
+# Whatever the narrower answer drops sits on commits already merged to the
+# default branch, which is where they were already audited.
+pr_base=""
+pr_base_from_record=""
+pr_base_branch() {
+  [ -z "$pr_base" ] || return 0
+
+  resolve_pr_record
+  # The record's answer counts only when its remote-tracking ref is present. A
+  # bare LOCAL branch of the same name is not evidence about the base branch,
+  # and taking one would invert this whole derivation: a local branch sitting on
+  # this PR's own commits puts the merge base above them, the diff never walks
+  # them, and a fail-closed check reads a PR that touches auditable source as
+  # touching nothing. Unverifiable means fall through to the advertised default,
+  # which is what the contract above promises.
+  if [ -n "$pr_record_base" ] \
+    && git rev-parse --verify --quiet "refs/remotes/origin/${pr_record_base}" >/dev/null 2>&1; then
+    pr_base="$pr_record_base"
+    pr_base_from_record=yes
+    return 0
+  fi
+
+  pr_base=$(git symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null \
+    | sed 's@^refs/remotes/origin/@@')
+  [ -n "$pr_base" ] || pr_base="main"
+}
+
+# pr_merge_base: print the merge base that scopes this PR's own diff, or nothing
+# when none resolves. Shared by both bypasses below so the two cannot drift.
+pr_merge_base() {
+  pr_base_branch
+
+  if [ -n "$pr_base_from_record" ]; then
+    # Verified above, so the remote-tracking ref is the only thing allowed to
+    # scope the diff. No bare-name arm here: that is precisely where a local
+    # branch would slip in and narrow the answer.
+    git merge-base HEAD "refs/remotes/origin/${pr_base}" 2>/dev/null || true
+    return 0
+  fi
+
+  # The locally-derived default branch. The bare-name arm is the pre-existing
+  # shape and stays, because here the name came from the checkout to begin with.
+  git merge-base HEAD "origin/${pr_base}" 2>/dev/null \
+    || git merge-base HEAD "${pr_base}" 2>/dev/null \
+    || true
 }
 
 # Out-of-scope bypass: accept the merge when every file this PR changes lives
@@ -468,18 +571,12 @@ check_chore_deps_pr() {
 # through to the normal deny. A PR that touches auditable source therefore can
 # never reach this bypass, it cannot mask an audit that withheld its marker
 # over unresolved findings, since that PR's diff carries in-scope paths by
-# definition. Pure local git: no gh, no network, no dependence on a CI stamp.
+# definition. No dependence on a CI stamp; the one network read is the base
+# branch behind pr_merge_base() above, whose failure widens the diff.
 check_out_of_scope_pr() {
-  # Resolve the PR base, the default branch this work forks from. Prefer the
-  # remote's advertised default; fall back to main. The merge base scopes the
-  # diff to THIS PR's changes, not unrelated drift already on the base branch.
-  default_branch=$(git symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null \
-    | sed 's@^refs/remotes/origin/@@')
-  [ -n "$default_branch" ] || default_branch="main"
-
-  base=$(git merge-base HEAD "origin/${default_branch}" 2>/dev/null \
-    || git merge-base HEAD "${default_branch}" 2>/dev/null \
-    || true)
+  # The merge base scopes the diff to THIS PR's changes, not unrelated drift
+  # already on the base branch.
+  base=$(pr_merge_base)
   [ -n "$base" ] || return 1
 
   # -z, so git's default core.quotePath cannot C-quote a non-ASCII path into a
@@ -521,18 +618,13 @@ check_out_of_scope_pr() {
 # workflow), an absent template, or a single non-matching byte returns 1 and
 # falls through to the normal deny. A malicious PR cannot smuggle code here, an
 # app/test/config path is in scope and unrecognized, so the loop returns 1 on
-# first sight. Pure local git: no gh, no network, no CI stamp.
+# first sight. No CI stamp; the merge base comes from pr_merge_base() above,
+# on the same terms as the sibling bypass.
 check_self_mod_only_update_pr() {
   audit_wf=".github/workflows/code-review-audit.yml"
   audit_tmpl=".gaia/cli/templates/workflows/code-review-audit.yml.tmpl"
 
-  default_branch=$(git symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null \
-    | sed 's@^refs/remotes/origin/@@')
-  [ -n "$default_branch" ] || default_branch="main"
-
-  base=$(git merge-base HEAD "origin/${default_branch}" 2>/dev/null \
-    || git merge-base HEAD "${default_branch}" 2>/dev/null \
-    || true)
+  base=$(pr_merge_base)
   [ -n "$base" ] || return 1
 
   # -z for the reason the sibling derivation above gives: a C-quoted path is an
@@ -809,8 +901,23 @@ report=""
 # reviewer reading it decides nothing a script has not already decided. Resolve
 # it once here rather than per member: the predicate is a repo-wide read, and
 # every member's answer to it is the same.
-self_mod_only=0
-check_self_mod_only_update_pr && self_mod_only=1
+#
+# Resolved on first need rather than up front, because the predicate reaches
+# pr_base_branch() and therefore the network, while a run whose every marker is
+# already on disk decides the whole gate from local files. Answering a question
+# that can only matter to an UNCLEARED member would put a `gh` round-trip, with
+# no timeout of its own, in front of a merge this gate would otherwise allow
+# instantly, and a blackholed network turns that into an OS-length stall.
+# Deferring changes no verdict: every call site below reaches it only after
+# that member's own clearance has already come up empty.
+self_mod_only=-1
+self_mod_only_pr() {
+  if [ "$self_mod_only" -eq -1 ]; then
+    self_mod_only=0
+    check_self_mod_only_update_pr && self_mod_only=1
+  fi
+  [ "$self_mod_only" -eq 1 ]
+}
 
 while IFS= read -r m; do
   [ -n "$m" ] || continue
@@ -831,7 +938,7 @@ while IFS= read -r m; do
     fi
     # A live refusal stays absolute (C6): a member that refused this digest is
     # never cleared by the bypass.
-    if [ "$m_refused" -eq 0 ] && [ "$member_cleared" -eq 0 ] && [ "$self_mod_only" -eq 1 ]; then
+    if [ "$m_refused" -eq 0 ] && [ "$member_cleared" -eq 0 ] && self_mod_only_pr; then
       member_cleared=1
     fi
   fi

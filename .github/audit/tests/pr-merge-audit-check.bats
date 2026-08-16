@@ -19,7 +19,9 @@
 # The mock returns a full JSON statuses array and runs the hook's real `--jq`
 # expression (which includes the state == "success" filter), so a pending
 # status is filtered out exactly as the hook filters it. The mock also answers
-# `gh pr view --json title` (empty, so the chore(deps) bypass never fires).
+# the single PR-record read the hook makes, `gh pr view --json
+# title,baseRefName`: an empty title, so the chore(deps) bypass never fires,
+# and whatever base ref a test declared, if any.
 #
 # The status description is three positional fields, "<version>
 # <frontend-digest> <tree>" (C3): field 2 is the frontend content digest, the
@@ -28,9 +30,8 @@
 # would, via the real digest engine, so fixtures never hand-derive a value
 # that could drift from the hook's own computation.
 #
-# Coverage:
-#   1. Pending GAIA-Audit status, matching version+digest → deny gh pr merge
-#   2. Success GAIA-Audit status, matching version+digest → allow (exit 0, no JSON)
+# The @test names below are this suite's index of what it pins; a numbered
+# coverage list up here only drifts behind them.
 
 setup() {
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
@@ -86,7 +87,9 @@ current_frontend_digest() {
 # Install a fake `gh` on a prepended PATH. It dispatches on argv:
 #   - `gh api .../statuses --jq <expr>` → run the real jq (with the hook's own
 #     state-filtered expression) against the crafted statuses array.
-#   - `gh pr view --json title ...`     → print an empty title (no chore(deps)).
+#   - `gh pr view --json title,baseRefName` → the PR record the hook reads once:
+#     an empty title (so chore(deps) never fires) and whatever base ref the test
+#     declared, if any.
 #   - anything else                     → empty.
 # Returns the full JSON array so the hook's --jq state filter is what decides.
 # Also sets GITHUB_REPOSITORY so the hook skips `gh repo view`.
@@ -95,13 +98,22 @@ install_gh_array_mock() {
   GH_BIN="$BATS_TEST_TMPDIR/bin"
   mkdir -p "$GH_BIN"
   printf '%s' "$payload" > "$BATS_TEST_TMPDIR/gh-statuses.json"
+  : > "$BATS_TEST_TMPDIR/gh-pr-base-ref"
   cat > "$GH_BIN/gh" <<EOF
 #!/usr/bin/env bash
 statuses_file="$BATS_TEST_TMPDIR/gh-statuses.json"
+base_ref_file="$BATS_TEST_TMPDIR/gh-pr-base-ref"
 EOF
   cat >> "$GH_BIN/gh" <<'EOF'
 args="$*"
 case "$args" in
+  *baseRefName*)
+    # The hook reads the record once, both fields in one call. The title is
+    # always empty, so the chore(deps) bypass never fires; the base ref is
+    # empty unless a test declared one, which makes the hook fall back to the
+    # remote's advertised default exactly as it does with no PR at all.
+    jq -n --arg b "$(cat "$base_ref_file")" '{title:"", baseRefName:$b}'
+    ;;
   *statuses*)
     jq_expr=""
     prev=""
@@ -113,7 +125,7 @@ case "$args" in
     jq -r "$jq_expr" < "$statuses_file"
     ;;
   *"pr view"*|*"pr"*"view"*)
-    # No PR title → chore(deps) bypass never fires.
+    # Any other PR-record shape: no answer at all.
     printf '\n'
     ;;
   *)
@@ -124,6 +136,66 @@ EOF
   chmod +x "$GH_BIN/gh"
   export PATH="$GH_BIN:$PATH"
   export GITHUB_REPOSITORY="gaia-react/gaia"
+}
+
+# Declare the base branch the mocked `gh pr view` reports for this PR.
+set_pr_base_ref() {
+  printf '%s\n' "$1" > "$BATS_TEST_TMPDIR/gh-pr-base-ref"
+}
+
+# Restack the sandbox: publish the current in-scope commit as `origin/release`
+# and put an out-of-scope-only commit on top, the shape of a PR opened against
+# `release` rather than against the repository default. The two bypass checks
+# then agree with the gate only if they scope the diff to the PR's own base:
+# against the default they still see the app/ change that `release` already
+# carries.
+restack_on_release() {
+  git -C "$SANDBOX" update-ref refs/remotes/origin/release "$(git -C "$SANDBOX" rev-parse HEAD)"
+  mkdir -p "$SANDBOX/wiki"
+  echo "# note" > "$SANDBOX/wiki/note.md"
+  git -C "$SANDBOX" add wiki/note.md
+  git -C "$SANDBOX" commit --quiet -m "docs: note"
+}
+
+@test "merge hook: the out-of-scope bypass scopes the diff to the PR's own base branch" {
+  install_gh_array_mock '[]'
+  restack_on_release
+  set_pr_base_ref release
+
+  run run_hook
+  [ "$status" -eq 0 ]
+  # Allowing is silence: the hook prints a deny JSON and nothing else.
+  [ -z "$output" ]
+}
+
+@test "merge hook: an unresolvable PR base falls back to the default branch and still denies" {
+  install_gh_array_mock '[]'
+  restack_on_release
+  # No base ref declared: the diff widens back to the default branch, which
+  # carries the in-scope app/ change, so the marker stays mandatory.
+
+  run run_hook
+  [ "$status" -eq 0 ]
+  decision=$(printf '%s' "$output" | jq -r '.hookSpecificOutput.permissionDecision')
+  [ "$decision" = "deny" ]
+}
+
+@test "merge hook: a bare local branch matching the PR's base ref does not scope the diff" {
+  install_gh_array_mock '[]'
+  restack_on_release
+  # The record names `release`, but only a LOCAL branch of that name exists,
+  # and it sits on the in-scope commit. Honouring it would put the merge base
+  # above the app/ change, so the diff would never walk it and this PR would
+  # read as touching nothing at all. A local branch is not evidence about the
+  # base branch, so the derivation has to widen back to the default instead.
+  git -C "$SANDBOX" update-ref -d refs/remotes/origin/release
+  git -C "$SANDBOX" branch release "$(git -C "$SANDBOX" rev-parse HEAD^)"
+  set_pr_base_ref release
+
+  run run_hook
+  [ "$status" -eq 0 ]
+  decision=$(printf '%s' "$output" | jq -r '.hookSpecificOutput.permissionDecision')
+  [ "$decision" = "deny" ]
 }
 
 @test "merge hook: pending GAIA-Audit status with matching version+digest denies gh pr merge" {

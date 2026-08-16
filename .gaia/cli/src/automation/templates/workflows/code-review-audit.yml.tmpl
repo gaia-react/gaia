@@ -142,10 +142,18 @@ jobs:
           # (proven by a GAIA-Audit commit trailer or commit status). Resolved
           # here, before the source-change check, so that check and the audit
           # share one base: everything before <base> was already cleared. Falls
-          # back to origin/main (full PR scope) when no audited ancestor exists
+          # back to the branch this PR merges into (origin/main when none is
+          # declared), full PR scope, when no audited ancestor exists
           # (first audit, prior runs cancelled/failed, or a .gaia/VERSION bump
-          # invalidated them). A helper failure must never fail the audit;
-          # default to full scope.
+          # invalidated them). A helper failure falls back to full scope rather
+          # than failing the audit. That last-resort literal stays origin/main
+          # rather than this PR's own base: it fires only when the helper itself
+          # could not run, and repeating the ref the rest of this workflow
+          # already assumes is a safer answer there than one this step would
+          # have to re-derive. Where origin/main does not resolve, because the
+          # repository's default branch is named something else, the next step
+          # exits non-zero: this path fails loudly rather than reviewing a
+          # wrong scope.
           base="$(bash .github/audit/resolve-audit-base.sh || echo origin/main)"
           echo "base=${base}" >> "$GITHUB_OUTPUT"
           echo "code-review-audit: incremental review base = ${base}" >&2
@@ -166,8 +174,10 @@ jobs:
           # prose docs, or .gaia/ metadata are skipped; the agent has no rules
           # that would meaningfully apply. The base is the last clean-audited
           # ancestor, so once a code commit is audited clean a later prose-only
-          # commit reviews an empty auditable delta and skips. origin/main (no
-          # audited ancestor) → full PR diff, preserving first-audit behavior.
+          # commit reviews an empty auditable delta and skips. With no audited
+          # ancestor the base is the branch this PR merges into (origin/main
+          # when none is declared) → full PR diff, preserving first-audit
+          # behavior.
           # -z, so a non-ASCII path is not C-quoted past the patterns below:
           # unquoted, an in-scope change can read as has_source=false and skip
           # the audit entirely. The `tr` stays inside the substitution because
@@ -409,7 +419,8 @@ jobs:
             Run the code-audit-frontend agent at .claude/agents/code-audit-frontend.md.
             Review the INCREMENTAL diff ${{ steps.base.outputs.base }}...HEAD; this
             base is the most recent commit on this PR that already passed a clean
-            audit under the current agent version (or origin/main if none), so
+            audit under the current agent version (or, with none, the branch
+            this PR merges into), so
             everything before it is already cleared and only the delta needs
             review. For any exported symbol whose signature or contract changed in
             this delta, also check its importers across the repo even if those
@@ -514,10 +525,16 @@ jobs:
             what the finding is.
 
             SELF-HEAL CONSTRAINTS: read before making any edits:
-            1. Run `git diff --name-only origin/main...HEAD` first. Self-heal edits
-               are ONLY permitted on files that appear in this list. Never edit a
-               file that was not changed by this PR.
-            2. Run `git diff origin/main...HEAD -- <file>` before editing any file.
+            1. Run `git diff --name-only ${{ github.event.pull_request.base.sha }}...HEAD`
+               first. Self-heal edits are ONLY permitted on files that appear in
+               this list. Never edit a file that was not changed by this PR. The
+               base sha rather than origin/main: on a PR stacked on another
+               branch the range from main also carries the base branch's own
+               commits, so the permitted set would be a superset of what this PR
+               changed and this constraint would pass on a file this PR never
+               touched.
+            2. Run `git diff ${{ github.event.pull_request.base.sha }}...HEAD -- <file>`
+               before editing any file.
                If the PR's diff for that file shows lines being REMOVED (minus lines),
                do NOT restore them. Intentional deletions are not defects.
             3. Never add content that references a library, tool, or pattern that this
@@ -597,18 +614,23 @@ jobs:
 
           # Drop claude-code-action's untrusted-PR file restore before the tree
           # is inspected or staged. The action restores a fixed set of sensitive
-          # config/hook paths from origin/main into the runner's working tree
-          # before the agent runs (it logs "Restoring ... from origin/main (PR
-          # head is untrusted)"). When this PR legitimately modifies one of them,
-          # that restore REVERTS the PR's change in the working tree; the
+          # config/hook paths from the branch this PR merges into, into the
+          # runner's working tree before the agent runs (it logs "Restoring ...
+          # from origin/<base branch> (PR head is untrusted)"). When this PR
+          # legitimately modifies one of them, that restore REVERTS the PR's
+          # change in the working tree; the
           # `git add -u` below would then stage the revert and commit it as a
           # bogus self-heal -- this is what stripped a .husky/pre-commit guard a
           # PR had just added. The agent is never an allowed editor of these
           # convention/hook surfaces, so any working-tree delta on them is either
           # the action's restore or a forbidden edit; reset each to HEAD either
-          # way. Keep this list in sync with claude-code-action's restore set.
+          # way. Keep this list in sync with claude-code-action's restore set,
+          # which leads with .claude: omitting it leaves the base branch's
+          # .claude/** in the tree on any PR that changes it, and the self-heal
+          # scope gate below then reads that revert as the agent having edited a
+          # governance surface and discards the whole self-heal.
           for restored_path in \
-            .husky .mcp.json .claude.json .gitmodules .ripgreprc \
+            .claude .husky .mcp.json .claude.json .gitmodules .ripgreprc \
             CLAUDE.md CLAUDE.local.md; do
             git checkout HEAD -- "$restored_path" 2>/dev/null || true
           done

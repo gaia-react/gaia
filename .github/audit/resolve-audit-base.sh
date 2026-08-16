@@ -43,8 +43,12 @@
 # Output (stdout), argument-less form
 #   Exactly ONE line, suitable for a `base...HEAD` diff:
 #     <40-hex-sha>: resolved incremental base (an audited PR ancestor)
-#     origin/main: fallback: review the full PR diff
-#     (or origin/<base-ref> / main when origin/main is unavailable)
+#     origin/<base-ref>: fallback: review the full PR diff, scoped to the
+#       branch the PR merges into (GITHUB_BASE_REF, read under Actions only,
+#       which sets it on every pull_request event)
+#     origin/main: the same fallback outside Actions, or when no base ref is
+#       declared
+#     (or main when neither remote-tracking ref resolves)
 #
 # Output (stdout), --member form
 #   Exactly FOUR newline-terminated lines:
@@ -280,13 +284,36 @@ fi
 # -----------------------------------------------------------------------------
 
 resolve_main_ref() {
-  if git -C "$repo_root" rev-parse --verify --quiet origin/main >/dev/null 2>&1; then
-    printf 'origin/main'
-    return 0
-  fi
-  if [ -n "${GITHUB_BASE_REF:-}" ] \
+  # The declared base ref comes first because it names the branch THIS pull
+  # request merges into, which the repository default does not whenever the
+  # pull request is stacked on another branch. Preferring the default there
+  # hands every consumer the base branch's entire divergence as if this pull
+  # request had introduced it, and a finding raised against that history is
+  # indistinguishable, in a member's output, from one against the pull
+  # request's own code (gaia-react/gaia#1057).
+  #
+  # Read only under Actions, which is what makes the value trustworthy: there
+  # the event sets it, not whoever invoked the script. This resolver SCOPES a
+  # review, so a value resolving at or near HEAD empties the reviewed delta and
+  # a member then earns a clearance marker having read nothing, a false green
+  # no downstream check can catch because the gate trusts the marker rather
+  # than the scope. A check that can only WIDEN on a bad input may take the
+  # environment; one that decides how much gets read may not. The merge gate's
+  # bypasses reach the opposite conclusion from the same principle and read the
+  # pull request record instead, so neither posture transfers to the other.
+  #
+  # No `gh` fallback for the local case either: this resolver runs from hooks
+  # and agent bootstraps where gh may be absent or unauthenticated, and a base
+  # that resolves only sometimes is worse than one that is always the
+  # repository default, which is what a local run keeps.
+  if [ "${GITHUB_ACTIONS:-}" = "true" ] \
+    && [ -n "${GITHUB_BASE_REF:-}" ] \
     && git -C "$repo_root" rev-parse --verify --quiet "origin/${GITHUB_BASE_REF}" >/dev/null 2>&1; then
     printf 'origin/%s' "$GITHUB_BASE_REF"
+    return 0
+  fi
+  if git -C "$repo_root" rev-parse --verify --quiet origin/main >/dev/null 2>&1; then
+    printf 'origin/main'
     return 0
   fi
   if git -C "$repo_root" rev-parse --verify --quiet main >/dev/null 2>&1; then
