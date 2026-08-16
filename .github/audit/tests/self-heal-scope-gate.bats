@@ -290,8 +290,10 @@ output_has() { grep -qF -- "$1" "$STEP_OUTPUT"; }
   list="$(sed -n '/for restored_path in/,/; do/p' "$WORKFLOW")"
   [ -n "$list" ]
   # A standalone word: .claude.json carries its own entry and must not vouch
-  # for this one, and neither may a .claude/... path inside a comment.
-  printf '%s\n' "$list" | grep -qE '(^|[[:space:]])\.claude([[:space:]]|$)'
+  # for this one, and neither may a .claude/... path inside a comment. The
+  # trailing class admits the `;` that closes the list, so reordering the
+  # entries and leaving .claude last does not red a loop that still resets it.
+  printf '%s\n' "$list" | grep -qE '(^|[[:space:]])\.claude([[:space:];]|$)'
 }
 
 @test "the three code-review-audit.yml copies are byte-identical" {
