@@ -34,7 +34,7 @@
 # (cache/mutation-scratch/, prefix, dir, ephemeral). Two reapers, in that
 # order of preference: gaia_audit_scratch_release, which a member calls when
 # it is done, and the janitor's stale cache sweep
-# (.claude/hooks/local-janitor.sh sweep #5), which ages out a directory a
+# (.claude/hooks/local-janitor.sh sweep #5b), which ages out a directory a
 # member died before releasing. The release path is the real one; the sweep is
 # the backstop for a member that never got there.
 #
