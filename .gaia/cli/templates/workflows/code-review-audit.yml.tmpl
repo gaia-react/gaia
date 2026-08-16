@@ -198,22 +198,50 @@ jobs:
           steps.gate.outputs.gated == 'false' &&
           steps.source-changes.outputs.has_source == 'true'
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -eu
           # claude-code-action enforces a workflow-validation guardrail:
           # it refuses to run when the workflow file on the PR branch
-          # differs from the version on main (security: prevents secret
-          # exfiltration via PR-modified workflows). When this PR
-          # touches the workflow itself, the audit cannot run, so skip
-          # cleanly and surface a truthful comment instead of letting
-          # the abort path post a misleading message.
+          # differs from the version on the repository's DEFAULT branch
+          # (security: prevents secret exfiltration via PR-modified
+          # workflows). The refusal is a server-side token-exchange
+          # rejection carrying error_code
+          # workflow_not_found_on_default_branch. When this PR's copy of the
+          # workflow differs from that one, the audit cannot run, so skip
+          # cleanly and surface a truthful comment instead of letting the
+          # abort path post a misleading message.
+          #
+          # The comparison is against the DEFAULT branch, not this PR's own
+          # base ref, because that is the ref the guardrail validates. The
+          # two disagree on any stacked PR, in both directions: a PR whose
+          # base and head share a workflow that differs from the default
+          # branch reads as unmodified, runs, and posts "no fixes needed"
+          # for an audit the action silently refused; a PR whose base
+          # modified the workflow and whose head matches the default branch
+          # reads as modified and is skipped for an edit its author never
+          # made.
+          #
+          # Two-dot, not three: the question is whether the head's workflow
+          # bytes match the default branch's, not who changed them, so a
+          # merge-base comparison would answer a different question.
+          #
           # -z for the same reason as the scope gate above. The path this one
           # matches is pure ASCII and git would never quote it, so this is
           # uniformity rather than a live defect; the class is cheaper to hold
           # everywhere than to re-argue per call site.
-          changed=$(set -o pipefail; git diff --name-only -z "${BASE_SHA}..${HEAD_SHA}" | tr '\0' '\n')
+          default_ref="origin/${DEFAULT_BRANCH}"
+          if ! git rev-parse --verify --quiet "${default_ref}^{commit}" >/dev/null 2>&1; then
+            # Fail loudly rather than guess. Either answer would be a lie: a
+            # false here runs an audit the action may refuse and reports it as
+            # complete, and a true skips the audit citing an edit nobody can
+            # confirm. The checkout fetches every branch (fetch-depth: 0), so
+            # this fires only on a genuinely broken checkout.
+            echo "code-review-audit: cannot resolve ${default_ref}; the workflow-validation guardrail's comparison ref is unavailable." >&2
+            exit 1
+          fi
+          changed=$(set -o pipefail; git diff --name-only -z "${default_ref}..${HEAD_SHA}" | tr '\0' '\n')
           if printf '%s\n' "$changed" | grep -qE '^\.github/workflows/code-review-audit\.yml$'; then
             echo "self_modified=true" >> "$GITHUB_OUTPUT"
           else
@@ -1364,10 +1392,17 @@ jobs:
           steps.gate.outputs.gated == 'false' &&
           steps.source-changes.outputs.has_source == 'true' &&
           steps.workflow-self-mod.outputs.self_modified == 'true'
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
           set -eu
+          # Names the condition the check actually tests -- this PR's copy of
+          # the workflow differs from the default branch's -- rather than
+          # asserting the PR modified it. A PR on a stale base trips this
+          # without touching the workflow, and "you modified it" points such an
+          # author at an edit they never made instead of at a rebase.
           bash .github/audit/cra-status-upsert.sh "$PR_NUMBER" \
-            "code-review-audit skipped: PR modifies the audit workflow itself; claude-code-action's workflow-validation guardrail would refuse to run"
+            "code-review-audit skipped: this PR's copy of the audit workflow differs from ${DEFAULT_BRANCH}; claude-code-action's workflow-validation guardrail would refuse to run. If this PR does not change the workflow, rebase onto ${DEFAULT_BRANCH}."
 
       - name: Status - local-mode stand-down
         # Green terminal step for the local-mode stand-down path. The JOB
