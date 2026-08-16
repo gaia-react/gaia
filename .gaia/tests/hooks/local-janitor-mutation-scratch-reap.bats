@@ -115,19 +115,32 @@ seed_copy() {
 }
 
 @test "sweep 5b: a non-numeric retention override falls back to the default" {
+  # Seeded PAST the default window and asserted reaped, not kept. Asserting
+  # "kept" cannot see this guard: without the fallback the value stays
+  # `banana`, `find -mtime +banana` fails outright with its stderr swallowed
+  # by the arm's own redirect, and nothing is reaped -- so "fell back to 14"
+  # and "the sweep silently stopped reaping anything on this machine" look
+  # identical. Only a fixture the working default REAPS can tell them apart.
   make_repo
-  seed_copy "abc123.work.code-audit-frontend" 3
+  seed_copy "abc123.work.code-audit-frontend" 20
   cd "$REPO"
   GAIA_MUTATION_SCRATCH_RETENTION_DAYS=banana run bash "$HOOK_ABS"
   [ "$status" -eq 0 ]
-  [ -d "$SCRATCH/abc123.work.code-audit-frontend" ]
+  [ -e "$SCRATCH/abc123.work.code-audit-frontend" ] && return 1
+  true
 }
 
 @test "sweep 5b: a zero retention override clamps to the one-day floor" {
-  # Never to zero: a floor of 0 would reap a copy a live member minted moments
+  # Never to zero: a floor of 0 would reap a copy a live member minted a day
   # earlier if a session happened to start mid-audit.
+  #
+  # Seeded at 1.5 days, which is the only band that discriminates. `find
+  # -mtime +N` matches a truncated age strictly greater than N, so 1.5 days
+  # truncates to 1: with the clamp (N=1) it is kept, without it (N=0) it is
+  # reaped. A fixture seeded at 0 days is kept under both, which is why the
+  # obvious version of this test cannot fail when the clamp is deleted.
   make_repo
-  seed_copy "abc123.work.code-audit-frontend" 0
+  seed_copy "abc123.work.code-audit-frontend" 1.5
   cd "$REPO"
   GAIA_MUTATION_SCRATCH_RETENTION_DAYS=0 run bash "$HOOK_ABS"
   [ "$status" -eq 0 ]

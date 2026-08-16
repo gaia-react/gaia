@@ -221,15 +221,17 @@
 #      registry. The sweep never recurses below maxdepth-1 -- the three
 #      zones it walks never include telemetry/, red-ledger/, handoff/,
 #      plans/, specs/, debt/, forensics/, or harden/ -- and
-#      never follows a symlinked scope root from a linked worktree. Two
+#      never follows a symlinked scope root from a linked worktree. Three
 #      off-pattern writers still get their own dedicated reap arms
 #      elsewhere, unrelated to this sweep's registry consultation:
 #      audit/*.findings.json attached to sweep #2
-#      (GAIA_AUDIT_FINDINGS_RETENTION_HOURS, default 72, floor 24) and
-#      cache/gh-artifact-pr*.json attached to sweep #5
+#      (GAIA_AUDIT_FINDINGS_RETENTION_HOURS, default 72, floor 24),
+#      cache/gh-artifact-pr*.json attached to sweep #5b
 #      (GAIA_CACHE_ARTIFACT_RETENTION_DAYS, default 2, floor 1; the glob also
 #      covers the pre-4.2 unkeyed cache/gh-artifact-pr.json some machines
-#      may still carry -- see sweep #5's own comment for why).
+#      may still carry -- see sweep #5b's own comment for why), and the
+#      per-member children of cache/mutation-scratch/ attached to sweep #5b
+#      (GAIA_MUTATION_SCRATCH_RETENTION_DAYS, default 14, floor 1).
 #
 # Fail-safe by construction, on both kinds of side effect. On the deleting
 # side: any inability to PROVE death (no git, unreadable HEAD, unparseable
