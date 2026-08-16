@@ -193,13 +193,23 @@ else
       if [ -n "$outdated_count" ] && [ "$outdated_count" -gt 0 ] 2>/dev/null; then
         segments+=("$(printf '\033[01;33mRun /update-deps (%d outdated)\033[00m' "$outdated_count")")
       fi
+      # Both counts are discharged by the same bare `/gaia-harden` run, and no
+      # argument selects between them, so they stack into one segment's reason
+      # parameter rather than into a second segment naming the same command.
+      # Same shape as the /gaia-audit segment below, which folds its reason in
+      # the same way.
+      harden_reason=""
       if [ -n "$harden_count" ] && [ "$harden_count" -gt 0 ] 2>/dev/null; then
         harden_noun="recurring patterns"
         [ "$harden_count" -eq 1 ] && harden_noun="recurring pattern"
-        segments+=("$(printf '\033[01;35mRun /gaia-harden (%d %s)\033[00m' "$harden_count" "$harden_noun")")
+        harden_reason=$(printf '%d %s' "$harden_count" "$harden_noun")
       fi
       if [ -n "$harden_unclassified" ] && [ "$harden_unclassified" -gt 0 ] 2>/dev/null; then
-        segments+=("$(printf '\033[01;35mRun /gaia-harden (%d unclassified recurring)\033[00m' "$harden_unclassified")")
+        [ -n "$harden_reason" ] && harden_reason="${harden_reason}, "
+        harden_reason=$(printf '%s%d unclassified' "$harden_reason" "$harden_unclassified")
+      fi
+      if [ -n "$harden_reason" ]; then
+        segments+=("$(printf '\033[01;35mRun /gaia-harden (%s)\033[00m' "$harden_reason")")
       fi
       if [ "$audit_nudge" = "true" ]; then
         if [ -n "$audit_reason" ]; then
