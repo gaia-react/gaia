@@ -284,7 +284,15 @@ EOF
 
 # Extract one step's `run:` shell body from the workflow YAML and dedent it.
 # Matches the `- name:` line EXACTLY, so "Write GAIA-Audit commit status" does
-# not also match its "(clean, no push)" / "(out-of-scope skip)" siblings.
+# not also match its "(clean, no push)" / "(out-of-scope skip)" siblings. Same
+# shape as the helpers in .github/audit/tests/ci-workflow-self-mod.bats and
+# .github/audit/tests/self-heal-scope-gate.bats; not sourced from either (bats
+# files do not share function definitions across files), so the three are kept
+# in agreement about what "extract the real step body" means by hand. Reading
+# .github/workflows/code-review-audit.yml is the family criterion: a same-shape
+# copy that extracts from a different workflow, as
+# .gaia/scripts/tests/distribution-audit-pr-gate.bats does, is outside the three
+# and free to diverge.
 extract_step_body() {
   local step_name="$1" out="$BATS_TEST_TMPDIR/step.sh"
   awk -v want="      - name: ${step_name}" '
