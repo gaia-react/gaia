@@ -208,9 +208,21 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
     exit 0
   fi
 
+  # Resolve first, create second, so the two failures report as two failures.
+  # An empty return from gaia_audit_scratch_dir means either that no path
+  # could be resolved or that the path resolved and `mkdir -p` failed, and
+  # those send a caller to opposite places: the first to its checkout, the
+  # second to a full disk, a read-only mount, or a stale root-owned directory
+  # under the scratch root. One message for both sends every unwritable-root
+  # case to look at a checkout that is intact.
+  gaia_scratch_path="$(gaia_audit_scratch_path "$@")"
+  if [[ -z "$gaia_scratch_path" ]]; then
+    printf 'audit-scratch-dir: could not resolve a scratch directory (no main checkout)\n' >&2
+    exit 1
+  fi
   out="$(gaia_audit_scratch_dir "$@")"
   if [[ -z "$out" ]]; then
-    printf 'audit-scratch-dir: could not resolve a scratch directory (no main checkout)\n' >&2
+    printf 'audit-scratch-dir: resolved %s but could not create it\n' "$gaia_scratch_path" >&2
     exit 1
   fi
   printf '%s\n' "$out"

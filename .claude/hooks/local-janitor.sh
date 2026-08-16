@@ -1278,8 +1278,21 @@ if [ -d "$main_cache_dir" ]; then
   # the overwhelming majority of machines, and without it find writes a
   # `No such file or directory` line to the stderr this session hook shares
   # with sweep #9's real reporting channel.
+  #
+  # On its own floor-clamped knob, like the gh-artifact arm above rather than
+  # like the hardcoded 14-day globs in sweep #5. These children are the most
+  # expensive residue anywhere under .gaia/local/cache -- each one is a whole
+  # working copy of the repository, one per audit key per member -- so a
+  # machine whose members keep dying before they release needs a way to
+  # shorten the window that is not editing this hook. The default matches the
+  # rest of the cache's 14 days because the copy is only ever litter after a
+  # member died, and a live member's copy must survive a session start that
+  # happens mid-audit.
+  mutation_scratch_days="${GAIA_MUTATION_SCRATCH_RETENTION_DAYS:-14}"
+  case "$mutation_scratch_days" in '' | *[!0-9]*) mutation_scratch_days=14 ;; esac
+  [ "$mutation_scratch_days" -lt 1 ] && mutation_scratch_days=1
   find "$main_cache_dir/mutation-scratch" -mindepth 1 -maxdepth 1 -type d \
-    -mtime +14 -exec rm -rf {} + 2>/dev/null
+    -mtime +"$mutation_scratch_days" -exec rm -rf {} + 2>/dev/null
 fi
 
 # --- 6. Age-reap merged SPEC folders past the retention window -------------

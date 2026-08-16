@@ -241,6 +241,22 @@ teardown() {
   [ -d "$a" ]
 }
 
+@test "an unwritable scratch root reports the create failure, not a checkout failure" {
+  # The two failures send a caller to opposite places, so they must not share
+  # one message: this one is a full disk or a read-only mount, never a
+  # checkout that failed to resolve.
+  [ "$(id -u)" -eq 0 ] && skip "root ignores the mode bits this test relies on"
+  local jail="$TMP/jail"
+  mkdir -p "$jail"
+  chmod 500 "$jail"
+  GAIA_AUDIT_SCRATCH_ROOT="$jail/mutation-scratch" run bash "$SCRIPT" code-audit-frontend deadbeef "$REPO"
+  chmod 700 "$jail"
+  [ "$status" -eq 1 ]
+  grep -qF -- "could not create" <<<"$output"
+  grep -qF -- "no main checkout" <<<"$output" && return 1
+  true
+}
+
 @test "sourcing the file has no side effects" {
   run bash -c ". '$SCRIPT'; printf 'sourced\n'"
   [ "$status" -eq 0 ]

@@ -103,6 +103,37 @@ seed_copy() {
   [ -d "$SCRATCH" ]
 }
 
+@test "sweep 5b: GAIA_MUTATION_SCRATCH_RETENTION_DAYS shortens the window" {
+  make_repo
+  seed_copy "abc123.work.code-audit-frontend" 3
+  cd "$REPO"
+  GAIA_MUTATION_SCRATCH_RETENTION_DAYS=1 run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  # Kept at the 14-day default; reaped at 1.
+  [ -e "$SCRATCH/abc123.work.code-audit-frontend" ] && return 1
+  true
+}
+
+@test "sweep 5b: a non-numeric retention override falls back to the default" {
+  make_repo
+  seed_copy "abc123.work.code-audit-frontend" 3
+  cd "$REPO"
+  GAIA_MUTATION_SCRATCH_RETENTION_DAYS=banana run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ -d "$SCRATCH/abc123.work.code-audit-frontend" ]
+}
+
+@test "sweep 5b: a zero retention override clamps to the one-day floor" {
+  # Never to zero: a floor of 0 would reap a copy a live member minted moments
+  # earlier if a session happened to start mid-audit.
+  make_repo
+  seed_copy "abc123.work.code-audit-frontend" 0
+  cd "$REPO"
+  GAIA_MUTATION_SCRATCH_RETENTION_DAYS=0 run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ -d "$SCRATCH/abc123.work.code-audit-frontend" ]
+}
+
 @test "sweep 5b: an absent mutation-scratch dir is a silent no-op" {
   make_repo
   rm -rf "$SCRATCH"
