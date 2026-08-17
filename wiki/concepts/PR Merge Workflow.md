@@ -278,8 +278,8 @@ The orchestrator writes the entry after the final Code Audit Team member clearan
 
 It is a read-modify-write, never an overwrite. The default member owns this file, and its `filed` receipts and its `backend` field live in it.
 
-- Absent → create `{"schema":1,"sha":"<tree_root HEAD sha>","backend":"present","findings":[]}`.
-- Present → leave `backend` and every existing entry exactly as they are, and set `.sha` to the acting tree's HEAD sha; `.sha` is what binds a waive to the pull request under judgment, so the writer that adds an entry is the writer that stamps it.
+- Absent → create `{"schema":1,"sha":"<tree_root HEAD sha>","branch":"<tree_root current branch>","backend":"present","findings":[]}`.
+- Present → leave `backend` and every existing entry exactly as they are, and set `.sha` to the acting tree's HEAD sha and `.branch` to its current branch (`git -C "$tree_root" symbolic-ref --quiet --short HEAD`, empty on a detached HEAD); those two are what bind a waive to the pull request under judgment, so the writer that adds an entry is the writer that stamps them.
 - Append an entry only when no existing entry carries the same `key`; an existing entry always wins.
 - Write atomically: a temp file in the sidecar's own directory, then `mv`.
 
@@ -294,7 +294,7 @@ The entry uses the existing schema, with no new fields:
 
 `issue_number` and `pending_reason` stay unset.
 
-The sidecar is named by the default member's content digest, which does not rotate for a diff that touches nothing that member owns and no gate machinery, so one file can be read while judging several consecutive pull requests. Both gates read the recorded `sha`: an entry whose sidecar records a sha belonging to another branch's live history is set aside rather than judged against a diff it was never about, and the gate says so out loud. That is why the `.sha` stamp above is not optional.
+The sidecar is named by the default member's content digest, which does not rotate for a diff that touches nothing that member owns and no gate machinery, so one file can be read while judging several consecutive pull requests. Both gates read the recorded `branch` and `sha`: an entry whose sidecar belongs to a different pull request is set aside rather than judged against a diff it was never about, and the gate says so out loud. `branch` is the decisive half, because a pull request squash-merged with `--delete-branch` leaves a head reachable from no ref, which no test over `sha` alone can tell from this branch's own rewritten-away commit. That is why the stamp above is not optional.
 
 The orchestrator is trusted rather than bounded here, and this is a member-error guard, not a security boundary: it removes members' write access to files outside their own domain and hands that same access to the orchestrator. What makes that reasonable is stated rather than assumed: under local mode a human watches every turn the orchestrator takes, which is not true of a member dispatched inside a CI job. A bad orchestrator repair is caught by human review of the pull request and by nothing else.
 
