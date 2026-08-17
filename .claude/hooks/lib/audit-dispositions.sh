@@ -135,13 +135,19 @@ _disposition_set_contains() {
 # judging several consecutive pull requests; a changed-files verdict on another
 # pull request's entry would be a false deny.
 #
+# The branch term runs first and is the only DECISIVE one:
+#
+#   0. `branch` recorded, the acting root resolves a branch of its own, and the
+#      two differ                                      -> NOT attributable
+#
+# Everything else falls through to the sha chain:
+#
 #   1. `sha` absent, empty, or not 40 hex digits       -> attributable
 #   2. `merge-base --is-ancestor <sha> HEAD` exits 0   -> attributable
 #   3. it exits 1 (a REAL non-ancestor)                -> the orphan probe,
 #      `for-each-ref --contains <sha> --count=1 refs/heads refs/remotes`:
 #        non-empty (the commit lives on another live ref) -> NOT attributable
-#        empty (orphaned, which is what a rewrite of THIS branch leaves behind)
-#                                                         -> attributable
+#        empty (orphaned)                                 -> attributable
 #   4. any other status (128 on an unknown object, git unavailable, no acting
 #      root), or a probe that errors                   -> attributable
 #
@@ -154,18 +160,50 @@ _disposition_set_contains() {
 # none. Without it an amend, rebase, or force-push sets every entry aside, and a
 # waive on a path that is neither machinery nor changed silently stops denying.
 #
+# WHY THE BRANCH TERM EXISTS: reachability cannot tell those two cases apart
+# once the other pull request is squash-merged with `--delete-branch`. The
+# squash writes a NEW commit and the branch is gone, so the merged head is
+# reachable from no ref and takes the orphan arm while belonging to the
+# other-pull-request arm, and the previous pull request's entries are judged
+# against an unrelated diff. The recorded branch answers directly what
+# reachability can only approximate. It is offline and deterministic, which a
+# `gh` lookup of the sha's pull request would not be, and it holds in CI, which
+# a reflog probe would not.
+#
+# Its honest limit: a sidecar written before the field existed records no
+# branch, so it falls through to the sha chain and behaves exactly as it does
+# without this term. That is the fail-toward-unchanged direction, and it is
+# self-clearing, the sidecar is gitignored local state that a digest rotation
+# replaces.
+#
+# A branch MATCH decides nothing and falls through on purpose. Only a mismatch
+# is positive evidence of another branch; a match leaves the sha chain's own
+# arms, an ancestor sha is attributability proof the branch name cannot supply,
+# in place rather than short-circuiting past them.
+#
 # Attributable is the fail-toward-unchanged-behavior direction throughout: the
 # check never sets an entry aside on a guess.
 _disposition_attributable() {
   local sidecar="$1" root="$2"
-  local sha rc probe
+  local sha rc probe sidecar_branch acting_branch
+
+  [ -n "$root" ] || return 0
+
+  sidecar_branch=$(jq -r '.branch // ""' "$sidecar" 2>/dev/null || true)
+  if [ -n "$sidecar_branch" ]; then
+    # Empty on a detached HEAD, which is a real state in a CI checkout: with no
+    # branch to compare against, the recorded one proves nothing either way.
+    acting_branch=$(git -C "$root" symbolic-ref --quiet --short HEAD 2>/dev/null || true)
+    if [ -n "$acting_branch" ] && [ "$sidecar_branch" != "$acting_branch" ]; then
+      return 1
+    fi
+  fi
 
   sha=$(jq -r '.sha // ""' "$sidecar" 2>/dev/null || true)
   case "$sha" in
     *[!0-9a-fA-F]*) return 0 ;;
   esac
   [ "${#sha}" -eq 40 ] || return 0
-  [ -n "$root" ] || return 0
 
   rc=0
   git -C "$root" merge-base --is-ancestor "$sha" HEAD >/dev/null 2>&1 || rc=$?
@@ -354,8 +392,8 @@ EOF
       if audit_path_is_machinery "$mw_path"; then
         continue
       fi
-      # A sidecar carrying another pull request's sha is set aside: no offender
-      # line, and disposition_notes reports why.
+      # A sidecar belonging to a different pull request, by branch or by sha, is
+      # set aside: no offender line, and disposition_notes reports why.
       if [ "$mw_attributable" -ne 1 ]; then
         continue
       fi

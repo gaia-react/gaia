@@ -457,6 +457,41 @@ orphan_commit_on_current_branch() {
   printf '%s' "$sha"
 }
 
+# merged_and_deleted_head <repo> <path> <branch>
+#
+# Commits <path> on a new <branch>, returns to the original branch, then deletes
+# <branch> unmerged, leaving its head reachable from no ref. Prints that sha.
+# This is the shape `gh pr merge --squash --delete-branch` leaves behind: the
+# squash writes a NEW commit, so the pull request's own head survives on no ref
+# and is indistinguishable by reachability alone from a rewritten-away commit of
+# the branch under judgment.
+merged_and_deleted_head() {
+  local repo="$1" path="$2" branch="$3" cur sha
+  cur="$(git -C "$repo" symbolic-ref --short HEAD)"
+  git -C "$repo" checkout --quiet -b "$branch" "$cur"
+  mkdir -p "$repo/$(dirname "$path")"
+  printf 'merged pr content\n' > "$repo/$path"
+  git -C "$repo" add "$path"
+  git -C "$repo" commit --quiet -m "merged pr commit"
+  sha="$(git -C "$repo" rev-parse HEAD)"
+  git -C "$repo" checkout --quiet "$cur"
+  git -C "$repo" branch -D "$branch" >/dev/null 2>&1
+
+  # Both callers title themselves around an ORPHANED sha, so a helper that
+  # yielded a reachable one would green them while exercising a different arm
+  # of the probe entirely. Same rationale as make_pr_repo's own degradation
+  # guard: assert the fixture is the shape the test names.
+  if git -C "$repo" merge-base --is-ancestor "$sha" HEAD 2>/dev/null; then
+    echo "merged_and_deleted_head($branch): sha is an ancestor of HEAD; fixture degraded" >&2
+    return 1
+  fi
+  if [ -n "$(git -C "$repo" for-each-ref --contains "$sha" --count=1 refs/heads refs/remotes 2>/dev/null)" ]; then
+    echo "merged_and_deleted_head($branch): sha is still reachable from a ref; fixture degraded" >&2
+    return 1
+  fi
+  printf '%s' "$sha"
+}
+
 # ---------------------------------------------------------------------------
 # disposition_offenders / disposition_notes: the widened union eligibility
 # (SPEC-064) -- gate-machinery paths UNION this pull request's own
@@ -632,6 +667,72 @@ orphan_commit_on_current_branch() {
   local repo
   repo="$(make_pr_repo case-unknown-sha app/in-diff.ts)" || return 1
   write_sidecar '{"schema":1,"backend":"github","sha":"deadbeefdeadbeefdeadbeefdeadbeefdeadbeef","findings":[{"key":"v1 class=x path=app/not-changed.ts line=1","disposition":"machinery_waived"}]}'
+  run disposition_offenders "$SIDECAR" "$repo"
+  [ "$status" -eq 0 ]
+  grep -qF -- "machinery-waived-not-eligible: v1 class=x path=app/not-changed.ts line=1" <<<"$output" || return 1
+}
+
+@test "offenders/notes: a sidecar recording a DIFFERENT branch is set aside even when its sha is orphaned (the squash-merged, branch-deleted head)" {
+  local repo merged_sha
+  repo="$(make_pr_repo case-branch-other app/in-diff.ts)" || return 1
+  merged_sha="$(merged_and_deleted_head "$repo" app/other-pr-only.ts other-pr)" || return 1
+
+  write_sidecar "$(printf '{"schema":1,"backend":"github","branch":"other-pr","sha":"%s","findings":[{"key":"v1 class=x path=app/not-changed.ts line=1","disposition":"machinery_waived"}]}' "$merged_sha")"
+  run disposition_offenders "$SIDECAR" "$repo"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+
+  run disposition_notes "$SIDECAR" "$repo"
+  [ "$status" -eq 0 ]
+  grep -qF -- "changed-files-not-attributable: v1 class=x path=app/not-changed.ts line=1" <<<"$output" || return 1
+
+  # Control: the SAME sidecar without the branch field reaches the orphan
+  # probe's attributable arm and denies. This is the false deny the branch term
+  # answers, and it proves the test measures the branch term rather than
+  # anything the orphaned sha does on its own.
+  write_sidecar "$(printf '{"schema":1,"backend":"github","sha":"%s","findings":[{"key":"v1 class=x path=app/not-changed.ts line=1","disposition":"machinery_waived"}]}' "$merged_sha")"
+  run disposition_offenders "$SIDECAR" "$repo"
+  [ "$status" -eq 0 ]
+  grep -qF -- "machinery-waived-not-eligible: v1 class=x path=app/not-changed.ts line=1" <<<"$output" || return 1
+}
+
+@test "offenders: a sidecar recording the branch under judgment still denies on an orphaned sha, so the branch term never undoes the force-push case" {
+  local repo orphaned_sha
+  repo="$(make_pr_repo case-branch-same app/in-diff.ts)" || return 1
+  orphaned_sha="$(orphan_commit_on_current_branch "$repo" app/will-be-orphaned.ts)"
+
+  write_sidecar "$(printf '{"schema":1,"backend":"github","branch":"feature","sha":"%s","findings":[{"key":"v1 class=x path=app/not-changed.ts line=1","disposition":"machinery_waived"}]}' "$orphaned_sha")"
+  run disposition_offenders "$SIDECAR" "$repo"
+  [ "$status" -eq 0 ]
+  grep -qF -- "machinery-waived-not-eligible: v1 class=x path=app/not-changed.ts line=1" <<<"$output" || return 1
+}
+
+@test "offenders/notes: a MATCHING branch decides nothing, so the sha chain's live-ref arm still sets the sidecar aside" {
+  local repo other_sha
+  repo="$(make_pr_repo case-branch-match-liveref app/in-diff.ts)" || return 1
+  other_sha="$(commit_on_second_branch "$repo" app/other-pr-only.ts)"
+
+  # branch matches the branch under judgment, so the branch term declines to
+  # answer; the sha is reachable from another LIVE ref, which only the sha
+  # chain can see. A match that short-circuited to attributable would flip this
+  # arm from set-aside to judged-and-denied, which is what this pins.
+  write_sidecar "$(printf '{"schema":1,"backend":"github","branch":"feature","sha":"%s","findings":[{"key":"v1 class=x path=app/not-changed.ts line=1","disposition":"machinery_waived"}]}' "$other_sha")"
+  run disposition_offenders "$SIDECAR" "$repo"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+
+  run disposition_notes "$SIDECAR" "$repo"
+  [ "$status" -eq 0 ]
+  grep -qF -- "changed-files-not-attributable: v1 class=x path=app/not-changed.ts line=1" <<<"$output" || return 1
+}
+
+@test "offenders: a detached-HEAD acting root resolves no branch to compare, so a recorded branch decides nothing and the sha chain answers alone" {
+  local repo merged_sha
+  repo="$(make_pr_repo case-branch-detached app/in-diff.ts)" || return 1
+  merged_sha="$(merged_and_deleted_head "$repo" app/other-pr-only.ts other-pr)" || return 1
+  git -C "$repo" checkout --quiet --detach HEAD
+
+  write_sidecar "$(printf '{"schema":1,"backend":"github","branch":"other-pr","sha":"%s","findings":[{"key":"v1 class=x path=app/not-changed.ts line=1","disposition":"machinery_waived"}]}' "$merged_sha")"
   run disposition_offenders "$SIDECAR" "$repo"
   [ "$status" -eq 0 ]
   grep -qF -- "machinery-waived-not-eligible: v1 class=x path=app/not-changed.ts line=1" <<<"$output" || return 1
