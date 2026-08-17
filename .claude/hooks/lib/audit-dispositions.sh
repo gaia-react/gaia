@@ -392,8 +392,8 @@ EOF
       if audit_path_is_machinery "$mw_path"; then
         continue
       fi
-      # A sidecar carrying another pull request's sha is set aside: no offender
-      # line, and disposition_notes reports why.
+      # A sidecar belonging to a different pull request, by branch or by sha, is
+      # set aside: no offender line, and disposition_notes reports why.
       if [ "$mw_attributable" -ne 1 ]; then
         continue
       fi
