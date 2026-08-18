@@ -633,11 +633,17 @@ printf '%s\n' \"\$debt_origin_changed\"")"
   # and .gaia/tests/distribution/03-marker-strip.sh only asserts the output
   # shrank and left no fragments, which an over-strip satisfies too.
   local skill="$REPO_ROOT/.claude/skills/file-tech-debt/SKILL.md"
-  # awk exits without running END when it cannot open its input, and a command
-  # substitution discards that status, so an unreadable SKILL.md would leave
-  # `out` empty and green this test while it enforced nothing.
-  # -r, not -f: `-f` is satisfied by a file awk still cannot open (mode 000),
-  # which is the very case this guard names.
+  # awk exits 2 without running END when it cannot open its input. That status
+  # is NOT lost today: `local out` below is declared on its own line and the
+  # assignment beside it is a plain one, which propagates the substitution's
+  # status under bats' set -e, so an unreadable SKILL.md already reds the test.
+  # Collapsing those two lines into `local out="$(awk ...)"` is what would lose
+  # it, because the status becomes `local`'s own, so keep them split.
+  #
+  # This guard therefore buys legibility and survivability, not a green-mutant
+  # fix: without it the failure is a raw `awk: can't open file` at the
+  # substitution, and with the collapse it would be no failure at all.
+  # -r, not -f: `-f` is satisfied by a file awk still cannot open (mode 000).
   [ -r "$skill" ] || {
     echo "SKILL.md is missing or unreadable; 8a cannot check the wrap" >&2
     return 1
