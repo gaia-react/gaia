@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GAIA script capability manifest",
+  "description": "Constrains .gaia/script-capabilities.json: the one declaration of what each script named in .claude/settings.json's permissions.allow actually reaches for (network, github-write, git-write, fs-write, tmp, invokes). A malformed edit fails this cheap structural validation before check-script-capabilities.sh runs its semantic reconciliation against the script's real closure.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "scripts"],
+  "properties": {
+    "$schema": { "type": "string", "minLength": 1 },
+    "scripts": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/scriptEntry" }
+    }
+  },
+  "$defs": {
+    "scriptEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["script", "capabilities", "why", "maintainer_only"],
+      "properties": {
+        "script": {
+          "type": "string",
+          "pattern": "^[^/].*\\.sh$",
+          "description": "Repo-relative path to the allowlisted script (never a leading /). Unique across the manifest; a second entry naming the same script is a DUPLICATE finding, not a silent last-wins."
+        },
+        "capabilities": {
+          "type": "array",
+          "minItems": 0,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/capabilityTerm" },
+          "description": "The script's declared reach, as vocabulary terms. An empty array is legal and meaningful: a pure script that reaches for none of the six terms declares nothing. The reconciling check's declared-but-unreached direction (a SURPLUS finding) is what keeps an empty array honest rather than a place to hide unused permission."
+        },
+        "why": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Plain-language reason this script's declared capabilities are its whole reach: what the script does and why these terms, and no others, cover it."
+        },
+        "maintainer_only": {
+          "type": "boolean",
+          "description": "Whether this script is withheld from the shipped release. Required on every entry (an absent key is never treated as false) and reconciled against .gaia/release-exclude in GAIA's own tree only, since .gaia/release-exclude is itself release-excluded and unavailable to an adopter checkout."
+        },
+        "waived": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/waiver" }
+        }
+      }
+    },
+    "waiver": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["capability", "why"],
+      "description": "A waiver suppresses both reconciliation directions (an UNDECLARED finding and a SURPLUS finding) for exactly one script-capability pair, and suppresses no other finding class: UNRESOLVED, BAD-TERM, BAD-GRANT, NO-ENTRY, ORPHAN, DUPLICATE, and MARKING are never waivable. A waived pair still prints its WAIVER line on every run, passing or failing.",
+      "properties": {
+        "capability": { "$ref": "#/$defs/capabilityTerm" },
+        "why": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Plain-language reason this one capability is waived for this one script."
+        }
+      }
+    },
+    "capabilityTerm": {
+      "type": "string",
+      "pattern": "^(network|github-write|git-write|tmp|fs-write:[^ ]+|invokes:[^/ ][^ ]*)$",
+      "description": "One of six vocabulary terms: network (any outbound call), github-write (an authenticated mutating gh verb), git-write (a commit, tag, or branch mutation), fs-write:<glob> (a write, described by a repo-relative glob), tmp (a write into the system temporary directory), invokes:<path> (a call into another script, sourced or executed). JSON Schema draft 2020-12 forbids lookahead, so two rules are checker-side assertions rather than schema-enforceable: an invokes: target carries no .. segment and names a file that exists, and an fs-write: glob is repo-relative and well-formed (no leading / or ~, no .. segment)."
+    }
+  }
+}
