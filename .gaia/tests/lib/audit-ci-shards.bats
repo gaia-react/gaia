@@ -747,9 +747,12 @@ PY
   require_yaml_parser
   local doctored="$BATS_TEST_TMPDIR/w6b.yml" line mutated
   line="$(sole_line_matching "$WORKFLOW" "$MATRIX_SHARD_PATTERN")" || return 1
-  # Two forms because the list is comma-separated: the second covers lib
-  # landing last, where there is no trailing separator to take with it.
-  mutated="$(printf '%s' "$line" | sed -e 's/lib, //' -e 's/, lib\]/]/')"
+  # Three forms because the list is comma-separated and lib can sit anywhere in
+  # it. Each bounds both sides of the id, so a future shard whose name ENDS in
+  # lib is not silently rewritten instead: that would leave a changed line
+  # assert_doctored accepts while the case no longer performs the mutation its
+  # name states.
+  mutated="$(printf '%s' "$line" | sed -e 's/\[lib, /[/' -e 's/, lib, /, /' -e 's/, lib\]/]/')"
   assert_doctored "$line" "$mutated" "dropping lib" || return 1
   replace_line "$WORKFLOW" "$line" "$mutated" "$doctored"
 
