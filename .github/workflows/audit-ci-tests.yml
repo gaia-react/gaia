@@ -441,6 +441,21 @@ jobs:
               # match no pattern here and skip the very suite that guards it.
               - '.gaia/hook-scopes.json'
               - '.gaia/hook-scopes.schema.json'
+              # check-script-capabilities.bats (.gaia/scripts/tests/) asserts
+              # coverage + conformance of the script-capabilities manifest
+              # against the checker; a manifest-only edit touches neither
+              # .gaia/scripts/** nor .claude/settings.json above, so without
+              # these two lines it would match no pattern here and skip the
+              # very suite that guards it.
+              - '.gaia/script-capabilities.json'
+              - '.gaia/script-capabilities.schema.json'
+              # .gaia/release-exclude is the authority check-script-capabilities.sh
+              # reconciles maintainer_only against (C-10): a change to the
+              # release boundary is exactly what makes that marking wrong, and
+              # it touches no other pattern here, so without this line the
+              # suite that guards it would skip on the very change that breaks
+              # it.
+              - '.gaia/release-exclude'
               # lint-shipped-issue-refs.bats (.gaia/scripts/tests/) derives its
               # scan set from the release manifest, and its release-boundary
               # parity assertions read the manifest directly to check that the
@@ -649,7 +664,7 @@ jobs:
       # Do not edit this list by hand to make W10 pass: W10 failing means a
       # suite moved legs, and the repair is to copy the set W10 names, which it
       # derives from the suites rather than from here.
-      - if: contains(fromJSON('["hooks-4", "lib", "scripts-1", "scripts-3"]'), matrix.shard) && (steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch')
+      - if: contains(fromJSON('["hooks-4", "lib", "scripts-1", "scripts-2", "scripts-3"]'), matrix.shard) && (steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch')
         name: Install the YAML parser and zsh
         run: sudo apt-get update && sudo apt-get install -y python3-yaml zsh
       # No apt at all: the sandbox tree provably needs neither python3-yaml nor

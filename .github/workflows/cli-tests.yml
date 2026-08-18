@@ -328,6 +328,13 @@ jobs:
               - '.gaia/release-scrub.yml'
               # The harness itself: a scenario, lib, or runner edit must re-run.
               - '.gaia/tests/distribution/**'
+              # 01-files-present.sh's shipped-manifest scenario reads
+              # $STAGING/.gaia/script-capabilities.json directly; a
+              # manifest-only or schema-only edit touches no other pattern
+              # here, so without these two lines the scenario that guards it
+              # would skip on the very change that breaks it.
+              - '.gaia/script-capabilities.json'
+              - '.gaia/script-capabilities.schema.json'
               - '.github/workflows/cli-tests.yml'
               # The composite action this job's Node setup step `uses:`. Nothing
               # else here reaches it, so without this line an action-only change

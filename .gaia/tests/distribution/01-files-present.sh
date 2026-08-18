@@ -7,6 +7,9 @@
 #  3. Adopter-owned sentinels (wiki/hot.md, wiki/log.md, .gaia/VERSION,
 #     .gaia/manifest.json) exist and contain release-baseline content
 #     (not maintainer dev content).
+#  4. .gaia/script-capabilities.json and its schema ship; the capability
+#     checker itself does not; and every script-capabilities.json entry's
+#     maintainer_only marking agrees with the script's presence in staging.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 source "$HERE/lib/lib.sh"
@@ -79,4 +82,47 @@ grep -qF "## [v$PKG_VER]" "$STAGING/wiki/log.md" \
 grep -qF "GAIA v$PKG_VER" "$STAGING/wiki/hot.md" \
   || { fail "wiki/hot.md missing 'GAIA v$PKG_VER' release marker; scrub-wiki did not run or wrote a wrong version"; exit 1; }
 
-pass "manifest, exclude list, and sentinels all consistent with staging"
+# 4. Script-capabilities distribution boundary: the manifest and its schema
+# ship, the checker that reads them does not, and every entry's
+# maintainer_only marking agrees with what actually landed in staging. This
+# reads the same release-exclude authority that built $STAGING in the first
+# place, through its effect on the staged tree, rather than a second,
+# independent source; its value is catching a marking that disagrees with
+# what actually shipped.
+BOUNDARY_ERRORS=()
+
+for shipped in .gaia/script-capabilities.json .gaia/script-capabilities.schema.json; do
+  [ -e "$STAGING/$shipped" ] || BOUNDARY_ERRORS+=("missing from staging: $shipped")
+done
+
+if [ -e "$STAGING/.gaia/scripts/check-script-capabilities.sh" ]; then
+  BOUNDARY_ERRORS+=("leaked into staging: .gaia/scripts/check-script-capabilities.sh")
+fi
+
+if [ -e "$STAGING/.gaia/script-capabilities.json" ]; then
+  jq empty "$STAGING/.gaia/script-capabilities.json" 2>/dev/null \
+    || BOUNDARY_ERRORS+=("staged .gaia/script-capabilities.json is not valid JSON")
+fi
+
+if [ "${#BOUNDARY_ERRORS[@]}" -eq 0 ] && [ -e "$STAGING/.gaia/script-capabilities.json" ]; then
+  while IFS=$'\t' read -r script mo_type mo_bool; do
+    if [ "$mo_type" != boolean ]; then
+      BOUNDARY_ERRORS+=("$script: maintainer_only is not a boolean (type=$mo_type)")
+      continue
+    fi
+    if [ "$mo_bool" = true ] && [ -e "$STAGING/$script" ]; then
+      BOUNDARY_ERRORS+=("$script: maintainer_only=true but present in staging")
+    elif [ "$mo_bool" = false ] && [ ! -e "$STAGING/$script" ]; then
+      BOUNDARY_ERRORS+=("$script: maintainer_only=false but absent from staging")
+    fi
+  done < <(jq -r '.scripts[] | [.script, (.maintainer_only | type), (.maintainer_only | tostring)] | @tsv' "$STAGING/.gaia/script-capabilities.json")
+fi
+
+if [ "${#BOUNDARY_ERRORS[@]}" -gt 0 ]; then
+  log "script-capabilities distribution boundary violated:"
+  for e in ${BOUNDARY_ERRORS[@]+"${BOUNDARY_ERRORS[@]}"}; do log "  $e"; done
+  fail "${#BOUNDARY_ERRORS[@]} script-capabilities boundary violation(s)"
+  exit 1
+fi
+
+pass "manifest, exclude list, sentinels, and script-capabilities boundary all consistent with staging"

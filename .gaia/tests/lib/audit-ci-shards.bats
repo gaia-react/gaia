@@ -75,6 +75,7 @@ setup() {
   REPO_ROOT="$( cd "$THIS_DIR/../../.." && pwd )"
   WORKFLOW="$REPO_ROOT/.github/workflows/audit-ci-tests.yml"
   POLLER_WORKFLOW="$REPO_ROOT/.github/workflows/code-review-audit.yml"
+  CLI_WORKFLOW="$REPO_ROOT/.github/workflows/cli-tests.yml"
   BATS_SHARDS="$REPO_ROOT/.gaia/tests/bats-shards.sh"
   # Matches retrigger-reachability.bats' own constant: the self-heal poller
   # margin charged per hop of the needs: chain.
@@ -95,6 +96,7 @@ setup() {
 
   require_repo_path -f "$WORKFLOW" "audit-ci-tests.yml" || return 1
   require_repo_path -f "$POLLER_WORKFLOW" "code-review-audit.yml" || return 1
+  require_repo_path -f "$CLI_WORKFLOW" "cli-tests.yml" || return 1
   require_repo_path -f "$BATS_SHARDS" "bats-shards.sh" || return 1
 }
 
@@ -121,6 +123,13 @@ setup() {
 #                         name, or when the one that does has no parseable,
 #                         non-empty list -- each of which would otherwise read
 #                         downstream as "this step gates on no shards".
+#   codefilter <job-id>    that job's dorny/paths-filter step's `code:` list,
+#                         one path per line, parsed as the nested YAML
+#                         document the `filters:` field's block string holds
+#                         rather than scraped line-by-line, for the same
+#                         reason every other mode here parses structurally.
+#                         Exits 2 when the job has no such step or the step
+#                         has no `code:` list.
 #   filtercount            total dorny/paths-filter steps in the whole file
 #   filterifs              one `<job-id>\t<normalized-if>` line per step, across
 #                         EVERY job, whose `if:` mentions steps.filter.outputs.
@@ -240,6 +249,27 @@ elif mode == 'matrix':
     if isinstance(shard, list):
         for item in shard:
             print(str(item))
+elif mode == 'codefilter':
+    require_job(rest[0])
+    filter_step = None
+    for step in jobs[rest[0]].get('steps') or []:
+        if isinstance(step, dict) and 'dorny/paths-filter' in str(step.get('uses', '')):
+            filter_step = step
+            break
+    if filter_step is None:
+        die('job %r has no dorny/paths-filter step' % rest[0])
+    filters_raw = (filter_step.get('with') or {}).get('filters')
+    if not isinstance(filters_raw, str):
+        die('job %r paths-filter step has no filters: string' % rest[0])
+    try:
+        filters_doc = yaml.safe_load(filters_raw)
+    except yaml.YAMLError as exc:
+        die('job %r filters: block is not valid YAML (%s)' % (rest[0], exc.__class__.__name__))
+    code_list = (filters_doc or {}).get('code')
+    if not isinstance(code_list, list):
+        die('job %r filters: block has no code: list' % rest[0])
+    for item in code_list:
+        print(str(item))
 elif mode == 'filtercount':
     count = 0
     for job in jobs.values():
@@ -1373,4 +1403,65 @@ concurrency_tree_needs_packages() {
     echo "an unreadable suite reported a clean scan; the grep error did not propagate" >&2
     return 1
   }
+}
+
+# W11. workflow-filter-coverage.bats only reaches a repo-relative path a gated
+# step names literally in its run: body; the sharder in shards' gated step is
+# that literal token, so the script-capabilities manifest, its schema, and
+# .gaia/release-exclude are transitive inputs that guard never reaches. These
+# two tests are the regression guard for the three lines SPEC-072 added to
+# close that hole.
+
+@test "W11: audit-ci-tests.yml's code filter lists the script-capabilities manifest, its schema, and release-exclude" {
+  require_yaml_parser
+  local list
+  list="$(read_wf codefilter "$WORKFLOW" shards)"
+  for path in '.gaia/script-capabilities.json' '.gaia/script-capabilities.schema.json' '.gaia/release-exclude'; do
+    printf '%s\n' "$list" | grep -qxF -- "$path" || {
+      echo "audit-ci-tests.yml's code: filter is missing $path" >&2
+      return 1
+    }
+  done
+}
+
+@test "W11: cli-tests.yml's distribution-harness code filter lists the script-capabilities manifest and its schema" {
+  require_yaml_parser
+  local list
+  list="$(read_wf codefilter "$CLI_WORKFLOW" distribution-harness)"
+  for path in '.gaia/script-capabilities.json' '.gaia/script-capabilities.schema.json'; do
+    printf '%s\n' "$list" | grep -qxF -- "$path" || {
+      echo "cli-tests.yml's distribution-harness code: filter is missing $path" >&2
+      return 1
+    }
+  done
+}
+
+@test "W11 adversarial: dropping a line from audit-ci-tests.yml's code filter is caught" {
+  require_yaml_parser
+  local doctored="$BATS_TEST_TMPDIR/w11a.yml" line
+  line="$(sole_line_matching "$WORKFLOW" "^ *- '\\.gaia/release-exclude'\$")" || return 1
+  delete_line "$WORKFLOW" "$line" "$doctored"
+
+  local list
+  list="$(read_wf codefilter "$doctored" shards)"
+  printf '%s\n' "$list" | grep -qxF -- '.gaia/release-exclude' && {
+    echo "deleting the .gaia/release-exclude filter line did not drop it from the parsed code: list" >&2
+    return 1
+  }
+  true
+}
+
+@test "W11 adversarial: dropping a line from cli-tests.yml's distribution-harness code filter is caught" {
+  require_yaml_parser
+  local doctored="$BATS_TEST_TMPDIR/w11b.yml" line
+  line="$(sole_line_matching "$CLI_WORKFLOW" "^ *- '\\.gaia/script-capabilities\\.schema\\.json'\$")" || return 1
+  delete_line "$CLI_WORKFLOW" "$line" "$doctored"
+
+  local list
+  list="$(read_wf codefilter "$doctored" distribution-harness)"
+  printf '%s\n' "$list" | grep -qxF -- '.gaia/script-capabilities.schema.json' && {
+    echo "deleting the schema filter line did not drop it from the parsed code: list" >&2
+    return 1
+  }
+  true
 }
