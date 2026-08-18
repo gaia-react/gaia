@@ -38,7 +38,7 @@
 # ~40s. That is why there is one tier rather than a fast default plus a named
 # slower tier. A split is worth its second name only once the honest set is
 # slow enough that people skip it, and an aggregate slow enough to skip is
-# worse than none; 41 seconds against the price of an audit round is not that.
+# worse than none; 40 seconds against the price of an audit round is not that.
 # Re-measure before adding a member that changes the order of magnitude.
 #
 # No member is ever skipped. A missing member path, and a bats member with no
@@ -48,7 +48,7 @@
 #
 # Members are invoked from the current directory, so run it from the repository
 # root. That is also what lets the sibling bats suite exercise the aggregation
-# against a fixture tree of stubs instead of paying the real ~41s.
+# against a fixture tree of stubs instead of paying the real ~40s.
 
 set -uo pipefail
 
@@ -110,6 +110,12 @@ wti_failed=''
 wti_fail_count=0
 
 # record_result <label> <exit-status>
+#
+# The verdict lines below are a pinned output contract, not free-form logging:
+# .gaia/tests/lib/whole-tree-invariants.bats matches the two-space `PASS  ` and
+# `FAIL  ` prefixes literally and counts lines carrying them, so reformatting one
+# reds several tests in a file this edit does not touch. The same holds for the
+# two summary lines at the end of main.
 record_result() {
   if [ "$2" -eq 0 ]; then
     printf 'PASS  %s\n' "$1"

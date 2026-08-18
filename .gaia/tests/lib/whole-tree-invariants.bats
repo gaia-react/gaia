@@ -23,16 +23,16 @@
 #    believe a check ran.
 #
 # 4. Discoverability. The runner's whole value is being findable by someone who
-#    does not already know it exists, so the two instruction sites that used to
-#    describe the set by hand have to name it. That claim is about this
+#    does not already know it exists, so every instruction site a reader would
+#    reach for has to name it. That claim is about this
 #    repository and it is falsifiable, so it is a test.
 #
 # The aggregation tests run against a fixture tree of stubs rather than the real
 # members. That is what keeps proving "a failing member fails the run" from
-# costing the real set's ~41 seconds, and it is why the runner invokes members
+# costing the real set's ~40 seconds, and it is why the runner invokes members
 # relative to the current directory. There is deliberately no "the real tree is
 # clean" test here: each member already owns that in its own CI coverage, and
-# adding ~41s to whichever shard holds this file would repack the weighted split
+# adding ~40s to whichever shard holds this file would repack the weighted split
 # for nothing -- the hazard the shard member is in the set to catch.
 #
 # Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
@@ -145,9 +145,13 @@ stub_exits() {
   }
 }
 
-@test "both instruction sites name the runner" {
+@test "every instruction site names the runner" {
+  # Three sites, because three are where a reader looks: the always-loaded rule,
+  # the workflow page it points at, and the README of the directory the runner
+  # lives in, which is where someone asking "what do I run pre-merge" lands.
   grep -Fq -- 'whole-tree-invariants.sh' "$REPO_ROOT/.claude/rules/pr-merge.md" || return 1
-  grep -Fq -- 'whole-tree-invariants.sh' "$REPO_ROOT/wiki/concepts/PR Merge Workflow.md"
+  grep -Fq -- 'whole-tree-invariants.sh' "$REPO_ROOT/wiki/concepts/PR Merge Workflow.md" || return 1
+  grep -Fq -- 'whole-tree-invariants.sh' "$REPO_ROOT/.gaia/tests/README.md"
 }
 
 @test "a tree where every member passes exits 0" {
