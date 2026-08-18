@@ -693,12 +693,15 @@ jobs:
           # Two spellings of "dirty". `git diff HEAD` is worktree-vs-HEAD, so it
           # misses a path staged and then reverted in the worktree; `git diff
           # --cached` is index-vs-HEAD, so it misses every unstaged edit. Their
-          # union is "differs from HEAD in the index or the worktree", which is
-          # what `git add -u` and the commit below can carry to origin.
+          # union is "differs from HEAD in the index or the worktree", a
+          # superset of what `git add -u` and the commit below carry to origin.
           # Duplicates are harmless; the gate sorts -u. The `--cached` half is
-          # fail-closed redundancy rather than a live gap: a staged-then-reverted
-          # path is unstaged again by `git add -u` and never reaches the commit,
-          # so no test can red on its removal alone.
+          # fail-closed redundancy rather than a live gap, and removing it is
+          # observable: a staged-then-reverted path is unstaged again by
+          # `git add -u` and never reaches the commit, but it is still an agent
+          # edit to a governance surface, and this is the only spelling that
+          # preserves it for the gate. The difference the removal makes is
+          # refuse-versus-proceed, not what reaches origin.
           claude_dirty_z="$(mktemp)"
           preserved_governance_edits="$(mktemp)"
           {
@@ -796,8 +799,11 @@ jobs:
           # It was not invisible to `git add -u` and the commit further down,
           # which sweep it to origin -- so an agent that staged a refused-surface
           # edit alongside one ordinary unstaged edit pushed the refused one with
-          # the gate never firing. The union is the set the commit can carry,
-          # which is the set this gate has to judge.
+          # the gate never firing. The union is a superset of what the commit
+          # can carry: `git add -u` stages worktree-vs-HEAD, so a path that
+          # differs from HEAD in the index alone is in the union and is never
+          # committed. Judging the superset is the fail-closed direction, the
+          # same reading the .claude capture above states.
           #
           # Reading the index here does not resurrect the untrusted-PR-restore
           # false positive: `git checkout HEAD -- <path>` above clears the index

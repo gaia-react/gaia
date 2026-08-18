@@ -482,6 +482,33 @@ output_has() { grep -qF -- "$1" "$STEP_OUTPUT"; }
   [ ! -s "$PUSH_LOG" ]
 }
 
+@test "a .claude/ edit staged and then reverted in the worktree is still refused" {
+  # The index-only spelling of dirty, and the one state `git diff HEAD -- .claude`
+  # cannot see: the agent stages an edit and then restores the working-tree copy
+  # to HEAD's content, so worktree-vs-HEAD reports nothing and the capture's
+  # `--cached` half is the only line that preserves the path for the gate. With
+  # that line deleted the run proceeds to commit and push instead of refusing,
+  # which is what this test reds on.
+  local body
+  body="$(extract_step_body 'Commit and push self-heal')"
+  echo '{"settings":"agent edited this"}' > "$SANDBOX/.claude/settings.json"
+  git -C "$SANDBOX" add .claude/settings.json
+  git -C "$SANDBOX" show HEAD:.claude/settings.json > "$SANDBOX/.claude/settings.json"
+  # Precondition: the worktree matches HEAD under .claude/, so the first
+  # spelling of the capture contributes nothing and only the index differs.
+  git -C "$SANDBOX" diff --quiet HEAD -- .claude
+  # One ordinary unstaged edit, so the unrefused run has something to push and
+  # refuse-versus-proceed is observable.
+  echo "export const x = 2;" > "$SANDBOX/app/x.ts"
+
+  run run_push_fixes_step "$body"
+  [ "$status" -eq 0 ]
+  grep -qF '.claude/settings.json' <<<"$output"
+  output_has "refused=true"
+  output_has "refused_reason=governance-surface"
+  [ ! -s "$PUSH_LOG" ]
+}
+
 @test "staging the action's own .claude/ restore still resets clean and does not refuse" {
   # The false-positive guard, carried into the staged state: reading the index
   # must not resurrect the restore-is-a-revert misread the reset exists to fix.
