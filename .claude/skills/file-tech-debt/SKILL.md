@@ -213,7 +213,7 @@ The handler label records **how far the fix reaches**, which decides how the eve
 | `handler:plan` | anything larger or more structural. |
 | `handler:spec` | design-first: it must begin with a design SPEC, a new subsystem, a schema or contract decision, or a cross-cutting redesign. `/gaia-debt` resolves a spec-class issue by printing a `/gaia-spec` handoff and stopping, not by opening a fix PR. |
 
-The three share one color family, deepening with reach: `c2e0c6` for `handler:prompt`, `7fbf8a` for `handler:plan`, `2f7d3a` for `handler:spec`. Nothing reads the color, so this is cosmetic, but the family is stated here rather than left to each creation site: a namespace whose members are colored independently stops reading as one axis in the tracker's label list. The rollout sweep below passes these three values explicitly. The loop in this step cannot: it passes one color to every label it creates, and it carries no per-label mapping. So in a repository where a filing runs the loop before the backfill runs the sweep, the handler labels already exist, `gh label create` no-ops on them, and the family is applied with `gh label edit` rather than by re-running either site. Nothing breaks either way; a label is not less usable for being off-family.
+The three share one color family, deepening with reach: `c2e0c6` for `handler:prompt`, `7fbf8a` for `handler:plan`, `2f7d3a` for `handler:spec`. Nothing reads the color, so this is cosmetic, but the family is stated here rather than left to each creation site: a namespace whose members are colored independently stops reading as one axis in the tracker's label list. The loop in this step cannot apply the family: it passes one color to every label it creates, and it carries no per-label mapping. So where the loop reaches these three labels first, `gh label create` no-ops on them afterwards and the family is applied with `gh label edit` rather than by re-running the loop. Nothing breaks either way; a label is not less usable for being off-family.
 
 The class is advisory: whatever later drains the issue re-derives it from the cited code and may override it, in either direction, including the `spec` value. That is precisely why it rides as a label rather than as body prose. Re-grading is `gh issue edit <n> --remove-label handler:spec --add-label handler:plan`, which leaves the transition in the issue's timeline, where a body edit would have destroyed the prior value and a correcting comment would have left the body still asserting the overruled one.
 
@@ -281,6 +281,14 @@ mkdir -p "$debt_root/.gaia/local/debt" && : > "$debt_root/.gaia/local/debt/refre
 
 Create the parent directory first. On a fresh clone, or in CI, no statusline tick has run yet, so `.gaia/local/debt/` may not exist, a bare `touch` against a missing directory fails silently and leaves the sentinel unset. The write is anchored on the main checkout because the sentinel is shared state, one copy for the clone: `debt/count.json|debt/refresh-requested` is registry scope `shared`, so every tree reads the same physical copy through the resolver. This step is best-effort: never let a failure here block or fail the caller's flow, which is why the fallback is `.` rather than an exit.
 
+<!-- gaia:maintainer-only:start -->
+
+Both rollout sections below are GAIA's own migration record and are stripped from
+the shipped skill. Each selects on a precondition that only this repository has
+ever had, so in any other clone one sweep is a no-op at best and the other cannot
+match at all. Do not unwrap them; if a future rollout genuinely applies to every
+clone, write that one as its own section outside these markers.
+
 ## Rollout: mark the pre-provenance cohort
 
 The backlog that predates provenance does not get provenance, and this is a prohibition rather than a low priority. The two kinds of absence sit in the same field: a fail-open `unknown` records what the disposing agent observed and is an honest statement, while a backfilled value records what someone guessed, and nothing downstream can tell the two apart. Seeding the record with plausible attributions produces provenance-shaped noise rather than partial provenance.
@@ -300,7 +308,7 @@ gh issue list --label tech-debt --state open --limit 1000 --json number,body \
   done
 ```
 
-The marker is only accurate when applied at the moment provenance starts writing in a given repository, which is why it is a rollout step rather than follow-up work. GAIA reaches adopter clones through its update flow, so that moment falls on a different date in every clone: this is a per-repository step carried to adopters as an action-required release note with its literal command, not a single action performed once. An adopter that skips it loses only the ability to distinguish its own two absence cases; nothing breaks.
+The marker is only accurate when applied at the moment provenance starts writing in a repository, which is why it is a rollout step rather than follow-up work. That moment has already passed here, and it cannot arrive anywhere else: filing and provenance land in the same release, so in any other clone provenance is writing from that clone's first filing and the pre-provenance cohort is empty from the day the feature arrives. The sweep is GAIA's own one-time migration, not a step anyone else has to run.
 
 The marker changes no displayed number and no consumer gates on it, so it is additive.
 
@@ -331,7 +339,9 @@ An issue with no parseable `Handler:` line emits nothing at all, because `captur
 
 The sweep adds a label and never edits a body. A legacy `Handler:` line is inert once the label exists, and rewriting two dozen bodies to remove it would spend a lossy edit per issue to delete text no reader consults. New filings carry no such line (step 5), so the residue does not grow.
 
-Like the cohort marker above, this is per-repository: GAIA reaches adopter clones on different dates, so the moment the label becomes the source of truth falls on a different date in every clone. It ships as an action-required release note with its literal command. An adopter that skips it loses only the stored class on its pre-existing backlog; every one of those issues still orders, clusters, and drains, and `/gaia-debt` re-derives the class from the cited code exactly as it does for a human-filed issue.
+Like the cohort marker above, this is GAIA's own migration and nobody else's. The `Handler:` body-line convention only ever existed in this repository, so the sweep's `capture` can match nothing in any other clone; the section stays because the backfill may still be re-run against this backlog.
+
+<!-- gaia:maintainer-only:end -->
 
 ## Brake self-check
 
