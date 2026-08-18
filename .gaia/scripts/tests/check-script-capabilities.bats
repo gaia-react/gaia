@@ -18,6 +18,7 @@
 setup() {
   SCRIPT_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
   CHECK="$SCRIPT_DIR/check-script-capabilities.sh"
+  REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
   # shellcheck source=.gaia/scripts/check-script-capabilities.sh
   source "$CHECK"
 }
@@ -283,6 +284,74 @@ printf "x\n" > "$mystery"'
   run bash "$CHECK" "$repo"
   [ "$status" -eq 1 ]
   grep -qF -- "UNRESOLVED .gaia/scripts/w.sh .gaia/scripts/w.sh:2" <<<"$output"
+}
+
+@test "a write into a positional-derived directory with a literal suffix is one caller-chosen term" {
+  repo="$(make_fixture_repo callerwithsuffix)"
+  add_script "$repo" .gaia/scripts/w.sh '#!/usr/bin/env bash
+target="$1"
+rm -f "$target/RUNNING"'
+  write_allow "$repo" "Bash(bash .gaia/scripts/w.sh:*)"
+  write_manifest "$repo" '[{"script":".gaia/scripts/w.sh","capabilities":["fs-write:**"],
+    "why":"clears a sentinel inside the directory it is handed","maintainer_only":false}]'
+  run bash "$CHECK" "$repo"
+  [ "$status" -eq 0 ]
+  grep -qE '^(UNDECLARED|SURPLUS|UNRESOLVED)' <<<"$output" && return 1
+  run bash "$CHECK" "$repo" --print-reach .gaia/scripts/w.sh
+  [ "$status" -eq 0 ]
+  grep -qF -- "fs-write:RUNNING" <<<"$output" && return 1
+  grep -qxF -- "fs-write:**" <<<"$output"
+}
+
+@test "a write into a positional-derived directory with no suffix is the same caller-chosen term" {
+  repo="$(make_fixture_repo callernosuffix)"
+  add_script "$repo" .gaia/scripts/w.sh '#!/usr/bin/env bash
+target="$1"
+rm -rf -- "$target"'
+  write_allow "$repo" "Bash(bash .gaia/scripts/w.sh:*)"
+  write_manifest "$repo" '[{"script":".gaia/scripts/w.sh","capabilities":["fs-write:**"],
+    "why":"deletes the directory it is handed","maintainer_only":false}]'
+  run bash "$CHECK" "$repo"
+  [ "$status" -eq 0 ]
+  grep -qE '^(UNDECLARED|SURPLUS|UNRESOLVED)' <<<"$output" && return 1
+  run bash "$CHECK" "$repo" --print-reach .gaia/scripts/w.sh
+  [ "$status" -eq 0 ]
+  grep -qxF -- "fs-write:**" <<<"$output"
+}
+
+@test "a write through a variable whose assignment ends in a positional is caller-chosen too" {
+  repo="$(make_fixture_repo callerchained)"
+  add_script "$repo" .gaia/scripts/w.sh '#!/usr/bin/env bash
+raw="$1"
+dir="$root/$raw"
+find "$dir" -mindepth 1 -exec rm -rf {} +'
+  write_allow "$repo" "Bash(bash .gaia/scripts/w.sh:*)"
+  write_manifest "$repo" '[{"script":".gaia/scripts/w.sh","capabilities":["fs-write:**"],
+    "why":"prunes the folder its caller names","maintainer_only":false}]'
+  run bash "$CHECK" "$repo"
+  [ "$status" -eq 0 ]
+  grep -qE '^(UNDECLARED|SURPLUS|UNRESOLVED)' <<<"$output" && return 1
+  run bash "$CHECK" "$repo" --print-reach .gaia/scripts/w.sh
+  [ "$status" -eq 0 ]
+  grep -qxF -- "fs-write:**" <<<"$output"
+}
+
+@test "a positional joined to a path the repo has is read as a checkout root, not a caller directory" {
+  repo="$(make_fixture_repo callerroot)"
+  add_script "$repo" .gaia/scripts/w.sh '#!/usr/bin/env bash
+ROOT="$1"
+printf "x\n" > "$ROOT/.gaia/state.json"'
+  write_allow "$repo" "Bash(bash .gaia/scripts/w.sh:*)"
+  write_manifest "$repo" '[{"script":".gaia/scripts/w.sh",
+    "capabilities":["fs-write:.gaia/state.json"],
+    "why":"writes into the .gaia area of the checkout it is pointed at","maintainer_only":false}]'
+  run bash "$CHECK" "$repo"
+  [ "$status" -eq 0 ]
+  grep -qE '^(UNDECLARED|SURPLUS|UNRESOLVED)' <<<"$output" && return 1
+  run bash "$CHECK" "$repo" --print-reach .gaia/scripts/w.sh
+  [ "$status" -eq 0 ]
+  grep -qxF -- "fs-write:**" <<<"$output" && return 1
+  grep -qxF -- "fs-write:.gaia/state.json" <<<"$output"
 }
 
 @test "print-reach runs with no manifest on disk and exits 0" {
@@ -564,4 +633,62 @@ printf "x\n" > "$out"'
     gaia_capcheck_marking gaia_capcheck_waivers gaia_check_script_capabilities; do
     declare -f "$f" >/dev/null || return 1
   done
+}
+
+# ========== real repo ==========
+#
+# Every test below drives the check against THIS repository's own tree
+# (REPO_ROOT), mirroring check-hook-scope-manifest.bats's real-tree arm. No
+# test here mutates .claude/settings.json, .gaia/script-capabilities.json, or
+# .gaia/release-exclude; they only read the tree as it stands.
+
+@test "real repo: the check script is executable" {
+  [ -x "$CHECK" ]
+}
+
+@test "real repo: sourcing the script defines its functions with no side effects" {
+  run bash -c "source '$CHECK' && printf 'sourced\n'"
+  [ "$status" -eq 0 ]
+  [ "$output" = "sourced" ]
+}
+
+@test "real repo: the manifest conforms to its schema" {
+  run gaia_capcheck_schema "$REPO_ROOT"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "real repo: every allowlisted script has exactly one entry, with no orphans or duplicates" {
+  run gaia_capcheck_coverage "$REPO_ROOT"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "real repo: every declared term is in the closed vocabulary" {
+  run gaia_capcheck_vocabulary "$REPO_ROOT"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "real repo: every maintainer_only marking agrees with the release boundary" {
+  run gaia_capcheck_marking "$REPO_ROOT"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "real repo: the full reconciliation gate passes" {
+  run bash "$CHECK" "$REPO_ROOT"
+  [ "$status" -eq 0 ]
+}
+
+@test "real repo: no obligated script reports an unresolvable invocation at the three named idiom-4 sites" {
+  run bash "$CHECK" "$REPO_ROOT"
+  # audit-write-clearance.sh:status_hook, resolve-audit-spawn.sh:resolver, and
+  # plan-archive.sh:verify_script are the three one-hop-constant-propagation
+  # sites; each resolves its invoked script, so none of the three surfaces its
+  # own variable target on an UNRESOLVED line.
+  grep -qF -- 'status_hook' <<<"$output" && return 1
+  grep -qF -- 'resolver=' <<<"$output" && return 1
+  grep -qF -- 'verify_script' <<<"$output" && return 1
+  true
 }

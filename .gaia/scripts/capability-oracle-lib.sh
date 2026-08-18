@@ -246,6 +246,23 @@ _gaia_capcheck_dirhop() {
   return 0
 }
 
+# _gaia_capcheck_state_root_hop <text>: recognizes a call to one of GAIA's own
+# main-anchored local-state directory resolvers (ledger-path-lib.sh's
+# gaia_resolve_plans_dir / gaia_resolve_specs_dir). Each takes the checkout to
+# resolve from as its own argument and joins a single hardcoded subdir onto
+# the main checkout's .gaia/local, so unlike an arbitrary function call, its
+# result is a fixed repo-relative directory regardless of which checkout it
+# runs in or what argument it is handed -- the same closed-set, name-matched
+# recognition idiom 3 already applies to the BASH_SOURCE dirname hop.
+_gaia_capcheck_state_root_hop() {
+  local text="$1"
+  case "$text" in
+    *gaia_resolve_plans_dir*) _GAIA_CAPCHECK_RET=".gaia/local/plans"; return 0 ;;
+    *gaia_resolve_specs_dir*) _GAIA_CAPCHECK_RET=".gaia/local/specs"; return 0 ;;
+  esac
+  return 1
+}
+
 # _gaia_capcheck_assignment_values <repo_root> <rel> <var>: one value per
 # assignment of <var> in <rel>, in file order. A value is either the raw right
 # side, `DIRHOP:<repo-relative-path>`, or `MKTEMP:<template>`.
@@ -258,6 +275,10 @@ _gaia_capcheck_assignment_values() {
     tail="${line#*"$var"=}"
     [ "$tail" = "$line" ] && continue
     if _gaia_capcheck_dirhop "$rel" "$tail"; then
+      printf 'DIRHOP:%s\n' "$_GAIA_CAPCHECK_RET"
+      continue
+    fi
+    if _gaia_capcheck_state_root_hop "$tail"; then
       printf 'DIRHOP:%s\n' "$_GAIA_CAPCHECK_RET"
       continue
     fi
@@ -312,6 +333,21 @@ _gaia_capcheck_split_var() {
       rest="${t#\$\{}"
       name="${rest%%\}*}"
       rest="${rest#*\}}"
+      # `${var%/}` (trim a trailing slash before joining) is common enough on
+      # directory-holding variables to recognize by name: the trim never
+      # changes the joined result, since a suffix is appended right after.
+      # Any other parameter-expansion operator (`#`, `:-`, `//`, ...) leaves
+      # `name` holding the operator and its pattern rather than a bare
+      # identifier, which is a shape no idiom resolves; reject it outright
+      # instead of falling through with a name no assignment will ever match,
+      # which the caller would misread as "truly unassigned" and wrongly
+      # treat as a safe-to-strip root.
+      case "$name" in
+        *'%/') name="${name%'%/'}" ;;
+      esac
+      case "$name" in
+        ''|*[!A-Za-z0-9_]*) return 1 ;;
+      esac
       ;;
     '$'*)
       rest="${t#\$}"
@@ -326,6 +362,101 @@ _gaia_capcheck_split_var() {
     /*) _GAIA_CAPCHECK_VAR="$name"; _GAIA_CAPCHECK_SUFFIX="${rest#/}"; return 0 ;;
     *) return 0 ;;
   esac
+}
+
+# _gaia_capcheck_ref_name <text>: the variable name the `$`-reference at the
+# START of <text> names, left in _GAIA_CAPCHECK_RET, with whatever follows that
+# reference in _GAIA_CAPCHECK_REFREST. Returns 1 when <text> does not begin with
+# a reference this oracle reads. `1`..`9`, `@`, and `*` are legal names here: a
+# positional is the one reference whose value no assignment in the file holds.
+_gaia_capcheck_ref_name() {
+  local t="$1" rest name
+  _GAIA_CAPCHECK_REFREST=""
+  case "$t" in
+    '${'*)
+      rest="${t#\$\{}"
+      case "$rest" in *'}'*) ;; *) return 1 ;; esac
+      name="${rest%%\}*}"
+      case "$name" in
+        *'%/') name="${name%'%/'}" ;;
+      esac
+      # A positional carrying a default or alternate operator (`${1-}`,
+      # `${2:-x}`) is still that positional. No shell variable name may begin
+      # with a digit, so a leading digit run followed by anything else is
+      # always an operator rather than part of a name.
+      case "$name" in
+        [0-9]*[!0-9]*) name="${name%%[!0-9]*}" ;;
+        '@'[!A-Za-z0-9_]*|'*'[!A-Za-z0-9_]*) name="${name%"${name#?}"}" ;;
+      esac
+      _GAIA_CAPCHECK_REFREST="${rest#*\}}"
+      ;;
+    '$'*)
+      rest="${t#\$}"
+      case "$rest" in
+        [0-9]*) name="${rest%%[!0-9]*}" ;;
+        '@'*|'*'*) name="${rest%"${rest#?}"}" ;;
+        *) name="${rest%%[!A-Za-z0-9_]*}" ;;
+      esac
+      _GAIA_CAPCHECK_REFREST="${rest#"$name"}"
+      ;;
+    *) return 1 ;;
+  esac
+  case "$name" in
+    '@'|'*') ;;
+    ''|*[!A-Za-z0-9_]*) return 1 ;;
+  esac
+  _GAIA_CAPCHECK_RET="$name"
+  return 0
+}
+
+# _gaia_capcheck_is_positional_name <name>: true for a positional parameter.
+_gaia_capcheck_is_positional_name() {
+  case "$1" in
+    '@'|'*') return 0 ;;
+    ''|*[!0-9]*) return 1 ;;
+  esac
+  return 0
+}
+
+# _gaia_capcheck_caller_supplied <repo_root> <rel> <var> <seen>: true when <var>
+# holds a path the caller names at run time -- a positional parameter, or a
+# variable whose assignment begins or ends in one.
+#
+# This is the test that separates a write into a caller-designated directory
+# from a write the file itself locates, and it is consulted only after every
+# resolution idiom has failed to find a literal prefix, so a variable naming a
+# real directory never reaches it. Both ends of an assignment are examined
+# because either half of a join can be the caller's: `lock_file` reaches a
+# positional through the reference its value begins with, `source_abs` through
+# the one its value ends with, its other half being the repo root.
+#
+# <seen> is the recursion's cycle guard: a trim like `root="${root%/}"` is a
+# self-reference, not a chain, and a file may hold several of them.
+_gaia_capcheck_caller_supplied() {
+  local repo_root="$1" rel="$2" var="$3" seen="$4" v name tail
+  case " $seen " in *" $var "*) return 1 ;; esac
+  seen="$seen $var"
+  while IFS= read -r v; do
+    [ -n "$v" ] || continue
+    case "$v" in DIRHOP:*|MKTEMP:*) continue ;; esac
+    if _gaia_capcheck_ref_name "$v"; then
+      name="$_GAIA_CAPCHECK_RET"
+      _gaia_capcheck_is_positional_name "$name" && return 0
+      _gaia_capcheck_caller_supplied "$repo_root" "$rel" "$name" "$seen" && return 0
+    fi
+    case "$v" in
+      *'$'*) tail="\$${v##*\$}" ;;
+      *) continue ;;
+    esac
+    _gaia_capcheck_ref_name "$tail" || continue
+    # A trailing reference only counts when the value truly ends in it; a
+    # literal tail means the file, not the caller, named the last segment.
+    [ -z "$_GAIA_CAPCHECK_REFREST" ] || continue
+    name="$_GAIA_CAPCHECK_RET"
+    _gaia_capcheck_is_positional_name "$name" && return 0
+    _gaia_capcheck_caller_supplied "$repo_root" "$rel" "$name" "$seen" && return 0
+  done < <(_gaia_capcheck_assignment_values "$repo_root" "$rel" "$var")
+  return 1
 }
 
 # _gaia_capcheck_resolve_dir <repo_root> <rel> <var>: the repo-relative
@@ -423,6 +554,10 @@ _gaia_capcheck_resolve_invocation() {
 # a variable tail. Returns 0 with output, 1 when the target has no resolvable
 # literal prefix at all, and 2 when the target is deliberately not a write.
 #
+# One output line is not a path: the sentinel `**` stands for a directory the
+# caller designates at run time, which has no repo-relative reading at all.
+# _gaia_capcheck_path_to_term turns it into the term that says so.
+#
 # The `$var/` reduction is what "resolved against the resolved state root
 # rather than the invoking tree" means operationally: a variable whose own
 # assignments resolve to a directory contributes that directory, and one that
@@ -430,7 +565,7 @@ _gaia_capcheck_resolve_invocation() {
 # the same repo-relative path whichever checkout it lands in.
 _gaia_capcheck_write_paths() {
   local repo_root="$1" rel="$2" raw="$3" depth="$4"
-  local v n=0 runtime=0 vals sub base out=""
+  local v n=0 runtime=0 supplied=0 vals sub base out=""
   [ "$depth" -le 4 ] || return 1
   _gaia_capcheck_unquote "$raw"
   raw="$_GAIA_CAPCHECK_RET"
@@ -453,9 +588,12 @@ _gaia_capcheck_write_paths() {
           continue
           ;;
         '$'[0-9@*]*|'${'[0-9@*]*)
-          # A caller-supplied positional standing in for the WHOLE target. A
-          # positional carrying a literal suffix is a root instead, and falls
-          # through to the root reduction below.
+          # A caller-supplied positional. No idiom resolves one; the
+          # caller-supplied test below claims the whole target for it, with or
+          # without a literal suffix. The flag is the fallback for an
+          # expansion that test cannot parse: a target this file demonstrably
+          # does not locate stays silent rather than becoming a finding a
+          # reader has no way to act on.
           [ -z "$suffix" ] && runtime=1
           continue
           ;;
@@ -476,6 +614,15 @@ _gaia_capcheck_write_paths() {
           esac
           while IFS= read -r base; do
             [ -n "$base" ] || continue
+            if [ "$base" = '**' ]; then
+              # A caller-designated directory swallows its suffix: joining a
+              # literal onto a path the caller chooses still names nothing the
+              # repo can pin, so all three write shapes agree on one term.
+              out="${out}**
+"
+              n=$((n + 1))
+              continue
+            fi
             if _gaia_capcheck_normalize "${base:+$base/}$suffix"; then
               out="${out}${_GAIA_CAPCHECK_RET}
 "
@@ -490,18 +637,47 @@ INNER
 $vals
 OUTER
     if [ "$n" -eq 0 ]; then
+      # Nothing resolved, so before the variable is read as a root: a variable
+      # whose own assignment traces to a positional holds a path the caller
+      # designates, and the honest term for a write there is the one that says
+      # the caller chooses it. Reading such a variable as the repo root instead
+      # would name a file nothing ever writes, and leaving it unresolved would
+      # report a shape the grammar can in fact describe.
+      #
+      # A caller-supplied CHECKOUT ROOT is the exception, and the literal
+      # remainder is what tells the two apart: `--root` joined to
+      # `.gaia/local/audit` leaves a path this repo has, so the variable is a
+      # root and the reduction holds, while a lock directory joined to
+      # `specs.lock` leaves a name the repo does not have and never will. This
+      # is the same accepted-only-if-it-exists discipline the invocation
+      # resolver applies to the root-variable join, with the first segment
+      # standing in for the whole path because a write target routinely does
+      # not exist yet.
+      if _gaia_capcheck_caller_supplied "$repo_root" "$rel" "$var" ""; then
+        case "$suffix" in
+          ''|'$'*) supplied=1 ;;
+          *) [ -e "$repo_root/${suffix%%/*}" ] || supplied=1 ;;
+        esac
+        if [ "$supplied" -eq 1 ]; then
+          printf '%s\n' '**'
+          return 0
+        fi
+      fi
       # No assignment resolved. The variable is read as the root it stands in
-      # for, which leaves the literal suffix as the repo-relative target.
+      # for, which leaves the literal suffix as the repo-relative target --
+      # but only when the file never assigns it at all (a true external root
+      # parameter). When an assignment WAS seen but only resolved to something
+      # COMPUTED at run time (a command substitution, a positional, or a
+      # chain ending in one), the target belongs to whoever computes it: the
+      # variable is not known to be the repo root, so treating it as one and
+      # keeping a bare suffix would name a path with no resolvable literal
+      # prefix at all, which is an UNRESOLVED finding, not a silent guess.
       case "$suffix" in
         '')
-          # Nothing but the variable. When its assignments show the path is
-          # COMPUTED at run time -- a command substitution, a positional, or a
-          # chain ending in one -- the target belongs to whoever computes it,
-          # and this check says so by staying silent rather than by naming a
-          # glob it cannot derive. That is its honest limit, and it is why the
-          # grammar has no term for "anywhere": `fs-write:/**` is a bad term,
-          # not a blanket pass. A variable the file never assigns at all is a
-          # different case: nothing is known, and that is the finding.
+          # Nothing but the variable, and nothing to generalize with even if
+          # the prefix were known: the grammar has no term for "anywhere"
+          # (`fs-write:/**` is a bad term, not a blanket pass), so a computed
+          # root with no suffix stays silent rather than becoming a finding.
           [ "$runtime" -eq 1 ] && return 2
           return 1
           ;;
@@ -511,6 +687,7 @@ OUTER
           return 2
           ;;
       esac
+      [ "$runtime" -eq 0 ] || return 1
       _gaia_capcheck_normalize "$suffix" || return 1
       printf '%s\n' "$_GAIA_CAPCHECK_RET"
       return 0
@@ -533,6 +710,12 @@ OUTER
 # mktemp placeholder and counts as non-literal.
 _gaia_capcheck_path_to_term() {
   local rest="$1" seg prefix="" literal=1
+  # The caller-designated-directory sentinel. It carries no literal prefix to
+  # generalize from, and the term stands for exactly that.
+  if [ "$rest" = '**' ]; then
+    _GAIA_CAPCHECK_RET="fs-write:**"
+    return 0
+  fi
   while [ -n "$rest" ]; do
     if [ "${rest%%/*}" = "$rest" ]; then
       seg="$rest"; rest=""

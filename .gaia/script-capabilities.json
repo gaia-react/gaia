@@ -1,0 +1,90 @@
+{
+  "$schema": "./script-capabilities.schema.json",
+  "scripts": [
+    {
+      "script": ".gaia/scripts/audit-write-clearance.sh",
+      "capabilities": [
+        "fs-write:.gaia/local/audit",
+        "fs-write:.gaia/local/audit/**",
+        "github-write",
+        "invokes:.claude/hooks/lib/audit-clearance.sh",
+        "invokes:.claude/hooks/lib/audit-digest.sh",
+        "invokes:.claude/hooks/lib/audit-machinery.sh",
+        "invokes:.claude/hooks/lib/audit-scope.sh",
+        "invokes:.claude/hooks/lib/gaia-version.sh",
+        "invokes:.claude/hooks/post-audit-status.sh",
+        "invokes:.gaia/scripts/audit-key-lib.sh",
+        "invokes:.gaia/scripts/main-root-lib.sh",
+        "invokes:.gaia/scripts/resolve-audit-members.sh",
+        "network",
+        "tmp"
+      ],
+      "why": "Records a code-audit clearance verdict under .gaia/local/audit and creates that directory on first write. Reads and writes the digest, clearance, and scope helpers it sources, and calls the post-audit-status hook, which is where its network and github-write reach comes from: the hook posts the clearance result to the pull request. A scratch file under the system temporary directory backs the write itself before the atomic move into place.",
+      "maintainer_only": false
+    },
+    {
+      "script": ".gaia/scripts/check-debt-issue-metadata.sh",
+      "capabilities": ["network"],
+      "why": "Reads tech-debt issue metadata through read-only gh issue calls (list and view) to check labels and staleness; it never creates, edits, or closes an issue, so its reach is network only, not github-write.",
+      "maintainer_only": false
+    },
+    {
+      "script": ".gaia/scripts/debt-origin-lib.sh",
+      "capabilities": [],
+      "why": "Defines pure functions that derive a tech-debt issue's originating finding from its body text. No file, network, or git access of any kind.",
+      "maintainer_only": false
+    },
+    {
+      "script": ".gaia/scripts/plan-archive.sh",
+      "capabilities": [
+        "fs-write:**",
+        "fs-write:.gaia/local/plans/ledger.json",
+        "invokes:.gaia/scripts/cost-represented.sh",
+        "invokes:.gaia/scripts/ledger-path-lib.sh",
+        "invokes:.gaia/scripts/main-root-lib.sh",
+        "invokes:.gaia/scripts/summary-verify.sh",
+        "invokes:.specify/extensions/gaia/lib/plan-ledger-update.sh",
+        "invokes:.specify/extensions/gaia/lib/with-ledger-lock.sh",
+        "tmp"
+      ],
+      "why": "Reduces or deletes a merged plan folder, gated on the cost-representation check it invokes. The folder is the one named on its command line, and every write into it (the pruning find, the RUNNING sentinel removal, the outright delete) lands wherever the caller points it, which is the whole content of fs-write:**. Best-effort advances the plan's ledger row to merged through plan-ledger-update.sh, which writes ledger.json under the plans-ledger mutex in with-ledger-lock.sh; that mutex's own lock sits inside the ledger directory its caller hands it, so the same caller-chosen term covers it. A scratch file under the system temporary directory backs the ledger patch before it lands.",
+      "maintainer_only": false
+    },
+    {
+      "script": ".gaia/scripts/plan-resume-point.sh",
+      "capabilities": [],
+      "why": "Reads a plan folder's own files to compute the point a resumed session should pick up from. No writes, no network, no invocation of another script.",
+      "maintainer_only": false
+    },
+    {
+      "script": ".gaia/scripts/resolve-audit-spawn.sh",
+      "capabilities": [
+        "fs-write:**",
+        "invokes:.claude/hooks/lib/audit-clearance.sh",
+        "invokes:.claude/hooks/lib/audit-digest.sh",
+        "invokes:.claude/hooks/lib/audit-machinery.sh",
+        "invokes:.claude/hooks/lib/audit-scope.sh",
+        "invokes:.gaia/scripts/audit-respawn-lib.sh",
+        "invokes:.gaia/scripts/resolve-audit-members.sh",
+        "tmp"
+      ],
+      "why": "Resolves which Code Audit Team members a pull request still owes a dispatch, sourcing the audit clearance/digest/machinery/scope helpers and the respawn and member-resolution libraries to do it, and using a scratch file under the system temporary directory along the way. The respawn library appends one dispatch record per member to a ledger whose path it receives as an argument, which is the caller-chosen write fs-write:** stands for. A maintainer-only tool: it never ships to an adopter checkout.",
+      "maintainer_only": true
+    },
+    {
+      "script": ".specify/extensions/gaia/lib/plan-allocator.sh",
+      "capabilities": [
+        "fs-write:**",
+        "fs-write:.gaia/local/plans",
+        "fs-write:.gaia/local/plans/ledger.json",
+        "invokes:.gaia/scripts/ledger-path-lib.sh",
+        "invokes:.gaia/scripts/main-root-lib.sh",
+        "invokes:.specify/extensions/gaia/lib/title-normalize.sh",
+        "invokes:.specify/extensions/gaia/lib/with-ledger-lock.sh",
+        "tmp"
+      ],
+      "why": "Allocates the next PLAN-NNN id for a spec-less plan, creating the main checkout's plans directory and appending the new row to its ledger.json under the shared plans-ledger mutex in with-ledger-lock.sh. That mutex takes its lock inside whatever ledger directory its caller hands it rather than a path this repo can name, which is the caller-chosen reach fs-write:** stands for. Sources the ledger-path and title-normalization helpers and uses a scratch file under the system temporary directory for the ledger write.",
+      "maintainer_only": false
+    }
+  ]
+}
