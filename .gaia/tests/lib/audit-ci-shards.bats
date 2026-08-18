@@ -85,6 +85,13 @@ setup() {
   # The reasoning behind the four, and behind excluding bare `python3`, is in
   # the W10 header below.
   PKG_PATTERN='command -v zsh|zsh -c|require_yaml_parser|import yaml'
+  # The two workflow lines the adversarial cases doctor, addressed by shape
+  # rather than by text so a repack that rewrites either list stays a one-site
+  # edit in the workflow. Each matches exactly one line today, which
+  # sole_line_matching re-checks on every use; the reasoning for deriving them
+  # is above that helper.
+  APT_GATE_PATTERN='^ *- if: contains\(fromJSON\('
+  MATRIX_SHARD_PATTERN='^ *shard: \['
 
   require_repo_path -f "$WORKFLOW" "audit-ci-tests.yml" || return 1
   require_repo_path -f "$POLLER_WORKFLOW" "code-review-audit.yml" || return 1
@@ -380,6 +387,62 @@ with open(out, 'w', encoding='utf-8') as handle:
 PY
 }
 
+# The adversarial cases that doctor a list-bearing workflow line read the line
+# out of the workflow with the two helpers below rather than restating it. Both
+# of those lists are packing decisions, not settled constants: the hooks legs
+# are a weighted split, so adding tests to any suite can move it onto a
+# different leg, and the apt gate's leg list moves with it. A restated search
+# line makes every such repack a five-site edit, four of them here.
+#
+# Deriving it costs an independence worth naming, because that is the reason to
+# think twice. A restated line cannot silently agree with a wrong workflow, and
+# a drifted copy makes replace_line no-op, which reds the case rather than
+# greening it. Both helpers hold that direction: sole_line_matching fails when
+# its pattern stops matching or starts matching twice, and assert_doctored
+# fails when the transform leaves the line untouched. The diagnostic is what
+# differs -- each helper names the drift, where a silent no-op reports a failed
+# invariant and leaves the reader to work out that the fixture, not the
+# workflow, is stale.
+#
+# What derivation does NOT reach is the guards' own independence. W6 and W10
+# each compare the workflow's list against a set derived from the sharder or
+# the suites, and those comparisons stay untouched. An adversarial case only
+# has to prove its check reds on a doctored input, which never requires it to
+# know what the healthy list says. The transform stays written out at each
+# case, because which mutation is being made is the part each case is about.
+
+# Prints the single line of $1 matching the extended regex $2, so a case can
+# doctor the workflow's current text. Fails on zero matches or more than one:
+# either means the workflow changed shape, which this suite has to see rather
+# than doctor a line it did not mean to.
+sole_line_matching() {
+  local src="$1" pattern="$2" hits count
+  hits="$(grep -nE -- "$pattern" "$src")" || {
+    echo "sole_line_matching: no line in $src matches /$pattern/" >&2
+    return 1
+  }
+  count="$(printf '%s\n' "$hits" | grep -c '')"
+  [ "$count" -eq 1 ] || {
+    echo "sole_line_matching: /$pattern/ matches $count lines in $src, expected exactly 1" >&2
+    printf '%s\n' "$hits" >&2
+    return 1
+  }
+  printf '%s' "${hits#*:}"
+}
+
+# Fails when the transform in $2 left $1 unchanged, naming it as $3. replace_line
+# no-ops silently on an absent search line, so an inert transform writes a copy
+# of the healthy workflow; every case here then reds on an undoctored file with
+# a message about the invariant rather than about the transform.
+assert_doctored() {
+  local original="$1" doctored="$2" what="$3"
+  [ "$doctored" != "$original" ] || {
+    echo "$what: left the line unchanged, so the case would assert against an undoctored workflow" >&2
+    echo "line: $original" >&2
+    return 1
+  }
+}
+
 # Writes a copy of $1 to $3 with every line equal to $2 removed outright.
 delete_line() {
   local src="$1" old="$2" out="$3"
@@ -668,11 +731,11 @@ PY
 
 @test "W6 adversarial: a bogus shard added to the matrix is caught" {
   require_yaml_parser
-  local doctored="$BATS_TEST_TMPDIR/w6a.yml"
-  replace_line "$WORKFLOW" \
-    "        shard: [hooks-1, hooks-2, hooks-3, hooks-4, scripts-1, scripts-2, scripts-3, audit, lib, misc, sandbox, concurrency]" \
-    "        shard: [hooks-1, hooks-2, hooks-3, hooks-4, scripts-1, scripts-2, scripts-3, audit, lib, misc, sandbox, concurrency, bogus]" \
-    "$doctored"
+  local doctored="$BATS_TEST_TMPDIR/w6a.yml" line mutated
+  line="$(sole_line_matching "$WORKFLOW" "$MATRIX_SHARD_PATTERN")" || return 1
+  mutated="$(printf '%s' "$line" | sed 's/\]$/, bogus]/')"
+  assert_doctored "$line" "$mutated" "appending a bogus shard id" || return 1
+  replace_line "$WORKFLOW" "$line" "$mutated" "$doctored"
 
   local matrix_list expected
   matrix_list="$(read_wf matrix "$doctored" shards | LC_ALL=C sort)"
@@ -682,11 +745,13 @@ PY
 
 @test "W6 adversarial: dropping lib from the matrix is caught" {
   require_yaml_parser
-  local doctored="$BATS_TEST_TMPDIR/w6b.yml"
-  replace_line "$WORKFLOW" \
-    "        shard: [hooks-1, hooks-2, hooks-3, hooks-4, scripts-1, scripts-2, scripts-3, audit, lib, misc, sandbox, concurrency]" \
-    "        shard: [hooks-1, hooks-2, hooks-3, hooks-4, scripts-1, scripts-2, scripts-3, audit, misc, sandbox, concurrency]" \
-    "$doctored"
+  local doctored="$BATS_TEST_TMPDIR/w6b.yml" line mutated
+  line="$(sole_line_matching "$WORKFLOW" "$MATRIX_SHARD_PATTERN")" || return 1
+  # Two forms because the list is comma-separated: the second covers lib
+  # landing last, where there is no trailing separator to take with it.
+  mutated="$(printf '%s' "$line" | sed -e 's/lib, //' -e 's/, lib\]/]/')"
+  assert_doctored "$line" "$mutated" "dropping lib" || return 1
+  replace_line "$WORKFLOW" "$line" "$mutated" "$doctored"
 
   local matrix_list expected
   matrix_list="$(read_wf matrix "$doctored" shards | LC_ALL=C sort)"
@@ -989,13 +1054,15 @@ EOF
 }
 
 @test "W10 adversarial: dropping a needed shard from the apt step is caught" {
-  local doctored="$BATS_TEST_TMPDIR/dropped.yml" declared needed
+  local doctored="$BATS_TEST_TMPDIR/dropped.yml" declared needed line mutated
   require_yaml_parser
 
-  replace_line "$WORKFLOW" \
-    "      - if: contains(fromJSON('[\"hooks-4\", \"lib\", \"scripts-1\", \"scripts-2\", \"scripts-3\"]'), matrix.shard) && (steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch')" \
-    "      - if: contains(fromJSON('[\"hooks-4\", \"lib\", \"scripts-1\", \"scripts-2\"]'), matrix.shard) && (steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch')" \
-    "$doctored"
+  line="$(sole_line_matching "$WORKFLOW" "$APT_GATE_PATTERN")" || return 1
+  # Only the final id is followed by the closing bracket, so this drops one
+  # leg rather than the tail of the list.
+  mutated="$(printf '%s' "$line" | sed 's/, "[^"]*"\]/]/')"
+  assert_doctored "$line" "$mutated" "dropping the last shard id" || return 1
+  replace_line "$WORKFLOW" "$line" "$mutated" "$doctored"
 
   declared="$(read_wf stepshards "$doctored" shards 'Install the YAML parser and zsh')" || {
     echo "the doctored workflow did not parse" >&2
@@ -1003,7 +1070,7 @@ EOF
   }
   needed="$(shard_package_needs "$BATS_SHARDS" "$REPO_ROOT")" || return 1
   [ "$declared" = "$needed" ] && {
-    echo "dropping scripts-3 from the apt step was not caught" >&2
+    echo "dropping the last shard id from the apt step was not caught" >&2
     return 1
   }
   true
@@ -1051,17 +1118,17 @@ seam_tree_needs() {
 # lists, and the check would green over the worst possible arrangement. This
 # pins that stepshards refuses the shape instead of reading it.
 @test "W10 adversarial: a negated apt gate is refused rather than read as the same list" {
-  local doctored="$BATS_TEST_TMPDIR/negated.yml" declared rc=0
+  local doctored="$BATS_TEST_TMPDIR/negated.yml" declared rc=0 line mutated
   require_yaml_parser
 
   # Wrapped in ${{ }} because a bare leading `!` is a YAML tag indicator and
   # the file would not parse at all, which is a different failure from the one
   # under test. normalize() strips the wrapper, so the gate reaches the reader
   # exactly as GitHub would evaluate it.
-  replace_line "$WORKFLOW" \
-    "      - if: contains(fromJSON('[\"hooks-4\", \"lib\", \"scripts-1\", \"scripts-2\", \"scripts-3\"]'), matrix.shard) && (steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch')" \
-    "      - if: \${{ !contains(fromJSON('[\"hooks-4\", \"lib\", \"scripts-1\", \"scripts-2\", \"scripts-3\"]'), matrix.shard) && (steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch') }}" \
-    "$doctored"
+  line="$(sole_line_matching "$WORKFLOW" "$APT_GATE_PATTERN")" || return 1
+  mutated="$(printf '%s' "$line" | sed 's/- if: \(.*\)$/- if: ${{ !\1 }}/')"
+  assert_doctored "$line" "$mutated" "negating the gate" || return 1
+  replace_line "$WORKFLOW" "$line" "$mutated" "$doctored"
 
   declared="$(read_wf stepshards "$doctored" shards 'Install the YAML parser and zsh' 2>/dev/null)" || rc=$?
   [ "$rc" -ne 0 ] || {
