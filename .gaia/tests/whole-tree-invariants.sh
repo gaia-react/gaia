@@ -34,8 +34,8 @@
 # entry per suite saying nothing. The one bats member is named directly instead.
 #
 # Runtime, measured on the tree at the time of writing: the thirteen scripts
-# total ~12s, shell-lint ~10s, and the shard suite ~19s, so the whole set is
-# ~40s. That is why there is one tier rather than a fast default plus a named
+# total ~12s, shell-lint ~10s, and the shard suite ~19s; the whole set measures
+# ~40s end to end. That is why there is one tier rather than a fast default plus a named
 # slower tier. A split is worth its second name only once the honest set is
 # slow enough that people skip it, and an aggregate slow enough to skip is
 # worse than none; 40 seconds against the price of an audit round is not that.
