@@ -587,15 +587,15 @@ jobs:
               - '**/*.yml'
               - '**/*.yaml'
       # python3-yaml pins the parser (python3+pyyaml) that every
-      # `require_yaml_parser` gate on this runner needs. Three suites carry one:
-      # block-invalid-yaml-write.bats, whose gate sits in setup() and so covers
-      # all of its tests with no fallback; retrigger-reachability.bats, which
-      # gates 15 of its tests behind it, also with no fallback; and
-      # lint-yaml.bats, whose gate also accepts `yq`, so on a runner carrying yq
-      # that suite still parses. All three FAIL rather than `skip` when
-      # GITHUB_ACTIONS is set, precisely so dropping this package reds the run
-      # here instead of retiring the whole self-heal reachability invariant, and
-      # the YAML-write hook's coverage, behind `ok ... # skip`. Those gates are
+      # `require_yaml_parser` gate on this runner needs. How many suites carry
+      # one is deliberately not written down here: a hand-kept count drifts as
+      # suites are added, and W10 below already derives the live set from the
+      # suites themselves via `shard_package_needs`. Every such gate FAILs
+      # rather than `skip`s when GITHUB_ACTIONS is set, precisely so dropping
+      # this package reds the run here instead of retiring the invariants
+      # behind it, the self-heal reachability one and the YAML-write hook's
+      # coverage among them, behind `ok ... # skip`. A gate that accepts `yq`
+      # as a second parser reds only when neither is present. Those gates are
       # what enforce this line; this comment only explains it. Pin the package
       # here rather than resting on whatever the runner image happens to
       # preinstall.
