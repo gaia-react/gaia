@@ -80,8 +80,8 @@ extract_fenced_bash_after_heading() {
 
 # extract_sole_bash_fence_matching <file> <ere-pattern>
 #   Prints the single ```bash ... ``` fence (fence markers matched regardless
-#   of leading indentation, since CHANGELOG.md nests its fence inside a list
-#   item) anywhere in <file> whose body carries at least one LINE matching
+#   of leading indentation, so a fence nested inside a list item is still
+#   found) anywhere in <file> whose body carries at least one LINE matching
 #   <ere-pattern>. Exits 1 unless exactly one such fence exists in the whole
 #   file, the same "exactly one candidate" discipline as the heading-anchored
 #   extractor above, for content that needs no heading to disambiguate (each
@@ -94,20 +94,6 @@ extract_sole_bash_fence_matching() {
     infence { buf = buf $0 "\n"; if ($0 ~ pat) has = 1 }
     END { if (found != 1) exit 1 }
   ' "$file"
-}
-
-# strip_common_indent
-#   Reads stdin, computes the minimum leading-space count across its
-#   non-blank lines, and strips exactly that many leading spaces from every
-#   line. CHANGELOG.md nests its rollout fence inside a list item, so its
-#   copy of the command is uniformly indented by two spaces; this is what
-#   lets test 8 compare it against the owner's column-0 copy after removing
-#   only the indentation the list item itself imposes.
-strip_common_indent() {
-  awk '
-    { lines[NR] = $0; if ($0 !~ /^[[:space:]]*$/) { n = match($0, /[^ ]/); if (min == "" || n - 1 < min) min = n - 1 } }
-    END { for (i = 1; i <= NR; i++) print substr(lines[i], min + 1) }
-  '
 }
 
 # ========== 1. exactly one file states the contract ==========
@@ -175,14 +161,16 @@ strip_common_indent() {
 
 @test "2b. the token's presence across the tree is exhaustively accounted for" {
   # The other direction of 2a: every tracked file naming the token is either
-  # one of the five routes above, the owner, the exempt helper, the wiki
-  # concept page, or CHANGELOG.md. A new emitter appearing with no decision
-  # made about it is exactly what this half catches.
+  # one of the five routes above, the owner, the exempt helper, or the wiki
+  # concept page. A new emitter appearing with no decision made about it is
+  # exactly what this half catches.
   #
-  # CHANGELOG.md carries the token because task-docs must reproduce the
-  # rollout command byte-identically, and that command's --jq program
-  # contains the literal `<!-- gaia-debt-origin:`. It is a release note
-  # quoting a command, not an emitting route; do not "clean up" this entry.
+  # CHANGELOG.md is deliberately NOT on this list. It used to quote the cohort
+  # rollout command verbatim, which dragged the token in, but that command is
+  # GAIA's own migration and now lives in a maintainer-only block; a release
+  # note reproducing it again would be instructing adopters to run a sweep that
+  # can only match issues they filed themselves. Leave CHANGELOG.md off, so
+  # that regression fails here.
   #
   # check-debt-issue-metadata.sh is a READER, not an emitter: it tests for the
   # line's presence to calibrate when provenance began writing in a given
@@ -203,8 +191,7 @@ strip_common_indent() {
         ".claude/skills/file-tech-debt/SKILL.md" | \
         ".gaia/scripts/debt-origin-lib.sh" | \
         ".gaia/scripts/check-debt-issue-metadata.sh" | \
-        "wiki/concepts/Audit Disposition and Debt Fix.md" | \
-        "CHANGELOG.md") ;;
+        "wiki/concepts/Audit Disposition and Debt Fix.md") ;;
       *)
         printf 'unaccounted-for file names gaia-debt-origin: %s\n' "$f" >&2
         return 1
@@ -228,14 +215,6 @@ EOF
     case "$f" in
       ".claude/skills/file-tech-debt/SKILL.md" | ".gaia/scripts/debt-origin-lib.sh")
         continue # the owner and its exempt implementation owe no pointer
-        ;;
-      "CHANGELOG.md")
-        # Exempted by name and required, not cosmetic: task-docs mandates the
-        # rollout command verbatim here, which drags the token in, while the
-        # same task forbids file-path names in a Keep a Changelog entry
-        # (states what changed and why, never implementation paths). Test 3
-        # without this exemption and task-docs cannot both be satisfied.
-        continue
         ;;
     esac
     grep -qF -- ".claude/skills/file-tech-debt/SKILL.md" "$REPO_ROOT/$f" || {
@@ -623,41 +602,87 @@ printf '%s\n' \"\$debt_origin_changed\"")"
   }
 }
 
-# ========== 8. the rollout command is byte-identical in both homes ==========
+# ========== 8. the rollout sections stay maintainer-only and re-runnable ==========
 
-@test "8. the rollout command is byte-identical between SKILL.md and CHANGELOG.md" {
-  local skill_block changelog_block skill_norm changelog_norm
+@test "8a. both rollout sections sit inside a maintainer-only block" {
+  # Neither sweep can do anything in a clone that is not this one: the cohort
+  # marker selects issues filed before provenance began writing, and provenance
+  # ships in the same release as filing itself, so that set is empty everywhere
+  # else by construction; the handler backfill selects on a `Handler:` body-line
+  # convention that only ever existed here. Shipping either one hands an adopter
+  # an instruction whose best case is a no-op and whose worst case stamps their
+  # own unrelated `tech-debt` issues. The marker-strip transform covers
+  # `.claude/**/*.md`, so the wrap is what keeps them out of the bundle, and
+  # nothing else would notice an unwrap.
+  # Match the markers by substring, not by equality, and count a same-line
+  # start+end pair as one balanced block before either single-marker rule can
+  # claim it. Both mirror the bundle transform (stripMarkerBlocks in
+  # .gaia/cli/src/release/marker-strip.ts), which tests `line.includes(marker)`
+  # and gives its single-line-block branch first precedence. Diverging on either
+  # would red this guard on a wrap the scrub strips correctly.
+  #
+  # DO NOT DELETE THE START/END TALLY AS REDUNDANT WITH THE SCRUB. It is the
+  # only thing that catches a deleted `:end` marker in this file. SKILL.md
+  # carries two maintainer-only blocks, so deleting the first block's `:end`
+  # does not leave a wrap open at end of file: the second block's `:end` closes
+  # the first block's `:start`, the second block's `:start` is swallowed inside
+  # it, and stripMarkerBlocks reports unbalanced=[] having silently stripped
+  # everything between them, which takes `## Brake self-check` and
+  # `## Contract-preserve note` out of the adopter copy. The scrub only fails a
+  # wrap still open at EOF or an end-without-start, so it passes that mutant,
+  # and .gaia/tests/distribution/03-marker-strip.sh only asserts the output
+  # shrank and left no fragments, which an over-strip satisfies too.
+  local skill="$REPO_ROOT/.claude/skills/file-tech-debt/SKILL.md"
+  # awk exits 2 without running END when it cannot open its input. That status
+  # is NOT lost today: `local out` below is declared on its own line and the
+  # assignment beside it is a plain one, which propagates the substitution's
+  # status under bats' set -e, so an unreadable SKILL.md already reds the test.
+  # Collapsing those two lines into `local out="$(awk ...)"` is what would lose
+  # it, because the status becomes `local`'s own, so keep them split.
+  #
+  # This guard therefore buys legibility and survivability, not a green-mutant
+  # fix: without it the failure is a raw `awk: can't open file` at the
+  # substitution, and with the collapse it would be no failure at all.
+  # -r, not -f: `-f` is satisfied by a file awk still cannot open (mode 000).
+  [ -r "$skill" ] || {
+    echo "SKILL.md is missing or unreadable; 8a cannot check the wrap" >&2
+    return 1
+  }
+  local out
+  out="$(awk '
+    index($0, "<!-- gaia:maintainer-only:start -->") && index($0, "<!-- gaia:maintainer-only:end -->") { starts++; ends++; next }
+    index($0, "<!-- gaia:maintainer-only:start -->") { inblock = 1; starts++; next }
+    index($0, "<!-- gaia:maintainer-only:end -->")   { inblock = 0; ends++; next }
+    /^## Rollout: / { seen++; if (!inblock) print "SKILL.md:" NR ": " $0 }
+    END {
+      if (seen != 2) print "expected 2 rollout sections, found " seen
+      if (starts != ends) print "unbalanced maintainer-only markers: " starts + 0 " start, " ends + 0 " end"
+    }
+  ' "$skill")"
 
+  [ -z "$out" ] || {
+    printf 'a rollout section would ship to adopters:\n%s\n' "$out" >&2
+    return 1
+  }
+}
+
+@test "8b. the cohort rollout command stays safe to re-run" {
+  # The section is kept rather than deleted because the backfill beside it may
+  # still be re-run against this backlog, so the two properties that make a
+  # re-run correct are still worth holding: the body test (so a second run days
+  # later never re-stamps issues filed after provenance landed) and the raised
+  # limit (so the sweep does not stop silently at a default page size).
+  local skill_block
   skill_block="$(extract_fenced_bash_after_heading "$REPO_ROOT/.claude/skills/file-tech-debt/SKILL.md" "## Rollout: mark the pre-provenance cohort")" || {
     echo "expected exactly one heading match and one fenced block under '## Rollout: mark the pre-provenance cohort'" >&2
     return 1
   }
-  # CHANGELOG.md carries exactly one fenced bash block total; anchoring on
-  # its content (the debt:pre-provenance label it applies) rather than a
-  # heading, since CHANGELOG.md's release notes have no headings to anchor
-  # on the way SKILL.md's sections do.
-  changelog_block="$(extract_sole_bash_fence_matching "$REPO_ROOT/CHANGELOG.md" 'debt:pre-provenance')" || {
-    echo "expected exactly one fenced bash block in CHANGELOG.md naming debt:pre-provenance" >&2
-    return 1
-  }
 
-  skill_norm="$(strip_common_indent <<<"$skill_block")"
-  changelog_norm="$(strip_common_indent <<<"$changelog_block")"
-
-  [ "$skill_norm" = "$changelog_norm" ] || {
-    printf 'the rollout command differs between homes after stripping common indentation.\nSKILL.md:\n%s\nCHANGELOG.md:\n%s\n' "$skill_norm" "$changelog_norm" >&2
-    return 1
-  }
-
-  # What makes a re-run both safe and correct: the body test (so a second
-  # run days later never re-stamps issues filed after provenance landed) and
-  # the raised limit (so the sweep does not stop silently at a default page
-  # size).
-  grep -qF -- 'test("<!-- gaia-debt-origin:")' <<<"$skill_norm" || {
+  grep -qF -- 'test("<!-- gaia-debt-origin:")' <<<"$skill_block" || {
     echo "the rollout command lost its body test; a re-run would stamp issues filed after provenance landed" >&2
     return 1
   }
-  grep -qF -- '--limit 1000' <<<"$skill_norm" || {
+  grep -qF -- '--limit 1000' <<<"$skill_block" || {
     echo "the rollout command lost its raised --limit; the sweep would stop silently at a default page size" >&2
     return 1
   }
