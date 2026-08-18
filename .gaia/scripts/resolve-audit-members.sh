@@ -166,6 +166,22 @@ audit_scope_init "$repo_root"
 
 # --- Resolve the diff base + changed files -----------------------------------
 
+# The base is the repository's advertised DEFAULT branch, deliberately, and not
+# the branch this pull request merges into. Membership is safe wide: a base
+# below the pull request's own fork point only adds files, and every extra file
+# can only add a member to the spawn set, which is the fail-closed direction --
+# an over-dispatched member reviews a diff it did not owe, while an
+# under-dispatched one leaves a surface unreviewed and the merge looking
+# audited. The specialists' own self-skip base agrees with this one for the
+# same reason, since a member that skips while membership still demands its
+# marker deadlocks the merge.
+#
+# The eligibility set the machinery-waive abuse-check reads
+# (.claude/hooks/lib/audit-dispositions.sh) reaches the opposite answer from
+# this same principle, and the difference is a property of the consumer rather
+# than of the derivation: there a wider set WAIVES more findings into prose
+# instead of filing them, so wide is the loose direction and that set scopes to
+# the pull request's own base. The two are not accidentally different.
 resolve_base() {
   if [ -n "$BASE_OVERRIDE" ]; then
     printf '%s' "$BASE_OVERRIDE"

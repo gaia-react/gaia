@@ -66,11 +66,67 @@
 # rule is about any file the pull request touches, so a review-scope pathspec
 # has no place here.
 #
-# The derivation is the three-level chain the default member's own definition
-# carries, and the two agree line for line: the default branch from
-# `refs/remotes/origin/HEAD` with a literal `main` fallback, FULL_BASE from
-# `merge-base` of HEAD against `origin/<name>` then against `<name>`, then a
-# three-dot `diff --name-only -z` against HEAD.
+# The derivation is the chain the default member's own definition carries, and
+# the two agree line for line: the base branch (below), FULL_BASE from
+# `merge-base` of HEAD against it, then a three-dot `diff --name-only -z`
+# against HEAD.
+#
+# THE BASE BRANCH IS THE PULL REQUEST'S OWN, NOT THE REPOSITORY'S DEFAULT, and
+# that is the answer to a question the two consumers of a whole-PR base do not
+# share. Membership (.gaia/scripts/resolve-audit-members.sh) is safe wide: a
+# wider diff dispatches more members than the pull request owes, and over-
+# dispatching is the fail-closed direction. Eligibility is not. It decides
+# which out-of-scope findings the machinery waive may cover, so every extra
+# file in the set is one more finding that can be waived into the pull-request
+# body instead of filed as durable tech debt, and a wrongly waived finding
+# reads exactly like a correctly waived one. A pull request stacked on any
+# branch other than the default is where the two answers part: the default
+# branch's fork point is BELOW the base branch's own commits, so the set comes
+# to include files the base branch changed and this pull request never touched.
+#
+# Two sources answer "which branch", in order:
+#
+#   1. GITHUB_BASE_REF under Actions, which the pull_request event sets, so the
+#      value comes from the event rather than from whoever invoked this. It is
+#      process environment and is NOT scoped to <acting-root>; under Actions it
+#      describes the checkout the job is building, which is the same tree.
+#   2. the pull request's own record (`gh pr view`), which is what the merge
+#      gate's bypasses read (.claude/hooks/pr-merge-audit-check.sh). `gh` takes
+#      its repository from the working directory and has no -C, so the subshell
+#      is what scopes this one to <acting-root>.
+#
+# Either answer counts only when its remote-tracking ref resolves, and the
+# verified ref is then the ONLY thing allowed to scope the diff: a bare local
+# branch of the same name is not evidence about the base branch, and one
+# sitting on this pull request's own commits would put the merge base above
+# them and empty the set. Unverifiable, absent, or unreadable means fall
+# through to the advertised default, which is the pre-existing behavior.
+#
+# That fallback is the WIDE one, so it is the loose direction for this
+# consumer, and it is chosen anyway: the alternative on a failed lookup is to
+# narrow toward a set nothing supports, which turns every ordinary offline run
+# into a wave of false denials.
+#
+# Both sides, the default member's fence (write) and this function (verify),
+# read those two sources in that order, so a run where both resolve the same
+# answer agrees by construction. They do NOT run at the same moment, and the
+# residual gap is a property of that, not of the sources:
+#
+#   - verify wide, write narrow -> safe. The agent files what it could not
+#     waive, and a wider verify side never denies a filed finding.
+#   - verify narrow, write wide -> a false DENY, `machinery-waived-not-eligible`
+#     on a waive that was honest when it was written. Its reachable shape is an
+#     audit run before `gh pr create`, where neither source answers for the
+#     write side while the merge gate later resolves the record. It is
+#     fail-closed and a re-audit on the now-existing pull request clears it, at
+#     the cost of one round.
+#
+# Closing that gap by recording the write side's resolved base in the sidecar
+# and reading it back here is deliberately NOT done. The sidecar is the
+# artifact under judgment, so a base taken from it lets the side being checked
+# choose the scope it is checked against, which is the one thing this
+# abuse-check exists to refuse: it re-derives the eligibility set independently
+# rather than trusting anything the sidecar records.
 #
 # Returns 0 when the base RESOLVED: the file's contents are the answer, and an
 # empty file is a real, empty answer. Returns 1 when the base did NOT resolve,
@@ -89,16 +145,33 @@
 # is the safe direction.
 _disposition_changed_set() {
   local root="$1" outfile="$2"
-  local default_branch FULL_BASE
+  local default_branch pr_branch elig_ref primary_ref fallback_ref FULL_BASE
 
   [ -n "$root" ] || return 1
   [ -n "$outfile" ] || return 1
   [ "$(git -C "$root" rev-parse --is-inside-work-tree 2>/dev/null)" = "true" ] || return 1
 
+  pr_branch=""
+  if [ "${GITHUB_ACTIONS:-}" = "true" ] && [ -n "${GITHUB_BASE_REF:-}" ]; then
+    pr_branch="$GITHUB_BASE_REF"
+  elif command -v gh >/dev/null 2>&1; then
+    # `gh` reads the repository from the working directory and carries no -C of
+    # its own, so the subshell is what scopes the lookup to the acting tree.
+    pr_branch=$( (cd "$root" 2>/dev/null && gh pr view --json baseRefName --jq '.baseRefName') 2>/dev/null || true)
+  fi
+  elig_ref=""
+  if [ -n "$pr_branch" ] \
+    && git -C "$root" rev-parse --verify --quiet "refs/remotes/origin/${pr_branch}" >/dev/null 2>&1; then
+    elig_ref="refs/remotes/origin/${pr_branch}"
+  fi
   default_branch=$(git -C "$root" symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@')
   [ -n "$default_branch" ] || default_branch="main"
-  FULL_BASE=$(git -C "$root" merge-base HEAD "origin/${default_branch}" 2>/dev/null \
-    || git -C "$root" merge-base HEAD "${default_branch}" 2>/dev/null || true)
+  # Both arms hold the verified ref when there is one, which is how the bare
+  # `<name>` arm stays reachable for the default branch alone.
+  primary_ref="${elig_ref:-origin/${default_branch}}"
+  fallback_ref="${elig_ref:-${default_branch}}"
+  FULL_BASE=$(git -C "$root" merge-base HEAD "$primary_ref" 2>/dev/null \
+    || git -C "$root" merge-base HEAD "$fallback_ref" 2>/dev/null || true)
   [ -n "$FULL_BASE" ] || return 1
 
   git -C "$root" diff --name-only -z "${FULL_BASE}...HEAD" > "$outfile" 2>/dev/null || return 1
@@ -262,9 +335,12 @@ _disposition_machinery_ready() {
 # This is the deterministic abuse-check shared by the backstop hook and the
 # merge gate.
 #
-# The arm queries no backend and is offline in that sense, but it does make
-# LOCAL git calls in its verdict path: one for the changed-file set, one to
-# attribute the sidecar to the tree under judgment.
+# The arm reads no issue backend, and its verdict rests on local git calls: one
+# for the changed-file set, one to attribute the sidecar to the tree under
+# judgment. The changed-file set does read the pull request's own record to
+# learn which branch it merges into, and only when Actions has not already
+# supplied that; every failure there falls back to a purely local answer, so
+# the arm still reaches a verdict with no network at all.
 #
 # Three states are distinguished from "verified clean", each carried by a
 # `disposition_notes` line rather than left silent:
@@ -470,7 +546,15 @@ disposition_notes() {
   else
     # The set itself is discarded; what this call reads is whether the base
     # resolved. Deriving it through the same helper disposition_offenders uses
-    # is what keeps the two verdicts from drifting apart.
+    # is what keeps the two from applying different RULES.
+    #
+    # It does not make them share an ANSWER, and cannot: both gates call the
+    # two functions in separate command substitutions, so no memo survives from
+    # one to the other, and the base-branch derivation can now reach the pull
+    # request record. A failure landing between the two calls resolves two
+    # different bases, which shows up as a note disagreeing with the verdict
+    # beside it, never as a wrong verdict: only disposition_offenders decides,
+    # and this function denies nothing.
     line="changed-files-unverified"
     changed_file=$(mktemp "${TMPDIR:-/tmp}/.audit-changed-set.XXXXXX" 2>/dev/null) || changed_file=""
     if [ -n "$changed_file" ]; then
