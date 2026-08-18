@@ -37,27 +37,32 @@ setup() {
   SIDECAR="$BATS_TEST_TMPDIR/head.dispositions.json"
 }
 
-# install_gh_mock MODE [ISSUES_JSON]:
+# install_gh_mock MODE [ISSUES_JSON] [PR_BASE_REF]:
 #   ok <json>   -> `gh issue list ...` prints ISSUES_JSON, exit 0
-#   fail        -> `gh issue list ...` exits non-zero (backend unreachable)
+#   fail        -> every `gh` read exits non-zero (backend unreachable)
+#   PR_BASE_REF -> `gh pr view --json baseRefName --jq …` prints it. Empty (the
+#     default) prints nothing at exit 0, which is what an unopened pull request
+#     looks like to the eligibility base derivation. `--jq` is applied by gh
+#     itself, so the mock emits the bare branch name rather than JSON.
 install_gh_mock() {
-  local mode="$1" issues="${2:-[]}"
+  local mode="$1" issues="${2:-[]}" pr_base="${3:-}"
   GH_BIN="$BATS_TEST_TMPDIR/bin"
   mkdir -p "$GH_BIN"
   printf '%s' "$issues" > "$BATS_TEST_TMPDIR/issues.json"
   cat > "$GH_BIN/gh" <<EOF
 #!/usr/bin/env bash
 mode="$mode"
+pr_base="$pr_base"
 issues_file="$BATS_TEST_TMPDIR/issues.json"
 EOF
   cat >> "$GH_BIN/gh" <<'EOF'
+[ "$mode" = "fail" ] && exit 1
 case "$1" in
-  issue)
-    [ "$mode" = "fail" ] && exit 1
-    cat "$issues_file"
-    ;;
-  *) exit 0 ;;
+  issue) cat "$issues_file" ;;
+  pr) [ -n "$pr_base" ] && printf '%s\n' "$pr_base" ;;
+  *) : ;;
 esac
+exit 0
 EOF
   chmod +x "$GH_BIN/gh"
   export PATH="$GH_BIN:$PATH"
@@ -1158,11 +1163,30 @@ make_stacked_pr_repo() {
   grep -qF -- "machinery-waived-not-eligible: v1 class=x path=app/base-only.ts line=1" <<<"$output" || return 1
 }
 
+@test "offenders: the pull request's own record supplies the base when Actions does not" {
+  local repo
+  repo="$(make_stacked_pr_repo case-stacked-record)"
+  # This suite runs inside Actions on a pull_request event, where both of the
+  # ambient variables are set: unset them or the arm under test never runs.
+  unset GITHUB_ACTIONS GITHUB_BASE_REF
+  install_gh_mock ok '[]' release
+
+  write_sidecar '{"schema":1,"backend":"github","findings":[
+    {"key":"v1 class=x path=app/feat.ts line=1","disposition":"machinery_waived"},
+    {"key":"v1 class=x path=app/base-only.ts line=1","disposition":"machinery_waived"}
+  ]}'
+  run disposition_offenders "$SIDECAR" "$repo"
+  [ "$status" -eq 0 ]
+  grep -qF -- "app/feat.ts" <<<"$output" && return 1
+  grep -qF -- "machinery-waived-not-eligible: v1 class=x path=app/base-only.ts line=1" <<<"$output" || return 1
+}
+
 @test "offenders: with no declared base the same waive clears, which is the wide fallback rather than a second rule" {
   local repo
   repo="$(make_stacked_pr_repo case-stacked-fallback)"
-  # The gh mock's catch-all arm answers `gh pr view` with nothing, so no base
-  # branch is declared by either source and the advertised default stands.
+  unset GITHUB_ACTIONS GITHUB_BASE_REF
+  # An empty PR_BASE_REF leaves `gh pr view` answering nothing, so neither
+  # source declares a base and the advertised default stands.
   install_gh_mock ok '[]'
 
   write_sidecar '{"schema":1,"backend":"github","findings":[

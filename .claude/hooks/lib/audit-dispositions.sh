@@ -101,13 +101,28 @@
 # That fallback is the WIDE one, so it is the loose direction for this
 # consumer, and it is chosen anyway: the alternative on a failed lookup is to
 # narrow toward a set nothing supports, which turns every ordinary offline run
-# into a wave of false denials. The asymmetry that matters is between the two
-# sides rather than within one. A write side (the default member's fence) that
-# resolves the base while the verify side does not stays safe: the agent files
-# what it cannot waive, and a wider verify side never denies a filed finding.
-# The reverse, a verify side narrower than the write side, denies a waive the
-# agent goes on re-making, which no re-audit round can clear. Both sides read
-# these same two sources in this same order for that reason.
+# into a wave of false denials.
+#
+# Both sides, the default member's fence (write) and this function (verify),
+# read those two sources in that order, so a run where both resolve the same
+# answer agrees by construction. They do NOT run at the same moment, and the
+# residual gap is a property of that, not of the sources:
+#
+#   - verify wide, write narrow -> safe. The agent files what it could not
+#     waive, and a wider verify side never denies a filed finding.
+#   - verify narrow, write wide -> a false DENY, `machinery-waived-not-eligible`
+#     on a waive that was honest when it was written. Its reachable shape is an
+#     audit run before `gh pr create`, where neither source answers for the
+#     write side while the merge gate later resolves the record. It is
+#     fail-closed and a re-audit on the now-existing pull request clears it, at
+#     the cost of one round.
+#
+# Closing that gap by recording the write side's resolved base in the sidecar
+# and reading it back here is deliberately NOT done. The sidecar is the
+# artifact under judgment, so a base taken from it lets the side being checked
+# choose the scope it is checked against, which is the one thing this
+# abuse-check exists to refuse: it re-derives the eligibility set independently
+# rather than trusting anything the sidecar records.
 #
 # Returns 0 when the base RESOLVED: the file's contents are the answer, and an
 # empty file is a real, empty answer. Returns 1 when the base did NOT resolve,

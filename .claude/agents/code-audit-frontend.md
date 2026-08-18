@@ -799,11 +799,17 @@ if [ -n "$dirty_in_scope" ]; then printf 'DIRTY IN REVIEW SCOPE:\n%s\n' "$dirty_
 # local branch of the same name could sit on this pull request's own commits
 # and empty the set. The verify side of this same set
 # (.claude/hooks/lib/audit-dispositions.sh) reads the two sources in the same
-# order, which is what keeps a waive you make here from being denied there.
+# order, which is what keeps a waive you make here from being denied there;
+# that file's header carries the one residual gap, an audit run before the
+# pull request exists, and why it is left open.
+#
+# The AUDIT_ROOT test is not redundant with the `cd`. On bash 3.2, macOS's
+# /bin/bash, `cd ""` succeeds and leaves the subshell wherever the session
+# already was, so an unset AUDIT_ROOT would read whatever repository that is.
 pr_branch=""
 if [ "${GITHUB_ACTIONS:-}" = "true" ] && [ -n "${GITHUB_BASE_REF:-}" ]; then
   pr_branch="$GITHUB_BASE_REF"
-elif command -v gh >/dev/null 2>&1; then
+elif [ -n "$AUDIT_ROOT" ] && command -v gh >/dev/null 2>&1; then
   pr_branch=$( (cd "$AUDIT_ROOT" 2>/dev/null && gh pr view --json baseRefName --jq '.baseRefName') 2>/dev/null || true)
 fi
 elig_ref=""

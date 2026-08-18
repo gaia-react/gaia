@@ -1224,3 +1224,57 @@ make_stacked_repo() {
   }
   true
 }
+
+# install_pr_view_mock <base-ref>: a `gh` on PATH whose `pr view` answers with
+# <base-ref> and whose every other subcommand is a silent success. The write
+# side reaches the pull-request record only when Actions has supplied nothing,
+# which is why the two ambient variables are cleared alongside it.
+install_pr_view_mock() {
+  local bin="$BATS_TEST_TMPDIR/gh-bin"
+  mkdir -p "$bin"
+  cat > "$bin/gh" <<EOF
+#!/usr/bin/env bash
+base_ref="$1"
+EOF
+  cat >> "$bin/gh" <<'EOF'
+case "$1" in
+  pr) printf '%s\n' "$base_ref" ;;
+  *) : ;;
+esac
+exit 0
+EOF
+  chmod +x "$bin/gh"
+  export PATH="$bin:$PATH"
+  unset GITHUB_ACTIONS GITHUB_BASE_REF
+}
+
+@test "the write side takes the base from the pull request's own record when Actions declares none" {
+  local repo write outfile verify
+
+  repo="$(make_stacked_repo elig-record)"
+  install_pr_view_mock release
+
+  write="$(elig_eval code-audit-frontend "$repo" 'printf "%s\n" "${full_changed:-}"')" || {
+    echo "the eligibility fence failed to run" >&2
+    return 1
+  }
+  grep -qxF "app/feat-only.ts" <<<"$write" || {
+    printf 'write side dropped the pull request own change: %s\n' "$write" >&2
+    return 1
+  }
+  grep -qxF "app/base-only.ts" <<<"$write" && {
+    printf 'write side still carries a base-branch-only file: %s\n' "$write" >&2
+    return 1
+  }
+
+  outfile="$BATS_TEST_TMPDIR/verify-record"
+  ( . "$REPO_ROOT/.claude/hooks/lib/audit-dispositions.sh" && _disposition_changed_set "$repo" "$outfile" ) || {
+    echo "_disposition_changed_set failed to resolve a base" >&2
+    return 1
+  }
+  verify="$(tr '\0' '\n' < "$outfile")"
+  [ "$write" = "$verify" ] || {
+    printf 'write side and verify side disagree.\nwrite:\n%s\nverify:\n%s\n' "$write" "$verify" >&2
+    return 1
+  }
+}

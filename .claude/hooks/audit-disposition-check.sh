@@ -30,10 +30,13 @@
 #      disposition is sanctioned only for a finding whose path is gate
 #      machinery or a file the pull request itself touches, so an entry outside
 #      that union is an unfiled out-of-scope finding wearing a machinery
-#      label). Purely local: the check resolves the pull request's diff against
-#      the acting tree to derive the changed-files term, dropping only that
+#      label). It reads no issue backend for this term: the changed-files
+#      set comes from a git diff of the acting tree, dropping only that
 #      term (deciding on the gate-machinery term alone) when the diff base
-#      cannot be resolved. Fails open, producing no offenders at all, when the
+#      cannot be resolved. Which branch that diff is taken against is the
+#      pull request's own base, so the derivation does consult the pull
+#      request record when Actions has not already supplied it, and every
+#      failure there degrades to a purely local answer. Fails open, producing no offenders at all, when the
 #      machinery library cannot be resolved.
 #   4. The frontend earned marker for the current frontend digest is VALID
 #      (present, writer-shaped, provenance earned) but its sidecar is ABSENT.
