@@ -56,6 +56,7 @@ teardown() {
 # enumeration counts it exactly as a real extractor copy.
 extractor_file() {
   mkdir -p "$TMP/$( dirname "$1" )"
+  # shellcheck disable=SC2016  # $WORKFLOW is meant to land literally in the stub
   {
     printf '#!/usr/bin/env bats\n'
     printf '# reads %s\n' "$GAIA_SBX_WORKFLOW"

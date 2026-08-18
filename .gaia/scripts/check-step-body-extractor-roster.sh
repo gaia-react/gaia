@@ -66,8 +66,11 @@ GAIA_SBX_WORKFLOW='code-review-audit.yml'
 # extractor, body or block, has to find where one step ends and the next begins,
 # and this is that boundary. Six spaces is the `steps:` list indentation in
 # code-review-audit.yml; a copy keying on a different indentation is reading a
-# differently-shaped file.
-GAIA_SBX_STEP_HEADER='      - name: '
+# differently-shaped file. It stops at the colon deliberately: a copy is free to
+# anchor its own regex there rather than at the space after it, and that spelling
+# is ordinary enough that including the space would leave a gap the header below
+# calls conspicuous when it would not be.
+GAIA_SBX_STEP_HEADER='      - name:'
 
 # The family: step-BODY extractors over code-review-audit.yml, which are the
 # copies that must agree with one another about what the body is.
@@ -107,6 +110,10 @@ _gaia_sbx_registered() {
   } | sed '/^$/d' | LC_ALL=C sort
 }
 
+# The three verdict strings below are a pinned output contract, not free-form
+# logging: .gaia/tests/lib/step-body-extractor-roster.bats matches each of them
+# literally, so rewording one reds a file the editing diff does not touch. Same
+# convention as check-audit-key-callers.sh and whole-tree-invariants.sh.
 gaia_check_step_body_extractor_roster() {
   local repo_root="${1:?gaia_check_step_body_extractor_roster requires a repo_root argument}"
   local candidates registered unregistered stale failed=0
