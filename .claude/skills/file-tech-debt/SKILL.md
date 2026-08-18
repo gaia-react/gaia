@@ -284,10 +284,8 @@ Create the parent directory first. On a fresh clone, or in CI, no statusline tic
 <!-- gaia:maintainer-only:start -->
 
 Both rollout sections below are GAIA's own migration record and are stripped from
-the shipped skill. Each selects on a precondition that only this repository has
-ever had, so in any other clone one sweep is a no-op at best and the other cannot
-match at all. Do not unwrap them; if a future rollout genuinely applies to every
-clone, write that one as its own section outside these markers.
+the shipped skill. Do not unwrap them; if a future rollout genuinely applies to
+every clone, write that one as its own section outside these markers.
 
 ## Rollout: mark the pre-provenance cohort
 
@@ -384,6 +382,6 @@ The `fold:` namespace (step 6) is a label spelling and within this contract's sc
 
 The `difficulty:` namespace (step 7) is a label spelling, so it is within this lockstep contract's scope, but no consumer gates on it, verified against all five originally named above: `.gaia/scripts/debt-count-refresh.sh` filters by excluding two specific label names (`debt:in-progress` and `debt:spec-pending`) and ignores anything else, `.claude/hooks/audit-disposition-check.sh` matches the dedup key in the issue body and parses no labels, `.gaia/statusline/gaia-statusline.sh` parses no labels, `.claude/hooks/debt-session-reconcile.sh` only reconciles the count downward, and `.claude/skills/gaia/references/debt.md` surfaces it in output only, never to gate a path (`debt.md`'s own Guardrails: "Difficulty grading never gates anything"). Renaming the namespace therefore requires zero gating changes to any of the five.
 
-Provenance (the `gaia-debt-origin` line, see "Provenance line" above) is a separate line and joins none of that lockstep set. Adding, removing, or renaming a provenance field requires no change to any deterministic consumer of the dedup key. No consumer reads the issue body positionally, so a second HTML comment beside the dedup key is safe: `.claude/hooks/lib/audit-dispositions.sh` reconstructs the wrapped dedup key and tests it as a substring, and `.claude/skills/gaia/references/debt.md` captures on the literal `<!-- gaia-debt-key: ` prefix; neither reads past it. The keyless `<path>:<line>` fallback cannot false-match a provenance field either, since no provenance field yields a colon followed by digits. The `debt:pre-provenance` label is additive too: no consumer gates on it. The helper deliberately inverts `audit-key-lib.sh`'s fail-closed rule, printing `unknown` in a slot it cannot resolve rather than refusing to print a partial line; that inversion is deliberate, not a bug to "fix" into agreement.
+Provenance (the `gaia-debt-origin` line, see "Provenance line" above) is a separate line and joins none of that lockstep set. Adding, removing, or renaming a provenance field requires no change to any deterministic consumer of the dedup key. No consumer reads the issue body positionally, so a second HTML comment beside the dedup key is safe: `.claude/hooks/lib/audit-dispositions.sh` reconstructs the wrapped dedup key and tests it as a substring, and `.claude/skills/gaia/references/debt.md` captures on the literal `<!-- gaia-debt-key: ` prefix; neither reads past it. The keyless `<path>:<line>` fallback cannot false-match a provenance field either, since no provenance field yields a colon followed by digits. The helper deliberately inverts `audit-key-lib.sh`'s fail-closed rule, printing `unknown` in a slot it cannot resolve rather than refusing to print a partial line; that inversion is deliberate, not a bug to "fix" into agreement.
 
 If you're only filing an issue, none of the above needs touching, this note exists so a future edit to the key/label shapes doesn't silently break them.

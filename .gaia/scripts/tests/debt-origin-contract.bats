@@ -614,12 +614,25 @@ printf '%s\n' \"\$debt_origin_changed\"")"
   # own unrelated `tech-debt` issues. The marker-strip transform covers
   # `.claude/**/*.md`, so the wrap is what keeps them out of the bundle, and
   # nothing else would notice an unwrap.
+  # Match the markers by substring, not by equality: the bundle transform tests
+  # `line.includes(marker)` (.gaia/cli/src/release/marker-strip.ts), so an
+  # indented marker inside a list item is honored there. Asserting equality here
+  # would red this guard on a wrap the scrub strips correctly.
+  #
+  # The start/end tally is the other half of the wrap discipline this test
+  # claims. Tracking `inblock` alone cannot see a deleted `:end` marker: the flag
+  # would simply stay set to EOF and every heading after it would still read as
+  # inside the block. The scrub does fail an unbalanced wrap, so this is the
+  # guard agreeing with its own comment rather than a live hole being closed.
   local out
   out="$(awk '
-    $0 == "<!-- gaia:maintainer-only:start -->" { inblock = 1; next }
-    $0 == "<!-- gaia:maintainer-only:end -->"   { inblock = 0; next }
+    index($0, "<!-- gaia:maintainer-only:start -->") { inblock = 1; starts++; next }
+    index($0, "<!-- gaia:maintainer-only:end -->")   { inblock = 0; ends++; next }
     /^## Rollout: / { seen++; if (!inblock) print "SKILL.md:" NR ": " $0 }
-    END { if (seen != 2) print "expected 2 rollout sections, found " seen }
+    END {
+      if (seen != 2) print "expected 2 rollout sections, found " seen
+      if (starts != ends) print "unbalanced maintainer-only markers: " starts " start, " ends " end"
+    }
   ' "$REPO_ROOT/.claude/skills/file-tech-debt/SKILL.md")"
 
   [ -z "$out" ] || {
