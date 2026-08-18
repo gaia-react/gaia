@@ -68,8 +68,8 @@ GAIA_SBX_WORKFLOW='code-review-audit.yml'
 # code-review-audit.yml; a copy keying on a different indentation is reading a
 # differently-shaped file. It stops at the colon deliberately: a copy is free to
 # anchor its own regex there rather than at the space after it, and that spelling
-# is ordinary enough that including the space would leave a gap the header below
-# calls conspicuous when it would not be.
+# is ordinary enough that including the space would leave a gap the WHAT THIS
+# BUYS block above calls conspicuous when it would not be.
 GAIA_SBX_STEP_HEADER='      - name:'
 
 # The family: step-BODY extractors over code-review-audit.yml, which are the
