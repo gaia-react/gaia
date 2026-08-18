@@ -508,6 +508,42 @@ with open(out, 'w', encoding='utf-8') as handle:
 PY
 }
 
+# The parser gate above is the single point where every parser-gated test in
+# this file, W10 among them, can be turned off at once, and nothing else here
+# would notice if it started skipping on CI: a lib leg that lost python3-yaml
+# would report `ok ... # skip` for each of them and green the job with the
+# shard-list invariant retired. This test is what makes that weakening red.
+# Same shape as the sibling gates' own proving tests in lint-yaml.bats,
+# workflow-filter-coverage.bats, retrigger-reachability.bats, and
+# block-invalid-yaml-write.bats. Not itself gated.
+
+@test "the parser gate fails on a CI runner and still skips off CI" {
+  local shim="$BATS_TEST_TMPDIR/no-parser" rc
+  mkdir -p "$shim"
+  # python3 present, but its `import yaml` fails: the shape a runner takes when
+  # python3-yaml is dropped from the apt line, not one where python3 is missing
+  # outright. The shebang is absolute so the stripped PATH below cannot affect it.
+  printf '#!/bin/sh\nexit 1\n' > "$shim/python3"
+  chmod +x "$shim/python3"
+
+  # Calling the gate in a subshell is what keeps its `skip` arm from marking this
+  # test skipped -- bats' `skip` exits 0, so the subshell's status is exactly the
+  # discriminator wanted here: non-zero is the CI failure, 0 is the off-CI skip.
+  rc=0
+  ( PATH="$shim" GITHUB_ACTIONS=true; require_yaml_parser ) >/dev/null 2>&1 || rc=$?
+  [ "$rc" -ne 0 ] || {
+    echo "the gate skipped on a CI runner with no YAML parser; every parser-gated test here would report green" >&2
+    return 1
+  }
+
+  rc=0
+  ( PATH="$shim"; unset GITHUB_ACTIONS; require_yaml_parser ) >/dev/null 2>&1 || rc=$?
+  [ "$rc" -eq 0 ] || {
+    echo "the gate failed off CI, where a missing parser must still skip" >&2
+    return 1
+  }
+}
+
 # W1. Exactly one job carries the required context name, byte-exact at four
 # spaces -- the literal shape retrigger-reachability.bats' workflow_for_context
 # resolves the context by.
