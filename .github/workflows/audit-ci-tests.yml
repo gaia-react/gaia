@@ -649,7 +649,7 @@ jobs:
       # Do not edit this list by hand to make W10 pass: W10 failing means a
       # suite moved legs, and the repair is to copy the set W10 names, which it
       # derives from the suites rather than from here.
-      - if: contains(fromJSON('["hooks-4", "lib", "scripts-1", "scripts-2", "scripts-3"]'), matrix.shard) && (steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch')
+      - if: contains(fromJSON('["hooks-3", "lib", "scripts-1", "scripts-2", "scripts-3"]'), matrix.shard) && (steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch')
         name: Install the YAML parser and zsh
         run: sudo apt-get update && sudo apt-get install -y python3-yaml zsh
       # No apt at all: the sandbox tree provably needs neither python3-yaml nor
