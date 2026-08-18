@@ -199,6 +199,8 @@
     ".gaia/cli/templates/workflows/partials/quality-gate.yml.tmpl": "owned",
     ".gaia/hook-scopes.json": "owned",
     ".gaia/hook-scopes.schema.json": "owned",
+    ".gaia/script-capabilities.json": "owned",
+    ".gaia/script-capabilities.schema.json": "owned",
     ".gaia/scripts/a11y-structural/check-a11y-triviality.mjs": "owned",
     ".gaia/scripts/append-audit-author.sh": "owned",
     ".gaia/scripts/archived-backlog-migrate.sh": "owned",
@@ -653,7 +655,7 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-08-18T10:18:56.137Z",
+  "generated": "2026-08-18T16:07:33.656Z",
   "regions": [
     {
       "endMarker": "<!-- gaia:audit-remit:end -->",
