@@ -112,11 +112,18 @@ EOF
 }
 
 # Extract one step's `run:` shell body from the workflow YAML and dedent it.
-# Matches the `- name:` line EXACTLY. Same shape as the helpers in
-# .github/audit/tests/ci-status-member-gate.bats and
-# .github/audit/tests/ci-workflow-self-mod.bats; not sourced from either (bats
-# files do not share function definitions across files), so the three are kept
-# in agreement about what "extract the real step body" means by hand.
+# Matches the `- name:` line EXACTLY.
+#
+# Several other bats files carry a near-identical copy of this helper. None of
+# them share it (bats files do not define functions across files), so they are
+# kept in agreement about what "extract the real step body" means by hand.
+# Recover the live set rather than trusting a list written here, which decays:
+#
+#   git grep -n "sed 's/^          //'" -- '*.bats'
+#
+# Of what that returns, the copies this one must agree with are those whose
+# $WORKFLOW is .github/workflows/code-review-audit.yml; a copy over a different
+# workflow answers to that workflow's shape and is free to diverge.
 extract_step_body() {
   local step_name="$1" out="$BATS_TEST_TMPDIR/step.sh"
   awk -v want="      - name: ${step_name}" '
