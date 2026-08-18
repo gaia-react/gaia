@@ -56,11 +56,26 @@ setup() {
 }
 
 # Extract one step's `run:` shell body from the workflow YAML and dedent it.
-# Matches the `- name:` line EXACTLY. Same shape as the helpers in
-# .github/audit/tests/self-heal-scope-gate.bats and
-# .github/audit/tests/ci-status-member-gate.bats; not sourced from either (bats
-# files do not share function definitions across files), so the three are kept
-# in agreement about what "extract the real step body" means by hand.
+# Matches the `- name:` line EXACTLY.
+#
+# Several other bats files carry a near-identical copy of this helper. None of
+# them share it (bats files do not define functions across files), so they are
+# kept in agreement about what "extract the real step body" means by hand.
+# Recover the live set rather than trusting a list written here, which decays:
+#
+#   git grep -nF 'run: \|' -- '*.bats'
+#
+# Keyed on the `run: |` detector, because that is what makes a copy a step-BODY
+# extractor. A whole-block extractor stops at the same `- name:` boundary but
+# keeps the block undedented, so it answers to a different contract and is
+# deliberately out of the set; keying on the boundary would pull it in, and
+# keying on the dedent would drop a member that extracts the body without one.
+# The detector is matched WITHOUT a trailing anchor, since a copy is free to
+# spell its own regex without one and still be bound by this agreement. The
+# backslash is what keeps fixture YAML out: fixtures spell `run: |` plain.
+# Of what the grep returns, the copies this one must agree with are those whose
+# workflow is .github/workflows/code-review-audit.yml; a copy over a different
+# workflow answers to that workflow's shape and is free to diverge.
 extract_step_body() {
   local step_name="$1" out="$BATS_TEST_TMPDIR/step.sh"
   awk -v want="      - name: ${step_name}" '
