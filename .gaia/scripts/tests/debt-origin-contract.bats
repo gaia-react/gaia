@@ -636,8 +636,10 @@ printf '%s\n' \"\$debt_origin_changed\"")"
   # awk exits without running END when it cannot open its input, and a command
   # substitution discards that status, so an unreadable SKILL.md would leave
   # `out` empty and green this test while it enforced nothing.
-  [ -f "$skill" ] || {
-    echo "SKILL.md is missing; 8a cannot check the wrap" >&2
+  # -r, not -f: `-f` is satisfied by a file awk still cannot open (mode 000),
+  # which is the very case this guard names.
+  [ -r "$skill" ] || {
+    echo "SKILL.md is missing or unreadable; 8a cannot check the wrap" >&2
     return 1
   }
   local out
