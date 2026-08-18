@@ -63,13 +63,16 @@ setup() {
 # kept in agreement about what "extract the real step body" means by hand.
 # Recover the live set rather than trusting a list written here, which decays:
 #
-#   git grep -nF 'run: \|[[:space:]]*$' -- '*.bats'
+#   git grep -nF 'run: \|' -- '*.bats'
 #
 # Keyed on the `run: |` detector, because that is what makes a copy a step-BODY
 # extractor. A whole-block extractor stops at the same `- name:` boundary but
 # keeps the block undedented, so it answers to a different contract and is
 # deliberately out of the set; keying on the boundary would pull it in, and
 # keying on the dedent would drop a member that extracts the body without one.
+# The detector is matched WITHOUT a trailing anchor, since a copy is free to
+# spell its own regex without one and still be bound by this agreement. The
+# backslash is what keeps fixture YAML out: fixtures spell `run: |` plain.
 # Of what the grep returns, the copies this one must agree with are those whose
 # workflow is .github/workflows/code-review-audit.yml; a copy over a different
 # workflow answers to that workflow's shape and is free to diverge.
