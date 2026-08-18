@@ -24,7 +24,10 @@
 # no path-scoped trigger that could select it? The scripts that answer no are
 # listed in WTI_EXCLUDED below with their reason, so a reader can see they were
 # considered rather than missed, and .gaia/tests/lib/whole-tree-invariants.bats
-# fails if a `.gaia/scripts/check-*.sh` appears in neither table.
+# fails if a candidate appears in neither table. That suite sweeps every naming
+# family that has actually produced a member, not `check-*` alone: four members
+# live outside that one glob, so a `check-*`-only sweep would leave their own
+# families unwatched.
 #
 # Runtime, measured on the tree at the time of writing: the twelve scripts
 # total ~11s, shell-lint ~10s, and the shard suite ~19s, so the whole set is
@@ -69,10 +72,19 @@ readonly WTI_SCRIPTS='.gaia/scripts/check-audit-base-derivation.sh
 readonly WTI_BATS='.gaia/tests/lib/audit-ci-shards.bats'
 
 # Deliberately NOT members, `<path>|<reason>`. Each answers no to the
-# membership question above.
+# membership question above, and each is here so the answer is written down
+# rather than left as an omission the sibling suite cannot tell from one.
 readonly WTI_EXCLUDED='.gaia/scripts/check-debt-issue-metadata.sh|argument-driven per-filing validator; its --issue and --sweep modes read the tracker over the network
 .gaia/scripts/check-registry-runtime.sh|reads the gitignored .gaia/local/ runtime tree, reports and never blocks, and is meaningless on a fresh checkout
-.gaia/scripts/check-updates.sh|SessionStart update probe that writes a cache; network-dependent and asserts no invariant'
+.gaia/scripts/check-updates.sh|SessionStart update probe that writes a cache; network-dependent and asserts no invariant
+.gaia/scripts/lint-git-path-quoting.sh|runs transitively, shell-lint.sh invokes it and shell-lint.sh is itself a member
+.gaia/scripts/lint-grep-ere-escapes.sh|runs transitively, shell-lint.sh invokes it and shell-lint.sh is itself a member
+.gaia/scripts/lint-hook-array-guard.sh|runs transitively, shell-lint.sh invokes it and shell-lint.sh is itself a member
+.gaia/scripts/lint-workflow-run-interpolation.sh|runs transitively, shell-lint.sh invokes it and shell-lint.sh is itself a member
+.gaia/tests/bats-shards.sh|harness plumbing, it partitions suites into shards rather than asserting anything; the partition itself is the bats member above
+.gaia/tests/install-bats.sh|harness plumbing, it installs the pinned bats and asserts no invariant
+.gaia/tests/run-bats-parallel.sh|harness plumbing, the hand-run entry point for the same partition
+.gaia/tests/whole-tree-invariants.sh|this runner; a member of itself would recurse'
 
 usage() {
   cat <<EOF
@@ -112,11 +124,26 @@ run_member() {
     record_result "$path" 1
     return
   fi
-  "$@" "$path"
+  # `</dev/null` is load-bearing rather than tidy. Both member loops below read
+  # their list from a heredoc, so an unredirected member inherits that heredoc
+  # as its stdin: one `read`, or an `xargs`/`jq` with no input argument, and the
+  # member eats the remaining member paths, the loop ends early, and the runner
+  # reports every-member-passed having run one. That is the silent drop-out the
+  # header promises cannot happen, and it leaves no FAIL line and no skip notice.
+  "$@" "$path" </dev/null
   record_result "$path" "$?"
 }
 
 main() {
+  # Arity before dispatch: the case below reads only "$1", so without this a
+  # mistyped `--list --list-exluded` would run the first and discard the
+  # misspelling, handing the caller a success they did not ask for.
+  if [ "$#" -gt 1 ]; then
+    printf '%s: too many arguments\n' "$PROG" >&2
+    usage >&2
+    return 2
+  fi
+
   case "${1-}" in
     --help | -h)
       usage
@@ -166,7 +193,11 @@ EOF
     printf 'all whole-tree invariants pass\n'
     return 0
   fi
-  printf '%d member(s) failed:\n' "$wti_fail_count"
+  # Header and names on the same stream: split across stdout and stderr, a
+  # caller capturing one of them ends on a dangling colon with no names, or
+  # collects bare paths with no header. Bats cannot see the split, because `run`
+  # merges both streams into $output.
+  printf '%d member(s) failed:\n' "$wti_fail_count" >&2
   printf '%s' "$wti_failed" >&2
   return 1
 }
