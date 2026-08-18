@@ -84,12 +84,16 @@
 # branch's fork point is BELOW the base branch's own commits, so the set comes
 # to include files the base branch changed and this pull request never touched.
 #
-# Two sources answer "which branch", in order, both scoped to <acting-root>:
+# Two sources answer "which branch", in order:
 #
 #   1. GITHUB_BASE_REF under Actions, which the pull_request event sets, so the
-#      value comes from the event rather than from whoever invoked this.
+#      value comes from the event rather than from whoever invoked this. It is
+#      process environment and is NOT scoped to <acting-root>; under Actions it
+#      describes the checkout the job is building, which is the same tree.
 #   2. the pull request's own record (`gh pr view`), which is what the merge
-#      gate's bypasses read (.claude/hooks/pr-merge-audit-check.sh).
+#      gate's bypasses read (.claude/hooks/pr-merge-audit-check.sh). `gh` takes
+#      its repository from the working directory and has no -C, so the subshell
+#      is what scopes this one to <acting-root>.
 #
 # Either answer counts only when its remote-tracking ref resolves, and the
 # verified ref is then the ONLY thing allowed to scope the diff: a bare local
@@ -542,7 +546,15 @@ disposition_notes() {
   else
     # The set itself is discarded; what this call reads is whether the base
     # resolved. Deriving it through the same helper disposition_offenders uses
-    # is what keeps the two verdicts from drifting apart.
+    # is what keeps the two from applying different RULES.
+    #
+    # It does not make them share an ANSWER, and cannot: both gates call the
+    # two functions in separate command substitutions, so no memo survives from
+    # one to the other, and the base-branch derivation can now reach the pull
+    # request record. A failure landing between the two calls resolves two
+    # different bases, which shows up as a note disagreeing with the verdict
+    # beside it, never as a wrong verdict: only disposition_offenders decides,
+    # and this function denies nothing.
     line="changed-files-unverified"
     changed_file=$(mktemp "${TMPDIR:-/tmp}/.audit-changed-set.XXXXXX" 2>/dev/null) || changed_file=""
     if [ -n "$changed_file" ]; then
