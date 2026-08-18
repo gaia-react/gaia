@@ -95,9 +95,9 @@ for shipped in .gaia/script-capabilities.json .gaia/script-capabilities.schema.j
   [ -e "$STAGING/$shipped" ] || BOUNDARY_ERRORS+=("missing from staging: $shipped")
 done
 
-if [ -e "$STAGING/.gaia/scripts/check-script-capabilities.sh" ]; then
-  BOUNDARY_ERRORS+=("leaked into staging: .gaia/scripts/check-script-capabilities.sh")
-fi
+for withheld in .gaia/scripts/check-script-capabilities.sh .gaia/scripts/capability-oracle-lib.sh; do
+  [ -e "$STAGING/$withheld" ] && BOUNDARY_ERRORS+=("leaked into staging: $withheld")
+done
 
 if [ -e "$STAGING/.gaia/script-capabilities.json" ]; then
   jq empty "$STAGING/.gaia/script-capabilities.json" 2>/dev/null \
@@ -105,7 +105,18 @@ if [ -e "$STAGING/.gaia/script-capabilities.json" ]; then
 fi
 
 if [ "${#BOUNDARY_ERRORS[@]}" -eq 0 ] && [ -e "$STAGING/.gaia/script-capabilities.json" ]; then
+  # Read jq's status before the loop, not through a process substitution: a
+  # staged manifest that parses but carries no `scripts` array makes jq exit
+  # non-zero and print nothing, and `set -e` does not see that inside `<( )`.
+  # The loop would then run zero times and this block would report a clean
+  # reconciliation having reconciled nothing, which is the failure it exists
+  # to catch.
+  if ! MARKING_ROWS="$(jq -r '.scripts[] | [.script, (.maintainer_only | type), (.maintainer_only | tostring)] | @tsv' "$STAGING/.gaia/script-capabilities.json" 2>/dev/null)"; then
+    BOUNDARY_ERRORS+=("staged .gaia/script-capabilities.json has no readable scripts[] array")
+    MARKING_ROWS=""
+  fi
   while IFS=$'\t' read -r script mo_type mo_bool; do
+    [ -n "$script" ] || continue
     if [ "$mo_type" != boolean ]; then
       BOUNDARY_ERRORS+=("$script: maintainer_only is not a boolean (type=$mo_type)")
       continue
@@ -115,7 +126,9 @@ if [ "${#BOUNDARY_ERRORS[@]}" -eq 0 ] && [ -e "$STAGING/.gaia/script-capabilitie
     elif [ "$mo_bool" = false ] && [ ! -e "$STAGING/$script" ]; then
       BOUNDARY_ERRORS+=("$script: maintainer_only=false but absent from staging")
     fi
-  done < <(jq -r '.scripts[] | [.script, (.maintainer_only | type), (.maintainer_only | tostring)] | @tsv' "$STAGING/.gaia/script-capabilities.json")
+  done <<MARKING
+$MARKING_ROWS
+MARKING
 fi
 
 if [ "${#BOUNDARY_ERRORS[@]}" -gt 0 ]; then

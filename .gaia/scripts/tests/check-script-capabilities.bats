@@ -303,6 +303,44 @@ rm -f "$target/RUNNING"'
   grep -qxF -- "fs-write:**" <<<"$output"
 }
 
+@test "a write into a bare positional with a literal suffix is the same caller-chosen term" {
+  repo="$(make_fixture_repo callerbare)"
+  add_script "$repo" .gaia/scripts/w.sh '#!/usr/bin/env bash
+rm -f "$1/RUNNING"'
+  write_allow "$repo" "Bash(bash .gaia/scripts/w.sh:*)"
+  write_manifest "$repo" '[{"script":".gaia/scripts/w.sh","capabilities":["fs-write:**"],
+    "why":"clears a sentinel inside the directory it is handed","maintainer_only":false}]'
+  run bash "$CHECK" "$repo"
+  [ "$status" -eq 0 ]
+  grep -qE '^(UNDECLARED|SURPLUS|UNRESOLVED)' <<<"$output" && return 1
+  run bash "$CHECK" "$repo" --print-reach .gaia/scripts/w.sh
+  [ "$status" -eq 0 ]
+  # The spelling must not change the answer: reading the positional as the repo
+  # root here would report `fs-write:RUNNING`, a narrower term than the write
+  # actually has, which is a fail-open.
+  grep -qF -- "fs-write:RUNNING" <<<"$output" && return 1
+  grep -qxF -- "fs-write:**" <<<"$output"
+}
+
+@test "an assignment is read boundary-anchored, not as a substring of a longer name" {
+  repo="$(make_fixture_repo anchoredassign)"
+  add_script "$repo" .gaia/scripts/w.sh '#!/usr/bin/env bash
+PLAN_root=zzz; root="$1"
+printf "x\n" > "$root/out.txt"'
+  write_allow "$repo" "Bash(bash .gaia/scripts/w.sh:*)"
+  write_manifest "$repo" '[{"script":".gaia/scripts/w.sh","capabilities":["fs-write:**"],
+    "why":"writes inside the directory it is handed","maintainer_only":false}]'
+  run bash "$CHECK" "$repo"
+  [ "$status" -eq 0 ]
+  grep -qE '^(UNDECLARED|SURPLUS|UNRESOLVED)' <<<"$output" && return 1
+  run bash "$CHECK" "$repo" --print-reach .gaia/scripts/w.sh
+  [ "$status" -eq 0 ]
+  # Stripping at the first `root=` would take PLAN_root's value and report a
+  # confident, wrong directory rather than the caller-chosen term.
+  grep -qF -- "fs-write:zzz/out.txt" <<<"$output" && return 1
+  grep -qxF -- "fs-write:**" <<<"$output"
+}
+
 @test "a write into a positional-derived directory with no suffix is the same caller-chosen term" {
   repo="$(make_fixture_repo callernosuffix)"
   add_script "$repo" .gaia/scripts/w.sh '#!/usr/bin/env bash
@@ -688,7 +726,7 @@ printf "x\n" > "$out"'
   # sites; each resolves its invoked script, so none of the three surfaces its
   # own variable target on an UNRESOLVED line.
   grep -qF -- 'status_hook' <<<"$output" && return 1
-  grep -qF -- 'resolver=' <<<"$output" && return 1
+  grep -qF -- 'resolver' <<<"$output" && return 1
   grep -qF -- 'verify_script' <<<"$output" && return 1
   true
 }

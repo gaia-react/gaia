@@ -10,7 +10,10 @@
 # does at the moment it runs. .gaia/script-capabilities.json declares that
 # scope; this check holds the declaration to the code in BOTH directions --
 # undeclared reach and declared-but-unreached are each a finding, so a blanket
-# declaration fails on its first run.
+# declaration fails on its first run. `invokes:` is the one exemption from the
+# second direction: a declared target counts as reached by definition, so that
+# a declaration clearing an unresolvable call never turns into a surplus. The
+# carve-out and its reason are at the SURPLUS arm below.
 #
 # What this buys is detection at review time, not prevention. Nothing here
 # mediates what a pre-approved script does once it runs: a local session

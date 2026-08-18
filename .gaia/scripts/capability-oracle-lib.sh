@@ -269,11 +269,36 @@ _gaia_capcheck_state_root_hop() {
 _gaia_capcheck_assignment_values() {
   local repo_root="$1" rel="$2" var="$3" file="$1/$2"
   [ -f "$file" ] || return 0
-  local line tail v
+  local line tail v rest pre cand found lastch
   while IFS= read -r line; do
     _gaia_capcheck_is_comment_line "$line" && continue
-    tail="${line#*"$var"=}"
-    [ "$tail" = "$line" ] && continue
+    # Boundary-anchored, to match the grep that selected this line. A plain
+    # `${line#*"$var"=}` is a shortest-prefix strip, so a line carrying both
+    # `PLAN_root=zzz` and `root="$1"` yields `zzz` -- a wrong value shaped like
+    # a right one, reported as a narrow reach instead of failing loud.
+    rest="$line"
+    tail=""
+    found=0
+    while :; do
+      pre="${rest%%"$var"=*}"
+      [ "$pre" = "$rest" ] && break
+      cand="${rest#"$pre""$var"=}"
+      if [ -z "$pre" ]; then
+        tail="$cand"
+        found=1
+        break
+      fi
+      lastch="${pre#"${pre%?}"}"
+      case "$lastch" in
+        [[:space:]] | '|' | '&' | ';' | '(')
+          tail="$cand"
+          found=1
+          break
+          ;;
+      esac
+      rest="$cand"
+    done
+    [ "$found" -eq 1 ] || continue
     if _gaia_capcheck_dirhop "$rel" "$tail"; then
       printf 'DIRHOP:%s\n' "$_GAIA_CAPCHECK_RET"
       continue
@@ -434,6 +459,12 @@ _gaia_capcheck_is_positional_name() {
 # self-reference, not a chain, and a file may hold several of them.
 _gaia_capcheck_caller_supplied() {
   local repo_root="$1" rel="$2" var="$3" seen="$4" v name tail
+  # A positional IS the caller's answer, with no assignment to trace. The scan
+  # below only ever visits assignments, so without this the direct spelling
+  # (`"$1/RUNNING"`) would fall through to the root reading and report a narrow
+  # term, while the variable-mediated one (`target="$1"`) reported `**`. Same
+  # write, same caller, two answers, and the narrow one is a fail-open.
+  _gaia_capcheck_is_positional_name "$var" && return 0
   case " $seen " in *" $var "*) return 1 ;; esac
   seen="$seen $var"
   while IFS= read -r v; do

@@ -50,7 +50,7 @@
 #
 # Members are invoked from the current directory, so run it from the repository
 # root. That is also what lets the sibling bats suite exercise the aggregation
-# against a fixture tree of stubs instead of paying the real ~40s.
+# against a fixture tree of stubs instead of paying the real ~58s.
 
 set -uo pipefail
 
