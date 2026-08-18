@@ -33,7 +33,7 @@
 # enumerates every ordinary suite in that directory and would need an exclusion
 # entry per suite saying nothing. The one bats member is named directly instead.
 #
-# Runtime, measured on the tree at the time of writing: the thirteen scripts
+# Runtime, measured on the tree at the time of writing: the fourteen scripts
 # total ~12s, shell-lint ~10s, and the shard suite ~19s; the whole set measures
 # ~40s end to end. That is why there is one tier rather than a fast default plus a named
 # slower tier. A split is worth its second name only once the honest set is
@@ -63,6 +63,7 @@ readonly WTI_SCRIPTS='.gaia/scripts/check-audit-base-derivation.sh
 .gaia/scripts/check-registry-settings-permissions.sh
 .gaia/scripts/check-registry-source-literals.sh
 .gaia/scripts/check-resolver-singleton.sh
+.gaia/scripts/check-step-body-extractor-roster.sh
 .gaia/scripts/check-wiki-state-collision.sh
 .gaia/scripts/audit-rules-changed-complete.sh
 .gaia/scripts/audit-machinery-complete.sh
