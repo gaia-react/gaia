@@ -4,7 +4,7 @@
 
 **The audit gate is a merge gate, not an incremental check.** Read `wiki/concepts/PR Merge Workflow.md` (`#### Before the first dispatch: verify your own work`) before the first member dispatch: run the deterministic checks and adversarial fixtures it describes, and prove every new guard can fail before relying on it; do not merge-gate from memory.
 <!-- gaia:maintainer-only:start -->
-In this repo that means the bats suites for the paths touched and `bash .gaia/tests/shell-lint.sh`; run bats the way `.claude/rules/bats-assertions.md` prescribes, so local matches CI's bash 5.
+In this repo that means the bats suites for the paths touched, plus `bash .gaia/tests/whole-tree-invariants.sh` for the checks no path can select, shell-lint and the shard partition among them; run bats the way `.claude/rules/bats-assertions.md` prescribes, so local matches CI's bash 5.
 <!-- gaia:maintainer-only:end -->
 
 ## Merging

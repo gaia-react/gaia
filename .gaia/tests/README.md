@@ -11,7 +11,8 @@ defect this repository has actually shipped.
 
 | Tree | Gate | What it is |
 |---|---|---|
-| `shell-lint.sh` | CI, `shell-lint.yml` | shellcheck gate over every tracked `*.sh` and `*.bats`. Free, deterministic. Runs on any PR touching a shell script or bats suite. |
+| `whole-tree-invariants.sh` | by hand, pre-dispatch; its guard suite `lib/whole-tree-invariants.bats` is CI-gated in `audit-ci-tests.yml` via the `lib` shard | the pre-dispatch entry point: runs every check whose input is the whole tree as one set, `shell-lint.sh` and the shard partition among them, in about 40 seconds. Path-scoped selection cannot reach a whole-tree check, so this is the named set that replaces running whichever of them a loaded rule happens to mention. Its header owns the membership rule and every deliberate non-member's reason. Read the Gate cell literally: no workflow runs this script, and the CI-gated suite exercises the aggregation against fixture stubs rather than the real tree, so skipping the hand run on the belief that CI covers the set reopens the exact gap the script closes. What CI does cover is a member joining neither list. |
+| `shell-lint.sh` | CI, `shell-lint.yml` | shellcheck gate over every tracked `*.sh` and `*.bats`. Free, deterministic. Runs on any PR touching a shell script or bats suite. Also a member of `whole-tree-invariants.sh` above, which is what to run pre-merge. |
 | `hooks/` | CI, `audit-ci-tests.yml` | bats tests for the shell hooks. Free, deterministic, the largest tree here. |
 | `lib/` | CI, `audit-ci-tests.yml` | bats suite for the SPEC-ledger machinery under `.specify/extensions/gaia/lib/`. See `lib/README.md`. |
 | `forensics/` | CI, `audit-ci-tests.yml` | redaction and capture harness. CI reaches it through the `misc` shard (`bash .gaia/tests/bats-shards.sh run misc`); `forensics/run-all.sh` is the hand-run entry point, also wired to `pnpm test:forensics`. |
@@ -30,6 +31,17 @@ having run zero tests. When you add a suite, add every source it reads to that
 workflow's filter, and say why in a comment beside it.
 
 ## Running
+
+### Whole-tree invariants (pre-dispatch, ~40s)
+
+```bash
+bash .gaia/tests/whole-tree-invariants.sh
+```
+
+Run this before the first Code Audit Team dispatch, alongside the bats suites
+for the paths the change touches. It supersedes running `shell-lint.sh` alone,
+which it already includes. `--list` prints its members and `--list-excluded`
+prints every deliberate non-member with the reason it is out.
 
 ### Shell lint (free, fast)
 
