@@ -306,7 +306,7 @@ A **security-class** finding (per section B) is **never** a promotion candidate,
 
 This decision runs **after** section B's security classification and section B-fix's promotion check, and **before** the backend probe and filing pipeline (C/D/E). Like a promoted finding, a waived finding never touches the issue backend.
 
-Two out-of-scope populations regenerate their own backlog when they are filed. An audit of a fix to the **gate machinery itself** surfaces out-of-scope findings **about that same machinery**; an audit of any PR surfaces out-of-scope findings in the very files that PR is already editing. Filing either one opens a `tech-debt` issue the next PR over the same file re-surfaces, a regeneration loop the `filed` disposition cannot escape. The `machinery_waived` disposition breaks the loop: it records the finding **without filing it**, gated by a deterministic offline abuse-check on the finding's path, and by two disqualifiers no gate checks, so it can never become a universal escape hatch.
+Two out-of-scope populations regenerate their own backlog when they are filed. An audit of a fix to the **gate machinery itself** surfaces out-of-scope findings **about that same machinery**; an audit of any PR surfaces out-of-scope findings in the very files that PR is already editing. Filing either one opens a `tech-debt` issue the next PR over the same file re-surfaces, a regeneration loop the `filed` disposition cannot escape. The `machinery_waived` disposition breaks the loop: it records the finding **without filing it**, gated by a deterministic abuse-check on the finding's path that never queries the issue backend, and by two disqualifiers no gate checks, so it can never become a universal escape hatch.
 
 **The rule belongs to the orchestrator.** It is stated once, in `wiki/concepts/PR Merge Workflow.md`'s `#### Cross-remit findings` section, because the orchestrator disposes the out-of-scope findings of every Code Audit Team member, not just yours. `machinery_waived` is a disposition the orchestrator records on behalf of any member, never one a single member self-declares. What follows is the member-side statement of that rule; where the two ever read differently, the orchestrator's is the one that holds.
 
@@ -332,7 +332,7 @@ For a waived finding:
 
 A finding that fails either condition above, or that either disqualifier catches, routes to the existing filing path (sections C/D/E).
 
-**Abuse-check (offline, deterministic).** The merge gate and the disposition backstop hook re-read the sidecar and DENY the merge for any `machinery_waived` entry whose `path=` is **neither** a gate-machinery path **nor** a file this PR changes, reporting it as `machinery-waived-not-eligible` (`disposition_offenders` in `.claude/hooks/lib/audit-dispositions.sh`, which re-derives the same union independently rather than trusting anything you record). An entry satisfying neither term is an unfiled out-of-scope finding wearing a waive label, so the gate treats it as an offender.
+**Abuse-check (deterministic, no issue backend).** The merge gate and the disposition backstop hook re-read the sidecar and DENY the merge for any `machinery_waived` entry whose `path=` is **neither** a gate-machinery path **nor** a file this PR changes, reporting it as `machinery-waived-not-eligible` (`disposition_offenders` in `.claude/hooks/lib/audit-dispositions.sh`, which re-derives the same union independently rather than trusting anything you record). An entry satisfying neither term is an unfiled out-of-scope finding wearing a waive label, so the gate treats it as an offender.
 
 **The eligibility set moves with HEAD.** It is the diff from the whole-PR fork point to HEAD, and HEAD moves, so a waive recorded honestly re-evaluates as an offender once a revert commit drops that file from the diff. The gates' deny message names that case first, because restoring the change is the remedy that clears it.
 
@@ -429,7 +429,7 @@ Before writing the marker, the disposition gate confirms every identified out-of
 - **Write the marker** when every sidecar entry is `filed`, `diverted`, `waived`, `machinery_waived`, or `pending(transient)`. A transient failure never blocks the merge, so it does not withhold the marker.
 - **Do NOT write the marker** when any entry is `pending(definitive)`, a present, writable backend with a genuinely-missing disposition. This is the **one intended block**; the operator must resolve the filing failure and re-invoke before the marker clears.
 
-`pending(definitive)` is the only disposition that withholds the marker. Backend-absent (`waived`), transient (`pending(transient)`), diversion-failure (`diverted`), and machinery-waive (`machinery_waived`) all fail open and never block the merge. A `machinery_waived` entry recorded against a path that is neither gate machinery nor a file this PR changes is caught not here but by the offline abuse-check in the merge gate and backstop hook (section B-mw), which denies the merge.
+`pending(definitive)` is the only disposition that withholds the marker. Backend-absent (`waived`), transient (`pending(transient)`), diversion-failure (`diverted`), and machinery-waive (`machinery_waived`) all fail open and never block the merge. A `machinery_waived` entry recorded against a path that is neither gate machinery nor a file this PR changes is caught not here but by the deterministic abuse-check in the merge gate and backstop hook (section B-mw), which denies the merge.
 
 ## Output Format
 
@@ -788,9 +788,33 @@ if [ -n "$dirty_in_scope" ]; then printf 'DIRTY IN REVIEW SCOPE:\n%s\n' "$dirty_
 # ELIGIBILITY changed-file set the out-of-scope waive rule reads. It is not a
 # review base and never scopes what you review. `changed` above stays the
 # review scope, filtered to TS/TSX, and nothing here touches it.
+#
+# The fork point is taken against the branch this pull request MERGES INTO,
+# never the repository's advertised default. Every extra file in this set is
+# one more finding the waive may cover instead of filing, so on a pull request
+# stacked on another branch a default-branch fork point hands the waive every
+# file the BASE branch changed. GITHUB_BASE_REF answers it under Actions,
+# where the event sets it; the pull request's own record answers it otherwise.
+# Either answer counts only when its remote-tracking ref resolves, since a bare
+# local branch of the same name could sit on this pull request's own commits
+# and empty the set. The verify side of this same set
+# (.claude/hooks/lib/audit-dispositions.sh) reads the two sources in the same
+# order, which is what keeps a waive you make here from being denied there.
+pr_branch=""
+if [ "${GITHUB_ACTIONS:-}" = "true" ] && [ -n "${GITHUB_BASE_REF:-}" ]; then
+  pr_branch="$GITHUB_BASE_REF"
+elif command -v gh >/dev/null 2>&1; then
+  pr_branch=$( (cd "$AUDIT_ROOT" 2>/dev/null && gh pr view --json baseRefName --jq '.baseRefName') 2>/dev/null || true)
+fi
+elig_ref=""
+if [ -n "$pr_branch" ] && git -C "$AUDIT_ROOT" rev-parse --verify --quiet "refs/remotes/origin/${pr_branch}" >/dev/null 2>&1; then
+  elig_ref="refs/remotes/origin/${pr_branch}"
+fi
 default_branch=$(git -C "$AUDIT_ROOT" symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@')
 [ -n "$default_branch" ] || default_branch="main"
-FULL_BASE=$(git -C "$AUDIT_ROOT" merge-base HEAD "origin/${default_branch}" 2>/dev/null || git -C "$AUDIT_ROOT" merge-base HEAD "${default_branch}" 2>/dev/null || true)
+primary_ref="${elig_ref:-origin/${default_branch}}"
+fallback_ref="${elig_ref:-${default_branch}}"
+FULL_BASE=$(git -C "$AUDIT_ROOT" merge-base HEAD "$primary_ref" 2>/dev/null || git -C "$AUDIT_ROOT" merge-base HEAD "$fallback_ref" 2>/dev/null || true)
 # An empty FULL_BASE does NOT stop this member. The specialists guard theirs
 # with `exit 1` because an empty base there produces a false self-skip and a
 # deadlocked merge; this member's self-skip is oracle-based, so an empty base

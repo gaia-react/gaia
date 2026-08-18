@@ -46,7 +46,12 @@
 #      one, deadlocking the merge. The default member keeps its own
 #      `FULL_BASE` for a different job: the eligibility set the out-of-scope
 #      machinery-waive abuse-check reads (.claude/hooks/lib/audit-dispositions.sh),
-#      never a review base either. So the exemption is not a loophole in this
+#      never a review base either. Those two whole-PR bases answer to
+#      different branches, and this exemption covers both: a specialist's
+#      merge-bases against the advertised default, because membership is safe
+#      wide, while the eligibility one merge-bases against the branch the pull
+#      request merges into, because a wider set there waives findings that
+#      should be filed. So the exemption is not a loophole in this
 #      check; it is the other half of the design, and the variable name is
 #      what tells a legitimate whole-PR base apart from a drifted review base
 #      regardless of which job it serves. The assignment that owns a

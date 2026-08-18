@@ -1130,3 +1130,97 @@ assert_write_verify_agree() {
   commit_file "$wt" "docs/wt-note.md" "the worktree's own commit"
   assert_write_verify_agree "$wt" "worktree"
 }
+
+# --- the eligibility base is the pull request's own base branch ---------------
+#
+# The eligibility set answers "which files does this pull request change", and
+# a set resolved from the repository's advertised default answers a different
+# question on a pull request stacked on any other branch: it hands the check
+# every file the BASE branch changed too. That is the loosening direction for
+# this consumer, because a finding on such a file then satisfies the waive rule
+# and is recorded in the pull-request body instead of filed as tech debt.
+#
+# Both sides move together or neither may. A verify side narrower than the
+# write side denies a waive the agent keeps re-making, which no re-audit round
+# can clear.
+
+# make_stacked_repo <name>: a repo whose HEAD branch forks from `release`,
+# which itself forks from the advertised default. `app/base-only.ts` belongs to
+# the base branch alone and is what a default-branch derivation wrongly pulls
+# in. Remote-tracking refs are written directly: they only ever need to
+# resolve, never to fetch.
+make_stacked_repo() {
+  local repo
+  repo="$(make_repo "$1")"
+  git -C "$repo" checkout -q -b release
+  commit_file "$repo" "app/base-only.ts" "a commit the base branch owns"
+  git -C "$repo" checkout -q -b feat
+  commit_file "$repo" "app/feat-only.ts" "the pull request's own commit"
+  git -C "$repo" update-ref refs/remotes/origin/main refs/heads/main
+  git -C "$repo" update-ref refs/remotes/origin/release refs/heads/release
+  git -C "$repo" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main
+  printf '%s' "$repo"
+}
+
+@test "the eligibility set excludes what only the pull request's base branch changed" {
+  local repo write outfile verify
+
+  repo="$(make_stacked_repo elig-stacked)"
+
+  # GITHUB_BASE_REF is set by the pull_request event under Actions, so both
+  # sides read the same declared base without a network call.
+  export GITHUB_ACTIONS=true
+  export GITHUB_BASE_REF=release
+
+  write="$(elig_eval code-audit-frontend "$repo" 'printf "%s\n" "${full_changed:-}"')" || {
+    echo "the eligibility fence failed to run" >&2
+    return 1
+  }
+  grep -qxF "app/feat-only.ts" <<<"$write" || {
+    printf 'write side dropped the pull request own change: %s\n' "$write" >&2
+    return 1
+  }
+  grep -qxF "app/base-only.ts" <<<"$write" && {
+    printf 'write side still carries a base-branch-only file: %s\n' "$write" >&2
+    return 1
+  }
+
+  outfile="$BATS_TEST_TMPDIR/verify-stacked"
+  ( . "$REPO_ROOT/.claude/hooks/lib/audit-dispositions.sh" && _disposition_changed_set "$repo" "$outfile" ) || {
+    echo "_disposition_changed_set failed to resolve a base" >&2
+    return 1
+  }
+  verify="$(tr '\0' '\n' < "$outfile")"
+  [ "$write" = "$verify" ] || {
+    printf 'write side and verify side disagree.\nwrite:\n%s\nverify:\n%s\n' "$write" "$verify" >&2
+    return 1
+  }
+}
+
+@test "an unverifiable declared base falls back to the advertised default" {
+  local repo write expected
+
+  repo="$(make_stacked_repo elig-unverifiable)"
+
+  # A base branch naming no remote-tracking ref is not evidence about the base,
+  # the same rule the merge gate's own derivation applies: a bare local branch
+  # of the same name could sit on this pull request's commits and narrow the
+  # answer to nothing.
+  export GITHUB_ACTIONS=true
+  export GITHUB_BASE_REF=no-such-branch
+
+  expected="$(git -C "$repo" diff --name-only "$(git -C "$repo" merge-base HEAD origin/main)...HEAD")"
+  write="$(elig_eval code-audit-frontend "$repo" 'printf "%s\n" "${full_changed:-}"')" || {
+    echo "the eligibility fence failed to run" >&2
+    return 1
+  }
+  [ "$write" = "$expected" ] || {
+    printf 'fallback set %s, expected the default-branch set %s\n' "$write" "$expected" >&2
+    return 1
+  }
+  grep -qxF "app/base-only.ts" <<<"$write" || {
+    printf 'the fallback narrowed rather than staying wide: %s\n' "$write" >&2
+    return 1
+  }
+  true
+}

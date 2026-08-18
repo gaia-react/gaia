@@ -1104,3 +1104,71 @@ merged_and_deleted_head() {
   assert_denied_by_json
   grep -qF -- "filed-but-missing: v1 class=y path=app/x.ts line=1" <<<"$output" || return 1
 }
+
+# ---------------------------------------------------------------------------
+# The eligibility set is scoped to the branch the pull request MERGES INTO.
+# A set taken against the repository's advertised default hands the waive
+# every file the BASE branch changed, and each of those is a finding that can
+# be recorded in the pull-request body instead of filed as durable tech debt.
+# ---------------------------------------------------------------------------
+
+# make_stacked_pr_repo <name>: `release` forks from the default branch and
+# owns app/base-only.ts; `feature` forks from `release` and owns app/feat.ts.
+# Remote-tracking refs are written directly, since they only ever need to
+# resolve, never to fetch.
+make_stacked_pr_repo() {
+  local dir="$BATS_TEST_TMPDIR/$1"
+
+  mkdir -p "$dir/app" "$dir/.gaia"
+  git_init "$dir"
+  echo "export const base = 1;" > "$dir/app/base.ts"
+  printf '1.6.1\n' > "$dir/.gaia/VERSION"
+  git -C "$dir" add -A
+  git -C "$dir" commit --quiet -m "base"
+
+  git -C "$dir" checkout --quiet -b release
+  printf 'the base branch own change\n' > "$dir/app/base-only.ts"
+  git -C "$dir" add app/base-only.ts
+  git -C "$dir" commit --quiet -m "release-only"
+
+  git -C "$dir" checkout --quiet -b feature
+  printf 'the pull request own change\n' > "$dir/app/feat.ts"
+  git -C "$dir" add app/feat.ts
+  git -C "$dir" commit --quiet -m "feature-only"
+
+  git -C "$dir" update-ref refs/remotes/origin/main refs/heads/main
+  git -C "$dir" update-ref refs/remotes/origin/release refs/heads/release
+  git -C "$dir" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main
+  printf '%s' "$dir"
+}
+
+@test "offenders: a waive on a file only the base branch changed is an offender, while the pull request's own file clears" {
+  local repo
+  repo="$(make_stacked_pr_repo case-stacked)"
+  export GITHUB_ACTIONS=true
+  export GITHUB_BASE_REF=release
+
+  write_sidecar '{"schema":1,"backend":"github","findings":[
+    {"key":"v1 class=x path=app/feat.ts line=1","disposition":"machinery_waived"},
+    {"key":"v1 class=x path=app/base-only.ts line=1","disposition":"machinery_waived"}
+  ]}'
+  run disposition_offenders "$SIDECAR" "$repo"
+  [ "$status" -eq 0 ]
+  grep -qF -- "app/feat.ts" <<<"$output" && return 1
+  grep -qF -- "machinery-waived-not-eligible: v1 class=x path=app/base-only.ts line=1" <<<"$output" || return 1
+}
+
+@test "offenders: with no declared base the same waive clears, which is the wide fallback rather than a second rule" {
+  local repo
+  repo="$(make_stacked_pr_repo case-stacked-fallback)"
+  # The gh mock's catch-all arm answers `gh pr view` with nothing, so no base
+  # branch is declared by either source and the advertised default stands.
+  install_gh_mock ok '[]'
+
+  write_sidecar '{"schema":1,"backend":"github","findings":[
+    {"key":"v1 class=x path=app/base-only.ts line=1","disposition":"machinery_waived"}
+  ]}'
+  run disposition_offenders "$SIDECAR" "$repo"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}

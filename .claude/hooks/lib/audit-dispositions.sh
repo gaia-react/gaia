@@ -66,11 +66,48 @@
 # rule is about any file the pull request touches, so a review-scope pathspec
 # has no place here.
 #
-# The derivation is the three-level chain the default member's own definition
-# carries, and the two agree line for line: the default branch from
-# `refs/remotes/origin/HEAD` with a literal `main` fallback, FULL_BASE from
-# `merge-base` of HEAD against `origin/<name>` then against `<name>`, then a
-# three-dot `diff --name-only -z` against HEAD.
+# The derivation is the chain the default member's own definition carries, and
+# the two agree line for line: the base branch (below), FULL_BASE from
+# `merge-base` of HEAD against it, then a three-dot `diff --name-only -z`
+# against HEAD.
+#
+# THE BASE BRANCH IS THE PULL REQUEST'S OWN, NOT THE REPOSITORY'S DEFAULT, and
+# that is the answer to a question the two consumers of a whole-PR base do not
+# share. Membership (.gaia/scripts/resolve-audit-members.sh) is safe wide: a
+# wider diff dispatches more members than the pull request owes, and over-
+# dispatching is the fail-closed direction. Eligibility is not. It decides
+# which out-of-scope findings the machinery waive may cover, so every extra
+# file in the set is one more finding that can be waived into the pull-request
+# body instead of filed as durable tech debt, and a wrongly waived finding
+# reads exactly like a correctly waived one. A pull request stacked on any
+# branch other than the default is where the two answers part: the default
+# branch's fork point is BELOW the base branch's own commits, so the set comes
+# to include files the base branch changed and this pull request never touched.
+#
+# Two sources answer "which branch", in order, both scoped to <acting-root>:
+#
+#   1. GITHUB_BASE_REF under Actions, which the pull_request event sets, so the
+#      value comes from the event rather than from whoever invoked this.
+#   2. the pull request's own record (`gh pr view`), which is what the merge
+#      gate's bypasses read (.claude/hooks/pr-merge-audit-check.sh).
+#
+# Either answer counts only when its remote-tracking ref resolves, and the
+# verified ref is then the ONLY thing allowed to scope the diff: a bare local
+# branch of the same name is not evidence about the base branch, and one
+# sitting on this pull request's own commits would put the merge base above
+# them and empty the set. Unverifiable, absent, or unreadable means fall
+# through to the advertised default, which is the pre-existing behavior.
+#
+# That fallback is the WIDE one, so it is the loose direction for this
+# consumer, and it is chosen anyway: the alternative on a failed lookup is to
+# narrow toward a set nothing supports, which turns every ordinary offline run
+# into a wave of false denials. The asymmetry that matters is between the two
+# sides rather than within one. A write side (the default member's fence) that
+# resolves the base while the verify side does not stays safe: the agent files
+# what it cannot waive, and a wider verify side never denies a filed finding.
+# The reverse, a verify side narrower than the write side, denies a waive the
+# agent goes on re-making, which no re-audit round can clear. Both sides read
+# these same two sources in this same order for that reason.
 #
 # Returns 0 when the base RESOLVED: the file's contents are the answer, and an
 # empty file is a real, empty answer. Returns 1 when the base did NOT resolve,
@@ -89,16 +126,33 @@
 # is the safe direction.
 _disposition_changed_set() {
   local root="$1" outfile="$2"
-  local default_branch FULL_BASE
+  local default_branch pr_branch elig_ref primary_ref fallback_ref FULL_BASE
 
   [ -n "$root" ] || return 1
   [ -n "$outfile" ] || return 1
   [ "$(git -C "$root" rev-parse --is-inside-work-tree 2>/dev/null)" = "true" ] || return 1
 
+  pr_branch=""
+  if [ "${GITHUB_ACTIONS:-}" = "true" ] && [ -n "${GITHUB_BASE_REF:-}" ]; then
+    pr_branch="$GITHUB_BASE_REF"
+  elif command -v gh >/dev/null 2>&1; then
+    # `gh` reads the repository from the working directory and carries no -C of
+    # its own, so the subshell is what scopes the lookup to the acting tree.
+    pr_branch=$( (cd "$root" 2>/dev/null && gh pr view --json baseRefName --jq '.baseRefName') 2>/dev/null || true)
+  fi
+  elig_ref=""
+  if [ -n "$pr_branch" ] \
+    && git -C "$root" rev-parse --verify --quiet "refs/remotes/origin/${pr_branch}" >/dev/null 2>&1; then
+    elig_ref="refs/remotes/origin/${pr_branch}"
+  fi
   default_branch=$(git -C "$root" symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@')
   [ -n "$default_branch" ] || default_branch="main"
-  FULL_BASE=$(git -C "$root" merge-base HEAD "origin/${default_branch}" 2>/dev/null \
-    || git -C "$root" merge-base HEAD "${default_branch}" 2>/dev/null || true)
+  # Both arms hold the verified ref when there is one, which is how the bare
+  # `<name>` arm stays reachable for the default branch alone.
+  primary_ref="${elig_ref:-origin/${default_branch}}"
+  fallback_ref="${elig_ref:-${default_branch}}"
+  FULL_BASE=$(git -C "$root" merge-base HEAD "$primary_ref" 2>/dev/null \
+    || git -C "$root" merge-base HEAD "$fallback_ref" 2>/dev/null || true)
   [ -n "$FULL_BASE" ] || return 1
 
   git -C "$root" diff --name-only -z "${FULL_BASE}...HEAD" > "$outfile" 2>/dev/null || return 1
@@ -262,9 +316,12 @@ _disposition_machinery_ready() {
 # This is the deterministic abuse-check shared by the backstop hook and the
 # merge gate.
 #
-# The arm queries no backend and is offline in that sense, but it does make
-# LOCAL git calls in its verdict path: one for the changed-file set, one to
-# attribute the sidecar to the tree under judgment.
+# The arm reads no issue backend, and its verdict rests on local git calls: one
+# for the changed-file set, one to attribute the sidecar to the tree under
+# judgment. The changed-file set does read the pull request's own record to
+# learn which branch it merges into, and only when Actions has not already
+# supplied that; every failure there falls back to a purely local answer, so
+# the arm still reaches a verdict with no network at all.
 #
 # Three states are distinguished from "verified clean", each carried by a
 # `disposition_notes` line rather than left silent:
