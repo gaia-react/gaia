@@ -7,10 +7,11 @@
 # 1. Membership completeness. The runner carries a hardcoded member list, which
 #    is the same fail-open shape it was written to close: a whole-tree checker
 #    added later has no path that selects it, so nothing would notice it never
-#    joined the set. This suite sweeps every naming family that has actually
+#    joined the set. This suite sweeps the five `.sh` naming families that have
 #    produced a member and fails when a candidate appears in neither the member
 #    table nor the excluded table, which makes every exclusion an answer someone
-#    wrote down rather than an omission.
+#    wrote down rather than an omission. The test body says why the `.bats`
+#    family is out despite WTI_BATS naming a member from it.
 #
 # 2. Aggregation. A runner that stops at the first failure, that quietly skips
 #    a member whose path is gone, or that loses the rest of the set to a member
@@ -78,16 +79,23 @@ stub_exits() {
   [ "$status" -eq 0 ]
   excluded="$output"
 
-  # Sweep every naming family that has actually produced a member, not just
-  # `check-*`. Four of the runner's own members (the two audit-*-complete
-  # checks, lint-shipped-issue-refs, and shell-lint) live outside that one
-  # glob, so a `check-*`-only sweep leaves the families they belong to
-  # unwatched: a checker added there and left off the roster would join
-  # neither table and this test would still pass.
+  # Sweep every `.sh` naming family that has produced a member, not just
+  # `check-*`. Five of the runner's own members (the two audit-*-complete
+  # checks, lint-shipped-issue-refs, verify-audit-roster, and shell-lint) live
+  # outside that one glob, so a `check-*`-only sweep leaves the families they
+  # belong to unwatched: a checker added there and left off the roster would
+  # join neither table and this test would still pass.
+  #
+  # The `.bats` family is out on purpose, though WTI_BATS names a member from
+  # it. The only glob that reaches it, .gaia/tests/lib/*.bats, enumerates every
+  # ordinary suite in that directory, so the exclusion table would have to carry
+  # an entry per suite saying nothing, which is a roster of a different kind and
+  # a worse one. The single bats member is named directly in WTI_BATS instead.
   unaccounted=""
   for path in "$REPO_ROOT"/.gaia/scripts/check-*.sh \
               "$REPO_ROOT"/.gaia/scripts/audit-*-complete.sh \
               "$REPO_ROOT"/.gaia/scripts/lint-*.sh \
+              "$REPO_ROOT"/.gaia/scripts/verify-*.sh \
               "$REPO_ROOT"/.gaia/tests/*.sh; do
     [ -f "$path" ] || continue
     rel="${path#"$REPO_ROOT"/}"
@@ -165,6 +173,14 @@ stub_exits() {
   printf '%s\n' "$output" | grep -Fq -- "FAIL  $first"
   printf '%s\n' "$output" | grep -Fq -- "PASS  $last"
   printf '%s\n' "$output" | grep -Fq -- '1 member(s) failed'
+  # The observed member is the LAST of the whole list, which is the sole bats
+  # member and so runs in the runner's second loop. Watching it alone therefore
+  # says nothing about the first loop: an early exit confined to the script
+  # members leaves this test's other three assertions all true. Counting what
+  # actually ran is the assertion that spans both loops.
+  total="$( bash "$RUNNER" --list | grep -c . )"
+  reported="$( printf '%s\n' "$output" | grep -cE '^(PASS|FAIL)  ' )"
+  [ "$reported" -eq "$total" ]
 }
 
 @test "a member that reads stdin does not swallow the members after it" {
@@ -227,4 +243,20 @@ stub_exits() {
   grep -Fq -- 'member(s) failed:' "$outfile" && return 1
   grep -Fq -- 'member(s) failed:' "$errfile" || return 1
   grep -Fq -- "$first" "$errfile"
+}
+
+@test "an unknown argument is refused rather than run" {
+  run bash -c "cd '$REPO_ROOT' && bash '$RUNNER' --lst"
+  [ "$status" -eq 2 ]
+  printf '%s\n' "$output" | grep -Fq -- 'unknown argument'
+  # The bad outcome is the runner treating a typo as no-argument and running the
+  # whole set, so pin the absence of a run alongside the exit status.
+  printf '%s\n' "$output" | grep -Fq -- 'all whole-tree invariants pass' && return 1
+  true
+}
+
+@test "--help prints the usage and exits 0" {
+  run bash -c "cd '$REPO_ROOT' && bash '$RUNNER' --help"
+  [ "$status" -eq 0 ]
+  printf '%s\n' "$output" | grep -Fq -- 'usage: bash .gaia/tests/whole-tree-invariants.sh'
 }

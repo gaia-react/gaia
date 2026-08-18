@@ -24,14 +24,18 @@
 # no path-scoped trigger that could select it? The scripts that answer no are
 # listed in WTI_EXCLUDED below with their reason, so a reader can see they were
 # considered rather than missed, and .gaia/tests/lib/whole-tree-invariants.bats
-# fails if a candidate appears in neither table. That suite sweeps every naming
-# family that has actually produced a member, not `check-*` alone: four members
-# live outside that one glob, so a `check-*`-only sweep would leave their own
-# families unwatched.
+# fails if a candidate appears in neither table. That suite sweeps the five
+# `.sh` naming families that have produced a member (`check-*`, `audit-*-
+# complete`, `lint-*` and `verify-*` under .gaia/scripts/, plus .gaia/tests/*.sh),
+# rather than `check-*` alone: five members live outside that one glob. The
+# `.bats` family is deliberately not swept even though WTI_BATS names a member
+# from it, because the only glob that would reach it, .gaia/tests/lib/*.bats,
+# enumerates every ordinary suite in that directory and would need an exclusion
+# entry per suite saying nothing. The one bats member is named directly instead.
 #
-# Runtime, measured on the tree at the time of writing: the twelve scripts
-# total ~11s, shell-lint ~10s, and the shard suite ~19s, so the whole set is
-# ~41s. That is why there is one tier rather than a fast default plus a named
+# Runtime, measured on the tree at the time of writing: the thirteen scripts
+# total ~12s, shell-lint ~10s, and the shard suite ~19s, so the whole set is
+# ~40s. That is why there is one tier rather than a fast default plus a named
 # slower tier. A split is worth its second name only once the honest set is
 # slow enough that people skip it, and an aggregate slow enough to skip is
 # worse than none; 41 seconds against the price of an audit round is not that.
@@ -63,6 +67,7 @@ readonly WTI_SCRIPTS='.gaia/scripts/check-audit-base-derivation.sh
 .gaia/scripts/audit-rules-changed-complete.sh
 .gaia/scripts/audit-machinery-complete.sh
 .gaia/scripts/lint-shipped-issue-refs.sh
+.gaia/scripts/verify-audit-roster.sh
 .gaia/tests/shell-lint.sh'
 
 # Members invoked as `bats <path>`. The shard partition is a whole-tree
@@ -84,6 +89,8 @@ readonly WTI_EXCLUDED='.gaia/scripts/check-debt-issue-metadata.sh|argument-drive
 .gaia/tests/bats-shards.sh|harness plumbing, it partitions suites into shards rather than asserting anything; the partition itself is the bats member above
 .gaia/tests/install-bats.sh|harness plumbing, it installs the pinned bats and asserts no invariant
 .gaia/tests/run-bats-parallel.sh|harness plumbing, the hand-run entry point for the same partition
+.gaia/scripts/verify-cli-bundle-fresh.sh|rebuilds the CLI via pnpm bundle; a build step needing installed dependencies, not a read of the tree
+.gaia/scripts/verify-required-checks.sh|reads the live GitHub ruleset over the network, so its subject is repository configuration rather than the tree
 .gaia/tests/whole-tree-invariants.sh|this runner; a member of itself would recurse'
 
 usage() {
