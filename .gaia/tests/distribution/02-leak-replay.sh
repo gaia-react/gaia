@@ -59,13 +59,32 @@ MUTATION_COUNTERS="$(jq -r '
   | "\($transform).\(.key)=\(.value)"
 ' "$SCRUB_OUTPUT")"
 
-# Two fail-closed guards on the derivation itself, because an enumeration that
-# comes back short reads exactly like a clean run. The first catches the report
-# losing its shape wholesale; the second catches one transform's counter being
-# removed or retyped, which would otherwise drop silently out of the
-# enumeration while its sibling counters still read 0. A counter merely
-# RENAMED needs no guard: it is still enumerated, under its new name, and
-# still has to read 0.
+# Every numeric inside a transform section is treated as a mutation count.
+# That is deliberate and it is the fail-closed direction: a section that later
+# publishes a diagnostic number (files_scanned, duration_ms) reds this harness
+# naming the field, which is a loud prompt to report it outside a transform
+# section or to teach this harness about it. The alternative, a list of which
+# numerics count, is the list this derivation exists to delete.
+#
+# Three fail-closed guards on the derivation itself, because an enumeration
+# that comes back short reads exactly like a clean run.
+#
+# 1. An empty enumeration: the report lost its shape wholesale.
+# 2. A transform section whose numerics are gone entirely. Note the bound
+#    precisely: this fires when the section has NO numeric left, not when one
+#    counter among several disappears. Per-counter absence is not detectable
+#    without naming the counters, which is the list this rewrite removed, so
+#    the guard covers the sole-counter case (every section's shape today) and
+#    the comment does not claim more.
+# 3. A top-level key that is neither a known non-transform section nor an
+#    object. Guards 1 and 2 both walk `type == "object"` only, so a transform
+#    reporting a bare top-level number, or an array-valued section, would be
+#    invisible to both and mutate unasserted forever. The two exempt keys are
+#    named, so a NEW non-transform key also trips this and forces a decision
+#    here rather than silently widening the blind spot.
+#
+# A counter merely RENAMED needs no guard: it is still enumerated, under its
+# new name, and still has to read 0.
 if [ -z "$MUTATION_COUNTERS" ]; then
   log "scrub --json report:"
   cat "$SCRUB_OUTPUT" >&2
@@ -83,6 +102,19 @@ if [ -n "$COUNTERLESS" ]; then
   log "Transform section(s) reporting no numeric counter:"
   printf '%s\n' "$COUNTERLESS" >&2
   fail "a scrub transform stopped reporting a count; idempotence is unverifiable for it"
+  exit 1
+fi
+
+UNSECTIONED="$(jq -r '
+  to_entries[]
+  | select(.key as $k | ["leaks", "unbalanced_markers"] | index($k) | not)
+  | select(.value | type != "object")
+  | .key
+' "$SCRUB_OUTPUT")"
+if [ -n "$UNSECTIONED" ]; then
+  log "Top-level report key(s) outside the scanned set:"
+  printf '%s\n' "$UNSECTIONED" >&2
+  fail "a scrub report key is neither a known non-transform section nor an object; idempotence is unverifiable for it"
   exit 1
 fi
 
