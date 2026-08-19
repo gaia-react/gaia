@@ -6,6 +6,14 @@
 # correctness is covered by lint-hook-array-guard.bats; this suite covers the
 # wiring.
 #
+# The bash-3.2 parse pass has no separate detector to cover it, so its four
+# branches are asserted here directly, through the SHELL_LINT_BASH32 seam: a
+# clean sweep, a parse error, a too-new interpreter that must skip LOUDLY, and
+# an interpreter this pass cannot reason about, which must fail closed. Driving
+# them through a stub rather than the host's real /bin/bash is what makes the
+# suite give the same verdict on an ubuntu runner and on macOS -- the exact
+# host-dependence the pass under test exists to surface.
+#
 # The shellcheck binary is stubbed with an always-clean, pinned-version fake on
 # PATH so the suite runs on the audit-ci-tests box (bats installed, no shellcheck)
 # and stays fast: the only real work left is the array-guard scanning the real
@@ -49,6 +57,35 @@ fi
 exit 0
 STUB
   chmod +x "$STUB_DIR/shellcheck"
+
+  # A fake interpreter for the bash-3.2 parse pass. BASH32_MAJOR is the major
+  # version it reports when the gate asks (default 3, an in-range interpreter);
+  # BASH32_FAIL_ON is a space-separated LIST of files it rejects, so a test can
+  # place parse errors at chosen positions in the sweep without authoring files
+  # no bash can parse. A list rather than one name because proving the sweep
+  # reports EVERY broken script takes two failures in a single run; matched with
+  # the same quoted `case` shape the shellcheck stub above uses, so a path is
+  # compared literally rather than as a glob.
+  cat > "$STUB_DIR/bash32" <<'STUB'
+#!/usr/bin/env bash
+if [ "$1" = "-c" ]; then
+  printf '%s\n' "${BASH32_MAJOR-3}"
+  exit 0
+fi
+if [ "$1" = "-n" ]; then
+  if [ -n "${BASH32_FAIL_ON:-}" ]; then
+    case " $BASH32_FAIL_ON " in
+      *" $2 "*)
+        printf '%s: line 1: syntax error: unexpected end of file\n' "$2" >&2
+        exit 2
+        ;;
+    esac
+  fi
+  exit 0
+fi
+exit 0
+STUB
+  chmod +x "$STUB_DIR/bash32"
 }
 
 teardown() {
@@ -132,6 +169,119 @@ teardown() {
   grep -qE -- '(^| )-s sh( |$).*\.husky/pre-commit' "$STUB_DIR/argv.log"
 }
 
+# Derive a rig path the way the gate discovers its file list: NUL-delimited with
+# `core.quotepath` off. A plain `git ls-files '*.sh' | head -n 1` disagrees with
+# the gate under git's default quoting -- a tracked path carrying a non-ASCII
+# byte comes back C-quoted, so BASH32_FAIL_ON would name a path the sweep never
+# sees and the absence assertion in the loud-skip test below would pass
+# trivially, degrading it from "proved no sweep ran" to "the warning printed".
+# A read loop rather than `head -z`: that flag is GNU-only and absent from
+# macOS's head, which is the platform this whole gate exists for.
+# `.gaia/scripts/lint-git-path-quoting.sh` excludes *.bats by design, so nothing
+# catches this shape here.
+#
+# Args: first|last
+tracked_sh() {
+  local which_end="$1" f first="" last=""
+  while IFS= read -r -d '' f; do
+    if [ -z "$first" ]; then
+      first="$f"
+    fi
+    last="$f"
+  done < <(git -C "$REPO_ROOT" -c core.quotepath=false ls-files -z '*.sh')
+  if [ "$which_end" = "first" ]; then
+    printf '%s\n' "$first"
+  else
+    printf '%s\n' "$last"
+  fi
+}
+
+# The bash-3.2 parse pass. Shellcheck models bash 5's grammar, so a construct
+# that is a syntax error only on 3.2 clears every pass above it; this pass is
+# the one that reads the tree with the interpreter the scripts declare support
+# for. Its four branches follow.
+
+@test "the bash-3.2 parse pass runs and stays green when every script parses" {
+  run env PATH="$STUB_DIR:$PATH" SHELL_LINT_BASH32="$STUB_DIR/bash32" bash "$GATE"
+  [ "$status" -eq 0 ]
+  grep -qF -- "bash-3.2 parse ($STUB_DIR/bash32 -n)" <<<"$output"
+  grep -qF -- "shell-lint passed" <<<"$output"
+}
+
+@test "the bash-3.2 parse pass fails the gate on a script the interpreter cannot parse" {
+  first_sh="$(tracked_sh first)"
+  [ -n "$first_sh" ]
+  run env PATH="$STUB_DIR:$PATH" SHELL_LINT_BASH32="$STUB_DIR/bash32" \
+    BASH32_FAIL_ON="$first_sh" bash "$GATE"
+  [ "$status" -eq 1 ]
+  grep -qF -- "shell-lint FAILED" <<<"$output"
+  # The interpreter's own diagnostic has to reach the operator, or the gate
+  # reds without naming the file that will not parse.
+  grep -qF -- "$first_sh: line 1: syntax error" <<<"$output"
+}
+
+@test "the bash-3.2 parse pass reports EVERY broken script, not only the first" {
+  # The sweep's header claims one invocation names every broken script rather
+  # than only the first. Rigging a single file cannot check that claim wherever
+  # it is placed: rig only the first and an abort-after-it still prints that
+  # one diagnostic, rig only the last and an abort-on-first-error aborts with
+  # nothing left to report, so both produce byte-identical output. Two failures
+  # in ONE run is what discriminates, and rigging the two ends also covers the
+  # whole-list-coverage claim a truncated sweep would break.
+  first_sh="$(tracked_sh first)"
+  last_sh="$(tracked_sh last)"
+  [ -n "$first_sh" ]
+  [ -n "$last_sh" ]
+  [ "$first_sh" != "$last_sh" ]
+  run env PATH="$STUB_DIR:$PATH" SHELL_LINT_BASH32="$STUB_DIR/bash32" \
+    BASH32_FAIL_ON="$first_sh $last_sh" bash "$GATE"
+  [ "$status" -eq 1 ]
+  grep -qF -- "shell-lint FAILED" <<<"$output"
+  grep -qF -- "$first_sh: line 1: syntax error" <<<"$output"
+  grep -qF -- "$last_sh: line 1: syntax error" <<<"$output"
+}
+
+@test "the bash-3.2 parse pass skips LOUDLY when the interpreter is too new" {
+  # A file is rigged to fail the sweep at the same time. That is what makes the
+  # green below mean "did not sweep" rather than merely "swept and found
+  # nothing": had the too-new interpreter parsed the tree, it would have hit
+  # this file and red.
+  first_sh="$(tracked_sh first)"
+  [ -n "$first_sh" ]
+  run env PATH="$STUB_DIR:$PATH" SHELL_LINT_BASH32="$STUB_DIR/bash32" \
+    BASH32_MAJOR=5 BASH32_FAIL_ON="$first_sh" bash "$GATE"
+  # A skip is not a failure: an ubuntu runner has no bash 3.2 and must still be
+  # able to clear the rest of the gate.
+  [ "$status" -eq 0 ]
+  # Loud, not silent. A silent skip would let every bash-5 host report the tree
+  # clean over syntax nothing on that host ever parsed.
+  grep -qF -- "WARNING:" <<<"$output"
+  grep -qF -- "parse pass was SKIPPED" <<<"$output"
+  # The rigged file's diagnostic is absent, so no sweep ran. Written as the bad
+  # case plus an explicit `return 1`, per .claude/rules/bats-assertions.md, so
+  # the assertion keeps failing correctly if a later edit appends to this test.
+  grep -qF -- "$first_sh: line 1: syntax error" <<<"$output" && return 1
+  true
+}
+
+@test "the bash-3.2 parse pass fails closed when the interpreter is missing" {
+  run env PATH="$STUB_DIR:$PATH" SHELL_LINT_BASH32="$STUB_DIR/no-such-bash" bash "$GATE"
+  [ "$status" -eq 1 ]
+  grep -qF -- "is not executable; the bash-3.2 parse pass cannot run" <<<"$output"
+  grep -qF -- "shell-lint FAILED" <<<"$output"
+}
+
+@test "the bash-3.2 parse pass fails closed when the interpreter reports no version" {
+  run env PATH="$STUB_DIR:$PATH" SHELL_LINT_BASH32="$STUB_DIR/bash32" \
+    BASH32_MAJOR= bash "$GATE"
+  # Fail closed rather than skip: an interpreter whose version cannot be read is
+  # one this pass cannot place on either side of the 3.2 line, and reporting
+  # clean having parsed nothing is the outcome the pass is here to rule out.
+  [ "$status" -eq 1 ]
+  grep -qF -- "reported no numeric major version" <<<"$output"
+  grep -qF -- "shell-lint FAILED" <<<"$output"
+}
+
 # The *.sh and *.bats passes split their file list across concurrent shellcheck
 # workers, one buffered log each. Two ways that aggregation goes green over a
 # real finding, and one test for each end of the list: collecting the status of
@@ -143,7 +293,7 @@ teardown() {
 # distinguishing the two workers.
 
 @test "shell-lint fails closed on a finding in the FIRST worker's chunk" {
-  first_sh="$(git -C "$REPO_ROOT" ls-files '*.sh' | head -n 1)"
+  first_sh="$(tracked_sh first)"
   [ -n "$first_sh" ]
   run env PATH="$STUB_DIR:$PATH" SHELLCHECK_FAIL_ON="$first_sh" bash "$GATE"
   [ "$status" -eq 1 ]
@@ -154,7 +304,7 @@ teardown() {
 }
 
 @test "shell-lint fails closed on a finding in the LAST worker's chunk" {
-  last_sh="$(git -C "$REPO_ROOT" ls-files '*.sh' | tail -n 1)"
+  last_sh="$(tracked_sh last)"
   [ -n "$last_sh" ]
   run env PATH="$STUB_DIR:$PATH" SHELLCHECK_FAIL_ON="$last_sh" bash "$GATE"
   [ "$status" -eq 1 ]

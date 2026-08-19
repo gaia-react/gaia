@@ -83,7 +83,7 @@ AUDIT_GLOBAL_RULES_PATHS="$(cat <<'EOF'
 .claude/hooks/pr-merge-audit-check.sh
 .github/audit/resolve-audit-base.sh
 # The two rules under .claude/rules/ that govern the gate rather than the
-# code. quality-gate.md decides the deterministic checks a member's clearance
+# code. quality-gate.md decides the deterministic checks a clearance
 # stands on, and pr-merge.md decides the marker handshake: where the gate
 # looks for a clearance and when one is believed. Every other rule in that
 # directory is coding convention, is merely shared, and is enumerated in
