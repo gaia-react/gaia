@@ -673,11 +673,14 @@ jobs:
         # (.gaia/scripts/verify-required-checks.sh names it required) and that
         # leg's tests do not run.
         #
-        # The budget is what makes three attempts reachable, and it only works
-        # because every attempt is individually bounded: 3 x (45 + 45) of apt
-        # plus 30 of backoff is 300, inside this 360. Raising a per-call bound
-        # or an attempt count without raising this cap puts the loop back in
-        # the state described below, where the cap fires mid-attempt-1.
+        # The budget is what makes three attempts reachable: 3 x (45 + 45) of
+        # apt plus 30 of backoff is 300, inside this 360. Read 300 as the
+        # intended shape, not a ceiling. `timeout` REQUESTS termination, and
+        # dpkg defers SIGTERM while unpacking, so a per-call bound can be
+        # overrun and this step cap is the only bound that always holds.
+        # `-k` would make it a ceiling and is deliberately not used: SIGKILL
+        # mid-dpkg leaves an interrupted state that fails attempts 2 and 3
+        # outright, which is worse than overrunning into this cap.
         #
         # Why every apt call is wrapped in `timeout` rather than left to
         # Acquire::*::Timeout: those options bound a STALLED transfer, and the
@@ -697,15 +700,16 @@ jobs:
         # failures and none is sufficient alone: `Acquire::*::Timeout` per
         # connection, `timeout` per call, and `timeout-minutes` per step.
         #
-        # `Acquire::*::Timeout` breaks a STALLED fetch in seconds rather than
-        # letting it hold the connection, so an attempt that meets a dead
-        # socket usually finishes well inside its own 45s wrapper instead of
-        # being killed at it. That is all it does. It does NOT make the retry
-        # reachable, which is the per-call `timeout` above's job: these knobs
-        # were the only bound on a call for two runs, and both spent the whole
-        # step budget in attempt 1 because the failure was never a stall. Both
-        # the `http` and `https` knobs are set because the option is keyed on
-        # the acquire method, not on the scheme the loop happens to hit.
+        # `Acquire::*::Timeout` ends a STALLED connection in seconds rather
+        # than letting it hold. It bounds a connection, never a call: with
+        # `Acquire::Retries=2` one dead URI is three tries of 20, so a single
+        # apt call can still run past its 45s wrapper and be killed there.
+        # These knobs do NOT make the retry reachable, which is the per-call
+        # `timeout` above's job: they were the only bound on a call for two
+        # runs, and both spent the whole step budget in attempt 1 because the
+        # failure was never a stall. Both the `http` and `https` knobs are set
+        # because the option is keyed on the acquire method, not on the scheme
+        # the loop happens to hit.
         #
         # Three attempts because an archive.ubuntu.com stall is transient:
         # re-running an identically-stalled leg by hand passes it in a
