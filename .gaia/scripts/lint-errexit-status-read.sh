@@ -124,17 +124,25 @@
 #     `trap` body that a later line then reads. Both are genuinely deferred
 #     reads whose value depends on when the body runs, which a line-oriented
 #     scan cannot resolve.
-#   - A command substitution containing an unbalanced `)` inside a quoted string
-#     of its own. The substitution skip below counts parentheses without
-#     tracking quotes, the same bounded approximation the sibling grep-escape
-#     gate makes, so the walk leaves the region early and the rest of the
-#     statement is read in the wrong state.
+#   - More than one heredoc opened on a single line (`cat <<A <<B`): only the
+#     first delimiter is recorded, so the second body is read as shell.
+#   - A `<<` inside a bare `(( ))` arithmetic command, as opposed to the `$(( ))`
+#     expansion the walk does track, is read as a heredoc redirection. No tracked
+#     file here uses the bare form.
 #   - A step whose `shell:` is not bash (`python`, `pwsh`). Its body is armed as
 #     bash would be, but the shape below is bash syntax that such a body does not
 #     carry, so the arming costs nothing.
 #   - A `run:` written as a multi-line plain or quoted flow scalar rather than a
 #     block scalar; only its first line is read, the same bound the sibling
 #     run-interpolation gate carries and for the same reason.
+#
+# None of those fails SILENTLY. Tokenizer state is carried across lines, so any
+# bound that loses sync leaves a quote, a substitution, or a heredoc open at the
+# end of the region, and `check_desync` below reports the region as one this gate
+# cannot certify rather than printing `clean` over lines it never read. That
+# matters more than the bounds themselves: a line-oriented scan that desyncs
+# swallows the REST OF THE FILE, not the rest of the statement, so the quiet
+# failure is total rather than local.
 
 set -euo pipefail
 
@@ -143,38 +151,44 @@ set -euo pipefail
 # literal quote inside is spelled as an escape (`\047` for `'`), so the shell
 # passes the program through untouched.
 readonly CORE_AWK='
-# Tokenizer state, carried ACROSS lines so a command substitution or a quoted
-# string spanning several lines is followed rather than guessed at:
-#   W_q      the open quote character, "" outside quotes
-#   W_qsave  the quote state to restore when a substitution closes
-#   W_depth  open `$(` nesting depth
-#   W_tick   1 inside a legacy backtick substitution
-#   W_op     set by walk() when an unquoted control operator is seen at depth 0
+# Tokenizer state, carried ACROSS lines so a command substitution, a quoted
+# string, or a heredoc body spanning several lines is followed rather than
+# guessed at:
+#   W_q       the open quote character, "" outside quotes
+#   W_qstack  the quote state to restore as each nesting level closes
+#   W_depth   open `$(` / `(` nesting depth
+#   W_tick    1 inside a legacy backtick substitution
+#   W_heredoc the delimiter of an open heredoc, "" when none
+#   W_hd_tabs 1 when that heredoc was opened with `<<-`, which strips tabs
+#   W_op      set by walk() when an unquoted control operator is seen at depth 0
+#   W_stop    offset just past a top-level `;`, so the caller can resume there
+#   W_sub     set by walk() when the line opens a real command substitution
+#
+# Quoting is tracked INSIDE a substitution with the same machinery as outside
+# it. Skipping the region and counting bare parentheses is the cheaper reading
+# and it is wrong in the one direction that matters: a `)` inside a quoted
+# string closes the region early, the walk resumes mid-string, and a lone
+# apostrophe in the remaining literal opens a quote state that never closes.
+# Because state is carried across lines, the rest of the FILE is then swallowed
+# as quoted text and never classified, while this gate still prints `clean`.
+# Four tracked files here reach that shape, `.claude/hooks/block-env-read.sh`
+# among them, where a `sed -E` pattern carries a `)` inside a bracket
+# expression. The desync guard below is the second half of the answer: even a
+# correct tokenizer has bounds, and a gate that cannot read a file has to say so
+# rather than certify it.
 #
 # walk(line): advance the state across one line and return 1 when the statement
 # continues onto the next one.
-function walk(line,   n, i, c, prev) {
+function walk(line,   n, i, c, j, ch, delim) {
   W_op = 0
   W_stop = 0
+  W_sub = 0
   n = length(line)
   for (i = 1; i <= n; i++) {
     c = substr(line, i, 1)
 
-    if (W_tick) { if (c == "`") W_tick = 0; continue }
-
-    # Inside a command substitution the text is a script of its own. It is
-    # skipped wholesale with the parentheses counted, because the only thing
-    # this walk needs from it is where it ENDS: an operator or a quote in there
-    # belongs to the inner command, not to the assignment being classified.
-    if (W_depth > 0) {
-      if (c == "\\") { i++; continue }
-      if (c == "(") { W_depth++; continue }
-      if (c == ")") { W_depth--; if (W_depth == 0) W_q = W_qsave; continue }
-      continue
-    }
-
-    # Single quotes make every byte literal, including a backslash, so this test
-    # has to come before the escape handling below.
+    # Single quotes make every byte literal, backslash included, so this test
+    # comes before the escape handling below.
     if (W_q == "\047") { if (c == "\047") W_q = ""; continue }
 
     if (c == "\\") {
@@ -183,24 +197,105 @@ function walk(line,   n, i, c, prev) {
       continue
     }
 
+    if (W_tick) { if (c == "`") W_tick = 0; continue }
+
     # A substitution opens from inside double quotes too, which is the ordinary
-    # spelling of the very shape this gate matches (`out="$(cmd)"`). Saving the
+    # spelling of the very shape this gate matches (`out="$(cmd)"`). The saved
     # quote state is what returns the walk to the string when it closes.
     if (c == "$" && substr(line, i + 1, 1) == "(") {
-      W_qsave = W_q; W_q = ""; W_depth = 1; i++; continue
+      W_qstack[W_depth] = W_q
+      W_depth++
+      W_q = ""
+      i++
+      # `$((` is ARITHMETIC EXPANSION, not a command substitution. It runs no
+      # command, so it cannot carry a non-zero status into the assignment and
+      # errexit never fires on it; a `rc=$?` after `x=$((1 + 2))` is reachable
+      # and simply always reads zero, which is a different thing from dead code
+      # and would earn a message and a repair that make no sense. Consume the
+      # second paren as its own level so the closing `))` balances by
+      # construction rather than by coincidence, and leave W_sub unset.
+      if (substr(line, i + 1, 1) == "(") {
+        W_qstack[W_depth] = ""
+        W_depth++
+        W_ar[W_depth] = 1
+        W_narith++
+        i++
+      } else {
+        W_sub = 1
+      }
+      continue
     }
-    if (c == "`") { W_tick = 1; continue }
+    if (c == "`") { W_tick = 1; W_sub = 1; continue }
 
     if (W_q == "\"") { if (c == "\"") W_q = ""; continue }
 
     if (c == "\047") { W_q = "\047"; continue }
     if (c == "\"")   { W_q = "\"";   continue }
 
+    # A heredoc body is DATA the shell hands to a command, not shell it runs, so
+    # it is swallowed rather than read. Without this the body of a fixture a
+    # test script writes is classified as executed code: a `set +e` in there
+    # disarms the detector for the rest of the real script, an apostrophe blanks
+    # the rest of the file through the carry above, and a body deliberately
+    # carrying the defect is reported as one. That is the same fixture-versus-
+    # executed-line argument the header makes for excluding `*.bats` and `*.md`,
+    # and `*.sh` is scanned, so it has to be answered here rather than by
+    # dropping the surface.
+    #
+    # This runs at ANY substitution depth, above the depth guard below, because
+    # a heredoc body occupies lines of this file no matter what opened it.
+    # `AUDIT_GLOBAL_RULES_PATHS="$(cat <<\047EOF\047` is the live shape here,
+    # and two tracked files reach it: gated at depth zero the body is read as
+    # shell inside the substitution, and in one of them a Python docstring in
+    # that body opens a quote that never closes, so the rest of the file goes
+    # unclassified. Skipped inside `$(( ))`, where `<<` is a left shift rather
+    # than a redirection.
+    if (c == "<" && substr(line, i + 1, 1) == "<" && W_narith == 0) {
+      # `<<<` is a herestring: its operand is a word on this same line, not a
+      # body on the lines below.
+      if (substr(line, i + 2, 1) == "<") { i += 2; continue }
+      j = i + 2
+      W_hd_tabs = 0
+      if (substr(line, j, 1) == "-") { W_hd_tabs = 1; j++ }
+      while (substr(line, j, 1) == " " || substr(line, j, 1) == "\t") j++
+      delim = ""
+      ch = substr(line, j, 1)
+      # A quoted delimiter (`<<'"'"'EOF'"'"'`) suppresses expansion in the body; either
+      # spelling names the same terminator.
+      if (ch == "\047" || ch == "\"") {
+        j++
+        while (j <= n && substr(line, j, 1) != ch) { delim = delim substr(line, j, 1); j++ }
+        j++
+      } else {
+        while (j <= n && substr(line, j, 1) ~ /[A-Za-z0-9_.\/-]/) { delim = delim substr(line, j, 1); j++ }
+      }
+      if (delim != "") W_heredoc = delim
+      i = j - 1
+      continue
+    }
+
+    if (W_depth > 0) {
+      if (c == "(") { W_qstack[W_depth] = ""; W_depth++; continue }
+      if (c == ")") {
+        if (W_ar[W_depth]) { delete W_ar[W_depth]; W_narith-- }
+        W_depth--
+        W_q = W_qstack[W_depth]
+        continue
+      }
+      # Everything else inside a substitution belongs to the inner command: its
+      # operators and its comments belong to it, not to the outer statement.
+      # Its HEREDOCS are
+      # handled above rather than here, because a heredoc body occupies lines of
+      # THIS file whatever nesting opened it.
+      continue
+    }
+
     # An unquoted `#` opens a comment only at the start of a word; mid-word it is
     # an ordinary character.
     if (c == "#") {
-      prev = (i > 1) ? substr(line, i - 1, 1) : " "
-      if (prev == " " || prev == "\t" || prev == ";" || prev == "&" || prev == "|" || prev == "(") break
+      if (i == 1) break
+      ch = substr(line, i - 1, 1)
+      if (ch == " " || ch == "\t" || ch == ";" || ch == "&" || ch == "|" || ch == "(") break
       continue
     }
     # `;` SEPARATES two commands rather than joining them into one, so errexit
@@ -215,26 +310,6 @@ function walk(line,   n, i, c, prev) {
     if (c == "|" || c == "&") { W_op = 1; continue }
   }
   return (W_q != "" || W_depth > 0 || W_tick) ? 1 : 0
-}
-
-# arm(s): update the errexit state from a `set` line. Only an `e` in a short
-# option bundle or an explicit `-o errexit` counts, so `set -u` and
-# `set -o pipefail` leave the state alone.
-function arm(s,   n, t, i, w) {
-  n = split(s, t, /[ \t]+/)
-  for (i = 2; i <= n; i++) {
-    w = t[i]
-    if (w == "-o") { if (t[i + 1] == "errexit") armed = 1; i++; continue }
-    if (w == "+o") { if (t[i + 1] == "errexit") armed = 0; i++; continue }
-    if (substr(w, 1, 2) == "--") continue
-    if (substr(w, 1, 1) == "-" && index(w, "e") > 0) armed = 1
-    if (substr(w, 1, 1) == "+" && index(w, "e") > 0) armed = 0
-  }
-}
-
-function reset_state() {
-  W_q = ""; W_qsave = ""; W_depth = 0; W_tick = 0
-  cont = 0; pending = 0; cand = 0; stmt_op = 0
 }
 
 # has_status_read(line): 1 when the line reads `$?`, quote-aware.
@@ -264,12 +339,63 @@ function has_status_read(line,   n, i, c, q) {
   return 0
 }
 
+# arm(s): update the errexit state from a `set` line. Only an `e` in a short
+# option bundle or an explicit `-o errexit` counts, so `set -u` and
+# `set -o pipefail` leave the state alone.
+function arm(s,   n, t, i, w) {
+  n = split(s, t, /[ \t]+/)
+  for (i = 2; i <= n; i++) {
+    w = t[i]
+    if (w == "-o") { if (t[i + 1] == "errexit") armed = 1; i++; continue }
+    if (w == "+o") { if (t[i + 1] == "errexit") armed = 0; i++; continue }
+    if (substr(w, 1, 2) == "--") continue
+    if (substr(w, 1, 1) == "-" && index(w, "e") > 0) armed = 1
+    if (substr(w, 1, 1) == "+" && index(w, "e") > 0) armed = 0
+  }
+}
+
+function reset_state(  d) {
+  W_q = ""; W_depth = 0; W_tick = 0; W_narith = 0
+  W_heredoc = ""; W_hd_tabs = 0
+  cont = 0; pending = 0; isname = 0; stmt_op = 0; stmt_sub = 0
+  for (d in W_qstack) delete W_qstack[d]
+  for (d in W_ar) delete W_ar[d]
+}
+
+# check_desync(what): report a region the scan could not read to its end.
+#
+# An open quote, an unclosed substitution, or an unterminated heredoc left
+# standing when the region ends means the tokenizer lost sync somewhere inside
+# it, and everything after that point was carried as quoted text rather than
+# classified. That failure is silent in the worst direction: the gate prints
+# `clean` over lines it never read. A well-formed region always closes what it
+# opens, so this fires only where the answer is genuinely unavailable, and
+# saying so is the honest verdict.
+function check_desync(what) {
+  if (W_q != "" || W_depth > 0 || W_tick || cont || W_heredoc != "")
+    printf "%s: ERROR: the scan lost track of shell state before the end of %s, so the remainder was never classified and this gate cannot certify it clean\n", file, what
+}
+
 function report(n, aline) {
   printf "%s:%d: `$?` read after the command-substitution assignment at line %d, with errexit armed: the assignment takes the substitution status, so a failure exits there and this line and every branch it feeds are dead\n", file, n, aline
 }
 
 # feed(line, n): run one line of shell through the detector.
-function feed(line, n,   stripped) {
+function feed(line, n,   stripped, probe) {
+  # An open heredoc swallows whole lines until its terminator: the body is data,
+  # so nothing in it arms, disarms, or classifies. The terminator comparison
+  # tolerates trailing whitespace deliberately. Bash does not, but the two
+  # failure directions are not symmetric: ending a heredoc one line early costs
+  # a few lines read as shell that were not, while never ending one swallows
+  # every remaining line of the file and reports clean over all of them.
+  if (W_heredoc != "") {
+    probe = line
+    if (W_hd_tabs) sub(/^\t+/, "", probe)
+    sub(/[ \t]+$/, "", probe)
+    if (probe == W_heredoc) W_heredoc = ""
+    return
+  }
+
   # A line can hold several statements. The loop walks them one at a time,
   # re-entering at each top-level `;` with the remainder, so an assignment and
   # the status read that follows it are seen the same way whether they sit on
@@ -292,20 +418,29 @@ function feed(line, n,   stripped) {
       pending = 0
     }
 
-    # A bare assignment: a NAME (optionally subscripted) directly followed by
-    # `=`, with a command substitution somewhere in its value. A `local`/
+    # A NAME (optionally subscripted) directly followed by `=`. A `local`/
     # `export`/`declare`/`readonly`/`typeset` prefix fails this test by
-    # construction, which is the exclusion the header describes.
-    cand = (stripped ~ /^[A-Za-z_][A-Za-z0-9_]*(\[[^]]*\])?=/) && (stripped ~ /[$]\(|`/)
+    # construction, which is the exclusion the header describes. Whether the
+    # VALUE is a command substitution is walk()`s answer rather than a second
+    # regex here, so `$((` arithmetic is told apart from `$(` by the same state
+    # machine that has to tell them apart anyway.
+    isname = (stripped ~ /^[A-Za-z_][A-Za-z0-9_]*(\[[^]]*\])?=/)
     cand_line = n
     stmt_op = 0
+    stmt_sub = 0
   }
 
-  if (walk(line)) { if (W_op) stmt_op = 1; cont = 1; return }
+  if (walk(line)) {
+    if (W_op) stmt_op = 1
+    if (W_sub) stmt_sub = 1
+    cont = 1
+    return
+  }
   if (W_op) stmt_op = 1
+  if (W_sub) stmt_sub = 1
   cont = 0
-  if (cand && !stmt_op && armed) { pending = 1; pending_line = cand_line }
-  cand = 0
+  if (isname && stmt_sub && !stmt_op && armed) { pending = 1; pending_line = cand_line }
+  isname = 0
 
   # The walk stopped at a `;` with text after it: that text is the next
   # statement, and it shrinks by at least one character each time round, so the
@@ -321,6 +456,7 @@ function feed(line, n,   stripped) {
 readonly SHELL_AWK='
 BEGIN { armed = 0; reset_state() }
 { feed($0, FNR) }
+END { check_desync("the file") }
 '
 
 # scan_yaml: the workflow / composite-action / template half. The `run:` body is
@@ -350,6 +486,11 @@ BEGIN { inrun = 0 }
     col = match($0, /[^ ]/)
     if (col > runcol) { feed($0, FNR); next }
     inrun = 0
+    # The body just ended, so this is where its state has to balance. A `run:`
+    # body is its own script and the state resets on entry, which means an
+    # unclosed region in one body cannot be inherited from the last, and neither
+    # can it be certified.
+    check_desync("a run: body")
     # Fall through: this same line may itself be the next `run:` key.
   }
   if ($0 ~ /^[[:space:]]*(-[[:space:]]+)?run:/) {
@@ -368,6 +509,7 @@ BEGIN { inrun = 0 }
     }
   }
 }
+END { if (inrun) check_desync("the last run: body") }
 '
 
 # `git ls-files` rather than a filesystem walk, so an untracked scratch script is

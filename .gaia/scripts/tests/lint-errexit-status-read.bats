@@ -428,6 +428,106 @@ EOF
   [ "$status" -eq 0 ]
 }
 
+# --- the tokenizer holds sync, or says it could not --------------------------
+#
+# These six pin the detector's cross-line state. They matter more than their
+# count suggests: state is carried across lines deliberately, so a tokenizer that
+# desyncs does not misread one statement, it swallows every remaining line of the
+# file while the gate still prints `clean`. Each was a measured live failure
+# before the fix, not a hypothetical.
+
+@test "keeps reading past a substitution carrying a paren inside a quoted string" {
+  fixture_repo
+  fixture_script 'set -euo pipefail
+cand=$(printf "%s" "$rest" | sed -E "s/[[:space:])].*$//")
+echo "$cand"
+out=$(some_command)
+rc=$?
+echo "$rc"'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- 'check.sh:5:' <<<"$output"
+}
+
+@test "follows a heredoc opened inside a command substitution" {
+  fixture_repo
+  fixture_script 'set -euo pipefail
+PATHS="$(cat <<EOF
+one
+two
+EOF
+)"
+out=$(some_command)
+rc=$?
+echo "$PATHS $rc"'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- 'check.sh:8:' <<<"$output"
+}
+
+@test "quiet on a heredoc body carrying the shape as a fixture" {
+  fixture_repo
+  fixture_script 'set -euo pipefail
+cat > /tmp/fixture.sh <<EOF
+set -e
+out=\$(some_command)
+rc=\$?
+EOF
+echo done'
+  run_linter
+  [ "$status" -eq 0 ]
+}
+
+@test "a set +e inside a heredoc body does not disarm the script around it" {
+  fixture_repo
+  fixture_script 'set -euo pipefail
+cat > /tmp/f.sh <<EOF
+set +e
+EOF
+out=$(some_command)
+rc=$?
+echo "$rc"'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- 'check.sh:6:' <<<"$output"
+}
+
+@test "an apostrophe inside a heredoc body does not swallow the rest of the file" {
+  fixture_repo
+  fixture_script 'set -euo pipefail
+cat > /tmp/f.txt <<EOF
+this body carries an apostrophe: it is the shell that would not
+EOF
+out=$(some_command)
+rc=$?
+echo "$rc"'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- 'check.sh:6:' <<<"$output"
+}
+
+@test "quiet on arithmetic expansion, which runs no command and cannot trip errexit" {
+  fixture_repo
+  fixture_script 'set -euo pipefail
+x=$((1 + 2))
+rc=$?
+echo "$x $rc"'
+  run_linter
+  [ "$status" -eq 0 ]
+}
+
+@test "reports a file it could not tokenize to the end rather than certifying it" {
+  fixture_repo
+  fixture_script 'set -euo pipefail
+cat > /tmp/f.txt <<NEVERCLOSED
+one
+two'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- 'lost track of shell state' <<<"$output"
+  grep -qF -- 'check.sh' <<<"$output"
+}
+
 # --- the gate refuses to report clean over nothing -------------------------
 
 @test "errors rather than passing when no tracked shell matches" {
