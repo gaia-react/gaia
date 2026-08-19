@@ -1411,6 +1411,16 @@ concurrency_tree_needs_packages() {
 # .gaia/release-exclude are transitive inputs that guard never reaches. These
 # two tests are the regression guard for the three lines SPEC-072 added to
 # close that hole.
+#
+# .gaia/manifest.json is the same shape on the cli-tests side, and it is
+# asserted here for the same reason. The distribution harness runner is the
+# only literal token in that job's gated step, while two scenarios inside it
+# read the staged manifest (01-files-present.sh walks its files{} keys;
+# 16-audit-remit-parity.sh reads two classes out of it). A manifest-only
+# change -- a regeneration, a ship-or-withhold answer -- matches no other
+# entry in that filter, so before #1473 it resolved code=false and greened
+# the job having run the scenario that would have caught a bad manifest zero
+# times.
 
 @test "W11: audit-ci-tests.yml's code filter lists the script-capabilities manifest, its schema, and release-exclude" {
   require_yaml_parser
@@ -1424,11 +1434,11 @@ concurrency_tree_needs_packages() {
   done
 }
 
-@test "W11: cli-tests.yml's distribution-harness code filter lists the script-capabilities manifest and its schema" {
+@test "W11: cli-tests.yml's distribution-harness code filter lists the script-capabilities manifest, its schema, and the release manifest" {
   require_yaml_parser
   local list
   list="$(read_wf codefilter "$CLI_WORKFLOW" distribution-harness)"
-  for path in '.gaia/script-capabilities.json' '.gaia/script-capabilities.schema.json'; do
+  for path in '.gaia/script-capabilities.json' '.gaia/script-capabilities.schema.json' '.gaia/manifest.json'; do
     printf '%s\n' "$list" | grep -qxF -- "$path" || {
       echo "cli-tests.yml's distribution-harness code: filter is missing $path" >&2
       return 1

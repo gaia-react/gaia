@@ -335,6 +335,20 @@ jobs:
               # would skip on the very change that breaks it.
               - '.gaia/script-capabilities.json'
               - '.gaia/script-capabilities.schema.json'
+              # The release manifest, read by two scenarios: 01-files-present.sh
+              # walks its files{} keys to assert every listed path is present in
+              # the staged tree, and 16-audit-remit-parity.sh reads the roster
+              # writer's and checker's classes out of it. Most regenerations
+              # co-change .gaia/release-exclude, listed above, because the release
+              # CLI writes both when a file is withheld -- but a manifest-only
+              # write is not rare (a ship-only /distribution-audit answer, a class
+              # reassignment, a plain re-run), and it matches no other pattern
+              # here, so without this line it would resolve `code=false` and green
+              # the job having run the scenarios that read the manifest zero
+              # times. Same reasoning as the two entries above; the sibling job's
+              # filter needs no counterpart, because its Vitest suites build every
+              # manifest they read in a sandbox and none reads this one.
+              - '.gaia/manifest.json'
               - '.github/workflows/cli-tests.yml'
               # The composite action this job's Node setup step `uses:`. Nothing
               # else here reaches it, so without this line an action-only change
