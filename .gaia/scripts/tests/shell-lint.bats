@@ -108,6 +108,19 @@ teardown() {
   grep -qF -- "lint-grep-ere-escapes: clean" <<<"$output"
 }
 
+# The same wiring assertion for the errexit status-read guard. Its own
+# correctness is covered by lint-errexit-status-read.bats; this covers only that
+# the gate still invokes it.
+
+@test "shell-lint folds in the errexit status-read guard pass and stays green on a clean tree" {
+  run env PATH="$STUB_DIR:$PATH" bash "$GATE"
+  [ "$status" -eq 0 ]
+  # The guard's OWN stderr proof line, for the same reason as above: it appears
+  # only if the guard actually ran, so a future edit dropping the invocation but
+  # leaving the header echo is caught.
+  grep -qF -- "lint-errexit-status-read: clean" <<<"$output"
+}
+
 # The husky hooks are extensionless, so they match neither the *.sh nor the
 # *.bats discovery glob and need a pass of their own. Husky runs them as
 # `sh -e`, so that pass pins the dialect: shellcheck takes one dialect per

@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # shell-lint.sh: run shellcheck over every tracked shell script, bats suite, and
-# husky hook, then four repo-authored guards shellcheck cannot model: the hook
+# husky hook, then five repo-authored guards shellcheck cannot model: the hook
 # array-guard (.gaia/scripts/lint-hook-array-guard.sh), the git path-quoting
 # guard (.gaia/scripts/lint-git-path-quoting.sh), the workflow
 # run-interpolation guard (.gaia/scripts/lint-workflow-run-interpolation.sh),
-# and the grep ERE-escape guard (.gaia/scripts/lint-grep-ere-escapes.sh).
+# the grep ERE-escape guard (.gaia/scripts/lint-grep-ere-escapes.sh), and the
+# errexit status-read guard (.gaia/scripts/lint-errexit-status-read.sh).
 # Exit 0 when clean, 1 on any finding at or above the severity floor.
 # Run it directly from anywhere: `bash .gaia/tests/shell-lint.sh`.
 #
@@ -334,6 +335,22 @@ fi
 # repo-relative.
 echo "--> lint-grep-ere-escapes (BSD-vs-GNU regex escapes in a grep -E pattern)"
 if ! (cd "$REPO_ROOT" && bash "$REPO_ROOT/.gaia/scripts/lint-grep-ere-escapes.sh"); then
+  status=1
+fi
+
+# Fold in the errexit status-read guard, for the same reason as the four above:
+# the linter above is silent on the class. An assignment takes its command
+# substitution's exit status, so under `set -e` a failing command exits ON the
+# assignment line and the `rc=$?` after it never runs -- every branch written to
+# handle that failure is dead. SC2181 reaches the `if [ $? ]` spelling after a
+# plain command and draws nothing on a capture, and shellcheck does not model
+# `set -e` assignment status at all. It reaches further than the *.sh passes
+# above for the same reason the path-quoting guard does: `run:` bodies are shell
+# no *.sh glob sees, and that is exactly where both shipped instances of the
+# class lived. Run from the repo root so its `git ls-files` discovery resolves
+# and the file:line it prints is repo-relative.
+echo "--> lint-errexit-status-read (\$? read after a command-substitution assignment under set -e)"
+if ! (cd "$REPO_ROOT" && bash "$REPO_ROOT/.gaia/scripts/lint-errexit-status-read.sh"); then
   status=1
 fi
 
