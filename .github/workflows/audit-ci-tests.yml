@@ -666,7 +666,52 @@ jobs:
       # derives from the suites rather than from here.
       - if: contains(fromJSON('["hooks-4", "lib", "scripts-1", "scripts-2", "scripts-3"]'), matrix.shard) && (steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch')
         name: Install the YAML parser and zsh
-        run: sudo apt-get update && sudo apt-get install -y python3-yaml zsh
+        # Sized to a normal install (tens of seconds) plus the retry budget
+        # below, NOT to the leg. Without a cap of its own, a mirror that stalls
+        # mid-fetch holds the socket open until the job's 13-minute cap
+        # cancels the whole leg, the bats step after this one never starts, and
+        # a declared-required context (`Audit CI Tests` in
+        # .gaia/scripts/verify-required-checks.sh) reports no test result at
+        # all, for a reason that has nothing to do with the change under test.
+        # A cap that only fires at the leg budget reproduces exactly that, so
+        # this one has to be the smaller number.
+        timeout-minutes: 5
+        # Bounded twice, because the two bounds catch different failures and
+        # neither is sufficient alone.
+        #
+        # `Acquire::*::Timeout` breaks a STALLED fetch in seconds rather than
+        # letting it hold the connection, which is what makes the retry
+        # reachable at all: an attempt that hangs past the step budget never
+        # gets a second one, so the loop below without these options would
+        # still red the check on the failure it exists to absorb. Both the
+        # `http` and `https` knobs are set because the option is keyed on the
+        # acquire method, not on the scheme the loop happens to hit.
+        #
+        # Three attempts because an archive.ubuntu.com stall is transient:
+        # re-running an identically-stalled leg by hand passes it in a
+        # fraction of the time it hung for. A genuine mirror outage still
+        # fails red rather than hanging, three short attempts later.
+        #
+        # A bounded shell retry rather than a marketplace retry action: this
+        # repository vendors its pinned bats and keeps its composite actions
+        # local under .github/actions/, so a third-party action here would be
+        # the only dependency of its kind, pinned and reviewed for a loop bash
+        # states in ten lines.
+        run: |
+          set -euo pipefail
+          apt_opts=(-o Acquire::Retries=2 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20)
+          for attempt in 1 2 3; do
+            if sudo apt-get "${apt_opts[@]}" update \
+              && sudo apt-get "${apt_opts[@]}" install -y python3-yaml zsh; then
+              exit 0
+            fi
+            echo "apt attempt ${attempt} of 3 failed" >&2
+            if [ "${attempt}" -lt 3 ]; then
+              sleep $((attempt * 10))
+            fi
+          done
+          echo "apt-get failed after 3 attempts; python3-yaml and zsh are unavailable" >&2
+          exit 1
       # No apt at all: the sandbox tree provably needs neither python3-yaml nor
       # zsh (W9 above), so this leg only needs the pinned bats binary. A PR
       # that arms `sandbox` alone therefore runs no apt at all, instead of the
