@@ -88,6 +88,7 @@ readonly WTI_EXCLUDED='.gaia/scripts/check-debt-issue-metadata.sh|argument-drive
 .gaia/scripts/check-updates.sh|SessionStart update probe that writes a cache; network-dependent and asserts no invariant
 .gaia/scripts/lint-git-path-quoting.sh|runs transitively, shell-lint.sh invokes it and shell-lint.sh is itself a member
 .gaia/scripts/lint-grep-ere-escapes.sh|runs transitively, shell-lint.sh invokes it and shell-lint.sh is itself a member
+.gaia/scripts/lint-errexit-status-read.sh|runs transitively, shell-lint.sh invokes it and shell-lint.sh is itself a member
 .gaia/scripts/lint-hook-array-guard.sh|runs transitively, shell-lint.sh invokes it and shell-lint.sh is itself a member
 .gaia/scripts/lint-workflow-run-interpolation.sh|runs transitively, shell-lint.sh invokes it and shell-lint.sh is itself a member
 .gaia/tests/bats-shards.sh|harness plumbing, it partitions suites into shards rather than asserting anything; the partition itself is the bats member above
