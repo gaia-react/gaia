@@ -470,8 +470,8 @@ echo "$PATHS $rc"'
   fixture_script 'set -euo pipefail
 cat > /tmp/fixture.sh <<EOF
 set -e
-out=\$(some_command)
-rc=\$?
+out=$(some_command)
+rc=$?
 EOF
 echo done'
   run_linter
@@ -526,6 +526,95 @@ two'
   [ "$status" -eq 1 ]
   grep -qF -- 'lost track of shell state' <<<"$output"
   grep -qF -- 'check.sh' <<<"$output"
+}
+
+# --- the husky surface arms like the run: bodies, not like a script ---------
+
+@test "arms a husky hook with no set -e, because husky runs it under sh -e" {
+  fixture_repo
+  fixture_file .husky/pre-commit 'out=$(some_command)
+rc=$?
+echo "$rc"'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- '.husky/pre-commit:2:' <<<"$output"
+}
+
+@test "a set +e in a husky hook still disarms from that point" {
+  fixture_repo
+  fixture_file .husky/pre-commit 'set +e
+out=$(some_command)
+rc=$?
+echo "$rc"'
+  run_linter
+  [ "$status" -eq 0 ]
+}
+
+@test "an ordinary tracked script is still off by default" {
+  fixture_repo
+  fixture_script 'out=$(some_command)
+rc=$?
+echo "$rc"'
+  run_linter
+  [ "$status" -eq 0 ]
+}
+
+# --- assignment shapes ------------------------------------------------------
+
+@test "flags an appending assignment, which takes the substitution status too" {
+  fixture_repo
+  fixture_script 'set -e
+out=seed
+out+=$(some_command)
+rc=$?
+echo "$out $rc"'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- 'check.sh:4:' <<<"$output"
+}
+
+@test "quiet on an env-prefix assignment, whose status belongs to the command" {
+  fixture_repo
+  fixture_script 'set -e
+FOO=$(some_command) run_thing --flag
+rc=$?
+echo "$rc"'
+  run_linter
+  [ "$status" -eq 0 ]
+}
+
+@test "an env-prefix pair with no command is still a bare assignment" {
+  fixture_repo
+  fixture_script 'set -e
+FOO=$(some_command) BAR=1
+rc=$?
+echo "$rc"'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- 'check.sh:3:' <<<"$output"
+}
+
+@test "a redirection after the value does not read as an env prefix" {
+  fixture_repo
+  fixture_script 'set -e
+out=$(some_command) > log
+rc=$?
+echo "$rc"'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- 'check.sh:3:' <<<"$output"
+}
+
+@test "a desync report does not print the status-read repair, which is not its fix" {
+  fixture_repo
+  fixture_script 'set -euo pipefail
+cat > /tmp/f.txt <<NEVERCLOSED
+one'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- 'lost track of shell state' <<<"$output"
+  grep -qF -- 'letting the assignment hand its status on' <<<"$output" && return 1
+  true
 }
 
 # --- the gate refuses to report clean over nothing -------------------------

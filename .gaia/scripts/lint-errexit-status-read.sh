@@ -111,15 +111,32 @@
 #     builtin rather than to the substitution, so errexit does not fire and the
 #     read is reachable -- it just always reads zero. That is a real defect and a
 #     different one, and shellcheck already carries it as SC2155.
-#   - An assignment guarded by `||` or `&&`, or written as one member of a
-#     pipeline or a `;`-separated list. Errexit exempts a command whose status is
-#     consumed by an AND-OR list, which is exactly what the repair above builds,
-#     so flagging it would red the tree on the fix.
+#   - An assignment whose status an AND-OR list CONSUMES rather than lets fall
+#     to the shell: `out=$(cmd) || rc=$?`, and the same in a pipeline. That is
+#     exactly what the repair above builds, so flagging it would red the tree on
+#     the fix. The exemption is positional and this bullet claims only the
+#     position it covers: errexit spares the NON-FINAL commands of an AND-OR
+#     list, so a trailing `cond && out=$(cmd)` does exit, and that shape is a
+#     blind spot below rather than a semantic non-issue.
+#   - An ENV-PREFIX assignment (`FOO=$(cmd) run_thing`). The status belongs to
+#     the prefixed command, so a failing substitution in the prefix never trips
+#     errexit; `set -e; FOO=$(false) echo hi` runs and survives.
 #   - An assignment used as an `if`/`while`/`until` CONDITION, which never
 #     matches the assignment shape below because the line begins with the
 #     keyword.
 #
 # Known FAIL-OPEN blind spots, stated rather than discovered later:
+#   - An assignment in the FINAL position of an AND-OR list (`cond && out=$(cmd)`
+#     with a status read below it). The shell does exit there, so it is the
+#     class, and it is missed because a control operator anywhere in the
+#     statement disqualifies it with no position tracking. Widening this needs
+#     the walk to know which side of the operator the assignment sits on, which
+#     is real parsing rather than a looser test, and no tracked file here writes
+#     the shape.
+#   - A statement whose first word ends on a LATER line than the one the
+#     assignment starts on. The env-prefix exclusion reads the first top-level
+#     whitespace as an offset into a single line, so a continued statement is
+#     classified as a bare assignment.
 #   - A `$?` reached through a variable indirection, or a status stored by a
 #     `trap` body that a later line then reads. Both are genuinely deferred
 #     reads whose value depends on when the body runs, which a line-oriented
@@ -183,9 +200,18 @@ function walk(line,   n, i, c, j, ch, delim) {
   W_op = 0
   W_stop = 0
   W_sub = 0
+  W_space_at = 0
   n = length(line)
   for (i = 1; i <= n; i++) {
     c = substr(line, i, 1)
+
+    # Where the first word of this statement ends, recorded only while the walk
+    # is at a clean top level so whitespace inside a quoted string or a
+    # substitution never counts. feed() reads it to tell an env-prefix apart from
+    # a bare assignment.
+    if (W_space_at == 0 && W_depth == 0 && W_q == "" && !W_tick \
+        && (c == " " || c == "\t"))
+      W_space_at = i
 
     # Single quotes make every byte literal, backslash included, so this test
     # comes before the escape handling below.
@@ -381,7 +407,7 @@ function report(n, aline) {
 }
 
 # feed(line, n): run one line of shell through the detector.
-function feed(line, n,   stripped, probe) {
+function feed(line, n,   stripped, probe, tail) {
   # An open heredoc swallows whole lines until its terminator: the body is data,
   # so nothing in it arms, disarms, or classifies. The terminator comparison
   # tolerates trailing whitespace deliberately. Bash does not, but the two
@@ -424,7 +450,7 @@ function feed(line, n,   stripped, probe) {
     # VALUE is a command substitution is walk()`s answer rather than a second
     # regex here, so `$((` arithmetic is told apart from `$(` by the same state
     # machine that has to tell them apart anyway.
-    isname = (stripped ~ /^[A-Za-z_][A-Za-z0-9_]*(\[[^]]*\])?=/)
+    isname = (stripped ~ /^[A-Za-z_][A-Za-z0-9_]*(\[[^]]*\])?\+?=/)
     cand_line = n
     stmt_op = 0
     stmt_sub = 0
@@ -439,6 +465,25 @@ function feed(line, n,   stripped, probe) {
   if (W_op) stmt_op = 1
   if (W_sub) stmt_sub = 1
   cont = 0
+  # An ENV-PREFIX assignment (`FOO=$(cmd) run_thing`) is not this class: the
+  # status the shell takes is the prefixed COMMAND, so a failing substitution in
+  # the prefix does not trip errexit at all (`set -e; FOO=$(false) echo hi` runs
+  # and survives). Reported anyway it would be a wrong verdict carrying a repair
+  # that makes no sense, which is the direction that gets a gate bypassed rather
+  # than obeyed. Detect it from the tokenizer own record of the first top-level
+  # whitespace: whatever follows is another word of the same simple command. A
+  # further ASSIGNMENT there is still the class (`FOO=$(false) BAR=1` does exit),
+  # and so is a redirection or a statement separator, so only a command word
+  # disqualifies. Bounded to a statement that ends on its own line, since
+  # W_space_at indexes into that line.
+  if (isname && W_space_at > 0) {
+    tail = substr(line, W_space_at)
+    sub(/^[ \t]+/, "", tail)
+    if (tail != "" \
+        && tail !~ /^[A-Za-z_][A-Za-z0-9_]*(\[[^]]*\])?\+?=/ \
+        && index(";|&#()<>", substr(tail, 1, 1)) == 0)
+      isname = 0
+  }
   if (isname && stmt_sub && !stmt_op && armed) { pending = 1; pending_line = cand_line }
   isname = 0
 
@@ -454,7 +499,7 @@ function feed(line, n,   stripped, probe) {
 # scan_shell: the *.sh and husky half. Errexit starts OFF, because a script that
 # never turns it on does not carry the class.
 readonly SHELL_AWK='
-BEGIN { armed = 0; reset_state() }
+BEGIN { armed = armed_init; reset_state() }
 { feed($0, FNR) }
 END { check_desync("the file") }
 '
@@ -518,10 +563,21 @@ END { if (inrun) check_desync("the last run: body") }
 # run on stock macOS /bin/bash (3.2.57). NUL-delimited and `core.quotepath=false`
 # so a path carrying a non-ASCII byte is not handed over C-quoted and silently
 # dropped by the `[ -f ]` test below.
-shell_files=()
+sh_files=()
 while IFS= read -r -d '' f; do
-  shell_files+=("$f")
-done < <(git -c core.quotepath=false ls-files -z '*.sh' '.husky/*' | LC_ALL=C sort -z)
+  sh_files+=("$f")
+done < <(git -c core.quotepath=false ls-files -z '*.sh' | LC_ALL=C sort -z)
+
+# The husky hooks are collected separately from `*.sh` because they ARM
+# differently, not merely because the glob misses them. `.husky/_/h` invokes
+# every hook as `sh -e "$s"`, so errexit is on there whether or not the hook says
+# so, exactly as it is inside an Actions `run:` body; `.husky/pre-commit` carries
+# no `set -e` and is live for the class today. Reading them off-by-default with
+# the ordinary scripts is what left that whole surface certified clean.
+husky_files=()
+while IFS= read -r -d '' f; do
+  husky_files+=("$f")
+done < <(git -c core.quotepath=false ls-files -z '.husky/*' | LC_ALL=C sort -z)
 
 yaml_files=()
 while IFS= read -r -d '' f; do
@@ -539,30 +595,44 @@ done < <(git -c core.quotepath=false ls-files -z \
 # then print `clean` and exit 0 having scanned nothing, which is the lie-green
 # failure gates exist to stop. Every real tree carries both sets, so an empty
 # result means the discovery is wrong rather than the tree.
-if [ "${#shell_files[@]}" -eq 0 ] || [ "${#yaml_files[@]}" -eq 0 ]; then
-  echo "lint-errexit-status-read: ERROR: no tracked shell or no tracked workflows matched the scan surface; nothing was scanned" >&2
+if [ "${#sh_files[@]}" -eq 0 ] || [ "${#yaml_files[@]}" -eq 0 ]; then
+  echo "lint-errexit-status-read: ERROR: no tracked *.sh or no tracked workflows matched the scan surface; nothing was scanned" >&2
   exit 1
 fi
 
 report=""
-for f in ${shell_files[@]+"${shell_files[@]}"}; do
+for f in ${sh_files[@]+"${sh_files[@]}"}; do
   [ -f "$f" ] || continue
-  hits="$(awk -v file="$f" "$CORE_AWK$SHELL_AWK" "$f")"
+  hits="$(awk -v file="$f" -v armed_init=0 "$CORE_AWK$SHELL_AWK" "$f")"
+  [ -z "$hits" ] || report+="$hits"$'\n'
+done
+# The husky set is allowed to be empty and is simply skipped, mirroring the way
+# .gaia/tests/shell-lint.sh treats its own *.bats set: an adopter clone may
+# legitimately carry no hooks, while every real tree carries tracked *.sh, which
+# is why only that set and the workflows are hard preconditions above.
+for f in ${husky_files[@]+"${husky_files[@]}"}; do
+  [ -f "$f" ] || continue
+  hits="$(awk -v file="$f" -v armed_init=1 "$CORE_AWK$SHELL_AWK" "$f")"
   [ -z "$hits" ] || report+="$hits"$'\n'
 done
 for f in ${yaml_files[@]+"${yaml_files[@]}"}; do
   [ -f "$f" ] || continue
-  hits="$(awk -v file="$f" "$CORE_AWK$YAML_AWK" "$f")"
+  hits="$(awk -v file="$f" -v armed_init=1 "$CORE_AWK$YAML_AWK" "$f")"
   [ -z "$hits" ] || report+="$hits"$'\n'
 done
 
 if [ -n "$report" ]; then
   printf '%s' "$report"
-  # printf, not echo: the hint carries `$` and backslashes that echo may expand
-  # depending on the shell (SC2028). The format string is single-quoted so the
-  # sample code inside stays literal -- it is being printed, not run.
-  # shellcheck disable=SC2016
-  printf 'Fix each by letting the assignment hand its status on instead of dying on it:\n    rc=0\n    out="$(some_command ...)" || rc=$?\n' >&2
+  # The repair hint answers a status-read finding. A desync ERROR is a different
+  # verdict with a different (and unknown) repair, so printing the hint under a
+  # report carrying only those would name a fix the operator does not need.
+  if printf '%s' "$report" | grep -qv ': ERROR: the scan lost track of shell state'; then
+    # printf, not echo: the hint carries `$` and backslashes that echo may expand
+    # depending on the shell (SC2028). The format string is single-quoted so the
+    # sample code inside stays literal -- it is being printed, not run.
+    # shellcheck disable=SC2016
+    printf 'Fix each by letting the assignment hand its status on instead of dying on it:\n    rc=0\n    out="$(some_command ...)" || rc=$?\n' >&2
+  fi
   exit 1
 fi
 

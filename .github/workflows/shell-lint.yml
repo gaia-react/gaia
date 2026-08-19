@@ -75,12 +75,16 @@ jobs:
               # The gate folds in four guards whose scan surface INCLUDES the
               # workflow `run:` blocks, which no *.sh glob reaches: lint-git-
               # path-quoting.sh, lint-workflow-run-interpolation.sh, lint-grep-
-              # ere-escapes.sh, and lint-errexit-status-read.sh. Two of the four
-              # also scan tracked *.sh, so this line is not their whole surface;
-              # it is the only path that arms the half no other line here covers.
-              # All four are named because this line is the sole CI path for
-              # each, so retiring any one of them must not read as licence to
-              # drop it. Without this line a PR that changes only a workflow
+              # ere-escapes.sh, and lint-errexit-status-read.sh. Only lint-
+              # workflow-run-interpolation.sh is workflow/action/template-only;
+              # the rest scan tracked *.sh as well, so this line is not their
+              # whole surface, it is the only path that arms the half no other
+              # line here covers. Naming the exception rather than counting the
+              # others is deliberate: a count rots the moment a guard widens its
+              # pathspec. All four are named because this line is the sole CI
+              # path for each guard's `run:`-block half, so retiring any one of
+              # them must not read as licence to drop it. Without this line a PR
+              # that changes only a workflow
               # resolves `shell=false`, skips the gate and greens the check
               # having linted the very files it just changed -- the same gap the
               # .husky/** line above closes, one file type over.
