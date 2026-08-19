@@ -2139,3 +2139,213 @@ describe('shipped maintainer-paths check', () => {
     );
   });
 });
+
+const SCOPE_SKIP_CONFIG = String.raw`
+transforms:
+  - type: leak-check
+    scope-skip:
+      - "**/*.png"
+    checks:
+      - id: uat-narrative
+        pattern: "UAT-[0-9]{3}"
+        scope:
+          - "**"
+      - id: maintainer-paths
+        pattern: "\\.gaia/cli/src\\b"
+        scope:
+          - "**"
+`;
+
+describe('leak-check scope-skip', () => {
+  let sandbox: Sandbox;
+  let stdio: ReturnType<typeof captureStdio>;
+
+  beforeEach(() => {
+    stdio = captureStdio();
+    sandbox = setupSandbox({config: SCOPE_SKIP_CONFIG});
+  });
+
+  afterEach(() => {
+    stdio.restore();
+    sandbox.cleanup();
+    vi.restoreAllMocks();
+  });
+
+  test('skips a file the skip list names even when the scope admits it', () => {
+    sandbox.writeStaged('public/icon.png', 'UAT-042');
+
+    expect(run([sandbox.stagingDir, '--config', sandbox.configPath])).toBe(0);
+    expect(stdio.outputs.join('')).toContain('leaks: none');
+  });
+
+  test('one skip list covers every check in the transform', () => {
+    sandbox.writeStaged('public/icon.png', 'see .gaia/cli/src/scrub.ts');
+
+    expect(run([sandbox.stagingDir, '--config', sandbox.configPath])).toBe(0);
+  });
+
+  test('still scans a file the skip list does not name', () => {
+    sandbox.writeStaged('docs/notes.md', 'UAT-042');
+
+    expect(run([sandbox.stagingDir, '--config', sandbox.configPath])).toBe(1);
+    expect(stdio.outputs.join('')).toContain('docs/notes.md');
+  });
+});
+
+const FIELD_REWRITE_CONFIG = String.raw`
+transforms:
+  - type: json-field-rewrite
+    paths:
+      - ".gaia/state-registry.json"
+    selectors:
+      - path: "entries[].source"
+        pattern: "\\bSPEC-[0-9]{3,}\\s*"
+        replacement: ""
+`;
+
+describe('json-field-rewrite transform', () => {
+  let sandbox: Sandbox;
+  let stdio: ReturnType<typeof captureStdio>;
+
+  const REGISTRY = '.gaia/state-registry.json';
+
+  const writeRegistry = (value: unknown): void => {
+    sandbox.writeStaged(REGISTRY, JSON.stringify(value, null, 2));
+  };
+
+  const readRegistry = (): {entries?: {source?: unknown}[]} =>
+    JSON.parse(
+      readFileSync(path.join(sandbox.stagingDir, REGISTRY), 'utf8')
+    ) as {entries?: {source?: unknown}[]};
+
+  beforeEach(() => {
+    stdio = captureStdio();
+  });
+
+  afterEach(() => {
+    stdio.restore();
+    sandbox.cleanup();
+    vi.restoreAllMocks();
+  });
+
+  test('rewrites the field in every array element and keeps the key', () => {
+    sandbox = setupSandbox({config: FIELD_REWRITE_CONFIG});
+    writeRegistry({
+      entries: [{source: 'SPEC-061 §shared'}, {source: 'SPEC-063 §per-tree'}],
+    });
+
+    expect(run([sandbox.stagingDir, '--config', sandbox.configPath])).toBe(0);
+    expect(readRegistry().entries).toEqual([
+      {source: '§shared'},
+      {source: '§per-tree'},
+    ]);
+  });
+
+  test('replaces every occurrence in one value, not just the first', () => {
+    sandbox = setupSandbox({config: FIELD_REWRITE_CONFIG});
+    writeRegistry({
+      entries: [{source: 'SPEC-061 §per-tree (see SPEC-061 rationale)'}],
+    });
+
+    expect(run([sandbox.stagingDir, '--config', sandbox.configPath])).toBe(0);
+    expect(readRegistry().entries?.[0]?.source).toBe(
+      '§per-tree (see rationale)'
+    );
+  });
+
+  test('no-ops when the selector path matches nothing', () => {
+    sandbox = setupSandbox({config: FIELD_REWRITE_CONFIG});
+    writeRegistry({elsewhere: [{source: 'SPEC-061 §shared'}]});
+
+    expect(run([sandbox.stagingDir, '--config', sandbox.configPath])).toBe(0);
+    expect(stdio.outputs.join('')).toContain('rewrote 0 json field(s)');
+  });
+
+  test('no-ops without throwing when a segment has the wrong shape', () => {
+    sandbox = setupSandbox({config: FIELD_REWRITE_CONFIG});
+    // `entries[]` declares an array; an object there is the stale-selector
+    // case. Descending into it anyway would rewrite a field the selector
+    // never addressed, so the value has to survive untouched.
+    writeRegistry({entries: {source: 'SPEC-061 §shared'}});
+
+    expect(run([sandbox.stagingDir, '--config', sandbox.configPath])).toBe(0);
+    expect(
+      readFileSync(path.join(sandbox.stagingDir, REGISTRY), 'utf8')
+    ).toContain('SPEC-061');
+    expect(stdio.outputs.join('')).toContain('rewrote 0 json field(s)');
+  });
+
+  test('no-ops when the field is reached but the pattern does not match', () => {
+    sandbox = setupSandbox({config: FIELD_REWRITE_CONFIG});
+    const before = {entries: [{source: '§shared, no id here'}]};
+    writeRegistry(before);
+
+    expect(run([sandbox.stagingDir, '--config', sandbox.configPath])).toBe(0);
+    expect(stdio.outputs.join('')).toContain('rewrote 0 json field(s)');
+    // Counted as untouched AND left byte-identical: a rewrite reported on a
+    // no-change substitution would also rewrite the file.
+    expect(readFileSync(path.join(sandbox.stagingDir, REGISTRY), 'utf8')).toBe(
+      JSON.stringify(before, null, 2)
+    );
+  });
+
+  test('leaves a non-string field untouched', () => {
+    sandbox = setupSandbox({config: FIELD_REWRITE_CONFIG});
+    writeRegistry({entries: [{source: 61}]});
+
+    expect(run([sandbox.stagingDir, '--config', sandbox.configPath])).toBe(0);
+    expect(readRegistry().entries?.[0]?.source).toBe(61);
+  });
+
+  test('refuses to empty a field rather than writing an invalid value', () => {
+    sandbox = setupSandbox({config: FIELD_REWRITE_CONFIG});
+    // A source that is nothing but the matched id. The shipped schema gives
+    // `source` minLength 1, so writing "" would ship a registry failing its
+    // own validator; the build has to stop instead.
+    writeRegistry({entries: [{source: 'SPEC-070'}]});
+
+    expect(run([sandbox.stagingDir, '--config', sandbox.configPath])).toBe(2);
+    expect(stdio.errors.join('')).toContain('transform_failed');
+    expect(stdio.errors.join('')).toContain(REGISTRY);
+    expect(
+      readFileSync(path.join(sandbox.stagingDir, REGISTRY), 'utf8')
+    ).toContain('SPEC-070');
+  });
+
+  test('only processes files matching the paths glob', () => {
+    sandbox = setupSandbox({config: FIELD_REWRITE_CONFIG});
+    sandbox.writeStaged(
+      '.gaia/other-registry.json',
+      JSON.stringify({entries: [{source: 'SPEC-061 §shared'}]}, null, 2)
+    );
+
+    expect(run([sandbox.stagingDir, '--config', sandbox.configPath])).toBe(0);
+    expect(
+      readFileSync(
+        path.join(sandbox.stagingDir, '.gaia/other-registry.json'),
+        'utf8'
+      )
+    ).toContain('SPEC-061');
+  });
+
+  test('exits 2 on invalid JSON', () => {
+    sandbox = setupSandbox({config: FIELD_REWRITE_CONFIG});
+    sandbox.writeStaged(REGISTRY, '{not json');
+
+    expect(run([sandbox.stagingDir, '--config', sandbox.configPath])).toBe(2);
+    expect(stdio.errors.join('')).toContain('transform_failed');
+  });
+
+  test('--json report includes the json_field_rewrite section', () => {
+    sandbox = setupSandbox({config: FIELD_REWRITE_CONFIG});
+    writeRegistry({entries: [{source: 'SPEC-061 §shared'}]});
+
+    expect(
+      run([sandbox.stagingDir, '--config', sandbox.configPath, '--json'])
+    ).toBe(0);
+    expect(JSON.parse(stdio.outputs.join('')).json_field_rewrite).toEqual({
+      fields_rewritten: 1,
+      files_touched: [REGISTRY],
+    });
+  });
+});

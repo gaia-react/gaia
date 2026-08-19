@@ -7,7 +7,8 @@
 # result both times.
 #
 # This catches:
-#   - non-idempotent scrub transforms (a regression class)
+#   - non-idempotent scrub transforms (a regression class), asserted over
+#     every mutating transform's own count rather than marker-strip's alone
 #   - staging tree mutations between scrub runs
 #   - allowlist drift if the test fixture path differs from release.yml
 set -euo pipefail
@@ -31,16 +32,99 @@ if ! "$PROJECT_ROOT/.gaia/cli/gaia-maintainer" release scrub "$STAGING" --json >
   exit 1
 fi
 
-# Parse JSON: assert blocks_stripped == 0 (first pass already stripped),
-# leaks == [].
+# Parse JSON: every mutation counter must read 0 (the first pass already did
+# the work), leaks == [], unbalanced_markers == [].
 require_cmd jq "jq required for parsing scrub --json output"
-BLOCKS=$(jq -r '.marker_strip.blocks_stripped' "$SCRUB_OUTPUT")
 LEAK_COUNT=$(jq -r '.leaks | length' "$SCRUB_OUTPUT")
 UNBALANCED_COUNT=$(jq -r '.unbalanced_markers | length' "$SCRUB_OUTPUT")
 
-if [ "$BLOCKS" != "0" ]; then
-  log "Second scrub pass stripped $BLOCKS marker block(s); first pass missed them or tree was mutated"
-  fail "scrub is not idempotent ($BLOCKS additional blocks stripped on rerun)"
+# Idempotence is asserted over EVERY mutating transform, and the set of them
+# is DERIVED from the report rather than listed here. Each transform reports
+# under its own object key with a numeric count of what it changed, so
+# enumerating the report's numeric fields covers a transform added later with
+# no edit to this file.
+#
+# Deriving is the point, not a convenience. A hand-maintained list of counters
+# is the same shape `.gaia/release-scrub.yml` records as having recurred five
+# times before the leak-check scopes stopped being lists, and it had already
+# rotted here once: this harness read `marker_strip.blocks_stripped` alone
+# while three other transforms mutated unasserted. A list would rot here next.
+MUTATION_COUNTERS="$(jq -r '
+  to_entries[]
+  | select(.value | type == "object")
+  | .key as $transform
+  | .value
+  | to_entries[]
+  | select(.value | type == "number")
+  | "\($transform).\(.key)=\(.value)"
+' "$SCRUB_OUTPUT")"
+
+# Every numeric inside a transform section is treated as a mutation count.
+# That is deliberate and it is the fail-closed direction: a section that later
+# publishes a diagnostic number (files_scanned, duration_ms) reds this harness
+# naming the field, which is a loud prompt to teach this harness about it:
+# exempt the field, or give the section a counter-shaped report. Relocating it
+# is not a remedy, every placement outside a transform section reds too, some
+# of them naming the wrong cause. The alternative, a list of which numerics
+# count, is the list this derivation exists to delete.
+#
+# Three fail-closed guards on the derivation itself, because an enumeration
+# that comes back short reads exactly like a clean run.
+#
+# 1. An empty enumeration: the report lost its shape wholesale.
+# 2. A transform section whose numerics are gone entirely. Note the bound
+#    precisely: this fires when the section has NO numeric left, not when one
+#    counter among several disappears. Per-counter absence is not detectable
+#    without naming the counters, which is the list this rewrite removed, so
+#    the guard covers the sole-counter case (every section's shape today) and
+#    the comment does not claim more.
+# 3. A top-level key that is neither a known non-transform section nor an
+#    object. Guards 1 and 2 both walk `type == "object"` only, so a transform
+#    reporting a bare top-level number, or an array-valued section, would be
+#    invisible to both and mutate unasserted forever. The two exempt keys are
+#    named, so a NEW non-transform key also trips this and forces a decision
+#    here rather than silently widening the blind spot.
+#
+# A counter merely RENAMED needs no guard: it is still enumerated, under its
+# new name, and still has to read 0.
+if [ -z "$MUTATION_COUNTERS" ]; then
+  log "scrub --json report:"
+  cat "$SCRUB_OUTPUT" >&2
+  fail "no mutation counters found in the scrub report; its shape changed"
+  exit 1
+fi
+
+COUNTERLESS="$(jq -r '
+  to_entries[]
+  | select(.value | type == "object")
+  | select([.value | to_entries[] | select(.value | type == "number")] | length == 0)
+  | .key
+' "$SCRUB_OUTPUT")"
+if [ -n "$COUNTERLESS" ]; then
+  log "Transform section(s) reporting no numeric counter:"
+  printf '%s\n' "$COUNTERLESS" >&2
+  fail "a scrub transform stopped reporting a count; idempotence is unverifiable for it"
+  exit 1
+fi
+
+UNSECTIONED="$(jq -r '
+  to_entries[]
+  | select(.key as $k | ["leaks", "unbalanced_markers"] | index($k) | not)
+  | select(.value | type != "object")
+  | .key
+' "$SCRUB_OUTPUT")"
+if [ -n "$UNSECTIONED" ]; then
+  log "Top-level report key(s) outside the scanned set:"
+  printf '%s\n' "$UNSECTIONED" >&2
+  fail "a scrub report key is neither a known non-transform section nor an object; idempotence is unverifiable for it"
+  exit 1
+fi
+
+NONZERO_COUNTERS="$(printf '%s\n' "$MUTATION_COUNTERS" | grep -v '=0$' || true)"
+if [ -n "$NONZERO_COUNTERS" ]; then
+  log "Second scrub pass mutated the tree; first pass missed it or the tree changed between passes:"
+  printf '%s\n' "$NONZERO_COUNTERS" | sed 's/^/  /' >&2
+  fail "scrub is not idempotent ($(printf '%s' "$NONZERO_COUNTERS" | tr '\n' ' '))"
   exit 1
 fi
 
@@ -68,4 +152,6 @@ if [ -n "$MARKER_FRAGMENTS" ]; then
   exit 1
 fi
 
-pass "leak-replay clean (0 blocks, 0 leaks, 0 unbalanced markers)"
+# Name the counters actually checked, so a green run shows its own coverage
+# rather than leaving the reader to assume the derivation found anything.
+pass "leak-replay clean (0 leaks, 0 unbalanced markers; $(printf '%s' "$MUTATION_COUNTERS" | tr '\n' ' '))"

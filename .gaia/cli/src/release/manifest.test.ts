@@ -286,6 +286,18 @@ describe('lintScanScopes', () => {
     expect(lintScanScopes(files, ['.gaia/scripts/**'])).toEqual([]);
   });
 
+  test('a whole-tree ** scope covers every owned .sh directory', () => {
+    const files = {'.gaia/scripts/foo.sh': 'owned' as const};
+    expect(lintScanScopes(files, ['**'])).toEqual([]);
+  });
+
+  test('a whole-tree ** scope still leaves a SCAN_GLOBS gap reportable', () => {
+    const files = {'.gaia/new-tool/foo.sh': 'owned' as const};
+    expect(lintScanScopes(files, ['**'])).toEqual([
+      {dir: '.gaia/new-tool', missingFrom: ['runtime-deps SCAN_GLOBS']},
+    ]);
+  });
+
   test('flags a directory missing from the maintainer-paths scope only', () => {
     const files = {'.gaia/scripts/foo.sh': 'owned' as const};
     const gaps = lintScanScopes(files, ['.claude/**']);

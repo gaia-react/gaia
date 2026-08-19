@@ -15464,7 +15464,7 @@ var checkSubject = (subject) => {
   }
   if (!isCommitType(header.type)) {
     return {
-      message: `"${header.type}" is not a declared commit type. Expected one of: ${COMMIT_TYPES.join(", ")}. Add it to COMMIT_TYPES in .gaia/cli/src/util/conventional-commit.ts if it should be, which forces a release-bump, CHANGELOG, and wiki disposition for it.`,
+      message: `"${header.type}" is not a declared commit type. Expected one of: ${COMMIT_TYPES.join(", ")}. Add it to the declared commit types if it should be, which forces a release-bump, CHANGELOG, and wiki disposition for it.`,
       ok: false
     };
   }
@@ -16179,8 +16179,8 @@ var run8 = (argv, options = {}) => {
 var HELP_TEXT8 = `Usage: gaia ci-stale-check --label <name> --base <branch> [--author <login>] [--json]
 
   Decides whether a workflow run should skip because an existing GAIA CI
-  PR is already open. Both --label and --author are required predicates
-  (UAT-019); --author defaults to "github-actions[bot]".
+  PR is already open. Both --label and --author are required predicates;
+  --author defaults to "github-actions[bot]".
 
   Exit code 0 on either decision; non-zero only on gh invocation failure.
 `;

@@ -1,7 +1,7 @@
 name: 'GAIA CI, Merge and Watch'
 description: |
   Enables auto-merge on a GAIA CI PR, watches post-merge CI, and runs the
-  one-shot auto-revert + escalation pipeline on failure. Slice 2 of SPEC-001.
+  one-shot auto-revert + escalation pipeline on failure.
 inputs:
   pr-number:
     description: 'PR number to merge.'
@@ -47,7 +47,7 @@ runs:
         rc=$?
         if [[ $rc -ne 0 ]]; then
           if [[ "$merge_output" == *"is already used by worktree"* ]]; then
-            echo "::notice title=GAIA CI::PR #$PR_NUMBER auto-merge already enabled (worktree-conflict ignored per SPEC contract)"
+            echo "::notice title=GAIA CI::PR #$PR_NUMBER auto-merge already enabled (gh reported the local branch is checked out in a worktree, which does not affect the merge state on GitHub)"
           else
             echo "::error title=GAIA CI::failed to enable auto-merge for PR #$PR_NUMBER: $merge_output"
             exit 1

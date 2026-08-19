@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "GAIA .gaia/local state registry",
-  "description": "Constrains .gaia/state-registry.json: the one classification of every .gaia/local entry (SPEC-061). A malformed edit fails this cheap validation before any consumer or conformance check runs.",
+  "description": "Constrains .gaia/state-registry.json: the one classification of every .gaia/local entry. A malformed edit fails this cheap validation before any consumer or conformance check runs.",
   "type": "object",
   "additionalProperties": false,
   "required": ["$schema", "version", "description", "entries", "residue", "drop_zones", "rm_whitelist", "integrity_snapshot"],

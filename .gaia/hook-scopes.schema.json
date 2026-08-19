@@ -26,7 +26,7 @@
         },
         "scope": {
           "enum": ["main-only", "per-tree", "any"],
-          "description": "main-only: anchors on the main checkout root (gaia_resolve_main_root); covers registry scope main-only AND shared (shared state physically lives under main's .gaia/local, SPEC-061). per-tree: anchors on the current tree root (gaia_resolve_tree_root, payload-cwd-anchored); covers registry scope per-tree. any: touches no root-anchored .gaia/local state, exempt from the derive arm."
+          "description": "main-only: anchors on the main checkout root (gaia_resolve_main_root); covers registry scope main-only AND shared (shared state physically lives under main's .gaia/local). per-tree: anchors on the current tree root (gaia_resolve_tree_root, payload-cwd-anchored); covers registry scope per-tree. any: touches no root-anchored .gaia/local state, exempt from the derive arm."
         },
         "state": {
           "type": "array",

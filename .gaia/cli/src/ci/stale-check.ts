@@ -15,8 +15,8 @@ import {runGh} from './util/run-process.js';
 const HELP_TEXT = `Usage: gaia ci-stale-check --label <name> --base <branch> [--author <login>] [--json]
 
   Decides whether a workflow run should skip because an existing GAIA CI
-  PR is already open. Both --label and --author are required predicates
-  (UAT-019); --author defaults to "github-actions[bot]".
+  PR is already open. Both --label and --author are required predicates;
+  --author defaults to "github-actions[bot]".
 
   Exit code 0 on either decision; non-zero only on gh invocation failure.
 `;
