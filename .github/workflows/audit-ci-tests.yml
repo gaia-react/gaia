@@ -666,7 +666,62 @@ jobs:
       # derives from the suites rather than from here.
       - if: contains(fromJSON('["hooks-4", "lib", "scripts-1", "scripts-2", "scripts-3"]'), matrix.shard) && (steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch')
         name: Install the YAML parser and zsh
-        run: sudo apt-get update && sudo apt-get install -y python3-yaml zsh
+        # Sized for fast failure and honest attribution, NOT to the leg, and
+        # deliberately not sized to cover three worst-case attempts. Whichever
+        # cap fires the leg fails and `Audit CI Tests`
+        # (.gaia/scripts/verify-required-checks.sh names it required) reds, so
+        # this cap does not change the colour: it changes how long the answer
+        # takes and what it points at, an apt step that timed out rather than a
+        # leg cancelled at 13 minutes with no stated cause. Either way that
+        # leg's tests do not run.
+        #
+        # What preserves the test result on a stall is the retry below, not
+        # this cap. Keeping the cap while dropping the loop reproduces the
+        # failure both exist to absorb.
+        #
+        # The honest limit: apt serializes per host queue, so one unreachable
+        # archive host can consume minutes inside attempt 1 and leave attempts
+        # 2 and 3 unreached. That is the intended trade rather than an
+        # oversight, because a whole-host outage is exactly the case a retry
+        # cannot help, and failing fast beats spending the leg budget proving
+        # it.
+        timeout-minutes: 5
+        # Bounded twice, because the two bounds catch different failures and
+        # neither is sufficient alone.
+        #
+        # `Acquire::*::Timeout` breaks a STALLED fetch in seconds rather than
+        # letting it hold the connection, which is what makes the retry
+        # reachable at all: an attempt that hangs past the step budget never
+        # gets a second one, so the loop below without these options would
+        # still red the check on the failure it exists to absorb. Both the
+        # `http` and `https` knobs are set because the option is keyed on the
+        # acquire method, not on the scheme the loop happens to hit.
+        #
+        # Three attempts because an archive.ubuntu.com stall is transient:
+        # re-running an identically-stalled leg by hand passes it in a
+        # fraction of the time it hung for. A genuine mirror outage still
+        # fails red rather than hanging, three short attempts later.
+        #
+        # A bounded shell retry rather than a marketplace retry action: this
+        # repository vendors its pinned bats and keeps its composite actions
+        # local under .github/actions/, so a third-party action here would be
+        # the only dependency of its kind, pinned and reviewed for a loop bash
+        # states in ten lines.
+        run: |
+          set -euo pipefail
+          apt_opts=(-o Acquire::Retries=2 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20)
+          for attempt in 1 2 3; do
+            if sudo apt-get "${apt_opts[@]}" update \
+              && sudo apt-get "${apt_opts[@]}" install -y python3-yaml zsh; then
+              exit 0
+            fi
+            echo "apt attempt ${attempt} of 3 failed" >&2
+            if [ "${attempt}" -lt 3 ]; then
+              sleep $((attempt * 10))
+            fi
+          done
+          echo "apt-get failed after 3 attempts; python3-yaml and zsh are unavailable" >&2
+          exit 1
       # No apt at all: the sandbox tree provably needs neither python3-yaml nor
       # zsh (W9 above), so this leg only needs the pinned bats binary. A PR
       # that arms `sandbox` alone therefore runs no apt at all, instead of the
