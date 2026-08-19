@@ -693,16 +693,19 @@ jobs:
         # call itself is what makes the loop reachable, whichever mirror is the
         # one misbehaving.
         timeout-minutes: 6
-        # Bounded twice, because the two bounds catch different failures and
-        # neither is sufficient alone.
+        # Bounded three times, because the three bounds catch different
+        # failures and none is sufficient alone: `Acquire::*::Timeout` per
+        # connection, `timeout` per call, and `timeout-minutes` per step.
         #
         # `Acquire::*::Timeout` breaks a STALLED fetch in seconds rather than
-        # letting it hold the connection, which is what makes the retry
-        # reachable at all: an attempt that hangs past the step budget never
-        # gets a second one, so the loop below without these options would
-        # still red the check on the failure it exists to absorb. Both the
-        # `http` and `https` knobs are set because the option is keyed on the
-        # acquire method, not on the scheme the loop happens to hit.
+        # letting it hold the connection, so an attempt that meets a dead
+        # socket usually finishes well inside its own 45s wrapper instead of
+        # being killed at it. That is all it does. It does NOT make the retry
+        # reachable, which is the per-call `timeout` above's job: these knobs
+        # were the only bound on a call for two runs, and both spent the whole
+        # step budget in attempt 1 because the failure was never a stall. Both
+        # the `http` and `https` knobs are set because the option is keyed on
+        # the acquire method, not on the scheme the loop happens to hit.
         #
         # Three attempts because an archive.ubuntu.com stall is transient:
         # re-running an identically-stalled leg by hand passes it in a
