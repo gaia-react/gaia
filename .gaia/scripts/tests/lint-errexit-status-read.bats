@@ -706,6 +706,10 @@ rc=$?
 echo "$rc"'
   run_linter
   [ "$status" -eq 1 ]
+  # The location pin, not just the exit status: the gate also exits 1 on a
+  # desync report, so a tokenizer regression would green a status-only assertion
+  # while the verdict this test exists to pin had stopped being produced.
+  grep -qF -- 'check.sh:3:' <<<"$output"
 }
 
 @test "bound: the same behind a descriptor duplicate" {
@@ -716,6 +720,45 @@ rc=$?
 echo "$rc"'
   run_linter
   [ "$status" -eq 1 ]
+  grep -qF -- 'check.sh:3:' <<<"$output"
+}
+
+@test "bound: a >& redirection fails on the single-token cause, not on arming" {
+  fixture_repo
+  # `>&` matches the arming test on its leading `>`, so it is recognised as a
+  # redirection exactly as `>` is and fails for the same reason. Grouping it with
+  # `&>` as an arming gap was wrong, and the split is measurable: deleting the
+  # exclusion's `^[0-9]*[<>]` clause flips this shape quiet and leaves `&>`
+  # reported.
+  fixture_script 'set -e
+out=$(some_command) >& log run_thing
+rc=$?
+echo "$rc"'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- 'check.sh:3:' <<<"$output"
+}
+
+@test "bound: an &> redirection is not recognised by the arming test at all" {
+  fixture_repo
+  fixture_script 'set -e
+out=$(some_command) &> log run_thing
+rc=$?
+echo "$rc"'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- 'check.sh:3:' <<<"$output"
+}
+
+@test "bound: a further assignment before the command word" {
+  fixture_repo
+  fixture_script 'set -e
+out=$(some_command) FOO=1 run_thing
+rc=$?
+echo "$rc"'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- 'check.sh:3:' <<<"$output"
 }
 
 @test "a redirection whose operand is quoted is still reported" {

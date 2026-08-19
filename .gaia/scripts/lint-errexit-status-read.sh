@@ -154,22 +154,34 @@
 #     run-interpolation gate carries and for the same reason.
 #
 # Known FALSE POSITIVES, a third direction and the one worth naming explicitly
-# because each costs a correct line a wrong verdict. All three are the same
-# root cause: the env-prefix exclusion inspects a single token where the shell
-# takes an arbitrary run of prefix words. None occurs in this tree.
+# because each costs a correct line a wrong verdict. None occurs in this tree.
+# Two distinct mechanisms, which the shapes below are grouped by rather than by
+# how they are spelled; the split is measurable, by deleting the exclusion`s own
+# `^[0-9]*[<>]` clause and seeing which shapes change verdict.
+#
+# The exclusion inspects a SINGLE TOKEN where the shell takes an arbitrary run
+# of prefix words, so it stops at the first prefix word and never reaches the
+# command behind it:
 #   - A redirection standing between the value and the command it prefixes
-#     (`out=$(cmd) > log run_thing`, and the same with `2>` or `2>&1`). The
-#     exclusion stops at the redirection and never reaches `run_thing`, so an
-#     env prefix reads as a bare assignment.
-#   - `&> log` and `>& log`, which the exclusion does not recognise as
-#     redirections at all.
+#     (`out=$(cmd) > log run_thing`, and the same with `2>`, `2>&1`, or `>&`).
+#     `>&` belongs here rather than below: its leading `>` matches the arming
+#     test, so it is recognised as a redirection exactly as `>` is, and it fails
+#     for the same reason every other shape in this bullet does.
 #   - A further assignment before the command word (`out=$(cmd) FOO=1
 #     run_thing`), which terminates the exclusion instead of being consumed.
-# The structural repair for all three is one quote-aware loop consuming every
-# assignment and redirection until a command word remains, tracked as
-# gaia-react/gaia#1486. It is deliberately not attempted here: the
-# enumerate-one-more-shape approach produced four defects across four review
-# rounds, the last of them a silent fail-open, so the repair gets its own change
+#
+# The ARMING TEST does not recognise the operator at all, so the exclusion never
+# begins:
+#   - `&> log`, whose leading `&` matches no part of `^[0-9]*[<>]`.
+#
+# The structural repair is one quote-aware loop consuming every assignment and
+# redirection until a command word remains, tracked as gaia-react/gaia#1486. It
+# closes the first group on its own; the second needs the arming test widened to
+# reach `&>` as well, and the loop`s operator pattern has to consume `>&` whole
+# or the leftover `&` reads as a control operator. It is deliberately not
+# attempted here: the enumerate-one-more-shape approach produced four defects
+# across four review rounds, the last of them a silent fail-open, so the repair
+# gets its own change
 # rather than a fifth widening.
 #
 # None of those fails SILENTLY. Tokenizer state is carried across lines, so any
@@ -541,10 +553,14 @@ function feed(line, n,   stripped, probe, tail) {
   # that makes no sense, which is the direction that gets a gate bypassed rather
   # than obeyed. Detect it from the tokenizer own record of the first top-level
   # whitespace: whatever follows is another word of the same simple command. A
-  # further ASSIGNMENT there is still the class (`FOO=$(false) BAR=1` does exit),
-  # and so is a redirection or a statement separator, so only a command word
-  # disqualifies. Bounded to a statement that ends on its own line, since
-  # W_space_at indexes into that line.
+  # further ASSIGNMENT there is still read as the class, which is right only when
+  # no command word stands behind it (`FOO=$(false) BAR=1` does exit) and wrong
+  # when one does; a redirection and a statement separator are read the same way,
+  # with the same qualification. Those are the false positives the header
+  # enumerates under `Known FALSE POSITIVES`, and they are why this reads only
+  # the first token rather than claiming to find the command word. Bounded to a
+  # statement that ends on its own line, since W_space_at indexes into that
+  # line.
   if (isname && stmt_space_at > 0) {
     tail = substr(line, stmt_space_at)
     sub(/^[ \t]+/, "", tail)
