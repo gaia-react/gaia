@@ -43,8 +43,13 @@ runs:
         MERGE_METHOD: ${{ inputs.merge-method }}
       run: |
         set -euo pipefail
-        merge_output="$(gh pr merge "$PR_NUMBER" "--$MERGE_METHOD" --auto 2>&1)"
-        rc=$?
+        # `rc=0` then `|| rc=$?`, never a bare assignment followed by `rc=$?`: an
+        # assignment takes its command substitution's status, so under `set -e`
+        # (the runner's own `shell: bash` default) a failing command kills the
+        # step on the assignment line and the `rc=$?` never runs, making every
+        # branch below dead code.
+        rc=0
+        merge_output="$(gh pr merge "$PR_NUMBER" "--$MERGE_METHOD" --auto 2>&1)" || rc=$?
         if [[ $rc -ne 0 ]]; then
           if [[ "$merge_output" == *"is already used by worktree"* ]]; then
             echo "::notice title=GAIA CI::PR #$PR_NUMBER auto-merge already enabled (gh reported the local branch is checked out in a worktree, which does not affect the merge state on GitHub)"
@@ -122,8 +127,13 @@ runs:
         MERGE_SHA: ${{ steps.wait-for-merge.outputs.merge_sha }}
       run: |
         set -euo pipefail
-        revert_json="$(gaia ci-revert open --pr "$PR_NUMBER" --label "$LABEL" --reason "post-merge CI failure on $MERGE_SHA" --json)"
-        rc=$?
+        # `rc=0` then `|| rc=$?`; see the enable-auto-merge step for why a bare
+        # assignment followed by `rc=$?` is unreachable under `set -e`. Here the
+        # dead branch is the `revert_already_opened` reuse path, and the step's
+        # death also skips the three steps gated on its `success` outcome, which
+        # is what silently swallows the priority:high/critical escalation.
+        rc=0
+        revert_json="$(gaia ci-revert open --pr "$PR_NUMBER" --label "$LABEL" --reason "post-merge CI failure on $MERGE_SHA" --json)" || rc=$?
         if [[ $rc -ne 0 ]]; then
           err_code="$(jq -r '.error // ""' <<<"$revert_json")"
           if [[ "$err_code" == "revert_already_opened" ]]; then
