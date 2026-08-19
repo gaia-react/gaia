@@ -35,14 +35,41 @@ fi
 # Parse JSON: every mutation counter must read 0 (the first pass already did
 # the work), leaks == [], unbalanced_markers == [].
 require_cmd jq "jq required for parsing scrub --json output"
+
+# Assert both non-transform sections are PRESENT and array-shaped before
+# reading their lengths. `null | length` is 0 in jq, so a report that drops
+# either section yields a count of 0 and the assertions further down pass
+# having verified nothing. The fail-closed guards below cannot cover this:
+# they assert the ABSENCE of unexpected keys, so a section RENAMED reds (its
+# new name is unsectioned) while a section DELETED leaves them nothing to see.
+#
+# Four states red here, not one: key absent, value null, value not an array,
+# and a body jq cannot parse at all (`jq -e` exits 5). The last is reachable
+# because the scrub invocation above folds stderr into this same file, so a
+# non-JSON diagnostic lands where a report is expected. The message names all
+# of them, and the report is dumped, because the four are indistinguishable
+# from the exit status alone.
+if ! jq -e 'has("leaks") and has("unbalanced_markers")
+            and (.leaks | type == "array")
+            and (.unbalanced_markers | type == "array")' "$SCRUB_OUTPUT" >/dev/null; then
+  log "scrub --json report:"
+  cat "$SCRUB_OUTPUT" >&2
+  fail "scrub report section missing, not array-shaped, or unparseable (leaks, unbalanced_markers)"
+  exit 1
+fi
+
 LEAK_COUNT=$(jq -r '.leaks | length' "$SCRUB_OUTPUT")
 UNBALANCED_COUNT=$(jq -r '.unbalanced_markers | length' "$SCRUB_OUTPUT")
 
 # Idempotence is asserted over EVERY mutating transform, and the set of them
 # is DERIVED from the report rather than listed here. Each transform reports
 # under its own object key with a numeric count of what it changed, so
-# enumerating the report's numeric fields covers a transform added later with
-# no edit to this file.
+# enumerating each section's numeric fields covers a transform added later with
+# no edit to this file. The enumeration walks each section exactly ONE level
+# deep. Guard 4 below bounds that: a section nesting its count in an OBJECT
+# reds instead of passing unasserted. A count nested inside an ARRAY escapes
+# both, because `files_touched` is an array and guard 4 has to exempt that
+# shape to let it through.
 #
 # Deriving is the point, not a convenience. A hand-maintained list of counters
 # is the same shape `.gaia/release-scrub.yml` records as having recurred five
@@ -68,7 +95,7 @@ MUTATION_COUNTERS="$(jq -r '
 # of them naming the wrong cause. The alternative, a list of which numerics
 # count, is the list this derivation exists to delete.
 #
-# Three fail-closed guards on the derivation itself, because an enumeration
+# Four fail-closed guards on the derivation itself, because an enumeration
 # that comes back short reads exactly like a clean run.
 #
 # 1. An empty enumeration: the report lost its shape wholesale.
@@ -84,6 +111,22 @@ MUTATION_COUNTERS="$(jq -r '
 #    invisible to both and mutate unasserted forever. The two exempt keys are
 #    named, so a NEW non-transform key also trips this and forces a decision
 #    here rather than silently widening the blind spot.
+# 4. A value INSIDE a transform section that is neither a number nor an array.
+#    The enumeration is one level deep, so a section nesting its count
+#    (`per_file: {"README.md": 3}`) escapes it, and a sibling numeric keeps
+#    guard 2 quiet, leaving a real mutation unasserted while the run reads
+#    clean. Rejecting the shape reds instead, the same fail-closed direction
+#    guard 3 takes for an unsectioned top-level key: teach this harness about
+#    the field, or give the section a counter-shaped report.
+#
+# What none of the four catch: a transform section removed from the report
+# WHOLESALE while its transform still mutates. Every guard walks
+# `to_entries[]`, so a section that is gone was never in the set walked, and
+# the surviving sections keep all four quiet. Detecting it needs the expected
+# section set named here, which is the list this derivation exists to delete,
+# so the harness accepts the hole rather than reintroducing the list. The pass
+# line's own counter list is the only signal a reader gets, which is why that
+# line names the counters instead of reporting a bare count.
 #
 # A counter merely RENAMED needs no guard: it is still enumerated, under its
 # new name, and still has to read 0.
@@ -117,6 +160,22 @@ if [ -n "$UNSECTIONED" ]; then
   log "Top-level report key(s) outside the scanned set:"
   printf '%s\n' "$UNSECTIONED" >&2
   fail "a scrub report key is neither a known non-transform section nor an object; idempotence is unverifiable for it"
+  exit 1
+fi
+
+NONCOUNTER_SHAPES="$(jq -r '
+  to_entries[]
+  | select(.value | type == "object")
+  | .key as $transform
+  | .value
+  | to_entries[]
+  | select(.value | type != "number" and type != "array")
+  | "\($transform).\(.key) (\(.value | type))"
+' "$SCRUB_OUTPUT")"
+if [ -n "$NONCOUNTER_SHAPES" ]; then
+  log "Transform section field(s) that are neither a count nor a file list:"
+  printf '%s\n' "$NONCOUNTER_SHAPES" >&2
+  fail "a scrub transform reports a field the one-level enumeration cannot read as a count; idempotence is unverifiable for it"
   exit 1
 fi
 

@@ -666,36 +666,50 @@ jobs:
       # derives from the suites rather than from here.
       - if: contains(fromJSON('["hooks-4", "lib", "scripts-1", "scripts-2", "scripts-3"]'), matrix.shard) && (steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch')
         name: Install the YAML parser and zsh
-        # Sized for fast failure and honest attribution, NOT to the leg, and
-        # deliberately not sized to cover three worst-case attempts. Whichever
-        # cap fires the leg fails and `Audit CI Tests`
-        # (.gaia/scripts/verify-required-checks.sh names it required) reds, so
-        # this cap does not change the colour: it changes how long the answer
-        # takes and what it points at, an apt step that timed out rather than a
-        # leg cancelled at 13 minutes with no stated cause. Either way that
+        # Sized for fast failure and honest attribution, NOT to the leg. When
+        # this cap fires is the budget paragraph's subject, not this one's,
+        # because the answer is not "after every attempt". A leg that fails
+        # here reds `Audit CI Tests`
+        # (.gaia/scripts/verify-required-checks.sh names it required) and that
         # leg's tests do not run.
         #
-        # What preserves the test result on a stall is the retry below, not
-        # this cap. Keeping the cap while dropping the loop reproduces the
-        # failure both exist to absorb.
+        # The budget is what makes three attempts reachable: 3 x (45 + 45) of
+        # apt plus 30 of backoff is 300, inside this 360. Read 300 as the
+        # intended shape, not a ceiling. `timeout` REQUESTS termination, and
+        # dpkg defers SIGTERM while unpacking, so a per-call bound can be
+        # overrun and this step cap is the only bound that always holds.
+        # `-k` would make it a ceiling and is deliberately not used: SIGKILL
+        # mid-dpkg leaves an interrupted state that fails attempts 2 and 3
+        # outright, which is worse than overrunning into this cap.
         #
-        # The honest limit: apt serializes per host queue, so one unreachable
-        # archive host can consume minutes inside attempt 1 and leave attempts
-        # 2 and 3 unreached. That is the intended trade rather than an
-        # oversight, because a whole-host outage is exactly the case a retry
-        # cannot help, and failing fast beats spending the leg budget proving
-        # it.
-        timeout-minutes: 5
-        # Bounded twice, because the two bounds catch different failures and
-        # neither is sufficient alone.
+        # Why every apt call is wrapped in `timeout` rather than left to
+        # Acquire::*::Timeout: those options bound a STALLED transfer, and the
+        # failure actually observed here is not a stall. The runner's mirror
+        # list puts azure.archive.ubuntu.com first, that host answers `Ign:`
+        # within seconds, apt falls back to archive.ubuntu.com and gets a
+        # clean `Hit:`, and the time is then spent AFTER a successful
+        # connection, where a per-connection timeout has nothing to break. A
+        # single `apt-get update` consumed the entire step budget twice, and
+        # neither run ever printed an `apt attempt N of 3 failed` line: the cap
+        # fired inside attempt 1 and attempts 2 and 3 were unreachable, so the
+        # retry absorbed nothing on the one failure it exists for. Bounding the
+        # call itself is what makes the loop reachable, whichever mirror is the
+        # one misbehaving.
+        timeout-minutes: 6
+        # Bounded three times, because the three bounds catch different
+        # failures and none is sufficient alone: `Acquire::*::Timeout` per
+        # connection, `timeout` per call, and `timeout-minutes` per step.
         #
-        # `Acquire::*::Timeout` breaks a STALLED fetch in seconds rather than
-        # letting it hold the connection, which is what makes the retry
-        # reachable at all: an attempt that hangs past the step budget never
-        # gets a second one, so the loop below without these options would
-        # still red the check on the failure it exists to absorb. Both the
-        # `http` and `https` knobs are set because the option is keyed on the
-        # acquire method, not on the scheme the loop happens to hit.
+        # `Acquire::*::Timeout` ends a STALLED connection in seconds rather
+        # than letting it hold. It bounds a connection, never a call: with
+        # `Acquire::Retries=2` one dead URI is three tries of 20, so a single
+        # apt call can still run past its 45s wrapper and be killed there.
+        # These knobs do NOT make the retry reachable, which is the per-call
+        # `timeout` above's job: they were the only bound on a call for two
+        # runs, and both spent the whole step budget in attempt 1 because the
+        # failure was never a stall. Both the `http` and `https` knobs are set
+        # because the option is keyed on the acquire method, not on the scheme
+        # the loop happens to hit.
         #
         # Three attempts because an archive.ubuntu.com stall is transient:
         # re-running an identically-stalled leg by hand passes it in a
@@ -710,9 +724,22 @@ jobs:
         run: |
           set -euo pipefail
           apt_opts=(-o Acquire::Retries=2 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20)
+          # `sudo timeout`, not `timeout sudo`: the latter signals sudo and can
+          # leave the apt child running past the bound, which is the bound not
+          # holding. Exit 124 is timeout's own "I killed it", reported so a log
+          # reader can tell a bounded attempt from a failed one.
+          apt_bounded() {
+            local what="$1"; shift
+            local rc=0
+            sudo timeout 45 "$@" || rc=$?
+            if [ "${rc}" -eq 124 ]; then
+              echo "apt ${what} exceeded its 45s bound" >&2
+            fi
+            return "${rc}"
+          }
           for attempt in 1 2 3; do
-            if sudo apt-get "${apt_opts[@]}" update \
-              && sudo apt-get "${apt_opts[@]}" install -y python3-yaml zsh; then
+            if apt_bounded update apt-get "${apt_opts[@]}" update \
+              && apt_bounded install apt-get "${apt_opts[@]}" install -y python3-yaml zsh; then
               exit 0
             fi
             echo "apt attempt ${attempt} of 3 failed" >&2
