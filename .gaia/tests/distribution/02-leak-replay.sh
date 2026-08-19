@@ -38,27 +38,61 @@ require_cmd jq "jq required for parsing scrub --json output"
 LEAK_COUNT=$(jq -r '.leaks | length' "$SCRUB_OUTPUT")
 UNBALANCED_COUNT=$(jq -r '.unbalanced_markers | length' "$SCRUB_OUTPUT")
 
-# Idempotence is asserted over EVERY mutating transform, not marker-strip
-# alone: each publishes its own count of what it changed, and a second pass
-# over an already-scrubbed tree must change nothing. Reading one counter and
-# calling that idempotence lets a newly added transform mutate on every pass
-# while this harness still reports clean, which is the gap that existed when
-# json-field-rewrite arrived as the fourth mutator. A transform added later
-# owes a line here.
-assert_not_mutated() {
-  local selector="$1" label="$2" count
-  count="$(jq -r "$selector" "$SCRUB_OUTPUT")"
-  if [ "$count" != "0" ]; then
-    log "Second scrub pass reported $count $label; first pass missed them or the tree was mutated"
-    fail "scrub is not idempotent ($count $label on rerun)"
-    exit 1
-  fi
-}
+# Idempotence is asserted over EVERY mutating transform, and the set of them
+# is DERIVED from the report rather than listed here. Each transform reports
+# under its own object key with a numeric count of what it changed, so
+# enumerating the report's numeric fields covers a transform added later with
+# no edit to this file.
+#
+# Deriving is the point, not a convenience. A hand-maintained list of counters
+# is the same shape `.gaia/release-scrub.yml` records as having recurred five
+# times before the leak-check scopes stopped being lists, and it had already
+# rotted here once: this harness read `marker_strip.blocks_stripped` alone
+# while three other transforms mutated unasserted. A list would rot here next.
+MUTATION_COUNTERS="$(jq -r '
+  to_entries[]
+  | select(.value | type == "object")
+  | .key as $transform
+  | .value
+  | to_entries[]
+  | select(.value | type == "number")
+  | "\($transform).\(.key)=\(.value)"
+' "$SCRUB_OUTPUT")"
 
-assert_not_mutated '.marker_strip.blocks_stripped' 'marker block(s) stripped'
-assert_not_mutated '.json_strip.keys_removed' 'json key(s) removed'
-assert_not_mutated '.json_strip_array_element.elements_removed' 'json array element(s) removed'
-assert_not_mutated '.json_field_rewrite.fields_rewritten' 'json field(s) rewritten'
+# Two fail-closed guards on the derivation itself, because an enumeration that
+# comes back short reads exactly like a clean run. The first catches the report
+# losing its shape wholesale; the second catches one transform's counter being
+# removed or retyped, which would otherwise drop silently out of the
+# enumeration while its sibling counters still read 0. A counter merely
+# RENAMED needs no guard: it is still enumerated, under its new name, and
+# still has to read 0.
+if [ -z "$MUTATION_COUNTERS" ]; then
+  log "scrub --json report:"
+  cat "$SCRUB_OUTPUT" >&2
+  fail "no mutation counters found in the scrub report; its shape changed"
+  exit 1
+fi
+
+COUNTERLESS="$(jq -r '
+  to_entries[]
+  | select(.value | type == "object")
+  | select([.value | to_entries[] | select(.value | type == "number")] | length == 0)
+  | .key
+' "$SCRUB_OUTPUT")"
+if [ -n "$COUNTERLESS" ]; then
+  log "Transform section(s) reporting no numeric counter:"
+  printf '%s\n' "$COUNTERLESS" >&2
+  fail "a scrub transform stopped reporting a count; idempotence is unverifiable for it"
+  exit 1
+fi
+
+NONZERO_COUNTERS="$(printf '%s\n' "$MUTATION_COUNTERS" | grep -v '=0$' || true)"
+if [ -n "$NONZERO_COUNTERS" ]; then
+  log "Second scrub pass mutated the tree; first pass missed it or the tree changed between passes:"
+  printf '%s\n' "$NONZERO_COUNTERS" | sed 's/^/  /' >&2
+  fail "scrub is not idempotent ($(printf '%s' "$NONZERO_COUNTERS" | tr '\n' ' '))"
+  exit 1
+fi
 
 if [ "$UNBALANCED_COUNT" != "0" ]; then
   log "Unbalanced marker(s) detected:"
@@ -84,4 +118,6 @@ if [ -n "$MARKER_FRAGMENTS" ]; then
   exit 1
 fi
 
-pass "leak-replay clean (0 blocks, 0 leaks, 0 unbalanced markers)"
+# Name the counters actually checked, so a green run shows its own coverage
+# rather than leaving the reader to assume the derivation found anything.
+pass "leak-replay clean (0 leaks, 0 unbalanced markers; $(printf '%s' "$MUTATION_COUNTERS" | tr '\n' ' '))"
