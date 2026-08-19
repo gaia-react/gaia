@@ -350,7 +350,21 @@ function walk(line,   n, i, c, j, ch, delim) {
     # a bare simple command whose failure kills the shell. `||` in particular is
     # what the repair this gate advertises is built from, so marking the
     # statement here is what keeps the gate from redding the tree on its own fix.
-    if (c == "|" || c == "&") { W_op = 1; continue }
+    #
+    # A `&` that belongs to a REDIRECTION is none of those. `&>log`, `2>&1`, and
+    # `<&3` are file-descriptor syntax on the same simple command, so the
+    # assignment still stands alone and errexit still fires on it. Read as a
+    # control operator they disqualify the statement and the defect goes
+    # unreported. The three spellings are distinguishable by their neighbours:
+    # `&` before a `>`, or after a `>` or `<`.
+    if (c == "&") {
+      ch = substr(line, i + 1, 1)
+      prev = (i > 1) ? substr(line, i - 1, 1) : ""
+      if (ch == ">" || prev == ">" || prev == "<") continue
+      W_op = 1
+      continue
+    }
+    if (c == "|") { W_op = 1; continue }
   }
   return (W_q != "" || W_depth > 0 || W_tick) ? 1 : 0
 }
@@ -515,9 +529,14 @@ function feed(line, n,   stripped, probe, tail) {
   if (isname && stmt_space_at > 0) {
     tail = substr(line, stmt_space_at)
     sub(/^[ \t]+/, "", tail)
+    # `^[0-9]*[<>]` rather than a bare `<`/`>` in the character set: a
+    # redirection may carry an explicit file descriptor (`2> log`, `1>&2`), and
+    # reading the digit as the first letter of a command word is what made
+    # `out=$(cmd) 2> log` exempt itself while the identical `> log` was reported.
     if (tail != "" \
         && tail !~ /^[A-Za-z_][A-Za-z0-9_]*(\[[^]]*\])?\+?=/ \
-        && index(";|&#()<>", substr(tail, 1, 1)) == 0)
+        && tail !~ /^[0-9]*[<>]/ \
+        && index(";|&#()", substr(tail, 1, 1)) == 0)
       isname = 0
   }
   if (isname && stmt_sub && !stmt_op && armed) { pending = 1; pending_line = cand_line }

@@ -636,6 +636,56 @@ echo "$rc"'
   grep -qF -- 'check.sh:3:' <<<"$output"
 }
 
+@test "a redirection carrying an explicit file descriptor is still a redirection" {
+  fixture_repo
+  # `2>` is the shape that exempted itself: the leading digit read as the first
+  # letter of a command word, so the identical statement was reported with `>`
+  # and silently passed with `2>`.
+  fixture_script 'set -e
+out=$(some_command) 2> log
+rc=$?
+echo "$rc"'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- 'check.sh:3:' <<<"$output"
+}
+
+@test "a descriptor-duplicating redirection is not a control operator" {
+  fixture_repo
+  # The `&` in `2>&1` is file-descriptor syntax on the same simple command, not
+  # an AND-OR or a background operator, so the assignment still stands alone.
+  fixture_script 'set -e
+out=$(some_command) 2>&1
+rc=$?
+echo "$rc"'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- 'check.sh:3:' <<<"$output"
+}
+
+@test "an all-streams redirection is not a control operator either" {
+  fixture_repo
+  fixture_script 'set -e
+out=$(some_command) &>log
+rc=$?
+echo "$rc"'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- 'check.sh:3:' <<<"$output"
+}
+
+@test "a genuine background & still exempts the statement" {
+  fixture_repo
+  # The discrimination above must not swallow the real control operator: a
+  # backgrounded assignment does not kill the shell on failure.
+  fixture_script 'set -e
+out=$(some_command) &
+rc=$?
+echo "$rc"'
+  run_linter
+  [ "$status" -eq 0 ]
+}
+
 @test "quiet on a trailing comment that merely mentions the status variable" {
   fixture_repo
   fixture_script 'set -e
