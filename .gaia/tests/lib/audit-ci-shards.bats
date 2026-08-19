@@ -1417,12 +1417,12 @@ concurrency_tree_needs_packages() {
 # asserted here for the same reason. None of the literal tokens in
 # distribution-harness' gated steps is or implies the manifest either -- each
 # names a runner, a committed binary, or a composite action, never the files
-# those read -- while two of the scenarios it runs read the staged manifest (01-files-present.sh walks its files{}
-# keys; 16-audit-remit-parity.sh reads two classes out of it). A manifest-only
-# change -- a regeneration, a ship-or-withhold answer -- matches no other
-# entry in that filter, so before #1473 it resolved code=false and greened
-# the job having run the scenario that would have caught a bad manifest zero
-# times.
+# those read -- while two of the scenarios it runs read the staged manifest
+# (01-files-present.sh walks its files{} keys; 16-audit-remit-parity.sh reads
+# two classes out of it). A manifest-only change -- a regeneration, a
+# ship-or-withhold answer -- matches no other entry in that filter, so before
+# #1473 it resolved code=false and greened the job having run the scenarios
+# that would have caught a bad manifest zero times.
 
 @test "W11: audit-ci-tests.yml's code filter lists the script-capabilities manifest, its schema, and release-exclude" {
   require_yaml_parser
