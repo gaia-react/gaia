@@ -357,6 +357,51 @@ rm -rf -- "$target"'
   grep -qxF -- "fs-write:**" <<<"$output"
 }
 
+@test "a declared fs-write:** does not cover a concrete write in the same closure" {
+  repo="$(make_fixture_repo sentinelconcrete)"
+  add_script "$repo" .gaia/scripts/w.sh '#!/usr/bin/env bash
+rm -f "$1/RUNNING"
+mkdir -p app/secretstash'
+  write_allow "$repo" "Bash(bash .gaia/scripts/w.sh:*)"
+  write_manifest "$repo" '[{"script":".gaia/scripts/w.sh","capabilities":["fs-write:**"],
+    "why":"clears a sentinel where told","maintainer_only":false}]'
+  # The sentinel says "wherever the caller points it"; it is not a wildcard the
+  # rest of the closure can hide behind. Reading it as a glob would let one
+  # caller-chosen write silently declare every other write in the script.
+  run bash "$CHECK" "$repo"
+  [ "$status" -eq 1 ]
+  grep -qF -- "UNDECLARED .gaia/scripts/w.sh fs-write:app/secretstash" <<<"$output"
+}
+
+@test "a bare fs-write:** on a script with no caller-designated write fails both directions" {
+  repo="$(make_fixture_repo blanketsentinel)"
+  add_script "$repo" .gaia/scripts/w.sh '#!/usr/bin/env bash
+mkdir -p app/x'
+  write_allow "$repo" "Bash(bash .gaia/scripts/w.sh:*)"
+  write_manifest "$repo" '[{"script":".gaia/scripts/w.sh","capabilities":["fs-write:**"],
+    "why":"blanket declaration covering nothing it actually reaches","maintainer_only":false}]'
+  # This is the "a blanket declaration fails on its first run" claim the check
+  # header makes, in its plainest case.
+  run bash "$CHECK" "$repo"
+  [ "$status" -eq 1 ]
+  grep -qF -- "UNDECLARED .gaia/scripts/w.sh fs-write:app/x" <<<"$output"
+  grep -qF -- "SURPLUS .gaia/scripts/w.sh fs-write:**" <<<"$output"
+}
+
+@test "a declared fs-write glob that is not the sentinel still covers what it matches" {
+  repo="$(make_fixture_repo nonsentinelglob)"
+  add_script "$repo" .gaia/scripts/w.sh '#!/usr/bin/env bash
+printf "x\n" > "app/data/$name.txt"'
+  write_allow "$repo" "Bash(bash .gaia/scripts/w.sh:*)"
+  write_manifest "$repo" '[{"script":".gaia/scripts/w.sh","capabilities":["fs-write:app/data/**"],
+    "why":"writes a computed basename under a fixed directory","maintainer_only":false}]'
+  # Only the exact `**` term is narrowed; ordinary globbing is untouched.
+  run bash "$CHECK" "$repo"
+  [ "$status" -eq 0 ]
+  grep -qE '^(UNDECLARED|SURPLUS|UNRESOLVED)' <<<"$output" && return 1
+  true
+}
+
 @test "a write through a variable whose assignment ends in a positional is caller-chosen too" {
   repo="$(make_fixture_repo callerchained)"
   add_script "$repo" .gaia/scripts/w.sh '#!/usr/bin/env bash

@@ -15,6 +15,13 @@
 # a declaration clearing an unresolvable call never turns into a surplus. The
 # carve-out and its reason are at the SURPLUS arm below.
 #
+# `fs-write:**` is a sentinel for "wherever the caller points it", not a
+# wildcard standing in for the rest of the closure. It covers only an
+# identical reached term, so a script that ALSO writes a concrete path still
+# has to declare that path. Reading it as a glob is what would let one
+# caller-chosen write blanket every other write in the same script, and it is
+# what the blanket sentence above depends on.
+#
 # What this buys is detection at review time, not prevention. Nothing here
 # mediates what a pre-approved script does once it runs: a local session
 # executes a widened script before any CI run sees it, and the manifest itself
@@ -314,6 +321,15 @@ gaia_capcheck_reconcile() {
         if [ "$d" = "$term" ]; then covered=1; break; fi
         case "$d$term" in
           fs-write:*fs-write:*)
+            # `fs-write:**` is the caller-designated-directory SENTINEL, not a
+            # wildcard that stands in for the rest of the closure. Its glob
+            # spelling would otherwise match every concrete fs-write a script
+            # reaches, so one caller-chosen write would silently declare
+            # blanket coverage of all the others and a bare `**` would pass as
+            # a complete declaration. Exact equality above is the only way it
+            # covers anything, which is what makes a blanket declaration fail
+            # on its first run.
+            [ "$d" = "fs-write:**" ] && continue
             if _gaia_capcheck_glob_match "${d#fs-write:}" "${term#fs-write:}"; then
               covered=1; break
             fi
@@ -343,6 +359,15 @@ EOF
         if [ "$d" = "$term" ]; then covered=1; break; fi
         case "$d$term" in
           fs-write:*fs-write:*)
+            # `fs-write:**` is the caller-designated-directory SENTINEL, not a
+            # wildcard that stands in for the rest of the closure. Its glob
+            # spelling would otherwise match every concrete fs-write a script
+            # reaches, so one caller-chosen write would silently declare
+            # blanket coverage of all the others and a bare `**` would pass as
+            # a complete declaration. Exact equality above is the only way it
+            # covers anything, which is what makes a blanket declaration fail
+            # on its first run.
+            [ "$d" = "fs-write:**" ] && continue
             if _gaia_capcheck_glob_match "${d#fs-write:}" "${term#fs-write:}"; then
               covered=1; break
             fi
