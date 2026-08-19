@@ -672,7 +672,8 @@ jobs:
         # (.gaia/scripts/verify-required-checks.sh names it required) reds, so
         # this cap does not change the colour: it changes how long the answer
         # takes and what it points at, an apt step that timed out rather than a
-        # leg cancelled at 13 minutes with no result and no stated cause.
+        # leg cancelled at 13 minutes with no stated cause. Either way that
+        # leg's tests do not run.
         #
         # What preserves the test result on a stall is the retry below, not
         # this cap. Keeping the cap while dropping the loop reproduces the
