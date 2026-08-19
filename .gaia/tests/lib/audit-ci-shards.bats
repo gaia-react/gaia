@@ -1406,11 +1406,23 @@ concurrency_tree_needs_packages() {
 }
 
 # W11. workflow-filter-coverage.bats only reaches a repo-relative path a gated
-# step names literally in its run: body; the sharder in shards' gated step is
-# that literal token, so the script-capabilities manifest, its schema, and
-# .gaia/release-exclude are transitive inputs that guard never reaches. These
-# two tests are the regression guard for the three lines SPEC-072 added to
-# close that hole.
+# step names literally in its run: body, and none of the literal tokens in
+# shards' gated steps is or implies these three (each names a runner, an
+# installer, or a composite action, never the files those read), so the
+# script-capabilities manifest, its schema, and .gaia/release-exclude are
+# transitive inputs that guard never reaches. These two tests are the
+# regression guard for the three lines SPEC-072 added to close that hole.
+#
+# .gaia/manifest.json is the same shape on the cli-tests side, and it is
+# asserted here for the same reason. None of the literal tokens in
+# distribution-harness' gated steps is or implies the manifest either -- each
+# names a runner, a committed binary, or a composite action, never the files
+# those read -- while two of the scenarios it runs read the staged manifest
+# (01-files-present.sh walks its files{} keys; 16-audit-remit-parity.sh reads
+# two classes out of it). A manifest-only change -- a regeneration, a
+# ship-or-withhold answer -- matches no other entry in that filter, so before
+# #1473 it resolved code=false and greened the job having run the scenarios
+# that would have caught a bad manifest zero times.
 
 @test "W11: audit-ci-tests.yml's code filter lists the script-capabilities manifest, its schema, and release-exclude" {
   require_yaml_parser
@@ -1424,11 +1436,11 @@ concurrency_tree_needs_packages() {
   done
 }
 
-@test "W11: cli-tests.yml's distribution-harness code filter lists the script-capabilities manifest and its schema" {
+@test "W11: cli-tests.yml's distribution-harness code filter lists the script-capabilities manifest, its schema, and the release manifest" {
   require_yaml_parser
   local list
   list="$(read_wf codefilter "$CLI_WORKFLOW" distribution-harness)"
-  for path in '.gaia/script-capabilities.json' '.gaia/script-capabilities.schema.json'; do
+  for path in '.gaia/script-capabilities.json' '.gaia/script-capabilities.schema.json' '.gaia/manifest.json'; do
     printf '%s\n' "$list" | grep -qxF -- "$path" || {
       echo "cli-tests.yml's distribution-harness code: filter is missing $path" >&2
       return 1
