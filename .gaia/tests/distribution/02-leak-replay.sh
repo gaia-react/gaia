@@ -62,9 +62,11 @@ MUTATION_COUNTERS="$(jq -r '
 # Every numeric inside a transform section is treated as a mutation count.
 # That is deliberate and it is the fail-closed direction: a section that later
 # publishes a diagnostic number (files_scanned, duration_ms) reds this harness
-# naming the field, which is a loud prompt to report it outside a transform
-# section or to teach this harness about it. The alternative, a list of which
-# numerics count, is the list this derivation exists to delete.
+# naming the field, which is a loud prompt to teach this harness about it:
+# exempt the field, or give the section a counter-shaped report. Relocating it
+# is not a remedy, every placement outside a transform section reds too, some
+# of them naming the wrong cause. The alternative, a list of which numerics
+# count, is the list this derivation exists to delete.
 #
 # Three fail-closed guards on the derivation itself, because an enumeration
 # that comes back short reads exactly like a clean run.
