@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # shell-lint.sh: run shellcheck over every tracked shell script, bats suite, and
-# husky hook, then five repo-authored guards shellcheck cannot model: the hook
+# husky hook, then parse every tracked shell script with bash 3.2, then five
+# repo-authored guards shellcheck cannot model: the hook
 # array-guard (.gaia/scripts/lint-hook-array-guard.sh), the git path-quoting
 # guard (.gaia/scripts/lint-git-path-quoting.sh), the workflow
 # run-interpolation guard (.gaia/scripts/lint-workflow-run-interpolation.sh),
@@ -284,6 +285,77 @@ if [ "${#husky_hooks[@]}" -gt 0 ]; then
   if ! (cd "$REPO_ROOT" && shellcheck -s sh --severity="$SH_SEVERITY" --exclude="$TOOLING_EXCLUDE" ${husky_hooks[@]+"${husky_hooks[@]}"}); then
     status=1
   fi
+fi
+
+# Parse every tracked *.sh with bash 3.2. The passes above run shellcheck, which
+# does not implement bash 3.2's command-substitution lexer, so a construct that
+# parses on bash 5 and is a syntax error on 3.2 clears all of them. The runners are ubuntu bash 5 and stock macOS ships 3.2.57 as
+# /bin/bash, the version these scripts declare support for, so the divergence
+# is observable on a maintainer's own machine and nowhere else. That is where
+# the one shipped instance of the class sat undetected: an apostrophe in a
+# comment inside a quoted heredoc nested in a command substitution made
+# .claude/hooks/lib/audit-rules-changed.sh unparseable on 3.2, and sourcing it
+# aborted .github/audit/resolve-audit-base.sh with no output at all, emptying
+# the audit review scope at status 0.
+#
+# Scoped to *.sh. Bats syntax is not bash syntax -- a bare `@test "..." {` is a
+# syntax error to every bash -- so `-n` over a .bats file would report on the
+# wrong grammar; covering the suites needs bats' own expansion and is not this
+# pass.
+#
+# SHELL_LINT_BASH32 overrides the interpreter, which is what lets the bats
+# suite drive the fail-closed and loud-skip branches on a host carrying only
+# one bash.
+BASH32="${SHELL_LINT_BASH32:-/bin/bash}"
+echo "--> bash-3.2 parse ($BASH32 -n): ${#sh_scripts[@]} tracked scripts"
+if [ ! -x "$BASH32" ]; then
+  # Fail closed, the same precondition the empty-*.sh-set guard above carries:
+  # a pass that cannot run has to say so, never report clean having parsed
+  # nothing.
+  echo "ERROR: $BASH32 is not executable; the bash-3.2 parse pass cannot run" >&2
+  status=1
+else
+  # SC2016: the single quotes are intentional. BASH_VERSINFO has to expand
+  # inside the resolved interpreter, not in this shell.
+  # shellcheck disable=SC2016
+  bash32_major="$("$BASH32" -c 'printf "%s\n" "${BASH_VERSINFO[0]}"' 2>/dev/null || true)"
+  case "$bash32_major" in
+    '' | *[!0-9]*)
+      # Fail closed for the same reason: an interpreter that will not report a
+      # version is one this pass cannot reason about.
+      echo "ERROR: $BASH32 reported no numeric major version; the bash-3.2 parse pass cannot run" >&2
+      status=1
+      ;;
+    *)
+      if [ "$bash32_major" -ge 4 ]; then
+        # Skip LOUDLY, the posture .gaia/scripts/bats5.sh already takes on the
+        # mirror-image gap. A silent skip on every bash-5 host would reproduce
+        # one layer up the exact failure this pass exists to close: the tree
+        # would read clean everywhere and be parsed nowhere.
+        echo "############################################################" >&2
+        echo "# WARNING: $BASH32 is bash $bash32_major, so the bash-3.2" >&2
+        echo "# parse pass was SKIPPED. A 3.2-only syntax error is invisible" >&2
+        echo "# to this run. Re-run on stock macOS /bin/bash (3.2.57) before" >&2
+        echo "# trusting this gate over shell syntax." >&2
+        echo "############################################################" >&2
+      else
+        # One subshell for the whole sweep rather than one per file, and run
+        # from the repo root so the file:line the interpreter prints is
+        # repo-relative. Every file is parsed before the sweep reports, so one
+        # invocation names every broken script rather than only the first.
+        if ! (
+          cd "$REPO_ROOT" || exit 2
+          sweep_rc=0
+          for f in ${sh_scripts[@]+"${sh_scripts[@]}"}; do
+            "$BASH32" -n "$f" || sweep_rc=1
+          done
+          exit "$sweep_rc"
+        ); then
+          status=1
+        fi
+      fi
+      ;;
+  esac
 fi
 
 # Fold in the hook array-guard: shellcheck cannot model the bash-3.2.57
