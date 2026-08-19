@@ -274,6 +274,29 @@ describe('release scrub CLI', () => {
     expect(stdio.outputs.join('')).toContain('start_without_end');
   });
 
+  test('--json reports an unbalanced marker with file, line, and reason', () => {
+    sandbox = setupSandbox({config: MARKER_ONLY_CONFIG});
+    sandbox.writeStaged(
+      'wiki/broken.md',
+      [
+        '# Broken',
+        '<!-- gaia:maintainer-only:start -->',
+        'never closed',
+        '',
+      ].join('\n')
+    );
+
+    const exit = run([sandbox.stagingDir, '--json'], {cwd: sandbox.rootDir});
+    expect(exit).toBe(1);
+
+    const report = JSON.parse(stdio.outputs.join('')) as {
+      unbalanced_markers: {file: string; line: number; reason: string}[];
+    };
+    expect(report.unbalanced_markers).toEqual([
+      {file: 'wiki/broken.md', line: 2, reason: 'start_without_end'},
+    ]);
+  });
+
   test('refuses on unbalanced end without start', () => {
     sandbox = setupSandbox({config: MARKER_ONLY_CONFIG});
     sandbox.writeStaged(
@@ -354,11 +377,21 @@ describe('release scrub CLI', () => {
         blocks_stripped: number;
         files_touched: readonly string[];
       };
+      unbalanced_markers: readonly {
+        file: string;
+        line: number;
+        reason: string;
+      }[];
     };
 
     expect(parsed.marker_strip.blocks_stripped).toBe(1);
     expect(parsed.marker_strip.files_touched).toContain('wiki/index.md');
     expect(parsed.leaks).toHaveLength(0);
+    // The distribution leak-replay harness reads this section by length, and
+    // `null | length` is 0 in jq, so an omitted section would read as clean
+    // there. Pin its presence and shape here so the contract is held from the
+    // producing end too, the same way `leaks` already is.
+    expect(parsed.unbalanced_markers).toEqual([]);
   });
 
   test('marker-strip happens before leak-check (block content not flagged)', () => {
