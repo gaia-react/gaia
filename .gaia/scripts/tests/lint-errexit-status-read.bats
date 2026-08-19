@@ -146,15 +146,20 @@ run_linter() {
 
 @test "leaves a run: body at the first dedent, so surrounding YAML is not shell" {
   fixture_repo
+  # The `$?` sits on the FIRST line past the dedent, with nothing between it and
+  # the assignment. An intervening key would consume the pending assignment as an
+  # ordinary statement and leave the test green even with the dedent check
+  # broken, which is the shape that made this test hollow.
   fixture_file .github/workflows/probe.yml 'jobs:
   probe:
     steps:
       - run: |
           out=$(gh pr view 1)
-        env:
-          RC: $?'
+        RC: $?'
   run_linter
   [ "$status" -eq 0 ]
+  grep -qF -- 'probe.yml' <<<"$output" && return 1
+  true
 }
 
 # --- the class fires, shell surface ----------------------------------------
@@ -416,16 +421,29 @@ out=$(some_command) || rc=$?; echo "$rc"'
 
 @test "quiet on a bats suite, the deliberately excluded surface" {
   fixture_repo
-  fixture_file suite.bats '@test "fixture" {
-  cat > "$BATS_TEST_TMPDIR/bad.sh" <<EOF
-set -e
-out=\$(some_command)
-rc=\$?
-EOF
-  true
+  # The shape reaches disk UNESCAPED and outside any heredoc, so this fixture is
+  # quiet only because *.bats is off the scan surface. Written with `\$` it would
+  # be quiet either way (walk consumes the escape), and written inside a heredoc
+  # the swallow would hide it, so both spellings test nothing.
+  fixture_file suite.bats 'setup() {
+  set -e
+  out=$(some_command)
+  rc=$?
 }'
   run_linter
   [ "$status" -eq 0 ]
+}
+
+@test "the same bytes in a tracked .sh are flagged, so the exclusion is what quiets them" {
+  fixture_repo
+  fixture_script 'setup() {
+  set -e
+  out=$(some_command)
+  rc=$?
+}'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- 'check.sh:4:' <<<"$output"
 }
 
 # --- the tokenizer holds sync, or says it could not --------------------------
@@ -649,6 +667,101 @@ one'
   grep -qF -- 'lost track of shell state' <<<"$output"
   grep -qF -- 'letting the assignment hand its status on' <<<"$output" && return 1
   true
+}
+
+# --- arms and branches with no other fixture --------------------------------
+
+@test "quiet after the long-form set +o errexit disarm" {
+  fixture_repo
+  fixture_script 'set -o errexit
+set +o errexit
+out=$(some_command)
+rc=$?
+echo "$rc"'
+  run_linter
+  [ "$status" -eq 0 ]
+}
+
+@test "an env-prefix indented inside a function is still not the class" {
+  fixture_repo
+  fixture_script 'set -e
+f() {
+  FOO=$(some_command) run_thing --flag
+  rc=$?
+  echo "$rc"
+}'
+  run_linter
+  [ "$status" -eq 0 ]
+}
+
+@test "an indented BARE assignment is still flagged, so the exclusion is not blanket" {
+  fixture_repo
+  fixture_script 'set -e
+f() {
+  out=$(some_command)
+  rc=$?
+  echo "$rc"
+}'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- 'check.sh:4:' <<<"$output"
+}
+
+@test "an env-prefix inside a run: body is not the class either" {
+  fixture_repo
+  # The YAML half is the surface armed by DEFAULT and every line of a block
+  # scalar is indented, so this is where an exclusion keyed on the wrong
+  # whitespace goes silently inert.
+  fixture_file .github/workflows/probe.yml 'jobs:
+  probe:
+    steps:
+      - run: |
+          FOO=$(gh pr view 1) run_thing --flag
+          rc=$?
+          echo "$rc"'
+  run_linter
+  [ "$status" -eq 0 ]
+}
+
+@test "a run: body that cannot be tokenized to its end is reported, not certified" {
+  fixture_repo
+  fixture_file .github/workflows/probe.yml 'jobs:
+  probe:
+    steps:
+      - run: |
+          out="$(gh pr view 1
+      - name: next
+        run: echo done'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- 'lost track of shell state' <<<"$output"
+  grep -qF -- 'a run: body' <<<"$output"
+}
+
+@test "the last run: body in a file is checked for desync too" {
+  fixture_repo
+  fixture_file .github/workflows/probe.yml 'jobs:
+  probe:
+    steps:
+      - run: |
+          out="$(gh pr view 1'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- 'lost track of shell state' <<<"$output"
+  grep -qF -- 'the last run: body' <<<"$output"
+}
+
+@test "a double-quoted string closes, so a later trap capture is still deferred" {
+  fixture_repo
+  # Test 20 covers the trap alone. If has_status_read never leaves double-quote
+  # state, everything after the first `"` on the line reads as quoted, the trap
+  # body stops being recognised as single-quoted, and this reports.
+  fixture_script 'set -euo pipefail
+TMP=$(mktemp -d)
+echo "working in $TMP"; trap '"'"'rc=$?; rm -rf "$TMP"'"'"' EXIT
+echo done'
+  run_linter
+  [ "$status" -eq 0 ]
 }
 
 # --- the gate refuses to report clean over nothing -------------------------

@@ -203,6 +203,7 @@ function walk(line,   n, i, c, j, ch, delim) {
   W_stop = 0
   W_sub = 0
   W_space_at = 0
+  W_word = 0
   n = length(line)
   for (i = 1; i <= n; i++) {
     c = substr(line, i, 1)
@@ -211,9 +212,23 @@ function walk(line,   n, i, c, j, ch, delim) {
     # is at a clean top level so whitespace inside a quoted string or a
     # substitution never counts. feed() reads it to tell an env-prefix apart from
     # a bare assignment.
-    if (W_space_at == 0 && W_depth == 0 && W_q == "" && !W_tick \
-        && (c == " " || c == "\t"))
-      W_space_at = i
+    #
+    # The `W_word` term is what makes it the FIRST WORD`s end rather than the
+    # first whitespace on the line. Without it the latch fires on leading
+    # indentation, `tail` becomes the whole statement, and since a statement that
+    # got this far starts with `NAME=`, the exclusion sees an assignment and
+    # skips itself. That is inert in the one direction nobody notices: every line
+    # of a YAML `run:` body carries indentation, and that surface is the one
+    # armed by DEFAULT, so the exclusion was dead across every workflow,
+    # composite action, and adopter template, plus any shell inside a function or
+    # a loop.
+    if (W_depth == 0 && W_q == "" && !W_tick) {
+      if (c == " " || c == "\t") {
+        if (W_word && W_space_at == 0) W_space_at = i
+      } else {
+        W_word = 1
+      }
+    }
 
     # Single quotes make every byte literal, backslash included, so this test
     # comes before the escape handling below.
@@ -368,8 +383,7 @@ function has_status_read(line,   n, i, c, q, prev) {
       # comment-only lines, which is deliberate, widens the window rather than
       # narrowing it.
       if (c == "#") {
-        if (i == 1) return 0
-        prev = substr(line, i - 1, 1)
+        prev = (i > 1) ? substr(line, i - 1, 1) : " "
         if (prev == " " || prev == "\t" || prev == ";" || prev == "&" || prev == "|" || prev == "(") return 0
       }
       if (c == "\047") { q = "\047"; continue }
@@ -469,16 +483,23 @@ function feed(line, n,   stripped, probe, tail) {
     cand_line = n
     stmt_op = 0
     stmt_sub = 0
+    stmt_space_at = -1
   }
 
   if (walk(line)) {
     if (W_op) stmt_op = 1
     if (W_sub) stmt_sub = 1
+    if (stmt_space_at == -1) stmt_space_at = W_space_at
     cont = 1
     return
   }
   if (W_op) stmt_op = 1
   if (W_sub) stmt_sub = 1
+  # Only the statement`s FIRST line contributes the word break. A continued
+  # statement`s later lines have their own leading whitespace, which belongs to
+  # no first word, so reading one would exempt a real defect. That a continued
+  # statement is therefore never env-prefix-tested is the bound the header names.
+  if (stmt_space_at == -1) stmt_space_at = W_space_at
   cont = 0
   # An ENV-PREFIX assignment (`FOO=$(cmd) run_thing`) is not this class: the
   # status the shell takes is the prefixed COMMAND, so a failing substitution in
@@ -491,8 +512,8 @@ function feed(line, n,   stripped, probe, tail) {
   # and so is a redirection or a statement separator, so only a command word
   # disqualifies. Bounded to a statement that ends on its own line, since
   # W_space_at indexes into that line.
-  if (isname && W_space_at > 0) {
-    tail = substr(line, W_space_at)
+  if (isname && stmt_space_at > 0) {
+    tail = substr(line, stmt_space_at)
     sub(/^[ \t]+/, "", tail)
     if (tail != "" \
         && tail !~ /^[A-Za-z_][A-Za-z0-9_]*(\[[^]]*\])?\+?=/ \
