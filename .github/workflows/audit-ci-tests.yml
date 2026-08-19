@@ -666,26 +666,33 @@ jobs:
       # derives from the suites rather than from here.
       - if: contains(fromJSON('["hooks-4", "lib", "scripts-1", "scripts-2", "scripts-3"]'), matrix.shard) && (steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch')
         name: Install the YAML parser and zsh
-        # Sized for fast failure and honest attribution, NOT to the leg, and
-        # deliberately not sized to cover three worst-case attempts. Whichever
-        # cap fires the leg fails and `Audit CI Tests`
-        # (.gaia/scripts/verify-required-checks.sh names it required) reds, so
-        # this cap does not change the colour: it changes how long the answer
-        # takes and what it points at, an apt step that timed out rather than a
-        # leg cancelled at 13 minutes with no stated cause. Either way that
+        # Sized for fast failure and honest attribution, NOT to the leg. This
+        # cap fires only when the per-attempt bounds below have all been spent,
+        # so it is a backstop rather than the thing that ends a bad run: a leg
+        # that fails here reds `Audit CI Tests`
+        # (.gaia/scripts/verify-required-checks.sh names it required) and that
         # leg's tests do not run.
         #
-        # What preserves the test result on a stall is the retry below, not
-        # this cap. Keeping the cap while dropping the loop reproduces the
-        # failure both exist to absorb.
+        # The budget is what makes three attempts reachable, and it only works
+        # because every attempt is individually bounded: 3 x (45 + 45) of apt
+        # plus 30 of backoff is 300, inside this 360. Raising a per-call bound
+        # or an attempt count without raising this cap puts the loop back in
+        # the state described below, where the cap fires mid-attempt-1.
         #
-        # The honest limit: apt serializes per host queue, so one unreachable
-        # archive host can consume minutes inside attempt 1 and leave attempts
-        # 2 and 3 unreached. That is the intended trade rather than an
-        # oversight, because a whole-host outage is exactly the case a retry
-        # cannot help, and failing fast beats spending the leg budget proving
-        # it.
-        timeout-minutes: 5
+        # Why every apt call is wrapped in `timeout` rather than left to
+        # Acquire::*::Timeout: those options bound a STALLED transfer, and the
+        # failure actually observed here is not a stall. The runner's mirror
+        # list puts azure.archive.ubuntu.com first, that host answers `Ign:`
+        # within seconds, apt falls back to archive.ubuntu.com and gets a
+        # clean `Hit:`, and the time is then spent AFTER a successful
+        # connection, where a per-connection timeout has nothing to break. A
+        # single `apt-get update` consumed the entire step budget twice, and
+        # neither run ever printed an `apt attempt N of 3 failed` line: the cap
+        # fired inside attempt 1 and attempts 2 and 3 were unreachable, so the
+        # retry absorbed nothing on the one failure it exists for. Bounding the
+        # call itself is what makes the loop reachable, whichever mirror is the
+        # one misbehaving.
+        timeout-minutes: 6
         # Bounded twice, because the two bounds catch different failures and
         # neither is sufficient alone.
         #
@@ -710,9 +717,22 @@ jobs:
         run: |
           set -euo pipefail
           apt_opts=(-o Acquire::Retries=2 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20)
+          # `sudo timeout`, not `timeout sudo`: the latter signals sudo and can
+          # leave the apt child running past the bound, which is the bound not
+          # holding. Exit 124 is timeout's own "I killed it", reported so a log
+          # reader can tell a bounded attempt from a failed one.
+          apt_bounded() {
+            local what="$1"; shift
+            local rc=0
+            sudo timeout 45 "$@" || rc=$?
+            if [ "${rc}" -eq 124 ]; then
+              echo "apt ${what} exceeded its 45s bound" >&2
+            fi
+            return "${rc}"
+          }
           for attempt in 1 2 3; do
-            if sudo apt-get "${apt_opts[@]}" update \
-              && sudo apt-get "${apt_opts[@]}" install -y python3-yaml zsh; then
+            if apt_bounded update apt-get "${apt_opts[@]}" update \
+              && apt_bounded install apt-get "${apt_opts[@]}" install -y python3-yaml zsh; then
               exit 0
             fi
             echo "apt attempt ${attempt} of 3 failed" >&2
