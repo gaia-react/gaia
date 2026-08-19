@@ -60,8 +60,12 @@ STUB
 
   # A fake interpreter for the bash-3.2 parse pass. BASH32_MAJOR is the major
   # version it reports when the gate asks (default 3, an in-range interpreter);
-  # BASH32_FAIL_ON names the one file it rejects, so a test can place a parse
-  # error in the sweep without authoring a file that no bash can parse.
+  # BASH32_FAIL_ON is a space-separated LIST of files it rejects, so a test can
+  # place parse errors at chosen positions in the sweep without authoring files
+  # no bash can parse. A list rather than one name because proving the sweep
+  # reports EVERY broken script takes two failures in a single run; matched with
+  # the same quoted `case` shape the shellcheck stub above uses, so a path is
+  # compared literally rather than as a glob.
   cat > "$STUB_DIR/bash32" <<'STUB'
 #!/usr/bin/env bash
 if [ "$1" = "-c" ]; then
@@ -69,9 +73,13 @@ if [ "$1" = "-c" ]; then
   exit 0
 fi
 if [ "$1" = "-n" ]; then
-  if [ -n "${BASH32_FAIL_ON:-}" ] && [ "$2" = "$BASH32_FAIL_ON" ]; then
-    printf '%s: line 1: syntax error: unexpected end of file\n' "$2" >&2
-    exit 2
+  if [ -n "${BASH32_FAIL_ON:-}" ]; then
+    case " $BASH32_FAIL_ON " in
+      *" $2 "*)
+        printf '%s: line 1: syntax error: unexpected end of file\n' "$2" >&2
+        exit 2
+        ;;
+    esac
   fi
   exit 0
 fi
@@ -212,18 +220,24 @@ tracked_sh() {
   grep -qF -- "$first_sh: line 1: syntax error" <<<"$output"
 }
 
-@test "the bash-3.2 parse pass reports a script at the END of the list too" {
-  # The mirror of the test above, and the same pair the shellcheck worker passes
-  # carry. The sweep's header claims one invocation names every broken script
-  # rather than only the first; without this, an edit that aborted the loop on
-  # the first error, or let `set -e` kill the subshell, would silence every
-  # finding after it and keep the FIRST-file test green.
+@test "the bash-3.2 parse pass reports EVERY broken script, not only the first" {
+  # The sweep's header claims one invocation names every broken script rather
+  # than only the first. Rigging a single file cannot check that claim wherever
+  # it is placed: rig only the first and an abort-after-it still prints that
+  # one diagnostic, rig only the last and an abort-on-first-error aborts with
+  # nothing left to report, so both produce byte-identical output. Two failures
+  # in ONE run is what discriminates, and rigging the two ends also covers the
+  # whole-list-coverage claim a truncated sweep would break.
+  first_sh="$(tracked_sh first)"
   last_sh="$(tracked_sh last)"
+  [ -n "$first_sh" ]
   [ -n "$last_sh" ]
+  [ "$first_sh" != "$last_sh" ]
   run env PATH="$STUB_DIR:$PATH" SHELL_LINT_BASH32="$STUB_DIR/bash32" \
-    BASH32_FAIL_ON="$last_sh" bash "$GATE"
+    BASH32_FAIL_ON="$first_sh $last_sh" bash "$GATE"
   [ "$status" -eq 1 ]
   grep -qF -- "shell-lint FAILED" <<<"$output"
+  grep -qF -- "$first_sh: line 1: syntax error" <<<"$output"
   grep -qF -- "$last_sh: line 1: syntax error" <<<"$output"
 }
 
@@ -279,7 +293,7 @@ tracked_sh() {
 # distinguishing the two workers.
 
 @test "shell-lint fails closed on a finding in the FIRST worker's chunk" {
-  first_sh="$(git -C "$REPO_ROOT" ls-files '*.sh' | head -n 1)"
+  first_sh="$(tracked_sh first)"
   [ -n "$first_sh" ]
   run env PATH="$STUB_DIR:$PATH" SHELLCHECK_FAIL_ON="$first_sh" bash "$GATE"
   [ "$status" -eq 1 ]
@@ -290,7 +304,7 @@ tracked_sh() {
 }
 
 @test "shell-lint fails closed on a finding in the LAST worker's chunk" {
-  last_sh="$(git -C "$REPO_ROOT" ls-files '*.sh' | tail -n 1)"
+  last_sh="$(tracked_sh last)"
   [ -n "$last_sh" ]
   run env PATH="$STUB_DIR:$PATH" SHELLCHECK_FAIL_ON="$last_sh" bash "$GATE"
   [ "$status" -eq 1 ]
