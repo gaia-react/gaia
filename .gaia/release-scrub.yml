@@ -137,7 +137,7 @@ transforms:
   # machine-specific absolute paths repo-wide while that check reads only
   # `.claude/**`. Widening it is deliberately not folded in here: it is a
   # different pattern with its own false-positive surface, and this change's
-  # evidence covers the six token checks only. Tracked separately.
+  # evidence covers the six token checks only. Tracked as #1479.
   - type: leak-check
     # Subtracted from every check in this transform: a binary's bytes decoded
     # as UTF-8 are noise a token regex can match by accident, and a reported
