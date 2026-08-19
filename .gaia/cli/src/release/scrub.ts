@@ -3,7 +3,7 @@
  *
  * Bundle-time discipline for the GAIA release tarball. Runs inside
  * `release.yml` between the staging step (rsync from `git ls-files` minus
- * `.gaia/release-exclude`) and the final `tar -czf`. Four transforms run
+ * `.gaia/release-exclude`) and the final `tar -czf`. Five transforms run
  * in order against the staging tree:
  *
  *   1. marker-strip: remove maintainer-only blocks delimited by HTML
@@ -17,7 +17,12 @@
  *      from a structured JSON file (e.g. a maintainer-only hook registration
  *      inside `.claude/settings.json`), the shape json-strip cannot express.
  *
- *   4. leak-check: run codified audit patterns from
+ *   4. json-field-rewrite: substitute inside a JSON string field a
+ *      selector addresses, for a maintainer-only token that must leave the
+ *      bundle while the field itself survives (a schema-required key a
+ *      delete would invalidate).
+ *
+ *   5. leak-check: run codified audit patterns from
  *      `.claude/rules/wiki-style.md` Audit section + the distribution-
  *      boundary classes in `.gaia/cli/health/taxonomy.md` against the
  *      post-strip staging tree. Non-empty match = build failure with a
@@ -118,6 +123,12 @@ const TitleDerivedLeakCheckSchema = z.strictObject({
   'title-opt-out': z.array(z.string()).optional(),
 });
 
+// `scope-skip` subtracts paths from every check in the transform, so the one
+// class of file no token check can read usefully (a binary, whose bytes decoded
+// as UTF-8 are noise a regex can match by accident) is named once rather than
+// six times. It is deliberately NOT a performance lever: scanning the whole
+// staged tree, minified CLI bundle and lockfile included, costs ~80ms, and the
+// bundle is a shipped file where a leak is as real as anywhere else.
 const LeakCheckSchema = z.object({
   checks: z
     .array(
@@ -128,6 +139,7 @@ const LeakCheckSchema = z.object({
       ])
     )
     .min(1),
+  'scope-skip': z.array(z.string().min(1)).optional(),
   type: z.literal('leak-check'),
 });
 
@@ -161,6 +173,28 @@ const JsonStripArrayElementSchema = z.object({
   type: z.literal('json-strip-array-element'),
 });
 
+// Rewrites the value of a JSON string field in place. `path` reuses the
+// `json-strip-array-element` selector grammar (dot-notation, `[]` marking an
+// array to iterate) but ends on the field itself, and `pattern` is applied
+// globally to that field's value. This is the shape neither sibling transform
+// can express: `json-strip` deletes the key, which a shipped schema declaring
+// it `required` would then reject, and `json-strip-array-element` removes the
+// whole element. A selector matching nothing is a silent no-op, the same
+// stale-selector convention its sibling follows.
+const JsonFieldRewriteSchema = z.object({
+  paths: z.array(z.string().min(1)).min(1),
+  selectors: z
+    .array(
+      z.object({
+        path: z.string().min(1),
+        pattern: z.string().min(1),
+        replacement: z.string(),
+      })
+    )
+    .min(1),
+  type: z.literal('json-field-rewrite'),
+});
+
 const ConfigSchema = z.object({
   transforms: z
     .array(
@@ -168,6 +202,7 @@ const ConfigSchema = z.object({
         MarkerStripSchema,
         JsonStripSchema,
         JsonStripArrayElementSchema,
+        JsonFieldRewriteSchema,
         LeakCheckSchema,
       ])
     )
@@ -178,6 +213,7 @@ export type ScrubConfig = z.infer<typeof ConfigSchema>;
 type DerivedLeakCheck =
   | z.infer<typeof OtherDerivedLeakCheckSchema>
   | z.infer<typeof TitleDerivedLeakCheckSchema>;
+type JsonFieldRewriteTransform = z.infer<typeof JsonFieldRewriteSchema>;
 type JsonStripArrayElementTransform = z.infer<
   typeof JsonStripArrayElementSchema
 >;
@@ -614,6 +650,153 @@ const applyJsonStripArrayElement = (
   return {elementsRemoved, filesTouched};
 };
 
+// JSON field rewrite
+
+export type JsonFieldRewriteResult = {
+  fieldsRewritten: number;
+  filesTouched: readonly string[];
+};
+
+type ResolvedRewrite = {
+  segments: readonly SelectorSegment[];
+  substitution: Substitution;
+};
+type Substitution = {pattern: RegExp; replacement: string};
+
+/**
+ * Walk `segments` from `node` and substitute in the string field the terminal
+ * segment names. Defensive in the same way `removeMatchingArrayElements` is:
+ * any structural surprise (a missing key, an array where an object is
+ * expected, a non-string field) ends the walk with zero rewrites rather than
+ * throwing, so a selector that has drifted from the file cannot corrupt it.
+ * Returns the count of fields whose value actually changed.
+ */
+const rewriteMatchingFields = (
+  node: unknown,
+  segments: readonly SelectorSegment[],
+  substitution: Substitution
+): number => {
+  if (segments.length === 0) return 0;
+
+  if (typeof node !== 'object' || node === null || Array.isArray(node)) {
+    return 0;
+  }
+
+  const record = node as Record<string, unknown>;
+  const [segment, ...rest] = segments as [
+    SelectorSegment,
+    ...SelectorSegment[],
+  ];
+  const child = record[segment.key];
+
+  if (segment.isArray) {
+    if (!Array.isArray(child)) return 0;
+
+    let rewritten = 0;
+
+    for (const element of child) {
+      rewritten += rewriteMatchingFields(element, rest, substitution);
+    }
+
+    return rewritten;
+  }
+
+  if (rest.length > 0) {
+    return rewriteMatchingFields(child, rest, substitution);
+  }
+
+  if (typeof child !== 'string') return 0;
+
+  const rewritten = child.replaceAll(
+    substitution.pattern,
+    substitution.replacement
+  );
+
+  if (rewritten === child) return 0;
+
+  record[segment.key] = rewritten;
+
+  return 1;
+};
+
+/**
+ * Applies the resolved rewrites to one JSON file in place. Returns the count
+ * of fields actually changed (0 for a non-object file or when no selector
+ * matches); the file is rewritten only when that count is positive.
+ */
+const rewriteFieldsInFile = (
+  absolutePath: string,
+  relativePath: string,
+  rewrites: readonly ResolvedRewrite[]
+): number => {
+  let parsed: unknown;
+
+  try {
+    parsed = JSON.parse(readFileSync(absolutePath, 'utf8'));
+  } catch (error) {
+    throw new Error(
+      `Failed to parse JSON at ${relativePath}: ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
+
+  const isPlainObject =
+    typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed);
+
+  if (!isPlainObject) return 0;
+
+  let rewritten = 0;
+
+  for (const rewrite of rewrites) {
+    rewritten += rewriteMatchingFields(
+      parsed,
+      rewrite.segments,
+      rewrite.substitution
+    );
+  }
+
+  if (rewritten > 0) {
+    atomicWriteFileSync(absolutePath, `${JSON.stringify(parsed, null, 2)}\n`);
+  }
+
+  return rewritten;
+};
+
+const applyJsonFieldRewrite = (
+  stagingRoot: string,
+  files: readonly string[],
+  transform: JsonFieldRewriteTransform
+): JsonFieldRewriteResult => {
+  const filesTouched: string[] = [];
+  let fieldsRewritten = 0;
+  // `g` is required, not stylistic: `String.prototype.replaceAll` throws on a
+  // non-global RegExp, and a field can carry the token more than once.
+  const rewrites: ResolvedRewrite[] = transform.selectors.map((selector) => ({
+    segments: parseSelectorPath(selector.path),
+    substitution: {
+      pattern: new RegExp(selector.pattern, 'g'),
+      replacement: selector.replacement,
+    },
+  }));
+
+  for (const relativePath of files) {
+    if (matchesAnyGlob(relativePath, transform.paths)) {
+      const absolutePath = path.join(stagingRoot, relativePath);
+      const rewritten = rewriteFieldsInFile(
+        absolutePath,
+        relativePath,
+        rewrites
+      );
+
+      if (rewritten > 0) {
+        filesTouched.push(relativePath);
+        fieldsRewritten += rewritten;
+      }
+    }
+  }
+
+  return {fieldsRewritten, filesTouched};
+};
+
 // Leak check
 
 export type Leak = {
@@ -626,17 +809,32 @@ export type Leak = {
 type FileScanArgs = {
   check: LeakCheckEntry;
   files: readonly string[];
+  scopeSkip: readonly string[];
   stagingRoot: string;
 };
 
 /**
- * Shared skeleton for every leak-check kind: walk each in-scope,
- * not-path-allowlisted file, split into lines, skip line-allowlisted lines,
- * and delegate to `findLeaksInLine` for the check-specific match logic
- * (literal regex, wikilink lookup, or excluded-workflow substring search).
+ * A file is scanned when the check's own scope admits it and neither the
+ * check's `path-allowlist` nor the transform-wide `scope-skip` withholds it.
+ * Both scan loops share this so the two lists can never diverge between them.
+ */
+const isInCheckScope = (
+  relativePath: string,
+  check: LeakCheckEntry,
+  scopeSkip: readonly string[]
+): boolean =>
+  matchesAnyGlob(relativePath, check.scope) &&
+  !matchesAnyGlob(relativePath, check['path-allowlist'] ?? []) &&
+  !matchesAnyGlob(relativePath, scopeSkip);
+
+/**
+ * Shared skeleton for every leak-check kind: walk each file `isInCheckScope`
+ * admits, split into lines, skip line-allowlisted lines, and delegate to
+ * `findLeaksInLine` for the check-specific match logic (literal regex,
+ * wikilink lookup, or excluded-workflow substring search).
  */
 const scanForLeaks = (
-  {check, files, stagingRoot}: FileScanArgs,
+  {check, files, scopeSkip, stagingRoot}: FileScanArgs,
   findLeaksInLine: (
     line: string,
     lineNumber: number,
@@ -646,15 +844,10 @@ const scanForLeaks = (
   const lineAllowlist = (check['line-allowlist'] ?? []).map(
     (raw) => new RegExp(raw)
   );
-  const pathAllowlist = check['path-allowlist'] ?? [];
   const leaks: Leak[] = [];
 
   for (const relativePath of files) {
-    const inScope =
-      matchesAnyGlob(relativePath, check.scope) &&
-      !matchesAnyGlob(relativePath, pathAllowlist);
-
-    if (inScope) {
+    if (isInCheckScope(relativePath, check, scopeSkip)) {
       const source = readFileSync(path.join(stagingRoot, relativePath), 'utf8');
 
       for (const [index, line] of source.split('\n').entries()) {
@@ -669,29 +862,25 @@ const scanForLeaks = (
 };
 
 const runLeakCheck = (
-  stagingRoot: string,
-  files: readonly string[],
-  check: StaticLeakCheck
+  args: Omit<FileScanArgs, 'check'> & {check: StaticLeakCheck}
 ): readonly Leak[] => {
+  const {check} = args;
   const pattern = new RegExp(check.pattern);
 
-  return scanForLeaks(
-    {check, files, stagingRoot},
-    (line, lineNumber, relativePath) => {
-      const match = pattern.exec(line);
+  return scanForLeaks(args, (line, lineNumber, relativePath) => {
+    const match = pattern.exec(line);
 
-      return match === null ?
-          []
-        : [
-            {
-              check: check.id,
-              file: relativePath,
-              line: lineNumber,
-              match: match[0],
-            },
-          ];
-    }
-  );
+    return match === null ?
+        []
+      : [
+          {
+            check: check.id,
+            file: relativePath,
+            line: lineNumber,
+            match: match[0],
+          },
+        ];
+  });
 };
 
 // Derived wikilink-to-excluded check
@@ -776,6 +965,7 @@ type DerivedCheckArgs = {
   check: DerivedLeakCheck;
   cwd: string;
   files: readonly string[];
+  scopeSkip: readonly string[];
   stagingRoot: string;
 };
 
@@ -783,12 +973,13 @@ const runDerivedWikilinkCheck = ({
   check,
   cwd,
   files,
+  scopeSkip,
   stagingRoot,
 }: DerivedCheckArgs): readonly Leak[] => {
   const excludedSlugs = buildExcludedSlugSet(cwd);
 
   return scanForLeaks(
-    {check, files, stagingRoot},
+    {check, files, scopeSkip, stagingRoot},
     (line, lineNumber, relativePath) =>
       extractWikilinks(line)
         .filter((target) => excludedSlugs.has(target.toLowerCase()))
@@ -848,6 +1039,7 @@ const runDerivedWorkflowCheck = ({
   check,
   cwd,
   files,
+  scopeSkip,
   stagingRoot,
 }: DerivedCheckArgs): readonly Leak[] => {
   const neverPresent = buildNeverPresentWorkflowSet(cwd);
@@ -855,7 +1047,7 @@ const runDerivedWorkflowCheck = ({
   if (neverPresent.size === 0) return [];
 
   return scanForLeaks(
-    {check, files, stagingRoot},
+    {check, files, scopeSkip, stagingRoot},
     (line, lineNumber, relativePath) =>
       [...neverPresent]
         .filter((excludedPath) => line.includes(excludedPath))
@@ -1029,6 +1221,7 @@ type DerivedTitleCheckArgs = {
   check: TitleDerivedLeakCheck;
   cwd: string;
   files: readonly string[];
+  scopeSkip: readonly string[];
   stagingRoot: string;
 };
 
@@ -1036,6 +1229,7 @@ const runDerivedTitleCheck = ({
   check,
   cwd,
   files,
+  scopeSkip,
   stagingRoot,
 }: DerivedTitleCheckArgs): readonly Leak[] => {
   const optOut = new Set(check['title-opt-out']);
@@ -1048,15 +1242,10 @@ const runDerivedTitleCheck = ({
   const lineAllowlist = (check['line-allowlist'] ?? []).map(
     (raw) => new RegExp(raw)
   );
-  const pathAllowlist = check['path-allowlist'] ?? [];
   const leaks: Leak[] = [];
 
   for (const relativePath of files) {
-    const inScope =
-      matchesAnyGlob(relativePath, check.scope) &&
-      !matchesAnyGlob(relativePath, pathAllowlist);
-
-    if (inScope) {
+    if (isInCheckScope(relativePath, check, scopeSkip)) {
       const content = readFileSync(
         path.join(stagingRoot, relativePath),
         'utf8'
@@ -1129,6 +1318,10 @@ const parseFlags = (argv: readonly string[]): FlagParseResult => {
 // Run
 
 type Report = {
+  json_field_rewrite: {
+    fields_rewritten: number;
+    files_touched: readonly string[];
+  };
   json_strip: {
     files_touched: readonly string[];
     keys_removed: number;
@@ -1160,6 +1353,7 @@ const renderHumanReport = (report: Report, jsonMode: boolean): string => {
     `release scrub: stripped ${report.marker_strip.blocks_stripped} marker block(s) across ${report.marker_strip.files_touched.length} file(s)`,
     `release scrub: removed ${report.json_strip.keys_removed} json key(s) from ${report.json_strip.files_touched.length} file(s)`,
     `release scrub: removed ${report.json_strip_array_element.elements_removed} json array element(s) from ${report.json_strip_array_element.files_touched.length} file(s)`,
+    `release scrub: rewrote ${report.json_field_rewrite.fields_rewritten} json field(s) in ${report.json_field_rewrite.files_touched.length} file(s)`,
   ];
 
   if (report.unbalanced_markers.length > 0) {
@@ -1237,16 +1431,18 @@ type ScrubContext = {
  * `buildExcludedSlugSet`) and static regex checks alike.
  */
 const runLeakChecksForTransform = (
-  checks: readonly LeakCheckEntry[],
+  transform: LeakCheckTransform,
   ctx: ScrubContext
 ): Leak[] => {
   const leaks: Leak[] = [];
+  const scopeSkip = transform['scope-skip'] ?? [];
 
-  for (const check of checks) {
+  for (const check of transform.checks) {
     if (isDerivedCheck(check)) {
       const args = {
         cwd: ctx.cwd,
         files: ctx.stagedFiles,
+        scopeSkip,
         stagingRoot: ctx.stagingDir,
       };
 
@@ -1261,7 +1457,14 @@ const runLeakChecksForTransform = (
         leaks.push(...runDerived({check, ...args}));
       }
     } else {
-      leaks.push(...runLeakCheck(ctx.stagingDir, ctx.stagedFiles, check));
+      leaks.push(
+        ...runLeakCheck({
+          check,
+          files: ctx.stagedFiles,
+          scopeSkip,
+          stagingRoot: ctx.stagingDir,
+        })
+      );
     }
   }
 
@@ -1269,6 +1472,8 @@ const runLeakChecksForTransform = (
 };
 
 type TransformResults = {
+  jsonFieldRewriteFiles: string[];
+  jsonFieldsRewritten: number;
   jsonStripArrayElementFiles: string[];
   jsonStripArrayElementsRemoved: number;
   jsonStripFiles: string[];
@@ -1286,6 +1491,8 @@ const runTransforms = (
   ctx: ScrubContext
 ): TransformResults => {
   const results: TransformResults = {
+    jsonFieldRewriteFiles: [],
+    jsonFieldsRewritten: 0,
     jsonStripArrayElementFiles: [],
     jsonStripArrayElementsRemoved: 0,
     jsonStripFiles: [],
@@ -1318,8 +1525,16 @@ const runTransforms = (
       );
       results.jsonStripArrayElementsRemoved += result.elementsRemoved;
       results.jsonStripArrayElementFiles.push(...result.filesTouched);
+    } else if (transform.type === 'json-field-rewrite') {
+      const result = applyJsonFieldRewrite(
+        ctx.stagingDir,
+        ctx.stagedFiles,
+        transform
+      );
+      results.jsonFieldsRewritten += result.fieldsRewritten;
+      results.jsonFieldRewriteFiles.push(...result.filesTouched);
     } else {
-      results.leaks.push(...runLeakChecksForTransform(transform.checks, ctx));
+      results.leaks.push(...runLeakChecksForTransform(transform, ctx));
     }
   }
 
@@ -1411,6 +1626,10 @@ export const run = (
   if (results === null) return UNEXPECTED_EXIT;
 
   const report: Report = {
+    json_field_rewrite: {
+      fields_rewritten: results.jsonFieldsRewritten,
+      files_touched: results.jsonFieldRewriteFiles,
+    },
     json_strip: {
       files_touched: results.jsonStripFiles,
       keys_removed: results.jsonStripKeysRemoved,

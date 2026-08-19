@@ -75,12 +75,14 @@ transforms:
   # scripts.test:forensics: runs GAIA's internal BATS suite against
   #   .gaia/tests/forensics/unit.bats, which is release-excluded and does
   #   not exist on adopter machines.
+  # scripts.test:sandbox: same shape, against .gaia/tests/sandbox/run-all.sh.
   - type: json-strip
     paths:
       - "package.json"
     keys:
       - "bin"
       - "scripts.test:forensics"
+      - "scripts.test:sandbox"
 
   # Maintainer-only hook registrations inside a shipped settings file.
   # distribution-preflight-check.sh is release-excluded (it names
@@ -98,23 +100,46 @@ transforms:
       - path: "hooks.PreToolUse[].hooks[]"
         match: {command: ".claude/hooks/distribution-preflight-check.sh"}
 
+  # Maintainer SPEC ids inside `.gaia/state-registry.json`'s per-entry
+  # `source` provenance. The field cannot simply be deleted: the shipped
+  # `.gaia/state-registry.schema.json` declares `source` in `/$defs/entry`'s
+  # `required` array, so a bundle missing it would fail its own validator.
+  # Rewriting keeps the field schema-valid and still meaningful
+  # ("SPEC-061 §shared" → "§shared") while the identifier, which resolves only
+  # inside the maintainer's release-excluded `.specify/specs/` tree, leaves the
+  # bundle. Maintainer-side provenance in the repo is untouched.
+  - type: json-field-rewrite
+    paths:
+      - ".gaia/state-registry.json"
+    selectors:
+      - path: "entries[].source"
+        pattern: "\\bSPEC-[0-9]{3,}\\s*"
+        replacement: ""
+
+  # The six token-leak checks (uat-narrative through monorepo-prefix) each
+  # carry `scope: ["**"]`, the whole staging tree. That tree IS the shipped
+  # set, so their scope cannot drift from what ships, and there is no list left
+  # to be wrong: five earlier repairs of this class (#644, #656, #710, #1306,
+  # #1352) each added one more glob to one more list and the sixth instance
+  # arrived anyway. The narrower scopes further down belong to the
+  # file-class-specific checks, where a narrow scope is the intent, not drift.
   - type: leak-check
+    # Subtracted from every check in this transform: a binary's bytes decoded
+    # as UTF-8 are noise a token regex can match by accident, and a reported
+    # "match" out of one is unreadable. Deliberately NOT a size filter:
+    # scanning the whole staged tree, the 1.1 MB CLI bundle and the lockfile
+    # included, costs ~80ms, and both of those are shipped files where a leak
+    # is as real as in any markdown page.
+    scope-skip:
+      - "**/*.png"
+      - "**/*.ico"
     checks:
       # ---- UAT-NNN narrative refs (working-doc identifiers) ----
       - id: uat-narrative
         description: "UAT-NNN narrative references in shipped instruction surfaces"
         pattern: "UAT-[0-9]{3}"
         scope:
-          - ".claude/skills/**"
-          - ".claude/commands/**"
-          - ".claude/agents/**"
-          - ".claude/rules/**"
-          - ".claude/hooks/**"
-          - ".specify/extensions/gaia/README.md"
-          - ".specify/extensions/gaia/commands/**"
-          - ".specify/extensions/gaia/lib/**"
-          - ".specify/extensions/gaia/rules/**"
-          - ".specify/extensions/gaia/templates/**"
+          - "**"
         path-allowlist:
           # The rule itself names concrete IDs to teach adopters what NOT
           # to write.
@@ -138,16 +163,7 @@ transforms:
         description: "Concrete maintainer SPEC IDs in shipped instruction surfaces"
         pattern: "\\bSPEC-[0-9]{3,}\\b"
         scope:
-          - ".claude/skills/**"
-          - ".claude/commands/**"
-          - ".claude/agents/**"
-          - ".claude/rules/**"
-          - ".claude/hooks/**"
-          - ".specify/extensions/gaia/README.md"
-          - ".specify/extensions/gaia/commands/**"
-          - ".specify/extensions/gaia/lib/**"
-          - ".specify/extensions/gaia/rules/**"
-          - ".specify/extensions/gaia/templates/**"
+          - "**"
         path-allowlist:
           # The rule itself names concrete IDs to teach adopters what NOT to
           # do. Self-referential prose is the rule's body.
@@ -171,44 +187,7 @@ transforms:
         description: "Release-excluded paths referenced in shipped surfaces"
         pattern: "\\.gaia/cli/src\\b|\\.gaia/cli/test-fixtures\\b|\\.gaia/cli/__tests__\\b|\\.gaia/cli/health\\b|\\.gaia/cli/gaia-maintainer\\b|\\.specify/extensions/gaia/test\\b|\\.specify/specs\\b|\\.gaia/tests\\b|\\.gaia/scripts/tests\\b|\\.github/audit/tests\\b|\\.github/forensics\\b|\\.claude/rules/maintainers\\b"
         scope:
-          - "CLAUDE.md"
-          - ".claude/**"
-          - "wiki/**"
-          - ".gaia/statusline/**"
-          # Backstop for the .prettierignore marker-strip above: if a future
-          # maintainer-only fixture glob lands outside the markers, its
-          # .gaia/tests/ reference survives the strip and trips this check.
-          - ".prettierignore"
-          # Adopter-shipped CI workflows (release.yml + cli-tests.yml are
-          # release-excluded; tests.yml + chromatic.yml ship). Prior
-          # occurrence: tests.yml body comment cited maintainer paths
-          # (98f7a62).
-          - ".github/workflows/**"
-          # Adopter-shipped composite actions the workflows above invoke,
-          # including their lib/*.sh helpers.
-          - ".github/actions/**"
-          # Adopter-shipped workflow templates rendered by `gaia automation
-          # render-workflows`. Template comments must not reference
-          # maintainer-only paths (.gaia/cli/src/) absent on adopter machines.
-          - ".gaia/cli/templates/**"
-          # Adopter-shipped CI issue-body templates the composite actions render.
-          - ".gaia/templates/**"
-          - ".specify/extensions/gaia/README.md"
-          - ".specify/extensions/gaia/commands/**"
-          - ".specify/extensions/gaia/lib/**"
-          - ".specify/extensions/gaia/rules/**"
-          - ".specify/extensions/gaia/templates/**"
-          # Adopter-shipped spec-kit preset (preset.yml plus its command and
-          # spec templates).
-          - ".specify/presets/gaia/**"
-          # Shipped scripts under .gaia/scripts/** (e.g. lint-hook-array-guard.sh,
-          # summary-verify.sh) reference their sibling bats suite in header
-          # comments; that .gaia/scripts/tests/ mention must stay wrapped in
-          # maintainer-only markers rather than leak unwrapped.
-          - ".gaia/scripts/**"
-          # Shipped .github/audit/** scripts are exactly where a maintainer-only
-          # path reference (e.g. .gaia/cli/src/) would most plausibly leak.
-          - ".github/audit/**"
+          - "**"
         path-allowlist:
           # Policy-documenting rule: its own body and Audit git-grep commands
           # cite the maintainer-only .gaia/tests/forensics/ path as the
@@ -251,35 +230,22 @@ transforms:
           # adopter the guard is false and the echo is a graceful no-op, the same
           # runtime-optional class the `excluded-workflow-ref` guard covers.
           - "\\.github/forensics/bootstrap-labels\\.sh"
+          # package.json's `gaia.wikiClassify` source/test path arrays are
+          # load-bearing config globs, not prose pointers: an entry naming a
+          # release-excluded tree simply matches nothing on an adopter clone.
+          # Anchored to a bare JSON array-element string so an ordinary
+          # reference anywhere else in package.json still trips the check.
+          - "^\\s*\"\\.gaia/(cli/src|tests|scripts/tests)/\",?$"
 
       # ---- Code Audit Team maintainer-only member names ----
       # A mis-wrapped roster entry or resolver block would leave a
-      # code-audit-maintainer-* member name (Phase 1's roster, Phase 1's
-      # resolver built-in-default) in a shipped surface. Do NOT mirror the
-      # maintainer-paths scope above verbatim: it does not cover
-      # .gaia/audit-ci.yml, yet that is exactly where this leak would appear
-      # (resolve-audit-members.sh, read-audit-ci-config.sh, the roster
-      # itself), so this check adds it explicitly alongside the
-      # maintainer-paths surfaces.
+      # code-audit-maintainer-* member name (the roster in .gaia/audit-ci.yml,
+      # the resolver's built-in-default block) in a shipped surface.
       - id: maintainer-audit-members
         description: "code-audit-maintainer-* member names surviving the roster/resolver strip"
         pattern: "code-audit-maintainer-"
         scope:
-          - "CLAUDE.md"
-          - ".claude/**"
-          - "wiki/**"
-          - ".gaia/statusline/**"
-          - ".gaia/scripts/**"
-          - ".gaia/audit-ci.yml"
-          - ".gaia/cli/templates/**"
-          - ".gaia/cli/src/automation/templates/**"
-          - ".github/workflows/**"
-          # Shipped .github/audit/** scripts name Code Audit Team members by
-          # design (gate-pending-members.sh decides which members CI cannot
-          # clear), so a maintainer-only member name is likelier to be
-          # introduced here than anywhere else this check scans.
-          - ".github/audit/**"
-          - ".specify/extensions/gaia/**"
+          - "**"
 
       # ---- Never-present-on-adopter workflows referenced in shipped surfaces ----
       # `.github/workflows/` is the one distribution-boundary directory where
@@ -298,22 +264,7 @@ transforms:
         description: "References to release-excluded, never-installed workflows in shipped surfaces"
         derive: excluded-workflows
         scope:
-          - "CLAUDE.md"
-          - ".claude/**"
-          - "wiki/**"
-          - ".gaia/statusline/**"
-          - ".github/workflows/**"
-          # Adopter-shipped composite actions, same surface `maintainer-paths`
-          # scans above. Their descriptions explain which workflows they do and
-          # do not cover, so a cross-workflow prose reference is exactly the
-          # shape this check exists to catch.
-          - ".github/actions/**"
-          - ".gaia/cli/templates/**"
-          - ".specify/extensions/gaia/README.md"
-          - ".specify/extensions/gaia/commands/**"
-          - ".specify/extensions/gaia/lib/**"
-          - ".specify/extensions/gaia/rules/**"
-          - ".specify/extensions/gaia/templates/**"
+          - "**"
         line-allowlist:
           # setup-gaia's forensics detection uses a `[ -f ... ]` existence guard;
           # on an adopter the file is absent so the branch is a graceful no-op,
@@ -325,14 +276,7 @@ transforms:
         description: "Maintainer monorepo siblings (studio/, website/) in shipped surfaces"
         pattern: "(?:^|[\\s`(/])(studio|website)/"
         scope:
-          - "CLAUDE.md"
-          - ".claude/**"
-          - "wiki/**"
-          - ".specify/extensions/gaia/README.md"
-          - ".specify/extensions/gaia/commands/**"
-          - ".specify/extensions/gaia/lib/**"
-          - ".specify/extensions/gaia/rules/**"
-          - ".specify/extensions/gaia/templates/**"
+          - "**"
         path-allowlist:
           # release-notes skill is release-excluded (category 1); its
           # ../website/ references are maintainer-only and never ship.
@@ -341,6 +285,11 @@ transforms:
           # release-baseline content via `gaia-maintainer release scrub-wiki`.
           - "wiki/hot.md"
           - "wiki/log.md"
+        line-allowlist:
+          # `gaia wiki dead-paths` is the check that FLAGS sibling-monorepo
+          # references, so its own help text has to name them. Self-referential,
+          # the same exception `.claude/rules/wiki-style.md` gets by path.
+          - "sibling-monorepo paths \\(studio/, website/\\)"
 
       # ---- Absolute filesystem literals ----
       - id: absolute-paths

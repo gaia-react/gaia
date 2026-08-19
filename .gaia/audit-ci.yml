@@ -43,8 +43,10 @@ default_mode: local
 # triggers, and the job producing the required check must admit that event in
 # its `if:` -- a job gated to `pull_request` skips on a dispatch, and the audit
 # stamps `skipped`, which satisfies no required check.
+# gaia:maintainer-only:start
 # .gaia/scripts/tests/retrigger-reachability.bats guards both halves for every
 # declared-required context.
+# gaia:maintainer-only:end
 retrigger_workflows:
   - Chromatic
   - Tests

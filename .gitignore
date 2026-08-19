@@ -38,7 +38,7 @@ coverage
 # Optional eslint cache
 .eslintcache
 
-# Python bytecode (observability test infra under .gaia/tests/)
+# Python bytecode (observability test infra)
 __pycache__/
 *.pyc
 
@@ -73,7 +73,7 @@ __pycache__/
 .gaia-merge/
 
 
-# Scratch copies of .gaia/tests/bats-shards.sh that its guard suite doctors in
+# Scratch copies of the bats sharder that its guard suite doctors in
 # place. They live inside the repo because the sharder derives its own repo
 # root from git, which fails from outside a working tree. teardown() removes
 # them; this entry covers an interrupted run, where teardown never fires.

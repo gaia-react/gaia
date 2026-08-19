@@ -2,7 +2,7 @@ name: 'GAIA CI, Stale PR Skip'
 description: |
   Pre-run check that skips opening a new GAIA CI PR when an existing
   gaia-ci-labeled bot-authored PR is already open against the default
-  branch. Slice 2 of SPEC-001.
+  branch.
 inputs:
   label:
     description: 'PR label predicate. v1 uses gaia-ci.'

@@ -374,12 +374,19 @@ export const readMaintainerPathsScope = (
 };
 
 /**
- * A scope glob covers `.gaia/scripts/**` or an exact literal; the
- * `maintainer-paths` check's `scope` list uses only those two shapes (no
- * bare `*` entries), so a minimal matcher suffices without pulling in
- * `scrub.ts`'s general-purpose `globToRegex`.
+ * A scope glob is the whole tree (`**`), a prefix (`.gaia/scripts/**`), or an
+ * exact literal; the `maintainer-paths` check's `scope` list uses only those
+ * three shapes (no bare `*` entries), so a minimal matcher suffices without
+ * pulling in `scrub.ts`'s general-purpose `globToRegex`.
+ *
+ * The `**` case is what makes this lint's maintainer-paths half satisfiable
+ * by construction rather than by enumeration: a check scoped to the staging
+ * tree can have no directory outside it. The lint stays because the same call
+ * still answers for `runtime-deps`'s hand-maintained `SCAN_GLOBS`, and because
+ * re-narrowing the scope makes it fire again.
  */
 const matchesScopeGlob = (file: string, glob: string): boolean => {
+  if (glob === '**') return true;
   if (glob === file) return true;
   if (!glob.endsWith('/**')) return false;
 

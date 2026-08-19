@@ -512,7 +512,7 @@
     { "path": "worthiness-ledger/*", "match": "glob", "why": "Its keyed per-tree subdir (worthiness-ledger/<tree_key>/), addressed by the tree key so a tree's worthiness observations stay private to it." }
   ],
   "integrity_snapshot": [
-    { "path": "specs",   "why": "Durable, leaf-authored SPEC folders; a destructive script deleting one (the SPEC-031 incident) must be caught, never mistaken for background churn." },
+    { "path": "specs",   "why": "Durable, leaf-authored SPEC folders; a destructive script deleting one must be caught, never mistaken for background churn." },
     { "path": "plans",   "why": "Durable, leaf-authored plan folders and their PROGRESS ledgers; irreplaceable working state a run must not silently alter." },
     { "path": "handoff", "why": "The live per-tree session handoff; leaf-authored durable content, unlike the background-churned debt/telemetry/audit/cache/red-ledger dirs the snapshot deliberately excludes." }
   ]

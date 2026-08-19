@@ -59,9 +59,8 @@ export const checkSubject = (subject: string): SubjectCheck => {
       message:
         `"${header.type}" is not a declared commit type. ` +
         `Expected one of: ${COMMIT_TYPES.join(', ')}. ` +
-        'Add it to COMMIT_TYPES in .gaia/cli/src/util/conventional-commit.ts ' +
-        'if it should be, which forces a release-bump, CHANGELOG, and wiki ' +
-        'disposition for it.',
+        'Add it to the declared commit types if it should be, which ' +
+        'forces a release-bump, CHANGELOG, and wiki disposition for it.',
       ok: false,
     };
   }

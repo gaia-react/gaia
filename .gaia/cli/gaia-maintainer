@@ -21228,6 +21228,7 @@ var readMaintainerPathsScope = (repoRoot) => {
   return [];
 };
 var matchesScopeGlob = (file2, glob) => {
+  if (glob === "**") return true;
   if (glob === file2) return true;
   if (!glob.endsWith("/**")) return false;
   const prefix = glob.slice(0, -3);
@@ -23123,6 +23124,7 @@ var LeakCheckSchema = external_exports.object({
       StaticLeakCheckSchema
     ])
   ).min(1),
+  "scope-skip": external_exports.array(external_exports.string().min(1)).optional(),
   type: external_exports.literal("leak-check")
 });
 var JsonStripSchema = external_exports.object({
@@ -23142,12 +23144,24 @@ var JsonStripArrayElementSchema = external_exports.object({
   ).min(1),
   type: external_exports.literal("json-strip-array-element")
 });
+var JsonFieldRewriteSchema = external_exports.object({
+  paths: external_exports.array(external_exports.string().min(1)).min(1),
+  selectors: external_exports.array(
+    external_exports.object({
+      path: external_exports.string().min(1),
+      pattern: external_exports.string().min(1),
+      replacement: external_exports.string()
+    })
+  ).min(1),
+  type: external_exports.literal("json-field-rewrite")
+});
 var ConfigSchema = external_exports.object({
   transforms: external_exports.array(
     external_exports.union([
       MarkerStripSchema,
       JsonStripSchema,
       JsonStripArrayElementSchema,
+      JsonFieldRewriteSchema,
       LeakCheckSchema
     ])
   ).min(1)
@@ -23370,15 +23384,93 @@ var applyJsonStripArrayElement = (stagingRoot, files, transform2) => {
   }
   return { elementsRemoved, filesTouched };
 };
-var scanForLeaks = ({ check: check2, files, stagingRoot }, findLeaksInLine) => {
+var rewriteMatchingFields = (node, segments, substitution) => {
+  if (segments.length === 0) return 0;
+  if (typeof node !== "object" || node === null || Array.isArray(node)) {
+    return 0;
+  }
+  const record2 = node;
+  const [segment, ...rest] = segments;
+  const child = record2[segment.key];
+  if (segment.isArray) {
+    if (!Array.isArray(child)) return 0;
+    let rewritten2 = 0;
+    for (const element of child) {
+      rewritten2 += rewriteMatchingFields(element, rest, substitution);
+    }
+    return rewritten2;
+  }
+  if (rest.length > 0) {
+    return rewriteMatchingFields(child, rest, substitution);
+  }
+  if (typeof child !== "string") return 0;
+  const rewritten = child.replaceAll(
+    substitution.pattern,
+    substitution.replacement
+  );
+  if (rewritten === child) return 0;
+  record2[segment.key] = rewritten;
+  return 1;
+};
+var rewriteFieldsInFile = (absolutePath, relativePath, rewrites) => {
+  let parsed;
+  try {
+    parsed = JSON.parse(readFileSync23(absolutePath, "utf8"));
+  } catch (error51) {
+    throw new Error(
+      `Failed to parse JSON at ${relativePath}: ${error51 instanceof Error ? error51.message : String(error51)}`
+    );
+  }
+  const isPlainObject3 = typeof parsed === "object" && parsed !== null && !Array.isArray(parsed);
+  if (!isPlainObject3) return 0;
+  let rewritten = 0;
+  for (const rewrite of rewrites) {
+    rewritten += rewriteMatchingFields(
+      parsed,
+      rewrite.segments,
+      rewrite.substitution
+    );
+  }
+  if (rewritten > 0) {
+    atomicWriteFileSync(absolutePath, `${JSON.stringify(parsed, null, 2)}
+`);
+  }
+  return rewritten;
+};
+var applyJsonFieldRewrite = (stagingRoot, files, transform2) => {
+  const filesTouched = [];
+  let fieldsRewritten = 0;
+  const rewrites = transform2.selectors.map((selector) => ({
+    segments: parseSelectorPath(selector.path),
+    substitution: {
+      pattern: new RegExp(selector.pattern, "g"),
+      replacement: selector.replacement
+    }
+  }));
+  for (const relativePath of files) {
+    if (matchesAnyGlob(relativePath, transform2.paths)) {
+      const absolutePath = path25.join(stagingRoot, relativePath);
+      const rewritten = rewriteFieldsInFile(
+        absolutePath,
+        relativePath,
+        rewrites
+      );
+      if (rewritten > 0) {
+        filesTouched.push(relativePath);
+        fieldsRewritten += rewritten;
+      }
+    }
+  }
+  return { fieldsRewritten, filesTouched };
+};
+var isInCheckScope = (relativePath, check2, scopeSkip) => matchesAnyGlob(relativePath, check2.scope) && !matchesAnyGlob(relativePath, check2["path-allowlist"] ?? []) && !matchesAnyGlob(relativePath, scopeSkip);
+var scanForLeaks = ({ check: check2, files, scopeSkip, stagingRoot }, findLeaksInLine) => {
   const lineAllowlist = (check2["line-allowlist"] ?? []).map(
     (raw) => new RegExp(raw)
   );
-  const pathAllowlist = check2["path-allowlist"] ?? [];
   const leaks = [];
   for (const relativePath of files) {
-    const inScope = matchesAnyGlob(relativePath, check2.scope) && !matchesAnyGlob(relativePath, pathAllowlist);
-    if (inScope) {
+    if (isInCheckScope(relativePath, check2, scopeSkip)) {
       const source = readFileSync23(path25.join(stagingRoot, relativePath), "utf8");
       for (const [index, line] of source.split("\n").entries()) {
         if (!lineAllowlist.some((rx) => rx.test(line))) {
@@ -23389,22 +23481,20 @@ var scanForLeaks = ({ check: check2, files, stagingRoot }, findLeaksInLine) => {
   }
   return leaks;
 };
-var runLeakCheck = (stagingRoot, files, check2) => {
+var runLeakCheck = (args) => {
+  const { check: check2 } = args;
   const pattern = new RegExp(check2.pattern);
-  return scanForLeaks(
-    { check: check2, files, stagingRoot },
-    (line, lineNumber, relativePath) => {
-      const match = pattern.exec(line);
-      return match === null ? [] : [
-        {
-          check: check2.id,
-          file: relativePath,
-          line: lineNumber,
-          match: match[0]
-        }
-      ];
-    }
-  );
+  return scanForLeaks(args, (line, lineNumber, relativePath) => {
+    const match = pattern.exec(line);
+    return match === null ? [] : [
+      {
+        check: check2.id,
+        file: relativePath,
+        line: lineNumber,
+        match: match[0]
+      }
+    ];
+  });
 };
 var isDerivedCheck = (check2) => "derive" in check2;
 var slugFromPath = (filePath) => path25.basename(filePath, ".md");
@@ -23445,11 +23535,12 @@ var runDerivedWikilinkCheck = ({
   check: check2,
   cwd,
   files,
+  scopeSkip,
   stagingRoot
 }) => {
   const excludedSlugs = buildExcludedSlugSet(cwd);
   return scanForLeaks(
-    { check: check2, files, stagingRoot },
+    { check: check2, files, scopeSkip, stagingRoot },
     (line, lineNumber, relativePath) => extractWikilinks(line).filter((target) => excludedSlugs.has(target.toLowerCase())).map((target) => ({
       check: check2.id,
       file: relativePath,
@@ -23481,12 +23572,13 @@ var runDerivedWorkflowCheck = ({
   check: check2,
   cwd,
   files,
+  scopeSkip,
   stagingRoot
 }) => {
   const neverPresent = buildNeverPresentWorkflowSet(cwd);
   if (neverPresent.size === 0) return [];
   return scanForLeaks(
-    { check: check2, files, stagingRoot },
+    { check: check2, files, scopeSkip, stagingRoot },
     (line, lineNumber, relativePath) => [...neverPresent].filter((excludedPath) => line.includes(excludedPath)).map((excludedPath) => ({
       check: check2.id,
       file: relativePath,
@@ -23569,6 +23661,7 @@ var runDerivedTitleCheck = ({
   check: check2,
   cwd,
   files,
+  scopeSkip,
   stagingRoot
 }) => {
   const optOut = new Set(check2["title-opt-out"]);
@@ -23577,11 +23670,9 @@ var runDerivedTitleCheck = ({
   const lineAllowlist = (check2["line-allowlist"] ?? []).map(
     (raw) => new RegExp(raw)
   );
-  const pathAllowlist = check2["path-allowlist"] ?? [];
   const leaks = [];
   for (const relativePath of files) {
-    const inScope = matchesAnyGlob(relativePath, check2.scope) && !matchesAnyGlob(relativePath, pathAllowlist);
-    if (inScope) {
+    if (isInCheckScope(relativePath, check2, scopeSkip)) {
       const content = readFileSync23(
         path25.join(stagingRoot, relativePath),
         "utf8"
@@ -23633,7 +23724,8 @@ var renderHumanReport = (report, jsonMode) => {
   const out = [
     `release scrub: stripped ${report.marker_strip.blocks_stripped} marker block(s) across ${report.marker_strip.files_touched.length} file(s)`,
     `release scrub: removed ${report.json_strip.keys_removed} json key(s) from ${report.json_strip.files_touched.length} file(s)`,
-    `release scrub: removed ${report.json_strip_array_element.elements_removed} json array element(s) from ${report.json_strip_array_element.files_touched.length} file(s)`
+    `release scrub: removed ${report.json_strip_array_element.elements_removed} json array element(s) from ${report.json_strip_array_element.files_touched.length} file(s)`,
+    `release scrub: rewrote ${report.json_field_rewrite.fields_rewritten} json field(s) in ${report.json_field_rewrite.files_touched.length} file(s)`
   ];
   if (report.unbalanced_markers.length > 0) {
     out.push("", `unbalanced markers (${report.unbalanced_markers.length}):`);
@@ -23686,13 +23778,15 @@ var tryWalkFilesOrReport = (stagingDir) => {
     return null;
   }
 };
-var runLeakChecksForTransform = (checks, ctx) => {
+var runLeakChecksForTransform = (transform2, ctx) => {
   const leaks = [];
-  for (const check2 of checks) {
+  const scopeSkip = transform2["scope-skip"] ?? [];
+  for (const check2 of transform2.checks) {
     if (isDerivedCheck(check2)) {
       const args = {
         cwd: ctx.cwd,
         files: ctx.stagedFiles,
+        scopeSkip,
         stagingRoot: ctx.stagingDir
       };
       if (check2.derive === "excluded-titles") {
@@ -23702,13 +23796,22 @@ var runLeakChecksForTransform = (checks, ctx) => {
         leaks.push(...runDerived({ check: check2, ...args }));
       }
     } else {
-      leaks.push(...runLeakCheck(ctx.stagingDir, ctx.stagedFiles, check2));
+      leaks.push(
+        ...runLeakCheck({
+          check: check2,
+          files: ctx.stagedFiles,
+          scopeSkip,
+          stagingRoot: ctx.stagingDir
+        })
+      );
     }
   }
   return leaks;
 };
 var runTransforms = (config2, ctx) => {
   const results = {
+    jsonFieldRewriteFiles: [],
+    jsonFieldsRewritten: 0,
     jsonStripArrayElementFiles: [],
     jsonStripArrayElementsRemoved: 0,
     jsonStripFiles: [],
@@ -23740,8 +23843,16 @@ var runTransforms = (config2, ctx) => {
       );
       results.jsonStripArrayElementsRemoved += result.elementsRemoved;
       results.jsonStripArrayElementFiles.push(...result.filesTouched);
+    } else if (transform2.type === "json-field-rewrite") {
+      const result = applyJsonFieldRewrite(
+        ctx.stagingDir,
+        ctx.stagedFiles,
+        transform2
+      );
+      results.jsonFieldsRewritten += result.fieldsRewritten;
+      results.jsonFieldRewriteFiles.push(...result.filesTouched);
     } else {
-      results.leaks.push(...runLeakChecksForTransform(transform2.checks, ctx));
+      results.leaks.push(...runLeakChecksForTransform(transform2, ctx));
     }
   }
   return results;
@@ -23803,6 +23914,10 @@ var run28 = (argv, options = {}) => {
   });
   if (results === null) return UNEXPECTED_EXIT17;
   const report = {
+    json_field_rewrite: {
+      fields_rewritten: results.jsonFieldsRewritten,
+      files_touched: results.jsonFieldRewriteFiles
+    },
     json_strip: {
       files_touched: results.jsonStripFiles,
       keys_removed: results.jsonStripKeysRemoved
