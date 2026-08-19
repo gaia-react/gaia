@@ -1,7 +1,7 @@
 # Bundle-time scrub config. Consumed by `gaia-maintainer release scrub <staging-dir>`
 # from inside `release.yml` between staging and tarball creation.
 #
-# Four transforms run in order against the staging tree:
+# Five transforms run in order against the staging tree:
 #
 #   1. marker-strip: remove maintainer-only blocks delimited by HTML
 #      comment markers from in-scope markdown files.
@@ -21,7 +21,13 @@
 #      selector that matches nothing is a silent no-op. Runs before leak-check
 #      so it sees the already-clean JSON.
 #
-#   4. leak-check: run codified audit patterns against the post-strip
+#   4. json-field-rewrite: substitute inside a JSON string field a selector
+#      addresses, for a maintainer-only token that has to leave the bundle
+#      while the field itself survives (a schema-required key a delete would
+#      invalidate). Refuses to empty a field, so a value consisting only of
+#      the matched token fails the build rather than shipping "".
+#
+#   5. leak-check: run codified audit patterns against the post-strip
 #      staging tree. Non-empty match = build failure with a leak report.
 #      Mirrors the patterns in `.claude/rules/wiki-style.md` Audit section
 #      and `.gaia/cli/health/taxonomy.md` Distribution boundary classes.
@@ -103,7 +109,11 @@ transforms:
   # Maintainer SPEC ids inside `.gaia/state-registry.json`'s per-entry
   # `source` provenance. The field cannot simply be deleted: the shipped
   # `.gaia/state-registry.schema.json` declares `source` in `/$defs/entry`'s
-  # `required` array, so a bundle missing it would fail its own validator.
+  # `required` array AND gives it `minLength: 1`, so a bundle that dropped the
+  # key, or kept it as "", would fail its own validator. The transform refuses
+  # to empty a field for exactly that reason, which turns a future entry whose
+  # source is a bare id with no trailing section into a loud build failure
+  # rather than a silently invalid registry.
   # Rewriting keeps the field schema-valid and still meaningful
   # ("SPEC-061 §shared" → "§shared") while the identifier, which resolves only
   # inside the maintainer's release-excluded `.specify/specs/` tree, leaves the
@@ -122,7 +132,12 @@ transforms:
   # to be wrong: five earlier repairs of this class (#644, #656, #710, #1306,
   # #1352) each added one more glob to one more list and the sixth instance
   # arrived anyway. The narrower scopes further down belong to the
-  # file-class-specific checks, where a narrow scope is the intent, not drift.
+  # file-class-specific checks. For five of them a narrow scope is the intent
+  # rather than drift; `absolute-paths` is the exception, since CLAUDE.md bans
+  # machine-specific absolute paths repo-wide while that check reads only
+  # `.claude/**`. Widening it is deliberately not folded in here: it is a
+  # different pattern with its own false-positive surface, and this change's
+  # evidence covers the six token checks only. Tracked separately.
   - type: leak-check
     # Subtracted from every check in this transform: a binary's bytes decoded
     # as UTF-8 are noise a token regex can match by accident, and a reported

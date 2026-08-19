@@ -7,7 +7,8 @@
 # result both times.
 #
 # This catches:
-#   - non-idempotent scrub transforms (a regression class)
+#   - non-idempotent scrub transforms (a regression class), asserted over
+#     every mutating transform's own count rather than marker-strip's alone
 #   - staging tree mutations between scrub runs
 #   - allowlist drift if the test fixture path differs from release.yml
 set -euo pipefail
@@ -31,18 +32,33 @@ if ! "$PROJECT_ROOT/.gaia/cli/gaia-maintainer" release scrub "$STAGING" --json >
   exit 1
 fi
 
-# Parse JSON: assert blocks_stripped == 0 (first pass already stripped),
-# leaks == [].
+# Parse JSON: every mutation counter must read 0 (the first pass already did
+# the work), leaks == [], unbalanced_markers == [].
 require_cmd jq "jq required for parsing scrub --json output"
-BLOCKS=$(jq -r '.marker_strip.blocks_stripped' "$SCRUB_OUTPUT")
 LEAK_COUNT=$(jq -r '.leaks | length' "$SCRUB_OUTPUT")
 UNBALANCED_COUNT=$(jq -r '.unbalanced_markers | length' "$SCRUB_OUTPUT")
 
-if [ "$BLOCKS" != "0" ]; then
-  log "Second scrub pass stripped $BLOCKS marker block(s); first pass missed them or tree was mutated"
-  fail "scrub is not idempotent ($BLOCKS additional blocks stripped on rerun)"
-  exit 1
-fi
+# Idempotence is asserted over EVERY mutating transform, not marker-strip
+# alone: each publishes its own count of what it changed, and a second pass
+# over an already-scrubbed tree must change nothing. Reading one counter and
+# calling that idempotence lets a newly added transform mutate on every pass
+# while this harness still reports clean, which is the gap that existed when
+# json-field-rewrite arrived as the fourth mutator. A transform added later
+# owes a line here.
+assert_not_mutated() {
+  local selector="$1" label="$2" count
+  count="$(jq -r "$selector" "$SCRUB_OUTPUT")"
+  if [ "$count" != "0" ]; then
+    log "Second scrub pass reported $count $label; first pass missed them or the tree was mutated"
+    fail "scrub is not idempotent ($count $label on rerun)"
+    exit 1
+  fi
+}
+
+assert_not_mutated '.marker_strip.blocks_stripped' 'marker block(s) stripped'
+assert_not_mutated '.json_strip.keys_removed' 'json key(s) removed'
+assert_not_mutated '.json_strip_array_element.elements_removed' 'json array element(s) removed'
+assert_not_mutated '.json_field_rewrite.fields_rewritten' 'json field(s) rewritten'
 
 if [ "$UNBALANCED_COUNT" != "0" ]; then
   log "Unbalanced marker(s) detected:"

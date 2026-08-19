@@ -2297,6 +2297,21 @@ describe('json-field-rewrite transform', () => {
     expect(readRegistry().entries?.[0]?.source).toBe(61);
   });
 
+  test('refuses to empty a field rather than writing an invalid value', () => {
+    sandbox = setupSandbox({config: FIELD_REWRITE_CONFIG});
+    // A source that is nothing but the matched id. The shipped schema gives
+    // `source` minLength 1, so writing "" would ship a registry failing its
+    // own validator; the build has to stop instead.
+    writeRegistry({entries: [{source: 'SPEC-070'}]});
+
+    expect(run([sandbox.stagingDir, '--config', sandbox.configPath])).toBe(2);
+    expect(stdio.errors.join('')).toContain('transform_failed');
+    expect(stdio.errors.join('')).toContain(REGISTRY);
+    expect(
+      readFileSync(path.join(sandbox.stagingDir, REGISTRY), 'utf8')
+    ).toContain('SPEC-070');
+  });
+
   test('only processes files matching the paths glob', () => {
     sandbox = setupSandbox({config: FIELD_REWRITE_CONFIG});
     sandbox.writeStaged(

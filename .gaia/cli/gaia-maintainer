@@ -23409,6 +23409,11 @@ var rewriteMatchingFields = (node, segments, substitution) => {
     substitution.replacement
   );
   if (rewritten === child) return 0;
+  if (rewritten.length === 0) {
+    throw new Error(
+      `refusing to empty "${segment.key}": ${JSON.stringify(child)} rewrites to an empty string`
+    );
+  }
   record2[segment.key] = rewritten;
   return 1;
 };
@@ -23425,11 +23430,17 @@ var rewriteFieldsInFile = (absolutePath, relativePath, rewrites) => {
   if (!isPlainObject3) return 0;
   let rewritten = 0;
   for (const rewrite of rewrites) {
-    rewritten += rewriteMatchingFields(
-      parsed,
-      rewrite.segments,
-      rewrite.substitution
-    );
+    try {
+      rewritten += rewriteMatchingFields(
+        parsed,
+        rewrite.segments,
+        rewrite.substitution
+      );
+    } catch (error51) {
+      throw new Error(
+        `${relativePath}: ${error51 instanceof Error ? error51.message : String(error51)}`
+      );
+    }
   }
   if (rewritten > 0) {
     atomicWriteFileSync(absolutePath, `${JSON.stringify(parsed, null, 2)}

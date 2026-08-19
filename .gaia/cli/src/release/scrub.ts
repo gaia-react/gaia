@@ -670,6 +670,15 @@ type Substitution = {pattern: RegExp; replacement: string};
  * expected, a non-string field) ends the walk with zero rewrites rather than
  * throwing, so a selector that has drifted from the file cannot corrupt it.
  * Returns the count of fields whose value actually changed.
+ *
+ * The one case that DOES throw is a substitution that would empty the field.
+ * Emptying is not a structural surprise, it is this transform doing exactly
+ * what it was configured to do to a value that happens to be nothing but the
+ * matched token, and the result is the failure the transform exists to
+ * prevent: the reason it substitutes instead of deleting is that the shipped
+ * schema requires the key, and a `minLength` on that key makes an empty
+ * string as invalid as an absent one. Failing the build beats shipping a
+ * bundle that fails its own validator.
  */
 const rewriteMatchingFields = (
   node: unknown,
@@ -714,6 +723,12 @@ const rewriteMatchingFields = (
 
   if (rewritten === child) return 0;
 
+  if (rewritten.length === 0) {
+    throw new Error(
+      `refusing to empty "${segment.key}": ${JSON.stringify(child)} rewrites to an empty string`
+    );
+  }
+
   record[segment.key] = rewritten;
 
   return 1;
@@ -747,11 +762,17 @@ const rewriteFieldsInFile = (
   let rewritten = 0;
 
   for (const rewrite of rewrites) {
-    rewritten += rewriteMatchingFields(
-      parsed,
-      rewrite.segments,
-      rewrite.substitution
-    );
+    try {
+      rewritten += rewriteMatchingFields(
+        parsed,
+        rewrite.segments,
+        rewrite.substitution
+      );
+    } catch (error) {
+      throw new Error(
+        `${relativePath}: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
   }
 
   if (rewritten > 0) {
