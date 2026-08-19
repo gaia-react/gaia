@@ -188,9 +188,11 @@ readonly CORE_AWK='
 # apostrophe in the remaining literal opens a quote state that never closes.
 # Because state is carried across lines, the rest of the FILE is then swallowed
 # as quoted text and never classified, while this gate still prints `clean`.
-# Four tracked files here reach that shape, `.claude/hooks/block-env-read.sh`
-# among them, where a `sed -E` pattern carries a `)` inside a bracket
-# expression. The desync guard below is the second half of the answer: even a
+# `.claude/hooks/block-env-read.sh` is the exemplar, where a `sed -E` pattern
+# carries a `)` inside a bracket expression. No count is given: how many files
+# reach the shape depends entirely on which counterfactual is measured, and three
+# defensible readings give three different answers, so a number here would read
+# as a measurement while naming none. The desync guard below is the second half of the answer: even a
 # correct tokenizer has bounds, and a gate that cannot read a file has to say so
 # rather than certify it.
 #
@@ -349,7 +351,7 @@ function walk(line,   n, i, c, j, ch, delim) {
 # tree on correct code. Inside DOUBLE quotes a `$?` does expand, so `echo "rc
 # $?"` is a read like any other, and a single quote appearing inside a
 # double-quoted string is an ordinary character rather than a quote.
-function has_status_read(line,   n, i, c, q) {
+function has_status_read(line,   n, i, c, q, prev) {
   q = ""
   n = length(line)
   for (i = 1; i <= n; i++) {
@@ -357,6 +359,19 @@ function has_status_read(line,   n, i, c, q) {
     if (q == "\047") { if (c == "\047") q = ""; continue }
     if (c == "\\") { i++; continue }
     if (q == "") {
+      # A TRAILING COMMENT is not a status read, and reading one as a hit is a
+      # wrong verdict on reachable code: `some_cmd   # returns $? to the caller`
+      # holds no read at all, and the line runs whenever the assignment above it
+      # succeeded. walk() already strips a word-start `#`; this function is what
+      # decides the hit, so it has to strip one too or the two disagree about
+      # what the line even contains. Carrying a pending assignment across
+      # comment-only lines, which is deliberate, widens the window rather than
+      # narrowing it.
+      if (c == "#") {
+        if (i == 1) return 0
+        prev = substr(line, i - 1, 1)
+        if (prev == " " || prev == "\t" || prev == ";" || prev == "&" || prev == "|" || prev == "(") return 0
+      }
       if (c == "\047") { q = "\047"; continue }
       if (c == "\"") { q = "\""; continue }
     } else if (c == "\"") { q = ""; continue }
@@ -566,7 +581,7 @@ END { if (inrun) check_desync("the last run: body") }
 sh_files=()
 while IFS= read -r -d '' f; do
   sh_files+=("$f")
-done < <(git -c core.quotepath=false ls-files -z '*.sh' | LC_ALL=C sort -z)
+done < <(git -c core.quotepath=false ls-files -z '*.sh' ':(exclude).husky/*' | LC_ALL=C sort -z)
 
 # The husky hooks are collected separately from `*.sh` because they ARM
 # differently, not merely because the glob misses them. `.husky/_/h` invokes
@@ -574,6 +589,12 @@ done < <(git -c core.quotepath=false ls-files -z '*.sh' | LC_ALL=C sort -z)
 # so, exactly as it is inside an Actions `run:` body; `.husky/pre-commit` carries
 # no `set -e` and is live for the class today. Reading them off-by-default with
 # the ordinary scripts is what left that whole surface certified clean.
+#
+# The `*.sh` set EXCLUDES `.husky/*` explicitly. A git pathspec glob is matched
+# without FNM_PATHNAME, so its `*` crosses `/` and a `.husky/helper.sh` would
+# otherwise be returned by both sets, scanned once armed and once not, and
+# double-listed in the report. No such file exists today; the only tracked hook
+# is extensionless.
 husky_files=()
 while IFS= read -r -d '' f; do
   husky_files+=("$f")

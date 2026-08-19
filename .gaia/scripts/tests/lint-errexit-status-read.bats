@@ -453,8 +453,7 @@ echo "$rc"'
   fixture_repo
   fixture_script 'set -euo pipefail
 PATHS="$(cat <<EOF
-one
-two
+a lone apostrophe that must not leak into the walk: it'"'"'s here
 EOF
 )"
 out=$(some_command)
@@ -462,7 +461,7 @@ rc=$?
 echo "$PATHS $rc"'
   run_linter
   [ "$status" -eq 1 ]
-  grep -qF -- 'check.sh:8:' <<<"$output"
+  grep -qF -- 'check.sh:7:' <<<"$output"
 }
 
 @test "quiet on a heredoc body carrying the shape as a fixture" {
@@ -496,7 +495,7 @@ echo "$rc"'
   fixture_repo
   fixture_script 'set -euo pipefail
 cat > /tmp/f.txt <<EOF
-this body carries an apostrophe: it is the shell that would not
+this body carries an apostrophe: it'"'"'s the byte that desyncs
 EOF
 out=$(some_command)
 rc=$?
@@ -550,6 +549,20 @@ echo "$rc"'
   [ "$status" -eq 0 ]
 }
 
+@test "a .sh under .husky is scanned once, not once per overlapping pathspec" {
+  fixture_repo
+  fixture_file .husky/helper.sh 'set -e
+out=$(some_command)
+rc=$?
+echo "$rc"'
+  run_linter
+  [ "$status" -eq 1 ]
+  # A git pathspec glob crosses `/`, so this file matches BOTH the `*.sh` set and
+  # the `.husky/*` set. Armed by its own `set -e` it would be hit in each pass
+  # and reported twice, which reads as two defects on one line.
+  [ "$(grep -cF -- '.husky/helper.sh:3:' <<<"$output")" -eq 1 ]
+}
+
 @test "an ordinary tracked script is still off by default" {
   fixture_repo
   fixture_script 'out=$(some_command)
@@ -599,6 +612,27 @@ echo "$rc"'
   fixture_script 'set -e
 out=$(some_command) > log
 rc=$?
+echo "$rc"'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- 'check.sh:3:' <<<"$output"
+}
+
+@test "quiet on a trailing comment that merely mentions the status variable" {
+  fixture_repo
+  fixture_script 'set -e
+out=$(some_command)
+some_cmd   # returns $? to the caller
+echo done'
+  run_linter
+  [ "$status" -eq 0 ]
+}
+
+@test "still flags a real read on a line that also carries a comment" {
+  fixture_repo
+  fixture_script 'set -e
+out=$(some_command)
+rc=$?   # capture before anything else runs
 echo "$rc"'
   run_linter
   [ "$status" -eq 1 ]
