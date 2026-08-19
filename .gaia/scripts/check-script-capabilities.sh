@@ -200,8 +200,9 @@ gaia_capcheck_schema() {
 # gaia_capcheck_vocabulary <repo_root>
 #   BAD-TERM. The closed six-term vocabulary, plus the two rules a JSON Schema
 #   pattern cannot express: an `invokes:` target carries no `..` segment and
-#   names a file that exists, and an `fs-write:` glob is repo-relative and
-#   well-formed. Both apply to DECLARED terms only, after resolution has
+#   names a file that exists, and an `fs-write:` glob is repo-relative,
+#   well-formed, and carries a literal prefix unless it is the exact `**`
+#   sentinel. Both apply to DECLARED terms only, after resolution has
 #   already normalized every live target, so a `..`-bearing invocation site
 #   stays declarable while a `..`-bearing declaration is rejected.
 gaia_capcheck_vocabulary() {
@@ -235,6 +236,16 @@ _gaia_capcheck_term_ok() {
         /*|'~'*|*' '*) return 1 ;;
         ..|../*|*/../*|*/..) return 1 ;;
       esac
+      # Every fs-write glob except the sentinel must carry a literal prefix.
+      # A prefix-less glob (`**/*`, `*/**`, `*`) matches essentially every
+      # path a script can reach, so it is a second spelling of the blanket
+      # declaration the reconciler refuses for `**`, differing only in that
+      # nothing would recognize it as one. Rejecting the whole prefix-less
+      # class closes it once, rather than blacklisting spellings one at a
+      # time as each is noticed.
+      if [ "$value" != '**' ]; then
+        case "${value%%[*?[]*}" in '') return 1 ;; esac
+      fi
       return 0
       ;;
     invokes:*)
@@ -537,10 +548,13 @@ gaia_check_script_capabilities() {
 
 # gaia_capcheck_print_reach <repo_root> [<script>]
 #   The diagnostic. One term per line for one script, or `<script>\t<term>`
-#   lines for every obligated script. A script that reaches for nothing still
-#   gets its own line, carrying a `-` sentinel, so "pure" and "not enumerated"
-#   are distinguishable. Unresolvable sites are stderr diagnostics here rather
-#   than a fatal condition, and the mode always exits 0.
+#   lines for every obligated script. In the all-scripts listing a script that
+#   reaches for nothing still gets its own line, carrying a `-` sentinel, so
+#   "pure" and "not enumerated" are distinguishable there. The single-script
+#   arm prints only terms, so a pure script and a name that is not obligated at
+#   all both come back empty; the listing is what answers "is it enumerated".
+#   Unresolvable sites are stderr diagnostics here rather than a fatal
+#   condition, and the mode always exits 0.
 gaia_capcheck_print_reach() {
   local repo_root="$1" only="${2:-}"
   local script terms unres n

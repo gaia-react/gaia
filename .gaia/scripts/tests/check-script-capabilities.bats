@@ -357,6 +357,24 @@ rm -rf -- "$target"'
   grep -qxF -- "fs-write:**" <<<"$output"
 }
 
+@test "a prefix-less fs-write glob that is not the sentinel is BAD-TERM" {
+  repo="$(make_fixture_repo prefixlessglob)"
+  add_script "$repo" .gaia/scripts/w.sh '#!/usr/bin/env bash
+mkdir -p app/x'
+  write_allow "$repo" "Bash(bash .gaia/scripts/w.sh:*)"
+  # `**/*` compiles to a pattern matching every path with a directory
+  # component, so without this rule it is a blanket declaration wearing a
+  # spelling the sentinel narrowing does not recognize. The whole prefix-less
+  # class is refused, not the one spelling that was noticed.
+  for term in '**/*' '*/**' '*'; do
+    write_manifest "$repo" "[{\"script\":\".gaia/scripts/w.sh\",\"capabilities\":[\"fs-write:$term\"],
+      \"why\":\"blanket by another spelling\",\"maintainer_only\":false}]"
+    run bash "$CHECK" "$repo"
+    [ "$status" -eq 1 ]
+    grep -qF -- "BAD-TERM .gaia/scripts/w.sh fs-write:$term" <<<"$output"
+  done
+}
+
 @test "a declared fs-write:** does not cover a concrete write in the same closure" {
   repo="$(make_fixture_repo sentinelconcrete)"
   add_script "$repo" .gaia/scripts/w.sh '#!/usr/bin/env bash
@@ -391,7 +409,7 @@ mkdir -p app/x'
 @test "a declared fs-write glob that is not the sentinel still covers what it matches" {
   repo="$(make_fixture_repo nonsentinelglob)"
   add_script "$repo" .gaia/scripts/w.sh '#!/usr/bin/env bash
-printf "x\n" > "app/data/$name.txt"'
+printf "x\n" > "app/data/sub/$name.txt"'
   write_allow "$repo" "Bash(bash .gaia/scripts/w.sh:*)"
   write_manifest "$repo" '[{"script":".gaia/scripts/w.sh","capabilities":["fs-write:app/data/**"],
     "why":"writes a computed basename under a fixed directory","maintainer_only":false}]'
