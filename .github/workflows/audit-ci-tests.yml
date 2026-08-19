@@ -666,15 +666,24 @@ jobs:
       # derives from the suites rather than from here.
       - if: contains(fromJSON('["hooks-4", "lib", "scripts-1", "scripts-2", "scripts-3"]'), matrix.shard) && (steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch')
         name: Install the YAML parser and zsh
-        # Sized to a normal install (tens of seconds) plus the retry budget
-        # below, NOT to the leg. Without a cap of its own, a mirror that stalls
-        # mid-fetch holds the socket open until the job's 13-minute cap
-        # cancels the whole leg, the bats step after this one never starts, and
-        # a declared-required context (`Audit CI Tests` in
-        # .gaia/scripts/verify-required-checks.sh) reports no test result at
-        # all, for a reason that has nothing to do with the change under test.
-        # A cap that only fires at the leg budget reproduces exactly that, so
-        # this one has to be the smaller number.
+        # Sized for fast failure and honest attribution, NOT to the leg, and
+        # deliberately not sized to cover three worst-case attempts. Whichever
+        # cap fires the leg fails and `Audit CI Tests`
+        # (.gaia/scripts/verify-required-checks.sh names it required) reds, so
+        # this cap does not change the colour: it changes how long the answer
+        # takes and what it points at, an apt step that timed out rather than a
+        # leg cancelled at 13 minutes with no result and no stated cause.
+        #
+        # What preserves the test result on a stall is the retry below, not
+        # this cap. Keeping the cap while dropping the loop reproduces the
+        # failure both exist to absorb.
+        #
+        # The honest limit: apt serializes per host queue, so one unreachable
+        # archive host can consume minutes inside attempt 1 and leave attempts
+        # 2 and 3 unreached. That is the intended trade rather than an
+        # oversight, because a whole-host outage is exactly the case a retry
+        # cannot help, and failing fast beats spending the leg budget proving
+        # it.
         timeout-minutes: 5
         # Bounded twice, because the two bounds catch different failures and
         # neither is sufficient alone.
