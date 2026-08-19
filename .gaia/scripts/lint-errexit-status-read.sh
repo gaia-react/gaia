@@ -153,6 +153,25 @@
 #     block scalar; only its first line is read, the same bound the sibling
 #     run-interpolation gate carries and for the same reason.
 #
+# Known FALSE POSITIVES, a third direction and the one worth naming explicitly
+# because each costs a correct line a wrong verdict. All three are the same
+# root cause: the env-prefix exclusion inspects a single token where the shell
+# takes an arbitrary run of prefix words. None occurs in this tree.
+#   - A redirection standing between the value and the command it prefixes
+#     (`out=$(cmd) > log run_thing`, and the same with `2>` or `2>&1`). The
+#     exclusion stops at the redirection and never reaches `run_thing`, so an
+#     env prefix reads as a bare assignment.
+#   - `&> log` and `>& log`, which the exclusion does not recognise as
+#     redirections at all.
+#   - A further assignment before the command word (`out=$(cmd) FOO=1
+#     run_thing`), which terminates the exclusion instead of being consumed.
+# The structural repair for all three is one quote-aware loop consuming every
+# assignment and redirection until a command word remains, tracked as
+# gaia-react/gaia#1486. It is deliberately not attempted here: the
+# enumerate-one-more-shape approach produced four defects across four review
+# rounds, the last of them a silent fail-open, so the repair gets its own change
+# rather than a fifth widening.
+#
 # None of those fails SILENTLY. Tokenizer state is carried across lines, so any
 # bound that loses sync leaves a quote, a substitution, or a heredoc open at the
 # end of the region, and `check_desync` below reports the region as one this gate
@@ -529,31 +548,31 @@ function feed(line, n,   stripped, probe, tail) {
   if (isname && stmt_space_at > 0) {
     tail = substr(line, stmt_space_at)
     sub(/^[ \t]+/, "", tail)
-    # Consume every leading REDIRECTION and its operand before deciding what the
-    # next word is. Testing only the tail`s first token stops at the redirection
-    # and never reaches the command behind it, so `out=$(cmd) > log run_thing` is
-    # read as a bare assignment and reported, while the shell runs that line
-    # happily: it is an env prefix, bash takes `run_thing``s status, and errexit
-    # never fires on the substitution. The operator carries an optional file
-    # descriptor on either side, and a `>&N` duplicate consumes its target
-    # inline rather than taking a separate word.
+    # This test reads ONE token and stops. That is a deliberate retreat from a
+    # consumption loop, not an oversight, and the header records the bounds it
+    # leaves standing under `Known FALSE POSITIVES`.
     #
-    # The loop always terminates: entering it means the tail begins with a `<` or
-    # `>`, and the operator pattern consumes at least that character.
-    while (tail ~ /^[0-9]*[<>]/) {
-      if (tail ~ /^[0-9]*[<>]+&[0-9-]+/) {
-        sub(/^[0-9]*[<>]+&[0-9-]+/, "", tail)
-      } else {
-        sub(/^[0-9]*[<>]+/, "", tail)
-        sub(/^[ \t]+/, "", tail)
-        sub(/^[^ \t;|&#()<>]+/, "", tail)
-      }
-      sub(/^[ \t]+/, "", tail)
-    }
-    # An empty tail means the statement was the assignment plus its redirections
-    # and nothing else, which is a bare assignment and so is the class.
+    # The loop that consumed redirections and their operands was correct for the
+    # shapes it enumerated and silently wrong for the first one it did not: its
+    # operand matcher was whitespace-delimited, so `out=$(cmd) > "my log"`
+    # consumed `"my` and left `log"`, which reads as a command word and exempted
+    # a genuine defect. Reporting a correct line is loud and the author sees it;
+    # certifying a broken one is invisible, and this gate exists to not do that.
+    #
+    # Four defects landed on this one test across four review rounds, every one
+    # of them the same root cause: it inspects a single token where the shell
+    # takes an arbitrary run of prefix words. Widening it by one more shape is
+    # what produced this regression. The structural repair, one quote-aware loop
+    # consuming every assignment and redirection until a command word remains,
+    # is gaia-react/gaia#1486 rather than a fifth widening bolted on here.
+    #
+    # `^[0-9]*[<>]` rather than a bare `<`/`>` in the character set: a
+    # redirection may carry an explicit file descriptor (`2> log`, `1>&2`), and
+    # reading the digit as the first letter of a command word is what made
+    # `out=$(cmd) 2> log` exempt itself while the identical `> log` was reported.
     if (tail != "" \
         && tail !~ /^[A-Za-z_][A-Za-z0-9_]*(\[[^]]*\])?\+?=/ \
+        && tail !~ /^[0-9]*[<>]/ \
         && index(";|&#()", substr(tail, 1, 1)) == 0)
       isname = 0
   }

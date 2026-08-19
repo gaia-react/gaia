@@ -674,44 +674,63 @@ echo "$rc"'
   grep -qF -- 'check.sh:3:' <<<"$output"
 }
 
-@test "a redirection between the value and the command word does not hide the prefix" {
+# These three pin a KNOWN FALSE POSITIVE rather than correct behaviour. The
+# env-prefix exclusion reads one token, so it stops at a redirection and never
+# reaches the command word behind it; the shell runs these lines and takes the
+# prefixed command's status, so the report is wrong. They are held as tests
+# because a bound nothing enforces drifts: the structural repair (one quote-aware
+# loop consuming every prefix word, gaia-react/gaia#1486) will red all three,
+# which is the signal to move them into the quiet column deliberately rather than
+# by accident.
+#
+# The consumption loop that would have fixed them was reverted: its operand
+# matcher was whitespace-delimited, so a quoted operand silently exempted a real
+# defect, which is a worse direction than the false positives below.
+
+@test "bound: a redirection before the command word hides the env prefix" {
   fixture_repo
-  # The redirection is consumed with its operand so the walk reaches the command
-  # behind it. Stopping at the redirection reads this as a bare assignment and
-  # reports it, while the shell runs the line: it is an env prefix, so bash takes
-  # `run_thing`'"'"'s status and errexit never fires on the substitution.
   fixture_script 'set -e
 out=$(some_command) > log run_thing
 rc=$?
 echo "$rc"'
   run_linter
-  [ "$status" -eq 0 ]
+  [ "$status" -eq 1 ]
+  grep -qF -- 'check.sh:3:' <<<"$output"
 }
 
-@test "the same holds when the redirection carries a descriptor" {
+@test "bound: the same with an explicit file descriptor" {
   fixture_repo
   fixture_script 'set -e
 out=$(some_command) 2> log run_thing
 rc=$?
 echo "$rc"'
   run_linter
-  [ "$status" -eq 0 ]
+  [ "$status" -eq 1 ]
 }
 
-@test "a descriptor duplicate consumes its target inline, not a following word" {
+@test "bound: the same behind a descriptor duplicate" {
   fixture_repo
-  # `2>&1` carries its target in the operator itself. Consuming a separate word
-  # after it would eat `run_thing` and report this env prefix as a bare
-  # assignment; not consuming the `&1` leaves a tail starting with `&`, which the
-  # operator set reads as a control character and skips the exclusion, reporting
-  # it the other way. Confirmed exempt: `set -e; out=$(false) 2>&1 echo hi` prints
-  # hi and survives.
   fixture_script 'set -e
 out=$(some_command) 2>&1 run_thing
 rc=$?
 echo "$rc"'
   run_linter
-  [ "$status" -eq 0 ]
+  [ "$status" -eq 1 ]
+}
+
+@test "a redirection whose operand is quoted is still reported" {
+  fixture_repo
+  # The regression the reverted loop introduced: its operand matcher stopped at
+  # whitespace, so `> "my log"` left `log"` behind, which read as a command word
+  # and certified a genuine defect clean. Confirmed against the shell:
+  # `set -e; out=$(false) > "/tmp/my log"` exits.
+  fixture_script 'set -e
+out=$(some_command) > "my log"
+rc=$?
+echo "$rc"'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- 'check.sh:3:' <<<"$output"
 }
 
 @test "a redirection with no command behind it is still a bare assignment" {
