@@ -674,6 +674,59 @@ echo "$rc"'
   grep -qF -- 'check.sh:3:' <<<"$output"
 }
 
+@test "a redirection between the value and the command word does not hide the prefix" {
+  fixture_repo
+  # The redirection is consumed with its operand so the walk reaches the command
+  # behind it. Stopping at the redirection reads this as a bare assignment and
+  # reports it, while the shell runs the line: it is an env prefix, so bash takes
+  # `run_thing`'"'"'s status and errexit never fires on the substitution.
+  fixture_script 'set -e
+out=$(some_command) > log run_thing
+rc=$?
+echo "$rc"'
+  run_linter
+  [ "$status" -eq 0 ]
+}
+
+@test "the same holds when the redirection carries a descriptor" {
+  fixture_repo
+  fixture_script 'set -e
+out=$(some_command) 2> log run_thing
+rc=$?
+echo "$rc"'
+  run_linter
+  [ "$status" -eq 0 ]
+}
+
+@test "a descriptor duplicate consumes its target inline, not a following word" {
+  fixture_repo
+  # `2>&1` carries its target in the operator itself. Consuming a separate word
+  # after it would eat `run_thing` and report this env prefix as a bare
+  # assignment; not consuming the `&1` leaves a tail starting with `&`, which the
+  # operator set reads as a control character and skips the exclusion, reporting
+  # it the other way. Confirmed exempt: `set -e; out=$(false) 2>&1 echo hi` prints
+  # hi and survives.
+  fixture_script 'set -e
+out=$(some_command) 2>&1 run_thing
+rc=$?
+echo "$rc"'
+  run_linter
+  [ "$status" -eq 0 ]
+}
+
+@test "a redirection with no command behind it is still a bare assignment" {
+  fixture_repo
+  # The other direction of the same consumption: an empty tail means the
+  # statement was the assignment plus its redirections and nothing else.
+  fixture_script 'set -e
+out=$(some_command) > log 2> err
+rc=$?
+echo "$rc"'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- 'check.sh:3:' <<<"$output"
+}
+
 @test "a genuine background & still exempts the statement" {
   fixture_repo
   # The discrimination above must not swallow the real control operator: a

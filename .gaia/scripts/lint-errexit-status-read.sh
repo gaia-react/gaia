@@ -198,7 +198,7 @@ readonly CORE_AWK='
 #
 # walk(line): advance the state across one line and return 1 when the statement
 # continues onto the next one.
-function walk(line,   n, i, c, j, ch, delim) {
+function walk(line,   n, i, c, j, ch, delim, prev) {
   W_op = 0
   W_stop = 0
   W_sub = 0
@@ -529,13 +529,31 @@ function feed(line, n,   stripped, probe, tail) {
   if (isname && stmt_space_at > 0) {
     tail = substr(line, stmt_space_at)
     sub(/^[ \t]+/, "", tail)
-    # `^[0-9]*[<>]` rather than a bare `<`/`>` in the character set: a
-    # redirection may carry an explicit file descriptor (`2> log`, `1>&2`), and
-    # reading the digit as the first letter of a command word is what made
-    # `out=$(cmd) 2> log` exempt itself while the identical `> log` was reported.
+    # Consume every leading REDIRECTION and its operand before deciding what the
+    # next word is. Testing only the tail`s first token stops at the redirection
+    # and never reaches the command behind it, so `out=$(cmd) > log run_thing` is
+    # read as a bare assignment and reported, while the shell runs that line
+    # happily: it is an env prefix, bash takes `run_thing``s status, and errexit
+    # never fires on the substitution. The operator carries an optional file
+    # descriptor on either side, and a `>&N` duplicate consumes its target
+    # inline rather than taking a separate word.
+    #
+    # The loop always terminates: entering it means the tail begins with a `<` or
+    # `>`, and the operator pattern consumes at least that character.
+    while (tail ~ /^[0-9]*[<>]/) {
+      if (tail ~ /^[0-9]*[<>]+&[0-9-]+/) {
+        sub(/^[0-9]*[<>]+&[0-9-]+/, "", tail)
+      } else {
+        sub(/^[0-9]*[<>]+/, "", tail)
+        sub(/^[ \t]+/, "", tail)
+        sub(/^[^ \t;|&#()<>]+/, "", tail)
+      }
+      sub(/^[ \t]+/, "", tail)
+    }
+    # An empty tail means the statement was the assignment plus its redirections
+    # and nothing else, which is a bare assignment and so is the class.
     if (tail != "" \
         && tail !~ /^[A-Za-z_][A-Za-z0-9_]*(\[[^]]*\])?\+?=/ \
-        && tail !~ /^[0-9]*[<>]/ \
         && index(";|&#()", substr(tail, 1, 1)) == 0)
       isname = 0
   }
