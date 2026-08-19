@@ -161,6 +161,33 @@ teardown() {
   grep -qE -- '(^| )-s sh( |$).*\.husky/pre-commit' "$STUB_DIR/argv.log"
 }
 
+# Derive a rig path the way the gate discovers its file list: NUL-delimited with
+# `core.quotepath` off. A plain `git ls-files '*.sh' | head -n 1` disagrees with
+# the gate under git's default quoting -- a tracked path carrying a non-ASCII
+# byte comes back C-quoted, so BASH32_FAIL_ON would name a path the sweep never
+# sees and the absence assertion in the loud-skip test below would pass
+# trivially, degrading it from "proved no sweep ran" to "the warning printed".
+# A read loop rather than `head -z`: that flag is GNU-only and absent from
+# macOS's head, which is the platform this whole gate exists for.
+# `.gaia/scripts/lint-git-path-quoting.sh` excludes *.bats by design, so nothing
+# catches this shape here.
+#
+# Args: first|last
+tracked_sh() {
+  local which_end="$1" f first="" last=""
+  while IFS= read -r -d '' f; do
+    if [ -z "$first" ]; then
+      first="$f"
+    fi
+    last="$f"
+  done < <(git -C "$REPO_ROOT" -c core.quotepath=false ls-files -z '*.sh')
+  if [ "$which_end" = "first" ]; then
+    printf '%s\n' "$first"
+  else
+    printf '%s\n' "$last"
+  fi
+}
+
 # The bash-3.2 parse pass. Shellcheck models bash 5's grammar, so a construct
 # that is a syntax error only on 3.2 clears every pass above it; this pass is
 # the one that reads the tree with the interpreter the scripts declare support
@@ -174,7 +201,7 @@ teardown() {
 }
 
 @test "the bash-3.2 parse pass fails the gate on a script the interpreter cannot parse" {
-  first_sh="$(git -C "$REPO_ROOT" ls-files '*.sh' | head -n 1)"
+  first_sh="$(tracked_sh first)"
   [ -n "$first_sh" ]
   run env PATH="$STUB_DIR:$PATH" SHELL_LINT_BASH32="$STUB_DIR/bash32" \
     BASH32_FAIL_ON="$first_sh" bash "$GATE"
@@ -185,12 +212,27 @@ teardown() {
   grep -qF -- "$first_sh: line 1: syntax error" <<<"$output"
 }
 
+@test "the bash-3.2 parse pass reports a script at the END of the list too" {
+  # The mirror of the test above, and the same pair the shellcheck worker passes
+  # carry. The sweep's header claims one invocation names every broken script
+  # rather than only the first; without this, an edit that aborted the loop on
+  # the first error, or let `set -e` kill the subshell, would silence every
+  # finding after it and keep the FIRST-file test green.
+  last_sh="$(tracked_sh last)"
+  [ -n "$last_sh" ]
+  run env PATH="$STUB_DIR:$PATH" SHELL_LINT_BASH32="$STUB_DIR/bash32" \
+    BASH32_FAIL_ON="$last_sh" bash "$GATE"
+  [ "$status" -eq 1 ]
+  grep -qF -- "shell-lint FAILED" <<<"$output"
+  grep -qF -- "$last_sh: line 1: syntax error" <<<"$output"
+}
+
 @test "the bash-3.2 parse pass skips LOUDLY when the interpreter is too new" {
   # A file is rigged to fail the sweep at the same time. That is what makes the
   # green below mean "did not sweep" rather than merely "swept and found
   # nothing": had the too-new interpreter parsed the tree, it would have hit
   # this file and red.
-  first_sh="$(git -C "$REPO_ROOT" ls-files '*.sh' | head -n 1)"
+  first_sh="$(tracked_sh first)"
   [ -n "$first_sh" ]
   run env PATH="$STUB_DIR:$PATH" SHELL_LINT_BASH32="$STUB_DIR/bash32" \
     BASH32_MAJOR=5 BASH32_FAIL_ON="$first_sh" bash "$GATE"

@@ -7,7 +7,10 @@
 # run-interpolation guard (.gaia/scripts/lint-workflow-run-interpolation.sh),
 # the grep ERE-escape guard (.gaia/scripts/lint-grep-ere-escapes.sh), and the
 # errexit status-read guard (.gaia/scripts/lint-errexit-status-read.sh).
-# Exit 0 when clean, 1 on any finding at or above the severity floor.
+# Exit 0 when clean, 1 on any finding at or above the severity floor, and 1 on
+# a pass that cannot run at all (no shellcheck binary, an empty *.sh discovery
+# set, an unusable bash-3.2 interpreter). A red gate is therefore not always a
+# findings list; the ERROR line says which case it is.
 # Run it directly from anywhere: `bash .gaia/tests/shell-lint.sh`.
 #
 # Maintainer-only. Adopters run GAIA's bash but never author it, so the linter
@@ -289,8 +292,9 @@ fi
 
 # Parse every tracked *.sh with bash 3.2. The passes above run shellcheck, which
 # does not implement bash 3.2's command-substitution lexer, so a construct that
-# parses on bash 5 and is a syntax error on 3.2 clears all of them. The runners are ubuntu bash 5 and stock macOS ships 3.2.57 as
-# /bin/bash, the version these scripts declare support for, so the divergence
+# parses on bash 5 and is a syntax error on 3.2 clears all of them. The runners
+# are ubuntu bash 5, and stock macOS ships 3.2.57 as /bin/bash, the version
+# these scripts declare support for, so the divergence
 # is observable on a maintainer's own machine and nowhere else. That is where
 # the one shipped instance of the class sat undetected: an apostrophe in a
 # comment inside a quoted heredoc nested in a command substitution made
