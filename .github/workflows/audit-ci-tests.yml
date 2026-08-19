@@ -666,10 +666,10 @@ jobs:
       # derives from the suites rather than from here.
       - if: contains(fromJSON('["hooks-4", "lib", "scripts-1", "scripts-2", "scripts-3"]'), matrix.shard) && (steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch')
         name: Install the YAML parser and zsh
-        # Sized for fast failure and honest attribution, NOT to the leg. This
-        # cap fires only when the per-attempt bounds below have all been spent,
-        # so it is a backstop rather than the thing that ends a bad run: a leg
-        # that fails here reds `Audit CI Tests`
+        # Sized for fast failure and honest attribution, NOT to the leg. When
+        # this cap fires is the budget paragraph's subject, not this one's,
+        # because the answer is not "after every attempt". A leg that fails
+        # here reds `Audit CI Tests`
         # (.gaia/scripts/verify-required-checks.sh names it required) and that
         # leg's tests do not run.
         #
