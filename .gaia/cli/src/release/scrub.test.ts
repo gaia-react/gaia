@@ -2263,9 +2263,30 @@ describe('json-field-rewrite transform', () => {
 
   test('no-ops without throwing when a segment has the wrong shape', () => {
     sandbox = setupSandbox({config: FIELD_REWRITE_CONFIG});
+    // `entries[]` declares an array; an object there is the stale-selector
+    // case. Descending into it anyway would rewrite a field the selector
+    // never addressed, so the value has to survive untouched.
     writeRegistry({entries: {source: 'SPEC-061 §shared'}});
 
     expect(run([sandbox.stagingDir, '--config', sandbox.configPath])).toBe(0);
+    expect(
+      readFileSync(path.join(sandbox.stagingDir, REGISTRY), 'utf8')
+    ).toContain('SPEC-061');
+    expect(stdio.outputs.join('')).toContain('rewrote 0 json field(s)');
+  });
+
+  test('no-ops when the field is reached but the pattern does not match', () => {
+    sandbox = setupSandbox({config: FIELD_REWRITE_CONFIG});
+    const before = {entries: [{source: '§shared, no id here'}]};
+    writeRegistry(before);
+
+    expect(run([sandbox.stagingDir, '--config', sandbox.configPath])).toBe(0);
+    expect(stdio.outputs.join('')).toContain('rewrote 0 json field(s)');
+    // Counted as untouched AND left byte-identical: a rewrite reported on a
+    // no-change substitution would also rewrite the file.
+    expect(readFileSync(path.join(sandbox.stagingDir, REGISTRY), 'utf8')).toBe(
+      JSON.stringify(before, null, 2)
+    );
   });
 
   test('leaves a non-string field untouched', () => {
