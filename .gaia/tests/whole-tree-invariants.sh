@@ -33,12 +33,14 @@
 # enumerates every ordinary suite in that directory and would need an exclusion
 # entry per suite saying nothing. The one bats member is named directly instead.
 #
-# Runtime, measured on the tree at the time of writing: the fourteen scripts
-# total ~12s, shell-lint ~10s, and the shard suite ~19s; the whole set measures
-# ~40s end to end. That is why there is one tier rather than a fast default plus a named
+# Runtime, measured on the tree at the time of writing: the fifteen scripts
+# total ~27s, of which check-script-capabilities.sh alone is ~15s (it walks the
+# invocation closure of every allowlisted script), shell-lint ~10s, and the
+# shard suite ~19s; the whole set measures ~58s end to end. That is why there is
+# one tier rather than a fast default plus a named
 # slower tier. A split is worth its second name only once the honest set is
 # slow enough that people skip it, and an aggregate slow enough to skip is
-# worse than none; 40 seconds against the price of an audit round is not that.
+# worse than none; a minute against the price of an audit round is not that.
 # Re-measure before adding a member that changes the order of magnitude.
 #
 # No member is ever skipped. A missing member path, and a bats member with no
@@ -48,7 +50,7 @@
 #
 # Members are invoked from the current directory, so run it from the repository
 # root. That is also what lets the sibling bats suite exercise the aggregation
-# against a fixture tree of stubs instead of paying the real ~40s.
+# against a fixture tree of stubs instead of paying the real ~58s.
 
 set -uo pipefail
 
@@ -63,6 +65,7 @@ readonly WTI_SCRIPTS='.gaia/scripts/check-audit-base-derivation.sh
 .gaia/scripts/check-registry-settings-permissions.sh
 .gaia/scripts/check-registry-source-literals.sh
 .gaia/scripts/check-resolver-singleton.sh
+.gaia/scripts/check-script-capabilities.sh
 .gaia/scripts/check-step-body-extractor-roster.sh
 .gaia/scripts/check-wiki-state-collision.sh
 .gaia/scripts/audit-rules-changed-complete.sh
