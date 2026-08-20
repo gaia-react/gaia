@@ -826,6 +826,48 @@ echo "$rc"'
   grep -qF -- 'check.sh:3:' <<<"$output"
 }
 
+@test "two substitutions in ONE assignment's own value is still the class" {
+  fixture_repo
+  # The boundary of the last-substitution term, and the direction that matters:
+  # here the last substitution is part of the flagged assignment's OWN value, so
+  # its status IS the one the shell takes, the report names the right line, and
+  # the printed repair applies verbatim. A term counting substitutions per
+  # STATEMENT rather than per later prefix word would exempt this, which is a
+  # fail-open on a live shape (`tag="$(git describe)-$(git rev-parse HEAD)"`).
+  # Confirmed against the shell: bash 3.2 and bash 5 both exit here.
+  fixture_script 'set -e
+out="$(some_command)$(other_command)"
+rc=$?
+echo "$rc"'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- 'check.sh:3:' <<<"$output"
+}
+
+@test "the same for two adjacent quoted words in one value" {
+  fixture_repo
+  fixture_script 'set -e
+out="$(some_command)""$(other_command)"
+rc=$?
+echo "$rc"'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- 'check.sh:3:' <<<"$output"
+}
+
+@test "the same for a substitution inside a parameter expansion" {
+  fixture_repo
+  # walk() does not track `${`, so both substitutions here open at depth 0 and a
+  # per-statement count would reach two. Still one assignment, still the class.
+  fixture_script 'set -e
+out="${x:-$(some_command)}$(other_command)"
+rc=$?
+echo "$rc"'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- 'check.sh:3:' <<<"$output"
+}
+
 @test "an input redirection with no command word is reported on both bash readings" {
   fixture_repo
   # The one shape here whose ground truth is version-dependent, so it is a

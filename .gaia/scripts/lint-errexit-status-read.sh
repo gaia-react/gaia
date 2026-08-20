@@ -161,8 +161,8 @@
 # the command word behind it. Two further mechanisms close the rest of it: a
 # redirection operand that is a nested command is followed as a REGION rather
 # than broken on (eat_word() below), and the walk counts TOP-LEVEL substitutions
-# so a statement whose status the last of several supplies is not attributed to
-# the first (W_nsub below). One residual remains, and it is undecidable rather
+# so a statement whose status a LATER PREFIX WORD's substitution supplies is not
+# attributed to the flagged assignment (W_sub_after below). One residual remains, and it is undecidable rather
 # than unimplemented:
 #
 #   - An assignment-only statement whose LATER substitution also fails
@@ -203,7 +203,7 @@
 # above are also outside what it can measure at all, the undecidable residual
 # because its verdict depends on a runtime status, and the input-redirection
 # decision because a matrix run under one interpreter would record that
-# interpreter`s answer as the whole truth. Both are pinned by named tests in the
+# interpreter's answer as the whole truth. Both are pinned by named tests in the
 # suite instead, and this list still has to be maintained by hand.
 #
 # None of those fails SILENTLY. Tokenizer state is carried across lines, so any
@@ -233,13 +233,19 @@ readonly CORE_AWK='
 #   W_op      set by walk() when an unquoted control operator is seen at depth 0
 #   W_stop    offset just past a top-level `;`, so the caller can resume there
 #   W_sub     set by walk() when the line opens a real command substitution
-#   W_nsub    how many TOP-LEVEL command substitutions the line opened, which is
-#             a different question from whether it opened any: for a statement
-#             that is only assignments the shell takes the status of the LAST
-#             substitution it ran, so a second one means the status the `$?`
-#             below reads is not the flagged assignment`s. Counted at depth 0
-#             only, since a NESTED substitution completes before the one
-#             containing it and cannot be the last to run.
+#   W_sub_after  set when a command substitution opens in a LATER PREFIX WORD,
+#             which is a different question from whether the line opened any.
+#             For a statement that is only assignments the shell takes the
+#             status of the LAST substitution it ran, so one belonging to a word
+#             after the flagged assignment means the status the `$?` below reads
+#             is not the flagged assignment`s. Two terms narrow it, and each
+#             excludes a shape whose status IS the flagged line`s own. Depth 0,
+#             since a NESTED substitution completes before the one containing it
+#             and cannot be the last to run. Past W_space_at, since a second
+#             substitution inside the SAME word is part of that one assignment`s
+#             own value: `out="$(a)$(b)"` exits on the assignment, the report
+#             names the right line, and the printed repair applies verbatim, so
+#             a bare count over the statement would exempt a live defect.
 #
 # Quoting is tracked INSIDE a substitution with the same machinery as outside
 # it. Skipping the region and counting bare parentheses is the cheaper reading
@@ -262,7 +268,7 @@ function walk(line,   n, i, c, j, ch, delim, prev) {
   W_op = 0
   W_stop = 0
   W_sub = 0
-  W_nsub = 0
+  W_sub_after = 0
   W_space_at = 0
   W_word = 0
   n = length(line)
@@ -327,11 +333,11 @@ function walk(line,   n, i, c, j, ch, delim, prev) {
       } else {
         W_sub = 1
         # Depth is already incremented, so 1 is this statement`s top level.
-        if (W_depth == 1) W_nsub++
+        if (W_depth == 1 && W_space_at > 0) W_sub_after = 1
       }
       continue
     }
-    if (c == "`") { W_tick = 1; W_sub = 1; if (W_depth == 0) W_nsub++; continue }
+    if (c == "`") { W_tick = 1; W_sub = 1; if (W_depth == 0 && W_space_at > 0) W_sub_after = 1; continue }
 
     if (W_q == "\"") { if (c == "\"") W_q = ""; continue }
 
@@ -556,7 +562,7 @@ function arm(s,   n, t, i, w) {
 function reset_state(  d) {
   W_q = ""; W_depth = 0; W_tick = 0; W_narith = 0
   W_heredoc = ""; W_hd_tabs = 0
-  cont = 0; pending = 0; isname = 0; stmt_op = 0; stmt_sub = 0; stmt_nsub = 0
+  cont = 0; pending = 0; isname = 0; stmt_op = 0; stmt_sub = 0; stmt_sub_after = 0
   for (d in W_qstack) delete W_qstack[d]
   for (d in W_ar) delete W_ar[d]
 }
@@ -627,21 +633,21 @@ function feed(line, n,   stripped, probe, tail) {
     cand_line = n
     stmt_op = 0
     stmt_sub = 0
-    stmt_nsub = 0
+    stmt_sub_after = 0
     stmt_space_at = -1
   }
 
   if (walk(line)) {
     if (W_op) stmt_op = 1
     if (W_sub) stmt_sub = 1
-    stmt_nsub += W_nsub
+    if (W_sub_after) stmt_sub_after = 1
     if (stmt_space_at == -1) stmt_space_at = W_space_at
     cont = 1
     return
   }
   if (W_op) stmt_op = 1
   if (W_sub) stmt_sub = 1
-  stmt_nsub += W_nsub
+  if (W_sub_after) stmt_sub_after = 1
   # Only the statement`s FIRST line contributes the word break. A continued
   # statement`s later lines have their own leading whitespace, which belongs to
   # no first word, so reading one would exempt a real defect. That a continued
@@ -705,14 +711,18 @@ function feed(line, n,   stripped, probe, tail) {
     if (tail != "" && index(";|&#()", substr(tail, 1, 1)) == 0)
       isname = 0
   }
-  # `stmt_nsub < 2` is the last-substitution-wins term. The shell takes the
+  # `!stmt_sub_after` is the last-substitution-wins term. The shell takes the
   # status of the LAST command substitution an assignment-only statement ran, so
-  # a second top-level one means the status reaching the `$?` below is not the
-  # flagged assignment`s, and reporting the flagged line names the wrong command
-  # and prints a repair built around it. This is the same scoping the env-prefix
-  # exclusion above applies for the same reason: the gate reports a line only
-  # when the line`s OWN status is the one the shell takes.
-  if (isname && stmt_sub && !stmt_op && armed && stmt_nsub < 2) { pending = 1; pending_line = cand_line }
+  # one opening in a word AFTER the flagged assignment means the status reaching
+  # the `$?` below is not the flagged assignment`s, and reporting the flagged
+  # line names the wrong command and prints a repair built around it. This is
+  # the same scoping the env-prefix exclusion above applies for the same reason:
+  # the gate reports a line only when the line`s OWN status is what the shell
+  # takes, which is also why the term keys on the LATER WORD rather than on a
+  # count over the statement: a second substitution inside the flagged
+  # assignment`s own value leaves that status the line`s own, so
+  # `out=$(a) FOO=$(b)` exempts while `out="$(a)$(b)"` still reports.
+  if (isname && stmt_sub && !stmt_op && armed && !stmt_sub_after) { pending = 1; pending_line = cand_line }
   isname = 0
 
   # The walk stopped at a `;` with text after it: that text is the next
