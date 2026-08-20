@@ -329,12 +329,23 @@ transforms:
         # so both are lines rather than paths. A path entry would waive whatever
         # content later occupies it, and nothing validates an allowlist entry
         # against the file it names.
+        #
+        # Accepted gap: `line-allowlist` drops the whole matching line before
+        # the pattern runs, so a real machine path SHARING a line with one of
+        # these placeholders is not scanned. Narrowing the exemption to the
+        # match is an engine change, and the shape that would need it, a
+        # before/after contrast on one line, is rarer than the multi-line
+        # stack-trace shape these entries exist for. Pinned as a test so the
+        # gap is recorded rather than rediscovered.
         line-allowlist:
-          # The sanctioned generic placeholders (`.claude/rules/
-          # repo-relative-paths.md` Exceptions), shipping today in the captured
-          # Storybook parser stack trace under app/components/Errors/ErrorStack.
-          # A real leak would need a user literally named `you` or `username`.
-          - "/Users/(you|username)/"
+          # Every generic placeholder `.claude/rules/repo-relative-paths.md`
+          # Exception 2 sanctions, so the gate permits exactly what the rule
+          # tells an author to write. Encoding the rule rather than today's
+          # instances is the same reason these are lines and not paths; the
+          # `/Users/` forms ship in the captured Storybook parser stack trace
+          # under app/components/Errors/ErrorStack, `/home/bar` ships nowhere
+          # yet and is here so following the rule cannot fail the bundle.
+          - "/(Users/(you|username)|home/bar)/"
           # The elided-middle placeholder, e.g. the shell-wrapper levels
           # `.specify/extensions/gaia/lib/spec-session-lock.sh` documents in a
           # comment. A real machine path never contains a literal `/.../`, so

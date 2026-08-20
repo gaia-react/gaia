@@ -2445,15 +2445,16 @@ describe('shipped absolute-paths check', () => {
     expect(out).toContain('.claude/hooks/some-hook.sh');
   });
 
-  test('allows the sanctioned generic placeholders', () => {
-    // `.claude/rules/repo-relative-paths.md` sanctions `/Users/you` and
-    // `/Users/username` repo-wide; the captured Storybook parser stack trace
-    // in app/components/Errors/ErrorStack is where they ship today.
+  test('allows every placeholder the repo-relative-paths rule sanctions', () => {
+    // The gate has to permit exactly what Exception 2 tells an author to
+    // write, or following the rule fails the bundle. `/Users/username` is
+    // where they ship today, in the captured Storybook parser stack trace.
     sandbox.writeStaged(
       'app/components/Errors/ErrorStack/tests/index.stories.tsx',
       '    at constructor (/Users/username/Development/gaia/node_modules/x.cjs:1:2)\n'
     );
     sandbox.writeStaged('docs/notes.md', 'Clone into /Users/you/projects.\n');
+    sandbox.writeStaged('docs/linux.md', 'Or into /home/bar/projects.\n');
 
     expect(run([sandbox.stagingDir, '--config', sandbox.configPath])).toBe(0);
     expect(stdio.outputs.join('')).toContain('leaks: none');
@@ -2469,7 +2470,7 @@ describe('shipped absolute-paths check', () => {
     expect(stdio.outputs.join('')).toContain('leaks: none');
   });
 
-  test('still flags a real machine path beside an exempt placeholder', () => {
+  test('still flags a real machine path on its own line', () => {
     sandbox.writeStaged(
       '.specify/extensions/gaia/lib/spec-session-lock.sh',
       '#   level 1: /bin/zsh -c source /Users/.../.claude/shell-snapshots/snap\n' +
@@ -2485,5 +2486,20 @@ describe('shipped absolute-paths check', () => {
     // pattern rather than the offending line.
     expect(out).toContain('leaks (1)');
     expect(out).toContain('spec-session-lock.sh:2');
+  });
+
+  test('does not scan a real machine path sharing a line with a placeholder', () => {
+    // The accepted gap, pinned rather than left to be rediscovered: the engine
+    // drops a line-allowlisted line before the pattern runs, so the exemption
+    // releases the line and not just the match it fired on. Narrowing it to
+    // the match is an engine change; `.gaia/release-scrub.yml` records why
+    // that trade is not worth making for the shapes these entries cover.
+    sandbox.writeStaged(
+      'docs/notes.md',
+      'Use /Users/you/projects, not /Users/steven/Development/gaia.\n'
+    );
+
+    expect(run([sandbox.stagingDir, '--config', sandbox.configPath])).toBe(0);
+    expect(stdio.outputs.join('')).toContain('leaks: none');
   });
 });
