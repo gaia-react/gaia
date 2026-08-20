@@ -52,7 +52,7 @@ const schemaEnumOf = (
  * silently get no parity row. Inline-only is the deliberate contract, asserted
  * rather than left as a comment.
  */
-const INDIRECT_ENUM_KEYWORDS = ['$ref', 'anyOf', 'const', 'oneOf'];
+const INDIRECT_ENUM_KEYWORDS = ['$ref', 'allOf', 'anyOf', 'const', 'oneOf'];
 
 const enumeratesIndirectly = (
   property: SchemaEnumProperty | undefined
