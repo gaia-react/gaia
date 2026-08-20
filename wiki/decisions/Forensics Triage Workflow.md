@@ -71,16 +71,16 @@ Default-deny. Any path in neither list below is denylisted by default; allowlist
 
 ## Label vocabulary
 
-All six labels in the vocabulary must pre-exist on the upstream repo: the five in the table below plus the `gaia-forensics` trigger label. `bootstrap-labels.sh` asserts the whole inventory and creates missing entries with the canonical color and description; existing labels with drifted color or description log a notice and stay untouched (operator wins).
+The labels in the vocabulary come from `.gaia/labels.json`, the five in the table below plus the `gaia-forensics` trigger label. `gaia labels sync` reconciles them on the upstream repo: color drift is operator-wins (existing color stays, a notice logs the mismatch), description drift is GAIA-wins (the registry's description overwrites the live one). See `wiki/concepts/GitHub Labels.md` for the canonical colors and descriptions.
 
-| Label                | Color             | Meaning                                                                                                                                   |
-| -------------------- | ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| `gaia-triaged`       | green (`0e8a16`)  | Idempotency key. Set on every triaged issue; presence is the early-exit condition.                                                        |
-| `non-issue`          | grey (`cccccc`)   | Not a bug. Issue closed with explanation.                                                                                                 |
-| `needs-human`        | orange (`d93f0b`) | Real bug, but out of autofix scope OR malformed body OR ambiguous classifier verdict OR Quality Gate failure. Maintainer review required. |
-| `auto-fixable`       | blue (`1d76db`)   | Classifier proposed a fix in allowlisted scope. See linked draft PR.                                                                      |
+| Label                | Meaning                                                                                                                                   |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `gaia-triaged`       | Idempotency key. Set on every triaged issue; presence is the early-exit condition.                                                        |
+| `non-issue`          | Not a bug. Issue closed with explanation.                                                                                                 |
+| `needs-human`        | Real bug, but out of autofix scope OR malformed body OR ambiguous classifier verdict OR Quality Gate failure. Maintainer review required. |
+| `auto-fixable`       | Classifier proposed a fix in allowlisted scope. See linked draft PR.                                                                      |
 
-The `gaia-forensics` trigger label is the first entry in `bootstrap-labels.sh`'s `LABELS` inventory (color `5319e7`); the bootstrap script creates and asserts it alongside the other five labels.
+`gaia-forensics` is the trigger label; it sits in the registry's origin axis alongside `gaia-triaged`.
 
 ## Secret hygiene
 
@@ -125,10 +125,13 @@ Amending either list requires a SPEC reopen; adding a path through a PR-only cha
 
 Adding a new label to the vocabulary:
 
-1. Append the entry to `bootstrap-labels.sh`'s `LABELS` array (`name|color|description`).
-2. Re-run `bootstrap-labels.sh` against the upstream repo (idempotent; re-runs are no-ops on existing labels).
-3. Update the label vocabulary table on this page.
-4. Wire any handler that needs to apply the new label.
+1. Add the entry to `.gaia/labels.json`.
+2. Run `.gaia/cli/gaia labels docs` to regenerate `wiki/concepts/GitHub Labels.md`.
+3. Run `.gaia/cli/gaia labels sync` to create the label on the upstream repo.
+4. Update the label vocabulary table on this page.
+5. Wire any handler that needs to apply the new label.
+
+The code-parity check fails a pull request that uses a label the registry does not carry, so this procedure is enforced rather than remembered.
 
 Modifying the workflow YAML or any `.github/forensics/` script is a normal PR; except those paths are themselves on the workflow's denylist, so the changes ship through human-authored PRs only, never through autonomous triage.
 
@@ -181,3 +184,4 @@ Draft PRs the workflow opens are normal PRs in every other respect. Check out th
 
 - [[Quality Gate]]: the gate this workflow runs on every fix-attempt branch.
 - [[Wiki Management]]: adjacent automation primitives (different surface).
+- [[GitHub Labels]]: the registry the label vocabulary comes from.

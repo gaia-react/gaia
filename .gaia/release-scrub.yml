@@ -259,11 +259,6 @@ transforms:
           # Workflow's own CI gate (install → typecheck → lint → test → knip)
           # by its script path; descriptive prose, not a rendered pointer.
           - "\\.github/forensics/run-quality-gate\\.sh"
-          # .claude/commands/setup-gaia.md names the label-bootstrap script
-          # inside a `[ -f .github/workflows/forensics-triage.yml ]` guard; on an
-          # adopter the guard is false and the echo is a graceful no-op, the same
-          # runtime-optional class the `excluded-workflow-ref` guard covers.
-          - "\\.github/forensics/bootstrap-labels\\.sh"
           # package.json's `gaia.wikiClassify` source/test path arrays are
           # load-bearing config globs, not prose pointers: an entry naming a
           # release-excluded tree simply matches nothing on an adopter clone.

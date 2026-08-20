@@ -5,7 +5,7 @@ Prose checklist the maintainer runs once after merge, and again when amending SP
 ## Preconditions
 
 - The triage workflow is merged to `main` at `.github/workflows/forensics-triage.yml`.
-- All labels exist on `gaia-react/gaia`: `gaia-forensics`, `gaia-triaged`, `non-issue`, `needs-human`, `auto-fixable`. (Run `.github/forensics/bootstrap-labels.sh` once if missing.)
+- All labels exist on `gaia-react/gaia`: `gaia-forensics`, `gaia-triaged`, `non-issue`, `needs-human`, `auto-fixable`. (Run `.gaia/cli/gaia labels sync` once if missing.)
 - Repository secret `ANTHROPIC_API_KEY` is set.
 - Branch protection on `main`: required reviews >= 1, required status checks present.
 - `gh` CLI authenticated with `repo` scope on `gaia-react/gaia`.
