@@ -263,19 +263,25 @@ setup() {
   grep -qF -- "for label in surface:adopter surface:maintainer; do" "$VOCAB" || return 1
 }
 
-@test "the label-loop prose count says twelve shipped plus two maintainer-only, and every superseded count is gone" {
+@test "the shipped label loop states no count of its own, and every superseded count is gone" {
   # The count in the prose and the number of entries in the loop are two
   # statements of one fact, and only the loop is executable, so the prose is
-  # the half that rots. Pinning the current count plus every superseded one is
-  # what makes a future label addition fail here instead of shipping a comment
-  # that undercounts its own loop. Two counts now, because the two `surface:`
-  # entries moved into a marker-wrapped second loop (gaia-react/gaia#1437):
-  # the shipped loop creates twelve, the maintainer repository fourteen.
-  grep -qF -- "Create all twelve labels idempotently" "$VOCAB" || return 1
+  # the half that rots. The registry now owns the shipped set and
+  # `gaia labels check` is what fails a pull request naming a label the
+  # registry does not carry, so the shipped loop is a fallback for a
+  # repository provisioned before the registry existed and states no count at
+  # all. Every count the prose has ever carried is pinned as an absence, the
+  # twelve included, so a rewrite that reintroduces a hand-maintained count
+  # fails here rather than shipping a number nothing checks.
+  #
+  # The maintainer line keeps its count: it is a claim about the two loops
+  # together on the maintainer repository, not about the shipped loop alone,
+  # and nothing else states it.
   grep -qF -- "fourteen in total there" "$VOCAB" || return 1
   assert_absent_fixed_across "all five labels" "$VOCAB"
   assert_absent_fixed_across "all eight labels" "$VOCAB"
   assert_absent_fixed_across "all ten labels" "$VOCAB"
+  assert_absent_fixed_across "all twelve labels" "$VOCAB"
   assert_absent_fixed_across "all thirteen labels" "$VOCAB"
   assert_absent_fixed_across "all fourteen labels" "$VOCAB"
 }

@@ -54,8 +54,27 @@ export const GENERATED_START_MARKER = '<!-- gaia:labels:generated-start -->';
 
 export const GENERATED_END_MARKER = '<!-- gaia:labels:generated-end -->';
 
-const MAINTAINER_START_MARKER = '<!-- gaia:maintainer-only:start -->';
-const MAINTAINER_END_MARKER = '<!-- gaia:maintainer-only:end -->';
+/**
+ * The edge is interpolated rather than spelled into two whole literals, so the
+ * full marker never appears in the shipped adopter bundle: esbuild copies a
+ * string constant in verbatim and does not inline this call. Writing it as a
+ * literal reds the release, because `02-leak-replay.sh` and `03-marker-strip.sh`
+ * scan the whole staged tree for the full spelling and have no allowlist. Every
+ * other shipped file naming the marker survives by sitting inside a marker block
+ * the scrub removes, which a compiled bundle cannot carry. That harness is the
+ * backstop against a revert to a literal; `docs.test.ts` pins only the spelling,
+ * which a literal would satisfy too.
+ *
+ * This cannot move to a maintainer-only module instead: the span emits the
+ * marker block on a runtime registry condition, not a compile-time one, so
+ * esbuild has nothing to tree-shake, and the adopter needs the same renderer for
+ * `docs --check` anyway.
+ */
+const maintainerMarker = (edge: 'end' | 'start'): string =>
+  `<!-- gaia:maintainer-only:${edge} -->`;
+
+const MAINTAINER_START_MARKER = maintainerMarker('start');
+const MAINTAINER_END_MARKER = maintainerMarker('end');
 
 const PALETTE_RULE =
   'Warm families (red, orange, amber) are reserved for attention: urgency, defect type, and the gates that require a human. Every purely classificatory axis takes a cool or neutral family instead, high-frequency structural labels stay near grey so they recede, no two entries share a hex value, and every hex value is lowercase.';
