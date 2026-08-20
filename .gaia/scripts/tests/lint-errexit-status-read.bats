@@ -866,6 +866,35 @@ echo "$rc"'
   [ "$status" -eq 0 ]
 }
 
+@test "two top-level BACKTICK substitutions exempt the statement too" {
+  fixture_repo
+  # The count reaches a backtick substitution the same way it reaches `$(`, so
+  # the legacy spelling is not a hole in the exemption. Measured on bash 3.2.57
+  # and 5.3.15: `out=`false` FOO=`true`` gives REACHED rc=0 on both.
+  fixture_script 'set -e
+out=`some_command` FOO=`other_command`
+rc=$?
+echo "$rc"'
+  run_linter
+  [ "$status" -eq 0 ]
+}
+
+@test "a BACKTICK nested inside a substitution does not count" {
+  fixture_repo
+  # The depth guard on the backtick arm of the count. A backtick inside a `$(`
+  # region completes before the substitution containing it, so it can never be
+  # the last one this statement ran; counted, it would reach two and exempt the
+  # ordinary single-substitution class. One substitution here, and it is the
+  # flagged one, so the message the gate prints is true and it reports.
+  fixture_script 'set -e
+out=$(echo `other_command`)
+rc=$?
+echo "$rc"'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- 'check.sh:3:' <<<"$output"
+}
+
 @test "a substitution inside a PROCESS-SUBSTITUTION operand does not count" {
   fixture_repo
   # The operand's body runs in an async subshell, so a substitution in it can
