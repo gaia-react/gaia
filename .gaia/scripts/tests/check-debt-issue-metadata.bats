@@ -612,3 +612,136 @@ CORPUS_ANACHRONISM='[
   assert_code "pre-provenance-anachronism"
   grep -qF -- "2026-08-01T00:00:00Z" <<<"$output" || return 1
 }
+
+# --- the marker-stripped (adopter) shape of this script ---------------------
+#
+# The `surface:` namespace is maintainer-only: its rubric's tie-breaker ("a
+# release-excluded path is surface:maintainer") is uncomputable on an adopter
+# clone, so the declaration and the enforcement block both sit behind
+# `# gaia:maintainer-only` markers and leave the bundle (gaia-react/gaia#1437).
+#
+# The hazard that wrap creates is a runtime one, not a syntax one. Under
+# `set -euo pipefail` a strip that took the `SURFACE_VALUES` declaration but
+# left its `check_ns_values` reader behind aborts on an unbound variable at the
+# FIRST filing, taking the severity, difficulty, handler, and fold checks down
+# with it, and `bash -n` parses that file clean. So these tests strip through
+# the real shipped stripper (`gaia-maintainer release scrub`, never a second
+# parser written here) and then RUN the result.
+#
+# Only the stripped shape is tested here. The unstripped half needs nothing new:
+# the three `surface:` tests above already prove the axis stays mandatory, and
+# the wrap changes nothing they read.
+#
+# Maintainer-only by construction: this suite is release-excluded, and so is
+# the `gaia-maintainer` binary it drives. A clone without the binary skips
+# rather than fails, so the absence never reads as a passing guard.
+#
+# require_stripper runs in each @test body rather than inside the helper, and
+# that placement is the whole point: bats implements `skip` as `exit 0`, and
+# the helper is called as `$(stripped_check)`, so a `skip` there would unwind
+# only the substitution subshell. The test would carry on with an empty path
+# and die at exit 127 on `bash ""`, which is the opposite of the skip the
+# paragraph above promises.
+require_stripper() {
+  [ -x "$REPO_ROOT/.gaia/cli/gaia-maintainer" ] \
+    || skip "maintainer CLI absent; nothing to strip through"
+}
+
+# sh_marker_delim <start|end>: echo that delimiter, quotes included, from the
+# one marker-strip transform in `.gaia/release-scrub.yml` whose paths cover
+# `**/*.sh`, which is the transform that governs the script under test.
+sh_marker_delim() {
+  awk -v want="$1" '
+    /^  - type: / {in_block = ($0 == "  - type: marker-strip"); covers_sh = 0; next}
+    !in_block {next}
+    $0 == "      - \"**/*.sh\"" {covers_sh = 1; next}
+    covers_sh && index($0, "    " want ": ") == 1 {
+      sub(/^    [a-z]+: /, "", $0)
+      print $0
+      exit
+    }
+  ' "$REPO_ROOT/.gaia/release-scrub.yml"
+}
+
+# delim_missing <start|end>: name which delimiter key could not be read, and
+# which of the two contracts moved. A literal format string, not the message in
+# a variable, so shellcheck reads it as one.
+delim_missing() {
+  printf 'sh_marker_delim: no `%s:` under the `**/*.sh` marker-strip transform in .gaia/release-scrub.yml; that YAML shape moved, not the strip\n' "$1" >&2
+}
+
+# stripped_check: strip the script into a throwaway staging tree and echo the
+# stripped path. Call `require_stripper` in the test body first.
+stripped_check() {
+  local cli="$REPO_ROOT/.gaia/cli/gaia-maintainer"
+
+  local stage="$TMP/stage"
+  mkdir -p "$stage/.gaia/scripts"
+  cp "$CHECK" "$stage/.gaia/scripts/check-debt-issue-metadata.sh"
+
+  # Only the `**/*.sh` marker-strip transform, so no sibling leak-check can
+  # decide this test's outcome. Its delimiters are READ from the shipped config
+  # rather than restated: the shipped parser is only half the contract, and a
+  # second copy of the spellings would leave this suite stripping and passing
+  # against a retired one while the real release strip took nothing out of this
+  # script. Asserting the spellings are present somewhere in that file is not
+  # enough, because a sibling transform there carries the same two spellings
+  # and does not cover `**/*.sh`; the block has to be the one that governs
+  # this file.
+  local start end
+  start="$(sh_marker_delim start)"
+  end="$(sh_marker_delim end)"
+  # Say which side of the contract moved. The bare `return 1` this replaces
+  # surfaced in bats as the caller's `|| return 1` and nothing else, so a
+  # shape-preserving edit to that transform (re-quoting the path entry, or
+  # ordering `start:`/`end:` ahead of `paths:`) read as an unexplained failure
+  # of the strip itself.
+  [ -n "$start" ] || { delim_missing start; return 1; }
+  [ -n "$end" ] || { delim_missing end; return 1; }
+
+  cat >"$TMP/scrub.yml" <<YAML
+transforms:
+  - type: marker-strip
+    paths:
+      - "**/*.sh"
+    start: $start
+    end: $end
+YAML
+
+  "$cli" release scrub "$stage" --config "$TMP/scrub.yml" >/dev/null || return 1
+  printf '%s\n' "$stage/.gaia/scripts/check-debt-issue-metadata.sh"
+}
+
+@test "the stripped script drops the surface requirement: a filing with no surface: label is clean" {
+  require_stripper
+  local stripped
+  stripped="$(stripped_check)" || return 1
+
+  grep -qF -- 'SURFACE_VALUES' "$stripped" && return 1
+
+  run bash "$stripped" --pre-file \
+    --labels 'tech-debt,severity:important,handler:prompt,difficulty:easy' \
+    --body-file "$BODY"
+  [ "$status" -eq 0 ]
+}
+
+@test "the stripped script still RUNS every surviving check rather than aborting on an unbound variable" {
+  # The finding CODES are the assertion, not the exit status. An unbound-
+  # variable abort also exits non-zero, so a status-only test would green on
+  # the exact defect this exists to catch. Each code below is emitted from a
+  # line AFTER the stripped block, so seeing all four proves execution reached
+  # the end of `check_labels`.
+  require_stripper
+  local stripped
+  stripped="$(stripped_check)" || return 1
+
+  run bash "$stripped" --pre-file \
+    --labels 'tech-debt,severity:blocker,difficulty:trivial,handler:agent,fold:maybe' \
+    --body-file "$BODY"
+  [ "$status" -eq 1 ]
+  assert_code "severity-value"
+  assert_code "difficulty-value"
+  assert_code "handler-value"
+  assert_code "fold-value"
+  refute_code "unbound variable"
+}

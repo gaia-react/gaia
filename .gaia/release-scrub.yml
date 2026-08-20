@@ -262,6 +262,37 @@ transforms:
         scope:
           - "**"
 
+      # ---- Maintainer-only `surface:` label vocabulary ----
+      # The `surface:adopter` / `surface:maintainer` axis classifies a defect
+      # against GAIA's own distribution boundary, and its tie-breaker ("a
+      # release-excluded path is surface:maintainer") is uncomputable on an
+      # adopter clone, which has no release-exclude list. Unwrapped, it reaches
+      # adopters as a mandatory field whose value never varies and that nothing
+      # reads. The spans live behind maintainer-only markers in
+      # `.claude/skills/file-tech-debt/SKILL.md`,
+      # `.claude/agents/code-audit-frontend.md`,
+      # `.claude/skills/gaia/references/audit.md`,
+      # `.gaia/scripts/check-debt-issue-metadata.sh`, and
+      # `wiki/concepts/Audit Disposition and Debt Fix.md`; this check is what
+      # fails the build when a re-add lands outside them.
+      #
+      # The pattern is deliberately wider than `surface:(adopter|maintainer)`.
+      # That spelling alone would clear a tree still shipping the whole
+      # enforcement block, because the axis also spells itself as the
+      # placeholder `surface:<side>` in the skill's invocation flags, as the
+      # brace form `surface: {adopter | maintainer, ...}` in the audit
+      # reference's finding block, as `surface:*` in the wiki page, and as the
+      # shell declaration `SURFACE_VALUES`. The optional whitespace before the
+      # alternation is what reaches that brace form, which writes a space after
+      # the colon where every other carrier does not. It is NOT widened to a
+      # bare `surface:`, which matches ordinary prose ("Scan surface:", "stop
+      # and surface:") and the `--color-surface:` token in the tailwind skill.
+      - id: surface-label-vocabulary
+        description: "Maintainer-only `surface:` label vocabulary surviving the marker strip"
+        pattern: "surface:\\s*(\\{|adopter|maintainer|<side>|\\*)|SURFACE_VALUES"
+        scope:
+          - "**"
+
       # ---- Never-present-on-adopter workflows referenced in shipped surfaces ----
       # `.github/workflows/` is the one distribution-boundary directory where
       # some files ship (tests.yml, chromatic.yml) and some do not, so the
