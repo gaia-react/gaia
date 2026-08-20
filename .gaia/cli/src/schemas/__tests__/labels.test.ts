@@ -4,12 +4,85 @@ import {readFileSync} from 'node:fs';
 import path from 'node:path';
 import {resolveRepoRootFromImportMeta} from '../../util/repo-root-fixture.js';
 import type {LabelEntry} from '../labels.js';
-import {isCreatable, LabelEntrySchema, LabelRegistrySchema} from '../labels.js';
+import {
+  isCreatable,
+  LABEL_AUDIENCES,
+  LABEL_AXES,
+  LABEL_FEATURES,
+  LabelEntrySchema,
+  LabelRegistrySchema,
+} from '../labels.js';
 
 const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
 
 const readRegistry = (): unknown =>
   JSON.parse(readFileSync(path.join(repoRoot, '.gaia/labels.json'), 'utf8'));
+
+type SchemaEnumProperty = {
+  enum?: readonly string[];
+  items?: {enum?: readonly string[]};
+};
+
+const readSchemaEntryProperties = (): Record<string, SchemaEnumProperty> => {
+  const schema = JSON.parse(
+    readFileSync(path.join(repoRoot, '.gaia/labels.schema.json'), 'utf8')
+  ) as {$defs: {entry: {properties: Record<string, SchemaEnumProperty>}}};
+
+  return schema.$defs.entry.properties;
+};
+
+const sorted = (values: readonly string[]): string[] =>
+  values.toSorted((left, right) => left.localeCompare(right));
+
+/** Every `$defs.entry` property whose values are enumerated, and its constant. */
+const ENUM_CONSTANTS: Record<string, readonly string[]> = {
+  audience: LABEL_AUDIENCES,
+  axis: LABEL_AXES,
+  features: LABEL_FEATURES,
+};
+
+const schemaEnumOf = (
+  property: SchemaEnumProperty | undefined
+): readonly string[] | undefined => property?.enum ?? property?.items?.enum;
+
+/**
+ * The only keywords an `$defs.entry` property may use. `schemaEnumOf` discovers
+ * a property's values through an inline `enum`, so any keyword that moves the
+ * enumeration elsewhere (`$ref`, `const`, an applicator like `allOf`/`anyOf`/
+ * `oneOf`/`if`/`not`, or a tuple `prefixItems`) blinds the covered-set
+ * derivation below and leaves that property with no parity row.
+ *
+ * Deliberately an allow-list. The indirect set is open-ended, so a list of the
+ * keywords to reject silently admits every one it has not been taught, which is
+ * the failure it exists to prevent.
+ */
+const INLINE_SCHEMA_KEYWORDS = [
+  'description',
+  'enum',
+  'items',
+  'maxLength',
+  'minLength',
+  'pattern',
+  'type',
+];
+
+const isNonInline = (keyword: string): boolean =>
+  !INLINE_SCHEMA_KEYWORDS.includes(keyword);
+
+/** The keywords a property uses that are not on the allow-list, by path. */
+const nonInlineKeywordsOf = (property: SchemaEnumProperty): string[] => {
+  const items: unknown = property.items;
+  // A tuple-form `items` is an array of subschemas rather than the single one
+  // `schemaEnumOf` reads, so it is reported rather than descended into.
+  const nested =
+    Array.isArray(items) ?
+      ['items[]']
+    : Object.keys(items ?? {})
+        .filter(isNonInline)
+        .map((keyword) => `items.${keyword}`);
+
+  return [...Object.keys(property).filter(isNonInline), ...nested];
+};
 
 const baseEntry: LabelEntry = {
   audience: 'adopter',
@@ -315,5 +388,43 @@ describe('schemas/labels', () => {
     requiredKeys.forEach((key) => {
       expect(Object.hasOwn(firstEntry, key)).toBe(true);
     });
+  });
+
+  describe('.gaia/labels.schema.json enum parity', () => {
+    const entryProperties = readSchemaEntryProperties();
+
+    // Derived, not listed: a fourth enum property added to the schema without a
+    // matching ENUM_CONSTANTS row would otherwise drift unguarded, which is the
+    // condition the parity rows below are supposed to close.
+    test('every enum-bearing schema property has a constant to compare against', () => {
+      const enumBearing = Object.keys(entryProperties).filter(
+        (property) => schemaEnumOf(entryProperties[property]) !== undefined
+      );
+
+      expect(sorted(enumBearing)).toStrictEqual(
+        sorted(Object.keys(ENUM_CONSTANTS))
+      );
+    });
+
+    test('every entry property uses only inline schema keywords', () => {
+      const offenders = Object.entries(entryProperties).flatMap(
+        ([name, property]) =>
+          nonInlineKeywordsOf(property).map((keyword) => `${name}.${keyword}`)
+      );
+
+      expect(offenders).toStrictEqual([]);
+    });
+
+    test.each(Object.keys(ENUM_CONSTANTS))(
+      'the schema %s enum holds the same values as its TypeScript constant',
+      (property) => {
+        const schemaEnum = schemaEnumOf(entryProperties[property]);
+        const constant = ENUM_CONSTANTS[property];
+
+        assert.ok(schemaEnum);
+        assert.ok(constant);
+        expect(sorted(schemaEnum)).toStrictEqual(sorted(constant));
+      }
+    );
   });
 });
