@@ -2445,10 +2445,13 @@ describe('shipped absolute-paths check', () => {
     expect(out).toContain('.claude/hooks/some-hook.sh');
   });
 
-  test('allows every placeholder the repo-relative-paths rule sanctions', () => {
-    // The gate has to permit exactly what Exception 2 tells an author to
-    // write, or following the rule fails the bundle. `/Users/username` is
-    // where they ship today, in the captured Storybook parser stack trace.
+  test('allows each sanctioned placeholder used as a path prefix', () => {
+    // The gate has to permit what Exception 2 tells an author to write, or
+    // following the rule fails the bundle. Prefix use is how the rule's own
+    // examples and every instance in the tree spell them; a bare mention with
+    // no following segment still flags, which `.gaia/release-scrub.yml`
+    // records as the narrower of the two available edges. `/Users/username`
+    // is where they ship today, in the captured Storybook parser stack trace.
     sandbox.writeStaged(
       'app/components/Errors/ErrorStack/tests/index.stories.tsx',
       '    at constructor (/Users/username/Development/gaia/node_modules/x.cjs:1:2)\n'
@@ -2458,6 +2461,21 @@ describe('shipped absolute-paths check', () => {
 
     expect(run([sandbox.stagingDir, '--config', sandbox.configPath])).toBe(0);
     expect(stdio.outputs.join('')).toContain('leaks: none');
+  });
+
+  test('does not let a placeholder exempt a longer real path that extends it', () => {
+    // Why the trailing `/` is load-bearing rather than incidental: without it
+    // the alternation would release these, and they name real machines.
+    sandbox.writeStaged('docs/a.md', 'Built at /Users/youngster/dev/thing.\n');
+    sandbox.writeStaged('docs/b.md', 'Built at /home/barbara/dev/thing.\n');
+
+    expect(run([sandbox.stagingDir, '--config', sandbox.configPath])).toBe(1);
+
+    const out = stdio.outputs.join('');
+
+    expect(out).toContain('leaks (2)');
+    expect(out).toContain('docs/a.md');
+    expect(out).toContain('docs/b.md');
   });
 
   test('allows the elided /Users/.../ placeholder', () => {

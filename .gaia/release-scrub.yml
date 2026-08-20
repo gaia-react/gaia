@@ -320,8 +320,8 @@ transforms:
           # algorithm input the skill executes against. Removing the literal
           # would break the documentation's correspondence to the regex.
           - ".claude/skills/gaia/references/forensics/redaction.md"
-          # Policy-documenting rule: contains sanctioned generic placeholders
-          # (/Users/you, /Users/username) and forensics-fixture paths
+          # Policy-documenting rule: contains every placeholder its own
+          # Exception 2 sanctions and the Exception 1 forensics-fixture paths
           # (/Users/testuser, /Users/alice) as the examples it governs; same
           # rationale as wiki-style.md.
           - ".claude/rules/repo-relative-paths.md"
@@ -345,6 +345,15 @@ transforms:
           # `/Users/` forms ship in the captured Storybook parser stack trace
           # under app/components/Errors/ErrorStack, `/home/bar` ships nowhere
           # yet and is here so following the rule cannot fail the bundle.
+          #
+          # Covers each placeholder used as a path PREFIX, which is how the
+          # rule's own examples and every instance in the tree spell them. A
+          # bare mention with no following segment still flags. The trailing
+          # `/` is what draws that line, and it is load-bearing: dropping it
+          # would exempt `/Users/youngster/...` and `/home/barbara/...`, which
+          # name real machines, and a right-boundary class instead of the
+          # slash trades that for flagging a sentence ending in `/home/bar.`
+          # Prefix-only is the narrower of the two, so it is the one kept.
           - "/(Users/(you|username)|home/bar)/"
           # The elided-middle placeholder, e.g. the shell-wrapper levels
           # `.specify/extensions/gaia/lib/spec-session-lock.sh` documents in a
