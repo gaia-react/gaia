@@ -46,23 +46,35 @@ const schemaEnumOf = (
 ): readonly string[] | undefined => property?.enum ?? property?.items?.enum;
 
 /**
- * Keywords that enumerate a property's values somewhere other than an inline
- * `enum`. `schemaEnumOf` reads the inline shapes only, so a property using one
- * of these would be invisible to the covered-set derivation below and would
- * silently get no parity row. Inline-only is the deliberate contract, asserted
- * rather than left as a comment.
+ * The only keywords an `$defs.entry` property may use. `schemaEnumOf` discovers
+ * a property's values through an inline `enum`, so any keyword that moves the
+ * enumeration elsewhere (`$ref`, `const`, an applicator like `allOf`/`anyOf`/
+ * `oneOf`/`if`/`not`, or a tuple `prefixItems`) blinds the covered-set
+ * derivation below and leaves that property with no parity row.
+ *
+ * Deliberately an allow-list. The indirect set is open-ended, so a list of the
+ * keywords to reject silently admits every one it has not been taught, which is
+ * the failure it exists to prevent.
  */
-const INDIRECT_ENUM_KEYWORDS = ['$ref', 'allOf', 'anyOf', 'const', 'oneOf'];
+const INLINE_SCHEMA_KEYWORDS = [
+  'description',
+  'enum',
+  'items',
+  'maxLength',
+  'minLength',
+  'pattern',
+  'type',
+];
 
-const enumeratesIndirectly = (
-  property: SchemaEnumProperty | undefined
-): boolean =>
-  property !== undefined &&
-  INDIRECT_ENUM_KEYWORDS.some(
-    (keyword) =>
-      Object.hasOwn(property, keyword) ||
-      (property.items !== undefined && Object.hasOwn(property.items, keyword))
-  );
+/** A property's own keywords, plus those of its `items` subschema. */
+const keywordsUsedBy = (property: SchemaEnumProperty): string[] => {
+  const items: unknown = property.items;
+  // A tuple-form `items` is an array of subschemas rather than the single one
+  // `schemaEnumOf` reads, so it is reported rather than descended into.
+  const nested = Array.isArray(items) ? ['items[]'] : Object.keys(items ?? {});
+
+  return [...Object.keys(property), ...nested];
+};
 
 const baseEntry: LabelEntry = {
   audience: 'adopter',
@@ -386,12 +398,15 @@ describe('schemas/labels', () => {
       );
     });
 
-    test('no entry property enumerates its values indirectly', () => {
-      const indirect = Object.keys(entryProperties).filter((property) =>
-        enumeratesIndirectly(entryProperties[property])
+    test('every entry property uses only inline schema keywords', () => {
+      const offenders = Object.entries(entryProperties).flatMap(
+        ([name, property]) =>
+          keywordsUsedBy(property)
+            .filter((keyword) => !INLINE_SCHEMA_KEYWORDS.includes(keyword))
+            .map((keyword) => `${name}.${keyword}`)
       );
 
-      expect(indirect).toStrictEqual([]);
+      expect(offenders).toStrictEqual([]);
     });
 
     test.each(Object.keys(ENUM_CONSTANTS))(
