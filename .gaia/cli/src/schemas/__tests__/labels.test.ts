@@ -66,14 +66,22 @@ const INLINE_SCHEMA_KEYWORDS = [
   'type',
 ];
 
-/** A property's own keywords, plus those of its `items` subschema. */
-const keywordsUsedBy = (property: SchemaEnumProperty): string[] => {
+const isNonInline = (keyword: string): boolean =>
+  !INLINE_SCHEMA_KEYWORDS.includes(keyword);
+
+/** The keywords a property uses that are not on the allow-list, by path. */
+const nonInlineKeywordsOf = (property: SchemaEnumProperty): string[] => {
   const items: unknown = property.items;
   // A tuple-form `items` is an array of subschemas rather than the single one
   // `schemaEnumOf` reads, so it is reported rather than descended into.
-  const nested = Array.isArray(items) ? ['items[]'] : Object.keys(items ?? {});
+  const nested =
+    Array.isArray(items) ?
+      ['items[]']
+    : Object.keys(items ?? {})
+        .filter(isNonInline)
+        .map((keyword) => `items.${keyword}`);
 
-  return [...Object.keys(property), ...nested];
+  return [...Object.keys(property).filter(isNonInline), ...nested];
 };
 
 const baseEntry: LabelEntry = {
@@ -401,9 +409,7 @@ describe('schemas/labels', () => {
     test('every entry property uses only inline schema keywords', () => {
       const offenders = Object.entries(entryProperties).flatMap(
         ([name, property]) =>
-          keywordsUsedBy(property)
-            .filter((keyword) => !INLINE_SCHEMA_KEYWORDS.includes(keyword))
-            .map((keyword) => `${name}.${keyword}`)
+          nonInlineKeywordsOf(property).map((keyword) => `${name}.${keyword}`)
       );
 
       expect(offenders).toStrictEqual([]);
