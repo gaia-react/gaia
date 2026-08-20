@@ -10,8 +10,19 @@
 # Exit 0 when clean, 1 on any finding at or above the severity floor, and 1 on
 # a pass that cannot run at all (no shellcheck binary, an empty *.sh discovery
 # set, an unusable bash-3.2 interpreter). A red gate is therefore not always a
-# findings list; the ERROR line says which case it is.
+# findings list; the ERROR line says which case it is. Exit 2 is neither: it is
+# a usage error, a bad argument, and no pass ran at all.
 # Run it directly from anywhere: `bash .gaia/tests/shell-lint.sh`.
+#
+# Usage: shell-lint.sh [--only bash32-parse]
+#
+# `--only bash32-parse` runs the bash-3.2 parse pass and nothing else. That is
+# how .github/workflows/shell-lint.yml arms that pass on a macOS runner, which
+# is the only host in this repo's CI carrying a real bash 3.2, without paying
+# for the shellcheck harness there: macOS runner minutes bill at 10x, and every
+# other pass either needs shellcheck or reads a surface the ubuntu leg already
+# covers. The parse pass is the one whose verdict depends on the host's
+# /bin/bash, so it is the one worth a second runner.
 #
 # Maintainer-only. Adopters run GAIA's bash but never author it, so the linter
 # guarding the framework's own shell has no adopter surface. Excluded from the
@@ -64,6 +75,42 @@
 # CI: .github/workflows/shell-lint.yml
 set -euo pipefail
 
+# Pass selection. Empty is the default and what every existing caller passes: it
+# runs every pass below, unchanged. One value is selectable, for the reason the
+# header gives.
+ONLY_PASS=
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --only)
+      # `--only <value>`, not `--only=<value>`: one spelling, the same one
+      # .gaia/scripts/verify-required-checks.sh takes for its own flags.
+      if [ "$#" -lt 2 ]; then
+        echo "ERROR: --only needs a pass name" >&2
+        exit 2
+      fi
+      ONLY_PASS="$2"
+      shift 2
+      ;;
+    *)
+      echo "ERROR: unknown argument: $1" >&2
+      echo "usage: shell-lint.sh [--only bash32-parse]" >&2
+      exit 2
+      ;;
+  esac
+done
+
+case "$ONLY_PASS" in
+  '' | bash32-parse) ;;
+  *)
+    # Reject rather than fall through to a full run. A typo'd pass name reaching
+    # the default would run the shellcheck passes on the macOS leg, which
+    # installs no shellcheck, and report the flag's own absence as a lint
+    # failure -- loud, but about the wrong thing.
+    echo "ERROR: unknown --only pass: $ONLY_PASS (known: bash32-parse)" >&2
+    exit 2
+    ;;
+esac
+
 # Per-file-type severity floors (see the block above). *.sh is held to the
 # strictest `style` tier; *.bats joins at `warning`, where the structural bats
 # false positives sit below the floor.
@@ -90,17 +137,24 @@ REPO_ROOT="$(git -C "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" rev-parse --
 
 echo "==> .gaia/tests/shell-lint.sh"
 
-if ! command -v shellcheck >/dev/null 2>&1; then
-  echo "ERROR: shellcheck not found on PATH. Install it first:" >&2
-  echo "  brew install shellcheck        (macOS)" >&2
-  echo "  apt-get install -y shellcheck  (Debian/Ubuntu)" >&2
-  exit 1
-fi
+# Both are preconditions of the shellcheck passes below and of nothing else,
+# so `--only bash32-parse` skips them. Demanding the binary unconditionally
+# would red the macOS leg, whose whole cost argument is that it installs no
+# linter at all. (That last line deliberately does not begin with the bare word
+# a directive is spelled with, per the trap this file's header records.)
+if [ -z "$ONLY_PASS" ]; then
+  if ! command -v shellcheck >/dev/null 2>&1; then
+    echo "ERROR: shellcheck not found on PATH. Install it first:" >&2
+    echo "  brew install shellcheck        (macOS)" >&2
+    echo "  apt-get install -y shellcheck  (Debian/Ubuntu)" >&2
+    exit 1
+  fi
 
-have_version="$(shellcheck --version 2>/dev/null | awk '/^version:/ {print $2}')"
-if [ -n "$have_version" ] && [ "$have_version" != "$SHELLCHECK_PIN" ]; then
-  echo "WARN: local shellcheck is $have_version but CI pins $SHELLCHECK_PIN;" >&2
-  echo "      verdicts can differ between versions. CI is the authority." >&2
+  have_version="$(shellcheck --version 2>/dev/null | awk '/^version:/ {print $2}')"
+  if [ -n "$have_version" ] && [ "$have_version" != "$SHELLCHECK_PIN" ]; then
+    echo "WARN: local shellcheck is $have_version but CI pins $SHELLCHECK_PIN;" >&2
+    echo "      verdicts can differ between versions. CI is the authority." >&2
+  fi
 fi
 
 # Tracked files only. Worktrees under .claude/worktrees/ are untracked checkouts
@@ -265,28 +319,44 @@ run_shellcheck_pass() {
 # all passes rather than hiding a later pass's findings behind an earlier one.
 status=0
 
-echo "--> shellcheck *.sh (severity=$SH_SEVERITY, jobs=$JOBS): ${#sh_scripts[@]} tracked scripts"
-if ! run_shellcheck_pass sh "$SH_SEVERITY" ${sh_scripts[@]+"${sh_scripts[@]}"}; then
-  status=1
-fi
+# The single verdict, called from both exit points -- `--only` mode stopping
+# after its selected pass, and the end of a full run -- so a selected run and a
+# full run cannot report the same state differently.
+report_verdict() {
+  if [ "$status" -ne 0 ]; then
+    echo "==> shell-lint FAILED" >&2
+    exit 1
+  fi
+  echo "==> shell-lint passed"
+  exit 0
+}
 
-if [ "${#bats_scripts[@]}" -gt 0 ]; then
-  echo "--> shellcheck *.bats (severity=$BATS_SEVERITY, jobs=$JOBS): ${#bats_scripts[@]} tracked suites"
-  if ! run_shellcheck_pass bats "$BATS_SEVERITY" ${bats_scripts[@]+"${bats_scripts[@]}"}; then
+# The three shellcheck passes, skipped under `--only bash32-parse` along with
+# the binary they need.
+if [ -z "$ONLY_PASS" ]; then
+  echo "--> shellcheck *.sh (severity=$SH_SEVERITY, jobs=$JOBS): ${#sh_scripts[@]} tracked scripts"
+  if ! run_shellcheck_pass sh "$SH_SEVERITY" ${sh_scripts[@]+"${sh_scripts[@]}"}; then
     status=1
   fi
-fi
 
-# The husky hooks are extensionless, so they match neither glob above and would
-# escape the gate entirely. `-s sh` is passed explicitly rather than left to the
-# per-file directive: husky runs every hook as `sh -e`, so the dialect is a
-# property of the directory, and a newly added hook is linted correctly whether
-# or not its author remembered the directive. It has to be its own invocation
-# because shellcheck takes one dialect per run.
-if [ "${#husky_hooks[@]}" -gt 0 ]; then
-  echo "--> shellcheck .husky/* (dialect=sh, severity=$SH_SEVERITY): ${#husky_hooks[@]} tracked hooks"
-  if ! (cd "$REPO_ROOT" && shellcheck -s sh --severity="$SH_SEVERITY" --exclude="$TOOLING_EXCLUDE" ${husky_hooks[@]+"${husky_hooks[@]}"}); then
-    status=1
+  if [ "${#bats_scripts[@]}" -gt 0 ]; then
+    echo "--> shellcheck *.bats (severity=$BATS_SEVERITY, jobs=$JOBS): ${#bats_scripts[@]} tracked suites"
+    if ! run_shellcheck_pass bats "$BATS_SEVERITY" ${bats_scripts[@]+"${bats_scripts[@]}"}; then
+      status=1
+    fi
+  fi
+
+  # The husky hooks are extensionless, so they match neither glob above and would
+  # escape the gate entirely. `-s sh` is passed explicitly rather than left to the
+  # per-file directive: husky runs every hook as `sh -e`, so the dialect is a
+  # property of the directory, and a newly added hook is linted correctly whether
+  # or not its author remembered the directive. It has to be its own invocation
+  # because shellcheck takes one dialect per run.
+  if [ "${#husky_hooks[@]}" -gt 0 ]; then
+    echo "--> shellcheck .husky/* (dialect=sh, severity=$SH_SEVERITY): ${#husky_hooks[@]} tracked hooks"
+    if ! (cd "$REPO_ROOT" && shellcheck -s sh --severity="$SH_SEVERITY" --exclude="$TOOLING_EXCLUDE" ${husky_hooks[@]+"${husky_hooks[@]}"}); then
+      status=1
+    fi
   fi
 fi
 
@@ -362,6 +432,13 @@ else
   esac
 fi
 
+# `--only bash32-parse` has run its pass and stops here. The five guards below
+# read the tree with tools that have nothing to do with the host's /bin/bash, so
+# a second runner would only re-run what the ubuntu leg already did.
+if [ -n "$ONLY_PASS" ]; then
+  report_verdict
+fi
+
 # Fold in the hook array-guard: shellcheck cannot model the bash-3.2.57
 # empty-array abort -- a bare "${arr[@]}" over an EMPTY array aborts under
 # `set -u`, exiting a hook before it can emit its deny JSON. Running it here
@@ -430,9 +507,4 @@ if ! (cd "$REPO_ROOT" && bash "$REPO_ROOT/.gaia/scripts/lint-errexit-status-read
   status=1
 fi
 
-if [ "$status" -ne 0 ]; then
-  echo "==> shell-lint FAILED" >&2
-  exit 1
-fi
-
-echo "==> shell-lint passed"
+report_verdict
