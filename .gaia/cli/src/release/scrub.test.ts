@@ -1,4 +1,4 @@
-import {load as parseYaml} from 'js-yaml';
+import {dump as dumpYaml, load as parseYaml} from 'js-yaml';
 import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {
   mkdirSync,
@@ -2067,29 +2067,45 @@ transforms:
   });
 });
 
-// The shipped `maintainer-paths` alternation, read from
-// `.gaia/release-scrub.yml` itself rather than mirrored inline the way the
-// hermetic configs above are. The defect these tests pin lived in the config's
-// pattern, not in the engine, so a mirrored copy would have gone on passing
-// while the shipped alternation stayed narrow.
-const shippedMaintainerPathsSource = (): string => {
+type ShippedLeakCheck = {id: string; pattern?: string};
+type ShippedLeakTransform = {checks?: ShippedLeakCheck[]; type?: string};
+
+// A leak check read from `.gaia/release-scrub.yml` itself rather than mirrored
+// inline the way the hermetic configs above are. The defects these tests pin
+// live in the config, not in the engine, so a mirrored copy goes on passing
+// while the shipped check stays narrow. The holding transform comes back too,
+// since its `scope-skip` is part of how the check behaves as shipped.
+const shippedLeakCheck = (
+  id: string
+): {check: ShippedLeakCheck; transform: ShippedLeakTransform} => {
   const configPath = path.join(
     resolveRepoRootFromImportMeta(import.meta.url),
     '.gaia',
     'release-scrub.yml'
   );
   const config = parseYaml(readFileSync(configPath, 'utf8')) as {
-    transforms: {checks?: {id: string; pattern?: string}[]}[];
+    transforms: ShippedLeakTransform[];
   };
-  const pattern = config.transforms
-    .flatMap((transform) => transform.checks ?? [])
-    .find((check) => check.id === 'maintainer-paths')?.pattern;
 
-  if (pattern === undefined) {
-    throw new Error('no maintainer-paths check in .gaia/release-scrub.yml');
+  for (const transform of config.transforms) {
+    const check = (transform.checks ?? []).find(
+      (candidate) => candidate.id === id
+    );
+
+    if (check !== undefined) return {check, transform};
   }
 
-  return pattern;
+  throw new Error(`no ${id} check in .gaia/release-scrub.yml`);
+};
+
+const shippedMaintainerPathsSource = (): string => {
+  const {check} = shippedLeakCheck('maintainer-paths');
+
+  if (check.pattern === undefined) {
+    throw new Error('maintainer-paths check has no pattern');
+  }
+
+  return check.pattern;
 };
 
 const shippedMaintainerPathsPattern = (): RegExp =>
@@ -2380,5 +2396,94 @@ describe('json-field-rewrite transform', () => {
       fields_rewritten: 1,
       files_touched: [REGISTRY],
     });
+  });
+});
+
+// Handed to the real engine as shipped: the check plus its holding transform,
+// with the sibling checks filtered out so an unrelated pattern cannot fire on
+// these fixtures.
+const shippedAbsolutePathsConfig = (): string => {
+  const {check, transform} = shippedLeakCheck('absolute-paths');
+
+  return dumpYaml({transforms: [{...transform, checks: [check]}]});
+};
+
+describe('shipped absolute-paths check', () => {
+  let sandbox: Sandbox;
+  let stdio: ReturnType<typeof captureStdio>;
+
+  beforeEach(() => {
+    stdio = captureStdio();
+    sandbox = setupSandbox({config: shippedAbsolutePathsConfig()});
+  });
+
+  afterEach(() => {
+    stdio.restore();
+    sandbox.cleanup();
+    vi.restoreAllMocks();
+  });
+
+  test('flags an absolute path anywhere in the shipped tree', () => {
+    // The ban is repo-wide, not `.claude/`-only (gaia-react/gaia#1479), so the
+    // two surfaces are one assertion rather than a rule and an exception.
+    sandbox.writeStaged(
+      '.gaia/scripts/audit-key-lib.sh',
+      'root="/Users/steven/dev/thing"\n'
+    );
+    sandbox.writeStaged('wiki/index.md', 'See /home/steven/notes.md.\n');
+    sandbox.writeStaged(
+      '.claude/hooks/some-hook.sh',
+      'root="/Users/steven/dev/thing"\n'
+    );
+
+    expect(run([sandbox.stagingDir, '--config', sandbox.configPath])).toBe(1);
+
+    const out = stdio.outputs.join('');
+
+    expect(out).toContain('.gaia/scripts/audit-key-lib.sh');
+    expect(out).toContain('wiki/index.md');
+    expect(out).toContain('.claude/hooks/some-hook.sh');
+  });
+
+  test('allows the sanctioned generic placeholders', () => {
+    // `.claude/rules/repo-relative-paths.md` sanctions `/Users/you` and
+    // `/Users/username` repo-wide; the captured Storybook parser stack trace
+    // in app/components/Errors/ErrorStack is where they ship today.
+    sandbox.writeStaged(
+      'app/components/Errors/ErrorStack/tests/index.stories.tsx',
+      '    at constructor (/Users/username/Development/gaia/node_modules/x.cjs:1:2)\n'
+    );
+    sandbox.writeStaged('docs/notes.md', 'Clone into /Users/you/projects.\n');
+
+    expect(run([sandbox.stagingDir, '--config', sandbox.configPath])).toBe(0);
+    expect(stdio.outputs.join('')).toContain('leaks: none');
+  });
+
+  test('allows the elided /Users/.../ placeholder', () => {
+    sandbox.writeStaged(
+      '.specify/extensions/gaia/lib/spec-session-lock.sh',
+      '#   level 1: /bin/zsh -c source /Users/.../.claude/shell-snapshots/snap\n'
+    );
+
+    expect(run([sandbox.stagingDir, '--config', sandbox.configPath])).toBe(0);
+    expect(stdio.outputs.join('')).toContain('leaks: none');
+  });
+
+  test('still flags a real machine path beside an exempt placeholder', () => {
+    sandbox.writeStaged(
+      '.specify/extensions/gaia/lib/spec-session-lock.sh',
+      '#   level 1: /bin/zsh -c source /Users/.../.claude/shell-snapshots/snap\n' +
+        'LOCK_DIR="/Users/steven/Development/gaia/.specify/locks"\n'
+    );
+
+    expect(run([sandbox.stagingDir, '--config', sandbox.configPath])).toBe(1);
+
+    const out = stdio.outputs.join('');
+
+    // One leak, on line 2: the count is what proves the exemption released the
+    // placeholder and nothing else, since the reporter prints the matched
+    // pattern rather than the offending line.
+    expect(out).toContain('leaks (1)');
+    expect(out).toContain('spec-session-lock.sh:2');
   });
 });

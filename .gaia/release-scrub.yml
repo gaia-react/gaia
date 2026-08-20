@@ -126,18 +126,18 @@ transforms:
         pattern: "\\bSPEC-[0-9]{3,}\\s*"
         replacement: ""
 
-  # The six token-leak checks (uat-narrative through monorepo-prefix) each
-  # carry `scope: ["**"]`, the whole staging tree. That tree IS the shipped
-  # set, so their scope cannot drift from what ships, and there is no list left
-  # to be wrong: five earlier repairs of this class (#644, #656, #710, #1306,
-  # #1352) each added one more glob to one more list and the sixth instance
-  # arrived anyway. The narrower scopes further down belong to the
-  # file-class-specific checks. For five of them a narrow scope is the intent
-  # rather than drift; `absolute-paths` is the exception, since CLAUDE.md bans
-  # machine-specific absolute paths repo-wide while that check reads only
-  # `.claude/**`. Widening it is deliberately not folded in here: it is a
-  # different pattern with its own false-positive surface, and this change's
-  # evidence covers the six token checks only. Tracked as #1479.
+  # The six token-leak checks (uat-narrative through monorepo-prefix) plus
+  # `absolute-paths` each carry `scope: ["**"]`, the whole staging tree. That
+  # tree IS the shipped set, so their scope cannot drift from what ships, and
+  # there is no list left to be wrong: five earlier repairs of this class
+  # (#644, #656, #710, #1306, #1352) each added one more glob to one more list
+  # and the sixth instance arrived anyway. `absolute-paths` carries the same
+  # scope for the same reason (#1479): CLAUDE.md and
+  # `.claude/rules/repo-relative-paths.md` ban machine-specific absolute paths
+  # repo-wide, so a `.claude/**` scope leaves every other shipped surface
+  # unguarded against the literal its own rule forbids. The narrower
+  # scopes further down belong to the file-class-specific checks, where a
+  # narrow scope is the intent rather than drift.
   - type: leak-check
     # Subtracted from every check in this transform: a binary's bytes decoded
     # as UTF-8 are noise a token regex can match by accident, and a reported
@@ -308,10 +308,10 @@ transforms:
 
       # ---- Absolute filesystem literals ----
       - id: absolute-paths
-        description: "Absolute /Users or /home filesystem paths in shipped Claude files"
+        description: "Absolute /Users or /home filesystem paths in shipped files"
         pattern: "/Users/|/home/"
         scope:
-          - ".claude/**"
+          - "**"
         path-allowlist:
           # The rule's own counter-example prose documents this pattern.
           - ".claude/rules/instruction-files.md"
@@ -325,6 +325,21 @@ transforms:
           # (/Users/testuser, /Users/alice) as the examples it governs; same
           # rationale as wiki-style.md.
           - ".claude/rules/repo-relative-paths.md"
+        # Both entries exempt a placeholder form the rule sanctions repo-wide,
+        # so both are lines rather than paths. A path entry would waive whatever
+        # content later occupies it, and nothing validates an allowlist entry
+        # against the file it names.
+        line-allowlist:
+          # The sanctioned generic placeholders (`.claude/rules/
+          # repo-relative-paths.md` Exceptions), shipping today in the captured
+          # Storybook parser stack trace under app/components/Errors/ErrorStack.
+          # A real leak would need a user literally named `you` or `username`.
+          - "/Users/(you|username)/"
+          # The elided-middle placeholder, e.g. the shell-wrapper levels
+          # `.specify/extensions/gaia/lib/spec-session-lock.sh` documents in a
+          # comment. A real machine path never contains a literal `/.../`, so
+          # exempting the line keeps that live script guarded everywhere else.
+          - "/Users/\\.\\.\\./"
 
       # ---- Maintainer-only governance files at staging root ----
       # Release-exclude category 11 keeps these out of the staging tree.
