@@ -19,6 +19,7 @@ import {run as runAutomation} from './automation/index.js';
 import {EXIT_CODES} from './exit.js';
 import {run as runFitness} from './fitness/index.js';
 import {run as runInit} from './init/index.js';
+import {run as runLabels} from './labels/index.js';
 import {run as runReactPerf} from './react-perf/index.js';
 import {run as runRelease} from './release/index.js';
 import {run as runScaffold} from './scaffold/index.js';
@@ -37,6 +38,7 @@ Maintainer-only binary. Adopters use 'gaia' (no release namespace).
   react-perf reduce <raw.json> [--frame-budget-ms N]
   wiki state|commit-classify|state-init|state-bump|log-prepend|page-index|orphans|near-collisions|dead-paths|frontmatter|empty-sections|diff-size|chain|sync land|sync await
   fitness render-card [--cols N]
+  labels check|docs|sync
   automation read-config|cron-decide|render-workflows|install-audit-workflow
   update merge-workspace|merge-audit-ci|merge-region|regen-regions
   update-deps run|decline
@@ -61,6 +63,7 @@ const SUBCOMMAND_HANDLERS: Readonly<
   automation: runAutomation,
   fitness: runFitness,
   init: runInit,
+  labels: runLabels,
   'react-perf': runReactPerf,
   release: runRelease,
   scaffold: runScaffold,
