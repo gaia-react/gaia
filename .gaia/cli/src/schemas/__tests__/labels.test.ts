@@ -4,12 +4,35 @@ import {readFileSync} from 'node:fs';
 import path from 'node:path';
 import {resolveRepoRootFromImportMeta} from '../../util/repo-root-fixture.js';
 import type {LabelEntry} from '../labels.js';
-import {isCreatable, LabelEntrySchema, LabelRegistrySchema} from '../labels.js';
+import {
+  isCreatable,
+  LABEL_AUDIENCES,
+  LABEL_AXES,
+  LABEL_FEATURES,
+  LabelEntrySchema,
+  LabelRegistrySchema,
+} from '../labels.js';
 
 const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
 
 const readRegistry = (): unknown =>
   JSON.parse(readFileSync(path.join(repoRoot, '.gaia/labels.json'), 'utf8'));
+
+type SchemaEnumProperty = {
+  enum?: readonly string[];
+  items?: {enum?: readonly string[]};
+};
+
+const readSchemaEntryProperties = (): Record<string, SchemaEnumProperty> => {
+  const schema = JSON.parse(
+    readFileSync(path.join(repoRoot, '.gaia/labels.schema.json'), 'utf8')
+  ) as {$defs: {entry: {properties: Record<string, SchemaEnumProperty>}}};
+
+  return schema.$defs.entry.properties;
+};
+
+const sorted = (values: readonly string[]): string[] =>
+  values.toSorted((left, right) => left.localeCompare(right));
 
 const baseEntry: LabelEntry = {
   audience: 'adopter',
@@ -315,5 +338,21 @@ describe('schemas/labels', () => {
     requiredKeys.forEach((key) => {
       expect(Object.hasOwn(firstEntry, key)).toBe(true);
     });
+  });
+
+  describe('.gaia/labels.schema.json enum parity', () => {
+    const entryProperties = readSchemaEntryProperties();
+
+    test.each([
+      ['axis', entryProperties.axis?.enum, LABEL_AXES],
+      ['audience', entryProperties.audience?.enum, LABEL_AUDIENCES],
+      ['features', entryProperties.features?.items?.enum, LABEL_FEATURES],
+    ] as const)(
+      'the schema %s enum holds the same values as its TypeScript constant',
+      (_property, schemaEnum, constant) => {
+        assert.ok(schemaEnum);
+        expect(sorted(schemaEnum)).toStrictEqual(sorted(constant));
+      }
+    );
   });
 });
