@@ -320,10 +320,9 @@ transforms:
           # algorithm input the skill executes against. Removing the literal
           # would break the documentation's correspondence to the regex.
           - ".claude/skills/gaia/references/forensics/redaction.md"
-          # Policy-documenting rule: contains every placeholder its own
-          # Exception 2 sanctions and the Exception 1 forensics-fixture paths
-          # (/Users/testuser, /Users/alice) as the examples it governs; same
-          # rationale as wiki-style.md.
+          # Policy-documenting rule: contains every path its own Exceptions 1
+          # and 2 sanction, as the examples it governs; same rationale as
+          # wiki-style.md.
           - ".claude/rules/repo-relative-paths.md"
         # Both entries exempt a placeholder form the rule sanctions repo-wide,
         # so both are lines rather than paths. A path entry would waive whatever
@@ -346,14 +345,14 @@ transforms:
           # under app/components/Errors/ErrorStack, `/home/bar` ships nowhere
           # yet and is here so following the rule cannot fail the bundle.
           #
-          # Covers each placeholder used as a path PREFIX, which is how the
-          # rule's own examples and every instance in the tree spell them. A
-          # bare mention with no following segment still flags. The trailing
-          # `/` is what draws that line, and it is load-bearing: dropping it
-          # would exempt `/Users/youngster/...` and `/home/barbara/...`, which
-          # name real machines, and a right-boundary class instead of the
-          # slash trades that for flagging a sentence ending in `/home/bar.`
-          # Prefix-only is the narrower of the two, so it is the one kept.
+          # Covers each placeholder used as a path PREFIX, which is how every
+          # shipped instance spells them. A bare mention still flags; the two
+          # that exist are path-allowlisted or release-excluded, so nothing
+          # the check walks relies on the wider form. The trailing `/` draws
+          # that line and is load-bearing: dropping it would exempt
+          # `/Users/youngster/...` and `/home/barbara/...`, and a
+          # right-boundary class instead trades that for flagging a sentence
+          # ending in `/home/bar.` Prefix-only is the narrower, so it is kept.
           - "/(Users/(you|username)|home/bar)/"
           # The elided-middle placeholder, e.g. the shell-wrapper levels
           # `.specify/extensions/gaia/lib/spec-session-lock.sh` documents in a

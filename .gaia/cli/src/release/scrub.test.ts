@@ -2447,11 +2447,11 @@ describe('shipped absolute-paths check', () => {
 
   test('allows each sanctioned placeholder used as a path prefix', () => {
     // The gate has to permit what Exception 2 tells an author to write, or
-    // following the rule fails the bundle. Prefix use is how the rule's own
-    // examples and every instance in the tree spell them; a bare mention with
-    // no following segment still flags, which `.gaia/release-scrub.yml`
-    // records as the narrower of the two available edges. `/Users/username`
-    // is where they ship today, in the captured Storybook parser stack trace.
+    // following the rule fails the bundle. Prefix use is how every shipped
+    // instance spells them; a bare mention still flags, which
+    // `.gaia/release-scrub.yml` records as the narrower of the two available
+    // edges. `/Users/username` is where they ship today, in the captured
+    // Storybook parser stack trace.
     sandbox.writeStaged(
       'app/components/Errors/ErrorStack/tests/index.stories.tsx',
       '    at constructor (/Users/username/Development/gaia/node_modules/x.cjs:1:2)\n'
@@ -2465,7 +2465,9 @@ describe('shipped absolute-paths check', () => {
 
   test('does not let a placeholder exempt a longer real path that extends it', () => {
     // Why the trailing `/` is load-bearing rather than incidental: without it
-    // the alternation would release these, and they name real machines.
+    // the alternation would release a path of this shape, and that shape names
+    // a real machine. These two are deliberate near-misses of the sanctioned
+    // placeholders, not further placeholders.
     sandbox.writeStaged('docs/a.md', 'Built at /Users/youngster/dev/thing.\n');
     sandbox.writeStaged('docs/b.md', 'Built at /home/barbara/dev/thing.\n');
 
