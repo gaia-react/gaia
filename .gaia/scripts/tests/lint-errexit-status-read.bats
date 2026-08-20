@@ -1006,18 +1006,60 @@ echo done'
 # the shell did. The ground truth is measured on every run, so a row nobody
 # reasoned about correctly still fails here, and a new shape costs one line.
 
-# prefix_reaches <suffix>: 0 when a real shell runs past the assignment (the
-# prefixed command's status is the one it takes, so the `$?` read below is live
-# and the gate must stay quiet), 1 when errexit kills the script on the
-# assignment (the class, and the gate must report). `log` and `my log` are
-# pre-created so a `<` redirection fails on nothing but the shape under test.
+# probe_shell: the interpreter the ground truth is measured with, echoed on
+# stdout; non-zero when none is available.
+#
+# Bash 4 or newer is required rather than whatever `bash` resolves to. Some rows
+# use operators bash 3.2 cannot PARSE at all (`&>>` is bash 4.0+), and a shell
+# that cannot parse a row measures nothing about it. Resolution mirrors
+# .gaia/scripts/bats5.sh, which the project's bats rule already routes these
+# suites through.
+probe_shell() {
+  local cand major
+  for cand in /opt/homebrew/bin/bash /usr/local/bin/bash "$( command -v bash )"; do
+    [ -n "$cand" ] || continue
+    [ -x "$cand" ] || continue
+    major="$( "$cand" -c 'printf %s "${BASH_VERSINFO[0]}"' 2>/dev/null )"
+    case "$major" in
+      ''|*[!0-9]*) continue ;;
+    esac
+    [ "$major" -ge 4 ] || continue
+    printf '%s' "$cand"
+    return 0
+  done
+  return 1
+}
+
+# prefix_reaches <shell> <suffix>: the ground truth, as three outcomes rather
+# than two.
+#
+#   0  a real shell runs past the assignment: the prefixed command's status is
+#      the one it takes, the `$?` read below is live, and the gate must stay
+#      quiet.
+#   1  errexit kills the script on the assignment: the class, and the gate must
+#      report.
+#   2  the shell could not PARSE the row, so nothing about it was measured.
+#
+# The third outcome is what keeps the matrix from certifying itself. Folding an
+# unparseable row into `report` makes a syntax error indistinguishable from
+# errexit firing, so a row edited into nonsense reads as measured ground truth
+# and greens against a gate that is also reporting, having established nothing.
+# That is the same fail-open the gate under test refuses to commit when it loses
+# tokenizer sync, and the matrix owes the same answer.
+#
+# `log` and `my log` are pre-created so a `<` redirection fails on nothing but
+# the shape under test.
 prefix_reaches() {
-  local dir out
+  local sh="$1" suffix="$2" dir out
   dir="$(mktemp -d -t errexit-status-probe-XXXXXX)"
   : > "$dir/log"
   : > "$dir/my log"
-  printf '%s\n' 'set -e' "out=\$(false) $1" 'rc=$?' 'echo REACHED' > "$dir/probe.sh"
-  out="$( cd "$dir" && bash probe.sh 2>/dev/null || true )"
+  printf '%s\n' 'set -e' "out=\$(false) $suffix" 'rc=$?' 'echo REACHED' > "$dir/probe.sh"
+  if ! "$sh" -n "$dir/probe.sh" 2>/dev/null; then
+    rm -rf "$dir"
+    return 2
+  fi
+  out="$( cd "$dir" && "$sh" probe.sh 2>/dev/null || true )"
   rm -rf "$dir"
   case "$out" in *REACHED*) return 0 ;; *) return 1 ;; esac
 }
@@ -1045,12 +1087,30 @@ echo \"\$rc\""
 }
 
 @test "the gate agrees with a real shell across the prefix matrix" {
-  local suffix expected failures=""
+  local suffix expected sh rc failures=""
+  # Refuse to report clean over nothing, the same posture the gate itself takes
+  # on a region it cannot read: with no bash 4+ to measure against, this test has
+  # no ground truth and says so rather than passing.
+  sh="$( probe_shell )" || {
+    printf 'no bash 4+ available to measure ground truth; the matrix measured nothing\n'
+    return 1
+  }
   # Read on fd 9: the gate is run through bats `run`, which inherits stdin, and
   # a matrix on stdin would be eaten a row at a time by whatever the fixture
   # runs.
   while IFS= read -r suffix <&9; do
-    if prefix_reaches "$suffix"; then expected=quiet; else expected=report; fi
+    # The guarded form this gate itself advertises: bats runs a test body under
+    # errexit, so a bare call returning non-zero would abort the loop on the
+    # first `report` row rather than recording it.
+    rc=0
+    prefix_reaches "$sh" "$suffix" || rc=$?
+    case "$rc" in
+      0) expected=quiet ;;
+      1) expected=report ;;
+      *) failures="$failures
+  out=\$(false) $suffix    UNPARSEABLE under $sh, so nothing was measured"
+         continue ;;
+    esac
     prefix_verdict "$suffix"
     [ "$expected" = "$PREFIX_VERDICT" ] || failures="$failures
   out=\$(false) $suffix    shell: $expected    gate: $PREFIX_VERDICT"
@@ -1068,6 +1128,7 @@ FOO=1 BAR=2 true
 FOO=1 > log true
 > log FOO=1 true
 > "my log" true
+> log#x true
 > 'my log' true
 FOO="a b" true
 >| log true

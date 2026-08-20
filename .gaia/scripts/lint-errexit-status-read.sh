@@ -422,9 +422,16 @@ function walk(line,   n, i, c, j, ch, delim, prev) {
 #
 # `$(` is followed to its matching `)` rather than broken on, so an assignment
 # whose value is itself a substitution (`out=$(a) FOO=$(b) run_thing`) is
-# consumed as the one word it is. Stops at unquoted whitespace, at a control
-# operator, and at a redirection operator, each of which begins the next token
-# rather than continuing this one.
+# consumed as the one word it is. Stops at unquoted whitespace, at `;`, `|`, `&`,
+# `(`, and `)`, and at a redirection`s `<` or `>`, each of which begins the next
+# token rather than continuing this one.
+#
+# `#` is the one member of that set that depends on WHERE it sits: it opens a
+# comment only at the start of a word and is an ordinary character inside one, so
+# `> log#x run_thing` redirects to a file literally named `log#x`. walk() already
+# draws that distinction, and reading it as a comment here would report a line the
+# shell runs. Position 1 is the only word start this function can see, since the
+# caller hands it a tail with its leading whitespace already stripped.
 function eat_word(s,   n, i, c, q, d) {
   n = length(s)
   q = ""
@@ -445,7 +452,8 @@ function eat_word(s,   n, i, c, q, d) {
       continue
     }
     if (c == " " || c == "\t") break
-    if (index(";|&#()<>", c) > 0) break
+    if (c == "#") { if (i == 1) break; continue }
+    if (index(";|&()<>", c) > 0) break
   }
   return substr(s, i)
 }
