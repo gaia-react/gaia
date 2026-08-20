@@ -19518,6 +19518,7 @@ var planSync = (options) => {
         claimed.add(entry.name);
         actions.push({
           carrierCount: null,
+          countUnavailable: false,
           kind: "blocked-present",
           name: entry.name,
           reason: entry.reason ?? ""
@@ -19600,7 +19601,7 @@ var QUOTE_ESCAPE = String.raw`'\''`;
 var shellQuote = (value) => SAFE_ARGUMENT.test(value) ? value : `'${value.replaceAll("'", QUOTE_ESCAPE)}'`;
 var commandLine = (argv) => ["gh", ...argv].map(shellQuote).join(" ");
 var describeBlockedPresent = (action) => {
-  const carried = action.carrierCount === null ? "" : ` (${action.carrierCount} issues and pull requests carry it)`;
+  const carried = action.countUnavailable ? " (carrier count unavailable, so it was not removed)" : action.carrierCount === null ? "" : ` (carried by ${action.carrierCount} issues and pull requests)`;
   return `blocked but present: ${action.name}${carried}. ${action.reason}`;
 };
 var describeAction = (action) => {
@@ -19760,7 +19761,7 @@ var enforceBlockedActions = (actions, options) => {
   return actions.map((action) => {
     if (action.kind !== "blocked-present") return action;
     const carrierCount = countCarriers(action.name, options.repoArgs);
-    if (carrierCount === null) return action;
+    if (carrierCount === null) return { ...action, countUnavailable: true };
     return resolveBlocked(action, {
       audience: options.audience,
       carrierCount,

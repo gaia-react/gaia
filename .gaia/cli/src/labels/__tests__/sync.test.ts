@@ -306,6 +306,7 @@ describe('labels/sync blocked entries', () => {
 
     expect(sole(actions, 'blocked-present')).toMatchObject({
       carrierCount: null,
+      countUnavailable: false,
       name: 'good first issue',
     });
   });
@@ -321,6 +322,7 @@ describe('labels/sync blocked entries', () => {
   test('the adopter audience keeps the advisory even under enforcement', () => {
     const action: SyncAction = {
       carrierCount: null,
+      countUnavailable: false,
       kind: 'blocked-present',
       name: 'good first issue',
       reason: 'policy',
@@ -338,6 +340,7 @@ describe('labels/sync blocked entries', () => {
   test('the maintainer audience removes it only at a zero carrier count', () => {
     const action: SyncAction = {
       carrierCount: null,
+      countUnavailable: false,
       kind: 'blocked-present',
       name: 'good first issue',
       reason: 'policy',
@@ -356,6 +359,7 @@ describe('labels/sync blocked entries', () => {
   test('enforcement without the flag leaves the advisory alone', () => {
     const action: SyncAction = {
       carrierCount: null,
+      countUnavailable: false,
       kind: 'blocked-present',
       name: 'help wanted',
       reason: 'policy',

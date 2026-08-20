@@ -144,7 +144,7 @@ describe('labels/sync carrier counting', () => {
     enforce();
 
     expect(stdout()).toContain(
-      `blocked but present: ${BLOCKED} (1 issues and pull requests carry it)`
+      `blocked but present: ${BLOCKED} (carried by 1 issues and pull requests)`
     );
     expect(stdout()).not.toContain(`blocked removed: ${BLOCKED}`);
   });
@@ -168,22 +168,41 @@ describe('labels/sync carrier counting', () => {
     expect(stdout()).toContain(`blocked removed: ${BLOCKED}`);
   });
 
-  test('an uncountable pull-request surface refuses the delete', () => {
+  test('an uncountable pull-request surface refuses the delete, and says so', () => {
     stubGh({issues: ok('[]'), labelList: blockedLive, pulls: FAILED});
 
     enforce();
 
-    expect(stdout()).toContain(`blocked but present: ${BLOCKED}.`);
+    expect(stdout()).toContain(
+      `blocked but present: ${BLOCKED} (carrier count unavailable, so it was not removed)`
+    );
     expect(stdout()).not.toContain(`blocked removed: ${BLOCKED}`);
   });
 
-  test('an uncountable issue surface refuses the delete', () => {
+  test('an uncountable issue surface refuses the delete, and says so', () => {
     stubGh({issues: FAILED, labelList: blockedLive, pulls: ok('[]')});
 
     enforce();
 
-    expect(stdout()).toContain(`blocked but present: ${BLOCKED}.`);
+    expect(stdout()).toContain(
+      `blocked but present: ${BLOCKED} (carrier count unavailable, so it was not removed)`
+    );
     expect(stdout()).not.toContain(`blocked removed: ${BLOCKED}`);
+  });
+
+  test('a run that never enforces is distinguishable from one that could not count', () => {
+    stubGh({issues: FAILED, labelList: blockedLive, pulls: ok('[]')});
+    run([
+      '--dry-run',
+      '--audience',
+      'maintainer',
+      '--repo-root',
+      repoRoot,
+      ...ALL_FEATURES,
+    ]);
+
+    expect(stdout()).toContain(`blocked but present: ${BLOCKED}.`);
+    expect(stdout()).not.toContain('carrier count unavailable');
   });
 });
 

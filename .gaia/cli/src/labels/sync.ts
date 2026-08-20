@@ -93,6 +93,7 @@ export type LiveLabel = {color: string; description: string; name: string};
 export type SyncAction =
   | {
       carrierCount: null | number;
+      countUnavailable: boolean;
       kind: 'blocked-present';
       name: string;
       reason: string;
@@ -224,6 +225,7 @@ export const planSync = (options: {
         claimed.add(entry.name);
         actions.push({
           carrierCount: null,
+          countUnavailable: false,
           kind: 'blocked-present',
           name: entry.name,
           reason: entry.reason ?? '',
@@ -364,11 +366,19 @@ const shellQuote = (value: string): string =>
 const commandLine = (argv: readonly string[]): string =>
   ['gh', ...argv].map(shellQuote).join(' ');
 
+/**
+ * The uncountable case is announced rather than rendered as the plain
+ * advisory. An operator who passed `--enforce-blocked` and got a count the
+ * queries could not supply otherwise reads output byte-identical to a run that
+ * never asked for enforcement, at the same zero exit, and re-runs forever
+ * without learning that a missing scope is what withheld the delete.
+ */
 const describeBlockedPresent = (action: BlockedPresentAction): string => {
   const carried =
-    action.carrierCount === null ?
-      ''
-    : ` (${action.carrierCount} issues and pull requests carry it)`;
+    action.countUnavailable ?
+      ' (carrier count unavailable, so it was not removed)'
+    : action.carrierCount === null ? ''
+    : ` (carried by ${action.carrierCount} issues and pull requests)`;
 
   return `blocked but present: ${action.name}${carried}. ${action.reason}`;
 };
@@ -614,7 +624,9 @@ const enforceBlockedActions = (
     const carrierCount = countCarriers(action.name, options.repoArgs);
 
     // An uncountable label is never deleted: refusing is the safe direction.
-    if (carrierCount === null) return action;
+    // Say so in the report; silence here is indistinguishable from a run that
+    // never enforced at all.
+    if (carrierCount === null) return {...action, countUnavailable: true};
 
     return resolveBlocked(action, {
       audience: options.audience,

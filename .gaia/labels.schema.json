@@ -83,7 +83,7 @@
         },
         "blocked": {
           "type": "boolean",
-          "description": "The label must not exist. Never created; reported when found; deleted only on the maintainer repo under --enforce-blocked and only when zero issues carry it."
+          "description": "The label must not exist. Never created; reported when found; deleted only on the maintainer repo under --enforce-blocked and only when no issue and no pull request carries it."
         },
         "renamedFrom": {
           "type": "array",

@@ -696,7 +696,7 @@ elif grep -q '^labels-sync: degraded' "$labels_sync_err"; then
   LABELS_STATE=degraded
   LABELS_MANUAL_CMDS=$(printf '%s' "$labels_sync_json" | jq -r '.actions[]? | select(.kind == "manual-command") | .command' 2>/dev/null)
   LABELS_MANUAL=$(count_kind manual-command)
-  LABELS_DEGRADED_AT=$(printf '%s' "$labels_sync_json" | jq -r '.degradedAt // "write"' 2>/dev/null || printf 'write')
+  LABELS_DEGRADED_AT=$(printf '%s' "$labels_sync_json" | jq -r '.degradedAt // "unknown"' 2>/dev/null || printf 'unknown')
 else
   LABELS_STATE=applied
   LABELS_CREATED=$(count_kind create)
@@ -713,7 +713,7 @@ Do not read that arm as "the sync never ran". It covers a CLI predating the subc
 
 **Count all four applied kinds, not three.** Description drift is written on every sync: the registry wins on description, so the sync issues the edit unconditionally, while color drift is withheld without `--adopt` and is reported only. A summary counting creates, renames, and color drift alone renders a repository whose descriptions were just rewritten as unchanged.
 
-**Read `degradedAt`, do not assume the list is the remainder.** The sync degrades on a refused read and on a refused write, and the manual list means something different in each case; the plan carries which one happened as `degradedAt` (`"read"` or `"write"`) because nothing downstream can recover it from the list. Step 9's two bullets below own the difference and the exact wording. The `// "write"` fallback covers a CLI predating the field, whose degrade could only ever have been a write refusal.
+**Read `degradedAt`, do not assume the list is the remainder.** The sync degrades on a refused read and on a refused write, and the manual list means something different in each case; the plan carries which one happened as `degradedAt` (`"read"` or `"write"`) because nothing downstream can recover it from the list. Step 9's three bullets below own the difference and the exact wording. The fallback is `unknown`, not `write`: a CLI predating the field degraded on a refused read exactly as readily, which is the defect the field exists to fix, so defaulting to either real value would state the thing the field was added to stop stating. Such a bundle is rare (Step 7 overwrites `.gaia/cli/gaia` as an owned file, so only an adopter-drifted one that landed in `conflicts[]` survives to this step) but not impossible, and `unknown` is what makes the summary honest when it does.
 
 Every count goes through one `count_kind` helper so the fallback is written once, and every count is a `jq` length rather than a line count. Counting the manual commands with `grep -c` is what that replaces: `grep -c` prints `0` and still exits 1 when nothing matches, so a trailing `|| echo 0` appends a second value and the row interpolates two where it expects one. `jq` does not have that shape here, a parse error goes to stderr and leaves stdout empty, so its fallback supplies the value rather than doubling it.
 
@@ -746,7 +746,8 @@ GAIA update: v$BASELINE → $LATEST_TAG
 Render that row from `LABELS_STATE`. On `nonzero`, `Labels: unknown (gaia labels sync exited non-zero; some labels may already have been applied, see Step 8c)`, which is honest about a run that may have written part of its plan before stopping. On `degraded`, render from `LABELS_DEGRADED_AT` and then print `$LABELS_MANUAL_CMDS` beneath the table, so the recovery commands are where the row says they are:
 
 - `write` → `Labels: could not write (token lacks label scope); <LABELS_MANUAL> manual commands still owed, listed below`. The listed commands are the remainder: the mutations applied before the refusal are not repeated.
-- `read` → `Labels: could not read or write (token lacks label scope); the <LABELS_MANUAL> commands below are the whole registry, not the work remaining, listed below`. Say that a create for a label the repository already carries fails harmlessly. Do not call this list a remainder and do not try to compute one: the read that would separate an established repository from a fresh one is exactly what was refused, so a count of outstanding work would be invented rather than measured.
+- `read` → `Labels: could not read or write (token lacks label scope); the <LABELS_MANUAL> commands below are the whole registry, not the work remaining`. Say that a create for a label the repository already carries fails harmlessly. Do not call this list a remainder and do not try to compute one: the read that would separate an established repository from a fresh one is exactly what was refused, so a count of outstanding work would be invented rather than measured.
+- `unknown` → `Labels: could not complete (token lacks label scope); <LABELS_MANUAL> manual commands, listed below`. This CLI predates `degradedAt` and did not record which refusal degraded it, so claim neither: the list is either the mutations still owed or the whole registry, and nothing available here can tell which. Say that much, and that a create for a label the repository already carries fails harmlessly, which holds under both readings.
 
 On `applied` with all four counts `0`, `Labels: no changes (already in sync)`.
 
