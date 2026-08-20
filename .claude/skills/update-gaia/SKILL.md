@@ -696,6 +696,7 @@ elif grep -q '^labels-sync: degraded' "$labels_sync_err"; then
   LABELS_STATE=degraded
   LABELS_MANUAL_CMDS=$(printf '%s' "$labels_sync_json" | jq -r '.actions[]? | select(.kind == "manual-command") | .command' 2>/dev/null)
   LABELS_MANUAL=$(count_kind manual-command)
+  LABELS_DEGRADED_AT=$(printf '%s' "$labels_sync_json" | jq -r '.degradedAt // "unknown"' 2>/dev/null || printf 'unknown')
 else
   LABELS_STATE=applied
   LABELS_CREATED=$(count_kind create)
@@ -711,6 +712,8 @@ The empty test comes first, inside the block, rather than as a note after it. `$
 Do not read that arm as "the sync never ran". It covers a CLI predating the subcommand, a usage or environment error, and a real `gh` failure that can stop partway through the owed mutations with earlier creates and renames already written. The summary has to leave that possibility open rather than telling an adopter nothing happened, which would send them to re-create labels that already exist.
 
 **Count all four applied kinds, not three.** Description drift is written on every sync: the registry wins on description, so the sync issues the edit unconditionally, while color drift is withheld without `--adopt` and is reported only. A summary counting creates, renames, and color drift alone renders a repository whose descriptions were just rewritten as unchanged.
+
+**Read `degradedAt`, do not assume the list is the remainder.** The sync degrades on a refused read and on a refused write, and the manual list means something different in each case; the plan carries which one happened as `degradedAt` (`"read"` or `"write"`) because nothing downstream can recover it from the list. Step 9's three `degraded` rows below own the difference and the literal each one prints. The fallback is `unknown`, not `write`: a CLI predating the field degraded on a refused read exactly as readily, and nothing in its output says which refusal it was, so defaulting to either real value would assert a refusal that may not have happened. Such a bundle is rare (Step 7 overwrites `.gaia/cli/gaia` as an owned file, so only an adopter-drifted one that landed in `conflicts[]` survives to this step) but not impossible, and `unknown` is what makes the summary honest when it does.
 
 Every count goes through one `count_kind` helper so the fallback is written once, and every count is a `jq` length rather than a line count. Counting the manual commands with `grep -c` is what that replaces: `grep -c` prints `0` and still exits 1 when nothing matches, so a trailing `|| echo 0` appends a second value and the row interpolates two where it expects one. `jq` does not have that shape here, a parse error goes to stderr and leaves stdout empty, so its fallback supplies the value rather than doubling it.
 
@@ -740,7 +743,17 @@ GAIA update: v$BASELINE → $LATEST_TAG
   Labels:       <c> created, <r> renamed, <e> descriptions updated, <d> color drift found  (color drift not applied; your own recolor wins)
 ```
 
-Render that row from `LABELS_STATE`. On `nonzero`, `Labels: unknown (gaia labels sync exited non-zero; some labels may already have been applied, see Step 8c)`, which is honest about a run that may have written part of its plan before stopping. On `degraded`, `Labels: could not write (token lacks label scope); <LABELS_MANUAL> manual commands, listed below`, then print `$LABELS_MANUAL_CMDS` beneath the table, so the recovery commands are where the row says they are. The listed commands are the actions still owed. How much of the plan was already applied depends on where the sync lost write access, which the summary does not know: a refused read degrades it before it writes anything, while a refusal partway through the mutations leaves the earlier ones written. Report the list as the remainder and claim nothing either way. On `applied` with all four counts `0`, `Labels: no changes (already in sync)`.
+Render that row from `LABELS_STATE`. Each backticked row below is the whole literal to print; nothing outside a row's backticks reaches the summary.
+
+- `nonzero` → `Labels: unknown (gaia labels sync exited non-zero; some labels may already have been applied, see Step 8c)`
+- `applied`, all four counts `0` → `Labels: no changes (already in sync)`
+- `applied`, any count non-zero → the table template's own `Labels:` line, with the four counts filled in
+- `degraded` → the row named by `LABELS_DEGRADED_AT` below, then `$LABELS_MANUAL_CMDS` printed beneath the table so the recovery commands are where the row says they are:
+  - `write` → `Labels: could not write (token lacks label scope); <LABELS_MANUAL> manual commands still owed, listed below. The mutations applied before the refusal are not repeated.`
+  - `read` → `Labels: could not read or write (token lacks label scope); the <LABELS_MANUAL> commands below are the whole registry, not the work remaining, because the repository's labels could not be read. A create for a label you already have fails harmlessly.`
+  - `unknown` → `Labels: could not complete (token lacks label scope); <LABELS_MANUAL> manual commands, listed below. This CLI does not record which refusal degraded it, so the list is either the mutations still owed or the whole registry. A create for a label you already have fails harmlessly either way.`
+
+Why the `read` and `unknown` rows claim no remainder: computing one needs the read that was refused, so a count of outstanding work would be invented rather than measured. Step 8c above owns the rest of that rationale, including why the fallback is `unknown`.
 
 When all three `package.json` counts are zero, render that row as `package.json: no managed-key changes (clean skip)` and omit the notes reference. Apply the same rule to the `pnpm-workspace.yaml` row: `pnpm-workspace.yaml: no managed-key changes (clean skip)` when all three of its counts are zero. If 7b fell back to a whole-file conflict patch (presence triage or a parse failure), render the row as `pnpm-workspace.yaml: whole-file conflict (see .gaia-merge/pnpm-workspace.yaml.patch)` instead. Apply the same two rules to the `audit-ci.yml` row: `audit-ci.yml: no managed-key changes (clean skip)` when all three counts are zero, or `audit-ci.yml: whole-file conflict (see .gaia-merge/audit-ci.yml.patch)` when 7c fell back.
 

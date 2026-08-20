@@ -305,7 +305,8 @@ describe('labels/sync blocked entries', () => {
     const actions = plan({flags: {enforceBlocked: true}, live: blockedLive});
 
     expect(sole(actions, 'blocked-present')).toMatchObject({
-      issueCount: null,
+      carrierCount: null,
+      countUnavailable: false,
       name: 'good first issue',
     });
   });
@@ -320,7 +321,8 @@ describe('labels/sync blocked entries', () => {
 
   test('the adopter audience keeps the advisory even under enforcement', () => {
     const action: SyncAction = {
-      issueCount: null,
+      carrierCount: null,
+      countUnavailable: false,
       kind: 'blocked-present',
       name: 'good first issue',
       reason: 'policy',
@@ -329,15 +331,16 @@ describe('labels/sync blocked entries', () => {
     expect(
       resolveBlocked(action, {
         audience: 'adopter',
+        carrierCount: 0,
         flags: {...NO_FLAGS, enforceBlocked: true},
-        issueCount: 0,
       })
     ).toBe(action);
   });
 
-  test('the maintainer audience removes it only at a zero issue count', () => {
+  test('the maintainer audience removes it only at a zero carrier count', () => {
     const action: SyncAction = {
-      issueCount: null,
+      carrierCount: null,
+      countUnavailable: false,
       kind: 'blocked-present',
       name: 'good first issue',
       reason: 'policy',
@@ -345,17 +348,18 @@ describe('labels/sync blocked entries', () => {
     const flags: SyncFlags = {...NO_FLAGS, enforceBlocked: true};
 
     expect(
-      resolveBlocked(action, {audience: 'maintainer', flags, issueCount: 0})
+      resolveBlocked(action, {audience: 'maintainer', carrierCount: 0, flags})
     ).toEqual({kind: 'blocked-removed', name: 'good first issue'});
 
     expect(
-      resolveBlocked(action, {audience: 'maintainer', flags, issueCount: 4})
-    ).toEqual({...action, issueCount: 4});
+      resolveBlocked(action, {audience: 'maintainer', carrierCount: 4, flags})
+    ).toEqual({...action, carrierCount: 4});
   });
 
   test('enforcement without the flag leaves the advisory alone', () => {
     const action: SyncAction = {
-      issueCount: null,
+      carrierCount: null,
+      countUnavailable: false,
       kind: 'blocked-present',
       name: 'help wanted',
       reason: 'policy',
@@ -364,8 +368,8 @@ describe('labels/sync blocked entries', () => {
     expect(
       resolveBlocked(action, {
         audience: 'maintainer',
+        carrierCount: 0,
         flags: NO_FLAGS,
-        issueCount: 0,
       })
     ).toBe(action);
   });

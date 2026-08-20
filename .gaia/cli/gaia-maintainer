@@ -17753,9 +17753,13 @@ var HELP_TEXT19 = `Usage: gaia labels sync [--repo <owner/name>] [--repo-root <p
 `;
 var HELP_TOKENS19 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var DEGRADED_LINE = "labels-sync: degraded, manual commands follow";
+var DEGRADE_NOTES = {
+  read: "the label list could not be read, so the commands below are the whole registry, not the work remaining; a create for a label that already exists fails harmlessly.",
+  write: "the commands below are the mutations still owed; any applied before the refusal is not repeated."
+};
 var EXIT_GH_FAILED = 1;
 var EXIT_USAGE = 2;
-var ISSUE_COUNT_LIMIT = 200;
+var CARRIER_COUNT_LIMIT = 200;
 var plannedForAbsent = (entry, options) => {
   const previous = entry.renamedFrom.find((old) => options.liveNames.has(old));
   if (previous !== void 0 && audienceCovers({ audience: options.audience, entryAudience: entry.audience })) {
@@ -17804,7 +17808,8 @@ var planSync = (options) => {
       if (present !== void 0) {
         claimed.add(entry.name);
         actions.push({
-          issueCount: null,
+          carrierCount: null,
+          countUnavailable: false,
           kind: "blocked-present",
           name: entry.name,
           reason: entry.reason ?? ""
@@ -17838,7 +17843,7 @@ var resolveBlocked = (action, options) => {
   if (!enforcesBlocked(options.audience, options.flags)) {
     return action;
   }
-  return options.issueCount === 0 ? { kind: "blocked-removed", name: action.name } : { ...action, issueCount: options.issueCount };
+  return options.carrierCount === 0 ? { kind: "blocked-removed", name: action.name } : { ...action, carrierCount: options.carrierCount };
 };
 var mutationFor = (action, flags) => {
   if (action.kind === "create") {
@@ -17887,7 +17892,7 @@ var QUOTE_ESCAPE = String.raw`'\''`;
 var shellQuote = (value) => SAFE_ARGUMENT.test(value) ? value : `'${value.replaceAll("'", QUOTE_ESCAPE)}'`;
 var commandLine = (argv) => ["gh", ...argv].map(shellQuote).join(" ");
 var describeBlockedPresent = (action) => {
-  const carried = action.issueCount === null ? "" : ` (${action.issueCount} issues carry it)`;
+  const carried = action.countUnavailable ? " (carrier count unavailable, so it was not removed)" : action.carrierCount === null ? "" : ` (carried by ${action.carrierCount} or more issues and pull requests, so it was not removed)`;
   return `blocked but present: ${action.name}${carried}. ${action.reason}`;
 };
 var describeAction = (action) => {
@@ -18012,9 +18017,9 @@ var parseLiveLabels = (stdout) => {
     ];
   });
 };
-var countIssues = (name, repoArgs) => {
+var countOnSurface = (surface, name, repoArgs) => {
   const result = runGh([
-    "issue",
+    surface,
     "list",
     ...repoArgs,
     "--label",
@@ -18022,7 +18027,7 @@ var countIssues = (name, repoArgs) => {
     "--state",
     "all",
     "--limit",
-    String(ISSUE_COUNT_LIMIT),
+    String(CARRIER_COUNT_LIMIT),
     "--json",
     "number"
   ]);
@@ -18034,18 +18039,24 @@ var countIssues = (name, repoArgs) => {
     return null;
   }
 };
+var countCarriers = (name, repoArgs) => {
+  const issues = countOnSurface("issue", name, repoArgs);
+  if (issues === null) return null;
+  const pulls = countOnSurface("pr", name, repoArgs);
+  return pulls === null ? null : issues + pulls;
+};
 var enforceBlockedActions = (actions, options) => {
   if (!enforcesBlocked(options.audience, options.flags)) {
     return actions;
   }
   return actions.map((action) => {
     if (action.kind !== "blocked-present") return action;
-    const issueCount = countIssues(action.name, options.repoArgs);
-    if (issueCount === null) return action;
+    const carrierCount = countCarriers(action.name, options.repoArgs);
+    if (carrierCount === null) return { ...action, countUnavailable: true };
     return resolveBlocked(action, {
       audience: options.audience,
-      flags: options.flags,
-      issueCount
+      carrierCount,
+      flags: options.flags
     });
   });
 };
@@ -18069,9 +18080,9 @@ var fetchLive = (repoArgs) => {
     });
     return { code: EXIT_GH_FAILED };
   }
-  if (outcome === "degraded") return { degraded: true, live: [] };
+  if (outcome === "degraded") return { degradedAt: "read", live: [] };
   try {
-    return { degraded: false, live: parseLiveLabels(listed.stdout) };
+    return { degradedAt: null, live: parseLiveLabels(listed.stdout) };
   } catch (error51) {
     structuredError({
       code: "gh_response_unparseable",
@@ -18087,9 +18098,9 @@ var executePlan = (actions, options) => {
     return mutation === null ? [] : [{ action, argv: [...mutation, ...options.repoArgs] }];
   });
   const manual = [];
-  let { degraded } = options;
+  let { degradedAt } = options;
   for (const { action, argv } of owed) {
-    if (!degraded) {
+    if (degradedAt === null) {
       const result = runGh(argv);
       const outcome = classifyGhResult(result);
       if (outcome === "failed") {
@@ -18101,9 +18112,9 @@ var executePlan = (actions, options) => {
         });
         return { code: EXIT_GH_FAILED };
       }
-      degraded = outcome === "degraded";
+      if (outcome === "degraded") degradedAt = "write";
     }
-    if (degraded) {
+    if (degradedAt !== null) {
       manual.push({
         command: commandLine(argv),
         kind: "manual-command",
@@ -18111,14 +18122,20 @@ var executePlan = (actions, options) => {
       });
     }
   }
-  return { degraded, manual };
+  return { degradedAt, manual };
 };
 var report = (options) => {
   if (options.json) {
-    process.stdout.write(`${JSON.stringify(options.plan)}
+    const envelope = {
+      ...options.plan,
+      degradedAt: options.degradedAt
+    };
+    process.stdout.write(`${JSON.stringify(envelope)}
 `);
-    if (options.degraded) process.stderr.write(`${DEGRADED_LINE}
+    if (options.degradedAt !== null) {
+      process.stderr.write(`${DEGRADED_LINE}
 `);
+    }
     return;
   }
   for (const action of options.plan.actions) {
@@ -18127,8 +18144,10 @@ var report = (options) => {
 `);
     }
   }
-  if (!options.degraded) return;
+  if (options.degradedAt === null) return;
   process.stdout.write(`${DEGRADED_LINE}
+`);
+  process.stdout.write(`${DEGRADE_NOTES[options.degradedAt]}
 `);
   for (const action of options.manual) {
     if (action.kind === "manual-command") {
@@ -18177,10 +18196,10 @@ var run20 = (argv) => {
     flags,
     repoArgs
   });
-  const executed = dryRun ? { degraded: fetched.degraded, manual: [] } : executePlan(actions, { degraded: fetched.degraded, flags, repoArgs });
+  const executed = dryRun ? { degradedAt: fetched.degradedAt, manual: [] } : executePlan(actions, { degradedAt: fetched.degradedAt, flags, repoArgs });
   if ("code" in executed) return executed.code;
   report({
-    degraded: executed.degraded,
+    degradedAt: executed.degradedAt,
     json: json2,
     manual: executed.manual,
     plan: { actions: [...actions, ...executed.manual], repo: repo ?? null }
