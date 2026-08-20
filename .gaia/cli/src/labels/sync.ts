@@ -85,7 +85,12 @@ const DEGRADE_NOTES: Readonly<Record<DegradeSource, string>> = {
 const EXIT_GH_FAILED = 1;
 const EXIT_USAGE = 2;
 
-/** Carrier-count query cap; only the zero / non-zero split gates a deletion. */
+/**
+ * Per-surface carrier-count query cap. Only the zero / non-zero split gates a
+ * deletion, so the cap costs the gate nothing; it does make the total a floor
+ * rather than an exact figure past the cap, which is why the report says "or
+ * more" instead of naming a number it cannot stand behind.
+ */
 const CARRIER_COUNT_LIMIT = 200;
 
 export type LiveLabel = {color: string; description: string; name: string};
@@ -378,7 +383,7 @@ const describeBlockedPresent = (action: BlockedPresentAction): string => {
     action.countUnavailable ?
       ' (carrier count unavailable, so it was not removed)'
     : action.carrierCount === null ? ''
-    : ` (carried by ${action.carrierCount} issues and pull requests)`;
+    : ` (carried by ${action.carrierCount} or more issues and pull requests, so it was not removed)`;
 
   return `blocked but present: ${action.name}${carried}. ${action.reason}`;
 };

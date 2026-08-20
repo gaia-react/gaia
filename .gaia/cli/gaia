@@ -19601,7 +19601,7 @@ var QUOTE_ESCAPE = String.raw`'\''`;
 var shellQuote = (value) => SAFE_ARGUMENT.test(value) ? value : `'${value.replaceAll("'", QUOTE_ESCAPE)}'`;
 var commandLine = (argv) => ["gh", ...argv].map(shellQuote).join(" ");
 var describeBlockedPresent = (action) => {
-  const carried = action.countUnavailable ? " (carrier count unavailable, so it was not removed)" : action.carrierCount === null ? "" : ` (carried by ${action.carrierCount} issues and pull requests)`;
+  const carried = action.countUnavailable ? " (carrier count unavailable, so it was not removed)" : action.carrierCount === null ? "" : ` (carried by ${action.carrierCount} or more issues and pull requests, so it was not removed)`;
   return `blocked but present: ${action.name}${carried}. ${action.reason}`;
 };
 var describeAction = (action) => {

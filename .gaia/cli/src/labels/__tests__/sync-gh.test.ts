@@ -144,7 +144,7 @@ describe('labels/sync carrier counting', () => {
     enforce();
 
     expect(stdout()).toContain(
-      `blocked but present: ${BLOCKED} (carried by 1 issues and pull requests)`
+      `blocked but present: ${BLOCKED} (carried by 1 or more issues and pull requests, so it was not removed)`
     );
     expect(stdout()).not.toContain(`blocked removed: ${BLOCKED}`);
   });
