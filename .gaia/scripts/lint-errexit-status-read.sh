@@ -155,34 +155,38 @@
 #
 # Known FALSE POSITIVES, a third direction and the one worth naming explicitly
 # because each costs a correct line a wrong verdict. None occurs in this tree.
-# Two distinct mechanisms, which the shapes below are grouped by rather than by
-# how they are spelled; the split is measurable, by deleting the exclusion`s own
-# `^[0-9]*[<>]` clause and seeing which shapes change verdict.
+# The group that used to dominate this list, a single-token exclusion stopping at
+# the first prefix word, is closed: the exclusion below consumes the whole
+# prefix, assignments and redirections alike, in any order, and applies itself to
+# the command word behind it. Each of the three that remain needs a mechanism
+# that loop does not have:
 #
-# The exclusion inspects a SINGLE TOKEN where the shell takes an arbitrary run
-# of prefix words, so it stops at the first prefix word and never reaches the
-# command behind it:
-#   - A redirection standing between the value and the command it prefixes
-#     (`out=$(cmd) > log run_thing`, and the same with `2>`, `2>&1`, or `>&`).
-#     `>&` belongs here rather than below: its leading `>` matches the arming
-#     test, so it is recognised as a redirection exactly as `>` is, and it fails
-#     for the same reason every other shape in this bullet does.
-#   - A further assignment before the command word (`out=$(cmd) FOO=1
-#     run_thing`), which terminates the exclusion instead of being consumed.
+#   - A PROCESS SUBSTITUTION as a redirection operand (`out=$(cmd) > >(tee log)
+#     run_thing`, and the same with `< <(...)`). The operand is a nested command
+#     rather than a word, so the word consumer stops at its `(` and never reaches
+#     the command word behind it. Following it means parsing the operand as a
+#     region, which is what walk() does for `$(` and what eat_word() deliberately
+#     does not take on.
+#   - A LATER command substitution in the same assignment list (`out=$(cmd)
+#     FOO=$(other)`, with no command word). For a statement that is only
+#     assignments the shell takes the status of the LAST substitution it ran
+#     rather than the first, so `out=$(false) FOO=$(true)` survives while
+#     `out=$(false) BAR=1` exits. The gate flags the first assignment and holds
+#     no record of what ran after it, which is a different question from where
+#     the command word is.
+#   - An INPUT redirection on an assignment-only statement (`out=$(cmd) < log`).
+#     This one is version-dependent rather than flatly wrong: bash 3.2 takes the
+#     substitution status and exits, bash 5 resets it to zero and carries on, and
+#     the gate reports, which is the 3.2 reading. An OUTPUT redirection in the
+#     same position exits on both, so only the input direction diverges and only
+#     where no command word follows.
 #
-# The ARMING TEST does not recognise the operator at all, so the exclusion never
-# begins:
-#   - `&> log`, whose leading `&` matches no part of `^[0-9]*[<>]`.
-#
-# The structural repair is one quote-aware loop consuming every assignment and
-# redirection until a command word remains, tracked as gaia-react/gaia#1486. It
-# closes the first group on its own; the second needs the arming test widened to
-# reach `&>` as well, and the loop`s operator pattern has to consume `>&` whole
-# or the leftover `&` reads as a control operator. It is deliberately not
-# attempted here: the enumerate-one-more-shape approach produced four defects
-# across four review rounds, the last of them a silent fail-open, so the repair
-# gets its own change
-# rather than a fifth widening.
+# This list is kept honest by measurement rather than by memory. The sibling bats
+# suite ends with a differential test that runs a matrix of prefix shapes under a
+# real shell and requires the gate to agree with what the shell did, so a shape
+# stops being a bound when it is fixed rather than when someone remembers to edit
+# this comment. Enumerating shapes by hand is what put four defects on the old
+# exclusion across four review rounds, the last of them a silent fail-open.
 #
 # None of those fails SILENTLY. Tokenizer state is carried across lines, so any
 # bound that loses sync leaves a quote, a substitution, or a heredoc open at the
@@ -395,9 +399,55 @@ function walk(line,   n, i, c, j, ch, delim, prev) {
       W_op = 1
       continue
     }
-    if (c == "|") { W_op = 1; continue }
+    # A `|` that belongs to a `>|` CLOBBER redirection is not a pipeline either,
+    # the same distinction the `&` test above draws for `&>`, `2>&1`, and `<&3`.
+    # The assignment still stands alone on one simple command and errexit still
+    # fires on it; read as a pipeline it disqualifies the statement and the
+    # defect goes unreported, which is the silent direction.
+    if (c == "|") {
+      if (i > 1 && substr(line, i - 1, 1) == ">") continue
+      W_op = 1
+      continue
+    }
   }
   return (W_q != "" || W_depth > 0 || W_tick) ? 1 : 0
+}
+
+# eat_word(s): consume ONE shell word from the front of s and return what is
+# left. Quote-aware, because a redirection operand may be quoted and may carry
+# whitespace: a whitespace-delimited matcher stops mid-operand, and the leftover
+# closing fragment then reads as a command word, which exempts a genuine defect
+# with no message anywhere. That is the regression this function exists to not
+# have, and `> "my log"` is the shape that produced it.
+#
+# `$(` is followed to its matching `)` rather than broken on, so an assignment
+# whose value is itself a substitution (`out=$(a) FOO=$(b) run_thing`) is
+# consumed as the one word it is. Stops at unquoted whitespace, at a control
+# operator, and at a redirection operator, each of which begins the next token
+# rather than continuing this one.
+function eat_word(s,   n, i, c, q, d) {
+  n = length(s)
+  q = ""
+  d = 0
+  for (i = 1; i <= n; i++) {
+    c = substr(s, i, 1)
+    # Single quotes make every byte literal, backslash included, so this comes
+    # before the escape handling, exactly as in walk().
+    if (q == "\047") { if (c == "\047") q = ""; continue }
+    if (c == "\\") { i++; continue }
+    if (q == "\"") { if (c == "\"") q = ""; continue }
+    if (c == "\047") { q = "\047"; continue }
+    if (c == "\"") { q = "\""; continue }
+    if (c == "$" && substr(s, i + 1, 1) == "(") { d++; i++; continue }
+    if (d > 0) {
+      if (c == "(") d++
+      else if (c == ")") d--
+      continue
+    }
+    if (c == " " || c == "\t") break
+    if (index(";|&#()<>", c) > 0) break
+  }
+  return substr(s, i)
 }
 
 # has_status_read(line): 1 when the line reads `$?`, quote-aware.
@@ -553,43 +603,54 @@ function feed(line, n,   stripped, probe, tail) {
   # that makes no sense, which is the direction that gets a gate bypassed rather
   # than obeyed. Detect it from the tokenizer own record of the first top-level
   # whitespace: whatever follows is another word of the same simple command. A
-  # further ASSIGNMENT there is still read as the class, which is right only when
-  # no command word stands behind it (`FOO=$(false) BAR=1` does exit) and wrong
-  # when one does; a redirection and a statement separator are read the same way,
-  # with the same qualification. Those are the false positives the header
-  # enumerates under `Known FALSE POSITIVES`, and they are why this reads only
-  # the first token rather than claiming to find the command word. Bounded to a
-  # statement that ends on its own line, since W_space_at indexes into that
-  # line.
+  # further ASSIGNMENT or a REDIRECTION there is another prefix word of the same
+  # simple command, so both are consumed and the search continues behind them.
+  # Bounded to a statement that ends on its own line, since W_space_at indexes
+  # into that line.
   if (isname && stmt_space_at > 0) {
     tail = substr(line, stmt_space_at)
     sub(/^[ \t]+/, "", tail)
-    # This test reads ONE token and stops. That is a deliberate retreat from a
-    # consumption loop, not an oversight, and the header records the bounds it
-    # leaves standing under `Known FALSE POSITIVES`.
+    # One loop over the whole prefix, rather than a test that inspects the first
+    # token and stops. The shell accepts an arbitrary run of assignments and
+    # redirections here, in any order, before the command word; a single-token
+    # test stops at the first of them and reports a line the shell runs, with a
+    # printed repair that cannot be applied to an env prefix at all. Four defects
+    # landed on the single-token form across four review rounds, every one of
+    # them a shape the previous widening had not enumerated, so the shape of the
+    # test is what changed rather than its list.
     #
-    # The loop that consumed redirections and their operands was correct for the
-    # shapes it enumerated and silently wrong for the first one it did not: its
-    # operand matcher was whitespace-delimited, so `out=$(cmd) > "my log"`
-    # consumed `"my` and left `log"`, which reads as a command word and exempted
-    # a genuine defect. Reporting a correct line is loud and the author sees it;
-    # certifying a broken one is invisible, and this gate exists to not do that.
+    # Two operators need the pattern rather than the loop. `>&` is consumed
+    # whole, or the leftover `&` reads as a control operator and terminates the
+    # walk one token early; `&>` and `&>>` are matched by their own alternative,
+    # since their leading `&` matches no part of `[0-9]*[<>]`. walk() already
+    # tells all three apart from a control-operator `&` by their neighbours, so
+    # the two readings agree.
     #
-    # Four defects landed on this one test across four review rounds, every one
-    # of them the same root cause: it inspects a single token where the shell
-    # takes an arbitrary run of prefix words. Widening it by one more shape is
-    # what produced this regression. The structural repair, one quote-aware loop
-    # consuming every assignment and redirection until a command word remains,
-    # is gaia-react/gaia#1486 rather than a fifth widening bolted on here.
+    # `[0-9]*` rather than a bare `[<>]`: a redirection may carry an explicit
+    # file descriptor (`2> log`, `2>&1`), and reading the digit as the first
+    # letter of a command word is what made `out=$(cmd) 2> log` exempt itself
+    # while the identical `> log` was reported.
     #
-    # `^[0-9]*[<>]` rather than a bare `<`/`>` in the character set: a
-    # redirection may carry an explicit file descriptor (`2> log`, `1>&2`), and
-    # reading the digit as the first letter of a command word is what made
-    # `out=$(cmd) 2> log` exempt itself while the identical `> log` was reported.
-    if (tail != "" \
-        && tail !~ /^[A-Za-z_][A-Za-z0-9_]*(\[[^]]*\])?\+?=/ \
-        && tail !~ /^[0-9]*[<>]/ \
-        && index(";|&#()", substr(tail, 1, 1)) == 0)
+    # Each pass removes at least one character before eat_word() runs, so the
+    # loop always terminates.
+    while (1) {
+      if (tail ~ /^[A-Za-z_][A-Za-z0-9_]*(\[[^]]*\])?\+?=/) {
+        sub(/^[A-Za-z_][A-Za-z0-9_]*(\[[^]]*\])?\+?=/, "", tail)
+      } else if (tail ~ /^(&>>?|[0-9]*[<>][>&|]?)/) {
+        if (substr(tail, 1, 1) == "&") sub(/^&>>?/, "", tail)
+        else sub(/^[0-9]*[<>][>&|]?/, "", tail)
+        sub(/^[ \t]+/, "", tail)
+      } else break
+      tail = eat_word(tail)
+      sub(/^[ \t]+/, "", tail)
+    }
+    # Whatever the prefix left. A COMMAND WORD means the shell takes that
+    # command`s status and the assignment cannot trip errexit, so the statement
+    # is exempt. NOTHING left means the assignment stands alone behind its
+    # prefix and its own status is what the shell takes (`out=$(false) > log`
+    # exits), which is the class; a statement separator or a comment is read the
+    # same way, since neither is a command word of this statement.
+    if (tail != "" && index(";|&#()", substr(tail, 1, 1)) == 0)
       isname = 0
   }
   if (isname && stmt_sub && !stmt_op && armed) { pending = 1; pending_line = cand_line }

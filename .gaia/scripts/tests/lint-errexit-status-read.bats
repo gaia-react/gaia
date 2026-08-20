@@ -674,75 +674,99 @@ echo "$rc"'
   grep -qF -- 'check.sh:3:' <<<"$output"
 }
 
-# These three pin a KNOWN FALSE POSITIVE rather than correct behaviour. The
-# env-prefix exclusion reads one token, so it stops at a redirection and never
-# reaches the command word behind it; the shell runs these lines and takes the
-# prefixed command's status, so the report is wrong. They are held as tests
-# because a bound nothing enforces drifts: the structural repair (one quote-aware
-# loop consuming every prefix word, gaia-react/gaia#1486) will red all three,
-# which is the signal to move them into the quiet column deliberately rather than
-# by accident.
+# The env prefix survives every prefix word the shell accepts before the command
+# word. These six were held for four review rounds as KNOWN FALSE POSITIVES: the
+# exclusion inspected a single token, stopped at the first redirection or second
+# assignment, and reported a line the shell runs. The consumption loop
+# (gaia-react/gaia#1486) reaches the command word behind the whole prefix, so
+# each of them is now the quiet verdict the shell justifies, and each is asserted
+# against a real shell as a row of the prefix matrix at the end of this file too.
 #
-# The consumption loop that would have fixed them was reverted: its operand
-# matcher was whitespace-delimited, so a quoted operand silently exempted a real
-# defect, which is a worse direction than the false positives below.
+# They stay written out here as well as in the matrix on purpose: the matrix
+# fails as one test naming a row, while a named test says which shape broke
+# without reading a matrix diff.
 
-@test "bound: a redirection before the command word hides the env prefix" {
+@test "a redirection before the command word does not hide the env prefix" {
   fixture_repo
   fixture_script 'set -e
 out=$(some_command) > log run_thing
 rc=$?
 echo "$rc"'
   run_linter
-  [ "$status" -eq 1 ]
-  grep -qF -- 'check.sh:3:' <<<"$output"
+  [ "$status" -eq 0 ]
 }
 
-@test "bound: the same with an explicit file descriptor" {
+@test "the same with an explicit file descriptor" {
   fixture_repo
   fixture_script 'set -e
 out=$(some_command) 2> log run_thing
 rc=$?
 echo "$rc"'
   run_linter
-  [ "$status" -eq 1 ]
-  # The location pin, not just the exit status: the gate also exits 1 on a
-  # desync report, so a tokenizer regression would green a status-only assertion
-  # while the verdict this test exists to pin had stopped being produced.
-  grep -qF -- 'check.sh:3:' <<<"$output"
+  [ "$status" -eq 0 ]
 }
 
-@test "bound: the same behind a descriptor duplicate" {
+@test "the same behind a descriptor duplicate" {
   fixture_repo
   fixture_script 'set -e
 out=$(some_command) 2>&1 run_thing
 rc=$?
 echo "$rc"'
   run_linter
-  [ "$status" -eq 1 ]
-  grep -qF -- 'check.sh:3:' <<<"$output"
+  [ "$status" -eq 0 ]
 }
 
-@test "bound: a >& redirection fails on the single-token cause, not on arming" {
+@test "a >& redirection is consumed whole, so its & is not read as an operator" {
   fixture_repo
-  # `>&` matches the arming test on its leading `>`, so it is recognised as a
-  # redirection exactly as `>` is and fails for the same reason. Grouping it with
-  # `&>` as an arming gap was wrong, and the split is measurable: deleting the
-  # exclusion's `^[0-9]*[<>]` clause flips this shape quiet and leaves `&>`
-  # reported.
+  # `>&` has to be consumed by the operator pattern in one piece. Matched as a
+  # bare `>`, the leftover `&` reads as a control operator and terminates the
+  # prefix walk one token early, which is the single-token failure in a new
+  # spelling.
   fixture_script 'set -e
 out=$(some_command) >& log run_thing
 rc=$?
 echo "$rc"'
   run_linter
-  [ "$status" -eq 1 ]
-  grep -qF -- 'check.sh:3:' <<<"$output"
+  [ "$status" -eq 0 ]
 }
 
-@test "bound: an &> redirection is not recognised by the arming test at all" {
+@test "an &> redirection reaches the loop rather than being read as an operator" {
   fixture_repo
+  # `&>` needs its own alternative in the operator pattern: its leading `&`
+  # matches no part of `[0-9]*[<>]`, so without one it never enters the loop at
+  # all and falls through to the statement-separator test.
   fixture_script 'set -e
 out=$(some_command) &> log run_thing
+rc=$?
+echo "$rc"'
+  run_linter
+  [ "$status" -eq 0 ]
+}
+
+@test "a further assignment before the command word is consumed, not stopped at" {
+  fixture_repo
+  fixture_script 'set -e
+out=$(some_command) FOO=1 run_thing
+rc=$?
+echo "$rc"'
+  run_linter
+  [ "$status" -eq 0 ]
+}
+
+# These three pin KNOWN FALSE POSITIVES rather than correct behaviour, the three
+# the script header still names. Each needs a mechanism the prefix loop does not
+# have, so none of them is a shape the loop forgot, and each is held as a test
+# for the reason the six above were: a bound nothing enforces drifts, and the
+# header's list is only worth reading if something fails when it goes out of
+# date. They are deliberately absent from the prefix matrix at the end of this
+# file, which asserts agreement with the shell and would red on all three.
+
+@test "bound: a process substitution operand stops the prefix walk" {
+  fixture_repo
+  # The operand is a nested command rather than a word, so eat_word stops at its
+  # `(` and `run_thing` behind it is never reached. The shell runs this line.
+  fixture_script 'set -e
+out=$(some_command) > >(cat) run_thing
 rc=$?
 echo "$rc"'
   run_linter
@@ -750,10 +774,28 @@ echo "$rc"'
   grep -qF -- 'check.sh:3:' <<<"$output"
 }
 
-@test "bound: a further assignment before the command word" {
+@test "bound: a later substitution in the same assignment list is not tracked" {
   fixture_repo
+  # A statement that is only assignments takes the status of the LAST
+  # substitution it ran, so this survives while `out=$(false) BAR=1` exits. The
+  # gate flags the first assignment and has no record of what ran after it.
   fixture_script 'set -e
-out=$(some_command) FOO=1 run_thing
+out=$(some_command) FOO=$(other_command)
+rc=$?
+echo "$rc"'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- 'check.sh:3:' <<<"$output"
+}
+
+@test "bound: an input redirection with no command word reads as bash 3.2 does" {
+  fixture_repo
+  # Version-dependent rather than flatly wrong: bash 3.2 takes the substitution
+  # status and exits here, bash 5 resets it to zero and carries on. The gate
+  # reports, which is the 3.2 reading. The output direction (`> log`, covered
+  # above) exits on both.
+  fixture_script 'set -e
+out=$(some_command) < log
 rc=$?
 echo "$rc"'
   run_linter
@@ -951,6 +993,98 @@ echo done'
   run_linter
   [ "$status" -eq 1 ]
   grep -qF -- 'nothing was scanned' <<<"$output"
+}
+
+# --- the prefix matrix, differential against a real shell -------------------
+#
+# Four defects landed on the env-prefix exclusion across four review rounds,
+# each one a shape the previous enumeration had not reached, and the fourth
+# widening was a silent fail-open. Enumerating a fifth shape by hand is the move
+# that produced them, so this asserts AGREEMENT WITH THE SHELL rather than a
+# remembered list: every row below is run under a real bash to see whether the
+# line after the assignment is reached, and the gate's verdict has to match what
+# the shell did. The ground truth is measured on every run, so a row nobody
+# reasoned about correctly still fails here, and a new shape costs one line.
+
+# prefix_reaches <suffix>: 0 when a real shell runs past the assignment (the
+# prefixed command's status is the one it takes, so the `$?` read below is live
+# and the gate must stay quiet), 1 when errexit kills the script on the
+# assignment (the class, and the gate must report). `log` and `my log` are
+# pre-created so a `<` redirection fails on nothing but the shape under test.
+prefix_reaches() {
+  local dir out
+  dir="$(mktemp -d -t errexit-status-probe-XXXXXX)"
+  : > "$dir/log"
+  : > "$dir/my log"
+  printf '%s\n' 'set -e' "out=\$(false) $1" 'rc=$?' 'echo REACHED' > "$dir/probe.sh"
+  out="$( cd "$dir" && bash probe.sh 2>/dev/null || true )"
+  rm -rf "$dir"
+  case "$out" in *REACHED*) return 0 ;; *) return 1 ;; esac
+}
+
+# prefix_verdict <suffix>: set PREFIX_VERDICT to the gate's verdict on the same
+# body. `error` rather than `report` when the gate exits non-zero without the
+# location pin, so a desync is told apart from a verdict.
+prefix_verdict() {
+  PREFIX_VERDICT=""
+  fixture_repo
+  fixture_script "set -e
+out=\$(false) $1
+rc=\$?
+echo \"\$rc\""
+  run_linter
+  rm -rf "$TMP"
+  TMP=""
+  if [ "$status" -eq 0 ]; then
+    PREFIX_VERDICT=quiet
+  elif grep -qF -- 'check.sh:3:' <<<"$output"; then
+    PREFIX_VERDICT=report
+  else
+    PREFIX_VERDICT=error
+  fi
+}
+
+@test "the gate agrees with a real shell across the prefix matrix" {
+  local suffix expected failures=""
+  # Read on fd 9: the gate is run through bats `run`, which inherits stdin, and
+  # a matrix on stdin would be eaten a row at a time by whatever the fixture
+  # runs.
+  while IFS= read -r suffix <&9; do
+    if prefix_reaches "$suffix"; then expected=quiet; else expected=report; fi
+    prefix_verdict "$suffix"
+    [ "$expected" = "$PREFIX_VERDICT" ] || failures="$failures
+  out=\$(false) $suffix    shell: $expected    gate: $PREFIX_VERDICT"
+  done 9<<'MATRIX'
+> log true
+>> log true
+2> log true
+2>&1 true
+>& log true
+&> log true
+&>> log true
+< log true
+FOO=1 true
+FOO=1 BAR=2 true
+FOO=1 > log true
+> log FOO=1 true
+> "my log" true
+> 'my log' true
+FOO="a b" true
+>| log true
+>| log
+FOO=$(true) true
+true
+> log
+2>&1
+FOO=1
+> "my log"
+&> log
+>& log
+MATRIX
+  [ -z "$failures" ] || {
+    printf 'prefix matrix disagreements:%s\n' "$failures"
+    return 1
+  }
 }
 
 # --- the real tree ---------------------------------------------------------
