@@ -247,34 +247,30 @@ See step 7 for the difficulty label's three permitted values and the rubric for 
 
 A finding that gets deliberately declined (closed without fixing) carries GitHub's `wontfix` label, that's what step 2 checks for to avoid re-filing it.
 
-The registry's adopter set is reconciled before the first filing in a run:
+The registry is reconciled before the first filing in a run, then anything still missing is created directly. This is the idiom `.claude/skills/gaia/references/debt.md` already uses: key the fallback on the labels the repository actually has, never on whether the sync announced a problem. A sync that cannot run at all announces nothing, so a guard reading its output treats the worst case as the healthy one.
 
 ```bash
-if ! .gaia/cli/gaia labels sync 2>/dev/null | grep -q '^labels-sync: degraded'; then
-  : # sync reconciled the set; nothing else to do
-else
-  for label in tech-debt severity:critical severity:important severity:suggestion \
-               handler:prompt handler:plan handler:spec \
-               fold:required \
-               difficulty:easy difficulty:medium difficulty:hard wontfix; do
-    gh label create "$label" 2>/dev/null || true
-  done
-fi
+.gaia/cli/gaia labels sync 2>/dev/null || true
+present="$(gh label list --limit 200 --json name --jq '.[].name' 2>/dev/null)"
+for label in tech-debt severity:critical severity:important severity:suggestion \
+             handler:prompt handler:plan handler:spec \
+             fold:required \
+             difficulty:easy difficulty:medium difficulty:hard wontfix; do
+  printf '%s\n' "$present" | grep -qx "$label" || gh label create "$label" 2>/dev/null || true
+done
 ```
 
-The fallback loop exists only for a repository provisioned before the registry existed, where the installed CLI may predate the `labels` command; a label that already exists is not an error.
+The fallback reaches every case the sync leaves a label uncreated: a CLI predating the `labels` command, a token without label-write scope, and a registry entry this repository's audience or feature set does not reach. It is advisory, not a guarantee: a token that cannot write labels cannot create one here either, so the filing continues without it rather than failing. A label that already exists is not an error.
 <!-- gaia:maintainer-only:start -->
 
-On the GAIA maintainer repository, the registry's maintainer set is reconciled as well, fourteen in total there:
+On the GAIA maintainer repository, the registry's maintainer set is reconciled as well:
 
 ```bash
-if ! .gaia/cli/gaia labels sync --audience maintainer 2>/dev/null | grep -q '^labels-sync: degraded'; then
-  : # sync reconciled the set; nothing else to do
-else
-  for label in surface:adopter surface:maintainer; do
-    gh label create "$label" 2>/dev/null || true
-  done
-fi
+.gaia/cli/gaia labels sync --audience maintainer 2>/dev/null || true
+present="$(gh label list --limit 200 --json name --jq '.[].name' 2>/dev/null)"
+for label in surface:adopter surface:maintainer; do
+  printf '%s\n' "$present" | grep -qx "$label" || gh label create "$label" 2>/dev/null || true
+done
 ```
 <!-- gaia:maintainer-only:end -->
 
@@ -347,18 +343,16 @@ Do not add `debt:pre-provenance` to step 6's reconcile: the rollout is a one-tim
 
 The handler class rides as a `handler:` label (step 6). A backlog filed before that carries the class as a `Handler:` body line instead, which nothing reads any more, so those issues drain as unclassified until the label lands. Unlike the cohort marker above this is a real backfill and it is safe to be one: every stored value came from a filing route applying step 6's rubric, so copying it onto a label preserves a real conclusion rather than inventing one.
 
-1. Reconcile the three `handler:` labels idempotently, in the violet family the registry documents. Re-running this is free.
+1. Reconcile the registry idempotently, which covers the whole set; the three `handler:` labels, in the violet family the registry documents, are what this rollout needs from it. Re-running this is free.
 2. For every open `tech-debt` issue that carries **no** `handler:` label and whose body carries a parseable `Handler:` line, add the matching label.
 3. Re-running is safe. The label test is what makes it so: an issue that already carries a class is skipped, so a drainer's re-grade between runs is never overwritten by the body's original value.
 
 ```bash
-if ! .gaia/cli/gaia labels sync 2>/dev/null | grep -q '^labels-sync: degraded'; then
-  : # sync reconciled the set; nothing else to do
-else
-  for label in handler:prompt handler:plan handler:spec; do
-    gh label create "$label" 2>/dev/null || true
-  done
-fi
+.gaia/cli/gaia labels sync 2>/dev/null || true
+present="$(gh label list --limit 200 --json name --jq '.[].name' 2>/dev/null)"
+for label in handler:prompt handler:plan handler:spec; do
+  printf '%s\n' "$present" | grep -qx "$label" || gh label create "$label" 2>/dev/null || true
+done
 gh issue list --label tech-debt --state open --limit 1000 --json number,labels,body \
   --jq '.[]
         | select(([.labels[].name] | map(select(startswith("handler:"))) | length) == 0)

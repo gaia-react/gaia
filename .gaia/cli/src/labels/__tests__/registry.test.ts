@@ -149,15 +149,41 @@ describe('labels/registry creatableEntries', () => {
     );
   });
 
-  test('the maintainer set excludes the deprecated, unmanaged entry', () => {
+  test('the maintainer set is the adopter set plus the maintainer entries', () => {
     expect(names('maintainer', ['tech-debt', 'gaia-ci', 'forensics'])).toEqual([
       'auto-fixable',
+      'bug',
+      'debt:in-progress',
+      'debt:spec-pending',
+      'difficulty:easy',
+      'difficulty:hard',
+      'difficulty:medium',
+      'enhancement',
+      'fold:required',
+      'gaia-ci',
       'gaia-forensics',
       'gaia-triaged',
+      'handler:plan',
+      'handler:prompt',
+      'handler:spec',
+      'needs-human',
       'non-issue',
+      'run-audit',
+      'security',
+      'severity:critical',
+      'severity:important',
+      'severity:suggestion',
       'surface:adopter',
       'surface:maintainer',
+      'tech-debt',
+      'wontfix',
     ]);
+  });
+
+  test('the maintainer set still excludes the deprecated, unmanaged entry', () => {
+    expect(
+      names('maintainer', ['tech-debt', 'gaia-ci', 'forensics'])
+    ).not.toContain('debt:pre-provenance');
   });
 });
 

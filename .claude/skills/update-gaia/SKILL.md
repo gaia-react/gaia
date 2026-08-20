@@ -671,22 +671,32 @@ Parse the result for the Step 9 summary:
 Runs after Step 7's three-way merge and Step 7d's region regeneration have settled the tree, and before the Step 9 summary. Step 7 is what delivers a new release's `.gaia/labels.json`, so syncing before it would sync the registry the adopter is upgrading away from.
 
 ```bash
-labels_sync_json="$(.gaia/cli/gaia labels sync --json 2>/dev/null)" || labels_sync_json=''
+labels_sync_err="$(mktemp)"
+labels_sync_json="$(.gaia/cli/gaia labels sync --json 2>"$labels_sync_err")" || labels_sync_json=''
 ```
+
+Keep the stderr rather than discarding it. Under `--json` the plan owns stdout alone, so the marker saying the sync could not write goes to stderr; a step that drops it cannot tell a sync that reconciled the repository from one that only described what it would have done.
 
 No `--adopt` flag. Color drift stays reported, never applied, on every run this step makes, not only the first one: an adopter's own recolor of a label always wins over the registry's suggested color.
 
 This step is advisory and never fails the update, a token without label-write scope is common on an org-owned repository. When `gaia labels sync` cannot write, it prints the manual `gh label create` / `gh label edit` commands itself and exits 0; this step's failure to write is not the update's failure.
 
-Parse `$labels_sync_json` for the Step 9 summary counts:
+The plan lists what the sync intends, so read it as counts of writes only once the degraded marker is known to be absent:
 
 ```bash
-LABELS_CREATED=$(printf '%s' "$labels_sync_json" | jq '[.actions[]? | select(.kind == "create")] | length' 2>/dev/null || echo 0)
-LABELS_RENAMED=$(printf '%s' "$labels_sync_json" | jq '[.actions[]? | select(.kind == "rename")] | length' 2>/dev/null || echo 0)
-LABELS_DRIFT=$(printf '%s' "$labels_sync_json" | jq '[.actions[]? | select(.kind == "drift-color")] | length' 2>/dev/null || echo 0)
+if grep -q '^labels-sync: degraded' "$labels_sync_err"; then
+  LABELS_STATE=degraded
+  LABELS_MANUAL=$(printf '%s' "$labels_sync_json" | jq '[.actions[]? | select(.kind == "manual-command")] | length' 2>/dev/null || echo 0)
+else
+  LABELS_STATE=applied
+  LABELS_CREATED=$(printf '%s' "$labels_sync_json" | jq '[.actions[]? | select(.kind == "create")] | length' 2>/dev/null || echo 0)
+  LABELS_RENAMED=$(printf '%s' "$labels_sync_json" | jq '[.actions[]? | select(.kind == "rename")] | length' 2>/dev/null || echo 0)
+  LABELS_DRIFT=$(printf '%s' "$labels_sync_json" | jq '[.actions[]? | select(.kind == "drift-color")] | length' 2>/dev/null || echo 0)
+fi
+rm -f "$labels_sync_err"
 ```
 
-If `labels_sync_json` is empty (the command failed to run at all, for example a CLI predating the subcommand), set all three counts to `unknown` and note it in Step 9 rather than reporting zero.
+If `labels_sync_json` is empty (the command failed to run at all, for example a CLI predating the subcommand), set `LABELS_STATE=unknown` and note it in Step 9 rather than reporting zero. A `create` entry counted while the marker is present would report a label as created that the adopter still has to create by hand.
 
 ### Step 9: Summary
 
@@ -714,7 +724,7 @@ GAIA update: v$BASELINE → $LATEST_TAG
   Labels:       <c> created, <r> renamed, <d> color drift found  (drift not applied; your own recolor wins)
 ```
 
-If `LABELS_CREATED` / `LABELS_RENAMED` / `LABELS_DRIFT` are `unknown` (Step 8c's command failed to run), render the row as `Labels: unknown (gaia labels sync did not run; see Step 8c)` instead. When all three counts are `0`, render it as `Labels: no changes (already in sync)`.
+Render that row from `LABELS_STATE`. On `unknown` (Step 8c's command failed to run), `Labels: unknown (gaia labels sync did not run; see Step 8c)`. On `degraded`, `Labels: could not write (token lacks label scope); <LABELS_MANUAL> manual commands printed above`, which reports the sync as unapplied rather than crediting it with writes it only planned. On `applied` with all three counts `0`, `Labels: no changes (already in sync)`.
 
 When all three `package.json` counts are zero, render that row as `package.json: no managed-key changes (clean skip)` and omit the notes reference. Apply the same rule to the `pnpm-workspace.yaml` row: `pnpm-workspace.yaml: no managed-key changes (clean skip)` when all three of its counts are zero. If 7b fell back to a whole-file conflict patch (presence triage or a parse failure), render the row as `pnpm-workspace.yaml: whole-file conflict (see .gaia-merge/pnpm-workspace.yaml.patch)` instead. Apply the same two rules to the `audit-ci.yml` row: `audit-ci.yml: no managed-key changes (clean skip)` when all three counts are zero, or `audit-ci.yml: whole-file conflict (see .gaia-merge/audit-ci.yml.patch)` when 7c fell back.
 

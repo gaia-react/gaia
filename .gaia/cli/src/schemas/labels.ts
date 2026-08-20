@@ -165,6 +165,27 @@ export const LabelRegistrySchema = z
 
 export type LabelRegistry = z.infer<typeof LabelRegistrySchema>;
 
+/**
+ * True when a repo of `audience` is owed the entry at all, on audience alone.
+ *
+ * The maintainer audience is a superset, not a disjoint partition: the GAIA
+ * maintainer repository files its own tech debt and runs its own audits, so it
+ * is owed every adopter entry as well as its own. A strict equality test left a
+ * maintainer tree owed only the maintainer entries, so a fresh fork missing
+ * `severity:critical` got zero creates and a clean exit. An adopter tree is
+ * unaffected either way: it never resolves the maintainer audience, so it is
+ * never owed a maintainer-only entry.
+ *
+ * Every site that decides coverage by audience calls this rather than spelling
+ * the comparison out. Creation and rename are two such sites, and when they
+ * disagree sync plans a create for a live label it should have renamed, which
+ * loses the rename-never-delete-and-recreate invariant for that entry.
+ */
+export const audienceCovers = (
+  audience: LabelAudience,
+  entryAudience: LabelAudience
+): boolean => audience === 'maintainer' || entryAudience === audience;
+
 /** True when the entry is one sync creates on a repo of `audience` with `enabledFeatures` on. */
 export const isCreatable = (
   entry: LabelEntry,
@@ -172,7 +193,7 @@ export const isCreatable = (
   enabledFeatures: readonly LabelFeature[]
 ): boolean => {
   if (!entry.managed || entry.deprecated || entry.blocked) return false;
-  if (entry.audience !== audience) return false;
+  if (!audienceCovers(audience, entry.audience)) return false;
 
   return (
     entry.features.length === 0 ||

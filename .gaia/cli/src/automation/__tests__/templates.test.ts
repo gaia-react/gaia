@@ -136,7 +136,11 @@ describe('workflow templates: gaia-ci-wiki', () => {
 
   test('contains the wiki diff-size sanity check', () => {
     expect(rendered).toContain('wiki diff-size --threshold-pct 25');
-    expect(rendered).toContain('needs-human');
+    // Delimited, because `needs-human` is a prefix of the `needs-human-review`
+    // spelling it replaced: a bare substring match stays green on a revert to
+    // the old name, which is the regression this assertion exists to catch.
+    expect(rendered).toContain('--add-label needs-human\n');
+    expect(rendered).not.toContain('needs-human-review');
   });
 
   test('does NOT emit major-bump-split, security-pr, or stale-branch logic', () => {

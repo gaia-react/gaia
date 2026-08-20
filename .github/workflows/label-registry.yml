@@ -13,7 +13,7 @@ name: Label Registry
 #      stops a blocked label (`good first issue`, `help wanted`) re-entering
 #      through an issue template. A prose rule is not enforcement.
 #
-# No paths filter, on either job. Code parity's verdict is a property of the
+# No paths filter on this job. Code parity's verdict is a property of the
 # merge-result tree, not of a pull request's own files: two pull requests that
 # are each green in isolation compose into a red `main`. One removes a
 # registry entry (its merge-result tree does not yet carry the other's file,

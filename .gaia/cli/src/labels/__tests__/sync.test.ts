@@ -142,14 +142,34 @@ describe('labels/sync planSync create sets', () => {
     ]);
   });
 
-  test('the maintainer audience creates only the maintainer set', () => {
+  test('the maintainer audience creates the adopter set as well as its own', () => {
     expect(createNames(plan({audience: 'maintainer'}))).toEqual([
       'auto-fixable',
+      'bug',
+      'debt:in-progress',
+      'debt:spec-pending',
+      'difficulty:easy',
+      'difficulty:hard',
+      'difficulty:medium',
+      'enhancement',
+      'fold:required',
+      'gaia-ci',
       'gaia-forensics',
       'gaia-triaged',
+      'handler:plan',
+      'handler:prompt',
+      'handler:spec',
+      'needs-human',
       'non-issue',
+      'run-audit',
+      'security',
+      'severity:critical',
+      'severity:important',
+      'severity:suggestion',
       'surface:adopter',
       'surface:maintainer',
+      'tech-debt',
+      'wontfix',
     ]);
   });
 
@@ -160,9 +180,18 @@ describe('labels/sync planSync create sets', () => {
 
     expect(names).toEqual([
       'auto-fixable',
+      'bug',
+      'enhancement',
+      'gaia-ci',
       'gaia-forensics',
       'gaia-triaged',
+      'needs-human',
       'non-issue',
+      'run-audit',
+      'security',
+      'severity:critical',
+      'severity:important',
+      'wontfix',
     ]);
   });
 });
@@ -180,6 +209,24 @@ describe('labels/sync planSync rename', () => {
     expect(createNames(actions)).not.toContain('needs-human');
     expect(kinds(actions, 'prune')).toEqual([]);
     expect(kinds(actions, 'blocked-removed')).toEqual([]);
+    expect(kinds(actions, 'unknown')).toEqual([]);
+  });
+
+  test('a maintainer tree renames an adopter entry rather than creating it', () => {
+    // The maintainer audience is a superset for creation, so an adopter entry
+    // reaches a maintainer tree's plan. The rename guard has to agree: if it
+    // still tested audiences for equality, the old name would fall through to
+    // the create branch, the live label would survive unclaimed, and the
+    // rename-never-delete-and-recreate invariant would be lost for it.
+    const actions = plan({
+      audience: 'maintainer',
+      live: [{color: 'd93f0b', description: '', name: 'needs-human-review'}],
+    });
+
+    expect(kinds(actions, 'rename')).toEqual([
+      {from: 'needs-human-review', kind: 'rename', to: 'needs-human'},
+    ]);
+    expect(createNames(actions)).not.toContain('needs-human');
     expect(kinds(actions, 'unknown')).toEqual([]);
   });
 

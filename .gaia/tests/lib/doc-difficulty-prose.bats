@@ -263,27 +263,22 @@ setup() {
   grep -qF -- "for label in surface:adopter surface:maintainer; do" "$VOCAB" || return 1
 }
 
-@test "the shipped label loop states no count of its own, and every superseded count is gone" {
+@test "neither label loop states a count of its own" {
   # The count in the prose and the number of entries in the loop are two
   # statements of one fact, and only the loop is executable, so the prose is
-  # the half that rots. The registry now owns the shipped set and
-  # `gaia labels check` is what fails a pull request naming a label the
-  # registry does not carry, so the shipped loop is a fallback for a
-  # repository provisioned before the registry existed and states no count at
-  # all. Every count the prose has ever carried is pinned as an absence, the
-  # twelve included, so a rewrite that reintroduces a hand-maintained count
-  # fails here rather than shipping a number nothing checks.
+  # the half that rots. The registry owns both sets now, and `gaia labels
+  # check` is what fails a pull request naming a label the registry does not
+  # carry, so neither loop states a tally and neither sentence carries one.
   #
-  # The maintainer line keeps its count: it is a claim about the two loops
-  # together on the maintainer repository, not about the shipped loop alone,
-  # and nothing else states it.
-  grep -qF -- "fourteen in total there" "$VOCAB" || return 1
-  assert_absent_fixed_across "all five labels" "$VOCAB"
-  assert_absent_fixed_across "all eight labels" "$VOCAB"
-  assert_absent_fixed_across "all ten labels" "$VOCAB"
-  assert_absent_fixed_across "all twelve labels" "$VOCAB"
-  assert_absent_fixed_across "all thirteen labels" "$VOCAB"
-  assert_absent_fixed_across "all fourteen labels" "$VOCAB"
+  # Asserted as patterns rather than as a list of the counts used so far. A
+  # list only catches the words already thought of: the previous revision here
+  # enumerated six spellings, and `all sixteen labels` passed it. Both forms
+  # the prose has ever used are covered, "all <n> labels" and "<n> in total
+  # there". The second keeps its trailing "there" so it stays a label-count
+  # claim: unqualified, it would also fire on an unrelated "three checks in
+  # total" anywhere in this 600-line file.
+  assert_absent_across "all ([a-z]+|[0-9]+) labels" "$VOCAB"
+  assert_absent_across "([a-z]+|[0-9]+) in total there" "$VOCAB"
 }
 
 @test "the label loop creates fold:required, and the loop's difficulty tail is unmoved" {

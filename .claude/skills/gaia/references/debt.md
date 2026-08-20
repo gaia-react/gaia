@@ -222,7 +222,7 @@ gh label list --json name --jq '.[].name' 2>/dev/null | grep -qx 'debt:in-progre
   || gh label create 'debt:in-progress' 2>/dev/null || true
 ```
 
-The fallback create exists only for a repository provisioned before the registry existed, where the installed CLI may predate the `labels` command; a label that already exists is not an error. The `debt:` namespace is load-bearing: a `debt:`-prefixed label is gaia-owned by convention, the same way `severity:critical` is, so the reconcile above never strips a label a human set by hand.
+The fallback create covers every case the sync leaves the label uncreated: a CLI predating the `labels` command, a token without label-write scope, and a resolved audience or feature set that does not reach the entry. A label that already exists is not an error. The `debt:` namespace is load-bearing: a `debt:`-prefixed label is gaia-owned by convention, the same way `severity:critical` is, so the reconcile above never strips a label a human set by hand.
 
 Then, for a single issue or **every member of a confirmed batch**:
 

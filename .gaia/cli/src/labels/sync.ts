@@ -34,6 +34,7 @@ import type {
   LabelRegistry,
 } from '../schemas/labels.js';
 import {
+  audienceCovers,
   isCreatable,
   LABEL_AUDIENCES,
   LABEL_FEATURES,
@@ -116,7 +117,10 @@ const plannedForAbsent = (
 
   // Rename, never delete-and-recreate: a delete strips the label from every
   // issue carrying it and destroys the association permanently.
-  if (previous !== undefined && entry.audience === options.audience) {
+  if (
+    previous !== undefined &&
+    audienceCovers(options.audience, entry.audience)
+  ) {
     return {
       actions: [{from: previous, kind: 'rename', to: entry.name}],
       claimed: previous,

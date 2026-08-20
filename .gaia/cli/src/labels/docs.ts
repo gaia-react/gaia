@@ -303,13 +303,21 @@ export const run = (argv: readonly string[]): number => {
 
   if ('code' in parsed) return parsed.code;
 
-  const repoRoot = parsed.repoRoot ?? resolveRepoRoot();
-  const pagePath = path.join(repoRoot, PAGE_RELATIVE_PATH);
-
   let committed: string;
   let next: string;
+  let pagePath: string;
 
   try {
+    // Inside the try, like the sibling handlers in check.ts and sync.ts:
+    // resolveRepoRoot spawns git and throws outside a worktree, and escaping
+    // to the top-level catch would exit 1, the code this subcommand's help
+    // reserves for "the committed span differs". A caller keyed on that, the
+    // label-registry workflow among them, would be told to regenerate the page
+    // when the actual repair is to run from inside the repository.
+    const repoRoot = parsed.repoRoot ?? resolveRepoRoot();
+
+    pagePath = path.join(repoRoot, PAGE_RELATIVE_PATH);
+
     const registry = readRegistry(repoRoot);
 
     committed = readFileSync(pagePath, 'utf8');

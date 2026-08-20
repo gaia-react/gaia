@@ -266,8 +266,18 @@ describe('schemas/labels', () => {
       ).toBe(false);
     });
 
-    test('audience mismatch is never creatable', () => {
-      expect(isCreatable(managedAdopterAlways, 'maintainer', [])).toBe(false);
+    test('the maintainer audience is owed an adopter entry', () => {
+      expect(isCreatable(managedAdopterAlways, 'maintainer', [])).toBe(true);
+    });
+
+    test('the adopter audience is never owed a maintainer entry', () => {
+      expect(
+        isCreatable(
+          {...managedAdopterAlways, audience: 'maintainer'},
+          'adopter',
+          []
+        )
+      ).toBe(false);
     });
 
     test('features: [] is creatable with zero features enabled', () => {
