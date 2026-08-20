@@ -405,15 +405,18 @@ tracked_sh() {
   # it can only take its exit-0 loud skip. A file-wide grep pins the presence of
   # strings; this pins the leg being armed.
   #
-  # The block runs from the job key to the next 2-space-indented job key, using
-  # the same job-id character class .gaia/scripts/verify-required-checks.sh's own
-  # scan reads. The class is load-bearing, not decoration: a GitHub job id may
-  # legally begin with an uppercase letter, a digit or an underscore, so a
-  # lowercase-only terminator would run the block to EOF the day a job keyed
-  # `Smoke:` is appended, and the assertions below could then be satisfied by
-  # that job's strings while this one sits de-armed. A 4-space step line still
-  # cannot end the block: its third character is a space, not a job id.
-  job="$(awk '/^  bash32-parse:/{f=1;next} f&&/^  [A-Za-z0-9_-]+:/{exit} f' "$wf")"
+  # The block runs from the job key to the next 2-space-indented key. The
+  # terminator asks only whether the third character is a space, which is the
+  # one thing that distinguishes a sibling key from this job's own step lines.
+  # Deliberately not a job-id character class: any such class is a copy of
+  # GitHub's grammar living here, free to drift from it and to miss a spelling
+  # it allows, and a quoted key (`  "Smoke":`) is exactly that miss. What a
+  # missed terminator costs is not a red but a green: extraction runs to EOF
+  # and a later job's strings satisfy the assertions below while this job sits
+  # de-armed. Nothing inside a job block sits at 2-space indent, so the
+  # terminator cannot fire early; if one ever did, it would fail loudly here
+  # rather than pass.
+  job="$(awk '/^  bash32-parse:/{f=1;next} f&&/^  [^ ]/{exit} f' "$wf")"
   [ -n "$job" ]
   grep -qF -- "runs-on: macos-latest" <<<"$job"
   grep -qF -- ".gaia/tests/shell-lint.sh --only bash32-parse" <<<"$job"
