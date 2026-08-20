@@ -826,22 +826,22 @@ echo "$rc"'
   grep -qF -- 'check.sh:3:' <<<"$output"
 }
 
-@test "two substitutions in ONE assignment's own value is still the class" {
+@test "two substitutions in ONE assignment's own value exempt it too" {
   fixture_repo
-  # The boundary of the last-substitution term, and the direction that matters:
-  # here the last substitution is part of the flagged assignment's OWN value, so
-  # its status IS the one the shell takes, the report names the right line, and
-  # the printed repair applies verbatim. A term counting substitutions per
-  # STATEMENT rather than per later prefix word would exempt this, which is a
-  # fail-open on a live shape (`tag="$(git describe)-$(git rev-parse HEAD)"`).
-  # Confirmed against the shell: bash 3.2 and bash 5 both exit here.
+  # A word boundary is not a distinction the shell draws: `out="$(a)$(b)"` and
+  # `out=$(a) FOO=$(b)` are one statement to it, and both reach the next line
+  # with rc=0 when the last substitution succeeds. Measured on bash 3.2.57 and
+  # 5.3.15: `out="$(false)$(true)"` gives REACHED rc=0 on both. So the count
+  # deliberately does not care where the second substitution sits. What the
+  # fixture below runs is the BOTH-FAIL instance of the same shape, where the
+  # shell exits and the gate is quiet, which is the miss the header's
+  # undecidable family names; no static reader can separate the two instances.
   fixture_script 'set -e
 out="$(some_command)$(other_command)"
 rc=$?
 echo "$rc"'
   run_linter
-  [ "$status" -eq 1 ]
-  grep -qF -- 'check.sh:3:' <<<"$output"
+  [ "$status" -eq 0 ]
 }
 
 @test "the same for two adjacent quoted words in one value" {
@@ -851,16 +851,32 @@ out="$(some_command)""$(other_command)"
 rc=$?
 echo "$rc"'
   run_linter
-  [ "$status" -eq 1 ]
-  grep -qF -- 'check.sh:3:' <<<"$output"
+  [ "$status" -eq 0 ]
 }
 
 @test "the same for a substitution inside a parameter expansion" {
   fixture_repo
-  # walk() does not track `${`, so both substitutions here open at depth 0 and a
-  # per-statement count would reach two. Still one assignment, still the class.
+  # walk() does not track `${`, so both substitutions here open at depth 0 and
+  # the count reaches two, which is the same verdict the shell justifies.
   fixture_script 'set -e
 out="${x:-$(some_command)}$(other_command)"
+rc=$?
+echo "$rc"'
+  run_linter
+  [ "$status" -eq 0 ]
+}
+
+@test "a substitution inside a PROCESS-SUBSTITUTION operand does not count" {
+  fixture_repo
+  # The operand's body runs in an async subshell, so a substitution in it can
+  # never be the last one THIS statement ran and the flagged assignment's status
+  # is still the one the shell takes. Left uncounted by walk() opening the
+  # operand as a region; counted, it would exempt a live defect. Measured on
+  # bash 3.2.57 and 5.3.15: `out=$(false) > >(echo "$(true)" >/dev/null)` exits
+  # on both, and the same line with a succeeding first substitution reaches, so
+  # the body's own status never reaches the parent.
+  fixture_script 'set -e
+out=$(some_command) > >(echo "$(other_command)" >/dev/null)
 rc=$?
 echo "$rc"'
   run_linter
@@ -1246,6 +1262,7 @@ FOO=1
 > >(cat >/dev/null) true
 < <(echo x) true
 > >(cat >/dev/null)
+> >(echo "$(true)" >/dev/null)
 FOO=$(true)
 > "$(echo ab)"
 > $(echo ab)
