@@ -753,47 +753,91 @@ echo "$rc"'
   [ "$status" -eq 0 ]
 }
 
-# These three pin KNOWN FALSE POSITIVES rather than correct behaviour, the three
-# the script header still names. Each needs a mechanism the prefix loop does not
-# have, so none of them is a shape the loop forgot, and each is held as a test
-# for the reason the six above were: a bound nothing enforces drifts, and the
-# header's list is only worth reading if something fails when it goes out of
-# date. They are deliberately absent from the prefix matrix at the end of this
-# file, which asserts agreement with the shell and would red on all three.
+# The two mechanisms the prefix consumption loop does not supply on its own: the
+# redirection operand that is a nested command rather than a word, and the
+# knowledge of WHICH substitution ran last. Both are now the quiet verdict the
+# shell justifies, and both are asserted against a real shell in the prefix
+# matrix at the end of this file as well, for the reason the six above are: the
+# matrix fails as one test naming a row, a named test says which shape broke.
 
-@test "bound: a process substitution operand stops the prefix walk" {
+@test "a process substitution operand is followed rather than broken on" {
   fixture_repo
-  # The operand is a nested command rather than a word, so eat_word stops at its
-  # `(` and `run_thing` behind it is never reached. The shell runs this line.
+  # The operand is a nested command rather than a word. Broken on at its `(` the
+  # leftover paren reads as a statement separator and `run_thing` behind it is
+  # never reached, so the line is reported although the shell runs it and takes
+  # `run_thing`'s status.
   fixture_script 'set -e
-out=$(some_command) > >(cat) run_thing
+out=$(some_command) > >(cat >/dev/null) run_thing
 rc=$?
 echo "$rc"'
   run_linter
-  [ "$status" -eq 1 ]
-  grep -qF -- 'check.sh:3:' <<<"$output"
+  [ "$status" -eq 0 ]
 }
 
-@test "bound: a later substitution in the same assignment list is not tracked" {
+@test "the same for an input process substitution" {
+  fixture_repo
+  fixture_script 'set -e
+out=$(some_command) < <(echo x) run_thing
+rc=$?
+echo "$rc"'
+  run_linter
+  [ "$status" -eq 0 ]
+}
+
+@test "a later substitution in the same assignment list takes the status" {
   fixture_repo
   # A statement that is only assignments takes the status of the LAST
-  # substitution it ran, so this survives while `out=$(false) BAR=1` exits. The
-  # gate flags the first assignment and has no record of what ran after it.
+  # substitution it ran, so `out=$(false) FOO=$(true)` survives while
+  # `out=$(false) BAR=1` exits. What the `$?` below reads is the second
+  # substitution's status, never the flagged assignment's.
   fixture_script 'set -e
 out=$(some_command) FOO=$(other_command)
 rc=$?
 echo "$rc"'
   run_linter
+  [ "$status" -eq 0 ]
+}
+
+@test "a later substitution in a REDIRECTION OPERAND takes the status too" {
+  fixture_repo
+  # The same last-substitution-wins behaviour reached by a different route, and
+  # the spelling the narrower "in the same assignment list" reading missed. The
+  # unquoted and concatenated operand spellings behave identically.
+  fixture_script 'set -e
+out=$(some_command) > "$(other_command)"
+rc=$?
+echo "$rc"'
+  run_linter
+  [ "$status" -eq 0 ]
+}
+
+@test "a SINGLE-QUOTED substitution in an operand runs nothing, so it still reports" {
+  fixture_repo
+  # The negative control for the two above: single quotes make the operand a
+  # literal filename, no second substitution runs, and the flagged assignment's
+  # own status is what the shell takes. Confirmed against the shell, which exits
+  # here on both bash 3.2 and bash 5.
+  fixture_script 'set -e
+out=$(some_command) > '"'"'$(other_command)'"'"'
+rc=$?
+echo "$rc"'
+  run_linter
   [ "$status" -eq 1 ]
   grep -qF -- 'check.sh:3:' <<<"$output"
 }
 
-@test "bound: an input redirection with no command word reads as bash 3.2 does" {
+@test "an input redirection with no command word is reported on both bash readings" {
   fixture_repo
-  # Version-dependent rather than flatly wrong: bash 3.2 takes the substitution
-  # status and exits here, bash 5 resets it to zero and carries on. The gate
-  # reports, which is the 3.2 reading. The output direction (`> log`, covered
-  # above) exits on both.
+  # The one shape here whose ground truth is version-dependent, so it is a
+  # documented modelling decision rather than a bound. bash 3.2 takes the
+  # substitution status and exits, so the read is unreachable. bash 5 resets the
+  # status to zero and carries on, so the read is reachable and ALWAYS READS
+  # ZERO while `out` is empty and the command failed. Both readings are the
+  # defect this gate exists to catch, approached from opposite sides, and the
+  # repair it prints (`rc=0; out="$(cmd)" || rc=$?`) is correct for both, so the
+  # gate reports on either. The output direction exits on both versions and is
+  # covered above. Deliberately absent from the prefix matrix, which measures one
+  # interpreter and would record whichever it ran as the whole truth.
   fixture_script 'set -e
 out=$(some_command) < log
 rc=$?
@@ -1049,6 +1093,22 @@ probe_shell() {
 #
 # `log` and `my log` are pre-created so a `<` redirection fails on nothing but
 # the shape under test.
+#
+# A PROCESS SUBSTITUTION row picks its operand carefully: the row is EXECUTED
+# here, so `<(cat)` would leave cat reading the stdin this probe inherits and the
+# whole suite blocks forever. That is the same stdin-inheritance trap the fd-9
+# read below exists for, reached from the other end. Every such row names a
+# command that terminates on its own: `<(echo x)` writes and exits, and
+# `>(cat >/dev/null)` reads the pipe to EOF.
+#
+# Two shapes the gate handles are deliberately absent from this matrix rather
+# than forgotten, both because a measured row would record something untrue.
+# `out=$(false) FOO=$(false)` has no static answer at all, since it is the same
+# shape as the `FOO=$(true)` row and differs only in a runtime status. `< log`
+# with no command word has no version-stable one, since bash 3.2 exits and bash 5
+# carries on, so a row measured under whichever interpreter this probe resolved
+# would pin that interpreter's answer as the gate's contract. Both are pinned by
+# named tests above instead, and the script header carries the reasoning.
 prefix_reaches() {
   local sh="$1" suffix="$2" dir out
   dir="$(mktemp -d -t errexit-status-probe-XXXXXX)"
@@ -1141,6 +1201,14 @@ FOO=1
 > "my log"
 &> log
 >& log
+> >(cat >/dev/null) true
+< <(echo x) true
+> >(cat >/dev/null)
+FOO=$(true)
+> "$(echo ab)"
+> $(echo ab)
+> log$(echo x)
+> '$(echo ab)'
 MATRIX
   [ -z "$failures" ] || {
     printf 'prefix matrix disagreements:%s\n' "$failures"

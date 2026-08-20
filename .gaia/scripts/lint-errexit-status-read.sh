@@ -158,28 +158,37 @@
 # The group that used to dominate this list, a single-token exclusion stopping at
 # the first prefix word, is closed: the exclusion below consumes the whole
 # prefix, assignments and redirections alike, in any order, and applies itself to
-# the command word behind it. Each of the three that remain needs a mechanism
-# that loop does not have:
+# the command word behind it. Two further mechanisms close the rest of it: a
+# redirection operand that is a nested command is followed as a REGION rather
+# than broken on (eat_word() below), and the walk counts TOP-LEVEL substitutions
+# so a statement whose status the last of several supplies is not attributed to
+# the first (W_nsub below). One residual remains, and it is undecidable rather
+# than unimplemented:
 #
-#   - A PROCESS SUBSTITUTION as a redirection operand (`out=$(cmd) > >(tee log)
-#     run_thing`, and the same with `< <(...)`). The operand is a nested command
-#     rather than a word, so the word consumer stops at its `(` and never reaches
-#     the command word behind it. Following it means parsing the operand as a
-#     region, which is what walk() does for `$(` and what eat_word() deliberately
-#     does not take on.
-#   - A LATER command substitution in the same assignment list (`out=$(cmd)
-#     FOO=$(other)`, with no command word). For a statement that is only
-#     assignments the shell takes the status of the LAST substitution it ran
-#     rather than the first, so `out=$(false) FOO=$(true)` survives while
-#     `out=$(false) BAR=1` exits. The gate flags the first assignment and holds
-#     no record of what ran after it, which is a different question from where
-#     the command word is.
-#   - An INPUT redirection on an assignment-only statement (`out=$(cmd) < log`).
-#     This one is version-dependent rather than flatly wrong: bash 3.2 takes the
-#     substitution status and exits, bash 5 resets it to zero and carries on, and
-#     the gate reports, which is the 3.2 reading. An OUTPUT redirection in the
-#     same position exits on both, so only the input direction diverges and only
-#     where no command word follows.
+#   - An assignment-only statement whose LATER substitution also fails
+#     (`out=$(false) FOO=$(false)`). The shell does exit, so it is the class, and
+#     the gate is quiet on it. This is the price of the last-substitution term
+#     and it cannot be paid differently: the two spellings the term has to tell
+#     apart, `out=$(false) FOO=$(true)` and the line above, are the SAME static
+#     shape and differ only in a status no static reader has. Quiet is the
+#     direction chosen because reporting the first assignment names a command
+#     whose status the shell never takes and prints a repair built around it,
+#     which is the direction that gets a gate bypassed rather than obeyed.
+#
+# Not a false positive, and here because it reads like one, a MODELLING DECISION
+# that has been settled rather than left open:
+#
+#   - An INPUT redirection on an assignment-only statement (`out=$(cmd) < log`),
+#     which is the one shape whose ground truth depends on the interpreter. Under
+#     bash 3.2 the statement takes the substitution status and exits, so the read
+#     below it is unreachable. Under bash 5 the status is reset to zero and the
+#     read runs, ALWAYS READING ZERO while the command failed and the variable is
+#     empty, so the failure is swallowed silently instead. Those are the same
+#     defect approached from opposite sides, and the repair this gate prints
+#     (`rc=0; out="$(cmd)" || rc=$?`) is correct under both, so the gate reports
+#     under both and needs no version to target. An OUTPUT redirection in the
+#     same position exits on either version, so only the input direction diverges
+#     and only where no command word follows.
 #
 # This list is kept honest by measurement rather than by memory. The sibling bats
 # suite ends with a differential test that runs a matrix of prefix shapes under a
@@ -187,6 +196,15 @@
 # stops being a bound when it is fixed rather than when someone remembers to edit
 # this comment. Enumerating shapes by hand is what put four defects on the old
 # exclusion across four review rounds, the last of them a silent fail-open.
+#
+# The matrix has a limit worth stating beside the list it verifies: it asserts
+# AGREEMENT with the shell on rows it is given, so it reds when a listed row
+# regresses and can never surface an UNLISTED false positive. Two of the shapes
+# above are also outside what it can measure at all, the undecidable residual
+# because its verdict depends on a runtime status, and the input-redirection
+# decision because a matrix run under one interpreter would record that
+# interpreter`s answer as the whole truth. Both are pinned by named tests in the
+# suite instead, and this list still has to be maintained by hand.
 #
 # None of those fails SILENTLY. Tokenizer state is carried across lines, so any
 # bound that loses sync leaves a quote, a substitution, or a heredoc open at the
@@ -215,6 +233,13 @@ readonly CORE_AWK='
 #   W_op      set by walk() when an unquoted control operator is seen at depth 0
 #   W_stop    offset just past a top-level `;`, so the caller can resume there
 #   W_sub     set by walk() when the line opens a real command substitution
+#   W_nsub    how many TOP-LEVEL command substitutions the line opened, which is
+#             a different question from whether it opened any: for a statement
+#             that is only assignments the shell takes the status of the LAST
+#             substitution it ran, so a second one means the status the `$?`
+#             below reads is not the flagged assignment`s. Counted at depth 0
+#             only, since a NESTED substitution completes before the one
+#             containing it and cannot be the last to run.
 #
 # Quoting is tracked INSIDE a substitution with the same machinery as outside
 # it. Skipping the region and counting bare parentheses is the cheaper reading
@@ -237,6 +262,7 @@ function walk(line,   n, i, c, j, ch, delim, prev) {
   W_op = 0
   W_stop = 0
   W_sub = 0
+  W_nsub = 0
   W_space_at = 0
   W_word = 0
   n = length(line)
@@ -300,10 +326,12 @@ function walk(line,   n, i, c, j, ch, delim, prev) {
         i++
       } else {
         W_sub = 1
+        # Depth is already incremented, so 1 is this statement`s top level.
+        if (W_depth == 1) W_nsub++
       }
       continue
     }
-    if (c == "`") { W_tick = 1; W_sub = 1; continue }
+    if (c == "`") { W_tick = 1; W_sub = 1; if (W_depth == 0) W_nsub++; continue }
 
     if (W_q == "\"") { if (c == "\"") W_q = ""; continue }
 
@@ -426,6 +454,17 @@ function walk(line,   n, i, c, j, ch, delim, prev) {
 # `(`, and `)`, and at a redirection`s `<` or `>`, each of which begins the next
 # token rather than continuing this one.
 #
+# A PROCESS SUBSTITUTION operand (`>(tee log)`, `<(cat)`) is the one shape where
+# a leading `<` or `>` does NOT begin the next token: the caller has already
+# consumed the redirection operator, so what is left is the operand, and the
+# operand is a nested command rather than a word. Broken on at its `(` the way
+# the stop set would otherwise demand, the leftover `(` reads as a statement
+# separator, the command word behind it is never reached, and the line is
+# reported although the shell runs it. It is followed to its matching `)` with
+# the same depth counter `$(` uses, and only at position 1, which is the only
+# place a redirection operand can begin; mid-word a `<` or `>` still stops the
+# word, so `> log>(x)` is unaffected.
+#
 # `#` is the one member of that set that depends on WHERE it sits: it opens a
 # comment only at the start of a word and is an ordinary character inside one, so
 # `> log#x run_thing` redirects to a file literally named `log#x`. walk() already
@@ -446,6 +485,8 @@ function eat_word(s,   n, i, c, q, d) {
     if (c == "\047") { q = "\047"; continue }
     if (c == "\"") { q = "\""; continue }
     if (c == "$" && substr(s, i + 1, 1) == "(") { d++; i++; continue }
+    # A process substitution operand, at a word start only. See the docblock.
+    if (i == 1 && (c == "<" || c == ">") && substr(s, i + 1, 1) == "(") { d++; i++; continue }
     if (d > 0) {
       if (c == "(") d++
       else if (c == ")") d--
@@ -515,7 +556,7 @@ function arm(s,   n, t, i, w) {
 function reset_state(  d) {
   W_q = ""; W_depth = 0; W_tick = 0; W_narith = 0
   W_heredoc = ""; W_hd_tabs = 0
-  cont = 0; pending = 0; isname = 0; stmt_op = 0; stmt_sub = 0
+  cont = 0; pending = 0; isname = 0; stmt_op = 0; stmt_sub = 0; stmt_nsub = 0
   for (d in W_qstack) delete W_qstack[d]
   for (d in W_ar) delete W_ar[d]
 }
@@ -586,18 +627,21 @@ function feed(line, n,   stripped, probe, tail) {
     cand_line = n
     stmt_op = 0
     stmt_sub = 0
+    stmt_nsub = 0
     stmt_space_at = -1
   }
 
   if (walk(line)) {
     if (W_op) stmt_op = 1
     if (W_sub) stmt_sub = 1
+    stmt_nsub += W_nsub
     if (stmt_space_at == -1) stmt_space_at = W_space_at
     cont = 1
     return
   }
   if (W_op) stmt_op = 1
   if (W_sub) stmt_sub = 1
+  stmt_nsub += W_nsub
   # Only the statement`s FIRST line contributes the word break. A continued
   # statement`s later lines have their own leading whitespace, which belongs to
   # no first word, so reading one would exempt a real defect. That a continued
@@ -661,7 +705,14 @@ function feed(line, n,   stripped, probe, tail) {
     if (tail != "" && index(";|&#()", substr(tail, 1, 1)) == 0)
       isname = 0
   }
-  if (isname && stmt_sub && !stmt_op && armed) { pending = 1; pending_line = cand_line }
+  # `stmt_nsub < 2` is the last-substitution-wins term. The shell takes the
+  # status of the LAST command substitution an assignment-only statement ran, so
+  # a second top-level one means the status reaching the `$?` below is not the
+  # flagged assignment`s, and reporting the flagged line names the wrong command
+  # and prints a repair built around it. This is the same scoping the env-prefix
+  # exclusion above applies for the same reason: the gate reports a line only
+  # when the line`s OWN status is the one the shell takes.
+  if (isname && stmt_sub && !stmt_op && armed && stmt_nsub < 2) { pending = 1; pending_line = cand_line }
   isname = 0
 
   # The walk stopped at a `;` with text after it: that text is the next
