@@ -64,14 +64,11 @@ if ! command -v gh &>/dev/null; then
 elif ! gh auth status &>/dev/null; then
   echo "Warning: GitHub CLI is not authenticated. Run: gh auth login" >&2
 elif [ -f .github/workflows/forensics-triage.yml ] && gh repo view &>/dev/null; then
-  if ! gh label list --limit 100 --json name 2>/dev/null \
-      | jq -e '.[] | select(.name == "gaia-forensics")' >/dev/null; then
-    echo "Warning: forensics-triage.yml is enabled but the 'gaia-forensics' label is missing on this repo. Ask a maintainer to run .github/forensics/bootstrap-labels.sh, which creates the 'gaia-forensics' label with the canonical color and description." >&2
-  fi
+  .gaia/cli/gaia labels sync
 fi
 ```
 
-Surface every warning verbatim, then continue.
+Surface every warning and the sync report verbatim, then continue. `gaia labels sync` reconciles this repo's labels against the registry for whichever audience and feature set it resolves to. `gaia-forensics` is a maintainer-audience entry, so an adopter's sync never creates it; an adopter files forensics reports upstream, never locally, regardless of what this step finds.
 
 ## Phase 1: Detect situation
 
@@ -1039,6 +1036,20 @@ gh pr create --base <default-branch> --head chore/gaia-ci-rerender \
 ```
 
 Print the PR URL. Do NOT auto-merge; the adopter reviews and merges in their normal flow. `setup_complete` is NOT touched. If either render step fails, surface the structured error and exit; the branch is abandoned (the adopter can delete it and re-run `/setup-gaia` after fixing the cause). Fall through to Phase 5.
+
+## Phase 4.5: Label sync (always evaluated)
+
+This is not gated on any single Phase 4 branch. It runs after Phase 4 settles, whichever path that took (CI enabled this run, declined, opted out, degraded on a non-admin runner, or already configured with no drift), because the feature and audience choices already on disk by then are what the label sync filters on: whether GAIA CI is on, whether the forensics workflow is present, and whether this repo is adopter- or maintainer-audience.
+
+```bash
+.gaia/cli/gaia labels sync
+```
+
+Surface its report verbatim: labels created, labels renamed, and any color drift found. Color drift is never applied here, no `--adopt` flag; an operator's own recolor of a label always wins over the registry's suggested color.
+
+This step is advisory, never halting. A token without label-write scope gets the manual `gh label create` / `gh label edit` commands the command itself prints, and setup continues either way; `gaia labels sync` already exits 0 in that case, so this step adds no failure path of its own. It is idempotent and safe to re-run on every plain `/setup-gaia` invocation: a repo already in sync reports zero creates and zero renames.
+
+Fall through to Phase 5.
 
 ## Phase 5: Per-developer audit-mode (needs `audit-ci.yml`)
 

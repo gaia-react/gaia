@@ -20,6 +20,7 @@ import {run as runFitness} from './fitness/index.js';
 import {run as runHardenLedger} from './harden/ledger.js';
 import {run as runHardenTally} from './harden/tally.js';
 import {run as runInit} from './init/index.js';
+import {run as runLabels} from './labels/index.js';
 import {run as runPing} from './ping/index.js';
 import {run as runReactPerf} from './react-perf/index.js';
 import {run as runSandbox} from './sandbox/index.js';
@@ -38,6 +39,7 @@ const HELP_TEXT = `Usage: gaia <subcommand> [args]
   react-perf reduce <raw.json> [--frame-budget-ms N]
   wiki state|commit-classify|state-init|state-bump|log-prepend|page-index|orphans|near-collisions|dead-paths|frontmatter|empty-sections|diff-size|chain|sync land|sync await
   fitness render-card [--cols N]
+  labels check|docs|sync
   harden-ledger list|record|is-suppressed|prune
   harden-tally
   automation read-config|cron-decide|render-workflows|install-audit-workflow
@@ -74,6 +76,7 @@ const SUBCOMMAND_HANDLERS: Readonly<
   'harden-ledger': runHardenLedger,
   'harden-tally': runHardenTally,
   init: runInit,
+  labels: runLabels,
   ping: runPing,
   'react-perf': runReactPerf,
   sandbox: runSandbox,

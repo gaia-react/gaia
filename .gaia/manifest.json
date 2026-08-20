@@ -199,6 +199,8 @@
     ".gaia/cli/templates/workflows/partials/quality-gate.yml.tmpl": "owned",
     ".gaia/hook-scopes.json": "owned",
     ".gaia/hook-scopes.schema.json": "owned",
+    ".gaia/labels.json": "owned",
+    ".gaia/labels.schema.json": "owned",
     ".gaia/script-capabilities.json": "owned",
     ".gaia/script-capabilities.schema.json": "owned",
     ".gaia/scripts/a11y-structural/check-a11y-triviality.mjs": "owned",
@@ -257,8 +259,8 @@
     ".gaia/state-registry.json": "owned",
     ".gaia/state-registry.schema.json": "owned",
     ".gaia/statusline/gaia-statusline.sh": "owned",
-    ".gaia/templates/ci-issues/priority-critical-revert-failed.md": "owned",
-    ".gaia/templates/ci-issues/priority-high-revert-opened.md": "owned",
+    ".gaia/templates/ci-issues/severity-critical-revert-failed.md": "owned",
+    ".gaia/templates/ci-issues/severity-important-revert-opened.md": "owned",
     ".gaia/templates/README.md": "owned",
     ".github/actions/gaia-ci-merge-and-watch/action.yml": "owned",
     ".github/actions/gaia-ci-merge-and-watch/lib/render-issue.sh": "owned",
@@ -568,6 +570,7 @@
     "wiki/concepts/GAIA Spec.md": "wiki-owned",
     "wiki/concepts/Generated Regions.md": "wiki-owned",
     "wiki/concepts/Git Workflow.md": "wiki-owned",
+    "wiki/concepts/GitHub Labels.md": "wiki-owned",
     "wiki/concepts/Incremental CI Skipping.md": "wiki-owned",
     "wiki/concepts/Local Working State.md": "wiki-owned",
     "wiki/concepts/OS Sandbox.md": "wiki-owned",
@@ -655,7 +658,7 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-08-18T16:07:33.656Z",
+  "generated": "2026-08-20T12:56:04.132Z",
   "regions": [
     {
       "endMarker": "<!-- gaia:audit-remit:end -->",

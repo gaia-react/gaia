@@ -828,7 +828,7 @@ jobs:
           pr_url=$(gh pr create \\
             --title "chore(update-deps): wave-B major bump: \${GROUP}" \\
             --body "Per-group major-bump PR opened by GAIA CI (GAIA CI - Update Deps). Group: \\\`\${GROUP}\\\`. Review the migration carefully; wave-B PRs are not auto-merged." \\
-            --label gaia-ci,needs-human-review \\
+            --label gaia-ci,needs-human \\
             --head "$BRANCH" \\
             --base "$DEFAULT_BRANCH")
           echo "wave-B PR opened: $pr_url"
@@ -1015,10 +1015,10 @@ jobs:
           pr_number=$(printf '%s' "$pr_url" | grep -oE '[0-9]+$')
 
           # Wiki diff-size sanity check: if changed lines exceed 25% of
-          # the wiki line count at the base ref, label \`needs-human-review\`
+          # the wiki line count at the base ref, label \`needs-human\`
           # and skip auto-merge.
           if [ "$(.gaia/cli/gaia wiki diff-size --threshold-pct 25)" = "exceeded" ]; then
-            gh pr edit "$pr_number" --add-label needs-human-review
+            gh pr edit "$pr_number" --add-label needs-human
             echo "diff-size > 25%; holding for human review"
             exit 0
           fi

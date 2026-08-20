@@ -356,13 +356,13 @@ first_captured_body() {
   [[ "$pr_line" != *'--body '* ]]
 }
 
-@test "auto-fixable: applies auto-fixable + gaia-bug-confirmed labels" {
+@test "auto-fixable: applies the auto-fixable label" {
   body="$BATS_TEST_TMPDIR/pr.md"
   printf 'x\n' > "$body"
   run "$HANDLERS/handle-auto-fixable.sh" 42 quality-gate forensics/42-quality-gate "$body"
   [ "$status" -eq 0 ]
   [ "$(gh_log_count '--add-label auto-fixable')" -ge 1 ]
-  [ "$(gh_log_count '--add-label gaia-bug-confirmed')" -ge 1 ]
+  [ "$(gh_log_count '--add-label gaia-bug-confirmed')" -eq 0 ]
 }
 
 @test "auto-fixable: posts a link-back comment via --body-file" {

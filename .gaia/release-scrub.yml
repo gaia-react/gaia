@@ -106,6 +106,25 @@ transforms:
       - path: "hooks.PreToolUse[].hooks[]"
         match: {command: ".claude/hooks/distribution-preflight-check.sh"}
 
+  # Maintainer-audience entries in the label registry. `surface:adopter` and
+  # `surface:maintainer` classify a defect against GAIA's own distribution
+  # boundary, and the forensics-audience entries name a workflow an adopter
+  # never runs; unwrapped, both reach adopters as vocabulary nothing on their
+  # clone creates or reads. The array is the registry itself, so only the
+  # maintainer elements leave; a delete of the whole `labels` key is not the
+  # shape, an adopter clone still needs its adopter-audience entries. A
+  # selector matching nothing is a silent no-op (see the transform-family
+  # comment at the top of this file), which is why the
+  # `surface-label-vocabulary` leak-check below is the backstop: it fails the
+  # build the moment this selector stops matching, so the two compose into a
+  # check neither is alone.
+  - type: json-strip-array-element
+    paths:
+      - ".gaia/labels.json"
+    selectors:
+      - path: "labels[]"
+        match: {audience: "maintainer"}
+
   # Maintainer SPEC ids inside `.gaia/state-registry.json`'s per-entry
   # `source` provenance. The field cannot simply be deleted: the shipped
   # `.gaia/state-registry.schema.json` declares `source` in `/$defs/entry`'s
@@ -240,11 +259,6 @@ transforms:
           # Workflow's own CI gate (install → typecheck → lint → test → knip)
           # by its script path; descriptive prose, not a rendered pointer.
           - "\\.github/forensics/run-quality-gate\\.sh"
-          # .claude/commands/setup-gaia.md names the label-bootstrap script
-          # inside a `[ -f .github/workflows/forensics-triage.yml ]` guard; on an
-          # adopter the guard is false and the echo is a graceful no-op, the same
-          # runtime-optional class the `excluded-workflow-ref` guard covers.
-          - "\\.github/forensics/bootstrap-labels\\.sh"
           # package.json's `gaia.wikiClassify` source/test path arrays are
           # load-bearing config globs, not prose pointers: an entry naming a
           # release-excluded tree simply matches nothing on an adopter clone.

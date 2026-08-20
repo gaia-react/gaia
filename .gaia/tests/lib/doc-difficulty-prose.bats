@@ -263,21 +263,22 @@ setup() {
   grep -qF -- "for label in surface:adopter surface:maintainer; do" "$VOCAB" || return 1
 }
 
-@test "the label-loop prose count says twelve shipped plus two maintainer-only, and every superseded count is gone" {
+@test "neither label loop states a count of its own" {
   # The count in the prose and the number of entries in the loop are two
   # statements of one fact, and only the loop is executable, so the prose is
-  # the half that rots. Pinning the current count plus every superseded one is
-  # what makes a future label addition fail here instead of shipping a comment
-  # that undercounts its own loop. Two counts now, because the two `surface:`
-  # entries moved into a marker-wrapped second loop (gaia-react/gaia#1437):
-  # the shipped loop creates twelve, the maintainer repository fourteen.
-  grep -qF -- "Create all twelve labels idempotently" "$VOCAB" || return 1
-  grep -qF -- "fourteen in total there" "$VOCAB" || return 1
-  assert_absent_fixed_across "all five labels" "$VOCAB"
-  assert_absent_fixed_across "all eight labels" "$VOCAB"
-  assert_absent_fixed_across "all ten labels" "$VOCAB"
-  assert_absent_fixed_across "all thirteen labels" "$VOCAB"
-  assert_absent_fixed_across "all fourteen labels" "$VOCAB"
+  # the half that rots. The registry owns both sets now, and `gaia labels
+  # check` is what fails a pull request naming a label the registry does not
+  # carry, so neither loop states a tally and neither sentence carries one.
+  #
+  # Asserted as patterns rather than as a list of the counts used so far. A
+  # list only catches the words already thought of: the previous revision here
+  # enumerated six spellings, and `all sixteen labels` passed it. Both forms
+  # the prose has ever used are covered, "all <n> labels" and "<n> in total
+  # there". The second keeps its trailing "there" so it stays a label-count
+  # claim: unqualified, it would also fire on an unrelated "three checks in
+  # total" anywhere in this 600-line file.
+  assert_absent_across "all ([a-z]+|[0-9]+) labels" "$VOCAB"
+  assert_absent_across "([a-z]+|[0-9]+) in total there" "$VOCAB"
 }
 
 @test "the label loop creates fold:required, and the loop's difficulty tail is unmoved" {

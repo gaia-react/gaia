@@ -43,7 +43,7 @@ parser_output_file="$2"
 
 # Extract error code + missing[] + malformed[] from the parser JSON. jq
 # is available in GitHub Actions runners and is already used by sibling
-# helpers (bootstrap-labels.sh).
+# helpers.
 error_code="$(jq -r '.error // "unknown"' "$parser_output_file")"
 missing_csv="$(jq -r '(.missing // []) | join(", ")' "$parser_output_file")"
 malformed_csv="$(jq -r '(.malformed // []) | join(", ")' "$parser_output_file")"

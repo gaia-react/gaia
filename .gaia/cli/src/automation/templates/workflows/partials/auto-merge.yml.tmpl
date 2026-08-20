@@ -38,10 +38,10 @@
           pr_number=$(printf '%s' "$pr_url" | grep -oE '[0-9]+$')
 {{#enable_diff_size_check}}
           # Wiki diff-size sanity check: if changed lines exceed 25% of
-          # the wiki line count at the base ref, label `needs-human-review`
+          # the wiki line count at the base ref, label `needs-human`
           # and skip auto-merge.
           if [ "$(.gaia/cli/gaia wiki diff-size --threshold-pct 25)" = "exceeded" ]; then
-            gh pr edit "$pr_number" --add-label needs-human-review
+            gh pr edit "$pr_number" --add-label needs-human
             echo "diff-size > 25%; holding for human review"
             exit 0
           fi

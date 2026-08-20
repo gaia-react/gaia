@@ -21,7 +21,7 @@ export type WorkflowTemplateVars = {
   enable_major_bump_split: boolean;
   enable_security_pr: boolean;
   enable_stale_branch_delete: boolean;
-  needs_human_review_label: string;
+  needs_human_label: string;
   pr_label: string;
   schedule: WorkflowSchedule;
   tool_id: ToolId;
@@ -92,7 +92,7 @@ export const buildWorkflowVars = (
     enable_major_bump_split: tool === 'update-deps',
     enable_security_pr: tool === 'pnpm-audit',
     enable_stale_branch_delete: tool === 'stale-branches',
-    needs_human_review_label: 'needs-human-review',
+    needs_human_label: 'needs-human',
     pr_label: 'gaia-ci',
     schedule,
     tool_id: tool,

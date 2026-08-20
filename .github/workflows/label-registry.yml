@@ -1,0 +1,82 @@
+name: Label Registry
+
+# CI enforcement for `gaia-react/gaia#1436`'s label registry: two parity checks
+# against the committed `gaia` bundle.
+#
+#   1. Page parity (`gaia labels docs --check`): regenerates
+#      wiki/concepts/GitHub Labels.md from .gaia/labels.json and fails on a
+#      diff, so the page cannot drift from the registry that generates it.
+#   2. Code parity (`gaia labels check`): extracts every label literal in the
+#      tracked tree under the frozen extraction grammar and fails on any name
+#      absent from the registry or marked `blocked`. This is what keeps the
+#      page current when a label is added anywhere in the tree, and what
+#      stops a blocked label (`good first issue`, `help wanted`) re-entering
+#      through an issue template. A prose rule is not enforcement.
+#
+# No paths filter on this job. Code parity's verdict is a property of the
+# merge-result tree, not of a pull request's own files: two pull requests that
+# are each green in isolation compose into a red `main`. One removes a
+# registry entry (its merge-result tree does not yet carry the other's file,
+# so it passes); the other adds a label literal under that name (its
+# merge-result tree still carries the entry, so it passes too). Both merge,
+# `main` now has a literal the registry does not answer, and with a
+# pull-request-only trigger nothing says so until an unrelated third pull
+# request happens to open. `audit-roster.yml` makes the identical argument for
+# its own coverage invariant; this workflow makes it here rather than pointing
+# at that one.
+#
+# Triggers, for the same reason: a `push:` arm as well as `pull_request:`,
+# because the failure mode above is a property of `main` after two pull
+# requests land, not of either pull request alone, so `main` itself needs a
+# check that runs on every push to it. `workflow_dispatch:` so a maintainer
+# can ask `main` the question directly rather than waiting for the next pull
+# request or push.
+#
+# Not a required status check. Registering a check as required is a
+# maintainer-run, ask-first cutover, not something a drift detector does to
+# itself; `audit-roster.yml` states the same and this workflow follows it.
+#
+# Maintainer-only and release-excluded (`.gaia/release-exclude`, category 9,
+# alongside `audit-roster.yml` and `distribution-audit-pr.yml`). An adopter's
+# labels are the adopter's business: their clone gets the registry, the
+# schema, the generated page, and the `gaia labels` CLI, but not GAIA's own CI
+# job asserting parity against GAIA's own tree.
+#
+# Pinned action SHA matches the sibling maintainer workflows:
+#   actions/checkout @ 3d3c42e5aac5ba805825da76410c181273ba90b1 (v7.0.1)
+on:
+  pull_request:
+    branches: [ main ]
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Default-deny, so a job added later inherits no scope rather than the
+# repository default. The job below grants exactly what it needs.
+permissions: {}
+
+jobs:
+  label-registry:
+    name: Label registry parity
+    runs-on: ubuntu-latest
+    # Checkout plus two invocations of an already-committed, dependency-free
+    # bundle normally finishes in seconds, so five minutes is a wide margin
+    # and a hung run reads as a hang rather than a slow tree.
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # No pnpm install and no Node setup action: both checks run the
+      # committed bundle (node .gaia/cli/gaia ...), which has no runtime
+      # dependencies. The runner's default node is enough, which is what
+      # makes this job cheap enough to run on every pull request, every push
+      # to main, and on demand, with no paths filter.
+      - name: Page parity (wiki/concepts/GitHub Labels.md matches a fresh generation)
+        run: node .gaia/cli/gaia labels docs --check
+      - name: Code parity (every label literal in the tree is in the registry and not blocked)
+        run: node .gaia/cli/gaia labels check

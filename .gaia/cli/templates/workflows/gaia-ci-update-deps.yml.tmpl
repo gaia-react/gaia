@@ -190,7 +190,7 @@ jobs:
           pr_url=$(gh pr create \
             --title "chore({{tool_id}}): wave-B major bump: ${GROUP}" \
             --body "Per-group major-bump PR opened by GAIA CI ({{workflow_name}}). Group: \`${GROUP}\`. Review the migration carefully; wave-B PRs are not auto-merged." \
-            --label gaia-ci,{{needs_human_review_label}} \
+            --label gaia-ci,{{needs_human_label}} \
             --head "$BRANCH" \
             --base "$DEFAULT_BRANCH")
           echo "wave-B PR opened: $pr_url"

@@ -68,13 +68,12 @@ pr_url="$(gh pr create \
   --title "$pr_title" \
   --body-file "$pr_body_file")"
 
-# 4. Apply the fix-related labels. Order: classification labels first,
-#    then `gaia-triaged` LAST so the idempotency key is the final
-#    mutation. `class_slug` is reserved for callers and used in the
-#    branch name; kept in the surface for forward-compat with any
-#    future per-class labelling without renegotiating the contract.
+# 4. Apply the `auto-fixable` label. `gaia-triaged` is applied LAST in
+#    step 6 so the idempotency key is the final mutation. `class_slug`
+#    is reserved for callers and used in the branch name; kept in the
+#    surface for forward-compat with any future per-class labelling
+#    without renegotiating the contract.
 gh issue edit "$issue_num" --add-label "auto-fixable"
-gh issue edit "$issue_num" --add-label "gaia-bug-confirmed"
 
 # 5. Link the PR back from the issue. Comment last (before triaged) so
 #    a re-fire under UAT-011 sees the triaged label and exits before

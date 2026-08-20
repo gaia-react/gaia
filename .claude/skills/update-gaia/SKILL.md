@@ -666,6 +666,54 @@ Parse the result for the Step 9 summary:
 - Exit code `4` is a migration conflict: a flat `SPEC-<id>.md` **and** a folder `<id>/SPEC.md` both exist for the same id. The script names both conflicting paths on stderr and changes nothing. **Do not swallow this and do not auto-resolve it.** Capture the conflicting ids/paths from `$spec_folderize_out`, set `SPECS_MIGRATED="conflict"`, and surface it in Step 9 as a blocking action item the user must reconcile by hand.
 - Any other non-zero exit (`2` usage, `3` unresolvable repo root) is a script-invocation error. **Do not hard-stop here**, that would discard the Step 9 summary covering every file already merged. Capture `$spec_folderize_out`, set `SPECS_MIGRATED="error"`, and route it through Step 9 as a blocking action item (same handling as the exit-`4` conflict).
 
+### Step 8c: Sync GitHub labels
+
+Runs after Step 7's three-way merge and Step 7d's region regeneration have settled the tree, and before the Step 9 summary. Step 7 is what delivers a new release's `.gaia/labels.json`, so syncing before it would sync the registry the adopter is upgrading away from.
+
+```bash
+labels_sync_err="$(mktemp)"
+labels_sync_json="$(.gaia/cli/gaia labels sync --json 2>"$labels_sync_err")" || labels_sync_json=''
+```
+
+Keep the stderr rather than discarding it. Under `--json` the plan owns stdout alone, so the marker saying the sync could not write goes to stderr; a step that drops it cannot tell a sync that reconciled the repository from one that only described what it would have done.
+
+No `--adopt` flag. Color drift stays reported, never applied, on every run this step makes, not only the first one: an adopter's own recolor of a label always wins over the registry's suggested color.
+
+This step is advisory and never fails the update, a token without label-write scope is common on an org-owned repository. A sync that cannot write still exits 0; this step's failure to write is not the update's failure. On the plain path the sync prints the manual `gh label create` / `gh label edit` commands itself, but this step invokes it with `--json`, where stdout carries the plan alone and the commands survive only as `manual-command` actions inside it. Surfacing them is therefore this step's job, not the sync's.
+
+The plan lists what the sync intends, so read it as counts of writes only once the degraded marker is known to be absent:
+
+```bash
+count_kind() {
+  printf '%s' "$labels_sync_json" \
+    | jq "[.actions[]? | select(.kind == \"$1\")] | length" 2>/dev/null \
+    || printf '0'
+}
+
+if [ -z "$labels_sync_json" ]; then
+  LABELS_STATE=nonzero
+elif grep -q '^labels-sync: degraded' "$labels_sync_err"; then
+  LABELS_STATE=degraded
+  LABELS_MANUAL_CMDS=$(printf '%s' "$labels_sync_json" | jq -r '.actions[]? | select(.kind == "manual-command") | .command' 2>/dev/null)
+  LABELS_MANUAL=$(count_kind manual-command)
+else
+  LABELS_STATE=applied
+  LABELS_CREATED=$(count_kind create)
+  LABELS_RENAMED=$(count_kind rename)
+  LABELS_DESC=$(count_kind drift-description)
+  LABELS_DRIFT=$(count_kind drift-color)
+fi
+rm -f "$labels_sync_err"
+```
+
+The empty test comes first, inside the block, rather than as a note after it. `$labels_sync_json` is emptied by the `||` on **any** non-zero exit, and that case writes no degraded marker either, so a block testing the marker first would fall to the `applied` arm, count zeros, and report a sync that never applied anything as already in sync.
+
+Do not read that arm as "the sync never ran". It covers a CLI predating the subcommand, a usage or environment error, and a real `gh` failure that can stop partway through the owed mutations with earlier creates and renames already written. The summary has to leave that possibility open rather than telling an adopter nothing happened, which would send them to re-create labels that already exist.
+
+**Count all four applied kinds, not three.** Description drift is written on every sync: the registry wins on description, so the sync issues the edit unconditionally, while color drift is withheld without `--adopt` and is reported only. A summary counting creates, renames, and color drift alone renders a repository whose descriptions were just rewritten as unchanged.
+
+Every count goes through one `count_kind` helper so the fallback is written once, and every count is a `jq` length rather than a line count. Counting the manual commands with `grep -c` is what that replaces: `grep -c` prints `0` and still exits 1 when nothing matches, so a trailing `|| echo 0` appends a second value and the row interpolates two where it expects one. `jq` does not have that shape here, a parse error goes to stderr and leaves stdout empty, so its fallback supplies the value rather than doubling it.
+
 ### Step 9: Summary
 
 Print a table:
@@ -689,7 +737,10 @@ GAIA update: v$BASELINE → $LATEST_TAG
   Backed up:    <n>  (see .gaia-backup/<timestamp>/)
   Specs migrated: <n>  (flat .gaia/local/specs files folded into per-SPEC folders)
   Trailer invalidations: <n>  (open PRs stamped v$BASELINE will re-audit on next push)
+  Labels:       <c> created, <r> renamed, <e> descriptions updated, <d> color drift found  (color drift not applied; your own recolor wins)
 ```
+
+Render that row from `LABELS_STATE`. On `nonzero`, `Labels: unknown (gaia labels sync exited non-zero; some labels may already have been applied, see Step 8c)`, which is honest about a run that may have written part of its plan before stopping. On `degraded`, `Labels: could not write (token lacks label scope); <LABELS_MANUAL> manual commands, listed below`, then print `$LABELS_MANUAL_CMDS` beneath the table, so the recovery commands are where the row says they are. The listed commands are the actions still owed. How much of the plan was already applied depends on where the sync lost write access, which the summary does not know: a refused read degrades it before it writes anything, while a refusal partway through the mutations leaves the earlier ones written. Report the list as the remainder and claim nothing either way. On `applied` with all four counts `0`, `Labels: no changes (already in sync)`.
 
 When all three `package.json` counts are zero, render that row as `package.json: no managed-key changes (clean skip)` and omit the notes reference. Apply the same rule to the `pnpm-workspace.yaml` row: `pnpm-workspace.yaml: no managed-key changes (clean skip)` when all three of its counts are zero. If 7b fell back to a whole-file conflict patch (presence triage or a parse failure), render the row as `pnpm-workspace.yaml: whole-file conflict (see .gaia-merge/pnpm-workspace.yaml.patch)` instead. Apply the same two rules to the `audit-ci.yml` row: `audit-ci.yml: no managed-key changes (clean skip)` when all three counts are zero, or `audit-ci.yml: whole-file conflict (see .gaia-merge/audit-ci.yml.patch)` when 7c fell back.
 

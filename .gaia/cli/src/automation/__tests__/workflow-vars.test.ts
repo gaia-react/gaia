@@ -52,7 +52,7 @@ describe('buildWorkflowVars', () => {
       enable_major_bump_split: false,
       enable_security_pr: false,
       enable_stale_branch_delete: false,
-      needs_human_review_label: 'needs-human-review',
+      needs_human_label: 'needs-human',
       pr_label: 'gaia-ci',
       schedule: 'daily',
       tool_id: 'wiki',

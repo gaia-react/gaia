@@ -5,7 +5,7 @@ Prose checklist the maintainer runs once after merge, and again when amending SP
 ## Preconditions
 
 - The triage workflow is merged to `main` at `.github/workflows/forensics-triage.yml`.
-- All six labels exist on `gaia-react/gaia`: `gaia-forensics`, `gaia-triaged`, `non-issue`, `needs-human`, `auto-fixable`, `gaia-bug-confirmed`. (Run `.github/forensics/bootstrap-labels.sh` once if missing.)
+- All labels exist on `gaia-react/gaia`: `gaia-forensics`, `gaia-triaged`, `non-issue`, `needs-human`, `auto-fixable`. (Run `.gaia/cli/gaia labels sync` once if missing.)
 - Repository secret `ANTHROPIC_API_KEY` is set.
 - Branch protection on `main`: required reviews >= 1, required status checks present.
 - `gh` CLI authenticated with `repo` scope on `gaia-react/gaia`.
@@ -72,14 +72,14 @@ gh pr list -R "$REPO" --head "forensics/${ISS}-*"
 ## UAT-004; `auto-fixable` verdict opens draft PR + labels
 
 - **Fixture**: `valid-init-failure.md`. The bug is in `.claude/skills/gaia-init/SKILL.md` (allowlisted) and `.gaia/cli/templates/init/post-init.sh` (allowlisted via `.gaia/cli/`).
-- **Expected outcome**: a branch named `forensics/<ISS>-init` exists on origin; a DRAFT PR is open against `main` linking back to the issue; the issue has labels `auto-fixable`, `gaia-bug-confirmed`, AND `gaia-triaged`. The PR body cites `## Capture` from the issue verbatim.
+- **Expected outcome**: a branch named `forensics/<ISS>-init` exists on origin; a DRAFT PR is open against `main` linking back to the issue; the issue has labels `auto-fixable` AND `gaia-triaged`. The PR body cites `## Capture` from the issue verbatim.
 - **Verify**:
   ```bash
   git fetch origin "forensics/${ISS}-init" && git log --oneline -1 "origin/forensics/${ISS}-init"
   gh pr list -R "$REPO" --head "forensics/${ISS}-init" --json isDraft,title,body
   gh issue view -R "$REPO" "$ISS" --json labels --jq '[.labels[].name] | sort'
   ```
-- **Pass criterion**: branch exists with at least one commit; PR is `isDraft: true` and body contains a "## Capture (verbatim from issue)" section quoting fixture content; issue labels include all three of `auto-fixable`, `gaia-bug-confirmed`, `gaia-triaged`.
+- **Pass criterion**: branch exists with at least one commit; PR is `isDraft: true` and body contains a "## Capture (verbatim from issue)" section quoting fixture content; issue labels include both `auto-fixable` and `gaia-triaged`.
 
 ---
 
