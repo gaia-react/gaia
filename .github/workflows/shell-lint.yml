@@ -4,6 +4,16 @@ name: Shell Lint
 # .gaia/tests/shell-lint.sh (per-type severity floor: *.sh at style, *.bats at
 # warning).
 #
+# Two jobs, on two runner images, because one pass of that harness cannot run on
+# the image the rest of it wants. The shellcheck passes and the folded guards
+# are host-independent and run on ubuntu; the bash-3.2 parse pass is a question
+# about the host's own /bin/bash, and ubuntu's is bash 5, where the pass can
+# only skip. Stock macOS still ships 3.2.57 as /bin/bash, so the macOS leg is
+# the only place in this repo's CI where that pass has an interpreter to answer
+# with. It runs `--only bash32-parse` rather than the whole harness: macOS
+# minutes bill at 10x, and every other pass would be a duplicate of the ubuntu
+# leg's work at ten times the price.
+#
 # Maintainer-only: adopters run GAIA's bash but never author it, so the linter
 # that guards the framework's own shell has no adopter surface. Release-excluded
 # alongside the other maintainer-only workflows; on an adopter clone this would
@@ -160,3 +170,53 @@ jobs:
       - if: steps.filter.outputs.shell == 'true'
         name: Run shellcheck gate
         run: bash .gaia/tests/shell-lint.sh
+
+  bash32-parse:
+    name: bash-3.2 parse (stock macOS /bin/bash)
+    runs-on: macos-latest
+    # A checkout and a `bash -n` sweep of the tracked *.sh set, seconds of work.
+    # Ten minutes matches the sibling job above for the same reason: without a
+    # cap a stalled step burns the 6-hour default, and on this image that is
+    # billed at 10x.
+    timeout-minutes: 10
+    # Read-only, and `pull-requests: read` is load-bearing for dorny/paths-filter
+    # for the reason spelled out on the job above.
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # Narrower than the sibling job's filter, and deliberately so: this leg
+      # runs one pass, and that pass reads the tracked *.sh set and nothing
+      # else. The husky hooks, the composite actions, the workflow templates and
+      # the markdown fences all belong to passes that do not run here. The
+      # second entry is the self-coverage half every gated step owes -- a gate
+      # blind to a change in its own definition greens having run nothing.
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        id: filter
+        with:
+          filters: |
+            shell:
+              - '**/*.sh'
+              - '.github/workflows/shell-lint.yml'
+      # The parse pass skips, loudly but at exit 0, on any bash 4 or newer. That
+      # is correct behavior for a Linux contributor's local run and fatal here:
+      # this leg exists only to answer the 3.2 question, so an image that ever
+      # stopped shipping 3.2.57 would leave it green having parsed nothing --
+      # the same false clean, one layer up, that the pass itself exists to end.
+      # Assert the interpreter before trusting the verdict.
+      - if: steps.filter.outputs.shell == 'true'
+        name: Assert this runner ships bash 3.2 as /bin/bash
+        run: |
+          set -euo pipefail
+          major="$(/bin/bash -c 'printf "%s\n" "${BASH_VERSINFO[0]}"')"
+          echo "/bin/bash reports bash major version $major"
+          if [ "$major" -ge 4 ]; then
+            echo "::error::/bin/bash on this runner is bash $major, so the parse pass would skip and this job would report green having parsed nothing" >&2
+            exit 1
+          fi
+      # No shellcheck install step, which is the whole point of `--only`: this
+      # pass needs an interpreter, not a linter.
+      - if: steps.filter.outputs.shell == 'true'
+        name: Parse every tracked *.sh with /bin/bash 3.2
+        run: bash .gaia/tests/shell-lint.sh --only bash32-parse

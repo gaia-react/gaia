@@ -311,3 +311,96 @@ tracked_sh() {
   grep -qF -- "shell-lint FAILED" <<<"$output"
   grep -qF -- "In $last_sh line 1:" <<<"$output"
 }
+
+# `--only bash32-parse`: the pass-selection flag the macOS CI leg in
+# .github/workflows/shell-lint.yml runs on. Every runner in this repo is bash 5,
+# where the parse pass above can only skip, so the pass was enforced by nothing
+# mechanical until a leg with a real /bin/bash 3.2 ran it. That leg must not pay
+# for the shellcheck harness -- macOS runner minutes bill at 10x -- so the flag
+# has to reach the parse pass without shellcheck present at all.
+
+@test "--only bash32-parse runs the parse pass and skips every other pass" {
+  run env PATH="$STUB_DIR:$PATH" SHELL_LINT_BASH32="$STUB_DIR/bash32" \
+    bash "$GATE" --only bash32-parse
+  [ "$status" -eq 0 ]
+  grep -qF -- "bash-3.2 parse ($STUB_DIR/bash32 -n)" <<<"$output"
+  grep -qF -- "shell-lint passed" <<<"$output"
+  # Each absence is asserted against the pass's own header line, so a pass that
+  # ran is caught whether or not it found anything. Written as the bad case plus
+  # an explicit `return 1` per .claude/rules/bats-assertions.md.
+  grep -qF -- "shellcheck *.sh" <<<"$output" && return 1
+  grep -qF -- "shellcheck *.bats" <<<"$output" && return 1
+  grep -qF -- "shellcheck .husky/*" <<<"$output" && return 1
+  grep -qF -- "lint-hook-array-guard" <<<"$output" && return 1
+  grep -qF -- "lint-git-path-quoting" <<<"$output" && return 1
+  grep -qF -- "lint-workflow-run-interpolation" <<<"$output" && return 1
+  grep -qF -- "lint-grep-ere-escapes" <<<"$output" && return 1
+  grep -qF -- "lint-errexit-status-read" <<<"$output" && return 1
+  true
+}
+
+@test "--only bash32-parse runs with no shellcheck on PATH at all" {
+  # The cost argument the flag exists for: the macOS leg installs no shellcheck,
+  # so an unconditional binary precondition would red it on every run. A stub
+  # cannot express "absent", hence a PATH trimmed to the system directories,
+  # which carry git, getconf and mktemp on both platforms and carry shellcheck
+  # on neither (Homebrew and the pinned CI tarball both land elsewhere). Skipped
+  # rather than asserted where that does not hold, so the test never lies.
+  if PATH="/usr/bin:/bin" command -v shellcheck >/dev/null 2>&1; then
+    skip "this host carries shellcheck in /usr/bin or /bin"
+  fi
+  run env PATH="/usr/bin:/bin" SHELL_LINT_BASH32="$STUB_DIR/bash32" \
+    bash "$GATE" --only bash32-parse
+  [ "$status" -eq 0 ]
+  grep -qF -- "bash-3.2 parse ($STUB_DIR/bash32 -n)" <<<"$output"
+  grep -qF -- "shell-lint passed" <<<"$output"
+}
+
+@test "--only bash32-parse still fails closed on a script the interpreter cannot parse" {
+  # Selecting one pass must not soften it: the flag narrows what runs, never
+  # what a run that finds something reports.
+  first_sh="$(tracked_sh first)"
+  [ -n "$first_sh" ]
+  run env PATH="$STUB_DIR:$PATH" SHELL_LINT_BASH32="$STUB_DIR/bash32" \
+    BASH32_FAIL_ON="$first_sh" bash "$GATE" --only bash32-parse
+  [ "$status" -eq 1 ]
+  grep -qF -- "shell-lint FAILED" <<<"$output"
+  grep -qF -- "$first_sh: line 1: syntax error" <<<"$output"
+}
+
+@test "an unknown --only pass is a usage error, not a silent full run" {
+  # A typo falling through to the default would run the whole gate on a host
+  # that has no shellcheck, reporting the flag's own absence as a lint failure.
+  run env PATH="$STUB_DIR:$PATH" bash "$GATE" --only no-such-pass
+  [ "$status" -eq 2 ]
+  grep -qF -- "unknown --only pass" <<<"$output"
+  grep -qF -- "shell-lint passed" <<<"$output" && return 1
+  true
+}
+
+@test "an unknown argument is a usage error" {
+  run env PATH="$STUB_DIR:$PATH" bash "$GATE" --bogus
+  [ "$status" -eq 2 ]
+  grep -qF -- "unknown argument" <<<"$output"
+}
+
+@test "--only with no pass name is a usage error" {
+  run env PATH="$STUB_DIR:$PATH" bash "$GATE" --only
+  [ "$status" -eq 2 ]
+  grep -qF -- "needs a pass name" <<<"$output"
+}
+
+@test "the CI workflow arms the parse pass on a runner that carries bash 3.2" {
+  # The pin that keeps the flag armed. The harness half of this fix is inert on
+  # its own: every assertion above passes with the workflow leg deleted, which
+  # is the exact posture -- enforcement resting on a voluntary local run -- that
+  # this leg exists to end.
+  wf="$REPO_ROOT/.github/workflows/shell-lint.yml"
+  [ -f "$wf" ]
+  grep -qF -- "runs-on: macos-latest" "$wf"
+  grep -qF -- ".gaia/tests/shell-lint.sh --only bash32-parse" "$wf"
+  # The leg's own precondition. Without it the leg inherits the pass's exit-0
+  # loud skip, so an image that stopped shipping 3.2.57 would turn this whole
+  # fix back into a green that parsed nothing.
+  grep -qF -- 'BASH_VERSINFO[0]' "$wf"
+}
