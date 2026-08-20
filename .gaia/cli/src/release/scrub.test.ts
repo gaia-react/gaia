@@ -2549,10 +2549,14 @@ describe('shipped surface-label-vocabulary check', () => {
   });
 
   test('flags every spelling the axis actually ships in', () => {
-    // Five carriers, five spellings. A naive `surface:(adopter|maintainer)`
-    // pattern catches only the last of them (gaia-react/gaia#1437), so a tree
-    // still shipping the whole enforcement block would clear it; the other
-    // four are pinned here for exactly that reason.
+    // One fixture per branch of the alternation, six in all, each written so
+    // that branch is the only one it matches. Pinning by carrier instead would
+    // leave `maintainer` untested, because the brace-form and SURFACE_VALUES
+    // carriers happen to also contain the word: dropping `maintainer|` from
+    // the pattern would keep every fixture matching while a maintainer-side
+    // re-add shipped unflagged. A naive `surface:(adopter|maintainer)` pattern
+    // catches only two of the six (gaia-react/gaia#1437), so a tree still
+    // shipping the whole enforcement block would clear it.
     sandbox.writeStaged('wiki/page.md', 'exactly one `surface:*` label\n');
     sandbox.writeStaged(
       '.claude/skills/file-tech-debt/SKILL.md',
@@ -2570,6 +2574,10 @@ describe('shipped surface-label-vocabulary check', () => {
       '.claude/agents/some-agent.md',
       'one of `surface:adopter`\n'
     );
+    sandbox.writeStaged(
+      '.claude/skills/vocabulary.md',
+      '| `surface:maintainer` | observable only in the GAIA repository. |\n'
+    );
 
     expect(run([sandbox.stagingDir, '--config', sandbox.configPath])).toBe(1);
 
@@ -2580,6 +2588,7 @@ describe('shipped surface-label-vocabulary check', () => {
     expect(out).toContain('.claude/skills/gaia/references/audit.md');
     expect(out).toContain('.gaia/scripts/check.sh');
     expect(out).toContain('.claude/agents/some-agent.md');
+    expect(out).toContain('.claude/skills/vocabulary.md');
   });
 
   test('does not flag the ordinary prose and CSS uses of the bare word', () => {

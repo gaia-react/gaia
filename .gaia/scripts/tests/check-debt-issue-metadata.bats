@@ -635,26 +635,64 @@ CORPUS_ANACHRONISM='[
 # Maintainer-only by construction: this suite is release-excluded, and so is
 # the `gaia-maintainer` binary it drives. A clone without the binary skips
 # rather than fails, so the absence never reads as a passing guard.
+#
+# require_stripper runs in each @test body rather than inside the helper, and
+# that placement is the whole point: bats implements `skip` as `exit 0`, and
+# the helper is called as `$(stripped_check)`, so a `skip` there would unwind
+# only the substitution subshell. The test would carry on with an empty path
+# and die at exit 127 on `bash ""`, which is the opposite of the skip the
+# paragraph above promises.
+require_stripper() {
+  [ -x "$REPO_ROOT/.gaia/cli/gaia-maintainer" ] \
+    || skip "maintainer CLI absent; nothing to strip through"
+}
+
+# sh_marker_delim <start|end>: echo that delimiter, quotes included, from the
+# one marker-strip transform in `.gaia/release-scrub.yml` whose paths cover
+# `**/*.sh`, which is the transform that governs the script under test.
+sh_marker_delim() {
+  awk -v want="$1" '
+    /^  - type: / {in_block = ($0 == "  - type: marker-strip"); covers_sh = 0; next}
+    !in_block {next}
+    $0 == "      - \"**/*.sh\"" {covers_sh = 1; next}
+    covers_sh && index($0, "    " want ": ") == 1 {
+      sub(/^    [a-z]+: /, "", $0)
+      print $0
+      exit
+    }
+  ' "$REPO_ROOT/.gaia/release-scrub.yml"
+}
 
 # stripped_check: strip the script into a throwaway staging tree and echo the
-# stripped path. Skips the calling test when the maintainer binary is absent.
+# stripped path. Call `require_stripper` in the test body first.
 stripped_check() {
   local cli="$REPO_ROOT/.gaia/cli/gaia-maintainer"
-  [ -x "$cli" ] || skip "maintainer CLI absent; nothing to strip through"
 
   local stage="$TMP/stage"
   mkdir -p "$stage/.gaia/scripts"
   cp "$CHECK" "$stage/.gaia/scripts/check-debt-issue-metadata.sh"
 
   # Only the `**/*.sh` marker-strip transform, so no sibling leak-check can
-  # decide this test's outcome.
-  cat >"$TMP/scrub.yml" <<'YAML'
+  # decide this test's outcome. Its delimiters are READ from the shipped config
+  # rather than restated: the shipped parser is only half the contract, and a
+  # second copy of the spellings would leave this suite stripping and passing
+  # against a retired one while the real release strip took nothing out of this
+  # script. Asserting the spellings are present somewhere in that file is not
+  # enough, because three transforms there share them and only this one covers
+  # `**/*.sh`; the block has to be the one that governs this file.
+  local start end
+  start="$(sh_marker_delim start)"
+  end="$(sh_marker_delim end)"
+  [ -n "$start" ] || return 1
+  [ -n "$end" ] || return 1
+
+  cat >"$TMP/scrub.yml" <<YAML
 transforms:
   - type: marker-strip
     paths:
       - "**/*.sh"
-    start: "# gaia:maintainer-only:start"
-    end: "# gaia:maintainer-only:end"
+    start: $start
+    end: $end
 YAML
 
   "$cli" release scrub "$stage" --config "$TMP/scrub.yml" >/dev/null || return 1
@@ -662,6 +700,7 @@ YAML
 }
 
 @test "the stripped script drops the surface requirement: a filing with no surface: label is clean" {
+  require_stripper
   local stripped
   stripped="$(stripped_check)" || return 1
 
@@ -679,6 +718,7 @@ YAML
   # the exact defect this exists to catch. Each code below is emitted from a
   # line AFTER the stripped block, so seeing all four proves execution reached
   # the end of `check_labels`.
+  require_stripper
   local stripped
   stripped="$(stripped_check)" || return 1
 
