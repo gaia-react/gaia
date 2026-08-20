@@ -11,6 +11,7 @@
  * rejects them.
  */
 import {describe, expect, test} from 'vitest';
+import assert from 'node:assert/strict';
 import {resolveRepoRootFromImportMeta} from '../../util/repo-root-fixture.js';
 import {extractLiterals, literalProblem, SCAN_EXCLUDED} from '../check.js';
 import {readRegistry} from '../registry.js';
@@ -280,11 +281,57 @@ describe('labels/check the token rule', () => {
       )
     ).toEqual(['tech-debt']);
   });
+
+  test('a quoted name carrying spaces survives the token rule', () => {
+    expect(
+      namesIn(SHELL, 'gh issue create --label "good first issue" --body x')
+    ).toEqual(['good first issue']);
+    expect(namesIn(SHELL, "gh issue edit 1 --add-label 'help wanted'")).toEqual(
+      ['help wanted']
+    );
+    expect(
+      namesIn(SHELL, 'gh label create "good first issue" --color ededed')
+    ).toEqual(['good first issue']);
+  });
+
+  test('an unquoted run of words is not one spaced name', () => {
+    expect(namesIn(SHELL, 'gh issue create --label good first issue')).toEqual([
+      'good',
+    ]);
+  });
+
+  test('a spaced name inside a YAML flow sequence survives', () => {
+    expect(
+      namesIn(
+        '.github/ISSUE_TEMPLATE/bug_report.yml',
+        'labels: [good first issue]'
+      )
+    ).toEqual(['good first issue']);
+    expect(
+      namesIn(
+        '.github/ISSUE_TEMPLATE/bug_report.yml',
+        'labels: [bug, help wanted]'
+      )
+    ).toEqual(['bug', 'help wanted']);
+  });
 });
 
 describe('labels/check registry lookup', () => {
   test('a name the registry carries has no problem', () => {
     expect(literalProblem(registry, 'tech-debt')).toBeNull();
+  });
+
+  test('a blocked name reaches the registry lookup from a real gh line', () => {
+    const [literal] = extractLiterals(
+      SHELL,
+      'gh issue create --label "good first issue" --body x'
+    );
+
+    assert.ok(literal);
+    expect(literal.name).toBe('good first issue');
+    expect(literalProblem(registry, literal.name)).toContain(
+      'blocked in .gaia/labels.json'
+    );
   });
 
   test('an unknown name and a blocked name report differently', () => {

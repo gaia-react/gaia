@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "GAIA GitHub label registry",
-  "description": "Constrains .gaia/labels.json: the single machine-readable source of truth for every GitHub label GAIA creates, syncs, and documents. A malformed edit fails this cheap validation before any consumer runs. Cross-entry constraints (unique names, unique colors, no em dashes or en dashes in a description) are not expressible in JSON Schema and live in the Zod layer (.gaia/cli/src/schemas/labels.ts) and its tests instead.",
+  "description": "Constrains .gaia/labels.json: the single machine-readable source of truth for every GitHub label GAIA creates, syncs, and documents. A malformed edit fails this cheap validation before any consumer runs. Cross-entry constraints (unique names, unique colors, no em dashes or en dashes in a description) are not expressible in JSON Schema and live in the validation layer the gaia labels commands run, and its tests, instead.",
   "type": "object",
   "additionalProperties": false,
   "required": ["$schema", "version", "description", "labels"],

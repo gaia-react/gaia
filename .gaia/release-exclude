@@ -291,6 +291,12 @@ wiki/decisions/Sharded CI Test Matrix.md
 # PRs against a list they never agreed to; the `gaia ci-check-subject`
 # subcommand it calls does ship, so an adopter who wants the gate can wire it.
 .github/workflows/pr-title.yml
+# `label-registry.yml` runs `gaia labels docs --check` and `gaia labels check`
+# against GAIA's own tree and its own `.gaia/labels.json` registry. An
+# adopter's labels are the adopter's business; their clone gets the registry,
+# the schema, the generated page, and the `gaia labels` CLI, but not this CI
+# job asserting parity against GAIA's own tree.
+.github/workflows/label-registry.yml
 # `dependabot.yml` schedules weekly bumps of the full-SHA action pins in
 # `.github/workflows/`, a directory that on this clone is 11 maintainer-only
 # workflows plus the two shipped ones. An adopter clone has neither those

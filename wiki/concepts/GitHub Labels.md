@@ -8,7 +8,7 @@ tags: [concept, github, labels, workflow]
 
 # GitHub Labels
 
-`.gaia/labels.json` is the single machine-readable source of truth for every GitHub label GAIA creates, syncs, and documents. Each entry carries its color, its description, the axis it classifies on, whether it belongs to an adopter repository or only to the GAIA maintainer repository, and which feature has to be enabled before the label is owed at all. `.gaia/labels.schema.json` is the editor-facing copy of the shape, and `.gaia/cli/src/schemas/labels.ts` is the validator the CLI runs.
+`.gaia/labels.json` is the single machine-readable source of truth for every GitHub label GAIA creates, syncs, and documents. Each entry carries its color, its description, the axis it classifies on, whether it belongs to an adopter repository or only to the GAIA maintainer repository, and which feature has to be enabled before the label is owed at all. `.gaia/labels.schema.json` is the editor-facing copy of the shape, and the `gaia labels` commands validate the registry themselves before acting on it.
 
 The middle of this page is generated from that registry. A hand edit between the two `gaia:labels:generated` markers is reverted by the next regeneration, so a label's color or description changes in `.gaia/labels.json` and reaches the page from there. Everything above the start marker and below the end marker is hand-maintained, and the generator never touches a byte of it.
 

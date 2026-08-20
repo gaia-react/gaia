@@ -19019,6 +19019,7 @@ var HELP_TEXT22 = `Usage: gaia labels check [--repo-root <path>] [--json]
 var HELP_TOKENS22 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var EXIT_FINDING = 1;
 var EXIT_ENVIRONMENT = 2;
+var ADOPTER_BUNDLE = ".gaia/cli/gaia";
 var SCAN_EXCLUDED = [
   // Append-only historical record; its old entries name labels that no longer
   // exist, and correctly so.
@@ -19032,13 +19033,14 @@ var SCAN_EXCLUDED = [
   "wiki/meta/",
   // Generated bundles whose literals are the source files' literals, already
   // scanned.
-  ".gaia/cli/gaia",
-  ".gaia/cli/gaia-maintainer"
+  ADOPTER_BUNDLE,
+  `${ADOPTER_BUNDLE}-maintainer`
 ];
 var ISSUE_TEMPLATE_DIRECTORY = ".github/ISSUE_TEMPLATE/";
-var WORKFLOW_VARS_FILE = ".gaia/cli/src/automation/workflow-vars.ts";
+var WORKFLOW_VARS_FILE = "src/automation/workflow-vars.ts";
 var AUDIT_CONFIG_READER = ".gaia/scripts/read-audit-ci-config.sh";
 var TOKEN_PATTERN = /^[A-Za-z0-9][A-Za-z0-9:._-]*$/u;
+var SPACED_TOKEN_PATTERN = /^[A-Za-z0-9][A-Za-z0-9:._-]*(?: [A-Za-z0-9][A-Za-z0-9:._-]*)*$/u;
 var COMMENT_LINE_PATTERN = /^\s*(?:#|\/\/|\*|>)/u;
 var SEGMENT_OPENER_PATTERN = /\|{1,2}|&&|;|\$\(|\(|`/gu;
 var GH_SEGMENT_PATTERN = /^\s*gh\s+(?:issue|pr|label)(?![\w-])/u;
@@ -19047,8 +19049,13 @@ var LABEL_POSITIONAL_PATTERN = /^\s*gh\s+label\s+(?:create|edit|delete)\s+("[^"]
 var TEMPLATE_LABELS_PATTERN = /^labels:\s*\[([^\]]*)\]/u;
 var TS_LABEL_PROPERTY_PATTERN = /\b\w*_label\s*:\s*(?:'([^']*)'|"([^"]*)")/u;
 var OVERRIDE_LABEL_PATTERN = /^DEFAULT_OVERRIDE_LABEL="([^"]*)"/u;
-var unquote = (value) => value.startsWith('"') && value.endsWith('"') || value.startsWith("'") && value.endsWith("'") ? value.slice(1, -1) : value;
-var tokensOf = (raw) => unquote(raw.trim()).split(",").map((part) => part.trim()).filter((part) => TOKEN_PATTERN.test(part));
+var isQuoted = (value) => value.length >= 2 && (value.startsWith('"') && value.endsWith('"') || value.startsWith("'") && value.endsWith("'"));
+var unquote = (value) => isQuoted(value) ? value.slice(1, -1) : value;
+var tokensOf = (raw, spaced = false) => {
+  const trimmed = raw.trim();
+  const pattern = spaced || isQuoted(trimmed) ? SPACED_TOKEN_PATTERN : TOKEN_PATTERN;
+  return unquote(trimmed).split(",").map((part) => part.trim()).filter((part) => pattern.test(part));
+};
 var logicalLines = (text) => {
   const physical = text.split("\n");
   const joined = [];
@@ -19090,16 +19097,16 @@ var literalsInGhSegment = (segment) => {
 var pinnedLiteral = (filePath, text) => {
   if (filePath.includes(ISSUE_TEMPLATE_DIRECTORY)) {
     const match = TEMPLATE_LABELS_PATTERN.exec(text);
-    if (match?.[1] !== void 0) return tokensOf(match[1]);
+    if (match?.[1] !== void 0) return tokensOf(match[1], true);
   }
   if (filePath.endsWith(WORKFLOW_VARS_FILE)) {
     const match = TS_LABEL_PROPERTY_PATTERN.exec(text);
     const value = match?.[1] ?? match?.[2];
-    if (value !== void 0) return tokensOf(value);
+    if (value !== void 0) return tokensOf(value, true);
   }
   if (filePath.endsWith(AUDIT_CONFIG_READER)) {
     const match = OVERRIDE_LABEL_PATTERN.exec(text);
-    if (match?.[1] !== void 0) return tokensOf(match[1]);
+    if (match?.[1] !== void 0) return tokensOf(match[1], true);
   }
   return [];
 };

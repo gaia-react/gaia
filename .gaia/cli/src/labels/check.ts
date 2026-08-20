@@ -55,6 +55,8 @@ const EXIT_ENVIRONMENT = 2;
 export type LabelLiteral = {file: string; line: number; name: string};
 
 /** Files the scan reads: `git ls-files` output minus these paths. */
+const ADOPTER_BUNDLE = '.gaia/cli/gaia';
+
 export const SCAN_EXCLUDED: readonly string[] = [
   // Append-only historical record; its old entries name labels that no longer
   // exist, and correctly so.
@@ -68,16 +70,30 @@ export const SCAN_EXCLUDED: readonly string[] = [
   'wiki/meta/',
   // Generated bundles whose literals are the source files' literals, already
   // scanned.
-  '.gaia/cli/gaia',
-  '.gaia/cli/gaia-maintainer',
+  ADOPTER_BUNDLE,
+  `${ADOPTER_BUNDLE}-maintainer`,
 ];
 
 const ISSUE_TEMPLATE_DIRECTORY = '.github/ISSUE_TEMPLATE/';
-const WORKFLOW_VARS_FILE = '.gaia/cli/src/automation/workflow-vars.ts';
+const WORKFLOW_VARS_FILE = 'src/automation/workflow-vars.ts';
 const AUDIT_CONFIG_READER = '.gaia/scripts/read-audit-ci-config.sh';
 
 /** A candidate that is not a placeholder or a shell expansion. */
 const TOKEN_PATTERN = /^[A-Za-z0-9][A-Za-z0-9:._-]*$/u;
+
+/**
+ * The same rule where a single internal space is part of the name. A GitHub
+ * label may carry one: both blocked entries are spelled `good first issue`
+ * and `help wanted`, and catching those is the whole point of checking
+ * blocked names, so a rule that cannot express them checks nothing.
+ *
+ * It applies only where the surrounding syntax delimits the value, a quoted
+ * shell word or a YAML flow scalar. An unquoted `--label good first issue`
+ * is three shell words rather than one label, so the strict rule still
+ * governs there.
+ */
+const SPACED_TOKEN_PATTERN =
+  /^[A-Za-z0-9][A-Za-z0-9:._-]*(?: [A-Za-z0-9][A-Za-z0-9:._-]*)*$/u;
 
 const COMMENT_LINE_PATTERN = /^\s*(?:#|\/\/|\*|>)/u;
 
@@ -104,20 +120,31 @@ const TS_LABEL_PROPERTY_PATTERN = /\b\w*_label\s*:\s*(?:'([^']*)'|"([^"]*)")/u;
 
 const OVERRIDE_LABEL_PATTERN = /^DEFAULT_OVERRIDE_LABEL="([^"]*)"/u;
 
-const unquote = (value: string): string =>
-  (
-    (value.startsWith('"') && value.endsWith('"')) ||
-    (value.startsWith("'") && value.endsWith("'"))
-  ) ?
-    value.slice(1, -1)
-  : value;
+const isQuoted = (value: string): boolean =>
+  value.length >= 2 &&
+  ((value.startsWith('"') && value.endsWith('"')) ||
+    (value.startsWith("'") && value.endsWith("'")));
 
-/** Splits a candidate cell on commas and keeps only well-formed tokens. */
-const tokensOf = (raw: string): string[] =>
-  unquote(raw.trim())
+const unquote = (value: string): string =>
+  isQuoted(value) ? value.slice(1, -1) : value;
+
+/**
+ * Splits a candidate cell on commas and keeps only well-formed tokens.
+ *
+ * `spaced` says the surrounding syntax delimits the value, so a name may
+ * carry internal spaces. A quoted shell word supplies its own delimiters; so
+ * does a YAML flow scalar, where `labels: [good first issue]` is one entry.
+ */
+const tokensOf = (raw: string, spaced = false): string[] => {
+  const trimmed = raw.trim();
+  const pattern =
+    spaced || isQuoted(trimmed) ? SPACED_TOKEN_PATTERN : TOKEN_PATTERN;
+
+  return unquote(trimmed)
     .split(',')
     .map((part) => part.trim())
-    .filter((part) => TOKEN_PATTERN.test(part));
+    .filter((part) => pattern.test(part));
+};
 
 type LogicalLine = {line: number; text: string};
 
@@ -209,20 +236,20 @@ const pinnedLiteral = (filePath: string, text: string): string[] => {
   if (filePath.includes(ISSUE_TEMPLATE_DIRECTORY)) {
     const match = TEMPLATE_LABELS_PATTERN.exec(text);
 
-    if (match?.[1] !== undefined) return tokensOf(match[1]);
+    if (match?.[1] !== undefined) return tokensOf(match[1], true);
   }
 
   if (filePath.endsWith(WORKFLOW_VARS_FILE)) {
     const match = TS_LABEL_PROPERTY_PATTERN.exec(text);
     const value = match?.[1] ?? match?.[2];
 
-    if (value !== undefined) return tokensOf(value);
+    if (value !== undefined) return tokensOf(value, true);
   }
 
   if (filePath.endsWith(AUDIT_CONFIG_READER)) {
     const match = OVERRIDE_LABEL_PATTERN.exec(text);
 
-    if (match?.[1] !== undefined) return tokensOf(match[1]);
+    if (match?.[1] !== undefined) return tokensOf(match[1], true);
   }
 
   return [];
