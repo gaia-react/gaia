@@ -126,18 +126,18 @@ transforms:
         pattern: "\\bSPEC-[0-9]{3,}\\s*"
         replacement: ""
 
-  # The six token-leak checks (uat-narrative through monorepo-prefix) each
-  # carry `scope: ["**"]`, the whole staging tree. That tree IS the shipped
-  # set, so their scope cannot drift from what ships, and there is no list left
-  # to be wrong: five earlier repairs of this class (#644, #656, #710, #1306,
-  # #1352) each added one more glob to one more list and the sixth instance
-  # arrived anyway. The narrower scopes further down belong to the
-  # file-class-specific checks. For five of them a narrow scope is the intent
-  # rather than drift; `absolute-paths` is the exception, since CLAUDE.md bans
-  # machine-specific absolute paths repo-wide while that check reads only
-  # `.claude/**`. Widening it is deliberately not folded in here: it is a
-  # different pattern with its own false-positive surface, and this change's
-  # evidence covers the six token checks only. Tracked as #1479.
+  # The six token-leak checks (uat-narrative through monorepo-prefix) plus
+  # `absolute-paths` each carry `scope: ["**"]`, the whole staging tree. That
+  # tree IS the shipped set, so their scope cannot drift from what ships, and
+  # there is no list left to be wrong: five earlier repairs of this class
+  # (#644, #656, #710, #1306, #1352) each added one more glob to one more list
+  # and the sixth instance arrived anyway. `absolute-paths` carries the same
+  # scope for the same reason (#1479): CLAUDE.md and
+  # `.claude/rules/repo-relative-paths.md` ban machine-specific absolute paths
+  # repo-wide, so a `.claude/**` scope leaves every other shipped surface
+  # unguarded against the literal its own rule forbids. The narrower
+  # scopes further down belong to the file-class-specific checks, where a
+  # narrow scope is the intent rather than drift.
   - type: leak-check
     # Subtracted from every check in this transform: a binary's bytes decoded
     # as UTF-8 are noise a token regex can match by accident, and a reported
@@ -308,10 +308,10 @@ transforms:
 
       # ---- Absolute filesystem literals ----
       - id: absolute-paths
-        description: "Absolute /Users or /home filesystem paths in shipped Claude files"
+        description: "Absolute /Users or /home filesystem paths in shipped files"
         pattern: "/Users/|/home/"
         scope:
-          - ".claude/**"
+          - "**"
         path-allowlist:
           # The rule's own counter-example prose documents this pattern.
           - ".claude/rules/instruction-files.md"
@@ -320,11 +320,45 @@ transforms:
           # algorithm input the skill executes against. Removing the literal
           # would break the documentation's correspondence to the regex.
           - ".claude/skills/gaia/references/forensics/redaction.md"
-          # Policy-documenting rule: contains sanctioned generic placeholders
-          # (/Users/you, /Users/username) and forensics-fixture paths
-          # (/Users/testuser, /Users/alice) as the examples it governs; same
-          # rationale as wiki-style.md.
+          # Policy-documenting rule: contains every path its own Exceptions 1
+          # and 2 sanction, as the examples it governs; same rationale as
+          # wiki-style.md.
           - ".claude/rules/repo-relative-paths.md"
+        # Both entries exempt a placeholder form the rule sanctions repo-wide,
+        # so both are lines rather than paths. A path entry would waive whatever
+        # content later occupies it, and nothing validates an allowlist entry
+        # against the file it names.
+        #
+        # Accepted gap: `line-allowlist` drops the whole matching line before
+        # the pattern runs, so a real machine path SHARING a line with one of
+        # these placeholders is not scanned. Narrowing the exemption to the
+        # match is an engine change, and the shape that would need it, a
+        # before/after contrast on one line, is rarer than the multi-line
+        # stack-trace shape these entries exist for. Pinned as a test so the
+        # gap is recorded rather than rediscovered.
+        line-allowlist:
+          # Every generic placeholder `.claude/rules/repo-relative-paths.md`
+          # Exception 2 sanctions, so the gate permits exactly what the rule
+          # tells an author to write. Encoding the rule rather than today's
+          # instances is the same reason these are lines and not paths; the
+          # `/Users/` forms ship in the captured Storybook parser stack trace
+          # under app/components/Errors/ErrorStack, `/home/bar` ships nowhere
+          # yet and is here so following the rule cannot fail the bundle.
+          #
+          # Covers each placeholder used as a path PREFIX, which is how every
+          # shipped instance spells them. A bare mention still flags; the two
+          # that exist are path-allowlisted or release-excluded, so nothing
+          # the check walks relies on the wider form. The trailing `/` draws
+          # that line and is load-bearing: dropping it would exempt
+          # `/Users/youngster/...` and `/home/barbara/...`, and a
+          # right-boundary class instead trades that for flagging a sentence
+          # ending in `/home/bar.` Prefix-only is the narrower, so it is kept.
+          - "/(Users/(you|username)|home/bar)/"
+          # The elided-middle placeholder, e.g. the shell-wrapper levels
+          # `.specify/extensions/gaia/lib/spec-session-lock.sh` documents in a
+          # comment. A real machine path never contains a literal `/.../`, so
+          # exempting the line keeps that live script guarded everywhere else.
+          - "/Users/\\.\\.\\./"
 
       # ---- Maintainer-only governance files at staging root ----
       # Release-exclude category 11 keeps these out of the staging tree.
