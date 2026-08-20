@@ -15102,7 +15102,7 @@ var buildWorkflowVars = (config2, tool) => {
     enable_major_bump_split: tool === "update-deps",
     enable_security_pr: tool === "pnpm-audit",
     enable_stale_branch_delete: tool === "stale-branches",
-    needs_human_review_label: "needs-human-review",
+    needs_human_label: "needs-human",
     pr_label: "gaia-ci",
     schedule,
     tool_id: tool,
@@ -15748,7 +15748,7 @@ var parsePrUrlNumber = (urlOrText) => {
 var DEFAULT_REVERT_BODY = (originalPr) => `Auto-revert of #${originalPr} opened by GAIA CI after post-merge CI failure.
 
 This PR will auto-merge on green CI. If its CI also fails, GAIA CI will
-stop automated activity on this change and open a \`priority:critical\`
+stop automated activity on this change and open a \`severity:critical\`
 issue requesting human intervention.
 `;
 var surfaceRevertFailure = (step, result, json2) => {

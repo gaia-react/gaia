@@ -36,15 +36,6 @@ name: Label Registry
 # maintainer-run, ask-first cutover, not something a drift detector does to
 # itself; `audit-roster.yml` states the same and this workflow follows it.
 #
-# This job is expected to go red the moment it lands, and to stay red until
-# the vocabulary migration phase that follows it lands in the same pull
-# request. The tracked tree still carries four label literals the registry
-# does not yet answer (`priority:high`, `priority:critical`,
-# `needs-human-review`, `gaia-bug-confirmed`); the migration retires all
-# four. The whole plan lands as one pull request, so the merged state on
-# `main` is green; there is no grace period and no suppression here for the
-# window in between.
-#
 # Maintainer-only and release-excluded (`.gaia/release-exclude`, category 9,
 # alongside `audit-roster.yml` and `distribution-audit-pr.yml`). An adopter's
 # labels are the adopter's business: their clone gets the registry, the

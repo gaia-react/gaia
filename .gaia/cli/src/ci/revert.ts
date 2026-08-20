@@ -168,7 +168,7 @@ const parsePrUrlNumber = (urlOrText: string): null | number => {
 const DEFAULT_REVERT_BODY = (originalPr: number): string =>
   `Auto-revert of #${originalPr} opened by GAIA CI after post-merge CI failure.\n\n` +
   'This PR will auto-merge on green CI. If its CI also fails, GAIA CI will\n' +
-  'stop automated activity on this change and open a `priority:critical`\n' +
+  'stop automated activity on this change and open a `severity:critical`\n' +
   'issue requesting human intervention.\n';
 
 const surfaceRevertFailure = (

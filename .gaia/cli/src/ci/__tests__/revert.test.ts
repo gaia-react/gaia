@@ -212,6 +212,21 @@ describe('ci-revert', () => {
       expect(checkSubject(title).ok).toBe(true);
     });
 
+    test('the default revert body pins the severity:critical escalation label', () => {
+      const exit = run(['open', '--pr', '99', '--label', 'gaia-ci', '--json'], {
+        cwd: sandbox.root,
+      });
+      expect(exit).toBe(0);
+
+      const createCall = ghSpy.mock.calls.find(
+        ([args]) => args[0] === 'pr' && args[1] === 'create'
+      );
+      const createArgs = createCall?.[0] ?? [];
+      const body = createArgs[createArgs.indexOf('--body') + 1] ?? '';
+
+      expect(body).toContain('`severity:critical`');
+    });
+
     test('opens the revert PR and writes the ledger', () => {
       const fixedNow = new Date('2026-05-09T05:00:00.000Z');
       const exit = run(['open', '--pr', '99', '--label', 'gaia-ci', '--json'], {

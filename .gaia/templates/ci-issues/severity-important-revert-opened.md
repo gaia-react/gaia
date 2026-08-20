@@ -4,7 +4,7 @@ Post-merge CI on the merge commit `${MERGE_SHA}` failed. The bot has opened a
 revert PR (#${REVERT_PR}) and enabled auto-merge.
 
 If the revert's CI is also red, the bot will stop and escalate to a
-`priority:critical` issue. No second revert is attempted.
+`severity:critical` issue. No second revert is attempted.
 
 - Original PR: #${ORIGINAL_PR} (${ORIGINAL_TITLE})
 - Merge commit: ${MERGE_SHA}

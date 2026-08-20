@@ -26,12 +26,12 @@ outputs:
   revert-branch:
     description: 'Revert branch name on revert paths; empty otherwise.'
     value: ${{ steps.summarize.outputs.revert_branch }}
-  priority-high-issue:
+  severity-important-issue:
     description: 'Issue number opened on revert dispatch; empty otherwise.'
-    value: ${{ steps.summarize.outputs.high_issue }}
-  priority-critical-issue:
+    value: ${{ steps.summarize.outputs.severity_important_issue }}
+  severity-critical-issue:
     description: 'Issue number opened on revert failure; empty otherwise.'
-    value: ${{ steps.summarize.outputs.critical_issue }}
+    value: ${{ steps.summarize.outputs.severity_critical_issue }}
 runs:
   using: 'composite'
   steps:
@@ -131,7 +131,7 @@ runs:
         # assignment followed by `rc=$?` is unreachable under `set -e`. Here the
         # dead branch is the `revert_already_opened` reuse path, and the step's
         # death also skips the three steps gated on its `success` outcome, which
-        # is what silently swallows the priority:high/critical escalation.
+        # is what silently swallows the severity:important/critical escalation.
         rc=0
         revert_json="$(gaia ci-revert open --pr "$PR_NUMBER" --label "$LABEL" --reason "post-merge CI failure on $MERGE_SHA" --json)" || rc=$?
         if [[ $rc -ne 0 ]]; then
@@ -150,7 +150,7 @@ runs:
           echo "revert_branch=$(jq -r '.revert_branch' <<<"$revert_json")" >> "$GITHUB_OUTPUT"
         fi
 
-    - id: open-priority-high-issue
+    - id: open-severity-important-issue
       if: steps.open-revert.outcome == 'success' && steps.open-revert.conclusion == 'success'
       shell: bash
       env:
@@ -164,15 +164,15 @@ runs:
         REVERT_FAILED_RUN_URL: ''
       run: |
         set -euo pipefail
-        body="$(${GITHUB_ACTION_PATH}/lib/render-issue.sh "${GITHUB_WORKSPACE}/.gaia/templates/ci-issues/priority-high-revert-opened.md")"
+        body="$(${GITHUB_ACTION_PATH}/lib/render-issue.sh "${GITHUB_WORKSPACE}/.gaia/templates/ci-issues/severity-important-revert-opened.md")"
         issue_url="$(printf '%s\n' "$body" | gh issue create \
           --title "GAIA CI: PR #${ORIGINAL_PR} reverted via PR #${REVERT_PR}" \
-          --label "priority:high" \
+          --label "severity:important" \
           --label "gaia-ci" \
           --body-file -)"
         issue_number="${issue_url##*/}"
-        echo "high_issue=$issue_number" >> "$GITHUB_OUTPUT"
-        echo "::notice title=GAIA CI::PR #${ORIGINAL_PR} reverted via PR #${REVERT_PR}; see issue #${issue_number} (priority:high)"
+        echo "severity_important_issue=$issue_number" >> "$GITHUB_OUTPUT"
+        echo "::notice title=GAIA CI::PR #${ORIGINAL_PR} reverted via PR #${REVERT_PR}; see issue #${issue_number} (severity:important)"
 
     - id: wait-for-revert-merge
       if: steps.open-revert.outcome == 'success' && steps.open-revert.conclusion == 'success'
@@ -231,15 +231,15 @@ runs:
       run: |
         set -euo pipefail
         gaia ci-revert mark-failed --pr "$PR_NUMBER" --json >/dev/null
-        body="$(${GITHUB_ACTION_PATH}/lib/render-issue.sh "${GITHUB_WORKSPACE}/.gaia/templates/ci-issues/priority-critical-revert-failed.md")"
+        body="$(${GITHUB_ACTION_PATH}/lib/render-issue.sh "${GITHUB_WORKSPACE}/.gaia/templates/ci-issues/severity-critical-revert-failed.md")"
         issue_url="$(printf '%s\n' "$body" | gh issue create \
           --title "GAIA CI: revert of PR #${ORIGINAL_PR} also failed; bot stopped" \
-          --label "priority:critical" \
+          --label "severity:critical" \
           --label "gaia-ci" \
           --body-file -)"
         issue_number="${issue_url##*/}"
-        echo "critical_issue=$issue_number" >> "$GITHUB_OUTPUT"
-        echo "::error title=GAIA CI::revert PR #${REVERT_PR} failed CI; bot stopped; see issue #${issue_number} (priority:critical)"
+        echo "severity_critical_issue=$issue_number" >> "$GITHUB_OUTPUT"
+        echo "::error title=GAIA CI::revert PR #${REVERT_PR} failed CI; bot stopped; see issue #${issue_number} (severity:critical)"
 
     - id: summarize
       shell: bash
@@ -250,8 +250,8 @@ runs:
         REVERT_CLEAN: ${{ steps.branch-on-revert-conclusion.outputs.revert_clean }}
         REVERT_PR: ${{ steps.open-revert.outputs.revert_pr }}
         REVERT_BRANCH: ${{ steps.open-revert.outputs.revert_branch }}
-        HIGH_ISSUE: ${{ steps.open-priority-high-issue.outputs.high_issue }}
-        CRITICAL_ISSUE: ${{ steps.mark-revert-failed-and-escalate.outputs.critical_issue }}
+        SEVERITY_IMPORTANT_ISSUE: ${{ steps.open-severity-important-issue.outputs.severity_important_issue }}
+        SEVERITY_CRITICAL_ISSUE: ${{ steps.mark-revert-failed-and-escalate.outputs.severity_critical_issue }}
         ORIGINAL_PR: ${{ inputs.pr-number }}
       run: |
         set -euo pipefail
@@ -269,8 +269,8 @@ runs:
         echo "conclusion=$conclusion" >> "$GITHUB_OUTPUT"
         echo "revert_pr=${REVERT_PR}" >> "$GITHUB_OUTPUT"
         echo "revert_branch=${REVERT_BRANCH}" >> "$GITHUB_OUTPUT"
-        echo "high_issue=${HIGH_ISSUE}" >> "$GITHUB_OUTPUT"
-        echo "critical_issue=${CRITICAL_ISSUE}" >> "$GITHUB_OUTPUT"
+        echo "severity_important_issue=${SEVERITY_IMPORTANT_ISSUE}" >> "$GITHUB_OUTPUT"
+        echo "severity_critical_issue=${SEVERITY_CRITICAL_ISSUE}" >> "$GITHUB_OUTPUT"
         if [[ "$conclusion" == "merged" ]]; then
           echo "::notice title=GAIA CI::PR #${ORIGINAL_PR} merged green"
         fi

@@ -31,7 +31,7 @@ Lifecycle:
 6. **Apply fix.** A second `claude-code-action` invocation runs the fix-application prompt with `--allowedTools Edit,Write` only; no shell, no git, no network. The branch `forensics/<issue-num>-<class-slug>` is created locally from `origin/main`.
 7. **Post-fix scope check.** Even within the allowlist, the diff must be a subset of the classifier's proposed paths. Any deviation aborts before commit and demotes to `needs-human`.
 8. **Quality Gate.** `.github/forensics/run-quality-gate.sh` runs `pnpm install --frozen-lockfile`, `pnpm typecheck`, `pnpm lint`, `pnpm test --run`, and `pnpm knip` in order, halt-on-first-fail. Gate failure abandons the branch (it was never pushed) and demotes the issue to `needs-human` with a comment naming the failed step and a log excerpt.
-9. **Open draft PR.** Gate pass pushes the branch and opens a draft PR. PR body cites the `## Capture` section verbatim. Labels `auto-fixable` and `gaia-bug-confirmed` attach to the issue.
+9. **Open draft PR.** Gate pass pushes the branch and opens a draft PR. PR body cites the `## Capture` section verbatim. Label `auto-fixable` attaches to the issue.
 10. **Idempotency key.** Every triaged issue receives the `gaia-triaged` label as the final, always-run step.
 
 The workflow file at `.github/workflows/forensics-triage.yml` is on the canonical denylist below: triage runs cannot self-modify, and `check-scope.sh` rejects any attempt to edit a path under `.github/workflows/`.
@@ -79,7 +79,6 @@ All six labels in the vocabulary must pre-exist on the upstream repo: the five i
 | `non-issue`          | grey (`cccccc`)   | Not a bug. Issue closed with explanation.                                                                                                 |
 | `needs-human`        | orange (`d93f0b`) | Real bug, but out of autofix scope OR malformed body OR ambiguous classifier verdict OR Quality Gate failure. Maintainer review required. |
 | `auto-fixable`       | blue (`1d76db`)   | Classifier proposed a fix in allowlisted scope. See linked draft PR.                                                                      |
-| `gaia-bug-confirmed` | red (`b60205`)    | Quality Gate passed on the auto-fix branch. Draft PR open and ready for human review.                                                     |
 
 The `gaia-forensics` trigger label is the first entry in `bootstrap-labels.sh`'s `LABELS` inventory (color `5319e7`); the bootstrap script creates and asserts it alongside the other five labels.
 

@@ -225,7 +225,7 @@ The handler label records **how far the fix reaches**, which decides how the eve
 | `handler:plan` | anything larger or more structural. |
 | `handler:spec` | design-first: it must begin with a design SPEC, a new subsystem, a schema or contract decision, or a cross-cutting redesign. `/gaia-debt` resolves a spec-class issue by printing a `/gaia-spec` handoff and stopping, not by opening a fix PR. |
 
-The three share one color family, deepening with reach: `c2e0c6` for `handler:prompt`, `7fbf8a` for `handler:plan`, `2f7d3a` for `handler:spec`. Nothing reads the color, so this is cosmetic, but the family is stated here rather than left to each creation site: a namespace whose members are colored independently stops reading as one axis in the tracker's label list. The loop in this step cannot apply the family: it passes one color to every label it creates, and it carries no per-label mapping. So where the loop reaches these three labels first, `gh label create` no-ops on them afterwards and the family is applied with `gh label edit` rather than by re-running the loop. Nothing breaks either way; a label is not less usable for being off-family.
+The three share one color family, a violet ramp that deepens with reach. `wiki/concepts/GitHub Labels.md` documents the family, and `gaia labels sync` applies it.
 
 The class is advisory: whatever later drains the issue re-derives it from the cited code and may override it, in either direction, including the `spec` value. That is precisely why it rides as a label rather than as body prose. Re-grading is `gh issue edit <n> --remove-label handler:spec --add-label handler:plan`, which leaves the transition in the issue's timeline, where a body edit would have destroyed the prior value and a correcting comment would have left the body still asserting the overruled one.
 
@@ -247,24 +247,34 @@ See step 7 for the difficulty label's three permitted values and the rubric for 
 
 A finding that gets deliberately declined (closed without fixing) carries GitHub's `wontfix` label, that's what step 2 checks for to avoid re-filing it.
 
-Create all twelve labels idempotently before the first filing in a run, a label that already exists is not an error:
+The registry's adopter set is reconciled before the first filing in a run:
 
 ```bash
-for label in tech-debt severity:critical severity:important severity:suggestion \
-             handler:prompt handler:plan handler:spec \
-             fold:required \
-             difficulty:easy difficulty:medium difficulty:hard wontfix; do
-  gh label create "$label" --color <hex> 2>/dev/null || true
-done
+if ! .gaia/cli/gaia labels sync 2>/dev/null | grep -q '^labels-sync: degraded'; then
+  : # sync reconciled the set; nothing else to do
+else
+  for label in tech-debt severity:critical severity:important severity:suggestion \
+               handler:prompt handler:plan handler:spec \
+               fold:required \
+               difficulty:easy difficulty:medium difficulty:hard wontfix; do
+    gh label create "$label" 2>/dev/null || true
+  done
+fi
 ```
+
+The fallback loop exists only for a repository provisioned before the registry existed, where the installed CLI may predate the `labels` command; a label that already exists is not an error.
 <!-- gaia:maintainer-only:start -->
 
-On the GAIA maintainer repository, create the two `surface:` labels as well, fourteen in total there:
+On the GAIA maintainer repository, the registry's maintainer set is reconciled as well, fourteen in total there:
 
 ```bash
-for label in surface:adopter surface:maintainer; do
-  gh label create "$label" --color <hex> 2>/dev/null || true
-done
+if ! .gaia/cli/gaia labels sync --audience maintainer 2>/dev/null | grep -q '^labels-sync: degraded'; then
+  : # sync reconciled the set; nothing else to do
+else
+  for label in surface:adopter surface:maintainer; do
+    gh label create "$label" 2>/dev/null || true
+  done
+fi
 ```
 <!-- gaia:maintainer-only:end -->
 
@@ -314,12 +324,12 @@ The backlog that predates provenance does not get provenance, and this is a proh
 
 What ships instead is a one-time cohort marker, per repository:
 
-1. Create the `debt:pre-provenance` label idempotently, exactly as this recipe already creates its own labels in step 6. Nothing else creates it.
+1. Create the `debt:pre-provenance` label idempotently, directly: the registry marks this entry `deprecated` and `managed: false`, so `gaia labels sync` never creates it. Nothing else creates it.
 2. Apply it to every open `tech-debt` issue whose body carries no `gaia-debt-origin` line, raising the result limit so the sweep cannot silently stop at a default page size.
 3. Re-running is safe and is the recovery path for a run that failed partway. The body test is what makes it so: a plain "label every open issue" sweep would be idempotent in the trivial sense and still wrong, because a re-run days later would stamp issues filed after provenance landed and destroy the very distinction the marker exists to draw.
 
 ```bash
-gh label create debt:pre-provenance --color ededed 2>/dev/null || true
+gh label create debt:pre-provenance 2>/dev/null || true
 gh issue list --label tech-debt --state open --limit 1000 --json number,body \
   --jq '.[] | select(((.body // "") | test("<!-- gaia-debt-origin:")) | not) | .number' \
 | while read -r n; do
@@ -331,20 +341,24 @@ The marker is only accurate when applied at the moment provenance starts writing
 
 The marker changes no displayed number and no consumer gates on it, so it is additive.
 
-Do not add `debt:pre-provenance` to step 6's idempotent label-creation loop: the rollout is a one-time per-repository step, not a per-filing one, and adding it would make that loop's "all twelve labels" comment wrong.
+Do not add `debt:pre-provenance` to step 6's reconcile: the rollout is a one-time per-repository step rather than a per-filing one, which is why `debt:pre-provenance` does not belong there.
 
 ## Rollout: backfill the handler class onto the existing backlog
 
 The handler class rides as a `handler:` label (step 6). A backlog filed before that carries the class as a `Handler:` body line instead, which nothing reads any more, so those issues drain as unclassified until the label lands. Unlike the cohort marker above this is a real backfill and it is safe to be one: every stored value came from a filing route applying step 6's rubric, so copying it onto a label preserves a real conclusion rather than inventing one.
 
-1. Create the three `handler:` labels idempotently, in the shared color family step 6 states. Re-running this is free.
+1. Reconcile the three `handler:` labels idempotently, in the violet family the registry documents. Re-running this is free.
 2. For every open `tech-debt` issue that carries **no** `handler:` label and whose body carries a parseable `Handler:` line, add the matching label.
 3. Re-running is safe. The label test is what makes it so: an issue that already carries a class is skipped, so a drainer's re-grade between runs is never overwritten by the body's original value.
 
 ```bash
-gh label create handler:prompt --color c2e0c6 2>/dev/null || true
-gh label create handler:plan   --color 7fbf8a 2>/dev/null || true
-gh label create handler:spec   --color 2f7d3a 2>/dev/null || true
+if ! .gaia/cli/gaia labels sync 2>/dev/null | grep -q '^labels-sync: degraded'; then
+  : # sync reconciled the set; nothing else to do
+else
+  for label in handler:prompt handler:plan handler:spec; do
+    gh label create "$label" 2>/dev/null || true
+  done
+fi
 gh issue list --label tech-debt --state open --limit 1000 --json number,labels,body \
   --jq '.[]
         | select(([.labels[].name] | map(select(startswith("handler:"))) | length) == 0)

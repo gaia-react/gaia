@@ -214,13 +214,15 @@ Honor whatever the human picks or types into **Other**. If a typed value is not 
 
 This runs in `fix` only, as the **first** step after the pick above, before the Fix-time security, staleness, and spec screens and before Pre-flight isolation (branch/worktree) below. Claiming immediately after the pick, ahead of all of those steps, minimizes the window in which a peer session also picks the same ticket.
 
-Ensure the label exists, idempotently:
+Reconcile the label via the registry, idempotently:
 
 ```bash
-gh label create debt:in-progress --color <hex> 2>/dev/null || true
+.gaia/cli/gaia labels sync 2>/dev/null || true
+gh label list --json name --jq '.[].name' 2>/dev/null | grep -qx 'debt:in-progress' \
+  || gh label create 'debt:in-progress' 2>/dev/null || true
 ```
 
-The `debt:` namespace is load-bearing: a `debt:`-prefixed label is gaia-owned by convention, the same way `severity:critical` is, so the reconcile above never strips a label a human set by hand.
+The fallback create exists only for a repository provisioned before the registry existed, where the installed CLI may predate the `labels` command; a label that already exists is not an error. The `debt:` namespace is load-bearing: a `debt:`-prefixed label is gaia-owned by convention, the same way `severity:critical` is, so the reconcile above never strips a label a human set by hand.
 
 Then, for a single issue or **every member of a confirmed batch**:
 
@@ -308,7 +310,7 @@ Runs after the pick, the claim, the Fix-time security screen, and the Fix-time s
 
 **For each confirmed spec-class member, do not implement.** Instead:
 
-1. **No-orphan claim swap (MIG-002).** Ensure the label exists idempotently (`gh label create debt:spec-pending --color <hex> 2>/dev/null || true`), then **add `debt:spec-pending` before removing `debt:in-progress`** (`gh issue edit <n> --add-label debt:spec-pending` then `gh issue edit <n> --remove-label debt:in-progress`), so a mid-swap failure never strands the issue label-less. The `debt:` namespace makes the label gaia-owned by convention, the same way `debt:in-progress` is, so the reconcile above never strips it.
+1. **No-orphan claim swap (MIG-002).** Reconcile the label via the registry idempotently (`.gaia/cli/gaia labels sync 2>/dev/null || true; gh label list --json name --jq '.[].name' 2>/dev/null | grep -qx 'debt:spec-pending' || gh label create 'debt:spec-pending' 2>/dev/null || true`), then **add `debt:spec-pending` before removing `debt:in-progress`** (`gh issue edit <n> --add-label debt:spec-pending` then `gh issue edit <n> --remove-label debt:in-progress`), so a mid-swap failure never strands the issue label-less. The `debt:` namespace makes the label gaia-owned by convention, the same way `debt:in-progress` is, so the reconcile above never strips it.
 2. **Touch the debt-count sentinel** (`mkdir -p .gaia/local/debt && : > .gaia/local/debt/refresh-requested`) so the count refreshes; the parked issue leaves `openCount`.
 3. **Print a single copy-pasteable `/gaia-spec` handoff block**, carrying the originating issue number `#<N>` so the eventual implementation PR can `Closes #<N>`:
 
