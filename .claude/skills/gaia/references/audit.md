@@ -363,9 +363,16 @@ One fenced YAML block per finding:
   suggested_fix: {one line, e.g. "run /gaia-wiki consolidate" for wiki-internal redundancy or a page-vs-page conflict, "run /gaia-wiki lint" for a broken link, or a specific rewrite}
   handler: {prompt | plan, prompt when the fix is a single logical unit confined to one file with no cross-module ripple, else plan}
   difficulty: {easy | medium | hard, graded against the rubric in .claude/skills/file-tech-debt/SKILL.md, assigned at filing time, not by a later pass}
-  surface: {adopter | maintainer, against the rubric in .claude/skills/file-tech-debt/SKILL.md step 6: who can observe the defect, not how bad or how hard it is. Mandatory, unlike difficulty}
   security_sensitive: {true only if the finding's CONTENT reads as a security concern or is secret-shaped, else false; see the divergence note in "## Dispose out-of-scope findings"}
   ```
+<!-- gaia:maintainer-only:start -->
+
+On the GAIA maintainer repository the block carries one more field, between `difficulty` and `security_sensitive`:
+
+```yaml
+surface: {adopter | maintainer, against the rubric in .claude/skills/file-tech-debt/SKILL.md step 6: who can observe the defect, not how bad or how hard it is. Mandatory, unlike difficulty}
+```
+<!-- gaia:maintainer-only:end -->
 
 ## Ordering
 
@@ -528,7 +535,10 @@ Follow `.claude/agents/code-audit-frontend.md` section **C** (backend probe: def
 Four audit-specific rules override the agent's defaults; do NOT "fix" them back to the agent's shape:
 
 - **Screen on `security_sensitive`, never on the class.** A finding is security-class **only** when its block's `security_sensitive: true` (its content reads as a security concern or is secret-shaped), never merely because it carries `holistic/unclassified`, which is the expected class for an audit finding (knowledge/doc hygiene maps to no seeded class by construction). This is the agent's own rule rather than an audit-specific carve-out: `.claude/agents/code-audit-frontend.md` section B screens on content and severity and excludes the fallback class as a trigger, precisely because a class-keyed screen would divert every finding and file nothing on a public repo. Screen on the flag, then apply the agent's **section D** visibility gate (PUBLIC/INTERNAL → divert, never a public issue; confirmed PRIVATE → file through E).
-- **Build the dedup key from the block's own fields:** `<!-- gaia-debt-key: v1 class=<finding_class> path=<path> line=<line> -->` from the block's `finding_class` (or `holistic/unclassified`), `path`, and `line`. Dedup per the file-tech-debt skill's dedup procedure (open + declined-closed + keyless `path:line` fallback) so a repeated audit never re-files a standing wiki-internal problem. Map `severity` → the `severity:<tier>` label, map `surface` → the `surface:<side>` label, map `difficulty` → the `difficulty:<grade>` label, and map the block's `handler` → the `handler:<class>` label. Run the skill's blocking pre-file metadata check (`.gaia/scripts/check-debt-issue-metadata.sh --pre-file`) on the assembled label set and body before creating, and do not file on a finding.
+- **Build the dedup key from the block's own fields:** `<!-- gaia-debt-key: v1 class=<finding_class> path=<path> line=<line> -->` from the block's `finding_class` (or `holistic/unclassified`), `path`, and `line`. Dedup per the file-tech-debt skill's dedup procedure (open + declined-closed + keyless `path:line` fallback) so a repeated audit never re-files a standing wiki-internal problem. Map `severity` → the `severity:<tier>` label, map `difficulty` → the `difficulty:<grade>` label, and map the block's `handler` → the `handler:<class>` label. Run the skill's blocking pre-file metadata check (`.gaia/scripts/check-debt-issue-metadata.sh --pre-file`) on the assembled label set and body before creating, and do not file on a finding.
+<!-- gaia:maintainer-only:start -->
+  Maintainer repository only: also map the block's `surface` field → the `surface:<side>` label.
+<!-- gaia:maintainer-only:end -->
 - **Do NOT write a `<HEAD>.dispositions.json` sidecar.** That sidecar gates the code-audit-frontend marker; the audit's own PR clears the merge gate through the out-of-scope bypass whenever the oracle finds nothing owed for its diff (see `## Publish`). Writing one would make `audit-disposition-check.sh` gate the audit's own merge on a filing it never needed. File the issues; write no sidecar.
 - **Emit provenance on every filing.** Run `origin="$(bash .gaia/scripts/debt-origin-lib.sh --changed unknown 2>/dev/null || true)"` once per finding; the file-tech-debt skill owns where `$origin` goes in the body. The bare form is correct here and must not be "fixed" into the `cd "$AUDIT_ROOT" && ...` shape the frontend audit agent's local disposition pipeline uses (`.claude/agents/code-audit-frontend.md`): this route carries no `AUDIT_ROOT`, and the knowledge audit's own session cwd is the tree the filing describes. `changed` is the literal `unknown`, per this file's row in the emitting-routes table in `.claude/skills/file-tech-debt/SKILL.md`, which owns the field vocabulary, the convention table, and this route's known limitation; reference it, restate none of them here. Fail open: if the helper prints nothing, omit the `gaia-debt-origin` line and continue, matching this section's existing posture that a backend-absent or transient `gh` failure is never fatal.
 

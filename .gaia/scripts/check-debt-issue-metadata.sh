@@ -26,12 +26,14 @@
 # rather than a check. The filing routes are models; the label set they emit is
 # the one artifact of a filing that no later step re-reads, so a mistake there
 # is silent until a drainer trips over it weeks later. This is the read-back.
+# gaia:maintainer-only:start
 #
 # The `surface:` namespace is the one rule here that SKILL.md did not previously
 # state. The two labels existed in the tracker and were applied by hand often
 # enough to look like a convention, while being documented nowhere and emitted
 # by no filing route. Step 6 of the recipe now defines them; this gate is what
 # makes that definition checkable.
+# gaia:maintainer-only:end
 
 set -euo pipefail
 
@@ -45,7 +47,9 @@ readonly PROG="check-debt-issue-metadata"
 # exactly that reason: a spelling changed there and not here fails a filing
 # immediately, which is the loud direction to fail in.
 readonly SEVERITY_VALUES="critical important suggestion"
+# gaia:maintainer-only:start
 readonly SURFACE_VALUES="adopter maintainer"
+# gaia:maintainer-only:end
 readonly DIFFICULTY_VALUES="easy medium hard"
 readonly HANDLER_VALUES="prompt plan spec"
 # One permitted value today. A single-valued namespace is still a namespace
@@ -109,8 +113,8 @@ values_ns() {
 # read a line at a time out of a process substitution rather than word-split out
 # of an unquoted `$(...)` in a `for` list. An unquoted command substitution is
 # split on IFS and then glob-expanded, which silently converts one bad label
-# into something the checks accept: `surface:adopter maintainer` would be tested
-# as two separate values that are each individually legal, and `surface:*` would
+# into something the checks accept: `severity:critical important` would be tested
+# as two separate values that are each individually legal, and `severity:*` would
 # expand against the working directory and report one finding per file in the
 # repository root instead of one finding naming the label. And the loop is fed
 # by a redirect rather than a pipe, because `finding` increments a counter in
@@ -164,6 +168,7 @@ check_labels() {
     finding "$subject" "severity-count" "expected exactly one \`severity:\` label, found $n"
   fi
   check_ns_values "$subject" "$labels" 'severity:' "$SEVERITY_VALUES" "severity"
+  # gaia:maintainer-only:start
 
   # Exactly one surface. Unlike severity there is no fallback band: an
   # unlabeled issue is simply unfiled against the adopter/maintainer split
@@ -173,6 +178,7 @@ check_labels() {
     finding "$subject" "surface-count" "expected exactly one \`surface:\` label, found $n"
   fi
   check_ns_values "$subject" "$labels" 'surface:' "$SURFACE_VALUES" "surface"
+  # gaia:maintainer-only:end
 
   # Difficulty is optional by design: a filing that did not read the cited code
   # omits the grade rather than guessing one. So zero is clean and two is not,

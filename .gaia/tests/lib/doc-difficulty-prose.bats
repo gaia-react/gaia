@@ -231,13 +231,19 @@ setup() {
 }
 
 @test "UAT-004: SKILL.md's step 6 states the exactly-one invariant for each mandatory namespace, and for the optional grade" {
-  # Severity and surface are mandatory and stated together; difficulty is
-  # stated conditionally, because a filing that did not read the cited code
-  # omits the grade rather than guessing one. Both halves are pinned, so a
-  # rewrite cannot quietly promote the grade to mandatory or demote either
-  # mandatory label to optional.
-  grep -qF -- "**exactly one** severity label and **exactly one** surface label" "$VOCAB" || return 1
+  # Severity and handler are mandatory on every clone; difficulty is stated
+  # conditionally, because a filing that did not read the cited code omits the
+  # grade rather than guessing one. Both halves are pinned, so a rewrite cannot
+  # quietly promote the grade to mandatory or demote a mandatory label to
+  # optional.
+  grep -qF -- "**exactly one** severity label, plus **exactly one** handler label" "$VOCAB" || return 1
   grep -qF -- "a filing that carries a difficulty grade (see step 7) carries exactly one difficulty label as well" "$VOCAB" || return 1
+  # Surface is mandatory too, but only on the maintainer repository: its span
+  # is marker-wrapped so adopters never receive a field whose value cannot
+  # vary on their clone (gaia-react/gaia#1437). Pinned separately from the
+  # shipped invariant so a rewrite that folds it back into the shipped
+  # sentence fails here instead of leaking past the release scrub.
+  grep -qF -- "carries **exactly one** \`surface:\` label as well" "$VOCAB" || return 1
 }
 
 @test "SKILL.md carries the three rider paragraphs beside the rubric block" {
@@ -246,24 +252,32 @@ setup() {
   grep -qF -- "carry no information about the finding" "$VOCAB" || return 1
 }
 
-@test "UAT-005: the label loop creates all three difficulty labels, both surface labels, all three handler labels, and still creates the five pre-existing ones" {
+@test "UAT-005: the label loops create all three difficulty labels, both surface labels, all three handler labels, and still create the five pre-existing ones" {
   grep -qF -- "for label in tech-debt severity:critical severity:important severity:suggestion" "$VOCAB" || return 1
-  grep -qF -- "surface:adopter surface:maintainer" "$VOCAB" || return 1
   grep -qF -- "handler:prompt handler:plan handler:spec" "$VOCAB" || return 1
   grep -qF -- "difficulty:easy difficulty:medium difficulty:hard wontfix; do" "$VOCAB" || return 1
+  # The two surface labels moved out of the shipped loop into a second,
+  # marker-wrapped loop of their own (gaia-react/gaia#1437). Pinned as its own
+  # `for label in` line rather than a bare spelling, so a rewrite that folds
+  # them back into the shipped loop fails here.
+  grep -qF -- "for label in surface:adopter surface:maintainer; do" "$VOCAB" || return 1
 }
 
-@test "the label-loop prose count says fourteen, and the stale 'all five' / 'all eight' / 'all ten' / 'all thirteen labels' phrasings are gone" {
+@test "the label-loop prose count says twelve shipped plus two maintainer-only, and every superseded count is gone" {
   # The count in the prose and the number of entries in the loop are two
   # statements of one fact, and only the loop is executable, so the prose is
   # the half that rots. Pinning the current count plus every superseded one is
   # what makes a future label addition fail here instead of shipping a comment
-  # that undercounts its own loop.
-  grep -qF -- "Create all fourteen labels idempotently" "$VOCAB" || return 1
+  # that undercounts its own loop. Two counts now, because the two `surface:`
+  # entries moved into a marker-wrapped second loop (gaia-react/gaia#1437):
+  # the shipped loop creates twelve, the maintainer repository fourteen.
+  grep -qF -- "Create all twelve labels idempotently" "$VOCAB" || return 1
+  grep -qF -- "fourteen in total there" "$VOCAB" || return 1
   assert_absent_fixed_across "all five labels" "$VOCAB"
   assert_absent_fixed_across "all eight labels" "$VOCAB"
   assert_absent_fixed_across "all ten labels" "$VOCAB"
   assert_absent_fixed_across "all thirteen labels" "$VOCAB"
+  assert_absent_fixed_across "all fourteen labels" "$VOCAB"
 }
 
 @test "the label loop creates fold:required, and the loop's difficulty tail is unmoved" {
@@ -274,9 +288,15 @@ setup() {
   grep -qF -- "difficulty:easy difficulty:medium difficulty:hard wontfix; do" "$VOCAB" || return 1
 }
 
-@test "UAT-004: both gh issue create forms carry --body-file and the two mandatory non-grade labels, graded and ungraded" {
-  grep -qF -- 'gh issue create --label tech-debt --label severity:<tier> --label surface:<side> --label handler:<class> --label difficulty:<grade> --body-file "$body_file"' "$VOCAB" || return 1
-  grep -qF -- 'gh issue create --label tech-debt --label severity:<tier> --label surface:<side> --label handler:<class> --body-file "$body_file"' "$VOCAB" || return 1
+@test "UAT-004: both gh issue create forms carry --body-file and the mandatory non-grade labels, graded and ungraded" {
+  grep -qF -- 'gh issue create --label tech-debt --label severity:<tier> --label handler:<class> --label difficulty:<grade> --body-file "$body_file"' "$VOCAB" || return 1
+  grep -qF -- 'gh issue create --label tech-debt --label severity:<tier> --label handler:<class> --body-file "$body_file"' "$VOCAB" || return 1
+  # `--label surface:<side>` is no longer on either shipped form: it rides in
+  # the marker-wrapped note instead (gaia-react/gaia#1437). Pinned as an
+  # absence on the shipped forms plus a presence in the note, so a rewrite
+  # that puts it back inline fails here rather than at the release scrub.
+  grep -qF -- 'gh issue create --label tech-debt --label severity:<tier> --label surface:<side>' "$VOCAB" && return 1
+  grep -qF -- 'on both `gh issue create` forms as `--label surface:<side>`' "$VOCAB" || return 1
 }
 
 @test "UAT-004: the issue-body schema section assigns neither namespace, and no capital-D Difficulty: line exists anywhere" {
