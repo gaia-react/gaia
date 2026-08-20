@@ -34,6 +34,17 @@ const readSchemaEntryProperties = (): Record<string, SchemaEnumProperty> => {
 const sorted = (values: readonly string[]): string[] =>
   values.toSorted((left, right) => left.localeCompare(right));
 
+/** Every `$defs.entry` property whose values are enumerated, and its constant. */
+const ENUM_CONSTANTS: Record<string, readonly string[]> = {
+  audience: LABEL_AUDIENCES,
+  axis: LABEL_AXES,
+  features: LABEL_FEATURES,
+};
+
+const schemaEnumOf = (
+  property: SchemaEnumProperty | undefined
+): readonly string[] | undefined => property?.enum ?? property?.items?.enum;
+
 const baseEntry: LabelEntry = {
   audience: 'adopter',
   axis: 'type',
@@ -343,14 +354,27 @@ describe('schemas/labels', () => {
   describe('.gaia/labels.schema.json enum parity', () => {
     const entryProperties = readSchemaEntryProperties();
 
-    test.each([
-      ['axis', entryProperties.axis?.enum, LABEL_AXES],
-      ['audience', entryProperties.audience?.enum, LABEL_AUDIENCES],
-      ['features', entryProperties.features?.items?.enum, LABEL_FEATURES],
-    ] as const)(
+    // Derived, not listed: a fourth enum property added to the schema without a
+    // matching ENUM_CONSTANTS row would otherwise drift unguarded, which is the
+    // condition the parity rows below are supposed to close.
+    test('every enum-bearing schema property has a constant to compare against', () => {
+      const enumBearing = Object.keys(entryProperties).filter(
+        (property) => schemaEnumOf(entryProperties[property]) !== undefined
+      );
+
+      expect(sorted(enumBearing)).toStrictEqual(
+        sorted(Object.keys(ENUM_CONSTANTS))
+      );
+    });
+
+    test.each(Object.keys(ENUM_CONSTANTS))(
       'the schema %s enum holds the same values as its TypeScript constant',
-      (_property, schemaEnum, constant) => {
+      (property) => {
+        const schemaEnum = schemaEnumOf(entryProperties[property]);
+        const constant = ENUM_CONSTANTS[property];
+
         assert.ok(schemaEnum);
+        assert.ok(constant);
         expect(sorted(schemaEnum)).toStrictEqual(sorted(constant));
       }
     );
