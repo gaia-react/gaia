@@ -397,10 +397,28 @@ tracked_sh() {
   # this leg exists to end.
   wf="$REPO_ROOT/.github/workflows/shell-lint.yml"
   [ -f "$wf" ]
-  grep -qF -- "runs-on: macos-latest" "$wf"
-  grep -qF -- ".gaia/tests/shell-lint.sh --only bash32-parse" "$wf"
+  # Scoped to the job's own block, never the whole file. Three of these four
+  # strings also appear, or could be relocated, elsewhere in this workflow: the
+  # sibling ubuntu job's paths-filter carries a byte-identical `- '**/*.sh'`
+  # entry, and a refactor that moved the `--only bash32-parse` step onto that
+  # job would leave every string present with the pass running on bash 5, where
+  # it can only take its exit-0 loud skip. A file-wide grep pins the presence of
+  # strings; this pins the leg being armed.
+  #
+  # The block runs from the job key to the next 2-space-indented key, the same
+  # job-id indentation convention .gaia/scripts/verify-required-checks.sh's own
+  # scan reads. A 4-space step line cannot end it: its third character is a
+  # space, not a letter.
+  job="$(awk '/^  bash32-parse:/{f=1;next} f&&/^  [a-z]/{exit} f' "$wf")"
+  [ -n "$job" ]
+  grep -qF -- "runs-on: macos-latest" <<<"$job"
+  grep -qF -- ".gaia/tests/shell-lint.sh --only bash32-parse" <<<"$job"
   # The leg's own precondition. Without it the leg inherits the pass's exit-0
   # loud skip, so an image that stopped shipping 3.2.57 would turn this whole
   # fix back into a green that parsed nothing.
-  grep -qF -- 'BASH_VERSINFO[0]' "$wf"
+  grep -qF -- 'BASH_VERSINFO[0]' <<<"$job"
+  # The arming entry. Narrowing this job's filter to a pathspec no pull request
+  # matches retires the leg on every run while leaving the three strings above
+  # untouched, which is the quietest way this fix could be undone.
+  grep -qF -- "- '**/*.sh'" <<<"$job"
 }
