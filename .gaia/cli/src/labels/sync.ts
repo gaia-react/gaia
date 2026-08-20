@@ -15,7 +15,9 @@
  * the situation the fallback exists for. The degraded path therefore prints
  * the literal line `labels-sync: degraded, manual commands follow` on stdout
  * (on stderr under `--json`, which owns stdout), and a fallback keys on that
- * line rather than on the exit code.
+ * line rather than on the exit code. Which refusal degraded the run is a
+ * second thing a caller cannot infer, and it changes what the manual list is:
+ * `--json` carries it as `degradedAt`, and the plain path prints it.
  *
  * **Report versus write.** Several rows of the decision table report by
  * default and write only when the operator opts in. The action is planned
@@ -63,24 +65,41 @@ const HELP_TOKENS = new Set(['--help', '-h', 'help']);
 /** Printed verbatim when a scopeless token turns the plan into manual work. */
 export const DEGRADED_LINE = 'labels-sync: degraded, manual commands follow';
 
+/** Which `gh` refusal degraded the run. */
+export type DegradeSource = 'read' | 'write';
+
+/**
+ * What the manual list is a list of, per refusal. A refused *read* leaves the
+ * plan computed against an assumed-empty repository, so the list is the whole
+ * registry rather than the outstanding work; only a refused *write* leaves a
+ * genuine remainder. Which one happened is not recoverable from the list, so
+ * the degraded output says it outright and `--json` carries it as
+ * `degradedAt`.
+ */
+const DEGRADE_NOTES: Readonly<Record<DegradeSource, string>> = {
+  read: 'the label list could not be read, so the commands below are the whole registry, not the work remaining; a create for a label that already exists fails harmlessly.',
+  write:
+    'the commands below are the mutations still owed; any applied before the refusal is not repeated.',
+};
+
 const EXIT_GH_FAILED = 1;
 const EXIT_USAGE = 2;
 
-/** Issue-count query cap; only the zero / non-zero split gates a deletion. */
-const ISSUE_COUNT_LIMIT = 200;
+/** Carrier-count query cap; only the zero / non-zero split gates a deletion. */
+const CARRIER_COUNT_LIMIT = 200;
 
 export type LiveLabel = {color: string; description: string; name: string};
 
 export type SyncAction =
-  | {command: string; kind: 'manual-command'; why: string}
-  | {entry: LabelEntry; kind: 'create'}
-  | {from: string; kind: 'rename'; to: string}
   | {
-      issueCount: null | number;
+      carrierCount: null | number;
       kind: 'blocked-present';
       name: string;
       reason: string;
     }
+  | {command: string; kind: 'manual-command'; why: string}
+  | {entry: LabelEntry; kind: 'create'}
+  | {from: string; kind: 'rename'; to: string}
   | {kind: 'blocked-removed'; name: string}
   | {kind: 'drift-color'; live: LiveLabel; name: string; registryColor: string}
   | {
@@ -102,6 +121,9 @@ export type SyncFlags = {
 
 export type SyncPlan = {actions: readonly SyncAction[]; repo: null | string};
 
+/** The `--json` envelope: the plan, plus which refusal degraded the run. */
+export type SyncReport = SyncPlan & {degradedAt: DegradeSource | null};
+
 type BlockedPresentAction = Extract<SyncAction, {kind: 'blocked-present'}>;
 
 /** Actions for a registry entry the repository does not carry. */
@@ -116,7 +138,8 @@ const plannedForAbsent = (
   const previous = entry.renamedFrom.find((old) => options.liveNames.has(old));
 
   // Rename, never delete-and-recreate: a delete strips the label from every
-  // issue carrying it and destroys the association permanently.
+  // issue and pull request carrying it and destroys the association
+  // permanently.
   if (
     previous !== undefined &&
     audienceCovers({audience: options.audience, entryAudience: entry.audience})
@@ -200,7 +223,7 @@ export const planSync = (options: {
       if (present !== undefined) {
         claimed.add(entry.name);
         actions.push({
-          issueCount: null,
+          carrierCount: null,
           kind: 'blocked-present',
           name: entry.name,
           reason: entry.reason ?? '',
@@ -237,9 +260,9 @@ export const planSync = (options: {
 };
 
 /**
- * Refines a planned `blocked-present` once its issue count is known.
+ * Refines a planned `blocked-present` once its carrier count is known.
  *
- * `planSync` is pure and cannot count issues, so the enforcement decision
+ * `planSync` is pure and cannot count carriers, so the enforcement decision
  * lands here instead of inside the plan. On an adopter repository this is
  * always the identity: an adopter's labels are the adopter's business, so a
  * blocked entry is advisory there whatever the flags say.
@@ -249,15 +272,15 @@ const enforcesBlocked = (audience: LabelAudience, flags: SyncFlags): boolean =>
 
 export const resolveBlocked = (
   action: BlockedPresentAction,
-  options: {audience: LabelAudience; flags: SyncFlags; issueCount: number}
+  options: {audience: LabelAudience; carrierCount: number; flags: SyncFlags}
 ): SyncAction => {
   if (!enforcesBlocked(options.audience, options.flags)) {
     return action;
   }
 
-  return options.issueCount === 0 ?
+  return options.carrierCount === 0 ?
       {kind: 'blocked-removed', name: action.name}
-    : {...action, issueCount: options.issueCount};
+    : {...action, carrierCount: options.carrierCount};
 };
 
 /** The `gh` argv an action owes under `flags`, or null when report-only. */
@@ -343,7 +366,9 @@ const commandLine = (argv: readonly string[]): string =>
 
 const describeBlockedPresent = (action: BlockedPresentAction): string => {
   const carried =
-    action.issueCount === null ? '' : ` (${action.issueCount} issues carry it)`;
+    action.carrierCount === null ?
+      ''
+    : ` (${action.carrierCount} issues and pull requests carry it)`;
 
   return `blocked but present: ${action.name}${carried}. ${action.reason}`;
 };
@@ -520,12 +545,14 @@ const parseLiveLabels = (stdout: string): LiveLabel[] => {
   });
 };
 
-const countIssues = (
+/** Rows one `gh <surface> list --label` returns, null when uncountable. */
+const countOnSurface = (
+  surface: 'issue' | 'pr',
   name: string,
   repoArgs: readonly string[]
 ): null | number => {
   const result = runGh([
-    'issue',
+    surface,
     'list',
     ...repoArgs,
     '--label',
@@ -533,7 +560,7 @@ const countIssues = (
     '--state',
     'all',
     '--limit',
-    String(ISSUE_COUNT_LIMIT),
+    String(CARRIER_COUNT_LIMIT),
     '--json',
     'number',
   ]);
@@ -547,6 +574,26 @@ const countIssues = (
   } catch {
     return null;
   }
+};
+
+/**
+ * Carriers across both surfaces. `gh issue list` excludes pull requests, so a
+ * label carried only by pull requests counts zero on the issue surface alone,
+ * clears the enforcement gate, and is deleted, which strips it from every pull
+ * request carrying it with no way back. Either query failing makes the total
+ * null, and an uncountable label is never deleted.
+ */
+const countCarriers = (
+  name: string,
+  repoArgs: readonly string[]
+): null | number => {
+  const issues = countOnSurface('issue', name, repoArgs);
+
+  if (issues === null) return null;
+
+  const pulls = countOnSurface('pr', name, repoArgs);
+
+  return pulls === null ? null : issues + pulls;
 };
 
 const enforceBlockedActions = (
@@ -564,20 +611,21 @@ const enforceBlockedActions = (
   return actions.map((action) => {
     if (action.kind !== 'blocked-present') return action;
 
-    const issueCount = countIssues(action.name, options.repoArgs);
+    const carrierCount = countCarriers(action.name, options.repoArgs);
 
     // An uncountable label is never deleted: refusing is the safe direction.
-    if (issueCount === null) return action;
+    if (carrierCount === null) return action;
 
     return resolveBlocked(action, {
       audience: options.audience,
+      carrierCount,
       flags: options.flags,
-      issueCount,
     });
   });
 };
 
-type LiveFetch = {code: number} | {degraded: boolean; live: LiveLabel[]};
+type LiveFetch =
+  {code: number} | {degradedAt: DegradeSource | null; live: LiveLabel[]};
 
 const fetchLive = (repoArgs: readonly string[]): LiveFetch => {
   const listed = runGh([
@@ -606,11 +654,13 @@ const fetchLive = (repoArgs: readonly string[]): LiveFetch => {
   // A token that cannot read labels cannot write them either, so the plan is
   // computed against an empty repository and every owed mutation becomes a
   // manual command. That is the useful answer on a fresh repo, and it keeps
-  // setup from failing on a scope it cannot grant itself.
-  if (outcome === 'degraded') return {degraded: true, live: []};
+  // setup from failing on a scope it cannot grant itself. It is not the
+  // remainder on an established one, which is why the source is recorded
+  // rather than collapsed into a boolean.
+  if (outcome === 'degraded') return {degradedAt: 'read', live: []};
 
   try {
-    return {degraded: false, live: parseLiveLabels(listed.stdout)};
+    return {degradedAt: null, live: parseLiveLabels(listed.stdout)};
   } catch (error) {
     structuredError({
       code: 'gh_response_unparseable',
@@ -622,12 +672,13 @@ const fetchLive = (repoArgs: readonly string[]): LiveFetch => {
   }
 };
 
-type Execution = {code: number} | {degraded: boolean; manual: SyncAction[]};
+type Execution =
+  {code: number} | {degradedAt: DegradeSource | null; manual: SyncAction[]};
 
 const executePlan = (
   actions: readonly SyncAction[],
   options: {
-    degraded: boolean;
+    degradedAt: DegradeSource | null;
     flags: SyncFlags;
     repoArgs: readonly string[];
   }
@@ -641,10 +692,10 @@ const executePlan = (
   });
 
   const manual: SyncAction[] = [];
-  let {degraded} = options;
+  let {degradedAt} = options;
 
   for (const {action, argv} of owed) {
-    if (!degraded) {
+    if (degradedAt === null) {
       const result = runGh(argv);
       const outcome = classifyGhResult(result);
 
@@ -659,10 +710,10 @@ const executePlan = (
         return {code: EXIT_GH_FAILED};
       }
 
-      degraded = outcome === 'degraded';
+      if (outcome === 'degraded') degradedAt = 'write';
     }
 
-    if (degraded) {
+    if (degradedAt !== null) {
       manual.push({
         command: commandLine(argv),
         kind: 'manual-command',
@@ -671,18 +722,26 @@ const executePlan = (
     }
   }
 
-  return {degraded, manual};
+  return {degradedAt, manual};
 };
 
 const report = (options: {
-  degraded: boolean;
+  degradedAt: DegradeSource | null;
   json: boolean;
   manual: readonly SyncAction[];
   plan: SyncPlan;
 }): void => {
   if (options.json) {
-    process.stdout.write(`${JSON.stringify(options.plan)}\n`);
-    if (options.degraded) process.stderr.write(`${DEGRADED_LINE}\n`);
+    const envelope: SyncReport = {
+      ...options.plan,
+      degradedAt: options.degradedAt,
+    };
+
+    process.stdout.write(`${JSON.stringify(envelope)}\n`);
+
+    if (options.degradedAt !== null) {
+      process.stderr.write(`${DEGRADED_LINE}\n`);
+    }
 
     return;
   }
@@ -693,9 +752,10 @@ const report = (options: {
     }
   }
 
-  if (!options.degraded) return;
+  if (options.degradedAt === null) return;
 
   process.stdout.write(`${DEGRADED_LINE}\n`);
+  process.stdout.write(`${DEGRADE_NOTES[options.degradedAt]}\n`);
 
   for (const action of options.manual) {
     if (action.kind === 'manual-command') {
@@ -760,13 +820,13 @@ export const run = (argv: readonly string[]): number => {
 
   const executed =
     dryRun ?
-      {degraded: fetched.degraded, manual: []}
-    : executePlan(actions, {degraded: fetched.degraded, flags, repoArgs});
+      {degradedAt: fetched.degradedAt, manual: []}
+    : executePlan(actions, {degradedAt: fetched.degradedAt, flags, repoArgs});
 
   if ('code' in executed) return executed.code;
 
   report({
-    degraded: executed.degraded,
+    degradedAt: executed.degradedAt,
     json,
     manual: executed.manual,
     plan: {actions: [...actions, ...executed.manual], repo: repo ?? null},
