@@ -158,28 +158,51 @@
 # The group that used to dominate this list, a single-token exclusion stopping at
 # the first prefix word, is closed: the exclusion below consumes the whole
 # prefix, assignments and redirections alike, in any order, and applies itself to
-# the command word behind it. Each of the three that remain needs a mechanism
-# that loop does not have:
+# the command word behind it. Two further mechanisms close the rest of it: a
+# redirection operand that is a nested command is followed as a REGION rather
+# than broken on (eat_word() and walk() below), and the walk COUNTS top-level
+# substitutions, so a statement whose status a second one supplies is not
+# attributed to the first, which is the one this gate flags (W_nsub below).
 #
-#   - A PROCESS SUBSTITUTION as a redirection operand (`out=$(cmd) > >(tee log)
-#     run_thing`, and the same with `< <(...)`). The operand is a nested command
-#     rather than a word, so the word consumer stops at its `(` and never reaches
-#     the command word behind it. Following it means parsing the operand as a
-#     region, which is what walk() does for `$(` and what eat_word() deliberately
-#     does not take on.
-#   - A LATER command substitution in the same assignment list (`out=$(cmd)
-#     FOO=$(other)`, with no command word). For a statement that is only
-#     assignments the shell takes the status of the LAST substitution it ran
-#     rather than the first, so `out=$(false) FOO=$(true)` survives while
-#     `out=$(false) BAR=1` exits. The gate flags the first assignment and holds
-#     no record of what ran after it, which is a different question from where
-#     the command word is.
-#   - An INPUT redirection on an assignment-only statement (`out=$(cmd) < log`).
-#     This one is version-dependent rather than flatly wrong: bash 3.2 takes the
-#     substitution status and exits, bash 5 resets it to zero and carries on, and
-#     the gate reports, which is the 3.2 reading. An OUTPUT redirection in the
-#     same position exits on both, so only the input direction diverges and only
-#     where no command word follows.
+# What is left is one UNDECIDABLE FAMILY rather than a list of unimplemented
+# shapes, and it is undecidable in both directions at once:
+#
+#   - An assignment-only statement running TWO OR MORE substitutions. The shell
+#     takes the status of the last one, so whether the read below is dead
+#     depends on whether that last substitution fails, which is a runtime fact
+#     no static reader has. The gate is quiet on the whole family, so it misses
+#     the failing case (`out=$(false) FOO=$(false)` exits, and is the class).
+#     Four spellings reach it and are ONE shape rather than four, because a word
+#     boundary is not a distinction the shell draws here: a later prefix word
+#     (`out=$(a) FOO=$(b)`), a redirection operand (`out=$(a) > "$(b)"`),
+#     concatenation inside one value (`out="$(a)$(b)"`), and two adjacent quoted
+#     words (`out="$(a)""$(b)"`). A substitution inside a `${...}` expansion
+#     counts too, since the walk does not track `${`.
+#     Quiet is chosen because the gate`s printed message names the flagged
+#     substitution as the one whose failure exits, and with a later substitution
+#     present that sentence is false: it names the wrong command and prints a
+#     repair built around it, the direction that gets a gate bypassed rather
+#     than obeyed. Reporting a single substitution is a decision under the same
+#     uncertainty and is not a stronger claim, only one whose message is true.
+#     Two kinds of substitution deliberately do NOT count toward the two,
+#     because neither can be the last one the statement ran: a NESTED one
+#     (`out=$(a $(b))`), and one inside a process-substitution operand
+#     (`out=$(a) > >(echo "$(b)")`), which runs in an async subshell.
+#
+# Not a false positive, and here because it reads like one, a MODELLING DECISION
+# that has been settled rather than left open:
+#
+#   - An INPUT redirection on an assignment-only statement (`out=$(cmd) < log`),
+#     which is the one shape whose ground truth depends on the interpreter. Under
+#     bash 3.2 the statement takes the substitution status and exits, so the read
+#     below it is unreachable. Under bash 5 the status is reset to zero and the
+#     read runs, ALWAYS READING ZERO while the command failed and the variable is
+#     empty, so the failure is swallowed silently instead. Those are the same
+#     defect approached from opposite sides, and the repair this gate prints
+#     (`rc=0; out="$(cmd)" || rc=$?`) is correct under both, so the gate reports
+#     under both and needs no version to target. An OUTPUT redirection in the
+#     same position exits on either version, so only the input direction diverges
+#     and only where no command word follows.
 #
 # This list is kept honest by measurement rather than by memory. The sibling bats
 # suite ends with a differential test that runs a matrix of prefix shapes under a
@@ -187,6 +210,18 @@
 # stops being a bound when it is fixed rather than when someone remembers to edit
 # this comment. Enumerating shapes by hand is what put four defects on the old
 # exclusion across four review rounds, the last of them a silent fail-open.
+#
+# The matrix has a limit worth stating beside the list it verifies: it asserts
+# AGREEMENT with the shell on rows it is given, so it reds when a listed row
+# regresses and can never surface an UNLISTED false positive. Both entries above
+# are also outside what it can measure, for two different reasons. The
+# undecidable family has no single shell answer to agree with, since each
+# spelling reaches or exits by the runtime status of its last substitution, so a
+# row would pin whichever instance was written. The input-redirection decision
+# has no version-independent one, so a row would record whichever interpreter
+# the probe resolved as the contract. Its template also hardcodes a space before
+# the suffix, so the same-word spellings cannot be expressed as rows at all.
+# Named tests in the suite pin both, and this list is still maintained by hand.
 #
 # None of those fails SILENTLY. Tokenizer state is carried across lines, so any
 # bound that loses sync leaves a quote, a substitution, or a heredoc open at the
@@ -215,6 +250,19 @@ readonly CORE_AWK='
 #   W_op      set by walk() when an unquoted control operator is seen at depth 0
 #   W_stop    offset just past a top-level `;`, so the caller can resume there
 #   W_sub     set by walk() when the line opens a real command substitution
+#   W_nsub    how many TOP-LEVEL command substitutions the line opened, which
+#             is a different question from whether it opened any. An
+#             assignment-only statement takes the status of the LAST
+#             substitution it ran, so with two or more, the one this gate flags,
+#             the first, is not the one whose status the shell takes. Where the
+#             second one SITS does not enter it: `out="$(a)$(b)"` and
+#             `out=$(a) FOO=$(b)` are one statement to the shell, both reaching
+#             the next line with `rc=0` when the last substitution succeeds, so
+#             a word boundary is not a distinction this count may draw. The
+#             depth-0 test excludes exactly the two kinds that cannot be the
+#             last one this statement ran: a NESTED substitution, which
+#             completes before the one containing it, and one inside a
+#             process-substitution operand, which runs in an async subshell.
 #
 # Quoting is tracked INSIDE a substitution with the same machinery as outside
 # it. Skipping the region and counting bare parentheses is the cheaper reading
@@ -237,6 +285,7 @@ function walk(line,   n, i, c, j, ch, delim, prev) {
   W_op = 0
   W_stop = 0
   W_sub = 0
+  W_nsub = 0
   W_space_at = 0
   W_word = 0
   n = length(line)
@@ -300,10 +349,12 @@ function walk(line,   n, i, c, j, ch, delim, prev) {
         i++
       } else {
         W_sub = 1
+        # Depth is already incremented, so 1 is this statement`s top level.
+        if (W_depth == 1) W_nsub++
       }
       continue
     }
-    if (c == "`") { W_tick = 1; W_sub = 1; continue }
+    if (c == "`") { W_tick = 1; W_sub = 1; if (W_depth == 0) W_nsub++; continue }
 
     if (W_q == "\"") { if (c == "\"") W_q = ""; continue }
 
@@ -349,6 +400,24 @@ function walk(line,   n, i, c, j, ch, delim, prev) {
       }
       if (delim != "") W_heredoc = delim
       i = j - 1
+      continue
+    }
+
+    # A PROCESS SUBSTITUTION operand (`>(cmd)`, `<(cmd)`) is a nested command, so
+    # its body is a region exactly as `$(` opens one. Left unrecognised, a `$(`
+    # inside that body reads as one of THIS statement`s own top-level
+    # substitutions and the count above exempts a live defect: the body runs in
+    # an async subshell and never supplies the parent statement`s status, so
+    # `out=$(false) > >(echo "$(true)")` still exits on the assignment. W_sub is
+    # deliberately left unset, since the operand is not a substitution of this
+    # statement. Reached only with W_q empty and outside a backtick, both quote
+    # arms above having already continued, and only at depth 0, which is the
+    # only place an operand of THIS statement can begin.
+    if (W_depth == 0 && (c == "<" || c == ">") && substr(line, i + 1, 1) == "(") {
+      W_qstack[W_depth] = W_q
+      W_depth++
+      W_q = ""
+      i++
       continue
     }
 
@@ -426,6 +495,17 @@ function walk(line,   n, i, c, j, ch, delim, prev) {
 # `(`, and `)`, and at a redirection`s `<` or `>`, each of which begins the next
 # token rather than continuing this one.
 #
+# A PROCESS SUBSTITUTION operand (`>(tee log)`, `<(cat)`) is the one shape where
+# a leading `<` or `>` does NOT begin the next token: the caller has already
+# consumed the redirection operator, so what is left is the operand, and the
+# operand is a nested command rather than a word. Broken on at its `(` the way
+# the stop set would otherwise demand, the leftover `(` reads as a statement
+# separator, the command word behind it is never reached, and the line is
+# reported although the shell runs it. It is followed to its matching `)` with
+# the same depth counter `$(` uses, and only at position 1, which is the only
+# place a redirection operand can begin; mid-word a `<` or `>` still stops the
+# word, so `> log>(x)` is unaffected.
+#
 # `#` is the one member of that set that depends on WHERE it sits: it opens a
 # comment only at the start of a word and is an ordinary character inside one, so
 # `> log#x run_thing` redirects to a file literally named `log#x`. walk() already
@@ -446,6 +526,8 @@ function eat_word(s,   n, i, c, q, d) {
     if (c == "\047") { q = "\047"; continue }
     if (c == "\"") { q = "\""; continue }
     if (c == "$" && substr(s, i + 1, 1) == "(") { d++; i++; continue }
+    # A process substitution operand, at a word start only. See the docblock.
+    if (i == 1 && (c == "<" || c == ">") && substr(s, i + 1, 1) == "(") { d++; i++; continue }
     if (d > 0) {
       if (c == "(") d++
       else if (c == ")") d--
@@ -515,7 +597,7 @@ function arm(s,   n, t, i, w) {
 function reset_state(  d) {
   W_q = ""; W_depth = 0; W_tick = 0; W_narith = 0
   W_heredoc = ""; W_hd_tabs = 0
-  cont = 0; pending = 0; isname = 0; stmt_op = 0; stmt_sub = 0
+  cont = 0; pending = 0; isname = 0; stmt_op = 0; stmt_sub = 0; stmt_nsub = 0
   for (d in W_qstack) delete W_qstack[d]
   for (d in W_ar) delete W_ar[d]
 }
@@ -586,18 +668,21 @@ function feed(line, n,   stripped, probe, tail) {
     cand_line = n
     stmt_op = 0
     stmt_sub = 0
+    stmt_nsub = 0
     stmt_space_at = -1
   }
 
   if (walk(line)) {
     if (W_op) stmt_op = 1
     if (W_sub) stmt_sub = 1
+    stmt_nsub += W_nsub
     if (stmt_space_at == -1) stmt_space_at = W_space_at
     cont = 1
     return
   }
   if (W_op) stmt_op = 1
   if (W_sub) stmt_sub = 1
+  stmt_nsub += W_nsub
   # Only the statement`s FIRST line contributes the word break. A continued
   # statement`s later lines have their own leading whitespace, which belongs to
   # no first word, so reading one would exempt a real defect. That a continued
@@ -661,7 +746,21 @@ function feed(line, n,   stripped, probe, tail) {
     if (tail != "" && index(";|&#()", substr(tail, 1, 1)) == 0)
       isname = 0
   }
-  if (isname && stmt_sub && !stmt_op && armed) { pending = 1; pending_line = cand_line }
+  # `stmt_nsub < 2` is the last-substitution-wins term, and it states this
+  # gate`s scoping exactly: report only where the substitution the gate FLAGS is
+  # the one whose status the shell takes. With one, the flagged substitution IS
+  # the last one, so the message printed below names the right command and the
+  # repair is built around it. With two or more the status belongs to a later
+  # one this walk holds no record of, and the same message names the wrong
+  # command.
+  #
+  # Neither verdict is a statement of fact, because whether the last
+  # substitution fails is a runtime question: reporting one substitution can
+  # name a line the shell reaches, and exempting two can miss one it does not.
+  # The split is drawn where the gate`s own message stops being true, which is
+  # where the env-prefix exclusion above draws it too. The header`s undecidable
+  # family names what the exemption misses.
+  if (isname && stmt_sub && !stmt_op && armed && stmt_nsub < 2) { pending = 1; pending_line = cand_line }
   isname = 0
 
   # The walk stopped at a `;` with text after it: that text is the next
