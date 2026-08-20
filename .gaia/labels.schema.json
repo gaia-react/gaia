@@ -1,0 +1,118 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GAIA GitHub label registry",
+  "description": "Constrains .gaia/labels.json: the single machine-readable source of truth for every GitHub label GAIA creates, syncs, and documents. A malformed edit fails this cheap validation before any consumer runs. Cross-entry constraints (unique names, unique colors, no em dashes or en dashes in a description) are not expressible in JSON Schema and live in the Zod layer (.gaia/cli/src/schemas/labels.ts) and its tests instead.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "version", "description", "labels"],
+  "properties": {
+    "$schema": { "type": "string", "minLength": 1 },
+    "version": { "const": 1 },
+    "description": { "type": "string", "minLength": 1 },
+    "labels": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/entry" }
+    }
+  },
+  "$defs": {
+    "entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "color",
+        "description",
+        "axis",
+        "audience",
+        "features",
+        "managed",
+        "deprecated",
+        "blocked",
+        "renamedFrom",
+        "reason"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The literal GitHub label name. Unique across the registry."
+        },
+        "color": {
+          "type": ["string", "null"],
+          "pattern": "^[0-9a-f]{6}$",
+          "description": "6 lowercase hex digits, no '#'. Unique across every entry whose color is non-null. null for a blocked entry (nothing renders it)."
+        },
+        "description": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100,
+          "description": "At most 100 characters (GitHub's limit). No em dash or en dash; enforced in the Zod layer, not here."
+        },
+        "axis": {
+          "enum": [
+            "type",
+            "urgency",
+            "effort",
+            "reach",
+            "lifecycle",
+            "modifier",
+            "disposition",
+            "origin",
+            "attention",
+            "audience",
+            "third-party",
+            "blocked"
+          ]
+        },
+        "audience": {
+          "enum": ["adopter", "maintainer"],
+          "description": "Maintainer entries are stripped from the shipped bundle and never synced to an adopter repo."
+        },
+        "features": {
+          "type": "array",
+          "items": { "enum": ["tech-debt", "gaia-ci", "forensics"] },
+          "description": "The label is created when any listed feature is enabled. An empty list means always create."
+        },
+        "managed": {
+          "type": "boolean",
+          "description": "false means document only: sync reconciles the description but never creates, recolors, or deletes."
+        },
+        "deprecated": {
+          "type": "boolean",
+          "description": "Kept in the registry and on the page for history, never created on a fresh repo."
+        },
+        "blocked": {
+          "type": "boolean",
+          "description": "The label must not exist. Never created; reported when found; deleted only on the maintainer repo under --enforce-blocked and only when zero issues carry it."
+        },
+        "renamedFrom": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "description": "Previous names, in order. Sync uses `gh label edit <old> --name <new>` when an old name exists on the repo and the new one does not."
+        },
+        "reason": {
+          "type": ["string", "null"],
+          "minLength": 1,
+          "description": "A non-empty string on every blocked entry, null on every other entry."
+        }
+      },
+      "if": {
+        "properties": { "blocked": { "const": true } },
+        "required": ["blocked"]
+      },
+      "then": {
+        "properties": {
+          "color": { "type": "null" },
+          "managed": { "const": false },
+          "reason": { "type": "string" }
+        }
+      },
+      "else": {
+        "properties": {
+          "color": { "type": "string" },
+          "reason": { "type": "null" }
+        }
+      }
+    }
+  }
+}
