@@ -298,7 +298,7 @@ wiki/decisions/Sharded CI Test Matrix.md
 # job asserting parity against GAIA's own tree.
 .github/workflows/label-registry.yml
 # `dependabot.yml` schedules weekly bumps of the full-SHA action pins in
-# `.github/workflows/`, a directory that on this clone is 12 maintainer-only
+# `.github/workflows/`, a directory that on this clone is the maintainer-only
 # workflows plus the two shipped ones. An adopter clone has neither those
 # workflows nor a reason to inherit a bot that opens pull requests against them
 # on a schedule; GAIA's adopter-facing CI installs on demand via `/setup-gaia`

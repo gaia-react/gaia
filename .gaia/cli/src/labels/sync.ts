@@ -119,7 +119,7 @@ const plannedForAbsent = (
   // issue carrying it and destroys the association permanently.
   if (
     previous !== undefined &&
-    audienceCovers(options.audience, entry.audience)
+    audienceCovers({audience: options.audience, entryAudience: entry.audience})
   ) {
     return {
       actions: [{from: previous, kind: 'rename', to: entry.name}],

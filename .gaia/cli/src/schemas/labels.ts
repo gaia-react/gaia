@@ -180,11 +180,18 @@ export type LabelRegistry = z.infer<typeof LabelRegistrySchema>;
  * the comparison out. Creation and rename are two such sites, and when they
  * disagree sync plans a create for a live label it should have renamed, which
  * loses the rename-never-delete-and-recreate invariant for that entry.
+ *
+ * Structured parameter, because both sides are a `LabelAudience`: passed
+ * positionally, a swapped call would typecheck and quietly invert the rule,
+ * owing an adopter repository every maintainer-only entry.
  */
-export const audienceCovers = (
-  audience: LabelAudience,
-  entryAudience: LabelAudience
-): boolean => audience === 'maintainer' || entryAudience === audience;
+export const audienceCovers = ({
+  audience,
+  entryAudience,
+}: {
+  audience: LabelAudience;
+  entryAudience: LabelAudience;
+}): boolean => audience === 'maintainer' || entryAudience === audience;
 
 /** True when the entry is one sync creates on a repo of `audience` with `enabledFeatures` on. */
 export const isCreatable = (
@@ -193,7 +200,7 @@ export const isCreatable = (
   enabledFeatures: readonly LabelFeature[]
 ): boolean => {
   if (!entry.managed || entry.deprecated || entry.blocked) return false;
-  if (!audienceCovers(audience, entry.audience)) return false;
+  if (!audienceCovers({audience, entryAudience: entry.audience})) return false;
 
   return (
     entry.features.length === 0 ||

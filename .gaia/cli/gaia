@@ -18952,10 +18952,13 @@ var LabelRegistrySchema = external_exports.object({
     }
   });
 });
-var audienceCovers = (audience, entryAudience) => audience === "maintainer" || entryAudience === audience;
+var audienceCovers = ({
+  audience,
+  entryAudience
+}) => audience === "maintainer" || entryAudience === audience;
 var isCreatable = (entry, audience, enabledFeatures) => {
   if (!entry.managed || entry.deprecated || entry.blocked) return false;
-  if (!audienceCovers(audience, entry.audience)) return false;
+  if (!audienceCovers({ audience, entryAudience: entry.audience })) return false;
   return entry.features.length === 0 || entry.features.some((feature) => enabledFeatures.includes(feature));
 };
 
@@ -19464,7 +19467,7 @@ var EXIT_USAGE = 2;
 var ISSUE_COUNT_LIMIT = 200;
 var plannedForAbsent = (entry, options) => {
   const previous = entry.renamedFrom.find((old) => options.liveNames.has(old));
-  if (previous !== void 0 && audienceCovers(options.audience, entry.audience)) {
+  if (previous !== void 0 && audienceCovers({ audience: options.audience, entryAudience: entry.audience })) {
     return {
       actions: [{ from: previous, kind: "rename", to: entry.name }],
       claimed: previous

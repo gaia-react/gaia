@@ -112,7 +112,7 @@ transforms:
   # never runs; unwrapped, both reach adopters as vocabulary nothing on their
   # clone creates or reads. The array is the registry itself, so only the
   # maintainer elements leave; a delete of the whole `labels` key is not the
-  # shape, an adopter clone still needs its 24 adopter-audience entries. A
+  # shape, an adopter clone still needs its adopter-audience entries. A
   # selector matching nothing is a silent no-op (see the transform-family
   # comment at the top of this file), which is why the
   # `surface-label-vocabulary` leak-check below is the backstop: it fails the
