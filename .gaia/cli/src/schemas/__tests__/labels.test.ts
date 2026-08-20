@@ -45,6 +45,25 @@ const schemaEnumOf = (
   property: SchemaEnumProperty | undefined
 ): readonly string[] | undefined => property?.enum ?? property?.items?.enum;
 
+/**
+ * Keywords that enumerate a property's values somewhere other than an inline
+ * `enum`. `schemaEnumOf` reads the inline shapes only, so a property using one
+ * of these would be invisible to the covered-set derivation below and would
+ * silently get no parity row. Inline-only is the deliberate contract, asserted
+ * rather than left as a comment.
+ */
+const INDIRECT_ENUM_KEYWORDS = ['$ref', 'anyOf', 'const', 'oneOf'];
+
+const enumeratesIndirectly = (
+  property: SchemaEnumProperty | undefined
+): boolean =>
+  property !== undefined &&
+  INDIRECT_ENUM_KEYWORDS.some(
+    (keyword) =>
+      Object.hasOwn(property, keyword) ||
+      (property.items !== undefined && Object.hasOwn(property.items, keyword))
+  );
+
 const baseEntry: LabelEntry = {
   audience: 'adopter',
   axis: 'type',
@@ -365,6 +384,14 @@ describe('schemas/labels', () => {
       expect(sorted(enumBearing)).toStrictEqual(
         sorted(Object.keys(ENUM_CONSTANTS))
       );
+    });
+
+    test('no entry property enumerates its values indirectly', () => {
+      const indirect = Object.keys(entryProperties).filter((property) =>
+        enumeratesIndirectly(entryProperties[property])
+      );
+
+      expect(indirect).toStrictEqual([]);
     });
 
     test.each(Object.keys(ENUM_CONSTANTS))(
