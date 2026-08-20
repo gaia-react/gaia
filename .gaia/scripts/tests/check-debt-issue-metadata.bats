@@ -663,6 +663,13 @@ sh_marker_delim() {
   ' "$REPO_ROOT/.gaia/release-scrub.yml"
 }
 
+# delim_missing <start|end>: name which delimiter key could not be read, and
+# which of the two contracts moved. A literal format string, not the message in
+# a variable, so shellcheck reads it as one.
+delim_missing() {
+  printf 'sh_marker_delim: no `%s:` under the `**/*.sh` marker-strip transform in .gaia/release-scrub.yml; that YAML shape moved, not the strip\n' "$1" >&2
+}
+
 # stripped_check: strip the script into a throwaway staging tree and echo the
 # stripped path. Call `require_stripper` in the test body first.
 stripped_check() {
@@ -678,13 +685,19 @@ stripped_check() {
   # second copy of the spellings would leave this suite stripping and passing
   # against a retired one while the real release strip took nothing out of this
   # script. Asserting the spellings are present somewhere in that file is not
-  # enough, because three transforms there share them and only this one covers
-  # `**/*.sh`; the block has to be the one that governs this file.
+  # enough, because a sibling transform there carries the same two spellings
+  # and does not cover `**/*.sh`; the block has to be the one that governs
+  # this file.
   local start end
   start="$(sh_marker_delim start)"
   end="$(sh_marker_delim end)"
-  [ -n "$start" ] || return 1
-  [ -n "$end" ] || return 1
+  # Say which side of the contract moved. The bare `return 1` this replaces
+  # surfaced in bats as the caller's `|| return 1` and nothing else, so a
+  # shape-preserving edit to that transform (re-quoting the path entry, or
+  # ordering `start:`/`end:` ahead of `paths:`) read as an unexplained failure
+  # of the strip itself.
+  [ -n "$start" ] || { delim_missing start; return 1; }
+  [ -n "$end" ] || { delim_missing end; return 1; }
 
   cat >"$TMP/scrub.yml" <<YAML
 transforms:
