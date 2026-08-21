@@ -1873,7 +1873,6 @@ run_audit_complete_step() {
   return 0
 }
 
-
 @test "pending path: a pending POST that SUCCEEDS publishes no post_failed" {
   # The other direction of the predicate, and the one that was missing. Every
   # test above binds the FAILING outcome, so hoisting the emit out of its `if !`
@@ -1930,6 +1929,7 @@ run_audit_complete_step() {
   grep -qE '^        id:' "$block" && return 1
   return 0
 }
+
 @test "a rejected success POST is not confused with a bowed-out one: post_failed is absent when nothing was attempted" {
   # The two causes of "no stamp" are different repairs -- restore .gaia/VERSION
   # versus re-run the workflow -- so the output that distinguishes them must not
