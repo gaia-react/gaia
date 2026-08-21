@@ -66,7 +66,12 @@ fi
 
 # Repo-scope: a `gh pr merge` aimed at a sibling repo must not touch THIS repo's
 # sentinel.
-[ -f .claude/hooks/lib/repo-scope.sh ] && . .claude/hooks/lib/repo-scope.sh
+# Sourced from this hook's own on-disk location, never cwd: a cwd-relative
+# source that misses leaves cmd_targets_foreign_repo undefined, and the
+# guard below falls THROUGH rather than bailing.
+_scope_lib="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)"
+# shellcheck source=/dev/null
+[ -n "${_scope_lib:-}" ] && [ -f "$_scope_lib/repo-scope.sh" ] && . "$_scope_lib/repo-scope.sh"
 if type cmd_targets_foreign_repo >/dev/null 2>&1 \
    && cmd_targets_foreign_repo "$cmd"; then
   exit 0

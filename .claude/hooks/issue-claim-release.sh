@@ -285,8 +285,19 @@ done
 # Pin the read and the write to THIS repository so the two can never
 # straddle. Resolved once, from the hook's own cwd, which a `cd` inside the
 # tool command never changes.
-home=$(gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null)
+# Both fields come from ONE call: gh identifies a repository as
+# [HOST/]OWNER/REPO, so the slug alone does not name it. An adopter mirroring
+# one repository between github.com and an enterprise host carries the same
+# OWNER/REPO on both, and a merge on either would otherwise resolve the
+# other's pull request of that number here. The host is the URL's authority.
+home_json=$(gh repo view --json nameWithOwner,url 2>/dev/null)
+home=$(printf '%s' "$home_json" | jq -r '.nameWithOwner // ""' 2>/dev/null)
 [ -n "$home" ] || exit 0
+home_host=$(printf '%s' "$home_json" | jq -r '.url // ""' 2>/dev/null)
+home_host="${home_host#*://}"
+home_host="${home_host%%/*}"
+home_host=$(printf '%s' "$home_host" | tr '[:upper:]' '[:lower:]')
+[ -n "$home_host" ] || exit 0
 
 # `--repo owner/repo` names the target itself, and gh honors it over cwd, so
 # it decides the boundary alone. The shared guard above compares only the
@@ -304,9 +315,16 @@ home=$(gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null)
 # That direction releases nothing rather than releasing wrongly, and closing
 # it means changing the comparison the nine blocking consumers share.
 if [ -n "$cmd_repo" ]; then
-  # A host-qualified value (github.com/owner/repo) names the same repo.
+  # A host-qualified value is `HOST/OWNER/REPO`, and the host half decides as
+  # much as the slug does: the same OWNER/REPO on another host is another
+  # repository. Accept the qualifier only when it names the home host, and
+  # exit otherwise rather than dropping it and comparing what is left.
   case "$cmd_repo" in
-    */*/*) cmd_repo="${cmd_repo#*/}" ;;
+    */*/*)
+      cmd_host=$(printf '%s' "${cmd_repo%%/*}" | tr '[:upper:]' '[:lower:]')
+      [ "$cmd_host" = "$home_host" ] || exit 0
+      cmd_repo="${cmd_repo#*/}"
+      ;;
   esac
   [ "$cmd_repo" = "$home" ] || exit 0
 fi
@@ -317,11 +335,16 @@ fi
 # unrelated issue of the same number, because the label write resolves here.
 # So accept a URL only when it names the home repo, reduced to its number;
 # an unrecognized shape exits rather than guessing.
-url_re='^[a-zA-Z][a-zA-Z0-9+.-]*://[^/]+/([^/]+/[^/]+)/pull/([0-9]+)$'
+# The authority is captured and compared too, for the same reason the flag's
+# host half is: the same OWNER/REPO served from another host is another
+# repository, and matching on the slug alone would accept it.
+url_re='^[a-zA-Z][a-zA-Z0-9+.-]*://([^/]+)/([^/]+/[^/]+)/pull/([0-9]+)$'
 case "$ref" in
   *://*)
-    if [[ "$ref" =~ $url_re ]] && [ "${BASH_REMATCH[1]}" = "$home" ]; then
-      ref="${BASH_REMATCH[2]}"
+    if [[ "$ref" =~ $url_re ]] \
+      && [ "$(printf '%s' "${BASH_REMATCH[1]}" | tr '[:upper:]' '[:lower:]')" = "$home_host" ] \
+      && [ "${BASH_REMATCH[2]}" = "$home" ]; then
+      ref="${BASH_REMATCH[3]}"
     else
       exit 0
     fi

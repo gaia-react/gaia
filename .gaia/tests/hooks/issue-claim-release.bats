@@ -70,11 +70,18 @@ write_gh_stub() {
 #!/usr/bin/env bash
 STATE="$FAKE_GH_STATE"
 HOME_REPO="${FAKE_GH_HOME_REPO:-gaia-react/gaia}"
+HOME_HOST="${FAKE_GH_HOME_HOST:-github.com}"
 case "$1" in
   repo)
     shift
     case "$1" in
-      view) printf '%s\n' "$HOME_REPO"; exit 0 ;;
+      # gh identifies a repo as [HOST/]OWNER/REPO, so the hook reads the slug
+      # and the URL's authority from one call; the stub answers both.
+      view)
+        jq -n --arg n "$HOME_REPO" --arg u "https://$HOME_HOST/$HOME_REPO" \
+          '{nameWithOwner: $n, url: $u}'
+        exit 0
+        ;;
       *) exit 1 ;;
     esac
     ;;
@@ -627,6 +634,56 @@ assert_nothing_released() { [ ! -s "$FAKE_GH_STATE/issue_edits" ]; }
 @test "7af: an attached -R naming the home repo still resolves the ref" {
   export FAKE_GH_PR_BODY="Closes #77"
   run_hook 'gh pr merge -Rgaia-react/gaia 5'
+  [ "$status" -eq 0 ]
+  [ "$(cat "$FAKE_GH_STATE/pr_view_ref")" = "5" ]
+  assert_released_once "77"
+}
+
+# 7ak-7an: gh identifies a repository as [HOST/]OWNER/REPO, so the slug alone
+# does not name one. An adopter mirroring a repository between github.com and
+# an enterprise host carries the SAME owner/repo on both, and the shared guard
+# compares only the repo-name half, so nothing upstream separates them. Read
+# on the slug alone, a merge on the other host resolves this host's pull
+# request of that number and strips labels off issues it never closed. The
+# home-host controls are what keep the check from degrading into "reject every
+# qualifier".
+@test "7ak: a --repo qualified with another host releases nothing" {
+  export FAKE_GH_PR_BODY="Closes #77"
+  run_hook 'gh pr merge --repo ghe.example.com/gaia-react/gaia 5'
+  [ "$status" -eq 0 ]
+  assert_nothing_released
+}
+
+@test "7al: a --repo qualified with the home host still resolves the ref" {
+  export FAKE_GH_PR_BODY="Closes #77"
+  run_hook 'gh pr merge --repo github.com/gaia-react/gaia 5'
+  [ "$status" -eq 0 ]
+  [ "$(cat "$FAKE_GH_STATE/pr_view_ref")" = "5" ]
+  assert_released_once "77"
+}
+
+@test "7am: a URL on another host releases nothing" {
+  export FAKE_GH_PR_BODY="Closes #77"
+  run_hook 'gh pr merge https://ghe.example.com/gaia-react/gaia/pull/5'
+  [ "$status" -eq 0 ]
+  assert_nothing_released
+}
+
+# The mirror direction: when the enterprise host IS home, its own URL has to
+# resolve and github.com's must not. Without this the check could pass by
+# hardcoding github.com rather than by reading the home repository.
+@test "7an: on an enterprise home host, a github.com URL releases nothing" {
+  export FAKE_GH_PR_BODY="Closes #77"
+  export FAKE_GH_HOME_HOST="ghe.example.com"
+  run_hook 'gh pr merge https://github.com/gaia-react/gaia/pull/5'
+  [ "$status" -eq 0 ]
+  assert_nothing_released
+}
+
+@test "7ao: on an enterprise home host, its own URL resolves the ref" {
+  export FAKE_GH_PR_BODY="Closes #77"
+  export FAKE_GH_HOME_HOST="ghe.example.com"
+  run_hook 'gh pr merge https://ghe.example.com/gaia-react/gaia/pull/5'
   [ "$status" -eq 0 ]
   [ "$(cat "$FAKE_GH_STATE/pr_view_ref")" = "5" ]
   assert_released_once "77"
