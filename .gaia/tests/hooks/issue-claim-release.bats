@@ -254,6 +254,35 @@ assert_nothing_released() { [ ! -s "$FAKE_GH_STATE/issue_edits" ]; }
   [ "$(cat "$FAKE_GH_STATE/pr_view_ref")" = "9" ]
 }
 
+# 6d and 6e are the two constructs the scan cannot model rather than two more
+# spellings it gets wrong. A heredoc body is not a quoted span, so a body line
+# can read as a command of its own; a `cd` decides which repository the merge
+# lands in, and the shared guard only sees one written at the very start. Both
+# end in a label stripped off an issue in THIS repository that the merge never
+# closed, so the hook abstains. 6f is the control that keeps the abstention
+# narrow: an ordinary earlier command still releases.
+@test "6d: a heredoc body line naming a merge makes the command unreadable" {
+  export FAKE_GH_PR_BODY="Closes #77"
+  run_hook $'cat <<\'EOF\' > notes.md\ngh pr merge 5\nEOF\ngh pr merge 9'
+  [ "$status" -eq 0 ]
+  assert_nothing_released
+}
+
+@test "6e: a directory change before the merge makes the command unreadable" {
+  export FAKE_GH_PR_BODY="Closes #77"
+  run_hook 'git fetch && cd ../other && gh pr merge 5'
+  [ "$status" -eq 0 ]
+  assert_nothing_released
+}
+
+@test "6f: an ordinary earlier command still releases" {
+  export FAKE_GH_PR_BODY="Closes #77"
+  run_hook 'git commit -m "wire it up" && gh pr merge 1508'
+  [ "$status" -eq 0 ]
+  [ "$(cat "$FAKE_GH_STATE/pr_view_ref")" = "1508" ]
+  assert_released_once "77"
+}
+
 @test "7: a foreign-repo command releases nothing" {
   export FAKE_GH_PR_BODY="Closes #99"
   run_hook 'gh pr merge --repo other-org/other-repo 1'
@@ -420,6 +449,49 @@ assert_nothing_released() { [ ! -s "$FAKE_GH_STATE/issue_edits" ]; }
   [ "$status" -eq 0 ]
   [ "$(cat "$FAKE_GH_STATE/pr_view_ref")" = "1508" ]
   assert_released_once "77"
+}
+
+# The scan reads the command one fixed-size block at a time, so word, quote and
+# escape state has to survive a block boundary. Every other case here is short
+# enough to fit in one block, which would leave the chaining unexercised. These
+# two straddle several boundaries: 7ab carries a word across them, 7ac holds a
+# quoted span open across them so a separator inside it stays text and the flag
+# after it is still scanned.
+@test "7ab: a value spanning several blocks does not become the reference" {
+  export FAKE_GH_PR_BODY="Closes #77"
+  local pad
+  pad=$(printf 'x%.0s' $(seq 1 600))
+  run_hook "gh pr merge --body \"$pad\" 1508"
+  [ "$status" -eq 0 ]
+  [ "$(cat "$FAKE_GH_STATE/pr_view_ref")" = "1508" ]
+  assert_released_once "77"
+}
+
+# 7ab and 7ac pin quote state across a boundary but not the WORD itself: in
+# both, a word truncated at the boundary is a flag value nothing reads back,
+# so the reference still resolves. This sweeps the reference across a whole
+# block's worth of offsets so at least one run has it straddling, whatever
+# the scan's block constant is; a truncated word there resolves the wrong
+# pull request outright.
+@test "7ad: the reference resolves wherever it straddles a block boundary" {
+  export FAKE_GH_PR_BODY="Closes #77"
+  local n pad
+  for n in $(seq 230 262); do
+    pad=$(printf 'x%.0s' $(seq 1 "$n"))
+    run_hook "gh pr merge --body \"$pad\" 1508"
+    [ "$status" -eq 0 ]
+    [ "$(cat "$FAKE_GH_STATE/pr_view_ref")" = "1508" ]
+  done
+}
+
+@test "7ac: a quoted span held open across blocks keeps its separator as text" {
+  export FAKE_GH_PR_BODY="Closes #77"
+  local half body
+  half=$(printf 'x%.0s' $(seq 1 300))
+  body="$half;$half"
+  run_hook "gh pr merge 5 --body \"$body\" --repo other-org/gaia"
+  [ "$status" -eq 0 ]
+  assert_nothing_released
 }
 
 # 7n and 7o pin the spellings that carry a quote into the parser. Each one

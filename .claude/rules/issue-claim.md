@@ -20,12 +20,13 @@ The window the claim exists to close is the one between picking the work and hav
 
 ## Release on merge, and on abandonment
 
-`.claude/hooks/issue-claim-release.sh` strips the claim automatically from every issue a merged pull request closes by keyword, so that path needs nothing from you. It is a `PostToolUse` hook on `Bash`, so what it sees is the first merge in a command run in this session, and nothing else: a second merge in the same command releases nothing. Five paths need a hand:
+`.claude/hooks/issue-claim-release.sh` strips the claim automatically from every issue a merged pull request closes by keyword, so that path needs nothing from you. It is a `PostToolUse` hook on `Bash`, so what it sees is the first merge in a command run in this session, and nothing else: a second merge in the same command releases nothing. Six paths need a hand:
 
 - **A merge run anywhere but here.** GitHub's own web interface, a plain terminal, another person, or automation. No tool call fires, so no hook runs and the claim stays exactly as it was. Strip it by hand.
 
 - **A pull request that does not close the issue with a keyword.** The hook reads GitHub's closing keywords out of the pull-request body, so a body that says `Refs #<n>`, or names no issue at all, releases nothing. Write a real closing reference (`Closes #<n>`) for any issue the branch claims, or strip the claim by hand after the merge.
 - **A merge that lands server-side after the command returns.** `.claude/rules/pr-merge.md` prescribes `--auto` when branch protection blocks a direct merge, and that call returns while the pull request is still open. The hook requires `MERGED` at the moment it runs, so it sees `OPEN`, releases nothing, and never runs again: the merge that follows fires no tool call at all. Strip the claim by hand once the merge lands.
+- **A merge the hook cannot read unambiguously.** It reads the command the way a shell does and abstains rather than guessing whenever something ahead of the merge puts the rest of the command out of reach: a heredoc in the same command (its body is not a quoted span, so a body line can read as a command of its own), a `cd` (which decides the repository the merge lands in, and the shared repository guard only sees one written at the very start), or another repository named by `--repo` anywhere in the command. Abstaining costs a release; guessing would strip a label off an issue in this repository that the merge never closed. Run the merge as its own command, or strip the claim by hand afterwards.
 - **A controlled stop that abandons the work**, before the pull request merges. Strip the claim yourself: `gh issue edit <n> --remove-label in-progress`.
 - **A stale claim** left by a session that died. `/gaia-debt` reconciles its own `tech-debt` claims; nothing reconciles the rest, so release those by hand.
 

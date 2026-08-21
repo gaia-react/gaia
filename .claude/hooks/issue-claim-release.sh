@@ -91,6 +91,7 @@ TAB=$'\t'
 words=()
 cur=()
 matched=0
+unreadable=0
 
 # Accept the piece currently in `cur` when it IS the merge invocation, and on
 # acceptance hand its post-verb words to the parser below. Copied element by
@@ -105,6 +106,44 @@ take_command() {
     j=$((j + 1))
   done
   return 0
+}
+
+# Called on a piece that is NOT the merge, to ask whether it makes everything
+# after it unreadable to this scan.
+#
+# Two constructs do, and they are the two the scan is structurally unable to
+# model rather than two more spellings to add:
+#
+#   A heredoc. Its body is not a quoted span, so every body line reads as its
+#   own command, and a body line that begins with the merge verb is accepted
+#   as the merge while the real one waits on a later line. Modeling this means
+#   tracking a delimiter and skipping to it, which is more of the parser that
+#   has been wrong once per spelling.
+#
+#   A directory change. `cd` decides which repository the merge lands in, and
+#   the shared foreign-repo guard only sees one written at the very start of
+#   the command. Its ambiguity answer is "home", which is the safe answer for
+#   the nine blocking consumers that read home as ENFORCE and the wrong one
+#   here, where home means ACT.
+#
+# Both end in the same place if guessed at: a label stripped off an issue in
+# this repository that the merge never closed. So the answer is to stop rather
+# than to read further. The cost is a release that has to be done by hand, and
+# `.claude/rules/issue-claim.md` names the class so it is not a surprise.
+piece_blocks_reading() {
+  local w
+  # `${cur[@]+...}` guards the expansion: an empty array is an unbound
+  # reference under `set -u` on bash 3.2, which macOS still ships.
+  for w in ${cur[@]+"${cur[@]}"}; do
+    case "$w" in
+      # A herestring is one word on this line, which the scan already reads
+      # correctly, so it is not a heredoc and does not block anything.
+      '<<<'*) ;;
+      '<<'*|[0-9]'<<'*) return 0 ;;
+      cd|pushd|popd) return 0 ;;
+    esac
+  done
+  return 1
 }
 
 word=""
@@ -170,6 +209,7 @@ while [ "$base" -lt "$n_cmd" ]; do
         [ "$have_word" = 1 ] && cur+=("$word")
         word=""; have_word=0
         if take_command; then matched=1; break 2; fi
+        piece_blocks_reading && unreadable=1
         cur=()
         ;;
       *) word="$word$c"; have_word=1 ;;
@@ -182,6 +222,10 @@ if [ "$matched" = 0 ]; then
   take_command && matched=1
 fi
 [ "$matched" = 1 ] || exit 0
+# Something ahead of the accepted merge put this command beyond what the scan
+# can read. Acting anyway means guessing, and every wrong guess here writes a
+# label on an issue in this repository that nobody touched.
+[ "$unreadable" = 0 ] || exit 0
 
 # Every value-taking flag, and only those. Checked against gh's own help
 # output rather than recalled: -m is --merge, a BOOLEAN, so listing it here
@@ -307,9 +351,10 @@ body=$(printf '%s' "$pr_json" | jq -r '.body // ""' 2>/dev/null)
 # The left boundary is load-bearing: without it a body reading `left
 # unresolved #<n>` matches as `resolved #<n>`, and GitHub closes nothing
 # there, because it requires the keyword to stand as its own word. Releasing
-# on that match is the one way this hook can strip a claim off work that is
-# still in flight, which is the harm every other guard here exists to
-# prevent.
+# on that match strips a claim off work that is still in flight, which is the
+# harm every guard here exists to prevent; this is the arm that reaches it
+# through the pull-request BODY, while the scan and the repository checks
+# above guard the arm that reaches it by resolving the wrong pull request.
 #
 # A qualifier is compared against the home repo before anything is released,
 # because a `Fixes other-org/other-repo#<n>` closes an issue over there and
