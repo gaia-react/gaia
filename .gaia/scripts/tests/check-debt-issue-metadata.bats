@@ -368,7 +368,7 @@ refute_code() {
 }
 
 @test "a drain label on a filing is rejected" {
-  run bash "$CHECK" --pre-file --labels "$GOOD_LABELS,debt:in-progress" --body-file "$BODY"
+  run bash "$CHECK" --pre-file --labels "$GOOD_LABELS,in-progress" --body-file "$BODY"
   [ "$status" -eq 1 ]
   assert_code "drain-label-on-new-filing"
 }

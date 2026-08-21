@@ -73,7 +73,6 @@ describe('labels/registry creatableEntries', () => {
   test('every feature on yields the twenty adopter-role entries', () => {
     expect(names('adopter', ['tech-debt', 'gaia-ci', 'forensics'])).toEqual([
       'bug',
-      'debt:in-progress',
       'debt:spec-pending',
       'difficulty:easy',
       'difficulty:hard',
@@ -84,6 +83,7 @@ describe('labels/registry creatableEntries', () => {
       'handler:plan',
       'handler:prompt',
       'handler:spec',
+      'in-progress',
       'needs-human',
       'run-audit',
       'security',
@@ -98,7 +98,6 @@ describe('labels/registry creatableEntries', () => {
   test('GAIA CI off drops only the two labels its workflows own', () => {
     expect(names('adopter', ['tech-debt', 'forensics'])).toEqual([
       'bug',
-      'debt:in-progress',
       'debt:spec-pending',
       'difficulty:easy',
       'difficulty:hard',
@@ -108,6 +107,7 @@ describe('labels/registry creatableEntries', () => {
       'handler:plan',
       'handler:prompt',
       'handler:spec',
+      'in-progress',
       'needs-human',
       'run-audit',
       'severity:critical',
@@ -123,6 +123,7 @@ describe('labels/registry creatableEntries', () => {
       'bug',
       'enhancement',
       'gaia-ci',
+      'in-progress',
       'needs-human',
       'run-audit',
       'security',
@@ -153,7 +154,6 @@ describe('labels/registry creatableEntries', () => {
     expect(names('maintainer', ['tech-debt', 'gaia-ci', 'forensics'])).toEqual([
       'auto-fixable',
       'bug',
-      'debt:in-progress',
       'debt:spec-pending',
       'difficulty:easy',
       'difficulty:hard',
@@ -166,6 +166,7 @@ describe('labels/registry creatableEntries', () => {
       'handler:plan',
       'handler:prompt',
       'handler:spec',
+      'in-progress',
       'needs-human',
       'non-issue',
       'run-audit',

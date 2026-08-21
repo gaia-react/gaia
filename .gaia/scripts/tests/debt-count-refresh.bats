@@ -166,7 +166,7 @@ open_count() { jq -r '.openCount' "$CACHE"; }
   [ -e "$SENTINEL" ]
 }
 
-# --- 5. Excludes debt:in-progress from the open count -------------------------
+# --- 5. Excludes in-progress from the open count -------------------------
 # The core concurrency contract: an open tech-debt issue carrying the claim label
 # is subtracted from the count so a peer session's nudge drops. Three issues, one
 # claimed, must count 2.
@@ -176,8 +176,8 @@ open_count() { jq -r '.openCount' "$CACHE"; }
 # fixture into the stub between single quotes and the apostrophe closes the
 # quote, so the stub becomes a syntax error, reads as a gh failure, and this
 # test reds on a stale count rather than on the real cause.
-@test "excludes debt:in-progress from the open count" {
-  stub_gh_json '[{"number":1,"labels":[{"name":"tech-debt"},{"name":"severity:important"}],"body":"the refresher'"'"'s own count"},{"number":2,"labels":[{"name":"tech-debt"},{"name":"severity:suggestion"},{"name":"debt:in-progress"}]},{"number":3,"labels":[{"name":"tech-debt"},{"name":"severity:critical"}]}]'
+@test "excludes in-progress from the open count" {
+  stub_gh_json '[{"number":1,"labels":[{"name":"tech-debt"},{"name":"severity:important"}],"body":"the refresher'"'"'s own count"},{"number":2,"labels":[{"name":"tech-debt"},{"name":"severity:suggestion"},{"name":"in-progress"}]},{"number":3,"labels":[{"name":"tech-debt"},{"name":"severity:critical"}]}]'
   : > "$SENTINEL"
   touch -t "$(past_ts 300)" "$SENTINEL"   # aged past the 120s grace: count trusted & written
   run run_refresh
@@ -199,10 +199,10 @@ open_count() { jq -r '.openCount' "$CACHE"; }
 }
 
 # --- 7. Excludes both claim labels together -----------------------------------
-# debt:in-progress and debt:spec-pending are distinct exclusions; both must drop.
+# in-progress and debt:spec-pending are distinct exclusions; both must drop.
 # Four issues: plain, in-progress, spec-pending, and one carrying both -> counts 1.
-@test "excludes both debt:in-progress and debt:spec-pending" {
-  stub_gh_json '[{"number":1,"labels":[{"name":"tech-debt"}]},{"number":2,"labels":[{"name":"tech-debt"},{"name":"debt:in-progress"}]},{"number":3,"labels":[{"name":"tech-debt"},{"name":"debt:spec-pending"}]},{"number":4,"labels":[{"name":"tech-debt"},{"name":"debt:in-progress"},{"name":"debt:spec-pending"}]}]'
+@test "excludes both in-progress and debt:spec-pending" {
+  stub_gh_json '[{"number":1,"labels":[{"name":"tech-debt"}]},{"number":2,"labels":[{"name":"tech-debt"},{"name":"in-progress"}]},{"number":3,"labels":[{"name":"tech-debt"},{"name":"debt:spec-pending"}]},{"number":4,"labels":[{"name":"tech-debt"},{"name":"in-progress"},{"name":"debt:spec-pending"}]}]'
   : > "$SENTINEL"
   touch -t "$(past_ts 300)" "$SENTINEL"
   run run_refresh

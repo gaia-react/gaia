@@ -77,7 +77,7 @@ const MAINTAINER_START_MARKER = maintainerMarker('start');
 const MAINTAINER_END_MARKER = maintainerMarker('end');
 
 const PALETTE_RULE =
-  'Warm families (red, orange, amber) are reserved for attention: urgency, defect type, and the gates that require a human. Every purely classificatory axis takes a cool or neutral family instead, high-frequency structural labels stay near grey so they recede, no two entries share a hex value, and every hex value is lowercase.';
+  'Warm families (red, orange, amber) are reserved for attention: urgency, defect type, the gates that require a human, and the active-work claim, whose yellow marks an issue as in flight. Every other entry takes a cool or neutral family instead, high-frequency structural labels stay near grey so they recede, no two entries share a hex value, and every hex value is lowercase.';
 
 const MAINTAINER_INTRO =
   'These labels serve the GAIA maintainer repository. Sync never creates them on an adopter repository, and the bundle-time scrub removes this section from the page an adopter receives.';

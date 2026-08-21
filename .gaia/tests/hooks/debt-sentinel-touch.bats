@@ -56,12 +56,12 @@ assert_not_armed() { [ ! -f "$REPO/$SENTINEL_REL" ]; }
 }
 
 @test "gh issue edit --add-label arms the sentinel" {
-  run_hook 'gh issue edit 590 --add-label debt:in-progress'
+  run_hook 'gh issue edit 590 --add-label in-progress'
   assert_armed
 }
 
 @test "gh issue edit --remove-label arms the sentinel" {
-  run_hook 'gh issue edit 590 --remove-label debt:in-progress'
+  run_hook 'gh issue edit 590 --remove-label in-progress'
   assert_armed
 }
 

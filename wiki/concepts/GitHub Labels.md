@@ -14,6 +14,8 @@ The middle of this page is generated from that registry. A hand edit between the
 
 The appendix at the bottom is yours. A project that adds labels of its own documents them there, outside the generated span, where no regeneration can reach them.
 
+The registry documents each label's shape; it does not document how one is used day to day. For `in-progress`, see [[Issue Claim]] for the claim and release workflow.
+
 ## Commands
 
 - `.gaia/cli/gaia labels sync` reconciles this repository's labels against the registry.
@@ -63,7 +65,7 @@ Sync is conservative by design. It renames rather than deleting and recreating, 
 
 | Label | Color | Description | Created by |
 | --- | --- | --- | --- |
-| `debt:in-progress` | `2da44e` | A drain run holds this issue right now | tech-debt |
+| `in-progress` | `ffd33d` | Someone is actively working this issue right now; do not pick it up | always |
 | `debt:spec-pending` | `a6e3b8` | Handed to /gaia-spec; parked until the SPEC lands | tech-debt |
 
 ### Modifier
@@ -100,7 +102,7 @@ Sync is conservative by design. It renames rather than deleting and recreating, 
 
 ## Palette rule
 
-Warm families (red, orange, amber) are reserved for attention: urgency, defect type, and the gates that require a human. Every purely classificatory axis takes a cool or neutral family instead, high-frequency structural labels stay near grey so they recede, no two entries share a hex value, and every hex value is lowercase.
+Warm families (red, orange, amber) are reserved for attention: urgency, defect type, the gates that require a human, and the active-work claim, whose yellow marks an issue as in flight. Every other entry takes a cool or neutral family instead, high-frequency structural labels stay near grey so they recede, no two entries share a hex value, and every hex value is lowercase.
 
 <!-- gaia:maintainer-only:start -->
 

@@ -155,11 +155,11 @@ mkdir -p "$DEBT_DIR" 2>/dev/null
 
 # ---------- Recompute openCount ----------
 # Count open issues carrying the `tech-debt` label via gh, excluding any that
-# also carry `debt:in-progress` (the /gaia-debt in-progress claim label) or
-# `debt:spec-pending` (the parked design-first handoff label) so a claimed or
-# parked issue does not inflate the nudge for a peer session. Guarded on gh
-# presence + auth + network; on ANY failure keep the previous cached count
-# (never blank it).
+# also carry `in-progress` (the shared claim label, set by /gaia-debt or by
+# hand) or `debt:spec-pending` (the parked design-first handoff label) so a
+# claimed or parked issue does not inflate the nudge for a peer session.
+# Guarded on gh presence + auth + network; on ANY failure keep the previous
+# cached count (never blank it).
 #
 # ONE fetch answers both fields. With local jq the raw issue list is pulled once
 # and filtered twice here; without it, gh's own `--jq` computes the count
@@ -175,7 +175,7 @@ open_count="$prev_open_count"
 covered_paths="$prev_covered_paths"
 recompute_ok=false
 # One expression, used by whichever arm runs, so the two can never drift apart.
-COUNT_FILTER='[.[] | select([.labels[].name] | (index("debt:in-progress") or index("debt:spec-pending")) | not)] | length'
+COUNT_FILTER='[.[] | select([.labels[].name] | (index("in-progress") or index("debt:spec-pending")) | not)] | length'
 if command -v gh >/dev/null 2>&1; then
   if command -v jq >/dev/null 2>&1; then
     issues_json=$(gh issue list --label tech-debt --state open --json number,labels,body --limit 1000 2>/dev/null)

@@ -98,7 +98,6 @@ describe('labels/sync planSync create sets', () => {
   test('an empty adopter repo with every feature on', () => {
     expect(createNames(plan({}))).toEqual([
       'bug',
-      'debt:in-progress',
       'debt:spec-pending',
       'difficulty:easy',
       'difficulty:hard',
@@ -109,6 +108,7 @@ describe('labels/sync planSync create sets', () => {
       'handler:plan',
       'handler:prompt',
       'handler:spec',
+      'in-progress',
       'needs-human',
       'run-audit',
       'security',
@@ -133,6 +133,7 @@ describe('labels/sync planSync create sets', () => {
       'bug',
       'enhancement',
       'gaia-ci',
+      'in-progress',
       'needs-human',
       'run-audit',
       'security',
@@ -146,7 +147,6 @@ describe('labels/sync planSync create sets', () => {
     expect(createNames(plan({audience: 'maintainer'}))).toEqual([
       'auto-fixable',
       'bug',
-      'debt:in-progress',
       'debt:spec-pending',
       'difficulty:easy',
       'difficulty:hard',
@@ -159,6 +159,7 @@ describe('labels/sync planSync create sets', () => {
       'handler:plan',
       'handler:prompt',
       'handler:spec',
+      'in-progress',
       'needs-human',
       'non-issue',
       'run-audit',
@@ -185,6 +186,7 @@ describe('labels/sync planSync create sets', () => {
       'gaia-ci',
       'gaia-forensics',
       'gaia-triaged',
+      'in-progress',
       'needs-human',
       'non-issue',
       'run-audit',

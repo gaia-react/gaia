@@ -141,6 +141,7 @@ AUDIT_MERELY_SHARED_PATHS="$(cat <<'EOF'
 .claude/rules/gaia-folder.md
 .claude/rules/i18n.md
 .claude/rules/instruction-files.md
+.claude/rules/issue-claim.md
 .claude/rules/knip.md
 # gaia:maintainer-only:start
 .claude/rules/maintainers/github-workflow-distribution.md

@@ -6,12 +6,12 @@
 # tech-debt issue filed by hand in the main session), `gh pr merge` (a
 # `/gaia-debt` fix PR closing its `Closes #N` issue), `gh issue close` (a
 # tech-debt issue closed directly, e.g. decided wontfix or obsolete),
-# `gh issue reopen` (which raises the count again), and `gh issue edit` (the
-# `/gaia-debt` in-progress claim adds or removes the `debt:in-progress` label,
-# and because the open count excludes claimed issues, toggling that label
-# changes the count too). These usually land via the orchestrator/human after
-# the skill has left the conversation, so this hook is the reliable trigger
-# rather than a best-effort in-conversation touch.
+# `gh issue reopen` (which raises the count again), and `gh issue edit` (an
+# `in-progress` claim adds or removes the shared claim label, on a tech-debt
+# issue or any other, and because the open count excludes claimed issues,
+# toggling that label changes the count too). These usually land via the
+# orchestrator/human after the skill has left the conversation, so this hook
+# is the reliable trigger rather than a best-effort in-conversation touch.
 #
 # This complements two in-flow touches that are best-effort belt-and-suspenders,
 # not replacements: the audit's own touch after it files an issue (the
@@ -66,7 +66,12 @@ fi
 
 # Repo-scope: a `gh pr merge` aimed at a sibling repo must not touch THIS repo's
 # sentinel.
-[ -f .claude/hooks/lib/repo-scope.sh ] && . .claude/hooks/lib/repo-scope.sh
+# Sourced from this hook's own on-disk location, never cwd: a cwd-relative
+# source that misses leaves cmd_targets_foreign_repo undefined, and the
+# guard below falls THROUGH rather than bailing.
+_scope_lib="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)"
+# shellcheck source=/dev/null
+[ -n "${_scope_lib:-}" ] && [ -f "$_scope_lib/repo-scope.sh" ] && . "$_scope_lib/repo-scope.sh"
 if type cmd_targets_foreign_repo >/dev/null 2>&1 \
    && cmd_targets_foreign_repo "$cmd"; then
   exit 0

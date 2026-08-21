@@ -148,7 +148,7 @@ baseline_for() { jq -r --arg p "$1" '.auditDriftBaseline[$p] // "none"' "$CACHE"
 }
 
 @test "coveredPaths keeps a claimed issue that openCount deliberately excludes" {
-  jq -n '[{number: 1, labels: [{name: "tech-debt"}, {name: "debt:in-progress"}],
+  jq -n '[{number: 1, labels: [{name: "tech-debt"}, {name: "in-progress"}],
            body: "<!-- gaia-debt-key: v1 class=holistic/unclassified path=CLAUDE.md line=1 -->"}]' \
     > "$MOCK_ISSUES"
   run bash "$ROOT/.gaia/scripts/debt-count-refresh.sh"
