@@ -632,6 +632,46 @@ assert_nothing_released() { [ ! -s "$FAKE_GH_STATE/issue_edits" ]; }
   assert_released_once "77"
 }
 
+# 7ag-7aj: gh clusters single-dash shorthands, and this parser does not model
+# that. The first value-taking letter in a cluster swallows the rest of the
+# token or the next word, so `-sR<slug>` leaves the repository check unarmed
+# and `-st 1234 5` hands `1234` to the subject. Read as one unknown flag both
+# resolve a pull request in THIS repository that the merge never touched, so
+# a cluster is refused outright rather than decoded. 7aj is the control: a
+# lone shorthand is not a cluster and still works.
+@test "7ag: an attached cluster naming another repo releases nothing" {
+  export FAKE_GH_PR_BODY="Closes #77"
+  run_hook 'gh pr merge -sRother-org/other-repo 5'
+  [ "$status" -eq 0 ]
+  assert_nothing_released
+}
+
+@test "7ah: a spaced cluster naming another repo releases nothing" {
+  export FAKE_GH_PR_BODY="Closes #77"
+  run_hook 'gh pr merge -sR other-org/other-repo 5'
+  [ "$status" -eq 0 ]
+  assert_nothing_released
+}
+
+# Refused even when it names the home repo, and even when every letter in it
+# is a boolean. The parser cannot tell those apart from the dangerous shape
+# without modelling the cluster grammar, and this is the direction to be
+# wrong in: `-sd 1508` costs a release that is done by hand.
+@test "7ai: a cluster releases nothing even when it is harmless" {
+  export FAKE_GH_PR_BODY="Closes #77"
+  run_hook 'gh pr merge -sd 1508'
+  [ "$status" -eq 0 ]
+  assert_nothing_released
+}
+
+@test "7aj: a lone shorthand is not a cluster and still resolves the ref" {
+  export FAKE_GH_PR_BODY="Closes #77"
+  run_hook 'gh pr merge -s 1508'
+  [ "$status" -eq 0 ]
+  [ "$(cat "$FAKE_GH_STATE/pr_view_ref")" = "1508" ]
+  assert_released_once "77"
+}
+
 # The merge has to be the first command in the tool call, so an ordinary
 # benign prefix costs the release. That is the deliberate price of the
 # first-command contract, and it is what the rule's own bullet tells a reader

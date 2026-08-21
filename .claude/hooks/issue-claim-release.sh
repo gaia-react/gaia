@@ -80,8 +80,10 @@ cmd_targets_foreign_repo "$cmd" && exit 0
 #
 # Requiring the merge to come first closes the whole class at once: there is
 # no prefix left to misread, and every word the parser below sees comes from
-# the merge invocation itself, whose grammar is gh's flag set and is
-# enumerated at `value_flags`. The cost is that `<something> && <merge>` in
+# the merge invocation itself. That narrows the remaining grammar to gh's
+# flags, which is smaller but is NOT closed by the `value_flags` enumeration
+# on its own, because gh also clusters shorthands; the parser abstains on a
+# cluster rather than modelling one. The cost is that `<something> && <merge>` in
 # one tool call releases nothing. That shape is not how this repository
 # merges (the workflow runs the merge as its own step), and the cost of
 # missing one is a claim removed by hand, against a wrong release that is
@@ -223,6 +225,24 @@ while [ "$i" -lt "$n" ]; do
     continue
   fi
   case "$tok" in
+    # A single-dash CLUSTER, which gh's flag library accepts and this parser
+    # does not model. pflag reads a one-dash token letter by letter, and the
+    # first value-taking shorthand in it swallows the rest of the token or
+    # the next word: `-sRother-org/other-repo` is a squash merge of another
+    # repository, and `-st 1234 5` gives `1234` to the subject rather than
+    # making it the reference. Read here as one unknown flag, the first
+    # spelling leaves the repository check unarmed and the second makes a
+    # subject the reference, and both end in a label stripped off an issue in
+    # THIS repository.
+    #
+    # Rejecting the whole shape rather than the letter `R` is deliberate:
+    # matching R alone would close the spelling that was reported and leave
+    # the one that was not, which is how the ten rounds before this went. A
+    # token whose FIRST letter is value-taking is not a cluster (the rest is
+    # that flag's value), so it falls through to the arms below.
+    -[!-RAbFt]?*)
+      exit 0
+      ;;
     -*=*)
       # `--flag=value` carries its value in the same word.
       flag="${tok%%=*}"
@@ -234,11 +254,11 @@ while [ "$i" -lt "$n" ]; do
           ;;
       esac
       ;;
-    # gh's flag library also accepts a shorthand with its value attached, so
-    # `-Rowner/repo` is the same invocation as `-R owner/repo`. Only the
-    # repository shorthand is read back here; an attached value on any other
-    # shorthand stays one word and consumes nothing, which the arm below
-    # already gets right by doing nothing with it.
+    # A shorthand with its value attached: `-Rowner/repo` is the same
+    # invocation as `-R owner/repo`. Only the repository shorthand is read
+    # back; an attached value on another value-taking shorthand stays one
+    # word and consumes nothing, which the arm below gets right by doing
+    # nothing with it.
     -R?*)
       cmd_repo="${tok#-R}"
       ;;
