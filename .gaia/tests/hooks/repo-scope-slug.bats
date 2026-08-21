@@ -8,9 +8,14 @@
 # only the repo-NAME half of a `-R`/`--repo` value against the checkout's
 # directory basename. A consumer that ACTS on the home repo inverts both
 # properties: reading a foreign command as home makes it write to a pull
-# request or an issue the command never named, so ambiguity has to resolve to
-# "foreign", and the comparison has to be the whole [HOST/]OWNER/REPO that gh
-# uses to identify a repository.
+# request or an issue the command never named, so ambiguity resolves to
+# "foreign", and the comparison is the whole [HOST/]OWNER/REPO that gh uses to
+# identify a repository.
+#
+# The inversion reaches the `-R`/`--repo` arm only. A command naming no
+# explicit target is delegated back to the blocking guard's cwd arms, which
+# keep their fail-toward-home direction; s17 pins that rather than leaving it
+# to be inferred from the paragraph above.
 #
 # The suite drives the REAL lib (sourced by absolute path, never copied)
 # against a sandbox git repo, with a fake `gh` on PATH answering
@@ -160,4 +165,32 @@ name_half_verdict() {
   # depend on it, including the over-classification that is safe for them.
   [ "$(name_half_verdict 'gh pr merge --repo other-org/gaia 5')" = "home" ]
   [ "$(name_half_verdict 'gh pr merge --repo other-org/other-repo 5')" = "foreign" ]
+}
+
+@test "s15: a later command's unrelated -R flag does not decide this one" {
+  # `-R` is a common short flag on other tools, and a tool call may run one
+  # after the merge. Reading its letters as the target classifies an ordinary
+  # command foreign, and an acting consumer then silently declines on it.
+  [ "$(verdict 'gh pr merge 42 --squash && grep -Rn TODO .')" = "home" ]
+  [ "$(verdict 'gh pr merge 42 --squash && cp -Rp a b')" = "home" ]
+  [ "$(verdict 'gh pr merge 42 --squash && ls -RA')" = "home" ]
+}
+
+@test "s16: an attached -R still decides when it names a real slug" {
+  # s15's safety direction: rejecting a bare-letter value must not also reject
+  # the spelling s5 exists for.
+  [ "$(verdict 'gh pr merge -Rother-org/widgets 5 && ls -RA')" = "foreign" ]
+}
+
+# s17 pins what the delegated cwd arms actually do, rather than what the
+# inverted fail direction of the -R/--repo arm might suggest they do. A command
+# naming no explicit target is handed to the blocking guard, which fails toward
+# home, and these three redirections are not among the shapes it models. An
+# acting consumer therefore does act on them. Inherited, not introduced here,
+# and tracked as #1515; pinned so the gap stays visible and so closing it reds
+# this test rather than passing unnoticed.
+@test "s17: a cwd redirection the shared arms do not model reads home" {
+  [ "$(verdict "pushd $SIBLING && gh pr merge 5")" = "home" ]
+  [ "$(verdict "(cd $SIBLING && gh pr merge 5)")" = "home" ]
+  [ "$(verdict "cd $PARENT/does-not-exist && gh pr merge 5")" = "home" ]
 }

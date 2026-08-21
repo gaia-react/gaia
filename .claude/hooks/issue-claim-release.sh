@@ -317,7 +317,9 @@ done
 # one repository between github.com and an enterprise host carries the same
 # OWNER/REPO on both, and a merge on either would otherwise resolve the
 # other's pull request of that number here. The host is the URL's authority.
-# The resolver memoizes, so the boundary check above already paid for this.
+# This call is the one that pays: the boundary check reads the scanned value
+# and so runs below, not above. The resolver memoizes, so that check reuses
+# this resolution rather than making a second `gh repo view`.
 gaia_repo_scope_resolve_home || exit 0
 home="$GAIA_REPO_SCOPE_HOME_SLUG"
 home_host="$GAIA_REPO_SCOPE_HOME_HOST"

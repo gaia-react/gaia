@@ -43,8 +43,11 @@ fi
 # the ordinary fork topology) as home; this hook would then resolve THIS
 # repository's pull request of that number and post onto a pull request the
 # command never touched. The act-on-home entry point compares the whole
-# HOST/OWNER/REPO, and resolves every ambiguity to "foreign" so an
-# unidentifiable target declines rather than acts.
+# HOST/OWNER/REPO, and resolves an ambiguous EXPLICIT target to "foreign" so an
+# unidentifiable one declines rather than acts. A command naming no explicit
+# target still runs through the inherited cwd arms, which fail toward home, so
+# a redirection they do not model (`pushd`, a subshell `(cd ...)`, an
+# unresolvable `cd`) reaches the posting path; see that lib's own note.
 #
 # Sourced from this hook's own on-disk location, never cwd. A cwd-relative
 # source misses from any non-root cwd, and a `type f >/dev/null 2>&1 && f`

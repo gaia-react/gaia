@@ -91,11 +91,21 @@ cmd_targets_foreign_repo() {
 # blocking on it: posts a comment, strips a label. Same question, opposite
 # fail direction and a different comparison.
 #
-# Fail direction. The guard above resolves every ambiguity to 1 ("home"), so a
-# blocking consumer keeps enforcing; over-enforcement is safe. Reading a
-# foreign command as home is not safe for a consumer that acts: it writes to a
-# pull request or an issue the command never named. So this one resolves every
-# ambiguity to 0 ("foreign") and the caller declines to act.
+# Fail direction, and its exact reach. The guard above resolves every ambiguity
+# to 1 ("home"), so a blocking consumer keeps enforcing; over-enforcement is
+# safe. Reading a foreign command as home is not safe for a consumer that acts:
+# it writes to a pull request or an issue the command never named. So in the
+# `-R`/`--repo` arm, the arm this entry point replaces, every ambiguity
+# resolves to 0 ("foreign") and the caller declines.
+#
+# That inversion covers the explicit-target arm ONLY. A command naming no
+# target is delegated below to the guard above, whose `git -C` and `cd` arms
+# keep their own fail-toward-home direction, and this entry point does not
+# convert it. So a cwd redirection those arms do not model still reads home:
+# a leading `pushd`, a subshell `(cd ...`, and a `cd` to a path that does not
+# resolve are each home here, and an acting consumer does act on them. That gap
+# is inherited rather than introduced (gaia-react/gaia#1515); do not read the
+# paragraph above as covering it.
 #
 # Comparison. gh identifies a repository as [HOST/]OWNER/REPO, so this compares
 # the WHOLE value against one `gh repo view --json nameWithOwner,url` call,
@@ -218,7 +228,14 @@ cmd_targets_foreign_repo_slug() {
   # as another one, so this entry point reads the attached spelling too.
   # `--repo` cannot attach (gh requires `=` or a space for a long flag) and
   # cannot match here either, since the character before `-R` would be `-`.
-  [ -n "$ghrepo" ] || ghrepo=$(printf '%s' "$cmd" | sed -nE 's/.*(^|[[:space:]])-R([^[:space:]]+).*/\2/p' | head -1)
+  #
+  # The value must carry a `/`. `-R` is a common short flag on other tools
+  # (`grep -Rn`, `cp -Rp`, `ls -RA`), and a tool call may run one after the
+  # merge; without this the letters of an unrelated flag read as the target,
+  # every such merge classifies foreign, and an acting consumer silently
+  # declines on an ordinary command. gh rejects a bare repo name outright, so
+  # requiring the slug's own separator loses no reachable invocation.
+  [ -n "$ghrepo" ] || ghrepo=$(printf '%s' "$cmd" | sed -nE 's/.*(^|[[:space:]])-R([^[:space:]]*\/[^[:space:]]*).*/\2/p' | head -1)
 
   if [ -z "$ghrepo" ]; then
     # No explicit target: gh resolves from cwd, which is exactly what the

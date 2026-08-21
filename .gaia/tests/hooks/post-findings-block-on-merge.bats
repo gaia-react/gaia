@@ -1,5 +1,9 @@
 #!/usr/bin/env bats
-
+# Every test exports its own fixture into the subshell bats creates for it,
+# which is the isolation this suite wants: the value must not leak to the next
+# test, and the hook runs as a child of that same subshell, so it does see it.
+# shellcheck disable=SC2030,SC2031
+#
 # Tests for .claude/hooks/post-findings-block-on-merge.sh.
 #
 # The hook is the deterministic caller for post-findings-block.sh: under
