@@ -62,13 +62,27 @@ if cmd_targets_foreign_repo_slug "$cmd"; then
   exit 0
 fi
 
-# Resolve the PR number: prefer a literal <N> in the command, else ask gh for
-# the PR bound to the current branch.
-pr_re='gh[[:space:]]+pr[[:space:]]+merge[[:space:]]+([0-9]+)'
+# Resolve the pull request the merge names, from the scan the boundary check
+# above already ran rather than from a pattern over the raw command text. A
+# regex takes its FIRST match anywhere in the string, and it only matches a
+# number sitting immediately after the verb, so a merge spelling its flags
+# first (`gh pr merge --squash 1515`) does not match at the merge and a later
+# mention of another one (`&& echo "see gh pr merge 1520"`) supplies the number
+# instead. Posting this merge's findings block onto that other pull request is
+# the same "a pattern cannot tell which command a token belongs to" failure the
+# boundary check three lines above exists to close, and the scan already holds
+# the answer.
+#
+# gh accepts a number, a URL, or a branch name as the selector, so a
+# non-numeric one resolves through gh rather than being read as a number. An
+# empty selector is gh's own current-branch default, which is the same arm a
+# selector gh cannot resolve falls back to.
 PR=""
-if [[ "$cmd" =~ $pr_re ]]; then
-  PR="${BASH_REMATCH[1]}"
-fi
+case "${GAIA_GH_MERGE_REF:-}" in
+  '') : ;;
+  *[!0-9]*) PR="$(gh pr view "$GAIA_GH_MERGE_REF" --json number --jq .number 2>/dev/null || true)" ;;
+  *) PR="$GAIA_GH_MERGE_REF" ;;
+esac
 if [ -z "$PR" ]; then
   PR="$(gh pr view --json number --jq .number 2>/dev/null || true)"
 fi

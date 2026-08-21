@@ -72,6 +72,7 @@ setup() {
   : > "$FAKE_GH_STATE/post_count"
   : > "$FAKE_GH_STATE/patch_count"
   : > "$FAKE_GH_STATE/comment_body"
+  : > "$FAKE_GH_STATE/comment_pr"
   write_gh_stub
   export PATH="$GH_BIN:$PATH"
 }
@@ -117,6 +118,10 @@ case "$1" in
     case "$json_field" in
       isCrossRepository) printf '%s\n' "${FAKE_GH_IS_FORK:-false}" ;;
       author) printf '%s\n' "${FAKE_GH_AUTHOR:-alice}" ;;
+      # `--json number` with no selector is the current-branch default; with a
+      # non-numeric selector it is gh resolving a URL or a branch name. The two
+      # answer from different variables so a test can tell which arm ran.
+      number) printf '%s\n' "${FAKE_GH_RESOLVED_PR:-${FAKE_GH_BRANCH_PR:-}}" ;;
       *) printf '\n' ;;
     esac
     exit 0
@@ -161,6 +166,15 @@ case "$1" in
         done
         [ -n "$body_path" ] && cp "$body_path" "$STATE/comment_body"
         [ -n "$body_literal" ] && printf '%s' "$body_literal" > "$STATE/comment_body"
+        # Record WHICH pull request the block landed on. The body alone cannot
+        # answer that, and posting a correct block onto the wrong pull request
+        # is the failure the reference resolution above exists to prevent.
+        case "$endpoint" in
+          repos/*/issues/*/comments)
+            ep_pr="${endpoint#*/issues/}"
+            printf '%s' "${ep_pr%%/*}" > "$STATE/comment_pr"
+            ;;
+        esac
         if [ "$method" = "POST" ]; then
           echo 1000 > "$STATE/comment_id"
           c=$(( $(cat "$STATE/post_count" 2>/dev/null || echo 0) + 1 ))
@@ -351,4 +365,49 @@ write_sidecar() {
   invoke_hook_in "$REPO/sub/dir" "$json" "$HOOK_ABS"
   [ "$status" -eq 0 ]
   [ ! -s "$FAKE_GH_STATE/post_count" ]
+}
+
+# The reference the merge names comes from the shared first-command scan, not
+# from a pattern over the raw command text. These three pin the rows a pattern
+# gets wrong, and each asserts WHICH pull request the block landed on, because
+# a correct block posted onto the wrong pull request is indistinguishable from
+# a correct post by every other assertion in this file.
+@test "the merge's own reference decides, even when its flags come first" {
+  write_sidecar
+  export FAKE_GH_STATE FAKE_GH_IS_FORK="false" FAKE_GH_AUTHOR="alice"
+  # A pattern anchored to a number right after the verb misses this spelling
+  # entirely and falls back to the current branch's pull request.
+  export FAKE_GH_BRANCH_PR="99"
+
+  run_merge_hook "gh pr merge --squash 42"
+  [ "$status" -eq 0 ]
+
+  [ "$(cat "$FAKE_GH_STATE/post_count")" = "1" ]
+  [ "$(cat "$FAKE_GH_STATE/comment_pr")" = "42" ]
+}
+
+@test "a later command's own merge reference does not decide this one" {
+  write_sidecar
+  export FAKE_GH_STATE FAKE_GH_IS_FORK="false" FAKE_GH_AUTHOR="alice"
+
+  # A regex takes its first match anywhere in the string, so with this merge
+  # spelling its flags first the only text it matches is the trailing mention
+  # of another pull request, and the block lands over there.
+  run_merge_hook 'gh pr merge --squash 42 && echo "see gh pr merge 1520"'
+  [ "$status" -eq 0 ]
+
+  [ "$(cat "$FAKE_GH_STATE/post_count")" = "1" ]
+  [ "$(cat "$FAKE_GH_STATE/comment_pr")" = "42" ]
+}
+
+@test "a merge naming no reference falls back to the current branch's PR" {
+  write_sidecar
+  export FAKE_GH_STATE FAKE_GH_IS_FORK="false" FAKE_GH_AUTHOR="alice"
+  export FAKE_GH_BRANCH_PR="77"
+
+  run_merge_hook "gh pr merge --squash"
+  [ "$status" -eq 0 ]
+
+  [ "$(cat "$FAKE_GH_STATE/post_count")" = "1" ]
+  [ "$(cat "$FAKE_GH_STATE/comment_pr")" = "77" ]
 }
