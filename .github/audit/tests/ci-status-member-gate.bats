@@ -1873,6 +1873,63 @@ run_audit_complete_step() {
   return 0
 }
 
+
+@test "pending path: a pending POST that SUCCEEDS publishes no post_failed" {
+  # The other direction of the predicate, and the one that was missing. Every
+  # test above binds the FAILING outcome, so hoisting the emit out of its `if !`
+  # -- making it unconditional on the pending path -- passes all of them: the
+  # bowed-out sibling exits at read_failed before the POST, so it never sees the
+  # emit either. This is the mutant that survived, and only this test kills it.
+  body="$(extract_step_body 'Write GAIA-Audit commit status (clean, no push)')"
+  commit_mixed_diff
+  write_frontend_marker
+  sha="$(git -C "$SANDBOX" rev-parse HEAD)"
+
+  run run_step "$body" "$sha"
+  [ "$status" -eq 0 ]
+
+  # The POST was reached AND accepted, which is what makes the absence below
+  # mean "the guard is conditional" rather than "the POST never ran".
+  grep -qF "state=pending" "$POST_LOG"
+  grep -qF "success_stamped=false" "$STEP_OUTPUT"
+  grep -qF "post_failed=true" "$STEP_OUTPUT" && return 1
+  return 0
+}
+
+@test "success path: a success POST that SUCCEEDS publishes no post_failed" {
+  # The identical one-sided coverage on the sibling POST. :1876 covers only the
+  # never-attempted case, so the accepted-POST direction went untested there for
+  # the same reason it did here. Folded in with its twin rather than left as the
+  # matching gap.
+  body="$(extract_step_body 'Write GAIA-Audit commit status (out-of-scope skip)')"
+  commit_docs_only_diff
+  sha="$(git -C "$SANDBOX" rev-parse HEAD)"
+
+  run run_step "$body" "$sha"
+  [ "$status" -eq 0 ]
+
+  grep -qF "state=success" "$POST_LOG"
+  grep -qF "success_stamped=true" "$STEP_OUTPUT"
+  grep -qF "post_failed=true" "$STEP_OUTPUT" && return 1
+  return 0
+}
+
+@test "the local-mode stand-down step carries no id:, so its post_failed is unread by design" {
+  # write-audit-status.sh's header states this as the reason the stand-down
+  # mode's unqualified post_failed is harmless: nothing consumes that step's
+  # outputs. That is a falsifiable claim about this workflow with nothing
+  # enforcing it, and the day someone adds an `id:` the claim silently inverts
+  # -- the stand-down emit gains a consumer whose comment ladder has no arm for
+  # a post_failed arriving with an EMPTY members_pending. Pin the claim here
+  # rather than leaving it as prose that decays.
+  block="$(extract_step_block 'Stand down (local-mode, no override)')"
+  # Sanity: the block really was extracted, so the absence below is a read of
+  # the step rather than of an empty file.
+  grep -qF "write-audit-status.sh" "$block"
+  grep -qF "force-pending" "$block"
+  grep -qE '^        id:' "$block" && return 1
+  return 0
+}
 @test "a rejected success POST is not confused with a bowed-out one: post_failed is absent when nothing was attempted" {
   # The two causes of "no stamp" are different repairs -- restore .gaia/VERSION
   # versus re-run the workflow -- so the output that distinguishes them must not
