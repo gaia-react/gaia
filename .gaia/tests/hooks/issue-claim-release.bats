@@ -1,4 +1,9 @@
 #!/usr/bin/env bats
+# Every test exports its own FAKE_GH_PR_BODY into the subshell bats creates
+# for it, which is the point: the fixture must not leak to the next test, and
+# the hook runs as a child of that same subshell, so it does see the value.
+# shellcheck disable=SC2030,SC2031
+#
 # Tests for `.claude/hooks/issue-claim-release.sh`, the PostToolUse Bash hook
 # that strips the `in-progress` claim label from every issue a merged pull
 # request closes.
@@ -182,6 +187,24 @@ assert_nothing_released() { [ ! -s "$FAKE_GH_STATE/issue_edits" ]; }
   run_hook 'gh pr merge 42'
   [ "$status" -eq 0 ]
   assert_nothing_released
+}
+
+# GitHub requires a closing keyword to stand as its own word, so a keyword
+# that is only the tail of a longer one closes nothing and must release
+# nothing. This is the one direction in which the hook can strip a claim off
+# work still in flight.
+@test "5b: a keyword inside a longer word releases nothing" {
+  export FAKE_GH_PR_BODY="This leaves the design unresolved #91 for now"
+  run_hook 'gh pr merge 42'
+  [ "$status" -eq 0 ]
+  assert_nothing_released
+}
+
+@test "5c: a keyword opening the body still releases" {
+  export FAKE_GH_PR_BODY="resolved #4"
+  run_hook 'gh pr merge 42'
+  [ "$status" -eq 0 ]
+  assert_released_once "4"
 }
 
 @test "6: gh pr merge mentioned inside a string is not a real invocation" {

@@ -20,7 +20,7 @@ The window the claim exists to close is the one between picking the work and hav
 
 ## Release on merge, and on abandonment
 
-`.claude/hooks/issue-claim-release.sh` strips the claim automatically from every issue a merged pull request closes by keyword, so that path needs nothing from you. It is a `PostToolUse` hook on `Bash`, so what it sees is a merge run as a command in this session, and nothing else. Five paths need a hand:
+`.claude/hooks/issue-claim-release.sh` strips the claim automatically from every issue a merged pull request closes by keyword, so that path needs nothing from you. It is a `PostToolUse` hook on `Bash`, so what it sees is the first merge in a command run in this session, and nothing else: a second merge in the same command releases nothing. Five paths need a hand:
 
 - **A merge run anywhere but here.** GitHub's own web interface, a plain terminal, another person, or automation. No tool call fires, so no hook runs and the claim stays exactly as it was. Strip it by hand.
 

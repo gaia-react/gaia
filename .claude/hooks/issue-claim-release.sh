@@ -232,7 +232,13 @@ body=$(printf '%s' "$pr_json" | jq -r '.body // ""' 2>/dev/null)
 
 # GitHub's own closing keywords, case-insensitive, followed by whitespace and
 # #<digits>.
-issue_re='(close|closes|closed|fix|fixes|fixed|resolve|resolves|resolved)[[:space:]]+#[0-9]+'
+# The left boundary is load-bearing: without it a body reading `left
+# unresolved #<n>` matches as `resolved #<n>`, and GitHub closes nothing
+# there, because it requires the keyword to stand as its own word. Releasing on that match is the one way
+# this hook can strip a claim off work that is still in flight, which is the
+# harm every other guard here exists to prevent. The class excludes digits,
+# so the number extraction below still sees only the issue number.
+issue_re='(^|[^[:alnum:]_])(close|closes|closed|fix|fixes|fixed|resolve|resolves|resolved)[[:space:]]+#[0-9]+'
 nums=$(printf '%s' "$body" | grep -oiE "$issue_re" 2>/dev/null | grep -oE '[0-9]+' 2>/dev/null | sort -u)
 
 [ -n "$nums" ] || exit 0
