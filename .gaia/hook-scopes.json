@@ -152,6 +152,12 @@
       "why": "Checks the tracked .gaia/manifest.json and the built maintainer CLI binary only; touches no .gaia/local state."
     },
     {
+      "hook": ".claude/hooks/issue-claim-release.sh",
+      "scope": "any",
+      "state": [],
+      "why": "Strips the in-progress claim from the issues a merged pull request closes, entirely through gh. It reads and writes no root-anchored .gaia/local state, so it derives no tree root and the any scope is honest."
+    },
+    {
       "hook": ".claude/hooks/local-janitor.sh",
       "scope": "per-tree",
       "state": ["audit-clearance-markers", "audit-findings-rerun-sidecars", "audit-progress-log", "plans-main", "specs-main", "spec-draft-and-gate1-scratch", "spec-session-scratch", "spec-audit-scratch", "react-perf-run-scratch", "gh-artifact-pr-cache"],
