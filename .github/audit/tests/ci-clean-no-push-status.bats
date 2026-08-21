@@ -137,15 +137,44 @@ setup() {
   [ "$status" -eq 0 ]
 
   # ...and no UNGUARDED spelling sits beside it. The writer POSTs to that
-  # endpoint exactly twice -- pending, trailed by `|| true`, and success, headed
-  # by `if !` -- so a bare third call, or either of these two losing its guard,
-  # breaks the count. That bare shape under `set -eu` is what reddened a clean
-  # audit, and it is one deleted token away from returning.
+  # endpoint exactly twice -- pending and success -- and BOTH are now headed by
+  # `if !`, so a bare third call, or either of these two losing its guard, breaks
+  # the count. That bare shape under `set -eu` is what reddened a clean audit,
+  # and it is one deleted token away from returning.
   total=$(grep -cF 'gh api "repos/${GITHUB_REPOSITORY}/statuses/${sha}"' "$WRITER")
   guarded=$(grep -cF 'if ! gh api "repos/${GITHUB_REPOSITORY}/statuses/${sha}"' "$WRITER")
   [ "$total" -eq 2 ]
-  [ "$guarded" -eq 1 ]
-  # The other one is the pending POST, non-fatal by its own trailing `|| true`.
+  [ "$guarded" -eq 2 ]
+
+  # The pending POST used to be non-fatal by a bare trailing `|| true`, which
+  # made it non-fatal AND silent: it published nothing, so the terminal comments
+  # reported a pending gate that was never posted (gaia-react/gaia#1405). It is
+  # now guarded like its sibling and emits post_failed. Both halves are pinned,
+  # because restoring either token alone restores the defect: `|| true` brings
+  # back the swallow, and dropping the emit brings back the silence.
+  #
+  # The swallow half: the trailer must be gone.
   run grep -F -- '--field description="${desc}" || true' "$WRITER"
+  [ "$status" -ne 0 ]
+  # The silence half. The POST must still exist, AND the emit must sit BELOW it,
+  # which is what makes the emit this POST's rather than the success POST's --
+  # the file contains two of each. Line order is the only thing separating them
+  # at the source level; the behavioural pin is ci-status-member-gate.bats,
+  # which executes the step and reads the emitted output.
+  run grep -F -- '--field state=pending' "$WRITER"
   [ "$status" -eq 0 ]
+  pending_line=$(grep -nF -- '--field state=pending' "$WRITER" | head -1 | cut -d: -f1)
+  success_line=$(grep -nF -- '--field state=success' "$WRITER" | head -1 | cut -d: -f1)
+  first_emit=$(grep -nF 'emit "post_failed=true"' "$WRITER" | head -1 | cut -d: -f1)
+  [ -n "$pending_line" ]
+  [ -n "$success_line" ]
+  [ -n "$first_emit" ]
+  # Exactly two emits, one per POST. Without the count, a single emit belonging
+  # to the success path could satisfy a looser ordering check on its own.
+  [ "$(grep -cF 'emit "post_failed=true"' "$WRITER")" -eq 2 ]
+  # The pending POST comes first in the file, so the FIRST emit sitting between
+  # the two POSTs is the pending block's own.
+  [ "$pending_line" -lt "$success_line" ]
+  [ "$first_emit" -gt "$pending_line" ]
+  [ "$first_emit" -lt "$success_line" ]
 }

@@ -54,13 +54,30 @@
 # its cause in a step log, and on the two skip paths it also SUPPRESSED the
 # comment step, so the case most in need of an explanation produced none.
 #
-# THE HONEST LIMIT OF THAT SIGNAL: `post_failed` covers the SUCCESS post alone.
-# The pending POST below swallows its own rejection through a bare `|| true` and
-# publishes nothing, so on that path the comment steps still read a non-empty
-# `members_pending` and tell the author the gate is pending when no pending
-# status was ever posted. It fails closed and it self-heals -- running the
-# dispatched members locally posts a success -- so the gap is a wrong
-# explanation rather than a wrong gate, and closing it is a separate change.
+# `post_failed` covers BOTH posts, the success one and the pending one. It did
+# not always: the pending POST swallowed its own rejection through a bare
+# `|| true`, so on that path the comment steps read a non-empty `members_pending`
+# and told the author the gate was pending when no pending status had been posted
+# (gaia-react/gaia#1405). That was a wrong explanation rather than a wrong gate --
+# it failed closed, and it self-healed once the dispatched members ran locally --
+# but it is the same defect the ladders' SUCCESS_LIVE and READ_FAILED arms exist
+# to prevent, so it gets the same answer.
+#
+# The two posts differ in what the author is then told, because IN GATED MODE a
+# rejection on the PENDING path always co-occurs with a non-empty
+# `members_pending`: that POST fires only under a non-empty `pending`, which
+# gated mode has already published as `members_pending`. So the terminal ladders
+# report the combined state in one sentence -- the members only a local run can
+# clear, AND the rejection that means nothing was posted -- instead of picking
+# one of the two facts.
+#
+# STAND-DOWN MODE IS THE EXCEPTION, and it is inert rather than handled. That
+# mode never emits `members_pending` at all (there are no members to resolve),
+# so a rejection there publishes `post_failed` beside an EMPTY one. No ladder
+# ever sees that pair: the sole stand-down call site carries no `id:`, so
+# nothing reads its outputs. The unqualified claim would be wrong; the gated
+# qualification is what makes it true, and the missing `id:` is what makes the
+# stand-down case harmless.
 #
 # Two suites cover this script: one drives it directly for its argument
 # contract, and one executes all five call sites as the workflow runs them.
@@ -320,11 +337,35 @@ if [ -n "$pending" ]; then
   # Non-fatal: if this POST fails no status lands, the required check stays
   # unfulfilled, and the button stays shut. Fail-safe in every direction, so a
   # transient API error must not also red the job.
-  gh api "repos/${GITHUB_REPOSITORY}/statuses/${sha}" \
-    --method POST \
-    --field state=pending \
-    --field context=GAIA-Audit \
-    --field description="${desc}" || true
+  #
+  # But not SILENT. `post_failed` is published here for the same reason the
+  # success path publishes it: without it the terminal comment steps read a
+  # non-empty `members_pending` and tell the author "GAIA-Audit is pending" about
+  # a status that was never posted. The gate is shut either way, so this is a
+  # wrong explanation rather than a wrong gate -- and a wrong explanation is
+  # exactly what the SUCCESS_LIVE and READ_FAILED arms of those ladders already
+  # exist to prevent, on claims those paths merely could not verify. This one is
+  # known false, so the same rule applies with more force.
+  #
+  # IN GATED MODE it always co-occurs with a non-empty `members_pending`: this
+  # branch runs only under a non-empty `pending`, and gated mode emitted
+  # `members_pending` from that same value. So the ladders combine the two rather
+  # than choosing between them, and hoisting their post_failed arm above
+  # members_pending would discard the half only a LOCAL member run can act on.
+  #
+  # In STAND-DOWN mode `pending` is the forced description and `members_pending`
+  # was never emitted, so this `post_failed` would stand alone. Nothing reads it:
+  # that call site carries no `id:`. The emit is published either way rather than
+  # gated on the mode, because a conditional emit would be a second rule to keep
+  # in step with the one `id:` that decides whether anyone is listening.
+  if ! gh api "repos/${GITHUB_REPOSITORY}/statuses/${sha}" \
+      --method POST \
+      --field state=pending \
+      --field context=GAIA-Audit \
+      --field description="${desc}"; then
+    echo "code-review-audit: the pending GAIA-Audit status POST to ${sha} was rejected; nothing posted, and the merge gate stays shut. Run the dispatched member(s) locally to clear it." >&2
+    emit "post_failed=true"
+  fi
   exit 0
 fi
 
