@@ -237,6 +237,42 @@ assert_nothing_released() { [ ! -s "$FAKE_GH_STATE/issue_edits" ]; }
   assert_nothing_released
 }
 
+# gh accepts flags in any position, so the boundary check has to survive a
+# --repo written after the reference. 7k and 7l are 7i with the argument order
+# reversed, which is the spelling a leading-flag-only guard leaves open.
+@test "7k: a trailing --repo naming a same-named sibling releases nothing" {
+  export FAKE_GH_PR_BODY="Closes #77"
+  run_hook 'gh pr merge 5 --repo other-org/gaia'
+  [ "$status" -eq 0 ]
+  assert_nothing_released
+}
+
+@test "7l: a trailing -R naming a same-named sibling releases nothing" {
+  export FAKE_GH_PR_BODY="Closes #77"
+  run_hook 'gh pr merge 5 --squash -R other-org/gaia'
+  [ "$status" -eq 0 ]
+  assert_nothing_released
+}
+
+# 7n and 7o pin the spellings that carry a quote into the parser. Each one
+# fails closed when mishandled, releasing nothing on a merge that closed
+# issues, which the rule promises needs no manual step.
+@test "7n: a multi-word --body= value does not become the reference" {
+  export FAKE_GH_PR_BODY="Closes #12"
+  run_hook 'gh pr merge --squash --body="release notes here" 1508'
+  [ "$status" -eq 0 ]
+  [ "$(cat "$FAKE_GH_STATE/pr_view_ref")" = "1508" ]
+  assert_released_once "12"
+}
+
+@test "7o: a quoted reference resolves without its quotes" {
+  export FAKE_GH_PR_BODY="Closes #12"
+  run_hook 'gh pr merge "1508" --squash'
+  [ "$status" -eq 0 ]
+  [ "$(cat "$FAKE_GH_STATE/pr_view_ref")" = "1508" ]
+  assert_released_once "12"
+}
+
 @test "7j: a quoted multi-word flag value does not become the reference" {
   export FAKE_GH_PR_BODY="Closes #12"
   run_hook 'gh pr merge --squash --body "release notes here" 1508'

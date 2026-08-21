@@ -66,6 +66,18 @@ if [[ "$cmd" =~ $tail_re ]]; then
   args="${BASH_REMATCH[1]}"
 fi
 
+# The capture runs to the end of the command string, so a compound command's
+# later stages are still in it. Cut at the first shell separator: the scan
+# below no longer stops at the reference, and a `--repo` belonging to some
+# later command must not decide this one. Each cut only shortens, so applying
+# them in turn leaves the text before the earliest separator of any kind.
+_nl=$'\n'
+for _sep in '&&' '||' '|' ';' "$_nl"; do
+  case "$args" in
+    *"$_sep"*) args="${args%%"$_sep"*}" ;;
+  esac
+done
+
 # Every value-taking flag, and only those. Checked against gh's own help
 # output rather than recalled: -m is --merge, a BOOLEAN, so listing it here
 # would make `-m 1498` skip the reference and resolve the current branch
@@ -77,17 +89,40 @@ cmd_repo=""
 skip_next=0
 skip_flag=""
 quote=""
+
+# The command arrives as unparsed text, so quote characters are literal and a
+# quoted value spans however many whitespace-separated tokens it contains.
+# Both helpers exist because every spelling below needs the same two answers,
+# and two copies of either one drift apart.
+unquoted=""
+unquote() {
+  unquoted="$1"
+  case "$unquoted" in
+    \"*\") unquoted="${unquoted#\"}"; unquoted="${unquoted%\"}" ;;
+    \'*\') unquoted="${unquoted#\'}"; unquoted="${unquoted%\'}" ;;
+  esac
+}
+# Sets `quote` when the token opens a quote it does not close, so the tokens
+# that follow are the rest of one value rather than the reference.
+open_quote() {
+  quote=""
+  case "$1" in
+    \"*) case "${1#\"}" in *\"*) : ;; *) quote='"' ;; esac ;;
+    \'*) case "${1#\'}" in *\'*) : ;; *) quote="'" ;; esac ;;
+  esac
+}
+
 # Word splitting is wanted here; pathname expansion is not. Without set -f,
 # `--body *` would glob against the repo root and a filename could become the
 # reference.
 set -f
 for tok in $args; do
-  # Inside a quoted flag value. The command arrives as unparsed text, so a
-  # multi-word value splits across tokens and skipping exactly one leaves the
-  # rest standing in as the reference: `--body "release notes here" 1508`
-  # would resolve `notes`, which gh reads as a BRANCH selector, so the hook
-  # releases nothing on a merge that closed issues, or releases some other
-  # branch's issues where a branch by that name exists.
+  # Inside a quoted value: swallow tokens until the quote closes. Skipping
+  # exactly one would leave the rest standing in as the reference, and
+  # `--body "release notes here" 1508` would resolve `notes`, which gh reads
+  # as a BRANCH selector: the hook then releases nothing on a merge that
+  # closed issues, or releases some other branch's issues where a branch by
+  # that name exists.
   if [ -n "$quote" ]; then
     case "$tok" in
       *"$quote") quote="" ;;
@@ -97,20 +132,26 @@ for tok in $args; do
   if [ "$skip_next" = 1 ]; then
     skip_next=0
     if [ "$skip_flag" = repo ]; then
-      cmd_repo="$tok"
-      cmd_repo="${cmd_repo#\"}"; cmd_repo="${cmd_repo%\"}"
-      cmd_repo="${cmd_repo#\'}"; cmd_repo="${cmd_repo%\'}"
+      unquote "$tok"
+      cmd_repo="$unquoted"
     fi
     skip_flag=""
-    case "$tok" in
-      \"*) case "${tok#\"}" in *\"*) : ;; *) quote='"' ;; esac ;;
-      \'*) case "${tok#\'}" in *\'*) : ;; *) quote="'" ;; esac ;;
-    esac
+    open_quote "$tok"
     continue
   fi
   case "$tok" in
-    -R=*|--repo=*)
-      cmd_repo="${tok#*=}"
+    -*=*)
+      # `--flag=value`, carrying its value in the same token.
+      flag="${tok%%=*}"
+      case "$value_flags" in
+        *" $flag "*)
+          val="${tok#*=}"
+          case "$flag" in
+            -R|--repo) unquote "$val"; cmd_repo="$unquoted" ;;
+          esac
+          open_quote "$val"
+          ;;
+      esac
       continue
       ;;
     -*)
@@ -125,8 +166,15 @@ for tok in $args; do
       continue
       ;;
     *)
-      ref="$tok"
-      break
+      # The first non-flag token is the reference, but the scan continues:
+      # gh accepts flags in any position, so `merge 5 --repo other-org/gaia`
+      # is an ordinary invocation and stopping here would leave the boundary
+      # check below unarmed for every trailing spelling of the flag.
+      if [ -z "$ref" ]; then
+        unquote "$tok"
+        ref="$unquoted"
+      fi
+      continue
       ;;
   esac
 done
@@ -147,6 +195,12 @@ home=$(gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null)
 # read THIS repo's pull request of that number and strip a claim off a ticket
 # nobody touched. Compare the whole slug. A bare repo name is not accepted
 # because gh rejects one outright, so no reachable invocation is lost.
+#
+# Known limit: a QUOTED flag value (`--repo="owner/repo"`) never reaches this
+# arm. The shared guard's own capture keeps the quote characters, so its
+# name-half comparison misses and it classifies the command foreign first.
+# That direction releases nothing rather than releasing wrongly, and closing
+# it means changing the comparison the nine blocking consumers share.
 if [ -n "$cmd_repo" ]; then
   # A host-qualified value (github.com/owner/repo) names the same repo.
   case "$cmd_repo" in
