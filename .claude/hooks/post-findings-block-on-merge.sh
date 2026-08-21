@@ -73,19 +73,49 @@ fi
 # boundary check three lines above exists to close, and the scan already holds
 # the answer.
 #
-# gh accepts a number, a URL, or a branch name as the selector, so a
-# non-numeric one resolves through gh rather than being read as a number. An
-# empty selector is gh's own current-branch default, which is the same arm a
-# selector gh cannot resolve falls back to.
+# gh accepts a number, a URL, or a branch name as the selector, and the three
+# carry different boundaries, so each gets its own arm rather than one lookup
+# standing in for all of them. The post always lands HERE, on the repository
+# resolved from this hook's own cwd, while gh resolves a URL against the
+# repository the URL names and a branch name against whatever pull request that
+# branch has, so a value gh resolves is not by itself a value this hook may act
+# on.
+#
+# The URL arm is the one the boundary check above cannot cover: a URL carries
+# no `-R`/`--repo`, so the scanned repository is empty, which reads as home. It
+# is compared here instead, host half included, and an unrecognized shape
+# declines rather than guessing. `issue-claim-release.sh` answers the identical
+# question for the identical scanned value.
+#
+# An empty selector is gh's own current-branch default, and it is the ONLY arm
+# that reaches it. A named reference gh cannot resolve is not the same case: the
+# merge named something, so falling back would act on a different pull request
+# than the one it named, and PATCH over whatever block already sits there. That
+# declines, which is the act-on-home fail direction this whole path takes.
 PR=""
+url_re='^[a-zA-Z][a-zA-Z0-9+.-]*://([^/]+)/([^/]+/[^/]+)/pull/([0-9]+)$'
 case "${GAIA_GH_MERGE_REF:-}" in
-  '') : ;;
-  *[!0-9]*) PR="$(gh pr view "$GAIA_GH_MERGE_REF" --json number --jq .number 2>/dev/null || true)" ;;
-  *) PR="$GAIA_GH_MERGE_REF" ;;
+  '')
+    PR="$(gh pr view --json number --jq .number 2>/dev/null || true)"
+    ;;
+  *://*)
+    gaia_repo_scope_resolve_home || exit 0
+    if [[ "$GAIA_GH_MERGE_REF" =~ $url_re ]] \
+      && [ "$(printf '%s' "${BASH_REMATCH[1]}" | tr '[:upper:]' '[:lower:]')" = "$GAIA_REPO_SCOPE_HOME_HOST" ] \
+      && [ "$(printf '%s' "${BASH_REMATCH[2]}" | tr '[:upper:]' '[:lower:]')" \
+         = "$(printf '%s' "$GAIA_REPO_SCOPE_HOME_SLUG" | tr '[:upper:]' '[:lower:]')" ]; then
+      PR="${BASH_REMATCH[3]}"
+    else
+      exit 0
+    fi
+    ;;
+  *[!0-9]*)
+    PR="$(gh pr view "$GAIA_GH_MERGE_REF" --json number --jq .number 2>/dev/null || true)"
+    ;;
+  *)
+    PR="$GAIA_GH_MERGE_REF"
+    ;;
 esac
-if [ -z "$PR" ]; then
-  PR="$(gh pr view --json number --jq .number 2>/dev/null || true)"
-fi
 [ -n "$PR" ] || exit 0
 
 # Resolve the audit mode via the shared resolver: the SAME resolved_mode CI
