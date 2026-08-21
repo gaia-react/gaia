@@ -14,6 +14,8 @@ The middle of this page is generated from that registry. A hand edit between the
 
 The appendix at the bottom is yours. A project that adds labels of its own documents them there, outside the generated span, where no regeneration can reach them.
 
+The registry documents each label's shape; it does not document how one is used day to day. For `in-progress`, see [[Issue Claim]] for the claim and release workflow.
+
 ## Commands
 
 - `.gaia/cli/gaia labels sync` reconciles this repository's labels against the registry.
