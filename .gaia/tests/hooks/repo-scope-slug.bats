@@ -161,7 +161,7 @@ name_half_verdict() {
 }
 
 @test "s14: the blocking entry point is unchanged by the new one" {
-  # The existing comparison is left exactly as the nine blocking consumers
+  # The existing comparison is left exactly as the blocking consumers
   # depend on it, including the over-classification that is safe for them.
   [ "$(name_half_verdict 'gh pr merge --repo other-org/gaia 5')" = "home" ]
   [ "$(name_half_verdict 'gh pr merge --repo other-org/other-repo 5')" = "foreign" ]
@@ -205,7 +205,7 @@ name_half_verdict() {
 # flag plus a path) from `-R owner/repo` (gh's repository flag) needs to know
 # which command the flag belongs to, which is the first-command contract this
 # lib does not have and #1515 tracks. Arm 1 itself must stay byte-identical for
-# the nine blocking consumers, so the repair belongs there, not here.
+# the blocking consumers, so the repair belongs there, not here.
 #
 # The direction is the safe one: it declines rather than acting on the wrong
 # repository, so it costs a findings-block posting rather than causing a wrong
