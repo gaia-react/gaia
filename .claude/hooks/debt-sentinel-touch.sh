@@ -9,8 +9,9 @@
 # `gh issue reopen` (which raises the count again), and `gh issue edit` (an
 # `in-progress` claim adds or removes the shared claim label, on a tech-debt
 # issue or any other, and because the open count excludes claimed issues,
-# toggling that label changes the count too). These usually land via the orchestrator/human after
-# the skill has left the conversation, so this hook is the reliable trigger
+# toggling that label changes the count too). These usually land via the
+# orchestrator/human after the skill has left the conversation, so this hook
+# is the reliable trigger
 # rather than a best-effort in-conversation touch.
 #
 # This complements two in-flow touches that are best-effort belt-and-suspenders,

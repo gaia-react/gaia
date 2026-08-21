@@ -254,6 +254,39 @@ assert_nothing_released() { [ ! -s "$FAKE_GH_STATE/issue_edits" ]; }
   assert_nothing_released
 }
 
+# 7p-7r pin the separator handling in both directions. A separator inside a
+# quoted subject or body is ordinary text and must not end the scan, or every
+# token after it, a trailing --repo included, drops out of the set the guard
+# reads. A real separator must still end it, or a later command's own --repo
+# decides this one.
+@test "7p: a semicolon inside a quoted body does not end the scan" {
+  export FAKE_GH_PR_BODY="Closes #77"
+  run_hook 'gh pr merge 5 --body "fix; ship it" --repo other-org/gaia'
+  [ "$status" -eq 0 ]
+  assert_nothing_released
+}
+
+@test "7q: a pipe inside a quoted body does not end the scan" {
+  export FAKE_GH_PR_BODY="Closes #77"
+  run_hook 'gh pr merge 5 --body "a | b" -R other-org/gaia'
+  [ "$status" -eq 0 ]
+  assert_nothing_released
+}
+
+@test "7r: a semicolon inside a quoted subject does not end the scan" {
+  export FAKE_GH_PR_BODY="Closes #77"
+  run_hook 'gh pr merge 5 --squash -t "labels: rename; recolor" --repo other-org/gaia'
+  [ "$status" -eq 0 ]
+  assert_nothing_released
+}
+
+@test "7s: a later command's --repo does not decide this one" {
+  export FAKE_GH_PR_BODY="Closes #77"
+  run_hook 'gh pr merge 5 --repo other-org/gaia && gh issue list --repo gaia-react/gaia'
+  [ "$status" -eq 0 ]
+  assert_nothing_released
+}
+
 # 7n and 7o pin the spellings that carry a quote into the parser. Each one
 # fails closed when mishandled, releasing nothing on a merge that closed
 # issues, which the rule promises needs no manual step.

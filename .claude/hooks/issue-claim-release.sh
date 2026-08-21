@@ -66,18 +66,6 @@ if [[ "$cmd" =~ $tail_re ]]; then
   args="${BASH_REMATCH[1]}"
 fi
 
-# The capture runs to the end of the command string, so a compound command's
-# later stages are still in it. Cut at the first shell separator: the scan
-# below no longer stops at the reference, and a `--repo` belonging to some
-# later command must not decide this one. Each cut only shortens, so applying
-# them in turn leaves the text before the earliest separator of any kind.
-_nl=$'\n'
-for _sep in '&&' '||' '|' ';' "$_nl"; do
-  case "$args" in
-    *"$_sep"*) args="${args%%"$_sep"*}" ;;
-  esac
-done
-
 # Every value-taking flag, and only those. Checked against gh's own help
 # output rather than recalled: -m is --merge, a BOOLEAN, so listing it here
 # would make `-m 1498` skip the reference and resolve the current branch
@@ -129,6 +117,24 @@ for tok in $args; do
     esac
     continue
   fi
+
+  # A shell separator ends the merge command, and the capture runs to the end
+  # of the whole command string, so what follows one belongs to a different
+  # command and must not decide this one. The decision lives HERE rather than
+  # in a cut over the text, because only the scan knows the quote state: a
+  # `;` or a `|` inside a quoted subject is ordinary text, and cutting first
+  # threw away every token after it, a trailing `--repo` among them, which
+  # left the boundary check below unarmed on ordinary input.
+  stop=0
+  case "$tok" in
+    *\"*|*\'*) : ;; # quote-bearing: any separator in it is text
+    *[\&\|\;]*)
+      stop=1
+      tok="${tok%%[&|;]*}"
+      ;;
+  esac
+  [ -n "$tok" ] || { [ "$stop" = 1 ] && break; continue; }
+
   if [ "$skip_next" = 1 ]; then
     skip_next=0
     if [ "$skip_flag" = repo ]; then
@@ -137,8 +143,7 @@ for tok in $args; do
     fi
     skip_flag=""
     open_quote "$tok"
-    continue
-  fi
+  else
   case "$tok" in
     -*=*)
       # `--flag=value`, carrying its value in the same token.
@@ -152,7 +157,6 @@ for tok in $args; do
           open_quote "$val"
           ;;
       esac
-      continue
       ;;
     -*)
       case "$value_flags" in
@@ -163,7 +167,6 @@ for tok in $args; do
           esac
           ;;
       esac
-      continue
       ;;
     *)
       # The first non-flag token is the reference, but the scan continues:
@@ -174,9 +177,10 @@ for tok in $args; do
         unquote "$tok"
         ref="$unquoted"
       fi
-      continue
       ;;
   esac
+  fi
+  [ "$stop" = 1 ] && break
 done
 set +f
 
