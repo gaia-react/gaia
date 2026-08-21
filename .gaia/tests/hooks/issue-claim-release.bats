@@ -240,44 +240,65 @@ assert_nothing_released() { [ ! -s "$FAKE_GH_STATE/issue_edits" ]; }
 # other half: a mention FOLLOWED by one. Both assert the selector rather than
 # the release, because that is where the defect shows, the hook reads some
 # other pull request's state and body and releases whatever THAT one closed.
-@test "6b: a mention on an earlier line does not become the reference" {
+# 6b-6g are one contract, not six: the merge has to BE the first command in
+# the tool call. The arming match only proves the phrase appears somewhere a
+# command could start, and a comment, another command's quoted value, a
+# heredoc body line, a directory change and a subshell all satisfy that while
+# meaning something else. Each one previously resolved a pull request this
+# merge never touched and stripped labels off its issues.
+@test "6b: a merge behind a comment line releases nothing" {
   export FAKE_GH_PR_BODY="Closes #12"
   run_hook $'# gh pr merge 5 (old, already done)\ngh pr merge 9'
   [ "$status" -eq 0 ]
-  [ "$(cat "$FAKE_GH_STATE/pr_view_ref")" = "9" ]
+  assert_nothing_released
 }
 
-@test "6c: a mention inside an earlier command's value does not become the reference" {
+@test "6c: a merge behind another gh command releases nothing" {
   export FAKE_GH_PR_BODY="Closes #12"
   run_hook 'gh pr comment 9 --body "ready; gh pr merge 5 landed" && gh pr merge 9'
   [ "$status" -eq 0 ]
-  [ "$(cat "$FAKE_GH_STATE/pr_view_ref")" = "9" ]
+  assert_nothing_released
 }
 
-# 6d and 6e are the two constructs the scan cannot model rather than two more
-# spellings it gets wrong. A heredoc body is not a quoted span, so a body line
-# can read as a command of its own; a `cd` decides which repository the merge
-# lands in, and the shared guard only sees one written at the very start. Both
-# end in a label stripped off an issue in THIS repository that the merge never
-# closed, so the hook abstains. 6f is the control that keeps the abstention
-# narrow: an ordinary earlier command still releases.
-@test "6d: a heredoc body line naming a merge makes the command unreadable" {
+@test "6d: a merge behind a heredoc releases nothing" {
   export FAKE_GH_PR_BODY="Closes #77"
   run_hook $'cat <<\'EOF\' > notes.md\ngh pr merge 5\nEOF\ngh pr merge 9'
   [ "$status" -eq 0 ]
   assert_nothing_released
 }
 
-@test "6e: a directory change before the merge makes the command unreadable" {
+@test "6e: a merge behind a directory change releases nothing" {
   export FAKE_GH_PR_BODY="Closes #77"
   run_hook 'git fetch && cd ../other && gh pr merge 5'
   [ "$status" -eq 0 ]
   assert_nothing_released
 }
 
-@test "6f: an ordinary earlier command still releases" {
+# The subshell form is the one the shell-cwd rule pushes toward, and it is
+# glued to its `cd`, so any guard matching the word `cd` misses it. Under the
+# first-command contract the spelling stops mattering.
+@test "6g: a merge inside a subshell that changes directory releases nothing" {
   export FAKE_GH_PR_BODY="Closes #77"
-  run_hook 'git commit -m "wire it up" && gh pr merge 1508'
+  run_hook '(cd ../other && gh pr merge 5 --squash)'
+  [ "$status" -eq 0 ]
+  assert_nothing_released
+}
+
+# 6f and 6h are the controls that keep the contract from collapsing into
+# "release nothing". A command AFTER the merge cannot change which pull
+# request merged, so it is still read; and an empty leading piece, from a
+# newline or from the second character of `&&`, is not a command at all.
+@test "6f: a command after the merge does not stand it down" {
+  export FAKE_GH_PR_BODY="Closes #77"
+  run_hook 'gh pr merge 1508 && git checkout main'
+  [ "$status" -eq 0 ]
+  [ "$(cat "$FAKE_GH_STATE/pr_view_ref")" = "1508" ]
+  assert_released_once "77"
+}
+
+@test "6h: a leading blank line does not count as a command" {
+  export FAKE_GH_PR_BODY="Closes #77"
+  run_hook $'\n  gh pr merge 1508'
   [ "$status" -eq 0 ]
   [ "$(cat "$FAKE_GH_STATE/pr_view_ref")" = "1508" ]
   assert_released_once "77"
@@ -592,13 +613,35 @@ assert_nothing_released() { [ ! -s "$FAKE_GH_STATE/issue_edits" ]; }
 # other half: a real invocation after a shell separator DOES arm. Without it,
 # sep_re could silently stop matching and every compound-command merge would
 # release nothing with the suite still green.
-@test "9: a real invocation after a shell separator arms the hook" {
+# gh's flag library accepts a shorthand with its value attached, so this is
+# the same invocation as the spaced form two cases up. Read as a bare boolean
+# flag it sets no repository at all, and the whole-slug boundary check below
+# never arms: the hook then reads THIS repository's pull request 5.
+@test "7ae: an attached -R naming another repo releases nothing" {
+  export FAKE_GH_PR_BODY="Closes #77"
+  run_hook 'gh pr merge -Rother-org/other-repo 5'
+  [ "$status" -eq 0 ]
+  assert_nothing_released
+}
+
+@test "7af: an attached -R naming the home repo still resolves the ref" {
+  export FAKE_GH_PR_BODY="Closes #77"
+  run_hook 'gh pr merge -Rgaia-react/gaia 5'
+  [ "$status" -eq 0 ]
+  [ "$(cat "$FAKE_GH_STATE/pr_view_ref")" = "5" ]
+  assert_released_once "77"
+}
+
+# The merge has to be the first command in the tool call, so an ordinary
+# benign prefix costs the release. That is the deliberate price of the
+# first-command contract, and it is what the rule's own bullet tells a reader
+# to expect, so it is pinned rather than left to drift.
+@test "9: a merge behind an ordinary earlier command releases nothing" {
   export FAKE_GH_PR_BODY="Closes #12"
   run_hook 'git fetch && gh pr merge 42'
   [ "$status" -eq 0 ]
-  assert_released_once "12"
+  assert_nothing_released
 }
-
 @test "the hook file is executable" {
   [ -x "$HOOK_ABS" ]
 }

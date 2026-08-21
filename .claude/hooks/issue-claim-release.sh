@@ -64,16 +64,28 @@ cmd_targets_foreign_repo "$cmd" && exit 0
 # spelling, always in the direction of reading part of one value, or part of
 # a following command, as the pull-request reference.
 #
-# The scan starts at the beginning of the command, not at the position some
-# pattern found the merge phrase at, because a textual occurrence of that
-# phrase is not a place a command begins: `# <phrase> 5` on an earlier line,
-# or the phrase inside an earlier command's quoted value, is text, and
-# entering there resolves whatever number follows it, which is a pull request
-# this merge never touched. So the scan cuts the command at every separator
-# outside a quoted span and takes the FIRST piece whose own first three words
-# are the merge verb; its remaining words are what gets parsed below. When no
-# piece is a merge invocation, the phrase was only ever text and there is
-# nothing to act on.
+# The scan reads the FIRST command in the tool call and requires that command
+# to be the merge itself. Anything else, and the hook exits without touching
+# a label.
+#
+# That is a deliberate retreat, and the reason is worth stating because the
+# narrower rules all failed. Whatever sits ahead of the merge decides how the
+# merge should be read, and reading it needs the shell's own semantics: a
+# comment hides a command, a heredoc body is not a quoted span so its lines
+# read as commands, `cd` and `(cd` and `pushd` decide which repository the
+# merge lands in, and each of those is a construct rather than a spelling, so
+# every rule naming one left the next one open. Each round of that cost a
+# release onto an issue in THIS repository that the merge never closed, which
+# is the exact harm the rest of this file exists to prevent.
+#
+# Requiring the merge to come first closes the whole class at once: there is
+# no prefix left to misread, and every word the parser below sees comes from
+# the merge invocation itself, whose grammar is gh's flag set and is
+# enumerated at `value_flags`. The cost is that `<something> && <merge>` in
+# one tool call releases nothing. That shape is not how this repository
+# merges (the workflow runs the merge as its own step), and the cost of
+# missing one is a claim removed by hand, against a wrong release that is
+# silent and points at the wrong issue.
 #
 # The words that come out are unquoted, so nothing downstream needs to know
 # quotes exist, and a `;` inside a squash subject stays text.
@@ -90,11 +102,10 @@ NL=$'\n'
 TAB=$'\t'
 words=()
 cur=()
-matched=0
-unreadable=0
+piece_closed=0
 
-# Accept the piece currently in `cur` when it IS the merge invocation, and on
-# acceptance hand its post-verb words to the parser below. Copied element by
+# Accept `cur` when it IS the merge invocation, and on acceptance hand its
+# post-verb words to the parser below. Copied element by
 # element rather than sliced: `"${cur[@]:3}"` on a three-word array is an
 # unbound expansion under `set -u` on bash 3.2, which macOS still ships.
 take_command() {
@@ -106,44 +117,6 @@ take_command() {
     j=$((j + 1))
   done
   return 0
-}
-
-# Called on a piece that is NOT the merge, to ask whether it makes everything
-# after it unreadable to this scan.
-#
-# Two constructs do, and they are the two the scan is structurally unable to
-# model rather than two more spellings to add:
-#
-#   A heredoc. Its body is not a quoted span, so every body line reads as its
-#   own command, and a body line that begins with the merge verb is accepted
-#   as the merge while the real one waits on a later line. Modeling this means
-#   tracking a delimiter and skipping to it, which is more of the parser that
-#   has been wrong once per spelling.
-#
-#   A directory change. `cd` decides which repository the merge lands in, and
-#   the shared foreign-repo guard only sees one written at the very start of
-#   the command. Its ambiguity answer is "home", which is the safe answer for
-#   the nine blocking consumers that read home as ENFORCE and the wrong one
-#   here, where home means ACT.
-#
-# Both end in the same place if guessed at: a label stripped off an issue in
-# this repository that the merge never closed. So the answer is to stop rather
-# than to read further. The cost is a release that has to be done by hand, and
-# `.claude/rules/issue-claim.md` names the class so it is not a surprise.
-piece_blocks_reading() {
-  local w
-  # `${cur[@]+...}` guards the expansion: an empty array is an unbound
-  # reference under `set -u` on bash 3.2, which macOS still ships.
-  for w in ${cur[@]+"${cur[@]}"}; do
-    case "$w" in
-      # A herestring is one word on this line, which the scan already reads
-      # correctly, so it is not a heredoc and does not block anything.
-      '<<<'*) ;;
-      '<<'*|[0-9]'<<'*) return 0 ;;
-      cd|pushd|popd) return 0 ;;
-    esac
-  done
-  return 1
 }
 
 word=""
@@ -208,24 +181,25 @@ while [ "$base" -lt "$n_cmd" ]; do
       '&'|'|'|';'|"$NL")
         [ "$have_word" = 1 ] && cur+=("$word")
         word=""; have_word=0
-        if take_command; then matched=1; break 2; fi
-        piece_blocks_reading && unreadable=1
-        cur=()
+        # An empty piece is no command at all: leading whitespace or a
+        # newline, or the second character of `&&` / `||`. Keep scanning so
+        # the FIRST real command is still the one that gets judged.
+        [ "${#cur[@]}" -eq 0 ] && continue
+        piece_closed=1; break 2
         ;;
       *) word="$word$c"; have_word=1 ;;
     esac
   done
 done
 if [ "$_had_lc_all" = set ]; then LC_ALL="$_prev_lc_all"; else unset LC_ALL; fi
-if [ "$matched" = 0 ]; then
+# The whole command was one piece, so its trailing word closes it.
+if [ "$piece_closed" = 0 ]; then
   [ "$have_word" = 1 ] && cur+=("$word")
-  take_command && matched=1
 fi
-[ "$matched" = 1 ] || exit 0
-# Something ahead of the accepted merge put this command beyond what the scan
-# can read. Acting anyway means guessing, and every wrong guess here writes a
-# label on an issue in this repository that nobody touched.
-[ "$unreadable" = 0 ] || exit 0
+# `cur` is the first command in the tool call. It has to BE the merge; the
+# arming match above only proved the phrase appears somewhere a command could
+# start, which a comment, a heredoc body line, and a quoted value all satisfy.
+take_command || exit 0
 
 # Every value-taking flag, and only those. Checked against gh's own help
 # output rather than recalled: -m is --merge, a BOOLEAN, so listing it here
@@ -259,6 +233,14 @@ while [ "$i" -lt "$n" ]; do
           esac
           ;;
       esac
+      ;;
+    # gh's flag library also accepts a shorthand with its value attached, so
+    # `-Rowner/repo` is the same invocation as `-R owner/repo`. Only the
+    # repository shorthand is read back here; an attached value on any other
+    # shorthand stays one word and consumes nothing, which the arm below
+    # already gets right by doing nothing with it.
+    -R?*)
+      cmd_repo="${tok#-R}"
       ;;
     -*)
       case "$value_flags" in
