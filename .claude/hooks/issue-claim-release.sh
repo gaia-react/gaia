@@ -46,15 +46,23 @@ else
 fi
 
 # Source the lib from this script's own location, never from cwd. A
-# cwd-relative source that misses would leave cmd_targets_foreign_repo
-# undefined, and the foreign-repo check would fall through rather than bail,
-# so a --repo other-org/other-repo invocation would resolve THIS repo's pull
-# request and strip labels here. Undefined after the source is fail-closed.
+# cwd-relative source that misses would leave the boundary function undefined,
+# and the foreign-repo check would fall through rather than bail, so a
+# --repo other-org/other-repo invocation would resolve THIS repo's pull request
+# and strip labels here. Undefined after the source is fail-closed.
+#
+# The boundary itself is checked further down, against the value the scan
+# below reads, not against a regex over this whole string. A whole-string
+# capture cannot tell which command in a multi-command tool call a flag belongs
+# to, so `gh pr merge 5; gh issue list --repo other-org/x` reads as foreign
+# under one while the merge itself targets home. The scan answers that
+# precisely, and it is the only boundary read this hook needs: a `cd` or
+# `git -C` redirection puts the merge behind an earlier command, which the
+# scan's first-command contract already declines.
 _lib="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)"
 # shellcheck source=/dev/null
 [ -n "${_lib:-}" ] && [ -f "$_lib/repo-scope.sh" ] && . "$_lib/repo-scope.sh"
-type cmd_targets_foreign_repo >/dev/null 2>&1 || exit 0
-cmd_targets_foreign_repo "$cmd" && exit 0
+type repo_slug_is_foreign >/dev/null 2>&1 || exit 0
 
 # Split the command into shell-like words. This is a real scan rather than a
 # set of patterns over the raw text, and the difference is the whole point: a
@@ -309,14 +317,12 @@ done
 # one repository between github.com and an enterprise host carries the same
 # OWNER/REPO on both, and a merge on either would otherwise resolve the
 # other's pull request of that number here. The host is the URL's authority.
-home_json=$(gh repo view --json nameWithOwner,url 2>/dev/null)
-home=$(printf '%s' "$home_json" | jq -r '.nameWithOwner // ""' 2>/dev/null)
-[ -n "$home" ] || exit 0
-home_host=$(printf '%s' "$home_json" | jq -r '.url // ""' 2>/dev/null)
-home_host="${home_host#*://}"
-home_host="${home_host%%/*}"
-home_host=$(printf '%s' "$home_host" | tr '[:upper:]' '[:lower:]')
-[ -n "$home_host" ] || exit 0
+# This call is the one that pays: the boundary check reads the scanned value
+# and so runs below, not above. The resolver memoizes, so that check reuses
+# this resolution rather than making a second `gh repo view`.
+gaia_repo_scope_resolve_home || exit 0
+home="$GAIA_REPO_SCOPE_HOME_SLUG"
+home_host="$GAIA_REPO_SCOPE_HOME_HOST"
 # GitHub resolves OWNER/REPO case-insensitively, so a merge spelled
 # `gaia-react/GAIA` lands on the home repository and a case-sensitive
 # comparison would read it as another one. Every comparison against `home`
@@ -325,34 +331,18 @@ home_host=$(printf '%s' "$home_host" | tr '[:upper:]' '[:lower:]')
 home_lc=$(printf '%s' "$home" | tr '[:upper:]' '[:lower:]')
 
 # `--repo owner/repo` names the target itself, and gh honors it over cwd, so
-# it decides the boundary alone. The shared guard above compares only the
-# repo-NAME half, which classifies a same-named sibling (`--repo other-org/gaia`
-# from a checkout named `gaia`, the ordinary fork topology) as home. That is
-# the safe direction for the blocking guards sharing that lib, where home
-# means enforce, and the wrong one here, where home means ACT: the hook would
-# read THIS repo's pull request of that number and strip a claim off a ticket
-# nobody touched. Compare the whole slug. A bare repo name is not accepted
-# because gh rejects one outright, so no reachable invocation is lost.
+# it decides the boundary alone. The value compared is the SCANNED one, which
+# is why this sits after the scan rather than over the raw command text: the
+# scan reads quoting and flag position the way the shell does, so it knows
+# which command in the tool call the flag belongs to and it hands over a
+# quoted value with its quotes already removed. A regex over the whole string
+# has neither property, and both misreads land on the same act. A bare repo
+# name is not accepted because gh rejects one outright, so no reachable
+# invocation is lost.
 #
-# Known limit: a QUOTED flag value (`--repo="owner/repo"`) never reaches this
-# arm. The shared guard's own capture keeps the quote characters, so its
-# name-half comparison misses and it classifies the command foreign first.
-# That direction releases nothing rather than releasing wrongly, and closing
-# it means changing the comparison the nine blocking consumers share.
-if [ -n "$cmd_repo" ]; then
-  # A host-qualified value is `HOST/OWNER/REPO`, and the host half decides as
-  # much as the slug does: the same OWNER/REPO on another host is another
-  # repository. Accept the qualifier only when it names the home host, and
-  # exit otherwise rather than dropping it and comparing what is left.
-  case "$cmd_repo" in
-    */*/*)
-      cmd_host=$(printf '%s' "${cmd_repo%%/*}" | tr '[:upper:]' '[:lower:]')
-      [ "$cmd_host" = "$home_host" ] || exit 0
-      cmd_repo="${cmd_repo#*/}"
-      ;;
-  esac
-  [ "$(printf '%s' "$cmd_repo" | tr '[:upper:]' '[:lower:]')" = "$home_lc" ] || exit 0
-fi
+# The comparison itself is the shared act-on-home one, host half included: an
+# empty value means no explicit target, which is home.
+repo_slug_is_foreign "$cmd_repo" && exit 0
 
 # A URL reference is the one form --repo cannot contain: gh resolves the
 # repository from the URL and ignores the flag. Left alone, a merged
