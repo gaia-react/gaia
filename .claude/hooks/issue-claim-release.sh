@@ -45,11 +45,15 @@ else
   exit 0
 fi
 
-[ -f .claude/hooks/lib/repo-scope.sh ] && . .claude/hooks/lib/repo-scope.sh
-if type cmd_targets_foreign_repo >/dev/null 2>&1 \
-   && cmd_targets_foreign_repo "$cmd"; then
-  exit 0
-fi
+# Source the lib from this script's own location, never from cwd. A
+# cwd-relative source that misses would leave cmd_targets_foreign_repo
+# undefined, and the foreign-repo check would fall through rather than bail,
+# so a --repo other-org/other-repo invocation would resolve THIS repo's pull
+# request and strip labels here. Undefined after the source is fail-closed.
+_lib="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)"
+[ -n "${_lib:-}" ] && [ -f "$_lib/repo-scope.sh" ] && . "$_lib/repo-scope.sh"
+type cmd_targets_foreign_repo >/dev/null 2>&1 || exit 0
+cmd_targets_foreign_repo "$cmd" && exit 0
 
 # Pull the pull-request reference: the first token after `merge` that neither
 # starts with `-` nor is the value of a preceding value-taking flag. Taking
@@ -61,9 +65,18 @@ if [[ "$cmd" =~ $tail_re ]]; then
   args="${BASH_REMATCH[1]}"
 fi
 
-value_flags=" -R --repo -b --body -t --subject -m --match-head-commit --body-file "
+# Every value-taking flag, and only those. Checked against gh's own help
+# output rather than recalled: -m is --merge, a BOOLEAN, so listing it here
+# would make `-m 1498` skip the reference and resolve the current branch
+# instead. -A/--author-email and -F/--body-file do take values, so omitting
+# them would make the value itself the reference.
+value_flags=" -R --repo -A --author-email -b --body -F --body-file -t --subject --match-head-commit "
 ref=""
 skip_next=0
+# Word splitting is wanted here; pathname expansion is not. Without set -f,
+# `--body *` would glob against the repo root and a filename could become the
+# reference.
+set -f
 for tok in $args; do
   if [ "$skip_next" = 1 ]; then
     skip_next=0
@@ -82,6 +95,7 @@ for tok in $args; do
       ;;
   esac
 done
+set +f
 
 # One gh pr view call, reused for both fields. No ref means the current
 # branch, which is gh's own default when none is passed.

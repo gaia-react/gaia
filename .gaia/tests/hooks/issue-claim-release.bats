@@ -200,6 +200,46 @@ assert_nothing_released() { [ ! -s "$FAKE_GH_STATE/issue_edits" ]; }
   assert_nothing_released
 }
 
+# 7c-7e pin the value-taking flag table against gh's real flag set. Each one
+# fails if the table gains or loses the flag it names: a boolean listed as
+# value-taking swallows the reference, and a value-taking flag left out makes
+# its own value the reference. Both end the same way, a merged pull request
+# whose issues keep a live claim forever.
+@test "7c: -m is boolean --merge, so the reference after it still resolves" {
+  export FAKE_GH_PR_BODY="Closes #12"
+  run_hook 'gh pr merge -m 1498'
+  [ "$status" -eq 0 ]
+  [ "$(cat "$FAKE_GH_STATE/pr_view_ref")" = "1498" ]
+  assert_released_once "12"
+}
+
+@test "7d: -F takes a value, so the filename is not read as the reference" {
+  export FAKE_GH_PR_BODY="Closes #12"
+  run_hook 'gh pr merge -F notes.txt 1498'
+  [ "$status" -eq 0 ]
+  [ "$(cat "$FAKE_GH_STATE/pr_view_ref")" = "1498" ]
+  assert_released_once "12"
+}
+
+@test "7e: -A takes a value, so the email is not read as the reference" {
+  export FAKE_GH_PR_BODY="Closes #12"
+  run_hook 'gh pr merge -A me@example.com 1498'
+  [ "$status" -eq 0 ]
+  [ "$(cat "$FAKE_GH_STATE/pr_view_ref")" = "1498" ]
+  assert_released_once "12"
+}
+
+# Test 6 proves the matcher rejects a mention inside a string. This proves the
+# other half: a real invocation after a shell separator DOES arm. Without it,
+# sep_re could silently stop matching and every compound-command merge would
+# release nothing with the suite still green.
+@test "9: a real invocation after a shell separator arms the hook" {
+  export FAKE_GH_PR_BODY="Closes #12"
+  run_hook 'git fetch && gh pr merge 42'
+  [ "$status" -eq 0 ]
+  assert_released_once "12"
+}
+
 @test "the hook file is executable" {
   [ -x "$HOOK_ABS" ]
 }
