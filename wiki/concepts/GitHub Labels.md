@@ -63,7 +63,7 @@ Sync is conservative by design. It renames rather than deleting and recreating, 
 
 | Label | Color | Description | Created by |
 | --- | --- | --- | --- |
-| `debt:in-progress` | `2da44e` | A drain run holds this issue right now | tech-debt |
+| `in-progress` | `ffd33d` | Someone is actively working this issue right now; do not pick it up | always |
 | `debt:spec-pending` | `a6e3b8` | Handed to /gaia-spec; parked until the SPEC lands | tech-debt |
 
 ### Modifier
@@ -100,7 +100,7 @@ Sync is conservative by design. It renames rather than deleting and recreating, 
 
 ## Palette rule
 
-Warm families (red, orange, amber) are reserved for attention: urgency, defect type, and the gates that require a human. Every purely classificatory axis takes a cool or neutral family instead, high-frequency structural labels stay near grey so they recede, no two entries share a hex value, and every hex value is lowercase.
+Warm families (red, orange, amber) are reserved for attention: urgency, defect type, the gates that require a human, and the active-work claim, whose yellow marks an issue as in flight. Every other classificatory axis takes a cool or neutral family instead, high-frequency structural labels stay near grey so they recede, no two entries share a hex value, and every hex value is lowercase.
 
 <!-- gaia:maintainer-only:start -->
 

@@ -6,10 +6,10 @@
 # tech-debt issue filed by hand in the main session), `gh pr merge` (a
 # `/gaia-debt` fix PR closing its `Closes #N` issue), `gh issue close` (a
 # tech-debt issue closed directly, e.g. decided wontfix or obsolete),
-# `gh issue reopen` (which raises the count again), and `gh issue edit` (the
-# `/gaia-debt` in-progress claim adds or removes the `debt:in-progress` label,
-# and because the open count excludes claimed issues, toggling that label
-# changes the count too). These usually land via the orchestrator/human after
+# `gh issue reopen` (which raises the count again), and `gh issue edit` (an
+# `in-progress` claim adds or removes the shared claim label, on a tech-debt
+# issue or any other, and because the open count excludes claimed issues,
+# toggling that label changes the count too). These usually land via the orchestrator/human after
 # the skill has left the conversation, so this hook is the reliable trigger
 # rather than a best-effort in-conversation touch.
 #

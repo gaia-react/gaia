@@ -356,7 +356,7 @@ Some other finding entirely.'
 
 # ========== 6. the cohort label changes no displayed count ==========
 
-@test "6. debt:pre-provenance is counted while debt:in-progress and debt:spec-pending are not" {
+@test "6. debt:pre-provenance is counted while in-progress and debt:spec-pending are not" {
   local jq_filter fixture result
   # The filter is declared once, as COUNT_FILTER, and both the local-jq arm and
   # the `gh --jq` fallback arm read that one variable. Scraping the declaration
@@ -372,13 +372,13 @@ Some other finding entirely.'
   fixture='[
     {"number":1,"labels":[{"name":"tech-debt"}]},
     {"number":2,"labels":[{"name":"tech-debt"},{"name":"debt:pre-provenance"}]},
-    {"number":3,"labels":[{"name":"tech-debt"},{"name":"debt:in-progress"}]},
+    {"number":3,"labels":[{"name":"tech-debt"},{"name":"in-progress"}]},
     {"number":4,"labels":[{"name":"tech-debt"},{"name":"debt:spec-pending"}]},
-    {"number":5,"labels":[{"name":"tech-debt"},{"name":"debt:pre-provenance"},{"name":"debt:in-progress"}]}
+    {"number":5,"labels":[{"name":"tech-debt"},{"name":"debt:pre-provenance"},{"name":"in-progress"}]}
   ]'
   result="$(jq "$jq_filter" <<<"$fixture")"
   # #1 no debt: label -> counted; #2 debt:pre-provenance -> counted;
-  # #3 debt:in-progress -> not counted; #4 debt:spec-pending -> not counted;
+  # #3 in-progress -> not counted; #4 debt:spec-pending -> not counted;
   # #5 both pre-provenance and in-progress -> not counted. Expected: 2.
   [ "$result" = "2" ] || {
     printf 'cohort-label count was %s, want 2\n' "$result" >&2

@@ -1,7 +1,7 @@
 {
   "$schema": "./labels.schema.json",
   "version": 1,
-  "description": "The single machine-readable source of truth for every GitHub label gaia-react/gaia creates, syncs, and documents. The `gaia labels` CLI reads this file: `sync` decides what to create, rename, or report on a target repository; `docs` renders it into wiki/concepts/GitHub Labels.md; `check` cross-references it against every label literal in the tree. Palette rule: warm colors (red, orange, amber) are reserved for attention, urgency, defect type, and human-required gates; every purely classificatory axis takes a cool or neutral family instead, and every hex value is lowercase.",
+  "description": "The single machine-readable source of truth for every GitHub label gaia-react/gaia creates, syncs, and documents. The `gaia labels` CLI reads this file: `sync` decides what to create, rename, or report on a target repository; `docs` renders it into wiki/concepts/GitHub Labels.md; `check` cross-references it against every label literal in the tree. Palette rule: warm colors (red, orange, amber) are reserved for attention, urgency, defect type, human-required gates, and the active-work claim; every other classificatory axis takes a cool or neutral family instead, and every hex value is lowercase.",
   "labels": [
     {
       "name": "tech-debt",
@@ -173,16 +173,16 @@
       "reason": null
     },
     {
-      "name": "debt:in-progress",
-      "color": "2da44e",
-      "description": "A drain run holds this issue right now",
+      "name": "in-progress",
+      "color": "ffd33d",
+      "description": "Someone is actively working this issue right now; do not pick it up",
       "axis": "lifecycle",
       "audience": "adopter",
-      "features": ["tech-debt"],
+      "features": [],
       "managed": true,
       "deprecated": false,
       "blocked": false,
-      "renamedFrom": [],
+      "renamedFrom": ["debt:in-progress"],
       "reason": null
     },
     {

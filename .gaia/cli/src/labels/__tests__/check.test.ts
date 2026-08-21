@@ -38,12 +38,12 @@ describe('labels/check extraction forms', () => {
   });
 
   test('form 2: --add-label and --remove-label', () => {
+    expect(namesIn(SHELL, 'gh issue edit 1 --add-label in-progress')).toEqual([
+      'in-progress',
+    ]);
     expect(
-      namesIn(SHELL, 'gh issue edit 1 --add-label debt:in-progress')
-    ).toEqual(['debt:in-progress']);
-    expect(
-      namesIn(SHELL, 'gh issue edit 1 --remove-label debt:in-progress')
-    ).toEqual(['debt:in-progress']);
+      namesIn(SHELL, 'gh issue edit 1 --remove-label in-progress')
+    ).toEqual(['in-progress']);
   });
 
   test('form 3: comma-joined values split', () => {

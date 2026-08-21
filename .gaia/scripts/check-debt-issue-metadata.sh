@@ -363,8 +363,8 @@ run_pre_file() {
 
   # The claim and park labels belong to the drain, not the filing. The recipe
   # says so; nothing checked it.
-  if printf '%s\n' "$labels" | grep -qE '^debt:(in-progress|spec-pending)$'; then
-    finding "pre-file" "drain-label-on-new-filing" "\`debt:in-progress\` / \`debt:spec-pending\` are applied by the drain, never by a filing"
+  if printf '%s\n' "$labels" | grep -qE '^(in-progress|debt:spec-pending)$'; then
+    finding "pre-file" "drain-label-on-new-filing" "\`in-progress\` / \`debt:spec-pending\` are applied by the drain, never by a filing"
   fi
 
   return 0

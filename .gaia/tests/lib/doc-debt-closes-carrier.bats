@@ -128,7 +128,7 @@ extract_section() {
   section="$(extract_section '### Dropping a member after its commits are written')"
   [ -n "$section" ]
   grep -qF -- "line from the PR body" <<<"$section"
-  grep -qF -- "--remove-label debt:in-progress" <<<"$section"
+  grep -qF -- "--remove-label in-progress" <<<"$section"
 }
 
 # --- 3. the post-merge close-set check --------------------------------------
