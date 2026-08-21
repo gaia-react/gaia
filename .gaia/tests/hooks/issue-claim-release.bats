@@ -226,6 +226,25 @@ assert_nothing_released() { [ ! -s "$FAKE_GH_STATE/issue_edits" ]; }
   assert_released_once "12"
 }
 
+# The sandbox toplevel is named `gaia`, so `--repo other-org/gaia` is the case
+# where the shared guard's repo-NAME comparison says "home". For the blocking
+# guards that share that lib, home means enforce and the over-classification is
+# safe; here home means act, so the whole slug has to be compared.
+@test "7i: a same-named sibling repo releases nothing" {
+  export FAKE_GH_PR_BODY="Closes #77"
+  run_hook 'gh pr merge --repo other-org/gaia 5'
+  [ "$status" -eq 0 ]
+  assert_nothing_released
+}
+
+@test "7j: a quoted multi-word flag value does not become the reference" {
+  export FAKE_GH_PR_BODY="Closes #12"
+  run_hook 'gh pr merge --squash --body "release notes here" 1508'
+  [ "$status" -eq 0 ]
+  [ "$(cat "$FAKE_GH_STATE/pr_view_ref")" = "1508" ]
+  assert_released_once "12"
+}
+
 @test "7h: both the read and the write name the home repo" {
   export FAKE_GH_PR_BODY="Closes #12"
   run_hook 'gh pr merge 42'

@@ -51,6 +51,7 @@ fi
 # so a --repo other-org/other-repo invocation would resolve THIS repo's pull
 # request and strip labels here. Undefined after the source is fail-closed.
 _lib="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)"
+# shellcheck source=/dev/null
 [ -n "${_lib:-}" ] && [ -f "$_lib/repo-scope.sh" ] && . "$_lib/repo-scope.sh"
 type cmd_targets_foreign_repo >/dev/null 2>&1 || exit 0
 cmd_targets_foreign_repo "$cmd" && exit 0
@@ -72,20 +73,54 @@ fi
 # them would make the value itself the reference.
 value_flags=" -R --repo -A --author-email -b --body -F --body-file -t --subject --match-head-commit "
 ref=""
+cmd_repo=""
 skip_next=0
+skip_flag=""
+quote=""
 # Word splitting is wanted here; pathname expansion is not. Without set -f,
 # `--body *` would glob against the repo root and a filename could become the
 # reference.
 set -f
 for tok in $args; do
+  # Inside a quoted flag value. The command arrives as unparsed text, so a
+  # multi-word value splits across tokens and skipping exactly one leaves the
+  # rest standing in as the reference: `--body "release notes here" 1508`
+  # would resolve `notes`, which gh reads as a BRANCH selector, so the hook
+  # releases nothing on a merge that closed issues, or releases some other
+  # branch's issues where a branch by that name exists.
+  if [ -n "$quote" ]; then
+    case "$tok" in
+      *"$quote") quote="" ;;
+    esac
+    continue
+  fi
   if [ "$skip_next" = 1 ]; then
     skip_next=0
+    if [ "$skip_flag" = repo ]; then
+      cmd_repo="$tok"
+      cmd_repo="${cmd_repo#\"}"; cmd_repo="${cmd_repo%\"}"
+      cmd_repo="${cmd_repo#\'}"; cmd_repo="${cmd_repo%\'}"
+    fi
+    skip_flag=""
+    case "$tok" in
+      \"*) case "${tok#\"}" in *\"*) : ;; *) quote='"' ;; esac ;;
+      \'*) case "${tok#\'}" in *\'*) : ;; *) quote="'" ;; esac ;;
+    esac
     continue
   fi
   case "$tok" in
+    -R=*|--repo=*)
+      cmd_repo="${tok#*=}"
+      continue
+      ;;
     -*)
       case "$value_flags" in
-        *" $tok "*) skip_next=1 ;;
+        *" $tok "*)
+          skip_next=1
+          case "$tok" in
+            -R|--repo) skip_flag=repo ;;
+          esac
+          ;;
       esac
       continue
       ;;
@@ -102,6 +137,23 @@ set +f
 # tool command never changes.
 home=$(gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null)
 [ -n "$home" ] || exit 0
+
+# `--repo owner/repo` names the target itself, and gh honors it over cwd, so
+# it decides the boundary alone. The shared guard above compares only the
+# repo-NAME half, which classifies a same-named sibling (`--repo other-org/gaia`
+# from a checkout named `gaia`, the ordinary fork topology) as home. That is
+# the safe direction for the blocking guards sharing that lib, where home
+# means enforce, and the wrong one here, where home means ACT: the hook would
+# read THIS repo's pull request of that number and strip a claim off a ticket
+# nobody touched. Compare the whole slug. A bare repo name is not accepted
+# because gh rejects one outright, so no reachable invocation is lost.
+if [ -n "$cmd_repo" ]; then
+  # A host-qualified value (github.com/owner/repo) names the same repo.
+  case "$cmd_repo" in
+    */*/*) cmd_repo="${cmd_repo#*/}" ;;
+  esac
+  [ "$cmd_repo" = "$home" ] || exit 0
+fi
 
 # A URL reference is the one form --repo cannot contain: gh resolves the
 # repository from the URL and ignores the flag. Left alone, a merged

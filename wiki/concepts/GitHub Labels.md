@@ -102,7 +102,7 @@ Sync is conservative by design. It renames rather than deleting and recreating, 
 
 ## Palette rule
 
-Warm families (red, orange, amber) are reserved for attention: urgency, defect type, the gates that require a human, and the active-work claim, whose yellow marks an issue as in flight. Every other classificatory axis takes a cool or neutral family instead, high-frequency structural labels stay near grey so they recede, no two entries share a hex value, and every hex value is lowercase.
+Warm families (red, orange, amber) are reserved for attention: urgency, defect type, the gates that require a human, and the active-work claim, whose yellow marks an issue as in flight. Every other entry takes a cool or neutral family instead, high-frequency structural labels stay near grey so they recede, no two entries share a hex value, and every hex value is lowercase.
 
 <!-- gaia:maintainer-only:start -->
 
