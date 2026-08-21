@@ -620,6 +620,36 @@ if [ -n "$reset_hit" ]; then
   reset_tier=""
   reset_path=""
   IFS="$TAB" read -r reset_tier reset_path <<<"$reset_hit"
+  # The member tier's trigger is the whole file: any change to
+  # .claude/agents/<member>.md re-arms this reset, a reworded sentence as
+  # readily as a rewritten remit, and the member then re-reads its entire
+  # owned surface instead of one commit's delta. That breadth is chosen, and
+  # it is the expensive choice: a round of prose repairs spanning several
+  # definitions pays a full re-review for every member it touches.
+  #
+  # It is chosen because a member definition is an instruction file, where the
+  # prose IS the logic and no syntactic split separates a comment-only edit
+  # from a behavior-changing one. "Prefer" becoming "always" inside a remit
+  # rewrites what the member looks for, and only the surrounding sentence says
+  # so. Two narrowings look attractive and neither survives. Resetting only
+  # outside regions marked non-normative has no region to key on: the
+  # gaia:maintainer-only markers mark AUDIENCE, a maintainer-only paragraph
+  # still instructs, and most member definitions carry no marker at all, so a
+  # new convention would rest the reset on whoever remembered to mark a
+  # region. Exempting a member's own round-trip repair is backwards, because
+  # the member reviewed under the OLD definition and its correction is what
+  # changes the instructions it runs under next.
+  #
+  # The direction of the miss settles it. Resetting too often costs tokens and
+  # wall-clock, and both are visible in the run that pays them. Resetting too
+  # rarely lets a member earn a clearance marker over a surface narrower than
+  # its changed instructions warrant, and the merge gate believes the marker
+  # rather than re-deriving the scope behind it, so nothing downstream catches
+  # that one.
+  #
+  # What stays open is the number of resets rather than the trigger: batching
+  # a round's definition repairs into one commit pays one reset, not one per
+  # commit.
   if [ "$reset_tier" = "member" ]; then
     echo "resolve-audit-base: ${member}'s own agent definition changed between ${winner} and HEAD (${reset_path}); resetting to full scope (${main_ref})." >&2
     emit "$main_ref" rules-reset-member ""
