@@ -1546,11 +1546,22 @@ jobs:
         # stand-down step posts that status as `pending` ONLY when it reads
         # back a definitive "no success live" for HEAD's tree. When a success
         # IS live it leaves it alone (the local producer already cleared every
-        # dispatched member, so the gate is legitimately green), and when the
-        # read is unanswerable it posts nothing, which fails closed: an absent
-        # required check blocks the merge just as a `pending` one does. The
-        # message below holds on all three, because it points the author at the
-        # local merge path, which is a no-op when the gate is already green.
+        # dispatched member, so the gate is legitimately green); when the read
+        # is unanswerable it posts nothing, which fails closed: an absent
+        # required check blocks the merge just as a `pending` one does; and
+        # when it reaches the POST and GitHub REJECTS it, it likewise posts
+        # nothing and fails closed the same way, publishing `post_failed`.
+        # The message below holds on all four, because it points the author at
+        # the local merge path, which clears the gate on each of them and is a
+        # no-op when the gate is already green.
+        #
+        # THIS STEP DELIBERATELY CONSUMES NO WRITER OUTPUTS, which is why the
+        # stand-down step above carries no `id:`. Its message makes no claim
+        # about what was posted, so there is no wrong-explanation failure here
+        # for a `post_failed` arm to correct -- unlike the three ladders, whose
+        # members-pending arm asserted a `pending` status by name. The
+        # stand-down writer emits `post_failed` all the same; nothing reads it,
+        # and that is the intended shape rather than an oversight.
         # Gated identically to the stand-down step so exactly one terminal
         # status step fires per run.
         if: |

@@ -2134,6 +2134,7 @@ run_audit_complete_step() {
     }
   done
 }
+
 @test "all three terminal comment ladders test their arms in one order" {
   # Every other test here binds ONE arm and asserts ONE message, so none of them
   # can see order at all: reordering a ladder leaves every message byte-identical

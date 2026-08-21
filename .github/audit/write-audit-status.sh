@@ -63,12 +63,21 @@
 # but it is the same defect the ladders' SUCCESS_LIVE and READ_FAILED arms exist
 # to prevent, so it gets the same answer.
 #
-# The two posts differ in what the author is then told, because on the PENDING
-# path a rejection ALWAYS co-occurs with a non-empty `members_pending`: that POST
-# fires only under a non-empty `pending`, which gated mode has already published
-# as `members_pending`. So the terminal ladders report the combined state in one
-# sentence -- the members only a local run can clear, AND the rejection that
-# means nothing was posted -- instead of picking one of the two facts.
+# The two posts differ in what the author is then told, because IN GATED MODE a
+# rejection on the PENDING path always co-occurs with a non-empty
+# `members_pending`: that POST fires only under a non-empty `pending`, which
+# gated mode has already published as `members_pending`. So the terminal ladders
+# report the combined state in one sentence -- the members only a local run can
+# clear, AND the rejection that means nothing was posted -- instead of picking
+# one of the two facts.
+#
+# STAND-DOWN MODE IS THE EXCEPTION, and it is inert rather than handled. That
+# mode never emits `members_pending` at all (there are no members to resolve),
+# so a rejection there publishes `post_failed` beside an EMPTY one. No ladder
+# ever sees that pair: the sole stand-down call site carries no `id:`, so
+# nothing reads its outputs. The unqualified claim would be wrong; the gated
+# qualification is what makes it true, and the missing `id:` is what makes the
+# stand-down case harmless.
 #
 # Two suites cover this script: one drives it directly for its argument
 # contract, and one executes all five call sites as the workflow runs them.
@@ -338,11 +347,17 @@ if [ -n "$pending" ]; then
   # exist to prevent, on claims those paths merely could not verify. This one is
   # known false, so the same rule applies with more force.
   #
-  # It always co-occurs with a non-empty `members_pending`: this branch runs only
-  # under a non-empty `pending`, and gated mode emitted `members_pending` from
-  # that same value. So the ladders combine the two rather than choosing between
-  # them, and hoisting their post_failed arm above members_pending would discard
-  # the half only a LOCAL member run can act on.
+  # IN GATED MODE it always co-occurs with a non-empty `members_pending`: this
+  # branch runs only under a non-empty `pending`, and gated mode emitted
+  # `members_pending` from that same value. So the ladders combine the two rather
+  # than choosing between them, and hoisting their post_failed arm above
+  # members_pending would discard the half only a LOCAL member run can act on.
+  #
+  # In STAND-DOWN mode `pending` is the forced description and `members_pending`
+  # was never emitted, so this `post_failed` would stand alone. Nothing reads it:
+  # that call site carries no `id:`. The emit is published either way rather than
+  # gated on the mode, because a conditional emit would be a second rule to keep
+  # in step with the one `id:` that decides whether anyone is listening.
   if ! gh api "repos/${GITHUB_REPOSITORY}/statuses/${sha}" \
       --method POST \
       --field state=pending \
