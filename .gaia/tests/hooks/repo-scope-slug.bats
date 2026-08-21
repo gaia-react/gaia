@@ -167,10 +167,12 @@ name_half_verdict() {
   [ "$(name_half_verdict 'gh pr merge --repo other-org/other-repo 5')" = "foreign" ]
 }
 
-@test "s15: a later command's unrelated -R flag does not decide this one" {
+@test "s15: a later command's unrelated ATTACHED -R does not decide this one" {
   # `-R` is a common short flag on other tools, and a tool call may run one
   # after the merge. Reading its letters as the target classifies an ordinary
   # command foreign, and an acting consumer then silently declines on it.
+  # Scoped to the attached spelling on purpose: the separated one is a live
+  # gap, and s18 pins it rather than letting this name imply it is covered.
   [ "$(verdict 'gh pr merge 42 --squash && grep -Rn TODO .')" = "home" ]
   [ "$(verdict 'gh pr merge 42 --squash && cp -Rp a b')" = "home" ]
   [ "$(verdict 'gh pr merge 42 --squash && ls -RA')" = "home" ]
@@ -193,4 +195,24 @@ name_half_verdict() {
   [ "$(verdict "pushd $SIBLING && gh pr merge 5")" = "home" ]
   [ "$(verdict "(cd $SIBLING && gh pr merge 5)")" = "home" ]
   [ "$(verdict "cd $PARENT/does-not-exist && gh pr merge 5")" = "home" ]
+}
+
+# s18 pins a live limit, not a desired behavior. The arm-1 capture requires a
+# separator but nothing of the value, so a SEPARATED `-R` belonging to another
+# command in the same tool call still supplies the target, and the `/`
+# requirement s15 relies on does not discriminate here: a path argument carries
+# a slash exactly as a slug does. Telling `-R app/routes` (grep's recursive
+# flag plus a path) from `-R owner/repo` (gh's repository flag) needs to know
+# which command the flag belongs to, which is the first-command contract this
+# lib does not have and #1515 tracks. Arm 1 itself must stay byte-identical for
+# the nine blocking consumers, so the repair belongs there, not here.
+#
+# The direction is the safe one: it declines rather than acting on the wrong
+# repository, so it costs a findings-block posting rather than causing a wrong
+# write, and it is not a regression, the boundary this replaced read the same
+# way. Pinned so the limit is visible and so closing it reds this test.
+@test "s18: a separated -R on another command still decides, the tracked limit" {
+  [ "$(verdict 'gh pr merge 42 --squash && grep -R app/routes .')" = "foreign" ]
+  [ "$(verdict 'gh pr merge 42 && cp -R a/b c/d')" = "foreign" ]
+  [ "$(verdict 'gh pr merge 42 && ls -R /tmp')" = "foreign" ]
 }
