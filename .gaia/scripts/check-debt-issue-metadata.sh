@@ -361,10 +361,10 @@ run_pre_file() {
     finding "pre-file" "pre-provenance-on-new-filing" "\`debt:pre-provenance\` is a one-time rollout marker and must never be applied by a filing"
   fi
 
-  # The claim and park labels belong to the drain, not the filing. The recipe
-  # says so; nothing checked it.
+  # The claim and park labels belong to work that has started, not to the act
+  # of filing. The recipe says so; nothing checked it.
   if printf '%s\n' "$labels" | grep -qE '^(in-progress|debt:spec-pending)$'; then
-    finding "pre-file" "drain-label-on-new-filing" "\`in-progress\` / \`debt:spec-pending\` are applied by the drain, never by a filing"
+    finding "pre-file" "drain-label-on-new-filing" "\`in-progress\` / \`debt:spec-pending\` are applied once work starts, never by a filing"
   fi
 
   return 0

@@ -56,39 +56,61 @@ _lib="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)"
 type cmd_targets_foreign_repo >/dev/null 2>&1 || exit 0
 cmd_targets_foreign_repo "$cmd" && exit 0
 
-# Split the command tail into shell-like words. This is a real scan rather
-# than a set of patterns over the raw text, and the difference is the whole
-# point: a quote character opens a span in which whitespace, separators and
-# the other quote character are all ordinary text, and a backslash escapes
-# the character after it. Pattern-matching the raw text got this wrong once
-# per spelling, always in the direction of reading part of one value, or part
-# of a following command, as the pull-request reference.
+# Split the command into shell-like words. This is a real scan rather than a
+# set of patterns over the raw text, and the difference is the whole point: a
+# quote character opens a span in which whitespace, separators and the other
+# quote character are all ordinary text, and a backslash escapes the
+# character after it. Pattern-matching the raw text got this wrong once per
+# spelling, always in the direction of reading part of one value, or part of
+# a following command, as the pull-request reference.
 #
-# Two things come out of it. The words are unquoted, so nothing downstream
-# needs to know quotes exist; and the scan stops at the first separator that
-# is not inside a quoted span, so a later command in a compound command
-# contributes nothing, while a `;` inside a squash subject stays text.
-tail_re='gh[[:space:]]+pr[[:space:]]+merge[[:space:]]*(.*)$'
-args=""
-if [[ "$cmd" =~ $tail_re ]]; then
-  args="${BASH_REMATCH[1]}"
-fi
+# The scan starts at the beginning of the command, not at the position some
+# pattern found the merge phrase at, because a textual occurrence of that
+# phrase is not a place a command begins: `# <phrase> 5` on an earlier line,
+# or the phrase inside an earlier command's quoted value, is text, and
+# entering there resolves whatever number follows it, which is a pull request
+# this merge never touched. So the scan cuts the command at every separator
+# outside a quoted span and takes the FIRST piece whose own first three words
+# are the merge verb; its remaining words are what gets parsed below. When no
+# piece is a merge invocation, the phrase was only ever text and there is
+# nothing to act on.
+#
+# The words that come out are unquoted, so nothing downstream needs to know
+# quotes exist, and a `;` inside a squash subject stays text.
 
 # Named once, above the loop: a `case` pattern cannot hold a `$'\n'` literal,
 # and a command substitution in one would run per scanned character. The
 # separator set below is the same set the arming match at the top of this
-# hook uses, newline included, or the scan would run past the end of a
-# multi-line command the arming match already treats as several.
+# hook uses, newline included, or the scan would disagree with the match
+# about where a multi-line command ends.
 NL=$'\n'
 TAB=$'\t'
 words=()
+cur=()
+matched=0
+
+# Accept the piece currently in `cur` when it IS the merge invocation, and on
+# acceptance hand its post-verb words to the parser below. Copied element by
+# element rather than sliced: `"${cur[@]:3}"` on a three-word array is an
+# unbound expansion under `set -u` on bash 3.2, which macOS still ships.
+take_command() {
+  [ "${#cur[@]}" -ge 3 ] || return 1
+  [ "${cur[0]}" = "gh" ] && [ "${cur[1]}" = "pr" ] && [ "${cur[2]}" = "merge" ] || return 1
+  local j=3
+  while [ "$j" -lt "${#cur[@]}" ]; do
+    words+=("${cur[$j]}")
+    j=$((j + 1))
+  done
+  return 0
+}
+
 word=""
 have_word=0
 q=""
 esc=0
 i=0
-while [ "$i" -lt "${#args}" ]; do
-  c="${args:$i:1}"
+while [ "$i" -lt "${#cmd}" ]; do
+  c="${cmd:$i:1}"
   i=$((i + 1))
   if [ "$esc" = 1 ]; then
     word="$word$c"; have_word=1; esc=0; continue
@@ -105,16 +127,23 @@ while [ "$i" -lt "${#args}" ]; do
   case "$c" in
     '"'|"'") q="$c"; have_word=1 ;;
     ' '|"$TAB")
-      [ "$have_word" = 1 ] && words+=("$word")
+      [ "$have_word" = 1 ] && cur+=("$word")
       word=""; have_word=0
       ;;
     '&'|'|'|';'|"$NL")
-      break
+      [ "$have_word" = 1 ] && cur+=("$word")
+      word=""; have_word=0
+      if take_command; then matched=1; break; fi
+      cur=()
       ;;
     *) word="$word$c"; have_word=1 ;;
   esac
 done
-[ "$have_word" = 1 ] && words+=("$word")
+if [ "$matched" = 0 ]; then
+  [ "$have_word" = 1 ] && cur+=("$word")
+  take_command && matched=1
+fi
+[ "$matched" = 1 ] || exit 0
 
 # Every value-taking flag, and only those. Checked against gh's own help
 # output rather than recalled: -m is --merge, a BOOLEAN, so listing it here
@@ -230,16 +259,38 @@ state=$(printf '%s' "$pr_json" | jq -r '.state // ""' 2>/dev/null)
 
 body=$(printf '%s' "$pr_json" | jq -r '.body // ""' 2>/dev/null)
 
-# GitHub's own closing keywords, case-insensitive, followed by whitespace and
-# #<digits>.
+# GitHub's own closing keywords, case-insensitive. All three spellings its
+# documentation gives are accepted after the keyword: a bare `#<n>`, the
+# colon form `Closes: #<n>`, and the repository-qualified
+# `Closes owner/repo#<n>`. Matching only the first left GitHub closing an
+# issue while the claim stayed live, silently, which is the failure this
+# hook exists to prevent one direction of.
+#
 # The left boundary is load-bearing: without it a body reading `left
 # unresolved #<n>` matches as `resolved #<n>`, and GitHub closes nothing
-# there, because it requires the keyword to stand as its own word. Releasing on that match is the one way
-# this hook can strip a claim off work that is still in flight, which is the
-# harm every other guard here exists to prevent. The class excludes digits,
-# so the number extraction below still sees only the issue number.
-issue_re='(^|[^[:alnum:]_])(close|closes|closed|fix|fixes|fixed|resolve|resolves|resolved)[[:space:]]+#[0-9]+'
-nums=$(printf '%s' "$body" | grep -oiE "$issue_re" 2>/dev/null | grep -oE '[0-9]+' 2>/dev/null | sort -u)
+# there, because it requires the keyword to stand as its own word. Releasing
+# on that match is the one way this hook can strip a claim off work that is
+# still in flight, which is the harm every other guard here exists to
+# prevent.
+#
+# A qualifier is compared against the home repo before anything is released,
+# because a `Fixes other-org/other-repo#<n>` closes an issue over there and
+# releasing on it would strip THIS repo's unrelated issue of that number.
+# The label write only ever reaches home, so a genuinely foreign qualifier
+# is out of this hook's reach by construction and is dropped rather than
+# followed.
+issue_re='(^|[^[:alnum:]_])(close|closes|closed|fix|fixes|fixed|resolve|resolves|resolved):?[[:space:]]+([A-Za-z0-9._-]+/[A-Za-z0-9._-]+)?#[0-9]+'
+home_lc=$(printf '%s' "$home" | tr '[:upper:]' '[:lower:]')
+nums=$(printf '%s' "$body" | grep -oiE "$issue_re" 2>/dev/null | while IFS= read -r m; do
+  # Everything after the last whitespace and before the `#` is the
+  # qualifier, and it is empty for both unqualified spellings.
+  qual="${m%#*}"
+  qual="${qual##*[[:space:]]}"
+  if [ -n "$qual" ]; then
+    [ "$(printf '%s' "$qual" | tr '[:upper:]' '[:lower:]')" = "$home_lc" ] || continue
+  fi
+  printf '%s\n' "${m##*#}"
+done | sort -u)
 
 [ -n "$nums" ] || exit 0
 

@@ -207,11 +207,54 @@ assert_nothing_released() { [ ! -s "$FAKE_GH_STATE/issue_edits" ]; }
   assert_released_once "4"
 }
 
+# 5d-5f cover the two spellings GitHub documents beside the bare one. The
+# first two are merges that DID close an issue, so failing to match them
+# leaves a claim live on finished work; the third is the reason the qualifier
+# is compared rather than merely allowed.
+@test "5d: the colon spelling releases" {
+  export FAKE_GH_PR_BODY="Closes: #5"
+  run_hook 'gh pr merge 42'
+  [ "$status" -eq 0 ]
+  assert_released_once "5"
+}
+
+@test "5e: a reference qualified with the home repo releases" {
+  export FAKE_GH_PR_BODY="Closes gaia-react/gaia#12"
+  run_hook 'gh pr merge 42'
+  [ "$status" -eq 0 ]
+  assert_released_once "12"
+}
+
+@test "5f: a reference qualified with another repo releases nothing" {
+  export FAKE_GH_PR_BODY="Closes other-org/other-repo#13"
+  run_hook 'gh pr merge 42'
+  [ "$status" -eq 0 ]
+  assert_nothing_released
+}
+
 @test "6: gh pr merge mentioned inside a string is not a real invocation" {
   export FAKE_GH_PR_BODY="Closes #12"
   run_hook 'echo "gh pr merge 42"'
   [ "$status" -eq 0 ]
   assert_nothing_released
+}
+
+# Test 6 pins a mention with no real invocation after it. 6b and 6c pin the
+# other half: a mention FOLLOWED by one. Both assert the selector rather than
+# the release, because that is where the defect shows, the hook reads some
+# other pull request's state and body and releases whatever THAT one closed.
+@test "6b: a mention on an earlier line does not become the reference" {
+  export FAKE_GH_PR_BODY="Closes #12"
+  run_hook $'# gh pr merge 5 (old, already done)\ngh pr merge 9'
+  [ "$status" -eq 0 ]
+  [ "$(cat "$FAKE_GH_STATE/pr_view_ref")" = "9" ]
+}
+
+@test "6c: a mention inside an earlier command's value does not become the reference" {
+  export FAKE_GH_PR_BODY="Closes #12"
+  run_hook 'gh pr comment 9 --body "ready; gh pr merge 5 landed" && gh pr merge 9'
+  [ "$status" -eq 0 ]
+  [ "$(cat "$FAKE_GH_STATE/pr_view_ref")" = "9" ]
 }
 
 @test "7: a foreign-repo command releases nothing" {
