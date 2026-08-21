@@ -276,7 +276,8 @@ first_captured_body() {
   grep -qF 'reason: `fix-abort`' "$body_path"
   grep -qF 'GAIA-FIX-ABORT' "$body_path"
   # Must NOT be mislabeled as a scope violation (the pre-CMP-3 bug).
-  ! grep -qF 'outside the auto-fix allowlist' "$body_path"
+  grep -qF 'outside the auto-fix allowlist' "$body_path" && return 1
+  true
 }
 
 @test "needs-human: comment names the reason-code no-change (CMP-3)" {
@@ -288,7 +289,8 @@ first_captured_body() {
   grep -qF 'reason: `no-change`' "$body_path"
   grep -qF 'produced no diff' "$body_path"
   # Must NOT be mislabeled as a scope violation (the pre-CMP-3 bug).
-  ! grep -qF 'outside the auto-fix allowlist' "$body_path"
+  grep -qF 'outside the auto-fix allowlist' "$body_path" && return 1
+  true
 }
 
 @test "needs-human: gaia-triaged is the LAST mutation" {
@@ -437,7 +439,8 @@ first_captured_body() {
   grep -qF 'missing-section' "$body_path"
   # User-facing comment must not surface internal UAT identifiers, they
   # rot as UATs are renumbered and confuse adopters who file issues by hand.
-  ! grep -qE 'UAT-[0-9]+' "$body_path"
+  grep -qE 'UAT-[0-9]+' "$body_path" && return 1
+  true
 }
 
 @test "malformed-body: comment names malformed sections from parser output" {
