@@ -15,12 +15,13 @@
 # lib from its OWN location rather than from cwd, so it reaches the real one
 # beside it and a sandbox copy would never be read.
 #
-# The sandbox repo's toplevel directory is named exactly `gaia`, because
-# repo-scope.sh's `-R`/`--repo` arm compares only the REPO-NAME half of the
-# flag value against the home repo's own directory basename; without that
-# match, a same-repo `--repo gaia-react/gaia` command would misclassify as
-# foreign and case 7b could never distinguish a correct ref parse from a
-# broken one.
+# The sandbox repo's toplevel directory is named exactly `gaia`, matching the
+# repo-NAME half of the home slug the fake gh reports (`gaia-react/gaia`). The
+# hook compares the whole [HOST/]OWNER/REPO against that slug rather than the
+# directory basename, so the name decides nothing on its own. It is kept
+# because it is what makes the same-named-sibling fixtures adversarial:
+# `--repo other-org/gaia` is precisely the value a repo-NAME comparison calls
+# home, so those cases red the moment the boundary regresses to one.
 
 setup() {
   . "$BATS_TEST_DIRNAME/helpers/run-hook.sh"
@@ -346,10 +347,11 @@ assert_nothing_released() { [ ! -s "$FAKE_GH_STATE/issue_edits" ]; }
   assert_released_once "12"
 }
 
-# The sandbox toplevel is named `gaia`, so `--repo other-org/gaia` is the case
-# where the shared guard's repo-NAME comparison says "home". For the blocking
-# guards that share that lib, home means enforce and the over-classification is
-# safe; here home means act, so the whole slug has to be compared.
+# The sandbox toplevel is named `gaia`, so `--repo other-org/gaia` is exactly
+# the value a repo-NAME comparison calls "home". repo-scope.sh's blocking
+# guard does compare that way, and for a consumer that ENFORCES the
+# over-classification is safe; this hook ACTS, so it compares the whole slug
+# and this case has to stay foreign.
 @test "7i: a same-named sibling repo releases nothing" {
   export FAKE_GH_PR_BODY="Closes #77"
   run_hook 'gh pr merge --repo other-org/gaia 5'
@@ -770,10 +772,10 @@ assert_nothing_released() { [ ! -s "$FAKE_GH_STATE/issue_edits" ]; }
 
 # 7at, 7au: GitHub resolves OWNER/REPO case-insensitively, so a merge spelled
 # in another case lands on the home repository and a case-sensitive comparison
-# would read it as a different one and cost the release. The repo-NAME half of
-# a `--repo` value is the one part still case-sensitive here, because the shared
-# guard classifies that shape foreign before this hook compares anything, and
-# that is a lost release rather than a wrong one.
+# would read it as a different one and cost the release. Every half of the
+# value is compared case-blind, and the three cases below cover them: the
+# owner half here, both halves of a URL in 7au, and the repo-NAME half in 7av.
+# 7aw and 7ay pin the direction that keeps case-blindness honest.
 @test "7at: a --repo differing only in owner case still resolves the ref" {
   export FAKE_GH_PR_BODY="Closes #77"
   run_hook 'gh pr merge --repo GAIA-React/gaia 5'
@@ -802,4 +804,45 @@ assert_nothing_released() { [ ! -s "$FAKE_GH_STATE/issue_edits" ]; }
 }
 @test "the hook file is executable" {
   [ -x "$HOOK_ABS" ]
+}
+
+# 7av-7ay: the boundary is read from the SCANNED value rather than from a
+# regex over the raw command, which is what makes these four spellings behave.
+# The repo-NAME half of a `--repo` value used to be compared case-sensitively
+# against the checkout's directory basename by a pre-filter that ran first, so
+# 7av's spelling was called foreign and cost the release; and a quoted value
+# kept its quotes through that capture, so 7ax's was too. The scan strips the
+# quotes and knows which command in the tool call owns the flag.
+@test "7av: a --repo differing only in repo-name case still resolves the ref" {
+  export FAKE_GH_PR_BODY="Closes #77"
+  run_hook 'gh pr merge --repo gaia-react/GAIA 5'
+  [ "$status" -eq 0 ]
+  [ "$(cat "$FAKE_GH_STATE/pr_view_ref")" = "5" ]
+  assert_released_once "77"
+}
+
+@test "7aw: a same-named sibling differing in case still releases nothing" {
+  # 7av's safety direction: case-blindness must not turn a different
+  # repository into the home one.
+  export FAKE_GH_PR_BODY="Closes #77"
+  run_hook 'gh pr merge --repo OTHER-ORG/GAIA 5'
+  [ "$status" -eq 0 ]
+  assert_nothing_released
+}
+
+@test "7ax: a quoted home --repo value resolves the ref" {
+  export FAKE_GH_PR_BODY="Closes #77"
+  run_hook 'gh pr merge --repo="gaia-react/gaia" 5'
+  [ "$status" -eq 0 ]
+  [ "$(cat "$FAKE_GH_STATE/pr_view_ref")" = "5" ]
+  assert_released_once "77"
+}
+
+@test "7ay: a quoted foreign --repo value releases nothing" {
+  # 7ax's safety direction, and the one that matters: reading a quoted value
+  # at all is only correct if reading it foreign still declines.
+  export FAKE_GH_PR_BODY="Closes #77"
+  run_hook 'gh pr merge --repo="other-org/gaia" 5'
+  [ "$status" -eq 0 ]
+  assert_nothing_released
 }

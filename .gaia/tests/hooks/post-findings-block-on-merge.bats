@@ -92,7 +92,12 @@ case "$1" in
     exit "${FAKE_GH_AUTH_EXIT:-0}"
     ;;
   repo)
-    printf '%s\n' "${FAKE_GH_REPO:-acme/repo}"
+    # gh identifies a repository as [HOST/]OWNER/REPO, and repo-scope's
+    # act-on-home entry point reads the slug and the URL's authority from this
+    # one call, so the stub answers both fields as JSON.
+    jq -n --arg n "${FAKE_GH_REPO:-acme/repo}" \
+      --arg u "https://${FAKE_GH_HOST:-github.com}/${FAKE_GH_REPO:-acme/repo}" \
+      '{nameWithOwner: $n, url: $u}'
     exit 0
     ;;
   pr)
@@ -275,4 +280,71 @@ write_sidecar() {
 @test "settings.json remains valid JSON" {
   run jq . "$SETTINGS_ABS"
   [ "$status" -eq 0 ]
+}
+
+# The sandbox toplevel is a mktemp directory, and the home repo gh reports is
+# `acme/repo`, so the two are deliberately unrelated. That is what makes the
+# next fixture decisive: `-R other-org/<toplevel-basename>` is the value the
+# repo-NAME comparison calls home and the whole-slug comparison calls foreign.
+# This hook ACTS on the home repo, so calling it home posts a findings block
+# onto THIS repository's pull request of that number.
+@test "a same-named sibling repo posts nothing" {
+  write_sidecar
+  export FAKE_GH_STATE FAKE_GH_IS_FORK="false" FAKE_GH_AUTHOR="alice"
+
+  run_merge_hook "gh pr merge 42 -R other-org/$(basename "$REPO") --squash"
+  [ "$status" -eq 0 ]
+  [ ! -s "$FAKE_GH_STATE/post_count" ]
+}
+
+@test "a -R attached to a same-named sibling posts nothing" {
+  # gh accepts `-R` attached to its value, a spelling the shared capture
+  # misses; missing it here means posting to the wrong repository's pull
+  # request rather than merely over-enforcing.
+  write_sidecar
+  export FAKE_GH_STATE FAKE_GH_IS_FORK="false" FAKE_GH_AUTHOR="alice"
+
+  run_merge_hook "gh pr merge 42 -Rother-org/$(basename "$REPO")"
+  [ "$status" -eq 0 ]
+  [ ! -s "$FAKE_GH_STATE/post_count" ]
+}
+
+@test "a --repo naming the home repo still posts" {
+  # The boundary's other direction: tightening it must not cost the posting it
+  # exists to let through.
+  write_sidecar
+  export FAKE_GH_STATE FAKE_GH_IS_FORK="false" FAKE_GH_AUTHOR="alice"
+
+  run_merge_hook "gh pr merge 42 --repo acme/repo --squash"
+  [ "$status" -eq 0 ]
+  [ "$(cat "$FAKE_GH_STATE/post_count")" = "1" ]
+}
+
+@test "a --repo naming the home repo in another case still posts" {
+  # GitHub resolves OWNER/REPO case-insensitively, so this lands on the home
+  # repository and a case-sensitive comparison would cost the posting.
+  write_sidecar
+  export FAKE_GH_STATE FAKE_GH_IS_FORK="false" FAKE_GH_AUTHOR="alice"
+
+  run_merge_hook "gh pr merge 42 --repo ACME/Repo --squash"
+  [ "$status" -eq 0 ]
+  [ "$(cat "$FAKE_GH_STATE/post_count")" = "1" ]
+}
+
+# The lib is resolved from the hook's own location rather than from cwd. Run
+# from a subdirectory, a cwd-relative source misses, which left the boundary
+# function undefined; the old `type f && f` guard then fell THROUGH to posting.
+# The two defects composed into no boundary check at all, so this fixture fails
+# on either half alone.
+@test "from a non-root cwd, a foreign merge still posts nothing" {
+  write_sidecar
+  export FAKE_GH_STATE FAKE_GH_IS_FORK="false" FAKE_GH_AUTHOR="alice"
+
+  mkdir -p "$REPO/sub/dir"
+  local json
+  json=$(jq -n --arg c "gh pr merge 42 -R other-org/other-repo --squash" \
+    '{tool_name: "Bash", tool_input: {command: $c}}')
+  invoke_hook_in "$REPO/sub/dir" "$json" "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ ! -s "$FAKE_GH_STATE/post_count" ]
 }

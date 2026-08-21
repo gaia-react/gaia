@@ -34,9 +34,27 @@ fi
 
 # `gh pr merge` aimed at a different repo has no bearing on this repo's audit
 # posting; allow it.
-[ -f .claude/hooks/lib/repo-scope.sh ] && . .claude/hooks/lib/repo-scope.sh
-if type cmd_targets_foreign_repo >/dev/null 2>&1 \
-   && cmd_targets_foreign_repo "$cmd"; then
+#
+# This hook ACTS on the home repository, it posts a findings block onto a pull
+# request, so it takes repo-scope's act-on-home entry point rather than the
+# blocking one. The blocking guard compares only the repo-NAME half of a
+# `--repo` value against the checkout's directory basename, which reads a
+# same-named fork (`--repo other-org/gaia` run from a checkout named `gaia`,
+# the ordinary fork topology) as home; this hook would then resolve THIS
+# repository's pull request of that number and post onto a pull request the
+# command never touched. The act-on-home entry point compares the whole
+# HOST/OWNER/REPO, and resolves every ambiguity to "foreign" so an
+# unidentifiable target declines rather than acts.
+#
+# Sourced from this hook's own on-disk location, never cwd. A cwd-relative
+# source misses from any non-root cwd, and a `type f >/dev/null 2>&1 && f`
+# guard then falls THROUGH to posting rather than bailing: the two compose
+# into no boundary check at all. Undefined after the source exits instead.
+_lib="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)"
+# shellcheck source=/dev/null
+[ -n "${_lib:-}" ] && [ -f "$_lib/repo-scope.sh" ] && . "$_lib/repo-scope.sh"
+type cmd_targets_foreign_repo_slug >/dev/null 2>&1 || exit 0
+if cmd_targets_foreign_repo_slug "$cmd"; then
   exit 0
 fi
 
