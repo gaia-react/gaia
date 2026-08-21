@@ -622,17 +622,18 @@ if [ -n "$reset_hit" ]; then
   IFS="$TAB" read -r reset_tier reset_path <<<"$reset_hit"
   # The member tier's trigger is the whole file: any change to
   # .claude/agents/<member>.md re-arms this reset, a reworded sentence as
-  # readily as a rewritten remit, and the member then re-reads its entire
-  # owned surface instead of one commit's delta. That breadth is chosen, and
-  # it is the expensive choice: a round of prose repairs spanning several
-  # definitions pays a full re-review for every member it touches.
+  # readily as a rewritten remit, and the member then re-reviews the whole
+  # pull request's diff against its remit instead of the delta since its
+  # anchor. That breadth is chosen, and it is the expensive choice: a round of
+  # prose repairs spanning several definitions pays that widened re-review for
+  # every member it touches.
   #
   # It is chosen because a member definition is an instruction file, where the
   # prose IS the logic and no syntactic split separates a comment-only edit
   # from a behavior-changing one. "Prefer" becoming "always" inside a remit
   # rewrites what the member looks for, and only the surrounding sentence says
-  # so. Two narrowings look attractive and neither survives. Resetting only
-  # outside regions marked non-normative has no region to key on: the
+  # so. The narrowings that look attractive fail on their own terms. Resetting
+  # only outside regions marked non-normative has no region to key on: the
   # gaia:maintainer-only markers mark AUDIENCE, a maintainer-only paragraph
   # still instructs, and most member definitions carry no marker at all, so a
   # new convention would rest the reset on whoever remembered to mark a
