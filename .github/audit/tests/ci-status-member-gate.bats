@@ -1891,6 +1891,73 @@ run_audit_complete_step() {
   return 0
 }
 
+@test "pending path: a rejected pending POST does not fail the step and publishes post_failed" {
+  # The producer half of what #1296 settled on the consumer side. Before this,
+  # the pending POST swallowed its own rejection through a bare `|| true`, so
+  # the writer published a non-empty members_pending and no post_failed, and
+  # every terminal comment then told the author "GAIA-Audit is pending" about a
+  # status that was never posted.
+  body="$(extract_step_body 'Write GAIA-Audit commit status (clean, no push)')"
+  commit_mixed_diff
+  write_frontend_marker
+  sha="$(git -C "$SANDBOX" rev-parse HEAD)"
+  status_post_fails
+
+  run run_step "$body" "$sha"
+  # Non-fatal on this path too: the gate fails closed without help, so redding
+  # the job protects nothing and misattributes a clean audit as a failed one.
+  [ "$status" -eq 0 ]
+
+  # It really reached the PENDING POST, rather than short-circuiting earlier.
+  grep -qF "state=pending" "$POST_LOG"
+  grep -qF "state=success" "$POST_LOG" && return 1
+
+  grep -qF "post_failed=true" "$STEP_OUTPUT"
+  grep -qF "success_stamped=false" "$STEP_OUTPUT"
+  # ...and it says so on stderr rather than swallowing the failure silently.
+  grep -qF "rejected" <<<"$output"
+}
+
+@test "pending path: post_failed co-occurs with the members_pending that named the pending members" {
+  # The co-occurrence is TOTAL, not incidental, and that is what makes the
+  # combined-state comment arms below reachable rather than theoretical. The
+  # pending POST fires only under a non-empty `pending`, and gated mode emits
+  # members_pending from that same value, so a rejected pending POST always
+  # arrives at the comment step alongside a non-empty members_pending.
+  body="$(extract_step_body 'Write GAIA-Audit commit status')"
+  commit_mixed_diff
+  sha="$(git -C "$SANDBOX" rev-parse HEAD)"
+  status_post_fails
+
+  run run_step "$body" "$sha"
+  [ "$status" -eq 0 ]
+
+  grep -qF "post_failed=true" "$STEP_OUTPUT"
+  grep -qE "^members_pending=.*code-audit-maintainer-node" "$STEP_OUTPUT"
+}
+
+@test "pending path: a rejected pending POST is not confused with a bowed-out one" {
+  # Same distinction the success path draws: post_failed must not fire on a path
+  # that never reached the POST at all, because the repairs differ. Here the
+  # non-clobber guard is unreadable, so the writer stands down before the POST
+  # and read_failed -- not post_failed -- is the honest signal.
+  body="$(extract_step_body 'Write GAIA-Audit commit status (clean, no push)')"
+  commit_mixed_diff
+  write_frontend_marker
+  sha="$(git -C "$SANDBOX" rev-parse HEAD)"
+  remove_guard_script
+  status_post_fails
+
+  run run_step "$body" "$sha"
+  [ "$status" -eq 0 ]
+
+  [ ! -f "$POST_LOG" ]
+  grep -qF "read_failed=true" "$STEP_OUTPUT"
+  grep -qF "success_stamped=false" "$STEP_OUTPUT"
+  grep -qF "post_failed=true" "$STEP_OUTPUT" && return 1
+  return 0
+}
+
 # -----------------------------------------------------------------------------
 # What the AUTHOR is told when the POST was rejected.
 #
@@ -1987,18 +2054,108 @@ run_audit_complete_step() {
   grep -qF "code-audit-maintainer-shell" "$COMMENT_LOG"
 }
 
+# -----------------------------------------------------------------------------
+# The COMBINED state: a rejected pending POST, alongside the members it named.
+#
+# These three are siblings of the single-arm tests above, and they exist because
+# the two facts now arrive together on every run that produces either. The
+# members-pending arm alone would assert "GAIA-Audit is pending" about a status
+# that was never posted; the post-failed arm alone would send the author to
+# re-run the workflow and drop the names of the members only a LOCAL run can
+# clear. Each ladder has to say both, and say them in one sentence that stays
+# true of both.
+#
+# Hoisting the post_failed arm above members_pending would have been the other
+# repair, and it is the wrong one for exactly this reason: it does not combine
+# the two facts, it discards the more actionable one.
+# -----------------------------------------------------------------------------
+
+@test "chore-deps comment: a rejected pending POST is reported with the members, not as a pending gate" {
+  body="$(extract_step_body 'Status - skipped (chore-deps PR)')"
+  run run_comment_step "$body" "code-audit-maintainer-shell" "false" "" "" "true"
+  [ "$status" -eq 0 ]
+
+  [ -f "$COMMENT_LOG" ]
+  # Both facts, one sentence: the members only a local run can clear...
+  grep -qF "code-audit-maintainer-shell" "$COMMENT_LOG"
+  # ...and the rejection that means no status was posted at all.
+  grep -qF "was rejected by GitHub" "$COMMENT_LOG"
+  grep -qF "NO status was posted on HEAD" "$COMMENT_LOG"
+  # The action is still the one that actually clears this gate.
+  grep -qF "run the dispatched member(s) locally" "$COMMENT_LOG"
+  # And it never claims the pending status that was never posted.
+  grep -qF "pending, not green" "$COMMENT_LOG" && return 1
+  return 0
+}
+
+@test "out-of-scope comment: a rejected pending POST is reported with the members, not as a pending gate" {
+  body="$(extract_step_body 'Status - skipped (no source changes)')"
+  run run_comment_step "$body" "code-audit-maintainer-shell" "false" "" "" "true"
+  [ "$status" -eq 0 ]
+
+  [ -f "$COMMENT_LOG" ]
+  grep -qF "code-audit-maintainer-shell" "$COMMENT_LOG"
+  grep -qF "was rejected by GitHub" "$COMMENT_LOG"
+  grep -qF "NO status was posted on HEAD" "$COMMENT_LOG"
+  grep -qF "run the dispatched member(s) locally" "$COMMENT_LOG"
+  grep -qF "pending, not green" "$COMMENT_LOG" && return 1
+  return 0
+}
+
+@test "audit-complete comment: a rejected pending POST is reported with the members, not as a pending gate" {
+  body="$(extract_step_body 'Status - audit complete')"
+  run run_audit_complete_step "$body" "code-audit-maintainer-shell" "false" "" "" "true"
+  [ "$status" -eq 0 ]
+
+  [ -f "$COMMENT_LOG" ]
+  grep -qF "code-audit-maintainer-shell" "$COMMENT_LOG"
+  grep -qF "was rejected by GitHub" "$COMMENT_LOG"
+  grep -qF "NO status was posted on HEAD" "$COMMENT_LOG"
+  grep -qF "run the dispatched member(s) locally" "$COMMENT_LOG"
+  grep -qF "pending, not green" "$COMMENT_LOG" && return 1
+  return 0
+}
+
+@test "the three combined-state comments give the author the same instruction" {
+  # The divergence-between-copies shape gaia-react/gaia#1286 exists to remove,
+  # applied to the arm that did not exist when that work landed. Three ladders
+  # now carry a second message for one state, and nothing but this test stops
+  # one of them from drifting into a different instruction than its siblings.
+  local step body
+  for step in \
+    'Status - skipped (chore-deps PR)' \
+    'Status - skipped (no source changes)' \
+    'Status - audit complete'
+  do
+    body="$(extract_step_body "$step")"
+    grep -qF 'The merge gate is NOT satisfied either way: run the dispatched member(s) locally to clear it' "$body" || {
+      echo "combined-state instruction missing or reworded in '${step}'" >&2
+      return 1
+    }
+  done
+}
 @test "all three terminal comment ladders test their arms in one order" {
   # Every other test here binds ONE arm and asserts ONE message, so none of them
   # can see order at all: reordering a ladder leaves every message byte-identical
   # and the suite green. That is not an oversight in those tests, it is the
-  # nature of the invariant -- the arms are mutually exclusive today, so a drift
-  # is genuinely invisible until the day the writer's pending POST stops
-  # swallowing its rejection, at which point post_failed and members_pending
-  # co-occur and two ladders hand an author different instructions for one state.
+  # nature of the invariant -- a drift is invisible to a per-arm test, and the
+  # day the arms stopped being mutually exclusive is the day it started costing
+  # an author the wrong instruction.
   #
+  # THAT DAY HAS ARRIVED, and the expected sequence records it. The writer's
+  # pending POST now publishes post_failed instead of swallowing its rejection,
+  # so post_failed and members_pending co-occur -- always, not occasionally,
+  # since the pending POST fires only when members_pending is non-empty. The
+  # DOUBLED POST_FAILED below is that combined state: the first occurrence is
+  # the nested check inside the members-pending arm, which chooses between the
+  # plain and the combined message, and the second is the standalone arm that
+  # still covers a rejected SUCCESS POST, where members_pending is empty.
+  #
+  # The arm ORDER is what this pins; the combined-state MESSAGES are pinned by
+  # the three sibling tests above, and their shared instruction by the fourth.
   # An invariant that only bites in the future is exactly the kind prose cannot
   # hold, because nothing re-reads prose on the day it starts mattering.
-  local expected="SUCCESS_LIVE READ_FAILED MEMBERS_PENDING POST_FAILED SUCCESS_STAMPED"
+  local expected="SUCCESS_LIVE READ_FAILED MEMBERS_PENDING POST_FAILED POST_FAILED SUCCESS_STAMPED"
   local step body order
   for step in \
     'Status - skipped (chore-deps PR)' \

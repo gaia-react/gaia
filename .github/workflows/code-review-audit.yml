@@ -1390,7 +1390,20 @@ jobs:
           # pre-verified rationale covers only the frontend member, so the stamp
           # step posted `pending`, not `success`, and a local audit of that member
           # is required.
+          #
+          # The nested post_failed check is the COMBINED state, and it is the
+          # reason this arm still precedes the standalone post_failed arm below.
+          # A rejected PENDING POST always lands here, never there: that POST
+          # fires only when members_pending is non-empty, so hoisting the arm
+          # below would replace "run the dispatched members locally" -- the only
+          # action that clears this gate -- with "re-run this workflow", which
+          # does not. Combining beats choosing.
           if [ -n "${MEMBERS_PENDING:-}" ]; then
+            if [ "${POST_FAILED:-}" = "true" ]; then
+              bash .github/audit/cra-status-upsert.sh "$PR_NUMBER" \
+                "code-review-audit skipped: chore(deps) PR, but this diff dispatches ${MEMBERS_PENDING}, which CI cannot run, and the pending GAIA-Audit status POST was rejected by GitHub (rate limit, 5xx, or auth blip), so NO status was posted on HEAD at all. The merge gate is NOT satisfied either way: run the dispatched member(s) locally to clear it"
+              exit 0
+            fi
             bash .github/audit/cra-status-upsert.sh "$PR_NUMBER" \
               "code-review-audit skipped: chore(deps) PR, but this diff dispatches ${MEMBERS_PENDING}, which CI cannot run. GAIA-Audit is pending, not green: run the dispatched member(s) locally to clear the merge gate"
             exit 0
@@ -1458,7 +1471,16 @@ jobs:
           # so the merge gate is NOT satisfied and a local audit IS required.
           # Report that instead of the free-skip message, which would otherwise
           # tell the author the button is open while it is shut.
+          #
+          # The nested post_failed check is the COMBINED state; see the
+          # chore-deps ladder for why it lives here rather than in the arm
+          # below. Same order, same reason, same sentence.
           if [ -n "${MEMBERS_PENDING:-}" ]; then
+            if [ "${POST_FAILED:-}" = "true" ]; then
+              bash .github/audit/cra-status-upsert.sh "$PR_NUMBER" \
+                "code-review-audit skipped: no files in the frontend auditor's scope, but this diff dispatches ${MEMBERS_PENDING}, which CI cannot run, and the pending GAIA-Audit status POST was rejected by GitHub (rate limit, 5xx, or auth blip), so NO status was posted on HEAD at all. The merge gate is NOT satisfied either way: run the dispatched member(s) locally to clear it"
+              exit 0
+            fi
             bash .github/audit/cra-status-upsert.sh "$PR_NUMBER" \
               "code-review-audit skipped: no files in the frontend auditor's scope, but this diff dispatches ${MEMBERS_PENDING}, which CI cannot run. GAIA-Audit is pending, not green: run the dispatched member(s) locally to clear the merge gate"
             exit 0
@@ -1626,20 +1648,27 @@ jobs:
           # step always runs -- which is why the same predicate is right there
           # and wrong here.
           #
-          # KEEP THE ORDER IN SYNC RATHER THAN REASONING ABOUT IT. Hoisting the
-          # post_failed arm is inert only while the pending POST swallows its own
-          # rejection and never emits post_failed; the writer's header names
-          # closing that as a separate change, and on the day it lands, an arm
-          # order that had drifted would tell an author here to re-run the
-          # workflow while the skip comments tell them to run the dispatched
-          # members locally. That is the divergence-between-copies shape
-          # gaia-react/gaia#1286 exists to remove.
+          # KEEP THE ORDER IN SYNC RATHER THAN REASONING ABOUT IT. That day has
+          # arrived: the pending POST now emits post_failed rather than swallowing
+          # its rejection, so hoisting the post_failed arm is no longer inert. It
+          # would tell an author here to re-run the workflow while the skip
+          # comments tell them to run the dispatched members locally -- the
+          # divergence-between-copies shape gaia-react/gaia#1286 exists to remove.
+          # The combined state is handled by nesting inside the members-pending
+          # arm instead, identically in all three ladders.
           stamp=""
           if [ "${SUCCESS_LIVE:-}" != "true" ]; then
             if [ "${READ_FAILED:-}" = "true" ]; then
               stamp=". But this diff dispatches ${MEMBERS_PENDING}, and the current GAIA-Audit status could not be read, so the stamp step stood down having posted nothing and the gate's state is unknown. Run the dispatched member(s) locally to be sure the merge gate is clear"
             elif [ -n "${MEMBERS_PENDING:-}" ]; then
-              stamp=". But this diff dispatches ${MEMBERS_PENDING}, which CI cannot run, so GAIA-Audit is pending, not green: run the dispatched member(s) locally to clear the merge gate"
+              # The COMBINED state, nested for the same reason the two skip
+              # ladders nest it: a rejected PENDING POST always arrives with a
+              # non-empty members_pending, so the arm below can never see one.
+              if [ "${POST_FAILED:-}" = "true" ]; then
+                stamp=". But this diff dispatches ${MEMBERS_PENDING}, which CI cannot run, and the pending GAIA-Audit status POST was rejected by GitHub (rate limit, 5xx, or auth blip), so NO status was posted on HEAD at all. The merge gate is NOT satisfied either way: run the dispatched member(s) locally to clear it"
+              else
+                stamp=". But this diff dispatches ${MEMBERS_PENDING}, which CI cannot run, so GAIA-Audit is pending, not green: run the dispatched member(s) locally to clear the merge gate"
+              fi
             elif [ "${POST_FAILED:-}" = "true" ]; then
               stamp=". But the GAIA-Audit status POST was rejected by GitHub (rate limit, 5xx, or auth blip), so NO status was stamped on HEAD and the merge gate is NOT satisfied. Re-run this workflow, or run a local audit, to stamp it"
             elif [ "${SUCCESS_STAMPED:-}" = "false" ]; then
