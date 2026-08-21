@@ -174,6 +174,25 @@ jobs:
               # node_modules/typescript, which audit-ci-tests.yml's lean box
               # does not install, so it self-skips there on every run.
               - '.gaia/scripts/red-ledger/extract-test-signals.mjs'
+              # The label registry and the JSON Schema beside it, both read from
+              # the repo root by suites that live under `.gaia/cli/**`:
+              # `src/labels/__tests__/registry.test.ts` pins the registry's entry
+              # count, and `src/schemas/__tests__/labels.test.ts` parses the
+              # committed registry under the Zod schema and holds the schema's
+              # enums to that module's constants. A pull request that only adds,
+              # removes, or re-values a label touches these two files and nothing
+              # under `.gaia/cli/**`, so without these lines the filter resolves
+              # `code=false`, the Vitest step skips, and the pins never run
+              # against the change that invalidates them -- the stale pin first
+              # fires on some later, unrelated `.gaia/cli/**` change, reddening a
+              # diff that did not cause it (#1510). `label-registry.yml` is no
+              # fallback: it runs the committed bundle's `labels docs --check`
+              # and `labels check`, and neither evaluates a Vitest assertion.
+              # Both files are listed because they change independently -- a
+              # label edit moves the registry alone, a new enum value moves the
+              # schema alone -- and either alone must re-run the job.
+              - '.gaia/labels.json'
+              - '.gaia/labels.schema.json'
       - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
         name: Setup Node and install the CLI workspace
         uses: ./.github/actions/gaia-setup-node
