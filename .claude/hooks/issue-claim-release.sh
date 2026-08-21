@@ -97,10 +97,35 @@ for tok in $args; do
 done
 set +f
 
+# Pin the read and the write to THIS repository so the two can never
+# straddle. Resolved once, from the hook's own cwd, which a `cd` inside the
+# tool command never changes.
+home=$(gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null)
+[ -n "$home" ] || exit 0
+
+# A URL reference is the one form --repo cannot contain: gh resolves the
+# repository from the URL and ignores the flag. Left alone, a merged
+# sibling-repo pull request read by URL would strip THIS repository's
+# unrelated issue of the same number, because the label write resolves here.
+# So accept a URL only when it names the home repo, reduced to its number;
+# an unrecognized shape exits rather than guessing.
+url_re='^[a-zA-Z][a-zA-Z0-9+.-]*://[^/]+/([^/]+/[^/]+)/pull/([0-9]+)$'
+case "$ref" in
+  *://*)
+    if [[ "$ref" =~ $url_re ]] && [ "${BASH_REMATCH[1]}" = "$home" ]; then
+      ref="${BASH_REMATCH[2]}"
+    else
+      exit 0
+    fi
+    ;;
+esac
+
 # One gh pr view call, reused for both fields. No ref means the current
-# branch, which is gh's own default when none is passed.
+# branch, which is gh's own default when none is passed; --repo is omitted
+# on that arm because gh rejects the flag without a selector, and cwd
+# already resolves to the home repo.
 if [ -n "$ref" ]; then
-  pr_json=$(gh pr view "$ref" --json state,body 2>/dev/null) || exit 0
+  pr_json=$(gh pr view --repo "$home" "$ref" --json state,body 2>/dev/null) || exit 0
 else
   pr_json=$(gh pr view --json state,body 2>/dev/null) || exit 0
 fi
@@ -119,7 +144,7 @@ nums=$(printf '%s' "$body" | grep -oiE "$issue_re" 2>/dev/null | grep -oE '[0-9]
 
 echo "$nums" | while IFS= read -r n; do
   [ -n "$n" ] || continue
-  gh issue edit "$n" --remove-label in-progress >/dev/null 2>&1 || true
+  gh issue edit "$n" --repo "$home" --remove-label in-progress >/dev/null 2>&1 || true
 done
 
 exit 0

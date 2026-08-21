@@ -30,6 +30,8 @@ An issue already carrying `in-progress` is held by someone else. The right move 
 
 The release reads GitHub's closing keywords out of the pull request body. A merged pull request that only references an issue (`Refs #<n>`), or names none at all, leaves the claim set; a claimed issue needs a real closing reference to release automatically.
 
+A merge queued with `--auto` lands server-side after the command returns. The hook requires `MERGED` at the moment it runs, sees an open pull request, and never runs again, because the merge that follows fires no tool call. Claims released on that path are released by hand.
+
 Nothing reconciles a stale claim on a non-`tech-debt` issue after a session dies ungracefully. `/gaia-debt` reconciles its own claims; a claim left by any other work is released by hand.
 
 See [[GitHub Labels]] for the registry entry and its color and axis.

@@ -42,6 +42,7 @@ setup() {
   FAKE_GH_STATE="$BATS_TEST_TMPDIR/gh-state"
   mkdir -p "$FAKE_GH_STATE"
   : > "$FAKE_GH_STATE/issue_edits"
+  : > "$FAKE_GH_STATE/issue_edit_repos"
   write_gh_stub
   export FAKE_GH_STATE
   export FAKE_GH_PR_STATE="${FAKE_GH_PR_STATE:-MERGED}"
@@ -53,28 +54,53 @@ teardown() {
   return 0
 }
 
-# Fake `gh` answering exactly the two calls this hook makes: `pr view` (once,
-# with both fields) and `issue edit ... --remove-label ...`. State lives under
-# $FAKE_GH_STATE so a test can assert on it after run_hook.
+# Fake `gh` answering exactly the three calls this hook makes: `repo view`
+# (the home repo), `pr view` (once, with both fields) and
+# `issue edit ... --remove-label ...`. State lives under $FAKE_GH_STATE so a
+# test can assert on it after run_hook.
+#
+# `pr view` reproduces real gh's precedence, verified against gh 2.96: a URL
+# selector resolves the repository from the URL and OVERRIDES --repo. Without
+# that, a stub would answer every URL out of the home repo and the URL cases
+# below would pass on a hook that never guards the boundary at all.
 write_gh_stub() {
   cat > "$GH_BIN/gh" <<'STUBEOF'
 #!/usr/bin/env bash
 STATE="$FAKE_GH_STATE"
+HOME_REPO="${FAKE_GH_HOME_REPO:-gaia-react/gaia}"
 case "$1" in
+  repo)
+    shift
+    case "$1" in
+      view) printf '%s\n' "$HOME_REPO"; exit 0 ;;
+      *) exit 1 ;;
+    esac
+    ;;
   pr)
     shift
     case "$1" in
       view)
         shift
         ref=""
+        repo=""
         while [ "$#" -gt 0 ]; do
           case "$1" in
-            --json) shift 2 ;;
+            --json|-q|--jq) shift 2 ;;
+            -R|--repo) repo="$2"; shift 2 ;;
             -*) shift ;;
             *) ref="$1"; shift ;;
           esac
         done
+        case "$ref" in
+          *://*)
+            stripped="${ref#*://}"
+            stripped="${stripped#*/}"
+            repo="${stripped%%/pull/*}"
+            ;;
+        esac
+        [ -n "$repo" ] || repo="$HOME_REPO"
         printf '%s' "$ref" > "$STATE/pr_view_ref"
+        printf '%s' "$repo" > "$STATE/pr_view_repo"
         jq -n --arg s "${FAKE_GH_PR_STATE:-MERGED}" --arg b "${FAKE_GH_PR_BODY:-}" \
           '{state: $s, body: $b}'
         exit "${FAKE_GH_PR_VIEW_EXIT:-0}"
@@ -87,8 +113,18 @@ case "$1" in
     case "$1" in
       edit)
         shift
-        n="$1"; shift
+        n=""
+        repo=""
+        while [ "$#" -gt 0 ]; do
+          case "$1" in
+            -R|--repo) repo="$2"; shift 2 ;;
+            --remove-label|--add-label) shift 2 ;;
+            -*) shift ;;
+            *) n="$1"; shift ;;
+          esac
+        done
         echo "$n" >> "$STATE/issue_edits"
+        echo "$repo" >> "$STATE/issue_edit_repos"
         exit 0
         ;;
       *) exit 1 ;;
@@ -168,6 +204,34 @@ assert_nothing_released() { [ ! -s "$FAKE_GH_STATE/issue_edits" ]; }
   [ "$status" -eq 0 ]
   [ "$(cat "$FAKE_GH_STATE/pr_view_ref")" = "12" ]
   assert_released_once "12"
+}
+
+# 7f-7h cover the reference form the `--repo` guard cannot reach. gh takes
+# `<number> | <url> | <branch>`, and a URL names its own repository, so a
+# merged sibling-repo pull request read by URL would otherwise have its
+# closing references applied to THIS repository's issues of the same number.
+@test "7f: a foreign-repo URL reference releases nothing" {
+  export FAKE_GH_PR_BODY="Closes #99"
+  run_hook 'gh pr merge https://github.com/other-org/other-repo/pull/1'
+  [ "$status" -eq 0 ]
+  assert_nothing_released
+}
+
+@test "7g: a home-repo URL reference resolves to its number" {
+  export FAKE_GH_PR_BODY="Closes #12"
+  run_hook 'gh pr merge https://github.com/gaia-react/gaia/pull/1508'
+  [ "$status" -eq 0 ]
+  [ "$(cat "$FAKE_GH_STATE/pr_view_ref")" = "1508" ]
+  [ "$(cat "$FAKE_GH_STATE/pr_view_repo")" = "gaia-react/gaia" ]
+  assert_released_once "12"
+}
+
+@test "7h: both the read and the write name the home repo" {
+  export FAKE_GH_PR_BODY="Closes #12"
+  run_hook 'gh pr merge 42'
+  [ "$status" -eq 0 ]
+  [ "$(cat "$FAKE_GH_STATE/pr_view_repo")" = "gaia-react/gaia" ]
+  [ "$(grep -cxF -- "gaia-react/gaia" "$FAKE_GH_STATE/issue_edit_repos")" -eq 1 ]
 }
 
 @test "8a: gh absent from PATH releases nothing and exits 0" {
