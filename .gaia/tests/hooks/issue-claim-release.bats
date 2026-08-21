@@ -8,11 +8,12 @@
 # that strips the `in-progress` claim label from every issue a merged pull
 # request closes.
 #
-# Each test runs the hook against a throwaway git repo (the hook sources
-# `.claude/hooks/lib/repo-scope.sh` relative to CWD, so a real copy is placed
-# there) with a fake `gh` on PATH that answers `pr view` from
-# FAKE_GH_PR_STATE / FAKE_GH_PR_BODY and records every `pr view` ref and
-# `issue edit` call under $FAKE_GH_STATE for assertions.
+# Each test runs the hook against a throwaway git repo, with a fake `gh` on
+# PATH that answers `pr view` from FAKE_GH_PR_STATE / FAKE_GH_PR_BODY and
+# records every `pr view` ref and `issue edit` call under $FAKE_GH_STATE for
+# assertions. Nothing is staged for `repo-scope.sh`: the hook resolves that
+# lib from its OWN location rather than from cwd, so it reaches the real one
+# beside it and a sandbox copy would never be read.
 #
 # The sandbox repo's toplevel directory is named exactly `gaia`, because
 # repo-scope.sh's `-R`/`--repo` arm compares only the REPO-NAME half of the
@@ -25,7 +26,6 @@ setup() {
   . "$BATS_TEST_DIRNAME/helpers/run-hook.sh"
   HELPERS="$BATS_TEST_DIRNAME/helpers"
   HOOK_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)/issue-claim-release.sh
-  REPO_SCOPE_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks/lib" && pwd)/repo-scope.sh
   command -v jq >/dev/null 2>&1 || skip "jq required"
 
   PARENT=$(mktemp -d -t issue-claim-release-test-XXXXXX)
@@ -38,9 +38,6 @@ setup() {
   echo "# readme" > "$REPO/README.md"
   git -C "$REPO" add README.md
   git -C "$REPO" commit --quiet -m "init"
-
-  mkdir -p "$REPO/.claude/hooks/lib"
-  cp "$REPO_SCOPE_ABS" "$REPO/.claude/hooks/lib/repo-scope.sh"
 
   GH_BIN="$BATS_TEST_TMPDIR/bin"
   mkdir -p "$GH_BIN"
@@ -401,6 +398,28 @@ assert_nothing_released() { [ ! -s "$FAKE_GH_STATE/issue_edits" ]; }
   run_hook 'gh pr merge 5 --body fix\;ship --repo other-org/gaia'
   [ "$status" -eq 0 ]
   assert_nothing_released
+}
+
+# 7z and 7aa are the other half of 7w: a backslash before a newline is a line
+# CONTINUATION rather than an escape, so both characters go away instead of
+# the newline becoming a word. Treated as an escape it becomes the first
+# non-flag word, which is the reference, so a merge written across two lines
+# resolves a newline and releases nothing. 7aa pins that the bogus word takes
+# the slot even when the real number comes later.
+@test "7z: a line continuation before the reference resolves it" {
+  export FAKE_GH_PR_BODY="Closes #77"
+  run_hook $'gh pr merge \\\n  1508 --squash'
+  [ "$status" -eq 0 ]
+  [ "$(cat "$FAKE_GH_STATE/pr_view_ref")" = "1508" ]
+  assert_released_once "77"
+}
+
+@test "7aa: a line continuation before a flag leaves a later reference intact" {
+  export FAKE_GH_PR_BODY="Closes #77"
+  run_hook $'gh pr merge \\\n  --squash 1508'
+  [ "$status" -eq 0 ]
+  [ "$(cat "$FAKE_GH_STATE/pr_view_ref")" = "1508" ]
+  assert_released_once "77"
 }
 
 # 7n and 7o pin the spellings that carry a quote into the parser. Each one

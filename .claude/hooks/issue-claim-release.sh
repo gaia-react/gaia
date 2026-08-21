@@ -80,9 +80,12 @@ cmd_targets_foreign_repo "$cmd" && exit 0
 
 # Named once, above the loop: a `case` pattern cannot hold a `$'\n'` literal,
 # and a command substitution in one would run per scanned character. The
-# separator set below is the same set the arming match at the top of this
-# hook uses, newline included, or the scan would disagree with the match
-# about where a multi-line command ends.
+# newline is the load-bearing member of the set below: the arming match
+# counts one as a separator, so without it here the scan would run past the
+# end of a command that match already treats as several. The scan also cuts
+# at a lone `&`, which the arming match does not accept before the verb; that
+# asymmetry costs a background-started merge its release and never a wrong
+# one, so it is the safe direction to differ in.
 NL=$'\n'
 TAB=$'\t'
 words=()
@@ -108,37 +111,72 @@ word=""
 have_word=0
 q=""
 esc=0
-i=0
-while [ "$i" -lt "${#cmd}" ]; do
-  c="${cmd:$i:1}"
-  i=$((i + 1))
-  if [ "$esc" = 1 ]; then
-    word="$word$c"; have_word=1; esc=0; continue
-  fi
-  # Inside single quotes a backslash is literal, as in the shell itself.
-  if [ "$c" = "\\" ] && [ "$q" != "'" ]; then
-    esc=1; have_word=1; continue
-  fi
-  if [ -n "$q" ]; then
-    if [ "$c" = "$q" ]; then q=""; else word="$word$c"; fi
-    have_word=1
-    continue
-  fi
-  case "$c" in
-    '"'|"'") q="$c"; have_word=1 ;;
-    ' '|"$TAB")
-      [ "$have_word" = 1 ] && cur+=("$word")
-      word=""; have_word=0
-      ;;
-    '&'|'|'|';'|"$NL")
-      [ "$have_word" = 1 ] && cur+=("$word")
-      word=""; have_word=0
-      if take_command; then matched=1; break; fi
-      cur=()
-      ;;
-    *) word="$word$c"; have_word=1 ;;
-  esac
+
+# `${cmd:$i:1}` costs O(i), so indexing the whole string per character makes
+# the scan quadratic, and this is a PostToolUse hook, so that cost is a
+# synchronous stall on every merge. The command is whatever the tool call
+# carried, and a block that writes a multi-kilobyte pull-request body before
+# merging is ordinary, so the input is not small. Two things keep it cheap
+# and neither changes what the state machine reads: bytes instead of
+# characters, since every character this scan looks for is ASCII and a
+# multibyte character's bytes are all non-ASCII, so they land in the current
+# word intact; and one slice per block rather than per character, which
+# leaves only a small quadratic term. macOS still ships bash 3.2, where both
+# constants are several times CI's.
+_prev_lc_all="${LC_ALL-}"
+_had_lc_all="${LC_ALL+set}"
+LC_ALL=C
+BLOCK=256
+n_cmd=${#cmd}
+base=0
+while [ "$base" -lt "$n_cmd" ]; do
+  block="${cmd:$base:$BLOCK}"
+  base=$((base + BLOCK))
+  k=0
+  n_block=${#block}
+  while [ "$k" -lt "$n_block" ]; do
+    c="${block:$k:1}"
+    k=$((k + 1))
+    # A backslash-newline is a line CONTINUATION: the shell drops both
+    # characters rather than making the newline text. Appending it would put
+    # a lone newline in the word stream, and the first non-flag word is the
+    # reference, so a merge written across two lines would resolve a newline
+    # and release nothing at all.
+    if [ "$esc" = 1 ]; then
+      esc=0
+      [ "$c" = "$NL" ] && continue
+      word="$word$c"; have_word=1; continue
+    fi
+    # Inside single quotes a backslash is literal, as in the shell itself.
+    # `have_word` is deliberately NOT set here: at the backslash it is not yet
+    # known whether a word follows it or a line continuation does, and marking
+    # one either way puts an empty word into the stream on the continuation.
+    # The escaped-character branch above marks it once a character survives.
+    if [ "$c" = "\\" ] && [ "$q" != "'" ]; then
+      esc=1; continue
+    fi
+    if [ -n "$q" ]; then
+      if [ "$c" = "$q" ]; then q=""; else word="$word$c"; fi
+      have_word=1
+      continue
+    fi
+    case "$c" in
+      '"'|"'") q="$c"; have_word=1 ;;
+      ' '|"$TAB")
+        [ "$have_word" = 1 ] && cur+=("$word")
+        word=""; have_word=0
+        ;;
+      '&'|'|'|';'|"$NL")
+        [ "$have_word" = 1 ] && cur+=("$word")
+        word=""; have_word=0
+        if take_command; then matched=1; break 2; fi
+        cur=()
+        ;;
+      *) word="$word$c"; have_word=1 ;;
+    esac
+  done
 done
+if [ "$_had_lc_all" = set ]; then LC_ALL="$_prev_lc_all"; else unset LC_ALL; fi
 if [ "$matched" = 0 ]; then
   [ "$have_word" = 1 ] && cur+=("$word")
   take_command && matched=1
