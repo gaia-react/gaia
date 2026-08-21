@@ -74,6 +74,13 @@ if [[ "$cmd" =~ $tail_re ]]; then
   args="${BASH_REMATCH[1]}"
 fi
 
+# Named once, above the loop: a `case` pattern cannot hold a `$'\n'` literal,
+# and a command substitution in one would run per scanned character. The
+# separator set below is the same set the arming match at the top of this
+# hook uses, newline included, or the scan would run past the end of a
+# multi-line command the arming match already treats as several.
+NL=$'\n'
+TAB=$'\t'
 words=()
 word=""
 have_word=0
@@ -97,11 +104,11 @@ while [ "$i" -lt "${#args}" ]; do
   fi
   case "$c" in
     '"'|"'") q="$c"; have_word=1 ;;
-    ' '|"$(printf '\t')")
+    ' '|"$TAB")
       [ "$have_word" = 1 ] && words+=("$word")
       word=""; have_word=0
       ;;
-    '&'|'|'|';')
+    '&'|'|'|';'|"$NL")
       break
       ;;
     *) word="$word$c"; have_word=1 ;;

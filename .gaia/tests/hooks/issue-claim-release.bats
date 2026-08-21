@@ -298,6 +298,23 @@ assert_nothing_released() { [ ! -s "$FAKE_GH_STATE/issue_edits" ]; }
   assert_nothing_released
 }
 
+# A newline separates two commands exactly as `&&` does, and the matcher that
+# arms this hook already treats it that way, so the scan has to agree.
+@test "7x: a newline ends the command as a separator does" {
+  export FAKE_GH_PR_BODY="Closes #77"
+  run_hook $'gh pr merge --repo other-org/gaia 5 --squash\ngh issue list --repo gaia-react/gaia'
+  [ "$status" -eq 0 ]
+  assert_nothing_released
+}
+
+@test "7y: a multi-line no-reference merge still resolves the current branch" {
+  export FAKE_GH_PR_BODY="Closes #77"
+  run_hook $'gh pr merge --squash\necho done'
+  [ "$status" -eq 0 ]
+  [ "$(cat "$FAKE_GH_STATE/pr_view_ref")" = "" ]
+  assert_released_once "77"
+}
+
 @test "7u: a later command does not stand a home merge down" {
   export FAKE_GH_PR_BODY="Closes #77"
   run_hook 'gh pr merge 5 -t "subj"; gh issue list --repo other-org/gaia'
