@@ -43,11 +43,12 @@ fi
 # the ordinary fork topology) as home; this hook would then resolve THIS
 # repository's pull request of that number and post onto a pull request the
 # command never touched. The act-on-home entry point compares the whole
-# HOST/OWNER/REPO, and resolves an ambiguous EXPLICIT target to "foreign" so an
-# unidentifiable one declines rather than acts. A command naming no explicit
-# target still runs through the inherited cwd arms, which fail toward home, so
-# a redirection they do not model (`pushd`, a subshell `(cd ...)`, an
-# unresolvable `cd`) reaches the posting path; see that lib's own note.
+# HOST/OWNER/REPO, and it reads the merge with the lib's first-command scan, so
+# every ambiguity resolves to "foreign" and declines rather than acts. The cost
+# is that a merge run behind any earlier command in the same tool call posts
+# nothing; the merge workflow runs the merge as its own step, and the
+# alternative is a prefix nobody can read exactly, whose misreads all land on a
+# post onto a pull request in a repository the merge never named.
 #
 # Sourced from this hook's own on-disk location, never cwd. A cwd-relative
 # source misses from any non-root cwd, and a `type f >/dev/null 2>&1 && f`

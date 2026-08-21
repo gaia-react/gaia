@@ -12,10 +12,10 @@
 # "foreign", and the comparison is the whole [HOST/]OWNER/REPO that gh uses to
 # identify a repository.
 #
-# The inversion reaches the `-R`/`--repo` arm only. A command naming no
-# explicit target is delegated back to the blocking guard's cwd arms, which
-# keep their fail-toward-home direction; s17 pins that rather than leaving it
-# to be inferred from the paragraph above.
+# The inversion reaches the whole question, not one arm of it. This entry point
+# reads the merge with the lib's first-command scan rather than sharing the
+# blocking guard's cwd arms, so any prefix ahead of the merge means the first
+# command is not the merge and the verdict is foreign; s11 and s17 pin that.
 #
 # The suite drives the REAL lib (sourced by absolute path, never copied)
 # against a sandbox git repo, with a fake `gh` on PATH answering
@@ -71,8 +71,15 @@ teardown() {
 # fresh subshell so the lib's memoized home resolution never leaks between
 # cases. Echoes `foreign` or `home` so a test asserts on a word rather than on
 # an inverted exit status.
+#
+# `set -u` is the consumers' own setting, and it is load-bearing here rather
+# than hygiene: the scan hands back an array whose length the command decides,
+# so an index read past the end is a fatal error under `set -u` and no error at
+# all without it. Reading a verdict from a permissive shell would report every
+# such read as the verdict it would have produced had it not aborted.
 verdict() {
   ( cd "$REPO" || exit 1
+    set -u
     # shellcheck source=/dev/null
     . "$LIB_ABS"
     if cmd_targets_foreign_repo_slug "$1"; then echo foreign; else echo home; fi )
@@ -135,14 +142,17 @@ name_half_verdict() {
   [ "$(verdict 'gh pr merge --repo ghe.example.com/acme/widgets 5')" = "foreign" ]
 }
 
-@test "s10: no explicit target falls through to the cwd arms and reads home" {
+@test "s10: a merge naming no explicit target reads home" {
+  # The merge is the first command in the tool call, so nothing redirected cwd
+  # ahead of it and gh resolves from the hook's own checkout.
   [ "$(verdict 'gh pr merge 5')" = "home" ]
 }
 
-@test "s11: a cd into a sibling checkout is foreign, via the shared cwd arms" {
-  # Arms 2 and 3 of the blocking guard are shared verbatim rather than
-  # reimplemented; only the -R/--repo comparison is replaced. Losing them
-  # would silently drop the protection this entry point inherited.
+@test "s11: a cd into a sibling checkout is foreign" {
+  # Not because the path is read and compared: the scan stops at the first
+  # command, which is the `cd`, so the merge is never reached and the verdict
+  # is the abstention's. A path this entry point cannot resolve reaches the
+  # same verdict for the same reason, which is what s17 pins.
   [ "$(verdict "cd $SIBLING && gh pr merge 5")" = "foreign" ]
 }
 
@@ -153,11 +163,13 @@ name_half_verdict() {
   [ "$(verdict 'gh pr merge --repo acme/widgets 5')" = "foreign" ]
 }
 
-@test "s13: a quoted flag value is foreign, the documented limit" {
-  # The capture keeps the quote characters, so the comparison misses. For an
-  # acting consumer that direction is the safe one: it declines to act on a
-  # value it did not parse, rather than acting on the wrong repository.
-  [ "$(verdict 'gh pr merge --repo="acme/widgets" 5')" = "foreign" ]
+@test "s13: a quoted flag value is read, quotes removed" {
+  # The scan resolves quoting the way the shell does, so the value gh receives
+  # is the value compared. A capture over the raw text keeps the quote
+  # characters, misses the comparison, and declines on a merge aimed squarely
+  # at home.
+  [ "$(verdict 'gh pr merge --repo="acme/widgets" 5')" = "home" ]
+  [ "$(verdict "gh pr merge --repo='other-org/widgets' 5")" = "foreign" ]
 }
 
 @test "s14: the blocking entry point is unchanged by the new one" {
@@ -171,8 +183,6 @@ name_half_verdict() {
   # `-R` is a common short flag on other tools, and a tool call may run one
   # after the merge. Reading its letters as the target classifies an ordinary
   # command foreign, and an acting consumer then silently declines on it.
-  # Scoped to the attached spelling on purpose: the separated one is a live
-  # gap, and s18 pins it rather than letting this name imply it is covered.
   [ "$(verdict 'gh pr merge 42 --squash && grep -Rn TODO .')" = "home" ]
   [ "$(verdict 'gh pr merge 42 --squash && cp -Rp a b')" = "home" ]
   [ "$(verdict 'gh pr merge 42 --squash && ls -RA')" = "home" ]
@@ -184,35 +194,60 @@ name_half_verdict() {
   [ "$(verdict 'gh pr merge -Rother-org/widgets 5 && ls -RA')" = "foreign" ]
 }
 
-# s17 pins what the delegated cwd arms actually do, rather than what the
-# inverted fail direction of the -R/--repo arm might suggest they do. A command
-# naming no explicit target is handed to the blocking guard, which fails toward
-# home, and these three redirections are not among the shapes it models. An
-# acting consumer therefore does act on them. Inherited, not introduced here,
-# and tracked as #1515; pinned so the gap stays visible and so closing it reds
-# this test rather than passing unnoticed.
-@test "s17: a cwd redirection the shared arms do not model reads home" {
-  [ "$(verdict "pushd $SIBLING && gh pr merge 5")" = "home" ]
-  [ "$(verdict "(cd $SIBLING && gh pr merge 5)")" = "home" ]
-  [ "$(verdict "cd $PARENT/does-not-exist && gh pr merge 5")" = "home" ]
+# s17 covers the redirections no pattern set models. Each puts a command ahead
+# of the merge, so each fails the first-command requirement and reads foreign,
+# and the third does so without the path being resolvable at all. Declining is
+# the safe direction: it costs a findings-block posting rather than a write
+# onto a pull request in a repository the merge never named.
+@test "s17: a cwd redirection ahead of the merge is foreign" {
+  [ "$(verdict "pushd $SIBLING && gh pr merge 5")" = "foreign" ]
+  [ "$(verdict "(cd $SIBLING && gh pr merge 5)")" = "foreign" ]
+  [ "$(verdict "cd $PARENT/does-not-exist && gh pr merge 5")" = "foreign" ]
 }
 
-# s18 pins a live limit, not a desired behavior. The arm-1 capture requires a
-# separator but nothing of the value, so a SEPARATED `-R` belonging to another
-# command in the same tool call still supplies the target, and the `/`
-# requirement s15 relies on does not discriminate here: a path argument carries
-# a slash exactly as a slug does. Telling `-R app/routes` (grep's recursive
-# flag plus a path) from `-R owner/repo` (gh's repository flag) needs to know
-# which command the flag belongs to, which is the first-command contract this
-# lib does not have and #1515 tracks. Arm 1 itself must stay byte-identical for
-# the blocking consumers, so the repair belongs there, not here.
-#
-# The direction is the safe one: it declines rather than acting on the wrong
-# repository, so it costs a findings-block posting rather than causing a wrong
-# write, and it is not a regression, the boundary this replaced read the same
-# way. Pinned so the limit is visible and so closing it reds this test.
-@test "s18: a separated -R on another command still decides, the tracked limit" {
-  [ "$(verdict 'gh pr merge 42 --squash && grep -R app/routes .')" = "foreign" ]
-  [ "$(verdict 'gh pr merge 42 && cp -R a/b c/d')" = "foreign" ]
-  [ "$(verdict 'gh pr merge 42 && ls -R /tmp')" = "foreign" ]
+# s18 is the sibling of s15 for the SEPARATED spelling, which no shape test on
+# the value can tell from gh's own repository flag: a path argument carries a
+# slash exactly as a slug does. Telling `-R app/routes` (grep's recursive flag
+# plus a path) from `-R owner/repo` needs to know which command the flag
+# belongs to, and the scan knows because it reads only the first command's
+# words. The merge itself names no repository, so each of these reads home.
+@test "s18: a separated -R on another command does not decide this one" {
+  [ "$(verdict 'gh pr merge 42 --squash && grep -R app/routes .')" = "home" ]
+  [ "$(verdict 'gh pr merge 42 && cp -R a/b c/d')" = "home" ]
+  [ "$(verdict 'gh pr merge 42 && ls -R /tmp')" = "home" ]
+}
+
+# s19 pins the abstention the parser makes on its own account, separately from
+# the first-command one. gh accepts a single-dash cluster and its flag library
+# reads it letter by letter, so `-sR<slug>` is a squash merge of another
+# repository; the parser does not model that and declines rather than reading
+# the merge as home.
+@test "s19: a single-dash flag cluster is foreign" {
+  [ "$(verdict 'gh pr merge -sd 42')" = "foreign" ]
+  [ "$(verdict 'gh pr merge -sRother-org/widgets 42')" = "foreign" ]
+}
+
+# s20 discriminates the three words that identify the merge. The redirection
+# fixtures above cannot: each of those closes its first command in two words, so
+# the length check alone decides them, and a conjunct dropped from the identity
+# test would survive every one. Each of these carries a three-word first command
+# that fails exactly one conjunct, and each names the HOME repository or names
+# none, so a dropped conjunct reads it as home rather than agreeing by accident.
+@test "s20: a first command that only resembles the merge is foreign" {
+  # Fails on the subcommand.
+  [ "$(verdict 'gh pr view --repo acme/widgets 5 && gh pr merge 5')" = "foreign" ]
+  # Fails on the command group.
+  [ "$(verdict 'gh browse merge && gh pr merge 5')" = "foreign" ]
+  # Fails on the program: another tool whose first three words spell the same
+  # phrase is not this one's invocation.
+  [ "$(verdict 'hub pr merge 5 && gh pr merge 5')" = "foreign" ]
+}
+
+# s21 pins the length check that guards the identity test's own index reads.
+# A first command shorter than the merge phrase leaves those indices unset, and
+# `verdict` runs under the consumers' `set -u`, so dropping the check aborts the
+# lib mid-question rather than answering it.
+@test "s21: a first command shorter than the merge phrase is foreign" {
+  [ "$(verdict 'gh pr && gh pr merge 5')" = "foreign" ]
+  [ "$(verdict 'gh && gh pr merge 5')" = "foreign" ]
 }
