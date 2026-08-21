@@ -42,6 +42,7 @@
     ".claude/hooks/check-story-exists.sh": "owned",
     ".claude/hooks/debt-sentinel-touch.sh": "owned",
     ".claude/hooks/debt-session-reconcile.sh": "owned",
+    ".claude/hooks/issue-claim-release.sh": "owned",
     ".claude/hooks/lib/audit-clearance.sh": "owned",
     ".claude/hooks/lib/audit-digest.sh": "owned",
     ".claude/hooks/lib/audit-dispositions.sh": "owned",
@@ -86,6 +87,7 @@
     ".claude/rules/gaia-folder.md": "owned",
     ".claude/rules/i18n.md": "owned",
     ".claude/rules/instruction-files.md": "owned",
+    ".claude/rules/issue-claim.md": "owned",
     ".claude/rules/knip.md": "owned",
     ".claude/rules/playwright.md": "owned",
     ".claude/rules/pr-merge.md": "owned",
@@ -572,6 +574,7 @@
     "wiki/concepts/Git Workflow.md": "wiki-owned",
     "wiki/concepts/GitHub Labels.md": "wiki-owned",
     "wiki/concepts/Incremental CI Skipping.md": "wiki-owned",
+    "wiki/concepts/Issue Claim.md": "wiki-owned",
     "wiki/concepts/Local Working State.md": "wiki-owned",
     "wiki/concepts/OS Sandbox.md": "wiki-owned",
     "wiki/concepts/Policy-Memory Loop.md": "wiki-owned",
@@ -658,7 +661,7 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-08-20T12:56:04.132Z",
+  "generated": "2026-08-21T05:38:35.783Z",
   "regions": [
     {
       "endMarker": "<!-- gaia:audit-remit:end -->",
