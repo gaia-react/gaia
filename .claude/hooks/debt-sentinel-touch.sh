@@ -11,8 +11,7 @@
 # issue or any other, and because the open count excludes claimed issues,
 # toggling that label changes the count too). These usually land via the
 # orchestrator/human after the skill has left the conversation, so this hook
-# is the reliable trigger
-# rather than a best-effort in-conversation touch.
+# is the reliable trigger rather than a best-effort in-conversation touch.
 #
 # This complements two in-flow touches that are best-effort belt-and-suspenders,
 # not replacements: the audit's own touch after it files an issue (the

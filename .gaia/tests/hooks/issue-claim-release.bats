@@ -287,6 +287,39 @@ assert_nothing_released() { [ ! -s "$FAKE_GH_STATE/issue_edits" ]; }
   assert_nothing_released
 }
 
+# 7t-7w pin the boundary between the two, which is where a pattern over the
+# raw text keeps getting it wrong: a separator glued to a CLOSING quote is a
+# real separator, a separator inside an open quote or behind a backslash is
+# text. Each spelling below is ordinary shell, not a crafted string.
+@test "7t: a separator glued to a closing quote ends the scan" {
+  export FAKE_GH_PR_BODY="Closes #77"
+  run_hook 'gh pr merge 5 --repo other-org/gaia -t "subj"; gh issue list --repo gaia-react/gaia'
+  [ "$status" -eq 0 ]
+  assert_nothing_released
+}
+
+@test "7u: a later command does not stand a home merge down" {
+  export FAKE_GH_PR_BODY="Closes #77"
+  run_hook 'gh pr merge 5 -t "subj"; gh issue list --repo other-org/gaia'
+  [ "$status" -eq 0 ]
+  [ "$(cat "$FAKE_GH_STATE/pr_view_ref")" = "5" ]
+  assert_released_once "77"
+}
+
+@test "7v: an attached --body= value keeps its separator as text" {
+  export FAKE_GH_PR_BODY="Closes #77"
+  run_hook 'gh pr merge --squash --body="fix; ship it" --repo other-org/gaia'
+  [ "$status" -eq 0 ]
+  assert_nothing_released
+}
+
+@test "7w: a backslash-escaped separator is text, not an end of command" {
+  export FAKE_GH_PR_BODY="Closes #77"
+  run_hook 'gh pr merge 5 --body fix\;ship --repo other-org/gaia'
+  [ "$status" -eq 0 ]
+  assert_nothing_released
+}
+
 # 7n and 7o pin the spellings that carry a quote into the parser. Each one
 # fails closed when mishandled, releasing nothing on a merge that closed
 # issues, which the rule promises needs no manual step.

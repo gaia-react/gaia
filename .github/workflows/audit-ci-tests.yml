@@ -664,7 +664,7 @@ jobs:
       # Do not edit this list by hand to make W10 pass: W10 failing means a
       # suite moved legs, and the repair is to copy the set W10 names, which it
       # derives from the suites rather than from here.
-      - if: contains(fromJSON('["hooks-3", "lib", "scripts-1", "scripts-2", "scripts-3"]'), matrix.shard) && (steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch')
+      - if: contains(fromJSON('["hooks-2", "lib", "scripts-1", "scripts-2", "scripts-3"]'), matrix.shard) && (steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch')
         name: Install the YAML parser and zsh
         # Sized for fast failure and honest attribution, NOT to the leg. When
         # this cap fires is the budget paragraph's subject, not this one's,

@@ -56,15 +56,58 @@ _lib="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)"
 type cmd_targets_foreign_repo >/dev/null 2>&1 || exit 0
 cmd_targets_foreign_repo "$cmd" && exit 0
 
-# Pull the pull-request reference: the first token after `merge` that neither
-# starts with `-` nor is the value of a preceding value-taking flag. Taking
-# the first non-flag token instead would read `gh pr merge --repo x/y 1498`
-# as a reference of `x/y`, which fails and silently releases nothing.
+# Split the command tail into shell-like words. This is a real scan rather
+# than a set of patterns over the raw text, and the difference is the whole
+# point: a quote character opens a span in which whitespace, separators and
+# the other quote character are all ordinary text, and a backslash escapes
+# the character after it. Pattern-matching the raw text got this wrong once
+# per spelling, always in the direction of reading part of one value, or part
+# of a following command, as the pull-request reference.
+#
+# Two things come out of it. The words are unquoted, so nothing downstream
+# needs to know quotes exist; and the scan stops at the first separator that
+# is not inside a quoted span, so a later command in a compound command
+# contributes nothing, while a `;` inside a squash subject stays text.
 tail_re='gh[[:space:]]+pr[[:space:]]+merge[[:space:]]*(.*)$'
 args=""
 if [[ "$cmd" =~ $tail_re ]]; then
   args="${BASH_REMATCH[1]}"
 fi
+
+words=()
+word=""
+have_word=0
+q=""
+esc=0
+i=0
+while [ "$i" -lt "${#args}" ]; do
+  c="${args:$i:1}"
+  i=$((i + 1))
+  if [ "$esc" = 1 ]; then
+    word="$word$c"; have_word=1; esc=0; continue
+  fi
+  # Inside single quotes a backslash is literal, as in the shell itself.
+  if [ "$c" = "\\" ] && [ "$q" != "'" ]; then
+    esc=1; have_word=1; continue
+  fi
+  if [ -n "$q" ]; then
+    if [ "$c" = "$q" ]; then q=""; else word="$word$c"; fi
+    have_word=1
+    continue
+  fi
+  case "$c" in
+    '"'|"'") q="$c"; have_word=1 ;;
+    ' '|"$(printf '\t')")
+      [ "$have_word" = 1 ] && words+=("$word")
+      word=""; have_word=0
+      ;;
+    '&'|'|'|';')
+      break
+      ;;
+    *) word="$word$c"; have_word=1 ;;
+  esac
+done
+[ "$have_word" = 1 ] && words+=("$word")
 
 # Every value-taking flag, and only those. Checked against gh's own help
 # output rather than recalled: -m is --merge, a BOOLEAN, so listing it here
@@ -76,85 +119,26 @@ ref=""
 cmd_repo=""
 skip_next=0
 skip_flag=""
-quote=""
-
-# The command arrives as unparsed text, so quote characters are literal and a
-# quoted value spans however many whitespace-separated tokens it contains.
-# Both helpers exist because every spelling below needs the same two answers,
-# and two copies of either one drift apart.
-unquoted=""
-unquote() {
-  unquoted="$1"
-  case "$unquoted" in
-    \"*\") unquoted="${unquoted#\"}"; unquoted="${unquoted%\"}" ;;
-    \'*\') unquoted="${unquoted#\'}"; unquoted="${unquoted%\'}" ;;
-  esac
-}
-# Sets `quote` when the token opens a quote it does not close, so the tokens
-# that follow are the rest of one value rather than the reference.
-open_quote() {
-  quote=""
-  case "$1" in
-    \"*) case "${1#\"}" in *\"*) : ;; *) quote='"' ;; esac ;;
-    \'*) case "${1#\'}" in *\'*) : ;; *) quote="'" ;; esac ;;
-  esac
-}
-
-# Word splitting is wanted here; pathname expansion is not. Without set -f,
-# `--body *` would glob against the repo root and a filename could become the
-# reference.
-set -f
-for tok in $args; do
-  # Inside a quoted value: swallow tokens until the quote closes. Skipping
-  # exactly one would leave the rest standing in as the reference, and
-  # `--body "release notes here" 1508` would resolve `notes`, which gh reads
-  # as a BRANCH selector: the hook then releases nothing on a merge that
-  # closed issues, or releases some other branch's issues where a branch by
-  # that name exists.
-  if [ -n "$quote" ]; then
-    case "$tok" in
-      *"$quote") quote="" ;;
-    esac
-    continue
-  fi
-
-  # A shell separator ends the merge command, and the capture runs to the end
-  # of the whole command string, so what follows one belongs to a different
-  # command and must not decide this one. The decision lives HERE rather than
-  # in a cut over the text, because only the scan knows the quote state: a
-  # `;` or a `|` inside a quoted subject is ordinary text, and cutting first
-  # threw away every token after it, a trailing `--repo` among them, which
-  # left the boundary check below unarmed on ordinary input.
-  stop=0
-  case "$tok" in
-    *\"*|*\'*) : ;; # quote-bearing: any separator in it is text
-    *[\&\|\;]*)
-      stop=1
-      tok="${tok%%[&|;]*}"
-      ;;
-  esac
-  [ -n "$tok" ] || { [ "$stop" = 1 ] && break; continue; }
-
+n=${#words[@]}
+i=0
+while [ "$i" -lt "$n" ]; do
+  tok="${words[$i]}"
+  i=$((i + 1))
   if [ "$skip_next" = 1 ]; then
     skip_next=0
-    if [ "$skip_flag" = repo ]; then
-      unquote "$tok"
-      cmd_repo="$unquoted"
-    fi
+    [ "$skip_flag" = repo ] && cmd_repo="$tok"
     skip_flag=""
-    open_quote "$tok"
-  else
+    continue
+  fi
   case "$tok" in
     -*=*)
-      # `--flag=value`, carrying its value in the same token.
+      # `--flag=value` carries its value in the same word.
       flag="${tok%%=*}"
       case "$value_flags" in
         *" $flag "*)
-          val="${tok#*=}"
           case "$flag" in
-            -R|--repo) unquote "$val"; cmd_repo="$unquoted" ;;
+            -R|--repo) cmd_repo="${tok#*=}" ;;
           esac
-          open_quote "$val"
           ;;
       esac
       ;;
@@ -169,20 +153,14 @@ for tok in $args; do
       esac
       ;;
     *)
-      # The first non-flag token is the reference, but the scan continues:
+      # The first non-flag word is the reference, and the scan continues:
       # gh accepts flags in any position, so `merge 5 --repo other-org/gaia`
       # is an ordinary invocation and stopping here would leave the boundary
       # check below unarmed for every trailing spelling of the flag.
-      if [ -z "$ref" ]; then
-        unquote "$tok"
-        ref="$unquoted"
-      fi
+      [ -n "$ref" ] || ref="$tok"
       ;;
   esac
-  fi
-  [ "$stop" = 1 ] && break
 done
-set +f
 
 # Pin the read and the write to THIS repository so the two can never
 # straddle. Resolved once, from the hook's own cwd, which a `cd` inside the
