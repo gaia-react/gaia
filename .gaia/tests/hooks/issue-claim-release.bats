@@ -729,6 +729,67 @@ assert_nothing_released() { [ ! -s "$FAKE_GH_STATE/issue_edits" ]; }
   assert_released_once "77"
 }
 
+# 7ap-7as: a word-initial unquoted `#` opens a shell COMMENT, so gh receives
+# none of it. Read as ordinary text those words reach the flag parser, and a
+# `--repo` among them wins over the one the merge carried, because the parser
+# keeps the last one it sees and the shared guard captures greedily. 7ap is the
+# harm that reaches: a merge landing in the SIBLING repository, stripping claims
+# here. 7aq and 7ar are the controls that the arm cuts a comment rather than
+# every `#`. 7as pins the stop rather than a skip to the newline: a comment
+# hiding a leading command must not promote the words after it into the first
+# command, which is the one shape a skip would get wrong.
+@test "7ap: a trailing comment's --repo does not turn a foreign merge into a home release" {
+  export FAKE_GH_PR_BODY="Closes #77"
+  run_hook 'gh pr merge --repo other-org/other-repo 5 # was --repo gaia-react/gaia'
+  [ "$status" -eq 0 ]
+  assert_nothing_released
+}
+
+@test "7aq: a trailing comment does not cost a home merge its release" {
+  export FAKE_GH_PR_BODY="Closes #77"
+  run_hook 'gh pr merge 5 --squash # ship it'
+  [ "$status" -eq 0 ]
+  [ "$(cat "$FAKE_GH_STATE/pr_view_ref")" = "5" ]
+  assert_released_once "77"
+}
+
+@test "7ar: a mid-word # is ordinary text, not a comment" {
+  export FAKE_GH_PR_BODY="Closes #77"
+  run_hook 'gh pr merge --body fix#77 5'
+  [ "$status" -eq 0 ]
+  [ "$(cat "$FAKE_GH_STATE/pr_view_ref")" = "5" ]
+  assert_released_once "77"
+}
+
+@test "7as: a comment hiding a leading command releases nothing" {
+  export FAKE_GH_PR_BODY="Closes #77"
+  run_hook $'# merge it now\ngh pr merge 5'
+  [ "$status" -eq 0 ]
+  assert_nothing_released
+}
+
+# 7at, 7au: GitHub resolves OWNER/REPO case-insensitively, so a merge spelled
+# in another case lands on the home repository and a case-sensitive comparison
+# would read it as a different one and cost the release. The repo-NAME half of
+# a `--repo` value is the one part still case-sensitive here, because the shared
+# guard classifies that shape foreign before this hook compares anything, and
+# that is a lost release rather than a wrong one.
+@test "7at: a --repo differing only in owner case still resolves the ref" {
+  export FAKE_GH_PR_BODY="Closes #77"
+  run_hook 'gh pr merge --repo GAIA-React/gaia 5'
+  [ "$status" -eq 0 ]
+  [ "$(cat "$FAKE_GH_STATE/pr_view_ref")" = "5" ]
+  assert_released_once "77"
+}
+
+@test "7au: a home URL differing in case still resolves the ref" {
+  export FAKE_GH_PR_BODY="Closes #77"
+  run_hook 'gh pr merge https://github.com/GAIA-React/GAIA/pull/5'
+  [ "$status" -eq 0 ]
+  [ "$(cat "$FAKE_GH_STATE/pr_view_ref")" = "5" ]
+  assert_released_once "77"
+}
+
 # The merge has to be the first command in the tool call, so an ordinary
 # benign prefix costs the release. That is the deliberate price of the
 # first-command contract, and it is what the rule's own bullet tells a reader

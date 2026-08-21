@@ -189,6 +189,25 @@ while [ "$base" -lt "$n_cmd" ]; do
         [ "${#cur[@]}" -eq 0 ] && continue
         piece_closed=1; break 2
         ;;
+      '#')
+        # A word-initial unquoted `#` opens a COMMENT, so the shell drops it
+        # and everything after it to the newline and gh never receives any of
+        # it. Read as ordinary text those words reach the parser below, and a
+        # `--repo` among them wins, because the parser keeps the LAST one it
+        # sees and the shared guard above captures greedily. A foreign merge
+        # whose trailing comment names this repository would then resolve THIS
+        # repository's pull request of that number and strip claims here.
+        # Mid-word the character is ordinary text, which is the shell's rule
+        # too and is what keeps `fix#<n>` intact.
+        #
+        # Stopping the scan is the same retreat the separators take, and it is
+        # required rather than convenient: skipping ahead to the newline would
+        # let a comment that HIDES a leading command promote the words after
+        # it into the first command. The merge has to be that command anyway,
+        # so nothing beyond the comment was readable.
+        [ "$have_word" = 1 ] && { word="$word$c"; continue; }
+        piece_closed=1; break 2
+        ;;
       *) word="$word$c"; have_word=1 ;;
     esac
   done
@@ -298,6 +317,12 @@ home_host="${home_host#*://}"
 home_host="${home_host%%/*}"
 home_host=$(printf '%s' "$home_host" | tr '[:upper:]' '[:lower:]')
 [ -n "$home_host" ] || exit 0
+# GitHub resolves OWNER/REPO case-insensitively, so a merge spelled
+# `gaia-react/GAIA` lands on the home repository and a case-sensitive
+# comparison would read it as another one. Every comparison against `home`
+# below uses this form; only the label write uses the exact spelling gh
+# reported.
+home_lc=$(printf '%s' "$home" | tr '[:upper:]' '[:lower:]')
 
 # `--repo owner/repo` names the target itself, and gh honors it over cwd, so
 # it decides the boundary alone. The shared guard above compares only the
@@ -326,7 +351,7 @@ if [ -n "$cmd_repo" ]; then
       cmd_repo="${cmd_repo#*/}"
       ;;
   esac
-  [ "$cmd_repo" = "$home" ] || exit 0
+  [ "$(printf '%s' "$cmd_repo" | tr '[:upper:]' '[:lower:]')" = "$home_lc" ] || exit 0
 fi
 
 # A URL reference is the one form --repo cannot contain: gh resolves the
@@ -343,7 +368,7 @@ case "$ref" in
   *://*)
     if [[ "$ref" =~ $url_re ]] \
       && [ "$(printf '%s' "${BASH_REMATCH[1]}" | tr '[:upper:]' '[:lower:]')" = "$home_host" ] \
-      && [ "${BASH_REMATCH[2]}" = "$home" ]; then
+      && [ "$(printf '%s' "${BASH_REMATCH[2]}" | tr '[:upper:]' '[:lower:]')" = "$home_lc" ]; then
       ref="${BASH_REMATCH[3]}"
     else
       exit 0
@@ -388,7 +413,6 @@ body=$(printf '%s' "$pr_json" | jq -r '.body // ""' 2>/dev/null)
 # is out of this hook's reach by construction and is dropped rather than
 # followed.
 issue_re='(^|[^[:alnum:]_])(close|closes|closed|fix|fixes|fixed|resolve|resolves|resolved):?[[:space:]]+([A-Za-z0-9._-]+/[A-Za-z0-9._-]+)?#[0-9]+'
-home_lc=$(printf '%s' "$home" | tr '[:upper:]' '[:lower:]')
 nums=$(printf '%s' "$body" | grep -oiE "$issue_re" 2>/dev/null | while IFS= read -r m; do
   # Everything after the last whitespace and before the `#` is the
   # qualifier, and it is empty for both unqualified spellings.
