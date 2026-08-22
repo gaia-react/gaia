@@ -823,8 +823,9 @@ jobs:
 
   # A standalone job, not a matrix leg: `.gaia/scripts/check-hook-capabilities.sh`
   # walks the live-tree closure of every registered hook, and its 66-70s median
-  # standalone gate-mode cost (two independent n=3 samples on one host; see the
-  # WTI_EXCLUDED entry this checker carries in .gaia/tests/whole-tree-invariants.sh) is long
+  # standalone gate-mode cost on the maintainer machine, 83s on this runner;
+  # see the WTI_EXCLUDED entry this checker carries in
+  # .gaia/tests/whole-tree-invariants.sh) is long
   # enough that no size-weighted shard should absorb it as a step -- bats-shards.sh
   # weights a suite by file size as a runtime proxy, which a short suite shelling
   # out to a minute-long checker would break. It runs here instead, at hop 1
@@ -836,10 +837,14 @@ jobs:
     name: Hook Capabilities (live tree)
     if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
-    # Sized to the local measured 66-70s median with headroom for a slower
-    # runner and the checkout/filter steps, not to the 13-minute `shards` cap:
+    # Sized to the measured runner cost, not to the 13-minute `shards` cap:
     # this job's own contribution to the aggregator's needs-chain must stay
-    # under that same cap for the arithmetic above to hold.
+    # under that same cap for the arithmetic above to hold. The checker itself
+    # measures 83s on ubuntu-latest (91s for the whole job including the
+    # full-history checkout), against a 66-70s median on the maintainer
+    # machine -- the runner is the slower host, so size against 83s, not the
+    # laptop figure. 5 minutes leaves better than 3x headroom for a noisy
+    # runner without approaching the cap.
     timeout-minutes: 5
     # Checks out and runs a shell checker; no write scope needed. No
     # `pull-requests: read`: unlike `shards`, this job's filter is hand-rolled
