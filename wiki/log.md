@@ -11,6 +11,62 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-08-22 7d8b6109 WORTHY - PR merge fold-pricing correction documented in PR Merge Workflow.md in-commit
+- 2026-08-22 6c9f1c45 WORTHY - act-on-home first-command boundary documented in PR Merge Workflow.md in-commit
+- 2026-08-22 b628511b WORTHY - act-on-home whole-slug boundary, superseded and documented by the following commit's edit to PR Merge Workflow.md
+- 2026-08-22 e805bde3 SKIP - cli-tests path filter arming, internal CI plumbing
+- 2026-08-22 42ae9636 WORTHY - in-progress label rename documented in Audit Disposition and Debt Fix.md, GitHub Labels.md, Issue Claim.md (new) in-commit
+- 2026-08-22 1a0583a7 SKIP - audit-status post_failed publishing, internal CI reliability fix
+- 2026-08-22 b6a25768 SKIP - code comment explaining existing member-reset trigger, no behavior or doc change
+- 2026-08-22 188ddb6c SKIP - forensics test assertion-order fix, internal test hardening
+- 2026-08-22 ef7584cd SKIP - labels schema enum-parity test hardening, implementation detail of already-documented GitHub Labels mechanism
+- 2026-08-22 99e95b5a WORTHY - label-sync carrier counting documented in GitHub Labels.md in-commit
+- 2026-08-22 e038fffc WORTHY - GitHub labels single source of truth documented in GitHub Labels.md (new), Forensics Triage Workflow.md in-commit
+- 2026-08-22 63c86d0a WORTHY - surface: label axis distribution boundary documented in Audit Disposition and Debt Fix.md in-commit
+- 2026-08-22 18e3a63f SKIP - release-scrub check widening, implementation detail of already-documented Bundle-time Scrub
+- 2026-08-22 7de3bd2f SKIP - shell-lint env-prefix false-positive fix, implementation detail of already-documented shell-lint check
+- 2026-08-22 c638bad4 SKIP - shell-lint env-prefix false-positive fix, implementation detail of already-documented shell-lint check
+- 2026-08-22 5bdedc96 WORTHY - bash-3.2 CI leg documented in Release Workflow.md in-commit
+- 2026-08-22 4e70d530 WORTHY - bash-3.2 portability pass documented in Claude Hooks.md, Release Workflow.md in-commit
+- 2026-08-22 b0fa2e9d WORTHY - shell-lint errexit-status-read check documented in Release Workflow.md in-commit
+- 2026-08-22 ffe4e242 SKIP - leak-replay report-shape assertion, internal test hardening
+- 2026-08-22 4ec5f8cb SKIP - gaia-ci action exit-status fix, internal reliability fix
+- 2026-08-22 eb2f0afe SKIP - release-scrub token-leak check rescoping, implementation detail of already-documented Bundle-time Scrub
+- 2026-08-22 7ad654bc SKIP - distribution harness test-arming, internal CI plumbing
+- 2026-08-22 01759e2f SKIP - CI apt-step timeout and retry, internal reliability fix
+- 2026-08-22 d79c0d83 WORTHY - new script-capabilities governance mechanism, added section to Code Audit Team.md
+- 2026-08-22 fa7ba1b7 SKIP - audit-ci shard-count internal fix, implementation detail of already-documented CI test matrix
+- 2026-08-22 94d8b614 WORTHY - waive-eligibility base-branch scoping documented in Audit Disposition and Debt Fix.md, Code Review Audit Agent.md in-commit
+- 2026-08-22 fe275c28 SKIP - self-heal gate --cached overclaim correction confined to bats test docstrings
+- 2026-08-22 2ddbce76 WORTHY - docs-only correction landed in Audit Disposition and Debt Fix.md in-commit
+- 2026-08-22 fbe08e84 SKIP - test-only roster enforcement, no behavior change
+- 2026-08-22 2e06a614 SKIP - test-only refactor, no behavior change
+- 2026-08-22 97984f76 SKIP - adopter rollout-step fix confined to file-tech-debt skill and its test, no wiki concept affected
+- 2026-08-22 7a86db22 SKIP - test-only refactor, no behavior change
+- 2026-08-22 f956e3dd WORTHY - whole-tree invariants consolidation documented in PR Merge Workflow.md in-commit
+- 2026-08-22 72f3e62b WORTHY - disposition sidecar branch-attribution fix documented in Audit Disposition and Debt Fix.md, PR Merge Workflow.md in-commit
+- 2026-08-22 d8301417 SKIP - test-header naming only, no behavior change
+- 2026-08-22 c5b4f1a3 SKIP - test-header naming only, no behavior change
+- 2026-08-22 762fe16a WORTHY - docs-only pointer fix landed in Local Working State.md in-commit
+- 2026-08-22 52a843b6 WORTHY - per-member scratch dir documented in Local Working State.md, Code Audit Team.md in-commit
+- 2026-08-22 c70de485 WORTHY - audit workflow guardrail fix documented in Code Review Audit CI.md in-commit
+- 2026-08-22 f49cc51a WORTHY - PR base resolution fix documented in Code Review Audit CI.md, Incremental CI Skipping.md, PR Merge Workflow.md in-commit
+- 2026-08-22 1075920f WORTHY - statusline segment fold documented in Policy-Memory Loop.md in-commit
+- 2026-08-22 a2f71642 SKIP - fold-cost channel for debt filer, implementation detail of already-documented Audit Disposition and Debt Fix mechanism
+- 2026-08-22 7842bbb2 WORTHY - classless suppression baseline release documented in Policy-Memory Loop.md in-commit
+- 2026-08-22 461f4f8e WORTHY - tech-debt handler-class-as-label documented in Audit Disposition and Debt Fix.md, GAIA Audit.md in-commit
+- 2026-08-22 11496f89 WORTHY - docs-only correction landed in PR Merge Workflow.md in-commit
+- 2026-08-22 60355f7b WORTHY - audit refusal signal and spawn oracle documented in PR Merge Workflow.md, Code Audit Team.md in-commit
+- 2026-08-22 fc6bb3e5 SKIP - decline-ledger prune bugfix, implementation detail of already-documented harden mechanism
+- 2026-08-22 9770ecaf SKIP - prose-only rule addition, no behavior change
+- 2026-08-22 d9ba321d SKIP - prose-only rule trim, no behavior change
+- 2026-08-22 665540d1 WORTHY - generalized no-op guard to a file-backed report contract for ad-hoc subagent dispatch, added note to Code Review Audit Agent.md
+- 2026-08-22 59fc4f9f WORTHY - workflows member route fix documented in Policy-Memory Loop.md in-commit
+- 2026-08-22 33da29eb WORTHY - maintainer finding-class seeding documented in Code Review Audit Agent.md, Policy-Memory Loop.md, Registering a Code Audit Team Member.md in-commit
+- 2026-08-22 c0b67d0c SKIP - BSD-regex shell-lint false-positive fix, implementation detail of already-documented shell-lint check
+- 2026-08-22 904b02ff WORTHY - debt filing metadata verification documented in Audit Disposition and Debt Fix.md in-commit
+- 2026-08-22 19fbf8e1 WORTHY - cross-remit waive terms documented in Audit Disposition and Debt Fix.md, PR Merge Workflow.md in-commit
+- 2026-08-22 95700c5c WORTHY - prior wiki-sync maintenance commit, self-contained
 - 2026-08-15 108f26d2 WORTHY - GAIA-Audit success-POST fatality settled across all four writers → wiki/concepts/Code Review Audit CI.md updated in-commit
 - 2026-08-15 389b3899 SKIP - test-only: drops decaying call-site count from a comment
 - 2026-08-15 6480e862 WORTHY - adopter workflow template expressions bound through env: → wiki/concepts/Release Workflow.md
