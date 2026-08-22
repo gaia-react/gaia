@@ -128,7 +128,12 @@ setup() {
   # Workflows that gate a step on a hand-rolled `run:`-emitted output rather than
   # a dorny/paths-filter glob list. Section 4 asserts this set exactly, so adding
   # a hand-rolled gate to a new workflow reds until it is named here on purpose.
-  HANDROLLED_EXEMPT="tests.yml"
+  # audit-ci-tests.yml's hook-capabilities-live-tree job hand-rolls its gate for
+  # the same reason tests.yml does: it cannot depend on the workflow's one
+  # dorny/paths-filter step (that step lives in a job it must not `needs:`,
+  # since a needs hop is exactly what the job exists to avoid) and a glob list
+  # section 2 could read is not on offer.
+  HANDROLLED_EXEMPT=$'tests.yml\naudit-ci-tests.yml'
 
   require_repo_path -d "$WORKFLOWS_DIR" ".github/workflows" || return 1
 }
@@ -649,10 +654,18 @@ workflow_files() {
     return 1
   fi
 
-  # The exempt entry must still be a real hand-rolled gate. Once tests.yml moves
-  # to a paths-filter, a stale exemption is a hole the guard would not report.
-  printf '%s\n' "$found" | grep -qxF "$HANDROLLED_EXEMPT" || {
-    echo "HANDROLLED_EXEMPT names ${HANDROLLED_EXEMPT}, which no longer gates on a hand-rolled output; drop the exemption" >&2
+  # Every exempt entry must still be a real hand-rolled gate, each checked on
+  # its own rather than any one of them standing in for the rest: once a
+  # workflow moves to a paths-filter, a stale exemption for THAT workflow is a
+  # hole the guard would not report, and a shared `-q` over the whole set would
+  # miss it as long as some other entry still matched.
+  local exempt stale=""
+  while IFS= read -r exempt; do
+    [ -n "$exempt" ] || continue
+    printf '%s\n' "$found" | grep -qxF "$exempt" || stale="$stale $exempt"
+  done <<< "$HANDROLLED_EXEMPT"
+  [ -z "$stale" ] || {
+    echo "HANDROLLED_EXEMPT names entries that no longer gate on a hand-rolled output; drop them:$stale" >&2
     return 1
   }
 }

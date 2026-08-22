@@ -821,19 +821,92 @@ jobs:
         name: Run the INV-7 concurrency meter (gated on its expected-status manifest)
         run: bash .gaia/tests/concurrency/meter-gate.sh
 
-  # The declared-required check. `needs: [shards]` makes it the second hop of a
-  # 2-hop chain the arithmetic above is sized to, and `always()` is what stops
-  # a plain skip-on-dependency-failure from satisfying nothing: a `needs:`
-  # with no `if:` SKIPS when a dependency fails, and a skipped stamp satisfies
-  # no required check.
+  # A standalone job, not a matrix leg: `.gaia/scripts/check-hook-capabilities.sh`
+  # walks the live-tree closure of every registered hook, and its 66-70s median
+  # standalone gate-mode cost (two independent n=3 samples on one host; see the
+  # WTI_EXCLUDED entry this checker carries in .gaia/tests/whole-tree-invariants.sh) is long
+  # enough that no size-weighted shard should absorb it as a step -- bats-shards.sh
+  # weights a suite by file size as a runtime proxy, which a short suite shelling
+  # out to a minute-long checker would break. It runs here instead, at hop 1
+  # alongside `shards`, so the `needs:` chain into the aggregator below stays 2
+  # hops; see the `shards` job's own comment for the 15-minute total that
+  # arithmetic is sized to. This is the one named home success criterion 6
+  # requires for a live-tree run of this checker.
+  hook-capabilities-live-tree:
+    name: Hook Capabilities (live tree)
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    # Sized to the local measured 66-70s median with headroom for a slower
+    # runner and the checkout/filter steps, not to the 13-minute `shards` cap:
+    # this job's own contribution to the aggregator's needs-chain must stay
+    # under that same cap for the arithmetic above to hold.
+    timeout-minutes: 5
+    # Checks out and runs a shell checker; no write scope needed. No
+    # `pull-requests: read`: unlike `shards`, this job's filter is hand-rolled
+    # (see the comment on the filter step below) rather than dorny/paths-filter,
+    # so it never calls the API that scope exists for.
+    permissions:
+      contents: read
+    steps:
+      # `fetch-depth: 0` (full history), not the default shallow clone: the
+      # hand-rolled filter step below diffs against the PR's base commit, which
+      # a depth-1 checkout never fetches.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      # Hand-rolled rather than a second dorny/paths-filter step. W7 in
+      # .gaia/tests/lib/audit-ci-shards.bats pins exactly one paths-filter step
+      # for the whole workflow, and this job runs in parallel with `shards`
+      # rather than depending on it, so it cannot read that one step's output
+      # without adding a `needs:` hop the arithmetic above has no room for.
+      # `tests.yml`'s own hand-rolled gate is the precedent this mirrors; both
+      # are named in workflow-filter-coverage.bats's HANDROLLED_EXEMPT set for
+      # the same reason. The alternation below is maintained by hand: a step
+      # reading a new path means adding that path here in the same edit.
+      #
+      # `.claude/settings.local.json` is also read by the checker (the
+      # LOCAL-REGISTRATION arm) but is gitignored, so it cannot appear in the
+      # pattern below; it is also absent on every CI runner, so the arm is
+      # silent here by its own contract. A recorded limit, not a gap.
+      - name: Detect hook-capabilities-relevant changes
+        id: filter
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -eu
+          # `-z` plus `tr`, not a bare `--name-only`: an unquoted diff C-quotes
+          # a non-ASCII path (e.g. `"caf\303\251.sh"`), and the ERE below would
+          # stop matching it. `$(...)` discards NUL bytes on its own, so `tr`
+          # must stay inside the substitution for `set -o pipefail` to still
+          # abort the step on a git failure.
+          changed=$(set -o pipefail; git diff --name-only -z "$BASE_SHA" HEAD | tr '\0' '\n')
+          pattern='^\.claude/settings\.json$|^\.claude/hooks/|^\.gaia/scripts/|^\.specify/extensions/gaia/lib/|^\.gaia/hook-capabilities\.(json|schema\.json)$|^\.gaia/release-exclude$|^\.github/workflows/audit-ci-tests\.yml$'
+          if printf '%s\n' "$changed" | grep -qE "$pattern"; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "code=false" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
+        name: Run the hook-capabilities checker against the live tree
+        run: |
+          start="$SECONDS"
+          bash .gaia/scripts/check-hook-capabilities.sh
+          echo "hook-capabilities-live-tree elapsed: $(( SECONDS - start ))s"
+
+  # The declared-required check. `needs: [shards, hook-capabilities-live-tree]`
+  # makes it the second hop of a 2-hop chain the arithmetic above is sized to,
+  # and `always()` is what stops a plain skip-on-dependency-failure from
+  # satisfying nothing: a `needs:` with no `if:` SKIPS when a dependency fails,
+  # and a skipped stamp satisfies no required check.
   audit-ci-tests:
     name: Audit CI Tests
-    needs: [shards]
+    needs: [shards, hook-capabilities-live-tree]
     if: always() && (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     timeout-minutes: 2
-    # No checkout and no scopes: this job reads one expression off `needs:` and
-    # exits, so it needs nothing a default-deny leaves it without.
+    # No checkout and no scopes: this job reads two expressions off `needs:`
+    # and exits, so it needs nothing a default-deny leaves it without.
     permissions: {}
     steps:
       # `needs.shards.result` is the aggregate over every matrix leg: it reads
@@ -841,16 +914,22 @@ jobs:
       # all skipped because the filter resolved false still concludes
       # `success`, which is correct and matches today's pre-shard behavior --
       # a PR touching nothing relevant should report this check green having
-      # run nothing. `skipped` and `cancelled` both fail this check, along with
-      # `failure`, because the comparison is `!= "success"` rather than a
+      # run nothing. `needs.hook-capabilities-live-tree.result` is read the same
+      # way. `skipped` and `cancelled` both fail this check, along with
+      # `failure`, because each comparison is `!= "success"` rather than a
       # `case` enumerating the failure states it knows about, so a conclusion
       # GitHub adds later fails closed instead of reading as an unrecognized,
       # unhandled success.
-      - name: Require every shard to have succeeded
+      - name: Require every shard and the live-tree job to have succeeded
         env:
           SHARDS_RESULT: ${{ needs.shards.result }}
+          HOOK_CAPABILITIES_RESULT: ${{ needs.hook-capabilities-live-tree.result }}
         run: |
           if [ "$SHARDS_RESULT" != "success" ]; then
             echo "::error::at least one shard did not conclude success: $SHARDS_RESULT" >&2
+            exit 1
+          fi
+          if [ "$HOOK_CAPABILITIES_RESULT" != "success" ]; then
+            echo "::error::hook-capabilities-live-tree did not conclude success: $HOOK_CAPABILITIES_RESULT" >&2
             exit 1
           fi
