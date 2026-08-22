@@ -390,7 +390,7 @@ JSON
 
 # ========== UAT-014, UNRESOLVED on both shapes ==========
 
-@test "UAT-014: an unresolvable invocation target and a separate unresolvable write target are both UNRESOLVED, carrying file and line" {
+@test "UAT-014: an unresolvable invocation target and a separate unresolvable write target are both UNRESOLVED, carrying file and line and their own clearing route" {
   repo="$(make_fixture_repo unresolved-both)"
   add_hook "$repo" .claude/hooks/root.sh '#!/usr/bin/env bash
 tool=".claude/hooks/a.sh"
@@ -410,13 +410,25 @@ printf "x\n" > "$mystery"'
      "why":"writes wherever it is told","maintainer_only":false}]'
   run bash "$CHECK" "$repo"
   [ "$status" -eq 1 ]
-  grep -qF -- "UNRESOLVED .claude/hooks/root.sh .claude/hooks/root.sh:4" <<<"$output"
-  grep -qF -- "UNRESOLVED .claude/hooks/w.sh .claude/hooks/w.sh:2" <<<"$output"
-  # Both shapes name the invocation-clearing route in the checker's current
-  # implementation -- see this file's "Notes for orchestrator" in the return
-  # for the asymmetric-route wording the task doc specifies and the checker
-  # does not yet carry.
-  [ "$(grep -c -- "make the call literal, or declare invokes:<path> for the target" <<<"$output")" -eq 2 ]
+  local inv wri
+  inv="$(grep -F -- "UNRESOLVED .claude/hooks/root.sh .claude/hooks/root.sh:4" <<<"$output")"
+  wri="$(grep -F -- "UNRESOLVED .claude/hooks/w.sh .claude/hooks/w.sh:2" <<<"$output")"
+  [ -n "$inv" ]
+  [ -n "$wri" ]
+  # An invocation target has two ways out, a write target one. Advising a
+  # reader to declare `invokes:` for a write target names a route that cannot
+  # clear it, so each direction is asserted against the other's wording too.
+  grep -qF -- "-- make the call literal, or declare invokes:<path> for the target" <<<"$inv"
+  grep -qF -- "-- make the path literal" <<<"$wri"
+  grep -qF -- "invokes:" <<<"$wri" && return 1
+  grep -qF -- "make the path literal" <<<"$inv" && return 1
+  # The two kinds stay distinct through the closure walk, so every consumer
+  # that strips unresolvable records strips both spellings. A missed one
+  # arrives as a capability term named after the record itself.
+  grep -qF -- "UNRESOLVED-CALL" <<<"$output" && return 1
+  grep -qF -- "UNDECLARED" <<<"$output" && return 1
+  [ -z "$(gaia_hookcap_reach "$repo" .claude/hooks/root.sh)" ]
+  true
 }
 
 @test "UAT-014: declaring the invocation target clears its unresolvable line without becoming SURPLUS" {

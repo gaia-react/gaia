@@ -296,6 +296,10 @@ _gaia_hookcap_term_ok() {
 # hook, with idiom 6 applied. A declared `invokes:` target that no resolved
 # site already accounts for clears the hook's unresolvable INVOCATION lines;
 # an unresolvable write target is untouched by it.
+#
+# The oracle's two unresolvable kinds stay distinct in this output, because
+# only an invocation target has a declaration route out. Every consumer that
+# strips unresolvable records therefore matches BOTH kinds.
 _gaia_hookcap_sites() {
   local repo_root="$1" hook="$2"
   local declared sites resolved unmatched d
@@ -312,7 +316,7 @@ EOF
   if [ "$unmatched" -eq 1 ]; then
     printf '%s\n' "$sites" | grep -v '^UNRESOLVED-CALL	'
   else
-    printf '%s\n' "$sites" | sed 's/^UNRESOLVED-CALL	/UNRESOLVED	/'
+    printf '%s\n' "$sites"
   fi
   return 0
 }
@@ -324,7 +328,7 @@ gaia_hookcap_reach() {
   local repo_root="${1:?gaia_hookcap_reach requires a repo_root argument}"
   local hook="${2:?gaia_hookcap_reach requires a hook argument}"
   _gaia_hookcap_sites "$repo_root" "$hook" \
-    | grep -v '^UNRESOLVED	' \
+    | grep -Ev '^UNRESOLVED(-CALL)?	' \
     | cut -f1 \
     | grep -v '^$' \
     | LC_ALL=C sort -u
@@ -337,13 +341,13 @@ gaia_hookcap_reach() {
 #   reconciliation directions of a waived hook-capability pair.
 gaia_hookcap_reconcile() {
   local repo_root="${1:?gaia_hookcap_reconcile requires a repo_root argument}"
-  local rc=0 hook declared sites reached term loc line covered d
+  local rc=0 hook declared sites reached term loc line covered d route
   while IFS= read -r hook; do
     [ -n "$hook" ] || continue
     declared="$(_gaia_hookcap_declared "$repo_root" "$hook")"
     sites="$(_gaia_hookcap_sites "$repo_root" "$hook")"
 
-    reached="$(printf '%s\n' "$sites" | grep -v '^UNRESOLVED	' | LC_ALL=C sort -u -t$'\t' -k1,1)"
+    reached="$(printf '%s\n' "$sites" | grep -Ev '^UNRESOLVED(-CALL)?	' | LC_ALL=C sort -u -t$'\t' -k1,1)"
     while IFS=$'\t' read -r term loc; do
       [ -n "$term" ] || continue
       covered=0
@@ -397,9 +401,12 @@ $declared
 EOF
 
     while IFS=$'\t' read -r term loc line; do
-      [ "$term" = "UNRESOLVED" ] || continue
-      printf 'UNRESOLVED %s %s %s -- make the call literal, or declare invokes:<path> for the target\n' \
-        "$hook" "$loc" "$line"
+      case "$term" in
+        UNRESOLVED) route='make the path literal' ;;
+        UNRESOLVED-CALL) route='make the call literal, or declare invokes:<path> for the target' ;;
+        *) continue ;;
+      esac
+      printf 'UNRESOLVED %s %s %s -- %s\n' "$hook" "$loc" "$line" "$route"
       rc=1
     done <<EOF
 $sites
@@ -594,11 +601,11 @@ gaia_hookcap_print_reach() {
     if [ -n "$only" ] && [ "$hook" != "$only" ]; then continue; fi
     local sites
     sites="$(_gaia_hookcap_sites "$repo_root" "$hook")"
-    unres="$(printf '%s\n' "$sites" | grep '^UNRESOLVED	' || true)"
+    unres="$(printf '%s\n' "$sites" | grep -E '^UNRESOLVED(-CALL)?	' || true)"
     if [ -n "$unres" ]; then
-      printf '%s\n' "$unres" | sed "s|^UNRESOLVED\t|UNRESOLVED $hook |" >&2
+      printf '%s\n' "$unres" | sed -E "s|^UNRESOLVED(-CALL)?\t|UNRESOLVED $hook |" >&2
     fi
-    terms="$(printf '%s\n' "$sites" | grep -v '^UNRESOLVED	' | cut -f1 | grep -v '^$' | LC_ALL=C sort -u)"
+    terms="$(printf '%s\n' "$sites" | grep -Ev '^UNRESOLVED(-CALL)?	' | cut -f1 | grep -v '^$' | LC_ALL=C sort -u)"
     n="$(printf '%s\n' "$terms" | grep -c . || true)"
     if [ -n "$only" ]; then
       [ "$n" -gt 0 ] && printf '%s\n' "$terms"
