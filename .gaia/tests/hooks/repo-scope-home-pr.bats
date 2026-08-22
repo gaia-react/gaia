@@ -9,13 +9,19 @@
 # two acting consumers ask instead, and it lives in the lib so they cannot
 # answer it differently.
 #
-# The matcher is deliberately no tighter than gh's own, and the fixtures that
-# pin the difference are the suffixed and port-bearing spellings: gh's URL
-# matcher is unanchored after the number and its comparison drops a port, so
-# each of those names the home pull request to gh, and a tighter matcher here
-# would decline a merge that really did land on home. The decline is a silent
-# no-op rather than a wrong write, which is why the group below reads as
-# coverage rather than as safety.
+# Two shapes are matched as loosely as gh matches them, and everywhere else
+# the matcher stays deliberately tighter; h12 and h20 pin the limits. The two
+# followed are the suffixed and port-bearing spellings: gh's URL matcher is
+# unanchored after the number and its comparison drops a port, so each of
+# those names the home pull request to gh, and declining one would cost a
+# merge that really did land on home. That decline is a silent no-op rather
+# than a wrong write, which is why the followed group reads as coverage
+# rather than as safety.
+#
+# The tighter cases are not symmetric with it. An ACCEPT where gh declines is
+# the one direction a boundary that acts cannot have, so the scheme, the
+# separator before a suffix, and userinfo on the authority all stay strict on
+# purpose, and h12 and h20 exist to keep a later reader from loosening them.
 #
 # The suite drives the REAL lib (sourced by absolute path, never copied)
 # against a sandbox git repo, with a fake `gh` on PATH answering
@@ -198,6 +204,20 @@ resolve() {
   # green, so read it as a claim about the answer and not about the line.
   export FAKE_GH_REPO_VIEW_EXIT=1
   [ "$(resolve 'https://github.com/acme/widgets/pull/7')" = "decline" ]
+}
+
+@test "h20: only http and https are read as a URL" {
+  # gh reads no other scheme as a URL: it falls through to the branch lookup
+  # and resolves nothing. A general scheme class here would hand a number back
+  # for a reference gh never resolved, which is an accept where gh declines,
+  # the one direction this function cannot diverge in. The `http` and mixed-
+  # case rows are the control: narrowing the scheme must not cost a spelling
+  # gh does merge, and a URL scheme is case-insensitive.
+  [ "$(resolve 'ftp://github.com/acme/widgets/pull/7')" = "decline" ]
+  [ "$(resolve 'ssh://github.com/acme/widgets/pull/7')" = "decline" ]
+  [ "$(resolve 'httpx://github.com/acme/widgets/pull/7')" = "decline" ]
+  [ "$(resolve 'http://github.com/acme/widgets/pull/7')" = "7" ]
+  [ "$(resolve 'HTTPS://github.com/acme/widgets/pull/7')" = "7" ]
 }
 
 @test "h19: a decline leaves no number behind for a caller to read" {

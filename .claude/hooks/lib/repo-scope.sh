@@ -537,7 +537,21 @@ gaia_gh_merge_ref_to_home_pr() {
   # stays on the compared authority, so `https://user@github.com/...` declines
   # too. Every divergence that remains declines, which is this function's safe
   # direction, so each costs a silent no-op rather than a wrong write.
-  url_re='^[a-zA-Z][a-zA-Z0-9+.-]*://([^/]+)/([^/]+/[^/]+)/pull/([0-9]+)([/?#].*)?$'
+  #
+  # That last sentence is why the scheme is `https?` and not a general scheme
+  # class. gh reads only http and https as a URL and treats any other scheme
+  # as a branch name, so a general class accepts `ftp://<home>/pull/7` and
+  # hands back 7 for a reference gh never resolved: an ACCEPT where gh
+  # declines, which is the one direction a boundary that acts cannot have.
+  # Narrowing here keeps every divergence on the declining side.
+  #
+  # The bracketed spelling is a case-insensitive `https?`. A URL scheme is
+  # case-insensitive and Go lowercases it before gh ever sees it, so a plain
+  # `https?` would decline `HTTPS://<home>/pull/7`, which gh merges. The
+  # alternative, `shopt -s nocasematch`, is process-global: it would also
+  # reach the port strip below and every later `[[ ]]` in whichever hook
+  # sourced this file.
+  url_re='^[hH][tT][tT][pP][sS]?://([^/]+)/([^/]+/[^/]+)/pull/([0-9]+)([/?#].*)?$'
   [[ "$ref" =~ $url_re ]] || return 1
   host=$(printf '%s' "${BASH_REMATCH[1]}" | tr '[:upper:]' '[:lower:]')
   slug=$(printf '%s' "${BASH_REMATCH[2]}" | tr '[:upper:]' '[:lower:]')
