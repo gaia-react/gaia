@@ -207,11 +207,13 @@ jobs:
               # runs bats shards only, and the one bats file naming the marker
               # (`.gaia/tests/lib/doc-difficulty-prose.bats`) explicitly declines
               # to reimplement the parity mechanism rather than approximate it.
-              # A glob rather than the four current filenames, the same reasoning
-              # as the workflows and actions globs above: the guard reads whatever
-              # matches this name pattern, so a fifth member added later is
-              # covered without an edit here, and a deletion that drops the count
-              # below the suite's "at least four" floor re-runs the job too.
+              # A glob rather than an itemized list, the same reasoning as the
+              # workflows and actions globs above: the guard reads whatever
+              # matches this name pattern, so a member added or removed later is
+              # covered without an edit here. The suite's own "at least four"
+              # assertion is a rot floor rather than a roster count, and the
+              # roster is larger than it, so on a removal it is this glob, not
+              # that assertion, that re-runs the job.
               # Deliberately NOT `.claude/**`. The suite's other real-repo reader
               # (`src/command-reachability.test.ts`) scans four `.claude/`
               # subdirectories plus `wiki/`, and arming on those would newly run
