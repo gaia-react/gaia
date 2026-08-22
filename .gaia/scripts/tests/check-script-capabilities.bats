@@ -18,6 +18,7 @@
 setup() {
   SCRIPT_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
   CHECK="$SCRIPT_DIR/check-script-capabilities.sh"
+  PRE_CHANGE="$SCRIPT_DIR/tests/fixtures/capability-oracle/pre-change-oracle.sh"
   REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
   # shellcheck source=.gaia/scripts/check-script-capabilities.sh
   source "$CHECK"
@@ -792,4 +793,78 @@ printf "x\n" > "$out"'
   grep -qF -- 'resolver' <<<"$output" && return 1
   grep -qF -- 'verify_script' <<<"$output" && return 1
   true
+}
+
+# The obligated scripts' reach is the reconciliation's whole input, so a change
+# to the shared oracle underneath it can move every verdict on this surface at
+# once. These arms pin that it did not.
+#
+# The mechanism matters, and two obvious spellings do not work.
+#
+# Running `bash "$CHECK" "$REPO_ROOT" --print-reach` cannot be overridden from
+# here: the check resolves and sources the oracle from its own directory at load
+# time, so it re-sources the shipped one and clobbers any inherited definition.
+# A pin written that way compares two identical shipped runs and can never fail.
+# What makes a child shell work is ORDER -- sourcing the check first and the
+# vendored bodies after it, so the override is the last definition to land.
+#
+# Running both sides in THIS process works but is not affordable. bats installs
+# a DEBUG trap on every command in a test body, and the oracle executes on the
+# order of a million commands per walk, so the two walks that cost ~32s as child
+# processes were still running after four minutes in-process. The suite sits in
+# a CI shard whose matrix leg has no headroom, so both sides run as children.
+reach_side() {
+  # $1: `vendored` to load the pre-change bodies after the check, anything else
+  # for the shipped ones as they stand.
+  bash -c '
+    set -uo pipefail
+    . "$1"
+    [ "$3" = vendored ] && . "$2"
+    gaia_capcheck_print_reach "$4" 2>/dev/null
+  ' _ "$CHECK" "$PRE_CHANGE" "$1" "$REPO_ROOT"
+}
+
+# declare_side <side> <function>: the body a side actually holds, which is what
+# proves the swap is real rather than two identical runs.
+declare_side() {
+  bash -c '
+    set -uo pipefail
+    . "$1"
+    [ "$3" = vendored ] && . "$2"
+    declare -f "$5"
+  ' _ "$CHECK" "$PRE_CHANGE" "$1" "$REPO_ROOT" "$2"
+}
+
+@test "real repo: the byte-identity pin really swaps the oracle, so it can fail" {
+  local shipped vendored
+  shipped="$(declare_side shipped _gaia_capcheck_strip_tests)"
+  vendored="$(declare_side vendored _gaia_capcheck_strip_tests)"
+  [ -n "$shipped" ]
+  [ -n "$vendored" ]
+  [ "$shipped" != "$vendored" ]
+}
+
+@test "real repo: every function the oracle change rewrote is vendored on the before side" {
+  # The pin is only as good as its before side: vendoring fewer functions than
+  # the change rewrote leaves that side already carrying part of the fix.
+  local fn shipped vendored
+  for fn in _gaia_capcheck_strip_tests _gaia_capcheck_dirhop \
+    _gaia_capcheck_state_root_hop _gaia_capcheck_assignment_values \
+    _gaia_capcheck_split_var _gaia_capcheck_resolve_dir \
+    _gaia_capcheck_resolve_invocation _gaia_capcheck_write_paths \
+    _gaia_capcheck_scan_writes _gaia_capcheck_scan_invocations \
+    _gaia_capcheck_file_sites; do
+    shipped="$(declare_side shipped "$fn")"
+    vendored="$(declare_side vendored "$fn")"
+    [ -n "$vendored" ] || return 1
+    [ "$shipped" != "$vendored" ] || return 1
+  done
+}
+
+@test "real repo: computed reach is byte-identical to the pre-change oracle's" {
+  local after before
+  after="$(reach_side shipped)"
+  before="$(reach_side vendored)"
+  [ -n "$after" ]
+  [ "$before" = "$after" ]
 }

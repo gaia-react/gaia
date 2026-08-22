@@ -1370,8 +1370,13 @@ if [ -n "$wt_main" ] && [ -d "$wt_base" ]; then
   # sweep #5b is: worktrees register in main, this sweep already resolved main,
   # and the entry is registry main-only (worktree-reap-miss-memo in
   # .gaia/state-registry.json).
+  #
+  # Both spelled out rather than one derived from the other: the capability
+  # oracle reads a literal assignment but not a `${var%/*}` trim, and the
+  # registry's source-literal check looks for the entry's whole path as one
+  # contiguous literal.
+  wt_memo_dir="$wt_main/.gaia/local/cache"
   wt_memo_file="$wt_main/.gaia/local/cache/worktree-reap-misses.txt"
-  wt_memo_dir="${wt_memo_file%/*}"
   wt_memo_prev=""
   [ -f "$wt_memo_file" ] && wt_memo_prev=$(cat "$wt_memo_file" 2>/dev/null || true)
   wt_memo_next=""

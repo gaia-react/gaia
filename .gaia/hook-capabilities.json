@@ -1,0 +1,460 @@
+{
+  "$schema": "./hook-capabilities.schema.json",
+  "hooks": [
+    {
+      "hook": ".claude/hooks/audit-disposition-check.sh",
+      "capabilities": [
+        "network",
+        "tmp",
+        "fs-write:**",
+        "invokes:.claude/hooks/lib/audit-clearance.sh",
+        "invokes:.claude/hooks/lib/audit-digest.sh",
+        "invokes:.claude/hooks/lib/audit-dispositions.sh",
+        "invokes:.claude/hooks/lib/audit-machinery.sh",
+        "invokes:.claude/hooks/lib/audit-scope.sh",
+        "invokes:.claude/hooks/lib/repo-scope.sh",
+        "invokes:.gaia/scripts/main-root-lib.sh"
+      ],
+      "why": "Denies `gh pr merge` when the disposition-ledger sidecar for HEAD's frontend content digest disagrees with what a merge marker claims, or is missing where one is expected. Sources the audit clearance/digest/machinery/scope helpers and the shared repo-scope and main-root libraries to compute the digest and read the sidecar; `network` and its own repo-scope check come from the repo-scope helper's `gh repo view` call, which confirms the intercepted command targets this repository before the gate applies. `fs-write:**` and `tmp` are the audit-clearance/digest helpers' own scratch and ledger writes, at a path their caller supplies rather than one this hook names.",
+      "maintainer_only": false
+    },
+    {
+      "hook": ".claude/hooks/block-bare-test.sh",
+      "capabilities": [],
+      "why": "Reads a Bash tool call's command text to deny a bare `pnpm test`/`npm test` invocation that would start vitest in watch mode and never exit. Pure text inspection of the payload already on stdin: no file write, network call, or invocation of another script.",
+      "maintainer_only": false
+    },
+    {
+      "hook": ".claude/hooks/block-env-read.sh",
+      "capabilities": [],
+      "why": "Reads a Read or Bash tool call's payload to deny a command that would read a dotenv file or dump the process environment. Pure text inspection of the payload already on stdin: no file write, network call, or invocation of another script.",
+      "maintainer_only": false
+    },
+    {
+      "hook": ".claude/hooks/block-env-write.sh",
+      "capabilities": [],
+      "why": "Reads an Edit/Write tool call's target path to deny a write aimed at a dotenv file other than the committed `.env.example` placeholder. Pure text inspection of the payload already on stdin: no file write, network call, or invocation of another script.",
+      "maintainer_only": false
+    },
+    {
+      "hook": ".claude/hooks/block-eslint-config-edit.sh",
+      "capabilities": [],
+      "why": "Reads an Edit/Write/MultiEdit tool call's target path and asks a question when it names an ESLint flat-config file. Pure text inspection of the payload already on stdin: no file write, network call, or invocation of another script.",
+      "maintainer_only": false
+    },
+    {
+      "hook": ".claude/hooks/block-invalid-yaml-write.sh",
+      "capabilities": [],
+      "why": "Reads an Edit/Write/MultiEdit tool call's before/after content to deny a write that newly breaks a YAML region (a `.yml`/`.yaml` file, or Markdown frontmatter) that was valid before the call. Parses the payload's own before/after text in memory; no file write, network call, or invocation of another script.",
+      "maintainer_only": false
+    },
+    {
+      "hook": ".claude/hooks/block-lockfile-edit.sh",
+      "capabilities": [],
+      "why": "Reads an Edit/Write tool call's target path to deny a direct edit to `pnpm-lock.yaml`. Pure text inspection of the payload already on stdin: no file write, network call, or invocation of another script.",
+      "maintainer_only": false
+    },
+    {
+      "hook": ".claude/hooks/block-main-destructive-git.sh",
+      "capabilities": [
+        "network",
+        "invokes:.claude/hooks/lib/repo-scope.sh",
+        "invokes:.gaia/scripts/main-root-lib.sh"
+      ],
+      "why": "Denies a `git commit` to main/master and a force-push or plain push originating from main/master, by matching the intercepted Bash command's own text; it issues no git command of its own. Sources the shared repo-scope helper to exempt a command aimed at a different repository, and main-root-lib.sh to resolve the checkout root; `network` is the repo-scope helper's own `gh repo view` call, made to confirm which repository the intercepted command targets.",
+      "maintainer_only": false
+    },
+    {
+      "hook": ".claude/hooks/block-manifest-write.sh",
+      "capabilities": [],
+      "why": "Reads an Edit/Write/MultiEdit or Bash tool call's payload to deny a write aimed at `.gaia/manifest.json` outside the two sanctioned writers' marker. Pure text inspection of the payload already on stdin: no file write, network call, or invocation of another script.",
+      "maintainer_only": false
+    },
+    {
+      "hook": ".claude/hooks/block-no-verify.sh",
+      "capabilities": [
+        "network",
+        "invokes:.claude/hooks/lib/repo-scope.sh"
+      ],
+      "why": "Denies a `git commit`/`git push` that carries a hook-bypass flag (`--no-verify`, `-n`, `HUSKY=0`, `-c core.hooksPath=`), by matching the intercepted Bash command's own text; it issues no git command of its own. Sources the shared repo-scope helper to exempt a command aimed at a different repository; `network` is the repo-scope helper's own `gh repo view` call, made to confirm which repository the intercepted command targets.",
+      "maintainer_only": false
+    },
+    {
+      "hook": ".claude/hooks/block-rm-rf.sh",
+      "capabilities": [
+        "invokes:.gaia/scripts/main-root-lib.sh",
+        "invokes:.gaia/scripts/state-registry-lib.sh"
+      ],
+      "why": "Denies a dangerous `rm -rf` invocation (root, HOME, cwd, unscoped globs, `.git`, `.claude`, `node_modules`) by matching the intercepted Bash command's own text against a repo registry of safe scratch paths; it issues no filesystem command of its own. Sources main-root-lib.sh to resolve the checkout root and state-registry-lib.sh to read that safe-scratch registry from `.gaia/state-registry.json`.",
+      "maintainer_only": false
+    },
+    {
+      "hook": ".claude/hooks/block-secrets-write.sh",
+      "capabilities": [],
+      "why": "Reads an Edit/Write tool call's new content to deny a write that carries an obvious secret (a cloud key prefix, a GitHub token, a private-key header, or a suspicious dotenv-style assignment). Pure text inspection of the payload already on stdin: no file write, network call, or invocation of another script.",
+      "maintainer_only": false
+    },
+    {
+      "hook": ".claude/hooks/block-selfheal-paths.sh",
+      "capabilities": [
+        "invokes:.claude/hooks/lib/audit-selfheal-paths.sh"
+      ],
+      "why": "Denies a Code Audit Team member's Edit/Write/MultiEdit or Bash write outside its self-heal boundary, by matching the intercepted payload's target path against the shared refusal set. Sources `.claude/hooks/lib/audit-selfheal-paths.sh`, the one refusal-set definition also read by the CI push gate; it issues no write of its own.",
+      "maintainer_only": false
+    },
+    {
+      "hook": ".claude/hooks/block-serena-cross-tree-activation.sh",
+      "capabilities": [
+        "invokes:.gaia/scripts/main-root-lib.sh"
+      ],
+      "why": "Denies a Serena `activate_project` call whose target resolves to a different checkout of this clone than the one the session works in, by comparing the call's argument against the resolved tree identity. Sources main-root-lib.sh to resolve that identity; it issues no filesystem or network command of its own.",
+      "maintainer_only": false
+    },
+    {
+      "hook": ".claude/hooks/block-spec-plan-chain.sh",
+      "capabilities": [
+        "fs-write:.gaia/local/cache/**",
+        "invokes:.gaia/scripts/main-root-lib.sh"
+      ],
+      "why": "Denies a session that authored a SPEC from going on to plan it in the same session, by stamping and reading a session-keyed sentinel under `.gaia/local/cache/`. Sources main-root-lib.sh to resolve the checkout root for that sentinel's path.",
+      "maintainer_only": false
+    },
+    {
+      "hook": ".claude/hooks/block-vitest-globals-tsconfig.sh",
+      "capabilities": [],
+      "why": "Reads an Edit/Write/MultiEdit tool call's target path and new content to deny an edit that adds `vitest/globals` to a tsconfig file. Pure text inspection of the payload already on stdin: no file write, network call, or invocation of another script.",
+      "maintainer_only": false
+    },
+    {
+      "hook": ".claude/hooks/block-worktree-path-mismatch.sh",
+      "capabilities": [
+        "invokes:.gaia/scripts/main-root-lib.sh",
+        "invokes:.gaia/scripts/state-registry-lib.sh"
+      ],
+      "why": "Denies an Edit/Write/MultiEdit whose target path resolves to a checkout other than the linked worktree the session works inside. Sources main-root-lib.sh and state-registry-lib.sh to resolve tree identity and the registry of linked worktrees; it issues no write of its own.",
+      "maintainer_only": false
+    },
+    {
+      "hook": ".claude/hooks/capture-gh-artifact.sh",
+      "capabilities": [
+        "fs-write:**",
+        "invokes:.gaia/scripts/audit-key-lib.sh",
+        "invokes:.gaia/scripts/gh-artifact-lib.sh",
+        "invokes:.gaia/scripts/main-root-lib.sh"
+      ],
+      "why": "Fires on every Bash tool call; when the command is a real `gh pr create` invocation, records the created pull request's number, repo, branch, and session id so a later cost-recording pass can associate a commit-triggered ledger row with the pull request it belongs to. Sources the audit-key, gh-artifact, and main-root libraries; the breadcrumb write lands at a path the gh-artifact library resolves internally rather than one this hook names, which `fs-write:**` stands for. Never calls the network itself; it records metadata the already-completed `gh pr create` returned, it does not repeat or extend that call.",
+      "maintainer_only": false
+    },
+    {
+      "hook": ".claude/hooks/capture-red-observations.sh",
+      "capabilities": [
+        "fs-write:.gaia/local/red-ledger/**",
+        "invokes:.claude/hooks/lib/red-ledger.sh",
+        "invokes:.gaia/scripts/main-root-lib.sh"
+      ],
+      "why": "Fires on every Bash tool call; when the command is a one-shot `pnpm test --run` invocation, re-runs vitest with the json reporter on the same scope and appends every genuinely-failing test to the RED-observation ledger under `.gaia/local/red-ledger/`. Sources `.claude/hooks/lib/red-ledger.sh` for the ledger path and main-root-lib.sh for the checkout root; a scratch copy of the json reporter's output backs the parse before the ledger append.",
+      "maintainer_only": false
+    },
+    {
+      "hook": ".claude/hooks/check-i18n-strings.sh",
+      "capabilities": [
+        "fs-write:.claude",
+        "fs-write:.claude/i18n-strings-checked"
+      ],
+      "why": "Reads a Write tool call's target path and, for a page or component file, prints an advisory reminder about hardcoded JSX strings once per session, tracked by a marker file under `.claude/`. Only writes that marker; never calls the network or invokes another script.",
+      "maintainer_only": false
+    },
+    {
+      "hook": ".claude/hooks/check-story-exists.sh",
+      "capabilities": [],
+      "why": "Reads a Write tool call's target path and, when it is a new component `index.tsx`, prints an advisory reminder to stderr when the sibling Storybook story is missing. Only reads the payload and the filesystem to check for the story's existence; it never writes, calls the network, or invokes another script.",
+      "maintainer_only": false
+    },
+    {
+      "hook": ".claude/hooks/debt-sentinel-touch.sh",
+      "capabilities": [
+        "network",
+        "fs-write:.gaia/local/debt",
+        "fs-write:.gaia/local/debt/refresh-requested",
+        "invokes:.claude/hooks/lib/repo-scope.sh",
+        "invokes:.gaia/scripts/main-root-lib.sh"
+      ],
+      "why": "After a debt-count-mutating `gh` command for this repository (`gh issue create`/`close`/`reopen`/`edit`, `gh pr merge`), sets the debt-count staleness sentinel under `.gaia/local/debt/` so the next statusline tick recomputes the open tech-debt count. Sources the shared repo-scope helper to exempt a command aimed at a different repository and main-root-lib.sh to resolve the checkout root; `network` is the repo-scope helper's own `gh repo view` call, made to confirm which repository the intercepted command targets. Never itself calls `gh`.",
+      "maintainer_only": false
+    },
+    {
+      "hook": ".claude/hooks/debt-session-reconcile.sh",
+      "capabilities": [
+        "fs-write:.gaia/local/debt",
+        "fs-write:.gaia/local/debt/refresh-requested",
+        "invokes:.gaia/scripts/main-root-lib.sh"
+      ],
+      "why": "On session start, when a currently-shown debt count is nonzero, arms the staleness sentinel under `.gaia/local/debt/` so the next statusline tick recomputes it against GitHub. Sources main-root-lib.sh to resolve the checkout root; the sentinel write is local only, and the recompute this schedules runs in a later, separate process this hook never calls out to.",
+      "maintainer_only": false
+    },
+    {
+      "hook": ".claude/hooks/distribution-preflight-check.sh",
+      "capabilities": [
+        "network",
+        "invokes:.claude/hooks/lib/repo-scope.sh"
+      ],
+      "why": "Denies `gh pr create` when a file this branch newly ships has no ship-or-withhold answer in the committed `.gaia/manifest.json`, so a maintainer learns it locally before the equivalent CI job goes red. Sources the shared repo-scope helper to exempt a command aimed at a different repository; `network` is that helper's own `gh repo view` call, made to confirm which repository the intercepted command targets. Never itself writes a file or calls `gh` to create or modify anything: it only inspects the manifest already on disk and denies the pending call.",
+      "maintainer_only": true
+    },
+    {
+      "hook": ".claude/hooks/issue-claim-release.sh",
+      "capabilities": [
+        "network",
+        "github-write",
+        "invokes:.claude/hooks/lib/repo-scope.sh"
+      ],
+      "why": "After a `gh pr merge` for this repository that GitHub confirms landed (`gh pr view --json state`), strips the `in-progress` claim label from every issue the merged pull request closes by keyword (`gh issue edit --remove-label`). Sources the shared repo-scope helper to exempt a command aimed at a different repository; both the confirmation read and the label edit are the source of its `network` and `github-write` reach. Touches no local file: releasing a claim is a GitHub-side label write only.",
+      "maintainer_only": false
+    },
+    {
+      "hook": ".claude/hooks/post-findings-block-on-merge.sh",
+      "capabilities": [
+        "network",
+        "github-write",
+        "tmp",
+        "invokes:.claude/hooks/lib/repo-scope.sh",
+        "invokes:.gaia/scripts/audit-key-lib.sh",
+        "invokes:.gaia/scripts/post-findings-block.sh",
+        "invokes:.gaia/scripts/read-audit-ci-config.sh"
+      ],
+      "why": "On a real `gh pr merge` invocation running under local audit mode, resolves the pull request (`gh pr view`) and calls the post-findings-block producer so a local merge still contributes to the finding-recurrence tally, the same record CI mode already posts. Sources the shared repo-scope helper to exempt a foreign-repo command, the audit-key library, the post-findings-block producer itself, and the audit-CI config reader; `github-write` and the rest of its `network` reach are the producer's own posting call, made with the tally data this hook resolves from the merge, not with any other tool-call content. Never denies the merge or emits a permission decision; a scratch file backs the producer's own working state.",
+      "maintainer_only": false
+    },
+    {
+      "hook": ".claude/hooks/pr-merge-audit-check.sh",
+      "capabilities": [
+        "network",
+        "github-write",
+        "tmp",
+        "fs-write:**",
+        "invokes:.claude/hooks/lib/audit-clearance.sh",
+        "invokes:.claude/hooks/lib/audit-digest.sh",
+        "invokes:.claude/hooks/lib/audit-dispositions.sh",
+        "invokes:.claude/hooks/lib/audit-machinery.sh",
+        "invokes:.claude/hooks/lib/audit-scope.sh",
+        "invokes:.claude/hooks/lib/gaia-version.sh",
+        "invokes:.claude/hooks/lib/repo-scope.sh",
+        "invokes:.gaia/scripts/chore-deps-skip.sh",
+        "invokes:.gaia/scripts/main-root-lib.sh",
+        "invokes:.gaia/scripts/resolve-audit-members.sh"
+      ],
+      "why": "Denies `gh pr merge` until every Code Audit Team member the diff dispatches has cleared HEAD, resolved by content-digest markers under `.gaia/local/audit/`. Sources the audit clearance/digest/dispositions/machinery/scope and gaia-version helpers, the shared repo-scope helper, the chore-deps-skip and main-root libraries, and `resolve-audit-members.sh` to compute the dispatched set. `network` covers both the repo-scope helper's `gh repo view` call and this hook's own read-only `gh api .../commits/.../status` and `gh pr view` calls, made to read merge-gate state, never to transmit the pull request's own diff or description; `github-write` is not declared because every `gh api` call here carries only `--jq`, no mutating method or field flag. `fs-write:**` and `tmp` are the audit-clearance/digest helpers' own scratch and marker writes, at a path their caller supplies.",
+      "maintainer_only": false
+    },
+    {
+      "hook": ".claude/hooks/provision-worktree.sh",
+      "capabilities": [
+        "fs-write:**",
+        "fs-write:.gaia/local",
+        "fs-write:.gaia/local/**",
+        "invokes:.gaia/scripts/link-worktree.sh",
+        "invokes:.gaia/scripts/main-root-lib.sh"
+      ],
+      "why": "On entering or starting a session inside a linked worktree, re-links the shared state the worktree registry declares and regenerates the typed routes the worktree's own branch needs, idempotently. Sources `link-worktree.sh`, which symlinks each shared path under `.gaia/local` from the worktree side to the main checkout, hence `fs-write:.gaia/local` and `fs-write:.gaia/local/**`; the symlink's worktree-side location is wherever the session's own checkout sits, which is what the caller-chosen `fs-write:**` stands for. Sources main-root-lib.sh to resolve the main checkout.",
+      "maintainer_only": false
+    },
+    {
+      "hook": ".claude/hooks/red-verify-commit-check.sh",
+      "capabilities": [
+        "network",
+        "invokes:.claude/hooks/lib/red-ledger.sh",
+        "invokes:.claude/hooks/lib/repo-scope.sh",
+        "invokes:.gaia/scripts/main-root-lib.sh"
+      ],
+      "why": "Denies a `git commit` that introduces a newly-passing test with no matching observed failing run on record, by comparing the working-tree and HEAD test-identity sets for each staged test file. Sources `.claude/hooks/lib/red-ledger.sh` for the ledger lookup, the shared repo-scope helper to exempt a foreign-repo command, and main-root-lib.sh for the checkout root; `network` is the repo-scope helper's own `gh repo view` call. It is a ledger lookup and signal recompute only: it never writes a file or re-runs a test.",
+      "maintainer_only": false
+    },
+    {
+      "hook": ".claude/hooks/serena-code-search-guard.sh",
+      "capabilities": [
+        "fs-write:.gaia/local/cache/shared/serena-guard",
+        "fs-write:.gaia/local/cache/shared/serena-guard/**",
+        "invokes:.gaia/scripts/main-root-lib.sh"
+      ],
+      "why": "Denies a Grep or shell grep/rg/ag call whose pattern is a bare identifier scoped to indexed TS/TSX source, routing it to Serena's symbol tools instead, with the routing decision cached in a state file under `.gaia/local/cache/shared/serena-guard/`. Sources main-root-lib.sh to resolve the checkout root for that cache path.",
+      "maintainer_only": false
+    },
+    {
+      "hook": ".claude/hooks/token-rollup-merge.sh",
+      "capabilities": [
+        "invokes:.claude/hooks/lib/gaia-active-plan.sh",
+        "invokes:.gaia/scripts/ledger-path-lib.sh",
+        "invokes:.gaia/scripts/main-root-lib.sh",
+        "invokes:.gaia/scripts/token-pricing-lib.sh",
+        "invokes:.gaia/scripts/token-rollup.sh"
+      ],
+      "why": "On `gh pr merge`, renders the merging feature's full-cycle token-cost roll-up into the session's context by reading the active plan folder or the ledger's most recent execute record. Sources the gaia-active-plan, ledger-path, main-root, token-pricing, and token-rollup libraries to resolve and read that on-disk state; it only reads, it never writes a file, calls the network, or mutates anything.",
+      "maintainer_only": false
+    },
+    {
+      "hook": ".claude/hooks/token-tally-git-op.sh",
+      "capabilities": [
+        "tmp",
+        "fs-write:**",
+        "fs-write:.gaia/local/cache/**",
+        "fs-write:.gaia/local/telemetry",
+        "fs-write:.gaia/local/telemetry/**",
+        "fs-write:.gaia/local/telemetry/cost.jsonl",
+        "fs-write:.gaia/local/telemetry/tokens.jsonl.bak",
+        "invokes:.claude/hooks/lib/gaia-active-plan.sh",
+        "invokes:.gaia/scripts/audit-key-lib.sh",
+        "invokes:.gaia/scripts/audit-window-lib.sh",
+        "invokes:.gaia/scripts/gh-artifact-lib.sh",
+        "invokes:.gaia/scripts/ledger-path-lib.sh",
+        "invokes:.gaia/scripts/main-root-lib.sh",
+        "invokes:.gaia/scripts/token-pricing-lib.sh",
+        "invokes:.gaia/scripts/token-tally.sh",
+        "invokes:.specify/extensions/gaia/lib/with-ledger-lock.sh"
+      ],
+      "why": "On `git commit`/`git push` inside an active plan's working tree, records this execution session's token tally as a ground-truth ledger row under `.gaia/local/telemetry/`. Sources the gaia-active-plan, audit-key, audit-window, gh-artifact, ledger-path, main-root, token-pricing, and token-tally libraries, plus the shared ledger-lock helper, to resolve association and write the row under mutual exclusion; a scratch file backs the ledger write before its atomic move into place. Never calls the network or emits a permission decision; it only performs the recording side effect.",
+      "maintainer_only": false
+    },
+    {
+      "hook": ".claude/hooks/token-tally-review.sh",
+      "capabilities": [
+        "tmp",
+        "fs-write:**",
+        "fs-write:.gaia/local/cache/**",
+        "fs-write:.gaia/local/telemetry",
+        "fs-write:.gaia/local/telemetry/**",
+        "fs-write:.gaia/local/telemetry/cost.jsonl",
+        "fs-write:.gaia/local/telemetry/tokens.jsonl.bak",
+        "invokes:.claude/hooks/lib/gaia-active-plan.sh",
+        "invokes:.gaia/scripts/audit-key-lib.sh",
+        "invokes:.gaia/scripts/audit-window-lib.sh",
+        "invokes:.gaia/scripts/gh-artifact-lib.sh",
+        "invokes:.gaia/scripts/ledger-path-lib.sh",
+        "invokes:.gaia/scripts/main-root-lib.sh",
+        "invokes:.gaia/scripts/token-pricing-lib.sh",
+        "invokes:.gaia/scripts/token-tally.sh",
+        "invokes:.specify/extensions/gaia/lib/with-ledger-lock.sh"
+      ],
+      "why": "On `gh pr merge` under local audit mode, and again as a Stop-hook backstop for a review that ends without a merge, records a completed code-review-audit run as a standalone `kind:\"review\"` ledger row under `.gaia/local/telemetry/`, deduplicated by review id so both triggers firing in one session write at most one row. Sources the same eight libraries as `token-tally-git-op.sh` to resolve association and perform the write under the shared ledger lock; a scratch file backs the write. Never calls the network or emits a permission decision.",
+      "maintainer_only": false
+    },
+    {
+      "hook": ".claude/hooks/wiki-commit-nudge.sh",
+      "capabilities": [
+        "invokes:.claude/hooks/lib/gaia-ci-defer.sh"
+      ],
+      "why": "On `git commit`, injects a one-line context nudge naming the commit and the current wiki-drift count. Sources `.claude/hooks/lib/gaia-ci-defer.sh` to stand down under CI-managed wiki mode; it reads commit metadata and an on-disk drift count and writes nothing.",
+      "maintainer_only": false
+    },
+    {
+      "hook": ".claude/hooks/wiki-drift-check.sh",
+      "capabilities": [
+        "fs-write:.claude",
+        "fs-write:.claude/wiki-drift-checked",
+        "fs-write:.gaia/local/cache/shared/wiki-base-catchup.report",
+        "invokes:.claude/hooks/lib/gaia-ci-defer.sh"
+      ],
+      "why": "On a user prompt, injects a once-per-session reminder when `wiki/.state.json` has drifted from HEAD, tracked by a marker under `.claude/`. Also drains a base-catch-up report the session-start janitor may have left under `.gaia/local/cache/shared/`, deleting it after printing so the line surfaces exactly once. Sources `.claude/hooks/lib/gaia-ci-defer.sh` to stand down under CI-managed wiki mode.",
+      "maintainer_only": false
+    },
+    {
+      "hook": ".claude/hooks/wiki-recompact-inject.sh",
+      "capabilities": [
+        "fs-write:.claude/wiki-recompact-pending"
+      ],
+      "why": "On the first user prompt after a context compaction, re-injects `wiki/hot.md` into context and clears the compaction sentinel under `.claude/` so the injection fires exactly once per compaction. Reads `wiki/hot.md` and removes the local sentinel file; calls the network to nothing and invokes no other script.",
+      "maintainer_only": false
+    },
+    {
+      "hook": ".claude/hooks/wiki-recompact-sentinel.sh",
+      "capabilities": [
+        "fs-write:.claude",
+        "fs-write:.claude/wiki-recompact-pending"
+      ],
+      "why": "On a context-compaction event, when `wiki/hot.md` exists, drops a sentinel file under `.claude/` for the paired UserPromptSubmit hook to consume, working around builds that reject the upstream prompt-type PostCompact hook. Writes only that sentinel; calls the network to nothing and invokes no other script.",
+      "maintainer_only": false
+    },
+    {
+      "hook": ".claude/hooks/wiki-session-start.sh",
+      "capabilities": [
+        "git-write",
+        "tmp",
+        "fs-write:**",
+        "fs-write:.gaia/local/.mentorship-swept",
+        "fs-write:.gaia/local/audit/**",
+        "fs-write:.gaia/local/cache",
+        "fs-write:.gaia/local/cache/**",
+        "fs-write:.gaia/local/cache/mutation-scratch",
+        "fs-write:.gaia/local/cache/shared",
+        "fs-write:.gaia/local/cache/shared/**",
+        "fs-write:.gaia/local/cache/shared/coaching-active.txt",
+        "fs-write:.gaia/local/cache/shared/wiki-base-catchup.report",
+        "fs-write:.gaia/local/cache/shared/wiki-base-catchup.state",
+        "fs-write:.gaia/local/cache/wiki-promote/**",
+        "fs-write:.gaia/local/cache/worktree-reap-misses.txt",
+        "fs-write:.gaia/local/mentorship.json",
+        "fs-write:.gaia/local/plans/**",
+        "fs-write:.gaia/local/plans/ledger.json",
+        "fs-write:.gaia/local/specs/**",
+        "fs-write:.gaia/local/specs/ledger.json",
+        "fs-write:.gaia/local/telemetry/analytics",
+        "fs-write:.gaia/local/telemetry/cloud",
+        "fs-write:.git/FETCH_HEAD.lock",
+        "fs-write:.git/claude-session-start",
+        "fs-write:.git/shallow.lock",
+        "fs-write:~/.claude/projects/**",
+        "invokes:.claude/hooks/local-janitor.sh",
+        "invokes:.gaia/scripts/audit-respawn-lib.sh",
+        "invokes:.gaia/scripts/audit-respawn-prune.sh",
+        "invokes:.gaia/scripts/cost-represented.sh",
+        "invokes:.gaia/scripts/ledger-path-lib.sh",
+        "invokes:.gaia/scripts/ledger-status-migrate.sh",
+        "invokes:.gaia/scripts/main-root-lib.sh",
+        "invokes:.gaia/scripts/mentorship-cleanup-sweep.sh",
+        "invokes:.gaia/scripts/plan-archive.sh",
+        "invokes:.gaia/scripts/state-registry-lib.sh",
+        "invokes:.gaia/scripts/summary-verify.sh",
+        "invokes:.specify/extensions/gaia/lib/plan-archive-abandoned.sh",
+        "invokes:.specify/extensions/gaia/lib/plan-archive-merged.sh",
+        "invokes:.specify/extensions/gaia/lib/plan-ledger-update.sh",
+        "invokes:.specify/extensions/gaia/lib/spec-archive-abandoned.sh",
+        "invokes:.specify/extensions/gaia/lib/spec-archive-merged.sh",
+        "invokes:.specify/extensions/gaia/lib/with-ledger-lock.sh"
+      ],
+      "why": "On session start, records HEAD to a marker under `.git/` so the paired Stop hook can detect wiki commits, runs a bounded garbage-collection sweep of `.gaia/local` working-state residue (orphaned audit markers, completed plan directories, stray empty directories, the mentorship-feature residue an earlier release left behind), and archives merged or abandoned plan and SPEC folders. Sources main-root-lib.sh, state-registry-lib.sh, and a long chain of janitor, ledger, mentorship-sweep, and plan/spec-archive helpers to do it, `git-write` and `tmp` among them for the archive step's own commits and scratch files. Its widest reach is genuinely caller-directed (`fs-write:**`, the janitor's bounded sweep over whatever `.gaia/local` residue it finds) alongside the many concrete `.gaia/local/**` and `.git/*.lock` paths that sweep and the archive step touch by name. One write destination sits outside the repository entirely and is disclosed rather than hidden behind a repo-relative reading: `fs-write:~/.claude/projects/**` is the mentorship-cleanup-sweep helper deleting an earlier release's leftover mentorship event store, computed profile, install id, and a stale memory-display file, all under the user's own HOME directory Claude-projects tree for this checkout. It deletes only that fixed, named GAIA-owned subtree, never anything else under the user's HOME.",
+      "maintainer_only": false
+    },
+    {
+      "hook": ".claude/hooks/wiki-session-stop.sh",
+      "capabilities": [
+        "fs-write:.claude",
+        "fs-write:.claude/wiki-safety-checked",
+        "fs-write:.git/claude-session-start",
+        "invokes:.claude/hooks/lib/gaia-ci-defer.sh"
+      ],
+      "why": "On session stop, when wiki files were committed this session or the session ended without a full wiki-sync advance, prints a refresh or sync reminder, tracked by marker files under `.claude/` and a session-start marker under `.git/`. Sources `.claude/hooks/lib/gaia-ci-defer.sh` to stand down under CI-managed wiki mode; it writes only its own local markers.",
+      "maintainer_only": false
+    },
+    {
+      "hook": ".claude/hooks/wiki-squash-autocommits.sh",
+      "capabilities": [
+        "network",
+        "github-write",
+        "git-write"
+      ],
+      "why": "At session stop, squashes a trailing run of the upstream wiki plugin's per-edit `wiki: auto-commit` commits into one, and, on `main`, pushes that squashed commit to a new `wiki/*` branch and opens or auto-merges a pull request rather than landing directly on `main`. `git-write` covers the local squash commit and the push; `github-write` and the rest of `network` cover the `gh pr create`/`gh pr merge` calls that land the squashed branch. It only commits, pushes, and opens or merges its own squashed wiki content; it never re-derives or transmits anything from an unrelated tool call.",
+      "maintainer_only": false
+    },
+    {
+      "hook": ".claude/hooks/worthiness-presence-check.sh",
+      "capabilities": [
+        "network",
+        "invokes:.claude/hooks/lib/red-ledger.sh",
+        "invokes:.claude/hooks/lib/repo-scope.sh",
+        "invokes:.claude/hooks/lib/worthiness-ledger.sh",
+        "invokes:.gaia/scripts/main-root-lib.sh"
+      ],
+      "why": "Denies `gh pr merge` when an emergent test the pull request changed has no worthiness-ledger line matching its current content. Sources `.claude/hooks/lib/red-ledger.sh` and `.claude/hooks/lib/worthiness-ledger.sh` for the ledger lookups, the shared repo-scope helper to exempt a foreign-repo command, and main-root-lib.sh for the checkout root; `network` is the repo-scope helper's own `gh repo view` call. It is a ledger lookup and signal recompute only: it never writes a file or re-runs the worthiness evaluator.",
+      "maintainer_only": false
+    }
+  ]
+}

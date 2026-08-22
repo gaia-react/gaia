@@ -19,10 +19,17 @@
 # finds it after the push, which costs the round above, and the pre-dispatch
 # step exists to front-load exactly that.
 #
-# Membership is decided by one question, read from each candidate's own header
-# rather than inferred from its name: is the input the whole tracked tree, with
-# no path-scoped trigger that could select it? The scripts that answer no are
-# listed in WTI_EXCLUDED below with their reason, so a reader can see they were
+# Membership is decided by two questions, read from each candidate's own header
+# rather than inferred from its name. The first accounts for every exclusion
+# but one: is the input the whole tracked tree, with no path-scoped trigger
+# that could select it? The second exists for exactly one member so far: a
+# candidate that answers yes to the first question can still be excluded on
+# cost, when its standalone wall clock is long enough that no per-PR aggregate
+# should absorb it inline. `.gaia/scripts/check-hook-capabilities.sh` is that
+# member; its own dedicated gated CI job runs it against the live tree instead,
+# and its WTI_EXCLUDED reason line carries the measured figure that earned it
+# the exclusion. The candidates that answer no to either question are listed in
+# WTI_EXCLUDED below with their reason, so a reader can see they were
 # considered rather than missed, and .gaia/tests/lib/whole-tree-invariants.bats
 # fails if a candidate appears in neither table. That suite sweeps the five
 # `.sh` naming families that have produced a member (`check-*`, `audit-*-
@@ -33,15 +40,28 @@
 # enumerates every ordinary suite in that directory and would need an exclusion
 # entry per suite saying nothing. The one bats member is named directly instead.
 #
-# Runtime, measured on the tree at the time of writing: the fifteen scripts
+# Runtime, measured on the tree at the time of writing: the sixteen scripts
 # total ~27s, of which check-script-capabilities.sh alone is ~15s (it walks the
 # invocation closure of every allowlisted script), shell-lint ~10s, and the
-# shard suite ~19s; the whole set measures ~58s end to end. That is why there is
+# shard suite ~19s; the whole set measures ~62-66s end to end. That is why there is
 # one tier rather than a fast default plus a named
 # slower tier. A split is worth its second name only once the honest set is
 # slow enough that people skip it, and an aggregate slow enough to skip is
 # worse than none; a minute against the price of an audit round is not that.
 # Re-measure before adding a member that changes the order of magnitude.
+#
+# The staleness lever: nothing above used to notice a member added without
+# this figure catching up, which is exactly what happened here (this comment
+# said "fifteen" while WTI_SCRIPTS already held sixteen). main() checks
+# WTI_SCRIPTS's live count against WTI_SCRIPTS_COUNT_ASOF below and refuses to
+# run when they disagree, so adding or removing a member forces this paragraph
+# to be re-visited rather than drifting unnoticed again.
+#
+# What the lever does not catch, stated so it is not mistaken for more than it
+# is: only WTI_SCRIPTS_COUNT_ASOF is machine-checked. The word "sixteen" in the
+# paragraph above is prose and nothing compares it to anything, so the same
+# drift can recur one bump later; and a member swapped for another holds the
+# count, so the runtime figures can go stale with the lever satisfied.
 #
 # No member is ever skipped. A missing member path, and a bats member with no
 # `bats` on PATH, both count as failures rather than passing quietly, because a
@@ -50,7 +70,7 @@
 #
 # Members are invoked from the current directory, so run it from the repository
 # root. That is also what lets the sibling bats suite exercise the aggregation
-# against a fixture tree of stubs instead of paying the real ~58s.
+# against a fixture tree of stubs instead of paying the real ~62-66s.
 
 set -uo pipefail
 
@@ -74,6 +94,11 @@ readonly WTI_SCRIPTS='.gaia/scripts/check-audit-base-derivation.sh
 .gaia/scripts/verify-audit-roster.sh
 .gaia/tests/shell-lint.sh'
 
+# The staleness lever's baseline: WTI_SCRIPTS's own member count at the time
+# the runtime paragraph above was last measured. main() compares the live
+# count against this and refuses to run on a mismatch, per that paragraph.
+readonly WTI_SCRIPTS_COUNT_ASOF=16
+
 # Members invoked as `bats <path>`. The shard partition is a whole-tree
 # invariant in the same sense as the scripts above: its input is every .bats
 # file's weight, so adding or growing one anywhere can repack a leg and leave
@@ -96,7 +121,8 @@ readonly WTI_EXCLUDED='.gaia/scripts/check-debt-issue-metadata.sh|argument-drive
 .gaia/tests/run-bats-parallel.sh|harness plumbing, the hand-run entry point for the same partition
 .gaia/scripts/verify-cli-bundle-fresh.sh|rebuilds the CLI via pnpm bundle; a build step needing installed dependencies, not a read of the tree
 .gaia/scripts/verify-required-checks.sh|reads the live GitHub ruleset over the network, so its subject is repository configuration rather than the tree
-.gaia/tests/whole-tree-invariants.sh|this runner; a member of itself would recurse'
+.gaia/tests/whole-tree-invariants.sh|this runner; a member of itself would recurse
+.gaia/scripts/check-hook-capabilities.sh|excluded on cost: 66-70s median standalone gate-mode cost, measured on the manifest-complete tree over two independent n=3 samples on the same host (medians 66.4s and 70.3s; the gap is host load), and 83s measured on an ubuntu-latest runner, which is the slower host; it runs instead in its own dedicated gated job in .github/workflows/audit-ci-tests.yml'
 
 usage() {
   cat <<EOF
@@ -182,6 +208,17 @@ main() {
       return 2
       ;;
   esac
+
+  # The staleness lever (see the comment above WTI_SCRIPTS_COUNT_ASOF): a
+  # member added or removed without re-measuring the runtime paragraph above
+  # stops the run here instead of drifting unnoticed.
+  local live_count
+  live_count="$( printf '%s\n' "$WTI_SCRIPTS" | grep -c . )"
+  if [ "$live_count" -ne "$WTI_SCRIPTS_COUNT_ASOF" ]; then
+    printf '%s: WTI_SCRIPTS holds %s members but the runtime paragraph above was last measured at %s; re-measure it and update both numbers.\n' \
+      "$PROG" "$live_count" "$WTI_SCRIPTS_COUNT_ASOF" >&2
+    return 2
+  fi
 
   local path
   while IFS= read -r path; do

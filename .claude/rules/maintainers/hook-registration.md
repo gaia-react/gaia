@@ -2,11 +2,12 @@
 paths:
   - '.claude/hooks/**/*.sh'
   - '.claude/rules/**/*.md'
+  - '.claude/settings.json'
 ---
 
 # Hook and Rule Registration
 
-Adding a `.sh` file under `.claude/hooks/**`, or a `.md` file under `.claude/rules/**`, carries registration obligations that no line of the diff shows. Whole-directory checkers enforce them from the bats suites `audit-ci-tests.yml` runs, and neither checker belongs to the Quality Gate or any agent's stated oracle set, so a change can pass every local check and every audit round and red afterward on a file nobody was told to touch.
+Adding a `.sh` file under `.claude/hooks/**`, adding a `.md` file under `.claude/rules/**`, or registering a hook in `.claude/settings.json` carries registration obligations that no line of the diff shows. Whole-set checkers enforce them in CI, and none of them belongs to the Quality Gate or any agent's stated oracle set, so a change can pass every local check and every audit round and red afterward on a file nobody was told to touch.
 
 ## Rule
 
@@ -30,6 +31,22 @@ bash .gaia/scripts/audit-rules-changed-complete.sh
 ```
 
 Run both before opening the pull request. The second walks tracked files, so `git add` the new file first or it reports green on one it cannot see. The first walks the directory itself and catches an untracked hook either way.
+
+## Capability obligation
+
+**Every hook the `hooks` block of `.claude/settings.json` registers needs an entry in `.gaia/hook-capabilities.json`.** The entry declares every capability the hook reaches for beyond itself and a `why`. The obligated set is derived from the registration at run time, so a newly registered hook carries a new obligation the moment it is registered, with no second list to remember to edit. A registration with no entry, an entry no registration names, and two entries naming one hook are each a finding:
+
+```bash
+bash .gaia/scripts/check-hook-capabilities.sh
+```
+
+The same check also finds a registration whose command names a `.sh` path in a form it cannot reduce to a repo-relative path, or names no shell script at all; the fix is rewriting the registration to name a script file, the convention every registration on this tree already follows.
+
+It needs bash 5. On stock macOS `/bin/bash`, which is 3.2, the closure walk loses whole files' records and reports a clean tree as `SURPLUS`, and the reach it drops can never surface as `UNDECLARED`. The check re-execs itself under a Homebrew bash 5 when it finds one and refuses with a message when it does not, so this command cannot quietly disagree with CI; if it refuses, install a bash 5 rather than reading the run that got that far.
+
+`.gaia/hook-scopes.json` and `.gaia/hook-capabilities.json` cover different sets and declare different things. `.gaia/hook-scopes.json` covers every `.sh` under `.claude/hooks/**` and declares which tree the hook's state belongs to. `.gaia/hook-capabilities.json` covers only the registered hooks and declares what the hook reaches for beyond itself. Neither manifest derives its coverage from the other.
+
+The check catches these at review time; nothing mediates a registered hook at run time.
 
 ## Why
 

@@ -430,6 +430,12 @@ jobs:
               # would skip on the very change that breaks it.
               - '.gaia/script-capabilities.json'
               - '.gaia/script-capabilities.schema.json'
+              # Same reasoning, for the sibling hook-capabilities scenario:
+              # 01-files-present.sh reads $STAGING/.gaia/hook-capabilities.json
+              # directly, and a manifest-only or schema-only edit touches no
+              # other pattern here.
+              - '.gaia/hook-capabilities.json'
+              - '.gaia/hook-capabilities.schema.json'
               # The release manifest, read by two scenarios: 01-files-present.sh
               # walks its files{} keys to assert every listed path is present in
               # the staged tree, and 16-audit-remit-parity.sh reads the roster

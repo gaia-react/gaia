@@ -670,8 +670,8 @@ PY
 @test "W3 adversarial: a bare true aggregator step is caught" {
   require_yaml_parser
   local doctored="$BATS_TEST_TMPDIR/w3.yml"
-  local replacement=$'      - name: Require every shard to have succeeded\n        run: true'
-  replace_from "$WORKFLOW" "      - name: Require every shard to have succeeded" "$replacement" "$doctored"
+  local replacement=$'      - name: Require every shard and the live-tree job to have succeeded\n        run: true'
+  replace_from "$WORKFLOW" "      - name: Require every shard and the live-tree job to have succeeded" "$replacement" "$doctored"
 
   [ "$(read_wf aggok "$doctored" audit-ci-tests)" = "no" ] || {
     echo "a bare 'true' step still read as adjudicating the shard result" >&2

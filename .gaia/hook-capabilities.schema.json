@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GAIA hook capability manifest",
+  "description": "Declares what each hook registered in .claude/settings.json's `hooks` configuration reaches for: network, github-write, git-write, fs-write, tmp, invokes. A maintainer-side check reconciles the declaration against the hook's real closure at review time; a malformed entry fails this cheap structural validation before that reconciliation runs.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "hooks"],
+  "properties": {
+    "$schema": { "type": "string", "minLength": 1 },
+    "hooks": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/hookEntry" }
+    }
+  },
+  "$defs": {
+    "hookEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hook", "capabilities", "why", "maintainer_only"],
+      "properties": {
+        "hook": {
+          "type": "string",
+          "pattern": "^[^/].*\\.sh$",
+          "description": "Repo-relative path to a hook registered in .claude/settings.json's `hooks` configuration (never a leading /). Unique across the manifest; a second entry naming the same hook is a DUPLICATE finding, not a silent last-wins."
+        },
+        "capabilities": {
+          "type": "array",
+          "minItems": 0,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/capabilityTerm" },
+          "description": "The hook's declared reach, as vocabulary terms. An empty array is legal and meaningful: a hook that reaches for none of the six terms declares nothing. The reconciling check's declared-but-unreached direction (a SURPLUS finding) is what keeps an empty array honest rather than a place to hide unused reach."
+        },
+        "why": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Plain-language reason this hook's declared capabilities are its whole reach: what the hook does and why these terms, and no others, cover it."
+        },
+        "maintainer_only": {
+          "type": "boolean",
+          "description": "Whether this hook is withheld from the shipped release. Required on every entry (an absent key is never treated as false) and reconciled against .gaia/release-exclude in GAIA's own tree only, since .gaia/release-exclude is itself release-excluded and unavailable to an adopter checkout."
+        },
+        "waived": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/waiver" }
+        }
+      }
+    },
+    "waiver": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["capability", "why"],
+      "description": "A waiver suppresses both reconciliation directions (an UNDECLARED finding and a SURPLUS finding) for exactly one hook-capability pair, and suppresses no other finding class: NO-ENTRY, ORPHAN, DUPLICATE, BAD-SCHEMA, BAD-TERM, BAD-REGISTRATION, UNRESOLVED, MARKING, and LOCAL-REGISTRATION are never waivable. A waived pair still prints its WAIVER line on every run, passing or failing.",
+      "properties": {
+        "capability": { "$ref": "#/$defs/capabilityTerm" },
+        "why": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Plain-language reason this one capability is waived for this one hook."
+        }
+      }
+    },
+    "capabilityTerm": {
+      "type": "string",
+      "pattern": "^(network|github-write|git-write|tmp|fs-write:(~/[^ ~]*|[^ ~]+)|invokes:[^/ ][^ ]*)$",
+      "description": "One of six vocabulary terms: network (any outbound call), github-write (an authenticated mutating gh verb), git-write (a commit, tag, or branch mutation), fs-write:<glob> (a write, described by a repo-relative glob; the exact term fs-write:** is a sentinel for a write wherever the caller points the hook, and covers only itself, so a concrete write alongside it is still declared separately), tmp (a write into the system temporary directory), invokes:<path> (a call into another script, sourced or executed). JSON Schema draft 2020-12 forbids lookahead, so two rules are checker-side assertions rather than schema-enforceable: an invokes: target carries no .. segment and names a file that exists, and a repo-relative fs-write: glob carries no leading / and no .. segment, and carries a literal prefix unless it is the exact ** sentinel, so no prefix-less glob can stand in for a blanket declaration. One fs-write: destination sits outside the repository on purpose: a glob beginning with the two literal characters ~/ names a path under the user's home directory, the one root outside this checkout a hook can reach. That form alone is schema-validated directly, not left to the checker: a bare ~, a ~user/ form, and a ~ anywhere but the leading ~/ are all rejected."
+    }
+  }
+}
