@@ -563,6 +563,16 @@ const REACH_GATED_STEPS: readonly string[] = [
   'Run Vitest tests',
 ];
 
+// The operand each of those gates must carry at the top level of its `||`
+// chain. Asserting the whole `if:` merely CONTAINS it would pass a
+// `code == 'true' && reach == 'true'` rewrite, under which a wiki-only pull
+// request resolves `code=false`, the whole gate false, and the step skips --
+// the #1524 shape this output exists to close, reintroduced under a guard that
+// still reads green. Splitting on `||` is what makes the assertion say `reach`
+// can arm the step ON ITS OWN; it pins the operator rather than the token, and
+// unlike whole-string equality it stays true if the operands are reordered.
+const REACH_OPERAND = "steps.filter.outputs.reach == 'true'";
+
 type WorkflowStep = {
   readonly id?: string;
   readonly if?: string;
@@ -749,7 +759,10 @@ describe('CLI subcommand reachability guard', () => {
       const ungated = REACH_GATED_STEPS.filter((name) => {
         const step = steps.find((candidate) => candidate.name === name);
 
-        return !step?.if?.includes("steps.filter.outputs.reach == 'true'");
+        return !step?.if
+          ?.split('||')
+          .map((operand) => operand.trim())
+          .includes(REACH_OPERAND);
       });
 
       expect(ungated).toEqual([]);
