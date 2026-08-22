@@ -58,6 +58,7 @@ _lib="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)"
 # shellcheck source=/dev/null
 [ -n "${_lib:-}" ] && [ -f "$_lib/repo-scope.sh" ] && . "$_lib/repo-scope.sh"
 type cmd_targets_foreign_repo_slug >/dev/null 2>&1 || exit 0
+type gaia_gh_merge_ref_to_home_pr >/dev/null 2>&1 || exit 0
 if cmd_targets_foreign_repo_slug "$cmd"; then
   exit 0
 fi

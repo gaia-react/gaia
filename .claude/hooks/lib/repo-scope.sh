@@ -521,16 +521,22 @@ gaia_gh_merge_ref_to_home_pr() {
 
   gaia_repo_scope_resolve_home || return 1
 
-  # Matched no tighter than gh matches it, in both places gh is looser. Its
-  # own URL matcher is `^/([^/]+)/([^/]+)/pull/(\d+)` against the parsed path,
-  # UNANCHORED at the end, and it compares `u.Hostname()`, which drops a port.
-  # Anchoring at the number rejects the URL the Files tab hands out
-  # (`.../pull/7/files`) and every `?`/`#` suffix, and comparing the raw
-  # authority rejects `github.com:443`; gh merges the home pull request each
-  # of those names while a tighter matcher here declines and the consumer acts
-  # on nothing. The fail direction is safe, so the cost is a silent no-op
-  # rather than a wrong write, which is what makes matching gh a correctness
-  # question about coverage rather than about safety.
+  # Two shapes are matched as loosely as gh matches them; everywhere else this
+  # stays deliberately tighter, so the first half is not a rule to follow gh
+  # everywhere. gh's own URL matcher is `^/([^/]+)/([^/]+)/pull/(\d+)` against
+  # the parsed path, UNANCHORED at the end, and it compares `u.Hostname()`,
+  # which drops both a port and any userinfo.
+  #
+  # Followed: a `/`, `?`, or `#` suffix, the Files tab's own address being
+  # `.../pull/7/files`, and a `:port` on the authority. gh merges the home
+  # pull request each of those names, so declining one costs the consumer a
+  # merge it should have acted on, which is the whole reason to loosen.
+  #
+  # Not followed: a suffix has to start with a separator, so `/pull/7files`
+  # declines where gh's unanchored regex reads pull request 7, and userinfo
+  # stays on the compared authority, so `https://user@github.com/...` declines
+  # too. Every divergence that remains declines, which is this function's safe
+  # direction, so each costs a silent no-op rather than a wrong write.
   url_re='^[a-zA-Z][a-zA-Z0-9+.-]*://([^/]+)/([^/]+/[^/]+)/pull/([0-9]+)([/?#].*)?$'
   [[ "$ref" =~ $url_re ]] || return 1
   host=$(printf '%s' "${BASH_REMATCH[1]}" | tr '[:upper:]' '[:lower:]')

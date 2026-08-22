@@ -140,11 +140,17 @@ resolve() {
   [ "$(resolve 'https://ghe.example.com/acme/widgets/pull/7/files')" = "decline" ]
 }
 
-@test "h12: a digit run continuing past the number declines" {
-  # The relaxation's own limit, and the reason it is written as a separator
-  # class rather than as `.*`: `7files` is not a suffix on pull request 7, it
-  # is an unrecognized shape, and declining is this function's answer to one.
+@test "h12: the shapes gh accepts and this deliberately does not" {
+  # The relaxation's own limits, pinned so the lib's comment about them is a
+  # claim that re-checks itself. gh reads pull request 7 out of both of these,
+  # so a reader who took "follow gh" as the rule would loosen the separator
+  # class to `.*` and strip userinfo, and only this case would object.
+  #
+  # First: a suffix has to start with a separator, so `7files` is not pull
+  # request 7 with a suffix, it is an unrecognized shape. Second: userinfo
+  # stays on the compared authority, where gh's `u.Hostname()` drops it.
   [ "$(resolve 'https://github.com/acme/widgets/pull/7files')" = "decline" ]
+  [ "$(resolve 'https://user@github.com/acme/widgets/pull/7')" = "decline" ]
 }
 
 @test "h13: the default port resolves, as gh's own Hostname() drops it" {
