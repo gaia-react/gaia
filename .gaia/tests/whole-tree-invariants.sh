@@ -96,7 +96,8 @@ readonly WTI_EXCLUDED='.gaia/scripts/check-debt-issue-metadata.sh|argument-drive
 .gaia/tests/run-bats-parallel.sh|harness plumbing, the hand-run entry point for the same partition
 .gaia/scripts/verify-cli-bundle-fresh.sh|rebuilds the CLI via pnpm bundle; a build step needing installed dependencies, not a read of the tree
 .gaia/scripts/verify-required-checks.sh|reads the live GitHub ruleset over the network, so its subject is repository configuration rather than the tree
-.gaia/tests/whole-tree-invariants.sh|this runner; a member of itself would recurse'
+.gaia/tests/whole-tree-invariants.sh|this runner; a member of itself would recurse
+.gaia/scripts/check-hook-capabilities.sh|provisional: pending the Phase-5 measured standalone cost before table membership is decided'
 
 usage() {
   cat <<EOF

@@ -127,6 +127,8 @@
 .gaia/scripts/check-script-capabilities.sh
 # The static-analysis half of check-script-capabilities.sh, its only caller; it has no adopter surface on its own.
 .gaia/scripts/capability-oracle-lib.sh
+# Gates GAIA's own pull requests from the release-excluded Audit CI Tests workflow, on the same reasoning as check-script-capabilities.sh above; shipping it would fail an adopter build over code GAIA does not own.
+.gaia/scripts/check-hook-capabilities.sh
 
 # --- 2. Maintainer-only wiki content ---
 # Internal vault administration files and team-specific knowledge that
