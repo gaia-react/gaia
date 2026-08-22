@@ -449,6 +449,14 @@ jobs:
               # very suite that guards it.
               - '.gaia/script-capabilities.json'
               - '.gaia/script-capabilities.schema.json'
+              # check-hook-capabilities.bats (.gaia/scripts/tests/) asserts
+              # coverage + conformance of the hook-capabilities manifest
+              # against the checker; a manifest-only edit touches neither
+              # .gaia/scripts/** nor .claude/settings.json above, so without
+              # these two lines it would match no pattern here and skip the
+              # very suite that guards it.
+              - '.gaia/hook-capabilities.json'
+              - '.gaia/hook-capabilities.schema.json'
               # .gaia/release-exclude is the authority check-script-capabilities.sh
               # reconciles maintainer_only against (C-10): a change to the
               # release boundary is exactly what makes that marking wrong, and

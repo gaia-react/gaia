@@ -106,6 +106,22 @@ transforms:
       - path: "hooks.PreToolUse[].hooks[]"
         match: {command: ".claude/hooks/distribution-preflight-check.sh"}
 
+  # .gaia/hook-capabilities.json's own maintainer-only row, alongside the
+  # settings.json strip above. distribution-preflight-check.sh is
+  # release-excluded, so leaving its manifest entry in place would ship an
+  # entry no shipped registration names, an ORPHAN by the manifest's own
+  # coverage rule, on every adopter clone, undetectably, because the checker
+  # that would catch it is release-excluded too.
+  # Deliberately diverges from .gaia/hook-scopes.json, which ships its own
+  # preflight entry unscrubbed: that manifest carries no coverage rule an
+  # unscrubbed entry could contradict, and this one does.
+  - type: json-strip-array-element
+    paths:
+      - ".gaia/hook-capabilities.json"
+    selectors:
+      - path: "hooks[]"
+        match: {hook: ".claude/hooks/distribution-preflight-check.sh"}
+
   # Maintainer-audience entries in the label registry. `surface:adopter` and
   # `surface:maintainer` classify a defect against GAIA's own distribution
   # boundary, and the forensics-audience entries name a workflow an adopter
@@ -211,6 +227,15 @@ transforms:
           - "e\\.g\\.\\s*`?SPEC-[0-9]{3,}"
 
       # ---- Release-excluded paths leaked into shipped surfaces ----
+      # This check's `scope: ["**"]` already reaches .gaia/hook-capabilities.json
+      # and .gaia/hook-capabilities.schema.json, the whole staging tree being
+      # the scope (see the comment on the six token-leak checks above), so a
+      # maintainer-only path referenced inside either shipped file's own prose
+      # is already caught with no scope edit owed here. What this pattern does
+      # NOT catch is prose that names a maintainer-only concept with no path in
+      # it (e.g. ".gaia/script-capabilities.json"'s own "never ships to an
+      # adopter checkout" wording): that class is the shipped-`why` authoring
+      # rules' job, not this check's.
       # Every directory alternative ends `\b`, never a trailing `/`. A trailing
       # slash matches only a reference that continues past the directory name,
       # so a bare-directory mention of the same release-excluded tree passes
