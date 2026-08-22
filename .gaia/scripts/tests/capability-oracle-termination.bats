@@ -459,14 +459,27 @@ EOF
   grep -qF -- 'fs-write:.git/FETCH_HEAD.lock' <<<"$output"
 }
 
-@test "idiom: --show-toplevel names the checkout, not the git directory, and does not reduce" {
-  write_hook git-dir-neg.sh <<'EOF'
+@test "idiom: --show-toplevel names the checkout, so a write under it is repo-relative" {
+  write_hook top-level.sh <<'EOF'
 top=$(git rev-parse --show-toplevel 2>/dev/null || true)
-touch "$top/FETCH_HEAD.lock"
+touch "$top/.gaia/local/probe.lock"
 EOF
-  run sites .claude/hooks/git-dir-neg.sh
+  run sites .claude/hooks/top-level.sh
   [ "$status" -eq 0 ]
-  grep -qF -- 'fs-write:.git' <<<"$output" && return 1
+  # The checkout root, not the git directory: reading it as `.git` would name a
+  # path beside the repository that this write never touches.
+  grep -qF -- 'fs-write:.git/' <<<"$output" && return 1
+  grep -qF -- 'fs-write:.gaia/local/probe.lock' <<<"$output"
+}
+
+@test "idiom: a rev-parse flag outside the two closed sets does not reduce" {
+  write_hook top-level-neg.sh <<'EOF'
+top=$(git rev-parse --verify HEAD 2>/dev/null || true)
+touch "$top/probe.lock"
+EOF
+  run sites .claude/hooks/top-level-neg.sh
+  [ "$status" -eq 0 ]
+  grep -qF -- 'fs-write:probe.lock' <<<"$output" && return 1
   grep -qF -- 'UNRES	' <<<"$output"
 }
 
@@ -545,10 +558,24 @@ EOF
   [ "$status" -eq 0 ]
   # The write lands outside the checkout entirely. Reading the home directory as
   # the repo root would report it as a write into THIS repo's .claude/projects/,
-  # a path the script never touches.
+  # a path the script never touches. The `~` root is what keeps the reach
+  # declarable without ever spelling it as one of this repository's own paths.
+  grep -qxF -- 'TERM	fs-write:.claude/projects/**	.claude/hooks/home-rooted.sh:3' <<<"$output" && return 1
+  grep -qF -- 'fs-write:~/.claude/projects/probe/gaia' <<<"$output"
+}
+
+@test "idiom: a home directory the home hop cannot see stays unresolved" {
+  write_hook home-rooted-neg.sh <<'EOF'
+home_dir="$(getent passwd "$USER" | cut -d: -f6)"
+mkdir -p "$home_dir/.claude/projects/probe"
+EOF
+  run sites .claude/hooks/home-rooted-neg.sh
+  [ "$status" -eq 0 ]
+  # The guard, not the hop, answers here: an unrecognized home derivation must
+  # not fall through to the root reading and be claimed as this repository.
   grep -qF -- 'fs-write:.claude/projects' <<<"$output" && return 1
-  grep -qF -- 'fs-write:gaia' <<<"$output" && return 1
-  grep -qF -- 'UNRES	' <<<"$output"
+  grep -qF -- 'fs-write:~' <<<"$output" && return 1
+  true
 }
 
 @test "idiom: a variable assigned a root plus a literal is not itself read as the root" {
@@ -562,8 +589,146 @@ EOF
   [ "$status" -eq 0 ]
   # `cache_dir` is root + `.gaia/local/cache`, so answering `cache` would name a
   # directory at the repo root that nothing writes. A shorter, wrong path is
-  # worse than saying the target is unresolved, because it reaches the manifest.
-  grep -qF -- 'fs-write:cache' <<<"$output" && return 1
+  # worse than the full one, because it reaches the manifest.
+  grep -qxF -- 'TERM	fs-write:cache	.claude/hooks/root-plus-literal.sh:4' <<<"$output" && return 1
+  grep -qF -- 'fs-write:.gaia/local/cache' <<<"$output"
+}
+
+@test "idiom: a checkout-root hop joined to a caller-named remainder is the caller's, not a path" {
+  write_hook root-plus-arg.sh <<'EOF'
+raw="$1"
+root=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
+target="$root/$raw"
+rm -rf -- "$target"
+EOF
+  run sites .claude/hooks/root-plus-arg.sh
+  [ "$status" -eq 0 ]
+  # The hop contributes no literal prefix of its own, so joining a reference
+  # onto it leaves a first segment that is not a path. `**` is the term for a
+  # directory the caller designates; anything narrower would be invented.
+  grep -qF -- 'fs-write:**' <<<"$output"
+}
+
+@test "idiom: the ledger resolver reduces an anchored write to a repo-relative path" {
+  write_hook ledger-resolver.sh <<'EOF'
+ledger="$(gaia_resolve_ledger_path "$LEDGER_OVERRIDE")"
+mv "$ledger" "$ledger.bak"
+EOF
+  run sites .claude/hooks/ledger-resolver.sh
+  [ "$status" -eq 0 ]
+  grep -qF -- 'fs-write:.gaia/local/telemetry/cost.jsonl.bak' <<<"$output"
+}
+
+@test "idiom: the red-ledger resolver reduces to its keyed directory's glob" {
+  write_hook red-ledger-resolver.sh <<'EOF'
+ledger=$(red_ledger_path "$tree_root") || exit 0
+touch "$ledger"
+EOF
+  run sites .claude/hooks/red-ledger-resolver.sh
+  [ "$status" -eq 0 ]
+  # The per-tree key segment is chosen at run time, so the honest term
+  # generalizes from the literal prefix in front of it.
+  grep -qF -- 'fs-write:.gaia/local/red-ledger/**' <<<"$output"
+}
+
+@test "idiom: a dirname substitution takes the directory of a target the file locates" {
+  write_hook dirname-hop.sh <<'EOF'
+ledger="$(gaia_resolve_ledger_path "")"
+ledger_dir="$(dirname "$ledger")"
+mv "$ledger_dir/tokens.jsonl" "$ledger_dir/tokens.jsonl.bak"
+EOF
+  run sites .claude/hooks/dirname-hop.sh
+  [ "$status" -eq 0 ]
+  grep -qF -- 'fs-write:.gaia/local/telemetry/tokens.jsonl.bak' <<<"$output"
+}
+
+@test "idiom: a dirname substitution over an unresolvable operand stays unresolved" {
+  write_hook dirname-hop-neg.sh <<'EOF'
+ledger="$(some_unknown_resolver)"
+ledger_dir="$(dirname "$ledger")"
+touch "$ledger_dir/tokens.jsonl.bak"
+EOF
+  run sites .claude/hooks/dirname-hop-neg.sh
+  [ "$status" -eq 0 ]
+  grep -qF -- 'fs-write:tokens.jsonl.bak' <<<"$output" && return 1
+  grep -qF -- 'UNRES	' <<<"$output"
+}
+
+@test "idiom: a cd-and-pwd substitution reads as its own operand" {
+  write_hook cd-pwd.sh <<'EOF'
+repo_root="$(cd "${1%/}" 2>/dev/null && pwd -P)" || exit 0
+sentinel="$repo_root/.gaia/local/.swept"
+touch "$sentinel"
+EOF
+  run sites .claude/hooks/cd-pwd.sh
+  [ "$status" -eq 0 ]
+  # The operand is a positional, so the caller-supplied test decides: the
+  # literal remainder names a path this tree has, which is what tells a
+  # checkout root from a caller-designated directory.
+  grep -qF -- 'fs-write:.gaia/local/.swept' <<<"$output"
+}
+
+@test "idiom: a cd-and-pwd substitution onto a caller-named remainder stays the caller's" {
+  write_hook cd-pwd-neg.sh <<'EOF'
+lock_dir="$(cd "${1%/}" 2>/dev/null && pwd -P)" || exit 0
+touch "$lock_dir/no-such-top-level/probe.lock"
+EOF
+  run sites .claude/hooks/cd-pwd-neg.sh
+  [ "$status" -eq 0 ]
+  # The literal remainder names nothing this tree has, so the operand is a
+  # directory the caller picked rather than a checkout root.
+  grep -qF -- 'fs-write:no-such-top-level' <<<"$output" && return 1
+  grep -qF -- 'fs-write:**' <<<"$output"
+}
+
+@test "idiom: a variable bound by a for-loop over a glob resolves to the glob's own root" {
+  write_hook loop-for.sh <<'EOF'
+root=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
+audit_dir="$root/.gaia/local/audit"
+for marker in "$audit_dir"/*.ok "$audit_dir"/*.refused; do
+  rm -f -- "$marker"
+done
+EOF
+  run sites .claude/hooks/loop-for.sh
+  [ "$status" -eq 0 ]
+  grep -qF -- 'fs-write:.gaia/local/audit/**' <<<"$output"
+}
+
+@test "idiom: a for-loop over a command substitution binds nothing the oracle can read" {
+  write_hook loop-for-neg.sh <<'EOF'
+for marker in $(list_markers); do
+  rm -f -- "$marker"
+done
+EOF
+  run sites .claude/hooks/loop-for-neg.sh
+  [ "$status" -eq 0 ]
+  grep -qF -- 'fs-write:.gaia' <<<"$output" && return 1
+  grep -qF -- 'UNRES	' <<<"$output"
+}
+
+@test "idiom: a variable bound by a find piped into read resolves to the find root's glob" {
+  write_hook loop-read.sh <<'EOF'
+root=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
+cache_dir="$root/.gaia/local/cache"
+find "$cache_dir" -maxdepth 2 -name 'renders.json' -print 2>/dev/null | \
+  while IFS= read -r hit; do
+    rm -rf -- "$(dirname "$hit")"
+  done
+EOF
+  run sites .claude/hooks/loop-read.sh
+  [ "$status" -eq 0 ]
+  grep -qF -- 'fs-write:.gaia/local/cache/**' <<<"$output"
+}
+
+@test "idiom: a read loop fed by anything but a find binds nothing the oracle can read" {
+  write_hook loop-read-neg.sh <<'EOF'
+jq -r '.paths[]' manifest.json | \
+  while IFS= read -r hit; do
+    rm -rf -- "$hit"
+  done
+EOF
+  run sites .claude/hooks/loop-read-neg.sh
+  [ "$status" -eq 0 ]
   grep -qF -- 'UNRES	' <<<"$output"
 }
 

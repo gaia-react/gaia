@@ -256,8 +256,22 @@ _gaia_hookcap_term_ok() {
       value="${term#fs-write:}"
       [ -n "$value" ] || return 1
       case "$value" in
-        /*|'~'*|*' '*) return 1 ;;
+        /*|*' '*) return 1 ;;
         ..|../*|*/../*|*/..) return 1 ;;
+      esac
+      # A leading `~/` is the user's home directory, the one root outside this
+      # repository a hook writes into, and the term has to say so rather than
+      # read as a repo-relative path. Only that spelling: a bare `~`, a
+      # `~user/` form, and a `~` anywhere but position one all stay rejected,
+      # so the prefix a reader can act on is unambiguous. The literal-prefix
+      # rule below still applies to it, `~/.claude/projects` being the prefix.
+      # The `~` is data here, a prefix inside a declared term, so it must stay
+      # a literal character rather than expanding to this machine's own home
+      # path; quoting it is what keeps the check portable.
+      # shellcheck disable=SC2088
+      case "$value" in
+        '~/'?*) case "${value#'~/'}" in *'~'*) return 1 ;; esac ;;
+        *'~'*) return 1 ;;
       esac
       if [ "$value" != '**' ]; then
         case "${value%%[*?[]*}" in '') return 1 ;; esac
