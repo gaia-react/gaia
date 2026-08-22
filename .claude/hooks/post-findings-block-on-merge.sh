@@ -43,11 +43,12 @@ fi
 # the ordinary fork topology) as home; this hook would then resolve THIS
 # repository's pull request of that number and post onto a pull request the
 # command never touched. The act-on-home entry point compares the whole
-# HOST/OWNER/REPO, and resolves an ambiguous EXPLICIT target to "foreign" so an
-# unidentifiable one declines rather than acts. A command naming no explicit
-# target still runs through the inherited cwd arms, which fail toward home, so
-# a redirection they do not model (`pushd`, a subshell `(cd ...)`, an
-# unresolvable `cd`) reaches the posting path; see that lib's own note.
+# HOST/OWNER/REPO, and it reads the merge with the lib's first-command scan, so
+# every ambiguity resolves to "foreign" and declines rather than acts. The cost
+# is that a merge run behind any earlier command in the same tool call posts
+# nothing; the merge workflow runs the merge as its own step, and the
+# alternative is a prefix nobody can read exactly, whose misreads all land on a
+# post onto a pull request in a repository the merge never named.
 #
 # Sourced from this hook's own on-disk location, never cwd. A cwd-relative
 # source misses from any non-root cwd, and a `type f >/dev/null 2>&1 && f`
@@ -61,16 +62,60 @@ if cmd_targets_foreign_repo_slug "$cmd"; then
   exit 0
 fi
 
-# Resolve the PR number: prefer a literal <N> in the command, else ask gh for
-# the PR bound to the current branch.
-pr_re='gh[[:space:]]+pr[[:space:]]+merge[[:space:]]+([0-9]+)'
+# Resolve the pull request the merge names, from the scan the boundary check
+# above already ran rather than from a pattern over the raw command text. A
+# regex takes its FIRST match anywhere in the string, and it only matches a
+# number sitting immediately after the verb, so a merge spelling its flags
+# first (`gh pr merge --squash 1515`) does not match at the merge and a later
+# mention of another one (`&& echo "see gh pr merge 1520"`) supplies the number
+# instead. Posting this merge's findings block onto that other pull request is
+# the same "a pattern cannot tell which command a token belongs to" failure the
+# boundary check three lines above exists to close, and the scan already holds
+# the answer.
+#
+# gh accepts a number, a URL, or a branch name as the selector, and the three
+# carry different boundaries, so each gets its own arm rather than one lookup
+# standing in for all of them. The post always lands HERE, on the repository
+# resolved from this hook's own cwd, while gh resolves a URL against the
+# repository the URL names and a branch name against whatever pull request that
+# branch has, so a value gh resolves is not by itself a value this hook may act
+# on.
+#
+# The URL arm is the one the boundary check above cannot cover: a URL carries
+# no `-R`/`--repo`, so the scanned repository is empty, which reads as home. It
+# is compared here instead, host half included, and an unrecognized shape
+# declines rather than guessing. `issue-claim-release.sh` answers the identical
+# question for the identical scanned value.
+#
+# An empty selector is gh's own current-branch default, and it is the ONLY arm
+# that reaches it. A named reference gh cannot resolve is not the same case: the
+# merge named something, so falling back would act on a different pull request
+# than the one it named, and PATCH over whatever block already sits there. That
+# declines, which is the act-on-home fail direction this whole path takes.
 PR=""
-if [[ "$cmd" =~ $pr_re ]]; then
-  PR="${BASH_REMATCH[1]}"
-fi
-if [ -z "$PR" ]; then
-  PR="$(gh pr view --json number --jq .number 2>/dev/null || true)"
-fi
+url_re='^[a-zA-Z][a-zA-Z0-9+.-]*://([^/]+)/([^/]+/[^/]+)/pull/([0-9]+)$'
+case "${GAIA_GH_MERGE_REF:-}" in
+  '')
+    PR="$(gh pr view --json number --jq .number 2>/dev/null || true)"
+    ;;
+  *://*)
+    gaia_repo_scope_resolve_home || exit 0
+    if [[ "$GAIA_GH_MERGE_REF" =~ $url_re ]] \
+      && [ "$(printf '%s' "${BASH_REMATCH[1]}" | tr '[:upper:]' '[:lower:]')" = "$GAIA_REPO_SCOPE_HOME_HOST" ] \
+      && [ "$(printf '%s' "${BASH_REMATCH[2]}" | tr '[:upper:]' '[:lower:]')" \
+         = "$(printf '%s' "$GAIA_REPO_SCOPE_HOME_SLUG" | tr '[:upper:]' '[:lower:]')" ]; then
+      PR="${BASH_REMATCH[3]}"
+    else
+      exit 0
+    fi
+    ;;
+  *[!0-9]*)
+    PR="$(gh pr view "$GAIA_GH_MERGE_REF" --json number --jq .number 2>/dev/null || true)"
+    ;;
+  *)
+    PR="$GAIA_GH_MERGE_REF"
+    ;;
+esac
 [ -n "$PR" ] || exit 0
 
 # Resolve the audit mode via the shared resolver: the SAME resolved_mode CI

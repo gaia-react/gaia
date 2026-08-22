@@ -72,6 +72,7 @@ setup() {
   : > "$FAKE_GH_STATE/post_count"
   : > "$FAKE_GH_STATE/patch_count"
   : > "$FAKE_GH_STATE/comment_body"
+  : > "$FAKE_GH_STATE/comment_pr"
   write_gh_stub
   export PATH="$GH_BIN:$PATH"
 }
@@ -107,16 +108,34 @@ case "$1" in
   pr)
     shift; shift  # drop "pr" "view"
     json_field=""
+    selector=""
     while [ "$#" -gt 0 ]; do
       case "$1" in
         --json) json_field="$2"; shift 2 ;;
         --jq) shift 2 ;;
-        *) shift ;;
+        # The first non-flag word is the selector. Whether one is present is
+        # the whole discriminator between "gh resolved the reference the merge
+        # named" and "gh fell back to the current branch", and a stub blind to
+        # it answers both from one variable, which greens a caller that reaches
+        # the wrong arm.
+        -*) shift ;;
+        *) [ -n "$selector" ] || selector="$1"; shift ;;
       esac
     done
     case "$json_field" in
       isCrossRepository) printf '%s\n' "${FAKE_GH_IS_FORK:-false}" ;;
       author) printf '%s\n' "${FAKE_GH_AUTHOR:-alice}" ;;
+      # `--json number` with no selector is the current-branch default; with a
+      # selector it is gh resolving a URL or a branch name against the
+      # repository that selector names. The two answer from different variables
+      # so a test can tell which arm the hook reached.
+      number)
+        if [ -n "$selector" ]; then
+          printf '%s\n' "${FAKE_GH_RESOLVED_PR:-}"
+        else
+          printf '%s\n' "${FAKE_GH_BRANCH_PR:-}"
+        fi
+        ;;
       *) printf '\n' ;;
     esac
     exit 0
@@ -161,6 +180,15 @@ case "$1" in
         done
         [ -n "$body_path" ] && cp "$body_path" "$STATE/comment_body"
         [ -n "$body_literal" ] && printf '%s' "$body_literal" > "$STATE/comment_body"
+        # Record WHICH pull request the block landed on. The body alone cannot
+        # answer that, and posting a correct block onto the wrong pull request
+        # is the failure the reference resolution above exists to prevent.
+        case "$endpoint" in
+          repos/*/issues/*/comments)
+            ep_pr="${endpoint#*/issues/}"
+            printf '%s' "${ep_pr%%/*}" > "$STATE/comment_pr"
+            ;;
+        esac
         if [ "$method" = "POST" ]; then
           echo 1000 > "$STATE/comment_id"
           c=$(( $(cat "$STATE/post_count" 2>/dev/null || echo 0) + 1 ))
@@ -350,5 +378,110 @@ write_sidecar() {
     '{tool_name: "Bash", tool_input: {command: $c}}')
   invoke_hook_in "$REPO/sub/dir" "$json" "$HOOK_ABS"
   [ "$status" -eq 0 ]
+  [ ! -s "$FAKE_GH_STATE/post_count" ]
+}
+
+# The reference the merge names comes from the shared first-command scan, not
+# from a pattern over the raw command text. These three pin the rows a pattern
+# gets wrong, and each asserts WHICH pull request the block landed on, because
+# a correct block posted onto the wrong pull request is indistinguishable from
+# a correct post by every other assertion in this file.
+@test "the merge's own reference decides, even when its flags come first" {
+  write_sidecar
+  export FAKE_GH_STATE FAKE_GH_IS_FORK="false" FAKE_GH_AUTHOR="alice"
+  # A pattern anchored to a number right after the verb misses this spelling
+  # entirely and falls back to the current branch's pull request.
+  export FAKE_GH_BRANCH_PR="99"
+
+  run_merge_hook "gh pr merge --squash 42"
+  [ "$status" -eq 0 ]
+
+  [ "$(cat "$FAKE_GH_STATE/post_count")" = "1" ]
+  [ "$(cat "$FAKE_GH_STATE/comment_pr")" = "42" ]
+}
+
+@test "a later command's own merge reference does not decide this one" {
+  write_sidecar
+  export FAKE_GH_STATE FAKE_GH_IS_FORK="false" FAKE_GH_AUTHOR="alice"
+
+  # A regex takes its first match anywhere in the string, so with this merge
+  # spelling its flags first the only text it matches is the trailing mention
+  # of another pull request, and the block lands over there.
+  run_merge_hook 'gh pr merge --squash 42 && echo "see gh pr merge 1520"'
+  [ "$status" -eq 0 ]
+
+  [ "$(cat "$FAKE_GH_STATE/post_count")" = "1" ]
+  [ "$(cat "$FAKE_GH_STATE/comment_pr")" = "42" ]
+}
+
+@test "a merge naming no reference falls back to the current branch's PR" {
+  write_sidecar
+  export FAKE_GH_STATE FAKE_GH_IS_FORK="false" FAKE_GH_AUTHOR="alice"
+  export FAKE_GH_BRANCH_PR="77"
+
+  run_merge_hook "gh pr merge --squash"
+  [ "$status" -eq 0 ]
+
+  [ "$(cat "$FAKE_GH_STATE/post_count")" = "1" ]
+  [ "$(cat "$FAKE_GH_STATE/comment_pr")" = "77" ]
+}
+
+# gh resolves a URL against the repository the URL names, and a branch name
+# against whatever pull request that branch has. Neither is necessarily this
+# repository's, while the block always posts here, so the reference arms carry
+# their own boundary and their own fail direction. `issue-claim-release.sh`
+# already answers both for the identical scanned value.
+@test "a foreign repository's pull-request URL posts nothing" {
+  write_sidecar
+  export FAKE_GH_STATE FAKE_GH_IS_FORK="false" FAKE_GH_AUTHOR="alice"
+  export FAKE_GH_REPO="acme/repo"
+  # gh would resolve this URL against other-org/other-repo and hand back THAT
+  # repository's number, which the post would then apply to this one.
+  export FAKE_GH_RESOLVED_PR="7"
+
+  run_merge_hook "gh pr merge https://github.com/other-org/other-repo/pull/7"
+  [ "$status" -eq 0 ]
+
+  [ ! -s "$FAKE_GH_STATE/post_count" ]
+}
+
+@test "a pull-request URL naming the home repository still posts, reduced to its number" {
+  write_sidecar
+  export FAKE_GH_STATE FAKE_GH_IS_FORK="false" FAKE_GH_AUTHOR="alice"
+  export FAKE_GH_REPO="acme/repo"
+
+  run_merge_hook "gh pr merge https://github.com/acme/repo/pull/7"
+  [ "$status" -eq 0 ]
+
+  [ "$(cat "$FAKE_GH_STATE/post_count")" = "1" ]
+  [ "$(cat "$FAKE_GH_STATE/comment_pr")" = "7" ]
+}
+
+@test "a named reference gh cannot resolve declines rather than falling back" {
+  write_sidecar
+  export FAKE_GH_STATE FAKE_GH_IS_FORK="false" FAKE_GH_AUTHOR="alice"
+  # The merge named a branch; gh resolves no pull request for it (a typo, one
+  # not opened yet, a transient failure). The current branch's pull request is
+  # a DIFFERENT one, so falling back to it acts on something the merge never
+  # named, and PATCHes over whatever block already sits there.
+  export FAKE_GH_RESOLVED_PR=""
+  export FAKE_GH_BRANCH_PR="99"
+
+  run_merge_hook "gh pr merge some-other-branch"
+  [ "$status" -eq 0 ]
+
+  [ ! -s "$FAKE_GH_STATE/post_count" ]
+}
+
+@test "a pull-request URL on another host posts nothing, even naming the home slug" {
+  write_sidecar
+  export FAKE_GH_STATE FAKE_GH_IS_FORK="false" FAKE_GH_AUTHOR="alice"
+  export FAKE_GH_REPO="acme/repo" FAKE_GH_HOST="github.com"
+
+  # The same OWNER/REPO served from another host is another repository, which a
+  # slug-only comparison accepts.
+  run_merge_hook "gh pr merge https://ghe.example.com/acme/repo/pull/7"
+  [ "$status" -eq 0 ]
+
   [ ! -s "$FAKE_GH_STATE/post_count" ]
 }
