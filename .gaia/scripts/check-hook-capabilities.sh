@@ -52,17 +52,23 @@
 # gate silently. Prefer a Homebrew bash 5 the way .gaia/scripts/bats5.sh
 # does, and refuse rather than answer wrongly when there is none.
 if [ "${BASH_VERSINFO[0]}" -lt 5 ]; then
+  # Recorded only once the version probe passes, never read off the loop
+  # variable: that keeps whatever path was tried last, so a candidate that
+  # exists but is older than 5 would be reported below as the bash 5 to
+  # re-run through, which is the misdirection this message exists to avoid.
+  _gaia_hookcap_bash5_found=""
   for _gaia_hookcap_bash5 in /opt/homebrew/bin/bash /usr/local/bin/bash; do
     [ -x "$_gaia_hookcap_bash5" ] || continue
     [ "$("$_gaia_hookcap_bash5" -c 'echo "${BASH_VERSINFO[0]}"' 2>/dev/null)" -ge 5 ] 2>/dev/null || continue
-    [ "${BASH_SOURCE[0]}" = "$0" ] && exec "$_gaia_hookcap_bash5" "$0" "$@"
+    _gaia_hookcap_bash5_found="$_gaia_hookcap_bash5"
+    [ "${BASH_SOURCE[0]}" = "$0" ] && exec "$_gaia_hookcap_bash5_found" "$0" "$@"
     break
   done
   printf 'check-hook-capabilities: requires bash >= 5, found %s\n' "${BASH_VERSION}" >&2
   printf '  bash 3.2 drops closure records: it reports a clean tree as SURPLUS\n' >&2
   printf '  and can never report the reach it lost.\n' >&2
-  if [ -n "${_gaia_hookcap_bash5:-}" ] && [ -x "${_gaia_hookcap_bash5:-}" ]; then
-    printf '  %s is a bash 5. The re-exec is only available when this file is\n' "$_gaia_hookcap_bash5" >&2
+  if [ -n "$_gaia_hookcap_bash5_found" ]; then
+    printf '  %s is a bash 5. The re-exec is only available when this file is\n' "$_gaia_hookcap_bash5_found" >&2
     printf '  run, not sourced, so run it through that bash instead.\n' >&2
   else
     printf '  Install a bash 5 (brew install bash) and re-run.\n' >&2
