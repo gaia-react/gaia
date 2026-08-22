@@ -64,6 +64,7 @@ _lib="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)"
 [ -n "${_lib:-}" ] && [ -f "$_lib/repo-scope.sh" ] && . "$_lib/repo-scope.sh"
 type repo_slug_is_foreign >/dev/null 2>&1 || exit 0
 type gaia_scan_gh_merge >/dev/null 2>&1 || exit 0
+type gaia_gh_merge_ref_to_home_pr >/dev/null 2>&1 || exit 0
 
 # Read the merge invocation with the lib's shared first-command scan, which
 # hands back the pull-request reference and the `-R`/`--repo` value the merge
@@ -84,17 +85,16 @@ cmd_repo="$GAIA_GH_MERGE_REPO"
 # Pin the read and the write to THIS repository so the two can never
 # straddle. Resolved once, from the hook's own cwd, which a `cd` inside the
 # tool command never changes.
-# Both fields come from ONE call: gh identifies a repository as
-# [HOST/]OWNER/REPO, so the slug alone does not name it. An adopter mirroring
-# one repository between github.com and an enterprise host carries the same
-# OWNER/REPO on both, and a merge on either would otherwise resolve the
-# other's pull request of that number here. The host is the URL's authority.
-# This call is the one that pays: the boundary check reads the scanned value
-# and so runs below, not above. The resolver memoizes, so that check reuses
-# this resolution rather than making a second `gh repo view`.
+#
+# This call is the one that pays: both boundary checks below read a scanned
+# value and so run after the scan, not before it. The resolver memoizes, so
+# each of them reuses this resolution rather than making a second
+# `gh repo view`. The host half those checks compare comes from the same call,
+# and the lib holds it: an adopter mirroring one repository between github.com
+# and an enterprise host carries the same OWNER/REPO on both, so the slug alone
+# does not name it.
 gaia_repo_scope_resolve_home || exit 0
 home="$GAIA_REPO_SCOPE_HOME_SLUG"
-home_host="$GAIA_REPO_SCOPE_HOME_HOST"
 # GitHub resolves OWNER/REPO case-insensitively, so a merge spelled
 # `gaia-react/GAIA` lands on the home repository and a case-sensitive
 # comparison would read it as another one. Every comparison against `home`
@@ -122,19 +122,15 @@ repo_slug_is_foreign "$cmd_repo" && exit 0
 # unrelated issue of the same number, because the label write resolves here.
 # So accept a URL only when it names the home repo, reduced to its number;
 # an unrecognized shape exits rather than guessing.
-# The authority is captured and compared too, for the same reason the flag's
-# host half is: the same OWNER/REPO served from another host is another
-# repository, and matching on the slug alone would accept it.
-url_re='^[a-zA-Z][a-zA-Z0-9+.-]*://([^/]+)/([^/]+/[^/]+)/pull/([0-9]+)$'
+#
+# The comparison is the lib's, host half included, for the same reason the
+# `--repo` one above is: `post-findings-block-on-merge.sh` asks this of the
+# identical scanned value, and a boundary answering the same question two ways
+# depending on which hook asks it is what one definition rules out.
 case "$ref" in
   *://*)
-    if [[ "$ref" =~ $url_re ]] \
-      && [ "$(printf '%s' "${BASH_REMATCH[1]}" | tr '[:upper:]' '[:lower:]')" = "$home_host" ] \
-      && [ "$(printf '%s' "${BASH_REMATCH[2]}" | tr '[:upper:]' '[:lower:]')" = "$home_lc" ]; then
-      ref="${BASH_REMATCH[3]}"
-    else
-      exit 0
-    fi
+    gaia_gh_merge_ref_to_home_pr "$ref" || exit 0
+    ref="$GAIA_HOME_PR_NUMBER"
     ;;
 esac
 
