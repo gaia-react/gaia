@@ -101,9 +101,10 @@ carry_forward_file() {
     log "CARRY-FORWARD FAILED: $dir/$file has no resolvable tree key for $tree -- move it to $dir/<tree-key>/$file by hand, or a stranded ledger will silently block the next commit gate"
     return 0
   fi
-  local new="$tree/.gaia/local/$dir/$tree_key/$file"
+  local new_dir="$tree/.gaia/local/$dir/$tree_key"
+  local new="$new_dir/$file"
   [ -e "$new" ] && return 0
-  if mkdir -p "$tree/.gaia/local/$dir/$tree_key" 2>/dev/null && mv "$old" "$new" 2>/dev/null; then
+  if mkdir -p "$new_dir" 2>/dev/null && mv "$old" "$new" 2>/dev/null; then
     log "carried forward $dir/$file -> $dir/$tree_key/$file"
   else
     log "CARRY-FORWARD FAILED: $dir/$file -> $dir/$tree_key/$file -- move it by hand, or a stranded ledger will silently block the next commit gate"
@@ -119,16 +120,17 @@ carry_forward_dir_contents() {
   local dir="$1"
   local old_dir="$tree/.gaia/local/$dir"
   [ -d "$old_dir" ] || return 0
-  local f base new
+  local f base new new_dir
   while IFS= read -r f; do
     base="$(basename "$f")"
     if [ -z "$tree_key" ]; then
       log "CARRY-FORWARD FAILED: $dir/$base has no resolvable tree key for $tree -- move it to $dir/<tree-key>/$base by hand, or a stranded ledger will silently block the next commit gate"
       continue
     fi
-    new="$tree/.gaia/local/$dir/$tree_key/$base"
+    new_dir="$tree/.gaia/local/$dir/$tree_key"
+    new="$new_dir/$base"
     [ -e "$new" ] && continue
-    if mkdir -p "$tree/.gaia/local/$dir/$tree_key" 2>/dev/null && mv "$f" "$new" 2>/dev/null; then
+    if mkdir -p "$new_dir" 2>/dev/null && mv "$f" "$new" 2>/dev/null; then
       log "carried forward $dir/$base -> $dir/$tree_key/$base"
     else
       log "CARRY-FORWARD FAILED: $dir/$base -> $dir/$tree_key/$base -- move it by hand, or a stranded ledger will silently block the next commit gate"
