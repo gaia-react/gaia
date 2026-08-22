@@ -64,16 +64,106 @@ _gaia_capcheck_strip_literals() {
   _GAIA_CAPCHECK_RET="$out"
 }
 
+# Command words that only ever mean reach when the shell is going to run them:
+# every name the detectors below look for, plus the `.` builtin. Held with
+# leading and trailing spaces so a membership test is one `case`.
+_GAIA_CAPCHECK_QUOTED_WORDS=" mkdir rm touch tee install mktemp cp mv ln sed find bash sh source . curl wget gh git "
+
+# _gaia_capcheck_strip_quoted_code <text>: inside every DOUBLE-quoted span,
+# blanks the command words listed above and the `>` redirect operator, leaving
+# the result in _GAIA_CAPCHECK_RET.
+#
+# A command name inside a double-quoted string is prose: a deny message that
+# says `rm -rf of .git is forbidden`, a usage block that spells out
+# `bash .gaia/scripts/x.sh`, a jq program comparing `$a > $b`. The shell will
+# never run any of it, and read as code it produces write targets and
+# invocation targets that name nothing -- the `fs-write:forbidden.` family, and
+# the `.gaia/scripts/...` a reader is being told to type.
+#
+# Only the command words and the redirect operator are blanked, never the whole
+# span: `rm -f "$sentinel"` keeps its operand, which is the target the write
+# detector exists to find. That asymmetry is the whole point -- the command word
+# of a real invocation is always OUTSIDE the quotes, its operand routinely
+# inside them.
+#
+# A line carrying a command substitution is left ALONE. `"$( cd "$x" && bash
+# "$y" )"` is real code whose own quotes nest inside the outer pair, and a flat
+# odd/even reading of the quotes on such a line lands on the wrong side of
+# them: it read ` && bash ` as quoted prose and blinded the oracle to a live
+# invocation. Skipping those lines keeps today's answer for them, which is the
+# safe direction.
+#
+# Deliberately incomplete in four directions. It does not model `bash -c
+# "..."`, `ssh host "..."`, or any other eval, for the same reason
+# _gaia_capcheck_strip_literals does not: an eval is outside this oracle. It
+# does not model a backslash-escaped `\"`, which reads as a span boundary. It
+# skips any line carrying `$(` or a backtick, per the paragraph above. And it
+# is per logical line, so a double-quoted string spanning several real lines is
+# only recognized on the line that opens it; the joiner joins backslash
+# continuations, not string bodies.
+_gaia_capcheck_strip_quoted_code() {
+  local t="$1" out="" head body word
+  case "$t" in
+    *'$('*|*'`'*) _GAIA_CAPCHECK_RET="$t"; return 0 ;;
+    *'"'*) ;;
+    *) _GAIA_CAPCHECK_RET="$t"; return 0 ;;
+  esac
+  while :; do
+    case "$t" in
+      *'"'*) ;;
+      *) out="$out$t"; break ;;
+    esac
+    head="${t%%\"*}"
+    out="$out$head"
+    t="${t#*\"}"
+    case "$t" in
+      *'"'*) body="${t%%\"*}"; t="${t#*\"}" ;;
+      *) body="$t"; t="" ;;
+    esac
+    # Padded so a word at either end of the span still has a space on both
+    # sides, which is what makes one `case` test and one substitution enough.
+    body=" $body "
+    case "$body" in *'>'*) body="${body//>/ }" ;; esac
+    # shellcheck disable=SC2086
+    for word in $_GAIA_CAPCHECK_QUOTED_WORDS; do
+      case "$body" in *" $word "*) body="${body// $word / }" ;; esac
+    done
+    body="${body# }"; body="${body% }"
+    out="$out\"$body\""
+    [ -n "$t" ] || break
+  done
+  _GAIA_CAPCHECK_RET="$out"
+  return 0
+}
+
 # _gaia_capcheck_strip_tests <text>: blanks out `[[ ... ]]` and `(( ... ))`
 # spans, leaving the result in _GAIA_CAPCHECK_RET. `>` inside a conditional or
 # an arithmetic expression is a comparison, not a redirect, and the two are
 # indistinguishable to a redirect matcher.
+#
+# The tail is spliced from the closer that FOLLOWS the opener, not from the
+# first closer anywhere in the line. A logical line may carry a `]]` that
+# closes nothing -- a POSIX bracket expression inside an earlier regex, a
+# `case` arm, a message -- ahead of a later complete pair, and splicing from
+# that one retains it in the head and re-appends it every pass, so the string
+# grows and the loop never ends. Both arms are spliced this way for the same
+# reason; the `((` arm's stray closer is rarer but the asymmetry is identical.
+#
+# Deliberately incomplete in one direction: the span is delimited lexically, so
+# an opener with no closer anywhere on the line is left alone rather than
+# swallowing the rest of the text. The `case` guard requires both tokens in
+# that order, which is also what makes each pass strictly remove one opener and
+# so guarantees the loop terminates.
 _gaia_capcheck_strip_tests() {
   local t="$1" pre post
   while :; do
     case "$t" in
-      *'[['*']]'*) pre="${t%%\[\[*}"; post="${t#*\]\]}"; t="$pre $post" ;;
-      *'(('*'))'*) pre="${t%%\(\(*}"; post="${t#*\)\)}"; t="$pre $post" ;;
+      *'[['*']]'*)
+        pre="${t%%\[\[*}"; post="${t#*\[\[}"; post="${post#*\]\]}"; t="$pre $post"
+        ;;
+      *'(('*'))'*)
+        pre="${t%%\(\(*}"; post="${t#*\(\(}"; post="${post#*\)\)}"; t="$pre $post"
+        ;;
       *) break ;;
     esac
   done
@@ -227,8 +317,19 @@ _gaia_capcheck_tokens() {
 # carrying `2>/dev/null` inside the substitution and `|| true` outside it --
 # and each joins a literal suffix of any number of segments, not a basename.
 # Resolves to the scanned file's own directory joined with that suffix.
+#
+# The hop may join a suffix on EITHER side of the `$(cd ... && pwd)` that wraps
+# it, and a live spelling joins one on both:
+#
+#   "$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/.gaia/scripts/x.sh"
+#
+# Reading only the inner suffix there answers "the repo root" for a target that
+# is a named file inside it, so the outer literal run is appended when the
+# substitution closes on `pwd)`. Deliberately incomplete in one direction: the
+# close is matched lexically on that one token, so a wrapper spelled with any
+# other final command contributes no outer suffix.
 _gaia_capcheck_dirhop() {
-  local rel="$1" text="$2" tail suffix dir
+  local rel="$1" text="$2" tail suffix rest outer dir
   case "$text" in
     *BASH_SOURCE*) ;;
     *) return 1 ;;
@@ -240,6 +341,14 @@ _gaia_capcheck_dirhop() {
   tail="${text#*BASH_SOURCE}"
   tail="${tail#*)}"
   suffix="${tail%%[\"[:space:]\&|\)\;]*}"
+  rest="${tail#"$suffix"}"
+  case "$rest" in
+    *'pwd)'*)
+      outer="${rest#*pwd)}"
+      outer="${outer%%[\"[:space:]\&|\)\;]*}"
+      suffix="$suffix$outer"
+      ;;
+  esac
   _gaia_capcheck_dirname_rel "$rel"
   dir="$_GAIA_CAPCHECK_RET"
   _gaia_capcheck_normalize "${dir}${suffix}" || return 1
@@ -247,18 +356,58 @@ _gaia_capcheck_dirhop() {
 }
 
 # _gaia_capcheck_state_root_hop <text>: recognizes a call to one of GAIA's own
-# main-anchored local-state directory resolvers (ledger-path-lib.sh's
-# gaia_resolve_plans_dir / gaia_resolve_specs_dir). Each takes the checkout to
-# resolve from as its own argument and joins a single hardcoded subdir onto
-# the main checkout's .gaia/local, so unlike an arbitrary function call, its
-# result is a fixed repo-relative directory regardless of which checkout it
-# runs in or what argument it is handed -- the same closed-set, name-matched
-# recognition idiom 3 already applies to the BASH_SOURCE dirname hop.
+# main-anchored resolvers (ledger-path-lib.sh's gaia_resolve_plans_dir /
+# gaia_resolve_specs_dir, and main-root-lib.sh's gaia_resolve_main_root). Each
+# takes the checkout to resolve from as its own argument and answers with a
+# checkout root, or with a single hardcoded subdir joined onto the main
+# checkout's .gaia/local, so unlike an arbitrary function call its result is a
+# fixed repo-relative directory regardless of which checkout it runs in or what
+# argument it is handed -- the same closed-set, name-matched recognition
+# idiom 3 already applies to the BASH_SOURCE dirname hop.
+#
+# gaia_resolve_main_root answers the checkout root itself, whose repo-relative
+# reading is the empty string. That is what makes a main-anchored write
+# (`"$main_root/.gaia/local/debt"`) reduce to the same repo-relative path in
+# every checkout, which is the whole point of anchoring it. Without it the
+# variable holds a value computed at run time, every write through it is
+# unresolvable, and none of them is literalizable: the anchoring is the
+# behaviour, so replacing it with a literal would break the worktree case it
+# exists for.
 _gaia_capcheck_state_root_hop() {
   local text="$1"
   case "$text" in
     *gaia_resolve_plans_dir*) _GAIA_CAPCHECK_RET=".gaia/local/plans"; return 0 ;;
     *gaia_resolve_specs_dir*) _GAIA_CAPCHECK_RET=".gaia/local/specs"; return 0 ;;
+    *gaia_resolve_main_root*) _GAIA_CAPCHECK_RET=""; return 0 ;;
+  esac
+  return 1
+}
+
+# _gaia_capcheck_git_dir_hop <text>: recognizes an assignment whose value is
+# git's own answer to "where is the git directory" -- `rev-parse` carrying
+# `--git-dir`, `--absolute-git-dir`, or `--git-common-dir`. Like the state-root
+# hop above this is a closed-set, name-matched recognition rather than an
+# evaluation: whatever the absolute answer is on the day, its repo-relative
+# reading is `.git`, so a lock file or a marker written beside it reduces to the
+# same repo-relative path in every checkout.
+#
+# Deliberately incomplete in one direction: inside a LINKED worktree
+# `--git-dir` answers `.git/worktrees/<name>` while `--git-common-dir` answers
+# the main `.git`, and this reads both as `.git`. That is a prefix of the truth
+# in the worktree case, never a different tree, which is the direction a
+# capability term can absorb. `--show-toplevel` is deliberately not matched: it
+# names the checkout, not the git directory.
+_gaia_capcheck_git_dir_hop() {
+  local text="$1"
+  case "$text" in
+    *rev-parse*) ;;
+    *) return 1 ;;
+  esac
+  case "$text" in
+    *--absolute-git-dir*|*--git-common-dir*|*--git-dir*)
+      _GAIA_CAPCHECK_RET=".git"
+      return 0
+      ;;
   esac
   return 1
 }
@@ -304,6 +453,10 @@ _gaia_capcheck_assignment_values() {
       continue
     fi
     if _gaia_capcheck_state_root_hop "$tail"; then
+      printf 'DIRHOP:%s\n' "$_GAIA_CAPCHECK_RET"
+      continue
+    fi
+    if _gaia_capcheck_git_dir_hop "$tail"; then
       printf 'DIRHOP:%s\n' "$_GAIA_CAPCHECK_RET"
       continue
     fi
@@ -369,6 +522,14 @@ _gaia_capcheck_split_var() {
       # treat as a safe-to-strip root.
       case "$name" in
         *'%/') name="${name%'%/'}" ;;
+      esac
+      # `${var:?}` / `${var:?message}` asserts the variable is set and expands
+      # to its value or nothing at all -- there is no alternative value to
+      # disagree with, so the operator names the same variable a bare `$var`
+      # does. `${var:-default}` deliberately stays rejected: it carries a second
+      # value this oracle would have to choose between.
+      case "$name" in
+        *':?'*) name="${name%%':?'*}" ;;
       esac
       case "$name" in
         ''|*[!A-Za-z0-9_]*) return 1 ;;
@@ -490,10 +651,60 @@ _gaia_capcheck_caller_supplied() {
   return 1
 }
 
+# _gaia_capcheck_home_rooted <repo_root> <rel> <var> <seen>: true when <var>
+# holds the user's home directory, directly or through its assignment chain.
+#
+# This is the guard on the root reading in _gaia_capcheck_write_paths. Nothing
+# in a script ever assigns `$HOME`, so a home-anchored variable reaches that
+# reading with no resolved assignment and is claimed as the repo root, which
+# turns `$HOME/.claude/projects/<slug>/gaia` into a write into THIS repo's
+# `.claude/projects/` -- a path the script never touches, reported to a reader
+# and, through the manifest, to an adopter. A home-rooted target takes the same
+# answer an absolute path takes: unresolved.
+#
+# <seen> is the recursion's cycle guard, exactly as in
+# _gaia_capcheck_caller_supplied. Deliberately incomplete in one direction: a
+# home directory a script derives some other way (`getent passwd`, `~`
+# expansion through a command substitution) is not recognized.
+_gaia_capcheck_home_rooted() {
+  local repo_root="$1" rel="$2" var="$3" seen="$4" v name
+  case "$var" in HOME) return 0 ;; esac
+  case " $seen " in *" $var "*) return 1 ;; esac
+  seen="$seen $var"
+  while IFS= read -r v; do
+    [ -n "$v" ] || continue
+    case "$v" in
+      DIRHOP:*|MKTEMP:*) continue ;;
+      *'$HOME'*|*'${HOME'*) return 0 ;;
+    esac
+    if _gaia_capcheck_ref_name "$v"; then
+      name="$_GAIA_CAPCHECK_RET"
+      _gaia_capcheck_home_rooted "$repo_root" "$rel" "$name" "$seen" && return 0
+    fi
+  done < <(_gaia_capcheck_assignment_values "$repo_root" "$rel" "$var")
+  return 1
+}
+
 # _gaia_capcheck_resolve_dir <repo_root> <rel> <var>: the repo-relative
 # directory a variable holds, when its assignments agree on exactly one.
 # Idiom 4, one-hop constant propagation, with idioms 2 and 3 applied to the
 # assignment's own value.
+#
+# Idiom 6, the SELF-APPEND, is the one assignment that is allowed to disagree.
+# The two-step spelling
+#
+#   gaia_scripts="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+#   gaia_scripts="$gaia_scripts/.gaia/scripts"
+#
+# names one directory in two moves, but read as two independent values it names
+# the repo root and then `.gaia/scripts`, which disagree, so every invocation
+# through the variable went unresolved. An assignment whose root variable IS
+# the variable being resolved is a continuation of the value so far, not a
+# fresh one, so it is composed onto it. Deliberately incomplete in one
+# direction: only the leading root segment is followed, so a self-reference
+# anywhere but the front of the value (`x="$prefix/$x"`) still disagrees, and a
+# self-append before any resolvable assignment has nothing to compose onto and
+# fails.
 _gaia_capcheck_resolve_dir() {
   local repo_root="$1" rel="$2" var="$3" v n=0 found="" this
   while IFS= read -r v; do
@@ -504,6 +715,13 @@ _gaia_capcheck_resolve_dir() {
       *)
         if _gaia_capcheck_split_var "$v"; then
           [ -n "$_GAIA_CAPCHECK_VAR" ] || return 1
+          if [ "$_GAIA_CAPCHECK_VAR" = "$var" ]; then
+            [ "$n" -ge 1 ] || return 1
+            _gaia_capcheck_normalize "${found:+$found/}$_GAIA_CAPCHECK_SUFFIX" || return 1
+            found="$_GAIA_CAPCHECK_RET"
+            n=$((n + 1))
+            continue
+          fi
           _gaia_capcheck_normalize "$_GAIA_CAPCHECK_SUFFIX" || return 1
         else
           _gaia_capcheck_normalize "$v" || return 1
@@ -532,7 +750,8 @@ _gaia_capcheck_resolve_dir() {
 # `"$root/.gaia/scripts/x.sh"` and `"$_lib_dir/x.sh"` -- identical in shape,
 # one rooted at the repo and one at a directory -- both land on the right file.
 _gaia_capcheck_resolve_invocation() {
-  local repo_root="$1" rel="$2" sc="$3" text="$4" tok cand dir
+  local repo_root="$1" rel="$2" sc="$3" text="$4" depth="${5:-0}" tok cand dir v
+  local one="" agreed=0
   if _gaia_capcheck_dirhop "$rel" "$text"; then
     cand="$_GAIA_CAPCHECK_RET"
     if [ -f "$repo_root/$cand" ]; then _GAIA_CAPCHECK_RET="$cand"; return 0; fi
@@ -557,6 +776,43 @@ _gaia_capcheck_resolve_invocation() {
           if [ -f "$repo_root/$cand" ]; then _GAIA_CAPCHECK_RET="$cand"; return 0; fi
         fi
       fi
+      # Idiom 8, the FILE-valued variable. `. "$LIB"` names a whole path, not a
+      # directory with a suffix to join, so the resolvers above have nothing to
+      # append and read the variable's own root segment as the repo root --
+      # which answers `lib/x.sh` for a `$SELF_DIR/lib/x.sh` that resolves
+      # perfectly well one hop further in. Each assignment is put back through
+      # this same resolver instead.
+      #
+      # Every assignment has to resolve and they all have to AGREE, which is the
+      # rule idiom 4 applies to a directory-valued variable and holds here for
+      # the same reason: a file assigned one path and then another names the
+      # target at run time, and taking whichever of the two happens to exist
+      # would report a call to a script the run may never make. Bounded to two
+      # hops, so a longer chain or a cycle stays unresolved rather than costing
+      # the walk.
+      if [ -z "$suffix" ] && [ "$depth" -lt 2 ]; then
+        while IFS= read -r v; do
+          [ -n "$v" ] || continue
+          case "$v" in
+            MKTEMP:*) return 1 ;;
+            DIRHOP:*)
+              cand="${v#DIRHOP:}"
+              [ -n "$cand" ] || return 1
+              [ -f "$repo_root/$cand" ] || return 1
+              ;;
+            *)
+              # `-` rather than `$sc`: the source directive annotates the site,
+              # not the variable, so idiom 5 stays the outer call's to apply.
+              _gaia_capcheck_resolve_invocation "$repo_root" "$rel" "-" "$v" $((depth + 1)) || return 1
+              cand="$_GAIA_CAPCHECK_RET"
+              ;;
+          esac
+          if [ "$agreed" -gt 0 ] && [ "$cand" != "$one" ]; then return 1; fi
+          one="$cand"
+          agreed=$((agreed + 1))
+        done < <(_gaia_capcheck_assignment_values "$repo_root" "$rel" "$var")
+        if [ "$agreed" -ge 1 ]; then _GAIA_CAPCHECK_RET="$one"; return 0; fi
+      fi
     fi
   elif _gaia_capcheck_normalize "$tok"; then
     cand="$_GAIA_CAPCHECK_RET"
@@ -580,6 +836,52 @@ _gaia_capcheck_resolve_invocation() {
   return 1
 }
 
+# _gaia_capcheck_same_segment_tail <repo_root> <rel> <raw> <depth>: idiom 9,
+# a reference joined to a literal INSIDE one segment ("${state_file}.tmp.$$",
+# "$memo_file.$$.tmp"). One candidate repo-relative path per line; 0 with
+# output, 1 otherwise.
+#
+# _gaia_capcheck_split_var stops at this shape because there is no `/` to split
+# a root segment off, so every write through a scratch sibling of a resolvable
+# file went unresolved. The reference in front of the literal is an ordinary
+# variable whose own assignments resolve like any other, so it is resolved as
+# one and the literal appended with no separator.
+# _gaia_capcheck_path_to_term then generalizes whatever the tail leaves
+# non-literal: a `$$` in it yields the parent directory's `/**`, which is the
+# honest term for a sibling whose name the file picks at run time.
+#
+# Deliberately incomplete in two directions: only a reference at the FRONT of
+# the segment is followed, so `prefix-${var}` stays unresolved, and a
+# positional in that position is left to the caller-supplied test rather than
+# claimed here.
+_gaia_capcheck_same_segment_tail() {
+  local repo_root="$1" rel="$2" raw="$3" depth="$4"
+  local var tail sub base n=0
+  [ "$depth" -le 3 ] || return 1
+  _gaia_capcheck_ref_name "$raw" || return 1
+  var="$_GAIA_CAPCHECK_RET"
+  tail="$_GAIA_CAPCHECK_REFREST"
+  [ -n "$tail" ] || return 1
+  case "$tail" in /*) return 1 ;; esac
+  _gaia_capcheck_is_positional_name "$var" && return 1
+  sub="$(_gaia_capcheck_write_paths "$repo_root" "$rel" "\$$var" $((depth + 1)))" || return 1
+  while IFS= read -r base; do
+    [ -n "$base" ] || continue
+    if [ "$base" = '**' ]; then
+      printf '%s\n' '**'
+      n=$((n + 1))
+      continue
+    fi
+    _gaia_capcheck_normalize "$base$tail" || continue
+    printf '%s\n' "$_GAIA_CAPCHECK_RET"
+    n=$((n + 1))
+  done <<TAILVALS
+$sub
+TAILVALS
+  [ "$n" -ge 1 ] || return 1
+  return 0
+}
+
 # _gaia_capcheck_write_paths <repo_root> <rel> <raw> <depth>: one candidate
 # repo-relative path per line for the write target <raw>, which may still carry
 # a variable tail. Returns 0 with output, 1 when the target has no resolvable
@@ -596,17 +898,26 @@ _gaia_capcheck_resolve_invocation() {
 # the same repo-relative path whichever checkout it lands in.
 _gaia_capcheck_write_paths() {
   local repo_root="$1" rel="$2" raw="$3" depth="$4"
-  local v n=0 runtime=0 supplied=0 vals sub base out=""
+  local v n=0 runtime=0 supplied=0 unresolved_assign=0 vals sub base out=""
   [ "$depth" -le 4 ] || return 1
   _gaia_capcheck_unquote "$raw"
   raw="$_GAIA_CAPCHECK_RET"
   case "$raw" in
     ''|/dev/*|'&'*|'|'*) return 2 ;;
     '$('*|'`'*|*'$('*) return 2 ;;
+    # Rooted at the system temporary directory. _gaia_capcheck_detect_tmp has
+    # already claimed the line for the `tmp` term, and the same write is not a
+    # second finding -- the same reason the MKTEMP branch below gives for a
+    # write through the variable holding an mktemp result. There is no
+    # repo-relative reading of it to report either way.
+    '$TMPDIR'*|'${TMPDIR'*) return 2 ;;
     "$repo_root"/*) raw="${raw#"$repo_root"/}" ;;
   esac
   if _gaia_capcheck_split_var "$raw"; then
-    [ -n "$_GAIA_CAPCHECK_VAR" ] || return 1
+    if [ -z "$_GAIA_CAPCHECK_VAR" ]; then
+      _gaia_capcheck_same_segment_tail "$repo_root" "$rel" "$raw" "$depth"
+      return $?
+    fi
     local var="$_GAIA_CAPCHECK_VAR" suffix="$_GAIA_CAPCHECK_SUFFIX"
     vals="$(_gaia_capcheck_assignment_values "$repo_root" "$rel" "$var")"
     while IFS= read -r v; do
@@ -641,7 +952,22 @@ _gaia_capcheck_write_paths() {
           case "$?" in
             0) ;;
             2) runtime=1; continue ;;
-            *) continue ;;
+            *)
+              # An unresolved assignment that joins a LITERAL path onto a
+              # reference (`local_dir="$root/.gaia/local"`) pins what the
+              # variable is NOT: it is that root plus that literal, never the
+              # root itself, so the root reading at the end must not claim it.
+              # Without this the walk answers `cache` for a `$cache_dir` whose
+              # real target is `.gaia/local/cache` -- a shorter, wrong path,
+              # which is worse than saying so because it reaches the manifest.
+              # A value that is nothing but a reference this oracle cannot parse
+              # (`repo_root="${args[0]%/}"`) pins nothing either way, and the
+              # root reduction still holds for it.
+              if _gaia_capcheck_ref_name "$v" && [ -n "$_GAIA_CAPCHECK_REFREST" ]; then
+                unresolved_assign=1
+              fi
+              continue
+              ;;
           esac
           while IFS= read -r base; do
             [ -n "$base" ] || continue
@@ -668,6 +994,10 @@ INNER
 $vals
 OUTER
     if [ "$n" -eq 0 ]; then
+      # A home-anchored variable is not a root this repo can read. It is tested
+      # first because it reaches every branch below unresolved, and the root
+      # reading at the end would claim it.
+      _gaia_capcheck_home_rooted "$repo_root" "$rel" "$var" "" && return 1
       # Nothing resolved, so before the variable is read as a root: a variable
       # whose own assignment traces to a positional holds a path the caller
       # designates, and the honest term for a write there is the one that says
@@ -719,6 +1049,7 @@ OUTER
           ;;
       esac
       [ "$runtime" -eq 0 ] || return 1
+      [ "$unresolved_assign" -eq 0 ] || return 1
       _gaia_capcheck_normalize "$suffix" || return 1
       printf '%s\n' "$_GAIA_CAPCHECK_RET"
       return 0
@@ -728,6 +1059,15 @@ OUTER
   fi
   case "$raw" in
     /*|'~'*) return 1 ;;
+    # A leading reference _gaia_capcheck_split_var could not parse
+    # (`${args[0]%/}`, `${var%/*}`). It is not a literal path and must not be
+    # printed as one: doing that hands the caller a candidate whose first
+    # segment still carries a `$`, which _gaia_capcheck_path_to_term cannot
+    # generalize, so the site reports UNRESOLVED even where the variable is a
+    # checkout root and the literal remainder alone is the answer. Failing here
+    # instead lets the caller fall through to its root reading, which is the
+    # reduction that already applies to a `--root` parameter.
+    '$'*) return 1 ;;
   esac
   _gaia_capcheck_normalize "$raw" || return 1
   printf '%s\n' "$_GAIA_CAPCHECK_RET"
@@ -796,6 +1136,16 @@ _gaia_capcheck_glob_match() {
 # ---------------------------------------------------------------------------
 
 _GAIA_CAPCHECK_CMD='(^|[[:space:]|&;(`$])'
+
+# The boundary a BARE `.` has to sit behind to be the source builtin. Plain
+# whitespace is not enough for this one name: `jq -e . "$f"` and `find . -name`
+# put a lone `.` after a flag or a command, and read through the general
+# boundary above every one of them is an invocation of the operand that
+# follows. A real `.` is in command position -- opening the line, or behind a
+# separator, a subshell, or a keyword -- and that is what this matches.
+# Deliberately incomplete in one direction: a `.` behind a keyword this list
+# does not name reads as an operand and its target is missed.
+_GAIA_CAPCHECK_DOTCMD='(^|[;|&(`{}]|[[:space:]](then|else|do|elif|!))[[:space:]]*'
 
 # _gaia_capcheck_detect_network <text>: curl, wget, any gh invocation, and the
 # remote-touching git verbs. Deliberately not matched: `command -v gh` and
@@ -894,6 +1244,19 @@ _gaia_capcheck_scan_writes() {
     tgt="${m#*>}"
     tgt="${tgt#>}"
     tgt="${tgt#"${tgt%%[![:space:]]*}"}"
+    # An operand that is neither quoted nor carries a directory separator is
+    # not a redirect target. The `>` a matcher finds on such an operand is
+    # overwhelmingly a comparison inside an embedded jq or awk program
+    # (`($n - $epoch) > $ttl`, `$x.timestamp > .tmax`) that a multi-line
+    # single-quoted span hid from _gaia_capcheck_strip_literals, which works one
+    # logical line at a time. This widens the bare-word miss already documented
+    # in _gaia_capcheck_emit_write: the accepted loss is a real redirect written
+    # unquoted into the current directory (`cmd > out.txt`), and no write in
+    # either obligated closure is spelled that way.
+    case "$tgt" in
+      \"*|\'*|*/*) ;;
+      *) continue ;;
+    esac
     _gaia_capcheck_emit_write "$repo_root" "$rel" "$tgt" "$loc"
   done < <(printf '%s\n' "$stripped" \
     | grep -oE '(^|[[:space:]])[0-9]?>>?[[:space:]]*[^[:space:];|&<>)]+' 2>/dev/null)
@@ -1021,7 +1384,7 @@ EOF
 _gaia_capcheck_scan_invocations() {
   local repo_root="$1" rel="$2" sc="$3" text="$4" loc="$5"
   local rest="$text" rem head hops=0
-  local pat="${_GAIA_CAPCHECK_CMD}(bash|sh|source|\\.)[[:space:]]+"
+  local pat="(${_GAIA_CAPCHECK_CMD}(bash|sh|source)|${_GAIA_CAPCHECK_DOTCMD}\\.)[[:space:]]+"
   while [ "$hops" -lt 4 ] && [[ $rest =~ $pat ]]; do
     hops=$((hops + 1))
     rem="${rest#*"${BASH_REMATCH[0]}"}"
@@ -1036,6 +1399,11 @@ _gaia_capcheck_scan_invocations() {
     [ -n "$rem" ] || continue
     local head="${rem%%[[:space:];|&)]*}"
     case "$head" in
+      # A backtick or a backslash in the operand says this is prose or a
+      # substitution, not a path: a usage block telling a reader to run
+      # `bash .gaia/scripts/x.sh` carries the closing backtick into the operand,
+      # and no path in this tree holds either character.
+      *'`'*|*\\*) continue ;;
       */*|*.sh|*.sh\"|'$'*|'"$'*) ;;
       *) continue ;;
     esac
@@ -1060,6 +1428,7 @@ _gaia_capcheck_file_sites() {
     [ -n "$lineno" ] || continue
     loc="$rel:$lineno"
     _gaia_capcheck_strip_literals "$text"
+    _gaia_capcheck_strip_quoted_code "$_GAIA_CAPCHECK_RET"
     stripped="$_GAIA_CAPCHECK_RET"
     _gaia_capcheck_detect_network "$stripped" && printf 'TERM\tnetwork\t%s\n' "$loc"
     _gaia_capcheck_detect_github_write "$stripped" && printf 'TERM\tgithub-write\t%s\n' "$loc"
