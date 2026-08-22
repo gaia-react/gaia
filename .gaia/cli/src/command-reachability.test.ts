@@ -65,6 +65,7 @@
  * for those lines this guard checks only that the command is documented and
  * dispatched, never that the verbs after it are complete.
  */
+import {load} from 'js-yaml';
 import {describe, expect, test} from 'vitest';
 import {existsSync, readdirSync, readFileSync, statSync} from 'node:fs';
 import path from 'node:path';
@@ -519,6 +520,77 @@ const matchesUnquotedInvocation = (
 const isReachable = (commandPath: string): boolean =>
   matchesInvocation(commandPath, invokerText);
 
+// The CI job that runs this suite, and the second paths-filter output that
+// arms it on the surfaces `INVOKER_SURFACES` names.
+//
+// `cli-tests.yml`'s `code:` filter is the job's ordinary gate, and it lists the
+// paths whose edits need the FULL job (typecheck, cold eslint, bats,
+// bundle-freshness). It cannot also carry these surfaces: they are prose and
+// configuration directories, so arming `code:` on them would run all of that on
+// roughly two pull requests in five, on a declared-required context, to
+// re-derive nothing but this guard. `reach:` exists to arm only the two steps
+// this guard actually needs -- the workspace install and the Vitest run -- and
+// leave the rest on `code:`.
+//
+// The list below is the whole point of the split, and it is the half that rots.
+// A surface added to `INVOKER_SURFACES` without a mirror here leaves the guard
+// running on every edit EXCEPT the one that breaks it: the removal of a
+// command's sole invocation from the new surface resolves both filter outputs
+// false, the Vitest step skips, and `Vitest (.gaia/cli)` reports green having
+// run this file zero times. That is the exact shape of #1524, one surface
+// later, and no other check in the repository can see it --
+// `.gaia/scripts/tests/workflow-filter-coverage.bats` reads the literal paths a
+// gated step's `run:` body names, and this step's body is
+// `pnpm -C .gaia/cli test --run`, which names none.
+//
+// Both halves of the mirror are reachable, which is what makes the binding
+// enforceable rather than advisory: an edit to `INVOKER_SURFACES` touches
+// `.gaia/cli/**` and an edit to the filter touches
+// `.github/workflows/cli-tests.yml`, and `code:` arms on both.
+const cliTestsWorkflow = path.join(
+  repoRoot,
+  '.github',
+  'workflows',
+  'cli-tests.yml'
+);
+
+// Steps whose gate must name `reach`. The Vitest step is the one that runs this
+// guard; the install step is what leaves `pnpm -C .gaia/cli test` a runnable
+// command, so arming the second without the first buys a red on a missing
+// `node_modules` rather than a run.
+const REACH_GATED_STEPS: readonly string[] = [
+  'Setup Node and install the CLI workspace',
+  'Run Vitest tests',
+];
+
+type WorkflowStep = {
+  readonly id?: string;
+  readonly if?: string;
+  readonly name?: string;
+  readonly with?: {readonly filters?: string};
+};
+
+const alphabetically = (a: string, b: string): number => a.localeCompare(b);
+
+// The `cli-tests` job's steps, and the glob list its `reach:` output declares.
+// `filters:` is a YAML document embedded in a YAML string, so it parses twice.
+const readCliTestsJob = (): {
+  reachGlobs: readonly string[];
+  steps: readonly WorkflowStep[];
+} => {
+  const workflow = load(readFileSync(cliTestsWorkflow, 'utf8')) as {
+    jobs?: Record<string, {steps?: readonly WorkflowStep[]}>;
+  };
+  const steps = workflow.jobs?.['cli-tests']?.steps ?? [];
+  const filters = steps.find((step) => step.id === 'filter')?.with?.filters;
+  const parsed =
+    filters === undefined ?
+      {}
+    : (load(filters) as Record<string, readonly string[] | undefined>);
+
+  return {reachGlobs: parsed.reach ?? [], steps};
+};
+
 describe('CLI subcommand reachability guard', () => {
   // Maintainer-only guard: `routersPresent` is false on an adopter clone
   // (`.gaia/cli` release-excluded), so the whole suite skips there rather
@@ -644,6 +716,43 @@ describe('CLI subcommand reachability guard', () => {
       // See the file docstring for how to resolve a dead command (wire an
       // invoker, retire it, or allowlist it in INTERNAL_COMMANDS).
       expect(dead).toEqual([]);
+    }
+  );
+
+  test.skipIf(!routersPresent)(
+    "the CI filter's reach globs mirror INVOKER_SURFACES",
+    () => {
+      // No second `skipIf` on the workflow's presence: a skip would disarm
+      // the mirror silently, which is the failure this binding exists to
+      // prevent, so an absent workflow throws out of the read below instead.
+      const {reachGlobs} = readCliTestsJob();
+
+      // Set equality, not containment. `reach:` has one job -- name the
+      // surfaces this guard reads -- so a glob here that no surface asks for
+      // is drift in the other direction and reds too.
+      expect(reachGlobs.toSorted(alphabetically)).toEqual(
+        INVOKER_SURFACES.map((surface) => `${surface}/**`).toSorted(
+          alphabetically
+        )
+      );
+    }
+  );
+
+  test.skipIf(!routersPresent)(
+    'the CI steps that run this guard are gated on the reach filter',
+    () => {
+      const {steps} = readCliTestsJob();
+
+      // A perfect mirror that nothing consumes arms nothing. Named steps
+      // rather than a scan: these two are the pair that has to move together,
+      // and every other step in the job stays on `code:` on purpose.
+      const ungated = REACH_GATED_STEPS.filter((name) => {
+        const step = steps.find((candidate) => candidate.name === name);
+
+        return !step?.if?.includes("steps.filter.outputs.reach == 'true'");
+      });
+
+      expect(ungated).toEqual([]);
     }
   );
 

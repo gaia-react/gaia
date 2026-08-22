@@ -216,12 +216,60 @@ jobs:
               # that assertion, that re-runs the job.
               # Deliberately NOT `.claude/**`. The suite's other real-repo reader
               # (`src/command-reachability.test.ts`) scans four `.claude/`
-              # subdirectories plus `wiki/`, and arming on those would newly run
-              # this required job on roughly two in five pull requests instead of
-              # one in thirty -- a different cost class, needing a decision this
-              # entry does not make. Tracked as #1524.
+              # subdirectories plus `wiki/`, and arming `code:` on those would
+              # newly run this required job in full on roughly two in five pull
+              # requests instead of one in thirty. That is a different cost
+              # class, and the `reach:` filter below is where it is paid at the
+              # size it is worth (#1524).
               - '.claude/agents/code-audit-*.md'
-      - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
+            # The second gate, and the narrow one. `code:` above lists the paths
+            # whose edits need the whole job; these are the surfaces
+            # `src/command-reachability.test.ts`'s `INVOKER_SURFACES` scans for a
+            # command's external invocations, and the only assertion an edit to
+            # one of them can invalidate is that guard's. The one-sided edit it
+            # exists to catch -- the removal of a command's sole invocation --
+            # lands in a skill, a command, a hook, an agent, a workflow, or a
+            # wiki page, and before this output four of those seven surfaces
+            # matched nothing here at all: the filter resolved `code=false`, the
+            # Vitest step skipped, and `Vitest (.gaia/cli)` reported green having
+            # run the reachability guard zero times, which branch protection
+            # then read as a merge (#1524).
+            #
+            # A separate output rather than more `code:` entries, which is the
+            # one place this file breaks its own one-gate-per-job shape. Those
+            # surfaces are prose and configuration, so arming `code:` on them
+            # would run typecheck, cold eslint, bats, and bundle-freshness --
+            # about 80-180s against roughly 20s skipped -- on two pull requests
+            # in five, on a declared-required context, to re-derive nothing but a
+            # reachability verdict. Only the workspace install and the Vitest
+            # step below gate on this output; every other step stays on `code:`
+            # alone.
+            #
+            # The list mirrors `INVOKER_SURFACES` entry for entry, in its order,
+            # and `src/command-reachability.test.ts` asserts that set equality in
+            # both directions, so a surface added there without a mirror here
+            # reds this job instead of silently leaving the guard unarmed on the
+            # one edit that breaks it. Both halves are reachable, which is what
+            # makes the binding enforceable: the guard's edit lands under
+            # `.gaia/cli/**` and this file's under `.github/workflows/**`, and
+            # `code:` arms on both.
+            #
+            # `.github/**` is wider than the guard strictly needs and is
+            # load-bearing anyway: `.gaia/scripts/tests/workflow-filter-coverage.bats`
+            # grades a multi-output gate CONJUNCTIVELY, so every output named in a
+            # step's `if:` must itself reach that step's literal inputs -- this
+            # workflow file for both steps, plus the composite action the install
+            # step `uses:`. Narrowing this entry to `.github/workflows/**` would
+            # red that guard.
+            reach:
+              - '.claude/skills/**'
+              - '.claude/commands/**'
+              - '.claude/hooks/**'
+              - '.claude/agents/**'
+              - '.github/**'
+              - 'wiki/**'
+              - '.gaia/cli/src/automation/templates/**'
+      - if: steps.filter.outputs.code == 'true' || steps.filter.outputs.reach == 'true' || github.event_name == 'workflow_dispatch'
         name: Setup Node and install the CLI workspace
         uses: ./.github/actions/gaia-setup-node
         with:
@@ -281,7 +329,7 @@ jobs:
       - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
         name: Lint
         run: pnpm -C .gaia/cli lint
-      - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
+      - if: steps.filter.outputs.code == 'true' || steps.filter.outputs.reach == 'true' || github.event_name == 'workflow_dispatch'
         name: Run Vitest tests
         run: pnpm -C .gaia/cli test --run
       # The region-marker conformance suite drives the real TypeScript parser
