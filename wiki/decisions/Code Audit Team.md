@@ -4,7 +4,7 @@ status: active
 priority: 1
 date: 2026-07-09
 created: 2026-07-09
-updated: 2026-08-15
+updated: 2026-08-22
 tags: [decision, claude, audit, ci]
 ---
 
@@ -116,6 +116,10 @@ A per-member incremental review resolves its base against a **reset-predicate pa
 The generating rule for GLOBAL is scope and belief, never criteria: which paths a member owns, how its digest is computed, whether a clearance is believed. A coding-convention rule under `.claude/rules/**` changes how code should be written, not any of that, and an anchor records that a member already READ a surface, which a reworded convention does not un-read; what the convention change owes is a fresh clearance for the diff under review, already required because `.claude/rules/**` sits in `AUDIT_MACHINERY_PATHS`. GLOBAL therefore keeps only `quality-gate.md` and `pr-merge.md`, the two rules that decide gate mechanics; every other rule file is enumerated in `AUDIT_MERELY_SHARED_PATHS` instead.
 
 Adding a `.sh` under `.claude/hooks/**` needs a matching entry in `.gaia/hook-scopes.json` (`bash .gaia/scripts/check-hook-scope-manifest.sh` asserts coverage), and a file under `.claude/hooks/lib/**` additionally needs a tier assignment in the partition above (`bash .gaia/scripts/audit-rules-changed-complete.sh` asserts it). `.claude/rules/maintainers/hook-registration.md`, path-scoped to `.claude/hooks/**/*.sh`, names both obligations at edit time; neither previously appeared on any instruction surface, only inside the whole-directory checkers enforcing them.
+
+### Declared capabilities for allowlisted scripts
+
+Every script `.claude/settings.json` pre-approves under `permissions.allow` carries a declared capability contract in `.gaia/script-capabilities.json` (schema: `.gaia/script-capabilities.schema.json`), one entry per script naming the filesystem writes, network calls, and other reach the script actually has. `.gaia/scripts/check-script-capabilities.sh` computes each script's real reach with a sourced static-analysis oracle (`.gaia/scripts/capability-oracle-lib.sh`) and reconciles it against the manifest, failing on either an undeclared reach or a surplus declaration nothing exercises. A term of `fs-write:**` is the sentinel for a write into a directory the script's caller supplies at run time rather than a fixed path; it covers only itself under exact-string equality, and a declared fs-write glob must otherwise carry a literal prefix, both rules recorded in the shipped schema so an adopter reads a manifest entry without reading the script. The manifest and schema ship (class `owned`, matching `hook-scopes.json`); the checker and its oracle library are release-excluded, since the check gates GAIA's own pull requests from a release-excluded workflow and adopters do not own the code it reviews.
 <!-- gaia:maintainer-only:end -->
 
 ## Deterministic roster check

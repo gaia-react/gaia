@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-04-20
-updated: 2026-08-04
+updated: 2026-08-22
 tags: [concept, claude, agent, review]
 ---
 
@@ -30,7 +30,7 @@ Deterministic oracles (`react-doctor`, `knip`) are exempt from the proof gate an
 
 ## No-op guard against silent subagents
 
-A dispatched specialist or refuter can return a harness-reminder-echo instead of doing the work, silently. A shared deterministic predicate (`.gaia/scripts/audit-noop-detect.sh`) classifies each returned text against its expected shape and exits non-zero on a no-op; it loads no finding body into the classifying caller's context. On a no-op, the agent re-dispatches that one subagent exactly once with a hardened retry prefix that forces a Read of the concrete target as its first action. A second consecutive no-op does not re-dispatch again: the agent reviews or refutes that unit itself inline, applies the result exactly as if the subagent had returned it, and records the degraded unit as a count (never detail) on the relevant progress breadcrumb (`oracles done` for a specialist, `adversarial verify done` for a refuter) and in the report summary. The same guard covers the equivalent dispatch surfaces in [[GAIA Spec]] and [[GAIA Plan]].
+A dispatched specialist or refuter can return a harness-reminder-echo instead of doing the work, silently. A shared deterministic predicate (`.gaia/scripts/audit-noop-detect.sh`) classifies each returned text against its expected shape and exits non-zero on a no-op; it loads no finding body into the classifying caller's context. On a no-op, the agent re-dispatches that one subagent exactly once with a hardened retry prefix that forces a Read of the concrete target as its first action. A second consecutive no-op does not re-dispatch again: the agent reviews or refutes that unit itself inline, applies the result exactly as if the subagent had returned it, and records the degraded unit as a count (never detail) on the relevant progress breadcrumb (`oracles done` for a specialist, `adversarial verify done` for a refuter) and in the report summary. The same guard covers the equivalent dispatch surfaces in [[GAIA Spec]] and [[GAIA Plan]]. `audit-noop-detect.sh` also exposes a general-purpose `--shape agent-report-file` mode for any ad-hoc subagent dispatch outside those three surfaces: the dispatcher pre-clears an output path, has the agent write its result there instead of returning it inline, then classifies the file the same way, real vs. no-op, with the same one-retry-then-inline-fallback shape. `.claude/rules/subagent-dispatch.md` codifies when a dispatching agent should use this pattern rather than asking for a result in the reply.
 
 ## Scope classification and disposition
 
