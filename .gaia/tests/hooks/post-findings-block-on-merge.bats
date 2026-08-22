@@ -485,3 +485,47 @@ write_sidecar() {
 
   [ ! -s "$FAKE_GH_STATE/post_count" ]
 }
+
+# gh's own URL matcher is unanchored after the number and its host comparison
+# drops a port, so each of the next two merges home pull request 7 while a
+# tighter matcher declines and the merge contributes nothing to the
+# finding-recurrence tally. The shape rules live in the lib and
+# `repo-scope-home-pr.bats` covers them exhaustively; these pin that THIS hook
+# reaches them, which is the half a lib-only suite cannot see.
+@test "a home pull-request URL carrying a /files suffix still posts" {
+  write_sidecar
+  export FAKE_GH_STATE FAKE_GH_IS_FORK="false" FAKE_GH_AUTHOR="alice"
+  export FAKE_GH_REPO="acme/repo"
+
+  # The spelling a human actually produces, by copying the address bar off the
+  # Files tab.
+  run_merge_hook "gh pr merge https://github.com/acme/repo/pull/7/files"
+  [ "$status" -eq 0 ]
+
+  [ "$(cat "$FAKE_GH_STATE/post_count")" = "1" ]
+  [ "$(cat "$FAKE_GH_STATE/comment_pr")" = "7" ]
+}
+
+@test "a home pull-request URL carrying the default port still posts" {
+  write_sidecar
+  export FAKE_GH_STATE FAKE_GH_IS_FORK="false" FAKE_GH_AUTHOR="alice"
+  export FAKE_GH_REPO="acme/repo"
+
+  run_merge_hook "gh pr merge https://github.com:443/acme/repo/pull/7"
+  [ "$status" -eq 0 ]
+
+  [ "$(cat "$FAKE_GH_STATE/post_count")" = "1" ]
+  [ "$(cat "$FAKE_GH_STATE/comment_pr")" = "7" ]
+}
+
+@test "a suffix does not carry a foreign pull-request URL past the boundary" {
+  write_sidecar
+  export FAKE_GH_STATE FAKE_GH_IS_FORK="false" FAKE_GH_AUTHOR="alice"
+  export FAKE_GH_REPO="acme/repo"
+
+  # The relaxation is to the shape, never to the repository comparison.
+  run_merge_hook "gh pr merge https://github.com/other-org/other-repo/pull/7/files"
+  [ "$status" -eq 0 ]
+
+  [ ! -s "$FAKE_GH_STATE/post_count" ]
+}

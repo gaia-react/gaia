@@ -58,6 +58,7 @@ _lib="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)"
 # shellcheck source=/dev/null
 [ -n "${_lib:-}" ] && [ -f "$_lib/repo-scope.sh" ] && . "$_lib/repo-scope.sh"
 type cmd_targets_foreign_repo_slug >/dev/null 2>&1 || exit 0
+type gaia_gh_merge_ref_to_home_pr >/dev/null 2>&1 || exit 0
 if cmd_targets_foreign_repo_slug "$cmd"; then
   exit 0
 fi
@@ -82,10 +83,10 @@ fi
 # on.
 #
 # The URL arm is the one the boundary check above cannot cover: a URL carries
-# no `-R`/`--repo`, so the scanned repository is empty, which reads as home. It
-# is compared here instead, host half included, and an unrecognized shape
-# declines rather than guessing. `issue-claim-release.sh` answers the identical
-# question for the identical scanned value.
+# no `-R`/`--repo`, so the scanned repository is empty, which reads as home.
+# The lib compares it instead, host half included, and declines on any shape it
+# does not recognize. `issue-claim-release.sh` reaches the same function for the
+# identical scanned value, so the two hooks cannot answer it differently.
 #
 # An empty selector is gh's own current-branch default, and it is the ONLY arm
 # that reaches it. A named reference gh cannot resolve is not the same case: the
@@ -93,21 +94,13 @@ fi
 # than the one it named, and PATCH over whatever block already sits there. That
 # declines, which is the act-on-home fail direction this whole path takes.
 PR=""
-url_re='^[a-zA-Z][a-zA-Z0-9+.-]*://([^/]+)/([^/]+/[^/]+)/pull/([0-9]+)$'
 case "${GAIA_GH_MERGE_REF:-}" in
   '')
     PR="$(gh pr view --json number --jq .number 2>/dev/null || true)"
     ;;
   *://*)
-    gaia_repo_scope_resolve_home || exit 0
-    if [[ "$GAIA_GH_MERGE_REF" =~ $url_re ]] \
-      && [ "$(printf '%s' "${BASH_REMATCH[1]}" | tr '[:upper:]' '[:lower:]')" = "$GAIA_REPO_SCOPE_HOME_HOST" ] \
-      && [ "$(printf '%s' "${BASH_REMATCH[2]}" | tr '[:upper:]' '[:lower:]')" \
-         = "$(printf '%s' "$GAIA_REPO_SCOPE_HOME_SLUG" | tr '[:upper:]' '[:lower:]')" ]; then
-      PR="${BASH_REMATCH[3]}"
-    else
-      exit 0
-    fi
+    gaia_gh_merge_ref_to_home_pr "$GAIA_GH_MERGE_REF" || exit 0
+    PR="$GAIA_HOME_PR_NUMBER"
     ;;
   *[!0-9]*)
     PR="$(gh pr view "$GAIA_GH_MERGE_REF" --json number --jq .number 2>/dev/null || true)"

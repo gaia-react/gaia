@@ -488,3 +488,93 @@ cmd_targets_foreign_repo_slug() {
   if repo_slug_is_foreign "$GAIA_GH_MERGE_REPO"; then return 0; fi
   return 1
 }
+
+# ---------------------------------------------------------------------------
+# URL-reference form of the act-on-home question, shared by the same two
+# consumers.
+#
+# gh takes `<number> | <url> | <branch>` as a merge selector, and a URL is the
+# one form `-R`/`--repo` cannot qualify: gh resolves the repository from the
+# URL itself and ignores the flag, so the scanned repository is empty and the
+# comparison above reads it as home. A consumer that ACTS on the home
+# repository therefore cannot take a URL's number at face value: a merged
+# sibling-repository pull request read by URL would reach THIS repository's
+# pull request or issue of the same number, because the write resolves here.
+#
+# Both consumers ask this of the identical scanned value, which is why the
+# answer lives here beside the `-R`/`--repo` half rather than twice in them.
+# The two halves are one boundary, and a boundary that answers the same
+# question two different ways depending on which hook asks it is the failure
+# a single definition rules out.
+#
+# Sets GAIA_HOME_PR_NUMBER and returns 0 when the reference is a URL naming
+# the home repository. Returns 1 otherwise, which every caller reads as
+# "decline": an unresolvable home, an unrecognized URL shape, another
+# repository, and another host are all values no caller may act on.
+GAIA_HOME_PR_NUMBER=""
+
+gaia_gh_merge_ref_to_home_pr() {
+  local ref="$1"
+  local url_re host slug number
+
+  GAIA_HOME_PR_NUMBER=""
+
+  gaia_repo_scope_resolve_home || return 1
+
+  # Two shapes are matched as loosely as gh matches them; everywhere else this
+  # stays deliberately tighter, so the first half is not a rule to follow gh
+  # everywhere. gh's own URL matcher is `^/([^/]+)/([^/]+)/pull/(\d+)` against
+  # the parsed path, UNANCHORED at the end, and it compares `u.Hostname()`,
+  # which drops both a port and any userinfo.
+  #
+  # Followed: a `/`, `?`, or `#` suffix, the Files tab's own address being
+  # `.../pull/7/files`, and a `:port` on the authority. gh merges the home
+  # pull request each of those names, so declining one costs the consumer a
+  # merge it should have acted on, which is the whole reason to loosen.
+  #
+  # Not followed: a suffix has to start with a separator, so `/pull/7files`
+  # declines where gh's unanchored regex reads pull request 7, and userinfo
+  # stays on the compared authority, so `https://user@github.com/...` declines
+  # too. Every divergence that remains declines, which is this function's safe
+  # direction, so each costs a silent no-op rather than a wrong write.
+  #
+  # That last sentence is why the scheme is `https?` and not a general scheme
+  # class. gh reads only http and https as a URL and treats any other scheme
+  # as a branch name, so a general class accepts `ftp://<home>/pull/7` and
+  # hands back 7 for a reference gh never resolved: an ACCEPT where gh
+  # declines, which is the one direction a boundary that acts cannot have.
+  # Narrowing here keeps every divergence on the declining side.
+  #
+  # The bracketed spelling is a case-insensitive `https?`. A URL scheme is
+  # case-insensitive and Go lowercases it before gh ever sees it, so a plain
+  # `https?` would decline `HTTPS://<home>/pull/7`, which gh merges. The
+  # alternative, `shopt -s nocasematch`, is process-global: it would also
+  # reach the port strip below and every later `[[ ]]` in whichever hook
+  # sourced this file.
+  url_re='^[hH][tT][tT][pP][sS]?://([^/]+)/([^/]+/[^/]+)/pull/([0-9]+)([/?#].*)?$'
+  [[ "$ref" =~ $url_re ]] || return 1
+  host=$(printf '%s' "${BASH_REMATCH[1]}" | tr '[:upper:]' '[:lower:]')
+  slug=$(printf '%s' "${BASH_REMATCH[2]}" | tr '[:upper:]' '[:lower:]')
+  number="${BASH_REMATCH[3]}"
+
+  # Drop a `:port` as gh's `u.Hostname()` does. Requiring digits after the
+  # colon is what keeps this off a bracketed IPv6 authority's own colons:
+  # `[::1]` ends in `]` and is left whole, `[::1]:443` ends in digits and
+  # loses only the port. The home host never carries one, so a port left on
+  # would simply never compare equal.
+  if [[ "$host" =~ ^(.*):[0-9]+$ ]]; then
+    host="${BASH_REMATCH[1]}"
+  fi
+
+  # The authority decides as much as the slug: the same OWNER/REPO served from
+  # another host is another repository, and matching on the slug alone would
+  # accept it. The slug comparison is case-insensitive because GitHub resolves
+  # OWNER/REPO that way, so a URL spelled in another case lands on the home
+  # repository and a case-sensitive comparison would cost the action.
+  [ "$host" = "$GAIA_REPO_SCOPE_HOME_HOST" ] || return 1
+  [ "$slug" = "$(printf '%s' "$GAIA_REPO_SCOPE_HOME_SLUG" | tr '[:upper:]' '[:lower:]')" ] || return 1
+
+  # shellcheck disable=SC2034 # read by both sourcing consumers, never here
+  GAIA_HOME_PR_NUMBER="$number"
+  return 0
+}

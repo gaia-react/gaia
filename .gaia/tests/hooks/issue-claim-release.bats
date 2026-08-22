@@ -691,6 +691,37 @@ assert_nothing_released() { [ ! -s "$FAKE_GH_STATE/issue_edits" ]; }
   assert_released_once "77"
 }
 
+# 7ap-7aq: gh's own URL matcher is unanchored after the number and its host
+# comparison drops a port, so each of these merges home pull request 5 while a
+# tighter matcher declines and leaves the claim standing. The shape rules live
+# in the lib and `repo-scope-home-pr.bats` covers them exhaustively; these two
+# pin that THIS hook reaches them, which is the half a lib-only suite cannot
+# see. 7ap is the spelling a human actually produces, by copying the address
+# bar off the Files tab.
+@test "7ap: a home URL carrying a /files suffix resolves the ref" {
+  export FAKE_GH_PR_BODY="Closes #77"
+  run_hook 'gh pr merge https://github.com/gaia-react/gaia/pull/5/files'
+  [ "$status" -eq 0 ]
+  [ "$(cat "$FAKE_GH_STATE/pr_view_ref")" = "5" ]
+  assert_released_once "77"
+}
+
+@test "7aq: a home URL carrying the default port resolves the ref" {
+  export FAKE_GH_PR_BODY="Closes #77"
+  run_hook 'gh pr merge https://github.com:443/gaia-react/gaia/pull/5'
+  [ "$status" -eq 0 ]
+  [ "$(cat "$FAKE_GH_STATE/pr_view_ref")" = "5" ]
+  assert_released_once "77"
+}
+
+@test "7ar: a suffix does not carry a foreign URL past the boundary" {
+  # The relaxation is to the shape, never to the repository comparison.
+  export FAKE_GH_PR_BODY="Closes #77"
+  run_hook 'gh pr merge https://github.com/other-org/other-repo/pull/5/files'
+  [ "$status" -eq 0 ]
+  assert_nothing_released
+}
+
 # 7ag-7aj: gh clusters single-dash shorthands, and this parser does not model
 # that. The first value-taking letter in a cluster swallows the rest of the
 # token or the next word, so `-sR<slug>` leaves the repository check unarmed
