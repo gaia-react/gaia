@@ -193,6 +193,32 @@ jobs:
               # schema alone -- and either alone must re-run the job.
               - '.gaia/labels.json'
               - '.gaia/labels.schema.json'
+              # The grading-declaration divergence guard
+              # (`src/harden/__tests__/severity-map.test.ts`) reads every
+              # `code-audit-*.md` under `.claude/agents/` off the repo root and
+              # checks each file's `<!-- gaia-audit:gradings: -->` declaration
+              # against `SEVERITY_BY_GRADING` and the parser's accepted set. The
+              # one-sided edit it exists to catch -- a member declaring a fourth
+              # grading before the map learns it -- touches only those agent
+              # files, so without this line the filter resolves `code=false`,
+              # the Vitest step below skips, and this required check reports
+              # green having run the divergence check zero times (#1513).
+              # `audit-ci-tests.yml` is no fallback: it arms on the same glob but
+              # runs bats shards only, and the one bats file naming the marker
+              # (`.gaia/tests/lib/doc-difficulty-prose.bats`) explicitly declines
+              # to reimplement the parity mechanism rather than approximate it.
+              # A glob rather than the four current filenames, the same reasoning
+              # as the workflows and actions globs above: the guard reads whatever
+              # matches this name pattern, so a fifth member added later is
+              # covered without an edit here, and a deletion that drops the count
+              # below the suite's "at least four" floor re-runs the job too.
+              # Deliberately NOT `.claude/**`. The suite's other real-repo reader
+              # (`src/command-reachability.test.ts`) scans four `.claude/`
+              # subdirectories plus `wiki/`, and arming on those would newly run
+              # this required job on roughly two in five pull requests instead of
+              # one in thirty -- a different cost class, needing a decision this
+              # entry does not make. Tracked as #1524.
+              - '.claude/agents/code-audit-*.md'
       - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
         name: Setup Node and install the CLI workspace
         uses: ./.github/actions/gaia-setup-node
