@@ -49,6 +49,26 @@
 #
 # Exit 0 clean, 1 on at least one finding, 2 on the check's own failure.
 
+# Needs bash 5, for the reason capability-oracle-lib.sh's own guard states: on
+# bash 3.2 the oracle's scan loop ends early inside a file and the records past
+# that point are lost, which under-reports reach. Re-exec under a Homebrew bash
+# 5 when there is one, the way .gaia/scripts/bats5.sh discovers it, and refuse
+# rather than answer wrongly when there is not. This runs BEFORE the lib is
+# sourced, so the entry point gets its re-exec instead of the lib's bare
+# refusal; only a consumer with no guard of its own falls through to that.
+if [ "${BASH_VERSINFO[0]}" -lt 5 ]; then
+  for _gaia_capcheck_bash5 in /opt/homebrew/bin/bash /usr/local/bin/bash; do
+    [ -x "$_gaia_capcheck_bash5" ] || continue
+    [ "$("$_gaia_capcheck_bash5" -c 'echo "${BASH_VERSINFO[0]}"' 2>/dev/null)" -ge 5 ] 2>/dev/null || continue
+    [ "${BASH_SOURCE[0]}" = "$0" ] && exec "$_gaia_capcheck_bash5" "$0" "$@"
+    break
+  done
+  printf 'check-script-capabilities: requires bash >= 5, found %s\n' "${BASH_VERSION}" >&2
+  printf '  bash 3.2 ends the oracle scan early inside a file, so reach past\n' >&2
+  printf '  that point is lost. Install a bash 5 and re-run.\n' >&2
+  exit 2
+fi
+
 GAIA_CAPCHECK_MANIFEST_REL=".gaia/script-capabilities.json"
 GAIA_CAPCHECK_SCHEMA_REL=".gaia/script-capabilities.schema.json"
 GAIA_CAPCHECK_SETTINGS_REL=".claude/settings.json"

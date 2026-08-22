@@ -10,7 +10,17 @@
 # assertions, the exit codes, and the command line. The split is by subject: the
 # oracle answers "what does this file reach for", the check answers "does the
 # declaration agree". Sourcing this file defines its functions and does nothing
-# else.
+# else, beyond the bash-version refusal below.
+#
+# Needs bash 5. On bash 3.2 the scan loop over a file's logical lines ends
+# early, because an inner process substitution in the loop body consumes the
+# outer one's descriptor, so every record past that point is lost and reach is
+# under-reported rather than over-reported. That is the direction that cannot
+# surface as a finding, so this refuses instead of answering. A library cannot
+# re-exec on its own behalf, so each executable entry point carries its own
+# discovery-and-re-exec block ahead of sourcing this file and never reaches
+# here; this is the backstop that gives a future consumer the refusal without
+# it having to remember the guard.
 #
 # Every detector here is deliberately incomplete in one direction and says so in
 # its own header. The oracle is lexical: it does not evaluate, it does not model
@@ -22,6 +32,12 @@
 # Hot paths return through this rather than through `$(...)`: the oracle runs
 # every detector over every non-comment line of every file in every obligated
 # script's closure, and a subshell per call turns that into minutes.
+if [ "${BASH_VERSINFO[0]}" -lt 5 ]; then
+  printf 'capability-oracle-lib: requires bash >= 5, found %s\n' "${BASH_VERSION}" >&2
+  printf '  the scan loop ends early there, so reach is under-reported.\n' >&2
+  exit 2
+fi
+
 _GAIA_CAPCHECK_RET=""
 
 # ---------------------------------------------------------------------------
