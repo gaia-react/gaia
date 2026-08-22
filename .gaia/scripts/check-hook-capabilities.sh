@@ -45,6 +45,25 @@
 #
 # Exit 0 clean, 1 on at least one finding, 2 on the check's own failure.
 
+# Needs bash 5. On stock macOS /bin/bash (3.2) the closure walk loses whole
+# files' records, so a clean tree reports fabricated SURPLUS and, in the
+# direction that matters, reach the walk drops can never surface as
+# UNDECLARED. CI runs bash 5, so an unguarded local run disagrees with the
+# gate silently. Prefer a Homebrew bash 5 the way .gaia/scripts/bats5.sh
+# does, and refuse rather than answer wrongly when there is none.
+if [ "${BASH_VERSINFO[0]}" -lt 5 ]; then
+  for _gaia_hookcap_bash5 in /opt/homebrew/bin/bash /usr/local/bin/bash; do
+    [ -x "$_gaia_hookcap_bash5" ] || continue
+    [ "$("$_gaia_hookcap_bash5" -c 'echo "${BASH_VERSINFO[0]}"' 2>/dev/null)" -ge 5 ] 2>/dev/null || continue
+    [ "${BASH_SOURCE[0]}" = "$0" ] && exec "$_gaia_hookcap_bash5" "$0" "$@"
+    break
+  done
+  printf 'check-hook-capabilities: requires bash >= 5, found %s\n' "${BASH_VERSION}" >&2
+  printf '  bash 3.2 drops closure records: it reports a clean tree as SURPLUS\n' >&2
+  printf '  and can never report the reach it lost. Install a bash 5 and re-run.\n' >&2
+  exit 2
+fi
+
 GAIA_HOOKCAP_MANIFEST_REL=".gaia/hook-capabilities.json"
 GAIA_HOOKCAP_SCHEMA_REL=".gaia/hook-capabilities.schema.json"
 GAIA_HOOKCAP_SETTINGS_REL=".claude/settings.json"

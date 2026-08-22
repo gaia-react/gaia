@@ -823,7 +823,7 @@ jobs:
 
   # A standalone job, not a matrix leg: `.gaia/scripts/check-hook-capabilities.sh`
   # walks the live-tree closure of every registered hook, and its 66-70s median
-  # standalone gate-mode cost on the maintainer machine, 83s on this runner;
+  # standalone gate-mode cost on the maintainer machine (83s on this runner;
   # see the WTI_EXCLUDED entry this checker carries in
   # .gaia/tests/whole-tree-invariants.sh) is long
   # enough that no size-weighted shard should absorb it as a step -- bats-shards.sh

@@ -542,8 +542,8 @@ printf "x\n" > "app/data/sub/$name.txt"'
 @test "UAT-024: the shipped manifest and schema carry no SPEC/UAT id and no maintainer-paths entry" {
   local manifest="$REPO_ROOT/.gaia/hook-capabilities.json"
   local schema="$REPO_ROOT/.gaia/hook-capabilities.schema.json"
-  [ -f "$manifest" ] || skip "4a has not landed: .gaia/hook-capabilities.json is absent"
-  [ -f "$schema" ] || skip "4a has not landed: .gaia/hook-capabilities.schema.json is absent"
+  [ -f "$manifest" ] || return 1
+  [ -f "$schema" ] || return 1
   grep -qE 'SPEC-[0-9]+|UAT-[0-9]+' "$manifest" "$schema" && return 1
   # release-scrub.yml is YAML: the pattern's double-quoted scalar spells a
   # literal backslash as \\, so the raw grep match carries that doubling and
@@ -560,7 +560,7 @@ printf "x\n" > "app/data/sub/$name.txt"'
 
 @test "UAT-024: the schema's own description carries no prevention vocabulary" {
   local schema="$REPO_ROOT/.gaia/hook-capabilities.schema.json"
-  [ -f "$schema" ] || skip "4a has not landed: .gaia/hook-capabilities.schema.json is absent"
+  [ -f "$schema" ] || return 1
   local desc
   desc="$(jq -r '.description // empty' "$schema")"
   [ -n "$desc" ] || return 1
@@ -702,10 +702,18 @@ true'
 
 # ========== UAT-018, the single live-tree arm, flag-gated ==========
 #
-# The suite's only live-tree closure walk. RT-013 / PERF-008 forbids one
-# inside the size-weighted bats-shards.sh partition, so this arm skips
-# unless a maintainer or the Phase-5 dedicated workflow job sets the flag.
-# See README.md's run_bounded harness and the frozen 300-second ceiling.
+# The suite's only live-tree closure walk, and it is opt-in for a maintainer
+# running this suite by hand: nothing in the repository sets the flag. A
+# live-tree walk must stay out of the size-weighted bats-shards.sh partition,
+# which weights a suite by file size as a runtime proxy, so a short suite
+# shelling out to a minute-long checker would break the partition.
+#
+# CI does not reach this arm. The dedicated `Hook Capabilities (live tree)`
+# job in .github/workflows/audit-ci-tests.yml runs the checker directly and
+# bounds it with its own `timeout-minutes`, so the walk is gated there rather
+# than here. The 300-second ceiling below is deliberately generous: it exists
+# so a non-terminating walk fails loudly instead of hanging, not as a
+# performance assertion.
 
 run_bounded() {
   local limit="$1" i
@@ -725,7 +733,7 @@ run_bounded() {
 }
 
 @test "real repo: the checker walks every registered hook's closure and exits 0 within 300s" {
-  [ "${GAIA_HOOKCAP_LIVE_TREE:-}" = "1" ] || skip "live-tree walk: set GAIA_HOOKCAP_LIVE_TREE=1 (runs in the dedicated CI job)"
+  [ "${GAIA_HOOKCAP_LIVE_TREE:-}" = "1" ] || skip "live-tree walk: opt-in, set GAIA_HOOKCAP_LIVE_TREE=1 (CI gates it in its own job, not here)"
   run_bounded 300 bash "$CHECK" "$REPO_ROOT"
   local bounded_status=$?
   [ "$bounded_status" -eq 0 ] || { printf 'the live-tree walk did not finish inside 300s\n' >&2; return 1; }
@@ -734,10 +742,9 @@ run_bounded() {
 # ========== Real-repo arms, cheap ones ==========
 #
 # None of these calls gaia_hookcap_reconcile / gaia_hookcap_reach /
-# gaia_check_hook_capabilities, so none performs a closure walk. Until 4a's
-# manifest lands, gaia_hookcap_schema/coverage/vocabulary/marking each
-# short-circuit on the missing manifest file and pass vacuously -- see this
-# file's "Notes for orchestrator" in the return.
+# gaia_check_hook_capabilities, so none performs a closure walk. Each reads
+# the committed manifest and fails rather than skipping when it is absent,
+# so deleting that file cannot retire an assertion into a silent pass.
 
 @test "real repo: the check script is executable" {
   [ -x "$CHECK" ]

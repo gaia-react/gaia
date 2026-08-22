@@ -42,6 +42,8 @@ bash .gaia/scripts/check-hook-capabilities.sh
 
 The same check also finds a registration whose command names a `.sh` path in a form it cannot reduce to a repo-relative path, or names no shell script at all; the fix is rewriting the registration to name a script file, the convention every registration on this tree already follows.
 
+It needs bash 5. On stock macOS `/bin/bash`, which is 3.2, the closure walk loses whole files' records and reports a clean tree as `SURPLUS`, and the reach it drops can never surface as `UNDECLARED`. The check re-execs itself under a Homebrew bash 5 when it finds one and refuses with a message when it does not, so this command cannot quietly disagree with CI; if it refuses, install a bash 5 rather than reading the run that got that far.
+
 `.gaia/hook-scopes.json` and `.gaia/hook-capabilities.json` cover different sets and declare different things. `.gaia/hook-scopes.json` covers every `.sh` under `.claude/hooks/**` and declares which tree the hook's state belongs to. `.gaia/hook-capabilities.json` covers only the registered hooks and declares what the hook reaches for beyond itself. Neither manifest derives its coverage from the other.
 
 The check catches these at review time; nothing mediates a registered hook at run time.
