@@ -29,15 +29,15 @@
 # at each site rather than summarized here, so a reader auditing one detector
 # sees the limit that applies to it.
 
-# Hot paths return through this rather than through `$(...)`: the oracle runs
-# every detector over every non-comment line of every file in every obligated
-# script's closure, and a subshell per call turns that into minutes.
 if [ "${BASH_VERSINFO[0]}" -lt 5 ]; then
   printf 'capability-oracle-lib: requires bash >= 5, found %s\n' "${BASH_VERSION}" >&2
   printf '  the scan loop ends early there, so reach is under-reported.\n' >&2
   exit 2
 fi
 
+# Hot paths return through this rather than through `$(...)`: the oracle runs
+# every detector over every non-comment line of every file in every obligated
+# script's closure, and a subshell per call turns that into minutes.
 _GAIA_CAPCHECK_RET=""
 
 # ---------------------------------------------------------------------------

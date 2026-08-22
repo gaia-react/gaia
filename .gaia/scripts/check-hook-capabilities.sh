@@ -60,7 +60,13 @@ if [ "${BASH_VERSINFO[0]}" -lt 5 ]; then
   done
   printf 'check-hook-capabilities: requires bash >= 5, found %s\n' "${BASH_VERSION}" >&2
   printf '  bash 3.2 drops closure records: it reports a clean tree as SURPLUS\n' >&2
-  printf '  and can never report the reach it lost. Install a bash 5 and re-run.\n' >&2
+  printf '  and can never report the reach it lost.\n' >&2
+  if [ -n "${_gaia_hookcap_bash5:-}" ] && [ -x "${_gaia_hookcap_bash5:-}" ]; then
+    printf '  %s is a bash 5. The re-exec is only available when this file is\n' "$_gaia_hookcap_bash5" >&2
+    printf '  run, not sourced, so run it through that bash instead.\n' >&2
+  else
+    printf '  Install a bash 5 (brew install bash) and re-run.\n' >&2
+  fi
   exit 2
 fi
 

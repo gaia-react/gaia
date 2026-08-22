@@ -65,7 +65,13 @@ if [ "${BASH_VERSINFO[0]}" -lt 5 ]; then
   done
   printf 'check-script-capabilities: requires bash >= 5, found %s\n' "${BASH_VERSION}" >&2
   printf '  bash 3.2 ends the oracle scan early inside a file, so reach past\n' >&2
-  printf '  that point is lost. Install a bash 5 and re-run.\n' >&2
+  printf '  that point is lost.\n' >&2
+  if [ -n "${_gaia_capcheck_bash5:-}" ] && [ -x "${_gaia_capcheck_bash5:-}" ]; then
+    printf '  %s is a bash 5. The re-exec is only available when this file is\n' "$_gaia_capcheck_bash5" >&2
+    printf '  run, not sourced, so run it through that bash instead.\n' >&2
+  else
+    printf '  Install a bash 5 (brew install bash) and re-run.\n' >&2
+  fi
   exit 2
 fi
 

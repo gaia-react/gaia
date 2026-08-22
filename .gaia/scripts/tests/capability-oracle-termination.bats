@@ -765,3 +765,34 @@ EOF
   [ "$(grep -cF -- 'fs-write:lib/a' <<<"$output")" -eq 1 ]
   [ "$(grep -cF -- 'fs-write:lib/b' <<<"$output")" -eq 1 ]
 }
+
+# ========== The bash-version backstop ==========
+#
+# Lexical, not behavioural: the runners are bash 5, so there is no bash 3.2 to
+# drive the refusal on. Under 3.2 the scan loop ends early inside a file and
+# under-reports reach, which is the direction that cannot surface as a finding,
+# so each executable entry point re-execs under a bash 5 and this library
+# refuses outright for any consumer that sources it without a guard of its own.
+# That refusal is the only structural defence a future consumer inherits, and
+# deleting it leaves every other test in the tree green, so it is pinned here.
+
+@test "backstop: the oracle refuses to be sourced under a bash older than 5" {
+  grep -qE -- '^if \[ "\$\{BASH_VERSINFO\[0\]\}" -lt 5 \]; then' "$ORACLE"
+  grep -qE -- '^  exit 2$' "$ORACLE"
+}
+
+@test "backstop: both executable entry points guard themselves before sourcing the oracle" {
+  local check guard_line source_line
+  for check in check-script-capabilities.sh check-hook-capabilities.sh; do
+    grep -qE -- '\$\{BASH_VERSINFO\[0\]\}" -lt 5' "$SCRIPT_DIR/$check" || return 1
+    grep -qF -- 'exec "$_gaia' "$SCRIPT_DIR/$check" || return 1
+    # The guard has to run BEFORE the source, or the library's own refusal
+    # fires first and the entry point never gets to re-exec.
+    guard_line="$(grep -nE -- '\$\{BASH_VERSINFO\[0\]\}" -lt 5' "$SCRIPT_DIR/$check" | head -1 | cut -d: -f1)"
+    source_line="$(grep -nF -- '. "$_gaia' "$SCRIPT_DIR/$check" | head -1 | cut -d: -f1)"
+    [ -n "$guard_line" ] || return 1
+    [ -n "$source_line" ] || return 1
+    [ "$guard_line" -lt "$source_line" ] || return 1
+  done
+  true
+}

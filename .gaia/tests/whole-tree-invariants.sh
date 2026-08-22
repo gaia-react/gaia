@@ -55,8 +55,13 @@
 # said "fifteen" while WTI_SCRIPTS already held sixteen). main() checks
 # WTI_SCRIPTS's live count against WTI_SCRIPTS_COUNT_ASOF below and refuses to
 # run when they disagree, so adding or removing a member forces this paragraph
-# to be re-measured and both numbers updated together, rather than drifting
-# unnoticed again.
+# to be re-visited rather than drifting unnoticed again.
+#
+# What the lever does not catch, stated so it is not mistaken for more than it
+# is: only WTI_SCRIPTS_COUNT_ASOF is machine-checked. The word "sixteen" in the
+# paragraph above is prose and nothing compares it to anything, so the same
+# drift can recur one bump later; and a member swapped for another holds the
+# count, so the runtime figures can go stale with the lever satisfied.
 #
 # No member is ever skipped. A missing member path, and a bats member with no
 # `bats` on PATH, both count as failures rather than passing quietly, because a
