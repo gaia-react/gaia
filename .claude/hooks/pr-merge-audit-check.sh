@@ -151,20 +151,24 @@ gate_cmd_is_first_command_merge() {
   # scan below is a byte-at-a-time bash loop and the library holding it is
   # several hundred lines to source.
   #
-  # The filter tests the FIRST non-blank byte rather than searching for the verb,
+  # The filter tests the LEADING CHARACTERS rather than searching for the verb,
   # and soundness is why. A word the shell assembles need not appear in the
   # command as a run of bytes at all: `gh pr me\<newline>rge 1` spells the verb
   # through a line continuation and holds no `merge` substring, so a search for
-  # one would drop exactly the spelling this arm exists to catch. A command whose
-  # first word tokenizes to `gh` begins with `g` or with a quoting character, so
-  # the test admits every such command.
+  # one would drop exactly the spelling this arm exists to catch. Why the
+  # two-character alternation admits every command whose first word can reach
+  # `gh` is argued where the pattern is defined; see `gate_gh_lead_re` above.
   #
   # Be exact about what it does NOT buy, because the obvious reading is wrong.
-  # `g` is the leading byte of every `git` invocation too, so this filter is not
-  # "only a merge pays": a whole session of ordinary git commands pays the source
-  # and the scan. What it removes is the rest of the alphabet, which is most Bash
-  # tool calls, and that is the honest claim. It also admits no `$'…'` form,
-  # since that begins with `$`; the shared scanner would not model one anyway.
+  # The filter reads the first word, never the subcommand, so this is not "only
+  # a merge pays": every `gh` invocation pays the source and the scan whatever
+  # it goes on to do, `gh issue view` and `gh api` alongside `gh pr merge`, and
+  # so does any command opening with a quote or a backslash, since that first
+  # character could be spelling anything. What it removes is every command whose
+  # first word cannot reach `gh`, `git` and `grep` among them, which is most
+  # Bash tool calls, and that is the honest claim. It also admits no `$'…'`
+  # form, since that begins with `$`; the shared scanner would not model one
+  # anyway.
   [[ "$cmd" =~ $gate_gh_lead_re ]] || return 1
 
   # From this hook's OWN on-disk location, never cwd: the bats suites run this

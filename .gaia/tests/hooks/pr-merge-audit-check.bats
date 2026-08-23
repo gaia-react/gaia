@@ -1930,9 +1930,10 @@ rge 30 --squash'
   install_gh_stub
   commit_files "app/x.ts" "export const x = 1"
 
-  # The tokenizer arm's cheap pre-filter admits any command holding the verb as
-  # a substring, so this is the case that keeps the filter a pre-filter rather
-  # than the decision.
+  # A command whose first word cannot reach `gh` must not arm the gate, and the
+  # pre-filter is what turns this one away before the scan ever runs. For the
+  # case that does reach the scan and abstains there, see the large-payload test
+  # below, whose fixture is a real `gh` whose word 1 is not `pr`.
   run_merge_hook "git merge --no-ff main"
   assert_allowed_by_json
   [ -z "$output" ]
@@ -2016,8 +2017,8 @@ rge 30 --squash'
   commit_files "app/x.ts" "export const x = 1"
 
   # Pins the CLASS of regression, not a constant. The arming scan walks bytes and
-  # slices per block, so its cost grows faster than its input, and the pre-filter
-  # admits every `git` invocation, so an unbounded scan put a synchronous stall on
+  # slices per block, so its cost grows faster than its input, and every `gh`
+  # invocation reaches it, so an unbounded scan put a synchronous stall on
   # ordinary Bash tool calls: 3s at 32KB and ~40s at the 128KB used here, against
   # ~60ms for the same size starting with another letter. A bounded prefix
   # flattens it to ~100ms at any size. The ceiling below sits far above the bounded cost and far below the
