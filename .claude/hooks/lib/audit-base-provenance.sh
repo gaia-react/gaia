@@ -129,8 +129,8 @@ audit_resolve_base_provenance() {
   default_branch="$(git -C "$root" symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@')"
   [ -n "$default_branch" ] || default_branch="main"
 
-  # The fully-qualified spelling is load-bearing, not pedantic (SEC-001,
-  # reproduced on git 2.55.0). Git resolves the bare revspec origin/<name>
+  # The fully-qualified spelling is load-bearing, not pedantic (reproduced on
+  # git 2.55.0). Git resolves the bare revspec origin/<name>
   # through refs/heads/ before refs/remotes/, so a local branch literally
   # named origin/main would supply the base here while
   # refs/remotes/origin/main still verifies, minting `remote` trust for a

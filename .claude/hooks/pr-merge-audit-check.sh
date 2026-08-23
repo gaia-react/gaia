@@ -581,36 +581,27 @@ gate_resolve_base() {
   IFS=$'\t' read -r gate_trust gate_anchor gate_base <<< "$prov" || true
 }
 
-# gate_merge_phrase_count: how many times the `gh pr merge` phrase appears in
-# $cmd at all, counted per occurrence rather than per line.
-#
-# Deliberately blunt, and blunt only toward denial. It counts the phrase
-# wherever it sits, including inside a comment, a quoted string, or a heredoc
-# body, so a command that merely mentions a second merge denies the relaxation
-# below. The scanner this pairs with reads the FIRST command exactly; what this
-# adds is the assurance that no second merge rides behind it, in any spelling,
-# including the ones a command-position scan cannot see (a subshell, a brace
-# group, a `then` or `do` prefix, an absolute path to gh). A merge split across
-# a line continuation counts zero and denies too, since grep reads line by line.
-gate_merge_phrase_count() {
-  printf '%s\n' "$cmd" | grep -o -E 'gh[[:space:]]+pr[[:space:]]+merge' | grep -c .
-}
-
 # gate_cmd_names_the_record_pr: is the pull request the gated `gh pr merge`
 # names the same one whose record the conjuncts around this were checked
 # against? The record comes from `gh pr view` with no number, which describes
 # the CURRENT BRANCH's pull request, so without this the record conjuncts prove
 # only "this checkout is on a pull request", never "on the one being merged".
 #
-# The reference is read by the shared scanner in repo-scope.sh, never by a
-# second parser written here. `gh pr merge` takes six value-taking flags, and a
-# scan that skips options by their leading `-` alone reads a SEPARATED value as
-# the positional: `gh pr merge --body <record-number> <other-number>` then
-# compares the body equal to the record and permits a merge of <other-number>.
-# That is not a hypothetical, it was demonstrated against this hook. The shared
-# scanner models the flag set, rejects the single-dash clusters it cannot model,
-# and is quote-, comment- and heredoc-aware; every abstention of its is a deny
-# here, which is this arm's safe direction.
+# Everything this reads about the command comes from the shared scanner in
+# repo-scope.sh, never from a parser written here, and that is the whole design
+# rather than a convenience. Two hand-rolled readings were tried and both were
+# wrong in the permitting direction. Skipping options by their leading `-`
+# alone reads a value-taking flag's SEPARATED value as the positional, so
+# `gh pr merge --body <record-number> <other-number>` compared equal to the
+# record and permitted a merge of <other-number>; `gh pr merge` has six such
+# flags. Counting occurrences of the literal `gh pr merge` phrase to prove no
+# second merge rides along missed every spelling that breaks the literal run of
+# characters, `gh pr "merge" <n>` and a line continuation inside the verb among
+# them. Both were demonstrated against this hook rather than argued.
+#
+# The scanner tokenizes the way the shell does, so it answers both questions
+# exactly: which reference the merge names, and whether anything follows it in
+# the same tool call. Every abstention denies.
 gate_cmd_names_the_record_pr() {
   # The scanner is normally already loaded, from the repo-scope source near the
   # top of this hook. That source is cwd-relative, so it can miss from a
@@ -624,11 +615,18 @@ gate_cmd_names_the_record_pr() {
     type gaia_scan_gh_merge >/dev/null 2>&1 || return 1
   fi
 
-  # Exactly one merge in the whole tool call, or this gate cannot say which
-  # pull request a permit would clear.
-  [ "$(gate_merge_phrase_count)" -eq 1 ] || return 1
-
+  # Abstains unless the tool call's FIRST command is the merge and every flag
+  # on it is a shape the scanner models.
   gaia_scan_gh_merge "$cmd" || return 1
+
+  # And nothing follows it. The scanner sets this while reading the same
+  # command the call above just read, so it is that read's own answer rather
+  # than a second pass: 0 means the whole tool call was one command. Stricter
+  # than "no second merge", deliberately, because the safe direction for a
+  # relaxation is to deny what it cannot account for, and a trailing `&& echo
+  # done` costs only a marker requirement.
+  [ "$GAIA_FIRST_COMMAND_CLOSED" -eq 0 ] || return 1
+
   # No positional at all: the command targets the current branch, which is the
   # branch the record was read for, so the record conjuncts already bind it.
   [ -n "$GAIA_GH_MERGE_REF" ] || return 0
@@ -666,8 +664,8 @@ gate_cmd_names_the_record_pr() {
 # The last conjunct reads the command through the shared scanner and denies on
 # every abstention, so what it proves is bounded to the shapes that scanner
 # reads exactly: the merge is the first command in the tool call, it carries no
-# flag shape the scanner declines to model, and the phrase appears once in the
-# whole call. Anything else denies rather than being read approximately.
+# flag shape the scanner declines to model, and nothing at all follows it in
+# that call. Anything else denies rather than being read approximately.
 #
 # The number conjunct is scoped to this arm alone. The chore(deps) and
 # self-modification bypasses above read the same current-branch record and are

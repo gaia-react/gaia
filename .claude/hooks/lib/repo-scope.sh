@@ -227,7 +227,17 @@ repo_slug_is_foreign() {
 #
 # Sets GAIA_FIRST_COMMAND_WORDS to the first command's words. Returns 0 when
 # it read at least one word, 1 when the string held no command at all.
+#
+# Also sets GAIA_FIRST_COMMAND_CLOSED: 0 when the whole string was ONE command,
+# 1 when a separator or a comment closed the first one with something after it.
+# A caller that must know nothing else runs in the same tool call cannot ask
+# that of the text, because a second command can be spelled in ways no literal
+# scan of the text sees (`gh pr "merge" <n>`, a line continuation inside the
+# verb, a subshell, a brace group). This scan already tokenizes the way the
+# shell does, so it is the one place that question has an exact answer, and
+# publishing it costs one assignment rather than a second parser.
 GAIA_FIRST_COMMAND_WORDS=()
+GAIA_FIRST_COMMAND_CLOSED=0
 
 gaia_scan_first_command() {
   local cmd="$1"
@@ -335,6 +345,8 @@ gaia_scan_first_command() {
     done
   done
   if [ "$_had_lc_all" = set ]; then LC_ALL="$_prev_lc_all"; else unset LC_ALL; fi
+  # shellcheck disable=SC2034 # read by the merge gate, never in this file
+  GAIA_FIRST_COMMAND_CLOSED="$piece_closed"
   # The whole command was one piece, so its trailing word closes it.
   if [ "$piece_closed" = 0 ]; then
     [ "$have_word" = 1 ] && GAIA_FIRST_COMMAND_WORDS+=("$word")

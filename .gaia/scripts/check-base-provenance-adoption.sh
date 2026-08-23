@@ -9,7 +9,7 @@
 # owns a private copy of the base-derivation rule. This check makes that
 # property machine-checked: the resolver stays a singleton, the three named
 # consumers call it, and no file regrows the origin-then-local fallback
-# chain the resolver replaces.
+# chain the resolver replaces, in a spelling the scan recognizes.
 #
 # The claim is bounded, not tree-wide. Five shell sites carried the
 # origin-then-local chain before the resolver existed. Two are not
@@ -36,7 +36,9 @@
 #     1. Exactly one definition of audit_resolve_base_provenance exists.
 #     2. Each of the three named consumers references it.
 #     3. No file other than the resolver's own and the one written
-#        exemption carries the origin-then-local fallback chain.
+#        exemption carries the origin-then-local fallback chain in a
+#        spelling this scan recognizes (see the narrowing at the scan
+#        itself, below).
 #   Prints one line per finding plus a verdict line per assertion. Returns 0
 #   when all three hold, 1 when any does not. <repo_root> is a required
 #   parameter -- this check never derives it itself, so a bats fixture can
@@ -55,7 +57,7 @@ GAIA_PROVENANCE_DEF_PATTERN='^[[:space:]]*(function[[:space:]]+)?audit_resolve_b
 # *.test.* fixture built to prove this check fires.
 GAIA_PROVENANCE_TEST_EXCLUDES=(':!*.bats' ':!*/tests/*' ':!*/__tests__/*' ':!*.test.ts' ':!*.test.tsx')
 
-# The three consumers UAT-007 names, in the order the spec lists them.
+# The three consumers the spec names, in the order it lists them.
 GAIA_PROVENANCE_CONSUMERS=(
   '.gaia/scripts/resolve-audit-spawn.sh'
   '.claude/hooks/pr-merge-audit-check.sh'

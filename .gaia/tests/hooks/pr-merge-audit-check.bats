@@ -1631,10 +1631,18 @@ run_recording_hook() {
   assert_allowed_by_json
 }
 
-@test "an empty range denies a second merge riding in the command as the record's own" {
+@test "an empty range denies anything at all following the merge in the same command" {
   # One tool call, two merges: the first names the record's pull request and
-  # the second an arbitrary one. Matching the first token and permitting would
-  # clear both, so more than one invocation in a command denies outright.
+  # the second an arbitrary one. Reading the first reference and permitting
+  # would clear both, so the relaxation requires the merge to be the whole
+  # command.
+  #
+  # The four spellings below are what forced this to be the shell's own
+  # tokenizer rather than a scan of the text. A subshell and a brace group put
+  # a character before the second verb, so a scan that reads command positions
+  # cannot see it; quoting one word of the verb and splitting it across a line
+  # continuation each break the literal run of characters, so a scan that
+  # counts the phrase cannot see it either. Both were demonstrated to permit.
   local head
   head="$(git -C "$REPO" rev-parse HEAD)"
   set_origin_main_at refs/heads/feature
@@ -1643,14 +1651,26 @@ run_recording_hook() {
   run_merge_hook "gh pr merge 30 --squash; gh pr merge 999 --squash"
   assert_denied_by_json
 
-  # A subshell and a brace group both put a character before the verb, so a
-  # scan that reads command positions cannot see the second merge at all. The
-  # phrase count is what covers them, and it covers a prefixed spelling
-  # (`env`, `time`, an absolute path to gh) by the same means.
   run_merge_hook "gh pr merge 30 --squash && (gh pr merge 999 --squash)"
   assert_denied_by_json
 
   run_merge_hook "gh pr merge 30 --squash && { gh pr merge 999 --squash; }"
+  assert_denied_by_json
+
+  run_merge_hook 'gh pr merge 30 --squash && gh pr "merge" 999 --squash'
+  assert_denied_by_json
+
+  run_merge_hook 'gh pr merge 30 --squash && gh "pr" merge 999 --squash'
+  assert_denied_by_json
+
+  run_merge_hook 'gh pr merge 30 --squash && gh pr \
+merge 999 --squash'
+  assert_denied_by_json
+
+  # Not a second merge at all, and it still denies: the relaxation cannot
+  # account for what runs beside it, so it refuses rather than read the rest
+  # approximately.
+  run_merge_hook "gh pr merge 30 --squash && echo done"
   assert_denied_by_json
 }
 
