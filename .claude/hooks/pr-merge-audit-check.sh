@@ -121,7 +121,14 @@ cmd=$(echo "$input" | jq -r '.tool_input.command // ""' 2>/dev/null)
 # Named at parent level because a `[[ =~ ]]` pattern holding a quote and a
 # backslash is unreadable written inline, and quoting it there would match it
 # literally instead of as a regex.
-gate_gh_lead_re=$'^[[:space:]]*[g"\'\\\\]'
+#
+# Two characters, not one, and the second is what excludes `git`. A first word
+# that tokenizes to `gh` must begin with `gh`, or with `g` followed by a quote or
+# backslash spelling the `h` (`g"h"`, `g\h`), or with a quote or backslash
+# outright (`"gh"`, `\gh`). Nothing else reaches `gh`, so the alternation admits
+# every such command while turning away `git`, `grep`, `gzip` and `go`, which a
+# bare `g` test admitted and made pay the source and the scan.
+gate_gh_lead_re=$'^[[:space:]]*([g]["\'\\\\h]|["\'\\\\])'
 
 # How much of the command the arming scan reads. CHARACTERS, not bytes: bash
 # slices `${var:0:n}` by character, so under a multibyte locale this admits more
@@ -129,8 +136,7 @@ gate_gh_lead_re=$'^[[:space:]]*[g"\'\\\\]'
 # cost is character-driven too, so the bound holds in the dimension it was
 # measured in. Sized to swamp the ~20 characters a real `gh pr merge` needs for
 # its first three words while keeping the scan's superlinear cost off a large
-# command; see the scan call for why cutting the tail cannot make anything arm
-# that would not have.
+# command; see the scan call for why cutting the tail is safe.
 gate_scan_prefix_chars=2048
 
 # It asks the shared scanner for WORDS rather than calling gaia_scan_gh_merge,
@@ -181,15 +187,22 @@ gate_cmd_is_first_command_merge() {
   # which the filter above admits by design, so the scan has to be bounded rather
   # than merely gated.
   #
-  # The bound is safe in the direction that matters. Truncation only removes
-  # trailing bytes, so a word can be shortened but never lengthened and never
-  # created: no command can be made to ARM by cutting it, which is the direction
-  # that would let an unaudited merge through. What it can do is fail to arm a
-  # merge whose first three words end beyond the bound, and the three words of
-  # any real invocation occupy well under twenty bytes, so reaching it takes
-  # deliberate padding. That is the obfuscation case the arming block below
-  # already declines to defend against, and the text arm there is unbounded and
-  # still sees a plain merge at any offset.
+  # The bound is safe, and being exact about WHY matters, because the intuitive
+  # reading of it is backwards in both halves.
+  #
+  # Cutting the tail CAN create an arm rather than only destroy one: a word
+  # straddling the bound is truncated, and one truncated to exactly `merge` arms
+  # a command that does not arm when written in full. Verified against this
+  # predicate rather than reasoned about.
+  #
+  # That direction is harmless, because arming is monotonically FAIL-CLOSED: an
+  # armed gate goes on to decide and can still deny, while a gate that does not
+  # arm exits 0 and permits. Over-arming therefore costs a decision nobody asked
+  # for, and the only direction worth defending is failing to arm a real merge.
+  # That needs the first three words to end past the bound, which takes
+  # deliberate padding of an invocation otherwise occupying under twenty
+  # characters, and the text arm below is unbounded and still sees a plain merge
+  # at any offset.
   gaia_scan_first_command "${cmd:0:$gate_scan_prefix_chars}" || return 1
   [ "${#GAIA_FIRST_COMMAND_WORDS[@]}" -ge 3 ] || return 1
   [ "${GAIA_FIRST_COMMAND_WORDS[0]}" = "gh" ] || return 1

@@ -140,6 +140,22 @@ run_merge_hook() {
   run_merge_hook_at "$REPO" "${1:-gh pr merge 30 --squash --delete-branch}"
 }
 
+# Run the hook with a command too large to pass through argv. Linux caps a
+# single argument at 128KB (MAX_ARG_STRLEN) while macOS does not, so the sibling
+# helpers above, which hand the command to `jq` and the payload to `bash -c` as
+# arguments, die with "Argument list too long" on CI and pass locally. Both hops
+# go through a file here: `--rawfile` for the command, a stdin redirect for the
+# payload.
+run_merge_hook_large() {
+  local cmd="$1" cmdfile jsonfile
+  cmdfile="$BATS_TEST_TMPDIR/large-cmd.txt"
+  jsonfile="$BATS_TEST_TMPDIR/large-payload.json"
+  printf '%s' "$cmd" > "$cmdfile"
+  jq -n --rawfile c "$cmdfile" \
+    '{tool_name: "Bash", tool_input: {command: $c}}' > "$jsonfile"
+  run bash -c 'cd "$1" && bash "$3" < "$2"' _ "$REPO" "$jsonfile" "$HOOK_ABS"
+}
+
 # Compute MEMBER's real content digest for REPO's current HEAD, via the real
 # digest engine (never re-derived by hand), so fixtures stay in lockstep with
 # whatever the hook itself would compute.
@@ -2008,13 +2024,37 @@ rge 30 --squash'
   # unbounded one, so it separates the two robustly without pinning either
   # machine's timing; a shared runner being slow cannot red it, and only losing
   # the bound can.
+  # The fixture must start `gh `, not just `g`: the pre-filter admits only a
+  # command whose first word can tokenize to `gh`, so a `gx...` string is turned
+  # away before the scan and the case would pass no matter what the bound does.
+  # It still never arms, since word 1 is not `pr`, which is the point: this is
+  # the near-miss that pays the full scan.
   local big start elapsed
-  big="g$(head -c 131072 < /dev/zero | tr '\0' 'x')"
+  big="gh $(head -c 131072 < /dev/zero | tr '\0' 'x')"
 
   start=$SECONDS
-  run_merge_hook "$big"
+  run_merge_hook_large "$big"
   elapsed=$(( SECONDS - start ))
 
   [ "$status" -eq 0 ]
   [ "$elapsed" -lt 10 ]
+}
+
+@test "arming: a split or quoted gh still reaches the gate" {
+  install_gh_stub
+  commit_files "app/x.ts" "export const x = 1"
+
+  # The tokenizer arm's pre-filter reads the first two characters, so these are
+  # the spellings a tighter filter could silently stop admitting. Each still
+  # tokenizes to `gh` as word 0, so each must arm; a miss here is fail-OPEN,
+  # the gate exiting 0 on a real merge, which is why they are pinned rather
+  # than left to the filter's reasoning.
+  run_merge_hook '"gh" pr merge 30 --squash'
+  assert_denied_by_json
+
+  run_merge_hook 'g"h" pr merge 30 --squash'
+  assert_denied_by_json
+
+  run_merge_hook '\gh pr merge 30 --squash'
+  assert_denied_by_json
 }
