@@ -616,11 +616,12 @@ printf '%s\n' \"\$debt_origin_changed\"")"
   # `:end` does not leave a wrap open at end of file: the next block's `:end`
   # closes the opened `:start`, the next block's `:start` is swallowed inside
   # it, and stripMarkerBlocks reports unbalanced=[] having silently stripped
-  # everything between them, which takes `## Brake self-check` and
-  # `## Contract-preserve note` out of the adopter copy. The scrub only fails a
-  # wrap still open at EOF or an end-without-start, so it passes that mutant,
-  # and .gaia/tests/distribution/03-marker-strip.sh only asserts the output
-  # shrank and left no fragments, which an over-strip satisfies too.
+  # everything between them; for the rollout block's own `:end` that takes
+  # `## Brake self-check` and `## Contract-preserve note` out of the adopter
+  # copy. The scrub only fails a wrap still open at EOF or an
+  # end-without-start, so it passes that mutant, and
+  # .gaia/tests/distribution/03-marker-strip.sh only asserts the output shrank
+  # and left no fragments, which an over-strip satisfies too.
   local skill="$REPO_ROOT/.claude/skills/file-tech-debt/SKILL.md"
   # awk exits 2 without running END when it cannot open its input. That status
   # is NOT lost today: `local out` below is declared on its own line and the
