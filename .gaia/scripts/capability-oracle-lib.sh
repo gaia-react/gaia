@@ -1505,12 +1505,12 @@ _GAIA_CAPCHECK_DOTCMD='(^|[;|&(`{}]|[[:space:]](then|else|do|elif|!))[[:space:]]
 # It also OVER-reads, on every arm rather than any one: nothing blanks a repo
 # path inside a double-quoted span, the same fact that narrows `(` to `$(`
 # above, so any anchor character surviving inside one fabricates a CALL edge
-# into a subtree the caller never runs. The repair is not this anchor's, and
-# #1536 carries where it does belong: the two shapes do not share a locus, and
-# the last two revisions of this paragraph each got that wrong in a different
-# direction, so it is stated once, there. Mostly it fails closed and loud, not
-# wholly: a fabricated edge can mask a real SURPLUS by making a
-# declared-but-unreached term look reached.
+# into a subtree the caller never runs. A path in a message string and a path in
+# command position are the same bytes once the quoting is invisible, so no
+# per-arm narrowing reaches this: the repair is not this anchor's, and #1536
+# carries where it does belong. Mostly it fails closed and loud, not wholly: a
+# fabricated edge can mask a real SURPLUS by making a declared-but-unreached
+# term look reached.
 #
 # The keyword arm is FLATTENED rather than nested, which _GAIA_CAPCHECK_DOTCMD
 # has no reason to do and this constant does: its one and only caller reads the
