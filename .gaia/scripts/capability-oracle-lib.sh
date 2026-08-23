@@ -1489,10 +1489,28 @@ _GAIA_CAPCHECK_DOTCMD='(^|[;|&(`{}]|[[:space:]](then|else|do|elif|!))[[:space:]]
 # `{ .gaia/x.sh; }`, is reachable through the `;` or `&&` a brace group is
 # almost always written with anyway.
 #
-# Deliberately incomplete in two directions, and the first is the same shape
-# _GAIA_CAPCHECK_DOTCMD accepts for itself: a bare-path execution inside a
-# plain `( ... )` subshell reads as prose and its target is missed, and one
-# opening a brace group with nothing in front of the brace is missed too.
+# What this anchor misses, in full, because a partial list here reads as a
+# completeness claim the pattern does not make:
+#
+#   A `( ... )` subshell with nothing in front of the paren, which is the same
+#   shape _GAIA_CAPCHECK_DOTCMD accepts for itself, and a brace group with
+#   nothing in front of the brace, per the two departures above.
+#
+#   `if <path>; then`. The keyword list is _GAIA_CAPCHECK_DOTCMD's verbatim and
+#   `if` is not on it, so a path in the condition of an `if` is missed exactly
+#   as a `.` there is. Adding `if` to one list and not the other would buy a
+#   third divergence between two constants whose whole readability rests on
+#   being one vocabulary with two named departures.
+#
+# And it over-reads in one direction, on the `^` arm: a repo path sitting alone
+# at the start of a line inside an array literal or a double-quoted string that
+# spans real lines reads as an execution and fabricates a CALL edge into a
+# subtree the caller never runs. Telling that apart from a real bare execution,
+# which is also a path alone on a line, needs to know the previous line left a
+# paren or a quote open, and _gaia_capcheck_logical_lines tracks neither. It
+# fails closed and loudly (UNDECLARED, never silence), the alternative of
+# dropping `^` costs the most ordinary shape this detector exists for, and the
+# repair belongs to the splitter rather than to this anchor.
 #
 # The keyword arm is FLATTENED rather than nested, which _GAIA_CAPCHECK_DOTCMD
 # has no reason to do and this constant does: its one and only caller reads the
@@ -1799,12 +1817,21 @@ _gaia_capcheck_scan_invocations() {
 #   file makes every `git`, `jq`, and `gh` a resolution attempt.
 #
 # A token that clears both and still does not resolve prints `UNRESC`, exactly
-# as the interpreter-prefixed form does, so the gap this function closes cannot
-# reopen as a quiet one.
+# as the interpreter-prefixed form does, so a shape this scanner ACCEPTS can
+# never fail quietly. A shape the anchor rejects is a different matter and is
+# still silent, which is why _GAIA_CAPCHECK_PATHCMD enumerates its misses in
+# full rather than naming the two that came to mind.
+#
+# The trailing group is the token's own boundary and it carries the separators,
+# not whitespace alone. A `.sh` followed immediately by `)`, `;`, `|`, `&`, or a
+# backtick is an execution whose operand list simply ended, and requiring a
+# space after it dropped `$(<path>)` called with no arguments while detecting
+# the same call the moment it grew one flag: precisely the quiet miss above,
+# reintroduced one token further along.
 _gaia_capcheck_scan_bare_invocations() {
   local repo_root="$1" rel="$2" sc="$3" text="$4" loc="$5"
   local rest="$text" tok hops=0
-  local pat="${_GAIA_CAPCHECK_PATHCMD}([A-Za-z0-9_.\$@{}~+/\"-]*/[A-Za-z0-9_.\$@{}~+/\"-]*\\.sh\"?)([[:space:]]|\$)"
+  local pat="${_GAIA_CAPCHECK_PATHCMD}([A-Za-z0-9_.\$@{}~+/\"-]*/[A-Za-z0-9_.\$@{}~+/\"-]*\\.sh\"?)([[:space:]);|&\`]|\$)"
   while [ "$hops" -lt 4 ] && [[ $rest =~ $pat ]]; do
     hops=$((hops + 1))
     # Group 2, because _GAIA_CAPCHECK_PATHCMD is flattened to exactly one

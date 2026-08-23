@@ -288,16 +288,22 @@ true'
 @test "a bare-path call carries its target's whole subtree into the closure" {
   # The point of the idiom. Reporting the edge and stopping there would leave
   # the same capabilities outside the closure the edge exists to open.
+  #
+  # The manifest declares NOTHING, deliberately. Declaring the `invokes:` target
+  # would put it on the frontier by declaration, so the target's subtree would
+  # be walked whether or not the detector ever found the edge, and the `network`
+  # assertion below would hold against a detector that matched nothing at all.
   repo="$(make_fixture_repo baresubtree)"
   add_script "$repo" a/s.sh '#!/usr/bin/env bash
 .github/audit/base.sh'
   add_script "$repo" .github/audit/base.sh '#!/usr/bin/env bash
 curl -sS https://example.com/x'
   write_allow "$repo" "Bash(bash a/s.sh:*)"
-  write_manifest "$repo" '[{"script":"a/s.sh","capabilities":["invokes:.github/audit/base.sh"],
+  write_manifest "$repo" '[{"script":"a/s.sh","capabilities":[],
     "why":"runs the base resolver by its own path","maintainer_only":false}]'
   run bash "$CHECK" "$repo"
   [ "$status" -eq 1 ]
+  grep -qF -- "UNDECLARED a/s.sh invokes:.github/audit/base.sh" <<<"$output"
   grep -qF -- "UNDECLARED a/s.sh network" <<<"$output"
 }
 
@@ -313,6 +319,39 @@ curl -sS https://example.com/x'
   run bash "$CHECK" "$repo"
   [ "$status" -eq 1 ]
   grep -qF -- "UNRESOLVED a/s.sh a/s.sh:2" <<<"$output"
+}
+
+@test "a bare-path call whose operand list ends at a separator is still a call" {
+  # The trailing group is the token's boundary, and requiring whitespace there
+  # dropped `$(<path>)` with no arguments while detecting the same call the
+  # moment it grew one flag. Both spellings run the script.
+  #
+  # Two fixtures, one per separator, and the manifest declares nothing for the
+  # same reason `baresubtree` above declares nothing.
+  repo="$(make_fixture_repo baretrailingparen)"
+  add_script "$repo" a/s.sh '#!/usr/bin/env bash
+X="$(.github/audit/base.sh)"
+printf "%s\n" "$X"'
+  add_script "$repo" .github/audit/base.sh '#!/usr/bin/env bash
+curl -sS https://example.com/x'
+  write_allow "$repo" "Bash(bash a/s.sh:*)"
+  write_manifest "$repo" '[{"script":"a/s.sh","capabilities":[],
+    "why":"runs the base resolver by its own path","maintainer_only":false}]'
+  run bash "$CHECK" "$repo"
+  [ "$status" -eq 1 ]
+  grep -qF -- "UNDECLARED a/s.sh invokes:.github/audit/base.sh" <<<"$output"
+
+  repo="$(make_fixture_repo baretrailingsemi)"
+  add_script "$repo" a/s.sh '#!/usr/bin/env bash
+.github/audit/base.sh; printf "done\n"'
+  add_script "$repo" .github/audit/base.sh '#!/usr/bin/env bash
+curl -sS https://example.com/x'
+  write_allow "$repo" "Bash(bash a/s.sh:*)"
+  write_manifest "$repo" '[{"script":"a/s.sh","capabilities":[],
+    "why":"runs the base resolver by its own path","maintainer_only":false}]'
+  run bash "$CHECK" "$repo"
+  [ "$status" -eq 1 ]
+  grep -qF -- "UNDECLARED a/s.sh invokes:.github/audit/base.sh" <<<"$output"
 }
 
 @test "a script path behind plain whitespace is an operand, not a call" {
