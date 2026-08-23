@@ -13,23 +13,25 @@
 # else, beyond the bash-version refusal below.
 #
 # Needs bash 5. On bash 3.2 the scan over a file's logical lines does not end
-# early, it dies: the process segfaults on the child side of a fork, before
-# exec, inside the system notify library's atfork handler, and takes every
-# record past that point with it. It exits 133 and prints nothing, and a
-# consumer reading the walk over a pipe or a process substitution sees an
+# early, it dies, and takes every record past that point with it. The process
+# takes SIGTRAP on the child side of a fork before exec, exiting 133, and the
+# allocator names the cause itself: `BUG IN CLIENT OF LIBMALLOC: memory
+# corruption of free block`, raised out of realloc. It prints nothing on stderr,
+# and a consumer reading the walk over a pipe or a process substitution sees an
 # ordinary end of input, so reach comes back under-reported rather than
-# over-reported. That is the direction that cannot surface as a finding, so
-# this refuses instead of answering.
+# over-reported. That is the direction that cannot surface as a finding, so this
+# refuses instead of answering. The same workload also presents as a plain
+# segmentation fault with a different stack, which is what a corrupted heap does
+# rather than a second defect.
 #
 # The dependency is on a bash that does not crash, and no restructuring here
 # removes it. Reading the outer input through an explicit descriptor and
 # buffering it ahead of the loop each leave the walk short by the same record,
 # and no single detector triggers it either: the write scan and the invocation
 # scan are clean alone and crash only together. The crash point also moves with
-# edits to the loop body that cannot affect it causally, which is the signature
-# of heap corruption rather than of a descriptor this code owns. The version
-# guard is the repair; a change that appears to fix the crash has only
-# perturbed the allocation pattern, and the next unrelated edit re-rolls it.
+# edits to the loop body that cannot affect it causally. The version guard is
+# the repair; a change that appears to fix the crash has only perturbed the
+# allocation pattern, and the next unrelated edit re-rolls it.
 #
 # Measure any such attempt end to end, through the check's own --print-reach
 # over the live working checkout, and compare the bash 3.2 output against the
