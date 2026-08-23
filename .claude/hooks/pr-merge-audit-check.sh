@@ -123,11 +123,15 @@ cmd=$(echo "$input" | jq -r '.tool_input.command // ""' 2>/dev/null)
 # literally instead of as a regex.
 gate_gh_lead_re=$'^[[:space:]]*[g"\'\\\\]'
 
-# How much of the command the arming scan reads. Sized to swamp the ~20 bytes a
-# real `gh pr merge` needs for its first three words while keeping the scan's
-# superlinear cost off a large command; see the scan call for why cutting the
-# tail cannot make anything arm that would not have.
-gate_scan_prefix_bytes=2048
+# How much of the command the arming scan reads. CHARACTERS, not bytes: bash
+# slices `${var:0:n}` by character, so under a multibyte locale this admits more
+# bytes than the number says. Harmless in both directions here, the scanner's own
+# cost is character-driven too, so the bound holds in the dimension it was
+# measured in. Sized to swamp the ~20 characters a real `gh pr merge` needs for
+# its first three words while keeping the scan's superlinear cost off a large
+# command; see the scan call for why cutting the tail cannot make anything arm
+# that would not have.
+gate_scan_prefix_chars=2048
 
 # It asks the shared scanner for WORDS rather than calling gaia_scan_gh_merge,
 # and the difference is load-bearing rather than stylistic. That function also
@@ -186,7 +190,7 @@ gate_cmd_is_first_command_merge() {
   # deliberate padding. That is the obfuscation case the arming block below
   # already declines to defend against, and the text arm there is unbounded and
   # still sees a plain merge at any offset.
-  gaia_scan_first_command "${cmd:0:$gate_scan_prefix_bytes}" || return 1
+  gaia_scan_first_command "${cmd:0:$gate_scan_prefix_chars}" || return 1
   [ "${#GAIA_FIRST_COMMAND_WORDS[@]}" -ge 3 ] || return 1
   [ "${GAIA_FIRST_COMMAND_WORDS[0]}" = "gh" ] || return 1
   [ "${GAIA_FIRST_COMMAND_WORDS[1]}" = "pr" ] || return 1
