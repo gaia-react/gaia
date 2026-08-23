@@ -113,6 +113,7 @@ install_resolver() {
   cp "$lib/audit-scope.sh"     "$REPO/.claude/hooks/lib/audit-scope.sh"
   cp "$lib/audit-machinery.sh" "$REPO/.claude/hooks/lib/audit-machinery.sh"
   cp "$lib/audit-clearance.sh" "$REPO/.claude/hooks/lib/audit-clearance.sh"
+  cp "$lib/audit-base-provenance.sh" "$REPO/.claude/hooks/lib/audit-base-provenance.sh"
   # Commit the resolver + libs onto the current branch: untracked, they would
   # trip the stamp hook's OWN tree-dirty precondition (unlike
   # post-audit-status.sh, this hook checks tree cleanliness). Committing here,
@@ -649,6 +650,7 @@ EOF
   cp "$real_lib/audit-scope.sh"     "$OUTSIDE/lib/audit-scope.sh"
   cp "$real_lib/audit-machinery.sh" "$OUTSIDE/lib/audit-machinery.sh"
   cp "$real_lib/gaia-version.sh"    "$OUTSIDE/lib/gaia-version.sh"
+  cp "$real_lib/audit-base-provenance.sh" "$OUTSIDE/lib/audit-base-provenance.sh"
 
   install_resolver
   commit_mixed_diff

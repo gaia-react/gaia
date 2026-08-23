@@ -94,7 +94,7 @@ setup() {
     cp "$REPO_ROOT/.claude/hooks/$f" "$MAIN/.claude/hooks/$f"
     chmod +x "$MAIN/.claude/hooks/$f"
   done
-  for f in audit-scope.sh audit-machinery.sh audit-clearance.sh audit-digest.sh gaia-version.sh; do
+  for f in audit-scope.sh audit-machinery.sh audit-clearance.sh audit-digest.sh gaia-version.sh audit-base-provenance.sh; do
     cp "$REPO_ROOT/.claude/hooks/lib/$f" "$MAIN/.claude/hooks/lib/$f"
   done
   ALL_MEMBERS=(code-audit-frontend code-audit-github-workflows code-audit-maintainer-node code-audit-maintainer-prose code-audit-maintainer-shell)

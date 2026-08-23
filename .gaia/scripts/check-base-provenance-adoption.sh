@@ -108,37 +108,64 @@ _gaia_provenance_adoption() {
   return "$failed"
 }
 
-# _gaia_provenance_chain_hits <path>: prints "<line>:<text>" for each line in
-# <path> that starts the origin-then-local fallback pair -- two
-# merge-base-against-HEAD invocations joined by a `||` continuation, either
-# on one line or via a trailing `\` or trailing `||` into the next
-# non-comment line. Comment-only lines are never a hit and never break a
-# continuation search. Matches the chain with or without a `-C <root>`
-# argument, since the detection never looks for that token.
+# _gaia_provenance_chain_hits <path>: prints "<line>:<text>" for each site in
+# <path> carrying the origin-then-local fallback pair: two
+# merge-base-against-HEAD invocations, the first naming a remote-tracking ref
+# and the second a bare branch name, reached when the first does not resolve.
+#
+# The scan is WINDOWED, not continuation-only. An earlier version recognized
+# the pair only when the two invocations shared a line or were joined by a
+# trailing `\` or `||`, which missed the spelling the shared resolver itself
+# uses: two independent `if` blocks. That is the shape a future consumer is
+# most likely to regrow, because the likeliest way to regrow it is to copy the
+# canonical file, so a detector blind to it would have greened forever while
+# claiming the property was machine-checked.
+#
+# Two non-comment merge-base-against-HEAD lines within GAIA_PROVENANCE_CHAIN_WINDOW
+# lines of each other are the pair regardless of how they are joined. Comment-only
+# lines are never a hit and never break the window. Matches with or without a
+# `-C <root>` argument, since the detection never looks for that token, and
+# never counts a `merge-base --is-ancestor` line, which is a predicate rather
+# than a derivation.
 _gaia_provenance_chain_hits() {
   local path="$1"
   [ -f "$path" ] || return 0
-  awk '
+  awk -v window="${GAIA_PROVENANCE_CHAIN_WINDOW:-12}" '
     function trim(s) { gsub(/^[ \t]+|[ \t]+$/, "", s); return s }
     function is_comment(s,   t) { t = trim(s); return substr(t, 1, 1) == "#" }
-    function ends_continuation(s,   t) { t = trim(s); return (t ~ /\\$/) || (t ~ /\|\|$/) }
     function count_merge_base(s,   n, tmp) { tmp = s; n = gsub(/merge-base/, "&", tmp); return n }
+    # A merge-base line naming a fully-qualified remote-tracking ref, or the
+    # bare origin/<name> revspec, is the REMOTE half of the pair. Anything
+    # else that merge-bases against HEAD is the LOCAL half.
+    function is_remote_half(s) { return (index(s, "refs/remotes/") > 0) || (s ~ /origin\//) }
     { lines[NR] = $0 }
     END {
       n = NR
+      # Collect every merge-base-against-HEAD site first, then pair them up by
+      # proximity, so the join between the two is irrelevant.
+      k = 0
       for (i = 1; i <= n; i++) {
         line = lines[i]
         if (is_comment(line)) continue
         if (index(line, "merge-base") == 0 || index(line, "HEAD") == 0) continue
-        if (count_merge_base(line) >= 2) {
-          print i ":" line
-          continue
-        }
-        if (ends_continuation(line)) {
-          j = i + 1
-          while (j <= n && (trim(lines[j]) == "" || is_comment(lines[j]))) j++
-          if (j <= n && index(lines[j], "merge-base") > 0) {
-            print i ":" line
+        # --is-ancestor is a predicate, not a base derivation: it answers a
+        # yes/no about two commits and prints nothing. Pairing it with a real
+        # derivation would flag every file that happens to do both.
+        if (index(line, "--is-ancestor") > 0) continue
+        # Both halves on one line is the pair on its own.
+        if (count_merge_base(line) >= 2) { print i ":" line; continue }
+        k++
+        site_no[k] = i
+        site_txt[k] = line
+        site_remote[k] = is_remote_half(line)
+      }
+      for (a = 1; a <= k; a++) {
+        for (b = a + 1; b <= k; b++) {
+          if (site_no[b] - site_no[a] > window) break
+          # One of each half within the window is the ladder.
+          if (site_remote[a] != site_remote[b]) {
+            print site_no[a] ":" site_txt[a]
+            break
           }
         }
       }

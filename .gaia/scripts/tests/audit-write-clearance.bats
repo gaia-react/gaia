@@ -525,6 +525,7 @@ scrub_maintainer_only() {
   cp "$_lib_src/audit-machinery.sh" "$ADOPTER/.claude/hooks/lib/audit-machinery.sh"
   cp "$_lib_src/audit-clearance.sh" "$ADOPTER/.claude/hooks/lib/audit-clearance.sh"
   cp "$DIGEST_LIB" "$ADOPTER/.claude/hooks/lib/audit-digest.sh"
+  cp "$_lib_src/audit-base-provenance.sh" "$ADOPTER/.claude/hooks/lib/audit-base-provenance.sh"
 
   # The roster really did collapse: a .gaia/**/*.sh change (which the scrubbed-
   # away maintainer-shell member would own) resolves to NOBODY now.

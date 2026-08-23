@@ -135,6 +135,7 @@ setup() {
   cp "$REPO_ROOT/.claude/hooks/lib/audit-clearance.sh" "$SANDBOX/.claude/hooks/lib/audit-clearance.sh"
   cp "$REPO_ROOT/.claude/hooks/lib/audit-digest.sh" "$SANDBOX/.claude/hooks/lib/audit-digest.sh"
   cp "$REPO_ROOT/.claude/hooks/lib/gaia-version.sh" "$SANDBOX/.claude/hooks/lib/gaia-version.sh"
+  cp "$REPO_ROOT/.claude/hooks/lib/audit-base-provenance.sh" "$SANDBOX/.claude/hooks/lib/audit-base-provenance.sh"
   cp "$REPO_ROOT/.gaia/scripts/audit-member-digest.sh" "$SANDBOX/.gaia/scripts/audit-member-digest.sh"
   chmod +x "$SANDBOX/.gaia/scripts/audit-member-digest.sh"
 

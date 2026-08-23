@@ -254,6 +254,7 @@ golden_setup() {
   chmod +x "$GREPO/.gaia/scripts/resolve-audit-members.sh"
   cp "$SCOPE_LIB" "$GREPO/.claude/hooks/lib/audit-scope.sh"
   cp "$MACHINERY_LIB" "$GREPO/.claude/hooks/lib/audit-machinery.sh"
+  cp "$REPO_ROOT/.claude/hooks/lib/audit-base-provenance.sh" "$GREPO/.claude/hooks/lib/audit-base-provenance.sh"
 }
 
 golden_teardown() {

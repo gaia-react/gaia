@@ -211,6 +211,49 @@ EOF
   grep -qF ".claude/hooks/regrown-bare.sh:2:" <<<"$output" || return 1
 }
 
+@test "fixture: a re-introduced private chain fails, two independent if blocks (I1)" {
+  local repo
+  repo="$(make_fixture_repo private-chain-ifblocks)"
+  # The spelling the shared resolver itself uses. A detector that only follows
+  # a `||` or `\` continuation misses it, and the likeliest way a consumer
+  # regrows the ladder is by copying the canonical file, so this shape is the
+  # one most worth catching rather than the one least.
+  cat >"$repo/.claude/hooks/regrown-ifblocks.sh" <<'EOF'
+#!/usr/bin/env bash
+resolve() {
+  local d="$1" base=""
+  if git rev-parse --verify --quiet "refs/remotes/origin/$d" >/dev/null 2>&1; then
+    base=$(git merge-base HEAD "refs/remotes/origin/$d" 2>/dev/null)
+  fi
+  if [ -z "$base" ]; then
+    base=$(git merge-base HEAD "$d" 2>/dev/null)
+  fi
+  printf '%s\n' "$base"
+}
+EOF
+  commit_all "$repo"
+  run gaia_check_base_provenance_adoption "$repo"
+  [ "$status" -eq 1 ]
+  grep -qF ".claude/hooks/regrown-ifblocks.sh:" <<<"$output" || return 1
+}
+
+@test "fixture: two merge-base calls further apart than the window are not paired" {
+  local repo
+  repo="$(make_fixture_repo private-chain-window)"
+  # The windowed scan must not turn into "any two merge-base calls anywhere in
+  # one file", which would flag unrelated derivations sitting in separate
+  # functions and make the check useless noise.
+  {
+    printf '#!/usr/bin/env bash\n'
+    printf 'first() { base=$(git merge-base HEAD "refs/remotes/origin/$d" 2>/dev/null); }\n'
+    for _ in $(seq 40); do printf '# spacer\n'; done
+    printf 'unrelated() { other=$(git merge-base HEAD "$d" 2>/dev/null); }\n'
+  } >"$repo/.claude/hooks/far-apart.sh"
+  commit_all "$repo"
+  run gaia_check_base_provenance_adoption "$repo"
+  [ "$status" -eq 0 ]
+}
+
 @test "fixture: the written exemption (worthiness-presence-check.sh) passes and is named as allowed" {
   local repo
   repo="$(make_fixture_repo exemption)"

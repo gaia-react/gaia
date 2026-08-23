@@ -1387,6 +1387,14 @@ EOF
 @test "the write side and the verify side diverge under a shadowing local branch named origin/main (DP-002)" {
   local repo write verify outfile
 
+  # Both sides must take their non-Actions arm here, or this pins nothing.
+  # Under Actions the job exports GITHUB_BASE_REF for the whole run, the write
+  # side's fence resolves its base from that instead of from origin/<default>,
+  # and the shadowing branch this test exists to exercise is never consulted.
+  # That is a real environment difference, not a flake: the same test passes
+  # locally and fails on CI without this.
+  unset GITHUB_ACTIONS GITHUB_BASE_REF
+
   repo="$(make_repo dp002-divergence)"
 
   # A local branch literally named origin/main shadows the remote-tracking

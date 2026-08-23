@@ -165,8 +165,8 @@ audit_resolve_base_provenance() {
 # assertion for a permit diagnostic.
 #
 # return: 0 iff the diff command exited zero; 1 on any diff failure and on an
-# empty <base>. Empty stdout with return 0 is a real empty change set; empty
-# stdout with a non-zero return is never one.
+# empty <root> or <base>. Empty stdout with return 0 is a real empty change
+# set; empty stdout with a non-zero return is never one.
 audit_provenance_changed_files() {
   local root="$1" base="$2" out
 
