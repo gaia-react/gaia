@@ -343,10 +343,6 @@ install_chore_deps_predicate() {
   chmod +x "$REPO/.gaia/scripts/chore-deps-skip.sh"
 }
 
-# Assert the most recent run_merge_hook call allowed the merge.
-
-# Assert the most recent run_merge_hook call denied the merge.
-
 # Assert NAME is present as a whole line in NEWLINE-separated SET.
 assert_in_set() {
   local name="$1" set="$2"
@@ -1997,4 +1993,28 @@ rge 30 --squash'
 
   run_merge_hook "gh pr merge --squash --delete-branch"
   assert_allowed_by_json
+}
+
+@test "arming: a large non-merge command does not pay an unbounded scan" {
+  install_gh_stub
+  commit_files "app/x.ts" "export const x = 1"
+
+  # Pins the CLASS of regression, not a constant. The arming scan walks bytes and
+  # slices per block, so its cost grows faster than its input, and the pre-filter
+  # admits every `git` invocation, so an unbounded scan put a synchronous stall on
+  # ordinary Bash tool calls: 3s at 32KB and ~40s at the 128KB used here, against
+  # ~60ms for the same size starting with another letter. A bounded prefix
+  # flattens it to ~100ms at any size. The ceiling below sits far above the bounded cost and far below the
+  # unbounded one, so it separates the two robustly without pinning either
+  # machine's timing; a shared runner being slow cannot red it, and only losing
+  # the bound can.
+  local big start elapsed
+  big="g$(head -c 131072 < /dev/zero | tr '\0' 'x')"
+
+  start=$SECONDS
+  run_merge_hook "$big"
+  elapsed=$(( SECONDS - start ))
+
+  [ "$status" -eq 0 ]
+  [ "$elapsed" -lt 10 ]
 }

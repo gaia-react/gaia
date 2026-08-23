@@ -123,6 +123,12 @@ cmd=$(echo "$input" | jq -r '.tool_input.command // ""' 2>/dev/null)
 # literally instead of as a regex.
 gate_gh_lead_re=$'^[[:space:]]*[g"\'\\\\]'
 
+# How much of the command the arming scan reads. Sized to swamp the ~20 bytes a
+# real `gh pr merge` needs for its first three words while keeping the scan's
+# superlinear cost off a large command; see the scan call for why cutting the
+# tail cannot make anything arm that would not have.
+gate_scan_prefix_bytes=2048
+
 # It asks the shared scanner for WORDS rather than calling gaia_scan_gh_merge,
 # and the difference is load-bearing rather than stylistic. That function also
 # abstains on any flag shape it declines to model, which is the right answer for
@@ -132,19 +138,23 @@ gate_gh_lead_re=$'^[[:space:]]*[g"\'\\\\]'
 gate_cmd_is_first_command_merge() {
   local lib_dir
   # Cheap pre-filter first. This hook fires on EVERY Bash tool call, while the
-  # scan below is a byte-at-a-time bash loop over the command and the library
-  # holding it is several hundred lines to source. A call that cannot be a merge
-  # must pay for neither, which is the same reason every other library load in
-  # this file sits below the early exits.
+  # scan below is a byte-at-a-time bash loop and the library holding it is
+  # several hundred lines to source.
   #
   # The filter tests the FIRST non-blank byte rather than searching for the verb,
   # and soundness is why. A word the shell assembles need not appear in the
   # command as a run of bytes at all: `gh pr me\<newline>rge 1` spells the verb
   # through a line continuation and holds no `merge` substring, so a search for
   # one would drop exactly the spelling this arm exists to catch. A command whose
-  # first word tokenizes to `gh` can only begin with `g` or with a quoting
-  # character, so this test admits every such command and nothing here can be
-  # outrun by a spelling that is merely quoted more creatively.
+  # first word tokenizes to `gh` begins with `g` or with a quoting character, so
+  # the test admits every such command.
+  #
+  # Be exact about what it does NOT buy, because the obvious reading is wrong.
+  # `g` is the leading byte of every `git` invocation too, so this filter is not
+  # "only a merge pays": a whole session of ordinary git commands pays the source
+  # and the scan. What it removes is the rest of the alphabet, which is most Bash
+  # tool calls, and that is the honest claim. It also admits no `$'…'` form,
+  # since that begins with `$`; the shared scanner would not model one anyway.
   [[ "$cmd" =~ $gate_gh_lead_re ]] || return 1
 
   # From this hook's OWN on-disk location, never cwd: the bats suites run this
@@ -159,7 +169,24 @@ gate_cmd_is_first_command_merge() {
     type gaia_scan_first_command >/dev/null 2>&1 || return 1
   fi
 
-  gaia_scan_first_command "$cmd" || return 1
+  # Scan a BOUNDED PREFIX, never the whole command. The scanner walks the string
+  # a byte at a time and slices per block, so its cost grows faster than the
+  # input: measured against this hook, a single-line command starting with `g`
+  # cost 335ms at 8KB and 3s at 32KB, against 59ms for the same size starting
+  # with any other letter. That is a synchronous stall on ordinary git commands,
+  # which the filter above admits by design, so the scan has to be bounded rather
+  # than merely gated.
+  #
+  # The bound is safe in the direction that matters. Truncation only removes
+  # trailing bytes, so a word can be shortened but never lengthened and never
+  # created: no command can be made to ARM by cutting it, which is the direction
+  # that would let an unaudited merge through. What it can do is fail to arm a
+  # merge whose first three words end beyond the bound, and the three words of
+  # any real invocation occupy well under twenty bytes, so reaching it takes
+  # deliberate padding. That is the obfuscation case the arming block below
+  # already declines to defend against, and the text arm there is unbounded and
+  # still sees a plain merge at any offset.
+  gaia_scan_first_command "${cmd:0:$gate_scan_prefix_bytes}" || return 1
   [ "${#GAIA_FIRST_COMMAND_WORDS[@]}" -ge 3 ] || return 1
   [ "${GAIA_FIRST_COMMAND_WORDS[0]}" = "gh" ] || return 1
   [ "${GAIA_FIRST_COMMAND_WORDS[1]}" = "pr" ] || return 1
@@ -176,7 +203,10 @@ gate_cmd_is_first_command_merge() {
 # the scanner stops at the first one, so dropping it in favour of the tokenizer
 # would open a hole (`<anything> && gh pr merge <n>`) rather than close one.
 #
-# TOKENIZER: the first command really is the merge, whatever quoting spells it.
+# TOKENIZER: the first command really is the merge, through the ordinary quoting
+# and continuation forms the shared scanner models. Not every conceivable one:
+# a `$'…'` word is turned away by the pre-filter and unmodelled by the scanner
+# besides.
 #
 # WHAT THIS DOES NOT GUARANTEE. Stated because the comment that stood here
 # claimed the opposite, and a guard advertising a property it does not have is
@@ -789,13 +819,25 @@ gate_cmd_names_the_record_pr() {
 # invocation needs, so no expansion of any spelling can run a second command.
 # Anything else denies rather than being read approximately.
 #
-# The command-binding conjunct is NOT scoped to this arm. Every other arm that
-# can clear a merge on a current-branch record asks the same question, each at
-# its own site: the chore(deps) and self-modification bypasses above, and the
-# non-empty arm of this function's own caller. Keep it that way when adding an
-# arm. A predicate proving something about the checkout says nothing about the
-# pull request a command names, and the four arms reach that record by three
-# different routes, so there is no one chokepoint to put the question behind.
+# The command-binding conjunct is NOT scoped to this arm. Every arm that clears
+# a merge off the current-branch RECORD asks the same question, each at its own
+# site: the chore(deps) and self-modification bypasses above, and the non-empty
+# arm of this function's own caller. Keep it that way when adding a record-based
+# arm; the four reach that record by three different routes, so there is no one
+# chokepoint to put the question behind.
+#
+# What that does NOT cover, stated because the sentence above reads like a
+# whole-gate invariant and is not one. The three signals frontend_cleared checks
+# first, a member's own content-digest marker, the commit trailer, and the CI
+# status, clear a merge without asking it. Each proves a property of THIS
+# checkout's content, so on a branch whose members have all cleared,
+# `gh pr merge <other-number>` is permitted and merges a pull request nothing
+# here audited. The reason they are left unbound is cost, not principle: the
+# predicate needs pr_record_number, so binding them would put a `gh pr view` on
+# the path a run decides entirely from local files, which the lazy resolution
+# below deliberately keeps network-free. Settle that before widening the
+# conjunct onto them; the options and the measurements are in
+# gaia-react/gaia#1544.
 gate_empty_is_decisive() {
   audit_provenance_empty_is_decisive "$gate_trust" || return 1
   [ "$gate_anchor" = "pr-record" ] || return 1
