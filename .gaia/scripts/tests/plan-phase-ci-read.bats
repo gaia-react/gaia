@@ -93,6 +93,10 @@ assert_section_nonempty() {
   stop="$( section_between "$PLAN_MD" '^    - [*][*]Stop conditions' '^    - [*][*]Final summary' )"
   assert_section_nonempty "plan.md Stop conditions bullet" "$stop"
   grep -qF -- 'gh pr checks' <<<"$stop"
+  # The token alone survives an edit that reverses the bullet: "a red IS one
+  # of these" still names the signal. Pin what the bullet says about it, or
+  # the inversion that halts a run on a flake reads as covered.
+  grep -qF -- 'is **not** one of these: the Phase order bullet above owns that signal' <<<"$stop"
 }
 
 @test "Task Orchestration phase loop carries the same read and the same fold" {
@@ -106,7 +110,7 @@ assert_section_nonempty() {
   # plan.md restates all four verbatim rather than pointing at this page, so a
   # generated orchestrator never has to load a wiki page mid-loop; Task
   # Orchestration paraphrases only the subset its own step needs, which is why
-  # test 5 asserts none of them. That leaves one full copy of the owner's rule
+  # the test over that page asserts none of them. That leaves one full copy of the owner's rule
   # living away from the owner, so pin the owner too: a reword here reds this
   # test, which is the signal to sync the copy rather than leave it asserting a
   # rule the owner no longer states.
