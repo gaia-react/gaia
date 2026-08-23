@@ -1582,6 +1582,53 @@ run_recording_hook() {
 
   run_merge_hook "gh pr merge https://github.com/gaia-react/gaia/pull/30"
   assert_denied_by_json
+
+  # A single-dash cluster is a shape the shared scanner declines to model,
+  # because pflag reads it letter by letter and the first value-taking
+  # shorthand in it swallows the rest. An unmodelled shape denies.
+  run_merge_hook "gh pr merge -sd 30"
+  assert_denied_by_json
+}
+
+@test "an empty range denies when a separated option value is the record's own number" {
+  # The defect this pins: skipping options by their leading dash alone reads a
+  # value-taking flag's SEPARATED value as the positional. Every spelling below
+  # hands the record's number to a flag and merges 999, so a scanner that does
+  # not model the flag set compares the flag's value equal to the record and
+  # permits a merge of an entirely unaudited pull request.
+  local head
+  head="$(git -C "$REPO" rev-parse HEAD)"
+  set_origin_main_at refs/heads/feature
+  install_gh_stub_with_record "main" "$head" 30
+
+  run_merge_hook "gh pr merge --body 30 999 --squash"
+  assert_denied_by_json
+
+  run_merge_hook "gh pr merge -t 30 999 --squash"
+  assert_denied_by_json
+
+  run_merge_hook "gh pr merge --match-head-commit 30 999 --squash"
+  assert_denied_by_json
+
+  run_merge_hook "gh pr merge --body-file 30 999 --squash"
+  assert_denied_by_json
+}
+
+@test "an empty range still permits when a separated option value sits beside the record's own number" {
+  # The complement of the test above, and what keeps its deny from being
+  # trivially satisfied by "any command carrying a flag value denies": the same
+  # flag shapes with the RECORD's number as the real positional still permit,
+  # so the scanner is reading the positional rather than refusing the shape.
+  local head
+  head="$(git -C "$REPO" rev-parse HEAD)"
+  set_origin_main_at refs/heads/feature
+  install_gh_stub_with_record "main" "$head" 30
+
+  run_merge_hook "gh pr merge --body 999 30 --squash"
+  assert_allowed_by_json
+
+  run_merge_hook "gh pr merge --subject=999 30 --squash"
+  assert_allowed_by_json
 }
 
 @test "an empty range denies a second merge riding in the command as the record's own" {
@@ -1594,6 +1641,29 @@ run_recording_hook() {
   install_gh_stub_with_record "main" "$head" 30
 
   run_merge_hook "gh pr merge 30 --squash; gh pr merge 999 --squash"
+  assert_denied_by_json
+
+  # A subshell and a brace group both put a character before the verb, so a
+  # scan that reads command positions cannot see the second merge at all. The
+  # phrase count is what covers them, and it covers a prefixed spelling
+  # (`env`, `time`, an absolute path to gh) by the same means.
+  run_merge_hook "gh pr merge 30 --squash && (gh pr merge 999 --squash)"
+  assert_denied_by_json
+
+  run_merge_hook "gh pr merge 30 --squash && { gh pr merge 999 --squash; }"
+  assert_denied_by_json
+}
+
+@test "an empty range denies when the merge is not the first command in the tool call" {
+  # The shared scanner reads the FIRST command and abstains otherwise, because
+  # whatever sits ahead of a merge decides which repository and which checkout
+  # it lands in. An abstention denies here rather than being read approximately.
+  local head
+  head="$(git -C "$REPO" rev-parse HEAD)"
+  set_origin_main_at refs/heads/feature
+  install_gh_stub_with_record "main" "$head" 30
+
+  run_merge_hook "echo ready && gh pr merge 30 --squash"
   assert_denied_by_json
 }
 

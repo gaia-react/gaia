@@ -581,46 +581,19 @@ gate_resolve_base() {
   IFS=$'\t' read -r gate_trust gate_anchor gate_base <<< "$prov" || true
 }
 
-# gate_merge_invocation_lines: every `gh pr merge` invocation in $cmd, one per
-# line. Shell separators become newlines first, so the anchor below is the same
-# "at the start of the command or just after a separator" rule the top-of-file
-# matcher applies, and a later statement on the same command line cannot donate
-# a token to an earlier one.
+# gate_merge_phrase_count: how many times the `gh pr merge` phrase appears in
+# $cmd at all, counted per occurrence rather than per line.
 #
-# A separator inside a quoted word splits there too, which can both truncate an
-# option's value and turn quoted prose into an apparent extra invocation. Both
-# misreadings run one way only, toward a token the caller cannot confirm or a
-# count above one, and both of those deny.
-gate_merge_invocation_lines() {
-  printf '%s\n' "${cmd//[&;|]/$'\n'}" \
-    | grep -E '^[[:space:]]*gh[[:space:]]+pr[[:space:]]+merge([[:space:]]|$)' || true
-}
-
-# gate_merge_argument: echo the positional argument the invocation on line $1
-# passes, or nothing when it passes none. `gh pr merge` takes at most one,
-# `[<number> | <branch> | <url>]`, and an absent one means the current branch.
-#
-# Options are skipped by their leading `-`, which reads an option's SEPARATED
-# value (`-R owner/repo`, `-t "subject"`) as the positional. That misreading is
-# safe in one direction only, and this is that direction: the caller cannot
-# confirm such a token, so it denies, and the merge falls back to requiring a
-# marker rather than clearing on a token this gate never understood.
-gate_merge_argument() {
-  local rest tok
-  local -a toks=()
-  # The line is anchored at `gh`, so the first `merge` on it is the subcommand.
-  rest="${1#*merge}"
-  [ -n "$rest" ] || return 0
-  # read -a splits on IFS without globbing, which an unquoted expansion would
-  # do; the line carries no newline by construction, so one read consumes it.
-  read -r -a toks <<< "$rest"
-  for tok in ${toks[@]+"${toks[@]}"}; do
-    case "$tok" in
-      -*) continue ;;
-      *) printf '%s' "$tok"; return 0 ;;
-    esac
-  done
-  return 0
+# Deliberately blunt, and blunt only toward denial. It counts the phrase
+# wherever it sits, including inside a comment, a quoted string, or a heredoc
+# body, so a command that merely mentions a second merge denies the relaxation
+# below. The scanner this pairs with reads the FIRST command exactly; what this
+# adds is the assurance that no second merge rides behind it, in any spelling,
+# including the ones a command-position scan cannot see (a subshell, a brace
+# group, a `then` or `do` prefix, an absolute path to gh). A merge split across
+# a line continuation counts zero and denies too, since grep reads line by line.
+gate_merge_phrase_count() {
+  printf '%s\n' "$cmd" | grep -o -E 'gh[[:space:]]+pr[[:space:]]+merge' | grep -c .
 }
 
 # gate_cmd_names_the_record_pr: is the pull request the gated `gh pr merge`
@@ -628,25 +601,45 @@ gate_merge_argument() {
 # against? The record comes from `gh pr view` with no number, which describes
 # the CURRENT BRANCH's pull request, so without this the record conjuncts prove
 # only "this checkout is on a pull request", never "on the one being merged".
+#
+# The reference is read by the shared scanner in repo-scope.sh, never by a
+# second parser written here. `gh pr merge` takes six value-taking flags, and a
+# scan that skips options by their leading `-` alone reads a SEPARATED value as
+# the positional: `gh pr merge --body <record-number> <other-number>` then
+# compares the body equal to the record and permits a merge of <other-number>.
+# That is not a hypothetical, it was demonstrated against this hook. The shared
+# scanner models the flag set, rejects the single-dash clusters it cannot model,
+# and is quote-, comment- and heredoc-aware; every abstention of its is a deny
+# here, which is this arm's safe direction.
 gate_cmd_names_the_record_pr() {
-  local lines arg
-  lines="$(gate_merge_invocation_lines)"
-  # Exactly one invocation, or this gate cannot say which pull request a permit
-  # would clear: `gh pr merge <record> ; gh pr merge <other>` is one tool call,
-  # and the second merge would ride the first one's match.
-  [ "$(printf '%s\n' "$lines" | grep -c .)" -eq 1 ] || return 1
-  arg="$(gate_merge_argument "$lines")"
+  # The scanner is normally already loaded, from the repo-scope source near the
+  # top of this hook. That source is cwd-relative, so it can miss from a
+  # non-root cwd; reload from this hook's OWN on-disk location and deny if the
+  # scanner still cannot be had. A relaxation that cannot read the command it
+  # is relaxing has nothing to relax on.
+  if ! type gaia_scan_gh_merge >/dev/null 2>&1; then
+    [ -n "$_lib_dir" ] && [ -f "$_lib_dir/repo-scope.sh" ] || return 1
+    # shellcheck source=/dev/null
+    . "$_lib_dir/repo-scope.sh" || return 1
+    type gaia_scan_gh_merge >/dev/null 2>&1 || return 1
+  fi
+
+  # Exactly one merge in the whole tool call, or this gate cannot say which
+  # pull request a permit would clear.
+  [ "$(gate_merge_phrase_count)" -eq 1 ] || return 1
+
+  gaia_scan_gh_merge "$cmd" || return 1
   # No positional at all: the command targets the current branch, which is the
   # branch the record was read for, so the record conjuncts already bind it.
-  [ -n "$arg" ] || return 0
+  [ -n "$GAIA_GH_MERGE_REF" ] || return 0
   # A bare number is the only spelling this gate can confirm without a second
   # network read. A branch name or a URL denies rather than resolve one: this
   # arm is a relaxation, so an unconfirmable target must not clear it.
-  case "$arg" in
+  case "$GAIA_GH_MERGE_REF" in
     *[!0-9]*) return 1 ;;
   esac
   [ -n "$pr_record_number" ] || return 1
-  [ "$arg" = "$pr_record_number" ]
+  [ "$GAIA_GH_MERGE_REF" = "$pr_record_number" ]
 }
 
 # gate_empty_is_decisive: may an EMPTY base-to-HEAD range clear this gate on its
@@ -665,10 +658,16 @@ gate_cmd_names_the_record_pr() {
 # pull request. Requiring a `pr-record` anchor means the base was actually taken
 # against the pull request's own recorded base branch; requiring HEAD to equal
 # the record's head sha means this checkout is on the pull request the RECORD
-# describes; and requiring the command's own number to match the record's means
-# that pull request is the one being merged. On a synced default branch there is
-# no pull request for the current branch, the record is empty, the anchor is
-# `default-branch`, and this returns 1.
+# describes; and requiring the command's own reference to match the record's
+# number means that pull request is the one being merged. On a synced default
+# branch there is no pull request for the current branch, the record is empty,
+# the anchor is `default-branch`, and this returns 1.
+#
+# The last conjunct reads the command through the shared scanner and denies on
+# every abstention, so what it proves is bounded to the shapes that scanner
+# reads exactly: the merge is the first command in the tool call, it carries no
+# flag shape the scanner declines to model, and the phrase appears once in the
+# whole call. Anything else denies rather than being read approximately.
 #
 # The number conjunct is scoped to this arm alone. The chore(deps) and
 # self-modification bypasses above read the same current-branch record and are

@@ -123,10 +123,18 @@ _gaia_provenance_adoption() {
 #
 # Two non-comment merge-base-against-HEAD lines within GAIA_PROVENANCE_CHAIN_WINDOW
 # lines of each other are the pair regardless of how they are joined. Comment-only
-# lines are never a hit and never break the window. Matches with or without a
+# lines are never a hit and never stop the pairing loop, but the window is measured
+# in line numbers, so they still consume its budget. Matches with or without a
 # `-C <root>` argument, since the detection never looks for that token, and
 # never counts a `merge-base --is-ancestor` line, which is a predicate rather
 # than a derivation.
+#
+# One narrowing survives, stated rather than implied: the halves are told apart
+# by the literal text of the ref, so a ladder holding its remote ref in a
+# variable has two halves that both read as local and does not pair. No
+# consumer spells it that way, and this bounds the claim rather than voiding
+# it: what the check asserts is that no tracked script outside the written
+# exemptions carries the chain in a spelling this scan recognizes.
 _gaia_provenance_chain_hits() {
   local path="$1"
   [ -f "$path" ] || return 0
