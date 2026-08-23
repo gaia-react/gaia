@@ -259,6 +259,118 @@ true'
   true
 }
 
+# --- Idiom: a script executed by its OWN path, no interpreter word ----------
+#
+# `_gaia_capcheck_scan_bare_invocations`. The arms come in pairs on purpose:
+# each positive is followed by the negative that would fire if the detector's
+# anchor or its token shape were widened by one notch, because the failure this
+# idiom repairs was SILENCE and the failure a loose version introduces is a
+# fabricated call edge into a subtree the caller never runs.
+
+@test "a script run by its own path inside a command substitution is a call" {
+  repo="$(make_fixture_repo barecall)"
+  add_script "$repo" a/s.sh '#!/usr/bin/env bash
+BASE="$(.github/audit/base.sh 2>/dev/null || true)"
+printf "%s\n" "$BASE"'
+  add_script "$repo" .github/audit/base.sh '#!/usr/bin/env bash
+true'
+  write_allow "$repo" "Bash(bash a/s.sh:*)"
+  write_manifest "$repo" '[{"script":"a/s.sh","capabilities":["invokes:.github/audit/base.sh"],
+    "why":"runs the base resolver by its own path","maintainer_only":false}]'
+  run bash "$CHECK" "$repo"
+  [ "$status" -eq 0 ]
+  grep -qE '^(UNDECLARED|SURPLUS|UNRESOLVED)' <<<"$output" && return 1
+  run bash "$CHECK" "$repo" --print-reach a/s.sh
+  [ "$status" -eq 0 ]
+  grep -qxF -- "invokes:.github/audit/base.sh" <<<"$output"
+}
+
+@test "a bare-path call carries its target's whole subtree into the closure" {
+  # The point of the idiom. Reporting the edge and stopping there would leave
+  # the same capabilities outside the closure the edge exists to open.
+  repo="$(make_fixture_repo baresubtree)"
+  add_script "$repo" a/s.sh '#!/usr/bin/env bash
+.github/audit/base.sh'
+  add_script "$repo" .github/audit/base.sh '#!/usr/bin/env bash
+curl -sS https://example.com/x'
+  write_allow "$repo" "Bash(bash a/s.sh:*)"
+  write_manifest "$repo" '[{"script":"a/s.sh","capabilities":["invokes:.github/audit/base.sh"],
+    "why":"runs the base resolver by its own path","maintainer_only":false}]'
+  run bash "$CHECK" "$repo"
+  [ "$status" -eq 1 ]
+  grep -qF -- "UNDECLARED a/s.sh network" <<<"$output"
+}
+
+@test "a bare path in command position that resolves to nothing is UNRESOLVED-CALL, not silence" {
+  # The whole defect this idiom repairs was a call site that produced no record
+  # at all. A shape the detector accepts and cannot resolve has to say so.
+  repo="$(make_fixture_repo bareunres)"
+  add_script "$repo" a/s.sh '#!/usr/bin/env bash
+"$mystery"/runner.sh'
+  write_allow "$repo" "Bash(bash a/s.sh:*)"
+  write_manifest "$repo" '[{"script":"a/s.sh","capabilities":[],
+    "why":"runs whatever the variable names","maintainer_only":false}]'
+  run bash "$CHECK" "$repo"
+  [ "$status" -eq 1 ]
+  grep -qF -- "UNRESOLVED a/s.sh a/s.sh:2" <<<"$output"
+}
+
+@test "a script path behind plain whitespace is an operand, not a call" {
+  # `[ -f <path> ]` and `--flag <path>` both put a real repo path one space
+  # after another word. Reading either as a call would open a closure edge on
+  # a line that runs nothing.
+  repo="$(make_fixture_repo bareoperand)"
+  add_script "$repo" a/s.sh '#!/usr/bin/env bash
+if [ -f .github/audit/base.sh ]; then
+  printf "%s\n" --base .github/audit/base.sh
+fi'
+  add_script "$repo" .github/audit/base.sh '#!/usr/bin/env bash
+curl -sS https://example.com/x'
+  write_allow "$repo" "Bash(bash a/s.sh:*)"
+  write_manifest "$repo" '[{"script":"a/s.sh","capabilities":[],
+    "why":"names the resolver without running it","maintainer_only":false}]'
+  run bash "$CHECK" "$repo"
+  [ "$status" -eq 0 ]
+  grep -qE '^(UNDECLARED|SURPLUS|UNRESOLVED)' <<<"$output" && return 1
+  true
+}
+
+@test "a script path in a parenthetical inside a message is prose, not a call" {
+  # The reason _GAIA_CAPCHECK_PATHCMD narrows the bare `(` to `$(`: a deny
+  # message naming a script in a parenthetical puts a real repo path behind a
+  # real `(`, and no blanking reaches it the way it reaches a command word.
+  repo="$(make_fixture_repo bareprose)"
+  add_script "$repo" a/s.sh '#!/usr/bin/env bash
+printf "%s\n" "BLOCKED: may not run the writer (.github/audit/base.sh). Report it."'
+  add_script "$repo" .github/audit/base.sh '#!/usr/bin/env bash
+curl -sS https://example.com/x'
+  write_allow "$repo" "Bash(bash a/s.sh:*)"
+  write_manifest "$repo" '[{"script":"a/s.sh","capabilities":[],
+    "why":"names the writer in a message","maintainer_only":false}]'
+  run bash "$CHECK" "$repo"
+  [ "$status" -eq 0 ]
+  grep -qE '^(UNDECLARED|SURPLUS|UNRESOLVED)' <<<"$output" && return 1
+  true
+}
+
+@test "a command-position word with no directory separator is not a bare-path call" {
+  # `mktemp.sh` in command position is a PATH lookup, not a file in this tree,
+  # and the separator is the line the detector draws rather than testing every
+  # command-position token against the filesystem.
+  repo="$(make_fixture_repo baresep)"
+  add_script "$repo" a/s.sh '#!/usr/bin/env bash
+base.sh'
+  add_script "$repo" base.sh '#!/usr/bin/env bash
+curl -sS https://example.com/x'
+  write_allow "$repo" "Bash(bash a/s.sh:*)"
+  write_manifest "$repo" '[{"script":"a/s.sh","capabilities":[],
+    "why":"runs whatever PATH resolves","maintainer_only":false}]'
+  run bash "$CHECK" "$repo"
+  [ "$status" -eq 0 ]
+  grep -qE '^(UNDECLARED|SURPLUS|UNRESOLVED)' <<<"$output" && return 1
+  true
+}
+
 @test "a write built from a literal prefix and a variable tail generalizes to a glob" {
   repo="$(make_fixture_repo prefixglob)"
   add_script "$repo" .gaia/scripts/w.sh '#!/usr/bin/env bash

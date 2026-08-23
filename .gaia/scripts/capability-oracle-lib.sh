@@ -1470,6 +1470,38 @@ _GAIA_CAPCHECK_CMD='(^|[[:space:]|&;(`$])'
 # does not name reads as an operand and its target is missed.
 _GAIA_CAPCHECK_DOTCMD='(^|[;|&(`{}]|[[:space:]](then|else|do|elif|!))[[:space:]]*'
 
+# The boundary a BARE PATH has to sit behind to be an execution. It is
+# _GAIA_CAPCHECK_DOTCMD's vocabulary with the lone `(` narrowed to `$(`, and
+# the narrowing is the whole reason this is a separate constant.
+#
+# A bare `.` survives the general boundary because `.` is one of
+# _GAIA_CAPCHECK_QUOTED_WORDS, so a `.` written as prose inside a double-quoted
+# span is blanked before any anchor sees it. A path is not a command word and
+# no blanking reaches it, so the anchor is the only defence it has -- and a
+# deny message naming a script in a parenthetical (`may not run the remit
+# writer (.gaia/scripts/write-audit-remits.sh)`) puts a real repo path behind a
+# real `(`. Requiring the `$` keeps the command substitution, which is the
+# idiom this detector exists for, and drops the parenthetical.
+#
+# `{` and `}` come off for a second reason, unrelated to prose: a path token
+# carries `${...}`, so a brace kept as a boundary anchors INSIDE the variable
+# and hands the resolver `dir}/x.sh`. The shape the brace was there for,
+# `{ .gaia/x.sh; }`, is reachable through the `;` or `&&` a brace group is
+# almost always written with anyway.
+#
+# Deliberately incomplete in two directions, and the first is the same shape
+# _GAIA_CAPCHECK_DOTCMD accepts for itself: a bare-path execution inside a
+# plain `( ... )` subshell reads as prose and its target is missed, and one
+# opening a brace group with nothing in front of the brace is missed too.
+#
+# The keyword arm is FLATTENED rather than nested, which _GAIA_CAPCHECK_DOTCMD
+# has no reason to do and this constant does: its one and only caller reads the
+# path token back out of BASH_REMATCH by index, and a nested group here shifts
+# that index without changing what the pattern matches. The caller then reads an
+# empty token off a matching line and resolves nothing, silently, which is the
+# exact failure this whole detector exists to end.
+_GAIA_CAPCHECK_PATHCMD='(^|[;|&`]|\$\(|[[:space:]]then|[[:space:]]else|[[:space:]]do|[[:space:]]elif|[[:space:]]!)[[:space:]]*'
+
 # _gaia_capcheck_detect_network <text>: curl, wget, any gh invocation, and the
 # remote-touching git verbs. Deliberately not matched: `command -v gh` and
 # friends, where `gh` is an argument rather than the command -- the match
@@ -1740,6 +1772,55 @@ _gaia_capcheck_scan_invocations() {
   return 0
 }
 
+# _gaia_capcheck_scan_bare_invocations <repo_root> <rel> <sc> <text> <loc>:
+# the same `CALL`/`UNRESC` records for a script executed by its OWN path with
+# no interpreter word in front of it -- `BASE_REF="$(.github/audit/x.sh)"`.
+#
+# `_gaia_capcheck_scan_invocations` above reads a call only behind `bash`,
+# `sh`, `source`, or a bare `.`, so this shape was not an unresolved call, it
+# was not a call at all: the target and its whole subtree stayed outside the
+# closure with nothing on any UNRESOLVED line to say so. Silence is the reason
+# this is a separate scanner and not a widened alternation over there -- the
+# anchor a bare path needs is not the anchor an interpreter word needs.
+#
+# Two things narrow it, and each one draws the line somewhere a reader can
+# check:
+#
+#   The ANCHOR is _GAIA_CAPCHECK_PATHCMD, strict command position. Any token
+#   behind plain whitespace would read `[ -f .claude/hooks/lib/x.sh ]` and
+#   `--base .gaia/scripts/y.sh` as calls, and both are operands.
+#
+#   The TOKEN has to carry a directory separator and end in `.sh`, with an
+#   optional closing quote so `"$dir"/x.sh` is the same site as `$dir/x.sh`;
+#   the resolver unquotes what it is handed. A bare
+#   `foo.sh` with no directory is a PATH lookup, not a file in this tree, and
+#   an extensionless executable (`.gaia/cli/gaia`) is deliberately missed:
+#   admitting every command-position token that happens to name an on-disk
+#   file makes every `git`, `jq`, and `gh` a resolution attempt.
+#
+# A token that clears both and still does not resolve prints `UNRESC`, exactly
+# as the interpreter-prefixed form does, so the gap this function closes cannot
+# reopen as a quiet one.
+_gaia_capcheck_scan_bare_invocations() {
+  local repo_root="$1" rel="$2" sc="$3" text="$4" loc="$5"
+  local rest="$text" tok hops=0
+  local pat="${_GAIA_CAPCHECK_PATHCMD}([A-Za-z0-9_.\$@{}~+/\"-]*/[A-Za-z0-9_.\$@{}~+/\"-]*\\.sh\"?)([[:space:]]|\$)"
+  while [ "$hops" -lt 4 ] && [[ $rest =~ $pat ]]; do
+    hops=$((hops + 1))
+    # Group 2, because _GAIA_CAPCHECK_PATHCMD is flattened to exactly one
+    # group; that flattening is what this index depends on.
+    tok="${BASH_REMATCH[2]}"
+    rest="${rest#*"${BASH_REMATCH[0]}"}"
+    [ -n "$tok" ] || continue
+    if _gaia_capcheck_resolve_invocation "$repo_root" "$rel" "$sc" "$tok"; then
+      printf 'CALL\t%s\t%s\n' "$_GAIA_CAPCHECK_RET" "$loc"
+    else
+      printf 'UNRESC\t%s\t%s\n' "$loc" "$tok"
+    fi
+  done
+  return 0
+}
+
 # _gaia_capcheck_file_sites <repo_root> <rel>: every capability one file
 # reaches for on its own, as `TERM`/`CALL`/`UNRES` records. Comment lines are
 # not reach; a `gh api` in a header comment is documentation.
@@ -1759,6 +1840,7 @@ _gaia_capcheck_file_sites() {
     _gaia_capcheck_detect_tmp "$stripped" && printf 'TERM\ttmp\t%s\n' "$loc"
     _gaia_capcheck_scan_writes "$repo_root" "$rel" "$stripped" "$loc"
     _gaia_capcheck_scan_invocations "$repo_root" "$rel" "$sc" "$stripped" "$loc"
+    _gaia_capcheck_scan_bare_invocations "$repo_root" "$rel" "$sc" "$stripped" "$loc"
   done < <(_gaia_capcheck_logical_lines "$file")
   return 0
 }
