@@ -12,15 +12,29 @@
 # declaration agree". Sourcing this file defines its functions and does nothing
 # else, beyond the bash-version refusal below.
 #
-# Needs bash 5. On bash 3.2 the scan loop over a file's logical lines ends
-# early, because an inner process substitution in the loop body consumes the
-# outer one's descriptor, so every record past that point is lost and reach is
-# under-reported rather than over-reported. That is the direction that cannot
-# surface as a finding, so this refuses instead of answering. A library cannot
-# re-exec on its own behalf, so each executable entry point carries its own
-# discovery-and-re-exec block ahead of sourcing this file and never reaches
-# here; this is the backstop that gives a future consumer the refusal without
-# it having to remember the guard.
+# Needs bash 5. On bash 3.2 the scan over a file's logical lines does not end
+# early, it dies: the process segfaults on the child side of a fork, before
+# exec, inside the system notify library's atfork handler, and takes every
+# record past that point with it. It exits 133 and prints nothing, and a
+# consumer reading the walk over a pipe or a process substitution sees an
+# ordinary end of input, so reach comes back under-reported rather than
+# over-reported. That is the direction that cannot surface as a finding, so
+# this refuses instead of answering.
+#
+# The dependency is on a bash that does not crash, and no restructuring here
+# removes it. Reading the outer input through an explicit descriptor and
+# buffering it ahead of the loop both leave the crash where it was, and no
+# single detector triggers it: the write scan and the invocation scan are each
+# clean alone and crash only together. The crash point also moves with edits to
+# the loop body that cannot affect it causally, which is the signature of heap
+# corruption rather than of a descriptor this code owns. The version guard is
+# the repair; a code change that appears to fix it has only perturbed the
+# allocation pattern, and the next unrelated edit re-rolls it.
+#
+# A library cannot re-exec on its own behalf, so each executable entry point
+# carries its own discovery-and-re-exec block ahead of sourcing this file and
+# never reaches here; this is the backstop that gives a future consumer the
+# refusal without it having to remember the guard.
 #
 # Every detector here is deliberately incomplete in one direction and says so in
 # its own header. The oracle is lexical: it does not evaluate, it does not model
@@ -31,7 +45,8 @@
 
 if [ "${BASH_VERSINFO[0]}" -lt 5 ]; then
   printf 'capability-oracle-lib: requires bash >= 5, found %s\n' "${BASH_VERSION}" >&2
-  printf '  the scan loop ends early there, so reach is under-reported.\n' >&2
+  printf '  bash 3.2 crashes partway through the walk, so reach is\n' >&2
+  printf '  under-reported.\n' >&2
   exit 2
 fi
 

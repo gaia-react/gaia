@@ -50,12 +50,14 @@
 # Exit 0 clean, 1 on at least one finding, 2 on the check's own failure.
 
 # Needs bash 5, for the reason capability-oracle-lib.sh's own guard states: on
-# bash 3.2 the oracle's scan loop ends early inside a file and the records past
-# that point are lost, which under-reports reach. Re-exec under a Homebrew bash
-# 5 when there is one, the way .gaia/scripts/bats5.sh discovers it, and refuse
-# rather than answer wrongly when there is not. This runs BEFORE the lib is
-# sourced, so the entry point gets its re-exec instead of the lib's bare
-# refusal; only a consumer with no guard of its own falls through to that.
+# bash 3.2 the oracle crashes partway through a file's walk and the records past
+# that point are lost, which under-reports reach. The lib's header carries the
+# crash's shape and why no restructuring there removes the dependency. Re-exec
+# under a Homebrew bash 5 when there is one, the way .gaia/scripts/bats5.sh
+# discovers it, and refuse rather than answer wrongly when there is not. This
+# runs BEFORE the lib is sourced, so the entry point gets its re-exec instead of
+# the lib's bare refusal; only a consumer with no guard of its own falls
+# through to that.
 if [ "${BASH_VERSINFO[0]}" -lt 5 ]; then
   # Recorded only once the version probe passes, never read off the loop
   # variable: that keeps whatever path was tried last, so a candidate that
@@ -70,8 +72,8 @@ if [ "${BASH_VERSINFO[0]}" -lt 5 ]; then
     break
   done
   printf 'check-script-capabilities: requires bash >= 5, found %s\n' "${BASH_VERSION}" >&2
-  printf '  bash 3.2 ends the oracle scan early inside a file, so reach past\n' >&2
-  printf '  that point is lost.\n' >&2
+  printf '  bash 3.2 crashes partway through the walk of a file, so reach\n' >&2
+  printf '  past that point is lost.\n' >&2
   if [ -n "$_gaia_capcheck_bash5_found" ]; then
     printf '  %s is a bash 5. The re-exec is only available when this file is\n' "$_gaia_capcheck_bash5_found" >&2
     printf '  run, not sourced, so run it through that bash instead.\n' >&2
