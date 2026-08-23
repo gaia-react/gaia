@@ -188,7 +188,20 @@
     {
       "name": "debt:spec-pending",
       "color": "a6e3b8",
-      "description": "Handed to /gaia-spec; parked until the SPEC lands",
+      "description": "Handed to /gaia-spec; parked until the SPEC pipeline starts",
+      "axis": "lifecycle",
+      "audience": "adopter",
+      "features": ["tech-debt"],
+      "managed": true,
+      "deprecated": false,
+      "blocked": false,
+      "renamedFrom": [],
+      "reason": null
+    },
+    {
+      "name": "debt:spec-active",
+      "color": "3b9b58",
+      "description": "SPEC is being authored, planned, or executed for this issue",
       "axis": "lifecycle",
       "audience": "adopter",
       "features": ["tech-debt"],

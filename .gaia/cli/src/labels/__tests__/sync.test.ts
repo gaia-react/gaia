@@ -133,6 +133,7 @@ describe('labels/sync planSync create sets', () => {
   test('an empty adopter repo with every feature on', () => {
     expect(createNames(plan({}))).toEqual([
       'bug',
+      'debt:spec-active',
       'debt:spec-pending',
       'difficulty:easy',
       'difficulty:hard',
@@ -160,7 +161,7 @@ describe('labels/sync planSync create sets', () => {
 
     expect(names).not.toContain('gaia-ci');
     expect(names).not.toContain('security');
-    expect(names).toHaveLength(18);
+    expect(names).toHaveLength(19);
   });
 
   test('tech-debt off leaves the always-on set plus the GAIA CI set', () => {
@@ -182,6 +183,7 @@ describe('labels/sync planSync create sets', () => {
     expect(createNames(plan({audience: 'maintainer'}))).toEqual([
       'auto-fixable',
       'bug',
+      'debt:spec-active',
       'debt:spec-pending',
       'difficulty:easy',
       'difficulty:hard',

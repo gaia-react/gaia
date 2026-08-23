@@ -105,11 +105,11 @@ describe('schemas/labels', () => {
     expect(result.success).toBe(true);
   });
 
-  test('the committed registry has exactly 30 entries, split by role and by audience field', () => {
+  test('the committed registry has exactly 31 entries, split by role and by audience field', () => {
     const registry = LabelRegistrySchema.parse(readRegistry());
     const {labels} = registry;
 
-    expect(labels).toHaveLength(30);
+    expect(labels).toHaveLength(31);
 
     const blockedRole = labels.filter((entry) => entry.blocked);
     const thirdPartyRole = labels.filter(
@@ -128,7 +128,7 @@ describe('schemas/labels', () => {
         entry.audience === 'adopter'
     );
 
-    expect(adopterRole).toHaveLength(20);
+    expect(adopterRole).toHaveLength(21);
     expect(maintainerOnlyRole).toHaveLength(6);
     expect(thirdPartyRole).toHaveLength(2);
     expect(blockedRole).toHaveLength(2);
@@ -138,7 +138,7 @@ describe('schemas/labels', () => {
       (entry) => entry.audience === 'maintainer'
     );
 
-    expect(adopterField).toHaveLength(24);
+    expect(adopterField).toHaveLength(25);
     expect(maintainerField).toHaveLength(6);
   });
 

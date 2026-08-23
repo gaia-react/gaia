@@ -28,7 +28,7 @@ const names = (
 describe('labels/registry readRegistry', () => {
   test('parses the committed .gaia/labels.json', () => {
     expect(registry.version).toBe(1);
-    expect(registry.labels).toHaveLength(30);
+    expect(registry.labels).toHaveLength(31);
   });
 
   test('labelsRegistryPath joins onto the given root', () => {
@@ -70,9 +70,10 @@ describe('labels/registry readRegistry', () => {
 });
 
 describe('labels/registry creatableEntries', () => {
-  test('every feature on yields the twenty adopter-role entries', () => {
+  test('every feature on yields the twenty-one adopter-role entries', () => {
     expect(names('adopter', ['tech-debt', 'gaia-ci', 'forensics'])).toEqual([
       'bug',
+      'debt:spec-active',
       'debt:spec-pending',
       'difficulty:easy',
       'difficulty:hard',
@@ -98,6 +99,7 @@ describe('labels/registry creatableEntries', () => {
   test('GAIA CI off drops only the two labels its workflows own', () => {
     expect(names('adopter', ['tech-debt', 'forensics'])).toEqual([
       'bug',
+      'debt:spec-active',
       'debt:spec-pending',
       'difficulty:easy',
       'difficulty:hard',
@@ -154,6 +156,7 @@ describe('labels/registry creatableEntries', () => {
     expect(names('maintainer', ['tech-debt', 'gaia-ci', 'forensics'])).toEqual([
       'auto-fixable',
       'bug',
+      'debt:spec-active',
       'debt:spec-pending',
       'difficulty:easy',
       'difficulty:hard',
@@ -193,6 +196,10 @@ describe('labels/registry blockedEntries and suggestedColorFor', () => {
   test('an unknown name in a known namespace takes the family color', () => {
     expect(suggestedColorFor(registry, 'severity:whatever')).toBe('b60205');
     expect(suggestedColorFor(registry, 'difficulty:whatever')).toBe('bfe3df');
+    // `debt:spec-active` sorts ahead of `debt:spec-pending`, so it is the
+    // family's donor: adding an entry that sorts first silently moves what
+    // `labels sync` suggests for every unrecognized `debt:*` label.
+    expect(suggestedColorFor(registry, 'debt:whatever')).toBe('3b9b58');
   });
 
   test('an unknown name outside every namespace has no suggestion', () => {

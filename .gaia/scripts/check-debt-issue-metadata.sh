@@ -354,8 +354,8 @@ run_pre_file() {
   # side fails carries a non-zero status, and under `set -e` that aborts the
   # script on the clean case. The same trap `.claude/rules/bats-assertions.md`
   # documents for test bodies applies to any `set -e` script.
-  if printf '%s\n' "$labels" | grep -qE '^(in-progress|debt:spec-pending)$'; then
-    finding "pre-file" "drain-label-on-new-filing" "\`in-progress\` / \`debt:spec-pending\` are applied once work starts, never by a filing"
+  if printf '%s\n' "$labels" | grep -qE '^(in-progress|debt:spec-pending|debt:spec-active)$'; then
+    finding "pre-file" "drain-label-on-new-filing" "\`in-progress\` / \`debt:spec-pending\` / \`debt:spec-active\` are applied once work starts, never by a filing"
   fi
 
   return 0

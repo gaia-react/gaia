@@ -198,11 +198,26 @@ open_count() { jq -r '.openCount' "$CACHE"; }
   [ "$(open_count)" = "2" ]
 }
 
-# --- 7. Excludes both claim labels together -----------------------------------
-# in-progress and debt:spec-pending are distinct exclusions; both must drop.
-# Four issues: plain, in-progress, spec-pending, and one carrying both -> counts 1.
-@test "excludes both in-progress and debt:spec-pending" {
-  stub_gh_json '[{"number":1,"labels":[{"name":"tech-debt"}]},{"number":2,"labels":[{"name":"tech-debt"},{"name":"in-progress"}]},{"number":3,"labels":[{"name":"tech-debt"},{"name":"debt:spec-pending"}]},{"number":4,"labels":[{"name":"tech-debt"},{"name":"in-progress"},{"name":"debt:spec-pending"}]}]'
+# --- 6b. Excludes debt:spec-active from the open count ------------------------
+# Once the pipeline starts, the handoff swaps the park label from
+# debt:spec-pending to debt:spec-active. The issue is no less parked for having
+# started, so the active state must leave the count exactly as the pending one
+# does. Three issues, one spec-active, must count 2.
+@test "excludes debt:spec-active from the open count" {
+  stub_gh_json '[{"number":1,"labels":[{"name":"tech-debt"},{"name":"severity:important"}]},{"number":2,"labels":[{"name":"tech-debt"},{"name":"severity:suggestion"},{"name":"debt:spec-active"}]},{"number":3,"labels":[{"name":"tech-debt"},{"name":"severity:critical"}]}]'
+  : > "$SENTINEL"
+  touch -t "$(past_ts 300)" "$SENTINEL"
+  run run_refresh
+  [ "$status" -eq 0 ]
+  [ "$(open_count)" = "2" ]
+}
+
+# --- 7. Excludes all three claim labels together ------------------------------
+# in-progress, debt:spec-pending, and debt:spec-active are distinct exclusions;
+# all three must drop. Five issues: plain, in-progress, spec-pending,
+# spec-active, and one carrying every one of them -> counts 1.
+@test "excludes in-progress, debt:spec-pending and debt:spec-active" {
+  stub_gh_json '[{"number":1,"labels":[{"name":"tech-debt"}]},{"number":2,"labels":[{"name":"tech-debt"},{"name":"in-progress"}]},{"number":3,"labels":[{"name":"tech-debt"},{"name":"debt:spec-pending"}]},{"number":4,"labels":[{"name":"tech-debt"},{"name":"debt:spec-active"}]},{"number":5,"labels":[{"name":"tech-debt"},{"name":"in-progress"},{"name":"debt:spec-pending"},{"name":"debt:spec-active"}]}]'
   : > "$SENTINEL"
   touch -t "$(past_ts 300)" "$SENTINEL"
   run run_refresh
