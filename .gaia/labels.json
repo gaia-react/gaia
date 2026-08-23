@@ -199,19 +199,6 @@
       "reason": null
     },
     {
-      "name": "debt:pre-provenance",
-      "color": "d7f0dd",
-      "description": "Filed before origin tracking; deprecated, kept for history",
-      "axis": "lifecycle",
-      "audience": "maintainer",
-      "features": [],
-      "managed": false,
-      "deprecated": true,
-      "blocked": false,
-      "renamedFrom": [],
-      "reason": null
-    },
-    {
       "name": "fold:required",
       "color": "fbb6ce",
       "description": "Repair should ride a change that already pays its fixed cost",

@@ -74,7 +74,7 @@ describe('labels/docs renderGeneratedSpan', () => {
     const span = renderGeneratedSpan(registry);
     const adopterSection = span.slice(0, span.indexOf(MAINTAINER_START));
 
-    expect(maintainerNames).toHaveLength(7);
+    expect(maintainerNames).toHaveLength(6);
 
     for (const name of maintainerNames) {
       expect(adopterSection).not.toContain(`\`${name}\``);
@@ -82,10 +82,9 @@ describe('labels/docs renderGeneratedSpan', () => {
   });
 
   test('the mixed-axis maintainer entries are the ones that need row filtering', () => {
-    // Five of the seven sit in axes that also carry adopter rows, so an
+    // Four of the six sit in axes that also carry adopter rows, so an
     // axis-level filter would leave them inside an adopter table.
     const mixed = [
-      'debt:pre-provenance',
       'non-issue',
       'gaia-forensics',
       'gaia-triaged',
@@ -111,7 +110,6 @@ describe('labels/docs renderGeneratedSpan', () => {
       .filter((line) => line.startsWith('### '));
 
     expect(headings).toEqual([
-      '### Lifecycle',
       '### Disposition',
       '### Origin and trigger',
       '### Attention gate',

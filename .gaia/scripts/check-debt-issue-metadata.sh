@@ -347,22 +347,13 @@ run_pre_file() {
   check_labels "pre-file" "$labels"
   check_body "pre-file" "$body"
 
-  # The rollout marker is never a filing-time label. It stamps the cohort that
-  # predates provenance, so applying it to a filing happening now asserts the
-  # opposite of the truth and destroys the only distinction the marker draws.
-  # Unconditional here: no body test can rescue it, because the filing IS after
-  # provenance landed by construction.
+  # The claim and park labels belong to work that has started, not to the act
+  # of filing. The recipe says so; nothing checked it.
   #
   # Written as an `if`, not `grep ... && finding ...`: an AND-list whose left
   # side fails carries a non-zero status, and under `set -e` that aborts the
   # script on the clean case. The same trap `.claude/rules/bats-assertions.md`
   # documents for test bodies applies to any `set -e` script.
-  if printf '%s\n' "$labels" | grep -qx 'debt:pre-provenance'; then
-    finding "pre-file" "pre-provenance-on-new-filing" "\`debt:pre-provenance\` is a one-time rollout marker and must never be applied by a filing"
-  fi
-
-  # The claim and park labels belong to work that has started, not to the act
-  # of filing. The recipe says so; nothing checked it.
   if printf '%s\n' "$labels" | grep -qE '^(in-progress|debt:spec-pending)$'; then
     finding "pre-file" "drain-label-on-new-filing" "\`in-progress\` / \`debt:spec-pending\` are applied once work starts, never by a filing"
   fi
@@ -389,69 +380,15 @@ check_one_issue() {
 
   check_labels "#$number" "$labels"
   check_body "#$number" "$body"
-
-  # The rollout-marker anachronism, calibrated from the corpus rather than from
-  # a hardcoded date. The cohort marker means "filed before provenance landed in
-  # THIS repository", and that moment falls on a different date in every clone,
-  # so no literal date belongs in this script. The earliest issue carrying a
-  # `gaia-debt-origin` line is when provenance started writing here; the marker
-  # on anything filed at or after that instant is a backfill, which the recipe
-  # names as the one thing the marker must never be.
-  if printf '%s\n' "$labels" | grep -qx 'debt:pre-provenance'; then
-    local created
-    created="$(printf '%s' "$obj" | jq -r '.createdAt')"
-    # `gh` returns `createdAt` Z-normalized RFC 3339, so a lexicographic
-    # comparison is chronological. Same property the ordering query in
-    # `.claude/skills/gaia/references/debt.md` relies on for its sort.
-    if [ -n "$PROVENANCE_EPOCH" ] && [[ "$created" > "$PROVENANCE_EPOCH" ]]; then
-      finding "#$number" "pre-provenance-anachronism" \
-        "carries \`debt:pre-provenance\` but was filed at $created, after provenance began writing here ($PROVENANCE_EPOCH)"
-    fi
-  fi
-}
-
-# The `createdAt` of the earliest issue, open or closed, whose body carries a
-# provenance line, or empty when none does. Empty disables the anachronism check
-# rather than failing it: a repo that has not started writing provenance has no
-# boundary to be on the wrong side of.
-PROVENANCE_EPOCH=""
-
-resolve_provenance_epoch() {
-  local corpus="$1"
-  PROVENANCE_EPOCH="$(printf '%s' "$corpus" | jq -r '
-    [ .[] | select((.body // "") | test("<!-- gaia-debt-origin:")) | .createdAt ]
-    | sort | .[0] // ""
-  ')"
 }
 
 fetch_corpus() {
   gh issue list --label tech-debt --state open --limit 1000 \
-    --json number,createdAt,labels,body
-}
-
-# The corpus the provenance boundary is derived from, which is deliberately NOT
-# the swept set. The boundary is "when did provenance start writing here", and
-# that is a fact about the whole history, not about what happens to be open now.
-# Deriving it from the open set alone makes it drift forward every time a drain
-# closes the earliest provenance-carrying issue, and each step forward silently
-# stops reporting the mislabeled issues that fall behind it. Under-reporting on
-# an advisory mode is the safe direction, but it is still wrong, and it gets
-# worse exactly as the backlog gets healthier.
-# `sort:created-asc` is load-bearing, not a tidy. `gh issue list` returns
-# created-descending by default, and the boundary is a MINIMUM over `createdAt`,
-# so a saturated `--limit` would drop exactly the oldest issues that define it
-# and the epoch would jump forward silently, reinstating the drift this split
-# exists to remove at a higher threshold. Ascending order makes a saturated cap
-# drop the newest instead, and dropping the newest cannot move a minimum. Not
-# reachable today at a few hundred issues against a cap of 1000, but the drain
-# walks that number up monotonically and never back down.
-fetch_epoch_corpus() {
-  gh issue list --label tech-debt --state all --search "sort:created-asc" --limit 1000 \
-    --json createdAt,body
+    --json number,labels,body
 }
 
 run_issue() {
-  local number="$1" epoch_corpus obj
+  local number="$1" obj
   require_gh
   case "$number" in
     '' | *[!0-9]*) fatal "--issue needs an issue number" ;;
@@ -462,16 +399,13 @@ run_issue() {
   # were reported" status, so an auth or network failure would read as a clean
   # run with an unlucky exit code. Routing it to 2 keeps the three-way contract
   # honest. The blocking `--pre-file` mode is unaffected, being hermetic.
-  epoch_corpus="$(fetch_epoch_corpus)" || fatal "could not read the tech-debt history through gh"
-  resolve_provenance_epoch "$epoch_corpus"
-
-  obj="$(gh issue view "$number" --json number,createdAt,labels,body)" ||
+  obj="$(gh issue view "$number" --json number,labels,body)" ||
     fatal "could not read issue #$number through gh"
   check_one_issue "$obj"
 }
 
 run_sweep() {
-  local corpus epoch_corpus count obj
+  local corpus count obj
   require_gh
 
   corpus="$(fetch_corpus)" || fatal "could not read the tech-debt backlog through gh"
@@ -484,9 +418,6 @@ run_sweep() {
     echo "$PROG: the open tech-debt backlog is empty; nothing was checked" >&2
     return 0
   fi
-
-  epoch_corpus="$(fetch_epoch_corpus)" || fatal "could not read the tech-debt history through gh"
-  resolve_provenance_epoch "$epoch_corpus"
 
   # One `jq` for the whole corpus, streamed a record per line, rather than one
   # `jq` per index. The indexed form re-parsed the entire document on every

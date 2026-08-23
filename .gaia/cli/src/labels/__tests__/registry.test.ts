@@ -28,7 +28,7 @@ const names = (
 describe('labels/registry readRegistry', () => {
   test('parses the committed .gaia/labels.json', () => {
     expect(registry.version).toBe(1);
-    expect(registry.labels).toHaveLength(31);
+    expect(registry.labels).toHaveLength(30);
   });
 
   test('labelsRegistryPath joins onto the given root', () => {
@@ -179,12 +179,6 @@ describe('labels/registry creatableEntries', () => {
       'tech-debt',
       'wontfix',
     ]);
-  });
-
-  test('the maintainer set still excludes the deprecated, unmanaged entry', () => {
-    expect(
-      names('maintainer', ['tech-debt', 'gaia-ci', 'forensics'])
-    ).not.toContain('debt:pre-provenance');
   });
 });
 

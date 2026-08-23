@@ -310,38 +310,13 @@ Create the parent directory first. On a fresh clone, or in CI, no statusline tic
 
 <!-- gaia:maintainer-only:start -->
 
-Both rollout sections below are GAIA's own migration record and are stripped from
-the shipped skill. Do not unwrap them; if a future rollout genuinely applies to
+The rollout section below is GAIA's own migration record and is stripped from
+the shipped skill. Do not unwrap it; if a future rollout genuinely applies to
 every clone, write that one as its own section outside these markers.
-
-## Rollout: mark the pre-provenance cohort
-
-The backlog that predates provenance does not get provenance, and this is a prohibition rather than a low priority. The two kinds of absence sit in the same field: a fail-open `unknown` records what the disposing agent observed and is an honest statement, while a backfilled value records what someone guessed, and nothing downstream can tell the two apart. Seeding the record with plausible attributions produces provenance-shaped noise rather than partial provenance.
-
-What ships instead is a one-time cohort marker, per repository:
-
-1. Create the `debt:pre-provenance` label idempotently, directly: the registry marks this entry `deprecated` and `managed: false`, so `gaia labels sync` never creates it. Nothing else creates it.
-2. Apply it to every open `tech-debt` issue whose body carries no `gaia-debt-origin` line, raising the result limit so the sweep cannot silently stop at a default page size.
-3. Re-running is safe and is the recovery path for a run that failed partway. The body test is what makes it so: a plain "label every open issue" sweep would be idempotent in the trivial sense and still wrong, because a re-run days later would stamp issues filed after provenance landed and destroy the very distinction the marker exists to draw.
-
-```bash
-gh label create debt:pre-provenance 2>/dev/null || true
-gh issue list --label tech-debt --state open --limit 1000 --json number,body \
-  --jq '.[] | select(((.body // "") | test("<!-- gaia-debt-origin:")) | not) | .number' \
-| while read -r n; do
-    gh issue edit "$n" --add-label debt:pre-provenance
-  done
-```
-
-The marker is only accurate when applied at the moment provenance starts writing in a repository, which is why it is a rollout step rather than follow-up work. That moment has already passed here, and it cannot arrive anywhere else: filing and provenance land in the same release, so in any other clone provenance is writing from that clone's first filing and the pre-provenance cohort is empty from the day the feature arrives. The sweep is GAIA's own one-time migration, not a step anyone else has to run.
-
-The marker changes no displayed number and no consumer gates on it, so it is additive.
-
-Do not add `debt:pre-provenance` to step 6's reconcile: the rollout is a one-time per-repository step rather than a per-filing one, which is why `debt:pre-provenance` does not belong there.
 
 ## Rollout: backfill the handler class onto the existing backlog
 
-The handler class rides as a `handler:` label (step 6). A backlog filed before that carries the class as a `Handler:` body line instead, which nothing reads any more, so those issues drain as unclassified until the label lands. Unlike the cohort marker above this is a real backfill and it is safe to be one: every stored value came from a filing route applying step 6's rubric, so copying it onto a label preserves a real conclusion rather than inventing one.
+The handler class rides as a `handler:` label (step 6). A backlog filed before that carries the class as a `Handler:` body line instead, which nothing reads any more, so those issues drain as unclassified until the label lands. This is a real backfill and it is safe to be one: every stored value came from a filing route applying step 6's rubric, so copying it onto a label preserves a real conclusion rather than inventing one.
 
 1. Reconcile the registry idempotently, which covers the whole set; the three `handler:` labels, in the violet family the registry documents, are what this rollout needs from it. Re-running this is free.
 2. For every open `tech-debt` issue that carries **no** `handler:` label and whose body carries a parseable `Handler:` line, add the matching label.
@@ -366,7 +341,7 @@ An issue with no parseable `Handler:` line emits nothing at all, because `captur
 
 The sweep adds a label and never edits a body. A legacy `Handler:` line is inert once the label exists, and rewriting two dozen bodies to remove it would spend a lossy edit per issue to delete text no reader consults. New filings carry no such line (step 5), so the residue does not grow.
 
-Like the cohort marker above, this is GAIA's own migration and nobody else's. The `Handler:` body-line convention only ever existed in this repository, so the sweep's `capture` can match nothing in any other clone; the section stays because the backfill may still be re-run against this backlog.
+This is GAIA's own migration and nobody else's. The `Handler:` body-line convention only ever existed in this repository, so the sweep's `capture` can match nothing in any other clone; the section stays because the backfill may still be re-run against this backlog.
 
 <!-- gaia:maintainer-only:end -->
 
