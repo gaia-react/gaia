@@ -275,8 +275,14 @@ pool_snapshot() {
 # Install a gh stub on a prepended PATH. `gh issue list` prints $1 (default []).
 # GET statuses return null (so the frontend is NOT cleared via a CI status),
 # `gh pr view` returns the PR record the hook reads once: an empty title (no
-# chore(deps) bypass) and an empty base ref (so the base derivation falls back
-# to the remote's advertised default).
+# chore(deps) bypass), an empty base ref (so the base derivation falls back
+# to the remote's advertised default), and number 30.
+#
+# The number is what run_merge_hook's default command names. Every arm that can
+# clear a merge binds its clearance to the pull request the COMMAND names, and
+# an unconfirmable target denies, so a record carrying no number starves those
+# arms rather than exercising them: a bypass test would go green on a deny it
+# never meant to assert.
 install_gh_stub() {
   local issues="${1:-[]}"
   GH_BIN="$BATS_TEST_TMPDIR/bin"
@@ -290,7 +296,7 @@ EOF
 case "$1" in
   auth) exit 0 ;;
   repo) printf 'gaia-react/gaia\n'; exit 0 ;;
-  pr) printf '{"title":"","baseRefName":""}\n'; exit 0 ;;
+  pr) printf '{"title":"","baseRefName":"","number":"30"}\n'; exit 0 ;;
   issue) cat "$issues_file"; exit 0 ;;
   api) printf 'null\n'; exit 0 ;;
   *) exit 0 ;;
@@ -318,7 +324,7 @@ EOF
 case "$1" in
   auth) exit 0 ;;
   repo) printf 'gaia-react/gaia\n'; exit 0 ;;
-  pr) jq -n --arg t "$(cat "$title_file")" '{title:$t, baseRefName:""}'; exit 0 ;;
+  pr) jq -n --arg t "$(cat "$title_file")" '{title:$t, baseRefName:"", number:"30"}'; exit 0 ;;
   issue) cat "$issues_file"; exit 0 ;;
   api) printf 'null\n'; exit 0 ;;
   *) exit 0 ;;
@@ -356,6 +362,7 @@ assert_not_in_set() {
 }
 
 @test "allows a docs/metadata-only PR (wiki + .claude + .gaia)" {
+  install_gh_stub
   # .claude/commands/*.md is ownerless docs. Skills prose (.claude/skills/**/*.md)
   # is audited by the prose member, so it belongs to the owned-surface cases below,
   # not here among the no-audit-needed docs. The .gaia/ file is a README for the
@@ -371,6 +378,7 @@ assert_not_in_set() {
 }
 
 @test "allows a root-level markdown-only PR" {
+  install_gh_stub
   commit_files "README.md" "# changed"
   run_merge_hook
   [ "$status" -eq 0 ]
@@ -378,6 +386,7 @@ assert_not_in_set() {
 }
 
 @test "allows a docs-only PR under docs/" {
+  install_gh_stub
   commit_files "docs/guide.md" "guide"
   run_merge_hook
   [ "$status" -eq 0 ]
@@ -437,6 +446,7 @@ assert_not_in_set() {
 # ---------------------------------------------------------------------------
 
 @test "allows a self-mod-only update PR (workflow bytes == bundled template)" {
+  install_gh_stub
   seed_base_template
   commit_files \
     ".github/workflows/code-review-audit.yml" "name: Code Review Audit" \
@@ -1031,6 +1041,7 @@ assert_not_in_set() {
 }
 
 @test "FC-4 no-deadlock: wiki + .claude + root markdown spawns nobody, and no markers still allows" {
+  install_gh_stub
   # .claude/commands/ is out of audit scope and owned by no roster member.
   # .claude/rules/** and .claude/agents/code-audit-*.md ARE maintainer-shell-owned,
   # so this uses a genuinely-ownerless .claude path to keep the spawn set empty.
@@ -1083,6 +1094,7 @@ assert_not_in_set() {
 }
 
 @test "FC-4 no-deadlock: allowlisted ownerless paths spawn nobody, and no markers still allows" {
+  install_gh_stub
   # The other half of FC-4's agreement invariant. These paths hold no lens for
   # any member, so the oracle names nobody AND the gate demands nothing: the
   # two sides move together because both read the same allowlist. A widening
@@ -1852,4 +1864,137 @@ EOF
   run_merge_hook
   [ "$status" -eq 0 ]
   [ "$(printf '%s' "$output" | jq -r '.hookSpecificOutput.permissionDecision')" = "deny" ]
+}
+
+# ---------------------------------------------------------------------------
+# Arming: which command shapes reach the gate at all
+#
+# The gate arms on the UNION of a literal text match and a tokenizer read of the
+# tool call's first command, because each arm reaches a spelling the other
+# cannot. Every case below is an in-scope diff with no marker, so ARMED means
+# denied and NOT ARMED means a silent exit 0. The inversion is the point: a case
+# here asserting a deny is asserting that the gate ran at all.
+# ---------------------------------------------------------------------------
+
+@test "arming: a quoted verb reaches the gate instead of skipping it" {
+  install_gh_stub
+  commit_files "app/x.ts" "export const x = 1"
+
+  run_merge_hook 'gh pr "merge" 30 --squash'
+  assert_denied_by_json
+}
+
+@test "arming: a quoted subcommand reaches the gate" {
+  install_gh_stub
+  commit_files "app/x.ts" "export const x = 1"
+
+  run_merge_hook 'gh "pr" merge 30 --squash'
+  assert_denied_by_json
+}
+
+@test "arming: a line continuation inside the verb reaches the gate" {
+  install_gh_stub
+  commit_files "app/x.ts" "export const x = 1"
+
+  # A backslash-newline mid-verb is the shell's own spelling of the verb, and it
+  # leaves the text arm looking at a run of characters that is not one.
+  run_merge_hook 'gh pr me\
+rge 30 --squash'
+  assert_denied_by_json
+}
+
+@test "arming: a merge that is not the first command still reaches the gate" {
+  install_gh_stub
+  commit_files "app/x.ts" "export const x = 1"
+
+  # Invisible to the tokenizer arm, which reads the first command and stops.
+  # Swapping the text arm out for the tokenizer, rather than unioning the two,
+  # would turn this deny into a silent permit.
+  run_merge_hook "echo hi && gh pr merge 30 --squash"
+  assert_denied_by_json
+}
+
+@test "arming: a non-merge command carrying the word merge does not arm the gate" {
+  install_gh_stub
+  commit_files "app/x.ts" "export const x = 1"
+
+  # The tokenizer arm's cheap pre-filter admits any command holding the verb as
+  # a substring, so this is the case that keeps the filter a pre-filter rather
+  # than the decision.
+  run_merge_hook "git merge --no-ff main"
+  assert_allowed_by_json
+  [ -z "$output" ]
+}
+
+# ---------------------------------------------------------------------------
+# Every clearing arm binds to the pull request the command names
+#
+# Four arms can clear a merge off a record `gh pr view` reads for the CURRENT
+# BRANCH: chore(deps), self-mod-only, out-of-scope, and the empty range. The
+# empty range's binding is covered above; these cover the other three.
+#
+# Each is a PAIR, and the pairing is load-bearing. A mismatch case alone goes
+# green on a conjunct that denies unconditionally, which is a bypass that no
+# longer exists rather than one that binds; the no-positional case is what
+# proves the arm still clears the pull request it is meant to.
+# ---------------------------------------------------------------------------
+
+@test "chore(deps): the bypass denies a merge naming a pull request other than the record's" {
+  install_gh_stub_with_title "chore(deps): bump the github-actions group"
+  install_chore_deps_predicate
+  commit_files "app/x.ts" "export const x = 1"
+
+  # The record describes pull request 30. A dep-bump title on THIS branch says
+  # nothing about 999, which no local quality gate pre-verified.
+  run_merge_hook "gh pr merge 999 --squash"
+  assert_denied_by_json
+}
+
+@test "chore(deps): the bypass still fires when the command names no pull request" {
+  install_gh_stub_with_title "chore(deps): bump the github-actions group"
+  install_chore_deps_predicate
+  commit_files "app/x.ts" "export const x = 1"
+
+  # gh resolves an absent positional to the current branch, which is the very
+  # pull request the record was read for, so the turnkey spelling keeps clearing.
+  run_merge_hook "gh pr merge --squash --delete-branch"
+  assert_allowed_by_json
+}
+
+@test "out-of-scope: the bypass denies a merge naming a pull request other than the record's" {
+  install_gh_stub
+  commit_files "wiki/x.md" "doc"
+
+  run_merge_hook "gh pr merge 999 --squash"
+  assert_denied_by_json
+}
+
+@test "out-of-scope: the bypass still fires when the command names no pull request" {
+  install_gh_stub
+  commit_files "wiki/x.md" "doc"
+
+  run_merge_hook "gh pr merge --squash --delete-branch"
+  assert_allowed_by_json
+}
+
+@test "self-mod-only: the bypass denies a merge naming a pull request other than the record's" {
+  install_gh_stub
+  seed_base_template
+  commit_files \
+    ".github/workflows/code-review-audit.yml" "name: Code Review Audit" \
+    "wiki/log.md" "entry"
+
+  run_merge_hook "gh pr merge 999 --squash"
+  assert_denied_by_json
+}
+
+@test "self-mod-only: the bypass still fires when the command names no pull request" {
+  install_gh_stub
+  seed_base_template
+  commit_files \
+    ".github/workflows/code-review-audit.yml" "name: Code Review Audit" \
+    "wiki/log.md" "entry"
+
+  run_merge_hook "gh pr merge --squash --delete-branch"
+  assert_allowed_by_json
 }

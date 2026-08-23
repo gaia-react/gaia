@@ -110,20 +110,95 @@ tool_name=$(echo "$input" | jq -r '.tool_name // ""' 2>/dev/null)
 # and make any later `command -v ...` calls in this script silently misbehave.
 cmd=$(echo "$input" | jq -r '.tool_input.command // ""' 2>/dev/null)
 
-# Match `gh pr merge` only when it appears as an actual shell invocation,
-# either at the very start of the command (after optional whitespace) or
-# immediately after a shell separator (&&, ;, ||, |, newline). This avoids
-# false positives on heredoc body text and quoted strings (e.g. commit
-# messages that reference the command in prose). Use bash =~ for whole-string
-# regex semantics; grep operates line-by-line and would match heredoc body
-# lines. The newline alternative covers multi-statement scripts where each
-# command is on its own line.
+# gate_cmd_is_first_command_merge: does this tool call's FIRST command tokenize
+# to `gh pr merge`? The text arms below cannot answer that, because every
+# spelling that breaks the literal run of characters `gh pr merge` is invisible
+# to them: `gh pr "merge" <n>`, `gh "pr" merge <n>`, and a line continuation
+# inside the verb were each demonstrated against the running hook skipping the
+# gate entirely, on a pull request carrying no marker at all
+# (gaia-react/gaia#1541).
+#
+# Named at parent level because a `[[ =~ ]]` pattern holding a quote and a
+# backslash is unreadable written inline, and quoting it there would match it
+# literally instead of as a regex.
+gate_gh_lead_re=$'^[[:space:]]*[g"\'\\\\]'
+
+# It asks the shared scanner for WORDS rather than calling gaia_scan_gh_merge,
+# and the difference is load-bearing rather than stylistic. That function also
+# abstains on any flag shape it declines to model, which is the right answer for
+# a relaxation deciding whether to permit and the wrong one here: arming must be
+# strictly broader than clearing, or a merge carrying an unmodelled flag would
+# skip the gate rather than meet it.
+gate_cmd_is_first_command_merge() {
+  local lib_dir
+  # Cheap pre-filter first. This hook fires on EVERY Bash tool call, while the
+  # scan below is a byte-at-a-time bash loop over the command and the library
+  # holding it is several hundred lines to source. A call that cannot be a merge
+  # must pay for neither, which is the same reason every other library load in
+  # this file sits below the early exits.
+  #
+  # The filter tests the FIRST non-blank byte rather than searching for the verb,
+  # and soundness is why. A word the shell assembles need not appear in the
+  # command as a run of bytes at all: `gh pr me\<newline>rge 1` spells the verb
+  # through a line continuation and holds no `merge` substring, so a search for
+  # one would drop exactly the spelling this arm exists to catch. A command whose
+  # first word tokenizes to `gh` can only begin with `g` or with a quoting
+  # character, so this test admits every such command and nothing here can be
+  # outrun by a spelling that is merely quoted more creatively.
+  [[ "$cmd" =~ $gate_gh_lead_re ]] || return 1
+
+  # From this hook's OWN on-disk location, never cwd: the bats suites run this
+  # hook by absolute path from a sandbox cwd that has no .claude/, so a
+  # cwd-relative source would leave this arm silently dead exactly where the
+  # tests believe they are exercising it.
+  if ! type gaia_scan_first_command >/dev/null 2>&1; then
+    lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)"
+    [ -n "$lib_dir" ] && [ -f "$lib_dir/repo-scope.sh" ] || return 1
+    # shellcheck source=/dev/null
+    . "$lib_dir/repo-scope.sh" || return 1
+    type gaia_scan_first_command >/dev/null 2>&1 || return 1
+  fi
+
+  gaia_scan_first_command "$cmd" || return 1
+  [ "${#GAIA_FIRST_COMMAND_WORDS[@]}" -ge 3 ] || return 1
+  [ "${GAIA_FIRST_COMMAND_WORDS[0]}" = "gh" ] || return 1
+  [ "${GAIA_FIRST_COMMAND_WORDS[1]}" = "pr" ] || return 1
+  [ "${GAIA_FIRST_COMMAND_WORDS[2]}" = "merge" ]
+}
+
+# Arm the gate when this tool call carries a `gh pr merge`. Two arms, unioned,
+# because each reaches a spelling the other cannot and neither is a superset.
+#
+# TEXT: the literal run `gh pr merge` at the very start of the command or
+# immediately after a shell separator (&&, ;, ||, |, newline). Use bash =~ for
+# whole-string regex semantics; grep operates line-by-line. This is the only arm
+# that can see a merge which is NOT the first command in the tool call, because
+# the scanner stops at the first one, so dropping it in favour of the tokenizer
+# would open a hole (`<anything> && gh pr merge <n>`) rather than close one.
+#
+# TOKENIZER: the first command really is the merge, whatever quoting spells it.
+#
+# WHAT THIS DOES NOT GUARANTEE. Stated because the comment that stood here
+# claimed the opposite, and a guard advertising a property it does not have is
+# worse than one that admits the gap. The text arm OVER-arms: its newline
+# alternative means a heredoc body line, or a quoted prose string carrying a
+# separator, that begins with the verb arms the gate and denies an unrelated
+# tool call. Writing this repository's own merge documentation through a heredoc
+# trips it. That direction is fail-closed, it costs an unrelated call rather
+# than permitting an unaudited merge, and closing it needs a scanner that walks
+# every command in the tool call and models heredoc bodies as data, which the
+# shared one does not. Neither arm reads a prefix (`env gh pr merge`, an
+# absolute path to gh) or a subshell, since those change which word is first.
+# This gate targets accidental and inattentive merges; a PreToolUse hook
+# matching a command is not a boundary against deliberate obfuscation.
 sep_re=$'(\\&\\&|;|\\|\\||\\||\n)[[:space:]]*gh[[:space:]]+pr[[:space:]]+merge([[:space:]]|$)'
 start_re='^[[:space:]]*gh[[:space:]]+pr[[:space:]]+merge([[:space:]]|$)'
 if [[ "$cmd" =~ $start_re ]]; then
   : # match at command start
 elif [[ "$cmd" =~ $sep_re ]]; then
   : # match after a shell separator (incl. newline)
+elif gate_cmd_is_first_command_merge; then
+  : # the first command tokenizes to the merge, however it is quoted
 else
   exit 0
 fi
@@ -490,6 +565,16 @@ resolve_pr_record() {
 check_chore_deps_pr() {
   resolve_pr_record
   [ -n "$pr_record_title" ] || return 1
+  # Bind the bypass to the pull request the COMMAND names. The title above came
+  # from `gh pr view` with no number, so on its own it proves a property of the
+  # CURRENT BRANCH's pull request while the merge being gated names one this
+  # function never parsed: from a checkout sitting on a dep-bump branch, a merge
+  # naming an arbitrary unaudited number cleared with no marker at all
+  # (gaia-react/gaia#1540). A command carrying no positional still permits,
+  # since that is gh's current-branch default and therefore the very pull
+  # request the title was read for, which is what leaves the turnkey
+  # `gh pr merge --squash` dep-bump path unaffected.
+  gate_cmd_names_the_record_pr || return 1
   # tree_root, not root: the predicate is executable code, so it comes from the
   # ACTING tree that carries it. root is the main checkout, which from a linked
   # worktree is a different branch entirely and need not have the script at all.
@@ -704,14 +789,13 @@ gate_cmd_names_the_record_pr() {
 # invocation needs, so no expansion of any spelling can run a second command.
 # Anything else denies rather than being read approximately.
 #
-# Every conjunct here is scoped to this arm alone, and three siblings are blind
-# in the same way. The chore(deps) and self-modification bypasses above read the
-# same current-branch record while the command names a pull request they never
-# parse. So does the OTHER arm of this function's own caller: once every changed
-# path is out of audit scope, check_out_of_scope_pr permits whatever command
-# shape it was handed, with no call to any of this. That third one is the
-# easiest to miss precisely because it sits in the function a reader is already
-# inside. All three are pre-existing and tracked separately, out of scope here.
+# The command-binding conjunct is NOT scoped to this arm. Every other arm that
+# can clear a merge on a current-branch record asks the same question, each at
+# its own site: the chore(deps) and self-modification bypasses above, and the
+# non-empty arm of this function's own caller. Keep it that way when adding an
+# arm. A predicate proving something about the checkout says nothing about the
+# pull request a command names, and the four arms reach that record by three
+# different routes, so there is no one chokepoint to put the question behind.
 gate_empty_is_decisive() {
   audit_provenance_empty_is_decisive "$gate_trust" || return 1
   [ "$gate_anchor" = "pr-record" ] || return 1
@@ -779,6 +863,16 @@ check_out_of_scope_pr() {
     audit_out_of_scope_allowlisted "$path" || return 1
   done <<< "$changed"
 
+  # Bind to the pull request the COMMAND names, for the reason the chore(deps)
+  # bypass above gives: every path checked so far belongs to the CURRENT
+  # BRANCH's change set, which need not be the change set of the pull request
+  # being merged. Placed here rather than at the top of this function on
+  # purpose: the empty-change-set arm above routes through
+  # gate_empty_is_decisive, which owns a strictly larger conjunct set including
+  # this one, so hoisting would duplicate that call and blur which arm answers
+  # for which conjuncts.
+  gate_cmd_names_the_record_pr || return 1
+
   return 0
 }
 
@@ -808,6 +902,14 @@ check_out_of_scope_pr() {
 check_self_mod_only_update_pr() {
   audit_wf=".github/workflows/code-review-audit.yml"
   audit_tmpl=".gaia/cli/templates/workflows/code-review-audit.yml.tmpl"
+
+  # Bind to the pull request the COMMAND names, for the reason the chore(deps)
+  # bypass above gives. This arm earns the conjunct more than that one rather
+  # than less: it is reachable from the member-aware gate, where
+  # self_mod_only_pr() clears EVERY dispatched member at once, so a merge it
+  # wrongly answers for is a merge nobody audited on any axis.
+  resolve_pr_record
+  gate_cmd_names_the_record_pr || return 1
 
   gate_resolve_base
   [ -n "$gate_base" ] || return 1
