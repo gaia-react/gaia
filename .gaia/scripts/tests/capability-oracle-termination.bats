@@ -769,12 +769,15 @@ EOF
 # ========== The bash-version backstop ==========
 #
 # Lexical, not behavioural: the runners are bash 5, so there is no bash 3.2 to
-# drive the refusal on. Under 3.2 the scan loop ends early inside a file and
-# under-reports reach, which is the direction that cannot surface as a finding,
-# so each executable entry point re-execs under a bash 5 and this library
-# refuses outright for any consumer that sources it without a guard of its own.
-# That refusal is the only structural defence a future consumer inherits, and
-# deleting it leaves every other test in the tree green, so it is pinned here.
+# drive the refusal on. Under 3.2 the oracle crashes partway through the walk of
+# a file and under-reports reach, which is the direction that cannot surface as
+# a finding, so each executable entry point re-execs under a bash 5 and this
+# library refuses outright for any consumer that sources it without a guard of
+# its own. The guard is the repair rather than a stopgap, because the crash is
+# not something the oracle's own structure can avoid; capability-oracle-lib.sh's
+# header carries that reasoning and the controls behind it. That refusal is the
+# only structural defence a future consumer inherits, and deleting it leaves
+# every other test in the tree green, so it is pinned here.
 
 @test "backstop: the oracle refuses to be sourced under a bash older than 5" {
   grep -qE -- '^if \[ "\$\{BASH_VERSINFO\[0\]\}" -lt 5 \]; then' "$ORACLE"
