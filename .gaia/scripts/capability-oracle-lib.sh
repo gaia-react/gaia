@@ -1502,15 +1502,14 @@ _GAIA_CAPCHECK_DOTCMD='(^|[;|&(`{}]|[[:space:]](then|else|do|elif|!))[[:space:]]
 #   third divergence between two constants whose whole readability rests on
 #   being one vocabulary with two named departures.
 #
-# And it over-reads in one direction, on the `^` arm: a repo path sitting alone
-# at the start of a line inside an array literal or a double-quoted string that
-# spans real lines reads as an execution and fabricates a CALL edge into a
-# subtree the caller never runs. Telling that apart from a real bare execution,
-# which is also a path alone on a line, needs to know the previous line left a
-# paren or a quote open, and _gaia_capcheck_logical_lines tracks neither. It
-# fails closed and loudly (UNDECLARED, never silence), the alternative of
-# dropping `^` costs the most ordinary shape this detector exists for, and the
-# repair belongs to the splitter rather than to this anchor.
+# It also OVER-reads, on every arm rather than any one: nothing blanks a repo
+# path inside a double-quoted span, the same fact that narrows `(` to `$(`
+# above, so any anchor character surviving inside one fabricates a CALL edge
+# into a subtree the caller never runs. Telling that from a real execution needs
+# lexical state _gaia_capcheck_logical_lines does not carry, so the repair is
+# the splitter's, not this anchor's; #1536 tracks the family. Mostly it fails
+# closed and loud, not wholly: a fabricated edge can mask a real SURPLUS by
+# making a declared-but-unreached term look reached.
 #
 # The keyword arm is FLATTENED rather than nested, which _GAIA_CAPCHECK_DOTCMD
 # has no reason to do and this constant does: its one and only caller reads the
