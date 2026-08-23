@@ -40,10 +40,10 @@
 # enumerates every ordinary suite in that directory and would need an exclusion
 # entry per suite saying nothing. The one bats member is named directly instead.
 #
-# Runtime, measured on the tree at the time of writing: the sixteen scripts
-# total ~27s, of which check-script-capabilities.sh alone is ~15s (it walks the
+# Runtime, measured on the tree at the time of writing: the seventeen scripts
+# total ~28s, of which check-script-capabilities.sh alone is ~15s (it walks the
 # invocation closure of every allowlisted script), shell-lint ~10s, and the
-# shard suite ~19s; the whole set measures ~62-66s end to end. That is why there is
+# shard suite ~19s; the whole set measures ~63-67s end to end. That is why there is
 # one tier rather than a fast default plus a named
 # slower tier. A split is worth its second name only once the honest set is
 # slow enough that people skip it, and an aggregate slow enough to skip is
@@ -79,6 +79,7 @@ readonly PROG="whole-tree-invariants"
 # Members invoked as `bash <path>`.
 readonly WTI_SCRIPTS='.gaia/scripts/check-audit-base-derivation.sh
 .gaia/scripts/check-audit-key-callers.sh
+.gaia/scripts/check-base-provenance-adoption.sh
 .gaia/scripts/check-hook-scope-manifest.sh
 .gaia/scripts/check-main-root-derivation.sh
 .gaia/scripts/check-registry-completeness.sh
@@ -97,7 +98,7 @@ readonly WTI_SCRIPTS='.gaia/scripts/check-audit-base-derivation.sh
 # The staleness lever's baseline: WTI_SCRIPTS's own member count at the time
 # the runtime paragraph above was last measured. main() compares the live
 # count against this and refuses to run on a mismatch, per that paragraph.
-readonly WTI_SCRIPTS_COUNT_ASOF=16
+readonly WTI_SCRIPTS_COUNT_ASOF=17
 
 # Members invoked as `bats <path>`. The shard partition is a whole-tree
 # invariant in the same sense as the scripts above: its input is every .bats
