@@ -140,6 +140,22 @@ run_merge_hook() {
   run_merge_hook_at "$REPO" "${1:-gh pr merge 30 --squash --delete-branch}"
 }
 
+# Run the hook with a command too large to pass through argv. Linux caps a
+# single argument at 128KB (MAX_ARG_STRLEN) while macOS does not, so the sibling
+# helpers above, which hand the command to `jq` and the payload to `bash -c` as
+# arguments, die with "Argument list too long" on CI and pass locally. Both hops
+# go through a file here: `--rawfile` for the command, a stdin redirect for the
+# payload.
+run_merge_hook_large() {
+  local cmd="$1" cmdfile jsonfile
+  cmdfile="$BATS_TEST_TMPDIR/large-cmd.txt"
+  jsonfile="$BATS_TEST_TMPDIR/large-payload.json"
+  printf '%s' "$cmd" > "$cmdfile"
+  jq -n --rawfile c "$cmdfile" \
+    '{tool_name: "Bash", tool_input: {command: $c}}' > "$jsonfile"
+  run bash -c 'cd "$1" && bash "$3" < "$2"' _ "$REPO" "$jsonfile" "$HOOK_ABS"
+}
+
 # Compute MEMBER's real content digest for REPO's current HEAD, via the real
 # digest engine (never re-derived by hand), so fixtures stay in lockstep with
 # whatever the hook itself would compute.
@@ -275,8 +291,14 @@ pool_snapshot() {
 # Install a gh stub on a prepended PATH. `gh issue list` prints $1 (default []).
 # GET statuses return null (so the frontend is NOT cleared via a CI status),
 # `gh pr view` returns the PR record the hook reads once: an empty title (no
-# chore(deps) bypass) and an empty base ref (so the base derivation falls back
-# to the remote's advertised default).
+# chore(deps) bypass), an empty base ref (so the base derivation falls back
+# to the remote's advertised default), and number 30.
+#
+# The number is what run_merge_hook's default command names. Every arm that can
+# clear a merge binds its clearance to the pull request the COMMAND names, and
+# an unconfirmable target denies, so a record carrying no number starves those
+# arms rather than exercising them: a bypass test would go green on a deny it
+# never meant to assert.
 install_gh_stub() {
   local issues="${1:-[]}"
   GH_BIN="$BATS_TEST_TMPDIR/bin"
@@ -290,7 +312,7 @@ EOF
 case "$1" in
   auth) exit 0 ;;
   repo) printf 'gaia-react/gaia\n'; exit 0 ;;
-  pr) printf '{"title":"","baseRefName":""}\n'; exit 0 ;;
+  pr) printf '{"title":"","baseRefName":"","number":"30"}\n'; exit 0 ;;
   issue) cat "$issues_file"; exit 0 ;;
   api) printf 'null\n'; exit 0 ;;
   *) exit 0 ;;
@@ -318,7 +340,7 @@ EOF
 case "$1" in
   auth) exit 0 ;;
   repo) printf 'gaia-react/gaia\n'; exit 0 ;;
-  pr) jq -n --arg t "$(cat "$title_file")" '{title:$t, baseRefName:""}'; exit 0 ;;
+  pr) jq -n --arg t "$(cat "$title_file")" '{title:$t, baseRefName:"", number:"30"}'; exit 0 ;;
   issue) cat "$issues_file"; exit 0 ;;
   api) printf 'null\n'; exit 0 ;;
   *) exit 0 ;;
@@ -337,10 +359,6 @@ install_chore_deps_predicate() {
   chmod +x "$REPO/.gaia/scripts/chore-deps-skip.sh"
 }
 
-# Assert the most recent run_merge_hook call allowed the merge.
-
-# Assert the most recent run_merge_hook call denied the merge.
-
 # Assert NAME is present as a whole line in NEWLINE-separated SET.
 assert_in_set() {
   local name="$1" set="$2"
@@ -356,6 +374,7 @@ assert_not_in_set() {
 }
 
 @test "allows a docs/metadata-only PR (wiki + .claude + .gaia)" {
+  install_gh_stub
   # .claude/commands/*.md is ownerless docs. Skills prose (.claude/skills/**/*.md)
   # is audited by the prose member, so it belongs to the owned-surface cases below,
   # not here among the no-audit-needed docs. The .gaia/ file is a README for the
@@ -371,6 +390,7 @@ assert_not_in_set() {
 }
 
 @test "allows a root-level markdown-only PR" {
+  install_gh_stub
   commit_files "README.md" "# changed"
   run_merge_hook
   [ "$status" -eq 0 ]
@@ -378,6 +398,7 @@ assert_not_in_set() {
 }
 
 @test "allows a docs-only PR under docs/" {
+  install_gh_stub
   commit_files "docs/guide.md" "guide"
   run_merge_hook
   [ "$status" -eq 0 ]
@@ -437,6 +458,7 @@ assert_not_in_set() {
 # ---------------------------------------------------------------------------
 
 @test "allows a self-mod-only update PR (workflow bytes == bundled template)" {
+  install_gh_stub
   seed_base_template
   commit_files \
     ".github/workflows/code-review-audit.yml" "name: Code Review Audit" \
@@ -1031,6 +1053,7 @@ assert_not_in_set() {
 }
 
 @test "FC-4 no-deadlock: wiki + .claude + root markdown spawns nobody, and no markers still allows" {
+  install_gh_stub
   # .claude/commands/ is out of audit scope and owned by no roster member.
   # .claude/rules/** and .claude/agents/code-audit-*.md ARE maintainer-shell-owned,
   # so this uses a genuinely-ownerless .claude path to keep the spawn set empty.
@@ -1083,6 +1106,7 @@ assert_not_in_set() {
 }
 
 @test "FC-4 no-deadlock: allowlisted ownerless paths spawn nobody, and no markers still allows" {
+  install_gh_stub
   # The other half of FC-4's agreement invariant. These paths hold no lens for
   # any member, so the oracle names nobody AND the gate demands nothing: the
   # two sides move together because both read the same allowlist. A widening
@@ -1852,4 +1876,215 @@ EOF
   run_merge_hook
   [ "$status" -eq 0 ]
   [ "$(printf '%s' "$output" | jq -r '.hookSpecificOutput.permissionDecision')" = "deny" ]
+}
+
+# ---------------------------------------------------------------------------
+# Arming: which command shapes reach the gate at all
+#
+# The gate arms on the UNION of a literal text match and a tokenizer read of the
+# tool call's first command, because each arm reaches a spelling the other
+# cannot. Every case below is an in-scope diff with no marker, so ARMED means
+# denied and NOT ARMED means a silent exit 0. The inversion is the point: a case
+# here asserting a deny is asserting that the gate ran at all.
+# ---------------------------------------------------------------------------
+
+@test "arming: a quoted verb reaches the gate instead of skipping it" {
+  install_gh_stub
+  commit_files "app/x.ts" "export const x = 1"
+
+  run_merge_hook 'gh pr "merge" 30 --squash'
+  assert_denied_by_json
+}
+
+@test "arming: a quoted subcommand reaches the gate" {
+  install_gh_stub
+  commit_files "app/x.ts" "export const x = 1"
+
+  run_merge_hook 'gh "pr" merge 30 --squash'
+  assert_denied_by_json
+}
+
+@test "arming: a line continuation inside the verb reaches the gate" {
+  install_gh_stub
+  commit_files "app/x.ts" "export const x = 1"
+
+  # A backslash-newline mid-verb is the shell's own spelling of the verb, and it
+  # leaves the text arm looking at a run of characters that is not one.
+  run_merge_hook 'gh pr me\
+rge 30 --squash'
+  assert_denied_by_json
+}
+
+@test "arming: a merge that is not the first command still reaches the gate" {
+  install_gh_stub
+  commit_files "app/x.ts" "export const x = 1"
+
+  # Invisible to the tokenizer arm, which reads the first command and stops.
+  # Swapping the text arm out for the tokenizer, rather than unioning the two,
+  # would turn this deny into a silent permit.
+  run_merge_hook "echo hi && gh pr merge 30 --squash"
+  assert_denied_by_json
+}
+
+@test "arming: a non-merge command carrying the word merge does not arm the gate" {
+  install_gh_stub
+  commit_files "app/x.ts" "export const x = 1"
+
+  # A command whose first word cannot reach `gh` must not arm the gate, and the
+  # pre-filter is what turns this one away before the scan ever runs. For the
+  # case that does reach the scan and abstains there, see the large-payload test
+  # below, whose fixture is a real `gh` whose word 1 is not `pr`.
+  run_merge_hook "git merge --no-ff main"
+  assert_allowed_by_json
+  [ -z "$output" ]
+}
+
+# ---------------------------------------------------------------------------
+# Every clearing arm binds to the pull request the command names
+#
+# Four arms can clear a merge off a record `gh pr view` reads for the CURRENT
+# BRANCH: chore(deps), self-mod-only, out-of-scope, and the empty range. The
+# empty range's binding is covered above; these cover the other three.
+#
+# Each is a PAIR, and the pairing is load-bearing. A mismatch case alone goes
+# green on a conjunct that denies unconditionally, which is a bypass that no
+# longer exists rather than one that binds; the no-positional case is what
+# proves the arm still clears the pull request it is meant to.
+# ---------------------------------------------------------------------------
+
+@test "chore(deps): the bypass denies a merge naming a pull request other than the record's" {
+  install_gh_stub_with_title "chore(deps): bump the github-actions group"
+  install_chore_deps_predicate
+  commit_files "app/x.ts" "export const x = 1"
+
+  # The record describes pull request 30. A dep-bump title on THIS branch says
+  # nothing about 999, which no local quality gate pre-verified.
+  run_merge_hook "gh pr merge 999 --squash"
+  assert_denied_by_json
+}
+
+@test "chore(deps): the bypass still fires when the command names no pull request" {
+  install_gh_stub_with_title "chore(deps): bump the github-actions group"
+  install_chore_deps_predicate
+  commit_files "app/x.ts" "export const x = 1"
+
+  # gh resolves an absent positional to the current branch, which is the very
+  # pull request the record was read for, so the turnkey spelling keeps clearing.
+  run_merge_hook "gh pr merge --squash --delete-branch"
+  assert_allowed_by_json
+}
+
+@test "out-of-scope: the bypass denies a merge naming a pull request other than the record's" {
+  install_gh_stub
+  commit_files "wiki/x.md" "doc"
+
+  run_merge_hook "gh pr merge 999 --squash"
+  assert_denied_by_json
+}
+
+@test "out-of-scope: the bypass still fires when the command names no pull request" {
+  install_gh_stub
+  commit_files "wiki/x.md" "doc"
+
+  run_merge_hook "gh pr merge --squash --delete-branch"
+  assert_allowed_by_json
+}
+
+@test "self-mod-only: the bypass denies a merge naming a pull request other than the record's" {
+  install_gh_stub
+  seed_base_template
+  commit_files \
+    ".github/workflows/code-review-audit.yml" "name: Code Review Audit" \
+    "wiki/log.md" "entry"
+
+  run_merge_hook "gh pr merge 999 --squash"
+  assert_denied_by_json
+}
+
+@test "self-mod-only: the bypass still fires when the command names no pull request" {
+  install_gh_stub
+  seed_base_template
+  commit_files \
+    ".github/workflows/code-review-audit.yml" "name: Code Review Audit" \
+    "wiki/log.md" "entry"
+
+  run_merge_hook "gh pr merge --squash --delete-branch"
+  assert_allowed_by_json
+}
+
+@test "arming: a large non-merge command does not pay an unbounded scan" {
+  install_gh_stub
+  commit_files "app/x.ts" "export const x = 1"
+
+  # Pins the CLASS of regression, not a constant. The arming scan walks bytes and
+  # slices per block, so its cost grows faster than its input, and every `gh`
+  # invocation reaches it, so an unbounded scan put a synchronous stall on
+  # ordinary Bash tool calls: 3s at 32KB and ~40s at the 128KB used here, against
+  # ~60ms for the same size starting with another letter. A bounded prefix
+  # flattens it to ~100ms at any size. The ceiling below sits far above the bounded cost and far below the
+  # unbounded one, so it separates the two robustly without pinning either
+  # machine's timing; a shared runner being slow cannot red it, and only losing
+  # the bound can.
+  # The fixture must start `gh `, not just `g`: the pre-filter admits only a
+  # command whose first word can tokenize to `gh`, so a `gx...` string is turned
+  # away before the scan and the case would pass no matter what the bound does.
+  # It still never arms, since word 1 is not `pr`, which is the point: this is
+  # the near-miss that pays the full scan.
+  local big start elapsed
+  big="gh $(head -c 131072 < /dev/zero | tr '\0' 'x')"
+
+  start=$SECONDS
+  run_merge_hook_large "$big"
+  elapsed=$(( SECONDS - start ))
+
+  [ "$status" -eq 0 ]
+  [ "$elapsed" -lt 10 ]
+}
+
+@test "arming: a $'…' spelled gh arms neither arm, a pinned gap" {
+  install_gh_stub
+  commit_files "app/x.ts" "export const x = 1"
+
+  # `$'gh' pr merge 30` is a valid shell spelling of a real merge, and NEITHER
+  # arm sees it. The text arm finds no literal `gh pr merge` run, because the
+  # closing quote sits between the two words. The tokenizer arm is turned away
+  # by the pre-filter, since the command opens with `$`, and would not fire even
+  # if it were admitted: the shared scanner tokenizes `$'gh'` to the word `$gh`,
+  # so word 0 never equals `gh`.
+  #
+  # Pinned as a GAP, not as a guarantee. The permit below is fail-open, and it
+  # is the accepted limit this gate states for itself: it targets accidental and
+  # inattentive merges, not deliberate obfuscation, and a `$'…'` spelling of the
+  # verb is not something a merge gets written as by accident. The case is here
+  # so the claim re-checks itself instead of decaying in a comment, and so that
+  # closing the gap later reds a test that names it rather than passing silently.
+  #
+  # It reds only when BOTH defences go, and that is a property of the subject,
+  # not a weak assertion: either one alone turns the spelling away, so admitting
+  # `$` in the pre-filter leaves the scanner's `$gh` word rejecting it, and
+  # loosening the word-0 equality to a suffix match leaves the pre-filter
+  # rejecting it. Verified in both directions: each single mutant passes, the
+  # pair reds here.
+  run_merge_hook "\$'gh' pr merge 30 --squash"
+  assert_allowed_by_json
+  [ -z "$output" ]
+}
+
+@test "arming: a split or quoted gh still reaches the gate" {
+  install_gh_stub
+  commit_files "app/x.ts" "export const x = 1"
+
+  # The tokenizer arm's pre-filter reads the first two characters, so these are
+  # the spellings a tighter filter could silently stop admitting. Each still
+  # tokenizes to `gh` as word 0, so each must arm; a miss here is fail-OPEN,
+  # the gate exiting 0 on a real merge, which is why they are pinned rather
+  # than left to the filter's reasoning.
+  run_merge_hook '"gh" pr merge 30 --squash'
+  assert_denied_by_json
+
+  run_merge_hook 'g"h" pr merge 30 --squash'
+  assert_denied_by_json
+
+  run_merge_hook '\gh pr merge 30 --squash'
+  assert_denied_by_json
 }

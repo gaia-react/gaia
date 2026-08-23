@@ -22,7 +22,9 @@ cmd=$(jq -r '.tool_input.command // ""' <<<"$payload")
 # in prose or a quoted string (e.g. a commit message). The newline separator
 # does match a heredoc body line that begins with the command; that edge is
 # benign (a spurious readout with no merge) and accepted.
-# Mirrors pr-merge-audit-check.sh's command match.
+# Text arming only: this hook does NOT carry the tokenizer arm
+# pr-merge-audit-check.sh grew, so a quoted verb does not arm it and no
+# readout is produced. Tracked in gaia-react/gaia#1545.
 start_re='^[[:space:]]*gh[[:space:]]+pr[[:space:]]+merge([[:space:]]|$)'
 sep_re=$'(\\&\\&|;|\\|\\||\\||\n)[[:space:]]*gh[[:space:]]+pr[[:space:]]+merge([[:space:]]|$)'
 if [[ "$cmd" =~ $start_re ]]; then

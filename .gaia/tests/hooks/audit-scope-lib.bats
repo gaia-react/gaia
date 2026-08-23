@@ -272,9 +272,16 @@ golden_commit() {
   git -C "$GREPO" commit --quiet -m "change"
 }
 
+# The command deliberately names NO pull request. Every arm that clears a merge
+# off the current-branch record binds to the pull request the command names, and
+# an absent positional is gh's current-branch default, so the binding holds by
+# construction and this table keeps varying only the thing it is named for: the
+# path set. Adding a number here would make each case turn on whether the
+# sandbox can resolve a pull-request record, which it cannot and which is the
+# sibling suite's subject, not this one's.
 golden_run_hook() {
   local json
-  json=$(jq -n '{tool_name: "Bash", tool_input: {command: "gh pr merge 1 --squash"}}')
+  json=$(jq -n '{tool_name: "Bash", tool_input: {command: "gh pr merge --squash"}}')
   invoke_hook_in "$GREPO" "$json" "$HOOK"
 }
 

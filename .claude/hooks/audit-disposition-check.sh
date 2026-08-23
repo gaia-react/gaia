@@ -90,10 +90,13 @@ tool_name=$(echo "$input" | jq -r '.tool_name // ""' 2>/dev/null)
 # later `command -v ...` guards.
 cmd=$(echo "$input" | jq -r '.tool_input.command // ""' 2>/dev/null)
 
-# Match `gh pr merge` only when it appears as an actual shell invocation, either
-# at the very start of the command or immediately after a shell separator. This
-# avoids false positives on heredoc body text and quoted strings. Mirrors
-# pr-merge-audit-check.sh exactly.
+# Match `gh pr merge` at the very start of the command or immediately after a
+# shell separator. Text arming only: this hook does NOT carry the tokenizer arm
+# pr-merge-audit-check.sh grew, so a spelling that breaks the literal run of
+# characters, a quoted verb among them, does not arm it and this hook does not
+# run. It also over-arms in the other direction, on a heredoc body line or a
+# quoted string beginning with the verb. Both directions are tracked in
+# gaia-react/gaia#1545.
 sep_re=$'(\\&\\&|;|\\|\\||\\||\n)[[:space:]]*gh[[:space:]]+pr[[:space:]]+merge([[:space:]]|$)'
 start_re='^[[:space:]]*gh[[:space:]]+pr[[:space:]]+merge([[:space:]]|$)'
 if [[ "$cmd" =~ $start_re ]]; then
