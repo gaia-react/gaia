@@ -333,6 +333,16 @@ jobs:
               # would report `code=false`, skip every bats step, and green
               # the job having run that assertion zero times.
               - 'wiki/concepts/Code Review Audit Agent.md'
+              # plan-phase-ci-read.bats (.gaia/scripts/tests/) greps this
+              # page's phase-loop step as the SECOND surface describing the
+              # per-phase post-push CI read, and compares it against the
+              # plan.md template the generated orchestrator inherits, so an
+              # edit here alone is exactly the drift it exists to catch. It
+              # matches no other pattern here, so without this line that edit
+              # would report `code=false`, skip every bats step, and green the
+              # job having run that comparison zero times. Same
+              # test-dir/source-dir pairing as the entries above.
+              - 'wiki/concepts/Task Orchestration.md'
               # The doc-setup-gaia-isolation and doc-gaia-init-isolation suites
               # (.gaia/tests/lib/) grep the /setup-gaia Phase 3.5 clause and the
               # /gaia-init Step 9 question block; trigger on the two command
