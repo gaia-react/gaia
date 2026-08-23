@@ -1310,11 +1310,13 @@ teardown_linked_worktree() {
 # token alongside the base. An EMPTY base-to-HEAD range clears the
 # out-of-scope bypass only when that trust is one this checkout could not have
 # invented AND the base was taken against the pull request's own recorded base
-# branch AND local HEAD is the pull request's recorded head. Anything less
-# denies, because the gate scopes its range to local HEAD and never reads the
-# pull-request number in the `gh pr merge` command it is gating: a synced
-# default-branch checkout has an empty range against every pull request in the
-# repository at once.
+# branch AND local HEAD is the pull request's recorded head AND the command
+# being gated names that same pull request. Anything less denies. The first
+# three conjuncts alone would not be enough: the gate scopes its range to local
+# HEAD, and a synced default-branch checkout has an empty range against every
+# pull request in the repository at once, while the record itself is read for
+# the CURRENT BRANCH and so describes a pull request the gated command need
+# never have named.
 #
 # The self-modification bypass reads the same base and is deliberately NOT
 # relaxed: it is reachable from the member-aware gate, where it clears every
@@ -1330,26 +1332,37 @@ set_origin_main_at() {
 }
 
 # The gh stub with a POPULATED pull-request record: $1 is baseRefName, $2 is
-# headRefOid. jq builds the record rather than a printf format, so a value
-# carrying a quote stays valid JSON instead of silently emptying a field a
-# test is pinning, the same reasoning install_gh_stub_with_title gives.
+# headRefOid, $3 is the pull-request number, $4 the issue list. jq builds the
+# record rather than a printf format, so a value carrying a quote stays valid
+# JSON instead of silently emptying a field a test is pinning, the same
+# reasoning install_gh_stub_with_title gives.
+#
+# The number defaults to the one the default command under test merges, so a
+# test that does not care about the number gets a record the gate's number
+# conjunct accepts. A test that DOES care states both halves at its call site.
+# The stub answers `pr` the same way whatever arguments it is handed, which is
+# the point: the gate is what must tell the record's pull request from the one
+# the command names.
 install_gh_stub_with_record() {
-  local base_ref="$1" head_oid="$2"
-  install_gh_stub "${3:-[]}"
+  local base_ref="$1" head_oid="$2" number="${3:-30}"
+  install_gh_stub "${4:-[]}"
   printf '%s' "$base_ref" > "$BATS_TEST_TMPDIR/pr-base.txt"
   printf '%s' "$head_oid" > "$BATS_TEST_TMPDIR/pr-head.txt"
+  printf '%s' "$number" > "$BATS_TEST_TMPDIR/pr-number.txt"
   cat > "$GH_BIN/gh" <<EOF
 #!/usr/bin/env bash
 issues_file="$BATS_TEST_TMPDIR/issues.json"
 base_file="$BATS_TEST_TMPDIR/pr-base.txt"
 head_file="$BATS_TEST_TMPDIR/pr-head.txt"
+number_file="$BATS_TEST_TMPDIR/pr-number.txt"
 EOF
   cat >> "$GH_BIN/gh" <<'EOF'
 case "$1" in
   auth) exit 0 ;;
   repo) printf 'gaia-react/gaia\n'; exit 0 ;;
   pr) jq -n --arg b "$(cat "$base_file")" --arg h "$(cat "$head_file")" \
-        '{title:"", baseRefName:$b, headRefOid:$h}'; exit 0 ;;
+        --arg n "$(cat "$number_file")" \
+        '{title:"", baseRefName:$b, headRefOid:$h, number:$n}'; exit 0 ;;
   issue) cat "$issues_file"; exit 0 ;;
   api) printf 'null\n'; exit 0 ;;
   *) exit 0 ;;
@@ -1523,7 +1536,7 @@ run_recording_hook() {
   # own recorded base branch" stands between this and a permit.
   git -C "$REPO" checkout --quiet main
   set_origin_main_at refs/heads/main
-  install_gh_stub_with_record "" "$(git -C "$REPO" rev-parse HEAD)"
+  install_gh_stub_with_record "" "$(git -C "$REPO" rev-parse HEAD)" 999
 
   run_merge_hook "gh pr merge 999 --squash"
   assert_denied_by_json
@@ -1533,9 +1546,54 @@ run_recording_hook() {
   # Isolates the head-sha conjunct: anchor and trust both qualify, and the
   # checkout is simply not on the pull request being merged.
   set_origin_main_at refs/heads/feature
-  install_gh_stub_with_record "main" "0000000000000000000000000000000000000001"
+  install_gh_stub_with_record "main" "0000000000000000000000000000000000000001" 999
 
   run_merge_hook "gh pr merge 999 --squash"
+  assert_denied_by_json
+}
+
+@test "an empty range denies when the command names a pull request other than the record's" {
+  # Isolates the number conjunct: trust, anchor and head sha all qualify, so
+  # the ONLY thing between this and the permit its sibling above earns is that
+  # the record describes pull request 30 and the command merges 999. The
+  # record is read for the current branch, so nothing but this conjunct ever
+  # looks at the number the command names.
+  local head
+  head="$(git -C "$REPO" rev-parse HEAD)"
+  set_origin_main_at refs/heads/feature
+  install_gh_stub_with_record "main" "$head" 30
+
+  run_merge_hook "gh pr merge 999 --squash"
+  assert_denied_by_json
+}
+
+@test "an empty range denies when the command names a target the gate cannot confirm" {
+  # `gh pr merge` also accepts a branch and a URL. Both resolve to a number
+  # only through a network read this gate does not make, so an unconfirmable
+  # target takes the deny rather than the relaxation. A separated option value
+  # reads as the positional for the same reason and lands in the same place.
+  local head
+  head="$(git -C "$REPO" rev-parse HEAD)"
+  set_origin_main_at refs/heads/feature
+  install_gh_stub_with_record "main" "$head" 30
+
+  run_merge_hook "gh pr merge feature --squash"
+  assert_denied_by_json
+
+  run_merge_hook "gh pr merge https://github.com/gaia-react/gaia/pull/30"
+  assert_denied_by_json
+}
+
+@test "an empty range denies a second merge riding in the command as the record's own" {
+  # One tool call, two merges: the first names the record's pull request and
+  # the second an arbitrary one. Matching the first token and permitting would
+  # clear both, so more than one invocation in a command denies outright.
+  local head
+  head="$(git -C "$REPO" rev-parse HEAD)"
+  set_origin_main_at refs/heads/feature
+  install_gh_stub_with_record "main" "$head" 30
+
+  run_merge_hook "gh pr merge 30 --squash; gh pr merge 999 --squash"
   assert_denied_by_json
 }
 
