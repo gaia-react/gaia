@@ -228,14 +228,21 @@ repo_slug_is_foreign() {
 # Sets GAIA_FIRST_COMMAND_WORDS to the first command's words. Returns 0 when
 # it read at least one word, 1 when the string held no command at all.
 #
-# Also sets GAIA_FIRST_COMMAND_CLOSED: 0 when the whole string was ONE command,
-# 1 when a separator or a comment closed the first one with something after it.
-# A caller that must know nothing else runs in the same tool call cannot ask
-# that of the text, because a second command can be spelled in ways no literal
-# scan of the text sees (`gh pr "merge" <n>`, a line continuation inside the
-# verb, a subshell, a brace group). This scan already tokenizes the way the
-# shell does, so it is the one place that question has an exact answer, and
-# publishing it costs one assignment rather than a second parser.
+# Also sets GAIA_FIRST_COMMAND_CLOSED: 0 when no separator and no comment closed
+# the first command, 1 when one did with something after it. A caller asking
+# whether a second command was spelled with a separator cannot ask that of the
+# text, because the spellings that matter break any literal scan of it
+# (`gh pr "merge" <n>`, a line continuation inside the verb, a subshell, a brace
+# group). This scan tokenizes the way the shell does, so it answers that
+# question exactly, and publishing the answer costs one assignment rather than
+# a second parser.
+#
+# What it does NOT report is EXPANSION. A command substitution, a backtick and
+# a process substitution are ordinary word text to a scan that models words, so
+# a string carrying one reaches the end with this flag still 0 while the shell
+# runs the payload. A caller that needs "nothing else runs at all" has to rule
+# that class out itself; this flag is one half of that question, not the whole
+# of it.
 GAIA_FIRST_COMMAND_WORDS=()
 GAIA_FIRST_COMMAND_CLOSED=0
 

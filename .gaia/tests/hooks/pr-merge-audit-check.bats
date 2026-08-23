@@ -1637,8 +1637,8 @@ run_recording_hook() {
   # would clear both, so the relaxation requires the merge to be the whole
   # command.
   #
-  # The four spellings below are what forced this to be the shell's own
-  # tokenizer rather than a scan of the text. A subshell and a brace group put
+  # The spellings below are what forced this to be the shell's own tokenizer
+  # rather than a scan of the text. A subshell and a brace group put
   # a character before the second verb, so a scan that reads command positions
   # cannot see it; quoting one word of the verb and splitting it across a line
   # continuation each break the literal run of characters, so a scan that
@@ -1671,6 +1671,37 @@ merge 999 --squash'
   # account for what runs beside it, so it refuses rather than read the rest
   # approximately.
   run_merge_hook "gh pr merge 30 --squash && echo done"
+  assert_denied_by_json
+}
+
+@test "an empty range denies a second merge smuggled in through a substitution" {
+  # The class a word-level tokenizer cannot report. A command substitution, a
+  # backtick and a process substitution are ordinary word text to a scan that
+  # models words, so the scan reaches the end of the string having found no
+  # separator at all while the shell runs the payload FIRST: the piggybacked
+  # merge lands before the permitted one. Every spelling below names the
+  # record's own pull request as the real positional, so the four conjuncts
+  # above are satisfied and only this guard stands between them and a permit.
+  local head
+  head="$(git -C "$REPO" rev-parse HEAD)"
+  set_origin_main_at refs/heads/feature
+  install_gh_stub_with_record "main" "$head" 30
+
+  run_merge_hook 'gh pr merge --body "$(gh pr merge 999 --squash)" 30 --squash'
+  assert_denied_by_json
+
+  run_merge_hook 'gh pr merge -b "`gh pr merge 999 --squash`" 30 --squash'
+  assert_denied_by_json
+
+  # Quoting is not required: a payload with no unquoted whitespace stays one
+  # word, so the shapes below reached the same permit.
+  run_merge_hook 'gh pr merge --body $(./m) 30 --squash'
+  assert_denied_by_json
+
+  run_merge_hook 'gh pr merge --body-file <(./m) 30 --squash'
+  assert_denied_by_json
+
+  run_merge_hook 'gh pr merge 30 --body "${x:-$(./m)}"'
   assert_denied_by_json
 }
 

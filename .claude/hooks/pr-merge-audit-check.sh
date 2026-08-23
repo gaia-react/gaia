@@ -599,9 +599,12 @@ gate_resolve_base() {
 # characters, `gh pr "merge" <n>` and a line continuation inside the verb among
 # them. Both were demonstrated against this hook rather than argued.
 #
-# The scanner tokenizes the way the shell does, so it answers both questions
-# exactly: which reference the merge names, and whether anything follows it in
-# the same tool call. Every abstention denies.
+# The scanner tokenizes the way the shell does, so it answers two of the three
+# questions exactly: which reference the merge names, and whether a separator
+# or a comment put another command beside it. The third, whether a SUBSTITUTION
+# smuggled one in, is not a question about words, so no word-level tokenizer
+# answers it and this function rules that class out itself. Every abstention
+# denies.
 gate_cmd_names_the_record_pr() {
   # The scanner is normally already loaded, from the repo-scope source near the
   # top of this hook. That source is cwd-relative, so it can miss from a
@@ -619,13 +622,27 @@ gate_cmd_names_the_record_pr() {
   # on it is a shape the scanner models.
   gaia_scan_gh_merge "$cmd" || return 1
 
-  # And nothing follows it. The scanner sets this while reading the same
-  # command the call above just read, so it is that read's own answer rather
-  # than a second pass: 0 means the whole tool call was one command. Stricter
-  # than "no second merge", deliberately, because the safe direction for a
-  # relaxation is to deny what it cannot account for, and a trailing `&& echo
-  # done` costs only a marker requirement.
+  # And no SEPARATOR puts a second command beside it. The scanner sets this
+  # while reading the same command the call above just read, so it is that
+  # read's own answer rather than a second pass: 0 means no separator and no
+  # comment closed the merge. Stricter than "no second merge", deliberately,
+  # because the safe direction for a relaxation is to deny what it cannot
+  # account for, and a trailing `&& echo done` costs only a marker requirement.
   [ "$GAIA_FIRST_COMMAND_CLOSED" -eq 0 ] || return 1
+
+  # And no SUBSTITUTION does either. That is a separate question, and reading
+  # the flag above as answering it is the mistake this guard exists to correct:
+  # a tokenizer that models words sees `$( )`, a backtick, `<( )` and `>( )` as
+  # ordinary word text, so it reaches the end of the string having found no
+  # separator while bash runs the payload first. `gh pr merge --body "$(gh pr
+  # merge <other> --squash)" <record>` permitted on exactly that reading, and
+  # the piggybacked merge ran before the permitted one. Denying the whole class
+  # is blunt in the deny direction only, and costs a legitimate merge nothing,
+  # since one has no need of a substitution.
+  # shellcheck disable=SC2016 # these are literal shell metacharacters to match, never expansions
+  case "$cmd" in
+    *'$('*|*'`'*|*'<('*|*'>('*) return 1 ;;
+  esac
 
   # No positional at all: the command targets the current branch, which is the
   # branch the record was read for, so the record conjuncts already bind it.
@@ -664,8 +681,9 @@ gate_cmd_names_the_record_pr() {
 # The last conjunct reads the command through the shared scanner and denies on
 # every abstention, so what it proves is bounded to the shapes that scanner
 # reads exactly: the merge is the first command in the tool call, it carries no
-# flag shape the scanner declines to model, and nothing at all follows it in
-# that call. Anything else denies rather than being read approximately.
+# flag shape the scanner declines to model, no separator or comment puts a
+# second command beside it, and it carries no substitution that could run one.
+# Anything else denies rather than being read approximately.
 #
 # The number conjunct is scoped to this arm alone. The chore(deps) and
 # self-modification bypasses above read the same current-branch record and are
