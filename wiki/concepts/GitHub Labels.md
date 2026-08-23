@@ -110,12 +110,6 @@ Warm families (red, orange, amber) are reserved for attention: urgency, defect t
 
 These labels serve the GAIA maintainer repository. Sync never creates them on an adopter repository, and the bundle-time scrub removes this section from the page an adopter receives.
 
-### Lifecycle
-
-| Label | Color | Description | Created by |
-| --- | --- | --- | --- |
-| `debt:pre-provenance` | `d7f0dd` | Filed before origin tracking; deprecated, kept for history | documented only |
-
 ### Disposition
 
 | Label | Color | Description | Created by |

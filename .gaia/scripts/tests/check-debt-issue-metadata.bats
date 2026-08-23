@@ -7,14 +7,11 @@
 # checking with `--pre-file` through `check_labels` / `check_body`, so the
 # offline tests cover that logic once for all three.
 #
-# What the gh modes add on top is transport plus the corpus-calibrated
-# anachronism check, and that check is the script's only logic no `--pre-file`
-# test reaches. It is covered here through a `gh` stub placed on PATH rather
-# than against the real tracker: a stub makes the whole surface hermetic and
-# deterministic, including the arms a live tracker cannot be made to exhibit on
-# demand (an empty backlog, a corpus with no provenance at all, a `gh` that
-# fails). Asserting the anachronism boundary against a live backlog would also
-# be asserting against data that changes under the test.
+# What the gh modes add on top is transport, and that is covered here through a
+# `gh` stub placed on PATH rather than against the real tracker: a stub makes
+# the whole surface hermetic and deterministic, including the arms a live
+# tracker cannot be made to exhibit on demand (an empty backlog, a `gh` that
+# fails), and a live backlog would also be data that changes under the test.
 #
 # The suite's job is to prove each guard can FAIL. A gate is only worth its
 # context if the red case is demonstrated: the green case is already green
@@ -24,10 +21,9 @@
 # because a gate that fails for the wrong reason is a gate that will pass for
 # the wrong reason later.
 #
-# Three of the fixtures are the live defects that motivated the gate, kept as
+# Two of the fixtures are the live defects that motivated the gate, kept as
 # named tests so the connection survives: an issue filed with no `surface:`
-# label, an issue filed with no dedup key at all, and an issue filed carrying
-# the one-time `debt:pre-provenance` rollout marker.
+# label, and an issue filed with no dedup key at all.
 #
 # Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md. Note the
 # `run` idiom throughout, which captures status instead of letting a non-zero
@@ -361,12 +357,6 @@ refute_code() {
 # Labels that belong to another lifecycle stage
 # ---------------------------------------------------------------------------
 
-@test "RED, live defect: debt:pre-provenance on a filing is rejected unconditionally" {
-  run bash "$CHECK" --pre-file --labels "$GOOD_LABELS,debt:pre-provenance" --body-file "$BODY"
-  [ "$status" -eq 1 ]
-  assert_code "pre-provenance-on-new-filing"
-}
-
 @test "a drain label on a filing is rejected" {
   run bash "$CHECK" --pre-file --labels "$GOOD_LABELS,in-progress" --body-file "$BODY"
   [ "$status" -eq 1 ]
@@ -420,35 +410,15 @@ refute_code() {
 # the environment-error arm is reached without breaking anyone's auth.
 # ---------------------------------------------------------------------------
 
-# stub_gh <open-corpus> [view-json] [all-corpus]
-#
-# The stub is deliberately STATE-AWARE. The script makes two different `gh
-# issue list` calls: the swept set is `--state open`, while the provenance
-# boundary is resolved from `--state all`, because the boundary is a fact about
-# the whole history and an open-only derivation drifts forward as drains close
-# the oldest issues. A stub that answered both calls with the same bytes would
-# make that entire distinction invisible to every assertion here, so reverting
-# the one token `all` to `open` would leave the suite green.
-#
-# <all-corpus> defaults to <open-corpus>, which keeps every test that does not
-# care about the split reading as before.
 stub_gh() {
   mkdir -p "$TMP/bin"
-  printf '%s\n' "$1" >"$TMP/corpus.open.json"
+  printf '%s\n' "$1" >"$TMP/corpus.json"
   printf '%s\n' "${2:-[]}" >"$TMP/view.json"
-  printf '%s\n' "${3:-$1}" >"$TMP/corpus.all.json"
   cat >"$TMP/bin/gh" <<'EOF'
 #!/usr/bin/env bash
-# $1 is `issue`, $2 is the subcommand. The remaining argv is scanned for
-# `--state all` so the two list calls can be told apart.
-sub="$2"
-state=open
-for a in "$@"; do
-  [ "$prev" = "--state" ] && state="$a"
-  prev="$a"
-done
-case "$sub" in
-  list) cat "$STUB_DIR/corpus.$state.json" ;;
+# $1 is `issue`, $2 is the subcommand.
+case "$2" in
+  list) cat "$STUB_DIR/corpus.json" ;;
   view) cat "$STUB_DIR/view.json" ;;
   *) exit 1 ;;
 esac
@@ -465,55 +435,6 @@ stub_gh_failing() {
   export PATH="$TMP/bin:$PATH"
 }
 
-# One issue carrying provenance, filed early; one carrying the rollout marker,
-# filed later. The second is the anachronism.
-CORPUS_ANACHRONISM='[
-  {"number":100,"createdAt":"2026-08-01T00:00:00Z",
-   "labels":[{"name":"tech-debt"},{"name":"severity:important"},{"name":"surface:adopter"}],
-   "body":"<!-- gaia-debt-key: v1 class=c path=app/a.ts line=1 -->\n<!-- gaia-debt-origin: branch=main -->"},
-  {"number":200,"createdAt":"2026-08-09T00:00:00Z",
-   "labels":[{"name":"tech-debt"},{"name":"severity:important"},{"name":"surface:adopter"},{"name":"debt:pre-provenance"}],
-   "body":"<!-- gaia-debt-key: v1 class=c path=app/b.ts line=2 -->"}
-]'
-
-@test "RED: --sweep flags the rollout marker on an issue filed after provenance began" {
-  stub_gh "$CORPUS_ANACHRONISM"
-  run bash "$CHECK" --sweep
-  [ "$status" -eq 1 ]
-  assert_code "pre-provenance-anachronism"
-  grep -qF -- "#200" <<<"$output" || return 1
-  # The earlier issue legitimately predates nothing and must not be flagged.
-  grep -qF -- "#100" <<<"$output" && return 1
-  true
-}
-
-@test "--sweep leaves the rollout marker alone on an issue filed before provenance began" {
-  # Same corpus with the dates swapped: the marked issue is now the older one,
-  # which is exactly the cohort the marker exists to name.
-  stub_gh '[
-    {"number":100,"createdAt":"2026-08-09T00:00:00Z",
-     "labels":[{"name":"tech-debt"},{"name":"severity:important"},{"name":"surface:adopter"}],
-     "body":"<!-- gaia-debt-key: v1 class=c path=app/a.ts line=1 -->\n<!-- gaia-debt-origin: branch=main -->"},
-    {"number":200,"createdAt":"2026-08-01T00:00:00Z",
-     "labels":[{"name":"tech-debt"},{"name":"severity:important"},{"name":"surface:adopter"},{"name":"debt:pre-provenance"}],
-     "body":"<!-- gaia-debt-key: v1 class=c path=app/b.ts line=2 -->"}
-  ]'
-  run bash "$CHECK" --sweep
-  [ "$status" -eq 0 ]
-}
-
-@test "--sweep disables the anachronism check when no issue carries provenance" {
-  # No boundary exists, so nothing can be on the wrong side of it. The marker
-  # must not be flagged on a repo that has not started writing provenance.
-  stub_gh '[
-    {"number":200,"createdAt":"2026-08-09T00:00:00Z",
-     "labels":[{"name":"tech-debt"},{"name":"severity:important"},{"name":"surface:adopter"},{"name":"debt:pre-provenance"}],
-     "body":"<!-- gaia-debt-key: v1 class=c path=app/b.ts line=2 -->"}
-  ]'
-  run bash "$CHECK" --sweep
-  [ "$status" -eq 0 ]
-}
-
 @test "--sweep reports an empty backlog rather than reporting a clean check" {
   stub_gh '[]'
   run bash "$CHECK" --sweep
@@ -523,7 +444,7 @@ CORPUS_ANACHRONISM='[
 
 @test "--sweep applies the shared label and body checks to a live-shaped corpus" {
   stub_gh '[
-    {"number":300,"createdAt":"2026-08-09T00:00:00Z",
+    {"number":300,
      "labels":[{"name":"tech-debt"},{"name":"severity:important"}],
      "body":"no key here"}
   ]'
@@ -538,7 +459,7 @@ CORPUS_ANACHRONISM='[
   # submits CRLF, so an issue last edited in the web UI carries a trailing \r.
   # The drain's own capture is unanchored and accepts it; this gate must too.
   stub_gh '[
-    {"number":400,"createdAt":"2026-08-09T00:00:00Z",
+    {"number":400,
      "labels":[{"name":"tech-debt"},{"name":"severity:important"},{"name":"surface:adopter"}],
      "body":"<!-- gaia-debt-key: v1 class=c path=app/a.ts line=1 -->\r\nsome prose\r\n"}
   ]'
@@ -553,15 +474,15 @@ CORPUS_ANACHRONISM='[
 }
 
 @test "--issue reports on a single issue through the same shared checks" {
-  stub_gh "$CORPUS_ANACHRONISM" '{
-    "number":200,"createdAt":"2026-08-09T00:00:00Z",
-    "labels":[{"name":"tech-debt"},{"name":"severity:important"},{"name":"debt:pre-provenance"}],
-    "body":"<!-- gaia-debt-key: v1 class=c path=app/b.ts line=2 -->"
+  stub_gh '[]' '{
+    "number":200,
+    "labels":[{"name":"tech-debt"},{"name":"severity:important"}],
+    "body":"no key here"
   }'
   run bash "$CHECK" --issue 200
   [ "$status" -eq 1 ]
   assert_code "surface-count"
-  assert_code "pre-provenance-anachronism"
+  assert_code "missing-dedup-key"
 }
 
 @test "a key line ending in a literal r is malformed, on every platform" {
@@ -578,40 +499,6 @@ CORPUS_ANACHRONISM='[
   assert_code "malformed-dedup-key"
 }
 
-@test "RED: the provenance boundary comes from the whole history, not the open set" {
-  # The fixture that separates the two derivations. The earliest provenance-
-  # carrying issue is CLOSED (2026-08-01); the earliest one still open is much
-  # later (2026-08-10); and the marked issue sits between them (2026-08-05).
-  #
-  #   boundary from the open set  -> 2026-08-10, and 08-05 is BEFORE it, so the
-  #                                  marked issue looks like a legitimate member
-  #                                  of the pre-provenance cohort. Not flagged.
-  #   boundary from all issues    -> 2026-08-01, and 08-05 is AFTER it, so the
-  #                                  marker is a backfill. Flagged.
-  #
-  # This is the drift in miniature: closing the oldest provenance-carrying issue
-  # is exactly what a drain does, and it silently stops the check reporting
-  # everything left behind the new boundary.
-  stub_gh '[
-    {"number":500,"createdAt":"2026-08-10T00:00:00Z",
-     "labels":[{"name":"tech-debt"},{"name":"severity:important"},{"name":"surface:adopter"}],
-     "body":"<!-- gaia-debt-key: v1 class=c path=app/a.ts line=1 -->\n<!-- gaia-debt-origin: branch=main -->"},
-    {"number":501,"createdAt":"2026-08-05T00:00:00Z",
-     "labels":[{"name":"tech-debt"},{"name":"severity:important"},{"name":"surface:adopter"},{"name":"debt:pre-provenance"}],
-     "body":"<!-- gaia-debt-key: v1 class=c path=app/b.ts line=2 -->"}
-  ]' '[]' '[
-    {"createdAt":"2026-08-01T00:00:00Z",
-     "body":"<!-- gaia-debt-key: v1 class=c path=app/z.ts line=9 -->\n<!-- gaia-debt-origin: branch=main -->"},
-    {"createdAt":"2026-08-10T00:00:00Z",
-     "body":"<!-- gaia-debt-key: v1 class=c path=app/a.ts line=1 -->\n<!-- gaia-debt-origin: branch=main -->"},
-    {"createdAt":"2026-08-05T00:00:00Z",
-     "body":"<!-- gaia-debt-key: v1 class=c path=app/b.ts line=2 -->"}
-  ]'
-  run bash "$CHECK" --sweep
-  [ "$status" -eq 1 ]
-  assert_code "pre-provenance-anachronism"
-  grep -qF -- "2026-08-01T00:00:00Z" <<<"$output" || return 1
-}
 
 # --- the marker-stripped (adopter) shape of this script ---------------------
 #

@@ -105,11 +105,11 @@ describe('schemas/labels', () => {
     expect(result.success).toBe(true);
   });
 
-  test('the committed registry has exactly 31 entries, split by role and by audience field', () => {
+  test('the committed registry has exactly 30 entries, split by role and by audience field', () => {
     const registry = LabelRegistrySchema.parse(readRegistry());
     const {labels} = registry;
 
-    expect(labels).toHaveLength(31);
+    expect(labels).toHaveLength(30);
 
     const blockedRole = labels.filter((entry) => entry.blocked);
     const thirdPartyRole = labels.filter(
@@ -129,7 +129,7 @@ describe('schemas/labels', () => {
     );
 
     expect(adopterRole).toHaveLength(20);
-    expect(maintainerOnlyRole).toHaveLength(7);
+    expect(maintainerOnlyRole).toHaveLength(6);
     expect(thirdPartyRole).toHaveLength(2);
     expect(blockedRole).toHaveLength(2);
 
@@ -139,7 +139,7 @@ describe('schemas/labels', () => {
     );
 
     expect(adopterField).toHaveLength(24);
-    expect(maintainerField).toHaveLength(7);
+    expect(maintainerField).toHaveLength(6);
   });
 
   test('a description of 101 characters is rejected', () => {

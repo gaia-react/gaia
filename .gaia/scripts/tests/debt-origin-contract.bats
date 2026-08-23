@@ -9,7 +9,7 @@
 # instruction pointing at that owner file; the dedup key's deterministic
 # consumers still match against an issue body carrying both the dedup-key and
 # the provenance comment lines; the documented brake query selects the
-# intended set; and the pre-provenance cohort label changes no displayed
+# intended set; and the drain's claim and park labels leave the displayed
 # count.
 #
 # What this suite does NOT prove: nothing here verifies that a route actually
@@ -165,18 +165,11 @@ extract_sole_bash_fence_matching() {
   # concept page. A new emitter appearing with no decision made about it is
   # exactly what this half catches.
   #
-  # CHANGELOG.md is deliberately NOT on this list. It used to quote the cohort
-  # rollout command verbatim, which dragged the token in, but that command is
-  # GAIA's own migration and now lives in a maintainer-only block; a release
-  # note reproducing it again would be instructing adopters to run a sweep that
-  # can only match issues they filed themselves. Leave CHANGELOG.md off, so
-  # that regression fails here.
-  #
-  # check-debt-issue-metadata.sh is a READER, not an emitter: it tests for the
-  # line's presence to calibrate when provenance began writing in a given
-  # repository, so that the pre-provenance cohort marker can be told apart from
-  # a backfill without hardcoding a date that is wrong on every clone but one.
-  # It writes no provenance and restates none of the field vocabulary.
+  # CHANGELOG.md is deliberately NOT on this list. A rollout sweep is GAIA's
+  # own migration and lives in a maintainer-only block; a release note quoting
+  # one verbatim would drag the token in and instruct adopters to run a sweep
+  # that can only match issues they filed themselves. Leave CHANGELOG.md off,
+  # so that regression fails here.
   local got f
   got="$(git -C "$REPO_ROOT" grep -lF -- "gaia-debt-origin" -- "${EXCLUDE_PATHSPEC[@]}")"
   while IFS= read -r f; do
@@ -190,7 +183,6 @@ extract_sole_bash_fence_matching() {
         "wiki/concepts/PR Merge Workflow.md" | \
         ".claude/skills/file-tech-debt/SKILL.md" | \
         ".gaia/scripts/debt-origin-lib.sh" | \
-        ".gaia/scripts/check-debt-issue-metadata.sh" | \
         "wiki/concepts/Audit Disposition and Debt Fix.md") ;;
       *)
         printf 'unaccounted-for file names gaia-debt-origin: %s\n' "$f" >&2
@@ -354,9 +346,9 @@ Some other finding entirely.'
   }
 }
 
-# ========== 6. the cohort label changes no displayed count ==========
+# ========== 6. the drain's own labels change the displayed count ==========
 
-@test "6. debt:pre-provenance is counted while in-progress and debt:spec-pending are not" {
+@test "6. in-progress and debt:spec-pending leave the count while a plain issue stays in" {
   local jq_filter fixture result
   # The filter is declared once, as COUNT_FILTER, and both the local-jq arm and
   # the `gh --jq` fallback arm read that one variable. Scraping the declaration
@@ -371,17 +363,17 @@ Some other finding entirely.'
 
   fixture='[
     {"number":1,"labels":[{"name":"tech-debt"}]},
-    {"number":2,"labels":[{"name":"tech-debt"},{"name":"debt:pre-provenance"}]},
+    {"number":2,"labels":[{"name":"tech-debt"},{"name":"severity:important"}]},
     {"number":3,"labels":[{"name":"tech-debt"},{"name":"in-progress"}]},
     {"number":4,"labels":[{"name":"tech-debt"},{"name":"debt:spec-pending"}]},
-    {"number":5,"labels":[{"name":"tech-debt"},{"name":"debt:pre-provenance"},{"name":"in-progress"}]}
+    {"number":5,"labels":[{"name":"tech-debt"},{"name":"debt:spec-pending"},{"name":"in-progress"}]}
   ]'
   result="$(jq "$jq_filter" <<<"$fixture")"
-  # #1 no debt: label -> counted; #2 debt:pre-provenance -> counted;
+  # #1 bare tech-debt -> counted; #2 an unrelated label -> counted;
   # #3 in-progress -> not counted; #4 debt:spec-pending -> not counted;
-  # #5 both pre-provenance and in-progress -> not counted. Expected: 2.
+  # #5 both park labels at once -> not counted. Expected: 2.
   [ "$result" = "2" ] || {
-    printf 'cohort-label count was %s, want 2\n' "$result" >&2
+    printf 'displayed count was %s, want 2\n' "$result" >&2
     return 1
   }
 }
@@ -602,18 +594,15 @@ printf '%s\n' \"\$debt_origin_changed\"")"
   }
 }
 
-# ========== 8. the rollout sections stay maintainer-only and re-runnable ==========
+# ========== 8. the rollout section stays maintainer-only ==========
 
-@test "8a. both rollout sections sit inside a maintainer-only block" {
-  # Neither sweep can do anything in a clone that is not this one: the cohort
-  # marker selects issues filed before provenance began writing, and provenance
-  # ships in the same release as filing itself, so that set is empty everywhere
-  # else by construction; the handler backfill selects on a `Handler:` body-line
-  # convention that only ever existed here. Shipping either one hands an adopter
-  # an instruction whose best case is a no-op and whose worst case stamps their
-  # own unrelated `tech-debt` issues. The marker-strip transform covers
-  # `.claude/**/*.md`, so the wrap is what keeps them out of the bundle, and
-  # nothing else would notice an unwrap.
+@test "8a. the rollout section sits inside a maintainer-only block" {
+  # The sweep can do nothing in a clone that is not this one: the handler
+  # backfill selects on a `Handler:` body-line convention that only ever
+  # existed here. Shipping it hands an adopter an instruction whose best case
+  # is a no-op and whose worst case stamps their own unrelated `tech-debt`
+  # issues. The marker-strip transform covers `.claude/**/*.md`, so the wrap is
+  # what keeps it out of the bundle, and nothing else would notice an unwrap.
   # Match the markers by substring, not by equality, and count a same-line
   # start+end pair as one balanced block before either single-marker rule can
   # claim it. Both mirror the bundle transform (stripMarkerBlocks in
@@ -655,35 +644,13 @@ printf '%s\n' \"\$debt_origin_changed\"")"
     index($0, "<!-- gaia:maintainer-only:end -->")   { inblock = 0; ends++; next }
     /^## Rollout: / { seen++; if (!inblock) print "SKILL.md:" NR ": " $0 }
     END {
-      if (seen != 2) print "expected 2 rollout sections, found " seen
+      if (seen != 1) print "expected 1 rollout section, found " seen
       if (starts != ends) print "unbalanced maintainer-only markers: " starts + 0 " start, " ends + 0 " end"
     }
   ' "$skill")"
 
   [ -z "$out" ] || {
     printf 'a rollout section would ship to adopters:\n%s\n' "$out" >&2
-    return 1
-  }
-}
-
-@test "8b. the cohort rollout command stays safe to re-run" {
-  # The section is kept rather than deleted because the backfill beside it may
-  # still be re-run against this backlog, so the two properties that make a
-  # re-run correct are still worth holding: the body test (so a second run days
-  # later never re-stamps issues filed after provenance landed) and the raised
-  # limit (so the sweep does not stop silently at a default page size).
-  local skill_block
-  skill_block="$(extract_fenced_bash_after_heading "$REPO_ROOT/.claude/skills/file-tech-debt/SKILL.md" "## Rollout: mark the pre-provenance cohort")" || {
-    echo "expected exactly one heading match and one fenced block under '## Rollout: mark the pre-provenance cohort'" >&2
-    return 1
-  }
-
-  grep -qF -- 'test("<!-- gaia-debt-origin:")' <<<"$skill_block" || {
-    echo "the rollout command lost its body test; a re-run would stamp issues filed after provenance landed" >&2
-    return 1
-  }
-  grep -qF -- '--limit 1000' <<<"$skill_block" || {
-    echo "the rollout command lost its raised --limit; the sweep would stop silently at a default page size" >&2
     return 1
   }
 }

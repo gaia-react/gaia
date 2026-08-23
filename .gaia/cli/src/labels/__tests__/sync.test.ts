@@ -4,7 +4,12 @@
  * `run`'s only additions over those four are argv parsing and printing.
  */
 import {describe, expect, test} from 'vitest';
-import type {LabelAudience, LabelFeature} from '../../schemas/labels.js';
+import type {
+  LabelAudience,
+  LabelEntry,
+  LabelFeature,
+  LabelRegistry,
+} from '../../schemas/labels.js';
 import {resolveRepoRootFromImportMeta} from '../../util/repo-root-fixture.js';
 import {readRegistry} from '../registry.js';
 import type {LiveLabel, SyncAction, SyncFlags} from '../sync.js';
@@ -29,16 +34,45 @@ const NO_FLAGS: SyncFlags = {
   pruneDeprecated: false,
 };
 
+const liveFor = (entry: LabelEntry): LiveLabel => ({
+  color: entry.color ?? '',
+  description: entry.description,
+  name: entry.name,
+});
+
 const entryFor = (name: string): LiveLabel => {
   const entry = registry.labels.find((candidate) => candidate.name === name);
 
   if (entry === undefined) throw new Error(`no registry entry: ${name}`);
 
-  return {
-    color: entry.color ?? '',
-    description: entry.description,
-    name: entry.name,
-  };
+  return liveFor(entry);
+};
+
+/**
+ * A deprecated entry, synthetic because the registry carries none.
+ *
+ * `deprecated` is retirement vocabulary rather than a marker for one label:
+ * an entry earns it whenever a name has to be withdrawn without deleting it
+ * out from under the issues still carrying it. Nothing wears it today, so the
+ * two cases below are what keep the prune path honest until something does.
+ */
+const DEPRECATED_ENTRY: LabelEntry = {
+  audience: 'maintainer',
+  axis: 'lifecycle',
+  blocked: false,
+  color: 'd7f0dd',
+  deprecated: true,
+  description: 'A withdrawn name, documented until it is pruned',
+  features: [],
+  managed: false,
+  name: 'debt:withdrawn',
+  reason: null,
+  renamedFrom: [],
+};
+
+const deprecatedRegistry: LabelRegistry = {
+  ...registry,
+  labels: [...registry.labels, DEPRECATED_ENTRY],
 };
 
 const plan = (options: {
@@ -46,13 +80,14 @@ const plan = (options: {
   features?: LabelFeature[];
   flags?: Partial<SyncFlags>;
   live?: LiveLabel[];
+  registry?: LabelRegistry;
 }): readonly SyncAction[] =>
   planSync({
     audience: options.audience ?? 'adopter',
     enabledFeatures: options.features ?? ALL_FEATURES,
     flags: {...NO_FLAGS, ...options.flags},
     live: options.live ?? [],
-    registry,
+    registry: options.registry ?? registry,
   }).actions;
 
 const kinds = (
@@ -258,7 +293,8 @@ describe('labels/sync planSync deletes', () => {
   test('no plan yields a delete without --prune-deprecated', () => {
     const actions = plan({
       audience: 'maintainer',
-      live: [entryFor('debt:pre-provenance')],
+      live: [liveFor(DEPRECATED_ENTRY)],
+      registry: deprecatedRegistry,
     });
 
     const prune = sole(actions, 'prune');
@@ -267,17 +303,27 @@ describe('labels/sync planSync deletes', () => {
     expect(mutationFor(prune, {...NO_FLAGS, pruneDeprecated: true})).toEqual([
       'label',
       'delete',
-      'debt:pre-provenance',
+      'debt:withdrawn',
       '--yes',
     ]);
   });
 
-  test('the deprecated, unmanaged entry is never created', () => {
+  test('the live registry plans no prune at all', () => {
+    // The prune path is vocabulary, not a standing action: an entry has to be
+    // marked deprecated before anything plans a delete, and none is.
     for (const audience of AUDIENCES) {
       for (const flags of FLAG_COMBINATIONS) {
-        expect(createNames(plan({audience, flags}))).not.toContain(
-          'debt:pre-provenance'
-        );
+        expect(kinds(plan({audience, flags}), 'prune')).toEqual([]);
+      }
+    }
+  });
+
+  test('a deprecated, unmanaged entry is never created', () => {
+    for (const audience of AUDIENCES) {
+      for (const flags of FLAG_COMBINATIONS) {
+        expect(
+          createNames(plan({audience, flags, registry: deprecatedRegistry}))
+        ).not.toContain('debt:withdrawn');
       }
     }
   });
