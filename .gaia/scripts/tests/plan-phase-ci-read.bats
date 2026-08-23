@@ -102,12 +102,14 @@ assert_section_nonempty() {
   grep -qF -- 'not a stop condition' <<<"$content"
 }
 
-@test "the owning page still carries the caveats both copies restate" {
-  # Both surfaces above carry these four verbatim rather than pointing at the
-  # page, so a generated orchestrator never has to load a wiki page mid-loop.
-  # That buys three copies of one rule, so pin the owner too: a reword here
-  # reds this test, which is the signal to sync all three rather than leave
-  # the copies asserting a rule the owner no longer states.
+@test "the owning page still carries the four caveats plan.md restates" {
+  # plan.md restates all four verbatim rather than pointing at this page, so a
+  # generated orchestrator never has to load a wiki page mid-loop; Task
+  # Orchestration paraphrases only the subset its own step needs, which is why
+  # test 5 asserts none of them. That leaves one full copy of the owner's rule
+  # living away from the owner, so pin the owner too: a reword here reds this
+  # test, which is the signal to sync the copy rather than leave it asserting a
+  # rule the owner no longer states.
   [ -f "$PRMW_MD" ]
   # Scoped to the bullet that states them, and matched on each caveat's own
   # wording: 'pushed head' alone occurs three more times on this page in
