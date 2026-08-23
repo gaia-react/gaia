@@ -125,9 +125,12 @@ cmd=$(echo "$input" | jq -r '.tool_input.command // ""' 2>/dev/null)
 # Two characters, not one, and the second is what excludes `git`. A first word
 # that tokenizes to `gh` must begin with `gh`, or with `g` followed by a quote or
 # backslash spelling the `h` (`g"h"`, `g\h`), or with a quote or backslash
-# outright (`"gh"`, `\gh`). Nothing else reaches `gh`, so the alternation admits
-# every such command while turning away `git`, `grep`, `gzip` and `go`, which a
-# bare `g` test admitted and made pay the source and the scan.
+# outright (`"gh"`, `\gh`). Nothing else reaches `gh` except a `$'…'` word, which
+# begins with `$`; the arm would not fire on one anyway, because the shared
+# scanner tokenizes `$'gh'` to the word `$gh` rather than to `gh`, so word 0
+# fails the equality below. Everything else that can reach `gh` is admitted while
+# turning away `git`, `grep`, `gzip` and `go`, which a bare `g` test admitted and
+# made pay the source and the scan.
 gate_gh_lead_re=$'^[[:space:]]*([g]["\'\\\\h]|["\'\\\\])'
 
 # How much of the command the arming scan reads. CHARACTERS, not bytes: bash
@@ -185,11 +188,12 @@ gate_cmd_is_first_command_merge() {
 
   # Scan a BOUNDED PREFIX, never the whole command. The scanner walks the string
   # a byte at a time and slices per block, so its cost grows faster than the
-  # input: measured against this hook, a single-line command starting with `g`
-  # cost 335ms at 8KB and 3s at 32KB, against 59ms for the same size starting
-  # with any other letter. That is a synchronous stall on ordinary git commands,
-  # which the filter above admits by design, so the scan has to be bounded rather
-  # than merely gated.
+  # input: measured against this hook, a single-line command the filter admits
+  # cost 335ms at 8KB and 3s at 32KB, against 59ms for the same size the filter
+  # turns away before the scan runs at all. That stall lands on everything the
+  # filter admits by design, which is not merges: every `gh` invocation whatever
+  # its subcommand, plus any command opening with a quote or a backslash. So the
+  # scan has to be bounded rather than merely gated.
   #
   # The bound is safe, and being exact about WHY matters, because the intuitive
   # reading of it is backwards in both halves.
@@ -226,8 +230,10 @@ gate_cmd_is_first_command_merge() {
 #
 # TOKENIZER: the first command really is the merge, through the ordinary quoting
 # and continuation forms the shared scanner models. Not every conceivable one:
-# a `$'…'` word is turned away by the pre-filter and unmodelled by the scanner
-# besides.
+# a `$'…'` word is turned away by the pre-filter, and would not arm even if it
+# were admitted, since the scanner tokenizes `$'gh'` to `$gh` and word 0 never
+# equals `gh`. Neither arm sees that spelling, which is a gap rather than a
+# defence; the suite pins it as one.
 #
 # WHAT THIS DOES NOT GUARANTEE. Stated because the comment that stood here
 # claimed the opposite, and a guard advertising a property it does not have is

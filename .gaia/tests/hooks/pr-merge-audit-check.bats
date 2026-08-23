@@ -2041,6 +2041,35 @@ rge 30 --squash'
   [ "$elapsed" -lt 10 ]
 }
 
+@test "arming: a $'…' spelled gh arms neither arm, a pinned gap" {
+  install_gh_stub
+  commit_files "app/x.ts" "export const x = 1"
+
+  # `$'gh' pr merge 30` is a valid shell spelling of a real merge, and NEITHER
+  # arm sees it. The text arm finds no literal `gh pr merge` run, because the
+  # closing quote sits between the two words. The tokenizer arm is turned away
+  # by the pre-filter, since the command opens with `$`, and would not fire even
+  # if it were admitted: the shared scanner tokenizes `$'gh'` to the word `$gh`,
+  # so word 0 never equals `gh`.
+  #
+  # Pinned as a GAP, not as a guarantee. The permit below is fail-open, and it
+  # is the accepted limit this gate states for itself: it targets accidental and
+  # inattentive merges, not deliberate obfuscation, and a `$'…'` spelling of the
+  # verb is not something a merge gets written as by accident. The case is here
+  # so the claim re-checks itself instead of decaying in a comment, and so that
+  # closing the gap later reds a test that names it rather than passing silently.
+  #
+  # It reds only when BOTH defences go, and that is a property of the subject,
+  # not a weak assertion: either one alone turns the spelling away, so admitting
+  # `$` in the pre-filter leaves the scanner's `$gh` word rejecting it, and
+  # loosening the word-0 equality to a suffix match leaves the pre-filter
+  # rejecting it. Verified in both directions: each single mutant passes, the
+  # pair reds here.
+  run_merge_hook "\$'gh' pr merge 30 --squash"
+  assert_allowed_by_json
+  [ -z "$output" ]
+}
+
 @test "arming: a split or quoted gh still reaches the gate" {
   install_gh_stub
   commit_files "app/x.ts" "export const x = 1"
