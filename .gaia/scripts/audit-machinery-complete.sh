@@ -36,6 +36,7 @@ GATE_MACHINERY_FILES="$(cat <<'EOF'
 .gaia/audit-ci.yml
 .claude/hooks/lib/audit-scope.sh
 .claude/hooks/lib/audit-machinery.sh
+.claude/hooks/lib/audit-base-provenance.sh
 .claude/hooks/lib/audit-clearance.sh
 .claude/hooks/lib/audit-digest.sh
 .claude/hooks/lib/audit-dispositions.sh

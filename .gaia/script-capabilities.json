@@ -7,6 +7,7 @@
         "fs-write:.gaia/local/audit",
         "fs-write:.gaia/local/audit/**",
         "github-write",
+        "invokes:.claude/hooks/lib/audit-base-provenance.sh",
         "invokes:.claude/hooks/lib/audit-clearance.sh",
         "invokes:.claude/hooks/lib/audit-digest.sh",
         "invokes:.claude/hooks/lib/audit-machinery.sh",
@@ -19,7 +20,7 @@
         "network",
         "tmp"
       ],
-      "why": "Records a code-audit clearance verdict under .gaia/local/audit and creates that directory on first write. Reads and writes the digest, clearance, and scope helpers it sources, and calls the post-audit-status hook, which is where its network and github-write reach comes from: the hook posts the clearance result to the pull request. A scratch file under the system temporary directory backs the write itself before the atomic move into place.",
+      "why": "Records a code-audit clearance verdict under .gaia/local/audit and creates that directory on first write. Reads and writes the digest, clearance, and scope helpers it sources, and calls the post-audit-status hook, which is where its network and github-write reach comes from: the hook posts the clearance result to the pull request. Reaches the base-provenance resolver transitively through resolve-audit-members.sh. A scratch file under the system temporary directory backs the write itself before the atomic move into place.",
       "maintainer_only": false
     },
     {
@@ -60,6 +61,7 @@
       "script": ".gaia/scripts/resolve-audit-spawn.sh",
       "capabilities": [
         "fs-write:**",
+        "invokes:.claude/hooks/lib/audit-base-provenance.sh",
         "invokes:.claude/hooks/lib/audit-clearance.sh",
         "invokes:.claude/hooks/lib/audit-digest.sh",
         "invokes:.claude/hooks/lib/audit-machinery.sh",
@@ -68,7 +70,7 @@
         "invokes:.gaia/scripts/resolve-audit-members.sh",
         "tmp"
       ],
-      "why": "Resolves which Code Audit Team members a pull request still owes a dispatch, sourcing the audit clearance/digest/machinery/scope helpers and the respawn and member-resolution libraries to do it, and using a scratch file under the system temporary directory along the way. The respawn library appends one dispatch record per member to a ledger whose path it receives as an argument, which is the caller-chosen write fs-write:** stands for. A maintainer-only tool: it never ships to an adopter checkout.",
+      "why": "Resolves which Code Audit Team members a pull request still owes a dispatch, sourcing the audit clearance/digest/machinery/scope helpers and the respawn and member-resolution libraries to do it, and using a scratch file under the system temporary directory along the way. Sources the base-provenance resolver directly for its own ownerless probe and reaches it again transitively through resolve-audit-members.sh. The respawn library appends one dispatch record per member to a ledger whose path it receives as an argument, which is the caller-chosen write fs-write:** stands for. A maintainer-only tool: it never ships to an adopter checkout.",
       "maintainer_only": true
     },
     {
