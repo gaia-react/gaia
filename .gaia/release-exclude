@@ -67,6 +67,15 @@
 .gaia/scripts/check-registry-completeness.sh
 .gaia/scripts/check-registry-source-literals.sh
 .gaia/scripts/check-resolver-singleton.sh
+# This check asserts an invariant true of GAIA's own source and of nothing
+# else: that GAIA's audit machinery holds one base-provenance resolver and
+# that GAIA's three named consumers call it. An adopter does not write
+# GAIA's resolvers or its consumers. One of the three, resolve-audit-spawn.sh,
+# is itself release-excluded, so on an adopter clone this check would red on
+# a file the adopter cannot have. Its only runners (the .gaia/scripts/tests/
+# bats suite and audit-ci-tests.yml) are already release-excluded, so
+# shipping it would ship a check nothing on an adopter clone invokes.
+.gaia/scripts/check-base-provenance-adoption.sh
 # Task 7.3's check asserts this repository still qualifies for git's merge refusal on the tracked wiki state file; its only runner (audit-ci-tests.yml and its bats suite) is already maintainer-only, and an adopter cannot act on the failure.
 .gaia/scripts/check-wiki-state-collision.sh
 # The git path-quoting lint guards GAIA's own framework shell and its CI

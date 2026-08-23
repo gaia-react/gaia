@@ -1278,3 +1278,156 @@ EOF
     return 1
   }
 }
+
+# --- the lifted helper adopts the shared base-provenance resolver ------------
+#
+# _disposition_changed_set no longer runs its own ladder; it calls
+# audit_resolve_base_provenance with anchor pr-record, passing pr_branch
+# (still read from GITHUB_BASE_REF / `gh pr view` at THIS call site) as the
+# explicit record-base argument. The behavior on every arm is unchanged;
+# these fixtures pin the post-lift call site directly rather than only
+# through the write-side comparison above.
+
+@test "_disposition_changed_set reads GITHUB_BASE_REF at its own call site (COV-002 CI arm)" {
+  local repo outfile got
+
+  repo="$(make_stacked_repo elig-ci-arm)"
+  export GITHUB_ACTIONS=true
+  export GITHUB_BASE_REF=release
+
+  outfile="$BATS_TEST_TMPDIR/ci-arm-changed"
+  ( . "$REPO_ROOT/.claude/hooks/lib/audit-dispositions.sh" && _disposition_changed_set "$repo" "$outfile" ) || {
+    echo "_disposition_changed_set failed to resolve a base" >&2
+    return 1
+  }
+  got="$(tr '\0' '\n' < "$outfile")"
+  grep -qxF "app/feat-only.ts" <<<"$got" || {
+    printf 'missing the pull request own change: %s\n' "$got" >&2
+    return 1
+  }
+  grep -qxF "app/base-only.ts" <<<"$got" && {
+    printf 'still carries a base-branch-only file; GITHUB_BASE_REF was not honored at the call site: %s\n' "$got" >&2
+    return 1
+  }
+  true
+}
+
+@test "no environment variable naming a base branch is read anywhere in the shared resolver (COV-002)" {
+  local lib hits non_comment
+
+  lib="$REPO_ROOT/.claude/hooks/lib/audit-base-provenance.sh"
+  hits="$(grep -nE 'GITHUB_BASE_REF|GITHUB_HEAD_REF|GITHUB_REF' "$lib" || true)"
+  non_comment="$(printf '%s\n' "$hits" | grep -vE '^[0-9]+:[[:space:]]*#' || true)"
+  [ -z "$non_comment" ] || {
+    printf 'non-comment environment-variable reference in the shared resolver:\n%s\n' "$non_comment" >&2
+    return 1
+  }
+}
+
+@test "_disposition_changed_set: unresolvable base returns 1 untouched, resolved-empty base returns 0 with an empty file" {
+  local repo outfile rc repo2 outfile2
+
+  repo="$(make_no_base_repo)"
+  outfile="$BATS_TEST_TMPDIR/rv-unresolvable"
+  rc=0
+  ( . "$REPO_ROOT/.claude/hooks/lib/audit-dispositions.sh" && _disposition_changed_set "$repo" "$outfile" ) || rc=$?
+  [ "$rc" -eq 1 ] || {
+    printf 'expected 1 on an unresolvable base, got %s\n' "$rc" >&2
+    return 1
+  }
+  [ ! -s "$outfile" ] || {
+    echo "an unresolvable base wrote a non-empty file" >&2
+    return 1
+  }
+
+  repo2="$(make_repo rv-resolved-empty)"
+  outfile2="$BATS_TEST_TMPDIR/rv-resolved-empty-outfile"
+  ( . "$REPO_ROOT/.claude/hooks/lib/audit-dispositions.sh" && _disposition_changed_set "$repo2" "$outfile2" ) || {
+    echo "a resolved base with no differences returned non-zero" >&2
+    return 1
+  }
+  [ -f "$outfile2" ] || {
+    echo "a resolved base did not write an output file" >&2
+    return 1
+  }
+  [ ! -s "$outfile2" ] || {
+    echo "a resolved base with no differences wrote a non-empty file" >&2
+    return 1
+  }
+}
+
+@test "a verified record ref with a failed merge-base still returns UNKNOWN, not a wider resolved set" {
+  local repo outfile rc
+
+  repo="$(make_repo unrelated-record)"
+  # An orphan branch sharing no history with HEAD, so its remote-tracking ref
+  # verifies but merge-base against it fails.
+  git -C "$repo" checkout -q --orphan orphan-record
+  git -C "$repo" rm -rf -q . >/dev/null 2>&1 || true
+  commit_file "$repo" "unrelated.md" "an unrelated root"
+  git -C "$repo" update-ref refs/remotes/origin/orphan-record refs/heads/orphan-record
+  git -C "$repo" checkout -q main
+
+  export GITHUB_ACTIONS=true
+  export GITHUB_BASE_REF=orphan-record
+
+  outfile="$BATS_TEST_TMPDIR/verified-record-failed-mergebase"
+  rc=0
+  ( . "$REPO_ROOT/.claude/hooks/lib/audit-dispositions.sh" && _disposition_changed_set "$repo" "$outfile" ) || rc=$?
+  [ "$rc" -eq 1 ] || {
+    printf 'expected 1 (UNKNOWN) on a verified-but-unrelated record ref, got %s\n' "$rc" >&2
+    return 1
+  }
+  [ ! -s "$outfile" ] || {
+    echo "a failed merge-base wrote a resolved, wider set instead of UNKNOWN" >&2
+    return 1
+  }
+}
+
+@test "the write side and the verify side diverge under a shadowing local branch named origin/main (DP-002)" {
+  local repo write verify outfile
+
+  # Both sides must take their non-Actions arm here, or this pins nothing.
+  # Under Actions the job exports GITHUB_BASE_REF for the whole run, the write
+  # side's fence resolves its base from that instead of from origin/<default>,
+  # and the shadowing branch this test exists to exercise is never consulted.
+  # That is a real environment difference, not a flake: the same test passes
+  # locally and fails on CI without this.
+  unset GITHUB_ACTIONS GITHUB_BASE_REF
+
+  repo="$(make_repo dp002-divergence)"
+
+  # A local branch literally named origin/main shadows the remote-tracking
+  # ref: the write side's bare `origin/<name>` revspec resolves to it (the
+  # ADVANCED commit below), while the verify side's fully-qualified
+  # `refs/remotes/origin/<name>` resolves to the commit BEFORE the advance.
+  commit_file "$repo" "docs/advance.md" "advance local main past origin/main"
+  git -C "$repo" update-ref refs/remotes/origin/main "$(git -C "$repo" rev-parse HEAD~1)"
+  git -C "$repo" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main
+  git -C "$repo" branch origin/main main
+
+  write="$(elig_eval code-audit-frontend "$repo" 'printf "%s\n" "${full_changed:-}"')" || {
+    echo "the eligibility fence failed to run" >&2
+    return 1
+  }
+  outfile="$BATS_TEST_TMPDIR/dp002-verify"
+  ( . "$REPO_ROOT/.claude/hooks/lib/audit-dispositions.sh" && _disposition_changed_set "$repo" "$outfile" ) || {
+    echo "_disposition_changed_set failed to resolve a base" >&2
+    return 1
+  }
+  verify="$(tr '\0' '\n' < "$outfile")"
+
+  # Pin the divergence rather than assert agreement: the write side (the
+  # default member's own out-of-scope base fence, still out of scope for this
+  # change) takes the shadowing local branch and sees no difference, while the
+  # verify side (the shared resolver, on the fully-qualified spelling) takes
+  # the real remote-tracking ref and sees the advance.
+  [ -z "$write" ] || {
+    printf 'write side unexpectedly non-empty: %s\n' "$write" >&2
+    return 1
+  }
+  grep -qxF "docs/advance.md" <<<"$verify" || {
+    printf 'verify side did not see the advance past the shadowed ref: %s\n' "$verify" >&2
+    return 1
+  }
+}

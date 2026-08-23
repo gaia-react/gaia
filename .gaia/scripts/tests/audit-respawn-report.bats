@@ -501,6 +501,7 @@ e2e_run_oracle() {
   cp "$lib_dir/audit-machinery.sh" "$sb/.claude/hooks/lib/audit-machinery.sh"
   cp "$lib_dir/audit-clearance.sh" "$sb/.claude/hooks/lib/audit-clearance.sh"
   cp "$lib_dir/audit-digest.sh" "$sb/.claude/hooks/lib/audit-digest.sh"
+  cp "$lib_dir/audit-base-provenance.sh" "$sb/.claude/hooks/lib/audit-base-provenance.sh"
 
   e2e_write_full_roster "$sb"
   e2e_stage "$sb" .gaia/scripts/y.sh

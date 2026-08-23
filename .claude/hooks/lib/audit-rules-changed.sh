@@ -63,6 +63,7 @@ AUDIT_GLOBAL_RULES_PATHS="$(cat <<'EOF'
 .claude/hooks/lib/audit-clearance.sh
 .claude/hooks/lib/audit-digest.sh
 .claude/hooks/lib/audit-rules-changed.sh
+.claude/hooks/lib/audit-base-provenance.sh
 # gaia-version.sh derives the version literal every producer stamps and every
 # reader compares for equality, so a change to it can make a standing clearance
 # stop matching. It is global for the same reason the stampers and readers that

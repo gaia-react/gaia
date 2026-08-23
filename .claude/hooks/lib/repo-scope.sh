@@ -227,7 +227,24 @@ repo_slug_is_foreign() {
 #
 # Sets GAIA_FIRST_COMMAND_WORDS to the first command's words. Returns 0 when
 # it read at least one word, 1 when the string held no command at all.
+#
+# Also sets GAIA_FIRST_COMMAND_CLOSED: 0 when no separator and no comment closed
+# the first command, 1 when one did with something after it. A caller asking
+# whether a second command was spelled with a separator cannot ask that of the
+# text, because the spellings that matter break any literal scan of it
+# (`gh pr "merge" <n>`, a line continuation inside the verb, a subshell, a brace
+# group). This scan tokenizes the way the shell does, so it answers that
+# question exactly, and publishing the answer costs one assignment rather than
+# a second parser.
+#
+# What it does NOT report is EXPANSION. A command substitution, a backtick and
+# a process substitution are ordinary word text to a scan that models words, so
+# a string carrying one reaches the end with this flag still 0 while the shell
+# runs the payload. A caller that needs "nothing else runs at all" has to rule
+# that class out itself; this flag is one half of that question, not the whole
+# of it.
 GAIA_FIRST_COMMAND_WORDS=()
+GAIA_FIRST_COMMAND_CLOSED=0
 
 gaia_scan_first_command() {
   local cmd="$1"
@@ -335,6 +352,8 @@ gaia_scan_first_command() {
     done
   done
   if [ "$_had_lc_all" = set ]; then LC_ALL="$_prev_lc_all"; else unset LC_ALL; fi
+  # shellcheck disable=SC2034 # read by the merge gate, never in this file
+  GAIA_FIRST_COMMAND_CLOSED="$piece_closed"
   # The whole command was one piece, so its trailing word closes it.
   if [ "$piece_closed" = 0 ]; then
     [ "$have_word" = 1 ] && GAIA_FIRST_COMMAND_WORDS+=("$word")

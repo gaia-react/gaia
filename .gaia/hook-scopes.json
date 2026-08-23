@@ -266,6 +266,12 @@
       "why": "Reads the per-tree worthiness ledger for the tree where the gated gh pr merge runs; anchors on gaia_resolve_tree_root, applied to the payload cwd (falling back to process cwd) since the acting tree is the one question that matters for this state."
     },
     {
+      "hook": ".claude/hooks/lib/audit-base-provenance.sh",
+      "scope": "any",
+      "state": [],
+      "why": "Every function takes <root> as a parameter from its caller; this lib derives no root of its own and touches no .gaia/local state."
+    },
+    {
       "hook": ".claude/hooks/lib/audit-clearance.sh",
       "scope": "any",
       "state": [],

@@ -43,6 +43,7 @@
     ".claude/hooks/debt-sentinel-touch.sh": "owned",
     ".claude/hooks/debt-session-reconcile.sh": "owned",
     ".claude/hooks/issue-claim-release.sh": "owned",
+    ".claude/hooks/lib/audit-base-provenance.sh": "owned",
     ".claude/hooks/lib/audit-clearance.sh": "owned",
     ".claude/hooks/lib/audit-digest.sh": "owned",
     ".claude/hooks/lib/audit-dispositions.sh": "owned",
@@ -663,7 +664,7 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-08-22T11:29:12.743Z",
+  "generated": "2026-08-23T05:47:58.298Z",
   "regions": [
     {
       "endMarker": "<!-- gaia:audit-remit:end -->",

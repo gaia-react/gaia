@@ -215,6 +215,7 @@ install_resolver() {
   cp "$lib_dir/audit-scope.sh" "$SANDBOX/.claude/hooks/lib/audit-scope.sh"
   cp "$lib_dir/audit-machinery.sh" "$SANDBOX/.claude/hooks/lib/audit-machinery.sh"
   cp "$lib_dir/audit-clearance.sh" "$SANDBOX/.claude/hooks/lib/audit-clearance.sh"
+  cp "$lib_dir/audit-base-provenance.sh" "$SANDBOX/.claude/hooks/lib/audit-base-provenance.sh"
 }
 
 # Commit a mixed app/ + .gaia/**/*.sh change on a new `feature` branch off

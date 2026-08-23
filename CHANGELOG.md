@@ -173,6 +173,8 @@ A release change that requires the adopter to act, run a command or hand-migrate
 
 ### Changed
 
+- the audit spawn oracle and the pull-request merge gate now tell an unresolvable diff base apart from a genuinely empty change set. A change set that is empty against a verified remote base dispatches no audit member and no longer holds the merge gate shut, while a base derived from a local branch, a base that does not resolve, and a diff command that failed all stay exactly as fail-closed as before. The relaxation is bound to the pull request the merge command actually names, so a checkout whose own range is empty can never clear the merge of a different, unaudited one (#1538)
+
 - the `vite` version ceiling is lifted and dependencies move to their current releases. Vite was pinned to the 8.0 line because Vite 8.1.x built a Storybook bundle that threw `__commonJS is not defined`, which broke Chromatic story extraction while leaving the ordinary quality gate green. Vite 8.2.x emits the helper correctly, so the hold is removed from `gaia.updateDepsHold` and Storybook builds and runs clean again. Note that `.github/workflows/chromatic.yml` short-circuits on a `chore(deps):` subject, so a `vite` bump arriving through `/update-deps` skips the one gate that catches this class; [[Storybook]] carries the local verification recipe to run instead
 
 - dependencies bumped: `vite` 8.0.16 to 8.2.1, `jsdom` 29 to 30, `storybook` 10.5.4 to 10.5.8, plus in-range moves across the React types, Testing Library, Playwright, Conform, axe-core, and tooling groups. `typescript` remains held at the 6.0 line
