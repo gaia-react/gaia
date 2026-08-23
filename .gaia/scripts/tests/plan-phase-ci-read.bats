@@ -19,6 +19,7 @@ setup() {
   REPO_ROOT="$( cd "$THIS_DIR/../../.." && pwd )"
   PLAN_MD="$REPO_ROOT/.claude/skills/gaia/references/plan.md"
   ORCH_MD="$REPO_ROOT/wiki/concepts/Task Orchestration.md"
+  PRMW_MD="$REPO_ROOT/wiki/concepts/PR Merge Workflow.md"
 }
 
 # section_between FILE START END: prints the lines from the first line
@@ -33,15 +34,24 @@ setup() {
 # assertions content that can pass for the wrong reason.
 section_between() {
   local file="$1" start="$2" end="$3"
-  awk -v start="$start" -v end="$end" '
+  awk -v start="$start" -v end="$end" -v file="$file" '
     $0 ~ start { capture=1 }
-    capture && $0 ~ end && $0 !~ start { exit }
+    capture && $0 ~ end && $0 !~ start { saw_end=1; exit }
     capture { print }
-  ' "$file" 2>/dev/null
+    END {
+      if (capture && !saw_end) {
+        print "section_between: end pattern never matched in " file > "/dev/stderr"
+        exit 1
+      }
+    }
+  ' "$file"
 }
 
-# assert_section_nonempty NAME CONTENT: fails loudly rather than degrading to
-# a whole-file grep when the delimiting heading moved or was renamed.
+# assert_section_nonempty NAME CONTENT: fails loudly when the START pattern
+# never matched. A missing END is the helper's own error above, not this
+# one's: without it the capture runs to EOF and the assertions widen to a
+# grep over the rest of the file, silently, which is how a section check
+# passes for the wrong reason.
 assert_section_nonempty() {
   local name="$1" content="$2"
   if [ -z "$content" ]; then
@@ -90,4 +100,17 @@ assert_section_nonempty() {
   assert_section_nonempty "Task Orchestration phase loop" "$content"
   grep -qF -- 'gh pr checks' <<<"$content"
   grep -qF -- 'not a stop condition' <<<"$content"
+}
+
+@test "the owning page still carries the caveats both copies restate" {
+  # Both surfaces above carry these four verbatim rather than pointing at the
+  # page, so a generated orchestrator never has to load a wiki page mid-loop.
+  # That buys three copies of one rule, so pin the owner too: a reword here
+  # reds this test, which is the signal to sync all three rather than leave
+  # the copies asserting a rule the owner no longer states.
+  [ -f "$PRMW_MD" ]
+  grep -qF -- 'pushed head' "$PRMW_MD"
+  grep -qF -- 'Pending is not green' "$PRMW_MD"
+  grep -qF -- 'Red is not always a code change' "$PRMW_MD"
+  grep -qF -- 'nothing to read' "$PRMW_MD"
 }
