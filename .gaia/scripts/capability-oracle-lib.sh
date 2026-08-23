@@ -23,13 +23,21 @@
 #
 # The dependency is on a bash that does not crash, and no restructuring here
 # removes it. Reading the outer input through an explicit descriptor and
-# buffering it ahead of the loop both leave the crash where it was, and no
-# single detector triggers it: the write scan and the invocation scan are each
-# clean alone and crash only together. The crash point also moves with edits to
-# the loop body that cannot affect it causally, which is the signature of heap
-# corruption rather than of a descriptor this code owns. The version guard is
-# the repair; a code change that appears to fix it has only perturbed the
-# allocation pattern, and the next unrelated edit re-rolls it.
+# buffering it ahead of the loop each leave the walk short by the same record,
+# and no single detector triggers it either: the write scan and the invocation
+# scan are clean alone and crash only together. The crash point also moves with
+# edits to the loop body that cannot affect it causally, which is the signature
+# of heap corruption rather than of a descriptor this code owns. The version
+# guard is the repair; a change that appears to fix the crash has only
+# perturbed the allocation pattern, and the next unrelated edit re-rolls it.
+#
+# Measure any such attempt end to end, through the check's own --print-reach
+# over the live working checkout, and compare the bash 3.2 output against the
+# bash 5 output. Two narrower controls both report success against a walk that
+# still loses the record: calling _gaia_capcheck_file_sites directly rather
+# than through the closure that normally consumes it, and walking an extraction
+# rather than a checkout, since an extraction carries no untracked or ignored
+# paths and so is not the tree that fails.
 #
 # A library cannot re-exec on its own behalf, so each executable entry point
 # carries its own discovery-and-re-exec block ahead of sourcing this file and
