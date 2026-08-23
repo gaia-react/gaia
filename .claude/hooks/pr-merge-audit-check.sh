@@ -601,10 +601,11 @@ gate_resolve_base() {
 #
 # The scanner tokenizes the way the shell does, so it answers two of the three
 # questions exactly: which reference the merge names, and whether a separator
-# or a comment put another command beside it. The third, whether a SUBSTITUTION
+# or a comment put another command beside it. The third, whether an EXPANSION
 # smuggled one in, is not a question about words, so no word-level tokenizer
-# answers it and this function rules that class out itself. Every abstention
-# denies.
+# answers it; this function rules it out lexically instead, by admitting only
+# the characters a merge invocation needs and denying every other byte. Every
+# abstention denies.
 gate_cmd_names_the_record_pr() {
   # The scanner is normally already loaded, from the repo-scope source near the
   # top of this hook. That source is cwd-relative, so it can miss from a
@@ -625,23 +626,40 @@ gate_cmd_names_the_record_pr() {
   # And no SEPARATOR puts a second command beside it. The scanner sets this
   # while reading the same command the call above just read, so it is that
   # read's own answer rather than a second pass: 0 means no separator and no
-  # comment closed the merge. Stricter than "no second merge", deliberately,
-  # because the safe direction for a relaxation is to deny what it cannot
-  # account for, and a trailing `&& echo done` costs only a marker requirement.
+  # comment closed the merge.
+  #
+  # The allowlist above subsumes this today, since every separator character is
+  # outside its set, which means no mutation of this line alone can red a test
+  # while that arm stands. It is kept anyway, and the reason is stated rather
+  # than left to be rediscovered: the two conjuncts answer different questions,
+  # one lexical and one structural, and a future widening of the character set
+  # (to admit a quoted subject, say) must not silently take the separator
+  # guarantee with it.
   [ "$GAIA_FIRST_COMMAND_CLOSED" -eq 0 ] || return 1
 
-  # And no SUBSTITUTION does either. That is a separate question, and reading
-  # the flag above as answering it is the mistake this guard exists to correct:
-  # a tokenizer that models words sees `$( )`, a backtick, `<( )` and `>( )` as
-  # ordinary word text, so it reaches the end of the string having found no
-  # separator while bash runs the payload first. `gh pr merge --body "$(gh pr
-  # merge <other> --squash)" <record>` permitted on exactly that reading, and
-  # the piggybacked merge ran before the permitted one. Denying the whole class
-  # is blunt in the deny direction only, and costs a legitimate merge nothing,
-  # since one has no need of a substitution.
-  # shellcheck disable=SC2016 # these are literal shell metacharacters to match, never expansions
+  # And no EXPANSION runs one either. That question is not about words, so the
+  # flag above does not answer it: a substitution is ordinary word text to a
+  # tokenizer that models words, which reaches the end of the string having
+  # found no separator while the shell runs the payload first, before the
+  # permitted merge.
+  #
+  # This is an ALLOWLIST rather than a list of substitution spellings, and the
+  # difference is the whole point. Two attempts to name the dangerous spellings
+  # were both incomplete, and the second was incomplete in a way nobody could
+  # have enumerated their way out of: which text makes a shell run a command is
+  # a property of the shell running this tool call and of its version, not of
+  # any fixed set of sequences. zsh, this platform's default, has `=(...)`;
+  # bash gained `${ ...; }` in 5.3; the next release adds whatever it adds. So
+  # the character set below is what a pull-request reference, a flag and a
+  # branch or URL need, and every other byte denies, including `$`, a backtick,
+  # every bracket, both quotes, and every separator. It cannot be outrun by a
+  # spelling nobody has thought of, because it never asks what the spelling
+  # means.
+  #
+  # Blunt in the deny direction only: a merge carrying a quoted subject denies
+  # and costs a marker requirement, which is this arm's whole downside.
   case "$cmd" in
-    *'$('*|*'`'*|*'<('*|*'>('*) return 1 ;;
+    *[!A-Za-z0-9_\ /.,:@=+-]*) return 1 ;;
   esac
 
   # No positional at all: the command targets the current branch, which is the
@@ -682,7 +700,8 @@ gate_cmd_names_the_record_pr() {
 # every abstention, so what it proves is bounded to the shapes that scanner
 # reads exactly: the merge is the first command in the tool call, it carries no
 # flag shape the scanner declines to model, no separator or comment puts a
-# second command beside it, and it carries no substitution that could run one.
+# second command beside it, and every byte of it is in the small set a merge
+# invocation needs, so no expansion of any spelling can run a second command.
 # Anything else denies rather than being read approximately.
 #
 # The number conjunct is scoped to this arm alone. The chore(deps) and
