@@ -109,8 +109,14 @@ assert_section_nonempty() {
   # reds this test, which is the signal to sync all three rather than leave
   # the copies asserting a rule the owner no longer states.
   [ -f "$PRMW_MD" ]
-  grep -qF -- 'pushed head' "$PRMW_MD"
-  grep -qF -- 'Pending is not green' "$PRMW_MD"
-  grep -qF -- 'Red is not always a code change' "$PRMW_MD"
-  grep -qF -- 'nothing to read' "$PRMW_MD"
+  # Scoped to the bullet that states them, and matched on each caveat's own
+  # wording: 'pushed head' alone occurs three more times on this page in
+  # unrelated status-posting prose, so a page-wide grep for it stays green
+  # through a deletion of the very sentence it is meant to pin.
+  content="$( section_between "$PRMW_MD" '^- [*][*]Read the whole' '^- [*][*]' )"
+  assert_section_nonempty "PR Merge Workflow pre-dispatch CI-read bullet" "$content"
+  grep -qF -- 'It reports on the **pushed head**' <<<"$content"
+  grep -qF -- '**Pending is not green**' <<<"$content"
+  grep -qF -- '**Red is not always a code change**' <<<"$content"
+  grep -qF -- 'has nothing to read' <<<"$content"
 }
