@@ -121,6 +121,8 @@ AUDIT_MERELY_SHARED_PATHS="$(cat <<'EOF'
 .claude/hooks/lib/gaia-ci-defer.sh
 .claude/hooks/lib/red-ledger.sh
 .claude/hooks/lib/repo-scope.sh
+.claude/hooks/lib/verb-arming-walk.sh
+.claude/hooks/lib/verb-arming.sh
 .claude/hooks/lib/worthiness-ledger.sh
 .claude/hooks/local-janitor.sh
 # The coding-convention half of .claude/rules/. That directory is machinery by

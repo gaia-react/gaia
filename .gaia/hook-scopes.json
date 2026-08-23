@@ -344,6 +344,18 @@
       "why": "Compares the home repo's git toplevel against a command's target repo for cross-repo scoping; touches no .gaia/local state."
     },
     {
+      "hook": ".claude/hooks/lib/verb-arming-walk.sh",
+      "scope": "any",
+      "state": [],
+      "why": "A pure text function: it takes the tool call's command text as a parameter and assigns back a same-length view of it, reading no file and writing none, so there is no root to resolve and no .gaia/local state to belong to."
+    },
+    {
+      "hook": ".claude/hooks/lib/verb-arming.sh",
+      "scope": "any",
+      "state": [],
+      "why": "Decides whether a command text carries an invocation of a caller-supplied verb; every input is a parameter and the only files it reaches are its own two sibling libs, sourced off its own on-disk location, so it touches no .gaia/local state."
+    },
+    {
       "hook": ".claude/hooks/lib/worthiness-ledger.sh",
       "scope": "per-tree",
       "state": ["audit-worthiness-ledger"],
