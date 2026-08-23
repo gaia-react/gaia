@@ -896,7 +896,11 @@ jobs:
           # must stay inside the substitution for `set -o pipefail` to still
           # abort the step on a git failure.
           changed=$(set -o pipefail; git diff --name-only -z "$BASE_SHA" HEAD | tr '\0' '\n')
-          pattern='^\.claude/settings\.json$|^\.claude/hooks/|^\.gaia/scripts/|^\.specify/extensions/gaia/lib/|^\.gaia/hook-capabilities\.(json|schema\.json)$|^\.gaia/release-exclude$|^\.github/workflows/audit-ci-tests\.yml$'
+          # `^\.github/audit/` earns its place the moment the oracle learned to
+          # walk a script executed by its own path: `.github/audit/` is inside a
+          # registered hook's closure now, so a change there moves a declared
+          # reach and has to run this job.
+          pattern='^\.claude/settings\.json$|^\.claude/hooks/|^\.gaia/scripts/|^\.github/audit/|^\.specify/extensions/gaia/lib/|^\.gaia/hook-capabilities\.(json|schema\.json)$|^\.gaia/release-exclude$|^\.github/workflows/audit-ci-tests\.yml$'
           if printf '%s\n' "$changed" | grep -qE "$pattern"; then
             echo "code=true" >> "$GITHUB_OUTPUT"
           else
