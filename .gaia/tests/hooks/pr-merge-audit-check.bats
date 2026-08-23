@@ -45,6 +45,10 @@
 # is always present. The one test that needs the resolver-absent fallback
 # removes this copy explicitly.
 
+# The permit-diagnostic case below asserts stdout and stderr independently,
+# which needs `run --separate-stderr` (bats >= 1.5.0).
+bats_require_minimum_version 1.5.0
+
 setup() {
   . "$BATS_TEST_DIRNAME/helpers/run-hook.sh"
   HOOK_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)/pr-merge-audit-check.sh
@@ -75,14 +79,15 @@ setup() {
   # The two copies above resolve their libs relative to THEMSELVES
   # ($REPO/.claude/hooks/lib/), not the real repo, so the sandbox needs its
   # own copy of the shared ownership classifier + digest engine + clearance
-  # reader alongside them. The real hook (run by absolute path via
-  # $HOOK_ABS, never copied) resolves its own libs to the real repo
-  # regardless.
+  # reader + base provenance resolver alongside them. The real hook (run by
+  # absolute path via $HOOK_ABS, never copied) resolves its own libs to the
+  # real repo regardless.
   mkdir -p "$REPO/.claude/hooks/lib"
   cp "$LIB_DIR/audit-scope.sh" "$REPO/.claude/hooks/lib/audit-scope.sh"
   cp "$LIB_DIR/audit-machinery.sh" "$REPO/.claude/hooks/lib/audit-machinery.sh"
   cp "$LIB_DIR/audit-clearance.sh" "$REPO/.claude/hooks/lib/audit-clearance.sh"
   cp "$LIB_DIR/audit-digest.sh" "$REPO/.claude/hooks/lib/audit-digest.sh"
+  cp "$LIB_DIR/audit-base-provenance.sh" "$REPO/.claude/hooks/lib/audit-base-provenance.sh"
 }
 
 teardown() {
@@ -1295,4 +1300,363 @@ teardown_linked_worktree() {
   [ "$status" -eq 0 ]
   grep -qF '"permissionDecision": "deny"' <<<"$output" && return 1
   true
+}
+
+# ---------------------------------------------------------------------------
+# Provenance-keyed base resolution
+#
+# The gate resolves its diff base through the shared provenance resolver
+# (.claude/hooks/lib/audit-base-provenance.sh), which answers with a trust
+# token alongside the base. An EMPTY base-to-HEAD range clears the
+# out-of-scope bypass only when that trust is one this checkout could not have
+# invented AND the base was taken against the pull request's own recorded base
+# branch AND local HEAD is the pull request's recorded head. Anything less
+# denies, because the gate scopes its range to local HEAD and never reads the
+# pull-request number in the `gh pr merge` command it is gating: a synced
+# default-branch checkout has an empty range against every pull request in the
+# repository at once.
+#
+# The self-modification bypass reads the same base and is deliberately NOT
+# relaxed: it is reachable from the member-aware gate, where it clears every
+# dispatched member at once.
+# ---------------------------------------------------------------------------
+
+# Advertise refs/remotes/origin/main as the default and point it at REV, so
+# the ladder's remote-minting arm resolves. Remote-tracking refs are written
+# directly: they only ever need to resolve, never to fetch.
+set_origin_main_at() {
+  git -C "$REPO" update-ref refs/remotes/origin/main "$1"
+  git -C "$REPO" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main
+}
+
+# The gh stub with a POPULATED pull-request record: $1 is baseRefName, $2 is
+# headRefOid. jq builds the record rather than a printf format, so a value
+# carrying a quote stays valid JSON instead of silently emptying a field a
+# test is pinning, the same reasoning install_gh_stub_with_title gives.
+install_gh_stub_with_record() {
+  local base_ref="$1" head_oid="$2"
+  install_gh_stub "${3:-[]}"
+  printf '%s' "$base_ref" > "$BATS_TEST_TMPDIR/pr-base.txt"
+  printf '%s' "$head_oid" > "$BATS_TEST_TMPDIR/pr-head.txt"
+  cat > "$GH_BIN/gh" <<EOF
+#!/usr/bin/env bash
+issues_file="$BATS_TEST_TMPDIR/issues.json"
+base_file="$BATS_TEST_TMPDIR/pr-base.txt"
+head_file="$BATS_TEST_TMPDIR/pr-head.txt"
+EOF
+  cat >> "$GH_BIN/gh" <<'EOF'
+case "$1" in
+  auth) exit 0 ;;
+  repo) printf 'gaia-react/gaia\n'; exit 0 ;;
+  pr) jq -n --arg b "$(cat "$base_file")" --arg h "$(cat "$head_file")" \
+        '{title:"", baseRefName:$b, headRefOid:$h}'; exit 0 ;;
+  issue) cat "$issues_file"; exit 0 ;;
+  api) printf 'null\n'; exit 0 ;;
+  *) exit 0 ;;
+esac
+EOF
+  chmod +x "$GH_BIN/gh"
+}
+
+# A `git` earlier on PATH than the real one that fails every `git diff` and
+# forwards everything else. The failure mode under test is a diff that never
+# RAN: it writes nothing to stdout, which a bare read cannot tell apart from a
+# diff that ran and found nothing.
+install_failing_diff_git() {
+  local real
+  real="$(command -v git)"
+  cat > "$GH_BIN/git" <<EOF
+#!/usr/bin/env bash
+REAL_GIT="$real"
+EOF
+  cat >> "$GH_BIN/git" <<'EOF'
+# Walk past git's own global options to find the subcommand: every call in the
+# gate's chain spells the tree as `git -C <root> <subcommand>`, so a check on
+# $1 alone would never see a diff at all. The scan runs inside a command
+# substitution, which inherits the positional parameters and discards its own
+# shifts, so the exec below still forwards the original argv.
+sub="$(
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      -C | -c | --git-dir | --work-tree) shift 2 || break ;;
+      -*) shift ;;
+      *) printf '%s' "$1"; break ;;
+    esac
+  done
+)"
+if [ "$sub" = "diff" ]; then exit 1; fi
+exec "$REAL_GIT" "$@"
+EOF
+  chmod +x "$GH_BIN/git"
+}
+
+# Drop `gh` from PATH entirely, by mirroring every PATH directory that carries
+# one into a shim directory without it. Filtering the directory out wholesale
+# would take jq and git with it on a Homebrew host, where all three share a
+# prefix.
+scrub_gh_from_path() {
+  local shim keep dir bin name
+  shim="$BATS_TEST_TMPDIR/nogh"
+  mkdir -p "$shim"
+  keep=""
+  while IFS= read -r dir; do
+    [ -n "$dir" ] || continue
+    [ -d "$dir" ] || continue
+    if [ -x "$dir/gh" ]; then
+      for bin in "$dir"/*; do
+        name="${bin##*/}"
+        [ "$name" = "gh" ] && continue
+        [ -e "$shim/$name" ] || ln -s "$bin" "$shim/$name" 2>/dev/null || true
+      done
+    else
+      keep="${keep:+$keep:}$dir"
+    fi
+  done <<< "$(printf '%s' "$PATH" | tr ':' '\n')"
+  export PATH="$shim${keep:+:$keep}"
+}
+
+# Run the hook with stdout and stderr kept apart, so a permit's silence on
+# stdout can be asserted independently of its diagnostic line on stderr.
+# invoke_hook_in merges the two.
+run_merge_hook_split() {
+  local cmd="${1:-gh pr merge 30 --squash --delete-branch}" json
+  json=$(jq -n --arg c "$cmd" '{tool_name: "Bash", tool_input: {command: $c}}')
+  run --separate-stderr bash -c 'cd "$1" && printf %s "$2" | bash "$3"' \
+    _ "$REPO" "$json" "$HOOK_ABS"
+}
+
+# A copy of the gate in the sandbox whose provenance library records the argv
+# of every audit_resolve_base_provenance call before delegating to the real
+# one. The copy is what makes the interception possible at all: the real hook
+# resolves its libraries from its OWN on-disk location, so nothing a test puts
+# in the sandbox can reach them.
+install_recording_hook_copy() {
+  RECORD_FILE="$BATS_TEST_TMPDIR/arbp-argv.txt"
+  : > "$RECORD_FILE"
+  mkdir -p "$REPO/.claude/hooks/lib"
+  cp "$HOOK_ABS" "$REPO/.claude/hooks/pr-merge-audit-check.sh"
+  cp "$LIB_DIR"/*.sh "$REPO/.claude/hooks/lib/"
+  cat > "$REPO/.claude/hooks/lib/audit-base-provenance.sh" <<EOF
+#!/usr/bin/env bash
+. "$LIB_DIR/audit-base-provenance.sh"
+_arbp_record="$RECORD_FILE"
+EOF
+  cat >> "$REPO/.claude/hooks/lib/audit-base-provenance.sh" <<'EOF'
+eval "_arbp_real() $(declare -f audit_resolve_base_provenance | tail -n +2)"
+audit_resolve_base_provenance() {
+  printf 'supplied=[%s]\n' "${3-}" >> "$_arbp_record"
+  _arbp_real "$@"
+}
+EOF
+}
+
+run_recording_hook() {
+  local json
+  json=$(jq -n --arg c "gh pr merge 30 --squash --delete-branch" \
+    '{tool_name: "Bash", tool_input: {command: $c}}')
+  invoke_hook_in "$REPO" "$json" "$REPO/.claude/hooks/pr-merge-audit-check.sh"
+}
+
+@test "an empty range on a remote-verified record base at the recorded head permits silently, with the reason on stderr" {
+  # setup() leaves feature at main's tip, so the base-to-HEAD range is empty
+  # by construction rather than by an emptied diff.
+  local head
+  head="$(git -C "$REPO" rev-parse HEAD)"
+  set_origin_main_at refs/heads/feature
+  install_gh_stub_with_record "main" "$head"
+
+  run_merge_hook_split
+  [ "$status" -eq 0 ]
+  # No JSON at all. The permit keeps the shape every other permit in this hook
+  # has: a silent zero exit, never a permissionDecision emission.
+  [ -z "$output" ]
+  [ "$(printf '%s\n' "$stderr" | grep -c .)" -eq 1 ]
+  grep -qF 'range is empty' <<<"$stderr" || return 1
+  grep -qF 'remote provenance' <<<"$stderr" || return 1
+  grep -qF 'anchor pr-record' <<<"$stderr" || return 1
+}
+
+@test "the gate emits no permissionDecision allow at all" {
+  grep -qF 'permissionDecision: "allow"' "$HOOK_ABS" && return 1
+  true
+}
+
+@test "an empty range on a locally-derived base denies, and the reason names the local provenance" {
+  # No remote-tracking refs at all, so the record's branch cannot verify and
+  # the ladder falls to the bare local branch name.
+  install_gh_stub_with_record "main" "$(git -C "$REPO" rev-parse HEAD)"
+
+  run_merge_hook
+  assert_denied_by_json
+  grep -qF 'Diff base:' <<<"$output" || return 1
+  grep -qF 'local provenance' <<<"$output" || return 1
+  grep -qF 'anchor default-branch' <<<"$output" || return 1
+}
+
+@test "an unresolvable base denies, and the reason names it as unresolvable" {
+  local repo
+  repo="$(make_no_base_repo_pr provenance-no-base)"
+  install_gh_stub
+
+  run_merge_hook_at "$repo"
+  assert_denied_by_json
+  grep -qF 'unresolvable provenance' <<<"$output" || return 1
+  grep -qF 'base unresolved' <<<"$output" || return 1
+}
+
+@test "a synced default-branch checkout denies gh pr merge for a pull request it is not on (no record)" {
+  # The reproduced hole: on a synced default branch merge-base(HEAD,
+  # refs/remotes/origin/main) IS HEAD, so the range holds zero files on remote
+  # provenance. Nothing in the command being gated says which pull request 999
+  # is, so a range-only rule would clear an arbitrary unaudited one.
+  git -C "$REPO" checkout --quiet main
+  set_origin_main_at refs/heads/main
+  install_gh_stub
+
+  run_merge_hook "gh pr merge 999 --squash"
+  assert_denied_by_json
+}
+
+@test "a synced default-branch checkout denies even when the record answers with this checkout's own head sha" {
+  # Isolates the anchor conjunct: trust is remote and the recorded head sha
+  # matches local HEAD, so only "the base was taken against the pull request's
+  # own recorded base branch" stands between this and a permit.
+  git -C "$REPO" checkout --quiet main
+  set_origin_main_at refs/heads/main
+  install_gh_stub_with_record "" "$(git -C "$REPO" rev-parse HEAD)"
+
+  run_merge_hook "gh pr merge 999 --squash"
+  assert_denied_by_json
+}
+
+@test "an empty range on a record base denies when the recorded head sha is not local HEAD" {
+  # Isolates the head-sha conjunct: anchor and trust both qualify, and the
+  # checkout is simply not on the pull request being merged.
+  set_origin_main_at refs/heads/feature
+  install_gh_stub_with_record "main" "0000000000000000000000000000000000000001"
+
+  run_merge_hook "gh pr merge 999 --squash"
+  assert_denied_by_json
+}
+
+@test "the self-mod bypass does not fire on an empty range, even with the audit workflow re-rendered verbatim" {
+  seed_base_template
+  commit_files ".github/workflows/code-review-audit.yml" "name: Code Review Audit"
+  set_origin_main_at refs/heads/feature
+  install_gh_stub_with_record "main" "0000000000000000000000000000000000000001"
+
+  run_merge_hook
+  assert_denied_by_json
+  # Positively pin that the base really was remote-verified, so this case
+  # cannot green on a fixture that quietly degraded to a local base.
+  grep -qF 'remote provenance' <<<"$output" || return 1
+}
+
+@test "a non-empty dispatched member set still denies while a member withholds, on remote provenance at the recorded head" {
+  commit_files \
+    "app/x.ts" "export const x = 1" \
+    ".gaia/scripts/example.sh" "#!/bin/bash"
+  set_origin_main_at refs/heads/main
+  install_gh_stub_with_record "main" "$(git -C "$REPO" rev-parse HEAD)"
+  write_marker "code-audit-frontend"
+
+  run_merge_hook
+  assert_denied_by_json
+  grep -qF "code-audit-maintainer-shell: PENDING" <<<"$output" || return 1
+}
+
+@test "a diff that never ran never reaches the permit arm" {
+  # The resolver copy is removed so the legacy path runs: a failing git would
+  # otherwise make the member query unanswerable, and that deny would mask the
+  # one under test.
+  rm -f "$REPO/.gaia/scripts/resolve-audit-members.sh"
+  local head
+  head="$(git -C "$REPO" rev-parse HEAD)"
+  set_origin_main_at refs/heads/feature
+  install_gh_stub_with_record "main" "$head"
+
+  # Positive control: with a working git this exact fixture permits, so the
+  # denial below is the failed diff and nothing else.
+  run_merge_hook
+  assert_allowed_by_json
+
+  install_failing_diff_git
+  run_merge_hook
+  assert_denied_by_json
+}
+
+@test "every audit_resolve_base_provenance call in the gate source passes an empty supplied base" {
+  local calls bad
+  calls="$(grep -n 'audit_resolve_base_provenance ' "$HOOK_ABS" | grep -v '^[0-9]*:[[:space:]]*#')"
+  [ -n "$calls" ] || return 1
+  bad="$(printf '%s\n' "$calls" \
+    | grep -vF 'audit_resolve_base_provenance "$tree_root" pr-record "" "$pr_record_base"' || true)"
+  [ -z "$bad" ] || return 1
+}
+
+@test "every audit_resolve_base_provenance invocation at run time passes an empty supplied base" {
+  install_recording_hook_copy
+  commit_files "app/x.ts" "export const x = 1"
+  install_gh_stub_with_record "main" "$(git -C "$REPO" rev-parse HEAD)"
+
+  run_recording_hook
+  assert_denied_by_json
+  [ -s "$RECORD_FILE" ]
+  grep -v -x 'supplied=\[\]' "$RECORD_FILE" > "$BATS_TEST_TMPDIR/arbp-bad.txt" || true
+  [ ! -s "$BATS_TEST_TMPDIR/arbp-bad.txt" ]
+}
+
+@test "the base comes from the remote-tracking ref, not a local branch literally named origin/main" {
+  # git resolves the bare revspec origin/main through refs/heads/ before
+  # refs/remotes/, so a local branch of that name would supply the base while
+  # refs/remotes/origin/main still verifies -- remote trust minted for a purely
+  # local base. The fully-qualified spelling is what forecloses it, and this
+  # checkout is where the two spellings answer differently.
+  local remote_base shadow_tip
+  remote_base="$(git -C "$REPO" rev-parse HEAD)"
+  commit_files "docs/note.md" "a commit only the shadowing local branch carries"
+  shadow_tip="$(git -C "$REPO" rev-parse HEAD)"
+  git -C "$REPO" branch "origin/main" "$shadow_tip"
+  commit_files "Makefile" "all:"
+  set_origin_main_at "$remote_base"
+  install_gh_stub
+
+  run_merge_hook
+  assert_denied_by_json
+  grep -qF "base ${remote_base:0:12}" <<<"$output" || return 1
+  grep -qF "base ${shadow_tip:0:12}" <<<"$output" && return 1
+  true
+}
+
+@test "the gate denies with well-formed JSON when gh is absent from PATH entirely" {
+  # resolve_pr_record returns at its `command -v gh` guard, before any field
+  # assignment. Every reader of a record field must survive that under set -u,
+  # or the hook dies and emits nothing at all where it owes a deny.
+  set_origin_main_at refs/heads/feature
+  scrub_gh_from_path
+  [ -z "$(command -v gh)" ]
+
+  run_merge_hook
+  [ "$status" -eq 0 ]
+  [ "$(printf '%s' "$output" | jq -r '.hookSpecificOutput.permissionDecision')" = "deny" ]
+}
+
+@test "the gate denies with well-formed JSON when gh answers with no record at all" {
+  # The other early return: gh exists, and there is no pull request for this
+  # branch. Same obligation, reached one line later.
+  set_origin_main_at refs/heads/feature
+  install_gh_stub
+  cat > "$GH_BIN/gh" <<'EOF'
+#!/usr/bin/env bash
+case "$1" in
+  pr) exit 1 ;;
+  api) printf 'null\n'; exit 0 ;;
+  *) exit 0 ;;
+esac
+EOF
+  chmod +x "$GH_BIN/gh"
+
+  run_merge_hook
+  [ "$status" -eq 0 ]
+  [ "$(printf '%s' "$output" | jq -r '.hookSpecificOutput.permissionDecision')" = "deny" ]
 }

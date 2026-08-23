@@ -156,11 +156,13 @@ fi
 # rather than crash. (The merge gate, not this resolver, is where an absent
 # module must deny.)
 _lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.claude/hooks/lib" 2>/dev/null && pwd)" || true
-if [ -z "$_lib_dir" ] || [ ! -f "$_lib_dir/audit-scope.sh" ]; then
+if [ -z "$_lib_dir" ] || [ ! -f "$_lib_dir/audit-scope.sh" ] || [ ! -f "$_lib_dir/audit-base-provenance.sh" ]; then
   exit 0
 fi
 # shellcheck source=/dev/null
 . "$_lib_dir/audit-scope.sh"
+# shellcheck source=/dev/null
+. "$_lib_dir/audit-base-provenance.sh"
 
 audit_scope_init "$repo_root"
 
@@ -182,18 +184,17 @@ audit_scope_init "$repo_root"
 # than of the derivation: there a wider set WAIVES more findings into prose
 # instead of filing them, so wide is the loose direction and that set scopes to
 # the pull request's own base. The two are not accidentally different.
+#
+# The anchor is supplied to the shared resolver as an explicit `default-branch`
+# argument here, rather than being implicit in a private merge-base chain, so
+# a narrowing to `pr-record` shows up as a diff to this literal rather than as
+# a silent change in behavior.
 resolve_base() {
-  if [ -n "$BASE_OVERRIDE" ]; then
-    printf '%s' "$BASE_OVERRIDE"
-    return 0
-  fi
-  local default_branch base
-  default_branch="$(git -C "$repo_root" symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@')" || true
-  [ -n "$default_branch" ] || default_branch="main"
-  base="$(git -C "$repo_root" merge-base HEAD "origin/${default_branch}" 2>/dev/null \
-    || git -C "$repo_root" merge-base HEAD "${default_branch}" 2>/dev/null \
-    || true)"
-  printf '%s' "$base"
+  local prov prov_trust prov_anchor prov_base
+  prov="$(audit_resolve_base_provenance "$repo_root" default-branch "$BASE_OVERRIDE")" || prov=""
+  # shellcheck disable=SC2034 # trust and anchor are part of the pinned three-field idiom; this consumer's answer never changes with either
+  IFS=$'\t' read -r prov_trust prov_anchor prov_base <<< "$prov" || true
+  printf '%s' "$prov_base"
 }
 
 base="$(resolve_base)"

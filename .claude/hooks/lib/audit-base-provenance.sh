@@ -91,7 +91,7 @@ audit_resolve_base_provenance() {
 
   # 1. Supplied override, verified against this tree. A caller-named revision
   # this checkout cannot reach must never fall through to an empty diff read
-  # as a trustworthy nothing (UAT-009).
+  # as a trustworthy nothing.
   if [ -n "$supplied_base" ]; then
     resolved="$(git -C "$root" rev-parse --verify --quiet "${supplied_base}^{commit}" 2>/dev/null)"
     if [ -n "$resolved" ]; then

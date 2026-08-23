@@ -157,21 +157,23 @@ if [ -n "$_root_lib_dir" ] && [ -f "$_root_lib_dir/.gaia/scripts/main-root-lib.s
   . "$_root_lib_dir/.gaia/scripts/main-root-lib.sh"
 fi
 
-# Load the shared ownership classifier + machinery list + digest engine from
-# the same on-disk location. check_out_of_scope_pr() and
-# check_self_mod_only_update_pr() below depend on the classifier to know what
-# a changed path is, and every marker check below is keyed to a member's
-# content digest computed by the digest engine; an absent or unreadable
-# module means this gate cannot know what it is gating, so it denies rather
-# than fall through to a degraded, uninformed gate. This is a new, deliberate
-# fail-closed path distinct from every other guard in this hook (which fail
-# OPEN on an unusable lookup).
+# Load the shared ownership classifier + machinery list + digest engine + base
+# provenance resolver from the same on-disk location. check_out_of_scope_pr()
+# and check_self_mod_only_update_pr() below depend on the classifier to know
+# what a changed path is and on the provenance resolver to know what base they
+# are reading a change set against, and every marker check below is keyed to a
+# member's content digest computed by the digest engine; an absent or
+# unreadable module means this gate cannot know what it is gating, so it denies
+# rather than fall through to a degraded, uninformed gate. This is a
+# deliberate fail-closed path distinct from every other guard in this hook
+# (which fail OPEN on an unusable lookup).
 _scope_lib="$_lib_dir/audit-scope.sh"
 _machinery_lib="$_lib_dir/audit-machinery.sh"
 _digest_lib="$_lib_dir/audit-digest.sh"
 _version_lib="$_lib_dir/gaia-version.sh"
-if [ -z "$_lib_dir" ] || [ ! -f "$_scope_lib" ] || [ ! -f "$_machinery_lib" ] || [ ! -f "$_digest_lib" ] || [ ! -f "$_version_lib" ]; then
-  jq -n --arg r "PR merge gate: cannot load the ownership classifier, the digest engine, or the version normalizer (.claude/hooks/lib/audit-scope.sh, .claude/hooks/lib/audit-machinery.sh, .claude/hooks/lib/audit-digest.sh, and .claude/hooks/lib/gaia-version.sh must all exist and be readable). Every marker check below is keyed to a member's content digest and to a version literal this gate compares for equality against the stamped one, and this gate's out-of-scope and self-mod-only bypasses depend on the classifier to know what a changed path is, so it denies rather than guess. Restore all four files (they ship with the framework; a missing or corrupted checkout is the usual cause) and retry." '{
+_provenance_lib="$_lib_dir/audit-base-provenance.sh"
+if [ -z "$_lib_dir" ] || [ ! -f "$_scope_lib" ] || [ ! -f "$_machinery_lib" ] || [ ! -f "$_digest_lib" ] || [ ! -f "$_version_lib" ] || [ ! -f "$_provenance_lib" ]; then
+  jq -n --arg r "PR merge gate: cannot load the ownership classifier, the digest engine, the version normalizer, or the base provenance resolver (.claude/hooks/lib/audit-scope.sh, .claude/hooks/lib/audit-machinery.sh, .claude/hooks/lib/audit-digest.sh, .claude/hooks/lib/gaia-version.sh, and .claude/hooks/lib/audit-base-provenance.sh must all exist and be readable). Every marker check below is keyed to a member's content digest and to a version literal this gate compares for equality against the stamped one; this gate's out-of-scope and self-mod-only bypasses depend on the classifier to know what a changed path is, and on the provenance resolver to know what base their change set is read against, so it denies rather than guess. Restore all five files (they ship with the framework; a missing or corrupted checkout is the usual cause) and retry." '{
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
       permissionDecision: "deny",
@@ -188,6 +190,8 @@ fi
 . "$_digest_lib"
 # shellcheck source=/dev/null
 . "$_version_lib"
+# shellcheck source=/dev/null
+. "$_provenance_lib"
 
 # The shared disposition-ledger logic (disposition_offenders). C4 re-verifies
 # code-audit-frontend's dispositions whenever its own earned digest marker is
@@ -430,29 +434,44 @@ check_github_status() {
 }
 
 # resolve_pr_record: read this pull request's record once into
-# $pr_record_title and $pr_record_base. Memoized on $pr_record_read, which is
-# what distinguishes "not read yet" from "read, and the answer was nothing".
+# $pr_record_title, $pr_record_base and $pr_record_head. Memoized on
+# $pr_record_read, which is what distinguishes "not read yet" from "read, and
+# the answer was nothing".
 #
 # One read rather than one per field. Both consumers below sit on the same
 # uncleared path, and `gh` carries no request timeout of its own, so a second
 # round-trip is a second OS-length stall on a blackholed network. Every failure
-# (no gh, no auth, no PR for this branch, network error) leaves both fields
+# (no gh, no auth, no PR for this branch, network error) leaves all three fields
 # empty and each consumer takes its own no-answer path.
+#
+# All four variables are initialized HERE, at parent level, and that placement
+# is load-bearing rather than cosmetic. This script runs under `set -uo
+# pipefail`, and this function returns early before reaching any jq assignment
+# on its two most common paths: no `gh` on PATH, and a `gh` that answers with
+# nothing. A reader that dereferences $pr_record_head after either of those
+# returns would trip `set -u` and kill the hook outright, so the gate would emit
+# no JSON at all exactly where it owes a deny. Initializing inside the function
+# body would not fix that; the early returns sit above it.
 pr_record_read=""
 pr_record_title=""
 pr_record_base=""
+pr_record_head=""
 resolve_pr_record() {
   [ -z "$pr_record_read" ] || return 0
   pr_record_read=yes
 
   command -v gh >/dev/null 2>&1 || return 0
-  pr_record=$(gh pr view --json title,baseRefName 2>/dev/null || true)
+  pr_record=$(gh pr view --json title,baseRefName,headRefOid 2>/dev/null || true)
   [ -n "$pr_record" ] || return 0
 
   # `// ""` so a JSON null reaches the callers as the same empty string an
-  # absent record does; both are "no answer" and neither is a branch name.
+  # absent record does; both are "no answer" and neither is a branch name nor a
+  # commit sha. A record carrying no head sha (an older stub, a trimmed
+  # response) therefore reads as no answer, which FAILS the record-bound
+  # conjunction below rather than passing it by default.
   pr_record_title=$(printf '%s' "$pr_record" | jq -r '.title // ""' 2>/dev/null || true)
   pr_record_base=$(printf '%s' "$pr_record" | jq -r '.baseRefName // ""' 2>/dev/null || true)
+  pr_record_head=$(printf '%s' "$pr_record" | jq -r '.headRefOid // ""' 2>/dev/null || true)
 }
 
 # chore(deps) bypass: PRs whose title matches `^chore\(deps(-dev)?\):` are
@@ -476,82 +495,115 @@ check_chore_deps_pr() {
   [ "$(bash "$tree_root/.gaia/scripts/chore-deps-skip.sh" "$pr_record_title")" = "true" ]
 }
 
-# pr_base_branch: set $pr_base to the branch this PR merges into. The $pr_base
-# memo is per-subshell and nothing more: both bypass checks below reach this
-# only through `base=$(pr_merge_base)`, a command substitution, so neither
-# variable it sets survives back to the parent shell. What holds the run to one
-# gh read is resolve_pr_record's own parent-level memo, which check_chore_deps_pr
-# primes in the parent on every path that reaches either bypass.
+# gate_resolve_base: resolve, ONCE per run, the diff base that scopes this pull
+# request's own changes, together with the provenance that says how much that
+# base deserves to be trusted. Both bypasses below read $gate_trust,
+# $gate_anchor and $gate_base and nothing else, so the two cannot drift.
 #
-# Reach this through pr_merge_base only. $pr_base and $pr_base_from_record are a
-# coupled pair guarding the bare-name rejection below, and the memo's early
-# return fires before the flag is set, so a parent-shell caller would leave a
-# later subshell holding the record's branch name with the flag empty, which is
-# the one combination that derivation exists to forbid.
+# The resolution itself lives in the shared library
+# (.claude/hooks/lib/audit-base-provenance.sh), the one place tree-wide that
+# walks the supplied/record/default-branch ladder and the one definition of
+# whether an empty range at a given trust level is decisive. This gate owns no
+# copy of either, which is what keeps it from reaching a verdict the audit spawn
+# oracle would contradict about the same base.
 #
-# Both of those checks scope their diff to a merge base, and the branch that
-# merge base is taken against decides what "this PR changes" means. The
-# remote's advertised default is that branch only when the PR targets it: a PR
-# stacked on another branch merges into THAT branch, and diffing against the
-# default hands the check the base branch's own history instead, denying a
-# bypass the PR had earned (gaia-react/gaia#1057).
+# Every git call runs against $tree_root, the ACTING tree resolved from cwd
+# above. The derivation this replaced used a bare cwd-relative `git`; anchoring
+# it makes explicit what was implicit, and matches the anchoring the member
+# dispatch block below already uses.
+#
+# The supplied-base argument is ALWAYS the empty string, deliberately. No
+# gate-side consumer accepts a base override and none may gain one: a
+# caller-chosen base is a caller-chosen diff, and a fail-closed check whose diff
+# the caller picks is not fail-closed. Do not add one here for symmetry with the
+# spawn oracle, which is a dispatch-side consumer answering a different question.
 #
 # The answer comes from the pull request record, never from the environment. An
 # exported base-ref variable would let a caller shrink a fail-closed check's
 # diff until every remaining path looked out of scope; a PR's base ref is the
-# branch it actually merges into, so scoping to it concedes nothing that
-# merging the PR would not already concede.
+# branch it actually merges into, so scoping to it concedes nothing that merging
+# the PR would not already concede. The shared resolver reads no environment
+# variable naming a base branch on any path, so that refusal survives the move
+# into it intact.
 #
-# Any failure (no gh, no auth, no PR for this branch, network error) falls back
-# to the advertised default. That is usually the wider diff but not always: a
+# Both checks below scope their diff to a merge base, and the branch that merge
+# base is taken against decides what "this PR changes" means. The remote's
+# advertised default is that branch only when the PR targets it: a PR stacked on
+# another branch merges into THAT branch, and diffing against the default hands
+# the check the base branch's own history instead, denying a bypass the PR had
+# earned (gaia-react/gaia#1057).
+#
+# When the record's remote-tracking ref does not verify (no gh, no auth, no PR
+# for this branch, network error, a base branch this checkout has never
+# fetched), the resolver falls through to the advertised default and reports
+# anchor `default-branch`. That is usually the wider diff but not always: a
 # backport forked from current main and targeting an older maintenance branch
 # merge-bases NEARER to HEAD against main than against its own base. It is the
 # safe direction regardless, for a reason that does not rest on the geometry.
 # Whatever the narrower answer drops sits on commits already merged to the
 # default branch, which is where they were already audited.
-pr_base=""
-pr_base_from_record=""
-pr_base_branch() {
-  [ -z "$pr_base" ] || return 0
+#
+# That fall-through describes the ref-does-not-verify case ONLY. A record ref
+# that verifies but whose merge-base fails (unrelated histories, a shallow HEAD)
+# does not fall through at all: the resolver answers `unresolvable` with an
+# empty base, the guards below fire, and the gate denies. That is exactly the
+# answer the derivation this replaced gave, and falling through there would hand
+# this gate a resolved, wider base on a path where it previously refused
+# outright.
+#
+# The memo is parent-level, and calling this function DIRECTLY (never inside a
+# `$( )`) is what keeps it that way. The per-subshell memo it replaced existed
+# only because both bypasses reached the base through a command substitution,
+# which also made its two variables a coupled pair whose half-set state was the
+# one combination that derivation existed to forbid. Both bypasses are invoked
+# from the parent shell, so a direct call retires that hazard.
+#
+# Resolution stays LAZY: this reaches the network through resolve_pr_record, and
+# a run whose every marker is already on disk decides the whole gate from local
+# files. Call it only from inside the two bypasses and the legacy deny reason,
+# never at the top level of this script.
+gate_prov_read=""
+gate_trust=""
+gate_anchor=""
+gate_base=""
+gate_resolve_base() {
+  [ -z "$gate_prov_read" ] || return 0
+  gate_prov_read=yes
 
   resolve_pr_record
-  # The record's answer counts only when its remote-tracking ref is present. A
-  # bare LOCAL branch of the same name is not evidence about the base branch,
-  # and taking one would invert this whole derivation: a local branch sitting on
-  # this PR's own commits puts the merge base above them, the diff never walks
-  # them, and a fail-closed check reads a PR that touches auditable source as
-  # touching nothing. Unverifiable means fall through to the advertised default,
-  # which is what the contract above promises.
-  if [ -n "$pr_record_base" ] \
-    && git rev-parse --verify --quiet "refs/remotes/origin/${pr_record_base}" >/dev/null 2>&1; then
-    pr_base="$pr_record_base"
-    pr_base_from_record=yes
-    return 0
-  fi
 
-  pr_base=$(git symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null \
-    | sed 's@^refs/remotes/origin/@@')
-  [ -n "$pr_base" ] || pr_base="main"
+  local prov
+  prov="$(audit_resolve_base_provenance "$tree_root" pr-record "" "$pr_record_base")" || prov=""
+  # An empty $prov leaves all three fields empty, which every guard below reads
+  # as unresolvable and fails closed on.
+  IFS=$'\t' read -r gate_trust gate_anchor gate_base <<< "$prov" || true
 }
 
-# pr_merge_base: print the merge base that scopes this PR's own diff, or nothing
-# when none resolves. Shared by both bypasses below so the two cannot drift.
-pr_merge_base() {
-  pr_base_branch
-
-  if [ -n "$pr_base_from_record" ]; then
-    # Verified above, so the remote-tracking ref is the only thing allowed to
-    # scope the diff. No bare-name arm here: that is precisely where a local
-    # branch would slip in and narrow the answer.
-    git merge-base HEAD "refs/remotes/origin/${pr_base}" 2>/dev/null || true
-    return 0
-  fi
-
-  # The locally-derived default branch. The bare-name arm is the pre-existing
-  # shape and stays, because here the name came from the checkout to begin with.
-  git merge-base HEAD "origin/${pr_base}" 2>/dev/null \
-    || git merge-base HEAD "${pr_base}" 2>/dev/null \
-    || true
+# gate_empty_is_decisive: may an EMPTY base-to-HEAD range clear this gate on its
+# own? Four conjuncts, and the last three are why this is a named predicate
+# rather than a bare call to the shared trust check.
+#
+# The trust conjunct is the shared library's, never a local copy: an empty range
+# means "nothing left to audit" only when the base it was taken against is one
+# this checkout could not have invented.
+#
+# The other three bind the relaxation to the pull-request record. This gate
+# scopes its range to LOCAL HEAD and never reads the pull-request number in the
+# `gh pr merge` command it is gating. Without them a checkout sitting on a
+# synced default branch, where `merge-base HEAD refs/remotes/origin/<default>`
+# IS HEAD so the range holds zero files on remote provenance, would clear
+# `gh pr merge <N>` for an arbitrary, entirely unaudited pull request. Requiring
+# a `pr-record` anchor means the base was actually taken against the pull
+# request's own recorded base branch; requiring HEAD to equal the record's head
+# sha means this checkout is on the pull request being merged. On a synced
+# default branch there is no pull request for the current branch, the record is
+# empty, the anchor is `default-branch`, and this returns 1.
+gate_empty_is_decisive() {
+  audit_provenance_empty_is_decisive "$gate_trust" || return 1
+  [ "$gate_anchor" = "pr-record" ] || return 1
+  [ -n "$pr_record_head" ] || return 1
+  [ "$pr_record_head" = "$sha" ] || return 1
+  return 0
 }
 
 # Out-of-scope bypass: accept the merge when every file this PR changes lives
@@ -566,26 +618,44 @@ pr_merge_base() {
 # never reaches this function.
 #
 # Strict allowlist, evaluated fail-closed: the diff base must resolve, the diff
-# must be non-empty, and EVERY path must be out of scope. Any unresolved base,
-# diff error, or in-scope path (app/, test/, configs, .github/workflows/) falls
-# through to the normal deny. A PR that touches auditable source therefore can
-# never reach this bypass, it cannot mask an audit that withheld its marker
-# over unresolved findings, since that PR's diff carries in-scope paths by
-# definition. No dependence on a CI stamp; the one network read is the base
-# branch behind pr_merge_base() above, whose failure widens the diff.
+# must be non-empty OR its emptiness must be decisive under
+# gate_empty_is_decisive above, and EVERY path must be out of scope. Any
+# unresolved base, diff error, or in-scope path (app/, test/, configs,
+# .github/workflows/) falls through to the normal deny. A PR that touches
+# auditable source therefore can never reach this bypass, it cannot mask an
+# audit that withheld its marker over unresolved findings, since that PR's diff
+# carries in-scope paths by definition; and a decisive empty range says the
+# merge introduces no content into its base at all, so there is nothing for a
+# withheld marker to have been withheld over. No dependence on a CI stamp; the
+# one network read is the base branch behind gate_resolve_base() above, whose
+# failure widens the diff.
 check_out_of_scope_pr() {
   # The merge base scopes the diff to THIS PR's changes, not unrelated drift
   # already on the base branch.
-  base=$(pr_merge_base)
-  [ -n "$base" ] || return 1
+  gate_resolve_base
+  [ -n "$gate_base" ] || return 1
 
-  # -z, so git's default core.quotePath cannot C-quote a non-ASCII path into a
-  # form the classifier below reads as an unrecognized string. The `tr` has to
-  # live inside the substitution because `$(...)` discards NUL bytes, and the
-  # pipeline runs under its own `set -o pipefail` so a git failure still reaches
-  # the `|| return 1` exactly as it did before the pipe existed.
-  changed=$(set -o pipefail; git diff --name-only -z "${base}...HEAD" 2>/dev/null | tr '\0' '\n') || return 1
-  [ -n "$changed" ] || return 1
+  # Newline-delimited, derived NUL-delimited so git's default core.quotePath
+  # cannot C-quote a non-ASCII path into a form the classifier below reads as an
+  # unrecognized string. A non-zero return is a diff that never ran, which is
+  # never an empty change set, so it denies here rather than reaching the
+  # emptiness arm below.
+  changed="$(audit_provenance_changed_files "$tree_root" "$gate_base")" || return 1
+
+  if [ -z "$changed" ]; then
+    # A REAL empty change set. Whether it clears this gate is the record-bound
+    # question above, not this function's to answer: a locally-derived base, an
+    # unresolvable one, or a checkout that is not on the pull request being
+    # merged all deny here.
+    gate_empty_is_decisive || return 1
+    # The permit itself stays a silent zero exit with empty stdout, the shape
+    # every other permit in this hook has. The reason is a diagnostic line on
+    # stderr, not a permissionDecision emission: an explicit allow would
+    # short-circuit the permission system for every `gh pr merge` this gate
+    # sees, which is a far larger concession than the one being made here.
+    echo "PR merge gate: no Code Audit Team marker required for HEAD ${sha:0:12}: the base-to-HEAD range is empty and the base carries ${gate_trust} provenance (anchor ${gate_anchor}, base ${gate_base:0:12})." >&2
+    return 0
+  fi
 
   # First path the shared classifier does not allowlist makes the marker
   # mandatory.
@@ -618,19 +688,26 @@ check_out_of_scope_pr() {
 # workflow), an absent template, or a single non-matching byte returns 1 and
 # falls through to the normal deny. A malicious PR cannot smuggle code here, an
 # app/test/config path is in scope and unrecognized, so the loop returns 1 on
-# first sight. No CI stamp; the merge base comes from pr_merge_base() above,
+# first sight. No CI stamp; the merge base comes from gate_resolve_base() above,
 # on the same terms as the sibling bypass.
 check_self_mod_only_update_pr() {
   audit_wf=".github/workflows/code-review-audit.yml"
   audit_tmpl=".gaia/cli/templates/workflows/code-review-audit.yml.tmpl"
 
-  base=$(pr_merge_base)
-  [ -n "$base" ] || return 1
+  gate_resolve_base
+  [ -n "$gate_base" ] || return 1
 
-  # -z for the reason the sibling derivation above gives: a C-quoted path is an
-  # unrecognized string to the classifier, and the pipefail subshell keeps the
-  # `|| return 1` live across the pipe.
-  changed=$(set -o pipefail; git diff --name-only -z "${base}...HEAD" 2>/dev/null | tr '\0' '\n') || return 1
+  # Newline-delimited, derived NUL-delimited for the reason the sibling
+  # derivation above gives: a C-quoted path is an unrecognized string to the
+  # classifier. A non-zero return is a diff that never ran.
+  changed="$(audit_provenance_changed_files "$tree_root" "$gate_base")" || return 1
+  # Deliberately NOT relaxed, unlike the sibling bypass. That one is reached
+  # only once the dispatched member set is already empty, so treating a decisive
+  # empty range as clearance there stays contained. This one is reachable from
+  # the member-aware gate, where self_mod_only_pr() below clears EVERY
+  # dispatched member at once, and it would do so across mismatched anchors:
+  # the member set comes from a default-branch-anchored derivation while this
+  # range is record-anchored. An empty range must never fire this bypass.
   [ -n "$changed" ] || return 1
 
   # Classify every changed path via the shared ORDERED THREE-WAY classifier
@@ -840,6 +917,14 @@ if [ -z "$members" ]; then
     exit 0
   fi
 
+  # check_out_of_scope_pr above already populated the memo on every path that
+  # reaches here; call it again anyway so the signal list below can never report
+  # an empty provenance for a structural reason rather than a real one. The memo
+  # makes the second call free.
+  gate_resolve_base
+  base_display="unresolved"
+  [ -z "$gate_base" ] || base_display="${gate_base:0:12}"
+
   reason="PR merge gate: no code-audit-frontend signal for HEAD ${sha:0:12}.
 ${refusal_note}
 None of the accepted signals is present:
@@ -849,6 +934,10 @@ None of the accepted signals is present:
   - chore(deps) PR:  PR title does not match \`chore(deps):\` or \`chore(deps-dev):\`
   - Out-of-scope:    PR changes at least one in-scope path (app/, test/, configs,
                      .github/workflows/), not a wiki/docs/.gaia-config-only diff
+  - Diff base:       ${gate_trust:-unresolvable} provenance (anchor ${gate_anchor:-default-branch}, base ${base_display}); an empty
+                     base-to-HEAD range clears this gate only on remote or supplied
+                     provenance, with a pr-record anchor and HEAD at the pull
+                     request's recorded head sha
   - Self-mod-only:   in-scope change is not a verbatim re-render of the bundled
                      code-review-audit.yml template (adopter edit, extra in-scope
                      path, or missing template)
@@ -904,7 +993,7 @@ report=""
 # every member's answer to it is the same.
 #
 # Resolved on first need rather than up front, because the predicate reaches
-# pr_base_branch() and therefore the network, while a run whose every marker is
+# gate_resolve_base() and therefore the network, while a run whose every marker is
 # already on disk decides the whole gate from local files. Answering a question
 # that can only matter to an UNCLEARED member would put a `gh` round-trip, with
 # no timeout of its own, in front of a merge this gate would otherwise allow

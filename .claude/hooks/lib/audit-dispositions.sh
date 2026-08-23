@@ -66,10 +66,11 @@
 # rule is about any file the pull request touches, so a review-scope pathspec
 # has no place here.
 #
-# The derivation is the chain the default member's own definition carries, and
-# the two agree line for line: the base branch (below), FULL_BASE from
-# `merge-base` of HEAD against it, then a three-dot `diff --name-only -z`
-# against HEAD.
+# The ladder itself now lives in .claude/hooks/lib/audit-base-provenance.sh:
+# this function's copy became that shared definition rather than staying a
+# private one. What survives here is the two-source read of which branch
+# (below), passed to the shared resolver as an explicit argument, and the
+# final NUL-delimited diff against the resolved base.
 #
 # THE BASE BRANCH IS THE PULL REQUEST'S OWN, NOT THE REPOSITORY'S DEFAULT, and
 # that is the answer to a question the two consumers of a whole-PR base do not
@@ -90,6 +91,12 @@
 #      value comes from the event rather than from whoever invoked this. It is
 #      process environment and is NOT scoped to <acting-root>; under Actions it
 #      describes the checkout the job is building, which is the same tree.
+#      Read HERE, at this call site, and passed to the shared resolver as an
+#      explicit argument: the resolver itself reads no environment variable
+#      naming a base branch, because the merge gate refuses an
+#      environment-sourced base by name, and lifting this arm into the shared
+#      resolver as written would import that refusal's hole into the gate.
+#      That is a deliberate boundary, not an oversight.
 #   2. the pull request's own record (`gh pr view`), which is what the merge
 #      gate's bypasses read (.claude/hooks/pr-merge-audit-check.sh). `gh` takes
 #      its repository from the working directory and has no -C, so the subshell
@@ -109,8 +116,18 @@
 #
 # Both sides, the default member's fence (write) and this function (verify),
 # read those two sources in that order, so a run where both resolve the same
-# answer agrees by construction. They do NOT run at the same moment, and the
-# residual gap is a property of that, not of the sources:
+# answer agrees on every ordinary checkout. They do NOT run at the same
+# moment, and the residual gap below is a property of that, not of the
+# sources.
+#
+# The two sides can also disagree on the SAME head, and this is a second,
+# separate gap: the write side (the default member's own out-of-scope base
+# fence) still spells its remote-minting ref as the bare `origin/<name>`,
+# while the verify side (this function, through the shared resolver) now
+# takes the fully-qualified `refs/remotes/origin/<name>`. A checkout carrying
+# a local branch literally named `origin/<default>` therefore makes the two
+# sides resolve DIFFERENT bases here, a known, bounded residue rather than an
+# unconditional "by construction" agreement.
 #
 #   - verify wide, write narrow -> safe. The agent files what it could not
 #     waive, and a wider verify side never denies a filed finding.
@@ -143,13 +160,42 @@
 # limitation, named once: a path containing a literal newline is indistinguishable
 # from two paths once read, so it fails to match and the finding is filed, which
 # is the safe direction.
+
+# _disposition_base_provenance_ready
+#
+# Exit 0 iff `audit_resolve_base_provenance` is callable, sourcing
+# audit-base-provenance.sh lazily from this lib's OWN on-disk dir (via
+# BASH_SOURCE, never cwd) when a caller has not already sourced it, the same
+# shape _disposition_machinery_ready below uses for audit-machinery.sh. Lazy
+# rather than a top-of-file load: this file's header promises it does no work
+# at source time, and a caller that reaches disposition_offenders/
+# disposition_notes with no `jq` on PATH returns before this ever runs. FAIL
+# OPEN for _disposition_changed_set when it is unavailable: an absent or
+# unreadable sibling becomes its UNKNOWN return (1), never a crash. The merge
+# gate and .claude/hooks/audit-disposition-check.sh both source
+# audit-base-provenance.sh directly too, so it lands twice on some runs;
+# re-sourcing only redefines functions and needs no guard against that.
+_disposition_base_provenance_ready() {
+  local _adisp_dir
+
+  if ! command -v audit_resolve_base_provenance >/dev/null 2>&1; then
+    _adisp_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
+    if [ -n "$_adisp_dir" ] && [ -f "$_adisp_dir/audit-base-provenance.sh" ]; then
+      # shellcheck source=/dev/null
+      . "$_adisp_dir/audit-base-provenance.sh"
+    fi
+  fi
+  command -v audit_resolve_base_provenance >/dev/null 2>&1
+}
+
 _disposition_changed_set() {
   local root="$1" outfile="$2"
-  local default_branch pr_branch elig_ref primary_ref fallback_ref FULL_BASE
+  local pr_branch
 
   [ -n "$root" ] || return 1
   [ -n "$outfile" ] || return 1
   [ "$(git -C "$root" rev-parse --is-inside-work-tree 2>/dev/null)" = "true" ] || return 1
+  _disposition_base_provenance_ready || return 1
 
   pr_branch=""
   if [ "${GITHUB_ACTIONS:-}" = "true" ] && [ -n "${GITHUB_BASE_REF:-}" ]; then
@@ -159,19 +205,10 @@ _disposition_changed_set() {
     # its own, so the subshell is what scopes the lookup to the acting tree.
     pr_branch=$( (cd "$root" 2>/dev/null && gh pr view --json baseRefName --jq '.baseRefName') 2>/dev/null || true)
   fi
-  elig_ref=""
-  if [ -n "$pr_branch" ] \
-    && git -C "$root" rev-parse --verify --quiet "refs/remotes/origin/${pr_branch}" >/dev/null 2>&1; then
-    elig_ref="refs/remotes/origin/${pr_branch}"
-  fi
-  default_branch=$(git -C "$root" symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@')
-  [ -n "$default_branch" ] || default_branch="main"
-  # Both arms hold the verified ref when there is one, which is how the bare
-  # `<name>` arm stays reachable for the default branch alone.
-  primary_ref="${elig_ref:-origin/${default_branch}}"
-  fallback_ref="${elig_ref:-${default_branch}}"
-  FULL_BASE=$(git -C "$root" merge-base HEAD "$primary_ref" 2>/dev/null \
-    || git -C "$root" merge-base HEAD "$fallback_ref" 2>/dev/null || true)
+  local prov prov_trust prov_anchor FULL_BASE
+  prov="$(audit_resolve_base_provenance "$root" pr-record "" "$pr_branch")" || prov=""
+  # shellcheck disable=SC2034 # trust and anchor are part of the pinned three-field idiom; this consumer's answer never changes with either
+  IFS=$'\t' read -r prov_trust prov_anchor FULL_BASE <<< "$prov" || true
   [ -n "$FULL_BASE" ] || return 1
 
   git -C "$root" diff --name-only -z "${FULL_BASE}...HEAD" > "$outfile" 2>/dev/null || return 1

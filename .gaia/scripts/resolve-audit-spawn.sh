@@ -249,16 +249,22 @@ warn_if_behind_origin_main || true
 
 resolver="$repo_root/.gaia/scripts/resolve-audit-members.sh"
 
-# --- Load the shared ownership classifier + digest engine + clearance reader
+# --- Load the shared ownership classifier + base-provenance resolver +
+#     digest engine + clearance reader
 #
 # Resolved from this script's OWN on-disk location, never cwd, never
 # $repo_root. Absent or unreadable module: the ownerless probe below fails
-# closed to the default member (unaffected), and digest_marker_filter below
+# closed to the default member on an unavailable base resolver exactly as it
+# already does on an unavailable classifier, and digest_marker_filter below
 # degrades to a pass-through, same as its other unusable-query branches.
 _lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.claude/hooks/lib" 2>/dev/null && pwd)" || true
 if [ -n "$_lib_dir" ] && [ -f "$_lib_dir/audit-scope.sh" ]; then
   # shellcheck source=/dev/null
   . "$_lib_dir/audit-scope.sh"
+fi
+if [ -n "$_lib_dir" ] && [ -f "$_lib_dir/audit-base-provenance.sh" ]; then
+  # shellcheck source=/dev/null
+  . "$_lib_dir/audit-base-provenance.sh"
 fi
 # The digest-marker-presence filter's own dependencies: the digest engine
 # (audit_digests_all) and the clearance reader (clearance_member_cleared).
@@ -455,7 +461,7 @@ EOF
 # --- The ownerless probe ---------------------------------------------------
 
 ownerless_probe() {
-  local default_branch base changed path
+  local prov prov_trust prov_anchor prov_base changed path
 
   if ! command -v audit_out_of_scope_allowlisted >/dev/null 2>&1; then
     echo "resolve-audit-spawn: ownership classifier unavailable, failing closed to code-audit-frontend" >&2
@@ -463,16 +469,16 @@ ownerless_probe() {
     return 0
   fi
 
-  if [ -n "$BASE_OVERRIDE" ]; then
-    base="$BASE_OVERRIDE"
-  else
-    default_branch="$(git -C "$repo_root" symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@')" || true
-    [ -n "$default_branch" ] || default_branch="main"
-    base="$(git -C "$repo_root" merge-base HEAD "origin/${default_branch}" 2>/dev/null \
-      || git -C "$repo_root" merge-base HEAD "${default_branch}" 2>/dev/null \
-      || true)"
+  if ! command -v audit_resolve_base_provenance >/dev/null 2>&1; then
+    echo "resolve-audit-spawn: base-provenance resolver unavailable, failing closed to code-audit-frontend" >&2
+    echo "code-audit-frontend"
+    return 0
   fi
-  if [ -z "$base" ]; then
+
+  prov="$(audit_resolve_base_provenance "$repo_root" default-branch "$BASE_OVERRIDE")" || prov=""
+  # shellcheck disable=SC2034 # anchor is part of the pinned three-field idiom; this consumer's decision table never consults it
+  IFS=$'\t' read -r prov_trust prov_anchor prov_base <<< "$prov" || true
+  if [ -z "$prov_trust" ] || [ "$prov_trust" = "unresolvable" ]; then
     echo "code-audit-frontend"
     return 0
   fi
@@ -486,29 +492,38 @@ ownerless_probe() {
   # allowlisted out-of-scope path spawns a member it does not need, because the
   # allowlist never gets to recognize the path. The flag is what lets this
   # probe answer the question it is actually asking.
-  # An empty result here is TWO facts wearing one empty string: the base did not
-  # resolve, or it resolved and the range holds no files. Only the first is a
-  # reason to fail closed, so telling them apart looks like an obvious
-  # improvement. It is not one, and the reason is worth stating because the
-  # cheap version of the fix is actively worse than this line.
+  # The probe reads the base's provenance, not the diff's emptiness. An empty
+  # range dispatches nobody only when the diff command exited zero AND the
+  # trust token is `remote` or `supplied`; a `local` or `unresolvable` base
+  # still dispatches the default member. `local` is untrustworthy concretely: a
+  # local default branch that has already absorbed this branch's commits puts
+  # the merge base at HEAD, so the range is empty for a pull request that
+  # changes plenty.
   #
-  # This probe exists to PREDICT the merge gate, so an answer of "nobody" is a
-  # promise that `gh pr merge` will clear. The gate derives its base through the
-  # same origin-then-local fallback chain this function does, so on any given
-  # pull request the two see the same range; an empty one therefore reaches the
-  # gate's own empty-range arm, which denies. Splitting the states HERE alone
-  # would make the oracle answer "nobody" for a pull request the gate then holds
-  # shut, with no member named to earn the marker that would open it. Splitting
-  # them on BOTH sides instead clears a merge on an empty range, and that range
-  # is only trustworthy when the base came from the remote: on the local
-  # fallback a default branch that already carries this branch's commits yields
-  # an empty range for a pull request that changes plenty.
+  # This probe exists to PREDICT the merge gate, and the two do NOT always
+  # resolve the same range. The gate prefers the pull request's own recorded
+  # base branch through the hosting API; this probe deliberately does not,
+  # because it must stay offline-safe and runs before every dispatch wave. So a
+  # zero-commit branch whose pull request targets a non-default branch can have
+  # this probe answer "nobody" while the gate's own range is non-empty. The
+  # gate denies, so the probe's answer merges nothing. On exactly that path the
+  # gate's member set is empty by construction, so it falls through to its
+  # legacy single-signal branch, whose reason lists the clearance signals it
+  # did not find and names no member set at all; the operator has to work out
+  # who is owed from the base. This work adds no recovery mechanism for that
+  # shape and claims none exists.
   #
-  # So the honest fix is to make both sides key on the base's provenance, not to
-  # capture a status here. Until then this stays fail-closed and costs one spawn
-  # on a branch with no commits on it, which is the cheap half of that trade.
-  changed="$(git -C "$repo_root" diff --name-only -z "${base}...HEAD" 2>/dev/null | tr '\0' '\n' || true)"
+  # Neither this probe nor the gate owns a copy of the trust rule; both call
+  # audit_provenance_empty_is_decisive, which is what keeps them from reaching
+  # opposite verdicts on the same provenance.
+  if ! changed="$(audit_provenance_changed_files "$repo_root" "$prov_base")"; then
+    echo "code-audit-frontend"
+    return 0
+  fi
   if [ -z "$changed" ]; then
+    if audit_provenance_empty_is_decisive "$prov_trust"; then
+      return 0
+    fi
     echo "code-audit-frontend"
     return 0
   fi

@@ -570,3 +570,137 @@ YAML
   [ "$status" -eq 2 ]
   [ -z "$output" ]
 }
+
+# --- shared base-provenance resolver adoption (SPEC-074 Phase 2) ------------
+#
+# resolve_base() no longer runs its own merge-base chain; it calls the shared
+# audit_resolve_base_provenance with `default-branch` as an explicit literal
+# argument (AUDIT.md plan-time directive COV-003). The member set's answer
+# is unchanged on every arm below except the one SPEC `always` boundary
+# (SEC-001): the remote-minting arm now takes the fully-qualified
+# refs/remotes/origin/<name> ref rather than the bare origin/<name> revspec.
+
+# 26. Anchor regression: a record-shaped branch is present, even declared as
+#     the pull request's base in the environment, but the member resolver has
+#     no pr-record arm at all, so the dispatched set stays the one a
+#     default-branch-anchored derivation produces.
+
+@test "resolve_base passes an explicit default-branch anchor to the shared resolver (COV-003)" {
+  grep -qF 'audit_resolve_base_provenance "$repo_root" default-branch' "$SCRIPT" || {
+    echo "resolve-audit-members.sh no longer passes default-branch as an explicit literal" >&2
+    return 1
+  }
+
+  write_full_roster
+  git -C "$SANDBOX" checkout -q main
+  git -C "$SANDBOX" checkout -q -b release
+  stage .gaia/scripts/tests/release-only.sh
+  commit "release-only"
+  git -C "$SANDBOX" checkout -q -b feature2
+  stage app/feat.tsx
+  commit "feat"
+  git -C "$SANDBOX" update-ref refs/remotes/origin/main refs/heads/main
+  git -C "$SANDBOX" update-ref refs/remotes/origin/release refs/heads/release
+  git -C "$SANDBOX" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main
+
+  export GITHUB_ACTIONS=true
+  export GITHUB_BASE_REF=release
+  run run_resolver
+  [ "$status" -eq 0 ]
+  [ "$output" = "code-audit-frontend
+code-audit-maintainer-shell" ]
+}
+
+# 27. Remote-versus-local contrast: the two arms resolve to DIFFERENT commits,
+#     and the dispatched set is the one derived from refs/remotes/origin/main,
+#     not from a shadowing bare local branch literally named "origin/main"
+#     (SEC-001).
+
+@test "the remote arm takes the fully-qualified ref, not a shadowing local branch named origin/main (SEC-001)" {
+  write_full_roster
+  git -C "$SANDBOX" checkout -q main
+  git -C "$SANDBOX" checkout -q -b origin-sim
+  stage .gaia/scripts/tests/origin-only.sh
+  commit "origin-only"
+  git -C "$SANDBOX" checkout -q main
+  stage .gaia/scripts/tests/main-advance.sh
+  commit "advance"
+  git -C "$SANDBOX" checkout -q -b feature-shadow
+  stage app/feat.tsx
+  commit "feat"
+  git -C "$SANDBOX" update-ref refs/remotes/origin/main refs/heads/origin-sim
+  git -C "$SANDBOX" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main
+  # A local branch literally named origin/main, shadowing the remote-tracking
+  # ref through git's own refs/heads-before-refs/remotes disambiguation order.
+  git -C "$SANDBOX" branch origin/main main
+
+  run run_resolver
+  [ "$status" -eq 0 ]
+  [ "$output" = "code-audit-frontend
+code-audit-maintainer-shell" ]
+}
+
+# 28. Empty range: a remote-verified base with no commits ahead is still
+#     an empty, decisive answer.
+
+@test "a remote-verified base with no commits ahead resolves an empty member set" {
+  write_full_roster
+  git -C "$SANDBOX" checkout -q main
+  git -C "$SANDBOX" update-ref refs/remotes/origin/main refs/heads/main
+  git -C "$SANDBOX" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main
+  run run_resolver
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+# 29. Unresolvable base: neither a remote-tracking ref nor a local branch of
+#     the default name exists. Unchanged answer, now reached through the
+#     shared resolver.
+
+@test "an unresolvable base (no origin, no local default branch) resolves an empty member set" {
+  repo="$BATS_TEST_TMPDIR/unresolvable"
+  mkdir -p "$repo/.gaia" "$repo/app"
+  git -C "$repo" init -q --initial-branch=master
+  git -C "$repo" config user.email t@example.com
+  git -C "$repo" config user.name T
+  git -C "$repo" config commit.gpgsign false
+  cat > "$repo/.gaia/audit-ci.yml" <<'YAML'
+auditors:
+  - name: code-audit-frontend
+    globs:
+      - "app/**"
+    scope: adopter
+    push_fixes: true
+    default: true
+YAML
+  printf 'x\n' > "$repo/app/a.ts"
+  git -C "$repo" add -A
+  git -C "$repo" commit -q -m init
+  run bash -c '( cd "$1" && GIT_CEILING_DIRECTORIES="$1" "$2" 2>/dev/null )' _ "$repo" "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+# 30. --base naming an unresolvable revision: the override now verifies first
+#     through the shared resolver, but the observable answer is the same.
+
+@test "--base naming an unresolvable revision exits 0 with empty stdout" {
+  write_full_roster
+  stage app/a.tsx
+  commit "feat"
+  run run_resolver --base deadbeefdeadbeefdeadbeefdeadbeefdeadbeef
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+# 31. --base with a missing argument: the untouched arm. Adoption does not
+#     reach this flag-parsing path at all.
+
+@test "--base with a missing argument exits 0 with empty stdout (untouched arm)" {
+  write_full_roster
+  stage app/a.tsx
+  commit "feat"
+  run bash -c '( cd "$1" && "$2" --base 2>/dev/null )' _ "$SANDBOX" "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}

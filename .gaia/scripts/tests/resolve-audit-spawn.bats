@@ -55,10 +55,14 @@ setup() {
   # The copied resolver (and this copied oracle, when the sandbox's OWN
   # $SCRIPT-equivalent runs) resolves its libs relative to ITSELF
   # ($SANDBOX/.claude/hooks/lib/), not the real repo, so the sandbox needs its
-  # own copy of the shared ownership classifier + digest engine + clearance
-  # reader alongside it. Untracked, so none of it ever appears in the diff
-  # under test either.
+  # own copy of the shared ownership classifier + base-provenance resolver +
+  # digest engine + clearance reader alongside it. Untracked, so none of it
+  # ever appears in the diff under test either. The copied resolver's own
+  # guard exits 0 (empty, unstubbed) when audit-base-provenance.sh is
+  # missing, so omitting it here would silently break every test that relies
+  # on the resolver actually dispatching.
   cp "$LIB_DIR/audit-scope.sh" "$SANDBOX/.claude/hooks/lib/audit-scope.sh"
+  cp "$LIB_DIR/audit-base-provenance.sh" "$SANDBOX/.claude/hooks/lib/audit-base-provenance.sh"
   cp "$LIB_DIR/audit-machinery.sh" "$SANDBOX/.claude/hooks/lib/audit-machinery.sh"
   cp "$LIB_DIR/audit-clearance.sh" "$SANDBOX/.claude/hooks/lib/audit-clearance.sh"
   cp "$LIB_DIR/audit-digest.sh" "$SANDBOX/.claude/hooks/lib/audit-digest.sh"
@@ -216,6 +220,54 @@ pool_snapshot() {
   local dir="$SANDBOX/.gaia/local/audit"
   [ -d "$dir" ] || { printf '<no-pool>'; return 0; }
   ( cd "$dir" && find . -type f | LC_ALL=C sort | while IFS= read -r f; do printf '%s ' "$f"; shasum "$f" 2>/dev/null; done )
+}
+
+# --- Base-provenance fixtures (UAT-001/002/003/009/010/011, SEC-001) --------
+
+# A standalone repo (NOT $SANDBOX), whose branch is not "main", carries no
+# origin remote, and has no "main" branch, so neither the remote arm nor the
+# bare-name arm of the default-branch ladder can resolve. Mirrors
+# make_no_base_repo_pr in pr-merge-audit-check.bats, adapted: it needs its
+# own copy of the real oracle, resolver, and libs to run them against, since
+# it is a separate tree from $SANDBOX.
+make_no_base_repo() {
+  local dir="$BATS_TEST_TMPDIR/no-base-repo"
+  mkdir -p "$dir/app" "$dir/.gaia/scripts" "$dir/.claude/hooks/lib"
+  git -C "$dir" init --quiet --initial-branch=trunk
+  git -C "$dir" config user.email "test@example.com"
+  git -C "$dir" config user.name "Test"
+  git -C "$dir" config commit.gpgsign false
+  printf '1.6.1\n' > "$dir/.gaia/VERSION"
+  printf 'x\n' > "$dir/app/x.tsx"
+  git -C "$dir" add .gaia/VERSION app/x.tsx
+  git -C "$dir" commit --quiet -m "init"
+
+  if git -C "$dir" merge-base HEAD origin/main >/dev/null 2>&1; then
+    echo "make_no_base_repo: origin/main unexpectedly resolved" >&2
+    return 1
+  fi
+  if git -C "$dir" merge-base HEAD main >/dev/null 2>&1; then
+    echo "make_no_base_repo: main unexpectedly resolved" >&2
+    return 1
+  fi
+
+  cp "$SCRIPT" "$dir/.gaia/scripts/resolve-audit-spawn.sh"
+  chmod +x "$dir/.gaia/scripts/resolve-audit-spawn.sh"
+  cp "$RESOLVER_SRC" "$dir/.gaia/scripts/resolve-audit-members.sh"
+  chmod +x "$dir/.gaia/scripts/resolve-audit-members.sh"
+  cp "$LIB_DIR/audit-scope.sh" "$dir/.claude/hooks/lib/audit-scope.sh"
+  cp "$LIB_DIR/audit-base-provenance.sh" "$dir/.claude/hooks/lib/audit-base-provenance.sh"
+  cp "$LIB_DIR/audit-machinery.sh" "$dir/.claude/hooks/lib/audit-machinery.sh"
+  cp "$LIB_DIR/audit-clearance.sh" "$dir/.claude/hooks/lib/audit-clearance.sh"
+  cp "$LIB_DIR/audit-digest.sh" "$dir/.claude/hooks/lib/audit-digest.sh"
+
+  printf '%s' "$dir"
+}
+
+# Run the real oracle (copied by make_no_base_repo) from DIR.
+run_no_base_repo_oracle() {
+  local dir="$1"
+  ( cd "$dir" && ./.gaia/scripts/resolve-audit-spawn.sh 2>/dev/null )
 }
 
 # --- Re-spawn breadcrumb ledger fixtures ------------------------------------
@@ -456,6 +508,116 @@ code-audit-maintainer-shell"
   run run_oracle --base HEAD~1
   [ "$status" -eq 0 ]
   [ "$output" = "code-audit-frontend" ]
+}
+
+# --- Base provenance: the ownerless probe reads TRUST, not just emptiness --
+# (UAT-001, UAT-002, UAT-003, UAT-010, UAT-011, SEC-001). The dispatch
+# resolver runs UNSTUBBED in every test below, so a name other than "nobody"
+# from it would make the ownerless probe unreachable; each fixture is built
+# so the resolver itself sees the same empty-or-unresolvable range and falls
+# through.
+
+@test "UAT-001: remote trust with a genuinely empty range dispatches nobody" {
+  write_full_roster
+  git -C "$SANDBOX" update-ref refs/remotes/origin/main "$(git -C "$SANDBOX" rev-parse main)"
+  git -C "$SANDBOX" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main
+
+  members="$(resolve_members)"
+  [ -z "$members" ] || return 1
+
+  run run_oracle
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "UAT-002: no remote-tracking ref and no local branch of the default name fails closed to code-audit-frontend" {
+  local dir
+  dir="$(make_no_base_repo)"
+  [ -n "$dir" ] || return 1
+
+  run run_no_base_repo_oracle "$dir"
+  [ "$status" -eq 0 ]
+  [ "$output" = "code-audit-frontend" ]
+}
+
+@test "UAT-003: local trust with an empty range still fails closed, even though the branch changed files" {
+  write_full_roster
+  stage app/x.tsx
+  commit "feat"
+  # No origin remote at all, so only the bare-name arm can resolve. Forcing
+  # local main to feature's own tip makes merge-base(HEAD, main) = HEAD: a
+  # RESOLVED local base with a genuinely empty range, even though feature
+  # carries a real change relative to where it actually forked. This is the
+  # test that proves the naive exit-status fix would have been wrong.
+  git -C "$SANDBOX" branch -f main feature
+
+  run run_oracle
+  [ "$status" -eq 0 ]
+  [ "$output" = "code-audit-frontend" ]
+}
+
+@test "UAT-010: remote provenance but a failed diff command still fails closed, never an empty range" {
+  write_full_roster
+  git -C "$SANDBOX" update-ref refs/remotes/origin/main "$(git -C "$SANDBOX" rev-parse main)"
+  git -C "$SANDBOX" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main
+
+  # A PATH-shimmed `git` that fails exactly the changed-files diff and passes
+  # everything else (merge-base, symbolic-ref, rev-parse) through to the real
+  # binary, so the base still resolves with remote trust while the diff
+  # command itself fails.
+  local shim_dir real_git
+  shim_dir="$BATS_TEST_TMPDIR/uat010-git-shim"
+  mkdir -p "$shim_dir"
+  real_git="$(command -v git)"
+  cat > "$shim_dir/git" <<SHIM
+#!/bin/bash
+case "\$*" in
+  *"diff --name-only -z"*) exit 1 ;;
+esac
+exec "$real_git" "\$@"
+SHIM
+  chmod +x "$shim_dir/git"
+
+  run bash -c 'cd "$1" && PATH="$2:$PATH" "$3" 2>/dev/null' _ "$SANDBOX" "$shim_dir" "$SCRIPT"
+  [ "$status" -eq 0 ]
+  [ "$output" = "code-audit-frontend" ]
+}
+
+@test "UAT-011: a --base override that empties the range answers nobody and mints no clearance artifact" {
+  write_full_roster
+  stage app/x.tsx
+  commit "feat"
+  mkdir -p "$SANDBOX/.gaia/local/audit"
+  printf 'decoy\n' > "$SANDBOX/.gaia/local/audit/decoy"
+  before="$(pool_snapshot)"
+
+  run run_oracle --base HEAD
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+
+  after="$(pool_snapshot)"
+  [ "$before" = "$after" ]
+}
+
+@test "SEC-001 regression: a shadowing local branch named origin/main does not decide the base; the fully-qualified remote ref does" {
+  write_full_roster
+  # A local branch literally named "origin/main", pointing at the ORIGINAL
+  # main commit (an ancestor of feature, not feature's own tip) -- the shape
+  # a bare origin/<name> revspec would resolve to ahead of
+  # refs/remotes/origin/main, per git's own disambiguation order
+  # (refs/heads/ before refs/remotes/).
+  git -C "$SANDBOX" branch "origin/main" main
+
+  stage app/real.tsx
+  commit "feat"
+
+  # The TRUE remote-tracking ref, fully-qualified, pointing at feature's own
+  # current commit: the range against it is genuinely empty.
+  git -C "$SANDBOX" update-ref refs/remotes/origin/main "$(git -C "$SANDBOX" rev-parse feature)"
+
+  run run_oracle
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
 }
 
 # 11. --help exits 0 with usage
