@@ -348,7 +348,7 @@ Some other finding entirely.'
 
 # ========== 6. the drain's own labels change the displayed count ==========
 
-@test "6. in-progress and debt:spec-pending leave the count while a plain issue stays in" {
+@test "6. the claim label and both park labels leave the count while a plain issue stays in" {
   local jq_filter fixture result
   # The filter is declared once, as COUNT_FILTER, and both the local-jq arm and
   # the `gh --jq` fallback arm read that one variable. Scraping the declaration
@@ -366,12 +366,19 @@ Some other finding entirely.'
     {"number":2,"labels":[{"name":"tech-debt"},{"name":"severity:important"}]},
     {"number":3,"labels":[{"name":"tech-debt"},{"name":"in-progress"}]},
     {"number":4,"labels":[{"name":"tech-debt"},{"name":"debt:spec-pending"}]},
-    {"number":5,"labels":[{"name":"tech-debt"},{"name":"debt:spec-pending"},{"name":"in-progress"}]}
+    {"number":5,"labels":[{"name":"tech-debt"},{"name":"debt:spec-active"}]},
+    {"number":6,"labels":[{"name":"tech-debt"},{"name":"debt:spec-pending"},{"name":"in-progress"}]},
+    {"number":7,"labels":[{"name":"tech-debt"},{"name":"debt:spec-active"},{"name":"in-progress"}]},
+    {"number":8,"labels":[{"name":"tech-debt"},{"name":"debt:spec-pending"},{"name":"debt:spec-active"}]}
   ]'
   result="$(jq "$jq_filter" <<<"$fixture")"
-  # #1 bare tech-debt -> counted; #2 an unrelated label -> counted;
-  # #3 in-progress -> not counted; #4 debt:spec-pending -> not counted;
-  # #5 both park labels at once -> not counted. Expected: 2.
+  # in-progress is the shared claim label, not a park label; the two park
+  # labels are debt:spec-pending and debt:spec-active. #1 bare tech-debt ->
+  # counted; #2 an unrelated label -> counted; #3 the claim alone -> not
+  # counted; #4 and #5 one park label each -> not counted; #6 and #7 each carry
+  # a park label plus the claim -> not counted; #8 carries both park labels at
+  # once, the combination the two-state split newly makes reachable -> not
+  # counted. Expected: 2.
   [ "$result" = "2" ] || {
     printf 'displayed count was %s, want 2\n' "$result" >&2
     return 1

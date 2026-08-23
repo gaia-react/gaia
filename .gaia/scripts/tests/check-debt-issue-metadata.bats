@@ -363,6 +363,20 @@ refute_code() {
   assert_code "drain-label-on-new-filing"
 }
 
+# The park labels are rejected on the same terms as the claim. Both spellings
+# are checked, because the guard names each one literally: a third name added
+# to the design but not to the regex fails open, and this is the only place
+# that distinction is visible.
+@test "either park label on a filing is rejected" {
+  run bash "$CHECK" --pre-file --labels "$GOOD_LABELS,debt:spec-pending" --body-file "$BODY"
+  [ "$status" -eq 1 ]
+  assert_code "drain-label-on-new-filing"
+
+  run bash "$CHECK" --pre-file --labels "$GOOD_LABELS,debt:spec-active" --body-file "$BODY"
+  [ "$status" -eq 1 ]
+  assert_code "drain-label-on-new-filing"
+}
+
 # ---------------------------------------------------------------------------
 # Reporting and error handling
 # ---------------------------------------------------------------------------
