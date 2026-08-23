@@ -612,9 +612,9 @@ printf '%s\n' \"\$debt_origin_changed\"")"
   #
   # DO NOT DELETE THE START/END TALLY AS REDUNDANT WITH THE SCRUB. It is the
   # only thing that catches a deleted `:end` marker in this file. SKILL.md
-  # carries two maintainer-only blocks, so deleting the first block's `:end`
-  # does not leave a wrap open at end of file: the second block's `:end` closes
-  # the first block's `:start`, the second block's `:start` is swallowed inside
+  # carries several maintainer-only blocks, so deleting a non-final block's
+  # `:end` does not leave a wrap open at end of file: the next block's `:end`
+  # closes the opened `:start`, the next block's `:start` is swallowed inside
   # it, and stripMarkerBlocks reports unbalanced=[] having silently stripped
   # everything between them, which takes `## Brake self-check` and
   # `## Contract-preserve note` out of the adopter copy. The scrub only fails a

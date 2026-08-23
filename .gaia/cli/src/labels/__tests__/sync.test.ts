@@ -54,7 +54,7 @@ const entryFor = (name: string): LiveLabel => {
  * `deprecated` is retirement vocabulary rather than a marker for one label:
  * an entry earns it whenever a name has to be withdrawn without deleting it
  * out from under the issues still carrying it. Nothing wears it today, so the
- * two cases below are what keep the prune path honest until something does.
+ * three cases below are what keep the prune path honest until something does.
  */
 const DEPRECATED_ENTRY: LabelEntry = {
   audience: 'maintainer',
@@ -311,9 +311,17 @@ describe('labels/sync planSync deletes', () => {
   test('the live registry plans no prune at all', () => {
     // The prune path is vocabulary, not a standing action: an entry has to be
     // marked deprecated before anything plans a delete, and none is.
+    //
+    // `live` carries every registry entry deliberately. Only an entry the repo
+    // already has reaches `plannedForPresent`, the sole producer of a prune, so
+    // planning against the default empty `live` would assert that no prune is
+    // planned where no prune is reachable, and stay green against a registry
+    // that had just been marked deprecated.
+    const live = registry.labels.map(liveFor);
+
     for (const audience of AUDIENCES) {
       for (const flags of FLAG_COMBINATIONS) {
-        expect(kinds(plan({audience, flags}), 'prune')).toEqual([]);
+        expect(kinds(plan({audience, flags, live}), 'prune')).toEqual([]);
       }
     }
   });

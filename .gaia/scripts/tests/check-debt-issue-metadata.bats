@@ -499,7 +499,6 @@ stub_gh_failing() {
   assert_code "malformed-dedup-key"
 }
 
-
 # --- the marker-stripped (adopter) shape of this script ---------------------
 #
 # The `surface:` namespace is maintainer-only: its rubric's tie-breaker ("a

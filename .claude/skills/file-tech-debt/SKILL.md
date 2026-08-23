@@ -341,7 +341,7 @@ An issue with no parseable `Handler:` line emits nothing at all, because `captur
 
 The sweep adds a label and never edits a body. A legacy `Handler:` line is inert once the label exists, and rewriting two dozen bodies to remove it would spend a lossy edit per issue to delete text no reader consults. New filings carry no such line (step 5), so the residue does not grow.
 
-Like the cohort marker above, this is GAIA's own migration and nobody else's. The `Handler:` body-line convention only ever existed in this repository, so the sweep's `capture` can match nothing in any other clone; the section stays because the backfill may still be re-run against this backlog.
+This is GAIA's own migration and nobody else's. The `Handler:` body-line convention only ever existed in this repository, so the sweep's `capture` can match nothing in any other clone; the section stays because the backfill may still be re-run against this backlog.
 
 <!-- gaia:maintainer-only:end -->
 
