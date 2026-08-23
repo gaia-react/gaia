@@ -704,9 +704,14 @@ gate_cmd_names_the_record_pr() {
 # invocation needs, so no expansion of any spelling can run a second command.
 # Anything else denies rather than being read approximately.
 #
-# The number conjunct is scoped to this arm alone. The chore(deps) and
-# self-modification bypasses above read the same current-branch record and are
-# blind in the same way; closing that is tracked separately, out of scope here.
+# Every conjunct here is scoped to this arm alone, and three siblings are blind
+# in the same way. The chore(deps) and self-modification bypasses above read the
+# same current-branch record while the command names a pull request they never
+# parse. So does the OTHER arm of this function's own caller: once every changed
+# path is out of audit scope, check_out_of_scope_pr permits whatever command
+# shape it was handed, with no call to any of this. That third one is the
+# easiest to miss precisely because it sits in the function a reader is already
+# inside. All three are pre-existing and tracked separately, out of scope here.
 gate_empty_is_decisive() {
   audit_provenance_empty_is_decisive "$gate_trust" || return 1
   [ "$gate_anchor" = "pr-record" ] || return 1
