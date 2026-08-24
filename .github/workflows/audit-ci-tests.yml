@@ -968,7 +968,16 @@ jobs:
           # hook-capabilities-live-tree's identical filter step for why an
           # unquoted diff over a non-ASCII path breaks the pattern below.
           changed=$(set -o pipefail; git diff --name-only -z "$BASE_SHA" HEAD | tr '\0' '\n')
-          pattern='^\.claude/hooks/|^\.claude/settings\.json$|^\.gaia/scripts/check-verb-arming-adoption\.sh$|^\.github/workflows/audit-ci-tests\.yml$'
+          # `\.sh$` rather than a list of directories, because the checker's
+          # own scan is the whole tracked tree: its private-pattern and
+          # grep-idiom assertions take `-- '*.sh'`, so a shell file ANYWHERE
+          # can plant what they look for, and 67 tracked `.sh` files sit
+          # outside the directory list this job would otherwise carry. A
+          # narrower filter runs the job with the checker step skipped and
+          # reports success over content it never scanned. Honest limit: the
+          # singleton assertion scans `-- .`, every tracked file, so a
+          # definition planted in a non-`.sh` file arms nothing here.
+          pattern='^\.claude/hooks/|^\.claude/settings\.json$|\.sh$|^\.github/workflows/audit-ci-tests\.yml$'
           if printf '%s\n' "$changed" | grep -qE "$pattern"; then
             echo "code=true" >> "$GITHUB_OUTPUT"
           else

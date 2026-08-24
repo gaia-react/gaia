@@ -29,7 +29,12 @@
 #      backtick anywhere;
 #   4. the delimiter is a single unambiguous word, `<<` or `<<-`, quoted or
 #      unquoted;
-#   5. the delimiter line actually appears later in the text.
+#   5. the delimiter line actually appears later in the text;
+#   6. the heredoc belongs to that first command: no `&`, `;` or `(` stands
+#      between the command word and the heredoc operator. Conditions 1 and 2
+#      each read the line as a whole, so without this one a line whose first
+#      command is `cat > f` lends its proof to a second command's heredoc after
+#      a separator, and the shell runs what that second command is handed.
 #
 # The body runs from the newline ENDING the opener line, not from the heredoc
 # operator, so anything still on the opener line after the operator is ordinary
@@ -230,12 +235,26 @@ _gaia_va_find_delim() {
   done
 }
 
-# _gaia_va_opener_is_data <opener-line>: 0 when the line meets every condition
-# in the whitelist this file's header states, 1 otherwise. Conditions 4 and 5
-# are decided where the delimiter is parsed and where its line is located; this
-# decides 1, 2 and 3.
+# _gaia_va_opener_is_data <opener-line> <pre-operator-text>: 0 when the line
+# meets every condition in the whitelist this file's header states, 1
+# otherwise. Conditions 4 and 5 are decided where the delimiter is parsed and
+# where its line is located; this decides 1, 2, 3 and 6.
 _gaia_va_opener_is_data() {
-  local line="$1"
+  local line="$1" pre="$2"
+  # Condition 6. Conditions 1 and 2 each read the line as a whole, the command
+  # word at its start and a redirect anywhere on it, so a line whose FIRST
+  # command is `cat > f` and whose heredoc belongs to a SECOND command after a
+  # separator satisfies both while the shell hands that body to the second
+  # command and runs it. `cat > f.txt && bash <<EOF` with a merge in the body
+  # is the shape that costs: masking it there disarms every gate on a merge the
+  # shell executes, which is the one direction this walk may never fail in.
+  # Only the text ahead of the operator separates the two readings, and a
+  # separator after the operator is not the same question: the heredoc there
+  # already belongs to the first command. `|` needs no arm of its own, since
+  # condition 3 rejects it anywhere on the line.
+  case "$pre" in
+    *'&'*|*';'*|*'('*) return 1 ;;
+  esac
   # Condition 3, read as "no `$` at all" rather than as a list of expansion
   # openers. Narrower than the whitelist's letter, and narrower is the safe
   # direction: `$@`, `$?` and `$$` expand too, and enumerating them invites the
@@ -271,7 +290,7 @@ gaia_verb_arm_view() {
 
   local nl=$'\n'
   local s out cur q ch pre np chunk blanks ok wstart work line_start
-  local hd_n strip dl dbad data first p body dline bi
+  local hd_n strip dl dbad data first p body dline bi hd_pre
   local hd_delim hd_strip
   hd_delim=()
   hd_strip=()
@@ -285,6 +304,7 @@ gaia_verb_arm_view() {
   work=0
   line_start=0
   hd_n=0
+  hd_pre=""
 
   while [ -n "$s" ]; do
     # Charge this step what it is about to cost, and abandon suppression on
@@ -440,6 +460,12 @@ gaia_verb_arm_view() {
               ''|' '*|"$_GAIA_VA_TAB"*|"$nl"*|';'*|'&'*|'|'*|'<'*|'>'*|')'*) ;;
               *) ok=0; break ;;
             esac
+            # Condition 6's evidence, captured here because this is the only
+            # point that knows where the operator sits: `out` still holds the
+            # line up to it and nothing of it is masked yet. Only the first
+            # operator on a line is recorded, which is the only one condition 6
+            # is ever asked about.
+            if [ "$hd_n" -eq 0 ]; then hd_pre="${out:$line_start}"; fi
             out+="$chunk"
             hd_delim[hd_n]="$dl"
             hd_strip[hd_n]="$strip"
@@ -461,9 +487,6 @@ gaia_verb_arm_view() {
           wstart=1
           continue
         fi
-        # A span still open where a body would start means the line the shell
-        # sees is not the line read here.
-        if [ -n "$q" ]; then ok=0; break; fi
         # The opener line is read back out of the view rather than accumulated
         # alongside it: the accumulation costs an append per jump on every line
         # in the text, and only a line that turns out to carry an opener is ever
@@ -474,7 +497,7 @@ gaia_verb_arm_view() {
         # where each body goes stops being readable from one opener, so none of
         # them is proven; their bodies are still skipped, just not masked.
         data=0
-        if [ "$hd_n" -eq 1 ] && _gaia_va_opener_is_data "$cur"; then data=1; fi
+        if [ "$hd_n" -eq 1 ] && _gaia_va_opener_is_data "$cur" "$hd_pre"; then data=1; fi
         s="${s:1}"
         first=1
         bi=0

@@ -2177,6 +2177,19 @@ run_merge_hook_lib_absent() {
   assert_denied_by_json
 }
 
+@test "data-proof: a heredoc owned by a second command on the opener line still arms" {
+  install_gh_stub
+  commit_files "app/x.ts" "export const x = 1"
+
+  # The line opens with `cat` and redirects to a file, so it satisfies the
+  # whitelist read line-wide, while the heredoc belongs to `bash` after the
+  # separator and the shell runs the merge in the body. Proving it at the gate
+  # rather than only in the library: this is the hook whose deny is the
+  # enforcement, so a masking defect here is a merge nobody audited.
+  run_merge_hook $'cat > /tmp/f.txt && bash <<EOF\ngh pr merge 30 --squash\nEOF\n'
+  assert_denied_by_json
+}
+
 @test "data-proof: a heredoc opened by ssh still arms" {
   install_gh_stub
   commit_files "app/x.ts" "export const x = 1"

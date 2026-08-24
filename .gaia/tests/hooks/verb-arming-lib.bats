@@ -176,6 +176,36 @@ parity() {
   assert_armed
 }
 
+@test "a heredoc belonging to a second command on the opener line keeps the match" {
+  # Condition 6. The command word at the line's start and the redirect on it
+  # both belong to `cat`, while the heredoc belongs to the command after the
+  # separator, and that is the one the shell hands the body to. Reading the
+  # line as a whole cannot tell the two apart, so without the pre-operator
+  # scan each of these masks a merge the shell really runs.
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "cat > /tmp/f && bash <<EOF$NL$V${NL}EOF"
+  assert_armed || return 1
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "cat > /tmp/f ; bash <<EOF$NL$V${NL}EOF"
+  assert_armed || return 1
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "cat > /tmp/f & bash <<EOF$NL$V${NL}EOF"
+  assert_armed || return 1
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "tee /tmp/f || sh <<EOF$NL$V${NL}EOF"
+  assert_armed || return 1
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "cat > /tmp/f && ssh host <<EOF$NL$V${NL}EOF"
+  assert_armed
+}
+
+@test "a word between the redirect and the operator is an operand, so the body stays data" {
+  # The other side of condition 6, and the reason it scans for separators
+  # rather than for a second word: here `bash` is an operand of `cat`, the
+  # heredoc is still cat's, and the shell writes the body to the file. A rule
+  # that rejected any word before the operator would arm this and undo the
+  # suppression the whitelist exists to grant.
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "cat > /tmp/f bash <<EOF$NL$V${NL}EOF"
+  assert_not_armed || return 1
+  assert_sup 1 || return 1
+  assert_len_ok
+}
+
 @test "an expansion or a backtick anywhere on the opener line keeps the match" {
   arm "$MERGE_FRAG" "$MERGE_WORDS" "cat > \"\$(mktemp)\" <<EOF$NL$V${NL}EOF"
   assert_armed || return 1
