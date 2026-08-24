@@ -1016,7 +1016,7 @@ jobs:
       # `case` enumerating the failure states it knows about, so a conclusion
       # GitHub adds later fails closed instead of reading as an unrecognized,
       # unhandled success.
-      - name: Require every shard and every live-tree job to have succeeded
+      - name: Require every dependency in needs to have concluded success
         env:
           SHARDS_RESULT: ${{ needs.shards.result }}
           HOOK_CAPABILITIES_RESULT: ${{ needs.hook-capabilities-live-tree.result }}
