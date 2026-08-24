@@ -18,16 +18,20 @@
 # the ceilings are what keep the quadratic form from coming back unnoticed.
 #
 # MEASURED (Apple Silicon macOS; bash 3.2.57 stock /bin/bash and bash 5.3.15
-# Homebrew; a quoted --body of the stated size, library call, no hook process):
+# Homebrew; library call, no hook process, at the stated size):
 #
-#   size    before        after
-#   16KB    ~893-904ms    ~9-11ms
-#   32KB    ~3060-3103ms  ~27-30ms
+#   shape                     size    before            after
+#   quoted --body             16KB    ~893-904ms        ~9-11ms
+#   quoted --body             32KB    ~3060-3103ms      ~27-30ms
+#   unquoted long word        64KB    ~11202-11491ms    ~943-1087ms
 #
-# Every ceiling below states its own headroom (over the measured after-figure)
-# and its margin (below the measured before-figure, the failure mode it is
-# actually guarding against), so a slow shared runner cannot red a ceiling and
-# only losing the bulk accumulation can.
+# The two shapes are measured separately because they are held by different
+# halves of the change, and a ceiling over one says nothing about the other:
+# remove the per-block flush and every quoted ceiling still passes while the
+# unquoted shape returns to quadratic. Each ceiling below states its own
+# headroom (over the measured after-figure) and its margin (below the measured
+# before-figure, the failure mode it actually guards against), so a slow shared
+# runner cannot red a ceiling and only losing the bulk accumulation can.
 #
 # Maintainer-only: `.gaia/tests` is wholesale release-excluded via
 # `.gaia/release-exclude`, so this never reaches an adopter.
@@ -117,6 +121,16 @@ build_quoted_body() {
   printf '%s "%s"' "$MERGE_PREFIX" "$body"
 }
 
+# A bare, unquoted word of exactly TOTAL characters, with a following word so
+# the scan closes it the ordinary way. This is the shape the per-block chunk
+# flush is the only thing bounding: no quoted span means no bulk run to skip,
+# so the flush alone is what keeps the word's accumulation out of quadratic.
+build_unquoted_word() {
+  local total="$1" word
+  word=$(head -c "$total" < /dev/zero | tr '\0' 'z')
+  printf '%s %s end' "$MERGE_PREFIX" "$word"
+}
+
 # Times one gaia_scan_first_command call with no hook process around it, and
 # sets REPLY_MS to the elapsed wall time in milliseconds. Uses bash's own
 # `time` reserved word plus TIMEFORMAT, a builtin with millisecond-plus
@@ -126,14 +140,26 @@ time_scan_ms() {
   local text="$1" textfile t
   textfile=$(mktemp)
   printf '%s' "$text" > "$textfile"
-  t=$(bash -c '
+  # LC_ALL=C on both halves, and it is load-bearing rather than tidiness.
+  # bash renders TIMEFORMAT's %R with the LOCALE's radix character, so under
+  # e.g. LC_NUMERIC=de_DE a 3-second scan prints `3,028`; a C-locale awk then
+  # converts that -v assignment as `3`, REPLY_MS collapses toward zero, and
+  # every ceiling below passes for any scan cost whatsoever. That is the one
+  # failure this file must not have: a cost budget that greens precisely when
+  # the cost it guards has returned. Pinning the child pins the radix bash
+  # writes; pinning the awk pins the radix it reads.
+  t=$(LC_ALL=C bash -c '
     TIMEFORMAT="%R"
     . "$1"
     IFS= read -r -d "" _text < "$2" || :
     { time gaia_scan_first_command "$_text" >/dev/null; } 2>&1
   ' _ "$LIB" "$textfile")
   rm -f "$textfile"
-  REPLY_MS=$(awk -v s="$t" 'BEGIN{printf "%d", (s*1000)+0.5}')
+  REPLY_MS=$(LC_ALL=C awk -v s="$t" 'BEGIN{printf "%d", (s*1000)+0.5}')
+  # Fail closed on an unparseable timing. No scan this file measures is
+  # sub-millisecond, so a zero here means the parse lost the number, not that
+  # the scan was fast, and a silent zero would pass every ceiling.
+  [ "$REPLY_MS" -gt 0 ] || return 1
 }
 
 # ---------------------------------------------------------------------------
@@ -152,6 +178,26 @@ CEILING_SCAN_16K_MS=250
 # 3060/400 ~= 7.7x. Doubling the size must not quadruple the time, which is
 # what this second ceiling, set at well under 2x the first, actually pins.
 CEILING_SCAN_32K_MS=400
+
+# One scan of a 64KB UNQUOTED word. Measured ~943-1087ms after, ~11202-11491ms
+# before. Headroom: 5000/1087 ~= 4.6x. Margin below the quadratic figure:
+# 11202/5000 ~= 2.2x.
+#
+# This ceiling exists because the two above cannot see half the fix. They feed
+# a quoted body, where the bulk run consumes the whole span and the per-block
+# chunk flush is very nearly free: delete the flush and both of them still
+# pass, while an unquoted long word goes straight back to quadratic. Pinning
+# only the shape that the more visible half of the change happens to cover is
+# how a guard ends up asserting less than its header claims.
+#
+# Its headroom is deliberately looser and its size deliberately larger than
+# the two above, because the separation it works with is narrower: skipping a
+# quoted run is a ~100x win, while flushing per block is ~10x, so the honest
+# ceiling sits further from both figures. 64KB rather than 32KB is what buys
+# that: the linear-versus-quadratic gap widens with size (10.3x here against
+# 5.8x at 32KB), which is what leaves better than 2x in BOTH directions even
+# on a runner several times slower than the one these figures came from.
+CEILING_SCAN_UNQUOTED_64K_MS=5000
 
 # ---------------------------------------------------------------------------
 # Contract: quoted spans
@@ -268,4 +314,12 @@ CEILING_SCAN_32K_MS=400
   time_scan_ms "$p"
   echo "scan 32KB: ${REPLY_MS}ms (ceiling ${CEILING_SCAN_32K_MS}ms)" >&2
   [ "$REPLY_MS" -le "$CEILING_SCAN_32K_MS" ]
+}
+
+@test "cost: an unquoted 64KB word stays inside the ceiling the flush alone holds" {
+  local p
+  p=$(build_unquoted_word 65536)
+  time_scan_ms "$p"
+  echo "scan 64KB unquoted: ${REPLY_MS}ms (ceiling ${CEILING_SCAN_UNQUOTED_64K_MS}ms)" >&2
+  [ "$REPLY_MS" -le "$CEILING_SCAN_UNQUOTED_64K_MS" ]
 }
