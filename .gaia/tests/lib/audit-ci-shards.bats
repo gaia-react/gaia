@@ -100,6 +100,17 @@ setup() {
   require_repo_path -f "$BATS_SHARDS" "bats-shards.sh" || return 1
 }
 
+teardown() {
+  local p
+  if [ -f "$BATS_TEST_TMPDIR/scratch-copies" ]; then
+    while IFS= read -r p || [ -n "$p" ]; do
+      if [ -n "$p" ]; then
+        rm -f "$p"
+      fi
+    done <"$BATS_TEST_TMPDIR/scratch-copies"
+  fi
+}
+
 # read_wf <mode> <workflow-file> [arg]
 #
 # Reads the file's top-level `jobs:` mapping, structurally rather than by
@@ -991,6 +1002,30 @@ sandbox_suites_present() {
 # step installs is PyYAML, and a great many suites here shell out to python3
 # for structural JSON reads that need no YAML at all. Matching it would put
 # nearly every leg back on the list and undo the narrowing entirely.
+#
+# What is compared against the workflow is the needing legs ROUNDED UP TO
+# WHOLE EXCHANGE GROUPS, not the needing legs themselves. The raw per-leg set
+# is a function of the sharder's weighted assignment, so it moves whenever any
+# suite in a weighted group changes size, with no semantic relationship to the
+# packages: exactly one suite in the whole hooks directory reaches for either
+# dependency, and its leg moved three times on one branch because an unrelated
+# suite beside it grew (#1554). Every one of those moves reds this check and
+# buys a workflow edit that changes nothing about what the suites need.
+#
+# A group is the set of legs a file can move between without anyone editing
+# the sharder, which `bats-shards.sh group` reports and its own S14 proves is a
+# partition. Rounding the set up to whole groups is therefore stable under
+# every reshuffle and moves only when a suite's dependency really changes,
+# which is the event worth an edit. It costs one apt on the legs of a needing
+# group that hold no needing suite themselves -- the same over-inclusive
+# direction this scan already prefers, for the same reason: an over-match costs
+# seconds, an under-match silently retires a suite's assertions.
+#
+# The comparison stays exact EQUALITY rather than relaxing to "declared is a
+# superset of needed". Relaxing would also absorb the churn, and it would give
+# up the other half of the check with it: a gratuitously listed leg, or the
+# whole list widened back to every shard, would then read as clean. Rounding up
+# keeps both halves, because the closure is a derived set with one right value.
 
 # shard_package_needs <bats-shards.sh> <repo-root>
 #
@@ -1094,8 +1129,47 @@ EOF
   printf '%s' "$found" | LC_ALL=C sort -u
 }
 
-@test "W10: the apt step's shard list equals the legs that need zsh or a YAML parser" {
-  local declared needed
+# shard_package_legs <bats-shards.sh> <repo-root>
+#
+# shard_package_needs' answer rounded up to whole exchange groups: every leg of
+# every group holding at least one needing suite, one per line, LC_ALL=C
+# sorted. This is the set the apt step's `if:` list is checked against; the
+# W10 header above carries why the rounding is there.
+#
+# The groups come from the sharder rather than from a list written down here,
+# for the reason the workflow's own list stopped being written down: a second
+# copy of the group definitions would be one edit from disagreeing with the
+# assignment it is supposed to describe, and W10 would then be comparing this
+# suite's idea of the groups against the workflow's rather than against the
+# sharder's. Takes both paths as arguments for the same reason its input does,
+# so the fixtures below drive it against a tree of their own.
+#
+# Like the helper it wraps, this deliberately does not pipe its loop: a
+# `return 1` inside a pipeline's subshell would be swallowed and a sharder that
+# refused to resolve a group would truncate the closure and still report
+# success.
+shard_package_legs() {
+  local sharder="$1" root="$2" needed id group rc legs=''
+  needed="$(shard_package_needs "$sharder" "$root")" || return 1
+  [ -n "$needed" ] || return 0
+  while IFS= read -r id || [ -n "$id" ]; do
+    [ -n "$id" ] || continue
+    rc=0
+    group="$(bash "$sharder" group "$id")" || rc=$?
+    if [ "$rc" -ne 0 ]; then
+      echo "shard_package_legs: the sharder could not resolve $id's group (exit $rc)" >&2
+      return 1
+    fi
+    legs="$legs$group
+"
+  done <<EOF
+$needed
+EOF
+  printf '%s' "$legs" | LC_ALL=C sort -u
+}
+
+@test "W10: the apt step's shard list equals the exchange groups that need zsh or a YAML parser" {
+  local declared legs
   # read_wf's reader imports yaml unconditionally, so without this gate a box
   # without PyYAML reports a workflow defect for a missing local dependency,
   # while every sibling check here skips. Fails rather than skips on CI, which
@@ -1105,18 +1179,18 @@ EOF
     echo "could not read the apt step's shard list" >&2
     return 1
   }
-  needed="$(shard_package_needs "$BATS_SHARDS" "$REPO_ROOT")" || return 1
+  legs="$(shard_package_legs "$BATS_SHARDS" "$REPO_ROOT")" || return 1
 
-  [ -n "$needed" ] || {
+  [ -n "$legs" ] || {
     echo "no shard resolved a zsh or YAML-parser dependency; W10 would assert nothing" >&2
     return 1
   }
-  [ "$declared" = "$needed" ] || {
+  [ "$declared" = "$legs" ] || {
     echo "the apt step's shard list and the suites disagree." >&2
     echo "workflow names:" >&2
     printf '%s\n' "$declared" >&2
-    echo "suites need:" >&2
-    printf '%s\n' "$needed" >&2
+    echo "suites need, rounded up to whole exchange groups:" >&2
+    printf '%s\n' "$legs" >&2
     echo "Repair: copy the 'suites need' set into the step's fromJSON list." >&2
     return 1
   }
@@ -1137,7 +1211,7 @@ EOF
     echo "the doctored workflow did not parse" >&2
     return 1
   }
-  needed="$(shard_package_needs "$BATS_SHARDS" "$REPO_ROOT")" || return 1
+  needed="$(shard_package_legs "$BATS_SHARDS" "$REPO_ROOT")" || return 1
   [ "$declared" = "$needed" ] && {
     echo "dropping the last shard id from the apt step was not caught" >&2
     return 1
@@ -1156,8 +1230,8 @@ EOF
 # shard_package_needs propagates, so a directory holding fewer suites than its
 # group has buckets would fail every fixture here for a reason none of them is
 # about. Deriving the count from the sharder keeps that true as groups resize.
-# local-janitor.bats is written because hooks-1 pins it by name; its body is
-# plain, so hooks-1 never joins the reported set.
+# Why local-janitor.bats is seeded, and into both trees, is stated at its own
+# write site below rather than restated here.
 seed_seam_tree() {
   local root="$1" n i
   mkdir -p "$root/needs" "$root/clean"
@@ -1168,17 +1242,293 @@ seed_seam_tree() {
     printf '#!/usr/bin/env bats\n' >"$root/clean/plain-$i.bats"
     i=$((i + 1))
   done
+  # local-janitor.bats goes in BOTH trees because hooks-1 pins it by name and
+  # the sharder exits 2 for a shard it cannot resolve: whichever tree HOOKS_DIR
+  # is pointed at has to carry it, and the scripts-seam fixtures below point it
+  # at the clean one. Its body is plain in both, so hooks-1 never joins the
+  # reported set either way.
   printf '#!/usr/bin/env bats\n' >"$root/needs/local-janitor.bats"
+  printf '#!/usr/bin/env bats\n' >"$root/clean/local-janitor.bats"
 }
 
-# Runs shard_package_needs over a tree seeded by seed_seam_tree, with every
-# seam pointed at it.
-seam_tree_needs() {
-  local root="$1"
-  HOOKS_DIR="$root/needs" SCRIPTS_TESTS_DIR="$root/clean" \
+# seam_tree_scan <helper> <root> [group] [sharder]
+#
+# Points ONE seam at the seeded tree's needing directory and every other seam at
+# its clean one, then runs <helper> (shard_package_needs or shard_package_legs)
+# over the result. <group> selects which weighted group holds the needing
+# suite: `hooks` (the default) or `scripts`.
+#
+# The group is a parameter rather than a second copy of this function because
+# the two weighted groups are the two arms of group_for_shard, and a fixture set
+# that only ever drives one of them cannot see a narrowing edit to the other.
+# That is not hypothetical: before these fixtures covered both arms, the
+# scripts arm could be reduced to a singleton with every test in this
+# repository still green.
+seam_tree_scan() {
+  local fn="$1" root="$2" group="${3:-hooks}" sharder="${4:-$BATS_SHARDS}"
+  local hooks_dir="$root/clean" scripts_dir="$root/clean"
+  case "$group" in
+    hooks) hooks_dir="$root/needs" ;;
+    scripts) scripts_dir="$root/needs" ;;
+    *)
+      echo "seam_tree_scan: unknown group $group" >&2
+      return 2
+      ;;
+  esac
+  HOOKS_DIR="$hooks_dir" SCRIPTS_TESTS_DIR="$scripts_dir" \
     AUDIT_TESTS_DIR="$root/clean" LIB_DIR="$root/clean" \
     FORENSICS_DIR="$root/clean" STATUSLINE_DIR="$root/clean" \
-    shard_package_needs "$BATS_SHARDS" "$root"
+    "$fn" "$sharder" "$root"
+}
+
+# Runs shard_package_needs over a tree seeded by seed_seam_tree, with the hooks
+# seam holding the needing suite.
+seam_tree_needs() {
+  seam_tree_scan shard_package_needs "$1" hooks
+}
+
+# Runs shard_package_legs over the same seeded tree, hooks seam holding the
+# needing suite. Takes the sharder as an optional $2 so the propagation fixture
+# below can drive the same code against a doctored copy.
+seam_tree_legs() {
+  seam_tree_scan shard_package_legs "$1" hooks "${2:-$BATS_SHARDS}"
+}
+
+# A copy of the sharder with its `group` dispatch arm deleted: `shards` and
+# `files` still answer, so only the closure step fails. Written beside this
+# suite rather than under $BATS_TEST_TMPDIR because the sharder derives its own
+# REPO_ROOT with `git -C "$(dirname BASH_SOURCE)" rev-parse --show-toplevel`,
+# which fails outright from outside a working tree. teardown reaps it.
+#
+# The `.bats-shards-scratch.` prefix is deliberate and shared with
+# .gaia/tests/lib/bats-shards.bats' own doctored copies: .gitignore carries
+# exactly that one pattern, so a run killed before teardown leaves an IGNORED
+# stray rather than an untracked file that a later `git add -A` can sweep into
+# a commit. A prefix of this fixture's own would need a second .gitignore entry
+# to say the same thing.
+copy_sharder_without_group() {
+  local dest
+  dest="$(mktemp "$(dirname "$BATS_SHARDS")/.bats-shards-scratch.XXXXXX")"
+  # Recorded in a FILE, not an array: this runs inside a command substitution,
+  # where an array append would be made in the subshell and lost. teardown is
+  # the ONLY reaper, on the passing and the failing path alike, and this record
+  # is the whole mechanism it reaps by: a caller that creates a copy without
+  # registering it here leaks one.
+  printf '%s\n' "$dest" >>"$BATS_TEST_TMPDIR/scratch-copies"
+  # Renames the dispatch label rather than deleting the arm: deleting three
+  # lines out of a case arm leaves a stray `;;` and a copy that fails to parse
+  # at all, which is a different failure from the one under test. Renamed, the
+  # command falls through to the script's own unknown-command arm.
+  sed 's/^    group)$/    group-disabled)/' "$BATS_SHARDS" >"$dest"
+  printf '%s\n' "$dest"
+}
+
+# The defect W10's rounding exists for, reproduced end to end: one suite that
+# needs a package, one unrelated suite beside it that grows, and a per-leg
+# answer that moves for a reason that has nothing to do with packages. Growing
+# a file is the whole mechanism -- the sharder splits a group by BYTE SIZE, so
+# a comment added to an unrelated suite is enough.
+#
+# The loop is bounded and its failure to move is a test failure, not a skip: a
+# fixture that never triggered the reshuffle would assert only that two equal
+# things stayed equal, which is the shape this whole file's discipline rejects.
+@test "W10: a within-group reshuffle moves the needing leg but not the declared legs" {
+  local root="$BATS_TEST_TMPDIR/reshuffle" needs_before needs_after legs_before legs_after
+  local i=0 moved=''
+  seed_seam_tree "$root"
+  printf '#!/usr/bin/env bats\ncommand -v zsh\n' >"$root/needs/uses-zsh.bats"
+
+  needs_before="$(seam_tree_needs "$root")" || return 1
+  legs_before="$(seam_tree_legs "$root")" || return 1
+
+  # Rounding up has to actually widen here, or the stability below would be
+  # trivially true: exactly one leg needs the package, and its group has more
+  # legs than that.
+  [ "$(printf '%s\n' "$needs_before" | grep -c .)" -eq 1 ] || {
+    echo "the fixture did not produce a single needing leg:" >&2
+    printf '%s\n' "$needs_before" >&2
+    return 1
+  }
+  [ "$(printf '%s\n' "$legs_before" | grep -c .)" -gt 1 ] || {
+    echo "rounding up to whole groups did not widen the set:" >&2
+    printf '%s\n' "$legs_before" >&2
+    return 1
+  }
+  grep -qx -- "$needs_before" <<<"$legs_before" || {
+    echo "the needing leg is not inside the rounded-up set:" >&2
+    printf '%s\n' "$legs_before" >&2
+    return 1
+  }
+
+  # Grow an unrelated suite beside it until the weighted assignment hands the
+  # zsh-naming file to a different leg. Padding in chunks rather than one big
+  # write so the walk is crossed rather than jumped over.
+  while [ "$i" -lt 24 ]; do
+    printf '# pad %s\n' "$i" >>"$root/needs/plain-0.bats"
+    i=$((i + 1))
+    needs_after="$(seam_tree_needs "$root")" || return 1
+    if [ "$needs_after" != "$needs_before" ]; then
+      moved=yes
+      break
+    fi
+  done
+  [ -n "$moved" ] || {
+    echo "growing an unrelated suite never moved the needing leg off $needs_before," >&2
+    echo "so this fixture proved nothing about stability" >&2
+    return 1
+  }
+
+  legs_after="$(seam_tree_legs "$root")" || return 1
+  [ "$legs_after" = "$legs_before" ] || {
+    echo "the needing leg moved from $needs_before to $needs_after and the declared" >&2
+    echo "legs moved with it, which is the churn the rounding exists to stop:" >&2
+    printf 'before: %s\n' "$(printf '%s' "$legs_before" | tr '\n' ' ')" >&2
+    printf 'after:  %s\n' "$(printf '%s' "$legs_after" | tr '\n' ' ')" >&2
+    return 1
+  }
+}
+
+# Rounding up must not reach past the group that needs a package. Without this,
+# a closure that simply returned every shard id would satisfy the stability
+# check above perfectly and put an apt install on every leg in the matrix.
+@test "W10 adversarial: rounding up stops at the needing leg's own group" {
+  local root="$BATS_TEST_TMPDIR/closure-bound" legs
+  seed_seam_tree "$root"
+  printf '#!/usr/bin/env bats\ncommand -v zsh\n' >"$root/needs/uses-zsh.bats"
+
+  legs="$(seam_tree_legs "$root")" || return 1
+
+  # Every seam but HOOKS_DIR points at the clean tree, so no other group holds
+  # a needing suite and none of their legs may appear.
+  grep -qE '^(audit|lib|misc|scripts-[0-9]+)$' <<<"$legs" && {
+    echo "rounding up reached a group with no needing suite:" >&2
+    printf '%s\n' "$legs" >&2
+    return 1
+  }
+  # hooks-1 pins its file by name, so it cannot exchange with the weighted
+  # hooks legs and is a group of one: the plain pinned file needs nothing and
+  # rounding up must not widen to it.
+  grep -qx 'hooks-1' <<<"$legs" && {
+    echo "rounding up widened to hooks-1, which exchanges files with nothing:" >&2
+    printf '%s\n' "$legs" >&2
+    return 1
+  }
+  grep -qE '^hooks-[0-9]+$' <<<"$legs" || {
+    echo "the needing suite's own hooks group was not reported:" >&2
+    printf '%s\n' "$legs" >&2
+    return 1
+  }
+  true
+}
+
+@test "W10 adversarial: a group the sharder cannot resolve fails the closure rather than narrowing it" {
+  local root="$BATS_TEST_TMPDIR/bad-group" broken status_ok status_err
+  seed_seam_tree "$root"
+  printf '#!/usr/bin/env bats\ncommand -v zsh\n' >"$root/needs/uses-zsh.bats"
+
+  broken="$(copy_sharder_without_group)"
+
+  # Prove the doctored copy is doctored in the one way this test is about, and
+  # in no other: `files` still answers, `group` no longer does.
+  run bash "$broken" files hooks-2
+  [ "$status" -eq 0 ]
+  run bash "$broken" group hooks-2
+  [ "$status" -ne 0 ]
+
+  # Healthy arm on the real sharder first, so a helper that always failed could
+  # not pass this.
+  run seam_tree_legs "$root"
+  status_ok="$status"
+
+  run seam_tree_legs "$root" "$broken"
+  status_err="$status"
+
+  [ "$status_ok" -eq 0 ] || {
+    echo "the readable fixture tree did not close cleanly (exit $status_ok)" >&2
+    return 1
+  }
+  [ "$status_err" -ne 0 ] || {
+    echo "a sharder that could not resolve a group reported a clean closure" >&2
+    return 1
+  }
+}
+
+# The same two claims as the hooks fixtures above, driven through the OTHER
+# weighted group. Without this, group_for_shard's scripts arm could be narrowed
+# to a singleton and every test in this repository stayed green: S14 proves the
+# declared groups partition the shard set, which a set of singletons also
+# satisfies, so the partition alone cannot see a narrowing. The empirical half,
+# that a declared group really is a superset of what a reshuffle can move
+# across, is what has to be driven per arm.
+@test "W10: rounding up survives a reshuffle in the scripts group too, not only hooks" {
+  local root="$BATS_TEST_TMPDIR/scripts-seam" needs_before needs_after legs_before legs_after
+  local i=0 moved=''
+  seed_seam_tree "$root"
+  printf '#!/usr/bin/env bats\ncommand -v zsh\n' >"$root/needs/uses-zsh.bats"
+
+  needs_before="$(seam_tree_scan shard_package_needs "$root" scripts)" || return 1
+  legs_before="$(seam_tree_scan shard_package_legs "$root" scripts)" || return 1
+
+  [ "$(printf '%s\n' "$needs_before" | grep -c .)" -eq 1 ] || {
+    echo "the fixture did not produce a single needing leg:" >&2
+    printf '%s\n' "$needs_before" >&2
+    return 1
+  }
+  grep -qE '^scripts-[0-9]+$' <<<"$needs_before" || {
+    echo "the needing suite did not land on a scripts leg:" >&2
+    printf '%s\n' "$needs_before" >&2
+    return 1
+  }
+  # Rounding up has to widen, and widen only within the scripts group.
+  [ "$(printf '%s\n' "$legs_before" | grep -c .)" -gt 1 ] || {
+    echo "rounding up did not widen the scripts set:" >&2
+    printf '%s\n' "$legs_before" >&2
+    return 1
+  }
+  grep -qE '^(audit|lib|misc|hooks-[0-9]+)$' <<<"$legs_before" && {
+    echo "rounding up reached outside the scripts group:" >&2
+    printf '%s\n' "$legs_before" >&2
+    return 1
+  }
+
+  while [ "$i" -lt 24 ]; do
+    printf '# pad %s\n' "$i" >>"$root/needs/plain-0.bats"
+    i=$((i + 1))
+    needs_after="$(seam_tree_scan shard_package_needs "$root" scripts)" || return 1
+    if [ "$needs_after" != "$needs_before" ]; then
+      moved=yes
+      break
+    fi
+  done
+  [ -n "$moved" ] || {
+    echo "growing an unrelated suite never moved the needing scripts leg off" >&2
+    echo "$needs_before, so this fixture proved nothing about stability" >&2
+    return 1
+  }
+
+  legs_after="$(seam_tree_scan shard_package_legs "$root" scripts)" || return 1
+  [ "$legs_after" = "$legs_before" ] || {
+    echo "the needing leg moved from $needs_before to $needs_after and the declared" >&2
+    echo "legs moved with it, so the scripts group is not rounded up:" >&2
+    printf 'before: %s\n' "$(printf '%s' "$legs_before" | tr '\n' ' ')" >&2
+    printf 'after:  %s\n' "$(printf '%s' "$legs_after" | tr '\n' ' ')" >&2
+    return 1
+  }
+}
+
+@test "W10 adversarial: seam_tree_scan refuses a group it does not know" {
+  local root="$BATS_TEST_TMPDIR/bad-seam"
+  seed_seam_tree "$root"
+  # The healthy arms first, so a runner that always failed could not pass this,
+  # and so a typo'd group name cannot read as "this group needs nothing".
+  run seam_tree_scan shard_package_needs "$root" hooks
+  [ "$status" -eq 0 ]
+  run seam_tree_scan shard_package_needs "$root" scripts
+  [ "$status" -eq 0 ]
+
+  run seam_tree_scan shard_package_needs "$root" nope
+  [ "$status" -eq 2 ]
+  grep -qF -- 'nope' <<<"$output"
 }
 
 # The apt list is only meaningful as a MEMBERSHIP list, and a negated gate

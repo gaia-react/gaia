@@ -669,20 +669,40 @@ jobs:
       # narrowly-gated apt steps would pay `apt-get update` twice on every leg
       # needing both, which is most of this list.
       #
-      # The list is not hand-picked. It is exactly the set of shards holding a
-      # suite that reaches for either dependency, by the four patterns W10
-      # names; every other leg runs no apt at all. The suites behind it are
-      # deliberately NOT enumerated here. Which leg holds which suite is
-      # decided by the sharder's weighted assignment, so any list written down
-      # is one reshuffle from being wrong while reading as authoritative, and
-      # W10 recomputes the set from the suites either way. To see the current
-      # membership, run `shard_package_needs` out of
-      # .gaia/tests/lib/audit-ci-shards.bats.
+      # The list is not hand-picked. It is the set of shards holding a suite
+      # that reaches for either dependency, by the four patterns W10 names,
+      # rounded up to whole EXCHANGE GROUPS: if any leg of a weighted group
+      # needs a package, every leg of that group is listed. Every shard outside
+      # such a group runs no apt at all. The suites behind it are deliberately
+      # NOT enumerated here; to see the current membership, run
+      # `shard_package_legs` out of .gaia/tests/lib/audit-ci-shards.bats.
+      #
+      # Rounding up is what stops this list churning. Which leg of a group
+      # holds which suite is decided by the sharder's weighted assignment, by
+      # FILE SIZE, so the un-rounded set moves whenever any suite in the group
+      # changes size, for a reason with no relationship to the packages: it
+      # moved three times on one branch because an unrelated suite beside the
+      # one needing suite grew. A group is the set of legs a file can move
+      # between without anyone editing the sharder, so the rounded set moves
+      # only when a suite's dependency really changes, which is the event worth
+      # an edit here.
+      #
+      # The cost is one apt on the legs of a needing group that hold no needing
+      # suite themselves, and it has two halves. Runtime: an over-match costs
+      # seconds, an under-match silently retires a suite's assertions, and that
+      # trade is the one this whole scan already prefers. Blast radius: every
+      # listed leg joins the concurrent `apt-get update` burst, where a mirror
+      # hash-sum mismatch on any one of them reds `Audit CI Tests`, a
+      # declared-required context. This rounding took the list from five legs
+      # to seven. `wiki/decisions/Sharded CI Test Matrix.md` prices that second
+      # half and is the place to weigh any further widening; it is not
+      # seconds-cheap the way the first half is.
       #
       # Do not edit this list by hand to make W10 pass: W10 failing means a
-      # suite moved legs, and the repair is to copy the set W10 names, which it
-      # derives from the suites rather than from here.
-      - if: contains(fromJSON('["hooks-4", "lib", "scripts-1", "scripts-2", "scripts-3"]'), matrix.shard) && (steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch')
+      # suite's dependency changed or a group's membership did, and the repair
+      # is to copy the set W10 names, which it derives from the suites and the
+      # sharder's own groups rather than from here.
+      - if: contains(fromJSON('["hooks-2", "hooks-3", "hooks-4", "lib", "scripts-1", "scripts-2", "scripts-3"]'), matrix.shard) && (steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch')
         name: Install the YAML parser and zsh
         # Sized for fast failure and honest attribution, NOT to the leg. When
         # this cap fires is the budget paragraph's subject, not this one's,

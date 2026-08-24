@@ -357,6 +357,100 @@ within_load_bound() {
 #
 # Stated as a bound rather than a spread so it never flakes: it holds for every
 # input, including one file heavier than the whole rest of its group.
+# S14. `group <id>` answers a question `files <id>` cannot: which shard ids a
+# file can move BETWEEN without anyone editing the sharder. A caller that must
+# stay correct across reshuffles rounds its shard set up to whole groups, which
+# is what .github/workflows/audit-ci-tests.yml's apt step does with the legs
+# W10 derives; rounding up is only sound while the groups really do partition
+# the shard set. Checked as a partition rather than against a transcript of
+# today's groups, so a fifth hooks bucket or a second pinned file is covered by
+# construction rather than by a fixture that would have to be re-typed.
+@test "S14: group reports an exchange group, and the groups partition the shard set" {
+  local ids id member g mg union sorted_ids
+  ids="$(bash "$SCRIPT" shards)"
+  [ -n "$ids" ]
+
+  union=''
+  for id in $ids; do
+    run bash "$SCRIPT" group "$id"
+    [ "$status" -eq 0 ]
+    [ -n "$output" ]
+    # A shard is always in its own group. Without this, a group that named
+    # only a shard's siblings would satisfy every other assertion here.
+    grep -qx -- "$id" <<<"$output" || {
+      echo "group $id does not name $id itself:" >&2
+      printf '%s\n' "$output" >&2
+      return 1
+    }
+    union="$union$output
+"
+  done
+
+  # The union over every shard's group is exactly the shard set: no group names
+  # an id `shards` never prints, and no shard is left out of every group.
+  sorted_ids="$(printf '%s\n' "$ids" | LC_ALL=C sort -u)"
+  [ "$(printf '%s' "$union" | LC_ALL=C sort -u)" = "$sorted_ids" ] || {
+    echo "the groups' union is not the shard set:" >&2
+    printf '%s' "$union" | LC_ALL=C sort -u >&2
+    return 1
+  }
+
+  # Groups are equal or disjoint, checked as "every member of a group reports
+  # that same group". A partial overlap would make a rounded-up set correct for
+  # one member of it and wrong for its neighbour, which is the one way rounding
+  # up could still churn.
+  for id in $ids; do
+    g="$(bash "$SCRIPT" group "$id")"
+    for member in $g; do
+      mg="$(bash "$SCRIPT" group "$member")"
+      [ "$mg" = "$g" ] || {
+        echo "$member is in $id's group but reports a different group of its own" >&2
+        return 1
+      }
+    done
+  done
+}
+
+@test "S15: group's usage and unknown-id errors match files'" {
+  run bash "$SCRIPT" group nope
+  [ "$status" -eq 2 ]
+  grep -qF -- 'nope' <<<"$output"
+
+  run bash "$SCRIPT" group
+  [ "$status" -eq 2 ]
+  grep -qiF -- 'usage' <<<"$output"
+}
+
+# A5 fixture: deletes group_for_shard's whole-directory arm on the copy, so a
+# known shard resolves to an empty group. Proves cmd_group's fail-closed guard
+# is the thing standing between that and a caller silently narrowing its set,
+# rather than the guard merely existing in the source.
+doctor_groupless_shard() {
+  local dest line
+  dest="$(copy_sharder a5-groupless.sh)"
+  line="$(grep -nF 'audit | lib | misc) printf' "$dest" | head -1 | cut -d: -f1)"
+  [ -n "$line" ] || return 1
+  awk -v d="$line" 'NR != d { print }' "$dest" >"$dest.new"
+  mv "$dest.new" "$dest"
+  printf '%s\n' "$dest"
+}
+
+@test "A5: a known shard with no group case fails closed rather than reporting an empty group" {
+  local copy
+  copy="$(doctor_groupless_shard)"
+
+  # The healthy arm first, on the same doctored copy: a shard whose arm was
+  # left alone still answers, so this cannot pass on a copy that simply broke.
+  run bash "$copy" group hooks-2
+  [ "$status" -eq 0 ]
+  [ -n "$output" ]
+
+  run bash "$copy" group lib
+  [ "$status" -eq 2 ]
+  [ -n "$output" ]
+  grep -qF -- 'lib' <<<"$output"
+}
+
 @test "S9: each weighted group's shards respect the greedy load bound" {
   local total largest pinned
   # The held-out set is asked for rather than spelled out. Written as a literal

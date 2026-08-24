@@ -41,14 +41,30 @@
 # entry per suite saying nothing. The one bats member is named directly instead.
 #
 # Runtime, measured on the tree at the time of writing: the eighteen scripts
-# total ~29s, of which check-script-capabilities.sh alone is ~15s (it walks the
-# invocation closure of every allowlisted script), shell-lint ~10s, and the
-# shard suite ~19s; the whole set measures ~64-68s end to end. That is why there is
-# one tier rather than a fast default plus a named
-# slower tier. A split is worth its second name only once the honest set is
-# slow enough that people skip it, and an aggregate slow enough to skip is
-# worse than none; a minute against the price of an audit round is not that.
-# Re-measure before adding a member that changes the order of magnitude.
+# total ~45s, of which shell-lint.sh is ~17s and
+# check-script-capabilities.sh ~15s (it walks the invocation closure of every
+# allowlisted script), and the shard suite ~35s; the whole set measures
+# ~78-82s end to end. Every figure here is a tilde against host load, and the
+# spread between two honest samples on different hosts is a couple of seconds
+# a member, so treat a small disagreement as noise and re-measure rather than
+# reconciling it. Time each member the way this script invokes it, the
+# WTI_SCRIPTS members with `bash <path> >/dev/null </dev/null` and the
+# WTI_BATS member with `bats <path>`, and time the aggregate by running this
+# script. Running `bash` at the bats member is not merely wrong-and-loud: its
+# `local` declarations fail outside a function, so the body's paths expand
+# unrooted and it attempts a write at `/` before dying on a syntax error.
+# That is why there is one tier rather than a fast default plus a
+# named slower tier. A split is worth its second name only once the honest
+# set is slow enough that people skip it, and an aggregate slow enough to
+# skip is worse than none; a minute and a half against the price of an audit
+# round is not that.
+# Re-measure the WHOLE paragraph, not the figure being edited. Only the member
+# COUNT below is machine-checked, so every number here decays independently:
+# the shard suite's own figure nearly doubled as its W10 fixtures grew across
+# two rounds of one change, and the scripts half sat ~19s low for long enough
+# that the stated parts could no longer reach the stated whole. A component
+# figure nobody re-measured is the one that misdirects, because it reads as
+# current beside the ones that were.
 #
 # The staleness lever: nothing above used to notice a member added without
 # this figure catching up, which is exactly what happened here (this comment
@@ -58,10 +74,11 @@
 # to be re-visited rather than drifting unnoticed again.
 #
 # What the lever does not catch, stated so it is not mistaken for more than it
-# is: only WTI_SCRIPTS_COUNT_ASOF is machine-checked. The word "sixteen" in the
+# is: only WTI_SCRIPTS_COUNT_ASOF is machine-checked. The word "eighteen" in the
 # paragraph above is prose and nothing compares it to anything, so the same
-# drift can recur one bump later; and a member swapped for another holds the
-# count, so the runtime figures can go stale with the lever satisfied.
+# drift can recur one bump later; and a member swapped for another, or simply
+# grown, holds the count, so the runtime figures can go stale with the lever
+# satisfied.
 #
 # No member is ever skipped. A missing member path, and a bats member with no
 # `bats` on PATH, both count as failures rather than passing quietly, because a
@@ -70,7 +87,10 @@
 #
 # Members are invoked from the current directory, so run it from the repository
 # root. That is also what lets the sibling bats suite exercise the aggregation
-# against a fixture tree of stubs instead of paying the real ~62-66s.
+# against a fixture tree of stubs instead of paying the real cost, the
+# end-to-end figure stated once in the runtime paragraph above rather than
+# restated here: two copies of one measurement is two things to keep current,
+# and the stale one reads as authoritative.
 
 set -uo pipefail
 
