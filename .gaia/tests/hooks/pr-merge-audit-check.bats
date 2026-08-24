@@ -2185,6 +2185,63 @@ rge 30 --squash'
   assert_denied_by_json
 }
 
+@test "clearance: the legacy permit site binds when the dispatched set is empty" {
+  install_gh_stub
+  # Every other case here commits an owned path, so the dispatched set is
+  # non-empty and they all exit through the AND-aggregator. The legacy
+  # single-signal gate is reached only on an EMPTY dispatched set, and it is a
+  # second permit site with its own call: without this case, deleting that call
+  # left the whole suite green.
+  commit_files "wiki/x.md" "# x"
+  [ -z "$(spawn_set)" ]
+  write_marker "code-audit-frontend"
+
+  run_merge_hook "gh pr merge 999 --squash"
+  assert_denied_by_json
+  grep -qF -- "does not name the pull request" <<<"$output"
+}
+
+@test "clearance: the legacy permit site still clears the record's own number" {
+  install_gh_stub
+  commit_files "wiki/x.md" "# x"
+  [ -z "$(spawn_set)" ]
+  write_marker "code-audit-frontend"
+
+  run_merge_hook "gh pr merge 30 --squash"
+  assert_allowed_by_json
+}
+
+@test "clearance: the deny reads the record rather than reporting it unread" {
+  install_gh_stub
+  commit_files "app/x.ts" "export const x = 1"
+  write_markers_for_spawn_set "$(spawn_set)"
+
+  # A quoted flag value is outside the byte allowlist, so the predicate abstains
+  # ABOVE its own record read. The reason must still name the pull request this
+  # checkout is on, or it sends the operator after gh auth for a record that is
+  # perfectly healthy.
+  run_merge_hook 'gh pr merge 30 --squash --subject "chore: x"'
+  assert_denied_by_json
+  grep -qF -- "This checkout is on: 30" <<<"$output"
+  grep -qF -- "no pull-request record" <<<"$output" && return 1
+  return 0
+}
+
+@test "clearance: the deny says a clearance does not lift it, rather than sending the operator back to the audit" {
+  install_gh_stub
+  commit_files "app/x.ts" "export const x = 1"
+  write_markers_for_spawn_set "$(spawn_set)"
+
+  run_merge_hook "gh pr merge 999 --squash"
+  assert_denied_by_json
+  # "keeps the marker mandatory" is true where the binding is a relaxation
+  # conjunct on a bypass; here the marker is already present and re-earning it
+  # changes nothing, so that wording would loop the operator forever.
+  grep -qF -- "UNCONDITIONAL" <<<"$output"
+  grep -qF -- "keep the marker mandatory" <<<"$output" && return 1
+  return 0
+}
+
 @test "clearance: the deny names the binding rather than reporting the signal missing" {
   install_gh_stub
   commit_files "app/x.ts" "export const x = 1"

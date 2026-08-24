@@ -316,10 +316,19 @@ EOF
 
 # write_merge_payload -> a fresh PreToolUse JSON payload file for a
 # `gh pr merge` Bash call, the shape pr-merge-audit-check.sh reads on stdin.
+#
+# NO positional pull-request reference, deliberately. Every permit the gate
+# issues is bound to the pull request the command names, and this suite's stub
+# makes `gh pr view` FAIL on purpose, so a merge naming a number would deny for
+# want of a record on every case here. That would be the gate working, but it
+# would also stop this suite from testing what it is for: which ROOT a marker
+# is read from. An absent positional is gh's current-branch default, which the
+# binding permits outright without reaching the network, so root anchoring is
+# what decides each case again.
 write_merge_payload() {
   local f
   f="$(mktemp "$BATS_TEST_TMPDIR/merge-payload-XXXXXX")"
-  jq -n --arg c "gh pr merge 30 --squash --delete-branch" \
+  jq -n --arg c "gh pr merge --squash --delete-branch" \
     '{tool_name: "Bash", tool_input: {command: $c}}' > "$f"
   printf '%s' "$f"
 }

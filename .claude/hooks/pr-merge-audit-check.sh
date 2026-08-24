@@ -771,6 +771,15 @@ gate_permit_binds_to_named_pr() {
   gate_cmd_names_the_record_pr && return 0
 
   local named record reason
+  # Four of the predicate's five failure arms return ABOVE its own record read,
+  # so reaching here says nothing about whether the record was ever queried.
+  # Without this call the reason below would print an unread empty field as a
+  # resolved negative, telling an operator whose pull request is perfectly
+  # healthy that this checkout has no record: they go chase gh auth instead of
+  # the command spelling that actually denied. resolve_pr_record memoizes, and
+  # this is a deny path, so the read costs nothing the refused merge would not
+  # have cost anyway, and it buys a reason that can name the real number.
+  resolve_pr_record
   named="${GAIA_GH_MERGE_REF:-}"
   record="${pr_record_number:-}"
 
@@ -801,11 +810,17 @@ To unblock:
   2. To merge a different pull request, check that branch out and let its own
      Code Audit Team members clear it.
 
-The merge must also be the FIRST command in its tool call, with nothing beside
-it: a separator, a comment, a flag shape the command scanner declines to model,
-a branch name or URL in place of a number, and any byte outside the small set a
-merge invocation needs all keep the marker mandatory, because a merge this gate
-cannot read exactly is one it will not clear.
+This denial is UNCONDITIONAL and no clearance lifts it. Re-spawning the Code
+Audit Team rewrites the same markers for the same unrotated digest and this
+command denies identically; the repair is to respell the merge, never to obtain
+another clearance.
+
+The spelling has to be one this gate can read exactly. The merge must be the
+first command in its tool call with nothing beside it, and a separator, a
+comment, a flag shape the command scanner declines to model, a branch name or
+URL in place of a number, or any byte outside the small set a merge invocation
+needs each deny on their own. A quoted flag value is the common case: drop it,
+or set it on the pull request before merging.
 
 See wiki/concepts/PR Merge Workflow.md for the full contract."
 
