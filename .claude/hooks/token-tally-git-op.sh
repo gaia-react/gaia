@@ -53,12 +53,14 @@ fi
 #
 # Three library loads, two treatments, decided by which side of the arming gate
 # each one sits on. Under `set -e` a failed `.` abandons the shell ahead of the
-# ERR trap at the top, and exit 2 is the PreToolUse deny code, so an unguarded
-# load refuses the git operation rather than skipping the tally. Two ways a load
-# fails: bash cannot open the file, which dies that way on the 3.2.57 stock
-# macOS ships as /bin/bash while 5.x reaches a trailing `||` arm; and bash opens
-# it but cannot parse it, a lib left holding conflict markers, which dies that
-# way on 3.2 even through an arm.
+# ERR trap at the top, and the two ways it fails do not cost the same. Bash
+# cannot open the file: the shell exits 1, which a PreToolUse hook reports as an
+# advisory, so the git operation proceeds and what is lost is the tally row plus
+# a raw diagnostic on stderr. That is the 3.2.57 stock macOS ships as /bin/bash;
+# 5.x reaches a trailing `||` arm instead. Bash opens the file but cannot parse
+# it, a lib left holding conflict markers: the shell exits 2, which is the deny
+# code, so the git operation is refused, including the commit that would repair
+# the lib. That half dies on 3.2 even through an arm.
 #
 # The two loads here run only on an armed git commit/push, so they parse-check
 # first. `bash -n` answers both questions in one call and subsumes an existence

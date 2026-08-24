@@ -572,8 +572,10 @@ run_hook() {
 # Two ways a lib goes unusable, and the hook must survive both: it is gone, and
 # it is present but does not parse (an unresolved merge conflict, a truncated
 # write). Under `set -e` a failed `.` aborts the shell ahead of the hook's ERR
-# trap in both cases, and exit 2 is the PreToolUse deny code, so an unguarded
-# load refuses the very git commit that would repair the lib.
+# trap in both cases, at different cost: a file bash cannot open exits 1, an
+# advisory that loses the tally row and lets the commit through, while one it
+# cannot parse exits 2, the deny code, refusing the very commit that would
+# repair the lib.
 #
 # The controls are what give the absent and unparseable cases teeth: their
 # three assertions (exit 0, no output, no ledger row) are equally satisfied by
