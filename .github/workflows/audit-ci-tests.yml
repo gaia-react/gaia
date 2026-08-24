@@ -1000,8 +1000,9 @@ jobs:
     if: always() && (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     timeout-minutes: 2
-    # No checkout and no scopes: this job reads two expressions off `needs:`
-    # and exits, so it needs nothing a default-deny leaves it without.
+    # No checkout and no scopes: this job reads its `needs:` results and
+    # exits, so it needs nothing a default-deny leaves it without. Stated
+    # without a count, which goes stale the next time a job joins `needs:`.
     permissions: {}
     steps:
       # `needs.shards.result` is the aggregate over every matrix leg: it reads
@@ -1009,13 +1010,13 @@ jobs:
       # all skipped because the filter resolved false still concludes
       # `success`, which is correct and matches today's pre-shard behavior --
       # a PR touching nothing relevant should report this check green having
-      # run nothing. `needs.hook-capabilities-live-tree.result` is read the same
-      # way. `skipped` and `cancelled` both fail this check, along with
+      # run nothing. Every other `needs:` result is read the same way.
+      # `skipped` and `cancelled` both fail this check, along with
       # `failure`, because each comparison is `!= "success"` rather than a
       # `case` enumerating the failure states it knows about, so a conclusion
       # GitHub adds later fails closed instead of reading as an unrecognized,
       # unhandled success.
-      - name: Require every shard and the live-tree job to have succeeded
+      - name: Require every shard and every live-tree job to have succeeded
         env:
           SHARDS_RESULT: ${{ needs.shards.result }}
           HOOK_CAPABILITIES_RESULT: ${{ needs.hook-capabilities-live-tree.result }}
