@@ -100,17 +100,6 @@ GHEOF
   # however much real session history happens to be on disk.
   TALLY_ROOT="$REPO/.tally-empty"
   mkdir -p "$TALLY_ROOT"
-
-  # token-tally-git-op.sh sources this ONE lib cwd-relatively rather than off
-  # its own BASH_SOURCE, unguarded by an `-f` check: on an armed call, a cwd
-  # that lacks it makes the hook exit 1 with a "No such file" error instead
-  # of its own documented degrade-silently contract (a pre-existing gap,
-  # unrelated to the arming decision this file budgets, filed separately as
-  # tech debt rather than fixed here). Staging the real file at the cwd path
-  # it expects keeps this fixture on the hook's normal fast-exit path instead
-  # of tripping that gap.
-  mkdir -p "$REPO/.claude/hooks/lib"
-  cp "$HOOKS_DIR/lib/gaia-active-plan.sh" "$REPO/.claude/hooks/lib/gaia-active-plan.sh"
 }
 
 teardown() {
