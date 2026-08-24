@@ -141,13 +141,18 @@ time_scan_ms() {
   textfile=$(mktemp)
   printf '%s' "$text" > "$textfile"
   # LC_ALL=C on both halves, and it is load-bearing rather than tidiness.
-  # bash renders TIMEFORMAT's %R with the LOCALE's radix character, so under
-  # e.g. LC_NUMERIC=de_DE a 3-second scan prints `3,028`; a C-locale awk then
-  # converts that -v assignment as `3`, REPLY_MS collapses toward zero, and
-  # every ceiling below passes for any scan cost whatsoever. That is the one
-  # failure this file must not have: a cost budget that greens precisely when
-  # the cost it guards has returned. Pinning the child pins the radix bash
-  # writes; pinning the awk pins the radix it reads.
+  # bash renders TIMEFORMAT's %R with the LOCALE's radix character, so under a
+  # comma locale a 904ms scan prints `0,904`. A C-locale awk converts that -v
+  # assignment up to the comma and stops, so the timing FLOORS TO WHOLE
+  # SECONDS: `0,904` reads as 0 and `3,028` as 3000. Sub-second costs vanish
+  # entirely, which defeats the 16KB ceiling on precisely the ~904ms quadratic
+  # regression it exists to catch; the two larger ceilings survive on their
+  # whole-second part, so this is one ceiling silently lost rather than three.
+  # A cost budget that greens when the cost it guards has returned is the one
+  # failure this file must not have. Pinning the child pins the radix bash
+  # writes; pinning the awk pins the radix it reads. The scanner pins LC_ALL=C
+  # for itself and restores it, so the stronger pin here changes nothing about
+  # what is being measured.
   t=$(LC_ALL=C bash -c '
     TIMEFORMAT="%R"
     . "$1"
@@ -197,6 +202,12 @@ CEILING_SCAN_32K_MS=400
 # that: the linear-versus-quadratic gap widens with size (10.3x here against
 # 5.8x at 32KB), which is what leaves better than 2x in BOTH directions even
 # on a runner several times slower than the one these figures came from.
+#
+# If this one ever reds on a slow runner with no regression present, shrink the
+# payload rather than raise the ceiling. Raising it is not available: the margin
+# below the quadratic figure is already the file's narrowest at 2.2x, so 8000ms
+# would leave 1.4x and the ceiling would stop catching what it is here for. The
+# gap still favours the test at 32KB, measured ~5.8x there.
 CEILING_SCAN_UNQUOTED_64K_MS=5000
 
 # ---------------------------------------------------------------------------

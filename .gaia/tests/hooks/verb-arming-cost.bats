@@ -195,11 +195,28 @@ time_hook_ms() {
     cd "$REPO" || exit 1
     PATH="$GH_BIN:$PATH"
     export GAIA_TALLY_PROJECTS_ROOT="$TALLY_ROOT"
+    # Pins the radix character bash writes %R with. Without it a comma locale
+    # prints `0,904`, and a C-locale awk converts that -v assignment up to the
+    # comma and stops, so the timing floors to whole seconds: a sub-second cost
+    # reads 0 and every ceiling here greens for any cost at all.
+    #
+    # LC_ALL, not LC_NUMERIC, and the difference is not stylistic: LC_ALL
+    # OVERRIDES every individual category, so setting LC_NUMERIC while an
+    # ambient LC_ALL is exported does exactly nothing. That is the shape a
+    # hostile runner actually arrives in, and it is the shape the weaker pin
+    # silently fails to cover. Pinning the whole locale also makes what this
+    # file measures independent of the runner's locale, which is what a cost
+    # budget wants: the figures in the header are then reproducible rather than
+    # ambient. The walker pins LC_ALL=C for its own hot scan and restores it
+    # either way, so the hook's measured cost does not turn on this.
+    LC_ALL=C
     TIMEFORMAT='%R'
     { time bash "$hook" < "$jsonfile" >/dev/null 2>&1; } 2>&1
   )
   rm -f "$jsonfile"
-  REPLY_MS=$(awk -v s="$t" 'BEGIN{printf "%d", (s*1000)+0.5}')
+  REPLY_MS=$(LC_ALL=C awk -v s="$t" 'BEGIN{printf "%d", (s*1000)+0.5}')
+  # Fail closed rather than let an unparseable timing read as a fast one.
+  [ "$REPLY_MS" -gt 0 ] || return 1
 }
 
 # Same as gaia_verb_arm_view (loaded fresh each call), timed directly with no
@@ -221,6 +238,8 @@ time_view_ms() {
   textfile=$(mktemp)
   printf '%s' "$text" > "$textfile"
   t=$(bash -c '
+    # Radix pin, for the reason time_hook_ms above gives.
+    LC_ALL=C
     TIMEFORMAT="%R"
     . "$1"
     . "$2"
@@ -231,7 +250,8 @@ time_view_ms() {
     { time gaia_verb_arm_view "$_text" >/dev/null; } 2>&1
   ' _ "$lib" "$walk" "$textfile")
   rm -f "$textfile"
-  REPLY_MS=$(awk -v s="$t" 'BEGIN{printf "%d", (s*1000)+0.5}')
+  REPLY_MS=$(LC_ALL=C awk -v s="$t" 'BEGIN{printf "%d", (s*1000)+0.5}')
+  [ "$REPLY_MS" -gt 0 ] || return 1
 }
 
 # The eleven adopting hooks, per README.md's frozen contract table.
