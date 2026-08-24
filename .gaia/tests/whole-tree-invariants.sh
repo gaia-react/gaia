@@ -41,17 +41,23 @@
 # entry per suite saying nothing. The one bats member is named directly instead.
 #
 # Runtime, measured on the tree at the time of writing: the eighteen scripts
-# total ~29s, of which check-script-capabilities.sh alone is ~15s (it walks the
-# invocation closure of every allowlisted script), shell-lint ~10s, and the
-# shard suite ~35s; the whole set measures ~78-82s end to end. That is why
-# there is one tier rather than a fast default plus a named slower tier. A
-# split is worth its second name only once the honest set is slow enough that
-# people skip it, and an aggregate slow enough to skip is worse than none; a
-# minute and a half against the price of an audit round is not that.
-# Re-measure before adding a member that changes the order of magnitude, and
-# before growing one: the shard suite's own figure nearly doubled as its W10
-# fixtures grew, across two rounds of the same change, and only the member
-# COUNT below is machine-checked.
+# total ~48s, of which shell-lint.sh is ~17s and check-script-capabilities.sh
+# ~16s (it walks the invocation closure of every allowlisted script), and the
+# shard suite ~35s; the whole set measures ~78-82s end to end. The parts are
+# timed one invocation at a time and the whole in a single run, so they sum a
+# little above it rather than to it; read the components for which member to
+# look at and the aggregate for what the set costs. That is why there is one
+# tier rather than a fast default plus a named slower tier. A split is worth
+# its second name only once the honest set is slow enough that people skip it,
+# and an aggregate slow enough to skip is worse than none; a minute and a half
+# against the price of an audit round is not that.
+# Re-measure the WHOLE paragraph, not the figure being edited. Only the member
+# COUNT below is machine-checked, so every number here decays independently:
+# the shard suite's own figure nearly doubled as its W10 fixtures grew across
+# two rounds of one change, and the scripts half sat ~19s low for long enough
+# that the stated parts could no longer reach the stated whole. A component
+# figure nobody re-measured is the one that misdirects, because it reads as
+# current beside the ones that were.
 #
 # The staleness lever: nothing above used to notice a member added without
 # this figure catching up, which is exactly what happened here (this comment
