@@ -502,17 +502,10 @@ run_hook() {
   WT="$(dirname "$MAIN")/gaia-hook-wt-$$"
   git -C "$MAIN" worktree add -q "$WT" -b feature/kickoff
 
-  # The hook resolves .claude/hooks/lib + .gaia/scripts repo-relative from its
-  # own cwd (the worktree), so the worktree needs that scaffolding. It does NOT
-  # get the plan folder: that lives only in the main checkout below.
-  mkdir -p "$WT/.claude/hooks/lib" "$WT/.gaia/scripts"
-  cp "$LIB_SRC" "$WT/.claude/hooks/lib/gaia-active-plan.sh"
-  chmod +x "$WT/.claude/hooks/lib/gaia-active-plan.sh"
-  cp "$TALLY_SRC" "$WT/.gaia/scripts/token-tally.sh"
-  chmod +x "$WT/.gaia/scripts/token-tally.sh"
-  cp "$LIB_PRICING_SRC" "$WT/.gaia/scripts/token-pricing-lib.sh"
-  cp "$LIB_LEDGER_PATH_SRC" "$WT/.gaia/scripts/ledger-path-lib.sh"
-  cp "$LIB_MAIN_ROOT_SRC" "$WT/.gaia/scripts/main-root-lib.sh"
+  # The hook runs from $HOOK_ABS, so it resolves its lib directory and
+  # .gaia/scripts off BASH_SOURCE in the real checkout and the worktree needs
+  # no scaffolding of its own. It does NOT get the plan folder either: that
+  # lives only in the main checkout below.
 
   # The plan folder + RUNNING sentinel live ONLY in the main checkout, keyed to
   # the worktree's branch (which is what a real worktree plan run looks like).
@@ -708,10 +701,11 @@ stage_with_plan() {
 # whose cwd is a repo SUBDIRECTORY reaches it with every gate satisfied. A
 # cwd-relative `bash .gaia/scripts/token-tally.sh` finds nothing there, and the
 # trailing `|| true` on the invocation discards the status, so the execute row
-# is lost with no diagnostic. `.claude/rules/shell-cwd.md` records that a `cd`
-# in a Bash tool call persists for the rest of the session, which is how a
-# non-root hook cwd arises in practice. Every other case in this file runs with
-# cwd = the tmp repo root, where a relative and an absolute path agree.
+# is lost with no diagnostic. This repository's own settings register the hook
+# by a relative path, so a shifted cwd stops it running at all rather than
+# running it from a subdirectory; the shape is reachable for an adopter that
+# registers an absolute command, and `.claude/rules/repo-relative-paths.md`
+# requires the anchor either way.
 @test "staged hook run from a repo subdirectory: records (tally path is cwd-independent)" {
   stage_with_plan
   mkdir -p "$REPO/app/components"
