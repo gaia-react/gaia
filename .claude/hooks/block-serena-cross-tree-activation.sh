@@ -87,10 +87,24 @@ project=$(jq -r '.tool_input.project // empty' <<<"$payload")
 # its location is fixed relative to this file no matter which checkout the
 # hook runs in. If it is unreachable the guard can no longer adjudicate, so
 # it fails open.
+#
+# The load parse-checks rather than carrying a trailing `|| exit 0`. Under
+# `set -e` a failed `.` abandons the shell ahead of that arm, and the two ways
+# it fails do not cost the same. Bash cannot open the file: the shell exits 1,
+# which a PreToolUse hook reports as an advisory, so the activation proceeds
+# unadjudicated with a raw diagnostic on stderr. That is the 3.2.57 stock macOS
+# ships as /bin/bash; 5.x reaches the arm instead. Bash opens the file but
+# cannot parse it, a lib left holding conflict markers: the shell exits 2, the
+# deny code, so this fail-open guard denies the activation, and that half dies
+# on every platform rather than 3.2 alone. `bash -n` answers both questions in
+# one call and subsumes an existence test. This load sits past the tool-name
+# and argument gates above, so the fork is paid only on a real activation.
+# What degrades in the arm's place is the `type` check below.
 gaia_scripts="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd)" || exit 0
 gaia_scripts="$gaia_scripts/.gaia/scripts"
 # shellcheck source=/dev/null
-source "$gaia_scripts/main-root-lib.sh" 2>/dev/null || exit 0
+"${BASH:-bash}" -n "$gaia_scripts/main-root-lib.sh" 2>/dev/null && . "$gaia_scripts/main-root-lib.sh" 2>/dev/null || true
+type gaia_resolve_tree_root >/dev/null 2>&1 || exit 0
 
 # Every git question this guard asks is asked through the shared resolver,
 # never through a raw git primitive: gaia_resolve_tree_root for "which tree is

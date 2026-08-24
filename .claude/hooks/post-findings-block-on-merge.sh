@@ -21,9 +21,27 @@ cmd=$(jq -r '.tool_input.command // ""' <<<"$payload")
 
 # Shared arming decision; see .claude/hooks/lib/verb-arming.sh. A quoted verb
 # inside prose still arms here, fail-closed, with no safe narrowing.
+#
+# This load runs before the arming gate, on every Bash tool call, so it takes
+# the free half rather than a parse check: `bash -n` on the real
+# verb-arming.sh measures ~13ms on bash 3.2.57 and ~16ms on 5.3.15, against the
+# ~16-21ms per hook process .gaia/tests/hooks/verb-arming-cost.bats records, so
+# a fork here roughly doubles what every Bash tool call pays. `|| true` costs
+# nothing and closes the bash 5 half. The honest limit, stated rather than
+# implied: under `set -e` an UNPARSEABLE verb-arming.sh still abandons the
+# shell ahead of the arm on a stock 3.2, exiting 2. Same decision, same reason,
+# as token-tally-git-op.sh's own pre-gate load. Closing that residual needs
+# something other than a per-call fork and is tracked on
+# gaia-react/gaia#1556, along with verb-arming.sh's own lazy load of
+# verb-arming-walk.sh, which no consumer hook can guard from out here.
+#
+# This hook is PreToolUse, so the residual above is the widest of the three
+# that share this load: an unparseable verb-arming.sh on a stock 3.2 exits 2
+# here, the deny code, and it does so before the gate knows the call is a
+# `gh pr merge` at all, refusing every Bash tool call rather than merges alone.
 _va_lib="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)"
 # shellcheck source=/dev/null
-[ -n "${_va_lib:-}" ] && [ -f "$_va_lib/verb-arming.sh" ] && . "$_va_lib/verb-arming.sh"
+[ -n "${_va_lib:-}" ] && [ -f "$_va_lib/verb-arming.sh" ] && { . "$_va_lib/verb-arming.sh" 2>/dev/null || true; }
 type gaia_verb_armed >/dev/null 2>&1 || exit 0
 
 frag='gh[[:space:]]+pr[[:space:]]+merge([[:space:]]|$)'
@@ -55,9 +73,16 @@ fi
 # source misses from any non-root cwd, and a `type f >/dev/null 2>&1 && f`
 # guard then falls THROUGH to posting rather than bailing: the two compose
 # into no boundary check at all. Undefined after the source exits instead.
+#
+# Past the arming gate, so this load parse-checks rather than resting on the
+# `-f` test: an existence test proves the file opens, not that it parses, and
+# under `set -e` an unparseable repo-scope.sh abandons the shell at exit 2, the
+# deny code, refusing the merge this hook's contract says it never blocks.
+# `bash -n` subsumes the existence test, and the undefined-after-the-source
+# contract below is what still degrades.
 _lib="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)"
 # shellcheck source=/dev/null
-[ -n "${_lib:-}" ] && [ -f "$_lib/repo-scope.sh" ] && . "$_lib/repo-scope.sh"
+"${BASH:-bash}" -n "${_lib:-}/repo-scope.sh" 2>/dev/null && . "${_lib:-}/repo-scope.sh" 2>/dev/null || true
 type cmd_targets_foreign_repo_slug >/dev/null 2>&1 || exit 0
 type gaia_gh_merge_ref_to_home_pr >/dev/null 2>&1 || exit 0
 if cmd_targets_foreign_repo_slug "$cmd"; then

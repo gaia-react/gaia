@@ -597,3 +597,89 @@ write_sidecar() {
   [ "$status" -eq 0 ]
   [ "$(cat "$FAKE_GH_STATE/post_count")" = "1" ]
 }
+
+# ---------- library-load degradation (gaia-react/gaia#1556) ----------
+# Two ways a library goes unusable, and this hook's contract ("never blocks the
+# merge, never emits a permission decision") must hold through both: it is
+# gone, and it is present but does not parse (an unresolved merge conflict, a
+# truncated write). Under `set -e` a failed `.` abandons the shell ahead of the
+# ERR trap in both cases, at different cost: a file bash cannot open exits 1,
+# an advisory, while one it cannot parse exits 2 -- the PreToolUse DENY code,
+# which refuses the very merge this hook promises never to block.
+#
+# The two loads sit on opposite sides of the arming gate and take different
+# repairs, so each gets its own case. repo-scope.sh is past the gate and
+# parse-checks; verb-arming.sh runs before the gate knows the call is a merge
+# at all, so it takes the free `|| true` arm, closing the bash 5 half only.
+#
+# These run a COPY of the hook staged inside the sandbox: both loads resolve
+# off the hook's own BASH_SOURCE, so $HOOK_ABS would always reach the real
+# checkout's libs, where neither case can be expressed.
+
+# Overwrites <path> with an unresolved-merge-conflict body: the file opens and
+# reads fine, so an existence test passes it, and bash cannot parse it.
+write_conflicted_lib() {
+  { printf '<<<<<<< HEAD\n'; printf 'x() { :; }\n'; printf '=======\n'
+    printf 'y() { :; }\n'; printf '>>>>>>> other\n'; } > "$1"
+}
+
+stage_merge_hook() {
+  STAGED_HOOK="$REPO/.claude/hooks/post-findings-block-on-merge.sh"
+  cp "$HOOK_ABS" "$STAGED_HOOK"
+  chmod +x "$STAGED_HOOK"
+}
+
+run_staged_merge_hook() {
+  local json
+  json=$(jq -n --arg c "gh pr merge 42 --squash --delete-branch" \
+    '{tool_name: "Bash", tool_input: {command: $c}}')
+  invoke_hook_in "$REPO" "$json" "$STAGED_HOOK"
+}
+
+# The control that gives the two cases teeth: their assertions (exit 0, no
+# deny) are equally satisfied by a hook that does nothing at all, so the same
+# staging has to be shown posting normally first.
+@test "staged hook, every lib usable: posts the findings block (control)" {
+  write_sidecar
+  export FAKE_GH_STATE FAKE_GH_IS_FORK="false" FAKE_GH_AUTHOR="alice"
+  stage_merge_hook
+
+  run_staged_merge_hook
+  [ "$status" -eq 0 ]
+  [ "$(cat "$FAKE_GH_STATE/post_count")" = "1" ]
+}
+
+# Unpinned on purpose: the form each load replaced was a bare `.` behind an
+# `-f` test, carrying no arm at all, so both die on bash 5 as well as 3.2 and
+# these cases have teeth on Linux CI. Asserting a non-2 status is the point:
+# exit 2 is what a PreToolUse hook means by "deny", and this hook has no deny
+# to emit.
+@test "repo-scope.sh holds conflict markers: exit 0, the merge is not denied" {
+  write_sidecar
+  export FAKE_GH_STATE FAKE_GH_IS_FORK="false" FAKE_GH_AUTHOR="alice"
+  stage_merge_hook
+  write_conflicted_lib "$REPO/.claude/hooks/lib/repo-scope.sh"
+
+  run_staged_merge_hook
+  [ "$status" -eq 0 ]
+  grep -qF -- '"permissionDecision"' <<<"$output" && return 1
+  return 0
+}
+
+# The pre-gate load, and the widest exposure of the three hooks that share it:
+# this one is PreToolUse, and the load sits ahead of the arming gate, so before
+# this repair an unparseable verb-arming.sh denied EVERY Bash tool call rather
+# than merges alone. `|| true` closes that on bash 5; the 3.2 half stays open
+# by decision, and the hook's own load comment names it rather than implying
+# the contract is whole.
+@test "verb-arming.sh holds conflict markers: exit 0, the merge is not denied" {
+  write_sidecar
+  export FAKE_GH_STATE FAKE_GH_IS_FORK="false" FAKE_GH_AUTHOR="alice"
+  stage_merge_hook
+  write_conflicted_lib "$REPO/.claude/hooks/lib/verb-arming.sh"
+
+  run_staged_merge_hook
+  [ "$status" -eq 0 ]
+  grep -qF -- '"permissionDecision"' <<<"$output" && return 1
+  return 0
+}

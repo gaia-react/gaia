@@ -325,3 +325,93 @@ any_breadcrumb_exists() {
 @test "the hook file is executable" {
   [ -x "$HOOK_ABS" ]
 }
+
+# ---------- library-load degradation (gaia-react/gaia#1556) ----------
+# Two ways a library goes unusable, and this hook's header contract ("degrade
+# silently, never write to stdout, always exit 0") must hold through both: it
+# is gone, and it is present but does not parse (an unresolved merge conflict,
+# a truncated write). Under `set -e` a failed `.` abandons the shell ahead of
+# the ERR trap in both cases, at different cost: a file bash cannot open exits
+# 1, and one it cannot parse exits 2.
+#
+# The two loads sit on opposite sides of the arming gate and take different
+# repairs, so each gets its own case. gh-artifact-lib.sh is past the gate and
+# parse-checks; verb-arming.sh runs on every Bash tool call and takes the free
+# `|| true` arm instead, which closes the bash 5 half only.
+
+# Overwrites <path> with an unresolved-merge-conflict body: the file opens and
+# reads fine, so an existence test passes it, and bash cannot parse it.
+write_conflicted_lib() {
+  { printf '<<<<<<< HEAD\n'; printf 'x() { :; }\n'; printf '=======\n'
+    printf 'y() { :; }\n'; printf '>>>>>>> other\n'; } > "$1"
+}
+
+# The verb-arming load resolves off the hook's own BASH_SOURCE, so corrupting
+# it needs a COPY of the hook staged inside the tmp repo. $HOOK_ABS would
+# always reach the real checkout's lib, where the case cannot be expressed.
+stage_hook_repo() {
+  build_repo
+  mkdir -p "$REPO/.claude/hooks/lib"
+  cp "$REPO_ROOT/.claude/hooks/lib/verb-arming.sh" "$REPO/.claude/hooks/lib/"
+  cp "$REPO_ROOT/.claude/hooks/lib/verb-arming-walk.sh" "$REPO/.claude/hooks/lib/"
+  cp "$REPO_ROOT/.claude/hooks/lib/repo-scope.sh" "$REPO/.claude/hooks/lib/"
+  STAGED_HOOK="$REPO/.claude/hooks/capture-gh-artifact.sh"
+  cp "$HOOK_ABS" "$STAGED_HOOK"
+  chmod +x "$STAGED_HOOK"
+}
+
+# run_staged_hook <command> <stdout> [interpreter]
+run_staged_hook() {
+  local input interp="${3:-bash}"
+  input=$("$HELPERS/mock-hook-input.sh" post-tool-use S1 Bash "$1" "$2")
+  run bash -c 'printf %s "$1" | "$3" "$2"' _ "$input" "$STAGED_HOOK" "$interp"
+}
+
+# The control that gives the staged cases teeth: their assertions (exit 0, no
+# output, no breadcrumb) are equally satisfied by a hook that does nothing at
+# all, so the same staging has to be shown recording normally first.
+@test "staged hook, every lib usable: writes the breadcrumb (control)" {
+  stage_hook_repo
+  cd "$REPO"
+  git checkout -b feat/staged --quiet
+
+  run_staged_hook "gh pr create --title x --body y" "https://github.com/gaia-react/gaia/pull/900"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  [ "$(jq -r '.number' "$(breadcrumb_path "feat/staged")")" = "900" ]
+}
+
+# Pinned to stock /bin/bash: the form this load replaced carried `|| exit 0`,
+# which bash 5 reaches on an unparseable lib, so only 3.2 tells the parse check
+# apart from it. On a bash-5 /bin/bash (Linux CI) this passes either way.
+@test "gh-artifact-lib.sh holds conflict markers, under stock /bin/bash: exit 0, no output, no breadcrumb" {
+  [ -x /bin/bash ] || skip "no /bin/bash"
+  stage_hook_repo
+  cd "$REPO"
+  git checkout -b feat/conflicted --quiet
+  write_conflicted_lib "$REPO/.gaia/scripts/gh-artifact-lib.sh"
+
+  run_staged_hook "gh pr create --title x --body y" "https://github.com/gaia-react/gaia/pull/901" /bin/bash
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  [ -f "$(breadcrumb_path "feat/conflicted")" ] && return 1
+  return 0
+}
+
+# The pre-gate verb-arming load takes `|| true` rather than a parse check, so
+# only the bash 5 half of the unparseable case is closed. Unpinned on purpose:
+# the bare source it replaced dies on both shells, so this reds on Linux CI.
+# The 3.2 half stays open by decision, not by oversight, and no case here
+# asserts otherwise; the hook's own load comment names it.
+@test "verb-arming.sh holds conflict markers: exit 0, no output, no breadcrumb" {
+  stage_hook_repo
+  cd "$REPO"
+  git checkout -b feat/va-conflicted --quiet
+  write_conflicted_lib "$REPO/.claude/hooks/lib/verb-arming.sh"
+
+  run_staged_hook "gh pr create --title x --body y" "https://github.com/gaia-react/gaia/pull/902"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  [ -f "$(breadcrumb_path "feat/va-conflicted")" ] && return 1
+  return 0
+}

@@ -80,9 +80,11 @@ fi
 # everywhere else. The bound covers two files, not one. verb-arming.sh itself
 # lazily sources verb-arming-walk.sh on a raw match, inside _gaia_va_view, behind
 # an `-f` test but no parse check and no arm, so an unparseable walk lib denies
-# on 3.2 identically; that load is not here, so this hook cannot guard it. Both
-# sites, and the sibling hooks that load verb-arming.sh the same way, are
-# gaia-react/gaia#1556.
+# on 3.2 identically; that load is not here, so this hook cannot guard it. The
+# three errexit sibling hooks that loaded verb-arming.sh bare now carry this
+# same arm and this same residual (capture-gh-artifact.sh,
+# post-findings-block-on-merge.sh, token-rollup-merge.sh). What is left is the
+# walk-lib load and the 3.2 residual itself, both gaia-react/gaia#1556.
 gaia_scripts="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd)" || exit 0
 gaia_scripts="$gaia_scripts/.gaia/scripts"
 # shellcheck source=/dev/null

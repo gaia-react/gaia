@@ -79,12 +79,43 @@ file_path=$(jq -r '.tool_input.file_path // empty' <<<"$payload")
 # two libraries ship together, so their location is fixed relative to this file
 # no matter which checkout the hook runs in. If either is unreachable the guard
 # can no longer adjudicate, so it fails open.
+#
+# Both loads parse-check rather than carrying a trailing `|| exit 0`. Under
+# `set -e` a failed `.` abandons the shell ahead of that arm, and the two ways
+# it fails do not cost the same. Bash cannot open the file: the shell exits 1,
+# which a PreToolUse hook reports as an advisory, so the edit proceeds
+# unadjudicated with a raw diagnostic on stderr. That is the 3.2.57 stock macOS
+# ships as /bin/bash; 5.x reaches the arm instead. Bash opens the file but
+# cannot parse it, a lib left holding conflict markers: the shell exits 2, the
+# deny code, so this fail-open guard denies the edit, and that half dies on
+# every platform rather than 3.2 alone. `bash -n` answers both questions in one
+# call and subsumes an existence test. Both loads sit past the tool-name and
+# file-path gates above, so the forks are paid only on a real Edit/Write.
+#
+# What degrades in the arm's place is the `type` check below.
+#
+# Only the resolver loads here. The registry reader is deferred to its one
+# point of use, far below, because the two sit behind very different gates and
+# a parse check is a fork. This hook fires on every Edit/Write/MultiEdit, so a
+# fork on this path is paid on every file the session touches, and it measures
+# ~5-6ms against a ~16-22ms hook process on this machine. The resolver has to
+# be paid here: the linked-worktree predicate that gates everything below comes
+# out of it, so there is no cheaper question to ask first that does not
+# hand-roll a second copy of the resolution this file keeps in one place. The
+# registry reader has no such constraint, and moving it behind the
+# `.gaia/local` arm halves what an ordinary edit pays.
+#
+# Paying it at all, rather than taking the cheaper `{ . lib || true; }` arm the
+# pre-gate loads elsewhere take, is a deliberate exception to that trade. The
+# argument for the cheap arm is that an unparseable library is rare and
+# recoverable, because a denying Bash hook still leaves the editor tools free
+# to repair it. That argument inverts here: the tool this hook denies IS the
+# editor tool, so a corrupted library would deny the very Edit that repairs it.
 gaia_scripts="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd)" || exit 0
 gaia_scripts="$gaia_scripts/.gaia/scripts"
 # shellcheck source=/dev/null
-source "$gaia_scripts/main-root-lib.sh" 2>/dev/null || exit 0
-# shellcheck source=/dev/null
-source "$gaia_scripts/state-registry-lib.sh" 2>/dev/null || exit 0
+"${BASH:-bash}" -n "$gaia_scripts/main-root-lib.sh" 2>/dev/null && . "$gaia_scripts/main-root-lib.sh" 2>/dev/null || true
+type gaia_resolve_tree_root >/dev/null 2>&1 || exit 0
 
 # The acting agent's working directory: the payload cwd when it is absolute and
 # resolves to a checkout, the hook's process cwd otherwise. The absolute check is
@@ -166,6 +197,23 @@ case "$resolved_target_dir" in
   "$gaia_local" | "$gaia_local"/*)
     relpath="${resolved_target_dir#"$gaia_local"}"
     relpath="${relpath#/}"
+    # The registry reader, loaded here rather than beside the resolver above:
+    # this arm is the only place it is used, and the gate in front of it is a
+    # write under .gaia/local from a linked worktree, which is far narrower
+    # than the every-edit gate the resolver's own load sits behind. Same parse
+    # check, same reason (see that load's comment); it just costs less here.
+    #
+    # The `type` check below is not redundant with the parse check, and it is
+    # the reason the load cannot simply be left bare: an unloaded
+    # state-registry-lib.sh does not fail open on its own. gaia_registry_recognizes
+    # is consulted from inside an `if` condition, so an undefined function reads
+    # as "no entry recognizes this path" and routes the write to the unregistered
+    # DENY arm below. A library that never loaded would then make this guard
+    # block more, not less, which inverts the fail-open contract stated at the
+    # top of this file.
+    # shellcheck source=/dev/null
+    "${BASH:-bash}" -n "$gaia_scripts/state-registry-lib.sh" 2>/dev/null && . "$gaia_scripts/state-registry-lib.sh" 2>/dev/null || true
+    type gaia_registry_recognizes >/dev/null 2>&1 || exit 0
     if (cd "$main_root" 2>/dev/null && gaia_registry_recognizes "$relpath" d); then
       scope="$(cd "$main_root" 2>/dev/null && gaia_registry_classify "$relpath" 2>/dev/null)" || scope=""
       if [[ "$scope" != "per-tree" ]]; then
