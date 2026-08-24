@@ -205,16 +205,32 @@ time_hook_ms() {
 # Same as gaia_verb_arm_view (loaded fresh each call), timed directly with no
 # hook process around it. Isolates the walker's own cost from a hook's fixed
 # per-process overhead (bash startup, jq parse, git calls).
+#
+# The payload reaches the child shell on a FILE, never in argv, for the same
+# reason json_envelope_for feeds jq with --rawfile. Linux caps a SINGLE exec
+# argument at MAX_ARG_STRLEN (32 pages, 128KB) independently of the much larger
+# total ARG_MAX, so the 256KB past-bound payload makes the exec itself fail with
+# "Argument list too long" (status 126) before the walker is ever called; macOS
+# has no such per-argument cap, so an argv-passing version greens locally and
+# reds only on CI. The read happens outside the timed region, so the file
+# round-trip does not enter the measurement.
 time_view_ms() {
-  local text="$1" lib walk t
+  local text="$1" lib walk t textfile
   lib=$(cd "$HOOKS_DIR/lib" && pwd)/verb-arming.sh
   walk=$(cd "$HOOKS_DIR/lib" && pwd)/verb-arming-walk.sh
+  textfile=$(mktemp)
+  printf '%s' "$text" > "$textfile"
   t=$(bash -c '
     TIMEFORMAT="%R"
     . "$1"
     . "$2"
-    { time gaia_verb_arm_view "$3" >/dev/null; } 2>&1
-  ' _ "$lib" "$walk" "$text")
+    # -d "" reads to NUL, i.e. the whole file, keeping the trailing newline a
+    # $(<file) substitution would strip and with it the payload length the
+    # bound is being measured against. Non-zero at EOF is expected.
+    IFS= read -r -d "" _text < "$3" || :
+    { time gaia_verb_arm_view "$_text" >/dev/null; } 2>&1
+  ' _ "$lib" "$walk" "$textfile")
+  rm -f "$textfile"
   REPLY_MS=$(awk -v s="$t" 'BEGIN{printf "%d", (s*1000)+0.5}')
 }
 
