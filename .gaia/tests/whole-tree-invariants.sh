@@ -41,20 +41,19 @@
 # entry per suite saying nothing. The one bats member is named directly instead.
 #
 # Runtime, measured on the tree at the time of writing: the eighteen scripts
-# total ~45s, of which shell-lint.sh is ~17s and check-script-capabilities.sh
-# ~15s (it walks the invocation closure of every allowlisted script), and the
-# shard suite ~35s; the whole set measures ~78-82s end to end. Every figure
-# here is a tilde against host load, and the spread between two honest samples
-# on different hosts is a couple of seconds a member, so treat a small
-# disagreement as noise and re-measure rather than reconciling it. Time the
-# members plainly, `bash <path> >/dev/null </dev/null`: wrapping each one in
-# per-member instrumentation adds seconds across eighteen invocations and
-# inflates the total, which is how the figure above was first overstated. That
-# is why there is one tier rather than a fast default plus a named slower
-# tier. A split is worth its second name only once the honest set is slow
-# enough that people skip it, and an aggregate slow enough to skip is worse
-# than none; a minute and a half against the price of an audit round is not
-# that.
+# total ~45s, of which shell-lint.sh is ~17s and
+# check-script-capabilities.sh ~15s (it walks the invocation closure of every
+# allowlisted script), and the shard suite ~35s; the whole set measures
+# ~78-82s end to end. Every figure here is a tilde against host load, and the
+# spread between two honest samples on different hosts is a couple of seconds
+# a member, so treat a small disagreement as noise and re-measure rather than
+# reconciling it. Time the members plainly with
+# `bash <path> >/dev/null </dev/null`, and time the aggregate by running this
+# script. That is why there is one tier rather than a fast default plus a
+# named slower tier. A split is worth its second name only once the honest
+# set is slow enough that people skip it, and an aggregate slow enough to
+# skip is worse than none; a minute and a half against the price of an audit
+# round is not that.
 # Re-measure the WHOLE paragraph, not the figure being edited. Only the member
 # COUNT below is machine-checked, so every number here decays independently:
 # the shard suite's own figure nearly doubled as its W10 fixtures grew across
