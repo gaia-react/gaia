@@ -14,6 +14,7 @@
 # Usage:
 #   bash .gaia/tests/bats-shards.sh shards              # shard ids, in order
 #   bash .gaia/tests/bats-shards.sh files <shard-id>     # that shard's .bats paths
+#   bash .gaia/tests/bats-shards.sh group <shard-id>     # its exchange group's ids
 #   bash .gaia/tests/bats-shards.sh run <shard-id>       # bats those paths, one invocation
 #   bash .gaia/tests/bats-shards.sh -h | --help
 #
@@ -34,6 +35,15 @@
 # the rest of HOOKS_DIR by weight, SCRIPTS_IDS split SCRIPTS_TESTS_DIR the same
 # way; audit and lib are their whole directories; misc is FORENSICS_DIR plus
 # STATUSLINE_DIR combined.
+#
+# Exchange groups, which `group <shard-id>` reports. A shard's group is the set
+# of ids a file can move BETWEEN without anyone editing this script: the two
+# weighted groups exchange files among their own buckets on every size change,
+# and every other shard is a group of one, because its files are selected by
+# name (hooks-1) or by whole directory (audit, lib, misc) and no reshuffle can
+# move one across that boundary. A caller that must stay correct across
+# reshuffles asks about the group rather than the shard; the apt step in
+# .github/workflows/audit-ci-tests.yml is the one that does.
 #
 # Why weight rather than count. A shard's cost is the sum of its files'
 # runtimes, and file COUNT is a poor proxy for that: per-file setup dominates
@@ -113,6 +123,7 @@ REPO_ROOT="$(git -C "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" rev-parse --
 usage() {
   printf 'Usage: bash .gaia/tests/bats-shards.sh shards\n'
   printf '       bash .gaia/tests/bats-shards.sh files <shard-id>\n'
+  printf '       bash .gaia/tests/bats-shards.sh group <shard-id>\n'
   printf '       bash .gaia/tests/bats-shards.sh run <shard-id>\n'
   printf '       bash .gaia/tests/bats-shards.sh -h | --help\n'
 }
@@ -306,6 +317,29 @@ files_for_shard() {
   esac
 }
 
+# The ids sharing $1's exchange group, in matrix order, $1 included. Mirrors
+# files_for_shard's case structure deliberately: the two answer the same
+# question about the same boundaries, so a group added there without a case
+# here is a discrepancy cmd_group's empty-output guard fails on rather than
+# papering over with a default arm.
+group_for_shard() {
+  local id
+  case "$1" in
+    hooks-1) printf '%s\n' hooks-1 ;;
+    hooks-*)
+      for id in ${HOOKS_GREEDY_IDS[@]+"${HOOKS_GREEDY_IDS[@]}"}; do
+        printf '%s\n' "$id"
+      done
+      ;;
+    scripts-*)
+      for id in ${SCRIPTS_IDS[@]+"${SCRIPTS_IDS[@]}"}; do
+        printf '%s\n' "$id"
+      done
+      ;;
+    audit | lib | misc) printf '%s\n' "$1" ;;
+  esac
+}
+
 cmd_shards() {
   local s
   for s in ${SHARD_IDS[@]+"${SHARD_IDS[@]}"}; do
@@ -327,6 +361,24 @@ cmd_files() {
   fi
   if [ -z "$out" ]; then
     printf 'bats-shards: shard %s resolved zero files\n' "$id" >&2
+    exit 2
+  fi
+  printf '%s\n' "$out"
+}
+
+cmd_group() {
+  local id="$1" out
+  if ! is_known_shard "$id"; then
+    printf 'bats-shards: unknown shard id: %s\n' "$id" >&2
+    printf 'bats-shards: known ids: %s\n' "${SHARD_IDS[*]+"${SHARD_IDS[*]}"}" >&2
+    exit 2
+  fi
+  out="$(group_for_shard "$id")"
+  # Fail closed rather than print nothing. A known id reaching this empty means
+  # group_for_shard has no case for it, and a caller rounding a set up to whole
+  # groups would silently drop that shard instead of widening to it.
+  if [ -z "$out" ]; then
+    printf 'bats-shards: shard %s belongs to no declared exchange group\n' "$id" >&2
     exit 2
   fi
   printf '%s\n' "$out"
@@ -369,6 +421,10 @@ main() {
     files)
       [ $# -ge 2 ] || die_usage 'files needs a shard id'
       cmd_files "$2"
+      ;;
+    group)
+      [ $# -ge 2 ] || die_usage 'group needs a shard id'
+      cmd_group "$2"
       ;;
     run)
       [ $# -ge 2 ] || die_usage 'run needs a shard id'

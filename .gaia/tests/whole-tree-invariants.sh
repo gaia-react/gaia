@@ -43,12 +43,15 @@
 # Runtime, measured on the tree at the time of writing: the eighteen scripts
 # total ~29s, of which check-script-capabilities.sh alone is ~15s (it walks the
 # invocation closure of every allowlisted script), shell-lint ~10s, and the
-# shard suite ~19s; the whole set measures ~64-68s end to end. That is why there is
+# shard suite ~29s; the whole set measures ~72-76s end to end. That is why there is
 # one tier rather than a fast default plus a named
 # slower tier. A split is worth its second name only once the honest set is
 # slow enough that people skip it, and an aggregate slow enough to skip is
-# worse than none; a minute against the price of an audit round is not that.
-# Re-measure before adding a member that changes the order of magnitude.
+# worse than none; a minute and a quarter against the price of an audit round
+# is not that.
+# Re-measure before adding a member that changes the order of magnitude, and
+# before growing one: the shard suite's own figure moved by half again when its
+# W10 fixtures grew, and only the member COUNT below is machine-checked.
 #
 # The staleness lever: nothing above used to notice a member added without
 # this figure catching up, which is exactly what happened here (this comment
@@ -58,10 +61,11 @@
 # to be re-visited rather than drifting unnoticed again.
 #
 # What the lever does not catch, stated so it is not mistaken for more than it
-# is: only WTI_SCRIPTS_COUNT_ASOF is machine-checked. The word "sixteen" in the
+# is: only WTI_SCRIPTS_COUNT_ASOF is machine-checked. The word "eighteen" in the
 # paragraph above is prose and nothing compares it to anything, so the same
-# drift can recur one bump later; and a member swapped for another holds the
-# count, so the runtime figures can go stale with the lever satisfied.
+# drift can recur one bump later; and a member swapped for another, or simply
+# grown, holds the count, so the runtime figures can go stale with the lever
+# satisfied.
 #
 # No member is ever skipped. A missing member path, and a bats member with no
 # `bats` on PATH, both count as failures rather than passing quietly, because a

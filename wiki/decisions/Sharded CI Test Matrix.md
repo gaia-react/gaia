@@ -4,7 +4,7 @@ status: active
 priority: 2
 date: 2026-08-13
 created: 2026-08-13
-updated: 2026-08-13
+updated: 2026-08-25
 tags: [decision, ci, performance, github-actions, bats]
 ---
 
@@ -22,6 +22,12 @@ tags: [decision, ci, performance, github-actions, bats]
 Splitting the required check name off the work is what lets `fail-fast: false` stop one failing shard from cancelling its siblings without also cancelling the check. The aggregator compares against `success` rather than enumerating failure states, so a conclusion GitHub adds later fails closed, and `always()` on its `if:` stops a skip-on-dependency-failure from satisfying a required context that ran nothing.
 
 `.gaia/tests/bats-shards.sh` owns shard assignment by discovering `.bats` files rather than reading a manifest, so a newly added suite joins a shard automatically instead of silently running nowhere. `.gaia/tests/install-bats.sh` installs bats pinned by version and digest from a vendored archive under `.gaia/tests/vendor/`, so no leg fetches it.
+
+### Exchange groups
+
+The sharder also reports each shard's **exchange group**: the set of legs a file can move between without anyone editing the sharder. The two weighted groups (`hooks-2` to `hooks-4`, and `scripts-1` to `scripts-3`) exchange files among their own buckets on any size change; every other shard is a group of one, because its files are selected by name (`hooks-1`) or by whole directory (`audit`, `lib`, `misc`) and no reshuffle crosses that boundary. `bats-shards.sh group <shard-id>` answers it, and `bats-shards.bats` S14 proves the groups partition the shard set.
+
+The group is the right granularity for anything that must survive a reshuffle. The workflow's `python3-yaml` and `zsh` install step is the case that needs it: exactly one suite in the whole hooks directory reaches for either package, so naming that suite's leg literally makes the step's list a function of every hooks suite's byte size, with no relationship to the packages. The step lists the needing legs rounded up to whole groups instead, which moves only when a suite's dependency really changes. `audit-ci-shards.bats` W10 recomputes that rounded set from the suites and compares it, as exact equality rather than a superset rule, so a gratuitously listed leg still reds.
 
 ## The constraint any further restructuring hits first
 
@@ -93,7 +99,7 @@ The hooks group stops at three shards even though a fourth would lower its own h
 - **Per-shard narrowed paths filters.** Every leg shares one `steps:` block, so the filter is defined once and evaluated per leg. Narrowing per shard also breaks `.gaia/scripts/tests/workflow-filter-coverage.bats`, which requires every gate on a step to reach every literal path that step names, independently. `audit-ci-shards.bats` W7 pins the count at exactly one filter step.
 - **A checked-in shard manifest.** Fails silently: a new suite runs in no shard, every check greens, the pass count quietly drops.
 - **A checked-in table of per-file runtimes.** A better weight than file size, and the same silent-stale hazard as the manifest above wearing different clothes: a newly added suite weighs nothing, the shard holding it is under-counted, and nothing says so. Size is read from the tree at discovery time, so it is never stale and never absent.
-- **A per-shard package list.** Also a silent-green hazard, because the suites that need `python3-yaml` fail rather than skip when it is absent while the ones needing `zsh` skip quietly. The install is split by leg kind instead, and W9 pins the sandbox leg's reduced set.
+- **A hand-maintained per-shard package list.** Also a silent-green hazard, because the suites that need `python3-yaml` fail rather than skip when it is absent while the ones needing `zsh` skip quietly. The step's list is derived from the suites instead, rounded up to whole exchange groups and pinned by W10; W9 pins the sandbox leg's reduced set.
 - **`bats --jobs`.** A live lever rather than a closed question. The reasoning that excludes it, that the runner is already CPU-saturated, describes every shard sharing one box; a shard now runs one suite serially on its own four-core box, leaving cores idle.
 
 ## Fan-out has its own costs
