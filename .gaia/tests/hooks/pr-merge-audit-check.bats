@@ -2587,6 +2587,23 @@ run_merge_hook_lib_absent() {
   assert_denied_by_json
 }
 
+@test "library-absent: repo-scope.sh missing denies by name, not by blaming the command's spelling" {
+  install_gh_stub
+  commit_files "app/x.ts" "export const x = 1"
+  write_markers_for_spawn_set "$(spawn_set)"
+
+  # Binding every permit to the named pull request made this library's absence
+  # a whole-gate block, where it used to mean only that a bypass did not fire.
+  # Without a named guard the block surfaces through the binding's spelling arm,
+  # which blames the command and then recommends the exact bare merge that just
+  # denied, so the operator is told to respell a command no respelling repairs.
+  run_merge_hook_lib_absent "repo-scope.sh" "gh pr merge --squash --delete-branch"
+  assert_denied_by_json
+  grep -qF -- 'repo-scope.sh' <<<"$output"
+  grep -qF -- 'how the command is spelled' <<<"$output" && return 1
+  return 0
+}
+
 @test "library-absent: verb-arming.sh missing denies every Bash tool call, naming the file" {
   run_merge_hook_lib_absent "verb-arming.sh" "echo hi"
   assert_denied_by_json

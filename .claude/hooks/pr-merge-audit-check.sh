@@ -192,13 +192,24 @@ fi
 # rather than fall through to a degraded, uninformed gate. This is a
 # deliberate fail-closed path distinct from every other guard in this hook
 # (which fail OPEN on an unusable lookup).
+#
+# repo-scope.sh joined this list when the command-binding predicate stopped
+# being a bypass relaxation and became a conjunct on EVERY clearance permit.
+# Its absence makes gate_cmd_names_the_record_pr return 1 above the scanner
+# run, which used to mean only "this relaxation does not fire" and now means
+# every permit denies. Left out of this guard the denial surfaces through the
+# binding's own spelling arm, which blames the command's spelling and closes by
+# recommending the exact bare merge that just denied: the real cause is never
+# named and no respelling reaches it. Naming the file here is what turns that
+# into the same one early, honest denial its five siblings already give.
 _scope_lib="$_lib_dir/audit-scope.sh"
 _machinery_lib="$_lib_dir/audit-machinery.sh"
 _digest_lib="$_lib_dir/audit-digest.sh"
 _version_lib="$_lib_dir/gaia-version.sh"
 _provenance_lib="$_lib_dir/audit-base-provenance.sh"
-if [ -z "$_lib_dir" ] || [ ! -f "$_scope_lib" ] || [ ! -f "$_machinery_lib" ] || [ ! -f "$_digest_lib" ] || [ ! -f "$_version_lib" ] || [ ! -f "$_provenance_lib" ]; then
-  jq -n --arg r "PR merge gate: cannot load the ownership classifier, the digest engine, the version normalizer, or the base provenance resolver (.claude/hooks/lib/audit-scope.sh, .claude/hooks/lib/audit-machinery.sh, .claude/hooks/lib/audit-digest.sh, .claude/hooks/lib/gaia-version.sh, and .claude/hooks/lib/audit-base-provenance.sh must all exist and be readable). Every marker check below is keyed to a member's content digest and to a version literal this gate compares for equality against the stamped one; this gate's out-of-scope and self-mod-only bypasses depend on the classifier to know what a changed path is, and on the provenance resolver to know what base their change set is read against, so it denies rather than guess. Restore all five files (they ship with the framework; a missing or corrupted checkout is the usual cause) and retry." '{
+_repo_scope_lib="$_lib_dir/repo-scope.sh"
+if [ -z "$_lib_dir" ] || [ ! -f "$_scope_lib" ] || [ ! -f "$_machinery_lib" ] || [ ! -f "$_digest_lib" ] || [ ! -f "$_version_lib" ] || [ ! -f "$_provenance_lib" ] || [ ! -f "$_repo_scope_lib" ]; then
+  jq -n --arg r "PR merge gate: cannot load the ownership classifier, the digest engine, the version normalizer, the base provenance resolver, or the command scanner (.claude/hooks/lib/audit-scope.sh, .claude/hooks/lib/audit-machinery.sh, .claude/hooks/lib/audit-digest.sh, .claude/hooks/lib/gaia-version.sh, .claude/hooks/lib/audit-base-provenance.sh, and .claude/hooks/lib/repo-scope.sh must all exist and be readable). Every marker check below is keyed to a member's content digest and to a version literal this gate compares for equality against the stamped one; this gate's out-of-scope and self-mod-only bypasses depend on the classifier to know what a changed path is, and on the provenance resolver to know what base their change set is read against; and every permit this gate issues is bound to the pull request the merge names, which it reads through the command scanner. So it denies rather than guess. Restore all six files (they ship with the framework; a missing or corrupted checkout is the usual cause) and retry." '{
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
       permissionDecision: "deny",
