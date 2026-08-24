@@ -1230,8 +1230,8 @@ EOF
 # shard_package_needs propagates, so a directory holding fewer suites than its
 # group has buckets would fail every fixture here for a reason none of them is
 # about. Deriving the count from the sharder keeps that true as groups resize.
-# local-janitor.bats is written because hooks-1 pins it by name; its body is
-# plain, so hooks-1 never joins the reported set.
+# Why local-janitor.bats is seeded, and into both trees, is stated at its own
+# write site below rather than restated here.
 seed_seam_tree() {
   local root="$1" n i
   mkdir -p "$root/needs" "$root/clean"

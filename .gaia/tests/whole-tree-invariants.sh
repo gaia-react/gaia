@@ -43,12 +43,11 @@
 # Runtime, measured on the tree at the time of writing: the eighteen scripts
 # total ~29s, of which check-script-capabilities.sh alone is ~15s (it walks the
 # invocation closure of every allowlisted script), shell-lint ~10s, and the
-# shard suite ~35s; the whole set measures ~78-82s end to end. That is why there is
-# one tier rather than a fast default plus a named
-# slower tier. A split is worth its second name only once the honest set is
-# slow enough that people skip it, and an aggregate slow enough to skip is
-# worse than none; a minute and a half against the price of an audit round
-# is not that.
+# shard suite ~35s; the whole set measures ~78-82s end to end. That is why
+# there is one tier rather than a fast default plus a named slower tier. A
+# split is worth its second name only once the honest set is slow enough that
+# people skip it, and an aggregate slow enough to skip is worse than none; a
+# minute and a half against the price of an audit round is not that.
 # Re-measure before adding a member that changes the order of magnitude, and
 # before growing one: the shard suite's own figure nearly doubled as its W10
 # fixtures grew, across two rounds of the same change, and only the member
