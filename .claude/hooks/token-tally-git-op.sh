@@ -49,21 +49,29 @@ fi
 # Sourcing is side-effect-free and near-free; the expensive work
 # (token-tally.sh's transcript parse) still runs only past the gate.
 #
-# Both loads sit behind an -f test rather than a trailing `|| exit 0`, and that
-# is what keeps the degrade-silently contract this hook's header states. Under
-# `set -e` a `.` of a missing file kills the shell before the ERR trap at the
-# top can run, and on bash 3.2.57 before the `||` arm on its own line runs
-# either, where 5.x does reach that arm. Unguarded, either load exits 1 with a
-# raw "No such file or directory" on a checkout that lacks the file. What
+# Both loads parse-check before sourcing, which is what keeps the never-blocks
+# contract this hook's header states. Under `set -e` a `.` of a file bash
+# cannot open kills the shell before the ERR trap at the top can run, and
+# before any trailing `||` arm on the same line runs on the 3.2.57 stock macOS
+# ships as /bin/bash; a `.` of a file that opens but does not parse, a lib left
+# holding conflict markers, kills it the same way on 3.2, where 5.x does reach
+# that arm. Either way the hook exits non-zero, and at exit 2 that is the deny
+# code: the git operation is refused, including the commit that would repair
+# the lib. `bash -n` answers both questions in one call, and the trailing
+# `|| true` covers a lib that parses and then fails at source time. What
 # degrades in the trap's place is the `type` check below for the plan-folder
-# lib, and for the resolver the `|| exit 0` already carried by the
-# gaia_resolve_main_root call the cheap gate makes.
+# lib, and for the resolver the `|| exit 0` the cheap gate's
+# gaia_resolve_main_root call already carries.
+#
+# The verb-arming load above keeps its cheaper -f test deliberately: it runs
+# ahead of the arming gate, so a parse check there would fork on every Bash
+# tool call rather than on the git commit/push ones alone.
 gaia_scripts="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd)" || exit 0
 gaia_scripts="$gaia_scripts/.gaia/scripts"
 # shellcheck source=/dev/null
-[ -f "$gaia_scripts/main-root-lib.sh" ] && . "$gaia_scripts/main-root-lib.sh"
+"${BASH:-bash}" -n "$gaia_scripts/main-root-lib.sh" 2>/dev/null && . "$gaia_scripts/main-root-lib.sh" 2>/dev/null || true
 # shellcheck source=/dev/null
-[ -n "${_va_lib:-}" ] && [ -f "$_va_lib/gaia-active-plan.sh" ] && . "$_va_lib/gaia-active-plan.sh"
+"${BASH:-bash}" -n "${_va_lib:-}/gaia-active-plan.sh" 2>/dev/null && . "${_va_lib:-}/gaia-active-plan.sh" 2>/dev/null || true
 type resolve_active_plan_dir >/dev/null 2>&1 || exit 0
 
 # Cheap negative gate: no live plan RUNNING sentinel at all, skip before paying

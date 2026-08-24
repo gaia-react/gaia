@@ -563,13 +563,22 @@ run_hook() {
   git -C "$MAIN" worktree remove --force "$WT" 2>/dev/null || rm -rf "$WT"
 }
 
-# ---------- 10. Degrade-silently contract when gaia-active-plan.sh is absent ----------
-# These two run a COPY of the hook staged inside the tmp repo, so the lib
-# directory the hook resolves off BASH_SOURCE is the tmp repo's own and can be
-# built with or without the plan-folder lib. Running $HOOK_ABS would always
-# resolve the real checkout's lib, where the absent case cannot be expressed.
-# The control is what proves the absent case's exit 0 comes from the -f guard
-# rather than from staging too little for the hook to reach the lib at all.
+# ---------- 10. The never-blocks contract when a shared lib is unusable ----------
+# These run a COPY of the hook staged inside the tmp repo, so the lib directory
+# it resolves off BASH_SOURCE, and the .gaia/scripts beside it, are ones the
+# test controls. Running $HOOK_ABS would always resolve the real checkout's
+# libs, where neither the absent nor the unparseable case can be expressed.
+#
+# Two ways a lib goes unusable, and the hook must survive both: it is gone, and
+# it is present but does not parse (an unresolved merge conflict, a truncated
+# write). Under `set -e` a failed `.` aborts the shell ahead of the hook's ERR
+# trap in both cases, and exit 2 is the PreToolUse deny code, so an unguarded
+# load refuses the very git commit that would repair the lib.
+#
+# The controls are what give the absent and unparseable cases teeth: their
+# three assertions (exit 0, no output, no ledger row) are equally satisfied by
+# a hook that does nothing at all, so each interpreter gets a control proving
+# the same staging records normally.
 stage_hook_repo() {
   build_repo
   STAGED_HOOK="$REPO/.claude/hooks/token-tally-git-op.sh"
@@ -578,18 +587,31 @@ stage_hook_repo() {
 }
 
 run_staged_hook() {
-  # run_staged_hook <command>
-  local input
+  # run_staged_hook <command> [interpreter]
+  local input interp="${2:-}"
   input=$("$HELPERS/mock-hook-input.sh" pre-tool-use "$SESSION" Bash "$1")
-  run env GAIA_TALLY_PROJECTS_ROOT="$ANCHOR" bash -c "echo '$input' | '$STAGED_HOOK'"
+  run env GAIA_TALLY_PROJECTS_ROOT="$ANCHOR" bash -c "echo '$input' | $interp '$STAGED_HOOK'"
 }
 
-@test "staged hook with the plan-folder lib present records (control for the absent case below)" {
+# Overwrites <path> with an unresolved-merge-conflict body: the file opens and
+# reads fine, so an existence test passes it, and bash cannot parse it.
+write_conflicted_lib() {
+  { printf '<<<<<<< HEAD\n'; printf 'x() { :; }\n'; printf '=======\n'
+    printf 'y() { :; }\n'; printf '>>>>>>> other\n'; } > "$1"
+}
+
+# Scaffolds the staged repo with an active plan folder keyed to its branch, the
+# state every case below shares. Sets $plan_dir.
+stage_with_plan() {
   stage_hook_repo
-  cd "$REPO"
+  cd "$REPO" || return 1
   plan_dir="$REPO/.gaia/local/plans/my-plan"
   write_readme_with_spec "$plan_dir" "/abs/root/.gaia/local/specs/SPEC-013/SPEC.md"
   write_running "$plan_dir" "$(git branch --show-current)" "2026-07-01T00:00:00Z"
+}
+
+@test "staged hook, every lib usable: records (control)" {
+  stage_with_plan
 
   run_staged_hook "git commit -m x"
   [ "$status" -eq 0 ]
@@ -597,13 +619,22 @@ run_staged_hook() {
   [ "$(jq -r '.kind' "$REPO/.gaia/local/telemetry/cost.jsonl")" = "execute" ]
 }
 
+# The stock-/bin/bash control. Without it the two /bin/bash-pinned cases below
+# would stay green if the hook stopped recording entirely under 3.2, which is
+# exactly the class the empty-array case above exists to catch.
+@test "staged hook under stock /bin/bash, every lib usable: records (control)" {
+  [ -x /bin/bash ] || skip "no /bin/bash"
+  stage_with_plan
+
+  run_staged_hook "git commit -m x" /bin/bash
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  [ "$(jq -r '.kind' "$REPO/.gaia/local/telemetry/cost.jsonl")" = "execute" ]
+}
+
 @test "staged hook in a checkout lacking gaia-active-plan.sh: exit 0, no output, no record" {
-  stage_hook_repo
+  stage_with_plan
   rm -f "$REPO/.claude/hooks/lib/gaia-active-plan.sh"
-  cd "$REPO"
-  plan_dir="$REPO/.gaia/local/plans/my-plan"
-  write_readme_with_spec "$plan_dir" "/abs/root/.gaia/local/specs/SPEC-013/SPEC.md"
-  write_running "$plan_dir" "$(git branch --show-current)" "2026-07-01T00:00:00Z"
 
   run_staged_hook "git commit -m x"
   [ "$status" -eq 0 ]
@@ -611,22 +642,40 @@ run_staged_hook() {
   [ ! -f "$REPO/.gaia/local/telemetry/cost.jsonl" ]
 }
 
-# The resolver lib's own absent case, pinned to stock /bin/bash. With errexit
-# on, bash 3.2.57 abandons the shell on a failed source before the `|| exit 0`
-# arm on the same line runs, where 5.x reaches it, so only a /bin/bash run
-# reproduces the class on a stock Mac. On a bash-5 /bin/bash (Linux CI) this
-# passes either way, the same honest caveat the empty-array case above carries.
+# Pinned to stock /bin/bash: on 3.2.57 the shell abandons on the failed source
+# before a trailing `||` arm on that line runs, where 5.x reaches it, so only a
+# /bin/bash run reproduces this half of the class on a stock Mac. On a bash-5
+# /bin/bash (Linux CI) it passes either way, the same honest caveat the
+# empty-array case above carries.
 @test "staged hook in a checkout lacking main-root-lib.sh under stock /bin/bash: exit 0, no output, no record" {
   [ -x /bin/bash ] || skip "no /bin/bash"
-  stage_hook_repo
+  stage_with_plan
   rm -f "$REPO/.gaia/scripts/main-root-lib.sh"
-  cd "$REPO"
-  plan_dir="$REPO/.gaia/local/plans/my-plan"
-  write_readme_with_spec "$plan_dir" "/abs/root/.gaia/local/specs/SPEC-013/SPEC.md"
-  write_running "$plan_dir" "$(git branch --show-current)" "2026-07-01T00:00:00Z"
 
-  input=$("$HELPERS/mock-hook-input.sh" pre-tool-use "$SESSION" Bash "git commit -m x")
-  run env GAIA_TALLY_PROJECTS_ROOT="$ANCHOR" bash -c "echo '$input' | /bin/bash '$STAGED_HOOK'"
+  run_staged_hook "git commit -m x" /bin/bash
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  [ ! -f "$REPO/.gaia/local/telemetry/cost.jsonl" ]
+}
+
+# The unparseable half needs no interpreter pin: a syntax error in a sourced
+# file aborts an errexit shell on bash 5 too, so this case has teeth on Linux
+# CI as well as on a stock Mac.
+@test "staged hook whose main-root-lib.sh holds conflict markers: exit 0, no output, no record" {
+  stage_with_plan
+  write_conflicted_lib "$REPO/.gaia/scripts/main-root-lib.sh"
+
+  run_staged_hook "git commit -m x"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  [ ! -f "$REPO/.gaia/local/telemetry/cost.jsonl" ]
+}
+
+@test "staged hook whose gaia-active-plan.sh holds conflict markers: exit 0, no output, no record" {
+  stage_with_plan
+  write_conflicted_lib "$REPO/.claude/hooks/lib/gaia-active-plan.sh"
+
+  run_staged_hook "git commit -m x"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
   [ ! -f "$REPO/.gaia/local/telemetry/cost.jsonl" ]
