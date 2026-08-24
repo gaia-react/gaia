@@ -110,152 +110,45 @@ tool_name=$(echo "$input" | jq -r '.tool_name // ""' 2>/dev/null)
 # and make any later `command -v ...` calls in this script silently misbehave.
 cmd=$(echo "$input" | jq -r '.tool_input.command // ""' 2>/dev/null)
 
-# gate_cmd_is_first_command_merge: does this tool call's FIRST command tokenize
-# to `gh pr merge`? The text arms below cannot answer that, because every
-# spelling that breaks the literal run of characters `gh pr merge` is invisible
-# to them: `gh pr "merge" <n>`, `gh "pr" merge <n>`, and a line continuation
-# inside the verb were each demonstrated against the running hook skipping the
-# gate entirely, on a pull request carrying no marker at all
-# (gaia-react/gaia#1541).
+# Arm the gate when this tool call carries a `gh pr merge`, through the shared
+# arming decision (.claude/hooks/lib/verb-arming.sh): the same raw start/sep
+# match this gate always paid, re-tested against a same-length view that masks
+# a heredoc body proven to be data, plus the first-command tokenizer arm. See
+# that library's own header for the full three-pass contract and what it does
+# not close; residual 1 still applies at this site: a quoted string carrying a
+# separator before the verb still arms the gate, fail-closed, with no safe
+# narrowing.
 #
-# Named at parent level because a `[[ =~ ]]` pattern holding a quote and a
-# backslash is unreadable written inline, and quoting it there would match it
-# literally instead of as a regex.
+# Loaded from this hook's OWN on-disk location, never cwd: the bats suites run
+# this hook by absolute path from a sandbox cwd with no .claude/, so a
+# cwd-relative source would miss the lib and flip the arming answer.
 #
-# Two characters, not one, and the second is what excludes `git`. A first word
-# that tokenizes to `gh` must begin with `gh`, or with `g` followed by a quote or
-# backslash spelling the `h` (`g"h"`, `g\h`), or with a quote or backslash
-# outright (`"gh"`, `\gh`). Nothing else reaches `gh` except a `$'…'` word, which
-# begins with `$`; the arm would not fire on one anyway, because the shared
-# scanner tokenizes `$'gh'` to the word `$gh` rather than to `gh`, so word 0
-# fails the equality below. Everything else that can reach `gh` is admitted while
-# turning away `git`, `grep`, `gzip` and `go`, which a bare `g` test admitted and
-# made pay the source and the scan.
-gate_gh_lead_re=$'^[[:space:]]*([g]["\'\\\\h]|["\'\\\\])'
-
-# How much of the command the arming scan reads. CHARACTERS, not bytes: bash
-# slices `${var:0:n}` by character, so under a multibyte locale this admits more
-# bytes than the number says. Harmless in both directions here, the scanner's own
-# cost is character-driven too, so the bound holds in the dimension it was
-# measured in. Sized to swamp the ~20 characters a real `gh pr merge` needs for
-# its first three words while keeping the scan's superlinear cost off a large
-# command; see the scan call for why cutting the tail is safe.
-gate_scan_prefix_chars=2048
-
-# It asks the shared scanner for WORDS rather than calling gaia_scan_gh_merge,
-# and the difference is load-bearing rather than stylistic. That function also
-# abstains on any flag shape it declines to model, which is the right answer for
-# a relaxation deciding whether to permit and the wrong one here: arming must be
-# strictly broader than clearing, or a merge carrying an unmodelled flag would
-# skip the gate rather than meet it.
-gate_cmd_is_first_command_merge() {
-  local lib_dir
-  # Cheap pre-filter first. This hook fires on EVERY Bash tool call, while the
-  # scan below is a byte-at-a-time bash loop and the library holding it is
-  # several hundred lines to source.
-  #
-  # The filter tests the LEADING CHARACTERS rather than searching for the verb,
-  # and soundness is why. A word the shell assembles need not appear in the
-  # command as a run of bytes at all: `gh pr me\<newline>rge 1` spells the verb
-  # through a line continuation and holds no `merge` substring, so a search for
-  # one would drop exactly the spelling this arm exists to catch. Why the
-  # two-character alternation admits every command whose first word can reach
-  # `gh` is argued where the pattern is defined; see `gate_gh_lead_re` above.
-  #
-  # Be exact about what it does NOT buy, because the obvious reading is wrong.
-  # The filter reads the first word, never the subcommand, so this is not "only
-  # a merge pays": every `gh` invocation pays the source and the scan whatever
-  # it goes on to do, `gh issue view` and `gh api` alongside `gh pr merge`, and
-  # so does any command opening with a quote or a backslash, since that first
-  # character could be spelling anything. What it removes is every command whose
-  # first word cannot reach `gh`, `git` and `grep` among them, which is most
-  # Bash tool calls, and that is the honest claim. It also admits no `$'…'`
-  # form, since that begins with `$`; the shared scanner would not model one
-  # anyway.
-  [[ "$cmd" =~ $gate_gh_lead_re ]] || return 1
-
-  # From this hook's OWN on-disk location, never cwd: the bats suites run this
-  # hook by absolute path from a sandbox cwd that has no .claude/, so a
-  # cwd-relative source would leave this arm silently dead exactly where the
-  # tests believe they are exercising it.
-  if ! type gaia_scan_first_command >/dev/null 2>&1; then
-    lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)"
-    [ -n "$lib_dir" ] && [ -f "$lib_dir/repo-scope.sh" ] || return 1
-    # shellcheck source=/dev/null
-    . "$lib_dir/repo-scope.sh" || return 1
-    type gaia_scan_first_command >/dev/null 2>&1 || return 1
+# This runs BEFORE arming, ahead of even knowing whether the tool call is a
+# merge, so an unloadable library denies every Bash tool call here, not merge
+# attempts alone, unlike the five-lib deny further down which only ever denies
+# a merge once armed.
+_va_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)"
+_va_ok=0
+if [ -n "$_va_lib_dir" ] && [ -f "$_va_lib_dir/verb-arming.sh" ]; then
+  # shellcheck source=/dev/null
+  if . "$_va_lib_dir/verb-arming.sh" && type gaia_verb_armed >/dev/null 2>&1; then
+    _va_ok=1
   fi
+fi
+if [ "$_va_ok" -ne 1 ]; then
+  jq -n --arg r "PR merge gate: cannot load the shared verb-arming decision (.claude/hooks/lib/verb-arming.sh must exist, be readable, and define gaia_verb_armed). This check runs before the gate knows whether the tool call is a gh pr merge at all, so it denies every Bash tool call rather than merge attempts alone. Restore .claude/hooks/lib/verb-arming.sh (it ships with the framework; a missing or corrupted checkout is the usual cause) and retry." '{
+    hookSpecificOutput: {
+      hookEventName: "PreToolUse",
+      permissionDecision: "deny",
+      permissionDecisionReason: $r
+    }
+  }'
+  exit 0
+fi
 
-  # Scan a BOUNDED PREFIX, never the whole command. The scanner walks the string
-  # a byte at a time and slices per block, so its cost grows faster than the
-  # input: measured against this hook, a single-line command the filter admits
-  # cost 335ms at 8KB and 3s at 32KB, against 59ms for the same size the filter
-  # turns away before the scan runs at all. That stall lands on everything the
-  # filter admits by design, which is not merges: every `gh` invocation whatever
-  # its subcommand, plus any command opening with a quote or a backslash. So the
-  # scan has to be bounded rather than merely gated.
-  #
-  # The bound is safe, and being exact about WHY matters, because the intuitive
-  # reading of it is backwards in both halves.
-  #
-  # Cutting the tail CAN create an arm rather than only destroy one: a word
-  # straddling the bound is truncated, and one truncated to exactly `merge` arms
-  # a command that does not arm when written in full. Verified against this
-  # predicate rather than reasoned about.
-  #
-  # That direction is harmless, because arming is monotonically FAIL-CLOSED: an
-  # armed gate goes on to decide and can still deny, while a gate that does not
-  # arm exits 0 and permits. Over-arming therefore costs a decision nobody asked
-  # for, and the only direction worth defending is failing to arm a real merge.
-  # That needs the first three words to end past the bound, which takes
-  # deliberate padding of an invocation otherwise occupying under twenty
-  # characters, and the text arm below is unbounded and still sees a plain merge
-  # at any offset.
-  gaia_scan_first_command "${cmd:0:$gate_scan_prefix_chars}" || return 1
-  [ "${#GAIA_FIRST_COMMAND_WORDS[@]}" -ge 3 ] || return 1
-  [ "${GAIA_FIRST_COMMAND_WORDS[0]}" = "gh" ] || return 1
-  [ "${GAIA_FIRST_COMMAND_WORDS[1]}" = "pr" ] || return 1
-  [ "${GAIA_FIRST_COMMAND_WORDS[2]}" = "merge" ]
-}
-
-# Arm the gate when this tool call carries a `gh pr merge`. Two arms, unioned,
-# because each reaches a spelling the other cannot and neither is a superset.
-#
-# TEXT: the literal run `gh pr merge` at the very start of the command or
-# immediately after a shell separator (&&, ;, ||, |, newline). Use bash =~ for
-# whole-string regex semantics; grep operates line-by-line. This is the only arm
-# that can see a merge which is NOT the first command in the tool call, because
-# the scanner stops at the first one, so dropping it in favour of the tokenizer
-# would open a hole (`<anything> && gh pr merge <n>`) rather than close one.
-#
-# TOKENIZER: the first command really is the merge, through the ordinary quoting
-# and continuation forms the shared scanner models. Not every conceivable one:
-# a `$'…'` word is turned away by the pre-filter, and would not arm even if it
-# were admitted, since the scanner tokenizes `$'gh'` to `$gh` and word 0 never
-# equals `gh`. Neither arm sees that spelling, which is a gap rather than a
-# defence; the suite pins it as one.
-#
-# WHAT THIS DOES NOT GUARANTEE. Stated because the comment that stood here
-# claimed the opposite, and a guard advertising a property it does not have is
-# worse than one that admits the gap. The text arm OVER-arms: its newline
-# alternative means a heredoc body line, or a quoted prose string carrying a
-# separator, that begins with the verb arms the gate and denies an unrelated
-# tool call. Writing this repository's own merge documentation through a heredoc
-# trips it. That direction is fail-closed, it costs an unrelated call rather
-# than permitting an unaudited merge, and closing it needs a scanner that walks
-# every command in the tool call and models heredoc bodies as data, which the
-# shared one does not. Neither arm reads a prefix (`env gh pr merge`, an
-# absolute path to gh) or a subshell, since those change which word is first.
-# This gate targets accidental and inattentive merges; a PreToolUse hook
-# matching a command is not a boundary against deliberate obfuscation.
-sep_re=$'(\\&\\&|;|\\|\\||\\||\n)[[:space:]]*gh[[:space:]]+pr[[:space:]]+merge([[:space:]]|$)'
-start_re='^[[:space:]]*gh[[:space:]]+pr[[:space:]]+merge([[:space:]]|$)'
-if [[ "$cmd" =~ $start_re ]]; then
-  : # match at command start
-elif [[ "$cmd" =~ $sep_re ]]; then
-  : # match after a shell separator (incl. newline)
-elif gate_cmd_is_first_command_merge; then
-  : # the first command tokenizes to the merge, however it is quoted
+gate_verb_frag='gh[[:space:]]+pr[[:space:]]+merge([[:space:]]|$)'
+if gaia_verb_armed "$gate_verb_frag" 'gh pr merge' "$cmd"; then
+  : # armed
 else
   exit 0
 fi

@@ -48,18 +48,20 @@ tool_name=$(echo "$input" | jq -r '.tool_name // ""' 2>/dev/null)
 # Avoid the name `command`: it would shadow bash's `command` builtin.
 cmd=$(echo "$input" | jq -r '.tool_input.command // ""' 2>/dev/null)
 
-# Match a debt-count-mutating `gh` invocation, `gh pr merge`, `gh issue create`,
-# `gh issue edit`, `gh issue close`, or `gh issue reopen`, only when it appears
-# as an actual shell invocation, either at the very start of the command or
-# immediately after a shell separator. The `gh pr merge` arm is the same
-# matcher as pr-merge-audit-check.sh / the deny hook.
-gh_verb='gh[[:space:]]+(pr[[:space:]]+merge|issue[[:space:]]+(create|edit|close|reopen))([[:space:]]|$)'
-sep_re=$'(\\&\\&|;|\\|\\||\\||\n)[[:space:]]*'"$gh_verb"
-start_re='^[[:space:]]*'"$gh_verb"
-if [[ "$cmd" =~ $start_re ]]; then
-  : # match at command start
-elif [[ "$cmd" =~ $sep_re ]]; then
-  : # match after a shell separator (incl. newline)
+# Five debt-count-mutating gh invocations: `gh pr merge`, `gh issue create`,
+# `gh issue edit`, `gh issue close`, `gh issue reopen`. The `gh pr merge` arm
+# uses the shared arming decision, the same one pr-merge-audit-check.sh and
+# the other deny hooks use (.claude/hooks/lib/verb-arming.sh). A quoted verb
+# inside prose still arms here, fail-closed, with no safe narrowing.
+_va_lib="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)"
+# shellcheck source=/dev/null
+[ -n "${_va_lib:-}" ] && [ -f "$_va_lib/verb-arming.sh" ] && . "$_va_lib/verb-arming.sh"
+type gaia_verb_armed >/dev/null 2>&1 || exit 0
+
+frag='gh[[:space:]]+(pr[[:space:]]+merge|issue[[:space:]]+(create|edit|close|reopen))([[:space:]]|$)'
+words='gh pr merge;gh issue create;gh issue edit;gh issue close;gh issue reopen'
+if gaia_verb_armed "$frag" "$words" "$cmd"; then
+  : # match
 else
   exit 0
 fi

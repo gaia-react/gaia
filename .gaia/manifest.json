@@ -56,6 +56,8 @@
     ".claude/hooks/lib/gaia-version.sh": "owned",
     ".claude/hooks/lib/red-ledger.sh": "owned",
     ".claude/hooks/lib/repo-scope.sh": "owned",
+    ".claude/hooks/lib/verb-arming-walk.sh": "owned",
+    ".claude/hooks/lib/verb-arming.sh": "owned",
     ".claude/hooks/lib/worthiness-ledger.sh": "owned",
     ".claude/hooks/local-janitor.sh": "owned",
     ".claude/hooks/post-audit-status.sh": "owned",
@@ -664,7 +666,7 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-08-23T05:47:58.298Z",
+  "generated": "2026-08-23T21:08:59.977Z",
   "regions": [
     {
       "endMarker": "<!-- gaia:audit-remit:end -->",

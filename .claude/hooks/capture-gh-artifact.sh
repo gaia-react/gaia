@@ -22,15 +22,17 @@ tool_name=$(jq -r '.tool_name // ""' <<<"$payload")
 
 cmd=$(jq -r '.tool_input.command // ""' <<<"$payload")
 
-# Match `gh pr create` as a real shell invocation, at command start or right
-# after a shell separator (&&, ;, ||, |, newline), never mid-line in prose or
-# a quoted string. Mirrors token-rollup-merge.sh's command match. Deliberately
-# does NOT match `gh issue create`: see gh-artifact-lib.sh for why.
-start_re='^[[:space:]]*gh[[:space:]]+pr[[:space:]]+create([[:space:]]|$)'
-sep_re=$'(\\&\\&|;|\\|\\||\\||\n)[[:space:]]*gh[[:space:]]+pr[[:space:]]+create([[:space:]]|$)'
-if [[ "$cmd" =~ $start_re ]]; then
-  :
-elif [[ "$cmd" =~ $sep_re ]]; then
+# Uses the shared arming decision, the same one token-rollup-merge.sh uses
+# (.claude/hooks/lib/verb-arming.sh). Deliberately does NOT match `gh issue
+# create`: see gh-artifact-lib.sh for why. A quoted verb inside prose still
+# arms here, fail-closed, with no safe narrowing.
+_va_lib="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)"
+# shellcheck source=/dev/null
+[ -n "${_va_lib:-}" ] && [ -f "$_va_lib/verb-arming.sh" ] && . "$_va_lib/verb-arming.sh"
+type gaia_verb_armed >/dev/null 2>&1 || exit 0
+
+frag='gh[[:space:]]+pr[[:space:]]+create([[:space:]]|$)'
+if gaia_verb_armed "$frag" 'gh pr create' "$cmd"; then
   :
 else
   exit 0

@@ -31,16 +31,16 @@ tool_name=$(echo "$input" | jq -r '.tool_name // ""' 2>/dev/null)
 # Avoid the name `command`: it would shadow bash's `command` builtin.
 cmd=$(echo "$input" | jq -r '.tool_input.command // ""' 2>/dev/null)
 
-# Same construction as debt-sentinel-touch.sh / pr-merge-audit-check.sh: match
-# `gh pr merge` only as a real shell invocation, at the very start of the
-# command or immediately after a shell separator.
-gh_verb='gh[[:space:]]+pr[[:space:]]+merge([[:space:]]|$)'
-sep_re=$'(\\&\\&|;|\\|\\||\\||\n)[[:space:]]*'"$gh_verb"
-start_re='^[[:space:]]*'"$gh_verb"
-if [[ "$cmd" =~ $start_re ]]; then
-  : # match at command start
-elif [[ "$cmd" =~ $sep_re ]]; then
-  : # match after a shell separator (incl. newline)
+# Shared arming decision; see .claude/hooks/lib/verb-arming.sh. A quoted verb
+# inside prose still arms here, fail-closed, with no safe narrowing.
+_va_lib="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)"
+# shellcheck source=/dev/null
+[ -n "${_va_lib:-}" ] && [ -f "$_va_lib/verb-arming.sh" ] && . "$_va_lib/verb-arming.sh"
+type gaia_verb_armed >/dev/null 2>&1 || exit 0
+
+frag='gh[[:space:]]+pr[[:space:]]+merge([[:space:]]|$)'
+if gaia_verb_armed "$frag" 'gh pr merge' "$cmd"; then
+  : # match
 else
   exit 0
 fi

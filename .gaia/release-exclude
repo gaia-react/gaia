@@ -76,6 +76,14 @@
 # bats suite and audit-ci-tests.yml) are already release-excluded, so
 # shipping it would ship a check nothing on an adopter clone invokes.
 .gaia/scripts/check-base-provenance-adoption.sh
+# This check asserts an invariant true of GAIA's own source: that the shared
+# verb-arming decision stays a singleton and that GAIA's own eleven hooks
+# adopt it. An adopter does not write GAIA's hooks or its shared library. Its
+# only runners (the .gaia/scripts/tests/ bats suite and
+# .gaia/tests/whole-tree-invariants.sh, run from audit-ci-tests.yml) are
+# already release-excluded, so shipping it would ship a check nothing on an
+# adopter clone invokes.
+.gaia/scripts/check-verb-arming-adoption.sh
 # Task 7.3's check asserts this repository still qualifies for git's merge refusal on the tracked wiki state file; its only runner (audit-ci-tests.yml and its bats suite) is already maintainer-only, and an adopter cannot act on the failure.
 .gaia/scripts/check-wiki-state-collision.sh
 # The git path-quoting lint guards GAIA's own framework shell and its CI

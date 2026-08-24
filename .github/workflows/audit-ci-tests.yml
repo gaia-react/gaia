@@ -682,7 +682,7 @@ jobs:
       # Do not edit this list by hand to make W10 pass: W10 failing means a
       # suite moved legs, and the repair is to copy the set W10 names, which it
       # derives from the suites rather than from here.
-      - if: contains(fromJSON('["hooks-3", "lib", "scripts-1", "scripts-2", "scripts-3"]'), matrix.shard) && (steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch')
+      - if: contains(fromJSON('["hooks-4", "lib", "scripts-1", "scripts-2", "scripts-3"]'), matrix.shard) && (steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch')
         name: Install the YAML parser and zsh
         # Sized for fast failure and honest attribution, NOT to the leg. When
         # this cap fires is the budget paragraph's subject, not this one's,
@@ -913,19 +913,96 @@ jobs:
           bash .gaia/scripts/check-hook-capabilities.sh
           echo "hook-capabilities-live-tree elapsed: $(( SECONDS - start ))s"
 
-  # The declared-required check. `needs: [shards, hook-capabilities-live-tree]`
-  # makes it the second hop of a 2-hop chain the arithmetic above is sized to,
-  # and `always()` is what stops a plain skip-on-dependency-failure from
-  # satisfying nothing: a `needs:` with no `if:` SKIPS when a dependency fails,
-  # and a skipped stamp satisfies no required check.
+  # A standalone job, not a matrix leg. .gaia/scripts/check-verb-arming-adoption.sh
+  # pins the shared verb-arming decision as a singleton and the eleven adopting
+  # hooks against drift (SPEC-075's Constitution requires the check run in CI
+  # rather than by hand; see that check's own header). It runs here rather than
+  # inside a bats shard because bats-shards.sh weights a shard by its suites'
+  # file size, and this checker has no .bats file of its own to weigh it in --
+  # a short suite shelling out to it would misprice that shard the same way
+  # hook-capabilities-live-tree's comment describes for its own checker. It
+  # runs at hop 1 alongside `shards` and `hook-capabilities-live-tree`, so the
+  # `needs:` chain into the aggregator below stays 2 hops; see the `shards`
+  # job's own comment for the 15-minute total that arithmetic is sized to.
+  verb-arming-adoption:
+    name: Verb Arming Adoption
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    # The check itself is a handful of git grep calls (~1s standalone,
+    # nowhere near hook-capabilities-live-tree's closure-walk cost), so 2
+    # minutes sizes to the measurement rather than borrowing the neighbour's
+    # 5-minute cap.
+    timeout-minutes: 2
+    # Checks out and runs a shell checker; no write scope needed. No
+    # `pull-requests: read`: this job's filter is hand-rolled (see the
+    # comment on the filter step below) rather than dorny/paths-filter, so it
+    # never calls the API that scope exists for.
+    permissions:
+      contents: read
+    steps:
+      # `fetch-depth: 0` (full history), not the default shallow clone: the
+      # hand-rolled filter step below diffs against the PR's base commit,
+      # which a depth-1 checkout never fetches.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      # Hand-rolled rather than a second dorny/paths-filter step. W7 in
+      # .gaia/tests/lib/audit-ci-shards.bats pins exactly one paths-filter
+      # step for the whole workflow, and this job runs in parallel with
+      # `shards` rather than depending on it, so it cannot read that one
+      # step's output without adding a `needs:` hop the arithmetic above has
+      # no room for. hook-capabilities-live-tree's own hand-rolled gate is
+      # the precedent this mirrors; both are named in
+      # workflow-filter-coverage.bats's HANDROLLED_EXEMPT set (by workflow
+      # file, not by job id) for the same reason. The alternation below is
+      # maintained by hand: a step reading a new path means adding that path
+      # here in the same edit.
+      - name: Detect verb-arming-adoption-relevant changes
+        id: filter
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -eu
+          # `-z` plus `tr`, not a bare `--name-only`: see
+          # hook-capabilities-live-tree's identical filter step for why an
+          # unquoted diff over a non-ASCII path breaks the pattern below.
+          changed=$(set -o pipefail; git diff --name-only -z "$BASE_SHA" HEAD | tr '\0' '\n')
+          # `\.sh$` rather than a list of directories, because the checker's
+          # own scan is the whole tracked tree: its private-pattern and
+          # grep-idiom assertions take `-- '*.sh'`, so a shell file ANYWHERE
+          # can plant what they look for, including under directories no
+          # arming code lives in today. Any directory list is therefore
+          # narrower than what the checker reads, and a filter narrower than
+          # the checker runs the job with the checker step skipped and reports
+          # success over content it never scanned. Honest limit: the singleton
+          # assertion scans `-- .`, every tracked file, so a definition planted
+          # in a non-`.sh` file arms nothing here.
+          pattern='^\.claude/hooks/|^\.claude/settings\.json$|\.sh$|^\.github/workflows/audit-ci-tests\.yml$'
+          if printf '%s\n' "$changed" | grep -qE "$pattern"; then
+            echo "code=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "code=false" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
+        name: Run the verb-arming adoption checker
+        run: bash .gaia/scripts/check-verb-arming-adoption.sh
+
+  # The declared-required check. `needs: [shards, hook-capabilities-live-tree,
+  # verb-arming-adoption]` makes it the second hop of a 2-hop chain the
+  # arithmetic above is sized to, and `always()` is what stops a plain
+  # skip-on-dependency-failure from satisfying nothing: a `needs:` with no
+  # `if:` SKIPS when a dependency fails, and a skipped stamp satisfies no
+  # required check.
   audit-ci-tests:
     name: Audit CI Tests
-    needs: [shards, hook-capabilities-live-tree]
+    needs: [shards, hook-capabilities-live-tree, verb-arming-adoption]
     if: always() && (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     timeout-minutes: 2
-    # No checkout and no scopes: this job reads two expressions off `needs:`
-    # and exits, so it needs nothing a default-deny leaves it without.
+    # No checkout and no scopes: this job reads its `needs:` results and
+    # exits, so it needs nothing a default-deny leaves it without. Stated
+    # without a count, which goes stale the next time a job joins `needs:`.
     permissions: {}
     steps:
       # `needs.shards.result` is the aggregate over every matrix leg: it reads
@@ -933,16 +1010,17 @@ jobs:
       # all skipped because the filter resolved false still concludes
       # `success`, which is correct and matches today's pre-shard behavior --
       # a PR touching nothing relevant should report this check green having
-      # run nothing. `needs.hook-capabilities-live-tree.result` is read the same
-      # way. `skipped` and `cancelled` both fail this check, along with
+      # run nothing. Every other `needs:` result is read the same way.
+      # `skipped` and `cancelled` both fail this check, along with
       # `failure`, because each comparison is `!= "success"` rather than a
       # `case` enumerating the failure states it knows about, so a conclusion
       # GitHub adds later fails closed instead of reading as an unrecognized,
       # unhandled success.
-      - name: Require every shard and the live-tree job to have succeeded
+      - name: Require every dependency in needs to have concluded success
         env:
           SHARDS_RESULT: ${{ needs.shards.result }}
           HOOK_CAPABILITIES_RESULT: ${{ needs.hook-capabilities-live-tree.result }}
+          VERB_ARMING_RESULT: ${{ needs.verb-arming-adoption.result }}
         run: |
           if [ "$SHARDS_RESULT" != "success" ]; then
             echo "::error::at least one shard did not conclude success: $SHARDS_RESULT" >&2
@@ -950,5 +1028,9 @@ jobs:
           fi
           if [ "$HOOK_CAPABILITIES_RESULT" != "success" ]; then
             echo "::error::hook-capabilities-live-tree did not conclude success: $HOOK_CAPABILITIES_RESULT" >&2
+            exit 1
+          fi
+          if [ "$VERB_ARMING_RESULT" != "success" ]; then
+            echo "::error::verb-arming-adoption did not conclude success: $VERB_ARMING_RESULT" >&2
             exit 1
           fi

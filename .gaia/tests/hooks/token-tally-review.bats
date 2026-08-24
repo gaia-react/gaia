@@ -22,6 +22,9 @@ setup() {
   HOOK_ABS="$REPO_ROOT/.claude/hooks/token-tally-review.sh"
   LIB_SRC="$REPO_ROOT/.claude/hooks/lib/gaia-active-plan.sh"
   LIB_MAIN_ROOT_SRC="$REPO_ROOT/.gaia/scripts/main-root-lib.sh"
+  VERB_ARMING_SRC="$REPO_ROOT/.claude/hooks/lib/verb-arming.sh"
+  VERB_ARMING_WALK_SRC="$REPO_ROOT/.claude/hooks/lib/verb-arming-walk.sh"
+  REPO_SCOPE_SRC="$REPO_ROOT/.claude/hooks/lib/repo-scope.sh"
 
   export GIT_AUTHOR_NAME="GAIA Test"
   export GIT_AUTHOR_EMAIL="gaia-test@example.com"
@@ -48,6 +51,9 @@ build_repo() {
   cp "$LIB_SRC" "$REPO/.claude/hooks/lib/gaia-active-plan.sh"
   chmod +x "$REPO/.claude/hooks/lib/gaia-active-plan.sh"
   cp "$LIB_MAIN_ROOT_SRC" "$REPO/.gaia/scripts/main-root-lib.sh"
+  cp "$VERB_ARMING_SRC" "$REPO/.claude/hooks/lib/verb-arming.sh"
+  cp "$VERB_ARMING_WALK_SRC" "$REPO/.claude/hooks/lib/verb-arming-walk.sh"
+  cp "$REPO_SCOPE_SRC" "$REPO/.claude/hooks/lib/repo-scope.sh"
 
   CALLS_FILE="$REPO/.gaia/local/tally-review-calls.txt"
   mkdir -p "$(dirname "$CALLS_FILE")"
@@ -248,6 +254,62 @@ run_hook_stop() {
   run_hook_bash "$heredoc_cmd" "S1" "$PROOT"
   [ "$status" -eq 0 ]
   [ ! -f "$CALLS_FILE" ]
+}
+
+# ---------- Shared arming decision (data proof, bound, tokenizer) ----------
+
+@test "a real gh pr merge heredoc body (cat-to-file) is proven data: no invocation, and the same text without it invokes" {
+  build_repo
+  cd "$REPO"
+  PROOT="$REPO/projects"
+  write_review_sidecar "$PROOT" "S1" "code-audit-frontend"
+
+  heredoc_cmd=$'cat > /tmp/notes.txt <<EOF\ngh pr merge\nEOF'
+  run_hook_bash "$heredoc_cmd" "S1" "$PROOT"
+  [ "$status" -eq 0 ]
+  [ ! -f "$CALLS_FILE" ]
+
+  run_hook_bash "gh pr merge" "S1" "$PROOT"
+  [ "$status" -eq 0 ]
+  [ -f "$CALLS_FILE" ]
+}
+
+@test "the same heredoc-body payload padded past the arming bound does invoke the tally" {
+  build_repo
+  cd "$REPO"
+  PROOT="$REPO/projects"
+  write_review_sidecar "$PROOT" "S1" "code-audit-frontend"
+
+  local pad heredoc_cmd
+  pad=$(printf 'x%.0s' $(seq 1 16400))
+  heredoc_cmd=$'cat > /tmp/notes.txt <<EOF\n'"$pad"$'\ngh pr merge\nEOF'
+  [ "${#heredoc_cmd}" -gt 16384 ] || return 1
+
+  run_hook_bash "$heredoc_cmd" "S1" "$PROOT"
+  [ "$status" -eq 0 ]
+  [ -f "$CALLS_FILE" ]
+}
+
+@test "a quoted verb in the first command invokes the tally (tokenizer arm; red before this change)" {
+  build_repo
+  cd "$REPO"
+  PROOT="$REPO/projects"
+  write_review_sidecar "$PROOT" "S1" "code-audit-frontend"
+
+  run_hook_bash 'gh pr "merge" 7' "S1" "$PROOT"
+  [ "$status" -eq 0 ]
+  [ -f "$CALLS_FILE" ]
+}
+
+@test "a multi-statement command still invokes the tally (no regression)" {
+  build_repo
+  cd "$REPO"
+  PROOT="$REPO/projects"
+  write_review_sidecar "$PROOT" "S1" "code-audit-frontend"
+
+  run_hook_bash "echo start && gh pr merge" "S1" "$PROOT"
+  [ "$status" -eq 0 ]
+  [ -f "$CALLS_FILE" ]
 }
 
 # ---------- 3. Cheap negative gate: spurious guard (acceptance criterion 3) ----------

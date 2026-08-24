@@ -119,6 +119,17 @@ run_hook() {
   invoke_hook_in "$FIXTURE" "$payload" "$HOOK_ABS"
 }
 
+# run_hook_at HOOK COMMAND: the same, against a staged copy of the hook rather
+# than the real one. The hook resolves its own libraries off ${BASH_SOURCE[0]},
+# so taking one away from it means running a copy that sits beside a lib/ the
+# test controls.
+run_hook_at() {
+  local hook="$1" cmd="$2" payload
+  payload=$(jq -n --arg t Bash --arg c "$cmd" \
+    '{tool_name: $t, tool_input: {command: $c}}')
+  invoke_hook_in "$FIXTURE" "$payload" "$hook"
+}
+
 assert_deny() {
   assert_denied_by_json
 }
@@ -202,14 +213,170 @@ assert_allow() {
   assert_allow
 }
 
-@test "KNOWN RESIDUAL: a heredoc line beginning with gh pr create matches" {
+@test "KNOWN RESIDUAL: a heredoc body whose opener is unprovable still arms" {
   # Documented in the hook header: newline is in the separator set because the
-  # multi-line `git add -A` / `gh pr create` shape is a real invocation, and
-  # telling that apart from heredoc body text needs shell parsing. Pinned here
-  # so the trade stays deliberate rather than drifting silently.
+  # multi-line `git add -A` / `gh pr create` shape is a real invocation. The
+  # data proof narrows that residual rather than closing it, and this is what is
+  # left over: `cat` with no redirect names no file, so where the body goes is
+  # unproven and its lines keep their arming power. One token apart from the
+  # proven-data twin below, which allows.
   install_maintainer_mock
   run_hook "$(printf 'cat <<EOF\ngh pr create\nEOF')"
   assert_deny
+}
+
+# ---- the shared arming decision ----------------------------------------
+#
+# The hook asks .claude/hooks/lib/verb-arming.sh whether the call carries a real
+# `gh pr create`, and recovers its own flag tail out of the answer by offset. Two
+# things are under test here that the sections above cannot see: which payloads
+# arm at all now that a proven-data heredoc body does not, and whether the
+# recovered tail is the real bytes rather than the mask bytes the deciding match
+# may have run against.
+#
+# WHY THE FIXTURE DOES NOT CARRY A COPY OF THE ARMING LIBRARY. The hook resolves
+# it off ${BASH_SOURCE[0]}, so the real repo's copy is what every test in this
+# file exercises, whatever this fixture's lib/ holds. Seeding a copy here would
+# not change a single verdict, and it would quietly void the library-absent test
+# at the bottom of this section, which removes the library from a staged tree:
+# with a fixture copy in place the hook would find one anyway and that test would
+# green having proved nothing. repo-scope.sh above is different, and is copied,
+# because the hook sources that one relative to cwd.
+
+@test "a proven-data heredoc body does not arm the gate" {
+  # `cat` redirected to a file, no expansion on the opener line, delimiter
+  # present: the body is proven data and is masked before the match re-runs, so
+  # the only occurrence of the verb in this call is not an invocation.
+  install_maintainer_mock
+  run_hook "$(printf 'cat > note.txt <<EOF\ngh pr create --title x\nEOF')"
+  assert_allow
+}
+
+@test "an interpreter-fed heredoc body still arms the gate" {
+  # The proof is about where the body GOES, not about heredocs. Fed to an
+  # interpreter the body is a script the shell runs, so it keeps every bit of
+  # its arming power. This is the direction a deny-capable gate must fail in.
+  install_maintainer_mock
+  run_hook "$(printf 'bash <<EOF\ngh pr create --title x\nEOF')"
+  assert_deny
+}
+
+@test "recovers the real flag tail through a suppressed heredoc body" {
+  # The pair is what gives this teeth, because each half alone is ambiguous.
+  #
+  # Correct: the body is masked, the match binds to the real invocation, and the
+  # tail is sliced out of the original text, so the base is the real one.
+  # Body not masked: both halves bind to the body line and adopt ITS base, which
+  # inverts both verdicts.
+  # Tail read straight off the masked view: the base ref is mask bytes, resolves
+  # to nothing, and the hook fails open, so the second half allows.
+  # Tail empty: both halves fall back to main and deny, so the first half fails.
+  install_maintainer_mock
+  run_hook "$(printf 'cat > note.txt <<EOF\ngh pr create --base main\nEOF\ngh pr create --base develop --title x')"
+  assert_allow
+  run_hook "$(printf 'cat > note.txt <<EOF\ngh pr create --base develop\nEOF\ngh pr create --base main --title x')"
+  assert_deny
+}
+
+@test "the backslash-newline join still precedes the data proof" {
+  # The continuation is joined before the text is handed over, so the view is
+  # built from the text the match actually runs against and the tail collects the
+  # continued flags. Without the join the tail truncates at the backslash and the
+  # base falls back to main, which denies; without the mask the match binds to the
+  # body line and adopts its base, which also denies.
+  install_maintainer_mock
+  run_hook "$(printf 'cat > note.txt <<EOF\ngh pr create --base main\nEOF\ngh pr create \\\n  --base develop \\\n  --title x')"
+  assert_allow
+}
+
+@test "past the character bound the data proof abstains and the raw match stands" {
+  # The walk is bounded so a hook cannot miss its deadline and get cancelled,
+  # which would let the tool call through uninspected. Past the bound the view is
+  # the identity, nothing is suppressed anywhere, and the same payload that
+  # allowed under the bound denies. Pinned as a pair so the bound cannot quietly
+  # stop applying.
+  install_maintainer_mock
+  local pad
+  pad="$(printf '%*s' 17000 '' | tr ' ' 'y')"
+  run_hook "$(printf 'cat > note.txt <<EOF\ngh pr create --title x\nEOF')"
+  assert_allow
+  run_hook "$(printf 'cat > note.txt <<EOF\n%s\ngh pr create --title x\nEOF' "$pad")"
+  assert_deny
+}
+
+@test "a first command the shell runs as gh pr create arms however it is quoted" {
+  # No run of bytes in this text spells the verb, so no pattern over the raw text
+  # can see it. The tokenizer arm reads the first command the shell would run and
+  # arms on that. It carries no capture groups, so the tail is empty and the base
+  # falls back to the default branch, which is the same direction a tail truncated
+  # by a quoted separator already takes.
+  install_maintainer_mock
+  run_hook 'gh pr "create" --fill'
+  assert_deny
+}
+
+@test "fails open when the shared arming library is absent" {
+  # Staged tree, not the fixture's lib/: the hook resolves its own libraries off
+  # ${BASH_SOURCE[0]}, so the only way to take one away from it is to run a copy
+  # of the hook that sits beside a lib/ missing the file.
+  #
+  # Unlike its deny-capable siblings among the merge gates, this hook exits 0
+  # rather than denying. Its contract is fail-open on every uncertainty with CI
+  # authoritative, and a hook with that contract must not become the one guard
+  # that denies every Bash tool call on a corrupted checkout.
+  install_maintainer_mock
+  local staged="$BATS_TEST_TMPDIR/staged"
+  mkdir -p "$staged"
+  cp -R "$REPO_ROOT/.claude/hooks/." "$staged/"
+  [ -f "$staged/lib/verb-arming.sh" ]
+  # Non-vacuity: the staged copy denies while the library is there, so the allow
+  # below can only come from its absence.
+  run_hook_at "$staged/distribution-preflight-check.sh" "gh pr create --title x"
+  assert_deny
+  rm -f "$staged/lib/verb-arming.sh"
+  run_hook_at "$staged/distribution-preflight-check.sh" "gh pr create --title x"
+  assert_allow
+}
+
+@test "the tail offset arithmetic lands on the tail group itself" {
+  # A cheap oracle over the recovery, run against the library directly because no
+  # verdict exposes it. Where nothing is suppressed the view IS the text, so the
+  # slice the hook takes must reproduce the captured tail exactly; anything else
+  # is the offset arithmetic drifting. Every shape the sections above drive the
+  # hook with is here, including the ones whose verdicts cannot tell a correct
+  # slice from an off-by-one one.
+  . "$REPO_ROOT/.claude/hooks/lib/verb-arming.sh"
+  local frag=$'gh[[:space:]]+pr[[:space:]]+create([[:space:]&;|]|$)([^&;|\n]*)(.*)$'
+  local text grp tail suffix start rec nonempty=0
+  for text in \
+    'gh pr create --title x' \
+    '   gh pr create --title x' \
+    'gh pr create' \
+    'gh pr create;' \
+    'gh pr create|cat' \
+    'gh pr create --fill; echo --base develop' \
+    'echo hi && gh pr create --base develop --title x' \
+    'gh pr create --title x --body "fix; then ship" --base develop' \
+    "$(printf 'git add -A\ngh pr create --fill')" \
+    "$(printf 'grep -B2 foo base.txt && gh\tpr\tcreate --fill')" \
+    "$(printf 'gh pr create\necho --base develop')"; do
+    gaia_verb_armed "$frag" 'gh pr create' "$text" || return 1
+    [ "$GAIA_VERB_ARM_SUPPRESSED" -eq 0 ] || return 1
+    case "$GAIA_VERB_ARM_KIND" in
+      start) grp=1 ;;
+      sep) grp=2 ;;
+      *) return 1 ;;
+    esac
+    tail="${GAIA_VERB_ARM_MATCH[$(( grp + 1 ))]-}"
+    suffix="${GAIA_VERB_ARM_MATCH[$(( grp + 2 ))]-}"
+    start=$(( ${#text} - ${#suffix} - ${#tail} ))
+    rec="${text:start:${#tail}}"
+    [ "$rec" = "$tail" ] || return 1
+    if [ -n "$tail" ]; then nonempty=$(( nonempty + 1 )); fi
+  done
+  # Non-vacuity: an empty tail satisfies the equality trivially, so most of the
+  # shapes above have to be carrying one.
+  [ "$nonempty" -ge 7 ]
 }
 
 # ---- repo scope --------------------------------------------------------

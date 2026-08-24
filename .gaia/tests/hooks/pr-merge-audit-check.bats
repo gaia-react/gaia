@@ -2088,3 +2088,225 @@ rge 30 --squash'
   run_merge_hook '\gh pr merge 30 --squash'
   assert_denied_by_json
 }
+
+# ---------------------------------------------------------------------------
+# Arming: the shared data-proof (heredoc masking) and its abstentions
+#
+# gaia_verb_armed's raw match (the union above) is unchanged; these cases
+# exercise the SAME-LENGTH VIEW it builds on a raw hit, which suppresses a
+# heredoc body proven to be data before re-testing the raw patterns, and the
+# conditions under which that suppression does NOT happen. Every fixture is
+# an in-scope diff (app/x.ts) with no marker, so ARMED means denied and NOT
+# ARMED means a silent allow.
+# ---------------------------------------------------------------------------
+
+# Build a heredoc-body merge payload of an exact total character length: a
+# `cat`-to-file opener, TOTAL-minus-overhead bytes of body padding, the real
+# merge line, and the delimiter with no trailing newline (so no downstream
+# `$( )` can trim a character off the length this test pins). Sets
+# $PADDED_CMD rather than echoing, so the caller sees exactly TOTAL
+# characters with no command-substitution trailing-newline strip in the way.
+padded_heredoc_cmd() {
+  local total="$1" prefix suffix fixed pad_len pad
+  prefix=$'cat > f.txt <<EOF\n'
+  suffix=$'\ngh pr merge 30 --squash\nEOF'
+  fixed=$(( ${#prefix} + ${#suffix} ))
+  pad_len=$(( total - fixed ))
+  [ "$pad_len" -ge 0 ] || pad_len=0
+  pad=$(head -c "$pad_len" < /dev/zero | tr '\0' 'x')
+  PADDED_CMD="${prefix}${pad}${suffix}"
+}
+
+# Stage the whole of .claude/hooks, lib/ included, into a fresh tree and
+# delete LIBNAME from the staged copy, then run the STAGED hook. Mechanism A
+# (README.md "Test-harness mechanics"): the real hook resolves every lib off
+# its OWN on-disk location via BASH_SOURCE, so deleting from $REPO's sandbox
+# lib/ (used elsewhere in this file for the two resolver-script copies)
+# removes nothing this hook itself reads; only a staged copy's absence is.
+run_merge_hook_lib_absent() {
+  local libname="$1" cmd="$2" json stage
+  stage="$BATS_TEST_TMPDIR/staged-hooks-${libname}"
+  if [ ! -d "$stage" ]; then
+    cp -r "$(dirname "$HOOK_ABS")" "$stage"
+    rm -f "$stage/lib/$libname"
+  fi
+  json=$(jq -n --arg c "$cmd" '{tool_name: "Bash", tool_input: {command: $c}}')
+  invoke_hook_in "$REPO" "$json" "$stage/pr-merge-audit-check.sh"
+}
+
+@test "data-proof: a cat-to-file heredoc body carrying the verb does not arm" {
+  install_gh_stub
+  commit_files "app/x.ts" "export const x = 1"
+
+  run_merge_hook $'cat > f.txt <<EOF\ngh pr merge 30 --squash\nEOF\n'
+  assert_allowed_by_json
+  [ -z "$output" ]
+}
+
+@test "data-proof: removing the heredoc opener line leaves the same body text armed" {
+  install_gh_stub
+  commit_files "app/x.ts" "export const x = 1"
+
+  # Byte-identical to the previous case with the `cat > f.txt <<EOF` opener
+  # line removed: the merge now sits at the very start of the text.
+  run_merge_hook $'gh pr merge 30 --squash\nEOF\n'
+  assert_denied_by_json
+}
+
+@test "data-proof: the verb on the opener line itself still arms, proving the body starts after it" {
+  install_gh_stub
+  commit_files "app/x.ts" "export const x = 1"
+
+  run_merge_hook $'true && gh pr merge 30 --squash <<EOF\nirrelevant body\nEOF\n'
+  assert_denied_by_json
+}
+
+@test "data-proof: a heredoc piped into bash still arms (output not to a file)" {
+  install_gh_stub
+  commit_files "app/x.ts" "export const x = 1"
+
+  run_merge_hook $'cat <<EOF | bash\ngh pr merge 30 --squash\nEOF\n'
+  assert_denied_by_json
+}
+
+@test "data-proof: a heredoc opened by bash directly still arms (command word is not cat/tee)" {
+  install_gh_stub
+  commit_files "app/x.ts" "export const x = 1"
+
+  run_merge_hook $'bash <<EOF\ngh pr merge 30 --squash\nEOF\n'
+  assert_denied_by_json
+}
+
+@test "data-proof: a heredoc owned by a second command on the opener line still arms" {
+  install_gh_stub
+  commit_files "app/x.ts" "export const x = 1"
+
+  # The line opens with `cat` and redirects to a file, so it satisfies the
+  # whitelist read line-wide, while the heredoc belongs to `bash` after the
+  # separator and the shell runs the merge in the body. Proving it at the gate
+  # rather than only in the library: this is the hook whose deny is the
+  # enforcement, so a masking defect here is a merge nobody audited.
+  run_merge_hook $'cat > /tmp/f.txt && bash <<EOF\ngh pr merge 30 --squash\nEOF\n'
+  assert_denied_by_json
+}
+
+@test "data-proof: a heredoc opened by ssh still arms" {
+  install_gh_stub
+  commit_files "app/x.ts" "export const x = 1"
+
+  run_merge_hook $'ssh host <<EOF\ngh pr merge 30 --squash\nEOF\n'
+  assert_denied_by_json
+}
+
+@test "data-proof: a heredoc opened by a parameter-expansion command word still arms" {
+  install_gh_stub
+  commit_files "app/x.ts" "export const x = 1"
+
+  run_merge_hook $'$RUNNER <<EOF\ngh pr merge 30 --squash\nEOF\n'
+  assert_denied_by_json
+}
+
+@test "data-proof: an unterminated quote after the heredoc denies (walker abstains, raw match stands)" {
+  install_gh_stub
+  commit_files "app/x.ts" "export const x = 1"
+
+  run_merge_hook $'cat > f.txt <<EOF\ngh pr merge 30 --squash\nEOF\n'"'"
+  assert_denied_by_json
+}
+
+@test "data-proof: the same payload with the quote terminated is proven data and allowed" {
+  install_gh_stub
+  commit_files "app/x.ts" "export const x = 1"
+
+  run_merge_hook $'cat > f.txt <<EOF\ngh pr merge 30 --squash\nEOF\n'"'x'"
+  assert_allowed_by_json
+  [ -z "$output" ]
+}
+
+@test "data-proof: a heredoc whose delimiter never appears denies (walker abstains)" {
+  install_gh_stub
+  commit_files "app/x.ts" "export const x = 1"
+
+  run_merge_hook $'cat > f.txt <<EOF\ngh pr merge 30 --squash\n'
+  assert_denied_by_json
+}
+
+@test "data-proof: the same payload with the delimiter present is proven data and allowed" {
+  install_gh_stub
+  commit_files "app/x.ts" "export const x = 1"
+
+  run_merge_hook $'cat > f.txt <<EOF\ngh pr merge 30 --squash\nEOF\n'
+  assert_allowed_by_json
+  [ -z "$output" ]
+}
+
+@test "data-proof: a heredoc-body merge at the character bound is proven data and allowed" {
+  install_gh_stub
+  commit_files "app/x.ts" "export const x = 1"
+
+  padded_heredoc_cmd 16384
+  [ "${#PADDED_CMD}" -eq 16384 ]
+  run_merge_hook "$PADDED_CMD"
+  assert_allowed_by_json
+  [ -z "$output" ]
+}
+
+@test "data-proof: the same shape one character past the bound denies (identity view, raw match stands)" {
+  install_gh_stub
+  commit_files "app/x.ts" "export const x = 1"
+
+  padded_heredoc_cmd 16385
+  [ "${#PADDED_CMD}" -eq 16385 ]
+  run_merge_hook "$PADDED_CMD"
+  assert_denied_by_json
+}
+
+@test "no-regression: an unrelated first line with an unquoted merge on the second line still arms" {
+  install_gh_stub
+  commit_files "app/x.ts" "export const x = 1"
+
+  run_merge_hook $'echo hi\ngh pr merge 30 --squash\n'
+  assert_denied_by_json
+}
+
+@test "no-regression: a mid-word # before a real merge still arms" {
+  install_gh_stub
+  commit_files "app/x.ts" "export const x = 1"
+
+  run_merge_hook 'echo x#y && gh pr merge 30 --squash'
+  assert_denied_by_json
+}
+
+@test "no-regression: a merge after a word-initial # comment does not arm" {
+  install_gh_stub
+  commit_files "app/x.ts" "export const x = 1"
+
+  run_merge_hook '# gh pr merge 30 --squash'
+  assert_allowed_by_json
+  [ -z "$output" ]
+}
+
+@test "data-proof: an unmodelled \$'…' word ahead of an otherwise-provable heredoc denies" {
+  install_gh_stub
+  commit_files "app/x.ts" "export const x = 1"
+
+  # Without the leading $'a' word this payload is proven data and allowed
+  # (see the cat-to-file case above); the walker abandons suppression on the
+  # unmodelled $'…' construct instead, so the pre-existing raw match stands.
+  run_merge_hook $'x=$\'a\'\ncat > f.txt <<EOF\ngh pr merge 30 --squash\nEOF\n'
+  assert_denied_by_json
+}
+
+@test "library-absent: verb-arming.sh missing denies every Bash tool call, naming the file" {
+  run_merge_hook_lib_absent "verb-arming.sh" "echo hi"
+  assert_denied_by_json
+  grep -qF 'verb-arming.sh' <<<"$output" || return 1
+}
+
+@test "walker-absent: verb-arming-walk.sh missing degrades to the raw match, so the heredoc-body payload still arms" {
+  install_gh_stub
+  commit_files "app/x.ts" "export const x = 1"
+
+  run_merge_hook_lib_absent "verb-arming-walk.sh" $'cat > f.txt <<EOF\ngh pr merge 30 --squash\nEOF\n'
+  assert_denied_by_json
+}

@@ -24,6 +24,9 @@ setup() {
   LIB_LEDGER_PATH_SRC="$REPO_ROOT/.gaia/scripts/ledger-path-lib.sh"
   LIB_MAIN_ROOT_SRC="$REPO_ROOT/.gaia/scripts/main-root-lib.sh"
   LIB_AUDIT_WINDOW_SRC="$REPO_ROOT/.gaia/scripts/audit-window-lib.sh"
+  VERB_ARMING_SRC="$REPO_ROOT/.claude/hooks/lib/verb-arming.sh"
+  VERB_ARMING_WALK_SRC="$REPO_ROOT/.claude/hooks/lib/verb-arming-walk.sh"
+  REPO_SCOPE_SRC="$REPO_ROOT/.claude/hooks/lib/repo-scope.sh"
   ANCHOR="$REPO_ROOT/.gaia/scripts/tests/fixtures/token-tally/projects"
   SESSION="fixturesession0001"
 
@@ -54,6 +57,9 @@ build_repo() {
   cp "$LIB_LEDGER_PATH_SRC" "$REPO/.gaia/scripts/ledger-path-lib.sh"
   cp "$LIB_MAIN_ROOT_SRC" "$REPO/.gaia/scripts/main-root-lib.sh"
   cp "$LIB_AUDIT_WINDOW_SRC" "$REPO/.gaia/scripts/audit-window-lib.sh"
+  cp "$VERB_ARMING_SRC" "$REPO/.claude/hooks/lib/verb-arming.sh"
+  cp "$VERB_ARMING_WALK_SRC" "$REPO/.claude/hooks/lib/verb-arming-walk.sh"
+  cp "$REPO_SCOPE_SRC" "$REPO/.claude/hooks/lib/repo-scope.sh"
 }
 
 write_running() {
@@ -403,6 +409,66 @@ run_hook() {
   run_hook "$heredoc_cmd"
   [ "$status" -eq 0 ]
   [ ! -f "$REPO/.gaia/local/telemetry/cost.jsonl" ]
+}
+
+# ---------- 8b. Shared arming decision (data proof, bound, tokenizer) ----------
+
+@test "a real git commit heredoc body (cat-to-file) is proven data: no record" {
+  build_repo
+  cd "$REPO"
+  plan_dir="$REPO/.gaia/local/plans/my-plan"
+  write_readme_with_spec "$plan_dir" "/abs/root/.gaia/local/specs/SPEC-013/SPEC.md"
+  write_running "$plan_dir" "$(git branch --show-current)" "2026-07-01T00:00:00Z"
+
+  heredoc_cmd=$'cat > /tmp/notes.txt <<EOF\ngit commit -m x\nEOF'
+  run_hook "$heredoc_cmd"
+  [ "$status" -eq 0 ]
+  [ ! -f "$REPO/.gaia/local/telemetry/cost.jsonl" ]
+
+  run_hook "git commit -m x"
+  [ "$status" -eq 0 ]
+  [ -f "$REPO/.gaia/local/telemetry/cost.jsonl" ]
+}
+
+@test "the same heredoc-body payload padded past the arming bound does record" {
+  build_repo
+  cd "$REPO"
+  plan_dir="$REPO/.gaia/local/plans/my-plan"
+  write_readme_with_spec "$plan_dir" "/abs/root/.gaia/local/specs/SPEC-013/SPEC.md"
+  write_running "$plan_dir" "$(git branch --show-current)" "2026-07-01T00:00:00Z"
+
+  local pad heredoc_cmd
+  pad=$(printf 'x%.0s' $(seq 1 16400))
+  heredoc_cmd=$'cat > /tmp/notes.txt <<EOF\n'"$pad"$'\ngit commit -m x\nEOF'
+  [ "${#heredoc_cmd}" -gt 16384 ] || return 1
+
+  run_hook "$heredoc_cmd"
+  [ "$status" -eq 0 ]
+  [ -f "$REPO/.gaia/local/telemetry/cost.jsonl" ]
+}
+
+@test "a quoted verb in the first command records (tokenizer arm; red before this change)" {
+  build_repo
+  cd "$REPO"
+  plan_dir="$REPO/.gaia/local/plans/my-plan"
+  write_readme_with_spec "$plan_dir" "/abs/root/.gaia/local/specs/SPEC-013/SPEC.md"
+  write_running "$plan_dir" "$(git branch --show-current)" "2026-07-01T00:00:00Z"
+
+  run_hook 'git "commit" -m x'
+  [ "$status" -eq 0 ]
+  [ -f "$REPO/.gaia/local/telemetry/cost.jsonl" ]
+}
+
+@test "a multi-statement command still records (no regression)" {
+  build_repo
+  cd "$REPO"
+  plan_dir="$REPO/.gaia/local/plans/my-plan"
+  write_readme_with_spec "$plan_dir" "/abs/root/.gaia/local/specs/SPEC-013/SPEC.md"
+  write_running "$plan_dir" "$(git branch --show-current)" "2026-07-01T00:00:00Z"
+
+  run_hook "echo start && git commit -m x"
+  [ "$status" -eq 0 ]
+  [ -f "$REPO/.gaia/local/telemetry/cost.jsonl" ]
 }
 
 # ---------- 9. Never blocks: degraded projects-root still appends a partial record ----------

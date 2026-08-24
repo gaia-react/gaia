@@ -381,3 +381,63 @@ test("oops" => { syntax(((;'
   [ "$status" -eq 0 ]
   refute_denied
 }
+
+# ---------------------------------------------------------------------------
+# Shared verb-arming adoption: the tokenizer arm this hook gained, and the
+# data-proof that keeps a heredoc-body merge from arming it. Every case seeds
+# an emergent test with NO ledger entry, so the hook has a real reason to
+# deny once armed; the assertion is on the DENY TEXT, never the exit status,
+# per README.md's "trap directive TST-008" for this suite.
+# ---------------------------------------------------------------------------
+
+# Stage the whole of .claude/hooks, lib/ included, into a fresh tree and
+# delete LIBNAME from the staged copy, then run the STAGED hook with cwd =
+# $REPO (whose OTHER libs stay the setup()-installed symlinks; this hook
+# sources those cwd-relatively, so only the BASH_SOURCE-anchored verb-arming
+# load is affected by which copy of the hook file runs).
+run_merge_hook_lib_absent() {
+  local libname="$1" cmd="$2" json stage
+  stage="$BATS_TEST_TMPDIR/staged-hooks-${libname}"
+  if [ ! -d "$stage" ]; then
+    cp -r "$(dirname "$HOOK_ABS")" "$stage"
+    rm -f "$stage/lib/$libname"
+  fi
+  json=$(jq -nc --arg c "$cmd" '{tool_name:"Bash", tool_input:{command:$c}}')
+  invoke_hook_in "$REPO" "$json" "$stage/worthiness-presence-check.sh"
+}
+
+@test "arming: a quoted verb now reaches the gate (tokenizer arm)" {
+  commit_file "app/components/Foo/tests/index.test.tsx" "$EMERGENT_TEST"
+  run_merge_hook 'gh pr "merge" 30 --squash'
+  [ "$status" -eq 0 ]
+  denied
+  [[ "$output" == *"Worthiness presence gate"* ]]
+}
+
+@test "arming: a cat-to-file heredoc body carrying the verb does not reach the gate" {
+  commit_file "app/components/Foo/tests/index.test.tsx" "$EMERGENT_TEST"
+  run_merge_hook $'cat > f.txt <<EOF\ngh pr merge 30 --squash\nEOF\n'
+  [ "$status" -eq 0 ]
+  refute_denied
+}
+
+@test "arming: removing the heredoc opener line leaves the same body text reaching the gate" {
+  commit_file "app/components/Foo/tests/index.test.tsx" "$EMERGENT_TEST"
+  run_merge_hook $'gh pr merge 30 --squash\nEOF\n'
+  [ "$status" -eq 0 ]
+  denied
+}
+
+@test "arming: a heredoc piped into bash still reaches the gate" {
+  commit_file "app/components/Foo/tests/index.test.tsx" "$EMERGENT_TEST"
+  run_merge_hook $'cat <<EOF | bash\ngh pr merge 30 --squash\nEOF\n'
+  [ "$status" -eq 0 ]
+  denied
+}
+
+@test "library-absent: verb-arming.sh missing denies every Bash tool call, naming the file" {
+  run_merge_hook_lib_absent "verb-arming.sh" "echo hi"
+  [ "$status" -eq 0 ]
+  denied
+  grep -qF 'verb-arming.sh' <<<"$output" || return 1
+}

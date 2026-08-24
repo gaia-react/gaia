@@ -69,7 +69,7 @@ Each script reads `tool_input.command` from stdin and filters by content; there 
 - **`block-rm-rf.sh`**: denies catastrophic `rm -rf` patterns: `--no-preserve-root`, absolute paths, `~` / `$HOME`, `.`, unscoped `*`, `.git`, `.claude`, `node_modules`. Allows scoped scratch paths (`.gaia/local/plans/*`, `.gaia/local/specs/*`, `.gaia/local/audit/*`, `.gaia/local/handoff/*`, `.gaia/local/cache/*`, `dist/*`, `build/*`), each in both its relative and its absolute spelling, so the guard accepts the absolute form `.claude/rules/shell-cwd.md` requires of every Bash call. An absolute path carrying a `..` segment is denied rather than whitelisted, since it resolves somewhere its spelling does not name. Judgment is per-segment and each segment must carry its own `-r`/`-f`, so an unflagged `rm` quoted as prose is not denied on the strength of a real removal elsewhere in the same command. A flag is recognized only as its own shell word, so a hyphenated path component ending in `r` or `f` (`my-matcher`, `feat-perf`) is not mistaken for one. It remains a heuristic text matcher and is porous by construction; its header states the standard for reporting a hole.
 - **`capture-red-observations.sh`** (PostToolUse, Bash): on a one-shot vitest run, re-invokes vitest with `--reporter=json` scoped to the agent's target, records each genuinely-failing per-test result to the RED-observation ledger (`.gaia/local/red-ledger/`). Records file, full test name, content signal, and failure kind. Collection/compile errors are excluded. Observe-only; always exits 0. See [[TDD RED Verification]].
 - **`red-verify-commit-check.sh`** (PreToolUse, Bash deny): before each `git commit`, checks every new-at-HEAD test file against the RED-observation ledger. Requires a ledger RED whose content signal still matches the current test body; no matching entry denies the commit, naming the offending test. Fail-open on missing tooling or unparseable test files. See [[TDD RED Verification]].
-- **`worthiness-presence-check.sh`** (PreToolUse, Bash deny): before each `gh pr merge`, scopes to the emergent test files the PR changed and denies the merge when a changed emergent test has no worthiness-ledger line matching its current content signal. Sits alongside `pr-merge-audit-check.sh` as an independent deny on the same event. Checks presence plus signal match only, never the verdict. No-op when zero emergent tests changed; fail-open on missing tooling or unparseable files. See [[Worthiness Presence Gate]].
+- **`worthiness-presence-check.sh`** (PreToolUse, Bash deny): before each `gh pr merge` (armed through the shared verb-arming decision below), scopes to the emergent test files the PR changed and denies the merge when a changed emergent test has no worthiness-ledger line matching its current content signal. Sits alongside `pr-merge-audit-check.sh` as an independent deny on the same event. Checks presence plus signal match only, never the verdict. No-op when zero emergent tests changed; fail-open on missing tooling or unparseable files. See [[Worthiness Presence Gate]].
 
 ### Code-search safeguard (Grep)
 
@@ -88,6 +88,33 @@ Each script reads `tool_input.command` from stdin and filters by content; there 
 - **`token-tally-git-op.sh`** (PreToolUse, Bash): fires on the orchestrator's per-phase `git commit`/`push` during plan execution; gated on an active plan folder (resolved via the shared `.claude/hooks/lib/gaia-active-plan.sh`), it records the execution session's ground-truth token tally keyed to the feature. See [[Token Cost Readout]].
 - **`token-rollup-merge.sh`** (PostToolUse, Bash): fires on `gh pr merge`; resolves the feature key from the active plan folder (or the ledger's most recent `execute` row as a labeled fallback) and renders the full spec/plan/execute/total cost roll-up into the merging session. See [[Token Cost Readout]].
 - **`token-tally-review.sh`** (PostToolUse, Bash matcher `gh pr merge`, and Stop): captures a `code-review-audit` run as a standalone `kind: "review"` cost ledger row. One script serves both end-of-context triggers (the merge gate, and an ad-hoc run that ends without a merge); `token-tally.sh --action review` owns window detection and dedups by `review_id`, so whichever trigger fires first writes the row. See [[Cost Data Contract]].
+
+### Shared verb-arming decision
+
+Eleven Bash-matcher hooks each decide whether a tool call carries an invocation of a verb they care about (`gh pr merge`, `gh pr create`, `git commit`/`push`, `gh issue create`/`edit`/`close`/`reopen`) through one shared library rather than a private pattern pair apiece. The decision runs in three passes. First, a raw text match against the whole command string, the same match every hook paid before the decision was shared, so no spelling that armed before stops arming. Second, on a raw hit only, a same-length view of the command is built in which every heredoc body proven to be inert data is masked out (written with `cat` or `tee` to a plain file, no expansion on the opener line, an unambiguous delimiter that actually closes later in the text), and the same match runs again against that view; a heredoc body carrying a merge command no longer arms a hook on its own. Third, a tokenizer reads the shell's own first command and arms on the verb regardless of how its characters are quoted, closing the gap where a quoted verb defeated every text match. **Wherever the decision cannot tell, it keeps the raw-match answer**: an uncertain input never trades a possible over-arm for a possible miss.
+
+All eleven adopting hooks, and whether an armed call can deny the tool call outright:
+
+| Hook | Event | Can deny |
+|---|---|---|
+| `pr-merge-audit-check.sh` | PreToolUse | yes |
+| `worthiness-presence-check.sh` | PreToolUse | yes |
+| `audit-disposition-check.sh` | PreToolUse | yes |
+| `distribution-preflight-check.sh` | PreToolUse | yes |
+| `post-findings-block-on-merge.sh` | PreToolUse | no |
+| `token-tally-git-op.sh` | PreToolUse | no |
+| `token-tally-review.sh` | PostToolUse + Stop | no |
+| `token-rollup-merge.sh` | PostToolUse | no |
+| `issue-claim-release.sh` | PostToolUse | no |
+| `debt-sentinel-touch.sh` | PostToolUse | no |
+| `capture-gh-artifact.sh` | PostToolUse | no |
+
+Four residuals survive the shared decision, all fail-closed:
+
+- A quoted string carrying a separator ahead of the verb still arms every hook; there is no safe narrowing.
+- A verb whose characters are quoted still slips past outside the first command, since the tokenizer pass reads the shell's first command only.
+- A dollar-quoted word (`$'…'`) is unmodelled; the decision abandons suppression on one rather than approximate it.
+- The tokenizer's bounded read of the first command's opening characters can itself create an arm no data proof removes, when truncation at that bound leaves a word reading as the verb.
 
 ### Wiki coherence (multiple events)
 
