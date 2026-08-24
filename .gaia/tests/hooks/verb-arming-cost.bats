@@ -14,7 +14,7 @@
 #   2KB     ~21-23ms                 ~16-19ms
 #   8KB     ~27ms                    ~16-19ms
 #   16KB    ~32-38ms                 ~16-20ms
-#   32KB (past bound, one hook)      ~80-90ms (walker takes the identity path;
+#   32KB (past bound, one hook)      ~75-90ms (walker takes the identity path;
 #                                    the hook body, not the walk, is the cost)
 #
 #   gaia_verb_arm_view alone (library call, no hook process): 16KB ~8-12ms,
@@ -307,7 +307,7 @@ CEILING_ELEVEN_RAWMATCH_MS=2000
 
 # Past-bound (32KB), one hook (token-tally-git-op.sh), armed for real: the
 # walker's length check must short-circuit before it does any real work. What
-# is left is hook-body cost, not walk cost: measured ~80-90ms across runs
+# is left is hook-body cost, not walk cost: measured ~75-90ms across runs
 # against ~21-23ms for an unmatched payload, the gap being the armed path's
 # own work. Headroom: 300/90 ~= 3.3x. Margin below a
 # conservative doubling of the 16KB byte-walk figure for a 32KB unbounded
@@ -366,7 +366,7 @@ CEILING_VIEW_16K_MS=100
   done
 }
 
-@test "cost: a payload past the character bound costs about what an unmatched payload costs" {
+@test "cost: a payload past the character bound never pays the walk, so only the hook body's own cost is left" {
   local hook="$HOOKS_DIR/token-tally-git-op.sh"
   local armed nonmatch
   armed=$(build_plain_armed_payload "git commit -m x" 32768)
