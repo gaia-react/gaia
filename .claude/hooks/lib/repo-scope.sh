@@ -259,8 +259,8 @@ gaia_scan_first_command() {
   # to differ in.
   local NL=$'\n'
   local TAB=$'\t'
-  local word="" have_word=0 q="" esc=0 piece_closed=0
-  local _prev_lc_all _had_lc_all BLOCK n_cmd base block k n_block c
+  local word="" chunk="" have_word=0 q="" qset="" esc=0 piece_closed=0
+  local _prev_lc_all _had_lc_all BLOCK n_cmd base block k n_block c rest run
 
   GAIA_FIRST_COMMAND_WORDS=()
 
@@ -275,6 +275,17 @@ gaia_scan_first_command() {
   # word intact; and one slice per block rather than per character, which
   # leaves only a small quadratic term. macOS still ships bash 3.2, where both
   # constants are several times CI's.
+  #
+  # A third: a word accumulates into `chunk` and reaches `word` once per
+  # block, not one character at a time. `word="$word$c"` costs O(word), and
+  # nothing bounds how long one word gets, since inside a quoted span
+  # whitespace, separators and newlines are all ordinary text, so a quoted
+  # `--body` is one word however long the prose is. Appending per character
+  # made the scan quadratic in that body's size: seconds of synchronous stall
+  # on a deny-capable gate at a size an ordinary pull-request body reaches.
+  # Flushing per block bounds the per-character append by BLOCK and pays the
+  # O(word) append BLOCK times less often. The cost of that is that every read
+  # of the word has to spell `$word$chunk`, which is why the pushes below do.
   _prev_lc_all="${LC_ALL-}"
   _had_lc_all="${LC_ALL+set}"
   LC_ALL=C
@@ -297,7 +308,7 @@ gaia_scan_first_command() {
       if [ "$esc" = 1 ]; then
         esc=0
         [ "$c" = "$NL" ] && continue
-        word="$word$c"; have_word=1; continue
+        chunk="$chunk$c"; have_word=1; continue
       fi
       # Inside single quotes a backslash is literal, as in the shell itself.
       # `have_word` is deliberately NOT set here: at the backslash it is not
@@ -309,19 +320,43 @@ gaia_scan_first_command() {
         esc=1; continue
       fi
       if [ -n "$q" ]; then
-        if [ "$c" = "$q" ]; then q=""; else word="$word$c"; fi
+        if [ "$c" = "$q" ]; then
+          q=""; qset=""
+        else
+          chunk="$chunk$c"
+          # `c` was ordinary text inside the span, so the run after it is
+          # ordinary until the next character that means anything here: the
+          # closing quote, and in a double-quoted span a backslash. Take that
+          # whole run in one operation instead of a character at a time, which
+          # is what makes a long quoted body cost about what reading it costs.
+          # `rest` is a tail of the BLOCK-sized slice, never of the whole
+          # command, so this pattern match is bounded too; matching over the
+          # full string would trade the quadratic append for a superlinear
+          # match and buy much less.
+          rest="${block:$k}"
+          # shellcheck disable=SC2295 # $qset is a PATTERN here, not a literal
+          run="${rest%%$qset*}"
+          if [ -n "$run" ]; then chunk="$chunk$run"; k=$((k + ${#run})); fi
+        fi
         have_word=1
         continue
       fi
       case "$c" in
-        '"'|"'") q="$c"; have_word=1 ;;
+        '"'|"'")
+          q="$c"; have_word=1
+          # The stop set the bulk run above cuts at, built once per span
+          # rather than per character. A backslash is literal inside single
+          # quotes, which is the same rule the escape branch above already
+          # applies, so it is not a stop there.
+          if [ "$c" = "'" ]; then qset="[']"; else qset='[\\"]'; fi
+          ;;
         ' '|"$TAB")
-          [ "$have_word" = 1 ] && GAIA_FIRST_COMMAND_WORDS+=("$word")
-          word=""; have_word=0
+          [ "$have_word" = 1 ] && GAIA_FIRST_COMMAND_WORDS+=("$word$chunk")
+          word=""; chunk=""; have_word=0
           ;;
         '&'|'|'|';'|"$NL")
-          [ "$have_word" = 1 ] && GAIA_FIRST_COMMAND_WORDS+=("$word")
-          word=""; have_word=0
+          [ "$have_word" = 1 ] && GAIA_FIRST_COMMAND_WORDS+=("$word$chunk")
+          word=""; chunk=""; have_word=0
           # An empty piece is no command at all: leading whitespace or a
           # newline, or the second character of `&&` / `||`. Keep scanning so
           # the FIRST real command is still the one that gets handed back.
@@ -344,19 +379,20 @@ gaia_scan_first_command() {
           # after it into the first command. The command a caller wants has to
           # be that first command anyway, so nothing beyond the comment was
           # readable.
-          [ "$have_word" = 1 ] && { word="$word$c"; continue; }
+          [ "$have_word" = 1 ] && { chunk="$chunk$c"; continue; }
           piece_closed=1; break 2
           ;;
-        *) word="$word$c"; have_word=1 ;;
+        *) chunk="$chunk$c"; have_word=1 ;;
       esac
     done
+    word="$word$chunk"; chunk=""
   done
   if [ "$_had_lc_all" = set ]; then LC_ALL="$_prev_lc_all"; else unset LC_ALL; fi
   # shellcheck disable=SC2034 # read by the merge gate, never in this file
   GAIA_FIRST_COMMAND_CLOSED="$piece_closed"
   # The whole command was one piece, so its trailing word closes it.
   if [ "$piece_closed" = 0 ]; then
-    [ "$have_word" = 1 ] && GAIA_FIRST_COMMAND_WORDS+=("$word")
+    [ "$have_word" = 1 ] && GAIA_FIRST_COMMAND_WORDS+=("$word$chunk")
   fi
 
   [ "${#GAIA_FIRST_COMMAND_WORDS[@]}" -gt 0 ] || return 1

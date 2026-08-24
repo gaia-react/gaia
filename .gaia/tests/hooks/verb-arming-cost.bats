@@ -38,14 +38,24 @@
 # and stays masked (the common shape below) never reaches a hook's own
 # post-arming logic at all, so which hook is swept barely matters there.
 # A GENUINELY ARMED large payload is a different story: pr-merge-audit-check.sh
-# calls into repo-scope.sh's `cmd_targets_foreign_repo`, an existing scanner
-# unrelated to this SPEC, whose own cost on a large armed command is NOT
-# bounded the way the arming walk is (measured 1.2-3.4s on a 32KB armed
-# command here, regardless of shape) -- a pre-existing cost issue in a
-# different file, filed separately as tech debt, not something this budget
-# owns or should let leak into its own ceiling. token-tally-git-op.sh has no
-# repo-scope check on its arming path, so it isolates the past-bound case to
+# calls into repo-scope.sh, an existing scanner unrelated to this SPEC, whose
+# own cost on a large armed command is not bounded the way the arming walk is
+# -- a pre-existing cost issue in a different file, not something this budget
+# owns or should let leak into its own ceiling. token-tally-git-op.sh makes no
+# repo-scope call on its arming path, so it isolates the past-bound case to
 # what this budget actually measures: the arming library's own cost.
+#
+# WHICH repo-scope FUNCTION THAT COST BELONGED TO. An earlier reading of this
+# named `cmd_targets_foreign_repo` and put the figure at 1.2-3.4s on a 32KB
+# armed command. Measured in isolation that function is flat at ~0.02s across
+# payload shapes and does not grow from 16KB to 32KB: it runs a few sed/grep
+# subprocesses over the text rather than walking it. The cost was
+# `gaia_scan_first_command`, which accumulated one word a character at a time
+# and so was quadratic in a quoted `--body`. That is now bounded
+# (.gaia/tests/hooks/repo-scope-scan-first-command.bats carries its budget),
+# which changes the size of the leak this substitution avoids but not the
+# reason for it: a hook that makes no repo-scope call measures the arming
+# library and nothing else, whatever repo-scope happens to cost.
 #
 # WHY THE "RAW-MATCHING" PAYLOAD IS A cat-HEREDOC. Per Phase 1's own figure
 # (~9ms per gaia_verb_arm_view call on a 16,259-character worst-case `cat`
