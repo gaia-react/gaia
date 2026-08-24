@@ -971,12 +971,15 @@ jobs:
           # `\.sh$` rather than a list of directories, because the checker's
           # own scan is the whole tracked tree: its private-pattern and
           # grep-idiom assertions take `-- '*.sh'`, so a shell file ANYWHERE
-          # can plant what they look for, and 67 tracked `.sh` files sit
-          # outside the directory list this job would otherwise carry. A
-          # narrower filter runs the job with the checker step skipped and
-          # reports success over content it never scanned. Honest limit: the
-          # singleton assertion scans `-- .`, every tracked file, so a
-          # definition planted in a non-`.sh` file arms nothing here.
+          # can plant what they look for, and most tracked `.sh` files sit
+          # outside any directory list this job would plausibly carry, well
+          # over half of them outside even the four paths this filter used to
+          # name. No count is pinned here: it decays on the next script anyone
+          # adds, and `git ls-files -- '*.sh'` answers it on demand. A narrower
+          # filter runs the job with the checker step skipped and reports
+          # success over content it never scanned. Honest limit: the singleton
+          # assertion scans `-- .`, every tracked file, so a definition planted
+          # in a non-`.sh` file arms nothing here.
           pattern='^\.claude/hooks/|^\.claude/settings\.json$|\.sh$|^\.github/workflows/audit-ci-tests\.yml$'
           if printf '%s\n' "$changed" | grep -qE "$pattern"; then
             echo "code=true" >> "$GITHUB_OUTPUT"
