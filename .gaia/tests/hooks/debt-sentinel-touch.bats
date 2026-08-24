@@ -104,6 +104,37 @@ assert_not_armed() { [ ! -f "$REPO/$SENTINEL_REL" ]; }
   assert_not_armed
 }
 
+# ---------- Shared arming decision (data proof, bound, tokenizer) ----------
+
+@test "a real gh issue close heredoc body (cat-to-file) is proven data: not armed, and the same text without it arms" {
+  run_hook $'cat > /tmp/notes.txt <<EOF\ngh issue close 590\nEOF'
+  assert_not_armed
+
+  run_hook 'gh issue close 590'
+  assert_armed
+}
+
+@test "the same heredoc-body payload padded past the arming bound does arm" {
+  local pad
+  pad=$(printf 'x%.0s' $(seq 1 16400))
+  local heredoc_cmd
+  heredoc_cmd=$'cat > /tmp/notes.txt <<EOF\n'"$pad"$'\ngh issue close 590\nEOF'
+  [ "${#heredoc_cmd}" -gt 16384 ] || return 1
+
+  run_hook "$heredoc_cmd"
+  assert_armed
+}
+
+@test "a quoted verb in the first command arms (tokenizer arm; red before this change)" {
+  run_hook 'gh issue "close" 590'
+  assert_armed
+}
+
+@test "a multi-statement command still arms (no regression)" {
+  run_hook "echo start && gh issue close 590"
+  assert_armed
+}
+
 @test "the hook file is executable" {
   [ -x "$HOOK_ABS" ]
 }

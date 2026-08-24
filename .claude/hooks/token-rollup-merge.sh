@@ -17,19 +17,15 @@ tool_name=$(jq -r '.tool_name // ""' <<<"$payload")
 
 cmd=$(jq -r '.tool_input.command // ""' <<<"$payload")
 
-# Match `gh pr merge` as a real shell invocation, at command start or right
-# after a shell separator (&&, ;, ||, |, newline), not when mentioned mid-line
-# in prose or a quoted string (e.g. a commit message). The newline separator
-# does match a heredoc body line that begins with the command; that edge is
-# benign (a spurious readout with no merge) and accepted.
-# Text arming only: this hook does NOT carry the tokenizer arm
-# pr-merge-audit-check.sh grew, so a quoted verb does not arm it and no
-# readout is produced. Tracked in gaia-react/gaia#1545.
-start_re='^[[:space:]]*gh[[:space:]]+pr[[:space:]]+merge([[:space:]]|$)'
-sep_re=$'(\\&\\&|;|\\|\\||\\||\n)[[:space:]]*gh[[:space:]]+pr[[:space:]]+merge([[:space:]]|$)'
-if [[ "$cmd" =~ $start_re ]]; then
-  :
-elif [[ "$cmd" =~ $sep_re ]]; then
+# Shared arming decision; see .claude/hooks/lib/verb-arming.sh. A quoted verb
+# inside prose still arms here, fail-closed, with no safe narrowing.
+_va_lib="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)"
+# shellcheck source=/dev/null
+[ -n "${_va_lib:-}" ] && [ -f "$_va_lib/verb-arming.sh" ] && . "$_va_lib/verb-arming.sh"
+type gaia_verb_armed >/dev/null 2>&1 || exit 0
+
+frag='gh[[:space:]]+pr[[:space:]]+merge([[:space:]]|$)'
+if gaia_verb_armed "$frag" 'gh pr merge' "$cmd"; then
   :
 else
   exit 0

@@ -72,19 +72,44 @@ tool_name=$(echo "$input" | jq -r '.tool_name // ""' 2>/dev/null)
 # later `command -v ...` guards.
 cmd=$(echo "$input" | jq -r '.tool_input.command // ""' 2>/dev/null)
 
-# Match `gh pr merge` at the very start of the command or immediately after a
-# shell separator. Text arming only: this hook does NOT carry the tokenizer arm
-# pr-merge-audit-check.sh grew, so a spelling that breaks the literal run of
-# characters, a quoted verb among them, does not arm it and this hook does not
-# run. It also over-arms in the other direction, on a heredoc body line or a
-# quoted string beginning with the verb. Both directions are tracked in
-# gaia-react/gaia#1545.
-sep_re=$'(\\&\\&|;|\\|\\||\\||\n)[[:space:]]*gh[[:space:]]+pr[[:space:]]+merge([[:space:]]|$)'
-start_re='^[[:space:]]*gh[[:space:]]+pr[[:space:]]+merge([[:space:]]|$)'
-if [[ "$cmd" =~ $start_re ]]; then
-  : # match at command start
-elif [[ "$cmd" =~ $sep_re ]]; then
-  : # match after a shell separator (incl. newline)
+# Arm the gate when this tool call carries a `gh pr merge`, through the shared
+# arming decision (.claude/hooks/lib/verb-arming.sh): the same raw start/sep
+# match this hook always paid, re-tested against a same-length view that masks
+# a heredoc body proven to be data, plus the first-command tokenizer arm, which
+# this hook lacked before, so a quoted verb (`gh pr "merge" <n>`) now arms it
+# too. See that library's own header for the full three-pass contract; residual
+# 1 still applies at this site: a quoted string carrying a separator before the
+# verb still arms the hook, fail-closed, with no safe narrowing.
+#
+# Loaded from this hook's OWN on-disk location, never cwd: the bats suites run
+# this hook by absolute path from a sandbox cwd with no .claude/, so a
+# cwd-relative source would miss the lib and flip the arming answer.
+#
+# This runs BEFORE arming, ahead of even knowing whether the tool call is a
+# merge, so an unloadable library denies every Bash tool call rather than
+# merge attempts alone.
+_va_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)"
+_va_ok=0
+if [ -n "$_va_lib_dir" ] && [ -f "$_va_lib_dir/verb-arming.sh" ]; then
+  # shellcheck source=/dev/null
+  if . "$_va_lib_dir/verb-arming.sh" && type gaia_verb_armed >/dev/null 2>&1; then
+    _va_ok=1
+  fi
+fi
+if [ "$_va_ok" -ne 1 ]; then
+  jq -n --arg r "Worthiness presence gate: cannot load the shared verb-arming decision (.claude/hooks/lib/verb-arming.sh must exist, be readable, and define gaia_verb_armed). This check runs before the gate knows whether the tool call is a gh pr merge at all, so it denies every Bash tool call rather than merge attempts alone. Restore .claude/hooks/lib/verb-arming.sh (it ships with the framework; a missing or corrupted checkout is the usual cause) and retry." '{
+    hookSpecificOutput: {
+      hookEventName: "PreToolUse",
+      permissionDecision: "deny",
+      permissionDecisionReason: $r
+    }
+  }'
+  exit 0
+fi
+
+gate_verb_frag='gh[[:space:]]+pr[[:space:]]+merge([[:space:]]|$)'
+if gaia_verb_armed "$gate_verb_frag" 'gh pr merge' "$cmd"; then
+  : # armed
 else
   exit 0
 fi

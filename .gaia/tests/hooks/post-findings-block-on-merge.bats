@@ -37,6 +37,8 @@ setup() {
   PRODUCER_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.gaia/scripts" && pwd)/post-findings-block.sh
   KEY_LIB_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.gaia/scripts" && pwd)/audit-key-lib.sh
   REPO_SCOPE_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks/lib" && pwd)/repo-scope.sh
+  VERB_ARMING_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks/lib" && pwd)/verb-arming.sh
+  VERB_ARMING_WALK_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks/lib" && pwd)/verb-arming-walk.sh
   REPO=$(mktemp -d -t post-findings-merge-test-XXXXXX)
 
   git -C "$REPO" init --quiet --initial-branch=main
@@ -60,6 +62,8 @@ setup() {
   cp "$PRODUCER_ABS" "$REPO/.gaia/scripts/post-findings-block.sh"
   cp "$KEY_LIB_ABS" "$REPO/.gaia/scripts/audit-key-lib.sh"
   cp "$REPO_SCOPE_ABS" "$REPO/.claude/hooks/lib/repo-scope.sh"
+  cp "$VERB_ARMING_ABS" "$REPO/.claude/hooks/lib/verb-arming.sh"
+  cp "$VERB_ARMING_WALK_ABS" "$REPO/.claude/hooks/lib/verb-arming-walk.sh"
   chmod +x "$REPO/.gaia/scripts/read-audit-ci-config.sh" \
     "$REPO/.github/audit/resolve-audit-base.sh" \
     "$REPO/.gaia/scripts/post-findings-block.sh"
@@ -528,4 +532,68 @@ write_sidecar() {
   [ "$status" -eq 0 ]
 
   [ ! -s "$FAKE_GH_STATE/post_count" ]
+}
+
+# ---------- Shared arming decision (data proof, bound, tokenizer) ----------
+
+@test "a heredoc body carrying the verb produces no post, and the same text without the heredoc does" {
+  write_sidecar
+  export FAKE_GH_STATE FAKE_GH_IS_FORK="false" FAKE_GH_AUTHOR="alice"
+
+  heredoc_cmd=$'cat > /tmp/notes.txt <<EOF\ngh pr merge 42\nEOF'
+  run_merge_hook "$heredoc_cmd"
+  [ "$status" -eq 0 ]
+  [ ! -s "$FAKE_GH_STATE/post_count" ]
+
+  run_merge_hook "gh pr merge 42"
+  [ "$status" -eq 0 ]
+  [ "$(cat "$FAKE_GH_STATE/post_count")" = "1" ]
+}
+
+# The generic past-bound pairing (case 2's heredoc, padded past
+# GAIA_VERB_ARM_MAX_CHARS, arms because the walker abstains above the bound)
+# cannot discriminate through THIS hook's observable side effect: the
+# opener's command word is necessarily `cat`/`tee`, never `gh`, so
+# repo-scope's act-on-home boundary (which requires the merge to BE the tool
+# call's first command) declines here regardless of arming or masking, above
+# the bound or below it. The bound's effect on arming is proven once, at the
+# library level, in verb-arming-lib.bats ("a payload at the bound is
+# suppressed and the same payload past it is not"); this pins that the
+# boundary decline still holds past the bound, so a bigger heredoc never
+# becomes a spurious post for the wrong reason.
+@test "the same heredoc-body payload padded past the arming bound still posts nothing (boundary, not masking)" {
+  write_sidecar
+  export FAKE_GH_STATE FAKE_GH_IS_FORK="false" FAKE_GH_AUTHOR="alice"
+
+  local pad heredoc_cmd
+  pad=$(printf 'x%.0s' $(seq 1 16400))
+  heredoc_cmd=$'cat > /tmp/notes.txt <<EOF\n'"$pad"$'\ngh pr merge 42\nEOF'
+  [ "${#heredoc_cmd}" -gt 16384 ] || return 1
+
+  run_merge_hook "$heredoc_cmd"
+  [ "$status" -eq 0 ]
+  [ ! -s "$FAKE_GH_STATE/post_count" ]
+}
+
+@test "a quoted verb in the first command produces the post (tokenizer arm)" {
+  write_sidecar
+  export FAKE_GH_STATE FAKE_GH_IS_FORK="false" FAKE_GH_AUTHOR="alice"
+
+  run_merge_hook 'gh pr "merge" 42'
+  [ "$status" -eq 0 ]
+  [ "$(cat "$FAKE_GH_STATE/post_count")" = "1" ]
+}
+
+# The merge stays first, with a trailing statement after it: this hook's own
+# boundary check (repo-scope's act-on-home entry point) requires the merge to
+# BE the tool call's first command, so a leading `<something> &&` before the
+# merge declines regardless of arming, unchanged by this work. This is the
+# multi-statement shape that already worked and must keep working.
+@test "a trailing statement after the merge does not cost the post" {
+  write_sidecar
+  export FAKE_GH_STATE FAKE_GH_IS_FORK="false" FAKE_GH_AUTHOR="alice"
+
+  run_merge_hook "gh pr merge 42 --squash && echo done"
+  [ "$status" -eq 0 ]
+  [ "$(cat "$FAKE_GH_STATE/post_count")" = "1" ]
 }

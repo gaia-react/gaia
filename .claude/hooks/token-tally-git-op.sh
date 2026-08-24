@@ -18,22 +18,24 @@ tool_name=$(jq -r '.tool_name // ""' <<<"$payload")
 
 cmd=$(jq -r '.tool_input.command // ""' <<<"$payload")
 
-# Match `git commit` or `git push` as a real shell invocation, at command
-# start or right after a shell separator (&&, ;, ||, |, newline), not when
-# mentioned mid-line in prose or a quoted string (e.g. a commit message). The
-# mandated `git -C <path> commit|push` form (.claude/rules/shell-cwd.md) also
-# matches, via an optional `-C <path>` group between `git` and the
-# subcommand; <path> may be quoted as long as it holds no spaces. Bash `=~`
-# gives whole-string semantics; `grep` is line-oriented and would match every
-# heredoc body line. The newline separator here still matches a heredoc body
-# line that begins with the command; that edge is benign (one extra tally row
-# the per-session dedup collapses) and accepted.
-git_op='git([[:space:]]+-C[[:space:]]+[^[:space:]]+)?[[:space:]]+(commit|push)([[:space:]]|$)'
-start_re="^[[:space:]]*$git_op"
-sep_re=$'(\\&\\&|;|\\|\\||\\||\n)[[:space:]]*'"$git_op"
-if [[ "$cmd" =~ $start_re ]]; then
-  :
-elif [[ "$cmd" =~ $sep_re ]]; then
+# The verb fragment mirrors the mandated `git -C <path> commit|push` form
+# (.claude/rules/shell-cwd.md): an optional `-C <path>` group between `git`
+# and the subcommand, where <path> may be quoted as long as it holds no
+# spaces. Shared arming decision (.claude/hooks/lib/verb-arming.sh): its data
+# proof means a heredoc body carrying this text no longer arms the tally on
+# its own. Its tokenizer pass widens what arms beyond the text fragment: it
+# reads the first command's actual words, so a quoted `-C` path containing
+# spaces, which the fragment's space-free group misses, still arms. Broader
+# arming here is the safe direction; this hook only records a tally row. A
+# quoted verb inside prose still arms; fail-closed, no safe narrowing.
+_va_lib="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)"
+# shellcheck source=/dev/null
+[ -n "${_va_lib:-}" ] && [ -f "$_va_lib/verb-arming.sh" ] && . "$_va_lib/verb-arming.sh"
+type gaia_verb_armed >/dev/null 2>&1 || exit 0
+
+frag='git([[:space:]]+-C[[:space:]]+[^[:space:]]+)?[[:space:]]+(commit|push)([[:space:]]|$)'
+words='git commit;git push;git -C * commit;git -C * push'
+if gaia_verb_armed "$frag" "$words" "$cmd"; then
   :
 else
   exit 0

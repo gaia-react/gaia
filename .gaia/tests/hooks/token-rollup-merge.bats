@@ -20,6 +20,9 @@ setup() {
   LIB_PRICING_SRC="$REPO_ROOT/.gaia/scripts/token-pricing-lib.sh"
   LIB_LEDGER_SRC="$REPO_ROOT/.gaia/scripts/ledger-path-lib.sh"
   LIB_MAIN_ROOT_SRC="$REPO_ROOT/.gaia/scripts/main-root-lib.sh"
+  VERB_ARMING_SRC="$REPO_ROOT/.claude/hooks/lib/verb-arming.sh"
+  VERB_ARMING_WALK_SRC="$REPO_ROOT/.claude/hooks/lib/verb-arming-walk.sh"
+  REPO_SCOPE_SRC="$REPO_ROOT/.claude/hooks/lib/repo-scope.sh"
 
   export GIT_AUTHOR_NAME="GAIA Test"
   export GIT_AUTHOR_EMAIL="gaia-test@example.com"
@@ -45,6 +48,9 @@ build_repo() {
   cp "$LIB_PRICING_SRC" "$REPO/.gaia/scripts/token-pricing-lib.sh"
   cp "$LIB_LEDGER_SRC" "$REPO/.gaia/scripts/ledger-path-lib.sh"
   cp "$LIB_MAIN_ROOT_SRC" "$REPO/.gaia/scripts/main-root-lib.sh"
+  cp "$VERB_ARMING_SRC" "$REPO/.claude/hooks/lib/verb-arming.sh"
+  cp "$VERB_ARMING_WALK_SRC" "$REPO/.claude/hooks/lib/verb-arming-walk.sh"
+  cp "$REPO_SCOPE_SRC" "$REPO/.claude/hooks/lib/repo-scope.sh"
 }
 
 write_running() {
@@ -279,6 +285,78 @@ run_hook() {
   run_hook 'echo "remember to gh pr merge later"'
   [ "$status" -eq 0 ]
   [ -z "$output" ]
+}
+
+# ---------- Shared arming decision: readout / no readout / readout ----------
+#
+# UAT-010's `then` says the positive control renders "and the other two emit
+# none", the other two being the heredoc-body payload and the past-bound
+# payload. UAT-005 requires the past-bound call to arm and deny (for the
+# deny-capable siblings) or, here, to arm and render, because the SPEC's own
+# identity-above-bound rule says the view past GAIA_VERB_ARM_MAX_CHARS is the
+# identity and the raw match stands. UAT-005 and the identity rule win;
+# UAT-010's "other two" clause is superseded as to the past-bound half only.
+# See plan/README.md, "Where UAT-010 and UAT-005 conflict, and which wins".
+@test "seeded positive control renders, the heredoc-body payload does not, and the past-bound payload renders again" {
+  build_repo
+  cd "$REPO"
+  branch="$(git branch --show-current)"
+  plan_dir="$REPO/.gaia/local/plans/my-plan"
+  write_readme_with_spec "$plan_dir" "/abs/root/.gaia/local/specs/SPEC-042/SPEC.md"
+  write_running "$plan_dir" "$branch" "2026-07-01T00:00:00Z"
+  write_record spec SPEC-042 sess-spec 100 "2026-06-01T00:00:00Z"
+  write_record plan SPEC-042 sess-plan 200 "2026-06-02T00:00:00Z"
+  write_record execute SPEC-042 sess-exec 300 "2026-06-03T00:00:00Z"
+
+  # 1. Positive control: renders.
+  run_hook "gh pr merge 7 --squash"
+  [ "$status" -eq 0 ]
+  grep -qF -- "[cycle cost at merge]" <<<"$output" || return 1
+
+  # 2. Heredoc-body payload (cat-to-file, proven data): no readout.
+  heredoc_cmd=$'cat > /tmp/notes.txt <<EOF\ngh pr merge 7\nEOF'
+  run_hook "$heredoc_cmd"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+
+  # 3. The same heredoc-body payload padded past the arming bound: renders
+  # again. The walker abstains above GAIA_VERB_ARM_MAX_CHARS, so the raw
+  # match stands unmasked.
+  local pad over_cmd
+  pad=$(printf 'x%.0s' $(seq 1 16400))
+  over_cmd=$'cat > /tmp/notes.txt <<EOF\n'"$pad"$'\ngh pr merge 7\nEOF'
+  [ "${#over_cmd}" -gt 16384 ] || return 1
+  run_hook "$over_cmd"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"[cycle cost at merge]"* ]]
+}
+
+@test "a quoted verb in the first command renders (tokenizer arm; red before this change)" {
+  build_repo
+  cd "$REPO"
+  branch="$(git branch --show-current)"
+  plan_dir="$REPO/.gaia/local/plans/my-plan"
+  write_readme_with_spec "$plan_dir" "/abs/root/.gaia/local/specs/SPEC-042/SPEC.md"
+  write_running "$plan_dir" "$branch" "2026-07-01T00:00:00Z"
+  write_record execute SPEC-042 sess-exec 300 "2026-06-03T00:00:00Z"
+
+  run_hook 'gh pr "merge" 7'
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"[cycle cost at merge]"* ]]
+}
+
+@test "a multi-statement command still renders (no regression)" {
+  build_repo
+  cd "$REPO"
+  branch="$(git branch --show-current)"
+  plan_dir="$REPO/.gaia/local/plans/my-plan"
+  write_readme_with_spec "$plan_dir" "/abs/root/.gaia/local/specs/SPEC-042/SPEC.md"
+  write_running "$plan_dir" "$branch" "2026-07-01T00:00:00Z"
+  write_record execute SPEC-042 sess-exec 300 "2026-06-03T00:00:00Z"
+
+  run_hook "echo start && gh pr merge 7"
+  [ "$status" -eq 0 ]
+  [[ "$output" == *"[cycle cost at merge]"* ]]
 }
 
 # ---------- 9. Renders regardless of the merge subprocess's own exit ----------

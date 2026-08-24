@@ -152,6 +152,58 @@ any_breadcrumb_exists() {
   return 0
 }
 
+# ---------- Shared arming decision (data proof, bound, tokenizer) ----------
+
+@test "a real gh pr create heredoc body (cat-to-file) is proven data: no file, and the same text without it writes" {
+  build_repo
+  cd "$REPO"
+  git checkout -b feat/heredoc --quiet
+
+  heredoc_cmd=$'cat > /tmp/notes.txt <<EOF\ngh pr create --title x\nEOF'
+  run_hook "$heredoc_cmd" "https://github.com/gaia-react/gaia/pull/712"
+  [ "$status" -eq 0 ]
+  any_breadcrumb_exists && return 1
+
+  run_hook "gh pr create --title x" "https://github.com/gaia-react/gaia/pull/712"
+  [ "$status" -eq 0 ]
+  [ -f "$(breadcrumb_path "feat/heredoc")" ]
+}
+
+@test "the same heredoc-body payload padded past the arming bound does write" {
+  build_repo
+  cd "$REPO"
+  git checkout -b feat/overbound --quiet
+
+  local pad heredoc_cmd
+  pad=$(printf 'x%.0s' $(seq 1 16400))
+  heredoc_cmd=$'cat > /tmp/notes.txt <<EOF\n'"$pad"$'\ngh pr create --title x\nEOF'
+  [ "${#heredoc_cmd}" -gt 16384 ] || return 1
+
+  run_hook "$heredoc_cmd" "https://github.com/gaia-react/gaia/pull/712"
+  [ "$status" -eq 0 ]
+  [ -f "$(breadcrumb_path "feat/overbound")" ]
+}
+
+@test "a quoted verb in the first command writes (tokenizer arm; red before this change)" {
+  build_repo
+  cd "$REPO"
+  git checkout -b feat/quoted --quiet
+
+  run_hook 'gh pr "create" --title x' "https://github.com/gaia-react/gaia/pull/712"
+  [ "$status" -eq 0 ]
+  [ -f "$(breadcrumb_path "feat/quoted")" ]
+}
+
+@test "a multi-statement command still writes (no regression)" {
+  build_repo
+  cd "$REPO"
+  git checkout -b feat/multi --quiet
+
+  run_hook "echo start && gh pr create --title x" "https://github.com/gaia-react/gaia/pull/712"
+  [ "$status" -eq 0 ]
+  [ -f "$(breadcrumb_path "feat/multi")" ]
+}
+
 @test "a failed gh pr create (empty stdout): exit 0, no file" {
   build_repo
   cd "$REPO"

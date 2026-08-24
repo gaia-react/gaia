@@ -833,6 +833,33 @@ assert_nothing_released() { [ ! -s "$FAKE_GH_STATE/issue_edits" ]; }
   [ "$status" -eq 0 ]
   assert_nothing_released
 }
+
+# ---------- Shared arming decision (tokenizer, and the bound past 6d) ----------
+
+@test "10: a quoted verb in the first command releases (tokenizer arm; red before this change)" {
+  export FAKE_GH_PR_BODY="Closes #77"
+  run_hook 'gh pr "merge" 1508'
+  [ "$status" -eq 0 ]
+  [ "$(cat "$FAKE_GH_STATE/pr_view_ref")" = "1508" ]
+  assert_released_once "77"
+}
+
+# The generic past-bound pairing (6d's heredoc, padded past
+# GAIA_VERB_ARM_MAX_CHARS, arms because the walker abstains above the bound)
+# cannot discriminate through this hook's own release: the heredoc's first
+# command is necessarily `cat`, never `gh`, so the first-command boundary (6d,
+# 9) declines here regardless of arming or masking, above the bound or below
+# it. The bound's effect on arming is proven once, at the library level, in
+# verb-arming-lib.bats; this pins that the boundary decline still holds past
+# the bound, so a bigger heredoc never becomes a spurious release.
+@test "11: a heredoc-behind merge padded past the arming bound still releases nothing (boundary, not masking)" {
+  export FAKE_GH_PR_BODY="Closes #77"
+  local pad
+  pad=$(printf 'x%.0s' $(seq 1 16400))
+  run_hook $'cat <<\'EOF\' > notes.md\n'"$pad"$'\ngh pr merge 5\nEOF\ngh pr merge 9'
+  [ "$status" -eq 0 ]
+  assert_nothing_released
+}
 @test "the hook file is executable" {
   [ -x "$HOOK_ABS" ]
 }

@@ -1196,3 +1196,87 @@ make_stacked_pr_repo() {
   [ "$status" -eq 0 ]
   [ -z "$output" ]
 }
+
+# ---------------------------------------------------------------------------
+# Shared verb-arming adoption: the tokenizer arm this hook gained, and the
+# data-proof that keeps a heredoc-body merge from arming it. Every case seeds
+# a pending(definitive) sidecar entry, so the hook has a real reason to deny
+# once armed; the assertion is on the DENY TEXT, never the exit status.
+# ---------------------------------------------------------------------------
+
+# Seed a pending(definitive) sidecar entry for ROOT's frontend digest, with no
+# marker: the "real reason to deny" every arming case below needs.
+seed_pending_definitive() {
+  local root="$1" digest
+  digest="$(frontend_digest_of "$root")"
+  [ -n "$digest" ] || return 1
+  mkdir -p "$root/.gaia/local/audit"
+  printf '{"schema":1,"backend":"github","findings":[{"key":"v1 class=x path=b line=2","disposition":"pending","pending_reason":"definitive"}]}\n' \
+    > "$root/.gaia/local/audit/${digest}.dispositions.json"
+}
+
+# Stage the whole of .claude/hooks, lib/ included, into a fresh tree and
+# delete LIBNAME from the staged copy, then run the STAGED hook. The real
+# hook resolves every lib off its OWN on-disk location via BASH_SOURCE
+# (see this file's header), so only a staged copy's absence is visible to it.
+run_disposition_hook_lib_absent() {
+  local libname="$1" root="$2" cmd="$3" json stage
+  stage="$BATS_TEST_TMPDIR/staged-hooks-${libname}"
+  if [ ! -d "$stage" ]; then
+    cp -r "$REPO_ROOT/.claude/hooks" "$stage"
+    rm -f "$stage/lib/$libname"
+  fi
+  json=$(jq -n --arg c "$cmd" '{tool_name: "Bash", tool_input: {command: $c}}')
+  invoke_hook_in "$root" "$json" "$stage/audit-disposition-check.sh"
+}
+
+@test "arming: a quoted verb now reaches the gate (tokenizer arm)" {
+  ROOT="$BATS_TEST_TMPDIR/arm-quoted"
+  mkdir -p "$ROOT"
+  seed_repo "$ROOT"
+  seed_pending_definitive "$ROOT" || skip "could not derive digest"
+
+  run_disposition_hook "$ROOT" 'gh pr "merge" 30 --squash'
+  assert_denied_by_json
+  grep -qF -- "pending(definitive): v1 class=x path=b line=2" <<<"$output" || return 1
+}
+
+@test "arming: a cat-to-file heredoc body carrying the verb does not reach the gate" {
+  ROOT="$BATS_TEST_TMPDIR/arm-heredoc-body"
+  mkdir -p "$ROOT"
+  seed_repo "$ROOT"
+  seed_pending_definitive "$ROOT" || skip "could not derive digest"
+
+  run_disposition_hook "$ROOT" $'cat > f.txt <<EOF\ngh pr merge 30 --squash\nEOF\n'
+  assert_allowed_by_json
+}
+
+@test "arming: removing the heredoc opener line leaves the same body text reaching the gate" {
+  ROOT="$BATS_TEST_TMPDIR/arm-heredoc-opener-removed"
+  mkdir -p "$ROOT"
+  seed_repo "$ROOT"
+  seed_pending_definitive "$ROOT" || skip "could not derive digest"
+
+  run_disposition_hook "$ROOT" $'gh pr merge 30 --squash\nEOF\n'
+  assert_denied_by_json
+}
+
+@test "arming: a heredoc piped into bash still reaches the gate" {
+  ROOT="$BATS_TEST_TMPDIR/arm-heredoc-piped"
+  mkdir -p "$ROOT"
+  seed_repo "$ROOT"
+  seed_pending_definitive "$ROOT" || skip "could not derive digest"
+
+  run_disposition_hook "$ROOT" $'cat <<EOF | bash\ngh pr merge 30 --squash\nEOF\n'
+  assert_denied_by_json
+}
+
+@test "library-absent: verb-arming.sh missing denies every Bash tool call, naming the file" {
+  ROOT="$BATS_TEST_TMPDIR/arm-lib-absent"
+  mkdir -p "$ROOT"
+  seed_repo "$ROOT"
+
+  run_disposition_hook_lib_absent "verb-arming.sh" "$ROOT" "echo hi"
+  assert_denied_by_json
+  grep -qF 'verb-arming.sh' <<<"$output" || return 1
+}

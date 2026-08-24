@@ -117,22 +117,28 @@ tool_name=$(printf '%s' "$input" | jq -r '.tool_name // ""' 2>/dev/null)
 # later `command -v ...` guards.
 cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // ""' 2>/dev/null)
 
-# Match `gh pr create` only when it appears in command position: at the very
-# start, or immediately after a shell separator. Mirrors the anchoring in
-# pr-merge-audit-check.sh and audit-disposition-check.sh. This keeps mid-line
-# mentions (`git commit -m "gh pr create"`, `echo "run gh pr create later"`)
-# from tripping the gate.
+# Whether this call carries a real `gh pr create` is the shared arming
+# decision's to make (.claude/hooks/lib/verb-arming.sh), asked with this hook's
+# own verb fragment: the library composes that fragment, byte for byte, into the
+# anchored pattern pair it matches with, so the fragment below is where this
+# file's own spelling of the verb lives. It arms on the verb in command
+# position, at the very start or immediately after a shell separator, so
+# mid-line mentions (`git commit -m "gh pr create"`,
+# `echo "run gh pr create later"`) do not trip the gate. It also arms on a first
+# command the shell would run as `gh pr create` however its characters are
+# quoted, which a pattern over the raw text never sees.
 #
-# It does NOT exempt a heredoc body: newline is in the separator set, so a
-# heredoc line that begins with `gh pr create` matches like a real invocation.
-# That is a deliberate trade, not an oversight. Dropping newline would exempt
-# heredocs but also stop matching the common multi-line shape
+# Newline is one of those separators, so a heredoc line beginning with the verb
+# reads to the patterns like a real invocation. Dropping newline is not the
+# answer: it would also stop matching the common multi-line shape
 # (`git add -A\ngh pr create --fill`), which is a real invocation the gate must
-# see. Telling the two apart needs shell parsing, and the failure it would
-# prevent is a spurious deny on a fail-open advisory gate whose message names
-# the remedy, so the cheap anchoring is the proportionate answer.
+# see. The shared decision settles it by proof instead, re-running the match
+# against a view in which every heredoc body it can prove is DATA is masked out.
+# What still arms is a body whose opener that proof cannot read as data, an
+# interpreter feed (`bash <<EOF`) among them, which is the safe direction on a
+# gate that is fail-open with CI authoritative.
 #
-# Each pattern also captures the matched invocation's own argument text into
+# The fragment also captures the matched invocation's own argument text into
 # `cmd_tail`. Deriving it from the same regex that decided the match keeps one
 # parser governing both: a separate glob strip (`${cmd#*gh pr create}`) matches
 # only single ASCII spaces, so `gh<TAB>pr<TAB>create` would find nothing,
@@ -153,12 +159,14 @@ cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // ""' 2>/dev/null)
 # A quoted separator cuts the other way too, and that direction is NOT safe. It
 # can rebind the MATCH, not just truncate the tail: in
 # `echo "x; gh pr create --base develop" && gh pr create --fill` the `;` inside
-# the quoted string is the leftmost separator, so `sep_re` binds to the quoted
-# mention rather than the real invocation, and that mention's `--base` narrows
-# the changed set. Accepted for the same reason as the heredoc trade: separating
-# a quoted mention from a real invocation needs shell parsing, the gate is
-# fail-open with CI authoritative, and both accepted trades are pinned by tests
-# below so neither can drift silently into looking like a bug.
+# the quoted string is the leftmost separator, so the separator arm binds to the
+# quoted mention rather than the real invocation, and that mention's `--base`
+# narrows the changed set. Accepted, and the data proof does not close it: a
+# quoted span is never suppressed there, because a `bash -c` runs what it is
+# handed from inside one and a runner reached through a variable defeats any
+# list of interpreter names. The gate is fail-open with CI authoritative, and
+# both accepted trades are pinned by tests below so neither can drift silently
+# into looking like a bug.
 #
 # Newline gets handled twice below, because it is the one separator that is also
 # whitespace, and each half of that is a different hazard.
@@ -184,17 +192,60 @@ cmd_joined="${cmd//\\$'\n'/}"
 # the gate entirely, since the character after `create` is a separator and so
 # neither `[[:space:]]` nor `$`. The leading side already worked, because
 # `[[:space:]]*` before `gh` is zero-or-more.
-tail_re=$'([^&;|\n]*)'
-sep_re=$'(\\&\\&|;|\\|\\||\\||\n)[[:space:]]*gh[[:space:]]+pr[[:space:]]+create([[:space:]&;|]|$)'"$tail_re"
-start_re='^[[:space:]]*gh[[:space:]]+pr[[:space:]]+create([[:space:]&;|]|$)'"$tail_re"
+#
+# The trailing `(.*)$` group carries no arming weight of its own: it matches the
+# empty string, so the set of texts this fragment matches is unchanged by it and
+# the two groups ahead of it keep their numbering. It exists so the tail is
+# recoverable by length, below.
+verb_frag=$'gh[[:space:]]+pr[[:space:]]+create([[:space:]&;|]|$)([^&;|\n]*)(.*)$'
+
+# Resolved off THIS file's own location rather than cwd. The gate runs from
+# whatever directory the tool call was made in, and a cwd-relative source would
+# leave the arming decision unavailable there with nothing to say so.
+va_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
+if [ -n "$va_dir" ] && [ -f "$va_dir/lib/verb-arming.sh" ]; then
+  # shellcheck source=/dev/null
+  . "$va_dir/lib/verb-arming.sh"
+fi
+# FAIL-OPEN with no arming library, deliberately unlike the merge gates, which
+# deny and name the missing file. This hook's contract, stated at the top, is
+# that it fails open on every uncertainty and can only ever be a cheaper way to
+# find out what .github/workflows/distribution-audit-pr.yml would have told you.
+# A hook with that contract must not become the one guard that denies every Bash
+# tool call on a corrupted checkout.
+type gaia_verb_armed >/dev/null 2>&1 || exit 0
+
 boundary=""
 cmd_tail=""
-if [[ "$cmd_joined" =~ $start_re ]]; then
-  boundary="${BASH_REMATCH[1]}" # match at command start
-  cmd_tail="${BASH_REMATCH[2]}"
-elif [[ "$cmd_joined" =~ $sep_re ]]; then
-  boundary="${BASH_REMATCH[2]}" # match after a shell separator (incl. newline)
-  cmd_tail="${BASH_REMATCH[3]}"
+if gaia_verb_armed "$verb_frag" 'gh pr create' "$cmd_joined"; then
+  # Group numbering follows the composition: under `start` the fragment's own
+  # groups begin at 1, under `sep` group 1 is the separator and the fragment's
+  # begin at 2. A first-command arm decided without a regex at all, so it has no
+  # groups and no tail; an empty tail falls back to the default base, which is
+  # the direction a tail truncated by a quoted separator already takes here.
+  case "$GAIA_VERB_ARM_KIND" in
+    start) grp=1 ;;
+    sep) grp=2 ;;
+    *) grp=0 ;;
+  esac
+  if [ "$grp" -gt 0 ]; then
+    boundary="${GAIA_VERB_ARM_MATCH[$grp]-}"
+    tail_group="${GAIA_VERB_ARM_MATCH[$(( grp + 1 ))]-}"
+    suffix_group="${GAIA_VERB_ARM_MATCH[$(( grp + 2 ))]-}"
+    # The deciding match may have run against a view with heredoc bodies masked,
+    # so the tail group can hold mask bytes rather than the real ones. Slice the
+    # real ones out of `cmd_joined` by offset: the view is the same CHARACTER
+    # length as the text it was built from, `(.*)$` runs every match to the end
+    # of the string, and that puts the tail's own end exactly one suffix-length
+    # short of it. A matched tail can never overlap a masked span in the first
+    # place, since a masked span is a heredoc body beginning after a newline and
+    # this tail group cannot cross one, but slicing the original is what makes
+    # that a property rather than a premise. `boundary` needs no such care: it
+    # is one character from a fixed set, and a mask byte is not in that set.
+    tail_len=${#tail_group}
+    tail_start=$(( ${#cmd_joined} - ${#suffix_group} - tail_len ))
+    cmd_tail="${cmd_joined:tail_start:tail_len}"
+  fi
 else
   exit 0
 fi

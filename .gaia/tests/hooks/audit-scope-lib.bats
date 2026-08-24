@@ -434,12 +434,25 @@ golden_run_hook() {
   cp "$HOOK" "$SANDBOX/.claude/hooks/pr-merge-audit-check.sh"
   chmod +x "$SANDBOX/.claude/hooks/pr-merge-audit-check.sh"
 
+  # Seed the shared arming library alone (no lib/ dir otherwise), so the gate
+  # arms normally and reaches ITS OWN classifier-absent deny below rather than
+  # the arming library's pre-arming one: this test is about the classifier
+  # miss, not the arming miss, and the two now have distinct deny text.
+  mkdir -p "$SANDBOX/.claude/hooks/lib"
+  cp "$REPO_ROOT/.claude/hooks/lib/verb-arming.sh" "$SANDBOX/.claude/hooks/lib/verb-arming.sh"
+  cp "$REPO_ROOT/.claude/hooks/lib/verb-arming-walk.sh" "$SANDBOX/.claude/hooks/lib/verb-arming-walk.sh"
+  cp "$REPO_ROOT/.claude/hooks/lib/repo-scope.sh" "$SANDBOX/.claude/hooks/lib/repo-scope.sh"
+
   json=$(jq -n '{tool_name: "Bash", tool_input: {command: "gh pr merge 1 --squash"}}')
   invoke_hook_in "$SANDBOX" "$json" "$SANDBOX/.claude/hooks/pr-merge-audit-check.sh"
   rm -rf "$SANDBOX"
 
   [ "$status" -eq 0 ]
   grep -qF -- '"permissionDecision": "deny"' <<<"$output" || return 1
+  # The classifier-specific deny text, not the arming library's: proves the
+  # gate reached the classifier check rather than denying earlier for an
+  # unrelated reason (audit finding DP-008).
+  grep -qF -- 'cannot load the ownership classifier' <<<"$output" || return 1
 }
 
 # ---------------------------------------------------------------------------
