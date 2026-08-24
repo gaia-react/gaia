@@ -2244,6 +2244,24 @@ rge 30 --squash'
   return 0
 }
 
+@test "clearance: an unreadable command with no number blames the spelling, not the target" {
+  install_gh_stub
+  commit_files "app/x.ts" "export const x = 1"
+  write_markers_for_spawn_set "$(spawn_set)"
+
+  # No positional AND unreadable: the gate established no target at all, so the
+  # mismatch headline would point at a target the operator probably got right,
+  # and its remedy would offer the very no-number spelling they just used. The
+  # `<unreadable>` sentinel never equals a record, so a split keyed on the
+  # comparison alone routes this to the wrong arm.
+  run_merge_hook 'gh pr merge --squash --subject "chore: x"'
+  assert_denied_by_json
+  grep -qF -- "cannot read the merge command well enough" <<<"$output"
+  grep -qF -- "no target this gate could read" <<<"$output"
+  grep -qF -- "does not name the pull request that clearance is for" <<<"$output" && return 1
+  return 0
+}
+
 @test "clearance: a genuine mismatch still gets the mismatch headline, not the spelling one" {
   install_gh_stub
   commit_files "app/x.ts" "export const x = 1"

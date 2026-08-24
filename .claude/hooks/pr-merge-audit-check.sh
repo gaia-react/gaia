@@ -783,12 +783,14 @@ gate_permit_binds_to_named_pr() {
   named="${GAIA_GH_MERGE_REF:-}"
   record="${pr_record_number:-}"
 
+  local unreadable=0
   if [ -z "$named" ]; then
     # No positional means gh's current-branch default, which the conjunct above
     # permits outright, so reaching here without one means the command itself
     # was unreadable: not the first command in its tool call, carrying a flag
     # shape the scanner declines to model, a separator or comment putting a
     # second command beside it, or a byte outside the small set a merge needs.
+    unreadable=1
     named="<unreadable>"
   fi
 
@@ -812,11 +814,31 @@ a branch name or URL in place of a number, or any byte outside the small set a
 merge invocation needs each deny on their own. A quoted flag value is the
 common case: drop it, or set it on the pull request before merging."
 
-  if [ -n "$record" ] && [ "$named" = "$record" ]; then
-    reason="PR merge gate: HEAD ${sha:0:12} is cleared and the merge names the right pull request (${record}), but the command is not one this gate can read exactly.
+  # Which arm, and the sentinel belongs on the SPELLING side. An unreadable
+  # command named no target the gate could read, so it never established a
+  # wrong one; telling that operator the merge "does not name the pull request
+  # that clearance is for" points at a target that was probably right, and the
+  # mismatch remedy then offers them the no-number spelling they may have just
+  # used. `<unreadable>` never equals a record, so keying on the comparison
+  # alone would silently route it to the mismatch arm.
+  local head_line names_line repair_lead
+  if [ "$unreadable" -eq 1 ] || { [ -n "$record" ] && [ "$named" = "$record" ]; }; then
+    if [ "$unreadable" -eq 1 ]; then
+      head_line="PR merge gate: HEAD ${sha:0:12} is cleared, but this gate cannot read the merge command well enough to tell which pull request it targets."
+      names_line="  Merge names:      no target this gate could read"
+      repair_lead="To unblock, respell the merge. The target was never established, so this says
+nothing about which pull request you meant."
+    else
+      head_line="PR merge gate: HEAD ${sha:0:12} is cleared and the merge names the right pull request (${record}), but the command is not one this gate can read exactly."
+      names_line="  Merge names:      ${named}, which is this checkout's own pull request"
+      repair_lead="To unblock, respell the merge; naming ${record} again is the one repair that
+cannot work, because the number was never the problem."
+    fi
+
+    reason="${head_line}
 
   Clearance:        present for this checkout's content
-  Merge names:      ${named}, which is this checkout's own pull request
+${names_line}
   Blocked by:       how the command is spelled, not what it targets
 
 This gate confirms a merge names the pull request its clearance is for by
@@ -824,10 +846,9 @@ reading the command itself, and it denies on every abstention rather than read
 a command approximately. It abstained here, so it never reached the comparison
 that would have passed.
 
-To unblock, respell the merge; naming ${record} again is the one repair that
-cannot work, because the number was never the problem. ${spelling_shared}
-\`gh pr merge --squash --delete-branch\` with no number is always readable and
-targets this checkout's own pull request."
+${repair_lead} ${spelling_shared}
+A bare \`gh pr merge --squash --delete-branch\`, with no number and no other
+flag, is always readable and targets this checkout's own pull request."
   else
     reason="PR merge gate: HEAD ${sha:0:12} is cleared, but the merge does not name the pull request that clearance is for.
 
