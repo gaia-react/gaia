@@ -463,11 +463,18 @@ check_github_status() {
 # Memoized on $pr_record_read, which is what distinguishes "not read yet" from
 # "read, and the answer was nothing".
 #
-# One read rather than one per field. Both consumers below sit on the same
-# uncleared path, and `gh` carries no request timeout of its own, so a second
-# round-trip is a second OS-length stall on a blackholed network. Every failure
-# (no gh, no auth, no PR for this branch, network error) leaves all four fields
-# empty and each consumer takes its own no-answer path.
+# One read rather than one per field. `gh` carries no request timeout of its
+# own, so a second round-trip is a second OS-length stall on a blackholed
+# network, and the memo is what keeps every consumer to the first one. Every
+# failure (no gh, no auth, no PR for this branch, network error) leaves all
+# four fields empty and each consumer takes its own no-answer path.
+#
+# The consumers are the two record-based bypasses, the legacy deny reason, and
+# gate_cmd_names_the_record_pr, which every permit reaches through
+# gate_permit_binds_to_named_pr. That last one is the reason this read is no
+# longer confined to the uncleared path: a permit issued off a purely local
+# clearance still has to establish which pull request it is a permit FOR. See
+# gate_permit_binds_to_named_pr for why that is worth a network read.
 #
 # All five variables are initialized HERE, at parent level, and that placement
 # is load-bearing rather than cosmetic. This script runs under `set -uo
@@ -595,10 +602,12 @@ check_chore_deps_pr() {
 # one combination that derivation existed to forbid. Both bypasses are invoked
 # from the parent shell, so a direct call retires that hazard.
 #
-# Resolution stays LAZY: this reaches the network through resolve_pr_record, and
-# a run whose every marker is already on disk decides the whole gate from local
-# files. Call it only from inside the two bypasses and the legacy deny reason,
-# never at the top level of this script.
+# Resolution stays LAZY, and this is the more expensive read of the two: on top
+# of resolve_pr_record it derives the base's provenance and, in its callers,
+# diffs the whole base-to-HEAD range. A cleared run now pays the record read
+# (see gate_permit_binds_to_named_pr) but must not pay this one. Call it only
+# from inside the two bypasses and the legacy deny reason, never at the top
+# level of this script.
 gate_prov_read=""
 gate_trust=""
 gate_anchor=""
@@ -706,8 +715,108 @@ gate_cmd_names_the_record_pr() {
   case "$GAIA_GH_MERGE_REF" in
     *[!0-9]*) return 1 ;;
   esac
+  # The record is needed from HERE DOWN and nowhere above it, so resolve it at
+  # the point of first need rather than leaning on a caller having done it.
+  # Two things follow, and both are the point. The predicate is self-sufficient,
+  # so a new call site cannot forget the read and get a permanent "no record"
+  # answer that reads as a deny for a structural reason rather than a real one.
+  # And the read stays LAZY where laziness is worth something: every return
+  # above this line, a command naming no pull request and one naming a target
+  # this gate cannot confirm among them, answers from the command's own bytes
+  # and never reaches the network. The memo inside resolve_pr_record makes this
+  # free for the callers that already made the read.
+  resolve_pr_record
   [ -n "$pr_record_number" ] || return 1
   [ "$GAIA_GH_MERGE_REF" = "$pr_record_number" ]
+}
+
+# gate_permit_binds_to_named_pr: the last conjunct on every permit this gate
+# issues off a CLEARANCE signal, as opposed to off the pull-request record.
+#
+# A clearance proves a property of THIS CHECKOUT's content: a member's own
+# content-digest marker, a GAIA-Audit trailer on HEAD, a GAIA-Audit commit
+# status on HEAD's sha. Not one of them reads the pull-request reference the
+# gated command carries, so on a branch whose dispatched members have all
+# cleared, `gh pr merge <other-number>` used to be permitted and merged a pull
+# request nothing here audited (gaia-react/gaia#1544).
+#
+# It sits at the two PERMIT SITES rather than inside the three signals, and
+# that placement is what makes it complete rather than merely correct. A
+# clearance becomes a merge at exactly two places, the legacy single-signal
+# gate and the AND-aggregator, and every route through both, the frontend
+# signals and each specialized member's own marker alike, passes through one of
+# them. Binding the three signals individually would leave the specialized
+# members' markers reachable and unbound, and closing that would take more code
+# than this does, not less. The record-based bypasses each keep their own call:
+# they need the answer to decide whether they fire at all, this needs it to
+# decide whether a decision to permit may stand, and the memo makes the second
+# ask free.
+#
+# WHAT IT COSTS, since the comment this replaces treated the cost as decisive.
+# The predicate reaches the network through resolve_pr_record, which the
+# clearance path otherwise never does. That read is now lazy to the point of
+# first need, so a merge naming no pull request still decides entirely from
+# local files; the prescribed `gh pr merge <N>` spelling does name one and pays
+# one memoized `gh pr view`. The reason that is affordable is that the command
+# being gated is itself an unbounded network round-trip: a permit issued
+# network-free is a permit for an operation that immediately makes its own
+# network calls, so keeping this path local moves a stall a few milliseconds
+# later rather than avoiding one. The read is unbounded exactly as every other
+# `gh` read in this hook is; bounding this one alone would buy nothing while
+# the merge it clears stays unbounded.
+#
+# Prints the deny JSON and returns 1 when the binding does not hold; returns 0
+# silently when it does.
+gate_permit_binds_to_named_pr() {
+  gate_cmd_names_the_record_pr && return 0
+
+  local named record reason
+  named="${GAIA_GH_MERGE_REF:-}"
+  record="${pr_record_number:-}"
+
+  if [ -z "$named" ]; then
+    # No positional means gh's current-branch default, which the conjunct above
+    # permits outright, so reaching here without one means the command itself
+    # was unreadable: not the first command in its tool call, carrying a flag
+    # shape the scanner declines to model, a separator or comment putting a
+    # second command beside it, or a byte outside the small set a merge needs.
+    named="<unreadable>"
+  fi
+
+  reason="PR merge gate: HEAD ${sha:0:12} is cleared, but the merge does not name the pull request that clearance is for.
+
+  Clearance:        present for this checkout's content
+  Merge names:      ${named}
+  This checkout is on: ${record:-<no pull-request record>}
+
+Every clearance signal, a member's content-digest marker, the GAIA-Audit commit
+trailer, and the GAIA-Audit CI status, proves that a member read THIS
+CHECKOUT's content. None of them says anything about another pull request, so
+merging one on their strength would merge a pull request nothing here audited.
+
+To unblock:
+  1. Merge the pull request this checkout is actually on: run
+     \`gh pr merge --squash --delete-branch\` with no number, or name
+     ${record:-the pull request for this branch} explicitly.
+  2. To merge a different pull request, check that branch out and let its own
+     Code Audit Team members clear it.
+
+The merge must also be the FIRST command in its tool call, with nothing beside
+it: a separator, a comment, a flag shape the command scanner declines to model,
+a branch name or URL in place of a number, and any byte outside the small set a
+merge invocation needs all keep the marker mandatory, because a merge this gate
+cannot read exactly is one it will not clear.
+
+See wiki/concepts/PR Merge Workflow.md for the full contract."
+
+  jq -n --arg r "$reason" '{
+    hookSpecificOutput: {
+      hookEventName: "PreToolUse",
+      permissionDecision: "deny",
+      permissionDecisionReason: $r
+    }
+  }'
+  return 1
 }
 
 # gate_empty_is_decisive: may an EMPTY base-to-HEAD range clear this gate on its
@@ -739,25 +848,17 @@ gate_cmd_names_the_record_pr() {
 # invocation needs, so no expansion of any spelling can run a second command.
 # Anything else denies rather than being read approximately.
 #
-# The command-binding conjunct is NOT scoped to this arm. Every arm that clears
-# a merge off the current-branch RECORD asks the same question, each at its own
-# site: the chore(deps) and self-modification bypasses above, and the non-empty
-# arm of this function's own caller. Keep it that way when adding a record-based
-# arm; the four reach that record by three different routes, so there is no one
-# chokepoint to put the question behind.
-#
-# What that does NOT cover, stated because the sentence above reads like a
-# whole-gate invariant and is not one. The three signals frontend_cleared checks
-# first, a member's own content-digest marker, the commit trailer, and the CI
-# status, clear a merge without asking it. Each proves a property of THIS
-# checkout's content, so on a branch whose members have all cleared,
-# `gh pr merge <other-number>` is permitted and merges a pull request nothing
-# here audited. The reason they are left unbound is cost, not principle: the
-# predicate needs pr_record_number, so binding them would put a `gh pr view` on
-# the path a run decides entirely from local files, which the lazy resolution
-# below deliberately keeps network-free. Settle that before widening the
-# conjunct onto them; the options and the measurements are in
-# gaia-react/gaia#1544.
+# The command-binding conjunct is NOT scoped to this arm, and it now IS a
+# whole-gate invariant: no path through this gate clears a merge without
+# establishing that the merge names the pull request the clearance is for. The
+# arms that clear off the current-branch RECORD each ask at their own site, the
+# chore(deps) and self-modification bypasses above and the non-empty arm of this
+# function's own caller, because each needs the answer to decide whether it
+# fires at all; keep it that way when adding a record-based arm, since the four
+# reach that record by three different routes. The arms that clear off a
+# CLEARANCE instead ask once, at the permit site, through
+# gate_permit_binds_to_named_pr above; that function owns the reasoning for why
+# the question sits there and what the network read costs.
 gate_empty_is_decisive() {
   audit_provenance_empty_is_decisive "$gate_trust" || return 1
   [ "$gate_anchor" = "pr-record" ] || return 1
@@ -1088,7 +1189,12 @@ if [ -z "$members" ]; then
   # than check_out_of_scope_pr's denylist, so an ownerless-but-in-scope file
   # (root Makefile, public/**, ...) still denies here without a marker.
   if frontend_cleared; then
-    _gate_frontend_disposition_denial
+    # Binding first, disposition second: both print a deny payload of their own
+    # and this hook emits at most one, so the guard that can refuse the permit
+    # outright runs before the one that inspects what the permit rests on.
+    if gate_permit_binds_to_named_pr; then
+      _gate_frontend_disposition_denial
+    fi
     exit 0
   fi
 
@@ -1172,13 +1278,14 @@ report=""
 # every member's answer to it is the same.
 #
 # Resolved on first need rather than up front, because the predicate reaches
-# gate_resolve_base() and therefore the network, while a run whose every marker is
-# already on disk decides the whole gate from local files. Answering a question
-# that can only matter to an UNCLEARED member would put a `gh` round-trip, with
-# no timeout of its own, in front of a merge this gate would otherwise allow
-# instantly, and a blackholed network turns that into an OS-length stall.
-# Deferring changes no verdict: every call site below reaches it only after
-# that member's own clearance has already come up empty.
+# gate_resolve_base() and therefore a base-provenance derivation and a full
+# base-to-HEAD diff. Answering a question that can only matter to an UNCLEARED
+# member would put all of that in front of a merge this gate is about to allow
+# on the markers already sitting on disk. A cleared run does pay the one
+# memoized `gh pr view` the permit binding needs, which is a strictly smaller
+# read and a different question. Deferring changes no verdict: every call site
+# below reaches it only after that member's own clearance has already come up
+# empty.
 self_mod_only=-1
 self_mod_only_pr() {
   if [ "$self_mod_only" -eq -1 ]; then
@@ -1237,7 +1344,10 @@ while IFS= read -r m; do
 done <<< "$members"
 
 if [ "$all_cleared" -eq 1 ]; then
-  _gate_frontend_disposition_denial
+  # Same order, and for the same reason, as the legacy permit site above.
+  if gate_permit_binds_to_named_pr; then
+    _gate_frontend_disposition_denial
+  fi
   exit 0
 fi
 
