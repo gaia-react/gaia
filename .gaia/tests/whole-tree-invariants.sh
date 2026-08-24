@@ -47,9 +47,13 @@
 # ~78-82s end to end. Every figure here is a tilde against host load, and the
 # spread between two honest samples on different hosts is a couple of seconds
 # a member, so treat a small disagreement as noise and re-measure rather than
-# reconciling it. Time the members plainly with
-# `bash <path> >/dev/null </dev/null`, and time the aggregate by running this
-# script. That is why there is one tier rather than a fast default plus a
+# reconciling it. Time each member the way this script invokes it, the
+# WTI_SCRIPTS members with `bash <path> >/dev/null </dev/null` and the
+# WTI_BATS member with `bats <path>`, and time the aggregate by running this
+# script. Running `bash` at the bats member is not merely wrong-and-loud: its
+# `local` declarations fail outside a function, so the body's paths expand
+# unrooted and it attempts a write at `/` before dying on a syntax error.
+# That is why there is one tier rather than a fast default plus a
 # named slower tier. A split is worth its second name only once the honest
 # set is slow enough that people skip it, and an aggregate slow enough to
 # skip is worse than none; a minute and a half against the price of an audit
