@@ -688,9 +688,15 @@ jobs:
       # an edit here.
       #
       # The cost is one apt on the legs of a needing group that hold no needing
-      # suite themselves. That is the direction this whole scan already
-      # prefers: an over-match costs seconds, an under-match silently retires a
-      # suite's assertions.
+      # suite themselves, and it has two halves. Runtime: an over-match costs
+      # seconds, an under-match silently retires a suite's assertions, and that
+      # trade is the one this whole scan already prefers. Blast radius: every
+      # listed leg joins the concurrent `apt-get update` burst, where a mirror
+      # hash-sum mismatch on any one of them reds `Audit CI Tests`, a
+      # declared-required context. This rounding took the list from five legs
+      # to seven. `wiki/decisions/Sharded CI Test Matrix.md` prices that second
+      # half and is the place to weigh any further widening; it is not
+      # seconds-cheap the way the first half is.
       #
       # Do not edit this list by hand to make W10 pass: W10 failing means a
       # suite's dependency changed or a group's membership did, and the repair

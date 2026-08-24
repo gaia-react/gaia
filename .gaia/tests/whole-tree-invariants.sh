@@ -43,15 +43,16 @@
 # Runtime, measured on the tree at the time of writing: the eighteen scripts
 # total ~29s, of which check-script-capabilities.sh alone is ~15s (it walks the
 # invocation closure of every allowlisted script), shell-lint ~10s, and the
-# shard suite ~29s; the whole set measures ~72-76s end to end. That is why there is
+# shard suite ~35s; the whole set measures ~78-82s end to end. That is why there is
 # one tier rather than a fast default plus a named
 # slower tier. A split is worth its second name only once the honest set is
 # slow enough that people skip it, and an aggregate slow enough to skip is
-# worse than none; a minute and a quarter against the price of an audit round
+# worse than none; a minute and a half against the price of an audit round
 # is not that.
 # Re-measure before adding a member that changes the order of magnitude, and
-# before growing one: the shard suite's own figure moved by half again when its
-# W10 fixtures grew, and only the member COUNT below is machine-checked.
+# before growing one: the shard suite's own figure nearly doubled as its W10
+# fixtures grew, across two rounds of the same change, and only the member
+# COUNT below is machine-checked.
 #
 # The staleness lever: nothing above used to notice a member added without
 # this figure catching up, which is exactly what happened here (this comment
@@ -74,7 +75,10 @@
 #
 # Members are invoked from the current directory, so run it from the repository
 # root. That is also what lets the sibling bats suite exercise the aggregation
-# against a fixture tree of stubs instead of paying the real ~62-66s.
+# against a fixture tree of stubs instead of paying the real cost, the
+# end-to-end figure stated once in the runtime paragraph above rather than
+# restated here: two copies of one measurement is two things to keep current,
+# and the stale one reads as authoritative.
 
 set -uo pipefail
 

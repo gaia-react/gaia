@@ -1242,42 +1242,78 @@ seed_seam_tree() {
     printf '#!/usr/bin/env bats\n' >"$root/clean/plain-$i.bats"
     i=$((i + 1))
   done
+  # local-janitor.bats goes in BOTH trees because hooks-1 pins it by name and
+  # the sharder exits 2 for a shard it cannot resolve: whichever tree HOOKS_DIR
+  # is pointed at has to carry it, and the scripts-seam fixtures below point it
+  # at the clean one. Its body is plain in both, so hooks-1 never joins the
+  # reported set either way.
   printf '#!/usr/bin/env bats\n' >"$root/needs/local-janitor.bats"
+  printf '#!/usr/bin/env bats\n' >"$root/clean/local-janitor.bats"
 }
 
-# Runs shard_package_needs over a tree seeded by seed_seam_tree, with every
-# seam pointed at it.
+# seam_tree_scan <helper> <root> [group] [sharder]
+#
+# Points ONE seam at the seeded tree's needing directory and every other seam at
+# its clean one, then runs <helper> (shard_package_needs or shard_package_legs)
+# over the result. <group> selects which weighted group holds the needing
+# suite: `hooks` (the default) or `scripts`.
+#
+# The group is a parameter rather than a second copy of this function because
+# the two weighted groups are the two arms of group_for_shard, and a fixture set
+# that only ever drives one of them cannot see a narrowing edit to the other.
+# That is not hypothetical: before these fixtures covered both arms, the
+# scripts arm could be reduced to a singleton with every test in this
+# repository still green.
+seam_tree_scan() {
+  local fn="$1" root="$2" group="${3:-hooks}" sharder="${4:-$BATS_SHARDS}"
+  local hooks_dir="$root/clean" scripts_dir="$root/clean"
+  case "$group" in
+    hooks) hooks_dir="$root/needs" ;;
+    scripts) scripts_dir="$root/needs" ;;
+    *)
+      echo "seam_tree_scan: unknown group $group" >&2
+      return 2
+      ;;
+  esac
+  HOOKS_DIR="$hooks_dir" SCRIPTS_TESTS_DIR="$scripts_dir" \
+    AUDIT_TESTS_DIR="$root/clean" LIB_DIR="$root/clean" \
+    FORENSICS_DIR="$root/clean" STATUSLINE_DIR="$root/clean" \
+    "$fn" "$sharder" "$root"
+}
+
+# Runs shard_package_needs over a tree seeded by seed_seam_tree, with the hooks
+# seam holding the needing suite.
 seam_tree_needs() {
-  local root="$1"
-  HOOKS_DIR="$root/needs" SCRIPTS_TESTS_DIR="$root/clean" \
-    AUDIT_TESTS_DIR="$root/clean" LIB_DIR="$root/clean" \
-    FORENSICS_DIR="$root/clean" STATUSLINE_DIR="$root/clean" \
-    shard_package_needs "$BATS_SHARDS" "$root"
+  seam_tree_scan shard_package_needs "$1" hooks
 }
 
-# Runs shard_package_legs over the same seeded tree, with the same seams. Takes
-# the sharder as an optional $2 so the propagation fixture below can drive the
-# same code against a doctored copy.
+# Runs shard_package_legs over the same seeded tree, hooks seam holding the
+# needing suite. Takes the sharder as an optional $2 so the propagation fixture
+# below can drive the same code against a doctored copy.
 seam_tree_legs() {
-  local root="$1" sharder="${2:-$BATS_SHARDS}"
-  HOOKS_DIR="$root/needs" SCRIPTS_TESTS_DIR="$root/clean" \
-    AUDIT_TESTS_DIR="$root/clean" LIB_DIR="$root/clean" \
-    FORENSICS_DIR="$root/clean" STATUSLINE_DIR="$root/clean" \
-    shard_package_legs "$sharder" "$root"
+  seam_tree_scan shard_package_legs "$1" hooks "${2:-$BATS_SHARDS}"
 }
 
 # A copy of the sharder with its `group` dispatch arm deleted: `shards` and
 # `files` still answer, so only the closure step fails. Written beside this
 # suite rather than under $BATS_TEST_TMPDIR because the sharder derives its own
 # REPO_ROOT with `git -C "$(dirname BASH_SOURCE)" rev-parse --show-toplevel`,
-# which fails outright from outside a working tree. The caller removes it.
+# which fails outright from outside a working tree. teardown reaps it.
+#
+# The `.bats-shards-scratch.` prefix is deliberate and shared with
+# .gaia/tests/lib/bats-shards.bats' own doctored copies: .gitignore carries
+# exactly that one pattern, so a run killed before teardown leaves an IGNORED
+# stray rather than an untracked file that a later `git add -A` can sweep into
+# a commit. A prefix of this fixture's own would need a second .gitignore entry
+# to say the same thing.
 copy_sharder_without_group() {
   local dest
-  dest="$(mktemp "$(dirname "$BATS_SHARDS")/.no-group-sharder.XXXXXX")"
+  dest="$(mktemp "$(dirname "$BATS_SHARDS")/.bats-shards-scratch.XXXXXX")"
   # Recorded in a FILE, not an array: this runs inside a command substitution,
-  # where an array append would be made in the subshell and lost. The record is
-  # what lets teardown reap the copy when the test fails before its own rm,
-  # which is the case that leaked one into the tree during development.
+  # where an array append would be made in the subshell and lost. teardown is
+  # the ONLY reaper, on the passing and the failing path alike, and this record
+  # is the whole mechanism it reaps by: a caller that creates a copy without
+  # registering it here leaks one.
   printf '%s\n' "$dest" >>"$BATS_TEST_TMPDIR/scratch-copies"
   # Renames the dispatch label rather than deleting the arm: deleting three
   # lines out of a case arm leaves a stray `;;` and a copy that fails to parse
@@ -1415,6 +1451,84 @@ copy_sharder_without_group() {
     echo "a sharder that could not resolve a group reported a clean closure" >&2
     return 1
   }
+}
+
+# The same two claims as the hooks fixtures above, driven through the OTHER
+# weighted group. Without this, group_for_shard's scripts arm could be narrowed
+# to a singleton and every test in this repository stayed green: S14 proves the
+# declared groups partition the shard set, which a set of singletons also
+# satisfies, so the partition alone cannot see a narrowing. The empirical half,
+# that a declared group really is a superset of what a reshuffle can move
+# across, is what has to be driven per arm.
+@test "W10: rounding up survives a reshuffle in the scripts group too, not only hooks" {
+  local root="$BATS_TEST_TMPDIR/scripts-seam" needs_before needs_after legs_before legs_after
+  local i=0 moved=''
+  seed_seam_tree "$root"
+  printf '#!/usr/bin/env bats\ncommand -v zsh\n' >"$root/needs/uses-zsh.bats"
+
+  needs_before="$(seam_tree_scan shard_package_needs "$root" scripts)" || return 1
+  legs_before="$(seam_tree_scan shard_package_legs "$root" scripts)" || return 1
+
+  [ "$(printf '%s\n' "$needs_before" | grep -c .)" -eq 1 ] || {
+    echo "the fixture did not produce a single needing leg:" >&2
+    printf '%s\n' "$needs_before" >&2
+    return 1
+  }
+  grep -qE '^scripts-[0-9]+$' <<<"$needs_before" || {
+    echo "the needing suite did not land on a scripts leg:" >&2
+    printf '%s\n' "$needs_before" >&2
+    return 1
+  }
+  # Rounding up has to widen, and widen only within the scripts group.
+  [ "$(printf '%s\n' "$legs_before" | grep -c .)" -gt 1 ] || {
+    echo "rounding up did not widen the scripts set:" >&2
+    printf '%s\n' "$legs_before" >&2
+    return 1
+  }
+  grep -qE '^(audit|lib|misc|hooks-[0-9]+)$' <<<"$legs_before" && {
+    echo "rounding up reached outside the scripts group:" >&2
+    printf '%s\n' "$legs_before" >&2
+    return 1
+  }
+
+  while [ "$i" -lt 24 ]; do
+    printf '# pad %s\n' "$i" >>"$root/needs/plain-0.bats"
+    i=$((i + 1))
+    needs_after="$(seam_tree_scan shard_package_needs "$root" scripts)" || return 1
+    if [ "$needs_after" != "$needs_before" ]; then
+      moved=yes
+      break
+    fi
+  done
+  [ -n "$moved" ] || {
+    echo "growing an unrelated suite never moved the needing scripts leg off" >&2
+    echo "$needs_before, so this fixture proved nothing about stability" >&2
+    return 1
+  }
+
+  legs_after="$(seam_tree_scan shard_package_legs "$root" scripts)" || return 1
+  [ "$legs_after" = "$legs_before" ] || {
+    echo "the needing leg moved from $needs_before to $needs_after and the declared" >&2
+    echo "legs moved with it, so the scripts group is not rounded up:" >&2
+    printf 'before: %s\n' "$(printf '%s' "$legs_before" | tr '\n' ' ')" >&2
+    printf 'after:  %s\n' "$(printf '%s' "$legs_after" | tr '\n' ' ')" >&2
+    return 1
+  }
+}
+
+@test "W10 adversarial: seam_tree_scan refuses a group it does not know" {
+  local root="$BATS_TEST_TMPDIR/bad-seam"
+  seed_seam_tree "$root"
+  # The healthy arms first, so a runner that always failed could not pass this,
+  # and so a typo'd group name cannot read as "this group needs nothing".
+  run seam_tree_scan shard_package_needs "$root" hooks
+  [ "$status" -eq 0 ]
+  run seam_tree_scan shard_package_needs "$root" scripts
+  [ "$status" -eq 0 ]
+
+  run seam_tree_scan shard_package_needs "$root" nope
+  [ "$status" -eq 2 ]
+  grep -qF -- 'nope' <<<"$output"
 }
 
 # The apt list is only meaningful as a MEMBERSHIP list, and a negated gate
