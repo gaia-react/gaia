@@ -2222,8 +2222,38 @@ rge 30 --squash'
   # perfectly healthy.
   run_merge_hook 'gh pr merge 30 --squash --subject "chore: x"'
   assert_denied_by_json
-  grep -qF -- "This checkout is on: 30" <<<"$output"
+  grep -qF -- "names the right pull request (30)" <<<"$output"
   grep -qF -- "no pull-request record" <<<"$output" && return 1
+  return 0
+}
+
+@test "clearance: a readable command naming the right number blames the spelling, not the target" {
+  install_gh_stub
+  commit_files "app/x.ts" "export const x = 1"
+  write_markers_for_spawn_set "$(spawn_set)"
+
+  # The reference IS the record's, so the target was never the problem: the
+  # gate abstained at the byte allowlist, above the comparison that would have
+  # passed. The mismatch headline would be false here, and its remedy would
+  # prescribe the very command that just denied.
+  run_merge_hook 'gh pr merge 30 --squash --subject "chore: x"'
+  assert_denied_by_json
+  grep -qF -- "how the command is spelled, not what it targets" <<<"$output"
+  grep -qF -- "naming 30 again is the one repair that" <<<"$output"
+  grep -qF -- "does not name the pull request that clearance is for" <<<"$output" && return 1
+  return 0
+}
+
+@test "clearance: a genuine mismatch still gets the mismatch headline, not the spelling one" {
+  install_gh_stub
+  commit_files "app/x.ts" "export const x = 1"
+  write_markers_for_spawn_set "$(spawn_set)"
+
+  # The counterpart control: the two arms must not collapse into one.
+  run_merge_hook "gh pr merge 999 --squash"
+  assert_denied_by_json
+  grep -qF -- "does not name the pull request that clearance is for" <<<"$output"
+  grep -qF -- "how the command is spelled, not what it targets" <<<"$output" && return 1
   return 0
 }
 

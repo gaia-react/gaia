@@ -792,7 +792,44 @@ gate_permit_binds_to_named_pr() {
     named="<unreadable>"
   fi
 
-  reason="PR merge gate: HEAD ${sha:0:12} is cleared, but the merge does not name the pull request that clearance is for.
+  # The predicate abstains for two materially different reasons and one message
+  # cannot serve both. When the reference the command names IS the record's,
+  # the target was never the problem: the gate could not read the command
+  # exactly, so it abstained above the comparison. Telling that operator the
+  # merge "does not name the pull request that clearance is for" is false, and
+  # the repair that wording prescribes, name the record's number, is the exact
+  # command that just denied. Split the headline and the remedy; the closing
+  # paragraphs are true of both arms and stay shared.
+  #
+  # The spelling arm is the one reached in practice. A quoted `--subject` or
+  # `--body` is an ordinary thing to type, while naming another pull request by
+  # number is the rare case, so the message must not be written for the rare
+  # one alone.
+  local spelling_shared
+  spelling_shared="The merge must be the first command in its tool call with nothing beside it,
+and a separator, a comment, a flag shape the command scanner declines to model,
+a branch name or URL in place of a number, or any byte outside the small set a
+merge invocation needs each deny on their own. A quoted flag value is the
+common case: drop it, or set it on the pull request before merging."
+
+  if [ -n "$record" ] && [ "$named" = "$record" ]; then
+    reason="PR merge gate: HEAD ${sha:0:12} is cleared and the merge names the right pull request (${record}), but the command is not one this gate can read exactly.
+
+  Clearance:        present for this checkout's content
+  Merge names:      ${named}, which is this checkout's own pull request
+  Blocked by:       how the command is spelled, not what it targets
+
+This gate confirms a merge names the pull request its clearance is for by
+reading the command itself, and it denies on every abstention rather than read
+a command approximately. It abstained here, so it never reached the comparison
+that would have passed.
+
+To unblock, respell the merge; naming ${record} again is the one repair that
+cannot work, because the number was never the problem. ${spelling_shared}
+\`gh pr merge --squash --delete-branch\` with no number is always readable and
+targets this checkout's own pull request."
+  else
+    reason="PR merge gate: HEAD ${sha:0:12} is cleared, but the merge does not name the pull request that clearance is for.
 
   Clearance:        present for this checkout's content
   Merge names:      ${named}
@@ -810,17 +847,15 @@ To unblock:
   2. To merge a different pull request, check that branch out and let its own
      Code Audit Team members clear it.
 
+The spelling has to be one this gate can read exactly. ${spelling_shared}"
+  fi
+
+  reason="${reason}
+
 This denial is UNCONDITIONAL and no clearance lifts it. Re-spawning the Code
 Audit Team rewrites the same markers for the same unrotated digest and this
 command denies identically; the repair is to respell the merge, never to obtain
 another clearance.
-
-The spelling has to be one this gate can read exactly. The merge must be the
-first command in its tool call with nothing beside it, and a separator, a
-comment, a flag shape the command scanner declines to model, a branch name or
-URL in place of a number, or any byte outside the small set a merge invocation
-needs each deny on their own. A quoted flag value is the common case: drop it,
-or set it on the pull request before merging.
 
 See wiki/concepts/PR Merge Workflow.md for the full contract."
 
