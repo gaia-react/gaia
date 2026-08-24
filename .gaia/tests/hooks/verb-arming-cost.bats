@@ -204,11 +204,15 @@ time_hook_ms() {
     # OVERRIDES every individual category, so setting LC_NUMERIC while an
     # ambient LC_ALL is exported does exactly nothing. That is the shape a
     # hostile runner actually arrives in, and it is the shape the weaker pin
-    # silently fails to cover. Pinning the whole locale also makes what this
-    # file measures independent of the runner's locale, which is what a cost
-    # budget wants: the figures in the header are then reproducible rather than
-    # ambient. The walker pins LC_ALL=C for its own hot scan and restores it
-    # either way, so the hook's measured cost does not turn on this.
+    # silently fails to cover.
+    #
+    # The assignment is deliberately NOT exported, so its reach is this
+    # subshell's own %R rendering and nothing else: the timed hook child below
+    # still runs under the ambient locale, which is what keeps this timer
+    # measuring the hook a real tool call would get rather than one run in a
+    # locale no user has. What keeps that hook's own cost independent of the
+    # locale is the libraries self-pinning LC_ALL=C around their hot scans and
+    # restoring it, not this line, so do not read this pin as covering them.
     LC_ALL=C
     TIMEFORMAT='%R'
     { time bash "$hook" < "$jsonfile" >/dev/null 2>&1; } 2>&1
