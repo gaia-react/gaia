@@ -610,3 +610,24 @@ run_staged_hook() {
   [ -z "$output" ]
   [ ! -f "$REPO/.gaia/local/telemetry/cost.jsonl" ]
 }
+
+# The resolver lib's own absent case, pinned to stock /bin/bash. With errexit
+# on, bash 3.2.57 abandons the shell on a failed source before the `|| exit 0`
+# arm on the same line runs, where 5.x reaches it, so only a /bin/bash run
+# reproduces the class on a stock Mac. On a bash-5 /bin/bash (Linux CI) this
+# passes either way, the same honest caveat the empty-array case above carries.
+@test "staged hook in a checkout lacking main-root-lib.sh under stock /bin/bash: exit 0, no output, no record" {
+  [ -x /bin/bash ] || skip "no /bin/bash"
+  stage_hook_repo
+  rm -f "$REPO/.gaia/scripts/main-root-lib.sh"
+  cd "$REPO"
+  plan_dir="$REPO/.gaia/local/plans/my-plan"
+  write_readme_with_spec "$plan_dir" "/abs/root/.gaia/local/specs/SPEC-013/SPEC.md"
+  write_running "$plan_dir" "$(git branch --show-current)" "2026-07-01T00:00:00Z"
+
+  input=$("$HELPERS/mock-hook-input.sh" pre-tool-use "$SESSION" Bash "git commit -m x")
+  run env GAIA_TALLY_PROJECTS_ROOT="$ANCHOR" bash -c "echo '$input' | /bin/bash '$STAGED_HOOK'"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  [ ! -f "$REPO/.gaia/local/telemetry/cost.jsonl" ]
+}

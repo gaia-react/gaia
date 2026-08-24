@@ -76,7 +76,9 @@ done
 shopt -u nullglob
 [ "$has_review" -eq 1 ] || exit 0
 
-# Resolve association the same way the execute-time tally does.
+# Resolve association through the same shared resolver the execute-time
+# tally uses. The two hooks load it differently: this one runs without
+# errexit, where an unguarded source of a missing lib is survivable.
 . .claude/hooks/lib/gaia-active-plan.sh
 
 plan_dir="$(resolve_active_plan_dir)" || true
