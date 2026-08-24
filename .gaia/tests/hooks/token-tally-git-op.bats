@@ -658,14 +658,18 @@ stage_with_plan() {
   [ ! -f "$REPO/.gaia/local/telemetry/cost.jsonl" ]
 }
 
-# The unparseable half needs no interpreter pin: a syntax error in a sourced
-# file aborts an errexit shell on bash 5 too, so this case has teeth on Linux
-# CI as well as on a stock Mac.
-@test "staged hook whose main-root-lib.sh holds conflict markers: exit 0, no output, no record" {
+# Pinned to stock /bin/bash for the same reason the absent case above is, and
+# it is the pin rather than the failure mode that decides: the form this load
+# replaced already survived an unparseable lib on bash 5 (its `|| exit 0` arm
+# runs there), so only 3.2 tells the parse check apart from it. On a bash-5
+# /bin/bash this passes either way. The gaia-active-plan sibling below needs no
+# pin, because the form IT replaced carried no arm at all and dies on both.
+@test "staged hook whose main-root-lib.sh holds conflict markers, under stock /bin/bash: exit 0, no output, no record" {
+  [ -x /bin/bash ] || skip "no /bin/bash"
   stage_with_plan
   write_conflicted_lib "$REPO/.gaia/scripts/main-root-lib.sh"
 
-  run_staged_hook "git commit -m x"
+  run_staged_hook "git commit -m x" /bin/bash
   [ "$status" -eq 0 ]
   [ -z "$output" ]
   [ ! -f "$REPO/.gaia/local/telemetry/cost.jsonl" ]
@@ -674,6 +678,21 @@ stage_with_plan() {
 @test "staged hook whose gaia-active-plan.sh holds conflict markers: exit 0, no output, no record" {
   stage_with_plan
   write_conflicted_lib "$REPO/.claude/hooks/lib/gaia-active-plan.sh"
+
+  run_staged_hook "git commit -m x"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  [ ! -f "$REPO/.gaia/local/telemetry/cost.jsonl" ]
+}
+
+# The pre-gate verb-arming load takes `|| true` rather than a parse check, so
+# only the bash-5 half of the unparseable case is closed. Unpinned on purpose:
+# the bare source it replaced dies on both shells, so this reds on Linux CI.
+# The 3.2 half stays open by decision, not by oversight, and no test here
+# asserts otherwise; the hook's own load comment names it.
+@test "staged hook whose verb-arming.sh holds conflict markers: exit 0, no output, no record" {
+  stage_with_plan
+  write_conflicted_lib "$REPO/.claude/hooks/lib/verb-arming.sh"
 
   run_staged_hook "git commit -m x"
   [ "$status" -eq 0 ]

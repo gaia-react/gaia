@@ -77,8 +77,13 @@ shopt -u nullglob
 [ "$has_review" -eq 1 ] || exit 0
 
 # Resolve association through the same shared resolver the execute-time
-# tally uses. The two hooks load it differently: this one runs without
-# errexit, where an unguarded source of a missing lib is survivable.
+# tally uses. The two hooks load it differently, on two axes. That hook derives
+# the lib's directory from BASH_SOURCE while the load below stays cwd-relative,
+# so a cwd off the repo root silently loses attribution here; token-rollup-merge
+# does the same, so this is the family's shape rather than this file's. And that
+# hook parse-checks before sourcing where this one does not, which it can afford
+# to skip because it runs without errexit: a source that fails, whether the file
+# is missing or unparseable, reaches the ERR trap above and exits 0.
 . .claude/hooks/lib/gaia-active-plan.sh
 
 plan_dir="$(resolve_active_plan_dir)" || true

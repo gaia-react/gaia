@@ -4,8 +4,10 @@
 # worktree session is captured deterministically instead of depending on a
 # session-scoped prose instruction. Gated on an active plan folder (a
 # RUNNING sentinel whose branch matches the current branch) and keyed to
-# that plan's feature. This hook only performs a side effect: it never
-# blocks the git operation and never emits a permission decision.
+# that plan's feature. This hook only performs a side effect: it emits no
+# permission decision, and every path it takes deliberately exits 0. The one
+# way it can still block is a library it cannot parse, which the load comment
+# below bounds.
 
 set -euo pipefail
 trap 'exit 0' ERR
@@ -30,7 +32,7 @@ cmd=$(jq -r '.tool_input.command // ""' <<<"$payload")
 # quoted verb inside prose still arms; fail-closed, no safe narrowing.
 _va_lib="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)"
 # shellcheck source=/dev/null
-[ -n "${_va_lib:-}" ] && [ -f "$_va_lib/verb-arming.sh" ] && . "$_va_lib/verb-arming.sh"
+[ -n "${_va_lib:-}" ] && [ -f "$_va_lib/verb-arming.sh" ] && { . "$_va_lib/verb-arming.sh" 2>/dev/null || true; }
 type gaia_verb_armed >/dev/null 2>&1 || exit 0
 
 frag='git([[:space:]]+-C[[:space:]]+[^[:space:]]+)?[[:space:]]+(commit|push)([[:space:]]|$)'
@@ -49,23 +51,29 @@ fi
 # Sourcing is side-effect-free and near-free; the expensive work
 # (token-tally.sh's transcript parse) still runs only past the gate.
 #
-# Both loads parse-check before sourcing, which is what keeps the never-blocks
-# contract this hook's header states. Under `set -e` a `.` of a file bash
-# cannot open kills the shell before the ERR trap at the top can run, and
-# before any trailing `||` arm on the same line runs on the 3.2.57 stock macOS
-# ships as /bin/bash; a `.` of a file that opens but does not parse, a lib left
-# holding conflict markers, kills it the same way on 3.2, where 5.x does reach
-# that arm. Either way the hook exits non-zero, and at exit 2 that is the deny
-# code: the git operation is refused, including the commit that would repair
-# the lib. `bash -n` answers both questions in one call, and the trailing
-# `|| true` covers a lib that parses and then fails at source time. What
-# degrades in the trap's place is the `type` check below for the plan-folder
-# lib, and for the resolver the `|| exit 0` the cheap gate's
+# Three library loads, two treatments, decided by which side of the arming gate
+# each one sits on. Under `set -e` a failed `.` abandons the shell ahead of the
+# ERR trap at the top, and exit 2 is the PreToolUse deny code, so an unguarded
+# load refuses the git operation rather than skipping the tally. Two ways a load
+# fails: bash cannot open the file, which dies that way on the 3.2.57 stock
+# macOS ships as /bin/bash while 5.x reaches a trailing `||` arm; and bash opens
+# it but cannot parse it, a lib left holding conflict markers, which dies that
+# way on 3.2 even through an arm.
+#
+# The two loads here run only on an armed git commit/push, so they parse-check
+# first. `bash -n` answers both questions in one call and subsumes an existence
+# test, and the trailing `|| true` covers a lib that parses and then fails at
+# source time. What degrades in the trap's place is the `type` check below for
+# the plan-folder lib, and for the resolver the `|| exit 0` the cheap gate's
 # gaia_resolve_main_root call already carries.
 #
-# The verb-arming load above keeps its cheaper -f test deliberately: it runs
-# ahead of the arming gate, so a parse check there would fork on every Bash
-# tool call rather than on the git commit/push ones alone.
+# The verb-arming load above runs before the gate, on every Bash tool call, and
+# a parse check there measures ~13ms of fork against a ~16-21ms hook process.
+# It takes the free half instead, `|| true`, and the honest limit is stated
+# rather than implied: an unparseable verb-arming.sh still denies on a stock
+# bash 3.2, where the same file missing or unparseable degrades cleanly
+# everywhere else (gaia-react/gaia#1556, with the sibling hooks that load it the
+# same way).
 gaia_scripts="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd)" || exit 0
 gaia_scripts="$gaia_scripts/.gaia/scripts"
 # shellcheck source=/dev/null
