@@ -502,17 +502,10 @@ run_hook() {
   WT="$(dirname "$MAIN")/gaia-hook-wt-$$"
   git -C "$MAIN" worktree add -q "$WT" -b feature/kickoff
 
-  # The hook resolves .claude/hooks/lib + .gaia/scripts repo-relative from its
-  # own cwd (the worktree), so the worktree needs that scaffolding. It does NOT
-  # get the plan folder: that lives only in the main checkout below.
-  mkdir -p "$WT/.claude/hooks/lib" "$WT/.gaia/scripts"
-  cp "$LIB_SRC" "$WT/.claude/hooks/lib/gaia-active-plan.sh"
-  chmod +x "$WT/.claude/hooks/lib/gaia-active-plan.sh"
-  cp "$TALLY_SRC" "$WT/.gaia/scripts/token-tally.sh"
-  chmod +x "$WT/.gaia/scripts/token-tally.sh"
-  cp "$LIB_PRICING_SRC" "$WT/.gaia/scripts/token-pricing-lib.sh"
-  cp "$LIB_LEDGER_PATH_SRC" "$WT/.gaia/scripts/ledger-path-lib.sh"
-  cp "$LIB_MAIN_ROOT_SRC" "$WT/.gaia/scripts/main-root-lib.sh"
+  # The hook runs from $HOOK_ABS, so it resolves its lib directory and
+  # .gaia/scripts off BASH_SOURCE in the real checkout and the worktree needs
+  # no scaffolding of its own. It does NOT get the plan folder either: that
+  # lives only in the main checkout below.
 
   # The plan folder + RUNNING sentinel live ONLY in the main checkout, keyed to
   # the worktree's branch (which is what a real worktree plan run looks like).
@@ -561,4 +554,165 @@ run_hook() {
   [ "$output" = "$plan_dir" ]
 
   git -C "$MAIN" worktree remove --force "$WT" 2>/dev/null || rm -rf "$WT"
+}
+
+# ---------- 10. The never-blocks contract when a shared lib is unusable ----------
+# These run a COPY of the hook staged inside the tmp repo, so the lib directory
+# it resolves off BASH_SOURCE, and the .gaia/scripts beside it, are ones the
+# test controls. Running $HOOK_ABS would always resolve the real checkout's
+# libs, where neither the absent nor the unparseable case can be expressed.
+#
+# Two ways a lib goes unusable, and the hook must survive both: it is gone, and
+# it is present but does not parse (an unresolved merge conflict, a truncated
+# write). Under `set -e` a failed `.` aborts the shell ahead of the hook's ERR
+# trap in both cases, at different cost: a file bash cannot open exits 1, an
+# advisory that loses the tally row and lets the commit through, while one it
+# cannot parse exits 2, the deny code, refusing the very commit that would
+# repair the lib.
+#
+# The controls are what give the absent and unparseable cases teeth: their
+# three assertions (exit 0, no output, no ledger row) are equally satisfied by
+# a hook that does nothing at all, so each interpreter gets a control proving
+# the same staging records normally.
+stage_hook_repo() {
+  build_repo
+  STAGED_HOOK="$REPO/.claude/hooks/token-tally-git-op.sh"
+  cp "$HOOK_ABS" "$STAGED_HOOK"
+  chmod +x "$STAGED_HOOK"
+}
+
+run_staged_hook() {
+  # run_staged_hook <command> [interpreter]
+  local input interp="${2:-}"
+  input=$("$HELPERS/mock-hook-input.sh" pre-tool-use "$SESSION" Bash "$1")
+  run env GAIA_TALLY_PROJECTS_ROOT="$ANCHOR" bash -c "echo '$input' | $interp '$STAGED_HOOK'"
+}
+
+# Overwrites <path> with an unresolved-merge-conflict body: the file opens and
+# reads fine, so an existence test passes it, and bash cannot parse it.
+write_conflicted_lib() {
+  { printf '<<<<<<< HEAD\n'; printf 'x() { :; }\n'; printf '=======\n'
+    printf 'y() { :; }\n'; printf '>>>>>>> other\n'; } > "$1"
+}
+
+# Scaffolds the staged repo with an active plan folder keyed to its branch, the
+# state every case below shares. Sets $plan_dir.
+stage_with_plan() {
+  stage_hook_repo
+  cd "$REPO" || return 1
+  plan_dir="$REPO/.gaia/local/plans/my-plan"
+  write_readme_with_spec "$plan_dir" "/abs/root/.gaia/local/specs/SPEC-013/SPEC.md"
+  write_running "$plan_dir" "$(git branch --show-current)" "2026-07-01T00:00:00Z"
+}
+
+@test "staged hook, every lib usable: records (control)" {
+  stage_with_plan
+
+  run_staged_hook "git commit -m x"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  [ "$(jq -r '.kind' "$REPO/.gaia/local/telemetry/cost.jsonl")" = "execute" ]
+}
+
+# The stock-/bin/bash control. Without it the two /bin/bash-pinned cases below
+# would stay green if the hook stopped recording entirely under 3.2, which is
+# exactly the class the empty-array case above exists to catch.
+@test "staged hook under stock /bin/bash, every lib usable: records (control)" {
+  [ -x /bin/bash ] || skip "no /bin/bash"
+  stage_with_plan
+
+  run_staged_hook "git commit -m x" /bin/bash
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  [ "$(jq -r '.kind' "$REPO/.gaia/local/telemetry/cost.jsonl")" = "execute" ]
+}
+
+@test "staged hook in a checkout lacking gaia-active-plan.sh: exit 0, no output, no record" {
+  stage_with_plan
+  rm -f "$REPO/.claude/hooks/lib/gaia-active-plan.sh"
+
+  run_staged_hook "git commit -m x"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  [ ! -f "$REPO/.gaia/local/telemetry/cost.jsonl" ]
+}
+
+# Pinned to stock /bin/bash: on 3.2.57 the shell abandons on the failed source
+# before a trailing `||` arm on that line runs, where 5.x reaches it, so only a
+# /bin/bash run reproduces this half of the class on a stock Mac. On a bash-5
+# /bin/bash (Linux CI) it passes either way, the same honest caveat the
+# empty-array case above carries.
+@test "staged hook in a checkout lacking main-root-lib.sh under stock /bin/bash: exit 0, no output, no record" {
+  [ -x /bin/bash ] || skip "no /bin/bash"
+  stage_with_plan
+  rm -f "$REPO/.gaia/scripts/main-root-lib.sh"
+
+  run_staged_hook "git commit -m x" /bin/bash
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  [ ! -f "$REPO/.gaia/local/telemetry/cost.jsonl" ]
+}
+
+# Pinned to stock /bin/bash for the same reason the absent case above is, and
+# it is the pin rather than the failure mode that decides: the form this load
+# replaced already survived an unparseable lib on bash 5 (its `|| exit 0` arm
+# runs there), so only 3.2 tells the parse check apart from it. On a bash-5
+# /bin/bash this passes either way. The gaia-active-plan sibling below needs no
+# pin, because the form IT replaced carried no arm at all and dies on both.
+@test "staged hook whose main-root-lib.sh holds conflict markers, under stock /bin/bash: exit 0, no output, no record" {
+  [ -x /bin/bash ] || skip "no /bin/bash"
+  stage_with_plan
+  write_conflicted_lib "$REPO/.gaia/scripts/main-root-lib.sh"
+
+  run_staged_hook "git commit -m x" /bin/bash
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  [ ! -f "$REPO/.gaia/local/telemetry/cost.jsonl" ]
+}
+
+@test "staged hook whose gaia-active-plan.sh holds conflict markers: exit 0, no output, no record" {
+  stage_with_plan
+  write_conflicted_lib "$REPO/.claude/hooks/lib/gaia-active-plan.sh"
+
+  run_staged_hook "git commit -m x"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  [ ! -f "$REPO/.gaia/local/telemetry/cost.jsonl" ]
+}
+
+# The pre-gate verb-arming load takes `|| true` rather than a parse check, so
+# only the bash-5 half of the unparseable case is closed. Unpinned on purpose:
+# the bare source it replaced dies on both shells, so this reds on Linux CI.
+# The 3.2 half stays open by decision, not by oversight, and no test here
+# asserts otherwise; the hook's own load comment names it.
+@test "staged hook whose verb-arming.sh holds conflict markers: exit 0, no output, no record" {
+  stage_with_plan
+  write_conflicted_lib "$REPO/.claude/hooks/lib/verb-arming.sh"
+
+  run_staged_hook "git commit -m x"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  [ ! -f "$REPO/.gaia/local/telemetry/cost.jsonl" ]
+}
+
+# ---------- 11. The tally invocation resolves off BASH_SOURCE, not the cwd ----------
+# Every gate ahead of the invocation is cwd-independent (gaia_resolve_main_root
+# is git-based, resolve_active_plan_dir anchors off BASH_SOURCE), so a hook run
+# whose cwd is a repo SUBDIRECTORY reaches it with every gate satisfied. A
+# cwd-relative `bash .gaia/scripts/token-tally.sh` finds nothing there, and the
+# trailing `|| true` on the invocation discards the status, so the execute row
+# is lost with no diagnostic. This repository's own settings register the hook
+# by a relative path, so a shifted cwd stops it running at all rather than
+# running it from a subdirectory; the shape is reachable for an adopter that
+# registers an absolute command, and `.claude/rules/repo-relative-paths.md`
+# requires the anchor either way.
+@test "staged hook run from a repo subdirectory: records (tally path is cwd-independent)" {
+  stage_with_plan
+  mkdir -p "$REPO/app/components"
+  cd "$REPO/app/components" || return 1
+
+  run_staged_hook "git commit -m x"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  [ "$(jq -r '.kind' "$REPO/.gaia/local/telemetry/cost.jsonl")" = "execute" ]
 }

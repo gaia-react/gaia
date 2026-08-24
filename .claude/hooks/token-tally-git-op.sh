@@ -4,8 +4,10 @@
 # worktree session is captured deterministically instead of depending on a
 # session-scoped prose instruction. Gated on an active plan folder (a
 # RUNNING sentinel whose branch matches the current branch) and keyed to
-# that plan's feature. This hook only performs a side effect: it never
-# blocks the git operation and never emits a permission decision.
+# that plan's feature. This hook only performs a side effect: it emits no
+# permission decision, and every path it takes deliberately exits 0. The one
+# way it can still block is a library it cannot parse, which the load comment
+# below bounds.
 
 set -euo pipefail
 trap 'exit 0' ERR
@@ -30,7 +32,7 @@ cmd=$(jq -r '.tool_input.command // ""' <<<"$payload")
 # quoted verb inside prose still arms; fail-closed, no safe narrowing.
 _va_lib="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)"
 # shellcheck source=/dev/null
-[ -n "${_va_lib:-}" ] && [ -f "$_va_lib/verb-arming.sh" ] && . "$_va_lib/verb-arming.sh"
+[ -n "${_va_lib:-}" ] && [ -f "$_va_lib/verb-arming.sh" ] && { . "$_va_lib/verb-arming.sh" 2>/dev/null || true; }
 type gaia_verb_armed >/dev/null 2>&1 || exit 0
 
 frag='git([[:space:]]+-C[[:space:]]+[^[:space:]]+)?[[:space:]]+(commit|push)([[:space:]]|$)'
@@ -44,14 +46,50 @@ fi
 # Source the shared resolver first, from this hook's own checkout via
 # BASH_SOURCE (never the process cwd): the cheap gate below needs
 # gaia_resolve_main_root before resolve_active_plan_dir (which defers its own
-# copy of this same source into its body) ever runs. Then the plan-folder lib.
+# copy of this same source into its body) ever runs. Then the plan-folder lib,
+# off the same $_va_lib the verb-arming load above resolved.
 # Sourcing is side-effect-free and near-free; the expensive work
 # (token-tally.sh's transcript parse) still runs only past the gate.
+#
+# Three library loads, two treatments, decided by which side of the arming gate
+# each one sits on. Under `set -e` a failed `.` abandons the shell ahead of the
+# ERR trap at the top, and the two ways it fails do not cost the same. Bash
+# cannot open the file: the shell exits 1, which a PreToolUse hook reports as an
+# advisory, so the git operation proceeds and what is lost is the tally row plus
+# a raw diagnostic on stderr. That is the 3.2.57 stock macOS ships as /bin/bash;
+# 5.x reaches a trailing `||` arm instead. Bash opens the file but cannot parse
+# it, a lib left holding conflict markers: the shell exits 2, which is the deny
+# code, so the git operation is refused, including the commit that would repair
+# the lib. That half dies on 3.2 even through an arm.
+#
+# The two loads here run only on an armed git commit/push, so they parse-check
+# first. `bash -n` answers both questions in one call and subsumes an existence
+# test. A lib that parses and then fails at source time lands on the trailing
+# `|| true` on bash 5, which continues past the load; on 3.2 that failure
+# abandons the shell ahead of the arm and the ERR trap takes it, exiting 0
+# without the tally row. Non-blocking on both. What degrades in the trap's
+# place for a lib that never loaded is the `type` check below for the
+# plan-folder lib, and for the resolver the `|| exit 0` the cheap gate's
+# gaia_resolve_main_root call already carries.
+#
+# The verb-arming load above runs before the gate, on every Bash tool call, and
+# a parse check there measures ~13ms of fork against a ~16-21ms hook process.
+# It takes the free half instead, `|| true`, and the honest limit is stated
+# rather than implied: an unparseable verb-arming.sh still denies on a stock
+# bash 3.2, where the same file missing or unparseable degrades cleanly
+# everywhere else. The bound covers two files, not one. verb-arming.sh itself
+# lazily sources verb-arming-walk.sh on a raw match, inside _gaia_va_view, behind
+# an `-f` test but no parse check and no arm, so an unparseable walk lib denies
+# on 3.2 identically; that load is not here, so this hook cannot guard it. Both
+# sites, and the sibling hooks that load verb-arming.sh the same way, are
+# gaia-react/gaia#1556.
 gaia_scripts="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd)" || exit 0
 gaia_scripts="$gaia_scripts/.gaia/scripts"
 # shellcheck source=/dev/null
-source "$gaia_scripts/main-root-lib.sh" 2>/dev/null || exit 0
-. .claude/hooks/lib/gaia-active-plan.sh
+"${BASH:-bash}" -n "$gaia_scripts/main-root-lib.sh" 2>/dev/null && . "$gaia_scripts/main-root-lib.sh" 2>/dev/null || true
+# shellcheck source=/dev/null
+"${BASH:-bash}" -n "${_va_lib:-}/gaia-active-plan.sh" 2>/dev/null && . "${_va_lib:-}/gaia-active-plan.sh" 2>/dev/null || true
+type resolve_active_plan_dir >/dev/null 2>&1 || exit 0
 
 # Cheap negative gate: no live plan RUNNING sentinel at all, skip before paying
 # for token-tally.sh's transcript parse. Anchored to the MAIN checkout: a plan
@@ -95,7 +133,7 @@ esac
 # firing bare: on stock macOS /bin/bash 3.2 a bare "${id_flag[@]}" over an empty
 # array aborts with `unbound variable` under `set -u` (before the trailing
 # `|| true`, so the tally is silently dropped); bash 4.4+ tolerates it.
-bash .gaia/scripts/token-tally.sh \
+bash "$gaia_scripts/token-tally.sh" \
   --action execute ${id_flag[@]+"${id_flag[@]}"} --plan-slug "$slug" \
   --out-dir "$plan_dir" --session-id "$sid" \
   ${GAIA_TALLY_PROJECTS_ROOT:+--projects-root "$GAIA_TALLY_PROJECTS_ROOT"} >/dev/null 2>&1 || true

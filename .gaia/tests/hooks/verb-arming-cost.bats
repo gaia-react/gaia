@@ -14,7 +14,8 @@
 #   2KB     ~21-23ms                 ~16-19ms
 #   8KB     ~27ms                    ~16-19ms
 #   16KB    ~32-38ms                 ~16-20ms
-#   32KB (past bound, one hook)      ~25-32ms (identity short-circuit)
+#   32KB (past bound, one hook)      ~80-90ms (walker takes the identity path;
+#                                    the hook body, not the walk, is the cost)
 #
 #   gaia_verb_arm_view alone (library call, no hook process): 16KB ~8-12ms,
 #   32KB past-bound ~1-3ms (bash 3.2, the slow host this budget is written for).
@@ -100,17 +101,6 @@ GHEOF
   # however much real session history happens to be on disk.
   TALLY_ROOT="$REPO/.tally-empty"
   mkdir -p "$TALLY_ROOT"
-
-  # token-tally-git-op.sh sources this ONE lib cwd-relatively rather than off
-  # its own BASH_SOURCE, unguarded by an `-f` check: on an armed call, a cwd
-  # that lacks it makes the hook exit 1 with a "No such file" error instead
-  # of its own documented degrade-silently contract (a pre-existing gap,
-  # unrelated to the arming decision this file budgets, filed separately as
-  # tech debt rather than fixed here). Staging the real file at the cwd path
-  # it expects keeps this fixture on the hook's normal fast-exit path instead
-  # of tripping that gap.
-  mkdir -p "$REPO/.claude/hooks/lib"
-  cp "$HOOKS_DIR/lib/gaia-active-plan.sh" "$REPO/.claude/hooks/lib/gaia-active-plan.sh"
 }
 
 teardown() {
@@ -282,9 +272,10 @@ CEILING_ELEVEN_ORDINARY_MS=1000
 CEILING_ELEVEN_RAWMATCH_MS=2000
 
 # Past-bound (32KB), one hook (token-tally-git-op.sh), armed for real: the
-# walker's length check must short-circuit before it does any real work, so
-# this should cost about what an unmatched payload costs (measured
-# ~25-71ms across runs). Headroom: 300/71 ~= 4.2x. Margin below a
+# walker's length check must short-circuit before it does any real work. What
+# is left is hook-body cost, not walk cost: measured ~80-90ms across runs
+# against ~21-23ms for an unmatched payload, the gap being the armed path's
+# own work. Headroom: 300/90 ~= 3.3x. Margin below a
 # conservative doubling of the 16KB byte-walk figure for a 32KB unbounded
 # walk (2020ms): 2020/300 ~= 6.7x.
 CEILING_PAST_BOUND_MS=300
