@@ -64,9 +64,12 @@ fi
 #
 # The two loads here run only on an armed git commit/push, so they parse-check
 # first. `bash -n` answers both questions in one call and subsumes an existence
-# test, and the trailing `|| true` covers a lib that parses and then fails at
-# source time. What degrades in the trap's place is the `type` check below for
-# the plan-folder lib, and for the resolver the `|| exit 0` the cheap gate's
+# test. A lib that parses and then fails at source time lands on the trailing
+# `|| true` on bash 5, which continues past the load; on 3.2 that failure
+# abandons the shell ahead of the arm and the ERR trap takes it, exiting 0
+# without the tally row. Non-blocking on both. What degrades in the trap's
+# place for a lib that never loaded is the `type` check below for the
+# plan-folder lib, and for the resolver the `|| exit 0` the cheap gate's
 # gaia_resolve_main_root call already carries.
 #
 # The verb-arming load above runs before the gate, on every Bash tool call, and
@@ -126,7 +129,7 @@ esac
 # firing bare: on stock macOS /bin/bash 3.2 a bare "${id_flag[@]}" over an empty
 # array aborts with `unbound variable` under `set -u` (before the trailing
 # `|| true`, so the tally is silently dropped); bash 4.4+ tolerates it.
-bash .gaia/scripts/token-tally.sh \
+bash "$gaia_scripts/token-tally.sh" \
   --action execute ${id_flag[@]+"${id_flag[@]}"} --plan-slug "$slug" \
   --out-dir "$plan_dir" --session-id "$sid" \
   ${GAIA_TALLY_PROJECTS_ROOT:+--projects-root "$GAIA_TALLY_PROJECTS_ROOT"} >/dev/null 2>&1 || true

@@ -701,3 +701,24 @@ stage_with_plan() {
   [ -z "$output" ]
   [ ! -f "$REPO/.gaia/local/telemetry/cost.jsonl" ]
 }
+
+# ---------- 11. The tally invocation resolves off BASH_SOURCE, not the cwd ----------
+# Every gate ahead of the invocation is cwd-independent (gaia_resolve_main_root
+# is git-based, resolve_active_plan_dir anchors off BASH_SOURCE), so a hook run
+# whose cwd is a repo SUBDIRECTORY reaches it with every gate satisfied. A
+# cwd-relative `bash .gaia/scripts/token-tally.sh` finds nothing there, and the
+# trailing `|| true` on the invocation discards the status, so the execute row
+# is lost with no diagnostic. `.claude/rules/shell-cwd.md` records that a `cd`
+# in a Bash tool call persists for the rest of the session, which is how a
+# non-root hook cwd arises in practice. Every other case in this file runs with
+# cwd = the tmp repo root, where a relative and an absolute path agree.
+@test "staged hook run from a repo subdirectory: records (tally path is cwd-independent)" {
+  stage_with_plan
+  mkdir -p "$REPO/app/components"
+  cd "$REPO/app/components" || return 1
+
+  run_staged_hook "git commit -m x"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  [ "$(jq -r '.kind' "$REPO/.gaia/local/telemetry/cost.jsonl")" = "execute" ]
+}
