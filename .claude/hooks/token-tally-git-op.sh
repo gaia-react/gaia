@@ -44,14 +44,25 @@ fi
 # Source the shared resolver first, from this hook's own checkout via
 # BASH_SOURCE (never the process cwd): the cheap gate below needs
 # gaia_resolve_main_root before resolve_active_plan_dir (which defers its own
-# copy of this same source into its body) ever runs. Then the plan-folder lib.
+# copy of this same source into its body) ever runs.
 # Sourcing is side-effect-free and near-free; the expensive work
 # (token-tally.sh's transcript parse) still runs only past the gate.
 gaia_scripts="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd)" || exit 0
 gaia_scripts="$gaia_scripts/.gaia/scripts"
 # shellcheck source=/dev/null
 source "$gaia_scripts/main-root-lib.sh" 2>/dev/null || exit 0
-. .claude/hooks/lib/gaia-active-plan.sh
+
+# The plan-folder lib loads the same way the verb-arming lib above does: off
+# $_va_lib, which is resolved from BASH_SOURCE rather than the process cwd, and
+# behind an -f test. Both halves are load-bearing. Under `set -e` a `.` of a
+# missing file kills the shell before the ERR trap at the top can run (bash
+# 3.2.57 and 5.x alike), so an unguarded source exits 1 with a raw "No such
+# file or directory" on a checkout that lacks the lib, which is the opposite of
+# the degrade-silently contract this hook states. The `type` check below is
+# what degrades in its place.
+# shellcheck source=/dev/null
+[ -n "${_va_lib:-}" ] && [ -f "$_va_lib/gaia-active-plan.sh" ] && . "$_va_lib/gaia-active-plan.sh"
+type resolve_active_plan_dir >/dev/null 2>&1 || exit 0
 
 # Cheap negative gate: no live plan RUNNING sentinel at all, skip before paying
 # for token-tally.sh's transcript parse. Anchored to the MAIN checkout: a plan

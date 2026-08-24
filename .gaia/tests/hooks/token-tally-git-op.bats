@@ -562,3 +562,51 @@ run_hook() {
 
   git -C "$MAIN" worktree remove --force "$WT" 2>/dev/null || rm -rf "$WT"
 }
+
+# ---------- 10. Degrade-silently contract when gaia-active-plan.sh is absent ----------
+# These two run a COPY of the hook staged inside the tmp repo, so the lib
+# directory the hook resolves off BASH_SOURCE is the tmp repo's own and can be
+# built with or without the plan-folder lib. Running $HOOK_ABS would always
+# resolve the real checkout's lib, where the absent case cannot be expressed.
+# The control is what proves the absent case's exit 0 comes from the -f guard
+# rather than from staging too little for the hook to reach the lib at all.
+stage_hook_repo() {
+  build_repo
+  STAGED_HOOK="$REPO/.claude/hooks/token-tally-git-op.sh"
+  cp "$HOOK_ABS" "$STAGED_HOOK"
+  chmod +x "$STAGED_HOOK"
+}
+
+run_staged_hook() {
+  # run_staged_hook <command>
+  local input
+  input=$("$HELPERS/mock-hook-input.sh" pre-tool-use "$SESSION" Bash "$1")
+  run env GAIA_TALLY_PROJECTS_ROOT="$ANCHOR" bash -c "echo '$input' | '$STAGED_HOOK'"
+}
+
+@test "staged hook with the plan-folder lib present records (control for the absent case below)" {
+  stage_hook_repo
+  cd "$REPO"
+  plan_dir="$REPO/.gaia/local/plans/my-plan"
+  write_readme_with_spec "$plan_dir" "/abs/root/.gaia/local/specs/SPEC-013/SPEC.md"
+  write_running "$plan_dir" "$(git branch --show-current)" "2026-07-01T00:00:00Z"
+
+  run_staged_hook "git commit -m x"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  [ "$(jq -r '.kind' "$REPO/.gaia/local/telemetry/cost.jsonl")" = "execute" ]
+}
+
+@test "staged hook in a checkout lacking gaia-active-plan.sh: exit 0, no output, no record" {
+  stage_hook_repo
+  rm -f "$REPO/.claude/hooks/lib/gaia-active-plan.sh"
+  cd "$REPO"
+  plan_dir="$REPO/.gaia/local/plans/my-plan"
+  write_readme_with_spec "$plan_dir" "/abs/root/.gaia/local/specs/SPEC-013/SPEC.md"
+  write_running "$plan_dir" "$(git branch --show-current)" "2026-07-01T00:00:00Z"
+
+  run_staged_hook "git commit -m x"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  [ ! -f "$REPO/.gaia/local/telemetry/cost.jsonl" ]
+}
