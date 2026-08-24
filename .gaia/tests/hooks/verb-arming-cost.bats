@@ -38,14 +38,24 @@
 # and stays masked (the common shape below) never reaches a hook's own
 # post-arming logic at all, so which hook is swept barely matters there.
 # A GENUINELY ARMED large payload is a different story: pr-merge-audit-check.sh
-# calls into repo-scope.sh's `cmd_targets_foreign_repo`, an existing scanner
-# unrelated to this SPEC, whose own cost on a large armed command is NOT
-# bounded the way the arming walk is (measured 1.2-3.4s on a 32KB armed
-# command here, regardless of shape) -- a pre-existing cost issue in a
-# different file, filed separately as tech debt, not something this budget
-# owns or should let leak into its own ceiling. token-tally-git-op.sh has no
-# repo-scope check on its arming path, so it isolates the past-bound case to
+# calls into repo-scope.sh, an existing scanner unrelated to this SPEC, whose
+# own cost on a large armed command is not bounded the way the arming walk is
+# -- a pre-existing cost issue in a different file, not something this budget
+# owns or should let leak into its own ceiling. token-tally-git-op.sh makes no
+# repo-scope call on its arming path, so it isolates the past-bound case to
 # what this budget actually measures: the arming library's own cost.
+#
+# WHICH repo-scope FUNCTION THAT COST BELONGED TO. An earlier reading of this
+# named `cmd_targets_foreign_repo` and put the figure at 1.2-3.4s on a 32KB
+# armed command. Measured in isolation that function is flat at ~0.02s across
+# payload shapes and does not grow from 16KB to 32KB: it runs a few sed/grep
+# subprocesses over the text rather than walking it. The cost was
+# `gaia_scan_first_command`, which accumulated one word a character at a time
+# and so was quadratic in a quoted `--body`. That is now bounded
+# (.gaia/tests/hooks/repo-scope-scan-first-command.bats carries its budget),
+# which changes the size of the leak this substitution avoids but not the
+# reason for it: a hook that makes no repo-scope call measures the arming
+# library and nothing else, whatever repo-scope happens to cost.
 #
 # WHY THE "RAW-MATCHING" PAYLOAD IS A cat-HEREDOC. Per Phase 1's own figure
 # (~9ms per gaia_verb_arm_view call on a 16,259-character worst-case `cat`
@@ -185,11 +195,32 @@ time_hook_ms() {
     cd "$REPO" || exit 1
     PATH="$GH_BIN:$PATH"
     export GAIA_TALLY_PROJECTS_ROOT="$TALLY_ROOT"
+    # Pins the radix character bash writes %R with. Without it a comma locale
+    # prints `0,904`, and a C-locale awk converts that -v assignment up to the
+    # comma and stops, so the timing floors to whole seconds: a sub-second cost
+    # reads 0 and every ceiling here greens for any cost at all.
+    #
+    # LC_ALL, not LC_NUMERIC, and the difference is not stylistic: LC_ALL
+    # OVERRIDES every individual category, so setting LC_NUMERIC while an
+    # ambient LC_ALL is exported does exactly nothing. That is the shape a
+    # hostile runner actually arrives in, and it is the shape the weaker pin
+    # silently fails to cover.
+    #
+    # The assignment is deliberately NOT exported, so its reach is this
+    # subshell's own %R rendering and nothing else: the timed hook child below
+    # still runs under the ambient locale, which is what keeps this timer
+    # measuring the hook a real tool call would get rather than one run in a
+    # locale no user has. What keeps that hook's own cost independent of the
+    # locale is the libraries self-pinning LC_ALL=C around their hot scans and
+    # restoring it, not this line, so do not read this pin as covering them.
+    LC_ALL=C
     TIMEFORMAT='%R'
     { time bash "$hook" < "$jsonfile" >/dev/null 2>&1; } 2>&1
   )
   rm -f "$jsonfile"
-  REPLY_MS=$(awk -v s="$t" 'BEGIN{printf "%d", (s*1000)+0.5}')
+  REPLY_MS=$(LC_ALL=C awk -v s="$t" 'BEGIN{printf "%d", (s*1000)+0.5}')
+  # Fail closed rather than let an unparseable timing read as a fast one.
+  [ "$REPLY_MS" -gt 0 ] || return 1
 }
 
 # Same as gaia_verb_arm_view (loaded fresh each call), timed directly with no
@@ -211,6 +242,8 @@ time_view_ms() {
   textfile=$(mktemp)
   printf '%s' "$text" > "$textfile"
   t=$(bash -c '
+    # Radix pin, for the reason time_hook_ms above gives.
+    LC_ALL=C
     TIMEFORMAT="%R"
     . "$1"
     . "$2"
@@ -221,7 +254,8 @@ time_view_ms() {
     { time gaia_verb_arm_view "$_text" >/dev/null; } 2>&1
   ' _ "$lib" "$walk" "$textfile")
   rm -f "$textfile"
-  REPLY_MS=$(awk -v s="$t" 'BEGIN{printf "%d", (s*1000)+0.5}')
+  REPLY_MS=$(LC_ALL=C awk -v s="$t" 'BEGIN{printf "%d", (s*1000)+0.5}')
+  [ "$REPLY_MS" -gt 0 ] || return 1
 }
 
 # The eleven adopting hooks, per README.md's frozen contract table.
