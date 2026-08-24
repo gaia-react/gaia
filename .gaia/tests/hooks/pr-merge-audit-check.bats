@@ -88,6 +88,18 @@ setup() {
   cp "$LIB_DIR/audit-clearance.sh" "$REPO/.claude/hooks/lib/audit-clearance.sh"
   cp "$LIB_DIR/audit-digest.sh" "$REPO/.claude/hooks/lib/audit-digest.sh"
   cp "$LIB_DIR/audit-base-provenance.sh" "$REPO/.claude/hooks/lib/audit-base-provenance.sh"
+
+  # Every permit this gate issues is bound to the pull request the command
+  # names, so every case here needs a pull-request record to be bound TO, not
+  # only the ones that exercise a record-based bypass. Installing the stub for
+  # all of them also makes the suite hermetic: without it the cases that never
+  # called it invoked the developer's real `gh`, and passed because it happened
+  # to fail in a sandbox with no remote.
+  #
+  # It is only a floor. A case wanting a different record still calls
+  # install_gh_stub_with_title / install_gh_stub_with_status, which overwrite
+  # this stub, and the two gh-absence cases scrub or replace it outright.
+  install_gh_stub
 }
 
 teardown() {
@@ -347,6 +359,52 @@ case "$1" in
 esac
 EOF
   chmod +x "$GH_BIN/gh"
+}
+
+# Same stub, but the GAIA-Audit commit status on HEAD is present and matches, so
+# check_github_status clears. Call it AFTER the commit under test: the
+# description carries the frontend digest for REPO's CURRENT HEAD, computed
+# through the real digest engine so it stays in lockstep with the hook.
+#
+# The hook queries with `gh api ... --jq`, and this stub ignores the filter and
+# prints its result directly, which is the same shape every other case here
+# uses. `--jq` renders a JSON string unquoted, hence the bare description line.
+install_gh_stub_with_status() {
+  local digest tree
+  install_gh_stub "${1:-[]}"
+  digest="$(member_digest_for code-audit-frontend)"
+  tree=$(git -C "$REPO" rev-parse "HEAD^{tree}")
+  printf '1.4.0 %s %s\n' "$digest" "$tree" > "$BATS_TEST_TMPDIR/status-desc.txt"
+  cat > "$GH_BIN/gh" <<EOF
+#!/usr/bin/env bash
+issues_file="$BATS_TEST_TMPDIR/issues.json"
+status_file="$BATS_TEST_TMPDIR/status-desc.txt"
+EOF
+  cat >> "$GH_BIN/gh" <<'EOF'
+case "$1" in
+  auth) exit 0 ;;
+  repo) printf 'gaia-react/gaia\n'; exit 0 ;;
+  pr) printf '{"title":"","baseRefName":"","number":"30"}\n'; exit 0 ;;
+  issue) cat "$issues_file"; exit 0 ;;
+  api) cat "$status_file"; exit 0 ;;
+  *) exit 0 ;;
+esac
+EOF
+  chmod +x "$GH_BIN/gh"
+}
+
+# Stamp a matching GAIA-Audit trailer on HEAD, the way audit-stamp-trailer.sh
+# does: an empty commit whose message carries
+# "GAIA-Audit: <version> <frontend-digest> <tree>". The digest is content-keyed,
+# so the empty commit this adds does not invalidate the digest it just stamped.
+# The tree field is data only and the gate never compares it.
+stamp_trailer() {
+  local digest tree
+  digest="$(member_digest_for code-audit-frontend)"
+  tree=$(git -C "$REPO" rev-parse "HEAD^{tree}")
+  git -C "$REPO" commit --quiet --allow-empty \
+    -m "chore: code review audit passed" \
+    -m "GAIA-Audit: 1.4.0 ${digest} ${tree}"
 }
 
 # Put the real chore(deps) predicate in the sandbox's ACTING tree, which is
@@ -2012,6 +2070,238 @@ rge 30 --squash'
   assert_allowed_by_json
 }
 
+# --- Clearance binding: the merge names the pull request the clearance is for
+#
+# A clearance signal proves a property of THIS CHECKOUT's content: a member's
+# own content-digest marker, a GAIA-Audit trailer on HEAD, a GAIA-Audit commit
+# status on HEAD's sha. None of them reads the pull-request reference the gated
+# `gh pr merge` carries, so on a branch whose dispatched members have all
+# cleared, `gh pr merge <other-number>` used to be permitted and merged a pull
+# request nothing here audited (gaia-react/gaia#1544). The three record-based
+# bypasses above already asked that question at their own sites; these cases pin
+# it at the two permit sites, which is where a clearance becomes a merge.
+#
+# Each case pins one signal independently. The permit-site guard covers all of
+# them with one call today, but a future change that pushes the question back
+# down into the individual signals must not reopen one of them silently.
+
+@test "clearance: a frontend marker denies a merge naming a pull request other than the record's" {
+  install_gh_stub
+  commit_files "app/x.ts" "export const x = 1"
+  write_markers_for_spawn_set "$(spawn_set)"
+
+  # The marker proves a member read THIS content. It says nothing about 999.
+  run_merge_hook "gh pr merge 999 --squash"
+  assert_denied_by_json
+}
+
+@test "clearance: a frontend marker still clears a merge naming the record's own number" {
+  install_gh_stub
+  commit_files "app/x.ts" "export const x = 1"
+  write_markers_for_spawn_set "$(spawn_set)"
+
+  run_merge_hook "gh pr merge 30 --squash --delete-branch"
+  assert_allowed_by_json
+}
+
+@test "clearance: a frontend marker still clears when the command names no pull request" {
+  install_gh_stub
+  commit_files "app/x.ts" "export const x = 1"
+  write_markers_for_spawn_set "$(spawn_set)"
+
+  # gh resolves an absent positional to the current branch, which is the very
+  # pull request the record was read for.
+  run_merge_hook "gh pr merge --squash --delete-branch"
+  assert_allowed_by_json
+}
+
+@test "clearance: a GAIA-Audit trailer denies a merge naming a pull request other than the record's" {
+  install_gh_stub
+  commit_files "app/x.ts" "export const x = 1"
+  stamp_trailer
+
+  run_merge_hook "gh pr merge 999 --squash"
+  assert_denied_by_json
+}
+
+@test "clearance: a GAIA-Audit trailer still clears a merge naming the record's own number" {
+  install_gh_stub
+  commit_files "app/x.ts" "export const x = 1"
+  stamp_trailer
+
+  # Proves the trailer arm is reached at all, so the deny above is the binding
+  # and not a trailer fixture that never cleared anything.
+  run_merge_hook "gh pr merge 30 --squash"
+  assert_allowed_by_json
+}
+
+@test "clearance: a GAIA-Audit CI status denies a merge naming a pull request other than the record's" {
+  commit_files "app/x.ts" "export const x = 1"
+  install_gh_stub_with_status
+
+  run_merge_hook "gh pr merge 999 --squash"
+  assert_denied_by_json
+}
+
+@test "clearance: a GAIA-Audit CI status still clears a merge naming the record's own number" {
+  commit_files "app/x.ts" "export const x = 1"
+  install_gh_stub_with_status
+
+  run_merge_hook "gh pr merge 30 --squash"
+  assert_allowed_by_json
+}
+
+@test "clearance: a specialized member's marker denies a merge naming a pull request other than the record's" {
+  install_gh_stub
+  commit_files ".gaia/scripts/y.sh" "#!/bin/bash"
+  set=$(spawn_set)
+  [ "$set" = "code-audit-maintainer-shell" ]
+  write_markers_for_spawn_set "$set"
+
+  # The specialized-member path clears through its own marker rather than
+  # frontend_cleared, so it is a distinct permit route to the same exit 0.
+  run_merge_hook "gh pr merge 999 --squash"
+  assert_denied_by_json
+}
+
+@test "clearance: a specialized member's marker still clears when the command names no pull request" {
+  install_gh_stub
+  commit_files ".gaia/scripts/y.sh" "#!/bin/bash"
+  write_markers_for_spawn_set "$(spawn_set)"
+
+  run_merge_hook "gh pr merge --squash --delete-branch"
+  assert_allowed_by_json
+}
+
+@test "clearance: a merge naming an unconfirmable target denies even with every marker present" {
+  install_gh_stub
+  commit_files "app/x.ts" "export const x = 1"
+  write_markers_for_spawn_set "$(spawn_set)"
+
+  # A branch name is not a number, and resolving one costs a second network
+  # read, so the gate denies rather than confirm it. Same rule the record-based
+  # bypasses already apply.
+  run_merge_hook "gh pr merge my-branch --squash"
+  assert_denied_by_json
+}
+
+@test "clearance: the legacy permit site binds when the dispatched set is empty" {
+  install_gh_stub
+  # Every other case here commits an owned path, so the dispatched set is
+  # non-empty and they all exit through the AND-aggregator. The legacy
+  # single-signal gate is reached only on an EMPTY dispatched set, and it is a
+  # second permit site with its own call: without this case, deleting that call
+  # left the whole suite green.
+  commit_files "wiki/x.md" "# x"
+  [ -z "$(spawn_set)" ]
+  write_marker "code-audit-frontend"
+
+  run_merge_hook "gh pr merge 999 --squash"
+  assert_denied_by_json
+  grep -qF -- "does not name the pull request" <<<"$output"
+}
+
+@test "clearance: the legacy permit site still clears the record's own number" {
+  install_gh_stub
+  commit_files "wiki/x.md" "# x"
+  [ -z "$(spawn_set)" ]
+  write_marker "code-audit-frontend"
+
+  run_merge_hook "gh pr merge 30 --squash"
+  assert_allowed_by_json
+}
+
+@test "clearance: the deny reads the record rather than reporting it unread" {
+  install_gh_stub
+  commit_files "app/x.ts" "export const x = 1"
+  write_markers_for_spawn_set "$(spawn_set)"
+
+  # A quoted flag value is outside the byte allowlist, so the predicate abstains
+  # ABOVE its own record read. The reason must still name the pull request this
+  # checkout is on, or it sends the operator after gh auth for a record that is
+  # perfectly healthy.
+  run_merge_hook 'gh pr merge 30 --squash --subject "chore: x"'
+  assert_denied_by_json
+  grep -qF -- "names the right pull request (30)" <<<"$output"
+  grep -qF -- "no pull-request record" <<<"$output" && return 1
+  return 0
+}
+
+@test "clearance: a readable command naming the right number blames the spelling, not the target" {
+  install_gh_stub
+  commit_files "app/x.ts" "export const x = 1"
+  write_markers_for_spawn_set "$(spawn_set)"
+
+  # The reference IS the record's, so the target was never the problem: the
+  # gate abstained at the byte allowlist, above the comparison that would have
+  # passed. The mismatch headline would be false here, and its remedy would
+  # prescribe the very command that just denied.
+  run_merge_hook 'gh pr merge 30 --squash --subject "chore: x"'
+  assert_denied_by_json
+  grep -qF -- "how the command is spelled, not what it targets" <<<"$output"
+  grep -qF -- "naming 30 again is the one repair that" <<<"$output"
+  grep -qF -- "does not name the pull request that clearance is for" <<<"$output" && return 1
+  return 0
+}
+
+@test "clearance: an unreadable command with no number blames the spelling, not the target" {
+  install_gh_stub
+  commit_files "app/x.ts" "export const x = 1"
+  write_markers_for_spawn_set "$(spawn_set)"
+
+  # No positional AND unreadable: the gate established no target at all, so the
+  # mismatch headline would point at a target the operator probably got right,
+  # and its remedy would offer the very no-number spelling they just used. The
+  # `<unreadable>` sentinel never equals a record, so a split keyed on the
+  # comparison alone routes this to the wrong arm.
+  run_merge_hook 'gh pr merge --squash --subject "chore: x"'
+  assert_denied_by_json
+  grep -qF -- "cannot read the merge command well enough" <<<"$output"
+  grep -qF -- "no target this gate could read" <<<"$output"
+  grep -qF -- "does not name the pull request that clearance is for" <<<"$output" && return 1
+  return 0
+}
+
+@test "clearance: a genuine mismatch still gets the mismatch headline, not the spelling one" {
+  install_gh_stub
+  commit_files "app/x.ts" "export const x = 1"
+  write_markers_for_spawn_set "$(spawn_set)"
+
+  # The counterpart control: the two arms must not collapse into one.
+  run_merge_hook "gh pr merge 999 --squash"
+  assert_denied_by_json
+  grep -qF -- "does not name the pull request that clearance is for" <<<"$output"
+  grep -qF -- "how the command is spelled, not what it targets" <<<"$output" && return 1
+  return 0
+}
+
+@test "clearance: the deny says a clearance does not lift it, rather than sending the operator back to the audit" {
+  install_gh_stub
+  commit_files "app/x.ts" "export const x = 1"
+  write_markers_for_spawn_set "$(spawn_set)"
+
+  run_merge_hook "gh pr merge 999 --squash"
+  assert_denied_by_json
+  # "keeps the marker mandatory" is true where the binding is a relaxation
+  # conjunct on a bypass; here the marker is already present and re-earning it
+  # changes nothing, so that wording would loop the operator forever.
+  grep -qF -- "UNCONDITIONAL" <<<"$output"
+  grep -qF -- "keep the marker mandatory" <<<"$output" && return 1
+  return 0
+}
+
+@test "clearance: the deny names the binding rather than reporting the signal missing" {
+  install_gh_stub
+  commit_files "app/x.ts" "export const x = 1"
+  write_markers_for_spawn_set "$(spawn_set)"
+
+  run_merge_hook "gh pr merge 999 --squash"
+  assert_denied_by_json
+  # The marker IS present, so a "no signal for HEAD" reason would send the
+  # operator to re-spawn the audit forever. The reason must name the mismatch.
+  grep -qF -- '999' <<<"$output"
+}
+
 @test "arming: a large non-merge command does not pay an unbounded scan" {
   install_gh_stub
   commit_files "app/x.ts" "export const x = 1"
@@ -2295,6 +2585,23 @@ run_merge_hook_lib_absent() {
   # unmodelled $'…' construct instead, so the pre-existing raw match stands.
   run_merge_hook $'x=$\'a\'\ncat > f.txt <<EOF\ngh pr merge 30 --squash\nEOF\n'
   assert_denied_by_json
+}
+
+@test "library-absent: repo-scope.sh missing denies by name, not by blaming the command's spelling" {
+  install_gh_stub
+  commit_files "app/x.ts" "export const x = 1"
+  write_markers_for_spawn_set "$(spawn_set)"
+
+  # Binding every permit to the named pull request made this library's absence
+  # a whole-gate block, where it used to mean only that a bypass did not fire.
+  # Without a named guard the block surfaces through the binding's spelling arm,
+  # which blames the command and then recommends the exact bare merge that just
+  # denied, so the operator is told to respell a command no respelling repairs.
+  run_merge_hook_lib_absent "repo-scope.sh" "gh pr merge --squash --delete-branch"
+  assert_denied_by_json
+  grep -qF -- 'repo-scope.sh' <<<"$output"
+  grep -qF -- 'how the command is spelled' <<<"$output" && return 1
+  return 0
 }
 
 @test "library-absent: verb-arming.sh missing denies every Bash tool call, naming the file" {
