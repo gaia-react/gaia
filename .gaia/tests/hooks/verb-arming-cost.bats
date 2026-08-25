@@ -50,9 +50,25 @@
 #   exactly the count.
 #
 #   Trace against the row's OWN fixture, not an approximation of it. A 16KB
-#   heredoc and a 32KB one answer differently: past GAIA_VERB_ARM_SCAN_PREFIX
-#   the walker takes the identity path, the body is never proven data, and the
-#   hooks arm, which is the past-bound row's whole subject three rows above.
+#   heredoc and a 32KB one answer differently: the walker takes the identity
+#   path once the text is longer than GAIA_VERB_ARM_MAX_CHARS (16,384
+#   characters; the guard is verb-arming-walk.sh's first line of
+#   gaia_verb_arm_view), so past it the body is never proven data and hooks
+#   that would otherwise stand down can arm. That is the past-bound 32KB row's
+#   whole subject, the last row of the size table above.
+#
+#   Not GAIA_VERB_ARM_SCAN_PREFIX, which an earlier draft of this paragraph
+#   named: that one is 2048 and caps only how much text pass 3 hands
+#   gaia_scan_first_command. Reading it as the walker's boundary puts the
+#   threshold 8x too low and makes the 8KB and 16KB rows look past it, which
+#   would contradict the 16KB bullet directly above.
+#
+#   No exact fork count is quoted for the transition, deliberately. Sweeping
+#   the payload size across the boundary on this machine did not reproduce a
+#   clean step (4 forks at 16,384 and at 16,385, 5 at 17,000), because arming
+#   depends on more than the walker's verdict and the four hooks arm on
+#   different verbs. Which side of the boundary a fixture sits on is the part
+#   worth knowing here; the count for any given row comes from tracing it.
 #
 #   The end-to-end delta is deliberately NOT quoted, because it could not be
 #   measured on this machine. A/B-ing base against HEAD copies of one hook at a
