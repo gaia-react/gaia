@@ -15,9 +15,9 @@
 # `code-audit-github-workflows.md` carries a second `## Workflow class
 # assignment` section for the four `workflow/*` classes.
 #
-# The same instruction is duplicated across five files by design; this suite
-# is the deterministic check keeping the copies in step with the schema
-# instead of trusting five hand edits to stay aligned. Every grep target
+# The same instruction is duplicated across the member definitions by design;
+# this suite is the deterministic check keeping the copies in step with the
+# schema instead of trusting hand edits to stay aligned. Every grep target
 # below is extracted-section-scoped (never whole-file, except where a test
 # says otherwise) and ground-truthed against the real source text before
 # being written, the same discipline doc-countability-prose.bats documents.

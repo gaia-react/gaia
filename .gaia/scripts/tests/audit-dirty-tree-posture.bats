@@ -34,9 +34,9 @@ setup() {
   # The Code Audit Team members. The list is spelled out rather than
   # globbed: a glob would silently pass if a member file were renamed away,
   # which is the fail-open this suite exists to prevent. The entries are the
-  # authority on how many; deliberately no count here or in any name below,
-  # because a count rots the next time a member joins or leaves and the rotted
-  # number reads as an assertion nobody has checked.
+  # authority on how many; deliberately no count here or in any comment or test
+  # name below, because a count rots the next time a member joins or leaves and
+  # the rotted number reads as an assertion nobody has checked.
   MEMBERS="code-audit-frontend
 code-audit-github-workflows
 code-audit-maintainer-node
@@ -64,8 +64,8 @@ code-audit-maintainer-shell"
 
   # The byte-identical detection line. One line on purpose: a wrapped command
   # cannot be asserted byte-for-byte with a fixed-string grep, and byte
-  # identity across five files is what keeps the members from drifting into
-  # five subtly different checks.
+  # identity across the member files is what keeps the members from drifting
+  # into subtly different checks.
   CHECK_LINE='if [ -n "$changed" ] && ! dirty_in_scope=$(printf '"'"'%s\n'"'"' "$changed" | tr '"'"'\n'"'"' '"'"'\0'"'"' | xargs -0 git -C "$AUDIT_ROOT" status --porcelain --); then'
 
   # The byte-identical print of the result. Load-bearing rather than cosmetic:
@@ -105,15 +105,15 @@ code-audit-maintainer-shell"
   # Two spellings are deliberately NOT in it, both because the advisory member
   # carries them legitimately. `write no marker` is its self-skip arm ("the only
   # `no marker` case is the self-skip above"), and an unqualified `withhold`
-  # covers its own exemption prose ("why the four gating members withhold on
+  # covers its own exemption prose ("why the gating members withhold on
   # it", "withholding would buy no guarantee"). Matching the verb plus the thing
   # withheld is what separates an instruction to this member from a description
   # of a sibling.
   #
   # `the` belongs in the determiner class as much as `this` and `your` do, and
   # leaving it out missed the likeliest vector of all. `Withhold the marker on
-  # any unresolved Critical…` is the VERBATIM handshake sentence three gating
-  # members carry, so copy-pasting a sibling's real paragraph is the most
+  # any unresolved Critical…` is a VERBATIM handshake sentence gating members
+  # carry, so copy-pasting a sibling's real paragraph is the most
   # probable way this member acquires the contract, and it was the one shape the
   # scan could not see. The test below derives its fixtures from the gating
   # members themselves rather than from invented rewordings, so a phrasing this
@@ -448,7 +448,9 @@ $(gating_withhold_phrases)
 PHRASES
 
   # A floor, so a broken extraction cannot quietly turn this into a test that
-  # asserts nothing. The four gating members carry five distinct phrasings today.
+  # asserts nothing. It sits below the number of distinct phrasings the gating
+  # members carry today, so a legitimate rewording does not red it while a
+  # collapsed extraction does.
   [ "$n" -ge 4 ] || {
     echo "extraction yielded only $n phrases; the derived fixture set has gone vacuous" >&2
     return 1

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # audit-write-clearance.sh: the ONE shared writer for every Code Audit Team
 # clearance artifact, replacing a byte-identical inline `printf` duplicated
-# across the three agent definitions.
+# across the agent definitions.
 #
 # Usage:
 #   audit-write-clearance.sh --root <path> --member <name> \

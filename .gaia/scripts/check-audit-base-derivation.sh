@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck shell=bash
 #
-# Keep the Code Audit Team's five members on ONE review base.
+# Keep every Code Audit Team member on ONE review base.
 #
 # `gaia_audit_key` (.gaia/scripts/audit-key-lib.sh) is
 # `<base_sha>.<branch-slug>`, and co-dispatched members share a branch, so
