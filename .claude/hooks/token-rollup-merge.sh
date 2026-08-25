@@ -33,11 +33,22 @@ cmd=$(jq -r '.tool_input.command // ""' <<<"$payload")
 # so what survives is a denial with no stated reason. The parse check removes
 # both, which is why the cost above is spent here.
 #
-# What the check does not reach: verb-arming.sh lazily sources
-# verb-arming-walk.sh on a raw match, and `bash -n` does not recurse into a
-# sourced file, so an unparseable walk lib still denies on 3.2. That load lives
-# inside verb-arming.sh, so no consumer hook can guard it from out here; it is
-# gaia-react/gaia#1556.
+# What the check does not reach, because `bash -n` does not recurse into a
+# sourced file: verb-arming.sh lazily sources TWO libs of its own, each behind
+# an `-f` test with no parse check, and an unparseable copy of either still
+# abandons a stock 3.2 shell at exit 2.
+#
+#   verb-arming-walk.sh, inside _gaia_va_view, needs a raw verb match.
+#   repo-scope.sh, inside _gaia_va_first_command, needs only the lead-word
+#   pre-filter, so it fires on any command sharing the verb's FIRST WORD.
+#
+# The second is much the wider of the two and the one to close first: measured
+# on staged copies with repo-scope.sh holding conflict markers, a plain
+# `git status` exits 2 on /bin/bash 3.2.57 and 0 on 5.3.15. Both loads live
+# inside verb-arming.sh, so no consumer hook can guard either from out here.
+# Tracked as its own issue rather than this one, because gaia-react/gaia#1556
+# closes when this change merges and a pointer needs a live destination:
+# gaia-react/gaia#1564.
 _va_lib="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)"
 # shellcheck source=/dev/null
 [ -n "${_va_lib:-}" ] && "${BASH:-bash}" -n "$_va_lib/verb-arming.sh" 2>/dev/null && . "$_va_lib/verb-arming.sh" 2>/dev/null || true

@@ -383,6 +383,26 @@ run_staged_hook() {
   [ "$(jq -r '.number' "$(breadcrumb_path "feat/staged")")" = "900" ]
 }
 
+# The stock-/bin/bash control, and it is not redundant with the control above.
+# Every pinned case in this suite asserts only exit 0, no output, and no
+# artifact, which a hook that does nothing at all under 3.2 satisfies just as
+# well as a hook that degrades correctly. Without a control on the SAME
+# interpreter proving the normal path still works there, the pinned cases
+# cannot separate the repair from total inertness on the one shell they exist
+# to exercise. Proved hollow before adding this: inserting an early
+# `BASH_VERSINFO -lt 4` exit into the hook left this suite entirely green.
+@test "staged hook under stock /bin/bash, every lib usable: writes the breadcrumb (control)" {
+  [ -x /bin/bash ] || skip "no /bin/bash"
+  stage_hook_repo
+  cd "$REPO"
+  git checkout -b feat/staged32 --quiet
+
+  run_staged_hook "gh pr create --title x --body y" "https://github.com/gaia-react/gaia/pull/904" /bin/bash
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  [ "$(jq -r '.number' "$(breadcrumb_path "feat/staged32")")" = "904" ]
+}
+
 # Pinned to stock /bin/bash: the form this load replaced carried `|| exit 0`,
 # which bash 5 reaches on an unparseable lib, so only 3.2 tells the parse check
 # apart from it. On a bash-5 /bin/bash (Linux CI) this passes either way.

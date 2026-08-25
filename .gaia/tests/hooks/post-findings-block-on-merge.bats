@@ -651,6 +651,28 @@ run_staged_merge_hook() {
   [ "$(cat "$FAKE_GH_STATE/post_count")" = "1" ]
 }
 
+# The stock-/bin/bash control, and it is not redundant with the control above.
+# Every pinned case in this suite asserts only exit 0, no output, and no
+# artifact, which a hook that does nothing at all under 3.2 satisfies just as
+# well as a hook that degrades correctly. Without a control on the SAME
+# interpreter proving the normal path still works there, the pinned cases
+# cannot separate the repair from total inertness on the one shell they exist
+# to exercise. Proved hollow before adding this: inserting an early
+# `BASH_VERSINFO -lt 4` exit into the hook left this suite entirely green.
+@test "staged hook under stock /bin/bash, every lib usable: posts the findings block (control)" {
+  [ -x /bin/bash ] || skip "no /bin/bash"
+  write_sidecar
+  export FAKE_GH_STATE FAKE_GH_IS_FORK="false" FAKE_GH_AUTHOR="alice"
+  stage_merge_hook
+
+  local json
+  json=$(jq -n --arg c "gh pr merge 42 --squash --delete-branch" \
+    '{tool_name: "Bash", tool_input: {command: $c}}')
+  run bash -c 'cd "$1" && printf %s "$2" | /bin/bash "$3"' _ "$REPO" "$json" "$STAGED_HOOK"
+  [ "$status" -eq 0 ]
+  [ "$(cat "$FAKE_GH_STATE/post_count")" = "1" ]
+}
+
 # Unpinned on purpose: the form each load replaced was a bare `.` behind an
 # `-f` test, carrying no arm at all, so both die on bash 5 as well as 3.2 and
 # these cases have teeth on Linux CI. Asserting a non-2 status is the point:

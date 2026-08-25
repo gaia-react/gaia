@@ -446,6 +446,23 @@ stage_with_cycle() {
   grep -qF -- "Cycle cost (SPEC-042)" <<<"$output"
 }
 
+# The stock-/bin/bash control, and it is not redundant with the control above.
+# Every pinned case in this suite asserts only exit 0, no output, and no
+# artifact, which a hook that does nothing at all under 3.2 satisfies just as
+# well as a hook that degrades correctly. Without a control on the SAME
+# interpreter proving the normal path still works there, the pinned cases
+# cannot separate the repair from total inertness on the one shell they exist
+# to exercise. Proved hollow before adding this: inserting an early
+# `BASH_VERSINFO -lt 4` exit into the hook left this suite entirely green.
+@test "staged hook under stock /bin/bash, every lib usable: renders the roll-up (control)" {
+  [ -x /bin/bash ] || skip "no /bin/bash"
+  stage_with_cycle
+
+  run_staged_hook "gh pr merge 7 --squash" /bin/bash
+  [ "$status" -eq 0 ]
+  grep -qF -- "Cycle cost (SPEC-042)" <<<"$output"
+}
+
 # Unpinned on purpose: the form this load replaced was a bare `.` inside an
 # `-f` test, carrying no arm at all, so it dies on bash 5 as well as 3.2 and
 # this case has teeth on Linux CI.

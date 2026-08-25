@@ -35,11 +35,22 @@ cmd=$(jq -r '.tool_input.command // ""' <<<"$payload")
 # so what survives is a denial with no stated reason. The parse check removes
 # both, which is why the cost above is spent here.
 #
-# What the check does not reach: verb-arming.sh lazily sources
-# verb-arming-walk.sh on a raw match, and `bash -n` does not recurse into a
-# sourced file, so an unparseable walk lib still denies on 3.2. That load lives
-# inside verb-arming.sh, so no consumer hook can guard it from out here; it is
-# gaia-react/gaia#1556.
+# What the check does not reach, because `bash -n` does not recurse into a
+# sourced file: verb-arming.sh lazily sources TWO libs of its own, each behind
+# an `-f` test with no parse check, and an unparseable copy of either still
+# abandons a stock 3.2 shell at exit 2.
+#
+#   verb-arming-walk.sh, inside _gaia_va_view, needs a raw verb match.
+#   repo-scope.sh, inside _gaia_va_first_command, needs only the lead-word
+#   pre-filter, so it fires on any command sharing the verb's FIRST WORD.
+#
+# The second is much the wider of the two and the one to close first: measured
+# on staged copies with repo-scope.sh holding conflict markers, a plain
+# `git status` exits 2 on /bin/bash 3.2.57 and 0 on 5.3.15. Both loads live
+# inside verb-arming.sh, so no consumer hook can guard either from out here.
+# Tracked as its own issue rather than this one, because gaia-react/gaia#1556
+# closes when this change merges and a pointer needs a live destination:
+# gaia-react/gaia#1564.
 #
 # This hook is PreToolUse, so the residual above is the widest of the three
 # that share this load: an unparseable verb-arming.sh on a stock 3.2 exits 2
@@ -86,6 +97,18 @@ fi
 # deny code, refusing the merge this hook's contract says it never blocks.
 # `bash -n` subsumes the existence test, and the undefined-after-the-source
 # contract below is what still degrades.
+#
+# What that closes is bounded, and the bound is this hook's alone among the
+# four: verb-arming.sh's pass-3 tokenizer sources the SAME repo-scope.sh
+# unguarded, inside the gaia_verb_armed call above. On bash 5 that load reaches
+# its arm and this one still decides. On a stock 3.2 the shell is already gone
+# before the check below runs, so the check covers a repo-scope.sh reached only
+# by this load and not one pass 3 reaches first. The residual paragraph above
+# names that site; it is the same gaia-react/gaia#1564 entry.
+#
+# The pass-3 path needs a payload that MISSES the raw match to reach it, so a
+# merge payload cannot exercise it: the conflict-marker case below returns on
+# the raw match before pass 3 fires, which is why it is honest unpinned.
 _lib="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)"
 # shellcheck source=/dev/null
 [ -n "${_lib:-}" ] && "${BASH:-bash}" -n "$_lib/repo-scope.sh" 2>/dev/null && . "$_lib/repo-scope.sh" 2>/dev/null || true
