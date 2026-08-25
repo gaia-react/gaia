@@ -104,15 +104,40 @@ run_with_fixture_settings_norepo() {
   return 0
 }
 
-@test "real repo: every current base subtree (cache/handoff/plans/specs/audit) is exercised by a real rule" {
-  local allow deny
-  allow="$(jq -r '.permissions.allow[]' "$REPO_ROOT/.claude/settings.json")"
-  deny="$(jq -r '.permissions.deny[]' "$REPO_ROOT/.claude/settings.json")"
-  grep -qF ".gaia/local/cache" <<<"$allow" || return 1
-  grep -qF ".gaia/local/handoff" <<<"$allow" || return 1
-  grep -qF ".gaia/local/plans" <<<"$allow" || return 1
-  grep -qF ".gaia/local/specs" <<<"$allow" || return 1
-  grep -qF ".gaia/local/audit" <<<"$deny" || return 1
+# The census this test walks is DERIVED from settings.json's own rules, not
+# restated as literals. A restated list is "every current base subtree" only
+# until the next rule lands: the literal does not grow, the newcomer is never
+# adjudicated, and the name goes on saying "every" with nothing red.
+# Deliberately no count here or in the name either, for the same reason.
+#
+# The occurrence pattern and the base reduction mirror
+# check-registry-settings-permissions.sh's own (the `pattern` local in
+# gaia_check_registry_settings_permissions, and the
+# _gaia_checkperm_base_subtree this file already sources), so this walks the
+# same census the checker scans rather than a second opinion about it.
+@test "real repo: every base subtree settings.json names is registry-recognized, and it names at least one" {
+  local rules occ subpath base seen="" count=0
+  local pattern="\.gaia/local/[^)\"'[:space:]]*"
+  rules="$(jq -r '(.permissions.allow // [])[], (.permissions.deny // [])[]' "$REPO_ROOT/.claude/settings.json")"
+
+  while IFS= read -r occ; do
+    [ -n "$occ" ] || continue
+    subpath="${occ#.gaia/local/}"
+    base="$(_gaia_checkperm_base_subtree "$subpath")" || continue
+    grep -qxF -- "$base" <<<"$seen" && continue
+    seen="${seen}${base}"$'\n'
+    count=$((count + 1))
+    run_in_repo gaia_registry_recognizes "$base" d
+    [ "$status" -eq 0 ] || {
+      echo "base subtree '$base' is named by a settings.json rule but the registry does not recognize it" >&2
+      return 1
+    }
+  done < <(grep -oE -- "$pattern" <<<"$rules")
+
+  [ "$count" -gt 0 ] || {
+    echo "settings.json names no .gaia/local base subtree, so this census and the checker's both run over an empty set" >&2
+    return 1
+  }
   return 0
 }
 

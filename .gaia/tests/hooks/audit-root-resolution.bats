@@ -15,7 +15,9 @@
 # Fixture, built once per test (setup()):
 #   MAIN     a real git repo, populated with copies of the real hooks/scripts/
 #            libs/roster (never symlinked), holding one committed file per
-#            Code Audit Team roster member.
+#            Code Audit Team roster member. The roster is read out of
+#            .gaia/audit-ci.yml, so a member added there is a member this
+#            suite drives.
 #   WT       a real linked worktree of MAIN, on its own branch, with every
 #            roster member's file changed to DIFFERENT content, so MAIN and WT
 #            produce genuinely different per-member content digests. MAIN and
@@ -59,6 +61,24 @@
 # stages 5-7 are anchored via `( cd "$root" && ... )` rather than run with a
 # bare non-repository cwd.
 
+# Prints the Code Audit Team roster, one member name per line, read out of the
+# `auditors:` block of the audit-ci.yml at $1. That file is the roster's source
+# of truth, so a member added there is a member this suite drives, with no
+# second list to remember to grow.
+#
+# A line scan rather than a YAML parse, on purpose: this runs while building
+# the fixture for every test in the file, and PyYAML is an optional dependency
+# here in a way it is not in the suites that gate on it. The scan is anchored
+# to the `auditors:` block, so a `- name:` under any other top-level key cannot
+# leak in, and a roster name that has no definition to copy reds at the copy
+# rather than being silently skipped.
+roster_members() {
+  awk '
+    /^[A-Za-z_]+:/ { in_block = ($0 ~ /^auditors:[[:space:]]*$/); next }
+    in_block && $1 == "-" && $2 == "name:" { print $3 }
+  ' "$1"
+}
+
 setup() {
   . "$BATS_TEST_DIRNAME/helpers/run-hook.sh"
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
@@ -98,13 +118,29 @@ setup() {
            verb-arming.sh verb-arming-walk.sh repo-scope.sh; do
     cp "$REPO_ROOT/.claude/hooks/lib/$f" "$MAIN/.claude/hooks/lib/$f"
   done
-  ALL_MEMBERS=(code-audit-frontend code-audit-github-workflows code-audit-maintainer-node code-audit-maintainer-prose code-audit-maintainer-shell)
+  # Read the roster out of .gaia/audit-ci.yml rather than restating it. The
+  # tests these members drive are named "every definition", and a hand-copied
+  # array is only every definition until the next member joins the roster:
+  # the array does not grow, the loops silently skip the newcomer, and the
+  # names keep saying "every" with nothing red. Deliberately no count here or
+  # in any name below, for the same reason.
+  local m
+  ALL_MEMBERS=()
+  while IFS= read -r m; do
+    [ -n "$m" ] || continue
+    ALL_MEMBERS+=("$m")
+  done < <(roster_members "$REPO_ROOT/.gaia/audit-ci.yml")
+  [ "${#ALL_MEMBERS[@]}" -gt 0 ] || {
+    echo "no auditors read out of .gaia/audit-ci.yml; every member loop below would run over an empty set" >&2
+    return 1
+  }
 
   # Every definition, not just the default member's: stage 8 asserts the
-  # AUDIT_ROOT derivation resolves correctly in all five, so all five have to
-  # be here for the extractor to read. The block is byte-identical across them
-  # (FC-5), which is exactly what driving each one independently proves.
-  local m
+  # AUDIT_ROOT derivation resolves correctly in all of them, so all of them
+  # have to be here for the extractor to read. The block is byte-identical
+  # across them (FC-5), which is exactly what driving each one independently
+  # proves. A roster name with no definition to copy reds here, which is the
+  # answer that suite wants for a roster and a tree that disagree.
   for m in "${ALL_MEMBERS[@]}"; do
     cp "$REPO_ROOT/.claude/agents/${m}.md" "$MAIN/.claude/agents/${m}.md"
   done
@@ -398,7 +434,7 @@ run_audit_root_block() {
 # Fixture sanity (acceptance criterion 6)
 # -----------------------------------------------------------------------------
 
-@test "fixture: all five roster members' digests differ between MAIN and WT" {
+@test "fixture: every roster member's digest differs between MAIN and WT" {
   local m main_d wt_d all_differ=1
   for m in "${ALL_MEMBERS[@]}"; do
     main_d="$(digest_of "$MAIN" "$m")"
@@ -904,12 +940,12 @@ run_audit_root_block() {
 
 # -----------------------------------------------------------------------------
 # Stage 8: the extracted agent handshake block (AUDIT_ROOT derivation).
-# Instances 2, 7. The block is byte-identical across all five agent
-# definitions (FC-5), so the two positive tests drive every one of them
+# Instances 2, 7. The block is byte-identical across every agent
+# definition (FC-5), so the two positive tests drive every one of them
 # rather than pinning the default member's copy and inferring the rest. The
 # mutation control below stays on code-audit-frontend.md alone: it proves the
-# assertion is non-vacuous, which one file establishes, and mutating five
-# would cost five backup/restore cycles for the same signal.
+# assertion is non-vacuous, which one file establishes, and mutating the whole
+# roster would cost a backup/restore cycle per member for the same signal.
 # -----------------------------------------------------------------------------
 
 @test "stage 8 (flag/anchor: AUDIT_ROOT supplied) from OUTSIDE: every definition resolves to WT, never MAIN" {

@@ -146,10 +146,15 @@ teardown() {
 #                         EVERY job, whose `if:` mentions steps.filter.outputs.
 #   runinterp               one `<job-id>\t<step-name>` line per step whose RAW
 #                         (unnormalized) `run:` body contains a literal `${{`
-#   aggok <job-id>         'yes' if some single step in that job both
-#                         references needs.shards.result (in its `run:` body
-#                         or through an `env:` mapping) AND exits non-zero on
-#                         a bad value, else 'no'
+#   aggok <job-id>         'yes' when EVERY entry in that job's own `needs:`
+#                         has some single step that both references
+#                         needs.<entry>.result (in its `run:` body or through
+#                         an `env:` mapping) AND exits non-zero on a bad
+#                         value, else 'no'. Derived per entry rather than
+#                         pinned to one leg, so an entry joining `needs:`
+#                         without its comparison reds. 'no' on a job with an
+#                         empty `needs:`, so the coverage claim can never
+#                         pass over an empty set.
 #   chain <margin>          the worst needs-chain over every job in the file,
 #                         as "<minutes> <hops>", weighed by minutes + margin x
 #                         hops -- same algorithm retrigger-reachability.bats
@@ -308,18 +313,27 @@ elif mode == 'runinterp':
 elif mode == 'aggok':
     require_job(rest[0])
     exit_re = re.compile(r'\bexit\s+[1-9][0-9]*\b')
-    found = False
-    for step in jobs[rest[0]].get('steps') or []:
-        if not isinstance(step, dict):
-            continue
-        body = str(step.get('run', ''))
-        env = step.get('env') if isinstance(step.get('env'), dict) else {}
-        env_hit = any('needs.shards.result' in str(v) for v in env.values())
-        ref_hit = 'needs.shards.result' in body or env_hit
-        if ref_hit and exit_re.search(body):
-            found = True
+    steps = [item for item in (jobs[rest[0]].get('steps') or []) if isinstance(item, dict)]
+    deps = needs_of(rest[0])
+    # An empty `needs:` prints 'no' rather than a vacuous 'yes'. The caller
+    # reads this as "the aggregator adjudicates its dependencies", and a
+    # per-element claim over an empty set is the one answer that is true
+    # without meaning anything.
+    covered = bool(deps)
+    for dep in deps:
+        ref = 'needs.%s.result' % dep
+        hit = False
+        for step in steps:
+            body = str(step.get('run', ''))
+            mapping = step.get('env') if isinstance(step.get('env'), dict) else {}
+            mapped = any(ref in str(value) for value in mapping.values())
+            if (ref in body or mapped) and exit_re.search(body):
+                hit = True
+                break
+        if not hit:
+            covered = False
             break
-    print('yes' if found else 'no')
+    print('yes' if covered else 'no')
 elif mode == 'stepshards':
     require_job(rest[0])
     wanted = rest[1]
@@ -667,13 +681,26 @@ PY
   true
 }
 
-# W3. The aggregator actually adjudicates the shard result: a step both
-# references needs.shards.result and exits non-zero on a bad value.
+# W3. The aggregator actually adjudicates every entry in its own needs: list:
+# per entry, a step that both references that entry's result and exits non-zero
+# on a bad value. Deliberately no count here or in any name below -- the
+# entries are the authority on how many, and a count rots the next time a job
+# joins needs:, which is the failure this pass repaired.
 
-@test "W3: the aggregator has a step that both reads and adjudicates needs.shards.result" {
+@test "W3: the aggregator adjudicates every entry in its needs list" {
   require_yaml_parser
   [ "$(read_wf aggok "$WORKFLOW" audit-ci-tests)" = "yes" ] || {
-    echo "no aggregator step both references needs.shards.result and exits non-zero on a bad value" >&2
+    echo "an entry in the aggregator's needs: has no step that both references its result and exits non-zero on a bad value" >&2
+    return 1
+  }
+}
+
+@test "W3 non-vacuity: the aggregator's needs list is non-empty" {
+  require_yaml_parser
+  local count
+  count="$(read_wf needs "$WORKFLOW" audit-ci-tests | grep -c '.' || true)"
+  [ "$count" -gt 0 ] || {
+    echo "the aggregator declares no needs:, so W3's per-entry assertion would pass over an empty set" >&2
     return 1
   }
 }
@@ -685,7 +712,29 @@ PY
   replace_from "$WORKFLOW" "      - name: Require every dependency in needs to have concluded success" "$replacement" "$doctored"
 
   [ "$(read_wf aggok "$doctored" audit-ci-tests)" = "no" ] || {
-    echo "a bare 'true' step still read as adjudicating the shard result" >&2
+    echo "a bare 'true' step still read as adjudicating the needs list" >&2
+    return 1
+  }
+}
+
+# The case this arm exists for: one entry stays in needs: while the binding
+# that carried its result into the adjudicating step goes (#1552). It is read
+# out of the workflow rather than restated, so this stays pointed at a real
+# dependency after the list is repacked; the last one is the one a fresh
+# addition lands on.
+@test "W3 adversarial: a needs entry whose result nothing reads is caught" {
+  require_yaml_parser
+  local doctored="$BATS_TEST_TMPDIR/w3b.yml" dep binding
+  dep="$(read_wf needs "$WORKFLOW" audit-ci-tests | grep '.' | tail -1)"
+  [ -n "$dep" ] || { echo "the aggregator declares no needs: to doctor" >&2; return 1; }
+
+  binding="$(sole_line_matching "$WORKFLOW" "needs\.${dep}\.result")" || return 1
+  delete_line "$WORKFLOW" "$binding" "$doctored"
+  assert_doctored "$binding" "$(sole_line_matching "$doctored" "needs\.${dep}\.result" 2>/dev/null || true)" \
+    "dropping the ${dep} binding"
+
+  [ "$(read_wf aggok "$doctored" audit-ci-tests)" = "no" ] || {
+    echo "needs entry ${dep} still read as adjudicated with nothing reading its result" >&2
     return 1
   }
 }
@@ -731,10 +780,10 @@ PY
   [ -n "$found_gap" ] || { echo "doctoring the step's if: did not produce a gap" >&2; return 1; }
 }
 
-# W5. Both jobs are capped with an integer literal, and the worst needs: chain
+# W5. Every job is capped with an integer literal, and the worst needs: chain
 # fits the poller-derived ceiling.
 
-@test "W5: both jobs declare an integer cap, and the worst chain fits the ceiling" {
+@test "W5: every job declares an integer cap, and the worst chain fits the ceiling" {
   require_yaml_parser
   local jid gaps="" window minutes hops ceiling
   for jid in $(read_wf jobs "$WORKFLOW"); do
