@@ -90,10 +90,32 @@
 # one spelling: an indented `- name: X` carrying its value on the entry line. An
 # expanded block entry, a flow mapping (`- {name: x}`), a quoted key, `globs:`
 # written before `name:`, or a value held over to a more-indented line below the
-# key are each valid YAML this scan would otherwise read short. Deliberately NOT
-# widened to accept them: `.claude/hooks/lib/audit-scope.sh:302` pins the same
-# spelling, so a scan that accepted more would answer differently from the
-# parser the rest of the machinery uses, which is worse than agreeing with it.
+# key are each valid YAML this scan would otherwise read short.
+#
+# Deliberately NOT widened to accept them. The parser the rest of the machinery
+# uses, `.claude/hooks/lib/audit-scope.sh`'s _audit_scope_parse_auditors, is
+# LOOSER on three readings, not equal: its member line at `:302` leads with
+# `[[:space:]]*`, so a column-0 sequence reads as members there; that same line
+# spells the key `name[[:space:]]*:`, so `- name : x` reads there; and the
+# `unq()` it calls at `:309` (defined at `:244`) strips a quoted value this
+# scan keeps verbatim. Measured on three fixtures, each confirmed valid YAML
+# and two members first: that parser reads both members in all three, where
+# this scan reads NONE (column-0), REFUSES (`- name : x`), or reads the name
+# verbatim with its quotes still on it (`- name: "X"`).
+#
+# What none of them reaches is a SILENT member drop, the only failure this
+# helper exists to prevent. Two are read short and stop: a column-0 roster
+# drops every member and reds at the caller's non-empty guard, and `- name : x`
+# reds at the count below. The third is read WRONG rather than short, so it
+# satisfies the count and stops one step later, at setup()'s `cp` of a path no
+# agent file has. Loud in all three.
+#
+# Note which way that cuts, because it is the opposite of the obvious reading:
+# widening this scan toward those readings would AGREE with that parser more,
+# not less. Agreement is not what earns the strictness. This helper's contract
+# is that a roster it cannot read canonically stops the suite, and every
+# spelling it accepts is one more that can shrink the roster instead of
+# stopping it. It stays strict because stopping is the product.
 #
 # What that leaves is counted instead of assumed. The block's member entries are
 # its shallowest `-` lines (a `globs:` item is indented deeper), so an entry that
