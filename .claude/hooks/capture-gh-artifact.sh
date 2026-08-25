@@ -29,9 +29,9 @@ cmd=$(jq -r '.tool_input.command // ""' <<<"$payload")
 #
 # This load runs before the arming gate, on every Bash tool call, so it takes
 # the free half rather than a parse check: `bash -n` on the real
-# verb-arming.sh measures ~13ms on bash 3.2.57 and ~16ms on 5.3.15, against the
-# ~16-21ms per hook process .gaia/tests/hooks/verb-arming-cost.bats records, so
-# a fork here roughly doubles what every Bash tool call pays. `|| true` costs
+# verb-arming.sh measures ~13ms on bash 3.2.57 and ~16ms on 5.3.15, against a
+# measured ~16-21ms per hook process, so a fork here roughly doubles what every
+# Bash tool call pays. `|| true` costs
 # nothing and closes the bash 5 half. The honest limit, stated rather than
 # implied: under `set -e` an UNPARSEABLE verb-arming.sh still abandons the
 # shell ahead of the arm on a stock 3.2, exiting 2. Same decision, same reason,
