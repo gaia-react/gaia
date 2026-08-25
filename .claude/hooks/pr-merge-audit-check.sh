@@ -267,7 +267,7 @@ tree=$(git rev-parse "HEAD^{tree}" 2>/dev/null || true)
 #              above.
 #   tree_root  WHAT a clearance attests to. The ACTING tree: the content
 #              being merged is this tree's HEAD, not main's. Every writer
-#              agrees -- the five agent definitions pass
+#              agrees -- the agent definitions pass
 #              `--root "$(git rev-parse --show-toplevel)"` to
 #              audit-write-clearance.sh, and resolve-audit-spawn.sh and
 #              audit-stamp-trailer.sh derive the same way -- so digesting

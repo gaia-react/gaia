@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 #
-# The five Code Audit Team members resolve DIFFERENT per-member review bases
+# The Code Audit Team members resolve DIFFERENT per-member review bases
 # but must share ONE artifact KEY, and the artifacts keyed off it must be
 # readable by the consumers that read them.
 #
@@ -25,7 +25,7 @@
 # reds here.
 #
 # Probes:
-#   1. KEY_BASE + key agreement across all five members, matching what the
+#   1. KEY_BASE + key agreement across every member, matching what the
 #      merge-time producer resolves; non-vacuous on a fixture whose key has
 #      genuinely narrowed
 #   1b. the reviewed range is HEAD's content, not the working tree's, and the
@@ -207,8 +207,8 @@ extract_base_fence() {
 # silently contributing an empty snippet.
 #
 # A second extractor rather than a parameter on extract_base_fence: that
-# helper's exactly-one contract is asserted against every member (all five
-# carry a BASE_SHA fence), while this one is asserted against the default
+# helper's exactly-one contract is asserted against every member (each one
+# carries a BASE_SHA fence), while this one is asserted against the default
 # member alone (only it carries a FULL_BASE fence). Collapsing them into one
 # parameterized helper would let one member's second fence satisfy another
 # member's requirement, which is exactly the drift this suite exists to catch.
@@ -357,7 +357,7 @@ owners_of() {
 
 # ---------- probe 1: KEY_BASE + key agreement, and it matches merge-time ----
 
-@test "all five members resolve the same KEY_BASE and the same audit key, matching the merge-time producer" {
+@test "every member resolves the same KEY_BASE and the same audit key, matching the merge-time producer" {
   local repo
   repo="$(make_repo agreement)"
   git -C "$repo" checkout -q -b feat
@@ -513,7 +513,7 @@ owners_of() {
 # list while no marker covers it and the dispatch oracle never saw it.
 #
 # The frontend is the member probed because it is the one whose scope is a
-# TS/TSX pathspec; the four specialists' identical form is already covered by
+# TS/TSX pathspec; the specialists' identical form is already covered by
 # probe 1's shared BASE_SHA and by their own fences here.
 
 @test "the frontend's changed-file list is HEAD's content, not the working tree's" {
@@ -844,7 +844,7 @@ probe_deadlock() {
 
 # ---------- the non-agent callers still invoke the resolver argument-lessly ----
 #
-# The five agent definitions are the ones UAT-016 deliberately moves onto
+# The agent definitions are the ones UAT-016 deliberately moves onto
 # --member (proved above). The callers below resolve the SHARED
 # pull-request-wide base, which is what keys every artifact a round shares, so
 # none of them may grow a --member flag. No count is stated: the pathspec is

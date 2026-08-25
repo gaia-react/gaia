@@ -1,9 +1,9 @@
 #!/usr/bin/env bats
 #
 # Conformance suite for .gaia/scripts/check-audit-base-derivation.sh, the
-# static check keeping the five Code Audit Team definitions on one review
+# static check keeping the Code Audit Team definitions on one review
 # base. The behavioral suite next door
-# (.gaia/scripts/tests/audit-base-agreement.bats) proves the five agree by
+# (.gaia/scripts/tests/audit-base-agreement.bats) proves they agree by
 # executing their real snippets; this one proves the STATIC check that stops
 # them drifting apart actually fires, which a green run can never show on
 # its own.

@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# The Code Audit Team's dirty-tree posture, held across all five members.
+# The Code Audit Team's dirty-tree posture, held across every member.
 #
 # A member's clearance marker attests to a per-member content digest computed
 # over tracked files AT HEAD (`git ls-tree HEAD`,
@@ -31,16 +31,19 @@ setup() {
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
   REPO_ROOT="$( cd "$THIS_DIR/../../.." && pwd )"
 
-  # All five Code Audit Team members. The list is spelled out rather than
+  # The Code Audit Team members. The list is spelled out rather than
   # globbed: a glob would silently pass if a member file were renamed away,
-  # which is the fail-open this suite exists to prevent.
+  # which is the fail-open this suite exists to prevent. The entries are the
+  # authority on how many; deliberately no count here or in any name below,
+  # because a count rots the next time a member joins or leaves and the rotted
+  # number reads as an assertion nobody has checked.
   MEMBERS="code-audit-frontend
 code-audit-github-workflows
 code-audit-maintainer-node
 code-audit-maintainer-prose
 code-audit-maintainer-shell"
 
-  # The four members whose clearance actually gates a merge. They carry the
+  # The members whose clearance actually gates a merge. They carry the
   # withhold contract. The prose member is deliberately NOT among them: it is
   # advisory-only and its own file states, absolutely and in five places, that
   # it always writes an earned marker and never deadlocks a merge. A clearance
@@ -78,8 +81,8 @@ code-audit-maintainer-shell"
   # The assignment that PRODUCES the sentinel the carve-out above protects.
   # Pinned separately because the two say different things: SENTINEL_CARVEOUT
   # pins the prose promising the sentinel is never remit-filtered, and CHECK_LINE
-  # pins only the `if` that detects the failure. Deleting this line from all five
-  # members left the suite reporting 18/18 ok while the fail-closed arm produced
+  # pins only the `if` that detects the failure. Deleting this line from every
+  # member left the suite reporting 18/18 ok while the fail-closed arm produced
   # nothing to withhold on, which is the suite's own stated anti-goal. Matched
   # without leading indentation: the content is what must not drift, and pinning
   # the block's indentation too would red on a reflow that changes no meaning.
@@ -137,7 +140,7 @@ code-audit-maintainer-shell"
 
   # The run-order anchor, so the refusal is reachable from the member's own
   # order of operations rather than stated only beside the code block. The
-  # four specialists carry it in Methodology step 1; the default member's
+  # specialists carry it in Methodology step 1; the default member's
   # scope run order lives under "Rules-Based Audit" -> "How to run", and it
   # carries the same phrase there.
   METHOD_ANCHOR='refuse the pass when the working tree is dirty within `changed`'
@@ -266,7 +269,7 @@ withhold_drift() {
 @test "the advisory member never acquires the withhold contract" {
   # Written as a positive match on the bad case per the bats-assertions rule.
   # This is the assertion that would have caught the round-4 Critical: applying
-  # the withhold byte-identically to all five contradicted this member's own
+  # the withhold byte-identically to every member contradicted this member's own
   # always-clear charter, and a presence-only pin reported green either way.
   #
   # Scanned by meaning rather than by the one bolded sentence. An exact-string

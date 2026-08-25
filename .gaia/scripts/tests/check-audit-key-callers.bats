@@ -4,7 +4,7 @@
 # static caller check task 4.1 adds alongside `gaia_audit_key` itself
 # (analysis/task-4.1-audit-key-design.md §5.2). The meter's fixtures
 # (`C4-01`/`C4-02`) prove the FUNCTION partitions two worktrees; they cannot
-# prove the five Code Audit Team agent definitions actually CALL it instead
+# prove the Code Audit Team agent definitions actually CALL it instead
 # of hand-building the old collision-prone path. This check closes that gap
 # over `.claude/agents/`.
 #

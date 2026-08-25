@@ -248,8 +248,8 @@
 #   passes a temp repo, so "would this literal fail the check" is testable
 #   without touching real tracked source.
 #
-# GREEN against this repo's real `.claude/agents/`: all five definitions
-# resolve their review base through the resolver, the only bare merge-base
+# GREEN against this repo's real `.claude/agents/`: every definition
+# resolves its review base through the resolver, the only bare merge-base
 # left is each specialist's `FULL_BASE`, and every changed-file diff is a
 # three-dot range against HEAD carrying `-z`.
 
