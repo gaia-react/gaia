@@ -62,6 +62,34 @@ The mirror image, and the reason the two forms swap places: `&& return 1` is saf
 <!-- gaia:maintainer-only:end -->
 - Run bats under bash 5 locally so local matches CI: see "Run bats under bash 5 (pre-flight)" above for the guard.
 
+## A guard over a set derives the set and asserts per element
+
+A different axis from everything above. Those sections decide whether an assertion *can* fail. This one decides whether it covers what its name claims. A guard that pins one representative element and names itself for the set is green, non-vacuous, and still blind to every element it never drove.
+
+**The rule: a guard over a set derives the set from the artifact that owns it and asserts per element. It never asserts one element and names itself for the set.**
+
+What follows from it:
+
+- **Coverage is per element; a non-vacuity control may sample one.** A mutation control exists to prove an assertion is not vacuous, and one element establishes that; mutating the whole set buys the same signal at N times the cost. Say in the comment that it is sampling on purpose, so the next reader does not mistake the sample for the coverage.
+- **Derive from the artifact, do not restate it.** The source of truth is the file the machinery itself reads. A second list kept in the test is a list someone has to remember to grow, and nothing goes red when they do not.
+- **A short read is more dangerous than an empty one.** A derivation that yields nothing trips a non-empty guard. A derivation that yields three of four entries does not: the guard stays satisfied and the suite drives a subset while its names still say "every". Count the entries the derivation should have produced, compare against the names it actually read, and fail on the difference. Symmetrically, a per-element claim over an empty set is true without meaning anything, so a derivation that can legitimately come back empty reports that as a failure, never as a pass.
+- **No counts in test names or in the comments describing the set.** The elements are the authority on how many. A cardinal (`both`, `all five`, `the eleven hooks`) or a parenthesized literal list rots the next time the set changes, and the rotted number reads as an assertion nobody has checked.
+
+When the set genuinely is not machine-derivable, the guard's name has to say what it actually pins, and the hand-written enumeration carries a per-entry warrant plus a "deliberately not a member" list with a reason on each entry, so a reader sees that every candidate was considered rather than missed.
+<!-- gaia:maintainer-only:start -->
+
+This rule is armed on `**/*.bats` and stays there, so a `.gaia/scripts/check-*.sh` guard over a set
+never loads it. That is the scoping the class earned rather than an oversight: every instance the
+sweep behind this section found was a `.bats` file. A reference form below is a `.sh` check, named
+as the form to copy rather than as a claim this rule reaches `.sh` files.
+
+Reference forms, in order of how much of the pattern each one shows:
+
+- `.gaia/scripts/check-step-body-extractor-roster.sh` -- the whole shape, including a header that records why the literal recipe it replaced was believed complete each time it was written and was not.
+- `.gaia/tests/hooks/audit-root-resolution.bats` -- `roster_members` derives the Code Audit Team from `.gaia/audit-ci.yml` rather than listing it, counts entries against names read so an off-spelled member stops the suite instead of shrinking it, and its stage 8 header states the coverage-versus-non-vacuity split for the one control that samples a single member.
+- `.gaia/tests/lib/audit-ci-shards.bats` -- `read_wf aggok` derives an aggregator job's dependencies from its own `needs:` and answers `no` on an empty one.
+<!-- gaia:maintainer-only:end -->
+
 ## Scope
 
 This steers **new and edited** assertions. Existing suites use bare `[[ ]]` heavily; they are grandfathered and enforced by CI's bash 5. Do not rewrite them for this rule alone.

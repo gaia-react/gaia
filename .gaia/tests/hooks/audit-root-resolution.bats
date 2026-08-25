@@ -1040,7 +1040,7 @@ run_audit_root_block() {
 # -----------------------------------------------------------------------------
 # Stage 8: the extracted agent handshake block (AUDIT_ROOT derivation).
 # Instances 2, 7. The block is byte-identical across every agent
-# definition (FC-5), so the two positive tests drive every one of them
+# definition (FC-5), so the positive tests below drive every one of them
 # rather than pinning the default member's copy and inferring the rest. The
 # mutation control below stays on code-audit-frontend.md alone: it proves the
 # assertion is non-vacuous, which one file establishes, and mutating the whole
