@@ -666,12 +666,14 @@ run_staged_merge_hook() {
   return 0
 }
 
-# The pre-gate load, and the widest exposure of the three hooks that share it:
-# this one is PreToolUse, and the load sits ahead of the arming gate, so before
-# this repair an unparseable verb-arming.sh denied EVERY Bash tool call rather
-# than merges alone. `|| true` closes that on bash 5; the 3.2 half stays open
-# by decision, and the hook's own load comment names it rather than implying
-# the contract is whole.
+# The pre-gate load, and the widest exposure of the four hooks that share it:
+# this one is PreToolUse and the load sits ahead of the arming gate, so an
+# unparseable verb-arming.sh denied EVERY Bash tool call rather than merges
+# alone. It parse-checks rather than taking the cheap arm for exactly that
+# reason, so both halves are closed and both are pinned for below. The 3.2 case
+# is the one the arm would have left open, and it would have been left open
+# SILENTLY: a PreToolUse exit 2 surfaces stderr as the deny reason, and the
+# arm's `2>/dev/null` suppressed the syntax error naming the broken file.
 @test "verb-arming.sh holds conflict markers: exit 0, the merge is not denied" {
   write_sidecar
   export FAKE_GH_STATE FAKE_GH_IS_FORK="false" FAKE_GH_AUTHOR="alice"
@@ -679,6 +681,22 @@ run_staged_merge_hook() {
   write_conflicted_lib "$REPO/.claude/hooks/lib/verb-arming.sh"
 
   run_staged_merge_hook
+  [ "$status" -eq 0 ]
+  grep -qF -- '"permissionDecision"' <<<"$output" && return 1
+  return 0
+}
+
+@test "verb-arming.sh holds conflict markers, under stock /bin/bash: exit 0, the merge is not denied" {
+  [ -x /bin/bash ] || skip "no /bin/bash"
+  write_sidecar
+  export FAKE_GH_STATE FAKE_GH_IS_FORK="false" FAKE_GH_AUTHOR="alice"
+  stage_merge_hook
+  write_conflicted_lib "$REPO/.claude/hooks/lib/verb-arming.sh"
+
+  local json
+  json=$(jq -n --arg c "gh pr merge 42 --squash --delete-branch" \
+    '{tool_name: "Bash", tool_input: {command: $c}}')
+  run bash -c 'cd "$1" && printf %s "$2" | /bin/bash "$3"' _ "$REPO" "$json" "$STAGED_HOOK"
   [ "$status" -eq 0 ]
   grep -qF -- '"permissionDecision"' <<<"$output" && return 1
   return 0

@@ -21,8 +21,16 @@
 #   32KB past-bound ~1-3ms (bash 3.2, the slow host this budget is written for).
 #
 #   Eleven hooks, one tool call: a 200-character ordinary `git commit` totals
-#   ~200-230ms; a 16KB raw-matching `gh pr merge` (8 of 11 hooks pay the walk,
-#   3 raw-miss and skip it) totals ~300-345ms.
+#   ~265-285ms; a 16KB raw-matching `gh pr merge` (8 of 11 hooks pay the walk,
+#   3 raw-miss and skip it) totals ~320-365ms.
+#
+#   Both figures were re-measured when four hooks took a `bash -n` parse check
+#   on their pre-gate verb-arming load (gaia-react/gaia#1556). Most of the gap
+#   against the ~200-230ms this row used to state predates that change: the
+#   same base measures ~265-279ms here, so the parse checks account for roughly
+#   +6-9ms of it and the rest had already drifted. Measured alongside:
+#   `bash -n` on verb-arming.sh costs ~3.1ms on 3.2.57 and ~5.7ms on 5.3.15,
+#   which as a whole extra hook process is +2.5ms and +5.7ms.
 #
 # The audit's own two reference points (plan-time directive, PERF-007): about
 # 0.06s span-skipping against about 1.01s byte-walking, PER HOOK, at 16KB on
@@ -294,15 +302,17 @@ CEILING_ONE_HOOK_RAWMATCH_MS=300
 CEILING_ONE_HOOK_NONMATCH_MS=150
 
 # Eleven hooks, one 200-character ordinary `git commit` tool call. Measured
-# ~220ms. Headroom: 1000/220 ~= 4.5x. Margin below eleven hooks each paying
+# ~265-285ms. Headroom: 1000/285 ~= 3.5x. Margin below eleven hooks each paying
 # the 1010ms byte-walk figure (the "walk gets paid unconditionally" failure
-# this also guards against): 11110/1000 ~= 11.1x.
+# this also guards against): 11110/1000 ~= 11.1x. The ceiling itself is
+# unchanged: it is set against the 1010ms byte-walk reference rather than
+# against this machine's number, so re-measuring the number does not move it.
 CEILING_ELEVEN_ORDINARY_MS=1000
 
 # Eleven hooks, one 16KB raw-matching `gh pr merge` tool call (8 of 11 pay
-# the walk; 3 raw-miss and skip it). Measured ~300-345ms. Headroom:
-# 2000/345 ~= 5.8x. Margin below 8 hooks each byte-walking at 1010ms:
-# 8080/2000 ~= 4.0x.
+# the walk; 3 raw-miss and skip it). Measured ~320-365ms. Headroom:
+# 2000/365 ~= 5.5x. Margin below 8 hooks each byte-walking at 1010ms:
+# 8080/2000 ~= 4.0x. Ceiling unchanged, for the reason the ordinary one gives.
 CEILING_ELEVEN_RAWMATCH_MS=2000
 
 # Past-bound (32KB), one hook (token-tally-git-op.sh), armed for real: the

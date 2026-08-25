@@ -87,9 +87,16 @@ file_path=$(jq -r '.tool_input.file_path // empty' <<<"$payload")
 # unadjudicated with a raw diagnostic on stderr. That is the 3.2.57 stock macOS
 # ships as /bin/bash; 5.x reaches the arm instead. Bash opens the file but
 # cannot parse it, a lib left holding conflict markers: the shell exits 2, the
-# deny code, so this fail-open guard denies the edit, and that half dies on
-# every platform rather than 3.2 alone. `bash -n` answers both questions in one
-# call and subsumes an existence test. Both loads sit past the tool-name and
+# deny code, so this fail-open guard denies the edit instead of allowing it.
+#
+# Both halves are 3.2-only, and it is the arm that makes them so: bash 5 lets
+# the failed source's status reach `|| exit 0` for an unparseable lib exactly
+# as it does for a missing one, measured both ways on 3.2.57 and 5.3.15. What
+# separates the two halves is the exit code, 1 advisory against 2 deny, not
+# their platform reach; only a bare `.` carrying no arm at all dies on both
+# shells. The bats cases below are pinned to /bin/bash for that reason, and
+# dropping the pin would green them against the spelling this replaced.
+# `bash -n` answers both questions in one call and subsumes an existence test. Both loads sit past the tool-name and
 # file-path gates above, so the forks are paid only on a real Edit/Write.
 #
 # What degrades in the arm's place is the `type` check below.
@@ -98,7 +105,8 @@ file_path=$(jq -r '.tool_input.file_path // empty' <<<"$payload")
 # point of use, far below, because the two sit behind very different gates and
 # a parse check is a fork. This hook fires on every Edit/Write/MultiEdit, so a
 # fork on this path is paid on every file the session touches, and it measures
-# ~5-6ms against a ~16-22ms hook process on this machine. The resolver has to
+# ~2.8ms on bash 3.2.57 and ~5.5ms on 5.3.15 against a ~16-22ms hook process on
+# this machine, a surcharge rather than a doubling. The resolver has to
 # be paid here: the linked-worktree predicate that gates everything below comes
 # out of it, so there is no cheaper question to ask first that does not
 # hand-roll a second copy of the resolution this file keeps in one place. The

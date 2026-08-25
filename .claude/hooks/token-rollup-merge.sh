@@ -20,21 +20,27 @@ cmd=$(jq -r '.tool_input.command // ""' <<<"$payload")
 # Shared arming decision; see .claude/hooks/lib/verb-arming.sh. A quoted verb
 # inside prose still arms here, fail-closed, with no safe narrowing.
 #
-# This load runs before the arming gate, on every Bash tool call, so it takes
-# the free half rather than a parse check: `bash -n` on the real
-# verb-arming.sh measures ~13ms on bash 3.2.57 and ~16ms on 5.3.15, against a
-# measured ~16-21ms per hook process, so a fork here roughly doubles what every
-# Bash tool call pays. `|| true` costs
-# nothing and closes the bash 5 half. The honest limit, stated rather than
-# implied: under `set -e` an UNPARSEABLE verb-arming.sh still abandons the
-# shell ahead of the arm on a stock 3.2, exiting 2. Same decision, same reason,
-# as token-tally-git-op.sh's own pre-gate load. Closing that residual needs
-# something other than a per-call fork and is tracked on
-# gaia-react/gaia#1556, along with verb-arming.sh's own lazy load of
-# verb-arming-walk.sh, which no consumer hook can guard from out here.
+# This load runs before the arming gate, on every Bash tool call, so whatever
+# guards it is paid on every call. Measured on this machine rather than assumed:
+# `bash -n` on the real verb-arming.sh costs ~3.1ms on bash 3.2.57 and ~5.7ms
+# on 5.3.15, and as a whole extra hook process that is +2.5ms and +5.7ms
+# against a ~16-21ms hook. A surcharge, not a doubling, and worth paying.
+#
+# The cheaper `{ . lib || true; }` arm was the first spelling here and is not
+# enough. It closes the bash 5 half only: under `set -e` an unparseable
+# verb-arming.sh still abandons the shell ahead of the arm on a stock 3.2 at
+# exit 2, and it suppresses the syntax error that would name the broken file,
+# so what survives is a denial with no stated reason. The parse check removes
+# both, which is why the cost above is spent here.
+#
+# What the check does not reach: verb-arming.sh lazily sources
+# verb-arming-walk.sh on a raw match, and `bash -n` does not recurse into a
+# sourced file, so an unparseable walk lib still denies on 3.2. That load lives
+# inside verb-arming.sh, so no consumer hook can guard it from out here; it is
+# gaia-react/gaia#1556.
 _va_lib="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)"
 # shellcheck source=/dev/null
-[ -n "${_va_lib:-}" ] && [ -f "$_va_lib/verb-arming.sh" ] && { . "$_va_lib/verb-arming.sh" 2>/dev/null || true; }
+[ -n "${_va_lib:-}" ] && "${BASH:-bash}" -n "$_va_lib/verb-arming.sh" 2>/dev/null && . "$_va_lib/verb-arming.sh" 2>/dev/null || true
 type gaia_verb_armed >/dev/null 2>&1 || exit 0
 
 frag='gh[[:space:]]+pr[[:space:]]+merge([[:space:]]|$)'

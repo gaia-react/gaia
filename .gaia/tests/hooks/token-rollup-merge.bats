@@ -479,16 +479,28 @@ stage_with_cycle() {
   return 0
 }
 
-# The pre-gate verb-arming load takes `|| true` rather than a parse check, so
-# only the bash 5 half of the unparseable case is closed. Unpinned for the same
-# reason as above: the bare source it replaced dies on both shells. The 3.2
-# half stays open by decision, not by oversight, and no case here asserts
-# otherwise; the hook's own load comment names it.
+# The pre-gate verb-arming load parse-checks, so BOTH halves of the unparseable
+# case are closed and the pair below says so: unpinned for the bash 5 half, and
+# pinned to /bin/bash for the 3.2 half that the `{ . lib || true; }` arm this
+# load first carried would have left open. Both have teeth: the bare source the
+# arm replaced dies on bash 5, and the arm itself dies on 3.2, so each case reds
+# against the spelling it supersedes.
 @test "verb-arming.sh holds conflict markers: exit 0, renders nothing" {
   stage_with_cycle
   write_conflicted_lib "$REPO/.claude/hooks/lib/verb-arming.sh"
 
   run_staged_hook "gh pr merge 7 --squash"
+  [ "$status" -eq 0 ]
+  grep -qF -- "Cycle cost" <<<"$output" && return 1
+  return 0
+}
+
+@test "verb-arming.sh holds conflict markers, under stock /bin/bash: exit 0, renders nothing" {
+  [ -x /bin/bash ] || skip "no /bin/bash"
+  stage_with_cycle
+  write_conflicted_lib "$REPO/.claude/hooks/lib/verb-arming.sh"
+
+  run_staged_hook "gh pr merge 7 --squash" /bin/bash
   [ "$status" -eq 0 ]
   grep -qF -- "Cycle cost" <<<"$output" && return 1
   return 0

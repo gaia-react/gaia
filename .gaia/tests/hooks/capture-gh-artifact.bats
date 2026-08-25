@@ -398,11 +398,12 @@ run_staged_hook() {
   return 0
 }
 
-# The pre-gate verb-arming load takes `|| true` rather than a parse check, so
-# only the bash 5 half of the unparseable case is closed. Unpinned on purpose:
-# the bare source it replaced dies on both shells, so this reds on Linux CI.
-# The 3.2 half stays open by decision, not by oversight, and no case here
-# asserts otherwise; the hook's own load comment names it.
+# The pre-gate verb-arming load parse-checks, so BOTH halves of the unparseable
+# case are closed and the pair below says so: unpinned for the bash 5 half, and
+# pinned to /bin/bash for the 3.2 half that the `{ . lib || true; }` arm this
+# load first carried would have left open. Both have teeth: the bare source the
+# arm replaced dies on bash 5, and the arm itself dies on 3.2, so each case reds
+# against the spelling it supersedes.
 @test "verb-arming.sh holds conflict markers: exit 0, no output, no breadcrumb" {
   stage_hook_repo
   cd "$REPO"
@@ -413,5 +414,19 @@ run_staged_hook() {
   [ "$status" -eq 0 ]
   [ -z "$output" ]
   [ -f "$(breadcrumb_path "feat/va-conflicted")" ] && return 1
+  return 0
+}
+
+@test "verb-arming.sh holds conflict markers, under stock /bin/bash: exit 0, no output, no breadcrumb" {
+  [ -x /bin/bash ] || skip "no /bin/bash"
+  stage_hook_repo
+  cd "$REPO"
+  git checkout -b feat/va-conflicted32 --quiet
+  write_conflicted_lib "$REPO/.claude/hooks/lib/verb-arming.sh"
+
+  run_staged_hook "gh pr create --title x --body y" "https://github.com/gaia-react/gaia/pull/903" /bin/bash
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  [ -f "$(breadcrumb_path "feat/va-conflicted32")" ] && return 1
   return 0
 }
