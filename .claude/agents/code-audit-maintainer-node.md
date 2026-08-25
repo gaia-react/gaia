@@ -78,9 +78,9 @@ full_changed=$(git -C "$AUDIT_ROOT" diff --name-only -z "${FULL_BASE}...HEAD" 2>
 # when none exists (origin/main outside Actions, or when no base ref is
 # declared), and it scopes your review. KEY_BASE keys your findings sidecar and the shared
 # re-run ledger instead: it is the SAME shared pull-request-wide base every
-# co-dispatched member resolves, so every reader of those artifacts reaches
-# one key rather than a per-member key that would leave the consolidated
-# findings block missing a whole member's findings. The self-skip arm uses
+# co-dispatched member resolves, so the ledger your wave reads and writes
+# within a round is one file rather than a per-member one that would hide a
+# sibling's recorded re-run. The self-skip arm uses
 # FULL_BASE instead; the paragraph below this block is why the three cannot
 # be one value.
 BASE_OUT="$(cd "$AUDIT_ROOT" && .github/audit/resolve-audit-base.sh --member code-audit-maintainer-node)"

@@ -173,7 +173,7 @@
       "hook": ".claude/hooks/post-findings-block-on-merge.sh",
       "scope": "any",
       "state": [],
-      "why": "Resolves a PR number and an incremental audit base, then delegates the findings-block post entirely to .gaia/scripts/post-findings-block.sh; this hook itself derives no root and holds no .gaia/local literal."
+      "why": "Resolves a PR number, then delegates the findings-block post entirely to .gaia/scripts/post-findings-block.sh; this hook itself derives no root, resolves no audit base, and holds no .gaia/local literal."
     },
     {
       "hook": ".claude/hooks/pr-merge-audit-check.sh",

@@ -10,30 +10,29 @@
 # local audit mode, no code path posted the machine-readable findings block
 # before this hook existed, only a hand-run snippet did. It fires on a real
 # `gh pr merge` invocation and, when the resolved audit mode is `local`,
-# resolves the incremental audit base and calls the existing producer. It
-# never blocks the merge and never emits a permission decision; success or
-# failure of the underlying producer is invisible to the merge itself.
+# resolves the pull request and calls the existing producer. It never blocks
+# the merge and never emits a permission decision; success or failure of the
+# underlying producer is invisible to the merge itself.
 #
 # Setup drives the REAL hook (by absolute path, never copied) against a
 # sandbox git repo carrying real copies of the scripts it calls by
-# repo-relative path (read-audit-ci-config.sh, resolve-audit-base.sh,
-# post-findings-block.sh, audit-key-lib.sh, repo-scope.sh), and a fake `gh`
+# repo-relative path (read-audit-ci-config.sh, post-findings-block.sh,
+# audit-key-lib.sh, repo-scope.sh), and a fake `gh`
 # on PATH that
 # answers the hook's own PR lookups plus the producer's comment-post/patch
 # calls, tracking state in files under $FAKE_GH_STATE so a test can assert
 # on how many times each verb fired and what body was posted.
 #
-# No .gaia/VERSION is seeded, so resolve-audit-base.sh takes its documented
-# "no usable ancestor" path and returns the `main` ref immediately, with zero
-# extra gh calls; BASE_SHA is then the merge-base of `main` and the feature
-# branch under test, i.e. the sandbox's own init commit.
+# The hook resolves no audit base, and no fixture stages the resolver: the
+# producer selects its sidecars on the branch alone. $BASE_SHA below is only
+# the base half of a sidecar filename, and which value it holds is precisely
+# what no longer decides whether that sidecar is read (gaia-react/gaia#1573).
 
 setup() {
   . "$BATS_TEST_DIRNAME/helpers/run-hook.sh"
   HOOK_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)/post-findings-block-on-merge.sh
   SETTINGS_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.claude" && pwd)/settings.json
   CI_CONFIG_RESOLVER_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.gaia/scripts" && pwd)/read-audit-ci-config.sh
-  BASE_RESOLVER_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.github/audit" && pwd)/resolve-audit-base.sh
   PRODUCER_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.gaia/scripts" && pwd)/post-findings-block.sh
   KEY_LIB_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.gaia/scripts" && pwd)/audit-key-lib.sh
   REPO_SCOPE_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks/lib" && pwd)/repo-scope.sh
@@ -56,16 +55,14 @@ setup() {
   git -C "$REPO" add README.md
   git -C "$REPO" commit --quiet -m "feature change"
 
-  mkdir -p "$REPO/.gaia/scripts" "$REPO/.github/audit" "$REPO/.claude/hooks/lib" "$REPO/.gaia/local/audit"
+  mkdir -p "$REPO/.gaia/scripts" "$REPO/.claude/hooks/lib" "$REPO/.gaia/local/audit"
   cp "$CI_CONFIG_RESOLVER_ABS" "$REPO/.gaia/scripts/read-audit-ci-config.sh"
-  cp "$BASE_RESOLVER_ABS" "$REPO/.github/audit/resolve-audit-base.sh"
   cp "$PRODUCER_ABS" "$REPO/.gaia/scripts/post-findings-block.sh"
   cp "$KEY_LIB_ABS" "$REPO/.gaia/scripts/audit-key-lib.sh"
   cp "$REPO_SCOPE_ABS" "$REPO/.claude/hooks/lib/repo-scope.sh"
   cp "$VERB_ARMING_ABS" "$REPO/.claude/hooks/lib/verb-arming.sh"
   cp "$VERB_ARMING_WALK_ABS" "$REPO/.claude/hooks/lib/verb-arming-walk.sh"
   chmod +x "$REPO/.gaia/scripts/read-audit-ci-config.sh" \
-    "$REPO/.github/audit/resolve-audit-base.sh" \
     "$REPO/.gaia/scripts/post-findings-block.sh"
 
   GH_BIN="$BATS_TEST_TMPDIR/bin"
@@ -226,12 +223,20 @@ run_merge_hook() {
   invoke_hook_in "$REPO" "$json" "$HOOK_ABS"
 }
 
+# write_sidecar [<base>] [<member>] [<findings-json-array>]
+# Keyed to base-sha + branch slug (gaia_audit_key, audit-key-lib.sh); the
+# sandbox's acting branch is "feature" (checked out in setup()), so the slug is
+# that name verbatim -- nothing in it needs percent-encoding. Every argument
+# defaults, so the zero-arg call sites below read exactly as they did; the base
+# is an argument because which one a sidecar carries is precisely what no longer
+# decides whether the producer reads it.
 write_sidecar() {
-  # Keyed to base-sha + branch slug (gaia_audit_key, audit-key-lib.sh); the
-  # sandbox's acting branch is "feature" (checked out in setup()), so the
-  # slug is that name verbatim -- nothing in it needs percent-encoding.
-  printf '{"schema":1,"member":"code-audit-frontend","findings":[{"finding_class":"holistic/swallowed-error","severity":"warning","area_tags":["app/services"]}]}\n' \
-    > "$REPO/.gaia/local/audit/${BASE_SHA}.feature.code-audit-frontend.findings.json"
+  local base="${1:-$BASE_SHA}" member="${2:-code-audit-frontend}" findings="${3:-}"
+  # Not a `${3:-...}` default: the literal carries double quotes, which end the
+  # assignment's own quoting mid-expansion.
+  [ -n "$findings" ] || findings='[{"finding_class":"holistic/swallowed-error","severity":"warning","area_tags":["app/services"]}]'
+  printf '{"schema":1,"member":"%s","findings":%s}\n' "$member" "$findings" \
+    > "$REPO/.gaia/local/audit/${base}.feature.${member}.findings.json"
 }
 
 @test "UAT-005: a registered gh pr merge posts one non-empty findings block with auditor local" {
@@ -248,6 +253,30 @@ write_sidecar() {
   grep -qF -- '<!-- gaia-harden:findings:start -->' <<<"$body" || return 1
   grep -qF -- '"auditor":"local"' <<<"$body" || return 1
   grep -qF -- 'holistic/swallowed-error' <<<"$body" || return 1
+}
+
+
+@test "a multi-round PR's block carries every round's findings, not just the last" {
+  # The end-to-end shape of gaia-react/gaia#1573: the gate stamps a trailer at
+  # the end of every cleared round, so each round's sidecar lands under a new
+  # base half, and the last round is clean by construction because a clean
+  # round is what let the merge happen. A block keyed to one base carried that
+  # empty final round and nothing else.
+  write_sidecar
+  write_sidecar eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee code-audit-maintainer-shell \
+    '[{"finding_class":"holistic/secret-exposure","severity":"error","area_tags":[".gaia/scripts"]}]'
+  # The final, cleared round: present, empty, and the only one a base resolved
+  # at merge time could ever have selected.
+  write_sidecar "$(git -C "$REPO" rev-parse HEAD)" code-audit-frontend '[]'
+  export FAKE_GH_STATE FAKE_GH_IS_FORK="false" FAKE_GH_AUTHOR="alice"
+
+  run_merge_hook
+  [ "$status" -eq 0 ]
+  [ "$(cat "$FAKE_GH_STATE/post_count")" = "1" ]
+
+  body="$(cat "$FAKE_GH_STATE/comment_body")"
+  grep -qF -- 'holistic/swallowed-error' <<<"$body" || return 1
+  grep -qF -- 'holistic/secret-exposure' <<<"$body" || return 1
 }
 
 @test "UAT-005: a second invocation UPDATES the single comment rather than duplicating it" {

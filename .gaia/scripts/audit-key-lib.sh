@@ -27,15 +27,26 @@
 #   empty base extends verbatim to the whole key, so a caller skips its write
 #   rather than inventing a fallback key. A half-built key is never printed.
 #
+# gaia_branch_slug [<dir>]
+#   Prints the BRANCH HALF of that key on its own, for a reader that selects on
+#   the branch and deliberately not on the base: `post-findings-block.sh` reads
+#   every base this branch has written under, because the base half advances one
+#   stamp per cleared audit round. Same fail-open rule as gaia_audit_key's own
+#   branch half, and gaia_audit_key calls this rather than repeating it, so the
+#   two halves of one key cannot be derived two different ways.
+#
 # gaia_key_slug <text>: every character outside [A-Za-z0-9_-] is
 # percent-encoded (uppercase hex, e.g. "/" -> "%2F", "." -> "%2E", "%" ->
 # "%25"). A cheaper `tr / -` rule is rejected because it is not injective --
 # "feat/x" and "feat-x" would collapse to one slug and silently re-create the
 # collision a key exists to remove. Encoding "." matters for the same
-# reason: gaia_audit_key's sidecar glob is "<base>.<slug>.*.findings.json"
-# and gh-artifact-lib.sh's cache filename is "gh-artifact-pr.<slug>.json", so
-# an unencoded dot in the slug would make either glob ambiguous about where
-# the key starts and ends. The slug is ASCII-oriented: a non-ASCII name
+# reason: the sidecar glob is "*.<slug>.*.findings.json" (the base half is a
+# wildcard, since post-findings-block.sh reads every round) and
+# gh-artifact-lib.sh's cache filename is "gh-artifact-pr.<slug>.json", so an
+# unencoded dot in the slug would make either glob ambiguous about where the
+# key starts and ends. The sidecar glob is the stricter of the two and the
+# reason to keep encoding it: its only anchor is the literal ".<slug>." pair,
+# so a slug carrying a dot could straddle a key boundary. The slug is ASCII-oriented: a non-ASCII name
 # encodes per whatever byte value `printf` yields (deterministic; every
 # writer and reader calls this same function, so they always agree). No
 # truncation on an over-length result -- truncation would re-introduce the
@@ -83,20 +94,32 @@ gaia_key_slug() {
   printf '%s' "$out"
 }
 
+# gaia_branch_slug [<dir>]
+# The branch half of gaia_audit_key's key, on its own. Prints nothing and
+# returns 1 when the branch is undeterminable (detached HEAD, not a git
+# repository) or the slug itself fails, so a caller declines rather than
+# inventing a fallback -- the same fail-open rule the whole key takes.
+gaia_branch_slug() {
+  local dir="${1:-.}"
+  local branch
+  branch="$(git -C "$dir" branch --show-current 2>/dev/null)" || branch=""
+  [[ -n "$branch" ]] || return 1
+  gaia_key_slug "$branch"
+}
+
 gaia_audit_key() {
   local base_sha="${1:-}" dir="${2:-.}"
   [[ -n "$base_sha" ]] || return 1
-  local branch slug
-  branch="$(git -C "$dir" branch --show-current 2>/dev/null)" || branch=""
-  [[ -n "$branch" ]] || return 1
+  local slug
   # The slug is captured and checked rather than interpolated into the printf,
   # because a command substitution discards its own status: a failing slug
   # inside the format arguments would still print "<base_sha>." and return 0 --
   # a plausible-looking key with the discriminator silently gone, which is the
-  # unkeyed collision this lib exists to remove. A failing slug is the third
-  # way this key is undeterminable and it takes the same fail-open exit as an
-  # empty base and an undeterminable branch.
-  slug="$(gaia_key_slug "$branch")" || return 1
+  # unkeyed collision this lib exists to remove. An undeterminable branch and a
+  # failing slug are the second and third ways this key is undeterminable, both
+  # folded into gaia_branch_slug above, and both take the same fail-open exit
+  # as an empty base.
+  slug="$(gaia_branch_slug "$dir")" || return 1
   printf '%s.%s\n' "$base_sha" "$slug"
   return 0
 }

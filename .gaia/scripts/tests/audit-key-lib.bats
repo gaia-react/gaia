@@ -85,6 +85,67 @@ make_repo() {
   [ "$output" = "OK" ]
 }
 
+# ========== gaia_branch_slug: the branch half, on its own ==========
+# post-findings-block.sh selects sidecars on the branch half alone, across
+# every base, so it needs that half without a base to pair it with. It calls
+# this rather than repeating the derivation, which is what keeps the two halves
+# of one key from being derived two different ways.
+
+@test "structural: sourcing the lib defines gaia_branch_slug" {
+  run bash -c '
+    # shellcheck disable=SC1090
+    source "$1"
+    type gaia_branch_slug >/dev/null
+    echo OK
+  ' _ "$LIB"
+  [ "$status" -eq 0 ]
+  [ "$output" = "OK" ]
+}
+
+@test "gaia_branch_slug: prints the encoded branch, and nothing else" {
+  make_repo "feat/x.y"
+  run gaia_branch_slug "$REPO"
+  [ "$status" -eq 0 ]
+  [ "$output" = "feat%2Fx%2Ey" ]
+}
+
+@test "gaia_branch_slug: it is exactly the half gaia_audit_key appends" {
+  # The agreement that matters: a reader globbing on the branch half must
+  # produce the byte-identical string the writer's key carries, or it selects
+  # nothing. Derived independently here rather than asserted as a literal.
+  make_repo "feat/x.y"
+  local half key
+  half="$(gaia_branch_slug "$REPO")"
+  key="$(gaia_audit_key "$BASE" "$REPO")"
+  [ -n "$half" ]
+  [ "$key" = "${BASE}.${half}" ]
+}
+
+@test "gaia_branch_slug: a detached HEAD fails non-zero and prints nothing" {
+  make_repo "main"
+  git -C "$REPO" checkout -q "$BASE"
+  run gaia_branch_slug "$REPO"
+  [ "$status" -ne 0 ]
+  [ -z "$output" ]
+}
+
+@test "gaia_branch_slug: a dir outside any git repository fails non-zero and prints nothing" {
+  local nongit
+  nongit=$(mktemp -d -t gaia-akl-bsnongit-XXXXXX)
+  CLEANUP_DIRS+=("$nongit")
+  run gaia_branch_slug "$nongit"
+  [ "$status" -ne 0 ]
+  [ -z "$output" ]
+}
+
+@test "gaia_branch_slug: a failing slug fails it non-zero and prints nothing" {
+  make_repo "main"
+  gaia_key_slug() { return 1; }
+  run gaia_branch_slug "$REPO"
+  [ "$status" -ne 0 ]
+  [ -z "$output" ]
+}
+
 # ========== gaia_key_slug: the general slug rule, tested directly ==========
 # gaia_audit_key's own tests below exercise this rule indirectly (through the
 # key it builds); these test it in isolation, since gh-artifact-lib.sh's

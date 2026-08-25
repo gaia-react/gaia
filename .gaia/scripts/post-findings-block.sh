@@ -15,19 +15,52 @@
 #   updates exactly one PR comment carrying it.
 #
 # Usage
-#   post-findings-block.sh --base <sha> [--pr <N>]
-#     --base <sha>  REQUIRED. The incremental audit base; combined with this
-#                   tree's own branch (gaia_audit_key, audit-key-lib.sh) into
-#                   the key that globs the sidecars
-#                   (.gaia/local/audit/<sha>.<branch-slug>.*.findings.json).
-#                   Callers resolve <sha> the same way the audited member(s)
-#                   already do (.github/audit/resolve-audit-base.sh +
-#                   merge-base, or the plain merge-base a specialized member
-#                   computes for its own remit filter); this script invents
-#                   no base of its own.
+#   post-findings-block.sh [--pr <N>]
 #     --pr <N>      PR number. Default: resolved from the current branch via
 #                   `gh pr view --json number`.
 #     --help | -h   Usage, exit 0.
+#
+#   No base argument, and none resolved internally; see "Which sidecars this
+#   reads" below. A caller still passing the removed `--base` gets the ordinary
+#   unrecognized-argument usage error rather than a silently narrowed read.
+#
+# Which sidecars this reads (load-bearing)
+#   Every findings sidecar this tree's branch has written, across EVERY base:
+#   .gaia/local/audit/*.<branch-slug>.*.findings.json.
+#
+#   The sidecar key is `<base-sha>.<branch-slug>` (gaia_audit_key,
+#   audit-key-lib.sh) and only the branch half is stable across a fix loop.
+#   The gate stamps a `GAIA-Audit:` trailer on a `chore: code review audit
+#   passed` commit at the end of every cleared round, and
+#   .github/audit/resolve-audit-base.sh walks to the newest trailer-bearing
+#   ancestor of HEAD, so the shared base advances by one stamp per cleared
+#   round (a rebase onto main and a machinery-reset move it too). One branch
+#   therefore writes its sidecars under SEVERAL bases, one per round, and that
+#   partitioning is deliberate: it is the durable per-round record of what each
+#   round found, so this script widens the read rather than stabilizing the key.
+#
+#   Keying this glob to one base is what starved the block before: the base a
+#   caller could resolve at merge time is the newest one, whose round is clean
+#   by construction, because a clean round is what let the pull request merge.
+#   The findings worth hardening against -- the ones fixed during the loop --
+#   were exactly the ones dropped. gaia-react/gaia#1573.
+#
+#   The branch half stays the whole discriminator. `.gaia/local/audit/` is
+#   shared (symlinked to main from every worktree), so a sibling tree's
+#   sidecars sit in the same directory, and git forbids one branch in two
+#   worktrees at once. `gaia_key_slug` percent-encodes every byte outside
+#   [A-Za-z0-9_-], the dot included, so no slug carries a dot of its own and
+#   the literal `.<slug>.` anchor cannot straddle a key boundary or match a
+#   branch whose name merely ends in this one.
+#
+#   What bounds the read in TIME is the janitor, not the key.
+#   `.claude/hooks/local-janitor.sh` reaps `*.findings.json` off file mtime
+#   (`GAIA_AUDIT_FINDINGS_RETENTION_HOURS`, default 72, floor 24), so a branch name reused long
+#   after its first pull request merged reads only its own rounds. Inside that
+#   window a reused branch name would merge the earlier run's rounds into the
+#   later one's block, which is the honest cost of selecting on the branch: the
+#   base half could not have bounded it either, since a superseded round's base
+#   is an ancestor of HEAD exactly as this round's is.
 #
 # Output contract
 #   One stdout marker line, always. Exit 0 on EVERY path.
@@ -41,8 +74,8 @@
 #     gh unauthenticated
 #     pr unresolved
 #     post failed
-#   A malformed --base (missing) or an unrecognized flag is a USAGE error
-#   (exit 2, stderr), the one path that is not a decline line.
+#   An unrecognized flag is a USAGE error (exit 2, stderr), the one path that
+#   is not a decline line.
 #
 # Caller contract (load-bearing, not this script's own concern)
 #   Call this ONLY from the local orchestrator, once per local dispatch wave,
@@ -58,7 +91,8 @@
 #   .gaia/local/audit/<base-sha>.<branch-slug>.<member>.findings.json, the
 #   key gaia_audit_key computes (audit-key-lib.sh): base-sha alone collides
 #   between two worktrees cut from the same main tip, so the acting tree's
-#   own branch is the discriminator.
+#   own branch is the discriminator. The writer keys on both halves; this
+#   reader selects on the branch half only, per "Which sidecars this reads".
 #   {"schema":1,"member":"<name>","findings":[
 #     {"finding_class":"...","severity":"error|warning|suggestion",
 #      "area_tags":["..."],"path":"...","line":N,"title":"...",
@@ -146,11 +180,12 @@ set -uo pipefail
 
 usage() {
   cat <<'EOF' >&2
-usage: post-findings-block.sh --base <sha> [--pr <N>]
-  --base <sha>  the incremental audit base; combined with this tree's own
-                branch into the key that globs the sidecars.
+usage: post-findings-block.sh [--pr <N>]
   --pr <N>      PR number. Default: resolved from the current branch via gh.
   --help | -h   usage, exit 0.
+
+Reads every findings sidecar this tree's branch has written, across every
+audit base: .gaia/local/audit/*.<branch-slug>.*.findings.json.
 EOF
 }
 
@@ -162,15 +197,10 @@ emit_error() {
   printf 'post-findings-block: %s\n' "$1" >&2
 }
 
-BASE=""
 PR=""
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
-    --base)
-      BASE="${2:-}"
-      shift 2 2>/dev/null || shift
-      ;;
     --pr)
       PR="${2:-}"
       shift 2 2>/dev/null || shift
@@ -187,12 +217,6 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
-if [ -z "$BASE" ]; then
-  emit_error "--base is required"
-  usage
-  exit 2
-fi
-
 command -v jq >/dev/null 2>&1 || {
   emit_error "jq is required"
   exit 2
@@ -202,23 +226,25 @@ repo_root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
 [ -n "$repo_root" ] || repo_root="."
 audit_dir="${repo_root}/.gaia/local/audit"
 
-# AUDIT_KEY combines --base with THIS tree's own branch (gaia_audit_key,
-# audit-key-lib.sh): a base sha alone collides between two worktrees cut
-# from the same main tip, since both compute the identical merge-base. Empty
-# when the branch is undeterminable (detached HEAD) -- the glob below then
-# matches nothing, which declines "no sidecars" below, the same fail-open
-# rule an empty --base already gets.
-AUDIT_KEY=""
-AUDIT_KEY="$(gaia_audit_key "$BASE" "$repo_root" 2>/dev/null || true)"
+# The branch half of the sidecar key (gaia_branch_slug, audit-key-lib.sh),
+# which is the whole selector here: see "Which sidecars this reads" in the
+# header for why the base half is deliberately not one. Empty when the branch
+# is undeterminable (detached HEAD, not a git repository) -- the glob below
+# then matches nothing, which declines "no sidecars", the same fail-open rule
+# every other undeterminable half of this key already gets.
+BRANCH_SLUG="$(gaia_branch_slug "$repo_root" 2>/dev/null || true)"
 
 # -----------------------------------------------------------------------------
-# 1. Glob sidecars for this tree's tag, sorted LC_ALL=C for a deterministic
-#    merge order (matches the dispatch resolver's own sort discipline).
+# 1. Glob every sidecar this tree's BRANCH has written, across every base,
+#    sorted LC_ALL=C for a deterministic merge order (matches the dispatch
+#    resolver's own sort discipline). Rounds interleave in that order rather
+#    than staying grouped, which costs nothing: the block is a set of findings
+#    and review_bases carries the per-sidecar record.
 # -----------------------------------------------------------------------------
 
 sidecars=()
-if [ -n "$AUDIT_KEY" ]; then
-  for f in "${audit_dir}"/"${AUDIT_KEY}".*.findings.json; do
+if [ -n "$BRANCH_SLUG" ]; then
+  for f in "${audit_dir}"/*."${BRANCH_SLUG}".*.findings.json; do
     [ -e "$f" ] || continue
     sidecars+=("$f")
   done

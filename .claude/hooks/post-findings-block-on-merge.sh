@@ -4,9 +4,16 @@
 # machine-readable findings block, only a hand-run snippet did, so a local
 # merge contributed nothing to the finding-recurrence tally. This hook closes
 # that gap: on a real `gh pr merge` invocation whose resolved audit mode is
-# `local`, it resolves the incremental audit base and calls the existing
-# producer. Pure side effect: it never blocks the merge and never emits a
-# permission decision.
+# `local`, it resolves the pull request and calls the existing producer. Pure
+# side effect: it never blocks the merge and never emits a permission decision.
+#
+# It resolves no audit base. It used to, purely to hand the producer a
+# `--base`, and that one value was the defect: the base a merge can resolve is
+# the newest stamp, whose round is clean by construction, so the block carried
+# only the round that found nothing (gaia-react/gaia#1573). The producer now
+# selects on the branch alone and needs nothing from here but the pull request.
+# Removing the resolution also removes the guard that rode on it: a branch
+# whose base would not resolve posted no block at all, and now posts one.
 
 set -euo pipefail
 trap 'exit 0' ERR
@@ -182,15 +189,9 @@ resolved_mode=""
 eval "$(PR_IS_FORK="$is_fork" bash .gaia/scripts/read-audit-ci-config.sh --resolve-author "$author" 2>/dev/null)" || true
 [ "$resolved_mode" = "local" ] || exit 0
 
-# Resolve the incremental audit base the same way the audited member(s) do.
-BASE_REF="$(.github/audit/resolve-audit-base.sh 2>/dev/null || true)"
-[ -n "$BASE_REF" ] || exit 0
-BASE_SHA="$(git merge-base "$BASE_REF" HEAD 2>/dev/null || true)"
-[ -n "$BASE_SHA" ] || exit 0
-
 # Best-effort: post-findings-block.sh always exits 0 and declines cleanly
 # when no sidecars exist, so an early merge attempt before the audit ran
 # posts nothing rather than an empty block.
-bash .gaia/scripts/post-findings-block.sh --base "$BASE_SHA" --pr "$PR" >/dev/null 2>&1 || true
+bash .gaia/scripts/post-findings-block.sh --pr "$PR" >/dev/null 2>&1 || true
 
 exit 0
