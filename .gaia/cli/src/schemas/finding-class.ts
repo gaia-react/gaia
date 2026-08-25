@@ -64,6 +64,11 @@ export const HOLISTIC_FINDING_CLASSES = [
   'holistic/unarmed-guard',
   'holistic/fail-open-discovery',
   'holistic/partial-cause-reporting',
+  'holistic/dangling-reference',
+  'holistic/drifting-duplicate',
+  'holistic/ambient-context-resolution',
+  'holistic/shared-state-collision',
+  'holistic/unbounded-invocation',
 ] as const;
 
 export type HolisticFindingClass = (typeof HOLISTIC_FINDING_CLASSES)[number];

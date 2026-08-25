@@ -506,7 +506,7 @@ This same best-effort per-bucket assignment applies to an out-of-scope finding r
   - knip: the issue type, prefixed `knip/` (e.g. `knip/exports`, `knip/types`, `knip/dependencies`).
   - dependency-CVE (`pnpm audit`): the advisory id, prefixed `cve/` (e.g. `cve/1098765`).
 - **Holistic / rule-subagent buckets: a controlled vocabulary.** Use one of the seeded members below verbatim; do not invent new members. If a holistic or rule finding does not map to a seeded member, stamp it `holistic/unclassified` instead.
-  - Holistic (your own cross-cutting findings): `holistic/missing-auth-check`, `holistic/secret-exposure`, `holistic/n-plus-one`, `holistic/unnecessary-rerender`, `holistic/unhandled-promise-rejection`, `holistic/swallowed-error`, `holistic/over-permissive-zod`, `holistic/business-logic-in-component`, `holistic/hardcoded-string`, `holistic/non-null-assertion`, `holistic/hollow-assertion`, `holistic/uncoupled-restatement`, `holistic/stale-figure`, `holistic/unarmed-guard`, `holistic/fail-open-discovery`, `holistic/partial-cause-reporting`.
+  - Holistic (your own cross-cutting findings): `holistic/missing-auth-check`, `holistic/secret-exposure`, `holistic/n-plus-one`, `holistic/unnecessary-rerender`, `holistic/unhandled-promise-rejection`, `holistic/swallowed-error`, `holistic/over-permissive-zod`, `holistic/business-logic-in-component`, `holistic/hardcoded-string`, `holistic/non-null-assertion`, `holistic/hollow-assertion`, `holistic/uncoupled-restatement`, `holistic/stale-figure`, `holistic/unarmed-guard`, `holistic/fail-open-discovery`, `holistic/partial-cause-reporting`, `holistic/dangling-reference`, `holistic/drifting-duplicate`, `holistic/ambient-context-resolution`, `holistic/shared-state-collision`, `holistic/unbounded-invocation`.
   - Rule (line-level subagent findings): `rule/use-effect-derived-state`, `rule/use-effect-state-reset`, `rule/unnecessary-use-callback`, `rule/missing-effect-cleanup`, `rule/generic-handler-name`, `rule/switch-statement`, `rule/interface-declaration`, `rule/z-enum`, `rule/array-generic-syntax`, `rule/thin-route-violation`.
 
 The schema enforces this convention: an entry whose `finding_class` is free text or an invented holistic/rule member is rejected outright, never emitted; a genuine holistic/rule finding that maps to no seeded member above is stamped `holistic/unclassified` and still reaches the tally as the unclassified signal, so it is never silently lost.
@@ -518,7 +518,7 @@ The authoritative, machine-checked vocabulary lives in `.gaia/cli/src/schemas/fi
 
 ## Holistic class assignment
 
-The six classes below name language-neutral root causes, and each one is assigned from the finding alone: you hold the finding and the criterion, and nothing else decides it. When a finding matches none of them unambiguously, `holistic/unclassified` is the correct record and a nearby class is not. A finding that matches two of them, with no tie-break below separating that pair, takes that same record rather than whichever half you saw first.
+The eleven classes below name language-neutral root causes, and each one is assigned from the finding alone: you hold the finding and the criterion, and nothing else decides it. When a finding matches none of them unambiguously, `holistic/unclassified` is the correct record and a nearby class is not. A finding that matches two of them, with no tie-break below separating that pair, takes that same record rather than whichever half you saw first.
 
 - `holistic/hollow-assertion`: an assertion, matcher, or guard condition matches a region wider than the construct it names, so the defect it exists to catch leaves it green, as with a Vitest query whose substring the surrounding container text already satisfies. Not a missing test, which asserts nothing at all rather than asserting too loosely.
 - `holistic/uncoupled-restatement`: prose in a docblock, comment, story description, or README restates a contract, mechanism, scope, or guarantee that carries a stable greppable identifier (an exported symbol, a hook name, a route path, a prop, a config key, a script name), and the sentence disagrees with what that identifier's implementation does, so a reader who acts on the sentence acts wrongly; the identifier is part of the criterion, because it is what makes every restating site enumerable and the repair therefore selectable. Not a vague or thin explanation whose subject names no such identifier.
@@ -526,14 +526,23 @@ The six classes below name language-neutral root causes, and each one is assigne
 - `holistic/unarmed-guard`: a check that is correct whenever it runs is armed by a condition narrower than the surface it protects (a workflow `if:` or path filter, a lint override's glob, an early return, a conditional Playwright project), so the change that creates the obligation is the change that skips the check. Not a check that runs and reaches the wrong verdict, which is a defect of the check itself rather than of its arming.
 - `holistic/fail-open-discovery`: the step that builds a checker's own input set silently omits members of it, through a glob that misses an extension, a directory the walk never enters, or a listing that ends early, and the run then reports clean over input it never read. Not a check that reads an input and wrongly passes it.
 - `holistic/partial-cause-reporting`: a diagnostic, error boundary, status line, or failure message handles one cause of a condition and stays silent on a sibling cause that presents the same symptom, so an operator is pointed at the wrong cause. Not a failure nothing reports at all, where no diagnostic runs.
+- `holistic/dangling-reference`: a comment, docblock, story description, or README names a module, export, route, section heading, or dependency that is absent from the tree under every name, so a reader following the pointer lands on no target. Not a target that is present under another name or in another form, which is an uncoupled restatement.
+- `holistic/drifting-duplicate`: one construct (a validation schema, a constant list, a query helper, a test idiom) exists as two or more independent copies with no shared source, so a correct change has to be made in each and the copy nobody edited diverges silently. Not a second call site of one shared definition, where that definition still decides the behavior.
+- `holistic/ambient-context-resolution`: a mechanism takes the subject it operates on (a repository root, a base commit, a config file, an environment) from ambient state such as the current working directory or a default branch rather than from the input handed to it, so correct logic runs against the wrong subject. Not correct logic that reads the intended subject and mishandles it.
+- `holistic/shared-state-collision`: runs of one mechanism that can overlap use a single file, lock, cache key, or fixture path carrying nothing that separates them, so one run's output is published under another's name or destroyed by it. Not a sequencing defect inside one run, where no peer exists to collide with.
+- `holistic/unbounded-invocation`: a subprocess, request, or scan is issued with no ceiling on its cost, through an absent timeout, an absent output limit, or work that grows superlinearly in an input the caller never sizes, so a large or slow input becomes a hang, a truncation, or a misattributed failure. Not a declared bound that is merely set to the wrong value.
 
-Three neighbour pairs drift under judgement, so each boundary is stated once here and copied rather than re-decided per finding:
+Five neighbour pairs drift under judgement, so each boundary is stated once here and copied rather than re-decided per finding:
 
 A check that cannot fail is a hollow assertion; a sentence a reader would act wrongly on is an uncoupled restatement.
 
 A bare count or cardinality is a stale figure; any other disagreeing claim is an uncoupled restatement.
 
 A discarded exit status is the already-seeded swallowed error; an element that never entered the scanned set is a fail-open discovery.
+
+A pointer is a dangling reference when the thing it points at is absent under every name; it is an uncoupled restatement when that thing exists and the pointer names or describes it wrongly.
+
+This pair separates a wrong element from a wrong root: a set missing a member is the fail-open discovery, a set gathered from the wrong root, base, or repository is the ambient-context resolution.
 
 ## Progress breadcrumbs (CI observability)
 

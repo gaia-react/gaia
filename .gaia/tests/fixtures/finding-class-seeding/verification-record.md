@@ -1,15 +1,19 @@
 # Forward-assignment verification record
 
-Three independent classification runs over the eighteen unlabelled cases in `cases/`, scored
+Three independent classification runs over the twenty-eight unlabelled cases in `cases/`, scored
 best-of-three against each case's `expected` value in `labels.json`. Each run reads the owning
 member's `## Holistic class assignment` section and the case file, and nothing else: no run sees
 `labels.json`'s `expected`, `group`, or `reason` fields, no run sees another run's verdicts, and no
-run scores itself.
+run scores itself. The prohibition is stated to each classifier and names the schema and the
+sibling fixture files individually, because a classifier that reads either one is reciting rather
+than classifying.
 
-## Verdict: PASS, 18 of 18, unanimous
+## Verdict: 25 of 28, unanimous on every one of the 25
 
-Every corpus case takes its labelled class on all three runs, no corpus case takes the fallback on
-any run, and every declined and ambiguous case takes its labelled value on all three runs.
+**All ten wave-2 cases take their labelled class on all three runs**, in this round and in the
+round before it, which is the question this corpus exists to answer for the five classes seeded in
+wave 2. Three cases do not take their labelled value, all three from wave 1, and the control run
+below establishes that none of the three is caused by the wave-2 widening.
 
 | Case | Group | Expected | Run 1 | Run 2 | Run 3 | Majority |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -22,67 +26,104 @@ any run, and every declined and ambiguous case takes its labelled value on all t
 | `07-shell-lint-path-filter-gap` | corpus | `holistic/unarmed-guard` | = | = | = | 3/3 |
 | `08-marker-digest-empty-skip` | corpus | `holistic/unarmed-guard` | = | = | = | 3/3 |
 | `09-registry-completeness-glob-gap` | corpus | `holistic/fail-open-discovery` | = | = | = | 3/3 |
-| `10-covered-classes-partial-merge` | corpus | `holistic/fail-open-discovery` | = | = | = | 3/3 |
+| `10-covered-classes-partial-merge` | corpus | `holistic/fail-open-discovery` | `unclassified` | = | `unclassified` | 1/3 |
 | `11-noop-detect-stale-vs-missing-marker` | corpus | `holistic/partial-cause-reporting` | = | = | = | 3/3 |
 | `12-ledger-status-margin-vs-window-failure` | corpus | `holistic/partial-cause-reporting` | = | = | = | 3/3 |
-| `13-duplicated-gate-command-text` | declined | `prose/redundant-instruction` | = | = | = | 3/3 |
+| `13-duplicated-gate-command-text` | declined | `prose/redundant-instruction` | `uncoupled-restatement` | `uncoupled-restatement` | `uncoupled-restatement` | 0/3 |
 | `14-deictic-check-above-reference` | declined | `holistic/unclassified` | = | = | = | 3/3 |
 | `15-self-referential-status-line` | declined | `holistic/unclassified` | = | = | = | 3/3 |
-| `16-bundle-freshness-empty-list-skip` | ambiguous | `holistic/unclassified` | = | = | = | 3/3 |
+| `16-bundle-freshness-empty-list-skip` | ambiguous | `holistic/unclassified` | = | `fail-open-discovery` | `fail-open-discovery` | 1/3 |
 | `17-timeout-hook-race-assertion` | ambiguous | `holistic/unclassified` | = | = | = | 3/3 |
 | `18-config-flag-typo-tolerance` | ambiguous | `holistic/unclassified` | = | = | = | 3/3 |
+| `19-skill-points-at-absent-wiki-page` | corpus | `holistic/dangling-reference` | = | = | = | 3/3 |
+| `20-docblock-names-absent-runbook-step` | corpus | `holistic/dangling-reference` | = | = | = | 3/3 |
+| `21-status-writer-pasted-across-jobs` | corpus | `holistic/drifting-duplicate` | = | = | = | 3/3 |
+| `22-commit-grammar-written-three-times` | corpus | `holistic/drifting-duplicate` | = | = | = | 3/3 |
+| `23-hook-root-from-process-cwd` | corpus | `holistic/ambient-context-resolution` | = | = | = | 3/3 |
+| `24-status-step-takes-local-head` | corpus | `holistic/ambient-context-resolution` | = | = | = | 3/3 |
+| `25-members-stage-to-one-filename` | corpus | `holistic/shared-state-collision` | = | = | = | 3/3 |
+| `26-fixture-written-to-fixed-temp-path` | corpus | `holistic/shared-state-collision` | = | = | = | 3/3 |
+| `27-runner-sets-no-output-ceiling` | corpus | `holistic/unbounded-invocation` | = | = | = | 3/3 |
+| `28-guard-cost-grows-with-input` | corpus | `holistic/unbounded-invocation` | = | = | = | 3/3 |
 
-## What an earlier round found, and what changed because of it
+`=` is the labelled class. A cell naming a class is that run's differing verdict.
 
-An earlier round of three runs scored 17 of 18. `16-bundle-freshness-empty-list-skip` took
-`holistic/fail-open-discovery` on two of three runs where the fallback is correct. The case is a
-single `find` serving two roles at once: its `-name "*.js"` pattern drops `.mjs` output from the set
-the probe walks, and an empty listing from that same pattern arms a skip that stops the freshness
-comparison running at all. `holistic/fail-open-discovery` and `holistic/unarmed-guard` both apply,
-and no tie-break separates that pair.
+## The earlier round, and the repair it bought
 
-The diagnosis was narrower than a missing tie-break. Every member's framing stated the recording
-rule for a finding matching **no** class and said nothing about one matching **two**, so a run that
-noticed the discovery half first had no rule sending it to the fallback. Each member's framing now
-carries the multi-match rule alongside the no-match rule.
+An earlier round of this same corpus scored 24 of 28 and put `04-required-check-name-drift` at 1 of
+3, two runs assigning `holistic/dangling-reference` where the label is
+`holistic/uncoupled-restatement`. The miss was diagnostic rather than incidental. The tie-break
+sentence separating that pair turned on a referent that "resolves to nothing", which reads two ways:
+this name matches nothing, and there is no such thing. Case 04's required check exists under a
+different name after a rename, so both readings were available and the runs split on which they
+took.
 
-The repair is a sharpened criterion, not a relabelled fixture. Case 16's text, its `expected` value,
-and its `reason` are unchanged, and no fourth tie-break was added: a tie-break that resolved the
-pair would make a case that is genuinely unresolvable look resolvable, which inverts the test the
-same way relabelling would. All three runs now reach the fallback and all three cite the absence of
-a separating tie-break as their reason, so the rule rather than the wording is carrying the case.
+The repair was the criterion, not the fixture, whose text and expected value are unchanged. The
+tie-break now turns on whether the thing pointed at is absent under **every** name, and each
+member's `holistic/dangling-reference` line was rewritten to the same standard. Case 04 is 3 of 3
+in this round, and one run cites the repaired sentence by its new wording.
 
-## Limits
+One repair in that round did nothing. A run had cited the fail-open-discovery tie-break as its
+grounds on `16-bundle-freshness-empty-list-skip`, so that sentence was rewritten to read as a
+discriminator between two classes rather than as a sufficient condition for one. Case 16's split is
+byte-identical across the two rounds, so the citation was a rationalisation of a verdict reached on
+other grounds, and the rewritten sentence is kept on its own merits rather than as a fix.
 
-**Best-of-three replaces exact reproduction.** An audit member is not a deterministic classifier.
-Repeating a run can produce a different verdict on a case whose criterion is close to a boundary, so
-the bar is agreement across independent runs rather than a single reproducible answer. A unanimous
-result is stronger evidence than the bar requires, and it is still evidence about agreement, not
-proof of determinism.
+## The control: the three misses predate the widening
 
-**These runs are a proxy for the members.** Each run carries the owning member's
-`## Holistic class assignment` section verbatim, which is exactly the text a member reads, but not
-the surrounding definition, its remit resolution, its review dimensions, or its proof gate. The
-definitions are the thing under test; the pipeline around them is absent. A member's own routing
-could differ.
+`10-covered-classes-partial-merge` and `16-bundle-freshness-empty-list-skip` were re-run three times
+each against an archived copy of their owning members' assignment sections taken from before the
+wave-2 classes were seeded, held outside the repository so no run could reach the current revision.
 
-**The proxy is better informed than the member on one case.** `13-duplicated-gate-command-text`
-routes to `prose/redundant-instruction`, and the instruction that settles it against
-`holistic/uncoupled-restatement` reaches the classifier through its dispatch rather than through
-`code-audit-maintainer-prose.md`. A member reading only its own definition does not have that
-routing. The unanimous verdict on case 13 therefore demonstrates less than the other seventeen do.
+| Case | Label | Against the wave-1 vocabulary | Against the current vocabulary |
+| --- | --- | --- | --- |
+| `10-covered-classes-partial-merge` | `holistic/fail-open-discovery` | `holistic/unclassified`, 3 of 3 | `holistic/unclassified`, 2 of 3 |
+| `16-bundle-freshness-empty-list-skip` | `holistic/unclassified` | `holistic/fail-open-discovery`, 3 of 3 | `holistic/fail-open-discovery`, 2 of 3 |
 
-**The restored workflow bucket is not forward-verified.** The `code-audit-github-workflows` member's
-classifier receives its restored `## Workflow class assignment` section, but every case's expected
-value is one of the six seeded classes, `prose/redundant-instruction`, or the fallback, so no case
-expects a `workflow/*` class and no run can demonstrate one being assigned. That bucket's
-reachability rests on the section-scoped greps in
-`.gaia/tests/lib/doc-finding-class-seeding.bats`, which prove the four lines exist in the shape a
+Both fail their labels **more** decisively against the vocabulary they were authored for than against
+the widened one. The widening is not what moved them, and case 16 is nearer its label now than it
+was. What the control measures is the fixture set, not the seeding: for these two cases, the record
+of 18 of 18 unanimous does not reproduce.
+
+## The three misses, each read on its own
+
+**`10-covered-classes-partial-merge`** straddles `holistic/fail-open-discovery` and
+`holistic/unarmed-guard`, and every run that took the fallback named that pair and the absence of a
+tie-break between them as its grounds. That is the multi-match rule operating exactly as written.
+The pair is deliberately un-tie-broken: resolving it would make a genuinely unresolvable case look
+resolvable, and it would also pull case 16 off the fallback its label asks for, so the two cases
+constrain each other and no sentence satisfies both. Two of the three runs are arguably right and
+the label is arguably wrong; neither was changed here, because deciding that is a judgement about
+the fixture set rather than about the vocabulary.
+
+**`13-duplicated-gate-command-text`** takes `holistic/uncoupled-restatement` unanimously, in both
+rounds, against a `prose/redundant-instruction` label. All six runs give the same grounds: the
+`code-audit-maintainer-prose` member's own criterion carves `prose/redundant-instruction` out for
+"a duplicated instruction whose copies agree with each other and with the code", and this case's
+copies have drifted apart. The criterion as written says what the runs say. This is a disagreement
+between a label and a criterion neither round touched, and the earlier record already noted that
+this case demonstrates less than the others because its expected class reaches a classifier through
+its dispatch rather than through the member definition.
+
+**`16-bundle-freshness-empty-list-skip`** is covered by the control above.
+
+## What this record does not establish
+
+**The workflow bucket is still not forward-verified.** No case expects a `workflow/*` class, so no
+run can demonstrate one being assigned. That bucket's reachability rests on the section-scoped greps
+in `.gaia/tests/lib/doc-finding-class-seeding.bats`, which prove the four lines exist in the shape a
 member reads, not that a member routes a workflow-security finding onto one of them.
 
-**Delivery is file-backed, and that is load-bearing.** Each run writes its verdicts to a path
-outside the repository and returns only a digest; the scorer reads and validates the files. An
-earlier round lost five of six runs' verdicts to agents that completed without their reply reaching
-the caller, which is indistinguishable from a clean result at the scoring step. Validating an
-expected verdict count, rather than only that a file exists and parses, is what separates a complete
-run from a truncated one.
+**Nothing here is a claim about the unclassified share falling.** The tally buckets every finding on
+the literal class string its pull request already recorded, so no vocabulary change relabels
+anything already written down. That measurement is a lagging one and can only move on findings
+recorded after the seeding merges.
+
+**Classification is not deterministic and this method does not assume it is.** Best-of-three is the
+scoring rule for that reason, and the round-to-round movement on cases 10 and 16 is a direct
+observation of it rather than a defect either round introduced.
+
+**Delivery is file-backed, and that is load-bearing.** Each verdict is returned through a validated
+structured channel rather than through free text, and every dispatch is accounted for: 84 of 84 in
+each round, 6 of 6 in the control, with no empty results. A lost verdict is indistinguishable from
+a classifier that declined, which is the one reading this record must not admit.

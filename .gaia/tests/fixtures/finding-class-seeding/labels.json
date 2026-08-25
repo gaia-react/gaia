@@ -108,6 +108,66 @@
       "group": "ambiguous",
       "owning_members": ["code-audit-maintainer-node"],
       "reason": "matches none of the closed vocabulary: an unrecognized flag is silently dropped rather than rejected, which is a real defect but not a discarded exit status (the already-seeded swallowed-error meaning) and not a discovery step that omits an input, since no file or input set is being walked here at all"
+    },
+    "19-skill-points-at-absent-wiki-page": {
+      "expected": "holistic/dangling-reference",
+      "group": "corpus",
+      "owning_members": ["code-audit-maintainer-prose"],
+      "reason": "the step defers to a wiki page present nowhere in the tree, so a reader following it reaches no target at all rather than a target that disagrees"
+    },
+    "20-docblock-names-absent-runbook-step": {
+      "expected": "holistic/dangling-reference",
+      "group": "corpus",
+      "owning_members": ["code-audit-maintainer-node"],
+      "reason": "the docblock gives a coordinate into a runbook that has no such coordinate, so the pointer locates nothing rather than locating something that behaves otherwise"
+    },
+    "21-status-writer-pasted-across-jobs": {
+      "expected": "holistic/drifting-duplicate",
+      "group": "corpus",
+      "owning_members": ["code-audit-github-workflows"],
+      "reason": "five independent copies of one step body with no shared definition, so a correction has to land five times and an unedited copy diverges with every check green"
+    },
+    "22-commit-grammar-written-three-times": {
+      "expected": "holistic/drifting-duplicate",
+      "group": "corpus",
+      "owning_members": ["code-audit-maintainer-node"],
+      "reason": "three separately typed copies of one grammar with no shared export, already disagreeing on whether a scope may contain a slash"
+    },
+    "23-hook-root-from-process-cwd": {
+      "expected": "holistic/ambient-context-resolution",
+      "group": "corpus",
+      "owning_members": ["code-audit-maintainer-shell"],
+      "reason": "the guard takes the checkout it protects from its own process working directory instead of the payload field naming it, so sound comparison logic runs against the wrong subject"
+    },
+    "24-status-step-takes-local-head": {
+      "expected": "holistic/ambient-context-resolution",
+      "group": "corpus",
+      "owning_members": ["code-audit-github-workflows"],
+      "reason": "the step stamps the commit the runner happens to have checked out rather than the head the event payload names, so a correct status is published against the wrong commit"
+    },
+    "25-members-stage-to-one-filename": {
+      "expected": "holistic/shared-state-collision",
+      "group": "corpus",
+      "owning_members": ["code-audit-maintainer-shell"],
+      "reason": "concurrently dispatched reviewers stage through one filename carrying nothing that separates them, so one reviewer's array publishes under another's identity"
+    },
+    "26-fixture-written-to-fixed-temp-path": {
+      "expected": "holistic/shared-state-collision",
+      "group": "corpus",
+      "owning_members": ["code-audit-frontend"],
+      "reason": "parallel test workers write and read one constant temp path, so whichever wrote last decides what both read"
+    },
+    "27-runner-sets-no-output-ceiling": {
+      "expected": "holistic/unbounded-invocation",
+      "group": "corpus",
+      "owning_members": ["code-audit-maintainer-node"],
+      "reason": "the capture carries no output ceiling and the range feeding it is open-ended, so a long range fails and is reported as a cause the operator cannot act on"
+    },
+    "28-guard-cost-grows-with-input": {
+      "expected": "holistic/unbounded-invocation",
+      "group": "corpus",
+      "owning_members": ["code-audit-maintainer-shell"],
+      "reason": "the work grows with the product of payload size and matching-line count with no cap on the payload accepted, so a large write stalls the call it gates"
     }
   }
 }

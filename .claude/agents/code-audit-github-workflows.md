@@ -314,14 +314,23 @@ The holistic bucket names language-neutral root causes, so a class here is assig
 - `holistic/unarmed-guard`: a sound check sits behind an arming condition narrower than the surface it protects (a `paths:` filter, a job or step `if:`, a changed-files gate), so the diff that creates the obligation is the one the condition excludes. Not a hollow assertion, whose check runs and passes anyway.
 - `holistic/fail-open-discovery`: a step's own discovery of what to scan silently omits an input (a glob missing an extension, a `find` rooted below the tree it claims, a matrix built from a truncated list), and the job then reports clean over files it never opened. Not a swallowed error, which discards the exit status of work that did run.
 - `holistic/partial-cause-reporting`: a diagnostic step, failure annotation, or status message names one cause of a red or skipped check while a sibling cause reaching the same step goes unnamed, so an operator is sent after the wrong one. Not an uncoupled restatement, whose message is wrong rather than incomplete.
+- `holistic/dangling-reference`: a comment, job name, or step name points at a workflow file, job id, action ref, script path, or required check that is absent from the repository under every name, so a maintainer following the pointer finds no target. Not a target that is present under another name, such as a renamed job or check the pointer still spells the old way, which is an uncoupled restatement.
+- `holistic/drifting-duplicate`: one construct (a precondition chain, a status-writing step, an `if:` expression, a literal path list) is pasted into two or more jobs, steps, or workflow files with no shared source such as a composite action, so a fix has to land in each copy and a missed one diverges with nothing red. Not a job reusing one composite action or reusable workflow, where a single definition still decides.
+- `holistic/ambient-context-resolution`: a step derives the subject it acts on (the commit, the base ref, the repository) from ambient state such as `git rev-parse HEAD`, the default branch, or the runner's working directory rather than from the event payload that names it, so the step acts correctly on the wrong commit, branch, or repository. Not a step that reads the payload and computes a wrong answer from it.
+- `holistic/shared-state-collision`: jobs or runs that can overlap write one artifact name, cache key, status context, or comment anchor carrying nothing that separates them, so one run's record replaces another's. Not a race inside a single job's own step order, where no second run participates.
+- `holistic/unbounded-invocation`: a step runs a network fetch, install, or scan with no `timeout-minutes`, no retry ceiling, and no bound on the input it walks, so a slow mirror or a large input reds a required check for a reason the check never names. Not a declared bound that is merely set to the wrong value.
 
-Three pairs sit close enough together to be worth deciding once rather than per finding. This member may assign either side of all three, so all three tie-breaks hold here:
+Five pairs sit close enough together to be worth deciding once rather than per finding. This member may assign either side of all five, so all five tie-breaks hold here:
 
 A check that cannot fail is a hollow assertion; a sentence a reader would act wrongly on is an uncoupled restatement.
 
 A bare count or cardinality is a stale figure; any other disagreeing claim is an uncoupled restatement.
 
 A discarded exit status is the already-seeded swallowed error; an element that never entered the scanned set is a fail-open discovery.
+
+A pointer is a dangling reference when the thing it points at is absent under every name; it is an uncoupled restatement when that thing exists and the pointer names or describes it wrongly.
+
+This pair separates a wrong element from a wrong root: a set missing a member is the fail-open discovery, a set gathered from the wrong root, base, or repository is the ambient-context resolution.
 
 ## Workflow class assignment
 
