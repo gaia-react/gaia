@@ -15,7 +15,9 @@
 # Fixture, built once per test (setup()):
 #   MAIN     a real git repo, populated with copies of the real hooks/scripts/
 #            libs/roster (never symlinked), holding one committed file per
-#            Code Audit Team roster member.
+#            Code Audit Team roster member. The roster is read out of
+#            .gaia/audit-ci.yml, so a member added there is a member this
+#            suite drives.
 #   WT       a real linked worktree of MAIN, on its own branch, with every
 #            roster member's file changed to DIFFERENT content, so MAIN and WT
 #            produce genuinely different per-member content digests. MAIN and
@@ -59,6 +61,94 @@
 # stages 5-7 are anchored via `( cd "$root" && ... )` rather than run with a
 # bare non-repository cwd.
 
+# Prints the Code Audit Team roster, one member name per line, read out of the
+# `auditors:` block of the audit-ci.yml at $1. That file is the roster's source
+# of truth, so a member added there is a member this suite drives, with no
+# second list to remember to grow.
+#
+# A line scan rather than a YAML parse, on purpose: this runs while building
+# the fixture for every test in the file, and PyYAML is an optional dependency
+# here in a way it is not in the suites that gate on it.
+#
+# The block closes on any non-blank, non-comment line starting in column 0,
+# rather than on a character class that has to guess which spellings a top-level
+# key can take. A close rule reading `/^[A-Za-z_]+:/` looks equivalent and is
+# not: it steps over a hyphenated or digit-leading key, leaving the block open
+# so that key's own `- name:` children read as roster members.
+#
+# The column-0 rule is a claim about THIS file, not about YAML. A block sequence
+# may legally sit at its parent key's own indentation, so a roster written with
+# `- name:` in column 0 is valid YAML that this scan reads as zero members. The
+# caller's non-empty guard turns that into a red, and its message names both
+# causes, because the scan cannot tell them apart and a reader staring at a
+# populated audit-ci.yml needs the second one to make sense of it. Measured, not
+# reasoned: a roster MIXING the two indentations is not valid YAML in either
+# direction, so no INDENTATION choice can lose a member here while the guard
+# stays satisfied.
+#
+# Indentation is not the only way to spell a roster, and this scan reads exactly
+# one spelling: an indented `- name: X` carrying its value on the entry line. An
+# expanded block entry, a flow mapping (`- {name: x}`), a quoted key, `globs:`
+# written before `name:`, or a value held over to a more-indented line below the
+# key are each valid YAML this scan would otherwise read short. Deliberately NOT
+# widened to accept them: `.claude/hooks/lib/audit-scope.sh:302` pins the same
+# spelling, so a scan that accepted more would answer differently from the
+# parser the rest of the machinery uses, which is worse than agreeing with it.
+#
+# What that leaves is counted instead of assumed. The block's member entries are
+# its shallowest `-` lines (a `globs:` item is indented deeper), so an entry that
+# yields no name is an entry this scan cannot read, and the scan fails rather
+# than returning the short list. Without that count the dangerous case is ONE
+# off-spelled member: the list comes back shorter but non-empty, the caller's
+# non-empty guard stays satisfied, and the suite drives a subset while its test
+# names still say "every definition" -- the silent drop this helper exists to
+# remove, reintroduced one level up.
+#
+# Reading a name and counting one are therefore the same act. A name counts only
+# when the entry line carries a value that is not a comment, so `- name:` alone,
+# a value held over to the next line, and `- name:  # deferred` each reach the
+# count as an unread entry. Counting a bare `name:` key instead would satisfy
+# the count while contributing an EMPTY name, which the caller's per-entry
+# `[ -n "$m" ]` then drops: the short-but-non-empty roster above, arrived at
+# through the check meant to forbid it.
+#
+# The count is what guards it, not CI. `.gaia/scripts/verify-audit-roster.sh`
+# does red on every one of those spellings, but its workflow is advisory by
+# design and deliberately not a required check
+# (`.github/workflows/audit-roster.yml`), so it is a visible red rather than a
+# merge block and cannot be leaned on here.
+#
+# `.claude/hooks/lib/audit-scope.sh`'s _audit_scope_parse_auditors parses the
+# same block canonically and is deliberately NOT reused here: it emits a record
+# per glob, so a member declaring no globs produces no record and vanishes from
+# its output. Silently dropping a member is the failure this helper exists to
+# remove, so the two answer different questions and both stay.
+roster_members() {
+  awk '
+    /^[[:space:]]*#/ { next }
+    /^[[:space:]]*$/ { next }
+    /^auditors[[:space:]]*:/ { in_block = 1; next }
+    /^[^[:space:]]/ { in_block = 0; next }
+    !in_block { next }
+    /^[[:space:]]+-([[:space:]]|$)/ {
+      match($0, /^[[:space:]]+/)
+      indent = RLENGTH
+      if (entry_indent == 0) entry_indent = indent
+      if (indent != entry_indent) next
+      entries++
+      if ($2 == "name:" && $3 != "" && $3 !~ /^#/) names[++n] = $3
+      next
+    }
+    END {
+      if (entries != n) {
+        printf "roster_members: %s has %d auditors entr(ies) but %d readable `- name: X`; an entry this scan cannot read would silently shrink the roster\n", FILENAME, entries, n > "/dev/stderr"
+        exit 1
+      }
+      for (i = 1; i <= n; i++) print names[i]
+    }
+  ' "$1"
+}
+
 setup() {
   . "$BATS_TEST_DIRNAME/helpers/run-hook.sh"
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
@@ -98,13 +188,36 @@ setup() {
            verb-arming.sh verb-arming-walk.sh repo-scope.sh; do
     cp "$REPO_ROOT/.claude/hooks/lib/$f" "$MAIN/.claude/hooks/lib/$f"
   done
-  ALL_MEMBERS=(code-audit-frontend code-audit-github-workflows code-audit-maintainer-node code-audit-maintainer-prose code-audit-maintainer-shell)
+  # Read the roster out of .gaia/audit-ci.yml rather than restating it. The
+  # tests these members drive are named "every definition", and a hand-copied
+  # array is only every definition until the next member joins the roster:
+  # the array does not grow, the loops silently skip the newcomer, and the
+  # names keep saying "every" with nothing red. Deliberately no count here or
+  # in any name below, for the same reason.
+  local m roster_out
+  # Captured rather than piped into the loop: a process substitution discards
+  # roster_members' exit status, which is the whole signal when an entry is
+  # spelled in a way the scan cannot read.
+  roster_out="$(roster_members "$REPO_ROOT/.gaia/audit-ci.yml")" || {
+    echo "roster_members could not read .gaia/audit-ci.yml's auditors block; see its message above" >&2
+    return 1
+  }
+  ALL_MEMBERS=()
+  while IFS= read -r m; do
+    [ -n "$m" ] || continue
+    ALL_MEMBERS+=("$m")
+  done <<<"$roster_out"
+  [ "${#ALL_MEMBERS[@]}" -gt 0 ] || {
+    echo "no auditors read out of .gaia/audit-ci.yml; every member loop below would run over an empty set. Either the auditors: block is empty, or its entries are not indented under it (roster_members reads only indented entries; see its header)" >&2
+    return 1
+  }
 
   # Every definition, not just the default member's: stage 8 asserts the
-  # AUDIT_ROOT derivation resolves correctly in all five, so all five have to
-  # be here for the extractor to read. The block is byte-identical across them
-  # (FC-5), which is exactly what driving each one independently proves.
-  local m
+  # AUDIT_ROOT derivation resolves correctly in all of them, so all of them
+  # have to be here for the extractor to read. The block is byte-identical
+  # across them (FC-5), which is exactly what driving each one independently
+  # proves. A roster name with no definition to copy reds here, which is the
+  # answer that suite wants for a roster and a tree that disagree.
   for m in "${ALL_MEMBERS[@]}"; do
     cp "$REPO_ROOT/.claude/agents/${m}.md" "$MAIN/.claude/agents/${m}.md"
   done
@@ -398,7 +511,7 @@ run_audit_root_block() {
 # Fixture sanity (acceptance criterion 6)
 # -----------------------------------------------------------------------------
 
-@test "fixture: all five roster members' digests differ between MAIN and WT" {
+@test "fixture: every roster member's digest differs between MAIN and WT" {
   local m main_d wt_d all_differ=1
   for m in "${ALL_MEMBERS[@]}"; do
     main_d="$(digest_of "$MAIN" "$m")"
@@ -904,12 +1017,12 @@ run_audit_root_block() {
 
 # -----------------------------------------------------------------------------
 # Stage 8: the extracted agent handshake block (AUDIT_ROOT derivation).
-# Instances 2, 7. The block is byte-identical across all five agent
-# definitions (FC-5), so the two positive tests drive every one of them
+# Instances 2, 7. The block is byte-identical across every agent
+# definition (FC-5), so the two positive tests drive every one of them
 # rather than pinning the default member's copy and inferring the rest. The
 # mutation control below stays on code-audit-frontend.md alone: it proves the
-# assertion is non-vacuous, which one file establishes, and mutating five
-# would cost five backup/restore cycles for the same signal.
+# assertion is non-vacuous, which one file establishes, and mutating the whole
+# roster would cost a backup/restore cycle per member for the same signal.
 # -----------------------------------------------------------------------------
 
 @test "stage 8 (flag/anchor: AUDIT_ROOT supplied) from OUTSIDE: every definition resolves to WT, never MAIN" {
