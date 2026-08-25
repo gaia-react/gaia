@@ -39,11 +39,20 @@
 #       three (verb-arming, main-root-lib, gaia-active-plan); the other three
 #       parse-checked hooks are unarmed by a git verb and pay one each.
 #       Bound: ~+18.6ms on 3.2.57, ~+34.2ms on 5.3.15.
-#     16KB raw-matching: a different set arms, so the count differs; re-trace
-#       rather than reusing the number above.
+#     16KB raw-matching heredoc: 4 forks. The fixture raw-matches but ends up
+#       UNARMED once the walker proves the body is data (the cat-HEREDOC note
+#       below), so every parse-checked hook pays its pre-gate check and nothing
+#       more. Bound: ~+12.4ms on 3.2.57, ~+22.8ms on 5.3.15.
 #
-#   Sizing a fifth parse-checked hook means asking which rows arm it, not
-#   adding one fork per row.
+#   Sizing a fifth parse-checked hook means asking which rows arm it, since an
+#   armed hook pays its post-gate checks on top. "None" is a valid answer, and
+#   it is this row's: where nothing arms, one fork per parse-checked hook is
+#   exactly the count.
+#
+#   Trace against the row's OWN fixture, not an approximation of it. A 16KB
+#   heredoc and a 32KB one answer differently: past GAIA_VERB_ARM_SCAN_PREFIX
+#   the walker takes the identity path, the body is never proven data, and the
+#   hooks arm, which is the past-bound row's whole subject three rows above.
 #
 #   The end-to-end delta is deliberately NOT quoted, because it could not be
 #   measured on this machine. A/B-ing base against HEAD copies of one hook at a

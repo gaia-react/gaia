@@ -78,10 +78,10 @@ fi
 # re-measurement: on this machine `bash -n` on the real verb-arming.sh costs
 # ~3.1ms on bash 3.2.57 and ~5.7ms on 5.3.15, over 200 forks, against a
 # ~16-21ms hook process. A surcharge, not the doubling the old number implied,
-# and cheap enough that the `|| true` arm this
-# load used to carry is not worth its two costs: it closed the bash 5 half
-# only, leaving an unparseable verb-arming.sh abandoning the shell on a stock
-# 3.2, and it suppressed the syntax error that would name the broken file.
+# and cheap enough that the `|| true` arm this load used to carry is not worth
+# its two costs: it closed the bash 5 half only, leaving an unparseable
+# verb-arming.sh abandoning the shell on a stock 3.2, and it suppressed the
+# syntax error that would name the broken file.
 #
 # The three errexit sibling hooks that load verb-arming.sh the same way carry
 # the same check for the same measured reason (capture-gh-artifact.sh,
