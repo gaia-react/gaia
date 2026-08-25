@@ -500,7 +500,10 @@ extract_payload() {
   stub_gh '[]'
   run run_script
   [ "$status" -eq 0 ]
-  [ "$output" = "findings: posted 2 finding(s) from 3 member(s) to PR #42" ]
+  # Three sidecars, TWO members: code-audit-maintainer-shell wrote one per
+  # round. The count is distinct members, so a solo member's three rounds never
+  # read as three members.
+  [ "$output" = "findings: posted 2 finding(s) from 2 member(s) to PR #42" ]
   payload="$(extract_payload)"
   [ "$(jq '.findings | length' <<<"$payload")" = "2" ]
   # Both earlier rounds' classes reach the block, which is what the tally counts.
@@ -510,6 +513,37 @@ extract_payload() {
   # the one-entry-per-sidecar case, across rounds included, is covered by
   # "review_bases carries one entry per sidecar carrying review_base" below.
   [ "$(jq '.review_bases | length' <<<"$payload")" = "0" ]
+}
+
+@test "one member across three rounds reports one member, not three sidecars" {
+  # The direction the multi-base widening makes reachable and the single-base
+  # glob never could: file count and member count agreed only while a member
+  # could write at most one matching sidecar.
+  write_sidecar_at "$AUDIT_KEY" code-audit-maintainer-shell \
+    '[{"finding_class":"holistic/swallowed-error","severity":"warning","area_tags":["a"]}]'
+  write_sidecar_at "${BASE_ROUND2}.main" code-audit-maintainer-shell \
+    '[{"finding_class":"holistic/secret-exposure","severity":"error","area_tags":["b"]}]'
+  write_sidecar_at "${BASE_ROUND3}.main" code-audit-maintainer-shell '[]'
+  stub_gh '[]'
+  run run_script
+  [ "$status" -eq 0 ]
+  [ "$output" = "findings: posted 2 finding(s) from 1 member(s) to PR #42" ]
+}
+
+@test "sidecars naming no member collapse into one bucket, never one apiece" {
+  # `.member // ""` puts absent and empty in ONE bucket on purpose: an unnamed
+  # sidecar cannot be shown to be a different member from another unnamed one,
+  # and over-stating the count is the defect being repaired. Two nameless plus
+  # one named reads as 2, where counting files would read 3.
+  printf '{"schema":1,"findings":[{"finding_class":"holistic/swallowed-error","severity":"warning","area_tags":["a"]}]}\n' \
+    > "$AUDIT_DIR/${AUDIT_KEY}.nameless-one.findings.json"
+  printf '{"schema":1,"member":"","findings":[]}\n' \
+    > "$AUDIT_DIR/${BASE_ROUND2}.main.nameless-two.findings.json"
+  write_sidecar_at "${BASE_ROUND3}.main" code-audit-frontend '[]'
+  stub_gh '[]'
+  run run_script
+  [ "$status" -eq 0 ]
+  [ "$output" = "findings: posted 1 finding(s) from 2 member(s) to PR #42" ]
 }
 
 @test "a sidecar under a DIFFERENT branch slug is never merged, whatever its base" {

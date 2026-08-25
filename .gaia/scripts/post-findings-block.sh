@@ -62,6 +62,14 @@
 #   base half could not have bounded it either, since a superseded round's base
 #   is an ancestor of HEAD exactly as this round's is.
 #
+#   The window cuts the other way too, and that direction is the likelier one:
+#   a fix loop running LONGER than the retention still loses its early rounds,
+#   because the janitor reaps off each sidecar's own mtime rather than off the
+#   branch's. So this widens the read from one round to every round still on
+#   disk, which is not the same as every round the loop ran. A block posted on a
+#   pull request older than the window carries what survived, and nothing here
+#   can tell a reader which rounds were swept.
+#
 # Output contract
 #   One stdout marker line, always. Exit 0 on EVERY path.
 #     findings: posted <n> finding(s) from <m> member(s) to PR #<N>
@@ -363,7 +371,22 @@ if ! merged_findings="$(jq -s '[.[] | .findings[]? | {finding_class, severity, a
   exit 0
 fi
 n="$(printf '%s' "$merged_findings" | jq 'length' 2>/dev/null || echo 0)"
-m="${#valid_files[@]}"
+
+# The member count is DISTINCT `.member` values, not the sidecar file count.
+# The two agreed while the glob selected one base, because a member writes one
+# sidecar per key; across bases one member writes one per round, so counting
+# files would report a three-round solo audit as "3 member(s)", which is the
+# same file-for-member confusion the widened read exists to survive.
+#
+# Absent and empty `.member` collapse into ONE bucket, so several unnamed
+# sidecars read as one member. That under-states rather than over-states, which
+# is the safe direction here: over-stating is the defect being repaired, and an
+# unnamed sidecar cannot be shown to be a DIFFERENT member from another unnamed
+# one. audit-write-findings.sh always writes the field, so the bucket exists for
+# malformed input rather than for anything the writer produces.
+m="$(jq -s '[.[] | (.member // "") ] | unique | length' \
+  ${valid_files[@]+"${valid_files[@]}"} 2>/dev/null || printf '%s' "${#valid_files[@]}")"
+[ -n "$m" ] || m="${#valid_files[@]}"
 
 payload="$(jq -nc \
   --argjson pr "$PR" \
