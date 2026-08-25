@@ -205,3 +205,102 @@ run_hook() {
   run_hook 'true && git push origin main'
   assert_denied_by_json
 }
+
+# --- an unparseable repo-scope.sh degrades, it does not deny ---
+#
+# The repo-scope load sits under this hook's `set -euo pipefail`, so before the
+# fix an unparseable copy abandoned the shell ahead of the `type
+# cmd_targets_foreign_repo` check on the next line, exiting 2 -- the PreToolUse
+# deny code -- for every git command the hook matches. It denies on bash 5 as
+# well as on 3.2, so neither case below needs a /bin/bash pin to have teeth.
+#
+# The pair discriminates: the allow case alone is satisfied by a hook that
+# stopped enforcing, so the deny twin proves the degrade kept the main-branch
+# floor. Without cmd_targets_foreign_repo the foreign-repo carve-out does not
+# fire, which is the fail-closed direction this hook documents at :21-24.
+
+# Overwrites <path> with an unresolved-merge-conflict body: the file opens and
+# reads fine, so an existence test passes it, and bash cannot parse it.
+write_conflicted_lib() {
+  { printf '<<<<<<< HEAD\n'; printf 'x() { :; }\n'; printf '=======\n'
+    printf 'y() { :; }\n'; printf '>>>>>>> other\n'; } > "$1"
+}
+
+@test "repo-scope.sh holding conflict markers: an ordinary git command is still allowed" {
+  on_feature
+  write_conflicted_lib "$REPO/.claude/hooks/lib/repo-scope.sh"
+  run_hook 'git status'
+  assert_allowed_by_json
+}
+
+@test "repo-scope.sh holding conflict markers: a commit on main is still denied" {
+  on_main
+  write_conflicted_lib "$REPO/.claude/hooks/lib/repo-scope.sh"
+  run_hook 'git commit -m "x"'
+  assert_denied_by_json
+}
+
+@test "repo-scope.sh absent entirely: a commit on main is still denied" {
+  on_main
+  rm -f "$REPO/.claude/hooks/lib/repo-scope.sh"
+  run_hook 'git commit -m "x"'
+  assert_denied_by_json
+}
+
+# --- an unparseable main-root-lib.sh degrades, it does not deny ---
+#
+# The second load in this hook resolves .gaia/scripts/main-root-lib.sh off
+# BASH_SOURCE, so expressing the unparseable case needs a COPY of the hook in a
+# tree the test controls; running the real $HOOK_ABS would always resolve the
+# real checkout's libs. Pinned to stock /bin/bash: the `|| true` arm this load
+# already carried survives on bash 5 and is abandoned ahead of on 3.2, so only
+# a /bin/bash run tells the fix apart from the arm it replaced. On a bash-5
+# /bin/bash (Linux CI) these pass either way.
+
+stage_hook_tree() {
+  STAGED_ROOT="$BATS_TEST_TMPDIR/staged"
+  rm -rf "$STAGED_ROOT"
+  mkdir -p "$STAGED_ROOT/.claude/hooks/lib" "$STAGED_ROOT/.gaia/scripts"
+  cp "$HOOK_ABS" "$STAGED_ROOT/.claude/hooks/"
+  cp "$HOOKS_SRC/lib/repo-scope.sh" "$STAGED_ROOT/.claude/hooks/lib/"
+  cp "${HOOKS_SRC%/.claude/hooks}/.gaia/scripts/main-root-lib.sh" "$STAGED_ROOT/.gaia/scripts/"
+  git -C "$STAGED_ROOT" init --quiet --initial-branch=main
+  git -C "$STAGED_ROOT" config user.email "test@example.com"
+  git -C "$STAGED_ROOT" config user.name "Test"
+  git -C "$STAGED_ROOT" config commit.gpgsign false
+  echo "# readme" > "$STAGED_ROOT/README.md"
+  git -C "$STAGED_ROOT" add README.md
+  git -C "$STAGED_ROOT" commit --quiet -m init
+  STAGED_HOOK="$STAGED_ROOT/.claude/hooks/block-main-destructive-git.sh"
+}
+
+# run_staged <command> [interpreter]
+run_staged() {
+  local json interp="${2:-}"
+  json=$(jq -n --arg c "$1" '{tool_name: "Bash", tool_input: {command: $c}}')
+  run bash -c 'cd "$1" && printf %s "$2" | $4 "$3"' _ "$STAGED_ROOT" "$json" "$STAGED_HOOK" "$interp"
+}
+
+@test "control: the staged hook denies a commit on main under stock /bin/bash" {
+  [ -x /bin/bash ] || skip "no /bin/bash"
+  stage_hook_tree
+  run_staged 'git commit -m "x"' /bin/bash
+  assert_denied_by_json
+}
+
+@test "main-root-lib.sh holding conflict markers: a commit on main is still denied, on stock /bin/bash" {
+  [ -x /bin/bash ] || skip "no /bin/bash"
+  stage_hook_tree
+  write_conflicted_lib "$STAGED_ROOT/.gaia/scripts/main-root-lib.sh"
+  run_staged 'git commit -m "x"' /bin/bash
+  assert_denied_by_json
+}
+
+@test "main-root-lib.sh holding conflict markers: an ordinary git command is still allowed, on stock /bin/bash" {
+  [ -x /bin/bash ] || skip "no /bin/bash"
+  stage_hook_tree
+  git -C "$STAGED_ROOT" checkout --quiet -B feature
+  write_conflicted_lib "$STAGED_ROOT/.gaia/scripts/main-root-lib.sh"
+  run_staged 'git status' /bin/bash
+  assert_allowed_by_json
+}

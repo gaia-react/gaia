@@ -375,11 +375,19 @@ main() {
   # to the absolute-path deny -- the safe direction for a deny guard). No hardcoded
   # fallback list (Prime Directive #5): an unreadable registry yields an empty whitelist,
   # never a hand-maintained copy of the set the registry now owns.
+  # Both loads are bracketed in `set +e` because the errexit above sits in a
+  # FUNCTION, not a subshell, so an abort here is the hook's exit -- and exit 2 is
+  # the deny code, refusing every Bash tool call rather than the rm footguns alone.
+  # The `|| true` arms do not cover it: on stock bash 3.2 an unparseable lib
+  # abandons the shell before the arm on that line runs. The command -v gate below
+  # is what degrades, exactly as it already did for an absent lib.
   if gaia_scripts="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd)"; then
+    set +e
     # shellcheck source=/dev/null
-    source "$gaia_scripts/.gaia/scripts/main-root-lib.sh" 2>/dev/null || true
+    source "$gaia_scripts/.gaia/scripts/main-root-lib.sh" 2>/dev/null
     # shellcheck source=/dev/null
-    source "$gaia_scripts/.gaia/scripts/state-registry-lib.sh" 2>/dev/null || true
+    source "$gaia_scripts/.gaia/scripts/state-registry-lib.sh" 2>/dev/null
+    set -e
     if command -v gaia_registry_rm_whitelist >/dev/null 2>&1; then
       rm_whitelist="$(gaia_registry_rm_whitelist 2>/dev/null || true)"
     fi

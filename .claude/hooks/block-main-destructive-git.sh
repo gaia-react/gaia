@@ -22,7 +22,14 @@ cmd=$(echo "$payload" | jq -r '.tool_input.command // empty')
 # command aimed at a different repo (e.g. `git -C ../other push origin main`
 # or `cd ../other && git push`) is out of scope, allow it. Fail-closed: any
 # ambiguity falls through and the policy still enforces.
-[ -f .claude/hooks/lib/repo-scope.sh ] && . .claude/hooks/lib/repo-scope.sh
+#
+# Bracketed in `set +e` because errexit is armed above. An unparseable copy (an
+# unresolved merge conflict, a truncated write) would otherwise abandon the shell
+# before the `type` check below can degrade, and that exit is 2 -- the deny code --
+# refusing every matching call including the edit that would repair the library.
+# Suspending errexit for the one command lets the `type` check do the degrading, at
+# no fork and at any source depth. `bash -n` cannot: it does not recurse.
+set +e; [ -f .claude/hooks/lib/repo-scope.sh ] && . .claude/hooks/lib/repo-scope.sh 2>/dev/null; set -e
 if type cmd_targets_foreign_repo >/dev/null 2>&1 \
    && cmd_targets_foreign_repo "$cmd"; then
   exit 0
@@ -36,10 +43,15 @@ fi
 # bare-relative (process-cwd) derivation rather than exiting -- this guard is
 # fail-closed on ambiguity, never fail-open.
 gaia_scripts="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd)" || true
+# The `|| true` arm is not enough on stock bash 3.2: an unparseable lib abandons
+# the shell before the arm on that line runs. Same errexit bracket as the
+# repo-scope load above, for the same reason.
+set +e
 if [ -n "${gaia_scripts:-}" ] && [ -f "$gaia_scripts/.gaia/scripts/main-root-lib.sh" ]; then
   # shellcheck source=/dev/null
-  . "$gaia_scripts/.gaia/scripts/main-root-lib.sh" 2>/dev/null || true
+  . "$gaia_scripts/.gaia/scripts/main-root-lib.sh" 2>/dev/null
 fi
+set -e
 main_root=""
 if command -v gaia_resolve_main_root >/dev/null 2>&1; then
   main_root="$(gaia_resolve_main_root 2>/dev/null)" || main_root=""

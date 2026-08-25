@@ -208,3 +208,43 @@ run_hook() {
   grep -qF -- "documented over-block" <<<"$output" && return 1
   return 0
 }
+
+# --- an unparseable repo-scope.sh degrades, it does not deny ---
+#
+# The repo-scope load sits under this hook's `set -euo pipefail`, so before the
+# fix an unparseable copy abandoned the shell ahead of the `type
+# cmd_targets_foreign_repo` check on the next line. That exits 2, the
+# PreToolUse deny code, refusing every git command the hook matches -- including
+# the very edit that would repair the library. Unlike the verb-arming sites,
+# this one denies on bash 5 as well as on 3.2, so neither case below needs a
+# /bin/bash pin to have teeth.
+#
+# The pair is what discriminates. The allow case alone is satisfied by a hook
+# that stopped enforcing entirely, so the deny twin proves the degrade kept the
+# floor: without cmd_targets_foreign_repo the foreign-repo carve-out simply does
+# not fire, which is the fail-closed direction this hook documents at :47-50.
+
+# Overwrites <path> with an unresolved-merge-conflict body: the file opens and
+# reads fine, so an existence test passes it, and bash cannot parse it.
+write_conflicted_lib() {
+  { printf '<<<<<<< HEAD\n'; printf 'x() { :; }\n'; printf '=======\n'
+    printf 'y() { :; }\n'; printf '>>>>>>> other\n'; } > "$1"
+}
+
+@test "repo-scope.sh holding conflict markers: an ordinary git command is still allowed" {
+  write_conflicted_lib "$REPO/.claude/hooks/lib/repo-scope.sh"
+  run_hook 'git status'
+  assert_allowed_by_json
+}
+
+@test "repo-scope.sh holding conflict markers: a --no-verify commit is still denied" {
+  write_conflicted_lib "$REPO/.claude/hooks/lib/repo-scope.sh"
+  run_hook 'git commit --no-verify -m x'
+  assert_denied_by_json
+}
+
+@test "repo-scope.sh absent entirely: an ordinary git command is still allowed" {
+  rm -f "$REPO/.claude/hooks/lib/repo-scope.sh"
+  run_hook 'git status'
+  assert_allowed_by_json
+}
