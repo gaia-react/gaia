@@ -71,11 +71,20 @@
 # here in a way it is not in the suites that gate on it.
 #
 # The block closes on any non-blank, non-comment line starting in column 0,
-# which is the actual YAML rule (every line belonging to `auditors:` is
-# indented) rather than a character class that has to guess which spellings a
-# top-level key can take. A close rule reading `/^[A-Za-z_]+:/` looks equivalent
-# and is not: it steps over a hyphenated or digit-leading key, leaving the block
-# open so that key's own `- name:` children read as roster members.
+# rather than on a character class that has to guess which spellings a top-level
+# key can take. A close rule reading `/^[A-Za-z_]+:/` looks equivalent and is
+# not: it steps over a hyphenated or digit-leading key, leaving the block open
+# so that key's own `- name:` children read as roster members.
+#
+# The column-0 rule is a claim about THIS file, not about YAML. A block sequence
+# may legally sit at its parent key's own indentation, so a roster written with
+# `- name:` in column 0 is valid YAML that this scan reads as zero members. That
+# direction is safe: the caller's non-empty guard turns it into a red, and a
+# roster MIXING the two indentations, the one shape that could drop a member
+# while the guard stays satisfied, is not valid YAML at all, so no valid roster
+# can lose a member here. The guard's message names both causes, because the
+# scan cannot tell them apart and a reader staring at a populated audit-ci.yml
+# needs the second one to make sense of the red.
 #
 # `.claude/hooks/lib/audit-scope.sh`'s _audit_scope_parse_auditors parses the
 # same block canonically and is deliberately NOT reused here: it emits a record
@@ -144,7 +153,7 @@ setup() {
     ALL_MEMBERS+=("$m")
   done < <(roster_members "$REPO_ROOT/.gaia/audit-ci.yml")
   [ "${#ALL_MEMBERS[@]}" -gt 0 ] || {
-    echo "no auditors read out of .gaia/audit-ci.yml; every member loop below would run over an empty set" >&2
+    echo "no auditors read out of .gaia/audit-ci.yml; every member loop below would run over an empty set. Either the auditors: block is empty, or its entries are not indented under it (roster_members reads only indented entries; see its header)" >&2
     return 1
   }
 
