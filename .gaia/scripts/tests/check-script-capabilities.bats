@@ -412,13 +412,20 @@ curl -sS https://example.com/x'
 
 # --- Idiom: a command in the condition of `if`, `while`, or `until` ---------
 #
-# The keyword alternation shared by _GAIA_CAPCHECK_DOTCMD and
-# _GAIA_CAPCHECK_PATHCMD. A condition is command position, so both detectors
-# have to read it, and the failure of missing a keyword is SILENCE: not an
-# UNRESOLVED line, nothing at all. That is why each keyword is pinned by name
-# here rather than left to the alternation's shape, and why the pairs below are
-# pairs -- `if` is ordinary English in a way `then` and `elif` are not, so the
-# negative that guards it carries more weight than the others'.
+# A condition is command position, so the SOURCE detector reads one: `if`,
+# `while` and `until` are on _GAIA_CAPCHECK_DOTCMD, and the failure of missing
+# a keyword there is SILENCE -- not an UNRESOLVED line, nothing at all. That is
+# why each keyword is pinned by name here rather than left to the alternation's
+# shape.
+#
+# The two anchors share `then`, `else`, `do`, `elif` and `!` and DIVERGE on
+# these three: _GAIA_CAPCHECK_PATHCMD does not name them, so the bare-path
+# detector deliberately does NOT read a condition. That is the third named
+# departure in that constant's header, and it is why the pairs below are pairs.
+# `if` is ordinary English in a way `then` and `elif` are not, so what makes it
+# affordable on the source anchor is the lone-`.` blanking, which reaches a
+# source and does not reach a path; the negatives carry more weight than the
+# positives here because that asymmetry is the whole decision.
 
 @test "a source in the condition of an if, while, or until is a call, not silence" {
   repo="$(make_fixture_repo dotkwif)"
@@ -461,20 +468,67 @@ curl -sS https://example.com/x'
 
 @test "a lone dot after if that is jq's identity filter is not a source" {
   # `if . == null then` is a jq program, and its `.` is the identity filter
-  # rather than the source builtin. What rejects it is the word blanking in
-  # _gaia_capcheck_strip_quoted_code: a lone `.` is one of
-  # _GAIA_CAPCHECK_QUOTED_WORDS, so the span arrives as
-  # `jq -r "if == null then 1 else 2 end"` and the `\.` this anchor requires has
-  # nothing to match. That blanking is exactly what makes naming `if` here
-  # affordable while naming it on the path anchor is not, so this pins the
-  # premise the departure above rests on, not the operand filter downstream of
-  # it.
+  # rather than the source builtin. TWO layers keep it out of the closure, and
+  # this fixture pins the second because the first cannot reach it here.
+  #
+  # The first is the word blanking in _gaia_capcheck_strip_quoted_code: a lone
+  # `.` is one of _GAIA_CAPCHECK_QUOTED_WORDS, so inside an ordinary
+  # double-quoted span the `\.` the anchor requires has nothing left to match.
+  # That blanking has its own pin, the test directly below. It is deliberately
+  # NOT what this fixture rests on: a line the blanking already silences never
+  # reaches the anchor, so it can assert nothing about anything downstream.
+  #
+  # So the program sits inside a COMMAND SUBSTITUTION, which is the one
+  # uncovered case _GAIA_CAPCHECK_DOTCMD's header names: strip_quoted_code
+  # bails on a whole line carrying `$(` and blanks nothing on it (#1536). The
+  # lone `.` survives, the anchor fires on ` if . `, and the only thing left is
+  # the second layer -- the operand filter in _gaia_capcheck_scan_invocations,
+  # which skips an operand carrying neither a `/` nor a `.sh` tail. Loosen that
+  # filter and this test reports UNRESOLVED for `==`.
+  #
+  # The `if` sits behind a space rather than against the opening quote for the
+  # reason the barekwprose comment below gives: against the quote the
+  # `(^|[[:space:]])` guard fails, the anchor never matches, and the fixture
+  # asserts nothing at all.
   repo="$(make_fixture_repo dotkwjq)"
   add_script "$repo" a/s.sh '#!/usr/bin/env bash
-jq -r "if . == null then 1 else 2 end" /dev/null'
+x="$(jq -r ".result | if . == null then 1 else 2 end" /dev/null)"
+printf "%s\n" "$x"'
   write_allow "$repo" "Bash(bash a/s.sh:*)"
   write_manifest "$repo" '[{"script":"a/s.sh","capabilities":[],
     "why":"reads a jq program that names no script","maintainer_only":false}]'
+  run bash "$CHECK" "$repo"
+  [ "$status" -eq 0 ]
+  grep -qE '^(UNDECLARED|SURPLUS|UNRESOLVED)' <<<"$output" && return 1
+  true
+}
+
+@test "the lone dot blanking is what keeps a source named in prose out of a closure" {
+  # The premise the DOTCMD/PATHCMD split rests on, pinned. `if`, `while` and
+  # `until` are affordable on the source anchor and not on the path anchor for
+  # exactly one reason: a lone `.` is in _GAIA_CAPCHECK_QUOTED_WORDS and is
+  # blanked inside a double-quoted span, so a sentence naming a source has
+  # nothing left for the anchor to match, while nothing blanks a path.
+  #
+  # Nothing else in this tree held that reason to its word. Drop the lone `.`
+  # from that list and every other guard here stays green while this fixture
+  # starts reporting a fabricated CALL edge into the target and its whole
+  # subtree: the over-read the third named departure in _GAIA_CAPCHECK_PATHCMD's
+  # header exists to avoid, arriving through the source side instead.
+  #
+  # Both halves of the fixture are load-bearing. The `if` sits mid-sentence
+  # behind a space, because against the opening quote the anchor never runs.
+  # The operand is a real repo path rather than a jq token, because the scan's
+  # own filter drops any operand carrying neither a `/` nor a `.sh` tail before
+  # it resolves anything.
+  repo="$(make_fixture_repo dotkwblank)"
+  add_script "$repo" a/s.sh '#!/usr/bin/env bash
+printf "%s\n" "stop if . .github/audit/base.sh is missing"'
+  add_script "$repo" .github/audit/base.sh '#!/usr/bin/env bash
+curl -sS https://example.com/x'
+  write_allow "$repo" "Bash(bash a/s.sh:*)"
+  write_manifest "$repo" '[{"script":"a/s.sh","capabilities":[],
+    "why":"names a sourced file in a message","maintainer_only":false}]'
   run bash "$CHECK" "$repo"
   [ "$status" -eq 0 ]
   grep -qE '^(UNDECLARED|SURPLUS|UNRESOLVED)' <<<"$output" && return 1

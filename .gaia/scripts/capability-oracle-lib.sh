@@ -1565,6 +1565,24 @@ _GAIA_CAPCHECK_DOTCMD='(^|[;|&(`{}]|(^|[[:space:]])(if|then|else|do|elif|while|u
 #   A fabricated edge is not merely loud: it can mask a real SURPLUS, which is
 #   silent. Revisit only with a live site in hand.
 #
+#   A keyword from this anchor's OWN vocabulary at column 0: `then`, `else`,
+#   `do`, `elif` or `!` opening the line with a bare path behind it. Every arm
+#   is spelled `[[:space:]]kw[[:space:]]` and nothing else, so the keyword has
+#   to follow whitespace; the `^` at the front of the pattern carries a bare
+#   path at column 0, never a keyword at column 0. Measured before choosing:
+#   no site on this tree writes that shape, and closing it costs ten arms
+#   where there are now five, because the `^` half cannot be shared (see the
+#   FLATTENED paragraph below). Revisit with a live site in hand.
+#
+#   A command behind PLAIN WHITESPACE with no keyword and no operator in front
+#   of it: the assignment-prefix shape `X=1 .gaia/scripts/x.sh`, and equally
+#   any indented bare path that no keyword, `;`, `|`, `&&`, backtick or `$(`
+#   precedes. Whitespace alone is the one boundary neither this anchor nor
+#   _GAIA_CAPCHECK_DOTCMD has ever accepted, and for the reason the OVER-reads
+#   paragraph below gives: a path in a message string and a path in command
+#   position are the same bytes, so accepting bare whitespace would make every
+#   path-shaped token inside a sentence a call.
+#
 # It also OVER-reads, on every arm rather than any one: nothing blanks a repo
 # path inside a double-quoted span, the same fact that narrows `(` to `$(`
 # above, so any anchor character surviving inside one fabricates a CALL edge
@@ -1582,13 +1600,21 @@ _GAIA_CAPCHECK_DOTCMD='(^|[;|&(`{}]|(^|[[:space:]])(if|then|else|do|elif|while|u
 # empty token off a matching line and resolves nothing, silently, which is the
 # exact failure this whole detector exists to end.
 #
-# That flattening is why each keyword is spelled twice rather than once behind
-# a shared `(^|[[:space:]])`: the shared form is a group, and a group here is
-# the index shift above. The two spellings are the same requirement, that the
-# keyword open the line or follow whitespace, so a top-level `if <path>; then`
-# reads as a call and not only an indented one. Getting that half wrong would
-# leave the miss this vocabulary closes reachable again one indent level away,
-# and reachable the same silent way.
+# That flattening is also what fixes how each keyword is SPELLED. A shared
+# `(^|[[:space:]])` in front of the vocabulary is the natural way to say `at a
+# line start or behind whitespace`, and it is a group, so it is the index
+# shift above.
+# Saying the same thing without a group means spelling every keyword twice,
+# once as `^kw[[:space:]]` and once as `[[:space:]]kw[[:space:]]`, which is ten
+# arms for the five this anchor names. Each keyword is spelled ONCE here, as
+# `[[:space:]]kw[[:space:]]` only, so the boundary is whitespace and not a line
+# start: `  then .gaia/scripts/x.sh` one indent in is matched, and a column-0
+# `then .gaia/scripts/x.sh` is not. That column-0 miss is deliberate, is
+# measured against this tree, and is carried in the enumeration above with the
+# other misses rather than only here.
+#
+# _GAIA_CAPCHECK_DOTCMD does spell it `(^|[[:space:]])`, and pays nothing for
+# the group: its caller reads no token back out of BASH_REMATCH by index.
 #
 # Each arm requires whitespace AFTER the keyword, which is what makes it a
 # keyword rather than a prefix. Without it the alternation matches inside a path
@@ -1596,9 +1622,10 @@ _GAIA_CAPCHECK_DOTCMD='(^|[;|&(`{}]|(^|[[:space:]])(if|then|else|do|elif|while|u
 # resolver `cs/build.sh`, because the arm eats the `do` off the front of the
 # path. Requiring the space is not a narrowing of what this anchor claims. A
 # command behind an assignment prefix sits behind plain whitespace, which is
-# the one thing this anchor has never accepted, so the shape returns to the
-# under-read enumerated above rather than going newly blind: what stops is the
-# reporting of a file that does not exist, not the reporting of one that does.
+# the plain-whitespace under-read the enumeration above names, so the shape
+# returns to a miss this anchor already declared rather than going newly blind:
+# what stops is the reporting of a file that does not exist, not the reporting
+# of one that does.
 _GAIA_CAPCHECK_PATHCMD='(^|[;|&`]|\$\(|[[:space:]]then[[:space:]]|[[:space:]]else[[:space:]]|[[:space:]]do[[:space:]]|[[:space:]]elif[[:space:]]|[[:space:]]![[:space:]])[[:space:]]*'
 
 # _gaia_capcheck_detect_network <text>: curl, wget, any gh invocation, and the
