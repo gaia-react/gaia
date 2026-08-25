@@ -731,7 +731,7 @@ PY
   binding="$(sole_line_matching "$WORKFLOW" "needs\.${dep}\.result")" || return 1
   delete_line "$WORKFLOW" "$binding" "$doctored"
   assert_doctored "$binding" "$(sole_line_matching "$doctored" "needs\.${dep}\.result" 2>/dev/null || true)" \
-    "dropping the ${dep} binding"
+    "dropping the ${dep} binding" || return 1
 
   [ "$(read_wf aggok "$doctored" audit-ci-tests)" = "no" ] || {
     echo "needs entry ${dep} still read as adjudicated with nothing reading its result" >&2

@@ -68,13 +68,26 @@
 #
 # A line scan rather than a YAML parse, on purpose: this runs while building
 # the fixture for every test in the file, and PyYAML is an optional dependency
-# here in a way it is not in the suites that gate on it. The scan is anchored
-# to the `auditors:` block, so a `- name:` under any other top-level key cannot
-# leak in, and a roster name that has no definition to copy reds at the copy
-# rather than being silently skipped.
+# here in a way it is not in the suites that gate on it.
+#
+# The block closes on any non-blank, non-comment line starting in column 0,
+# which is the actual YAML rule (every line belonging to `auditors:` is
+# indented) rather than a character class that has to guess which spellings a
+# top-level key can take. A close rule reading `/^[A-Za-z_]+:/` looks equivalent
+# and is not: it steps over a hyphenated or digit-leading key, leaving the block
+# open so that key's own `- name:` children read as roster members.
+#
+# `.claude/hooks/lib/audit-scope.sh`'s _audit_scope_parse_auditors parses the
+# same block canonically and is deliberately NOT reused here: it emits a record
+# per glob, so a member declaring no globs produces no record and vanishes from
+# its output. Silently dropping a member is the failure this helper exists to
+# remove, so the two answer different questions and both stay.
 roster_members() {
   awk '
-    /^[A-Za-z_]+:/ { in_block = ($0 ~ /^auditors:[[:space:]]*$/); next }
+    /^[[:space:]]*#/ { next }
+    /^[[:space:]]*$/ { next }
+    /^auditors[[:space:]]*:/ { in_block = 1; next }
+    /^[^[:space:]]/ { in_block = 0; next }
     in_block && $1 == "-" && $2 == "name:" { print $3 }
   ' "$1"
 }
