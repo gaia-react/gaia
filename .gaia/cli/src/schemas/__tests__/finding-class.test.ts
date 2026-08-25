@@ -10,6 +10,7 @@ import {
   RULE_FINDING_CLASSES,
   WORKFLOW_FINDING_CLASSES,
 } from '../finding-class.js';
+import type {HolisticFindingClass} from '../finding-class.js';
 
 /**
  * The holistic members seeded from the maintainer surface, the tail of
@@ -24,11 +25,14 @@ const MAINTAINER_SURFACE_HOLISTIC_CLASSES = HOLISTIC_FINDING_CLASSES.slice(
 /**
  * Two near-miss spellings per maintainer-surface member: a plural and a
  * differently-worded neighbour. Held as pairs rather than a flat list so one
- * table feeds both the rejection cases and the coverage test that fails when a
- * member has no entries, or an entry names a member no longer seeded.
+ * table feeds both the rejection cases and the coverage test below. That test
+ * fails in three directions: a seeded member with no row, a row whose entry
+ * list is empty, and a row naming a member no longer seeded. The empty-list
+ * arm is separate because comparing the member column alone passes a row that
+ * contributes no rejection case at all.
  */
 const MAINTAINER_SURFACE_MEMBERS: readonly (readonly [
-  string,
+  HolisticFindingClass,
   readonly string[],
 ])[] = [
   [
@@ -146,6 +150,12 @@ describe('schemas/finding-class', () => {
       expect(MAINTAINER_SURFACE_MEMBERS.map(([member]) => member)).toEqual([
         ...MAINTAINER_SURFACE_HOLISTIC_CLASSES,
       ]);
+
+      expect(
+        MAINTAINER_SURFACE_MEMBERS.filter(
+          ([, nearMisses]) => nearMisses.length === 0
+        ).map(([member]) => member)
+      ).toEqual([]);
     });
 
     test('rejects an unseeded rule member (closed bucket)', () => {
