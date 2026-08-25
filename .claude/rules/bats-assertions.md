@@ -80,8 +80,8 @@ When the set genuinely is not machine-derivable, the guard's name has to say wha
 
 This rule is armed on `**/*.bats` and stays there, so a `.gaia/scripts/check-*.sh` guard over a set
 never loads it. That is the scoping the class earned rather than an oversight: every instance the
-sweep behind this section found was a `.bats` file, and the `.sh` checks below are where the good
-pattern already lives. They are named as the form to copy, not as a claim this rule reaches them.
+sweep behind this section found was a `.bats` file. A reference form below is a `.sh` check, named
+as the form to copy rather than as a claim this rule reaches `.sh` files.
 
 Reference forms, in order of how much of the pattern each one shows:
 
