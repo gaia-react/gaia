@@ -23,13 +23,13 @@ const MAINTAINER_SURFACE_HOLISTIC_CLASSES = HOLISTIC_FINDING_CLASSES.slice(
 );
 
 /**
- * Two near-miss spellings per maintainer-surface member: a plural and a
- * differently-worded neighbour. Held as pairs rather than a flat list so one
- * table feeds both the rejection cases and the coverage test below. That test
- * fails in three directions: a seeded member with no row, a row whose entry
- * list is empty, and a row naming a member no longer seeded. The empty-list
- * arm is separate because comparing the member column alone passes a row that
- * contributes no rejection case at all.
+ * Near-miss spellings per maintainer-surface member, the shapes a writer
+ * reaches for when the real slug is nearly right. Held as pairs rather than a
+ * flat list so one table feeds both the rejection cases and the coverage test
+ * below. That test fails in three directions: a seeded member with no row, a
+ * row whose entry list is empty, and a row naming a member no longer seeded.
+ * The empty-list arm is separate because comparing the member column alone
+ * passes a row that contributes no rejection case at all.
  */
 const MAINTAINER_SURFACE_MEMBERS: readonly (readonly [
   HolisticFindingClass,
