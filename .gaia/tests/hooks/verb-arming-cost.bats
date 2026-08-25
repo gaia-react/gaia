@@ -27,9 +27,23 @@
 #   Both figures were re-measured when four hooks took a `bash -n` parse check
 #   on their pre-gate verb-arming load (gaia-react/gaia#1556). What that change
 #   costs is stated here as an ARITHMETIC BOUND, not as a subtracted delta.
-#   `bash -n` on verb-arming.sh measures ~3.1ms on 3.2.57 and ~5.7ms on 5.3.15
-#   over 200 forks, which is the one figure here that measures cleanly; four of
-#   the eleven hooks below pay it, so the aggregate is ~+12ms and ~+23ms.
+#   `bash -n` costs ~3.1ms on 3.2.57 and ~5.7ms on 5.3.15 over 200 forks, which
+#   is the one figure here that measures cleanly, so the bound for a row is
+#   that figure times the number of parse checks the row actually reaches.
+#
+#   Count the parse checks per row, not per hook, because #1556 also added
+#   checks PAST each hook's gate and an armed hook pays those on top of its
+#   pre-gate one. Traced with `bash -x` against these rows' own fixtures:
+#
+#     200B ordinary `git commit`: 6 forks. token-tally-git-op.sh arms and pays
+#       three (verb-arming, main-root-lib, gaia-active-plan); the other three
+#       parse-checked hooks are unarmed by a git verb and pay one each.
+#       Bound: ~+18.6ms on 3.2.57, ~+34.2ms on 5.3.15.
+#     16KB raw-matching: a different set arms, so the count differs; re-trace
+#       rather than reusing the number above.
+#
+#   Sizing a fifth parse-checked hook means asking which rows arm it, not
+#   adding one fork per row.
 #
 #   The end-to-end delta is deliberately NOT quoted, because it could not be
 #   measured on this machine. A/B-ing base against HEAD copies of one hook at a

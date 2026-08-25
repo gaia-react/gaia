@@ -23,8 +23,11 @@ cmd=$(jq -r '.tool_input.command // ""' <<<"$payload")
 # This load runs before the arming gate, on every Bash tool call, so whatever
 # guards it is paid on every call. Measured on this machine rather than assumed:
 # `bash -n` on the real verb-arming.sh costs ~3.1ms on bash 3.2.57 and ~5.7ms
-# on 5.3.15, and as a whole extra hook process that is +2.5ms and +5.7ms
-# against a ~16-21ms hook. A surcharge, not a doubling, and worth paying.
+# on 5.3.15, over 200 forks, against a ~16-21ms hook process. A surcharge, not
+# a doubling, and worth paying. That per-fork figure is the one to size a fifth
+# parse-checked hook off: no end-to-end per-hook delta is quoted here because
+# it could not be measured on this machine, and the header of
+# verb-arming-cost.bats records why.
 #
 # The cheaper `{ . lib || true; }` arm was the first spelling here and is not
 # enough. It closes the bash 5 half only: under `set -e` an unparseable
