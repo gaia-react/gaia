@@ -273,7 +273,14 @@ main() {
   # fail-open on a missing jq. The file is sourceable, so scoping these also keeps a
   # caller that invokes `main` from having its own globals clobbered.
   local payload cmd rm_segments rm_segment tokens tok i first_seg
-  local gaia_scripts rm_whitelist
+  # rm_whitelist is INITIALIZED, not merely declared: it is assigned only inside the
+  # `command -v` branch below, so an unreadable registry left it unset and the read at
+  # the absolute-path arm died on `set -u` before any deny arm ran. That made the
+  # best-effort promise above false in the worst direction -- exit 1 is not a deny, so
+  # the guard stopped guarding rather than losing only the carve-outs. Empty is the
+  # degrade _rm_whitelisted_abs is already written for: it matches nothing, so an
+  # absolute scratch path falls to the absolute-path deny.
+  local gaia_scripts rm_whitelist=""
 
   payload=$(cat)
   cmd=$(jq -r '.tool_input.command // empty' <<<"$payload")

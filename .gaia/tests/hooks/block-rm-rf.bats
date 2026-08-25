@@ -1435,3 +1435,50 @@ run_staged_rmrf() {
   run_staged_rmrf 'rm -rf /' /bin/bash
   assert_denied_by_json
 }
+
+# The discriminating twin for the pair above. "Still denied" is equally satisfied
+# by a guard that denies everything, so this pins what the degrade actually costs:
+# the whitelist comes back empty, so the absolute spelling of a scratch path falls
+# to the absolute-path deny instead of being allowed on a list that could not be
+# read. That is the direction the load comment promises and the direction
+# _rm_whitelisted_abs is written for. The control proves the same staging allows
+# it when the registry parses, so the deny below is the lost carve-out and not a
+# guard that stopped reading its own whitelist.
+
+@test "control: the staged guard allows an absolute scratch path when the registry parses, on stock /bin/bash" {
+  [ -x /bin/bash ] || skip "no /bin/bash"
+  stage_rmrf_tree
+  run_staged_rmrf 'rm -rf /Users/you/projects/my-app/.gaia/local/plans/x' /bin/bash
+  assert_allowed_by_json
+}
+
+@test "state-registry-lib.sh holding conflict markers: the carve-out is lost, not the protection, on stock /bin/bash" {
+  [ -x /bin/bash ] || skip "no /bin/bash"
+  stage_rmrf_tree
+  write_conflicted_lib "$STAGED_ROOT/.gaia/scripts/state-registry-lib.sh"
+  run_staged_rmrf 'rm -rf /Users/you/projects/my-app/.gaia/local/plans/x' /bin/bash
+  assert_denied_by_json
+}
+
+# Unpinned twins of the two registry cases above, and they are not redundant with
+# them. The pinned cases cover the bash-3.2 abort on the load itself; these cover
+# a SECOND failure on the same degrade path that only 4.4+ has. `rm_whitelist` is
+# assigned only when the registry loads, and bash 3.2 reads a declared-but-
+# unassigned local as empty while 4.4+ reads it as unset and dies on `set -u`. So
+# the /bin/bash pin that gives the cases above their teeth is exactly what blinds
+# them here on a stock Mac, and without these twins the class is caught by CI
+# alone.
+
+@test "state-registry-lib.sh holding conflict markers: the root target is still denied, unpinned" {
+  stage_rmrf_tree
+  write_conflicted_lib "$STAGED_ROOT/.gaia/scripts/state-registry-lib.sh"
+  run_staged_rmrf 'rm -rf /' "$BASH"
+  assert_denied_by_json
+}
+
+@test "main-root-lib.sh holding conflict markers: the root target is still denied, unpinned" {
+  stage_rmrf_tree
+  write_conflicted_lib "$STAGED_ROOT/.gaia/scripts/main-root-lib.sh"
+  run_staged_rmrf 'rm -rf /' "$BASH"
+  assert_denied_by_json
+}
