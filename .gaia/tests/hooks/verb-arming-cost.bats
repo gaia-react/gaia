@@ -71,15 +71,17 @@
 #   check, post-findings-block-on-merge.sh goes 1 -> 2, and token-rollup-merge.sh
 #   goes 1 -> 3.
 #
-#   TWO off-by-ones sit between a requested size and the length the walker
-#   measures, and a sweep that misses either reads the boundary in the wrong
+#   An off-by-one sits between a requested size and the length the walker
+#   measures, and a sweep that misses it reads the boundary in the wrong
 #   place. `build_armed_payload N` returns N-1 characters, because the `$(...)`
-#   capturing it strips the closer's trailing newline; and each hook's own
-#   `cmd=$(jq -r ...)` strips one again from whatever the payload carries. So
-#   the table's "16KB" row is really a 16,383-character fixture, and a sweep
-#   indexed by the JSON string's length finds the step one higher than it is.
-#   Both were live here: an earlier draft of this paragraph reported "no clean
-#   step" from a sweep carrying the second one.
+#   capturing it strips the closer's trailing newline. A second strip is
+#   available but not live here: each hook's own `cmd=$(jq -r ...)` takes a
+#   trailing newline off a payload that carries one, and this fixture's went to
+#   the `$(...)` above, so subtracting it too lands on 16,382 and places the
+#   boundary one character low. The table's "16KB" row is really a
+#   16,383-character fixture, and a sweep indexed by the JSON string's length
+#   finds the step one higher than it is -- an earlier draft of this paragraph
+#   reported "no clean step" from a sweep carrying that error.
 #
 #   The end-to-end delta is deliberately NOT quoted, because it could not be
 #   measured on this machine. A/B-ing base against HEAD copies of one hook at a
