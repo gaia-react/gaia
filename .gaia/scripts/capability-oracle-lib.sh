@@ -1493,7 +1493,26 @@ _GAIA_CAPCHECK_CMD='(^|[[:space:]|&;(`$])'
 # separator, a subshell, or a keyword -- and that is what this matches.
 # Deliberately incomplete in one direction: a `.` behind a keyword this list
 # does not name reads as an operand and its target is missed.
-_GAIA_CAPCHECK_DOTCMD='(^|[;|&(`{}]|[[:space:]](then|else|do|elif|!))[[:space:]]*'
+#
+# The list is a closed vocabulary of the keywords after which the next word is
+# in command position, not a record of the shapes this tree happens to hold.
+# That is why `if`, `while` and `until` are on it rather than a site being
+# found for each: a condition is command position whichever of the three opens
+# it, and `elif` is the same construct one branch along, so a list carrying one
+# without the others draws a line the grammar does not. There is no reading of
+# `if <token>;` in which `<token>` is not a command, so the three cost no
+# ambiguity.
+#
+# What they do cost is prose. `if <path> is missing` is ordinary English in a
+# way `then` and `elif` are not, so a repo path in a sentence sits behind a
+# live anchor here and only the blanking upstream keeps it out of the closure.
+# That blanking bails on any whole line carrying a `$(` or a backtick and
+# leaves the span unblanked (#1536), so on such a line the sentence fabricates
+# a call edge. The hole is the blanker's; this list widens what falls into it
+# and does not open it. Narrowing back would trade one loud wrong edge for the
+# silent missing one this vocabulary exists to end, which is the worse
+# direction of the two.
+_GAIA_CAPCHECK_DOTCMD='(^|[;|&(`{}]|(^|[[:space:]])(if|then|else|do|elif|while|until|!)[[:space:]])[[:space:]]*'
 
 # The boundary a BARE PATH has to sit behind to be an execution. It is
 # _GAIA_CAPCHECK_DOTCMD's vocabulary with the lone `(` narrowed to `$(`, and
@@ -1521,11 +1540,12 @@ _GAIA_CAPCHECK_DOTCMD='(^|[;|&(`{}]|[[:space:]](then|else|do|elif|!))[[:space:]]
 #   shape _GAIA_CAPCHECK_DOTCMD accepts for itself, and a brace group with
 #   nothing in front of the brace, per the two departures above.
 #
-#   `if <path>; then`. The keyword list is _GAIA_CAPCHECK_DOTCMD's verbatim and
-#   `if` is not on it, so a path in the condition of an `if` is missed exactly
-#   as a `.` there is. Adding `if` to one list and not the other would buy a
-#   third divergence between two constants whose whole readability rests on
-#   being one vocabulary with two named departures.
+#   Nothing else in the keyword vocabulary: `if`, `while` and `until` joined
+#   both lists together, in one pass, for the reason
+#   _GAIA_CAPCHECK_DOTCMD's header gives. Adding a keyword to one list and not
+#   the other would buy a third divergence between two constants whose whole
+#   readability rests on being one vocabulary with two named departures, so
+#   the two move together or not at all.
 #
 # It also OVER-reads, on every arm rather than any one: nothing blanks a repo
 # path inside a double-quoted span, the same fact that narrows `(` to `$(`
@@ -1543,7 +1563,25 @@ _GAIA_CAPCHECK_DOTCMD='(^|[;|&(`{}]|[[:space:]](then|else|do|elif|!))[[:space:]]
 # that index without changing what the pattern matches. The caller then reads an
 # empty token off a matching line and resolves nothing, silently, which is the
 # exact failure this whole detector exists to end.
-_GAIA_CAPCHECK_PATHCMD='(^|[;|&`]|\$\(|[[:space:]]then|[[:space:]]else|[[:space:]]do|[[:space:]]elif|[[:space:]]!)[[:space:]]*'
+#
+# That flattening is why each keyword is spelled twice rather than once behind
+# a shared `(^|[[:space:]])`: the shared form is a group, and a group here is
+# the index shift above. The two spellings are the same requirement, that the
+# keyword open the line or follow whitespace, so a top-level `if <path>; then`
+# reads as a call and not only an indented one. Getting that half wrong would
+# leave the miss this vocabulary closes reachable again one indent level away,
+# and reachable the same silent way.
+#
+# Each arm also requires whitespace AFTER the keyword, which is what makes it a
+# keyword rather than a prefix. Without it the alternation matches inside a path
+# token that merely begins with those letters: `X=1 docs/build.sh` hands the
+# resolver `cs/build.sh`, because the arm eats the `do` off the front of the
+# path. Requiring the space is not a narrowing of what this anchor claims. A
+# command behind an assignment prefix sits behind plain whitespace, which is
+# the one thing this anchor has never accepted, so the shape returns to the
+# under-read enumerated above rather than going newly blind: what stops is the
+# reporting of a file that does not exist, not the reporting of one that does.
+_GAIA_CAPCHECK_PATHCMD='(^|[;|&`]|\$\(|^if[[:space:]]|[[:space:]]if[[:space:]]|^then[[:space:]]|[[:space:]]then[[:space:]]|^else[[:space:]]|[[:space:]]else[[:space:]]|^do[[:space:]]|[[:space:]]do[[:space:]]|^elif[[:space:]]|[[:space:]]elif[[:space:]]|^while[[:space:]]|[[:space:]]while[[:space:]]|^until[[:space:]]|[[:space:]]until[[:space:]]|^![[:space:]]|[[:space:]]![[:space:]])[[:space:]]*'
 
 # _gaia_capcheck_detect_network <text>: curl, wget, any gh invocation, and the
 # remote-touching git verbs. Deliberately not matched: `command -v gh` and
