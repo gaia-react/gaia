@@ -113,12 +113,14 @@ file_path=$(jq -r '.tool_input.file_path // empty' <<<"$payload")
 # registry reader has no such constraint, and moving it behind the
 # `.gaia/local` arm halves what an ordinary edit pays.
 #
-# Paying it at all, rather than taking the cheaper `{ . lib || true; }` arm the
-# pre-gate loads elsewhere take, is a deliberate exception to that trade. The
-# argument for the cheap arm is that an unparseable library is rare and
-# recoverable, because a denying Bash hook still leaves the editor tools free
-# to repair it. That argument inverts here: the tool this hook denies IS the
-# editor tool, so a corrupted library would deny the very Edit that repairs it.
+# Paying it at all was once argued against on the grounds that an unparseable
+# library is rare and recoverable, because a denying Bash hook still leaves the
+# editor tools free to repair it. That argument inverts here: the tool this
+# hook denies IS the editor tool, so a corrupted library would deny the very
+# Edit that repairs it. It no longer has to carry the decision alone, either.
+# The pre-gate loads in the sibling hooks parse-check too, once the cost figure
+# that argued for a cheaper arm failed to reproduce, so this is the norm across
+# the family rather than an exception to it.
 gaia_scripts="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd)" || exit 0
 gaia_scripts="$gaia_scripts/.gaia/scripts"
 # shellcheck source=/dev/null

@@ -610,7 +610,9 @@ write_sidecar() {
 # The two loads sit on opposite sides of the arming gate and take different
 # repairs, so each gets its own case. repo-scope.sh is past the gate and
 # parse-checks; verb-arming.sh runs before the gate knows the call is a merge
-# at all, so it takes the free `|| true` arm, closing the bash 5 half only.
+# at all, and parse-checks too, once the cost figure that argued for a cheaper
+# arm failed to reproduce (~3.1ms on 3.2.57, ~5.7ms on 5.3.15), so both halves
+# of the unparseable case are closed for both loads.
 #
 # These run a COPY of the hook staged inside the sandbox: both loads resolve
 # off the hook's own BASH_SOURCE, so $HOOK_ABS would always reach the real
@@ -670,8 +672,10 @@ run_staged_merge_hook() {
 # this one is PreToolUse and the load sits ahead of the arming gate, so an
 # unparseable verb-arming.sh denied EVERY Bash tool call rather than merges
 # alone. It parse-checks rather than taking the cheap arm for exactly that
-# reason, so both halves are closed and both are pinned for below. The 3.2 case
-# is the one the arm would have left open, and it would have been left open
+# reason, so both halves are closed and the pair below says so: unpinned for
+# the bash 5 half, which is the one with teeth on Linux CI, and pinned to
+# /bin/bash for the 3.2 half. The 3.2 case is the one the arm would have left
+# open, and it would have been left open
 # SILENTLY: a PreToolUse exit 2 surfaces stderr as the deny reason, and the
 # arm's `2>/dev/null` suppressed the syntax error naming the broken file.
 @test "verb-arming.sh holds conflict markers: exit 0, the merge is not denied" {

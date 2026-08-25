@@ -336,8 +336,10 @@ any_breadcrumb_exists() {
 #
 # The two loads sit on opposite sides of the arming gate and take different
 # repairs, so each gets its own case. gh-artifact-lib.sh is past the gate and
-# parse-checks; verb-arming.sh runs on every Bash tool call and takes the free
-# `|| true` arm instead, which closes the bash 5 half only.
+# parse-checks; verb-arming.sh runs on every Bash tool call and parse-checks
+# too, once the cost figure that argued for a cheaper arm failed to reproduce
+# (~3.1ms on 3.2.57, ~5.7ms on 5.3.15), so both halves of the unparseable case
+# are closed for both loads.
 
 # Overwrites <path> with an unresolved-merge-conflict body: the file opens and
 # reads fine, so an existence test passes it, and bash cannot parse it.

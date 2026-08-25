@@ -60,11 +60,17 @@ fi
 # Past the arming gate, so this load parse-checks: `bash -n` answers both
 # "does it open" and "does it parse" in one call and subsumes the existence
 # test the trailing `|| exit 0` could not deliver. Under `set -e` a failed `.`
-# abandons the shell ahead of that arm; a file bash cannot open exits 1, an
-# advisory that loses the breadcrumb, and one it cannot parse exits 2 on every
-# platform. This is PostToolUse, so neither refuses the `gh pr create` that
-# already ran; both contradict the "degrade silently, always exit 0" contract
-# in this file's header. What degrades in the arm's place is the `type` check.
+# abandons the shell ahead of that arm: a file bash cannot open exits 1, losing
+# the breadcrumb, and one it cannot parse exits 2. Both halves are 3.2-only
+# here, because the arm this replaced was `|| exit 0` and bash 5 reaches it for
+# an unparseable lib exactly as for a missing one; measured 2 and 0 on 3.2.57
+# and 5.3.15. Only a bare `.` with no arm dies on both shells, which is the
+# shape the verb-arming load above carried and this one did not. That is why
+# the conflict-marker case for this load is pinned to /bin/bash and ships no
+# unpinned counterpart. This is PostToolUse, so neither exit refuses the
+# `gh pr create` that already ran; both contradict the "degrade silently,
+# always exit 0" contract in this file's header. What degrades in the arm's
+# place is the `type` check.
 "${BASH:-bash}" -n .gaia/scripts/gh-artifact-lib.sh 2>/dev/null && . .gaia/scripts/gh-artifact-lib.sh 2>/dev/null || true
 type gaia_gh_artifact_parse_url >/dev/null 2>&1 || exit 0
 
