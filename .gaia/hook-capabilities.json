@@ -230,20 +230,14 @@
         "network",
         "github-write",
         "tmp",
-        "invokes:.claude/hooks/lib/audit-clearance.sh",
-        "invokes:.claude/hooks/lib/audit-machinery.sh",
-        "invokes:.claude/hooks/lib/audit-rules-changed.sh",
-        "invokes:.claude/hooks/lib/audit-scope.sh",
-        "invokes:.claude/hooks/lib/gaia-version.sh",
         "invokes:.claude/hooks/lib/repo-scope.sh",
         "invokes:.claude/hooks/lib/verb-arming-walk.sh",
         "invokes:.claude/hooks/lib/verb-arming.sh",
         "invokes:.gaia/scripts/audit-key-lib.sh",
         "invokes:.gaia/scripts/post-findings-block.sh",
-        "invokes:.gaia/scripts/read-audit-ci-config.sh",
-        "invokes:.github/audit/resolve-audit-base.sh"
+        "invokes:.gaia/scripts/read-audit-ci-config.sh"
       ],
-      "why": "On a real `gh pr merge` invocation running under local audit mode, armed through the shared arming decision (`.claude/hooks/lib/verb-arming.sh`, which lazily loads `.claude/hooks/lib/verb-arming-walk.sh` for its data-proving view), resolves the pull request (`gh pr view`) and calls the post-findings-block producer so a local merge still contributes to the finding-recurrence tally, the same record CI mode already posts. Sources the shared repo-scope helper to exempt a foreign-repo command, the audit-key library, the post-findings-block producer itself, and the audit-CI config reader; `github-write` and the rest of its `network` reach are the producer's own posting call, made with the tally data this hook resolves from the merge, not with any other tool-call content. Runs `.github/audit/resolve-audit-base.sh` by its own path to resolve the incremental audit base the audited members use, which is what brings that resolver, the version normalizer it sources, and the four audit predicate libraries it loads by loop variable (scope, machinery, rules-changed, clearance) into this hook's reach; the loop's target is composed from two variables, so the four are declared rather than computed. Never denies the merge or emits a permission decision; a scratch file backs the producer's own working state.",
+      "why": "On a real `gh pr merge` invocation running under local audit mode, armed through the shared arming decision (`.claude/hooks/lib/verb-arming.sh`, which lazily loads `.claude/hooks/lib/verb-arming-walk.sh` for its data-proving view), resolves the pull request (`gh pr view`) and calls the post-findings-block producer so a local merge still contributes to the finding-recurrence tally, the same record CI mode already posts. Sources the shared repo-scope helper to exempt a foreign-repo command, the audit-key library, the post-findings-block producer itself, and the audit-CI config reader; `github-write` and the rest of its `network` reach are the producer's own posting call, made with the tally data this hook resolves from the merge, not with any other tool-call content. Resolves no audit base, and reaches no resolver: the producer selects its sidecars on the branch half of the key alone, across every base, so the incremental base this hook used to resolve is exactly the value that narrowed the block to one round (gaia-react/gaia#1573). That removal is what takes the resolver, the version normalizer it sourced, and the four audit predicate libraries it loaded by loop variable (scope, machinery, rules-changed, clearance) out of this hook's reach. Never denies the merge or emits a permission decision; a scratch file backs the producer's own working state.",
       "maintainer_only": false
     },
     {

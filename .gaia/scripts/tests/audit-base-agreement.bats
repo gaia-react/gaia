@@ -7,10 +7,17 @@
 # `gaia_audit_key` (.gaia/scripts/audit-key-lib.sh) is
 # `<key_base>.<branch-slug>`, and co-dispatched members share a branch, so
 # the keys agree exactly when KEY_BASE agrees. Two members resolving KEY_BASE
-# two different ways therefore write and read two different ledgers:
-# `post-findings-block.sh` globs one key and silently finds nothing under the
-# other, so a whole member's findings drop out of the consolidated PR block
-# with no error anywhere.
+# two different ways therefore write and read two different SHARED RE-RUN
+# LEDGERS (`<key>.rerun.json`, audit-write-clearance.sh): one member's
+# recorded re-run is invisible to the other, with no error anywhere.
+#
+# The consolidated findings block is no longer one of the consumers that key
+# agreement protects. `post-findings-block.sh` selects on the branch half
+# alone, across every base, because the base half legitimately advances one
+# stamp per cleared round (gaia-react/gaia#1573); probe 2 below now asserts
+# that widened read rather than the narrow one. The ledger is what still binds
+# co-dispatched members to one KEY_BASE, and it binds them within a round,
+# which is exactly the scope this suite drives.
 #
 # This suite drives the REAL derivation snippets out of the REAL agent
 # definitions -- it never restates them -- against a scratch repo carrying a
@@ -25,7 +32,8 @@
 #       fork point rather than an advanced ref tip
 #   1c. two co-dispatched members resolving DIFFERENT review bases from one
 #       shared key -- the case a single base cannot serve
-#   2. post-findings-block.sh reads a specialist's sidecar
+#   2. post-findings-block.sh reads a specialist's sidecar, and reads an
+#      earlier round's alongside it
 #   3. the self-skip deadlock: a merely-shared machinery increment carrying
 #      nothing in a member's remit, and the two-tier split it demonstrates
 #   3b. the degraded arm: an unloadable classifier lib resets every member to
@@ -393,17 +401,16 @@ owners_of() {
     fi
   done
 
-  # Merge-time agreement: the key every member resolves equals the key the
-  # merge-time producer resolves, driven the way
-  # post-findings-block-on-merge.sh does it -- the ARGUMENT-LESS resolver,
-  # then merge-base against HEAD. Line 3 of the --member form is this exact
-  # code path's output, so equality here is what proves it, rather than
-  # trusting that the two cannot drift because they are described as one.
+  # Shared-form agreement: the key every member resolves equals what the
+  # ARGUMENT-LESS resolver yields against HEAD, which is the form every
+  # non-agent caller of the shared base uses. Line 3 of the --member form is
+  # this exact code path's output, so equality here is what proves it, rather
+  # than trusting that the two cannot drift because they are described as one.
   local reader_ref reader_base
   reader_ref="$(cd "$repo" && ./.github/audit/resolve-audit-base.sh)"
   reader_base="$(git -C "$repo" merge-base "$reader_ref" HEAD)"
   [ "$reader_base" = "$expected_key_base" ] || {
-    printf 'the merge-time producer resolved %s, members resolved KEY_BASE %s\n' "$reader_base" "$expected_key_base" >&2
+    printf 'the argument-less form resolved %s, members resolved KEY_BASE %s\n' "$reader_base" "$expected_key_base" >&2
     return 1
   }
 }
@@ -591,7 +598,7 @@ owners_of() {
 
 # ---------- probe 2: the consolidated findings block sees a specialist -------
 
-@test "post-findings-block.sh finds a specialist's sidecar under the resolver-derived key" {
+@test "post-findings-block.sh finds a specialist's sidecar, and an earlier round's with it" {
   local repo
   repo="$(make_repo findings-block)"
   git -C "$repo" checkout -q -b feat
@@ -608,12 +615,20 @@ owners_of() {
   printf '{"schema":1,"member":"code-audit-maintainer-shell","findings":[{"finding_class":"shell/unquoted-expansion","severity":"error","area_tags":["shell"],"path":".gaia/scripts/x.sh","line":7,"title":"t","failure_mode":"f","verified_by":"v","suggested_fix":"s"}]}\n' \
     > "$repo/.gaia/local/audit/${writer_key}.code-audit-maintainer-shell.findings.json"
 
-  # The reader resolves its base the way post-findings-block-on-merge.sh
-  # does: the resolver, then merge-base against HEAD.
-  local reader_ref reader_base
-  reader_ref="$(cd "$repo" && ./.github/audit/resolve-audit-base.sh)"
-  reader_base="$(git -C "$repo" merge-base "$reader_ref" HEAD)"
-  [ -n "$reader_base" ]
+  # A round that cleared BEFORE the one above, keyed to the base that round
+  # resolved: the fork point, which the stamp has since superseded. This is
+  # the sidecar a reader keyed to the merge-time base could never see, and the
+  # one whose findings the tally most wants, because a finding fixed during
+  # the loop is a finding worth hardening against.
+  local earlier_base earlier_key
+  earlier_base="$(git -C "$repo" rev-parse HEAD~2)"
+  # The shipped builder, not a restatement of its format: `audit_key_for`
+  # derives its own base, and the whole point here is an explicit earlier one.
+  earlier_key="$( . "$repo/.gaia/scripts/audit-key-lib.sh" && gaia_audit_key "$earlier_base" "$repo" )"
+  [ -n "$earlier_key" ]
+  printf '{"schema":1,"member":"code-audit-frontend","findings":[{"finding_class":"holistic/swallowed-error","severity":"warning","area_tags":["app"],"path":"app/a.txt","line":1,"title":"t","failure_mode":"f","verified_by":"v","suggested_fix":"s"}]}\n' \
+    > "$repo/.gaia/local/audit/${earlier_key}.code-audit-frontend.findings.json"
+  [ "$earlier_base" = "${writer_key%%.*}" ] && return 1
 
   cat > "$repo/bin/gh" <<STUB
 #!/usr/bin/env bash
@@ -657,13 +672,15 @@ exit 0
 STUB
   chmod +x "$repo/bin/gh"
 
-  run bash -c 'cd "$1" && PATH="$1/bin:$PATH" bash .gaia/scripts/post-findings-block.sh --base "$2" --pr 42' \
-    _ "$repo" "$reader_base"
+  # No base reaches the reader: it takes none and resolves none.
+  run bash -c 'cd "$1" && PATH="$1/bin:$PATH" bash .gaia/scripts/post-findings-block.sh --pr 42' \
+    _ "$repo"
   [ "$status" -eq 0 ]
   grep -qF "findings: declined: no sidecars" <<<"$output" && return 1
-  grep -qF "from 1 member(s)" <<<"$output" || return 1
+  grep -qF "from 2 member(s)" <<<"$output" || return 1
   [ -f "$repo/posted_body.txt" ]
   grep -qF "shell/unquoted-expansion" "$repo/posted_body.txt" || return 1
+  grep -qF "holistic/swallowed-error" "$repo/posted_body.txt" || return 1
 }
 
 # ---------- probe 3: the self-skip deadlock ----------------------------------
@@ -825,21 +842,25 @@ probe_deadlock() {
   done
 }
 
-# ---------- the four non-agent callers still invoke the resolver argument-lessly ----
+# ---------- the non-agent callers still invoke the resolver argument-lessly ----
 #
-# UAT-015 enumerates nine resolver call sites; the five agent definitions are
-# the ones UAT-016 deliberately moves onto --member (proved above). These
-# four resolve the SHARED pull-request-wide base, which is what keys every
-# artifact and what the merge-time producer must agree with, so none of them
-# may grow a --member flag.
+# The five agent definitions are the ones UAT-016 deliberately moves onto
+# --member (proved above). The callers below resolve the SHARED
+# pull-request-wide base, which is what keys every artifact a round shares, so
+# none of them may grow a --member flag. No count is stated: the pathspec is
+# the roster, and a stated number rots the next time a caller joins or leaves.
+#
+# post-findings-block-on-merge.sh was one of these and no longer resolves a
+# base at all: the producer it calls selects its sidecars on the branch half
+# of the key alone (gaia-react/gaia#1573), so there is nothing left there for
+# a --member flag to narrow.
 
-@test "the four non-agent callers still invoke the resolver argument-lessly" {
+@test "the non-agent callers still invoke the resolver argument-lessly" {
   local out
   out="$(git -C "$REPO_ROOT" grep -n "resolve-audit-base.sh" -- \
     .github/workflows/code-review-audit.yml \
     .gaia/cli/templates/workflows/code-review-audit.yml.tmpl \
-    .gaia/cli/src/automation/templates/workflows/code-review-audit.yml.tmpl \
-    .claude/hooks/post-findings-block-on-merge.sh)"
+    .gaia/cli/src/automation/templates/workflows/code-review-audit.yml.tmpl)"
   [ -n "$out" ]
   grep -qF -- "--member" <<<"$out" && {
     printf 'a non-agent caller now passes --member, which resolves a per-member base rather than the shared key: %s\n' \

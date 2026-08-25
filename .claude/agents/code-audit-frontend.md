@@ -599,7 +599,7 @@ A base-keyed filename therefore survives HEAD moves with no HEAD-chaining logic.
 
 ### Path derivation (identical for every consumer)
 
-`BASE_REF`, `BASE_SHA`, `KEY_REF`, and `KEY_BASE` have exactly one derivation in this file, the scope-resolution block under "Rules-Based Audit" → "How to run". One fence produces all four, but they are deliberately two different bases doing two different jobs: `BASE_SHA` scopes what this member reads, per member, and can anchor on this member's own earned clearance; `KEY_BASE` keys what every dispatched member writes, shared across the whole set, because the artifact key combines the base with the branch and the consolidated findings block globs exactly one key. Members keyed to different bases would produce a block missing a whole member's findings with no error raised anywhere. The single-fence origin still guarantees the two values cannot drift out of step with what the fence itself resolved, even though they are not one value.
+`BASE_REF`, `BASE_SHA`, `KEY_REF`, and `KEY_BASE` have exactly one derivation in this file, the scope-resolution block under "Rules-Based Audit" → "How to run". One fence produces all four, but they are deliberately two different bases doing two different jobs: `BASE_SHA` scopes what this member reads, per member, and can anchor on this member's own earned clearance; `KEY_BASE` keys what every dispatched member writes, shared across the whole set, because the artifact key combines the base with the branch and the shared re-run ledger is one file per round. Members keyed to different bases would each read and write their own ledger, so a re-run one recorded would be invisible to the others with no error raised anywhere. The single-fence origin still guarantees the two values cannot drift out of step with what the fence itself resolved, even though they are not one value.
 
 **Re-run that block first, in this same Bash call.** Shell state does NOT persist between an agent's Bash calls, so `KEY_BASE` is unset in a fresh shell no matter how many earlier calls set it, and this snippet is not self-contained without it. Consuming an empty `KEY_BASE` fails quietly in two different ways: `gaia_audit_key ""` returns non-zero, so `AUDIT_KEY` empties and the ledger is skipped on its documented fail-open path, while `--base ""` is rejected outright by `audit-write-findings.sh` and the report of record never lands. Prepending the derivation is what every consumer below does, and it is why the derivation is the one thing in this file written to be re-run rather than referenced.
 
@@ -754,10 +754,10 @@ KEY_BASE="$(git -C "$AUDIT_ROOT" merge-base "${KEY_REF}" HEAD 2>/dev/null || tru
 # member, and can anchor on this member's own earned clearance. KEY_BASE
 # keys every artifact -- the findings sidecar, the re-run ledger, and the
 # ledger's freshness test -- from the SAME shared pull-request-wide base
-# every dispatched member resolves (line 3 of BASE_OUT), because the
-# consolidated findings block globs exactly one key and members keyed to
-# different bases would produce a block missing a whole member's findings
-# with no error raised anywhere. BASE_REASON and ANCHOR_TREE are the
+# every dispatched member resolves (line 3 of BASE_OUT), because the ledger
+# is one file per round and members keyed to different bases would each read
+# and write their own, hiding a sibling's recorded re-run with no error
+# raised anywhere. BASE_REASON and ANCHOR_TREE are the
 # decision record passed to the findings sidecar writer; neither scopes nor
 # keys anything.
 #

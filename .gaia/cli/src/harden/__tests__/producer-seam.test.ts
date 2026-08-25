@@ -116,8 +116,9 @@ const runProducer = (args: {
     // Pinned to "main" (an unborn HEAD already answers "main" to `git branch
     // --show-current`, so no commit is needed) so the sidecar name below is
     // deterministic rather than riding whatever `init.defaultBranch` the
-    // host has configured: the real producer keys the sidecar on base-sha +
-    // branch slug (gaia_audit_key, audit-key-lib.sh), not the bare base sha.
+    // host has configured. The branch half is the whole selector: the producer
+    // takes no base and globs every base this branch has written under, so
+    // `args.base` only names the file and never decides whether it is read.
     execFileSync('git', ['init', '-q', '--initial-branch=main'], {
       cwd: sandbox,
     });
@@ -148,7 +149,7 @@ const runProducer = (args: {
 
     const stdout = execFileSync(
       PRODUCER_SCRIPT,
-      ['--base', args.base, '--pr', String(args.prNumber)],
+      ['--pr', String(args.prNumber)],
       {
         cwd: sandbox,
         encoding: 'utf8',

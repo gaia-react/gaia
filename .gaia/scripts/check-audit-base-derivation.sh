@@ -5,13 +5,18 @@
 #
 # `gaia_audit_key` (.gaia/scripts/audit-key-lib.sh) is
 # `<base_sha>.<branch-slug>`, and co-dispatched members share a branch, so
-# the findings sidecars and the shared re-run ledger land under one key
-# exactly when the base shas agree. A member that derives its own base
-# writes under a key no reader globs: `post-findings-block.sh` finds the
-# other members' sidecars, silently misses that one, and posts a
-# consolidated block short a whole member's findings with no error anywhere.
-# That is the false-green shape this check exists to end -- nothing about it
-# is visible in a passing run.
+# the shared re-run ledger lands under one key exactly when the base shas
+# agree. A member that derives its own base writes and reads a ledger its
+# co-dispatched siblings never see, so a re-run one of them recorded is
+# invisible to the others with no error anywhere. That is the false-green
+# shape this check exists to end -- nothing about it is visible in a passing
+# run.
+#
+# The consolidated findings block is NOT one of the readers this protects.
+# `post-findings-block.sh` selects on the branch half alone, across every
+# base, because the shared base advances one stamp per cleared round
+# (gaia-react/gaia#1573), so a divergent base costs that reader nothing. The
+# ledger is what still binds co-dispatched members to one key, within a round.
 #
 # Executing the five real derivation snippets proves they agree TODAY. It
 # cannot stop tomorrow's edit from reintroducing a private derivation in a

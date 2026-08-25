@@ -31,9 +31,10 @@
 #   .github/audit/resolve-audit-base.sh [--member <name>]
 #
 #   The argument-less form is what every non-agent caller uses (the audit
-#   workflow, the workflow templates, the merge-time findings hook), and its
-#   resolution is unchanged on every input except the inverted degraded arm
-#   below. `--member <name>` is the per-member form; the Code Audit Team's
+#   workflow and the workflow templates), and its resolution is unchanged on
+#   every input except the inverted degraded arm below. The merge-time
+#   findings hook is not one of them and no longer calls this script at all:
+#   the block it posts selects its sidecars on the branch, across every base. `--member <name>` is the per-member form; the Code Audit Team's
 #   agent definitions are the only call sites that can name a member.
 #
 #   Reads .gaia/VERSION, HEAD's ancestry, commit trailers, the local audit
@@ -59,9 +60,12 @@
 #        on every path where no clearance anchored it
 #
 #   Line 3 comes from the same code path the argument-less form prints, so
-#   review-time and merge-time key agreement is structural rather than
-#   incidental: the merge-time findings producer calls the argument-less
-#   form and receives byte-identically what line 3 carries. Lines 1 and 3
+#   co-dispatched members agree on the key structurally rather than
+#   incidentally: each receives byte-identically what the argument-less form
+#   carries, which is what makes the shared re-run ledger one file per round.
+#   The findings block used to be the second beneficiary of that agreement and
+#   is no longer a beneficiary at all; the ledger is the whole reason line 3
+#   exists. Lines 1 and 3
 #   legitimately differ, e.g. when a merely-shared machinery path changed
 #   after the anchor: line 3 resets and line 1 does not. That divergence is
 #   what the two-base split is for.
@@ -90,9 +94,10 @@
 #   0 always, on every path, a usage error included. A non-zero exit does
 #   NOT degrade the callers uniformly to full scope: it degrades the agent
 #   call sites to an EMPTY review scope, because an empty base makes git
-#   resolve the diff's left side to HEAD and return nothing at status 0, and
-#   it makes the merge-time findings hook post nothing at all. Reviewing
-#   nothing is worse than reviewing everything. This script runs under
+#   resolve the diff's left side to HEAD and return nothing at status 0.
+#   Reviewing nothing is worse than reviewing everything. The merge-time
+#   findings hook is no longer among the degraded callers: it does not call
+#   this script, so a non-zero exit here costs it nothing and it still posts. This script runs under
 #   `set -euo pipefail`, so every library function is probed with
 #   `command -v` before it is called: an unguarded call into a library that
 #   did not load is a command-not-found, which is exactly that non-zero
