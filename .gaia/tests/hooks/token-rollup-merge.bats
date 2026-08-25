@@ -381,3 +381,146 @@ run_hook() {
 @test "the hook file is executable" {
   [ -x "$HOOK_ABS" ]
 }
+
+# ---------- library-load degradation (gaia-react/gaia#1556) ----------
+# Two ways a library goes unusable, and this hook must render nothing and exit
+# 0 through both: it is gone, and it is present but does not parse (an
+# unresolved merge conflict, a truncated write). Under `set -e` a failed `.`
+# abandons the shell ahead of the ERR trap in both cases; a file bash cannot
+# open exits 1, one it cannot parse exits 2.
+#
+# The loads sit on opposite sides of the arming gate and take different
+# repairs, so each gets its own case. gaia-active-plan.sh is past the gate and
+# parse-checks; verb-arming.sh runs on every Bash tool call and parse-checks
+# too, once the cost figure that argued for a cheaper arm failed to reproduce
+# (~3.1ms on 3.2.57, ~5.7ms on 5.3.15), so both halves of the unparseable case
+# are closed for both loads.
+
+# Overwrites <path> with an unresolved-merge-conflict body: the file opens and
+# reads fine, so an existence test passes it, and bash cannot parse it.
+write_conflicted_lib() {
+  { printf '<<<<<<< HEAD\n'; printf 'x() { :; }\n'; printf '=======\n'
+    printf 'y() { :; }\n'; printf '>>>>>>> other\n'; } > "$1"
+}
+
+# The verb-arming load resolves off the hook's own BASH_SOURCE, so corrupting
+# it needs a COPY of the hook staged inside the tmp repo. $HOOK_ABS would
+# always reach the real checkout's lib, where the case cannot be expressed.
+stage_hook_repo() {
+  build_repo
+  STAGED_HOOK="$REPO/.claude/hooks/token-rollup-merge.sh"
+  cp "$HOOK_ABS" "$STAGED_HOOK"
+  chmod +x "$STAGED_HOOK"
+}
+
+# run_staged_hook <command> [interpreter]
+run_staged_hook() {
+  local input interp="${2:-bash}"
+  input=$("$HELPERS/mock-hook-input.sh" post-tool-use S1 Bash "$1")
+  run bash -c 'printf %s "$1" | "$3" "$2"' _ "$input" "$STAGED_HOOK" "$interp"
+}
+
+# Scaffolds the staged repo with the plan folder + ledger rows every case below
+# shares, so the control has something real to render.
+stage_with_cycle() {
+  stage_hook_repo
+  cd "$REPO" || return 1
+  local branch plan_dir
+  branch="$(git branch --show-current)"
+  plan_dir="$REPO/.gaia/local/plans/my-plan"
+  write_readme_with_spec "$plan_dir" "/abs/root/.gaia/local/specs/SPEC-042/SPEC.md"
+  write_running "$plan_dir" "$branch" "2026-07-01T00:00:00Z"
+  write_record spec SPEC-042 sess-spec 100 "2026-06-01T00:00:00Z"
+  write_record plan SPEC-042 sess-plan 200 "2026-06-02T00:00:00Z"
+  write_record execute SPEC-042 sess-exec 300 "2026-06-03T00:00:00Z"
+}
+
+# The control that gives the two cases teeth: their assertions (exit 0, no
+# output) are equally satisfied by a hook that does nothing at all, so the same
+# staging has to be shown rendering normally first.
+@test "staged hook, every lib usable: renders the roll-up (control)" {
+  stage_with_cycle
+
+  run_staged_hook "gh pr merge 7 --squash"
+  [ "$status" -eq 0 ]
+  grep -qF -- "Cycle cost (SPEC-042)" <<<"$output"
+}
+
+# The stock-/bin/bash control, and it is not redundant with the control above.
+# Every pinned case in this suite asserts only exit 0, no output, and no
+# artifact, which a hook that does nothing at all under 3.2 satisfies just as
+# well as a hook that degrades correctly. Without a control on the SAME
+# interpreter proving the normal path still works there, the pinned cases
+# cannot separate the repair from total inertness on the one shell they exist
+# to exercise. Proved hollow before adding this: inserting an early
+# `BASH_VERSINFO -lt 4` exit into the hook left this suite entirely green.
+@test "staged hook under stock /bin/bash, every lib usable: renders the roll-up (control)" {
+  [ -x /bin/bash ] || skip "no /bin/bash"
+  stage_with_cycle
+
+  run_staged_hook "gh pr merge 7 --squash" /bin/bash
+  [ "$status" -eq 0 ]
+  grep -qF -- "Cycle cost (SPEC-042)" <<<"$output"
+}
+
+# Unpinned on purpose: the form this load replaced was a bare `.` inside an
+# `-f` test, carrying no arm at all, so it dies on bash 5 as well as 3.2 and
+# this case has teeth on Linux CI.
+#
+# The assertion is the LEDGER FALLBACK, not silence, and the difference is the
+# repair's whole point. An unusable plan-folder lib is the same situation as no
+# active plan folder, so the hook degrades one step sideways into the fallback
+# rather than out of the hook entirely; the control above proves the primary
+# path renders unlabeled from the same fixture, so the label is what separates
+# the two. Asserting silence here would have pinned a hook that loses the
+# roll-up whenever the lib is unusable, which is a worse contract than the one
+# this change is repairing.
+@test "gaia-active-plan.sh holds conflict markers: exit 0, renders via the ledger fallback" {
+  stage_with_cycle
+  write_conflicted_lib "$REPO/.claude/hooks/lib/gaia-active-plan.sh"
+
+  run_staged_hook "gh pr merge 7 --squash"
+  [ "$status" -eq 0 ]
+  grep -qF -- "no active plan folder was found" <<<"$output"
+}
+
+# The fallback's own lib, past the gate and parse-checked for the same reason.
+# With both libs unusable there is nothing left to key on, so the hook renders
+# nothing at all -- the silence the case above deliberately does not assert.
+@test "both gaia-active-plan.sh and ledger-path-lib.sh hold conflict markers: exit 0, renders nothing" {
+  stage_with_cycle
+  write_conflicted_lib "$REPO/.claude/hooks/lib/gaia-active-plan.sh"
+  write_conflicted_lib "$REPO/.gaia/scripts/ledger-path-lib.sh"
+
+  run_staged_hook "gh pr merge 7 --squash"
+  [ "$status" -eq 0 ]
+  grep -qF -- "cycle cost at merge" <<<"$output" && return 1
+  return 0
+}
+
+# The pre-gate verb-arming load parse-checks, so BOTH halves of the unparseable
+# case are closed and the pair below says so: unpinned for the bash 5 half, and
+# pinned to /bin/bash for the 3.2 half that the `{ . lib || true; }` arm this
+# load first carried would have left open. Both have teeth: the bare source the
+# arm replaced dies on bash 5, and the arm itself dies on 3.2, so each case reds
+# against the spelling it supersedes.
+@test "verb-arming.sh holds conflict markers: exit 0, renders nothing" {
+  stage_with_cycle
+  write_conflicted_lib "$REPO/.claude/hooks/lib/verb-arming.sh"
+
+  run_staged_hook "gh pr merge 7 --squash"
+  [ "$status" -eq 0 ]
+  grep -qF -- "Cycle cost" <<<"$output" && return 1
+  return 0
+}
+
+@test "verb-arming.sh holds conflict markers, under stock /bin/bash: exit 0, renders nothing" {
+  [ -x /bin/bash ] || skip "no /bin/bash"
+  stage_with_cycle
+  write_conflicted_lib "$REPO/.claude/hooks/lib/verb-arming.sh"
+
+  run_staged_hook "gh pr merge 7 --squash" /bin/bash
+  [ "$status" -eq 0 ]
+  grep -qF -- "Cycle cost" <<<"$output" && return 1
+  return 0
+}

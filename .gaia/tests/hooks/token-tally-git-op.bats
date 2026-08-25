@@ -680,16 +680,28 @@ stage_with_plan() {
   [ ! -f "$REPO/.gaia/local/telemetry/cost.jsonl" ]
 }
 
-# The pre-gate verb-arming load takes `|| true` rather than a parse check, so
-# only the bash-5 half of the unparseable case is closed. Unpinned on purpose:
-# the bare source it replaced dies on both shells, so this reds on Linux CI.
-# The 3.2 half stays open by decision, not by oversight, and no test here
-# asserts otherwise; the hook's own load comment names it.
+# The pre-gate verb-arming load parse-checks, so BOTH halves of the unparseable
+# case are closed and the pair below says so: unpinned for the bash 5 half, and
+# pinned to /bin/bash for the 3.2 half that the `{ . lib || true; }` arm this
+# load first carried would have left open. Both have teeth: the bare source the
+# arm replaced dies on bash 5, and the arm itself dies on 3.2, so each case reds
+# against the spelling it supersedes.
 @test "staged hook whose verb-arming.sh holds conflict markers: exit 0, no output, no record" {
   stage_with_plan
   write_conflicted_lib "$REPO/.claude/hooks/lib/verb-arming.sh"
 
   run_staged_hook "git commit -m x"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  [ ! -f "$REPO/.gaia/local/telemetry/cost.jsonl" ]
+}
+
+@test "staged hook whose verb-arming.sh holds conflict markers, under stock /bin/bash: exit 0, no output, no record" {
+  [ -x /bin/bash ] || skip "no /bin/bash"
+  stage_with_plan
+  write_conflicted_lib "$REPO/.claude/hooks/lib/verb-arming.sh"
+
+  run_staged_hook "git commit -m x" /bin/bash
   [ "$status" -eq 0 ]
   [ -z "$output" ]
   [ ! -f "$REPO/.gaia/local/telemetry/cost.jsonl" ]

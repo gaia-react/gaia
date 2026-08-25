@@ -787,3 +787,142 @@ make_other_repo() {
   run jq -e '.hooks.PreToolUse[] | select(.matcher == "Edit|Write|MultiEdit") | .hooks[] | select(.command == ".claude/hooks/block-worktree-path-mismatch.sh")' "$SETTINGS_ABS"
   [ "$status" -eq 0 ]
 }
+
+# --- library-load degradation (gaia-react/gaia#1556) ------------------------
+# These run a COPY of the hook staged inside the tmp repo, so the .gaia/scripts
+# it resolves off BASH_SOURCE is one the test controls. Running $HOOK_ABS would
+# always resolve the real checkout's libs, where neither the absent nor the
+# unparseable case can be expressed.
+#
+# Two ways a library goes unusable, and this fail-open guard must allow through
+# both: it is gone, and it is present but does not parse (an unresolved merge
+# conflict, a truncated write). Under `set -e` a failed `.` abandons the shell
+# in both cases, at different cost: a file bash cannot open exits 1, an
+# advisory that lets the edit through with a raw diagnostic on stderr, while
+# one it cannot parse exits 2, the PreToolUse deny code, which turns this
+# fail-open guard into one that blocks a legitimate edit.
+#
+# Both libraries get the pair, and state-registry-lib.sh is not the redundant
+# half: it never fails open on its own. gaia_registry_recognizes is consulted
+# from inside an `if` condition, so an undefined function reads as "no entry
+# recognizes this path" and routes the write to the unregistered DENY arm.
+#
+# The controls are what give the four cases teeth: their assertions (exit 0, no
+# deny) are equally satisfied by a hook that adjudicates nothing at all, so each
+# interpreter gets a control proving the same staging still DENIES.
+stage_hook_repo() {
+  make_repo
+  mkdir -p "$REPO/.claude/hooks" "$REPO/.gaia/scripts"
+  STAGED_HOOK="$REPO/.claude/hooks/block-worktree-path-mismatch.sh"
+  cp "$HOOK_ABS" "$STAGED_HOOK"
+  chmod +x "$STAGED_HOOK"
+  cp "${MAIN_ROOT_LIB%/*}/main-root-lib.sh" "${MAIN_ROOT_LIB%/*}/state-registry-lib.sh" \
+    "$REPO/.gaia/scripts/"
+  make_worktree "debt/lib-degrade" "debt/lib-degrade"
+}
+
+# run_staged_hook <path> <cwd> [interpreter]
+run_staged_hook() {
+  local json interp="${3:-bash}"
+  json=$(jq -n --arg p "$1" --arg c "$2" \
+    '{tool_name: "Edit", cwd: $c, tool_input: {file_path: $p}}')
+  run bash -c 'printf %s "$1" | "$3" "$2"' _ "$json" "$STAGED_HOOK" "$interp"
+}
+
+# Overwrites <path> with an unresolved-merge-conflict body: the file opens and
+# reads fine, so an existence test passes it, and bash cannot parse it.
+write_conflicted_lib() {
+  { printf '<<<<<<< HEAD\n'; printf 'x() { :; }\n'; printf '=======\n'
+    printf 'y() { :; }\n'; printf '>>>>>>> other\n'; } > "$1"
+}
+
+@test "staged hook, both libs usable: still denies the cross-tree write (control)" {
+  stage_hook_repo
+  run_staged_hook "$REPO/f" "$WT"
+  assert_denied_by_json
+}
+
+# The stock-/bin/bash control. Without it the /bin/bash-pinned cases below would
+# stay green if the staged hook stopped adjudicating entirely under 3.2.
+@test "staged hook under stock /bin/bash, both libs usable: still denies (control)" {
+  [ -x /bin/bash ] || skip "no /bin/bash"
+  stage_hook_repo
+  run_staged_hook "$REPO/f" "$WT" /bin/bash
+  assert_denied_by_json
+}
+
+# The four cases below are pinned to stock /bin/bash, and it is the pin rather
+# than the failure mode that decides. Both loads carried `|| exit 0` before this
+# change, and bash 5 reaches that arm for a missing file AND for an unparseable
+# one, so only 3.2 tells the parse check apart from the form it replaced.
+# Measured both ways on this machine: 3.2.57 exits 1 (missing) and 2
+# (unparseable) on the old form and 0 on the new, 5.3.15 exits 0 on both forms.
+# On a bash-5 /bin/bash (Linux CI) all four pass either way.
+@test "staged hook whose main-root-lib.sh is absent, under stock /bin/bash: fails open, silently" {
+  [ -x /bin/bash ] || skip "no /bin/bash"
+  stage_hook_repo
+  rm -f "$REPO/.gaia/scripts/main-root-lib.sh"
+
+  run_staged_hook "$REPO/f" "$WT" /bin/bash
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+# The registry reader loads at its point of use rather than beside the
+# resolver, so reaching it takes a write under .gaia/local naming a path the
+# registry does not recognize -- the arm that would otherwise DENY. A payload
+# aimed anywhere else never loads the lib at all, and a case written that way
+# would green against any spelling of this load, including no load whatsoever.
+stage_unregistered_local_target() {
+  UNREG_DIR="$REPO/.gaia/local/fixture-unregistered"
+  mkdir -p "$UNREG_DIR"
+}
+
+# The control for the pair below: with the reader usable, this exact path is
+# the DENY the fail-open cases must be shown flipping.
+@test "staged hook, registry usable: an unregistered .gaia/local write is denied (control)" {
+  stage_hook_repo
+  stage_unregistered_local_target
+  run_staged_hook "$UNREG_DIR/x" "$WT"
+  assert_denied_by_json
+}
+
+@test "staged hook under stock /bin/bash, registry usable: the same write is denied (control)" {
+  [ -x /bin/bash ] || skip "no /bin/bash"
+  stage_hook_repo
+  stage_unregistered_local_target
+  run_staged_hook "$UNREG_DIR/x" "$WT" /bin/bash
+  assert_denied_by_json
+}
+
+@test "staged hook whose state-registry-lib.sh is absent, under stock /bin/bash: fails open, silently" {
+  [ -x /bin/bash ] || skip "no /bin/bash"
+  stage_hook_repo
+  stage_unregistered_local_target
+  rm -f "$REPO/.gaia/scripts/state-registry-lib.sh"
+
+  run_staged_hook "$UNREG_DIR/x" "$WT" /bin/bash
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "staged hook whose main-root-lib.sh holds conflict markers, under stock /bin/bash: fails open, silently" {
+  [ -x /bin/bash ] || skip "no /bin/bash"
+  stage_hook_repo
+  write_conflicted_lib "$REPO/.gaia/scripts/main-root-lib.sh"
+
+  run_staged_hook "$REPO/f" "$WT" /bin/bash
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "staged hook whose state-registry-lib.sh holds conflict markers, under stock /bin/bash: fails open, silently" {
+  [ -x /bin/bash ] || skip "no /bin/bash"
+  stage_hook_repo
+  stage_unregistered_local_target
+  write_conflicted_lib "$REPO/.gaia/scripts/state-registry-lib.sh"
+
+  run_staged_hook "$UNREG_DIR/x" "$WT" /bin/bash
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}

@@ -21,8 +21,80 @@
 #   32KB past-bound ~1-3ms (bash 3.2, the slow host this budget is written for).
 #
 #   Eleven hooks, one tool call: a 200-character ordinary `git commit` totals
-#   ~200-230ms; a 16KB raw-matching `gh pr merge` (8 of 11 hooks pay the walk,
-#   3 raw-miss and skip it) totals ~300-345ms.
+#   ~265-285ms; a 16KB raw-matching `gh pr merge` (8 of 11 hooks pay the walk,
+#   3 raw-miss and skip it) totals ~320-365ms.
+#
+#   Both figures were re-measured when four hooks took a `bash -n` parse check
+#   on their pre-gate verb-arming load (gaia-react/gaia#1556). What that change
+#   costs is stated here as an ARITHMETIC BOUND, not as a subtracted delta.
+#   `bash -n` costs ~3.1ms on 3.2.57 and ~5.7ms on 5.3.15 over 200 forks, which
+#   is the one figure here that measures cleanly, so the bound for a row is
+#   that figure times the number of parse checks the row actually reaches.
+#
+#   Count the parse checks per row, not per hook, because #1556 also added
+#   checks PAST each hook's gate and an armed hook pays those on top of its
+#   pre-gate one. Traced with `bash -x` against these rows' own fixtures:
+#
+#     200B ordinary `git commit`: 6 forks. token-tally-git-op.sh arms and pays
+#       three (verb-arming, main-root-lib, gaia-active-plan); the other three
+#       parse-checked hooks are unarmed by a git verb and pay one each.
+#       Bound: ~+18.6ms on 3.2.57, ~+34.2ms on 5.3.15.
+#     16KB raw-matching heredoc: 4 forks. The fixture raw-matches but ends up
+#       UNARMED once the walker proves the body is data (the cat-HEREDOC note
+#       below), so every parse-checked hook pays its pre-gate check and nothing
+#       more. Bound: ~+12.4ms on 3.2.57, ~+22.8ms on 5.3.15.
+#
+#   Sizing a fifth parse-checked hook means asking which rows arm it, since an
+#   armed hook pays its post-gate checks on top. "None" is a valid answer, and
+#   it is this row's: where nothing arms, one fork per parse-checked hook is
+#   exactly the count.
+#
+#   Trace against the row's OWN fixture, not an approximation of it. A 16KB
+#   heredoc and a 32KB one answer differently: the walker takes the identity
+#   path once the text is longer than GAIA_VERB_ARM_MAX_CHARS (16,384
+#   characters; the guard is verb-arming-walk.sh:283, the first thing
+#   gaia_verb_arm_view does), so past it the body is never proven data and hooks
+#   that would otherwise stand down can arm. That is the past-bound 32KB row's
+#   whole subject, the last row of the size table above.
+#
+#   Not GAIA_VERB_ARM_SCAN_PREFIX, which an earlier draft of this paragraph
+#   named: that one is 2048 and caps only how much text pass 3 hands
+#   gaia_scan_first_command. Reading it as the walker's boundary puts the
+#   threshold 8x too low and makes the 8KB and 16KB rows look past it, which
+#   would contradict the 16KB bullet directly above.
+#
+#   The transition is a clean step, and identical on 3.2.57 and 5.3.15: 4 forks
+#   at 16,384 characters or fewer, 7 at 16,385 or more, matching the `-le` test
+#   the guard above names. It is uneven per hook rather than blurred, because
+#   the four arm on different verbs: across a `gh pr merge` boundary
+#   token-tally-git-op.sh and capture-gh-artifact.sh stay at their pre-gate
+#   check, post-findings-block-on-merge.sh goes 1 -> 2, and token-rollup-merge.sh
+#   goes 1 -> 3.
+#
+#   An off-by-one sits between a requested size and the length the walker
+#   measures, and a sweep that misses it reads the boundary in the wrong
+#   place. `build_armed_payload N` returns N-1 characters, because the `$(...)`
+#   capturing it strips the closer's trailing newline. A second strip is
+#   available but not live here: each hook's own `cmd=$(jq -r ...)` takes a
+#   trailing newline off a payload that carries one, and this fixture's went to
+#   the `$(...)` above, so subtracting it too lands on 16,382 and places the
+#   boundary one character low. The table's "16KB" row is really a
+#   16,383-character fixture, and a sweep indexed by the JSON string's length
+#   finds the step one higher than it is -- an earlier draft of this paragraph
+#   reported "no clean step" from a sweep carrying that error.
+#
+#   The end-to-end delta is deliberately NOT quoted, because it could not be
+#   measured on this machine. A/B-ing base against HEAD copies of one hook at a
+#   time in the same tree, 40 iterations each, returned deltas from -3.3ms to
+#   +4.9ms with inconsistent sign: the effect sits under this harness's own
+#   run-to-run spread, so any single subtraction of two of these ranges reports
+#   noise with a plausible magnitude. Size a fifth parse-checked hook off the
+#   per-fork figure times the hooks that pay it, never off a difference of two
+#   totals measured here.
+#
+#   Separately, the ~200-230ms this row used to state was already exceeded by
+#   the base before the parse checks landed, so most of that gap is prior drift
+#   rather than this change.
 #
 # The audit's own two reference points (plan-time directive, PERF-007): about
 # 0.06s span-skipping against about 1.01s byte-walking, PER HOOK, at 16KB on
@@ -294,15 +366,17 @@ CEILING_ONE_HOOK_RAWMATCH_MS=300
 CEILING_ONE_HOOK_NONMATCH_MS=150
 
 # Eleven hooks, one 200-character ordinary `git commit` tool call. Measured
-# ~220ms. Headroom: 1000/220 ~= 4.5x. Margin below eleven hooks each paying
+# ~265-285ms. Headroom: 1000/285 ~= 3.5x. Margin below eleven hooks each paying
 # the 1010ms byte-walk figure (the "walk gets paid unconditionally" failure
-# this also guards against): 11110/1000 ~= 11.1x.
+# this also guards against): 11110/1000 ~= 11.1x. The ceiling itself is
+# unchanged: it is set against the 1010ms byte-walk reference rather than
+# against this machine's number, so re-measuring the number does not move it.
 CEILING_ELEVEN_ORDINARY_MS=1000
 
 # Eleven hooks, one 16KB raw-matching `gh pr merge` tool call (8 of 11 pay
-# the walk; 3 raw-miss and skip it). Measured ~300-345ms. Headroom:
-# 2000/345 ~= 5.8x. Margin below 8 hooks each byte-walking at 1010ms:
-# 8080/2000 ~= 4.0x.
+# the walk; 3 raw-miss and skip it). Measured ~320-365ms. Headroom:
+# 2000/365 ~= 5.5x. Margin below 8 hooks each byte-walking at 1010ms:
+# 8080/2000 ~= 4.0x. Ceiling unchanged, for the reason the ordinary one gives.
 CEILING_ELEVEN_RAWMATCH_MS=2000
 
 # Past-bound (32KB), one hook (token-tally-git-op.sh), armed for real: the

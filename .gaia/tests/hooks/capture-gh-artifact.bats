@@ -325,3 +325,130 @@ any_breadcrumb_exists() {
 @test "the hook file is executable" {
   [ -x "$HOOK_ABS" ]
 }
+
+# ---------- library-load degradation (gaia-react/gaia#1556) ----------
+# Two ways a library goes unusable, and this hook's header contract ("degrade
+# silently, never write to stdout, always exit 0") must hold through both: it
+# is gone, and it is present but does not parse (an unresolved merge conflict,
+# a truncated write). Under `set -e` a failed `.` abandons the shell ahead of
+# the ERR trap in both cases, at different cost: a file bash cannot open exits
+# 1, and one it cannot parse exits 2.
+#
+# The two loads sit on opposite sides of the arming gate and take different
+# repairs, so each gets its own case. gh-artifact-lib.sh is past the gate and
+# parse-checks; verb-arming.sh runs on every Bash tool call and parse-checks
+# too, once the cost figure that argued for a cheaper arm failed to reproduce
+# (~3.1ms on 3.2.57, ~5.7ms on 5.3.15), so both halves of the unparseable case
+# are closed for both loads.
+
+# Overwrites <path> with an unresolved-merge-conflict body: the file opens and
+# reads fine, so an existence test passes it, and bash cannot parse it.
+write_conflicted_lib() {
+  { printf '<<<<<<< HEAD\n'; printf 'x() { :; }\n'; printf '=======\n'
+    printf 'y() { :; }\n'; printf '>>>>>>> other\n'; } > "$1"
+}
+
+# The verb-arming load resolves off the hook's own BASH_SOURCE, so corrupting
+# it needs a COPY of the hook staged inside the tmp repo. $HOOK_ABS would
+# always reach the real checkout's lib, where the case cannot be expressed.
+stage_hook_repo() {
+  build_repo
+  mkdir -p "$REPO/.claude/hooks/lib"
+  cp "$REPO_ROOT/.claude/hooks/lib/verb-arming.sh" "$REPO/.claude/hooks/lib/"
+  cp "$REPO_ROOT/.claude/hooks/lib/verb-arming-walk.sh" "$REPO/.claude/hooks/lib/"
+  cp "$REPO_ROOT/.claude/hooks/lib/repo-scope.sh" "$REPO/.claude/hooks/lib/"
+  STAGED_HOOK="$REPO/.claude/hooks/capture-gh-artifact.sh"
+  cp "$HOOK_ABS" "$STAGED_HOOK"
+  chmod +x "$STAGED_HOOK"
+}
+
+# run_staged_hook <command> <stdout> [interpreter]
+run_staged_hook() {
+  local input interp="${3:-bash}"
+  input=$("$HELPERS/mock-hook-input.sh" post-tool-use S1 Bash "$1" "$2")
+  run bash -c 'printf %s "$1" | "$3" "$2"' _ "$input" "$STAGED_HOOK" "$interp"
+}
+
+# The control that gives the staged cases teeth: their assertions (exit 0, no
+# output, no breadcrumb) are equally satisfied by a hook that does nothing at
+# all, so the same staging has to be shown recording normally first.
+@test "staged hook, every lib usable: writes the breadcrumb (control)" {
+  stage_hook_repo
+  cd "$REPO"
+  git checkout -b feat/staged --quiet
+
+  run_staged_hook "gh pr create --title x --body y" "https://github.com/gaia-react/gaia/pull/900"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  [ "$(jq -r '.number' "$(breadcrumb_path "feat/staged")")" = "900" ]
+}
+
+# The stock-/bin/bash control, and it is not redundant with the control above.
+# Every pinned case in this suite asserts only exit 0, no output, and no
+# artifact, which a hook that does nothing at all under 3.2 satisfies just as
+# well as a hook that degrades correctly. Without a control on the SAME
+# interpreter proving the normal path still works there, the pinned cases
+# cannot separate the repair from total inertness on the one shell they exist
+# to exercise. Proved hollow before adding this: inserting an early
+# `BASH_VERSINFO -lt 4` exit into the hook left this suite entirely green.
+@test "staged hook under stock /bin/bash, every lib usable: writes the breadcrumb (control)" {
+  [ -x /bin/bash ] || skip "no /bin/bash"
+  stage_hook_repo
+  cd "$REPO"
+  git checkout -b feat/staged32 --quiet
+
+  run_staged_hook "gh pr create --title x --body y" "https://github.com/gaia-react/gaia/pull/904" /bin/bash
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  [ "$(jq -r '.number' "$(breadcrumb_path "feat/staged32")")" = "904" ]
+}
+
+# Pinned to stock /bin/bash: the form this load replaced carried `|| exit 0`,
+# which bash 5 reaches on an unparseable lib, so only 3.2 tells the parse check
+# apart from it. On a bash-5 /bin/bash (Linux CI) this passes either way.
+@test "gh-artifact-lib.sh holds conflict markers, under stock /bin/bash: exit 0, no output, no breadcrumb" {
+  [ -x /bin/bash ] || skip "no /bin/bash"
+  stage_hook_repo
+  cd "$REPO"
+  git checkout -b feat/conflicted --quiet
+  write_conflicted_lib "$REPO/.gaia/scripts/gh-artifact-lib.sh"
+
+  run_staged_hook "gh pr create --title x --body y" "https://github.com/gaia-react/gaia/pull/901" /bin/bash
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  [ -f "$(breadcrumb_path "feat/conflicted")" ] && return 1
+  return 0
+}
+
+# The pre-gate verb-arming load parse-checks, so BOTH halves of the unparseable
+# case are closed and the pair below says so: unpinned for the bash 5 half, and
+# pinned to /bin/bash for the 3.2 half that the `{ . lib || true; }` arm this
+# load first carried would have left open. Both have teeth: the bare source the
+# arm replaced dies on bash 5, and the arm itself dies on 3.2, so each case reds
+# against the spelling it supersedes.
+@test "verb-arming.sh holds conflict markers: exit 0, no output, no breadcrumb" {
+  stage_hook_repo
+  cd "$REPO"
+  git checkout -b feat/va-conflicted --quiet
+  write_conflicted_lib "$REPO/.claude/hooks/lib/verb-arming.sh"
+
+  run_staged_hook "gh pr create --title x --body y" "https://github.com/gaia-react/gaia/pull/902"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  [ -f "$(breadcrumb_path "feat/va-conflicted")" ] && return 1
+  return 0
+}
+
+@test "verb-arming.sh holds conflict markers, under stock /bin/bash: exit 0, no output, no breadcrumb" {
+  [ -x /bin/bash ] || skip "no /bin/bash"
+  stage_hook_repo
+  cd "$REPO"
+  git checkout -b feat/va-conflicted32 --quiet
+  write_conflicted_lib "$REPO/.claude/hooks/lib/verb-arming.sh"
+
+  run_staged_hook "gh pr create --title x --body y" "https://github.com/gaia-react/gaia/pull/903" /bin/bash
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  [ -f "$(breadcrumb_path "feat/va-conflicted32")" ] && return 1
+  return 0
+}

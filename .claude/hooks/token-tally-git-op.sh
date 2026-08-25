@@ -32,7 +32,7 @@ cmd=$(jq -r '.tool_input.command // ""' <<<"$payload")
 # quoted verb inside prose still arms; fail-closed, no safe narrowing.
 _va_lib="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)"
 # shellcheck source=/dev/null
-[ -n "${_va_lib:-}" ] && [ -f "$_va_lib/verb-arming.sh" ] && { . "$_va_lib/verb-arming.sh" 2>/dev/null || true; }
+[ -n "${_va_lib:-}" ] && "${BASH:-bash}" -n "$_va_lib/verb-arming.sh" 2>/dev/null && . "$_va_lib/verb-arming.sh" 2>/dev/null || true
 type gaia_verb_armed >/dev/null 2>&1 || exit 0
 
 frag='git([[:space:]]+-C[[:space:]]+[^[:space:]]+)?[[:space:]]+(commit|push)([[:space:]]|$)'
@@ -72,17 +72,38 @@ fi
 # plan-folder lib, and for the resolver the `|| exit 0` the cheap gate's
 # gaia_resolve_main_root call already carries.
 #
-# The verb-arming load above runs before the gate, on every Bash tool call, and
-# a parse check there measures ~13ms of fork against a ~16-21ms hook process.
-# It takes the free half instead, `|| true`, and the honest limit is stated
-# rather than implied: an unparseable verb-arming.sh still denies on a stock
-# bash 3.2, where the same file missing or unparseable degrades cleanly
-# everywhere else. The bound covers two files, not one. verb-arming.sh itself
-# lazily sources verb-arming-walk.sh on a raw match, inside _gaia_va_view, behind
-# an `-f` test but no parse check and no arm, so an unparseable walk lib denies
-# on 3.2 identically; that load is not here, so this hook cannot guard it. Both
-# sites, and the sibling hooks that load verb-arming.sh the same way, are
-# gaia-react/gaia#1556.
+# The verb-arming load above runs before the gate, on every Bash tool call, so
+# whatever guards it is paid on every call. It parse-checks anyway. The figure
+# that once argued against that here, ~13ms of fork, did not survive
+# re-measurement: on this machine `bash -n` on the real verb-arming.sh costs
+# ~3.1ms on bash 3.2.57 and ~5.7ms on 5.3.15, over 200 forks, against a
+# ~16-21ms hook process. A surcharge, not the doubling the old number implied,
+# and cheap enough that the `|| true` arm this load used to carry is not worth
+# its two costs: it closed the bash 5 half only, leaving an unparseable
+# verb-arming.sh abandoning the shell on a stock 3.2, and it suppressed the
+# syntax error that would name the broken file.
+#
+# The three errexit sibling hooks that load verb-arming.sh the same way carry
+# the same check for the same measured reason (capture-gh-artifact.sh,
+# post-findings-block-on-merge.sh, token-rollup-merge.sh).
+#
+# What the check does not reach, and the bound therefore covers TWO files
+# beyond this one rather than one, because `bash -n` does not recurse into a
+# sourced file: verb-arming.sh lazily sources TWO libs of its own, each behind
+# an `-f` test with no parse check, and an unparseable copy of either still
+# abandons a stock 3.2 shell at exit 2.
+#
+#   verb-arming-walk.sh, inside _gaia_va_view, needs a raw verb match.
+#   repo-scope.sh, inside _gaia_va_first_command, needs only the lead-word
+#   pre-filter, so it fires on any command sharing the verb's FIRST WORD.
+#
+# The second is much the wider of the two and the one to close first: measured
+# on staged copies with repo-scope.sh holding conflict markers, a plain
+# `git status` exits 2 on /bin/bash 3.2.57 and 0 on 5.3.15. Both loads live
+# inside verb-arming.sh, so no consumer hook can guard either from out here.
+# Tracked as its own issue rather than this one, because gaia-react/gaia#1556
+# closes when this change merges and a pointer needs a live destination:
+# gaia-react/gaia#1564.
 gaia_scripts="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd)" || exit 0
 gaia_scripts="$gaia_scripts/.gaia/scripts"
 # shellcheck source=/dev/null

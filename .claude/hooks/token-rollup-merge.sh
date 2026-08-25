@@ -19,9 +19,42 @@ cmd=$(jq -r '.tool_input.command // ""' <<<"$payload")
 
 # Shared arming decision; see .claude/hooks/lib/verb-arming.sh. A quoted verb
 # inside prose still arms here, fail-closed, with no safe narrowing.
+#
+# This load runs before the arming gate, on every Bash tool call, so whatever
+# guards it is paid on every call. Measured on this machine rather than assumed:
+# `bash -n` on the real verb-arming.sh costs ~3.1ms on bash 3.2.57 and ~5.7ms
+# on 5.3.15, over 200 forks, against a ~16-21ms hook process. A surcharge, not
+# a doubling, and worth paying. That per-fork figure is the one to size a fifth
+# parse-checked hook off: no end-to-end per-hook delta is quoted here because
+# it could not be measured on this machine, and the header of
+# verb-arming-cost.bats records why.
+#
+# The cheaper `{ . lib || true; }` arm was the first spelling here and is not
+# enough. It closes the bash 5 half only: under `set -e` an unparseable
+# verb-arming.sh still abandons the shell ahead of the arm on a stock 3.2 at
+# exit 2, and it suppresses the syntax error that would name the broken file,
+# so what survives is a denial with no stated reason. The parse check removes
+# both, which is why the cost above is spent here.
+#
+# What the check does not reach, because `bash -n` does not recurse into a
+# sourced file: verb-arming.sh lazily sources TWO libs of its own, each behind
+# an `-f` test with no parse check, and an unparseable copy of either still
+# abandons a stock 3.2 shell at exit 2.
+#
+#   verb-arming-walk.sh, inside _gaia_va_view, needs a raw verb match.
+#   repo-scope.sh, inside _gaia_va_first_command, needs only the lead-word
+#   pre-filter, so it fires on any command sharing the verb's FIRST WORD.
+#
+# The second is much the wider of the two and the one to close first: measured
+# on staged copies with repo-scope.sh holding conflict markers, a plain
+# `git status` exits 2 on /bin/bash 3.2.57 and 0 on 5.3.15. Both loads live
+# inside verb-arming.sh, so no consumer hook can guard either from out here.
+# Tracked as its own issue rather than this one, because gaia-react/gaia#1556
+# closes when this change merges and a pointer needs a live destination:
+# gaia-react/gaia#1564.
 _va_lib="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)"
 # shellcheck source=/dev/null
-[ -n "${_va_lib:-}" ] && [ -f "$_va_lib/verb-arming.sh" ] && . "$_va_lib/verb-arming.sh"
+[ -n "${_va_lib:-}" ] && "${BASH:-bash}" -n "$_va_lib/verb-arming.sh" 2>/dev/null && . "$_va_lib/verb-arming.sh" 2>/dev/null || true
 type gaia_verb_armed >/dev/null 2>&1 || exit 0
 
 frag='gh[[:space:]]+pr[[:space:]]+merge([[:space:]]|$)'
@@ -39,11 +72,21 @@ fallback=0
 # Present at merge time because the plan's self-cleanup runs only after the
 # merge is confirmed, so this resolves correctly for the normal in-session
 # merge.
-if [ -f .claude/hooks/lib/gaia-active-plan.sh ]; then
-  . .claude/hooks/lib/gaia-active-plan.sh
-  plan_dir="$(resolve_active_plan_dir)" || true
-  if [ -n "$plan_dir" ]; then
-    feature_key="$(resolve_feature_key "$plan_dir")" || true
+# Past the arming gate, so the load parse-checks rather than resting on the
+# `-f` test: an existence test proves the file opens, not that it parses, and
+# under `set -e` an unparseable lib abandons the shell at exit 2 with the ERR
+# trap never reached. `bash -n` subsumes the existence test; the `type` check
+# is what degrades when the lib never defined its functions.
+if "${BASH:-bash}" -n .claude/hooks/lib/gaia-active-plan.sh 2>/dev/null; then
+  . .claude/hooks/lib/gaia-active-plan.sh 2>/dev/null || true
+  # Degrades INTO the fallback below rather than out of the hook: a lib that
+  # never defined its functions is the same situation as no active plan folder,
+  # and the ledger path can still answer.
+  if type resolve_active_plan_dir >/dev/null 2>&1; then
+    plan_dir="$(resolve_active_plan_dir)" || true
+    if [ -n "$plan_dir" ]; then
+      feature_key="$(resolve_feature_key "$plan_dir")" || true
+    fi
   fi
 fi
 
@@ -54,9 +97,13 @@ fi
 # is not guaranteed to be the merging feature (an interleaved prior feature's
 # execute row could be newer), so it is labeled at render time.
 if [ -z "$feature_key" ]; then
-  if [ -f .gaia/scripts/ledger-path-lib.sh ]; then
-    . .gaia/scripts/ledger-path-lib.sh
-    ledger="$(gaia_resolve_ledger_path 2>/dev/null || true)"
+  # Parse-checked for the same reason the plan-folder load above is.
+  if "${BASH:-bash}" -n .gaia/scripts/ledger-path-lib.sh 2>/dev/null; then
+    . .gaia/scripts/ledger-path-lib.sh 2>/dev/null || true
+    ledger=""
+    if type gaia_resolve_ledger_path >/dev/null 2>&1; then
+      ledger="$(gaia_resolve_ledger_path 2>/dev/null || true)"
+    fi
     if [ -n "$ledger" ] && [ -f "$ledger" ]; then
       feature_key=$(jq -R -s -r '
         split("\n") | map(select(length > 0))
