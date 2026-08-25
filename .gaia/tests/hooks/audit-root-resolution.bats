@@ -89,11 +89,25 @@
 # Indentation is not the only way to spell a roster, and this scan reads exactly
 # one spelling: an indented `- name: X`. An expanded block entry, a flow mapping
 # (`- {name: x}`), a quoted key, or `globs:` written before `name:` are each
-# valid YAML this scan reads short. That is contained rather than guarded here:
-# `.claude/hooks/lib/audit-scope.sh:302` pins the same spelling, so a roster
-# written any of those ways fails `.gaia/scripts/verify-audit-roster.sh`, which
-# CI runs (`.github/workflows/audit-roster.yml`). Widening this scan without
-# widening that parser would buy nothing and split the two answers apart.
+# valid YAML this scan would otherwise read short. Deliberately NOT widened to
+# accept them: `.claude/hooks/lib/audit-scope.sh:302` pins the same spelling, so
+# a scan that accepted more would answer differently from the parser the rest of
+# the machinery uses, which is worse than agreeing with it.
+#
+# What that leaves is counted instead of assumed. The block's member entries are
+# its shallowest `-` lines (a `globs:` item is indented deeper), so an entry that
+# yields no name is an entry this scan cannot read, and the scan fails rather
+# than returning the short list. Without that count the dangerous case is ONE
+# off-spelled member: the list comes back shorter but non-empty, the caller's
+# non-empty guard stays satisfied, and the suite drives a subset while its test
+# names still say "every definition" -- the silent drop this helper exists to
+# remove, reintroduced one level up.
+#
+# The count is what guards it, not CI. `.gaia/scripts/verify-audit-roster.sh`
+# does red on every one of those spellings, but its workflow is advisory by
+# design and deliberately not a required check
+# (`.github/workflows/audit-roster.yml`), so it is a visible red rather than a
+# merge block and cannot be leaned on here.
 #
 # `.claude/hooks/lib/audit-scope.sh`'s _audit_scope_parse_auditors parses the
 # same block canonically and is deliberately NOT reused here: it emits a record
@@ -106,7 +120,23 @@ roster_members() {
     /^[[:space:]]*$/ { next }
     /^auditors[[:space:]]*:/ { in_block = 1; next }
     /^[^[:space:]]/ { in_block = 0; next }
-    in_block && $1 == "-" && $2 == "name:" { print $3 }
+    !in_block { next }
+    /^[[:space:]]+-([[:space:]]|$)/ {
+      match($0, /^[[:space:]]+/)
+      indent = RLENGTH
+      if (entry_indent == 0) entry_indent = indent
+      if (indent != entry_indent) next
+      entries++
+      if ($2 == "name:") names[++n] = $3
+      next
+    }
+    END {
+      if (entries != n) {
+        printf "roster_members: %s has %d auditors entr(ies) but %d readable `- name: X`; an entry this scan cannot read would silently shrink the roster\n", FILENAME, entries, n > "/dev/stderr"
+        exit 1
+      }
+      for (i = 1; i <= n; i++) print names[i]
+    }
   ' "$1"
 }
 
@@ -155,12 +185,19 @@ setup() {
   # the array does not grow, the loops silently skip the newcomer, and the
   # names keep saying "every" with nothing red. Deliberately no count here or
   # in any name below, for the same reason.
-  local m
+  local m roster_out
+  # Captured rather than piped into the loop: a process substitution discards
+  # roster_members' exit status, which is the whole signal when an entry is
+  # spelled in a way the scan cannot read.
+  roster_out="$(roster_members "$REPO_ROOT/.gaia/audit-ci.yml")" || {
+    echo "roster_members could not read .gaia/audit-ci.yml's auditors block; see its message above" >&2
+    return 1
+  }
   ALL_MEMBERS=()
   while IFS= read -r m; do
     [ -n "$m" ] || continue
     ALL_MEMBERS+=("$m")
-  done < <(roster_members "$REPO_ROOT/.gaia/audit-ci.yml")
+  done <<<"$roster_out"
   [ "${#ALL_MEMBERS[@]}" -gt 0 ] || {
     echo "no auditors read out of .gaia/audit-ci.yml; every member loop below would run over an empty set. Either the auditors: block is empty, or its entries are not indented under it (roster_members reads only indented entries; see its header)" >&2
     return 1
