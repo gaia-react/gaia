@@ -78,13 +78,22 @@
 #
 # The column-0 rule is a claim about THIS file, not about YAML. A block sequence
 # may legally sit at its parent key's own indentation, so a roster written with
-# `- name:` in column 0 is valid YAML that this scan reads as zero members. That
-# direction is safe: the caller's non-empty guard turns it into a red, and a
-# roster MIXING the two indentations, the one shape that could drop a member
-# while the guard stays satisfied, is not valid YAML at all, so no valid roster
-# can lose a member here. The guard's message names both causes, because the
-# scan cannot tell them apart and a reader staring at a populated audit-ci.yml
-# needs the second one to make sense of the red.
+# `- name:` in column 0 is valid YAML that this scan reads as zero members. The
+# caller's non-empty guard turns that into a red, and its message names both
+# causes, because the scan cannot tell them apart and a reader staring at a
+# populated audit-ci.yml needs the second one to make sense of it. Measured, not
+# reasoned: a roster MIXING the two indentations is not valid YAML in either
+# direction, so no INDENTATION choice can lose a member here while the guard
+# stays satisfied.
+#
+# Indentation is not the only way to spell a roster, and this scan reads exactly
+# one spelling: an indented `- name: X`. An expanded block entry, a flow mapping
+# (`- {name: x}`), a quoted key, or `globs:` written before `name:` are each
+# valid YAML this scan reads short. That is contained rather than guarded here:
+# `.claude/hooks/lib/audit-scope.sh:302` pins the same spelling, so a roster
+# written any of those ways fails `.gaia/scripts/verify-audit-roster.sh`, which
+# CI runs (`.github/workflows/audit-roster.yml`). Widening this scan without
+# widening that parser would buy nothing and split the two answers apart.
 #
 # `.claude/hooks/lib/audit-scope.sh`'s _audit_scope_parse_auditors parses the
 # same block canonically and is deliberately NOT reused here: it emits a record
