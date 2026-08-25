@@ -460,11 +460,15 @@ curl -sS https://example.com/x'
 }
 
 @test "a lone dot after if that is jq's identity filter is not a source" {
-  # The negative the `if` arm needs, and the reason _GAIA_CAPCHECK_DOTCMD keeps
-  # a keyword list at all instead of accepting a `.` behind any whitespace:
-  # `if . == null then` is a jq program, and its `.` is the identity filter with
-  # an operand that is not a path. The operand shape is what rejects it, so this
-  # fails the moment the token filter is widened rather than the anchor.
+  # `if . == null then` is a jq program, and its `.` is the identity filter
+  # rather than the source builtin. What rejects it is the word blanking in
+  # _gaia_capcheck_strip_quoted_code: a lone `.` is one of
+  # _GAIA_CAPCHECK_QUOTED_WORDS, so the span arrives as
+  # `jq -r "if == null then 1 else 2 end"` and the `\.` this anchor requires has
+  # nothing to match. That blanking is exactly what makes naming `if` here
+  # affordable while naming it on the path anchor is not, so this pins the
+  # premise the departure above rests on, not the operand filter downstream of
+  # it.
   repo="$(make_fixture_repo dotkwjq)"
   add_script "$repo" a/s.sh '#!/usr/bin/env bash
 jq -r "if . == null then 1 else 2 end" /dev/null'
@@ -477,43 +481,53 @@ jq -r "if . == null then 1 else 2 end" /dev/null'
   true
 }
 
-@test "a bare-path run in the condition of an if, while, or until is a call" {
-  repo="$(make_fixture_repo barekwif)"
+@test "a bare path in an if condition is deliberately NOT a call, unlike a source there" {
+  # The third named departure between the two anchors, pinned because it is a
+  # deliberate under-read and a reader will otherwise repair it as an oversight.
+  # `.` and a bare path are treated differently on purpose: a lone `.` is a
+  # QUOTED_WORD, so prose naming it is blanked before any anchor runs, while
+  # nothing blanks a repo path. Naming `if` on the path anchor would therefore
+  # expose every message string carrying ` if <path>.sh `, and measured on the
+  # real tree it buys no reach at all, because no shape here runs a bare path
+  # out of a condition. The paired positive is the source form in the test
+  # above, which IS detected.
+  #
+  # The `if` is INDENTED on purpose. Every keyword arm requires the keyword at
+  # a line start or behind whitespace, so a fixture with `if` in column 0 would
+  # stay green under the one mutation this test exists to catch, naming `if` on
+  # the path anchor behind whitespace, and would assert nothing.
+  repo="$(make_fixture_repo barekwdeparture)"
   add_script "$repo" a/s.sh '#!/usr/bin/env bash
-if .github/audit/base.sh; then true; fi'
+f() {
+  if .github/audit/base.sh; then true; fi
+}
+f'
   add_script "$repo" .github/audit/base.sh '#!/usr/bin/env bash
 curl -sS https://example.com/x'
   write_allow "$repo" "Bash(bash a/s.sh:*)"
   write_manifest "$repo" '[{"script":"a/s.sh","capabilities":[],
     "why":"runs the base resolver from a condition","maintainer_only":false}]'
   run bash "$CHECK" "$repo"
-  [ "$status" -eq 1 ]
-  grep -qF -- "UNDECLARED a/s.sh invokes:.github/audit/base.sh" <<<"$output"
-  grep -qF -- "UNDECLARED a/s.sh network" <<<"$output"
-
-  repo="$(make_fixture_repo barekwuntil)"
-  add_script "$repo" a/s.sh '#!/usr/bin/env bash
-until .github/audit/base.sh; do break; done'
-  add_script "$repo" .github/audit/base.sh '#!/usr/bin/env bash
-curl -sS https://example.com/x'
-  write_allow "$repo" "Bash(bash a/s.sh:*)"
-  write_manifest "$repo" '[{"script":"a/s.sh","capabilities":[],
-    "why":"runs the base resolver from a condition","maintainer_only":false}]'
-  run bash "$CHECK" "$repo"
-  [ "$status" -eq 1 ]
-  grep -qF -- "UNDECLARED a/s.sh invokes:.github/audit/base.sh" <<<"$output"
+  [ "$status" -eq 0 ]
+  grep -qE '^(UNDECLARED|SURPLUS|UNRESOLVED)' <<<"$output" && return 1
+  true
 }
 
 @test "a script path after if inside a message is prose, not a call" {
-  # The negative the bare-path `if` arm needs. `if <path> is missing` is
-  # ordinary English, which none of `then`, `else`, `do`, `elif` or `!` are, so
-  # the keyword that reads most like prose is the one whose blanking has to be
-  # pinned. What keeps this quiet is _gaia_capcheck_strip_quoted_code, not the
-  # anchor: the anchor matches, and the span is already blank by the time it
-  # runs.
+  # What the departure above buys, stated as the shape it protects. The keyword
+  # sits MID-SENTENCE here, behind a space, which is the position the anchor
+  # would actually match; putting `if` immediately after the opening quote
+  # instead would make this test pass on the anchor missing the line entirely
+  # and assert nothing about prose.
+  #
+  # Nothing blanks this span. _gaia_capcheck_strip_quoted_code blanks command
+  # words and `>`, never a repo path, so the line reaches the detector intact
+  # and the anchor is the only thing standing between it and a fabricated edge
+  # into the target's whole subtree. Name `if` on _GAIA_CAPCHECK_PATHCMD and
+  # this fixture reports UNDECLARED for both the edge and the target's network.
   repo="$(make_fixture_repo barekwprose)"
   add_script "$repo" a/s.sh '#!/usr/bin/env bash
-printf "%s\n" "if .github/audit/base.sh is missing, stop"'
+printf "%s\n" "stop if .github/audit/base.sh is missing"'
   add_script "$repo" .github/audit/base.sh '#!/usr/bin/env bash
 curl -sS https://example.com/x'
   write_allow "$repo" "Bash(bash a/s.sh:*)"

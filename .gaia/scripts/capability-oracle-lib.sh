@@ -1503,15 +1503,24 @@ _GAIA_CAPCHECK_CMD='(^|[[:space:]|&;(`$])'
 # `if <token>;` in which `<token>` is not a command, so the three cost no
 # ambiguity.
 #
-# What they do cost is prose. `if <path> is missing` is ordinary English in a
-# way `then` and `elif` are not, so a repo path in a sentence sits behind a
-# live anchor here and only the blanking upstream keeps it out of the closure.
-# That blanking bails on any whole line carrying a `$(` or a backtick and
-# leaves the span unblanked (#1536), so on such a line the sentence fabricates
-# a call edge. The hole is the blanker's; this list widens what falls into it
-# and does not open it. Narrowing back would trade one loud wrong edge for the
-# silent missing one this vocabulary exists to end, which is the worse
-# direction of the two.
+# What they do cost is prose, and the cost is affordable HERE for a reason that
+# does not carry to _GAIA_CAPCHECK_PATHCMD below. `stop if <path> is missing` is
+# ordinary English in a way `then` and `elif` are not, so a keyword this list
+# names now sits in front of ordinary sentences. What keeps those out of the
+# closure is that this anchor requires a literal `.` after the keyword, and a
+# lone `.` is one of _GAIA_CAPCHECK_QUOTED_WORDS, so it is blanked inside a
+# double-quoted span before any anchor sees it. A sentence in a message string
+# therefore has nothing left for this pattern to match.
+#
+# That leaves one uncovered case rather than a class: _gaia_capcheck_strip_
+# quoted_code bails on a whole line carrying a `$(` or a backtick and blanks
+# nothing on it (#1536), so a `.` written as prose on such a line survives. The
+# hole is the blanker's and this list widens what can fall into it.
+#
+# The same three keywords are deliberately NOT on _GAIA_CAPCHECK_PATHCMD, and
+# that constant's header owns the reason: no blanking reaches a repo path, so
+# the arm there would be exposed to every message string rather than to the
+# `$(` subset.
 _GAIA_CAPCHECK_DOTCMD='(^|[;|&(`{}]|(^|[[:space:]])(if|then|else|do|elif|while|until|!)[[:space:]])[[:space:]]*'
 
 # The boundary a BARE PATH has to sit behind to be an execution. It is
@@ -1540,12 +1549,21 @@ _GAIA_CAPCHECK_DOTCMD='(^|[;|&(`{}]|(^|[[:space:]])(if|then|else|do|elif|while|u
 #   shape _GAIA_CAPCHECK_DOTCMD accepts for itself, and a brace group with
 #   nothing in front of the brace, per the two departures above.
 #
-#   Nothing else in the keyword vocabulary: `if`, `while` and `until` joined
-#   both lists together, in one pass, for the reason
-#   _GAIA_CAPCHECK_DOTCMD's header gives. Adding a keyword to one list and not
-#   the other would buy a third divergence between two constants whose whole
-#   readability rests on being one vocabulary with two named departures, so
-#   the two move together or not at all.
+#   `if <path>; then`, and the same shape under `while` and `until`. This is
+#   the THIRD named departure from _GAIA_CAPCHECK_DOTCMD's vocabulary, and it
+#   is a departure on the same axis as the two above rather than a divergence
+#   for its own sake. Those three keywords are on DOTCMD and are deliberately
+#   not here, because the blanking that makes them affordable there does not
+#   reach a path: a lone `.` is a QUOTED_WORD and is blanked inside a
+#   double-quoted span, so DOTCMD's exposure is the `$(`-bail subset, while a
+#   path is blanked by nothing (see the OVER-reads paragraph below) and the
+#   exposure here would be every message string carrying ` if `, ` while ` or
+#   ` until ` before a repo `.sh` path. Measured before choosing: adding them
+#   here moves NOTHING on either real surface, because no shape on this tree
+#   runs a bare path out of a condition, so the widening buys no reach and
+#   costs a fabricated edge on the first denial message that reads naturally.
+#   A fabricated edge is not merely loud: it can mask a real SURPLUS, which is
+#   silent. Revisit only with a live site in hand.
 #
 # It also OVER-reads, on every arm rather than any one: nothing blanks a repo
 # path inside a double-quoted span, the same fact that narrows `(` to `$(`
@@ -1572,7 +1590,7 @@ _GAIA_CAPCHECK_DOTCMD='(^|[;|&(`{}]|(^|[[:space:]])(if|then|else|do|elif|while|u
 # leave the miss this vocabulary closes reachable again one indent level away,
 # and reachable the same silent way.
 #
-# Each arm also requires whitespace AFTER the keyword, which is what makes it a
+# Each arm requires whitespace AFTER the keyword, which is what makes it a
 # keyword rather than a prefix. Without it the alternation matches inside a path
 # token that merely begins with those letters: `X=1 docs/build.sh` hands the
 # resolver `cs/build.sh`, because the arm eats the `do` off the front of the
@@ -1581,7 +1599,7 @@ _GAIA_CAPCHECK_DOTCMD='(^|[;|&(`{}]|(^|[[:space:]])(if|then|else|do|elif|while|u
 # the one thing this anchor has never accepted, so the shape returns to the
 # under-read enumerated above rather than going newly blind: what stops is the
 # reporting of a file that does not exist, not the reporting of one that does.
-_GAIA_CAPCHECK_PATHCMD='(^|[;|&`]|\$\(|^if[[:space:]]|[[:space:]]if[[:space:]]|^then[[:space:]]|[[:space:]]then[[:space:]]|^else[[:space:]]|[[:space:]]else[[:space:]]|^do[[:space:]]|[[:space:]]do[[:space:]]|^elif[[:space:]]|[[:space:]]elif[[:space:]]|^while[[:space:]]|[[:space:]]while[[:space:]]|^until[[:space:]]|[[:space:]]until[[:space:]]|^![[:space:]]|[[:space:]]![[:space:]])[[:space:]]*'
+_GAIA_CAPCHECK_PATHCMD='(^|[;|&`]|\$\(|[[:space:]]then[[:space:]]|[[:space:]]else[[:space:]]|[[:space:]]do[[:space:]]|[[:space:]]elif[[:space:]]|[[:space:]]![[:space:]])[[:space:]]*'
 
 # _gaia_capcheck_detect_network <text>: curl, wget, any gh invocation, and the
 # remote-touching git verbs. Deliberately not matched: `command -v gh` and
