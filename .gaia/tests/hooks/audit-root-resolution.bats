@@ -87,12 +87,13 @@
 # stays satisfied.
 #
 # Indentation is not the only way to spell a roster, and this scan reads exactly
-# one spelling: an indented `- name: X`. An expanded block entry, a flow mapping
-# (`- {name: x}`), a quoted key, or `globs:` written before `name:` are each
-# valid YAML this scan would otherwise read short. Deliberately NOT widened to
-# accept them: `.claude/hooks/lib/audit-scope.sh:302` pins the same spelling, so
-# a scan that accepted more would answer differently from the parser the rest of
-# the machinery uses, which is worse than agreeing with it.
+# one spelling: an indented `- name: X` carrying its value on the entry line. An
+# expanded block entry, a flow mapping (`- {name: x}`), a quoted key, `globs:`
+# written before `name:`, or a value held over to a more-indented line below the
+# key are each valid YAML this scan would otherwise read short. Deliberately NOT
+# widened to accept them: `.claude/hooks/lib/audit-scope.sh:302` pins the same
+# spelling, so a scan that accepted more would answer differently from the
+# parser the rest of the machinery uses, which is worse than agreeing with it.
 #
 # What that leaves is counted instead of assumed. The block's member entries are
 # its shallowest `-` lines (a `globs:` item is indented deeper), so an entry that
@@ -102,6 +103,14 @@
 # non-empty guard stays satisfied, and the suite drives a subset while its test
 # names still say "every definition" -- the silent drop this helper exists to
 # remove, reintroduced one level up.
+#
+# Reading a name and counting one are therefore the same act. A name counts only
+# when the entry line carries a value that is not a comment, so `- name:` alone,
+# a value held over to the next line, and `- name:  # deferred` each reach the
+# count as an unread entry. Counting a bare `name:` key instead would satisfy
+# the count while contributing an EMPTY name, which the caller's per-entry
+# `[ -n "$m" ]` then drops: the short-but-non-empty roster above, arrived at
+# through the check meant to forbid it.
 #
 # The count is what guards it, not CI. `.gaia/scripts/verify-audit-roster.sh`
 # does red on every one of those spellings, but its workflow is advisory by
@@ -127,7 +136,7 @@ roster_members() {
       if (entry_indent == 0) entry_indent = indent
       if (indent != entry_indent) next
       entries++
-      if ($2 == "name:") names[++n] = $3
+      if ($2 == "name:" && $3 != "" && $3 !~ /^#/) names[++n] = $3
       next
     }
     END {
