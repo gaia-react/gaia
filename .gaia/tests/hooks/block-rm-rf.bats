@@ -1367,3 +1367,118 @@ assert_position_preserving() {
   run jq -e '.hooks.PreToolUse[] | select(.matcher == "Bash") | .hooks[] | select(.command == ".claude/hooks/block-rm-rf.sh")' "$SETTINGS_ABS"
   [ "$status" -eq 0 ]
 }
+
+# --- an unparseable registry lib degrades, it does not deny everything ---
+#
+# The guard resolves .gaia/scripts/main-root-lib.sh and state-registry-lib.sh
+# off BASH_SOURCE to read the scratch whitelist, under the `set -euo pipefail`
+# at :269. That errexit sits inside main(), which is a function rather than a
+# subshell, so an abort there IS the hook's exit -- and exit 2 is the
+# PreToolUse deny code, refusing every Bash tool call rather than the rm
+# footguns alone.
+#
+# Expressing this needs a COPY of the hook in a tree the test controls, since
+# the real $HOOK_ABS always resolves the real checkout's libs. Pinned to stock
+# /bin/bash: the `|| true` arm both loads already carried survives on bash 5,
+# so only 3.2 tells the fix apart from the arm it replaced.
+#
+# The filesystem root is the deliberate probe target. It is denied by a
+# hardcoded arm that does not consult the registry at all, so the assertion
+# isolates "did the hook survive the load" from "did the whitelist come back":
+# an unreadable registry legitimately yields an empty whitelist, which changes
+# what is ALLOWED but never what is denied here.
+
+stage_rmrf_tree() {
+  STAGED_ROOT="$BATS_TEST_TMPDIR/staged"
+  rm -rf "$STAGED_ROOT"
+  mkdir -p "$STAGED_ROOT/.claude/hooks" "$STAGED_ROOT/.gaia/scripts"
+  cp "$HOOK_ABS" "$STAGED_ROOT/.claude/hooks/"
+  cp "${HOOKS_SRC%/.claude/hooks}/.gaia/scripts/main-root-lib.sh" \
+     "${HOOKS_SRC%/.claude/hooks}/.gaia/scripts/state-registry-lib.sh" \
+     "$STAGED_ROOT/.gaia/scripts/"
+  STAGED_HOOK="$STAGED_ROOT/.claude/hooks/block-rm-rf.sh"
+}
+
+# Overwrites <path> with an unresolved-merge-conflict body: the file opens and
+# reads fine, so an existence test passes it, and bash cannot parse it.
+write_conflicted_lib() {
+  { printf '<<<<<<< HEAD\n'; printf 'x() { :; }\n'; printf '=======\n'
+    printf 'y() { :; }\n'; printf '>>>>>>> other\n'; } > "$1"
+}
+
+# run_staged_rmrf <command> <interpreter>
+run_staged_rmrf() {
+  local json
+  json=$(jq -n --arg c "$1" '{tool_name: "Bash", tool_input: {command: $c}}')
+  run bash -c 'printf %s "$1" | $3 "$2"' _ "$json" "$STAGED_HOOK" "$2"
+}
+
+@test "control: the staged guard denies the filesystem root under stock /bin/bash" {
+  [ -x /bin/bash ] || skip "no /bin/bash"
+  stage_rmrf_tree
+  run_staged_rmrf 'rm -rf /' /bin/bash
+  assert_denied_by_json
+}
+
+@test "main-root-lib.sh holding conflict markers: the root target is still denied, on stock /bin/bash" {
+  [ -x /bin/bash ] || skip "no /bin/bash"
+  stage_rmrf_tree
+  write_conflicted_lib "$STAGED_ROOT/.gaia/scripts/main-root-lib.sh"
+  run_staged_rmrf 'rm -rf /' /bin/bash
+  assert_denied_by_json
+}
+
+@test "state-registry-lib.sh holding conflict markers: the root target is still denied, on stock /bin/bash" {
+  [ -x /bin/bash ] || skip "no /bin/bash"
+  stage_rmrf_tree
+  write_conflicted_lib "$STAGED_ROOT/.gaia/scripts/state-registry-lib.sh"
+  run_staged_rmrf 'rm -rf /' /bin/bash
+  assert_denied_by_json
+}
+
+# The discriminating twin for the pair above. "Still denied" is equally satisfied
+# by a guard that denies everything, so this pins what the degrade actually costs:
+# the whitelist comes back empty, so the absolute spelling of a scratch path falls
+# to the absolute-path deny instead of being allowed on a list that could not be
+# read. That is the direction the load comment promises and the direction
+# _rm_whitelisted_abs is written for. The control proves the same staging allows
+# it when the registry parses, so the deny below is the lost carve-out and not a
+# guard that stopped reading its own whitelist.
+
+@test "control: the staged guard allows an absolute scratch path when the registry parses, on stock /bin/bash" {
+  [ -x /bin/bash ] || skip "no /bin/bash"
+  stage_rmrf_tree
+  run_staged_rmrf 'rm -rf /Users/you/projects/my-app/.gaia/local/plans/x' /bin/bash
+  assert_allowed_by_json
+}
+
+@test "state-registry-lib.sh holding conflict markers: the carve-out is lost, not the protection, on stock /bin/bash" {
+  [ -x /bin/bash ] || skip "no /bin/bash"
+  stage_rmrf_tree
+  write_conflicted_lib "$STAGED_ROOT/.gaia/scripts/state-registry-lib.sh"
+  run_staged_rmrf 'rm -rf /Users/you/projects/my-app/.gaia/local/plans/x' /bin/bash
+  assert_denied_by_json
+}
+
+# Unpinned twins of the two registry cases above, and they are not redundant with
+# them. The pinned cases cover the bash-3.2 abort on the load itself; these cover
+# a SECOND failure on the same degrade path that only 4.4+ has. `rm_whitelist` is
+# assigned only when the registry loads, and bash 3.2 reads a declared-but-
+# unassigned local as empty while 4.4+ reads it as unset and dies on `set -u`. So
+# the /bin/bash pin that gives the cases above their teeth is exactly what blinds
+# them here on a stock Mac, and without these twins the class is caught by CI
+# alone.
+
+@test "state-registry-lib.sh holding conflict markers: the root target is still denied, unpinned" {
+  stage_rmrf_tree
+  write_conflicted_lib "$STAGED_ROOT/.gaia/scripts/state-registry-lib.sh"
+  run_staged_rmrf 'rm -rf /' "$BASH"
+  assert_denied_by_json
+}
+
+@test "main-root-lib.sh holding conflict markers: the root target is still denied, unpinned" {
+  stage_rmrf_tree
+  write_conflicted_lib "$STAGED_ROOT/.gaia/scripts/main-root-lib.sh"
+  run_staged_rmrf 'rm -rf /' "$BASH"
+  assert_denied_by_json
+}

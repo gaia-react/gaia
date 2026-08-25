@@ -554,3 +554,122 @@ parity() {
   grep -qF "REACHED" <<<"$output" || return 1
   true
 }
+
+# ---------------------------------------------------------------------------
+# The two lazy library loads, under a caller running errexit
+#
+# verb-arming.sh sources repo-scope.sh (pass 3's tokenizer) and
+# verb-arming-walk.sh (pass 2's view) lazily, from its own directory. Neither
+# can be guarded from outside: a consumer's `bash -n` on verb-arming.sh does
+# not recurse into what verb-arming.sh itself sources. Under errexit an
+# unparseable copy of either abandoned the shell before the `type` check on the
+# next line could degrade, and in the four errexit consumers that exit is 2 --
+# the PreToolUse deny code.
+#
+# Every case here is pinned to stock /bin/bash. On bash 5 a failed source
+# returns non-zero and execution continues, so only 3.2 expresses this half of
+# the class; on a bash-5 /bin/bash (Linux CI) these pass either way, the same
+# honest caveat the sibling suites' pinned cases carry.
+#
+# Each unparseable case is PAIRED with a control on the same interpreter and
+# the same staging. The degraded verdicts below (not-armed for the tokenizer,
+# the raw match for the walker) are equally satisfied by a library that never
+# loaded anything at all, so the control is what proves the staging still arms
+# normally when the lib parses.
+# ---------------------------------------------------------------------------
+
+# arm_staged <interpreter> <lib> <frag> <words> <text>: ask the arming question
+# from a caller running errexit, exactly as the four errexit consumer hooks do.
+# The errexit is the point of the harness: without it an unparseable lib merely
+# returns non-zero and execution continues on every bash, so the class these
+# cases cover cannot be expressed at all.
+arm_staged() {
+  local interp="$1" lib="$2" frag="$3" words="$4" text="$5"
+  run "$interp" -c '
+    set -euo pipefail
+    . "$1" || exit 9
+    if gaia_verb_armed "$2" "$3" "$4"; then v=armed; else v=not-armed; fi
+    printf "verdict=%s kind=%s sup=%s\n" "$v" "${GAIA_VERB_ARM_KIND:-empty}" \
+      "${GAIA_VERB_ARM_SUPPRESSED:-0}"
+  ' _ "$lib" "$frag" "$words" "$text"
+}
+
+# Copies the real lib directory somewhere the test can corrupt, and prints the
+# staged verb-arming.sh path.
+stage_lib() {
+  local stage="$BATS_TEST_TMPDIR/staged-$1"
+  rm -rf "$stage"; mkdir -p "$stage"
+  cp -R "$REPO_ROOT/.claude/hooks/lib" "$stage/lib"
+  printf '%s' "$stage/lib/verb-arming.sh"
+}
+
+# Overwrites <path> with an unresolved-merge-conflict body: the file opens and
+# reads fine, so an existence test passes it, and bash cannot parse it.
+write_conflicted_lib() {
+  { printf '<<<<<<< HEAD\n'; printf 'x() { :; }\n'; printf '=======\n'
+    printf 'y() { :; }\n'; printf '>>>>>>> other\n'; } > "$1"
+}
+
+@test "control: a staged lib arms through the tokenizer under errexit on stock /bin/bash" {
+  [ -x /bin/bash ] || skip "no /bin/bash"
+  local lib; lib="$(stage_lib tokctl)"
+  arm_staged /bin/bash "$lib" "$MERGE_FRAG" "$MERGE_WORDS" 'gh pr "merge" 12'
+  [ "$status" -eq 0 ]
+  assert_armed || return 1
+  assert_kind first-command
+}
+
+@test "an unparseable repo-scope.sh degrades to not-armed instead of denying, on stock /bin/bash" {
+  [ -x /bin/bash ] || skip "no /bin/bash"
+  local lib; lib="$(stage_lib tokbad)"
+  write_conflicted_lib "$(dirname "$lib")/repo-scope.sh"
+  arm_staged /bin/bash "$lib" "$MERGE_FRAG" "$MERGE_WORDS" 'gh pr "merge" 12'
+  [ "$status" -eq 0 ]
+  assert_not_armed
+}
+
+@test "control: a staged lib suppresses a heredoc body under errexit on stock /bin/bash" {
+  [ -x /bin/bash ] || skip "no /bin/bash"
+  local lib; lib="$(stage_lib walkctl)"
+  arm_staged /bin/bash "$lib" "$MERGE_FRAG" "$MERGE_WORDS" \
+    "cat > /tmp/f <<EOF$NL$V${NL}EOF"
+  [ "$status" -eq 0 ]
+  assert_not_armed
+}
+
+@test "an unparseable verb-arming-walk.sh leaves the raw match standing instead of denying, on stock /bin/bash" {
+  [ -x /bin/bash ] || skip "no /bin/bash"
+  local lib; lib="$(stage_lib walkbad)"
+  write_conflicted_lib "$(dirname "$lib")/verb-arming-walk.sh"
+  arm_staged /bin/bash "$lib" "$MERGE_FRAG" "$MERGE_WORDS" \
+    "cat > /tmp/f <<EOF$NL$V${NL}EOF"
+  [ "$status" -eq 0 ]
+  # Same degrade the absent-walker case above gets: with no view to suppress
+  # by, the raw match stands and the call arms.
+  assert_armed || return 1
+  assert_kind sep
+}
+
+# The load guard suspends errexit across the source and must put back exactly
+# what it found. Seven of this library's eleven consumers deliberately run
+# WITHOUT errexit -- audit-disposition-check.sh, pr-merge-audit-check.sh,
+# worthiness-presence-check.sh, debt-sentinel-touch.sh, issue-claim-release.sh,
+# distribution-preflight-check.sh and token-tally-review.sh -- and several are
+# PreToolUse deny gates where a stray non-zero exit becomes a verdict. An
+# unconditional `set -e` restore would arm errexit in all seven, so this case
+# pins the restore as conditional. It needs no interpreter pin: the leak it
+# guards against is present on bash 3.2 and bash 5 alike.
+@test "a load from a caller without errexit leaves errexit off" {
+  local lib; lib="$(stage_lib noerrexit)"
+  run bash -c '
+    set -uo pipefail
+    . "$1"
+    gaia_verb_armed "$2" "$3" "$4" || true
+    case $- in *e*) printf "errexit=ON\n" ;; *) printf "errexit=OFF\n" ;; esac
+    false
+    printf "SURVIVED\n"
+  ' _ "$lib" "$MERGE_FRAG" "$MERGE_WORDS" 'gh pr "merge" 12'
+  grep -qF "errexit=OFF" <<<"$output" || return 1
+  grep -qF "SURVIVED" <<<"$output" || return 1
+  true
+}

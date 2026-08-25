@@ -48,7 +48,14 @@ cmd=$(echo "$payload" | jq -r '.tool_input.command // empty')
 # command aimed at a different repo (e.g. `git -C ../other commit --no-verify`)
 # is out of scope, allow it. Fail-closed: any ambiguity falls through and the
 # policy still enforces. Mirrors block-main-destructive-git.sh.
-[ -f .claude/hooks/lib/repo-scope.sh ] && . .claude/hooks/lib/repo-scope.sh
+#
+# Bracketed in `set +e` because errexit is armed above. An unparseable copy (an
+# unresolved merge conflict, a truncated write) would otherwise abandon the shell
+# before the `type` check below can degrade, and that exit is 2 -- the deny code --
+# refusing every matching call including the edit that would repair the library.
+# Suspending errexit for the one command lets the `type` check do the degrading, at
+# no fork and at any source depth. `bash -n` cannot: it does not recurse.
+set +e; [ -f .claude/hooks/lib/repo-scope.sh ] && . .claude/hooks/lib/repo-scope.sh 2>/dev/null; set -e
 if type cmd_targets_foreign_repo >/dev/null 2>&1 \
    && cmd_targets_foreign_repo "$cmd"; then
   exit 0

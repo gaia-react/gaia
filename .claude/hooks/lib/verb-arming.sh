@@ -199,7 +199,7 @@ _gaia_va_words_match() {
 # an unmodelled flag shape is right for a relaxation deciding whether to permit
 # and wrong here, because arming must be strictly broader than clearing.
 _gaia_va_first_command() {
-  local words_spec="$1" text="$2" dir
+  local words_spec="$1" text="$2" dir errexit_was
   [ -n "$words_spec" ] || return 1
   _gaia_va_build_lead_re "$words_spec"
   if [ -n "$_gaia_va_lead_re" ]; then
@@ -212,8 +212,20 @@ _gaia_va_first_command() {
   if ! type gaia_scan_first_command >/dev/null 2>&1; then
     dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
     [ -n "$dir" ] && [ -f "$dir/repo-scope.sh" ] || return 1
+    # Suspend errexit across the load, then RESTORE WHAT WAS THERE. Under errexit
+    # an unparseable copy abandons the shell here before the type check below can
+    # degrade, and in the four errexit consumers that exit is 2, the deny code; no
+    # consumer can guard it from outside, because `bash -n` does not recurse into
+    # what a file sources. The restore is conditional rather than a bare `set -e`
+    # because seven of the eleven consumers deliberately run WITHOUT errexit, and
+    # several are PreToolUse deny gates where a stray non-zero exit is a verdict.
+    # Nothing returns between the suspend and the restore, so no path leaks it.
+    errexit_was=0
+    case $- in *e*) errexit_was=1 ;; esac
+    set +e
     # shellcheck source=/dev/null
-    . "$dir/repo-scope.sh" || return 1
+    . "$dir/repo-scope.sh" 2>/dev/null
+    if [ "$errexit_was" = 1 ]; then set -e; fi
     type gaia_scan_first_command >/dev/null 2>&1 || return 1
   fi
   gaia_scan_first_command "${text:0:$GAIA_VERB_ARM_SCAN_PREFIX}" || return 1
@@ -223,15 +235,23 @@ _gaia_va_first_command() {
 # Pass 2's front door. Loads the walker at most once per process, from this
 # library's own directory, and falls back to the identity when it cannot.
 _gaia_va_view() {
-  local dir
+  local dir errexit_was
   if [ "$_gaia_va_walk" = 0 ]; then
     _gaia_va_walk=2
     dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
     if [ -n "$dir" ] && [ -f "$dir/verb-arming-walk.sh" ]; then
+      # Same state-preserving bracket as the repo-scope load above, and for the
+      # same reason. The `if . X; then` this replaced did NOT cover it: a parse
+      # error abandons the shell from a condition context too, measured on
+      # 3.2.57. The type check below is what degrades, leaving _gaia_va_walk at
+      # 2 (the identity view), exactly as an absent walker already did.
+      errexit_was=0
+      case $- in *e*) errexit_was=1 ;; esac
+      set +e
       # shellcheck source=/dev/null
-      if . "$dir/verb-arming-walk.sh"; then
-        if type gaia_verb_arm_view >/dev/null 2>&1; then _gaia_va_walk=1; fi
-      fi
+      . "$dir/verb-arming-walk.sh" 2>/dev/null
+      if [ "$errexit_was" = 1 ]; then set -e; fi
+      if type gaia_verb_arm_view >/dev/null 2>&1; then _gaia_va_walk=1; fi
     fi
   fi
   if [ "$_gaia_va_walk" = 1 ]; then
