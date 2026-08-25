@@ -11,6 +11,69 @@ import {
   WORKFLOW_FINDING_CLASSES,
 } from '../finding-class.js';
 
+/**
+ * The holistic members seeded from the maintainer surface, the tail of
+ * `HOLISTIC_FINDING_CLASSES` that begins at `holistic/hollow-assertion`. New
+ * members are appended, so a newly seeded one lands in this slice on its own
+ * and the coverage test below demands its near-miss entries.
+ */
+const MAINTAINER_SURFACE_HOLISTIC_CLASSES = HOLISTIC_FINDING_CLASSES.slice(
+  HOLISTIC_FINDING_CLASSES.indexOf('holistic/hollow-assertion')
+);
+
+/**
+ * Two near-miss spellings per maintainer-surface member: a plural and a
+ * differently-worded neighbour. Held as pairs rather than a flat list so one
+ * table feeds both the rejection cases and the coverage test that fails when a
+ * member has no entries, or an entry names a member no longer seeded.
+ */
+const MAINTAINER_SURFACE_MEMBERS: readonly (readonly [
+  string,
+  readonly string[],
+])[] = [
+  [
+    'holistic/hollow-assertion',
+    ['holistic/hollow-assertions', 'holistic/hollow_assertion'],
+  ],
+  [
+    'holistic/uncoupled-restatement',
+    ['holistic/uncoupled-restatements', 'holistic/uncoupled-restatement-prose'],
+  ],
+  ['holistic/stale-figure', ['holistic/stale-figures', 'holistic/stale-count']],
+  [
+    'holistic/unarmed-guard',
+    ['holistic/unarmed-guards', 'holistic/unarmed-check'],
+  ],
+  [
+    'holistic/fail-open-discovery',
+    ['holistic/fail-open-discoveries', 'holistic/failopen-discovery'],
+  ],
+  [
+    'holistic/partial-cause-reporting',
+    ['holistic/partial-cause-report', 'holistic/partial-cause-reporting-2'],
+  ],
+  [
+    'holistic/dangling-reference',
+    ['holistic/dangling-references', 'holistic/dangling-ref'],
+  ],
+  [
+    'holistic/drifting-duplicate',
+    ['holistic/drifting-duplicates', 'holistic/drifted-duplicate'],
+  ],
+  [
+    'holistic/ambient-context-resolution',
+    ['holistic/ambient-context-resolutions', 'holistic/ambient-context'],
+  ],
+  [
+    'holistic/shared-state-collision',
+    ['holistic/shared-state-collisions', 'holistic/shared-state-race'],
+  ],
+  [
+    'holistic/unbounded-invocation',
+    ['holistic/unbounded-invocations', 'holistic/unbounded-call'],
+  ],
+];
+
 describe('schemas/finding-class', () => {
   describe('oracle buckets (open id space after the prefix)', () => {
     test.each([
@@ -71,36 +134,19 @@ describe('schemas/finding-class', () => {
       expect(isValidFindingClass('holistic/something-made-up')).toBe(false);
     });
 
-    test.each([
-      'holistic/hollow-assertions',
-      'holistic/hollow_assertion',
-      'holistic/uncoupled-restatements',
-      'holistic/uncoupled-restatement-prose',
-      'holistic/stale-figures',
-      'holistic/stale-count',
-      'holistic/unarmed-guards',
-      'holistic/unarmed-check',
-      'holistic/fail-open-discoveries',
-      'holistic/failopen-discovery',
-      'holistic/partial-cause-report',
-      'holistic/partial-cause-reporting-2',
-      'holistic/dangling-references',
-      'holistic/dangling-ref',
-      'holistic/drifting-duplicates',
-      'holistic/drifted-duplicate',
-      'holistic/ambient-context-resolutions',
-      'holistic/ambient-context',
-      'holistic/shared-state-collisions',
-      'holistic/shared-state-race',
-      'holistic/unbounded-invocations',
-      'holistic/unbounded-call',
-    ])(
+    test.each(MAINTAINER_SURFACE_MEMBERS.flatMap(([, misses]) => misses))(
       'rejects a near-miss spelling of each seeded maintainer-surface member: %s',
       (value) => {
         expect(FindingClassSchema.safeParse(value).success).toBe(false);
         expect(isValidFindingClass(value)).toBe(false);
       }
     );
+
+    test('every maintainer-surface holistic member carries near-miss coverage', () => {
+      expect(MAINTAINER_SURFACE_MEMBERS.map(([member]) => member)).toEqual([
+        ...MAINTAINER_SURFACE_HOLISTIC_CLASSES,
+      ]);
+    });
 
     test('rejects an unseeded rule member (closed bucket)', () => {
       expect(

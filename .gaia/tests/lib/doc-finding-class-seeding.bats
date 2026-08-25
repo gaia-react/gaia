@@ -7,10 +7,13 @@
 # holistic/ambient-context-resolution, holistic/shared-state-collision,
 # holistic/unbounded-invocation) and the restored workflow bucket. Five
 # member sidecar contracts each carry a `## Holistic class assignment`
-# section with one assignment line per class in their owning set, plus the
-# canonical tie-break sentences for the pairs whose sides they both assign,
-# verbatim. `code-audit-github-workflows.md` carries a second
-# `## Workflow class assignment` section for the four `workflow/*` classes.
+# section with one assignment line per class in their owning set, plus each
+# canonical tie-break sentence separating a class that member assigns from its
+# nearest neighbour, verbatim. One side assigned is enough: the prose member
+# carries TB-1 because it assigns uncoupled-restatement and has to be steered
+# off hollow-assertion, which it does not assign.
+# `code-audit-github-workflows.md` carries a second `## Workflow class
+# assignment` section for the four `workflow/*` classes.
 #
 # The same instruction is duplicated across five files by design; this suite
 # is the deterministic check keeping the copies in step with the schema

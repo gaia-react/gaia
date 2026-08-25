@@ -128,7 +128,7 @@ Cheap deterministic signals (word count, maximum heading depth, link count) may 
 
 ## Holistic class assignment
 
-The four dimensions above measure whether prose can be **followed**. The three classes below measure whether prose is **true** of the implementation it names, which is a different axis: a sentence can be perfectly legible and still be an uncoupled restatement. Judge these two against the machinery, not against the reader.
+The four dimensions above measure whether prose can be **followed**. The classes below measure whether prose is **true** of the implementation it names, which is a different axis: a sentence can be perfectly legible and still be an uncoupled restatement. Judge them against the machinery, not against the reader.
 
 - `holistic/uncoupled-restatement`: prose restates a contract, mechanism, scope, or guarantee carrying a stable greppable identifier (a path, a flag, an exit code, a marker string, a script name, a section heading), and the restatement disagrees with the implementation, so a reader who acts on the sentence acts wrongly. Not a duplicated instruction whose copies agree with each other and with the code, which is `prose/redundant-instruction`, and not a disagreement whose referent carries no greppable identifier, because nothing then enumerates the sites a remedy has to reach.
 - `holistic/stale-figure`: a bare count, tally, or cardinality claim in prose, a comment, a test name, a docblock, or a changelog line disagrees with the construct it counts. Not a disagreement about behavior rather than quantity, which is an uncoupled restatement.
@@ -136,7 +136,7 @@ The four dimensions above measure whether prose can be **followed**. The three c
 
 The greppable identifier is part of the first definition rather than decoration: one identifier sweep reaches agent definitions, hooks, wiki pages, and bats suites at once, which is what makes the remedy selectable rather than open-ended. The shapes that recur on this surface are a skill file naming a path a command does not write, and an agent definition naming an exit code, a marker string, or a section heading the machinery does not use. One shape belongs to none of the three: a self-referential status claim in the tree, which `.claude/rules/wiki-style.md`'s present-tense rule already governs.
 
-You assign these three and no other holistic class. A hollow assertion, an unarmed guard, a fail-open discovery, a partial-cause report, a drifting duplicate, an ambient-context resolution, a shared-state collision, and an unbounded invocation are defects of executable logic, which none of your dimensions measure. A finding that matches two of them, with no tie-break below separating that pair, is recorded `holistic/unclassified` rather than resolved toward the one you read first. Three tie-breaks settle the near misses:
+You assign these three and no other holistic class. A hollow assertion, an unarmed guard, a fail-open discovery, a partial-cause report, a drifting duplicate, an ambient-context resolution, a shared-state collision, and an unbounded invocation are defects of executable logic, which none of your dimensions measure. A finding that matches two of the classes you assign, with no tie-break below separating that pair, is recorded `holistic/unclassified` rather than resolved toward the one you read first. Three tie-breaks settle the near misses:
 
 A check that cannot fail is a hollow assertion; a sentence a reader would act wrongly on is an uncoupled restatement.
 
