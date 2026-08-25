@@ -25,12 +25,24 @@
 #   3 raw-miss and skip it) totals ~320-365ms.
 #
 #   Both figures were re-measured when four hooks took a `bash -n` parse check
-#   on their pre-gate verb-arming load (gaia-react/gaia#1556). Most of the gap
-#   against the ~200-230ms this row used to state predates that change: the
-#   same base measures ~265-279ms here, so the parse checks account for roughly
-#   +6-9ms of it and the rest had already drifted. Measured alongside:
-#   `bash -n` on verb-arming.sh costs ~3.1ms on 3.2.57 and ~5.7ms on 5.3.15,
-#   which as a whole extra hook process is +2.5ms and +5.7ms.
+#   on their pre-gate verb-arming load (gaia-react/gaia#1556). What that change
+#   costs is stated here as an ARITHMETIC BOUND, not as a subtracted delta.
+#   `bash -n` on verb-arming.sh measures ~3.1ms on 3.2.57 and ~5.7ms on 5.3.15
+#   over 200 forks, which is the one figure here that measures cleanly; four of
+#   the eleven hooks below pay it, so the aggregate is ~+12ms and ~+23ms.
+#
+#   The end-to-end delta is deliberately NOT quoted, because it could not be
+#   measured on this machine. A/B-ing base against HEAD copies of one hook at a
+#   time in the same tree, 40 iterations each, returned deltas from -3.3ms to
+#   +4.9ms with inconsistent sign: the effect sits under this harness's own
+#   run-to-run spread, so any single subtraction of two of these ranges reports
+#   noise with a plausible magnitude. Size a fifth parse-checked hook off the
+#   per-fork figure times the hooks that pay it, never off a difference of two
+#   totals measured here.
+#
+#   Separately, the ~200-230ms this row used to state was already exceeded by
+#   the base before the parse checks landed, so most of that gap is prior drift
+#   rather than this change.
 #
 # The audit's own two reference points (plan-time directive, PERF-007): about
 # 0.06s span-skipping against about 1.01s byte-walking, PER HOOK, at 16KB on
