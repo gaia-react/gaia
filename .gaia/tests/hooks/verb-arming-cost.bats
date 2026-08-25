@@ -52,8 +52,8 @@
 #   Trace against the row's OWN fixture, not an approximation of it. A 16KB
 #   heredoc and a 32KB one answer differently: the walker takes the identity
 #   path once the text is longer than GAIA_VERB_ARM_MAX_CHARS (16,384
-#   characters; the guard is verb-arming-walk.sh's first line of
-#   gaia_verb_arm_view), so past it the body is never proven data and hooks
+#   characters; the guard is verb-arming-walk.sh:283, the first thing
+#   gaia_verb_arm_view does), so past it the body is never proven data and hooks
 #   that would otherwise stand down can arm. That is the past-bound 32KB row's
 #   whole subject, the last row of the size table above.
 #
@@ -63,12 +63,23 @@
 #   threshold 8x too low and makes the 8KB and 16KB rows look past it, which
 #   would contradict the 16KB bullet directly above.
 #
-#   No exact fork count is quoted for the transition, deliberately. Sweeping
-#   the payload size across the boundary on this machine did not reproduce a
-#   clean step (4 forks at 16,384 and at 16,385, 5 at 17,000), because arming
-#   depends on more than the walker's verdict and the four hooks arm on
-#   different verbs. Which side of the boundary a fixture sits on is the part
-#   worth knowing here; the count for any given row comes from tracing it.
+#   The transition is a clean step, and identical on 3.2.57 and 5.3.15: 4 forks
+#   at 16,384 characters or fewer, 7 at 16,385 or more, matching the `-le` test
+#   the guard above names. It is uneven per hook rather than blurred, because
+#   the four arm on different verbs: across a `gh pr merge` boundary
+#   token-tally-git-op.sh and capture-gh-artifact.sh stay at their pre-gate
+#   check, post-findings-block-on-merge.sh goes 1 -> 2, and token-rollup-merge.sh
+#   goes 1 -> 3.
+#
+#   TWO off-by-ones sit between a requested size and the length the walker
+#   measures, and a sweep that misses either reads the boundary in the wrong
+#   place. `build_armed_payload N` returns N-1 characters, because the `$(...)`
+#   capturing it strips the closer's trailing newline; and each hook's own
+#   `cmd=$(jq -r ...)` strips one again from whatever the payload carries. So
+#   the table's "16KB" row is really a 16,383-character fixture, and a sweep
+#   indexed by the JSON string's length finds the step one higher than it is.
+#   Both were live here: an earlier draft of this paragraph reported "no clean
+#   step" from a sweep carrying the second one.
 #
 #   The end-to-end delta is deliberately NOT quoted, because it could not be
 #   measured on this machine. A/B-ing base against HEAD copies of one hook at a
