@@ -16986,7 +16986,12 @@ var HOLISTIC_FINDING_CLASSES = [
   "holistic/stale-figure",
   "holistic/unarmed-guard",
   "holistic/fail-open-discovery",
-  "holistic/partial-cause-reporting"
+  "holistic/partial-cause-reporting",
+  "holistic/dangling-reference",
+  "holistic/drifting-duplicate",
+  "holistic/ambient-context-resolution",
+  "holistic/shared-state-collision",
+  "holistic/unbounded-invocation"
 ];
 var OUT_OF_SCOPE_FALLBACK_FINDING_CLASS = "holistic/unclassified";
 var RULE_FINDING_CLASSES = [

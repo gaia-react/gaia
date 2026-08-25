@@ -84,6 +84,16 @@ describe('schemas/finding-class', () => {
       'holistic/failopen-discovery',
       'holistic/partial-cause-report',
       'holistic/partial-cause-reporting-2',
+      'holistic/dangling-references',
+      'holistic/dangling-ref',
+      'holistic/drifting-duplicates',
+      'holistic/drifted-duplicate',
+      'holistic/ambient-context-resolutions',
+      'holistic/ambient-context',
+      'holistic/shared-state-collisions',
+      'holistic/shared-state-race',
+      'holistic/unbounded-invocations',
+      'holistic/unbounded-call',
     ])(
       'rejects a near-miss spelling of each seeded maintainer-surface member: %s',
       (value) => {

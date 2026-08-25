@@ -326,14 +326,23 @@ The holistic bucket names language-neutral root causes, so a class comes from th
 - `holistic/unarmed-guard`: a check that is correct wherever it runs is armed on a condition narrower than the surface it guards, such as a refinement keyed to an optional field being present or a drift check whose file set is derived from a narrower list, so the input that creates the obligation is the one that never meets the check. Not a check that runs on the input and accepts too much, which is a hollow assertion.
 - `holistic/fail-open-discovery`: the step that builds a pass's own input set drops an element without saying so, as when a directory read, a glob, or a manifest-derived list omits a file, and the pass then reports clean over input it never opened. Not an element that entered the set and whose failure was discarded, which is the already-seeded swallowed error.
 - `holistic/partial-cause-reporting`: a diagnostic, error, or status path names one cause of the condition it reports while a sibling cause reaching the same branch goes unnamed, so an operator is pointed at a repair that cannot fix what actually failed. Not a message whose single named cause is the only one reaching that branch, which is merely terse.
+- `holistic/dangling-reference`: a docblock, comment, or help string names a module, exported symbol, subcommand, runbook step, or line range that is absent under every name, so a reader following the pointer reaches no target at all. Not a target that is present under another name or in another form, which is an uncoupled restatement.
+- `holistic/drifting-duplicate`: one construct (an argv parser, a schema, a normalization idiom, a literal table) is written out at two or more sites with no shared source, so a fix has to be applied at each and the site nobody edited diverges unnoticed. Not a second importer of one definition, where a single source still governs.
+- `holistic/ambient-context-resolution`: a module resolves the subject it acts on (a repository root, a diff base, a manifest, a working tree) from ambient state such as the process working directory, `HEAD`, or a default branch rather than from the argument or payload that names it, so sound logic runs against the wrong subject. Not logic handed the right subject and applying a wrong rule to it.
+- `holistic/shared-state-collision`: runs that can overlap write or consume one path, lock, or cache entry whose name carries nothing distinguishing them, so one run's artifact overwrites another's or is claimed under its name. Not an ordering defect within a single run, where no peer is present to collide with.
+- `holistic/unbounded-invocation`: a spawn, fetch, or traversal carries no ceiling on its cost, through a missing output cap, a missing timeout, or work superlinear in an input the caller never sizes, so a large or slow input surfaces as a hang, a truncated read, or a failure attributed to the wrong cause. Not a declared bound that is merely set to the wrong value.
 
-Three neighbour pairs drift under pressure. Settle each with its own sentence, and prefer it over a fresh judgment:
+Five neighbour pairs drift under pressure. Settle each with its own sentence, and prefer it over a fresh judgment:
 
 A check that cannot fail is a hollow assertion; a sentence a reader would act wrongly on is an uncoupled restatement.
 
 A bare count or cardinality is a stale figure; any other disagreeing claim is an uncoupled restatement.
 
 A discarded exit status is the already-seeded swallowed error; an element that never entered the scanned set is a fail-open discovery.
+
+A pointer is a dangling reference when the thing it points at is absent under every name; it is an uncoupled restatement when that thing exists and the pointer names or describes it wrongly.
+
+This pair separates a wrong element from a wrong root: a set missing a member is the fail-open discovery, a set gathered from the wrong root, base, or repository is the ambient-context resolution.
 
 ## Findings sidecar (local run record)
 
