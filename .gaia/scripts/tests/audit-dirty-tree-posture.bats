@@ -34,9 +34,11 @@ setup() {
   # The Code Audit Team members. The list is spelled out rather than
   # globbed: a glob would silently pass if a member file were renamed away,
   # which is the fail-open this suite exists to prevent. The entries are the
-  # authority on how many; deliberately no count here or in any comment or test
-  # name below, because a count rots the next time a member joins or leaves and
-  # the rotted number reads as an assertion nobody has checked.
+  # authority on how many; deliberately no ROSTER count here or in any comment
+  # or test name below, because such a count rots the next time a member joins
+  # or leaves and the rotted number reads as an assertion nobody has checked.
+  # Counts of other things below (fixtures, phrasings) are not that class and
+  # stay.
   MEMBERS="code-audit-frontend
 code-audit-github-workflows
 code-audit-maintainer-node
@@ -82,7 +84,7 @@ code-audit-maintainer-shell"
   # Pinned separately because the two say different things: SENTINEL_CARVEOUT
   # pins the prose promising the sentinel is never remit-filtered, and CHECK_LINE
   # pins only the `if` that detects the failure. Deleting this line from every
-  # member left the suite reporting 18/18 ok while the fail-closed arm produced
+  # member left the suite fully green while the fail-closed arm produced
   # nothing to withhold on, which is the suite's own stated anti-goal. Matched
   # without leading indentation: the content is what must not drift, and pinning
   # the block's indentation too would red on a reflow that changes no meaning.

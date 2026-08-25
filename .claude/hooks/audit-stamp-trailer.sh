@@ -202,8 +202,8 @@ if [ -z "$frontend_digest" ]; then
   exit 0
 fi
 
-# A multi-member diff has all three Code Audit Team members invoke this hook
-# after writing their markers, and the member-aware gate below only passes
+# A multi-member diff has every dispatched Code Audit Team member invoke this
+# hook after writing their markers, and the member-aware gate below only passes
 # once the last member clears. Two members can pass the already-stamped
 # guard near-simultaneously (neither sees a trailer yet) and both reach the
 # commit. The mutex below serializes the whole already-stamped-guard through

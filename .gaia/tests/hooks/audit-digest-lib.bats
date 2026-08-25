@@ -10,9 +10,13 @@
 # leaves every member's digest byte-identical, so its marker re-validates with no
 # re-audit. Every degradation resolves fail-closed (empty output, non-zero exit).
 #
-# Fixtures use the builtin roster (no .gaia/audit-ci.yml in the fixture), which
-# names all three members: code-audit-frontend (default), code-audit-maintainer-
-# shell, code-audit-maintainer-node. Membership is proved by ROTATION: a path is
+# Fixtures use the builtin roster (no .gaia/audit-ci.yml in the fixture) and
+# probe a subset of it, deliberately rather than for want of coverage:
+# code-audit-frontend (default), code-audit-maintainer-shell and
+# code-audit-maintainer-node. The members left out have their ownership routing
+# covered in audit-scope-lib.bats and audit-scope-routing-parity.bats, so what
+# this suite adds for them would be a second copy of that. Membership is proved
+# by ROTATION: a path is
 # in member M's digest set iff flipping one byte in it rotates M's digest.
 #
 # Assertion style: .claude/rules/bats-assertions.md.
@@ -37,7 +41,7 @@ git_init() {
   git -C "$d" config commit.gpgsign false
 }
 
-# Seed a fixture repo with an owned file for each of the three members, a
+# Seed a fixture repo with an owned file for each probed member, a
 # machinery file (in every member's set), a nested rules machinery file, an
 # out-of-glob CHANGELOG, and a wiki file (both ownerless + allowlisted).
 seed_repo() {

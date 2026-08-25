@@ -702,10 +702,10 @@ STUB
 # So the self-skip arm reads the WHOLE-PR list and the review reads the
 # increment. Each member is probed with a machinery path OUTSIDE its own
 # remit (that is what makes its increment empty) and an owned path inside it.
-# `.claude/hooks/lib/audit-clearance.sh`, which three of these members used
+# `.claude/hooks/lib/audit-clearance.sh`, which some of these members used
 # for this purpose before, is now a GLOBAL RULE (it resets every member's
 # per-member base), so `.claude/hooks/local-janitor.sh` -- merely shared,
-# owned by none of the four -- replaces it.
+# owned by none of them -- replaces it.
 
 # probe_deadlock <member> <owned-path> <machinery-path-outside-remit>
 probe_deadlock() {
