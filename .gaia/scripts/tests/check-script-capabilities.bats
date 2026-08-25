@@ -410,6 +410,212 @@ curl -sS https://example.com/x'
   true
 }
 
+# --- Idiom: a command in the condition of `if`, `while`, or `until` ---------
+#
+# A condition is command position, so the SOURCE detector reads one: `if`,
+# `while` and `until` are on _GAIA_CAPCHECK_DOTCMD, and the failure of missing
+# a keyword there is SILENCE -- not an UNRESOLVED line, nothing at all. That is
+# why each keyword is pinned by name here rather than left to the alternation's
+# shape.
+#
+# The two anchors share `then`, `else`, `do`, `elif` and `!` and DIVERGE on
+# these three: _GAIA_CAPCHECK_PATHCMD does not name them, so the bare-path
+# detector deliberately does NOT read a condition. That is the third named
+# departure in that constant's header, and it is why the pairs below are pairs.
+# `if` is ordinary English in a way `then` and `elif` are not, so what makes it
+# affordable on the source anchor is the lone-`.` blanking, which reaches a
+# source and does not reach a path; the negatives carry more weight than the
+# positives here because that asymmetry is the whole decision.
+
+@test "a source in the condition of an if, while, or until is a call, not silence" {
+  repo="$(make_fixture_repo dotkwif)"
+  add_script "$repo" a/s.sh '#!/usr/bin/env bash
+if . .github/audit/base.sh; then true; fi'
+  add_script "$repo" .github/audit/base.sh '#!/usr/bin/env bash
+curl -sS https://example.com/x'
+  write_allow "$repo" "Bash(bash a/s.sh:*)"
+  write_manifest "$repo" '[{"script":"a/s.sh","capabilities":[],
+    "why":"sources the base resolver from a condition","maintainer_only":false}]'
+  run bash "$CHECK" "$repo"
+  [ "$status" -eq 1 ]
+  grep -qF -- "UNDECLARED a/s.sh invokes:.github/audit/base.sh" <<<"$output"
+  grep -qF -- "UNDECLARED a/s.sh network" <<<"$output"
+
+  repo="$(make_fixture_repo dotkwwhile)"
+  add_script "$repo" a/s.sh '#!/usr/bin/env bash
+while . .github/audit/base.sh; do break; done'
+  add_script "$repo" .github/audit/base.sh '#!/usr/bin/env bash
+curl -sS https://example.com/x'
+  write_allow "$repo" "Bash(bash a/s.sh:*)"
+  write_manifest "$repo" '[{"script":"a/s.sh","capabilities":[],
+    "why":"sources the base resolver from a condition","maintainer_only":false}]'
+  run bash "$CHECK" "$repo"
+  [ "$status" -eq 1 ]
+  grep -qF -- "UNDECLARED a/s.sh invokes:.github/audit/base.sh" <<<"$output"
+
+  repo="$(make_fixture_repo dotkwuntil)"
+  add_script "$repo" a/s.sh '#!/usr/bin/env bash
+until . .github/audit/base.sh; do break; done'
+  add_script "$repo" .github/audit/base.sh '#!/usr/bin/env bash
+curl -sS https://example.com/x'
+  write_allow "$repo" "Bash(bash a/s.sh:*)"
+  write_manifest "$repo" '[{"script":"a/s.sh","capabilities":[],
+    "why":"sources the base resolver from a condition","maintainer_only":false}]'
+  run bash "$CHECK" "$repo"
+  [ "$status" -eq 1 ]
+  grep -qF -- "UNDECLARED a/s.sh invokes:.github/audit/base.sh" <<<"$output"
+}
+
+@test "a lone dot after if that is jq's identity filter is not a source" {
+  # `if . == null then` is a jq program, and its `.` is the identity filter
+  # rather than the source builtin. TWO layers keep it out of the closure, and
+  # this fixture pins the second because the first cannot reach it here.
+  #
+  # The first is the word blanking in _gaia_capcheck_strip_quoted_code: a lone
+  # `.` is one of _GAIA_CAPCHECK_QUOTED_WORDS, so inside an ordinary
+  # double-quoted span the `\.` the anchor requires has nothing left to match.
+  # That blanking has its own pin, the test directly below. It is deliberately
+  # NOT what this fixture rests on: a line the blanking already silences never
+  # reaches the anchor, so it can assert nothing about anything downstream.
+  #
+  # So the program sits inside a COMMAND SUBSTITUTION, which is the one
+  # uncovered case _GAIA_CAPCHECK_DOTCMD's header names: strip_quoted_code
+  # bails on a whole line carrying `$(` and blanks nothing on it (#1536). The
+  # lone `.` survives, the anchor fires on ` if . `, and the only thing left is
+  # the second layer -- the operand filter in _gaia_capcheck_scan_invocations,
+  # which skips an operand carrying neither a `/` nor a `.sh` tail. Loosen that
+  # filter and this test reports UNRESOLVED for `==`.
+  #
+  # The `if` sits behind a space rather than against the opening quote for the
+  # reason the barekwprose comment below gives: against the quote the
+  # `(^|[[:space:]])` guard fails, the anchor never matches, and the fixture
+  # asserts nothing at all.
+  repo="$(make_fixture_repo dotkwjq)"
+  add_script "$repo" a/s.sh '#!/usr/bin/env bash
+x="$(jq -r ".result | if . == null then 1 else 2 end" /dev/null)"
+printf "%s\n" "$x"'
+  write_allow "$repo" "Bash(bash a/s.sh:*)"
+  write_manifest "$repo" '[{"script":"a/s.sh","capabilities":[],
+    "why":"reads a jq program that names no script","maintainer_only":false}]'
+  run bash "$CHECK" "$repo"
+  [ "$status" -eq 0 ]
+  grep -qE '^(UNDECLARED|SURPLUS|UNRESOLVED)' <<<"$output" && return 1
+  true
+}
+
+@test "the lone dot blanking is what keeps a source named in prose out of a closure" {
+  # The premise the DOTCMD/PATHCMD split rests on, pinned. `if`, `while` and
+  # `until` are affordable on the source anchor and not on the path anchor for
+  # exactly one reason: a lone `.` is in _GAIA_CAPCHECK_QUOTED_WORDS and is
+  # blanked inside a double-quoted span, so a sentence naming a source has
+  # nothing left for the anchor to match, while nothing blanks a path.
+  #
+  # Nothing else in this tree held that reason to its word. Drop the lone `.`
+  # from that list and every other guard here stays green while this fixture
+  # starts reporting a fabricated CALL edge into the target and its whole
+  # subtree: the over-read the third named departure in _GAIA_CAPCHECK_PATHCMD's
+  # header exists to avoid, arriving through the source side instead.
+  #
+  # Both halves of the fixture are load-bearing. The `if` sits mid-sentence
+  # behind a space, because against the opening quote the anchor never runs.
+  # The operand is a real repo path rather than a jq token, because the scan's
+  # own filter drops any operand carrying neither a `/` nor a `.sh` tail before
+  # it resolves anything.
+  repo="$(make_fixture_repo dotkwblank)"
+  add_script "$repo" a/s.sh '#!/usr/bin/env bash
+printf "%s\n" "stop if . .github/audit/base.sh is missing"'
+  add_script "$repo" .github/audit/base.sh '#!/usr/bin/env bash
+curl -sS https://example.com/x'
+  write_allow "$repo" "Bash(bash a/s.sh:*)"
+  write_manifest "$repo" '[{"script":"a/s.sh","capabilities":[],
+    "why":"names a sourced file in a message","maintainer_only":false}]'
+  run bash "$CHECK" "$repo"
+  [ "$status" -eq 0 ]
+  grep -qE '^(UNDECLARED|SURPLUS|UNRESOLVED)' <<<"$output" && return 1
+  true
+}
+
+@test "a bare path in an if condition is deliberately NOT a call, unlike a source there" {
+  # The third named departure between the two anchors, pinned because it is a
+  # deliberate under-read and a reader will otherwise repair it as an oversight.
+  # `.` and a bare path are treated differently on purpose: a lone `.` is a
+  # QUOTED_WORD, so prose naming it is blanked before any anchor runs, while
+  # nothing blanks a repo path. Naming `if` on the path anchor would therefore
+  # expose every message string carrying ` if <path>.sh `, and measured on the
+  # real tree it buys no reach at all, because no shape here runs a bare path
+  # out of a condition. The paired positive is the source form in the test
+  # above, which IS detected.
+  #
+  # The `if` is INDENTED on purpose. Every keyword arm requires the keyword at
+  # a line start or behind whitespace, so a fixture with `if` in column 0 would
+  # stay green under the one mutation this test exists to catch, naming `if` on
+  # the path anchor behind whitespace, and would assert nothing.
+  repo="$(make_fixture_repo barekwdeparture)"
+  add_script "$repo" a/s.sh '#!/usr/bin/env bash
+f() {
+  if .github/audit/base.sh; then true; fi
+}
+f'
+  add_script "$repo" .github/audit/base.sh '#!/usr/bin/env bash
+curl -sS https://example.com/x'
+  write_allow "$repo" "Bash(bash a/s.sh:*)"
+  write_manifest "$repo" '[{"script":"a/s.sh","capabilities":[],
+    "why":"runs the base resolver from a condition","maintainer_only":false}]'
+  run bash "$CHECK" "$repo"
+  [ "$status" -eq 0 ]
+  grep -qE '^(UNDECLARED|SURPLUS|UNRESOLVED)' <<<"$output" && return 1
+  true
+}
+
+@test "a script path after if inside a message is prose, not a call" {
+  # What the departure above buys, stated as the shape it protects. The keyword
+  # sits MID-SENTENCE here, behind a space, which is the position the anchor
+  # would actually match; putting `if` immediately after the opening quote
+  # instead would make this test pass on the anchor missing the line entirely
+  # and assert nothing about prose.
+  #
+  # Nothing blanks this span. _gaia_capcheck_strip_quoted_code blanks command
+  # words and `>`, never a repo path, so the line reaches the detector intact
+  # and the anchor is the only thing standing between it and a fabricated edge
+  # into the target's whole subtree. Name `if` on _GAIA_CAPCHECK_PATHCMD and
+  # this fixture reports UNDECLARED for both the edge and the target's network.
+  repo="$(make_fixture_repo barekwprose)"
+  add_script "$repo" a/s.sh '#!/usr/bin/env bash
+printf "%s\n" "stop if .github/audit/base.sh is missing"'
+  add_script "$repo" .github/audit/base.sh '#!/usr/bin/env bash
+curl -sS https://example.com/x'
+  write_allow "$repo" "Bash(bash a/s.sh:*)"
+  write_manifest "$repo" '[{"script":"a/s.sh","capabilities":[],
+    "why":"names the resolver in a message","maintainer_only":false}]'
+  run bash "$CHECK" "$repo"
+  [ "$status" -eq 0 ]
+  grep -qE '^(UNDECLARED|SURPLUS|UNRESOLVED)' <<<"$output" && return 1
+  true
+}
+
+@test "a script path opening a here-document body is text, not a call" {
+  # The negative the `^` arm has been missing. Its positive is the subtree test
+  # above: a path alone at the start of a line is an execution. A here-document
+  # body line begins the same way and runs nothing, and what separates the two
+  # is the here-doc handling upstream of the anchor rather than the anchor
+  # itself -- so widening either one fabricates an edge into a subtree the
+  # caller never enters.
+  repo="$(make_fixture_repo bareheredoc)"
+  add_script "$repo" a/s.sh '#!/usr/bin/env bash
+cat <<EOF
+.github/audit/base.sh is the writer
+EOF'
+  add_script "$repo" .github/audit/base.sh '#!/usr/bin/env bash
+curl -sS https://example.com/x'
+  write_allow "$repo" "Bash(bash a/s.sh:*)"
+  write_manifest "$repo" '[{"script":"a/s.sh","capabilities":[],
+    "why":"prints the resolver name in a here-document","maintainer_only":false}]'
+  run bash "$CHECK" "$repo"
+  [ "$status" -eq 0 ]
+  grep -qE '^(UNDECLARED|SURPLUS|UNRESOLVED)' <<<"$output" && return 1
+  true
+}
+
 @test "a write built from a literal prefix and a variable tail generalizes to a glob" {
   repo="$(make_fixture_repo prefixglob)"
   add_script "$repo" .gaia/scripts/w.sh '#!/usr/bin/env bash
@@ -1018,4 +1224,23 @@ declare_side() {
   before="$(reach_side vendored)"
   [ -n "$after" ]
   [ "$before" = "$after" ]
+}
+
+@test "a path token that merely begins with a keyword is not split at the keyword" {
+  # The keyword arms match a keyword, not a prefix of the next word. `docs/`
+  # opens with `do`, and an arm that did not require the space after it would
+  # anchor mid-token and hand the resolver `cs/build.sh` -- a path no tree has,
+  # reported at a line whose real target it never names.
+  repo="$(make_fixture_repo barekwprefix)"
+  add_script "$repo" a/s.sh '#!/usr/bin/env bash
+X=1 docs/build.sh'
+  add_script "$repo" docs/build.sh '#!/usr/bin/env bash
+true'
+  write_allow "$repo" "Bash(bash a/s.sh:*)"
+  write_manifest "$repo" '[{"script":"a/s.sh","capabilities":[],
+    "why":"runs a build script behind an assignment prefix","maintainer_only":false}]'
+  run bash "$CHECK" "$repo"
+  [ "$status" -eq 0 ]
+  grep -qF -- "cs/build.sh" <<<"$output" && return 1
+  true
 }
