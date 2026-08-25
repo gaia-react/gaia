@@ -90,10 +90,21 @@
 # one spelling: an indented `- name: X` carrying its value on the entry line. An
 # expanded block entry, a flow mapping (`- {name: x}`), a quoted key, `globs:`
 # written before `name:`, or a value held over to a more-indented line below the
-# key are each valid YAML this scan would otherwise read short. Deliberately NOT
-# widened to accept them: `.claude/hooks/lib/audit-scope.sh:302` pins the same
-# spelling, so a scan that accepted more would answer differently from the
-# parser the rest of the machinery uses, which is worse than agreeing with it.
+# key are each valid YAML this scan would otherwise read short.
+#
+# Deliberately NOT widened to accept them. The parser the rest of the machinery
+# uses, `.claude/hooks/lib/audit-scope.sh:302`, pins that spelling plus three
+# looser readings: a leading `[[:space:]]*` on its member regex, so a
+# column-0 sequence reads as members there; `name[[:space:]]*:` for the key, so
+# `- name : x` reads there; and an `unq()` that strips a quoted value this scan
+# keeps verbatim. Measured, not inferred from the regex: fed the same fixtures,
+# that parser emits both members where this scan does not. Every divergence
+# therefore makes this scan STRICTER, never looser, and none of them reaches a
+# member drop -- a column-0 roster reds at the caller's non-empty guard,
+# `- name : x` reds at the count below, and a quoted value reds at setup()'s
+# `cp` of a path no agent file has. Widening this scan past the strictest of
+# those readings would answer differently from that parser, which is worse than
+# agreeing with it.
 #
 # What that leaves is counted instead of assumed. The block's member entries are
 # its shallowest `-` lines (a `globs:` item is indented deeper), so an entry that
