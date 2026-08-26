@@ -14,14 +14,17 @@
 # invariant).
 #
 # Usage:
-#   audit-noop-detect.sh --shape <SHAPE> --path <PATH> [--audit-md <AUDIT_MD_PATH>] [--marker <MARKER_PATH>] [--findings <FINDINGS_PATH>] [--report-key <KEY>] [--expect-count <N> | --min-count <N>]
+#   audit-noop-detect.sh --shape <SHAPE> --path <PATH> [--audit-md <AUDIT_MD_PATH>] [--marker <MARKER_PATH>] [--findings <FINDINGS_PATH>] [--findings-root <ROOT> --findings-since <STAMP>] [--report-key <KEY>] [--expect-count <N> | --min-count <N>]
 #
 #   --shape       one of the caller shape ids below (FC-2).
 #   --path        file-backed shape: the expected output file, which the
 #                 caller pre-cleared (`rm -f`) before dispatch, so presence
 #                 is a fresh-write signal. return-conformance shape: a file
 #                 on disk holding the dispatched agent's captured thin
-#                 return text.
+#                 return text. REQUIRED for every shape except
+#                 audit-team-member, whose artifact arms can settle the
+#                 classification with no return text at all: that shape
+#                 requires --path or --marker, and accepts both.
 #   --audit-md    optional; honored ONLY for --shape applier-summary. When
 #                 passed, that AUDIT.md path must also exist for a REAL
 #                 classification (the 7c-with-directives dispatch). Ignored
@@ -38,6 +41,22 @@
 #                 below for the lost-report gate this argument enables when
 #                 passed, and its member-identity binding. Omit it to keep the
 #                 marker-only short-circuit. Ignored for every other shape.
+#                 A caller that cannot name the path takes the resolve arm
+#                 below instead; the two are mutually exclusive.
+#   --findings-root / --findings-since
+#                 optional and BOTH-OR-NEITHER; honored ONLY for --shape
+#                 audit-team-member; mutually exclusive with --findings. The
+#                 resolve arm of the same lost-report gate: instead of being
+#                 handed the sidecar's path, this script finds it. --findings-
+#                 root is the audited working root, whose OWN branch supplies
+#                 the key's branch half (never the caller's cwd, and never the
+#                 audit directory's -- under a worktree that directory is a
+#                 symlink into main and would answer with main's branch).
+#                 --findings-since is a stamp file the caller creates
+#                 immediately before the dispatch wave; the resolved sidecar
+#                 must be strictly newer than it. See the case arm below for
+#                 why resolution replaces prediction and why the stamp is not
+#                 optional. Ignored for every other shape.
 #   --report-key  optional; honored ONLY for --shape agent-report-file. Names
 #                 the top-level object key holding the report array. Omit it
 #                 when the agent writes a bare top-level array. Ignored for
@@ -96,8 +115,9 @@
 #                         token, exit 0), OR
 #                         --marker path holds a writer-produced EARNED
 #                         clearance (a clean or non-blocking-dirty pass already
-#                         wrote it) AND, when --findings is passed, that
-#                         durable report of record is present and attributed to
+#                         wrote it) AND, when --findings or the --findings-root
+#                         resolve arm is passed, that durable report of record
+#                         is present and attributed to
 #                         the same member, OR the
 #                         captured return in --path carries a backticked
 #                         `` `<path>:<line>` `` finding-location token (any
@@ -120,7 +140,8 @@
 # identical empty hand.
 #
 # Exit code IS the boolean: 0 = REAL (not a no-op), 1 = NO-OP, 2 = usage
-# error (unknown --shape, missing --shape/--path). Also prints `real`,
+# error (unknown --shape, a missing required --shape/--path/--marker, or a
+# malformed count or resolve-arm argument). Also prints `real`,
 # `refused`, or `noop` to stdout for human/log readability -- `refused` is a
 # finer-grained label on the same exit-0 "not a no-op" verdict, so callers
 # branch on the exit code, never on stdout.
@@ -143,7 +164,7 @@ set -uo pipefail
 
 usage() {
   cat <<'EOF' >&2
-usage: audit-noop-detect.sh --shape <SHAPE> --path <PATH> [--audit-md <AUDIT_MD_PATH>] [--marker <MARKER_PATH>] [--findings <FINDINGS_PATH>] [--report-key <KEY>] [--expect-count <N> | --min-count <N>]
+usage: audit-noop-detect.sh --shape <SHAPE> --path <PATH> [--audit-md <AUDIT_MD_PATH>] [--marker <MARKER_PATH>] [--findings <FINDINGS_PATH>] [--findings-root <ROOT> --findings-since <STAMP>] [--report-key <KEY>] [--expect-count <N> | --min-count <N>]
 
   --shape  one of: spec-selfreview-file, spec-findings-file,
            spec-verdict-file, applier-summary, plan-findings,
@@ -151,6 +172,8 @@ usage: audit-noop-detect.sh --shape <SHAPE> --path <PATH> [--audit-md <AUDIT_MD_
            agent-report-file
   --path   file-backed shape: expected output file.
            return-conformance shape: captured-return temp file.
+           Required for every shape except audit-team-member, which
+           requires --path or --marker and accepts both.
   --audit-md  optional; honored only for --shape applier-summary.
   --marker    optional; honored only for --shape audit-team-member. Its
               `.refused` sibling is checked first and classifies refused.
@@ -158,6 +181,12 @@ usage: audit-noop-detect.sh --shape <SHAPE> --path <PATH> [--audit-md <AUDIT_MD_
               member's findings sidecar; when passed, the EARNED marker
               short-circuit also requires it (lost-report detection). It does
               not gate the refusal arm.
+  --findings-root / --findings-since
+              optional, both-or-neither; honored only for --shape
+              audit-team-member; mutually exclusive with --findings. Resolves
+              the member's newest sidecar under <ROOT> instead of being told
+              its path, and requires it to be newer than the <STAMP> file the
+              caller wrote immediately before the dispatch wave.
   --report-key   optional; honored only for --shape agent-report-file. The
                  top-level key holding the report array. Omit for a bare
                  top-level array.
@@ -197,6 +226,8 @@ TARGET_PATH=""
 AUDIT_MD=""
 MARKER_PATH=""
 FINDINGS_PATH=""
+FINDINGS_ROOT=""
+FINDINGS_SINCE=""
 REPORT_FIELD=""
 EXPECT_COUNT=""
 MIN_COUNT=""
@@ -207,6 +238,13 @@ MIN_COUNT=""
 # exists to close, so it must fail closed (a usage error) rather than open.
 EXPECT_COUNT_SEEN=""
 MIN_COUNT_SEEN=""
+# The resolve arm gates on presence for the same reason: a caller interpolating
+# an unset root passes an EMPTY one, and a value test would read that as "no
+# resolve arm asked for", silently falling back to the marker-only
+# short-circuit -- which is the lost-report gate disappearing, the opposite of
+# what a caller reaching for this arm wants.
+FINDINGS_ROOT_SEEN=""
+FINDINGS_SINCE_SEEN=""
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -228,6 +266,16 @@ while [ "$#" -gt 0 ]; do
       ;;
     --findings)
       FINDINGS_PATH="${2:-}"
+      shift 2 2>/dev/null || shift
+      ;;
+    --findings-root)
+      FINDINGS_ROOT="${2:-}"
+      FINDINGS_ROOT_SEEN=1
+      shift 2 2>/dev/null || shift
+      ;;
+    --findings-since)
+      FINDINGS_SINCE="${2:-}"
+      FINDINGS_SINCE_SEEN=1
       shift 2 2>/dev/null || shift
       ;;
     --report-key)
@@ -252,8 +300,8 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 
-if [ -z "$SHAPE" ] || [ -z "$TARGET_PATH" ]; then
-  echo "audit-noop-detect: --shape and --path are required" >&2
+if [ -z "$SHAPE" ]; then
+  echo "audit-noop-detect: --shape is required" >&2
   usage
   exit 2
 fi
@@ -265,6 +313,33 @@ case "$SHAPE" in
     echo "audit-noop-detect: unknown --shape '$SHAPE'" >&2
     usage
     exit 2
+    ;;
+esac
+
+# --path is required everywhere except audit-team-member. That shape's marker
+# and sidecar arms settle the classification from artifacts alone, and the
+# orchestrator that drives it has no reliable returned text to capture: the
+# `Agent` tool routes a member's final text through an asynchronous completion
+# notification, not through the call's own return, so a caller that polls the
+# artifacts (.claude/rules/subagent-dispatch.md) legitimately holds no temp
+# file. Demanding one there would force a caller to fabricate an empty file,
+# which classifies NO-OP and burns the single hardened re-dispatch on a member
+# that was never broken. It still needs ONE of the two, because with neither a
+# path nor a marker there is nothing on disk to read at all.
+case "$SHAPE" in
+  audit-team-member)
+    if [ -z "$TARGET_PATH" ] && [ -z "$MARKER_PATH" ]; then
+      echo "audit-noop-detect: --shape audit-team-member requires --path or --marker" >&2
+      usage
+      exit 2
+    fi
+    ;;
+  *)
+    if [ -z "$TARGET_PATH" ]; then
+      echo "audit-noop-detect: --path is required for --shape '$SHAPE'" >&2
+      usage
+      exit 2
+    fi
     ;;
 esac
 
@@ -296,6 +371,47 @@ _acd_validate_count() {
 }
 _acd_validate_count "$EXPECT_COUNT_SEEN" "$EXPECT_COUNT" --expect-count
 _acd_validate_count "$MIN_COUNT_SEEN" "$MIN_COUNT" --min-count
+
+# Resolve-arm validation, on the same terms and for the same reason: every way
+# of asking for it half-way fails closed here rather than degrading into a
+# weaker predicate at classify time.
+if [ -n "$FINDINGS_ROOT_SEEN" ] && [ -n "$FINDINGS_PATH" ]; then
+  echo "audit-noop-detect: --findings and --findings-root are mutually exclusive" >&2
+  usage
+  exit 2
+fi
+if [ -n "$FINDINGS_SINCE_SEEN" ] && [ -n "$FINDINGS_PATH" ]; then
+  echo "audit-noop-detect: --findings and --findings-since are mutually exclusive" >&2
+  usage
+  exit 2
+fi
+# Both-or-neither. --findings-root alone is a resolve with no freshness test,
+# which would happily return a PREVIOUS round's sidecar as proof this round's
+# report landed -- the same stale-artifact acceptance the pre-clear used to
+# prevent when the path was predictable. --findings-since alone asks for a
+# freshness test on a path that is never resolved.
+if { [ -n "$FINDINGS_ROOT_SEEN" ] && [ -z "$FINDINGS_SINCE_SEEN" ]; } \
+   || { [ -z "$FINDINGS_ROOT_SEEN" ] && [ -n "$FINDINGS_SINCE_SEEN" ]; }; then
+  echo "audit-noop-detect: --findings-root and --findings-since must be passed together" >&2
+  usage
+  exit 2
+fi
+if [ -n "$FINDINGS_ROOT_SEEN" ]; then
+  if [ -z "$FINDINGS_ROOT" ] || [ ! -d "$FINDINGS_ROOT" ]; then
+    echo "audit-noop-detect: --findings-root must name an existing directory, got '$FINDINGS_ROOT'" >&2
+    usage
+    exit 2
+  fi
+  # An absent stamp is a usage error rather than a skipped test: bash's `-nt`
+  # reports TRUE when the left file exists and the right one does not, so a
+  # missing stamp would silently accept every sidecar on disk, newest-wins,
+  # including one written rounds ago.
+  if [ -z "$FINDINGS_SINCE" ] || [ ! -f "$FINDINGS_SINCE" ]; then
+    echo "audit-noop-detect: --findings-since must name an existing file, got '$FINDINGS_SINCE'" >&2
+    usage
+    exit 2
+  fi
+fi
 
 # ---------- file-backed shapes: absent path is always NO-OP ----------
 case "$SHAPE" in
@@ -432,6 +548,75 @@ case "$SHAPE" in
       . "$_acd_lib/audit-clearance.sh"
     fi
 
+    # The key lib, for the resolve arm's branch half. Sourced from this
+    # script's own directory for the same reason the clearance reader is: never
+    # from cwd. Absent (a partial checkout), the resolve arm finds nothing and
+    # the gate reads that as a lost report, which is the fail-closed direction.
+    _acd_keylib="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
+    if [ -n "$_acd_keylib" ] && [ -f "$_acd_keylib/audit-key-lib.sh" ]; then
+      # shellcheck source=/dev/null
+      . "$_acd_keylib/audit-key-lib.sh"
+    fi
+
+    # ---------- sidecar predicate, shared by both findings arms ----------
+    # <sidecar-path> <member>: 0 when that file is this member's report of
+    # record. Factored so the named-path arm and the resolve arm cannot drift
+    # into two different notions of a valid sidecar.
+    #
+    # An EMPTY findings array is valid and REAL: a member that genuinely found
+    # nothing still writes one.
+    _acd_sidecar_ok() {
+      [ -f "$1" ] || return 1
+      # jq absent: existence degrades to acceptance, matching the marker arm's
+      # own jq-absent degradation below.
+      command -v jq >/dev/null 2>&1 || return 0
+      jq -e --arg m "$2" '(.member == $m) and (.findings | type == "array")' \
+        "$1" >/dev/null 2>&1
+    }
+
+    # ---------- resolve arm: find the sidecar rather than be told it ----------
+    # <root> <member>: prints the newest sidecar this member wrote on <root>'s
+    # own branch that is newer than $FINDINGS_SINCE, or nothing.
+    #
+    # Why resolution and not prediction. The sidecar's key is
+    # `<base-sha>.<branch-slug>`, and the base half is the SHARED
+    # pull-request-wide base, which advances one stamp per cleared round (and
+    # resets outright on a rebase or a machinery-reset). A caller that computes
+    # the expected path once and reuses it every round reads an absent file
+    # from the second round on, and an absent sidecar under a present marker is
+    # exactly the lost-report shape -- so a healthy round classifies NO-OP and
+    # spends the one hardened re-dispatch. Resolving here removes the
+    # prediction entirely: the answer is derived at the instant it is needed,
+    # which is the property a caller writing a path down in advance cannot have.
+    #
+    # The branch half is read from <root>, never from the audit directory: a
+    # linked worktree symlinks .gaia/local/audit/ to main's, so asking that
+    # directory for a branch answers with main's.
+    #
+    # Only the base half is a wildcard. The branch and member halves are
+    # literal, so one branch's sidecar can never answer for another's, and the
+    # `.member` check below still binds identity inside the file.
+    _acd_resolve_sidecar() {
+      local root="$1" member="$2"
+      local slug newest="" f
+      command -v gaia_branch_slug >/dev/null 2>&1 || return 0
+      slug="$(gaia_branch_slug "$root" 2>/dev/null)" || return 0
+      [ -n "$slug" ] || return 0
+      for f in "$root"/.gaia/local/audit/*."$slug"."$member".findings.json; do
+        [ -f "$f" ] || continue
+        # The freshness test the pre-clear used to provide. Without it the
+        # newest-wins walk would return a previous round's sidecar whenever
+        # this round's best-effort write failed, and the gate would read it as
+        # proof this round's report landed.
+        [ "$f" -nt "$FINDINGS_SINCE" ] || continue
+        if [ -z "$newest" ] || [ "$f" -nt "$newest" ]; then
+          newest="$f"
+        fi
+      done
+      [ -n "$newest" ] && printf '%s\n' "$newest"
+      return 0
+    }
+
     # ---------- refusal arm (checked FIRST) ----------
     # A refusing member writes `<digest>[.<member>].refused` and no `.ok`, so
     # the caller's --marker path names a file that will never exist for this
@@ -497,8 +682,9 @@ case "$SHAPE" in
         _acd_member="${_acd_member_part#.}"
       fi
 
-      # Lost-report gate. When the caller names the member's durable findings
-      # sidecar, the marker alone no longer authorizes REAL. A member whose
+      # Lost-report gate. When the caller asks for it, by naming the member's
+      # durable findings sidecar or by asking for it to be resolved, the marker
+      # alone no longer authorizes REAL. A member whose
       # report never reached the orchestrator still wrote its marker, so
       # keying on marker-presence would classify REAL, suppress the one-shot
       # retry, and leave the operator holding a green gate with no findings to
@@ -506,30 +692,30 @@ case "$SHAPE" in
       # to resolve or acknowledge. The sidecar is the report of record, so
       # demanding BOTH is what separates a real clean pass from a lost one.
       #
-      # The predicate binds to the audited MEMBER, not merely to the shape. The
-      # orchestrator hand-builds one sidecar path per dispatched member and
-      # those paths differ only by the member infix, so a shape-only check
+      # The predicate binds to the audited MEMBER, not merely to the shape.
+      # Sidecar paths differ only by the member infix, so a shape-only check
       # would let member A's sidecar vouch for member B's lost report, exactly
       # the failure this gate exists to close. It matches what the clearance
       # check below already demands of the marker, so both arms of the same
       # short-circuit agree on whether filename-derived identity is trusted.
-      # An EMPTY findings array is valid and REAL: a member that genuinely
-      # found nothing still writes one.
+      # Both arms run the same `_acd_sidecar_ok` predicate above; they differ
+      # only in how the path is obtained. The resolve arm finding NOTHING is a
+      # lost report, not an absent request: a caller that passed
+      # --findings-root asked for the gate, so an unresolved sidecar has to
+      # fail it. Reading an empty resolution as "no gate asked for" would put
+      # this shape straight back on the marker-only short-circuit, which is the
+      # gate silently disappearing in exactly the runs it exists for.
       _acd_findings_ok=1
-      if [ -n "$FINDINGS_PATH" ]; then
+      if [ -n "$FINDINGS_ROOT_SEEN" ]; then
         _acd_findings_ok=0
-        if [ -f "$FINDINGS_PATH" ]; then
-          if command -v jq >/dev/null 2>&1; then
-            if jq -e --arg m "$_acd_member" \
-                 '(.member == $m) and (.findings | type == "array")' \
-                 "$FINDINGS_PATH" >/dev/null 2>&1; then
-              _acd_findings_ok=1
-            fi
-          else
-            # jq absent: existence degrades to acceptance, matching the marker
-            # arm's own jq-absent degradation just below.
-            _acd_findings_ok=1
-          fi
+        _acd_resolved="$(_acd_resolve_sidecar "$FINDINGS_ROOT" "$_acd_member")"
+        if [ -n "$_acd_resolved" ] && _acd_sidecar_ok "$_acd_resolved" "$_acd_member"; then
+          _acd_findings_ok=1
+        fi
+      elif [ -n "$FINDINGS_PATH" ]; then
+        _acd_findings_ok=0
+        if _acd_sidecar_ok "$FINDINGS_PATH" "$_acd_member"; then
+          _acd_findings_ok=1
         fi
       fi
       if [ "$_acd_findings_ok" -eq 1 ] && ! command -v jq >/dev/null 2>&1; then
