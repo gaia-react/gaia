@@ -26,9 +26,9 @@
 # of quietly leaving the driven set.
 #
 # The loose predicate takes any hook that arms errexit, installs no ERR trap,
-# and resolves anything at all from its own `BASH_SOURCE` with a command
-# substitution. It filters the ERR-trap family mechanically, for a checked
-# reason: that trap sends the failing assignment to the same silent exit 0 the
+# and carries both a `$(cd` and a `BASH_SOURCE` anywhere in its text. It reads
+# the file rather than a line, so the two-line spelling escapes neither half.
+# It filters the ERR-trap family mechanically, for a checked reason: that trap sends the failing assignment to the same silent exit 0 the
 # degrade branch would have reached (each such branch ends `|| true` and is
 # followed by a `type ... || exit 0`), so the branch is unreachable with no
 # change in outcome. That is a shape difference, not a defect, and driving it
@@ -90,6 +90,13 @@ lib_degrade_members() {
 # subdirectory that can genuinely be absent. A hook's own directory was read to
 # run it, and an ancestor of that directory contains it, so both exist by
 # construction and neither substitution has a reachable failure to degrade from.
+#
+# That warrant is RE-CHECKED rather than trusted. An exclusion matched on its
+# basename alone would be permanent: a listed hook that later grows a lib-child
+# resolution would keep its entry, stay out of the driven set, and carry a
+# warrant beside its name that has quietly become false. So the reconciliation
+# below also asserts each excluded hook still cds nowhere into a `lib`, and an
+# entry whose warrant stops holding fails the suite instead of shielding it.
 NOT_MEMBERS="\
 block-main-destructive-git.sh resolves an ancestor (../..), not a lib child
 block-rm-rf.sh resolves an ancestor (../..), not a lib child
@@ -97,14 +104,23 @@ block-selfheal-paths.sh resolves its own directory, not a lib child
 block-serena-cross-tree-activation.sh resolves an ancestor (../..), not a lib child
 block-worktree-path-mismatch.sh resolves an ancestor (../..), not a lib child"
 
-# The loose candidate set: anything that arms errexit, installs no ERR trap,
-# and resolves anything from its own BASH_SOURCE with a command substitution,
-# whatever the spelling. Deliberately wider than the member predicate, so a
-# re-spelled resolution lands here and has to be accounted for.
+# The loose candidate set: any hook that arms errexit, installs no ERR trap, and
+# whose text carries both a `$(cd` command substitution and a `BASH_SOURCE`
+# reference. The two predicates are FILE-level and independent on purpose. A
+# single line-level grep requiring both together reads only the one-line
+# spelling, and the two-line form (`_self="${BASH_SOURCE[0]%/*}"`, then
+# `_lib_dir="$(cd "$_self/lib" ...)"`) matches neither of its lines, so exactly
+# the re-spelling this reconciliation exists to catch would escape it.
+#
+# The reach this does claim, and no more: a hook that resolves its own location
+# and cds somewhere from it, however those two are spelled and however far
+# apart they sit. A hook that outsources the resolve to a helper it sources is
+# still outside it.
 lib_degrade_candidates() {
   local f
   for f in "$HOOKS_DIR"/*.sh; do
-    grep -qE '=.*\$\(cd .*BASH_SOURCE' "$f" || continue
+    grep -qE '\$\(cd ' "$f" || continue
+    grep -qF 'BASH_SOURCE' "$f" || continue
     grep -qE '^[[:space:]]*set -[a-z]*e' "$f" || continue
     grep -qE '^[[:space:]]*trap .* ERR' "$f" && continue
     basename "$f"
@@ -125,7 +141,20 @@ lib_degrade_candidates() {
   while read -r candidate; do
     [ -n "$candidate" ] || continue
     grep -qxF -- "$candidate" <<<"$members" && continue
-    grep -qE "^$candidate " <<<"$NOT_MEMBERS" && continue
+
+    # Compare field 1 as a literal. A basename interpolated into a pattern is
+    # read as one, and `.` before `sh` would then match any character.
+    if awk -v name="$candidate" '$1 == name { hit = 1 } END { exit !hit }' \
+         <<<"$NOT_MEMBERS"; then
+      # The exclusion holds only while its warrant does: no cd into a lib child.
+      if grep -qE '\$\(cd [^)]*/lib' "$HOOKS_DIR/$candidate"; then
+        printf 'hook %s is excluded as resolving no lib child, but now cds into one\n' \
+          "$candidate" >&2
+        return 1
+      fi
+      continue
+    fi
+
     printf 'hook %s resolves from BASH_SOURCE under errexit with no ERR trap, but is neither a driven member nor a named exclusion\n' \
       "$candidate" >&2
     return 1
