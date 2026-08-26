@@ -25,14 +25,18 @@
 # member or a NAMED exclusion. A hook that is neither fails this suite instead
 # of quietly leaving the driven set.
 #
-# The loose predicate takes any hook that arms errexit, installs no ERR trap,
-# and carries both a `$(cd` and a `BASH_SOURCE` anywhere in its text. It reads
-# the file rather than a line, so the two-line spelling escapes neither half.
-# It filters the ERR-trap family mechanically, for a checked reason: that trap sends the failing assignment to the same silent exit 0 the
-# degrade branch would have reached (each such branch ends `|| true` and is
-# followed by a `type ... || exit 0`), so the branch is unreachable with no
-# change in outcome. That is a shape difference, not a defect, and driving it
-# here would assert an obligation those hooks do not carry.
+# The loose predicate takes a hook that arms errexit, installs no ERR trap, and
+# carries both a `$(cd` and a `BASH_SOURCE` anywhere in its text. It reads the
+# file rather than a line, so the two-line spelling escapes neither half.
+# "Arms errexit" is not a claim about every way a shell can reach that state:
+# it means what `lib_degrade_errexit_armed` below reads, and that reader's own
+# header states which spellings it takes and which it does not.
+# It filters the ERR-trap family mechanically, for a checked reason: that trap
+# sends the failing assignment to the same silent exit 0 the degrade branch
+# would have reached (each such branch ends `|| true` and is followed by a
+# `type ... || exit 0`), so the branch is unreachable with no change in
+# outcome. That is a shape difference, not a defect, and driving it here would
+# assert an obligation those hooks do not carry.
 #
 # What is left is not machine-derivable and is enumerated by hand below, with a
 # warrant per entry, in NOT_MEMBERS.
@@ -70,14 +74,34 @@ teardown() {
   rm -rf "$CONTROL" "$DEGRADED"
 }
 
+# Armed-and-untrapped, the half both derivations below share. It is ONE reader
+# rather than a copy in each, because the two sat four lines apart and a
+# widening of the arming spelling could land in one and leave nothing red: that
+# is the short-read hazard this file's own header warns about, one level up in
+# the predicate feeding it.
+#
+# Armed reads the two spellings this repo's own errexit lints accept
+# (`.gaia/scripts/lint-errexit-source-guard.sh`, `lint-errexit-status-read.sh`):
+# an `e` inside a short option bundle (`set -e`, `set -euo pipefail`), or an
+# explicit `set -o errexit`, in either case at any option position on the line.
+# `set +e` suspends rather than arms, and is not read as arming. The arming
+# token has to sit ahead of any `#` on the line, so a trailing comment naming
+# `-e` does not arm.
+lib_degrade_errexit_armed() {
+  grep -qE '^[[:space:]]*set[[:space:]]([^#]*[[:space:]])?(-[a-zA-Z]*e[a-zA-Z]*|-o[[:space:]]+errexit)([[:space:]]|;|$)' "$1" || return 1
+  grep -qE '^[[:space:]]*trap .* ERR' "$1" && return 1
+  return 0
+}
+
 # The member set, derived from the hooks themselves. Prints one basename per
 # line.
 lib_degrade_members() {
   local f
   for f in "$HOOKS_DIR"/*.sh; do
+    # shellcheck disable=SC2016  # a literal pattern matching shell syntax in
+    # the hook's text; expansion is exactly what must not happen here.
     grep -qF '="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib"' "$f" || continue
-    grep -qE '^[[:space:]]*set -[a-z]*e' "$f" || continue
-    grep -qE '^[[:space:]]*trap .* ERR' "$f" && continue
+    lib_degrade_errexit_armed "$f" || continue
     basename "$f"
   done
 }
@@ -97,6 +121,10 @@ lib_degrade_members() {
 # warrant beside its name that has quietly become false. So the reconciliation
 # below also asserts each excluded hook still cds nowhere into a `lib`, and an
 # entry whose warrant stops holding fails the suite instead of shielding it.
+# That re-check spans the whole `$(cd ...` rather than stopping at the first
+# `)`, because this repo's house spelling nests a substitution inside it
+# (`$(cd "$(dirname "$0")/lib" && pwd)`) and puts the `/lib` after that inner
+# close paren, where a non-crossing match cannot reach it.
 NOT_MEMBERS="\
 block-main-destructive-git.sh resolves an ancestor (../..), not a lib child
 block-rm-rf.sh resolves an ancestor (../..), not a lib child
@@ -104,11 +132,12 @@ block-selfheal-paths.sh resolves its own directory, not a lib child
 block-serena-cross-tree-activation.sh resolves an ancestor (../..), not a lib child
 block-worktree-path-mismatch.sh resolves an ancestor (../..), not a lib child"
 
-# The loose candidate set: any hook that arms errexit, installs no ERR trap, and
-# whose text carries both a `$(cd` command substitution and a `BASH_SOURCE`
-# reference. The two predicates are FILE-level and independent on purpose. A
-# single line-level grep requiring both together reads only the one-line
-# spelling, and the two-line form (`_self="${BASH_SOURCE[0]%/*}"`, then
+# The loose candidate set: a hook that `lib_degrade_errexit_armed` reads as
+# armed and untrapped, and whose text carries both a `$(cd` command
+# substitution and a `BASH_SOURCE` reference. The two text predicates are
+# FILE-level and independent on purpose. A single line-level grep requiring
+# both together reads only the one-line spelling, and the two-line form
+# (`_self="${BASH_SOURCE[0]%/*}"`, then
 # `_lib_dir="$(cd "$_self/lib" ...)"`) matches neither of its lines, so exactly
 # the re-spelling this reconciliation exists to catch would escape it.
 #
@@ -121,8 +150,7 @@ lib_degrade_candidates() {
   for f in "$HOOKS_DIR"/*.sh; do
     grep -qE '\$\(cd ' "$f" || continue
     grep -qF 'BASH_SOURCE' "$f" || continue
-    grep -qE '^[[:space:]]*set -[a-z]*e' "$f" || continue
-    grep -qE '^[[:space:]]*trap .* ERR' "$f" && continue
+    lib_degrade_errexit_armed "$f" || continue
     basename "$f"
   done
 }
@@ -147,7 +175,7 @@ lib_degrade_candidates() {
     if awk -v name="$candidate" '$1 == name { hit = 1 } END { exit !hit }' \
          <<<"$NOT_MEMBERS"; then
       # The exclusion holds only while its warrant does: no cd into a lib child.
-      if grep -qE '\$\(cd [^)]*/lib' "$HOOKS_DIR/$candidate"; then
+      if grep -qE '\$\(cd .*/lib' "$HOOKS_DIR/$candidate"; then
         printf 'hook %s is excluded as resolving no lib child, but now cds into one\n' \
           "$candidate" >&2
         return 1
@@ -201,6 +229,8 @@ lib_degrade_candidates() {
   [ -n "$hook" ]
 
   # Strip the guard the fix added, restoring the pre-fix shape.
+  # shellcheck disable=SC2016  # a literal sed program matching shell syntax in
+  # the hook's text; expansion is exactly what must not happen here.
   sed -i.bak 's/^\(_lib_dir="\$(cd .*pwd)"\) || true$/\1/' "$DEGRADED/$hook"
   rm -f "$DEGRADED/$hook.bak"
   grep -qE '^_lib_dir="\$\(cd .*pwd\)"$' "$DEGRADED/$hook"
