@@ -700,3 +700,59 @@ plant() {
   run bash -c "cd '$TMP' && bash '$LINTER'"
   [ "$status" -eq 0 ]
 }
+
+# 20. The parse-check window reads code, and reads an invocation
+
+# The event scan already treats a heredoc body as DATA. The backward window did
+# not, so a body line could supply the credit for a load written below the
+# terminator. Both halves are asserted: the decoy is refused, and a body that
+# happens to sit inside the window does not cost a real check its credit.
+@test "a parse check spelled inside a heredoc body does not certify the load below it" {
+  new_fixture
+  plant .claude/hooks/probe.sh $'#!/usr/bin/env bash\nset -euo pipefail\ncat <<EOF\nif bash -n .claude/hooks/lib/helper.sh; then\nEOF\n. .claude/hooks/lib/helper.sh\n'
+  plant .claude/hooks/lib/helper.sh $'helper() { :; }\n'
+  run bash -c "cd '$TMP' && bash '$LINTER'"
+  [ "$status" -eq 1 ]
+  grep -qF -- ".claude/hooks/probe.sh:6" <<<"$output"
+}
+
+@test "a heredoc body inside the window does not cost a real parse check its credit" {
+  new_fixture
+  plant .claude/hooks/probe.sh $'#!/usr/bin/env bash\nset -euo pipefail\nif bash -n .claude/hooks/lib/helper.sh; then\n  cat <<EOF\nEOF\n  . .claude/hooks/lib/helper.sh\nfi\n'
+  plant .claude/hooks/lib/helper.sh $'helper() { :; }\n'
+  run bash -c "cd '$TMP' && bash '$LINTER'"
+  [ "$status" -eq 0 ]
+}
+
+# The credit is for a `-n` flag on a bash INVOCATION. A test that merely names a
+# BASH_* variable is this tree's commonest library-header idiom, and crediting it
+# reads an unguarded load as guarded.
+@test "a BASH_SOURCE test beside a -n does not certify the load on its line" {
+  new_fixture
+  plant .claude/hooks/probe.sh $'#!/usr/bin/env bash\nset -euo pipefail\nx=1\n[ "${BASH_SOURCE[0]}" != "" -a -n "$x" ] && . .claude/hooks/lib/helper.sh\n'
+  plant .claude/hooks/lib/helper.sh $'helper() { :; }\n'
+  run bash -c "cd '$TMP' && bash '$LINTER'"
+  [ "$status" -eq 1 ]
+  grep -qF -- ".claude/hooks/probe.sh:4" <<<"$output"
+}
+
+@test "a BASH_VERSINFO test inside an if does not certify the load in its branch" {
+  new_fixture
+  plant .claude/hooks/probe.sh $'#!/usr/bin/env bash\nset -euo pipefail\nif [ "${BASH_VERSINFO[0]}" -ge 4 -a -n ".claude/hooks/lib/helper.sh" ]; then\n  . .claude/hooks/lib/helper.sh\nfi\n'
+  plant .claude/hooks/lib/helper.sh $'helper() { :; }\n'
+  run bash -c "cd '$TMP' && bash '$LINTER'"
+  [ "$status" -eq 1 ]
+  grep -qF -- ".claude/hooks/probe.sh:4" <<<"$output"
+}
+
+# The bounds the tightening must not cross: the three invocation spellings the
+# tree actually writes stay credited.
+@test "the bare, absolute-path and parameter-expansion bash invocations stay credited" {
+  new_fixture
+  plant .claude/hooks/probe.sh $'#!/usr/bin/env bash\nset -euo pipefail\nif bash -n .claude/hooks/lib/a.sh; then\n  . .claude/hooks/lib/a.sh\nfi\nif /bin/bash -n .claude/hooks/lib/b.sh; then\n  . .claude/hooks/lib/b.sh\nfi\n[ -n "${d:-}" ] && "${BASH:-bash}" -n .claude/hooks/lib/c.sh 2>/dev/null && . .claude/hooks/lib/c.sh 2>/dev/null || true\n'
+  plant .claude/hooks/lib/a.sh $'a() { :; }\n'
+  plant .claude/hooks/lib/b.sh $'b() { :; }\n'
+  plant .claude/hooks/lib/c.sh $'c() { :; }\n'
+  run bash -c "cd '$TMP' && bash '$LINTER'"
+  [ "$status" -eq 0 ]
+}

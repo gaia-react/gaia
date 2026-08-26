@@ -450,18 +450,65 @@ records="$(awk '
   #
   # `qb` is the raw line with quoted interiors blanked, so it indexes the same
   # columns; the masked view cannot be used here because masking changes length.
-  function has_parse_check(raw, qb,   t, off, p, ms, ml, pre) {
+  function has_parse_check(raw, qb,   t, off, p, ms, ml) {
     t = qb
     off = 0
     while (match(t, /[[:space:]]-n[[:space:]]/)) {
+      # Snapshot before bash_invocation, which calls match() itself.
       ms = RSTART
       ml = RLENGTH
       p = off + ms
-      pre = substr(raw, 1, p + ml - 1)
-      sub(/^.*[;&|]/, "", pre)
-      if (pre ~ /(bash|BASH)/) return 1
+      if (bash_invocation(substr(raw, 1, p + ml - 1))) return 1
       off = off + ms + ml - 1
       t = substr(t, ms + ml)
+    }
+    return 0
+  }
+
+  # Is `pre` -- the raw text from the start of the line through the `-n` this
+  # walk just matched -- a BASH INVOCATION carrying that flag? Three steps: cut
+  # back to the command segment, strip the compound-command keywords that may
+  # precede a command word, and require the command WORD itself to name bash.
+  #
+  # Command position is the whole point, and a substring test is what it
+  # replaces. `${BASH_SOURCE[0]}` and `${BASH_VERSINFO[0]}` are this tree`s
+  # commonest library-header idioms, and both name the string this test used to
+  # look for, so `[ "${BASH_SOURCE[0]}" != "" -a -n "$x" ] && . X` read as a
+  # parse-checked load of X. The header above states the stronger contract this
+  # implements: the `-n` is a flag to a bash invocation, in that order and with
+  # no command separator between them.
+  #
+  # Three spellings are accepted, all of them live here: a bare `bash`, a path
+  # ending in `/bash`, and a parameter expansion of `BASH` -- the reference
+  # shape writes `"${BASH:-bash}" -n X`, with the name inside quotes, which is
+  # why the quotes are stripped rather than required absent, and why a `:-`
+  # default is read and required to name bash too.
+  #
+  # Refused, fail-closed and deliberately, each of them absent from this tree:
+  # `! bash -n X`, whose negation inverts the answer, so crediting the branch
+  # below it would be backwards; an invocation behind an environment assignment
+  # or behind `env`/`command`; and any non-option word between the command word
+  # and the flag, which is what keeps `bash X -n` from certifying a load of X.
+  # Every one of those reports a load whose author can re-spell it into a
+  # credited shape. The opposite direction certifies a load nothing checked,
+  # which is the abort this whole check exists to end.
+  function bash_invocation(pre,   w, mid, d) {
+    sub(/^.*[;&|]/, "", pre)
+    sub(/[[:space:]]+-n[[:space:]]*$/, "", pre)
+    pre = trim(pre)
+    while (match(pre, /^([{(]|if|elif|then|do)[[:space:]]+/)) pre = trim(substr(pre, RLENGTH + 1))
+    w = pre
+    sub(/[[:space:]].*$/, "", w)
+    mid = substr(pre, length(w) + 1)
+    if (mid !~ /^([[:space:]]+-[^[:space:]]*)*[[:space:]]*$/) return 0
+    gsub(/["\047]/, "", w)
+    if (w ~ /(^|\/)bash$/) return 1
+    if (w ~ /^\$[{]?BASH[}]?$/) return 1
+    if (w ~ /^\$[{]BASH:[-=][^}]*[}]$/) {
+      d = w
+      sub(/^\$[{]BASH:[-=]/, "", d)
+      sub(/[}]$/, "", d)
+      return (d ~ /(^|\/)bash$/)
     }
     return 0
   }
@@ -487,6 +534,11 @@ records="$(awk '
       # The delimiter test is the one the shell applies: the line IS the
       # delimiter, with leading tabs allowed only for the `<<-` form.
       if (heredoc != "") {
+        # Marked for the parse-check window below, which reads lines directly
+        # rather than through this scan and would otherwise read a body line as
+        # code. The terminator is marked with the body: it is the delimiter, not
+        # a statement.
+        HDBODY[i] = 1
         cur = hd_head(heredoc)
         t = s
         if (substr(cur, 1, 1) == "T") sub(/^\t+/, "", t)
@@ -632,6 +684,14 @@ records="$(awk '
         # as its safest one. Accepted miss: a load whose operand is a bare
         # variable gives no target to match, so a parse check of some OTHER file
         # within the window credits it.
+        #
+        # The window reads lines directly rather than through the event scan
+        # above, so it honours that scan`s heredoc classification explicitly. A
+        # body line is data: it opens and closes no block, and it certifies
+        # nothing. Without that, a body line ending in `then` and spelling a
+        # whole parse check of the target certified a genuinely unguarded load
+        # written below the terminator, which is the string-decoy class one
+        # substrate over.
         tgt = evx[i]
         found = 0
         for (back = evl[i]; back >= 1 && back >= evl[i] - 3; back--) {
@@ -639,8 +699,8 @@ records="$(awk '
             # The window closes at the first line that ends a block. Read from
             # the quote-blanked view, like every other predicate in the walk: a
             # block keyword spelled inside a string opens or closes nothing.
-            if (QL[back + 1] ~ /^[[:space:]]*(fi|else|elif)([[:space:]]|;|$)/) break
-            if (QL[back] !~ /(^|[[:space:]);])then[[:space:]]*$/) continue
+            if (!HDBODY[back + 1] && QL[back + 1] ~ /^[[:space:]]*(fi|else|elif)([[:space:]]|;|$)/) break
+            if (HDBODY[back] || QL[back] !~ /(^|[[:space:]);])then[[:space:]]*$/) continue
           }
           if (has_parse_check(L[back], QL[back]) \
               && (tgt == "" || index(L[back], tgt))) { found = 1; break }
@@ -660,7 +720,8 @@ records="$(awk '
       printf "SITE|%s|%d|%s|%s|%s\n", file, SITELINE[i], SITETGT[i], SITESHAPE[i], trim(RAW[SITELINE[i]])
     }
     sn = 0
-    delete L; delete RAW; delete QL; delete evt; delete evl; delete evp; delete evx
+    delete L; delete RAW; delete QL; delete HDBODY
+    delete evt; delete evl; delete evp; delete evx
     delete SITESHAPE; delete SITELINE; delete SITETGT
   }
 
