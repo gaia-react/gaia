@@ -11,6 +11,7 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-08-26 gaia-audit - PROMOTE: .claude/rules/playwright.md's 'Asserting on errors, watch both channels' section folded into Playwright.md (dual error-channel pattern, self-heal reset order, provenance caveat)
 - 2026-08-26 d3a81d6 WORTHY - no-op guard sidecar resolution and artifact wait documented in Code Review Audit Agent.md, PR Merge Workflow.md in-commit
 - 2026-08-26 1b394421 WORTHY - Code Audit Team set named instead of counted, documented in PR Merge Workflow.md in-commit
 - 2026-08-26 53d65ae0 SKIP - docs: prose-only, bats-assertions coverage rule placement
