@@ -402,7 +402,13 @@ records="$(awk '
   # catch. Each candidate is now tested where it stands: blanked in `qq` means
   # it existed only inside a string, and its own segment -- from the token to
   # the next separator -- has to read as a load on its own terms.
-  function load_pos(mm, qq,   rest, off, seg, p, ms, ml) {
+  # EVERY accepted position, space-joined, or empty when the line carries no
+  # load. Returning only the first leaves a second load on the same line judged
+  # by nothing, and -- worse -- draws no closure edge, so every unguarded load
+  # inside the file it reaches is dropped along with it. The compact one-line
+  # bracket this check itself prescribes is what invites writing two.
+  function load_pos(mm, qq,   rest, off, seg, p, ms, ml, all) {
+    all = ""
     rest = mm
     off = 0
     while (length(rest) > 0) {
@@ -423,23 +429,50 @@ records="$(awk '
         if (match(seg, /(^|[[:space:]])(\.|source)[[:space:]]/)) {
           p = off + RSTART
           if (substr(seg, RSTART, 1) != "." && substr(seg, RSTART, 1) != "s") p++
-          if (substr(qq, p, 1) != " ") return p
+          if (substr(qq, p, 1) != " ") all = all (all == "" ? "" : " ") p
         }
       }
       if (ms == 0) break
       off = off + ms + ml - 1
       rest = substr(rest, ms + ml)
     }
+    return all
+  }
+
+  # Does a `bash -n` credit live on this line, with its FLAG outside every
+  # string? The bash token itself is read from the raw line on purpose: the live
+  # reference shape writes it as `"${BASH:-bash}" -n X`, where the name sits
+  # INSIDE quotes while the flag does not, so requiring the name to be unquoted
+  # would refuse the shape this check recommends. Requiring the flag to be
+  # unquoted is what refuses a decoy that spells a whole invocation inside a
+  # message string, which would otherwise certify a genuinely unguarded load of
+  # the same target sitting beside it.
+  #
+  # `qb` is the raw line with quoted interiors blanked, so it indexes the same
+  # columns; the masked view cannot be used here because masking changes length.
+  function has_parse_check(raw, qb,   t, off, p, ms, ml, pre) {
+    t = qb
+    off = 0
+    while (match(t, /[[:space:]]-n[[:space:]]/)) {
+      ms = RSTART
+      ml = RLENGTH
+      p = off + ms
+      pre = substr(raw, 1, p + ml - 1)
+      sub(/^.*[;&|]/, "", pre)
+      if (pre ~ /(bash|BASH)/) return 1
+      off = off + ms + ml - 1
+      t = substr(t, ms + ml)
+    }
     return 0
   }
 
   FNR == 1 { if (n > 0) flush(); n = 0; file = FILENAME }
-  { n++; L[n] = decomment($0); RAW[n] = $0 }
+  { n++; L[n] = decomment($0); RAW[n] = $0; QL[n] = blank_quoted(L[n]) }
 
   function flush(   i, s, j, k, pos, ev, evn, evt, evp, suspended, armed, tgt,
                     sn, sline, sshape, sdepth, back, found, res, capture,
                     m, q, cur, pfx, indepth, blockdepth, capdepth,
-                    mstart, mlen, lp) {
+                    mstart, mlen, lps, lpa, np) {
     # Event stream over the whole file, in position order within each line, so a
     # one-line `set +e; . X; set -e` bracket is read the way the shell reads it.
     evn = 0
@@ -480,7 +513,12 @@ records="$(awk '
       # `q` indexes the same columns as `m`.
       m = mask(s)
       q = blank_quoted(m)
-      if (s ~ /case[[:space:]]+\$-[[:space:]]+in/ && s ~ /\*e\*/) {
+      # `q`, not `s`: a usage or error message spelling `case $- in *e*)` inside
+      # a string would otherwise arm the capture for the rest of the file, and
+      # every later flat restore inside any conditional would then be credited
+      # as state-preserving. `mask` leaves `$-` alone (the `$` is followed by a
+      # `-`), so a real unquoted capture reads identically here.
+      if (q ~ /case[[:space:]]+\$-[[:space:]]+in/ && q ~ /\*e\*/) {
         if (!capture) capdepth = blockdepth
         capture = 1
       }
@@ -523,16 +561,20 @@ records="$(awk '
         off = pos + mlen - 1
         rest = substr(rest, mstart + mlen)
       }
-      lp = load_pos(m, q)
-      if (lp > 0) {
-        evn++
-        evt[evn] = "site"
-        evl[evn] = i
-        evp[evn] = lp
-        # From the load token rather than from the start of the line, so a
-        # decoy string ahead of a real load does not supply the target, which
-        # both names the site in the report and draws the closure edge.
-        evx[evn] = target(substr(m, lp))
+      lps = load_pos(m, q)
+      if (lps != "") {
+        np = split(lps, lpa, " ")
+        for (k = 1; k <= np; k++) {
+          evn++
+          evt[evn] = "site"
+          evl[evn] = i
+          evp[evn] = lpa[k]
+          # From the load token rather than from the start of the line, so a
+          # decoy string ahead of a real load does not supply the target, which
+          # both names the site in the report and draws the closure edge. It is
+          # also what keeps two loads on one line from taking the wrong one.
+          evx[evn] = target(substr(m, lpa[k]))
+        }
       }
       prev_then = (q ~ /(^|[[:space:]);])then[[:space:]]*$/)
       blockdepth += opens(q) - closes(q)
@@ -594,11 +636,13 @@ records="$(awk '
         found = 0
         for (back = evl[i]; back >= 1 && back >= evl[i] - 3; back--) {
           if (back < evl[i]) {
-            # The window closes at the first line that ends a block.
-            if (L[back + 1] ~ /^[[:space:]]*(fi|else|elif)([[:space:]]|;|$)/) break
-            if (L[back] !~ /(^|[[:space:]);])then[[:space:]]*$/) continue
+            # The window closes at the first line that ends a block. Read from
+            # the quote-blanked view, like every other predicate in the walk: a
+            # block keyword spelled inside a string opens or closes nothing.
+            if (QL[back + 1] ~ /^[[:space:]]*(fi|else|elif)([[:space:]]|;|$)/) break
+            if (QL[back] !~ /(^|[[:space:]);])then[[:space:]]*$/) continue
           }
-          if (L[back] ~ /(bash|BASH)[^;&|]*[[:space:]]-n[[:space:]]/ \
+          if (has_parse_check(L[back], QL[back]) \
               && (tgt == "" || index(L[back], tgt))) { found = 1; break }
         }
         if (found) shape = "parsecheck"
@@ -616,7 +660,7 @@ records="$(awk '
       printf "SITE|%s|%d|%s|%s|%s\n", file, SITELINE[i], SITETGT[i], SITESHAPE[i], trim(RAW[SITELINE[i]])
     }
     sn = 0
-    delete L; delete RAW; delete evt; delete evl; delete evp; delete evx
+    delete L; delete RAW; delete QL; delete evt; delete evl; delete evp; delete evx
     delete SITESHAPE; delete SITELINE; delete SITETGT
   }
 

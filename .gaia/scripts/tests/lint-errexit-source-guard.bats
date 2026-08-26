@@ -640,3 +640,63 @@ plant() {
   grep -qF -- "never closed" <<<"$output" && return 1
   return 0
 }
+
+# 18. A line may carry more than one load
+
+# Stopping at the first leaves the second judged by nothing, and -- worse --
+# draws no closure edge, so every unguarded load inside the file it reaches is
+# dropped with it.
+@test "a second load on the same line is judged too" {
+  new_fixture
+  plant .claude/hooks/probe.sh $'#!/usr/bin/env bash\nset -euo pipefail\nset +e; . .claude/hooks/lib/a.sh 2>/dev/null; set -e; . .claude/hooks/lib/b.sh\n'
+  plant .claude/hooks/lib/a.sh $'a() { :; }\n'
+  plant .claude/hooks/lib/b.sh $'b() { :; }\n'
+  run bash -c "cd '$TMP' && bash '$LINTER'"
+  [ "$status" -eq 1 ]
+  grep -qF -- ".claude/hooks/probe.sh:3" <<<"$output"
+}
+
+@test "a second load on the same line still draws its closure edge" {
+  new_fixture
+  plant .claude/hooks/probe.sh $'#!/usr/bin/env bash\nset -euo pipefail\nset +e; [ -f .claude/hooks/lib/a.sh ] && . .claude/hooks/lib/a.sh 2>/dev/null; [ -f .claude/hooks/lib/b.sh ] && . .claude/hooks/lib/b.sh 2>/dev/null; set -e\ntype a >/dev/null 2>&1 || exit 0\n'
+  plant .claude/hooks/lib/a.sh $'a() { :; }\n'
+  plant .claude/hooks/lib/b.sh $'b() { :; }\n. .claude/hooks/lib/c.sh\n'
+  plant .claude/hooks/lib/c.sh $'c() { :; }\n'
+  run bash -c "cd '$TMP' && bash '$LINTER'"
+  [ "$status" -eq 1 ]
+  grep -qF -- ".claude/hooks/lib/b.sh:2" <<<"$output"
+}
+
+# 19. The capture, and the parse check, read the quote-blanked view too
+
+# The capture can only loosen a verdict, so a decoy arming it hides the
+# flat-restore defect for the rest of the file.
+@test "a capture spelled inside a string does not arm the state-preserving credit" {
+  new_fixture
+  plant .claude/hooks/probe.sh $'#!/usr/bin/env bash\nset -euo pipefail\nset +e; [ -f ".claude/hooks/lib/mid.sh" ] && . ".claude/hooks/lib/mid.sh" 2>/dev/null; set -e\ntype mid >/dev/null 2>&1 || exit 0\n'
+  plant .claude/hooks/lib/mid.sh $'echo "spell case $- in *e*) here"\nif [ 1 = 1 ]; then set +e; . .claude/hooks/lib/leaf.sh 2>/dev/null; set -e; fi\ntype leaf >/dev/null 2>&1 || true\nmid() { :; }\n'
+  plant .claude/hooks/lib/leaf.sh $'leaf() { :; }\n'
+  run bash -c "cd '$TMP' && bash '$LINTER'"
+  [ "$status" -eq 1 ]
+  grep -qF -- "flat" <<<"$output"
+}
+
+@test "a bash -n spelled inside a string does not certify the load beside it" {
+  new_fixture
+  plant .claude/hooks/probe.sh $'#!/usr/bin/env bash\nset -euo pipefail\necho "run bash -n .claude/hooks/lib/helper.sh first"; . .claude/hooks/lib/helper.sh\n'
+  plant .claude/hooks/lib/helper.sh $'helper() { :; }\n'
+  run bash -c "cd '$TMP' && bash '$LINTER'"
+  [ "$status" -eq 1 ]
+  grep -qF -- ".claude/hooks/probe.sh:3" <<<"$output"
+}
+
+# The bound: the reference shape puts the interpreter name INSIDE quotes and the
+# flag outside, so requiring the whole invocation to be unquoted would refuse
+# the spelling this check recommends.
+@test "the quoted-interpreter parse check is still credited" {
+  new_fixture
+  plant .claude/hooks/probe.sh $'#!/usr/bin/env bash\nset -euo pipefail\nif "${BASH:-bash}" -n .claude/hooks/lib/helper.sh; then\n  . .claude/hooks/lib/helper.sh\nfi\n'
+  plant .claude/hooks/lib/helper.sh $'helper() { :; }\n'
+  run bash -c "cd '$TMP' && bash '$LINTER'"
+  [ "$status" -eq 0 ]
+}
