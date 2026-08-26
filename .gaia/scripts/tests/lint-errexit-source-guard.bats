@@ -417,3 +417,87 @@ plant() {
   run bash -c "cd '$TMP' && bash '$LINTER'"
   [ "$status" -eq 0 ]
 }
+
+# 9. A whole-operand expansion still names a file the walk cannot resolve
+
+# `mask` reduces every `${...}` and `$(...)` span to one sentinel before the
+# load test runs, so these three spellings arrive as the sentinel rather than as
+# an expansion. Read as neither a `.sh` operand nor a variable they pass
+# silently, which is the direction this gate exists to close.
+@test "flags an unguarded load whose operand is a braced expansion" {
+  new_fixture
+  plant .claude/hooks/probe.sh $'#!/usr/bin/env bash\nset -euo pipefail\n. "${LIB}"\n'
+  plant .claude/hooks/lib/helper.sh $'helper() { :; }\n'
+  run bash -c "cd '$TMP' && bash '$LINTER'"
+  [ "$status" -eq 1 ]
+  grep -qF -- ".claude/hooks/probe.sh:3" <<<"$output"
+}
+
+@test "flags an unguarded load whose operand carries a brace default" {
+  new_fixture
+  plant .claude/hooks/probe.sh $'#!/usr/bin/env bash\nset -euo pipefail\n. "${LIB:-.claude/hooks/lib/helper.sh}"\n'
+  plant .claude/hooks/lib/helper.sh $'helper() { :; }\n'
+  run bash -c "cd '$TMP' && bash '$LINTER'"
+  [ "$status" -eq 1 ]
+  grep -qF -- ".claude/hooks/probe.sh:3" <<<"$output"
+}
+
+@test "flags an unguarded load whose operand is a command substitution" {
+  new_fixture
+  plant .claude/hooks/probe.sh $'#!/usr/bin/env bash\nset -euo pipefail\n. "$(printf \'%s\' .claude/hooks/lib/helper.sh)"\n'
+  plant .claude/hooks/lib/helper.sh $'helper() { :; }\n'
+  run bash -c "cd '$TMP' && bash '$LINTER'"
+  [ "$status" -eq 1 ]
+  grep -qF -- ".claude/hooks/probe.sh:3" <<<"$output"
+}
+
+@test "accepts a braced-operand load that is bracketed" {
+  new_fixture
+  plant .claude/hooks/probe.sh $'#!/usr/bin/env bash\nset -euo pipefail\nset +e; [ -f "${LIB}" ] && . "${LIB}" 2>/dev/null; set -e\ntype helper >/dev/null 2>&1 || exit 0\n'
+  plant .claude/hooks/lib/helper.sh $'helper() { :; }\n'
+  run bash -c "cd '$TMP' && bash '$LINTER'"
+  [ "$status" -eq 0 ]
+}
+
+# 10. The C-style `for (( ))` header, the arithmetic spelling with live sites
+
+@test "a left shift in a for (( )) header is not read as a heredoc opener" {
+  new_fixture
+  plant .claude/hooks/probe.sh $'#!/usr/bin/env bash\nset -euo pipefail\nn=4\nfor (( i = 0; i < (n << 2); i++ )); do :; done\nset +e\n[ -f ".claude/hooks/lib/helper.sh" ] && . ".claude/hooks/lib/helper.sh" 2>/dev/null\nset -e\ntype helper >/dev/null 2>&1 || exit 0\n'
+  plant .claude/hooks/lib/helper.sh $'helper() { :; }\n'
+  run bash -c "cd '$TMP' && bash '$LINTER'"
+  [ "$status" -eq 0 ]
+}
+
+# 11. A load token that exists only inside a string loads nothing
+
+# A separator inside a string splits a sentence into a segment whose first word
+# is the dot, so a usage string or a deny message carrying one would red a
+# required shard on a file that loads nothing.
+@test "ignores a load spelled only inside a string" {
+  new_fixture
+  plant .claude/hooks/probe.sh $'#!/usr/bin/env bash\nset -euo pipefail\necho "first; . .claude/hooks/lib/helper.sh"\n'
+  plant .claude/hooks/lib/helper.sh $'helper() { :; }\n'
+  run bash -c "cd '$TMP' && bash '$LINTER'"
+  [ "$status" -eq 0 ]
+}
+
+# The bound: a quoted dot ahead of a real load must not hide the real one.
+@test "still flags a real load on a line whose string also spells one" {
+  new_fixture
+  plant .claude/hooks/probe.sh $'#!/usr/bin/env bash\nset -euo pipefail\necho "first; . .claude/hooks/lib/helper.sh"\n. .claude/hooks/lib/helper.sh\n'
+  plant .claude/hooks/lib/helper.sh $'helper() { :; }\n'
+  run bash -c "cd '$TMP' && bash '$LINTER'"
+  [ "$status" -eq 1 ]
+  grep -qF -- ".claude/hooks/probe.sh:4" <<<"$output"
+}
+
+# 12. A scan root that vanishes must fail the check, not shrink it
+
+@test "fails loudly when a scan root is absent rather than scanning what remains" {
+  new_fixture
+  rm -rf "$TMP/.claude"
+  run bash -c "cd '$TMP' && bash '$LINTER'"
+  [ "$status" -eq 1 ]
+  grep -qF -- "scan root missing: .claude/hooks" <<<"$output"
+}

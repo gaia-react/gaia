@@ -98,6 +98,16 @@ set -euo pipefail
 # never be clean.
 scan_roots=(.claude/hooks .gaia/scripts)
 
+# A root that is absent or renamed makes the walk below yield the OTHER root's
+# files, and the only guard on the result fires when every root is empty, so the
+# check would report clean having read half the surface it claims to cover.
+for r in ${scan_roots[@]+"${scan_roots[@]}"}; do
+  if [ ! -d "$r" ]; then
+    echo "lint-errexit-source-guard: scan root missing: $r" >&2
+    exit 1
+  fi
+done
+
 scan_files=()
 while IFS= read -r f; do
   scan_files+=("$f")
@@ -257,10 +267,13 @@ records="$(awk '
       # skipped as body, and the check exits reporting a heredoc that does not
       # exist while the loads below it genuinely went unread. Command position
       # is what separates it from a `(` inside an operand; `let n=n<<3` needs no
-      # carve-out, because bash itself parses that `<<` as a redirection.
+      # carve-out, because bash itself parses that `<<` as a redirection. `for`
+      # belongs in the keyword list beside the others: the C-style
+      # `for (( i = 0; i < (n << 2); i++ ))` header is the arithmetic spelling
+      # this tree actually uses, and it is the one with live sites.
       if (c == "(" && substr(s, i + 1, 1) == "(") {
         pre = substr(s, 1, i - 1)
-        if (pre ~ /(^|[;&|(){}[:space:]])(if|while|until|then|else|elif|do)[[:space:]]+$/ \
+        if (pre ~ /(^|[;&|(){}[:space:]])(if|while|until|then|else|elif|do|for)[[:space:]]+$/ \
             || pre ~ /(^|[;&|(){}])[[:space:]]*$/) { arith++; i++; continue }
       }
       if (arith > 0 && c == ")" && substr(s, i + 1, 1) == ")") { arith--; i++; continue }
@@ -335,7 +348,14 @@ records="$(awk '
       # variable, which is the thing this test exists to keep out.
       if (rem != "" && rem !~ /^([0-9]*[<>]+&?[[:space:]]*[^[:space:]]*[[:space:]]*)+$/) continue
       if (op ~ /\.sh["'"'"']?$/) return 1
-      if (op ~ /^["'"'"']?\$\{?[A-Za-z_][A-Za-z0-9_]*(:-[^}]*)?\}?["'"'"']?$/) return 1
+      if (op ~ /^["'"'"']?\$[A-Za-z_][A-Za-z0-9_]*["'"'"']?$/) return 1
+      # An operand that `mask` reduced to the sentinel WAS a whole `${...}` or
+      # `$(...)` expansion, so it names a file this walk cannot resolve and the
+      # load still has to be judged. Without this arm the braced spellings --
+      # `. "${LIB}"`, `. "${LIB:-default}"`, `. "$(cmd)"` -- reach the tests
+      # above as the literal sentinel, match neither, and pass the gate silently,
+      # which is the direction this check exists to close.
+      if (op ~ /^["'"'"']?@["'"'"']?$/) return 1
     }
     return 0
   }
@@ -345,6 +365,29 @@ records="$(awk '
   function load_pos(s) {
     if (match(s, /(^|[;&|(){}[:space:]])(\.|source)[[:space:]]/)) return RSTART
     return 1
+  }
+
+  # Does some load token on this line sit OUTSIDE every string? `is_load` has to
+  # read the masked line rather than the quote-blanked one, because blanking
+  # destroys the operand its `.sh` arm needs; the quote test therefore happens
+  # here instead. A separator inside a string splits a sentence into a segment
+  # whose first word is the dot -- `echo "first; . lib/helper.sh"` -- and that
+  # segment reads as an unguarded load of a line that loads nothing. Blanking
+  # preserves length, so a column in `q` indexes the same character as in `m`,
+  # and a blank there means the token existed only as data. Every candidate is
+  # walked rather than the first, so a quoted dot ahead of a real load does not
+  # hide it.
+  function load_outside_quotes(mm, qq,   t, off, p) {
+    t = mm
+    off = 0
+    while (match(t, /(^|[;&|(){}[:space:]])(\.|source)[[:space:]]/)) {
+      p = off + RSTART
+      if (substr(mm, p, 1) != "." && substr(mm, p, 1) != "s") p++
+      if (substr(qq, p, 1) != " ") return 1
+      off = off + RSTART + RLENGTH - 1
+      t = substr(t, RSTART + RLENGTH)
+    }
+    return 0
   }
 
   FNR == 1 { if (n > 0) flush(); n = 0; file = FILENAME }
@@ -436,7 +479,7 @@ records="$(awk '
         off = pos + mlen - 1
         rest = substr(rest, mstart + mlen)
       }
-      if (is_load(m)) {
+      if (is_load(m) && load_outside_quotes(m, q)) {
         evn++
         evt[evn] = "site"
         evl[evn] = i

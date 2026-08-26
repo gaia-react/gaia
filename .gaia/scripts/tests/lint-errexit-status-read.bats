@@ -1353,3 +1353,13 @@ echo "$rc$out"'
   [ "$status" -eq 1 ]
   grep -qF -- 'check.sh:8:' <<<"$output"
 }
+
+@test "a left shift in a for (( )) header leaves the rest of the file classified" {
+  fixture_repo
+  fixture_script 'set -euo pipefail
+n=4
+for (( i = 0; i < (n << 2); i++ )); do :; done
+echo "$i"'
+  run_linter
+  [ "$status" -eq 0 ]
+}

@@ -43,12 +43,15 @@ setup() {
 # Counting occurrences is what makes the two other filters load-bearing, and
 # per-line counting hid the need for both: comments go first, because a header
 # naming the symbol twice in prose now contributes two, and the match is
-# anchored on a non-identifier boundary, because `audit_scope_init` is a prefix
-# of any longer name someone adds later.
+# anchored on a non-identifier boundary at BOTH ends, because `audit_scope_init`
+# is a prefix of any longer name someone adds later, and because a terminator
+# that demands whitespace declines every other one a real second call can carry
+# -- `audit_scope_init;`, a bare call at end of line -- which greens the
+# calls-it-once pin over exactly the drift it exists to catch.
 count_invocations() {
   sed -e 's/[[:space:]]#.*$//' -e 's/^[[:space:]]*#.*$//' "$1" \
     | sed -E "s/(^|[[:space:]])(type|command -v)[[:space:]]+$2([[:space:]]|\$)/\1 /g" \
-    | grep -oE "(^|[^A-Za-z0-9_])$2[[:space:]]" | grep -c .
+    | grep -oE "(^|[^A-Za-z0-9_])$2([^A-Za-z0-9_]|\$)" | grep -c .
 }
 
 # Extract a named function's body (from its `name() {` line through the next
@@ -98,6 +101,34 @@ EOF
   grep -qF -- "audit-scope.sh" "$RESOLVER" || return 1
   count="$(count_invocations "$RESOLVER" audit_scope_init)"
   [ "$count" -eq 1 ]
+}
+
+# The counter is what both pins above rest on, so its own boundary is asserted
+# rather than trusted. A terminator that demands whitespace declines `;`, `)`,
+# `|`, `&` and end-of-line, so a real second call written any of those ways
+# would green a pin that exists to catch exactly that drift.
+@test "count_invocations counts a second call whatever terminator it carries" {
+  probe="$BATS_TEST_TMPDIR/probe.sh"
+
+  printf '%s\n' 'audit_scope_init "$r"' > "$probe"
+  [ "$(count_invocations "$probe" audit_scope_init)" -eq 1 ]
+
+  printf '%s\n' 'audit_scope_init "$r"' 'audit_scope_init; :' > "$probe"
+  [ "$(count_invocations "$probe" audit_scope_init)" -eq 2 ]
+
+  printf '%s\n' 'audit_scope_init "$r"' 'audit_scope_init' > "$probe"
+  [ "$(count_invocations "$probe" audit_scope_init)" -eq 2 ]
+
+  # And still declines the two shapes the filters above it exist to drop.
+  printf '%s\n' 'audit_scope_init "$r"' 'type audit_scope_init >/dev/null' > "$probe"
+  [ "$(count_invocations "$probe" audit_scope_init)" -eq 1 ]
+
+  printf '%s\n' 'audit_scope_init "$r"' '# audit_scope_init audit_scope_init in prose' > "$probe"
+  [ "$(count_invocations "$probe" audit_scope_init)" -eq 1 ]
+
+  # A longer name that merely starts with the symbol is not an invocation.
+  printf '%s\n' 'audit_scope_init "$r"' 'audit_scope_init_extra "$r"' > "$probe"
+  [ "$(count_invocations "$probe" audit_scope_init)" -eq 1 ]
 }
 
 @test "resolve-audit-spawn.sh sources audit-scope.sh" {

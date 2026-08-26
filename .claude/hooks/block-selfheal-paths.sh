@@ -94,9 +94,17 @@ set +e
 # shellcheck source=/dev/null
 [ -f "$LIB" ] && . "$LIB" 2>/dev/null
 set -e
+# Two causes, two messages. The load discards its own stderr, so a member that
+# reads "unavailable", finds the file present, and has no parse error anywhere
+# in its session is left with nothing to act on -- and an interrupted update is
+# exactly the scenario this guard is built for.
 if [ -z "${AUDIT_SELFHEAL_REFUSE_ERE:-}" ]; then
-  printf 'block-selfheal-paths.sh: refusal-set library unavailable: %s\n' "$LIB" >&2
-  deny "BLOCKED: the self-heal repair-boundary library ($LIB) is unavailable, so this edit cannot be checked against it. Fail-loud, not fail-open -- restore the library before retrying."
+  if [ ! -f "$LIB" ]; then
+    printf 'block-selfheal-paths.sh: refusal-set library unavailable: %s\n' "$LIB" >&2
+    deny "BLOCKED: the self-heal repair-boundary library ($LIB) is unavailable, so this edit cannot be checked against it. Fail-loud, not fail-open -- restore the library before retrying."
+  fi
+  printf 'block-selfheal-paths.sh: refusal-set library present but defined nothing: %s\n' "$LIB" >&2
+  deny "BLOCKED: the self-heal repair-boundary library ($LIB) is present but did not define the refusal set, so this edit cannot be checked against it. Run \`bash -n $LIB\` -- an unparseable copy (an unresolved merge conflict, a truncated write) is the usual cause. Fail-loud, not fail-open."
 fi
 
 # Repo root, resolved the same way .claude/hooks/lib/repo-scope.sh resolves

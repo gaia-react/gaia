@@ -418,9 +418,11 @@ function walk(line,   n, i, c, j, ch, delim, prev) {
     # the digits of `(( n = n << 3 ))` read as a heredoc delimiter and the rest
     # of the file is skipped as body. Two levels, the same way `$((` pushes two,
     # so the closing `))` balances by construction. Command position is what
-    # separates it from a `(` inside an operand.
+    # separates it from a `(` inside an operand, and `for` belongs in the
+    # keyword list because the C-style `for (( ... ))` header is the arithmetic
+    # spelling with live sites in this tree.
     if (W_depth == 0 && c == "(" && substr(line, i + 1, 1) == "(" \
-        && (substr(line, 1, i - 1) ~ /(^|[;&|(){}[:space:]])(if|while|until|then|else|elif|do)[[:space:]]+$/ \
+        && (substr(line, 1, i - 1) ~ /(^|[;&|(){}[:space:]])(if|while|until|then|else|elif|do|for)[[:space:]]+$/ \
             || substr(line, 1, i - 1) ~ /(^|[;&|(){}])[[:space:]]*$/)) {
       W_qstack[W_depth] = W_q
       W_depth++
