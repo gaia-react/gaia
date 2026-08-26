@@ -630,6 +630,250 @@ _noop_write_findings() {
   [ "$output" = "real" ]
 }
 
+# audit-team-member --findings-root/--findings-since: the RESOLVE arm of the
+# same lost-report gate.
+#
+# The named-path arm above requires the caller to know where the sidecar will
+# land. It cannot: the key's base half is the shared pull-request-wide base,
+# which advances one stamp per cleared round, so a path computed once is absent
+# from the second round on and the gate reads a healthy round as a lost report.
+# These tests pin the two properties that make resolution a replacement rather
+# than a relaxation: it finds a sidecar under a base no caller could have named,
+# and it still refuses a sidecar that is not THIS round's.
+#
+# _noop_resolve_repo: a git tree on a branch whose slug needs percent-encoding
+# (the `/` is the case that would silently straddle a key boundary unencoded),
+# with an empty audit store. `symbolic-ref` rather than `init -b` so the branch
+# is set without needing a commit or a git new enough for `-b`.
+_noop_resolve_repo() {
+  local root="$1" branch="${2:-debt/1537-example}"
+  mkdir -p "$root/.gaia/local/audit"
+  git -C "$root" init -q
+  git -C "$root" symbolic-ref HEAD "refs/heads/$branch"
+}
+
+# _noop_resolve_sidecar_at <root> <base-sha> <slug> <member> [json]: write a
+# sidecar under one specific key. The base sha is a parameter precisely because
+# the production value is unpredictable.
+_noop_resolve_sidecar_at() {
+  local root="$1" base="$2" slug="$3" member="$4" body="${5:-}"
+  if [ -z "$body" ]; then
+    body="{\"schema\":1,\"member\":\"${member}\",\"findings\":[]}"
+  fi
+  printf '%s\n' "$body" > "$root/.gaia/local/audit/${base}.${slug}.${member}.findings.json"
+}
+
+# _noop_resolve_marker <root> <digest> <member>: the member's earned marker.
+_noop_resolve_marker() {
+  local root="$1" digest="$2" member="$3"
+  printf '{"version":"1.6.1","schema":3,"member":"%s","provenance":"earned","digest":"%s","tree":"deadbeefdeadbeefdeadbeefdeadbeefdeadbeef","sha":"deadbeef","audited_at":"2026-01-01T00:00:00Z","sidecar":true}\n' \
+    "$member" "$digest" > "$root/.gaia/local/audit/${digest}.${member}.ok"
+}
+
+@test "audit-team-member resolve arm: a sidecar under a base the caller never named is REAL" {
+  root="$BATS_TEST_TMPDIR/resolve-real"
+  _noop_resolve_repo "$root"
+  digest="$(_noop_digest)"
+  _noop_resolve_marker "$root" "$digest" code-audit-maintainer-shell
+  stamp="$BATS_TEST_TMPDIR/resolve-real.stamp"
+  : > "$stamp"
+  sleep 1
+  # A base sha bearing no relation to anything the caller could compute: this
+  # is the round-two-onward case that makes the named-path arm read absent.
+  _noop_resolve_sidecar_at "$root" 9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f \
+    'debt%2F1537-example' code-audit-maintainer-shell
+  run "$SCRIPT" --shape audit-team-member \
+    --marker "$root/.gaia/local/audit/${digest}.code-audit-maintainer-shell.ok" \
+    --findings-root "$root" --findings-since "$stamp"
+  [ "$status" -eq 0 ]
+  [ "$output" = "real" ]
+}
+
+@test "audit-team-member resolve arm: only a PREVIOUS round's sidecar is NO-OP" {
+  root="$BATS_TEST_TMPDIR/resolve-stale"
+  _noop_resolve_repo "$root"
+  digest="$(_noop_digest)"
+  _noop_resolve_marker "$root" "$digest" code-audit-maintainer-shell
+  # Written BEFORE the wave stamp: a leftover from an earlier round, which is
+  # what the pre-clear used to remove when the path was predictable. Resolution
+  # alone would return it newest-wins and vouch for a report that never landed.
+  _noop_resolve_sidecar_at "$root" 1111111111111111111111111111111111111111 \
+    'debt%2F1537-example' code-audit-maintainer-shell
+  sleep 1
+  stamp="$BATS_TEST_TMPDIR/resolve-stale.stamp"
+  : > "$stamp"
+  run "$SCRIPT" --shape audit-team-member \
+    --marker "$root/.gaia/local/audit/${digest}.code-audit-maintainer-shell.ok" \
+    --findings-root "$root" --findings-since "$stamp"
+  [ "$status" -eq 1 ]
+  [ "$output" = "noop" ]
+
+  # Non-vacuity control, sampling one mutation on purpose: the same tree with
+  # this round's write landing after the stamp classifies REAL, so the NO-OP
+  # above is the freshness test firing and not the arm failing to resolve at all.
+  sleep 1
+  _noop_resolve_sidecar_at "$root" 2222222222222222222222222222222222222222 \
+    'debt%2F1537-example' code-audit-maintainer-shell
+  run "$SCRIPT" --shape audit-team-member \
+    --marker "$root/.gaia/local/audit/${digest}.code-audit-maintainer-shell.ok" \
+    --findings-root "$root" --findings-since "$stamp"
+  [ "$status" -eq 0 ]
+  [ "$output" = "real" ]
+}
+
+@test "audit-team-member resolve arm: resolving nothing is a lost report, not an absent request" {
+  root="$BATS_TEST_TMPDIR/resolve-empty"
+  _noop_resolve_repo "$root"
+  digest="$(_noop_digest)"
+  _noop_resolve_marker "$root" "$digest" code-audit-maintainer-shell
+  stamp="$BATS_TEST_TMPDIR/resolve-empty.stamp"
+  : > "$stamp"
+  # An empty store must NOT fall back to the marker-only short-circuit: that
+  # would make the gate disappear in exactly the runs it exists for.
+  run "$SCRIPT" --shape audit-team-member \
+    --marker "$root/.gaia/local/audit/${digest}.code-audit-maintainer-shell.ok" \
+    --findings-root "$root" --findings-since "$stamp"
+  [ "$status" -eq 1 ]
+  [ "$output" = "noop" ]
+}
+
+@test "audit-team-member resolve arm: another member's and another branch's sidecars do not answer" {
+  root="$BATS_TEST_TMPDIR/resolve-identity"
+  _noop_resolve_repo "$root"
+  digest="$(_noop_digest)"
+  _noop_resolve_marker "$root" "$digest" code-audit-maintainer-shell
+  stamp="$BATS_TEST_TMPDIR/resolve-identity.stamp"
+  : > "$stamp"
+  sleep 1
+
+  # Fresh, on this branch, but a sibling member's: the member half of the glob
+  # is literal, so it is not even a candidate.
+  _noop_resolve_sidecar_at "$root" 3333333333333333333333333333333333333333 \
+    'debt%2F1537-example' code-audit-maintainer-node
+  run "$SCRIPT" --shape audit-team-member \
+    --marker "$root/.gaia/local/audit/${digest}.code-audit-maintainer-shell.ok" \
+    --findings-root "$root" --findings-since "$stamp"
+  [ "$status" -eq 1 ]
+  [ "$output" = "noop" ]
+
+  # Fresh, this member, but another branch's: the audit store is shared across
+  # worktrees, so the branch half is what keeps one tree out of another's gate.
+  _noop_resolve_sidecar_at "$root" 4444444444444444444444444444444444444444 \
+    'other%2Fbranch' code-audit-maintainer-shell
+  run "$SCRIPT" --shape audit-team-member \
+    --marker "$root/.gaia/local/audit/${digest}.code-audit-maintainer-shell.ok" \
+    --findings-root "$root" --findings-since "$stamp"
+  [ "$status" -eq 1 ]
+  [ "$output" = "noop" ]
+
+  # Right filename, wrong attribution inside: the `.member` check still binds
+  # identity after resolution, exactly as it does on the named-path arm.
+  _noop_resolve_sidecar_at "$root" 5555555555555555555555555555555555555555 \
+    'debt%2F1537-example' code-audit-maintainer-shell \
+    '{"schema":1,"member":"code-audit-maintainer-node","findings":[]}'
+  run "$SCRIPT" --shape audit-team-member \
+    --marker "$root/.gaia/local/audit/${digest}.code-audit-maintainer-shell.ok" \
+    --findings-root "$root" --findings-since "$stamp"
+  [ "$status" -eq 1 ]
+  [ "$output" = "noop" ]
+
+  # ...and the correctly-attributed one still passes: no false negative.
+  _noop_resolve_sidecar_at "$root" 6666666666666666666666666666666666666666 \
+    'debt%2F1537-example' code-audit-maintainer-shell
+  run "$SCRIPT" --shape audit-team-member \
+    --marker "$root/.gaia/local/audit/${digest}.code-audit-maintainer-shell.ok" \
+    --findings-root "$root" --findings-since "$stamp"
+  [ "$status" -eq 0 ]
+  [ "$output" = "real" ]
+}
+
+@test "audit-team-member resolve arm: a sibling's NEWER sidecar does not shadow this member's own" {
+  # The identity binding is two-layered, and this pins the outer one. If the
+  # glob's member half were a wildcard, the newest-wins walk would select the
+  # sibling's file, the `.member` check inside would reject it, and the round
+  # would classify NO-OP with this member's report sitting on disk the whole
+  # time -- a false lost report that spends the one hardened re-dispatch. The
+  # content check alone cannot prevent that, because by the time it runs the
+  # wrong file has already won the walk.
+  root="$BATS_TEST_TMPDIR/resolve-shadow"
+  _noop_resolve_repo "$root"
+  digest="$(_noop_digest)"
+  _noop_resolve_marker "$root" "$digest" code-audit-maintainer-shell
+  stamp="$BATS_TEST_TMPDIR/resolve-shadow.stamp"
+  : > "$stamp"
+  sleep 1
+
+  _noop_resolve_sidecar_at "$root" 7777777777777777777777777777777777777777 \
+    'debt%2F1537-example' code-audit-maintainer-shell
+  sleep 1
+  # Co-dispatched sibling, same wave, finishing later.
+  _noop_resolve_sidecar_at "$root" 8888888888888888888888888888888888888888 \
+    'debt%2F1537-example' code-audit-maintainer-node
+
+  run "$SCRIPT" --shape audit-team-member \
+    --marker "$root/.gaia/local/audit/${digest}.code-audit-maintainer-shell.ok" \
+    --findings-root "$root" --findings-since "$stamp"
+  [ "$status" -eq 0 ]
+  [ "$output" = "real" ]
+}
+
+@test "audit-team-member resolve arm: every half-passed form of the pair is a usage error" {
+  root="$BATS_TEST_TMPDIR/resolve-usage"
+  _noop_resolve_repo "$root"
+  digest="$(_noop_digest)"
+  _noop_resolve_marker "$root" "$digest" code-audit-maintainer-shell
+  marker="$root/.gaia/local/audit/${digest}.code-audit-maintainer-shell.ok"
+  stamp="$BATS_TEST_TMPDIR/resolve-usage.stamp"
+  : > "$stamp"
+  named="$BATS_TEST_TMPDIR/resolve-usage.findings.json"
+  _noop_write_findings "$named"
+
+  # Each of these degrades the gate rather than erroring if it is let through,
+  # so every one fails closed at argument time.
+  run "$SCRIPT" --shape audit-team-member --marker "$marker" \
+    --findings "$named" --findings-root "$root" --findings-since "$stamp"
+  [ "$status" -eq 2 ]
+
+  run "$SCRIPT" --shape audit-team-member --marker "$marker" \
+    --findings "$named" --findings-since "$stamp"
+  [ "$status" -eq 2 ]
+
+  run "$SCRIPT" --shape audit-team-member --marker "$marker" --findings-root "$root"
+  [ "$status" -eq 2 ]
+
+  run "$SCRIPT" --shape audit-team-member --marker "$marker" --findings-since "$stamp"
+  [ "$status" -eq 2 ]
+
+  # An absent stamp would make bash's `-nt` accept every sidecar on disk.
+  run "$SCRIPT" --shape audit-team-member --marker "$marker" \
+    --findings-root "$root" --findings-since "$BATS_TEST_TMPDIR/never-stamped"
+  [ "$status" -eq 2 ]
+
+  run "$SCRIPT" --shape audit-team-member --marker "$marker" \
+    --findings-root "$BATS_TEST_TMPDIR/not-a-root" --findings-since "$stamp"
+  [ "$status" -eq 2 ]
+}
+
+@test "audit-team-member: --path is optional, and --path or --marker is required" {
+  # An orchestrator that polls artifacts holds no captured return to pass. It
+  # must not have to fabricate an empty file, which classifies NO-OP and burns
+  # the one hardened re-dispatch on a member that was never broken.
+  digest="$(_noop_digest)"
+  marker="$BATS_TEST_TMPDIR/${digest}.ok"
+  _noop_write_clearance "$marker" "$digest" earned
+  run "$SCRIPT" --shape audit-team-member --marker "$marker"
+  [ "$status" -eq 0 ]
+  [ "$output" = "real" ]
+
+  # With neither, there is nothing on disk to read at all.
+  run "$SCRIPT" --shape audit-team-member
+  [ "$status" -eq 2 ]
+
+  # Every other shape still requires --path.
+  run "$SCRIPT" --shape spec-findings-file
+  [ "$status" -eq 2 ]
+}
+
 # agent-report-file: the generic file-backed report contract for a dispatch
 # composed at the point of need.
 #
