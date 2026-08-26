@@ -137,8 +137,9 @@
 #      correct call's dots. The rest end a shell line's code or close a
 #      markdown code span; without them a correct call carrying a trailing
 #      `# was BASE_REF` comment would report itself, and so would prose naming
-#      the command and a base in one sentence. The wall set is enumerated once,
-#      where it is applied, and deliberately not counted here: this sentence
+#      the command and a base in one sentence. The awk cuts below are where the
+#      wall set is applied, and that application is authoritative over any prose
+#      describing it, this sentence included. Deliberately no count here: it
 #      said three while the code had grown to cut on five.
 #
 #      This assertion scans `.claude/agents/code-audit-*.md`, NOT the whole
@@ -425,7 +426,7 @@ _gaia_drop_full_base_matches() {
 # further along, prose naming the resolver.
 #
 # The call's text ends at the first `#`, backtick, `;`, or `)` after it. Those
-# four characters are the walls that matter here: `#` opens a shell comment,
+# characters are the walls that matter here: `#` opens a shell comment,
 # a backtick closes a markdown code span, `;` ends the command outright, `)`
 # closes the `$( )` the call lives inside, and past any of them the text is no
 # longer part of this call. `;` and `)` are walls for the same reason
@@ -436,7 +437,7 @@ _gaia_drop_full_base_matches() {
 # `)` earns its place on a concrete escape rather than on symmetry. Without it
 # the window of `changed=$(git diff --name-only "${BASE}...HEAD") && [ -z
 # "$changed" ]` runs to end of line, and the emptiness test's own `-z` then
-# satisfies assertion 4 for a call that quotes. None of the other three walls
+# satisfies assertion 4 for a call that quotes. None of the other walls
 # closes that: there is no second call, no comment, and no code span.
 #
 # `|` is deliberately NOT a wall, which is where this walk and the ownership
