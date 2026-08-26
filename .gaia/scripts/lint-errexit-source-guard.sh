@@ -181,9 +181,14 @@ records="$(awk '
   # The operand test is what keeps English out. A deny message carrying
   # `(wiki/concepts/Git Workflow.md). Create a feature branch` splits at the
   # `)` into a segment whose first word IS a dot, and the sentence that follows
-  # is not a path: an operand must name a `.sh` file or be a bare variable
-  # expansion, which is every load spelling this tree uses and no prose.
-  function is_load(s,   n, i, parts, w, op) {
+  # is not a path. Two conditions together, and the second is the load-bearing
+  # one: an operand names a `.sh` file or is a bare variable expansion, AND the
+  # segment ENDS there, carrying nothing after the operand but redirections. A
+  # sentence continues past its variable -- `... $((a - b)) row(s). $ledger is
+  # untouched.` -- and two such lines are live in this tree today. Without the
+  # end-of-segment test a log string reads as an unguarded load the moment its
+  # file arms errexit, and the check reports a remedy that makes no sense for it.
+  function is_load(s,   n, i, parts, w, op, rem) {
     n = split(s, parts, /&&|\|\||[;|&(){}]/)
     for (i = 1; i <= n; i++) {
       w = trim(parts[i])
@@ -194,6 +199,9 @@ records="$(awk '
       sub(/^(\.|source)[[:space:]]+/, "", w)
       op = w
       sub(/[[:space:]].*$/, "", op)
+      rem = trim(substr(w, length(op) + 1))
+      # Only redirections may follow. `2>/dev/null`, `>/dev/null 2>&1`, `>&2`.
+      if (rem != "" && rem !~ /^([0-9]*[<>]+&?[^[:space:]]*[[:space:]]*)+$/) continue
       if (op ~ /\.sh["'"'"']?$/) return 1
       if (op ~ /^["'"'"']?\$\{?[A-Za-z_][A-Za-z0-9_]*(:-[^}]*)?\}?["'"'"']?$/) return 1
     }
@@ -216,21 +224,49 @@ records="$(awk '
     # one-line `set +e; . X; set -e` bracket is read the way the shell reads it.
     evn = 0
     capture = 0
+    heredoc = ""
+    prev_then = 0
     for (i = 1; i <= n; i++) {
       s = L[i]
-      if (s ~ /^[[:space:]]*#/) continue
+      # A heredoc body is DATA, not code. This file is its own worked example:
+      # its own failure-message heredoc spells both `set +e` and `set -e`, and
+      # read as code that pair brackets nothing while reporting that it does.
+      # The delimiter test is the one the shell applies: the line IS the
+      # delimiter, with leading tabs allowed only for the `<<-` form.
+      if (heredoc != "") {
+        t = s
+        sub(/^\t+/, "", t)
+        if (s == heredoc || t == heredoc) heredoc = ""
+        continue
+      }
+      if (match(s, /<<-?[[:space:]]*["'"'"']?[A-Za-z_][A-Za-z0-9_]*["'"'"']?/)) {
+        heredoc = substr(s, RSTART, RLENGTH)
+        sub(/^<<-?[[:space:]]*/, "", heredoc)
+        gsub(/["'"'"']/, "", heredoc)
+      }
+      if (s ~ /^[[:space:]]*#/) { prev_then = 0; continue }
       if (s ~ /case[[:space:]]+\$-[[:space:]]+in/ && s ~ /\*e\*/) capture = 1
       # suspends and restores, left to right
       rest = s
       off = 0
       while (match(rest, /set[[:space:]]+([-+][a-zA-Z]*e[a-zA-Z]*|[-+]o[[:space:]]+errexit)([[:space:]]|;|$)/)) {
         tok = substr(rest, RSTART, RLENGTH)
+        pos = off + RSTART
         evn++
         evt[evn] = (tok ~ /set[[:space:]]+\+/) ? "susp" : "rest"
         evl[evn] = i
-        evp[evn] = off + RSTART
-        evx[evn] = (s ~ /errexit_was/ && capture) ? "cond" : "flat"
-        off += RSTART + RLENGTH - 1
+        evp[evn] = pos
+        # A restore is state-PRESERVING when the file captured the incoming
+        # errexit state and this restore is conditional on something. That is a
+        # structural test on purpose: keying it to the identifier `errexit_was`
+        # would report the documented bracket as a defect whenever its author
+        # named the variable anything else, and print back the shape they used
+        # as the remedy. What the check can see is the `case $- in *e*` capture
+        # and whether the restore runs unconditionally; what it cannot see, and
+        # does not claim to, is whether the captured value is the one tested.
+        evx[evn] = (capture && (substr(s, 1, pos - 1) ~ /(then|&&|\|\|)[[:space:]]*$/ || prev_then)) \
+          ? "cond" : "flat"
+        off = pos + RLENGTH - 1
         rest = substr(rest, RSTART + RLENGTH)
       }
       m = mask(s)
@@ -241,6 +277,7 @@ records="$(awk '
         evp[evn] = load_pos(m)
         evx[evn] = target(m)
       }
+      prev_then = (s ~ /(^|[[:space:]);])then[[:space:]]*$/)
     }
     # Order events: line ascending, then position within the line. The flat
     # one-liner `set +e; [ -f X ] && . X; set -e` is the shape that needs this:
@@ -274,10 +311,17 @@ records="$(awk '
           if (evt[j] == "susp") break
         }
       } else {
-        # `bash -n X` on this line or within the three above it, naming the
-        # same target. The multi-line `if bash -n X; then . X; fi` shape puts
-        # the check on a preceding line, which is why this is a window rather
-        # than a same-line test.
+        # `bash -n X` naming the same target, on this line or on a preceding
+        # line whose block the load is INSIDE. The multi-line
+        # `if bash -n X; then . X; fi` shape puts the check on a preceding line,
+        # which is why this is a window rather than a same-line test.
+        #
+        # Containment, not proximity, is what makes a preceding-line credit
+        # sound. A parse check whose `then` branch does something else, with the
+        # load pulled out below the `fi`, runs that load unconditionally, and
+        # crediting it certifies exactly the abort this check exists to end. So
+        # a preceding-line check must open a block (`if ...; then`) that no
+        # `fi`, `else` or `elif` closes before the load reaches it.
         #
         # The `-n` has to be a flag to a BASH invocation, in that order and
         # without a command separator between them. A bare `-n` test is the
@@ -289,6 +333,11 @@ records="$(awk '
         tgt = evx[i]
         found = 0
         for (back = evl[i]; back >= 1 && back >= evl[i] - 3; back--) {
+          if (back < evl[i]) {
+            # The window closes at the first line that ends a block.
+            if (L[back + 1] ~ /^[[:space:]]*(fi|else|elif)([[:space:]]|;|$)/) break
+            if (L[back] !~ /(^|[[:space:]);])then[[:space:]]*$/) continue
+          }
           if (L[back] ~ /(bash|BASH)[^;&|]*[[:space:]]-n[[:space:]]/ \
               && (tgt == "" || index(L[back], tgt))) { found = 1; break }
         }
@@ -330,7 +379,14 @@ records="$(awk '
   $1 == "ARM" { ARM[$2] = 1; next }
   $1 == "SITE" {
     k = ++sn
-    SF[k] = $2; SL[k] = $3; ST[k] = $4; SS[k] = $5; SX[k] = $6
+    SF[k] = $2; SL[k] = $3; ST[k] = $4; SS[k] = $5
+    # The quoted source line is the LAST field and may itself carry `|`, which
+    # is the separator this stream itself uses. Many site records do, most of
+    # them on the `|| exit 0` or `|| return 1` that IS the degrade a reader needs,
+    # so truncating at the first `|` drops the most useful half of the report.
+    # Take $6 and everything after it.
+    SX[k] = $6
+    for (fi = 7; fi <= NF; fi++) SX[k] = SX[k] "|" $fi
     if (ST[k] != "" && ST[k] in BASE && BASE[ST[k]] != "!ambiguous") {
       EDGE[SF[k]] = EDGE[SF[k]] " " BASE[ST[k]]
       INBOUND[BASE[ST[k]]] = 1

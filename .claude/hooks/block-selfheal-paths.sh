@@ -83,6 +83,13 @@ LIB="$SELF_DIR/lib/audit-selfheal-paths.sh"
 # and that exit is 2 -- a deny carrying a raw syntax error instead of the crafted
 # message below. Testing what the library DEFINES rather than whether the file
 # exists routes both failures to the same fail-loud refusal.
+#
+# Unset first, so the test reads what the LOAD defined rather than what the
+# environment happened to carry: this hook inherits its parent process's
+# environment, the audit workflow exports a variable of exactly this name, and
+# an inherited copy would satisfy the guard after the load failed -- fail-open,
+# in the one place this hook is written to fail loud.
+unset AUDIT_SELFHEAL_REFUSE_ERE
 # shellcheck source=/dev/null
 set +e; [ -f "$LIB" ] && . "$LIB" 2>/dev/null; set -e
 if [ -z "${AUDIT_SELFHEAL_REFUSE_ERE:-}" ]; then

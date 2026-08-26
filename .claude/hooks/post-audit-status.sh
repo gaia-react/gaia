@@ -117,8 +117,12 @@ set -euo pipefail
 # Bracketed in `set +e` because errexit is armed above: a module that is present
 # but unparseable abandons the shell AT the load, so an `-f` test ahead of it
 # proves nothing and no caller can guard it from outside -- `bash -n` does not
-# recurse into what a file sources. Every consumer below already gates on
-# `type` / `command -v`, which is what degrades once the shell survives.
+# recurse into what a file sources. What degrades once the shell survives is
+# each consumer below on its own terms: the digest and version readers gate on
+# `type` / `command -v`, while `clearance_acceptable` is called bare inside an
+# `if` condition, where a 127 is errexit-exempt and falls through to the same
+# decline an unreadable marker takes -- correct, but noisier, since it prints a
+# `command not found` beside a decline whose message blames the marker.
 _lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)"
 set +e
 if [ -n "$_lib_dir" ]; then

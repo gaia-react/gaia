@@ -33,9 +33,15 @@ setup() {
 # actually defined the symbol -- names it without calling it, so it is excluded.
 # The count assertions below are about invocations, and a bare grep for the name
 # reads a degrade guard as a second call.
+#
+# The probe is stripped from the line rather than dropping the line, and counted
+# per occurrence rather than per line, so `type X >/dev/null && X "$arg"` still
+# counts the call it carries. Dropping the whole line reads that one-liner as
+# zero invocations, which greens the "calls it once" assertion over a consumer
+# that calls it twice.
 count_invocations() {
-  grep -vE "(^|[[:space:]])(type|command -v)[[:space:]]+$2([[:space:]]|$)" "$1" \
-    | grep -c "$2 "
+  sed -E "s/(^|[[:space:]])(type|command -v)[[:space:]]+$2([[:space:]]|\$)/\1 /g" "$1" \
+    | grep -o "$2 " | grep -c .
 }
 
 # Extract a named function's body (from its `name() {` line through the next

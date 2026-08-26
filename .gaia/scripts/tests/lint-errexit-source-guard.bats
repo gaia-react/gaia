@@ -129,6 +129,24 @@ plant() {
   return 0
 }
 
+@test "flags a load pulled out from under the parse check that gates it" {
+  new_fixture
+  plant .claude/hooks/probe.sh $'#!/usr/bin/env bash\nset -euo pipefail\nif "${BASH:-bash}" -n .claude/hooks/lib/helper.sh 2>/dev/null; then\n  :\nfi\n. .claude/hooks/lib/helper.sh\n'
+  plant .claude/hooks/lib/helper.sh $'helper() { :; }\n'
+  run bash -c "cd '$TMP' && bash '$LINTER'"
+  [ "$status" -eq 1 ]
+  grep -qF -- ".claude/hooks/probe.sh:6" <<<"$output"
+}
+
+@test "flags a load whose only bracket lives inside a heredoc body" {
+  new_fixture
+  plant .claude/hooks/probe.sh $'#!/usr/bin/env bash\nset -euo pipefail\n. .claude/hooks/lib/helper.sh\ncat <<\'USAGE\'\nset +e\nset -e\nUSAGE\n'
+  plant .claude/hooks/lib/helper.sh $'helper() { :; }\n'
+  run bash -c "cd '$TMP' && bash '$LINTER'"
+  [ "$status" -eq 1 ]
+  grep -qF -- ".claude/hooks/probe.sh:3" <<<"$output"
+}
+
 # 3. Accepted shapes and out-of-scope files are NOT flagged
 
 @test "accepts the flat bracket in a file that arms errexit and is not sourced" {
@@ -170,6 +188,50 @@ plant() {
   plant .claude/hooks/probe.sh $'#!/usr/bin/env bash\nset -euo pipefail\njq -e . "$1" >/dev/null 2>&1 || true\ngit grep -n -- . >/dev/null 2>&1 || true\necho "See the workflow page (wiki/concepts/PR Merge Workflow.md). Create a branch first."\n'
   run bash -c "cd '$TMP' && bash '$LINTER'"
   [ "$status" -eq 0 ]
+}
+
+# The sentence whose next word IS a variable, which the bare-variable operand
+# arm would otherwise accept. Verbatim from .gaia/scripts/cost-reprice.sh, where
+# it is inert today only because that file does not arm errexit.
+@test "ignores a sentence that continues past a variable" {
+  new_fixture
+  plant .claude/hooks/probe.sh $'#!/usr/bin/env bash\nset -euo pipefail\nlog "cost-reprice: refusing to rewrite, which would drop $((expected_lines - total_count)) row(s). $ledger is untouched."\n'
+  run bash -c "cd '$TMP' && bash '$LINTER'"
+  [ "$status" -eq 0 ]
+}
+
+# The bracket is a shape, not an identifier. A library spelling it exactly and
+# naming the captured state anything else is not a defect, and reporting it as
+# one prints back the shape its author already used as the remedy.
+@test "accepts the state-preserving bracket under a different variable name" {
+  new_fixture
+  plant .claude/hooks/probe.sh $'#!/usr/bin/env bash\nset -euo pipefail\nset +e; [ -f .claude/hooks/lib/mid.sh ] && . .claude/hooks/lib/mid.sh 2>/dev/null; set -e\n'
+  plant .claude/hooks/lib/mid.sh $'_d="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"\nhad_e=0\ncase $- in *e*) had_e=1 ;; esac\nset +e\n. "$_d/helper.sh" 2>/dev/null\nif [ "$had_e" = 1 ]; then set -e; fi\n'
+  plant .claude/hooks/lib/helper.sh $'helper() { :; }\n'
+  run bash -c "cd '$TMP' && bash '$LINTER'"
+  [ "$status" -eq 0 ]
+}
+
+# The multi-line restore, where the guard is on the line above rather than
+# ahead of the `set -e` on its own line.
+@test "accepts a state-preserving bracket whose restore spans two lines" {
+  new_fixture
+  plant .claude/hooks/probe.sh $'#!/usr/bin/env bash\nset -euo pipefail\nset +e; [ -f .claude/hooks/lib/mid.sh ] && . .claude/hooks/lib/mid.sh 2>/dev/null; set -e\n'
+  plant .claude/hooks/lib/mid.sh $'_d="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"\nerrexit_was=0\ncase $- in *e*) errexit_was=1 ;; esac\nset +e\n. "$_d/helper.sh" 2>/dev/null\nif [ "$errexit_was" = 1 ]; then\n  set -e\nfi\n'
+  plant .claude/hooks/lib/helper.sh $'helper() { :; }\n'
+  run bash -c "cd '$TMP' && bash '$LINTER'"
+  [ "$status" -eq 0 ]
+}
+
+# The report is the check's whole output, so a load whose degrade is spelled
+# with `||` must arrive with that degrade still attached.
+@test "the reported line survives a pipe character in the source text" {
+  new_fixture
+  plant .claude/hooks/probe.sh $'#!/usr/bin/env bash\nset -euo pipefail\n. .claude/hooks/lib/helper.sh || exit 0\n'
+  plant .claude/hooks/lib/helper.sh $'helper() { :; }\n'
+  run bash -c "cd '$TMP' && bash '$LINTER'"
+  [ "$status" -eq 1 ]
+  grep -qF -- ". .claude/hooks/lib/helper.sh || exit 0" <<<"$output"
 }
 
 @test "ignores a load written only inside a comment" {

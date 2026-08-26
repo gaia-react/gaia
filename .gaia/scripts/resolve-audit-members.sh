@@ -169,8 +169,14 @@ set +e
 # shellcheck source=/dev/null
 [ -f "$_lib_dir/audit-base-provenance.sh" ] && . "$_lib_dir/audit-base-provenance.sh" 2>/dev/null
 set -e
-type audit_scope_init >/dev/null 2>&1 || exit 0
-type audit_resolve_base_provenance >/dev/null 2>&1 || exit 0
+# Probe each module's LAST definition, not the first symbol this script calls.
+# A truncated copy parses as far as the truncation and defines every function
+# ahead of it, so a probe of an early export answers yes for a copy missing what
+# the call it gates will itself reach, and the run then dies at that inner call
+# instead of taking the empty-stdout exit. The last definition is the one probe
+# that needs no reasoning about which internal call goes how deep.
+type audit_owners_for_paths >/dev/null 2>&1 || exit 0
+type audit_provenance_empty_is_decisive >/dev/null 2>&1 || exit 0
 
 audit_scope_init "$repo_root"
 
