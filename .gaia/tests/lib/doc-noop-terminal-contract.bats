@@ -15,7 +15,7 @@
 #
 # So the assertions come in two halves. The roster half derives the set of
 # surfaces stating a terminal action FROM THE TREE rather than restating it, so
-# a sixth surface added with a third ending stops the suite instead of being
+# a further surface added with a third ending stops the suite instead of being
 # silently uncovered, and a surface that drops the statement stops it too. The
 # declaration half pins that the owner page states the general ending once, that
 # it admits the exception rather than asserting uniformity, and that the merge
