@@ -77,12 +77,35 @@ deny() {
 # fail loudly and deny rather than silently allowing the edit through.
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LIB="$SELF_DIR/lib/audit-selfheal-paths.sh"
-if [ ! -f "$LIB" ]; then
-  printf 'block-selfheal-paths.sh: refusal-set library unavailable: %s\n' "$LIB" >&2
-  deny "BLOCKED: the self-heal repair-boundary library ($LIB) is unavailable, so this edit cannot be checked against it. Fail-loud, not fail-open -- restore the library before retrying."
-fi
+# Bracketed in `set +e` because errexit is armed above. Absence is not the only
+# way this library can fail to define the refusal set: an unparseable copy (an
+# unresolved merge conflict, a truncated write) abandons the shell AT the load,
+# and that exit is 2 -- a deny carrying a raw syntax error instead of the crafted
+# message below. Testing what the library DEFINES rather than whether the file
+# exists routes both failures to the same fail-loud refusal.
+#
+# Unset first, so the test reads what the LOAD defined rather than what the
+# environment happened to carry: this hook inherits its parent process's
+# environment, and ANY ambient copy of this name there, however it arrived,
+# would satisfy the guard after the load failed -- fail-open, in the one place
+# this hook is written to fail loud.
+unset AUDIT_SELFHEAL_REFUSE_ERE
+set +e
 # shellcheck source=/dev/null
-. "$LIB"
+[ -f "$LIB" ] && . "$LIB" 2>/dev/null
+set -e
+# Two causes, two messages. The load discards its own stderr, so a member that
+# reads "unavailable", finds the file present, and has no parse error anywhere
+# in its session is left with nothing to act on -- and an interrupted update is
+# exactly the scenario this guard is built for.
+if [ -z "${AUDIT_SELFHEAL_REFUSE_ERE:-}" ]; then
+  if [ ! -f "$LIB" ]; then
+    printf 'block-selfheal-paths.sh: refusal-set library unavailable: %s\n' "$LIB" >&2
+    deny "BLOCKED: the self-heal repair-boundary library ($LIB) is unavailable, so this edit cannot be checked against it. Fail-loud, not fail-open -- restore the library before retrying."
+  fi
+  printf 'block-selfheal-paths.sh: refusal-set library present but defined nothing: %s\n' "$LIB" >&2
+  deny "BLOCKED: the self-heal repair-boundary library ($LIB) is present but did not define the refusal set, so this edit cannot be checked against it. Run \`bash -n $LIB\` -- an unparseable copy (an unresolved merge conflict, a truncated write) is the usual cause. Fail-loud, not fail-open."
+fi
 
 # Repo root, resolved the same way .claude/hooks/lib/repo-scope.sh resolves
 # the home repo (`git rev-parse --show-toplevel`), not a second way. The

@@ -40,11 +40,11 @@
 # enumerates every ordinary suite in that directory and would need an exclusion
 # entry per suite saying nothing. The one bats member is named directly instead.
 #
-# Runtime, measured on the tree at the time of writing: the eighteen scripts
-# total ~45s, of which shell-lint.sh is ~17s and
-# check-script-capabilities.sh ~15s (it walks the invocation closure of every
-# allowlisted script), and the shard suite ~35s; the whole set measures
-# ~78-82s end to end. Every figure here is a tilde against host load, and the
+# Runtime, measured on the tree at the time of writing: the nineteen scripts
+# total ~48s, of which shell-lint.sh is ~18s and
+# check-script-capabilities.sh ~16s (it walks the invocation closure of every
+# allowlisted script), and the shard suite ~36s; the whole set measures
+# ~83-86s end to end. Every figure here is a tilde against host load, and the
 # spread between two honest samples on different hosts is a couple of seconds
 # a member, so treat a small disagreement as noise and re-measure rather than
 # reconciling it. Time each member the way this script invokes it, the
@@ -74,7 +74,7 @@
 # to be re-visited rather than drifting unnoticed again.
 #
 # What the lever does not catch, stated so it is not mistaken for more than it
-# is: only WTI_SCRIPTS_COUNT_ASOF is machine-checked. The word "eighteen" in the
+# is: only WTI_SCRIPTS_COUNT_ASOF is machine-checked. The word "nineteen" in the
 # paragraph above is prose and nothing compares it to anything, so the same
 # drift can recur one bump later; and a member swapped for another, or simply
 # grown, holds the count, so the runtime figures can go stale with the lever
@@ -112,6 +112,7 @@ readonly WTI_SCRIPTS='.gaia/scripts/check-audit-base-derivation.sh
 .gaia/scripts/check-wiki-state-collision.sh
 .gaia/scripts/audit-rules-changed-complete.sh
 .gaia/scripts/audit-machinery-complete.sh
+.gaia/scripts/lint-errexit-source-guard.sh
 .gaia/scripts/lint-shipped-issue-refs.sh
 .gaia/scripts/verify-audit-roster.sh
 .gaia/tests/shell-lint.sh'
@@ -119,7 +120,7 @@ readonly WTI_SCRIPTS='.gaia/scripts/check-audit-base-derivation.sh
 # The staleness lever's baseline: WTI_SCRIPTS's own member count at the time
 # the runtime paragraph above was last measured. main() compares the live
 # count against this and refuses to run on a mismatch, per that paragraph.
-readonly WTI_SCRIPTS_COUNT_ASOF=18
+readonly WTI_SCRIPTS_COUNT_ASOF=19
 
 # Members invoked as `bats <path>`. The shard partition is a whole-tree
 # invariant in the same sense as the scripts above: its input is every .bats

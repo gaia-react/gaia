@@ -114,27 +114,35 @@ set -euo pipefail
 # Load the shared clearance reader + digest engine from this hook's OWN
 # on-disk location (never cwd, never $repo_root), per the frozen library
 # resolution basis.
+# Bracketed in `set +e` because errexit is armed above: a module that is present
+# but unparseable abandons the shell AT the load, so an `-f` test ahead of it
+# proves nothing and no caller can guard it from outside -- `bash -n` does not
+# recurse into what a file sources. What degrades once the shell survives is
+# each consumer below on its own terms: the digest and version readers gate on
+# `type` / `command -v`, while `clearance_acceptable` is called bare inside an
+# `if` condition, where a 127 is errexit-exempt and falls through to the same
+# decline an unreadable marker takes -- correct, but noisier, since it prints a
+# `command not found` beside a decline whose message blames the marker.
 _lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)"
-if [ -n "$_lib_dir" ] && [ -f "$_lib_dir/audit-clearance.sh" ]; then
+set +e
+if [ -n "$_lib_dir" ]; then
   # shellcheck source=/dev/null
-  . "$_lib_dir/audit-clearance.sh"
-fi
-if [ -n "$_lib_dir" ] && [ -f "$_lib_dir/audit-digest.sh" ]; then
+  [ -f "$_lib_dir/audit-clearance.sh" ] && . "$_lib_dir/audit-clearance.sh" 2>/dev/null
   # shellcheck source=/dev/null
-  . "$_lib_dir/audit-digest.sh"
-fi
-if [ -n "$_lib_dir" ] && [ -f "$_lib_dir/gaia-version.sh" ]; then
+  [ -f "$_lib_dir/audit-digest.sh" ] && . "$_lib_dir/audit-digest.sh" 2>/dev/null
   # shellcheck source=/dev/null
-  . "$_lib_dir/gaia-version.sh"
+  [ -f "$_lib_dir/gaia-version.sh" ] && . "$_lib_dir/gaia-version.sh" 2>/dev/null
 fi
+set -e
 
 # Load the shared main-root resolver the same guarded way, from this hook's
 # own on-disk location. Backs the main-anchored `repo_root` derivation below.
 _root_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd)"
-if [ -n "$_root_lib_dir" ] && [ -f "$_root_lib_dir/.gaia/scripts/main-root-lib.sh" ]; then
-  # shellcheck source=/dev/null
-  . "$_root_lib_dir/.gaia/scripts/main-root-lib.sh"
-fi
+set +e
+# shellcheck source=/dev/null
+[ -n "$_root_lib_dir" ] && [ -f "$_root_lib_dir/.gaia/scripts/main-root-lib.sh" ] \
+  && . "$_root_lib_dir/.gaia/scripts/main-root-lib.sh" 2>/dev/null
+set -e
 
 emit_posted() {
   printf 'status: posted GAIA-Audit success %s\n' "$1"

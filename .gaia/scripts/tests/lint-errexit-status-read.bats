@@ -1311,3 +1311,55 @@ MATRIX
   [ "$status" -eq 0 ]
   grep -qF -- 'lint-errexit-status-read: clean' <<<"$output"
 }
+
+# --- the bare `(( ))` arithmetic command ------------------------------------
+
+# `<<` inside arithmetic is a left shift, not a redirection. Read as a
+# redirection, the digits become a heredoc delimiter and every line below is
+# consumed as body, so the walk loses shell state and the gate reports that it
+# cannot certify the file rather than scanning it.
+@test "a left shift in a bare (( )) leaves the rest of the file classified" {
+  fixture_repo
+  fixture_script 'n=1
+(( n = n << 3 ))
+echo "$n"'
+  run_linter
+  [ "$status" -eq 0 ]
+}
+
+@test "a left shift in a bare (( )) after an if keyword is classified too" {
+  fixture_repo
+  fixture_script 'n=1
+if (( n << 3 )); then n=0; fi
+echo "$n"'
+  run_linter
+  [ "$status" -eq 0 ]
+}
+
+# The carve-out must not swallow a real heredoc: the class still has to fire
+# below one.
+@test "the arithmetic carve-out does not hide a hit below a real heredoc" {
+  fixture_repo
+  fixture_script 'set -euo pipefail
+n=1
+(( n = n << 3 ))
+cat <<EOF
+body
+EOF
+out="$(some_command --json)"
+rc=$?
+echo "$rc$out"'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- 'check.sh:8:' <<<"$output"
+}
+
+@test "a left shift in a for (( )) header leaves the rest of the file classified" {
+  fixture_repo
+  fixture_script 'set -euo pipefail
+n=4
+for (( i = 0; i < (n << 2); i++ )); do :; done
+echo "$i"'
+  run_linter
+  [ "$status" -eq 0 ]
+}

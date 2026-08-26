@@ -23,8 +23,11 @@ session_marker="$GIT_DIR/claude-session-start"
 
 # GAIA CI deferral. When wiki.mode == "ci", local automatic triggers stand
 # down so they don't collide with the cron-managed wiki run.
-if [ -f .claude/hooks/lib/gaia-ci-defer.sh ]; then
-  . .claude/hooks/lib/gaia-ci-defer.sh
+# Bracketed in `set +e` because errexit is armed above: an unparseable copy (an
+# unresolved merge conflict, a truncated write) would otherwise abandon the hook
+# at the load, before the `type` check below can degrade it to "not managed".
+set +e; [ -f .claude/hooks/lib/gaia-ci-defer.sh ] && . .claude/hooks/lib/gaia-ci-defer.sh 2>/dev/null; set -e
+if type gaia_ci_defer_if_managed >/dev/null 2>&1; then
   gaia_ci_defer_if_managed wiki || true
 fi
 

@@ -41,14 +41,22 @@
 # assignment trips errexit in a caller running under `set -e`.
 _audit_digest_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)" || true
 if [ -n "${_audit_digest_lib_dir:-}" ]; then
-  if [ -f "$_audit_digest_lib_dir/audit-scope.sh" ]; then
-    # shellcheck source=/dev/null
-    . "$_audit_digest_lib_dir/audit-scope.sh"
-  fi
-  if [ -f "$_audit_digest_lib_dir/audit-machinery.sh" ]; then
-    # shellcheck source=/dev/null
-    . "$_audit_digest_lib_dir/audit-machinery.sh"
-  fi
+  # Suspend errexit across both loads, then RESTORE WHAT WAS THERE. A sibling
+  # module that is present but unparseable abandons the shell AT the source, so
+  # an `-f` test ahead of it proves nothing and no caller can guard it from
+  # outside -- `bash -n` does not recurse into what a file sources. The restore
+  # is conditional rather than a bare `set -e` because this library is sourced
+  # by callers that deliberately run without errexit, and arming it in them
+  # kills them at their next non-zero command.
+  _audit_digest_errexit_was=0
+  case $- in *e*) _audit_digest_errexit_was=1 ;; esac
+  set +e
+  # shellcheck source=/dev/null
+  [ -f "$_audit_digest_lib_dir/audit-scope.sh" ] && . "$_audit_digest_lib_dir/audit-scope.sh" 2>/dev/null
+  # shellcheck source=/dev/null
+  [ -f "$_audit_digest_lib_dir/audit-machinery.sh" ] && . "$_audit_digest_lib_dir/audit-machinery.sh" 2>/dev/null
+  if [ "$_audit_digest_errexit_was" = 1 ]; then set -e; fi
+  unset _audit_digest_errexit_was
 fi
 
 # _audit_sha256_hex: reads stdin, prints the 64-hex sha256 on stdout; returns

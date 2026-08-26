@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # shell-lint.sh: run shellcheck over every tracked shell script, bats suite, and
-# husky hook, then parse every tracked shell script with bash 3.2, then five
+# husky hook, then parse every tracked shell script with bash 3.2, then six
 # repo-authored guards shellcheck cannot model: the hook
-# array-guard (.gaia/scripts/lint-hook-array-guard.sh), the git path-quoting
+# array-guard (.gaia/scripts/lint-hook-array-guard.sh), the errexit source guard
+# (.gaia/scripts/lint-errexit-source-guard.sh), the git path-quoting
 # guard (.gaia/scripts/lint-git-path-quoting.sh), the workflow
 # run-interpolation guard (.gaia/scripts/lint-workflow-run-interpolation.sh),
 # the grep ERE-escape guard (.gaia/scripts/lint-grep-ere-escapes.sh), and the
@@ -448,6 +449,19 @@ fi
 # the repo root so its cwd-relative .claude/hooks/*.sh scan resolves.
 echo "--> lint-hook-array-guard (bash-3.2 empty-array class under set -u)"
 if ! (cd "$REPO_ROOT" && bash "$REPO_ROOT/.gaia/scripts/lint-hook-array-guard.sh"); then
+  status=1
+fi
+
+# Fold in the errexit source guard, for the same reason as the array guard: the
+# linter above cannot model it either. Under errexit, sourcing a file that is
+# present but UNPARSEABLE abandons the shell at the load, which in a PreToolUse
+# hook is exit 2 -- a deny on every matching call, including the edit that would
+# repair the library. It works on the errexit-reachable source closure rather
+# than on one file, so it sees a library's own loads whether or not a consumer
+# parse-checked the library. Run from the repo root so its cwd-relative scan
+# roots resolve and the file:line it prints is repo-relative.
+echo "--> lint-errexit-source-guard (unbracketed source under errexit)"
+if ! (cd "$REPO_ROOT" && bash "$REPO_ROOT/.gaia/scripts/lint-errexit-source-guard.sh"); then
   status=1
 fi
 

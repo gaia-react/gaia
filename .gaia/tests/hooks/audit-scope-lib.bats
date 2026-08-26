@@ -16,6 +16,7 @@ setup() {
   REPO_ROOT="$( cd "$THIS_DIR/../../.." && pwd )"
   SCOPE_LIB="$REPO_ROOT/.claude/hooks/lib/audit-scope.sh"
   MACHINERY_LIB="$REPO_ROOT/.claude/hooks/lib/audit-machinery.sh"
+  PROVENANCE_LIB="$REPO_ROOT/.claude/hooks/lib/audit-base-provenance.sh"
   RESOLVER="$REPO_ROOT/.gaia/scripts/resolve-audit-members.sh"
   SPAWN="$REPO_ROOT/.gaia/scripts/resolve-audit-spawn.sh"
   HOOK="$REPO_ROOT/.claude/hooks/pr-merge-audit-check.sh"
@@ -26,6 +27,44 @@ setup() {
   # arm that may be copied freely.
   ALLOWLIST_LITERAL='wiki/*|.claude/*|.specify/*|.gaia/*|docs/*'
   ALLOWLIST_ARM_ROOT='LICENSE|.gitignore|.editorconfig'
+}
+
+# Count real invocations of a symbol in a file. A presence probe -- `type X` or
+# `command -v X`, the shape a consumer uses to decide whether a guarded load
+# actually defined the symbol -- names it without calling it, so it is excluded.
+# The count assertions below are about invocations, and a bare grep for the name
+# reads a degrade guard as a second call.
+#
+# The probe is stripped from the line rather than dropping the line, and counted
+# per occurrence rather than per line, so `type X >/dev/null && X "$arg"` still
+# counts the call it carries. Dropping the whole line reads that one-liner as
+# zero invocations, which greens the "calls it once" assertion over a consumer
+# that calls it twice.
+#
+# Counting occurrences is what makes the two other filters load-bearing, and
+# per-line counting hid the need for both: comments go first, because a header
+# naming the symbol twice in prose now contributes two, and the match is
+# bounded by a non-identifier at BOTH ends, because `audit_scope_init` is a
+# prefix of any longer name someone adds later, and because a terminator that
+# demands whitespace declines every other one a real second call can carry --
+# `audit_scope_init;`, a bare call at end of line -- which greens the
+# calls-it-once pin over exactly the drift it exists to catch.
+#
+# Counted by splitting on the boundaries rather than by matching across them:
+# `grep -o` CONSUMES the boundary character it matched and resumes after it, so
+# two occurrences separated by exactly one non-identifier character -- the
+# `audit_scope_init;audit_scope_init` spelling -- leave the second with no
+# boundary left and it goes uncounted, which is the same green-over-drift the
+# widened terminator was meant to end.
+count_invocations() {
+  sed -e 's/[[:space:]]#.*$//' -e 's/^[[:space:]]*#.*$//' "$1" \
+    | sed -E "s/(^|[[:space:]])(type|command -v)[[:space:]]+$2([[:space:]]|\$)/\1 /g" \
+    | awk -v sym="$2" '
+        { gsub(/[^A-Za-z0-9_]/, " ")
+          n = split($0, w, " ")
+          for (i = 1; i <= n; i++) if (w[i] == sym) c++ }
+        END { print c + 0 }
+      '
 }
 
 # Extract a named function's body (from its `name() {` line through the next
@@ -73,8 +112,77 @@ EOF
 
 @test "resolve-audit-members.sh sources audit-scope.sh and calls audit_scope_init once" {
   grep -qF -- "audit-scope.sh" "$RESOLVER" || return 1
-  count="$(grep -c "audit_scope_init " "$RESOLVER")"
+  count="$(count_invocations "$RESOLVER" audit_scope_init)"
   [ "$count" -eq 1 ]
+}
+
+# The counter is what both pins above rest on, so its own boundary is asserted
+# rather than trusted. A terminator that demands whitespace declines `;`, `)`,
+# `|`, `&` and end-of-line, so a real second call written any of those ways
+# would green a pin that exists to catch exactly that drift.
+@test "count_invocations counts a second call whatever terminator it carries" {
+  probe="$BATS_TEST_TMPDIR/probe.sh"
+
+  printf '%s\n' 'audit_scope_init "$r"' > "$probe"
+  [ "$(count_invocations "$probe" audit_scope_init)" -eq 1 ]
+
+  printf '%s\n' 'audit_scope_init "$r"' 'audit_scope_init; :' > "$probe"
+  [ "$(count_invocations "$probe" audit_scope_init)" -eq 2 ]
+
+  printf '%s\n' 'audit_scope_init "$r"' 'audit_scope_init' > "$probe"
+  [ "$(count_invocations "$probe" audit_scope_init)" -eq 2 ]
+
+  # Exactly one non-identifier character between two occurrences, the spelling
+  # a boundary-consuming match cannot see.
+  printf '%s\n' 'audit_scope_init;audit_scope_init' > "$probe"
+  [ "$(count_invocations "$probe" audit_scope_init)" -eq 2 ]
+
+  printf '%s\n' '{ audit_scope_init; }' 'audit_scope_init&&audit_scope_init' > "$probe"
+  [ "$(count_invocations "$probe" audit_scope_init)" -eq 3 ]
+
+  # And still declines the two shapes the filters above it exist to drop.
+  printf '%s\n' 'audit_scope_init "$r"' 'type audit_scope_init >/dev/null' > "$probe"
+  [ "$(count_invocations "$probe" audit_scope_init)" -eq 1 ]
+
+  printf '%s\n' 'audit_scope_init "$r"' '# audit_scope_init audit_scope_init in prose' > "$probe"
+  [ "$(count_invocations "$probe" audit_scope_init)" -eq 1 ]
+
+  # A longer name that merely starts with the symbol is not an invocation.
+  printf '%s\n' 'audit_scope_init "$r"' 'audit_scope_init_extra "$r"' > "$probe"
+  [ "$(count_invocations "$probe" audit_scope_init)" -eq 1 ]
+}
+
+# last_definition <file>: the name of the last function the file defines, in
+# every spelling bash accepts. Reading only the canonical `name() {` would leave
+# the pin below green when a function is appended as `function name {` or with
+# extra spacing, which is the drift it exists to catch: `tail -1` would still
+# return the previously-last definition.
+last_definition() {
+  sed -E -n \
+    -e 's/^function[[:space:]]+([A-Za-z0-9_]+)[[:space:]]*(\(\)[[:space:]]*)?\{.*$/\1/p' \
+    -e 's/^([A-Za-z0-9_]+)[[:space:]]*\([[:space:]]*\)[[:space:]]*\{.*$/\1/p' \
+    "$1" | tail -1
+}
+
+# The resolver argues that probing each module's LAST definition needs no
+# reasoning about which internal call goes how deep: a truncated copy parses as
+# far as the truncation and defines everything ahead of it, so an early-export
+# probe answers yes for a copy missing what the call it gates will reach. That
+# argument is a property of two other files, and appending a function to either
+# silently demotes the probe to the early-export kind the argument rules out.
+@test "each module probe in resolve-audit-members.sh names its module's last definition" {
+  probed_scope="$(grep -oE '^type [A-Za-z0-9_]+' "$RESOLVER" | awk 'NR==1 {print $2}')"
+  probed_prov="$(grep -oE '^type [A-Za-z0-9_]+' "$RESOLVER" | awk 'NR==2 {print $2}')"
+  [ -n "$probed_scope" ]
+  [ -n "$probed_prov" ]
+
+  last_scope="$(last_definition "$SCOPE_LIB")"
+  last_prov="$(last_definition "$PROVENANCE_LIB")"
+  [ -n "$last_scope" ]
+  [ -n "$last_prov" ]
+
+  [ "$probed_scope" = "$last_scope" ]
+  [ "$probed_prov" = "$last_prov" ]
 }
 
 @test "resolve-audit-spawn.sh sources audit-scope.sh" {
@@ -84,7 +192,7 @@ EOF
 @test "pr-merge-audit-check.sh sources audit-scope.sh and audit-machinery.sh, and calls audit_scope_init once" {
   grep -qF -- "audit-scope.sh" "$HOOK" || return 1
   grep -qF -- "audit-machinery.sh" "$HOOK" || return 1
-  count="$(grep -c "audit_scope_init " "$HOOK")"
+  count="$(count_invocations "$HOOK" audit_scope_init)"
   [ "$count" -eq 1 ]
 }
 

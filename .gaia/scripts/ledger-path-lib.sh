@@ -20,10 +20,21 @@
 gaia_resolve_ledger_path() {
   local override="${1:-}"
   if [[ -n "$override" ]]; then printf '%s' "$override"; return 0; fi
-  local script_dir main_root
+  local script_dir main_root errexit_was
   script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  # Suspend errexit across the load, then RESTORE WHAT WAS THERE. A copy that is
+  # present but unparseable abandons the shell AT the source, before the resolver
+  # check below can degrade, and no caller can guard it from outside because
+  # `bash -n` does not recurse into what a file sources. The restore is
+  # conditional rather than a bare `set -e` because this library is sourced by
+  # callers that deliberately run without errexit, and arming it in them kills
+  # them at their next non-zero command.
+  errexit_was=0
+  case $- in *e*) errexit_was=1 ;; esac
+  set +e
   # shellcheck disable=SC1091
-  source "$script_dir/main-root-lib.sh"
+  source "$script_dir/main-root-lib.sh" 2>/dev/null
+  if [ "$errexit_was" = 1 ]; then set -e; fi
   main_root="$(gaia_resolve_main_root)" || return 1
   printf '%s' "$main_root/.gaia/local/telemetry/cost.jsonl"
 }
@@ -34,10 +45,15 @@ gaia_resolve_ledger_path() {
 # repository (default: the process working directory).
 _gaia_resolve_main_local_dir() {
   local subdir="$1" tree_dir="${2:-}"
-  local script_dir main_root
+  local script_dir main_root errexit_was
   script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  # Same state-preserving bracket as gaia_resolve_ledger_path above, and for the same reason.
+  errexit_was=0
+  case $- in *e*) errexit_was=1 ;; esac
+  set +e
   # shellcheck disable=SC1091
-  source "$script_dir/main-root-lib.sh"
+  source "$script_dir/main-root-lib.sh" 2>/dev/null
+  if [ "$errexit_was" = 1 ]; then set -e; fi
   main_root="$(gaia_resolve_main_root "$tree_dir")" || return 1
   printf '%s' "$main_root/.gaia/local/$subdir"
 }
