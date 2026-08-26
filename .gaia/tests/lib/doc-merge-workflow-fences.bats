@@ -44,8 +44,11 @@
 #     and two mutate the checkout (`git checkout main`, `git worktree
 #     remove`). They get lens 2 only. The disposition table records the reason
 #     per fence rather than leaving the omission to be inferred.
-#   - Lens 2's flag check proves a script ACCEPTS a flag, not that the flag
-#     still means what the page says it means.
+#   - Lens 2's flag check proves a script still carries a parse arm for the
+#     flag, not that the arm does what the page says it does. It is anchored
+#     to the arm rather than matching the file anywhere, because a flag
+#     deleted from a `case` and left behind in a usage comment would otherwise
+#     keep the lens green, which is the shape it exists to catch.
 #   - Nothing here reads the page's prose. A false sentence sitting beside a
 #     correct fence is invisible to this suite. That class has no oracle in
 #     this repository and is addressed by procedure instead: the page's own
@@ -179,6 +182,45 @@ sub_literal() {
   mv "$out" "$file"
 }
 
+# emit_values <script> <var>...: append a marker-prefixed print of each named
+# variable to the materialized fence, so an assertion reads a value by name.
+#
+# Positional reads are what this exists to avoid. A fence's own commands write
+# to stderr, `run` merges stderr into $output, and one warning line shifts
+# every position after it. That is not hypothetical here: the per-author mode
+# resolver emits an advisory warning whenever it cannot confirm the required
+# check is registered, which it cannot without gh credentials, so the value
+# that sits on line 1 with credentials sits on line 2 without them.
+emit_values() {
+  local script="$1"
+  shift
+  local v
+  for v in "$@"; do
+    printf 'printf "GAIA_FENCE_VALUE %s=%%s\\n" "$%s"\n' "$v" "$v" >>"$script"
+  done
+}
+
+# value_of <name>: the value emit_values printed for <name>, read out of
+# $output by name rather than by line.
+value_of() {
+  sed -n "s/^GAIA_FENCE_VALUE $1=//p" <<<"$output" | head -1
+}
+
+# bodies_source [<file>]: what the discovery functions below read. With no
+# argument it is the page's own fences; with one, that file's contents.
+#
+# The seam exists for the non-vacuity control. A control that re-implements a
+# lens's predicate inline certifies its own copy and not the lens, so it stays
+# green while the extraction it vouches for drifts to reading nothing. Driving
+# a fabricated body through these same functions is what makes it a control.
+bodies_source() {
+  if [ -n "${1:-}" ]; then
+    cat "$1"
+  else
+    all_fence_bodies
+  fi
+}
+
 # all_fence_bodies: every fence body concatenated, for the whole-page lenses.
 all_fence_bodies() {
   local total i
@@ -195,7 +237,7 @@ all_fence_bodies() {
 # character class, which is why `.claude/worktrees/<branch-name>` never
 # reaches the existence check as a truncated directory.
 cited_scripts() {
-  all_fence_bodies \
+  bodies_source "${1:-}" \
     | grep -oE 'bash (\.gaia|\.github|\.claude)/[A-Za-z0-9_./-]+\.sh' \
     | sed 's/^bash //' \
     | sort -u
@@ -203,7 +245,7 @@ cited_scripts() {
 
 # cited_paths: every repo-relative path any fence names, script or not.
 cited_paths() {
-  all_fence_bodies \
+  bodies_source "${1:-}" \
     | grep -oE '(\.gaia|\.github|\.claude)/[A-Za-z0-9_./-]+[A-Za-z0-9_-]' \
     | sort -u
 }
@@ -218,7 +260,7 @@ cited_paths() {
 # substitution the whole invocation may itself sit inside.
 flags_for() {
   local script="$1"
-  all_fence_bodies \
+  bodies_source "${2:-}" \
     | sed -e ':a' -e '/\\$/{N; s/\\\n[[:space:]]*/ /; ta' -e '}' \
     | awk -v s="bash $script" '
         {
@@ -235,6 +277,19 @@ flags_for() {
     | grep -oE ' --[a-z][a-z-]*' \
     | tr -d ' ' \
     | sort -u
+}
+
+# script_parses_flag <script-path> <flag>: 0 when that script carries a parse
+# arm for that flag.
+#
+# Anchored to the arm, not a substring match over the file. A flag deleted
+# from a `case` and left behind in the usage header keeps a bare match green,
+# which is precisely the drift the lens exists to see. Factored into a
+# function rather than written inline in the lens, so the control below drives
+# the same predicate the lens does; a control re-implementing it would
+# certify its own copy.
+script_parses_flag() {
+  grep -qE "(^|[|[:space:]])${2//./\\.}[)|=]" "$1"
 }
 
 # ---------------------------------------------------------------------------
@@ -267,17 +322,22 @@ flags_for() {
   # suite would otherwise stay green while driving a subset of a set whose
   # name says every.
   total="$(fence_count)"
-  claimed="$(fence_table | while IFS='|' read -r id anchor mode note; do
+  # Derived once and reused. Written out twice, the count and the diagnostic
+  # can be repaired independently, and the one nobody re-reads goes stale.
+  claimed_list="${BATS_TEST_TMPDIR}/claimed"
+  fence_table | while IFS='|' read -r id anchor mode note; do
     [ -n "$id" ] || continue
     fence_indices_for "$anchor"
-  done | sort -u | grep -c .)"
+  done | sort -u >"$claimed_list"
+  claimed="$(grep -c . "$claimed_list")"
   if [ "$claimed" -ne "$total" ]; then
     echo "the page opens ${total} bash fences and the table claims ${claimed}" >&2
     echo "unclaimed fence indices:" >&2
-    comm -23 <(seq 1 "$total") <(fence_table | while IFS='|' read -r id anchor mode note; do
-      [ -n "$id" ] || continue
-      fence_indices_for "$anchor"
-    done | sort -u) >&2
+    # Both sides sorted the same way. `seq` counts numerically and `sort -u`
+    # collates lexically, and the two orders diverge at 10, which the table
+    # already passed: comm would report every index from 10 up as unclaimed
+    # and send the reader to repair rows that are correct.
+    comm -23 <(seq 1 "$total" | sort) <(sort "$claimed_list") >&2
     return 1
   fi
 }
@@ -361,32 +421,76 @@ flags_for() {
   [ "$extracted" -gt 0 ]
 }
 
-@test "every flag a fence hands a repo script is a flag that script accepts" {
+@test "every flag a fence hands a repo script resolves to a parse arm in it" {
   scripts="$(cited_scripts)"
   [ -n "$scripts" ] || {
     echo "no scripts extracted from the fences; the extractor is broken" >&2
     return 1
   }
+  joined="${BATS_TEST_TMPDIR}/joined"
+  all_fence_bodies | sed -e ':a' -e '/\\$/{N; s/\\\n[[:space:]]*/ /; ta' -e '}' >"$joined"
   printf '%s\n' "$scripts" | while read -r s; do
     [ -n "$s" ] || continue
-    for flag in $(flags_for "$s"); do
-      if ! grep -qF -- "$flag" "${REPO_ROOT}/${s}"; then
-        echo "a fence passes ${flag} to ${s}, which does not mention it" >&2
+    found="$(flags_for "$s")"
+    # Per-element short-read guard, by a second expression rather than the
+    # same one. An invocation that carries a flag at all is decidable without
+    # the window truncations flags_for applies, so an extractor that collapses
+    # to reading nothing is caught here per script, where a whole-set
+    # non-empty check would stay satisfied on the other scripts' flags.
+    if grep -qE "bash ${s//./\\.}[^)]*--" "$joined" && [ -z "$found" ]; then
+      echo "the page hands ${s} at least one flag and the extractor read none" >&2
+      exit 1
+    fi
+    for flag in $found; do
+      if ! script_parses_flag "${REPO_ROOT}/${s}" "$flag"; then
+        echo "a fence passes ${flag} to ${s}, which parses no such flag" >&2
         exit 1
       fi
     done
   done
 }
 
-@test "the static lenses are not vacuous: a fabricated fence fails both" {
+@test "the static lenses are not vacuous: the real extractors read a fabricated fence and it fails both" {
   # Non-vacuity control, deliberately sampling one fabricated body rather than
   # mutating every fence: one instance establishes that the lenses can fail,
   # and mutating the whole set buys the same signal at N times the cost.
+  #
+  # It runs the fabricated body through cited_paths, cited_scripts and
+  # flags_for themselves. Asserting the lens PREDICATES inline instead, a bare
+  # `[ ! -e ]` and a bare grep against hardcoded literals, would leave the
+  # extraction functions uncertified, and those are the half that drifts.
   bad="${BATS_TEST_TMPDIR}/fabricated.sh"
   printf 'bash .gaia/scripts/does-not-exist-anywhere.sh --no-such-flag\n' >"$bad"
+
+  grep -qx '\.gaia/scripts/does-not-exist-anywhere\.sh' <<<"$(cited_paths "$bad")"
   [ ! -e "${REPO_ROOT}/.gaia/scripts/does-not-exist-anywhere.sh" ]
-  grep -qF -- '--no-such-flag' "${REPO_ROOT}/.gaia/scripts/audit-noop-detect.sh" && return 1
+
+  [ "$(cited_scripts "$bad")" = ".gaia/scripts/does-not-exist-anywhere.sh" ]
+
+  [ "$(flags_for .gaia/scripts/does-not-exist-anywhere.sh "$bad")" = "--no-such-flag" ]
+  script_parses_flag "${REPO_ROOT}/.gaia/scripts/audit-noop-detect.sh" --no-such-flag && return 1
   true
+}
+
+@test "the flag lens tells a parse arm apart from a usage comment" {
+  # The anchoring is latent on this tree: every flag the page cites today
+  # resolves to a real arm, so an un-anchored bare match would agree with the
+  # anchored one on every live input and no mutation of the suite can show the
+  # difference. A fixture carrying the two cases side by side is what makes
+  # the discrimination testable at all.
+  fake="${BATS_TEST_TMPDIR}/fake-script.sh"
+  cat >"$fake" <<'FAKE'
+#!/usr/bin/env bash
+# Usage: fake-script.sh [--retired-flag <value>] [--real-arm]
+case "$1" in
+  --real-arm) shift ;;
+esac
+FAKE
+  script_parses_flag "$fake" --real-arm
+  script_parses_flag "$fake" --retired-flag && return 1
+  # And the bare match this replaced would have accepted the retired one,
+  # which is the whole reason the predicate is anchored.
+  grep -qF -- '--retired-flag' "$fake"
 }
 
 # ---------------------------------------------------------------------------
@@ -402,13 +506,11 @@ flags_for() {
   sub_literal "$script" '$(gh pr view <N> --json author --jq .author.login)' 'fixture-author'
   # The page's claim is about what is IN SCOPE afterwards, so the assertion
   # has to run inside the same shell the fence's eval ran in.
-  printf 'printf "%%s\\n%%s\\n" "$resolved_mode" "$should_run"\n' >>"$script"
+  emit_values "$script" resolved_mode should_run
   run bash "$script"
   [ "$status" -eq 0 ]
-  mode="$(sed -n 1p <<<"$output")"
-  should="$(sed -n 2p <<<"$output")"
-  grep -qE '^(ci|local)$' <<<"$mode"
-  grep -qE '^(true|false)$' <<<"$should"
+  grep -qE '^(ci|local)$' <<<"$(value_of resolved_mode)"
+  grep -qE '^(true|false)$' <<<"$(value_of should_run)"
 }
 
 @test "fence workflow-present: it answers present here, and prints the SHA the marker must match" {
@@ -417,8 +519,9 @@ flags_for() {
   [ "$status" -eq 0 ]
   # This repository configures the CI audit, so the page's `present` branch is
   # the one under test; `absent` here would mean the workflow was removed.
-  [ "$(sed -n 1p <<<"$output")" = "present" ]
-  grep -qE '^[0-9a-f]{40}$' <<<"$(sed -n 2p <<<"$output")"
+  grep -qx 'absent' <<<"$output" && return 1
+  grep -qx 'present' <<<"$output"
+  grep -qE '^[0-9a-f]{40}$' <<<"$output"
 }
 
 @test "fence spawn-roster: it exits 0 and prints deduped, sorted member names" {
@@ -477,15 +580,15 @@ flags_for() {
   touch "$sidecar"
   run bash -c "cd '$REPO_ROOT' && bash '$script'"
   [ "$status" -eq 0 ]
-  [ "$output" = "real" ]
+  grep -qx 'real' <<<"$output"
 }
 
 @test "fence wave-stamp: the stamp lands outside the audit directory" {
   script="$(materialize 'WAVE_STAMP="$(mktemp)"')"
-  printf 'printf "%%s\\n" "$WAVE_STAMP"\n' >>"$script"
+  emit_values "$script" WAVE_STAMP
   run bash -c "cd '$REPO_ROOT' && bash '$script'"
   [ "$status" -eq 0 ]
-  stamp="$output"
+  stamp="$(value_of WAVE_STAMP)"
   [ -f "$stamp" ]
   # The claim under test: a stamp under .gaia/local/audit/ would be shared by
   # every worktree auditing at once, because a linked worktree symlinks that
@@ -531,11 +634,11 @@ flags_for() {
 
 @test "fence disposition-sidecar: it builds a sidecar path under the main checkout's audit directory" {
   script="$(materialize 'audit-member-digest.sh')"
-  printf 'printf "%%s\\n%%s\\n" "$digest" "$sidecar"\n' >>"$script"
+  emit_values "$script" digest sidecar
   run bash -c "cd '$REPO_ROOT' && bash '$script'"
   [ "$status" -eq 0 ]
-  digest="$(sed -n 1p <<<"$output")"
-  sidecar="$(sed -n 2p <<<"$output")"
+  digest="$(value_of digest)"
+  sidecar="$(value_of sidecar)"
   grep -qE '^[0-9a-f]{64}$' <<<"$digest"
   grep -qF -- "/.gaia/local/audit/${digest}.dispositions.json" <<<"$sidecar"
 }
