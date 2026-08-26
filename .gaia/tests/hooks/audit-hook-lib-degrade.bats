@@ -136,12 +136,23 @@ lib_degrade_members() {
 # basename alone would be permanent: a listed hook that later grows a lib-child
 # resolution would keep its entry, stay out of the driven set, and carry a
 # warrant beside its name that has quietly become false. So the reconciliation
-# below also asserts each excluded hook still cds nowhere into a `lib`, and an
-# entry whose warrant stops holding fails the suite instead of shielding it.
-# That re-check spans the whole `$(cd ...` rather than stopping at the first
-# `)`, because this repo's house spelling nests a substitution inside it
+# below also re-reads each excluded hook, and an entry whose warrant stops
+# holding fails the suite instead of shielding it.
+#
+# What that re-check reads, exactly: a `$(cd` substitution naming a `lib` child
+# ON ONE LINE. It spans the whole substitution rather than stopping at the
+# first `)`, because this repo's house spelling nests a substitution inside it
 # (`$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" && pwd)`) and puts the `/lib`
 # after that inner close paren, where a non-crossing match cannot reach it.
+#
+# It is line-level while the candidate term below is file-level, so one shape
+# escapes it: a resolve that reaches its lib child through an intermediate
+# variable (`_libpath="$_self/lib"` on one line, `$(cd "$_libpath" ...)` on the
+# next) satisfies neither this re-check nor the member literal, and would keep
+# its exclusion. No hook here spells that, and closing it means a second
+# hand-rolled pattern guessing at how far the indirection runs, which is the
+# cost this file has already paid twice. It is named rather than closed, and an
+# author adding an indirected resolve to a listed hook owes this list an edit.
 NOT_MEMBERS="\
 block-main-destructive-git.sh resolves an ancestor (../..), not a lib child
 block-rm-rf.sh resolves an ancestor (../..), not a lib child
@@ -188,8 +199,30 @@ lib_degrade_candidates() {
 }
 
 @test "every loose candidate is a member or a named exclusion" {
-  local candidate members
+  local candidate member members candidates
   members=$(lib_degrade_members)
+  candidates=$(lib_degrade_candidates)
+
+  # This test exists to catch a SHORT member derivation, so it must not retire
+  # quietly when its OWN derivation goes short instead. The candidate term
+  # gates on something the member predicate does not share, so it can narrow or
+  # break alone, and every claim below would then be true over nothing. Test 1
+  # guards the member derivation; this guards the one driving this loop.
+  [ -n "$candidates" ]
+
+  # Looser than the member predicate is the whole point of the candidate set,
+  # so a member missing from it means the loose term has narrowed past the set
+  # it is supposed to contain. That is the same short read one level over, and
+  # the non-empty guard above cannot see it: dropping a member leaves the
+  # candidate derivation non-empty.
+  while read -r member; do
+    [ -n "$member" ] || continue
+    grep -qxF -- "$member" <<<"$candidates" && continue
+    printf 'member %s is not a candidate, so the loose predicate has narrowed past the driven set it must contain\n' \
+      "$member" >&2
+    return 1
+  done <<<"$members"
+
   while read -r candidate; do
     [ -n "$candidate" ] || continue
     grep -qxF -- "$candidate" <<<"$members" && continue
@@ -210,7 +243,7 @@ lib_degrade_candidates() {
     printf 'hook %s opens a cd command substitution under errexit with no ERR trap, but is neither a driven member nor a named exclusion\n' \
       "$candidate" >&2
     return 1
-  done < <(lib_degrade_candidates)
+  done <<<"$candidates"
 }
 
 @test "every derived hook reaches its own reporting path with lib absent" {
