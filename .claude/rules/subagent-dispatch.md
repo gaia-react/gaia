@@ -9,7 +9,7 @@ bash .gaia/scripts/audit-noop-detect.sh --shape agent-report-file --path <path> 
   [--report-key <key>] [--expect-count <n> | --min-count <n>]
 ```
 
-Exit 0 real, 1 no-op, 2 usage error. On a no-op, re-dispatch **exactly once** against the re-cleared path; on a second, do the work inline.
+Exit 0 real, 1 no-op, 2 usage error. On a no-op, re-dispatch **exactly once** against the re-cleared path. A second consecutive no-op takes the general terminal action: do the work inline yourself and apply the result as if the agent had returned it.
 
 **Pass a count when you know one.** A truncated write parses fine and reads as a real result, so existence-plus-parses alone reproduces the same collapse inside a file that exists.
 
@@ -19,4 +19,4 @@ Exit 0 real, 1 no-op, 2 usage error. On a no-op, re-dispatch **exactly once** ag
 
 **Where a caller cannot name the path in advance, have the classifier resolve it.** A path a caller writes down before dispatch is a prediction, and a prediction about a key that moves is wrong from the round it moves onward. The pre-merge audit gate is the worked example: its findings sidecar keys on a base that advances every cleared round, so it passes `--findings-root` plus a wave stamp and lets `audit-noop-detect.sh` find the newest matching artifact (`wiki/concepts/PR Merge Workflow.md`, "No-op detection and retry for each dispatched member"). Pre-clearing a path is still right where the path is genuinely fixed, which is the `agent-report-file` case above.
 
-Full contract, including the hardened retry prefix: the `No-op guard` section of `.claude/skills/gaia/references/spec.md`. Path-scoping this rule would break it: the decision happens while composing a dispatch, which no file edit announces.
+Full contract for this shape, including what the count flags assert and what the terminal action is: the `No-op guard against silent subagents` section of `wiki/concepts/Code Review Audit Agent.md`. The hardened retry prefix is written out verbatim in `.claude/agents/code-audit-frontend.md` ("No-op detection and retry for each refuter"). Path-scoping this rule would break it: the decision happens while composing a dispatch, which no file edit announces.

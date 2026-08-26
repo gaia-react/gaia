@@ -191,7 +191,9 @@ Re-stamp before the single hardened re-dispatch below, for the same reason the p
 
 Resolution plus a stamp narrows the residual stale-file risk to two dispatches of the same member sharing one stamp, and re-stamping before the retry is what removes that last case.
 
-On a no-op, re-dispatch that member **exactly one** time with the hardened retry prefix (`.claude/agents/code-audit-frontend.md`, "No-op detection and retry for each refuter"), substituting the concrete target with the member's original changed-file list. A second consecutive no-op does not re-dispatch a third time: stop and surface to the operator which member no-op'd twice, rather than looping or silently proceeding to a merge attempt. The marker gate stays fail-closed either way, no marker still means no merge, but a surfaced double no-op tells the operator why the gate is stuck instead of leaving them to notice an odd reply on their own.
+On a no-op, re-dispatch that member **exactly one** time with the hardened retry prefix (`.claude/agents/code-audit-frontend.md`, "No-op detection and retry for each refuter"), substituting the concrete target with the member's original changed-file list. A second consecutive no-op does not re-dispatch a third time: stop and surface to the operator which member no-op'd twice, rather than looping or silently proceeding to a merge attempt.
+
+**This ending departs from the general contract deliberately, and it is the only surface that does.** [[Code Review Audit Agent]] owns the terminal action for every no-op guard and states it as inline fallback: the caller does the unit's work itself and applies the result as if the subagent had returned it. This gate does not, because a member's marker is that member's own attestation. An orchestrator that audited the diff itself inline would be writing a clearance nobody earned, which is precisely the substitution the marker gate exists to refuse. Stopping costs nothing here that it would cost elsewhere: the gate stays fail-closed either way, no marker still means no merge, and a surfaced double no-op tells the operator why the gate is stuck instead of leaving them to notice an odd reply on their own.
 
 ### 2. Fix all issues
 
@@ -508,8 +510,8 @@ the [[Determinism Classifier]] labels it) has no worthiness-ledger line matching
 its current content. It checks presence and signal match only, never the
 keep/fix/delete verdict, scopes to the emergent tests this PR changed (a no-op
 when none changed), and fails open on missing tooling. It is a separate denial
-from the Code Audit Team markers above; both must clear. See [[Worthiness
-Presence Gate]] for the full contract.
+from the Code Audit Team markers above; both must clear.
+See [[Worthiness Presence Gate]] for the full contract.
 
 ## No exceptions
 
