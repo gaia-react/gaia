@@ -28,6 +28,16 @@ setup() {
   ALLOWLIST_ARM_ROOT='LICENSE|.gitignore|.editorconfig'
 }
 
+# Count real invocations of a symbol in a file. A presence probe -- `type X` or
+# `command -v X`, the shape a consumer uses to decide whether a guarded load
+# actually defined the symbol -- names it without calling it, so it is excluded.
+# The count assertions below are about invocations, and a bare grep for the name
+# reads a degrade guard as a second call.
+count_invocations() {
+  grep -vE "(^|[[:space:]])(type|command -v)[[:space:]]+$2([[:space:]]|$)" "$1" \
+    | grep -c "$2 "
+}
+
 # Extract a named function's body (from its `name() {` line through the next
 # column-0 `}`) so a structural assertion can inspect one function in
 # isolation without matching a sibling's text.
@@ -73,7 +83,7 @@ EOF
 
 @test "resolve-audit-members.sh sources audit-scope.sh and calls audit_scope_init once" {
   grep -qF -- "audit-scope.sh" "$RESOLVER" || return 1
-  count="$(grep -c "audit_scope_init " "$RESOLVER")"
+  count="$(count_invocations "$RESOLVER" audit_scope_init)"
   [ "$count" -eq 1 ]
 }
 
@@ -84,7 +94,7 @@ EOF
 @test "pr-merge-audit-check.sh sources audit-scope.sh and audit-machinery.sh, and calls audit_scope_init once" {
   grep -qF -- "audit-scope.sh" "$HOOK" || return 1
   grep -qF -- "audit-machinery.sh" "$HOOK" || return 1
-  count="$(grep -c "audit_scope_init " "$HOOK")"
+  count="$(count_invocations "$HOOK" audit_scope_init)"
   [ "$count" -eq 1 ]
 }
 
