@@ -854,6 +854,41 @@ _noop_resolve_marker() {
     --findings-root "$root" --findings-since "$stamp"
   [ "$status" -eq 0 ]
   [ "$output" = "real" ]
+
+  # The second path to the same fail-closed outcome: the key lib is missing, so
+  # gaia_branch_slug is never defined and the `command -v` guard declines before
+  # any branch is read. The tree is still on the resolvable branch and the
+  # sidecar is the one that just classified REAL, so the lib's absence is the
+  # only variable.
+  #
+  # A scratch tree rather than a function override, because the script sources
+  # both libs from its own on-disk location at call time and would clobber an
+  # override in this body. The CLEARANCE lib has to come along: without it the
+  # earned-marker arm can never reach REAL on any input, so the run would print
+  # noop whatever the findings gate decided and this arm would assert nothing.
+  # Reproduce the layout the script's two relative sources expect, and omit
+  # exactly one file.
+  local bare="$BATS_TEST_TMPDIR/no-keylib"
+  mkdir -p "$bare/.gaia/scripts" "$bare/.claude/hooks"
+  cp "$SCRIPT" "$bare/.gaia/scripts/audit-noop-detect.sh"
+  cp -R "$THIS_DIR/../../../.claude/hooks/lib" "$bare/.claude/hooks/lib"
+  [ -f "$bare/.claude/hooks/lib/audit-clearance.sh" ] || return 1
+  [ -f "$bare/.gaia/scripts/audit-key-lib.sh" ] && return 1
+
+  run bash "$bare/.gaia/scripts/audit-noop-detect.sh" --shape audit-team-member \
+    --marker "$root/.gaia/local/audit/${digest}.code-audit-maintainer-shell.ok" \
+    --findings-root "$root" --findings-since "$stamp"
+  [ "$status" -eq 1 ]
+  [ "$output" = "noop" ]
+
+  # ...and the same scratch tree WITH the key lib restored classifies REAL, so
+  # the noop above is the missing lib and not the relocation.
+  cp "$THIS_DIR/../audit-key-lib.sh" "$bare/.gaia/scripts/audit-key-lib.sh"
+  run bash "$bare/.gaia/scripts/audit-noop-detect.sh" --shape audit-team-member \
+    --marker "$root/.gaia/local/audit/${digest}.code-audit-maintainer-shell.ok" \
+    --findings-root "$root" --findings-since "$stamp"
+  [ "$status" -eq 0 ]
+  [ "$output" = "real" ]
 }
 
 @test "audit-team-member resolve arm: every half-passed form of the pair is a usage error" {
