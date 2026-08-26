@@ -39,11 +39,10 @@
 #
 # Honest limits, stated rather than implied:
 #
-#   - Six of the fences cannot run here at all: four reach github.com
-#     (`gh pr checks`, `gh api`, `post-findings-block.sh --pr`, `gh pr merge`)
-#     and two mutate the checkout (`git checkout main`, `git worktree
-#     remove`). They get lens 2 only. The disposition table records the reason
-#     per fence rather than leaving the omission to be inferred.
+#   - The fences that cannot run here at all, the ones reaching github.com and
+#     the ones mutating this checkout, get lens 2 only. The disposition table
+#     carries the reason per fence, which is the per-entry warrant, so this
+#     names the set rather than counting it or listing it a second time.
 #   - Lens 2's flag check proves a script still carries a parse arm for the
 #     flag, not that the arm does what the page says it does. It is anchored
 #     to the arm rather than matching the file anywhere, because a flag
@@ -109,18 +108,47 @@ TABLE
 # Fence extraction
 # ---------------------------------------------------------------------------
 
-# fence_count: how many ```bash fences the page opens.
+# FENCE_OPEN_RE: the fence openers discovery reads. Every tag that carries
+# shell, not `bash` alone, and tolerant of trailing whitespace.
+#
+# One constant rather than the pattern written at each site. Narrowed to
+# ```bash, the lenses skipped a ```sh or ```shell fence entirely, and lens 1
+# could not see the omission either: it reconciles the table against
+# fence_count(), so both sides of that comparison came from the same narrowed
+# pattern and agreed about a fence neither had read.
+FENCE_OPEN_RE='^```(bash|sh|shell)[[:space:]]*$'
+
+# fence_count: how many shell fences the page opens.
 fence_count() {
-  awk '/^```bash$/ { n++ } END { print n + 0 }' "$PAGE"
+  awk -v re="$FENCE_OPEN_RE" '$0 ~ re { n++ } END { print n + 0 }' "$PAGE"
 }
 
-# fence_body <n>: the body of the n-th ```bash fence, verbatim.
+# fence_body <n>: the body of the n-th shell fence, verbatim.
 fence_body() {
-  awk -v want="$1" '
-    /^```bash$/ { n++; if (n == want) { inside = 1 } ; next }
-    /^```$/ && inside { inside = 0; next }
+  awk -v want="$1" -v re="$FENCE_OPEN_RE" '
+    $0 ~ re { n++; if (n == want) { inside = 1 } ; next }
+    /^```[[:space:]]*$/ && inside { inside = 0; next }
     inside { print }
   ' "$PAGE"
+}
+
+# untagged_fence_bodies [<file>]: the bodies of fences opened with a bare
+# ```, which discovery does not read.
+#
+# The complement of the discovery set, so the guard below can ask whether
+# anything hides in it. A tagged non-shell fence is deliberately not here: a
+# tag declares the block data rather than a command line.
+untagged_fence_bodies() {
+  awk '
+    /^```/ {
+      if (inside) { inside = 0; tag = ""; next }
+      inside = 1
+      tag = substr($0, 4)
+      sub(/[[:space:]]+$/, "", tag)
+      next
+    }
+    inside && tag == "" { print }
+  ' "${1:-$PAGE}"
 }
 
 # fence_indices_for <anchor>: every fence index whose body contains <anchor>
@@ -233,9 +261,8 @@ all_fence_bodies() {
 }
 
 # cited_scripts: every repo-relative script path any fence hands to `bash`,
-# deduped. A path carrying a `<placeholder>` segment is excluded by the
-# character class, which is why `.claude/worktrees/<branch-name>` never
-# reaches the existence check as a truncated directory.
+# deduped. The `bash ` prefix and the `.sh` suffix are both required, so this
+# never answers with a directory.
 cited_scripts() {
   bodies_source "${1:-}" \
     | grep -oE 'bash (\.gaia|\.github|\.claude)/[A-Za-z0-9_./-]+\.sh' \
@@ -244,6 +271,12 @@ cited_scripts() {
 }
 
 # cited_paths: every repo-relative path any fence names, script or not.
+#
+# The character class stops at `<`, so a placeholder path arrives truncated
+# rather than excluded: `.claude/worktrees/<branch-name>` yields the bare
+# directory `.claude/worktrees`, which a clean checkout does not carry. The
+# existence check below therefore carries an explicit skip arm for it, beside
+# the `.gaia/local/*` one, and that arm is load-bearing rather than defensive.
 cited_paths() {
   bodies_source "${1:-}" \
     | grep -oE '(\.gaia|\.github|\.claude)/[A-Za-z0-9_./-]+[A-Za-z0-9_-]' \
@@ -308,12 +341,67 @@ script_parses_flag() {
 @test "fence set: every table anchor names exactly one fence" {
   fence_table | while IFS='|' read -r id anchor mode note; do
     [ -n "$id" ] || continue
-    hits="$(fence_indices_for "$anchor" | grep -c .)"
+    # `|| true`: grep -c exits 1 on no match, and under bats' set -e the
+    # assignment inherits that status, so the zero case, the rotted anchor
+    # this test exists to catch, aborted before printing which anchor rotted.
+    hits="$(fence_indices_for "$anchor" | grep -c . || true)"
     if [ "$hits" -ne 1 ]; then
       echo "anchor for ${id} matched ${hits} fences, expected exactly one: ${anchor}" >&2
       exit 1
     fi
   done
+}
+
+@test "fence set: discovery reads every fence tag that can carry shell" {
+  # Standing control for FENCE_OPEN_RE, driven off a fixture because the page
+  # itself uses one spelling and cannot exercise the others. $PAGE is a plain
+  # variable and bats runs each test in its own process, so reassigning it
+  # here reaches the discovery functions and leaks nowhere.
+  fixture="${BATS_TEST_TMPDIR}/tags.md"
+  {
+    printf '```bash\necho one\n```\n\n'
+    printf '```sh\necho two\n```\n\n'
+    printf '```shell\necho three\n```\n\n'
+    printf '```bash \necho four\n```\n\n'
+    printf '```json\n{}\n```\n'
+  } >"$fixture"
+  PAGE="$fixture"
+  [ "$(fence_count)" -eq 4 ]
+  grep -qx 'echo two' <<<"$(fence_body 2)"
+  grep -qx 'echo three' <<<"$(fence_body 3)"
+  grep -qx 'echo four' <<<"$(fence_body 4)"
+  # The tagged non-shell fence stays out: a tag declares the block data.
+  grep -qx '{}' <<<"$(fence_body 1)$(fence_body 2)$(fence_body 3)$(fence_body 4)" && return 1
+  true
+}
+
+@test "fence set: an untagged fence carries no line the covered fences lack" {
+  # The complement guard. Discovery reads tagged shell fences, so an untagged
+  # block is outside every lens; this asks whether anything is hiding there.
+  #
+  # An empty complement is the strongest pass rather than a vacuous one: it
+  # means the discovery set is the whole set. The control below is what keeps
+  # an extractor that reads nothing from producing the same green.
+  covered="${BATS_TEST_TMPDIR}/covered"
+  all_fence_bodies >"$covered"
+  untagged_fence_bodies | while read -r line; do
+    trimmed="$(printf '%s' "$line" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+    [ -n "$trimmed" ] || continue
+    if ! grep -qF -- "$trimmed" "$covered"; then
+      echo "an untagged fence carries a line no covered fence does: ${trimmed}" >&2
+      exit 1
+    fi
+  done
+}
+
+@test "fence set: the untagged-fence extractor reads a fixture that has one" {
+  # Non-vacuity control for the guard above, whose own subject is legitimately
+  # empty on a page that tags every fence.
+  fixture="${BATS_TEST_TMPDIR}/untagged.md"
+  printf '```bash\necho covered\n```\n\n```\necho hidden\n```\n' >"$fixture"
+  grep -qx 'echo hidden' <<<"$(untagged_fence_bodies "$fixture")"
+  grep -qx 'echo covered' <<<"$(untagged_fence_bodies "$fixture")" && return 1
+  true
 }
 
 @test "fence set: every fence in the page is claimed by exactly one table row" {
@@ -329,7 +417,7 @@ script_parses_flag() {
     [ -n "$id" ] || continue
     fence_indices_for "$anchor"
   done | sort -u >"$claimed_list"
-  claimed="$(grep -c . "$claimed_list")"
+  claimed="$(grep -c . "$claimed_list" || true)"
   if [ "$claimed" -ne "$total" ]; then
     echo "the page opens ${total} bash fences and the table claims ${claimed}" >&2
     echo "unclaimed fence indices:" >&2
