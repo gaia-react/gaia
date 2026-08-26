@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# Executable-truth coverage for the bash fences in
+# Executable-truth coverage for the shell fences in
 # `wiki/concepts/PR Merge Workflow.md`.
 #
 # Why this suite exists, and how it differs from every other prose suite in
@@ -17,7 +17,7 @@
 #
 # Three lenses, weakest to strongest:
 #
-#   1. The fence SET is covered. Every bash fence in the page matches exactly
+#   1. The fence SET is covered. Every shell fence in the page matches exactly
 #      one entry in the disposition table below, and every entry matches
 #      exactly one fence. A fence added to the page with no entry stops this
 #      suite, which is what forces the "can this one run here?" decision to be
@@ -75,7 +75,7 @@ setup() {
 # ---------------------------------------------------------------------------
 # Disposition table
 #
-# One row per bash fence, `id|anchor|mode|note`. The anchor is a literal
+# One row per shell fence, `id|anchor|mode|note`. The anchor is a literal
 # substring that identifies exactly one fence; lens 1 proves that, so a
 # copy-paste that makes two fences share an anchor stops the suite instead of
 # silently halving its coverage. Line numbers are deliberately not used: they
@@ -371,7 +371,13 @@ script_parses_flag() {
   grep -qx 'echo three' <<<"$(fence_body 3)"
   grep -qx 'echo four' <<<"$(fence_body 4)"
   # The tagged non-shell fence stays out: a tag declares the block data.
-  grep -qx '{}' <<<"$(fence_body 1)$(fence_body 2)$(fence_body 3)$(fence_body 4)" && return 1
+  # The bodies are joined on newlines rather than concatenated: command
+  # substitution strips each trailing newline, so a bare `$(fence_body 1)$(…)`
+  # collapses the four onto one line and the whole-line match below could
+  # never fire whatever the bodies held.
+  bodies="${BATS_TEST_TMPDIR}/bodies"
+  for i in 1 2 3 4; do fence_body "$i"; done >"$bodies"
+  grep -qx '{}' "$bodies" && return 1
   true
 }
 
@@ -419,7 +425,7 @@ script_parses_flag() {
   done | sort -u >"$claimed_list"
   claimed="$(grep -c . "$claimed_list" || true)"
   if [ "$claimed" -ne "$total" ]; then
-    echo "the page opens ${total} bash fences and the table claims ${claimed}" >&2
+    echo "the page opens ${total} shell fences and the table claims ${claimed}" >&2
     echo "unclaimed fence indices:" >&2
     # Both sides sorted the same way. `seq` counts numerically and `sort -u`
     # collates lexically, and the two orders diverge at 10, which the table
