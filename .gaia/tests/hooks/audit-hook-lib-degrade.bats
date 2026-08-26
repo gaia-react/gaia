@@ -167,7 +167,7 @@ block-worktree-path-mismatch.sh resolves an ancestor (../..), not a lib child"
 # location as `$(cd "$(dirname "$0")/lib" && pwd)` carries the #1590 defect
 # exactly, matched neither this predicate nor the member literal, and so left
 # the driven set with nothing red. Dropping the conjunct named the identical
-# seven hooks on the clean tree, so it was buying no precision to trade away.
+# hooks on the clean tree, so it was buying no precision to trade away.
 #
 # The term is FILE-level rather than line-level on purpose, which is what lets
 # a resolve split across two lines (`_self="${BASH_SOURCE[0]%/*}"`, then
@@ -175,8 +175,8 @@ block-worktree-path-mismatch.sh resolves an ancestor (../..), not a lib child"
 # the whole shape, and the file does.
 #
 # The `[[:space:]]*` is not decoration. `$( cd "$root" && ... )` is in-house
-# too, at seven sites across four of these hooks, and a pattern anchored on
-# `$(cd` alone cannot see it.
+# too, at sites spread across several of these hooks, and a pattern anchored
+# on `$(cd` alone cannot see it.
 #
 # Deliberately looser than the member predicate below it, which has to name one
 # exact shape because members get EXECUTED. Everything this catches and that
@@ -218,7 +218,7 @@ lib_degrade_candidates() {
   while read -r member; do
     [ -n "$member" ] || continue
     grep -qxF -- "$member" <<<"$candidates" && continue
-    printf 'member %s is not a candidate, so the loose predicate has narrowed past the driven set it must contain\n' \
+    printf 'member %s is not a candidate: the loose predicate has narrowed past the driven set it must contain, or the member predicate has widened past it\n' \
       "$member" >&2
     return 1
   done <<<"$members"
