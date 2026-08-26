@@ -61,19 +61,22 @@ set -euo pipefail
 # Load the shared clearance reader + digest engine from this hook's OWN
 # on-disk location (never cwd, never $repo_root), per the frozen
 # library-resolution basis.
+# Bracketed in `set +e` because errexit is armed above: a module that is present
+# but unparseable abandons the shell AT the load, so an `-f` test ahead of it
+# proves nothing and no caller can guard it from outside -- `bash -n` does not
+# recurse into what a file sources. Every consumer below already gates on
+# `type` / `command -v`, which is what degrades once the shell survives.
 _lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)"
-if [ -n "$_lib_dir" ] && [ -f "$_lib_dir/audit-clearance.sh" ]; then
+set +e
+if [ -n "$_lib_dir" ]; then
   # shellcheck source=/dev/null
-  . "$_lib_dir/audit-clearance.sh"
-fi
-if [ -n "$_lib_dir" ] && [ -f "$_lib_dir/audit-digest.sh" ]; then
+  [ -f "$_lib_dir/audit-clearance.sh" ] && . "$_lib_dir/audit-clearance.sh" 2>/dev/null
   # shellcheck source=/dev/null
-  . "$_lib_dir/audit-digest.sh"
-fi
-if [ -n "$_lib_dir" ] && [ -f "$_lib_dir/gaia-version.sh" ]; then
+  [ -f "$_lib_dir/audit-digest.sh" ] && . "$_lib_dir/audit-digest.sh" 2>/dev/null
   # shellcheck source=/dev/null
-  . "$_lib_dir/gaia-version.sh"
+  [ -f "$_lib_dir/gaia-version.sh" ] && . "$_lib_dir/gaia-version.sh" 2>/dev/null
 fi
+set -e
 
 # -----------------------------------------------------------------------------
 # Output helpers

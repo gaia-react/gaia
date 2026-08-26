@@ -257,27 +257,27 @@ resolver="$repo_root/.gaia/scripts/resolve-audit-members.sh"
 # closed to the default member on an unavailable base resolver exactly as it
 # already does on an unavailable classifier, and digest_marker_filter below
 # degrades to a pass-through, same as its other unusable-query branches.
+# Unreadable is not the only way a module fails: one that is PRESENT but
+# unparseable abandons the shell at the load, so the `-f` tests below prove
+# nothing on their own and none of the degrade paths above is ever reached.
+# `set +e` across the whole group is what lets them run.
 _lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.claude/hooks/lib" 2>/dev/null && pwd)" || true
-if [ -n "$_lib_dir" ] && [ -f "$_lib_dir/audit-scope.sh" ]; then
+set +e
+if [ -n "$_lib_dir" ]; then
   # shellcheck source=/dev/null
-  . "$_lib_dir/audit-scope.sh"
-fi
-if [ -n "$_lib_dir" ] && [ -f "$_lib_dir/audit-base-provenance.sh" ]; then
+  [ -f "$_lib_dir/audit-scope.sh" ] && . "$_lib_dir/audit-scope.sh" 2>/dev/null
   # shellcheck source=/dev/null
-  . "$_lib_dir/audit-base-provenance.sh"
-fi
-# The digest-marker-presence filter's own dependencies: the digest engine
-# (audit_digests_all) and the clearance reader (clearance_member_cleared).
-# Absent -> digest_marker_filter passes the member list through unchanged:
-# this script is a query, not a gate, and MINTS NOTHING on any path.
-if [ -n "$_lib_dir" ] && [ -f "$_lib_dir/audit-digest.sh" ]; then
+  [ -f "$_lib_dir/audit-base-provenance.sh" ] && . "$_lib_dir/audit-base-provenance.sh" 2>/dev/null
+  # The digest-marker-presence filter's own dependencies: the digest engine
+  # (audit_digests_all) and the clearance reader (clearance_member_cleared).
+  # Absent -> digest_marker_filter passes the member list through unchanged:
+  # this script is a query, not a gate, and MINTS NOTHING on any path.
   # shellcheck source=/dev/null
-  . "$_lib_dir/audit-digest.sh"
-fi
-if [ -n "$_lib_dir" ] && [ -f "$_lib_dir/audit-clearance.sh" ]; then
+  [ -f "$_lib_dir/audit-digest.sh" ] && . "$_lib_dir/audit-digest.sh" 2>/dev/null
   # shellcheck source=/dev/null
-  . "$_lib_dir/audit-clearance.sh"
+  [ -f "$_lib_dir/audit-clearance.sh" ] && . "$_lib_dir/audit-clearance.sh" 2>/dev/null
 fi
+set -e
 
 # The re-spawn breadcrumb ledger's shared writer. This one lives BESIDE this
 # script, not under .claude/hooks/lib/ with the digest recipe above, so it is
@@ -288,18 +288,19 @@ fi
 # loaded or redefined lib can never make the oracle abort.
 _respawn_lib="$(dirname "${BASH_SOURCE[0]}")/audit-respawn-lib.sh"
 if [ -f "$_respawn_lib" ]; then
-  # `set -u` is relaxed for the source alone. An unset-variable reference at
-  # the lib's top level aborts the shell where it stands, so neither the
-  # trailing `|| true` nor any guard below would ever be reached. Restored on
-  # the next line, so the oracle's own body still runs under -u.
+  # `set -u` and `set -e` are both relaxed for the source alone. An unset-variable
+  # reference at the lib's top level aborts the shell where it stands, and so does
+  # a parse error in a present-but-unparseable copy, so neither a trailing
+  # `|| true` nor any guard below would ever be reached. Restored on the next
+  # line, so the oracle's own body still runs under -eu.
   # Source-time output goes nowhere either. The lib is contracted to have no
   # side effects at source time, and this script's stdout IS its answer, so a
   # stray print there would corrupt the spawn set itself rather than merely
   # log noise.
-  set +u
+  set +eu
   # shellcheck source=/dev/null
-  . "$_respawn_lib" >/dev/null 2>&1 || true
-  set -u
+  . "$_respawn_lib" >/dev/null 2>&1
+  set -eu
 fi
 
 # --- Digest batch (parallel arrays; bash 3.2 has no associative arrays) ----

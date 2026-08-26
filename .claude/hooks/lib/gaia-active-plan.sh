@@ -31,10 +31,21 @@ resolve_active_plan_dir() {
   cur="$(git branch --show-current 2>/dev/null)" || true
   [ -n "$cur" ] || return 0
 
-  local self_dir
+  local self_dir errexit_was
   self_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)" || return 0
+  # Suspend errexit across the load, then RESTORE WHAT WAS THERE. A copy that is
+  # present but unparseable abandons the shell AT the source, before the resolver
+  # check below can degrade, and no caller can guard it from outside because
+  # `bash -n` does not recurse into what a file sources. The restore is
+  # conditional rather than a bare `set -e` because this library is sourced by
+  # callers that deliberately run without errexit, and arming it in them kills
+  # them at their next non-zero command.
+  errexit_was=0
+  case $- in *e*) errexit_was=1 ;; esac
+  set +e
   # shellcheck disable=SC1091
-  source "$self_dir/../../../.gaia/scripts/main-root-lib.sh" 2>/dev/null || return 0
+  source "$self_dir/../../../.gaia/scripts/main-root-lib.sh" 2>/dev/null
+  if [ "$errexit_was" = 1 ]; then set -e; fi
   main_root="$(gaia_resolve_main_root 2>/dev/null)" || return 0
   [ -n "$main_root" ] || return 0
 

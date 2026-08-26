@@ -43,10 +43,21 @@ gaia_gh_artifact_cache_dir() {
     printf '%s' "$GAIA_GH_ARTIFACT_CACHE_DIR"
     return 0
   fi
-  local script_dir main_root
+  local script_dir main_root errexit_was
   script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  # Suspend errexit across the load, then RESTORE WHAT WAS THERE. A copy that is
+  # present but unparseable abandons the shell AT the source, before the resolver
+  # check below can degrade, and no caller can guard it from outside because
+  # `bash -n` does not recurse into what a file sources. The restore is
+  # conditional rather than a bare `set -e` because this library is sourced by
+  # callers that deliberately run without errexit, and arming it in them kills
+  # them at their next non-zero command.
+  errexit_was=0
+  case $- in *e*) errexit_was=1 ;; esac
+  set +e
   # shellcheck disable=SC1091
-  source "$script_dir/main-root-lib.sh"
+  source "$script_dir/main-root-lib.sh" 2>/dev/null
+  if [ "$errexit_was" = 1 ]; then set -e; fi
   main_root="$(gaia_resolve_main_root)" || return 0
   printf '%s' "$main_root/.gaia/local/cache"
   return 0
@@ -79,10 +90,16 @@ gaia_gh_artifact_cache_dir() {
 gaia_gh_artifact_path() {
   local cache_dir="${1:-}" branch="${2:-}"
   [[ -z "$cache_dir" || -z "$branch" ]] && return 0
-  local self_dir
+  local self_dir errexit_was
   self_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  # Same state-preserving bracket as gaia_gh_artifact_cache_dir above, and for the same reason.
+  errexit_was=0
+  case $- in *e*) errexit_was=1 ;; esac
+  set +e
   # shellcheck disable=SC1091
-  source "$self_dir/audit-key-lib.sh"
+  source "$self_dir/audit-key-lib.sh" 2>/dev/null
+  if [ "$errexit_was" = 1 ]; then set -e; fi
+
   # The slug is captured and checked, not interpolated into the printf: a
   # command substitution discards its own status, so a failing slug inside the
   # format arguments would print "gh-artifact-pr..json" -- the unkeyed shared

@@ -77,12 +77,18 @@ deny() {
 # fail loudly and deny rather than silently allowing the edit through.
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LIB="$SELF_DIR/lib/audit-selfheal-paths.sh"
-if [ ! -f "$LIB" ]; then
+# Bracketed in `set +e` because errexit is armed above. Absence is not the only
+# way this library can fail to define the refusal set: an unparseable copy (an
+# unresolved merge conflict, a truncated write) abandons the shell AT the load,
+# and that exit is 2 -- a deny carrying a raw syntax error instead of the crafted
+# message below. Testing what the library DEFINES rather than whether the file
+# exists routes both failures to the same fail-loud refusal.
+# shellcheck source=/dev/null
+set +e; [ -f "$LIB" ] && . "$LIB" 2>/dev/null; set -e
+if [ -z "${AUDIT_SELFHEAL_REFUSE_ERE:-}" ]; then
   printf 'block-selfheal-paths.sh: refusal-set library unavailable: %s\n' "$LIB" >&2
   deny "BLOCKED: the self-heal repair-boundary library ($LIB) is unavailable, so this edit cannot be checked against it. Fail-loud, not fail-open -- restore the library before retrying."
 fi
-# shellcheck source=/dev/null
-. "$LIB"
 
 # Repo root, resolved the same way .claude/hooks/lib/repo-scope.sh resolves
 # the home repo (`git rev-parse --show-toplevel`), not a second way. The

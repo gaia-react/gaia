@@ -155,14 +155,22 @@ fi
 # query, not a gate, so it fails safe to its existing empty-stdout contract
 # rather than crash. (The merge gate, not this resolver, is where an absent
 # module must deny.)
+# Bracketed in `set +e` because errexit is armed above: a module that is present
+# but unparseable abandons the shell AT the load, so an `-f` test ahead of it
+# proves nothing and the fail-safe below is never reached. Testing what the
+# modules DEFINE routes absent and unparseable to the same empty-stdout exit.
 _lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.claude/hooks/lib" 2>/dev/null && pwd)" || true
-if [ -z "$_lib_dir" ] || [ ! -f "$_lib_dir/audit-scope.sh" ] || [ ! -f "$_lib_dir/audit-base-provenance.sh" ]; then
+if [ -z "$_lib_dir" ]; then
   exit 0
 fi
+set +e
 # shellcheck source=/dev/null
-. "$_lib_dir/audit-scope.sh"
+[ -f "$_lib_dir/audit-scope.sh" ] && . "$_lib_dir/audit-scope.sh" 2>/dev/null
 # shellcheck source=/dev/null
-. "$_lib_dir/audit-base-provenance.sh"
+[ -f "$_lib_dir/audit-base-provenance.sh" ] && . "$_lib_dir/audit-base-provenance.sh" 2>/dev/null
+set -e
+type audit_scope_init >/dev/null 2>&1 || exit 0
+type audit_resolve_base_provenance >/dev/null 2>&1 || exit 0
 
 audit_scope_init "$repo_root"
 
