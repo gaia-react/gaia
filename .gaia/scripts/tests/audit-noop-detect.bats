@@ -817,6 +817,45 @@ _noop_resolve_marker() {
   [ "$output" = "real" ]
 }
 
+@test "audit-team-member resolve arm: an unresolvable branch half fails closed" {
+  # The resolve arm's branch half can legitimately fail to resolve: a detached
+  # HEAD answers with nothing, and so does a checkout where the key lib is
+  # missing. Both are documented as yielding no resolution, which the gate then
+  # reads as a lost report. That direction is the safe one and it is what the
+  # caller is told to avoid by omitting the pair when the branch will not
+  # resolve, but nothing pinned it: a refactor that let either path fall back to
+  # the marker-only short-circuit would make the gate disappear with the suite
+  # still green.
+  root="$BATS_TEST_TMPDIR/resolve-detached"
+  _noop_resolve_repo "$root"
+  git -C "$root" -c user.email=t@example.com -c user.name=t commit -q --allow-empty -m x
+  git -C "$root" checkout -q --detach
+  digest="$(_noop_digest)"
+  _noop_resolve_marker "$root" "$digest" code-audit-maintainer-shell
+  stamp="$BATS_TEST_TMPDIR/resolve-detached.stamp"
+  : > "$stamp"
+  sleep 1
+  # A sidecar that IS on disk and IS fresh: the only thing standing between it
+  # and a REAL verdict is the unresolvable branch half.
+  _noop_resolve_sidecar_at "$root" aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
+    'debt%2F1537-example' code-audit-maintainer-shell
+  run "$SCRIPT" --shape audit-team-member \
+    --marker "$root/.gaia/local/audit/${digest}.code-audit-maintainer-shell.ok" \
+    --findings-root "$root" --findings-since "$stamp"
+  [ "$status" -eq 1 ]
+  [ "$output" = "noop" ]
+
+  # Non-vacuity control, sampling the one mutation that matters: reattaching the
+  # branch resolves the same sidecar and classifies REAL, so the NO-OP above is
+  # the branch half failing and not the sidecar being unreadable.
+  git -C "$root" checkout -q -B 'debt/1537-example'
+  run "$SCRIPT" --shape audit-team-member \
+    --marker "$root/.gaia/local/audit/${digest}.code-audit-maintainer-shell.ok" \
+    --findings-root "$root" --findings-since "$stamp"
+  [ "$status" -eq 0 ]
+  [ "$output" = "real" ]
+}
+
 @test "audit-team-member resolve arm: every half-passed form of the pair is a usage error" {
   root="$BATS_TEST_TMPDIR/resolve-usage"
   _noop_resolve_repo "$root"
