@@ -484,6 +484,16 @@ records="$(awk '
   # why the quotes are stripped rather than required absent, and why a `:-`
   # default is read and required to name bash too.
   #
+  # The strip has to name EVERY reserved word that can precede a command word,
+  # or the command this reads is the keyword and a real check goes uncredited.
+  # A first draft named `if`/`elif`/`then`/`do` and stopped, which refused four
+  # one-line spellings the check credited before it: an `else` arm, a `while` or
+  # `until` header, and a `case` arm. None can be a command name, so stripping
+  # them opens no hole this arm did not already have -- the same-line credit has
+  # never tested the ORDER of the check and the load, so `. X; bash -n X` is
+  # credited too. Ordering is what the multi-line arm`s `then` containment test
+  # buys, and widening this list neither adds to nor subtracts from it.
+  #
   # Refused, fail-closed and deliberately, each of them absent from this tree:
   # `! bash -n X`, whose negation inverts the answer, so crediting the branch
   # below it would be backwards; an invocation behind an environment assignment
@@ -496,7 +506,11 @@ records="$(awk '
     sub(/^.*[;&|]/, "", pre)
     sub(/[[:space:]]+-n[[:space:]]*$/, "", pre)
     pre = trim(pre)
-    while (match(pre, /^([{(]|if|elif|then|do)[[:space:]]+/)) pre = trim(substr(pre, RLENGTH + 1))
+    while (match(pre, /^([{(]|if|elif|else|then|do|while|until)[[:space:]]+/) \
+           || match(pre, /^case[[:space:]]+[^[:space:]]+[[:space:]]+in[[:space:]]+/) \
+           || match(pre, /^[(]?[^[:space:]()]+[)][[:space:]]+/)) {
+      pre = trim(substr(pre, RLENGTH + 1))
+    }
     w = pre
     sub(/[[:space:]].*$/, "", w)
     mid = substr(pre, length(w) + 1)
