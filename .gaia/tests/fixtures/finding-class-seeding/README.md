@@ -14,7 +14,12 @@ the fallback.
 - `cases/<case-id>.md`: one unlabelled finding per file, in the exact shape an audit
   member has when it classifies (path, line, title, failure mode, verified-by evidence,
   suggested fix). No case names its own expected class.
-- `labels.json`: the expected label per case id, kept in a separate file on purpose.
+- `labels.json`: the expected label per case id, kept in a separate file on purpose. A case
+  may also carry `reproduces: "unstable"` with a `reproduces_note` saying why. A case with
+  no `reproduces` field is expected to score 3 of 3 on a fresh run; an `unstable` one is
+  not, and a split on it is the recorded expectation rather than a regression. The field
+  lives here because this is the file a re-runner scores against, where a note in
+  `verification-record.md` would be overwritten by the next run that writes one.
 - `clustering-record.md`: per-class recurrence counts from the historical corpus, with
   the provenance bound and limits stated ahead of every count.
 
@@ -49,5 +54,8 @@ part of this fixture set and is not committed by whatever authors the cases and 
    as the existing corpus cases (drawn from the corpus, never naming the class or a
    phrase lifted from a member's assignment line, spread across the surfaces the class
    can appear on).
-3. Update `labels.json` to match, keeping the label separate from the case file.
+3. Update `labels.json` to match, keeping the label separate from the case file. Re-read every
+   `reproduces_note` before scoring: a note names the condition that made the case unstable,
+   and a vocabulary change that removes that condition is what retires the field rather than
+   inheriting it.
 4. Re-run the three-pass classification and write a fresh `verification-record.md`.

@@ -8,12 +8,21 @@ run scores itself. The prohibition is stated to each classifier and names the sc
 sibling fixture files individually, because a classifier that reads either one is reciting rather
 than classifying.
 
-## Verdict: 25 of 28, unanimous on every one of the 25
+## Verdict: 26 of 28 against the labels as they now stand, unanimous on every one of the 26
 
 **All ten wave-2 cases take their labelled class on all three runs**, in this round and in the
 round before it, which is the question this corpus exists to answer for the five classes seeded in
-wave 2. Three cases do not take their labelled value, all three from wave 1, and the control run
-below establishes that none of the three is caused by the wave-2 widening.
+wave 2. Three wave-1 cases did not take the value they were labelled with when these runs were
+scored. The control run below covers two of them and establishes that neither is caused by the
+wave-2 widening; the third, case 13, was never separately controlled, because both rounds returned
+the same class against a criterion neither round touched.
+
+One of the three, `13-duplicated-gate-command-text`, has since been decided the other way: the
+label was wrong and now reads what all six runs returned, which is why the count above is 26 rather
+than 25 and why that case's row shows agreement. **No run was repeated to produce that agreement.**
+The runs' returned classes are exactly what they were; only the value they are scored against
+changed. The two that remain are a single decision recorded in `labels.json` rather than an open
+failure, and the field it is recorded in is described in `README.md`.
 
 | Case | Group | Expected | Run 1 | Run 2 | Run 3 | Majority |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -29,7 +38,7 @@ below establishes that none of the three is caused by the wave-2 widening.
 | `10-covered-classes-partial-merge` | corpus | `holistic/fail-open-discovery` | `unclassified` | = | `unclassified` | 1/3 |
 | `11-noop-detect-stale-vs-missing-marker` | corpus | `holistic/partial-cause-reporting` | = | = | = | 3/3 |
 | `12-ledger-status-margin-vs-window-failure` | corpus | `holistic/partial-cause-reporting` | = | = | = | 3/3 |
-| `13-duplicated-gate-command-text` | declined | `prose/redundant-instruction` | `uncoupled-restatement` | `uncoupled-restatement` | `uncoupled-restatement` | 0/3 |
+| `13-duplicated-gate-command-text` | corpus | `holistic/uncoupled-restatement` | = | = | = | 3/3 |
 | `14-deictic-check-above-reference` | declined | `holistic/unclassified` | = | = | = | 3/3 |
 | `15-self-referential-status-line` | declined | `holistic/unclassified` | = | = | = | 3/3 |
 | `16-bundle-freshness-empty-list-skip` | ambiguous | `holistic/unclassified` | = | `fail-open-discovery` | `fail-open-discovery` | 1/3 |
@@ -69,7 +78,7 @@ discriminator between two classes rather than as a sufficient condition for one.
 byte-identical across the two rounds, so the citation was a rationalisation of a verdict reached on
 other grounds, and the rewritten sentence is kept on its own merits rather than as a fix.
 
-## The control: the three misses predate the widening
+## The control: the two disputed cases predate the widening
 
 `10-covered-classes-partial-merge` and `16-bundle-freshness-empty-list-skip` were re-run three times
 each against an archived copy of their owning members' assignment sections taken from before the
@@ -85,7 +94,7 @@ the widened one. The widening is not what moved them, and case 16 is nearer its 
 was. What the control measures is the fixture set, not the seeding: for these two cases, the record
 of 18 of 18 unanimous does not reproduce.
 
-## The three misses, each read on its own
+## The three, each read on its own, and what was decided
 
 **`10-covered-classes-partial-merge`** straddles `holistic/fail-open-discovery` and
 `holistic/unarmed-guard`, and every run that took the fallback named that pair and the absence of a
@@ -93,19 +102,34 @@ tie-break between them as its grounds. That is the multi-match rule operating ex
 The pair is deliberately un-tie-broken: resolving it would make a genuinely unresolvable case look
 resolvable, and it would also pull case 16 off the fallback its label asks for, so the two cases
 constrain each other and no sentence satisfies both. Two of the three runs are arguably right and
-the label is arguably wrong; neither was changed here, because deciding that is a judgement about
-the fixture set rather than about the vocabulary.
+the label is arguably wrong.
+
+**Decided: keep both labels and record the pair as unstable.** Relabelling either one asserts that
+the boundary is settled when it is not, and adding the tie-break that would settle it breaks the
+other case by construction. So `labels.json` now carries `reproduces: "unstable"` on this case and
+on case 16, each naming the other, and a re-run that splits here reads as expected rather than as a
+regression. Each label stays as the reading its case should take once a tie-break exists, which is
+what makes the pair worth keeping rather than deleting.
 
 **`13-duplicated-gate-command-text`** takes `holistic/uncoupled-restatement` unanimously, in both
 rounds, against a `prose/redundant-instruction` label. All six runs give the same grounds: the
 `code-audit-maintainer-prose` member's own criterion carves `prose/redundant-instruction` out for
 "a duplicated instruction whose copies agree with each other and with the code", and this case's
-copies have drifted apart. The criterion as written says what the runs say. This is a disagreement
+copies have drifted apart. The criterion as written says what the runs say. This was a disagreement
 between a label and a criterion neither round touched, and the earlier record already noted that
 this case demonstrates less than the others because its expected class reaches a classifier through
 its dispatch rather than through the member definition.
 
-**`16-bundle-freshness-empty-list-skip`** is covered by the control above.
+**Decided: the label was wrong, and it now reads `holistic/uncoupled-restatement`.** The carve-out
+is explicit that the duplicated-instruction class covers copies that still agree with each other
+and with the code, and a drifted copy is not merely redundant, it is false: a reader who follows it
+runs the wrong gate. Widening the carve-out to swallow drifted copies would have been the reverse
+move, tuning a criterion until a wrong label went green, and it would have made the class say
+something untrue about what a drifted duplicate costs a reader. The case moves out of the
+`declined` group with the label, since it no longer demonstrates a decline.
+
+**`16-bundle-freshness-empty-list-skip`** is covered by the control above, and by case 10's
+decision, which is one decision over both.
 
 ## What this record does not establish
 

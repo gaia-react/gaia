@@ -135,8 +135,11 @@ another 14 times (#1232), and leak-check scopes drifted six times (#1439).
 
 `holistic/drifting-duplicate` is therefore seeded, and it is scoped to **implementations**:
 two or more independent copies of one construct with no shared source. Prose duplicated
-across files stays with `prose/redundant-instruction`, and the `code-audit-maintainer-prose`
-member does not assign the holistic class, so no member holds both sides of that pair.
+across files stays with `prose/redundant-instruction` while its copies still agree with
+each other and with the code; a copy that has drifted into disagreeing with what it
+restates is `holistic/uncoupled-restatement`, which that member's own carve-out says in
+so many words. Either way the `code-audit-maintainer-prose` member does not assign the
+holistic duplicate class, so no member holds both sides of that pair.
 
 ### The rejected shape, and what would change the answer
 
