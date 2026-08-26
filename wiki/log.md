@@ -11,6 +11,35 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-08-26 d3a81d6 WORTHY - no-op guard sidecar resolution and artifact wait documented in Code Review Audit Agent.md, PR Merge Workflow.md in-commit
+- 2026-08-26 1b394421 WORTHY - Code Audit Team set named instead of counted, documented in PR Merge Workflow.md in-commit
+- 2026-08-26 53d65ae0 SKIP - docs: prose-only, bats-assertions coverage rule placement
+- 2026-08-26 50788056 WORTHY - findings-block sidecar-per-round read documented in Code Review Audit Agent.md, PR Merge Workflow.md in-commit
+- 2026-08-26 6651c72a SKIP - five more finding_class entries seeded, already documented as schema-sourced vocabulary in Code Review Audit Agent.md
+- 2026-08-26 7202308b SKIP - tests-only, guard-fidelity roster scan divergence
+- 2026-08-26 c46d5eeb SKIP - tests-only, guard-fidelity roster-set derivation
+- 2026-08-26 42b81e6d SKIP - capability-oracle if/while/until command-position fix, implementation detail of hook-capabilities mechanism
+- 2026-08-26 77449cc4 SKIP - hook-lib-loads errexit-suspend across hooks, companion to 344b4b14, same already-documented behavior
+- 2026-08-26 344b4b14 SKIP - hook-lib-loads parse-check across hooks, implementation detail of already-documented fail-open hook behavior
+- 2026-08-26 040fd49e SKIP - tests-only, verb-arming cost test wording
+- 2026-08-26 29e8e341 WORTHY - apt-install pinned to exchange groups documented in Sharded CI Test Matrix.md in-commit
+- 2026-08-26 7ab455e3 SKIP - repo-scope quoted-word scan fix, implementation detail of already-documented repo-scope check
+- 2026-08-26 053015af SKIP - token-tally degrade-not-exit fix, implementation detail of already-documented cost accounting hooks
+- 2026-08-26 e8dbd2e1 WORTHY - merge-gate clearance-to-PR binding documented in PR Merge Workflow.md in-commit
+- 2026-08-26 481976ed WORTHY - shared verb-arming decision documented in Claude Hooks.md in-commit
+- 2026-08-26 52867e70 SKIP - capability-oracle bash-3.2 reach fix, implementation detail of hook-capabilities mechanism
+- 2026-08-26 c5fad4ae WORTHY - SPEC park split into pending/active documented in Audit Disposition and Debt Fix.md, GitHub Labels.md in-commit
+- 2026-08-26 42bc7266 SKIP - merge-gate tokenizer arm, superseded and documented by 481976ed's Claude Hooks.md edit
+- 2026-08-26 6bb0226f WORTHY - audit diff-base and provenance resolution documented in PR Merge Workflow.md, Code Audit Team.md in-commit
+- 2026-08-26 a9276dba SKIP - capability-oracle self-path-call fix, implementation detail of hook-capabilities mechanism
+- 2026-08-26 0de7c7fd WORTHY - debt:pre-provenance label removal documented in Audit Disposition and Debt Fix.md, GitHub Labels.md in-commit
+- 2026-08-26 339bcec8 WORTHY - per-phase CI read in gaia-plan documented in Task Orchestration.md in-commit
+- 2026-08-26 f01e7a87 WORTHY - new hook-capabilities governance mechanism (declared capabilities for registered hooks), section added to Code Audit Team.md
+- 2026-08-26 4ad73346 SKIP - cli-tests path filter arming for reachability guard, internal CI plumbing
+- 2026-08-26 a0e8c1c1 SKIP - cli-tests path filter arming for audit agent files, internal CI plumbing
+- 2026-08-26 5b0a0717 SKIP - repo-scope home-PR matching extracted into shared lib, implementation detail of already-documented hooks
+- 2026-08-26 8c3d76e1 WORTHY - vite 8.0 ceiling lift and 28-package bump documented in Storybook.md in-commit
+- 2026-08-26 5149d956 SKIP - self-referential prior wiki maintenance chain commit (sync+consolidate+lint through 828218e), no further wiki action
 - 2026-08-22 7d8b6109 WORTHY - PR merge fold-pricing correction documented in PR Merge Workflow.md in-commit
 - 2026-08-22 6c9f1c45 WORTHY - act-on-home first-command boundary documented in PR Merge Workflow.md in-commit
 - 2026-08-22 b628511b WORTHY - act-on-home whole-slug boundary, superseded and documented by the following commit's edit to PR Merge Workflow.md
