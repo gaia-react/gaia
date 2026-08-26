@@ -80,11 +80,28 @@ setup() {
 # derive_surfaces
 # Prints, one repo-relative path per line, every tracked file stating a
 # terminal action. Sorted, deduped, exclusions applied.
+# Exit 0 with the paths on stdout, 1 for a clean read that matched nothing, 2
+# for a derivation that could not run. Piping straight into `sort` would take
+# sort's status instead, which makes a repository git cannot read produce the
+# same empty result as a marker phrase that moved, and those want opposite
+# repairs. `git grep` exits 1 on no-match and above 1 on a real failure.
 derive_surfaces() {
-  git -C "$ROOT" grep -lEI -- "$TERMINAL_RE" -- \
+  local raw rc
+  # `|| rc=$?`, never a bare assignment then a `$?` read: an assignment takes
+  # its command substitution's status, so under the errexit bats runs each body
+  # with, the bare form abandons the caller HERE and every arm below is dead.
+  rc=0
+  raw="$(git -C "$ROOT" grep -lEI -- "$TERMINAL_RE" -- \
     ':!.gaia/tests/*' ':!.gaia/local/*' \
-    ':!wiki/log.md' ':!wiki/hot.md' ':!CHANGELOG.md' \
-    | LC_ALL=C sort -u
+    ':!wiki/log.md' ':!wiki/hot.md' ':!CHANGELOG.md')" || rc=$?
+  if [ "$rc" -gt 1 ]; then
+    return 2
+  fi
+  if [ -z "$raw" ]; then
+    return 1
+  fi
+  printf '%s\n' "$raw" | LC_ALL=C sort -u
+  return 0
 }
 
 # terminal_lines <file>
@@ -101,18 +118,45 @@ terminal_lines() {
 # word `inline` appearing anywhere on the paragraph, including inside an
 # unrelated `inline_fallback` disposition value, which greens a sentence whose
 # ending was rewritten to something else entirely.
+#
+# Per OCCURRENCE rather than per line, for the same reason one step down: a
+# paragraph stating the ending twice, a drifted first sentence beside a still
+# correct second one, collapses to whichever one an anchored extraction keeps,
+# and the other goes unread. Every marker in the tree today sits alone on its
+# line, so nothing is currently lost either way; the loop is what keeps that a
+# property of the tree rather than a precondition of this check.
 terminal_segments() {
-  terminal_lines "$1" \
-    | sed -E "s/.*(${TERMINAL_RE})/\\1/" \
-    | sed -E 's/\. .*$//'
+  terminal_lines "$1" | awk -v re="$TERMINAL_RE" '
+    {
+      rest = $0
+      while (match(rest, re)) {
+        start = RSTART
+        len = RLENGTH
+        seg = substr(rest, start)
+        rest = substr(rest, start + len)
+        # Cut at the first sentence break. A period with no space after it sits
+        # inside a path or a section number, not at the end of a sentence.
+        if (match(seg, /\. /)) seg = substr(seg, 1, RSTART - 1)
+        print seg
+      }
+    }'
 }
 
 # --- The roster: who states an ending at all --------------------------------
 
 @test "the set of surfaces stating a terminal action is the roster, in both directions" {
-  local derived expected
-  derived="$(derive_surfaces)"
-  [ -n "$derived" ] || {
+  local derived expected rc
+  # `|| rc=$?` rather than a bare assignment followed by a `$?` read. bats runs
+  # each body under errexit, and an assignment takes its command substitution's
+  # status, so the bare form abandons the test ON the assignment line and every
+  # branch below it, this diagnostic included, becomes unreachable.
+  rc=0
+  derived="$(derive_surfaces)" || rc=$?
+  [ "$rc" -eq 2 ] && {
+    echo "the derivation could not run; git could not read this tree" >&2
+    return 1
+  }
+  [ "$rc" -eq 1 ] && {
     echo "derivation found no surface stating a terminal action; the marker phrasing moved" >&2
     return 1
   }
@@ -213,7 +257,11 @@ terminal_segments() {
 
   section="$(printf '%s\n' "$line" | grep -oE '`[^`]+`' | grep -v '\.md`' | head -n 1 | tr -d '`')"
   [ -n "$section" ] || { echo "the pointer names no section" >&2; return 1; }
-  grep -qE "^#+ .*${section}" "$ROOT/$target" || {
+  # Fixed-string against heading lines only. The section name is text lifted
+  # out of the pointer, so splicing it into an ERE lets a rename carrying a
+  # metacharacter either over-match or make grep exit 2; the sibling test below
+  # already matches its own destination as a fixed string.
+  grep -E '^#+ ' "$ROOT/$target" | grep -qF -- "$section" || {
     echo "${target} carries no heading matching the pointed-at section '${section}'" >&2
     return 1
   }
