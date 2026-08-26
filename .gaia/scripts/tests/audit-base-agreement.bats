@@ -704,8 +704,11 @@ STUB
 # remit (that is what makes its increment empty) and an owned path inside it.
 # `.claude/hooks/lib/audit-clearance.sh`, which some of these members used
 # for this purpose before, is now a GLOBAL RULE (it resets every member's
-# per-member base), so `.claude/hooks/local-janitor.sh` -- merely shared,
-# owned by none of them -- replaces it.
+# per-member base), so `.claude/hooks/local-janitor.sh` replaces it. That file
+# is NOT ownerless: `audit_owner_for_path` resolves it to
+# code-audit-maintainer-shell. It is outside the remit of every member probed
+# with it, and inside the remit of the one member that is not, which is why the
+# shell probe reaches for `.github/workflows/code-review-audit.yml` instead.
 
 # probe_deadlock <member> <owned-path> <machinery-path-outside-remit>
 probe_deadlock() {

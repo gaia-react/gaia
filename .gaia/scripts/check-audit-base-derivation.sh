@@ -131,13 +131,15 @@
 #      spelling a call should use; the three-dot range is the whole
 #      requirement.
 #
-#      Scoped per CALL by three walls: the next `diff --name-only` (without
-#      which the window runs to end of line and a two-dot call is vouched for
-#      by a LATER correct call's dots), `#`, and a backtick. The latter two end
-#      a shell line's code and close a markdown code span; without them a
-#      correct call carrying a trailing `# was BASE_REF` comment would report
-#      itself, and so would prose naming the command and a base in one
-#      sentence.
+#      Scoped per CALL by walls that each cut the window at their earliest
+#      occurrence. The first is the next `diff --name-only`, without which the
+#      window runs to end of line and a two-dot call is vouched for by a LATER
+#      correct call's dots. The rest end a shell line's code or close a
+#      markdown code span; without them a correct call carrying a trailing
+#      `# was BASE_REF` comment would report itself, and so would prose naming
+#      the command and a base in one sentence. The wall set is enumerated once,
+#      where it is applied, and deliberately not counted here: this sentence
+#      said three while the code had grown to cut on five.
 #
 #      This assertion scans `.claude/agents/code-audit-*.md`, NOT the whole
 #      directory that (1) and (2) range over. Only a Code Audit Team member HAS
@@ -250,8 +252,9 @@
 #
 # GREEN against this repo's real `.claude/agents/`: every definition
 # resolves its review base through the resolver, the only bare merge-base
-# left is each specialist's `FULL_BASE`, and every changed-file diff is a
-# three-dot range against HEAD carrying `-z`.
+# left is the named `FULL_BASE` exemption (each specialist's self-skip
+# derivation and the default member's eligibility one), and every changed-file
+# diff is a three-dot range against HEAD carrying `-z`.
 
 # Assertion 1's candidate shape: any assignment whose value reaches a
 # `merge-base` call. Deliberately a wide net -- BOTH discriminations that
