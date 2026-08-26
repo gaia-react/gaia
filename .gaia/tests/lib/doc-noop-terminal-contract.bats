@@ -126,7 +126,24 @@ terminal_lines() {
 # line, so nothing is currently lost either way; the loop is what keeps that a
 # property of the tree rather than a precondition of this check.
 terminal_segments() {
-  terminal_lines "$1" | awk -v re="$TERMINAL_RE" '
+  # Through the environment, not `-v`. Three regex engines now read this one
+  # pattern (`git grep -E`, `grep -E`, and awk), and only awk's `-v` performs
+  # escape processing on the value, stripping a backslash before the regex ever
+  # compiles: `-v re='a\.b'` matches `aXb`, where both greps match a literal
+  # dot. ENVIRON does no such processing, so one definition keeps one meaning
+  # across all three.
+  # The assignment rides awk, not terminal_lines: a `VAR=v cmd | cmd2` prefix
+  # reaches only the FIRST stage, so putting it on the left of the pipe hands
+  # awk an empty pattern, which matches empty at every position and spins the
+  # loop below forever. The empty-pattern guard is the backstop for that class.
+  terminal_lines "$1" | TERMINAL_RE="$TERMINAL_RE" awk '
+    BEGIN {
+      re = ENVIRON["TERMINAL_RE"]
+      if (re == "") {
+        print "terminal_segments: TERMINAL_RE did not reach awk" > "/dev/stderr"
+        exit 2
+      }
+    }
     {
       rest = $0
       while (match(rest, re)) {
