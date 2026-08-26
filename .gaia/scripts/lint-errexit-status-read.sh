@@ -413,6 +413,26 @@ function walk(line,   n, i, c, j, ch, delim, prev) {
     # statement. Reached only with W_q empty and outside a backtick, both quote
     # arms above having already continued, and only at depth 0, which is the
     # only place an operand of THIS statement can begin.
+    # The bare `(( ))` arithmetic COMMAND, the sibling of the `$(( ))` form
+    # above: `<<` inside it is a left shift, not a redirection, and without this
+    # the digits of `(( n = n << 3 ))` read as a heredoc delimiter and the rest
+    # of the file is skipped as body. Two levels, the same way `$((` pushes two,
+    # so the closing `))` balances by construction. Command position is what
+    # separates it from a `(` inside an operand.
+    if (W_depth == 0 && c == "(" && substr(line, i + 1, 1) == "(" \
+        && (substr(line, 1, i - 1) ~ /(^|[;&|(){}[:space:]])(if|while|until|then|else|elif|do)[[:space:]]+$/ \
+            || substr(line, 1, i - 1) ~ /(^|[;&|(){}])[[:space:]]*$/)) {
+      W_qstack[W_depth] = W_q
+      W_depth++
+      W_qstack[W_depth] = ""
+      W_depth++
+      W_ar[W_depth] = 1
+      W_narith++
+      W_q = ""
+      i++
+      continue
+    }
+
     if (W_depth == 0 && (c == "<" || c == ">") && substr(line, i + 1, 1) == "(") {
       W_qstack[W_depth] = W_q
       W_depth++

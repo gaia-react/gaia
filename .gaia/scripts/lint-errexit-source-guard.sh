@@ -165,7 +165,65 @@ records="$(awk '
     return out
   }
 
-  # The delimiter of a heredoc this line OPENS, or empty. A character walk
+  # Quoted spans blanked to spaces, with the quote characters kept and the
+  # LENGTH PRESERVED, so a position computed over this string indexes the same
+  # column as the string it was made from. The event scan needs both halves:
+  # `echo "remember to run set -e"` sitting between a suspend and a load
+  # otherwise closes the suspend and the load is then reported unguarded, and a
+  # string spelling `set +e` above a genuinely unguarded load makes the check
+  # report a suspend that never happened. Both directions cost diagnostic
+  # accuracy rather than coverage, which is why this blanks rather than drops.
+  function blank_quoted(s,   i, c, q, out, len) {
+    out = ""
+    q = ""
+    len = length(s)
+    for (i = 1; i <= len; i++) {
+      c = substr(s, i, 1)
+      if (q != "") {
+        # Inside double quotes a backslash escapes the next character, so a
+        # `\"` must not be read as the closing quote.
+        if (c == "\\" && q == "\"" && i < len) { out = out "  "; i++; continue }
+        out = out ((c == q) ? c : " ")
+        if (c == q) q = ""
+        continue
+      }
+      if (c == "\\" && i < len) { out = out c substr(s, i + 1, 1); i++; continue }
+      if (c == "\"" || c == "\047") { q = c; out = out c; continue }
+      out = out c
+    }
+    return out
+  }
+
+  # How many conditional constructs this text opens, and how many it closes.
+  # Command position, not text proximity, for the same reason `is_load` tests
+  # it: `esac` inside a word is not a block terminator.
+  function opens(s,   c, t) {
+    c = 0
+    t = s
+    while (match(t, /(^|[;&|(){}[:space:]])(if|case)([[:space:]]|$)/)) {
+      c++
+      t = substr(t, RSTART + RLENGTH - 1)
+    }
+    return c
+  }
+
+  function closes(s,   c, t) {
+    c = 0
+    t = s
+    while (match(t, /(^|[;&|(){}[:space:]])(fi|esac)([[:space:]]|;|$)/)) {
+      c++
+      t = substr(t, RSTART + RLENGTH - 1)
+    }
+    return c
+  }
+
+  # The delimiters of every heredoc this line OPENS, newline-separated, or
+  # empty. A line may open more than one (`cat <<A <<B` runs the bodies in
+  # order), so the caller consumes them as a queue rather than tracking one:
+  # returning only the first leaves the body of B read as shell, and a `set +e`
+  # or a load written inside it becomes an event the file does not contain.
+  #
+  # A character walk
   # rather than a regex, because the two shapes a regex gets wrong are both live
   # in this tree and both fail OPEN: a `<<WORD` inside a quoted string opens a
   # heredoc that never closes, and every line below it is then skipped as body,
@@ -181,9 +239,10 @@ records="$(awk '
   # A heredoc still open when the file ends is reported and fails the check, so
   # a shape this walk reads wrong stops the scan loudly instead of silently
   # skipping the rest of a file.
-  function heredoc_delim(s,   i, c, q, arith, j, ch, d, len) {
+  function heredoc_delim(s,   i, c, q, arith, j, ch, d, len, all, pre) {
     q = ""
     arith = 0
+    all = ""
     len = length(s)
     for (i = 1; i <= len; i++) {
       c = substr(s, i, 1)
@@ -192,6 +251,18 @@ records="$(awk '
       if (c == "\"" || c == "\047") { q = c; continue }
       # `$(( ))`, where `<<` is a left shift and not a redirection.
       if (c == "$" && substr(s, i + 1, 2) == "((") { arith++; i += 2; continue }
+      # The bare `(( ))` arithmetic COMMAND is the same left shift in a
+      # different spelling, and missing it is the worse failure of the two: the
+      # digits of `(( n = n << 3 ))` read as a delimiter, every line below is
+      # skipped as body, and the check exits reporting a heredoc that does not
+      # exist while the loads below it genuinely went unread. Command position
+      # is what separates it from a `(` inside an operand; `let n=n<<3` needs no
+      # carve-out, because bash itself parses that `<<` as a redirection.
+      if (c == "(" && substr(s, i + 1, 1) == "(") {
+        pre = substr(s, 1, i - 1)
+        if (pre ~ /(^|[;&|(){}[:space:]])(if|while|until|then|else|elif|do)[[:space:]]+$/ \
+            || pre ~ /(^|[;&|(){}])[[:space:]]*$/) { arith++; i++; continue }
+      }
       if (arith > 0 && c == ")" && substr(s, i + 1, 1) == ")") { arith--; i++; continue }
       if (c != "<" || substr(s, i + 1, 1) != "<" || arith > 0) continue
       if (substr(s, i + 2, 1) == "<") { i += 2; continue }
@@ -203,14 +274,20 @@ records="$(awk '
       if (ch == "\047" || ch == "\"") {
         j++
         while (j <= len && substr(s, j, 1) != ch) { d = d substr(s, j, 1); j++ }
+        j++
       } else {
         while (j <= len && substr(s, j, 1) ~ /[A-Za-z0-9_.\/-]/) { d = d substr(s, j, 1); j++ }
       }
-      if (d != "") return d
+      if (d != "") all = all (all == "" ? "" : "\n") d
       i = j - 1
     }
-    return ""
+    return all
   }
+
+  # The delimiter at the head of the pending queue, and the queue with that
+  # head removed.
+  function hd_head(qq) { return (index(qq, "\n")) ? substr(qq, 1, index(qq, "\n") - 1) : qq }
+  function hd_rest(qq) { return (index(qq, "\n")) ? substr(qq, index(qq, "\n") + 1) : "" }
 
   # The basename of the first .sh operand on the line, which is the load target
   # at every site in this tree. Empty when the operand is a bare variable.
@@ -274,7 +351,9 @@ records="$(awk '
   { n++; L[n] = decomment($0); RAW[n] = $0 }
 
   function flush(   i, s, j, k, pos, ev, evn, evt, evp, suspended, armed, tgt,
-                    sn, sline, sshape, sdepth, back, found, res, capture) {
+                    sn, sline, sshape, sdepth, back, found, res, capture,
+                    m, q, cur, pfx, indepth, blockdepth, capdepth,
+                    mstart, mlen) {
     # Event stream over the whole file, in position order within each line, so a
     # one-line `set +e; . X; set -e` bracket is read the way the shell reads it.
     evn = 0
@@ -291,7 +370,8 @@ records="$(awk '
       if (heredoc != "") {
         t = s
         sub(/^\t+/, "", t)
-        if (s == heredoc || t == heredoc) heredoc = ""
+        cur = hd_head(heredoc)
+        if (s == cur || t == cur) heredoc = hd_rest(heredoc)
         continue
       }
       heredoc = heredoc_delim(s)
@@ -303,13 +383,32 @@ records="$(awk '
       # `set -e`, which in this tree is the likely spelling rather than an
       # exotic one, and reds a required shard on a correct file.
       if (s ~ /^[[:space:]]*$/) continue
-      if (s ~ /case[[:space:]]+\$-[[:space:]]+in/ && s ~ /\*e\*/) capture = 1
+      # One coordinate system for the whole line, or the sort below reorders a
+      # correct bracket into a false hit: the position of a site is measured over
+      # the MASKED line, so a command substitution ahead of a `set +e` shrinks the
+      # column of the site but not that of the set event, and the load then sorts
+      # ahead of the suspend it sits inside. Masking replaces each span with exactly one
+      # character and introduces no `set` token, so measuring both over `m` is
+      # sound as well as consistent; blanking quoted spans preserves length, so
+      # `q` indexes the same columns as `m`.
+      m = mask(s)
+      q = blank_quoted(m)
+      if (s ~ /case[[:space:]]+\$-[[:space:]]+in/ && s ~ /\*e\*/) {
+        if (!capture) capdepth = blockdepth
+        capture = 1
+      }
       # suspends and restores, left to right
-      rest = s
+      rest = q
       off = 0
       while (match(rest, /set[[:space:]]+([-+][a-zA-Z]*e[a-zA-Z]*|[-+]o[[:space:]]+errexit)([[:space:]]|;|$)/)) {
-        tok = substr(rest, RSTART, RLENGTH)
-        pos = off + RSTART
+        # Snapshot the match BEFORE anything below calls match() again: awk
+        # keeps RSTART/RLENGTH global, `opens`/`closes` set them, and reading
+        # them afterwards advances `rest` by a no-match (-1) rather than past
+        # the token, which never terminates.
+        mstart = RSTART
+        mlen = RLENGTH
+        tok = substr(rest, mstart, mlen)
+        pos = off + mstart
         evn++
         evt[evn] = (tok ~ /set[[:space:]]+\+/) ? "susp" : "rest"
         evl[evn] = i
@@ -320,14 +419,23 @@ records="$(awk '
         # would report the documented bracket as a defect whenever its author
         # named the variable anything else, and print back the shape they used
         # as the remedy. What the check can see is the `case $- in *e*` capture
-        # and whether the restore runs unconditionally; what it cannot see, and
-        # does not claim to, is whether the captured value is the one tested.
-        evx[evn] = (capture && (substr(s, 1, pos - 1) ~ /(then|&&|\|\|)[[:space:]]*$/ || prev_then)) \
+        # and whether the restore is lexically INSIDE a conditional construct
+        # opened after that capture; what it cannot see, and does not claim to,
+        # is whether the captured value is the one tested.
+        #
+        # Containment rather than `then`-adjacency, because the ordinary
+        # spellings are not adjacent: a second statement between the `then` and
+        # the `set -e`, a restore in an `else` arm, a `case "$was" in 1) set -e`
+        # arm. Adjacency reported all three as flat defects. Depth is measured
+        # against the depth at the capture, so an include guard wrapping a whole
+        # library does not credit an unconditional restore inside it.
+        pfx = substr(q, 1, pos - 1)
+        indepth = blockdepth + opens(pfx) - closes(pfx)
+        evx[evn] = (capture && (pfx ~ /(then|&&|\|\|)[[:space:]]*$/ || prev_then || indepth > capdepth)) \
           ? "cond" : "flat"
-        off = pos + RLENGTH - 1
-        rest = substr(rest, RSTART + RLENGTH)
+        off = pos + mlen - 1
+        rest = substr(rest, mstart + mlen)
       }
-      m = mask(s)
       if (is_load(m)) {
         evn++
         evt[evn] = "site"
@@ -335,7 +443,10 @@ records="$(awk '
         evp[evn] = load_pos(m)
         evx[evn] = target(m)
       }
-      prev_then = (s ~ /(^|[[:space:]);])then[[:space:]]*$/)
+      prev_then = (q ~ /(^|[[:space:]);])then[[:space:]]*$/)
+      blockdepth += opens(q) - closes(q)
+      if (blockdepth < 0) blockdepth = 0
+      if (capdepth > blockdepth) capdepth = blockdepth
     }
     # Order events: line ascending, then position within the line. The flat
     # one-liner `set +e; [ -f X ] && . X; set -e` is the shape that needs this:
@@ -408,7 +519,7 @@ records="$(awk '
     # A heredoc still open when the file ends means the walk above read an
     # opener the shell does not, and every line after it was skipped as body.
     # Report that rather than returning a verdict over input never read.
-    if (heredoc != "") printf "UNTERMINATED|%s|%s\n", file, heredoc
+    if (heredoc != "") printf "UNTERMINATED|%s|%s\n", file, hd_head(heredoc)
     if (armed) printf "ARM|%s\n", file
     for (i = 1; i <= sn; i++) {
       printf "SITE|%s|%d|%s|%s|%s\n", file, SITELINE[i], SITETGT[i], SITESHAPE[i], trim(RAW[SITELINE[i]])

@@ -307,3 +307,113 @@ plant() {
   [ "$status" -eq 1 ]
   grep -qF -- ".claude/hooks/probe.sh:3" <<<"$output"
 }
+
+# 5. One coordinate system per line, and one quote state
+
+# A site is positioned over the masked line and a set event over the raw one:
+# any masked span left of the `set +e` shrinks one column and not the other, so
+# the load sorts ahead of the suspend it sits inside and a correct bracket reads
+# as a defect. The control below is the same file with the substitution replaced
+# by a literal, which is what makes this a test of the coordinate system rather
+# than of the bracket.
+@test "a command substitution ahead of set +e does not reorder a one-line bracket" {
+  new_fixture
+  plant .claude/hooks/probe.sh $'#!/usr/bin/env bash\nset -euo pipefail\nd="$(dirname "${BASH_SOURCE[0]}")/lib"; set +e; . "$d/helper.sh" 2>/dev/null; set -e\ntype helper >/dev/null 2>&1 || exit 0\n'
+  plant .claude/hooks/lib/helper.sh $'helper() { :; }\n'
+  run bash -c "cd '$TMP' && bash '$LINTER'"
+  [ "$status" -eq 0 ]
+}
+
+@test "the same bracket with no substitution ahead of it is accepted too" {
+  new_fixture
+  plant .claude/hooks/probe.sh $'#!/usr/bin/env bash\nset -euo pipefail\nd=lib; set +e; . ".claude/hooks/$d/helper.sh" 2>/dev/null; set -e\ntype helper >/dev/null 2>&1 || exit 0\n'
+  plant .claude/hooks/lib/helper.sh $'helper() { :; }\n'
+  run bash -c "cd '$TMP' && bash '$LINTER'"
+  [ "$status" -eq 0 ]
+}
+
+@test "a set -e spelled inside a string does not close a real suspend" {
+  new_fixture
+  plant .claude/hooks/probe.sh $'#!/usr/bin/env bash\nset -euo pipefail\nset +e\necho "remember to run set -e afterwards"\n[ -f ".claude/hooks/lib/helper.sh" ] && . ".claude/hooks/lib/helper.sh" 2>/dev/null\nset -e\ntype helper >/dev/null 2>&1 || exit 0\n'
+  plant .claude/hooks/lib/helper.sh $'helper() { :; }\n'
+  run bash -c "cd '$TMP' && bash '$LINTER'"
+  [ "$status" -eq 0 ]
+}
+
+# 6. The bare `(( ))` arithmetic command
+
+# Missing this reads the digits of a left shift as a heredoc delimiter, skips
+# every line below as body, and exits reporting a heredoc that does not exist
+# while the loads below it genuinely went unread.
+@test "a left shift in a bare (( )) is not read as a heredoc opener" {
+  new_fixture
+  plant .claude/hooks/probe.sh $'#!/usr/bin/env bash\nset -euo pipefail\nn=1\n(( n = n << 3 ))\nset +e\n[ -f ".claude/hooks/lib/helper.sh" ] && . ".claude/hooks/lib/helper.sh" 2>/dev/null\nset -e\ntype helper >/dev/null 2>&1 || exit 0\n'
+  plant .claude/hooks/lib/helper.sh $'helper() { :; }\n'
+  run bash -c "cd '$TMP' && bash '$LINTER'"
+  [ "$status" -eq 0 ]
+}
+
+@test "a left shift in a bare (( )) after an if keyword is not a heredoc opener either" {
+  new_fixture
+  plant .claude/hooks/probe.sh $'#!/usr/bin/env bash\nset -euo pipefail\nn=1\nif (( n << 3 )); then n=0; fi\nset +e\n[ -f ".claude/hooks/lib/helper.sh" ] && . ".claude/hooks/lib/helper.sh" 2>/dev/null\nset -e\ntype helper >/dev/null 2>&1 || exit 0\n'
+  plant .claude/hooks/lib/helper.sh $'helper() { :; }\n'
+  run bash -c "cd '$TMP' && bash '$LINTER'"
+  [ "$status" -eq 0 ]
+}
+
+# 7. A state-preserving restore is credited by containment, not by adjacency
+
+@test "accepts a conditional restore carrying a second statement before it" {
+  new_fixture
+  plant .claude/hooks/probe.sh $'#!/usr/bin/env bash\nset -euo pipefail\nset +e; [ -f ".claude/hooks/lib/mid.sh" ] && . ".claude/hooks/lib/mid.sh" 2>/dev/null; set -e\ntype mid >/dev/null 2>&1 || exit 0\n'
+  plant .claude/hooks/lib/mid.sh $'was=0\ncase $- in *e*) was=1 ;; esac\nset +e\n[ -f ".claude/hooks/lib/leaf.sh" ] && . ".claude/hooks/lib/leaf.sh" 2>/dev/null\nif [ "$was" = 1 ]; then\n  unset was\n  set -e\nfi\ntype leaf >/dev/null 2>&1 || true\nmid() { :; }\n'
+  plant .claude/hooks/lib/leaf.sh $'leaf() { :; }\n'
+  run bash -c "cd '$TMP' && bash '$LINTER'"
+  [ "$status" -eq 0 ]
+}
+
+@test "accepts a conditional restore written in an else arm" {
+  new_fixture
+  plant .claude/hooks/probe.sh $'#!/usr/bin/env bash\nset -euo pipefail\nset +e; [ -f ".claude/hooks/lib/mid.sh" ] && . ".claude/hooks/lib/mid.sh" 2>/dev/null; set -e\ntype mid >/dev/null 2>&1 || exit 0\n'
+  plant .claude/hooks/lib/mid.sh $'was=0\ncase $- in *e*) was=1 ;; esac\nset +e\n[ -f ".claude/hooks/lib/leaf.sh" ] && . ".claude/hooks/lib/leaf.sh" 2>/dev/null\nif [ "$was" = 0 ]; then\n  :\nelse\n  set -e\nfi\ntype leaf >/dev/null 2>&1 || true\nmid() { :; }\n'
+  plant .claude/hooks/lib/leaf.sh $'leaf() { :; }\n'
+  run bash -c "cd '$TMP' && bash '$LINTER'"
+  [ "$status" -eq 0 ]
+}
+
+@test "accepts a conditional restore written as a case arm" {
+  new_fixture
+  plant .claude/hooks/probe.sh $'#!/usr/bin/env bash\nset -euo pipefail\nset +e; [ -f ".claude/hooks/lib/mid.sh" ] && . ".claude/hooks/lib/mid.sh" 2>/dev/null; set -e\ntype mid >/dev/null 2>&1 || exit 0\n'
+  plant .claude/hooks/lib/mid.sh $'was=0\ncase $- in *e*) was=1 ;; esac\nset +e\n[ -f ".claude/hooks/lib/leaf.sh" ] && . ".claude/hooks/lib/leaf.sh" 2>/dev/null\ncase "$was" in 1) set -e ;; esac\ntype leaf >/dev/null 2>&1 || true\nmid() { :; }\n'
+  plant .claude/hooks/lib/leaf.sh $'leaf() { :; }\n'
+  run bash -c "cd '$TMP' && bash '$LINTER'"
+  [ "$status" -eq 0 ]
+}
+
+# The bound on the rule above: depth is measured against the depth at the
+# capture, so an include guard wrapping a whole library credits nothing. Without
+# it every restore in such a library reads as conditional and the defect this
+# gate exists to catch goes unreported.
+@test "still flags an unconditional restore inside an include guard" {
+  new_fixture
+  plant .claude/hooks/probe.sh $'#!/usr/bin/env bash\nset -euo pipefail\nset +e; [ -f ".claude/hooks/lib/mid.sh" ] && . ".claude/hooks/lib/mid.sh" 2>/dev/null; set -e\ntype mid >/dev/null 2>&1 || exit 0\n'
+  plant .claude/hooks/lib/mid.sh $'if [ -z "${_GUARD:-}" ]; then\n  _GUARD=1\n  was=0\n  case $- in *e*) was=1 ;; esac\n  set +e\n  [ -f ".claude/hooks/lib/leaf.sh" ] && . ".claude/hooks/lib/leaf.sh" 2>/dev/null\n  set -e\n  type leaf >/dev/null 2>&1 || true\nfi\nmid() { :; }\n'
+  plant .claude/hooks/lib/leaf.sh $'leaf() { :; }\n'
+  run bash -c "cd '$TMP' && bash '$LINTER'"
+  [ "$status" -eq 1 ]
+  grep -qF -- ".claude/hooks/lib/mid.sh:6" <<<"$output"
+  grep -qF -- "flat" <<<"$output"
+}
+
+# 8. A line may open more than one heredoc
+
+# `cat <<A <<B` runs the two bodies in order. Tracking only the first leaves the
+# body of B read as shell, so a load written inside it becomes a finding for a
+# line that is data.
+@test "a second heredoc opened on one line has its body treated as data" {
+  new_fixture
+  plant .claude/hooks/probe.sh $'#!/usr/bin/env bash\nset -euo pipefail\ncat <<A <<B\nplain\nA\n. .claude/hooks/lib/helper.sh\nB\necho done\n'
+  plant .claude/hooks/lib/helper.sh $'helper() { :; }\n'
+  run bash -c "cd '$TMP' && bash '$LINTER'"
+  [ "$status" -eq 0 ]
+}

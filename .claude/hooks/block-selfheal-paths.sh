@@ -90,8 +90,10 @@ LIB="$SELF_DIR/lib/audit-selfheal-paths.sh"
 # an inherited copy would satisfy the guard after the load failed -- fail-open,
 # in the one place this hook is written to fail loud.
 unset AUDIT_SELFHEAL_REFUSE_ERE
+set +e
 # shellcheck source=/dev/null
-set +e; [ -f "$LIB" ] && . "$LIB" 2>/dev/null; set -e
+[ -f "$LIB" ] && . "$LIB" 2>/dev/null
+set -e
 if [ -z "${AUDIT_SELFHEAL_REFUSE_ERE:-}" ]; then
   printf 'block-selfheal-paths.sh: refusal-set library unavailable: %s\n' "$LIB" >&2
   deny "BLOCKED: the self-heal repair-boundary library ($LIB) is unavailable, so this edit cannot be checked against it. Fail-loud, not fail-open -- restore the library before retrying."
