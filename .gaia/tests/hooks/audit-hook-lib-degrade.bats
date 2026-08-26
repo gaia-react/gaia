@@ -15,18 +15,27 @@
 # A member arms errexit, installs no ERR trap, and resolves a `lib`
 # subdirectory of its own on-disk location.
 #
-# Two families are deliberately NOT members, each for a checked reason:
+# A derivation that comes back SHORT is worse than one that comes back empty:
+# the empty read trips a non-empty guard, while a short read leaves every
+# assertion satisfied over a shrunken set whose name still says "every". The
+# member predicate above matches one spelling, and the same defect can be
+# written others (`${BASH_SOURCE[0]%/*}`, or a two-step resolve into a `lib`
+# child on the following line). So a second, deliberately loose candidate
+# predicate runs beside it, and every candidate it names has to be either a
+# member or a NAMED exclusion. A hook that is neither fails this suite instead
+# of quietly leaving the driven set.
 #
-#   - A hook installing `trap 'exit 0' ERR` alongside errexit. The trap sends
-#     the failing assignment to the same silent exit 0 its degrade branch would
-#     have reached (each such branch ends `|| true` and is followed by a
-#     `type ... || exit 0`), so the branch is unreachable with no change in
-#     outcome. That is a shape difference, not a defect, and driving it here
-#     would assert an obligation these hooks do not carry.
-#   - A resolution of the hook's OWN directory rather than a `lib` child
-#     (`SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"`). The
-#     directory the running script was read from exists by construction, so
-#     the substitution has no reachable failure to degrade from.
+# The loose predicate takes any hook that arms errexit, installs no ERR trap,
+# and resolves anything at all from its own `BASH_SOURCE` with a command
+# substitution. It filters the ERR-trap family mechanically, for a checked
+# reason: that trap sends the failing assignment to the same silent exit 0 the
+# degrade branch would have reached (each such branch ends `|| true` and is
+# followed by a `type ... || exit 0`), so the branch is unreachable with no
+# change in outcome. That is a shape difference, not a defect, and driving it
+# here would assert an obligation those hooks do not carry.
+#
+# What is left is not machine-derivable and is enumerated by hand below, with a
+# warrant per entry, in NOT_MEMBERS.
 #
 # Each member is driven from a copy in a directory holding no `lib` sibling,
 # which is what BASH_SOURCE-based resolution reads, against a control copy
@@ -42,6 +51,19 @@ setup() {
   cp "$HOOKS_DIR"/*.sh "$CONTROL/"
   cp -R "$HOOKS_DIR/lib" "$CONTROL/lib"
   cp "$HOOKS_DIR"/*.sh "$DEGRADED/"
+
+  # Members are executed, and one of them commits once its preconditions pass,
+  # so refuse rather than driving gate hooks against a real repository. Whether
+  # `mktemp -t` can land here at all is platform-dependent: GNU mktemp honors
+  # `TMPDIR`, so a `TMPDIR` under a work tree reaches this on the Linux CI
+  # runners, while the BSD mktemp macOS ships ignores `TMPDIR` for `-t` and
+  # always uses the per-user confstr directory. The guard costs one git call
+  # and does not depend on knowing which one is running.
+  if git -C "$CONTROL" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    printf 'temp dir %s is inside a git work tree; refusing to drive hooks there\n' \
+      "$CONTROL" >&2
+    return 1
+  fi
 }
 
 teardown() {
@@ -60,12 +82,54 @@ lib_degrade_members() {
   done
 }
 
+# Hooks the loose predicate below names that are deliberately not members. One
+# entry per line, `<basename> <reason>`; the reason is the warrant, and a hook
+# arriving here without one is what the reconciliation test refuses.
+# Every entry shares one warrant, stated per line so a reader sees which
+# directory each one resolves: none of them resolves a `lib` CHILD, which is the
+# subdirectory that can genuinely be absent. A hook's own directory was read to
+# run it, and an ancestor of that directory contains it, so both exist by
+# construction and neither substitution has a reachable failure to degrade from.
+NOT_MEMBERS="\
+block-main-destructive-git.sh resolves an ancestor (../..), not a lib child
+block-rm-rf.sh resolves an ancestor (../..), not a lib child
+block-selfheal-paths.sh resolves its own directory, not a lib child
+block-serena-cross-tree-activation.sh resolves an ancestor (../..), not a lib child
+block-worktree-path-mismatch.sh resolves an ancestor (../..), not a lib child"
+
+# The loose candidate set: anything that arms errexit, installs no ERR trap,
+# and resolves anything from its own BASH_SOURCE with a command substitution,
+# whatever the spelling. Deliberately wider than the member predicate, so a
+# re-spelled resolution lands here and has to be accounted for.
+lib_degrade_candidates() {
+  local f
+  for f in "$HOOKS_DIR"/*.sh; do
+    grep -qE '=.*\$\(cd .*BASH_SOURCE' "$f" || continue
+    grep -qE '^[[:space:]]*set -[a-z]*e' "$f" || continue
+    grep -qE '^[[:space:]]*trap .* ERR' "$f" && continue
+    basename "$f"
+  done
+}
+
 @test "the derivation names at least one hook" {
   # A per-element claim over an empty set is true and means nothing, so the
   # derivation reports an empty read as a failure rather than as a pass.
   run lib_degrade_members
   [ "$status" -eq 0 ]
   [ -n "$output" ]
+}
+
+@test "every loose candidate is a member or a named exclusion" {
+  local candidate members
+  members=$(lib_degrade_members)
+  while read -r candidate; do
+    [ -n "$candidate" ] || continue
+    grep -qxF -- "$candidate" <<<"$members" && continue
+    grep -qE "^$candidate " <<<"$NOT_MEMBERS" && continue
+    printf 'hook %s resolves from BASH_SOURCE under errexit with no ERR trap, but is neither a driven member nor a named exclusion\n' \
+      "$candidate" >&2
+    return 1
+  done < <(lib_degrade_candidates)
 }
 
 @test "every derived hook reaches its own reporting path with lib absent" {
