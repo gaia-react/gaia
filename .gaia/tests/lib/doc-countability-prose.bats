@@ -1,6 +1,6 @@
 #!/usr/bin/env bats
 # UAT-010 (SPEC-051): doc-grep coverage for the countable-findings prose
-# rewrite. The Code Audit Team's five member sidecar contracts, plus
+# rewrite. The Code Audit Team's member sidecar contracts, plus
 # wiki/concepts/Policy-Memory Loop.md, used to say a classless finding is
 # omitted / not a countable finding / ineligible below warning. That is now
 # false: a finding carrying a valid finding_class counts at any severity, and

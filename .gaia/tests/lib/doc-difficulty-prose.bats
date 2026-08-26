@@ -427,7 +427,7 @@ setup() {
 
 # --- Group 4: the requirement attaches nowhere else -------------------------
 
-@test "difficulty never appears in the four Code Audit Team members with no out-of-scope filing route" {
+@test "difficulty never appears in the Code Audit Team members with no out-of-scope filing route" {
   assert_absent_across "difficulty" "${OTHER_AGENTS[@]}"
 }
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env bats
-# The Code Audit Team's dirty-tree posture, held across all five members.
+# The Code Audit Team's dirty-tree posture, held across every member.
 #
 # A member's clearance marker attests to a per-member content digest computed
 # over tracked files AT HEAD (`git ls-tree HEAD`,
@@ -31,16 +31,21 @@ setup() {
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
   REPO_ROOT="$( cd "$THIS_DIR/../../.." && pwd )"
 
-  # All five Code Audit Team members. The list is spelled out rather than
+  # The Code Audit Team members. The list is spelled out rather than
   # globbed: a glob would silently pass if a member file were renamed away,
-  # which is the fail-open this suite exists to prevent.
+  # which is the fail-open this suite exists to prevent. The entries are the
+  # authority on how many; deliberately no ROSTER count here or in any comment
+  # or test name below, because such a count rots the next time a member joins
+  # or leaves and the rotted number reads as an assertion nobody has checked.
+  # Counts of other things below (fixtures, phrasings) are not that class and
+  # stay.
   MEMBERS="code-audit-frontend
 code-audit-github-workflows
 code-audit-maintainer-node
 code-audit-maintainer-prose
 code-audit-maintainer-shell"
 
-  # The four members whose clearance actually gates a merge. They carry the
+  # The members whose clearance actually gates a merge. They carry the
   # withhold contract. The prose member is deliberately NOT among them: it is
   # advisory-only and its own file states, absolutely and in five places, that
   # it always writes an earned marker and never deadlocks a merge. A clearance
@@ -61,8 +66,8 @@ code-audit-maintainer-shell"
 
   # The byte-identical detection line. One line on purpose: a wrapped command
   # cannot be asserted byte-for-byte with a fixed-string grep, and byte
-  # identity across five files is what keeps the members from drifting into
-  # five subtly different checks.
+  # identity across the member files is what keeps the members from drifting
+  # into subtly different checks.
   CHECK_LINE='if [ -n "$changed" ] && ! dirty_in_scope=$(printf '"'"'%s\n'"'"' "$changed" | tr '"'"'\n'"'"' '"'"'\0'"'"' | xargs -0 git -C "$AUDIT_ROOT" status --porcelain --); then'
 
   # The byte-identical print of the result. Load-bearing rather than cosmetic:
@@ -78,8 +83,8 @@ code-audit-maintainer-shell"
   # The assignment that PRODUCES the sentinel the carve-out above protects.
   # Pinned separately because the two say different things: SENTINEL_CARVEOUT
   # pins the prose promising the sentinel is never remit-filtered, and CHECK_LINE
-  # pins only the `if` that detects the failure. Deleting this line from all five
-  # members left the suite reporting 18/18 ok while the fail-closed arm produced
+  # pins only the `if` that detects the failure. Deleting this line from every
+  # member left the suite fully green while the fail-closed arm produced
   # nothing to withhold on, which is the suite's own stated anti-goal. Matched
   # without leading indentation: the content is what must not drift, and pinning
   # the block's indentation too would red on a reflow that changes no meaning.
@@ -102,15 +107,15 @@ code-audit-maintainer-shell"
   # Two spellings are deliberately NOT in it, both because the advisory member
   # carries them legitimately. `write no marker` is its self-skip arm ("the only
   # `no marker` case is the self-skip above"), and an unqualified `withhold`
-  # covers its own exemption prose ("why the four gating members withhold on
+  # covers its own exemption prose ("why the gating members withhold on
   # it", "withholding would buy no guarantee"). Matching the verb plus the thing
   # withheld is what separates an instruction to this member from a description
   # of a sibling.
   #
   # `the` belongs in the determiner class as much as `this` and `your` do, and
   # leaving it out missed the likeliest vector of all. `Withhold the marker on
-  # any unresolved Critical…` is the VERBATIM handshake sentence three gating
-  # members carry, so copy-pasting a sibling's real paragraph is the most
+  # any unresolved Critical…` is a VERBATIM handshake sentence gating members
+  # carry, so copy-pasting a sibling's real paragraph is the most
   # probable way this member acquires the contract, and it was the one shape the
   # scan could not see. The test below derives its fixtures from the gating
   # members themselves rather than from invented rewordings, so a phrasing this
@@ -137,7 +142,7 @@ code-audit-maintainer-shell"
 
   # The run-order anchor, so the refusal is reachable from the member's own
   # order of operations rather than stated only beside the code block. The
-  # four specialists carry it in Methodology step 1; the default member's
+  # specialists carry it in Methodology step 1; the default member's
   # scope run order lives under "Rules-Based Audit" -> "How to run", and it
   # carries the same phrase there.
   METHOD_ANCHOR='refuse the pass when the working tree is dirty within `changed`'
@@ -266,7 +271,7 @@ withhold_drift() {
 @test "the advisory member never acquires the withhold contract" {
   # Written as a positive match on the bad case per the bats-assertions rule.
   # This is the assertion that would have caught the round-4 Critical: applying
-  # the withhold byte-identically to all five contradicted this member's own
+  # the withhold byte-identically to every member contradicted this member's own
   # always-clear charter, and a presence-only pin reported green either way.
   #
   # Scanned by meaning rather than by the one bolded sentence. An exact-string
@@ -445,7 +450,9 @@ $(gating_withhold_phrases)
 PHRASES
 
   # A floor, so a broken extraction cannot quietly turn this into a test that
-  # asserts nothing. The four gating members carry five distinct phrasings today.
+  # asserts nothing. It sits below the number of distinct phrasings the gating
+  # members carry today, so a legitimate rewording does not red it while a
+  # collapsed extraction does.
   [ "$n" -ge 4 ] || {
     echo "extraction yielded only $n phrases; the derived fixture set has gone vacuous" >&2
     return 1

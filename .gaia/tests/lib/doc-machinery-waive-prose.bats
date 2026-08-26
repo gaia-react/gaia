@@ -7,8 +7,8 @@
 # restatement in `.claude/agents/code-audit-frontend.md`'s `### B-mw.
 # Machinery-path waive (file side)` section, and
 # `wiki/concepts/Audit Disposition and Debt Fix.md`'s `### Out-of-scope
-# waive` section, plus the routing sentence all five Code Audit Team members
-# carry identically. A prose requirement survives exactly as long as the
+# waive` section, plus the routing sentence every Code Audit Team member
+# carries identically. A prose requirement survives exactly as long as the
 # next person editing those files remembers it, which is not a mechanism;
 # this suite is the mechanism, the same pattern `doc-difficulty-prose.bats`
 # in this directory uses: grep for the frozen literals, ground-truthed
@@ -300,9 +300,9 @@ setup() {
   printf '%s\n' "$section" | grep -qF -- ".claude/hooks/" || return 1
 }
 
-# --- Group 6: the routing sentence is one sentence in five files ------------
+# --- Group 6: the routing sentence is one sentence in every member file -----
 
-@test "Group 6: the routing paragraph is present in all five Code Audit Team members" {
+@test "Group 6: the routing paragraph is present in every Code Audit Team member" {
   local f out
   for f in "${ALL_AGENTS[@]}"; do
     out="$(extract_orchestrator_paragraph "$f")"
@@ -313,7 +313,7 @@ setup() {
   done
 }
 
-@test "Group 6: the routing paragraph is byte-identical across all five members after whitespace normalization" {
+@test "Group 6: the routing paragraph is byte-identical across every member after whitespace normalization" {
   local f first cur
   first="$(extract_orchestrator_paragraph "${ALL_AGENTS[0]}" | normalize_ws)"
   for f in "${ALL_AGENTS[@]}"; do
@@ -353,7 +353,7 @@ setup() {
 }
 
 # The three assertions below pin the amendment the path terms alone no longer
-# decide. Group 6's identity test makes the five files agree with each other;
+# decide. Group 6's identity test makes the member files agree with each other;
 # it cannot tell whether what they agree on matches the owner section, which is
 # exactly how the paragraph drifted from a two-term rule to a four-term one
 # while staying byte-identical everywhere.

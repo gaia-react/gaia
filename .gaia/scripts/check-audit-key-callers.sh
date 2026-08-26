@@ -4,7 +4,7 @@
 # Check the audit-key meter (`C4-01`/`C4-02`) cannot see on its own. The
 # meter's fixtures prove
 # that `gaia_audit_key` (`.gaia/scripts/audit-key-lib.sh`) itself partitions
-# two worktrees correctly; they cannot prove the five Code Audit Team agent
+# two worktrees correctly; they cannot prove the Code Audit Team agent
 # definitions that name a findings sidecar or the re-run ledger actually
 # CALL it instead of hand-building the old collision-prone path. Without this
 # check, prose drift back to a bare base-sha literal leaves a green meter
@@ -33,9 +33,9 @@
 #      whole file, not a call-shape check: the grep is a fixed-string match,
 #      so descriptive prose satisfies it exactly as an executable call does.
 #      That is deliberate. Only `code-audit-frontend.md` derives a path
-#      itself; the other four definitions delegate keying to
-#      `.gaia/scripts/audit-write-findings.sh` and name `gaia_audit_key` only
-#      to say so, so a call-shape check would fail all four for correctly
+#      itself; every other definition delegates keying to
+#      `.gaia/scripts/audit-write-findings.sh` and names `gaia_audit_key` only
+#      to say so, so a call-shape check would fail each of them for correctly
 #      delegating.
 #
 #      The two assertions are therefore not symmetric. (1) is the one that

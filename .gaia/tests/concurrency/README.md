@@ -692,7 +692,7 @@ reads back **tree B's** file, not only tree A's: the frozen assertion always sai
 being measured. Second, a fixture that drives the shipped function can go green
 vacuously, so the green is backed by mutation: breaking the shipped key (dropping the
 branch component) turns both scenarios red, and the same fixtures stay red for the
-old writer. What the fixtures still cannot prove is that the five agent definitions
+old writer. What the fixtures still cannot prove is that the agent definitions
 *call* the function — that is a static check
 (`.gaia/scripts/check-audit-key-callers.sh`), because prose drift would otherwise
 leave a green meter over a broken writer.

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # audit-write-findings.sh: the ONE shared writer for a Code Audit Team member's
 # findings sidecar, the artifact the PR Merge Workflow calls "the report of
-# record". Replaces the hand-authored `printf` each of the five agent
-# definitions used to describe in prose.
+# record". Replaces the hand-authored `printf` every agent definition used
+# to describe in prose.
 #
 # Why a writer and not prose
 #   The sidecar is the only durable channel a member's findings travel through:

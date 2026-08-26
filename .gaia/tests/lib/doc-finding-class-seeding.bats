@@ -15,9 +15,9 @@
 # `code-audit-github-workflows.md` carries a second `## Workflow class
 # assignment` section for the four `workflow/*` classes.
 #
-# The same instruction is duplicated across five files by design; this suite
-# is the deterministic check keeping the copies in step with the schema
-# instead of trusting five hand edits to stay aligned. Every grep target
+# The same instruction is duplicated across the member definitions by design;
+# this suite is the deterministic check keeping the copies in step with the
+# schema instead of trusting hand edits to stay aligned. Every grep target
 # below is extracted-section-scoped (never whole-file, except where a test
 # says otherwise) and ground-truthed against the real source text before
 # being written, the same discipline doc-countability-prose.bats documents.
@@ -52,7 +52,7 @@ extract_array_slugs() {
 # readonly string[] = [`, compiles clean, resolves every import, and makes the
 # helper print nothing. Both consumers loop with `for slug in $(...)`, so a
 # zero-slug sweep runs the body zero times and the test reports ok, retiring
-# the coupling between the schema and the five agent definitions with no
+# the coupling between the schema and the agent definitions with no
 # signal anywhere. Guard per array rather than over the four concatenated: with
 # only one prefix renamed the other three still populate a combined list, so a
 # combined check passes vacuously over exactly the members the caller is
@@ -392,7 +392,7 @@ setup() {
 # closed vocabulary on purpose, so it never appears in the array this test
 # reads.
 
-@test "group G (maintainer-tree scope): every HOLISTIC_FINDING_CLASSES, RULE_FINDING_CLASSES, WORKFLOW_FINDING_CLASSES, and PROSE_FINDING_CLASSES member is named by at least one of the five members' prose" {
+@test "group G (maintainer-tree scope): every HOLISTIC_FINDING_CLASSES, RULE_FINDING_CLASSES, WORKFLOW_FINDING_CLASSES, and PROSE_FINDING_CLASSES member is named by at least one member's prose" {
   local slug found f holistic rule workflow prose
   # Each array is swept and guarded on its own line, because a command
   # substitution inside a `for` list discards its own exit status: a
@@ -416,7 +416,7 @@ setup() {
 
 # --- Group I: an assigning member can still reach the classes it omits -----
 #
-# Group G is satisfied when ANY ONE of the five members names a slug, and
+# Group G is satisfied when ANY ONE of the members names a slug, and
 # code-audit-frontend.md's mirror satisfies it alone. So nothing above pins
 # that a member which ASSIGNS holistic classes can reach the ones its own
 # assignment section leaves out. code-audit-github-workflows.md is the case

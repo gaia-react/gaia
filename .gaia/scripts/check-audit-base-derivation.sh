@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck shell=bash
 #
-# Keep the Code Audit Team's five members on ONE review base.
+# Keep every Code Audit Team member on ONE review base.
 #
 # `gaia_audit_key` (.gaia/scripts/audit-key-lib.sh) is
 # `<base_sha>.<branch-slug>`, and co-dispatched members share a branch, so
@@ -131,13 +131,16 @@
 #      spelling a call should use; the three-dot range is the whole
 #      requirement.
 #
-#      Scoped per CALL by three walls: the next `diff --name-only` (without
-#      which the window runs to end of line and a two-dot call is vouched for
-#      by a LATER correct call's dots), `#`, and a backtick. The latter two end
-#      a shell line's code and close a markdown code span; without them a
-#      correct call carrying a trailing `# was BASE_REF` comment would report
-#      itself, and so would prose naming the command and a base in one
-#      sentence.
+#      Scoped per CALL by walls that each cut the window at their earliest
+#      occurrence. The first is the next `diff --name-only`, without which the
+#      window runs to end of line and a two-dot call is vouched for by a LATER
+#      correct call's dots. The rest end a shell line's code or close a
+#      markdown code span; without them a correct call carrying a trailing
+#      `# was BASE_REF` comment would report itself, and so would prose naming
+#      the command and a base in one sentence. The awk cuts below are where the
+#      wall set is applied, and that application is authoritative over any prose
+#      describing it, this sentence included. Deliberately no count here: it
+#      said three while the code had grown to cut on five.
 #
 #      This assertion scans `.claude/agents/code-audit-*.md`, NOT the whole
 #      directory that (1) and (2) range over. Only a Code Audit Team member HAS
@@ -248,10 +251,11 @@
 #   passes a temp repo, so "would this literal fail the check" is testable
 #   without touching real tracked source.
 #
-# GREEN against this repo's real `.claude/agents/`: all five definitions
-# resolve their review base through the resolver, the only bare merge-base
-# left is each specialist's `FULL_BASE`, and every changed-file diff is a
-# three-dot range against HEAD carrying `-z`.
+# GREEN against this repo's real `.claude/agents/`: every definition
+# resolves its review base through the resolver, the only bare merge-base
+# left is the named `FULL_BASE` exemption (each specialist's self-skip
+# derivation and the default member's eligibility one), and every changed-file
+# diff is a three-dot range against HEAD carrying `-z`.
 
 # Assertion 1's candidate shape: any assignment whose value reaches a
 # `merge-base` call. Deliberately a wide net -- BOTH discriminations that
@@ -422,7 +426,7 @@ _gaia_drop_full_base_matches() {
 # further along, prose naming the resolver.
 #
 # The call's text ends at the first `#`, backtick, `;`, or `)` after it. Those
-# four characters are the walls that matter here: `#` opens a shell comment,
+# characters are the walls that matter here: `#` opens a shell comment,
 # a backtick closes a markdown code span, `;` ends the command outright, `)`
 # closes the `$( )` the call lives inside, and past any of them the text is no
 # longer part of this call. `;` and `)` are walls for the same reason
@@ -433,7 +437,7 @@ _gaia_drop_full_base_matches() {
 # `)` earns its place on a concrete escape rather than on symmetry. Without it
 # the window of `changed=$(git diff --name-only "${BASE}...HEAD") && [ -z
 # "$changed" ]` runs to end of line, and the emptiness test's own `-z` then
-# satisfies assertion 4 for a call that quotes. None of the other three walls
+# satisfies assertion 4 for a call that quotes. None of the other walls
 # closes that: there is no second call, no comment, and no code span.
 #
 # `|` is deliberately NOT a wall, which is where this walk and the ownership
