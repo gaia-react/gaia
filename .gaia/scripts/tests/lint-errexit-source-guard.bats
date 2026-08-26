@@ -138,13 +138,57 @@ plant() {
   grep -qF -- ".claude/hooks/probe.sh:6" <<<"$output"
 }
 
-@test "flags a load whose only bracket lives inside a heredoc body" {
+# The restore this load needs lives in a heredoc BODY, which is data the shell
+# hands to a command rather than shell it runs. Read as code the pair brackets
+# the load; read as data the load is inside a suspend nothing closes. The load
+# sits after the `set +e` and before the body deliberately: a fixture whose load
+# precedes the heredoc entirely is reported for the ordinary reason and cannot
+# tell a linter that skips heredoc bodies from one that does not.
+@test "a restore inside a heredoc body does not close the bracket above it" {
   new_fixture
-  plant .claude/hooks/probe.sh $'#!/usr/bin/env bash\nset -euo pipefail\n. .claude/hooks/lib/helper.sh\ncat <<\'USAGE\'\nset +e\nset -e\nUSAGE\n'
+  plant .claude/hooks/probe.sh $'#!/usr/bin/env bash\nset -euo pipefail\nset +e\n. .claude/hooks/lib/helper.sh\ncat <<\'USAGE\'\nset -e\nUSAGE\n'
   plant .claude/hooks/lib/helper.sh $'helper() { :; }\n'
   run bash -c "cd '$TMP' && bash '$LINTER'"
   [ "$status" -eq 1 ]
-  grep -qF -- ".claude/hooks/probe.sh:3" <<<"$output"
+  grep -qF -- ".claude/hooks/probe.sh:4" <<<"$output"
+  grep -qF -- "never restored" <<<"$output"
+}
+
+# The swallow direction, which fails OPEN and so is the more dangerous half. A
+# `<<WORD` inside a quoted string is not a heredoc opener; read as one it opens
+# a body that never ends, and every line below is skipped as body, so the file
+# is reported clean over input the scan never read. Verbatim from
+# .gaia/scripts/read-audit-ci-config.sh, where it is live today.
+@test "a << inside a quoted string does not swallow the rest of the file" {
+  new_fixture
+  plant .claude/hooks/probe.sh $'#!/usr/bin/env bash\nset -euo pipefail\nprintf \'retrigger_workflows<<__GAIA_END__\\n\'\n. .claude/hooks/lib/helper.sh\n'
+  plant .claude/hooks/lib/helper.sh $'helper() { :; }\n'
+  run bash -c "cd '$TMP' && bash '$LINTER'"
+  [ "$status" -eq 1 ]
+  grep -qF -- ".claude/hooks/probe.sh:4" <<<"$output"
+}
+
+# `<<<` is a herestring: its operand is a word on the same line, not a body on
+# the lines below. Read as a heredoc opener it swallows the rest of the file.
+@test "a herestring does not swallow the rest of the file" {
+  new_fixture
+  plant .claude/hooks/probe.sh $'#!/usr/bin/env bash\nset -euo pipefail\ngrep -q x <<<hello || true\n. .claude/hooks/lib/helper.sh\n'
+  plant .claude/hooks/lib/helper.sh $'helper() { :; }\n'
+  run bash -c "cd '$TMP' && bash '$LINTER'"
+  [ "$status" -eq 1 ]
+  grep -qF -- ".claude/hooks/probe.sh:4" <<<"$output"
+}
+
+# The residual guard. Whatever the walk reads wrong, a heredoc still open when
+# the file ends means every line after it went unread, so the check says so and
+# fails rather than returning a verdict over input it never saw.
+@test "an unterminated heredoc fails the check instead of reporting clean" {
+  new_fixture
+  plant .claude/hooks/probe.sh $'#!/usr/bin/env bash\nset -euo pipefail\ncat <<\'NEVER\'\nbody line\n'
+  run bash -c "cd '$TMP' && bash '$LINTER'"
+  [ "$status" -eq 1 ]
+  grep -qF -- "is never closed" <<<"$output"
+  grep -qF -- "UNREAD" <<<"$output"
 }
 
 # 3. Accepted shapes and out-of-scope files are NOT flagged
@@ -213,11 +257,14 @@ plant() {
 }
 
 # The multi-line restore, where the guard is on the line above rather than
-# ahead of the `set -e` on its own line.
+# ahead of the `set -e` on its own line, with a comment between the two. The
+# comment is the point: a `then`-adjacency test that a comment line clears reds
+# this file, and this tree comments densely enough that the commented spelling
+# is the likely one.
 @test "accepts a state-preserving bracket whose restore spans two lines" {
   new_fixture
   plant .claude/hooks/probe.sh $'#!/usr/bin/env bash\nset -euo pipefail\nset +e; [ -f .claude/hooks/lib/mid.sh ] && . .claude/hooks/lib/mid.sh 2>/dev/null; set -e\n'
-  plant .claude/hooks/lib/mid.sh $'_d="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"\nerrexit_was=0\ncase $- in *e*) errexit_was=1 ;; esac\nset +e\n. "$_d/helper.sh" 2>/dev/null\nif [ "$errexit_was" = 1 ]; then\n  set -e\nfi\n'
+  plant .claude/hooks/lib/mid.sh $'_d="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"\nerrexit_was=0\ncase $- in *e*) errexit_was=1 ;; esac\nset +e\n. "$_d/helper.sh" 2>/dev/null\nif [ "$errexit_was" = 1 ]; then\n  # put errexit back only for a caller that had it\n  set -e\nfi\n'
   plant .claude/hooks/lib/helper.sh $'helper() { :; }\n'
   run bash -c "cd '$TMP' && bash '$LINTER'"
   [ "$status" -eq 0 ]

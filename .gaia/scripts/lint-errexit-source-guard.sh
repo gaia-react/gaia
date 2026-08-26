@@ -30,7 +30,10 @@
 # RECURSE, so each round's fix left a residual one source level deeper, and each
 # round found it there. This check works on the errexit-reachable source CLOSURE,
 # so it sees a library's own loads whether or not any consumer parse-checked the
-# library, and no future round can leave a residual it cannot see.
+# library, and no future round can leave a residual it cannot see INSIDE the
+# scan roots below. The closure stops at those roots, so a load in a file they
+# do not cover is outside this check whatever sources it; the qualifier is the
+# honest form of the claim, and widening the roots is what changes it.
 #
 # Reference fixes: .claude/hooks/block-no-verify.sh (flat bracket, a file that
 # arms errexit itself) and .claude/hooks/lib/verb-arming.sh (state-preserving
@@ -162,6 +165,53 @@ records="$(awk '
     return out
   }
 
+  # The delimiter of a heredoc this line OPENS, or empty. A character walk
+  # rather than a regex, because the two shapes a regex gets wrong are both live
+  # in this tree and both fail OPEN: a `<<WORD` inside a quoted string opens a
+  # heredoc that never closes, and every line below it is then skipped as body,
+  # so the scan reports clean over input it never read; and `<<<WORD` is a
+  # herestring, whose operand is a word on this same line rather than a body on
+  # the lines below.
+  #
+  # `.gaia/scripts/lint-errexit-status-read.sh` carries a fuller tracker of the
+  # same kind, inside a walk that also holds quote state ACROSS lines. This one
+  # is deliberately narrower: it answers one question per line and carries no
+  # state between them, which is what the event scan needs and all it can use.
+  # What bounds the difference is not the walk but the end-of-file guard below.
+  # A heredoc still open when the file ends is reported and fails the check, so
+  # a shape this walk reads wrong stops the scan loudly instead of silently
+  # skipping the rest of a file.
+  function heredoc_delim(s,   i, c, q, arith, j, ch, d, len) {
+    q = ""
+    arith = 0
+    len = length(s)
+    for (i = 1; i <= len; i++) {
+      c = substr(s, i, 1)
+      if (q != "") { if (c == q) q = ""; continue }
+      if (c == "\\") { i++; continue }
+      if (c == "\"" || c == "\047") { q = c; continue }
+      # `$(( ))`, where `<<` is a left shift and not a redirection.
+      if (c == "$" && substr(s, i + 1, 2) == "((") { arith++; i += 2; continue }
+      if (arith > 0 && c == ")" && substr(s, i + 1, 1) == ")") { arith--; i++; continue }
+      if (c != "<" || substr(s, i + 1, 1) != "<" || arith > 0) continue
+      if (substr(s, i + 2, 1) == "<") { i += 2; continue }
+      j = i + 2
+      if (substr(s, j, 1) == "-") j++
+      while (substr(s, j, 1) == " " || substr(s, j, 1) == "\t") j++
+      d = ""
+      ch = substr(s, j, 1)
+      if (ch == "\047" || ch == "\"") {
+        j++
+        while (j <= len && substr(s, j, 1) != ch) { d = d substr(s, j, 1); j++ }
+      } else {
+        while (j <= len && substr(s, j, 1) ~ /[A-Za-z0-9_.\/-]/) { d = d substr(s, j, 1); j++ }
+      }
+      if (d != "") return d
+      i = j - 1
+    }
+    return ""
+  }
+
   # The basename of the first .sh operand on the line, which is the load target
   # at every site in this tree. Empty when the operand is a bare variable.
   function target(s,   t) {
@@ -201,7 +251,12 @@ records="$(awk '
       sub(/[[:space:]].*$/, "", op)
       rem = trim(substr(w, length(op) + 1))
       # Only redirections may follow. `2>/dev/null`, `>/dev/null 2>&1`, `>&2`.
-      if (rem != "" && rem !~ /^([0-9]*[<>]+&?[^[:space:]]*[[:space:]]*)+$/) continue
+      # Accepted miss, stated rather than silent: `source lib.sh --flag` passes
+      # ARGUMENTS to the sourced file, a legal spelling this tree does not use,
+      # and it reads as not-a-load rather than as an unguarded one. Admitting a
+      # trailing word would readmit every sentence whose next word is a
+      # variable, which is the thing this test exists to keep out.
+      if (rem != "" && rem !~ /^([0-9]*[<>]+&?[[:space:]]*[^[:space:]]*[[:space:]]*)+$/) continue
       if (op ~ /\.sh["'"'"']?$/) return 1
       if (op ~ /^["'"'"']?\$\{?[A-Za-z_][A-Za-z0-9_]*(:-[^}]*)?\}?["'"'"']?$/) return 1
     }
@@ -239,12 +294,15 @@ records="$(awk '
         if (s == heredoc || t == heredoc) heredoc = ""
         continue
       }
-      if (match(s, /<<-?[[:space:]]*["'"'"']?[A-Za-z_][A-Za-z0-9_]*["'"'"']?/)) {
-        heredoc = substr(s, RSTART, RLENGTH)
-        sub(/^<<-?[[:space:]]*/, "", heredoc)
-        gsub(/["'"'"']/, "", heredoc)
-      }
-      if (s ~ /^[[:space:]]*#/) { prev_then = 0; continue }
+      heredoc = heredoc_delim(s)
+      # A line carrying no code carries no answer either. `decomment` has
+      # already emptied a full-line comment, so this arm covers a comment and a
+      # blank line alike, and it leaves `prev_then` UNCHANGED rather than
+      # clearing it: clearing turns the documented two-line restore into a
+      # defect the moment someone writes a comment between the `then` and the
+      # `set -e`, which in this tree is the likely spelling rather than an
+      # exotic one, and reds a required shard on a correct file.
+      if (s ~ /^[[:space:]]*$/) continue
       if (s ~ /case[[:space:]]+\$-[[:space:]]+in/ && s ~ /\*e\*/) capture = 1
       # suspends and restores, left to right
       rest = s
@@ -347,6 +405,10 @@ records="$(awk '
       SITELINE[sn] = evl[i]
       SITETGT[sn] = evx[i]
     }
+    # A heredoc still open when the file ends means the walk above read an
+    # opener the shell does not, and every line after it was skipped as body.
+    # Report that rather than returning a verdict over input never read.
+    if (heredoc != "") printf "UNTERMINATED|%s|%s\n", file, heredoc
     if (armed) printf "ARM|%s\n", file
     for (i = 1; i <= sn; i++) {
       printf "SITE|%s|%d|%s|%s|%s\n", file, SITELINE[i], SITETGT[i], SITESHAPE[i], trim(RAW[SITELINE[i]])
@@ -376,6 +438,7 @@ records="$(awk '
     else BASE[b] = $2
     next
   }
+  $1 == "UNTERMINATED" { UNTERM[++un] = $2 "|" $3; next }
   $1 == "ARM" { ARM[$2] = 1; next }
   $1 == "SITE" {
     k = ++sn
@@ -407,6 +470,12 @@ records="$(awk '
       }
     }
     hits = 0
+    for (k = 1; k <= un; k++) {
+      split(UNTERM[k], u, "|")
+      hits++
+      printf "%s: a heredoc opened with delimiter `%s` is never closed\n", u[1], u[2]
+      printf "    every line below it was skipped as heredoc body, so this file went UNREAD\n"
+    }
     for (k = 1; k <= sn; k++) {
       if (!(SF[k] in REACH)) continue
       why = ""

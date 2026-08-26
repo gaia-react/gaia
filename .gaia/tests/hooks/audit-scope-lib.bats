@@ -39,9 +39,16 @@ setup() {
 # counts the call it carries. Dropping the whole line reads that one-liner as
 # zero invocations, which greens the "calls it once" assertion over a consumer
 # that calls it twice.
+#
+# Counting occurrences is what makes the two other filters load-bearing, and
+# per-line counting hid the need for both: comments go first, because a header
+# naming the symbol twice in prose now contributes two, and the match is
+# anchored on a non-identifier boundary, because `audit_scope_init` is a prefix
+# of any longer name someone adds later.
 count_invocations() {
-  sed -E "s/(^|[[:space:]])(type|command -v)[[:space:]]+$2([[:space:]]|\$)/\1 /g" "$1" \
-    | grep -o "$2 " | grep -c .
+  sed -e 's/[[:space:]]#.*$//' -e 's/^[[:space:]]*#.*$//' "$1" \
+    | sed -E "s/(^|[[:space:]])(type|command -v)[[:space:]]+$2([[:space:]]|\$)/\1 /g" \
+    | grep -oE "(^|[^A-Za-z0-9_])$2[[:space:]]" | grep -c .
 }
 
 # Extract a named function's body (from its `name() {` line through the next
