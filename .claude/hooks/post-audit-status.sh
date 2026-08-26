@@ -123,7 +123,7 @@ set -euo pipefail
 # `if` condition, where a 127 is errexit-exempt and falls through to the same
 # decline an unreadable marker takes -- correct, but noisier, since it prints a
 # `command not found` beside a decline whose message blames the marker.
-_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)"
+_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)" || true
 set +e
 if [ -n "$_lib_dir" ]; then
   # shellcheck source=/dev/null
@@ -137,7 +137,7 @@ set -e
 
 # Load the shared main-root resolver the same guarded way, from this hook's
 # own on-disk location. Backs the main-anchored `repo_root` derivation below.
-_root_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd)"
+_root_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd)" || true
 set +e
 # shellcheck source=/dev/null
 [ -n "$_root_lib_dir" ] && [ -f "$_root_lib_dir/.gaia/scripts/main-root-lib.sh" ] \

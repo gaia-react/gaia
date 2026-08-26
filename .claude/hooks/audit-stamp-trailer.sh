@@ -66,7 +66,7 @@ set -euo pipefail
 # proves nothing and no caller can guard it from outside -- `bash -n` does not
 # recurse into what a file sources. Every consumer below already gates on
 # `type` / `command -v`, which is what degrades once the shell survives.
-_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)"
+_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)" || true
 set +e
 if [ -n "$_lib_dir" ]; then
   # shellcheck source=/dev/null
