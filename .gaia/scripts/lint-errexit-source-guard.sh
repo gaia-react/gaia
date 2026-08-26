@@ -161,13 +161,31 @@ records="$(awk '
   # `. "${dir:-}/lib.sh"` -- splits the load away from its own operand and hides
   # the site. Masking first keeps the separators that are separators.
   # `close` and `index` are awk built-ins, so the delimiters are named cl/op.
-  function mask(s,   out, i, c, d, cl, op) {
+  #
+  # Quote state is not optional here, though it looks like a refinement. Single
+  # quotes suspend every expansion, so a `$(`, `${` or backtick written inside
+  # them is a literal character; read as a span opener it starts a depth walk
+  # that never closes, and the whole tail of the line becomes one sentinel.
+  # Line-locally that hides a load written after it. File-wide it is worse: the
+  # block-depth counters read this same masked line, so a `fi` or `esac` lost to
+  # the erase leaves the depth elevated for every remaining line of the file,
+  # and every later flat restore in a library is then credited as a conditional
+  # one. Masking stays ON inside DOUBLE quotes, because `. "$(dirname "$0")/x.sh"`
+  # depends on it, and an unbalanced `$(` there is a real line continuation
+  # whose tail genuinely belongs to the span.
+  function mask(s,   out, i, c, d, cl, op, q, len) {
     out = ""
-    for (i = 1; i <= length(s); i++) {
+    q = ""
+    len = length(s)
+    for (i = 1; i <= len; i++) {
       c = substr(s, i, 1)
+      if (q == "'"'"'") { out = out c; if (c == "'"'"'") q = ""; continue }
+      if (c == "\\" && i < len) { out = out c substr(s, i + 1, 1); i++; continue }
+      if (c == "'"'"'" && q == "") { q = "'"'"'"; out = out c; continue }
+      if (c == "\"") { q = (q == "\"") ? "" : "\""; out = out c; continue }
       if (c == "`") {
         i++
-        while (i <= length(s) && substr(s, i, 1) != "`") i++
+        while (i <= len && substr(s, i, 1) != "`") i++
         out = out "@"
         continue
       }
@@ -176,7 +194,7 @@ records="$(awk '
         cl = (op == "(") ? ")" : "}"
         d = 0
         i++
-        for (; i <= length(s); i++) {
+        for (; i <= len; i++) {
           c = substr(s, i, 1)
           if (c == op) d++
           else if (c == cl) { d--; if (d == 0) break }
@@ -263,7 +281,7 @@ records="$(awk '
   # A heredoc still open when the file ends is reported and fails the check, so
   # a shape this walk reads wrong stops the scan loudly instead of silently
   # skipping the rest of a file.
-  function heredoc_delim(s,   i, c, q, arith, j, ch, d, len, all, pre) {
+  function heredoc_delim(s,   i, c, q, arith, j, ch, d, len, all, pre, tabs) {
     q = ""
     arith = 0
     all = ""
@@ -294,7 +312,8 @@ records="$(awk '
       if (c != "<" || substr(s, i + 1, 1) != "<" || arith > 0) continue
       if (substr(s, i + 2, 1) == "<") { i += 2; continue }
       j = i + 2
-      if (substr(s, j, 1) == "-") j++
+      tabs = 0
+      if (substr(s, j, 1) == "-") { tabs = 1; j++ }
       while (substr(s, j, 1) == " " || substr(s, j, 1) == "\t") j++
       d = ""
       ch = substr(s, j, 1)
@@ -305,7 +324,11 @@ records="$(awk '
       } else {
         while (j <= len && substr(s, j, 1) ~ /[A-Za-z0-9_.\/-]/) { d = d substr(s, j, 1); j++ }
       }
-      if (d != "") all = all (all == "" ? "" : "\n") d
+      # Queued with the form that opened it, because only `<<-` allows the
+      # terminator to be indented. Stripping tabs for every heredoc lets a
+      # tab-indented delimiter close a plain `<<EOF` the shell keeps reading,
+      # and every line the shell still hands over as data is then read as code.
+      if (d != "") all = all (all == "" ? "" : "\n") (tabs ? "T" : "P") d
       i = j - 1
     }
     return all
@@ -324,13 +347,11 @@ records="$(awk '
     return t
   }
 
-  # Is `.`/`source` the FIRST word of some command on this line, with an operand
-  # that could name a file? Command position, not text proximity: `jq -e . "$f"`
+  # Is this segment a LOAD? Command position, not text proximity: `jq -e . "$f"`
   # and `git grep -- .` put the dot in an argument slot and are not loads.
-  # Splitting on the separators leaves each command as one field; leading
-  # keywords are stripped so `if . "$p"; then` reads as a load, which is the
-  # spelling that stayed invisible to the capability oracle for a full release
-  # (gaia-react/gaia#1549).
+  # Leading keywords are stripped so `if . "$p"; then` reads as a load, which is
+  # the spelling that stayed invisible to the capability oracle for a full
+  # release (gaia-react/gaia#1549).
   #
   # The operand test is what keeps English out. A deny message carrying
   # `(wiki/concepts/Git Workflow.md). Create a feature branch` splits at the
@@ -342,66 +363,72 @@ records="$(awk '
   # untouched.` -- and two such lines are live in this tree today. Without the
   # end-of-segment test a log string reads as an unguarded load the moment its
   # file arms errexit, and the check reports a remedy that makes no sense for it.
-  function is_load(s,   n, i, parts, w, op, rem) {
-    n = split(s, parts, /&&|\|\||[;|&(){}]/)
-    for (i = 1; i <= n; i++) {
-      w = trim(parts[i])
-      while (w ~ /^(if|elif|while|until|then|else|do|!|time|exec)[[:space:]]/) {
-        sub(/^(if|elif|while|until|then|else|do|!|time|exec)[[:space:]]+/, "", w)
-      }
-      if (w !~ /^(\.|source)[[:space:]]/) continue
-      sub(/^(\.|source)[[:space:]]+/, "", w)
-      op = w
-      sub(/[[:space:]].*$/, "", op)
-      rem = trim(substr(w, length(op) + 1))
-      # Only redirections may follow. `2>/dev/null`, `>/dev/null 2>&1`, `>&2`.
-      # Accepted miss, stated rather than silent: `source lib.sh --flag` passes
-      # ARGUMENTS to the sourced file, a legal spelling this tree does not use,
-      # and it reads as not-a-load rather than as an unguarded one. Admitting a
-      # trailing word would readmit every sentence whose next word is a
-      # variable, which is the thing this test exists to keep out.
-      if (rem != "" && rem !~ /^([0-9]*[<>]+&?[[:space:]]*[^[:space:]]*[[:space:]]*)+$/) continue
-      if (op ~ /\.sh["'"'"']?$/) return 1
-      if (op ~ /^["'"'"']?\$[A-Za-z_][A-Za-z0-9_]*["'"'"']?$/) return 1
-      # An operand that `mask` reduced to the sentinel WAS a whole `${...}` or
-      # `$(...)` expansion, so it names a file this walk cannot resolve and the
-      # load still has to be judged. Without this arm the braced spellings --
-      # `. "${LIB}"`, `. "${LIB:-default}"`, `. "$(cmd)"` -- reach the tests
-      # above as the literal sentinel, match neither, and pass the gate silently,
-      # which is the direction this check exists to close.
-      if (op ~ /^["'"'"']?@["'"'"']?$/) return 1
+  #
+  # An operand the mask reduced to the sentinel WAS a whole `${...}` or `$(...)`
+  # expansion, so it names a file this walk cannot resolve and the load still
+  # has to be judged; without that arm the braced spellings pass silently.
+  function segment_is_load(w,   op, rem) {
+    while (w ~ /^(if|elif|while|until|then|else|do|!|time|exec)[[:space:]]/) {
+      sub(/^(if|elif|while|until|then|else|do|!|time|exec)[[:space:]]+/, "", w)
     }
+    if (w !~ /^(\.|source)[[:space:]]/) return 0
+    sub(/^(\.|source)[[:space:]]+/, "", w)
+    op = w
+    sub(/[[:space:]].*$/, "", op)
+    rem = trim(substr(w, length(op) + 1))
+    # Only redirections may follow. `2>/dev/null`, `>/dev/null 2>&1`, `>&2`.
+    # Accepted miss, stated rather than silent: `source lib.sh --flag` passes
+    # ARGUMENTS to the sourced file, a legal spelling this tree does not use,
+    # and it reads as not-a-load rather than as an unguarded one. Admitting a
+    # trailing word would readmit every sentence whose next word is a variable,
+    # which is the thing this test exists to keep out.
+    if (rem != "" && rem !~ /^([0-9]*[<>]+&?[[:space:]]*[^[:space:]]*[[:space:]]*)+$/) return 0
+    if (op ~ /\.sh["'"'"']?$/) return 1
+    if (op ~ /^["'"'"']?\$[A-Za-z_][A-Za-z0-9_]*["'"'"']?$/) return 1
+    if (op ~ /^["'"'"']?@["'"'"']?$/) return 1
     return 0
   }
 
   # WHERE on the line the load sits, so a same-line `set +e` ahead of it and a
   # same-line `set -e` behind it are read in the order the shell reads them --
-  # and 0 when every load-shaped token on the line sits inside a string.
+  # and 0 when the line carries no load at all.
   #
-  # One function answers both questions on purpose. A separate quote-blind
-  # locator beside this one is the same predicate written twice, and the copy
-  # that supplied the column decided the within-line event order: a string
-  # spelling a load-shaped token ahead of a real load put the site inside a
-  # closed `set +e`..`set -e` span, so a genuinely unguarded load read as
-  # bracketed and the check reported it clean. `is_load` has to
-  # read the masked line rather than the quote-blanked one, because blanking
-  # destroys the operand its `.sh` arm needs; the quote test therefore happens
-  # here instead. A separator inside a string splits a sentence into a segment
-  # whose first word is the dot -- `echo "first; . lib/helper.sh"` -- and that
-  # segment reads as an unguarded load of a line that loads nothing. Blanking
-  # preserves length, so a column in `q` indexes the same character as in `m`,
-  # and a blank there means the token existed only as data. Every candidate is
-  # walked rather than the first, so a quoted dot ahead of a real load does not
-  # hide it.
-  function load_pos(mm, qq,   t, off, p) {
-    t = mm
+  # ONE predicate decides both the column and the load-ness, of the SAME token.
+  # Splitting them is what put a decoy column on a real site twice: a quoted
+  # decoy first, then an unquoted argument-position dot after the quote filter
+  # landed. Either way the site sorted to the decoy, and a decoy sitting inside
+  # a closed `set +e`..`set -e` span made a genuinely unguarded load after that
+  # span read as bracketed, so the gate exited clean on the class it exists to
+  # catch. Each candidate is now tested where it stands: blanked in `qq` means
+  # it existed only inside a string, and its own segment -- from the token to
+  # the next separator -- has to read as a load on its own terms.
+  function load_pos(mm, qq,   rest, off, seg, p, ms, ml) {
+    rest = mm
     off = 0
-    while (match(t, /(^|[;&|(){}[:space:]])(\.|source)[[:space:]]/)) {
-      p = off + RSTART
-      if (substr(mm, p, 1) != "." && substr(mm, p, 1) != "s") p++
-      if (substr(qq, p, 1) != " ") return p
-      off = off + RSTART + RLENGTH - 1
-      t = substr(t, RSTART + RLENGTH)
+    while (length(rest) > 0) {
+      if (match(rest, /&&|\|\||[;|&(){}]/)) {
+        ms = RSTART
+        ml = RLENGTH
+        seg = substr(rest, 1, ms - 1)
+      } else {
+        ms = 0
+        ml = 0
+        seg = rest
+      }
+      # The WHOLE segment, from one separator to the next, because command
+      # position is what `segment_is_load` tests and a slice starting at the
+      # token makes that token the first word by construction: `grep -Iq . "$f"`
+      # would then read as a load of `"$f"`.
+      if (segment_is_load(trim(seg))) {
+        if (match(seg, /(^|[[:space:]])(\.|source)[[:space:]]/)) {
+          p = off + RSTART
+          if (substr(seg, RSTART, 1) != "." && substr(seg, RSTART, 1) != "s") p++
+          if (substr(qq, p, 1) != " ") return p
+        }
+      }
+      if (ms == 0) break
+      off = off + ms + ml - 1
+      rest = substr(rest, ms + ml)
     }
     return 0
   }
@@ -427,9 +454,10 @@ records="$(awk '
       # The delimiter test is the one the shell applies: the line IS the
       # delimiter, with leading tabs allowed only for the `<<-` form.
       if (heredoc != "") {
-        t = s
-        sub(/^\t+/, "", t)
         cur = hd_head(heredoc)
+        t = s
+        if (substr(cur, 1, 1) == "T") sub(/^\t+/, "", t)
+        cur = substr(cur, 2)
         if (s == cur || t == cur) heredoc = hd_rest(heredoc)
         continue
       }
@@ -496,7 +524,7 @@ records="$(awk '
         rest = substr(rest, mstart + mlen)
       }
       lp = load_pos(m, q)
-      if (lp > 0 && is_load(m)) {
+      if (lp > 0) {
         evn++
         evt[evn] = "site"
         evl[evn] = i
@@ -582,7 +610,7 @@ records="$(awk '
     # A heredoc still open when the file ends means the walk above read an
     # opener the shell does not, and every line after it was skipped as body.
     # Report that rather than returning a verdict over input never read.
-    if (heredoc != "") printf "UNTERMINATED|%s|%s\n", file, hd_head(heredoc)
+    if (heredoc != "") printf "UNTERMINATED|%s|%s\n", file, substr(hd_head(heredoc), 2)
     if (armed) printf "ARM|%s\n", file
     for (i = 1; i <= sn; i++) {
       printf "SITE|%s|%d|%s|%s|%s\n", file, SITELINE[i], SITETGT[i], SITESHAPE[i], trim(RAW[SITELINE[i]])

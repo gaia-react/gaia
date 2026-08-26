@@ -152,6 +152,18 @@ EOF
   [ "$(count_invocations "$probe" audit_scope_init)" -eq 1 ]
 }
 
+# last_definition <file>: the name of the last function the file defines, in
+# every spelling bash accepts. Reading only the canonical `name() {` would leave
+# the pin below green when a function is appended as `function name {` or with
+# extra spacing, which is the drift it exists to catch: `tail -1` would still
+# return the previously-last definition.
+last_definition() {
+  sed -E -n \
+    -e 's/^function[[:space:]]+([A-Za-z0-9_]+)[[:space:]]*(\(\)[[:space:]]*)?\{.*$/\1/p' \
+    -e 's/^([A-Za-z0-9_]+)[[:space:]]*\([[:space:]]*\)[[:space:]]*\{.*$/\1/p' \
+    "$1" | tail -1
+}
+
 # The resolver argues that probing each module's LAST definition needs no
 # reasoning about which internal call goes how deep: a truncated copy parses as
 # far as the truncation and defines everything ahead of it, so an early-export
@@ -164,8 +176,8 @@ EOF
   [ -n "$probed_scope" ]
   [ -n "$probed_prov" ]
 
-  last_scope="$(grep -oE '^[A-Za-z0-9_]+\(\) \{' "$SCOPE_LIB" | tail -1 | sed 's/() {$//')"
-  last_prov="$(grep -oE '^[A-Za-z0-9_]+\(\) \{' "$PROVENANCE_LIB" | tail -1 | sed 's/() {$//')"
+  last_scope="$(last_definition "$SCOPE_LIB")"
+  last_prov="$(last_definition "$PROVENANCE_LIB")"
   [ -n "$last_scope" ]
   [ -n "$last_prov" ]
 

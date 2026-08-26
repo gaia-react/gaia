@@ -86,9 +86,9 @@ LIB="$SELF_DIR/lib/audit-selfheal-paths.sh"
 #
 # Unset first, so the test reads what the LOAD defined rather than what the
 # environment happened to carry: this hook inherits its parent process's
-# environment, the audit workflow exports a variable of exactly this name, and
-# an inherited copy would satisfy the guard after the load failed -- fail-open,
-# in the one place this hook is written to fail loud.
+# environment, and ANY ambient copy of this name there, however it arrived,
+# would satisfy the guard after the load failed -- fail-open, in the one place
+# this hook is written to fail loud.
 unset AUDIT_SELFHEAL_REFUSE_ERE
 set +e
 # shellcheck source=/dev/null

@@ -566,3 +566,77 @@ plant() {
   [ "$status" -eq 1 ]
   grep -qF -- "refusing to report on a partial surface" <<<"$output"
 }
+
+# 15. An unquoted argument-position dot is a decoy too
+
+# The quote filter is not the whole test: `jq -e . "$1"` and `find . -type f`
+# put an UNQUOTED dot in an argument slot. Recorded at the decoy's column, a
+# real load after a closed bracket sorts inside it and reads as guarded.
+@test "an argument-position dot inside a closed bracket does not hide the load after it" {
+  new_fixture
+  plant .claude/hooks/probe.sh $'#!/usr/bin/env bash\nset -euo pipefail\nset +e; jq -e . "$1" >/dev/null; set -e; . .claude/hooks/lib/helper.sh\n'
+  plant .claude/hooks/lib/helper.sh $'helper() { :; }\n'
+  run bash -c "cd '$TMP' && bash '$LINTER'"
+  [ "$status" -eq 1 ]
+  grep -qF -- ".claude/hooks/probe.sh:3" <<<"$output"
+}
+
+# The last line is the shape live in this tree: an argument dot whose segment
+# ends at a separator, so a test that reads from the token rather than from the
+# segment start makes the dot the first word by construction and calls it a
+# load of the operand beside it.
+@test "argument-position dots on their own are not loads" {
+  new_fixture
+  plant .claude/hooks/probe.sh $'#!/usr/bin/env bash\nset -euo pipefail\njq -e . "$1" >/dev/null\nfind . -type f >/dev/null\ngit grep -n -- . >/dev/null\nfor f in a b; do grep -Iq . "$f" || continue; done\n'
+  plant .claude/hooks/lib/helper.sh $'helper() { :; }\n'
+  run bash -c "cd '$TMP' && bash '$LINTER'"
+  [ "$status" -eq 0 ]
+}
+
+# 16. Single quotes suspend expansion, so the mask must not walk into one
+
+@test "a literal metacharacter inside single quotes does not erase the rest of the line" {
+  new_fixture
+  plant .claude/hooks/probe.sh $'#!/usr/bin/env bash\nset -euo pipefail\necho \'literal $( paren\'; . .claude/hooks/lib/helper.sh\n'
+  plant .claude/hooks/lib/helper.sh $'helper() { :; }\n'
+  run bash -c "cd '$TMP' && bash '$LINTER'"
+  [ "$status" -eq 1 ]
+  grep -qF -- ".claude/hooks/probe.sh:3" <<<"$output"
+}
+
+# The file-wide half, which is the worse one: the block-depth counters read the
+# masked line, so a `fi` lost to the erase leaves the depth elevated for every
+# remaining line and credits every later flat restore as a conditional one.
+@test "a block terminator is not lost to a literal metacharacter beside it" {
+  new_fixture
+  plant .claude/hooks/probe.sh $'#!/usr/bin/env bash\nset -euo pipefail\nset +e; [ -f ".claude/hooks/lib/mid.sh" ] && . ".claude/hooks/lib/mid.sh" 2>/dev/null; set -e\ntype mid >/dev/null 2>&1 || exit 0\n'
+  plant .claude/hooks/lib/mid.sh $'was=0\ncase $- in *e*) was=1 ;; esac\nset +e\n[ -f ".claude/hooks/lib/leaf.sh" ] && . ".claude/hooks/lib/leaf.sh" 2>/dev/null\nif [ 1 = 1 ]; then echo \'a $( b\'; fi\nset -e\ntype leaf >/dev/null 2>&1 || true\nmid() { :; }\n'
+  plant .claude/hooks/lib/leaf.sh $'leaf() { :; }\n'
+  run bash -c "cd '$TMP' && bash '$LINTER'"
+  [ "$status" -eq 1 ]
+  grep -qF -- "flat" <<<"$output"
+}
+
+# 17. Only `<<-` lets the terminator be indented
+
+@test "a tab-indented delimiter does not close a plain heredoc" {
+  new_fixture
+  plant .claude/hooks/probe.sh $'#!/usr/bin/env bash\nset -euo pipefail\ncat <<EOF\nbody\n\tEOF\n. .claude/hooks/lib/helper.sh\nEOF\necho done\n'
+  plant .claude/hooks/lib/helper.sh $'helper() { :; }\n'
+  run bash -c "cd '$TMP' && bash '$LINTER'"
+  [ "$status" -eq 0 ]
+}
+
+# The bound: `<<-` must still close on one, or the file goes UNREAD from there.
+# The exit status alone cannot tell the two apart -- both red -- so this reads
+# the diagnosis.
+@test "a tab-indented delimiter does close a <<- heredoc" {
+  new_fixture
+  plant .claude/hooks/probe.sh $'#!/usr/bin/env bash\nset -euo pipefail\ncat <<-EOF\n\tbody\n\tEOF\n. .claude/hooks/lib/helper.sh\n'
+  plant .claude/hooks/lib/helper.sh $'helper() { :; }\n'
+  run bash -c "cd '$TMP' && bash '$LINTER'"
+  [ "$status" -eq 1 ]
+  grep -qF -- ".claude/hooks/probe.sh:6" <<<"$output"
+  grep -qF -- "never closed" <<<"$output" && return 1
+  return 0
+}
