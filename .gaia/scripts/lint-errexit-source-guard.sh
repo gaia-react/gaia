@@ -108,11 +108,25 @@ for r in ${scan_roots[@]+"${scan_roots[@]}"}; do
   fi
 done
 
+# The assertion above covers one cause of a partial walk. Three more reach the
+# same silent end, because a walk inside a process substitution discards both
+# `find`'s diagnostics and its exit status while the other root keeps the count
+# guard below quiet: a root that is a SYMLINK to a directory satisfies `-d` but
+# is not descended without `-H`; a root whose mode denies read; and an unreadable
+# SUBDIRECTORY under a readable root, which no root-level assertion can catch.
+# Capturing the walk lets its status fail the run instead, which is the posture
+# the assertion above already chose.
 scan_files=()
+found="$(find -H ${scan_roots[@]+"${scan_roots[@]}"} -type f -name '*.sh' \
+  ! -path '*/tests/*' | LC_ALL=C sort)" || {
+  echo "lint-errexit-source-guard: the scan walk failed; refusing to report on a partial surface" >&2
+  exit 1
+}
 while IFS= read -r f; do
-  scan_files+=("$f")
-done < <(find ${scan_roots[@]+"${scan_roots[@]}"} -type f -name '*.sh' \
-  ! -path '*/tests/*' 2>/dev/null | LC_ALL=C sort)
+  [ -n "$f" ] && scan_files+=("$f")
+done <<EOF
+$found
+EOF
 
 if [ "${#scan_files[@]}" -eq 0 ]; then
   echo "lint-errexit-source-guard: no files under: ${scan_roots[*]}" >&2
@@ -360,14 +374,16 @@ records="$(awk '
     return 0
   }
 
-  # Where on the line the load sits, so a same-line `set +e` ahead of it and a
-  # same-line `set -e` behind it are read in the order the shell reads them.
-  function load_pos(s) {
-    if (match(s, /(^|[;&|(){}[:space:]])(\.|source)[[:space:]]/)) return RSTART
-    return 1
-  }
-
-  # Does some load token on this line sit OUTSIDE every string? `is_load` has to
+  # WHERE on the line the load sits, so a same-line `set +e` ahead of it and a
+  # same-line `set -e` behind it are read in the order the shell reads them --
+  # and 0 when every load-shaped token on the line sits inside a string.
+  #
+  # One function answers both questions on purpose. A separate quote-blind
+  # locator beside this one is the same predicate written twice, and the copy
+  # that supplied the column decided the within-line event order: a string
+  # spelling a load-shaped token ahead of a real load put the site inside a
+  # closed `set +e`..`set -e` span, so a genuinely unguarded load read as
+  # bracketed and the check reported it clean. `is_load` has to
   # read the masked line rather than the quote-blanked one, because blanking
   # destroys the operand its `.sh` arm needs; the quote test therefore happens
   # here instead. A separator inside a string splits a sentence into a segment
@@ -377,13 +393,13 @@ records="$(awk '
   # and a blank there means the token existed only as data. Every candidate is
   # walked rather than the first, so a quoted dot ahead of a real load does not
   # hide it.
-  function load_outside_quotes(mm, qq,   t, off, p) {
+  function load_pos(mm, qq,   t, off, p) {
     t = mm
     off = 0
     while (match(t, /(^|[;&|(){}[:space:]])(\.|source)[[:space:]]/)) {
       p = off + RSTART
       if (substr(mm, p, 1) != "." && substr(mm, p, 1) != "s") p++
-      if (substr(qq, p, 1) != " ") return 1
+      if (substr(qq, p, 1) != " ") return p
       off = off + RSTART + RLENGTH - 1
       t = substr(t, RSTART + RLENGTH)
     }
@@ -396,7 +412,7 @@ records="$(awk '
   function flush(   i, s, j, k, pos, ev, evn, evt, evp, suspended, armed, tgt,
                     sn, sline, sshape, sdepth, back, found, res, capture,
                     m, q, cur, pfx, indepth, blockdepth, capdepth,
-                    mstart, mlen) {
+                    mstart, mlen, lp) {
     # Event stream over the whole file, in position order within each line, so a
     # one-line `set +e; . X; set -e` bracket is read the way the shell reads it.
     evn = 0
@@ -479,12 +495,16 @@ records="$(awk '
         off = pos + mlen - 1
         rest = substr(rest, mstart + mlen)
       }
-      if (is_load(m) && load_outside_quotes(m, q)) {
+      lp = load_pos(m, q)
+      if (lp > 0 && is_load(m)) {
         evn++
         evt[evn] = "site"
         evl[evn] = i
-        evp[evn] = load_pos(m)
-        evx[evn] = target(m)
+        evp[evn] = lp
+        # From the load token rather than from the start of the line, so a
+        # decoy string ahead of a real load does not supply the target, which
+        # both names the site in the report and draws the closure edge.
+        evx[evn] = target(substr(m, lp))
       }
       prev_then = (q ~ /(^|[[:space:]);])then[[:space:]]*$/)
       blockdepth += opens(q) - closes(q)

@@ -16,6 +16,7 @@ setup() {
   REPO_ROOT="$( cd "$THIS_DIR/../../.." && pwd )"
   SCOPE_LIB="$REPO_ROOT/.claude/hooks/lib/audit-scope.sh"
   MACHINERY_LIB="$REPO_ROOT/.claude/hooks/lib/audit-machinery.sh"
+  PROVENANCE_LIB="$REPO_ROOT/.claude/hooks/lib/audit-base-provenance.sh"
   RESOLVER="$REPO_ROOT/.gaia/scripts/resolve-audit-members.sh"
   SPAWN="$REPO_ROOT/.gaia/scripts/resolve-audit-spawn.sh"
   HOOK="$REPO_ROOT/.claude/hooks/pr-merge-audit-check.sh"
@@ -43,15 +44,27 @@ setup() {
 # Counting occurrences is what makes the two other filters load-bearing, and
 # per-line counting hid the need for both: comments go first, because a header
 # naming the symbol twice in prose now contributes two, and the match is
-# anchored on a non-identifier boundary at BOTH ends, because `audit_scope_init`
-# is a prefix of any longer name someone adds later, and because a terminator
-# that demands whitespace declines every other one a real second call can carry
-# -- `audit_scope_init;`, a bare call at end of line -- which greens the
+# bounded by a non-identifier at BOTH ends, because `audit_scope_init` is a
+# prefix of any longer name someone adds later, and because a terminator that
+# demands whitespace declines every other one a real second call can carry --
+# `audit_scope_init;`, a bare call at end of line -- which greens the
 # calls-it-once pin over exactly the drift it exists to catch.
+#
+# Counted by splitting on the boundaries rather than by matching across them:
+# `grep -o` CONSUMES the boundary character it matched and resumes after it, so
+# two occurrences separated by exactly one non-identifier character -- the
+# `audit_scope_init;audit_scope_init` spelling -- leave the second with no
+# boundary left and it goes uncounted, which is the same green-over-drift the
+# widened terminator was meant to end.
 count_invocations() {
   sed -e 's/[[:space:]]#.*$//' -e 's/^[[:space:]]*#.*$//' "$1" \
     | sed -E "s/(^|[[:space:]])(type|command -v)[[:space:]]+$2([[:space:]]|\$)/\1 /g" \
-    | grep -oE "(^|[^A-Za-z0-9_])$2([^A-Za-z0-9_]|\$)" | grep -c .
+    | awk -v sym="$2" '
+        { gsub(/[^A-Za-z0-9_]/, " ")
+          n = split($0, w, " ")
+          for (i = 1; i <= n; i++) if (w[i] == sym) c++ }
+        END { print c + 0 }
+      '
 }
 
 # Extract a named function's body (from its `name() {` line through the next
@@ -119,6 +132,14 @@ EOF
   printf '%s\n' 'audit_scope_init "$r"' 'audit_scope_init' > "$probe"
   [ "$(count_invocations "$probe" audit_scope_init)" -eq 2 ]
 
+  # Exactly one non-identifier character between two occurrences, the spelling
+  # a boundary-consuming match cannot see.
+  printf '%s\n' 'audit_scope_init;audit_scope_init' > "$probe"
+  [ "$(count_invocations "$probe" audit_scope_init)" -eq 2 ]
+
+  printf '%s\n' '{ audit_scope_init; }' 'audit_scope_init&&audit_scope_init' > "$probe"
+  [ "$(count_invocations "$probe" audit_scope_init)" -eq 3 ]
+
   # And still declines the two shapes the filters above it exist to drop.
   printf '%s\n' 'audit_scope_init "$r"' 'type audit_scope_init >/dev/null' > "$probe"
   [ "$(count_invocations "$probe" audit_scope_init)" -eq 1 ]
@@ -129,6 +150,27 @@ EOF
   # A longer name that merely starts with the symbol is not an invocation.
   printf '%s\n' 'audit_scope_init "$r"' 'audit_scope_init_extra "$r"' > "$probe"
   [ "$(count_invocations "$probe" audit_scope_init)" -eq 1 ]
+}
+
+# The resolver argues that probing each module's LAST definition needs no
+# reasoning about which internal call goes how deep: a truncated copy parses as
+# far as the truncation and defines everything ahead of it, so an early-export
+# probe answers yes for a copy missing what the call it gates will reach. That
+# argument is a property of two other files, and appending a function to either
+# silently demotes the probe to the early-export kind the argument rules out.
+@test "each module probe in resolve-audit-members.sh names its module's last definition" {
+  probed_scope="$(grep -oE '^type [A-Za-z0-9_]+' "$RESOLVER" | awk 'NR==1 {print $2}')"
+  probed_prov="$(grep -oE '^type [A-Za-z0-9_]+' "$RESOLVER" | awk 'NR==2 {print $2}')"
+  [ -n "$probed_scope" ]
+  [ -n "$probed_prov" ]
+
+  last_scope="$(grep -oE '^[A-Za-z0-9_]+\(\) \{' "$SCOPE_LIB" | tail -1 | sed 's/() {$//')"
+  last_prov="$(grep -oE '^[A-Za-z0-9_]+\(\) \{' "$PROVENANCE_LIB" | tail -1 | sed 's/() {$//')"
+  [ -n "$last_scope" ]
+  [ -n "$last_prov" ]
+
+  [ "$probed_scope" = "$last_scope" ]
+  [ "$probed_prov" = "$last_prov" ]
 }
 
 @test "resolve-audit-spawn.sh sources audit-scope.sh" {

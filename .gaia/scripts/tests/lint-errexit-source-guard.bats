@@ -501,3 +501,68 @@ plant() {
   [ "$status" -eq 1 ]
   grep -qF -- "scan root missing: .claude/hooks" <<<"$output"
 }
+
+# 13. The decoy and the real load on ONE line
+
+# Cross-line, the line number alone orders the events and the site's column is
+# never consulted, so the same-line arrangement is the one that exercises it --
+# and it is the arrangement the documented one-line bracket produces.
+@test "a quoted decoy ahead of a closed bracket does not hide the load after it" {
+  new_fixture
+  plant .claude/hooks/probe.sh $'#!/usr/bin/env bash\nset -euo pipefail\nset +e; echo "hint: ; . decoy.sh here"; set -e; . .claude/hooks/lib/helper.sh\n'
+  plant .claude/hooks/lib/helper.sh $'helper() { :; }\n'
+  run bash -c "cd '$TMP' && bash '$LINTER'"
+  [ "$status" -eq 1 ]
+  grep -qF -- ".claude/hooks/probe.sh:3" <<<"$output"
+  grep -qF -- "unguarded load" <<<"$output"
+}
+
+@test "a quoted decoy ahead of a correct one-line bracket does not red it" {
+  new_fixture
+  plant .claude/hooks/probe.sh $'#!/usr/bin/env bash\nset -euo pipefail\necho "note: run \'; . helper.sh\' by hand"; set +e; [ -f ".claude/hooks/lib/helper.sh" ] && . ".claude/hooks/lib/helper.sh" 2>/dev/null; set -e\ntype helper >/dev/null 2>&1 || exit 0\n'
+  plant .claude/hooks/lib/helper.sh $'helper() { :; }\n'
+  run bash -c "cd '$TMP' && bash '$LINTER'"
+  [ "$status" -eq 0 ]
+}
+
+# The target draws the closure edge and decides which parse check can credit a
+# site, so a decoy must not supply it either. The parse-check window is where
+# that is observable: crediting turns on the checked name matching the target,
+# so a decoy-supplied target makes an unrelated `bash -n` certify this load.
+@test "a quoted decoy does not supply the target a parse check is matched against" {
+  new_fixture
+  plant .claude/hooks/probe.sh $'#!/usr/bin/env bash\nset -euo pipefail\nif bash -n decoy.sh; then\n  echo "see ; . decoy.sh"; . .claude/hooks/lib/helper.sh\nfi\n'
+  plant .claude/hooks/lib/helper.sh $'helper() { :; }\n'
+  run bash -c "cd '$TMP' && bash '$LINTER'"
+  [ "$status" -eq 1 ]
+  grep -qF -- ".claude/hooks/probe.sh:4" <<<"$output"
+}
+
+# 14. A walk that could not read the whole surface fails rather than shrinking
+
+@test "fails loudly when a scan root is a symlink the walk would not descend" {
+  new_fixture
+  mkdir -p "$TMP/real-hooks/lib"
+  printf '%s\n' '#!/usr/bin/env bash' 'set -euo pipefail' '. .claude/hooks/lib/helper.sh' > "$TMP/real-hooks/bad.sh"
+  printf '%s\n' 'helper() { :; }' > "$TMP/real-hooks/lib/helper.sh"
+  rm -rf "$TMP/.claude/hooks"
+  ln -s "$TMP/real-hooks" "$TMP/.claude/hooks"
+  run bash -c "cd '$TMP' && bash '$LINTER'"
+  [ "$status" -eq 1 ]
+  grep -qF -- ".claude/hooks/bad.sh:3" <<<"$output"
+}
+
+@test "fails loudly when a subdirectory under a readable root cannot be read" {
+  # Mode bits do not restrict root, so the unreadable state this asserts cannot
+  # be created in a root container.
+  [ "$(id -u)" -ne 0 ] || skip "chmod 000 does not restrict root"
+  new_fixture
+  plant .claude/hooks/probe.sh $'#!/usr/bin/env bash\nset -euo pipefail\necho ok\n'
+  mkdir -p "$TMP/.gaia/scripts/sub"
+  printf '%s\n' 'helper() { :; }' > "$TMP/.gaia/scripts/sub/helper.sh"
+  chmod 000 "$TMP/.gaia/scripts/sub"
+  run bash -c "cd '$TMP' && bash '$LINTER'"
+  chmod 755 "$TMP/.gaia/scripts/sub"
+  [ "$status" -eq 1 ]
+  grep -qF -- "refusing to report on a partial surface" <<<"$output"
+}
