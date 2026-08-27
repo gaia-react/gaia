@@ -70,10 +70,13 @@ SUBST_SKIP_BOUND=5
 # library. The blanking is per (word, left bound, right bound), and a shape that
 # rebuilds the span once per occurrence rather than replacing all of them in one
 # pass is super-quadratic in span length: measured at 205s on the span below
-# against a flat 0.17s for the shipped shape. Nothing sizes a logical line and
-# this walk gates every merge, so the regression is worth a guard rather than a
-# comment. The bound is two orders of magnitude above the shipped cost and two
-# below the regression, which is the whole width available to sit in.
+# against 0.17s for the shipped shape at that same length. The shipped shape is
+# not flat either; the library paragraph citing this bound carries its series,
+# and that paragraph is where to repair a cost figure, not here. Nothing sizes a
+# logical line and this walk gates every merge, so the regression is worth a
+# guard rather than a comment. The bound sits ~88x above the shipped cost and
+# ~14x below the regression, which is the whole width available: that second
+# ratio is the one that binds, so raising the bound toward 100s spends it.
 STRIP_QUOTED_COST_BOUND=15
 
 # run_bounded <seconds> <command...>: 0 if the command finished inside the
