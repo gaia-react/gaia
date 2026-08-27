@@ -275,10 +275,14 @@ EOF
 # bound"; asserting the answer is what makes the function's absence red. Both
 # verdicts appear in the table, so neither arm can go missing unnoticed.
 #
-# 0 means some substitution nests a quote, so the blanker keeps today's answer
-# for the line; 1 means none does and the line is blanked. Driven as one table
-# per .claude/rules/bats-assertions.md rather than one test per shape, because
-# the property is identical across rows and only the input varies.
+# 0 means the blanker keeps today's answer for the line, which every one of the
+# predicate's arms can force: a substitution that nests a quote, one that carries
+# a command word, one that carries a redirect, or an opener with no closer. 1
+# means no arm fires and the line is blanked. The table carries at least one row
+# reaching 0 through each arm, so a legend that drifts from the body is caught by
+# a row rather than by a reader. Driven as one table per
+# .claude/rules/bats-assertions.md rather than one test per shape, because the
+# property is identical across rows and only the input varies.
 @test "termination: the substitution predicate returns inside the stated bound and answers" {
   local row shape want got
   for row in \
@@ -288,7 +292,10 @@ EOF
     '1	msg="see `date` and `id`"' \
     '0	msg="an unclosed ` backtick and a quote"' \
     '1	msg="$( a )$( b )$( c )$( d )$( e )$( f )"' \
-    '1	case "$t" in *\)) echo $( x ) ;; esac'
+    '1	case "$t" in *\)) echo $( x ) ;; esac' \
+    '0	msg="$( rm f )"' \
+    '0	msg="$( printf x > f )"' \
+    '0	msg="see `rm f` there"'
   do
     want="${row%%$'\t'*}"
     shape="${row#*$'\t'}"
@@ -345,14 +352,21 @@ EOF
   grep -qF -- 'CALL	.claude/hooks/lib/helper.sh' <<<"$output"
 }
 
-# The four tests below fix the boundary of the command-substitution skip. What
-# forces it is a DOUBLE QUOTE INSIDE a substitution, because that is what shifts
-# the flat odd/even reading of the line's quotes onto the wrong side of them.
-# A substitution carrying no quote of its own leaves that reading intact, so the
-# skip buys nothing there and costs the blanking the prose beside it needs.
+# The six tests below fix the boundary of the command-substitution skip. Three
+# things force it, and a reader who remembers only the first will re-narrow the
+# predicate and reintroduce the defect the last two exist to prevent. A DOUBLE
+# QUOTE inside a substitution shifts the flat odd/even reading of the line's
+# quotes onto the wrong side of them. A COMMAND WORD or a `>` REDIRECT inside
+# one is code the blanker would strip while reading it as prose, and there the
+# reading is not wrong at all -- the substitution's body is simply not prose.
+# Only a substitution that nests no quote AND carries nothing the blanker
+# removes leaves the line safe to blank, and that is the case the skip buys
+# nothing on.
 #
-# Each of the two directions is pinned twice, once on prose and once on real
-# code, because a suppression that also silenced the code would read as a pass.
+# Each of the two directions is pinned on prose and on real code, and the real
+# code is pinned both BESIDE a substitution and INSIDE one, because a
+# suppression that also silenced the code would read as a pass and the
+# inside-one case is the one an earlier draft of this change got wrong.
 
 @test "detectors: prose beside a quoteless substitution is blanked, not read as a write" {
   write_hook subst-plain.sh <<'EOF'
@@ -394,8 +408,8 @@ EOF
   grep -qF -- 'fs-write:lib/nested' <<<"$output"
 }
 
-# The property that closes the gap the four fixtures above left open, driven per
-# token rather than per hand-picked shape. The blanker removes exactly two kinds
+# The property that closes the gap the hand-written fixtures around it leave
+# open, driven per token rather than per hand-picked shape. The blanker removes exactly two kinds
 # of token from a span it is handed, the redirect operator and the members of
 # _GAIA_CAPCHECK_QUOTED_WORDS, and a substitution body is code the blanker would
 # read as prose. So every token the blanker can remove must force the skip, or
@@ -428,9 +442,9 @@ z="$(printf x > lib/z)"
 EOF
   run sites .claude/hooks/subst-inner-code.sh
   [ "$status" -eq 0 ]
-  # The concrete form of the property above, and the shape the four fixtures
-  # around it all miss: the real code sits INSIDE a quoteless substitution, not
-  # beside one and not inside a quote-nesting one. Reading the span body as
+  # The concrete form of the property above, and the shape every other fixture
+  # in this group misses: the real code sits INSIDE a quoteless substitution,
+  # not beside one and not inside a quote-nesting one. Reading the span body as
   # prose blanks ` tee ` and the `>` and loses both writes silently.
   grep -qF -- 'fs-write:lib/teed' <<<"$output" || return 1
   grep -qF -- 'fs-write:lib/z' <<<"$output"

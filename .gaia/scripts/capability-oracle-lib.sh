@@ -135,31 +135,37 @@ _GAIA_CAPCHECK_QUOTED_WORDS=" mkdir rm touch tee install mktemp cp mv ln sed fin
 # them, which is the safe direction, because a write or a call the oracle never
 # sees cannot surface as a finding at all.
 #
-# A line whose substitution CARRIES A COMMAND WORD is left alone too, for a
-# different reason. The body of a substitution is code, and when the whole
-# substitution sits inside a double-quoted span the flat reading hands that body
-# to the blanker as prose: `x="$(cat f | tee lib/teed)"` pads to
-# ` $(cat f | tee lib/teed) `, ` tee ` is space-delimited on both sides, and
-# blanking it loses a real write. That is the same silent direction as above,
-# reached without any misreading at all.
+# A line whose substitution CARRIES A COMMAND WORD, or the `>` REDIRECT
+# OPERATOR, is left alone too, for a different reason. The body of a
+# substitution is code, and when the whole substitution sits inside a
+# double-quoted span the flat reading hands that body to the blanker as prose:
+# `x="$(cat f | tee lib/teed)"` pads to ` $(cat f | tee lib/teed) `, ` tee ` is
+# space-delimited on both sides, and blanking it loses a real write;
+# `"$(printf x > lib/z)"` loses one the same way through the redirect. Those are
+# the same silent direction as above, reached without any misreading at all.
+# The redirect is named separately because it is the one removable token that
+# does not live in _GAIA_CAPCHECK_QUOTED_WORDS, which is exactly how a
+# word-only test missed it.
 #
-# What is left after those two is the case the skip buys nothing on: a line
-# whose substitutions nest no quote and carry no command word -- `"$(date)"`
-# beside a message, the ordinary shape of a usage block or a deny string --
-# where the flat reading is intact and the substitution body holds nothing worth
-# protecting, so skipping it only costs the prose beside it the blanking it
-# needs. _gaia_capcheck_subst_forces_skip below draws that line; see its own
-# header for how conservatively.
+# What is left after those three is the case the skip buys nothing on: a line
+# whose substitutions nest no quote and carry nothing the blanker would remove
+# -- `"$(date)"` beside a message, the ordinary shape of a usage block or a deny
+# string -- where the flat reading is intact and the substitution body holds
+# nothing worth protecting, so skipping it only costs the prose beside it the
+# blanking it needs. _gaia_capcheck_subst_forces_skip below draws that line; see
+# its own header for how conservatively.
 #
 # Deliberately incomplete in four directions. It does not model `bash -c
 # "..."`, `ssh host "..."`, or any other eval, for the same reason
 # _gaia_capcheck_strip_literals does not: an eval is outside this oracle. It
 # does not model a backslash-escaped `\"`, which reads as a span boundary, nor
 # a backslash-escaped `\$(` or backtick, which reads as a live substitution
-# rather than the literal it is. It skips a quote-nesting substitution line per
-# the paragraph above. And it is per logical line, so a double-quoted string
-# spanning several real lines is only recognized on the line that opens it; the
-# joiner joins backslash continuations, not string bodies.
+# rather than the literal it is. It skips a substitution-carrying line whenever
+# any of the three conditions in the two paragraphs above holds. And it is per
+# logical line, so a double-quoted string spanning several real lines is only
+# recognized on the line that opens it; the joiner joins backslash
+# continuations, not string bodies.
+
 # _gaia_capcheck_subst_forces_skip <text>: 0 when some command substitution on
 # the line makes the blanker unsafe, 1 when none does. It is the predicate the
 # blanker above skips on, and it exists to be WRONG IN ONE DIRECTION ONLY: a
@@ -167,14 +173,21 @@ _GAIA_CAPCHECK_QUOTED_WORDS=" mkdir rm touch tee install mktemp cp mv ln sed fin
 # false 1 hands a line to the blanker that the blanker will damage, which is the
 # direction that loses a live write or call silently.
 #
-# TWO conditions force the skip, and they fail differently. A span carrying a
-# DOUBLE QUOTE defeats the flat odd/even reading, so the blanker misreads which
-# text is quoted. A span carrying a COMMAND WORD is code the blanker would read
-# as prose whether or not it reads the quoting correctly; the predicate is
-# right about that line and the blanker is still wrong on it. Reading the second
-# condition as a special case of the first is the mistake to avoid: it is not a
-# misreading at all, which is why "the predicate answered correctly" is not
-# evidence the line is safe to blank.
+# THREE span-level conditions force the skip, and they do not all fail the same
+# way. A span carrying a DOUBLE QUOTE defeats the flat odd/even reading, so the
+# blanker misreads which text is quoted. A span carrying a COMMAND WORD, or the
+# `>` REDIRECT OPERATOR, is code the blanker would read as prose whether or not
+# it reads the quoting correctly; the predicate is right about that line and the
+# blanker is still wrong on it. Reading either of the last two as a special case
+# of the first is the mistake to avoid: they are not misreadings at all, which is
+# why "the predicate answered correctly" is not evidence the line is safe to
+# blank.
+#
+# The count is three rather than two because the removable tokens are two kinds
+# and one of them sits outside the constant. A reader who counts two, checks the
+# quote and word arms, and concludes the redirect arm is surplus has just run the
+# reasoning that lost the redirect the first time, which is why the count is
+# stated here and again beside the arm itself.
 #
 # Every approximation in it leans the same way. A `$(` span is taken to the LAST
 # `)` on the line rather than to its matching one, which is the widest reading
