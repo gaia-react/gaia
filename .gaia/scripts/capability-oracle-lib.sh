@@ -1924,8 +1924,16 @@ _gaia_capcheck_scan_invocations() {
     # so it costs a second vocabulary to catch a shape that is already silent.
     # And `.`/`source` take no `-n` at all, so on those two anchors this arm can
     # only fire on a spelling that does not work in bash.
+    #
+    # The subject is the current TOKEN, not `$rem`. `$rem` holds the whole
+    # remainder of the logical line, so a pattern matched against it reads an
+    # `n` anywhere downstream, operand included: `-x b/run-thing.sh` would take
+    # the parse-check arm on the `n` in the target's own name. That direction is
+    # the one this oracle cannot report, since an abandoned site emits no record
+    # at all, so the caller would come back clean over a subtree never walked,
+    # and nearly every script path in this tree carries an `n`.
     while :; do
-      case "$rem" in
+      case "${rem%%[[:space:]]*}" in
         -n* | -[!-]*n*) continue 2 ;;
         -*) rem="${rem#*[[:space:]]}"; rem="${rem#"${rem%%[![:space:]]*}"}" ;;
         *) break ;;

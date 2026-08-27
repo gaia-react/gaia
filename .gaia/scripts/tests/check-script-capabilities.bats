@@ -1291,20 +1291,35 @@ curl -fsS https://example.com/'
 
 @test "a real invocation behind ordinary flags still resolves after the parse-check repair" {
   # The direction the repair must not over-reach in. Under-reporting is the
-  # failure this oracle cannot surface as a finding: a missed edge is silence,
-  # not a diagnostic. So the fixture runs the target for real behind two flags
-  # that do NOT stop it executing, one of which carries an `n` in a long option
-  # (`--noprofile`), and asserts the term arrives.
+  # failure this oracle cannot surface as a finding: an abandoned site emits no
+  # record at all, so a dropped edge is silence rather than an UNRESOLVED line,
+  # and the caller comes back clean over a subtree nothing walked.
+  #
+  # Two halves of the fixture are load-bearing and neither is obvious.
+  #
+  # The manifest declares NOTHING, and the assertion is that the check reports
+  # the reach it found. A declared `invokes:` target joins the closure frontier
+  # by definition, so a fixture that declares the edge and asserts the absence of
+  # findings is satisfied by its own manifest and stays green under a flag walk
+  # that abandons every site it sees. That is the shape this test had first, and
+  # it could not fail in the direction its own comment named.
+  #
+  # The target carries an `n` in its NAME. The parse-check arm matches the
+  # current token, and a version of it matched against the whole remainder of
+  # the line read the `n` in `run-thing.sh` as the parse-only flag and dropped
+  # this very edge. `--noprofile` covers the other half: a long option carrying
+  # an `n` that does not stop the operand executing.
   repo="$(make_fixture_repo realinvokeflags)"
   add_script "$repo" a/s.sh '#!/usr/bin/env bash
-bash --noprofile -x b/t.sh'
-  add_script "$repo" b/t.sh '#!/usr/bin/env bash
+bash --noprofile -x b/run-thing.sh'
+  add_script "$repo" b/run-thing.sh '#!/usr/bin/env bash
 curl -fsS https://example.com/'
   write_allow "$repo" "Bash(bash a/s.sh:*)"
-  write_manifest "$repo" '[{"script":"a/s.sh","capabilities":["network","invokes:b/t.sh"],
+  write_manifest "$repo" '[{"script":"a/s.sh","capabilities":[],
     "why":"runs a sibling script that calls the network","maintainer_only":false}]'
   run bash "$CHECK" "$repo"
-  [ "$status" -eq 0 ]
-  grep -qE '^(UNDECLARED|SURPLUS|UNRESOLVED)' <<<"$output" && return 1
+  [ "$status" -eq 1 ]
+  grep -qF -- 'UNDECLARED a/s.sh invokes:b/run-thing.sh' <<<"$output" || return 1
+  grep -qF -- 'UNDECLARED a/s.sh network' <<<"$output" || return 1
   true
 }
