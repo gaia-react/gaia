@@ -1154,7 +1154,20 @@ printf "x\n" > "$out"'
 
 # The obligated scripts' reach is the reconciliation's whole input, so a change
 # to the shared oracle underneath it can move every verdict on this surface at
-# once. These arms pin that it did not.
+# once. These arms pin that ONE such change did not: the #1527 rewrite, whose
+# pre-change bodies are what `pre-change-oracle.sh` vendors.
+#
+# Read that scope literally, because the pin looks wider than it is and the
+# wording here used to encourage that. The before side is the shipped check with
+# the vendored bodies layered over it, so it differs from the after side only
+# for the functions that fixture actually redefines. An oracle change outside
+# those names lands identically on BOTH sides, and the comparison then holds two
+# runs that already carry the change and reports green. That is not a defect in
+# these arms, it is their scope: a per-change pin cannot cover a change vendored
+# after it was written. What it does mean is that a later oracle change gets no
+# verification from here and has to establish its own reach claim directly, by
+# running `--print-reach` against the two library bodies. The general form, a
+# reach pin that follows the oracle rather than one change to it, is #1612.
 #
 # The mechanism matters, and two obvious spellings do not work.
 #
@@ -1201,9 +1214,15 @@ declare_side() {
   [ "$shipped" != "$vendored" ]
 }
 
-@test "real repo: every function the oracle change rewrote is vendored on the before side" {
+@test "real repo: every function the #1527 oracle change rewrote is vendored on the before side" {
   # The pin is only as good as its before side: vendoring fewer functions than
   # the change rewrote leaves that side already carrying part of the fix.
+  #
+  # The list is #1527's rewritten set, enumerated rather than derived, and it is
+  # not a claim about any other change. A function a LATER change rewrites is
+  # absent from both this list and the fixture, so this arm stays green while
+  # the byte-identity arm below silently compares two runs that carry that
+  # change: see the section header, and #1612.
   local fn shipped vendored
   for fn in _gaia_capcheck_strip_tests _gaia_capcheck_dirhop \
     _gaia_capcheck_state_root_hop _gaia_capcheck_assignment_values \
@@ -1218,7 +1237,7 @@ declare_side() {
   done
 }
 
-@test "real repo: computed reach is byte-identical to the pre-change oracle's" {
+@test "real repo: computed reach is byte-identical to the #1527 pre-change oracle's" {
   local after before
   after="$(reach_side shipped)"
   before="$(reach_side vendored)"

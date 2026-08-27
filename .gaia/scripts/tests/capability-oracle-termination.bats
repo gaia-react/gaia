@@ -63,6 +63,19 @@ STRIP_TESTS_BOUND=5
 # assertion.
 SUBST_SKIP_BOUND=5
 
+# A bound of a different kind for a single _gaia_capcheck_strip_quoted_code
+# call, and the difference is worth stating because the two above disclaim
+# exactly what this one asserts. Those bound a loop that might not terminate;
+# this one bounds COST, on a loop whose termination is separately argued in the
+# library. The blanking is per (word, left bound, right bound), and a shape that
+# rebuilds the span once per occurrence rather than replacing all of them in one
+# pass is super-quadratic in span length: measured at 205s on the span below
+# against a flat 0.17s for the shipped shape. Nothing sizes a logical line and
+# this walk gates every merge, so the regression is worth a guard rather than a
+# comment. The bound is two orders of magnitude above the shipped cost and two
+# below the regression, which is the whole width available to sit in.
+STRIP_QUOTED_COST_BOUND=15
+
 # run_bounded <seconds> <command...>: 0 if the command finished inside the
 # bound, 1 if it was killed at the bound. `timeout(1)` is absent on macOS, so
 # the bound is enforced by backgrounding and polling.
@@ -613,6 +626,33 @@ EOF
   run sites .claude/hooks/bridge-mutant.sh
   [ "$status" -eq 0 ]
   grep -qF -- 'CALL	.claude/hooks/lib/helper.sh' <<<"$output"
+}
+
+@test "detectors: blanking a span dense in command words stays inside its cost bound" {
+  # The span is dense in listed words AND in bounds, which is what makes the
+  # per-occurrence shape blow up: every (word, l, r) pair finds matches, and a
+  # rebuild-per-occurrence loop pays the whole span length for each one.
+  local span="" i=0
+  while [ "$i" -lt 800 ]; do span="$span rm (cp) sed,tee"; i=$((i + 1)); done
+  run_bounded "$STRIP_QUOTED_COST_BOUND" _gaia_capcheck_strip_quoted_code "x=\"$span\""
+}
+
+@test "detectors: a path component named after a command word and bounded by punctuation is lost" {
+  write_hook bounded-word-residual.sh <<'EOF'
+touch "lib/(rm).txt"
+EOF
+  run sites .claude/hooks/bounded-word-residual.sh
+  [ "$status" -eq 0 ]
+  # RED BY DESIGN, and pinned so it is rediscovered as a known residual rather
+  # than as a new defect. `(`, `)` and `,` are legal in a filename, so a real
+  # operand whose component is spelled like a listed word and bounded by one of
+  # them is blanked and its write is lost -- the silent direction, and the exact
+  # loss the bound set's first constraint describes. It is admitted anyway
+  # because the constraint that decides membership is whether such a component
+  # exists in this tree, and the sweep found none; this fixture is what makes
+  # that a claim somebody can re-run instead of a sentence.
+  grep -qF -- 'fs-write:lib/(rm).txt' <<<"$output" && return 1
+  true
 }
 
 @test "detectors: a bare dot after a flag is jq's identity filter, not the source builtin" {

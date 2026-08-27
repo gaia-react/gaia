@@ -121,10 +121,23 @@ _GAIA_CAPCHECK_QUOTED_WORDS=" mkdir rm touch tee install mktemp cp mv ln sed fin
 # (candidate, command word, side, target) combination through the real scanner
 # says costs nothing.
 #
-# The first constraint is that a bound must not be a path character. `/`, `.`
-# and `-` are excluded on it: `"$dir/rm"`, `install.sh` and `git-foo` are
-# ordinary operands, and blanking a stem out of one corrupts the path the write
+# The first constraint is that a bound must not SEPARATE THE COMPONENTS of a
+# path these words appear in. `/`, `.` and `-` are excluded on it: `"$dir/rm"`,
+# `install.sh` and `git-foo` are ordinary operands whose components are named
+# after listed words, and blanking a stem out of one corrupts the path the write
 # detector exists to read, which is the silent direction.
+#
+# Stated that narrowly on purpose, because the wider reading -- a bound must not
+# be a character legal in a path -- is false of every member of the set below.
+# `(`, `)` and `,` are all legal in a filename, and the loss the constraint
+# describes is reachable through them: `touch "lib/(rm).txt"` blanks to
+# `touch "lib/( ).txt"` and loses its target exactly the way `install.sh` would.
+# What separates them is not legality, it is whether a path in this tree ever
+# puts one of these words between two of these characters, and the sweep found
+# none. So this residual is stated rather than guarded, and it is the thing to
+# re-measure before adding a member: the question a candidate has to answer is
+# not "can this appear in a path" but "does it delimit a command-word-shaped
+# component of a real operand here".
 #
 # The second is #1536's direction, and it is the one reading gets wrong. Blanking
 # leaves a SPACE where the word was, every anchor admits a run of whitespace
@@ -385,16 +398,33 @@ _gaia_capcheck_strip_quoted_code() {
     case "$body" in *'>'*) body="${body//>/ }" ;; esac
     _gaia_capcheck_bounds_present "$body"
     bounds="$_GAIA_CAPCHECK_RET"
-    # Each pass splices out ONE occurrence and re-lays its two bounds around a
-    # space, so the bounds survive to delimit whatever sits beside them and the
-    # string strictly shrinks by the length of the word: the inner loop
-    # terminates. Splicing rather than `${body//.../...}` is what keeps a bound
-    # of `&` out of a replacement string, where bash 5.2 reads a literal `&` as
-    # the matched text.
+    # Each pass replaces the word with a space and re-lays its two bounds around
+    # it, so a bound survives to delimit whatever sits beside it. The
+    # replacement is QUOTED: an unquoted `&` reaching a replacement string is
+    # read by bash as the matched text, and the bound set is measured rather
+    # than fixed, so the quoting is what keeps a future member out of that.
     #
-    # Two occurrences sharing one bound (`" rm rm "`) are why this repeats at
-    # all: a single replacement pass consumes the shared space and leaves the
-    # second word unbounded on its left.
+    # It repeats because two occurrences sharing one bound (`" rm rm "`) cannot
+    # both be replaced in one pass: `${//}` scans for non-overlapping matches,
+    # so it takes every other one and the shared delimiter it consumed leaves
+    # the next word unbounded. Taking every other one is also the bound on the
+    # repeats: k adjacent occurrences halve per pass, so the loop runs
+    # ceil(log2(k)) times, not k.
+    #
+    # It terminates on the occurrence count, NOT on the length. The string
+    # shrinks by len(word)-1, which is ZERO for the lone `.`, the one
+    # single-character member of the word list and the first one a reader would
+    # check. What strictly decreases is the number of occurrences of `word` in
+    # the span: the replacement is a space and two bound characters, none of
+    # which occurs in any listed word, so no pass can create an occurrence.
+    #
+    # Cost is what decides the shape. The whole blanking is at most
+    # (1+bounds)^2 replacements per present word, each one a single C-level
+    # pass over the span, so it stays linear in span length. Splicing out one
+    # occurrence at a time instead rebuilds the span per occurrence and makes a
+    # span dense in listed words super-quadratic: measured at 0.6s, 3.4s, 26s
+    # and 201s for 1600, 3200, 6400 and 12800 characters, against a flat 0.15s
+    # here. Nothing sizes a logical line, and this walk gates every merge.
     # shellcheck disable=SC2086
     for word in $_GAIA_CAPCHECK_QUOTED_WORDS; do
       case "$body" in *"$word"*) ;; *) continue ;; esac
@@ -404,8 +434,7 @@ _gaia_capcheck_strip_quoted_code() {
         for r in ' ' $bounds; do
           while :; do
             case "$body" in *"$l$word$r"*) ;; *) break ;; esac
-            head="${body%%"$l$word$r"*}"
-            body="$head$l $r${body#*"$l$word$r"}"
+            body="${body//"$l$word$r"/"$l $r"}"
           done
         done
       done
