@@ -63,6 +63,24 @@ STRIP_TESTS_BOUND=5
 # assertion.
 SUBST_SKIP_BOUND=5
 
+# A bound of a different kind for a single _gaia_capcheck_strip_quoted_code
+# call, and the difference is worth stating because the two above disclaim
+# exactly what this one asserts. Those bound a loop that might not terminate;
+# this one bounds COST, on a loop whose termination is separately argued in the
+# library. The blanking is per (word, left bound, right bound), and a shape that
+# rebuilds the span once per occurrence rather than replacing all of them in one
+# pass is super-quadratic in span length. This header is the ONE home for those
+# figures; the library argues the shape and cites this constant, and carries no
+# copy of them to drift against. On the span the guard below builds (800 units
+# of 16 characters, so 12800), the shipped shape measures ~0.17s and the
+# per-occurrence shape ~205s. Nothing sizes a logical line and this walk gates
+# every merge, so the regression is worth a guard rather than a comment. Against
+# those two, the bound sits ~88x above the shipped cost and ~14x below the
+# regression, which is the whole width available: that second ratio is the one
+# that binds, so raising the bound toward 100s spends it. A re-measurement
+# re-derives both ratios here, and touches nothing else.
+STRIP_QUOTED_COST_BOUND=15
+
 # run_bounded <seconds> <command...>: 0 if the command finished inside the
 # bound, 1 if it was killed at the bound. `timeout(1)` is absent on macOS, so
 # the bound is enforced by backgrounding and polling.
@@ -436,6 +454,54 @@ EOF
     || { echo "derived only $count tokens, the constant is not being read" >&2; return 1; }
 }
 
+# The same property once a token's removability stopped depending on spaces
+# alone. The test above drives each token space-delimited, which is the one
+# bounding the blanker has always honoured; a token the blanker removes because
+# a member of _GAIA_CAPCHECK_WORD_BOUNDS sits beside it instead is a token that
+# arm never reaches, and it is a whole side of the constant.
+#
+# Nothing here decides which spans are removable. THE BLANKER DECIDES, per span,
+# by being run: a span it rewrites is removable by definition, and the assertion
+# is only that the predicate then refuses the same span inside a substitution.
+# That is deliberate and it is the lesson #1605 cost nine rounds -- an
+# enumeration standing between a derivation and its authority becomes the
+# coverage claim, and the authority was brought in to retire exactly that. So a
+# bound taught to the blanker cannot outrun this test, whatever it is: the test
+# never learns the bound, it asks what the blanker did.
+#
+# The direction matters. A span the blanker rewrites and the predicate hands it
+# anyway is a real write or call blanked into prose, which is the silent
+# direction and unreportable. The converse, a span the predicate refuses that
+# the blanker would not have touched, costs an over-skip and keeps today's
+# answer, so it is not asserted.
+@test "detectors: every span the blanker rewrites forces the substitution skip" {
+  local word l r span pairs=0 removable=0
+  for word in $_GAIA_CAPCHECK_QUOTED_WORDS; do
+    for l in ' ' $_GAIA_CAPCHECK_WORD_BOUNDS; do
+      for r in ' ' $_GAIA_CAPCHECK_WORD_BOUNDS; do
+        pairs=$((pairs + 1))
+        span="x$l$word${r}y"
+        _gaia_capcheck_strip_quoted_code "\"$span\""
+        [ "$_GAIA_CAPCHECK_RET" = "\"$span\"" ] && continue
+        removable=$((removable + 1))
+        _gaia_capcheck_subst_forces_skip "v=\"\$( $span )\"" \
+          || { echo "the blanker rewrites [$span] and the skip predicate hands it over" >&2
+               return 1; }
+      done
+    done
+  done
+  # Both derivations short-read the same way: an empty constant leaves a loop
+  # that iterates zero times and asserts nothing. The word list carries well
+  # over a dozen entries and the bound set at least one, so the cross product
+  # cannot honestly come back small.
+  [ "$pairs" -gt 40 ] \
+    || { echo "drove only $pairs spans, a constant is not being read" >&2; return 1; }
+  # And a cross product none of whose members the blanker touches would satisfy
+  # the loop above by never entering the assertion.
+  [ "$removable" -gt 10 ] \
+    || { echo "only $removable of $pairs spans were removable" >&2; return 1; }
+}
+
 @test "detectors: a write inside a quoteless substitution survives the blanker" {
   write_hook subst-inner-code.sh <<'EOF'
 x="$(cat f | tee lib/teed)"
@@ -464,6 +530,134 @@ EOF
   # something reads the line's real quoting structure rather than its parity.
   grep -qF -- 'fs-write:lib/prose' <<<"$output"
   grep -qF -- 'CALL	.claude/hooks/lib/helper.sh' <<<"$output"
+}
+
+# The bounded-word group. Its subject is #1609: the membership test that decides
+# whether a command word inside a double-quoted span is prose used to require a
+# space on BOTH sides, so a word abutting punctuation kept its operand and the
+# write detector emitted a term for a write that never happens.
+@test "detectors: a command word bounded by punctuation inside a message reaches nothing" {
+  write_hook bounded-word-prose.sh <<'EOF'
+paren="run (rm -f lib/parened) to clear it"
+call="run (bash .claude/hooks/lib/helper.sh) again"
+comma="try cp, mv, ln on lib/commaed today"
+EOF
+  run sites .claude/hooks/bounded-word-prose.sh
+  [ "$status" -eq 0 ]
+  # The first line is the reported defect in its isolated form: it carries no
+  # command substitution at all, which is what separates it from #1600 and is
+  # why narrowing that issue's skip left it firing.
+  grep -qF -- 'fs-write:lib/parened' <<<"$output" && return 1
+  # The same miss on the CALL side, which costs more than a term: an edge here
+  # pulls the named script's whole subtree into the caller's declared reach.
+  grep -qF -- 'CALL	.claude/hooks/lib/helper.sh' <<<"$output" && return 1
+  grep -qF -- 'fs-write:lib/commaed' <<<"$output" && return 1
+  true
+}
+
+@test "detectors: the bounded-word blanking is what silences that message" {
+  # The red half, in-test rather than against a vendored body: emptying the
+  # bound set is exactly the pre-change membership rule, so the fixture above
+  # starts reporting again. A guard nothing can fail is not a guard.
+  _GAIA_CAPCHECK_WORD_BOUNDS=''
+  write_hook bounded-word-unblanked.sh <<'EOF'
+paren="run (rm -f lib/parened) to clear it"
+EOF
+  run sites .claude/hooks/bounded-word-unblanked.sh
+  [ "$status" -eq 0 ]
+  grep -qF -- 'fs-write:lib/parened' <<<"$output"
+}
+
+@test "detectors: a command word bounded by a path character keeps its operand" {
+  write_hook bounded-word-pathchars.sh <<'EOF'
+rm -f "lib/sed/x"
+touch "lib/install.sh"
+EOF
+  run sites .claude/hooks/bounded-word-pathchars.sh
+  [ "$status" -eq 0 ]
+  # The companion half, and the reason `/`, `.` and `-` are not bounds. These
+  # words are path components of a real operand, and a bound set that reached
+  # them would blank the stem out of the target the write detector exists to
+  # read -- a loss, not an over-report, and so unreportable.
+  grep -qF -- 'fs-write:lib/sed/x' <<<"$output" || return 1
+  grep -qF -- 'fs-write:lib/install.sh' <<<"$output"
+}
+
+# The obligation the bound set is CHOSEN against, driven rather than argued.
+# Blanking leaves a space where the word was, and every anchor admits a run of
+# whitespace after its boundary, so a bound that is itself an anchor boundary
+# bridges across the blanked word to whatever follows and fabricates a CALL edge
+# into a script's whole subtree. That is #1536's direction, which is worse than
+# the over-report being repaired, so a repair that bought it would be a bad
+# trade made silently.
+#
+# Every combination of bound, command word, side and target is driven through
+# the real scanner and asserted to reach nothing. The targets are one per
+# detector family -- a bare path, the source builtin, a `bash` invocation, a
+# write operand -- so a bound that opens any one of them is caught by name.
+@test "detectors: no bound blanks a command word into an anchor's reach" {
+  local b w t side line combos=0
+  for b in $_GAIA_CAPCHECK_WORD_BOUNDS; do
+    for w in $_GAIA_CAPCHECK_QUOTED_WORDS; do
+      for t in '.claude/hooks/lib/helper.sh' '. .claude/hooks/lib/helper.sh' \
+               'bash .claude/hooks/lib/helper.sh' '-f lib/bridged'; do
+        for side in L R; do
+          combos=$((combos + 1))
+          if [ "$side" = L ]; then line="msg=\"lead$b$w $t tail\""
+          else line="msg=\"lead $w$b $t tail\""; fi
+          printf '%s\n' "$line" >"$FIX/.claude/hooks/bridge-probe.sh"
+          run sites .claude/hooks/bridge-probe.sh
+          [ "$status" -eq 0 ] || return 1
+          [ -z "$output" ] \
+            || { echo "bound [$b] side $side word [$w] target [$t] reached: $output" >&2
+                 return 1; }
+        done
+      done
+    done
+  done
+  [ "$combos" -gt 100 ] \
+    || { echo "drove only $combos combinations, a constant is not being read" >&2; return 1; }
+}
+
+@test "detectors: the anchor-reach arm fails against a bound the anchors read" {
+  # The measured reason `;`, `&` and `|` are absent from the bound set, pinned
+  # so nobody re-adds them from the symmetry argument. Each sits in
+  # _GAIA_CAPCHECK_PATHCMD's boundary class, so blanking the word behind one
+  # hands the anchor a whitespace run ending at a repo path.
+  _GAIA_CAPCHECK_WORD_BOUNDS=';'
+  write_hook bridge-mutant.sh <<'EOF'
+msg="lead;rm .claude/hooks/lib/helper.sh tail"
+EOF
+  run sites .claude/hooks/bridge-mutant.sh
+  [ "$status" -eq 0 ]
+  grep -qF -- 'CALL	.claude/hooks/lib/helper.sh' <<<"$output"
+}
+
+@test "detectors: blanking a span dense in command words stays inside its cost bound" {
+  # The span is dense in listed words AND in bounds, which is what makes the
+  # per-occurrence shape blow up: every (word, l, r) pair finds matches, and a
+  # rebuild-per-occurrence loop pays the whole span length for each one.
+  local span="" i=0
+  while [ "$i" -lt 800 ]; do span="$span rm (cp) sed,tee"; i=$((i + 1)); done
+  run_bounded "$STRIP_QUOTED_COST_BOUND" _gaia_capcheck_strip_quoted_code "x=\"$span\""
+}
+
+@test "detectors: a path component named after a command word and bounded by punctuation is lost" {
+  write_hook bounded-word-residual.sh <<'EOF'
+touch "lib/(rm).txt"
+EOF
+  run sites .claude/hooks/bounded-word-residual.sh
+  [ "$status" -eq 0 ]
+  # RED BY DESIGN, and pinned so it is rediscovered as a known residual rather
+  # than as a new defect. `(`, `)` and `,` are legal in a filename, so a real
+  # operand whose component is spelled like a listed word and bounded by one of
+  # them is blanked and its write is lost -- the silent direction, and the exact
+  # loss the bound set's first constraint describes. It is admitted anyway
+  # because the constraint that decides membership is whether such a component
+  # exists in this tree, and the sweep found none; this fixture is what makes
+  # that a claim somebody can re-run instead of a sentence.
+  grep -qF -- 'fs-write:lib/(rm).txt' <<<"$output" && return 1
+  true
 }
 
 @test "detectors: a bare dot after a flag is jq's identity filter, not the source builtin" {

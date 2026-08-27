@@ -110,9 +110,126 @@ _gaia_capcheck_strip_literals() {
 # leading and trailing spaces so a membership test is one `case`.
 _GAIA_CAPCHECK_QUOTED_WORDS=" mkdir rm touch tee install mktemp cp mv ln sed find bash sh source . curl wget gh git "
 
+# The characters, besides the space, that can bound one of those words inside a
+# double-quoted span. A membership test delimited by spaces alone missed every
+# word abutting punctuation -- `(rm`, `cp,` -- and passed its operand to the
+# write detector, which then emitted a term for a write that never happens
+# (#1609).
+#
+# The set is MEASURED, not reasoned. Two constraints pull against each other and
+# neither one is decidable by reading, so the set is whatever a sweep of every
+# (candidate, command word, side, target) combination through the real scanner
+# says costs nothing.
+#
+# The first constraint is that a bound must not SEPARATE THE COMPONENTS of a
+# path these words appear in. `/`, `.` and `-` are excluded on it: `"$dir/rm"`,
+# `install.sh` and `git-foo` are ordinary operands whose components are named
+# after listed words, and blanking a stem out of one corrupts the path the write
+# detector exists to read, which is the silent direction.
+#
+# Stated that narrowly on purpose, because the wider reading -- a bound must not
+# be a character legal in a path -- is false of every member of the set below.
+# `(`, `)` and `,` are all legal in a filename, and the loss the constraint
+# describes is reachable through them: `touch "lib/(rm).txt"` blanks to
+# `touch "lib/( ).txt"` and loses its target exactly the way `install.sh` would.
+# What separates them is not legality, it is whether a path in this tree ever
+# puts one of these words between two of these characters, and the sweep found
+# none. So this residual is stated rather than guarded, and it is the thing to
+# re-measure before adding a member: the question a candidate has to answer is
+# not "can this appear in a path" but "does it delimit a command-word-shaped
+# component of a real operand here".
+#
+# The second is #1536's direction, and it is the one reading gets wrong. Blanking
+# leaves a SPACE where the word was, every anchor admits a run of whitespace
+# after its boundary, so a bound that is itself an anchor boundary bridges across
+# the blanked word to whatever follows it and fabricates a CALL edge into a
+# script's whole subtree. `;`, `&` and `|` are exactly that: each sits in
+# _GAIA_CAPCHECK_PATHCMD's boundary class, and admitting any one of them turned
+# 39 measured shapes per character from silent into a fabricated call, against 6
+# it fixed. They are excluded on that measurement.
+#
+# `(` reads like the same hazard and is not. It sits in the boundary class of
+# _GAIA_CAPCHECK_CMD and of _GAIA_CAPCHECK_DOTCMD, so the reasoning that excludes
+# `;` appears to reach it, and the sweep says otherwise: CMD admits no whitespace
+# run after its boundary, DOTCMD's target is the lone `.`, which is itself a word
+# in the list above and is blanked before it can be reached, and PATHCMD, the one
+# anchor that both admits a whitespace run and resolves a bare path, does not
+# carry `(` at all. Measured: 48 shapes fixed, 0 fabricated. It is also the
+# character the reported defect is written in.
+#
+# A backtick is absent because it is unreachable rather than unsafe. Any logical
+# line carrying one forces the quoted-code skip below, so the blanker never sees
+# a span in which a backtick could bound anything; the sweep moves zero shapes
+# in either direction on it. Naming it would be a member no run can exercise.
+#
+# What is left is `(`, `)` and `,`: the punctuation prose puts against a word it
+# names, minus everything an anchor reads as command position.
+#
+# Held space-separated so `for` splits it; no member is a glob character.
+_GAIA_CAPCHECK_WORD_BOUNDS='( ) ,'
+
+# _gaia_capcheck_bounds_present <text>: the members of the constant above that
+# actually occur in <text>, space-separated, in _GAIA_CAPCHECK_RET.
+#
+# It is an optimization and nothing else: both readers below cross the word
+# list with the bound set twice over, and a span carrying no `(` has no pair to
+# test that names one. Narrowing the cross product to the bounds a span really
+# carries takes the common prose span, which carries one or none, from
+# (1+|bounds|)^2 pairs per word to one or four. The formula rather than the
+# number, because the bound set is measured and a member added to it moves the
+# figure. Correctness does not depend on any of it -- a reader handed the whole
+# constant answers identically, only slower.
+_gaia_capcheck_bounds_present() {
+  local t="$1" b out=""
+  # shellcheck disable=SC2086
+  for b in $_GAIA_CAPCHECK_WORD_BOUNDS; do
+    case "$t" in *"$b"*) out="$out$b " ;; esac
+  done
+  _GAIA_CAPCHECK_RET="$out"
+}
+
+# _gaia_capcheck_span_has_word <text>: 0 when <text> carries a member of
+# _GAIA_CAPCHECK_QUOTED_WORDS bounded on both sides by a space or by a member
+# of _GAIA_CAPCHECK_WORD_BOUNDS, 1 otherwise.
+#
+# This is the membership question in ONE place on purpose. The blanker below
+# removes exactly the words this answers 0 for, and the skip predicate above it
+# refuses a substitution span for exactly the same reason -- so the two have to
+# read the same word in the same position or the skip stops covering what the
+# blanker removes. That is not a hypothetical drift: the blanker's bound set is
+# what the skip is derived against, so a bound taught to one and not the other
+# hands the blanker a substitution body it will damage, and the loss is a real
+# write or call with nothing left to report it. Sharing the reader is what
+# makes "taught to one" impossible rather than merely discouraged.
+_gaia_capcheck_span_has_word() {
+  local s=" $1 " bounds word l r
+  _gaia_capcheck_bounds_present "$s"
+  bounds="$_GAIA_CAPCHECK_RET"
+  # shellcheck disable=SC2086
+  for word in $_GAIA_CAPCHECK_QUOTED_WORDS; do
+    case "$s" in *"$word"*) ;; *) continue ;; esac
+    # shellcheck disable=SC2086
+    for l in ' ' $bounds; do
+      # shellcheck disable=SC2086
+      for r in ' ' $bounds; do
+        case "$s" in *"$l$word$r"*) return 0 ;; esac
+      done
+    done
+  done
+  return 1
+}
+
 # _gaia_capcheck_strip_quoted_code <text>: inside every DOUBLE-quoted span,
 # blanks the command words listed above and the `>` redirect operator, leaving
 # the result in _GAIA_CAPCHECK_RET.
+#
+# A word counts as a command word when a space or a member of
+# _GAIA_CAPCHECK_WORD_BOUNDS sits on each side of it, which is
+# _gaia_capcheck_span_has_word's question and the same one the skip predicate
+# below asks. It does NOT catch a word bounded by anything outside that set --
+# `install.sh`, `"$dir/rm"`, `git-foo` -- and every one of those is a deliberate
+# miss with its reason in the constant's own header: blanking there would eat a
+# path the write detector is meant to read.
 #
 # A command name inside a double-quoted string is prose: a deny message that
 # says `rm -rf of .git is forbidden`, a usage block that spells out
@@ -189,6 +306,13 @@ _GAIA_CAPCHECK_QUOTED_WORDS=" mkdir rm touch tee install mktemp cp mv ln sed fin
 # reasoning that lost the redirect the first time, which is why the count is
 # stated here and again beside the arm itself.
 #
+# The command-word arm asks _gaia_capcheck_span_has_word, the function the
+# blanker asks, rather than a membership test written out again here. What
+# forces the skip has to be exactly what the blanker removes, so the two cannot
+# be allowed to answer differently: a bound the blanker learned and this
+# predicate did not hands the blanker a substitution body it damages, which is
+# round 1 of #1600's hole reached from the other side.
+#
 # Every approximation in it leans the same way. A `$(` span is taken to the LAST
 # `)` on the line rather than to its matching one, which is the widest reading
 # available and so can only pull more text in, never less. An opener with no
@@ -217,7 +341,7 @@ _GAIA_CAPCHECK_QUOTED_WORDS=" mkdir rm touch tee install mktemp cp mv ln sed fin
 # `case` guard just found, so each pass removes at least that opener and the
 # string strictly shrinks.
 _gaia_capcheck_subst_forces_skip() {
-  local t="$1" rest span pre bt dl word
+  local t="$1" rest span pre bt dl
   while :; do
     case "$t" in *'`'*|*'$('*) ;; *) return 1 ;; esac
     bt=-1; dl=-1
@@ -244,15 +368,12 @@ _gaia_capcheck_subst_forces_skip() {
     # blanker can remove has to force the skip, or the ones it misses fail in
     # the silent direction.
     case "$span" in *'>'*) return 0 ;; esac
-    # shellcheck disable=SC2086
-    for word in $_GAIA_CAPCHECK_QUOTED_WORDS; do
-      case " $span " in *" $word "*) return 0 ;; esac
-    done
+    _gaia_capcheck_span_has_word "$span" && return 0
   done
 }
 
 _gaia_capcheck_strip_quoted_code() {
-  local t="$1" out="" head body word
+  local t="$1" out="" head body word bounds l r
   case "$t" in
     *'"'*) ;;
     *) _GAIA_CAPCHECK_RET="$t"; return 0 ;;
@@ -272,16 +393,57 @@ _gaia_capcheck_strip_quoted_code() {
       *'"'*) body="${t%%\"*}"; t="${t#*\"}" ;;
       *) body="$t"; t="" ;;
     esac
-    # Padded so a word at either end of the span still has a space on both
-    # sides, which is what makes one `case` test and one substitution enough.
-    # The membership test is space-delimited on BOTH sides, so a word abutting
-    # punctuation inside the span (`(rm`, a backtick-quoted `rm` in a message)
-    # is not blanked and its operand still reaches the write detector: #1609.
+    # Padded so a word at either end of the span still has a bound on both
+    # sides, which is what lets the space carry the ends and the bound set
+    # carry the middle.
     body=" $body "
     case "$body" in *'>'*) body="${body//>/ }" ;; esac
+    _gaia_capcheck_bounds_present "$body"
+    bounds="$_GAIA_CAPCHECK_RET"
+    # Each pass replaces the word with a space and re-lays its two bounds around
+    # it, so a bound survives to delimit whatever sits beside it. The
+    # replacement is QUOTED: an unquoted `&` reaching a replacement string is
+    # read by bash as the matched text, and the bound set is measured rather
+    # than fixed, so the quoting is what keeps a future member out of that.
+    #
+    # It repeats because two occurrences sharing one bound (`" rm rm "`) cannot
+    # both be replaced in one pass: `${//}` scans for non-overlapping matches,
+    # so it takes every other one and the shared delimiter it consumed leaves
+    # the next word unbounded. It repeats at most ONCE more for that, whatever
+    # k is: the replacement re-lays BOTH bounds with a space between them, so
+    # the occurrences pass 1 skipped are no longer adjacent to anything and
+    # pass 2 takes all of them. Measured at 1 pass for k=1 and exactly 2 for
+    # every k from 2 to 1024, across each word shape and each bound.
+    #
+    # It terminates on the occurrence count, NOT on the length. The string
+    # shrinks by len(word)-1, which is ZERO for the lone `.`, the one
+    # single-character member of the word list and the first one a reader would
+    # check. What strictly decreases is the number of occurrences of `word` in
+    # the span: the replacement is a space and two bound characters, none of
+    # which occurs in any listed word, so no pass can create an occurrence.
+    #
+    # Cost is what decides the shape. Each replacement is one C-level pass over
+    # the span rather than a per-occurrence rebuild, and that is the whole
+    # claim, the one STRIP_QUOTED_COST_BOUND pins: the alternative, splicing out
+    # one occurrence at a time, rebuilds the span per occurrence and goes
+    # super-quadratic on a span dense in listed words. The replacement count is
+    # at most 2 * (1+|bounds|)^2 per present word, the 2 being the pass bound the
+    # repeat argument above establishes, so nothing here grows with the longest
+    # run of adjacent occurrences. Nothing sizes a logical line, and this walk
+    # gates every merge.
     # shellcheck disable=SC2086
     for word in $_GAIA_CAPCHECK_QUOTED_WORDS; do
-      case "$body" in *" $word "*) body="${body// $word / }" ;; esac
+      case "$body" in *"$word"*) ;; *) continue ;; esac
+      # shellcheck disable=SC2086
+      for l in ' ' $bounds; do
+        # shellcheck disable=SC2086
+        for r in ' ' $bounds; do
+          while :; do
+            case "$body" in *"$l$word$r"*) ;; *) break ;; esac
+            body="${body//"$l$word$r"/"$l $r"}"
+          done
+        done
+      done
     done
     body="${body# }"; body="${body% }"
     out="$out\"$body\""
