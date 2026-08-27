@@ -1483,6 +1483,37 @@ _gaia_capcheck_glob_match() {
 # each stating what it matches and what it deliberately does not.
 # ---------------------------------------------------------------------------
 
+# The boundary a command word has to sit behind to be in command position, and
+# the anchor six sites below compose against: the network, github-write,
+# git-write and tmp detectors, plus the write and invocation scanners. Widest
+# blast radius in the file, which is why it earns a header of its own despite
+# not being a detector.
+#
+# It is a BOUNDARY SET, not a parse. It asks only what character precedes the
+# word, so a shape it does not admit is not reported as unmatched, it produces
+# no record at all. That silence is the reason this constant is worth a header:
+# a reader of a clean run cannot tell "nothing there" from "not matched", and
+# the anchor-side defects this file has carried are all of that kind -- an
+# in-token keyword match, a bare path behind a character this set omits.
+#
+# What the set admits: line start, whitespace, `|`, `&`, `;`, `(`, a backtick,
+# and `$`. Beyond the first two, each one is a character a real command word can
+# sit directly behind once a line has been stripped and blanked upstream, which
+# is a smaller claim than "these are the shell's separators" and is the one this
+# set can actually support.
+#
+# What its ABSENCES cost is the part a reader cannot see from the line. `-` and
+# `:` are both out, so `"${BASH:-bash}" <path>` is invisible to every detector
+# here while a plain `bash <path>` is not: two spellings of one operation,
+# opposite verdicts, decided by a character in a parameter expansion. This tree
+# standardizes its parse checks on the `${BASH:-bash}` form, so that invisibility
+# is load-bearing today rather than theoretical.
+#
+# Widening the set is not the repair for a miss it produces. Every character
+# added here is added for all six sites at once, and each one they gain is a
+# position where ordinary prose can now sit in command position. The narrower
+# anchors below (`_GAIA_CAPCHECK_DOTCMD`, `_GAIA_CAPCHECK_PATHCMD`) exist because
+# that trade is decided per detector rather than once here.
 _GAIA_CAPCHECK_CMD='(^|[[:space:]|&;(`$])'
 
 # The boundary a BARE `.` has to sit behind to be the source builtin. Plain
@@ -1871,8 +1902,39 @@ _gaia_capcheck_scan_invocations() {
     rem="${rest#*"${BASH_REMATCH[0]}"}"
     rest="$rem"
     # Skip the command's own flags to reach its script operand.
+    #
+    # One flag is not on the way to the operand: it decides whether the operand
+    # runs at all. `-n` is bash's parse-only flag, so `bash -n <path>` compiles
+    # the file and executes none of it, reaching for nothing the target reaches
+    # for. Skipping it makes a parse check indistinguishable from the real
+    # invocation and hands the checking file the target's whole subtree
+    # (gaia-react/gaia#1599). Abandon the site instead, so it produces no record
+    # at all: the shape is recognized and rejected as a non-call, which is a
+    # different thing from an operand this scanner accepts and cannot resolve,
+    # and only the second earns an `UNRESC` line.
+    #
+    # The arm takes a single-dash cluster carrying an `n` anywhere in it,
+    # because `-nu` and `-vn` are `-n` too, and it excludes a long option by
+    # construction: `--noprofile` and `--norc` both carry an `n` and neither
+    # stops the operand executing.
+    #
+    # Two misses it accepts, both in the direction of reading a parse check as a
+    # call. `bash -o noexec <path>` sets the same option by name; that spelling
+    # already yields nothing here, since `noexec` fails the operand test below,
+    # so it costs a second vocabulary to catch a shape that is already silent.
+    # And `.`/`source` take no `-n` at all, so on those two anchors this arm can
+    # only fire on a spelling that does not work in bash.
+    #
+    # The subject is the current TOKEN, not `$rem`. `$rem` holds the whole
+    # remainder of the logical line, so a pattern matched against it reads an
+    # `n` anywhere downstream, operand included: `-x b/run-thing.sh` would take
+    # the parse-check arm on the `n` in the target's own name. That direction is
+    # the one this oracle cannot report, since an abandoned site emits no record
+    # at all, so the caller would come back clean over a subtree never walked,
+    # and nearly every script path in this tree carries an `n`.
     while :; do
-      case "$rem" in
+      case "${rem%%[[:space:]]*}" in
+        -n* | -[!-]*n*) continue 2 ;;
         -*) rem="${rem#*[[:space:]]}"; rem="${rem#"${rem%%[![:space:]]*}"}" ;;
         *) break ;;
       esac
