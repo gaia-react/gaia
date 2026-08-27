@@ -24,6 +24,23 @@
 # carries its own short-read guard, because a derivation that silently returns
 # a subset leaves a green suite driving less than its names claim.
 #
+# And a short-read guard is itself a coverage claim, which is the rule this
+# file had to learn twice. A guard states what it reads; nothing rereads that
+# statement; the statement decays into a per-site memory the next derivation
+# does not inherit. Three separate derivations in this file shipped a guard
+# narrower than its own stated coverage, the third one inside the second one's
+# repair, and the deterministic battery was green for all three. A second
+# in-file predicate does not close it: whatever checks the checker is then
+# making an unchecked claim of its own, one level out.
+#
+# The rule that does close it, for any derivation added here: decide the
+# coverage claim against an authority OUTSIDE this file's vocabulary, per run.
+# Where such an authority exists the claim stops being prose. It exists more
+# often than it looks: the vocabulary guard counts the artifact's own letters,
+# the roster guard compares two independent readings of the library, and the
+# wide-predicate guard asks bash which spellings define a constant. Where no
+# authority exists, say what is unchecked instead of asserting coverage.
+#
 # What this suite does NOT do, stated because a property suite reads as
 # stronger than it is. It does not judge whether an anchor's vocabulary is the
 # RIGHT one; that is decided per detector, argued at length in each constant's
@@ -67,6 +84,13 @@ setup() {
   # placeholder line cannot satisfy it and far enough below what every anchor
   # in the library carries today that it never argues with a terse header.
   ANCHOR_HEADER_MIN_LINES=8
+
+  # The value every generated spelling assigns, for the oracle arm below. It
+  # opens with the alternation that makes a constant a position test, so a
+  # spelling the predicate reads at all is one it emits, and it carries no `$`,
+  # so the single-quoted and double-quoted spellings assign the same bytes and
+  # the arm judges the quoting form rather than an expansion.
+  SPELL_VALUE='(^|[;|&])'
 }
 
 # --- Derivations -----------------------------------------------------------
@@ -94,11 +118,46 @@ anchor_names() {
 # catches it. A PARTIAL one is the silent case, and it is the same shape as the
 # in-token defect this suite exists for, one level further out.
 #
-# Its own honest limit, since this file asks that of the library it reads: it
-# handles a top-level assignment carrying at most a `readonly` or `declare`
-# keyword. A constant assigned some other way, through an `eval` or a nameref,
-# is outside what any line-wise reader sees, and neither predicate claims it.
+# Its own honest limit is NOT stated here. A predicate whose job is to be wider
+# than another one is making a coverage claim, and a coverage claim written
+# beside the code it describes is a fact about the code that nothing rereads:
+# the paragraph this comment replaces claimed a `readonly` or `declare` keyword
+# and an `eval`-or-nameref limit, while the body read three spellings of seven
+# and missed four a line-wise reader plainly sees. The claim is decided instead,
+# every run, by the oracle arm below, against bash. What survives as prose is
+# the input space that arm generates, and an input space is an untested case
+# rather than a false claim.
+#
+# `local` is deliberately not stripped, and bash is why rather than judgment:
+# `local` outside a function is an error, so a `local` line defines no library
+# constant and this predicate must not claim one. The oracle arm generates that
+# spelling and would red if the strip list grew it.
 position_test_constants() {
+  awk '
+    {
+      line = $0
+      while (sub(/^(export|readonly|declare|typeset)[ \t]+/, "", line)) {
+        while (sub(/^[-+][a-zA-Z]+[ \t]+/, "", line)) { }
+      }
+      if (line !~ /^_GAIA_CAPCHECK_[A-Za-z0-9_]*=/) next
+      name = line
+      sub(/=.*/, "", name)
+      value = line
+      sub(/^[^=]*=/, "", value)
+      first = substr(value, 1, 1)
+      if (first != "\"" && first != sprintf("%c", 39)) next
+      value = substr(value, 2)
+      if (index(value, "(^|") == 1) print name
+    }
+  ' "${1:-$LIB}"
+}
+
+# position_test_constants_prewidening [<library>]: the predicate exactly as it
+# read before the oracle arm below existed, kept as that arm's mutation control
+# rather than as a second reader. It is frozen on purpose: its subject is the
+# historical shape, the way the in-token control's subject is the pre-boundary
+# anchor spelling, so it does not track the predicate above and must not.
+position_test_constants_prewidening() {
   awk '
     {
       line = $0
@@ -114,6 +173,66 @@ position_test_constants() {
       if (index(value, "(^|") == 1) print name
     }
   ' "${1:-$LIB}"
+}
+
+# assignment_spellings: the input space the oracle arm drives, one
+# `<name><TAB><line>` per spelling. It is a cross product of three axes rather
+# than a list of cases: the assignment-prefix keywords bash accepts in front of
+# a name, with and without flag words and stacked; a name with and without a
+# digit; and the three quoting forms, including the unquoted one that does not
+# parse. Nothing here labels a spelling in or out of the predicate's coverage,
+# which is the whole point: bash labels them.
+#
+# This enumeration is the honest limit that remains. A spelling nobody thought
+# to generate is untested, which is a different and smaller failure than a
+# paragraph asserting coverage the code does not have: the arm never claims a
+# spelling it did not drive.
+assignment_spellings() {
+  local prefix name quote
+  for prefix in '' 'export ' 'readonly ' 'declare ' 'typeset ' 'local ' \
+    'declare -g ' 'declare -gr ' 'readonly declare ' 'export readonly '; do
+    for name in _GAIA_CAPCHECK_SPELL _GAIA_CAPCHECK_SPELL2; do
+      for quote in "'" '"' ''; do
+        printf '%s\t%s%s=%s%s%s\n' \
+          "$name" "$prefix" "$name" "$quote" "$SPELL_VALUE" "$quote"
+      done
+    done
+  done
+}
+
+# bash_defines <line> <name>: true when sourcing a file holding <line> leaves
+# <name> carrying the anchor value. This is the oracle the arm below decides
+# coverage against, and it is outside this file's own vocabulary on purpose: a
+# predicate checked by a second predicate leaves the second one's coverage as a
+# fresh unchecked claim, which is the regress that put three instances of one
+# class in this file. Whether a line defines a shell constant is a question
+# bash answers, and bash is already this suite's interpreter.
+#
+# One file and one bash per spelling, not one file holding all of them: a
+# spelling that does not parse aborts the whole source, and a `readonly` from
+# an earlier spelling would refuse a later assignment to the same name.
+bash_defines() {
+  local line="$1" name="$2" file="$BATS_TEST_TMPDIR/oracle-spelling.sh" got
+  printf '%s\n' "$line" >"$file"
+  got="$(bash -c 'source "$1" >/dev/null 2>&1; printf "%s" "${!2-}"' _ "$file" "$name")"
+  [ "$got" = "$SPELL_VALUE" ]
+}
+
+# predicate_disagreements <predicate-fn>: every generated spelling the named
+# predicate and bash label differently, one `<verdict> <line>` per line. Empty
+# is agreement.
+predicate_disagreements() {
+  local fn="$1" name line file="$BATS_TEST_TMPDIR/predicate-spelling.sh" seen wanted
+  while IFS="$(printf '\t')" read -r name line; do
+    [ -n "$name" ] || continue
+    printf '%s\n' "$line" >"$file"
+    if "$fn" "$file" | grep -qxF -- "$name"; then seen=yes; else seen=no; fi
+    if bash_defines "$line" "$name"; then wanted=yes; else wanted=no; fi
+    [ "$seen" = "$wanted" ] && continue
+    printf 'predicate=%s bash=%s\t%s\n' "$seen" "$wanted" "$line"
+  done <<EOF
+$(assignment_spellings)
+EOF
 }
 
 # declass <regex>: the regex with every POSIX character-class name removed, so
@@ -306,6 +425,42 @@ token_at_word_boundary() {
   position_test_constants "$copy" | grep -qxF -- "$n"
   anchor_names "$copy" | grep -qxF -- "$n" && return 1
   true
+}
+
+@test "the wide predicate and bash agree on which spellings define a constant" {
+  # The coverage claim of the predicate above, decided rather than remembered.
+  # Every arm in this file walks a set the narrow derivation produces, and the
+  # wide predicate is the only thing standing between that set and a silent
+  # shrink; a wide predicate that is not actually wider makes the equality arm
+  # pass by agreeing with the defect it exists to catch.
+  #
+  # Both directions matter and they fail differently. A spelling bash defines
+  # and the predicate misses is the silent shrink. A spelling bash rejects and
+  # the predicate emits is a name the equality arm reds on with no anchor
+  # behind it, which reads as a respelling nobody made.
+  local out
+  out="$(predicate_disagreements position_test_constants)"
+  [ -n "$(assignment_spellings)" ]
+  if [ -n "$out" ]; then
+    printf 'the wide predicate disagrees with bash:\n%s\n' "$out" >&2
+    return 1
+  fi
+  true
+}
+
+@test "the coverage arm fails against the predicate spelling that shipped the defect" {
+  # Non-vacuity control for the arm above, against the real historical shape
+  # rather than an invented one: the predicate as it read when it claimed a
+  # coverage it did not have. A control built from the defect keeps the arm
+  # honest about the case it was written for, the way the in-token control
+  # applies the pre-boundary anchor spelling.
+  #
+  # The count is not asserted, only that some spelling disagrees. What the old
+  # predicate missed is a property of the input space above, and pinning a
+  # number here would be a claim about that space that nothing rederives.
+  local out
+  out="$(predicate_disagreements position_test_constants_prewidening)"
+  [ -n "$out" ]
 }
 
 @test "each anchor's keyword vocabulary accounts for every letter that anchor carries" {
