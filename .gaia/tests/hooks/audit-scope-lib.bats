@@ -152,16 +152,61 @@ EOF
   [ "$(count_invocations "$probe" audit_scope_init)" -eq 1 ]
 }
 
-# last_definition <file>: the name of the last function the file defines, in
-# every spelling bash accepts. Reading only the canonical `name() {` would leave
-# the pin below green when a function is appended as `function name {` or with
-# extra spacing, which is the drift it exists to catch: `tail -1` would still
-# return the previously-last definition.
+# last_definition <file>: the name of the last function the file defines at top
+# level, in either spelling bash accepts (`name()` and `function name`, the
+# `()` optional after the keyword) and with the opening brace on the definition
+# line or on the line below it. Reading only the canonical `name() {` would
+# leave the pin below green when a function is appended as `function name {` or
+# with extra spacing, which is the drift it exists to catch: `tail -1` would
+# still return the previously-last definition.
+#
+# The boundary, stated rather than implied, because the pin is only as honest
+# as this matcher: a definition that does not start at column 1 is out of
+# reach. Both modules define at top level and neither has a reason not to, so
+# an indented definition would be a larger change than the append this pin
+# watches for; reaching it needs a parser rather than a line matcher, and a
+# line matcher that claimed it would be the same over-claim this helper was
+# repaired for.
 last_definition() {
   sed -E -n \
     -e 's/^function[[:space:]]+([A-Za-z0-9_]+)[[:space:]]*(\(\)[[:space:]]*)?\{.*$/\1/p' \
     -e 's/^([A-Za-z0-9_]+)[[:space:]]*\([[:space:]]*\)[[:space:]]*\{.*$/\1/p' \
+    -e 's/^function[[:space:]]+([A-Za-z0-9_]+)[[:space:]]*(\(\)[[:space:]]*)?$/\1/p' \
+    -e 's/^([A-Za-z0-9_]+)[[:space:]]*\([[:space:]]*\)[[:space:]]*$/\1/p' \
     "$1" | tail -1
+}
+
+# The matcher is what the pin below rests on, so its own boundary is asserted
+# rather than trusted, exactly as count_invocations` is above. A spelling it
+# cannot see returns the PREVIOUSLY-last definition, which still equals the
+# resolver`s probe, so the pin stays green while the probe has silently become
+# the early-export kind the resolver rules out.
+@test "last_definition reads a definition whose brace is on the next line" {
+  probe="$BATS_TEST_TMPDIR/lib.sh"
+
+  printf '%s\n' 'first() {' '  :' '}' > "$probe"
+  [ "$(last_definition "$probe")" = "first" ]
+
+  printf '%s\n' 'first() {' '  :' '}' 'second()' '{' '  :' '}' > "$probe"
+  [ "$(last_definition "$probe")" = "second" ]
+
+  printf '%s\n' 'first() {' '  :' '}' 'function second' '{' '  :' '}' > "$probe"
+  [ "$(last_definition "$probe")" = "second" ]
+
+  printf '%s\n' 'first() {' '  :' '}' 'function second ()' '{' '  :' '}' > "$probe"
+  [ "$(last_definition "$probe")" = "second" ]
+
+  # And still declines the shapes that are not definitions at all: a bare call,
+  # and a command substitution in an assignment. Each one names something the
+  # DEFINITION does not, so a matcher that wrongly credited either line returns
+  # that name and the assertion reds. Reusing the defined name here would admit
+  # the exact state the assertion forbids, which is the whole failure this
+  # helper was repaired for, one level up.
+  printf '%s\n' 'first() {' '  :' '}' 'second' > "$probe"
+  [ "$(last_definition "$probe")" = "first" ]
+
+  printf '%s\n' 'first() {' '  :' '}' 'x=$(second)' > "$probe"
+  [ "$(last_definition "$probe")" = "first" ]
 }
 
 # The resolver argues that probing each module's LAST definition needs no
