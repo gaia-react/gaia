@@ -221,13 +221,64 @@ assert_same() {
 
 # --- The page's own claim about when the hook fires --------------------------
 
+# release_claim
+# Prints the mechanism claim in the page's `## Release` section: the paragraph
+# naming the hook, truncated to its first two sentences.
+#
+# Scoped to the sentences, not to the file and not even to the section, because
+# both wider reads are satisfied by text that has nothing to do with the claim.
+# `first` is guaranteed present page-wide for as long as the parity table pins
+# the fourth Known-limitations lead, which spells `the first command in its tool
+# call` verbatim; and it survives a section read too, since the paragraph's own
+# closing rationale says `while the first is still mid-review`. `MERGED` is
+# likewise carried by the `--auto` entry's body. A whole-file or whole-section
+# grep therefore greens a release sentence rewritten to drop both qualifiers,
+# which is the condition-B shape this suite's header rejects, asserted of the
+# suite itself.
+#
+# Two sentences rather than one: the qualifiers are split across them, the
+# leading and repository conditions in the first and the MERGED condition in the
+# second, while the third sentence is rationale rather than mechanism and is
+# where the decoy `first` lives.
+release_claim() {
+  local body rc
+  rc=0
+  body="$(section_body "$PAGE" '## Release')" || rc=$?
+  [ "$rc" -eq 0 ] || return 2
+  printf '%s\n' "$body" | grep -F -- 'issue-claim-release.sh' | awk '
+    {
+      # Cut at the second sentence break. A period with no space after it sits
+      # inside a path or a filename, not at the end of a sentence.
+      rest = $0; out = ""; n = 0
+      while (n < 2 && match(rest, /\. /)) {
+        out = out substr(rest, 1, RSTART)
+        rest = substr(rest, RSTART + RLENGTH)
+        n++
+      }
+      print (n == 2 ? out : $0)
+    }'
+}
+
 @test "the page qualifies the release rather than asserting it unconditionally" {
-  # The three qualifiers the hook actually enforces before any label write: the
-  # merge leads the tool call, it names this repository, and the pull request
-  # reads MERGED. The superseded sentence asserted the first two of nothing.
-  grep -qF -- 'first' "$PAGE"
-  grep -qF -- 'naming this repository' "$PAGE"
-  grep -qF -- 'MERGED' "$PAGE"
+  local claim rc
+  rc=0
+  claim="$(release_claim)" || rc=$?
+  [ "$rc" -eq 2 ] && { echo "${PAGE_REL} carries no '## Release' section" >&2; return 1; }
+  [ -n "$claim" ] || { echo "no release claim read in ${PAGE_REL}; the paragraph no longer names the hook" >&2; return 1; }
+
+  # The three conditions the hook enforces before any label write, asserted as
+  # the phrases that carry them rather than as bare words a rationale could
+  # supply: the merge leads the tool call, it names this repository, and the
+  # pull request reads MERGED. The superseded sentence asserted none of them.
+  local q
+  for q in '**first** command' 'naming this repository' '`MERGED`'; do
+    grep -qF -- "$q" <<<"$claim" || {
+      echo "${PAGE_REL}'s release claim drops the qualifier '${q}':" >&2
+      printf '%s\n' "$claim" >&2
+      return 1
+    }
+  done
+
   grep -qF -- 'fires on `gh pr merge` and strips' "$PAGE" && {
     echo "${PAGE_REL} states the release unconditionally again; the hook bails before the label write on several shapes" >&2
     return 1
