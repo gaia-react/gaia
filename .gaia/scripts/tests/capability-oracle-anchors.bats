@@ -24,6 +24,36 @@
 # carries its own short-read guard, because a derivation that silently returns
 # a subset leaves a green suite driving less than its names claim.
 #
+# And a short-read guard is itself a coverage claim, which is the rule this
+# file had to learn twice. A guard states what it reads; nothing rereads that
+# statement; the statement decays into a per-site memory the next derivation
+# does not inherit. Three separate derivations in this file shipped a guard
+# narrower than its own stated coverage, the third one inside the second one's
+# repair, and the deterministic battery was green for all three. A second
+# in-file predicate does not close it: whatever checks the checker is then
+# making an unchecked claim of its own, one level out.
+#
+# The rule that does close it, for any derivation added here: decide the
+# coverage claim against an authority OUTSIDE this file's vocabulary, per run.
+# Where such an authority exists the claim stops being prose. It exists more
+# often than it looks: the vocabulary guard counts the artifact's own letters,
+# the roster guard compares two independent readings of the library, and the
+# wide predicate is bash itself, sourcing the library and reporting what then
+# exists. Where no authority exists, say what is unchecked instead of
+# asserting coverage.
+#
+# One corollary, learned by getting it wrong a fourth time. CONSULTING an
+# authority over an enumerated set of inputs is not the same as BEING one.
+# The wide predicate first approximated bash with a regex and checked that
+# regex against bash over a GENERATED space of spellings. The space was then
+# the coverage claim, and three consecutive reviews each found a branch the
+# regex read that no generated spelling drove, the last of them three at once,
+# every round against a green suite. An enumeration standing between a
+# derivation and its authority reintroduces the exact claim the authority was
+# brought in to retire. So where the authority can answer the question
+# directly, let it answer: the enumeration then does not need a guard of its
+# own, it is gone.
+#
 # What this suite does NOT do, stated because a property suite reads as
 # stronger than it is. It does not judge whether an anchor's vocabulary is the
 # RIGHT one; that is decided per detector, argued at length in each constant's
@@ -80,13 +110,15 @@ anchor_names() {
   sed -n "s/^\(_GAIA_CAPCHECK_[A-Za-z_]*\)='(\^|.*/\1/p" "${1:-$LIB}"
 }
 
-# position_test_constants [<library>]: the same set, read by a WIDER predicate,
-# for the arm that holds anchor_names to it. It reads past whatever quote the
-# assignment uses and past an assignment keyword in front of the name, so an
-# anchor spelled in either of those ways is in this set and absent from the
-# narrow one, which is what makes the disagreement visible.
+# position_test_constants [<library>]: the same set, read WIDER than
+# anchor_names, for the arm that holds the narrow one to account. It is not a
+# second reader of the library's text. It sources the library in its own bash
+# and reports the constants that then exist carrying an anchor value, so every
+# spelling bash accepts in front of a name is already in this set and a
+# spelling the narrow predicate cannot read is the only thing the two can
+# disagree about.
 #
-# Why a second predicate at all. anchor_names is the derivation every arm in
+# Why a wide predicate at all. anchor_names is the derivation every arm in
 # this file walks, so a spelling it misses does not shrink one arm, it shrinks
 # all of them at once and each still reports green: the suite drives fewer
 # anchors while its names go on claiming every anchor. A wholesale respelling
@@ -94,26 +126,45 @@ anchor_names() {
 # catches it. A PARTIAL one is the silent case, and it is the same shape as the
 # in-token defect this suite exists for, one level further out.
 #
-# Its own honest limit, since this file asks that of the library it reads: it
-# handles a top-level assignment carrying at most a `readonly` or `declare`
-# keyword. A constant assigned some other way, through an `eval` or a nameref,
-# is outside what any line-wise reader sees, and neither predicate claims it.
+# Why bash rather than a wider regex, which is this derivation's whole history
+# and the reason the rule in this file's header is written the way it is. A
+# predicate whose job is to be wider than another one is making a coverage
+# claim, and a coverage claim decided inside this file's own vocabulary is a
+# fact about the code that nothing rereads. A regex version of this predicate
+# carried a paragraph claiming a keyword-and-nameref limit while its body read
+# three spellings of seven. Checking that regex against bash over a GENERATED
+# space of spellings did not end it either, and that is the part worth keeping:
+# the generated space is itself a coverage claim. Three consecutive reviews
+# each found a branch the predicate read that no generated spelling drove, the
+# last of them three at once, and every one of those rounds ran against a
+# green suite.
+#
+# The regress ends where the approximation does. This predicate has no branches
+# to cover and no input space to enumerate, because it is not an approximation
+# of bash: it is bash. A name it reports is one that exists once the library
+# loads, which is the only reading of "the library defines this constant" that
+# is nobody's reading of a line.
+#
+# Two things bash decides here for free, which the hand-widened regex got
+# wrong in both directions. `local` at file scope is an error defining
+# nothing, so a `local` line contributes no name here and cannot be claimed;
+# a strip list growing `local` as a keyword did claim one. And a line that
+# does not parse aborts the load, so it surfaces as a short set against
+# anchor_names rather than as a name nobody can use. Neither needed a rule.
+#
+# The nested interpreter is `$BASH`, the one running this suite, rather than
+# whatever `bash` resolves to on PATH. The library refuses to load under bash
+# 3.2 by design, so a bare `bash` could answer this question under a different
+# interpreter than every other arm is using: green here, red everywhere else,
+# or the reverse. Asking the suite's own bash keeps the answer about the
+# interpreter the file says it runs under.
 position_test_constants() {
-  awk '
-    {
-      line = $0
-      sub(/^readonly[ \t]+/, "", line)
-      sub(/^declare[ \t]+-[a-zA-Z]+[ \t]+/, "", line)
-      if (line !~ /^_GAIA_CAPCHECK_[A-Za-z_]*=/) next
-      name = line
-      sub(/=.*/, "", name)
-      value = line
-      sub(/^[^=]*=/, "", value)
-      first = substr(value, 1, 1)
-      if (first == "\"" || first == sprintf("%c", 39)) value = substr(value, 2)
-      if (index(value, "(^|") == 1) print name
-    }
-  ' "${1:-$LIB}"
+  "$BASH" -c '
+    source "$1" >/dev/null 2>&1
+    for n in ${!_GAIA_CAPCHECK_@}; do
+      case "${!n}" in "(^|"*) printf "%s\n" "$n" ;; esac
+    done
+  ' _ "${1:-$LIB}"
 }
 
 # declass <regex>: the regex with every POSIX character-class name removed, so
@@ -184,14 +235,25 @@ header_names_keyword() {
   anchor_header "$1" "${3:-$LIB}" | grep -qE "\`${2}([^A-Za-z]|\$)"
 }
 
-# fn_body <function-name> [<library>]: one function's body, for reading which
-# constants it composes against.
+# fn_body <function-name> [<library>]: one function's definition, for reading
+# which constants it composes against. Asked of bash rather than read off the
+# file, for the reason position_test_constants gives at length: a reader that
+# matches one spelling of a definition is making a coverage claim about every
+# other spelling bash accepts, and nothing rereads it. `declare -f` answers for
+# whatever spelling the library actually used.
+#
+# It is a re-rendering, not the source text, and the difference runs both ways:
+# it ADDS the lowercase name and the braces the awk reader skipped, and it
+# REMOVES every comment while re-indenting the body and normalising command
+# separators. What makes the substitution safe for the callers here is not that
+# the output is a superset, because it is not. It is that every caller
+# substring-matches UPPERCASE anchor names, which appear in code rather than in
+# prose and survive deparsing intact. A caller wanting a comment marker, a
+# lowercase token, or the original whitespace must not ask this function for
+# it. Bash prints nothing and fails for a function that does not exist, which
+# is the same empty answer the reader gave for one it could not parse.
 fn_body() {
-  awk -v want="$1" '
-    $0 ~ "^" want "\\(\\) \\{" { inside = 1; next }
-    inside && /^\}/ { exit }
-    inside { print }
-  ' "${2:-$LIB}"
+  "$BASH" -c 'source "$1" >/dev/null 2>&1; declare -f "$2"' _ "${2:-$LIB}" "$1"
 }
 
 # scanner_anchor <scanner-name>: the vocabulary-carrying anchor a scanner
@@ -277,6 +339,34 @@ token_at_word_boundary() {
   # them are spelled, or widen anchor_names deliberately. Both are fine and the
   # point is that neither happens by accident, which is what a suite driving
   # fewer anchors than it claims would be.
+  #
+  # So the width the wide predicate gets from being bash is deliberately NOT
+  # mirrored onto anchor_names. Every spelling the wide one reads and the
+  # narrow one cannot -- an assignment keyword, a digit in the name, leading
+  # indentation -- is a spelling that reds this arm the moment the library
+  # carries it, which is the loud signal. Teaching anchor_names the same
+  # spellings would make the pair agree again and put the anchor back into the
+  # driven set silently, which is the state this arm exists to refuse.
+  #
+  # What this pair does NOT catch, stated rather than left to be discovered,
+  # because the rule in this file's header asks for exactly that where no
+  # authority covers a case. The signal is a DISAGREEMENT, so a respelling both
+  # predicates miss keeps them equal and this arm green while every arm below
+  # drives one anchor fewer. The shape that surfaced when this was probed, and
+  # the enumeration is a record of what was driven rather than a claim about
+  # what exists, is an anchor moved inside a function AND indented with it,
+  # which is how anyone moving one would write it: bash reports no file-scope
+  # constant, correctly, and the narrow regex wants the name at column zero, so
+  # the two agree on the miss. Left at column zero inside the function they
+  # diverge and this arm reds, and so do they when the function is called at
+  # load, so it is the indented spelling alone that is quiet.
+  # It is not a regression, the regex predicate this one replaced missed it the
+  # same way, and it is not live, since a function-scoped anchor would leave
+  # the detectors that compose against it referring to nothing. Everything else
+  # probed diverges loudly: a library that fails to load reports a short set,
+  # including a partial load from an error part-way down, and an anchor built
+  # by expansion rather than a literal is caught here even though the prose
+  # this file used to carry named it as beyond reach.
   local wide narrow
   wide="$(position_test_constants | sort)"
   narrow="$(anchor_names | sort)"
@@ -285,13 +375,25 @@ token_at_word_boundary() {
 }
 
 @test "the anchor-discovery arm fails on an anchor the narrow predicate cannot see" {
-  # Non-vacuity control, sampling one anchor and one respelling. The library is
-  # copied with the sampled anchor's assignment put behind a `readonly`, one of
-  # the spellings the narrow predicate cannot read, and both derivations run
-  # over the copy.
+  # Non-vacuity control for the equality arm above, driven across every axis a
+  # review has caught this pair failing to diverge on. The library is copied
+  # with one sampled anchor respelt, and the arm requires the wide predicate to
+  # keep seeing it while the narrow one loses it. That gap is the loud signal
+  # the equality arm exists to produce, so a control proving the gap is real is
+  # what keeps that arm from passing by agreeing with the defect it guards.
   #
-  # The copy is read and never sourced, so the respelling only has to be
-  # something a line-wise reader must handle, not something that would load.
+  # The copy is SOURCED now rather than only read, because the wide predicate
+  # is bash. So every respelling here has to be one that actually loads. That
+  # is a stricter bar than the line-wise reading this control used to apply,
+  # and a more honest one: a spelling that would not load is not a spelling the
+  # library could carry, so a control built on one proves nothing.
+  #
+  # This list is not a coverage claim, and the difference matters because the
+  # thing it replaces was one. The wide side is bash, so it needs no input
+  # space to be complete and no arm rereads this list as though it were the
+  # space. These are the spellings that have actually shipped defects in this
+  # derivation, kept as evidence that the control still controls; a spelling
+  # missing from it costs the suite nothing.
   #
   # Both greps match the WHOLE line. Each derivation emits one name per line,
   # and a name can be a strict prefix of one added later, so an unanchored
@@ -299,11 +401,76 @@ token_at_word_boundary() {
   # green off the longer name even when the wide predicate has stopped seeing
   # the sampled one, which is a control that has stopped controlling, and the
   # second matches the longer name and reds a suite that is correct (#1606).
-  local copy="$BATS_TEST_TMPDIR/respelt-lib.sh" n
+  local copy="$BATS_TEST_TMPDIR/respelt-lib.sh" n tab desc expr
+  tab="$(printf '\t')"
   n="$(anchor_names | head -n 1)"
   [ -n "$n" ]
-  sed "s/^$n=/readonly $n=/" "$LIB" >"$copy"
+  while IFS='|' read -r desc expr; do
+    [ -n "$desc" ] || continue
+    sed "$expr" "$LIB" >"$copy"
+    if ! position_test_constants "$copy" | grep -qxF -- "$n"; then
+      printf 'the wide predicate lost the anchor under: %s\n' "$desc" >&2
+      return 1
+    fi
+    if anchor_names "$copy" | grep -qxF -- "$n"; then
+      printf 'the narrow predicate still reads the anchor under: %s\n' "$desc" >&2
+      return 1
+    fi
+  done <<EOF
+readonly|s/^$n=/readonly $n=/
+export|s/^$n=/export $n=/
+declare -g|s/^$n=/declare -g $n=/
+declare with tab separators|s/^$n=/declare${tab}-g${tab}$n=/
+declare with a plus flag|s/^$n=/declare +x $n=/
+space indent|s/^$n=/  $n=/
+tab indent|s/^$n=/${tab}$n=/
+EOF
+
+  # The double-quoted respelling gets its own block, because producing it is
+  # not a prefix edit and because bash, not this file, decided what it has to
+  # look like. The narrow predicate reads a single-quoted value only, so double
+  # quoting is a real divergence axis. But these anchors carry a backtick and a
+  # `$` inside their character class, and both are live in a double-quoted
+  # string: converting the quotes and nothing else does not respell the anchor,
+  # it opens a command substitution and leaves the constant undefined. So the
+  # value is escaped to mean the same bytes, and the arm proves it does before
+  # trusting the case at all. A control that silently changed what the anchor
+  # matches would be testing a library this repository does not have.
+  #
+  # The replacement travels through the environment rather than `awk -v`, which
+  # processes escape sequences in the value it is handed and would undo exactly
+  # the escaping this case exists to apply.
+  local raw esc
+  raw="$(sed -n "s/^$n='\(.*\)'\$/\1/p" "$LIB")"
+  [ -n "$raw" ]
+  esc="${raw//\\/\\\\}"
+  esc="${esc//\`/\\\`}"
+  esc="${esc//\$/\\\$}"
+  esc="${esc//\"/\\\"}"
+  GAIA_ANCHOR_REPL="$n=\"$esc\"" \
+    awk -v n="$n" '$0 ~ "^" n "=" { print ENVIRON["GAIA_ANCHOR_REPL"]; next } { print }' \
+    "$LIB" >"$copy"
+  [ "$("$BASH" -c 'source "$1" >/dev/null 2>&1; printf "%s" "${!2-}"' _ "$copy" "$n")" = "$raw" ]
   position_test_constants "$copy" | grep -qxF -- "$n"
+  anchor_names "$copy" | grep -qxF -- "$n" && return 1
+  true
+}
+
+@test "a spelling that defines no constant is claimed by neither predicate" {
+  # The other direction, and the case a hand-widened regex got wrong. `local`
+  # at file scope is an error that defines nothing, so an anchor respelt behind
+  # it is absent from the library once loaded and neither predicate may claim
+  # it. A strip list that grew `local` alongside the real assignment keywords
+  # would emit a name with no constant behind it, which reaches the equality
+  # arm as a respelling nobody made.
+  #
+  # Nothing in this file decides that, and nothing in it has to. bash refuses
+  # the line, so the wide predicate reports no name without being told.
+  local copy="$BATS_TEST_TMPDIR/local-lib.sh" n
+  n="$(anchor_names | head -n 1)"
+  [ -n "$n" ]
+  sed "s/^$n=/local $n=/" "$LIB" >"$copy"
+  position_test_constants "$copy" | grep -qxF -- "$n" && return 1
   anchor_names "$copy" | grep -qxF -- "$n" && return 1
   true
 }
@@ -358,19 +525,62 @@ token_at_word_boundary() {
   # Non-vacuity control for the arm above. The library is copied with one extra
   # scanner appended, composing against an anchor the real library already
   # carries so the copy stays loadable, and the same derivation runs over it.
-  local copy="$BATS_TEST_TMPDIR/extra-scanner-lib.sh" a
+  #
+  # The rows below, and every one after the first is what keeps this derivation
+  # on bash. Every function in the library today is written the one way the
+  # regexes this derivation used to use could read, so reverting them breaks
+  # nothing measurable against the real library and the conversion would be
+  # free to rot. Each added spelling is a definition bash accepts that one of
+  # those readers refused, so each pins one of them:
+  #
+  #   `_v2` carries a digit, which the discovery regex's `[a-z_]*` refused.
+  #   `function NAME {` carries no parens, which BOTH the discovery regex and
+  #   the body reader's `^NAME() {` refused.
+  #   `_capcheck_...`, with no `_gaia` on the front, which the name filter an
+  #   earlier spelling of the discovery step applied refused. Nothing in the
+  #   tree enforces that prefix, so a library function may legitimately carry
+  #   any name; membership is the library's own, decided by what loading it
+  #   adds.
+  #
+  # A refused spelling was dropped from this set AND from the hand-written
+  # roster at once, so the membership arm saw them equal and passed over a
+  # scanner nothing in the file drove. That is the shape that reads as
+  # coverage, and it is the class this suite spent its review rounds retiring
+  # at the anchor predicate.
+  #
+  # Unlike the anchor control above, whose rows are evidence and whose absence
+  # costs the suite nothing, these rows are load-bearing and nothing protects
+  # them. This is the only arm that reds on either reader reverting, so
+  # dropping a row reds nothing today and retires the pin on the reader it
+  # stood for, which is the state both conversions were made to leave. Said
+  # rather than guarded, because the guard would have to enumerate the
+  # spellings bash accepts that a regex refuses, and no authority outside this
+  # file can produce that list: this is the fallback the header names for
+  # exactly that case.
+  local copy="$BATS_TEST_TMPDIR/extra-scanner-lib.sh" a fn header
   a="$(scanner_anchor "$(scanners | head -n 1)")"
   [ -n "$a" ]
-  cp "$LIB" "$copy"
-  {
-    printf '%s\n' '_gaia_capcheck_scan_extra_invocations() {'
-    printf '  local pat="${%s}x"\n' "$a"
-    printf '%s\n' '  printf "%s" "$pat" >/dev/null' '}'
-  } >>"$copy"
-  # Whole-line, for the reason the anchor-discovery control above gives: this
-  # derivation emits one name per line too, and a substring match goes green
-  # off any name that merely contains this one.
-  library_scanners "$copy" | grep -qxF -- '_gaia_capcheck_scan_extra_invocations'
+  while IFS='|' read -r fn header; do
+    [ -n "$fn" ] || continue
+    cp "$LIB" "$copy"
+    {
+      printf '%s\n' "$header"
+      printf '  local pat="${%s}x"\n' "$a"
+      printf '%s\n' '  printf "%s" "$pat" >/dev/null' '}'
+    } >>"$copy"
+    # Whole-line, for the reason the anchor-discovery control above gives: this
+    # derivation emits one name per line too, and a substring match goes green
+    # off any name that merely contains this one.
+    if ! library_scanners "$copy" | grep -qxF -- "$fn"; then
+      printf 'the derivation did not discover: %s\n' "$fn" >&2
+      return 1
+    fi
+  done <<EOF
+_gaia_capcheck_scan_extra_invocations|_gaia_capcheck_scan_extra_invocations() {
+_gaia_capcheck_scan_v2_invocations|_gaia_capcheck_scan_v2_invocations() {
+_gaia_capcheck_scan_v3_invocations|function _gaia_capcheck_scan_v3_invocations {
+_capcheck_scan_legacy_invocations|_capcheck_scan_legacy_invocations() {
+EOF
 }
 
 # scanners: the scanners this suite drives keywords through. This roster and
@@ -396,9 +606,37 @@ scanners() {
 # This is deliberately a wider test than scanner_anchor's: a function naming
 # SEVERAL such anchors is a member here and resolves to none there, so the two
 # arms above disagree about it and the suite stops instead of skipping it.
+#
+# Discovery is bash's answer too, and for the same reason as everything else
+# here: the regex this replaced read one function spelling (lowercase name at
+# column zero, `() {` with one space and nothing after), so a scanner written
+# any other way bash accepts entered neither this set NOR the hand-written
+# roster, the membership arm saw them equal, and the scanner was driven by no
+# arm in the file. Both sides missing it is exactly the shape that reads as
+# coverage, which is the class this suite spent its review rounds retiring at
+# the anchor predicate.
+#
+# Membership is the whole of bash's answer, with no name filter over it, and
+# that is a correction rather than a flourish. Asking bash and then keeping
+# only the names matching `_gaia_capcheck_*` put the same defect back one axis
+# over: the prefix is a decision made in this file, so a scanner named outside
+# it was absent from this set and from the hand-written roster alike, and the
+# membership arm read the two as equal again. Nothing in the tree enforces the
+# prefix, so it was a convention this file was quietly treating as a guarantee.
+#
+# What bounds the walk instead is the source itself. The names present BEFORE
+# the library loads are subtracted from the names present after, so the set is
+# what this library defines rather than what the surrounding process happens
+# to carry: a bats run exports functions of its own, and they belong to the
+# harness rather than to the artifact under test.
 library_scanners() {
   local lib="${1:-$LIB}" f
-  for f in $(sed -n 's/^\(_gaia_capcheck_[a-z_]*\)() {$/\1/p' "$lib"); do
+  for f in $("$BASH" -c '
+      before="$(declare -F | while read -r _ _ n; do printf "%s\n" "$n"; done)"
+      source "$1" >/dev/null 2>&1
+      declare -F | while read -r _ _ n; do
+        printf "%s\n" "$before" | grep -qxF -- "$n" || printf "%s\n" "$n"
+      done' _ "$lib"); do
     fn_names_keyword_anchor "$f" "$lib" || continue
     printf '%s\n' "$f"
   done
