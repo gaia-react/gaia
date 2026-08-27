@@ -146,11 +146,11 @@ anchor_names() {
 # is nobody's reading of a line.
 #
 # Two things bash decides here for free, which the hand-widened regex got
-# wrong in both directions. `local` at file scope is an error defining nothing, so a
-# `local` line contributes no name here and cannot be claimed; a strip list
-# growing `local` as a keyword did claim one. And a line that does not parse
-# aborts the load, so it surfaces as a short set against anchor_names rather
-# than as a name nobody can use. Neither needed a rule.
+# wrong in both directions. `local` at file scope is an error defining
+# nothing, so a `local` line contributes no name here and cannot be claimed;
+# a strip list growing `local` as a keyword did claim one. And a line that
+# does not parse aborts the load, so it surfaces as a short set against
+# anchor_names rather than as a name nobody can use. Neither needed a rule.
 #
 # The nested interpreter is `$BASH`, the one running this suite, rather than
 # whatever `bash` resolves to on PATH. The library refuses to load under bash
@@ -526,12 +526,12 @@ EOF
   # scanner appended, composing against an anchor the real library already
   # carries so the copy stays loadable, and the same derivation runs over it.
   #
-  # Three spellings, and the last two are what keep this derivation on bash.
+  # Four spellings, and the last three are what keep this derivation on bash.
   # Every function in the library today is written the one way the regexes this
   # derivation used to use could read, so reverting them breaks nothing
   # measurable against the real library and the conversion would be free to
-  # rot. Each of the two added spellings is a definition bash accepts that one
-  # of those readers refused, so each pins one of them:
+  # rot. Each of the three added spellings is a definition bash accepts that
+  # one of those readers refused, so each pins one of them:
   #
   #   `_v2` carries a digit, which the discovery regex's `[a-z_]*` refused.
   #   `function NAME {` carries no parens, which BOTH the discovery regex and
