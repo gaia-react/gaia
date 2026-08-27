@@ -69,14 +69,14 @@ SUBST_SKIP_BOUND=5
 # this one bounds COST, on a loop whose termination is separately argued in the
 # library. The blanking is per (word, left bound, right bound), and a shape that
 # rebuilds the span once per occurrence rather than replacing all of them in one
-# pass is super-quadratic in span length: measured at 205s on the span below
-# against 0.17s for the shipped shape at that same length. The shipped shape is
-# not flat either; the library paragraph citing this bound carries its series,
-# and that paragraph is where to repair a cost figure, not here. Nothing sizes a
-# logical line and this walk gates every merge, so the regression is worth a
-# guard rather than a comment. The bound sits ~88x above the shipped cost and
-# ~14x below the regression, which is the whole width available: that second
-# ratio is the one that binds, so raising the bound toward 100s spends it.
+# pass is super-quadratic in span length. The absolute cost of both shapes lives
+# in the library paragraph that cites this bound, and is deliberately NOT copied
+# here: a re-measurement there has to re-derive the two ratios below, which are
+# the only thing sizing this constant. Nothing sizes a logical line and this
+# walk gates every merge, so the regression is worth a guard rather than a
+# comment. The bound sits ~88x above the shipped cost and ~14x below the
+# regression, which is the whole width available: that second ratio is the one
+# that binds, so raising the bound toward 100s spends it.
 STRIP_QUOTED_COST_BOUND=15
 
 # run_bounded <seconds> <command...>: 0 if the command finished inside the
