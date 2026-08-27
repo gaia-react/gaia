@@ -424,46 +424,13 @@ _gaia_capcheck_strip_quoted_code() {
     #
     # Cost is what decides the shape. Each replacement is one C-level pass over
     # the span rather than a per-occurrence rebuild, and that is the whole
-    # claim, the one STRIP_QUOTED_COST_BOUND pins. The count is at most
-    # 2 * (1+|bounds|)^2 per present word, the 2 being the pass bound the
-    # repeat argument above establishes: a CONSTANT, so nothing here grows with
-    # the longest run of adjacent occurrences. What that buys is the distance
-    # to the alternative: splicing out one occurrence at a time rebuilds the
-    # span per occurrence and makes a span dense in listed words
-    # super-quadratic, measured at 0.44s, 3.3s, 26s and 205s for 1600, 3200,
-    # 6400 and 12800 characters against 0.005s, 0.014s, 0.045s and 0.170s for
-    # the whole call as it ships. Nothing sizes a logical line, and this walk
+    # claim, the one STRIP_QUOTED_COST_BOUND pins: the alternative, splicing out
+    # one occurrence at a time, rebuilds the span per occurrence and goes
+    # super-quadratic on a span dense in listed words. The replacement count is
+    # at most 2 * (1+|bounds|)^2 per present word, the 2 being the pass bound the
+    # repeat argument above establishes, so nothing here grows with the longest
+    # run of adjacent occurrences. Nothing sizes a logical line, and this walk
     # gates every merge.
-    #
-    # Do NOT read those whole-function figures as this loop's curve. The share is
-    # length-dependent inside that one shape, so bind it to a length: at 12800
-    # characters emptying this loop's word list leaves about nine tenths of the
-    # cost and the same growth, while at 1600 it leaves about two thirds, so
-    # this loop is a tenth of the call at the long end and a third at the short.
-    # On many short dense spans it leaves less still and the remainder grows
-    # FASTER, which is the same shape-dependence this paragraph ends on. The
-    # rest is the ENCLOSING quote walk, and its rule is anchor DISTANCE, not
-    # role: each `${t%%\"*}` / `${t#*\"}` pair costs the distance from the front
-    # of the remaining string to the quote it anchors on, so the body and tail
-    # pair that CLOSES a span is quadratic on a long span, while the pair that
-    # OPENS one is cheap only while the unquoted prefix ahead of it is short. A
-    # line with a long prefix before its first quote makes the opening pair the
-    # expensive one, and no rule bounds that prefix. Name the pairs by role when
-    # pointing at one, because each spelling is used at both sites, but do not
-    # read role as the cause. What the figures above cannot tell you is the shape
-    # of a line. They are one giant quoted span; re-delimiting the same words
-    # into many short spans moves the cost in EITHER direction, by how long the
-    # spans are.
-    #
-    # No guard pins the pass count, and no TIMING fixture can, on any shape. The
-    # only edit that moves the count is a replacement that stops re-laying the
-    # bounds, taking it from a constant 2 to ceil(log2 k)+1, and that mutant
-    # measures never slower than the shipped one at any k from 4 to 3200: the
-    # span length that makes this loop dominate the call is the same length that
-    # keeps k small, so the two knobs turn opposite ways and no shape separates
-    # them. A counter is the only instrument that would see it, and that means
-    # wiring a merge-gating hot loop to restate what the repeat argument above
-    # settles by construction.
     # shellcheck disable=SC2086
     for word in $_GAIA_CAPCHECK_QUOTED_WORDS; do
       case "$body" in *"$word"*) ;; *) continue ;; esac
