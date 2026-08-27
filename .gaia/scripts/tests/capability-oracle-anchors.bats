@@ -177,7 +177,14 @@ position_test_constants_prewidening() {
 }
 
 # assignment_spellings: the input space the oracle arm drives, one
-# `<name><TAB><line>` per spelling. It is a cross product of four axes rather
+# `<name><US><line>` per spelling, delimited by the unit separator rather than
+# by a tab. The delimiter is load-bearing and not a style choice: a tab IS IFS
+# whitespace, so `IFS=<tab> read` strips a leading tab off the payload, and a
+# tab-indented spelling sent down a tab-delimited transport arrives as a
+# duplicate of the un-indented one. It would look like added coverage and drive
+# nothing. The unit separator is not IFS whitespace, so the payload survives.
+#
+# It is a cross product of four axes rather
 # than a list of cases, one axis per branch the predicate reads: leading
 # indentation; the assignment-prefix keywords bash accepts in front of a name,
 # with and without flag words and stacked; a name with and without a digit; and
@@ -194,13 +201,14 @@ position_test_constants_prewidening() {
 # paragraph asserting coverage the code does not have: the arm never claims a
 # spelling it did not drive.
 assignment_spellings() {
-  local indent prefix name quote
-  for indent in '' '  '; do
+  local indent prefix name quote tab
+  tab="$(printf '\t')"
+  for indent in '' '  ' "$tab"; do
     for prefix in '' 'export ' 'readonly ' 'declare ' 'typeset ' 'local ' \
       'declare -g ' 'declare -gr ' 'readonly declare ' 'export readonly '; do
       for name in _GAIA_CAPCHECK_SPELL _GAIA_CAPCHECK_SPELL2; do
         for quote in "'" '"' ''; do
-          printf '%s\t%s%s%s=%s%s%s\n' \
+          printf '%s\037%s%s%s=%s%s%s\n' \
             "$name" "$indent" "$prefix" "$name" "$quote" "$SPELL_VALUE" "$quote"
         done
       done
@@ -231,7 +239,7 @@ bash_defines() {
 # is agreement.
 predicate_disagreements() {
   local fn="$1" name line file="$BATS_TEST_TMPDIR/predicate-spelling.sh" seen wanted
-  while IFS="$(printf '\t')" read -r name line; do
+  while IFS="$(printf '\037')" read -r name line; do
     [ -n "$name" ] || continue
     printf '%s\n' "$line" >"$file"
     if "$fn" "$file" | grep -qxF -- "$name"; then seen=yes; else seen=no; fi
