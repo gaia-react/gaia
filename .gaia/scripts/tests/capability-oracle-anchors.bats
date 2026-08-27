@@ -329,13 +329,30 @@ token_at_word_boundary() {
   # point is that neither happens by accident, which is what a suite driving
   # fewer anchors than it claims would be.
   #
-  # So the widening the oracle arm forces on the wide predicate is deliberately
-  # NOT mirrored onto anchor_names. Every spelling the wide one learns to read
-  # and the narrow one still cannot -- an assignment keyword, a digit in the
-  # name, leading indentation -- is a spelling that reds this arm the moment the
-  # library carries it, which is the loud signal. Teaching anchor_names the same
+  # So the width the wide predicate gets from being bash is deliberately NOT
+  # mirrored onto anchor_names. Every spelling the wide one reads and the
+  # narrow one cannot -- an assignment keyword, a digit in the name, leading
+  # indentation -- is a spelling that reds this arm the moment the library
+  # carries it, which is the loud signal. Teaching anchor_names the same
   # spellings would make the pair agree again and put the anchor back into the
   # driven set silently, which is the state this arm exists to refuse.
+  #
+  # What this pair does NOT catch, stated rather than left to be discovered,
+  # because the rule in this file's header asks for exactly that where no
+  # authority covers a case. The signal is a DISAGREEMENT, so a respelling both
+  # predicates miss keeps them equal and this arm green while every arm below
+  # drives one anchor fewer. The shape that surfaced when this was probed, and
+  # the enumeration is a record of what was driven rather than a claim about
+  # what exists, is an anchor moved inside a function: bash reports no
+  # file-scope constant, correctly, and the narrow regex wants the name at
+  # column zero, so the two agree on the miss.
+  # It is not a regression, the regex predicate this one replaced missed it the
+  # same way, and it is not live, since a function-scoped anchor would leave
+  # the detectors that compose against it referring to nothing. Everything else
+  # probed diverges loudly: a library that fails to load reports a short set,
+  # including a partial load from an error part-way down, and an anchor built
+  # by expansion rather than a literal is caught here even though the prose
+  # this file used to carry named it as beyond reach.
   local wide narrow
   wide="$(position_test_constants | sort)"
   narrow="$(anchor_names | sort)"
