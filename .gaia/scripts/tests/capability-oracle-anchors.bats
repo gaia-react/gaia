@@ -242,11 +242,16 @@ header_names_keyword() {
 # other spelling bash accepts, and nothing rereads it. `declare -f` answers for
 # whatever spelling the library actually used.
 #
-# It returns the whole definition where the awk reader it replaces returned the
-# inner lines only. Every caller substring-matches UPPERCASE anchor names, and
-# the extra text is the lowercase name and the braces, so no caller can see the
-# difference. Bash prints nothing and fails for a function that does not exist,
-# which is the same empty answer the reader gave for one it could not parse.
+# It is a re-rendering, not the source text, and the difference runs both ways:
+# it ADDS the lowercase name and the braces the awk reader skipped, and it
+# REMOVES every comment while re-indenting the body and normalising command
+# separators. What makes the substitution safe for the callers here is not that
+# the output is a superset, because it is not. It is that every caller
+# substring-matches UPPERCASE anchor names, which appear in code rather than in
+# prose and survive deparsing intact. A caller wanting a comment marker, a
+# lowercase token, or the original whitespace must not ask this function for
+# it. Bash prints nothing and fails for a function that does not exist, which
+# is the same empty answer the reader gave for one it could not parse.
 fn_body() {
   "$BASH" -c 'source "$1" >/dev/null 2>&1; declare -f "$2"' _ "${2:-$LIB}" "$1"
 }
@@ -531,12 +536,27 @@ EOF
   #   `_v2` carries a digit, which the discovery regex's `[a-z_]*` refused.
   #   `function NAME {` carries no parens, which BOTH the discovery regex and
   #   the body reader's `^NAME() {` refused.
+  #   `_capcheck_...`, with no `_gaia` on the front, which the name filter an
+  #   earlier spelling of the discovery step applied refused. Nothing in the
+  #   tree enforces that prefix, so a library function may legitimately carry
+  #   any name; membership is the library's own, decided by what loading it
+  #   adds.
   #
   # A refused spelling was dropped from this set AND from the hand-written
   # roster at once, so the membership arm saw them equal and passed over a
   # scanner nothing in the file drove. That is the shape that reads as
   # coverage, and it is the class this suite spent its review rounds retiring
   # at the anchor predicate.
+  #
+  # Unlike the anchor control above, whose rows are evidence and whose absence
+  # costs the suite nothing, these rows are load-bearing and nothing protects
+  # them. This is the only arm that reds on either reader reverting, so
+  # dropping a row reds nothing today and retires the pin on the reader it
+  # stood for, which is the state both conversions were made to leave. Said
+  # rather than guarded, because the guard would have to enumerate the
+  # spellings bash accepts that a regex refuses, and no authority outside this
+  # file can produce that list: this is the fallback the header names for
+  # exactly that case.
   local copy="$BATS_TEST_TMPDIR/extra-scanner-lib.sh" a fn header
   a="$(scanner_anchor "$(scanners | head -n 1)")"
   [ -n "$a" ]
@@ -559,6 +579,7 @@ EOF
 _gaia_capcheck_scan_extra_invocations|_gaia_capcheck_scan_extra_invocations() {
 _gaia_capcheck_scan_v2_invocations|_gaia_capcheck_scan_v2_invocations() {
 _gaia_capcheck_scan_v3_invocations|function _gaia_capcheck_scan_v3_invocations {
+_capcheck_scan_legacy_invocations|_capcheck_scan_legacy_invocations() {
 EOF
 }
 
@@ -592,13 +613,29 @@ scanners() {
 # any other way bash accepts entered neither this set NOR the hand-written
 # roster, the membership arm saw them equal, and the scanner was driven by no
 # arm in the file. Both sides missing it is exactly the shape that reads as
-# coverage, which is the class this suite spent four review rounds retiring at
+# coverage, which is the class this suite spent its review rounds retiring at
 # the anchor predicate.
+#
+# Membership is the whole of bash's answer, with no name filter over it, and
+# that is a correction rather than a flourish. Asking bash and then keeping
+# only the names matching `_gaia_capcheck_*` put the same defect back one axis
+# over: the prefix is a decision made in this file, so a scanner named outside
+# it was absent from this set and from the hand-written roster alike, and the
+# membership arm read the two as equal again. Nothing in the tree enforces the
+# prefix, so it was a convention this file was quietly treating as a guarantee.
+#
+# What bounds the walk instead is the source itself. The names present BEFORE
+# the library loads are subtracted from the names present after, so the set is
+# what this library defines rather than what the surrounding process happens
+# to carry: a bats run exports functions of its own, and they belong to the
+# harness rather than to the artifact under test.
 library_scanners() {
   local lib="${1:-$LIB}" f
-  for f in $("$BASH" -c 'source "$1" >/dev/null 2>&1
-      declare -F | while read -r _ _ fn; do
-        case "$fn" in _gaia_capcheck_*) printf "%s\n" "$fn" ;; esac
+  for f in $("$BASH" -c '
+      before="$(declare -F | while read -r _ _ n; do printf "%s\n" "$n"; done)"
+      source "$1" >/dev/null 2>&1
+      declare -F | while read -r _ _ n; do
+        printf "%s\n" "$before" | grep -qxF -- "$n" || printf "%s\n" "$n"
       done' _ "$lib"); do
     fn_names_keyword_anchor "$f" "$lib" || continue
     printf '%s\n' "$f"
