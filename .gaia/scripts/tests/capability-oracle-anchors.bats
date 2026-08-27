@@ -292,11 +292,19 @@ token_at_word_boundary() {
   #
   # The copy is read and never sourced, so the respelling only has to be
   # something a line-wise reader must handle, not something that would load.
+  #
+  # Both greps match the WHOLE line. Each derivation emits one name per line,
+  # and a name can be a strict prefix of one added later, so an unanchored
+  # match breaks both arms at once and in opposite directions: the first goes
+  # green off the longer name even when the wide predicate has stopped seeing
+  # the sampled one, which is a control that has stopped controlling, and the
+  # second matches the longer name and reds a suite that is correct (#1606).
   local copy="$BATS_TEST_TMPDIR/respelt-lib.sh" n
   n="$(anchor_names | head -n 1)"
+  [ -n "$n" ]
   sed "s/^$n=/readonly $n=/" "$LIB" >"$copy"
-  position_test_constants "$copy" | grep -qF -- "$n"
-  anchor_names "$copy" | grep -qF -- "$n" && return 1
+  position_test_constants "$copy" | grep -qxF -- "$n"
+  anchor_names "$copy" | grep -qxF -- "$n" && return 1
   true
 }
 
@@ -359,7 +367,10 @@ token_at_word_boundary() {
     printf '  local pat="${%s}x"\n' "$a"
     printf '%s\n' '  printf "%s" "$pat" >/dev/null' '}'
   } >>"$copy"
-  library_scanners "$copy" | grep -qF -- '_gaia_capcheck_scan_extra_invocations'
+  # Whole-line, for the reason the anchor-discovery control above gives: this
+  # derivation emits one name per line too, and a substring match goes green
+  # off any name that merely contains this one.
+  library_scanners "$copy" | grep -qxF -- '_gaia_capcheck_scan_extra_invocations'
 }
 
 # scanners: the scanners this suite drives keywords through. This roster and
