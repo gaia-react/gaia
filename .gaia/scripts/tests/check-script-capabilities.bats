@@ -1290,11 +1290,11 @@ curl -fsS https://example.com/'
 }
 
 @test "the parse-only flag is recognized in a non-leading cluster position" {
-  # The flag-walk arm is a two-alternative pattern and each alternative owns a
-  # different shape. `-n` and `-nu` are the leading-position half; `-vn` is the
-  # other one, and without a fixture driving it the second alternative can be
-  # dropped with the whole suite still green, which would restore the fabricated
-  # edge on the one shape nothing pins.
+  # The flag-walk arm is an alternation and each alternative owns a different
+  # shape. `-n` and `-nu` are the leading-position half; `-vn` is the other one,
+  # and without a fixture driving it that alternative can be dropped with the
+  # whole suite still green, which would restore the fabricated edge on the one
+  # shape nothing pins.
   repo="$(make_fixture_repo parsecheckmidcluster)"
   add_script "$repo" a/s.sh '#!/usr/bin/env bash
 bash -vn b/t.sh'
