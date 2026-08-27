@@ -172,11 +172,13 @@ _GAIA_CAPCHECK_WORD_BOUNDS='( ) ,'
 # actually occur in <text>, space-separated, in _GAIA_CAPCHECK_RET.
 #
 # It is an optimization and nothing else: both readers below cross the word
-# list with the bound set twice over, and a span carrying no `&` has no pair to
+# list with the bound set twice over, and a span carrying no `(` has no pair to
 # test that names one. Narrowing the cross product to the bounds a span really
-# carries takes the common prose span, which carries one or none, from 64 pairs
-# per word to one or four. Correctness does not depend on it -- a reader handed
-# the whole constant answers identically, only slower.
+# carries takes the common prose span, which carries one or none, from
+# (1+|bounds|)^2 pairs per word to one or four. The formula rather than the
+# number, because the bound set is measured and a member added to it moves the
+# figure. Correctness does not depend on any of it -- a reader handed the whole
+# constant answers identically, only slower.
 _gaia_capcheck_bounds_present() {
   local t="$1" b out=""
   # shellcheck disable=SC2086
@@ -418,12 +420,16 @@ _gaia_capcheck_strip_quoted_code() {
     # the span: the replacement is a space and two bound characters, none of
     # which occurs in any listed word, so no pass can create an occurrence.
     #
-    # Cost is what decides the shape. The whole blanking is at most
-    # (1+bounds)^2 replacements per present word, each one a single C-level
-    # pass over the span, so it stays linear in span length. Splicing out one
-    # occurrence at a time instead rebuilds the span per occurrence and makes a
-    # span dense in listed words super-quadratic: measured at 0.6s, 3.4s, 26s
-    # and 201s for 1600, 3200, 6400 and 12800 characters, against a flat 0.15s
+    # Cost is what decides the shape. Each replacement is one C-level pass over
+    # the span rather than a per-occurrence rebuild, and that is the whole
+    # claim, the one STRIP_QUOTED_COST_BOUND pins. The count is
+    # (1+|bounds|)^2 * ceil(log2(k)) per present word, k being the longest run
+    # of adjacent occurrences, so it is O(n log k) and not linear; the repeat
+    # factor is the one two paragraphs up and is easy to drop when reading the
+    # pair count alone. Splicing out one occurrence at a time instead rebuilds
+    # the span per occurrence and makes a span dense in listed words
+    # super-quadratic: measured at 0.44s, 3.3s, 26s and 205s for 1600, 3200,
+    # 6400 and 12800 characters, against 0.006s, 0.015s, 0.047s and 0.171s
     # here. Nothing sizes a logical line, and this walk gates every merge.
     # shellcheck disable=SC2086
     for word in $_GAIA_CAPCHECK_QUOTED_WORDS; do
