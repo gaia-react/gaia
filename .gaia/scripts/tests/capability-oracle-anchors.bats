@@ -246,10 +246,10 @@ token_at_word_boundary() {
 }
 
 @test "each scanner that drives keywords composes against exactly one keyword-carrying anchor" {
-  # The short-read guard for scanner_anchor, which the two admit arms below
-  # depend on. A scanner naming no keyword-carrying anchor, or naming several,
-  # returns empty rather than a wrong one, and that empty would silently skip
-  # the scanner in both arms.
+  # The short-read guard for scanner_anchor, which the arms below depend on. A
+  # scanner naming no keyword-carrying anchor, or naming several, returns empty
+  # rather than a wrong one, and that empty would silently skip the scanner
+  # everywhere it is driven.
   local s
   for s in $(scanners); do
     [ -n "$(scanner_anchor "$s")" ] || return 1
@@ -257,19 +257,82 @@ token_at_word_boundary() {
   true
 }
 
-# scanners: the scanners this suite drives keywords through, with the line each
-# one reads a call out of. This pair is hand-written and cannot be derived: the
-# IDIOM a scanner recognizes is the thing the scanner is for, and it appears in
-# the library only as a regex fragment inside the pattern it composes.
+@test "the scanner roster this suite drives holds every scanner the library anchors on keywords" {
+  # The membership guard for scanners(), which is hand-written. Without it the
+  # roster is the one set in this file whose short read nothing counts, and a
+  # short read here is not a smaller suite that says so: a scanner added to the
+  # library with a keyword-carrying anchor of its own is driven by nothing, so
+  # the very defect class the arms below exist for goes uncaught while all of
+  # them report green.
+  #
+  # Both directions, because each fails differently. A library scanner missing
+  # from the roster is the uncovered case above; a roster entry the library no
+  # longer holds is an arm driving a function that is not there, which reads as
+  # coverage and asserts nothing.
+  local derived roster
+  derived="$(library_scanners | sort)"
+  roster="$(scanners | sort)"
+  [ -n "$derived" ]
+  [ "$derived" = "$roster" ]
+}
+
+@test "the roster arm fails when the library grows a scanner the roster lacks" {
+  # Non-vacuity control for the arm above. The library is copied with one extra
+  # scanner appended, composing against an anchor the real library already
+  # carries so the copy stays loadable, and the same derivation runs over it.
+  local copy="$BATS_TEST_TMPDIR/extra-scanner-lib.sh" a
+  a="$(scanner_anchor "$(scanners | head -n 1)")"
+  [ -n "$a" ]
+  cp "$LIB" "$copy"
+  {
+    printf '%s\n' '_gaia_capcheck_scan_extra_invocations() {'
+    printf '  local pat="${%s}x"\n' "$a"
+    printf '%s\n' '  printf "%s" "$pat" >/dev/null' '}'
+  } >>"$copy"
+  library_scanners "$copy" | grep -qF -- '_gaia_capcheck_scan_extra_invocations'
+}
+
+# scanners: the scanners this suite drives keywords through. This roster and
+# the line each entry drives are hand-written, because the IDIOM a scanner
+# recognizes is the thing that scanner is for, and it appears in the library
+# only as a regex fragment inside the pattern the scanner composes. The
+# roster's MEMBERSHIP is derivable and is checked against the library by the
+# arm above; what is not derivable is the line to drive each member with, which
+# is why a new scanner needs an entry here rather than being picked up silently.
 #
 # Deliberately not members, each for a reason rather than by omission:
 # `_gaia_capcheck_scan_writes` anchors write COMMANDS through a
 # vocabulary-free anchor, so it has no keywords for these arms to drive, and
-# the per-term detectors do the same. If a scanner grows a keyword-carrying
-# anchor it belongs here, and the arm above goes red the moment its anchor is
-# discovered without a line to drive it.
+# the per-term detectors do the same. Neither is discovered by
+# library_scanners either, so the membership arm agrees with this paragraph
+# rather than merely being told about it.
 scanners() {
   printf '%s\n' _gaia_capcheck_scan_invocations _gaia_capcheck_scan_bare_invocations
+}
+
+# library_scanners [<library>]: every function in the library whose body
+# composes against a keyword-carrying anchor, discovered rather than listed.
+# This is deliberately a wider test than scanner_anchor's: a function naming
+# SEVERAL such anchors is a member here and resolves to none there, so the two
+# arms above disagree about it and the suite stops instead of skipping it.
+library_scanners() {
+  local lib="${1:-$LIB}" f
+  for f in $(sed -n 's/^\(_gaia_capcheck_[a-z_]*\)() {$/\1/p' "$lib"); do
+    fn_names_keyword_anchor "$f" "$lib" || continue
+    printf '%s\n' "$f"
+  done
+}
+
+# fn_names_keyword_anchor <function-name> [<library>]: true when the function's
+# body names any anchor that carries a keyword vocabulary.
+fn_names_keyword_anchor() {
+  local body n
+  body="$(fn_body "$1" "${2:-$LIB}")"
+  for n in $(anchor_names); do
+    [ -n "$(anchor_vocab "${!n}")" ] || continue
+    case "$body" in *"$n"*) return 0 ;; esac
+  done
+  return 1
 }
 
 # scanner_call_line <scanner> <path>: the line that scanner reads a call to
