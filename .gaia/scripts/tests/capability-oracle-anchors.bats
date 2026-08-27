@@ -136,6 +136,7 @@ position_test_constants() {
   awk '
     {
       line = $0
+      sub(/^[ \t]+/, "", line)
       while (sub(/^(export|readonly|declare|typeset)[ \t]+/, "", line)) {
         while (sub(/^[-+][a-zA-Z]+[ \t]+/, "", line)) { }
       }
@@ -176,25 +177,32 @@ position_test_constants_prewidening() {
 }
 
 # assignment_spellings: the input space the oracle arm drives, one
-# `<name><TAB><line>` per spelling. It is a cross product of three axes rather
-# than a list of cases: the assignment-prefix keywords bash accepts in front of
-# a name, with and without flag words and stacked; a name with and without a
-# digit; and the three quoting forms, including the unquoted one that does not
-# parse. Nothing here labels a spelling in or out of the predicate's coverage,
-# which is the whole point: bash labels them.
+# `<name><TAB><line>` per spelling. It is a cross product of four axes rather
+# than a list of cases, one axis per branch the predicate reads: leading
+# indentation; the assignment-prefix keywords bash accepts in front of a name,
+# with and without flag words and stacked; a name with and without a digit; and
+# the three quoting forms, including the unquoted one that does not parse. A
+# cross product rather than one axis varied around a base, because the axes
+# interact: the indent has to be consumed BEFORE the keyword loop, and no
+# spelling carrying only one of the two shows that.
+#
+# Nothing here labels a spelling in or out of the predicate's coverage, which is
+# the whole point: bash labels them.
 #
 # This enumeration is the honest limit that remains. A spelling nobody thought
 # to generate is untested, which is a different and smaller failure than a
 # paragraph asserting coverage the code does not have: the arm never claims a
 # spelling it did not drive.
 assignment_spellings() {
-  local prefix name quote
-  for prefix in '' 'export ' 'readonly ' 'declare ' 'typeset ' 'local ' \
-    'declare -g ' 'declare -gr ' 'readonly declare ' 'export readonly '; do
-    for name in _GAIA_CAPCHECK_SPELL _GAIA_CAPCHECK_SPELL2; do
-      for quote in "'" '"' ''; do
-        printf '%s\t%s%s=%s%s%s\n' \
-          "$name" "$prefix" "$name" "$quote" "$SPELL_VALUE" "$quote"
+  local indent prefix name quote
+  for indent in '' '  '; do
+    for prefix in '' 'export ' 'readonly ' 'declare ' 'typeset ' 'local ' \
+      'declare -g ' 'declare -gr ' 'readonly declare ' 'export readonly '; do
+      for name in _GAIA_CAPCHECK_SPELL _GAIA_CAPCHECK_SPELL2; do
+        for quote in "'" '"' ''; do
+          printf '%s\t%s%s%s=%s%s%s\n' \
+            "$name" "$indent" "$prefix" "$name" "$quote" "$SPELL_VALUE" "$quote"
+        done
       done
     done
   done
@@ -396,6 +404,14 @@ token_at_word_boundary() {
   # them are spelled, or widen anchor_names deliberately. Both are fine and the
   # point is that neither happens by accident, which is what a suite driving
   # fewer anchors than it claims would be.
+  #
+  # So the widening the oracle arm forces on the wide predicate is deliberately
+  # NOT mirrored onto anchor_names. Every spelling the wide one learns to read
+  # and the narrow one still cannot -- an assignment keyword, a digit in the
+  # name, leading indentation -- is a spelling that reds this arm the moment the
+  # library carries it, which is the loud signal. Teaching anchor_names the same
+  # spellings would make the pair agree again and put the anchor back into the
+  # driven set silently, which is the state this arm exists to refuse.
   local wide narrow
   wide="$(position_test_constants | sort)"
   narrow="$(anchor_names | sort)"
