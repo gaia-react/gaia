@@ -194,29 +194,39 @@ assert_same() {
 
 # --- Cardinality: the spelled count matches the enumerated one ---------------
 
-@test "the rule's spelled cardinality equals the number of paths it enumerates" {
-  local n word
-  n="$(rule_leads | grep -c '')"
+# assert_cardinality <label> <file> <heading> <count> <phrase-tail>
+# Asserts that <file>'s <heading> section spells <count> in front of
+# <phrase-tail>.
+#
+# Read against the SECTION, never the file. The count belongs to the set the
+# section enumerates, so a file-wide read is satisfied by the sentence sitting
+# anywhere at all: moving `Seven paths need a hand` under a different heading
+# and leaving the enumerating section saying `Several` keeps a whole-file grep
+# green while the count and the set it counts no longer sit together. That is
+# the same widening the qualifier arm was corrected for, and leaving it on these
+# two arms would have been the correction applied to one instance and not to its
+# siblings, which is the class this whole suite exists to catch.
+assert_cardinality() {
+  local label="$1" file="$2" heading="$3" n="$4" tail="$5" body rc word
   [ "$n" -lt "${#NUMBER_WORDS[@]}" ] || { echo "no spelling held for ${n}" >&2; return 1; }
   word="${NUMBER_WORDS[$n]}"
-  # Case-insensitive on the word alone: the rule opens the sentence with it.
-  grep -qiE -- "(^|[^[:alnum:]])${word} paths need a hand" "$RULE" || {
-    echo "${RULE_REL} enumerates ${n} paths but does not say '${word} paths need a hand'" >&2
-    grep -nE -- '[A-Za-z]+ paths need a hand' "$RULE" >&2 || true
+  rc=0
+  body="$(section_body "$file" "$heading")" || rc=$?
+  [ "$rc" -eq 0 ] || { echo "${label} carries no section '${heading}'" >&2; return 1; }
+  # Case-insensitive on the word alone: both surfaces open the sentence with it.
+  grep -qiE -- "(^|[^[:alnum:]])${word} ${tail}" <<<"$body" || {
+    echo "${label} enumerates ${n} paths but its '${heading}' section does not say '${word} ${tail}'" >&2
+    grep -nE -- "[A-Za-z]+ ${tail}" <<<"$body" >&2 || true
     return 1
   }
 }
 
+@test "the rule's spelled cardinality equals the number of paths it enumerates" {
+  assert_cardinality "$RULE_REL" "$RULE" "$RULE_SECTION" "$(rule_leads | grep -c '')" 'paths need a hand'
+}
+
 @test "the page's spelled cardinality equals the number of paths it enumerates" {
-  local n word
-  n="$(page_leads | grep -c '')"
-  [ "$n" -lt "${#NUMBER_WORDS[@]}" ] || { echo "no spelling held for ${n}" >&2; return 1; }
-  word="${NUMBER_WORDS[$n]}"
-  grep -qiE -- "(^|[^[:alnum:]])${word} shapes leave the claim set" "$PAGE" || {
-    echo "${PAGE_REL} enumerates ${n} paths but does not say '${word} shapes leave the claim set'" >&2
-    grep -nE -- '[A-Za-z]+ shapes leave the claim set' "$PAGE" >&2 || true
-    return 1
-  }
+  assert_cardinality "$PAGE_REL" "$PAGE" "$PAGE_SECTION" "$(page_leads | grep -c '')" 'shapes leave the claim set'
 }
 
 # --- The page's own claim about when the hook fires --------------------------
@@ -249,6 +259,16 @@ release_claim() {
     {
       # Cut at the second sentence break. A period with no space after it sits
       # inside a path or a filename, not at the end of a sentence.
+      #
+      # An abbreviation IS counted as a break: writing `e.g. ` or `i.e. ` into
+      # the first sentence consumes a slot and truncates the window before the
+      # MERGED sentence, so the qualifier loop reports a dropped qualifier that
+      # is still there. Recorded rather than parsed around, because the
+      # direction is fail-closed, a confusing red and never a false green, and
+      # because teaching this splitter the abbreviations is the hand-rolled
+      # parser the merge workflow names as the canonical multi-round trap. An
+      # editor meeting that failure should rephrase the sentence or widen this
+      # window, not chase a prose regression that did not happen.
       rest = $0; out = ""; n = 0
       while (n < 2 && match(rest, /\. /)) {
         out = out substr(rest, 1, RSTART)
