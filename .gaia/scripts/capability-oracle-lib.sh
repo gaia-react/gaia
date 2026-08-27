@@ -434,29 +434,24 @@ _gaia_capcheck_strip_quoted_code() {
     # 6400 and 12800 characters against 0.005s, 0.014s, 0.045s and 0.170s here.
     # Nothing sizes a logical line, and this walk gates every merge.
     #
-    # Do NOT read the whole-function figures above as this loop's curve. They
-    # grow ~3.9x per doubling at the top (0.645s at 25600), and roughly 90% of
-    # that is the ENCLOSING quote walk, not the blanking: its two anchored
-    # splices, `${t%%\"*}` and `${t#*\"}`, run once per quoted span whether or
-    # not a word is blanked, and are quadratic when the closing quote sits far
-    # from the anchored end. Emptying this loop's word list, so no `${//}` and
-    # no word glob runs at all, leaves 0.585s of the 0.645s and the identical
-    # curve. `${//}` is superlinear in isolation, but this function makes only a
-    # handful of those calls, and 16 of them over the same span cost 0.008s. A
-    # maintainer optimizing `${//}` here can recover a tenth at most. One more
-    # caveat on `measured here`: those figures are one giant quoted span, and
-    # the same payload split across many short spans costs ~2.7x more, so they
-    # are not the worst realistic shape either.
+    # Do NOT read those whole-function figures as this loop's curve. Emptying
+    # this loop's word list, so nothing here runs at all, still leaves ~90% of
+    # the cost and the same growth. The rest is the ENCLOSING quote walk: the
+    # body and tail splices that CLOSE each span are quadratic when the closing
+    # quote sits far from them, and they run on every span whether or not a word
+    # is blanked. The identically spelled pair that OPENS a span is cheap, and
+    # cheap for a reason that does not generalize, its anchor sits beside the
+    # opening quote. Name them by role, not by spelling: each spelling is used
+    # at BOTH sites, and the two differ by hundreds of times. The figures are
+    # also one giant quoted span; the same words re-delimited across many short
+    # spans cost ~2.7x more, or ~2.0x once the added quotes are held at equal
+    # length, and a real line cannot have the spans without the quotes.
     #
-    # No guard pins the pass count itself, deliberately, and the reason is that
-    # 10%: the entire blanking loop is ~0.06s of a 0.645s call at 25600, so a
-    # pass count ten times larger would still sit far under
-    # STRIP_QUOTED_COST_BOUND, which is 15s against a 12800-character fixture.
-    # No timing assertion that admits the shipped shape can resolve the pass
-    # count, because the quantity is a tenth of a measurement dominated by a
-    # term that cannot vary with it. The instrument for a count is a counter,
-    # and that would mean instrumenting a merge-gating hot loop to restate a
-    # property the construction argument two paragraphs up already settles.
+    # No guard pins the pass count, deliberately: the whole blanking loop is
+    # ~10% of the call, so no timing assertion that admits the shipped shape can
+    # resolve a pass count inside it. A count wants a counter, and that means
+    # instrumenting a merge-gating hot loop to restate what the construction
+    # argument two paragraphs up already settles.
     # shellcheck disable=SC2086
     for word in $_GAIA_CAPCHECK_QUOTED_WORDS; do
       case "$body" in *"$word"*) ;; *) continue ;; esac
