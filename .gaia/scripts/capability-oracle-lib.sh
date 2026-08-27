@@ -409,9 +409,11 @@ _gaia_capcheck_strip_quoted_code() {
     # It repeats because two occurrences sharing one bound (`" rm rm "`) cannot
     # both be replaced in one pass: `${//}` scans for non-overlapping matches,
     # so it takes every other one and the shared delimiter it consumed leaves
-    # the next word unbounded. Taking every other one is also the bound on the
-    # repeats: k adjacent occurrences halve per pass, so the loop runs
-    # ceil(log2(k)) times, not k.
+    # the next word unbounded. It repeats at most ONCE more for that, whatever
+    # k is: the replacement re-lays BOTH bounds with a space between them, so
+    # the occurrences pass 1 skipped are no longer adjacent to anything and
+    # pass 2 takes all of them. Measured at 1 pass for k=1 and exactly 2 for
+    # every k from 2 to 1024, across each word shape and each bound.
     #
     # It terminates on the occurrence count, NOT on the length. The string
     # shrinks by len(word)-1, which is ZERO for the lone `.`, the one
@@ -422,15 +424,24 @@ _gaia_capcheck_strip_quoted_code() {
     #
     # Cost is what decides the shape. Each replacement is one C-level pass over
     # the span rather than a per-occurrence rebuild, and that is the whole
-    # claim, the one STRIP_QUOTED_COST_BOUND pins. The count is
-    # (1+|bounds|)^2 * ceil(log2(k)) per present word, k being the longest run
-    # of adjacent occurrences, so it is O(n log k) and not linear; the repeat
-    # factor is the one two paragraphs up and is easy to drop when reading the
-    # pair count alone. Splicing out one occurrence at a time instead rebuilds
-    # the span per occurrence and makes a span dense in listed words
-    # super-quadratic: measured at 0.44s, 3.3s, 26s and 205s for 1600, 3200,
-    # 6400 and 12800 characters, against 0.006s, 0.015s, 0.047s and 0.171s
-    # here. Nothing sizes a logical line, and this walk gates every merge.
+    # claim, the one STRIP_QUOTED_COST_BOUND pins. The count is at most
+    # 2 * (1+|bounds|)^2 per present word, the 2 being the pass bound two
+    # paragraphs up: a CONSTANT, so nothing here grows with the longest run of
+    # adjacent occurrences. Do not read that as linear overall, because bash's
+    # own `${//}` is not: measured here at 0.008s, 0.017s, 0.048s, 0.169s and
+    # 0.650s for 1600, 3200, 6400, 12800 and 25600 characters, which is ~2x per
+    # doubling at the bottom and ~3.8x at the top. What the constant pass count
+    # buys is the distance to the alternative, not linearity: splicing out one
+    # occurrence at a time rebuilds the span per occurrence and makes a span
+    # dense in listed words super-quadratic, measured at 0.44s, 3.3s, 26s and
+    # 205s for the first four of those sizes. Nothing sizes a logical line, and
+    # this walk gates every merge.
+    #
+    # No guard pins the pass count itself, deliberately. Cost cannot see it: a
+    # span that is one long adjacent run and a span of equal length with no
+    # adjacency measure the same (0.045s vs 0.047s at 6400, 0.170s vs 0.168s at
+    # 12800), which is itself the evidence the count does not grow with k, and
+    # is also why a timing assertion for it could never fail.
     # shellcheck disable=SC2086
     for word in $_GAIA_CAPCHECK_QUOTED_WORDS; do
       case "$body" in *"$word"*) ;; *) continue ;; esac
