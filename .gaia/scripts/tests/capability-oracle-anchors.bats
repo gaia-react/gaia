@@ -526,12 +526,12 @@ EOF
   # scanner appended, composing against an anchor the real library already
   # carries so the copy stays loadable, and the same derivation runs over it.
   #
-  # Four spellings, and the last three are what keep this derivation on bash.
-  # Every function in the library today is written the one way the regexes this
-  # derivation used to use could read, so reverting them breaks nothing
-  # measurable against the real library and the conversion would be free to
-  # rot. Each of the three added spellings is a definition bash accepts that
-  # one of those readers refused, so each pins one of them:
+  # The rows below, and every one after the first is what keeps this derivation
+  # on bash. Every function in the library today is written the one way the
+  # regexes this derivation used to use could read, so reverting them breaks
+  # nothing measurable against the real library and the conversion would be
+  # free to rot. Each added spelling is a definition bash accepts that one of
+  # those readers refused, so each pins one of them:
   #
   #   `_v2` carries a digit, which the discovery regex's `[a-z_]*` refused.
   #   `function NAME {` carries no parens, which BOTH the discovery regex and
