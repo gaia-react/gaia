@@ -427,21 +427,36 @@ _gaia_capcheck_strip_quoted_code() {
     # claim, the one STRIP_QUOTED_COST_BOUND pins. The count is at most
     # 2 * (1+|bounds|)^2 per present word, the 2 being the pass bound two
     # paragraphs up: a CONSTANT, so nothing here grows with the longest run of
-    # adjacent occurrences. Do not read that as linear overall, because bash's
-    # own `${//}` is not: measured here at 0.008s, 0.017s, 0.048s, 0.169s and
-    # 0.650s for 1600, 3200, 6400, 12800 and 25600 characters, which is ~2x per
-    # doubling at the bottom and ~3.8x at the top. What the constant pass count
-    # buys is the distance to the alternative, not linearity: splicing out one
-    # occurrence at a time rebuilds the span per occurrence and makes a span
-    # dense in listed words super-quadratic, measured at 0.44s, 3.3s, 26s and
-    # 205s for the first four of those sizes. Nothing sizes a logical line, and
-    # this walk gates every merge.
+    # adjacent occurrences. What the constant pass count buys is the distance
+    # to the alternative: splicing out one occurrence at a time rebuilds the
+    # span per occurrence and makes a span dense in listed words
+    # super-quadratic, measured at 0.44s, 3.3s, 26s and 205s for 1600, 3200,
+    # 6400 and 12800 characters against 0.005s, 0.014s, 0.045s and 0.170s here.
+    # Nothing sizes a logical line, and this walk gates every merge.
     #
-    # No guard pins the pass count itself, deliberately. Cost cannot see it: a
-    # span that is one long adjacent run and a span of equal length with no
-    # adjacency measure the same (0.045s vs 0.047s at 6400, 0.170s vs 0.168s at
-    # 12800), which is itself the evidence the count does not grow with k, and
-    # is also why a timing assertion for it could never fail.
+    # Do NOT read the whole-function figures above as this loop's curve. They
+    # grow ~3.9x per doubling at the top (0.645s at 25600), and roughly 90% of
+    # that is the ENCLOSING quote walk, not the blanking: its two anchored
+    # splices, `${t%%\"*}` and `${t#*\"}`, run once per quoted span whether or
+    # not a word is blanked, and are quadratic when the closing quote sits far
+    # from the anchored end. Emptying this loop's word list, so no `${//}` and
+    # no word glob runs at all, leaves 0.585s of the 0.645s and the identical
+    # curve. `${//}` is superlinear in isolation, but this function makes only a
+    # handful of those calls, and 16 of them over the same span cost 0.008s. A
+    # maintainer optimizing `${//}` here can recover a tenth at most. One more
+    # caveat on `measured here`: those figures are one giant quoted span, and
+    # the same payload split across many short spans costs ~2.7x more, so they
+    # are not the worst realistic shape either.
+    #
+    # No guard pins the pass count itself, deliberately, and the reason is that
+    # 10%: the entire blanking loop is ~0.06s of a 0.645s call at 25600, so a
+    # pass count ten times larger would still sit far under
+    # STRIP_QUOTED_COST_BOUND, which is 15s against a 12800-character fixture.
+    # No timing assertion that admits the shipped shape can resolve the pass
+    # count, because the quantity is a tenth of a measurement dominated by a
+    # term that cannot vary with it. The instrument for a count is a counter,
+    # and that would mean instrumenting a merge-gating hot loop to restate a
+    # property the construction argument two paragraphs up already settles.
     # shellcheck disable=SC2086
     for word in $_GAIA_CAPCHECK_QUOTED_WORDS; do
       case "$body" in *"$word"*) ;; *) continue ;; esac
