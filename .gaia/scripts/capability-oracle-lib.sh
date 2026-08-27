@@ -127,28 +127,139 @@ _GAIA_CAPCHECK_QUOTED_WORDS=" mkdir rm touch tee install mktemp cp mv ln sed fin
 # of a real invocation is always OUTSIDE the quotes, its operand routinely
 # inside them.
 #
-# A line carrying a command substitution is left ALONE. `"$( cd "$x" && bash
-# "$y" )"` is real code whose own quotes nest inside the outer pair, and a flat
-# odd/even reading of the quotes on such a line lands on the wrong side of
-# them: it read ` && bash ` as quoted prose and blinded the oracle to a live
-# invocation. Skipping those lines keeps today's answer for them, which is the
-# safe direction.
+# A line whose command substitution NESTS A DOUBLE QUOTE is left ALONE.
+# `"$( cd "$x" && bash "$y" )"` is real code whose own quotes sit inside the
+# outer pair, and a flat odd/even reading of the quotes on such a line lands on
+# the wrong side of them: it read ` && bash ` as quoted prose and blinded the
+# oracle to a live invocation. Skipping those lines keeps today's answer for
+# them, which is the safe direction, because a write or a call the oracle never
+# sees cannot surface as a finding at all.
+#
+# A line whose substitution CARRIES A COMMAND WORD, or the `>` REDIRECT
+# OPERATOR, is left alone too, for a different reason. The body of a
+# substitution is code, and when the whole substitution sits inside a
+# double-quoted span the flat reading hands that body to the blanker as prose:
+# `x="$(cat f | tee lib/teed)"` pads to ` $(cat f | tee lib/teed) `, ` tee ` is
+# space-delimited on both sides, and blanking it loses a real write;
+# `"$(printf x > lib/z)"` loses one the same way through the redirect. Those are
+# the same silent direction as above, reached without any misreading at all.
+# The redirect is named separately because it is the one removable token that
+# does not live in _GAIA_CAPCHECK_QUOTED_WORDS, which is exactly how a
+# word-only test missed it.
+#
+# What is left after those three is the case the skip buys nothing on: a line
+# whose substitutions nest no quote and carry nothing the blanker would remove
+# -- `"$(date)"` beside a message, the ordinary shape of a usage block or a deny
+# string -- where the flat reading is intact and the substitution body holds
+# nothing worth protecting, so skipping it only costs the prose beside it the
+# blanking it needs. _gaia_capcheck_subst_forces_skip below draws that line; see
+# its own header for how conservatively.
 #
 # Deliberately incomplete in four directions. It does not model `bash -c
 # "..."`, `ssh host "..."`, or any other eval, for the same reason
 # _gaia_capcheck_strip_literals does not: an eval is outside this oracle. It
-# does not model a backslash-escaped `\"`, which reads as a span boundary. It
-# skips any line carrying `$(` or a backtick, per the paragraph above. And it
-# is per logical line, so a double-quoted string spanning several real lines is
-# only recognized on the line that opens it; the joiner joins backslash
+# does not model a backslash-escaped `\"`, which reads as a span boundary, nor
+# a backslash-escaped `\$(` or backtick, which reads as a live substitution
+# rather than the literal it is. It skips a substitution-carrying line whenever
+# any of the three conditions in the two paragraphs above holds. And it is per
+# logical line, so a double-quoted string spanning several real lines is only
+# recognized on the line that opens it; the joiner joins backslash
 # continuations, not string bodies.
+
+# _gaia_capcheck_subst_forces_skip <text>: 0 when some command substitution on
+# the line makes the blanker unsafe, 1 when none does. It is the predicate the
+# blanker above skips on, and it exists to be WRONG IN ONE DIRECTION ONLY: a
+# false 0 keeps today's answer for a line that could have been blanked, while a
+# false 1 hands a line to the blanker that the blanker will damage, which is the
+# direction that loses a live write or call silently.
+#
+# THREE span-level conditions force the skip, and they do not all fail the same
+# way. A span carrying a DOUBLE QUOTE defeats the flat odd/even reading, so the
+# blanker misreads which text is quoted. A span carrying a COMMAND WORD, or the
+# `>` REDIRECT OPERATOR, is code the blanker would read as prose whether or not
+# it reads the quoting correctly; the predicate is right about that line and the
+# blanker is still wrong on it. Reading either of the last two as a special case
+# of the first is the mistake to avoid: they are not misreadings at all, which is
+# why "the predicate answered correctly" is not evidence the line is safe to
+# blank.
+#
+# The count is three rather than two because the removable tokens are two kinds
+# and one of them sits outside the constant. A reader who counts two, checks the
+# quote and word arms, and concludes the redirect arm is surplus has just run the
+# reasoning that lost the redirect the first time, which is why the count is
+# stated here and again beside the arm itself.
+#
+# Every approximation in it leans the same way. A `$(` span is taken to the LAST
+# `)` on the line rather than to its matching one, which is the widest reading
+# available and so can only pull more text in, never less. An opener with no
+# closer on the line answers 0 rather than guessing where the span ends. A
+# backtick span is taken to the next backtick, which is exact for a balanced
+# pair and, for an unbalanced one, falls into the no-closer arm. The command
+# word test is membership anywhere in the span rather than in command position,
+# which over-skips deliberately: a command-position test would be a second
+# approximation whose own misses land in the silent direction, and measured over
+# this tree it skips exactly the same lines as one.
+#
+# The quote arm is kept although it was measured SUBSUMED. The blanker removes
+# only the two token kinds the other two arms test for, so a parity misread can
+# damage a line only by misclassifying one of those, and a substitution
+# contributes an even number of quotes, which leaves the parity outside it
+# intact. Every shape tried where the quote arm alone changed the answer was one
+# where blanking would have been correct, so it costs a small over-report and
+# prevents nothing the other arms miss. It stays because it is the condition the
+# skip was originally written for and because subsumption here is a property of
+# today's removable-token set: add a detector that reads a token neither other
+# arm names and the arm is load-bearing again, silently. Its own pin is the
+# predicate's verdict table rather than an emitted record, which is what
+# subsumed means.
+#
+# It terminates because every pass splices `t` from strictly past an opener the
+# `case` guard just found, so each pass removes at least that opener and the
+# string strictly shrinks.
+_gaia_capcheck_subst_forces_skip() {
+  local t="$1" rest span pre bt dl word
+  while :; do
+    case "$t" in *'`'*|*'$('*) ;; *) return 1 ;; esac
+    bt=-1; dl=-1
+    case "$t" in *'`'*) pre="${t%%\`*}"; bt=${#pre} ;; esac
+    case "$t" in *'$('*) pre="${t%%\$\(*}"; dl=${#pre} ;; esac
+    if [ "$bt" -ge 0 ] && { [ "$dl" -lt 0 ] || [ "$bt" -lt "$dl" ]; }; then
+      rest="${t#*\`}"
+      case "$rest" in
+        *'`'*) span="${rest%%\`*}"; t="${rest#*\`}" ;;
+        *) return 0 ;;
+      esac
+    else
+      rest="${t#*\$\(}"
+      case "$rest" in
+        *')'*) span="${rest%)*}"; t="${rest##*)}" ;;
+        *) return 0 ;;
+      esac
+    fi
+    case "$span" in *'"'*) return 0 ;; esac
+    # The redirect operator is the third condition that forces the skip, and it
+    # is the one removable token that is not in the word list:
+    # `"$(printf x > lib/z)"` carries no listed command word, so a word-only
+    # test hands it over and the blanked `>` costs the write. Every token the
+    # blanker can remove has to force the skip, or the ones it misses fail in
+    # the silent direction.
+    case "$span" in *'>'*) return 0 ;; esac
+    # shellcheck disable=SC2086
+    for word in $_GAIA_CAPCHECK_QUOTED_WORDS; do
+      case " $span " in *" $word "*) return 0 ;; esac
+    done
+  done
+}
+
 _gaia_capcheck_strip_quoted_code() {
   local t="$1" out="" head body word
   case "$t" in
-    *'$('*|*'`'*) _GAIA_CAPCHECK_RET="$t"; return 0 ;;
     *'"'*) ;;
     *) _GAIA_CAPCHECK_RET="$t"; return 0 ;;
   esac
+  if _gaia_capcheck_subst_forces_skip "$t"; then
+    _GAIA_CAPCHECK_RET="$t"; return 0
+  fi
   while :; do
     case "$t" in
       *'"'*) ;;
@@ -163,6 +274,9 @@ _gaia_capcheck_strip_quoted_code() {
     esac
     # Padded so a word at either end of the span still has a space on both
     # sides, which is what makes one `case` test and one substitution enough.
+    # The membership test is space-delimited on BOTH sides, so a word abutting
+    # punctuation inside the span (`(rm`, a backtick-quoted `rm` in a message)
+    # is not blanked and its operand still reaches the write detector: #1609.
     body=" $body "
     case "$body" in *'>'*) body="${body//>/ }" ;; esac
     # shellcheck disable=SC2086
