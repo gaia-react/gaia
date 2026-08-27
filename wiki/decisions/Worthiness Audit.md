@@ -11,8 +11,8 @@ tags: [decision, tdd, testing, audit, quality]
 # Worthiness Audit
 
 An advisory, two-axis review of the tests on the **emergent surface**
-(`app/components/**`, `.playwright/**`), the surface where the [[TDD RED
-Verification]] gate does not apply. The emergent surface has no stable
+(`app/components/**`, `.playwright/**`), the surface where the
+[[TDD RED Verification]] gate does not apply. The emergent surface has no stable
 failing-then-passing run to gate on, so its honesty and worthiness come from a
 fresh-context reviewer instead of a mechanical RED proof. The reviewer
 **proposes** verdicts and **edits no files**; a human acts on every proposal.
