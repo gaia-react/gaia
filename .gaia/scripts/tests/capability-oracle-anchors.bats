@@ -235,14 +235,20 @@ header_names_keyword() {
   anchor_header "$1" "${3:-$LIB}" | grep -qE "\`${2}([^A-Za-z]|\$)"
 }
 
-# fn_body <function-name> [<library>]: one function's body, for reading which
-# constants it composes against.
+# fn_body <function-name> [<library>]: one function's definition, for reading
+# which constants it composes against. Asked of bash rather than read off the
+# file, for the reason position_test_constants gives at length: a reader that
+# matches one spelling of a definition is making a coverage claim about every
+# other spelling bash accepts, and nothing rereads it. `declare -f` answers for
+# whatever spelling the library actually used.
+#
+# It returns the whole definition where the awk reader it replaces returned the
+# inner lines only. Every caller substring-matches UPPERCASE anchor names, and
+# the extra text is the lowercase name and the braces, so no caller can see the
+# difference. Bash prints nothing and fails for a function that does not exist,
+# which is the same empty answer the reader gave for one it could not parse.
 fn_body() {
-  awk -v want="$1" '
-    $0 ~ "^" want "\\(\\) \\{" { inside = 1; next }
-    inside && /^\}/ { exit }
-    inside { print }
-  ' "${2:-$LIB}"
+  "$BASH" -c 'source "$1" >/dev/null 2>&1; declare -f "$2"' _ "${2:-$LIB}" "$1"
 }
 
 # scanner_anchor <scanner-name>: the vocabulary-carrying anchor a scanner
@@ -343,9 +349,12 @@ token_at_word_boundary() {
   # predicates miss keeps them equal and this arm green while every arm below
   # drives one anchor fewer. The shape that surfaced when this was probed, and
   # the enumeration is a record of what was driven rather than a claim about
-  # what exists, is an anchor moved inside a function: bash reports no
-  # file-scope constant, correctly, and the narrow regex wants the name at
-  # column zero, so the two agree on the miss.
+  # what exists, is an anchor moved inside a function AND indented with it,
+  # which is how anyone moving one would write it: bash reports no file-scope
+  # constant, correctly, and the narrow regex wants the name at column zero, so
+  # the two agree on the miss. Left at column zero inside the function they
+  # diverge and this arm reds, and so do they when the function is called at
+  # load, so it is the indented spelling alone that is quiet.
   # It is not a regression, the regex predicate this one replaced missed it the
   # same way, and it is not live, since a function-scoped anchor would leave
   # the detectors that compose against it referring to nothing. Everything else
@@ -511,19 +520,46 @@ EOF
   # Non-vacuity control for the arm above. The library is copied with one extra
   # scanner appended, composing against an anchor the real library already
   # carries so the copy stays loadable, and the same derivation runs over it.
-  local copy="$BATS_TEST_TMPDIR/extra-scanner-lib.sh" a
+  #
+  # Three spellings, and the last two are what keep this derivation on bash.
+  # Every function in the library today is written the one way the regexes this
+  # derivation used to use could read, so reverting them breaks nothing
+  # measurable against the real library and the conversion would be free to
+  # rot. Each of the two added spellings is a definition bash accepts that one
+  # of those readers refused, so each pins one of them:
+  #
+  #   `_v2` carries a digit, which the discovery regex's `[a-z_]*` refused.
+  #   `function NAME {` carries no parens, which BOTH the discovery regex and
+  #   the body reader's `^NAME() {` refused.
+  #
+  # A refused spelling was dropped from this set AND from the hand-written
+  # roster at once, so the membership arm saw them equal and passed over a
+  # scanner nothing in the file drove. That is the shape that reads as
+  # coverage, and it is the class this suite spent its review rounds retiring
+  # at the anchor predicate.
+  local copy="$BATS_TEST_TMPDIR/extra-scanner-lib.sh" a fn header
   a="$(scanner_anchor "$(scanners | head -n 1)")"
   [ -n "$a" ]
-  cp "$LIB" "$copy"
-  {
-    printf '%s\n' '_gaia_capcheck_scan_extra_invocations() {'
-    printf '  local pat="${%s}x"\n' "$a"
-    printf '%s\n' '  printf "%s" "$pat" >/dev/null' '}'
-  } >>"$copy"
-  # Whole-line, for the reason the anchor-discovery control above gives: this
-  # derivation emits one name per line too, and a substring match goes green
-  # off any name that merely contains this one.
-  library_scanners "$copy" | grep -qxF -- '_gaia_capcheck_scan_extra_invocations'
+  while IFS='|' read -r fn header; do
+    [ -n "$fn" ] || continue
+    cp "$LIB" "$copy"
+    {
+      printf '%s\n' "$header"
+      printf '  local pat="${%s}x"\n' "$a"
+      printf '%s\n' '  printf "%s" "$pat" >/dev/null' '}'
+    } >>"$copy"
+    # Whole-line, for the reason the anchor-discovery control above gives: this
+    # derivation emits one name per line too, and a substring match goes green
+    # off any name that merely contains this one.
+    if ! library_scanners "$copy" | grep -qxF -- "$fn"; then
+      printf 'the derivation did not discover: %s\n' "$fn" >&2
+      return 1
+    fi
+  done <<EOF
+_gaia_capcheck_scan_extra_invocations|_gaia_capcheck_scan_extra_invocations() {
+_gaia_capcheck_scan_v2_invocations|_gaia_capcheck_scan_v2_invocations() {
+_gaia_capcheck_scan_v3_invocations|function _gaia_capcheck_scan_v3_invocations {
+EOF
 }
 
 # scanners: the scanners this suite drives keywords through. This roster and
@@ -549,9 +585,21 @@ scanners() {
 # This is deliberately a wider test than scanner_anchor's: a function naming
 # SEVERAL such anchors is a member here and resolves to none there, so the two
 # arms above disagree about it and the suite stops instead of skipping it.
+#
+# Discovery is bash's answer too, and for the same reason as everything else
+# here: the regex this replaced read one function spelling (lowercase name at
+# column zero, `() {` with one space and nothing after), so a scanner written
+# any other way bash accepts entered neither this set NOR the hand-written
+# roster, the membership arm saw them equal, and the scanner was driven by no
+# arm in the file. Both sides missing it is exactly the shape that reads as
+# coverage, which is the class this suite spent four review rounds retiring at
+# the anchor predicate.
 library_scanners() {
   local lib="${1:-$LIB}" f
-  for f in $(sed -n 's/^\(_gaia_capcheck_[a-z_]*\)() {$/\1/p' "$lib"); do
+  for f in $("$BASH" -c 'source "$1" >/dev/null 2>&1
+      declare -F | while read -r _ _ fn; do
+        case "$fn" in _gaia_capcheck_*) printf "%s\n" "$fn" ;; esac
+      done' _ "$lib"); do
     fn_names_keyword_anchor "$f" "$lib" || continue
     printf '%s\n' "$f"
   done
