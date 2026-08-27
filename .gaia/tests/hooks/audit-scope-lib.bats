@@ -196,9 +196,13 @@ last_definition() {
   printf '%s\n' 'first() {' '  :' '}' 'function second ()' '{' '  :' '}' > "$probe"
   [ "$(last_definition "$probe")" = "second" ]
 
-  # And still declines the shapes that are not definitions at all: a call, and
-  # a subshell whose name is an assignment.
-  printf '%s\n' 'first() {' '  :' '}' 'first' > "$probe"
+  # And still declines the shapes that are not definitions at all: a bare call,
+  # and a command substitution in an assignment. Each one names something the
+  # DEFINITION does not, so a matcher that wrongly credited either line returns
+  # that name and the assertion reds. Reusing the defined name here would admit
+  # the exact state the assertion forbids, which is the whole failure this
+  # helper was repaired for, one level up.
+  printf '%s\n' 'first() {' '  :' '}' 'second' > "$probe"
   [ "$(last_definition "$probe")" = "first" ]
 
   printf '%s\n' 'first() {' '  :' '}' 'x=$(second)' > "$probe"
