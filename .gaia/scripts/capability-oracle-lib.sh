@@ -127,28 +127,80 @@ _GAIA_CAPCHECK_QUOTED_WORDS=" mkdir rm touch tee install mktemp cp mv ln sed fin
 # of a real invocation is always OUTSIDE the quotes, its operand routinely
 # inside them.
 #
-# A line carrying a command substitution is left ALONE. `"$( cd "$x" && bash
-# "$y" )"` is real code whose own quotes nest inside the outer pair, and a flat
-# odd/even reading of the quotes on such a line lands on the wrong side of
-# them: it read ` && bash ` as quoted prose and blinded the oracle to a live
-# invocation. Skipping those lines keeps today's answer for them, which is the
-# safe direction.
+# A line whose command substitution NESTS A DOUBLE QUOTE is left ALONE.
+# `"$( cd "$x" && bash "$y" )"` is real code whose own quotes sit inside the
+# outer pair, and a flat odd/even reading of the quotes on such a line lands on
+# the wrong side of them: it read ` && bash ` as quoted prose and blinded the
+# oracle to a live invocation. Skipping those lines keeps today's answer for
+# them, which is the safe direction, because a write or a call the oracle never
+# sees cannot surface as a finding at all.
+#
+# What forces that skip is the nested QUOTE, not the substitution. A line whose
+# substitutions carry no quote of their own -- `"$(date)"` beside a message,
+# the ordinary shape of a usage block or a deny string -- leaves the flat
+# reading intact, so skipping it buys nothing and costs the prose beside it the
+# blanking it needs. _gaia_capcheck_subst_nests_quote below draws that line;
+# see its own header for how conservatively.
 #
 # Deliberately incomplete in four directions. It does not model `bash -c
 # "..."`, `ssh host "..."`, or any other eval, for the same reason
 # _gaia_capcheck_strip_literals does not: an eval is outside this oracle. It
-# does not model a backslash-escaped `\"`, which reads as a span boundary. It
-# skips any line carrying `$(` or a backtick, per the paragraph above. And it
-# is per logical line, so a double-quoted string spanning several real lines is
-# only recognized on the line that opens it; the joiner joins backslash
-# continuations, not string bodies.
+# does not model a backslash-escaped `\"`, which reads as a span boundary, nor
+# a backslash-escaped `\$(` or backtick, which reads as a live substitution
+# rather than the literal it is. It skips a quote-nesting substitution line per
+# the paragraph above. And it is per logical line, so a double-quoted string
+# spanning several real lines is only recognized on the line that opens it; the
+# joiner joins backslash continuations, not string bodies.
+# _gaia_capcheck_subst_nests_quote <text>: 0 when some command substitution on
+# the line carries a double quote, 1 when none does. It is the predicate the
+# blanker above skips on, and it exists to be WRONG IN ONE DIRECTION ONLY: a
+# false 0 keeps today's answer for a line that could have been blanked, while a
+# false 1 blanks a line whose quoting it misread, which is the direction that
+# loses a live write or call silently.
+#
+# Every approximation in it therefore leans the same way. A `$(` span is taken
+# to the LAST `)` on the line rather than to its matching one, which is the
+# widest reading available and so can only pull more quotes in, never fewer. An
+# opener with no closer on the line answers 0 rather than guessing where the
+# span ends. A backtick span is taken to the next backtick, which is exact for
+# a balanced pair and, for an unbalanced one, falls into the no-closer arm.
+#
+# It terminates because every pass splices `t` from strictly past an opener the
+# `case` guard just found, so each pass removes at least that opener and the
+# string strictly shrinks.
+_gaia_capcheck_subst_nests_quote() {
+  local t="$1" rest span pre bt dl
+  while :; do
+    case "$t" in *'`'*|*'$('*) ;; *) return 1 ;; esac
+    bt=-1; dl=-1
+    case "$t" in *'`'*) pre="${t%%\`*}"; bt=${#pre} ;; esac
+    case "$t" in *'$('*) pre="${t%%\$\(*}"; dl=${#pre} ;; esac
+    if [ "$bt" -ge 0 ] && { [ "$dl" -lt 0 ] || [ "$bt" -lt "$dl" ]; }; then
+      rest="${t#*\`}"
+      case "$rest" in
+        *'`'*) span="${rest%%\`*}"; t="${rest#*\`}" ;;
+        *) return 0 ;;
+      esac
+    else
+      rest="${t#*\$\(}"
+      case "$rest" in
+        *')'*) span="${rest%)*}"; t="${rest##*)}" ;;
+        *) return 0 ;;
+      esac
+    fi
+    case "$span" in *'"'*) return 0 ;; esac
+  done
+}
+
 _gaia_capcheck_strip_quoted_code() {
   local t="$1" out="" head body word
   case "$t" in
-    *'$('*|*'`'*) _GAIA_CAPCHECK_RET="$t"; return 0 ;;
     *'"'*) ;;
     *) _GAIA_CAPCHECK_RET="$t"; return 0 ;;
   esac
+  if _gaia_capcheck_subst_nests_quote "$t"; then
+    _GAIA_CAPCHECK_RET="$t"; return 0
+  fi
   while :; do
     case "$t" in
       *'"'*) ;;
@@ -163,6 +215,9 @@ _gaia_capcheck_strip_quoted_code() {
     esac
     # Padded so a word at either end of the span still has a space on both
     # sides, which is what makes one `case` test and one substitution enough.
+    # The membership test is space-delimited on BOTH sides, so a word abutting
+    # punctuation inside the span (`(rm`, a backtick-quoted `rm` in a message)
+    # is not blanked and its operand still reaches the write detector: #1609.
     body=" $body "
     case "$body" in *'>'*) body="${body//>/ }" ;; esac
     # shellcheck disable=SC2086

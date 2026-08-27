@@ -55,6 +55,14 @@ setup() {
 # loop, not a performance assertion, so it is deliberately loose.
 STRIP_TESTS_BOUND=5
 
+# The same kind of bound for a single _gaia_capcheck_subst_nests_quote call.
+# That predicate loops over a line's substitution openers, and every arm of it
+# either splices `t` from strictly past the opener the `case` guard just found
+# or returns, so a pass that failed to consume its opener would spin. Same
+# reasoning as above: a bound on a non-terminating loop, not a performance
+# assertion.
+SUBST_NESTS_BOUND=5
+
 # run_bounded <seconds> <command...>: 0 if the command finished inside the
 # bound, 1 if it was killed at the bound. `timeout(1)` is absent on macOS, so
 # the bound is enforced by backgrounding and polling.
@@ -256,6 +264,42 @@ EOF
 # 2. Detectors: prose is not code
 # ---------------------------------------------------------------------------
 
+# The adversarial shapes for the substitution predicate, each one an opener the
+# naive splice could fail to consume: a balanced span, an opener with no closer,
+# stray closers ahead of a real opener, paired backticks, a lone backtick, a run
+# of adjacent spans, and a `case` arm's literal `)`.
+#
+# Each row carries its EXPECTED VERDICT as well, and that is what keeps the test
+# from being hollow. run_bounded reports only whether the call returned, so a
+# deleted or renamed predicate fails instantly and reads as "returned inside the
+# bound"; asserting the answer is what makes the function's absence red. Both
+# verdicts appear in the table, so neither arm can go missing unnoticed.
+#
+# 0 means some substitution nests a quote, so the blanker keeps today's answer
+# for the line; 1 means none does and the line is blanked. Driven as one table
+# per .claude/rules/bats-assertions.md rather than one test per shape, because
+# the property is identical across rows and only the input varies.
+@test "termination: the substitution predicate returns inside the stated bound and answers" {
+  local row shape want got
+  for row in \
+    '0	x=$( cd "$d" && bash "$y" )' \
+    '0	x=$( $( $( "a" ' \
+    '0	echo ) ) ) then $( "a" )' \
+    '1	msg="see `date` and `id`"' \
+    '0	msg="an unclosed ` backtick and a quote"' \
+    '1	msg="$( a )$( b )$( c )$( d )$( e )$( f )"' \
+    '1	case "$t" in *\)) echo $( x ) ;; esac'
+  do
+    want="${row%%$'\t'*}"
+    shape="${row#*$'\t'}"
+    run_bounded "$SUBST_NESTS_BOUND" _gaia_capcheck_subst_nests_quote "$shape" \
+      || { echo "did not return inside the bound: $shape" >&2; return 1; }
+    if _gaia_capcheck_subst_nests_quote "$shape"; then got=0; else got=1; fi
+    [ "$got" = "$want" ] \
+      || { echo "wanted $want, got $got, for: $shape" >&2; return 1; }
+  done
+}
+
 @test "detectors: a command word inside a double-quoted message reaches nothing" {
   write_hook quoted-message.sh <<'EOF'
 deny "BLOCKED: rm -rf of .git is forbidden."
@@ -298,6 +342,70 @@ EOF
   # The nesting puts ` && bash ` between two quote characters. Reading that as
   # prose blinds the oracle to a live invocation, which is the failure mode the
   # command-substitution skip exists to prevent.
+  grep -qF -- 'CALL	.claude/hooks/lib/helper.sh' <<<"$output"
+}
+
+# The four tests below fix the boundary of the command-substitution skip. What
+# forces it is a DOUBLE QUOTE INSIDE a substitution, because that is what shifts
+# the flat odd/even reading of the line's quotes onto the wrong side of them.
+# A substitution carrying no quote of its own leaves that reading intact, so the
+# skip buys nothing there and costs the blanking the prose beside it needs.
+#
+# Each of the two directions is pinned twice, once on prose and once on real
+# code, because a suppression that also silenced the code would read as a pass.
+
+@test "detectors: prose beside a quoteless substitution is blanked, not read as a write" {
+  write_hook subst-plain.sh <<'EOF'
+printf '%s' "$(date)" && deny "BLOCKED: rm -rf of lib/out is forbidden."
+EOF
+  run sites .claude/hooks/subst-plain.sh
+  [ "$status" -eq 0 ]
+  # `$(date)` carries no quote, so the flat reading pairs this line's quotes
+  # correctly and the message is reachable prose rather than an untouchable
+  # line. Neither the operand nor the message's own word is a write target.
+  grep -qF -- 'fs-write:lib/out' <<<"$output" && return 1
+  grep -qF -- 'fs-write:forbidden.' <<<"$output" && return 1
+  true
+}
+
+@test "detectors: a real write beside a quoteless substitution is still a write" {
+  write_hook subst-plain-code.sh <<'EOF'
+stamp="$(date)" && rm -f "lib/kept"
+EOF
+  run sites .claude/hooks/subst-plain-code.sh
+  [ "$status" -eq 0 ]
+  # The companion to the test above. Blanking now runs on this line where it
+  # did not before, so the half that must NOT change is asserted here: the
+  # command word sits outside the quotes and its operand inside them, which is
+  # the asymmetry the blanker is built around.
+  grep -qF -- 'fs-write:lib/kept' <<<"$output"
+}
+
+@test "detectors: a write inside a quote-nesting substitution is still a write" {
+  write_hook subst-nested-code.sh <<'EOF'
+out="$( cd "$root" && rm -f "lib/nested" )"
+EOF
+  run sites .claude/hooks/subst-nested-code.sh
+  [ "$status" -eq 0 ]
+  # This is the whole reason the skip is narrowed rather than removed. Blanking
+  # this line reads ` && rm -f ` as quoted prose and eats a real write, and a
+  # write the oracle does not see cannot surface as a finding at all. Delete the
+  # skip and this test reds; that is what it is here for.
+  grep -qF -- 'fs-write:lib/nested' <<<"$output"
+}
+
+@test "detectors: prose beside a quote-nesting substitution keeps today's answer" {
+  write_hook subst-nested-prose.sh <<'EOF'
+out="$( cd "$root" && bash .claude/hooks/lib/helper.sh )" ; deny "BLOCKED: rm -rf of lib/prose is forbidden."
+EOF
+  run sites .claude/hooks/subst-nested-prose.sh
+  [ "$status" -eq 0 ]
+  # The residual, pinned rather than left to be rediscovered. The substitution
+  # nests quotes, so the line is still skipped whole and the message beside it
+  # is still read as a write. Trading that for the missed invocation on the same
+  # line is the trade the test above refuses, so this stays red-by-design until
+  # something reads the line's real quoting structure rather than its parity.
+  grep -qF -- 'fs-write:lib/prose' <<<"$output"
   grep -qF -- 'CALL	.claude/hooks/lib/helper.sh' <<<"$output"
 }
 
