@@ -135,12 +135,21 @@ _GAIA_CAPCHECK_QUOTED_WORDS=" mkdir rm touch tee install mktemp cp mv ln sed fin
 # them, which is the safe direction, because a write or a call the oracle never
 # sees cannot surface as a finding at all.
 #
-# What forces that skip is the nested QUOTE, not the substitution. A line whose
-# substitutions carry no quote of their own -- `"$(date)"` beside a message,
-# the ordinary shape of a usage block or a deny string -- leaves the flat
-# reading intact, so skipping it buys nothing and costs the prose beside it the
-# blanking it needs. _gaia_capcheck_subst_nests_quote below draws that line;
-# see its own header for how conservatively.
+# A line whose substitution CARRIES A COMMAND WORD is left alone too, for a
+# different reason. The body of a substitution is code, and when the whole
+# substitution sits inside a double-quoted span the flat reading hands that body
+# to the blanker as prose: `x="$(cat f | tee lib/teed)"` pads to
+# ` $(cat f | tee lib/teed) `, ` tee ` is space-delimited on both sides, and
+# blanking it loses a real write. That is the same silent direction as above,
+# reached without any misreading at all.
+#
+# What is left after those two is the case the skip buys nothing on: a line
+# whose substitutions nest no quote and carry no command word -- `"$(date)"`
+# beside a message, the ordinary shape of a usage block or a deny string --
+# where the flat reading is intact and the substitution body holds nothing worth
+# protecting, so skipping it only costs the prose beside it the blanking it
+# needs. _gaia_capcheck_subst_forces_skip below draws that line; see its own
+# header for how conservatively.
 #
 # Deliberately incomplete in four directions. It does not model `bash -c
 # "..."`, `ssh host "..."`, or any other eval, for the same reason
@@ -151,25 +160,51 @@ _GAIA_CAPCHECK_QUOTED_WORDS=" mkdir rm touch tee install mktemp cp mv ln sed fin
 # the paragraph above. And it is per logical line, so a double-quoted string
 # spanning several real lines is only recognized on the line that opens it; the
 # joiner joins backslash continuations, not string bodies.
-# _gaia_capcheck_subst_nests_quote <text>: 0 when some command substitution on
-# the line carries a double quote, 1 when none does. It is the predicate the
+# _gaia_capcheck_subst_forces_skip <text>: 0 when some command substitution on
+# the line makes the blanker unsafe, 1 when none does. It is the predicate the
 # blanker above skips on, and it exists to be WRONG IN ONE DIRECTION ONLY: a
 # false 0 keeps today's answer for a line that could have been blanked, while a
-# false 1 blanks a line whose quoting it misread, which is the direction that
-# loses a live write or call silently.
+# false 1 hands a line to the blanker that the blanker will damage, which is the
+# direction that loses a live write or call silently.
 #
-# Every approximation in it therefore leans the same way. A `$(` span is taken
-# to the LAST `)` on the line rather than to its matching one, which is the
-# widest reading available and so can only pull more quotes in, never fewer. An
-# opener with no closer on the line answers 0 rather than guessing where the
-# span ends. A backtick span is taken to the next backtick, which is exact for
-# a balanced pair and, for an unbalanced one, falls into the no-closer arm.
+# TWO conditions force the skip, and they fail differently. A span carrying a
+# DOUBLE QUOTE defeats the flat odd/even reading, so the blanker misreads which
+# text is quoted. A span carrying a COMMAND WORD is code the blanker would read
+# as prose whether or not it reads the quoting correctly; the predicate is
+# right about that line and the blanker is still wrong on it. Reading the second
+# condition as a special case of the first is the mistake to avoid: it is not a
+# misreading at all, which is why "the predicate answered correctly" is not
+# evidence the line is safe to blank.
+#
+# Every approximation in it leans the same way. A `$(` span is taken to the LAST
+# `)` on the line rather than to its matching one, which is the widest reading
+# available and so can only pull more text in, never less. An opener with no
+# closer on the line answers 0 rather than guessing where the span ends. A
+# backtick span is taken to the next backtick, which is exact for a balanced
+# pair and, for an unbalanced one, falls into the no-closer arm. The command
+# word test is membership anywhere in the span rather than in command position,
+# which over-skips deliberately: a command-position test would be a second
+# approximation whose own misses land in the silent direction, and measured over
+# this tree it skips exactly the same lines as one.
+#
+# The quote arm is kept although it was measured SUBSUMED. The blanker removes
+# only the two token kinds the other two arms test for, so a parity misread can
+# damage a line only by misclassifying one of those, and a substitution
+# contributes an even number of quotes, which leaves the parity outside it
+# intact. Every shape tried where the quote arm alone changed the answer was one
+# where blanking would have been correct, so it costs a small over-report and
+# prevents nothing the other arms miss. It stays because it is the condition the
+# skip was originally written for and because subsumption here is a property of
+# today's removable-token set: add a detector that reads a token neither other
+# arm names and the arm is load-bearing again, silently. Its own pin is the
+# predicate's verdict table rather than an emitted record, which is what
+# subsumed means.
 #
 # It terminates because every pass splices `t` from strictly past an opener the
 # `case` guard just found, so each pass removes at least that opener and the
 # string strictly shrinks.
-_gaia_capcheck_subst_nests_quote() {
-  local t="$1" rest span pre bt dl
+_gaia_capcheck_subst_forces_skip() {
+  local t="$1" rest span pre bt dl word
   while :; do
     case "$t" in *'`'*|*'$('*) ;; *) return 1 ;; esac
     bt=-1; dl=-1
@@ -189,6 +224,16 @@ _gaia_capcheck_subst_nests_quote() {
       esac
     fi
     case "$span" in *'"'*) return 0 ;; esac
+    # The redirect operator is the third thing the blanker removes, and it is
+    # not in the word list: `"$(printf x > lib/z)"` carries no listed command
+    # word, so a word-only test hands it over and the blanked `>` costs the
+    # write. Every token the blanker can remove has to force the skip, or the
+    # ones it misses fail in the silent direction.
+    case "$span" in *'>'*) return 0 ;; esac
+    # shellcheck disable=SC2086
+    for word in $_GAIA_CAPCHECK_QUOTED_WORDS; do
+      case " $span " in *" $word "*) return 0 ;; esac
+    done
   done
 }
 
@@ -198,7 +243,7 @@ _gaia_capcheck_strip_quoted_code() {
     *'"'*) ;;
     *) _GAIA_CAPCHECK_RET="$t"; return 0 ;;
   esac
-  if _gaia_capcheck_subst_nests_quote "$t"; then
+  if _gaia_capcheck_subst_forces_skip "$t"; then
     _GAIA_CAPCHECK_RET="$t"; return 0
   fi
   while :; do

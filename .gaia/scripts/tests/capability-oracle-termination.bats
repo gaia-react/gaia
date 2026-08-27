@@ -55,13 +55,13 @@ setup() {
 # loop, not a performance assertion, so it is deliberately loose.
 STRIP_TESTS_BOUND=5
 
-# The same kind of bound for a single _gaia_capcheck_subst_nests_quote call.
+# The same kind of bound for a single _gaia_capcheck_subst_forces_skip call.
 # That predicate loops over a line's substitution openers, and every arm of it
 # either splices `t` from strictly past the opener the `case` guard just found
 # or returns, so a pass that failed to consume its opener would spin. Same
 # reasoning as above: a bound on a non-terminating loop, not a performance
 # assertion.
-SUBST_NESTS_BOUND=5
+SUBST_SKIP_BOUND=5
 
 # run_bounded <seconds> <command...>: 0 if the command finished inside the
 # bound, 1 if it was killed at the bound. `timeout(1)` is absent on macOS, so
@@ -292,9 +292,9 @@ EOF
   do
     want="${row%%$'\t'*}"
     shape="${row#*$'\t'}"
-    run_bounded "$SUBST_NESTS_BOUND" _gaia_capcheck_subst_nests_quote "$shape" \
+    run_bounded "$SUBST_SKIP_BOUND" _gaia_capcheck_subst_forces_skip "$shape" \
       || { echo "did not return inside the bound: $shape" >&2; return 1; }
-    if _gaia_capcheck_subst_nests_quote "$shape"; then got=0; else got=1; fi
+    if _gaia_capcheck_subst_forces_skip "$shape"; then got=0; else got=1; fi
     [ "$got" = "$want" ] \
       || { echo "wanted $want, got $got, for: $shape" >&2; return 1; }
   done
@@ -392,6 +392,48 @@ EOF
   # write the oracle does not see cannot surface as a finding at all. Delete the
   # skip and this test reds; that is what it is here for.
   grep -qF -- 'fs-write:lib/nested' <<<"$output"
+}
+
+# The property that closes the gap the four fixtures above left open, driven per
+# token rather than per hand-picked shape. The blanker removes exactly two kinds
+# of token from a span it is handed, the redirect operator and the members of
+# _GAIA_CAPCHECK_QUOTED_WORDS, and a substitution body is code the blanker would
+# read as prose. So every token the blanker can remove must force the skip, or
+# the ones it misses lose a live write or call with nothing to report it.
+#
+# The token set is DERIVED from the library's own constant per
+# .claude/rules/bats-assertions.md, not listed here: a word added to that
+# constant is covered the moment it lands, and the blanker's other removable
+# token, `>`, is named because it lives outside the constant, which is exactly
+# how it was missed the first time. The short-read guard matters because a
+# derivation that returns nothing leaves a loop that iterates zero times and a
+# test that asserts nothing while reporting green.
+@test "detectors: every token the blanker removes forces the substitution skip" {
+  local tok count=0
+  for tok in $_GAIA_CAPCHECK_QUOTED_WORDS '>'; do
+    count=$((count + 1))
+    _gaia_capcheck_subst_forces_skip "x=\"\$(a $tok b)\"" \
+      || { echo "a substitution carrying '$tok' did not force the skip" >&2; return 1; }
+  done
+  # The constant carries well over a dozen words; a derivation that came back
+  # with a handful would iterate and pass while covering almost nothing.
+  [ "$count" -gt 10 ] \
+    || { echo "derived only $count tokens, the constant is not being read" >&2; return 1; }
+}
+
+@test "detectors: a write inside a quoteless substitution survives the blanker" {
+  write_hook subst-inner-code.sh <<'EOF'
+x="$(cat f | tee lib/teed)"
+z="$(printf x > lib/z)"
+EOF
+  run sites .claude/hooks/subst-inner-code.sh
+  [ "$status" -eq 0 ]
+  # The concrete form of the property above, and the shape the four fixtures
+  # around it all miss: the real code sits INSIDE a quoteless substitution, not
+  # beside one and not inside a quote-nesting one. Reading the span body as
+  # prose blanks ` tee ` and the `>` and loses both writes silently.
+  grep -qF -- 'fs-write:lib/teed' <<<"$output" || return 1
+  grep -qF -- 'fs-write:lib/z' <<<"$output"
 }
 
 @test "detectors: prose beside a quote-nesting substitution keeps today's answer" {
