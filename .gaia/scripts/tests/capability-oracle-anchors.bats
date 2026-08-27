@@ -80,6 +80,42 @@ anchor_names() {
   sed -n "s/^\(_GAIA_CAPCHECK_[A-Za-z_]*\)='(\^|.*/\1/p" "${1:-$LIB}"
 }
 
+# position_test_constants [<library>]: the same set, read by a WIDER predicate,
+# for the arm that holds anchor_names to it. It reads past whatever quote the
+# assignment uses and past an assignment keyword in front of the name, so an
+# anchor spelled in either of those ways is in this set and absent from the
+# narrow one, which is what makes the disagreement visible.
+#
+# Why a second predicate at all. anchor_names is the derivation every arm in
+# this file walks, so a spelling it misses does not shrink one arm, it shrinks
+# all of them at once and each still reports green: the suite drives fewer
+# anchors while its names go on claiming every anchor. A wholesale respelling
+# is loud, since anchor_names comes back empty and the non-empty arm above
+# catches it. A PARTIAL one is the silent case, and it is the same shape as the
+# in-token defect this suite exists for, one level further out.
+#
+# Its own honest limit, since this file asks that of the library it reads: it
+# handles a top-level assignment carrying at most a `readonly` or `declare`
+# keyword. A constant assigned some other way, through an `eval` or a nameref,
+# is outside what any line-wise reader sees, and neither predicate claims it.
+position_test_constants() {
+  awk '
+    {
+      line = $0
+      sub(/^readonly[ \t]+/, "", line)
+      sub(/^declare[ \t]+-[a-zA-Z]+[ \t]+/, "", line)
+      if (line !~ /^_GAIA_CAPCHECK_[A-Za-z_]*=/) next
+      name = line
+      sub(/=.*/, "", name)
+      value = line
+      sub(/^[^=]*=/, "", value)
+      first = substr(value, 1, 1)
+      if (first == "\"" || first == sprintf("%c", 39)) value = substr(value, 2)
+      if (index(value, "(^|") == 1) print name
+    }
+  ' "${1:-$LIB}"
+}
+
 # declass <regex>: the regex with every POSIX character-class name removed, so
 # the class's own letters (`space` in `[[:space:]]`) cannot be read as an
 # anchor keyword. Only the `[:name:]` payload goes and the surrounding brackets
@@ -228,6 +264,40 @@ token_at_word_boundary() {
   local names
   names="$(anchor_names)"
   [ -n "$names" ]
+}
+
+@test "every position-test constant in the library is discovered as an anchor" {
+  # The short-read guard for anchor_names, which the arm above does not supply:
+  # a non-empty set is not a complete one, and this is the derivation whose
+  # short read shrinks every other arm in this file at once rather than failing
+  # anywhere. Set equality rather than a count, because a count agrees with
+  # itself when one spelling is missed and another is picked up.
+  #
+  # What to do when this reds: either spell the new anchor the way the rest of
+  # them are spelled, or widen anchor_names deliberately. Both are fine and the
+  # point is that neither happens by accident, which is what a suite driving
+  # fewer anchors than it claims would be.
+  local wide narrow
+  wide="$(position_test_constants | sort)"
+  narrow="$(anchor_names | sort)"
+  [ -n "$wide" ]
+  [ "$wide" = "$narrow" ]
+}
+
+@test "the anchor-discovery arm fails on an anchor the narrow predicate cannot see" {
+  # Non-vacuity control, sampling one anchor and one respelling. The library is
+  # copied with the sampled anchor's assignment put behind a `readonly`, one of
+  # the spellings the narrow predicate cannot read, and both derivations run
+  # over the copy.
+  #
+  # The copy is read and never sourced, so the respelling only has to be
+  # something a line-wise reader must handle, not something that would load.
+  local copy="$BATS_TEST_TMPDIR/respelt-lib.sh" n
+  n="$(anchor_names | head -n 1)"
+  sed "s/^$n=/readonly $n=/" "$LIB" >"$copy"
+  position_test_constants "$copy" | grep -qF -- "$n"
+  anchor_names "$copy" | grep -qF -- "$n" && return 1
+  true
 }
 
 @test "each anchor's keyword vocabulary accounts for every letter that anchor carries" {
