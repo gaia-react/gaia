@@ -38,8 +38,21 @@
 # Where such an authority exists the claim stops being prose. It exists more
 # often than it looks: the vocabulary guard counts the artifact's own letters,
 # the roster guard compares two independent readings of the library, and the
-# wide-predicate guard asks bash which spellings define a constant. Where no
-# authority exists, say what is unchecked instead of asserting coverage.
+# wide predicate is bash itself, sourcing the library and reporting what then
+# exists. Where no authority exists, say what is unchecked instead of
+# asserting coverage.
+#
+# One corollary, learned by getting it wrong a fourth time. CONSULTING an
+# authority over an enumerated set of inputs is not the same as BEING one.
+# The wide predicate first approximated bash with a regex and checked that
+# regex against bash over a GENERATED space of spellings. The space was then
+# the coverage claim, and three consecutive reviews each found a branch the
+# regex read that no generated spelling drove, the last of them three at once,
+# every round against a green suite. An enumeration standing between a
+# derivation and its authority reintroduces the exact claim the authority was
+# brought in to retire. So where the authority can answer the question
+# directly, let it answer: the enumeration then does not need a guard of its
+# own, it is gone.
 #
 # What this suite does NOT do, stated because a property suite reads as
 # stronger than it is. It does not judge whether an anchor's vocabulary is the
@@ -84,13 +97,6 @@ setup() {
   # placeholder line cannot satisfy it and far enough below what every anchor
   # in the library carries today that it never argues with a terse header.
   ANCHOR_HEADER_MIN_LINES=8
-
-  # The value every generated spelling assigns, for the oracle arm below. It
-  # opens with the alternation that makes a constant a position test, so a
-  # spelling the predicate reads at all is one it emits, and it carries no `$`,
-  # so the single-quoted and double-quoted spellings assign the same bytes and
-  # the arm judges the quoting form rather than an expansion.
-  SPELL_VALUE='(^|[;|&])'
 }
 
 # --- Derivations -----------------------------------------------------------
@@ -104,13 +110,15 @@ anchor_names() {
   sed -n "s/^\(_GAIA_CAPCHECK_[A-Za-z_]*\)='(\^|.*/\1/p" "${1:-$LIB}"
 }
 
-# position_test_constants [<library>]: the same set, read by a WIDER predicate,
-# for the arm that holds anchor_names to it. It reads past whatever quote the
-# assignment uses and past an assignment keyword in front of the name, so an
-# anchor spelled in either of those ways is in this set and absent from the
-# narrow one, which is what makes the disagreement visible.
+# position_test_constants [<library>]: the same set, read WIDER than
+# anchor_names, for the arm that holds the narrow one to account. It is not a
+# second reader of the library's text. It sources the library in its own bash
+# and reports the constants that then exist carrying an anchor value, so every
+# spelling bash accepts in front of a name is already in this set and a
+# spelling the narrow predicate cannot read is the only thing the two can
+# disagree about.
 #
-# Why a second predicate at all. anchor_names is the derivation every arm in
+# Why a wide predicate at all. anchor_names is the derivation every arm in
 # this file walks, so a spelling it misses does not shrink one arm, it shrinks
 # all of them at once and each still reports green: the suite drives fewer
 # anchors while its names go on claiming every anchor. A wholesale respelling
@@ -118,137 +126,45 @@ anchor_names() {
 # catches it. A PARTIAL one is the silent case, and it is the same shape as the
 # in-token defect this suite exists for, one level further out.
 #
-# Its own honest limit is NOT stated here. A predicate whose job is to be wider
-# than another one is making a coverage claim, and a coverage claim written
-# beside the code it describes is a fact about the code that nothing rereads:
-# the paragraph this comment replaces claimed a `readonly` or `declare` keyword
-# and an `eval`-or-nameref limit, while the body read three spellings of seven
-# and missed four a line-wise reader plainly sees. The claim is decided instead,
-# every run, by the oracle arm below, against bash. What survives as prose is
-# the input space that arm generates, and an input space is an untested case
-# rather than a false claim.
+# Why bash rather than a wider regex, which is this derivation's whole history
+# and the reason the rule in this file's header is written the way it is. A
+# predicate whose job is to be wider than another one is making a coverage
+# claim, and a coverage claim decided inside this file's own vocabulary is a
+# fact about the code that nothing rereads. A regex version of this predicate
+# carried a paragraph claiming a keyword-and-nameref limit while its body read
+# three spellings of seven. Checking that regex against bash over a GENERATED
+# space of spellings did not end it either, and that is the part worth keeping:
+# the generated space is itself a coverage claim. Three consecutive reviews
+# each found a branch the predicate read that no generated spelling drove, the
+# last of them three at once, and every one of those rounds ran against a
+# green suite.
 #
-# `local` is deliberately not stripped, and bash is why rather than judgment:
-# `local` outside a function is an error, so a `local` line defines no library
-# constant and this predicate must not claim one. The oracle arm generates that
-# spelling and would red if the strip list grew it.
+# The regress ends where the approximation does. This predicate has no branches
+# to cover and no input space to enumerate, because it is not an approximation
+# of bash: it is bash. A name it reports is one that exists once the library
+# loads, which is the only reading of "the library defines this constant" that
+# is nobody's reading of a line.
+#
+# Two things bash decides here for free, which the hand-widened regex got
+# wrong in both directions. `local` at file scope is an error defining nothing, so a
+# `local` line contributes no name here and cannot be claimed; a strip list
+# growing `local` as a keyword did claim one. And a line that does not parse
+# aborts the load, so it surfaces as a short set against anchor_names rather
+# than as a name nobody can use. Neither needed a rule.
+#
+# The nested interpreter is `$BASH`, the one running this suite, rather than
+# whatever `bash` resolves to on PATH. The library refuses to load under bash
+# 3.2 by design, so a bare `bash` could answer this question under a different
+# interpreter than every other arm is using: green here, red everywhere else,
+# or the reverse. Asking the suite's own bash keeps the answer about the
+# interpreter the file says it runs under.
 position_test_constants() {
-  awk '
-    {
-      line = $0
-      sub(/^[ \t]+/, "", line)
-      while (sub(/^(export|readonly|declare|typeset)[ \t]+/, "", line)) {
-        while (sub(/^[-+][a-zA-Z]+[ \t]+/, "", line)) { }
-      }
-      if (line !~ /^_GAIA_CAPCHECK_[A-Za-z0-9_]*=/) next
-      name = line
-      sub(/=.*/, "", name)
-      value = line
-      sub(/^[^=]*=/, "", value)
-      first = substr(value, 1, 1)
-      if (first != "\"" && first != sprintf("%c", 39)) next
-      value = substr(value, 2)
-      if (index(value, "(^|") == 1) print name
-    }
-  ' "${1:-$LIB}"
-}
-
-# position_test_constants_prewidening [<library>]: the predicate exactly as it
-# read before the oracle arm below existed, kept as that arm's mutation control
-# rather than as a second reader. It is frozen on purpose: its subject is the
-# historical shape, the way the in-token control's subject is the pre-boundary
-# anchor spelling, so it does not track the predicate above and must not.
-position_test_constants_prewidening() {
-  awk '
-    {
-      line = $0
-      sub(/^readonly[ \t]+/, "", line)
-      sub(/^declare[ \t]+-[a-zA-Z]+[ \t]+/, "", line)
-      if (line !~ /^_GAIA_CAPCHECK_[A-Za-z_]*=/) next
-      name = line
-      sub(/=.*/, "", name)
-      value = line
-      sub(/^[^=]*=/, "", value)
-      first = substr(value, 1, 1)
-      if (first == "\"" || first == sprintf("%c", 39)) value = substr(value, 2)
-      if (index(value, "(^|") == 1) print name
-    }
-  ' "${1:-$LIB}"
-}
-
-# assignment_spellings: the input space the oracle arm drives, one
-# `<name><US><line>` per spelling, delimited by the unit separator rather than
-# by a tab. The delimiter is load-bearing and not a style choice: a tab IS IFS
-# whitespace, so `IFS=<tab> read` strips a leading tab off the payload, and a
-# tab-indented spelling sent down a tab-delimited transport arrives as a
-# duplicate of the un-indented one. It would look like added coverage and drive
-# nothing. The unit separator is not IFS whitespace, so the payload survives.
-#
-# It is a cross product of four axes rather
-# than a list of cases, one axis per branch the predicate reads: leading
-# indentation; the assignment-prefix keywords bash accepts in front of a name,
-# with and without flag words and stacked; a name with and without a digit; and
-# the three quoting forms, including the unquoted one that does not parse. A
-# cross product rather than one axis varied around a base, because the axes
-# interact: the indent has to be consumed BEFORE the keyword loop, and no
-# spelling carrying only one of the two shows that.
-#
-# Nothing here labels a spelling in or out of the predicate's coverage, which is
-# the whole point: bash labels them.
-#
-# This enumeration is the honest limit that remains. A spelling nobody thought
-# to generate is untested, which is a different and smaller failure than a
-# paragraph asserting coverage the code does not have: the arm never claims a
-# spelling it did not drive.
-assignment_spellings() {
-  local indent prefix name quote tab
-  tab="$(printf '\t')"
-  for indent in '' '  ' "$tab"; do
-    for prefix in '' 'export ' 'readonly ' 'declare ' 'typeset ' 'local ' \
-      'declare -g ' 'declare -gr ' 'readonly declare ' 'export readonly '; do
-      for name in _GAIA_CAPCHECK_SPELL _GAIA_CAPCHECK_SPELL2; do
-        for quote in "'" '"' ''; do
-          printf '%s\037%s%s%s=%s%s%s\n' \
-            "$name" "$indent" "$prefix" "$name" "$quote" "$SPELL_VALUE" "$quote"
-        done
-      done
+  "$BASH" -c '
+    source "$1" >/dev/null 2>&1
+    for n in ${!_GAIA_CAPCHECK_@}; do
+      case "${!n}" in "(^|"*) printf "%s\n" "$n" ;; esac
     done
-  done
-}
-
-# bash_defines <line> <name>: true when sourcing a file holding <line> leaves
-# <name> carrying the anchor value. This is the oracle the arm below decides
-# coverage against, and it is outside this file's own vocabulary on purpose: a
-# predicate checked by a second predicate leaves the second one's coverage as a
-# fresh unchecked claim, which is the regress that put three instances of one
-# class in this file. Whether a line defines a shell constant is a question
-# bash answers, and bash is already this suite's interpreter.
-#
-# One file and one bash per spelling, not one file holding all of them: a
-# spelling that does not parse aborts the whole source, and a `readonly` from
-# an earlier spelling would refuse a later assignment to the same name.
-bash_defines() {
-  local line="$1" name="$2" file="$BATS_TEST_TMPDIR/oracle-spelling.sh" got
-  printf '%s\n' "$line" >"$file"
-  got="$(bash -c 'source "$1" >/dev/null 2>&1; printf "%s" "${!2-}"' _ "$file" "$name")"
-  [ "$got" = "$SPELL_VALUE" ]
-}
-
-# predicate_disagreements <predicate-fn>: every generated spelling the named
-# predicate and bash label differently, one `<verdict> <line>` per line. Empty
-# is agreement.
-predicate_disagreements() {
-  local fn="$1" name line file="$BATS_TEST_TMPDIR/predicate-spelling.sh" seen wanted
-  while IFS="$(printf '\037')" read -r name line; do
-    [ -n "$name" ] || continue
-    printf '%s\n' "$line" >"$file"
-    if "$fn" "$file" | grep -qxF -- "$name"; then seen=yes; else seen=no; fi
-    if bash_defines "$line" "$name"; then wanted=yes; else wanted=no; fi
-    [ "$seen" = "$wanted" ] && continue
-    printf 'predicate=%s bash=%s\t%s\n' "$seen" "$wanted" "$line"
-  done <<EOF
-$(assignment_spellings)
-EOF
+  ' _ "${1:-$LIB}"
 }
 
 # declass <regex>: the regex with every POSIX character-class name removed, so
@@ -428,13 +344,25 @@ token_at_word_boundary() {
 }
 
 @test "the anchor-discovery arm fails on an anchor the narrow predicate cannot see" {
-  # Non-vacuity control, sampling one anchor and one respelling. The library is
-  # copied with the sampled anchor's assignment put behind a `readonly`, one of
-  # the spellings the narrow predicate cannot read, and both derivations run
-  # over the copy.
+  # Non-vacuity control for the equality arm above, driven across every axis a
+  # review has caught this pair failing to diverge on. The library is copied
+  # with one sampled anchor respelt, and the arm requires the wide predicate to
+  # keep seeing it while the narrow one loses it. That gap is the loud signal
+  # the equality arm exists to produce, so a control proving the gap is real is
+  # what keeps that arm from passing by agreeing with the defect it guards.
   #
-  # The copy is read and never sourced, so the respelling only has to be
-  # something a line-wise reader must handle, not something that would load.
+  # The copy is SOURCED now rather than only read, because the wide predicate
+  # is bash. So every respelling here has to be one that actually loads. That
+  # is a stricter bar than the line-wise reading this control used to apply,
+  # and a more honest one: a spelling that would not load is not a spelling the
+  # library could carry, so a control built on one proves nothing.
+  #
+  # This list is not a coverage claim, and the difference matters because the
+  # thing it replaces was one. The wide side is bash, so it needs no input
+  # space to be complete and no arm rereads this list as though it were the
+  # space. These are the spellings that have actually shipped defects in this
+  # derivation, kept as evidence that the control still controls; a spelling
+  # missing from it costs the suite nothing.
   #
   # Both greps match the WHOLE line. Each derivation emits one name per line,
   # and a name can be a strict prefix of one added later, so an unanchored
@@ -442,49 +370,78 @@ token_at_word_boundary() {
   # green off the longer name even when the wide predicate has stopped seeing
   # the sampled one, which is a control that has stopped controlling, and the
   # second matches the longer name and reds a suite that is correct (#1606).
-  local copy="$BATS_TEST_TMPDIR/respelt-lib.sh" n
+  local copy="$BATS_TEST_TMPDIR/respelt-lib.sh" n tab desc expr
+  tab="$(printf '\t')"
   n="$(anchor_names | head -n 1)"
   [ -n "$n" ]
-  sed "s/^$n=/readonly $n=/" "$LIB" >"$copy"
+  while IFS='|' read -r desc expr; do
+    [ -n "$desc" ] || continue
+    sed "$expr" "$LIB" >"$copy"
+    if ! position_test_constants "$copy" | grep -qxF -- "$n"; then
+      printf 'the wide predicate lost the anchor under: %s\n' "$desc" >&2
+      return 1
+    fi
+    if anchor_names "$copy" | grep -qxF -- "$n"; then
+      printf 'the narrow predicate still reads the anchor under: %s\n' "$desc" >&2
+      return 1
+    fi
+  done <<EOF
+readonly|s/^$n=/readonly $n=/
+export|s/^$n=/export $n=/
+declare -g|s/^$n=/declare -g $n=/
+declare with tab separators|s/^$n=/declare${tab}-g${tab}$n=/
+declare with a plus flag|s/^$n=/declare +x $n=/
+space indent|s/^$n=/  $n=/
+tab indent|s/^$n=/${tab}$n=/
+EOF
+
+  # The double-quoted respelling gets its own block, because producing it is
+  # not a prefix edit and because bash, not this file, decided what it has to
+  # look like. The narrow predicate reads a single-quoted value only, so double
+  # quoting is a real divergence axis. But these anchors carry a backtick and a
+  # `$` inside their character class, and both are live in a double-quoted
+  # string: converting the quotes and nothing else does not respell the anchor,
+  # it opens a command substitution and leaves the constant undefined. So the
+  # value is escaped to mean the same bytes, and the arm proves it does before
+  # trusting the case at all. A control that silently changed what the anchor
+  # matches would be testing a library this repository does not have.
+  #
+  # The replacement travels through the environment rather than `awk -v`, which
+  # processes escape sequences in the value it is handed and would undo exactly
+  # the escaping this case exists to apply.
+  local raw esc
+  raw="$(sed -n "s/^$n='\(.*\)'\$/\1/p" "$LIB")"
+  [ -n "$raw" ]
+  esc="${raw//\\/\\\\}"
+  esc="${esc//\`/\\\`}"
+  esc="${esc//\$/\\\$}"
+  esc="${esc//\"/\\\"}"
+  GAIA_ANCHOR_REPL="$n=\"$esc\"" \
+    awk -v n="$n" '$0 ~ "^" n "=" { print ENVIRON["GAIA_ANCHOR_REPL"]; next } { print }' \
+    "$LIB" >"$copy"
+  [ "$("$BASH" -c 'source "$1" >/dev/null 2>&1; printf "%s" "${!2-}"' _ "$copy" "$n")" = "$raw" ]
   position_test_constants "$copy" | grep -qxF -- "$n"
   anchor_names "$copy" | grep -qxF -- "$n" && return 1
   true
 }
 
-@test "the wide predicate and bash agree on which spellings define a constant" {
-  # The coverage claim of the predicate above, decided rather than remembered.
-  # Every arm in this file walks a set the narrow derivation produces, and the
-  # wide predicate is the only thing standing between that set and a silent
-  # shrink; a wide predicate that is not actually wider makes the equality arm
-  # pass by agreeing with the defect it exists to catch.
+@test "a spelling that defines no constant is claimed by neither predicate" {
+  # The other direction, and the case a hand-widened regex got wrong. `local`
+  # at file scope is an error that defines nothing, so an anchor respelt behind
+  # it is absent from the library once loaded and neither predicate may claim
+  # it. A strip list that grew `local` alongside the real assignment keywords
+  # would emit a name with no constant behind it, which reaches the equality
+  # arm as a respelling nobody made.
   #
-  # Both directions matter and they fail differently. A spelling bash defines
-  # and the predicate misses is the silent shrink. A spelling bash rejects and
-  # the predicate emits is a name the equality arm reds on with no anchor
-  # behind it, which reads as a respelling nobody made.
-  local out
-  out="$(predicate_disagreements position_test_constants)"
-  [ -n "$(assignment_spellings)" ]
-  if [ -n "$out" ]; then
-    printf 'the wide predicate disagrees with bash:\n%s\n' "$out" >&2
-    return 1
-  fi
+  # Nothing in this file decides that, and nothing in it has to. bash refuses
+  # the line, so the wide predicate reports no name without being told.
+  local copy="$BATS_TEST_TMPDIR/local-lib.sh" n
+  n="$(anchor_names | head -n 1)"
+  [ -n "$n" ]
+  sed "s/^$n=/local $n=/" "$LIB" >"$copy"
+  position_test_constants "$copy" | grep -qxF -- "$n" && return 1
+  anchor_names "$copy" | grep -qxF -- "$n" && return 1
   true
-}
-
-@test "the coverage arm fails against the predicate spelling that shipped the defect" {
-  # Non-vacuity control for the arm above, against the real historical shape
-  # rather than an invented one: the predicate as it read when it claimed a
-  # coverage it did not have. A control built from the defect keeps the arm
-  # honest about the case it was written for, the way the in-token control
-  # applies the pre-boundary anchor spelling.
-  #
-  # The count is not asserted, only that some spelling disagrees. What the old
-  # predicate missed is a property of the input space above, and pinning a
-  # number here would be a claim about that space that nothing rederives.
-  local out
-  out="$(predicate_disagreements position_test_constants_prewidening)"
-  [ -n "$out" ]
 }
 
 @test "each anchor's keyword vocabulary accounts for every letter that anchor carries" {
