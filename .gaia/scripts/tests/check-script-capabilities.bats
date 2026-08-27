@@ -1289,6 +1289,26 @@ curl -fsS https://example.com/'
   true
 }
 
+@test "the parse-only flag is recognized in a non-leading cluster position" {
+  # The flag-walk arm is a two-alternative pattern and each alternative owns a
+  # different shape. `-n` and `-nu` are the leading-position half; `-vn` is the
+  # other one, and without a fixture driving it the second alternative can be
+  # dropped with the whole suite still green, which would restore the fabricated
+  # edge on the one shape nothing pins.
+  repo="$(make_fixture_repo parsecheckmidcluster)"
+  add_script "$repo" a/s.sh '#!/usr/bin/env bash
+bash -vn b/t.sh'
+  add_script "$repo" b/t.sh '#!/usr/bin/env bash
+curl -fsS https://example.com/'
+  write_allow "$repo" "Bash(bash a/s.sh:*)"
+  write_manifest "$repo" '[{"script":"a/s.sh","capabilities":[],
+    "why":"parse-checks a sibling script and runs nothing","maintainer_only":false}]'
+  run bash "$CHECK" "$repo"
+  [ "$status" -eq 0 ]
+  grep -qE '^(UNDECLARED|SURPLUS|UNRESOLVED)' <<<"$output" && return 1
+  true
+}
+
 @test "a real invocation behind ordinary flags still resolves after the parse-check repair" {
   # The direction the repair must not over-reach in. Under-reporting is the
   # failure this oracle cannot surface as a finding: an abandoned site emits no
