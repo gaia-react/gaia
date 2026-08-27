@@ -1244,3 +1244,67 @@ true'
   grep -qF -- "cs/build.sh" <<<"$output" && return 1
   true
 }
+
+@test "a parse check is not an invocation, so its target's reach stays outside the closure" {
+  # `bash -n <path>` compiles the file and executes none of it, so it reaches
+  # for nothing the target reaches for. The flag walk in
+  # _gaia_capcheck_scan_invocations skips every `-`-prefixed token on the way to
+  # the script operand, and skipping the one flag that decides whether the
+  # operand runs makes the parse check indistinguishable from the real
+  # invocation directly below it (gaia-react/gaia#1599).
+  #
+  # The fixture is written so ONLY the fabricated edge can produce the term:
+  # `a/s.sh` reaches for nothing itself and declares nothing, and the `curl` is
+  # in the target. An oracle that reads the parse check as a call walks `b/t.sh`
+  # and reports `network` UNDECLARED against `a/s.sh`.
+  repo="$(make_fixture_repo parsecheck)"
+  add_script "$repo" a/s.sh '#!/usr/bin/env bash
+bash -n b/t.sh'
+  add_script "$repo" b/t.sh '#!/usr/bin/env bash
+curl -fsS https://example.com/'
+  write_allow "$repo" "Bash(bash a/s.sh:*)"
+  write_manifest "$repo" '[{"script":"a/s.sh","capabilities":[],
+    "why":"parse-checks a sibling script and runs nothing","maintainer_only":false}]'
+  run bash "$CHECK" "$repo"
+  [ "$status" -eq 0 ]
+  grep -qE '^(UNDECLARED|SURPLUS|UNRESOLVED)' <<<"$output" && return 1
+  true
+}
+
+@test "clustered short options carry the parse-only flag too" {
+  # `-nu` is `-n` and `-u` in one token. An arm that matched the literal `-n`
+  # and nothing else would read the cluster as an ordinary flag and fabricate
+  # the edge the test above pins, which is the shape the repair has to survive.
+  repo="$(make_fixture_repo parsecheckcluster)"
+  add_script "$repo" a/s.sh '#!/usr/bin/env bash
+bash -nu b/t.sh'
+  add_script "$repo" b/t.sh '#!/usr/bin/env bash
+curl -fsS https://example.com/'
+  write_allow "$repo" "Bash(bash a/s.sh:*)"
+  write_manifest "$repo" '[{"script":"a/s.sh","capabilities":[],
+    "why":"parse-checks a sibling script and runs nothing","maintainer_only":false}]'
+  run bash "$CHECK" "$repo"
+  [ "$status" -eq 0 ]
+  grep -qE '^(UNDECLARED|SURPLUS|UNRESOLVED)' <<<"$output" && return 1
+  true
+}
+
+@test "a real invocation behind ordinary flags still resolves after the parse-check repair" {
+  # The direction the repair must not over-reach in. Under-reporting is the
+  # failure this oracle cannot surface as a finding: a missed edge is silence,
+  # not a diagnostic. So the fixture runs the target for real behind two flags
+  # that do NOT stop it executing, one of which carries an `n` in a long option
+  # (`--noprofile`), and asserts the term arrives.
+  repo="$(make_fixture_repo realinvokeflags)"
+  add_script "$repo" a/s.sh '#!/usr/bin/env bash
+bash --noprofile -x b/t.sh'
+  add_script "$repo" b/t.sh '#!/usr/bin/env bash
+curl -fsS https://example.com/'
+  write_allow "$repo" "Bash(bash a/s.sh:*)"
+  write_manifest "$repo" '[{"script":"a/s.sh","capabilities":["network","invokes:b/t.sh"],
+    "why":"runs a sibling script that calls the network","maintainer_only":false}]'
+  run bash "$CHECK" "$repo"
+  [ "$status" -eq 0 ]
+  grep -qE '^(UNDECLARED|SURPLUS|UNRESOLVED)' <<<"$output" && return 1
+  true
+}
