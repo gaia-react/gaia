@@ -11,6 +11,16 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-08-27 09e86ece SKIP - internal bugfix to capability-oracle-lib.sh parse-check credit logic, no documented contract change
+- 2026-08-27 3f8e5eb0 SKIP - Issue Claim wiki page already brought to parity with the rule in-commit
+- 2026-08-27 e915e1b2 SKIP - hard-wrapped wikilink already rewrapped in-commit on Worthiness Audit page
+- 2026-08-27 dc6268a0 SKIP - internal bugfix to lint-errexit-source-guard.sh parse-check false positive, no contract change beyond 4a55dc40's wiki update
+- 2026-08-27 d71350d7 SKIP - internal hook bugfix (|| true guard on lib-dir resolution), no documented contract change
+- 2026-08-27 4adbeecd SKIP - no-op guard terminal-action ownership already documented in-commit across Code Review Audit Agent.md and PR Merge Workflow.md
+- 2026-08-27 4a55dc40 WORTHY - new custom shell lint lint-errexit-source-guard.sh added to shell-lint.sh -> wiki/concepts/Release Workflow.md enumeration updated (5 -> 6 custom pattern lints)
+- 2026-08-27 0da4c30b SKIP - PR Merge Workflow sweep instruction + broken wikilink fix already landed in-commit
+- 2026-08-27 ab448598 SKIP - Playwright dual-error-channel guidance already promoted to wiki/dependencies/Playwright.md in-commit
+- 2026-08-27 3671433d SKIP - prior automated wiki maintenance chain commit (sync+lint through d9836bd), self-contained, no further edit needed
 - 2026-08-26 gaia-audit - PROMOTE: .claude/rules/playwright.md's 'Asserting on errors, watch both channels' section folded into Playwright.md (dual error-channel pattern, self-heal reset order, provenance caveat)
 - 2026-08-26 d3a81d6 WORTHY - no-op guard sidecar resolution and artifact wait documented in Code Review Audit Agent.md, PR Merge Workflow.md in-commit
 - 2026-08-26 1b394421 WORTHY - Code Audit Team set named instead of counted, documented in PR Merge Workflow.md in-commit
