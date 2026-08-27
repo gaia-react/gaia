@@ -237,11 +237,12 @@ _gaia_capcheck_subst_forces_skip() {
       esac
     fi
     case "$span" in *'"'*) return 0 ;; esac
-    # The redirect operator is the third thing the blanker removes, and it is
-    # not in the word list: `"$(printf x > lib/z)"` carries no listed command
-    # word, so a word-only test hands it over and the blanked `>` costs the
-    # write. Every token the blanker can remove has to force the skip, or the
-    # ones it misses fail in the silent direction.
+    # The redirect operator is the third condition that forces the skip, and it
+    # is the one removable token that is not in the word list:
+    # `"$(printf x > lib/z)"` carries no listed command word, so a word-only
+    # test hands it over and the blanked `>` costs the write. Every token the
+    # blanker can remove has to force the skip, or the ones it misses fail in
+    # the silent direction.
     case "$span" in *'>'*) return 0 ;; esac
     # shellcheck disable=SC2086
     for word in $_GAIA_CAPCHECK_QUOTED_WORDS; do

@@ -409,11 +409,12 @@ EOF
 }
 
 # The property that closes the gap the hand-written fixtures around it leave
-# open, driven per token rather than per hand-picked shape. The blanker removes exactly two kinds
-# of token from a span it is handed, the redirect operator and the members of
-# _GAIA_CAPCHECK_QUOTED_WORDS, and a substitution body is code the blanker would
-# read as prose. So every token the blanker can remove must force the skip, or
-# the ones it misses lose a live write or call with nothing to report it.
+# open, driven per token rather than per hand-picked shape. The blanker removes
+# exactly two kinds of token from a span it is handed, the redirect operator and
+# the members of _GAIA_CAPCHECK_QUOTED_WORDS, and a substitution body is code
+# the blanker would read as prose. So every token the blanker can remove must
+# force the skip, or the ones it misses lose a live write or call with nothing
+# to report it.
 #
 # The token set is DERIVED from the library's own constant per
 # .claude/rules/bats-assertions.md, not listed here: a word added to that
