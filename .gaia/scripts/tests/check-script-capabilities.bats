@@ -760,6 +760,51 @@ curl -sS https://example.com/x'
   carry_case sq "msg='the \" character'"
   carry_case hash "true  # don't skip past a comment"
   carry_case bt 'msg="a `echo "x"` b"'
+  # The same comment case with the `#` word-initial after a separator rather
+  # than after whitespace, which is the other half of what bash accepts. An arm
+  # that demands whitespace reads this line as code, the apostrophe opens a
+  # frame nothing closes, and every line after it is dropped as carried body.
+  carry_case semi "true;# don't skip past a comment"
+  carry_case pipe "true|# don't skip past a comment"
+  # `$'...'` is the one single-quoted form where a backslash escapes, so a walk
+  # that reads it as an ordinary `'` span closes the span at the escaped quote
+  # and reopens it at the real terminator, leaving a frame open.
+  carry_case ansic "msg=\$'don\\'t skip past this'"
+}
+
+@test "a comment inside a nested quoted body opens no heredoc" {
+  # The bound on how the comment and blank arms are gated. Those arms are
+  # skipped while a STRING body is open, because inside one a leading `#` is
+  # prose; but a body is only OPEN in that sense at the same depth
+  # _gaia_capcheck_quote_carry suppresses at, one unshadowed frame. Gating them
+  # on the TOP frame instead admits every deeper stack: `records="$(awk '`
+  # opens D, P and S, so the top is S and the arms switch off, while the carry
+  # correctly passes the line through as code because the depth is three. The
+  # comment then reaches the heredoc reader, which takes a `<<WORD` out of the
+  # prose and waits for a terminator no line supplies, so the rest of the file
+  # is eaten as heredoc body and no detector ever sees it.
+  #
+  # This is not hypothetical: .gaia/scripts/lint-errexit-source-guard.sh
+  # carries an awk comment naming `cat <<A <<B`, and it sits inside the scan
+  # roots of a merge-blocking lint, which reported clean over the lines the
+  # oracle had stopped reading.
+  repo="$(make_fixture_repo nestedcomment)"
+  add_script "$repo" a/s.sh '#!/usr/bin/env bash
+records="$(awk '"'"'
+  # A line may open more than one (`cat <<A <<B` runs the bodies in order),
+  # so the caller consumes them as a queue.
+  { print }
+'"'"' /dev/null)"
+printf "%s\n" "$records"
+.github/audit/base.sh --real'
+  add_script "$repo" .github/audit/base.sh '#!/usr/bin/env bash
+curl -sS https://example.com/x'
+  write_allow "$repo" "Bash(bash a/s.sh:*)"
+  write_manifest "$repo" '[{"script":"a/s.sh","capabilities":[],
+    "why":"runs the resolver after an awk body","maintainer_only":false}]'
+  run bash "$CHECK" "$repo"
+  [ "$status" -eq 1 ]
+  grep -qF -- "UNDECLARED a/s.sh invokes:.github/audit/base.sh" <<<"$output"
 }
 
 @test "the run-skip changes no answer the walk reaches without it" {

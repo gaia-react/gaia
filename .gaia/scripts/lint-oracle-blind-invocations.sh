@@ -100,9 +100,19 @@
 #   unexpanded and reads as an argument. Whether that costs anything depends on
 #   which substitution, and the two answers are different:
 #
-#     `$( ... )` and a BACKTICK cost nothing. Both openers are on
+#     `$( ... )` and a BACKTICK cost nothing AT THE ANCHOR. Both openers are on
 #     _GAIA_CAPCHECK_PATHCMD, so the oracle is not blind to that position and
-#     there is no divergence for this check to report.
+#     there is no divergence for this check to report there.
+#
+#     That is a claim about the anchors, and it presumes the splitter handed
+#     this check the line at all. A multi-line substitution whose body
+#     desynchronizes the splitter's quoting stack costs the whole remainder of
+#     the file, and a line the splitter never emits reaches neither half of the
+#     differential, so this lint reports clean over it. That is a property of
+#     _gaia_capcheck_logical_lines rather than of the anchors, and it is the
+#     reason the sentence above is scoped to the anchor rather than stated flat:
+#     the position is covered, the line's arrival is a separate question the
+#     oracle's own suite owns.
 #
 #     `<( ... )` and `>( ... )` are a JOINT blind spot, and the honest statement
 #     is that neither half of the differential covers them. Bash will not show

@@ -14,7 +14,8 @@
 # whole-tree guards and the shellcheck harness. The seam is the gate's own:
 # `--only bash32-parse` names this pass precisely because it is separable. See
 # that file's header for why the suite is two files, and for why the rig below
-# is duplicated rather than shared.
+# is duplicated rather than shared. That duplication is enforced: a test in the
+# sibling compares the shared pieces here against its own copy byte for byte.
 #
 # Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 

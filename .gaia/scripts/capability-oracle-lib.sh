@@ -100,6 +100,10 @@ _GAIA_CAPCHECK_QSHADOW=0
 # The `S` set is one character because a single-quoted span ends only at the
 # next `'`; nothing else, backslash included, means anything inside one.
 _GAIA_CAPCHECK_QSKIP_S="[']"
+# The `E` set is the `S` set plus a backslash: `$'...'` is the one single-quoted
+# form where a backslash escapes, which is why it needs a frame of its own
+# rather than sharing `S`.
+_GAIA_CAPCHECK_QSKIP_E="['\\\\]"
 _GAIA_CAPCHECK_QSKIP_D='[\\"$`]'
 _GAIA_CAPCHECK_QSKIP_N='['"'"'"$()`\\#]'
 
@@ -643,17 +647,25 @@ _gaia_capcheck_heredoc_delim() {
 # without enumerating them: `$(` is consumed a character earlier by its own arm,
 # so it never reaches this test.
 #
-# A `#` at code level ends the scan: the rest is a trailing comment, and an
-# apostrophe in one (`# don't`) would otherwise open a span that never closes
-# and blind the oracle to every following line of the file.
+# A word-initial `#` at code level ends the scan: the rest is a trailing
+# comment, and an apostrophe in one (`# don't`) would otherwise open a span that
+# never closes and blind the oracle to every following line of the file.
+# Word-initial rather than whitespace-preceded, because bash opens a comment
+# after anything that ends a word, `true;# note` included, and the narrower test
+# read exactly those lines as code.
 #
-# Deliberately incomplete in three directions, all of which fail toward today's
-# answer rather than toward silence. `$'...'` and `$"..."` are read as an
-# ordinary `$` followed by a quote, which is what they quote anyway. A heredoc
-# body never reaches here, because the splitter consumes it before this is
-# called, so an unbalanced quote inside one cannot desynchronize the stack. And
-# a string or array body opened inside a substitution is not recognized at all,
-# per the shadow gate above.
+# `$'...'` gets a frame of its own rather than sharing `S`. It is the one
+# single-quoted form where a backslash escapes, so reading it as an ordinary
+# span closes it at an escaped `'` and reopens it at the real terminator,
+# leaving a frame open that swallows the rest of the file. `$"..."` needs no
+# such frame: it is a double-quoted span with the same escaping rules, which is
+# what the `D` arm already gives it.
+#
+# Deliberately incomplete in two directions, both of which fail toward today's
+# answer rather than toward silence. A heredoc body never reaches here, because
+# the splitter consumes it before this is called, so an unbalanced quote inside
+# one cannot desynchronize the stack. And a string or array body opened inside a
+# substitution is not recognized at all, per the shadow gate above.
 _gaia_capcheck_quote_carry() {
   local t="${1-}"
   local st="$_GAIA_CAPCHECK_QSTATE"
@@ -662,7 +674,7 @@ _gaia_capcheck_quote_carry() {
   local entry_depth=${#st}
   if [ "$_GAIA_CAPCHECK_QSHADOW" -eq 0 ] && [ "${#st}" -eq 1 ]; then
     case "$st" in
-      D|S|A) carry=1 ;;
+      D|S|A|E) carry=1 ;;
     esac
   fi
   if [ -z "$st" ]; then
@@ -688,6 +700,7 @@ _gaia_capcheck_quote_carry() {
     # shellcheck disable=SC2295
     case "$top" in
       S) skipped="${rest%%$_GAIA_CAPCHECK_QSKIP_S*}" ;;
+      E) skipped="${rest%%$_GAIA_CAPCHECK_QSKIP_E*}" ;;
       D) skipped="${rest%%$_GAIA_CAPCHECK_QSKIP_D*}" ;;
       *) skipped="${rest%%$_GAIA_CAPCHECK_QSKIP_N*}" ;;
     esac
@@ -699,6 +712,16 @@ _gaia_capcheck_quote_carry() {
     case "$top" in
       S)
         if [ "$c" = "'" ]; then st="${st%?}"; fi
+        ;;
+      E)
+        # `$'...'`, where a backslash escapes the character after it. Reading
+        # this as an ordinary `S` span closes it at the escaped `'` and reopens
+        # it at the real terminator, leaving a frame open that swallows the rest
+        # of the file.
+        case "$c" in
+          \\) i=$((i + 1)) ;;
+          "'") st="${st%?}" ;;
+        esac
         ;;
       D)
         case "$c" in
@@ -713,7 +736,12 @@ _gaia_capcheck_quote_carry() {
           \\) i=$((i + 1)) ;;
           "'") st="${st}S" ;;
           '"') st="${st}D" ;;
-          '$') if [ "${t:i+1:1}" = '(' ]; then st="${st}P"; i=$((i + 1)); fi ;;
+          '$')
+            case "${t:i+1:1}" in
+              '(') st="${st}P"; i=$((i + 1)) ;;
+              "'") st="${st}E"; i=$((i + 1)) ;;
+            esac
+            ;;
           '(') if [ "$i" -gt 0 ] && [ "${t:i-1:1}" = '=' ]; then st="${st}A"; fi ;;
           ')')
             case "$top" in
@@ -734,9 +762,17 @@ _gaia_capcheck_quote_carry() {
             fi
             ;;
           '#')
+            # A `#` opens a comment where it is WORD-INITIAL, which is at the
+            # start of the line or after any character that ends a word, not
+            # only after whitespace. `true;# note` is a comment to the shell,
+            # and reading it as code lets an apostrophe inside it push a frame
+            # that never closes, dropping every line after it. The set is the
+            # one .claude/hooks/lib/verb-arming-walk.sh already spells for this
+            # same decision (_GAIA_VA_WORD_SET); a newline cannot occur here,
+            # since this walk is handed one line at a time.
             if [ "$i" -eq 0 ]; then break; fi
             case "${t:i-1:1}" in
-              [[:space:]]) break ;;
+              [[:space:]]|';'|'&'|'|'|'('|')') break ;;
             esac
             ;;
         esac
@@ -798,9 +834,11 @@ _gaia_capcheck_logical_lines() {
       continue
     fi
     inbody=0
-    case "${_GAIA_CAPCHECK_QSTATE: -1}" in
-      D|S|A) inbody=1 ;;
-    esac
+    if [ "$_GAIA_CAPCHECK_QSHADOW" -eq 0 ] && [ "${#_GAIA_CAPCHECK_QSTATE}" -eq 1 ]; then
+      case "$_GAIA_CAPCHECK_QSTATE" in
+        D|S|A|E) inbody=1 ;;
+      esac
+    fi
     if [ "$cont" -eq 0 ] && [ "$inbody" -eq 0 ]; then
       trimmed="${line#"${line%%[![:space:]]*}"}"
       if [ -z "$trimmed" ]; then pending_sc="-"; continue; fi

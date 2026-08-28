@@ -24,7 +24,8 @@
 # this repo has no bats helper-loading precedent, and a helper file would land
 # under .gaia/scripts/tests/ carrying an extension that either escapes
 # shell-lint's own *.sh discovery or joins the capability oracle's obligated
-# surface. Keep the two copies in step.
+# surface. The two copies are held in step by a test below rather than by this
+# sentence, since nothing reds when prose is disobeyed.
 #
 # Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 
@@ -74,9 +75,9 @@ teardown() {
 # Derive a rig path the way the gate discovers its file list: NUL-delimited with
 # `core.quotepath` off. A plain `git ls-files '*.sh' | head -n 1` disagrees with
 # the gate under git's default quoting -- a tracked path carrying a non-ASCII
-# byte comes back C-quoted, so BASH32_FAIL_ON would name a path the sweep never
-# sees and the absence assertion in the loud-skip test below would pass
-# trivially, degrading it from "proved no sweep ran" to "the warning printed".
+# byte comes back C-quoted, so SHELLCHECK_FAIL_ON would name a path the pass
+# never lints, and the two worker-chunk tests below would assert the gate fails
+# closed on a finding that was never planted in either chunk.
 # A read loop rather than `head -z`: that flag is GNU-only and absent from
 # macOS's head, which is the platform this whole gate exists for.
 # `.gaia/scripts/lint-git-path-quoting.sh` excludes *.bats by design, so nothing
@@ -116,11 +117,67 @@ gate_pass_headers() {
   printf '%s\n' "$names"
 }
 
-
-# The gate folds seven whole-tree guard passes into its run, and the class this
-# asserts is one of them losing its invocation while its header echo stays.
+# The rig above is duplicated into the sibling suite rather than shared, for the
+# reason this file's header gives. "Keep the two copies in step" is prose, and
+# prose is a claim that decays: a fix to gate_pass_headers' short-read guard, or
+# to the stub's literal `case` matching, applied to one file leaves the other
+# driving the old shape, and both suites stay green because each runs its own
+# copy. This turns that sentence into a claim that re-checks itself.
 #
-# ONE gate run covers all seven, not one run per guard. A clean-tree run is the
+# The shared pieces are compared by name rather than by line range, so either
+# file may grow or reorder around them. The bash32 stub is deliberately absent
+# from this file and so is not in the set; setup() therefore differs between the
+# two by exactly that stub and is compared through the shellcheck stub's own
+# heredoc instead of whole.
+
+rig_piece() {
+  # $1 = file, $2 = the piece: a function name, or `shellcheck-stub` for the
+  # heredoc body the setup writes.
+  case "$2" in
+    shellcheck-stub)
+      # Anchored on the redirect TARGET rather than on the heredoc operator.
+      # A literal `<<'STUB'` in this pattern is one the splitter in
+      # .gaia/scripts/capability-oracle-lib.sh reads as a real heredoc open, so
+      # it would wait for a terminator this file never supplies again and blind
+      # the oracle to every line below -- the class the sibling fixture
+      # "a comment inside a nested quoted body opens no heredoc" exists for.
+      # `q` on the range's end, because the target matches again on the
+      # `chmod` line below the heredoc and sed would open a SECOND range there,
+      # running to the next terminator or to EOF. The two files differ in what
+      # follows, so without the quit this compares unequal tails and fails on
+      # copies that are in fact identical.
+      sed -n "/STUB_DIR\/shellcheck\"/,/^STUB\$/{p;/^STUB\$/q;}" "$1"
+      ;;
+    *) sed -n "/^$2() {$/,/^}$/p" "$1" ;;
+  esac
+}
+
+@test "the duplicated rig is byte-identical to the sibling suite's copy" {
+  local sibling="$THIS_DIR/shell-lint-bash32.bats"
+  [ -f "$sibling" ]
+  local piece seen=0
+  for piece in shellcheck-stub teardown tracked_sh gate_pass_headers; do
+    local here there
+    here="$(rig_piece "$BATS_TEST_FILENAME" "$piece")"
+    there="$(rig_piece "$sibling" "$piece")"
+    # Each piece has to be FOUND in both, or a rename turns this into a
+    # comparison of two empty strings that agrees with itself.
+    [ -n "$here" ]
+    [ -n "$there" ]
+    [ "$here" = "$there" ]
+    seen=$(( seen + 1 ))
+  done
+  [ "$seen" -eq 4 ]
+}
+
+
+# The gate folds a set of whole-tree guard passes into its run, and the class
+# this asserts is one of them losing its invocation while its header echo stays.
+# The size of that set is derived below rather than written here, per
+# .claude/rules/bats-assertions.md: a cardinal in the prose rots the next time
+# the gate gains a guard, and the rotted number reads as a checked assertion.
+#
+# ONE gate run covers the whole set, not one run per guard. A clean-tree run is the
 # same execution whichever proof line is grepped afterwards, and it is the
 # suite's most expensive single operation -- the folded guards each walk every
 # tracked script, and lint-oracle-blind-invocations alone costs ~20s of it. The
