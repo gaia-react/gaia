@@ -1262,13 +1262,18 @@ fork_point() {
 # <repo>'s fork point, written into <dir>. Both files, because the check
 # resolves its oracle from its own directory: the pair in one directory is the
 # before-side checker, complete and inheriting nothing from the shipped one.
-# Returns 1 when no fork point resolves or either blob is missing there.
+#
+# The two ways it can fail return different statuses because they want different
+# things said. 1 is no fork point, which is the environment. 2 is a fork point
+# that resolved and carries no file at one of the paths, which is a rename or a
+# new file -- an author's own change, and exactly the change this comparison
+# exists to run. Collapsing them sends that author to inspect their clone.
 base_checker() {
   local repo="$1" dir="$2" base f
   base="$(fork_point "$repo")" || return 1
   mkdir -p "$dir"
   for f in check-script-capabilities.sh capability-oracle-lib.sh; do
-    git -C "$repo" show "$base:.gaia/scripts/$f" >"$dir/$f" 2>/dev/null || return 1
+    git -C "$repo" show "$base:.gaia/scripts/$f" >"$dir/$f" 2>/dev/null || return 2
   done
 }
 
@@ -1285,15 +1290,28 @@ base_checker() {
   # The pin is only as good as its before side: vendoring fewer functions than
   # the change rewrote leaves that side already carrying part of the fix.
   #
-  # The set is derived from the fixture rather than restated here, so the two
-  # cannot disagree. Bash is what does the deriving, so a short read has no
-  # mechanism and the non-empty guard is the whole non-vacuity control. It is
-  # still #1527's rewritten set and no claim about any other change; a function
-  # a LATER change rewrites is absent from the fixture, and the fork-point arm
-  # is what covers that one.
-  local fn shipped vendored names
-  names="$(vendored_names "$PRE_CHANGE")"
+  # Both sides of this arm are frozen by design: the fixture holds bodies a past
+  # change replaced and is never updated, and the list below is that change's
+  # rewritten set. So the list is not a memory that rots, it is the second
+  # opinion that makes a fixture LOSING a function red -- an SC2034 tidy-up, a
+  # bad conflict resolution. Deriving the list from the fixture instead asserts
+  # the fixture against itself, and a shrunk fixture then takes the assertion
+  # about the function it dropped along with it. Bash still derives what the
+  # loop drives; the disagreement between the two is the whole detector.
+  #
+  # It is #1527's set and no claim about any other change: a function a LATER
+  # change rewrites is absent from both, and the fork-point arm covers that one.
+  local fn shipped vendored names rewritten
+  rewritten="$(printf '%s\n' \
+    _gaia_capcheck_strip_tests _gaia_capcheck_dirhop \
+    _gaia_capcheck_state_root_hop _gaia_capcheck_assignment_values \
+    _gaia_capcheck_split_var _gaia_capcheck_resolve_dir \
+    _gaia_capcheck_resolve_invocation _gaia_capcheck_write_paths \
+    _gaia_capcheck_scan_writes _gaia_capcheck_scan_invocations \
+    _gaia_capcheck_file_sites | LC_ALL=C sort)"
+  names="$(vendored_names "$PRE_CHANGE" | LC_ALL=C sort)"
   [ -n "$names" ]
+  [ "$names" = "$rewritten" ]
   while IFS= read -r fn; do
     [ -n "$fn" ] || continue
     shipped="$(declare_side shipped "$fn")"
@@ -1314,9 +1332,13 @@ EOF
 }
 
 @test "real repo: this branch's checker computes the reach the fork point's checker does" {
-  local dir="$BATS_TEST_TMPDIR/fork-point" before after
-  base_checker "$REPO_ROOT" "$dir" ||
+  local dir="$BATS_TEST_TMPDIR/fork-point" before after rc=0
+  base_checker "$REPO_ROOT" "$dir" || rc=$?
+  if [ "$rc" -eq 2 ]; then
+    skip "the fork point has no file at one of the two paths, so this branch renames or adds one"
+  elif [ "$rc" -ne 0 ]; then
     skip "no fork point resolves here, so there is no before side to build"
+  fi
   if cmp -s "$dir/capability-oracle-lib.sh" "$SCRIPT_DIR/capability-oracle-lib.sh" &&
     cmp -s "$dir/check-script-capabilities.sh" "$CHECK"; then
     skip "this branch changes neither file, so both sides would be one program"
@@ -1350,6 +1372,22 @@ EOF
   git -C "$repo" commit -q -m topic
   base_checker "$repo" "$dir"
   grep -qxF -- 'fork-point body' "$dir/capability-oracle-lib.sh"
+}
+
+@test "a fork point carrying neither file is reported apart from one that does not resolve" {
+  # The arm above skips on both, and an author who has just renamed or added one
+  # of the two files is the one likeliest to meet the second. Told the first
+  # reason, they go and inspect their clone's history instead of their own diff.
+  local repo="$BATS_TEST_TMPDIR/norepo" dir="$BATS_TEST_TMPDIR/norepo-base" rc=0
+  git init -q --initial-branch=main "$repo"
+  git -C "$repo" config user.email t@example.com
+  git -C "$repo" config user.name T
+  git -C "$repo" config commit.gpgsign false
+  printf 'unrelated\n' >"$repo/README"
+  git -C "$repo" add -A
+  git -C "$repo" commit -q -m base
+  base_checker "$repo" "$dir" || rc=$?
+  [ "$rc" -eq 2 ]
 }
 
 @test "a before side whose oracle sees less reach fails the fork-point comparison" {
