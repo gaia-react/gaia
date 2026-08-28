@@ -126,6 +126,9 @@ if [ "${BASH_VERSINFO[0]}" -lt 5 ]; then
   _gaia_obi_bash5_found=""
   for _gaia_obi_bash5 in /opt/homebrew/bin/bash /usr/local/bin/bash; do
     [ -x "$_gaia_obi_bash5" ] || continue
+    # The single quotes are the point: the expansion is for the CANDIDATE bash to
+    # perform, not this one.
+    # shellcheck disable=SC2016
     [ "$("$_gaia_obi_bash5" -c 'echo "${BASH_VERSINFO[0]}"' 2>/dev/null)" -ge 5 ] 2>/dev/null || continue
     _gaia_obi_bash5_found="$_gaia_obi_bash5"
     [ "${BASH_SOURCE[0]}" = "$0" ] && exec "$_gaia_obi_bash5_found" "$0" "$@"
@@ -208,7 +211,9 @@ _obi_balanced() {
   local w="$1" d s
   d="${w//[^\"]/}"
   s="${w//[^\']/}"
-  [ $(( ${#d} % 2 )) -eq 0 ] && [ $(( ${#s} % 2 )) -eq 0 ]
+  d="${#d}"
+  s="${#s}"
+  [ $(( d % 2 )) -eq 0 ] && [ $(( s % 2 )) -eq 0 ]
 }
 
 # _obi_rewrite_line <line> <lineno>: the line with every candidate word replaced
@@ -265,8 +270,8 @@ _obi_rewrite_line() {
     fi
     _OBI_N=$((_OBI_N + 1))
     _OBI_ALIASES="$_OBI_ALIASES alias GAIAPROBE_$_OBI_N='__GAIACMD_${_OBI_N}__';"
-    _OBI_TEXT[$_OBI_N]="$line"
-    _OBI_LINENO[$_OBI_N]="$lineno"
+    _OBI_TEXT[_OBI_N]="$line"
+    _OBI_LINENO[_OBI_N]="$lineno"
     out="$out$lead$lp$asn$repl$tp"
   done
   _OBI_OUT="$out"
