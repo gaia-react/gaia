@@ -401,6 +401,36 @@ uncovered() {
 # here, and what these arms hold is that the file still parses, since the
 # unprobeable arm returns at the first bad file and takes the rest of it down.
 
+# A brace group closed without a space glues the closer onto the last word, so
+# the word ends in a `}` that closes something outside it. The pair below is
+# what separates a peel from a swap: the blind spelling has to keep reporting
+# the LINE, and the anchored spelling has to stay clean rather than becoming a
+# file-level unprobeable, which would red a correct file and take every other
+# finding in it down with the report.
+
+@test "flags a bare path in a brace group closed without a space" {
+  hits '{ .gaia/scripts/target.sh;}'
+}
+
+@test "is quiet on an anchored call in a brace group closed without a space" {
+  quiet '{ bash .gaia/scripts/target.sh;}'
+}
+
+@test "is quiet on an expansion whose own closer ends the word" {
+  # A false-positive control for the shape the brace peel sits closest to, and
+  # nothing more: the peel declines a `}` the word carries no opener for, and
+  # this arm holds the verdict rather than that rule -- it passes under a peel
+  # that takes the closer unconditionally too. The rule is kept for the
+  # direction it errs in, not because this arm proves it.
+  quiet 'lib=${dir:-.gaia/scripts/target.sh}'
+}
+
+@test "is quiet on a redirect glued to a target that precedes its command" {
+  # The operator has to travel with the word. Swapped away, the sentinel lands
+  # in command position and a file target is reported as a call.
+  quiet '>out/target.sh cat'
+}
+
 @test "is quiet on a path inside a backtick substitution" {
   quiet 'out=`echo .gaia/scripts/target.sh`'
 }
@@ -437,7 +467,7 @@ uncovered() {
 # ---------------------------------------------------------------------------
 
 @test "every word in the script's own PREFIX_WORDS list is read as a command position" {
-  local decl words w read_count=0
+  local decl w read_count=0
   # A derivation that comes back short is the dangerous case, not the empty one:
   # the arm stays green while driving a subset under a name that says every.
   # Counting the split against itself would be true by construction, so what
@@ -448,11 +478,16 @@ uncovered() {
   [ "$(grep -cE '^[[:space:]]*PREFIX_WORDS(\[[^]]*\])?\+?=' "$LINTER")" -eq 1 ]
   decl="$(sed -n 's/^PREFIX_WORDS=(\(.*\))$/\1/p' "$LINTER")"
   [ -n "$decl" ]
-  words="$decl"
-  for w in $words; do
+  # Read a word at a time rather than iterated unquoted, for the reason
+  # `root_probes` and `unarmed` above both state: an unquoted list in a `for` is
+  # pathname-expanded against the working tree before the loop starts, so a
+  # prefix word carrying a glob character would drive a set the fixture cwd
+  # decided while this arm still reported per-element coverage.
+  while IFS= read -r w; do
+    [ -n "$w" ] || continue
     read_count=$(( read_count + 1 ))
     hits "$w .gaia/scripts/target.sh"
-  done
+  done <<<"${decl// /$'\n'}"
   # A per-element claim over an empty set is true and means nothing.
   [ "$read_count" -gt 0 ]
 }

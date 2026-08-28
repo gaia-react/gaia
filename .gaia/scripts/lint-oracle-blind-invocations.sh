@@ -301,7 +301,7 @@ _obi_balanced() {
 # bare command word and manufacture a finding on every such line in the tree.
 _obi_rewrite_line() {
   local line="$1" lineno="$2"
-  local rest="$line" out="" lead word core lp tp asn ap repl tok
+  local rest="$line" out="" lead word core lp tp asn ap repl tok ob cb
   while [ -n "$rest" ]; do
     lead="${rest%%[! $'\t']*}"
     rest="${rest#"$lead"}"
@@ -311,13 +311,30 @@ _obi_rewrite_line() {
     lp=""; tp=""; core="$word"
     while :; do
       case "$core" in
-        ['({;&|']*) lp="$lp${core:0:1}"; core="${core:1}" ;;
+        # A redirect glued to its target is peeled with the group openers, so
+        # the sentinel keeps the operator in front of it. Without that,
+        # `>out/log.sh cat` -- a redirect written before its command -- swaps
+        # the operator away with the word, puts the sentinel in command
+        # position, and reports a call for something that is a file target.
+        ['({;&|<>']*) lp="$lp${core:0:1}"; core="${core:1}" ;;
         *) break ;;
       esac
     done
     while :; do
       case "$core" in
         *[';&|)']) tp="${core: -1}$tp"; core="${core%?}" ;;
+        # A brace group closed without a space before it, `{ cmd p.sh;}`, ends
+        # its last word in a `}` that closes something OUTSIDE the word. Peeled
+        # only when the word carries more closers than openers, which is what
+        # separates it from the `}` of a `${...}` expansion: that one is the
+        # word's own and severing it breaks the expansion. Unpeeled, the whole
+        # word is swapped away with the closer, the group is left open, and a
+        # correct file is reported unprobeable on a blocking gate.
+        *'}')
+          ob="${core//[^{]/}"; cb="${core//[^}]/}"
+          [ "${#cb}" -gt "${#ob}" ] || break
+          tp="}$tp"; core="${core%?}"
+          ;;
         *) break ;;
       esac
     done
