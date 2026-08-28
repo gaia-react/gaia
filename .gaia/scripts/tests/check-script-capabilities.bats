@@ -1153,23 +1153,39 @@ printf "x\n" > "$out"'
 }
 
 # The obligated scripts' reach is the reconciliation's whole input, so a change
-# to the shared oracle underneath it can move every verdict on this surface at
-# once. These arms pin that ONE such change did not: the #1527 rewrite, whose
-# pre-change bodies are what `pre-change-oracle.sh` vendors.
+# to the checker underneath it can move every verdict on this surface at once.
+# Two before-sides guard that, and they answer different questions.
 #
-# Read that scope literally, because the pin looks wider than it is and the
-# wording here used to encourage that. The before side is the shipped check with
-# the vendored bodies layered over it, so it differs from the after side only
-# for the functions that fixture actually redefines. An oracle change outside
-# those names lands identically on BOTH sides, and the comparison then holds two
-# runs that already carry the change and reports green. That is not a defect in
-# these arms, it is their scope: a per-change pin cannot cover a change vendored
-# after it was written. What it does mean is that a later oracle change gets no
-# verification from here and has to establish its own reach claim directly, by
-# running `--print-reach` against the two library bodies. The general form, a
-# reach pin that follows the oracle rather than one change to it, is #1612.
+# The FORK-POINT arm is the one that follows the checker. It materializes
+# check-script-capabilities.sh and capability-oracle-lib.sh as they stood at the
+# commit this branch forked from into a directory of their own and runs THAT
+# checker against this repository, so whatever a branch rewrites sits on exactly
+# one side of the comparison whichever function holds it. A before side keyed to
+# one past change cannot do that: a change outside the names it vendors lands
+# identically on both sides, and the comparison then holds two runs that already
+# carry the change and reports green (#1612).
 #
-# The mechanism matters, and two obvious spellings do not work.
+# Its limits, stated because a comparison that never ran looks exactly like one
+# that passed. It has nothing to compare when the branch leaves both files
+# alone, and it can build no before side where no fork point resolves, which is
+# what a depth-1 CI checkout leaves behind. Both exits are `skip`s carrying their
+# reason rather than passes, so the only green it reports is a comparison it ran.
+# The runner that makes it real is the local pre-merge bats run
+# .claude/rules/pr-merge.md prescribes, which has the history: this arm is the
+# by-hand `--print-reach` comparison an oracle change establishes its reach claim
+# with today, run by the suite instead of by the author. And it reports that
+# reach MOVED, never that moving it was wrong; a change that should move reach
+# turns it red and the author says why in the pull request.
+#
+# The #1527 arms are the other before side, and they are a per-change pin rather
+# than a following one: `pre-change-oracle.sh` vendors that change's pre-change
+# bodies and no others, layered over the shipped check. Read that scope
+# literally. What they buy is a comparison that runs unconditionally, on any
+# tree and with no history at all: that one change is still reach-neutral on the
+# surface as it stands.
+#
+# The mechanism matters, and for the #1527 arms two obvious spellings do not
+# work.
 #
 # Running `bash "$CHECK" "$REPO_ROOT" --print-reach` cannot be overridden from
 # here: the check resolves and sources the oracle from its own directory at load
@@ -1177,6 +1193,11 @@ printf "x\n" > "$out"'
 # A pin written that way compares two identical shipped runs and can never fail.
 # What makes a child shell work is ORDER -- sourcing the check first and the
 # vendored bodies after it, so the override is the last definition to land.
+#
+# The fork-point arm needs none of that, and the reason is the same resolution
+# rule read forwards: a directory holding both files IS a checker, so the before
+# side inherits nothing from the shipped one and covers the check script as well
+# as the oracle.
 #
 # Running both sides in THIS process works but is not affordable. bats installs
 # a DEBUG trap on every command in a test body, and the oracle executes on the
@@ -1205,6 +1226,57 @@ declare_side() {
   ' _ "$CHECK" "$PRE_CHANGE" "$1" "$REPO_ROOT" "$2"
 }
 
+# vendored_names <file>: the function names <file> defines, one per line, as
+# bash reports them across sourcing it. The fixture is the authority on what the
+# fixture holds, and asking bash is asking that authority directly; a regex over
+# the file or a list kept in this suite is a second answer that can disagree
+# with the first, which is the shape a per-site memory takes here.
+vendored_names() {
+  bash -c '
+    set -uo pipefail
+    before="$(declare -F | sed "s/^declare -f //")"
+    . "$1"
+    declare -F | sed "s/^declare -f //" | while IFS= read -r fn; do
+      printf "%s\n" "$before" | grep -qxF -- "$fn" || printf "%s\n" "$fn"
+    done
+  ' _ "$1"
+}
+
+# fork_point <repo>: the commit <repo>'s HEAD forked from. It tries the remote's
+# default branch ahead of the local one, so it answers in a clone that has a
+# remote and in one that does not; it prints nothing and returns 1 when no ref
+# it tries resolves, which is what a depth-1 clone leaves behind.
+fork_point() {
+  local repo="$1" ref base
+  for ref in origin/HEAD origin/main main; do
+    base="$(git -C "$repo" merge-base HEAD "$ref" 2>/dev/null)" || continue
+    if [ -n "$base" ]; then
+      printf '%s' "$base"
+      return 0
+    fi
+  done
+  return 1
+}
+
+# base_checker <repo> <dir>: the checker and the oracle as they stood at
+# <repo>'s fork point, written into <dir>. Both files, because the check
+# resolves its oracle from its own directory: the pair in one directory is the
+# before-side checker, complete and inheriting nothing from the shipped one.
+#
+# The two ways it can fail return different statuses because they want different
+# things said. 1 is no fork point, which is the environment. 2 is a fork point
+# that resolved and carries no file at one of the paths, which is a rename or a
+# new file -- an author's own change, and exactly the change this comparison
+# exists to run. Collapsing them sends that author to inspect their clone.
+base_checker() {
+  local repo="$1" dir="$2" base f
+  base="$(fork_point "$repo")" || return 1
+  mkdir -p "$dir"
+  for f in check-script-capabilities.sh capability-oracle-lib.sh; do
+    git -C "$repo" show "$base:.gaia/scripts/$f" >"$dir/$f" 2>/dev/null || return 2
+  done
+}
+
 @test "real repo: the byte-identity pin really swaps the oracle, so it can fail" {
   local shipped vendored
   shipped="$(declare_side shipped _gaia_capcheck_strip_tests)"
@@ -1218,23 +1290,37 @@ declare_side() {
   # The pin is only as good as its before side: vendoring fewer functions than
   # the change rewrote leaves that side already carrying part of the fix.
   #
-  # The list is #1527's rewritten set, enumerated rather than derived, and it is
-  # not a claim about any other change. A function a LATER change rewrites is
-  # absent from both this list and the fixture, so this arm stays green while
-  # the byte-identity arm below silently compares two runs that carry that
-  # change: see the section header, and #1612.
-  local fn shipped vendored
-  for fn in _gaia_capcheck_strip_tests _gaia_capcheck_dirhop \
+  # Both sides of this arm are frozen by design: the fixture holds bodies a past
+  # change replaced and is never updated, and the list below is that change's
+  # rewritten set. So the list is not a memory that rots, it is the second
+  # opinion that makes a fixture LOSING a function red -- an SC2034 tidy-up, a
+  # bad conflict resolution. Deriving the list from the fixture instead asserts
+  # the fixture against itself, and a shrunk fixture then takes the assertion
+  # about the function it dropped along with it. Bash still derives what the
+  # loop drives; the disagreement between the two is the whole detector.
+  #
+  # It is #1527's set and no claim about any other change: a function a LATER
+  # change rewrites is absent from both, and the fork-point arm covers that one.
+  local fn shipped vendored names rewritten
+  rewritten="$(printf '%s\n' \
+    _gaia_capcheck_strip_tests _gaia_capcheck_dirhop \
     _gaia_capcheck_state_root_hop _gaia_capcheck_assignment_values \
     _gaia_capcheck_split_var _gaia_capcheck_resolve_dir \
     _gaia_capcheck_resolve_invocation _gaia_capcheck_write_paths \
     _gaia_capcheck_scan_writes _gaia_capcheck_scan_invocations \
-    _gaia_capcheck_file_sites; do
+    _gaia_capcheck_file_sites | LC_ALL=C sort)"
+  names="$(vendored_names "$PRE_CHANGE" | LC_ALL=C sort)"
+  [ -n "$names" ]
+  [ "$names" = "$rewritten" ]
+  while IFS= read -r fn; do
+    [ -n "$fn" ] || continue
     shipped="$(declare_side shipped "$fn")"
     vendored="$(declare_side vendored "$fn")"
     [ -n "$vendored" ] || return 1
     [ "$shipped" != "$vendored" ] || return 1
-  done
+  done <<EOF
+$names
+EOF
 }
 
 @test "real repo: computed reach is byte-identical to the #1527 pre-change oracle's" {
@@ -1243,6 +1329,109 @@ declare_side() {
   before="$(reach_side vendored)"
   [ -n "$after" ]
   [ "$before" = "$after" ]
+}
+
+@test "real repo: this branch's checker computes the reach the fork point's checker does" {
+  local dir="$BATS_TEST_TMPDIR/fork-point" before after rc=0
+  base_checker "$REPO_ROOT" "$dir" || rc=$?
+  if [ "$rc" -eq 2 ]; then
+    skip "the fork point has no file at one of the two paths, so this branch renames or adds one"
+  elif [ "$rc" -ne 0 ]; then
+    skip "no fork point resolves here, so there is no before side to build"
+  fi
+  if cmp -s "$dir/capability-oracle-lib.sh" "$SCRIPT_DIR/capability-oracle-lib.sh" &&
+    cmp -s "$dir/check-script-capabilities.sh" "$CHECK"; then
+    skip "this branch changes neither file, so both sides would be one program"
+  fi
+  before="$(bash "$dir/check-script-capabilities.sh" "$REPO_ROOT" --print-reach 2>/dev/null)"
+  after="$(bash "$CHECK" "$REPO_ROOT" --print-reach 2>/dev/null)"
+  [ -n "$before" ]
+  [ -n "$after" ]
+  [ "$before" = "$after" ]
+}
+
+@test "the fork-point before side is built from the fork point, not from the branch tip" {
+  # base_checker decides which revision the arm above compares against, and a
+  # helper answering HEAD would make that comparison two identical runs, which
+  # is the silent green the arm exists to end. No remote here, so this drives
+  # the local-default fallback too.
+  local repo="$BATS_TEST_TMPDIR/forkpoint" dir="$BATS_TEST_TMPDIR/forkpoint-base" f
+  mkdir -p "$repo/.gaia/scripts"
+  git init -q --initial-branch=main "$repo"
+  git -C "$repo" config user.email t@example.com
+  git -C "$repo" config user.name T
+  git -C "$repo" config commit.gpgsign false
+  for f in check-script-capabilities.sh capability-oracle-lib.sh; do
+    printf 'fork-point body\n' >"$repo/.gaia/scripts/$f"
+  done
+  git -C "$repo" add -A
+  git -C "$repo" commit -q -m base
+  git -C "$repo" checkout -q -b topic
+  printf 'branch body\n' >"$repo/.gaia/scripts/capability-oracle-lib.sh"
+  git -C "$repo" add -A
+  git -C "$repo" commit -q -m topic
+  base_checker "$repo" "$dir"
+  grep -qxF -- 'fork-point body' "$dir/capability-oracle-lib.sh"
+}
+
+@test "a fork point carrying neither file is reported apart from one that does not resolve" {
+  # The arm above skips on both, and an author who has just renamed or added one
+  # of the two files is the one likeliest to meet the second. Told the first
+  # reason, they go and inspect their clone's history instead of their own diff.
+  #
+  # Both statuses are driven here, because what the name claims is that the two
+  # are APART. An arm driving one of them stays green when they collapse back
+  # into a single status, which is the defect it is named for.
+  local repo="$BATS_TEST_TMPDIR/norepo" dir="$BATS_TEST_TMPDIR/norepo-base" rc=0
+  local nohist="$BATS_TEST_TMPDIR/nohist" nodir="$BATS_TEST_TMPDIR/nohist-base" nrc=0
+  # A fork point that resolves, over a tree carrying neither file.
+  git init -q --initial-branch=main "$repo"
+  git -C "$repo" config user.email t@example.com
+  git -C "$repo" config user.name T
+  git -C "$repo" config commit.gpgsign false
+  printf 'unrelated\n' >"$repo/README"
+  git -C "$repo" add -A
+  git -C "$repo" commit -q -m base
+  base_checker "$repo" "$dir" || rc=$?
+  [ "$rc" -eq 2 ]
+  # A repository whose HEAD reaches none of the refs fork_point tries: no
+  # remote, and a default branch under a name none of them spells. This is the
+  # depth-1 CI checkout's shape, reproduced without a shallow clone.
+  git init -q --initial-branch=topic "$nohist"
+  git -C "$nohist" config user.email t@example.com
+  git -C "$nohist" config user.name T
+  git -C "$nohist" config commit.gpgsign false
+  printf 'unrelated\n' >"$nohist/README"
+  git -C "$nohist" add -A
+  git -C "$nohist" commit -q -m base
+  base_checker "$nohist" "$nodir" || nrc=$?
+  [ "$nrc" -eq 1 ]
+}
+
+@test "a before side whose oracle sees less reach fails the fork-point comparison" {
+  # Non-vacuity for the arm above: without this, a comparison that can never
+  # differ reads exactly like one that never has. It blinds one detector on
+  # purpose rather than every one of them, because what needs proving is that a
+  # reach difference reaches the comparison at all.
+  #
+  # The mutation names an oracle internal, so renaming that internal turns this
+  # red rather than quietly leaving the comparison unproven.
+  local dir="$BATS_TEST_TMPDIR/blinded" repo before after
+  mkdir -p "$dir"
+  cp "$CHECK" "$dir/check-script-capabilities.sh"
+  cp "$SCRIPT_DIR/capability-oracle-lib.sh" "$dir/capability-oracle-lib.sh"
+  printf '\n_gaia_capcheck_detect_tmp() { return 1; }\n' >>"$dir/capability-oracle-lib.sh"
+  repo="$(make_fixture_repo reachdelta)"
+  add_script "$repo" .gaia/scripts/t.sh '#!/usr/bin/env bash
+mktemp -d'
+  write_allow "$repo" "Bash(bash .gaia/scripts/t.sh:*)"
+  before="$(bash "$dir/check-script-capabilities.sh" "$repo" --print-reach 2>/dev/null)"
+  after="$(bash "$CHECK" "$repo" --print-reach 2>/dev/null)"
+  # Both sides non-empty first: a before side that failed to run is unequal to
+  # the after side for a reason that proves nothing about reach.
+  [ -n "$before" ]
+  [ -n "$after" ]
+  [ "$before" != "$after" ]
 }
 
 @test "a path token that merely begins with a keyword is not split at the keyword" {
