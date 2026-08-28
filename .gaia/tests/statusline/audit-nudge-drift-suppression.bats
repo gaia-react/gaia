@@ -189,9 +189,15 @@ baseline_for() { jq -r --arg p "$1" '.auditDriftBaseline[$p] // "none"' "$CACHE"
 }
 
 # --- the checker half: suppression ---
+#
+# The sizes written below are literals rather than reads of
+# `AUDIT_CLAUDEMD_BUDGET`, so the suite is an independent reading of the
+# threshold rather than a restatement of it: deriving them from the constant
+# would leave every case green if the constant itself moved. A budget change
+# therefore owns these fixtures, which must stay above the new value.
 
 @test "project_drift fires when an over-budget file has no covering issue" {
-  write_words "$ROOT/CLAUDE.md" 500
+  write_words "$ROOT/CLAUDE.md" 600
   run_checker
   [ "$status" -eq 0 ]
   [ "$(nudge)" = "true" ]
@@ -199,7 +205,7 @@ baseline_for() { jq -r --arg p "$1" '.auditDriftBaseline[$p] // "none"' "$CACHE"
 }
 
 @test "project_drift is suppressed when the over-budget file has a covering issue" {
-  write_words "$ROOT/CLAUDE.md" 500
+  write_words "$ROOT/CLAUDE.md" 600
   seed_debt_cache "CLAUDE.md"
   run_checker
   [ "$status" -eq 0 ]
@@ -208,15 +214,15 @@ baseline_for() { jq -r --arg p "$1" '.auditDriftBaseline[$p] // "none"' "$CACHE"
 }
 
 @test "suppression records the size it suppressed at as the growth baseline" {
-  write_words "$ROOT/CLAUDE.md" 500
+  write_words "$ROOT/CLAUDE.md" 600
   seed_debt_cache "CLAUDE.md"
   run_checker
   [ "$status" -eq 0 ]
-  [ "$(baseline_for 'CLAUDE.md')" = "500" ]
+  [ "$(baseline_for 'CLAUDE.md')" = "600" ]
 }
 
 @test "growth past the recorded baseline re-fires the nudge" {
-  write_words "$ROOT/CLAUDE.md" 500
+  write_words "$ROOT/CLAUDE.md" 600
   seed_debt_cache "CLAUDE.md"
   run_checker
   [ "$(nudge)" = "false" ]
@@ -230,7 +236,7 @@ baseline_for() { jq -r --arg p "$1" '.auditDriftBaseline[$p] // "none"' "$CACHE"
   [ "$(nudge_reason)" = "over budget" ]
   # The baseline must NOT advance to the grown size, or the nudge would fire
   # once and then go quiet while the file is still unfixed.
-  [ "$(baseline_for 'CLAUDE.md')" = "500" ]
+  [ "$(baseline_for 'CLAUDE.md')" = "600" ]
 }
 
 @test "a drifting rule file does not stop the scan before a later covered file is baselined" {
@@ -249,10 +255,10 @@ baseline_for() { jq -r --arg p "$1" '.auditDriftBaseline[$p] // "none"' "$CACHE"
 }
 
 @test "the baseline is dropped once the covering issue closes" {
-  write_words "$ROOT/CLAUDE.md" 500
+  write_words "$ROOT/CLAUDE.md" 600
   seed_debt_cache "CLAUDE.md"
   run_checker
-  [ "$(baseline_for 'CLAUDE.md')" = "500" ]
+  [ "$(baseline_for 'CLAUDE.md')" = "600" ]
 
   # Issue closed: the path leaves coveredPaths. The stale baseline must not
   # linger, or a later re-filing would inherit a baseline nobody measured.
@@ -265,7 +271,7 @@ baseline_for() { jq -r --arg p "$1" '.auditDriftBaseline[$p] // "none"' "$CACHE"
 }
 
 @test "an absent debt cache suppresses nothing" {
-  write_words "$ROOT/CLAUDE.md" 500
+  write_words "$ROOT/CLAUDE.md" 600
   rm -f "$DEBT_CACHE"
   run_checker
   [ "$status" -eq 0 ]
