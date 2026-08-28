@@ -85,6 +85,18 @@ scan_roots() {
   sed -n 's/^SCAN_ROOTS=(\(.*\))$/\1/p' "$LINTER"
 }
 
+# root_probes <roots>: one candidate path per root, for asking a coverage
+# question about the roots without asking it about a real file. The list is read
+# a line at a time for the reason `unarmed` and `uncovered` below both state: an
+# unquoted list in a `for` is pathname-expanded against the working tree first.
+root_probes() {
+  local roots="$1" r
+  while IFS= read -r r; do
+    [ -n "$r" ] || continue
+    printf '%s/probe.sh\n' "$r"
+  done <<<"${roots// /$'\n'}"
+}
+
 # code_filter_globs: the path globs in the `code:` filter of the shards job that
 # runs this suite, read off the workflow rather than restated here.
 #
@@ -239,13 +251,31 @@ uncovered() {
   # The header of the script under test states that obligation; nothing but this
   # arm checks it, and round 1 of this pull request's own audit is the evidence
   # that SCAN_ROOTS moves.
-  probes="$(for r in $roots; do printf '%s/probe.sh\n' "$r"; done)"
+  probes="$(root_probes "$roots")"
   left="$(printf '%s\n' "$probes" | unarmed "$globs")"
   [ -z "$left" ]
   # Mutation, so the arming claim above is not vacuous: against a filter naming
   # one unrelated file, every root has to come back unarmed.
   left="$(printf '%s\n' "$probes" | unarmed "CHANGELOG.md")"
   [ "$(printf '%s\n' "$left" | grep -c .)" -eq "$(printf '%s\n' "$probes" | grep -c .)" ]
+}
+
+@test "every declared scan root exists in this repository" {
+  local roots r seen=0
+  roots="$(scan_roots)"
+  [ -n "$roots" ]
+  # The runtime walk tolerates an absent root on purpose: the fixture trees the
+  # arms below drive create only some of them. That tolerance has no reader in
+  # the real repository, where a root declared, spelled correctly and simply not
+  # there is a surface the scan resolves less of than it claims and still calls
+  # clean. Arm 1b catches a root the oracle's own filter does not name and the
+  # zero-files arm catches a scan that found nothing at all; neither sees this.
+  while IFS= read -r r; do
+    [ -n "$r" ] || continue
+    seen=$(( seen + 1 ))
+    [ -d "$REPO_ROOT/$r" ] || return 1
+  done <<<"${roots// /$'\n'}"
+  [ "$seen" -gt 1 ]
 }
 
 # ---------------------------------------------------------------------------
@@ -337,6 +367,31 @@ uncovered() {
 
 @test "is quiet on a path that is an argument rather than a command" {
   quiet 'cat .gaia/scripts/target.sh'
+}
+
+# An assignment whose value OPENS A GROUP is the shape where the rewrite can
+# break the parse rather than the detector: the group's opening character sits
+# behind the assignment prefix, where the leading peel cannot reach it, and a
+# rewrite that drops it leaves the closing half stranded. The file then reports
+# unprobeable and reds a blocking gate on a tree that is correct, which is the
+# false-positive direction this whole design exists to stay out of. Array
+# literals carrying repo paths are ordinary here, so these are idiom rather
+# than contrivance.
+
+@test "is quiet on an array literal of paths" {
+  quiet 'scripts=(.gaia/scripts/target.sh .gaia/scripts/other.sh)'
+}
+
+@test "is quiet on an appended array literal of paths" {
+  quiet 'scripts+=(.gaia/scripts/target.sh)'
+}
+
+@test "is quiet on a declared array literal of quoted paths" {
+  quiet 'local -a scripts=("$dir/target.sh")'
+}
+
+@test "is quiet on a path inside a command substitution assigned to a variable" {
+  quiet 'out=$(.gaia/scripts/target.sh)'
 }
 
 @test "is quiet on a path assigned to a variable" {

@@ -281,7 +281,7 @@ _obi_balanced() {
 # bare command word and manufacture a finding on every such line in the tree.
 _obi_rewrite_line() {
   local line="$1" lineno="$2"
-  local rest="$line" out="" lead word core lp tp asn repl tok
+  local rest="$line" out="" lead word core lp tp asn ap repl tok
   while [ -n "$rest" ]; do
     lead="${rest%%[! $'\t']*}"
     rest="${rest#"$lead"}"
@@ -310,6 +310,26 @@ _obi_rewrite_line() {
       asn="${BASH_REMATCH[1]}"
       core="${core#"$asn"}"
     fi
+    # A group opened AFTER the assignment prefix, which the leading peel above
+    # could not reach because the prefix was still in front of it. An array
+    # literal is the everyday shape: `x=(a/b.sh c/d.sh)`. Without this peel the
+    # opening character is inside the core the balanced branch swaps out whole,
+    # so it is deleted while the closing `)` survives on the last word, the
+    # rewrite does not parse, and the file is reported unprobeable on a tree
+    # that is correct. Kept and re-emitted, the element sits in array-element
+    # position rather than command position, which is where bash's own answer
+    # says it belongs.
+    ap=""
+    while :; do
+      # The single quotes are the point in both halves: `$(` is matched and
+      # re-emitted as two literal characters, never expanded.
+      # shellcheck disable=SC2016
+      case "$core" in
+        '$('*) ap="$ap"'$(' ; core="${core:2}" ;;
+        ['({']*) ap="$ap${core:0:1}"; core="${core:1}" ;;
+        *) break ;;
+      esac
+    done
     if [ "$core" = "." ] || [ "$core" = "source" ] || _obi_balanced "$core"; then
       repl="GAIAPROBE_$((_OBI_N + 1))"
     else
@@ -325,7 +345,7 @@ _obi_rewrite_line() {
     _OBI_ALIASES="$_OBI_ALIASES alias GAIAPROBE_$_OBI_N='__GAIACMD_${_OBI_N}__';"
     _OBI_TEXT[_OBI_N]="$line"
     _OBI_LINENO[_OBI_N]="$lineno"
-    out="$out$lead$lp$asn$repl$tp"
+    out="$out$lead$lp$asn$ap$repl$tp"
   done
   _OBI_OUT="$out"
 }
