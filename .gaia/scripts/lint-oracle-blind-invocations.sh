@@ -95,11 +95,22 @@
 #   so a word that stops working fails loudly, and no arm claims a word that is
 #   not on it.
 #
-#   A TOKEN INSIDE A COMMAND SUBSTITUTION. `declare -f` reproduces a `$( ... )`
-#   body verbatim rather than re-serializing it, so a sentinel in there comes
-#   back unexpanded and reads as an argument. It costs nothing: `$(` is on
-#   _GAIA_CAPCHECK_PATHCMD, so the oracle is not blind to that position and
-#   there is no divergence to report.
+#   A TOKEN INSIDE A SUBSTITUTION. `declare -f` reproduces a substitution body
+#   verbatim rather than re-serializing it, so a sentinel in there comes back
+#   unexpanded and reads as an argument. Whether that costs anything depends on
+#   which substitution, and the two answers are different:
+#
+#     `$( ... )` and a BACKTICK cost nothing. Both openers are on
+#     _GAIA_CAPCHECK_PATHCMD, so the oracle is not blind to that position and
+#     there is no divergence for this check to report.
+#
+#     `<( ... )` and `>( ... )` are a JOINT blind spot, and the honest statement
+#     is that neither half of the differential covers them. Bash will not show
+#     its answer through `declare -f`, and neither opener is on the anchor: a
+#     bare path opening a process substitution records nothing. So the position
+#     goes unreported here rather than being reported wrongly, which is a miss
+#     stated rather than a miss hidden. Every such site in the scan roots today
+#     puts a command word ahead of the path, which the anchors do read.
 #
 #   A SECOND BLIND CALL ON A LINE WHERE THE TWO SCANNERS BOTH RECORD THE SAME
 #   ONE. The anchors' half of the differential is a count of DISTINCT records
@@ -254,19 +265,28 @@ _obi_anchor_records() {
 # The substitution
 # ---------------------------------------------------------------------------
 
-# _obi_balanced <word>: 0 when the word carries an even number of double quotes
-# and an even number of single quotes. It decides whether the WHOLE word can be
+# _obi_balanced <word>: 0 when the word carries an even number of each delimiter
+# that can be left hanging by a swap. It decides whether the WHOLE word can be
 # swapped for a sentinel or only the path substring inside it, and both
 # directions are needed. `"${lib:-}/x.sh"` must go whole, or the swap lands
 # inside the expansion and severs the quote; `(.gaia/x.sh)"` -- a path in a
 # parenthetical inside a sentence -- must not, for the mirror reason.
+#
+# The BACKTICK is counted alongside the two quotes because it unbalances by the
+# same mechanism and nothing else here models it: a word ending in the closing
+# half of `` x=`echo p.sh` `` carries no quotes at all, so a quotes-only reading
+# calls it balanced, swaps the backtick away with the core, and leaves a probe
+# that does not parse -- reporting a correct file as unprobeable and reddening
+# the blocking runner over a shape the anchors are perfectly happy with.
 _obi_balanced() {
-  local w="$1" d s
+  local w="$1" d s b
   d="${w//[^\"]/}"
   s="${w//[^\']/}"
+  b="${w//[^\`]/}"
   d="${#d}"
   s="${#s}"
-  [ $(( d % 2 )) -eq 0 ] && [ $(( s % 2 )) -eq 0 ]
+  b="${#b}"
+  [ $(( d % 2 )) -eq 0 ] && [ $(( s % 2 )) -eq 0 ] && [ $(( b % 2 )) -eq 0 ]
 }
 
 # _obi_rewrite_line <line> <lineno>: the line with every candidate word replaced
@@ -321,11 +341,16 @@ _obi_rewrite_line() {
     # says it belongs.
     ap=""
     while :; do
-      # The single quotes are the point in both halves: `$(` is matched and
-      # re-emitted as two literal characters, never expanded.
+      # The single quotes are the point in the `$(` halves: it is matched and
+      # re-emitted as two literal characters, never expanded. The two-character
+      # openers each need their own arm because the character class below reads
+      # one character at a time, and peeling a lone `$`, `<` or `>` would be
+      # wrong everywhere else it appears.
       # shellcheck disable=SC2016
       case "$core" in
         '$('*) ap="$ap"'$(' ; core="${core:2}" ;;
+        '<('*) ap="$ap<("; core="${core:2}" ;;
+        '>('*) ap="$ap>("; core="${core:2}" ;;
         ['({']*) ap="$ap${core:0:1}"; core="${core:1}" ;;
         *) break ;;
       esac

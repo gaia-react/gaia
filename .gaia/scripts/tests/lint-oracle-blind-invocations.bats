@@ -394,6 +394,29 @@ uncovered() {
   quiet 'out=$(.gaia/scripts/target.sh)'
 }
 
+# The other two substitution delimiters, for the same reason: each opens a group
+# the swap can sever, and the script's coverage section states a DIFFERENT
+# verdict behind each one -- the backtick is on the oracle's anchor, a process
+# substitution is on neither half of the differential. Both verdicts are quiet
+# here, and what these arms hold is that the file still parses, since the
+# unprobeable arm returns at the first bad file and takes the rest of it down.
+
+@test "is quiet on a path inside a backtick substitution" {
+  quiet 'out=`echo .gaia/scripts/target.sh`'
+}
+
+@test "is quiet on a path opening an input process substitution" {
+  quiet 'while IFS= read -r l; do echo "$l"; done < <(.gaia/scripts/target.sh)'
+}
+
+@test "is quiet on a path opening an output process substitution" {
+  quiet 'echo hi > >(.gaia/scripts/target.sh)'
+}
+
+@test "is quiet on the process-substitution spelling the scan roots actually use" {
+  quiet 'diff <(bash .gaia/scripts/target.sh) <(bash .gaia/scripts/other.sh)'
+}
+
 @test "is quiet on a path assigned to a variable" {
   quiet 'lib="$dir/.gaia/scripts/target.sh"'
 }
@@ -506,6 +529,26 @@ uncovered() {
   chmod 755 "$TMP/.claude/hooks/lib"
   [ "$status" -eq 2 ]
   grep -qF -- "partial" <<<"$output"
+}
+
+@test "reports a probe no logical line covers rather than dropping it" {
+  new_fixture
+  plant 'if .gaia/scripts/target.sh; then :; fi'
+  run_lint
+  [ "$status" -eq 1 ]
+  # The fourth report shape, and the only one no fixture reaches through the
+  # front door: it fires when the physical-to-logical mapping stops covering a
+  # probe, which today needs the oracle's own line reader to change shape. So it
+  # is driven the way the alias control is, against a copy with one line cut.
+  # Same directory-of-its-own rule as that control, and for the same reasons.
+  local mdir="$TMP/mutant"
+  mkdir -p "$mdir"
+  cp "$REPO_ROOT/.gaia/scripts/capability-oracle-lib.sh" "$mdir/capability-oracle-lib.sh"
+  sed 's|_gaia_capcheck_logical_lines "$file"|true|' "$LINTER" > "$mdir/lint.sh"
+  grep -qF -- '_gaia_capcheck_logical_lines "$file"' "$mdir/lint.sh" && return 1
+  run bash -c "cd '$TMP' && bash '$mdir/lint.sh'"
+  [ "$status" -eq 1 ]
+  grep -qF -- "unmapped" <<<"$output"
 }
 
 @test "descends a scan root that is a symlink to a directory" {
