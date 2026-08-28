@@ -102,8 +102,10 @@
 #   there is no divergence to report.
 #
 #   ANYTHING OUTSIDE THE SCAN ROOTS. SCAN_ROOTS below is the boundary of the
-#   claim. Widening it is what changes the claim, and it is two edits, here and
-#   in the `code` filter named at the top of this header.
+#   claim, and its own comment says why that boundary has to be the oracle's
+#   closure rather than the two directories the oracle is usually described by.
+#   Widening it is two edits, here and in the `code` filter named at the top of
+#   this header.
 #
 # The substitution itself is textual, and a textual rewrite of shell can break
 # the parse -- a word carrying an unbalanced quote, a `${var:-}` whose interior
@@ -155,10 +157,26 @@ else
   exit 2
 fi
 
-# The scan roots, relative to the invoking directory. `tests/` is excluded
-# under both: a suite's own fixtures are written to be read wrongly, and the
+# The scan roots, relative to the invoking directory. `tests/` is excluded under
+# all of them: a suite's own fixtures are written to be read wrongly, and the
 # oracle's closure never reaches them.
-SCAN_ROOTS=(.claude/hooks .gaia/scripts)
+#
+# This list has to cover every directory the oracle's CLOSURE walks, not the two
+# obvious ones. The closure starts at the registered hooks and the allowlisted
+# scripts and follows each `invokes:` edge it resolves, so it leaves both
+# directories: today it reaches `.claude/hooks/lib/` (under the first root) and
+# `.specify/extensions/gaia/lib/`, and `.github/audit/` is inside a registered
+# hook's closure by the same mechanism. A root the closure walks and this list
+# omits is a file the oracle can be blind in with the check reporting clean,
+# which is the failure this check exists to end, reproduced one level up.
+#
+# The list is held to that surface by the sibling suite rather than by memory:
+# an arm there derives the same directories out of the ERE the audit workflow's
+# hook-capabilities gate carries, and reds when this list covers less. The
+# limit that arm cannot close is stated with it. Over-covering is free here and
+# under-covering is silent, so a root the closure does not currently reach
+# stays on the list.
+SCAN_ROOTS=(.claude/hooks .gaia/scripts .specify/extensions/gaia/lib .github/audit)
 
 # Command-prefix words whose operand is still a command. Each is aliased to
 # itself PLUS A TRAILING SPACE, which is bash's own rule for making the next

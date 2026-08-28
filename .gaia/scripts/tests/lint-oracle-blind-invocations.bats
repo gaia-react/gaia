@@ -71,13 +71,84 @@ quiet() {
   true
 }
 
+# scan_roots: the script's own SCAN_ROOTS, derived rather than restated, with
+# the same single-assignment pin the PREFIX_WORDS arm uses and for the same
+# reason: the one-line `sed` below cannot see an append.
+scan_roots() {
+  [ "$(grep -cE '^[[:space:]]*SCAN_ROOTS(\[[^]]*\])?\+?=' "$LINTER")" -eq 1 ] || return 1
+  sed -n 's/^SCAN_ROOTS=(\(.*\))$/\1/p' "$LINTER"
+}
+
+# uncovered <roots>: reads candidate paths on stdin and prints the ones no root
+# in <roots> contains. Empty output means the roots cover every candidate.
+uncovered() {
+  local roots="$1" f r hit
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    hit=0
+    for r in $roots; do
+      case "$f" in "$r"/*) hit=1; break ;; esac
+    done
+    [ "$hit" -eq 1 ] || printf '%s\n' "$f"
+  done
+}
+
 # ---------------------------------------------------------------------------
 # 1. The real scanned tree is clean (regression gate)
 # ---------------------------------------------------------------------------
 
-@test "the real scanned tree (.claude/hooks + .gaia/scripts) passes the lint" {
+@test "the real scanned tree passes the lint" {
   run bash -c "cd '$REPO_ROOT' && bash '$LINTER'"
   [ "$status" -eq 0 ]
+}
+
+# ---------------------------------------------------------------------------
+# 1b. The scan roots have to be the oracle's surface, not the two directories
+#     it is usually described by
+# ---------------------------------------------------------------------------
+
+@test "SCAN_ROOTS covers every source directory the audit workflow's own oracle filter names" {
+  local roots wf pattern alts dirs files probes left
+  roots="$(scan_roots)"
+  [ -n "$roots" ]
+  wf="$REPO_ROOT/.github/workflows/audit-ci-tests.yml"
+  # The repo's other expression of the oracle's surface is the ERE guarding the
+  # workflow's hook-capabilities gate: one anchored alternative per source
+  # directory the closure walks, alongside anchored single files. Deriving the
+  # roots against it is what keeps the two from drifting, which is how this
+  # check came to scan less than the oracle in the first place.
+  #
+  # The honest limit, stated rather than claimed away: this ties the roots to
+  # the workflow's reading of the surface, and neither artifact re-derives the
+  # closure. A closure that grows into a directory NEITHER names is unchecked
+  # here. Deriving it directly is possible and was measured rather than assumed
+  # against: the two `--print-reach` walks that answer it cost about two minutes
+  # per run, for a case that has not occurred and that silently breaks the
+  # workflow's own arming first.
+  pattern="$(sed -n "s/^ *pattern='\(.*\)'\$/\1/p" "$wf")"
+  [ -n "$pattern" ]
+  # A `|` inside a parenthesised group is not an alternative of the top-level
+  # ERE, so the groups collapse to a placeholder before the split. Without that
+  # step `(json|schema\.json)` splits into two fragments, neither of which is a
+  # shape this arm can read, and the partition check below fires on a pattern
+  # that is in fact well-formed.
+  pattern="$(printf '%s\n' "$pattern" | sed 's/([^)]*)/X/g')"
+  alts="$(printf '%s\n' "$pattern" | tr '|' '\n' | grep -c .)"
+  dirs="$(printf '%s\n' "$pattern" | tr '|' '\n' | sed -n 's|^\^\(.*\)/$|\1|p' | sed 's/\\//g')"
+  files="$(printf '%s\n' "$pattern" | tr '|' '\n' | grep -c '\$$')"
+  [ -n "$dirs" ]
+  # A short read of the pattern is the dangerous case, so the two shapes this
+  # arm knows how to read have to account for every alternative in it. An
+  # alternative that is neither a directory prefix nor a file anchor stops the
+  # suite rather than being dropped from the set silently.
+  [ "$(( $(printf '%s\n' "$dirs" | grep -c .) + files ))" -eq "$alts" ]
+  probes="$(printf '%s\n' "$dirs" | sed 's|$|/probe.sh|')"
+  left="$(printf '%s\n' "$probes" | uncovered "$roots")"
+  [ -z "$left" ]
+  # Mutation, so the coverage claim above is not vacuous: a narrowed root set
+  # has to leave something uncovered.
+  left="$(printf '%s\n' "$probes" | uncovered ".claude/hooks")"
+  [ -n "$left" ]
 }
 
 # ---------------------------------------------------------------------------
@@ -168,20 +239,22 @@ quiet() {
 
 @test "every word in the script's own PREFIX_WORDS list is read as a command position" {
   local decl words w read_count=0
+  # A derivation that comes back short is the dangerous case, not the empty one:
+  # the arm stays green while driving a subset under a name that says every.
+  # Counting the split against itself would be true by construction, so what
+  # makes the read honest here is pinning the list to ONE assignment: the
+  # pattern below reaches `+=`, a subscripted element and a leading-whitespace
+  # spelling, so an append the single-line `sed` cannot see stops the suite
+  # instead of shrinking it.
+  [ "$(grep -cE '^[[:space:]]*PREFIX_WORDS(\[[^]]*\])?\+?=' "$LINTER")" -eq 1 ]
   decl="$(sed -n 's/^PREFIX_WORDS=(\(.*\))$/\1/p' "$LINTER")"
   [ -n "$decl" ]
-  # A derivation that comes back short is the dangerous case, not the empty
-  # one: the arm stays green while driving a subset. Compare what the file
-  # declares against what this loop actually reads.
-  local declared
-  declared="$(grep -c '^PREFIX_WORDS=(' "$LINTER")"
-  [ "$declared" -eq 1 ]
   words="$decl"
   for w in $words; do
     read_count=$(( read_count + 1 ))
     hits "$w .gaia/scripts/target.sh"
   done
-  [ "$read_count" -eq "$(printf '%s\n' $words | grep -c .)" ]
+  # A per-element claim over an empty set is true and means nothing.
   [ "$read_count" -gt 0 ]
 }
 
@@ -198,13 +271,18 @@ quiet() {
   run_lint
   [ "$status" -eq 1 ]
 
-  # The mutant lives beside the real oracle library, because the script
-  # resolves that library from its own on-disk location.
-  local mutant="$REPO_ROOT/.gaia/scripts/.obi-mutant-$$.sh"
-  sed '/shopt -s expand_aliases/d' "$LINTER" > "$mutant"
-  grep -qF -- "expand_aliases" "$mutant" && { rm -f "$mutant"; return 1; }
-  run bash -c "cd '$TMP' && bash '$mutant'"
-  rm -f "$mutant"
+  # The mutant needs the oracle library beside it, because the script resolves
+  # that library from its own on-disk location -- and it must NOT land in
+  # .gaia/scripts to get it. That directory is a scan root of this very lint,
+  # discovery is `find` rather than `git ls-files` so an untracked dotfile is
+  # visible there, and the shards run concurrently in one workspace. Both files
+  # go to a directory of their own, which $TMP's teardown already removes.
+  local mdir="$TMP/mutant"
+  mkdir -p "$mdir"
+  cp "$REPO_ROOT/.gaia/scripts/capability-oracle-lib.sh" "$mdir/capability-oracle-lib.sh"
+  sed '/shopt -s expand_aliases/d' "$LINTER" > "$mdir/lint.sh"
+  grep -qF -- "expand_aliases" "$mdir/lint.sh" && return 1
+  run bash -c "cd '$TMP' && bash '$mdir/lint.sh'"
   [ "$status" -eq 0 ]
 }
 
