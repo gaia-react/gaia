@@ -158,6 +158,19 @@ teardown() {
   grep -qF -- "lint-errexit-status-read: clean" <<<"$output"
 }
 
+# The same wiring assertion for the oracle-blind invocation guard. Its own
+# correctness is covered by lint-oracle-blind-invocations.bats; this covers only
+# that the gate still invokes it.
+
+@test "shell-lint folds in the oracle-blind invocation guard pass and stays green on a clean tree" {
+  run env PATH="$STUB_DIR:$PATH" bash "$GATE"
+  [ "$status" -eq 0 ]
+  # The guard's OWN stderr proof line, for the same reason as above: it appears
+  # only if the guard actually ran, so a future edit dropping the invocation but
+  # leaving the header echo is caught.
+  grep -qF -- "lint-oracle-blind-invocations: clean" <<<"$output"
+}
+
 # The husky hooks are extensionless, so they match neither the *.sh nor the
 # *.bats discovery glob and need a pass of their own. Husky runs them as
 # `sh -e`, so that pass pins the dialect: shellcheck takes one dialect per
@@ -336,6 +349,7 @@ tracked_sh() {
   grep -qF -- "lint-workflow-run-interpolation" <<<"$output" && return 1
   grep -qF -- "lint-grep-ere-escapes" <<<"$output" && return 1
   grep -qF -- "lint-errexit-status-read" <<<"$output" && return 1
+  grep -qF -- "lint-oracle-blind-invocations" <<<"$output" && return 1
   true
 }
 

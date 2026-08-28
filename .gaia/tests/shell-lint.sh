@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
 # shell-lint.sh: run shellcheck over every tracked shell script, bats suite, and
-# husky hook, then parse every tracked shell script with bash 3.2, then six
+# husky hook, then parse every tracked shell script with bash 3.2, then the
 # repo-authored guards shellcheck cannot model: the hook
 # array-guard (.gaia/scripts/lint-hook-array-guard.sh), the errexit source guard
 # (.gaia/scripts/lint-errexit-source-guard.sh), the git path-quoting
 # guard (.gaia/scripts/lint-git-path-quoting.sh), the workflow
 # run-interpolation guard (.gaia/scripts/lint-workflow-run-interpolation.sh),
-# the grep ERE-escape guard (.gaia/scripts/lint-grep-ere-escapes.sh), and the
-# errexit status-read guard (.gaia/scripts/lint-errexit-status-read.sh).
+# the grep ERE-escape guard (.gaia/scripts/lint-grep-ere-escapes.sh), the
+# errexit status-read guard (.gaia/scripts/lint-errexit-status-read.sh), and the
+# oracle-blind invocation guard
+# (.gaia/scripts/lint-oracle-blind-invocations.sh).
 # Exit 0 when clean, 1 on any finding at or above the severity floor, and 1 on
 # a pass that cannot run at all (no shellcheck binary, an empty *.sh discovery
 # set, an unusable bash-3.2 interpreter). A red gate is therefore not always a
@@ -433,7 +435,7 @@ else
   esac
 fi
 
-# `--only bash32-parse` has run its pass and stops here. The five guards below
+# `--only bash32-parse` has run its pass and stops here. The guards below
 # read the tree with tools that have nothing to do with the host's /bin/bash, so
 # a second runner would only re-run what the ubuntu leg already did.
 if [ -n "$ONLY_PASS" ]; then
@@ -518,6 +520,19 @@ fi
 # and the file:line it prints is repo-relative.
 echo "--> lint-errexit-status-read (\$? read after a command-substitution assignment under set -e)"
 if ! (cd "$REPO_ROOT" && bash "$REPO_ROOT/.gaia/scripts/lint-errexit-status-read.sh"); then
+  status=1
+fi
+
+# Fold in the oracle-blind invocation guard, for a reason the guards above do
+# not share: the class it reads is not a defect in the shell at all. The file it
+# flags runs correctly; what breaks is the capability oracle's record of what
+# that file reaches for, and the manifests shipped off that record. No rule the
+# linter above models touches it, and no suite over the oracle sees it either,
+# because the trigger is the TREE growing an idiom rather than the oracle
+# changing. Run from the repo root so its cwd-relative scan roots resolve and
+# the file:line it prints is repo-relative.
+echo "--> lint-oracle-blind-invocations (an invocation the capability oracle's anchors cannot see)"
+if ! (cd "$REPO_ROOT" && bash "$REPO_ROOT/.gaia/scripts/lint-oracle-blind-invocations.sh"); then
   status=1
 fi
 
