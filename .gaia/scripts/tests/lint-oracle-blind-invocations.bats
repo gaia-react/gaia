@@ -79,6 +79,52 @@ scan_roots() {
   sed -n 's/^SCAN_ROOTS=(\(.*\))$/\1/p' "$LINTER"
 }
 
+# code_filter_globs: the path globs in the `code:` filter of the shards job that
+# runs this suite, read off the workflow rather than restated here.
+#
+# The short read is the dangerous case: a glob written in a shape the extraction
+# cannot read would drop out of the set silently, and a caller asserting
+# containment against the remainder would report armed when it is not. So the
+# entries are counted a second way, off the list marker rather than off the
+# quoting, and a disagreement returns non-zero instead of a shorter list.
+code_filter_globs() {
+  local wf block raw names
+  wf="$REPO_ROOT/.github/workflows/audit-ci-tests.yml"
+  [ "$(grep -c '^            code:$' "$wf")" -eq 1 ] || return 1
+  block="$(sed -n '/^            code:$/,/^            [a-z][a-z-]*:$/p' "$wf")"
+  raw="$(printf '%s\n' "$block" | grep -c '^ *- ')"
+  names="$(printf '%s\n' "$block" | sed -n "s/^ *- '\(.*\)'\$/\1/p")"
+  [ "$(printf '%s\n' "$names" | grep -c .)" -eq "$raw" ] || return 1
+  printf '%s\n' "$names"
+}
+
+# unarmed <globs>: reads candidate paths on stdin and prints the ones no glob in
+# <globs> matches. Empty output means the filter arms every candidate.
+#
+# `**` is left to collapse into `*` by `case`'s own matching, which crosses
+# slashes; that is the reach paths-filter gives it, so the two agree on every
+# shape this filter actually uses.
+#
+# The globs are read a line at a time rather than iterated as an unquoted word
+# list. Two reasons, and the first one is silent: an unquoted `$globs` in a
+# `for` is pathname-expanded against the working tree before the loop starts,
+# so `.claude/hooks/**` arrives as whatever files happen to be there and every
+# candidate comes back unarmed. The second is that this filter names a path
+# carrying spaces, which word splitting would tear into fragments.
+unarmed() {
+  local globs="$1" f g hit
+  while IFS= read -r f; do
+    [ -n "$f" ] || continue
+    hit=0
+    while IFS= read -r g; do
+      [ -n "$g" ] || continue
+      # shellcheck disable=SC2254 # $g IS the pattern; quoting it matches literally
+      case "$f" in $g) hit=1; break ;; esac
+    done <<<"$globs"
+    [ "$hit" -eq 1 ] || printf '%s\n' "$f"
+  done
+}
+
 # uncovered <roots>: reads candidate paths on stdin and prints the ones no root
 # in <roots> contains. Empty output means the roots cover every candidate.
 uncovered() {
@@ -125,8 +171,17 @@ uncovered() {
   # against: the two `--print-reach` walks that answer it cost about two minutes
   # per run, for a case that has not occurred and that silently breaks the
   # workflow's own arming first.
-  pattern="$(sed -n "s/^ *pattern='\(.*\)'\$/\1/p" "$wf")"
-  [ -n "$pattern" ]
+  #
+  # The read is scoped to the one gate the paragraph above names, and pinned to
+  # a single hit, for the same reason the two sibling derivations in this file
+  # are: the workflow carries several `pattern=` filters, and an unscoped read
+  # unions them. The nearest one guards verb-arming adoption and has nothing to
+  # do with the oracle, so a `^dir/` alternative added there would red this arm
+  # with a message naming only a directory -- steering the next reader to widen
+  # SCAN_ROOTS into a tree the closure never walks, which is the false-positive
+  # direction this whole check is built to stay out of.
+  pattern="$(sed -n "s/^ *pattern='\(.*hook-capabilities.*\)'\$/\1/p" "$wf")"
+  [ "$(printf '%s\n' "$pattern" | grep -c .)" -eq 1 ]
   # A `|` inside a parenthesised group is not an alternative of the top-level
   # ERE, so the groups collapse to a placeholder before the split. Without that
   # step `(json|schema\.json)` splits into two fragments, neither of which is a
@@ -149,6 +204,35 @@ uncovered() {
   # has to leave something uncovered.
   left="$(printf '%s\n' "$probes" | uncovered ".claude/hooks")"
   [ -n "$left" ]
+}
+
+# ---------------------------------------------------------------------------
+# 1c. The other direction: the shards job has to ARM on every root the scan
+#     walks, or the blocking half of this lint reports green having never run
+# ---------------------------------------------------------------------------
+
+@test "the shards job's code filter arms on every scan root" {
+  local roots globs r probes left
+  roots="$(scan_roots)"
+  [ -n "$roots" ]
+  globs="$(code_filter_globs)"
+  # A refused or empty derivation would make the containment below vacuous, and
+  # a set of one would not be the filter this job actually carries.
+  [ "$(printf '%s\n' "$globs" | grep -c .)" -gt 1 ]
+  # Arm 1b holds the roots to the oracle's surface. This one holds the job that
+  # RUNS this suite to the roots: a root the filter does not name is a root a
+  # pull request can change while the shards job reports code=false, skips every
+  # bats step, and greens with the regression gate above having run zero times.
+  # The header of the script under test states that obligation; nothing but this
+  # arm checks it, and round 1 of this pull request's own audit is the evidence
+  # that SCAN_ROOTS moves.
+  probes="$(for r in $roots; do printf '%s/probe.sh\n' "$r"; done)"
+  left="$(printf '%s\n' "$probes" | unarmed "$globs")"
+  [ -z "$left" ]
+  # Mutation, so the arming claim above is not vacuous: against a filter naming
+  # one unrelated file, every root has to come back unarmed.
+  left="$(printf '%s\n' "$probes" | unarmed "CHANGELOG.md")"
+  [ "$(printf '%s\n' "$left" | grep -c .)" -eq "$(printf '%s\n' "$probes" | grep -c .)" ]
 }
 
 # ---------------------------------------------------------------------------
