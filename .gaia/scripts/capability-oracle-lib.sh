@@ -766,10 +766,16 @@ _gaia_capcheck_quote_carry() {
             # start of the line or after any character that ends a word, not
             # only after whitespace. `true;# note` is a comment to the shell,
             # and reading it as code lets an apostrophe inside it push a frame
-            # that never closes, dropping every line after it. The set is the
-            # one .claude/hooks/lib/verb-arming-walk.sh already spells for this
-            # same decision (_GAIA_VA_WORD_SET); a newline cannot occur here,
-            # since this walk is handed one line at a time.
+            # that never closes, dropping every line after it.
+            #
+            # The set is _GAIA_VA_WORD_SET (.claude/hooks/lib/verb-arming-walk.sh)
+            # plus `)`, minus the newline that walk carries. The newline cannot
+            # occur here because this one is handed a line at a time. The `)` is
+            # a deliberate widening rather than a copy that drifted: a `)`
+            # closing a subshell or a `case` arm ends a word, so `(true)# don't`
+            # really is a comment, and that walk has no need to model it. Do not
+            # sync the two by narrowing this one, which puts the apostrophe in
+            # such a comment back on the stack and drops every line below it.
             if [ "$i" -eq 0 ]; then break; fi
             case "${t:i-1:1}" in
               [[:space:]]|';'|'&'|'|'|'('|')') break ;;

@@ -808,25 +808,44 @@ curl -sS https://example.com/x'
 }
 
 @test "the run-skip changes no answer the walk reaches without it" {
-  # The guard over the three skip sets as a set, which the fixtures above
-  # cannot be. Each set restates the characters its own arm of the walk reads,
-  # so the two can drift apart, and a hand-written fixture only catches the
-  # drift somebody already thought of: a `"` and a backtick pop and push each
-  # other symmetrically, so the shapes separating a sound set from an unsound
-  # one are the ones nobody writes down.
+  # The guard over the skip sets AS A SET, which the fixtures above cannot be.
+  # Each set restates the characters its own arm of the walk reads, so the two
+  # can drift apart, and a hand-written fixture only catches the drift somebody
+  # already thought of: a `"` and a backtick pop and push each other
+  # symmetrically, so the shapes separating a sound set from an unsound one are
+  # the ones nobody writes down.
   #
   # So it is a differential rather than a fixture. `?` matches at every
   # position, which leaves the skip with nothing to remove and reproduces the
   # character-at-a-time walk the sets exist to shortcut; the two must agree
   # line for line. The corpus is every shell file the repo tracks, discovered
   # rather than listed, so a file added later is compared without an edit here.
+  #
+  # The neutered set is DERIVED from the library, not listed here. A list is the
+  # one thing this differential cannot afford to hand-write: the diff that adds
+  # a fourth set is exactly the diff that owes the check, and a list left at
+  # three arms neither side of the comparison, so both walks run the same skip
+  # and the drift the test exists for is invisible while it reports clean.
+  #
+  # The corpus is listed the way the gate discovers its own: NUL-delimited with
+  # `core.quotepath` off. Under git's default quoting a tracked path carrying a
+  # non-ASCII byte comes back C-quoted, `_gaia_capcheck_logical_lines` takes its
+  # `[ -f ]` arm on it, and the file leaves BOTH sides silently, so the diff
+  # still agrees over a file neither walk read.
   local walk out_skip="$BATS_TEST_TMPDIR/skip.txt" out_plain="$BATS_TEST_TMPDIR/plain.txt"
   walk='cd "$1" || exit 2
     . .gaia/scripts/capability-oracle-lib.sh
     if [ -n "$2" ]; then
-      _GAIA_CAPCHECK_QSKIP_S="?"; _GAIA_CAPCHECK_QSKIP_D="?"; _GAIA_CAPCHECK_QSKIP_N="?"
+      n=0
+      for v in $(compgen -A variable _GAIA_CAPCHECK_QSKIP_); do
+        eval "$v=\"?\""
+        n=$((n + 1))
+      done
+      # A derivation that came back empty, or found only one set, would neuter
+      # nothing or nearly nothing and leave the two walks agreeing trivially.
+      [ "$n" -gt 2 ] || { echo "skip-set derivation found $n" >&2; exit 3; }
     fi
-    git ls-files "*.sh" "*.bats" | while IFS= read -r f; do
+    git -c core.quotepath=false ls-files -z "*.sh" "*.bats" | while IFS= read -r -d "" f; do
       printf "== %s\n" "$f"
       _gaia_capcheck_logical_lines "$f"
     done'

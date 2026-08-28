@@ -902,3 +902,78 @@ scanner_call_line() {
   [ -n "$(anchor_names "$copy")" ]
   [ "$(anchor_header "$n" "$copy" | wc -l | tr -d ' ')" -lt "$ANCHOR_HEADER_MIN_LINES" ]
 }
+
+# anchor_boundary_chars <regex>: the boundary CHARACTERS of one anchor, one per
+# line. The anchor spells them as its first bracket expression; a POSIX class
+# spelled `[[:space:]]` cannot be it, because the anchor's own alternation puts
+# the character class first. Empty is a real answer for an anchor that has no
+# character boundaries, and the arm below says so rather than reading it as a
+# vocabulary it can skip.
+anchor_boundary_chars() {
+  local v cls i
+  v="$1"
+  case "$v" in *'['*) ;; *) return 0 ;; esac
+  cls="${v#*[}"
+  cls="${cls%%]*}"
+  i=0
+  while [ "$i" -lt "${#cls}" ]; do
+    printf '%s\n' "${cls:i:1}"
+    i=$((i + 1))
+  done
+}
+
+@test "every boundary character the bare-path anchor carries is defused inside a quoted span" {
+  # The character half of the arm above. The blanker spells its own separator
+  # set as a literal `[;|&]` and the anchor spells its boundary class
+  # separately, so the two can drift for the same reason and in the same silent
+  # direction: a boundary character added to the anchor and not to the blanker
+  # puts every message string carrying it back in command position.
+  #
+  # A backtick is on the anchor and is NOT blanked, deliberately: the blanker
+  # bails on it because a backtick inside a span is a real substitution opener
+  # whose body is code, so blanking it would lose calls rather than fabricate
+  # them. That bail is stated here as an explicit skip rather than left as a
+  # silent absence, which is what makes the rest of the set an assertion.
+  local a ch hits=0 skipped=0 failed=0 line out
+  a="$(scanner_anchor _gaia_capcheck_scan_bare_invocations)"
+  [ -n "$a" ]
+  while IFS= read -r ch; do
+    [ -n "$ch" ] || continue
+    if [ "$ch" = '`' ]; then
+      skipped=$((skipped + 1))
+      continue
+    fi
+    hits=$((hits + 1))
+    line="msg=\"lead $ch $TARGET_REL tail\""
+    _gaia_capcheck_blank_quoted_anchors "$line"
+    out="$(scan_line _gaia_capcheck_scan_bare_invocations "$_GAIA_CAPCHECK_RET")"
+    if [ -n "$out" ]; then
+      printf 'boundary %s on %s still reaches through a quoted span: [%s] gave [%s]\n' \
+        "$ch" "$a" "$line" "$out" >&2
+      failed=1
+    fi
+  done < <(anchor_boundary_chars "${!a}")
+  # A derivation that came back empty would make the loop assert nothing while
+  # its name says every, and the skip has to have found its one member or the
+  # bail above is skipping something that is no longer there.
+  [ "$hits" -gt 1 ]
+  [ "$skipped" -eq 1 ]
+  [ "$failed" -eq 0 ]
+}
+
+@test "the boundary-character arm fails against a blanker that misses one" {
+  # Non-vacuity control for the arm above, sampling one character. It respells
+  # the blanker so a single separator survives and drives that separator
+  # through the respelled function, which is the divergence the arm exists for.
+  local a ch line out
+  a="$(scanner_anchor _gaia_capcheck_scan_bare_invocations)"
+  [ -n "$a" ]
+  ch="$(anchor_boundary_chars "${!a}" | grep -vFx '`' | head -1)"
+  [ -n "$ch" ]
+  eval "$(declare -f _gaia_capcheck_blank_quoted_anchors \
+    | sed "s/;|&/|\&/")"
+  line="msg=\"lead $ch $TARGET_REL tail\""
+  _gaia_capcheck_blank_quoted_anchors "$line"
+  out="$(scan_line _gaia_capcheck_scan_bare_invocations "$_GAIA_CAPCHECK_RET")"
+  [ -n "$out" ]
+}
