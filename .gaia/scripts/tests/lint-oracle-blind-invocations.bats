@@ -35,7 +35,13 @@ teardown() {
 }
 
 # new_fixture: an empty tmp tree with both scan roots present. Sets $TMP.
+#
+# The previous tree is reclaimed here rather than only in teardown: an arm that
+# drives one case per entry of a derived set calls this once per entry, and
+# teardown sees only the last $TMP, so every earlier tree would outlive the run
+# on the machine and on the runner.
 new_fixture() {
+  if [ -n "$TMP" ] && [ -d "$TMP" ]; then rm -rf "$TMP"; fi
   TMP="$(mktemp -d -t oracle-blind-lint-XXXXXX)"
   mkdir -p "$TMP/.claude/hooks" "$TMP/.gaia/scripts"
 }
@@ -284,6 +290,30 @@ uncovered() {
 
 @test "is quiet on the same dot load in a condition the anchors accept" {
   quiet 'if . "$dir/target.sh"; then :; fi'
+}
+
+# A logical line can carry more than one call, and the anchors answer per line.
+# So a call they accept sitting beside a call they are blind to is the shape
+# where one vouches for the other, the tree keeps a manifest that under-reports
+# the second, and this gate says clean -- the class the check exists to end,
+# reproduced inside it. The pair below is the whole point: the blind half has to
+# be reported when it shares a line with a seen half, and a line whose calls the
+# anchors all see has to stay quiet however many of them there are.
+
+@test "flags a blind call sharing a logical line with one the anchors accept" {
+  hits '.gaia/scripts/target.sh && X=1 .gaia/scripts/other.sh'
+}
+
+@test "is quiet on a logical line whose several calls the anchors all accept" {
+  quiet '.gaia/scripts/target.sh && .gaia/scripts/other.sh'
+}
+
+@test "flags a tab-separated dot load of a target carrying no .sh suffix" {
+  # The prefilter decides whether a line is walked for candidates at all, so a
+  # separator it does not recognise plants no sentinel and the file reports
+  # clean whatever the anchors do. A tab is the separator that reaches it
+  # without an `.sh` elsewhere on the line to arm the other arm.
+  hits "$(printf 'X=1 .\t"$dir/libfile"')"
 }
 
 # ---------------------------------------------------------------------------

@@ -101,6 +101,17 @@
 #   _GAIA_CAPCHECK_PATHCMD, so the oracle is not blind to that position and
 #   there is no divergence to report.
 #
+#   A SECOND BLIND CALL ON A LINE WHERE THE TWO SCANNERS BOTH RECORD THE SAME
+#   ONE. The anchors' half of the differential is a count of DISTINCT records
+#   per logical line, held against the number of commands bash finds there, so
+#   a line carrying one call the anchors see beside one they do not is reported
+#   rather than cleared by the first. The residual is the overlap: the two
+#   scanners can both record a single invocation, and deduplicating them costs
+#   the ability to tell that apart from two calls of the same script on one
+#   line, so a line spending its surplus record that way can still hide a blind
+#   sibling. Counting raw records instead trades this for the worse direction,
+#   an overlap making the anchors look like they saw a call nobody wrote.
+#
 #   ANYTHING OUTSIDE THE SCAN ROOTS. SCAN_ROOTS below is the boundary of the
 #   claim, and its own comment says why that boundary has to be the oracle's
 #   closure rather than the two directories the oracle is usually described by.
@@ -195,14 +206,26 @@ PATH_SHAPE='[A-Za-z0-9_.$@{}~+/:-]*/[A-Za-z0-9_.$@{}~+/:-]*\.sh'
 # The oracle's half of the differential
 # ---------------------------------------------------------------------------
 
-# _obi_anchors_see <logical-line>: 0 when either invocation scanner emits a
-# record for the line, 1 when both are silent. The line is put through the same
-# two strippers _gaia_capcheck_file_sites runs before the detectors, so what is
-# asked here is exactly what the oracle asks. Both a resolved `CALL` and an
-# `UNRESC` count as seeing it: the anchor matched either way, and an operand the
-# resolver cannot place is a loud finding on the oracle's own channel rather
-# than the silence this check is about.
-_obi_anchors_see() {
+# _obi_anchor_records <logical-line>: how many DISTINCT invocations the two
+# scanners record for the line. The line is put through the same two strippers
+# _gaia_capcheck_file_sites runs before the detectors, so what is asked here is
+# exactly what the oracle asks. Both a resolved `CALL` and an `UNRESC` count:
+# the anchor matched either way, and an operand the resolver cannot place is a
+# loud finding on the oracle's own channel rather than the silence this check is
+# about.
+#
+# A COUNT rather than a yes-or-no, because a logical line can carry more than
+# one invocation and a yes-or-no lets one of them vouch for the rest. A line
+# holding a call the anchors accept beside a call they are blind to answers yes,
+# every probe on it clears, and the manifest under-reports the second call with
+# this gate reporting clean -- which is the class this whole check exists to
+# end, reproduced inside it.
+#
+# Distinct, because the two scanners overlap: one invocation can be recorded by
+# both, so a raw count runs ahead of the number of calls on the line and the
+# comparison below stops being conservative. The residual that leaves is stated
+# in the coverage section at the top of this file.
+_obi_anchor_records() {
   local text="$1" out
   _gaia_capcheck_strip_literals "$text"
   _gaia_capcheck_strip_quoted_code "$_GAIA_CAPCHECK_RET"
@@ -212,7 +235,8 @@ _obi_anchors_see() {
       _gaia_capcheck_scan_bare_invocations "$REPO_ROOT" "$_obi_rel" "-" "$_GAIA_CAPCHECK_RET" "probe:0"
     } 2>/dev/null
   )"
-  [ -n "$out" ]
+  [ -n "$out" ] || { printf '0\n'; return 0; }
+  printf '%s\n' "$out" | LC_ALL=C sort -u | grep -c .
 }
 
 # ---------------------------------------------------------------------------
@@ -313,9 +337,13 @@ _obi_scan_file() {
   while IFS= read -r line || [ -n "$line" ]; do
     lineno=$((lineno + 1))
     # Cheap prefilter. A line carrying no `.sh` and no `.`/`source` word has no
-    # candidate in it, and the word walk below is the expensive part.
+    # candidate in it, and the word walk below is the expensive part. The
+    # separator after a `.` or `source` load is a whitespace CLASS rather than a
+    # space, since the word walk splits on tabs too: a tab-separated load of a
+    # target with no `.sh` extension would otherwise be copied through with no
+    # sentinel planted and the file would report clean whatever the anchors do.
     case "$line" in
-      *.sh*|*.\ *|*source\ *)
+      *.sh*|*.[[:space:]]*|*source[[:space:]]*)
         _obi_rewrite_line "$line" "$lineno"
         body="$body$_OBI_OUT"$'\n'
         ;;
@@ -330,7 +358,7 @@ _obi_scan_file() {
       for w in ${PREFIX_WORDS[@]+"${PREFIX_WORDS[@]}"}; do printf "alias %s='%s ';\n" "$w" "$w"; done
       printf '%s\n' "$_OBI_ALIASES"
       printf '__gaia_obi_probe() {\n%s\n}\ndeclare -f __gaia_obi_probe\n' "$body"
-    } | bash 2>&1
+    } | "$BASH" 2>&1
   )"
   case "$out" in
     *__gaia_obi_probe*) ;;
@@ -353,8 +381,14 @@ _obi_scan_file() {
     logicals[${#logicals[@]}]="$line"
   done < <(_gaia_capcheck_logical_lines "$file")
 
+  # Two passes, because the comparison is per logical line and the probes are
+  # per word: the first maps each expanded sentinel onto the logical line that
+  # holds it and counts how many landed there, the second asks the anchors how
+  # many invocations they record on that same line and reports the shortfall.
   local want j pick
+  local -a pick_of=() nprobe=() recs_of=() said=()
   for ((i = 1; i <= _OBI_N; i++)); do
+    pick_of[i]=-1
     case "$out" in
       *"__GAIACMD_${i}__"*) ;;
       *) continue ;;
@@ -365,10 +399,32 @@ _obi_scan_file() {
       [ "${starts[$j]}" -le "$want" ] || break
       pick="$j"
     done
+    if [ "$pick" -lt 0 ]; then
+      # Reported rather than skipped, for the reason the unprobeable arm above
+      # is: a probe no logical line covers is a command whose blindness this
+      # run did not measure, and dropping it reports clean over exactly that.
+      printf '%s:%s: unmapped: no logical line covers this command, so the oracle'"'"'s blindness here is unmeasured: %s\n' \
+        "$rel" "$want" "${_OBI_TEXT[$i]}"
+      continue
+    fi
+    pick_of[i]="$pick"
+    nprobe[pick]=$(( ${nprobe[pick]:-0} + 1 ))
+  done
+
+  for ((i = 1; i <= _OBI_N; i++)); do
+    pick="${pick_of[i]:--1}"
     [ "$pick" -ge 0 ] || continue
-    _obi_anchors_see "${logicals[$pick]}" && continue
-    printf '%s:%s: invocation in a shape the capability oracle cannot see: %s\n' \
-      "$rel" "$want" "${_OBI_TEXT[$i]}"
+    [ -n "${recs_of[pick]:-}" ] || recs_of[pick]="$(_obi_anchor_records "${logicals[$pick]}")"
+    if [ "${recs_of[pick]}" -eq 0 ]; then
+      printf '%s:%s: invocation in a shape the capability oracle cannot see: %s\n' \
+        "$rel" "${_OBI_LINENO[$i]}" "${_OBI_TEXT[$i]}"
+    elif [ "${recs_of[pick]}" -lt "${nprobe[pick]}" ] && [ -z "${said[pick]:-}" ]; then
+      # Which of the line's commands is the blind one is not decidable from a
+      # count, so the line is named once rather than each word being accused.
+      said[pick]=1
+      printf '%s:%s: the oracle records %s invocation(s) where bash finds %s command(s) on this logical line, so at least one is in a shape it cannot see: %s\n' \
+        "$rel" "${_OBI_LINENO[$i]}" "${recs_of[pick]}" "${nprobe[pick]}" "${_OBI_TEXT[$i]}"
+    fi
   done
 }
 
