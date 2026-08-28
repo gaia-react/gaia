@@ -88,6 +88,21 @@ _GAIA_CAPCHECK_QSTATE=""
 # leaves a `)` this scan cannot attribute.
 _GAIA_CAPCHECK_QSHADOW=0
 
+# The characters that can change the stack, one bracket expression per top
+# frame, used to skip the runs between them. Without the skip the walk below
+# steps one character at a time over every line carrying a quote, and bash
+# extracts a substring in time proportional to the whole line, so such a line
+# costs its length squared. Every shell file in the tree is scanned once per
+# obligated script's closure, which made that the oracle's dominant cost.
+#
+# Each set is exactly the characters its own arm of the walk reads, so a
+# character added to an arm must be added here too or the walk jumps past it.
+# The `S` set is one character because a single-quoted span ends only at the
+# next `'`; nothing else, backslash included, means anything inside one.
+_GAIA_CAPCHECK_QSKIP_S="[']"
+_GAIA_CAPCHECK_QSKIP_D='[\\"$`]'
+_GAIA_CAPCHECK_QSKIP_N='['"'"'"$()`\\#]'
+
 # ---------------------------------------------------------------------------
 # Lexical helpers
 # ---------------------------------------------------------------------------
@@ -643,7 +658,7 @@ _gaia_capcheck_quote_carry() {
   local t="${1-}"
   local st="$_GAIA_CAPCHECK_QSTATE"
   local n=${#t}
-  local i=0 c top cut=-1 carry=0
+  local i=0 c top cut=-1 carry=0 rest skipped
   local entry_depth=${#st}
   if [ "$_GAIA_CAPCHECK_QSHADOW" -eq 0 ] && [ "${#st}" -eq 1 ]; then
     case "$st" in
@@ -662,8 +677,25 @@ _gaia_capcheck_quote_carry() {
     esac
   fi
   while [ "$i" -lt "$n" ]; do
-    c="${t:i:1}"
     top="${st: -1}"
+    # Jump to the next character this frame's arm can act on. The run being
+    # skipped changes neither the stack nor `cut`, which only moves when the
+    # stack pops, so the two updates at the loop's foot have nothing to do
+    # across it.
+    rest="${t:i}"
+    # Unquoted on purpose: each holds a bracket expression, and quoting it
+    # would strip the whole point of it back to a literal match.
+    # shellcheck disable=SC2295
+    case "$top" in
+      S) skipped="${rest%%$_GAIA_CAPCHECK_QSKIP_S*}" ;;
+      D) skipped="${rest%%$_GAIA_CAPCHECK_QSKIP_D*}" ;;
+      *) skipped="${rest%%$_GAIA_CAPCHECK_QSKIP_N*}" ;;
+    esac
+    if [ -n "$skipped" ]; then
+      i=$((i + ${#skipped}))
+      if [ "$i" -ge "$n" ]; then break; fi
+    fi
+    c="${t:i:1}"
     case "$top" in
       S)
         if [ "$c" = "'" ]; then st="${st%?}"; fi

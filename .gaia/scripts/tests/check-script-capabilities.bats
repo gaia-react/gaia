@@ -729,6 +729,72 @@ curl -sS https://example.com/x'
   done
 }
 
+@test "a character the quoting walk acts on is never skipped past" {
+  # The bound on the run-skip that carries the walk between the characters it
+  # reads. Skipping a run is only sound while that run cannot change the stack,
+  # so a skip set missing one of its own arm's characters walks straight past
+  # the thing deciding where a span ends, and the state it hands the next line
+  # is wrong in the suppressing direction. Each opener below is BALANCED, and
+  # balanced only when its own character is read: the call beneath it survives
+  # when the walk stops there and is silently dropped when it does not.
+  #
+  # One case per skip set. A `'` and a `#` a line ends up carrying under the
+  # unbalanced `"` they respectively quote and comment out, and a backtick
+  # nested in a double-quoted span, which needs an inner `"` to matter at all,
+  # since a plain pair leaves the same empty stack either way.
+  carry_case() {
+    local tag="$1" opener="$2" repo
+    repo="$(make_fixture_repo "bareskip$tag")"
+    add_script "$repo" a/s.sh "#!/usr/bin/env bash
+$opener
+.github/audit/base.sh --real"
+    add_script "$repo" .github/audit/base.sh '#!/usr/bin/env bash
+curl -sS https://example.com/x'
+    write_allow "$repo" "Bash(bash a/s.sh:*)"
+    write_manifest "$repo" '[{"script":"a/s.sh","capabilities":[],
+      "why":"runs the resolver after a balanced span","maintainer_only":false}]'
+    run bash "$CHECK" "$repo"
+    [ "$status" -eq 1 ]
+    grep -qF -- "UNDECLARED a/s.sh invokes:.github/audit/base.sh" <<<"$output"
+  }
+  carry_case sq "msg='the \" character'"
+  carry_case hash "true  # don't skip past a comment"
+  carry_case bt 'msg="a `echo "x"` b"'
+}
+
+@test "the run-skip changes no answer the walk reaches without it" {
+  # The guard over the three skip sets as a set, which the fixtures above
+  # cannot be. Each set restates the characters its own arm of the walk reads,
+  # so the two can drift apart, and a hand-written fixture only catches the
+  # drift somebody already thought of: a `"` and a backtick pop and push each
+  # other symmetrically, so the shapes separating a sound set from an unsound
+  # one are the ones nobody writes down.
+  #
+  # So it is a differential rather than a fixture. `?` matches at every
+  # position, which leaves the skip with nothing to remove and reproduces the
+  # character-at-a-time walk the sets exist to shortcut; the two must agree
+  # line for line. The corpus is every shell file the repo tracks, discovered
+  # rather than listed, so a file added later is compared without an edit here.
+  local walk out_skip="$BATS_TEST_TMPDIR/skip.txt" out_plain="$BATS_TEST_TMPDIR/plain.txt"
+  walk='cd "$1" || exit 2
+    . .gaia/scripts/capability-oracle-lib.sh
+    if [ -n "$2" ]; then
+      _GAIA_CAPCHECK_QSKIP_S="?"; _GAIA_CAPCHECK_QSKIP_D="?"; _GAIA_CAPCHECK_QSKIP_N="?"
+    fi
+    git ls-files "*.sh" "*.bats" | while IFS= read -r f; do
+      printf "== %s\n" "$f"
+      _gaia_capcheck_logical_lines "$f"
+    done'
+  bash -c "$walk" _ "$REPO_ROOT" "" >"$out_skip"
+  bash -c "$walk" _ "$REPO_ROOT" no-skip >"$out_plain"
+  # Short-read guard: a corpus that resolved no file, or a walk that emitted
+  # nothing, agrees with itself and would report this clean having compared
+  # nothing at all.
+  [ -s "$out_skip" ]
+  [ "$(grep -c '^== ' "$out_skip")" -gt 100 ]
+  diff "$out_skip" "$out_plain"
+}
+
 @test "a bare path behind a separator inside a double-quoted span is prose, not a call" {
   # The negatives for the separator arms. A `;`, `|`, or `&` inside a span is
   # text the shell never acts on, and each one puts the path that follows it in
