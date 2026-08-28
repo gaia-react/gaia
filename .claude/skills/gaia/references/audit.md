@@ -219,10 +219,12 @@ Targets (flag anything over):
 | File                                                                               | Budget     | Rationale                                  |
 | ---------------------------------------------------------------------------------- | ---------- | ------------------------------------------ |
 | `wiki/hot.md`                                                                      | ≤200 words | Cache discipline per `wiki/hot.md` comment |
-| `CLAUDE.md` (root)                                                                 | ≤400 words | Routing + principles only                  |
-| `wiki/README.md`                                                                   | ,          | On demand, no auto-load budget needed      |
+| `CLAUDE.md` (root)                                                                 | ≤500 words | Routing, principles, standing conduct      |
+| `wiki/README.md`                                                                   | n/a        | On demand, no auto-load budget needed      |
 | Any nested `CLAUDE.md` discovered in Step 1 (monorepo package, subapp, docs, etc.) | ≤400 words | Scoped routing                             |
 | Any single `.claude/rules/*.md`                                                    | ≤200 lines | Focused rule                               |
+
+**Root `CLAUDE.md` gets 500 where a nested one gets 400 because the two carry different jobs.** A nested `CLAUDE.md` is scoped routing. The root file GAIA ships is routing and principles *plus* the standing conduct rules that govern every response, and those cannot move: they are load-bearing precisely because they auto-load every session, so promoting them to a lazily-fetched wiki page preserves the bytes and switches the rules off. The 500 is the measured floor of that content stated once each, plus headroom; it is not licence for the file to grow, and `.gaia/scripts/check-updates.sh` still raises the over-budget nudge for this file. `wiki/concepts/GAIA Audit.md` (`## When to use`) owns when that nudge is suppressed instead.
 
 **Every budget above is per file, and no aggregate budget exists over `.claude/rules/*.md`.** The `project_drift` signal in `.gaia/scripts/check-updates.sh` that raises the `over budget` nudge this step answers compares each rule file against its own line budget and carries no total. So splitting one over-budget rule into two rules that are each under budget satisfies the budget outright, and the sibling is charged to no separate aggregate.
 
