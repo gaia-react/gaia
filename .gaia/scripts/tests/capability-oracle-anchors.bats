@@ -692,6 +692,52 @@ scanner_call_line() {
   [ "$failed" -eq 0 ]
 }
 
+# --- The span blanker covers the anchor it defends -------------------------
+
+@test "every keyword the bare-path anchor carries is defused inside a quoted span" {
+  # _gaia_capcheck_blank_quoted_anchors spells the keyword set it removes as a
+  # literal list, and the anchor spells its own. Nothing holds a literal list in
+  # step with a constant, and the divergence is silent in the direction that
+  # matters: a keyword added to the anchor and not to the blanker puts every
+  # message string carrying that word back in command position, which is the
+  # fabricated-edge class the blanker exists to close. So the set is derived
+  # from the anchor here and each element driven through the real blanker.
+  local a kw hits=0 failed=0 line out
+  a="$(scanner_anchor _gaia_capcheck_scan_bare_invocations)"
+  [ -n "$a" ]
+  for kw in $(anchor_vocab "${!a}"); do
+    hits=$((hits + 1))
+    line="msg=\"lead $kw $TARGET_REL tail\""
+    _gaia_capcheck_blank_quoted_anchors "$line"
+    out="$(scan_line _gaia_capcheck_scan_bare_invocations "$_GAIA_CAPCHECK_RET")"
+    if [ -n "$out" ]; then
+      printf 'keyword %s on %s still reaches through a quoted span: [%s] gave [%s]\n' \
+        "$kw" "$a" "$line" "$out" >&2
+      failed=1
+    fi
+  done
+  [ "$hits" -gt 0 ]
+  [ "$failed" -eq 0 ]
+}
+
+@test "the span-blanker arm fails against a blanker that misses one keyword" {
+  # Non-vacuity control for the arm above, sampling one keyword. It respells the
+  # blanker so a single keyword survives, which is exactly the divergence the
+  # arm exists to catch, and drives that keyword through the respelled function.
+  local a kw line out
+  a="$(scanner_anchor _gaia_capcheck_scan_bare_invocations)"
+  [ -n "$a" ]
+  kw="$(anchor_vocab "${!a}")"
+  kw="${kw%% *}"
+  [ -n "$kw" ]
+  eval "$(declare -f _gaia_capcheck_blank_quoted_anchors \
+    | sed "s/ '$kw' / /")"
+  line="msg=\"lead $kw $TARGET_REL tail\""
+  _gaia_capcheck_blank_quoted_anchors "$line"
+  out="$(scan_line _gaia_capcheck_scan_bare_invocations "$_GAIA_CAPCHECK_RET")"
+  [ -n "$out" ]
+}
+
 # --- No arm reaches inside a token -----------------------------------------
 
 @test "no keyword arm matches inside a longer word" {

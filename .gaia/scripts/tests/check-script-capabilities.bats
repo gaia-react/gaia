@@ -696,6 +696,39 @@ curl -sS https://example.com/x'
   grep -qF -- "UNDECLARED a/s.sh invokes:.github/audit/base.sh" <<<"$output"
 }
 
+@test "a paren that closes nothing does not swallow the rest of a substitution" {
+  # The bound on the carried state's own reach. A `case` arm, a function
+  # definition, and a bare subshell each put a `)` inside a multi-line
+  # substitution that closes nothing the reader opened, and a reader that let
+  # one of them close the substitution would hand the enclosing quote back to
+  # the top of the stack and drop every remaining line of real shell. That loss
+  # is silent: nothing downstream reports a line the splitter never emitted.
+  local body
+  for body in 'case $x in
+    a) echo one ;;
+  esac' 'helper() {
+    true
+  }
+  helper' '( cd /tmp && pwd )'; do
+    repo="$(make_fixture_repo "bareunmatched$RANDOM")"
+    add_script "$repo" a/s.sh "#!/usr/bin/env bash
+x=b
+out=\"\$(
+  $body
+  .github/audit/base.sh --real
+)\"
+printf \"%s\n\" \"\$out\""
+    add_script "$repo" .github/audit/base.sh '#!/usr/bin/env bash
+curl -sS https://example.com/x'
+    write_allow "$repo" "Bash(bash a/s.sh:*)"
+    write_manifest "$repo" '[{"script":"a/s.sh","capabilities":[],
+      "why":"runs the resolver inside a substitution","maintainer_only":false}]'
+    run bash "$CHECK" "$repo"
+    [ "$status" -eq 1 ]
+    grep -qF -- "UNDECLARED a/s.sh invokes:.github/audit/base.sh" <<<"$output"
+  done
+}
+
 @test "a bare path behind a separator inside a double-quoted span is prose, not a call" {
   # The negatives for the separator arms. A `;`, `|`, or `&` inside a span is
   # text the shell never acts on, and each one puts the path that follows it in

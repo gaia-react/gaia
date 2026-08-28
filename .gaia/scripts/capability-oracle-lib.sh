@@ -71,6 +71,23 @@ _GAIA_CAPCHECK_RET=""
 # `set -u` on a variable only the splitter would otherwise have set.
 _GAIA_CAPCHECK_QSTATE=""
 
+# 1 once a `)` or a backtick has closed a substitution that was ALREADY OPEN
+# when its line began, and the stack has not since returned to empty. The frame
+# such a close uncovers no longer decides whether the next line is string body,
+# because the character that popped it may have closed something else: a `case`
+# arm, a function definition, and a bare subshell each write one this scan never
+# opened. Suppressing on the frame underneath would drop the rest of that
+# substitution's body, which is ordinary shell with real calls in it, and
+# nothing downstream reports a line the splitter never emitted.
+#
+# A substitution opened and closed on ONE line does not set this, and that
+# distinction is what keeps the flag from swallowing the common case. Both its
+# `$(` and its `)` were read here, so the pop is matched by construction, and a
+# message string carrying an ordinary `"... ${x} $(date) ..."` on its opening
+# line goes on being recognized. Only a substitution spanning a line boundary
+# leaves a `)` this scan cannot attribute.
+_GAIA_CAPCHECK_QSHADOW=0
+
 # ---------------------------------------------------------------------------
 # Lexical helpers
 # ---------------------------------------------------------------------------
@@ -579,6 +596,16 @@ _gaia_capcheck_heredoc_delim() {
 # code, and a call inside a multi-line one is real reach, so a line entered
 # under either is passed through whole.
 #
+# A frame suppresses only while it is the ONLY frame on the stack and no
+# substitution spanning a line boundary has closed over it, which
+# _GAIA_CAPCHECK_QSHADOW tracks and whose reason is written beside it. That
+# gate, not the pop rule, is what keeps an unmatched `)` from costing reach: a
+# `case` arm inside a multi-line substitution pops a frame nothing pushed, and
+# the enclosing quote it uncovers is shadowed, so the rest of that body is read
+# as the code it is. What the gate gives up is a string body nested inside a
+# substitution, which reads as code exactly as it did before this function
+# existed.
+#
 # Only the carried prefix is dropped, never a span opened and closed within the
 # line. A line may end its carried string and then carry real code
 # (`line2" && bash x.sh`), and dropping the whole line would lose that call
@@ -605,19 +632,24 @@ _gaia_capcheck_heredoc_delim() {
 # apostrophe in one (`# don't`) would otherwise open a span that never closes
 # and blind the oracle to every following line of the file.
 #
-# Deliberately incomplete in two directions, both of which fail toward today's
+# Deliberately incomplete in three directions, all of which fail toward today's
 # answer rather than toward silence. `$'...'` and `$"..."` are read as an
-# ordinary `$` followed by a quote, which is what they quote anyway. And a
-# heredoc body never reaches here, because the splitter consumes it before this
-# is called, so an unbalanced quote inside one cannot desynchronize the stack.
+# ordinary `$` followed by a quote, which is what they quote anyway. A heredoc
+# body never reaches here, because the splitter consumes it before this is
+# called, so an unbalanced quote inside one cannot desynchronize the stack. And
+# a string or array body opened inside a substitution is not recognized at all,
+# per the shadow gate above.
 _gaia_capcheck_quote_carry() {
   local t="${1-}"
   local st="$_GAIA_CAPCHECK_QSTATE"
   local n=${#t}
   local i=0 c top cut=-1 carry=0
-  case "${st: -1}" in
-    D|S|A) carry=${#st} ;;
-  esac
+  local entry_depth=${#st}
+  if [ "$_GAIA_CAPCHECK_QSHADOW" -eq 0 ] && [ "${#st}" -eq 1 ]; then
+    case "$st" in
+      D|S|A) carry=1 ;;
+    esac
+  fi
   if [ -z "$st" ]; then
     # Nothing open and nothing that can open a frame: the state is unchanged and
     # the whole line is code. This is the overwhelming majority of lines, and the
@@ -651,8 +683,24 @@ _gaia_capcheck_quote_carry() {
           '"') st="${st}D" ;;
           '$') if [ "${t:i+1:1}" = '(' ]; then st="${st}P"; i=$((i + 1)); fi ;;
           '(') if [ "$i" -gt 0 ] && [ "${t:i-1:1}" = '=' ]; then st="${st}A"; fi ;;
-          ')') case "$top" in P|A) st="${st%?}" ;; esac ;;
-          '`') if [ "$top" = B ]; then st="${st%?}"; else st="${st}B"; fi ;;
+          ')')
+            case "$top" in
+              P|A)
+                if [ "$top" = P ] && [ "${#st}" -le "$entry_depth" ]; then
+                  _GAIA_CAPCHECK_QSHADOW=1
+                fi
+                st="${st%?}"
+                ;;
+            esac
+            ;;
+          '`')
+            if [ "$top" = B ]; then
+              if [ "${#st}" -le "$entry_depth" ]; then _GAIA_CAPCHECK_QSHADOW=1; fi
+              st="${st%?}"
+            else
+              st="${st}B"
+            fi
+            ;;
           '#')
             if [ "$i" -eq 0 ]; then break; fi
             case "${t:i-1:1}" in
@@ -663,6 +711,9 @@ _gaia_capcheck_quote_carry() {
         ;;
     esac
     i=$((i + 1))
+    if [ -z "$st" ]; then
+      _GAIA_CAPCHECK_QSHADOW=0
+    fi
     if [ "$cut" -lt 0 ] && [ "$carry" -gt 0 ] && [ "${#st}" -lt "$carry" ]; then
       cut="$i"
     fi
@@ -706,6 +757,7 @@ _gaia_capcheck_logical_lines() {
   [ -f "$file" ] || return 0
   local line trimmed lineno=0 start=0 acc="" cur_sc="-" pending_sc="-" cont=0 hd="" inbody=0
   _GAIA_CAPCHECK_QSTATE=""
+  _GAIA_CAPCHECK_QSHADOW=0
   while IFS= read -r line || [ -n "$line" ]; do
     lineno=$((lineno + 1))
     if [ -n "$hd" ]; then
