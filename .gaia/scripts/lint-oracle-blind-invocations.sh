@@ -147,7 +147,18 @@ if [ "${BASH_VERSINFO[0]}" -lt 5 ]; then
     [ "${BASH_SOURCE[0]}" = "$0" ] && exec "$_gaia_obi_bash5_found" "$0" "$@"
     break
   done
-  printf 'lint-oracle-blind-invocations: requires bash >= 5, found %s\n' "${BASH_VERSION}" >&2
+  # Two refusals, because they have two different repairs and a message naming
+  # the wrong one sends the reader looking for a bash they already have.
+  if [ -n "$_gaia_obi_bash5_found" ]; then
+    printf 'lint-oracle-blind-invocations: bash 5 is at %s, but this file was sourced under bash %s; run it rather than sourcing it\n' \
+      "$_gaia_obi_bash5_found" "${BASH_VERSION}" >&2
+  else
+    printf 'lint-oracle-blind-invocations: requires bash >= 5, found %s\n' "${BASH_VERSION}" >&2
+  fi
+  # Being sourced is the only way to reach here holding a candidate, since the
+  # exec above is what a run would have taken. A `return` leaves the sourcing
+  # shell alive where an `exit` would kill it over a usage mistake.
+  [ "${BASH_SOURCE[0]}" = "$0" ] || return 2
   exit 2
 fi
 
@@ -323,14 +334,22 @@ _obi_rewrite_line() {
 # Per-file scan
 # ---------------------------------------------------------------------------
 
-# _obi_scan_file <rel>: emit one report line per finding. Two shapes, both
-# exit-worthy: `blind` for a command the anchors do not see, and `unprobeable`
-# for a file whose rewritten form does not parse, which leaves the file's
-# blindness unmeasured rather than clean.
+# _obi_scan_file <rel>: emit one report line per finding. Three shapes, all
+# exit-worthy: `blind` for a command the anchors do not see, `unprobeable` for a
+# file whose rewritten form does not parse, and `unreadable` for one the scan
+# cannot open. The last two say the same thing about a different cause -- the
+# file's blindness went unmeasured -- and both are reported rather than skipped,
+# because a skip there rebuilds the silence this check exists to end one level
+# up: the read loop over an unopenable file simply never runs, and a file
+# yielding no candidates is indistinguishable from a clean one.
 _obi_scan_file() {
   local rel="$1" file="$REPO_ROOT/$1"
   local line lineno=0 body="" out i w
   local -a starts=() logicals=()
+  if [ ! -r "$file" ]; then
+    printf '%s: unreadable: the scan cannot open this file, so the oracle'"'"'s blindness here is unmeasured\n' "$rel"
+    return 0
+  fi
   _obi_rel="$rel"
   _OBI_N=0; _OBI_ALIASES=""; _OBI_TEXT=(); _OBI_LINENO=(); _OBI_OUT=""
 
@@ -426,22 +445,43 @@ _obi_scan_file() {
         "$rel" "${_OBI_LINENO[$i]}" "${recs_of[pick]}" "${nprobe[pick]}" "${_OBI_TEXT[$i]}"
     fi
   done
+  # Explicit, so the caller's status check below is reading this function's
+  # verdict rather than whatever the last loop iteration happened to leave.
+  return 0
 }
 
 # ---------------------------------------------------------------------------
 # Drive
 # ---------------------------------------------------------------------------
 
+# The walk is CAPTURED rather than streamed through a process substitution, so
+# its status survives to be read; the sibling lint-errexit-source-guard.sh takes
+# the same shape and names the same two inputs. A subdirectory whose mode denies
+# read makes `find` report and exit non-zero while still printing the rest, so a
+# discarded status hands the scan a partial surface and calls it complete. And a
+# root that is a SYMLINK to a directory satisfies `-d` but is not descended
+# without `-H`, which skips the whole root with no diagnostic at all. Reporting
+# clean over files never read is the one verdict this check may not produce.
+#
+# An ABSENT root stays tolerated, which is where this departs from the sibling:
+# the suite drives the real script against fixture trees that create only some
+# of the roots on purpose, and the zero-files arm below is what catches a scan
+# that resolved nothing at all.
 scan_files=()
+if ! walked="$(
+  for r in ${SCAN_ROOTS[@]+"${SCAN_ROOTS[@]}"}; do
+    [ -d "$REPO_ROOT/$r" ] || continue
+    find -H "$r" -type f -name '*.sh' || exit 1
+  done | LC_ALL=C sort -u
+)"; then
+  printf 'lint-oracle-blind-invocations: the scan walk failed, so the surface it resolved is partial; refusing to report on it\n' >&2
+  exit 2
+fi
 while IFS= read -r f; do
   [ -n "$f" ] || continue
   case "$f" in */tests/*) continue ;; esac
   scan_files[${#scan_files[@]}]="${f#./}"
-done < <(
-  for r in ${SCAN_ROOTS[@]+"${SCAN_ROOTS[@]}"}; do
-    [ -d "$REPO_ROOT/$r" ] && find "$r" -type f -name '*.sh'
-  done | LC_ALL=C sort -u
-)
+done <<<"$walked"
 
 if [ "${#scan_files[@]}" -eq 0 ]; then
   printf 'lint-oracle-blind-invocations: the scan roots resolved zero tracked files\n' >&2
@@ -451,7 +491,10 @@ fi
 report=""
 for f in ${scan_files[@]+"${scan_files[@]}"}; do
   [ -f "$REPO_ROOT/$f" ] || continue
-  hits="$(_obi_scan_file "$f")"
+  if ! hits="$(_obi_scan_file "$f")"; then
+    printf 'lint-oracle-blind-invocations: the scan of %s aborted, so its blindness is unmeasured\n' "$f" >&2
+    exit 2
+  fi
   [ -z "$hits" ] || report="$report$hits"$'\n'
 done
 

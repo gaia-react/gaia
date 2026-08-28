@@ -133,14 +133,21 @@ unarmed() {
 
 # uncovered <roots>: reads candidate paths on stdin and prints the ones no root
 # in <roots> contains. Empty output means the roots cover every candidate.
+#
+# The roots are split onto lines and read one at a time rather than iterated as
+# an unquoted word list, for the reason `unarmed` above states: an unquoted list
+# in a `for` is pathname-expanded against the working tree before the loop
+# starts. Both helpers take their list from the same derivation, so the reason
+# has to survive in both of them rather than in whichever one carries a comment.
 uncovered() {
   local roots="$1" f r hit
   while IFS= read -r f; do
     [ -n "$f" ] || continue
     hit=0
-    for r in $roots; do
+    while IFS= read -r r; do
+      [ -n "$r" ] || continue
       case "$f" in "$r"/*) hit=1; break ;; esac
-    done
+    done <<<"${roots// /$'\n'}"
     [ "$hit" -eq 1 ] || printf '%s\n' "$f"
   done
 }
@@ -414,6 +421,50 @@ uncovered() {
   run_lint
   [ "$status" -eq 1 ]
   grep -qF -- "unprobeable" <<<"$output"
+}
+
+# The same verdict for the other ways a file goes unread. Each of these is the
+# check's own declared failure class turned back on itself: the scan resolves a
+# surface, reads less of it than it resolved, and reports clean over the
+# difference. A skip anywhere here rebuilds the silence the whole check exists
+# to end, one level up from the anchors.
+
+@test "reports a file it cannot open rather than passing it" {
+  new_fixture
+  plant 'if .gaia/scripts/target.sh; then :; fi'
+  chmod 000 "$TMP/.claude/hooks/probe.sh"
+  run_lint
+  # Restored before the assertions, so a failing arm cannot leave a mode behind
+  # that teardown's own rm has to fight.
+  chmod 644 "$TMP/.claude/hooks/probe.sh"
+  [ "$status" -eq 1 ]
+  grep -qF -- "unreadable" <<<"$output"
+}
+
+@test "refuses rather than reporting clean when a subdirectory blocks the walk" {
+  new_fixture
+  mkdir -p "$TMP/.claude/hooks/lib"
+  printf '#!/usr/bin/env bash\nset -euo pipefail\nif .gaia/scripts/target.sh; then :; fi\n' \
+    > "$TMP/.claude/hooks/lib/blind.sh"
+  chmod 000 "$TMP/.claude/hooks/lib"
+  run_lint
+  chmod 755 "$TMP/.claude/hooks/lib"
+  [ "$status" -eq 2 ]
+  grep -qF -- "partial" <<<"$output"
+}
+
+@test "descends a scan root that is a symlink to a directory" {
+  new_fixture
+  # `[ -d ]` follows the symlink, so the root passes the presence guard; only
+  # the walk decides whether anything under it is ever read.
+  mkdir -p "$TMP/real-hooks"
+  rm -rf "$TMP/.claude/hooks"
+  ln -s "$TMP/real-hooks" "$TMP/.claude/hooks"
+  printf '#!/usr/bin/env bash\nset -euo pipefail\nif .gaia/scripts/target.sh; then :; fi\n' \
+    > "$TMP/real-hooks/probe.sh"
+  run_lint
+  [ "$status" -eq 1 ]
+  grep -qF -- "probe.sh:3:" <<<"$output"
 }
 
 # ---------------------------------------------------------------------------
