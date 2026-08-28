@@ -158,6 +158,19 @@ teardown() {
   grep -qF -- "lint-errexit-status-read: clean" <<<"$output"
 }
 
+# The same wiring assertion for the oracle-blind invocation guard. Its own
+# correctness is covered by lint-oracle-blind-invocations.bats; this covers only
+# that the gate still invokes it.
+
+@test "shell-lint folds in the oracle-blind invocation guard pass and stays green on a clean tree" {
+  run env PATH="$STUB_DIR:$PATH" bash "$GATE"
+  [ "$status" -eq 0 ]
+  # The guard's OWN stderr proof line, for the same reason as above: it appears
+  # only if the guard actually ran, so a future edit dropping the invocation but
+  # leaving the header echo is caught.
+  grep -qF -- "lint-oracle-blind-invocations: clean" <<<"$output"
+}
+
 # The husky hooks are extensionless, so they match neither the *.sh nor the
 # *.bats discovery glob and need a pass of their own. Husky runs them as
 # `sh -e`, so that pass pins the dialect: shellcheck takes one dialect per
@@ -194,6 +207,24 @@ tracked_sh() {
   else
     printf '%s\n' "$last"
   fi
+}
+
+# gate_pass_headers: the name of every pass the gate announces, one per line,
+# read off the gate itself. A pass's header is the only thing that says it ran
+# whether or not it found anything, and the name is the part of that header
+# carrying no interpolation, so it is the part a test can match literally.
+#
+# The short read is the dangerous case here, not the empty one: a header shape
+# the `sed` below cannot read would drop that pass out of the set silently and
+# leave a caller asserting over a subset while its name still says every. So the
+# marker is counted a second way, by a plain literal match rather than by the
+# extraction, and a disagreement returns non-zero instead of a shorter list.
+gate_pass_headers() {
+  local raw names
+  raw="$(grep -c '"--> ' "$GATE")"
+  names="$(sed -n 's/^[[:space:]]*echo "--> \([^(:]*\).*/\1/p' "$GATE" | sed 's/[[:space:]]*$//')"
+  [ "$(printf '%s\n' "$names" | grep -c .)" -eq "$raw" ] || return 1
+  printf '%s\n' "$names"
 }
 
 # The bash-3.2 parse pass. Shellcheck models bash 5's grammar, so a construct
@@ -328,15 +359,27 @@ tracked_sh() {
   # Each absence is asserted against the pass's own header line, so a pass that
   # ran is caught whether or not it found anything. Written as the bad case plus
   # an explicit `return 1` per .claude/rules/bats-assertions.md.
-  grep -qF -- "shellcheck *.sh" <<<"$output" && return 1
-  grep -qF -- "shellcheck *.bats" <<<"$output" && return 1
-  grep -qF -- "shellcheck .husky/*" <<<"$output" && return 1
-  grep -qF -- "lint-hook-array-guard" <<<"$output" && return 1
-  grep -qF -- "lint-git-path-quoting" <<<"$output" && return 1
-  grep -qF -- "lint-workflow-run-interpolation" <<<"$output" && return 1
-  grep -qF -- "lint-grep-ere-escapes" <<<"$output" && return 1
-  grep -qF -- "lint-errexit-status-read" <<<"$output" && return 1
-  true
+  #
+  # The set is derived from the gate rather than listed here. The list this
+  # replaced was hand-written and had already fallen one pass behind the gate:
+  # it never named lint-errexit-source-guard, so moving that invocation above
+  # the early exit would have left the test green while the 10x-billed macOS leg
+  # silently started paying for a pass whose verdict does not depend on the host
+  # interpreter -- the exact short read .claude/rules/bats-assertions.md names.
+  local p seen=0
+  while IFS= read -r p; do
+    [ -n "$p" ] || continue
+    seen=$(( seen + 1 ))
+    case "$p" in "bash-3.2 parse") continue ;; esac
+    grep -qF -- "--> $p" <<<"$output" && return 1
+  done < <(gate_pass_headers)
+  # An empty or refused derivation would make every absence above vacuously
+  # true, and a set holding only the pass this flag runs would assert nothing at
+  # all, so the loop has to have consumed more than the one name it skips. The
+  # parse pass has to be in the set too, or that skip is skipping nothing and
+  # the assertion below it would red on the pass the flag exists to run.
+  [ "$seen" -gt 1 ]
+  [ "$(gate_pass_headers | grep -cxF 'bash-3.2 parse')" -eq 1 ]
 }
 
 @test "--only bash32-parse runs with no shellcheck on PATH at all" {
