@@ -1378,7 +1378,13 @@ EOF
   # The arm above skips on both, and an author who has just renamed or added one
   # of the two files is the one likeliest to meet the second. Told the first
   # reason, they go and inspect their clone's history instead of their own diff.
+  #
+  # Both statuses are driven here, because what the name claims is that the two
+  # are APART. An arm driving one of them stays green when they collapse back
+  # into a single status, which is the defect it is named for.
   local repo="$BATS_TEST_TMPDIR/norepo" dir="$BATS_TEST_TMPDIR/norepo-base" rc=0
+  local nohist="$BATS_TEST_TMPDIR/nohist" nodir="$BATS_TEST_TMPDIR/nohist-base" nrc=0
+  # A fork point that resolves, over a tree carrying neither file.
   git init -q --initial-branch=main "$repo"
   git -C "$repo" config user.email t@example.com
   git -C "$repo" config user.name T
@@ -1388,6 +1394,18 @@ EOF
   git -C "$repo" commit -q -m base
   base_checker "$repo" "$dir" || rc=$?
   [ "$rc" -eq 2 ]
+  # A repository whose HEAD reaches none of the refs fork_point tries: no
+  # remote, and a default branch under a name none of them spells. This is the
+  # depth-1 CI checkout's shape, reproduced without a shallow clone.
+  git init -q --initial-branch=topic "$nohist"
+  git -C "$nohist" config user.email t@example.com
+  git -C "$nohist" config user.name T
+  git -C "$nohist" config commit.gpgsign false
+  printf 'unrelated\n' >"$nohist/README"
+  git -C "$nohist" add -A
+  git -C "$nohist" commit -q -m base
+  base_checker "$nohist" "$nodir" || nrc=$?
+  [ "$nrc" -eq 1 ]
 }
 
 @test "a before side whose oracle sees less reach fails the fork-point comparison" {
