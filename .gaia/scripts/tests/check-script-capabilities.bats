@@ -616,6 +616,161 @@ curl -sS https://example.com/x'
   true
 }
 
+@test "a bare path alone on a line inside an array literal is an element, not a call" {
+  # The `^` arm's negative for the shape the here-document arm above does not
+  # cover. An array element and a bare execution are the same bytes on the same
+  # line; only the state carried from `files=(` separates them, and the splitter
+  # is where that state lives.
+  repo="$(make_fixture_repo barearray)"
+  add_script "$repo" a/s.sh '#!/usr/bin/env bash
+files=(
+.github/audit/base.sh
+)
+printf "%s\n" "${files[0]}"'
+  add_script "$repo" .github/audit/base.sh '#!/usr/bin/env bash
+curl -sS https://example.com/x'
+  write_allow "$repo" "Bash(bash a/s.sh:*)"
+  write_manifest "$repo" '[{"script":"a/s.sh","capabilities":[],
+    "why":"names the resolver as an array element","maintainer_only":false}]'
+  run bash "$CHECK" "$repo"
+  [ "$status" -eq 0 ]
+  grep -qE '^(UNDECLARED|SURPLUS|UNRESOLVED)' <<<"$output" && return 1
+  true
+}
+
+@test "a bare path alone on a line inside a multi-line message string is prose, not a call" {
+  # The same `^` arm negative for the shape this tree actually carries: a deny
+  # message spanning real lines, with a script path opening one of them.
+  repo="$(make_fixture_repo baremultiline)"
+  add_script "$repo" a/s.sh '#!/usr/bin/env bash
+reason="the resolver cannot answer.
+
+.github/audit/base.sh exited non-zero, so the member set is unknown.
+"
+printf "%s\n" "$reason"'
+  add_script "$repo" .github/audit/base.sh '#!/usr/bin/env bash
+curl -sS https://example.com/x'
+  write_allow "$repo" "Bash(bash a/s.sh:*)"
+  write_manifest "$repo" '[{"script":"a/s.sh","capabilities":[],
+    "why":"names the resolver in a multi-line message","maintainer_only":false}]'
+  run bash "$CHECK" "$repo"
+  [ "$status" -eq 0 ]
+  grep -qE '^(UNDECLARED|SURPLUS|UNRESOLVED)' <<<"$output" && return 1
+  true
+}
+
+@test "a multi-line string ending mid-line does not swallow the call beside it" {
+  # The positive that bounds the two negatives above. Suppressing a whole line
+  # because a string opened on an earlier one would lose a real call written
+  # after the closing quote, and that loss is silent.
+  repo="$(make_fixture_repo baremultilineresume)"
+  add_script "$repo" a/s.sh '#!/usr/bin/env bash
+reason="first
+second" && .github/audit/base.sh --now'
+  add_script "$repo" .github/audit/base.sh '#!/usr/bin/env bash
+curl -sS https://example.com/x'
+  write_allow "$repo" "Bash(bash a/s.sh:*)"
+  write_manifest "$repo" '[{"script":"a/s.sh","capabilities":[],
+    "why":"runs the resolver after a multi-line message","maintainer_only":false}]'
+  run bash "$CHECK" "$repo"
+  [ "$status" -eq 1 ]
+  grep -qF -- "UNDECLARED a/s.sh invokes:.github/audit/base.sh" <<<"$output"
+}
+
+@test "a call inside a multi-line command substitution is still a call" {
+  # The other bound. A substitution body is code however many lines it spans,
+  # so the state that suppresses a string body must not suppress this.
+  repo="$(make_fixture_repo baremultilinesubst)"
+  add_script "$repo" a/s.sh '#!/usr/bin/env bash
+out="$(
+  .github/audit/base.sh --x
+)"
+printf "%s\n" "$out"'
+  add_script "$repo" .github/audit/base.sh '#!/usr/bin/env bash
+curl -sS https://example.com/x'
+  write_allow "$repo" "Bash(bash a/s.sh:*)"
+  write_manifest "$repo" '[{"script":"a/s.sh","capabilities":[],
+    "why":"runs the resolver inside a multi-line substitution","maintainer_only":false}]'
+  run bash "$CHECK" "$repo"
+  [ "$status" -eq 1 ]
+  grep -qF -- "UNDECLARED a/s.sh invokes:.github/audit/base.sh" <<<"$output"
+}
+
+@test "a bare path behind a separator inside a double-quoted span is prose, not a call" {
+  # The negatives for the separator arms. A `;`, `|`, or `&` inside a span is
+  # text the shell never acts on, and each one puts the path that follows it in
+  # what the anchor reads as command position.
+  repo="$(make_fixture_repo baresepspan)"
+  add_script "$repo" a/s.sh '#!/usr/bin/env bash
+printf "%s\n" "usage; .github/audit/base.sh --member X"
+msg="pipeline | .github/audit/base.sh runs later"
+amp="queued & .github/audit/base.sh after that"
+printf "%s %s\n" "$msg" "$amp"'
+  add_script "$repo" .github/audit/base.sh '#!/usr/bin/env bash
+curl -sS https://example.com/x'
+  write_allow "$repo" "Bash(bash a/s.sh:*)"
+  write_manifest "$repo" '[{"script":"a/s.sh","capabilities":[],
+    "why":"names the resolver in three messages","maintainer_only":false}]'
+  run bash "$CHECK" "$repo"
+  [ "$status" -eq 0 ]
+  grep -qE '^(UNDECLARED|SURPLUS|UNRESOLVED)' <<<"$output" && return 1
+  true
+}
+
+@test "a bare path behind a keyword inside a double-quoted span is prose, not a call" {
+  # The negatives for the keyword arms, which fabricate the same edge without a
+  # separator anywhere on the line.
+  repo="$(make_fixture_repo barekwspan)"
+  add_script "$repo" a/s.sh '#!/usr/bin/env bash
+printf "%s\n" "if the marker is stale then .github/audit/base.sh rewrites it"
+loop="for each tree do .github/audit/base.sh once"
+printf "%s\n" "$loop"'
+  add_script "$repo" .github/audit/base.sh '#!/usr/bin/env bash
+curl -sS https://example.com/x'
+  write_allow "$repo" "Bash(bash a/s.sh:*)"
+  write_manifest "$repo" '[{"script":"a/s.sh","capabilities":[],
+    "why":"names the resolver in two messages","maintainer_only":false}]'
+  run bash "$CHECK" "$repo"
+  [ "$status" -eq 0 ]
+  grep -qE '^(UNDECLARED|SURPLUS|UNRESOLVED)' <<<"$output" && return 1
+  true
+}
+
+@test "a bare path behind a real separator outside a quoted span is still a call" {
+  # The bound on both span negatives. The separator arms exist for lines like
+  # these, and blanking a separator that is not inside quotes would lose them.
+  repo="$(make_fixture_repo baresepreal)"
+  add_script "$repo" a/s.sh '#!/usr/bin/env bash
+printf "start\n"; .github/audit/base.sh --after-sep'
+  add_script "$repo" .github/audit/base.sh '#!/usr/bin/env bash
+curl -sS https://example.com/x'
+  write_allow "$repo" "Bash(bash a/s.sh:*)"
+  write_manifest "$repo" '[{"script":"a/s.sh","capabilities":[],
+    "why":"runs the resolver after a separator","maintainer_only":false}]'
+  run bash "$CHECK" "$repo"
+  [ "$status" -eq 1 ]
+  grep -qF -- "UNDECLARED a/s.sh invokes:.github/audit/base.sh" <<<"$output"
+}
+
+@test "a quoted bare-path execution keeps its call when the anchor is outside the quotes" {
+  # The bound the span blanking is easiest to overshoot. This tree executes a
+  # script through a quoted path whose directory is a variable, and the token
+  # sits inside the span while the anchor does not. Blanking the span rather
+  # than the anchors inside it would lose exactly this.
+  repo="$(make_fixture_repo barequotedexec)"
+  add_script "$repo" a/s.sh '#!/usr/bin/env bash
+d=.github/audit
+"$d/base.sh" 2>/dev/null || true'
+  add_script "$repo" .github/audit/base.sh '#!/usr/bin/env bash
+curl -sS https://example.com/x'
+  write_allow "$repo" "Bash(bash a/s.sh:*)"
+  write_manifest "$repo" '[{"script":"a/s.sh","capabilities":[],
+    "why":"runs the resolver through a quoted path","maintainer_only":false}]'
+  run bash "$CHECK" "$repo"
+  [ "$status" -eq 1 ]
+  grep -qF -- "UNDECLARED a/s.sh invokes:.github/audit/base.sh" <<<"$output"
+}
+
 @test "a write built from a literal prefix and a variable tail generalizes to a glob" {
   repo="$(make_fixture_repo prefixglob)"
   add_script "$repo" .gaia/scripts/w.sh '#!/usr/bin/env bash

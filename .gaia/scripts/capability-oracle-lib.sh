@@ -65,6 +65,12 @@ fi
 # script's closure, and a subshell per call turns that into minutes.
 _GAIA_CAPCHECK_RET=""
 
+# The quoting contexts still open at the end of the last logical line, read and
+# written by _gaia_capcheck_quote_carry below. Initialized here so a detector
+# driven directly, which a test does, reads an empty stack rather than tripping
+# `set -u` on a variable only the splitter would otherwise have set.
+_GAIA_CAPCHECK_QSTATE=""
+
 # ---------------------------------------------------------------------------
 # Lexical helpers
 # ---------------------------------------------------------------------------
@@ -139,12 +145,12 @@ _GAIA_CAPCHECK_QUOTED_WORDS=" mkdir rm touch tee install mktemp cp mv ln sed fin
 # not "can this appear in a path" but "does it delimit a command-word-shaped
 # component of a real operand here".
 #
-# The second is #1536's direction, and it is the one reading gets wrong. Blanking
-# leaves a SPACE where the word was, every anchor admits a run of whitespace
-# after its boundary, so a bound that is itself an anchor boundary bridges across
-# the blanked word to whatever follows it and fabricates a CALL edge into a
-# script's whole subtree. `;`, `&` and `|` are exactly that: each sits in
-# _GAIA_CAPCHECK_PATHCMD's boundary class, and admitting any one of them turned
+# The second is the fabricated-call direction, and it is the one reading gets
+# wrong. Blanking leaves a SPACE where the word was, every anchor admits a run
+# of whitespace after its boundary, so a bound that is itself an anchor boundary
+# bridges across the blanked word to whatever follows it and fabricates a CALL
+# edge into a script's whole subtree. `;`, `&` and `|` are exactly that: each
+# sits in _GAIA_CAPCHECK_PATHCMD's boundary class, and admitting any one turned
 # 39 measured shapes per character from silent into a fabricated call, against 6
 # it fixed. They are excluded on that measurement.
 #
@@ -279,9 +285,9 @@ _gaia_capcheck_span_has_word() {
 # a backslash-escaped `\$(` or backtick, which reads as a live substitution
 # rather than the literal it is. It skips a substitution-carrying line whenever
 # any of the three conditions in the two paragraphs above holds. And it is per
-# logical line, so a double-quoted string spanning several real lines is only
-# recognized on the line that opens it; the joiner joins backslash
-# continuations, not string bodies.
+# logical line: the body of a string spanning several real lines never reaches
+# it at all, because the splitter drops that body before offering the line, so
+# what arrives here is always a span that opens and closes on one line.
 
 # _gaia_capcheck_subst_forces_skip <text>: 0 when some command substitution on
 # the line makes the blanker unsafe, 1 when none does. It is the predicate the
@@ -556,19 +562,150 @@ _gaia_capcheck_heredoc_delim() {
   _GAIA_CAPCHECK_RET="$d"
 }
 
+# _gaia_capcheck_quote_carry <text>: the cross-line quoting state the splitter
+# below needs, and the only place in this file that reads a line character by
+# character.
+#
+# Reads and writes _GAIA_CAPCHECK_QSTATE, a stack of the contexts still open at
+# the end of the last logical line: `D` a double-quoted span, `S` a
+# single-quoted one, `A` an array literal, `P` a `$( )` substitution, `B` a
+# backtick one. It leaves the state after <text> in that variable, and in
+# _GAIA_CAPCHECK_RET the part of <text> that is CODE: when a `D`, `S`, or `A`
+# frame was already open on entry, everything up to and including the character
+# that closes it is dropped, because it is the body of a string or the elements
+# of an array the previous line opened.
+#
+# `P` and `B` on top mean the opposite: the body of a command substitution IS
+# code, and a call inside a multi-line one is real reach, so a line entered
+# under either is passed through whole.
+#
+# Only the carried prefix is dropped, never a span opened and closed within the
+# line. A line may end its carried string and then carry real code
+# (`line2" && bash x.sh`), and dropping the whole line would lose that call
+# silently. The blanker above owns what happens to a span that opens and closes
+# on one line, and its asymmetry -- an operand inside the quotes is kept -- is
+# what this must not disturb.
+#
+# The stack, rather than a quote parity, is what separates a string body from
+# code. `x="$(jq -r '` opens three contexts and the lines that follow are a jq
+# program; `msg="text` opens one and the lines that follow are prose; but
+# `pair_records="$(` opens two and the lines that follow are ordinary shell
+# whose writes and calls are real reach. A parity reading cannot tell the third
+# from the second, and suppressing it would lose every call inside a multi-line
+# command substitution -- the silent direction.
+#
+# The array frame opens on `=(` alone, never on a bare `(`. A bare one is a
+# subshell, a function definition, a `case` arm, or the second paren of `$((`,
+# and pushing a frame for any of those would suppress live code until the next
+# unmatched `)`. Requiring the assignment is what keeps every one of those out
+# without enumerating them: `$(` is consumed a character earlier by its own arm,
+# so it never reaches this test.
+#
+# A `#` at code level ends the scan: the rest is a trailing comment, and an
+# apostrophe in one (`# don't`) would otherwise open a span that never closes
+# and blind the oracle to every following line of the file.
+#
+# Deliberately incomplete in two directions, both of which fail toward today's
+# answer rather than toward silence. `$'...'` and `$"..."` are read as an
+# ordinary `$` followed by a quote, which is what they quote anyway. And a
+# heredoc body never reaches here, because the splitter consumes it before this
+# is called, so an unbalanced quote inside one cannot desynchronize the stack.
+_gaia_capcheck_quote_carry() {
+  local t="${1-}"
+  local st="$_GAIA_CAPCHECK_QSTATE"
+  local n=${#t}
+  local i=0 c top cut=-1 carry=0
+  case "${st: -1}" in
+    D|S|A) carry=${#st} ;;
+  esac
+  if [ -z "$st" ]; then
+    # Nothing open and nothing that can open a frame: the state is unchanged and
+    # the whole line is code. This is the overwhelming majority of lines, and the
+    # walk cannot afford a per-character pass over all of them. The test is on an
+    # EMPTY stack rather than on `carry`, because a line entered under `P` closes
+    # it with a `)` that carries no quoting character at all.
+    case "$t" in
+      *\"*|*\'*|*\`*|*\\*|*'$('*|*'=('*) ;;
+      *) _GAIA_CAPCHECK_RET="$t"; return 0 ;;
+    esac
+  fi
+  while [ "$i" -lt "$n" ]; do
+    c="${t:i:1}"
+    top="${st: -1}"
+    case "$top" in
+      S)
+        if [ "$c" = "'" ]; then st="${st%?}"; fi
+        ;;
+      D)
+        case "$c" in
+          \\) i=$((i + 1)) ;;
+          '"') st="${st%?}" ;;
+          '$') if [ "${t:i+1:1}" = '(' ]; then st="${st}P"; i=$((i + 1)); fi ;;
+          '`') st="${st}B" ;;
+        esac
+        ;;
+      *)
+        case "$c" in
+          \\) i=$((i + 1)) ;;
+          "'") st="${st}S" ;;
+          '"') st="${st}D" ;;
+          '$') if [ "${t:i+1:1}" = '(' ]; then st="${st}P"; i=$((i + 1)); fi ;;
+          '(') if [ "$i" -gt 0 ] && [ "${t:i-1:1}" = '=' ]; then st="${st}A"; fi ;;
+          ')') case "$top" in P|A) st="${st%?}" ;; esac ;;
+          '`') if [ "$top" = B ]; then st="${st%?}"; else st="${st}B"; fi ;;
+          '#')
+            if [ "$i" -eq 0 ]; then break; fi
+            case "${t:i-1:1}" in
+              [[:space:]]) break ;;
+            esac
+            ;;
+        esac
+        ;;
+    esac
+    i=$((i + 1))
+    if [ "$cut" -lt 0 ] && [ "$carry" -gt 0 ] && [ "${#st}" -lt "$carry" ]; then
+      cut="$i"
+    fi
+  done
+  _GAIA_CAPCHECK_QSTATE="$st"
+  if [ "$carry" -eq 0 ]; then
+    _GAIA_CAPCHECK_RET="$t"
+  elif [ "$cut" -lt 0 ]; then
+    _GAIA_CAPCHECK_RET=""
+  else
+    _GAIA_CAPCHECK_RET="${t:cut}"
+  fi
+  return 0
+}
+
 # _gaia_capcheck_logical_lines <file>: prints one record per NON-COMMENT
 # logical line as `<first-lineno>\t<shellcheck-source-or-->\t<text>`.
 #
-# Three things happen here rather than in the detectors. Backslash
+# Four things happen here rather than in the detectors. Backslash
 # continuations are joined, so a `gh api` and the `--method POST` on its
 # continuation line are one line to the oracle. Here-document bodies are
-# dropped. And a `# shellcheck source=<path>` directive on the immediately
+# dropped. A `# shellcheck source=<path>` directive on the immediately
 # preceding line rides along with the line it annotates, which is how idiom 5
-# reaches the invocation it describes.
+# reaches the invocation it describes. And the body of a quoted span that an
+# earlier line opened is dropped, through _gaia_capcheck_quote_carry above.
+#
+# That last one is why a line is not offered to the detectors just because it
+# stands alone in the file. A repo path sitting at the start of a line inside an
+# array literal or a multi-line message string is bytes-identical to a bare
+# execution, and every anchor downstream reads it as one; only the state carried
+# from the lines before it can tell the two apart.
+#
+# The comment and blank-line arms below are skipped while a STRING or array
+# frame is open, for the same reason: inside one a leading `#` is prose, not a
+# comment, and an empty line is content. Consuming either without scanning it
+# would also leave the carried state describing a line the scan never saw. An
+# open `$( )` is not such a frame: its body is code, where a leading `#` really
+# does start a comment, so those arms still apply under it.
 _gaia_capcheck_logical_lines() {
   local file="$1"
   [ -f "$file" ] || return 0
-  local line trimmed lineno=0 start=0 acc="" cur_sc="-" pending_sc="-" cont=0 hd=""
+  local line trimmed lineno=0 start=0 acc="" cur_sc="-" pending_sc="-" cont=0 hd="" inbody=0
+  _GAIA_CAPCHECK_QSTATE=""
   while IFS= read -r line || [ -n "$line" ]; do
     lineno=$((lineno + 1))
     if [ -n "$hd" ]; then
@@ -576,7 +713,11 @@ _gaia_capcheck_logical_lines() {
       if [ "$trimmed" = "$hd" ] || [ "$line" = "$hd" ]; then hd=""; fi
       continue
     fi
-    if [ "$cont" -eq 0 ]; then
+    inbody=0
+    case "${_GAIA_CAPCHECK_QSTATE: -1}" in
+      D|S|A) inbody=1 ;;
+    esac
+    if [ "$cont" -eq 0 ] && [ "$inbody" -eq 0 ]; then
       trimmed="${line#"${line%%[![:space:]]*}"}"
       if [ -z "$trimmed" ]; then pending_sc="-"; continue; fi
       case "$trimmed" in
@@ -592,6 +733,8 @@ _gaia_capcheck_logical_lines() {
           ;;
       esac
       start="$lineno"; acc="$line"; cur_sc="$pending_sc"; pending_sc="-"
+    elif [ "$cont" -eq 0 ]; then
+      start="$lineno"; acc="$line"; cur_sc="$pending_sc"; pending_sc="-"
     else
       acc="$acc $line"
     fi
@@ -599,13 +742,19 @@ _gaia_capcheck_logical_lines() {
       *\\) acc="${acc%\\}"; cont=1; continue ;;
     esac
     cont=0
-    printf '%s\t%s\t%s\n' "$start" "$cur_sc" "$acc"
-    _gaia_capcheck_heredoc_delim "$acc"
-    hd="$_GAIA_CAPCHECK_RET"
+    _gaia_capcheck_quote_carry "$acc"
+    acc="$_GAIA_CAPCHECK_RET"
+    if [ -n "$acc" ]; then
+      printf '%s\t%s\t%s\n' "$start" "$cur_sc" "$acc"
+      _gaia_capcheck_heredoc_delim "$acc"
+      hd="$_GAIA_CAPCHECK_RET"
+    fi
     acc=""
   done < "$file"
   if [ "$cont" -eq 1 ]; then
-    printf '%s\t%s\t%s\n' "$start" "$cur_sc" "$acc"
+    _gaia_capcheck_quote_carry "$acc"
+    acc="$_GAIA_CAPCHECK_RET"
+    [ -n "$acc" ] && printf '%s\t%s\t%s\n' "$start" "$cur_sc" "$acc"
   fi
   return 0
 }
@@ -1821,8 +1970,8 @@ _GAIA_CAPCHECK_CMD='(^|[[:space:]|&;(`$])'
 #
 # That leaves one uncovered case rather than a class: _gaia_capcheck_strip_
 # quoted_code bails on a whole line carrying a `$(` or a backtick and blanks
-# nothing on it (#1536), so a `.` written as prose on such a line survives. The
-# hole is the blanker's and this list widens what can fall into it.
+# nothing on it, so a `.` written as prose on such a line survives. The hole is
+# the blanker's and this list widens what can fall into it.
 #
 # The same three keywords are deliberately NOT on _GAIA_CAPCHECK_PATHCMD, and
 # that constant's header owns the reason: no blanking reaches a repo path, so
@@ -1890,15 +2039,23 @@ _GAIA_CAPCHECK_DOTCMD='(^|[;|&(`{}]|(^|[[:space:]])(if|then|else|do|elif|while|u
 #   position are the same bytes, so accepting bare whitespace would make every
 #   path-shaped token inside a sentence a call.
 #
-# It also OVER-reads, on every arm rather than any one: nothing blanks a repo
-# path inside a double-quoted span, the same fact that narrows `(` to `$(`
-# above, so any anchor character surviving inside one fabricates a CALL edge
-# into a subtree the caller never runs. A path in a message string and a path in
-# command position are the same bytes once the quoting is invisible, so no
-# per-arm narrowing reaches this: the repair is not this anchor's, and #1536
-# carries where it does belong. Mostly it fails closed and loud, not wholly: a
-# fabricated edge can mask a real SURPLUS by making a declared-but-unreached
-# term look reached.
+# It also OVER-read, on every arm rather than any one, and the repair is not
+# this anchor's: nothing blanks a repo path inside a double-quoted span, the
+# same fact that narrows `(` to `$(` above, so any anchor character surviving
+# inside one fabricated a CALL edge into a subtree the caller never runs. A path
+# in a message string and a path in command position are the same bytes once the
+# quoting is invisible, so no per-arm narrowing reaches it. Two functions
+# upstream carry it instead: the splitter drops the body of a string or an array
+# literal that an earlier line opened, and
+# _gaia_capcheck_blank_quoted_anchors removes the separators and keywords this
+# pattern reads as command position from inside a span on one line.
+#
+# What remains open is that second function's own stated bail: a line carrying
+# `$(` or a backtick keeps its anchors, because a separator inside a
+# substitution body is real. So a repo path behind a `;` inside a span on such a
+# line still fabricates an edge. That failure is mostly closed and loud, not
+# wholly: a fabricated edge can mask a real SURPLUS by making a
+# declared-but-unreached term look reached.
 #
 # The keyword arm is FLATTENED rather than nested, which _GAIA_CAPCHECK_DOTCMD
 # has no reason to do and this constant does: its one and only caller reads the
@@ -2236,6 +2393,74 @@ _gaia_capcheck_scan_invocations() {
   return 0
 }
 
+# _gaia_capcheck_blank_quoted_anchors <text>: inside every DOUBLE-quoted span,
+# blanks the command separators and keyword words that
+# _GAIA_CAPCHECK_PATHCMD reads as command position, leaving the result in
+# _GAIA_CAPCHECK_RET. Only _gaia_capcheck_scan_bare_invocations reads this; every
+# other detector sees the blanker's output unchanged.
+#
+# A `;`, `|`, `&`, or a `then`/`else`/`do`/`elif`/`!` inside a double-quoted span
+# is text, not a separator and not a keyword: the shell will never act on any of
+# them. The anchor cannot tell, so `printf "%s\n" "usage; .gaia/scripts/x.sh"`
+# reads as an execution of a script the line only names.
+#
+# It is the bare-path scanner alone that needs this, and that is a property of
+# the blanker above rather than of this family. The blanker removes a command
+# word inside a span, so a quoted `bash lib/x.sh` in prose is already defused for
+# the interpreter-prefixed scanner. It deliberately does NOT remove a path,
+# because a real invocation's operand routinely sits inside the quotes. A bare
+# path execution is the one shape where the path IS the command word, so it is
+# the one shape that survives the blanker as a fabricated call.
+#
+# Which is also why the repair cannot be "blank the path too". `bash "$dir/x.sh"`
+# and `"$script_dir/x.sh" 2>/dev/null` are both live in this tree and both keep
+# their token inside the quotes; what separates them from prose is the anchor,
+# not the token. Removing the anchor removes exactly the difference.
+#
+# Deliberately incomplete in two directions, both of which keep today's answer
+# rather than losing a call. A line carrying `$(` or a backtick is left ALONE:
+# the substitution body is code, its separators are real, and blanking one there
+# would merge two commands and drop the second out of command position -- the
+# silent direction. And a `\"` reads as a span boundary, the same limit the
+# blanker above carries, so a line escaping a quote inside a span is read from
+# the wrong side of it.
+_gaia_capcheck_blank_quoted_anchors() {
+  local t="${1-}"
+  case "$t" in *'"'*) ;; *) _GAIA_CAPCHECK_RET="$t"; return 0 ;; esac
+  case "$t" in
+    *'$('*|*'`'*) _GAIA_CAPCHECK_RET="$t"; return 0 ;;
+  esac
+  local out="" head body word
+  while :; do
+    case "$t" in
+      *'"'*) ;;
+      *) out="$out$t"; break ;;
+    esac
+    head="${t%%\"*}"
+    out="$out$head"
+    t="${t#*\"}"
+    case "$t" in
+      *'"'*) body="${t%%\"*}"; t="${t#*\"}" ;;
+      *) body="$t"; t="" ;;
+    esac
+    case "$body" in *[\;\|\&]*) body="${body//[;|&]/ }" ;; esac
+    # Padded so a keyword at either end of the span still has the space on both
+    # sides that the anchor itself requires of it.
+    body=" $body "
+    for word in 'then' 'else' 'do' 'elif' '!'; do
+      while :; do
+        case "$body" in *" $word "*) ;; *) break ;; esac
+        body="${body//" $word "/"  "}"
+      done
+    done
+    body="${body# }"; body="${body% }"
+    out="$out\"$body\""
+    [ -n "$t" ] || break
+  done
+  _GAIA_CAPCHECK_RET="$out"
+  return 0
+}
+
 # _gaia_capcheck_scan_bare_invocations <repo_root> <rel> <sc> <text> <loc>:
 # the same `CALL`/`UNRESC` records for a script executed by its OWN path with
 # no interpreter word in front of it -- `BASE_REF="$(.github/audit/x.sh)"`.
@@ -2313,7 +2538,8 @@ _gaia_capcheck_file_sites() {
     _gaia_capcheck_detect_tmp "$stripped" && printf 'TERM\ttmp\t%s\n' "$loc"
     _gaia_capcheck_scan_writes "$repo_root" "$rel" "$stripped" "$loc"
     _gaia_capcheck_scan_invocations "$repo_root" "$rel" "$sc" "$stripped" "$loc"
-    _gaia_capcheck_scan_bare_invocations "$repo_root" "$rel" "$sc" "$stripped" "$loc"
+    _gaia_capcheck_blank_quoted_anchors "$stripped"
+    _gaia_capcheck_scan_bare_invocations "$repo_root" "$rel" "$sc" "$_GAIA_CAPCHECK_RET" "$loc"
   done < <(_gaia_capcheck_logical_lines "$file")
   return 0
 }

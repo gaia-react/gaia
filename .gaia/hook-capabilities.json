@@ -244,7 +244,6 @@
       "hook": ".claude/hooks/pr-merge-audit-check.sh",
       "capabilities": [
         "network",
-        "github-write",
         "tmp",
         "fs-write:**",
         "invokes:.claude/hooks/lib/audit-base-provenance.sh",
