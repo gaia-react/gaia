@@ -19,7 +19,12 @@
 # node_modules and stays fast.
 
 setup() {
-  HOOK_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.husky" && pwd)/pre-commit
+  REPO_ROOT=$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)
+  HOOK_ABS="$REPO_ROOT/.husky/pre-commit"
+
+  # The coverage guard below matches config globs with [[ == ]], and the
+  # brace groups it rewrites need extglob on at match time.
+  shopt -s extglob
 
   REPO=$(mktemp -d -t husky-pre-commit-XXXXXX)
   git -C "$REPO" init --quiet --initial-branch=main
@@ -145,4 +150,47 @@ assert_gate_skipped() {
 @test "a change matching no lintable directory skips the gate" {
   stage_and_run "docs/notes.md"
   assert_gate_skipped
+}
+
+# --- every hook arm's directory is reachable by lint-staged ---
+#
+# The arms above and .lintstagedrc.json's globs are the two halves of one
+# contract: an arm decides the gate runs, a glob decides lint-staged has
+# anything to hand ESLint. An arm no glob covers is the silent half of the
+# failure mode the header describes: the hook prints "running lint-staged",
+# lint-staged matches zero files and exits 0, and the commit lands with ESLint
+# skipped for that whole directory while typecheck and Vitest still report.
+#
+# The arm set is derived from the hook rather than restated here, and the count
+# of directories the derivation yields is checked against the number of arm
+# assignments, so an arm whose spelling drifts stops the guard rather than
+# quietly shrinking it.
+
+arm_dirs() {
+  sed -n "s/^HAS_[A-Z_]*_CHANGED=.*| grep '\\([^']*\\)'.*/\\1/p" "$HOOK_ABS"
+}
+
+@test "every pre-commit arm directory is covered by a lint-staged glob" {
+  local dirs derived assignments dir glob pattern covered
+  dirs=$(arm_dirs)
+  derived=$(printf '%s\n' "$dirs" | grep -c . || true)
+  assignments=$(grep -c '^HAS_[A-Z_]*_CHANGED=' "$HOOK_ABS")
+  [ "$derived" -gt 0 ]
+  [ "$derived" -eq "$assignments" ]
+
+  while IFS= read -r dir; do
+    covered=0
+    while IFS= read -r glob; do
+      # Brace alternation is the only glob syntax [[ == ]] cannot read; rewrite
+      # it to an extglob group. `*` already matches `/` inside [[ ]], so `**`
+      # needs no handling. No key carries a comma outside a brace group.
+      pattern=$(printf '%s\n' "$glob" | sed 's/{/@(/g; s/}/)/g; s/,/|/g')
+      # shellcheck disable=SC2053 # unquoted on purpose: $pattern is the glob.
+      if [[ "${dir}nested/file.ts" == $pattern ]]; then covered=1; fi
+    done < <(jq -r 'keys[]' "$REPO_ROOT/.lintstagedrc.json")
+    if [ "$covered" -ne 1 ]; then
+      printf 'hook arm %s has no matching .lintstagedrc.json glob\n' "$dir" >&2
+      return 1
+    fi
+  done <<<"$dirs"
 }
