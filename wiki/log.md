@@ -11,6 +11,17 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-08-29 e94e4d7 SKIP - oracle fixes + CI shard timing note; wiki/decisions/Sharded CI Test Matrix.md already updated within the commit itself
+- 2026-08-29 7406584 SKIP - added lint-oracle-blind-invocations.sh; wiki/concepts/Release Workflow.md already updated within the commit itself
+- 2026-08-29 97c3374 SKIP - docs-only, prose reflow of root CLAUDE.md
+- 2026-08-29 6881d35 SKIP - test-only change
+- 2026-08-29 ba3a172 SKIP - ci: dependency bump only
+- 2026-08-29 bb880d0 SKIP - internal precision fix to oracle's command-word boundary; no architecture/contract change, existing wiki description unaffected
+- 2026-08-29 a96f081 SKIP - internal precision fix to oracle's quote-skip predicate; no architecture/contract change, existing wiki description (Code Audit Team.md) still accurate
+- 2026-08-29 4a4d565 SKIP - test-only change
+- 2026-08-29 7f2011b SKIP - test-only change
+- 2026-08-29 01e7b33 SKIP - test-only change
+- 2026-08-29 ed6e0a7 SKIP - prior wiki-sync PR landing (#1603); wiki already reflects its own edits
 - 2026-08-27 09e86ece SKIP - internal bugfix to capability-oracle-lib.sh parse-check credit logic, no documented contract change
 - 2026-08-27 3f8e5eb0 SKIP - Issue Claim wiki page already brought to parity with the rule in-commit
 - 2026-08-27 e915e1b2 SKIP - hard-wrapped wikilink already rewrapped in-commit on Worthiness Audit page
