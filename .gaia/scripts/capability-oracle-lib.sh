@@ -71,6 +71,12 @@ _GAIA_CAPCHECK_RET=""
 # `set -u` on a variable only the splitter would otherwise have set.
 _GAIA_CAPCHECK_QSTATE=""
 
+# The substitutions _gaia_capcheck_quote_carry kept out of a carried string
+# body, returned beside _GAIA_CAPCHECK_RET rather than joined to it because the
+# two have different anchor provenance. Initialized here for the reason the
+# stack above is.
+_GAIA_CAPCHECK_QSUBS=""
+
 # 1 once a `)` or a backtick has closed a substitution that was ALREADY OPEN
 # when its line began, and the stack has not since returned to empty. The frame
 # such a close uncovers no longer decides whether the next line is string body,
