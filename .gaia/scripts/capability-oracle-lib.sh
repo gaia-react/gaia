@@ -87,8 +87,11 @@ _GAIA_CAPCHECK_QSUBS=""
 # nothing downstream reports a line the splitter never emitted.
 #
 # What this costs is enumerated where the gate is described below rather than
-# only here: the tail of a carried body after a nested multi-line substitution
-# closes inside it reads as code to the end of that line.
+# only here: the REST of a carried body after a nested multi-line substitution
+# closes inside it reads as code. Not the tail of the closing line alone. This
+# flag is cleared where it is set, in the per-character walk, and only when the
+# stack returns to empty, so it survives a line boundary and keeps every
+# remaining line of that body being read as code.
 #
 # A substitution opened and closed on ONE line does not set this, and that
 # distinction is what keeps the flag from swallowing the common case. Both its
@@ -633,15 +636,18 @@ _gaia_capcheck_heredoc_delim() {
 # the enclosing quote it uncovers is shadowed, so the rest of that body is read
 # as the code it is.
 #
-# What the gate gives up is the TAIL of a carried string or array body after a
-# multi-line substitution closes inside it: from that `)` to the end of the
-# line the body is read as code, so a repo path behind a `;` in the rest of
-# that message fabricates an edge. Not the other nesting, a string body inside
-# a substitution, which the depth rule gives up on its own whatever this flag
-# holds, because `carry` is 0 at any depth past one. The residual fails LOUD,
-# which is what makes the trade the right way round: the alternative is
-# suppressing the rest of a substitution body whose calls are real reach, and
-# nothing downstream reports a line the splitter never emitted.
+# What the gate gives up is the REST of a carried string or array body after a
+# multi-line substitution closes inside it: from that `)` to wherever the body
+# ends the text is read as code, so a repo path behind a `;` anywhere in the
+# rest of that message fabricates an edge. Every remaining line of the body,
+# not the tail of the closing line alone: the flag clears only when the stack
+# returns to empty and never at a line boundary, as its own declaration above
+# states. Not the other nesting, a string body inside a substitution, which
+# the depth rule gives up on its own whatever this flag holds, because `carry`
+# is 0 at any depth past one. The residual fails LOUD, which is what makes the
+# trade the right way round: the alternative is suppressing the rest of a
+# substitution body whose calls are real reach, and nothing downstream reports
+# a line the splitter never emitted.
 #
 # Only the carried prefix is dropped, never a span opened and closed within the
 # line. A line may end its carried string and then carry real code
