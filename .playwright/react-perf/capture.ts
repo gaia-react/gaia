@@ -3,8 +3,7 @@
 // collectRenderDump reads window.__renders / window.__bippyMeta and writes the
 // RawDump to .gaia/local/cache/<run>/renders.json (gitignored, auto-deleted on
 // process exit unless kept). The raw dump must never enter the model context;
-// the reduce CLI (.gaia/cli/src/react-perf/reduce.ts) produces the small
-// summary the skill reads.
+// `gaia react-perf reduce` produces the small summary the skill reads.
 
 /* eslint-disable no-underscore-dangle -- window.__renders / __bippyMeta /
    __PERF_NO_STRICT are the harness wire contract; the names are fixed by
