@@ -279,9 +279,9 @@ const sortedNames = (packages: Map<string, string[]>): string[] => {
 // for CONTAINMENT, not equality, because the files state a containment relation
 // rather than a shared one. Equality would be wrong: root legitimately carries
 // entries for packages `.gaia/cli` does not install, such as its `chokidar`
-// trust-policy exemption. But
-// omitting the lists entirely leaves the escape hatch for the very setting beside
-// them unguarded, so exempting a package in `.gaia/cli` alone would be invisible,
+// trust-policy exemption. But omitting the lists entirely leaves the escape hatch
+// for the very setting beside them unguarded, so exempting a package in
+// `.gaia/cli` alone would be invisible,
 // which is the likeliest real drift (a maintainer trips the window on a fresh
 // publish and exempts it locally). `.gaia/cli/pnpm-workspace.yaml` states the
 // direction outright: each entry earns its place against that workspace's closure,
@@ -594,8 +594,9 @@ describe('supply-chain hardening parity', () => {
   });
 
   // Containment, not equality. Root's lists are supersets by design, so equality
-  // would fail on entries like root's `chokidar`; but an entry present ONLY in `.gaia/cli`
-  // exempts a package from the setting above it in one workspace and not the other,
+  // would fail on entries like root's `chokidar`; but an entry present ONLY in
+  // `.gaia/cli` exempts a package from the setting above it in one workspace and
+  // not the other,
   // which is the asymmetric hardening this describe block exists to catch. The
   // two sides are compared as atoms; see `exemptionAtoms` above for why literal
   // membership cannot see a legitimate containment.
