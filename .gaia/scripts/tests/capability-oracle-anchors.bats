@@ -904,21 +904,27 @@ scanner_call_line() {
 }
 
 # anchor_boundary_chars <regex>: the boundary CHARACTERS of one anchor, one per
-# line. The anchor spells them as its first bracket expression; a POSIX class
-# spelled `[[:space:]]` cannot be it, because the anchor's own alternation puts
-# the character class first. Empty is a real answer for an anchor that has no
+# line. EVERY bracket expression the anchor carries, not the first: an
+# alternation may hold more than one, and reading only the first leaves an arm
+# named `every` green over a class it never saw, which is the same
+# drift-invisibility the arm exists to prevent one level up. POSIX classes are
+# dropped by `declass` first, so `[[:space:]]` contributes nothing rather than
+# contributing `:` and `space`. Empty is a real answer for an anchor with no
 # character boundaries, and the arm below says so rather than reading it as a
 # vocabulary it can skip.
 anchor_boundary_chars() {
-  local v cls i
-  v="$1"
-  case "$v" in *'['*) ;; *) return 0 ;; esac
-  cls="${v#*[}"
-  cls="${cls%%]*}"
-  i=0
-  while [ "$i" -lt "${#cls}" ]; do
-    printf '%s\n' "${cls:i:1}"
-    i=$((i + 1))
+  local rest cls i
+  rest="$(declass "$1")"
+  while :; do
+    case "$rest" in *'['*) ;; *) break ;; esac
+    cls="${rest#*[}"
+    rest="${cls#*]}"
+    cls="${cls%%]*}"
+    i=0
+    while [ "$i" -lt "${#cls}" ]; do
+      printf '%s\n' "${cls:i:1}"
+      i=$((i + 1))
+    done
   done
 }
 

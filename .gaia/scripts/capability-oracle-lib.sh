@@ -672,6 +672,10 @@ _gaia_capcheck_quote_carry() {
   local n=${#t}
   local i=0 c top cut=-1 carry=0 rest skipped
   local entry_depth=${#st}
+  # A substitution that opens INSIDE the carried body is executed shell, so its
+  # text has to survive even though the body around it does not. `sub_start` is
+  # where the current such span began, `subs` collects the ones that closed.
+  local depth_before pos sub_start=-1 sub_depth=0 subs=""
   if [ "$_GAIA_CAPCHECK_QSHADOW" -eq 0 ] && [ "${#st}" -eq 1 ]; then
     case "$st" in
       D|S|A|E) carry=1 ;;
@@ -709,6 +713,8 @@ _gaia_capcheck_quote_carry() {
       if [ "$i" -ge "$n" ]; then break; fi
     fi
     c="${t:i:1}"
+    depth_before=${#st}
+    pos=$i
     case "$top" in
       S)
         if [ "$c" = "'" ]; then st="${st%?}"; fi
@@ -768,9 +774,11 @@ _gaia_capcheck_quote_carry() {
             # and reading it as code lets an apostrophe inside it push a frame
             # that never closes, dropping every line after it.
             #
-            # The set is _GAIA_VA_WORD_SET (.claude/hooks/lib/verb-arming-walk.sh)
-            # plus `)`, minus the newline that walk carries. The newline cannot
-            # occur here because this one is handed a line at a time. The `)` is
+            # The set is _GAIA_VA_WORD_SET's separators
+            # (.claude/hooks/lib/verb-arming-walk.sh) plus `)`, with
+            # `[[:space:]]` standing in for that constant's ` \t` half, so this
+            # one also admits `\r`, `\v` and `\f`. Its newline cannot occur
+            # here because this walk is handed a line at a time. The `)` is
             # a deliberate widening rather than a copy that drifted: a `)`
             # closing a subshell or a `case` arm ends a word, so `(true)# don't`
             # really is a comment, and that walk has no need to model it. Do not
@@ -784,6 +792,25 @@ _gaia_capcheck_quote_carry() {
         esac
         ;;
     esac
+    # A `$( )` or a backtick opening anywhere inside the carried body starts a
+    # span worth keeping, and the close that returns the stack to the depth it
+    # opened at ends it. Only P and B open one, because only their bodies are
+    # code; the depth is remembered rather than assumed to be one deeper,
+    # because an array element wraps its substitution in a string frame
+    # (`args=(` then `"$( ... )"`) and a substitution nested inside a string
+    # still runs. Only the OUTERMOST such span is tracked: anything deeper is
+    # already inside the text being kept.
+    if [ "$carry" -gt 0 ]; then
+      if [ "$sub_start" -lt 0 ] && [ "${#st}" -eq $((depth_before + 1)) ]; then
+        case "${st: -1}" in
+          P|B) sub_start=$pos; sub_depth=$depth_before ;;
+        esac
+      elif [ "$sub_start" -ge 0 ] && [ "${#st}" -eq "$sub_depth" ] \
+        && [ "$depth_before" -eq $((sub_depth + 1)) ]; then
+        subs="${subs:+$subs }${t:sub_start:i-sub_start+1}"
+        sub_start=-1
+      fi
+    fi
     i=$((i + 1))
     if [ -z "$st" ]; then
       _GAIA_CAPCHECK_QSHADOW=0
@@ -793,12 +820,18 @@ _gaia_capcheck_quote_carry() {
     fi
   done
   _GAIA_CAPCHECK_QSTATE="$st"
+  # A span still open at the line's end is the first line of a multi-line
+  # substitution nested in the carried body. Its remainder is code the next
+  # lines carry on as code, so keep what this line held of it too.
+  if [ "$carry" -gt 0 ] && [ "$sub_start" -ge 0 ]; then
+    subs="${subs:+$subs }${t:sub_start}"
+  fi
   if [ "$carry" -eq 0 ]; then
     _GAIA_CAPCHECK_RET="$t"
   elif [ "$cut" -lt 0 ]; then
-    _GAIA_CAPCHECK_RET=""
+    _GAIA_CAPCHECK_RET="$subs"
   else
-    _GAIA_CAPCHECK_RET="${t:cut}"
+    _GAIA_CAPCHECK_RET="${subs:+$subs }${t:cut}"
   fi
   return 0
 }

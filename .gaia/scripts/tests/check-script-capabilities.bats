@@ -696,6 +696,64 @@ curl -sS https://example.com/x'
   grep -qF -- "UNDECLARED a/s.sh invokes:.github/audit/base.sh" <<<"$output"
 }
 
+@test "a substitution on a continuation line of a carried body is still a call" {
+  # The reverse nesting of the bound above, and the one the carried state gets
+  # wrong in the silent direction if the body is suppressed wholesale. A
+  # `$( )` inside a double-quoted string RUNS, whichever line of that string it
+  # sits on, so the line carrying it cannot be dropped just because the string
+  # around it was opened earlier. Suppressing the line loses the call and its
+  # whole transitive reach, and the gate then reports the caller declares
+  # exactly what it has.
+  #
+  # The sibling above puts its `$(` at the END of the opening line, which
+  # leaves the substitution frame on top and passes the line through, so it
+  # never reaches this case.
+  local body idx=0
+  for body in 'msg="first line
+second $(bash .github/audit/base.sh) tail"
+printf "%s\n" "$msg"' 'args=(
+  "$(bash .github/audit/base.sh)"
+)
+printf "%s\n" "${args[0]}"'; do
+    idx=$((idx + 1))
+    repo="$(make_fixture_repo "carriedsubst$idx")"
+    add_script "$repo" a/s.sh "#!/usr/bin/env bash
+$body"
+    add_script "$repo" .github/audit/base.sh '#!/usr/bin/env bash
+curl -sS https://example.com/x'
+    write_allow "$repo" "Bash(bash a/s.sh:*)"
+    write_manifest "$repo" '[{"script":"a/s.sh","capabilities":[],
+      "why":"runs the resolver inside a carried body","maintainer_only":false}]'
+    run bash "$CHECK" "$repo"
+    [ "$status" -eq 1 ]
+    grep -qF -- "UNDECLARED a/s.sh invokes:.github/audit/base.sh" <<<"$output"
+  done
+}
+
+@test "a substitution inside a carried SINGLE-quoted body is prose, not a call" {
+  # The bound on the arm above, and the reason the span is kept off the frame
+  # rather than off the line. A `$( )` runs inside a double-quoted string and
+  # does not inside a single-quoted one, so keeping every substitution-shaped
+  # run would fabricate exactly the edge this whole change exists to stop
+  # fabricating. Nothing special enforces that here: the walk reads only `'`
+  # inside an `S` frame, so no substitution frame is ever opened in one and
+  # there is no span to keep. This pins that.
+  repo="$(make_fixture_repo carriedsqsubst)"
+  add_script "$repo" a/s.sh "#!/usr/bin/env bash
+msg='first line
+second \$(bash .github/audit/base.sh) tail'
+printf '%s\n' \"\$msg\""
+  add_script "$repo" .github/audit/base.sh '#!/usr/bin/env bash
+curl -sS https://example.com/x'
+  write_allow "$repo" "Bash(bash a/s.sh:*)"
+  write_manifest "$repo" '[{"script":"a/s.sh","capabilities":[],
+    "why":"names the resolver in a single-quoted message","maintainer_only":false}]'
+  run bash "$CHECK" "$repo"
+  [ "$status" -eq 0 ]
+  grep -qE '^(UNDECLARED|SURPLUS|UNRESOLVED)' <<<"$output" && return 1
+  true
+}
+
 @test "a paren that closes nothing does not swallow the rest of a substitution" {
   # The bound on the carried state's own reach. A `case` arm, a function
   # definition, and a bare subshell each put a `)` inside a multi-line
@@ -703,14 +761,15 @@ curl -sS https://example.com/x'
   # one of them close the substitution would hand the enclosing quote back to
   # the top of the stack and drop every remaining line of real shell. That loss
   # is silent: nothing downstream reports a line the splitter never emitted.
-  local body
+  local body idx=0
   for body in 'case $x in
     a) echo one ;;
   esac' 'helper() {
     true
   }
   helper' '( cd /tmp && pwd )'; do
-    repo="$(make_fixture_repo "bareunmatched$RANDOM")"
+    idx=$((idx + 1))
+    repo="$(make_fixture_repo "bareunmatched$idx")"
     add_script "$repo" a/s.sh "#!/usr/bin/env bash
 x=b
 out=\"\$(
@@ -836,14 +895,27 @@ curl -sS https://example.com/x'
   walk='cd "$1" || exit 2
     . .gaia/scripts/capability-oracle-lib.sh
     if [ -n "$2" ]; then
-      n=0
+      seen=0
+      got=0
       for v in $(compgen -A variable _GAIA_CAPCHECK_QSKIP_); do
-        eval "$v=\"?\""
-        n=$((n + 1))
+        # Discovered and neutered are counted SEPARATELY, and every set found
+        # has to have taken. A `readonly` on something the library calls a
+        # constant is a plausible hardening edit; `eval` then writes to stderr
+        # and returns 1, and a count of successes alone still clears any floor
+        # below the number of sets while one set stays REAL. The no-skip side
+        # then runs that real set, both walks skip identically for its frame,
+        # and the comparison goes vacuous for exactly the arm whose drift it
+        # was built to catch.
+        seen=$((seen + 1))
+        eval "$v=\"?\"" 2>/dev/null || true
+        if [ "$(eval printf %s "\"\$$v\"")" = "?" ]; then got=$((got + 1)); fi
       done
       # A derivation that came back empty, or found only one set, would neuter
       # nothing or nearly nothing and leave the two walks agreeing trivially.
-      [ "$n" -gt 2 ] || { echo "skip-set derivation found $n" >&2; exit 3; }
+      if [ "$seen" -le 2 ] || [ "$got" -ne "$seen" ]; then
+        echo "skip-set derivation saw $seen neutered $got" >&2
+        exit 3
+      fi
     fi
     git -c core.quotepath=false ls-files -z "*.sh" "*.bats" | while IFS= read -r -d "" f; do
       printf "== %s\n" "$f"
