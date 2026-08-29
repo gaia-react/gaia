@@ -16,14 +16,23 @@
  * bare specifier, and Prettier resolves a bare plugin specifier from the
  * process cwd rather than from the package that declared it. `pnpm -C .gaia/cli
  * lint` runs with cwd here, and pnpm's isolated layout gives a top-level
- * `.gaia/cli/node_modules` link only to a DIRECT dependency, so
- * `.gaia/cli/package.json` has to keep the plugin in `devDependencies`; the
- * copy `@gaia-react/lint` carries transitively is unreachable from this cwd.
+ * `.gaia/cli/node_modules` link only to a DIRECT dependency, so the plugin
+ * stays in `.gaia/cli/package.json`'s `devDependencies`; the copy
+ * `@gaia-react/lint` carries transitively lands in `.pnpm/node_modules`, which
+ * is not on Node's upward walk from this cwd. Mirroring the root workspace's
+ * `publicHoistPattern` here would reach the same link by another route, and
+ * this workspace deliberately does not, which is what leaves the direct
+ * dependency as the mechanism.
+ *
  * Deleting it is the tempting simplification, because the root workspace
- * declares no such dependency and this file exists to mirror the root: it
- * passes every local check, where resolution escapes into the repo-root
- * `node_modules`, and fails the CI CLI-lint job, which installs `.gaia/cli`
- * alone, with ERR_MODULE_NOT_FOUND before a single file is linted.
+ * declares no such dependency and this file exists to mirror the root. It
+ * still passes locally, but only because the ROOT `pnpm-workspace.yaml` sets
+ * `publicHoistPattern: ['prettier-plugin-*']`, which links the plugin into the
+ * repo-root `node_modules` a local run can walk up into. The CI CLI-lint job
+ * installs `.gaia/cli` alone and has no such tree above it, so it fails there.
+ * `eslint-plugin-prettier` loads Prettier lazily inside the rule, so the
+ * ERR_MODULE_NOT_FOUND surfaces while ESLint is linting the first file and
+ * reads as an ESLint crash rather than as a reported lint violation.
  *
  * Its version tracks the one `@gaia-react/lint` pins, and no check enforces
  * that: `src/lint-pin-parity.test.ts` compares lockfile versions only for names
