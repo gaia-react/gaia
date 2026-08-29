@@ -624,9 +624,16 @@ EOF
   # so nobody re-adds them from the symmetry argument. Each sits in
   # _GAIA_CAPCHECK_PATHCMD's boundary class, so blanking the word behind one
   # hands the anchor a whitespace run ending at a repo path.
+  #
+  # The line carries a substitution because that is the route still open.
+  # _gaia_capcheck_blank_quoted_anchors defuses the same shape without one, by
+  # removing the separator the blanked word exposed, and it bails on any line
+  # carrying `$(` or a backtick -- so the bound set is load-bearing exactly
+  # where that bail leaves it load-bearing, and this fixture has to sit there
+  # or it pins nothing.
   _GAIA_CAPCHECK_WORD_BOUNDS=';'
   write_hook bridge-mutant.sh <<'EOF'
-msg="lead;rm .claude/hooks/lib/helper.sh tail"
+msg="lead;rm .claude/hooks/lib/helper.sh $(date) tail"
 EOF
   run sites .claude/hooks/bridge-mutant.sh
   [ "$status" -eq 0 ]

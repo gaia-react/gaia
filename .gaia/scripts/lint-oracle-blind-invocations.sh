@@ -100,9 +100,19 @@
 #   unexpanded and reads as an argument. Whether that costs anything depends on
 #   which substitution, and the two answers are different:
 #
-#     `$( ... )` and a BACKTICK cost nothing. Both openers are on
+#     `$( ... )` and a BACKTICK cost nothing AT THE ANCHOR. Both openers are on
 #     _GAIA_CAPCHECK_PATHCMD, so the oracle is not blind to that position and
-#     there is no divergence for this check to report.
+#     there is no divergence for this check to report there.
+#
+#     That is a claim about the anchors, and it presumes the splitter handed
+#     this check the line at all. A multi-line substitution whose body
+#     desynchronizes the splitter's quoting stack costs the whole remainder of
+#     the file, and a line the splitter never emits reaches neither half of the
+#     differential, so this lint reports clean over it. That is a property of
+#     _gaia_capcheck_logical_lines rather than of the anchors, and it is the
+#     reason the sentence above is scoped to the anchor rather than stated flat:
+#     the position is covered, the line's arrival is a separate question the
+#     oracle's own suite owns.
 #
 #     `<( ... )` and `>( ... )` are a JOINT blind spot, and the honest statement
 #     is that neither half of the differential covers them. Bash will not show
@@ -456,6 +466,22 @@ _obi_scan_file() {
   # position lives on the line above, and the fragment reads as anchored at `^`
   # when the joined line is not: a false clean, in the direction this check
   # exists to close.
+  #
+  # One source line can produce more than one record, sharing a start: the
+  # substitution the splitter keeps out of a string body an earlier line
+  # opened, and the code that line runs once the body closed. They are taken
+  # SEPARATELY, and the mapping below lands every probe on the code half,
+  # which is the only half a probe can sit in.
+  #
+  # Rejoining them into the text this check questioned before the splitter
+  # emitted them apart is the repair that suggests itself, and it is wrong in
+  # the silent direction. The two halves have different anchor provenance: the
+  # span's own call IS recorded, so joining raises the anchor count while no
+  # probe is added, because a probe inside a substitution body is reproduced
+  # verbatim by `declare -f` and never expands. A real shortfall in the code
+  # half then reads as a match, which is the class named in
+  # _obi_anchor_records' own header, reproduced inside the check that exists
+  # to end it.
   while IFS=$'\t' read -r i _ line; do
     [ -n "$i" ] || continue
     starts[${#starts[@]}]="$i"

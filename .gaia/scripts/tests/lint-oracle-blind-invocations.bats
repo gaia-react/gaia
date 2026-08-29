@@ -431,6 +431,32 @@ uncovered() {
   quiet '>out/target.sh cat'
 }
 
+@test "a span kept out of a carried body does not vouch for a blind call beside it" {
+  # The two records one source line can produce have different anchor
+  # provenance, which is why the splitter stopped handing them out joined. A
+  # consumer that rejoins them lets the span's own recorded call answer for the
+  # code half: the count rises by the span's anchors while no probe is added,
+  # because a probe inside a substitution body is reproduced verbatim by
+  # `declare -f` and never expands, so a genuine shortfall in the code half
+  # reads as a match.
+  #
+  # `( .gaia/scripts/blindy.sh )` is the blind half. A `(` is not in the
+  # bare-path anchor's boundary class, and the sibling arm below pins that this
+  # check reports the same subshell when it stands alone.
+  new_fixture
+  printf '#!/usr/bin/env bash\nset -euo pipefail\nmsg="one\ntwo $(.gaia/scripts/helper.sh) " && ( .gaia/scripts/blindy.sh )\n' \
+    > "$TMP/.claude/hooks/probe.sh"
+  run_lint
+  [ "$status" -eq 1 ]
+  grep -qF -- ".claude/hooks/probe.sh:4:" <<<"$output"
+}
+
+@test "the subshell half of that shape is blind on its own too" {
+  # The control for the arm above: without it, that arm passes on a tree where
+  # the anchors read the subshell perfectly well and something else reported.
+  hits '( .gaia/scripts/target.sh )'
+}
+
 @test "is quiet on a path inside a backtick substitution" {
   quiet 'out=`echo .gaia/scripts/target.sh`'
 }

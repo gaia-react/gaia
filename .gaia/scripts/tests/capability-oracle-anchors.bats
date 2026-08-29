@@ -692,6 +692,52 @@ scanner_call_line() {
   [ "$failed" -eq 0 ]
 }
 
+# --- The span blanker covers the anchor it defends -------------------------
+
+@test "every keyword the bare-path anchor carries is defused inside a quoted span" {
+  # _gaia_capcheck_blank_quoted_anchors spells the keyword set it removes as a
+  # literal list, and the anchor spells its own. Nothing holds a literal list in
+  # step with a constant, and the divergence is silent in the direction that
+  # matters: a keyword added to the anchor and not to the blanker puts every
+  # message string carrying that word back in command position, which is the
+  # fabricated-edge class the blanker exists to close. So the set is derived
+  # from the anchor here and each element driven through the real blanker.
+  local a kw hits=0 failed=0 line out
+  a="$(scanner_anchor _gaia_capcheck_scan_bare_invocations)"
+  [ -n "$a" ]
+  for kw in $(anchor_vocab "${!a}"); do
+    hits=$((hits + 1))
+    line="msg=\"lead $kw $TARGET_REL tail\""
+    _gaia_capcheck_blank_quoted_anchors "$line"
+    out="$(scan_line _gaia_capcheck_scan_bare_invocations "$_GAIA_CAPCHECK_RET")"
+    if [ -n "$out" ]; then
+      printf 'keyword %s on %s still reaches through a quoted span: [%s] gave [%s]\n' \
+        "$kw" "$a" "$line" "$out" >&2
+      failed=1
+    fi
+  done
+  [ "$hits" -gt 0 ]
+  [ "$failed" -eq 0 ]
+}
+
+@test "the span-blanker arm fails against a blanker that misses one keyword" {
+  # Non-vacuity control for the arm above, sampling one keyword. It respells the
+  # blanker so a single keyword survives, which is exactly the divergence the
+  # arm exists to catch, and drives that keyword through the respelled function.
+  local a kw line out
+  a="$(scanner_anchor _gaia_capcheck_scan_bare_invocations)"
+  [ -n "$a" ]
+  kw="$(anchor_vocab "${!a}")"
+  kw="${kw%% *}"
+  [ -n "$kw" ]
+  eval "$(declare -f _gaia_capcheck_blank_quoted_anchors \
+    | sed "s/ '$kw' / /")"
+  line="msg=\"lead $kw $TARGET_REL tail\""
+  _gaia_capcheck_blank_quoted_anchors "$line"
+  out="$(scan_line _gaia_capcheck_scan_bare_invocations "$_GAIA_CAPCHECK_RET")"
+  [ -n "$out" ]
+}
+
 # --- No arm reaches inside a token -----------------------------------------
 
 @test "no keyword arm matches inside a longer word" {
@@ -855,4 +901,85 @@ scanner_call_line() {
   [ -s "$copy" ]
   [ -n "$(anchor_names "$copy")" ]
   [ "$(anchor_header "$n" "$copy" | wc -l | tr -d ' ')" -lt "$ANCHOR_HEADER_MIN_LINES" ]
+}
+
+# anchor_boundary_chars <regex>: the boundary CHARACTERS of one anchor, one per
+# line. EVERY bracket expression the anchor carries, not the first: an
+# alternation may hold more than one, and reading only the first leaves an arm
+# named `every` green over a class it never saw, which is the same
+# drift-invisibility the arm exists to prevent one level up. POSIX classes are
+# dropped by `declass` first, so `[[:space:]]` contributes nothing rather than
+# contributing `:` and `space`. Empty is a real answer for an anchor with no
+# character boundaries, and the arm below says so rather than reading it as a
+# vocabulary it can skip.
+anchor_boundary_chars() {
+  local rest cls i
+  rest="$(declass "$1")"
+  while :; do
+    case "$rest" in *'['*) ;; *) break ;; esac
+    cls="${rest#*[}"
+    rest="${cls#*]}"
+    cls="${cls%%]*}"
+    i=0
+    while [ "$i" -lt "${#cls}" ]; do
+      printf '%s\n' "${cls:i:1}"
+      i=$((i + 1))
+    done
+  done
+}
+
+@test "every boundary character the bare-path anchor carries is defused inside a quoted span" {
+  # The character half of the arm above. The blanker spells its own separator
+  # set as a literal `[;|&]` and the anchor spells its boundary class
+  # separately, so the two can drift for the same reason and in the same silent
+  # direction: a boundary character added to the anchor and not to the blanker
+  # puts every message string carrying it back in command position.
+  #
+  # A backtick is on the anchor and is NOT blanked, deliberately: the blanker
+  # bails on it because a backtick inside a span is a real substitution opener
+  # whose body is code, so blanking it would lose calls rather than fabricate
+  # them. That bail is stated here as an explicit skip rather than left as a
+  # silent absence, which is what makes the rest of the set an assertion.
+  local a ch hits=0 skipped=0 failed=0 line out
+  a="$(scanner_anchor _gaia_capcheck_scan_bare_invocations)"
+  [ -n "$a" ]
+  while IFS= read -r ch; do
+    [ -n "$ch" ] || continue
+    if [ "$ch" = '`' ]; then
+      skipped=$((skipped + 1))
+      continue
+    fi
+    hits=$((hits + 1))
+    line="msg=\"lead $ch $TARGET_REL tail\""
+    _gaia_capcheck_blank_quoted_anchors "$line"
+    out="$(scan_line _gaia_capcheck_scan_bare_invocations "$_GAIA_CAPCHECK_RET")"
+    if [ -n "$out" ]; then
+      printf 'boundary %s on %s still reaches through a quoted span: [%s] gave [%s]\n' \
+        "$ch" "$a" "$line" "$out" >&2
+      failed=1
+    fi
+  done < <(anchor_boundary_chars "${!a}")
+  # A derivation that came back empty would make the loop assert nothing while
+  # its name says every, and the skip has to have found its one member or the
+  # bail above is skipping something that is no longer there.
+  [ "$hits" -gt 1 ]
+  [ "$skipped" -eq 1 ]
+  [ "$failed" -eq 0 ]
+}
+
+@test "the boundary-character arm fails against a blanker that misses one" {
+  # Non-vacuity control for the arm above, sampling one character. It respells
+  # the blanker so a single separator survives and drives that separator
+  # through the respelled function, which is the divergence the arm exists for.
+  local a ch line out
+  a="$(scanner_anchor _gaia_capcheck_scan_bare_invocations)"
+  [ -n "$a" ]
+  ch="$(anchor_boundary_chars "${!a}" | grep -vFx '`' | head -1)"
+  [ -n "$ch" ]
+  eval "$(declare -f _gaia_capcheck_blank_quoted_anchors \
+    | sed "s/;|&/|\&/")"
+  line="msg=\"lead $ch $TARGET_REL tail\""
+  _gaia_capcheck_blank_quoted_anchors "$line"
+  out="$(scan_line _gaia_capcheck_scan_bare_invocations "$_GAIA_CAPCHECK_RET")"
+  [ -n "$out" ]
 }

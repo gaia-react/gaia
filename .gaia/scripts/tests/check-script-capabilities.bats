@@ -616,6 +616,612 @@ curl -sS https://example.com/x'
   true
 }
 
+@test "a bare path alone on a line inside an array literal is an element, not a call" {
+  # The `^` arm's negative for the shape the here-document arm above does not
+  # cover. An array element and a bare execution are the same bytes on the same
+  # line; only the state carried from `files=(` separates them, and the splitter
+  # is where that state lives.
+  repo="$(make_fixture_repo barearray)"
+  add_script "$repo" a/s.sh '#!/usr/bin/env bash
+files=(
+.github/audit/base.sh
+)
+printf "%s\n" "${files[0]}"'
+  add_script "$repo" .github/audit/base.sh '#!/usr/bin/env bash
+curl -sS https://example.com/x'
+  write_allow "$repo" "Bash(bash a/s.sh:*)"
+  write_manifest "$repo" '[{"script":"a/s.sh","capabilities":[],
+    "why":"names the resolver as an array element","maintainer_only":false}]'
+  run bash "$CHECK" "$repo"
+  [ "$status" -eq 0 ]
+  grep -qE '^(UNDECLARED|SURPLUS|UNRESOLVED)' <<<"$output" && return 1
+  true
+}
+
+@test "a bare path alone on a line inside a multi-line message string is prose, not a call" {
+  # The same `^` arm negative for the shape this tree actually carries: a deny
+  # message spanning real lines, with a script path opening one of them.
+  repo="$(make_fixture_repo baremultiline)"
+  add_script "$repo" a/s.sh '#!/usr/bin/env bash
+reason="the resolver cannot answer.
+
+.github/audit/base.sh exited non-zero, so the member set is unknown.
+"
+printf "%s\n" "$reason"'
+  add_script "$repo" .github/audit/base.sh '#!/usr/bin/env bash
+curl -sS https://example.com/x'
+  write_allow "$repo" "Bash(bash a/s.sh:*)"
+  write_manifest "$repo" '[{"script":"a/s.sh","capabilities":[],
+    "why":"names the resolver in a multi-line message","maintainer_only":false}]'
+  run bash "$CHECK" "$repo"
+  [ "$status" -eq 0 ]
+  grep -qE '^(UNDECLARED|SURPLUS|UNRESOLVED)' <<<"$output" && return 1
+  true
+}
+
+@test "a multi-line string ending mid-line does not swallow the call beside it" {
+  # The positive that bounds the two negatives above. Suppressing a whole line
+  # because a string opened on an earlier one would lose a real call written
+  # after the closing quote, and that loss is silent.
+  repo="$(make_fixture_repo baremultilineresume)"
+  add_script "$repo" a/s.sh '#!/usr/bin/env bash
+reason="first
+second" && .github/audit/base.sh --now'
+  add_script "$repo" .github/audit/base.sh '#!/usr/bin/env bash
+curl -sS https://example.com/x'
+  write_allow "$repo" "Bash(bash a/s.sh:*)"
+  write_manifest "$repo" '[{"script":"a/s.sh","capabilities":[],
+    "why":"runs the resolver after a multi-line message","maintainer_only":false}]'
+  run bash "$CHECK" "$repo"
+  [ "$status" -eq 1 ]
+  grep -qF -- "UNDECLARED a/s.sh invokes:.github/audit/base.sh" <<<"$output"
+}
+
+@test "a call inside a multi-line command substitution is still a call" {
+  # The other bound. A substitution body is code however many lines it spans,
+  # so the state that suppresses a string body must not suppress this.
+  repo="$(make_fixture_repo baremultilinesubst)"
+  add_script "$repo" a/s.sh '#!/usr/bin/env bash
+out="$(
+  .github/audit/base.sh --x
+)"
+printf "%s\n" "$out"'
+  add_script "$repo" .github/audit/base.sh '#!/usr/bin/env bash
+curl -sS https://example.com/x'
+  write_allow "$repo" "Bash(bash a/s.sh:*)"
+  write_manifest "$repo" '[{"script":"a/s.sh","capabilities":[],
+    "why":"runs the resolver inside a multi-line substitution","maintainer_only":false}]'
+  run bash "$CHECK" "$repo"
+  [ "$status" -eq 1 ]
+  grep -qF -- "UNDECLARED a/s.sh invokes:.github/audit/base.sh" <<<"$output"
+}
+
+@test "a substitution on a continuation line of a carried body is still a call" {
+  # The reverse nesting of the bound above, and the one the carried state gets
+  # wrong in the silent direction if the body is suppressed wholesale. A
+  # `$( )` inside a double-quoted string RUNS, whichever line of that string it
+  # sits on, so the line carrying it cannot be dropped just because the string
+  # around it was opened earlier. Suppressing the line loses the call and its
+  # whole transitive reach, and the gate then reports the caller declares
+  # exactly what it has.
+  #
+  # The sibling above puts its `$(` at the END of the opening line, which
+  # leaves the substitution frame on top and passes the line through, so it
+  # never reaches this case.
+  local body idx=0
+  for body in 'msg="first line
+second $(bash .github/audit/base.sh) tail"
+printf "%s\n" "$msg"' 'args=(
+  "$(bash .github/audit/base.sh)"
+)
+printf "%s\n" "${args[0]}"'; do
+    idx=$((idx + 1))
+    repo="$(make_fixture_repo "carriedsubst$idx")"
+    add_script "$repo" a/s.sh "#!/usr/bin/env bash
+$body"
+    add_script "$repo" .github/audit/base.sh '#!/usr/bin/env bash
+curl -sS https://example.com/x'
+    write_allow "$repo" "Bash(bash a/s.sh:*)"
+    write_manifest "$repo" '[{"script":"a/s.sh","capabilities":[],
+      "why":"runs the resolver inside a carried body","maintainer_only":false}]'
+    run bash "$CHECK" "$repo"
+    [ "$status" -eq 1 ]
+    grep -qF -- "UNDECLARED a/s.sh invokes:.github/audit/base.sh" <<<"$output"
+  done
+}
+
+@test "a substitution inside a carried SINGLE-quoted body is prose, not a call" {
+  # The bound on the arm above, and the reason the span is kept off the frame
+  # rather than off the line. A `$( )` runs inside a double-quoted string and
+  # does not inside a single-quoted one, so keeping every substitution-shaped
+  # run would fabricate exactly the edge this whole change exists to stop
+  # fabricating. Nothing special enforces that here: the walk reads only `'`
+  # inside an `S` frame, so no substitution frame is ever opened in one and
+  # there is no span to keep. This pins that.
+  repo="$(make_fixture_repo carriedsqsubst)"
+  add_script "$repo" a/s.sh "#!/usr/bin/env bash
+msg='first line
+second \$(bash .github/audit/base.sh) tail'
+printf '%s\n' \"\$msg\""
+  add_script "$repo" .github/audit/base.sh '#!/usr/bin/env bash
+curl -sS https://example.com/x'
+  write_allow "$repo" "Bash(bash a/s.sh:*)"
+  write_manifest "$repo" '[{"script":"a/s.sh","capabilities":[],
+    "why":"names the resolver in a single-quoted message","maintainer_only":false}]'
+  run bash "$CHECK" "$repo"
+  [ "$status" -eq 0 ]
+  grep -qE '^(UNDECLARED|SURPLUS|UNRESOLVED)' <<<"$output" && return 1
+  true
+}
+
+@test "a kept span is not emitted a second time by the code that follows it" {
+  # The bound on how far span tracking reaches along the line. Once the carried
+  # body has closed, the rest is code `${t:cut}` already returns whole, so a
+  # substitution sitting there needs no keeping and recording one emits it
+  # twice: once as its own record and once inside the code record.
+  #
+  # Asserted on the span channel, not on the code channel. The code channel
+  # returns the same bytes either way, so a test reading it alone stays green
+  # over exactly the mistake this pins.
+  run bash -c 'cd "$1" || exit 2
+    . .gaia/scripts/capability-oracle-lib.sh
+    _GAIA_CAPCHECK_QSTATE="D"
+    _GAIA_CAPCHECK_QSHADOW=0
+    _gaia_capcheck_quote_carry "def\" && echo \$(bash x.sh)"
+    printf "spans[%s]\n" "$_GAIA_CAPCHECK_QSUBS"
+    printf "code[%s]\n" "$_GAIA_CAPCHECK_RET"' _ "$REPO_ROOT"
+  [ "$status" -eq 0 ]
+  [ "${lines[0]}" = "spans[]" ]
+  [ "${lines[1]}" = "code[ && echo \$(bash x.sh)]" ]
+}
+
+@test "the substitution bail covers the kept span and not the code beside it" {
+  # The two halves of one source line, asserted together because the repair is
+  # the boundary between them and a fixture for either half alone passes under
+  # a walk that has lost it.
+  #
+  # A line carrying `$(` keeps its anchors, because a separator inside a
+  # substitution body is real shell: that is the one thing the quoting repair
+  # leaves open, and _GAIA_CAPCHECK_PATHCMD's header says so. The first fixture
+  # is that limit, unchanged and loud, and it is here so a reader cannot mistake
+  # the second for a general repair.
+  #
+  # The second is the same shape with the substitution reached through a
+  # carried body instead. Keeping that substitution is mandatory (the call
+  # inside it is real reach, and dropping it loses that reach silently), and
+  # handing it back joined to the code the line runs after the body closed
+  # would put a `$(` in front of a tail whose quoting is fully known. The bail
+  # would then cover the tail too and the `;` inside its span would read as
+  # command position. The splitter emits the two as separate records so it
+  # does not, which is what this asserts: same bytes after the body, opposite
+  # verdict from the first fixture, because only the first has a substitution
+  # in the region being judged.
+  substbail_case() {
+    local tag="$1" body="$2" want="$3" repo
+    repo="$(make_fixture_repo "substbail$tag")"
+    add_script "$repo" a/s.sh "#!/usr/bin/env bash
+$body"
+    add_script "$repo" .github/audit/base.sh '#!/usr/bin/env bash
+curl -sS https://example.com/x'
+    write_allow "$repo" "Bash(bash a/s.sh:*)"
+    write_manifest "$repo" '[{"script":"a/s.sh","capabilities":[],
+      "why":"prints a usage message beside a substitution","maintainer_only":false}]'
+    run bash "$CHECK" "$repo"
+    [ "$status" -eq "$want" ]
+    if [ "$want" -eq 1 ]; then
+      grep -qF -- "UNDECLARED a/s.sh invokes:.github/audit/base.sh" <<<"$output"
+    else
+      grep -qE '^(UNDECLARED|SURPLUS|UNRESOLVED)' <<<"$output" && return 1
+      true
+    fi
+  }
+  substbail_case oneline 'x=$(date) ; printf "%s\n" "usage; .github/audit/base.sh --member X"' 1
+  substbail_case carried 'msg="line one
+line two $(date) end" ; printf "%s\n" "usage; .github/audit/base.sh --member X"' 0
+}
+
+@test "an arithmetic expansion inside a carried body closes only itself" {
+  # `$((` spends TWO parens and `))` spends two more. Read as the `$(` of a
+  # command substitution it pushes one frame and pops two, so every frame
+  # carried across a line boundary is one paren short from there on.
+  #
+  # Both directions of that desync are here with a one-token control each,
+  # because the arithmetic is the only difference between the pair and a
+  # fixture without its control proves nothing about which half moved.
+  #
+  # The silent one first, and it is the worse of the two. The stack empties one
+  # paren early, so the real `)"` closing the substitution leaves its `"` to
+  # OPEN a string frame rather than close one, and every line below it is
+  # suppressed as carried body. The gate then reports a caller that reaches
+  # nothing, which reads as a clean tree while a true declaration turns SURPLUS.
+  arith_case() {
+    local tag="$1" body="$2" want="$3" repo
+    repo="$(make_fixture_repo "arith$tag")"
+    add_script "$repo" a/s.sh "#!/usr/bin/env bash
+$body"
+    add_script "$repo" .github/audit/base.sh '#!/usr/bin/env bash
+curl -sS https://example.com/x'
+    write_allow "$repo" "Bash(bash a/s.sh:*)"
+    write_manifest "$repo" '[{"script":"a/s.sh","capabilities":[],
+      "why":"counts and then names a path","maintainer_only":false}]'
+    run bash "$CHECK" "$repo"
+    [ "$status" -eq "$want" ]
+    if [ "$want" -eq 1 ]; then
+      grep -qF -- "UNDECLARED a/s.sh invokes:.github/audit/base.sh" <<<"$output"
+    else
+      grep -qE '^(UNDECLARED|SURPLUS|UNRESOLVED)' <<<"$output" && return 1
+      true
+    fi
+  }
+  arith_case silent 'out="$(
+  n=$((1 + 2))
+  printf "a \"b"
+  .github/audit/base.sh --real
+)"
+printf "%s\n" "$out"' 1
+  arith_case silentctl 'out="$(
+  n=3
+  printf "a \"b"
+  .github/audit/base.sh --real
+)"
+printf "%s\n" "$out"' 1
+
+  # The loud one. An array frame closed two parens early puts the next line at
+  # code level, where the bare-path anchor reads it at `^` as command position
+  # and fabricates the edge this whole branch exists to stop fabricating.
+  arith_case loud 'files=(
+  $((n + 1))
+  .github/audit/base.sh
+)
+printf "%s\n" "${files[@]}"' 0
+  arith_case loudctl 'files=(
+  plain
+  .github/audit/base.sh
+)
+printf "%s\n" "${files[@]}"' 0
+}
+
+@test "an arithmetic frame counts a parenthesised group inside itself" {
+  # The bound on the arm above. `))` closes arithmetic, so a group's own single
+  # `)` must not be read as half of one: `$(( (a) ))` ends `) ))` and
+  # `$(( (a)))` ends `)))`, and only a frame that counts the group reads both
+  # the same way. A nested substitution is legal in there too and stays a
+  # substitution.
+  #
+  # Driven from a CARRIED stack, not an empty one, and that is the whole
+  # discrimination. Every line here is balanced, so from an empty stack a walk
+  # that pops the group's `)` as half of a `))` still lands back on empty and a
+  # test reading the final state alone passes over it. Entered at `DP`, the
+  # same mis-pop eats the enclosing substitution's own paren and comes back one
+  # frame short, which is exactly the desync the arm exists to prevent.
+  run bash -c 'cd "$1" || exit 2
+    . .gaia/scripts/capability-oracle-lib.sh
+    probe() {
+      _GAIA_CAPCHECK_QSTATE="$1"
+      _GAIA_CAPCHECK_QSHADOW=0
+      _gaia_capcheck_quote_carry "$2"
+      printf "[%s]\n" "$_GAIA_CAPCHECK_QSTATE"
+    }
+    probe DP "n=\$((1 + 2))"
+    probe DP "n=\$(( (1+2) ))"
+    probe DP "n=\$(( (1+2)))"
+    probe DP "n=\$(( ((1)) ))"
+    probe DP "n=\$(( \$(id -u) + 1 ))"' _ "$REPO_ROOT"
+  [ "$status" -eq 0 ]
+  [ "${lines[0]}" = "[DP]" ]
+  [ "${lines[1]}" = "[DP]" ]
+  [ "${lines[2]}" = "[DP]" ]
+  [ "${lines[3]}" = "[DP]" ]
+  [ "${lines[4]}" = "[DP]" ]
+}
+
+@test "a paren that closes nothing does not swallow the rest of a substitution" {
+  # The bound on the carried state's own reach. A `case` arm, a function
+  # definition, and a bare subshell each put a `)` inside a multi-line
+  # substitution that closes nothing the reader opened, and a reader that let
+  # one of them close the substitution would hand the enclosing quote back to
+  # the top of the stack and drop every remaining line of real shell. That loss
+  # is silent: nothing downstream reports a line the splitter never emitted.
+  local body idx=0
+  for body in 'case $x in
+    a) echo one ;;
+  esac' 'helper() {
+    true
+  }
+  helper' '( cd /tmp && pwd )'; do
+    idx=$((idx + 1))
+    repo="$(make_fixture_repo "bareunmatched$idx")"
+    add_script "$repo" a/s.sh "#!/usr/bin/env bash
+x=b
+out=\"\$(
+  $body
+  .github/audit/base.sh --real
+)\"
+printf \"%s\n\" \"\$out\""
+    add_script "$repo" .github/audit/base.sh '#!/usr/bin/env bash
+curl -sS https://example.com/x'
+    write_allow "$repo" "Bash(bash a/s.sh:*)"
+    write_manifest "$repo" '[{"script":"a/s.sh","capabilities":[],
+      "why":"runs the resolver inside a substitution","maintainer_only":false}]'
+    run bash "$CHECK" "$repo"
+    [ "$status" -eq 1 ]
+    grep -qF -- "UNDECLARED a/s.sh invokes:.github/audit/base.sh" <<<"$output"
+  done
+}
+
+@test "a character the quoting walk acts on is never skipped past" {
+  # The bound on the run-skip that carries the walk between the characters it
+  # reads. Skipping a run is only sound while that run cannot change the stack,
+  # so a skip set missing one of its own arm's characters walks straight past
+  # the thing deciding where a span ends, and the state it hands the next line
+  # is wrong in the suppressing direction. Each opener below is BALANCED, and
+  # balanced only when its own character is read: the call beneath it survives
+  # when the walk stops there and is silently dropped when it does not.
+  #
+  # One case per skip set. A `'` and a `#` a line ends up carrying under the
+  # unbalanced `"` they respectively quote and comment out, and a backtick
+  # nested in a double-quoted span, which needs an inner `"` to matter at all,
+  # since a plain pair leaves the same empty stack either way.
+  carry_case() {
+    local tag="$1" opener="$2" repo
+    repo="$(make_fixture_repo "bareskip$tag")"
+    add_script "$repo" a/s.sh "#!/usr/bin/env bash
+$opener
+.github/audit/base.sh --real"
+    add_script "$repo" .github/audit/base.sh '#!/usr/bin/env bash
+curl -sS https://example.com/x'
+    write_allow "$repo" "Bash(bash a/s.sh:*)"
+    write_manifest "$repo" '[{"script":"a/s.sh","capabilities":[],
+      "why":"runs the resolver after a balanced span","maintainer_only":false}]'
+    run bash "$CHECK" "$repo"
+    [ "$status" -eq 1 ]
+    grep -qF -- "UNDECLARED a/s.sh invokes:.github/audit/base.sh" <<<"$output"
+  }
+  carry_case sq "msg='the \" character'"
+  carry_case hash "true  # don't skip past a comment"
+  carry_case bt 'msg="a `echo "x"` b"'
+  # The same comment case with the `#` word-initial after a separator rather
+  # than after whitespace, which is the other half of what bash accepts. An arm
+  # that demands whitespace reads this line as code, the apostrophe opens a
+  # frame nothing closes, and every line after it is dropped as carried body.
+  carry_case semi "true;# don't skip past a comment"
+  carry_case pipe "true|# don't skip past a comment"
+  # `$'...'` is the one single-quoted form where a backslash escapes, so a walk
+  # that reads it as an ordinary `'` span closes the span at the escaped quote
+  # and reopens it at the real terminator, leaving a frame open.
+  carry_case ansic "msg=\$'don\\'t skip past this'"
+}
+
+@test "a comment inside a nested quoted body opens no heredoc" {
+  # The bound on how the comment and blank arms are gated. Those arms are
+  # skipped while a STRING body is open, because inside one a leading `#` is
+  # prose; but a body is only OPEN in that sense at the same depth
+  # _gaia_capcheck_quote_carry suppresses at, one unshadowed frame. Gating them
+  # on the TOP frame instead admits every deeper stack: `records="$(awk '`
+  # opens D, P and S, so the top is S and the arms switch off, while the carry
+  # correctly passes the line through as code because the depth is three. The
+  # comment then reaches the heredoc reader, which takes a `<<WORD` out of the
+  # prose and waits for a terminator no line supplies, so the rest of the file
+  # is eaten as heredoc body and no detector ever sees it.
+  #
+  # This is not hypothetical: .gaia/scripts/lint-errexit-source-guard.sh
+  # carries an awk comment naming `cat <<A <<B`, and it sits inside the scan
+  # roots of a merge-blocking lint, which reported clean over the lines the
+  # oracle had stopped reading.
+  repo="$(make_fixture_repo nestedcomment)"
+  add_script "$repo" a/s.sh '#!/usr/bin/env bash
+records="$(awk '"'"'
+  # A line may open more than one (`cat <<A <<B` runs the bodies in order),
+  # so the caller consumes them as a queue.
+  { print }
+'"'"' /dev/null)"
+printf "%s\n" "$records"
+.github/audit/base.sh --real'
+  add_script "$repo" .github/audit/base.sh '#!/usr/bin/env bash
+curl -sS https://example.com/x'
+  write_allow "$repo" "Bash(bash a/s.sh:*)"
+  write_manifest "$repo" '[{"script":"a/s.sh","capabilities":[],
+    "why":"runs the resolver after an awk body","maintainer_only":false}]'
+  run bash "$CHECK" "$repo"
+  [ "$status" -eq 1 ]
+  grep -qF -- "UNDECLARED a/s.sh invokes:.github/audit/base.sh" <<<"$output"
+}
+
+@test "the run-skip changes no answer the walk reaches without it" {
+  # The guard over the skip sets AS A SET, which the fixtures above cannot be.
+  # Each set restates the characters its own arm of the walk reads, so the two
+  # can drift apart, and a hand-written fixture only catches the drift somebody
+  # already thought of: a `"` and a backtick pop and push each other
+  # symmetrically, so the shapes separating a sound set from an unsound one are
+  # the ones nobody writes down.
+  #
+  # So it is a differential rather than a fixture. `?` matches at every
+  # position, which leaves the skip with nothing to remove and reproduces the
+  # character-at-a-time walk the sets exist to shortcut; the two must agree
+  # line for line. The corpus is every shell file the repo tracks, discovered
+  # rather than listed, so a file added later is compared without an edit here.
+  #
+  # The neutered set is DERIVED from the library, not listed here. A list is the
+  # one thing this differential cannot afford to hand-write: the diff that adds
+  # a fourth set is exactly the diff that owes the check, and a list left at
+  # three arms neither side of the comparison, so both walks run the same skip
+  # and the drift the test exists for is invisible while it reports clean.
+  #
+  # The corpus is listed the way the gate discovers its own: NUL-delimited with
+  # `core.quotepath` off. Under git's default quoting a tracked path carrying a
+  # non-ASCII byte comes back C-quoted, `_gaia_capcheck_logical_lines` takes its
+  # `[ -f ]` arm on it, and the file leaves BOTH sides silently, so the diff
+  # still agrees over a file neither walk read.
+  local walk out_skip="$BATS_TEST_TMPDIR/skip.txt" out_plain="$BATS_TEST_TMPDIR/plain.txt"
+  walk='cd "$1" || exit 2
+    . .gaia/scripts/capability-oracle-lib.sh
+    if [ -n "$2" ]; then
+      seen=0
+      got=0
+      for v in $(compgen -A variable _GAIA_CAPCHECK_QSKIP_); do
+        # Discovered and neutered are counted SEPARATELY, and every set found
+        # has to have taken. A `readonly` on something the library calls a
+        # constant is a plausible hardening edit; `eval` then writes to stderr
+        # and returns 1, and a count of successes alone still clears any floor
+        # below the number of sets while one set stays REAL. The no-skip side
+        # then runs that real set, both walks skip identically for its frame,
+        # and the comparison goes vacuous for exactly the arm whose drift it
+        # was built to catch.
+        seen=$((seen + 1))
+        eval "$v=\"?\"" 2>/dev/null || true
+        if [ "$(eval printf %s "\"\$$v\"")" = "?" ]; then got=$((got + 1)); fi
+      done
+      # A derivation that came back empty, or found only one set, would neuter
+      # nothing or nearly nothing and leave the two walks agreeing trivially.
+      if [ "$seen" -le 2 ] || [ "$got" -ne "$seen" ]; then
+        echo "skip-set derivation saw $seen neutered $got" >&2
+        exit 3
+      fi
+    fi
+    git -c core.quotepath=false ls-files -z "*.sh" "*.bats" | while IFS= read -r -d "" f; do
+      printf "== %s\n" "$f"
+      _gaia_capcheck_logical_lines "$f"
+    done'
+  bash -c "$walk" _ "$REPO_ROOT" "" >"$out_skip"
+  bash -c "$walk" _ "$REPO_ROOT" no-skip >"$out_plain"
+  # Short-read guard: a corpus that resolved no file, or a walk that emitted
+  # nothing, agrees with itself and would report this clean having compared
+  # nothing at all.
+  [ -s "$out_skip" ]
+  [ "$(grep -c '^== ' "$out_skip")" -gt 100 ]
+  diff "$out_skip" "$out_plain"
+}
+
+# The carried-body predicate is written twice, once in each function that acts
+# on it. `_gaia_capcheck_quote_carry` reads it as `carry`, to decide whether the
+# line it was handed is body rather than code; `_gaia_capcheck_logical_lines`
+# reads it as `inbody`, to decide whether its comment and blank-line arms apply
+# to that same line. Neither is extracted into a shared helper, on purpose: the
+# walk runs per line over every tracked shell file, and .gaia/scripts/tests/
+# shell-lint-bash32.bats exists because that per-line cost is already the
+# binding one. So nothing but this keeps the two writings in step.
+#
+# Drift between them is silent, and worst in one direction. `inbody=0` while
+# `carry=1` lets logical_lines take its comment arm on a line inside a string
+# body, so a `#`-leading prose line carrying an apostrophe never reaches
+# quote_carry at all: the apostrophe opens a frame nothing closes, and every
+# line below it leaves the file as carried body with no diagnostic anywhere.
+
+predicate_block() {
+  # $1 = the flag the site assigns, `carry` or `inbody`. Anchored on the shadow
+  # guard rather than on a line range, so either function may move or grow
+  # around it, and normalized for the two spellings that differ by construction:
+  # quote_carry reads the state through its own local alias, and each site names
+  # its own flag. Nothing else is normalized, so the frame letters, the depth
+  # bound and the shadow term are all compared as written.
+  awk -v flag="$1" '
+    /if \[ "\$_GAIA_CAPCHECK_QSHADOW" -eq 0 \]/ { inb = 1; buf = ""; hit = 0 }
+    inb {
+      sub(/^[[:space:]]+/, ""); sub(/[[:space:]]+$/, "")
+      gsub(/[$][{]#st[}]/, "${#S}"); gsub(/[$][{]#_GAIA_CAPCHECK_QSTATE[}]/, "${#S}")
+      gsub(/[$]st/, "$S"); gsub(/[$]_GAIA_CAPCHECK_QSTATE/, "$S")
+      gsub(flag "=1", "F=1")
+      buf = buf $0 "\n"
+      if ($0 ~ /F=1/) { hit = 1 }
+      if ($0 == "fi") { if (hit) { printf "%s", buf } ; inb = 0 }
+    }
+  ' "$SCRIPT_DIR/capability-oracle-lib.sh"
+}
+
+@test "both writings of the carried-body predicate say the same thing" {
+  local carry inbody
+  carry="$(predicate_block carry)"
+  inbody="$(predicate_block inbody)"
+  # Each site has to be FOUND, or a rename on either one turns this into a
+  # comparison of two empty strings that agrees with itself.
+  [ -n "$carry" ]
+  [ -n "$inbody" ]
+  # And the normalization has to have left the three terms that carry the
+  # meaning standing: the depth bound, the state the case reads, and a frame
+  # letter reaching the flag. A substitution that over-matched, or an anchor
+  # that grabbed some other `if`, would otherwise compare two texts that agree
+  # about nothing.
+  grep -qF -- '[ "${#S}" -eq 1 ]' <<<"$carry"
+  grep -qF -- 'case "$S" in' <<<"$carry"
+  grep -qF -- ') F=1 ;;' <<<"$carry"
+  [ "$carry" = "$inbody" ]
+}
+
+@test "a bare path behind a separator inside a double-quoted span is prose, not a call" {
+  # The negatives for the separator arms. A `;`, `|`, or `&` inside a span is
+  # text the shell never acts on, and each one puts the path that follows it in
+  # what the anchor reads as command position.
+  repo="$(make_fixture_repo baresepspan)"
+  add_script "$repo" a/s.sh '#!/usr/bin/env bash
+printf "%s\n" "usage; .github/audit/base.sh --member X"
+msg="pipeline | .github/audit/base.sh runs later"
+amp="queued & .github/audit/base.sh after that"
+printf "%s %s\n" "$msg" "$amp"'
+  add_script "$repo" .github/audit/base.sh '#!/usr/bin/env bash
+curl -sS https://example.com/x'
+  write_allow "$repo" "Bash(bash a/s.sh:*)"
+  write_manifest "$repo" '[{"script":"a/s.sh","capabilities":[],
+    "why":"names the resolver in three messages","maintainer_only":false}]'
+  run bash "$CHECK" "$repo"
+  [ "$status" -eq 0 ]
+  grep -qE '^(UNDECLARED|SURPLUS|UNRESOLVED)' <<<"$output" && return 1
+  true
+}
+
+@test "a bare path behind a keyword inside a double-quoted span is prose, not a call" {
+  # The negatives for the keyword arms, which fabricate the same edge without a
+  # separator anywhere on the line.
+  repo="$(make_fixture_repo barekwspan)"
+  add_script "$repo" a/s.sh '#!/usr/bin/env bash
+printf "%s\n" "if the marker is stale then .github/audit/base.sh rewrites it"
+loop="for each tree do .github/audit/base.sh once"
+printf "%s\n" "$loop"'
+  add_script "$repo" .github/audit/base.sh '#!/usr/bin/env bash
+curl -sS https://example.com/x'
+  write_allow "$repo" "Bash(bash a/s.sh:*)"
+  write_manifest "$repo" '[{"script":"a/s.sh","capabilities":[],
+    "why":"names the resolver in two messages","maintainer_only":false}]'
+  run bash "$CHECK" "$repo"
+  [ "$status" -eq 0 ]
+  grep -qE '^(UNDECLARED|SURPLUS|UNRESOLVED)' <<<"$output" && return 1
+  true
+}
+
+@test "a bare path behind a real separator outside a quoted span is still a call" {
+  # The bound on both span negatives. The separator arms exist for lines like
+  # these, and blanking a separator that is not inside quotes would lose them.
+  repo="$(make_fixture_repo baresepreal)"
+  add_script "$repo" a/s.sh '#!/usr/bin/env bash
+printf "start\n"; .github/audit/base.sh --after-sep'
+  add_script "$repo" .github/audit/base.sh '#!/usr/bin/env bash
+curl -sS https://example.com/x'
+  write_allow "$repo" "Bash(bash a/s.sh:*)"
+  write_manifest "$repo" '[{"script":"a/s.sh","capabilities":[],
+    "why":"runs the resolver after a separator","maintainer_only":false}]'
+  run bash "$CHECK" "$repo"
+  [ "$status" -eq 1 ]
+  grep -qF -- "UNDECLARED a/s.sh invokes:.github/audit/base.sh" <<<"$output"
+}
+
+@test "a quoted bare-path execution keeps its call when the anchor is outside the quotes" {
+  # The bound the span blanking is easiest to overshoot. This tree executes a
+  # script through a quoted path whose directory is a variable, and the token
+  # sits inside the span while the anchor does not. Blanking the span rather
+  # than the anchors inside it would lose exactly this.
+  repo="$(make_fixture_repo barequotedexec)"
+  add_script "$repo" a/s.sh '#!/usr/bin/env bash
+d=.github/audit
+"$d/base.sh" 2>/dev/null || true'
+  add_script "$repo" .github/audit/base.sh '#!/usr/bin/env bash
+curl -sS https://example.com/x'
+  write_allow "$repo" "Bash(bash a/s.sh:*)"
+  write_manifest "$repo" '[{"script":"a/s.sh","capabilities":[],
+    "why":"runs the resolver through a quoted path","maintainer_only":false}]'
+  run bash "$CHECK" "$repo"
+  [ "$status" -eq 1 ]
+  grep -qF -- "UNDECLARED a/s.sh invokes:.github/audit/base.sh" <<<"$output"
+}
+
 @test "a write built from a literal prefix and a variable tail generalizes to a glob" {
   repo="$(make_fixture_repo prefixglob)"
   add_script "$repo" .gaia/scripts/w.sh '#!/usr/bin/env bash
