@@ -62,11 +62,12 @@ const recordError = (error: unknown): void => {
 // --- Ports of helpers bippy removed in 0.7.0 -------------------------------
 // 0.7.0 dropped didFiberCommit, getTimings, and the traverseProps/State/
 // Contexts visitors as "policy-heavy helpers" (upstream changelog); they are
-// not coming back. These reproduce bippy 0.6.1's implementations, narrowed to
-// the void-returning visitors this harness actually uses (bippy's returned a
-// boolean to short-circuit; nothing here short-circuits). The fiber-shape
-// reads stay identical, so behaviour is unchanged across the bump. onRender
-// wraps every call in try/catch, so these do not each need their own.
+// not coming back. These reproduce bippy 0.6.1's fiber reads, which is where
+// the attribution comes from, so what each visitor yields is unchanged across
+// the bump. They are not byte-for-byte copies, and the two deltas are
+// deliberate: the visitors return void rather than a short-circuit boolean,
+// because nothing here short-circuits, and they carry no try/catch of their
+// own, because onRender already wraps every call in one.
 
 /* eslint-disable no-bitwise -- React fiber effect flags are a bitmask; masking
    is the only way to read them, and this is the read bippy 0.6.1 did. */
@@ -114,8 +115,11 @@ const traverseProps = (
   }
 };
 
-// A composite fiber's memoizedState is the singly-linked hook list; walk it in
-// lockstep with the alternate's so each hook index compares against itself.
+// For a function component, memoizedState is the singly-linked hook list; walk
+// it in lockstep with the alternate's so each hook index compares against
+// itself. isCompositeFiber also admits class components, whose memoizedState is
+// the instance state object with no `next`, so the walk visits it once and
+// stops, which is what 0.6.1 did too.
 const traverseState = (
   fiber: Fiber,
   visit: (

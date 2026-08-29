@@ -109,6 +109,25 @@ test('captures bippy renders: active, canary resolves name + memo + timing', asy
     true
   );
 
+  // The other two ports, on the same terms. getTimings feeds record.selfTime,
+  // which the reduce CLI accumulates into the summary /gaia-react-perf reports,
+  // so a dead or inverted child-subtraction ships wrong attribution rather than
+  // an error. Liveness needs both halves: some record where the subtraction
+  // actually ran (selfTime strictly under totalTime, ~145 of ~185 records), and
+  // a bound no inverted subtraction can satisfy. didFiberCommit is asserted for
+  // a true value, since the typeof check above is boolean-by-construction and
+  // stays green whatever COMMIT_MASK resolves to.
+  expect(dump.all.some((record) => record.selfTime > 0)).toBe(true);
+  expect(dump.all.some((record) => record.selfTime < record.totalTime)).toBe(
+    true
+  );
+  expect(
+    dump.all.every(
+      (record) => record.selfTime >= 0 && record.selfTime <= record.totalTime
+    )
+  ).toBe(true);
+  expect(dump.all.some((record) => record.didCommit)).toBe(true);
+
   // Name resolution is asserted over the whole dump, not the canary slice: a
   // slice selected BY componentName can never contain 'Unknown', so asking it
   // that question answers itself. Only composite fibers are recorded, so an
