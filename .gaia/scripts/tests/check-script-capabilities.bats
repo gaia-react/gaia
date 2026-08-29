@@ -1092,6 +1092,61 @@ curl -sS https://example.com/x'
   diff "$out_skip" "$out_plain"
 }
 
+# The carried-body predicate is written twice, once in each function that acts
+# on it. `_gaia_capcheck_quote_carry` reads it as `carry`, to decide whether the
+# line it was handed is body rather than code; `_gaia_capcheck_logical_lines`
+# reads it as `inbody`, to decide whether its comment and blank-line arms apply
+# to that same line. Neither is extracted into a shared helper, on purpose: the
+# walk runs per line over every tracked shell file, and .gaia/scripts/tests/
+# shell-lint-bash32.bats exists because that per-line cost is already the
+# binding one. So nothing but this keeps the two writings in step.
+#
+# Drift between them is silent, and worst in one direction. `inbody=0` while
+# `carry=1` lets logical_lines take its comment arm on a line inside a string
+# body, so a `#`-leading prose line carrying an apostrophe never reaches
+# quote_carry at all: the apostrophe opens a frame nothing closes, and every
+# line below it leaves the file as carried body with no diagnostic anywhere.
+
+predicate_block() {
+  # $1 = the flag the site assigns, `carry` or `inbody`. Anchored on the shadow
+  # guard rather than on a line range, so either function may move or grow
+  # around it, and normalized for the two spellings that differ by construction:
+  # quote_carry reads the state through its own local alias, and each site names
+  # its own flag. Nothing else is normalized, so the frame letters, the depth
+  # bound and the shadow term are all compared as written.
+  awk -v flag="$1" '
+    /if \[ "\$_GAIA_CAPCHECK_QSHADOW" -eq 0 \]/ { inb = 1; buf = ""; hit = 0 }
+    inb {
+      sub(/^[[:space:]]+/, ""); sub(/[[:space:]]+$/, "")
+      gsub(/[$][{]#st[}]/, "${#S}"); gsub(/[$][{]#_GAIA_CAPCHECK_QSTATE[}]/, "${#S}")
+      gsub(/[$]st/, "$S"); gsub(/[$]_GAIA_CAPCHECK_QSTATE/, "$S")
+      gsub(flag "=1", "F=1")
+      buf = buf $0 "\n"
+      if ($0 ~ /F=1/) { hit = 1 }
+      if ($0 == "fi") { if (hit) { printf "%s", buf } ; inb = 0 }
+    }
+  ' "$SCRIPT_DIR/capability-oracle-lib.sh"
+}
+
+@test "both writings of the carried-body predicate say the same thing" {
+  local carry inbody
+  carry="$(predicate_block carry)"
+  inbody="$(predicate_block inbody)"
+  # Each site has to be FOUND, or a rename on either one turns this into a
+  # comparison of two empty strings that agrees with itself.
+  [ -n "$carry" ]
+  [ -n "$inbody" ]
+  # And the normalization has to have left the three terms that carry the
+  # meaning standing: the depth bound, the state the case reads, and a frame
+  # letter reaching the flag. A substitution that over-matched, or an anchor
+  # that grabbed some other `if`, would otherwise compare two texts that agree
+  # about nothing.
+  grep -qF -- '[ "${#S}" -eq 1 ]' <<<"$carry"
+  grep -qF -- 'case "$S" in' <<<"$carry"
+  grep -qF -- ') F=1 ;;' <<<"$carry"
+  [ "$carry" = "$inbody" ]
+}
+
 @test "a bare path behind a separator inside a double-quoted span is prose, not a call" {
   # The negatives for the separator arms. A `;`, `|`, or `&` inside a span is
   # text the shell never acts on, and each one puts the path that follows it in
