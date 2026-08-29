@@ -331,9 +331,9 @@ const inspectRenderers = (): void => {
 
 let canProfile = false;
 
-// bippy's secure() helper was removed in 0.6.0 (upstream confirms this was
-// intentional); this reproduces its production gate, minimum-version check,
-// install-check timeout, and per-commit error isolation by hand.
+// Non-throwing by design: a commit handler that throws records the error and
+// the capture carries on rather than aborting. canProfile, the gate it reads,
+// is computed in onActive.
 const guard =
   <Arguments extends unknown[]>(handler: (...arguments_: Arguments) => void) =>
   (...arguments_: Arguments): void => {
