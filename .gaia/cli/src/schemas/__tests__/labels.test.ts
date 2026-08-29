@@ -160,28 +160,15 @@ describe('schemas/labels', () => {
     expect(result.success).toBe(true);
   });
 
-  test('an uppercase color is rejected', () => {
-    const result = LabelEntrySchema.safeParse({...baseEntry, color: 'B60205'});
+  test.each<[string, string, boolean]>([
+    ['an uppercase color is rejected', 'B60205', false],
+    ['a lowercase 6-digit color is accepted', 'b60205', true],
+    ['a 3-digit color is rejected', 'b60', false],
+    ['a 7-digit color is rejected', 'b60205a', false],
+  ])('%s', (_label, color, success) => {
+    const result = LabelEntrySchema.safeParse({...baseEntry, color});
 
-    expect(result.success).toBe(false);
-  });
-
-  test('a lowercase 6-digit color is accepted', () => {
-    const result = LabelEntrySchema.safeParse({...baseEntry, color: 'b60205'});
-
-    expect(result.success).toBe(true);
-  });
-
-  test('a 3-digit color is rejected', () => {
-    const result = LabelEntrySchema.safeParse({...baseEntry, color: 'b60'});
-
-    expect(result.success).toBe(false);
-  });
-
-  test('a 7-digit color is rejected', () => {
-    const result = LabelEntrySchema.safeParse({...baseEntry, color: 'b60205a'});
-
-    expect(result.success).toBe(false);
+    expect(result.success).toBe(success);
   });
 
   test('two entries sharing a color are rejected, and the message names the color', () => {

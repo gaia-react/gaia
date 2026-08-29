@@ -347,34 +347,27 @@ describe('init configure-automation', () => {
     expect(errLine).toContain('"code":"invalid_arguments"');
   });
 
-  test('exit 1 when --update-deps missing', () => {
-    sandbox = setupSandbox();
-    const exit = run(
+  test.each<[string, string[], string]>([
+    [
+      'exit 1 when --update-deps missing',
       ['--wiki', 'ci', '--pnpm-audit', 'ci', '--stale-branches', 'ci'],
-      {cwd: sandbox.root}
-    );
-    expect(exit).toBe(1);
-    expect(stdio.errors.join('')).toContain('--update-deps is required');
-  });
-
-  test('exit 1 when --pnpm-audit missing', () => {
-    sandbox = setupSandbox();
-    const exit = run(
+      '--update-deps is required',
+    ],
+    [
+      'exit 1 when --pnpm-audit missing',
       ['--wiki', 'ci', '--update-deps', 'ci', '--stale-branches', 'ci'],
-      {cwd: sandbox.root}
-    );
-    expect(exit).toBe(1);
-    expect(stdio.errors.join('')).toContain('--pnpm-audit is required');
-  });
-
-  test('exit 1 when --stale-branches missing', () => {
-    sandbox = setupSandbox();
-    const exit = run(
+      '--pnpm-audit is required',
+    ],
+    [
+      'exit 1 when --stale-branches missing',
       ['--wiki', 'ci', '--update-deps', 'ci', '--pnpm-audit', 'ci'],
-      {cwd: sandbox.root}
-    );
+      '--stale-branches is required',
+    ],
+  ])('%s', (_label, argv, message) => {
+    sandbox = setupSandbox();
+    const exit = run(argv, {cwd: sandbox.root});
     expect(exit).toBe(1);
-    expect(stdio.errors.join('')).toContain('--stale-branches is required');
+    expect(stdio.errors.join('')).toContain(message);
   });
 
   test('exit 1 when --wiki value invalid', () => {

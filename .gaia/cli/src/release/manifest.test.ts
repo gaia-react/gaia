@@ -234,34 +234,23 @@ describe('lintClassifierSets', () => {
     expect(lintClassifierSets(patterns)).toEqual([]);
   });
 
-  test('flags exact-set entry that is also excluded', () => {
-    const patterns = parseExcludePatterns('CLAUDE.md\n');
+  test.each<[string, string, string]>([
+    ['flags exact-set entry that is also excluded', 'CLAUDE.md', 'SHARED'],
+    [
+      'flags prefix-set entry that is also excluded',
+      'wiki/concepts',
+      'WIKI_OWNED_PREFIXES',
+    ],
+    [
+      'flags adopter-sentinel that is also excluded',
+      'wiki/hot.md',
+      'ADOPTER_OWNED_SENTINELS',
+    ],
+  ])('%s', (_label, entry, setName) => {
+    const patterns = parseExcludePatterns(`${entry}\n`);
     const overlaps = lintClassifierSets(patterns);
     expect(overlaps).toHaveLength(1);
-    expect(overlaps[0]).toMatchObject({
-      entry: 'CLAUDE.md',
-      setName: 'SHARED',
-    });
-  });
-
-  test('flags prefix-set entry that is also excluded', () => {
-    const patterns = parseExcludePatterns('wiki/concepts\n');
-    const overlaps = lintClassifierSets(patterns);
-    expect(overlaps).toHaveLength(1);
-    expect(overlaps[0]).toMatchObject({
-      entry: 'wiki/concepts',
-      setName: 'WIKI_OWNED_PREFIXES',
-    });
-  });
-
-  test('flags adopter-sentinel that is also excluded', () => {
-    const patterns = parseExcludePatterns('wiki/hot.md\n');
-    const overlaps = lintClassifierSets(patterns);
-    expect(overlaps).toHaveLength(1);
-    expect(overlaps[0]).toMatchObject({
-      entry: 'wiki/hot.md',
-      setName: 'ADOPTER_OWNED_SENTINELS',
-    });
+    expect(overlaps[0]).toMatchObject({entry, setName});
   });
 });
 
