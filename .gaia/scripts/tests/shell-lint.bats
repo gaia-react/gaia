@@ -117,6 +117,32 @@ gate_pass_headers() {
   printf '%s\n' "$names"
 }
 
+# wti_transitive_guards: the guards whole-tree-invariants.sh leaves out of its
+# own roster ON THE GROUND that this gate runs them, one bare name per line.
+#
+# An EXTERNAL source, which is the whole point of it. gate_pass_headers above
+# reads the gate, and so does the count that cross-checks it, so both sides of
+# that pairing shrink together when a pass is deleted from the gate and the
+# assertion stays green over the loss. This file records the same fact from the
+# other side: `.gaia/tests/whole-tree-invariants.sh` excludes six lint scripts
+# from the set it runs directly, each with the written reason that this gate
+# invokes them, and two of them have no other invoker anywhere in the tree. So
+# a pass deleted here silently stops running at all while that file goes on
+# claiming it runs.
+#
+# Short-read guarded the way gate_pass_headers is, and for the same reason: an
+# extraction that reads none of the lines yields an empty set that every
+# assertion over it passes.
+wti_transitive_guards() {
+  local wti raw names
+  wti="$REPO_ROOT/.gaia/tests/whole-tree-invariants.sh"
+  raw="$(grep -c 'runs transitively, shell-lint.sh invokes it' "$wti")"
+  names="$(sed -n 's#^\.gaia/scripts/\([a-z-]*\)\.sh|runs transitively, shell-lint\.sh invokes it.*#\1#p' "$wti")"
+  [ "$(printf '%s\n' "$names" | grep -c .)" -eq "$raw" ] || return 1
+  [ "$raw" -gt 1 ] || return 1
+  printf '%s\n' "$names"
+}
+
 # The rig above is duplicated into the sibling suite rather than shared, for the
 # reason this file's header gives. "Keep the two copies in step" is prose, and
 # prose is a claim that decays: a fix to gate_pass_headers' short-read guard, or
@@ -221,6 +247,29 @@ rig_piece() {
   # reds here instead of quietly shrinking the set.
   [ "$folded" -eq "$(grep -c 'echo "--> lint-' "$GATE")" ]
   [ "$folded" -gt 1 ]
+
+  # Both of those read the GATE, so deleting a whole pass from it shrinks the
+  # expectation and the cross-check together and neither notices. The floor
+  # above is the only outside constraint, and it leaves five of the folded
+  # passes droppable. So the set is required a third time from a source the
+  # gate cannot move: every guard whole-tree-invariants.sh declines to run
+  # itself BECAUSE this gate runs it has to be a pass this gate actually ran.
+  # Two of them are invoked from nowhere else in the tree, so a pass dropped
+  # here stops running entirely while that file still says it runs.
+  #
+  # Captured rather than piped in through a process substitution, because that
+  # spelling throws the helper's exit status away: on a refused derivation the
+  # loop reads nothing, runs its body zero times, and the assertion passes
+  # having checked nothing. The capture turns the refusal back into a failure.
+  local w wti_list
+  wti_list="$(wti_transitive_guards)"
+  [ -n "$wti_list" ]
+  [ "$(printf '%s\n' "$wti_list" | grep -c .)" -gt 1 ]
+  while IFS= read -r w; do
+    [ -n "$w" ]
+    grep -qF -- "--> $w" <<<"$output"
+    grep -qF -- "$w: clean" <<<"$output"
+  done <<<"$wti_list"
 
   # The husky hooks are extensionless, so they match neither the *.sh nor the
   # *.bats discovery glob and need a pass of their own. Husky runs them as
