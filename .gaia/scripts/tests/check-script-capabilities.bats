@@ -754,6 +754,72 @@ curl -sS https://example.com/x'
   true
 }
 
+@test "a kept span is not emitted a second time by the code that follows it" {
+  # The bound on how far span tracking reaches along the line. Once the carried
+  # body has closed, the rest is code `${t:cut}` already returns whole, so a
+  # substitution sitting there needs no keeping and recording one emits it
+  # twice: once as its own record and once inside the code record.
+  #
+  # Asserted on the span channel, not on the code channel. The code channel
+  # returns the same bytes either way, so a test reading it alone stays green
+  # over exactly the mistake this pins.
+  run bash -c 'cd "$1" || exit 2
+    . .gaia/scripts/capability-oracle-lib.sh
+    _GAIA_CAPCHECK_QSTATE="D"
+    _GAIA_CAPCHECK_QSHADOW=0
+    _gaia_capcheck_quote_carry "def\" && echo \$(bash x.sh)"
+    printf "spans[%s]\n" "$_GAIA_CAPCHECK_QSUBS"
+    printf "code[%s]\n" "$_GAIA_CAPCHECK_RET"' _ "$REPO_ROOT"
+  [ "$status" -eq 0 ]
+  [ "${lines[0]}" = "spans[]" ]
+  [ "${lines[1]}" = "code[ && echo \$(bash x.sh)]" ]
+}
+
+@test "the substitution bail covers the kept span and not the code beside it" {
+  # The two halves of one source line, asserted together because the repair is
+  # the boundary between them and a fixture for either half alone passes under
+  # a walk that has lost it.
+  #
+  # A line carrying `$(` keeps its anchors, because a separator inside a
+  # substitution body is real shell: that is the one thing the quoting repair
+  # leaves open, and _GAIA_CAPCHECK_PATHCMD's header says so. The first fixture
+  # is that limit, unchanged and loud, and it is here so a reader cannot mistake
+  # the second for a general repair.
+  #
+  # The second is the same shape with the substitution reached through a
+  # carried body instead. Keeping that substitution is mandatory (the call
+  # inside it is real reach, and dropping it loses that reach silently), and
+  # handing it back joined to the code the line runs after the body closed
+  # would put a `$(` in front of a tail whose quoting is fully known. The bail
+  # would then cover the tail too and the `;` inside its span would read as
+  # command position. The splitter emits the two as separate records so it
+  # does not, which is what this asserts: same bytes after the body, opposite
+  # verdict from the first fixture, because only the first has a substitution
+  # in the region being judged.
+  substbail_case() {
+    local tag="$1" body="$2" want="$3" repo
+    repo="$(make_fixture_repo "substbail$tag")"
+    add_script "$repo" a/s.sh "#!/usr/bin/env bash
+$body"
+    add_script "$repo" .github/audit/base.sh '#!/usr/bin/env bash
+curl -sS https://example.com/x'
+    write_allow "$repo" "Bash(bash a/s.sh:*)"
+    write_manifest "$repo" '[{"script":"a/s.sh","capabilities":[],
+      "why":"prints a usage message beside a substitution","maintainer_only":false}]'
+    run bash "$CHECK" "$repo"
+    [ "$status" -eq "$want" ]
+    if [ "$want" -eq 1 ]; then
+      grep -qF -- "UNDECLARED a/s.sh invokes:.github/audit/base.sh" <<<"$output"
+    else
+      grep -qE '^(UNDECLARED|SURPLUS|UNRESOLVED)' <<<"$output" && return 1
+      true
+    fi
+  }
+  substbail_case oneline 'x=$(date) ; printf "%s\n" "usage; .github/audit/base.sh --member X"' 1
+  substbail_case carried 'msg="line one
+line two $(date) end" ; printf "%s\n" "usage; .github/audit/base.sh --member X"' 0
+}
+
 @test "a paren that closes nothing does not swallow the rest of a substitution" {
   # The bound on the carried state's own reach. A `case` arm, a function
   # definition, and a bare subshell each put a `)` inside a multi-line

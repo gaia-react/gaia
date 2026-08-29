@@ -676,6 +676,7 @@ _gaia_capcheck_quote_carry() {
   # text has to survive even though the body around it does not. `sub_start` is
   # where the current such span began, `subs` collects the ones that closed.
   local depth_before pos sub_start=-1 sub_depth=0 subs=""
+  _GAIA_CAPCHECK_QSUBS=""
   if [ "$_GAIA_CAPCHECK_QSHADOW" -eq 0 ] && [ "${#st}" -eq 1 ]; then
     case "$st" in
       D|S|A|E) carry=1 ;;
@@ -800,7 +801,13 @@ _gaia_capcheck_quote_carry() {
     # (`args=(` then `"$( ... )"`) and a substitution nested inside a string
     # still runs. Only the OUTERMOST such span is tracked: anything deeper is
     # already inside the text being kept.
-    if [ "$carry" -gt 0 ]; then
+    #
+    # `cut` bounds it on the other side. Once the carried body has closed, the
+    # rest of the line is ordinary code that `${t:cut}` already returns whole,
+    # so a substitution there needs no keeping and recording one would emit it
+    # twice. `cut` is set at the loop's foot, below, so on the iteration that
+    # closes the body it is still -1 here and the span that body held is kept.
+    if [ "$carry" -gt 0 ] && [ "$cut" -lt 0 ]; then
       if [ "$sub_start" -lt 0 ] && [ "${#st}" -eq $((depth_before + 1)) ]; then
         case "${st: -1}" in
           P|B) sub_start=$pos; sub_depth=$depth_before ;;
@@ -822,16 +829,27 @@ _gaia_capcheck_quote_carry() {
   _GAIA_CAPCHECK_QSTATE="$st"
   # A span still open at the line's end is the first line of a multi-line
   # substitution nested in the carried body. Its remainder is code the next
-  # lines carry on as code, so keep what this line held of it too.
+  # lines carry on as code, so keep what this line held of it too. A span
+  # cannot be open here and `cut` set as well: the guard above stops recording
+  # once the body closes, and a substitution frame still on the stack is what
+  # keeps the body from closing in the first place.
   if [ "$carry" -gt 0 ] && [ "$sub_start" -ge 0 ]; then
     subs="${subs:+$subs }${t:sub_start}"
   fi
+  # The spans come back on their own channel rather than concatenated onto the
+  # code. The two halves have different quoting provenance, and
+  # _gaia_capcheck_blank_quoted_anchors bails on a WHOLE line carrying `$(`,
+  # because a separator inside a substitution body is real. Concatenating puts
+  # a `$(` in front of a tail whose own quoting is fully known, so the bail
+  # covers the tail too and a `;` inside a span there reads as command
+  # position: the fabricated edge this file exists to stop fabricating.
+  _GAIA_CAPCHECK_QSUBS="$subs"
   if [ "$carry" -eq 0 ]; then
     _GAIA_CAPCHECK_RET="$t"
   elif [ "$cut" -lt 0 ]; then
-    _GAIA_CAPCHECK_RET="$subs"
+    _GAIA_CAPCHECK_RET=""
   else
-    _GAIA_CAPCHECK_RET="${subs:+$subs }${t:cut}"
+    _GAIA_CAPCHECK_RET="${t:cut}"
   fi
   return 0
 }
@@ -862,7 +880,7 @@ _gaia_capcheck_quote_carry() {
 _gaia_capcheck_logical_lines() {
   local file="$1"
   [ -f "$file" ] || return 0
-  local line trimmed lineno=0 start=0 acc="" cur_sc="-" pending_sc="-" cont=0 hd="" inbody=0
+  local line trimmed lineno=0 start=0 acc="" cur_sc="-" pending_sc="-" cont=0 hd="" inbody=0 subs=""
   _GAIA_CAPCHECK_QSTATE=""
   _GAIA_CAPCHECK_QSHADOW=0
   while IFS= read -r line || [ -n "$line" ]; do
@@ -905,6 +923,18 @@ _gaia_capcheck_logical_lines() {
     cont=0
     _gaia_capcheck_quote_carry "$acc"
     acc="$_GAIA_CAPCHECK_RET"
+    subs="$_GAIA_CAPCHECK_QSUBS"
+    # A substitution kept out of a carried body is its OWN record, sharing this
+    # line's number with the code beside it. Two records rather than one
+    # concatenated string, so that each half is judged under its own quoting:
+    # the span carries a `$(` and the anchor blanker must leave it alone, the
+    # code after the body closed carries none and must be blanked.
+    #
+    # Only the code record decides a here-document. A `<<WORD` inside a kept
+    # span opens one the splitter does not follow, which is what it did before
+    # the span was kept at all: the lines below it stay inside the string frame
+    # and are suppressed either way, so nothing is read as code that is not.
+    [ -n "$subs" ] && printf '%s\t%s\t%s\n' "$start" "$cur_sc" "$subs"
     if [ -n "$acc" ]; then
       printf '%s\t%s\t%s\n' "$start" "$cur_sc" "$acc"
       _gaia_capcheck_heredoc_delim "$acc"
@@ -915,6 +945,8 @@ _gaia_capcheck_logical_lines() {
   if [ "$cont" -eq 1 ]; then
     _gaia_capcheck_quote_carry "$acc"
     acc="$_GAIA_CAPCHECK_RET"
+    subs="$_GAIA_CAPCHECK_QSUBS"
+    [ -n "$subs" ] && printf '%s\t%s\t%s\n' "$start" "$cur_sc" "$subs"
     [ -n "$acc" ] && printf '%s\t%s\t%s\n' "$start" "$cur_sc" "$acc"
   fi
   return 0
@@ -2217,6 +2249,17 @@ _GAIA_CAPCHECK_DOTCMD='(^|[;|&(`{}]|(^|[[:space:]])(if|then|else|do|elif|while|u
 # line still fabricates an edge. That failure is mostly closed and loud, not
 # wholly: a fabricated edge can mask a real SURPLUS by making a
 # declared-but-unreached term look reached.
+#
+# Read `a line` as the text the splitter hands the detectors, not as the source
+# line, and the difference is load-bearing in one direction. A source line that
+# closes a carried string body holds two regions with different quoting: the
+# substitution kept out of the body, which the bail must cover, and the code
+# after the body closed, whose quoting is fully known and which the blanker can
+# read. The splitter hands those out as two records for that reason, so the
+# bail lands on the region earning it and the tail's own spans are still
+# blanked. One record carrying both would put a `$(` in front of the tail and
+# fabricate an edge out of it, which is this bullet's failure reached by a
+# route the source line never shows.
 #
 # The keyword arm is FLATTENED rather than nested, which _GAIA_CAPCHECK_DOTCMD
 # has no reason to do and this constant does: its one and only caller reads the

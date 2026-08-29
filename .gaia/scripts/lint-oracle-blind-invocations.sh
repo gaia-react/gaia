@@ -466,10 +466,34 @@ _obi_scan_file() {
   # position lives on the line above, and the fragment reads as anchored at `^`
   # when the joined line is not: a false clean, in the direction this check
   # exists to close.
+  #
+  # The oracle emits more than one record for a line that carries a command
+  # substitution out of a string body an earlier line opened, so that each half
+  # is anchored under its own quoting. The mapping below picks the LAST record
+  # whose start covers a probe, which would ask about the code half alone, so
+  # records sharing a start are rejoined here into the one line the probe
+  # actually sits on and this check reads exactly the text it read before the
+  # splitter began emitting the halves apart.
+  #
+  # No test drives this rejoin, and that is stated rather than left for a
+  # reader to discover: every shape tried reports clean with it and without it,
+  # because the probe planter registers nothing inside the kept span. It is
+  # kept because the invariant it restores is one the mapping states and the
+  # splitter now breaks, and because its absence is bounded in the loud
+  # direction only. `logicals[pick]` would hold the code half, a subset of the
+  # joined text, so the anchor count can only fall, and this check reports when
+  # that count is zero or short. Dropping it can therefore add a false finding
+  # on a correct tree; it can never hide a real one.
+  local nrec
   while IFS=$'\t' read -r i _ line; do
     [ -n "$i" ] || continue
-    starts[${#starts[@]}]="$i"
-    logicals[${#logicals[@]}]="$line"
+    nrec=${#starts[@]}
+    if [ "$nrec" -gt 0 ] && [ "${starts[nrec - 1]}" = "$i" ]; then
+      logicals[nrec - 1]="${logicals[nrec - 1]} $line"
+      continue
+    fi
+    starts[nrec]="$i"
+    logicals[nrec]="$line"
   done < <(_gaia_capcheck_logical_lines "$file")
 
   # Two passes, because the comparison is per logical line and the probes are
