@@ -173,11 +173,14 @@ jobs:
               # That same suite's coverage guard reads .lintstagedrc.json as its
               # second input: it asserts every arm of the hook above is matched
               # by a glob whose task chain invokes ESLint. The config matches no
-              # other pattern here and sits in no Code Audit Team member's remit,
-              # so without this line the edit the guard exists to catch -- a glob
-              # dropped or narrowed out from under a live arm, which is exactly
-              # what #1625 was -- reports `code=false`, skips every bats step,
-              # and greens the job having run the guard zero times.
+              # other pattern here, so without this line the edit the guard
+              # exists to catch -- an arm whose directory no ESLint glob covers,
+              # whether the glob was never written, which is what #1625 was, or
+              # was later narrowed out from under a live arm -- reports
+              # `code=false`, skips every bats step, and greens the job having
+              # run the guard zero times. Arming is not remit: code-audit-frontend
+              # does claim this path, and that dispatches a member without
+              # running one line of the suite.
               - '.lintstagedrc.json'
               - '.gaia/scripts/**'
               # check-main-root-derivation.bats (.gaia/scripts/tests/) scans

@@ -182,8 +182,8 @@ arm_assignment_count() {
 
 # The lint-staged glob keys whose task chain actually invokes ESLint. Reading
 # the keys alone would accept a chain that runs only prettier or stylelint,
-# which is the very outcome the arm is supposed to prevent; two such chains
-# already live in this config.
+# which is the very outcome the arm is supposed to prevent, and chains of that
+# shape already live in this config.
 eslint_globs() {
   jq -r 'to_entries[]
          | select(any(.value[]?; type == "string" and startswith("eslint")))
@@ -259,10 +259,14 @@ glob_covers_dir() {
   names=$(sed -n 's/^\(HAS_[A-Z0-9_]*_CHANGED\)=.*/\1/p' "$HOOK_ABS")
   [ -n "$names" ]
   [ "$(printf '%s\n' "$names" | grep -c .)" -eq "$(arm_assignment_count)" ]
+  # shellcheck disable=SC2016 # $ is literal in the BRE, not an expansion.
   guard=$(grep -n '^if \[ -n "\$HAS_' "$HOOK_ABS")
   [ -n "$guard" ]
   while IFS= read -r name; do
-    if ! grep -qF -- "\$$name" <<<"$guard"; then
+    # The closing quote terminates the match. Grepping the bare name would let
+    # a longer arm whose name merely starts with this one supply the matching
+    # substring, greening the check for an arm that is assigned and never read.
+    if ! grep -qF -- "\"\$$name\"" <<<"$guard"; then
       printf 'arm %s is assigned but never read by the guard\n' "$name" >&2
       return 1
     fi
