@@ -1,19 +1,18 @@
 // Contract A: the wire format the bippy harness emits and the reduce CLI
-// (Phase 2) consumes, named to match the CLI's own summary parser so the two
-// halves stay renameable together. Records hold only serialized
-// primitives: never a live fiber, DOM node, or fiber.type. Change entries carry
-// TYPE LABELS, never raw values (privacy + size).
+// (.gaia/cli/src/react-perf/reduce.ts) consumes, named to match that CLI's own
+// summary parser so the two halves stay renameable together. Records hold only
+// serialized primitives: never a live fiber, DOM node, or fiber.type. Change
+// entries carry TYPE LABELS, never raw values (privacy + size).
 
 // In-browser diagnostics channel the harness writes and the capture helper
-// reads. It carries the browser-derived subset of RawDumpMeta plus an internal
-// production-abort signal that is NOT written to the dump. strictMode is stamped
-// capture-side from the noStrict option, so it is absent here.
+// reads. It carries the browser-derived subset of RawDumpMeta; strictMode is
+// stamped capture-side from installRenderCapture's isStrictModeDisabled option,
+// so it is absent here.
 export type BippyMeta = {
   bippyVersion: string;
   commits: number;
   errors: string[];
   installed: boolean;
-  productionDetected: boolean;
   profilingAvailable: boolean;
   rendererVersion: null | string;
 };
@@ -54,7 +53,7 @@ export type RenderRecord = {
   didRender: boolean; // didFiberRender(fiber)
   fiberId: number; // getFiberId(fiber) — stable cross-commit identity
   isMemo: boolean; // tag ∈ {tags.MemoComponent, tags.SimpleMemoComponent} or hasMemoCache
-  kind: string; // 'Memo' | 'ForwardRef' | 'Class' | 'Function' | 'tag(N)'
+  kind: string; // 'Memo' | 'ForwardRef' | 'Class' | 'Function' ('tag(N)' is unreachable)
   phase: string; // 'mount' | 'update' | 'unmount' (bippy phase)
   propsChanged: ChangeEntry[];
   selfTime: number; // getTimings(fiber).selfTime

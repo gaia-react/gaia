@@ -57,7 +57,7 @@ test('captures bippy renders: active, canary resolves name + memo + timing', asy
   expect(result.meta.rendererVersion).toBeTruthy();
   expect(result.meta.bippyVersion).toMatch(/^\d+\.\d+\.\d+/);
 
-  // A default (StrictMode-on) run is flagged so Phase 2 caveats timings.
+  // A default (StrictMode-on) run is flagged so the reduce CLI caveats timings.
   expect(result.meta.strictMode).toBe(true);
 
   const dump = readDump(result.rawPath);
@@ -172,7 +172,7 @@ test('noStrict bypass disables StrictMode (render-time inflation collapses)', as
   const strictB = await load(false);
   const relaxedB = await load(true);
 
-  // meta.strictMode reflects the bypass (Phase 2 keys the timing caveat on it).
+  // meta.strictMode reflects the bypass (the reduce CLI keys its caveat on it).
   expect(strictA.meta.strictMode).toBe(true);
   expect(strictB.meta.strictMode).toBe(true);
   expect(relaxedA.meta.strictMode).toBe(false);
