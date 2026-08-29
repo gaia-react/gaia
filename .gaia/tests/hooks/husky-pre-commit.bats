@@ -22,10 +22,6 @@ setup() {
   REPO_ROOT=$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)
   HOOK_ABS="$REPO_ROOT/.husky/pre-commit"
 
-  # The coverage guard below matches config globs with [[ == ]], and the
-  # brace groups it rewrites need extglob on at match time.
-  shopt -s extglob
-
   REPO=$(mktemp -d -t husky-pre-commit-XXXXXX)
   git -C "$REPO" init --quiet --initial-branch=main
   git -C "$REPO" config user.email "test@example.com"
@@ -165,32 +161,110 @@ assert_gate_skipped() {
 # of directories the derivation yields is checked against the number of arm
 # assignments, so an arm whose spelling drifts stops the guard rather than
 # quietly shrinking it.
+#
+# What this covers and what it does not. The reverse direction, a glob whose
+# directory no arm names, is pinned by the per-directory @tests above rather
+# than derived; deriving it too is tracked as #1628.
 
+# Every directory the hook's change-detection arms grep for, one per line.
 arm_dirs() {
-  sed -n "s/^HAS_[A-Z_]*_CHANGED=.*| grep '\\([^']*\\)'.*/\\1/p" "$HOOK_ABS"
+  sed -n "s/^HAS_[A-Z0-9_]*_CHANGED=.*| grep '\\([^']*\\)'.*/\\1/p" "$HOOK_ABS"
 }
 
-@test "every pre-commit arm directory is covered by a lint-staged glob" {
-  local dirs derived assignments dir glob pattern covered
+# Every arm assignment, counted by a pattern deliberately wider than the two
+# derivations read. A count taken with the same pattern as the extraction agrees
+# with it on every name the pattern cannot spell, so the two readings would
+# confirm each other's blind spot instead of exposing it; this one over-counts
+# rather than under-counts, so an arm neither derivation can read reds the guard.
+arm_assignment_count() {
+  grep -c '^HAS_[A-Za-z0-9_]*=' "$HOOK_ABS"
+}
+
+# The lint-staged glob keys whose task chain actually invokes ESLint. Reading
+# the keys alone would accept a chain that runs only prettier or stylelint,
+# which is the very outcome the arm is supposed to prevent; two such chains
+# already live in this config.
+eslint_globs() {
+  jq -r 'to_entries[]
+         | select(any(.value[]?; type == "string" and startswith("eslint")))
+         | .key' "$REPO_ROOT/.lintstagedrc.json"
+}
+
+# Whether one glob key hands ESLint the files under directory $1.
+#
+# This asks for the literal shape `<dir>/**/<rest>`, in the key itself or in one
+# alternative of its leading brace group, rather than matching a probe path
+# against the key. Matching would need lint-staged's own matcher: bash's [[ ]]
+# lets `*` cross a `/` where picomatch does not, so `app/*.{ts,tsx}` would
+# satisfy a probe while leaving app/routes/home.tsx unlinted, which is exactly
+# the miss this guard exists to catch. Demanding the recursive shape is the
+# narrower question, and it fails closed: a key written some other way reds the
+# guard rather than passing it.
+glob_covers_dir() {
+  local dir="$1" glob="$2" head alt
+  case "$glob" in
+    *"/**/"*) head="${glob%%/\*\*/*}" ;;
+    *) return 1 ;;
+  esac
+  case "$head" in
+    "{"*"}")
+      head="${head#\{}"; head="${head%\}}"
+      while IFS= read -r alt; do
+        [ "$alt/" = "$dir" ] && return 0
+      done <<<"$(printf '%s' "$head" | tr ',' '\n')"
+      return 1
+      ;;
+    *) [ "$head/" = "$dir" ] && return 0; return 1 ;;
+  esac
+}
+
+@test "every pre-commit arm directory is covered by an ESLint lint-staged glob" {
+  local dirs globs derived assignments dir glob covered
   dirs=$(arm_dirs)
   derived=$(printf '%s\n' "$dirs" | grep -c . || true)
-  assignments=$(grep -c '^HAS_[A-Z_]*_CHANGED=' "$HOOK_ABS")
+  assignments=$(arm_assignment_count)
   [ "$derived" -gt 0 ]
   [ "$derived" -eq "$assignments" ]
+
+  # Captured rather than piped, so a jq that is absent or cannot parse the
+  # config reports itself instead of emptying the loop below and blaming the
+  # first arm for an uncovered directory.
+  globs=$(eslint_globs) || {
+    printf 'could not read .lintstagedrc.json (is jq installed?)\n' >&2
+    return 1
+  }
+  [ -n "$globs" ] || {
+    printf '.lintstagedrc.json declares no glob whose chain invokes eslint\n' >&2
+    return 1
+  }
 
   while IFS= read -r dir; do
     covered=0
     while IFS= read -r glob; do
-      # Brace alternation is the only glob syntax [[ == ]] cannot read; rewrite
-      # it to an extglob group. `*` already matches `/` inside [[ ]], so `**`
-      # needs no handling. No key carries a comma outside a brace group.
-      pattern=$(printf '%s\n' "$glob" | sed 's/{/@(/g; s/}/)/g; s/,/|/g')
-      # shellcheck disable=SC2053 # unquoted on purpose: $pattern is the glob.
-      if [[ "${dir}nested/file.ts" == $pattern ]]; then covered=1; fi
-    done < <(jq -r 'keys[]' "$REPO_ROOT/.lintstagedrc.json")
+      if glob_covers_dir "$dir" "$glob"; then covered=1; fi
+    done <<<"$globs"
     if [ "$covered" -ne 1 ]; then
-      printf 'hook arm %s has no matching .lintstagedrc.json glob\n' "$dir" >&2
+      printf 'hook arm %s has no ESLint .lintstagedrc.json glob\n' "$dir" >&2
       return 1
     fi
   done <<<"$dirs"
+}
+
+# An arm assignment that never reaches the OR guard is dead: the directory looks
+# armed at the top of the hook and decides nothing. The assignment names are
+# derived from the same lines the guard above reads, so an arm added without a
+# term reds here instead of passing both checks.
+@test "every pre-commit arm assignment is read by the change-detection guard" {
+  local names name guard
+  names=$(sed -n 's/^\(HAS_[A-Z0-9_]*_CHANGED\)=.*/\1/p' "$HOOK_ABS")
+  [ -n "$names" ]
+  [ "$(printf '%s\n' "$names" | grep -c .)" -eq "$(arm_assignment_count)" ]
+  guard=$(grep -n '^if \[ -n "\$HAS_' "$HOOK_ABS")
+  [ -n "$guard" ]
+  while IFS= read -r name; do
+    if ! grep -qF -- "\$$name" <<<"$guard"; then
+      printf 'arm %s is assigned but never read by the guard\n' "$name" >&2
+      return 1
+    fi
+  done <<<"$names"
 }

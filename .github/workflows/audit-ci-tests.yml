@@ -170,6 +170,15 @@ jobs:
               # would report `code=false`, skip every bats step, and green the
               # job having run the suite zero times.
               - '.husky/**'
+              # That same suite's coverage guard reads .lintstagedrc.json as its
+              # second input: it asserts every arm of the hook above is matched
+              # by a glob whose task chain invokes ESLint. The config matches no
+              # other pattern here and sits in no Code Audit Team member's remit,
+              # so without this line the edit the guard exists to catch -- a glob
+              # dropped or narrowed out from under a live arm, which is exactly
+              # what #1625 was -- reports `code=false`, skips every bats step,
+              # and greens the job having run the guard zero times.
+              - '.lintstagedrc.json'
               - '.gaia/scripts/**'
               # check-main-root-derivation.bats (.gaia/scripts/tests/) scans
               # tracked source for a hand-rolled main-checkout derivation, and
