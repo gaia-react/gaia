@@ -6,11 +6,11 @@
 //
 // Safeguards: a manual canProfile gate (dev-build + minimum React 19 check)
 // plus a non-throwing guard() wrapper stand in for bippy's removed secure()
-// helper, backed by a 5000ms install-check timeout (defuses the window.stop()
-// landmine); it stays on the onCommitFiberRoot chaining path (never
-// injectProfilingHooks/lite); it gates real renders via didFiberRender
-// (traverseRenderedFibers) and keys cross-commit identity by getFiberId; it
-// retains no fibers, DOM nodes, or fiber.type objects.
+// helper, backed by a 5000ms install-check timeout that calls window.stop() to
+// halt a page bippy never attached to; it stays on the onCommitFiberRoot
+// chaining path (never injectProfilingHooks/lite); it gates real renders via
+// didFiberRender (traverseRenderedFibers) and keys cross-commit identity by
+// getFiberId; it retains no fibers, DOM nodes, or fiber.type objects.
 
 /* eslint-disable no-underscore-dangle -- window.__renders / __bippyMeta are the
    harness wire contract this file publishes for capture.ts to read. */
@@ -45,7 +45,6 @@ const meta: BippyMeta = {
   commits: 0,
   errors: [],
   installed: false,
-  productionDetected: false,
   profilingAvailable: false,
   rendererVersion: null,
 };
@@ -59,15 +58,14 @@ const recordError = (error: unknown): void => {
   meta.errors.push(error instanceof Error ? error.message : String(error));
 };
 
-// --- Ports of helpers bippy removed in 0.7.0 -------------------------------
-// 0.7.0 dropped didFiberCommit, getTimings, and the traverseProps/State/
-// Contexts visitors as "policy-heavy helpers" (upstream changelog); they are
-// not coming back. These reproduce bippy 0.6.1's fiber reads, which is where
-// the attribution comes from, so what each visitor yields is unchanged across
-// the bump. They are not byte-for-byte copies, and the two deltas are
-// deliberate: the visitors return void rather than a short-circuit boolean,
-// because nothing here short-circuits, and they carry no try/catch of their
-// own, because onRender already wraps every call in one.
+// --- Fiber-read helpers bippy does not export ------------------------------
+// didFiberCommit, getTimings, and the traverseProps/State/Contexts visitors are
+// local because bippy exports none of them, and every attribution below is
+// built on these reads. Two properties are deliberate: the visitors return void
+// rather than a short-circuit boolean, because nothing here short-circuits, and
+// they carry no try/catch of their own, because onRender already wraps every
+// call in one, so a throw inside a visitor drops that fiber's whole record
+// rather than one of its three change arrays.
 
 /* eslint-disable no-bitwise -- React fiber effect flags are a bitmask; masking
    is the only way to read them, and this is the read bippy 0.6.1 did. */
@@ -179,8 +177,6 @@ const traverseContexts = (
   }
 };
 
-// --- End ports -------------------------------------------------------------
-
 const getTypeLabel = (value: unknown): string => {
   if (value === null) return 'null';
   if (value === undefined) return 'undefined';
@@ -206,8 +202,10 @@ const isEffectState = (value: unknown): boolean =>
   'deps' in value;
 
 // Map fiber.tag to a human label. Work-tag integers are renumbered between
-// React versions, so they resolve through bippy's per-fiber tag map (0.7.0
-// replaced the fixed *Tag export constants with it) rather than literal ints.
+// React versions, so they resolve through bippy's per-fiber tag map rather than
+// literal ints. onRender skips every non-composite fiber and this map matches
+// all five tags isCompositeFiber admits, so the tag(N) return is an unreachable
+// default.
 const getFiberKindLabel = (
   tag: number,
   tags: Readonly<ReactWorkTagMap>
@@ -315,23 +313,16 @@ const onRender = (fiber: Fiber, phase: RenderPhase): void => {
   }
 };
 
-// Read renderer.version for self-describing results, and abort the run if any
-// renderer is a production build (actualDuration is 0 in prod → meaningless
-// timings). onActive's canProfile gate is the backstop; this surfaces a clear
-// error.
+// Read renderer.version for self-describing results. A production build needs
+// no check here: the only call site sits behind onActive's canProfile gate,
+// which already requires every renderer in this same map to be a development
+// build, so a production target never reaches this function.
 const inspectRenderers = (): void => {
   try {
     const hook = getRDTHook();
 
     for (const renderer of hook.renderers.values()) {
       meta.rendererVersion ??= renderer.version;
-
-      if (detectReactBuildType(renderer) === 'production') {
-        meta.productionDetected = true;
-        meta.errors.push(
-          `production React build detected (renderer ${renderer.version}); aborting capture (timings are 0 in production)`
-        );
-      }
     }
   } catch (error) {
     recordError(error);
@@ -340,9 +331,9 @@ const inspectRenderers = (): void => {
 
 let canProfile = false;
 
-// bippy's secure() helper was removed in 0.6.0 (upstream confirms this was
-// intentional); this reproduces its production gate, minimum-version check,
-// install-check timeout, and per-commit error isolation by hand.
+// Non-throwing by design: a commit handler that throws records the error and
+// the capture carries on rather than aborting. canProfile, the gate it reads,
+// is computed in onActive.
 const guard =
   <Arguments extends unknown[]>(handler: (...arguments_: Arguments) => void) =>
   (...arguments_: Arguments): void => {
@@ -355,6 +346,12 @@ const guard =
     }
   };
 
+// Bail out of a page bippy never attached to: 5000ms after document_start with
+// no active instrumentation, record the failure and stop the load so the
+// capture fails fast instead of collecting nothing. isInstrumentationActive() is
+// true for any hook a real DevTools or react-refresh owns, not only one this
+// harness activated, so it can clear on a hook bippy never touched; capture.ts's
+// narrower wait on meta.installed is what actually gates a run.
 const installCheckTimeout = window.setTimeout(() => {
   if (isInstrumentationActive()) return;
   recordError(new Error('bippy did not attach within 5000ms'));
