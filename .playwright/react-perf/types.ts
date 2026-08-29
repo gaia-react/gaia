@@ -36,7 +36,7 @@ export type RawDump = {
 
 // The `meta` envelope written to the raw dump.
 export type RawDumpMeta = {
-  bippyVersion: string; // pinned bippy version (e.g. '0.5.42')
+  bippyVersion: string; // the pinned bippy version the harness ran against
   commits: number; // # onCommitFiberRoot calls observed
   errors: string[]; // swallowed per-fiber / onError messages
   installed: boolean; // instrumentation went active

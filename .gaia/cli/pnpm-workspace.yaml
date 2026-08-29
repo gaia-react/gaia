@@ -32,8 +32,10 @@ trustPolicy: no-downgrade
 # defends against malicious THIRD-party updates; @gaia-react/lint is authored,
 # reviewed, and published by this project's own maintainer, so the
 # community-vetting rationale does not apply. Same reasoning as root's entry.
-# Root's other entry, bippy@0.5.42, is absent: it is the .playwright/react-perf
-# harness primitive and does not appear in .gaia/cli/pnpm-lock.yaml at all.
+# Root carried a second entry, bippy@0.5.42, until the 0.7.3 bump retired it;
+# root's list is now the same single entry as this one. The containment relation
+# the header above states is unchanged: root stays the superset, and it is not a
+# promise that the two lists differ.
 minimumReleaseAgeExclude:
   - '@gaia-react/lint'
 
