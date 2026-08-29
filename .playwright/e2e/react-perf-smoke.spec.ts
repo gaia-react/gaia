@@ -94,6 +94,40 @@ test('captures bippy renders: active, canary resolves name + memo + timing', asy
     }
   }
 
+  // The three change arrays are filled by the traverseProps / traverseState /
+  // traverseContexts ports the harness carries locally (bippy dropped them in
+  // 0.7.0), and every assertion above reads them from inside a loop, so a port
+  // that silently yields nothing satisfies all of them vacuously and the
+  // diagnostic reports no changed inputs at all. Assert per array, so one dead
+  // visitor cannot hide behind the other two, and over the whole dump rather
+  // than the canary slice: the visitors are global, so any record exercising
+  // one proves that port lives, while the canary's own propsChanged slice is a
+  // single entry and would make this the flakiest line in the file.
+  expect(dump.all.some((record) => record.propsChanged.length > 0)).toBe(true);
+  expect(dump.all.some((record) => record.stateChanged.length > 0)).toBe(true);
+  expect(dump.all.some((record) => record.contextChanged.length > 0)).toBe(
+    true
+  );
+
+  // The other two ports, on the same terms. getTimings feeds record.selfTime,
+  // which the reduce CLI accumulates into the summary /gaia-react-perf reports,
+  // so a dead or inverted child-subtraction ships wrong attribution rather than
+  // an error. Liveness needs both halves: some record where the subtraction
+  // actually ran (selfTime strictly under totalTime, ~145 of ~185 records), and
+  // a bound no inverted subtraction can satisfy. didFiberCommit is asserted for
+  // a true value, since the typeof check above is boolean-by-construction and
+  // stays green whatever COMMIT_MASK resolves to.
+  expect(dump.all.some((record) => record.selfTime > 0)).toBe(true);
+  expect(dump.all.some((record) => record.selfTime < record.totalTime)).toBe(
+    true
+  );
+  expect(
+    dump.all.every(
+      (record) => record.selfTime >= 0 && record.selfTime <= record.totalTime
+    )
+  ).toBe(true);
+  expect(dump.all.some((record) => record.didCommit)).toBe(true);
+
   // Name resolution is asserted over the whole dump, not the canary slice: a
   // slice selected BY componentName can never contain 'Unknown', so asking it
   // that question answers itself. Only composite fibers are recorded, so an

@@ -36,7 +36,7 @@ export type RawDump = {
 
 // The `meta` envelope written to the raw dump.
 export type RawDumpMeta = {
-  bippyVersion: string; // pinned bippy version (e.g. '0.5.42')
+  bippyVersion: string; // the pinned bippy version the harness ran against
   commits: number; // # onCommitFiberRoot calls observed
   errors: string[]; // swallowed per-fiber / onError messages
   installed: boolean; // instrumentation went active
@@ -53,7 +53,7 @@ export type RenderRecord = {
   didCommit: boolean; // didFiberCommit(fiber)
   didRender: boolean; // didFiberRender(fiber)
   fiberId: number; // getFiberId(fiber) — stable cross-commit identity
-  isMemo: boolean; // tag ∈ {MemoComponentTag, SimpleMemoComponentTag} or hasMemoCache
+  isMemo: boolean; // tag ∈ {tags.MemoComponent, tags.SimpleMemoComponent} or hasMemoCache
   kind: string; // 'Memo' | 'ForwardRef' | 'Class' | 'Function' | 'tag(N)'
   phase: string; // 'mount' | 'update' | 'unmount' (bippy phase)
   propsChanged: ChangeEntry[];

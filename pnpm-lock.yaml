@@ -190,8 +190,8 @@ importers:
         specifier: 4.13.0
         version: 4.13.0
       bippy:
-        specifier: 0.6.1
-        version: 0.6.1(react@19.2.8)
+        specifier: 0.7.3
+        version: 0.7.3(@types/react@19.2.18)(react@19.2.8)
       chromatic:
         specifier: 18.5.0
         version: 18.5.0
@@ -2077,6 +2077,11 @@ packages:
     peerDependencies:
       '@types/react': ^19.2.0
 
+  '@types/react-reconciler@0.33.0':
+    resolution: {integrity: sha512-HZOXsKT0tGI9LlUw2LuedXsVeB88wFa536vVL0M6vE8zN63nI+sSr1ByxmPToP5K5bukaVscyeCJcF9guVNJ1g==}
+    peerDependencies:
+      '@types/react': '*'
+
   '@types/react@19.2.18':
     resolution: {integrity: sha512-AnzbBERsrLKtk2XSfTbYRLjQPdy116Sty4q+T+Bp3IC4l6jNBvreVPAHmpq9qhXQM7CXZPjLVmGMw9sy+hxQ3w==}
 
@@ -2560,10 +2565,10 @@ packages:
   bidi-js@1.0.3:
     resolution: {integrity: sha512-RKshQI1R3YQ+n9YJz2QQ147P66ELpa1FQEg20Dk8oW9t2KgLbpDLLp9aGZ7y8WHSshDknG0bknqGw5/tyCs5tw==}
 
-  bippy@0.6.1:
-    resolution: {integrity: sha512-ky4m94Y/KfsddjGkKTsV4uFjZqkJjpOjQ2t5gKPdX6XH1MNxMNX5FrVefsxV4lpjemEmEdwe0e0YbzAMNs3oUQ==}
+  bippy@0.7.3:
+    resolution: {integrity: sha512-C3yYBkcthd9kMXJwwwR69+ICGruw+R/Mcoq1LqsoscEoPe1OshyhYjMtYmtpoDSiJX40a867qhG4TT7g4mMIdQ==}
     peerDependencies:
-      react: '>=17.0.1'
+      react: '>=16.0.0'
 
   body-parser@2.3.0:
     resolution: {integrity: sha512-2cGmJupaNgg+QUwVLAucDuWuoMZ6EX9iHDRswZ5lsNYEmwPaRknMPCLZz07yTzVq/83p4o/wzbDZbBrTvGGTIw==}
@@ -7197,6 +7202,10 @@ snapshots:
     dependencies:
       '@types/react': 19.2.18
 
+  '@types/react-reconciler@0.33.0(@types/react@19.2.18)':
+    dependencies:
+      '@types/react': 19.2.18
+
   '@types/react@19.2.18':
     dependencies:
       csstype: 3.2.3
@@ -7710,9 +7719,12 @@ snapshots:
     dependencies:
       require-from-string: 2.0.2
 
-  bippy@0.6.1(react@19.2.8):
+  bippy@0.7.3(@types/react@19.2.18)(react@19.2.8):
     dependencies:
+      '@types/react-reconciler': 0.33.0(@types/react@19.2.18)
       react: 19.2.8
+    transitivePeerDependencies:
+      - '@types/react'
 
   body-parser@2.3.0:
     dependencies:

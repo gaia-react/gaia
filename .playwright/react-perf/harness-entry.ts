@@ -15,30 +15,29 @@
 /* eslint-disable no-underscore-dangle -- window.__renders / __bippyMeta are the
    harness wire contract this file publishes for capture.ts to read. */
 import {
-  ClassComponentTag,
   detectReactBuildType,
-  didFiberCommit,
   didFiberRender,
-  ForwardRefTag,
-  FunctionComponentTag,
   getDisplayName,
   getFiberId,
   getRDTHook,
-  getTimings,
+  getReactWorkTagsForFiber,
   getType,
   hasMemoCache,
   instrument,
   isCompositeFiber,
   isInstrumentationActive,
-  MemoComponentTag,
-  SimpleMemoComponentTag,
-  traverseContexts,
-  traverseProps,
+  MutationMask,
+  ReactFiberFlags,
   traverseRenderedFibers,
-  traverseState,
   version,
 } from 'bippy';
-import type {Fiber, RenderPhase} from 'bippy';
+import type {
+  ContextDependency,
+  Fiber,
+  MemoizedState,
+  ReactWorkTagMap,
+  RenderPhase,
+} from 'bippy';
 import type {BippyMeta, ChangeEntry, RenderRecord} from './types';
 
 const meta: BippyMeta = {
@@ -59,6 +58,128 @@ let renderSequenceNumber = 0;
 const recordError = (error: unknown): void => {
   meta.errors.push(error instanceof Error ? error.message : String(error));
 };
+
+// --- Ports of helpers bippy removed in 0.7.0 -------------------------------
+// 0.7.0 dropped didFiberCommit, getTimings, and the traverseProps/State/
+// Contexts visitors as "policy-heavy helpers" (upstream changelog); they are
+// not coming back. These reproduce bippy 0.6.1's fiber reads, which is where
+// the attribution comes from, so what each visitor yields is unchanged across
+// the bump. They are not byte-for-byte copies, and the two deltas are
+// deliberate: the visitors return void rather than a short-circuit boolean,
+// because nothing here short-circuits, and they carry no try/catch of their
+// own, because onRender already wraps every call in one.
+
+/* eslint-disable no-bitwise -- React fiber effect flags are a bitmask; masking
+   is the only way to read them, and this is the read bippy 0.6.1 did. */
+const COMMIT_MASK = MutationMask | ReactFiberFlags.Cloned;
+
+const didFiberCommit = (fiber: Fiber): boolean =>
+  (fiber.flags & COMMIT_MASK) !== 0 || (fiber.subtreeFlags & COMMIT_MASK) !== 0;
+/* eslint-enable no-bitwise */
+
+// selfTime is the fiber's own actualDuration minus its children's, so a parent
+// is not credited with time its subtree spent.
+const getTimings = (fiber: Fiber): {selfTime: number; totalTime: number} => {
+  const totalTime = fiber.actualDuration ?? 0;
+  let selfTime = totalTime;
+  let {child} = fiber;
+
+  while (totalTime > 0 && child !== null) {
+    selfTime -= child.actualDuration ?? 0;
+    child = child.sibling;
+  }
+
+  return {selfTime, totalTime};
+};
+
+const traverseProps = (
+  fiber: Fiber,
+  visit: (propertyName: string, nextValue: unknown, prevValue: unknown) => void
+): void => {
+  // memoizedProps is declared non-nullable, but React leaves it null on a fiber
+  // that has not completed a render, so widen before guarding rather than after.
+  const nextProps =
+    (fiber.memoizedProps as null | Record<string, unknown>) ?? {};
+  const prevProps =
+    (fiber.alternate?.memoizedProps as null | Record<string, unknown>) ?? {};
+
+  for (const propertyName of Object.keys(nextProps)) {
+    visit(propertyName, nextProps[propertyName], prevProps[propertyName]);
+  }
+
+  // Props present last render but not this one still count as changed.
+  for (const propertyName of Object.keys(prevProps)) {
+    if (!(propertyName in nextProps)) {
+      visit(propertyName, nextProps[propertyName], prevProps[propertyName]);
+    }
+  }
+};
+
+// For a function component, memoizedState is the singly-linked hook list; walk
+// it in lockstep with the alternate's so each hook index compares against
+// itself. isCompositeFiber also admits class components, whose memoizedState is
+// the instance state object with no `next`, so the walk visits it once and
+// stops, which is what 0.6.1 did too.
+const traverseState = (
+  fiber: Fiber,
+  visit: (
+    nextValue: MemoizedState | null | undefined,
+    prevValue: MemoizedState | null | undefined
+  ) => void
+): void => {
+  let nextState: MemoizedState | null | undefined = fiber.memoizedState;
+  let prevState: MemoizedState | null | undefined =
+    fiber.alternate?.memoizedState;
+
+  while (nextState || prevState) {
+    visit(nextState, prevState);
+    nextState = nextState?.next;
+    prevState = prevState?.next;
+  }
+};
+
+// firstContext is absent on React versions that shape dependencies
+// differently; bail rather than guess.
+const hasFirstContext = (
+  dependencies: unknown
+): dependencies is {firstContext: ContextDependency<unknown> | null} =>
+  typeof dependencies === 'object' &&
+  dependencies !== null &&
+  'firstContext' in dependencies;
+
+const traverseContexts = (
+  fiber: Fiber,
+  visit: (
+    nextValue: ContextDependency<unknown> | null | undefined,
+    prevValue: ContextDependency<unknown> | null | undefined
+  ) => void
+): void => {
+  const nextDependencies = fiber.dependencies;
+  const prevDependencies = fiber.alternate?.dependencies;
+
+  if (
+    !hasFirstContext(nextDependencies) ||
+    !hasFirstContext(prevDependencies)
+  ) {
+    return;
+  }
+
+  let nextContext: ContextDependency<unknown> | null | undefined =
+    nextDependencies.firstContext;
+  let prevContext: ContextDependency<unknown> | null | undefined =
+    prevDependencies.firstContext;
+
+  while (
+    (nextContext && 'memoizedValue' in nextContext) ||
+    (prevContext && 'memoizedValue' in prevContext)
+  ) {
+    visit(nextContext, prevContext);
+    nextContext = nextContext?.next;
+    prevContext = prevContext?.next;
+  }
+};
+
+// --- End ports -------------------------------------------------------------
 
 const getTypeLabel = (value: unknown): string => {
   if (value === null) return 'null';
@@ -84,12 +205,18 @@ const isEffectState = (value: unknown): boolean =>
   'create' in value &&
   'deps' in value;
 
-// Map fiber.tag to a human label via imported constants, never literal ints.
-const getFiberKindLabel = (tag: number): string => {
-  if (tag === SimpleMemoComponentTag || tag === MemoComponentTag) return 'Memo';
-  if (tag === ForwardRefTag) return 'ForwardRef';
-  if (tag === ClassComponentTag) return 'Class';
-  if (tag === FunctionComponentTag) return 'Function';
+// Map fiber.tag to a human label. Work-tag integers are renumbered between
+// React versions, so they resolve through bippy's per-fiber tag map (0.7.0
+// replaced the fixed *Tag export constants with it) rather than literal ints.
+const getFiberKindLabel = (
+  tag: number,
+  tags: Readonly<ReactWorkTagMap>
+): string => {
+  if (tag === tags.SimpleMemoComponent || tag === tags.MemoComponent)
+    return 'Memo';
+  if (tag === tags.ForwardRef) return 'ForwardRef';
+  if (tag === tags.ClassComponent) return 'Class';
+  if (tag === tags.FunctionComponent) return 'Function';
 
   return `tag(${tag})`;
 };
@@ -108,9 +235,11 @@ const onRender = (fiber: Fiber, phase: RenderPhase): void => {
     if (totalTime > 0 || selfTime > 0) meta.profilingAvailable = true;
 
     const {tag} = fiber;
+    // WeakMap-cached per fiber and alternate, so this is amortized O(1).
+    const tags = getReactWorkTagsForFiber(fiber);
     const isMemo =
-      tag === MemoComponentTag ||
-      tag === SimpleMemoComponentTag ||
+      tag === tags.MemoComponent ||
+      tag === tags.SimpleMemoComponent ||
       hasMemoCache(fiber);
 
     const propsChanged: ChangeEntry[] = [];
@@ -171,7 +300,7 @@ const onRender = (fiber: Fiber, phase: RenderPhase): void => {
       didRender: didFiberRender(fiber),
       fiberId: getFiberId(fiber),
       isMemo,
-      kind: getFiberKindLabel(tag),
+      kind: getFiberKindLabel(tag, tags),
       phase,
       propsChanged,
       selfTime,

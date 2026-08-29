@@ -24,16 +24,18 @@ minimumReleaseAgeStrict: true
 # Fail the install if a package's trust level has decreased vs prior releases.
 trustPolicy: no-downgrade
 
-# Both exclusion lists below are shorter than root's, and deliberately so: each
+# Neither exclusion list below is longer than root's, and deliberately so: each
 # entry earns its place against THIS workspace's closure, which root's is a
-# superset of. Do not sync them by copying.
+# superset of. A list that currently matches root's entry for entry is not drift
+# to correct; the relation is containment, not difference. Do not sync them by
+# copying.
 
 # Exempt first-party packages from the release-age delay. The 7-day window
 # defends against malicious THIRD-party updates; @gaia-react/lint is authored,
 # reviewed, and published by this project's own maintainer, so the
 # community-vetting rationale does not apply. Same reasoning as root's entry.
-# Root's other entry, bippy@0.5.42, is absent: it is the .playwright/react-perf
-# harness primitive and does not appear in .gaia/cli/pnpm-lock.yaml at all.
+# Root carried a second entry, bippy@0.5.42, until the 0.7.3 bump retired it, so
+# this list and root's now hold the same single entry.
 minimumReleaseAgeExclude:
   - '@gaia-react/lint'
 
