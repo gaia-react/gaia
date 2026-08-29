@@ -86,6 +86,10 @@ _GAIA_CAPCHECK_QSUBS=""
 # substitution's body, which is ordinary shell with real calls in it, and
 # nothing downstream reports a line the splitter never emitted.
 #
+# What this costs is enumerated where the gate is described below rather than
+# only here: the tail of a carried body after a nested multi-line substitution
+# closes inside it reads as code to the end of that line.
+#
 # A substitution opened and closed on ONE line does not set this, and that
 # distinction is what keeps the flag from swallowing the common case. Both its
 # `$(` and its `)` were read here, so the pop is matched by construction, and a
@@ -627,9 +631,17 @@ _gaia_capcheck_heredoc_delim() {
 # gate, not the pop rule, is what keeps an unmatched `)` from costing reach: a
 # `case` arm inside a multi-line substitution pops a frame nothing pushed, and
 # the enclosing quote it uncovers is shadowed, so the rest of that body is read
-# as the code it is. What the gate gives up is a string body nested inside a
-# substitution, which reads as code exactly as it did before this function
-# existed.
+# as the code it is.
+#
+# What the gate gives up is the TAIL of a carried string or array body after a
+# multi-line substitution closes inside it: from that `)` to the end of the
+# line the body is read as code, so a repo path behind a `;` in the rest of
+# that message fabricates an edge. Not the other nesting, a string body inside
+# a substitution, which the depth rule gives up on its own whatever this flag
+# holds, because `carry` is 0 at any depth past one. The residual fails LOUD,
+# which is what makes the trade the right way round: the alternative is
+# suppressing the rest of a substitution body whose calls are real reach, and
+# nothing downstream reports a line the splitter never emitted.
 #
 # Only the carried prefix is dropped, never a span opened and closed within the
 # line. A line may end its carried string and then carry real code
@@ -740,8 +752,55 @@ _gaia_capcheck_quote_carry() {
         case "$c" in
           \\) i=$((i + 1)) ;;
           '"') st="${st%?}" ;;
-          '$') if [ "${t:i+1:1}" = '(' ]; then st="${st}P"; i=$((i + 1)); fi ;;
+          '$')
+            case "${t:i+1:2}" in
+              '((') st="${st}M"; i=$((i + 2)) ;;
+              '('*) st="${st}P"; i=$((i + 1)) ;;
+            esac
+            ;;
           '`') st="${st}B" ;;
+        esac
+        ;;
+      M)
+        # An arithmetic expansion. It needs a frame of its own because its
+        # opener spends TWO parens and its closer spends two more: read as the
+        # `$(` of a substitution, the `))` pops twice, and every P or A frame
+        # carried across a line boundary is one paren short from there on. That
+        # desync is silent in the worst way. The stack empties early, the real
+        # `)"` closing the substitution leaves its `"` to open a string frame
+        # instead of closing one, and the whole rest of the file is suppressed
+        # as carried body, so the closure walk reports a caller reaching
+        # nothing and a true declaration reads as SURPLUS.
+        #
+        # Nothing inside is a quoting context: arithmetic has no string body,
+        # so only the parens and a nested substitution are read. `$(` and `$((`
+        # both nest legally (`$(( $(id -u) + 1 ))`).
+        case "$c" in
+          '(') st="${st}G" ;;
+          ')') if [ "${t:i+1:1}" = ')' ]; then st="${st%?}"; i=$((i + 1)); fi ;;
+          '$')
+            case "${t:i+1:2}" in
+              '((') st="${st}M"; i=$((i + 2)) ;;
+              '('*) st="${st}P"; i=$((i + 1)) ;;
+            esac
+            ;;
+        esac
+        ;;
+      G)
+        # A parenthesised group inside arithmetic, `$(( (a + b) * c ))`. It
+        # exists so the M arm above can require `))` for its own close without
+        # a group's single `)` being read as half of one: `$(( (a) ))` ends in
+        # `) ))` and `$(( (a)))` ends in `)))`, and only a frame that counts
+        # the group reads both the same way.
+        case "$c" in
+          '(') st="${st}G" ;;
+          ')') st="${st%?}" ;;
+          '$')
+            case "${t:i+1:2}" in
+              '((') st="${st}M"; i=$((i + 2)) ;;
+              '('*) st="${st}P"; i=$((i + 1)) ;;
+            esac
+            ;;
         esac
         ;;
       *)
@@ -750,9 +809,10 @@ _gaia_capcheck_quote_carry() {
           "'") st="${st}S" ;;
           '"') st="${st}D" ;;
           '$')
-            case "${t:i+1:1}" in
-              '(') st="${st}P"; i=$((i + 1)) ;;
-              "'") st="${st}E"; i=$((i + 1)) ;;
+            case "${t:i+1:2}" in
+              '((') st="${st}M"; i=$((i + 2)) ;;
+              '('*) st="${st}P"; i=$((i + 1)) ;;
+              "'"*) st="${st}E"; i=$((i + 1)) ;;
             esac
             ;;
           '(') if [ "$i" -gt 0 ] && [ "${t:i-1:1}" = '=' ]; then st="${st}A"; fi ;;

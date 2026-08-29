@@ -820,6 +820,101 @@ curl -sS https://example.com/x'
 line two $(date) end" ; printf "%s\n" "usage; .github/audit/base.sh --member X"' 0
 }
 
+@test "an arithmetic expansion inside a carried body closes only itself" {
+  # `$((` spends TWO parens and `))` spends two more. Read as the `$(` of a
+  # command substitution it pushes one frame and pops two, so every frame
+  # carried across a line boundary is one paren short from there on.
+  #
+  # Both directions of that desync are here with a one-token control each,
+  # because the arithmetic is the only difference between the pair and a
+  # fixture without its control proves nothing about which half moved.
+  #
+  # The silent one first, and it is the worse of the two. The stack empties one
+  # paren early, so the real `)"` closing the substitution leaves its `"` to
+  # OPEN a string frame rather than close one, and every line below it is
+  # suppressed as carried body. The gate then reports a caller that reaches
+  # nothing, which reads as a clean tree while a true declaration turns SURPLUS.
+  arith_case() {
+    local tag="$1" body="$2" want="$3" repo
+    repo="$(make_fixture_repo "arith$tag")"
+    add_script "$repo" a/s.sh "#!/usr/bin/env bash
+$body"
+    add_script "$repo" .github/audit/base.sh '#!/usr/bin/env bash
+curl -sS https://example.com/x'
+    write_allow "$repo" "Bash(bash a/s.sh:*)"
+    write_manifest "$repo" '[{"script":"a/s.sh","capabilities":[],
+      "why":"counts and then names a path","maintainer_only":false}]'
+    run bash "$CHECK" "$repo"
+    [ "$status" -eq "$want" ]
+    if [ "$want" -eq 1 ]; then
+      grep -qF -- "UNDECLARED a/s.sh invokes:.github/audit/base.sh" <<<"$output"
+    else
+      grep -qE '^(UNDECLARED|SURPLUS|UNRESOLVED)' <<<"$output" && return 1
+      true
+    fi
+  }
+  arith_case silent 'out="$(
+  n=$((1 + 2))
+  printf "a \"b"
+  .github/audit/base.sh --real
+)"
+printf "%s\n" "$out"' 1
+  arith_case silentctl 'out="$(
+  n=3
+  printf "a \"b"
+  .github/audit/base.sh --real
+)"
+printf "%s\n" "$out"' 1
+
+  # The loud one. An array frame closed two parens early puts the next line at
+  # code level, where the bare-path anchor reads it at `^` as command position
+  # and fabricates the edge this whole branch exists to stop fabricating.
+  arith_case loud 'files=(
+  $((n + 1))
+  .github/audit/base.sh
+)
+printf "%s\n" "${files[@]}"' 0
+  arith_case loudctl 'files=(
+  plain
+  .github/audit/base.sh
+)
+printf "%s\n" "${files[@]}"' 0
+}
+
+@test "an arithmetic frame counts a parenthesised group inside itself" {
+  # The bound on the arm above. `))` closes arithmetic, so a group's own single
+  # `)` must not be read as half of one: `$(( (a) ))` ends `) ))` and
+  # `$(( (a)))` ends `)))`, and only a frame that counts the group reads both
+  # the same way. A nested substitution is legal in there too and stays a
+  # substitution.
+  #
+  # Driven from a CARRIED stack, not an empty one, and that is the whole
+  # discrimination. Every line here is balanced, so from an empty stack a walk
+  # that pops the group's `)` as half of a `))` still lands back on empty and a
+  # test reading the final state alone passes over it. Entered at `DP`, the
+  # same mis-pop eats the enclosing substitution's own paren and comes back one
+  # frame short, which is exactly the desync the arm exists to prevent.
+  run bash -c 'cd "$1" || exit 2
+    . .gaia/scripts/capability-oracle-lib.sh
+    probe() {
+      _GAIA_CAPCHECK_QSTATE="$1"
+      _GAIA_CAPCHECK_QSHADOW=0
+      _gaia_capcheck_quote_carry "$2"
+      printf "[%s]\n" "$_GAIA_CAPCHECK_QSTATE"
+    }
+    probe DP "n=\$((1 + 2))"
+    probe DP "n=\$(( (1+2) ))"
+    probe DP "n=\$(( (1+2)))"
+    probe DP "n=\$(( ((1)) ))"
+    probe DP "n=\$(( \$(id -u) + 1 ))"' _ "$REPO_ROOT"
+  [ "$status" -eq 0 ]
+  [ "${lines[0]}" = "[DP]" ]
+  [ "${lines[1]}" = "[DP]" ]
+  [ "${lines[2]}" = "[DP]" ]
+  [ "${lines[3]}" = "[DP]" ]
+  [ "${lines[4]}" = "[DP]" ]
+}
+
 @test "a paren that closes nothing does not swallow the rest of a substitution" {
   # The bound on the carried state's own reach. A `case` arm, a function
   # definition, and a bare subshell each put a `)` inside a multi-line
