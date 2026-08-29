@@ -1557,27 +1557,28 @@ describe('excluded-workflow-ref derived check', () => {
     expect(out).toContain('.github/workflows/forensics-triage.yml');
   });
 
-  test('does not flag an excluded workflow that ships a render template', () => {
+  test.each<[string, string, string]>([
     // code-review-audit.yml is release-excluded but installed on demand, so a
     // reference to it is legitimate and must not trip the check.
+    [
+      'does not flag an excluded workflow that ships a render template',
+      '.claude/commands/setup-gaia.md',
+      'It installs `.github/workflows/code-review-audit.yml` (the PR gate).\n',
+    ],
+    [
+      'exempts a `[ -f ]` existence guard via the line-allowlist',
+      '.claude/commands/setup-gaia.md',
+      'elif [ -f .github/workflows/forensics-triage.yml ] && gh repo view; then\n',
+    ],
+    [
+      'does not flag a shipped (non-excluded) workflow reference',
+      '.claude/agents/foo.md',
+      'All gating mirrors .github/workflows/tests.yml at the step level.\n',
+    ],
+  ])('%s', (_label, stagedPath, contents) => {
     sandbox = setupSandbox({config: WORKFLOW_DERIVED_CONFIG});
     seedWorkflowSource(sandbox);
-    sandbox.writeStaged(
-      '.claude/commands/setup-gaia.md',
-      'It installs `.github/workflows/code-review-audit.yml` (the PR gate).\n'
-    );
-
-    const exit = run([sandbox.stagingDir], {cwd: sandbox.rootDir});
-    expect(exit).toBe(0);
-  });
-
-  test('exempts a `[ -f ]` existence guard via the line-allowlist', () => {
-    sandbox = setupSandbox({config: WORKFLOW_DERIVED_CONFIG});
-    seedWorkflowSource(sandbox);
-    sandbox.writeStaged(
-      '.claude/commands/setup-gaia.md',
-      'elif [ -f .github/workflows/forensics-triage.yml ] && gh repo view; then\n'
-    );
+    sandbox.writeStaged(stagedPath, contents);
 
     const exit = run([sandbox.stagingDir], {cwd: sandbox.rootDir});
     expect(exit).toBe(0);
@@ -1599,18 +1600,6 @@ describe('excluded-workflow-ref derived check', () => {
     const exit = run([sandbox.stagingDir], {cwd: sandbox.rootDir});
     expect(exit).toBe(1);
     expect(stdio.outputs.join('')).toContain('brand-new-maintainer.yml');
-  });
-
-  test('does not flag a shipped (non-excluded) workflow reference', () => {
-    sandbox = setupSandbox({config: WORKFLOW_DERIVED_CONFIG});
-    seedWorkflowSource(sandbox);
-    sandbox.writeStaged(
-      '.claude/agents/foo.md',
-      'All gating mirrors .github/workflows/tests.yml at the step level.\n'
-    );
-
-    const exit = run([sandbox.stagingDir], {cwd: sandbox.rootDir});
-    expect(exit).toBe(0);
   });
 
   test('derives the workflow set from cwd release-exclude, not staging', () => {
@@ -1752,23 +1741,13 @@ describe('excluded-titles derived check', () => {
     ]);
   });
 
-  test('does not flag a title that appears only as a wikilink', () => {
-    sandbox = setupSandbox({config: TITLE_DERIVED_CONFIG});
-    seedTitleSource(sandbox);
-    sandbox.writeStaged(
-      'wiki/concepts/Foo.md',
-      '# Foo\n\nSee [[Forensics Triage Workflow]] for the details.\n'
-    );
-
-    const exit = run([sandbox.stagingDir], {cwd: sandbox.rootDir});
-    expect(exit).toBe(0);
-  });
-
-  test('does not flag a title inside an inline-code span or a fenced block', () => {
-    sandbox = setupSandbox({config: TITLE_DERIVED_CONFIG});
-    seedTitleSource(sandbox);
-    sandbox.writeStaged(
-      'wiki/concepts/Foo.md',
+  test.each<[string, string]>([
+    [
+      'does not flag a title that appears only as a wikilink',
+      '# Foo\n\nSee [[Forensics Triage Workflow]] for the details.\n',
+    ],
+    [
+      'does not flag a title inside an inline-code span or a fenced block',
       [
         '# Foo',
         '',
@@ -1778,8 +1757,32 @@ describe('excluded-titles derived check', () => {
         'Bundle-time Scrub inside a fenced block.',
         '```',
         '',
-      ].join('\n')
-    );
+      ].join('\n'),
+    ],
+    [
+      'does not flag a lowercase concept-prose mention that is not the exact title',
+      '# Foo\n\nConfigure the bundle-time scrub before shipping.\n',
+    ],
+    // The directory basenames `meta` / `entities` are deliberately NOT in the
+    // set; a naive `buildExcludedSlugSet`-style derivation would flag them.
+    [
+      'does not flag the excluded directory basenames themselves',
+      '# Foo\n\nThe meta directory and the entities folder hold working notes.\n',
+    ],
+    [
+      'does not fire on a title abutted by an extra word char or hyphen',
+      [
+        '# Foo',
+        '',
+        'We finished Bundle-time Scrubbing last week.',
+        'The CLI-Binary-Split-Extra step and the Pre-CLI-Binary-Split step differ.',
+        '',
+      ].join('\n'),
+    ],
+  ])('%s', (_label, contents) => {
+    sandbox = setupSandbox({config: TITLE_DERIVED_CONFIG});
+    seedTitleSource(sandbox);
+    sandbox.writeStaged('wiki/concepts/Foo.md', contents);
 
     const exit = run([sandbox.stagingDir], {cwd: sandbox.rootDir});
     expect(exit).toBe(0);
@@ -1904,32 +1907,6 @@ describe('excluded-titles derived check', () => {
     expect(out).not.toContain('Bundle-time Scrub');
   });
 
-  test('does not flag a lowercase concept-prose mention that is not the exact title', () => {
-    sandbox = setupSandbox({config: TITLE_DERIVED_CONFIG});
-    seedTitleSource(sandbox);
-    sandbox.writeStaged(
-      'wiki/concepts/Foo.md',
-      '# Foo\n\nConfigure the bundle-time scrub before shipping.\n'
-    );
-
-    const exit = run([sandbox.stagingDir], {cwd: sandbox.rootDir});
-    expect(exit).toBe(0);
-  });
-
-  test('does not flag the excluded directory basenames themselves', () => {
-    // The directory basenames `meta` / `entities` are deliberately NOT in the
-    // set; a naive `buildExcludedSlugSet`-style derivation would flag them.
-    sandbox = setupSandbox({config: TITLE_DERIVED_CONFIG});
-    seedTitleSource(sandbox);
-    sandbox.writeStaged(
-      'wiki/concepts/Foo.md',
-      '# Foo\n\nThe meta directory and the entities folder hold working notes.\n'
-    );
-
-    const exit = run([sandbox.stagingDir], {cwd: sandbox.rootDir});
-    expect(exit).toBe(0);
-  });
-
   test('flags a page beneath a bare-directory exclude by its basename', () => {
     // The directory contributes its pages (Distinctive Meta Page) even though
     // the directory name (meta) itself is never contributed.
@@ -1943,24 +1920,6 @@ describe('excluded-titles derived check', () => {
     const exit = run([sandbox.stagingDir], {cwd: sandbox.rootDir});
     expect(exit).toBe(1);
     expect(stdio.outputs.join('')).toContain('Distinctive Meta Page');
-  });
-
-  test('does not fire on a title abutted by an extra word char or hyphen', () => {
-    sandbox = setupSandbox({config: TITLE_DERIVED_CONFIG});
-    seedTitleSource(sandbox);
-    sandbox.writeStaged(
-      'wiki/concepts/Foo.md',
-      [
-        '# Foo',
-        '',
-        'We finished Bundle-time Scrubbing last week.',
-        'The CLI-Binary-Split-Extra step and the Pre-CLI-Binary-Split step differ.',
-        '',
-      ].join('\n')
-    );
-
-    const exit = run([sandbox.stagingDir], {cwd: sandbox.rootDir});
-    expect(exit).toBe(0);
   });
 
   test('fires on a standalone hyphenated title', () => {

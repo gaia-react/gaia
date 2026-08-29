@@ -57,30 +57,14 @@ describe('IndexPage', () => {
 
   // Absent: removed brand surface
 
-  test('has no GitHub CTA link', () => {
+  test.each([
+    ['has no GitHub CTA link', 'link', {name: /github/i}],
+    ['has no feature definition-list term', 'term', undefined],
+    ['has no GaiaLogo image', 'img', {name: /gaia/i}],
+    ['has no banner landmark (Header removed)', 'banner', undefined],
+    ['has no contentinfo landmark (Footer removed)', 'contentinfo', undefined],
+  ] as const)('%s', (_label, role, options) => {
     render(<IndexPageStory />);
-    expect(
-      screen.queryByRole('link', {name: /github/i})
-    ).not.toBeInTheDocument();
-  });
-
-  test('has no feature definition-list term', () => {
-    render(<IndexPageStory />);
-    expect(screen.queryByRole('term')).not.toBeInTheDocument();
-  });
-
-  test('has no GaiaLogo image', () => {
-    render(<IndexPageStory />);
-    expect(screen.queryByRole('img', {name: /gaia/i})).not.toBeInTheDocument();
-  });
-
-  test('has no banner landmark (Header removed)', () => {
-    render(<IndexPageStory />);
-    expect(screen.queryByRole('banner')).not.toBeInTheDocument();
-  });
-
-  test('has no contentinfo landmark (Footer removed)', () => {
-    render(<IndexPageStory />);
-    expect(screen.queryByRole('contentinfo')).not.toBeInTheDocument();
+    expect(screen.queryByRole(role, options)).not.toBeInTheDocument();
   });
 });

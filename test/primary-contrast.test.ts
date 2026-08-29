@@ -96,38 +96,44 @@ describe('primary-contrast - text (≥ 4.5:1)', () => {
 // Non-text contrast (≥ 3:1)
 
 describe('primary-contrast - non-text (≥ 3:1)', () => {
-  // Focus ring: focus-visible:border-primary-600 (light) / dark:focus-visible:border-primary-400 (dark)
-  test('focus border primary-600 vs white input background - light theme', () => {
-    const ratio = contrastRatio(LUM[600], LUM.white);
-    expect(ratio).toBeGreaterThanOrEqual(3);
-  });
-
-  test('focus border primary-400 vs gray-900 input background - dark theme', () => {
-    const ratio = contrastRatio(LUM[400], LUM.gray900);
-    expect(ratio).toBeGreaterThanOrEqual(3);
-  });
-
-  // Checked fill: checked:bg-primary-600 (light) / dark:checked:bg-primary-500 (dark)
-  test('checked fill primary-600 vs white page background - light theme', () => {
-    const ratio = contrastRatio(LUM[600], LUM.white);
-    expect(ratio).toBeGreaterThanOrEqual(3);
-  });
-
-  test('checked fill primary-500 vs gray-900 page background - dark theme', () => {
-    const ratio = contrastRatio(LUM[500], LUM.gray900);
-    expect(ratio).toBeGreaterThanOrEqual(3);
-  });
-
-  // Checked border: checked:border-primary-500 - the component boundary that frames
-  // the filled checkbox.  This passes in both themes, satisfying the boundary-contrast
-  // clause of WCAG 1.4.11 independently of the fill-vs-background issue above.
-  test('checked border primary-500 vs white page background - light theme', () => {
-    const ratio = contrastRatio(LUM[500], LUM.white);
-    expect(ratio).toBeGreaterThanOrEqual(3);
-  });
-
-  test('checked border primary-500 vs gray-900 page background - dark theme', () => {
-    const ratio = contrastRatio(LUM[500], LUM.gray900);
+  test.each([
+    // Focus ring: focus-visible:border-primary-600 (light) / dark:focus-visible:border-primary-400 (dark)
+    [
+      'focus border primary-600 vs white input background - light theme',
+      LUM[600],
+      LUM.white,
+    ],
+    [
+      'focus border primary-400 vs gray-900 input background - dark theme',
+      LUM[400],
+      LUM.gray900,
+    ],
+    // Checked fill: checked:bg-primary-600 (light) / dark:checked:bg-primary-500 (dark)
+    [
+      'checked fill primary-600 vs white page background - light theme',
+      LUM[600],
+      LUM.white,
+    ],
+    [
+      'checked fill primary-500 vs gray-900 page background - dark theme',
+      LUM[500],
+      LUM.gray900,
+    ],
+    // Checked border: checked:border-primary-500 - the component boundary that frames
+    // the filled checkbox.  This passes in both themes, satisfying the boundary-contrast
+    // clause of WCAG 1.4.11 independently of the fill-vs-background issue above.
+    [
+      'checked border primary-500 vs white page background - light theme',
+      LUM[500],
+      LUM.white,
+    ],
+    [
+      'checked border primary-500 vs gray-900 page background - dark theme',
+      LUM[500],
+      LUM.gray900,
+    ],
+  ])('%s', (_label, foreground, background) => {
+    const ratio = contrastRatio(foreground, background);
     expect(ratio).toBeGreaterThanOrEqual(3);
   });
 });

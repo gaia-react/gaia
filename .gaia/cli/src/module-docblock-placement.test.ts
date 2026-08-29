@@ -231,50 +231,52 @@ describe('module docblock placement', () => {
   // No `skipIf`: these run against fixture strings, so they hold on any clone
   // and they are what establish that the detector above can report at all.
   // A corpus that happens to be clean would otherwise green a broken detector.
-  test('reports a docblock stranded between imports', () => {
-    const source = [
-      "import {z} from 'zod';",
-      '/**',
-      ' * What this module is.',
-      ' */',
-      "import fs from 'node:fs';",
-      '',
-      'export const value = 1;',
-    ].join('\n');
-
-    expect(findStrandedDocblock(source)).toBe(2);
-  });
-
-  test('reports a docblock stranded below the whole import block', () => {
-    const source = [
-      "import {z} from 'zod';",
-      '',
-      '/**',
-      ' * What this module is.',
-      ' */',
-      '',
-      'export const value = 1;',
-    ].join('\n');
-
-    expect(findStrandedDocblock(source)).toBe(3);
-  });
-
-  // A comment between the docblock and its import must not hide it. Reading
-  // only the line below the docblock reported `null` here, which is the shape
-  // an `import/order` group banner or an `eslint-disable-next-line` produces.
-  test('reports a docblock stranded above a commented import', () => {
-    const source = [
-      "import {z} from 'zod';",
-      '/**',
-      ' * What this module is.',
-      ' */',
-      '// Node builtins',
-      "import fs from 'node:fs';",
-      '',
-      'export const value = 1;',
-    ].join('\n');
-
-    expect(findStrandedDocblock(source)).toBe(2);
+  test.each<[string, string[], number]>([
+    [
+      'reports a docblock stranded between imports',
+      [
+        "import {z} from 'zod';",
+        '/**',
+        ' * What this module is.',
+        ' */',
+        "import fs from 'node:fs';",
+        '',
+        'export const value = 1;',
+      ],
+      2,
+    ],
+    [
+      'reports a docblock stranded below the whole import block',
+      [
+        "import {z} from 'zod';",
+        '',
+        '/**',
+        ' * What this module is.',
+        ' */',
+        '',
+        'export const value = 1;',
+      ],
+      3,
+    ],
+    // A comment between the docblock and its import must not hide it. Reading
+    // only the line below the docblock reported `null` here, which is the shape
+    // an `import/order` group banner or an `eslint-disable-next-line` produces.
+    [
+      'reports a docblock stranded above a commented import',
+      [
+        "import {z} from 'zod';",
+        '/**',
+        ' * What this module is.',
+        ' */',
+        '// Node builtins',
+        "import fs from 'node:fs';",
+        '',
+        'export const value = 1;',
+      ],
+      2,
+    ],
+  ])('%s', (_label, lines, expected) => {
+    expect(findStrandedDocblock(lines.join('\n'))).toBe(expected);
   });
 
   // A trailing comment on the import above means the line does not end with

@@ -145,60 +145,28 @@ describe('gaia ping', () => {
     });
   });
 
-  test('missing --event exits 1 and does not send', async () => {
-    const exit = await run(['--mode', 'interactive'], {cwd: sandbox.root});
-
-    expect(exit).toBe(1);
-    expect(fetchSpy).not.toHaveBeenCalled();
-  });
-
-  test('--event with a value outside the enum exits 1', async () => {
-    const exit = await run(['--event', 'bogus'], {cwd: sandbox.root});
-
-    expect(exit).toBe(1);
-    expect(fetchSpy).not.toHaveBeenCalled();
-  });
-
-  test('--i18n that is not an integer exits 1', async () => {
-    const exit = await run(['--event', 'init', '--i18n', 'abc'], {
-      cwd: sandbox.root,
-    });
-
-    expect(exit).toBe(1);
-    expect(fetchSpy).not.toHaveBeenCalled();
-  });
-
-  test('an enum field with a value outside its set exits 1 (--mode)', async () => {
-    const exit = await run(['--event', 'init', '--mode', 'sideways'], {
-      cwd: sandbox.root,
-    });
-
-    expect(exit).toBe(1);
-    expect(fetchSpy).not.toHaveBeenCalled();
-  });
-
-  test('an unknown flag exits 1', async () => {
-    const exit = await run(['--event', 'update', '--bogus', 'x'], {
-      cwd: sandbox.root,
-    });
-
-    expect(exit).toBe(1);
-    expect(fetchSpy).not.toHaveBeenCalled();
-  });
-
-  test('--ci enums are per-event distinct: init rejects setup-only value "on"', async () => {
-    const exit = await run(['--event', 'init', '--ci', 'on'], {
-      cwd: sandbox.root,
-    });
-
-    expect(exit).toBe(1);
-    expect(fetchSpy).not.toHaveBeenCalled();
-  });
-
-  test('--ci enums are per-event distinct: setup rejects init-only value "custom"', async () => {
-    const exit = await run(['--event', 'setup', '--ci', 'custom'], {
-      cwd: sandbox.root,
-    });
+  test.each<[string, string[]]>([
+    ['missing --event exits 1 and does not send', ['--mode', 'interactive']],
+    ['--event with a value outside the enum exits 1', ['--event', 'bogus']],
+    [
+      '--i18n that is not an integer exits 1',
+      ['--event', 'init', '--i18n', 'abc'],
+    ],
+    [
+      'an enum field with a value outside its set exits 1 (--mode)',
+      ['--event', 'init', '--mode', 'sideways'],
+    ],
+    ['an unknown flag exits 1', ['--event', 'update', '--bogus', 'x']],
+    [
+      '--ci enums are per-event distinct: init rejects setup-only value "on"',
+      ['--event', 'init', '--ci', 'on'],
+    ],
+    [
+      '--ci enums are per-event distinct: setup rejects init-only value "custom"',
+      ['--event', 'setup', '--ci', 'custom'],
+    ],
+  ])('%s', async (_label, argv) => {
+    const exit = await run(argv, {cwd: sandbox.root});
 
     expect(exit).toBe(1);
     expect(fetchSpy).not.toHaveBeenCalled();

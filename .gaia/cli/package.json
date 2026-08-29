@@ -19,7 +19,7 @@
     "zod": "4.4.3"
   },
   "devDependencies": {
-    "@gaia-react/lint": "2.0.0",
+    "@gaia-react/lint": "2.1.0",
     "@types/js-yaml": "4.0.9",
     "@types/node": "25.6.1",
     "esbuild": "0.28.1",

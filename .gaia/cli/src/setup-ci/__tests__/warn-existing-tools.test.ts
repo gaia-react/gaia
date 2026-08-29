@@ -69,8 +69,22 @@ describe('setup-ci warn-existing-tools', () => {
     expect(parsed.found).toEqual([]);
   });
 
-  test('detects .github/dependabot.yml', () => {
-    writeFileAt(sandbox.root, '.github/dependabot.yml', 'version: 2\n');
+  test.each<[string, string, string, string[]]>([
+    [
+      'detects .github/dependabot.yml',
+      '.github/dependabot.yml',
+      'version: 2\n',
+      ['dependabot'],
+    ],
+    [
+      'detects .github/dependabot.yaml',
+      '.github/dependabot.yaml',
+      'version: 2\n',
+      ['dependabot'],
+    ],
+    ['detects renovate.json', 'renovate.json', '{}\n', ['renovate']],
+  ])('%s', (_label, file, contents, found) => {
+    writeFileAt(sandbox.root, file, contents);
 
     const exit = run(['--json'], {cwd: sandbox.root});
     expect(exit).toBe(0);
@@ -79,33 +93,7 @@ describe('setup-ci warn-existing-tools', () => {
       string,
       unknown
     >;
-    expect(parsed.found).toEqual(['dependabot']);
-  });
-
-  test('detects .github/dependabot.yaml', () => {
-    writeFileAt(sandbox.root, '.github/dependabot.yaml', 'version: 2\n');
-
-    const exit = run(['--json'], {cwd: sandbox.root});
-    expect(exit).toBe(0);
-
-    const parsed = JSON.parse(stdio.out.join('').trim()) as Record<
-      string,
-      unknown
-    >;
-    expect(parsed.found).toEqual(['dependabot']);
-  });
-
-  test('detects renovate.json', () => {
-    writeFileAt(sandbox.root, 'renovate.json', '{}\n');
-
-    const exit = run(['--json'], {cwd: sandbox.root});
-    expect(exit).toBe(0);
-
-    const parsed = JSON.parse(stdio.out.join('').trim()) as Record<
-      string,
-      unknown
-    >;
-    expect(parsed.found).toEqual(['renovate']);
+    expect(parsed.found).toEqual(found);
   });
 
   test('detects .renovaterc.json and .github/renovate.json under same name', () => {

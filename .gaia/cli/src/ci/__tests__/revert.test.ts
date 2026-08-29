@@ -572,14 +572,18 @@ describe('ci-revert', () => {
   });
 
   describe('is-cap-reached', () => {
-    test('reports true for status: open', () => {
+    test.each([
+      ['reports true for status: open', 'open', true],
+      ['reports true for status: failed', 'failed', true],
+      ['reports false for status: merged', 'merged', false],
+    ] as const)('%s', (_label, status, capReached) => {
       sandbox.writeLedger({
         attempts: {
           '99': {
             opened_at: '2026-05-08T00:00:00Z',
             original_pr: 99,
             revert_pr: 137,
-            status: 'open',
+            status,
           },
         },
         version: 1,
@@ -594,60 +598,8 @@ describe('ci-revert', () => {
         string,
         unknown
       >;
-      expect(printed.cap_reached).toBe(true);
-      expect(printed.status).toBe('open');
-    });
-
-    test('reports true for status: failed', () => {
-      sandbox.writeLedger({
-        attempts: {
-          '99': {
-            opened_at: '2026-05-08T00:00:00Z',
-            original_pr: 99,
-            revert_pr: 137,
-            status: 'failed',
-          },
-        },
-        version: 1,
-      });
-
-      const exit = run(['is-cap-reached', '--pr', '99', '--json'], {
-        cwd: sandbox.root,
-      });
-      expect(exit).toBe(0);
-
-      const printed = JSON.parse(stdio.out.join('').trim()) as Record<
-        string,
-        unknown
-      >;
-      expect(printed.cap_reached).toBe(true);
-      expect(printed.status).toBe('failed');
-    });
-
-    test('reports false for status: merged', () => {
-      sandbox.writeLedger({
-        attempts: {
-          '99': {
-            opened_at: '2026-05-08T00:00:00Z',
-            original_pr: 99,
-            revert_pr: 137,
-            status: 'merged',
-          },
-        },
-        version: 1,
-      });
-
-      const exit = run(['is-cap-reached', '--pr', '99', '--json'], {
-        cwd: sandbox.root,
-      });
-      expect(exit).toBe(0);
-
-      const printed = JSON.parse(stdio.out.join('').trim()) as Record<
-        string,
-        unknown
-      >;
-      expect(printed.cap_reached).toBe(false);
-      expect(printed.status).toBe('merged');
+      expect(printed.cap_reached).toBe(capReached);
+      expect(printed.status).toBe(status);
     });
 
     test('reports false on missing entry', () => {
