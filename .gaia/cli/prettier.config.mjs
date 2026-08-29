@@ -26,9 +26,9 @@
  *
  * Deleting it is the tempting simplification, because the root workspace
  * declares no such dependency and this file exists to mirror the root. It
- * still passes locally, but only because the ROOT `pnpm-workspace.yaml` sets
- * `publicHoistPattern: ['prettier-plugin-*']`, which links the plugin into the
- * repo-root `node_modules` a local run can walk up into. The CI CLI-lint job
+ * still passes locally, but only because the ROOT `pnpm-workspace.yaml`'s
+ * `publicHoistPattern` covers `prettier-plugin-*`, which links the plugin into
+ * the repo-root `node_modules` a local run can walk up into. The CI CLI-lint job
  * installs `.gaia/cli` alone and has no such tree above it, so it fails there.
  * `eslint-plugin-prettier` loads Prettier lazily inside the rule, so the
  * ERR_MODULE_NOT_FOUND surfaces while ESLint is linting the first file and
