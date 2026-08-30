@@ -1,9 +1,7 @@
 ---
 paths:
   - '**/*.bats'
-  - '.gaia/tests/**/*.sh'
   - '.gaia/scripts/**/*.sh'
-  - '.gaia/cli/src/**/*.ts'
   - '.playwright/**/*.ts'
   - '.claude/hooks/**/*.sh'
   - '.github/workflows/**/*.yml'

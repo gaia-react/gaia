@@ -1,9 +1,7 @@
 ---
 paths:
-  - '.gaia/cli/src/**/*.ts'
   - '.gaia/scripts/**/*.sh'
   - '.claude/hooks/**/*.sh'
-  - '.gaia/tests/**/*.sh'
   - '**/*.bats'
 ---
 <!-- gaia-harden: promoted from recurring finding_class holistic/partial-cause-reporting; pruned by /gaia-audit on obsolescence/redundancy/supersession/duplication only, never for non-recurrence -->
