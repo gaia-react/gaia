@@ -1,6 +1,8 @@
 ---
 type: decision
 status: active
+priority: 2
+date: 2026-08-30
 created: 2026-08-30
 updated: 2026-08-30
 tags: [decision, shell, lint, bats, awk-lib]
@@ -50,8 +52,8 @@ it sits inside the argument region of a recognized fixture-writing shape, checke
 against the small set of suites that write fixtures. Letting the same skip apply to
 `*.sh`, husky hooks, workflow YAML and markdown would mean silently dropping heredoc
 bodies and multi-line continuations across every shipped script on those surfaces,
-163 heredoc openers on the shell surface alone, which is a net regression against
-what those guards already catch there today.
+more than 160 heredoc openers across 65 tracked shell scripts on that surface alone,
+which is a net regression against what those guards already catch there today.
 
 ## What makes a line fixture data
 
