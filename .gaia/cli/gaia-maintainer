@@ -22646,7 +22646,12 @@ var REJECTED_PATH_CHARACTERS = [
   "}",
   "$"
 ];
-var LINE_BREAK = /[\n\r]/;
+var hasControlCharacter = (value) => {
+  for (let index = 0; index < value.length; index += 1) {
+    if ((value.codePointAt(index) ?? 32) < 32) return true;
+  }
+  return false;
+};
 var hasRejectedExcludeMetacharacter = (value) => REJECTED_PATH_CHARACTERS.some((character) => value.includes(character));
 var uniqueSorted = (paths) => {
   const unique = [...new Set(paths)];
@@ -22661,7 +22666,7 @@ var findDuplicates = (paths) => {
   }
   return uniqueSorted([...duplicates]);
 };
-var isRejectedWithholdPath = (withholdPath) => withholdPath.length === 0 || withholdPath.startsWith("#") || withholdPath.startsWith("/") || withholdPath.endsWith("/") || withholdPath !== withholdPath.trim() || LINE_BREAK.test(withholdPath) || hasRejectedExcludeMetacharacter(withholdPath);
+var isRejectedWithholdPath = (withholdPath) => withholdPath.length === 0 || withholdPath.startsWith("#") || withholdPath.startsWith("/") || withholdPath.endsWith("/") || withholdPath !== withholdPath.trim() || hasControlCharacter(withholdPath) || hasRejectedExcludeMetacharacter(withholdPath);
 var isRejectedReason = (reason) => reason.trim().length === 0 || reason.includes("\n") || reason.includes("\r");
 var parseCategoryLines = (lines) => lines.flatMap((line, headerLineIndex) => {
   const match = CATEGORY_HEADER.exec(line);
@@ -22700,7 +22705,7 @@ var validateAnswers = (answers, missing, categories) => {
   if (rejectedPaths.length > 0) {
     errors.push({
       code: "withhold_metacharacter",
-      message: `withhold path is not a bare literal path (empty, comment-shaped, slash-anchored, whitespace-padded, line-break-bearing, or carrying one of ${REJECTED_PATH_CHARACTERS.join("")}): ${rejectedPaths.join(", ")}`,
+      message: `withhold path is not a bare literal path (empty, comment-shaped, slash-anchored, whitespace-padded, control-character-bearing, or carrying one of ${REJECTED_PATH_CHARACTERS.join("")}): ${rejectedPaths.join(", ")}`,
       paths: rejectedPaths
     });
   }

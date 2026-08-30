@@ -285,6 +285,10 @@ describe('validateAnswers', () => {
     ['a trailing space', 'docs/a.md '],
     ['an embedded newline', 'docs/a.md\nwiki/'],
     ['an embedded carriage return', 'docs/a.md\rwiki/'],
+    // git C-quotes a tab in `ls-files` but not in `ls-files -z`, so the
+    // manifest reader and the release staging disagree about which file such
+    // a line masks. A space is quoted by neither, which is why it is allowed.
+    ['an embedded tab', 'docs/a\tb.md'],
     ['an empty value', ''],
   ])('withhold_metacharacter rejects %s', (_label, badPath) => {
     const errors = validateAnswers(
@@ -305,7 +309,6 @@ describe('validateAnswers', () => {
     // so a space is literal in all of them; refusing to write one would make
     // a whole category of maintainer-only page unwithholdable.
     ['an interior space', 'wiki/decisions/Sharded CI Test Matrix.md'],
-    ['an interior tab', 'docs/a\tb.md'],
   ])('allows %s in a withhold path', (_label, goodPath) => {
     const errors = validateAnswers(
       answers({allowUndecided: true, withholds: [withhold(goodPath)]}),
