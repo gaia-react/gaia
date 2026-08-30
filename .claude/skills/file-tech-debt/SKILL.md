@@ -128,7 +128,7 @@ The field table:
 | `changed` | `0`, `1`, or `unknown` | yes |
 | `head` | the reviewed HEAD sha, or `unknown` | no |
 
-**`mode` and `unit` describe the branch, not the filer.** Both are derived from the branch name alone, by the convention table below, so they record the checkout the filing session sat in rather than the work that session was doing. Concurrent work in one checkout inherits that branch's stamp: a session filing a finding from a checkout parked on someone else's `debt/*` branch is stamped with that branch's unit. Do not read either field as authorship.
+**`mode` and `unit` describe the branch, not the filer.** Both are derived from the branch name alone, by the convention table below, so they record the branch the filing resolved against, an explicit branch a caller supplies, the pull request head ref in continuous integration, or otherwise the checkout's own branch, rather than the work the session was doing. Concurrent work in one checkout inherits that branch's stamp: a session filing a finding from a checkout parked on someone else's `debt/*` branch is stamped with that branch's unit. Do not read either field as authorship.
 
 **Reserved characters.** Two are percent-encoded in a value: `>`, because a git branch name may legally contain it and an unencoded one would terminate the HTML comment early and leak the remainder as visible text, and `%` itself, so the encoding is invertible and a reader can recover the exact branch name. `%` is encoded first, then `>`; that order is what makes the round trip exact. "Verbatim" above means the raw name after that reversible encoding, not a normalized or truncated one. This is the same reasoning `gaia_key_slug` applies in `.gaia/scripts/audit-key-lib.sh`, with a far smaller reserved set because this value is read by humans rather than used as a filename.
 
@@ -176,7 +176,7 @@ It fails open throughout: each field it cannot resolve becomes the literal `unkn
 | knowledge-audit filing block | `.claude/skills/gaia/references/audit.md` | `unknown` |
 | comprehensive-audit filing offer and direct human invocation | this file | `unknown` |
 
-Known limitation: on the routes with no reviewed diff, `branch`, `mode`, and `unit` describe the checkout the filing session sat in, which is not always the work that surfaced the finding. That is still better than nothing and it is honest, because the fields say what the disposing agent's checkout was. A reader must not treat those rows as review attribution.
+Known limitation: the routes with a reviewed diff run on the branch under review, so their `branch`, `mode`, and `unit` track that work. The routes with no reviewed diff run wherever the session happened to sit, so on those rows the fields are the disposing agent's checkout and nothing more.
 
 **What the record does not answer.** It supports attribution, not causation. It says which branch a finding was surfaced from; it does not say the work on that branch caused the defect, and for a pre-existing defect found during a visit it usually did not. Overreading it is the failure mode to avoid.
 
