@@ -164,7 +164,7 @@ assert_gate_skipped() {
 #
 # Both directions of the contract are derived, one guard each: this one asks
 # whether every arm reaches a glob, the one below it whether every glob reaches
-# an arm. The per-directory @tests above still pin the four directories by
+# an arm. The per-directory @tests above still pin each of those directories by
 # name, which is a different claim, that the hook really runs end to end for
 # each of them, not that the two files agree.
 
@@ -200,9 +200,15 @@ eslint_globs() {
 # blind spot instead of exposing it. This one over-counts, so a key the
 # derivation silently drops reds the guard rather than leaving its directory
 # unchecked.
+#
+# `tostring` rather than `.value[]?` is what keeps it wider on both axes.
+# lint-staged accepts a bare string chain as well as an array, and `.value[]?`
+# yields nothing for a string, so the derivation's own iteration silently drops
+# `"scripts/**/*.ts": "eslint --fix"`. A count that iterated the same way would
+# drop it too and agree, which is this control's failure mode rather than its
+# job. `tostring` reads a string value, an array value, and any nesting.
 eslint_glob_mentions() {
-  jq -r '[to_entries[]
-          | select(any(.value[]?; type == "string" and test("eslint")))]
+  jq -r '[to_entries[] | select(.value | tostring | test("eslint"))]
          | length' "$REPO_ROOT/.lintstagedrc.json"
 }
 
@@ -227,12 +233,23 @@ glob_head_dirs() {
   case "$head" in
     "{"*"}")
       head="${head#\{}"; head="${head%\}}"
-      while IFS= read -r alt; do
-        printf '%s/\n' "$alt"
-      done <<<"$(printf '%s' "$head" | tr ',' '\n')"
+      head=$(printf '%s' "$head" | tr ',' '\n')
       ;;
-    *) printf '%s/\n' "$head" ;;
   esac
+  # Validate every alternative before emitting any, so a head this reader cannot
+  # expand yields nothing rather than something. A brace group that is not the
+  # whole head (`app/{routes,components}`) is the case that makes the difference:
+  # emitting it literally would leave the shape check satisfied and send the
+  # guard's operator to add a hook arm named after an unexpanded glob, when the
+  # repair is to rewrite the key.
+  while IFS= read -r alt; do
+    case "$alt" in
+      "" | *[{}/]*) return 0 ;;
+    esac
+  done <<<"$head"
+  while IFS= read -r alt; do
+    printf '%s/\n' "$alt"
+  done <<<"$head"
 }
 
 # Whether one glob key hands ESLint the files under directory $1.
@@ -309,7 +326,7 @@ glob_covers_dir() {
   while IFS= read -r glob; do
     glob_dirs=$(glob_head_dirs "$glob")
     [ -n "$glob_dirs" ] || {
-      printf 'eslint glob %s is not of the recursive <dir>/**/ shape, so no directory can be checked against the arms\n' "$glob" >&2
+      printf 'eslint glob %s does not reduce to a plain recursive <dir>/**/ head, so no directory can be checked against the arms\n' "$glob" >&2
       return 1
     }
     while IFS= read -r dir; do
