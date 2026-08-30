@@ -231,39 +231,24 @@ Wave A input:
 
 Each key in the top-level `overrides:` map in `pnpm-workspace.yaml` exists for one of two reasons: to resolve a **peer-dependency conflict**, or to enforce a **security floor** (pin a transitive dependency at or above a patched version to clear a known advisory). The two are detected by different tests, and an override is obsolete only when removing it regresses **neither**. A peer-dep test alone is blind to security-floor pins (a CVE pin never produces a peer-dep error), so it would wrongly delete every one of them. (pnpm 11 reads overrides here; the `package.json` `pnpm.overrides` field is no longer honored.)
 
-**This repository has two pnpm workspace roots, and both are in scope for this phase.** `.gaia/cli` declares its own `pnpm-workspace.yaml`, so pnpm treats it as a root of its own: it carries its own lockfile, its own `overrides:` map and its own closure, and it inherits nothing from the repository root. Every `pnpm audit`, `pnpm dedupe` and `pnpm ls` below resolves against whichever root it runs from, so a bare command sweeps the repository root and then reports clean over a tree it never opened. That is not hypothetical: `fast-uri` sat at a version carrying a published advisory in `.gaia/cli/pnpm-lock.yaml` while the repository root was already patched, and nothing in this skill said so.
-
-Scope that claim to what this phase actually does. `.gaia/cli`'s own package versions are never discovered, previewed, snoozed, or bumped: discovery is CLI-driven and single-root, and Wave A and Wave B install into the root `package.json`. What this phase adds for that root is its advisory baseline and its override toggle, nothing more.
-
-Keep the per-root artifacts apart. One shared `/tmp/audit-baseline.txt` lets the second root's capture overwrite the first's, and both comparisons then read a set belonging to the wrong tree, which is worse than not running the second root at all because it reports with false confidence. `.gaia/cli` is maintainer-only and release-excluded, so an adopter clone has a single root and the loop degenerates to the bare command it already ran.
-
-**Every fenced block below re-declares what it reads.** Shell state does not persist between Bash tool calls, so a root list declared in one fence is unset in the next, and an unset array expands to zero words: the loop body would run zero times, the pipeline would exit 0, no baseline file would be written, and with nothing to compare against every override key would read as obsolete and be deleted, with nothing red anywhere. Never hoist these declarations into a fence of their own.
-
 **Capture the advisory baseline first**, with every override still in place:
 
 ```bash
-WORKSPACE_ROOTS=(. .gaia/cli)
-for root in "${WORKSPACE_ROOTS[@]}"; do
-  pnpm -C "$root" audit --json 2>/dev/null | jq -r '.advisories // {} | keys[]?' | sort -u \
-    > "/tmp/audit-baseline.$(printf '%s' "$root" | tr './' '__').txt"
-done
+pnpm audit --json 2>/dev/null | jq -r '.advisories // {} | keys[]?' | sort -u > /tmp/audit-baseline.txt
 ```
 
 Each `.advisories` key is one advisory ID; this file is the set of advisories the current overrides tolerate. (If a future pnpm emits the `vulnerabilities` shape instead of `advisories`, read whichever key is present, the goal is a stable ID set to diff against.)
 
-Then take one workspace root at a time, and within it each key in **that root's own** `overrides:` map, one at a time, leaving every other setting in that same file untouched. The toggle is single-root by nature: a key removed from one root's map cannot change the other root's closure, so a pass that edits one root's file and re-resolves the other's proves nothing about either.
+Then, for each override key, one at a time, leaving every other `pnpm-workspace.yaml` setting untouched:
 
-1. Temporarily remove that single key from the `overrides:` map in **that root's own** `pnpm-workspace.yaml`.
-2. Run `pnpm -C <root> dedupe`, naming that root literally. A bare `pnpm install`, even `pnpm install --force`, short-circuits with "Already up to date" when only the `overrides:` map changed and leaves the lockfile untouched, so the toggle would not re-resolve and the test below would read the stale tree; `pnpm dedupe` performs a full install that re-resolves and applies the override change. Dropping the `-C <root>` is the same failure with a quieter shape: it re-resolves the repository root instead, leaves the toggled root's lockfile untouched, and the test below then reads a tree the toggle never changed and reports the key obsolete. See `wiki/dependencies/pnpm-overrides.md`. If it exits non-zero, restore the key, note as **retained (install error)**, and move to the next key, do not diagnose the failure or run the tests below for this key.
-3. **Peer-dep test:** run `pnpm -C <root> ls 2>&1` and scan for peer-dep errors.
-4. **Security-floor test:** run `pnpm -C <root> audit --json` and extract its advisory IDs the same way. Any ID present now but absent from that same root's own `/tmp/audit-baseline.<tag>.txt` means removing this override reintroduced a known vulnerability in that root's closure. Compare against that root's own baseline only: the two closures overlap but are not the same set, so crossing them reports advisories as introduced that the other tree simply always had.
+1. Temporarily remove that single key from the `overrides:` map.
+2. Run `pnpm dedupe`. A bare `pnpm install`, even `pnpm install --force`, short-circuits with "Already up to date" when only the `overrides:` map changed and leaves the lockfile untouched, so the toggle would not re-resolve and the test below would read the stale tree; `pnpm dedupe` performs a full install that re-resolves and applies the override change. See `wiki/dependencies/pnpm-overrides.md`. If it exits non-zero, restore the key, note as **retained (install error)**, and move to the next key, do not diagnose the failure or run the tests below for this key.
+3. **Peer-dep test:** run `pnpm ls 2>&1` and scan for peer-dep errors.
+4. **Security-floor test:** run `pnpm audit --json` and extract its advisory IDs the same way. Any ID present now but absent from `/tmp/audit-baseline.txt` means removing this override reintroduced a known vulnerability.
 
    ```bash
-   root=.    # the root whose overrides map this toggle edits; or .gaia/cli
-   tag="$(printf '%s' "$root" | tr './' '__')"
-   pnpm -C "$root" audit --json 2>/dev/null | jq -r '.advisories // {} | keys[]?' | sort -u \
-     > "/tmp/audit-now.$tag.txt"
-   comm -13 "/tmp/audit-baseline.$tag.txt" "/tmp/audit-now.$tag.txt"   # IDs this removal introduced
+   pnpm audit --json 2>/dev/null | jq -r '.advisories // {} | keys[]?' | sort -u > /tmp/audit-now.txt
+   comm -13 /tmp/audit-baseline.txt /tmp/audit-now.txt   # IDs this removal introduced
    ```
 
 5. Decide:
@@ -272,7 +257,7 @@ Then take one workspace root at a time, and within it each key in **that root's 
 
 The security-floor test is **severity-agnostic on purpose**: an override is a deliberate maintainer artifact, so any advisory it was silencing, at any severity, is reason to keep it. This is intentionally stricter than the high/critical surfacing floor in `.claude/rules/dep-audit.md`: deciding whether to *delete a maintainer's pin* warrants more caution than deciding whether to *surface* an advisory for review. A maintainer who wants a pin gone removes it by hand.
 
-**After the toggle loop, assert the lockfile matches config.** Once every retained key is restored, assert this once per workspace root: that root's own lockfile's top-level `overrides:` block must list exactly the keys present in the `overrides:` map in that root's own `pnpm-workspace.yaml`. The two maps are independent and are deliberately not copies of each other, so comparing either against the other root's file reports drift that is not there. Compare the two; on any drift (a config key missing from the lockfile block, or vice versa) that root's floor is unapplied, so run `pnpm -C <root> dedupe` once more, naming the root whose lockfile drifted, and re-run the quality gate. The `-C <root>` is not optional here, for the reason step 2 gives: run it bare and this paragraph's own guarantee returns to exactly the state it exists to prevent. This assertion is the guarantee that the audit never leaves a stale, silently-disabled security floor. Note the tradeoff: `pnpm dedupe` re-optimizes the whole tree, so a single toggle can yield a wider lockfile diff than the one key it touched (it may also drop now-redundant transitives). That broader diff is expected, and correct, the alternative is an unapplied override.
+**After the toggle loop, assert the lockfile matches config.** Once every retained key is restored, the lockfile's top-level `overrides:` block must list exactly the keys present in the `overrides:` map in `pnpm-workspace.yaml`. Compare the two; on any drift (a config key missing from the lockfile block, or vice versa) the floor is unapplied, so run `pnpm dedupe` once more and re-run the quality gate. This assertion is the guarantee that the audit never leaves a stale, silently-disabled security floor. Note the tradeoff: `pnpm dedupe` re-optimizes the whole tree, so a single toggle can yield a wider lockfile diff than the one key it touched (it may also drop now-redundant transitives). That broader diff is expected, and correct, the alternative is an unapplied override.
 
 ### Wave A input
 
@@ -394,7 +379,7 @@ Report back: updated packages, breaking changes applied, any skipped reason, qua
 
 ## Phase 6: Post-update override audit
 
-For every override that was **retained** in Phase 0, in either workspace root, repeat the full Phase 0 toggle test (both the peer-dep and the security-floor check, re-capturing a fresh advisory baseline against the now-updated tree) now that surrounding packages have moved. A version that landed in Wave A or Wave B may have resolved the original peer-dep conflict or carried the patched transitive dependency that made a security-floor pin obsolete. The toggle test re-resolves with `pnpm -C <root> dedupe`, never a bare `pnpm install`, exactly as in Phase 0. This is the last phase that mutates the `overrides:` map, so the lockfile settles here: close it with the same assertion Phase 0 runs, in the paragraph beginning **After the toggle loop, assert the lockfile matches config**, applied per root exactly as written there. Follow that paragraph rather than a summary of it; it carries the remedy and the quality-gate re-run, one copy cannot drift against itself, and these two already have. Run this as a **Haiku agent**.
+For every override that was **retained** in Phase 0, repeat the full Phase 0 toggle test (both the peer-dep and the security-floor check, re-capturing a fresh advisory baseline against the now-updated tree) now that surrounding packages have moved. A version that landed in Wave A or Wave B may have resolved the original peer-dep conflict or carried the patched transitive dependency that made a security-floor pin obsolete. The toggle test re-resolves with `pnpm dedupe`, never a bare `pnpm install`, exactly as in Phase 0. This is the last phase that mutates the `overrides:` map, so the lockfile settles here: close it with the same assertion Phase 0 runs, the lockfile's `overrides:` block must list exactly the keys in `pnpm-workspace.yaml`, repairing any drift with `pnpm dedupe` and re-running the quality gate. Run this as a **Haiku agent**.
 
 ## Phase 7: Final report
 

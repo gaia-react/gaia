@@ -88,16 +88,14 @@ strictPeerDependencies: false
 # fix landing, so with nothing holding it a later re-resolve can drop it back
 # under the patched version and say nothing.
 #
-# Toggled and retired the same way root's are. /update-deps Phase 0 and Phase 6
-# take one workspace root at a time and toggle the keys in that root's own
-# overrides map, this file included, so a key here that stops clearing an
-# advisory is dropped on the same pass that drops root's. That is a change from
-# how this block was first written: those phases used to open only the ROOT
-# pnpm-workspace.yaml, which left these entries to become silent caps once their
-# parents bumped past the versions below, on a workspace whose build inlines its
-# dependencies into a shipped binary. Nothing here needs a by-hand re-check on
-# that account any more; a removal this file did not authorize is a bug in that
-# phase rather than expected drift.
+# Retired by hand, unlike root's. Root's block points at /update-deps Phase 0
+# and Phase 6 to toggle its keys and drop the obsolete ones; those phases scope
+# themselves to the top-level overrides map in the ROOT pnpm-workspace.yaml and
+# never open this file, and no other dependency-maintenance path reads it. So
+# once these parents bump their own pins past the versions below, these entries
+# stop being floors and quietly become caps, on a workspace whose build inlines
+# its dependencies into a shipped binary. Re-check them by hand whenever this
+# workspace's lockfile is next re-resolved.
 #
 #   - cosmiconfig>js-yaml and @eslint/eslintrc>js-yaml -> 4.3.1:
 #     GHSA-5p4m-2wfm-xmqj, quadratic CPU consumption in !!omap resolution.
