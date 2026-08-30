@@ -5,7 +5,8 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
-  js-yaml@^4.0.0: 4.3.1
+  cosmiconfig>js-yaml: 4.3.1
+  '@eslint/eslintrc>js-yaml': 4.3.1
   fast-uri: 3.1.6
 
 importers:
