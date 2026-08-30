@@ -432,7 +432,7 @@ PY
 # that test's own tmpdir.
 tracked_list() {
   local out="$1"
-  git -C "$REPO_ROOT" ls-files > "$out"
+  git -C "$REPO_ROOT" ls-files -z | tr '\0' '\n' > "$out"
 }
 
 # Every workflow file, both extensions, matching the directory scan in

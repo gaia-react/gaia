@@ -110,6 +110,7 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 - [[Folding Shell Scripts into the CLI Binary]]: considered and declined; the manifest is a never-merged sentinel and the fold is a delete, so it cannot deliver simpler diffs.
 - [[Forensics Triage Workflow]]
 - [[Sharded CI Test Matrix]]: `Audit CI Tests` as an 11-leg fan-out plus a thin aggregator; the zero-headroom 2-hop cap arithmetic any restructuring hits first, how to measure this workflow without the two traps, and the levers already weighed.
+- [[Shell Guard Fixture Discrimination]]: fixture-region discrimination plus a suppression pragma so the shell guards can read `*.bats` without flagging their own suites' deliberately broken fixtures.
 <!-- gaia:maintainer-only:end -->
 - [[Quality Gate]]
 - [[pnpm]]

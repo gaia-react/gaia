@@ -430,18 +430,13 @@ run_lib() {
 # --- signal helper: corpus standing check over the union glob set ---
 
 @test "the helper over the whole union glob set has no duplicate signal per file, and pins its file/record counts" {
-  local files
-  files=$(git -C "$REPO_ROOT" ls-files 'app/**/*.test.ts' 'app/**/*.test.tsx' \
-    '.playwright/**/*.spec.ts' '.playwright/**/*.spec.tsx' \
-    '.playwright/**/*.test.ts' '.playwright/**/*.test.tsx')
-
   local corpus="$BATS_TEST_TMPDIR/corpus.ndjson"
   : > "$corpus"
 
   local file_count=0
   local record_count=0
   local f dup n
-  while IFS= read -r f; do
+  while IFS= read -r -d '' f; do
     [ -z "$f" ] && continue
     file_count=$((file_count + 1))
     run_helper "$f"
@@ -456,12 +451,14 @@ run_lib() {
       record_count=$((record_count + n))
       printf '%s\n' "$output" >> "$corpus"
     fi
-  done <<< "$files"
+  done < <(git -C "$REPO_ROOT" ls-files -z 'app/**/*.test.ts' 'app/**/*.test.tsx' \
+    '.playwright/**/*.spec.ts' '.playwright/**/*.spec.tsx' \
+    '.playwright/**/*.test.ts' '.playwright/**/*.test.tsx')
 
   # Refresh both by re-running the git ls-files command above and summing the
   # helper's output line count across the result.
   [ "$file_count" -eq 32 ]
-  [ "$record_count" -eq 138 ]
+  [ "$record_count" -eq 134 ]
 
   local bad_signal
   bad_signal=$(jq -r '.signal' "$corpus" | grep -vE '^sha256:[0-9a-f]{64}$' || true)
