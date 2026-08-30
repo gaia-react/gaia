@@ -1,10 +1,12 @@
 #!/usr/bin/env bats
 # Doc-grep coverage for the seeded language-neutral holistic finding
-# classes and the restored workflow bucket. The set is FULL_SLUGS in
-# setup(), which group C pins byte-for-byte against HOLISTIC_FINDING_CLASSES
-# in .gaia/cli/src/schemas/finding-class.ts; naming the members a second time
-# here would be a copy nothing reds on. Five member sidecar contracts each
-# carry a
+# classes and the restored workflow bucket. The set the four full-vocabulary
+# members are swept against is FULL_SLUGS in setup(); group C pins it jointly
+# with FRONTEND_ONLY_SLUGS against HOLISTIC_FINDING_CLASSES in
+# .gaia/cli/src/schemas/finding-class.ts, so what reds on a seeded or retired
+# class is the union, and the split between the two lists stays
+# hand-maintained. Naming the members a second time here would be a copy
+# nothing reds on. Five member sidecar contracts each carry a
 # `## Holistic class assignment` section with one assignment line per class in
 # their owning set, plus each canonical tie-break sentence separating a class
 # that member assigns from its nearest neighbour, verbatim. One side assigned
@@ -500,6 +502,7 @@ setup() {
   # proves only that the sentence names a heading, so renaming the heading in
   # code-audit-frontend.md would leave an adopter-visible pointer citing a
   # section that does not exist with every check in the tree still green.
+  # shellcheck disable=SC2016  # the backticks are the heading's own, literal to grep -F
   grep -Fq -- '### Per-bucket `finding_class` convention' "$FRONTEND" || {
     echo "the section $WORKFLOWS points at is missing from $FRONTEND" >&2
     return 1
