@@ -17,7 +17,7 @@
 # tell which branch the finding was surfaced from and, where the route
 # resolved one, whether the cited file was in the reviewed change's own
 # changed-file set. `mode` and `unit` are derived from the branch name, so
-# neither records who filed or what that session was doing; the contract in
+# neither records who filed nor what that session was doing; the contract in
 # .claude/skills/file-tech-debt/SKILL.md states the limitation that puts on
 # a reader.
 #

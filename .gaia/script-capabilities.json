@@ -32,7 +32,7 @@
     {
       "script": ".gaia/scripts/debt-origin-lib.sh",
       "capabilities": [],
-      "why": "Emits the HTML-comment provenance line for a tech-debt finding, deriving its fields from the branch name. Reads the current branch and HEAD through read-only git -C calls; no file writes and no network access.",
+      "why": "Emits the HTML-comment provenance line for a tech-debt finding, deriving branch, mode and unit from the branch name; changed is supplied by the caller. Reads the current branch and HEAD through read-only git -C calls; no file writes and no network access.",
       "maintainer_only": false
     },
     {
