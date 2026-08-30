@@ -67,3 +67,41 @@ allowBuilds:
 # CLI-only workspace. Pin peer mismatches as warnings, not install failures,
 # for parity with the root workspace's explicit setting.
 strictPeerDependencies: false
+
+# Dependency version overrides, the security-floor subset of root's that this
+# closure actually needs. Apply with a `pnpm dedupe` scoped to this workspace,
+# never a bare `pnpm install`, which short-circuits on an overrides-only change
+# (wiki/dependencies/pnpm-overrides.md).
+#
+# Two entries where root carries three, for the same containment reason the two
+# exclusion lists above state: each earns its place against THIS workspace's
+# closure, and the relation to root's list is containment, not difference. Do
+# not sync them by copying. Root's third floor, morgan, is absent because it
+# arrives through @react-router/serve, which this CLI-only closure does not
+# carry.
+#
+# Both entries exist because this workspace is its own pnpm root, as the file's
+# opening comment says, so root's floors do not reach it. Both vulnerable
+# parents are present here: cosmiconfig (js-yaml ^4.1.0, through
+# @gaia-react/lint's stylelint) and ajv (fast-uri ^3.0.1, through the eslint
+# toolchain). fast-uri is the live case rather than a hypothetical one: it has
+# no direct pin in this manifest, it sat at the vulnerable 3.1.4, and it reached
+# a patched version only as a side effect of a whole-lockfile re-resolve. That
+# is exactly the condition root's own comment names, a range permitting the fix
+# is not the same as the fix landing, so with nothing holding it a later
+# re-resolve can drop it back under the patched version and say nothing.
+#
+#   - js-yaml@^4.0.0 -> 4.3.1: GHSA-5p4m-2wfm-xmqj, quadratic CPU consumption
+#     in !!omap resolution. Scoped to the 4.x line so a 3.x consumer, if one
+#     ever enters this closure, is not carried across a major. The direct pin in
+#     package.json already holds this version; this floor covers the transitive
+#     copy that pin does not reach.
+#   - fast-uri -> 3.1.6: GHSA-7p8r-x3mc-p8w7, host confusion via a backslash
+#     authority introducer, plus the two earlier host-confusion advisories it
+#     supersedes. Root pins 3.1.5, the advisory's own floor; this workspace pins
+#     the 3.1.6 its closure already resolved, because pinning down to root's
+#     value would be a downgrade that buys nothing. The two are not meant to
+#     match.
+overrides:
+  'js-yaml@^4.0.0': 4.3.1
+  fast-uri: 3.1.6
