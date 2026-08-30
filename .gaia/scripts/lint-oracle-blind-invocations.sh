@@ -321,6 +321,18 @@ _obi_rewrite_line() {
     lp=""; tp=""; core="$word"
     while :; do
       case "$core" in
+        # The same redirect wearing an explicit file descriptor,
+        # `2>out/log.sh cat`. The digit run sits in FRONT of the operator, so
+        # the class arm below stops at the `2` and leaves the operator inside
+        # the core to be swapped away with it, which is the failure that arm
+        # exists to prevent. Peeled as one unit, digits and operator together,
+        # rather than a character at a time: a lone digit is not punctuation,
+        # and peeling one wherever it leads a word would take the head off an
+        # ordinary path.
+        [0-9]*)
+          [[ $core =~ ^([0-9]+[<>]) ]] || break
+          lp="$lp${BASH_REMATCH[1]}"; core="${core#"${BASH_REMATCH[1]}"}"
+          ;;
         # A redirect glued to its target is peeled with the group openers, so
         # the sentinel keeps the operator in front of it. Without that,
         # `>out/log.sh cat` -- a redirect written before its command -- swaps
@@ -372,7 +384,13 @@ _obi_rewrite_line() {
       # re-emitted as two literal characters, never expanded. The two-character
       # openers each need their own arm because the character class below reads
       # one character at a time, and peeling a lone `$`, `<` or `>` would be
-      # wrong everywhere else it appears.
+      # wrong HERE, in the position this loop occupies: behind an assignment
+      # prefix none of the three stands in front of a command word, so there is
+      # no operator for the sentinel to stay behind. The leading peel above
+      # does take a lone `<` and a lone `>`, deliberately and for exactly the
+      # opposite reason -- there the operator does precede the whole word, and
+      # swapping it away with the word puts the sentinel in command position.
+      # The claim is about this position, not about the two characters.
       # shellcheck disable=SC2016
       case "$core" in
         '$('*) ap="$ap"'$(' ; core="${core:2}" ;;
