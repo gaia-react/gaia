@@ -331,8 +331,11 @@ The holistic bucket names language-neutral root causes, so a class comes from th
 - `holistic/ambient-context-resolution`: a module resolves the subject it acts on (a repository root, a diff base, a manifest, a working tree) from ambient state such as the process working directory, `HEAD`, or a default branch rather than from the argument or payload that names it, so sound logic runs against the wrong subject. Not logic handed the right subject and applying a wrong rule to it.
 - `holistic/shared-state-collision`: runs that can overlap write or consume one path, lock, or cache entry whose name carries nothing distinguishing them, so one run's artifact overwrites another's or is claimed under its name. Not an ordering defect within a single run, where no peer is present to collide with.
 - `holistic/unbounded-invocation`: a spawn, fetch, or traversal carries no ceiling on its cost, through a missing output cap, a missing timeout, or work superlinear in an input the caller never sizes, so a large or slow input surfaces as a hang, a truncated read, or a failure attributed to the wrong cause. Not a declared bound that is merely set to the wrong value.
+- `holistic/overclaimed-guarantee`: a docblock, comment, or help string states a guarantee, scope, or effect in terms wider than the code behind it establishes, so it holds for the case the writer had in front of them and fails for a sibling case the same sentence covers, as with a validator credited with rejecting a shape it accepts on one branch. Not a sentence that disagrees with the code outright, which a reader acts wrongly on and is an uncoupled restatement.
+- `holistic/incomplete-enumeration`: a docblock, comment, or help string enumerates the members of a set (subcommands, exit codes, accepted flags, schema members, excluded paths) and presents that list as the whole of it while the set carries members it omits, so a reader treats the sentence as exhaustive and works from a set smaller than the real one. Not a bare count disagreeing with the set it counts, which is a stale figure.
+- `holistic/repeated-round-trip`: one value is spawned for, requested, or parsed once per element or once per call site where a single batched call returns all of it, as with a child process per field or a file re-read per iteration, so the work takes a multiplier the result does not require. Not work with no ceiling on its cost at all, which is an unbounded invocation.
 
-Five neighbour pairs drift under pressure. Settle each with its own sentence, and prefer it over a fresh judgment:
+Six neighbour pairs drift under pressure. Settle each with its own sentence, and prefer it over a fresh judgment:
 
 A check that cannot fail is a hollow assertion; a sentence a reader would act wrongly on is an uncoupled restatement.
 
@@ -343,6 +346,8 @@ A discarded exit status is the already-seeded swallowed error; an element that n
 A pointer is a dangling reference when the thing it points at is absent under every name; it is an uncoupled restatement when that thing exists and the pointer names or describes it wrongly.
 
 This pair separates a wrong element from a wrong root: a set missing a member is the fail-open discovery, a set gathered from the wrong root, base, or repository is the ambient-context resolution.
+
+A sentence presenting a subset as the whole set is an incomplete enumeration; any other sentence claiming more than its mechanism establishes is an overclaimed guarantee.
 
 ## Findings sidecar (local run record)
 

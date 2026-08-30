@@ -172,6 +172,42 @@
       "group": "corpus",
       "owning_members": ["code-audit-maintainer-shell"],
       "reason": "the work grows with the product of payload size and matching-line count with no cap on the payload accepted, so a large write stalls the call it gates"
+    },
+    "29-lint-cache-key-omits-runtime-config": {
+      "expected": "holistic/overclaimed-guarantee",
+      "group": "corpus",
+      "owning_members": ["code-audit-github-workflows"],
+      "reason": "the comment states cover the key does not give, and it is accurate for the inputs the writer had in view, so the sentence is wider than the mechanism rather than in disagreement with it"
+    },
+    "30-invariant-claim-wider-than-its-binding": {
+      "expected": "holistic/overclaimed-guarantee",
+      "group": "corpus",
+      "owning_members": ["code-audit-maintainer-shell"],
+      "reason": "the binding establishes the agreement inside one scope and the sentence states it without that scope, so the claim is wider than its mechanism while the mechanism decides correctly"
+    },
+    "31-release-exclusion-bullet-lists-five-of-ten": {
+      "expected": "holistic/incomplete-enumeration",
+      "group": "corpus",
+      "owning_members": ["code-audit-maintainer-prose"],
+      "reason": "a named list of set members reads as the roster while the set carries five more, and the sentence carries no hedge marking it a sample"
+    },
+    "32-apt-driver-comment-omits-two-suites": {
+      "expected": "holistic/incomplete-enumeration",
+      "group": "corpus",
+      "owning_members": ["code-audit-github-workflows"],
+      "reason": "the comment names most of the driver set and two drivers are absent from it, with the derived list beside it still correct"
+    },
+    "33-clearance-scan-spawns-one-jq-per-field": {
+      "expected": "holistic/repeated-round-trip",
+      "group": "corpus",
+      "owning_members": ["code-audit-maintainer-shell"],
+      "reason": "five spawns per document where one returns the same fields, and the whole scan is recomputed a second time in one invocation"
+    },
+    "34-fixture-reparsed-per-loop-iteration": {
+      "expected": "holistic/repeated-round-trip",
+      "group": "corpus",
+      "owning_members": ["code-audit-maintainer-node"],
+      "reason": "three distinct parse results are recomputed once per loop iteration, so the spawn count carries the iteration factor and the results do not"
     }
   }
 }
