@@ -100,15 +100,24 @@ setup() {
   # unanchored one is satisfiable from prose, so a spec carrying one staged
   # invocation and one prose copy of the pinned literal balances and passes.
   # This has no arithmetic to get backwards and names the offending line.
+  # The offenders check runs FIRST, and the order is load-bearing for the
+  # diagnostic rather than for the verdict. Both branches reach the same
+  # failure, but a spec whose write drifted into another shape satisfies
+  # neither, so with the presence check first it reported "prescribes no
+  # sidecar write at all" for a spec that does prescribe one, and the early
+  # return short-circuited the check that would have named the offending line.
+  # Reporting drift first leaves the presence branch reachable only when the
+  # file carries no `--findings` line of any shape, which is what its message
+  # now says.
   for f in "${SPECS[@]}"; do
     local offenders
-    grep -qE -- '^[[:space:]]*--findings -[[:space:]]*$' "$f" || {
-      echo "$f prescribes no sidecar write at all" >&2
-      return 1
-    }
     offenders="$(grep -n -- '--findings' "$f" | grep -vE -- '^[0-9]+:[[:space:]]*--findings -[[:space:]]*$' || true)"
     [ -z "$offenders" ] || {
       echo "$f: --findings appears outside the pinned stdin form: $offenders" >&2
+      return 1
+    }
+    grep -qE -- '^[[:space:]]*--findings -[[:space:]]*$' "$f" || {
+      echo "$f carries no --findings line of any shape, so it prescribes no sidecar write at all" >&2
       return 1
     }
   done
@@ -128,21 +137,37 @@ setup() {
 
 # --- Group 3: the stdin producer on the other side of the pipe --------------
 
-@test "every findings invocation has a single-quoted printf producer" {
-  # Group 2 pins the flag; without this, `--findings -` could sit at the end of
-  # a call nothing feeds, and the writer would block on a stdin that never
-  # arrives. Counting producers against consumers is what ties the two halves
-  # of each pipeline together.
+@test "every findings invocation is one pipeline from printf to the writer" {
+  # Group 2 pins the flag. This pins the rest of the pipeline: the single-quoted
+  # producer, and the pipe that connects it to the writer.
   #
-  # Both counts are anchored, and to the same scope: a spec sentence quoting
-  # either half inline would otherwise inflate one side with nothing on the
-  # other to match it and fail a spec whose invocations are all well-formed.
+  # The pipe count is not redundant with the producer count, and the difference
+  # is the whole reason this test is not just a producer tally. Counting
+  # balances cardinalities and associates nothing, so `producers == consumers`
+  # alone is satisfied by a spec that redirects its `printf` into a staged file
+  # on a continuation line and issues the writer as a separate command: the
+  # counts still match, a bare `--findings -` line survives, and no heredoc
+  # appears, so every other test here passes while that spec prescribes exactly
+  # the shared staging file this suite exists to forbid, plus a writer call
+  # blocking on a stdin nothing feeds. Requiring an anchored pipe leader per
+  # consumer is what rejects it. The pre-change form had no such hole because
+  # its pinned literal carried the heredoc opener on the flag line itself, which
+  # forced the array inline and left no free-standing producer to redirect.
+  #
+  # All three counts are anchored to one scope: a spec sentence quoting any one
+  # half inline would otherwise inflate that side with nothing on the others to
+  # match it, failing a spec whose invocations are all well-formed.
   for f in "${SPECS[@]}"; do
-    local producers consumers
+    local producers pipes consumers
     producers="$(grep -cE -- "^printf '%s' '.*' \\\\$" "$f" || true)"
+    pipes="$(grep -cE -- '^  \| bash \.gaia/scripts/audit-write-findings\.sh \\$' "$f" || true)"
     consumers="$(grep -cE -- '^[[:space:]]*--findings -[[:space:]]*$' "$f" || true)"
     [ "$producers" -eq "$consumers" ] || {
       echo "$f: $producers printf producers, $consumers --findings - consumers" >&2
+      return 1
+    }
+    [ "$pipes" -eq "$consumers" ] || {
+      echo "$f: $pipes piped writer calls, $consumers --findings - consumers; a producer that is not piped into the writer stages a file" >&2
       return 1
     }
   done
