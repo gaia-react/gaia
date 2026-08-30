@@ -376,8 +376,11 @@ The holistic bucket names language-neutral root causes, so each class is assigne
 - `holistic/ambient-context-resolution`: a script resolves the subject it acts on (its checkout root, its diff base, its repository) from ambient process state such as the working directory, `HEAD`, or the default branch rather than from the input that names it, so sound logic does its work on the wrong thing. Not logic handed the right subject and applying a wrong rule to it.
 - `holistic/shared-state-collision`: two runs of one mechanism that can overlap write or consume a single path, lock, or ledger whose name carries nothing separating them, so one run's artifact lands under another's identity or is destroyed by it. Not an ordering defect inside a single run, where no peer exists to collide with.
 - `holistic/unbounded-invocation`: a subprocess, network fetch, or scan runs with no ceiling on what it can cost, through an absent timeout, an absent output cap, or work that grows superlinearly in an input the caller never sizes, so a large or slow input becomes a hang, a truncation, or a failure reported as something else. Not a declared bound that is merely set to the wrong value.
+- `holistic/overclaimed-guarantee`: a comment, header, or `@test` name states what a mechanism guarantees in terms wider than the script or suite behind it establishes, so it holds for the case in front of the writer and fails for a sibling case the same sentence covers, as with a pin credited with catching a drift it catches in one spelling only. Not a sentence that disagrees with the mechanism outright, which a reader acts wrongly on and is an uncoupled restatement.
+- `holistic/incomplete-enumeration`: a comment, header, or `@test` name enumerates the members of a set (the call sites a rule reaches, the surfaces a scan walks, the exit codes an arm returns) and presents that list as the whole of it while the set carries members it omits, so a reader treats the sentence as exhaustive and works from a boundary narrower than the real one. Not a bare count disagreeing with the set it counts, which is a stale figure.
+- `holistic/repeated-round-trip`: one value is spawned for, fetched, or parsed once per element or once per call site where a single batched invocation returns all of it, as with a `jq` per field over one document or a second API call for a field the first could carry, so the work takes a multiplier the result does not require. Not work with no ceiling on its cost at all, which is an unbounded invocation.
 
-Five neighbour pairs drift under load, and each is settled by one sentence rather than by re-reasoning it per finding. The third carries the most weight on this surface: a discarded `$?` and an input that never entered a scanned set read alike in a shell script and route to different classes.
+Six neighbour pairs drift under load, and each is settled by one sentence rather than by re-reasoning it per finding. The third carries the most weight on this surface: a discarded `$?` and an input that never entered a scanned set read alike in a shell script and route to different classes.
 
 A check that cannot fail is a hollow assertion; a sentence a reader would act wrongly on is an uncoupled restatement.
 
@@ -388,6 +391,8 @@ A discarded exit status is the already-seeded swallowed error; an element that n
 A pointer is a dangling reference when the thing it points at is absent under every name; it is an uncoupled restatement when that thing exists and the pointer names or describes it wrongly.
 
 This pair separates a wrong element from a wrong root: a set missing a member is the fail-open discovery, a set gathered from the wrong root, base, or repository is the ambient-context resolution.
+
+A sentence presenting a subset as the whole set is an incomplete enumeration; any other sentence claiming more than its mechanism establishes is an overclaimed guarantee.
 
 ## Findings sidecar (local run record)
 

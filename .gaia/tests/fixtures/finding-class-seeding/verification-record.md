@@ -1,14 +1,18 @@
 # Forward-assignment verification record
 
-Three independent classification runs over the twenty-eight unlabelled cases in `cases/`, scored
-best-of-three against each case's `expected` value in `labels.json`. Each run reads the owning
-member's `## Holistic class assignment` section and the case file, and nothing else: no run sees
-`labels.json`'s `expected`, `group`, or `reason` fields, no run sees another run's verdicts, and no
-run scores itself. The prohibition is stated to each classifier and names the schema and the
-sibling fixture files individually, because a classifier that reads either one is reciting rather
-than classifying.
+Independent classification runs over the unlabelled cases in `cases/`, scored best-of-three against
+each case's `expected` value in `labels.json`. Each run reads the owning member's `## Holistic class
+assignment` section and the case file, and nothing else: no run sees `labels.json`'s `expected`,
+`group`, or `reason` fields, no run sees another run's verdicts, and no run scores itself. The
+prohibition is stated to each classifier and names the schema and the sibling fixture files
+individually, because a classifier that reads either one is reciting rather than classifying.
 
-## Verdict: 26 of 28 against the labels as they now stand, unanimous on every one of the 26
+Two rounds are recorded, each covering the cases that existed when it ran. The wave-1 and wave-2
+round is first; the wave-3 round, covering only the cases added for the third wave, is the last
+section on this page. The two rounds' scores are stated separately and are not summed: they cover
+different case sets.
+
+## Wave-1 and wave-2 round, verdict: 26 of 28 against the labels as they now stand, unanimous on every one of the 26
 
 **All ten wave-2 cases take their labelled class on all three runs**, in this round and in the
 round before it, which is the question this corpus exists to answer for the five classes seeded in
@@ -151,3 +155,44 @@ observation of it rather than a defect either round introduced.
 structured channel rather than through free text, and every dispatch is accounted for: 84 of 84 in
 each round, 6 of 6 in the control, with no empty results. A lost verdict is indistinguishable from
 a classifier that declined, which is the one reading this record must not admit.
+
+## Wave-3 round: the six cases added for the third wave
+
+Three independent runs over cases 29 to 34 only, under the same prohibitions, each reading the
+owning member's section and its own case file and nothing else.
+
+### Verdict: 6 of 6, unanimous on every one
+
+| Case | Group | Expected | Run 1 | Run 2 | Run 3 | Majority |
+| --- | --- | --- | --- | --- | --- | --- |
+| `29-lint-cache-key-omits-runtime-config` | corpus | `holistic/overclaimed-guarantee` | = | = | = | 3/3 |
+| `30-invariant-claim-wider-than-its-binding` | corpus | `holistic/overclaimed-guarantee` | = | = | = | 3/3 |
+| `31-release-exclusion-bullet-lists-five-of-ten` | corpus | `holistic/incomplete-enumeration` | = | = | = | 3/3 |
+| `32-apt-driver-comment-omits-two-suites` | corpus | `holistic/incomplete-enumeration` | = | = | = | 3/3 |
+| `33-clearance-scan-spawns-one-jq-per-field` | corpus | `holistic/repeated-round-trip` | = | = | = | 3/3 |
+| `34-fixture-reparsed-per-loop-iteration` | corpus | `holistic/repeated-round-trip` | = | = | = | 3/3 |
+
+Every run ruled out the neighbouring class by name, and on the two `holistic/repeated-round-trip`
+cases each cited the ceiling as its grounds for not taking `holistic/unbounded-invocation`, which is
+the distinction that class was seeded on.
+
+### The case that was replaced, and why the replacement is not a re-run to a preferred answer
+
+Case 30 first appeared as `30-suite-header-attributes-one-rationale-to-three-rules`, and two of its
+three runs assigned `holistic/uncoupled-restatement` against a `holistic/overclaimed-guarantee`
+label. Both dissenting runs gave the same grounds, and the grounds were right: that case's failure
+mode had a stated rationale **inverted** for two of the three rules it covered, so the sentence
+disagreed with the mechanism outright and a maintainer acting on it would remove a deliberate
+decline. The tie-break sends exactly that to `holistic/uncoupled-restatement`.
+
+So the fixture was wrong, not the criterion and not the runs. The case did not exercise the class it
+was labelled for; it exercised the neighbour, which means it measured nothing about the boundary it
+was written to test. It is replaced by one whose sentence holds for the case its writer was
+reasoning about and is merely wider than the mechanism, with nothing deciding wrongly, and the
+replacement is scored on its own three fresh runs. **The dissenting runs' verdicts are not
+overturned and no run was repeated to change an answer**: the first case's runs stand as the reason
+it was replaced, and the second case is a different case.
+
+The stronger reading of this exchange is that the boundary works. Three runs separated an inverted
+claim from an over-wide one, unprompted, on the criterion's own words, in the direction the
+criterion prescribes.

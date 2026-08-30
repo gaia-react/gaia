@@ -69,6 +69,9 @@ export const HOLISTIC_FINDING_CLASSES = [
   'holistic/ambient-context-resolution',
   'holistic/shared-state-collision',
   'holistic/unbounded-invocation',
+  'holistic/overclaimed-guarantee',
+  'holistic/incomplete-enumeration',
+  'holistic/repeated-round-trip',
 ] as const;
 
 export type HolisticFindingClass = (typeof HOLISTIC_FINDING_CLASSES)[number];
