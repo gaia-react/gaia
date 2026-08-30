@@ -39,10 +39,20 @@ teardown() {
   return 0
 }
 
-# fixture_repo: an initialized git repo in $TMP with no files yet.
-fixture_repo() {
+# fixture_repo_bare: an initialized git repo in $TMP with no files yet and no
+# seeded surface. Point a test that needs an empty scan set here.
+fixture_repo_bare() {
   TMP="$(mktemp -d -t grep-ere-lint-XXXXXX)"
   git -C "$TMP" init -q .
+}
+
+# fixture_repo: fixture_repo_bare with a benign tracked *.bats file already
+# seeded. gaia_guard_bats_files hard-errors on an empty *.bats surface, so
+# every ordinary fixture needs one already in place to reach this guard's own
+# class detection at all.
+fixture_repo() {
+  fixture_repo_bare
+  fixture_file seed.bats '@test "seed" { true; }'
 }
 
 # fixture_file <relpath> <body>: write <body> verbatim to $TMP/<relpath> and
@@ -437,16 +447,29 @@ grep -qE "^x$" f'
   grep -qF -- "clean" <<<"$output"
 }
 
-# A bats suite is where this class is demonstrated: the fixtures above are
-# themselves unportable patterns, and a raw-line scanner cannot tell one from an
-# executed call. This is a declared fail-open, pinned here so the exclusion
-# cannot be dropped without a test going red.
-@test "does not scan bats suites or markdown" {
+# Tracked bats suites join the surface as their own set: the fixture above,
+# once unportable evidence a raw-line scanner could not tell from an executed
+# call, is now discriminated by the shared library and reported like any other
+# executed shell.
+@test "reports an instance now that tracked bats suites join the surface" {
   fixture_repo
   fixture_script "echo ok"
   fixture_file suite.bats "@test \"x\" {
   grep -qE 'a\tb' <<<\"\$output\"
 }"
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- "suite.bats:2:" <<<"$output"
+  grep -qF -- '\t in an extended-regex grep pattern' <<<"$output"
+}
+
+# Markdown stays out of the surface: the class needs the pattern authored on
+# one platform and run on another, and an executed markdown snippet is run by
+# an agent on the author's own machine, so the exposure never arises. Pinned
+# here so the exclusion cannot be dropped without a test going red.
+@test "still does not scan markdown" {
+  fixture_repo
+  fixture_script "echo ok"
   fixture_file doc.md 'Run this:
 
 ```bash
@@ -458,10 +481,252 @@ grep -qE "a\tb" input.txt
 }
 
 @test "errors rather than greening when nothing is scanned" {
-  fixture_repo
+  fixture_repo_bare
   run_linter
   [ "$status" -eq 1 ]
   grep -qF -- "nothing was scanned" <<<"$output"
+}
+
+# An empty *.bats surface is its own hard error, distinct from the empty
+# shell/workflow surface above: a tree with tracked shell and no bats must not
+# pass clean carried by the rest of the scan.
+@test "errors on an empty bats surface even with a real shell surface present" {
+  fixture_repo_bare
+  fixture_script "echo ok"
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- "no tracked bats suites matched the scan surface; nothing was scanned" <<<"$output"
+}
+
+# --- the gaia-lint-ignore pragma, on *.bats and beyond ---------------------
+
+@test "an unused pragma is reported" {
+  fixture_repo
+  fixture_script "echo ok"
+  fixture_file suite.bats "# gaia-lint-ignore lint-grep-ere-escapes: not needed
+@test \"x\" { true; }"
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- "suite.bats:1: unused gaia-lint-ignore for lint-grep-ere-escapes: the line below it carries no instance of that class" <<<"$output"
+}
+
+# lint-git-path-quoting.sh alone owns the orphaned-name error, so a single
+# malformed pragma anywhere in the tree produces one finding rather than three.
+@test "an orphaned pragma name reports nothing from this guard" {
+  fixture_repo
+  fixture_script "echo ok"
+  fixture_file suite.bats "# gaia-lint-ignore not-a-real-guard: reason here
+@test \"x\" { grep -qE 'a\tb' <<<\"\$x\"; }"
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- '\t in an extended-regex grep pattern' <<<"$output"
+  grep -qF -- "malformed gaia-lint-ignore" <<<"$output" && return 1
+  true
+}
+
+# Same single-owner rule for a missing reason: this guard prints nothing about
+# it, and the pragma still names this guard correctly so it also suppresses
+# its target's own instance.
+@test "a pragma missing its reason reports nothing from this guard" {
+  fixture_repo
+  fixture_script "echo ok"
+  fixture_file suite.bats "# gaia-lint-ignore lint-grep-ere-escapes
+@test \"x\" { grep -qE 'a\tb' <<<\"\$x\"; }"
+  run_linter
+  grep -qF -- "malformed" <<<"$output" && return 1
+  [ "$status" -eq 0 ]
+  grep -qF -- "clean" <<<"$output"
+}
+
+# The token resolves against the guard's OWN directory, never cwd, so it
+# suppresses correctly even though the fixture repo has no .gaia/scripts/.
+@test "a well-formed pragma resolves against the guard's own scripts_dir" {
+  fixture_repo
+  fixture_script "echo ok"
+  fixture_file suite.bats "# gaia-lint-ignore lint-grep-ere-escapes: fixture demonstrates the class
+@test \"x\" { grep -qE 'a\tb' <<<\"\$x\"; }"
+  run_linter
+  [ "$status" -eq 0 ]
+  grep -qF -- "clean" <<<"$output"
+}
+
+@test "a pragma above a real instance in tracked shell is honored nowhere" {
+  fixture_repo
+  fixture_script "# gaia-lint-ignore lint-grep-ere-escapes: does not apply here
+grep -E 'name\tvalue' input.txt"
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- '\t in an extended-regex grep pattern' <<<"$output"
+  grep -qF -- "gaia-lint-ignore is honored only in *.bats; this pragma waives nothing here" <<<"$output"
+}
+
+@test "a pragma above a real instance in a husky hook is honored nowhere" {
+  fixture_repo
+  fixture_file .husky/pre-commit "# gaia-lint-ignore lint-grep-ere-escapes: does not apply here
+grep -E 'name\tvalue' input.txt"
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- '\t in an extended-regex grep pattern' <<<"$output"
+  grep -qF -- "gaia-lint-ignore is honored only in *.bats; this pragma waives nothing here" <<<"$output"
+}
+
+@test "a pragma above a real instance in a workflow run body is honored nowhere" {
+  fixture_repo
+  fixture_file .github/workflows/ci.yml 'jobs:
+  t:
+    steps:
+      - run: |
+          # gaia-lint-ignore lint-grep-ere-escapes: does not apply here
+          grep -qE "a\tb" input.txt'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- '\t in an extended-regex grep pattern' <<<"$output"
+  grep -qF -- "gaia-lint-ignore is honored only in *.bats; this pragma waives nothing here" <<<"$output"
+}
+
+# The off-surface finding fires whether or not the target line carries an
+# instance: reading it only at the print point would go silently inert here.
+@test "a pragma above a clean line in tracked shell is still honored nowhere" {
+  fixture_repo
+  fixture_script "# gaia-lint-ignore lint-grep-ere-escapes: does not apply here
+echo ok"
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- "gaia-lint-ignore is honored only in *.bats; this pragma waives nothing here" <<<"$output"
+  grep -qF -- "in an extended-regex grep pattern" <<<"$output" && return 1
+  true
+}
+
+@test "a wrapped reason still suppresses the target" {
+  fixture_repo
+  fixture_script "echo ok"
+  fixture_file suite.bats "# gaia-lint-ignore lint-grep-ere-escapes: the reason
+# wraps onto this line too
+@test \"x\" { grep -qE 'a\tb' <<<\"\$x\"; }"
+  run_linter
+  [ "$status" -eq 0 ]
+  grep -qF -- "clean" <<<"$output"
+}
+
+@test "stacked pragmas naming different guards both apply to the target" {
+  fixture_repo
+  fixture_script "echo ok"
+  fixture_file suite.bats "# gaia-lint-ignore lint-git-path-quoting: unrelated finding
+# gaia-lint-ignore lint-grep-ere-escapes: the actual reason
+@test \"x\" { grep -qE 'a\tb' <<<\"\$x\"; }"
+  run_linter
+  [ "$status" -eq 0 ]
+  grep -qF -- "clean" <<<"$output"
+}
+
+@test "a blank line interrupts the pragma block, leaving it unused" {
+  fixture_repo
+  fixture_script "echo ok"
+  fixture_file suite.bats "# gaia-lint-ignore lint-grep-ere-escapes: does not reach past the blank line
+
+@test \"x\" { grep -qE 'a\tb' <<<\"\$x\"; }"
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- "unused gaia-lint-ignore for lint-grep-ere-escapes" <<<"$output"
+  grep -qF -- '\t in an extended-regex grep pattern' <<<"$output"
+}
+
+@test "an ordinary comment does not interrupt the pragma block" {
+  fixture_repo
+  fixture_script "echo ok"
+  fixture_file suite.bats "# gaia-lint-ignore lint-grep-ere-escapes: the reason
+# just an ordinary remark, not a pragma
+@test \"x\" { grep -qE 'a\tb' <<<\"\$x\"; }"
+  run_linter
+  [ "$status" -eq 0 ]
+  grep -qF -- "clean" <<<"$output"
+}
+
+# --- new behavioral shapes on the bats surface ------------------------------
+
+# A multi-line body handed to bash -c is executed shell however it was
+# written, so the assignment's own name is disqualified from the argument-
+# region rule and every interior line, including this one, is reported. The
+# fixture is long enough that FNR and file_length + FNR cannot coincide, which
+# is what a missed NR-to-FNR conversion would print instead.
+@test "an interior line of a bash -c body is reported at its own line" {
+  fixture_repo
+  fixture_script "echo ok"
+  fixture_file suite.bats '@test "x" {
+  script='"'"'echo pad1
+echo pad2
+echo pad3
+echo pad4
+echo pad5
+grep -qE "a\tb" <<<"$1"
+echo pad7'"'"'
+  bash -c "$script"
+}'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- "suite.bats:7:" <<<"$output"
+  grep -qF -- '\t in an extended-regex grep pattern' <<<"$output"
+}
+
+# A helper the idiom set does not name is not a recognized fixture writer, so
+# its argument is read as ordinary shell and the embedded pattern is reported.
+@test "a fixture written through an unrecognized helper is reported" {
+  fixture_repo
+  fixture_script "echo ok"
+  fixture_file suite.bats "@test \"x\" {
+  record_pattern out.txt 'grep -qE \"a\tb\" f'
+}"
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- '\t in an extended-regex grep pattern' <<<"$output"
+}
+
+# Heredoc bodies are swallowed as data on *.bats (README's "What each guard
+# reports today" table), the same as they always were on every other surface;
+# these three pin that the fixture-region skip did not leak off *.bats onto
+# the surfaces that must keep today's coverage unchanged.
+@test "a heredoc body in tracked shell is still reported" {
+  fixture_repo
+  fixture_script "cat <<'EOF'
+grep -qE 'a\tb' input.txt
+EOF"
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- '\t in an extended-regex grep pattern' <<<"$output"
+}
+
+@test "a heredoc body in a husky hook is still reported" {
+  fixture_repo
+  fixture_file .husky/pre-commit "cat <<'EOF'
+grep -qE 'a\tb' input.txt
+EOF"
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- '\t in an extended-regex grep pattern' <<<"$output"
+}
+
+@test "a heredoc body in a workflow run body is still reported" {
+  fixture_repo
+  fixture_file .github/workflows/ci.yml 'jobs:
+  t:
+    steps:
+      - run: |
+          cat <<'"'"'EOF'"'"'
+          grep -qE "a\tb" input.txt
+          EOF'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- '\t in an extended-regex grep pattern' <<<"$output"
+}
+
+@test "a bats file ending inside an open quote produces the desync error" {
+  fixture_repo
+  fixture_script "echo ok"
+  fixture_file suite.bats "@test \"x\" {
+  echo 'unterminated"
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- "ERROR: the scan lost track of shell state before the end of the file" <<<"$output"
 }
 
 @test "the real repository tree is clean" {

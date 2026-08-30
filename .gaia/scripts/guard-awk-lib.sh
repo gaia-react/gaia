@@ -263,11 +263,16 @@ function gaia_scan_feed(line, is_bats) {
 
 function gaia_scan_skip() { return G_skip }
 
-function gaia_scan_suppressed(guard,   i) {
+# Every matching pragma is marked used, not just the first. Two pragmas naming
+# the same guard stack onto one target, and returning at the first left the
+# second unmarked, so it was reported unused over a target that does carry an
+# instance.
+function gaia_scan_suppressed(guard,   i, hit) {
   if (!G_is_bats) return 0
+  hit = 0
   for (i = 1; i <= G_nact; i++)
-    if (G_act_guard[i] == guard) { G_act_used[i] = 1; return 1 }
-  return 0
+    if (G_act_guard[i] == guard) { G_act_used[i] = 1; hit = 1 }
+  return hit
 }
 
 function gaia_scan_pragma_here(guard,   i) {
@@ -383,7 +388,15 @@ function G_walk(line,   n, i, c, nx, j, ch, delim, quoted, prev) {
 
     if (c == "\\") { if (i == n) { G_cont = 1; return } ; i++; continue }
 
-    if (G_tick) { if (c == "`") G_tick = 0; continue }
+    if (G_tick) {
+      if (c == "`") {
+        j = i
+        while (j <= n && substr(line, j, 1) == "`") j++
+        if (j - i >= 3) { i = j - 1; continue }
+        G_tick = 0
+      }
+      continue
+    }
 
     if (c == "$") {
       nx = substr(line, i + 1, 1)
@@ -409,7 +422,19 @@ function G_walk(line,   n, i, c, nx, j, ch, delim, quoted, prev) {
       }
       continue
     }
-    if (c == "`") { G_tick = 1; continue }
+    # A run of three or more backticks is a markdown fence delimiter, not a
+    # command substitution. Toggling per character left an odd-length run (the
+    # ```lang opener) with the span still open, so every comment line inside the
+    # fence read as literal span data and a pragma there was never parsed. A
+    # fence marker is inert to this span tracker; the content INSIDE the fence is still
+    # scanned, which is what the markdown surface expects.
+    if (c == "`") {
+      j = i
+      while (j <= n && substr(line, j, 1) == "`") j++
+      if (j - i >= 3) { i = j - 1; continue }
+      G_tick = 1
+      continue
+    }
 
     if (G_q == "\"") { if (c == "\"") G_q = ""; continue }
     if (c == "\047") { G_q = "\047"; continue }
@@ -467,7 +492,18 @@ function G_walk(line,   n, i, c, nx, j, ch, delim, quoted, prev) {
       continue
     }
 
-    if (c == ">") { G_redir = 1; continue }
+    # A redirect counts for rule 2 only when it names a PATH. `>&2` and `2>&1`
+    # dup a file descriptor, so an `echo ... >&2` is a diagnostic to stderr
+    # rather than a fixture write, and treating it as one made the whole line
+    # data: a real instance on it was skipped, silently, on the one surface
+    # this library exists to arm. Reading `>&` as no redirect at all fails
+    # closed, which is the direction the argument-region rule requires.
+    if (c == ">") {
+      nx = substr(line, i + 1, 1)
+      if (nx == ">") nx = substr(line, i + 2, 1)
+      if (nx != "&") G_redir = 1
+      continue
+    }
 
     # An unquoted `#` opens a comment only at the start of a word; mid-word it is
     # an ordinary character a path or a pattern may carry.

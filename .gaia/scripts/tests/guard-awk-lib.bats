@@ -508,6 +508,76 @@ EOF
   grep -qF -- "ok" <<<"$output" || return 1
 }
 
+# ---- the redirect arm names a path, never a file descriptor ----------------
+
+# `>&2` dups a descriptor; it is not an output redirect to a path, so an
+# `echo ... >&2` is a diagnostic rather than a fixture write. Reading it as one
+# made the whole line data and skipped a real instance on it, silently, on the
+# one surface this library exists to arm.
+@test "a stderr dup does not turn a diagnostic line into fixture data" {
+  cat > "$TMP/redir.bats" <<'EOF'
+echo "STUBCLASS in a diagnostic" >&2
+EOF
+  probe redir.bats 1
+  grep -qF -- "redir.bats:1:" <<<"$output" || return 1
+  true
+}
+
+@test "a redirect to a path still makes the line fixture data" {
+  cat > "$TMP/topath.bats" <<'EOF'
+echo "STUBCLASS in a fixture" > "$TMP/written.txt"
+EOF
+  probe topath.bats 1
+  grep -qF -- "topath.bats:1:" <<<"$output" && return 1
+  true
+}
+
+@test "an appending redirect to a path still makes the line fixture data" {
+  cat > "$TMP/append.bats" <<'EOF'
+echo "STUBCLASS in a fixture" >> "$TMP/written.txt"
+EOF
+  probe append.bats 1
+  grep -qF -- "append.bats:1:" <<<"$output" && return 1
+  true
+}
+
+@test "a descriptor dup written as 2>&1 leaves the line executable shell" {
+  cat > "$TMP/dup21.bats" <<'EOF'
+echo "STUBCLASS in a diagnostic" 2>&1
+EOF
+  probe dup21.bats 1
+  grep -qF -- "dup21.bats:1:" <<<"$output" || return 1
+  true
+}
+
+# ---- stacked pragmas naming one guard --------------------------------------
+
+# Both apply to the same target, so both are used. Marking only the first left
+# the second reported unused over a target that does carry an instance.
+@test "two pragmas naming the same guard are both marked used" {
+  cat > "$TMP/stack.bats" <<'EOF'
+# gaia-lint-ignore lint-git-path-quoting: the first reason
+# gaia-lint-ignore lint-git-path-quoting: the second reason
+echo "STUBCLASS on the target line"
+EOF
+  probe stack.bats 1 lint-git-path-quoting 1 1
+  grep -qF -- "unused gaia-lint-ignore" <<<"$output" && return 1
+  grep -qF -- "stack.bats:3:" <<<"$output" && return 1
+  true
+}
+
+# ---- backtick runs are fence delimiters, not command substitution ----------
+
+# A three-backtick opener carrying a language tag is an odd count, so a
+# per-character toggle left the span open and every comment line inside the
+# fence read as literal data, which meant a pragma there was never parsed.
+@test "a fenced block does not leave the backtick span open" {
+  printf '%s\n' 'text before' '```bash' '# gaia-lint-ignore lint-git-path-quoting: an example' 'echo "STUBCLASS"' '```' > "$TMP/fence.md"
+  probe fence.md 0
+  grep -qF -- "fence.md:4:" <<<"$output" || return 1
+  true
+}
+
 # ---- mutation proofs -------------------------------------------------------
 #
 # Both proofs fork bats over a suite that contains them, so the naive shape
@@ -535,7 +605,7 @@ mutate() {
 @test "mutation: a pragma reader that always declines reds the honored-pragma test" {
   [ -z "${GAIA_GUARD_MUTATION_CHILD:-}" ] || skip "mutation child run"
   mutate '/^function gaia_scan_suppressed/{f = 1}
-          f && index($0, "G_act_used[i] = 1; return 1") > 0 { sub(/return 1/, "return 0"); f = 0 }
+          f && index($0, "return hit") > 0 { sub(/return hit/, "return 0"); f = 0 }
           {print}'
   GAIA_GUARD_MUTATION_CHILD=1 GAIA_GUARD_LIB="$MUT_LIB" \
     run bats --filter 'a pragma is honored above its target in a bats file' "$BATS_TEST_FILENAME"

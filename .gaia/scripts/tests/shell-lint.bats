@@ -80,8 +80,10 @@ teardown() {
 # closed on a finding that was never planted in either chunk.
 # A read loop rather than `head -z`: that flag is GNU-only and absent from
 # macOS's head, which is the platform this whole gate exists for.
-# `.gaia/scripts/lint-git-path-quoting.sh` excludes *.bats by design, so nothing
-# catches this shape here.
+# `.gaia/scripts/lint-git-path-quoting.sh` now scans `*.bats` too, through the
+# shared fixture-versus-execution discriminator, so an executed helper like
+# `tracked_sh` above sits on that gate's surface rather than being exempt from
+# it.
 #
 # Args: first|last
 tracked_sh() {

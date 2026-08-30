@@ -643,6 +643,9 @@ assert_allow() {
   # while proving nothing. No path this fixture commits contains a double quote,
   # so a quote in this list can only be git's own.
   local quoted
+  # gaia-lint-ignore lint-git-path-quoting: the unquoted call IS the experiment
+  # this test runs against the pre-fix spelling; repairing it would delete the
+  # proof, below, that the bug it exists to catch is real
   quoted="$(git -C "$FIXTURE" diff --name-only --diff-filter=ACMR "main...HEAD")"
   grep -qF '"' <<<"$quoted" || {
     printf 'the pre-fix spelling did not quote, so this fixture proves nothing: %s\n' "$quoted"
