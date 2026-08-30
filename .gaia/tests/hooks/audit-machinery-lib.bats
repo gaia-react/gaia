@@ -70,14 +70,14 @@ EOF
 @test "no tracked .bats file in the repo classifies as machinery" {
   hits=""
   swept=0
-  while IFS= read -r tracked; do
+  while IFS= read -r -d '' tracked; do
     [ -n "$tracked" ] || continue
     swept=$((swept + 1))
     if audit_path_is_machinery "$tracked"; then
       hits="${hits}${tracked}
 "
     fi
-  done < <(git -C "$REPO_ROOT" ls-files '*.bats')
+  done < <(git -C "$REPO_ROOT" ls-files -z '*.bats')
 
   # A sweep that classified nothing greens on an empty $hits while asserting
   # nothing, which retires the only guard against a future `/**` entry reaching

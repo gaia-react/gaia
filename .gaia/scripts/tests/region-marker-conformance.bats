@@ -114,9 +114,8 @@ ts_scan() {
 # sandbox and classifies its outcome for the one member from what it actually
 # did, never from a count computed here. $1 = sandbox dir.
 classify_writer() {
-  local dir="$1" out status
-  out="$(bash "$WRITER" --root "$dir" --config "$dir/.gaia/audit-ci.yml" 2>&1)"
-  status=$?
+  local dir="$1" out status=0
+  out="$(bash "$WRITER" --root "$dir" --config "$dir/.gaia/audit-ci.yml" 2>&1)" || status=$?
   if [ "$status" -ne 0 ]; then
     printf 'fail'
     return 0

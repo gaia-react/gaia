@@ -150,6 +150,8 @@
 .gaia/scripts/lint-errexit-source-guard.sh
 # The oracle-blind invocation lint differences bash's own reading of command position against the capability oracle's anchors, and flags an invocation the oracle records nothing for. Withheld because it depends on capability-oracle-lib.sh, which is release-excluded a few lines above: on an adopter clone the file it sources is absent, so it would exit 2 on every run rather than answer. Its runners are release-excluded too -- shell-lint.sh via the .gaia/tests entry below, and the sibling bats suite .gaia/scripts/tests/lint-oracle-blind-invocations.bats via the separate .gaia/scripts/tests entry -- so unlike the lints above, the withhold here rests on the absent DEPENDENCY as well as on the absent runner, and either alone would decide it.
 .gaia/scripts/lint-oracle-blind-invocations.sh
+# The awk-source library the three bats-arming shell guards source; all three guards are themselves withheld above, so nothing on an adopter clone sources it.
+.gaia/scripts/guard-awk-lib.sh
 
 # --- 2. Maintainer-only wiki content ---
 # Internal vault administration files and team-specific knowledge that
@@ -167,6 +169,8 @@ wiki/decisions/Forensics Triage Workflow.md
 # release-excluded, so on an adopter clone every claim here is about a
 # workflow they do not have.
 wiki/decisions/Sharded CI Test Matrix.md
+# Documents the fixture-discrimination convention for the maintainer-only shell guards and their shared library, none of which an adopter clone has.
+wiki/decisions/Shell Guard Fixture Discrimination.md
 
 # --- 3. Test harnesses and audit reports ---
 # Smoke / observability harnesses run by maintainers in CI; never invoked

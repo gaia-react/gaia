@@ -29,8 +29,11 @@
 #
 # The linter resolves its scan surface with `git ls-files` relative to cwd, so
 # every fixture is a real git repository with its files added. It also requires
-# BOTH halves of that surface to be non-empty, so fixture_repo seeds one benign
-# file of each kind and each test adds the file it is actually about.
+# every half of that surface to be non-empty, so fixture_repo seeds one benign
+# file of each scanned kind and each test adds the file it is actually about.
+# The tests that are ABOUT an empty surface take fixture_repo_bare instead and
+# seed only the kinds they need present, since a seed would answer the very
+# question they ask.
 
 setup() {
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
@@ -54,18 +57,40 @@ fixture_file() {
   git -C "$TMP" add -A
 }
 
-# fixture_repo: an initialized git repo in $TMP carrying one benign file of each
-# scanned kind, so the gate's non-empty-surface precondition is met and a test
-# can add just the file it is about.
-fixture_repo() {
+# fixture_repo_bare: an initialized git repo carrying nothing at all. The tests
+# that pin the gate's empty-surface hard errors build on this and seed only the
+# kinds they mean to be present.
+fixture_repo_bare() {
   TMP="$(mktemp -d -t errexit-status-lint-XXXXXX)"
   git -C "$TMP" init -q .
-  fixture_file seed.sh 'echo seed'
+}
+
+seed_sh() { fixture_file seed.sh 'echo seed'; }
+
+seed_workflow() {
   fixture_file .github/workflows/seed.yml 'jobs:
   seed:
     steps:
       - run: |
           echo seed'
+}
+
+# A benign suite, clean of this class, so the bats half of the precondition is
+# met wherever the test is about something else.
+seed_bats() {
+  fixture_file seed.bats '@test "seed" {
+  true
+}'
+}
+
+# fixture_repo: an initialized git repo in $TMP carrying one benign file of each
+# scanned kind, so the gate's non-empty-surface preconditions are met and a test
+# can add just the file it is about.
+fixture_repo() {
+  fixture_repo_bare
+  seed_sh
+  seed_workflow
+  seed_bats
 }
 
 # fixture_script <body>: the common case, a tracked shell script.
@@ -419,23 +444,30 @@ out=$(some_command) || rc=$?; echo "$rc"'
   [ "$status" -eq 0 ]
 }
 
-@test "quiet on a bats suite, the deliberately excluded surface" {
+@test "flags an executed helper in a bats suite, the surface the gate now scans" {
   fixture_repo
-  # The shape reaches disk UNESCAPED and outside any heredoc, so this fixture is
-  # quiet only because *.bats is off the scan surface. Written with `\$` it would
-  # be quiet either way (walk consumes the escape), and written inside a heredoc
-  # the swallow would hide it, so both spellings test nothing.
+  # The shape reaches disk UNESCAPED and outside any heredoc, which is what makes
+  # this fixture non-vacuous. Written with `\$` it would be quiet whatever the
+  # surface (walk consumes the escape), and written inside a heredoc the swallow
+  # would hide it, so both spellings would test nothing. `setup` is invoked by
+  # bats itself and never through `run`, so the run-only exemption does not reach
+  # it and the arming is the whole reason this reds.
   fixture_file suite.bats 'setup() {
   set -e
   out=$(some_command)
   rc=$?
 }'
   run_linter
-  [ "$status" -eq 0 ]
+  [ "$status" -eq 1 ]
+  grep -qF -- 'suite.bats:4:' <<<"$output"
 }
 
-@test "the same bytes in a tracked .sh are flagged, so the exclusion is what quiets them" {
+@test "the same bytes are flagged in a tracked .sh, so the class is surface-independent" {
   fixture_repo
+  # The mirror of the test above, and the pair is the claim: one class, two
+  # surfaces, the same verdict. Neither surface quiets the shape any more, so
+  # what these two pin together is that nothing about the file extension decides
+  # whether the assignment kills the shell.
   fixture_script 'setup() {
   set -e
   out=$(some_command)
@@ -1104,25 +1136,35 @@ echo done'
 
 # --- the gate refuses to report clean over nothing -------------------------
 
+# Each of the three messages carries `nothing was scanned`, so a grep for that
+# phrase alone would green whichever precondition happened to fire first. Each
+# assertion below names the half it is about, or it pins the wrong surface.
+
 @test "errors rather than passing when no tracked shell matches" {
-  TMP="$(mktemp -d -t errexit-status-lint-XXXXXX)"
-  git -C "$TMP" init -q .
-  fixture_file .github/workflows/seed.yml 'jobs:
-  seed:
-    steps:
-      - run: |
-          echo seed'
+  fixture_repo_bare
+  seed_workflow
+  seed_bats
   run_linter
   [ "$status" -eq 1 ]
-  grep -qF -- 'nothing was scanned' <<<"$output"
+  grep -qF -- 'no tracked *.sh or no tracked workflows' <<<"$output"
 }
 
 @test "errors rather than passing when no tracked workflow matches" {
-  TMP="$(mktemp -d -t errexit-status-lint-XXXXXX)"
-  git -C "$TMP" init -q .
-  fixture_file seed.sh 'echo seed'
+  fixture_repo_bare
+  seed_sh
+  seed_bats
   run_linter
   [ "$status" -eq 1 ]
+  grep -qF -- 'no tracked *.sh or no tracked workflows' <<<"$output"
+}
+
+@test "errors rather than passing when no tracked bats suite matches" {
+  fixture_repo_bare
+  seed_sh
+  seed_workflow
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- 'no tracked bats suites matched the scan surface' <<<"$output"
   grep -qF -- 'nothing was scanned' <<<"$output"
 }
 
@@ -1304,12 +1346,541 @@ MATRIX
   }
 }
 
+# --- ANSI-C quoting, the tokenizer repair -----------------------------------
+#
+# Inside `$'"'"'...'"'"'` a backslash ESCAPES, so an escaped quote does not close the
+# literal. Read as an ordinary single-quoted span it closes at the escaped quote
+# and reopens at the real terminator, and because quote state is carried across
+# lines the REST OF THE FILE is then swallowed as quoted text.
+#
+# These two fixtures carry a literal single quote, which a single-quoted bats
+# string cannot hold, so they are written through a quoted heredoc. The bytes
+# still reach disk unescaped, which is the property that makes them non-vacuous.
+
+@test "an ANSI-C literal with an escaped quote does not swallow the rest of the file" {
+  fixture_repo
+  fixture_file check.sh "$(cat <<'FIXTURE'
+set -e
+msg=$'it\'s here'
+echo "$msg"
+FIXTURE
+)"
+  run_linter
+  [ "$status" -eq 0 ]
+}
+
+@test "the remainder after an ANSI-C literal is still classified, not merely quiet" {
+  fixture_repo
+  # The strong form of the test above. A file that scans clean proves only that
+  # no ERROR printed; this one puts a genuine instance BEHIND the literal, so a
+  # tokenizer that lost sync there would swallow the instance as quoted text and
+  # green for the wrong reason.
+  fixture_file check.sh "$(cat <<'FIXTURE'
+set -e
+msg=$'it\'s here'
+echo "$msg"
+out=$(some_command)
+rc=$?
+FIXTURE
+)"
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- 'check.sh:5:' <<<"$output"
+}
+
+@test "an ANSI-C literal with no escaped quote is clean either way" {
+  fixture_repo
+  # Pins the CAUSE to the escaped quote specifically rather than to ANSI-C
+  # quoting at large: an ordinary single-quote reading handles this one, so it
+  # was clean before the frame existed and stays clean after.
+  fixture_file check.sh "$(cat <<'FIXTURE'
+set -e
+msg=$'plain literal'
+echo "$msg"
+FIXTURE
+)"
+  run_linter
+  [ "$status" -eq 0 ]
+}
+
+@test "a quote after an escaped dollar opens an ordinary span, not an ANSI-C frame" {
+  fixture_repo
+  # The frame opens only on a `$` the walk actually reaches from the unquoted
+  # state. An escaped dollar is consumed by the escape arm, so what follows is an
+  # ordinary single-quoted string that a backslash does not escape inside: the
+  # span closes at the FIRST quote, and the second one opens and closes another.
+  fixture_file check.sh "$(cat <<'FIXTURE'
+set -e
+printf '%s\n' \$'a''b'
+out=$(some_command)
+rc=$?
+FIXTURE
+)"
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- 'check.sh:4:' <<<"$output"
+}
+
+@test "a dollar inside double quotes does not open an ANSI-C frame" {
+  fixture_repo
+  # Bash does not expand ANSI-C quoting inside double quotes, so the quote after
+  # the `$` is an ordinary character of the string. Read as a frame opener the
+  # walk would consume the rest of the line looking for a terminator and the hit
+  # below would go unseen.
+  fixture_file check.sh "$(cat <<'FIXTURE'
+set -e
+echo "cost is $' today"
+out=$(some_command)
+rc=$?
+FIXTURE
+)"
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- 'check.sh:4:' <<<"$output"
+}
+
+# --- the bats surface arms by default ---------------------------------------
+
+@test "arms a bats test body with no set -e anywhere, because bats runs it under errexit" {
+  fixture_repo
+  # Without its own arm the bats set folds into the off-by-default `*.sh` arm,
+  # a suite carries no `set -e`, and the whole surface reads clean by
+  # construction. This is the test that keeps it from silently reverting.
+  fixture_file suite.bats '@test "captures a status" {
+  out=$(some_command)
+  rc=$?
+  echo "$rc"
+}'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- 'suite.bats:3:' <<<"$output"
+}
+
+@test "a set +e inside a test body still disarms from that point" {
+  fixture_repo
+  fixture_file suite.bats '@test "opts out" {
+  set +e
+  out=$(some_command)
+  rc=$?
+}'
+  run_linter
+  [ "$status" -eq 0 ]
+}
+
+# --- the run-invoked-helper exemption ---------------------------------------
+#
+# bats disables errexit under `run`, so a helper whose every invocation in its
+# own file is `run <name>` hands its status to `run` and the read below it is
+# live rather than dead. Each shape below carries its own verdict and every one
+# of them is required: with any missing, the exemption is unfalsifiable in that
+# direction.
+
+@test "a helper invoked only through run is not armed" {
+  fixture_repo
+  fixture_file suite.bats 'helper() {
+  out=$(some_command)
+  rc=$?
+  echo "$rc"
+}
+
+@test "a" {
+  run helper
+}
+
+@test "b" {
+  run helper
+}'
+  run_linter
+  [ "$status" -eq 0 ]
+}
+
+@test "the same helper with one plain call site is armed" {
+  fixture_repo
+  fixture_file suite.bats 'helper() {
+  out=$(some_command)
+  rc=$?
+  echo "$rc"
+}
+
+@test "a" {
+  run helper
+}
+
+@test "b" {
+  helper
+}'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- 'suite.bats:3:' <<<"$output"
+}
+
+@test "a helper with no call site at all is armed, which is the closed direction" {
+  fixture_repo
+  # An uninvoked helper is evidence of nothing, so it does not earn the
+  # exemption. Failing open here would hand a free pass to every helper whose
+  # call sites the census cannot see.
+  fixture_file suite.bats 'helper() {
+  out=$(some_command)
+  rc=$?
+  echo "$rc"
+}
+
+@test "a" {
+  true
+}'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- 'suite.bats:3:' <<<"$output"
+}
+
+# --- fixture bodies on the bats surface -------------------------------------
+
+@test "quiet on a fixture body a suite writes through a quoted literal" {
+  fixture_repo
+  # TWO mechanisms agree that this is data, and the load-bearing one is this
+  # gate's own: a multi-line quoted literal is ONE continued statement to its
+  # tokenizer, so the interior lines are never statements at all. The shared
+  # library's argument-region rule reaches the same verdict from the other
+  # direction. Neither is redundant with the other on the sibling gates, which
+  # read raw lines and have only the library's answer.
+  fixture_file suite.bats "$(cat <<'FIXTURE'
+@test "writes a fixture" {
+  fixture_script 'set -e
+out=$(some_command)
+rc=$?'
+}
+FIXTURE
+)"
+  run_linter
+  [ "$status" -eq 0 ]
+}
+
+@test "quiet on a fixture body written into a quoted heredoc" {
+  fixture_repo
+  fixture_file suite.bats "$(cat <<'FIXTURE'
+@test "writes a fixture" {
+  cat <<'EOF' > check.sh
+set -e
+out=$(some_command)
+rc=$?
+EOF
+}
+FIXTURE
+)"
+  run_linter
+  [ "$status" -eq 0 ]
+}
+
+@test "executed shell beside a fixture write is still reported" {
+  fixture_repo
+  # The region ends with the statement, so the test body behind it is shell
+  # again. Without that bound a suite could hide a live instance behind any
+  # fixture-writing call.
+  fixture_file suite.bats "$(cat <<'FIXTURE'
+@test "writes a fixture then runs" {
+  fixture_script 'set -e'
+  out=$(some_command)
+  rc=$?
+}
+FIXTURE
+)"
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- 'suite.bats:4:' <<<"$output"
+}
+
+# --- a backslash continuation is followed on every surface ------------------
+#
+# Measured: this gate reports an instance whose assignment spans a continuation,
+# and does NOT report one inside a heredoc body, which it swallows as data on
+# every surface by design. Only the reported direction is demanded here.
+
+@test "follows a continued assignment in a tracked script" {
+  fixture_repo
+  fixture_script 'set -e
+out=$(some_command \
+  --flag)
+rc=$?'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- 'check.sh:4:' <<<"$output"
+}
+
+@test "follows a continued assignment in a husky hook" {
+  fixture_repo
+  fixture_file .husky/pre-commit 'out=$(some_command \
+  --flag)
+rc=$?'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- '.husky/pre-commit:3:' <<<"$output"
+}
+
+@test "follows a continued assignment in a workflow run: body" {
+  fixture_repo
+  fixture_file .github/workflows/probe.yml 'jobs:
+  probe:
+    steps:
+      - run: |
+          out=$(gh pr view 1 \
+            --json state)
+          rc=$?'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- '.github/workflows/probe.yml:7:' <<<"$output"
+}
+
+@test "follows a continued assignment in a bats test body" {
+  fixture_repo
+  fixture_file suite.bats '@test "continues" {
+  out=$(some_command \
+    --flag)
+  rc=$?
+}'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- 'suite.bats:4:' <<<"$output"
+}
+
+# --- the suppression pragma, honored in *.bats and nowhere else -------------
+#
+# The pragma is written into fixture bodies below rather than into this file, so
+# none of it is live here. Every one names this gate by its own script basename;
+# the token resolves against the REAL .gaia/scripts beside the gate, which is
+# what lets these fixture repos carry no .gaia/scripts of their own.
+
+@test "a pragma naming this gate suppresses the instance below it" {
+  fixture_repo
+  fixture_file suite.bats '@test "demonstrates the class" {
+  out=$(some_command)
+  # gaia-lint-ignore lint-errexit-status-read: the dead read IS the subject here
+  rc=$?
+}'
+  run_linter
+  [ "$status" -eq 0 ]
+}
+
+@test "the token resolves from a fixture repo carrying no .gaia/scripts of its own" {
+  fixture_repo
+  # Resolution is against the gate's OWN directory rather than a cwd-relative
+  # .gaia/scripts. Read cwd-relative, every well-formed token in every fixture
+  # repo would resolve as orphaned and this whole section would be vacuous.
+  [ ! -d "$TMP/.gaia/scripts" ]
+  fixture_file suite.bats '@test "demonstrates the class" {
+  out=$(some_command)
+  # gaia-lint-ignore lint-errexit-status-read: the dead read IS the subject here
+  rc=$?
+}'
+  run_linter
+  [ "$status" -eq 0 ]
+}
+
+@test "a pragma whose target carries no instance is reported as unused" {
+  fixture_repo
+  fixture_file suite.bats '@test "waives nothing" {
+  # gaia-lint-ignore lint-errexit-status-read: nothing below this to waive
+  echo hello
+}'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- 'suite.bats:2: unused gaia-lint-ignore for lint-errexit-status-read' <<<"$output"
+}
+
+@test "a wrapped reason continues the pragma rather than ending it" {
+  fixture_repo
+  fixture_file suite.bats '@test "demonstrates the class" {
+  out=$(some_command)
+  # gaia-lint-ignore lint-errexit-status-read: the dead read IS the subject,
+  # and this second comment line continues the reason above it
+  rc=$?
+}'
+  run_linter
+  [ "$status" -eq 0 ]
+}
+
+@test "an ordinary prose comment does not interrupt a pragma block" {
+  fixture_repo
+  # A wrapped reason is textually an ordinary comment line, so the two cannot be
+  # told apart and neither ends the block. The pragma is still honored.
+  fixture_file suite.bats '@test "demonstrates the class" {
+  out=$(some_command)
+  # gaia-lint-ignore lint-errexit-status-read: the dead read IS the subject here
+  # an unrelated remark about something else entirely
+  rc=$?
+}'
+  run_linter
+  [ "$status" -eq 0 ]
+}
+
+@test "a blank line terminates the block, leaving the pragma unused" {
+  fixture_repo
+  # The single stated verdict for an interrupted block, and both halves of it
+  # are pinned: the pragma waives nothing, AND the instance below is reported.
+  fixture_file suite.bats '@test "demonstrates the class" {
+  out=$(some_command)
+  # gaia-lint-ignore lint-errexit-status-read: separated from its target
+
+  rc=$?
+}'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- 'suite.bats:3: unused gaia-lint-ignore for lint-errexit-status-read' <<<"$output"
+  grep -qF -- 'suite.bats:5: `$?` read after' <<<"$output"
+}
+
+@test "stacked pragmas both apply to the same target" {
+  fixture_repo
+  # The second names this gate and the first names a sibling, so the instance is
+  # waived and neither pragma is reported unused by this gate. A stack that only
+  # ever honored its first member would red here.
+  fixture_file suite.bats '@test "demonstrates the class" {
+  out=$(some_command)
+  # gaia-lint-ignore lint-git-path-quoting: a sibling class on the same line
+  # gaia-lint-ignore lint-errexit-status-read: the dead read IS the subject here
+  rc=$?
+}'
+  run_linter
+  [ "$status" -eq 0 ]
+}
+
+@test "an orphaned guard token draws no malformed error from this gate" {
+  fixture_repo
+  # lint-git-path-quoting.sh is the designated reader for a malformed pragma,
+  # because it has the widest scan surface of the three and so sees one anywhere
+  # in the tree exactly once. This gate reports only the UNUSED pragma naming
+  # itself, and a pragma naming a token that resolves nowhere is not that.
+  fixture_file suite.bats '@test "names a guard that does not exist" {
+  # gaia-lint-ignore lint-no-such-guard: names nothing that resolves
+  echo hello
+}'
+  run_linter
+  [ "$status" -eq 0 ]
+}
+
+@test "a pragma with no reason draws no malformed error from this gate either" {
+  fixture_repo
+  fixture_file suite.bats '@test "gives no reason" {
+  out=$(some_command)
+  # gaia-lint-ignore lint-errexit-status-read:
+  rc=$?
+}'
+  run_linter
+  grep -qF -- 'malformed gaia-lint-ignore' <<<"$output" && return 1
+  true
+}
+
+# --- a pragma is honored nowhere outside *.bats -----------------------------
+
+@test "a pragma above an instance in a tracked script waives nothing and says so" {
+  fixture_repo
+  fixture_script 'set -e
+out=$(some_command)
+# gaia-lint-ignore lint-errexit-status-read: waives nothing on this surface
+rc=$?'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- 'gaia-lint-ignore is honored only in *.bats' <<<"$output"
+  grep -qF -- 'check.sh:4: `$?` read after' <<<"$output"
+}
+
+@test "the same in a husky hook" {
+  fixture_repo
+  fixture_file .husky/pre-commit 'out=$(some_command)
+# gaia-lint-ignore lint-errexit-status-read: waives nothing on this surface
+rc=$?'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- '.husky/pre-commit:3: gaia-lint-ignore is honored only in *.bats' <<<"$output"
+  grep -qF -- '.husky/pre-commit:3: `$?` read after' <<<"$output"
+}
+
+@test "the same in a workflow run: body" {
+  fixture_repo
+  fixture_file .github/workflows/probe.yml 'jobs:
+  probe:
+    steps:
+      - run: |
+          out=$(gh pr view 1 --json state)
+          # gaia-lint-ignore lint-errexit-status-read: waives nothing here
+          rc=$?'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- '.github/workflows/probe.yml:7: gaia-lint-ignore is honored only in *.bats' <<<"$output"
+  grep -qF -- '.github/workflows/probe.yml:7: `$?` read after' <<<"$output"
+}
+
+@test "the honored-nowhere finding fires above a line carrying no instance" {
+  fixture_repo
+  # Read at the print point instead of per line, this finding would be silently
+  # inert over every pragma above a clean line, which is most of them. The gate
+  # is otherwise clean here, so the pragma is the only thing that can red it.
+  fixture_script 'set -e
+# gaia-lint-ignore lint-errexit-status-read: waives nothing on this surface
+echo hello'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- 'check.sh:3: gaia-lint-ignore is honored only in *.bats' <<<"$output"
+}
+
+# --- the bats surface says when it could not read a file --------------------
+
+@test "a bats suite the scan could not tokenize to the end is reported, not certified" {
+  fixture_repo
+  fixture_file suite.bats "$(cat <<'FIXTURE'
+@test "opens a heredoc that never closes" {
+  cat <<'NEVERCLOSED'
+  body
+}
+FIXTURE
+)"
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- 'suite.bats: ERROR: the scan lost track of shell state' <<<"$output"
+}
+
+@test "exactly one desync line is printed for one unreadable bats file" {
+  fixture_repo
+  # This gate keeps its own desync verdict and asks the shared library not to
+  # emit a second one. Both running would print two ERROR lines about one file
+  # and read as two separate failures.
+  fixture_file suite.bats "$(cat <<'FIXTURE'
+@test "opens a heredoc that never closes" {
+  cat <<'NEVERCLOSED'
+  body
+}
+FIXTURE
+)"
+  run_linter
+  [ "$status" -eq 1 ]
+  [ "$( grep -cF -- 'suite.bats: ERROR: the scan lost track' <<<"$output" )" -eq 1 ]
+}
+
 # --- the real tree ---------------------------------------------------------
 
 @test "the repository's own scanned surface is clean" {
   run bash -c "cd '$REPO_ROOT' && bash '$LINTER' 2>&1"
   [ "$status" -eq 0 ]
   grep -qF -- 'lint-errexit-status-read: clean' <<<"$output"
+}
+
+@test "no tracked file in this repository defeats the tokenizer" {
+  # The desync verdict is the gate's honest answer when it could not read a file
+  # to the end, and a tree carrying one is a tree this gate cannot certify. The
+  # four suites named below each defeated it through an ANSI-C literal carrying
+  # an escaped quote, so they are the regression pins for that repair; the first
+  # assertion is the general claim and does not depend on the list.
+  #
+  # Named here rather than inside the scanner: the gate itself may not carry a
+  # suite basename, or the discrimination would be a per-file allowlist. A test
+  # asserting on the gate's real-tree OUTPUT is under no such constraint.
+  run bash -c "cd '$REPO_ROOT' && bash '$LINTER' 2>&1"
+  grep -qF -- 'ERROR: the scan lost track of shell state' <<<"$output" && return 1
+  local suite
+  for suite in lint-errexit-source-guard lint-git-path-quoting \
+               block-manifest-write pr-merge-audit-check; do
+    grep -qE -- "$suite\\.bats: ERROR:" <<<"$output" && return 1
+  done
+  [ "$status" -eq 0 ]
 }
 
 # --- the bare `(( ))` arithmetic command ------------------------------------

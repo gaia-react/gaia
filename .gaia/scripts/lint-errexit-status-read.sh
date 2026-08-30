@@ -57,7 +57,7 @@
 #     `*.sh` glob reaches, so shell-lint's own discovery never opens the file
 #     either shipped instance lived in.
 #
-# Scan surface, two halves that arm differently:
+# Scan surface, and the halves of it that arm differently:
 #
 #   tracked `*.sh` and the extensionless husky hooks -- armed only where the
 #     file turns errexit on, tracked line by line so a `set +e` disarms and a
@@ -85,18 +85,43 @@
 # `bundle:adopter` and is deliberately NOT scanned, so no hit is reported twice
 # and no report names a file the repair must not hand-edit.
 #
-# Two file types are deliberately out of the surface:
+#   tracked `*.bats` -- its own arm, armed BY DEFAULT, because bats runs every
+#     test body under errexit while a suite file carries no `set -e` of its own.
+#     Folding it into the `*.sh` set above, which is off by default, is what made
+#     the whole surface read clean by construction rather than by measurement.
 #
-#   *.bats  -- a suite is where this class is DEMONSTRATED. This gate's own
-#              sibling suite writes fixture scripts through heredocs whose
-#              bodies carry `set -e`, the assignment, and the status read as
-#              literal tracked lines, and a scanner reading raw lines cannot
-#              tell a fixture from an executed one. Including them would demand
-#              "fixes" that delete the proof. This is a real FAIL-OPEN and worth
-#              naming as one: bats runs a test body under errexit, so a suite is
-#              exposed to the class rather than exempt from it. Every suite in
-#              this tree is at zero for the class today, and the exclusion is
-#              what buys the detector.
+#     A suite is also where this class is DEMONSTRATED, so the line the gate
+#     reads may be a fixture the test writes rather than shell the test runs.
+#     Telling those apart is not this file's job: the shared
+#     .gaia/scripts/guard-awk-lib.sh owns the argument-region rule, the
+#     suppression pragma, and the invocation census, and all three gates that
+#     scan suites read the same answers from it. The convention and the
+#     reasoning behind it live in
+#     wiki/decisions/Shell Guard Fixture Discrimination.md.
+#
+#     One arming rule is this gate's own rather than the library's. A helper
+#     function defined in a suite whose EVERY invocation in that file is
+#     `run <name>` is NOT armed, because bats disables errexit under `run`, so
+#     the assignment hands its status to `run` and the read below it is live.
+#     The library answers the census question; the exemption below is what turns
+#     the answer into a verdict. Everything else stays armed: a body inside a
+#     `@test`, a helper with at least one plain call site, and a helper with NO
+#     call site at all in the file, that last one because an uninvoked helper is
+#     evidence of nothing and fails closed.
+#
+#     The library's suppression pragma is honored on this surface and on no
+#     other. A pragma naming this gate anywhere else it scans is reported as
+#     waiving nothing, on the line it targets, whether or not that line carries
+#     an instance -- reading it only where a hit fires would make the finding
+#     silently inert over every pragma above a clean line, which is most of them.
+#     Malformed pragmas, an unresolvable guard token or a missing reason, are the
+#     sibling lint-git-path-quoting.sh's to report: it carries the widest scan
+#     surface of the gates that read this pragma, so a malformed one anywhere in
+#     the tree is named exactly once rather than once per gate. This gate reports
+#     only the UNUSED pragma that names it.
+#
+# One file type is deliberately out of the surface:
+#
 #   *.md    -- the sibling path-quoting gate scans the fenced blocks of tracked
 #              markdown because several are executed instruction. The same
 #              fixture problem applies with more force here: this file's own
@@ -126,6 +151,17 @@
 #     keyword.
 #
 # Known FAIL-OPEN blind spots, stated rather than discovered later:
+#   - A HEREDOC BODY is swallowed as data on every surface, so an instance
+#     written inside one is never reported. That is the deliberate reading a
+#     body is data the shell hands to a command rather than shell it runs, and
+#     it is stated here as the fail-open it also is.
+#   - The `run`-only exemption above is file-scoped, because the census that
+#     feeds it reads one file. A helper called `run <name>` throughout its own
+#     suite and called plainly from a `setup_suite` or a sourced helper file is
+#     disarmed here on evidence that does not cover where it actually runs.
+#   - A helper invoked only from inside a string (`bash -c "helper"`) is not
+#     counted as invoked at all, so a helper otherwise reached only through `run`
+#     keeps its exemption.
 #   - An assignment in the FINAL position of an AND-OR list (`cond && out=$(cmd)`
 #     with a status read below it). The shell does exit there, so it is the
 #     class, and it is missed because a control operator anywhere in the
@@ -152,6 +188,20 @@
 #   - A `run:` written as a multi-line plain or quoted flow scalar rather than a
 #     block scalar; only its first line is read, the same bound the sibling
 #     run-interpolation gate carries and for the same reason.
+#   - An ANSI-C literal whose OPENER is split by a backslash continuation, the
+#     `$` last on one line and the quote first on the next, is read as an
+#     ordinary single quote. guard-awk-lib.sh states the same bound and declines
+#     the same shape, deliberately: two tokenizers disagreeing about what one
+#     sequence of bytes means is worse than a bound both of them hold. It does
+#     not fail silently either way, since the misread quote leaves state open and
+#     the desync verdict below fires.
+#   - The ANSI-C frame is walk()'s. has_status_read() and eat_word() still read
+#     `$\047...\047` as an ordinary single-quoted span, so an escaped quote
+#     inside one flips their line-local quote state and a literal `$?` behind it
+#     can read as a status read (a false positive) or a word boundary can be
+#     misplaced in the env-prefix scan. Both are bounded to the single line each
+#     one is handed, because neither carries state across lines, which is why
+#     the repair went to the walk that does.
 #
 # Known FALSE POSITIVES, a third direction and the one worth naming explicitly
 # because each costs a correct line a wrong verdict. None occurs in this tree.
@@ -233,6 +283,27 @@
 
 set -euo pipefail
 
+# The shared fixture-versus-execution discriminator, resolved SCRIPT-relative
+# because every fixture test in the sibling suite runs this gate with cwd inside
+# a throwaway repo that carries no .gaia/scripts of its own, so a cwd-relative
+# load would abort the gate on every one of them.
+#
+# The `set +e; ...; set -e` bracket is not decoration. This file arms errexit on
+# the line above, and an unbracketed load in an errexit-reachable file is exactly
+# what the sibling .gaia/scripts/lint-errexit-source-guard.sh reports -- the gate
+# beside this one is the one that would catch a careless load here, which is
+# worth stating rather than rediscovering. The `if` on the second line is load
+# bearing for the same reason: under errexit a bare `[ ... ] && ...` whose test
+# is false returns 1 and kills the script.
+_gaia_guard_lib_dir="${BASH_SOURCE[0]%/*}"
+if [ "$_gaia_guard_lib_dir" = "${BASH_SOURCE[0]}" ]; then _gaia_guard_lib_dir="."; fi
+# shellcheck source=.gaia/scripts/guard-awk-lib.sh
+set +e; [ -f "$_gaia_guard_lib_dir/guard-awk-lib.sh" ] && . "$_gaia_guard_lib_dir/guard-awk-lib.sh" 2>/dev/null; set -e
+type gaia_guard_bats_files >/dev/null 2>&1 || {
+  printf 'lint-errexit-status-read: guard-awk-lib.sh is missing beside this script\n' >&2
+  exit 2
+}
+
 # Shared detector, concatenated into both scan programs below so the matcher is
 # written once and the two surfaces cannot drift apart. Single-quoted, and every
 # literal quote inside is spelled as an escape (`\047` for `'`), so the shell
@@ -241,7 +312,9 @@ readonly CORE_AWK='
 # Tokenizer state, carried ACROSS lines so a command substitution, a quoted
 # string, or a heredoc body spanning several lines is followed rather than
 # guessed at:
-#   W_q       the open quote character, "" outside quotes
+#   W_q       the open quote character, "" outside quotes, and the sentinel "A"
+#             inside an ANSI-C `$\047...\047` literal, which is not a quote
+#             character of its own but is a frame with its own escape rules
 #   W_qstack  the quote state to restore as each nesting level closes
 #   W_depth   open `$(` / `(` nesting depth
 #   W_tick    1 inside a legacy backtick substitution
@@ -314,6 +387,20 @@ function walk(line,   n, i, c, j, ch, delim, prev) {
       }
     }
 
+    # ANSI-C quoting, the dollar-prefixed single-quote form, gets a frame of its
+    # own (`W_q == "A"`) because a backslash ESCAPES inside it. Read as an
+    # ordinary single-quoted span, a literal carrying an escaped quote closes at
+    # that quote and reopens at the real terminator, so the quote state is
+    # inverted for the REST OF THE FILE through the carry above and every
+    # remaining line goes unclassified. This arm and the opener below are the
+    # same two decisions guard-awk-lib.sh states in its own header, deliberately
+    # so: two tokenizers reading the same bytes differently is worse than either
+    # bound.
+    if (W_q == "A") {
+      if (c == "\\") { if (i == n) return 1; i++; continue }
+      if (c == "\047") W_q = ""
+      continue
+    }
     # Single quotes make every byte literal, backslash included, so this test
     # comes before the escape handling below.
     if (W_q == "\047") { if (c == "\047") W_q = ""; continue }
@@ -329,6 +416,18 @@ function walk(line,   n, i, c, j, ch, delim, prev) {
     # A substitution opens from inside double quotes too, which is the ordinary
     # spelling of the very shape this gate matches (`out="$(cmd)"`). The saved
     # quote state is what returns the walk to the string when it closes.
+    #
+    # The ANSI-C opener comes first, because `$\047` is neither of the two
+    # shapes below. It opens only from the UNQUOTED state and only on a `$` this
+    # walk actually reached: an escaped `$` was consumed by the escape arm above,
+    # a `$` inside single quotes never reaches here at all (so the quote after it
+    # CLOSES that span rather than opening a frame), and inside double quotes
+    # bash does not expand ANSI-C quoting, so `W_q == ""` is the whole test.
+    if (c == "$" && W_q == "" && substr(line, i + 1, 1) == "\047") {
+      W_q = "A"
+      i++
+      continue
+    }
     if (c == "$" && substr(line, i + 1, 1) == "(") {
       W_qstack[W_depth] = W_q
       W_depth++
@@ -638,8 +737,38 @@ function check_desync(what) {
     printf "%s: ERROR: the scan lost track of shell state before the end of %s, so the remainder was never classified and this gate cannot certify it clean\n", file, what
 }
 
+# report(n, aline): print a hit, unless the discriminator says this line is not
+# executed shell.
+#
+# All three tests answer for the line just handed to gaia_scan_feed, which the
+# scan rules below call ahead of feed(), and all three are inert when is_bats is
+# 0, so the three pre-existing surfaces reach the printf exactly as they did
+# before the library existed.
+#
+# Suppression is read HERE rather than latched once per line because
+# gaia_scan_suppressed MARKS the pragma it matches as used. Asking it on a line
+# that turned out to carry no instance would consume a pragma that waived
+# nothing, and the unused-pragma error the library owes for that pragma would
+# never fire. The order matters for the same reason: a line inside a fixture
+# region or inside a run-only helper carries no instance to waive, so a pragma
+# over it is genuinely unused and must not be marked.
 function report(n, aline) {
+  if (gaia_scan_skip()) return
+  if (gaia_scan_run_only()) return
+  if (gaia_scan_suppressed("lint-errexit-status-read")) return
   printf "%s:%d: `$?` read after the command-substitution assignment at line %d, with errexit armed: the assignment takes the substitution status, so a failure exits there and this line and every branch it feeds are dead\n", file, n, aline
+}
+
+# pragma_offsurface(n): the honored-nowhere finding, emitted from the scan rule
+# rather than from report() above.
+#
+# Read at the print point it would be silently inert over every pragma sitting
+# above a CLEAN line, which is most of them: report() only runs where there is a
+# hit. A pragma on a surface where nothing can consume it is the finding whether
+# or not its target carries an instance, so it is answered per line.
+function pragma_offsurface(n) {
+  if (gaia_scan_pragma_here("lint-errexit-status-read"))
+    printf "%s:%d: gaia-lint-ignore is honored only in *.bats; this pragma waives nothing here\n", file, n
 }
 
 # feed(line, n): run one line of shell through the detector.
@@ -797,8 +926,8 @@ function feed(line, n,   stripped, probe, tail) {
 # scan_shell: the *.sh and husky half. Errexit starts OFF, because a script that
 # never turns it on does not carry the class.
 readonly SHELL_AWK='
-BEGIN { armed = armed_init; reset_state() }
-{ feed($0, FNR) }
+BEGIN { armed = armed_init; gaia_scan_reset(); reset_state() }
+{ gaia_scan_feed($0, is_bats); pragma_offsurface(FNR); feed($0, FNR) }
 END { check_desync("the file") }
 '
 
@@ -809,11 +938,19 @@ END { check_desync("the file") }
 # including its mustache-section handling, for the same reasons its comments
 # give. Errexit starts ON for every body, per `bash -e {0}`.
 readonly YAML_AWK='
+# yfeed: the run:-body feed point. Three call sites below reach it, so the
+# discriminator hand-off lives here rather than being repeated at each of them
+# and forgotten at the fourth one somebody adds.
+function yfeed(line, n) {
+  gaia_scan_feed(line, is_bats)
+  pragma_offsurface(n)
+  feed(line, n)
+}
 BEGIN { inrun = 0 }
 {
   if (inrun) {
     # A blank line belongs to the block scalar rather than ending it.
-    if ($0 ~ /^[[:space:]]*$/) { feed($0, FNR); next }
+    if ($0 ~ /^[[:space:]]*$/) { yfeed($0, FNR); next }
     # A mustache SECTION tag sits at column 1 in the adopter templates and
     # renders as a blank line, so reading it as a dedent would end the block and
     # leave the rest of the body unscanned while this gate still printed clean.
@@ -824,10 +961,10 @@ BEGIN { inrun = 0 }
     sub(/^[[:space:]]+/, "", tag)
     if (substr(tag, 1, 2) == "{{") {
       c = substr(tag, 3, 1)
-      if (c == "#" || c == "^" || c == "/") { feed($0, FNR); next }
+      if (c == "#" || c == "^" || c == "/") { yfeed($0, FNR); next }
     }
     col = match($0, /[^ ]/)
-    if (col > runcol) { feed($0, FNR); next }
+    if (col > runcol) { yfeed($0, FNR); next }
     inrun = 0
     # The body just ended, so this is where its state has to balance. A `run:`
     # body is its own script and the state resets on entry, which means an
@@ -846,6 +983,7 @@ BEGIN { inrun = 0 }
     if (value ~ /^[[:space:]]*[|>][-+0-9]*[[:space:]]*(#.*)?$/) {
       inrun = 1
       armed = 1
+      gaia_scan_reset()
       reset_state()
     } else {
       inrun = 0
@@ -853,6 +991,28 @@ BEGIN { inrun = 0 }
   }
 }
 END { if (inrun) check_desync("the last run: body") }
+'
+
+# scan_bats: the `*.bats` half, and its OWN arm rather than a fold into the
+# `*.sh` set. Errexit starts ON for every tracked suite, because bats runs each
+# test body under it whether or not the file ever says `set -e`; folded into the
+# off-by-default script arm the whole surface reads clean by construction, which
+# is what it did.
+#
+# Two passes, the file named twice on the command line. A fixture constant is
+# bound far above the helper call that consumes it, so a forward-only scan
+# cannot tell the literal from executed shell; the first pass accumulates and
+# the second classifies. gaia_scan_feed comes first and ahead of any `next`,
+# because the pragma reader behind it has to see the comment lines feed() itself
+# returns on.
+readonly BATS_AWK='
+BEGIN { armed = armed_init; gaia_scan_reset(); reset_state() }
+is_bats && NR == FNR { gaia_scan_prepass($0); next }
+{ gaia_scan_feed($0, is_bats); feed($0, FNR) }
+END {
+  check_desync("the file")
+  gaia_scan_end(file, is_bats, "lint-errexit-status-read", 0, 0)
+}
 '
 
 # `git ls-files` rather than a filesystem walk, so an untracked scratch script is
@@ -892,6 +1052,18 @@ done < <(git -c core.quotepath=false ls-files -z \
                       '.gaia/cli/src/automation/templates/workflows/*.tmpl' \
            | LC_ALL=C sort -z)
 
+# The bats set comes from the shared library rather than from a fourth read loop
+# here, so all three consuming gates discover the same surface the same way and
+# a change to that discovery cannot reach one of them and miss the others. The
+# call fills GAIA_GUARD_BATS_FILES and returns non-zero on an empty surface; the
+# status is read directly, because a process substitution would swallow it,
+# which is the hazard the loops above already carry a comment about.
+#
+# Deliberately NOT folded into the two-set precondition below: an operator whose
+# discovery broke needs to know WHICH surface came back empty, and the library
+# message names the bats one.
+gaia_guard_bats_files lint-errexit-status-read || exit 1
+
 # An empty scan set is a hard error, never a clean tree. The loops above read
 # from a process substitution, whose failure `set -o pipefail` cannot see, so a
 # `git ls-files` that errors (run outside a repository, a broken object store)
@@ -907,7 +1079,8 @@ fi
 report=""
 for f in ${sh_files[@]+"${sh_files[@]}"}; do
   [ -f "$f" ] || continue
-  hits="$(awk -v file="$f" -v armed_init=0 "$CORE_AWK$SHELL_AWK" "$f")"
+  hits="$(awk -v file="$f" -v armed_init=0 -v is_bats=0 -v scripts_dir="$_gaia_guard_lib_dir" \
+    "$GAIA_GUARD_AWK$CORE_AWK$SHELL_AWK" "$f")"
   [ -z "$hits" ] || report+="$hits"$'\n'
 done
 # The husky set is allowed to be empty and is simply skipped, mirroring the way
@@ -916,12 +1089,23 @@ done
 # is why only that set and the workflows are hard preconditions above.
 for f in ${husky_files[@]+"${husky_files[@]}"}; do
   [ -f "$f" ] || continue
-  hits="$(awk -v file="$f" -v armed_init=1 "$CORE_AWK$SHELL_AWK" "$f")"
+  hits="$(awk -v file="$f" -v armed_init=1 -v is_bats=0 -v scripts_dir="$_gaia_guard_lib_dir" \
+    "$GAIA_GUARD_AWK$CORE_AWK$SHELL_AWK" "$f")"
   [ -z "$hits" ] || report+="$hits"$'\n'
 done
 for f in ${yaml_files[@]+"${yaml_files[@]}"}; do
   [ -f "$f" ] || continue
-  hits="$(awk -v file="$f" -v armed_init=1 "$CORE_AWK$YAML_AWK" "$f")"
+  hits="$(awk -v file="$f" -v armed_init=1 -v is_bats=0 -v scripts_dir="$_gaia_guard_lib_dir" \
+    "$GAIA_GUARD_AWK$CORE_AWK$YAML_AWK" "$f")"
+  [ -z "$hits" ] || report+="$hits"$'\n'
+done
+
+# The bats set, armed ON and named TWICE: the first pass accumulates the fixture
+# constants a forward-only scan cannot classify, the second one classifies.
+for f in ${GAIA_GUARD_BATS_FILES[@]+"${GAIA_GUARD_BATS_FILES[@]}"}; do
+  [ -f "$f" ] || continue
+  hits="$(awk -v file="$f" -v armed_init=1 -v is_bats=1 -v scripts_dir="$_gaia_guard_lib_dir" \
+    "$GAIA_GUARD_AWK$CORE_AWK$BATS_AWK" "$f" "$f")"
   [ -z "$hits" ] || report+="$hits"$'\n'
 done
 

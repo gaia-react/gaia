@@ -477,13 +477,15 @@ owners_of() {
   # UAT-013: demonstrated by the member's OWN derivation, not by the
   # resolver's output alone. M's narrower base makes its own `changed` set
   # strictly smaller than N's, and both smaller than the whole-PR diff.
-  local changed_m changed_n full_diff m_lines n_lines full_lines
+  local changed_m changed_n m_lines n_lines full_lines
   changed_m="$(fence_eval "$m" "$repo" 'printf "%s\n" "${changed:-}"')"
   changed_n="$(fence_eval "$n" "$repo" 'printf "%s\n" "${changed:-}"')"
-  full_diff="$(git -C "$repo" diff --name-only "${full_base}...HEAD")"
   m_lines="$(grep -c . <<<"$changed_m" || true)"
   n_lines="$(grep -c . <<<"$changed_n" || true)"
-  full_lines="$(grep -c . <<<"$full_diff" || true)"
+  # Counting consumer: -z plus counting the NUL separators themselves, never the
+  # `tr '\0' '\n' | wc -l` round trip, which would make a path holding a literal
+  # newline count twice (.gaia/scripts/lint-git-path-quoting.sh header).
+  full_lines="$(set -o pipefail; git -C "$repo" diff -z --name-only "${full_base}...HEAD" | tr -cd '\0' | wc -c | tr -d ' ')"
 
   [ "$m_lines" -lt "$n_lines" ] || {
     printf 'M (member-clearance) reviewed %s files, N (team-signal) reviewed %s; expected M strictly narrower\n' \
@@ -934,6 +936,9 @@ probe_deadlock() {
   # probe asserts about, and a maintainer who turns it off in ~/.gitconfig
   # would otherwise get a red here against a tree with nothing wrong with it.
   base="$(git -C "$repo" merge-base HEAD main)"
+  # gaia-lint-ignore lint-git-path-quoting: the unquoted call IS the experiment
+  # this test runs; repairing it would delete the proof, below, that the
+  # pre-fix spelling really does C-quote a non-ASCII path
   quoted="$(git -C "$repo" -c core.quotePath=true diff --name-only "${base}...HEAD")"
   grep -qF '"' <<<"$quoted" || {
     printf 'the pre-fix spelling did not quote, so this fixture proves nothing: %s\n' "$quoted"
@@ -1051,7 +1056,7 @@ probe_deadlock() {
 
   base="$(base_sha_for code-audit-frontend "$repo")"
   [ -n "$base" ]
-  expected="$(git -C "$repo" diff --name-only "${base}...HEAD" -- '*.ts' '*.tsx')"
+  expected="$(git -C "$repo" diff --name-only -z "${base}...HEAD" -- '*.ts' '*.tsx' | tr '\0' '\n')"
   got="$(fence_eval code-audit-frontend "$repo" 'printf "%s\n" "${changed:-}"')"
   [ "$got" = "$expected" ] || {
     printf 'review-scope fence produced %s, expected %s\n' "$got" "$expected" >&2
@@ -1233,7 +1238,7 @@ make_stacked_repo() {
   export GITHUB_ACTIONS=true
   export GITHUB_BASE_REF=no-such-branch
 
-  expected="$(git -C "$repo" diff --name-only "$(git -C "$repo" merge-base HEAD origin/main)...HEAD")"
+  expected="$(git -C "$repo" diff --name-only -z "$(git -C "$repo" merge-base HEAD origin/main)...HEAD" | tr '\0' '\n')"
   write="$(elig_eval code-audit-frontend "$repo" 'printf "%s\n" "${full_changed:-}"')" || {
     echo "the eligibility fence failed to run" >&2
     return 1

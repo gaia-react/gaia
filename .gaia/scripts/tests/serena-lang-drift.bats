@@ -175,9 +175,13 @@ diff_removed() { diff "$1" "$2" | grep -c '^< '; }
   writef "$r/.serena/project.yml" 'languages:\n- typescript\n'
   writef "$r/README.md" 'x\n'
   git -C "$r" add -A
-  # The vendored manifest is not tracked.
-  run git -C "$r" ls-files
-  refute_contains 'vendor/go.mod'
+  # The vendored manifest is not tracked. Captured directly rather than through
+  # `run`/refute_contains: bats' $output is a command substitution and would
+  # discard the NUL separators `-z` adds, so the NUL-safe capture and the
+  # substring check both happen here instead.
+  local tracked
+  tracked="$(git -C "$r" ls-files -z | tr '\0' '\n')"
+  grep -qF -- 'vendor/go.mod' <<<"$tracked" && return 1
   run env HOME="$HOME_YES" bash "$LIB" drift "$r"
   [ "$status" -eq 0 ]
   [ "$output" = '[]' ]

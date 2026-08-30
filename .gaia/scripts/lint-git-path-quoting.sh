@@ -153,24 +153,37 @@
 
 set -euo pipefail
 
+# Script-relative, never cwd-relative: every fixture test runs this guard with
+# cwd inside a throwaway repo that carries no .gaia/scripts/. Bracketed with
+# set +e/-e because this file arms errexit itself, the shape
+# .gaia/scripts/lint-errexit-source-guard.sh demands for an unbracketed load in
+# an errexit-reachable file.
+_gaia_guard_lib_dir="${BASH_SOURCE[0]%/*}"
+if [ "$_gaia_guard_lib_dir" = "${BASH_SOURCE[0]}" ]; then _gaia_guard_lib_dir="."; fi
+# shellcheck source=.gaia/scripts/guard-awk-lib.sh
+set +e; [ -f "$_gaia_guard_lib_dir/guard-awk-lib.sh" ] && . "$_gaia_guard_lib_dir/guard-awk-lib.sh" 2>/dev/null; set -e
+type gaia_guard_bats_files >/dev/null 2>&1 || {
+  printf 'lint-git-path-quoting: guard-awk-lib.sh is missing beside this script\n' >&2
+  exit 2
+}
+
 # Scan surface: tracked shell, the extensionless husky hooks, the workflow YAML
-# whose `run:` blocks are shell by another name, and tracked markdown, whose
+# whose `run:` blocks are shell by another name, tracked markdown, whose
 # fenced blocks are shell by another name on any page a rule tells the agent to
-# execute. `git ls-files` rather than a filesystem walk, so an untracked scratch
-# script or a vendored dependency is never scanned; the same discovery that
-# .gaia/tests/shell-lint.sh uses. Collected with a read loop rather than
-# `mapfile`, which is bash 4+, because these scripts run on stock macOS
-# /bin/bash (3.2.57).
+# execute, and tracked `*.bats`, collected as its own set below. `git ls-files`
+# rather than a filesystem walk, so an untracked scratch script or a vendored
+# dependency is never scanned; the same discovery that .gaia/tests/shell-lint.sh
+# uses. Collected with a read loop rather than `mapfile`, which is bash 4+,
+# because these scripts run on stock macOS /bin/bash (3.2.57).
 #
-# `*.bats` is deliberately NOT in this list, and the omission is load-bearing
-# rather than an oversight. The bats suites are where this class is DEMONSTRATED:
-# .gaia/scripts/tests/check-audit-base-derivation.bats carries
-# intentionally-unquoted agent-prose fixtures that assertion 4 must catch, and
-# sibling suites run an unquoted `diff --name-only` under `core.quotePath=true`
-# as the positive control proving git really does quote.
-# A scanner reading raw lines cannot tell a fixture string from an executed
-# call, so including them would demand "fixes" that delete the evidence the
-# class exists.
+# `*.bats` is a SEPARATE set from the one below, never folded into one widened
+# pathspec: a pathspec matching `*.sh` but no `*.bats` would still pass clean,
+# which is the exact silent-unarming a widened-but-broken discovery would
+# produce. On a `*.bats` line, `guard-awk-lib.sh`'s shared discriminator tells a
+# fixture literal, written through a recognized helper, from executed shell a
+# suite runs through `bash -c` or `eval`; see
+# wiki/decisions/Shell Guard Fixture Discrimination.md for the convention and
+# the reasoning behind the argument-region rule and the suppression pragma.
 scan_files=()
 while IFS= read -r -d '' f; do
   scan_files+=("$f")
@@ -189,6 +202,11 @@ if [ "${#scan_files[@]}" -eq 0 ]; then
   echo "lint-git-path-quoting: ERROR: no tracked files matched the scan surface; nothing was scanned" >&2
   exit 1
 fi
+
+# The `*.bats` surface, discovered and hard-errored on separately by the shared
+# library, for the same reason as above: a widened pathspec that quietly missed
+# every suite would still pass this guard's own empty-set check.
+gaia_guard_bats_files lint-git-path-quoting || exit 1
 
 # scan_file <path>: print one `file:line: message` per unquoted call.
 #
@@ -250,9 +268,25 @@ fi
 # The other boundaries, both FALSE POSITIVES, so both fail CLOSED. They demand
 # `-z`, which is never wrong on a call whose output is parsed, so each costs a
 # correct edit and never a missed defect:
-#   - `-z` written on a line continuation after the call reads as missing.
+#   - `-z` written on a line continuation after the call reads as missing. This
+#     is not a `*.bats` question and it does not change with the widened
+#     surface.
 #   - A single-quoted string containing a literal `git diff --name-only` reads
-#     as an invocation. This is the sharper reason `*.bats` is out of scope.
+#     as an invocation on `*.sh`, husky, workflow YAML and markdown, where
+#     nothing distinguishes a string constant from executed shell. On `*.bats`
+#     the same text, written through a recognized fixture-writing idiom, is
+#     read as data instead; see
+#     wiki/decisions/Shell Guard Fixture Discrimination.md for the convention.
+#
+# `*.bats` residuals, now that the surface reaches it:
+#   - A fixture written through a helper outside guard-awk-lib.sh's recognized
+#     set is read as executed shell rather than data, so it reds until the set
+#     is extended or the line carries a suppression pragma.
+#   - The suppression pragma is itself a residual on every OTHER surface: a
+#     `gaia-lint-ignore lint-git-path-quoting: ...` comment above a line in a
+#     `*.sh`, husky, workflow-YAML or markdown file waives nothing there. This
+#     guard is the designated reader for the pragma, and reports that shape as
+#     honored nowhere outside `*.bats` rather than treating it as a fix.
 #
 # Two further FALSE NEGATIVES, unrelated to backticks:
 #   - A call assembled through a variable (`$GIT diff --name-only`), which is
@@ -272,14 +306,15 @@ fi
 # literal newline when the consumer re-splits on newlines via `tr`. That is a
 # separate and far rarer class than the one this gate closes, and nothing here
 # asserts otherwise.
-scan_file() {
-  local f="$1"
-  # Fence gating applies to markdown alone. On every other file type is_md stays
-  # 0, so infence never leaves 0 and both rules below are inert -- the shell and
-  # YAML halves scan exactly the lines they always did.
-  local is_md=0
-  case "$f" in *.md) is_md=1 ;; esac
-  awk -v file="$f" -v is_md="$is_md" '
+# The class-detection program, concatenated after $GAIA_GUARD_AWK so it can call
+# the shared fixture-versus-execution discriminator. Hoisted into a variable,
+# unchanged character for character from its former inline form, because
+# concatenation requires a variable rather than a literal awk argument.
+# Single-quoted so every `$`, `$(` and awk field reference reaches awk as literal
+# program text; the disable is targeted rather than file-wide, matching the two
+# below it, so a genuine SC2016 anywhere else here still fires.
+# shellcheck disable=SC2016
+readonly OWN_AWK='
     # option_walk(window): walk the option region following a call, setting
     # has_z when a standalone -z appears in it, has_name_only when --name-only
     # does, and existence_only when --error-unmatch does. All three are
@@ -319,6 +354,7 @@ scan_file() {
       }
     }
     BEGIN {
+      gaia_scan_reset()
       # callname is what is matched in the text; calllabel is what the report
       # names. They differ for `diff` because the surface is the call PLUS the
       # --name-only the walk finds in its option region, and only the walk can
@@ -326,6 +362,19 @@ scan_file() {
       ncalls = 2
       callname[1] = "diff";     calllabel[1] = "diff --name-only"
       callname[2] = "ls-files"; calllabel[2] = "ls-files"
+    }
+    # Pass 1 of a two-pass `*.bats` invocation accumulates the prepass sets a
+    # fixture constant bound far above its consuming helper call needs; every
+    # other surface is single-pass, so this rule never matches there.
+    is_bats && NR == FNR { gaia_scan_prepass($0); next }
+    # Ahead of every next below, so the pragma reader sees the full-line
+    # comments the fence and comment-skip rules discard.
+    { gaia_scan_feed($0, is_bats) }
+    # UAT-009s off-surface arm: a pragma naming this guard waives nothing
+    # outside `*.bats`, so it is reported here regardless of whether its target
+    # line also carries an instance, which the detector below may still print.
+    !is_bats && gaia_scan_pragma_here("lint-git-path-quoting") {
+      printf "%s:%d: gaia-lint-ignore is honored only in *.bats; this pragma waives nothing here\n", file, FNR
     }
     # A fence delimiter changes the state and is never itself scanned; the
     # opening line carries the info string (```bash), which is not a call.
@@ -409,19 +458,47 @@ scan_file() {
           # entirely rather than a passing hit, so it can never be reported.
           quoted_ok = (!has_name_only || has_z)
 
-        if (invoked && !inspan && !quoted_ok)
-          # The message deliberately does NOT put `git` in front of the call
-          # name: with the binary name there, this very line matches the
+        if (invoked && !inspan && !quoted_ok) {
+          # In this order: a fixture-region line is data (skip), an honored
+          # pragma is a deliberate waiver (suppressed), both inert when is_bats
+          # is 0. The message deliberately does NOT put `git` in front of the
+          # call name: with the binary name there, this very line matches the
           # detector and the gate flags its own diagnostic. Caught by running
           # the gate over its own tree, which is the cheapest possible proof
           # that the "invoked" discrimination works.
-          printf "%s:%d: %s without -z: a C-quoted non-ASCII path stops matching in the consumer\n", file, NR, label
+          if (!(is_bats && (gaia_scan_skip() || gaia_scan_suppressed("lint-git-path-quoting"))))
+            printf "%s:%d: %s without -z: a C-quoted non-ASCII path stops matching in the consumer\n", file, FNR, label
+        }
         consumed = abs + calllen - 1
         rest = substr($0, consumed + 1)
       }
       }
     }
-  ' "$f"
+    END { gaia_scan_end(file, is_bats, "lint-git-path-quoting", 1, 1) }
+'
+
+# scan_file <path>: print one `file:line: message` per unquoted call, on every
+# non-bats surface. Single pass; is_bats=0 makes every gaia_scan_* accessor the
+# library defines inert except the pragma reporter above.
+scan_file() {
+  local f="$1"
+  # Fence gating applies to markdown alone. On every other file type is_md stays
+  # 0, so infence never leaves 0 and both rules below are inert -- the shell and
+  # YAML halves scan exactly the lines they always did.
+  local is_md=0
+  case "$f" in *.md) is_md=1 ;; esac
+  awk -v file="$f" -v is_md="$is_md" -v is_bats=0 -v scripts_dir="$_gaia_guard_lib_dir" \
+      "$GAIA_GUARD_AWK$OWN_AWK" "$f"
+}
+
+# scan_bats_file <path>: two-pass invocation over a tracked `*.bats` suite, the
+# file named twice so the prepass sees a fixture constant bound above the
+# helper call that consumes it. is_md is always 0: a bats file has no markdown
+# fence state to track.
+scan_bats_file() {
+  local f="$1"
+  awk -v file="$f" -v is_md=0 -v is_bats=1 -v scripts_dir="$_gaia_guard_lib_dir" \
+      "$GAIA_GUARD_AWK$OWN_AWK" "$f" "$f"
 }
 
 report=""
@@ -430,20 +507,35 @@ for f in ${scan_files[@]+"${scan_files[@]}"}; do
   hits=$(scan_file "$f")
   [ -z "$hits" ] || report+="$hits"$'\n'
 done
+for f in ${GAIA_GUARD_BATS_FILES[@]+"${GAIA_GUARD_BATS_FILES[@]}"}; do
+  [ -f "$f" ] || continue
+  hits=$(scan_bats_file "$f")
+  [ -z "$hits" ] || report+="$hits"$'\n'
+done
 
 if [ -n "$report" ]; then
   printf '%s' "$report"
-  # printf, not echo: the hint text carries backslash escapes (`tr` operands),
-  # and echo may expand them depending on the shell (SC2028). The format string
-  # is single-quoted so the `$(...)` and `${base}` inside it stay literal -- it
-  # is sample code being printed, not code being run. Disabled on this line
-  # rather than file-wide, so a genuine SC2016 anywhere else here still fires.
-  # shellcheck disable=SC2016
-  printf 'Fix a diff hit: changed="$(git diff --name-only -z "${base}...HEAD" | tr %s\\0%s %s\\n%s)"\n' "'" "'" "'" "'" >&2
-  # The ls-files repair reads the NUL stream directly rather than translating it
-  # back to newlines, so it needs no `tr` and survives a path containing one.
-  # shellcheck disable=SC2016
-  printf 'Fix an ls-files hit: while IFS= read -r -d %s%s f; do ...; done < <(git ls-files -z <pathspecs>)\n' "'" "'" >&2
+  # The class-remedy footer below names the repair for a class hit and for
+  # nothing else. A run whose findings are all pragma hygiene (unused,
+  # malformed, honored nowhere) or the desync ERROR would otherwise print a
+  # remedy that has nothing to do with what actually went red, pointing the
+  # operator at the wrong fix. Gate it on at least one non-blank finding that is
+  # neither, rather than on the report merely being non-empty.
+  if printf '%s' "$report" \
+    | grep -v -e 'gaia-lint-ignore' -e ': ERROR: ' \
+    | grep -q '[^[:space:]]'; then
+    # printf, not echo: the hint text carries backslash escapes (`tr` operands),
+    # and echo may expand them depending on the shell (SC2028). The format string
+    # is single-quoted so the `$(...)` and `${base}` inside it stay literal -- it
+    # is sample code being printed, not code being run. Disabled on this line
+    # rather than file-wide, so a genuine SC2016 anywhere else here still fires.
+    # shellcheck disable=SC2016
+    printf 'Fix a diff hit: changed="$(git diff --name-only -z "${base}...HEAD" | tr %s\\0%s %s\\n%s)"\n' "'" "'" "'" "'" >&2
+    # The ls-files repair reads the NUL stream directly rather than translating it
+    # back to newlines, so it needs no `tr` and survives a path containing one.
+    # shellcheck disable=SC2016
+    printf 'Fix an ls-files hit: while IFS= read -r -d %s%s f; do ...; done < <(git ls-files -z <pathspecs>)\n' "'" "'" >&2
+  fi
   exit 1
 fi
 
