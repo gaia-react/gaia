@@ -7,6 +7,7 @@
 #   audit-write-clearance.sh --root <path> --member <name> \
 #                            --provenance earned|refused \
 #                            [--base <sha>] \
+#                            [--scope-digest <64-hex>] \
 #                            [--supersede-refusal <reason>] \
 #                            [--help|-h]
 #
@@ -44,6 +45,23 @@
 #                  is that briefing, derived from the member's own findings
 #                  sidecar (see "Ledger" below), so it costs the member nothing
 #                  beyond the report it already wrote.
+#   --scope-digest <64-hex>
+#                  OPTIONAL, gated on a PLAIN earned write only: never
+#                  --provenance refused, never an earned write carrying
+#                  --supersede-refusal (SPEC UAT-012: both proceed unchanged),
+#                  and advisory-only for member code-audit-maintainer-prose
+#                  (contractually never-blocking, mirroring its own dirty-scope
+#                  exemption). A member resolves its review scope at one HEAD,
+#                  then finishes and writes at a later one; this carries the
+#                  digest captured at scope resolution
+#                  (.gaia/scripts/audit-scope-digest.sh --capture) for
+#                  comparison against the digest this script derives fresh,
+#                  right here, from the CURRENT --root. A difference means the
+#                  member's review scope no longer describes what the marker
+#                  would attest to, so the write refuses rather than
+#                  publishing a marker keyed to unread content. A malformed
+#                  value (not exactly 64 lowercase hex) is a usage error, not a
+#                  staleness refusal.
 #
 # Behavior (all contract):
 #   - Creates <root>/.gaia/local/audit/ if absent.
@@ -114,12 +132,16 @@ usage() {
 usage: audit-write-clearance.sh --root <path> --member <name>
                                 --provenance earned|refused
                                 [--base <sha>]
+                                [--scope-digest <64-hex>]
                                 [--supersede-refusal <reason>]
                                 [--help|-h]
 
   --base <sha>                  the incremental audit base sha; maintains the
                                 re-run carry-forward ledger so a refusal briefs
                                 its own repair. Non-gating, best-effort.
+  --scope-digest <64-hex>       gated on a plain earned write; refuses when it
+                                differs from the write-time digest. See the
+                                header comment above.
   --supersede-refusal <reason>  valid only with --provenance earned; records a
                                 reasoned reversal of this member's own prior
                                 same-digest refusal and removes it.
@@ -161,6 +183,11 @@ BASE=""
 # usage error while an absent flag is the ordinary no-supersede path.
 SUPERSEDE_SEEN=0
 SUPERSEDE_REASON=""
+# SCOPE_DIGEST_SEEN mirrors SUPERSEDE_SEEN above: a member that passes an
+# empty value must hit the format-validation usage error, not read as "flag
+# absent" and slip past the staleness gate silently.
+SCOPE_DIGEST_SEEN=0
+SCOPE_DIGEST=""
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -178,6 +205,11 @@ while [ "$#" -gt 0 ]; do
       ;;
     --base)
       BASE="${2:-}"
+      shift 2 2>/dev/null || shift
+      ;;
+    --scope-digest)
+      SCOPE_DIGEST_SEEN=1
+      SCOPE_DIGEST="${2:-}"
       shift 2 2>/dev/null || shift
       ;;
     --supersede-refusal)
@@ -259,6 +291,25 @@ if [ "$SUPERSEDE_SEEN" -eq 1 ]; then
   fi
 fi
 
+# --scope-digest, when present, must be exactly 64 lowercase hex: the shape
+# the digest engine emits. This is a usage error, not a staleness refusal, so
+# a caller passing a malformed value gets a distinct diagnostic from a caller
+# whose digest genuinely rotated. Bash-3.2-safe `case`, not `[[ =~ ]]`.
+if [ "$SCOPE_DIGEST_SEEN" -eq 1 ]; then
+  case "$SCOPE_DIGEST" in
+    *[!0-9a-f]* | '')
+      err "--scope-digest must be a 64-hex digest"
+      usage
+      exit 2
+      ;;
+  esac
+  if [ "${#SCOPE_DIGEST}" -ne 64 ]; then
+    err "--scope-digest must be a 64-hex digest"
+    usage
+    exit 2
+  fi
+fi
+
 # The member's content digest is the marker's validity key. Fail closed: never
 # write a marker keyed to an empty or partial digest.
 command -v audit_member_digest >/dev/null 2>&1 || {
@@ -269,6 +320,39 @@ digest="$(audit_member_digest "$ROOT" "$MEMBER" 2>/dev/null || true)"
 if [ -z "$digest" ]; then
   err "cannot derive a content digest for member '$MEMBER' at --root '$ROOT'"
   exit 2
+fi
+
+# Scope-digest staleness gate. Gated only on a PLAIN earned write: a refusal
+# is a claim that content should not merge, and suppressing THAT is the one
+# genuinely fail-open outcome available here (SPEC UAT-012), and a
+# --supersede-refusal write is the member's own reasoned reversal of its prior
+# refusal, orthogonal to whether the tree moved under it since scope
+# resolution. Each arm is its own explicit refusal rather than a
+# `[ -n "$SCOPE_DIGEST" ] && …` guard, so an absent value refuses instead of
+# silently skipping the comparison (the fail-open shape the inert
+# `AUDIT_TREE_SHA` in the four specialists already shows the cost of).
+#
+# code-audit-maintainer-prose is exempt in both failing arms below, exactly as
+# it is already exempt from the dirty-scope withhold
+# (.claude/agents/code-audit-maintainer-prose.md:108) -- that exemption is
+# member-side prose, not a writer branch; this is the writer's FIRST
+# member-name conditional beyond DEFAULT_MEMBER. It exists because that member
+# is contractually never-blocking, so keep it on the next read of this file
+# rather than deleting it as a stray inconsistency.
+if [ "$PROVENANCE" = "earned" ] && [ "$SUPERSEDE_SEEN" -ne 1 ]; then
+  if [ "$MEMBER" = "code-audit-maintainer-prose" ]; then
+    if [ "$SCOPE_DIGEST_SEEN" -ne 1 ]; then
+      err "review scope superseded (advisory)"
+    elif [ "$SCOPE_DIGEST" != "$digest" ]; then
+      err "review scope superseded (advisory): scope=$SCOPE_DIGEST write=$digest"
+    fi
+  elif [ "$SCOPE_DIGEST_SEEN" -ne 1 ]; then
+    err "scope digest not supplied"
+    exit 2
+  elif [ "$SCOPE_DIGEST" != "$digest" ]; then
+    err "review scope superseded: scope=$SCOPE_DIGEST write=$digest"
+    exit 2
+  fi
 fi
 
 # jq builds the body. Fail closed here rather than at the write, so a missing

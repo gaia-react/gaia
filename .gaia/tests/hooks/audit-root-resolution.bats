@@ -710,7 +710,8 @@ run_audit_root_block() {
 @test "stage 4 (flag: --root) supplied, from OUTSIDE: the marker's digest key matches WT's content" {
   local wt_ground_truth marker_path body_digest
   wt_ground_truth="$(digest_of "$WT" code-audit-frontend)"
-  run_stdout_only bash "$SCRIPT_WRITE_CLEARANCE" --root "$WT" --member code-audit-frontend --provenance earned
+  run_stdout_only bash "$SCRIPT_WRITE_CLEARANCE" --root "$WT" --member code-audit-frontend --provenance earned \
+    --scope-digest "$wt_ground_truth"
   [ "$status" -eq 0 ]
   marker_path="$output"
   [ -f "$marker_path" ]
@@ -735,7 +736,8 @@ run_audit_root_block() {
   subdir="$WT/app"
 
   before_snapshot="$(pool_snapshot "$WT")"
-  run_stdout_only bash "$SCRIPT_WRITE_CLEARANCE" --root "$subdir" --member code-audit-frontend --provenance earned
+  run_stdout_only bash "$SCRIPT_WRITE_CLEARANCE" --root "$subdir" --member code-audit-frontend --provenance earned \
+    --scope-digest "$(digest_of "$subdir" code-audit-frontend)"
   if [ "$status" -ne 2 ] || [ -n "$output" ]; then
     echo "baseline (unmutated) stage 4 check failed" >&2
     restore_file "$SCRIPT_WRITE_CLEARANCE" "$orig_sum"
@@ -763,7 +765,8 @@ run_audit_root_block() {
   fi
 
   before_snapshot="$(pool_snapshot "$WT")"
-  run_stdout_only bash "$SCRIPT_WRITE_CLEARANCE" --root "$subdir" --member code-audit-frontend --provenance earned
+  run_stdout_only bash "$SCRIPT_WRITE_CLEARANCE" --root "$subdir" --member code-audit-frontend --provenance earned \
+    --scope-digest "$(digest_of "$subdir" code-audit-frontend)"
   { [ "$status" -eq 2 ] && [ -z "$output" ]; } || went_red=1
 
   restore_file "$SCRIPT_WRITE_CLEARANCE" "$orig_sum"
@@ -859,7 +862,8 @@ run_audit_root_block() {
 
 @test "stage 6 (anchor: caller cd) anchored on WT, from OUTSIDE: every gh invocation ran with WT as its working directory" {
   local marker wt_phys pwd_col rest_col
-  marker=$(bash "$SCRIPT_WRITE_CLEARANCE" --root "$WT" --member code-audit-frontend --provenance earned 2>/dev/null)
+  marker=$(bash "$SCRIPT_WRITE_CLEARANCE" --root "$WT" --member code-audit-frontend --provenance earned \
+    --scope-digest "$(digest_of "$WT" code-audit-frontend)" 2>/dev/null)
   chmod -x "$WT/.gaia/scripts/resolve-audit-members.sh"
   install_gh_stub
 
@@ -883,7 +887,8 @@ run_audit_root_block() {
 
 @test "stage 6 control A (invocation: anchored on MAIN instead of WT): every gh call names MAIN; the WT-shaped assertion goes red" {
   local marker main_phys wt_phys pwd_col rest_col resolved found_wt=0
-  marker=$(bash "$SCRIPT_WRITE_CLEARANCE" --root "$MAIN" --member code-audit-frontend --provenance earned 2>/dev/null)
+  marker=$(bash "$SCRIPT_WRITE_CLEARANCE" --root "$MAIN" --member code-audit-frontend --provenance earned \
+    --scope-digest "$(digest_of "$MAIN" code-audit-frontend)" 2>/dev/null)
   chmod -x "$MAIN/.gaia/scripts/resolve-audit-members.sh"
   install_gh_stub
 
@@ -911,7 +916,8 @@ run_audit_root_block() {
 
 @test "stage 6 control B (invocation: no anchor at all, from OUTSIDE): declines 'repo slug unresolved', posts nothing" {
   local marker
-  marker=$(bash "$SCRIPT_WRITE_CLEARANCE" --root "$WT" --member code-audit-frontend --provenance earned 2>/dev/null)
+  marker=$(bash "$SCRIPT_WRITE_CLEARANCE" --root "$WT" --member code-audit-frontend --provenance earned \
+    --scope-digest "$(digest_of "$WT" code-audit-frontend)" 2>/dev/null)
   install_gh_stub
 
   run bash -c 'export PATH="$1:$PATH"; bash "$2" "$3"' _ "$GH_BIN" "$HOOK_POST" "$marker"

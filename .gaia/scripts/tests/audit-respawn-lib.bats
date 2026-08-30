@@ -1,10 +1,10 @@
 #!/usr/bin/env bats
 #
 # Conformance suite for .gaia/scripts/audit-respawn-lib.sh: the shared
-# ledger helper for the audit re-spawn measurement instrument. Three
+# ledger helper for the audit re-spawn measurement instrument. Four
 # consumers depend on this file (the oracle's breadcrumb writer, the
-# retention sweep, and the attribution query), so this suite is the one
-# place their shared contract is proven.
+# scope-digest capture script, the retention sweep, and the attribution
+# query), so this suite is the one place their shared contract is proven.
 #
 # What it proves, in the section order below:
 #   1. source-time purity, no side effects
@@ -19,6 +19,7 @@
 #   10. fail-open under `set -euo pipefail`: the caller's next command still runs
 #   11. gaia_respawn_retention_days: default-then-floor
 #   12. gaia_respawn_max_records: default-then-floor
+#   13. gaia_respawn_scope_record: the "scope" record's own JSON shape and key order
 #
 # Run under bash 5 (bash 3.2's `[[ ]]` skip-under-set-e gap is real; see
 # .claude/rules/bats-assertions.md): `source .gaia/scripts/bats5.sh && bats5
@@ -60,12 +61,13 @@ a_record() {
   [ -z "$(ls -A "$scratch")" ]
 }
 
-@test "structural: sourcing the lib defines the four public functions" {
+@test "structural: sourcing the lib defines the five public functions" {
   run bash -c '
     # shellcheck disable=SC1090
     source "$1"
     type gaia_respawn_ledger_path >/dev/null
     type gaia_respawn_record >/dev/null
+    type gaia_respawn_scope_record >/dev/null
     type gaia_respawn_retention_days >/dev/null
     type gaia_respawn_max_records >/dev/null
     echo OK
@@ -123,7 +125,7 @@ a_record() {
   ledger="$(a_record)"
   line="$(head -n1 "$ledger")"
   echo "$line" | jq -e . >/dev/null
-  [ "$(echo "$line" | jq -r 'keys_unsorted | join(",")')" = "schema,ts,branch,head,merge_base,member,digest,cleared" ]
+  [ "$(echo "$line" | jq -r 'keys_unsorted | join(",")')" = "schema,kind,ts,branch,head,merge_base,member,digest,cleared" ]
 }
 
 # ========== 5. cleared normalization ==========
@@ -288,4 +290,49 @@ a_record() {
   for v in abc ""; do
     [ "$(GAIA_AUDIT_RESPAWN_MAX_RECORDS="$v" bash -c ". '$LIB'; gaia_respawn_max_records")" = "20000" ] || return 1
   done
+}
+
+# ========== 13. gaia_respawn_scope_record ==========
+
+@test "criterion 13: the scope record parses under jq, keys in the contracted order, kind is scope" {
+  local ledger="$BATS_TEST_TMPDIR/l.jsonl" line
+  gaia_respawn_scope_record "$ledger" "2026-08-01T12:34:56Z" "spec-077-foo" \
+    "1111111111111111111111111111111111111111" \
+    "2222222222222222222222222222222222222222" \
+    "code-audit-frontend" \
+    "3333333333333333333333333333333333333333333333333333333333333333"
+  line="$(head -n1 "$ledger")"
+  echo "$line" | jq -e . >/dev/null
+  [ "$(echo "$line" | jq -r 'keys_unsorted | join(",")')" = "schema,kind,ts,branch,head,merge_base,member,scope_digest" ]
+  [ "$(echo "$line" | jq -r '.kind')" = "scope" ]
+  [ "$(echo "$line" | jq -r '.schema')" = "2" ]
+}
+
+@test "criterion 13: a spawn record and a scope record append to the same ledger without disturbing each other" {
+  local ledger="$BATS_TEST_TMPDIR/l.jsonl"
+  gaia_respawn_record "$ledger" ts1 br h m mem dig true
+  gaia_respawn_scope_record "$ledger" ts2 br h m mem scopedig
+  [ "$(wc -l <"$ledger" | tr -d ' ')" = "2" ]
+  [ "$(sed -n 1p "$ledger" | jq -r '.kind')" = "spawn" ]
+  [ "$(sed -n 2p "$ledger" | jq -r '.kind')" = "scope" ]
+}
+
+@test "criterion 13: a member containing a double quote or backslash still parses and round-trips" {
+  local ledger="$BATS_TEST_TMPDIR/l.jsonl" line
+  gaia_respawn_scope_record "$ledger" ts br h m 'a"b\' dig
+  line="$(head -n1 "$ledger")"
+  echo "$line" | jq -e . >/dev/null
+  [ "$(echo "$line" | jq -r '.member')" = 'a"b\' ]
+}
+
+@test "criterion 13: an empty ledger path or empty member returns 0 and writes nothing" {
+  run gaia_respawn_scope_record "" ts br h m mem dig
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+
+  local ledger="$BATS_TEST_TMPDIR/l2.jsonl"
+  run gaia_respawn_scope_record "$ledger" ts br h m "" dig
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  [ ! -e "$ledger" ]
 }

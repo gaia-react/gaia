@@ -2,6 +2,22 @@
   "$schema": "./script-capabilities.schema.json",
   "scripts": [
     {
+      "script": ".gaia/scripts/audit-scope-digest.sh",
+      "capabilities": [
+        "fs-write:**",
+        "fs-write:.gaia/local/audit",
+        "fs-write:.gaia/local/audit/**",
+        "invokes:.claude/hooks/lib/audit-digest.sh",
+        "invokes:.claude/hooks/lib/audit-machinery.sh",
+        "invokes:.claude/hooks/lib/audit-scope.sh",
+        "invokes:.gaia/scripts/audit-key-lib.sh",
+        "invokes:.gaia/scripts/audit-respawn-lib.sh",
+        "tmp"
+      ],
+      "why": "Captures a Code Audit Team member's own content digest at scope resolution and writes it under .gaia/local/audit (a scratch temp file staging the atomic move into place), creating that directory on first write; reads it back at clearance-write time. Sources the digest, machinery, and scope classifier libs transitively through audit-digest.sh, and the key-lib helper directly, to do this. Best-effort sources the respawn ledger lib to append a scope-resolution telemetry record; that lib appends to a ledger path it receives as a caller-chosen argument, which is where the fs-write:** reach comes from, mirroring resolve-audit-spawn.sh's own declaration of the same lib. Guarded so an absent (release-excluded) respawn lib changes nothing about the digest, the exit status, or the scope file.",
+      "maintainer_only": false
+    },
+    {
       "script": ".gaia/scripts/audit-write-clearance.sh",
       "capabilities": [
         "fs-write:.gaia/local/audit",

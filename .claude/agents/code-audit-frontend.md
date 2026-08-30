@@ -793,7 +793,11 @@ fi
 # print is a result you never see. This print is what carries the check into
 # the decision below; without it the block computes an answer and discards it.
 if [ -n "$dirty_in_scope" ]; then printf 'DIRTY IN REVIEW SCOPE:\n%s\n' "$dirty_in_scope" >&2; fi
+D_SCOPE="$("$AUDIT_ROOT/.gaia/scripts/audit-scope-digest.sh" --capture --root "$AUDIT_ROOT" --member code-audit-frontend --base "$KEY_BASE")"
+[ -n "$D_SCOPE" ] || printf 'could not capture a scope digest; the earned clearance write will refuse\n' >&2
 ```
+
+Capture your own content digest at scope resolution with `.gaia/scripts/audit-scope-digest.sh --capture`, and at marker-write time read that captured value back with `--read` and pass it as `--scope-digest`; never re-derive it in the writing call, and a rotation between the two means the review was superseded and you must be re-dispatched on the new HEAD.
 
 **Three-dot, against HEAD, is the whole point.** `changed` names the content your marker will attest to. Your clearance digest is computed over tracked files **at HEAD** (`git ls-tree HEAD`, `.claude/hooks/lib/audit-digest.sh`), so a review scope resolved against anything other than HEAD lets you certify a digest over content you never read. The two-dot form (`<base>`, no `...HEAD`) compares the base to the WORKING TREE, and it fails in three ways at once. A change committed to this PR and then reverted in the working tree drops out of `changed` entirely while your marker still covers the committed version. An uncommitted edit enters `changed` while no marker covers it and the dispatch oracle that decided you run at all never saw it. And when the base is a ref rather than a sha (`origin/<base-ref>` under Actions, `origin/main` otherwise, the no-audited-ancestor fallback) whose tip has advanced past this branch's fork point, every file the default branch changed enters `changed` too, none of which this PR touched. Three-dot resolves its own merge base, so it is immune to all three. Every other member resolves `${BASE_SHA}...HEAD`; you resolve it identically, and `.gaia/scripts/check-audit-base-derivation.sh` holds every definition there.
 
@@ -1170,11 +1174,18 @@ printf '%s' '[ ...the findings array, one object per finding; [] when you found 
 #    marker to the content the audit ENDS on (after self-heal, before the
 #    stamp), and prints the marker path. The write is unconditional: it
 #    replaces any marker already on disk for this digest.
+# Read the scope digest captured at scope resolution back rather than
+# re-deriving it here: a value derived in this call would be the writer's own
+# internal derive by construction, which makes the staleness comparison
+# vacuous. KEY_BASE is re-derived in this Bash call, and the scope-digest
+# read depends on it, since the scope file is keyed by it.
+D_SCOPE="$("$AUDIT_ROOT/.gaia/scripts/audit-scope-digest.sh" --read --root "$AUDIT_ROOT" --member code-audit-frontend --base "$KEY_BASE")"
 marker="$(bash .gaia/scripts/audit-write-clearance.sh \
   --root "$AUDIT_ROOT" \
   --member code-audit-frontend \
   --provenance earned \
-  --base "$KEY_BASE")"
+  --base "$KEY_BASE" \
+  --scope-digest "$D_SCOPE")"
 
 # 2. Stamp HEAD with the GAIA-Audit trailer (amend or empty-commit per the
 #    placement rule). The empty commit changes no blob sha, so it rotates no
@@ -1312,6 +1323,8 @@ If you do not write the marker for any other reason, surface this instead:
 
 > Audit marker NOT written. Address findings, commit, and re-invoke this agent on the new HEAD before merging.
 
+A `review scope superseded` refusal from the clearance writer means your scope digest no longer matched your content digest at write time: no artifact was written, the round is forfeited, and you must be re-dispatched on the new HEAD.
+
 When you withhold the marker after genuinely auditing this exact content (a real audit that refuses it), **record the refusal** with the same shared writer. A self-healed pass is not this case: it is not a refusal, it is a repair awaiting the orchestrator's commit, so it records no refusal. A refusal is a first-class, digest-keyed artifact: it is the only way this member says "I read this exact content and I refuse". The merge gate checks the refusal family before the earned family, so a live refusal for the current digest denies the merge regardless of any same-digest earned marker.
 
 ```bash
@@ -1329,11 +1342,13 @@ Passing `--base` on the earned write too is what retires your ledger entries: th
 **Superseding your own prior refusal.** A plain earned write never clears a refusal you already wrote for the same digest: both markers sit on disk, the gate checks the refusal family first, and the merge stays blocked no matter how many times you are re-spawned. When you refused this exact digest on an earlier round and the blocking finding is now genuinely resolved, say so explicitly as you write the earned marker, adding `--supersede-refusal "<why it is now cleared>"` to the earned invocation in step 1 above:
 
 ```bash
+D_SCOPE="$("$AUDIT_ROOT/.gaia/scripts/audit-scope-digest.sh" --read --root "$AUDIT_ROOT" --member code-audit-frontend --base "$KEY_BASE")"
 marker="$(bash .gaia/scripts/audit-write-clearance.sh \
   --root "$AUDIT_ROOT" \
   --member code-audit-frontend \
   --provenance earned \
   --base "$KEY_BASE" \
+  --scope-digest "$D_SCOPE" \
   --supersede-refusal "operator acknowledged the unaddressed Important with a stated reason")"
 ```
 

@@ -52,6 +52,18 @@
       "source": "SPEC-061 §shared"
     },
     {
+      "id": "audit-scope-digests",
+      "path": "audit/*.scope.json",
+      "match": "glob",
+      "kind": "file",
+      "scope": "shared",
+      "keyed_by": "base-sha plus branch, computed by gaia_audit_key (.gaia/scripts/audit-key-lib.sh), plus the member -- the same partition the findings sidecar uses, and for the same reason (base-sha alone collides across worktrees cut from one main tip)",
+      "why": "The scope-time digest a Code Audit Team member attests to, written where the member resolves its review scope (.gaia/scripts/audit-scope-digest.sh --capture) and read back where it writes its clearance (--read), so the marker cannot attest content that moved under the review.",
+      "writer": "code",
+      "reaped_by": "orphaned audit markers sweep",
+      "source": "SPEC-077 §shared"
+    },
+    {
       "id": "audit-progress-log",
       "path": "audit/*.progress.log",
       "match": "glob",

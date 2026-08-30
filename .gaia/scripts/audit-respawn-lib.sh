@@ -7,10 +7,31 @@
 # missing, and one cause of a missing marker is not a content change at all:
 # absorbing main rotates a member's content digest without touching the
 # three-dot diff the member actually reviews. This file is the one
-# definition of the ledger path, the record shape, and the retention knobs
-# that instrument how often that happens, shared by three consumers: the
-# writer inside the oracle, the retention sweep, and the attribution query.
-# It records what the oracle saw; it classifies nothing.
+# definition of the ledger path, the record shapes, and the retention knobs
+# that instrument how often that happens, shared by four consumers: the
+# writer inside the oracle, the scope-digest capture script, the retention
+# sweep, and the attribution query. It records what its callers saw; it
+# classifies nothing.
+#
+# Two record KINDS share one ledger, discriminated by a `kind` field:
+#   "spawn"  one per member the oracle considers on every run (unchanged
+#            shape from schema 1, `kind` inserted after `schema`).
+#   "scope"  one per member that resolves a review scope
+#            (.gaia/scripts/audit-scope-digest.sh --capture), recording the
+#            digest that member's clearance will attest to. This is the
+#            observation a spawn breadcrumb alone cannot make: a member
+#            still mid-review has written no marker to lose, so a rotation
+#            landing WHILE it reviews is invisible to the spawn-only pairing.
+#            The attribution query pairs a scope record forward against the
+#            next spawn breadcrumb for the same [branch, member] to count it.
+#
+# A record's `schema` value is a property of the WRITING TREE's own copy of
+# this lib, not of the ledger as a whole: an unmerged worktree keeps writing
+# old-shape (schema 1, no `kind`) records into the same shared ledger
+# indefinitely, alongside schema-2 records another tree writes. A reader
+# treats any record with `schema` below 2, with no `kind`, or with an
+# unexpected `schema` value as PRE-ADDITION -- unknown for every new
+# quantity, never a false. That boundary is per-record, not temporal.
 #
 # Sourced, never executed. No side effects at source time: defines two
 # constants and functions only. Bash 3.2 compatible (macOS default: no
@@ -33,15 +54,17 @@
 #   paths.
 #
 # gaia_respawn_record <ledger> <ts> <branch> <head> <merge_base> <member> <digest> <cleared>
-#   Appends exactly one JSON-Lines record to <ledger>, creating the parent
-#   directory if needed, keys in exactly this order:
-#     {"schema":1,"ts":"...","branch":"...","head":"...","merge_base":"...",
-#      "member":"...","digest":"...","cleared":true}
-#   ALWAYS returns 0, on every path, and ALWAYS writes nothing to stdout or
-#   stderr: the oracle's stdout is its contract, and its stderr carries
-#   advisories only, so a breadcrumb diagnostic on either would be a
-#   behavior change the oracle must not make. Its callers run under
-#   `set -euo pipefail` and must not be disturbed.
+#   Appends exactly one JSON-Lines "spawn" record to <ledger>, creating the
+#   parent directory if needed, keys in exactly this order:
+#     {"schema":2,"kind":"spawn","ts":"...","branch":"...","head":"...",
+#      "merge_base":"...","member":"...","digest":"...","cleared":true}
+#   `kind` is a constant of this function, not a parameter: every other key
+#   keeps its name, value, and position from schema 1. ALWAYS returns 0, on
+#   every path, and ALWAYS writes nothing to stdout or stderr: the oracle's
+#   stdout is its contract, and its stderr carries advisories only, so a
+#   breadcrumb diagnostic on either would be a behavior change the oracle
+#   must not make. Its callers run under `set -euo pipefail` and must not be
+#   disturbed.
 #
 #   Silent no-op (still exit 0) when <ledger> is empty, <member> is empty,
 #   the parent directory cannot be created, or the append itself fails (an
@@ -68,6 +91,16 @@
 #   One `printf` produces the whole line, appended with `>>`: a single small
 #   write() under O_APPEND is what keeps concurrent appends from different
 #   trees from interleaving mid-record. There is deliberately no lock.
+#
+# gaia_respawn_scope_record <ledger> <ts> <branch> <head> <merge_base> <member> <scope_digest>
+#   Appends exactly one JSON-Lines "scope" record to <ledger>, same file as
+#   the spawn breadcrumb, keys in exactly this order:
+#     {"schema":2,"kind":"scope","ts":"...","branch":"...","head":"...",
+#      "merge_base":"...","member":"...","scope_digest":"..."}
+#   Same contract, escaping discipline (backslash pass then quote pass on
+#   <member>, quote pass only on <branch>), single `printf` under `>>`, and
+#   fail-open silent-on-every-path posture as gaia_respawn_record above. Do
+#   not add a second escaping pass over either field.
 #
 # gaia_respawn_retention_days
 #   Prints the retention window in days, default-then-floor (see below):
@@ -109,11 +142,12 @@
 #   . .gaia/scripts/audit-respawn-lib.sh
 #   ledger="$(gaia_respawn_ledger_path "$repo_root")" || ledger=""
 #   gaia_respawn_record "$ledger" "$ts" "$branch" "$head" "$merge_base" "$member" "$digest" "$cleared"
+#   gaia_respawn_scope_record "$ledger" "$ts" "$branch" "$head" "$merge_base" "$member" "$scope_digest"
 #   days="$(gaia_respawn_retention_days)"
 #   cap="$(gaia_respawn_max_records)"
 
 GAIA_RESPAWN_LEDGER_REL="telemetry/audit-respawn.jsonl"
-GAIA_RESPAWN_SCHEMA=1
+GAIA_RESPAWN_SCHEMA=2
 
 # gaia_respawn_ledger_path <root>
 gaia_respawn_ledger_path() {
@@ -161,8 +195,37 @@ gaia_respawn_record() {
   # trailing `2>/dev/null` is never reached). The group's redirection applies
   # first and catches it.
   {
-    printf '{"schema":%s,"ts":"%s","branch":"%s","head":"%s","merge_base":"%s","member":"%s","digest":"%s","cleared":%s}\n' \
+    printf '{"schema":%s,"kind":"spawn","ts":"%s","branch":"%s","head":"%s","merge_base":"%s","member":"%s","digest":"%s","cleared":%s}\n' \
       "$GAIA_RESPAWN_SCHEMA" "$ts" "$branch" "$head" "$merge_base" "$member" "$digest" "$cleared" >>"$ledger"
+  } 2>/dev/null || return 0
+
+  return 0
+}
+
+# gaia_respawn_scope_record <ledger> <ts> <branch> <head> <merge_base> <member> <scope_digest>
+# The scope-resolution sibling of gaia_respawn_record above. See the contract
+# above. Fail-open and silent on every path.
+gaia_respawn_scope_record() {
+  local ledger="${1-}" ts="${2-}" branch="${3-}" head="${4-}" merge_base="${5-}"
+  local member="${6-}" scope_digest="${7-}"
+  [ -n "$ledger" ] || return 0
+  [ -n "$member" ] || return 0
+
+  local dir
+  dir="$(dirname -- "$ledger" 2>/dev/null)" || return 0
+  mkdir -p -- "$dir" 2>/dev/null || return 0
+
+  # Same escaping discipline as gaia_respawn_record: quote pass only on
+  # `branch` (git ref names cannot carry a backslash or a control character),
+  # backslash pass then quote pass on `member`. Do not add a second pass over
+  # either field.
+  branch="${branch//\"/\\\"}"
+  member="${member//\\/\\\\}"
+  member="${member//\"/\\\"}"
+
+  {
+    printf '{"schema":%s,"kind":"scope","ts":"%s","branch":"%s","head":"%s","merge_base":"%s","member":"%s","scope_digest":"%s"}\n' \
+      "$GAIA_RESPAWN_SCHEMA" "$ts" "$branch" "$head" "$merge_base" "$member" "$scope_digest" >>"$ledger"
   } 2>/dev/null || return 0
 
   return 0

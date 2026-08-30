@@ -292,7 +292,7 @@ setup_c4_base_sha_pair() {
   sidecar_b="$B/.gaia/local/audit/${KEY_B}.code-audit-frontend.findings.json"
 
   # The fixture creates its own parent, the way the real writers do
-  # (audit-write-findings.sh:238, audit-write-clearance.sh:323). Before the
+  # (audit-write-findings.sh:238, audit-write-clearance.sh:407). Before the
   # single-symlink cutover it did not have to: the per-entry linker created
   # main's audit/ as its symlink's target, and the fixture inherited that. The
   # cutover removed that side effect deliberately -- a worktree now creates

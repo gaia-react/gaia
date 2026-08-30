@@ -327,6 +327,13 @@ base_sha_for() {
   fence_eval "$1" "$2" 'printf "%s\n" "${BASE_SHA:-}"'
 }
 
+# member_digest <member> <repo>: the member's content digest at repo's HEAD,
+# for the writer's --scope-digest.
+member_digest() {
+  local member="$1" repo="$2" lib="$REPO_ROOT/.claude/hooks/lib/audit-digest.sh"
+  bash -c '. "$1"; audit_member_digest "$2" "$3"' _ "$lib" "$repo" "$member"
+}
+
 # key_base_for <member> <repo>: the shared, pull-request-wide artifact key
 # base, KEY_BASE. Members may legitimately disagree on BASE_SHA; they must
 # never disagree on this.
@@ -439,7 +446,8 @@ owners_of() {
   # hand-built body.
   commit_file "$repo" ".gaia/scripts/fixture-two-bases.sh" "M's own review"
   c2_sha="$(git -C "$repo" rev-parse HEAD)"
-  run "$repo/.gaia/scripts/audit-write-clearance.sh" --root "$repo" --member "$m" --provenance earned
+  run "$repo/.gaia/scripts/audit-write-clearance.sh" --root "$repo" --member "$m" --provenance earned \
+    --scope-digest "$(member_digest "$m" "$repo")"
   [ "$status" -eq 0 ]
 
   # HEAD moves past C2 with no further whole-team signal and nothing in

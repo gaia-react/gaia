@@ -258,7 +258,7 @@ JSON
   bash "$FINDINGS_WRITER" --root "$ROOT" --member "$MEMBER" --base "$BASE" \
     --findings - >/dev/null <<<'[]'
   bash "$CLEARANCE_WRITER" --root "$ROOT" --member "$MEMBER" \
-    --provenance earned --base "$BASE" >/dev/null
+    --provenance earned --base "$BASE" --scope-digest "$DIGEST" >/dev/null
   # Both markers sit on disk. The anti-gaming invariant is that a bare re-run
   # cannot retire a refusal, and the classifier agrees with the merge gate:
   # refusal-first, so re-running until it passes buys nothing.

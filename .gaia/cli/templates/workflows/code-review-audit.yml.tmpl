@@ -455,7 +455,16 @@ jobs:
             review. For any exported symbol whose signature or contract changed in
             this delta, also check its importers across the repo even if those
             files are unchanged; an incremental scope must still catch a delta
-            that breaks an already-cleared caller. When the agent's report has
+            that breaks an already-cleared caller. At the start of the review,
+            capture your own content digest with
+            `bash .gaia/scripts/audit-scope-digest.sh --capture --root
+            "$(git rev-parse --show-toplevel)" --member code-audit-frontend
+            --base "${{ steps.base.outputs.base }}"`, beside where you note
+            the tree you started reviewing (`AUDIT_TREE_SHA`). This cannot
+            cost this run a re-dispatch: the checkout is a detached HEAD
+            pinned to the PR head sha for the whole run, so the content this
+            review scopes cannot rotate mid-review the way a long-lived local
+            session's tree can. When the agent's report has
             no Critical or Important issues, you MUST stamp the GAIA-Audit
             trailer per .claude/hooks/audit-stamp-trailer.sh. The checkout is at
             a detached HEAD (PR head sha), so the stamp helper writes an empty
@@ -463,9 +472,14 @@ jobs:
             not pass `AUDIT_SELF_HEALED=true` (the helper's amend path would
             rewrite a commit the workflow runner does not own). On a clean
             report you MUST also write the local clean marker via the shared
-            clearance writer, `bash .gaia/scripts/audit-write-clearance.sh
+            clearance writer: read your captured scope digest back with
+            `bash .gaia/scripts/audit-scope-digest.sh --read --root
+            "$(git rev-parse --show-toplevel)" --member code-audit-frontend
+            --base "${{ steps.base.outputs.base }}"` and pass it as
+            `--scope-digest`, `bash .gaia/scripts/audit-write-clearance.sh
             --root "$(git rev-parse --show-toplevel)" --member
-            code-audit-frontend --provenance earned`, which resolves the
+            code-audit-frontend --provenance earned --scope-digest
+            <the digest you just read back>`, which resolves the
             member's content digest from `--root` and writes
             `.gaia/local/audit/<digest>.ok` keyed to that digest, not the
             commit sha or tree (the "Audit marker" step in the agent
@@ -576,7 +590,7 @@ jobs:
                refuses any self-heal that touches them.
           claude_args: |
             --max-turns ${{ steps.config.outputs.max_turns }}
-            --allowedTools "Edit,Write,Bash(git:*),Bash(pnpm:*),Bash(node:*),Bash(npm:*),Bash(gh:*),Bash(bash .gaia/scripts/audit-write-clearance.sh:*),Bash(bash .gaia/scripts/check-debt-issue-metadata.sh:*)"
+            --allowedTools "Edit,Write,Bash(git:*),Bash(pnpm:*),Bash(node:*),Bash(npm:*),Bash(gh:*),Bash(bash .gaia/scripts/audit-write-clearance.sh:*),Bash(bash .gaia/scripts/audit-scope-digest.sh:*),Bash(bash .gaia/scripts/check-debt-issue-metadata.sh:*)"
             --verbose
 
       - name: Print audit progress breadcrumbs
