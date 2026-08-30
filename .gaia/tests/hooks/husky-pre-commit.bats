@@ -265,6 +265,13 @@ glob_head_dirs() {
 # `app/routes/**/*.ts` leaves app/other.ts unlinted while the `app/` arm still
 # fires, which is the miss this direction exists to catch. Loosening it to a
 # substring would green exactly that case.
+#
+# It catches that miss in the nested-head spelling only, which is the honest
+# limit rather than the whole class. The head is cut at the FIRST `/**/`, so
+# `app/**/routes/**/*.ts` reduces to a bare `app/`, satisfies this check, and
+# leaves app/other.ts just as unlinted. Rejecting a head that carries a glob
+# metacharacter would not reach it either: the reduction leaves `app`, which
+# carries none.
 glob_covers_dir() {
   local dir="$1" glob="$2"
   glob_head_dirs "$glob" | grep -qxF -- "$dir"
@@ -408,6 +415,8 @@ CASES
   done <<'CASES'
 app/{routes,components}/**/*.ts
 {app,{test,mocks}}/**/*.ts
+app}/**/*.ts
+/**/*.ts
 app/*.{ts,tsx}
 **/*.ts
 CASES
