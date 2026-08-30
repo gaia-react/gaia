@@ -162,9 +162,11 @@ assert_gate_skipped() {
 # assignments, so an arm whose spelling drifts stops the guard rather than
 # quietly shrinking it.
 #
-# What this covers and what it does not. The reverse direction, a glob whose
-# directory no arm names, is pinned by the per-directory @tests above rather
-# than derived; deriving it too is tracked as #1628.
+# Both directions of the contract are derived, one guard each: this one asks
+# whether every arm reaches a glob, the one below it whether every glob reaches
+# an arm. The per-directory @tests above still pin the four directories by
+# name, which is a different claim, that the hook really runs end to end for
+# each of them, not that the two files agree.
 
 # Every directory the hook's change-detection arms grep for, one per line.
 arm_dirs() {
@@ -190,32 +192,53 @@ eslint_globs() {
          | .key' "$REPO_ROOT/.lintstagedrc.json"
 }
 
-# Whether one glob key hands ESLint the files under directory $1.
+# The glob keys whose chain mentions ESLint anywhere, counted by a pattern
+# deliberately wider than the derivation above reads, for the same reason
+# arm_assignment_count is wider than arm_dirs. A count taken with the same
+# `startswith` test would agree with the derivation on every chain that spelling
+# cannot reach (`pnpm exec eslint`, a path-qualified binary), confirming its
+# blind spot instead of exposing it. This one over-counts, so a key the
+# derivation silently drops reds the guard rather than leaving its directory
+# unchecked.
+eslint_glob_mentions() {
+  jq -r '[to_entries[]
+          | select(any(.value[]?; type == "string" and test("eslint")))]
+         | length' "$REPO_ROOT/.lintstagedrc.json"
+}
+
+# Every directory one glob key hands ESLint files under, one per line, and
+# nothing at all for a key of any other shape.
 #
-# This asks for the literal shape `<dir>/**/<rest>`, in the key itself or in one
+# This reads the literal shape `<dir>/**/<rest>`, in the key itself or in each
 # alternative of its leading brace group, rather than matching a probe path
 # against the key. Matching would need lint-staged's own matcher: bash's [[ ]]
 # lets `*` cross a `/` where picomatch does not, so `app/*.{ts,tsx}` would
 # satisfy a probe while leaving app/routes/home.tsx unlinted, which is exactly
-# the miss this guard exists to catch. Demanding the recursive shape is the
-# narrower question, and it fails closed: a key written some other way reds the
-# guard rather than passing it.
-glob_covers_dir() {
-  local dir="$1" glob="$2" head alt
+# the miss these guards exist to catch. Demanding the recursive shape is the
+# narrower question, and it fails closed in both directions: a key written some
+# other way yields no directory, which reds the arm-to-glob guard on the arm it
+# should have covered and reds the glob-to-arm guard on the key itself.
+glob_head_dirs() {
+  local glob="$1" head alt
   case "$glob" in
     *"/**/"*) head="${glob%%/\*\*/*}" ;;
-    *) return 1 ;;
+    *) return 0 ;;
   esac
   case "$head" in
     "{"*"}")
       head="${head#\{}"; head="${head%\}}"
       while IFS= read -r alt; do
-        [ "$alt/" = "$dir" ] && return 0
+        printf '%s/\n' "$alt"
       done <<<"$(printf '%s' "$head" | tr ',' '\n')"
-      return 1
       ;;
-    *) [ "$head/" = "$dir" ] && return 0; return 1 ;;
+    *) printf '%s/\n' "$head" ;;
   esac
+}
+
+# Whether one glob key hands ESLint the files under directory $1.
+glob_covers_dir() {
+  local dir="$1" glob="$2"
+  glob_head_dirs "$glob" | grep -qxF -- "$dir"
 }
 
 @test "every pre-commit arm directory is covered by an ESLint lint-staged glob" {
@@ -248,6 +271,54 @@ glob_covers_dir() {
       return 1
     fi
   done <<<"$dirs"
+}
+
+# --- every ESLint lint-staged glob's directory is named by a hook arm ---
+#
+# The other half of the same contract, and the direction the header calls the
+# live failure mode: a glob whose directory no arm greps for means a commit
+# scoped to that directory alone matches nothing, the else branch fires, and the
+# change lands unlinted *and* untypechecked. That is strictly worse than the
+# uncovered-arm case the guard above catches, which still runs typecheck and
+# Vitest.
+#
+# The glob set is derived from .lintstagedrc.json rather than restated here, and
+# a key whose chain mentions ESLint in a spelling the derivation cannot read is
+# counted separately, so a config entry added with no arm reds here instead of
+# shipping behind a guard that never saw it.
+@test "every ESLint lint-staged glob directory is named by a pre-commit arm" {
+  local dirs globs derived mentions glob glob_dirs dir
+  dirs=$(arm_dirs)
+  [ -n "$dirs" ]
+
+  # Captured rather than piped, for the reason the guard above gives: a jq that
+  # is absent or cannot parse the config must report itself rather than empty
+  # the loop below into a vacuous pass.
+  globs=$(eslint_globs) || {
+    printf 'could not read .lintstagedrc.json (is jq installed?)\n' >&2
+    return 1
+  }
+  [ -n "$globs" ] || {
+    printf '.lintstagedrc.json declares no glob whose chain invokes eslint\n' >&2
+    return 1
+  }
+  derived=$(printf '%s\n' "$globs" | grep -c .)
+  mentions=$(eslint_glob_mentions)
+  [ "$derived" -eq "$mentions" ]
+
+  while IFS= read -r glob; do
+    glob_dirs=$(glob_head_dirs "$glob")
+    [ -n "$glob_dirs" ] || {
+      printf 'eslint glob %s is not of the recursive <dir>/**/ shape, so no directory can be checked against the arms\n' "$glob" >&2
+      return 1
+    }
+    while IFS= read -r dir; do
+      if ! grep -qxF -- "$dir" <<<"$dirs"; then
+        printf 'ESLint .lintstagedrc.json glob %s covers %s, which no pre-commit arm names\n' "$glob" "$dir" >&2
+        return 1
+      fi
+    done <<<"$glob_dirs"
+  done <<<"$globs"
 }
 
 # An arm assignment that never reaches the OR guard is dead: the directory looks
