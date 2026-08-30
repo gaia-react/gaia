@@ -242,9 +242,14 @@ glob_head_dirs() {
   # emitting it literally would leave the shape check satisfied and send the
   # guard's operator to add a hook arm named after an unexpanded glob, when the
   # repair is to rewrite the key.
+  #
+  # A slash is not that case and must not join it. A plain nested head
+  # (`app/routes`, from `app/routes/**/*.ts`) is fully readable, and rejecting it
+  # yielded no directory, which reds the glob-to-arm guard on a legitimate key
+  # while telling its operator the key had no recursive head to rewrite toward.
   while IFS= read -r alt; do
     case "$alt" in
-      "" | *[{}/]*) return 0 ;;
+      "" | *[{}]*) return 0 ;;
     esac
   done <<<"$head"
   while IFS= read -r alt; do
@@ -253,9 +258,43 @@ glob_head_dirs() {
 }
 
 # Whether one glob key hands ESLint the files under directory $1.
+#
+# Exact, where arm_names_dir below is a substring relation, and the asymmetry is
+# the contract rather than an oversight. This direction asks whether an arm's
+# whole directory reaches ESLint, and a nested head covers only part of it:
+# `app/routes/**/*.ts` leaves app/other.ts unlinted while the `app/` arm still
+# fires, which is the miss this direction exists to catch. Loosening it to a
+# substring would green exactly that case.
+#
+# It catches that miss in the nested-head spelling only, which is the honest
+# limit rather than the whole class. The head is cut at the FIRST `/**/`, so
+# `app/**/routes/**/*.ts` reduces to a bare `app/`, satisfies this check, and
+# leaves app/other.ts just as unlinted. Rejecting a head that carries a glob
+# metacharacter would not reach it either: the reduction leaves `app`, which
+# carries none.
 glob_covers_dir() {
   local dir="$1" glob="$2"
   glob_head_dirs "$glob" | grep -qxF -- "$dir"
+}
+
+# Whether some hook arm's grep reaches every file under directory $1, given the
+# newline-separated arm directories in $2.
+#
+# Substring, because the arms are unanchored greps (.husky/pre-commit documents
+# the lack of anchoring as deliberate). Every path under a directory carries that
+# directory as a prefix, so an arm whose pattern is a substring of the directory
+# is a substring of every path beneath it: the `app/` arm reaches all of
+# `app/routes/`. Demanding an exact name here would red a nested glob key the
+# hook already covers.
+arm_names_dir() {
+  local dir="$1" arm
+  while IFS= read -r arm; do
+    [ -n "$arm" ] || continue
+    case "$dir" in
+      *"$arm"*) return 0 ;;
+    esac
+  done <<<"$2"
+  return 1
 }
 
 @test "every pre-commit arm directory is covered by an ESLint lint-staged glob" {
@@ -330,12 +369,82 @@ glob_covers_dir() {
       return 1
     }
     while IFS= read -r dir; do
-      if ! grep -qxF -- "$dir" <<<"$dirs"; then
-        printf 'ESLint .lintstagedrc.json glob %s covers %s, which no pre-commit arm names\n' "$glob" "$dir" >&2
+      if ! arm_names_dir "$dir" "$dirs"; then
+        printf 'ESLint .lintstagedrc.json glob %s covers %s, which no pre-commit arm reaches\n' "$glob" "$dir" >&2
         return 1
       fi
     done <<<"$glob_dirs"
   done <<<"$globs"
+}
+
+# --- the head reader and the arm relation the guards above are built on ---
+#
+# Both guards above reduce a glob key to directories and compare those against
+# the arms, so a head shape the reader mis-reads, or an arm relation that does
+# not model the greps, is a false red or a silent pass on both. The live
+# .lintstagedrc.json exercises only the head shapes it happens to use, and a
+# shape it does not carry is exactly where the reader has been wrong, so these
+# drive the helpers directly, one case per shape rather than one representative.
+
+# The `app/**/routes/**/*.ts` case pins a reduction that is wrong on purpose,
+# and it is a pin on today's behavior rather than an endorsement of it. The head
+# is cut at the first `/**/`, so a key with a second recursive segment loses
+# everything past that first one and reduces to a bare `app/`, which then greens
+# an arm the key does not cover (#1652). Pinning it is what gives the honest
+# limit recorded above `glob_covers_dir` a mechanical anchor: without a case
+# carrying a second `/**/`, a greedy single-`%` cut would pass the whole suite
+# while silently falsifying that comment.
+@test "glob_head_dirs reduces each head shape it can expand to that head's directories" {
+  local glob expect got
+  while IFS='|' read -r glob expect; do
+    [ -n "$glob" ] || continue
+    got=$(glob_head_dirs "$glob" | tr '\n' ' ')
+    if [ "${got% }" != "$expect" ]; then
+      printf 'glob_head_dirs %s yielded "%s", expected "%s"\n' "$glob" "${got% }" "$expect" >&2
+      return 1
+    fi
+  done <<'CASES'
+app/**/*.{ts,tsx}|app/
+app/routes/**/*.ts|app/routes/
+{.storybook,.playwright,test}/**/*.{ts,tsx}|.storybook/ .playwright/ test/
+{app/routes,test}/**/*.ts|app/routes/ test/
+app/**/routes/**/*.ts|app/
+CASES
+}
+
+# Two of these shapes read as malformed noise and are not. `app}/**/*.ts` is a
+# head carrying a closing brace with no opening one, and it is the only case
+# that reds if the metacharacter class narrows to `*{*`; `/**/*.ts` is a head
+# that reduces to empty, and it is the only case that reds if the
+# empty-alternative arm is dropped. Pruning either as junk retires a reject
+# arm's only cover.
+@test "glob_head_dirs yields nothing for a head shape it cannot expand" {
+  local glob got
+  while IFS= read -r glob; do
+    [ -n "$glob" ] || continue
+    got=$(glob_head_dirs "$glob")
+    if [ -n "$got" ]; then
+      printf 'glob_head_dirs %s yielded "%s", expected nothing\n' "$glob" "$got" >&2
+      return 1
+    fi
+  done <<'CASES'
+app/{routes,components}/**/*.ts
+{app,{test,mocks}}/**/*.ts
+app}/**/*.ts
+/**/*.ts
+app/*.{ts,tsx}
+**/*.ts
+CASES
+}
+
+@test "arm_names_dir reads the arms as the unanchored substring greps they are" {
+  local arms
+  arms=$(printf '%s\n' 'app/' 'test/')
+  arm_names_dir 'app/' "$arms" || return 1
+  arm_names_dir 'app/routes/' "$arms" || return 1
+  arm_names_dir 'test/mocks/' "$arms" || return 1
+  arm_names_dir '.storybook/' "$arms" && return 1
+  true
 }
 
 # An arm assignment that never reaches the OR guard is dead: the directory looks
