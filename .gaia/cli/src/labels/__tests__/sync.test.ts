@@ -15,6 +15,7 @@ import {readRegistry} from '../registry.js';
 import type {LiveLabel, SyncAction, SyncFlags} from '../sync.js';
 import {
   classifyGhResult,
+  describeAction,
   mutationFor,
   planSync,
   resolveBlocked,
@@ -73,6 +74,30 @@ const DEPRECATED_ENTRY: LabelEntry = {
 const deprecatedRegistry: LabelRegistry = {
   ...registry,
   labels: [...registry.labels, DEPRECATED_ENTRY],
+};
+
+/**
+ * An unmanaged entry with a rename outstanding, synthetic because every
+ * registry entry carrying a `renamedFrom` is managed. Without it nothing pins
+ * the arm where the rename must leave the color alone.
+ */
+const UNMANAGED_RENAMED_ENTRY: LabelEntry = {
+  audience: 'adopter',
+  axis: 'lifecycle',
+  blocked: false,
+  color: 'abcdef',
+  deprecated: false,
+  description: 'An unmanaged entry the registry renamed',
+  features: [],
+  managed: false,
+  name: 'debt:unmanaged-new',
+  reason: null,
+  renamedFrom: ['debt:unmanaged-old'],
+};
+
+const unmanagedRenameRegistry: LabelRegistry = {
+  ...registry,
+  labels: [...registry.labels, UNMANAGED_RENAMED_ENTRY],
 };
 
 const plan = (options: {
@@ -243,7 +268,12 @@ describe('labels/sync planSync rename', () => {
     const renames = kinds(actions, 'rename');
 
     expect(renames).toEqual([
-      {from: 'needs-human-review', kind: 'rename', to: 'needs-human'},
+      {
+        from: 'needs-human-review',
+        kind: 'rename',
+        registryColor: null,
+        to: 'needs-human',
+      },
     ]);
     expect(createNames(actions)).not.toContain('needs-human');
     expect(kinds(actions, 'prune')).toEqual([]);
@@ -263,7 +293,12 @@ describe('labels/sync planSync rename', () => {
     });
 
     expect(kinds(actions, 'rename')).toEqual([
-      {from: 'needs-human-review', kind: 'rename', to: 'needs-human'},
+      {
+        from: 'needs-human-review',
+        kind: 'rename',
+        registryColor: null,
+        to: 'needs-human',
+      },
     ]);
     expect(createNames(actions)).not.toContain('needs-human');
     expect(kinds(actions, 'unknown')).toEqual([]);
@@ -284,10 +319,146 @@ describe('labels/sync planSync rename', () => {
   test('a rename edits the old name rather than recreating it', () => {
     expect(
       mutationFor(
-        {from: 'needs-human-review', kind: 'rename', to: 'needs-human'},
+        {
+          from: 'needs-human-review',
+          kind: 'rename',
+          registryColor: null,
+          to: 'needs-human',
+        },
         NO_FLAGS
       )
     ).toEqual(['label', 'edit', 'needs-human-review', '--name', 'needs-human']);
+  });
+
+  // A registry edit that renames and recolors in one step used to land only
+  // the name: the new name is absent, so nothing plans `drift-color` for it,
+  // and the run after the rename reports the leftover as operator drift that
+  // `--adopt` alone would clear. Renaming is the registry restating the entry,
+  // so the rename carries the color it restated.
+  test('a rename carries the registry color when the live color differs', () => {
+    const actions = plan({
+      live: [{color: '2da44e', description: '', name: 'debt:in-progress'}],
+    });
+
+    expect(kinds(actions, 'rename')).toEqual([
+      {
+        from: 'debt:in-progress',
+        kind: 'rename',
+        registryColor: 'ffd33d',
+        to: 'in-progress',
+      },
+    ]);
+  });
+
+  test('a rename plans no recolor when the live color already matches', () => {
+    const actions = plan({
+      live: [{color: 'ffd33d', description: '', name: 'debt:in-progress'}],
+    });
+
+    expect(kinds(actions, 'rename')).toEqual([
+      {
+        from: 'debt:in-progress',
+        kind: 'rename',
+        registryColor: null,
+        to: 'in-progress',
+      },
+    ]);
+  });
+
+  test('an uppercase live color is not a recolor', () => {
+    const actions = plan({
+      live: [{color: 'FFD33D', description: '', name: 'debt:in-progress'}],
+    });
+
+    expect(kinds(actions, 'rename')).toEqual([
+      {
+        from: 'debt:in-progress',
+        kind: 'rename',
+        registryColor: null,
+        to: 'in-progress',
+      },
+    ]);
+  });
+
+  // Colors are the operator's territory for an unmanaged entry whatever else
+  // reconciles, so the rename does not become a way around that.
+  test('an unmanaged entry is renamed without its color', () => {
+    const actions = plan({
+      live: [{color: '000000', description: '', name: 'debt:unmanaged-old'}],
+      registry: unmanagedRenameRegistry,
+    });
+
+    expect(kinds(actions, 'rename')).toEqual([
+      {
+        from: 'debt:unmanaged-old',
+        kind: 'rename',
+        registryColor: null,
+        to: 'debt:unmanaged-new',
+      },
+    ]);
+  });
+
+  test('a rename carrying a color edits both in one gh call', () => {
+    expect(
+      mutationFor(
+        {
+          from: 'debt:in-progress',
+          kind: 'rename',
+          registryColor: 'ffd33d',
+          to: 'in-progress',
+        },
+        NO_FLAGS
+      )
+    ).toEqual([
+      'label',
+      'edit',
+      'debt:in-progress',
+      '--name',
+      'in-progress',
+      '--color',
+      'ffd33d',
+    ]);
+  });
+
+  // `--adopt` buys consent to overwrite a color the operator chose. A rename
+  // is the registry changing its own color, so the recolor is not owed that
+  // consent and must not wait for it.
+  test('the recolor rides the rename under every flag combination', () => {
+    for (const flags of FLAG_COMBINATIONS) {
+      expect(
+        mutationFor(
+          {
+            from: 'debt:in-progress',
+            kind: 'rename',
+            registryColor: 'ffd33d',
+            to: 'in-progress',
+          },
+          flags
+        )
+      ).toContain('--color');
+    }
+  });
+
+  test('the report names the recolor the rename will apply', () => {
+    expect(
+      describeAction({
+        from: 'debt:in-progress',
+        kind: 'rename',
+        registryColor: 'ffd33d',
+        to: 'in-progress',
+      })
+    ).toBe('rename debt:in-progress to in-progress, recoloring to ffd33d');
+  });
+
+  test('a rename with no recolor reports the rename alone', () => {
+    expect(
+      describeAction({
+        from: 'debt:in-progress',
+        kind: 'rename',
+        registryColor: null,
+        to: 'in-progress',
+      })
+    ).toBe('rename debt:in-progress to in-progress');
   });
 });
 

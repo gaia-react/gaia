@@ -25,6 +25,10 @@
  * that turns an action into a `gh` invocation. `drift-color` (operator wins,
  * `--adopt` overrides) and `prune` (never delete without `--prune-deprecated`)
  * both work this way, so "planned" never means "will be written".
+ *
+ * `rename` is the one write that carries a color under no flag at all, because
+ * there it is the registry restating its own entry rather than the operator's
+ * choice being overruled.
  */
 import type {ProcessResult} from '../ci/util/run-process.js';
 import {runGh} from '../ci/util/run-process.js';
@@ -105,7 +109,7 @@ export type SyncAction =
     }
   | {command: string; kind: 'manual-command'; why: string}
   | {entry: LabelEntry; kind: 'create'}
-  | {from: string; kind: 'rename'; to: string}
+  | {from: string; kind: 'rename'; registryColor: null | string; to: string}
   | {kind: 'blocked-removed'; name: string}
   | {kind: 'drift-color'; live: LiveLabel; name: string; registryColor: string}
   | {
@@ -132,16 +136,36 @@ export type SyncReport = SyncPlan & {degradedAt: DegradeSource | null};
 
 type BlockedPresentAction = Extract<SyncAction, {kind: 'blocked-present'}>;
 
+/**
+ * The registry color a live label does not carry yet, or `null` when the
+ * registry does not own the entry's color or the label already carries it.
+ *
+ * Both sites that reconcile a color read this, so a present entry's reported
+ * drift and a renamed entry's carried color can never answer differently for
+ * the same pair. `gh` lowercases nothing, so the live side is folded before
+ * the comparison.
+ */
+const pendingColorFor = (entry: LabelEntry, live: LiveLabel): null | string =>
+  (
+    entry.managed &&
+    entry.color !== null &&
+    live.color.toLowerCase() !== entry.color
+  ) ?
+    entry.color
+  : null;
+
 /** Actions for a registry entry the repository does not carry. */
 const plannedForAbsent = (
   entry: LabelEntry,
   options: {
     audience: LabelAudience;
     enabledFeatures: readonly LabelFeature[];
-    liveNames: ReadonlySet<string>;
+    liveByName: ReadonlyMap<string, LiveLabel>;
   }
 ): {actions: SyncAction[]; claimed: null | string} => {
-  const previous = entry.renamedFrom.find((old) => options.liveNames.has(old));
+  const previous = entry.renamedFrom
+    .map((old) => options.liveByName.get(old))
+    .find((live) => live !== undefined);
 
   // Rename, never delete-and-recreate: a delete strips the label from every
   // issue and pull request carrying it and destroys the association
@@ -151,8 +175,21 @@ const plannedForAbsent = (
     audienceCovers({audience: options.audience, entryAudience: entry.audience})
   ) {
     return {
-      actions: [{from: previous, kind: 'rename', to: entry.name}],
-      claimed: previous,
+      actions: [
+        {
+          from: previous.name,
+          kind: 'rename',
+          // `drift-color` cannot reach an entry whose new name is not live
+          // yet, so without this a registry edit that renames and recolors in
+          // one step lands only the name, and the leftover surfaces next run
+          // as drift the operator is free to ignore. Carrying it here needs no
+          // `--adopt` because the registry is restating its own entry, not
+          // overruling a color the operator picked.
+          registryColor: pendingColorFor(entry, previous),
+          to: entry.name,
+        },
+      ],
+      claimed: previous.name,
     };
   }
 
@@ -176,16 +213,14 @@ const plannedForPresent = (
 
   // An unmanaged entry is documented only: its description still reconciles,
   // its color never does.
-  if (
-    entry.managed &&
-    entry.color !== null &&
-    present.color.toLowerCase() !== entry.color
-  ) {
+  const pendingColor = pendingColorFor(entry, present);
+
+  if (pendingColor !== null) {
     actions.push({
       kind: 'drift-color',
       live: present,
       name: entry.name,
-      registryColor: entry.color,
+      registryColor: pendingColor,
     });
   }
 
@@ -218,7 +253,6 @@ export const planSync = (options: {
 }): SyncPlan => {
   const {audience, enabledFeatures, live, registry} = options;
   const liveByName = new Map(live.map((label) => [label.name, label]));
-  const liveNames = new Set(liveByName.keys());
   const claimed = new Set<string>();
   const actions: SyncAction[] = [];
 
@@ -240,7 +274,7 @@ export const planSync = (options: {
       const planned = plannedForAbsent(entry, {
         audience,
         enabledFeatures,
-        liveNames,
+        liveByName,
       });
 
       if (planned.claimed !== null) claimed.add(planned.claimed);
@@ -290,6 +324,17 @@ export const resolveBlocked = (
     : {...action, carrierCount: options.carrierCount};
 };
 
+/** A rename's argv, recoloring in the same call when it carries a color. */
+const renameMutation = (
+  action: Extract<SyncAction, {kind: 'rename'}>
+): readonly string[] => {
+  const rename = ['label', 'edit', action.from, '--name', action.to];
+
+  return action.registryColor === null ?
+      rename
+    : [...rename, '--color', action.registryColor];
+};
+
 /** The `gh` argv an action owes under `flags`, or null when report-only. */
 export const mutationFor = (
   action: SyncAction,
@@ -307,9 +352,7 @@ export const mutationFor = (
     ];
   }
 
-  if (action.kind === 'rename') {
-    return ['label', 'edit', action.from, '--name', action.to];
-  }
+  if (action.kind === 'rename') return renameMutation(action);
 
   if (action.kind === 'drift-description') {
     return [
@@ -391,7 +434,15 @@ const describeBlockedPresent = (action: BlockedPresentAction): string => {
 /** One report line per planned action. */
 export const describeAction = (action: SyncAction): string => {
   if (action.kind === 'create') return `create ${action.entry.name}`;
-  if (action.kind === 'rename') return `rename ${action.from} to ${action.to}`;
+
+  if (action.kind === 'rename') {
+    const renamed = `rename ${action.from} to ${action.to}`;
+
+    return action.registryColor === null ?
+        renamed
+      : `${renamed}, recoloring to ${action.registryColor}`;
+  }
+
   if (action.kind === 'prune') return `deprecated and present: ${action.name}`;
   if (action.kind === 'manual-command') return `manual: ${action.command}`;
   if (action.kind === 'blocked-present') return describeBlockedPresent(action);
