@@ -228,8 +228,8 @@ command -v jq >/dev/null 2>&1 || {
 }
 
 # -----------------------------------------------------------------------------
-# 1. Read the input array. `-` is stdin so a caller can pipe a heredoc without
-#    staging a temp file it then has to clean up.
+# 1. Read the input array. `-` is stdin so a caller can pipe the array in
+#    without staging a temp file it then has to clean up.
 # -----------------------------------------------------------------------------
 
 if [ "$FINDINGS_INPUT" = "-" ]; then
