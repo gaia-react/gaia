@@ -281,7 +281,10 @@ describe('validateAnswers', () => {
     ['a leading slash', '/docs/a.md'],
     ['a trailing slash', 'docs/a/'],
     ['a leading hash', '#docs/a.md'],
-    ['embedded whitespace', 'docs/a b.md'],
+    ['a leading space', ' docs/a.md'],
+    ['a trailing space', 'docs/a.md '],
+    ['an embedded newline', 'docs/a.md\nwiki/'],
+    ['an embedded carriage return', 'docs/a.md\rwiki/'],
     ['an empty value', ''],
   ])('withhold_metacharacter rejects %s', (_label, badPath) => {
     const errors = validateAnswers(
@@ -297,6 +300,12 @@ describe('validateAnswers', () => {
     ['a dot and a plus', 'app/routes/_public+/home.tsx'],
     ['a tilde and an at', 'docs/~notes@2.md'],
     ['a comma and an equals', 'docs/a,b=c.md'],
+    // Every wiki/ title carries spaces, and .gaia/release-exclude already
+    // holds such lines. An exclude line is a literal path to every consumer,
+    // so a space is literal in all of them; refusing to write one would make
+    // a whole category of maintainer-only page unwithholdable.
+    ['an interior space', 'wiki/decisions/Sharded CI Test Matrix.md'],
+    ['an interior tab', 'docs/a\tb.md'],
   ])('allows %s in a withhold path', (_label, goodPath) => {
     const errors = validateAnswers(
       answers({allowUndecided: true, withholds: [withhold(goodPath)]}),

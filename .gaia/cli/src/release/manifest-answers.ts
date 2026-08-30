@@ -77,7 +77,15 @@ const REJECTED_PATH_CHARACTERS = [
   '$',
 ];
 
-const ASCII_WHITESPACE = /[\t\n\v\f\r ]/;
+/**
+ * A line break is the one whitespace character a withhold path may never
+ * carry. The CLI renders the path as its own line in `.gaia/release-exclude`,
+ * so an embedded newline emits a SECOND, uncommented line that membership
+ * never inspected: the same hazard `isRejectedReason` guards on the reason
+ * text. Interior spaces and tabs are safe by contrast, and are allowed, see
+ * `isRejectedWithholdPath`.
+ */
+const LINE_BREAK = /[\n\r]/;
 
 /**
  * True when `value` carries a character from `REJECTED_PATH_CHARACTERS`. The
@@ -108,20 +116,32 @@ const findDuplicates = (paths: readonly string[]): string[] => {
 };
 
 /**
- * A withhold value that is empty, comment-shaped, slash-anchored, whitespace-
- * bearing, or metacharacter-bearing. A bracketed path is the narrow case this
- * guards: it does NOT crash the exclude compiler (`escapeRegExp` leaves `[`
- * and `]` alone, so `docs/notes[1].md` compiles to a valid `^docs/notes[1]\.md(/|$)`),
- * it silently masks `docs/notes1.md` and never masks the file actually
- * withheld — while `build-staging.sh` DOES escape brackets, so the manifest
- * and the staging pipeline disagree about which file was excluded.
+ * A withhold value that is empty, comment-shaped, slash-anchored, line-break-
+ * bearing, surrounded by whitespace, or metacharacter-bearing. A bracketed
+ * path is the narrow case this guards: it does NOT crash the exclude compiler
+ * (`escapeRegExp` leaves `[` and `]` alone, so `docs/notes[1].md` compiles to a
+ * valid `^docs/notes[1]\.md(/|$)`), it silently masks `docs/notes1.md` and
+ * never masks the file actually withheld, while `build-staging.sh` DOES
+ * escape brackets, so the manifest and the staging pipeline disagree about
+ * which file was excluded.
+ *
+ * Interior whitespace is deliberately allowed, and the leading/trailing test
+ * is written as a trim comparison to mirror `validateExcludeText`'s
+ * `normalized !== trimmed` exactly. The two validators are one boundary read
+ * from two directions, so a path this gate refuses to WRITE that the committed
+ * file would happily be READ with is a defect: `wiki/` titles carry spaces, and
+ * the boundary file already holds such lines. Every consumer treats an exclude
+ * line as a literal path, `release exclude-regex` escaping it into an anchored
+ * regex that `grep -vE -f` and `rsync --files-from` then apply, and a space is
+ * literal in all three.
  */
 const isRejectedWithholdPath = (withholdPath: string): boolean =>
   withholdPath.length === 0 ||
   withholdPath.startsWith('#') ||
   withholdPath.startsWith('/') ||
   withholdPath.endsWith('/') ||
-  ASCII_WHITESPACE.test(withholdPath) ||
+  withholdPath !== withholdPath.trim() ||
+  LINE_BREAK.test(withholdPath) ||
   hasRejectedExcludeMetacharacter(withholdPath);
 
 /**
@@ -193,15 +213,20 @@ export const validateAnswers = (
     });
   }
 
-  const metacharacterPaths = uniqueSorted(
+  const rejectedPaths = uniqueSorted(
     withholdPaths.filter((candidate) => isRejectedWithholdPath(candidate))
   );
 
-  if (metacharacterPaths.length > 0) {
+  // Six distinct conditions reach this one branch, and they are not
+  // distinguishable from the code alone, so the message names the whole set
+  // rather than the metacharacter case the code is spelled for. Naming only
+  // that one sends a maintainer hunting for a glob character in a path whose
+  // real problem is a leading space.
+  if (rejectedPaths.length > 0) {
     errors.push({
       code: 'withhold_metacharacter',
-      message: `withhold path carries a character that changes what the exclude line masks: ${metacharacterPaths.join(', ')}`,
-      paths: metacharacterPaths,
+      message: `withhold path is not a bare literal path (empty, comment-shaped, slash-anchored, whitespace-padded, line-break-bearing, or carrying one of ${REJECTED_PATH_CHARACTERS.join('')}): ${rejectedPaths.join(', ')}`,
+      paths: rejectedPaths,
     });
   }
 

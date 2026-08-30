@@ -328,6 +328,24 @@ describe('run (answer gate)', () => {
     expect(stdio.errors.join('')).toContain('answer_not_missing');
   });
 
+  // Every wiki/ decision page carries spaces in its title, so refusing an
+  // interior space made a whole category of maintainer-only page impossible to
+  // withhold through the only writer of the boundary file.
+  test('--withhold accepts a path whose filename carries spaces', () => {
+    const page = 'wiki/decisions/Sharded CI Test Matrix.md';
+
+    seedWithUnanswered({[page]: '# page\n'});
+
+    expect(
+      runGate(['--withhold', page, '--category', '1', '--reason', 'r'])
+    ).toBe(0);
+
+    const lines = readFileSync(excludePath(), 'utf8').split('\n');
+
+    expect(lines.indexOf(page)).toBeGreaterThan(-1);
+    expect(readManifestFiles()[page]).toBeUndefined();
+  });
+
   test('a withhold path carrying a regex metacharacter is rejected', () => {
     const before = seedWithUnanswered({'docs/notes[1].md': '# notes\n'});
 
