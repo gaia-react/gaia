@@ -94,6 +94,16 @@
 # literals, because a fixture literal carrying the class on an interior line is
 # the ordinary shape rather than the exotic one.
 #
+# End of statement, not end of line, and the difference is load-bearing. A
+# top-level `;`, `&&` or `||` starts a second statement the suite executes, so a
+# line carrying one is never skipped even when it opens with a fixture writer.
+# Reading the region to end of line instead classified that second statement as
+# data and skipped a real instance on it, on the one surface this library exists
+# to arm. Top-level is what makes this safe to enforce: a separator inside a
+# quoted literal or a substitution is consumed by the walk before the test sees
+# it, which is why the hundreds of fixture bodies in this tree that contain a
+# semicolon are unaffected.
+#
 # The exclusion term on the assignment arm is the whole mechanism that keeps
 # executed shell out: a variable body later handed to `bash -c` or `eval` is
 # never data, however it was written. That is the shape that shipped a live
@@ -184,6 +194,11 @@
 #     statement is not recognized as a writer, because the redirect is read from
 #     the statement first line only.
 #   - An assignment whose value opens with a double quote is never data.
+#   - A line that opens with a fixture writer and then carries a top-level `;`,
+#     `&&` or `||` is reported whole, rather than split at the separator. The
+#     region rule answers per line, so a line that is half evidence and half
+#     executed shell is read as shell; a fixture that genuinely needs to share a
+#     line with a second statement takes a pragma.
 #
 # FAIL-OPEN, and each is a place the discriminator can hand a guard a false
 # clean:
@@ -341,7 +356,7 @@ function G_advance(line, mode,   stripped, lit, entry_open, isstruct) {
   if (entry_open) {
     G_walk(line)
     if (mode == 1 && G_region && !lit) G_mark_names(line, 0)
-    G_skip = (G_is_bats && G_region) ? 1 : 0
+    G_skip = (G_is_bats && G_region && !G_sep) ? 1 : 0
     return
   }
 
@@ -362,7 +377,7 @@ function G_advance(line, mode,   stripped, lit, entry_open, isstruct) {
   G_walk(line)
   if (!isstruct) G_classify(stripped, mode)
   if (mode == 0) G_target_block()
-  G_skip = (G_is_bats && G_region) ? 1 : 0
+  G_skip = (G_is_bats && G_region && !G_sep) ? 1 : 0
 }
 
 # G_walk(line): advance quote, substitution, backtick, heredoc and continuation
@@ -371,6 +386,7 @@ function G_advance(line, mode,   stripped, lit, entry_open, isstruct) {
 # the arm below it would misread.
 function G_walk(line,   n, i, c, nx, j, ch, delim, quoted, prev) {
   G_redir = 0
+  G_sep = 0
   n = length(line)
   for (i = 1; i <= n; i++) {
     c = substr(line, i, 1)
@@ -504,6 +520,19 @@ function G_walk(line,   n, i, c, nx, j, ch, delim, quoted, prev) {
       if (nx != "&") G_redir = 1
       continue
     }
+
+    # A top-level statement separator bounds the argument region. Everything
+    # after it on this physical line belongs to a SECOND statement, which the
+    # suite executes, so a region running to end of line would classify that
+    # shell as fixture data and skip it. Detected here, at depth zero and
+    # outside every quote frame, because the arms above have already consumed
+    # any separator sitting inside a literal or a substitution: that is what
+    # keeps the 412 fixture lines whose literal body carries a semicolon from
+    # reading as two statements. A lone `&` and a lone `|` are deliberately not
+    # separators; a pipeline is one statement, and `>&` was consumed above.
+    if (c == ";") { G_sep = 1; continue }
+    if (c == "&" && substr(line, i + 1, 1) == "&") { G_sep = 1; i++; continue }
+    if (c == "|" && substr(line, i + 1, 1) == "|") { G_sep = 1; i++; continue }
 
     # An unquoted `#` opens a comment only at the start of a word; mid-word it is
     # an ordinary character a path or a pattern may carry.

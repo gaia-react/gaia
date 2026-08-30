@@ -436,11 +436,21 @@ done
 
 if [ -n "$report" ]; then
   printf '%s' "$report"
-  # printf, not echo: the hint carries backslash escapes that echo may expand
-  # depending on the shell (SC2028). The format string is single-quoted so the
-  # sample code inside stays literal -- it is being printed, not run.
-  # shellcheck disable=SC2016
-  printf 'Fix each by writing the character portably:\n    a bracket expression: [[:digit:]], [[:space:]], [0-9]\n    a real control character from the shell: $%s\\r%s, or "$(printf %s\\r%s)"\n    or normalize ahead of the match: tr -d %s\\r%s\n' "'" "'" "'" "'" "'" "'" >&2
+  # The class-remedy footer below names the repair for a class hit and for
+  # nothing else. A run whose findings are all pragma hygiene (unused,
+  # malformed, honored nowhere) or the desync ERROR would otherwise print a
+  # remedy that has nothing to do with what actually reded, pointing the
+  # operator at the wrong fix. Gate it on at least one non-blank finding that is
+  # neither, rather than on the report merely being non-empty.
+  if printf '%s' "$report" \
+    | grep -v -e 'gaia-lint-ignore' -e ': ERROR: ' \
+    | grep -q '[^[:space:]]'; then
+    # printf, not echo: the hint carries backslash escapes that echo may expand
+    # depending on the shell (SC2028). The format string is single-quoted so the
+    # sample code inside stays literal -- it is being printed, not run.
+    # shellcheck disable=SC2016
+    printf 'Fix each by writing the character portably:\n    a bracket expression: [[:digit:]], [[:space:]], [0-9]\n    a real control character from the shell: $%s\\r%s, or "$(printf %s\\r%s)"\n    or normalize ahead of the match: tr -d %s\\r%s\n' "'" "'" "'" "'" "'" "'" >&2
+  fi
   exit 1
 fi
 

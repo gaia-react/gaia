@@ -515,17 +515,27 @@ done
 
 if [ -n "$report" ]; then
   printf '%s' "$report"
-  # printf, not echo: the hint text carries backslash escapes (`tr` operands),
-  # and echo may expand them depending on the shell (SC2028). The format string
-  # is single-quoted so the `$(...)` and `${base}` inside it stay literal -- it
-  # is sample code being printed, not code being run. Disabled on this line
-  # rather than file-wide, so a genuine SC2016 anywhere else here still fires.
-  # shellcheck disable=SC2016
-  printf 'Fix a diff hit: changed="$(git diff --name-only -z "${base}...HEAD" | tr %s\\0%s %s\\n%s)"\n' "'" "'" "'" "'" >&2
-  # The ls-files repair reads the NUL stream directly rather than translating it
-  # back to newlines, so it needs no `tr` and survives a path containing one.
-  # shellcheck disable=SC2016
-  printf 'Fix an ls-files hit: while IFS= read -r -d %s%s f; do ...; done < <(git ls-files -z <pathspecs>)\n' "'" "'" >&2
+  # The class-remedy footer below names the repair for a class hit and for
+  # nothing else. A run whose findings are all pragma hygiene (unused,
+  # malformed, honored nowhere) or the desync ERROR would otherwise print a
+  # remedy that has nothing to do with what actually reded, pointing the
+  # operator at the wrong fix. Gate it on at least one non-blank finding that is
+  # neither, rather than on the report merely being non-empty.
+  if printf '%s' "$report" \
+    | grep -v -e 'gaia-lint-ignore' -e ': ERROR: ' \
+    | grep -q '[^[:space:]]'; then
+    # printf, not echo: the hint text carries backslash escapes (`tr` operands),
+    # and echo may expand them depending on the shell (SC2028). The format string
+    # is single-quoted so the `$(...)` and `${base}` inside it stay literal -- it
+    # is sample code being printed, not code being run. Disabled on this line
+    # rather than file-wide, so a genuine SC2016 anywhere else here still fires.
+    # shellcheck disable=SC2016
+    printf 'Fix a diff hit: changed="$(git diff --name-only -z "${base}...HEAD" | tr %s\\0%s %s\\n%s)"\n' "'" "'" "'" "'" >&2
+    # The ls-files repair reads the NUL stream directly rather than translating it
+    # back to newlines, so it needs no `tr` and survives a path containing one.
+    # shellcheck disable=SC2016
+    printf 'Fix an ls-files hit: while IFS= read -r -d %s%s f; do ...; done < <(git ls-files -z <pathspecs>)\n' "'" "'" >&2
+  fi
   exit 1
 fi
 

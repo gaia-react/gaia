@@ -185,6 +185,50 @@ EOF
   [ "$(grep -cF -- "STUBCLASS" <<<"$output")" -eq 3 ]
 }
 
+# The argument region ends at the STATEMENT, which is not the same as ending at
+# the line. A second statement joined onto a fixture-writing line by a top-level
+# separator is shell the suite executes, and a region running to end of line
+# classified it as evidence and skipped it. Each separator is asserted
+# separately rather than in one loop over a list, so a spelling that regresses
+# names itself.
+@test "a top-level separator after a fixture writer ends the argument region" {
+  local sep
+  for sep in ";" "&&" "||"; do
+    cat > "$TMP/sep.bats" <<EOF
+fixture_file probe.sh 'ok' $sep echo "STUBCLASS on the second statement"
+EOF
+    probe sep.bats 1
+    grep -qF -- "sep.bats:1:" <<<"$output" || return 1
+  done
+  true
+}
+
+@test "a separator inside the fixture literal does not end the argument region" {
+  # The discriminating case, and the reason the check above reads the separator
+  # from the walk rather than from the raw text: hundreds of fixture bodies in
+  # this tree carry a semicolon inside the literal they write. Reading one of
+  # those as a second statement would report the evidence itself.
+  cat > "$TMP/inlit.bats" <<'EOF'
+fixture_file probe.sh 'a=1 ; STUBCLASS inside the literal'
+fixture_file probe.sh "b=2 && STUBCLASS inside a double-quoted literal"
+EOF
+  probe inlit.bats 1
+  grep -qF -- "inlit.bats:" <<<"$output" && return 1
+  true
+}
+
+@test "a pipeline is one statement, so a pipe does not end the argument region" {
+  # A lone `|` and a lone `&` are deliberately not separators. Pinning that
+  # keeps a later widening of the separator set from silently reporting every
+  # fixture written through a pipeline.
+  cat > "$TMP/pipe.bats" <<'EOF'
+printf '%s\n' "STUBCLASS piped into a fixture path" > "$TMP/probe.sh"
+EOF
+  probe pipe.bats 1
+  grep -qF -- "pipe.bats:" <<<"$output" && return 1
+  true
+}
+
 # ---- line numbers ----------------------------------------------------------
 
 # The one test that catches a consumer reporting NR instead of FNR. Under the

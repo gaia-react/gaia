@@ -1052,3 +1052,32 @@ EOF
   grep -qF -- "ls-files without -z" <<<"$output" && return 1
   true
 }
+
+# The class-remedy footer names the -z repair, which fixes a class hit and
+# nothing else. A run reddened only by pragma hygiene printed it anyway, sending
+# the operator to a repair that has nothing to do with what reded. Both
+# directions are pinned, because a gate that never prints the footer would
+# satisfy the first assertion alone.
+@test "the -z remedy footer is withheld on a run whose findings are all pragma hygiene" {
+  fixture_repo
+  # A clean non-bats file, because the guard hard-errors on an empty scan
+  # surface and this test is about the footer, not about that error.
+  fixture_file clean.sh $'#!/usr/bin/env bash\ntrue'
+  fixture_file hygiene.bats $'@test "a" {\n  # gaia-lint-ignore lint-git-path-quoting: nothing here to suppress\n  true\n}'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- "unused gaia-lint-ignore" <<<"$output"
+  grep -qF -- "Fix a diff hit:" <<<"$output" && return 1
+  grep -qF -- "Fix an ls-files hit:" <<<"$output" && return 1
+  true
+}
+
+@test "the -z remedy footer still prints when a real class hit is reported" {
+  fixture_repo
+  fixture_file clean.sh $'#!/usr/bin/env bash\ntrue'
+  fixture_file hit.bats $'@test "a" {\n  out="$(git ls-files "*.sh")"\n}'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- "Fix a diff hit:" <<<"$output"
+  grep -qF -- "Fix an ls-files hit:" <<<"$output"
+}
