@@ -1087,7 +1087,7 @@ AUDIT_TREE_SHA="$(git -C "$AUDIT_ROOT" rev-parse HEAD^{tree})"
 AUDIT_SELF_HEALED="false"
 ```
 
-If, during the review, you make any fix-commit (a self-heal pass), set:
+If, during the review, you repair anything in the working tree (a self-heal pass), set:
 
 ```bash
 AUDIT_SELF_HEALED="true"
