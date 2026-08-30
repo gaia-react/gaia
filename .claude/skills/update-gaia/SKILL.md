@@ -857,7 +857,7 @@ The next SessionStart hook fires the background refresher; the session after tha
 Tell the user:
 
 1. Review any conflict patches in `.gaia-merge/` and reconcile manually. Delete the patch file once resolved. If `.gaia-merge/package.json.notes` or `.gaia-merge/pnpm-workspace.yaml.notes` exists, reconcile the re-pin conflicts and decide on the suggestions, then delete it.
-2. If the `package.json` or `pnpm-workspace.yaml` merge applied any change (a dependency / `packageManager` bump, or an override / `allowBuilds` / resolution-setting change), run `pnpm install` to sync `pnpm-lock.yaml` before the quality gate.
+2. If the `package.json` or `pnpm-workspace.yaml` merge applied any change, sync `pnpm-lock.yaml` before the quality gate, but pick the command by what changed. A dependency or `packageManager` bump syncs with `pnpm install`. An `overrides`, `allowBuilds`, or resolution-setting change needs `pnpm dedupe` instead: `pnpm install` short-circuits with "Already up to date" when only the `overrides:` map moved and leaves the lockfile untouched, so a floor you just accepted would be declared in config and unapplied in the tree, with nothing red to say so (`wiki/dependencies/pnpm-overrides.md`). `pnpm dedupe` is correct for both cases, so prefer it when unsure.
 3. If any region regeneration failed, was refused, or was skipped, running the command named in the Step 9 report is a follow-up the adopter owns. Resolve whatever suppressed it first (the conflict patch for that path, most often), then run the command and re-run the roster check to confirm the region is current.
 4. Run the quality gate per `wiki/decisions/Quality Gate.md` to verify the updated code still passes.
 5. Inspect the diff (`git diff`) before committing.

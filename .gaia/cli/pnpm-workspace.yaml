@@ -67,3 +67,54 @@ allowBuilds:
 # CLI-only workspace. Pin peer mismatches as warnings, not install failures,
 # for parity with the root workspace's explicit setting.
 strictPeerDependencies: false
+
+# Dependency version overrides, the security-floor subset of root's that this
+# closure actually needs. Apply with a `pnpm dedupe` scoped to this workspace,
+# never a bare `pnpm install`, which short-circuits on an overrides-only change
+# (wiki/dependencies/pnpm-overrides.md).
+#
+# Entries here earn their place against THIS workspace's closure, on the same
+# containment doctrine the two exclusion lists above state: the relation to
+# root's list is containment, not difference, so do not sync them by copying.
+# Root's morgan floor is absent because morgan arrives through
+# @react-router/serve, which this CLI-only closure does not carry.
+#
+# These floors exist because this workspace is its own pnpm root, as the file's
+# opening comment says, so root's floors do not reach it. fast-uri is the live
+# case rather than a hypothetical one: it has no direct pin in this manifest,
+# it sat at the vulnerable 3.1.4, and it reached a patched version only as a
+# side effect of a whole-lockfile re-resolve. That is exactly the condition
+# root's own comment names, a range permitting the fix is not the same as the
+# fix landing, so with nothing holding it a later re-resolve can drop it back
+# under the patched version and say nothing.
+#
+# Retired by hand, unlike root's. Root's block points at /update-deps Phase 0
+# and Phase 6 to toggle its keys and drop the obsolete ones; those phases scope
+# themselves to the top-level overrides map in the ROOT pnpm-workspace.yaml and
+# never open this file, and no other dependency-maintenance path reads it. So
+# once these parents bump their own pins past the versions below, these entries
+# stop being floors and quietly become caps, on a workspace whose build inlines
+# its dependencies into a shipped binary. Re-check them by hand whenever this
+# workspace's lockfile is next re-resolved.
+#
+#   - cosmiconfig>js-yaml and @eslint/eslintrc>js-yaml -> 4.3.1:
+#     GHSA-5p4m-2wfm-xmqj, quadratic CPU consumption in !!omap resolution.
+#     Written as the two arrival paths rather than as a bare `js-yaml@^4.0.0`,
+#     because a workspace override outranks a DIRECT dependency as well as a
+#     transitive one: pnpm applies it to every match and rewrites the
+#     importer's own `specifier:` field, so a broad key silently clamps the
+#     `js-yaml` pin in package.json. A later advisory bump of that pin would
+#     then leave the manifest reading patched while the tree was not, with no
+#     disagreement in the lockfile diff to catch it. That pin is exact, so it
+#     cannot drift on its own and needs no floor; these two parents declare
+#     ^4.1.0 and ^4.3.0 and are the copies that can.
+#   - fast-uri -> 3.1.6: GHSA-7p8r-x3mc-p8w7, host confusion via a backslash
+#     authority introducer, plus the two earlier host-confusion advisories it
+#     supersedes. Reached through ajv (^3.0.1) in the eslint toolchain. Root
+#     pins 3.1.5, the advisory's own floor; this workspace pins the 3.1.6 its
+#     closure already resolved, because pinning down to root's value would be a
+#     downgrade that buys nothing. The two are not meant to match.
+overrides:
+  'cosmiconfig>js-yaml': 4.3.1
+  '@eslint/eslintrc>js-yaml': 4.3.1
+  fast-uri: 3.1.6

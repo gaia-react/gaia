@@ -73,7 +73,42 @@ strictPeerDependencies: false
 # Dependency version overrides. pnpm 11 reads these here; the package.json
 # "pnpm" field is no longer honored. Keys use pnpm's parent>child / version-range
 # syntax.
-overrides: {}
+#
+# All three entries below are security floors, not peer-conflict fixes, and all
+# three exist for the same reason: the vulnerable package is transitive-only and
+# its parent's declared range ALREADY admits the patched version, but nothing
+# re-resolves it. `pnpm update` addresses direct dependencies only, and
+# `pnpm dedupe` collapses duplicate resolutions that already exist; neither
+# lifts a transitive holding a single satisfying resolution already pinned in
+# the lockfile. A range permitting the fix is not the same as the fix landing,
+# so the override is the only lever. Apply with `pnpm dedupe`, never a bare
+# `pnpm install`, which short-circuits on an overrides-only change
+# (wiki/dependencies/pnpm-overrides.md).
+#
+# Each entry is expected to retire on its own once its parent bumps its own
+# pin. /update-deps Phase 0 and Phase 6 toggle every key here and drop the ones
+# whose removal no longer reintroduces an advisory, so none of these is
+# load-bearing beyond the advisory it names.
+#
+#   - js-yaml@^4.0.0 -> 4.3.1: GHSA-5p4m-2wfm-xmqj, quadratic CPU consumption
+#     in !!omap resolution. Reached through cosmiconfig (^4.1.0) and
+#     @eslint/eslintrc (^4.3.0). Scoped to the 4.x line so that a 3.x consumer,
+#     if one ever enters the tree, is not silently carried across a major.
+#     4.3.2 exists but was published 2026-08-26, inside the seven-day
+#     minimumReleaseAge window above; 4.3.1 clears the advisory and installs
+#     today.
+#   - fast-uri -> 3.1.5: GHSA-7p8r-x3mc-p8w7, host confusion via a backslash
+#     authority introducer, plus the two earlier host-confusion advisories it
+#     supersedes. Reached through ajv (^3.0.1) in the eslint toolchain.
+#   - morgan -> 1.11.0: GHSA-4vj7-5mj6-jm8m, log forging via an unneutralized
+#     :remote-user. Reached through @react-router/serve (^1.10.1), which makes
+#     this the one entry here sitting on a runtime path. 1.12.0 exists but was
+#     published 2026-08-28 and is inside the release-age window; 1.11.0 clears
+#     the advisory.
+overrides:
+  'js-yaml@^4.0.0': 4.3.1
+  fast-uri: 3.1.5
+  morgan: 1.11.0
 
 # Build-script approval. pnpm 11 replaces the onlyBuiltDependencies allowlist
 # with the allowBuilds map (true = the package may run install/build scripts).
