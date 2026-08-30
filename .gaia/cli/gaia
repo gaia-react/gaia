@@ -19477,12 +19477,28 @@ var DEGRADE_NOTES = {
 var EXIT_GH_FAILED = 1;
 var EXIT_USAGE = 2;
 var CARRIER_COUNT_LIMIT = 200;
+var pendingColorFor = (entry, live) => entry.managed && entry.color !== null && live.color.toLowerCase() !== entry.color ? entry.color : null;
 var plannedForAbsent = (entry, options) => {
-  const previous = entry.renamedFrom.find((old) => options.liveNames.has(old));
+  const previous = entry.renamedFrom.map((old) => options.liveByName.get(old)).find((live) => live !== void 0);
   if (previous !== void 0 && audienceCovers({ audience: options.audience, entryAudience: entry.audience })) {
     return {
-      actions: [{ from: previous, kind: "rename", to: entry.name }],
-      claimed: previous
+      actions: [
+        {
+          from: previous.name,
+          kind: "rename",
+          // `drift-color` cannot reach an entry whose new name is not live
+          // yet, so without this a registry edit that renames and recolors in
+          // one step lands only the name, and the leftover surfaces next run
+          // as drift the operator is free to ignore. Nothing distinguishes
+          // that leftover from a color the operator chose, so the rename
+          // resolves it in the registry's favour rather than leaving it
+          // unreconciled indefinitely, at the cost of an operator's recolor of
+          // the old name not surviving the rename.
+          registryColor: pendingColorFor(entry, previous),
+          to: entry.name
+        }
+      ],
+      claimed: previous.name
     };
   }
   const creatable = isCreatable(
@@ -19495,12 +19511,13 @@ var plannedForAbsent = (entry, options) => {
 var plannedForPresent = (entry, present) => {
   const actions = [];
   if (entry.deprecated) actions.push({ kind: "prune", name: entry.name });
-  if (entry.managed && entry.color !== null && present.color.toLowerCase() !== entry.color) {
+  const pendingColor = pendingColorFor(entry, present);
+  if (pendingColor !== null) {
     actions.push({
       kind: "drift-color",
       live: present,
       name: entry.name,
-      registryColor: entry.color
+      registryColor: pendingColor
     });
   }
   if (present.description !== entry.description) {
@@ -19516,7 +19533,6 @@ var plannedForPresent = (entry, present) => {
 var planSync = (options) => {
   const { audience, enabledFeatures, live, registry: registry2 } = options;
   const liveByName = new Map(live.map((label) => [label.name, label]));
-  const liveNames = new Set(liveByName.keys());
   const claimed = /* @__PURE__ */ new Set();
   const actions = [];
   for (const entry of registry2.labels) {
@@ -19536,7 +19552,7 @@ var planSync = (options) => {
       const planned = plannedForAbsent(entry, {
         audience,
         enabledFeatures,
-        liveNames
+        liveByName
       });
       if (planned.claimed !== null) claimed.add(planned.claimed);
       actions.push(...planned.actions);
@@ -19562,6 +19578,10 @@ var resolveBlocked = (action, options) => {
   }
   return options.carrierCount === 0 ? { kind: "blocked-removed", name: action.name } : { ...action, carrierCount: options.carrierCount };
 };
+var renameMutation = (action) => {
+  const rename = ["label", "edit", action.from, "--name", action.to];
+  return action.registryColor === null ? rename : [...rename, "--color", action.registryColor];
+};
 var mutationFor = (action, flags) => {
   if (action.kind === "create") {
     return [
@@ -19574,9 +19594,7 @@ var mutationFor = (action, flags) => {
       action.entry.description
     ];
   }
-  if (action.kind === "rename") {
-    return ["label", "edit", action.from, "--name", action.to];
-  }
+  if (action.kind === "rename") return renameMutation(action);
   if (action.kind === "drift-description") {
     return [
       "label",
@@ -19614,7 +19632,10 @@ var describeBlockedPresent = (action) => {
 };
 var describeAction = (action) => {
   if (action.kind === "create") return `create ${action.entry.name}`;
-  if (action.kind === "rename") return `rename ${action.from} to ${action.to}`;
+  if (action.kind === "rename") {
+    const renamed = `rename ${action.from} to ${action.to}`;
+    return action.registryColor === null ? renamed : `${renamed}, recoloring to ${action.registryColor}`;
+  }
   if (action.kind === "prune") return `deprecated and present: ${action.name}`;
   if (action.kind === "manual-command") return `manual: ${action.command}`;
   if (action.kind === "blocked-present") return describeBlockedPresent(action);
