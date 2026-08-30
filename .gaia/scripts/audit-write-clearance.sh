@@ -48,11 +48,11 @@
 #   --scope-digest <64-hex>
 #                  OPTIONAL, gated on a PLAIN earned write only: never
 #                  --provenance refused, never an earned write carrying
-#                  --supersede-refusal (SPEC UAT-012: both proceed unchanged),
-#                  and advisory-only for member code-audit-maintainer-prose
-#                  (contractually never-blocking, mirroring its own dirty-scope
-#                  exemption). A member resolves its review scope at one HEAD,
-#                  then finishes and writes at a later one; this carries the
+#                  --supersede-refusal (both write paths proceed unchanged),
+#                  and advisory-only for the one contractually never-blocking
+#                  member (mirroring its own dirty-scope exemption). A member
+#                  resolves its review scope at one HEAD, then finishes and
+#                  writes at a later one; this carries the
 #                  digest captured at scope resolution
 #                  (.gaia/scripts/audit-scope-digest.sh --capture) for
 #                  comparison against the digest this script derives fresh,
@@ -324,7 +324,7 @@ fi
 
 # Scope-digest staleness gate. Gated only on a PLAIN earned write: a refusal
 # is a claim that content should not merge, and suppressing THAT is the one
-# genuinely fail-open outcome available here (SPEC UAT-012), and a
+# genuinely fail-open outcome available here, and a
 # --supersede-refusal write is the member's own reasoned reversal of its prior
 # refusal, orthogonal to whether the tree moved under it since scope
 # resolution. Each arm is its own explicit refusal rather than a
@@ -332,15 +332,25 @@ fi
 # silently skipping the comparison (the fail-open shape the inert
 # `AUDIT_TREE_SHA` in the four specialists already shows the cost of).
 #
-# code-audit-maintainer-prose is exempt in both failing arms below, exactly as
-# it is already exempt from the dirty-scope withhold
-# (.claude/agents/code-audit-maintainer-prose.md:108) -- that exemption is
-# member-side prose, not a writer branch; this is the writer's FIRST
-# member-name conditional beyond DEFAULT_MEMBER. It exists because that member
-# is contractually never-blocking, so keep it on the next read of this file
-# rather than deleting it as a stray inconsistency.
+# scope_advisory names the one contractually never-blocking member so the
+# gate below can key on a plain variable rather than a member-name literal.
+# On the adopter build the naming block just below is stripped, so this stays
+# 0 unconditionally: the member cannot exist on an adopter clone, and every
+# member that DOES exist there gets the full fail-closed refusal.
+scope_advisory=0
+# gaia:maintainer-only:start
+# This member is exempt in both failing arms below, exactly as it is already
+# exempt from the dirty-scope withhold -- that exemption is member-side
+# prose, not a writer branch; this is the writer's FIRST member-name
+# conditional beyond DEFAULT_MEMBER. It exists because that member is
+# contractually never-blocking, so keep the naming on the next read of this
+# file rather than deleting it as a stray inconsistency.
+if [ "$MEMBER" = "code-audit-maintainer-prose" ]; then
+  scope_advisory=1
+fi
+# gaia:maintainer-only:end
 if [ "$PROVENANCE" = "earned" ] && [ "$SUPERSEDE_SEEN" -ne 1 ]; then
-  if [ "$MEMBER" = "code-audit-maintainer-prose" ]; then
+  if [ "$scope_advisory" -eq 1 ]; then
     if [ "$SCOPE_DIGEST_SEEN" -ne 1 ]; then
       err "review scope superseded (advisory)"
     elif [ "$SCOPE_DIGEST" != "$digest" ]; then
