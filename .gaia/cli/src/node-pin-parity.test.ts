@@ -578,7 +578,14 @@ describe('the readers behind that comparison', () => {
   // Three refusal classes, each naming only its own cause: a reader sent after
   // a repair that cannot fix the failure is what the split diagnostics exist to
   // prevent.
+  // The positive assertion leads, because two negatives alone assert nothing:
+  // `.not.toThrow(regex)` is satisfied by not throwing at all, so a test built
+  // from negatives passes with the refusal deleted, the one state its title
+  // pins.
   test('the interpolation refusal names neither version-parser cause', () => {
+    expect(() => nodeImageReferences('FROM $BASE_IMAGE')).toThrow(
+      /build-arg interpolation/
+    );
     expect(() => nodeImageReferences('FROM $BASE_IMAGE')).not.toThrow(
       /names no version/
     );
