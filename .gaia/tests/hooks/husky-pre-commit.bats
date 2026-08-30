@@ -226,7 +226,18 @@ eslint_glob_mentions() {
 # should have covered and reds the glob-to-arm guard on the key itself.
 glob_head_dirs() {
   local glob="$1" head alt
+  # A second recursive segment yields nothing, because the cut below takes the
+  # head at the FIRST `/**/`: `app/**/routes/**/*.ts` would reduce to a bare
+  # `app/` and green the `app/` arm while the key hands ESLint only
+  # app/<any>/routes/<any>/*.ts, leaving app/other.ts unlinted. That reduction
+  # carries no glob metacharacter, so the alternative validation below cannot
+  # reach it; the shape has to be refused before the cut.
+  #
+  # Refusing the shape rather than cutting at the LAST `/**/` instead: a lazy
+  # `${glob%/\*\*/*}` cut looks equivalent and reds `app/**/**/*.ts`, whose
+  # doubled globstar is the same directory as one and is legitimately `app/`.
   case "$glob" in
+    *"/**/"*"/**/"*) return 0 ;;
     *"/**/"*) head="${glob%%/\*\*/*}" ;;
     *) return 0 ;;
   esac
@@ -266,12 +277,9 @@ glob_head_dirs() {
 # fires, which is the miss this direction exists to catch. Loosening it to a
 # substring would green exactly that case.
 #
-# It catches that miss in the nested-head spelling only, which is the honest
-# limit rather than the whole class. The head is cut at the FIRST `/**/`, so
-# `app/**/routes/**/*.ts` reduces to a bare `app/`, satisfies this check, and
-# leaves app/other.ts just as unlinted. Rejecting a head that carries a glob
-# metacharacter would not reach it either: the reduction leaves `app`, which
-# carries none.
+# The other spelling of that miss, a key carrying a second recursive segment,
+# never reaches this check at all: glob_head_dirs refuses the shape and yields
+# nothing, so the key reds both directions instead of satisfying either.
 glob_covers_dir() {
   local dir="$1" glob="$2"
   glob_head_dirs "$glob" | grep -qxF -- "$dir"
@@ -386,14 +394,11 @@ arm_names_dir() {
 # shape it does not carry is exactly where the reader has been wrong, so these
 # drive the helpers directly, one case per shape rather than one representative.
 
-# The `app/**/routes/**/*.ts` case pins a reduction that is wrong on purpose,
-# and it is a pin on today's behavior rather than an endorsement of it. The head
-# is cut at the first `/**/`, so a key with a second recursive segment loses
-# everything past that first one and reduces to a bare `app/`, which then greens
-# an arm the key does not cover (#1652). Pinning it is what gives the honest
-# limit recorded above `glob_covers_dir` a mechanical anchor: without a case
-# carrying a second `/**/`, a greedy single-`%` cut would pass the whole suite
-# while silently falsifying that comment.
+# `app/**/**/*.ts` is the one case that reds if the cut below the reader's
+# second-recursive-segment refusal is swapped to a lazy `${glob%/\*\*/*}`. A
+# doubled globstar is the same directory as one, so its head is `app`, and the
+# lazy cut yields `app/**` instead. It is what keeps that refusal from looking
+# like an interchangeable spelling of the lazy cut.
 @test "glob_head_dirs reduces each head shape it can expand to that head's directories" {
   local glob expect got
   while IFS='|' read -r glob expect; do
@@ -408,16 +413,21 @@ app/**/*.{ts,tsx}|app/
 app/routes/**/*.ts|app/routes/
 {.storybook,.playwright,test}/**/*.{ts,tsx}|.storybook/ .playwright/ test/
 {app/routes,test}/**/*.ts|app/routes/ test/
-app/**/routes/**/*.ts|app/
+app/**/**/*.ts|app/
 CASES
 }
 
-# Two of these shapes read as malformed noise and are not. `app}/**/*.ts` is a
-# head carrying a closing brace with no opening one, and it is the only case
-# that reds if the metacharacter class narrows to `*{*`; `/**/*.ts` is a head
-# that reduces to empty, and it is the only case that reds if the
+# `app}/**/*.ts` and `/**/*.ts` read as malformed noise and are not. The first
+# is a head carrying a closing brace with no opening one, and it is the only
+# case that reds if the metacharacter class narrows to `*{*`; the second is a
+# head that reduces to empty, and it is the only case that reds if the
 # empty-alternative arm is dropped. Pruning either as junk retires a reject
 # arm's only cover.
+#
+# `app/**/routes/**/*.ts` is the opposite kind of case: well-formed, and legible
+# enough that the reader would happily cut it to `app/`. It is refused because
+# that reduction would be wrong rather than unreadable, and it is the only case
+# that reds if the second-recursive-segment arm is dropped.
 @test "glob_head_dirs yields nothing for a head shape it cannot expand" {
   local glob got
   while IFS= read -r glob; do
@@ -434,6 +444,7 @@ app}/**/*.ts
 /**/*.ts
 app/*.{ts,tsx}
 **/*.ts
+app/**/routes/**/*.ts
 CASES
 }
 
