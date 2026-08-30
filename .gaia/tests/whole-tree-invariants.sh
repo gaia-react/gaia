@@ -40,11 +40,11 @@
 # enumerates every ordinary suite in that directory and would need an exclusion
 # entry per suite saying nothing. The one bats member is named directly instead.
 #
-# Runtime, measured on the tree at the time of writing: the nineteen scripts
-# total ~48s, of which shell-lint.sh is ~18s and
-# check-script-capabilities.sh ~16s (it walks the invocation closure of every
-# allowlisted script), and the shard suite ~36s; the whole set measures
-# ~83-86s end to end. Every figure here is a tilde against host load, and the
+# Runtime, measured on the tree at the time of writing: the twenty scripts
+# total ~74s, of which shell-lint.sh is ~37s and
+# check-script-capabilities.sh ~17s (it walks the invocation closure of every
+# allowlisted script), and the shard suite ~34s; the whole set measures
+# ~108s end to end. Every figure here is a tilde against host load, and the
 # spread between two honest samples on different hosts is a couple of seconds
 # a member, so treat a small disagreement as noise and re-measure rather than
 # reconciling it. Time each member the way this script invokes it, the
@@ -56,8 +56,8 @@
 # That is why there is one tier rather than a fast default plus a
 # named slower tier. A split is worth its second name only once the honest
 # set is slow enough that people skip it, and an aggregate slow enough to
-# skip is worse than none; a minute and a half against the price of an audit
-# round is not that.
+# skip is worse than none; a minute and three-quarters against the price of
+# an audit round is not that.
 # Re-measure the WHOLE paragraph, not the figure being edited. Only the member
 # COUNT below is machine-checked, so every number here decays independently:
 # the shard suite's own figure nearly doubled as its W10 fixtures grew across
@@ -74,7 +74,7 @@
 # to be re-visited rather than drifting unnoticed again.
 #
 # What the lever does not catch, stated so it is not mistaken for more than it
-# is: only WTI_SCRIPTS_COUNT_ASOF is machine-checked. The word "nineteen" in the
+# is: only WTI_SCRIPTS_COUNT_ASOF is machine-checked. The word "twenty" in the
 # paragraph above is prose and nothing compares it to anything, so the same
 # drift can recur one bump later; and a member swapped for another, or simply
 # grown, holds the count, so the runtime figures can go stale with the lever
@@ -106,6 +106,7 @@ readonly WTI_SCRIPTS='.gaia/scripts/check-audit-base-derivation.sh
 .gaia/scripts/check-registry-settings-permissions.sh
 .gaia/scripts/check-registry-source-literals.sh
 .gaia/scripts/check-resolver-singleton.sh
+.gaia/scripts/check-scope-digest-adoption.sh
 .gaia/scripts/check-script-capabilities.sh
 .gaia/scripts/check-step-body-extractor-roster.sh
 .gaia/scripts/check-verb-arming-adoption.sh
@@ -120,7 +121,7 @@ readonly WTI_SCRIPTS='.gaia/scripts/check-audit-base-derivation.sh
 # The staleness lever's baseline: WTI_SCRIPTS's own member count at the time
 # the runtime paragraph above was last measured. main() compares the live
 # count against this and refuses to run on a mismatch, per that paragraph.
-readonly WTI_SCRIPTS_COUNT_ASOF=19
+readonly WTI_SCRIPTS_COUNT_ASOF=20
 
 # Members invoked as `bats <path>`. The shard partition is a whole-tree
 # invariant in the same sense as the scripts above: its input is every .bats

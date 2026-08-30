@@ -92,6 +92,7 @@ resolve-mode|read-audit-ci-config.sh --resolve-author|exec|runs the shared per-a
 workflow-present|test -f .github/workflows/code-review-audit.yml|exec|pure filesystem and git plumbing, runs verbatim
 audit-check-state|gh pr checks|static|reaches github.com for a live PR's check rows
 workflow-live|gh api repos/{owner}/{repo}/actions/workflows|static|reaches github.com for the repository's Actions configuration
+catchup-merge|git merge --no-edit origin/main|static|merges `origin/main` into this checkout
 spawn-roster|resolve-audit-spawn.sh|exec|runs verbatim against this checkout
 noop-classify|audit-noop-detect.sh --shape audit-team-member|exec|runs against a fixture root, marker and sidecar
 wave-stamp|WAVE_STAMP="$(mktemp)"|exec|runs verbatim, and the claim under test is where mktemp puts the file
