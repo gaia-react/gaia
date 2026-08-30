@@ -51,23 +51,29 @@
  *
  * An `engines.node` range this reader does not recognize, a version file that
  * is not a bare version, and a node image this reader will not score each fail
- * loudly. Only a plain tag is scored, so there are two refusal classes and they
- * fail for opposite reasons. A tag naming no version (`node`, `node:latest`,
- * `node:lts-alpine`) cannot be held to the floor at all, because it floats
- * across majors. A digest pin (`node@sha256:...` and `node:22-alpine@sha256:...`
- * alike) is the opposite, the most tightly pinned spelling Docker has, and is
- * refused because the digest is what resolves: any tag beside it names a version
- * the reference does not run. Each gets its own diagnostic, since a message
- * naming the wrong cause sends a reader after a repair that cannot fix it.
+ * loudly. Only a plain tag is scored, so there are three refusal classes and
+ * each fails for its own reason. A reference naming no version (`node`,
+ * `node:latest`, `node:lts-alpine`) cannot be held to the floor at all, because
+ * it floats across majors. A digest pin (`node@sha256:...` and
+ * `node:22-alpine@sha256:...` alike) is the opposite, the most tightly pinned
+ * spelling Docker has, and is refused because the digest is what resolves: any
+ * tag beside it names a version the reference does not run. A build-arg
+ * interpolation (`FROM $BASE_IMAGE`, `FROM ${NODE_IMAGE}:22-alpine`) names an
+ * image only Docker's own ARG scoping resolves, which this reader does not
+ * implement. Each gets its own diagnostic, since a message naming the wrong
+ * cause sends a reader after a repair that cannot fix it.
  *
  * A guard that shrugged at a spelling it could not read would go quiet exactly
- * where the drift is worst, which is why both classes throw rather than skip.
+ * where the drift is worst, which is why all three classes throw rather than
+ * skip.
  *
  * Refusing and not-matching are different outcomes and the difference is
  * load-bearing: a reference the FROM reader declines to recognize leaves the
  * checked set silently, which is the failure above, while one it recognizes and
  * cannot score reds. So the reader recognizes every `node` reference it can and
- * leaves the refusing to the version parser.
+ * leaves the refusing to the version parser, with one exception it has to keep
+ * for itself: an interpolated reference, whose image it cannot even establish
+ * to be a node image, and which the version parser therefore never sees.
  *
  * Repair, when this goes red: bring the file the failure names up to the floor.
  * The floor itself is the deliberate statement; the other three follow it.
@@ -202,7 +208,10 @@ const parseExactVersion = (label: string, contents: string): Version => {
  * qualified by a digest whatever its tag says. The first floats across majors
  * so it cannot be held to a floor; the second resolves by its digest so its tag
  * is not what runs. Holding either to a guess is worse than saying so, and each
- * throws with its own cause named.
+ * throws with its own cause named. The first diagnostic is phrased about the
+ * REFERENCE rather than about its tag, because the bare `node` spelling carries
+ * no tag at all and takes Docker's implicit `:latest`: a message naming the tag
+ * would name something that is not there.
  */
 const lowestResolutionOf = (reference: string): Version => {
   const [, separator, qualifier] = NODE_IMAGE_PATTERN.exec(reference) ?? [];
@@ -236,7 +245,7 @@ const lowestResolutionOf = (reference: string): Version => {
 
   if (!match) {
     throw new Error(
-      `Dockerfile pins ${reference}, whose tag names no version. A floating tag cannot be held to the engines.node floor.`
+      `Dockerfile pins ${reference}, which names no version. A floating reference cannot be held to the engines.node floor.`
     );
   }
 
@@ -253,14 +262,40 @@ const imageReferenceOf = (fromArguments: string): string | undefined =>
     .split(/\s+/)
     .find((token) => !token.startsWith('--'));
 
+/**
+ * A literal image reference, unchanged. Throws on a build-arg interpolation.
+ *
+ * Resolving `${NODE_IMAGE}` honestly means implementing Docker's ARG scoping
+ * and default resolution, which this guard does not do and should not grow. The
+ * remaining choice is between dropping such a reference and refusing it, and
+ * only refusing is safe: an interpolated stage that leaves the set is never
+ * compared against the floor, and the literal stages beside it keep the
+ * anti-vacuity assertion green while it goes unchecked.
+ *
+ * The `$` test is what keeps the refusal narrow enough to be correct. A
+ * reference this guard does not recognize is one it SHOULD NOT score
+ * (`FROM alpine:3.20` is a legitimate non-node stage that must keep being
+ * ignored), while an interpolated one is one it CANNOT score, and only the
+ * second earns a refusal: refusing everything unrecognized would red a correct
+ * Dockerfile.
+ */
+const refuseInterpolation = (reference: string): string => {
+  if (reference.includes('$')) {
+    throw new Error(
+      `Dockerfile pins ${reference}, a build-arg interpolation this guard cannot resolve: pin the image literally, or resolve the ARG's default and pin that.`
+    );
+  }
+
+  return reference;
+};
+
 /** Every node image reference the Dockerfile's `FROM` lines name, in file order. */
 const nodeImageReferences = (dockerfile: string): string[] =>
   [...dockerfile.matchAll(FROM_LINE_PATTERN)]
     .map(([, fromArguments = '']) => imageReferenceOf(fromArguments))
-    .filter(
-      (reference): reference is string =>
-        reference !== undefined && NODE_IMAGE_PATTERN.test(reference)
-    );
+    .filter((reference): reference is string => reference !== undefined)
+    .map((reference) => refuseInterpolation(reference))
+    .filter((reference) => NODE_IMAGE_PATTERN.test(reference));
 
 const readEnginesFloor = (): Version => {
   const manifest = JSON.parse(readRepoFile('package.json')) as {
@@ -378,8 +413,8 @@ describe('the readers behind that comparison', () => {
     // tag against the floor on a number it never named.
     'node:22x',
     'node:22.23beta',
-  ])('lowestResolutionOf refuses the versionless tag %s', (reference) => {
-    expect(() => lowestResolutionOf(reference)).toThrow(/tag names no version/);
+  ])('lowestResolutionOf refuses the versionless reference %s', (reference) => {
+    expect(() => lowestResolutionOf(reference)).toThrow(/names no version/);
   });
 
   // The second refusal class, asserted on its own message rather than folded in
@@ -401,7 +436,7 @@ describe('the readers behind that comparison', () => {
   // and a digest pin already has the tightest pin there is.
   test('each refusal names its own cause and not the other', () => {
     expect(() => lowestResolutionOf('node:lts-alpine')).toThrow(
-      /tag names no version/
+      /names no version/
     );
     expect(() => lowestResolutionOf('node:lts-alpine')).not.toThrow(
       /a digest pin/
@@ -494,6 +529,62 @@ describe('the readers behind that comparison', () => {
     expect(() =>
       nodeImageReferences(dockerfile).map(lowestResolutionOf)
     ).toThrow(/a digest pin/);
+  });
+
+  // A build-arg image is the one FROM spelling this reader refuses itself,
+  // because it is the one whose image it cannot even establish to be a node
+  // image. Dropping it takes a stage out of the checked set with no
+  // diagnostic, which is this guard's own silent-pass class one input shape
+  // further out.
+  test.each([
+    'FROM $BASE_IMAGE AS build',
+    // eslint-disable-next-line no-template-curly-in-string -- literal Docker build-arg `${ }` syntax, not JS interpolation
+    'FROM ${NODE_IMAGE}:22-alpine AS runtime',
+    // eslint-disable-next-line no-template-curly-in-string -- literal Docker build-arg `${ }` syntax, not JS interpolation
+    'FROM node:${NODE_TAG}',
+    // Non-node as far as any reader can tell, and that is the point: which
+    // image this names is exactly what cannot be determined here.
+    // eslint-disable-next-line no-template-curly-in-string -- literal Docker build-arg `${ }` syntax, not JS interpolation
+    'FROM ${BASE}',
+  ])('nodeImageReferences refuses the interpolated reference %s', (line) => {
+    expect(() => nodeImageReferences(line)).toThrow(/build-arg interpolation/);
+  });
+
+  // The refusal is narrow on purpose. `--platform=$BUILDPLATFORM` is the
+  // conventional spelling of a portable build, and its `$` sits in a flag the
+  // image reference never includes, so testing the LINE rather than the
+  // reference would red every multi-arch Dockerfile there is.
+  test('a $ inside a dropped flag is not an interpolated reference', () => {
+    expect(
+      nodeImageReferences('FROM --platform=$BUILDPLATFORM node:22-alpine AS b')
+    ).toEqual(['node:22-alpine']);
+  });
+
+  // The mixed file is what makes this shape invisible without a refusal: the
+  // literal stages keep the anti-vacuity assertion green while the interpolated
+  // stage is never scored against the floor, and no count exists to catch it.
+  test('an interpolated stage reds a file whose other stages are literal', () => {
+    const dockerfile = [
+      'ARG BASE_IMAGE=node:22.23-alpine',
+      'FROM node:22.23-alpine AS deps',
+      'FROM $BASE_IMAGE AS build',
+    ].join('\n');
+
+    expect(() => nodeImageReferences(dockerfile)).toThrow(
+      /build-arg interpolation/
+    );
+  });
+
+  // Three refusal classes, each naming only its own cause: a reader sent after
+  // a repair that cannot fix the failure is what the split diagnostics exist to
+  // prevent.
+  test('the interpolation refusal names neither version-parser cause', () => {
+    expect(() => nodeImageReferences('FROM $BASE_IMAGE')).not.toThrow(
+      /names no version/
+    );
+    expect(() => nodeImageReferences('FROM $BASE_IMAGE')).not.toThrow(
+      /a digest pin/
+    );
   });
 
   // The tag-plus-digest spelling is the conventional one, and it is the shape a
