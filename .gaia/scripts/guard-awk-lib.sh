@@ -540,9 +540,9 @@ function G_walk(line,   n, i, c, nx, j, ch, delim, quoted, prev) {
     # keeps the many tracked fixture lines whose written literal contains a
     # separator character from reading as two statements; they are the ordinary
     # case rather than the exotic one, which is why the test has to run after
-    # the walk rather than over the raw text. A lone `&` and a lone `|` are
-    # deliberately not separators; a pipeline is one statement, and `>&` was
-    # consumed above.
+    # those arms have consumed the literal, rather than over the raw text.
+    # A lone `&` and a lone `|` are deliberately not separators; a pipeline is
+    # one statement, and `>&` was consumed above.
     if (c == ";") { G_sep = 1; continue }
     if (c == "&" && substr(line, i + 1, 1) == "&") { G_sep = 1; i++; continue }
     if (c == "|" && substr(line, i + 1, 1) == "|") { G_sep = 1; i++; continue }
