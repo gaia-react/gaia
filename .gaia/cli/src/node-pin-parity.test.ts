@@ -51,9 +51,15 @@
  *
  * An `engines.node` range this reader does not recognize, a version file that
  * is not a bare version, and a node image with no numeric version to read
- * (`node`, `node:lts-alpine`, `node:latest`) each fail loudly. A floating tag
- * defeats the pin outright, and a guard that shrugged at a spelling it could not
- * read would go quiet exactly where the drift is worst.
+ * (`node`, `node:lts-alpine`, `node:latest`, `node@sha256:...`) each fail
+ * loudly. A floating tag defeats the pin outright, and a guard that shrugged at
+ * a spelling it could not read would go quiet exactly where the drift is worst.
+ *
+ * Refusing and not-matching are different outcomes and the difference is
+ * load-bearing: a reference the FROM reader declines to recognize leaves the
+ * checked set silently, which is the failure above, while one it recognizes and
+ * cannot score reds. So the reader recognizes every `node` reference it can and
+ * leaves the refusing to the version parser.
  *
  * Repair, when this goes red: bring the file the failure names up to the floor.
  * The floor itself is the deliberate statement; the other three follow it.
@@ -105,11 +111,20 @@ const VERSION_FILES = ['.node-version', '.nvmrc'] as const;
 // and the engine tries each one before failing a non-matching line.
 const FROM_LINE_PATTERN = /^[ \t]*FROM[ \t]+(\S.*)$/gim;
 
-// An image reference naming the official `node` image, with its tag captured
-// when it carries one. The optional registry/namespace prefix must end at a
-// slash, so `mynode:22` is not a match: only a whole path component spelled
-// `node` is.
-const NODE_IMAGE_PATTERN = /^(?:[^\s:]*\/)?node(?::(.+))?$/i;
+// An image reference naming the official `node` image, with whatever qualifies
+// it captured. The optional registry/namespace prefix must end at a slash, so
+// `mynode:22` is not a match: only a whole path component spelled `node` is.
+//
+// The qualifier separator is `[:@]`, not `:`, so a digest pin
+// (`node@sha256:...`) is RECOGNIZED here and refused by `lowestResolutionOf`
+// rather than filtered out of the set by this pattern. The difference is the
+// whole point: a reference this pattern rejects leaves the checked set with no
+// diagnostic, and a stage that silently stops being checked is the failure the
+// guard exists to prevent. This repo already digest-pins its GitHub Actions, so
+// a digest-pinned build stage is the direction the tree moves, not a
+// hypothetical. Allowing `:` inside the prefix admits a registry carrying a
+// port (`my-registry.io:5000/node:22-alpine`), dropped for the same reason.
+const NODE_IMAGE_PATTERN = /^(?:[^\s]*\/)?node(?:[:@](.+))?$/i;
 
 // The one `engines.node` spelling this repo uses. Deliberately narrow: a caret
 // or a compound range means something different about the ceiling as well as
@@ -326,6 +341,9 @@ describe('the readers behind that comparison', () => {
     // tag against the floor on a number it never named.
     'node:22x',
     'node:22.23beta',
+    // A digest pin names no version at all. It has to REACH here to be refused;
+    // a FROM reader that declined to recognize it would drop the stage instead.
+    'node@sha256:0000000000000000000000000000000000000000000000000000000000000000',
   ])('lowestResolutionOf refuses the unreadable reference %s', (reference) => {
     expect(() => lowestResolutionOf(reference)).toThrow(/names no version/);
   });
@@ -361,6 +379,13 @@ describe('the readers behind that comparison', () => {
     ['FROM --platform=$BUILDPLATFORM node:22-alpine', ['node:22-alpine']],
     ['FROM library/node:22-alpine', ['library/node:22-alpine']],
     ['FROM node', ['node']],
+    // Recognized so it reaches the version parser and is refused there. The
+    // regression this pins is a stage leaving the set with no diagnostic.
+    ['FROM node@sha256:abc AS runtime', ['node@sha256:abc']],
+    [
+      'FROM my-registry.io:5000/node:22-alpine',
+      ['my-registry.io:5000/node:22-alpine'],
+    ],
   ] as const)('nodeImageReferences reads %s', (line, expected) => {
     expect(nodeImageReferences(line)).toEqual(expected);
   });
@@ -388,5 +413,20 @@ describe('the readers behind that comparison', () => {
     ].join('\n');
 
     expect(nodeImageReferences(dockerfile)).toHaveLength(3);
+  });
+
+  // The mixed file is the shape that makes a dropped stage invisible: the
+  // tagged stages keep the anti-vacuity assertion green while the digest stage
+  // goes unchecked, so a count is the only thing that can catch it.
+  test('a digest-pinned stage stays in the set beside a tagged one', () => {
+    const dockerfile = [
+      'FROM node:22.23-alpine AS deps',
+      'FROM node@sha256:abc AS runtime',
+    ].join('\n');
+
+    expect(nodeImageReferences(dockerfile)).toHaveLength(2);
+    expect(() =>
+      nodeImageReferences(dockerfile).map(lowestResolutionOf)
+    ).toThrow(/names no version/);
   });
 });
