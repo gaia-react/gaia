@@ -17772,9 +17772,11 @@ var plannedForAbsent = (entry, options) => {
           // `drift-color` cannot reach an entry whose new name is not live
           // yet, so without this a registry edit that renames and recolors in
           // one step lands only the name, and the leftover surfaces next run
-          // as drift the operator is free to ignore. Carrying it here needs no
-          // `--adopt` because the registry is restating its own entry, not
-          // overruling a color the operator picked.
+          // as drift the operator is free to ignore. Nothing distinguishes
+          // that leftover from a color the operator chose, so the rename
+          // resolves it in the registry's favour rather than leaving it
+          // unreconciled indefinitely, at the cost of an operator's recolor of
+          // the old name not surviving the rename.
           registryColor: pendingColorFor(entry, previous),
           to: entry.name
         }

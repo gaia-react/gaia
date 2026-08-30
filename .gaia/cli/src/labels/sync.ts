@@ -26,9 +26,11 @@
  * `--adopt` overrides) and `prune` (never delete without `--prune-deprecated`)
  * both work this way, so "planned" never means "will be written".
  *
- * `rename` is the one write that carries a color under no flag at all, because
- * there it is the registry restating its own entry rather than the operator's
- * choice being overruled.
+ * `rename` is the one write that carries a color under no flag at all. Nothing
+ * here can tell a registry recolor from an operator's own, so a leftover on a
+ * renamed entry would sit unreconciled indefinitely; the rename resolves that
+ * ambiguity in the registry's favour. The cost is real and accepted: an
+ * operator's recolor of the old name does not survive the rename.
  */
 import type {ProcessResult} from '../ci/util/run-process.js';
 import {runGh} from '../ci/util/run-process.js';
@@ -182,9 +184,11 @@ const plannedForAbsent = (
           // `drift-color` cannot reach an entry whose new name is not live
           // yet, so without this a registry edit that renames and recolors in
           // one step lands only the name, and the leftover surfaces next run
-          // as drift the operator is free to ignore. Carrying it here needs no
-          // `--adopt` because the registry is restating its own entry, not
-          // overruling a color the operator picked.
+          // as drift the operator is free to ignore. Nothing distinguishes
+          // that leftover from a color the operator chose, so the rename
+          // resolves it in the registry's favour rather than leaving it
+          // unreconciled indefinitely, at the cost of an operator's recolor of
+          // the old name not surviving the rename.
           registryColor: pendingColorFor(entry, previous),
           to: entry.name,
         },

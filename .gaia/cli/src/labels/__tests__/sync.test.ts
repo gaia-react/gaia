@@ -330,11 +330,11 @@ describe('labels/sync planSync rename', () => {
     ).toEqual(['label', 'edit', 'needs-human-review', '--name', 'needs-human']);
   });
 
-  // A registry edit that renames and recolors in one step used to land only
-  // the name: the new name is absent, so nothing plans `drift-color` for it,
-  // and the run after the rename reports the leftover as operator drift that
-  // `--adopt` alone would clear. Renaming is the registry restating the entry,
-  // so the rename carries the color it restated.
+  // The new name is absent, so nothing plans `drift-color` for it, and without
+  // this the leftover reports next run as drift `--adopt` alone would clear.
+  // These inputs are also what an operator's own recolor of the old name
+  // produces, and the plan cannot tell the two apart: the registry wins here,
+  // so that recolor does not survive the rename. That is the accepted cost.
   test('a rename carries the registry color when the live color differs', () => {
     const actions = plan({
       live: [{color: '2da44e', description: '', name: 'debt:in-progress'}],
