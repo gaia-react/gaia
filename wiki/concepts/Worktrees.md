@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-07-23
-updated: 2026-07-25
+updated: 2026-08-30
 tags: [concept, worktree, claude, hooks, state]
 ---
 
@@ -123,6 +123,32 @@ Two couplings follow from the single symlink and are worth an author's attention
 - **The janitor consults the registry.** The session-start janitor's outlier sweep puts every `.gaia/local` child to the registry and keeps what it recognizes. It reports what it does not recognize and deletes nothing on that basis, so the report-not-delete rule is a real system property and not a claim the next sweep falsifies. It still owns reaping genuine ephemeral scratch once provably stale, and reclaiming orphaned worktrees whose branches are provably dead. The per-tree ledger directories sit outside every zone it walks.
 
 The checkout-root `.env` / `.env.*` secret files are symlinked into each worktree separately; they sit outside `.gaia/local` and are not part of this model, but the linking survives it.
+
+## The runtime's own isolation, and its two arms
+
+Everything above is GAIA's model: which tree an action belongs to, and where main is. The Claude Code runtime enforces a **separate** rule of its own on any session working inside a linked worktree, requiring that every operation be verifiably confined to that worktree, and that rule has **two arms**. Which one applies depends on how the session got into the tree, and they refuse **different** constructs. A command a dispatched agent runs without trouble can be refused outright on the main thread, so a refusal seen under one arm says nothing about the other.
+
+**The main-thread arm: a session switched in with `EnterWorktree`.** This arm reads the whole command and refuses anything it cannot statically confirm stays inside the tree, naming its own test:
+
+> This session is isolated in the worktree `<path>`, but this command is too complex to verify that it stays inside the worktree. Refusing to run it — a worktree-isolated session's git operations must target its own worktree. Split it into plain, separate commands and run them from `<path>`.
+
+The test is over the command as a whole rather than over a fixed list of constructs, so what it admits depends on what else the command does: a bare heredoc, pipe, or `&&` chain runs, and that same heredoc composed into a longer command can be refused. The shape that reliably trips it, and the one that matters here, is routing a value through the shell: capturing a command substitution into a variable (`v="$(pwd)"`), or interpolating a shell variable into a path. The repair is the one the message asks for: split into plain, separate commands and spell paths out in full, re-reading a value rather than capturing it, since shell state does not survive between calls anyway.
+
+**The dispatched-agent arm: a subagent given a working-directory override.** A Code Audit Team member, or any other agent dispatched into a worktree, is **not** held to the whole-command test. Capture-into-a-variable runs there, which matters because it is exactly what the five `code-audit-*` member specs prescribe for the gate handshake: capturing the clearance writer's printed marker path and carrying it to the status push. This arm applies a narrower per-construct rule instead, refusing a payload whose quoting it cannot verify, a `printf` string carrying unescaped apostrophes for one, with its own distinct wording:
+
+> this command runs a string through `<construct>`, which can't be verified to stay inside the worktree
+
+**Why the split is worth recording.** The member specs are written for dispatched members, and dispatched members are what execute them. Driving those same steps by hand from an `EnterWorktree` session hits the main-thread arm, and that refusal is evidence about the hand-driven case only. Generalizing it to the specs reads a prescribed command as unrunnable while the audience it is written for runs it fine, which is a real conclusion to reach and a wrong one.
+
+### The same rule seen from the Write tool
+
+Confinement is not Bash-specific. Write and Edit apply it to `file_path`, and a path under a linked worktree's `.gaia/local/**` trips it: the single symlink resolves to the main checkout, so the target leaves the tree. The wording is different again, and its advice does not fit this case, because the path given already **is** the worktree path and there is no worktree copy to redirect to:
+
+> This session is isolated in the worktree `<path>`. Edit the worktree copy of this file instead of the shared-checkout path.
+
+The identical write from Bash succeeds. That asymmetry is the whole surprise, and it stays surprising until the shared confinement rule is visible behind both tools.
+
+**`.claude/hooks/block-worktree-path-mismatch.sh` is not the source of that denial.** The hook exempts the path: `gaia_registry_classify cache/mutation-scratch` returns `ephemeral`, and the hook exits 0 for every scope but `per-tree`, so it allows the very call the runtime refuses. Attributing the refusal to the hook sends a reader to widen an exemption that is already correct, and to a fix that cannot change the outcome. The denial comes from the runtime's own isolation, and the way out is the tool, not the guard: write the path from Bash.
 
 ## What is permanent
 
