@@ -22646,7 +22646,12 @@ var REJECTED_PATH_CHARACTERS = [
   "}",
   "$"
 ];
-var ASCII_WHITESPACE = /[\t\n\v\f\r ]/;
+var hasControlCharacter = (value) => {
+  for (let index = 0; index < value.length; index += 1) {
+    if ((value.codePointAt(index) ?? 32) < 32) return true;
+  }
+  return false;
+};
 var hasRejectedExcludeMetacharacter = (value) => REJECTED_PATH_CHARACTERS.some((character) => value.includes(character));
 var uniqueSorted = (paths) => {
   const unique = [...new Set(paths)];
@@ -22661,7 +22666,7 @@ var findDuplicates = (paths) => {
   }
   return uniqueSorted([...duplicates]);
 };
-var isRejectedWithholdPath = (withholdPath) => withholdPath.length === 0 || withholdPath.startsWith("#") || withholdPath.startsWith("/") || withholdPath.endsWith("/") || ASCII_WHITESPACE.test(withholdPath) || hasRejectedExcludeMetacharacter(withholdPath);
+var isRejectedWithholdPath = (withholdPath) => withholdPath.length === 0 || withholdPath.startsWith("#") || withholdPath.startsWith("/") || withholdPath.endsWith("/") || withholdPath !== withholdPath.trim() || hasControlCharacter(withholdPath) || hasRejectedExcludeMetacharacter(withholdPath);
 var isRejectedReason = (reason) => reason.trim().length === 0 || reason.includes("\n") || reason.includes("\r");
 var parseCategoryLines = (lines) => lines.flatMap((line, headerLineIndex) => {
   const match = CATEGORY_HEADER.exec(line);
@@ -22694,14 +22699,14 @@ var validateAnswers = (answers, missing, categories) => {
       paths: duplicates
     });
   }
-  const metacharacterPaths = uniqueSorted(
+  const rejectedPaths = uniqueSorted(
     withholdPaths.filter((candidate) => isRejectedWithholdPath(candidate))
   );
-  if (metacharacterPaths.length > 0) {
+  if (rejectedPaths.length > 0) {
     errors.push({
       code: "withhold_metacharacter",
-      message: `withhold path carries a character that changes what the exclude line masks: ${metacharacterPaths.join(", ")}`,
-      paths: metacharacterPaths
+      message: `withhold path is not a bare literal path (empty, comment-shaped, slash-anchored, whitespace-padded, control-character-bearing, or carrying one of ${REJECTED_PATH_CHARACTERS.join("")}): ${rejectedPaths.join(", ")}`,
+      paths: rejectedPaths
     });
   }
   const badReasonPaths = uniqueSorted(
