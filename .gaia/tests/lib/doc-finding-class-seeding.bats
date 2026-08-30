@@ -1,13 +1,10 @@
 #!/usr/bin/env bats
 # Doc-grep coverage for the seeded language-neutral holistic finding
-# classes (holistic/hollow-assertion, holistic/uncoupled-restatement,
-# holistic/stale-figure, holistic/unarmed-guard,
-# holistic/fail-open-discovery, holistic/partial-cause-reporting,
-# holistic/dangling-reference, holistic/drifting-duplicate,
-# holistic/ambient-context-resolution, holistic/shared-state-collision,
-# holistic/unbounded-invocation, holistic/overclaimed-guarantee,
-# holistic/incomplete-enumeration, holistic/repeated-round-trip) and the
-# restored workflow bucket. Five member sidecar contracts each carry a
+# classes and the restored workflow bucket. The set is FULL_SLUGS in
+# setup(), which group C pins byte-for-byte against HOLISTIC_FINDING_CLASSES
+# in .gaia/cli/src/schemas/finding-class.ts; naming the members a second time
+# here would be a copy nothing reds on. Five member sidecar contracts each
+# carry a
 # `## Holistic class assignment` section with one assignment line per class in
 # their owning set, plus each canonical tie-break sentence separating a class
 # that member assigns from its nearest neighbour, verbatim. One side assigned
