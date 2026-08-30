@@ -518,7 +518,7 @@ if [ -n "$report" ]; then
   # The class-remedy footer below names the repair for a class hit and for
   # nothing else. A run whose findings are all pragma hygiene (unused,
   # malformed, honored nowhere) or the desync ERROR would otherwise print a
-  # remedy that has nothing to do with what actually reded, pointing the
+  # remedy that has nothing to do with what actually went red, pointing the
   # operator at the wrong fix. Gate it on at least one non-blank finding that is
   # neither, rather than on the report merely being non-empty.
   if printf '%s' "$report" \

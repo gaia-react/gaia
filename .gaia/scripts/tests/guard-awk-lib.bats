@@ -217,16 +217,32 @@ EOF
   true
 }
 
-@test "a pipeline is one statement, so a pipe does not end the argument region" {
-  # A lone `|` and a lone `&` are deliberately not separators. Pinning that
-  # keeps a later widening of the separator set from silently reporting every
-  # fixture written through a pipeline.
+@test "a pipeline is one statement, so a lone pipe and a lone ampersand do not end the region" {
+  # A lone `|` and a lone `&` are deliberately not separators. Both characters
+  # have to be IN the fixture for this to assert anything: an earlier version of
+  # this test named them and wrote neither, so widening the separator set left
+  # it green and it forbade nothing. Line 1 carries a real pipeline, line 2 a
+  # real background ampersand, and each opens a region a widened set would end.
   cat > "$TMP/pipe.bats" <<'EOF'
-printf '%s\n' "STUBCLASS piped into a fixture path" > "$TMP/probe.sh"
+printf '%s\n' "STUBCLASS piped into a fixture path" | tee "$TMP/probe.sh" > /dev/null
+fixture_file probe.sh "STUBCLASS in a backgrounded write" &
 EOF
   probe pipe.bats 1
-  grep -qF -- "pipe.bats:" <<<"$output" && return 1
+  grep -qF -- "pipe.bats:1:" <<<"$output" && return 1
+  grep -qF -- "pipe.bats:2:" <<<"$output" && return 1
   true
+}
+
+@test "the separator bound survives onto the continuation lines of the second statement" {
+  # The region ends at the separator, so the whole second statement is executed
+  # shell, not only the part that fits on the first line. A per-line suppression
+  # ended at line 1 and handed line 2 back as fixture data.
+  cat > "$TMP/cont.bats" <<'EOF'
+fixture_file probe.sh 'ok' ; echo \
+  "STUBCLASS on the continued second statement"
+EOF
+  probe cont.bats 1
+  grep -qF -- "cont.bats:2:" <<<"$output" || return 1
 }
 
 # ---- line numbers ----------------------------------------------------------

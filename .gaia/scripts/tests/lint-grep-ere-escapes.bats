@@ -737,8 +737,9 @@ EOF"
 
 # As in the sibling guard: the portable-spelling footer is the repair for a
 # class hit, so a run reddened only by pragma hygiene must not print it. Both
-# directions are pinned, because withholding it always would satisfy the first
-# assertion on its own.
+# directions are pinned, because withholding the footer unconditionally, by the
+# gate regressing to always-false or by the block being deleted, would satisfy
+# the withheld direction on its own and cost every real hit its remedy.
 @test "the portable-spelling footer is withheld on a run whose findings are all pragma hygiene" {
   fixture_repo
   # A clean non-bats file, because the guard hard-errors on an empty scan
@@ -750,4 +751,12 @@ EOF"
   grep -qF -- "unused gaia-lint-ignore" <<<"$output"
   grep -qF -- "Fix each by writing the character portably:" <<<"$output" && return 1
   true
+}
+
+@test "the portable-spelling footer still prints when a real class hit is reported" {
+  fixture_repo
+  fixture_script "grep -E 'name\tvalue' input.txt"
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- "Fix each by writing the character portably:" <<<"$output"
 }

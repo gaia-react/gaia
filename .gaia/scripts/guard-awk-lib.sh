@@ -195,10 +195,11 @@
 #     the statement first line only.
 #   - An assignment whose value opens with a double quote is never data.
 #   - A line that opens with a fixture writer and then carries a top-level `;`,
-#     `&&` or `||` is reported whole, rather than split at the separator. The
-#     region rule answers per line, so a line that is half evidence and half
-#     executed shell is read as shell; a fixture that genuinely needs to share a
-#     line with a second statement takes a pragma.
+#     `&&` or `||` is reported whole, rather than split at the separator, and so
+#     is every continuation line of that second statement. The region rule
+#     answers per line, so a line that is half evidence and half executed shell
+#     is read as shell; a fixture that genuinely needs to share a line with a
+#     second statement takes a pragma.
 #
 # FAIL-OPEN, and each is a place the discriminator can hand a guard a false
 # clean:
@@ -356,7 +357,8 @@ function G_advance(line, mode,   stripped, lit, entry_open, isstruct) {
   if (entry_open) {
     G_walk(line)
     if (mode == 1 && G_region && !lit) G_mark_names(line, 0)
-    G_skip = (G_is_bats && G_region && !G_sep) ? 1 : 0
+    if (G_sep) G_region = 0
+    G_skip = (G_is_bats && G_region) ? 1 : 0
     return
   }
 
@@ -377,7 +379,14 @@ function G_advance(line, mode,   stripped, lit, entry_open, isstruct) {
   G_walk(line)
   if (!isstruct) G_classify(stripped, mode)
   if (mode == 0) G_target_block()
-  G_skip = (G_is_bats && G_region && !G_sep) ? 1 : 0
+  # Clearing the region rather than only suppressing this line is what carries
+  # the bound onto the continuation lines of the second statement. A statement
+  # continued by a trailing backslash or by an open literal re-enters through
+  # the entry_open arm above, which reads G_region and never re-reads the
+  # separator, so a per-line suppression ended at the separator line and handed
+  # the continuation back as data.
+  if (G_sep) G_region = 0
+  G_skip = (G_is_bats && G_region) ? 1 : 0
 }
 
 # G_walk(line): advance quote, substitution, backtick, heredoc and continuation
