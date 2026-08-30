@@ -142,15 +142,18 @@ AUDIT_MERELY_SHARED_PATHS="$(cat <<'EOF'
 .claude/rules/dep-audit.md
 .claude/rules/design-baseline.md
 .claude/rules/gaia-folder.md
+.claude/rules/guards-must-fail.md
 .claude/rules/i18n.md
 .claude/rules/instruction-files.md
 .claude/rules/issue-claim.md
 .claude/rules/knip.md
 # gaia:maintainer-only:start
 .claude/rules/maintainers/github-workflow-distribution.md
+.claude/rules/maintainers/guard-and-diagnostic-surfaces.md
 .claude/rules/maintainers/hook-registration.md
 .claude/rules/maintainers/smoke.md
 # gaia:maintainer-only:end
+.claude/rules/partial-cause-reporting.md
 .claude/rules/playwright.md
 .claude/rules/react-router-docs.md
 .claude/rules/repo-relative-paths.md

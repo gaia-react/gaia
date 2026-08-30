@@ -44,6 +44,16 @@ Be far harder on a comment that NAMES a thing than on one that EXPLAINS a thing.
 
 Pointing at a rule stays allowed. Copying a rule's content into a comment does not, because the copy drifts from the rule.
 
+## Counts
+
+<!-- gaia-harden: promoted from recurring finding_class holistic/stale-figure; pruned by /gaia-audit on obsolescence/redundancy/supersession/duplication only, never for non-recurrence -->
+
+A bare count is a name for a set, and it decays the way a name does: the set grows, nothing recounts, and the number becomes a false claim a reader trusts precisely because it is specific. "Six subcommands", "the three exit codes", "all four members", in a docblock, a file header, or a bats `@test` name.
+
+Prefer the set to its cardinality. The enumeration is almost always adjacent, so name the members or point at what holds them and let the reader count. A number earns its place only when it says something the enumeration beside it does not.
+
+Where the number does carry the claim, it needs something that recounts it: a test asserting the cardinality against the live set, or a check that fails when the two disagree. That makes the number self-correcting. A count with neither is an assertion nobody is keeping, and correcting a stale one without adding the recount restarts the same decay from a fresher number.
+
 ## Editing an existing comment
 
 - **Never truncate a pointer to a bare unresolvable id.** Delete the line instead. A bare id keeps the maintenance obligation and discards the meaning, which is strictly worse than saying nothing.

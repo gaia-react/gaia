@@ -88,10 +88,12 @@
     ".claude/rules/dep-audit.md": "owned",
     ".claude/rules/design-baseline.md": "owned",
     ".claude/rules/gaia-folder.md": "owned",
+    ".claude/rules/guards-must-fail.md": "owned",
     ".claude/rules/i18n.md": "owned",
     ".claude/rules/instruction-files.md": "owned",
     ".claude/rules/issue-claim.md": "owned",
     ".claude/rules/knip.md": "owned",
+    ".claude/rules/partial-cause-reporting.md": "owned",
     ".claude/rules/playwright.md": "owned",
     ".claude/rules/pr-merge.md": "owned",
     ".claude/rules/quality-gate.md": "owned",
@@ -666,7 +668,7 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-08-26T06:30:18.345Z",
+  "generated": "2026-08-30T06:04:00.117Z",
   "regions": [
     {
       "endMarker": "<!-- gaia:audit-remit:end -->",
