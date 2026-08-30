@@ -50,12 +50,18 @@
  * # Anything unparseable reds rather than passes
  *
  * An `engines.node` range this reader does not recognize, a version file that
- * is not a bare version, and a node image this reader will not score (`node`,
- * `node:lts-alpine`, `node:latest`, and any digest pin, `node@sha256:...` and
- * `node:22-alpine@sha256:...` alike) each fail loudly. Only a plain tag is
- * scored: a digest pin resolves by its digest and ignores any tag beside it, so
- * the tag there names a version the reference does not run. A floating tag defeats the pin outright, and a guard that shrugged at
- * a spelling it could not read would go quiet exactly where the drift is worst.
+ * is not a bare version, and a node image this reader will not score each fail
+ * loudly. Only a plain tag is scored, so there are two refusal classes and they
+ * fail for opposite reasons. A tag naming no version (`node`, `node:latest`,
+ * `node:lts-alpine`) cannot be held to the floor at all, because it floats
+ * across majors. A digest pin (`node@sha256:...` and `node:22-alpine@sha256:...`
+ * alike) is the opposite, the most tightly pinned spelling Docker has, and is
+ * refused because the digest is what resolves: any tag beside it names a version
+ * the reference does not run. Each gets its own diagnostic, since a message
+ * naming the wrong cause sends a reader after a repair that cannot fix it.
+ *
+ * A guard that shrugged at a spelling it could not read would go quiet exactly
+ * where the drift is worst, which is why both classes throw rather than skip.
  *
  * Refusing and not-matching are different outcomes and the difference is
  * load-bearing: a reference the FROM reader declines to recognize leaves the
@@ -126,7 +132,7 @@ const FROM_LINE_PATTERN = /^[ \t]*FROM[ \t]+(\S.*)$/gim;
 // a digest-pinned build stage is the direction the tree moves, not a
 // hypothetical. Allowing `:` inside the prefix admits a registry carrying a
 // port (`my-registry.io:5000/node:22-alpine`), dropped for the same reason.
-const NODE_IMAGE_PATTERN = /^(?:[^\s]*\/)?node(?:[:@](.+))?$/i;
+const NODE_IMAGE_PATTERN = /^(?:[^\s]*\/)?node(?:([:@])(.+))?$/i;
 
 // The one `engines.node` spelling this repo uses. Deliberately narrow: a caret
 // or a compound range means something different about the ceiling as well as
@@ -191,28 +197,46 @@ const parseExactVersion = (label: string, contents: string): Version => {
  * The lowest version a node image reference can resolve to. A tag names a
  * prefix, so the components it omits are zero: `node:22.23` can pull `22.23.0`.
  *
- * Throws on a reference carrying no numeric version at all, `node` and
- * `node:lts-alpine` alike. Both float across major versions, so neither can be
- * held to a floor, and holding one to a guess is worse than saying so.
+ * Throws on any reference it will not score, which is two distinct classes: one
+ * carrying no numeric version at all (`node`, `node:lts-alpine`), and one
+ * qualified by a digest whatever its tag says. The first floats across majors
+ * so it cannot be held to a floor; the second resolves by its digest so its tag
+ * is not what runs. Holding either to a guess is worse than saying so, and each
+ * throws with its own cause named.
  */
 const lowestResolutionOf = (reference: string): Version => {
-  const qualifier = NODE_IMAGE_PATTERN.exec(reference)?.[1];
-  // Score a plain tag and nothing else. A qualifier carrying `@` is a digest
-  // pin, and Docker resolves such a reference BY the digest and ignores the tag
-  // beside it, so `node:22.23-alpine@sha256:<digest of a 22.19 image>` runs
-  // 22.19 whatever the tag says. Reading the tag there scores a number that
-  // does not govern what pulls, which is this guard's own silent-pass class.
+  const [, separator, qualifier] = NODE_IMAGE_PATTERN.exec(reference) ?? [];
+
+  // Score a plain tag and nothing else. A `@` anywhere past the image name is a
+  // digest pin, and Docker resolves such a reference BY the digest and ignores
+  // any tag beside it, so `node:22.23-alpine@sha256:<digest of a 22.19 image>`
+  // runs 22.19 whatever the tag says. Reading the tag there scores a number
+  // that does not govern what pulls, this guard's own silent-pass class.
   //
-  // Stated as one rule rather than as a case per spelling: `node@sha256:...`
-  // and `node:<tag>@sha256:...` are the same defect one spelling apart, and a
+  // Both the separator and the qualifier are tested because the `@` lands in a
+  // different place in each spelling: `node@sha256:...` puts it in the
+  // separator and leaves a `@`-free qualifier, while `node:<tag>@sha256:...`
+  // puts it inside the qualifier. Testing only one of the two reads the other
+  // spelling as a plain tag. They are the same defect one spelling apart, and a
   // reader that enumerates spellings is a reader the next spelling defeats.
-  const tag =
-    qualifier === undefined || qualifier.includes('@') ? undefined : qualifier;
-  const match = tag === undefined ? null : TAG_VERSION_PATTERN.exec(tag);
+  //
+  // The two refusals below name different causes because they ARE different,
+  // and the repair each one invites is different too. Telling a maintainer who
+  // digest-pinned a stage that their tag "floats" describes the opposite of
+  // what they did and points at a fix already done, so the message would send
+  // them looking for a defect that is not there.
+  if (separator === '@' || qualifier?.includes('@') === true) {
+    throw new Error(
+      `Dockerfile pins ${reference}, a digest pin. Docker resolves it by the digest and ignores any tag beside it, so this guard will not score it: drop the digest, or pin a digest whose image satisfies the engines.node floor.`
+    );
+  }
+
+  const match =
+    qualifier === undefined ? null : TAG_VERSION_PATTERN.exec(qualifier);
 
   if (!match) {
     throw new Error(
-      `Dockerfile pins ${reference}, which names no version. A floating tag cannot be held to the engines.node floor.`
+      `Dockerfile pins ${reference}, whose tag names no version. A floating tag cannot be held to the engines.node floor.`
     );
   }
 
@@ -354,15 +378,40 @@ describe('the readers behind that comparison', () => {
     // tag against the floor on a number it never named.
     'node:22x',
     'node:22.23beta',
-    // A digest pin. It has to REACH here to be refused; a FROM reader that
-    // declined to recognize it would drop the stage instead. Both spellings,
-    // because the conventional one carries a tag the reference does not
-    // resolve by, which is the harder of the two to notice.
+  ])('lowestResolutionOf refuses the versionless tag %s', (reference) => {
+    expect(() => lowestResolutionOf(reference)).toThrow(/tag names no version/);
+  });
+
+  // The second refusal class, asserted on its own message rather than folded in
+  // with the one above. A digest pin is the opposite of a floating tag, so the
+  // two causes share no diagnostic, and a shared assertion would let either
+  // message drift onto the other's inputs without the suite noticing.
+  test.each([
     'node@sha256:0000000000000000000000000000000000000000000000000000000000000000',
+    // The conventional spelling: it carries a version the reference does not
+    // resolve by, which is the harder of the two to notice.
     'node:22.23-alpine@sha256:0000000000000000000000000000000000000000000000000000000000000000',
     'library/node:22-alpine@sha256:abc',
-  ])('lowestResolutionOf refuses the unscoreable reference %s', (reference) => {
-    expect(() => lowestResolutionOf(reference)).toThrow(/names no version/);
+  ])('lowestResolutionOf refuses the digest pin %s', (reference) => {
+    expect(() => lowestResolutionOf(reference)).toThrow(/a digest pin/);
+  });
+
+  // The diagnostic has to name the cause that actually fired, because the
+  // repair each one invites is different: a versionless tag wants a version,
+  // and a digest pin already has the tightest pin there is.
+  test('each refusal names its own cause and not the other', () => {
+    expect(() => lowestResolutionOf('node:lts-alpine')).toThrow(
+      /tag names no version/
+    );
+    expect(() => lowestResolutionOf('node:lts-alpine')).not.toThrow(
+      /a digest pin/
+    );
+    expect(() => lowestResolutionOf('node:22.23-alpine@sha256:abc')).toThrow(
+      /a digest pin/
+    );
+    expect(() =>
+      lowestResolutionOf('node:22.23-alpine@sha256:abc')
+    ).not.toThrow(/names no version/);
   });
 
   // A minor-line tag does not satisfy a patch-level floor, which is the whole
@@ -444,7 +493,7 @@ describe('the readers behind that comparison', () => {
     expect(nodeImageReferences(dockerfile)).toHaveLength(2);
     expect(() =>
       nodeImageReferences(dockerfile).map(lowestResolutionOf)
-    ).toThrow(/names no version/);
+    ).toThrow(/a digest pin/);
   });
 
   // The tag-plus-digest spelling is the conventional one, and it is the shape a
@@ -458,6 +507,6 @@ describe('the readers behind that comparison', () => {
     ]);
     expect(() =>
       nodeImageReferences(dockerfile).map(lowestResolutionOf)
-    ).toThrow(/names no version/);
+    ).toThrow(/a digest pin/);
   });
 });
