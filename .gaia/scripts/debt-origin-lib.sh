@@ -2,9 +2,9 @@
 #
 # GAIA shared tech-debt provenance helper (single-sourced).
 #
-# Prints ONE HTML-comment line recording the work that surfaced a tech-debt
-# finding. It sits beside the existing `gaia-debt-key` line on a filed issue,
-# or on a waived finding's pull-request-body entry:
+# Prints ONE HTML-comment line recording the branch a tech-debt finding was
+# surfaced from. It sits beside the existing `gaia-debt-key` line on a filed
+# issue, or on a waived finding's pull-request-body entry:
 #
 #   <!-- gaia-debt-origin: branch=<b> mode=<m> unit=<u> changed=<c> head=<h> -->
 #
@@ -12,10 +12,14 @@
 # terminated. There is no version prefix, and no reader may depend on the
 # field order: the order is canonical for human readability only.
 #
-# A filed issue records what the defect is and nothing about the work that
-# surfaced it. This line is what lets a triager reading the backlog months
-# later tell which branch was under review, what that work was doing, and
-# whether the cited file was one the reviewed change had already touched.
+# A filed issue records what the defect is and nothing about where it was
+# surfaced. This line is what lets a triager reading the backlog months later
+# tell which branch the finding was surfaced from and, where the route
+# resolved one, whether the cited file was in the reviewed change's own
+# changed-file set. `mode` and `unit` are derived from the branch name, so
+# neither records who filed nor what that session was doing; the contract in
+# .claude/skills/file-tech-debt/SKILL.md states the limitation that puts on
+# a reader.
 #
 # FAIL-OPEN, deliberately inverting the fail-closed rule of the sibling
 # .gaia/scripts/audit-key-lib.sh. Where gaia_audit_key refuses to print a

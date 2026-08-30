@@ -253,7 +253,7 @@ A member can find a genuine defect in a file outside its own declared domain, a 
 
 Either way the finding is **recorded rather than lost**.
 
-When the out-of-scope arm files a tech-debt issue, the filing carries a `gaia-debt-origin` provenance line beside its dedup key, from the shared helper, so a later reader recovers which work surfaced the finding after the branch is squash-merged and deleted. The orchestrator is on the pull request's own branch with a shell, so it resolves `changed` rather than recording `unknown`. The field vocabulary and the convention table live in `.claude/skills/file-tech-debt/SKILL.md`, referenced rather than restated here. A filing is never blocked, failed, retried, or deferred because provenance is partial or absent.
+When the out-of-scope arm files a tech-debt issue, the filing carries a `gaia-debt-origin` provenance line beside its dedup key, from the shared helper, so a later reader recovers the branch the finding was surfaced from after that branch is squash-merged and deleted. The orchestrator is on the pull request's own branch with a shell, so it resolves `changed` rather than recording `unknown`. The field vocabulary and the convention table live in `.claude/skills/file-tech-debt/SKILL.md`, referenced rather than restated here. A filing is never blocked, failed, retried, or deferred because provenance is partial or absent.
 
 For `changed`, the orchestrator reuses the whole-PR fork point in the same spelling the audit machinery already computes, adding no derivation of a new shape:
 
