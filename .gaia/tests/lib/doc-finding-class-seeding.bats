@@ -131,6 +131,16 @@ setup() {
   # group C sweeping a set that silently omits it.
   PROSE_EXCLUDED_SLUGS=(hollow-assertion unarmed-guard fail-open-discovery partial-cause-reporting drifting-duplicate ambient-context-resolution shared-state-collision unbounded-invocation repeated-round-trip)
 
+  # The schema members that are NOT language-neutral: the frontend member's own
+  # app-surface dimensions, which no member's assignment section separates and
+  # which FULL_SLUGS therefore excludes. Named here so group C's schema
+  # partition test can account for every member of HOLISTIC_FINDING_CLASSES;
+  # without it FULL_SLUGS is uncoupled from the schema, and a class seeded there
+  # and named only in the frontend mirror bullet satisfies group G and group H,
+  # never enters group B's sweep, and leaves the four full-vocabulary members
+  # carrying no criterion for it with the whole suite green.
+  FRONTEND_ONLY_SLUGS=(missing-auth-check secret-exposure n-plus-one unnecessary-rerender unhandled-promise-rejection swallowed-error over-permissive-zod business-logic-in-component hardcoded-string non-null-assertion)
+
   WORKFLOW_SLUGS=(script-injection unsafe-pull-request-target unpinned-action broad-permissions)
 
   # The canonical tie-break sentences, byte-identical (FC-6). Stored once
@@ -231,6 +241,26 @@ setup() {
 # from it, and is explicitly exempt (FC-3). A whole-file check here would
 # break that mirror. In practice the prose member is the only member outside
 # any class's owning set (FC-3's table), for the classes it does not own.
+
+@test "group C: FULL_SLUGS and FRONTEND_ONLY_SLUGS account for every HOLISTIC_FINDING_CLASSES member" {
+  local expected actual schema
+  # The coupling group B depends on. Group B sweeps FULL_SLUGS, which is a hand
+  # written list; nothing else compares it to the schema, so a class seeded in
+  # HOLISTIC_FINDING_CLASSES and named only in the frontend mirror bullet passes
+  # group G (any one member naming it satisfies that), passes group H (the
+  # mirror is what it reads), and never reaches group B at all. Reading the
+  # schema's array here is what turns that silent omission red, and it reds on
+  # a retired member too, since the comparison is an equality rather than a
+  # containment.
+  schema="$(extract_array_slugs_or_fail "$FINDING_CLASS" HOLISTIC)" || return 1
+  expected="$(printf '%s\n' "$schema" | sort)"
+  actual="$(printf 'holistic/%s\n' "${FULL_SLUGS[@]}" "${FRONTEND_ONLY_SLUGS[@]}" | sort)"
+  [ "$expected" = "$actual" ] || {
+    echo "the suite's slug lists and HOLISTIC_FINDING_CLASSES disagree; a seeded class in neither list never reaches group B" >&2
+    diff <(printf '%s\n' "$expected") <(printf '%s\n' "$actual") >&2
+    return 1
+  }
+}
 
 @test "group C: PROSE_SLUGS and PROSE_EXCLUDED_SLUGS partition FULL_SLUGS exactly" {
   local expected actual
@@ -450,10 +480,9 @@ setup() {
 # that matters: its assignment section separates the language-neutral root
 # causes, its sidecar example assigns `holistic/secret-exposure`, which is not
 # among them, and the schema pointer covering the rest is release-excluded
-# reading anyway. The
-# route is asserted on the SCRUBBED text because a pointer stated only inside
-# `gaia:maintainer-only` markers is present in this tree and absent on the
-# adopter clone that needs it.
+# reading anyway. The route is asserted on the SCRUBBED text because a pointer
+# stated only inside `gaia:maintainer-only` markers is present in this tree and
+# absent on the adopter clone that needs it.
 
 @test "group I: code-audit-github-workflows.md keeps an adopter-visible route to the full holistic vocabulary" {
   local scrubbed
