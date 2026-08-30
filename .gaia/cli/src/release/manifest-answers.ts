@@ -78,21 +78,31 @@ const REJECTED_PATH_CHARACTERS = [
 ];
 
 /**
- * True when `value` carries a control character, which a withhold path may
- * never do. Two distinct
- * hazards share the class, and an interior SPACE is outside it (see
- * `isRejectedWithholdPath`):
+ * True when `value` carries a C0 control character, which a withhold path may
+ * never do. Two distinct hazards share the class, and an interior SPACE is
+ * outside it (see `isRejectedWithholdPath`):
  *
  * - A line break ends the exclude line. The CLI renders the path as its own
  *   line in `.gaia/release-exclude`, so an embedded newline emits a SECOND,
  *   uncommented line that membership never inspected: the same hazard
  *   `isRejectedReason` guards on the reason text.
- * - Every other control character, a tab among them, is C-quoted by the
+ * - Every other C0 character, a tab among them, is C-quoted by the
  *   `git ls-files` that `manifest.ts` reads (`a<TAB>b.md` lists as
  *   `"a\tb.md"`) and NOT by the `ls-files -z` that stages a release. An
  *   exclude line spelled either way therefore masks the file for exactly one
  *   of the two, which is the manifest-versus-staging disagreement this whole
  *   gate exists to prevent.
+ *
+ * **This covers the C0 subset of that second hazard and not the whole of it.**
+ * Git also C-quotes `0x7f`, a double quote, and every non-ASCII byte under the
+ * default `core.quotePath`, and none of those is rejected here or by
+ * `REJECTED_PATH_CHARACTERS`. Widening the rejection is the wrong repair: it
+ * would make a legitimately-named accented `wiki/` page unwithholdable, which
+ * is the same over-rejection that made this gate refuse a space. The root
+ * repair is for `manifest.ts` to read the NUL stream, so no caller ever sees a
+ * quoted spelling; that is tracked as gaia-react/gaia#1662, and it demotes this
+ * helper to defence in depth rather than replacing it, because a line break
+ * still has to be refused whatever the reader does.
  */
 const hasControlCharacter = (value: string): boolean => {
   // Indexed rather than spread or split: every control character is a lone
