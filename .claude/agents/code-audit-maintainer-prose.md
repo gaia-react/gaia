@@ -213,17 +213,15 @@ Every command below consumes `$AUDIT_ROOT`, and each Bash call re-runs the deriv
 **0. Sidecar (every LOCAL in-remit pass).** Before the marker, write your findings sidecar with the shared writer (see "Findings sidecar" below for the full field contract). It is your report of record, so it exists before the artifact that attests to it.
 
 ```bash
-findings_sidecar="$(bash .gaia/scripts/audit-write-findings.sh \
-  --root "$AUDIT_ROOT" \
-  --member code-audit-maintainer-prose \
-  --base "$KEY_BASE" \
-  --review-base "$BASE_SHA" \
-  --base-reason "$BASE_REASON" \
-  --anchor-tree "$ANCHOR_TREE" \
-  --findings - <<'FINDINGS'
-[ ...the findings array, one object per finding; [] when you found nothing... ]
-FINDINGS
-)"
+printf '%s' '[ ...the findings array, one object per finding; [] when you found nothing... ]' \
+  | bash .gaia/scripts/audit-write-findings.sh \
+      --root "$AUDIT_ROOT" \
+      --member code-audit-maintainer-prose \
+      --base "$KEY_BASE" \
+      --review-base "$BASE_SHA" \
+      --base-reason "$BASE_REASON" \
+      --anchor-tree "$ANCHOR_TREE" \
+      --findings -
 ```
 
 **1. Mark.** Write the earned marker with the shared writer, keyed to your own content digest, not HEAD's commit sha or tree: a sha256 over exactly the files you own (see "Remit and self-skip") plus the shared gate machinery, computed by `.claude/hooks/lib/audit-digest.sh`. It attests that you audited that CONTENT: an out-of-glob change (one that touches neither your owned glob nor a machinery file) rotates nothing in your digest, so your marker keeps validating with zero re-review. A change to a file you own, or to any machinery file, rotates your digest and invalidates your marker, and you must re-audit.
@@ -287,22 +285,20 @@ On **every LOCAL pass**, at least one finding or genuinely clean, write a findin
 **Write it with the shared writer, never by hand**, and write it **before** the marker (step 0 of the gate handshake above). The writer derives the path, validates every entry, and publishes atomically:
 
 ```bash
-findings_sidecar="$(bash .gaia/scripts/audit-write-findings.sh \
-  --root "$AUDIT_ROOT" \
-  --member code-audit-maintainer-prose \
-  --base "$KEY_BASE" \
-  --review-base "$BASE_SHA" \
-  --base-reason "$BASE_REASON" \
-  --anchor-tree "$ANCHOR_TREE" \
-  --findings - <<'FINDINGS'
-[ ...the findings array, one object per finding; [] when you found nothing... ]
-FINDINGS
-)"
+printf '%s' '[ ...the findings array, one object per finding; [] when you found nothing... ]' \
+  | bash .gaia/scripts/audit-write-findings.sh \
+      --root "$AUDIT_ROOT" \
+      --member code-audit-maintainer-prose \
+      --base "$KEY_BASE" \
+      --review-base "$BASE_SHA" \
+      --base-reason "$BASE_REASON" \
+      --anchor-tree "$ANCHOR_TREE" \
+      --findings -
 ```
 
 Pass the same `KEY_BASE` you already resolved at run start, never a second derivation. The writer keys the file with `gaia_audit_key` internally, landing it at `.gaia/local/audit/${AUDIT_KEY}.code-audit-maintainer-prose.findings.json`, and declines `findings-sidecar: declined: audit key unresolved` when the base or the branch is undeterminable. `--review-base`, `--base-reason`, and `--anchor-tree` carry the per-member decision record (the review base, the resolver's reason token, and the anchoring clearance's recorded tree) into the sidecar's `review_base` object; pass all three from the same single resolver invocation "Remit and self-skip" already made.
 
-**Stage nothing: the array goes in through the quoted heredoc above, never through a file.** Members dispatched in one parallel wave share a session scratchpad, so any fixed staging filename is a filename every member picks: one member's array reaches another member's published sidecar under that member's name, and a file left by an earlier round republishes as a fresh report. Neither is visible downstream, because the sidecar is your report of record and the no-op classifier reads it to tell a real pass from a lost one. The audit key is a base sha plus a branch slug over a shared base that advances only when a clean round stamps its trailer, so naming the staging file after it closes neither case: every co-dispatched member resolves the same key, so a key-named file is still a filename every member picks, and a round that ends without a marker advances nothing, so the re-dispatch that follows recomputes the key it just used. Keep the delimiter quoted (`<<'FINDINGS'`): that is what holds a `$` or a backtick inside your finding text literal.
+**Stage nothing: the array goes in through the single-quoted `printf` payload above, never through a file.** Members dispatched in one parallel wave share a session scratchpad, so any fixed staging filename is a filename every member picks: one member's array reaches another member's published sidecar under that member's name, and a file left by an earlier round republishes as a fresh report. Neither is visible downstream, because the sidecar is your report of record and the no-op classifier reads it to tell a real pass from a lost one. The audit key is a base sha plus a branch slug over a shared base that advances only when a clean round stamps its trailer, so naming the staging file after it closes neither case: every co-dispatched member resolves the same key, so a key-named file is still a filename every member picks, and a round that ends without a marker advances nothing, so the re-dispatch that follows recomputes the key it just used. Keep the payload in single quotes: that is what holds a `$` or a backtick inside your finding text literal, and it is why an apostrophe inside a finding is written `'\''`. Do not reach for a heredoc here: worktree isolation refuses that construct outright (`this command is too complex to verify that it stays inside the worktree`), so a heredoc form is unrunnable on any PR audited from a linked worktree and leaves each member to invent its own spelling. The writer prints the sidecar path on stdout and nothing downstream reads it, so this form captures nothing.
 
 Shape (one entry per finding; the writer rejects the write and names the offending index if any required field is missing):
 

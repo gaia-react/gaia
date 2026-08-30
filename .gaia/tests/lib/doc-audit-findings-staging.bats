@@ -23,10 +23,17 @@
 # array from stdin removes the staging file, so there is no name to collide on
 # and nothing to leave behind.
 #
-# The quoted heredoc delimiter is load-bearing rather than stylistic: finding
-# text carries `$` tokens and backticks routinely (this suite's own subject
-# matter is shell prose), and an unquoted delimiter expands them before the
-# writer ever validates the array.
+# The array reaches stdin through a single-quoted `printf` payload rather than
+# through a heredoc. Worktree isolation refuses a heredoc outright (`this
+# command is too complex to verify that it stays inside the worktree`), so on
+# any pull request audited from a linked worktree a heredoc form is unrunnable
+# and each member improvises a spelling of its own -- the drift the
+# single-writer design exists to prevent, arriving by a second route.
+#
+# The single quotes around the payload are load-bearing rather than stylistic:
+# finding text carries `$` tokens and backticks routinely (this suite's own
+# subject matter is shell prose), and a double-quoted payload expands them
+# before the writer ever validates the array.
 #
 # Nothing type-checks an agent spec and no runtime assertion fires when a
 # prescribed command drifts, so this suite is the mechanism, following
@@ -76,30 +83,32 @@ setup() {
 
 @test "every findings invocation in every spec is the stdin form" {
   # One rule, stated once: the flag appears only in the pinned form. Every line
-  # mentioning `--findings` must carry `--findings - <<'FINDINGS'` verbatim, so
-  # a staged path (`--findings /tmp/x.json`), a redirect (`--findings - < x`),
-  # and prose that hands the writer a path all fail the same way, without a
-  # second check enumerating argument shapes. An earlier form scanned only
-  # line-leading occurrences and let a separate regex reject "any first
-  # argument that is not `-`"; the redirect slipped between them. The line
-  # SHAPE is Group 3's, not this rule's: a call collapsed onto one line still
-  # carries the pinned literal and passes here, and the anchored opener count
-  # below is what rejects it.
+  # mentioning `--findings` must be `--findings -` and nothing else, so a
+  # staged path (`--findings /tmp/x.json`), a redirect (`--findings - < x`), a
+  # revived heredoc (`--findings - <<'FINDINGS'`), and prose that hands the
+  # writer a path all fail the same way, without a second check enumerating
+  # argument shapes.
+  #
+  # The pattern is anchored end-to-end rather than matched as a substring,
+  # which is what makes the redirect and the heredoc fail here: both carry
+  # `--findings -` and then keep going, so an unanchored needle would accept
+  # them. Group 3 pins the producer on the other side of the pipe; this rule
+  # owns the flag alone.
   #
   # Matching line by line rather than balancing two counts is the other half:
   # counts invite two scopes, and an anchored total compared against an
   # unanchored one is satisfiable from prose, so a spec carrying one staged
-  # invocation and one prose copy of the pinned literal balanced and passed.
+  # invocation and one prose copy of the pinned literal balances and passes.
   # This has no arithmetic to get backwards and names the offending line.
   for f in "${SPECS[@]}"; do
     local offenders
-    grep -qF -- "--findings - <<'FINDINGS'" "$f" || {
+    grep -qE -- '^[[:space:]]*--findings -[[:space:]]*$' "$f" || {
       echo "$f prescribes no sidecar write at all" >&2
       return 1
     }
-    offenders="$(grep -n -- '--findings' "$f" | grep -vF -- "--findings - <<'FINDINGS'" || true)"
+    offenders="$(grep -n -- '--findings' "$f" | grep -vE -- '^[0-9]+:[[:space:]]*--findings -[[:space:]]*$' || true)"
     [ -z "$offenders" ] || {
-      echo "$f: --findings appears outside the pinned quoted-heredoc form: $offenders" >&2
+      echo "$f: --findings appears outside the pinned stdin form: $offenders" >&2
       return 1
     }
   done
@@ -117,35 +126,45 @@ setup() {
   true
 }
 
-# --- Group 3: the heredoc itself -------------------------------------------
+# --- Group 3: the stdin producer on the other side of the pipe --------------
 
-@test "every findings heredoc is closed" {
-  # An unterminated heredoc consumes the rest of the block, so the writer
-  # never runs and the member reports a sidecar it did not write.
+@test "every findings invocation has a single-quoted printf producer" {
+  # Group 2 pins the flag; without this, `--findings -` could sit at the end of
+  # a call nothing feeds, and the writer would block on a stdin that never
+  # arrives. Counting producers against consumers is what ties the two halves
+  # of each pipeline together.
   #
-  # The opener count is anchored where the terminator count already is. Counted
-  # unanchored, one spec sentence quoting the whole invocation inline would
-  # inflate `openers` with no terminator to match it and fail a spec holding no
-  # unterminated heredoc at all. That direction fails closed, so it was noise
-  # rather than a hole, but the two counts have to share a scope to mean
-  # anything.
+  # Both counts are anchored, and to the same scope: a spec sentence quoting
+  # either half inline would otherwise inflate one side with nothing on the
+  # other to match it and fail a spec whose invocations are all well-formed.
   for f in "${SPECS[@]}"; do
-    local openers terminators
-    openers="$(grep -cE -- "^[[:space:]]*--findings - <<'FINDINGS'[[:space:]]*$" "$f" || true)"
-    terminators="$(grep -c '^FINDINGS$' "$f" || true)"
-    [ "$openers" -eq "$terminators" ] || {
-      echo "$f: $openers findings heredocs opened, $terminators closed" >&2
+    local producers consumers
+    producers="$(grep -cE -- "^printf '%s' '.*' \\\\$" "$f" || true)"
+    consumers="$(grep -cE -- '^[[:space:]]*--findings -[[:space:]]*$' "$f" || true)"
+    [ "$producers" -eq "$consumers" ] || {
+      echo "$f: $producers printf producers, $consumers --findings - consumers" >&2
       return 1
     }
   done
 }
 
-@test "no findings heredoc uses an unquoted delimiter" {
-  # An unquoted delimiter expands `$` and backticks inside the finding text
+@test "no findings payload is double-quoted" {
+  # A double-quoted payload expands `$` and backticks inside the finding text
   # before the writer validates the array, so a finding quoting shell prose
   # publishes something other than what the member wrote.
   for f in "${SPECS[@]}"; do
-    grep -qE -- "--findings - <<[^']" "$f" && return 1
+    grep -qE -- "^printf '%s' \"" "$f" && return 1
+  done
+  true
+}
+
+@test "no spec has revived the heredoc the isolation guard refuses" {
+  # The construct this suite's pinned form exists to avoid. It is subsumed by
+  # Group 2's anchored rule and kept anyway, so a revival reads as the
+  # regression it is rather than as a generic flag-shape failure: a heredoc
+  # form cannot run at all on a pull request audited from a linked worktree.
+  for f in "${SPECS[@]}"; do
+    grep -qF -- '--findings - <<' "$f" && return 1
   done
   true
 }
@@ -157,7 +176,7 @@ setup() {
 
 @test "every spec states the operative staging rule" {
   for f in "${SPECS[@]}"; do
-    grep -qF -- 'Stage nothing: the array goes in through the quoted heredoc above, never through a file.' "$f" || {
+    grep -qF -- 'Stage nothing: the array goes in through the single-quoted `printf` payload above, never through a file.' "$f" || {
       echo "$f does not state the staging rule its own command encodes" >&2
       return 1
     }
