@@ -58,4 +58,13 @@ part of this fixture set and is not committed by whatever authors the cases and 
    `reproduces_note` before scoring: a note names the condition that made the case unstable,
    and a vocabulary change that removes that condition is what retires the field rather than
    inheriting it.
-4. Re-run the three-pass classification and write a fresh `verification-record.md`.
+4. Re-run the three-pass classification over the cases the change adds, and append a round to
+   `verification-record.md` rather than replacing it. Each round is scored over the cases that
+   existed when it ran, and the rounds' scores are not summed, so an earlier round's evidence for
+   the classes it covered survives a later widening instead of being overwritten by it.
+5. A case whose runs disagree with its label is a verdict about one of three things, and which one
+   is a judgement: the criterion, the label, or the case. Where the case is at fault, because its
+   failure mode exercises a neighbouring class rather than the one it is labelled for, replace the
+   case and score the replacement on fresh runs; record the original's verdicts and the reason it
+   was replaced, since a replacement recorded without them is indistinguishable from re-rolling
+   until the answer comes out right.

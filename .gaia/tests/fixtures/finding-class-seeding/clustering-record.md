@@ -1,8 +1,8 @@
-# Clustering record: the eleven seeded language-neutral holistic classes
+# Clustering record: the seeded language-neutral holistic classes
 
-Two waves, each measured against its own corpus and each stating its own provenance
+Three waves, each measured against its own corpus and each stating its own provenance
 bound. The first wave's section is unchanged; the second amends exactly one of its
-verdicts and says so.
+verdicts and says so; the third amends none of either.
 
 ## Wave 1: the first six classes
 
@@ -166,9 +166,97 @@ reference and the self-referential status claim. Neither was measured against th
 corpus, so wave 1's counts and earning conditions for them are still the current record.
 The habitat bound at the end of this file is unchanged and governs both waves.
 
-## The habitat bound (both waves)
+## Wave 3: the third three classes
+
+### Provenance, read this before any count below
+
+- A **third corpus**, not comparable with either wave above and not addable to them.
+  Wave 1 read surviving audit sidecars plus pull-request bodies; wave 2 read the
+  `tech-debt` issue tracker. Wave 3 reads the **60 merged pull requests** inside the
+  rolling 90-day window whose published findings block carried at least one finding
+  stamped with the fallback, plus the 53 audit sidecars surviving on disk at the time of
+  reading.
+- Counts are distinct pull requests inside that one window, so the recurrence bar of 3
+  applies directly and no count is diluted by age.
+- The finding text comes from the **accepted-residual and out-of-scope sections of the
+  pull-request bodies**, which is the only place a classless finding's prose survives: a
+  published findings block carries a class, a severity, and area tags, and no text. 50 of
+  the 60 pull requests carry such a section; the other 10 contribute a block-level count
+  and nothing readable, so they are outside every count below.
+- Every count was read by hand from those sections. **Therefore every count is a floor**,
+  for the same reason both earlier waves' are: a finding fixed inside a review round
+  leaves no residual section to be read from.
+- A single pull request can contribute to two families through two different findings,
+  and two below do.
+
+### Per-class counts
+
+| Class | Distinct PRs | Basis |
+| --- | --- | --- |
+| `holistic/overclaimed-guarantee` | 10 | largest family in this corpus; the residual sections name it in their own words ("overstates", "over-generalizes", "claims slightly more than the code establishes") |
+| `holistic/incomplete-enumeration` | 5 | consistently a named list with no hedge token, never a bare cardinal |
+| `holistic/repeated-round-trip` | 4 | splits between a per-element spawn and a second call for a field the first could carry |
+
+All three clear the bar on frequency and on assignability; none needs the frequency
+exception wave 1 granted `holistic/partial-cause-reporting`.
+
+### Why these three were not already absorbed
+
+Each was checked against the class the residual sections' own language sits nearest to,
+and the boundary holds on something an assigner reads off a single finding:
+
+- `holistic/overclaimed-guarantee` against `holistic/uncoupled-restatement`. The seeded
+  class requires the sentence to disagree with the implementation behind a greppable
+  identifier, so a reader acting on it acts wrongly. The instances here do not disagree:
+  they hold for the case in front of the writer and fail for a sibling case the same
+  sentence covers, which is why their own auditors graded them "not a false claim". The
+  discriminator is whether the sentence is wrong or merely wider than what it rests on.
+- `holistic/incomplete-enumeration` against `holistic/stale-figure`. The seeded class is
+  scoped to a bare count, tally, or cardinality. Every instance here names members rather
+  than counting them, and the omission is a missing name, not a wrong number. TB-6
+  separates the pair on that alone.
+- `holistic/repeated-round-trip` against `holistic/unbounded-invocation`. The seeded class
+  is an absent ceiling. Every instance here has a ceiling and a multiplier: the work is
+  bounded, the result is one value, and the invocation count carries a factor the result
+  does not. On the frontend surface it is separated a second time against the already-seeded
+  n-plus-one, which is scoped to a data query multiplied across a rendered collection.
+
+### The rejected shapes, and what would change the answer
+
+- **A deliberate idiom carrying no in-file suppression directive**, the largest single
+  family in this corpus by raw instance count: an analyzer reports a diagnostic on a
+  construct the tree intends, at a tier below the gate's own enforced floor, and each
+  reader re-adjudicates it. Rejected on **remedy**, not on frequency or assignability.
+  This repository has disposed of the family the same way every time it appeared, on the
+  stated ground that per-line directives for a class the gate does not enforce add noise
+  without removing risk. Seeding it would put a drafting candidate in front of a decision
+  already taken repeatedly against it. Earns seeding if the gate's enforced floor drops to
+  the tier these are reported at, which makes the same instances live.
+- **A text edit landing in a hand-wrapped block without reflowing it**, on 4 distinct
+  pull requests, rejected on **what it would institutionalize**. Every instance is a
+  residual from a round that rewrote prose an earlier round of the same pull request had
+  written, and that is the enrichment shape the merge workflow's own stopping rule exists
+  to end. A class here would give the spiral a recurrence signal to feed on. Earns
+  reconsideration if instances appear on prose no audit round authored.
+- **A classifier's terminal arm asserting a verdict it never established**, on 2 distinct
+  pull requests, rejected on **frequency** alone: under the bar, and the shape is
+  otherwise crisp. It is distinct from `holistic/partial-cause-reporting`, whose own
+  Not-clause pushes a detection gap out of that class and leaves this one with no home.
+  Earns seeding at 3 distinct pull requests inside one window.
+
+### What wave 3 does not revisit
+
+Neither earlier wave's verdicts are reopened here. Wave 1's deictic-or-positional
+reference and self-referential status claim, and wave 2's text-pattern-match-standing-in-for-a-grammar,
+were not measured against this corpus, so their counts and earning conditions stand as
+those waves recorded them.
+
+## The habitat bound (all waves)
 
 An audit member reviews the repository tree. Nothing in the instruction, harness, or
 workflow surfaces reads a pull-request or issue body at all, so a defect living only
 there is invisible to the recording mechanism as well as to any path-scoped rule or
-tree lint. No class seeded here implies coverage of a surface no member reviews.
+tree lint. No class seeded here implies coverage of a surface no member reviews. Wave 3
+reads pull-request bodies as its **corpus** and this bound is unchanged by that: the
+bodies are where the findings' text survives, and every finding they record was found by
+a member reading the tree.

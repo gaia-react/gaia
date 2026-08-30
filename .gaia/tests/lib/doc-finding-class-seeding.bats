@@ -1,17 +1,19 @@
 #!/usr/bin/env bats
-# Doc-grep coverage for the eleven seeded language-neutral holistic finding
+# Doc-grep coverage for the seeded language-neutral holistic finding
 # classes (holistic/hollow-assertion, holistic/uncoupled-restatement,
 # holistic/stale-figure, holistic/unarmed-guard,
 # holistic/fail-open-discovery, holistic/partial-cause-reporting,
 # holistic/dangling-reference, holistic/drifting-duplicate,
 # holistic/ambient-context-resolution, holistic/shared-state-collision,
-# holistic/unbounded-invocation) and the restored workflow bucket. Five
-# member sidecar contracts each carry a `## Holistic class assignment`
-# section with one assignment line per class in their owning set, plus each
-# canonical tie-break sentence separating a class that member assigns from its
-# nearest neighbour, verbatim. One side assigned is enough: the prose member
-# carries TB-1 because it assigns uncoupled-restatement and has to be steered
-# off hollow-assertion, which it does not assign.
+# holistic/unbounded-invocation, holistic/overclaimed-guarantee,
+# holistic/incomplete-enumeration, holistic/repeated-round-trip) and the
+# restored workflow bucket. Five member sidecar contracts each carry a
+# `## Holistic class assignment` section with one assignment line per class in
+# their owning set, plus each canonical tie-break sentence separating a class
+# that member assigns from its nearest neighbour, verbatim. One side assigned
+# is enough: the prose member carries TB-1 because it assigns
+# uncoupled-restatement and has to be steered off hollow-assertion, which it
+# does not assign.
 # `code-audit-github-workflows.md` carries a second `## Workflow class
 # assignment` section for the four `workflow/*` classes.
 #
@@ -115,26 +117,30 @@ setup() {
   HEADING="## Holistic class assignment"
   WORKFLOW_HEADING="## Workflow class assignment"
 
-  # The eleven seeded language-neutral slugs (bare, no prefix). Every member
-  # below except the prose member owns all eleven; the prose member owns only
-  # the three that judge whether prose is true of the machinery it names
-  # (FC-3). The other eight name defects of executable logic, which none of
-  # that member's dimensions measure.
-  FULL_SLUGS=(hollow-assertion uncoupled-restatement stale-figure unarmed-guard fail-open-discovery partial-cause-reporting dangling-reference drifting-duplicate ambient-context-resolution shared-state-collision unbounded-invocation)
-  PROSE_SLUGS=(uncoupled-restatement stale-figure dangling-reference)
-  # The eight classes the prose member does not own (FC-3's exclusion), used
-  # by group C's exclusivity check.
-  PROSE_EXCLUDED_SLUGS=(hollow-assertion unarmed-guard fail-open-discovery partial-cause-reporting drifting-duplicate ambient-context-resolution shared-state-collision unbounded-invocation)
+  # The seeded language-neutral slugs (bare, no prefix). Every member below
+  # except the prose member owns all of them; the prose member owns only the
+  # ones that judge whether prose is true of the machinery it names (FC-3).
+  # The rest name defects of executable logic, which none of that member's
+  # dimensions measure.
+  FULL_SLUGS=(hollow-assertion uncoupled-restatement stale-figure unarmed-guard fail-open-discovery partial-cause-reporting dangling-reference drifting-duplicate ambient-context-resolution shared-state-collision unbounded-invocation overclaimed-guarantee incomplete-enumeration repeated-round-trip)
+  PROSE_SLUGS=(uncoupled-restatement stale-figure dangling-reference overclaimed-guarantee incomplete-enumeration)
+  # The classes the prose member does not own (FC-3's exclusion), used by
+  # group C's exclusivity check. Spelled out rather than derived from the two
+  # lists above, and group C's partition test asserts the three agree: a slug
+  # added to FULL_SLUGS and to neither ownership list would otherwise leave
+  # group C sweeping a set that silently omits it.
+  PROSE_EXCLUDED_SLUGS=(hollow-assertion unarmed-guard fail-open-discovery partial-cause-reporting drifting-duplicate ambient-context-resolution shared-state-collision unbounded-invocation repeated-round-trip)
 
   WORKFLOW_SLUGS=(script-injection unsafe-pull-request-target unpinned-action broad-permissions)
 
-  # The five canonical tie-break sentences, byte-identical (FC-6). Stored
-  # once here so each appears once in the suite, not once per member.
+  # The canonical tie-break sentences, byte-identical (FC-6). Stored once
+  # here so each appears once in the suite, not once per member.
   TB1='A check that cannot fail is a hollow assertion; a sentence a reader would act wrongly on is an uncoupled restatement.'
   TB2='A bare count or cardinality is a stale figure; any other disagreeing claim is an uncoupled restatement.'
   TB3='A discarded exit status is the already-seeded swallowed error; an element that never entered the scanned set is a fail-open discovery.'
   TB4='A pointer is a dangling reference when the thing it points at is absent under every name; it is an uncoupled restatement when that thing exists and the pointer names or describes it wrongly.'
   TB5='This pair separates a wrong element from a wrong root: a set missing a member is the fail-open discovery, a set gathered from the wrong root, base, or repository is the ambient-context resolution.'
+  TB6='A sentence presenting a subset as the whole set is an incomplete enumeration; any other sentence claiming more than its mechanism establishes is an overclaimed guarantee.'
 
   # The banned history vocabulary (FC-2): no definition line may turn on
   # when a disagreement began, only on the disagreement itself.
@@ -177,7 +183,7 @@ setup() {
 # (TST-007). A bare grep over the whole file would pass on a slug dropped
 # anywhere in the file; extract the section first, always. -----------------
 
-@test "group B: code-audit-frontend.md's assignment lines carry slug, criterion, and Not-clause together for all eleven classes" {
+@test "group B: code-audit-frontend.md's assignment lines carry slug, criterion, and Not-clause together for every language-neutral class" {
   local section slug
   section="$(extract_named_section "$FRONTEND" "$HEADING")"
   for slug in "${FULL_SLUGS[@]}"; do
@@ -185,7 +191,7 @@ setup() {
   done
 }
 
-@test "group B: code-audit-github-workflows.md's assignment lines carry slug, criterion, and Not-clause together for all eleven classes" {
+@test "group B: code-audit-github-workflows.md's assignment lines carry slug, criterion, and Not-clause together for every language-neutral class" {
   local section slug
   section="$(extract_named_section "$WORKFLOWS" "$HEADING")"
   for slug in "${FULL_SLUGS[@]}"; do
@@ -193,7 +199,7 @@ setup() {
   done
 }
 
-@test "group B: code-audit-maintainer-node.md's assignment lines carry slug, criterion, and Not-clause together for all eleven classes" {
+@test "group B: code-audit-maintainer-node.md's assignment lines carry slug, criterion, and Not-clause together for every language-neutral class" {
   local section slug
   section="$(extract_named_section "$NODE" "$HEADING")"
   for slug in "${FULL_SLUGS[@]}"; do
@@ -201,7 +207,7 @@ setup() {
   done
 }
 
-@test "group B: code-audit-maintainer-shell.md's assignment lines carry slug, criterion, and Not-clause together for all eleven classes" {
+@test "group B: code-audit-maintainer-shell.md's assignment lines carry slug, criterion, and Not-clause together for every language-neutral class" {
   local section slug
   section="$(extract_named_section "$SHELL_MEMBER" "$HEADING")"
   for slug in "${FULL_SLUGS[@]}"; do
@@ -209,7 +215,7 @@ setup() {
   done
 }
 
-@test "group B: code-audit-maintainer-prose.md's assignment lines carry slug, criterion, and Not-clause together for its three owned classes" {
+@test "group B: code-audit-maintainer-prose.md's assignment lines carry slug, criterion, and Not-clause together for its owned classes" {
   local section slug
   section="$(extract_named_section "$PROSE" "$HEADING")"
   for slug in "${PROSE_SLUGS[@]}"; do
@@ -224,9 +230,25 @@ setup() {
 # "Finding classification"), which restates the schema rather than assigning
 # from it, and is explicitly exempt (FC-3). A whole-file check here would
 # break that mirror. In practice the prose member is the only member outside
-# any class's owning set (FC-3's table), for the eight classes it does not own.
+# any class's owning set (FC-3's table), for the classes it does not own.
 
-@test "group C: code-audit-maintainer-prose.md's Holistic class assignment section assigns none of the eight classes outside its owning set" {
+@test "group C: PROSE_SLUGS and PROSE_EXCLUDED_SLUGS partition FULL_SLUGS exactly" {
+  local expected actual
+  # The exclusivity test below sweeps PROSE_EXCLUDED_SLUGS, so a slug added to
+  # FULL_SLUGS and to neither ownership list leaves that sweep silently short:
+  # green, and blind to exactly the class nobody assigned an owner. Compare the
+  # union against FULL_SLUGS rather than counting either list, so a slug landing
+  # in both lists at once reds here too.
+  expected="$(printf '%s\n' "${FULL_SLUGS[@]}" | sort)"
+  actual="$(printf '%s\n' "${PROSE_SLUGS[@]}" "${PROSE_EXCLUDED_SLUGS[@]}" | sort)"
+  [ "$expected" = "$actual" ] || {
+    echo "PROSE_SLUGS + PROSE_EXCLUDED_SLUGS do not partition FULL_SLUGS" >&2
+    diff <(printf '%s\n' "$expected") <(printf '%s\n' "$actual") >&2
+    return 1
+  }
+}
+
+@test "group C: code-audit-maintainer-prose.md's Holistic class assignment section assigns none of the classes outside its owning set" {
   local section slug
   section="$(extract_named_section "$PROSE" "$HEADING")"
   for slug in "${PROSE_EXCLUDED_SLUGS[@]}"; do
@@ -240,7 +262,7 @@ setup() {
 
 # --- Group D: tie-breaks, verbatim (grep -Fq, so a paraphrase fails) ------
 
-@test "group D: code-audit-frontend.md's section carries all five tie-break sentences verbatim" {
+@test "group D: code-audit-frontend.md's section carries every tie-break sentence verbatim" {
   local section
   section="$(extract_named_section "$FRONTEND" "$HEADING")"
   grep -Fq -- "$TB1" <<<"$section" || { echo "TB-1 missing from $FRONTEND" >&2; return 1; }
@@ -248,9 +270,10 @@ setup() {
   grep -Fq -- "$TB3" <<<"$section" || { echo "TB-3 missing from $FRONTEND" >&2; return 1; }
   grep -Fq -- "$TB4" <<<"$section" || { echo "TB-4 missing from $FRONTEND" >&2; return 1; }
   grep -Fq -- "$TB5" <<<"$section" || { echo "TB-5 missing from $FRONTEND" >&2; return 1; }
+  grep -Fq -- "$TB6" <<<"$section" || { echo "TB-6 missing from $FRONTEND" >&2; return 1; }
 }
 
-@test "group D: code-audit-github-workflows.md's section carries all five tie-break sentences verbatim" {
+@test "group D: code-audit-github-workflows.md's section carries every tie-break sentence verbatim" {
   local section
   section="$(extract_named_section "$WORKFLOWS" "$HEADING")"
   grep -Fq -- "$TB1" <<<"$section" || { echo "TB-1 missing from $WORKFLOWS" >&2; return 1; }
@@ -258,9 +281,10 @@ setup() {
   grep -Fq -- "$TB3" <<<"$section" || { echo "TB-3 missing from $WORKFLOWS" >&2; return 1; }
   grep -Fq -- "$TB4" <<<"$section" || { echo "TB-4 missing from $WORKFLOWS" >&2; return 1; }
   grep -Fq -- "$TB5" <<<"$section" || { echo "TB-5 missing from $WORKFLOWS" >&2; return 1; }
+  grep -Fq -- "$TB6" <<<"$section" || { echo "TB-6 missing from $WORKFLOWS" >&2; return 1; }
 }
 
-@test "group D: code-audit-maintainer-node.md's section carries all five tie-break sentences verbatim" {
+@test "group D: code-audit-maintainer-node.md's section carries every tie-break sentence verbatim" {
   local section
   section="$(extract_named_section "$NODE" "$HEADING")"
   grep -Fq -- "$TB1" <<<"$section" || { echo "TB-1 missing from $NODE" >&2; return 1; }
@@ -268,9 +292,10 @@ setup() {
   grep -Fq -- "$TB3" <<<"$section" || { echo "TB-3 missing from $NODE" >&2; return 1; }
   grep -Fq -- "$TB4" <<<"$section" || { echo "TB-4 missing from $NODE" >&2; return 1; }
   grep -Fq -- "$TB5" <<<"$section" || { echo "TB-5 missing from $NODE" >&2; return 1; }
+  grep -Fq -- "$TB6" <<<"$section" || { echo "TB-6 missing from $NODE" >&2; return 1; }
 }
 
-@test "group D: code-audit-maintainer-shell.md's section carries all five tie-break sentences verbatim" {
+@test "group D: code-audit-maintainer-shell.md's section carries every tie-break sentence verbatim" {
   local section
   section="$(extract_named_section "$SHELL_MEMBER" "$HEADING")"
   grep -Fq -- "$TB1" <<<"$section" || { echo "TB-1 missing from $SHELL_MEMBER" >&2; return 1; }
@@ -278,14 +303,16 @@ setup() {
   grep -Fq -- "$TB3" <<<"$section" || { echo "TB-3 missing from $SHELL_MEMBER" >&2; return 1; }
   grep -Fq -- "$TB4" <<<"$section" || { echo "TB-4 missing from $SHELL_MEMBER" >&2; return 1; }
   grep -Fq -- "$TB5" <<<"$section" || { echo "TB-5 missing from $SHELL_MEMBER" >&2; return 1; }
+  grep -Fq -- "$TB6" <<<"$section" || { echo "TB-6 missing from $SHELL_MEMBER" >&2; return 1; }
 }
 
-@test "group D: code-audit-maintainer-prose.md's section carries TB-1, TB-2 and TB-4, and TB-3 and TB-5 appear nowhere in the whole file" {
+@test "group D: code-audit-maintainer-prose.md's section carries TB-1, TB-2, TB-4 and TB-6, and TB-3 and TB-5 appear nowhere in the whole file" {
   local section
   section="$(extract_named_section "$PROSE" "$HEADING")"
   grep -Fq -- "$TB1" <<<"$section" || { echo "TB-1 missing from $PROSE" >&2; return 1; }
   grep -Fq -- "$TB2" <<<"$section" || { echo "TB-2 missing from $PROSE" >&2; return 1; }
   grep -Fq -- "$TB4" <<<"$section" || { echo "TB-4 missing from $PROSE" >&2; return 1; }
+  grep -Fq -- "$TB6" <<<"$section" || { echo "TB-6 missing from $PROSE" >&2; return 1; }
   # TB-3 pairs fail-open-discovery with swallowed-error and TB-5 pairs it with
   # ambient-context-resolution; the prose member assigns none of those three
   # (FC-6's site table), so both are checked absent from the whole file rather
@@ -420,9 +447,10 @@ setup() {
 # code-audit-frontend.md's mirror satisfies it alone. So nothing above pins
 # that a member which ASSIGNS holistic classes can reach the ones its own
 # assignment section leaves out. code-audit-github-workflows.md is the case
-# that matters: its assignment section separates eleven root causes, its sidecar
-# example assigns `holistic/secret-exposure`, which is not one of the eleven, and
-# the schema pointer covering the rest is release-excluded reading anyway. The
+# that matters: its assignment section separates the language-neutral root
+# causes, its sidecar example assigns `holistic/secret-exposure`, which is not
+# among them, and the schema pointer covering the rest is release-excluded
+# reading anyway. The
 # route is asserted on the SCRUBBED text because a pointer stated only inside
 # `gaia:maintainer-only` markers is present in this tree and absent on the
 # adopter clone that needs it.

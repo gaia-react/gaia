@@ -319,8 +319,11 @@ The holistic bucket names language-neutral root causes, so a class here is assig
 - `holistic/ambient-context-resolution`: a step derives the subject it acts on (the commit, the base ref, the repository) from ambient state such as `git rev-parse HEAD`, the default branch, or the runner's working directory rather than from the event payload that names it, so the step acts correctly on the wrong commit, branch, or repository. Not a step that reads the payload and computes a wrong answer from it.
 - `holistic/shared-state-collision`: jobs or runs that can overlap write one artifact name, cache key, status context, or comment anchor carrying nothing that separates them, so one run's record replaces another's. Not a race inside a single job's own step order, where no second run participates.
 - `holistic/unbounded-invocation`: a step runs a network fetch, install, or scan with no `timeout-minutes`, no retry ceiling, and no bound on the input it walks, so a slow mirror or a large input reds a required check for a reason the check never names. Not a declared bound that is merely set to the wrong value.
+- `holistic/overclaimed-guarantee`: a comment, job name, or step name states what a mechanism buys in terms wider than the YAML establishes, as with a cache key credited with covering every input that changes the result, or a `timeout-minutes` credited with attribution it does not produce, so a maintainer relies on cover the step does not give. Not a claim that disagrees with the YAML outright, which a maintainer acts wrongly on and is an uncoupled restatement.
+- `holistic/incomplete-enumeration`: a comment enumerates a set (the workflows a filter excludes, the suites a matrix leg drives, the checks a gate requires) and presents that list as the whole of it while the set carries members it omits, so a maintainer pruning or extending the set reads a boundary narrower than the real one. Not a bare count disagreeing with what it counts, which is a stale figure.
+- `holistic/repeated-round-trip`: a step issues the same API call, checkout, or file parse once per matrix leg, per item, or per field where one call returns all of it, so each run pays a multiplier the result does not require. Not work with no ceiling on its cost at all, which is an unbounded invocation.
 
-Five pairs sit close enough together to be worth deciding once rather than per finding. This member may assign either side of all five, so all five tie-breaks hold here:
+Six pairs sit close enough together to be worth deciding once rather than per finding. This member may assign either side of all six, so every tie-break holds here:
 
 A check that cannot fail is a hollow assertion; a sentence a reader would act wrongly on is an uncoupled restatement.
 
@@ -331,6 +334,8 @@ A discarded exit status is the already-seeded swallowed error; an element that n
 A pointer is a dangling reference when the thing it points at is absent under every name; it is an uncoupled restatement when that thing exists and the pointer names or describes it wrongly.
 
 This pair separates a wrong element from a wrong root: a set missing a member is the fail-open discovery, a set gathered from the wrong root, base, or repository is the ambient-context resolution.
+
+A sentence presenting a subset as the whole set is an incomplete enumeration; any other sentence claiming more than its mechanism establishes is an overclaimed guarantee.
 
 ## Workflow class assignment
 

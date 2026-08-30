@@ -76,6 +76,18 @@ const MAINTAINER_SURFACE_MEMBERS: readonly (readonly [
     'holistic/unbounded-invocation',
     ['holistic/unbounded-invocations', 'holistic/unbounded-call'],
   ],
+  [
+    'holistic/overclaimed-guarantee',
+    ['holistic/overclaimed-guarantees', 'holistic/overclaim'],
+  ],
+  [
+    'holistic/incomplete-enumeration',
+    ['holistic/incomplete-enumerations', 'holistic/partial-enumeration'],
+  ],
+  [
+    'holistic/repeated-round-trip',
+    ['holistic/repeated-round-trips', 'holistic/repeated-roundtrip'],
+  ],
 ];
 
 describe('schemas/finding-class', () => {

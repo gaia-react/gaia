@@ -16991,7 +16991,10 @@ var HOLISTIC_FINDING_CLASSES = [
   "holistic/drifting-duplicate",
   "holistic/ambient-context-resolution",
   "holistic/shared-state-collision",
-  "holistic/unbounded-invocation"
+  "holistic/unbounded-invocation",
+  "holistic/overclaimed-guarantee",
+  "holistic/incomplete-enumeration",
+  "holistic/repeated-round-trip"
 ];
 var OUT_OF_SCOPE_FALLBACK_FINDING_CLASS = "holistic/unclassified";
 var RULE_FINDING_CLASSES = [
