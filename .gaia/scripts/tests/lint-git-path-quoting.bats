@@ -1055,7 +1055,7 @@ EOF
 
 # The class-remedy footer names the -z repair, which fixes a class hit and
 # nothing else. A run reddened only by pragma hygiene printed it anyway, sending
-# the operator to a repair that has nothing to do with what reded. Both
+# the operator to a repair that has nothing to do with what went red. Both
 # directions are pinned, because a gate that never prints the footer would
 # satisfy the first assertion alone.
 @test "the -z remedy footer is withheld on a run whose findings are all pragma hygiene" {

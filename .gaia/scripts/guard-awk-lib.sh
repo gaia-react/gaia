@@ -26,8 +26,9 @@
 # Why the name does not begin with `lint-`: the whole-tree-invariant sweep reads
 # `check-*.sh`, `audit-*-complete.sh`, `lint-*.sh` and `verify-*.sh` under
 # .gaia/scripts as whole-tree-check candidates and demands a roster row for each.
-# This file is not a check, so it takes the `*-lib.sh` naming its ten siblings in
-# this directory use and is swept by nothing.
+# This file is not a check, so it takes the `*-lib.sh` naming its siblings in
+# this directory use and is swept by nothing. No count is given deliberately: the
+# set grows, and a number here names a set nothing recounts.
 #
 # ---------------------------------------------------------------------------
 # The contract a consuming guard is written against
@@ -535,10 +536,13 @@ function G_walk(line,   n, i, c, nx, j, ch, delim, quoted, prev) {
     # suite executes, so a region running to end of line would classify that
     # shell as fixture data and skip it. Detected here, at depth zero and
     # outside every quote frame, because the arms above have already consumed
-    # any separator sitting inside a literal or a substitution: that is what
-    # keeps the 412 fixture lines whose literal body carries a semicolon from
-    # reading as two statements. A lone `&` and a lone `|` are deliberately not
-    # separators; a pipeline is one statement, and `>&` was consumed above.
+    # any separator sitting inside a literal or a substitution. That is what
+    # keeps the many tracked fixture lines whose written literal contains a
+    # separator character from reading as two statements; they are the ordinary
+    # case rather than the exotic one, which is why the test has to run after
+    # the walk rather than over the raw text. A lone `&` and a lone `|` are
+    # deliberately not separators; a pipeline is one statement, and `>&` was
+    # consumed above.
     if (c == ";") { G_sep = 1; continue }
     if (c == "&" && substr(line, i + 1, 1) == "&") { G_sep = 1; i++; continue }
     if (c == "|" && substr(line, i + 1, 1) == "|") { G_sep = 1; i++; continue }
