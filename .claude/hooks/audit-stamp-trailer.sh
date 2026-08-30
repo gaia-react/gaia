@@ -19,7 +19,9 @@
 #   AUDIT_TREE_SHA      The tree-sha the audit reviewed (captured at audit
 #                       start). When unset/empty the script assumes the
 #                       current tree IS the audited tree.
-#   AUDIT_SELF_HEALED   "true" iff the audit made fix-commits during this run.
+#   AUDIT_SELF_HEALED   "true" iff the audit repaired anything during this run,
+#                       working tree or commit. Local passes repair the working
+#                       tree and make no commit; CI commits its own self-heal.
 #                       Anything else (incl. unset) means the audit was clean.
 #
 # Exit codes
