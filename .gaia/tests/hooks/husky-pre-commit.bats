@@ -386,6 +386,14 @@ arm_names_dir() {
 # shape it does not carry is exactly where the reader has been wrong, so these
 # drive the helpers directly, one case per shape rather than one representative.
 
+# The `app/**/routes/**/*.ts` case pins a reduction that is wrong on purpose,
+# and it is a pin on today's behavior rather than an endorsement of it. The head
+# is cut at the first `/**/`, so a key with a second recursive segment loses
+# everything past that first one and reduces to a bare `app/`, which then greens
+# an arm the key does not cover (#1652). Pinning it is what gives the honest
+# limit recorded above `glob_covers_dir` a mechanical anchor: without a case
+# carrying a second `/**/`, a greedy single-`%` cut would pass the whole suite
+# while silently falsifying that comment.
 @test "glob_head_dirs reduces each head shape it can expand to that head's directories" {
   local glob expect got
   while IFS='|' read -r glob expect; do
@@ -400,9 +408,16 @@ app/**/*.{ts,tsx}|app/
 app/routes/**/*.ts|app/routes/
 {.storybook,.playwright,test}/**/*.{ts,tsx}|.storybook/ .playwright/ test/
 {app/routes,test}/**/*.ts|app/routes/ test/
+app/**/routes/**/*.ts|app/
 CASES
 }
 
+# Two of these shapes read as malformed noise and are not. `app}/**/*.ts` is a
+# head carrying a closing brace with no opening one, and it is the only case
+# that reds if the metacharacter class narrows to `*{*`; `/**/*.ts` is a head
+# that reduces to empty, and it is the only case that reds if the
+# empty-alternative arm is dropped. Pruning either as junk retires a reject
+# arm's only cover.
 @test "glob_head_dirs yields nothing for a head shape it cannot expand" {
   local glob got
   while IFS= read -r glob; do
