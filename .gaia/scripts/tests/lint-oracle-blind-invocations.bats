@@ -431,6 +431,14 @@ uncovered() {
   quiet '>out/target.sh cat'
 }
 
+@test "is quiet on an fd-numbered redirect glued to such a target" {
+  # The same shape wearing an explicit file descriptor. The digit sits in front
+  # of the operator, so a peel that reads only the punctuation class stops at
+  # the `2`, leaves `2>` inside the core, and swaps operator and all for the
+  # sentinel -- command position again, on a correct file.
+  quiet '2>out/target.sh cat'
+}
+
 @test "a span kept out of a carried body does not vouch for a blind call beside it" {
   # The two records one source line can produce have different anchor
   # provenance, which is why the splitter stopped handing them out joined. A
