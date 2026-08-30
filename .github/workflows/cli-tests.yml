@@ -137,6 +137,24 @@ jobs:
               # entries whenever the action's inputs change.
               - '.node-version'
               - '.npmrc'
+              # The two Node-pin subjects the parity guard
+              # (src/node-pin-parity.test.ts) reads that nothing else in this
+              # list reaches. It holds `.node-version`, `.nvmrc`, and every
+              # `FROM node:<tag>` in `Dockerfile` to the `engines.node` floor in
+              # the root `package.json`; all four are edited independently, since
+              # a floor raise touches `package.json` alone and the repair that
+              # forgets a copy touches one of the other three alone.
+              # `package.json` and `.node-version` are already listed above for
+              # other guards, so only these two are added, and dropping either
+              # leaves a pull request that moves only it resolving `code=false`,
+              # skipping the Vitest step, and greening this required check having
+              # never compared the pin it changed. `Dockerfile` has no other
+              # cover at all: no workflow here builds it
+              # (`.gaia/tests/distribution/` builds a heredoc Dockerfile of its
+              # own), so this entry is the only thing that runs any assertion
+              # against the Node version an adopter's image would deploy.
+              - 'Dockerfile'
+              - '.nvmrc'
               # The region-marker conformance suite binds the TypeScript parser
               # to the two bash readers it inherits its semantics from. It runs
               # in this job (see the step below), so an edit to either bash side
