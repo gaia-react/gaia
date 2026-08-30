@@ -50,9 +50,11 @@
  * # Anything unparseable reds rather than passes
  *
  * An `engines.node` range this reader does not recognize, a version file that
- * is not a bare version, and a node image with no numeric version to read
- * (`node`, `node:lts-alpine`, `node:latest`, `node@sha256:...`) each fail
- * loudly. A floating tag defeats the pin outright, and a guard that shrugged at
+ * is not a bare version, and a node image this reader will not score (`node`,
+ * `node:lts-alpine`, `node:latest`, and any digest pin, `node@sha256:...` and
+ * `node:22-alpine@sha256:...` alike) each fail loudly. Only a plain tag is
+ * scored: a digest pin resolves by its digest and ignores any tag beside it, so
+ * the tag there names a version the reference does not run. A floating tag defeats the pin outright, and a guard that shrugged at
  * a spelling it could not read would go quiet exactly where the drift is worst.
  *
  * Refusing and not-matching are different outcomes and the difference is
@@ -194,7 +196,18 @@ const parseExactVersion = (label: string, contents: string): Version => {
  * held to a floor, and holding one to a guess is worse than saying so.
  */
 const lowestResolutionOf = (reference: string): Version => {
-  const tag = NODE_IMAGE_PATTERN.exec(reference)?.[1];
+  const qualifier = NODE_IMAGE_PATTERN.exec(reference)?.[1];
+  // Score a plain tag and nothing else. A qualifier carrying `@` is a digest
+  // pin, and Docker resolves such a reference BY the digest and ignores the tag
+  // beside it, so `node:22.23-alpine@sha256:<digest of a 22.19 image>` runs
+  // 22.19 whatever the tag says. Reading the tag there scores a number that
+  // does not govern what pulls, which is this guard's own silent-pass class.
+  //
+  // Stated as one rule rather than as a case per spelling: `node@sha256:...`
+  // and `node:<tag>@sha256:...` are the same defect one spelling apart, and a
+  // reader that enumerates spellings is a reader the next spelling defeats.
+  const tag =
+    qualifier === undefined || qualifier.includes('@') ? undefined : qualifier;
   const match = tag === undefined ? null : TAG_VERSION_PATTERN.exec(tag);
 
   if (!match) {
@@ -341,10 +354,14 @@ describe('the readers behind that comparison', () => {
     // tag against the floor on a number it never named.
     'node:22x',
     'node:22.23beta',
-    // A digest pin names no version at all. It has to REACH here to be refused;
-    // a FROM reader that declined to recognize it would drop the stage instead.
+    // A digest pin. It has to REACH here to be refused; a FROM reader that
+    // declined to recognize it would drop the stage instead. Both spellings,
+    // because the conventional one carries a tag the reference does not
+    // resolve by, which is the harder of the two to notice.
     'node@sha256:0000000000000000000000000000000000000000000000000000000000000000',
-  ])('lowestResolutionOf refuses the unreadable reference %s', (reference) => {
+    'node:22.23-alpine@sha256:0000000000000000000000000000000000000000000000000000000000000000',
+    'library/node:22-alpine@sha256:abc',
+  ])('lowestResolutionOf refuses the unscoreable reference %s', (reference) => {
     expect(() => lowestResolutionOf(reference)).toThrow(/names no version/);
   });
 
@@ -425,6 +442,20 @@ describe('the readers behind that comparison', () => {
     ].join('\n');
 
     expect(nodeImageReferences(dockerfile)).toHaveLength(2);
+    expect(() =>
+      nodeImageReferences(dockerfile).map(lowestResolutionOf)
+    ).toThrow(/names no version/);
+  });
+
+  // The tag-plus-digest spelling is the conventional one, and it is the shape a
+  // tag-reading scorer gets wrong most quietly: the tag looks compliant while
+  // the digest beside it is what actually pulls.
+  test('a tag-plus-digest stage is refused, not scored on its tag', () => {
+    const dockerfile = 'FROM node:22.23-alpine@sha256:abc AS runtime';
+
+    expect(nodeImageReferences(dockerfile)).toEqual([
+      'node:22.23-alpine@sha256:abc',
+    ]);
     expect(() =>
       nodeImageReferences(dockerfile).map(lowestResolutionOf)
     ).toThrow(/names no version/);
