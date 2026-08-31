@@ -78,7 +78,8 @@
 # an extension that reds the tree is the gate working.
 #
 # ---------------------------------------------------------------------------
-# The scan surface, and the one carve-out
+# The scan surface, what it leaves governed-but-unscanned, and what was never
+# governed at all
 # ---------------------------------------------------------------------------
 #
 # Tracked `*.sh` and `*.bats`: full-line comments, plus the `@test` name line.
@@ -86,18 +87,32 @@
 # `.claude/rules/bats-assertions.md` place the prohibition, and it is where the
 # instances that motivated this gate lived.
 #
-# Markdown is deliberately OUT, and the reason is stronger than the noise
-# argument that keeps it out of lint-shipped-issue-refs.sh. Tracked markdown in
-# this tree is dominated by DATED, FROZEN records -- CHANGELOG.md, wiki/log.md,
-# and the wiki/meta/lint-report-*.md and staleness-audit-*.md series -- in which
-# a cardinal is a true statement about the tree AS IT WAS on the day the entry
-# was written. Recounting one against today's tree is not a repair; it falsifies
-# a record whose whole value is that it does not move. The rule files that
-# DEFINE this class are markdown too, and they quote the bad shape as a worked
-# example. A gate there would demand edits with no correct answer on both
-# populations, which is the shape that gets a gate switched off. A markdown
-# surface would need a frozen-record exemption before it could pay, and that is
-# a different gate rather than a wider pathspec on this one.
+# GOVERNED AND NOT SCANNED, stated first because it is the honest gap rather
+# than the comfortable one. `code-comments.md` binds five more globs this gate
+# does not read: `app/**/*.{ts,tsx,js,jsx,css}`, `test/**/*.{ts,tsx}`,
+# `.playwright/**/*.ts`, `.storybook/**/*.{ts,tsx}` and `.gaia/**/*.ts`. The
+# class occurs there today, so this is a live gap and not a theoretical one.
+# What stops the pathspec simply widening is that those surfaces comment with
+# `//` and `/* */`, so reaching them needs a second comment reader rather than
+# another glob, and a block-comment reader has to track its own open/close state
+# to avoid reading a `/*` inside a string literal as prose. That is new
+# machinery, so it is tracked separately rather than folded in here.
+#
+# NEVER GOVERNED, which is a different claim and must not be read as a carve-out
+# from the rule: Markdown appears in none of `code-comments.md`'s globs, so
+# excluding it withholds nothing the rule ever asked for. The reason not to
+# widen to it anyway is worth recording, because it is the surface a reader
+# reaches for first. Tracked markdown here is dominated by DATED, FROZEN records
+# -- CHANGELOG.md, wiki/log.md, and the wiki/meta/lint-report-*.md and
+# staleness-audit-*.md series -- in which a cardinal is a true statement about
+# the tree AS IT WAS on the day the entry was written. Recounting one against
+# today's tree is not a repair; it falsifies a record whose whole value is that
+# it does not move. The rule files that DEFINE this class are markdown too, and
+# they quote the bad shape as a worked example. A gate there would demand edits
+# with no correct answer on both populations, which is the shape that gets a
+# gate switched off. Markdown would need a frozen-record exemption before it
+# could pay, and that is a different gate rather than a wider pathspec on this
+# one.
 #
 # ---------------------------------------------------------------------------
 # The pragma
@@ -131,12 +146,19 @@
 #     reads one line at a time, so a phrase that wraps is two half-phrases and
 #     neither one matches. This is not a rare shape: comments here wrap near 79
 #     columns, and the shared library's own header carried a stale count in
-#     exactly this position, which this gate could not see. A two-line window
-#     was considered and declined: a comment block is a paragraph, so joining
-#     lines pairwise would let a determiner ending one sentence meet a cardinal
-#     opening the next, which is the collision the clause-ender rule below
-#     exists to stop, reintroduced at the line boundary where that rule cannot
-#     see it. Fixing the wrap by hand is what the tree does instead.
+#     exactly this position, which this gate could not see.
+#
+#     A two-line window was considered and declined, and the reason is NOT that
+#     joining would lose the sentence-boundary protection: the clause-ender rule
+#     below fires on an ender followed by whitespace OR by end of line, so a
+#     whitespace-preserving join leaves that case exactly as protected, which a
+#     probe confirms. The reason is the seam that carries no ender at all. A
+#     wrap mid-phrase, and a bullet break, both join into text neither line
+#     contains: a bullet ending on a cardinal, above a separate bullet opening
+#     on a vocabulary noun, joins into a phrase this predicate matches and no
+#     author wrote. That is a false positive whose demanded repair points at a
+#     line break rather than at any claim, so fixing the wrap by hand is what
+#     the tree does instead.
 #   - An ordinal or a written-out range ("the fourth of five callers").
 #   - A count in a trailing comment that shares its line with code: only a
 #     full-line comment is read, so an instance written after a `#` that follows
