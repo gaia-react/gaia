@@ -94,8 +94,9 @@ const wikiBlobsAtRef = (
     // shrinks: a size threshold reported as cleared on a wiki this never
     // finished measuring. NUL termination also keeps a path holding a literal
     // newline as one record rather than two that parse as no tuple at all.
-    // `-c core.quotepath=false` is inert beside `-z`, kept so this reads
-    // byte-identically to the same call in `release/manifest.ts`.
+    // `-c core.quotepath=false` is inert beside `-z`, kept so the option
+    // prefix matches the idiom `release/manifest.ts` carries on its own
+    // `ls-files` call.
     raw = git(cwd, [
       '-c',
       'core.quotepath=false',
