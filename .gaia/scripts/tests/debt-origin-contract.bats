@@ -50,19 +50,25 @@ setup() {
   # Without it, this suite's own needles and debt-origin-lib.bats's own
   # fixtures would count as third copies of the contract.
   #
-  # `wiki/log.md` is excluded because no assertion below can apply to it. It
-  # is a generated, append-only sync ledger, written a line at a time by
-  # `/gaia-wiki sync` and overwritten wholesale at release, so it is neither
-  # an emitting route nor an instruction surface and can never be made to
-  # point at an owner file. Without the exclusion, a sync reason quoting a
-  # needle verbatim -- which is what a commit about the provenance marker
-  # produces -- reds this suite over the ledger's own wording, with a
-  # failure message describing the guard's model rather than the tree.
+  # The generated wiki files are excluded because no assertion below can
+  # apply to either one. `wiki/log.md` is an append-only sync ledger written
+  # a line at a time by `/gaia-wiki sync`; `wiki/hot.md` is a recent-context
+  # cache an agent is told to overwrite completely with a free-prose session
+  # summary. Both are overwritten wholesale as a pair at release. Neither is
+  # an emitting route nor an instruction surface, and neither can be made to
+  # point at an owner file, since the next write discards whatever pointer a
+  # previous one carried. Without the exclusion, prose quoting a needle
+  # verbatim -- which is what a session or a sync about the provenance marker
+  # produces -- reds this suite over a generated file's own wording, with a
+  # failure message describing the guard's model rather than the tree. The
+  # sibling roster reconcile in .gaia/tests/lib/doc-noop-terminal-contract.bats
+  # excludes the same pair for the same reason.
   EXCLUDE_PATHSPEC=(
     ':!.gaia/local/'
     ':!.gaia/tests/'
     ':!.gaia/scripts/tests/'
     ':!wiki/log.md'
+    ':!wiki/hot.md'
   )
 }
 
