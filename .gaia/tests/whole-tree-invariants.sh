@@ -241,7 +241,7 @@ main() {
   local live_count
   live_count="$( printf '%s\n' "$WTI_SCRIPTS" | grep -c . )"
   if [ "$live_count" -ne "$WTI_SCRIPTS_COUNT_ASOF" ]; then
-    printf '%s: WTI_SCRIPTS holds %s members but the runtime paragraph above was last measured at %s; re-measure it and update both numbers.\n' \
+    printf '%s: WTI_SCRIPTS holds %s members but the runtime paragraph above was last measured at %s; re-measure the runtime paragraph above and update WTI_SCRIPTS_COUNT_ASOF.\n' \
       "$PROG" "$live_count" "$WTI_SCRIPTS_COUNT_ASOF" >&2
     return 2
   fi

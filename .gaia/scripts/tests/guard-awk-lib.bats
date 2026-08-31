@@ -763,6 +763,7 @@ production_guards() {
   grep -qF -- "gaia_scan_run_only(" "$REPO_ROOT/.gaia/scripts/lint-errexit-status-read.sh" || return 1
   grep -qF -- "gaia_scan_run_only(" "$REPO_ROOT/.gaia/scripts/lint-git-path-quoting.sh" && return 1
   grep -qF -- "gaia_scan_run_only(" "$REPO_ROOT/.gaia/scripts/lint-grep-ere-escapes.sh" && return 1
+  grep -qF -- "gaia_scan_run_only(" "$REPO_ROOT/.gaia/scripts/lint-stale-cardinals.sh" && return 1
   true
 }
 
@@ -868,13 +869,10 @@ strip_full_line_comments() {
   # character class, because the character before the dot is '*', outside
   # [A-Za-z0-9_.-], so there is no allowlist arm to carve out.
   local f
-  for f in "$REPO_ROOT/.gaia/scripts/lint-git-path-quoting.sh" \
-           "$REPO_ROOT/.gaia/scripts/lint-grep-ere-escapes.sh" \
-           "$REPO_ROOT/.gaia/scripts/lint-errexit-status-read.sh" \
-           "$REPO_ROOT/.gaia/scripts/guard-awk-lib.sh"; do
+  while IFS= read -r f; do
     strip_full_line_comments "$f" | grep -qE '[A-Za-z0-9_.-]+\.bats' \
       && { echo "$f: names a bats basename on a non-comment line" >&2; return 1; }
-  done
+  done < <(wiki_citing_files)
   true
 }
 
@@ -898,12 +896,12 @@ strip_full_line_comments() {
 # them. That review happens as the first step of Phase 4, with the user,
 # before /distribution-audit, and its outcome is recorded in PROGRESS.md.
 
+# Derived from production_guards() rather than re-listed, so a guard added
+# there is held to the citation rule without a second edit here. The library
+# itself cites the page too and is not a guard, so it is appended.
 wiki_citing_files() {
-  printf '%s\n' \
-    "$REPO_ROOT/.gaia/scripts/lint-git-path-quoting.sh" \
-    "$REPO_ROOT/.gaia/scripts/lint-grep-ere-escapes.sh" \
-    "$REPO_ROOT/.gaia/scripts/lint-errexit-status-read.sh" \
-    "$REPO_ROOT/.gaia/scripts/guard-awk-lib.sh"
+  production_guards
+  printf '%s\n' "$REPO_ROOT/.gaia/scripts/guard-awk-lib.sh"
 }
 
 @test "every participating file cites the wiki decision page" {
@@ -972,9 +970,10 @@ extract_wiki_paths() {
   # Presence check against phrasing the guards actually wrote (this task's
   # own instruction: read the headers first and pin what is there, so the
   # check does not rot against the next prose edit).
-  grep -qF -- '*.bats' "$REPO_ROOT/.gaia/scripts/lint-git-path-quoting.sh" || return 1
-  grep -qF -- '*.bats' "$REPO_ROOT/.gaia/scripts/lint-grep-ere-escapes.sh" || return 1
-  grep -qF -- '*.bats' "$REPO_ROOT/.gaia/scripts/lint-errexit-status-read.sh" || return 1
+  local g
+  while IFS= read -r g; do
+    grep -qF -- '*.bats' "$g" || { echo "$g: header states no bats reach" >&2; return 1; }
+  done < <(production_guards)
 
   grep -qF -- 'FAIL-OPEN' "$REPO_ROOT/.gaia/scripts/lint-grep-ere-escapes.sh" || return 1
   grep -qF -- 'FAIL-OPEN' "$REPO_ROOT/.gaia/scripts/lint-errexit-status-read.sh" || return 1
@@ -1098,8 +1097,8 @@ mutate_guard_copy() {
   git -C "$repo" add -A
 
   local guard
-  for guard in lint-git-path-quoting lint-grep-ere-escapes lint-errexit-status-read; do
-    run bash -c "cd '$repo' && bash '$REPO_ROOT/.gaia/scripts/$guard.sh'"
+  while IFS= read -r guard; do
+    run bash -c "cd '$repo' && bash '$guard'"
     [ "$status" -ne 0 ] || { echo "$guard exited 0 on a tree with no tracked bats suite" >&2; return 1; }
-  done
+  done < <(production_guards)
 }

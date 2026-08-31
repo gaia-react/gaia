@@ -1,7 +1,7 @@
 #!/usr/bin/env bats
 # The shared byte-identity primitives in .gaia/tests/helpers/files.sh.
 #
-# Every byte-identity claim across 11 bats suites in three directories now rests
+# Every byte-identity claim across the bats suites that consume it now rests
 # on `assert_files_identical`, and a primitive that many assertions depend on is
 # the worst place for an unproven one: an edit hollowing it back toward the
 # `$(cat …)` comparison it replaced would green every consuming suite with nothing

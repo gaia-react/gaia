@@ -90,8 +90,7 @@ fixture_script() {
 # every line of a multi-line body handed to one is read as executed shell and
 # this suite's own fixture prose is reported as a live finding. Adding a name to
 # the shared set to suit one suite widens a contract every consumer of that
-# library depends on, so
-# the call goes direct instead.
+# library depends on, so the call goes direct instead.
 
 # at_test <name>: one literal bats test declaration, ASSEMBLED rather than
 # written out.

@@ -331,7 +331,7 @@ time_view_ms() {
 }
 
 # The adopting hooks, per README.md's frozen contract table.
-eleven_hooks() {
+adopting_hooks() {
   printf '%s\n' \
     pr-merge-audit-check.sh \
     worthiness-presence-check.sh \
@@ -365,19 +365,20 @@ CEILING_ONE_HOOK_RAWMATCH_MS=300
 # byte-walk figure): 1010/150 ~= 6.7x, conservatively.
 CEILING_ONE_HOOK_NONMATCH_MS=150
 
-# Eleven hooks, one 200-character ordinary `git commit` tool call. Measured
-# ~265-285ms. Headroom: 1000/285 ~= 3.5x. Margin below eleven hooks each paying
+# Every adopting hook, one 200-character ordinary `git commit` tool call.
+# Measured ~265-285ms. Headroom: 1000/285 ~= 3.5x. Margin below one byte-walk
+# per adopting hook, at the list length this was measured at, each paying
 # the 1010ms byte-walk figure (the "walk gets paid unconditionally" failure
 # this also guards against): 11110/1000 ~= 11.1x. The ceiling itself is
 # unchanged: it is set against the 1010ms byte-walk reference rather than
 # against this machine's number, so re-measuring the number does not move it.
-CEILING_ELEVEN_ORDINARY_MS=1000
+CEILING_ALL_HOOKS_ORDINARY_MS=1000
 
-# Eleven hooks, one 16KB raw-matching `gh pr merge` tool call (8 of 11 pay
-# the walk; 3 raw-miss and skip it). Measured ~320-365ms. Headroom:
+# Every adopting hook, one 16KB raw-matching `gh pr merge` tool call (most pay
+# the walk; the rest raw-miss and skip it). Measured ~320-365ms. Headroom:
 # 2000/365 ~= 5.5x. Margin below 8 hooks each byte-walking at 1010ms:
 # 8080/2000 ~= 4.0x. Ceiling unchanged, for the reason the ordinary one gives.
-CEILING_ELEVEN_RAWMATCH_MS=2000
+CEILING_ALL_HOOKS_RAWMATCH_MS=2000
 
 # Past-bound (32KB), one hook (token-tally-git-op.sh), armed for real: the
 # walker's length check must short-circuit before it does any real work. What
@@ -467,26 +468,26 @@ CEILING_VIEW_16K_MS=100
   [ "$REPLY_MS" -le "$CEILING_VIEW_PAST_BOUND_MS" ]
 }
 
-@test "cost: eleven hooks process one ordinary 200-byte git-commit tool call within budget" {
+@test "cost: every adopting hook processes one ordinary 200-byte git-commit tool call within budget" {
   local cmd
   cmd="git commit -m x $(head -c 180 < /dev/zero | tr '\0' 'y')"
   local total=0 h
   while IFS= read -r h; do
     time_hook_ms "$HOOKS_DIR/$h" "$cmd"
     total=$(( total + REPLY_MS ))
-  done < <(eleven_hooks)
-  echo "eleven-process total, 200B ordinary git commit: ${total}ms (ceiling ${CEILING_ELEVEN_ORDINARY_MS}ms)" >&2
-  [ "$total" -le "$CEILING_ELEVEN_ORDINARY_MS" ]
+  done < <(adopting_hooks)
+  echo "all-hooks total, 200B ordinary git commit: ${total}ms (ceiling ${CEILING_ALL_HOOKS_ORDINARY_MS}ms)" >&2
+  [ "$total" -le "$CEILING_ALL_HOOKS_ORDINARY_MS" ]
 }
 
-@test "cost: eleven hooks process one 16KB raw-matching gh-pr-merge tool call within budget" {
+@test "cost: every adopting hook processes one 16KB raw-matching gh-pr-merge tool call within budget" {
   local cmd
   cmd=$(build_armed_payload "gh pr merge 1" 16384)
   local total=0 h
   while IFS= read -r h; do
     time_hook_ms "$HOOKS_DIR/$h" "$cmd"
     total=$(( total + REPLY_MS ))
-  done < <(eleven_hooks)
-  echo "eleven-process total, 16KB raw-matching gh pr merge: ${total}ms (ceiling ${CEILING_ELEVEN_RAWMATCH_MS}ms)" >&2
-  [ "$total" -le "$CEILING_ELEVEN_RAWMATCH_MS" ]
+  done < <(adopting_hooks)
+  echo "all-hooks total, 16KB raw-matching gh pr merge: ${total}ms (ceiling ${CEILING_ALL_HOOKS_RAWMATCH_MS}ms)" >&2
+  [ "$total" -le "$CEILING_ALL_HOOKS_RAWMATCH_MS" ]
 }
