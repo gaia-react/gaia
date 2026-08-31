@@ -18839,6 +18839,10 @@ var run22 = async (argv, options = {}) => {
 import { readFileSync as readFileSync14 } from "node:fs";
 import path20 from "node:path";
 
+// src/util/git-z.ts
+var gitZArgs = (verb, args = []) => ["-c", "core.quotepath=false", verb, "-z", ...args];
+var splitZStream = (raw) => raw.split("\0").filter((record2) => record2.length > 0);
+
 // src/labels/registry.ts
 import { existsSync as existsSync12, readFileSync as readFileSync13 } from "node:fs";
 import path19 from "node:path";
@@ -19222,7 +19226,7 @@ var run23 = (argv) => {
     });
     return EXIT_ENVIRONMENT;
   }
-  const listed = runGit(["-c", "core.quotepath=false", "ls-files", "-z"], {
+  const listed = runGit(gitZArgs("ls-files"), {
     cwd: repoRoot
   });
   if (listed.exitCode !== 0) {
@@ -19234,7 +19238,7 @@ var run23 = (argv) => {
     });
     return EXIT_ENVIRONMENT;
   }
-  const files = listed.stdout.split(NUL).filter((file2) => file2 !== "" && !isExcluded(file2));
+  const files = splitZStream(listed.stdout).filter((file2) => !isExcluded(file2));
   const findings = scanTree(repoRoot, registry2, files);
   if (parsed.json) {
     process.stdout.write(`${JSON.stringify({ findings })}
@@ -29903,7 +29907,7 @@ import path45 from "node:path";
 var porcelainZPaths = (out) => {
   const paths = [];
   let expectOriginPath = false;
-  out.split("\0").filter((record2) => record2.length > 0).forEach((record2) => {
+  splitZStream(out).forEach((record2) => {
     if (expectOriginPath) {
       expectOriginPath = false;
       paths.push(record2);
@@ -30937,20 +30941,11 @@ var parseShortStat = (stat) => {
 };
 var fileListForCommit = (sha, cwd) => {
   const result = tryRunGit(
-    [
-      "-c",
-      "core.quotepath=false",
-      "diff-tree",
-      "--no-commit-id",
-      "--name-only",
-      "-r",
-      "-z",
-      sha
-    ],
+    gitZArgs("diff-tree", ["--no-commit-id", "--name-only", "-r", sha]),
     { cwd }
   );
   if (result === null) return [];
-  return result.split("\0").filter((entry) => entry.length > 0);
+  return splitZStream(result);
 };
 var parseChunk = (chunk) => {
   const trimmed = chunk.trim();
@@ -31942,21 +31937,11 @@ var parseLsTreeLine = (line) => {
 var wikiBlobsAtRef = (cwd, ref) => {
   let raw;
   try {
-    raw = git(cwd, [
-      "-c",
-      "core.quotepath=false",
-      "ls-tree",
-      "-r",
-      "-l",
-      "-z",
-      ref,
-      "--",
-      "wiki/"
-    ]);
+    raw = git(cwd, gitZArgs("ls-tree", ["-r", "-l", ref, "--", "wiki/"]));
   } catch {
     return [];
   }
-  return raw.split("\0").flatMap((line) => {
+  return splitZStream(raw).flatMap((line) => {
     const parsed = parseLsTreeLine(line);
     return parsed === void 0 ? [] : [parsed];
   });
@@ -32021,14 +32006,10 @@ var parseNumstatStream = (raw) => {
 var sumChangedLines = (cwd, base) => {
   let raw;
   try {
-    raw = git(cwd, [
-      "diff",
-      "--numstat",
-      "-z",
-      `${base}...HEAD`,
-      "--",
-      "wiki/"
-    ]);
+    raw = git(
+      cwd,
+      gitZArgs("diff", ["--numstat", `${base}...HEAD`, "--", "wiki/"])
+    );
   } catch {
     return 0;
   }

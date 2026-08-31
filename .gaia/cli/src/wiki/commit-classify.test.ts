@@ -11,6 +11,11 @@ import {
   MAINTENANCE_GATE_DEFAULTS,
   MAINTENANCE_GATES,
 } from '../util/git-maintenance.js';
+import {
+  NON_ASCII_STEM,
+  QUOTED_FIRST_BYTE,
+  QUOTEPATH_PIN_ARGS,
+} from '../util/non-ascii-path-fixture.js';
 import {run} from './commit-classify.js';
 import type {CommitClassification} from './commit-classify.js';
 
@@ -342,18 +347,8 @@ describe('wiki commit-classify', () => {
   });
 
   describe('paths git rewrites on the way out', () => {
-    // CJK, deliberately: it has no NFD decomposition, so macOS filesystem
-    // normalization cannot round-trip the name into a spelling the rule's
-    // `startsWith('wiki/concepts/')` accepts for the wrong reason. The
-    // C-quoted spelling git emits for it is the octal escape run below.
-    const NON_ASCII_STEM = '日本語';
-    const QUOTED_FIRST_BYTE = String.raw`\346`;
-
     beforeEach(() => {
-      // git's own default. Set explicitly so a developer whose global config
-      // carries `core.quotepath=false` does not silently make this block
-      // vacuous by removing the very quoting it exists to defeat.
-      sandboxGit(sandbox.root, ['config', 'core.quotepath', 'true']);
+      sandboxGit(sandbox.root, [...QUOTEPATH_PIN_ARGS]);
     });
 
     test('the fixture path really is C-quoted, so the assertion below can fail', () => {

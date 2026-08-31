@@ -18,6 +18,11 @@ import {execFileSync} from 'node:child_process';
 import {mkdirSync, mkdtempSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
+import {
+  NON_ASCII_STEM,
+  QUOTED_FIRST_BYTE,
+  QUOTEPATH_PIN_ARGS,
+} from '../../util/non-ascii-path-fixture.js';
 import {resolveRepoRootFromImportMeta} from '../../util/repo-root-fixture.js';
 import {extractLiterals, literalProblem, run, SCAN_EXCLUDED} from '../check.js';
 import {readRegistry} from '../registry.js';
@@ -383,12 +388,6 @@ describe('labels/check registry lookup', () => {
  * them can see a file the scan never opened.
  */
 describe('labels/check tracked-file discovery', () => {
-  // CJK, deliberately: it has no NFD decomposition, so macOS filesystem
-  // normalization cannot round-trip the name into something the scan finds by
-  // accident. The C-quoted spelling git emits for it is the octal escape run
-  // asserted below.
-  const NON_ASCII_STEM = '日本語';
-  const QUOTED_FIRST_BYTE = String.raw`\346`;
   const ABSENT_LABEL = 'absent-from-the-registry';
 
   const REGISTRY = {
@@ -422,10 +421,7 @@ describe('labels/check tracked-file discovery', () => {
     fixture = mkdtempSync(path.join(tmpdir(), 'gaia-labels-quotepath-'));
 
     runGitFixture('init', '--quiet');
-    // git's own default. Set explicitly so a developer whose global config
-    // carries `core.quotepath=false` does not silently make this block
-    // vacuous by removing the very quoting it exists to defeat.
-    runGitFixture('config', 'core.quotepath', 'true');
+    runGitFixture(...QUOTEPATH_PIN_ARGS);
     runGitFixture('config', 'user.email', 'fixture@example.com');
     runGitFixture('config', 'user.name', 'fixture');
 
