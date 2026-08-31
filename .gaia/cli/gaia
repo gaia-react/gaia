@@ -19222,7 +19222,9 @@ var run23 = (argv) => {
     });
     return EXIT_ENVIRONMENT;
   }
-  const listed = runGit(["ls-files"], { cwd: repoRoot });
+  const listed = runGit(["-c", "core.quotepath=false", "ls-files", "-z"], {
+    cwd: repoRoot
+  });
   if (listed.exitCode !== 0) {
     structuredError({
       code: "git_invocation_failed",
@@ -19232,7 +19234,7 @@ var run23 = (argv) => {
     });
     return EXIT_ENVIRONMENT;
   }
-  const files = listed.stdout.split("\n").filter((file2) => file2 !== "" && !isExcluded(file2));
+  const files = listed.stdout.split(NUL).filter((file2) => file2 !== "" && !isExcluded(file2));
   const findings = scanTree(repoRoot, registry2, files);
   if (parsed.json) {
     process.stdout.write(`${JSON.stringify({ findings })}

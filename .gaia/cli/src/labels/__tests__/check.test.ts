@@ -1,8 +1,10 @@
 /**
  * Strategy: `extractLiterals` runs against fixture strings only, never against
- * the repository. `run` reads the live tree, and a vitest assertion over that
- * tree would red the quality gate for a state the label migrations retire on
- * purpose, so the live scan stays a CI command and never a test.
+ * the repository. `run` reads whatever tree it is pointed at, and a vitest
+ * assertion over the LIVE tree would red the quality gate for a state the
+ * label migrations retire on purpose, so the live scan stays a CI command and
+ * never a test. The one block that calls `run` points it at a throwaway
+ * fixture repository instead, which that rule does not reach.
  *
  * Every negative fixture below is copied from a real site in the tree. The
  * English words are what a bare `--label` scan harvests out of test names,
@@ -10,10 +12,14 @@
  * debt-metadata suite, which feeds them deliberately to prove its validator
  * rejects them.
  */
-import {describe, expect, test} from 'vitest';
+import {afterAll, beforeAll, describe, expect, test, vi} from 'vitest';
 import assert from 'node:assert/strict';
+import {execFileSync} from 'node:child_process';
+import {mkdirSync, mkdtempSync, rmSync, writeFileSync} from 'node:fs';
+import {tmpdir} from 'node:os';
+import path from 'node:path';
 import {resolveRepoRootFromImportMeta} from '../../util/repo-root-fixture.js';
-import {extractLiterals, literalProblem, SCAN_EXCLUDED} from '../check.js';
+import {extractLiterals, literalProblem, run, SCAN_EXCLUDED} from '../check.js';
 import {readRegistry} from '../registry.js';
 
 const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
@@ -23,6 +29,27 @@ const namesIn = (filePath: string, text: string): string[] =>
   extractLiterals(filePath, text).map((literal) => literal.name);
 
 const SHELL = 'script.sh';
+
+/**
+ * `run`'s exit code paired with what it wrote to stdout, which it writes
+ * directly rather than returning.
+ */
+const captureRun = (argv: readonly string[]): {code: number; out: string} => {
+  let out = '';
+  const spy = vi.spyOn(process.stdout, 'write').mockImplementation((chunk) => {
+    out += String(chunk);
+
+    return true;
+  });
+
+  try {
+    const code = run(argv);
+
+    return {code, out};
+  } finally {
+    spy.mockRestore();
+  }
+};
 
 describe('labels/check extraction forms', () => {
   test('form 1: a bare and a quoted --label', () => {
@@ -342,5 +369,108 @@ describe('labels/check registry lookup', () => {
     expect(blocked).toContain('blocked in .gaia/labels.json');
     expect(blocked).toContain('Solicits drive-by contributions');
     expect(blocked).not.toBe(unknown);
+  });
+});
+
+/**
+ * The one block that runs `run`, and the header's "never against the
+ * repository" rule survives it: the tree under test is a fixture repository
+ * this block builds and deletes, never the live one, so no label migration in
+ * flight can red it.
+ *
+ * What it guards is the discovery step ahead of every extraction test above.
+ * Those all hand `extractLiterals` a path and a string directly, so none of
+ * them can see a file the scan never opened.
+ */
+describe('labels/check tracked-file discovery', () => {
+  // CJK, deliberately: it has no NFD decomposition, so macOS filesystem
+  // normalization cannot round-trip the name into something the scan finds by
+  // accident. The C-quoted spelling git emits for it is the octal escape run
+  // asserted below.
+  const NON_ASCII_STEM = '日本語';
+  const QUOTED_FIRST_BYTE = String.raw`\346`;
+  const ABSENT_LABEL = 'absent-from-the-registry';
+
+  const REGISTRY = {
+    $schema: '../labels.schema.json',
+    description: 'Fixture registry.',
+    labels: [
+      {
+        audience: 'adopter',
+        axis: 'type',
+        blocked: false,
+        color: 'd4c5f9',
+        deprecated: false,
+        description: 'Fixture entry.',
+        features: [],
+        managed: true,
+        name: 'tech-debt',
+        reason: null,
+        renamedFrom: [],
+      },
+    ],
+    version: 1,
+  };
+
+  let fixture = '';
+
+  const runGitFixture = (...args: string[]): void => {
+    execFileSync('git', args, {cwd: fixture, stdio: 'ignore'});
+  };
+
+  beforeAll(() => {
+    fixture = mkdtempSync(path.join(tmpdir(), 'gaia-labels-quotepath-'));
+
+    runGitFixture('init', '--quiet');
+    // git's own default. Set explicitly so a developer whose global config
+    // carries `core.quotepath=false` does not silently make this block
+    // vacuous by removing the very quoting it exists to defeat.
+    runGitFixture('config', 'core.quotepath', 'true');
+    runGitFixture('config', 'user.email', 'fixture@example.com');
+    runGitFixture('config', 'user.name', 'fixture');
+
+    mkdirSync(path.join(fixture, '.gaia'), {recursive: true});
+    writeFileSync(
+      path.join(fixture, '.gaia', 'labels.json'),
+      `${JSON.stringify(REGISTRY, null, 2)}\n`
+    );
+
+    mkdirSync(path.join(fixture, 'wiki'), {recursive: true});
+    writeFileSync(
+      path.join(fixture, 'wiki', `${NON_ASCII_STEM}.md`),
+      `gh issue create --label ${ABSENT_LABEL}\n`
+    );
+
+    runGitFixture('add', '--all');
+  });
+
+  afterAll(() => {
+    rmSync(fixture, {force: true, recursive: true});
+  });
+
+  test('the fixture path really is C-quoted, so the assertion below can fail', () => {
+    const listed = execFileSync('git', ['ls-files'], {
+      cwd: fixture,
+      encoding: 'utf8',
+    });
+
+    expect(listed).toContain(QUOTED_FIRST_BYTE);
+    expect(listed).not.toContain(NON_ASCII_STEM);
+  });
+
+  test('a literal in a non-ASCII path is reported, not silently skipped', () => {
+    const {code, out} = captureRun(['--repo-root', fixture, '--json']);
+
+    expect(JSON.parse(out)).toEqual({
+      findings: [
+        {
+          file: `wiki/${NON_ASCII_STEM}.md`,
+          line: 1,
+          name: ABSENT_LABEL,
+          why: 'absent from .gaia/labels.json',
+        },
+      ],
+    });
+    expect(code).toBe(1);
   });
 });
