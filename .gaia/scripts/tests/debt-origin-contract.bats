@@ -49,7 +49,21 @@ setup() {
   # `.gaia/tests/` (both listed separately in `.gaia/release-exclude`).
   # Without it, this suite's own needles and debt-origin-lib.bats's own
   # fixtures would count as third copies of the contract.
-  EXCLUDE_PATHSPEC=(':!.gaia/local/' ':!.gaia/tests/' ':!.gaia/scripts/tests/')
+  #
+  # `wiki/log.md` is excluded because no assertion below can apply to it. It
+  # is a generated, append-only sync ledger, written a line at a time by
+  # `/gaia-wiki sync` and overwritten wholesale at release, so it is neither
+  # an emitting route nor an instruction surface and can never be made to
+  # point at an owner file. Without the exclusion, a sync reason quoting a
+  # needle verbatim -- which is what a commit about the provenance marker
+  # produces -- reds this suite over the ledger's own wording, with a
+  # failure message describing the guard's model rather than the tree.
+  EXCLUDE_PATHSPEC=(
+    ':!.gaia/local/'
+    ':!.gaia/tests/'
+    ':!.gaia/scripts/tests/'
+    ':!wiki/log.md'
+  )
 }
 
 # ---------- shared extraction helpers ----------
