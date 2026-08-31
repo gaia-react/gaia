@@ -255,10 +255,13 @@ export const resolveManifestPath = (repoRoot: string): string =>
  *
  * One divergence from staging survives this, in the other direction: the shell
  * readers pipe the NUL stream through `tr '\0' '\n'` into a newline-delimited
- * file, so a path holding a literal newline splits into two names matching no
- * file. In release staging those names reach `rsync --files-from`, which
- * reports them and exits 23 in a `bash -e` step, so the release fails loudly
- * rather than publishing a tarball that disagrees with this manifest (#1669).
+ * file, so a path holding a literal newline splits into two names there while
+ * it stays one entry here. What that produces depends on whether those two
+ * names happen to match tracked files: usually neither does, `rsync
+ * --files-from` reports them and exits 23 in a `bash -e` step, and the release
+ * fails loudly; where both do match, or the exclude filter drops both, rsync
+ * exits 0 and the tarball is quietly missing the file this manifest records as
+ * shipping (#1669).
  */
 const listGitFiles = (cwd: string): string[] =>
   execFileSync('git', ['-c', 'core.quotepath=false', 'ls-files', '-z'], {
