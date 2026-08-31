@@ -58,7 +58,6 @@ Where the number does carry the claim, it needs something that recounts it: a te
 GAIA maintainers: part of this is gated rather than merely asserted. `.gaia/scripts/lint-stale-cardinals.sh` reds on a **definite** cardinal of at least three standing against a repository-artifact noun, in a full-line comment or a bats `@test` name, across every tracked `*.sh` and `*.bats`; `.gaia/tests/shell-lint.sh` folds it in, so it runs on every pull request. The script's own header owns what it reaches and what it does not, and it is the authority rather than this paragraph. What it deliberately leaves to a reader: a bare cardinal with no determiner, a possessive noun phrase, a noun outside its closed vocabulary, and Markdown, which in this repo is dominated by dated frozen records where a cardinal is a true statement about the tree as it was. A clean gate is therefore not a clean tree, and the rule above still governs the counts the gate cannot see.
 <!-- gaia:maintainer-only:end -->
 
-
 ## Editing an existing comment
 
 - **Never truncate a pointer to a bare unresolvable id.** Delete the line instead. A bare id keeps the maintenance obligation and discards the meaning, which is strictly worse than saying nothing.

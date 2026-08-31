@@ -51,8 +51,9 @@
 # at all. A bare cardinal is ordinary structural English: "two ways", "three
 # things", "two arms" describe the shape of the argument being made in the very
 # same comment, and the enumeration is right there, so the phrase is rewritten
-# whenever it changes. A definite determiner is different in kind: "its ten
-# siblings", "the eleven hooks", "all four callers" assert a cardinality for a
+# whenever it changes. A definite determiner is different in kind: a possessive
+# or an all-quantifier binding a cardinal to a set the reader is expected to
+# already know, of siblings, of hooks, of callers, asserts a cardinality for a
 # specific population that lives somewhere else in the tree and moves without
 # touching this sentence. Both instances of the class that were in reach on this
 # surface carried a determiner, and so did every instance already standing in
@@ -128,9 +129,10 @@
 #   - A noun outside the closed vocabulary.
 #   - An ordinal or a written-out range ("the fourth of five callers").
 #   - A count in a trailing comment that shares its line with code: only a
-#     full-line comment is read, so `foo   # all four callers` is missed. This
-#     is the same full-line rule the sibling guards use, and it is what keeps a
-#     `#` inside a quoted string from being read as a comment at all.
+#     full-line comment is read, so an instance written after a `#` that follows
+#     executable text on the same line is missed. This is the same full-line
+#     rule the sibling guards use, and it is what keeps a `#` inside a quoted
+#     string from being read as a comment at all.
 #   - Everything the shared library lists under its own FAIL-OPEN heading, since
 #     a line it classifies as bats fixture data is skipped here too.
 #
@@ -190,7 +192,7 @@ gaia_guard_bats_files lint-stale-cardinals || exit 1
 # a whole run with a multibyte conversion error on a regex-driven scan. index()
 # has no such freedom: a byte is either in the set or it is not. Folding case
 # during the same walk is what lets DET, CARD and NOUN below be plain lowercase
-# lists, so a comment shouting `ALL THREE MEMBERS` is read like any other.
+# lists, so a comment shouting its cardinal in capitals is read like any other.
 #
 # A byte outside the alphanumeric set ENDS the current token rather than being
 # skipped over. That is what makes `hooks'` and `idiom-4` tokenize the way a
@@ -205,10 +207,11 @@ readonly OWN_AWK='
 
       # Characters that end a clause. Without them the walk reads across a
       # sentence boundary and invents a phrase neither sentence contains: a
-      # comment ending one sentence in `... at all.` and opening the next with
-      # `Three read sites ...` presents `all`, `three` and `sites` in order, and
-      # the determiner term this gate depends on is exactly what makes that
-      # collision plausible rather than rare.
+      # comment closing one sentence on `... at all.` and opening the next on a
+      # cardinal hands the walk a determiner, a cardinal and a vocabulary noun
+      # in order, spanning the full stop between them. The determiner term this
+      # gate depends on is exactly what makes that collision plausible rather
+      # than rare, and the suite pins the shape as a control.
       #
       # One of these ends a clause only when WHITESPACE or end of line follows
       # it. That test is what separates prose punctuation from the same
@@ -237,8 +240,9 @@ readonly OWN_AWK='
 
       # How many words may sit between the cardinal and its noun. One admits
       # the ordinary compound noun phrase, which is a shape the class really
-      # takes: a fixture count written as `the 412 fixture lines` puts a
-      # modifier between the two. See the header for why it stops there.
+      # takes: one of the two instances this gate was written for is a fixture
+      # count carrying a modifier between the cardinal and the noun, and the
+      # suite pins it verbatim. See the header for why the window stops there.
       GAP_MAX = 1
     }
 

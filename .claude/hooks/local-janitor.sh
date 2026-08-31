@@ -258,7 +258,7 @@ set -uo pipefail
 # the invoking one. Resolved via the shared resolver
 # (.gaia/scripts/main-root-lib.sh), sourced beside this file via BASH_SOURCE
 # the same way the other hooks that already depend on it do, rather than
-# re-deriving "where is main" a fifteenth time by hand.
+# re-deriving "where is main" by hand.
 #
 # Repointing `root` itself at `gaia_resolve_main_root` was considered and
 # rejected: sweep #1's `current` guard exists to protect the INVOKING tree's

@@ -113,7 +113,8 @@ _anchor_line() {
 # with `expected context address` BEFORE any assertion in the caller runs --
 # so the test fails for a reason that names neither the anchor nor the file,
 # and every assertion downstream of the extraction is silently not evaluated.
-# Six call sites route through here, so the diagnosis is worth the lines it costs.
+# Several call sites route through here, so the diagnosis is worth the lines
+# it costs.
 range_between() {
   local file="$1" start_pat="$2" end_pat="$3" s e
   s="$(_anchor_line "$file" "$start_pat")"

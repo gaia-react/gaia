@@ -687,15 +687,17 @@ mutate() {
 # Section A: shared-entry-point conformance (UAT-010)
 # ============================================================================
 #
-# Every check below greps every participating file at once: the three
-# production guards and the stub-guard fixture. That is why this whole
-# section lives in a single-agent phase rather than three parallel edits.
+# Every check below greps every participating file at once: each production
+# guard and the stub-guard fixture. The set is enumerated once in
+# participating_files() below and read from there, so a guard added to that
+# list is held to this whole section without editing any check in it.
 
 participating_files() {
   printf '%s\n' \
     "$REPO_ROOT/.gaia/scripts/lint-git-path-quoting.sh" \
     "$REPO_ROOT/.gaia/scripts/lint-grep-ere-escapes.sh" \
     "$REPO_ROOT/.gaia/scripts/lint-errexit-status-read.sh" \
+    "$REPO_ROOT/.gaia/scripts/lint-stale-cardinals.sh" \
     "$REPO_ROOT/.gaia/scripts/tests/fixtures/stub-guard.sh"
 }
 
@@ -703,7 +705,8 @@ production_guards() {
   printf '%s\n' \
     "$REPO_ROOT/.gaia/scripts/lint-git-path-quoting.sh" \
     "$REPO_ROOT/.gaia/scripts/lint-grep-ere-escapes.sh" \
-    "$REPO_ROOT/.gaia/scripts/lint-errexit-status-read.sh"
+    "$REPO_ROOT/.gaia/scripts/lint-errexit-status-read.sh" \
+    "$REPO_ROOT/.gaia/scripts/lint-stale-cardinals.sh"
 }
 
 @test "each participating file's shellcheck source= line carries the library's full repo-relative path" {
@@ -831,6 +834,16 @@ own_awk_functions() {
   # doc.
   actual="$(own_awk_functions "$REPO_ROOT/.gaia/scripts/lint-errexit-status-read.sh")"
   expected="$(printf '%s\n' arm check_desync eat_word feed has_status_read pragma_offsurface report reset_state walk yfeed)"
+  [ "$actual" = "$expected" ]
+
+  # The stale-cardinal guard's two private walks. tokenize is its
+  # class-detection walk and the detector cannot work without it: it splits a
+  # comment into case-folded tokens against literal character sets rather than
+  # a regex, which is the portability property its own header records.
+  # is_cardinal is the numeric half of the same decision. Neither reads shell
+  # syntax, so neither duplicates anything the library tokenizes.
+  actual="$(own_awk_functions "$REPO_ROOT/.gaia/scripts/lint-stale-cardinals.sh")"
+  expected="$(printf '%s\n' is_cardinal tokenize)"
   [ "$actual" = "$expected" ]
 
   actual="$(own_awk_functions "$REPO_ROOT/.gaia/scripts/tests/fixtures/stub-guard.sh")"

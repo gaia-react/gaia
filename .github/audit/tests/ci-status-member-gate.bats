@@ -2211,7 +2211,8 @@ run_audit_complete_step() {
   # still covers a rejected SUCCESS POST, where members_pending is empty.
   #
   # The arm ORDER is what this pins; the combined-state MESSAGES are pinned by
-  # the sibling tests above, and their shared instruction by the fourth.
+  # the sibling tests above, and their shared instruction by the test that
+  # follows them.
   # An invariant that only bites in the future is exactly the kind prose cannot
   # hold, because nothing re-reads prose on the day it starts mattering.
   local expected="SUCCESS_LIVE READ_FAILED MEMBERS_PENDING POST_FAILED POST_FAILED SUCCESS_STAMPED"

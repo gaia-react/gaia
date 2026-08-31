@@ -79,11 +79,19 @@ fixture_script() {
   fixture_file check.sh "$1"
 }
 
-# fixture_suite <body>: a tracked bats suite, which is the only surface where
-# the pragma is honored and the only one carrying a `@test` name.
-fixture_suite() {
-  fixture_file probe.bats "$1"
-}
+# A tracked bats suite is the only surface where the pragma is honored and the
+# only one carrying a `@test` name, so several tests below need one. They call
+# `fixture_file probe.bats` directly rather than through a wrapper of their own.
+#
+# That is not a style choice. The shared library classifies a bats line as
+# fixture DATA partly by the command word that writes it, against a closed set
+# of writer names it recognizes (guard-awk-lib.sh, `G_classify`). `fixture_file`
+# and `fixture_script` are in that set; a locally-invented wrapper is not, so
+# every line of a multi-line body handed to one is read as executed shell and
+# this suite's own fixture prose is reported as a live finding. Adding a name to
+# the shared set to suit one suite widens a contract every consumer of that
+# library depends on, so
+# the call goes direct instead.
 
 # at_test <name>: one literal bats test declaration, ASSEMBLED rather than
 # written out.
@@ -188,7 +196,7 @@ true'
 
 @test "reds inside a bats test name" {
   fixture_repo
-  fixture_suite '@test "the write lands for all three members" {
+  fixture_file probe.bats '@test "the write lands for all three members" {
   true
 }'
   run_linter
@@ -278,7 +286,7 @@ true'
 # proves this gate consults the answer rather than reporting the literal.
 @test "a quoted heredoc body carrying the shape is not reported" {
   fixture_repo
-  fixture_suite '@test "seeds a fixture" {
+  fixture_file probe.bats '@test "seeds a fixture" {
   cat > "$BATS_TEST_TMPDIR/f.sh" <<'"'"'EOF'"'"'
 # the four callers all pass well-formed arguments
 EOF
@@ -292,7 +300,7 @@ EOF
 
 @test "a pragma waives a test name beneath it in a bats suite" {
   fixture_repo
-  fixture_suite "# gaia-lint-ignore lint-stale-cardinals: quoting the shape on purpose
+  fixture_file probe.bats "# gaia-lint-ignore lint-stale-cardinals: quoting the shape on purpose
 $( at_test 'the write lands for all three members' )"
   run_linter
   [ "$status" -eq 0 ]
@@ -307,7 +315,7 @@ $( at_test 'the write lands for all three members' )"
 # one and watching it do nothing.
 @test "a pragma does not waive an instance on a comment line" {
   fixture_repo
-  fixture_suite "# gaia-lint-ignore lint-stale-cardinals: cannot reach the line below
+  fixture_file probe.bats "# gaia-lint-ignore lint-stale-cardinals: cannot reach the line below
 # the four callers all pass well-formed arguments
 $( at_test 'probe' )"
   run_linter
@@ -316,7 +324,7 @@ $( at_test 'probe' )"
 
 @test "an unused pragma in a bats suite is reported" {
   fixture_repo
-  fixture_suite "# gaia-lint-ignore lint-stale-cardinals: nothing beneath this waives
+  fixture_file probe.bats "# gaia-lint-ignore lint-stale-cardinals: nothing beneath this waives
 $( at_test 'probe' )"
   run_linter
   [ "$status" -eq 1 ]
