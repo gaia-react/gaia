@@ -16,6 +16,10 @@ type Sandbox = {
 const setupSandbox = (): Sandbox => {
   const root = mkdtempSync(path.join(tmpdir(), 'gaia-wiki-diff-size-'));
   execFileSync('git', ['init', '-q', '-b', 'main'], {cwd: root});
+  // git's own default. Set explicitly so a developer whose global config
+  // carries `core.quotepath=false` does not silently make the non-ASCII
+  // block below vacuous by removing the very quoting it exists to defeat.
+  execFileSync('git', ['config', 'core.quotepath', 'true'], {cwd: root});
   execFileSync('git', ['config', 'user.email', 'test@example.com'], {
     cwd: root,
   });
@@ -276,5 +280,49 @@ describe('wiki diff-size', () => {
     const exit = run(['--help'], {cwd: sandbox.root});
     expect(exit).toBe(0);
     expect(stdio.outputs.join('')).toContain('Usage: gaia wiki diff-size');
+  });
+
+  describe('paths git rewrites on the way out', () => {
+    // CJK, deliberately: it has no NFD decomposition, so macOS filesystem
+    // normalization cannot round-trip the name into something the blob read
+    // finds by accident. The C-quoted spelling git emits for it is the octal
+    // escape run asserted below.
+    const NON_ASCII_STEM = '日本語';
+    const QUOTED_FIRST_BYTE = String.raw`\346`;
+
+    test('the fixture path really is C-quoted, so the assertion below can fail', () => {
+      sandbox.writeFile(`wiki/${NON_ASCII_STEM}.md`, fillLines(40, 'line'));
+      sandbox.commitAll('base');
+
+      const listed = execFileSync(
+        'git',
+        ['ls-tree', '-r', '-l', 'HEAD', '--', 'wiki/'],
+        {cwd: sandbox.root, encoding: 'utf8'}
+      );
+
+      expect(listed).toContain(QUOTED_FIRST_BYTE);
+      expect(listed).not.toContain(NON_ASCII_STEM);
+    });
+
+    test('a non-ASCII page is sized by its real line count, not as zero', () => {
+      sandbox.writeFile('wiki/ascii.md', fillLines(10, 'line'));
+      sandbox.writeFile(`wiki/${NON_ASCII_STEM}.md`, fillLines(40, 'line'));
+      sandbox.commitAll('base');
+      sandbox.writeFile('README.md', 'unrelated change\n');
+      sandbox.commitAll('non-wiki edit');
+
+      const result = computeDiffSize({cwd: sandbox.root, thresholdPct: 25});
+      expect(result.baseLines).toBe(50);
+    });
+
+    test('a page whose name holds a newline stays one blob', () => {
+      sandbox.writeFile('wiki/two\nnames.md', fillLines(40, 'line'));
+      sandbox.commitAll('base');
+      sandbox.writeFile('README.md', 'unrelated change\n');
+      sandbox.commitAll('non-wiki edit');
+
+      const result = computeDiffSize({cwd: sandbox.root, thresholdPct: 25});
+      expect(result.baseLines).toBe(40);
+    });
   });
 });

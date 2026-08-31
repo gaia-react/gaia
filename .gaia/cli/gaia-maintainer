@@ -31732,11 +31732,21 @@ var parseLsTreeLine = (line) => {
 var wikiBlobsAtRef = (cwd, ref) => {
   let raw;
   try {
-    raw = git(cwd, ["ls-tree", "-r", "-l", ref, "--", "wiki/"]);
+    raw = git(cwd, [
+      "-c",
+      "core.quotepath=false",
+      "ls-tree",
+      "-r",
+      "-l",
+      "-z",
+      ref,
+      "--",
+      "wiki/"
+    ]);
   } catch {
     return [];
   }
-  return raw.split("\n").flatMap((line) => {
+  return raw.split("\0").flatMap((line) => {
     const parsed = parseLsTreeLine(line);
     return parsed === void 0 ? [] : [parsed];
   });
