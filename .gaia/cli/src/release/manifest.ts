@@ -253,11 +253,12 @@ export const resolveManifestPath = (repoRoot: string): string =>
  * byte-identically to the staging idiom it mirrors, not because it is
  * load-bearing here.
  *
- * One disagreement with staging survives this, in the other direction: the
- * shell readers pipe the NUL stream through `tr '\0' '\n'` into a
- * newline-delimited file, so a path holding a literal newline splits into two
- * names there and is dropped from the tarball, while it stays one entry here
- * and is recorded as shipping (#1669).
+ * One divergence from staging survives this, in the other direction: the shell
+ * readers pipe the NUL stream through `tr '\0' '\n'` into a newline-delimited
+ * file, so a path holding a literal newline splits into two names matching no
+ * file. In release staging those names reach `rsync --files-from`, which
+ * reports them and exits 23 in a `bash -e` step, so the release fails loudly
+ * rather than publishing a tarball that disagrees with this manifest (#1669).
  */
 const listGitFiles = (cwd: string): string[] =>
   execFileSync('git', ['-c', 'core.quotepath=false', 'ls-files', '-z'], {
