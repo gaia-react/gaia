@@ -17122,6 +17122,10 @@ var run17 = (command, args, options = {}) => {
 var runGh = (args, options = {}) => run17("gh", args, options);
 var runGit = (args, options = {}) => run17("git", args, options);
 
+// src/util/git-z.ts
+var gitZArgs = (verb, args = []) => ["-c", "core.quotepath=false", verb, "-z", ...args];
+var splitZStream = (raw) => raw.split("\0").filter((record2) => record2.length > 0);
+
 // src/labels/registry.ts
 import { existsSync as existsSync10, readFileSync as readFileSync10 } from "node:fs";
 import path14 from "node:path";
@@ -17505,7 +17509,7 @@ var run18 = (argv) => {
     });
     return EXIT_ENVIRONMENT;
   }
-  const listed = runGit(["-c", "core.quotepath=false", "ls-files", "-z"], {
+  const listed = runGit(gitZArgs("ls-files"), {
     cwd: repoRoot
   });
   if (listed.exitCode !== 0) {
@@ -17517,7 +17521,7 @@ var run18 = (argv) => {
     });
     return EXIT_ENVIRONMENT;
   }
-  const files = listed.stdout.split(NUL).filter((file2) => file2 !== "" && !isExcluded(file2));
+  const files = splitZStream(listed.stdout).filter((file2) => !isExcluded(file2));
   const findings = scanTree(repoRoot, registry2, files);
   if (parsed.json) {
     process.stdout.write(`${JSON.stringify({ findings })}
@@ -23032,11 +23036,13 @@ var ManifestSchema = external_exports.object({
 });
 var resolveExcludePath = (repoRoot) => path22.resolve(repoRoot, ".gaia/release-exclude");
 var resolveManifestPath = (repoRoot) => path22.resolve(repoRoot, ".gaia/manifest.json");
-var listGitFiles = (cwd) => execFileSync2("git", ["-c", "core.quotepath=false", "ls-files", "-z"], {
-  cwd,
-  encoding: "utf8",
-  stdio: ["ignore", "pipe", "pipe"]
-}).split("\0").filter((line) => line.length > 0);
+var listGitFiles = (cwd) => splitZStream(
+  execFileSync2("git", gitZArgs("ls-files"), {
+    cwd,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"]
+  })
+);
 var buildManifest = (cwd, options = {}) => {
   const repoRoot = options.repoRoot ?? resolveRepoRoot(cwd);
   const versionPath = path22.resolve(repoRoot, ".gaia/VERSION");
@@ -23907,20 +23913,11 @@ var parseShortStat = (stat) => {
 };
 var fileListForCommit = (sha, cwd) => {
   const result = tryRunGit(
-    [
-      "-c",
-      "core.quotepath=false",
-      "diff-tree",
-      "--no-commit-id",
-      "--name-only",
-      "-r",
-      "-z",
-      sha
-    ],
+    gitZArgs("diff-tree", ["--no-commit-id", "--name-only", "-r", sha]),
     { cwd }
   );
   if (result === null) return [];
-  return result.split("\0").filter((entry) => entry.length > 0);
+  return splitZStream(result);
 };
 var parseChunk = (chunk) => {
   const trimmed = chunk.trim();
@@ -29875,7 +29872,7 @@ import path43 from "node:path";
 var porcelainZPaths = (out) => {
   const paths = [];
   let expectOriginPath = false;
-  out.split("\0").filter((record2) => record2.length > 0).forEach((record2) => {
+  splitZStream(out).forEach((record2) => {
     if (expectOriginPath) {
       expectOriginPath = false;
       paths.push(record2);
@@ -31738,21 +31735,11 @@ var parseLsTreeLine = (line) => {
 var wikiBlobsAtRef = (cwd, ref) => {
   let raw;
   try {
-    raw = git(cwd, [
-      "-c",
-      "core.quotepath=false",
-      "ls-tree",
-      "-r",
-      "-l",
-      "-z",
-      ref,
-      "--",
-      "wiki/"
-    ]);
+    raw = git(cwd, gitZArgs("ls-tree", ["-r", "-l", ref, "--", "wiki/"]));
   } catch {
     return [];
   }
-  return raw.split("\0").flatMap((line) => {
+  return splitZStream(raw).flatMap((line) => {
     const parsed = parseLsTreeLine(line);
     return parsed === void 0 ? [] : [parsed];
   });
@@ -31817,14 +31804,10 @@ var parseNumstatStream = (raw) => {
 var sumChangedLines = (cwd, base) => {
   let raw;
   try {
-    raw = git(cwd, [
-      "diff",
-      "--numstat",
-      "-z",
-      `${base}...HEAD`,
-      "--",
-      "wiki/"
-    ]);
+    raw = git(
+      cwd,
+      gitZArgs("diff", ["--numstat", `${base}...HEAD`, "--", "wiki/"])
+    );
   } catch {
     return 0;
   }

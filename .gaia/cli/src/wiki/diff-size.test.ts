@@ -3,6 +3,11 @@ import {execFileSync} from 'node:child_process';
 import {mkdirSync, mkdtempSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
+import {
+  NON_ASCII_STEM,
+  QUOTED_FIRST_BYTE,
+  QUOTEPATH_PIN_ARGS,
+} from '../util/non-ascii-path-fixture.js';
 import {computeDiffSize, run} from './diff-size.js';
 
 type Sandbox = {
@@ -16,10 +21,7 @@ type Sandbox = {
 const setupSandbox = (): Sandbox => {
   const root = mkdtempSync(path.join(tmpdir(), 'gaia-wiki-diff-size-'));
   execFileSync('git', ['init', '-q', '-b', 'main'], {cwd: root});
-  // git's own default. Set explicitly so a developer whose global config
-  // carries `core.quotepath=false` does not silently make the non-ASCII
-  // block below vacuous by removing the very quoting it exists to defeat.
-  execFileSync('git', ['config', 'core.quotepath', 'true'], {cwd: root});
+  execFileSync('git', QUOTEPATH_PIN_ARGS, {cwd: root});
   // git's own default too. Set explicitly for the same reason: a developer
   // whose global config carries `diff.renames=false` would make the rename
   // block below vacuous by turning every rename into an add/delete pair.
@@ -301,13 +303,6 @@ describe('wiki diff-size', () => {
   });
 
   describe('paths git rewrites on the way out', () => {
-    // CJK, deliberately: it has no NFD decomposition, so macOS filesystem
-    // normalization cannot round-trip the name into something the blob read
-    // finds by accident. The C-quoted spelling git emits for it is the octal
-    // escape run asserted below.
-    const NON_ASCII_STEM = '日本語';
-    const QUOTED_FIRST_BYTE = String.raw`\346`;
-
     test('the fixture path really is C-quoted, so the assertion below can fail', () => {
       sandbox.writeFile(`wiki/${NON_ASCII_STEM}.md`, fillLines(40, 'line'));
       sandbox.commitAll('base');

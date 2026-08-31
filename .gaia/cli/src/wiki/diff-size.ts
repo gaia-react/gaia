@@ -15,6 +15,7 @@
 import {execFileSync} from 'node:child_process';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
+import {gitZArgs, splitZStream} from '../util/git-z.js';
 
 const HELP_TEXT = `Usage: gaia wiki diff-size --threshold-pct <N> [--base <ref>] [--json]
 
@@ -86,33 +87,16 @@ const wikiBlobsAtRef = (
   let raw: string;
 
   try {
-    // `-z` is the half that does the work: it terminates records with NUL
-    // and, on its own, suppresses the C-quoting git applies under the default
-    // `core.quotePath` to a path carrying a non-ASCII byte, a control
-    // character, or a double quote. A quoted spelling names no blob, so the
-    // cat-file below answers 0 for that page and the denominator silently
-    // shrinks: a size threshold reported as cleared on a wiki this never
-    // finished measuring. NUL termination also keeps a path holding a literal
-    // newline as one record rather than two that parse as no tuple at all.
-    // `-c core.quotepath=false` is inert beside `-z`, kept so the option
-    // prefix matches the idiom `release/manifest.ts` carries on its own
-    // `ls-files` call.
-    raw = git(cwd, [
-      '-c',
-      'core.quotepath=false',
-      'ls-tree',
-      '-r',
-      '-l',
-      '-z',
-      ref,
-      '--',
-      'wiki/',
-    ]);
+    // A C-quoted path names no blob, so the cat-file below answers 0 for that
+    // page and the denominator silently shrinks: a size threshold reported as
+    // cleared on a wiki this never finished measuring. `gitZArgs` states why
+    // its flags prevent that.
+    raw = git(cwd, gitZArgs('ls-tree', ['-r', '-l', ref, '--', 'wiki/']));
   } catch {
     return [];
   }
 
-  return raw.split('\0').flatMap((line) => {
+  return splitZStream(raw).flatMap((line) => {
     const parsed = parseLsTreeLine(line);
 
     return parsed === undefined ? [] : [parsed];
@@ -249,14 +233,10 @@ const sumChangedLines = (cwd: string, base: string): number => {
   let raw: string;
 
   try {
-    raw = git(cwd, [
-      'diff',
-      '--numstat',
-      '-z',
-      `${base}...HEAD`,
-      '--',
-      'wiki/',
-    ]);
+    raw = git(
+      cwd,
+      gitZArgs('diff', ['--numstat', `${base}...HEAD`, '--', 'wiki/'])
+    );
   } catch {
     return 0;
   }

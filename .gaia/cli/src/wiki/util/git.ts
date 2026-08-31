@@ -7,6 +7,7 @@
  */
 import {execFileSync} from 'node:child_process';
 import {MAX_GIT_BUFFER_BYTES} from '../../util/git-buffer.js';
+import {gitZArgs, splitZStream} from '../../util/git-z.js';
 
 type RunOptions = {
   cwd?: string;
@@ -213,35 +214,18 @@ const fileListForCommit = (sha: string, cwd: string): string[] => {
   // because newer git versions reject the `--no-patch --name-only` combo
   // older docs recommended.
   //
-  // `-z` is load-bearing twice over. It emits each path raw rather than
-  // C-quoted, so a page whose name carries a non-ASCII byte arrives as
-  // `wiki/<CJK>.md` instead of `"wiki/\346\227\245..."`, a spelling whose
-  // leading double quote fails every `startsWith('wiki/')` the caller in
-  // `commit-classify.ts` prefix-tests with; and it delimits records exactly,
-  // so a path holding a literal newline stays one entry rather than splitting
-  // into two that name no file. `-c core.quotepath=false` is inert beside
-  // `-z`, kept so the option prefix matches the idiom `wiki/diff-size.ts`,
-  // `labels/check.ts`, and `release/manifest.ts` carry on their own calls.
+  // `gitZArgs` supplies the flags that keep a page whose name carries a
+  // non-ASCII byte readable here; its docblock states why they are
+  // load-bearing. The caller in `commit-classify.ts` prefix-tests these paths
+  // with `startsWith('wiki/')`, which a C-quoted spelling fails outright.
   const result = tryRunGit(
-    [
-      '-c',
-      'core.quotepath=false',
-      'diff-tree',
-      '--no-commit-id',
-      '--name-only',
-      '-r',
-      '-z',
-      sha,
-    ],
+    gitZArgs('diff-tree', ['--no-commit-id', '--name-only', '-r', sha]),
     {cwd}
   );
 
   if (result === null) return [];
 
-  // Filter rather than trim: `-z` already delimits records exactly, so there
-  // is no terminator left to strip, and trimming would instead remove leading
-  // or trailing whitespace that git legally permits in a path.
-  return result.split('\0').filter((entry) => entry.length > 0);
+  return splitZStream(result);
 };
 
 type ChunkParse = {
