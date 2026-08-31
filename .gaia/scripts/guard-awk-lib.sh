@@ -16,8 +16,8 @@
 # wiki/decisions/Shell Guard Fixture Discrimination.md.
 # gaia:maintainer-only:end
 #
-# Why a library of awk SOURCE rather than of bash functions: all three consuming
-# guards detect their class inside a single-quoted awk program and hold their
+# Why a library of awk SOURCE rather than of bash functions: every consuming
+# guard detects its class inside a single-quoted awk program and holds its
 # per-line state in awk variables. A bash function can supply none of that state,
 # so what is shared has to be awk text a guard concatenates ahead of its own
 # program. The sibling errexit guard already demonstrates the shape in-file,

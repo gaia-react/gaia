@@ -27,7 +27,7 @@
 # `^## ` regardless of start depth.
 #
 # Model naming: the SPEC bans naming a concrete model anywhere in this
-# feature, but three of the four edited files already name one for unrelated,
+# feature, but several of the edited files already name one for unrelated,
 # pre-existing reasons (`code-audit-frontend.md`'s `model: opus` frontmatter,
 # `audit.md`'s several `sonnet` references), so a whole-file absence grep
 # fails on landing and is the wrong check. Group 2 below scopes the check to
@@ -213,7 +213,7 @@ setup() {
 
 # --- Group 1: the vocabulary file owns the rubric ---------------------------
 
-@test "UAT-004: SKILL.md defines all three difficulty labels, each its own check" {
+@test "UAT-004: SKILL.md defines every difficulty label, each its own check" {
   grep -qF -- "difficulty:easy" "$VOCAB" || return 1
   grep -qF -- "difficulty:medium" "$VOCAB" || return 1
   grep -qF -- "difficulty:hard" "$VOCAB" || return 1
@@ -252,7 +252,7 @@ setup() {
   grep -qF -- "carry no information about the finding" "$VOCAB" || return 1
 }
 
-@test "UAT-005: the label loops create all three difficulty labels, both surface labels, all three handler labels, and still create the five pre-existing ones" {
+@test "UAT-005: the label loops create every difficulty label, both surface labels, every handler label, and still create the pre-existing ones" {
   grep -qF -- "for label in tech-debt severity:critical severity:important severity:suggestion" "$VOCAB" || return 1
   grep -qF -- "handler:prompt handler:plan handler:spec" "$VOCAB" || return 1
   grep -qF -- "difficulty:easy difficulty:medium difficulty:hard wontfix; do" "$VOCAB" || return 1
@@ -272,7 +272,7 @@ setup() {
   #
   # Asserted as patterns rather than as a list of the counts used so far. A
   # list only catches the words already thought of: the previous revision here
-  # enumerated six spellings, and `all sixteen labels` passed it. Both forms
+  # enumerated a fixed set of spellings, and an `all <n> labels` form passed it. Both forms
   # the prose has ever used are covered, "all <n> labels" and "<n> in total
   # there". The second keeps its trailing "there" so it stays a label-count
   # claim: unqualified, it would also fire on an unrelated "three checks in
@@ -353,7 +353,7 @@ setup() {
   true
 }
 
-@test "SKILL.md defines all three handler labels and states one color family for them" {
+@test "SKILL.md defines every handler label and states one color family for them" {
   grep -qF -- "handler:prompt" "$VOCAB" || return 1
   grep -qF -- "handler:plan" "$VOCAB" || return 1
   grep -qF -- "handler:spec" "$VOCAB" || return 1
@@ -372,7 +372,7 @@ setup() {
   assert_absent_fixed_across "a design decision the surrounding code does not settle" "$FRONTEND" "$AUDIT" "$DEBT"
 }
 
-@test "no difficulty-bearing line in any of the four edited files names a concrete model" {
+@test "no difficulty-bearing line in any of the edited files names a concrete model" {
   local f
   for f in "$VOCAB" "$FRONTEND" "$AUDIT" "$DEBT"; do
     if grep -i 'difficulty' "$f" | grep -qiE 'opus|sonnet|haiku|claude-'; then

@@ -23,7 +23,7 @@ setup() {
   NL=$'\n'
   TAB=$'\t'
 
-  # The five distinct verb fragments the eleven consumers carry, verbatim.
+  # The distinct verb fragments the consumers carry, verbatim.
   MERGE_FRAG='gh[[:space:]]+pr[[:space:]]+merge([[:space:]]|$)'
   MERGE_WORDS='gh pr merge'
   CREATE_FRAG='gh[[:space:]]+pr[[:space:]]+create([[:space:]]|$)'
@@ -563,7 +563,7 @@ parity() {
 # can be guarded from outside: a consumer's `bash -n` on verb-arming.sh does
 # not recurse into what verb-arming.sh itself sources. Under errexit an
 # unparseable copy of either abandoned the shell before the `type` check on the
-# next line could degrade, and in the four errexit consumers that exit is 2 --
+# next line could degrade, and in the errexit consumers that exit is 2 --
 # the PreToolUse deny code.
 #
 # Every case here is pinned to stock /bin/bash. On bash 5 a failed source

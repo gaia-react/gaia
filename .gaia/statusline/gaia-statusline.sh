@@ -70,7 +70,7 @@ fi
 # canonical resolver. Not from this script's install path: a maintainer
 # wrapper execs the shipped script from the main checkout while the session
 # runs in a linked worktree, so the install path answers for the wrong
-# checkout. All three state files are registry scope "shared", so main is
+# checkout. Every state file is registry scope "shared", so main is
 # where they physically live for every tree, provisioned or not.
 #
 # Resolver failure degrades silently, this consumer's documented disposition:

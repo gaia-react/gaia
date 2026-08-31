@@ -121,7 +121,7 @@ run_linter() {
 }
 
 # The binding test. `#1229`'s Suggested fix: whichever guard lands must be shown
-# to red against at least one of the four historical sites in its pre-fix form.
+# to red against at least one of the historical sites in its pre-fix form.
 # This is .claude/hooks/worthiness-presence-check.sh:169 as it stood before
 # PR #1227 fixed it.
 @test "reds against the pre-fix worthiness-presence-check.sh derivation" {
@@ -581,10 +581,10 @@ run_linter() {
 
 # 3c. The markdown half: an executed snippet on a documentation page
 
-# The three sites `#1400` names, each in its PRE-FIX form, one per test. Their
+# The sites `#1400` names, each in its PRE-FIX form, one per test. Their
 # point is the fixture BODY, the literal pre-fix line copied from the page; the
 # paths are the real ones so a reader can trace a failing test back to what it
-# was written for. The first of the three was repaired by hand before any check
+# was written for. The first of them was repaired by hand before any check
 # could see it, so its fixture is the only remaining record that the widened
 # detector would have caught it.
 

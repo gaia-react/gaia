@@ -536,7 +536,7 @@ setup() {
   printf '%s\n' "$section" | grep -qF -- 'under the heading `## Out-of-scope machinery findings (recorded, not filed)`' || return 1
 }
 
-@test "Group 9: the retired 'a heading such as' phrasing is absent from all three prose files" {
+@test "Group 9: the retired 'a heading such as' phrasing is absent from every prose file" {
   local f
   for f in "$WIKI" "$FRONTEND" "$DISPOSITION"; do
     grep -qF -- "a heading such as" "$f" && {

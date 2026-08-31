@@ -66,7 +66,7 @@
 #   rev-a      fresh=100 cwrite=200 cread=300 out=400 ts 11:00:00 (code-review-audit, file tmin)
 #   rev-b      fresh=13  cwrite=17  cread=19  out=23  ts 11:02:00 (code-review-audit, file tmax)
 #   nest-a     fresh=2   cwrite=3   cread=5   out=7   ts 11:01:00 (general-purpose, nested inside rev's span)
-#   session-wide totals (all 6 lines): fresh=137 cwrite=263 cread=388 out=515 total=1303
+#   session-wide totals (main+aud-a+aud-b+rev-a+rev-b+nest-a): fresh=137 cwrite=263 cread=388 out=515 total=1303
 #   review window = [rev file tmin, tmax] = [11:00:00, 11:02:00] -> contains
 #     rev-a, rev-b (the review's own file) and nest-a; excludes aud-a/aud-b/main.
 #     review record: fresh=115 cwrite=220 cread=324 out=430 total=1089,

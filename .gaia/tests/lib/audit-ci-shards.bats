@@ -1810,7 +1810,7 @@ concurrency_tree_needs_packages() {
 # installer, or a composite action, never the files those read), so the
 # script-capabilities manifest, its schema, and .gaia/release-exclude are
 # transitive inputs that guard never reaches. These two tests are the
-# regression guard for the three lines SPEC-072 added to close that hole.
+# regression guard for the lines SPEC-072 added to close that hole.
 #
 # .gaia/manifest.json is the same shape on the cli-tests side, and it is
 # asserted here for the same reason. None of the literal tokens in

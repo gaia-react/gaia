@@ -489,7 +489,7 @@ doctor_unweighted() {
 # A seam directory whose round-robin split across three shards is lopsided and
 # whose weighted split is not: two heavy files at alternating positions in the
 # sorted listing land on the same shard when position decides, and on different
-# shards when weight does. Six files, so each of the three shards still draws
+# shards when weight does. Six files, so each shard still draws
 # two under round-robin and none of them is empty either way.
 seed_lopsided_tree() {
   local dir="$1" name

@@ -186,7 +186,7 @@ jobs:
   grep -qF -- "blanks.yml:7:" <<<"$output"
 }
 
-# The three tests below pin block-scalar header shapes that are legal YAML and
+# The tests below pin block-scalar header shapes that are legal YAML and
 # whose bodies Actions runs normally. Each one, before the header pattern was
 # widened, sent the header down the inline arm and left every line of the body
 # unscanned -- a fail-open on a real shape rather than a declared blind spot.

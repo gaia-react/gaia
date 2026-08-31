@@ -687,15 +687,17 @@ mutate() {
 # Section A: shared-entry-point conformance (UAT-010)
 # ============================================================================
 #
-# Every check below greps all four participating files at once: the three
-# production guards and the stub-guard fixture. That is why this whole
-# section lives in a single-agent phase rather than three parallel edits.
+# Every check below greps every participating file at once: each production
+# guard and the stub-guard fixture. The set is enumerated once in
+# participating_files() below and read from there, so a guard added to that
+# list is held to this whole section without editing any check in it.
 
 participating_files() {
   printf '%s\n' \
     "$REPO_ROOT/.gaia/scripts/lint-git-path-quoting.sh" \
     "$REPO_ROOT/.gaia/scripts/lint-grep-ere-escapes.sh" \
     "$REPO_ROOT/.gaia/scripts/lint-errexit-status-read.sh" \
+    "$REPO_ROOT/.gaia/scripts/lint-stale-cardinals.sh" \
     "$REPO_ROOT/.gaia/scripts/tests/fixtures/stub-guard.sh"
 }
 
@@ -703,7 +705,8 @@ production_guards() {
   printf '%s\n' \
     "$REPO_ROOT/.gaia/scripts/lint-git-path-quoting.sh" \
     "$REPO_ROOT/.gaia/scripts/lint-grep-ere-escapes.sh" \
-    "$REPO_ROOT/.gaia/scripts/lint-errexit-status-read.sh"
+    "$REPO_ROOT/.gaia/scripts/lint-errexit-status-read.sh" \
+    "$REPO_ROOT/.gaia/scripts/lint-stale-cardinals.sh"
 }
 
 @test "each participating file's shellcheck source= line carries the library's full repo-relative path" {
@@ -732,7 +735,7 @@ production_guards() {
   done < <(participating_files)
 }
 
-@test "the five common entry points are called, not merely named, in all four files" {
+@test "the common entry points are called, not merely named, in every participating file" {
   # A CALL is the name immediately followed by "(". Both this file's own
   # header comments and the stub guard's name every entry point in prose,
   # so a raw name-match would misread a comment as a call.
@@ -760,12 +763,13 @@ production_guards() {
   grep -qF -- "gaia_scan_run_only(" "$REPO_ROOT/.gaia/scripts/lint-errexit-status-read.sh" || return 1
   grep -qF -- "gaia_scan_run_only(" "$REPO_ROOT/.gaia/scripts/lint-git-path-quoting.sh" && return 1
   grep -qF -- "gaia_scan_run_only(" "$REPO_ROOT/.gaia/scripts/lint-grep-ere-escapes.sh" && return 1
+  grep -qF -- "gaia_scan_run_only(" "$REPO_ROOT/.gaia/scripts/lint-stale-cardinals.sh" && return 1
   true
 }
 
 # Deviation from the plan's README table, recorded rather than silently
 # absorbed: the table lists gaia_scan_prepass_end among the four the
-# production guards "additionally call". None of the three calls it by
+# production guards "additionally call". None of them calls it by
 # name. The library's own gaia_scan_feed invokes it internally on the
 # transition into pass 2 (guard-awk-lib.sh: "if (G_pre_seen && !G_pre_done)
 # gaia_scan_prepass_end()"), so a guard running the two-pass invocation gets
@@ -833,6 +837,16 @@ own_awk_functions() {
   expected="$(printf '%s\n' arm check_desync eat_word feed has_status_read pragma_offsurface report reset_state walk yfeed)"
   [ "$actual" = "$expected" ]
 
+  # The stale-cardinal guard's two private walks. tokenize is its
+  # class-detection walk and the detector cannot work without it: it splits a
+  # comment into case-folded tokens against literal character sets rather than
+  # a regex, which is the portability property its own header records.
+  # is_cardinal is the numeric half of the same decision. Neither reads shell
+  # syntax, so neither duplicates anything the library tokenizes.
+  actual="$(own_awk_functions "$REPO_ROOT/.gaia/scripts/lint-stale-cardinals.sh")"
+  expected="$(printf '%s\n' is_cardinal tokenize)"
+  [ "$actual" = "$expected" ]
+
   actual="$(own_awk_functions "$REPO_ROOT/.gaia/scripts/tests/fixtures/stub-guard.sh")"
   [ -z "$actual" ]
 }
@@ -845,7 +859,7 @@ strip_full_line_comments() {
   grep -vE '^[[:space:]]*#' "$1"
 }
 
-@test "none of the three guards or the library names a literal bats suite basename on a non-comment line" {
+@test "no production guard, and not the library, names a literal bats suite basename on a non-comment line" {
   # UAT-006 / README C8: the discrimination must not be a per-file or
   # per-suite allowlist, and an allowlist would have to live in code.
   # Scoped to non-comment lines because the guards' header comments
@@ -855,13 +869,10 @@ strip_full_line_comments() {
   # character class, because the character before the dot is '*', outside
   # [A-Za-z0-9_.-], so there is no allowlist arm to carve out.
   local f
-  for f in "$REPO_ROOT/.gaia/scripts/lint-git-path-quoting.sh" \
-           "$REPO_ROOT/.gaia/scripts/lint-grep-ere-escapes.sh" \
-           "$REPO_ROOT/.gaia/scripts/lint-errexit-status-read.sh" \
-           "$REPO_ROOT/.gaia/scripts/guard-awk-lib.sh"; do
+  while IFS= read -r f; do
     strip_full_line_comments "$f" | grep -qE '[A-Za-z0-9_.-]+\.bats' \
       && { echo "$f: names a bats basename on a non-comment line" >&2; return 1; }
-  done
+  done < <(wiki_citing_files)
   true
 }
 
@@ -885,12 +896,12 @@ strip_full_line_comments() {
 # them. That review happens as the first step of Phase 4, with the user,
 # before /distribution-audit, and its outcome is recorded in PROGRESS.md.
 
+# Derived from production_guards() rather than re-listed, so a guard added
+# there is held to the citation rule without a second edit here. The library
+# itself cites the page too and is not a guard, so it is appended.
 wiki_citing_files() {
-  printf '%s\n' \
-    "$REPO_ROOT/.gaia/scripts/lint-git-path-quoting.sh" \
-    "$REPO_ROOT/.gaia/scripts/lint-grep-ere-escapes.sh" \
-    "$REPO_ROOT/.gaia/scripts/lint-errexit-status-read.sh" \
-    "$REPO_ROOT/.gaia/scripts/guard-awk-lib.sh"
+  production_guards
+  printf '%s\n' "$REPO_ROOT/.gaia/scripts/guard-awk-lib.sh"
 }
 
 @test "every participating file cites the wiki decision page" {
@@ -959,9 +970,10 @@ extract_wiki_paths() {
   # Presence check against phrasing the guards actually wrote (this task's
   # own instruction: read the headers first and pin what is there, so the
   # check does not rot against the next prose edit).
-  grep -qF -- '*.bats' "$REPO_ROOT/.gaia/scripts/lint-git-path-quoting.sh" || return 1
-  grep -qF -- '*.bats' "$REPO_ROOT/.gaia/scripts/lint-grep-ere-escapes.sh" || return 1
-  grep -qF -- '*.bats' "$REPO_ROOT/.gaia/scripts/lint-errexit-status-read.sh" || return 1
+  local g
+  while IFS= read -r g; do
+    grep -qF -- '*.bats' "$g" || { echo "$g: header states no bats reach" >&2; return 1; }
+  done < <(production_guards)
 
   grep -qF -- 'FAIL-OPEN' "$REPO_ROOT/.gaia/scripts/lint-grep-ere-escapes.sh" || return 1
   grep -qF -- 'FAIL-OPEN' "$REPO_ROOT/.gaia/scripts/lint-errexit-status-read.sh" || return 1
@@ -971,7 +983,7 @@ extract_wiki_paths() {
   # than missed) and a statement about the pragma being honored nowhere on
   # other surfaces; it names no NEW fail-open for the bats surface.
   # Recorded as a finding rather than papered over: the plan's README
-  # assumed all three guards would state one.
+  # assumed every guard would state one.
 }
 
 @test "the wiki-style audit greps add no new match from the wiki page" {
@@ -1038,6 +1050,12 @@ mutate_guard_copy() {
     --filter "a pragma naming this gate suppresses the instance below it" \
     "$XG_SUITE"
   [ "$status" -ne 0 ]
+
+  mutate_guard_copy "$prog" lint-stale-cardinals lint-stale-cardinals.bats
+  GAIA_GUARD_MUTATION_CHILD=1 run bash "$REPO_ROOT/.gaia/scripts/bats5.sh" \
+    --filter "a pragma waives a test name beneath it in a bats suite" \
+    "$XG_SUITE"
+  [ "$status" -ne 0 ]
 }
 
 @test "mutation: a fixture-region rule that always declines reds the stub guard's suite and a production guard's suite" {
@@ -1072,10 +1090,11 @@ mutate_guard_copy() {
 # ============================================================================
 #
 # Each Phase 2 task added its own version of this test, scoped to its own
-# guard. This one runs all three against a SINGLE fixture tree, so what it
-# proves is that they agree, not merely that each happens to have a test.
+# guard. This one runs every production guard against a SINGLE fixture tree,
+# so what it proves is that they agree, not merely that each happens to have a
+# test.
 
-@test "all three guards hard-error together on a tree carrying no tracked bats suite" {
+@test "every guard hard-errors together on a tree carrying no tracked bats suite" {
   local repo="$TMP/no-bats"
   mkdir -p "$repo/.husky" "$repo/.github/workflows"
   git -C "$repo" init -q .
@@ -1085,8 +1104,8 @@ mutate_guard_copy() {
   git -C "$repo" add -A
 
   local guard
-  for guard in lint-git-path-quoting lint-grep-ere-escapes lint-errexit-status-read; do
-    run bash -c "cd '$repo' && bash '$REPO_ROOT/.gaia/scripts/$guard.sh'"
+  while IFS= read -r guard; do
+    run bash -c "cd '$repo' && bash '$guard'"
     [ "$status" -ne 0 ] || { echo "$guard exited 0 on a tree with no tracked bats suite" >&2; return 1; }
-  done
+  done < <(production_guards)
 }

@@ -29,7 +29,7 @@ setup() {
   # for an environment this suite cannot control. CI coverage comes from
   # cli-tests.yml instead, which installs the CLI's dependencies and runs
   # this file by name, so the skip never hides the binding: on that runner the
-  # guard is false and all six tests execute.
+  # guard is false and every test executes.
   [ -d "$CLI_DIR/node_modules" ] || skip "no node_modules on this runner"
 
   START_MARKER='<!-- gaia:audit-remit:start -->'

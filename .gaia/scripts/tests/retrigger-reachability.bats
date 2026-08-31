@@ -142,7 +142,7 @@ declared_entry_count() {
 # Guard the scrape before any assertion loops over it. A cosmetic edit to
 # `REQUIRED_CONTEXTS` (single quotes, a different indent, an inline comment
 # line) defeats the literal scrape, `declared_contexts` emits nothing, every
-# loop below runs zero iterations, and all three tests report green having
+# loop below runs zero iterations, and every test reports green having
 # asserted nothing -- on the one invariant whose breakage wedges a pull request
 # permanently. Comparing against a shape-independent count catches a partial
 # scrape too, not only a total one.
@@ -508,8 +508,8 @@ poller_window_minutes() {
 #    affected tests would report `ok ... # skip` and green the job. These two
 #    tests are what make that weakening red. Neither is parser-gated itself.
 #
-#    `require_yaml_parser` gates the 15 parsing tests. `require_repo_path` gates
-#    setup(), so every test in the file, and the five tests that additionally read
+#    `require_yaml_parser` gates the parsing tests. `require_repo_path` gates
+#    setup(), so every test in the file, and the tests that additionally read
 #    code-review-audit.yml call it again for that path. It covers a gate its own
 #    test cannot escape, since setup() runs first here as it does everywhere: what
 #    the test catches is the weakening, not the condition.

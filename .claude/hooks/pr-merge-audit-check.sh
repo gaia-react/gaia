@@ -201,7 +201,7 @@ fi
 # binding's own spelling arm, which blames the command's spelling and closes by
 # recommending the exact bare merge that just denied: the real cause is never
 # named and no respelling reaches it. Naming the file here is what turns that
-# into the same one early, honest denial its five siblings already give.
+# into the same one early, honest denial its siblings already give.
 _scope_lib="$_lib_dir/audit-scope.sh"
 _machinery_lib="$_lib_dir/audit-machinery.sh"
 _digest_lib="$_lib_dir/audit-digest.sh"

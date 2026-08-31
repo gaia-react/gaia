@@ -740,9 +740,9 @@ function check_desync(what) {
 # report(n, aline): print a hit, unless the discriminator says this line is not
 # executed shell.
 #
-# All three tests answer for the line just handed to gaia_scan_feed, which the
-# scan rules below call ahead of feed(), and all three are inert when is_bats is
-# 0, so the three pre-existing surfaces reach the printf exactly as they did
+# Each test answers for the line just handed to gaia_scan_feed, which the
+# scan rules below call ahead of feed(), and each is inert when is_bats is
+# 0, so the pre-existing surfaces reach the printf exactly as they did
 # before the library existed.
 #
 # Suppression is read HERE rather than latched once per line because

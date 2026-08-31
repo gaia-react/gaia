@@ -529,7 +529,7 @@ stub_gh_failing() {
 # parser written here) and then RUN the result.
 #
 # Only the stripped shape is tested here. The unstripped half needs nothing new:
-# the three `surface:` tests above already prove the axis stays mandatory, and
+# the `surface:` tests above already prove the axis stays mandatory, and
 # the wrap changes nothing they read.
 #
 # Maintainer-only by construction: this suite is release-excluded, and so is

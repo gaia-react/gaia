@@ -19,7 +19,7 @@
 #   Six assertions over tracked shell source (test suites excluded):
 #     1. Exactly one definition each of gaia_verb_armed and
 #        gaia_verb_arm_view exists.
-#     2. Each of the eleven enumerated hooks references gaia_verb_armed.
+#     2. Each enumerated hook references gaia_verb_armed.
 #     3. No file outside the library defines start_re or sep_re.
 #     4. No file arms through a grep invocation whose pattern operand
 #        carries both a shell-separator alternation and an arming verb.
@@ -48,7 +48,7 @@ GAIA_VERB_ARM_VIEW_DEF_PATTERN='^[[:space:]]*(function[[:space:]]+)?gaia_verb_ar
 # fires.
 GAIA_VERB_TEST_EXCLUDES=(':!*.bats' ':!*/tests/*' ':!*/__tests__/*' ':!*.test.ts' ':!*.test.tsx')
 
-# The eleven adopting hooks, in the order SPEC-075's plan README lists them.
+# The adopting hooks, in the order SPEC-075's plan README lists them.
 GAIA_VERB_ADOPTING_HOOKS=(
   pr-merge-audit-check.sh
   worthiness-presence-check.sh

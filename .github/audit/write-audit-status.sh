@@ -15,7 +15,7 @@
 #   write-audit-status.sh --sha <sha> --base <pr-base-sha> [--require-marker]
 #   write-audit-status.sh --sha <sha> --force-pending <description>
 #
-# Two modes, because the five call sites are two shapes and pretending
+# Two modes, because the call sites are two shapes and pretending
 # otherwise would mean a flag that turns off half the script:
 #
 #   GATED (--base)          Resolve the co-dispatched members CI cannot clear.
@@ -80,7 +80,7 @@
 # stand-down case harmless.
 #
 # Two suites cover this script: one drives it directly for its argument
-# contract, and one executes all five call sites as the workflow runs them.
+# contract, and one executes every call site as the workflow runs them.
 
 set -eu
 
@@ -216,7 +216,7 @@ if [ "$have_base" -eq 1 ]; then
   pending="$(bash "$repo_root/.github/audit/gate-pending-members.sh" --base "$base")"
   emit "members_pending=${pending}"
   # The tree is a plain data field in the success description. Resolved here,
-  # in the position the four gated callers already resolved it, so a bad sha
+  # in the position the gated callers already resolved it, so a bad sha
   # keeps failing the step exactly where it does today.
   tree_sha="$(git rev-parse "${sha}^{tree}")"
   ctx="members pending ${pending}"

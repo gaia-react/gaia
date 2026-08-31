@@ -102,7 +102,7 @@ EOF
 # per run, never once per path.
 # ---------------------------------------------------------------------------
 
-@test "surfaces exist: the classifier, the machinery list, and all three consumers" {
+@test "surfaces exist: the classifier, the machinery list, and every consumer" {
   [ -f "$SCOPE_LIB" ]
   [ -f "$MACHINERY_LIB" ]
   [ -f "$RESOLVER" ]
