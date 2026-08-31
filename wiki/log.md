@@ -23,7 +23,7 @@ tags: [meta, log]
 - 2026-08-31 014d8164 SKIP - wiki already updated in-commit: runtime's two worktree-isolation confinement arms documented in wiki/concepts/Worktrees.md
 - 2026-08-31 0e506977 SKIP - wiki already updated in-commit: findings-sidecar heredoc-under-worktree-isolation fix reflected in wiki/concepts/Code Review Audit Agent.md
 - 2026-08-31 f939fec2 SKIP - husky-guard glob-to-arm reader fix (multi-recursive key), internal parity-guard correctness only
-- 2026-08-31 d2b499c8 SKIP - wiki already updated in-commit: gaia-debt-origin mode/unit branch-derivation correction reflected in wiki/concepts/Audit Disposition and Debt Fix.md and wiki/concepts/PR Merge Workflow.md
+- 2026-08-31 d2b499c8 SKIP - wiki already updated in-commit: debt-origin provenance mode/unit branch-derivation correction reflected in wiki/concepts/Audit Disposition and Debt Fix.md and wiki/concepts/PR Merge Workflow.md
 - 2026-08-31 364930c8 SKIP - husky-guard glob-to-arm reader fix (nested head), internal parity-guard correctness only
 - 2026-08-31 1db68e31 SKIP - wiki already updated in-commit: label-sync registry-color-on-rename fix reflected in wiki/concepts/GitHub Labels.md
 - 2026-08-31 dc593953 SKIP - dependabot advisory remediation (js-yaml/fast-uri/valibot/brace-expansion/morgan), pnpm-audit.md's baseline contract stays generic, no drift
