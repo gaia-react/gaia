@@ -1,0 +1,198 @@
+#!/usr/bin/env bats
+
+# Adversarial suite for .gaia/scripts/list-tracked-paths.sh, the boundary where
+# the release staging pipeline turns git's NUL-delimited tracked set into the
+# newline-delimited list `grep -f` and `rsync --files-from` read.
+#
+# The defect this guards (#1669) is that the conversion is lossy for exactly one
+# input, a tracked path holding a literal newline, and that its damage is NOT
+# uniform: rsync exits 23 when a split half names no file, but exits 0 whenever
+# every name it is handed happens to exist, publishing a tarball without the
+# file while .gaia/manifest.json records it as shipping. The general condition,
+# not the enumeration of arms, is what the suite asserts against: the boundary
+# refuses whenever any tracked path holds a newline, regardless of what the
+# halves happen to name.
+#
+# E1-E4 drive the fixture repositories the issue asks for. C1 binds the named
+# staging call sites to this script so the raw round-trip cannot return to one
+# of them silently, and C2 asks the same of the tree rather than of a list, so
+# a site nobody names here is still covered. A1 and A2 are the arming fixtures:
+# A1 mutates a scratch copy of the script to drop the refusal and proves the
+# split this suite exists to catch actually happens without it, and A2 plants
+# the defect in a fixture tree and proves C2's scan reports it while leaving the
+# legitimate round-trips alone. A green check here is evidence, not assumption.
+#
+# Assertion style per .claude/rules/bats-assertions.md: no bare mid-test
+# [[ ... ]], POSIX [ ] and grep only, so a broken assertion still fails on
+# macOS bash 3.2.
+#
+# Maintainer-only. `.gaia/scripts/tests` is wholesale release-excluded via
+# `.gaia/release-exclude`, so this never reaches an adopter.
+
+setup() {
+  REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
+  SCRIPT="$REPO_ROOT/.gaia/scripts/list-tracked-paths.sh"
+  FIXTURE="$BATS_TEST_TMPDIR/repo"
+  OUT="$BATS_TEST_TMPDIR/all-tracked.txt"
+  mkdir -p "$FIXTURE"
+  git -C "$FIXTURE" init -q
+  git -C "$FIXTURE" config user.email 'test@example.com'
+  git -C "$FIXTURE" config user.name 'Test'
+}
+
+# Track $1 (a repo-relative path, which may contain a literal newline) holding
+# body $2. Deliberately does NOT commit: `ls-files` reads the index, which is
+# the same set the staging pipeline discovers from.
+track() {
+  local rel="$1" body="$2"
+  mkdir -p "$FIXTURE/$(dirname "$rel")"
+  printf '%s\n' "$body" > "$FIXTURE/$rel"
+  git -C "$FIXTURE" add -- "$rel"
+}
+
+# E1. The ordinary case still works: every tracked path reaches the output file,
+# one per line, and the script exits clean.
+@test "E1: a clean tree converts to a newline-delimited list" {
+  track 'a.txt' 'alpha'
+  track 'dir/b.txt' 'beta'
+
+  run bash "$SCRIPT" "$FIXTURE" "$OUT"
+  [ "$status" -eq 0 ]
+  [ -f "$OUT" ]
+  [ "$(wc -l < "$OUT" | tr -d ' ')" = "2" ]
+  grep -qxF -- 'a.txt' "$OUT"
+  grep -qxF -- 'dir/b.txt' "$OUT"
+}
+
+# E2. The defect itself. A tracked path holding a literal newline is refused,
+# the output file is never written, and the diagnostic names the path with its
+# newline rendered so a maintainer reads the path rather than a fragment.
+@test "E2: a newline-bearing tracked path is refused, with the path named" {
+  track 'ok.txt' 'fine'
+  track "$(printf 'two\nlines.ts')" 'split'
+
+  run bash "$SCRIPT" "$FIXTURE" "$OUT"
+  [ "$status" -eq 1 ]
+  [ ! -f "$OUT" ]
+  grep -qF -- 'two\nlines.ts' <<<"$output"
+  grep -qF -- '1 tracked path(s)' <<<"$output"
+}
+
+# E3. The general condition, not the arms. Both halves of this path name real
+# tracked files, which is the arm where rsync exits 0 and the release publishes
+# silently without the file. The boundary must refuse identically here; a guard
+# built against the exit-23 arm alone would pass this.
+@test "E3: refusal does not depend on whether the split halves name files" {
+  track 'a.txt' 'alpha'
+  track 'b.txt' 'beta'
+  track "$(printf 'a.txt\nb.txt')" 'the silent arm'
+
+  run bash "$SCRIPT" "$FIXTURE" "$OUT"
+  [ "$status" -eq 1 ]
+  [ ! -f "$OUT" ]
+  grep -qF -- 'a.txt\nb.txt' <<<"$output"
+}
+
+# E4. The refusal must not over-reach onto the input `-z` exists to protect. A
+# non-ASCII path is exactly what git would C-quote under its default
+# core.quotePath (#1662); it survives this boundary intact and byte-identical.
+@test "E4: a non-ASCII tracked path passes through intact" {
+  track 'wiki/café.md' 'accented'
+
+  run bash "$SCRIPT" "$FIXTURE" "$OUT"
+  [ "$status" -eq 0 ]
+  grep -qxF -- 'wiki/café.md' "$OUT"
+  grep -qF -- '"wiki/caf' "$OUT" && return 1
+  true
+}
+
+# Every tracked file under $1 that pairs the raw round-trip with an
+# `rsync --files-from` consumer, one per line. Shared by C2 and A2 so the
+# adversarial fixture exercises the same scan the contract check runs.
+#
+# The pair is the closed property, and it has to be the pair: the round-trip
+# alone is legitimate at roughly fifteen sites in this tree that compare or
+# count names rather than resolve them (a diagnostic `head -20`, a `comm`
+# membership check, a roster drift scan), and a guard that reds on those is one
+# that gets bypassed rather than fixed. `--files-from` is what turns a name into
+# a file the release must find on disk.
+scan_raw_roundtrip() {
+  local root="$1" f
+  while IFS= read -r -d '' f; do
+    # This suite carries both patterns as assertion literals, by construction.
+    case "$f" in
+      '.gaia/scripts/tests/list-tracked-paths.bats') continue ;;
+    esac
+    grep -qF -- "ls-files -z | tr '\\0' '\\n'" "$root/$f" || continue
+    grep -qF -- '--files-from' "$root/$f" || continue
+    printf '%s\n' "$f"
+  done < <(git -C "$root" ls-files -z)
+}
+
+# C1. Every site that discovers the tracked set for a staging build routes
+# through this script. The raw `ls-files -z | tr` round-trip returning to any
+# one of them is how this class comes back, and it is invisible in a diff that
+# reads as a local simplification. The runbook's fenced block is a live call
+# site, not illustration: an always-loaded rule has the agent run that page's
+# steps as written.
+@test "C1: the five staging discovery sites call the shared boundary" {
+  local site
+  for site in \
+    '.github/workflows/release.yml' \
+    '.gaia/tests/distribution/lib/build-staging.sh' \
+    '.gaia/tests/distribution/03-marker-strip.sh' \
+    '.gaia/tests/distribution/09-exclude-parser-parity.sh' \
+    '.gaia/cli/health/runbook.md'; do
+    grep -qF -- 'list-tracked-paths.sh' "$REPO_ROOT/$site" \
+      || { printf 'no list-tracked-paths.sh call in %s\n' "$site" >&2; return 1; }
+    grep -qF -- "ls-files -z | tr '\\0' '\\n'" "$REPO_ROOT/$site" \
+      && { printf 'raw ls-files round-trip still present in %s\n' "$site" >&2; return 1; }
+  done
+  true
+}
+
+# C2. C1's roster is an enumeration, and an enumeration goes one site short the
+# moment somebody adds a sixth. This is the same invariant asked of the tree
+# rather than of a list, so a new site is covered without anyone remembering to
+# name it here.
+@test "C2: no tracked file pairs the raw round-trip with an rsync --files-from" {
+  local hits
+  hits="$(scan_raw_roundtrip "$REPO_ROOT")"
+  [ -z "$hits" ] || { printf 'raw round-trip feeding --files-from:\n%s\n' "$hits" >&2; return 1; }
+}
+
+# A2. Arming fixture for C2. A scan that reports nothing is indistinguishable
+# from a scan that looks at nothing, so plant the defect in a fixture tree and
+# prove the same function reports it.
+@test "A2: the tree scan reports a planted raw round-trip" {
+  track 'stage.sh' "git ls-files -z | tr '\\0' '\\n' > list.txt; rsync -a --files-from=list.txt . out/"
+  track 'innocent.sh' "git ls-files -z | tr '\\0' '\\n' > names.txt; comm -12 names.txt other.txt"
+
+  local hits
+  hits="$(scan_raw_roundtrip "$FIXTURE")"
+  grep -qxF -- 'stage.sh' <<<"$hits"
+  # The round-trip without a --files-from consumer must NOT be reported, or the
+  # scan is a rename of the lint that already declined to red on those sites.
+  grep -qxF -- 'innocent.sh' <<<"$hits" && return 1
+  true
+}
+
+# A1. Arming fixture. Strip the refusal out of a scratch copy and the
+# newline-bearing path splits into two records that name no file, which is the
+# behaviour E2 and E3 assert is gone. Without this, a green E2 is equally
+# consistent with a guard that never fires.
+@test "A1: without the refusal the path splits into two bogus records" {
+  track "$(printf 'two\nlines.ts')" 'split'
+
+  local scratch="$BATS_TEST_TMPDIR/no-guard.sh"
+  awk '/^if \[ "\$\(LC_ALL=C tr -cd/ {skip = 1} skip && /^fi$/ {skip = 0; next} !skip' \
+    "$SCRIPT" > "$scratch"
+  # The mutation must actually have removed something, or A1 proves nothing.
+  [ "$(wc -l < "$scratch" | tr -d ' ')" -lt "$(wc -l < "$SCRIPT" | tr -d ' ')" ]
+
+  run bash "$scratch" "$FIXTURE" "$OUT"
+  [ "$status" -eq 0 ]
+  [ "$(wc -l < "$OUT" | tr -d ' ')" = "2" ]
+  grep -qxF -- 'two' "$OUT"
+  grep -qxF -- 'lines.ts' "$OUT"
+}

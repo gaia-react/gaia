@@ -61,7 +61,13 @@ FIXTURE_EOF
 git -C "$SRC" init -q
 git -C "$SRC" add -A
 ALL_TRACKED="$FIXTURE/all-tracked.txt"
-git -C "$SRC" -c core.quotepath=false ls-files -z | tr '\0' '\n' > "$ALL_TRACKED"
+# The shared boundary build-staging.sh discovers through, pointed at the
+# fixture tree; keeping the same call here is what makes "the same way
+# build-staging.sh does" true rather than approximately true (#1669).
+if ! bash "$PROJECT_ROOT/.gaia/scripts/list-tracked-paths.sh" "$SRC" "$ALL_TRACKED"; then
+  fail "tracked-path discovery refused on fixture"
+  exit 1
+fi
 
 # The shared compiler: the single production source every executable surface
 # now invokes. Fail-closed.
