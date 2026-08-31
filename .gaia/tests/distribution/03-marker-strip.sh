@@ -40,7 +40,12 @@ EXCLUDE_REGEX="$(mktemp)"
 INCLUDE="$(mktemp)"
 trap 'rm -rf "$STAGING" "$ALL_TRACKED" "$EXCLUDE_REGEX" "$INCLUDE"' EXIT
 
-git -C "$PROJECT_ROOT" -c core.quotepath=false ls-files -z | tr '\0' '\n' > "$ALL_TRACKED"
+# The shared boundary build-staging.sh discovers through, so this second walk
+# reads the same tracked set under the same refusal (#1669).
+if ! bash "$PROJECT_ROOT/.gaia/scripts/list-tracked-paths.sh" "$PROJECT_ROOT" "$ALL_TRACKED"; then
+  fail "tracked-path discovery refused or failed; see the diagnostic above"
+  exit 1
+fi
 # Same single-compiler invocation build-staging.sh uses, so this second walk
 # filters source files through the identical exclude set. Fail-closed.
 if ! "$PROJECT_ROOT/.gaia/cli/gaia-maintainer" release exclude-regex \

@@ -247,14 +247,16 @@ export const resolveManifestPath = (repoRoot: string): string =>
  * shipping whatever the maintainer answered. `gitZArgs` states why its flags
  * prevent that.
  *
- * One divergence from staging survives this, in the other direction: the shell
+ * One asymmetry with staging survives this, in the other direction: the shell
  * readers pipe the NUL stream through `tr '\0' '\n'` into a newline-delimited
- * file, so a path holding a literal newline splits into two names there while
- * it stays one entry here. Staging then aborts loudly or ships without the
- * file, according to whether every name that reaches `rsync --files-from`
- * happens to exist; this manifest records the path as shipping either way,
- * because the exclude patterns are compiled without the `m` flag and so cannot
- * match a spelling that spans a line break (#1669).
+ * file, which a path holding a literal newline cannot survive, while it stays
+ * one entry here. Staging no longer resolves that disagreement by chance --
+ * `.gaia/scripts/list-tracked-paths.sh` refuses such a path at the boundary and
+ * names it, rather than aborting on an rsync `stat` error or publishing a
+ * tarball without the file according to whether every split name happens to
+ * exist (#1669). This side needs no counterpart guard: it records the joined
+ * path as shipping, which is correct, and the release it would disagree with
+ * now stops before a tarball exists.
  */
 const listGitFiles = (cwd: string): string[] =>
   splitZStream(
