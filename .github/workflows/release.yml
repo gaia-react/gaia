@@ -119,10 +119,22 @@ jobs:
           # whenever every name it is handed happens to exist, and the tarball
           # then publishes without the file while `.gaia/manifest.json` records
           # it as shipping. list-tracked-paths.sh refuses that input outright,
-          # naming the path, and carries the fail-closed pipefail this
-          # discovery has always needed (#1669).
-          if ! bash .gaia/scripts/list-tracked-paths.sh . /tmp/all-tracked.txt; then
-            echo "::error::tracked-path discovery refused; see the diagnostic above" >&2
+          # naming the path, and fails closed on the discovery by reading git's
+          # own exit status directly, which is what the pipefail subshell here
+          # was standing in for before the pipe went away (#1669).
+          #
+          # The two failure arms get different annotations because they send a
+          # maintainer to different places: exit 1 is a tracked path that needs
+          # renaming, anything else is the runner (git, mktemp, the scratch
+          # disk). One shared message would put the whole point of this
+          # boundary back where it started.
+          rc=0
+          bash .gaia/scripts/list-tracked-paths.sh . /tmp/all-tracked.txt || rc=$?
+          if [ "$rc" -eq 1 ]; then
+            echo "::error::a tracked path holds a literal newline; see the diagnostic above" >&2
+            exit 1
+          elif [ "$rc" -ne 0 ]; then
+            echo "::error::tracked-path discovery failed (exit $rc); see the diagnostic above" >&2
             exit 1
           fi
           # The maintainer CLI is the single compiler of .gaia/release-exclude

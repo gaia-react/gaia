@@ -65,7 +65,7 @@ ALL_TRACKED="$FIXTURE/all-tracked.txt"
 # fixture tree; keeping the same call here is what makes "the same way
 # build-staging.sh does" true rather than approximately true (#1669).
 if ! bash "$PROJECT_ROOT/.gaia/scripts/list-tracked-paths.sh" "$SRC" "$ALL_TRACKED"; then
-  fail "tracked-path discovery refused on fixture"
+  fail "tracked-path discovery refused or failed on fixture; see the diagnostic above"
   exit 1
 fi
 

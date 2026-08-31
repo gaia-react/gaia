@@ -53,7 +53,7 @@ INCLUDE="$SCRATCH/include.txt"
 # production's refusal of a newline-bearing tracked path instead of
 # reproducing the lossy conversion that made the defect invisible here (#1669).
 if ! bash "$PROJECT_ROOT/.gaia/scripts/list-tracked-paths.sh" "$PROJECT_ROOT" "$ALL_TRACKED"; then
-  printf 'tracked-path discovery refused\n' >&2
+  printf 'tracked-path discovery refused or failed; see the diagnostic above\n' >&2
   exit 1
 fi
 

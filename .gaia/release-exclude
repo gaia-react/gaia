@@ -153,9 +153,9 @@
 # The awk-source library the three bats-arming shell guards source; all three guards are themselves withheld above, so nothing on an adopter clone sources it.
 .gaia/scripts/guard-awk-lib.sh
 # The tracked-path discovery boundary the release staging pipeline reads its
-# file list through. It belongs to the release surface by its callers: all five
-# are maintainer-only and release-excluded -- release.yml (category 9), the
-# three .gaia/tests/distribution/ harness scripts (category 3), and the staging
+# file list through. It belongs to the release surface by its callers, every one
+# of which is maintainer-only and release-excluded -- release.yml (category 9),
+# the .gaia/tests/distribution/ harness scripts (category 3), and the staging
 # build documented in .gaia/cli/health/runbook.md (category 10). An adopter
 # clone never stages a GAIA release, so nothing there would invoke it. Note
 # what is NOT claimed: the script is generic enough to be useful anywhere a

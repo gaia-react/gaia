@@ -39,8 +39,16 @@
 #   bash .gaia/scripts/list-tracked-paths.sh <repo-dir> <output-file>
 #
 # Exit 0 on success (<output-file> holds the newline-delimited tracked set),
-# 1 on refusal (a tracked path holds a literal newline; <output-file> is not
-# written), 2 on usage error or on the discovery itself failing.
+# 1 on refusal and only on refusal (a tracked path holds a literal newline;
+# <output-file> is not written), 2 on every other failure: a usage error, the
+# discovery failing, the newline scan failing, or the output write failing.
+#
+# The 1-versus-2 split is load-bearing, not bookkeeping. Every caller keys on it
+# to say which of the two happened, and this whole boundary exists to replace an
+# illegible failure with a legible one; a write that fails and reports itself as
+# "a tracked path holds a newline" sends the operator to look for a path that
+# does not exist. So every arm below that is not the refusal exits 2 explicitly,
+# including the ones a bare redirect would otherwise leave at 1.
 
 set -u
 
@@ -81,7 +89,19 @@ fi
 # offenders costs a bash loop, which only the failing path pays. The loop's own
 # tally is what the message reports, never the byte count that triggered it: a
 # path holding two newlines contributes two bytes and one path.
-if [ "$(LC_ALL=C tr -cd '\n' < "$nul_stream" | wc -c | tr -d ' ')" != "0" ]; then
+#
+# The scan runs under `pipefail` because it is the fail-closed check this whole
+# boundary exists to perform, and a pipeline hides its own failure: a `tr` that
+# dies part way through a stream it has already partly read still leaves `wc`
+# exiting 0 and printing a count, and a short count reads as zero the same way
+# a genuinely clean tree does. A guard whose detection can fail open reports
+# green in exactly the case it exists to catch.
+if ! lf_bytes="$(set -o pipefail; LC_ALL=C tr -cd '\n' < "$nul_stream" | wc -c | tr -d ' \t\n')"; then
+  printf 'list-tracked-paths: newline scan of the tracked set failed\n' >&2
+  exit 2
+fi
+
+if [ "$lf_bytes" != "0" ]; then
   LF=$'\n'
   offenders=0
   rendered=""
@@ -99,4 +119,11 @@ if [ "$(LC_ALL=C tr -cd '\n' < "$nul_stream" | wc -c | tr -d ' ')" != "0" ]; the
   exit 1
 fi
 
-tr '\0' '\n' < "$nul_stream" > "$out_file"
+# Guarded rather than left as a bare redirect. A redirect bash cannot open makes
+# it skip the command and leave status 1, which is the refusal code, so an
+# unwritable directory or a full disk would reach every caller wearing the one
+# label this boundary exists to make trustworthy.
+if ! tr '\0' '\n' < "$nul_stream" > "$out_file"; then
+  printf 'list-tracked-paths: could not write the tracked-path list to %s\n' "$out_file" >&2
+  exit 2
+fi

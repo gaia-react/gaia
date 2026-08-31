@@ -116,15 +116,37 @@ track() {
 # membership check, a roster drift scan), and a guard that reds on those is one
 # that gets bypassed rather than fixed. `--files-from` is what turns a name into
 # a file the release must find on disk.
+#
+# The round-trip half is matched as a regex rather than as the one spelling the
+# migrated sites happened to use. A fixed string pins the exact spacing and
+# rejects `ls-files --cached -z | tr`, which is the same defect wearing a flag
+# the author had every reason to add, and a scan that only recognises a
+# copy-paste of an existing site is a scan whose guarantee expires on the first
+# site somebody writes rather than copies.
+#
+# Each grep's status is read on three outcomes, not two: 0 matched, 1 did not,
+# and anything above that is grep failing to read the file at all. Folding the
+# third into "did not match" is how a scan reports clean over a file it never
+# opened, which for a path in the index but absent from the worktree is an
+# ordinary state rather than a corrupt one.
 scan_raw_roundtrip() {
-  local root="$1" f
+  local root="$1" f status
   while IFS= read -r -d '' f; do
     # This suite carries both patterns as assertion literals, by construction.
     case "$f" in
       '.gaia/scripts/tests/list-tracked-paths.bats') continue ;;
     esac
-    grep -qF -- "ls-files -z | tr '\\0' '\\n'" "$root/$f" || continue
-    grep -qF -- '--files-from' "$root/$f" || continue
+
+    grep -qE -- "ls-files[^|]*-z[^|]*[|][[:space:]]*tr" "$root/$f"
+    status=$?
+    [ "$status" -le 1 ] || { printf 'unreadable: %s\n' "$f"; return 1; }
+    [ "$status" -eq 0 ] || continue
+
+    grep -qF -- '--files-from' "$root/$f"
+    status=$?
+    [ "$status" -le 1 ] || { printf 'unreadable: %s\n' "$f"; return 1; }
+    [ "$status" -eq 0 ] || continue
+
     printf '%s\n' "$f"
   done < <(git -C "$root" ls-files -z)
 }
@@ -132,10 +154,27 @@ scan_raw_roundtrip() {
 # C1. Every site that discovers the tracked set for a staging build routes
 # through this script. The raw `ls-files -z | tr` round-trip returning to any
 # one of them is how this class comes back, and it is invisible in a diff that
-# reads as a local simplification. The runbook's fenced block is a live call
-# site, not illustration: an always-loaded rule has the agent run that page's
-# steps as written.
-@test "C1: the five staging discovery sites call the shared boundary" {
+# reads as a local simplification.
+#
+# Why each entry is a member:
+#
+#   release.yml               produces the published tarball; the live instance
+#   lib/build-staging.sh      the harness's own staging build, which mirrors it
+#   03-marker-strip.sh        walks the tracked set a second time to pick the
+#                             marker-bearing source files out of it
+#   09-exclude-parser-parity  builds the same list over a fixture tree, and the
+#                             parity it asserts is against build-staging.sh
+#   runbook.md                a live call site, not illustration: an
+#                             always-loaded rule has the agent run that page's
+#                             steps as written, and the fenced block ends in the
+#                             same `rsync --files-from`
+#
+# Deliberately not members: the roughly fifteen sites that carry the round-trip
+# to compare or count names rather than resolve them (a diagnostic `head -20`,
+# a `comm` membership check, a roster drift scan). A split name garbles a log
+# line or fails a comparison loudly there; none of them decides what ships.
+# C2 below is keyed to hold that line without this list having to name them.
+@test "C1: every staging discovery site calls the shared boundary" {
   local site
   for site in \
     '.github/workflows/release.yml' \
@@ -152,9 +191,17 @@ scan_raw_roundtrip() {
 }
 
 # C2. C1's roster is an enumeration, and an enumeration goes one site short the
-# moment somebody adds a sixth. This is the same invariant asked of the tree
-# rather than of a list, so a new site is covered without anyone remembering to
-# name it here.
+# moment somebody adds another. This asks the same invariant of the tree rather
+# than of a list, so a site nobody named here is still covered.
+#
+# What it pins, stated so the guarantee is not read wider than it is: a call
+# whose `ls-files` and its `tr` sit in one pipeline, tolerant of the flags and
+# spacing between them, in a file that also names an `rsync --files-from`.
+# A round-trip split across two statements, or one whose consumer is reached
+# through a variable in another file, is outside it. Widening further means
+# matching on the consumer rather than on the call text, which is a judgment
+# about downstream rather than a closed property of the file, and the sibling
+# lint declines to make it for the same reason.
 @test "C2: no tracked file pairs the raw round-trip with an rsync --files-from" {
   local hits
   hits="$(scan_raw_roundtrip "$REPO_ROOT")"
@@ -166,15 +213,33 @@ scan_raw_roundtrip() {
 # prove the same function reports it.
 @test "A2: the tree scan reports a planted raw round-trip" {
   track 'stage.sh' "git ls-files -z | tr '\\0' '\\n' > list.txt; rsync -a --files-from=list.txt . out/"
+  # The same defect wearing a flag and wider spacing. Pinning one spelling is
+  # what would let the next author reintroduce this with the scan still green.
+  track 'flagged.sh' "git ls-files --cached -z  |  tr '\\0' '\\n' > l.txt; rsync -a --files-from=l.txt . o/"
   track 'innocent.sh' "git ls-files -z | tr '\\0' '\\n' > names.txt; comm -12 names.txt other.txt"
 
   local hits
   hits="$(scan_raw_roundtrip "$FIXTURE")"
   grep -qxF -- 'stage.sh' <<<"$hits"
+  grep -qxF -- 'flagged.sh' <<<"$hits"
   # The round-trip without a --files-from consumer must NOT be reported, or the
   # scan is a rename of the lint that already declined to red on those sites.
   grep -qxF -- 'innocent.sh' <<<"$hits" && return 1
   true
+}
+
+# A3. The scan's third outcome. A file in the index but absent from the
+# worktree makes grep exit 2, and a scan that reads that as "no match" reports
+# clean over a file it never opened. This is the state of an ordinary
+# deleted-but-unstaged file, not a corrupt tree.
+@test "A3: an unreadable tracked file fails the scan rather than passing it" {
+  track 'stage.sh' "git ls-files -z | tr '\\0' '\\n' > list.txt; rsync -a --files-from=list.txt . out/"
+  track 'vanished.sh' 'placeholder'
+  rm -f "$FIXTURE/vanished.sh"
+
+  run scan_raw_roundtrip "$FIXTURE"
+  [ "$status" -ne 0 ]
+  grep -qF -- 'unreadable: vanished.sh' <<<"$output"
 }
 
 # A1. Arming fixture. Strip the refusal out of a scratch copy and the
@@ -185,7 +250,7 @@ scan_raw_roundtrip() {
   track "$(printf 'two\nlines.ts')" 'split'
 
   local scratch="$BATS_TEST_TMPDIR/no-guard.sh"
-  awk '/^if \[ "\$\(LC_ALL=C tr -cd/ {skip = 1} skip && /^fi$/ {skip = 0; next} !skip' \
+  awk '/^if \[ "\$lf_bytes" != "0" \]; then$/ {skip = 1} skip && /^fi$/ {skip = 0; next} !skip' \
     "$SCRIPT" > "$scratch"
   # The mutation must actually have removed something, or A1 proves nothing.
   [ "$(wc -l < "$scratch" | tr -d ' ')" -lt "$(wc -l < "$SCRIPT" | tr -d ' ')" ]
