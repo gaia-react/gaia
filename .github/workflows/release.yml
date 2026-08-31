@@ -124,17 +124,19 @@ jobs:
           # was standing in for before the pipe went away (#1669).
           #
           # The two failure arms get different annotations because they send a
-          # maintainer to different places: exit 1 is a tracked path that needs
-          # renaming, anything else is the runner (git, mktemp, the scratch
-          # disk). One shared message would put the whole point of this
-          # boundary back where it started.
+          # maintainer to different places, and the annotation panel is a
+          # surface the script's stderr never reaches. Exit 1 is a tracked path
+          # that needs renaming. Everything else is the boundary failing rather
+          # than refusing, and the second arm names the boundary rather than any
+          # one of its several causes, because it cannot tell them apart and the
+          # stderr line directly above it already can.
           rc=0
           bash .gaia/scripts/list-tracked-paths.sh . /tmp/all-tracked.txt || rc=$?
           if [ "$rc" -eq 1 ]; then
             echo "::error::a tracked path holds a literal newline; see the diagnostic above" >&2
             exit 1
           elif [ "$rc" -ne 0 ]; then
-            echo "::error::tracked-path discovery failed (exit $rc); see the diagnostic above" >&2
+            echo "::error::tracked-path discovery boundary failed (exit $rc); see the diagnostic above" >&2
             exit 1
           fi
           # The maintainer CLI is the single compiler of .gaia/release-exclude

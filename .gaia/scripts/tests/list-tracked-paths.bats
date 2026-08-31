@@ -93,6 +93,19 @@ track() {
   grep -qF -- 'a.txt\nb.txt' <<<"$output"
 }
 
+# E5. The 1-versus-2 split, which is the whole contract the callers read. Every
+# other test in this suite passes identically against a bare `>` redirect, and a
+# bare redirect bash cannot open leaves status 1, the refusal code: the release
+# workflow would then annotate a full disk as a tracked path needing a rename.
+# Without this test the guard that prevents it can be deleted with nothing red.
+@test "E5: a write that cannot open exits 2, never the refusal code" {
+  track 'a.txt' 'alpha'
+
+  run bash "$SCRIPT" "$FIXTURE" "$BATS_TEST_TMPDIR/no-such-dir/out.txt"
+  [ "$status" -eq 2 ]
+  grep -qF -- 'could not write the tracked-path list' <<<"$output"
+}
+
 # E4. The refusal must not over-reach onto the input `-z` exists to protect. A
 # non-ASCII path is exactly what git would C-quote under its default
 # core.quotePath (#1662); it survives this boundary intact and byte-identical.
@@ -111,24 +124,36 @@ track() {
 # adversarial fixture exercises the same scan the contract check runs.
 #
 # The pair is the closed property, and it has to be the pair: the round-trip
-# alone is legitimate at roughly fifteen sites in this tree that compare or
-# count names rather than resolve them (a diagnostic `head -20`, a `comm`
-# membership check, a roster drift scan), and a guard that reds on those is one
-# that gets bypassed rather than fixed. `--files-from` is what turns a name into
-# a file the release must find on disk.
+# alone is legitimate wherever the names are compared or counted rather than
+# resolved (a diagnostic `head -20`, a `comm` membership check, a roster drift
+# scan), which is most of its uses in this tree, and a guard that reds on those
+# is one that gets bypassed rather than fixed. `--files-from` is what turns a
+# name into a file the release must find on disk.
 #
 # The round-trip half is matched as a regex rather than as the one spelling the
-# migrated sites happened to use. A fixed string pins the exact spacing and
-# rejects `ls-files --cached -z | tr`, which is the same defect wearing a flag
-# the author had every reason to add, and a scan that only recognises a
-# copy-paste of an existing site is a scan whose guarantee expires on the first
-# site somebody writes rather than copies.
+# migrated sites happened to use. A scan that only recognises a copy-paste of an
+# existing site has a guarantee that expires on the first site somebody writes
+# rather than copies, so the pattern tolerates the flags and spacing between
+# `ls-files` and its `-z`, and tolerates a command prefix on the `tr`: a locale
+# pin, a `command` builtin bypass, or an absolute path. The locale prefix is not
+# hypothetical, it is the spelling the boundary script itself uses, so it is the
+# one a next author is likeliest to reach for.
+#
+# What is still outside it: a round-trip split across two statements, and one
+# whose `--files-from` consumer lives in another file. Widening past that means
+# matching on the consumer rather than on the call text, which is a judgment
+# about downstream rather than a closed property of the file, and the sibling
+# lint declines to make it for the same reason.
 #
 # Each grep's status is read on three outcomes, not two: 0 matched, 1 did not,
 # and anything above that is grep failing to read the file at all. Folding the
 # third into "did not match" is how a scan reports clean over a file it never
 # opened, which for a path in the index but absent from the worktree is an
-# ordinary state rather than a corrupt one.
+# ordinary state rather than a corrupt one. Each status is captured with
+# `|| status=$?` rather than a bare call followed by `$?`: bats runs a test body
+# under errexit, and the bare form survives only where the caller happens to
+# blunt it (a command substitution, or bats' own `run`), so it would abort the
+# first time somebody called this helper directly.
 scan_raw_roundtrip() {
   local root="$1" f status
   while IFS= read -r -d '' f; do
@@ -137,13 +162,13 @@ scan_raw_roundtrip() {
       '.gaia/scripts/tests/list-tracked-paths.bats') continue ;;
     esac
 
-    grep -qE -- "ls-files[^|]*-z[^|]*[|][[:space:]]*tr" "$root/$f"
-    status=$?
+    status=0
+    grep -qE -- "ls-files[^|]*-z[^|]*[|]([[:space:]]*|[^|]*[[:space:]/])tr[[:space:]]" "$root/$f" || status=$?
     [ "$status" -le 1 ] || { printf 'unreadable: %s\n' "$f"; return 1; }
     [ "$status" -eq 0 ] || continue
 
-    grep -qF -- '--files-from' "$root/$f"
-    status=$?
+    status=0
+    grep -qF -- '--files-from' "$root/$f" || status=$?
     [ "$status" -le 1 ] || { printf 'unreadable: %s\n' "$f"; return 1; }
     [ "$status" -eq 0 ] || continue
 
@@ -169,11 +194,10 @@ scan_raw_roundtrip() {
 #                             steps as written, and the fenced block ends in the
 #                             same `rsync --files-from`
 #
-# Deliberately not members: the roughly fifteen sites that carry the round-trip
-# to compare or count names rather than resolve them (a diagnostic `head -20`,
-# a `comm` membership check, a roster drift scan). A split name garbles a log
-# line or fails a comparison loudly there; none of them decides what ships.
-# C2 below is keyed to hold that line without this list having to name them.
+# Deliberately not members: the sites that carry the round-trip to compare or
+# count names rather than resolve them. `scan_raw_roundtrip` above states why
+# they are excluded and what separates them; C2 is keyed to hold that line
+# without this list having to name any of them.
 @test "C1: every staging discovery site calls the shared boundary" {
   local site
   for site in \
@@ -216,12 +240,16 @@ scan_raw_roundtrip() {
   # The same defect wearing a flag and wider spacing. Pinning one spelling is
   # what would let the next author reintroduce this with the scan still green.
   track 'flagged.sh' "git ls-files --cached -z  |  tr '\\0' '\\n' > l.txt; rsync -a --files-from=l.txt . o/"
+  # And wearing a locale pin, which is the boundary script's own spelling and so
+  # the likeliest thing a next author writes rather than copies.
+  track 'localed.sh' "git ls-files -z | LC_ALL=C tr '\\0' '\\n' > l.txt; rsync -a --files-from=l.txt . o/"
   track 'innocent.sh' "git ls-files -z | tr '\\0' '\\n' > names.txt; comm -12 names.txt other.txt"
 
   local hits
   hits="$(scan_raw_roundtrip "$FIXTURE")"
   grep -qxF -- 'stage.sh' <<<"$hits"
   grep -qxF -- 'flagged.sh' <<<"$hits"
+  grep -qxF -- 'localed.sh' <<<"$hits"
   # The round-trip without a --files-from consumer must NOT be reported, or the
   # scan is a rename of the lint that already declined to red on those sites.
   grep -qxF -- 'innocent.sh' <<<"$hits" && return 1

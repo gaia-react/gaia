@@ -42,7 +42,9 @@ if [ ! -x "$PROJECT_ROOT/.gaia/cli/gaia-maintainer" ]; then
   exit 1
 fi
 
-# Phase 1; Stage. Mirror release.yml lines 56-77.
+# Phase 1; Stage. Mirrors release.yml's "Stage release tree" step. Named rather
+# than cited by line, because a line range into another file goes stale the
+# first time that file gains a line and nothing recounts it.
 SCRATCH="$(mktemp -d -t gaia-dist-stage-XXXXXX)"
 trap 'rm -rf "$SCRATCH"' EXIT
 ALL_TRACKED="$SCRATCH/all-tracked.txt"

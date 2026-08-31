@@ -43,11 +43,13 @@
 # <output-file> is not written), 2 on every other failure: a usage error, the
 # discovery failing, the newline scan failing, or the output write failing.
 #
-# The 1-versus-2 split is load-bearing, not bookkeeping. Every caller keys on it
-# to say which of the two happened, and this whole boundary exists to replace an
-# illegible failure with a legible one; a write that fails and reports itself as
-# "a tracked path holds a newline" sends the operator to look for a path that
-# does not exist. So every arm below that is not the refusal exits 2 explicitly,
+# The 1-versus-2 split is load-bearing, not bookkeeping, and the callers use it
+# two different ways. The release workflow branches on it, because its annotation
+# panel is a surface the stderr diagnostic never reaches, so the wrong label
+# there sends a maintainer hunting a path that does not exist. Every other caller
+# reports both arms in one line and defers to the diagnostic printed immediately
+# above it, which stays legible only for as long as a write failure never wears
+# exit 1. So every arm below that is not the refusal exits 2 explicitly,
 # including the ones a bare redirect would otherwise leave at 1.
 
 set -u
