@@ -26,10 +26,11 @@
 # asks the same invariant of the whole tree rather than of a list, so a site
 # nobody named here is still covered.
 #
-# The A family arms the other two, because a guard whose red state has never
-# been observed is an unverified claim: each one breaks the thing its sibling
-# asserts and proves some test goes red. A green check here is evidence, not
-# assumption.
+# The A family arms the boundary's refusal (A1) and the tree scan C2 reads
+# (A2, A3), because a guard whose red state has never been observed is an
+# unverified claim: each one breaks the thing it arms and proves some test
+# goes red. C1's own per-site assertions carry no such fixture; they were
+# verified by hand (#1691). A green check here is evidence, not assumption.
 #
 # Assertion style per .claude/rules/bats-assertions.md: no bare mid-test
 # [[ ... ]], POSIX [ ] and grep only, so a broken assertion still fails on
@@ -215,12 +216,13 @@ scan_raw_roundtrip() {
     '.gaia/tests/distribution/03-marker-strip.sh' \
     '.gaia/tests/distribution/09-exclude-parser-parity.sh' \
     '.gaia/cli/health/runbook.md'; do
-    # An invocation, not a mention. Every one of these sites carries a comment
-    # naming the boundary directly above the call, so a bare filename match is
-    # satisfied by the prose alone and a site that reverted the call while
-    # keeping the comment would still pass. Anchoring on the interpreter is what
-    # separates the two, and it holds for both spellings in use: a repo-relative
-    # path and a "$PROJECT_ROOT"-prefixed one.
+    # An invocation, not a mention. release.yml's comment names the boundary by
+    # filename directly above the call, so there a bare filename match is
+    # satisfied by the prose alone and a reverted call that kept the comment
+    # would still pass; the other four sites name "the shared boundary" without
+    # the filename. Anchoring on the interpreter separates the two at every
+    # site, and it holds for both spellings in use: a repo-relative path and a
+    # "$PROJECT_ROOT"-prefixed one.
     grep -qE -- 'bash [^ ]*list-tracked-paths[.]sh' "$REPO_ROOT/$site" \
       || { printf 'no list-tracked-paths.sh invocation in %s\n' "$site" >&2; return 1; }
     # The same pattern the tree scan carries, so a round-trip wearing a flag or
