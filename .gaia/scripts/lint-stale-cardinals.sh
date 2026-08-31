@@ -88,7 +88,7 @@
 # instances that motivated this gate lived.
 #
 # GOVERNED AND NOT SCANNED, stated first because it is the honest gap rather
-# than the comfortable one. `code-comments.md` binds five more globs this gate
+# than the comfortable one. `code-comments.md` binds more globs this gate
 # does not read: `app/**/*.{ts,tsx,js,jsx,css}`, `test/**/*.{ts,tsx}`,
 # `.playwright/**/*.ts`, `.storybook/**/*.{ts,tsx}` and `.gaia/**/*.ts`. The
 # class occurs there today, so this is a live gap and not a theoretical one.
@@ -152,13 +152,14 @@
 #     joining would lose the sentence-boundary protection: the clause-ender rule
 #     below fires on an ender followed by whitespace OR by end of line, so a
 #     whitespace-preserving join leaves that case exactly as protected, which a
-#     probe confirms. The reason is the seam that carries no ender at all. A
-#     wrap mid-phrase, and a bullet break, both join into text neither line
-#     contains: a bullet ending on a cardinal, above a separate bullet opening
-#     on a vocabulary noun, joins into a phrase this predicate matches and no
-#     author wrote. That is a false positive whose demanded repair points at a
-#     line break rather than at any claim, so fixing the wrap by hand is what
-#     the tree does instead.
+#     probe confirms. The reason is the seam that carries no ender at all: a
+#     bullet ending on a cardinal, above a separate bullet opening on a
+#     vocabulary noun, joins into a phrase this predicate matches and no author
+#     wrote. That is a false positive whose demanded repair points at a line
+#     break rather than at any claim. Joining a wrap is the opposite case and is
+#     what makes the window tempting, since it reconstructs the phrase the
+#     author did write; one shape cannot be had without the other, so the wrap
+#     is fixed by hand instead.
 #   - An ordinal or a written-out range ("the fourth of five callers").
 #   - A count in a trailing comment that shares its line with code: only a
 #     full-line comment is read, so an instance written after a `#` that follows
