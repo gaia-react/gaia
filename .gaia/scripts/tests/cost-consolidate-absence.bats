@@ -27,19 +27,21 @@
 # gap the suite reports, it is a surface the suite cannot read, and the green it
 # returns over that surface is indistinguishable from a real absence -- which is
 # the failure this scan exists to make impossible, reproduced inside the scan
-# itself. The header claim above ("no tracked file") is then also literally what
-# the pathspec establishes, rather than a wider claim a reader has to discount.
+# itself. The header claim above ("no tracked file") is then what the pathspec
+# establishes, up to the exclusions enumerated with it, rather than a wider
+# claim a reader has to discount against an unstated set of unread roots.
 #
 # The honest limit, and why it fails safe. The assertion is over tree state, not
 # over a diff, so the CI path filter deciding whether this suite runs controls
 # WHEN a reintroduced reference is caught, never WHETHER. One landing on a
 # surface that filter does not watch is caught by the next run the filter does
 # arm, on a pull request that did not introduce it. Arming it punctually takes a
-# catch-all entry in that filter, which would run its whole matrix, pnpm
-# installs included, on every pull request in the repository; the filter's own
-# comments price that and decline it. Late-and-certain is what is accepted
-# instead, and a narrower pathspec here buys none of it back: it trades the
-# surfaces it drops for never rather than for late.
+# catch-all entry in that filter, which would run every matrix leg its `code`
+# output gates, this job's two pnpm installs among them, on very nearly every
+# pull request; that filter's sibling output exists because the same cost was
+# priced and declined on exactly those grounds. Late-and-certain is what is
+# accepted instead, and a narrower pathspec here buys none of it back: it trades
+# the surfaces it drops for never rather than for late.
 #
 # Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 
