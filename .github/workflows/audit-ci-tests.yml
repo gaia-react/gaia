@@ -400,11 +400,11 @@ jobs:
               # the assertions it broke zero times.
               - '.gaia/tests/helpers/**'
               # The .gaia/tests/lib/ suites exercise the SPEC-ledger lib scripts
-              # under .specify/extensions/gaia/lib/ (spec-archive-merged.sh and
-              # its shared cost-consolidate.sh, the allocators, ledger-update,
-              # etc.), so trigger on that source dir too. A source-only edit then
-              # runs the suite, matching the test-dir + source-dir pairing the
-              # filters above already use (.gaia/tests/hooks/** + .claude/hooks/**;
+              # under .specify/extensions/gaia/lib/ (spec-archive-merged.sh, the
+              # allocators, ledger-update, etc.), so trigger on that source dir
+              # too. A source-only edit then runs the suite, matching the
+              # test-dir + source-dir pairing the filters above already use
+              # (.gaia/tests/hooks/** + .claude/hooks/**;
               # .gaia/tests/forensics/** + .github/forensics/**).
               - '.specify/extensions/gaia/lib/**'
               # registry.bats (.gaia/tests/lib/) asserts every commands/*.md
