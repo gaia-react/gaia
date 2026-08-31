@@ -412,7 +412,20 @@ export const run = (argv: readonly string[]): number => {
     return EXIT_ENVIRONMENT;
   }
 
-  const listed = runGit(['ls-files'], {cwd: repoRoot});
+  // `-z` is the half that does the work: it terminates entries with NUL and,
+  // on its own, suppresses the C-quoting git applies under the default
+  // `core.quotePath` to a path carrying a non-ASCII byte, a control character,
+  // or a double quote. A quoted spelling names no file on disk, and
+  // `readScannableFile` answers null on the ENOENT that follows, so the file
+  // would be skipped with no diagnostic and its label literals never read:
+  // this guard's worst failure direction, a green run indistinguishable from
+  // one that never opened the file. NUL termination also keeps a path holding
+  // a literal newline as one entry rather than two names that match nothing.
+  // `-c core.quotepath=false` is inert beside `-z` and is kept so this reads
+  // byte-identically to the same call in `release/manifest.ts`.
+  const listed = runGit(['-c', 'core.quotepath=false', 'ls-files', '-z'], {
+    cwd: repoRoot,
+  });
 
   if (listed.exitCode !== 0) {
     structuredError({
@@ -426,7 +439,7 @@ export const run = (argv: readonly string[]): number => {
   }
 
   const files = listed.stdout
-    .split('\n')
+    .split(NUL)
     .filter((file) => file !== '' && !isExcluded(file));
 
   const findings = scanTree(repoRoot, registry, files);
