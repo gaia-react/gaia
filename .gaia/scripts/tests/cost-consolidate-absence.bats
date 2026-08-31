@@ -5,24 +5,21 @@
 # git grep), plus SC5's archived-absent half: cost-backfill.sh still no-ops
 # safely when neither archived/ tree exists.
 #
-# DP-001: `.gaia/manifest.json` legitimately still lists cost-consolidate.sh
-# until `/gaia-release` regenerates it (release-generated, FC-7 forbids
-# editing it here), so it is excluded from the grep by design, not an
-# oversight. `.gaia/local` is gitignored (not tracked, so `git grep` would
-# never surface it anyway) and CHANGELOG.md/wiki/log.md are excluded because
-# they may legitimately narrate the removal historically. This file itself is
-# excluded too: it is the absence assertion, so it names the retired symbol on
-# purpose (once committed it is tracked, and `git grep` would otherwise match
-# its own text). The routing-parity fixture
+# DP-001: `.gaia/manifest.json` is release-generated and FC-7 forbids editing
+# it here, so it is excluded whatever it currently holds; `/gaia-release`
+# decides its contents, not this suite. `.gaia/local` is gitignored (not
+# tracked, so `git grep` would never surface it anyway). CHANGELOG.md is
+# excluded because it may legitimately narrate the removal historically.
+# wiki/log.md and wiki/hot.md are excluded on a different ground: each is
+# wholly overwritten with free prose rather than edited, so a summary that
+# quotes the retired symbol is that file's own wording and not a live
+# reference this suite can say anything about. This file itself is excluded
+# too: it is the absence assertion, so it names the retired symbol on purpose
+# (once committed it is tracked, and `git grep` would otherwise match its own
+# text). The routing-parity fixture
 # (.gaia/tests/hooks/fixtures/audit-routing-before.tsv) is excluded on the same
 # grounds: it is a generated enumeration of every tracked path, so it carries
 # this test's own filename as a data row, never a call to the retired script.
-#
-# Parallel-authoring note: two live call sites (spec-archive-merged.sh via
-# spec-close.md, and plan-archive.sh) are removed by sibling tasks in the same
-# phase as this one. The grep test below is the phase-integration gate: it is
-# expected to be non-empty until every sibling task's edits land alongside
-# this one, at which point it goes empty.
 #
 # Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 
@@ -40,7 +37,8 @@ setup() {
 @test "UAT-007: scoped git grep for cost-consolidate is empty across .specify .gaia .claude wiki" {
   run git -C "$REPO_ROOT" grep -l cost-consolidate -- \
     .specify .gaia .claude wiki \
-    ':!.gaia/local' ':!.gaia/manifest.json' ':!CHANGELOG.md' ':!wiki/log.md' \
+    ':!.gaia/local' ':!.gaia/manifest.json' ':!CHANGELOG.md' \
+    ':!wiki/log.md' ':!wiki/hot.md' \
     ':!.gaia/scripts/tests/cost-consolidate-absence.bats' \
     ':!.gaia/tests/hooks/fixtures/audit-routing-before.tsv'
   # git grep exits 1 (not 0) when it finds no match; the assertion that
