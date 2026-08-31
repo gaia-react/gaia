@@ -236,13 +236,21 @@ export const resolveExcludePath = (repoRoot: string): string =>
 export const resolveManifestPath = (repoRoot: string): string =>
   path.resolve(repoRoot, '.gaia/manifest.json');
 
+/**
+ * The tracked file set, spelled exactly as `.github/workflows/release.yml`
+ * stages the tarball from, so the manifest and the tarball can never disagree
+ * about which paths exist. Both halves are load-bearing: `core.quotepath=false`
+ * stops git C-quoting a path carrying a non-ASCII byte into a spelling that
+ * names no file (and that no `.gaia/release-exclude` line can ever match), and
+ * `-z` keeps a path carrying a literal newline as one entry instead of two.
+ */
 const listGitFiles = (cwd: string): string[] =>
-  execFileSync('git', ['ls-files'], {
+  execFileSync('git', ['-c', 'core.quotepath=false', 'ls-files', '-z'], {
     cwd,
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
   })
-    .split('\n')
+    .split('\0')
     .filter((line) => line.length > 0);
 
 export const buildManifest = (

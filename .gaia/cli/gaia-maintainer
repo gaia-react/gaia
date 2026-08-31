@@ -23030,11 +23030,11 @@ var ManifestSchema = external_exports.object({
 });
 var resolveExcludePath = (repoRoot) => path22.resolve(repoRoot, ".gaia/release-exclude");
 var resolveManifestPath = (repoRoot) => path22.resolve(repoRoot, ".gaia/manifest.json");
-var listGitFiles = (cwd) => execFileSync2("git", ["ls-files"], {
+var listGitFiles = (cwd) => execFileSync2("git", ["-c", "core.quotepath=false", "ls-files", "-z"], {
   cwd,
   encoding: "utf8",
   stdio: ["ignore", "pipe", "pipe"]
-}).split("\n").filter((line) => line.length > 0);
+}).split("\0").filter((line) => line.length > 0);
 var buildManifest = (cwd, options = {}) => {
   const repoRoot = options.repoRoot ?? resolveRepoRoot(cwd);
   const versionPath = path22.resolve(repoRoot, ".gaia/VERSION");
