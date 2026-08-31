@@ -30937,14 +30937,20 @@ var parseShortStat = (stat) => {
 };
 var fileListForCommit = (sha, cwd) => {
   const result = tryRunGit(
-    ["diff-tree", "--no-commit-id", "--name-only", "-r", sha],
+    [
+      "-c",
+      "core.quotepath=false",
+      "diff-tree",
+      "--no-commit-id",
+      "--name-only",
+      "-r",
+      "-z",
+      sha
+    ],
     { cwd }
   );
   if (result === null) return [];
-  return result.split("\n").flatMap((line) => {
-    const trimmed = line.trim();
-    return trimmed.length > 0 ? [trimmed] : [];
-  });
+  return result.split("\0").filter((entry) => entry.length > 0);
 };
 var parseChunk = (chunk) => {
   const trimmed = chunk.trim();

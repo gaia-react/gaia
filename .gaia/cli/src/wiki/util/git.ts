@@ -209,21 +209,39 @@ const parseShortStat = (
 
 const fileListForCommit = (sha: string, cwd: string): string[] => {
   // `git diff-tree --no-commit-id --name-only -r <sha>` emits one path per
-  // line touched by `<sha>`. We prefer this to `git show --name-only`
+  // record touched by `<sha>`. We prefer this to `git show --name-only`
   // because newer git versions reject the `--no-patch --name-only` combo
   // older docs recommended.
+  //
+  // `-z` is load-bearing twice over. It emits each path raw rather than
+  // C-quoted, so a page whose name carries a non-ASCII byte arrives as
+  // `wiki/<CJK>.md` instead of `"wiki/\346\227\245..."`, a spelling whose
+  // leading double quote fails every `startsWith('wiki/')` the caller in
+  // `commit-classify.ts` prefix-tests with; and it delimits records exactly,
+  // so a path holding a literal newline stays one entry rather than splitting
+  // into two that name no file. `-c core.quotepath=false` is inert beside
+  // `-z`, kept so the option prefix matches the idiom `wiki/diff-size.ts`,
+  // `labels/check.ts`, and `release/manifest.ts` carry on their own calls.
   const result = tryRunGit(
-    ['diff-tree', '--no-commit-id', '--name-only', '-r', sha],
+    [
+      '-c',
+      'core.quotepath=false',
+      'diff-tree',
+      '--no-commit-id',
+      '--name-only',
+      '-r',
+      '-z',
+      sha,
+    ],
     {cwd}
   );
 
   if (result === null) return [];
 
-  return result.split('\n').flatMap((line) => {
-    const trimmed = line.trim();
-
-    return trimmed.length > 0 ? [trimmed] : [];
-  });
+  // Filter rather than trim: `-z` already delimits records exactly, so there
+  // is no terminator left to strip, and trimming would instead remove leading
+  // or trailing whitespace that git legally permits in a path.
+  return result.split('\0').filter((entry) => entry.length > 0);
 };
 
 type ChunkParse = {

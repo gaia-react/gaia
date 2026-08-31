@@ -341,6 +341,49 @@ describe('wiki commit-classify', () => {
     expect(json.commits[0]?.suggestion_reason).toContain('wiki-heavy');
   });
 
+  describe('paths git rewrites on the way out', () => {
+    // CJK, deliberately: it has no NFD decomposition, so macOS filesystem
+    // normalization cannot round-trip the name into a spelling the rule's
+    // `startsWith('wiki/concepts/')` accepts for the wrong reason. The
+    // C-quoted spelling git emits for it is the octal escape run below.
+    const NON_ASCII_STEM = '日本語';
+    const QUOTED_FIRST_BYTE = String.raw`\346`;
+
+    beforeEach(() => {
+      // git's own default. Set explicitly so a developer whose global config
+      // carries `core.quotepath=false` does not silently make this block
+      // vacuous by removing the very quoting it exists to defeat.
+      sandboxGit(sandbox.root, ['config', 'core.quotepath', 'true']);
+    });
+
+    test('the fixture path really is C-quoted, so the assertion below can fail', () => {
+      const sha = sandbox.commit('chore: rewrite concept', {
+        [`wiki/concepts/${NON_ASCII_STEM}.md`]: '# concept\n',
+      });
+
+      const listed = sandboxGit(sandbox.root, [
+        'diff-tree',
+        '--no-commit-id',
+        '--name-only',
+        '-r',
+        sha,
+      ]);
+
+      expect(listed).toContain(QUOTED_FIRST_BYTE);
+      expect(listed).not.toContain(NON_ASCII_STEM);
+    });
+
+    test('a commit whose only wiki page is non-ASCII still reads as wiki-heavy', () => {
+      sandbox.commit('chore: rewrite concept', {
+        [`wiki/concepts/${NON_ASCII_STEM}.md`]: '# concept\n',
+      });
+
+      const json = classify(sandbox);
+      expect(json.commits[0]?.suggestion).toBe('WORTHY');
+      expect(json.commits[0]?.suggestion_reason).toContain('wiki-heavy');
+    });
+  });
+
   // This repo writes scoped subjects (`fix(hooks):`) essentially exclusively.
   // A rule table that only matches the unscoped form is unreachable in
   // practice: every commit falls through to the fail-open default and the
