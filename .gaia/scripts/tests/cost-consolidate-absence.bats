@@ -34,10 +34,12 @@
 # over a diff, so the CI path filter deciding whether this suite runs controls
 # WHEN a reintroduced reference is caught, never WHETHER. One landing on a
 # surface that filter does not watch is caught by the next run the filter does
-# arm, on a pull request that did not introduce it. No glob set can arm a
-# whole-tree scan, so late-and-certain is this guard's ceiling; a narrower
-# pathspec buys punctuality on the roots it lists by trading away the rest for
-# never.
+# arm, on a pull request that did not introduce it. Arming it punctually takes a
+# catch-all entry in that filter, which would run its whole matrix, pnpm
+# installs included, on every pull request in the repository; the filter's own
+# comments price that and decline it. Late-and-certain is what is accepted
+# instead, and a narrower pathspec here buys none of it back: it trades the
+# surfaces it drops for never rather than for late.
 #
 # Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 
