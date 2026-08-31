@@ -86,23 +86,23 @@ const REJECTED_PATH_CHARACTERS = [
  *   line in `.gaia/release-exclude`, so an embedded newline emits a SECOND,
  *   uncommented line that membership never inspected: the same hazard
  *   `isRejectedReason` guards on the reason text.
- * - Every other C0 character, a tab among them, is C-quoted by the
- *   `git ls-files` that `manifest.ts` reads (`a<TAB>b.md` lists as
- *   `"a\tb.md"`) and NOT by the `ls-files -z` that stages a release. An
- *   exclude line spelled either way therefore masks the file for exactly one
- *   of the two, which is the manifest-versus-staging disagreement this whole
- *   gate exists to prevent.
+ * - Every other C0 character, a tab among them, is C-quoted by a bare
+ *   `git ls-files` (`a<TAB>b.md` lists as `"a\tb.md"`) and NOT by the
+ *   `ls-files -z` that `manifest.ts` and the release staging both read. No
+ *   caller therefore sees a quoted spelling, and rejecting the character here
+ *   is defence in depth against a path-listing read regressing to the bare
+ *   form, which would mask the file for exactly one of the two and reopen the
+ *   manifest-versus-staging disagreement this gate exists to prevent.
  *
  * **This covers the C0 subset of that second hazard and not the whole of it.**
  * Git also C-quotes `0x7f`, a double quote, and every non-ASCII byte under the
  * default `core.quotePath`, and none of those is rejected here or by
  * `REJECTED_PATH_CHARACTERS`. Widening the rejection is the wrong repair: it
  * would make a legitimately-named accented `wiki/` page unwithholdable, which
- * is the same over-rejection that made this gate refuse a space. The root
- * repair is for `manifest.ts` to read the NUL stream, so no caller ever sees a
- * quoted spelling; that is tracked as gaia-react/gaia#1662, and it demotes this
- * helper to defence in depth rather than replacing it, because a line break
- * still has to be refused whatever the reader does.
+ * is the same over-rejection that made this gate refuse a space. Reading the
+ * NUL stream is what keeps a quoted spelling away from every caller; a line
+ * break still has to be refused here whatever the reader does, which is why
+ * that repair leaves this helper standing rather than replacing it.
  */
 const hasControlCharacter = (value: string): boolean => {
   // Indexed rather than spread or split: every control character is a lone

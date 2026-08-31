@@ -215,6 +215,47 @@ describe('buildManifest', () => {
     expect(manifest.files['app/keep.ts']).toBe('owned');
   });
 
+  test('excludes a non-ASCII path, which git C-quotes under its default core.quotePath', () => {
+    sandbox.commit('seed', {
+      '.gaia/release-exclude': 'wiki/日本語.md\n',
+      '.gaia/VERSION': '0.1.0\n',
+      'app/keep.ts': 'export {};\n',
+      'wiki/日本語.md': '# nihongo\n',
+    });
+
+    const manifest = buildManifest(sandbox.root, {
+      generatedAt: '2026-05-07T00:00:00.000Z',
+    });
+
+    expect(manifest.files['wiki/日本語.md']).toBeUndefined();
+    // The C-quoted spelling names no file on disk, so it must not appear
+    // under any key: reading it would ship a path the tarball never carries.
+    expect(
+      Object.keys(manifest.files).filter((key) => key.includes('\\'))
+    ).toEqual([]);
+    expect(manifest.files['app/keep.ts']).toBe('owned');
+  });
+
+  test('reads a path carrying a literal newline by its real name', () => {
+    sandbox.commit('seed', {
+      '.gaia/release-exclude': '# none\n',
+      '.gaia/VERSION': '0.1.0\n',
+      'app/two\nlines.ts': 'export {};\n',
+    });
+
+    const manifest = buildManifest(sandbox.root, {
+      generatedAt: '2026-05-07T00:00:00.000Z',
+    });
+
+    // This case pins `-z` specifically, where the non-ASCII one above does
+    // not: git C-quotes a control character whatever `core.quotePath` says,
+    // so the quotepath setting alone would not recover the real spelling.
+    expect(manifest.files['app/two\nlines.ts']).toBe('owned');
+    expect(
+      Object.keys(manifest.files).filter((key) => key.includes('\\'))
+    ).toEqual([]);
+  });
+
   test('rejects a glob-shaped exclude line loudly instead of silently mis-excluding', () => {
     sandbox.commit('seed', {
       '.gaia/release-exclude': 'wiki/meta*\n',

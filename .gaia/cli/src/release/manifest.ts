@@ -236,13 +236,39 @@ export const resolveExcludePath = (repoRoot: string): string =>
 export const resolveManifestPath = (repoRoot: string): string =>
   path.resolve(repoRoot, '.gaia/manifest.json');
 
+/**
+ * The tracked file set, spelled to match the `ls-files -z` that
+ * `.github/workflows/release.yml` stages the tarball from, so neither reader
+ * classifies a path git rewrote on the way out.
+ *
+ * `-z` is the half that does the work. It terminates entries with NUL and, on
+ * its own, suppresses the C-quoting git otherwise applies under the default
+ * `core.quotePath`: a non-ASCII byte, a control character, a double quote. A
+ * quoted spelling names no file on disk, and an exclude pattern compiled from
+ * the literal path can never match one, so the file would be recorded as
+ * shipping whatever the maintainer answered.
+ *
+ * `-c core.quotepath=false` is inert beside `-z`, which already disables
+ * quoting whatever that setting says. It is kept so this call reads
+ * byte-identically to the staging idiom it mirrors, not because it is
+ * load-bearing here.
+ *
+ * One divergence from staging survives this, in the other direction: the shell
+ * readers pipe the NUL stream through `tr '\0' '\n'` into a newline-delimited
+ * file, so a path holding a literal newline splits into two names there while
+ * it stays one entry here. Staging then aborts loudly or ships without the
+ * file, according to whether every name that reaches `rsync --files-from`
+ * happens to exist; this manifest records the path as shipping either way,
+ * because the exclude patterns are compiled without the `m` flag and so cannot
+ * match a spelling that spans a line break (#1669).
+ */
 const listGitFiles = (cwd: string): string[] =>
-  execFileSync('git', ['ls-files'], {
+  execFileSync('git', ['-c', 'core.quotepath=false', 'ls-files', '-z'], {
     cwd,
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
   })
-    .split('\n')
+    .split('\0')
     .filter((line) => line.length > 0);
 
 export const buildManifest = (
