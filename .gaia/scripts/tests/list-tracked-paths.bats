@@ -13,14 +13,23 @@
 # refuses whenever any tracked path holds a newline, regardless of what the
 # halves happen to name.
 #
-# E1-E4 drive the fixture repositories the issue asks for. C1 binds the named
-# staging call sites to this script so the raw round-trip cannot return to one
-# of them silently, and C2 asks the same of the tree rather than of a list, so
-# a site nobody names here is still covered. A1 and A2 are the arming fixtures:
-# A1 mutates a scratch copy of the script to drop the refusal and proves the
-# split this suite exists to catch actually happens without it, and A2 plants
-# the defect in a fixture tree and proves C2's scan reports it while leaving the
-# legitimate round-trips alone. A green check here is evidence, not assumption.
+# Three families, described rather than enumerated, so adding a member to one
+# does not leave a roster here saying otherwise.
+#
+# The E family drives fixture repositories through the boundary: the clean case,
+# the refusal, the silent arm where both split halves name real files, a
+# non-ASCII path the refusal must not over-reach onto, and the exit-code split
+# the callers read, which is the whole contract between a refusal and a failure.
+#
+# The C family binds the callers. One holds the named staging sites to the
+# boundary so the round-trip cannot return to one of them silently; the other
+# asks the same invariant of the whole tree rather than of a list, so a site
+# nobody named here is still covered.
+#
+# The A family arms the other two, because a guard whose red state has never
+# been observed is an unverified claim: each one breaks the thing its sibling
+# asserts and proves some test goes red. A green check here is evidence, not
+# assumption.
 #
 # Assertion style per .claude/rules/bats-assertions.md: no bare mid-test
 # [[ ... ]], POSIX [ ] and grep only, so a broken assertion still fails on
@@ -206,9 +215,19 @@ scan_raw_roundtrip() {
     '.gaia/tests/distribution/03-marker-strip.sh' \
     '.gaia/tests/distribution/09-exclude-parser-parity.sh' \
     '.gaia/cli/health/runbook.md'; do
-    grep -qF -- 'list-tracked-paths.sh' "$REPO_ROOT/$site" \
-      || { printf 'no list-tracked-paths.sh call in %s\n' "$site" >&2; return 1; }
-    grep -qF -- "ls-files -z | tr '\\0' '\\n'" "$REPO_ROOT/$site" \
+    # An invocation, not a mention. Every one of these sites carries a comment
+    # naming the boundary directly above the call, so a bare filename match is
+    # satisfied by the prose alone and a site that reverted the call while
+    # keeping the comment would still pass. Anchoring on the interpreter is what
+    # separates the two, and it holds for both spellings in use: a repo-relative
+    # path and a "$PROJECT_ROOT"-prefixed one.
+    grep -qE -- 'bash [^ ]*list-tracked-paths[.]sh' "$REPO_ROOT/$site" \
+      || { printf 'no list-tracked-paths.sh invocation in %s\n' "$site" >&2; return 1; }
+    # The same pattern the tree scan carries, so a round-trip wearing a flag or
+    # a locale prefix reds here too. 03-marker-strip.sh needs it: it is the one
+    # site with no `rsync --files-from`, so C2 declines it by design and this is
+    # the only assertion standing between it and a silent revert.
+    grep -qE -- "ls-files[^|]*-z[^|]*[|]([[:space:]]*|[^|]*[[:space:]/])tr[[:space:]]" "$REPO_ROOT/$site" \
       && { printf 'raw ls-files round-trip still present in %s\n' "$site" >&2; return 1; }
   done
   true
