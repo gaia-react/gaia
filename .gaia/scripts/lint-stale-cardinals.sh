@@ -127,6 +127,16 @@
 #     ("Six subcommands answer here"). The definite-determiner term is what
 #     buys the precision, and it is paid for with exactly this.
 #   - A noun outside the closed vocabulary.
+#   - A cardinal and its noun split across two physical comment lines. The scan
+#     reads one line at a time, so a phrase that wraps is two half-phrases and
+#     neither one matches. This is not a rare shape: comments here wrap near 79
+#     columns, and the shared library's own header carried a stale count in
+#     exactly this position, which this gate could not see. A two-line window
+#     was considered and declined: a comment block is a paragraph, so joining
+#     lines pairwise would let a determiner ending one sentence meet a cardinal
+#     opening the next, which is the collision the clause-ender rule below
+#     exists to stop, reintroduced at the line boundary where that rule cannot
+#     see it. Fixing the wrap by hand is what the tree does instead.
 #   - An ordinal or a written-out range ("the fourth of five callers").
 #   - A count in a trailing comment that shares its line with code: only a
 #     full-line comment is read, so an instance written after a `#` that follows

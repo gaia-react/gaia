@@ -584,7 +584,7 @@ run_linter() {
 # The sites `#1400` names, each in its PRE-FIX form, one per test. Their
 # point is the fixture BODY, the literal pre-fix line copied from the page; the
 # paths are the real ones so a reader can trace a failing test back to what it
-# was written for. The first of the three was repaired by hand before any check
+# was written for. The first of them was repaired by hand before any check
 # could see it, so its fixture is the only remaining record that the widened
 # detector would have caught it.
 

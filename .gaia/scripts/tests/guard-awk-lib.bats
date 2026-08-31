@@ -769,7 +769,7 @@ production_guards() {
 
 # Deviation from the plan's README table, recorded rather than silently
 # absorbed: the table lists gaia_scan_prepass_end among the four the
-# production guards "additionally call". None of the three calls it by
+# production guards "additionally call". None of them calls it by
 # name. The library's own gaia_scan_feed invokes it internally on the
 # transition into pass 2 (guard-awk-lib.sh: "if (G_pre_seen && !G_pre_done)
 # gaia_scan_prepass_end()"), so a guard running the two-pass invocation gets
@@ -859,7 +859,7 @@ strip_full_line_comments() {
   grep -vE '^[[:space:]]*#' "$1"
 }
 
-@test "no participating guard, and not the library, names a literal bats suite basename on a non-comment line" {
+@test "no production guard, and not the library, names a literal bats suite basename on a non-comment line" {
   # UAT-006 / README C8: the discrimination must not be a per-file or
   # per-suite allowlist, and an allowlist would have to live in code.
   # Scoped to non-comment lines because the guards' header comments
@@ -1050,6 +1050,12 @@ mutate_guard_copy() {
     --filter "a pragma naming this gate suppresses the instance below it" \
     "$XG_SUITE"
   [ "$status" -ne 0 ]
+
+  mutate_guard_copy "$prog" lint-stale-cardinals lint-stale-cardinals.bats
+  GAIA_GUARD_MUTATION_CHILD=1 run bash "$REPO_ROOT/.gaia/scripts/bats5.sh" \
+    --filter "a pragma waives a test name beneath it in a bats suite" \
+    "$XG_SUITE"
+  [ "$status" -ne 0 ]
 }
 
 @test "mutation: a fixture-region rule that always declines reds the stub guard's suite and a production guard's suite" {
@@ -1084,8 +1090,9 @@ mutate_guard_copy() {
 # ============================================================================
 #
 # Each Phase 2 task added its own version of this test, scoped to its own
-# guard. This one runs all three against a SINGLE fixture tree, so what it
-# proves is that they agree, not merely that each happens to have a test.
+# guard. This one runs every production guard against a SINGLE fixture tree,
+# so what it proves is that they agree, not merely that each happens to have a
+# test.
 
 @test "every guard hard-errors together on a tree carrying no tracked bats suite" {
   local repo="$TMP/no-bats"
