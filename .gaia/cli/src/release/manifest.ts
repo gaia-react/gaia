@@ -237,12 +237,27 @@ export const resolveManifestPath = (repoRoot: string): string =>
   path.resolve(repoRoot, '.gaia/manifest.json');
 
 /**
- * The tracked file set, spelled exactly as `.github/workflows/release.yml`
- * stages the tarball from, so the manifest and the tarball can never disagree
- * about which paths exist. Both halves are load-bearing: `core.quotepath=false`
- * stops git C-quoting a path carrying a non-ASCII byte into a spelling that
- * names no file (and that no `.gaia/release-exclude` line can ever match), and
- * `-z` keeps a path carrying a literal newline as one entry instead of two.
+ * The tracked file set, spelled to match the `ls-files -z` that
+ * `.github/workflows/release.yml` stages the tarball from, so neither reader
+ * classifies a path git rewrote on the way out.
+ *
+ * `-z` is the half that does the work. It terminates entries with NUL and, on
+ * its own, suppresses the C-quoting git otherwise applies under the default
+ * `core.quotePath`: a non-ASCII byte, a control character, a double quote. A
+ * quoted spelling names no file on disk, and an exclude pattern compiled from
+ * the literal path can never match one, so the file would be recorded as
+ * shipping whatever the maintainer answered.
+ *
+ * `-c core.quotepath=false` is inert beside `-z`, which already disables
+ * quoting whatever that setting says. It is kept so this call reads
+ * byte-identically to the staging idiom it mirrors, not because it is
+ * load-bearing here.
+ *
+ * One disagreement with staging survives this, in the other direction: the
+ * shell readers pipe the NUL stream through `tr '\0' '\n'` into a
+ * newline-delimited file, so a path holding a literal newline splits into two
+ * names there and is dropped from the tarball, while it stays one entry here
+ * and is recorded as shipping (#1669).
  */
 const listGitFiles = (cwd: string): string[] =>
   execFileSync('git', ['-c', 'core.quotepath=false', 'ls-files', '-z'], {

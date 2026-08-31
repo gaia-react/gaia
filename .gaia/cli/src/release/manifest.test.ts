@@ -236,7 +236,7 @@ describe('buildManifest', () => {
     expect(manifest.files['app/keep.ts']).toBe('owned');
   });
 
-  test('reads a path carrying a literal newline as one entry, not two', () => {
+  test('reads a path carrying a literal newline by its real name', () => {
     sandbox.commit('seed', {
       '.gaia/release-exclude': '# none\n',
       '.gaia/VERSION': '0.1.0\n',
@@ -247,9 +247,13 @@ describe('buildManifest', () => {
       generatedAt: '2026-05-07T00:00:00.000Z',
     });
 
+    // This case pins `-z` specifically, where the non-ASCII one above does
+    // not: git C-quotes a control character whatever `core.quotePath` says,
+    // so the quotepath setting alone would not recover the real spelling.
     expect(manifest.files['app/two\nlines.ts']).toBe('owned');
-    expect(manifest.files['app/two']).toBeUndefined();
-    expect(manifest.files['lines.ts']).toBeUndefined();
+    expect(
+      Object.keys(manifest.files).filter((key) => key.includes('\\'))
+    ).toEqual([]);
   });
 
   test('rejects a glob-shaped exclude line loudly instead of silently mis-excluding', () => {
