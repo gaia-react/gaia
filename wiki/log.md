@@ -11,6 +11,32 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-08-31 da2fd734 SKIP - chore: generic chore
+- 2026-08-31 784c269e SKIP - test: test-only change
+- 2026-08-31 86ce118f SKIP - test: test-only change
+- 2026-08-31 caef6e7e SKIP - test: test-only change
+- 2026-08-31 1da01bed SKIP - wiki diff-size NUL-stream read fix, same already-documented lint-git-path-quoting class
+- 2026-08-31 41dafcce SKIP - labels check NUL-stream read fix, same already-documented lint-git-path-quoting class
+- 2026-08-31 61a47bf7 SKIP - release manifest NUL-stream read fix, instance of the lint-git-path-quoting class already documented in Release Workflow.md
+- 2026-08-31 4dc447b8 SKIP - wiki already updated in-commit: SPEC-076 shell guard fixture discrimination reflected in wiki/decisions/Shell Guard Fixture Discrimination.md (created) and wiki/index.md
+- 2026-08-31 0b78cf4f SKIP - release withhold gate whitespace-in-path validation fix, Release Workflow.md's withhold narrative stays accurate at its altitude
+- 2026-08-31 014d8164 SKIP - wiki already updated in-commit: runtime's two worktree-isolation confinement arms documented in wiki/concepts/Worktrees.md
+- 2026-08-31 0e506977 SKIP - wiki already updated in-commit: findings-sidecar heredoc-under-worktree-isolation fix reflected in wiki/concepts/Code Review Audit Agent.md
+- 2026-08-31 f939fec2 SKIP - husky-guard glob-to-arm reader fix (multi-recursive key), internal parity-guard correctness only
+- 2026-08-31 d2b499c8 SKIP - wiki already updated in-commit: debt-origin provenance mode/unit branch-derivation correction reflected in wiki/concepts/Audit Disposition and Debt Fix.md and wiki/concepts/PR Merge Workflow.md
+- 2026-08-31 364930c8 SKIP - husky-guard glob-to-arm reader fix (nested head), internal parity-guard correctness only
+- 2026-08-31 1db68e31 SKIP - wiki already updated in-commit: label-sync registry-color-on-rename fix reflected in wiki/concepts/GitHub Labels.md
+- 2026-08-31 dc593953 SKIP - dependabot advisory remediation (js-yaml/fast-uri/valibot/brace-expansion/morgan), pnpm-audit.md's baseline contract stays generic, no drift
+- 2026-08-31 d1514cff SKIP - seeded 3 finding_class members, Code Review Audit Agent.md deliberately treats the CLI schema as authoritative and does not re-list members
+- 2026-08-31 ee07a250 SKIP - shell-lint oracle-blind-invocations instance fix, class already documented in Release Workflow.md's shell-lint section
+- 2026-08-31 67422a80 SKIP - audit agent marker-precondition prompt wording fix, below the altitude of Code Review Audit Agent.md's marker-precondition prose
+- 2026-08-31 4f989361 SKIP - react-perf harness comment/dead-branch cleanup, not reflected in React Perf Diagnostic.md and not architecturally significant
+- 2026-08-31 a70bf342 SKIP - wiki already updated in-commit: bippy 0.7.3 port for react-perf harness reflected in wiki/concepts/React Perf Diagnostic.md
+- 2026-08-31 cfb4b226 SKIP - Dockerfile Node pin bump to declared engines.node floor, no wiki page pins a specific value
+- 2026-08-31 df556cf8 SKIP - lint-staged test/ glob parity fix, Husky.md's documented test/-triggers-hook behavior already accurate, internal guard fix only
+- 2026-08-31 13ee1f9a SKIP - wiki already updated in-commit: gaia-lint 2.1.0 sonarjs/parameterized-tests bump reflected in wiki/dependencies/gaia-lint.md
+- 2026-08-31 4c7c5e63 SKIP - chore(deps): version bump only
+- 2026-08-31 7a10f3e6 SKIP - wiki: self-referential
 - 2026-08-29 e94e4d7 SKIP - oracle fixes + CI shard timing note; wiki/decisions/Sharded CI Test Matrix.md already updated within the commit itself
 - 2026-08-29 7406584 SKIP - added lint-oracle-blind-invocations.sh; wiki/concepts/Release Workflow.md already updated within the commit itself
 - 2026-08-29 97c3374 SKIP - docs-only, prose reflow of root CLAUDE.md
