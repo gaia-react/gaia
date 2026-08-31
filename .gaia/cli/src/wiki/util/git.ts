@@ -240,8 +240,7 @@ const fileListForCommit = (sha: string, cwd: string): string[] => {
 
   // Filter rather than trim: `-z` already delimits records exactly, so there
   // is no terminator left to strip, and trimming would instead remove leading
-  // or trailing whitespace that git legally permits in a path. The three
-  // sibling call sites above all filter for the same reason.
+  // or trailing whitespace that git legally permits in a path.
   return result.split('\0').filter((entry) => entry.length > 0);
 };
 
