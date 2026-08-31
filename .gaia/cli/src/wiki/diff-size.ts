@@ -150,28 +150,17 @@ const sumWikiLinesAtRef = (cwd: string, ref: string): number => {
   return total;
 };
 
+type NumstatRecord = {added: number; path: string; removed: number};
+
 /**
- * Sum `lines_added + lines_removed` across all `wiki/**` files in the
- * `<base>...HEAD` diff. Binary files (numstat reports `-\t-`) are
- * skipped; the wiki vault is text-only, so this is informational.
+ * Parse the counts pair leading a numstat record. Binary files (numstat
+ * reports `-\t-`) yield `undefined`; the wiki vault is text-only, so
+ * skipping them is informational.
  */
-const parseNumstatEntry = (
-  entry: string
+const parseNumstatCounts = (
+  addedToken: string,
+  removedToken: string
 ): undefined | {added: number; removed: number} => {
-  if (entry.length === 0 || !entry.includes('\t')) return undefined;
-
-  const parts = entry.split('\t');
-  const [addedToken, removedToken, filePath] = parts;
-
-  if (
-    addedToken === undefined ||
-    removedToken === undefined ||
-    filePath === undefined
-  ) {
-    return undefined;
-  }
-
-  if (!filePath.startsWith(WIKI_PREFIX)) return undefined;
   if (addedToken === '-' || removedToken === '-') return undefined;
 
   const added = Number.parseInt(addedToken, 10);
@@ -183,6 +172,79 @@ const parseNumstatEntry = (
   };
 };
 
+/**
+ * Read the record beginning at `fragments[index]`, reporting how many
+ * fragments it spans so the caller can step over a rename's two trailing
+ * path fragments rather than mistaking them for records of their own.
+ */
+const readNumstatRecord = (
+  fragments: readonly string[],
+  index: number
+): {consumed: number; record: NumstatRecord | undefined} => {
+  const entry = fragments[index];
+  // Fewer than three tab-separated fields means this is a path fragment
+  // or the stream's trailing empty string, not a counts fragment.
+  const parts = entry === undefined ? [] : entry.split('\t');
+  const [addedToken, removedToken, pathField] = parts;
+
+  if (
+    addedToken === undefined ||
+    removedToken === undefined ||
+    pathField === undefined
+  ) {
+    return {consumed: 1, record: undefined};
+  }
+
+  // A rename or copy attributes its counts to the postimage, the second of
+  // the two path fragments the empty path field promises. An ordinary
+  // record's path is the rest of its own fragment, which stopping at the
+  // next tab would truncate, a tab being a legal path byte.
+  const isRenameOrCopy = pathField.length === 0;
+  const filePath =
+    isRenameOrCopy ? fragments[index + 2] : parts.slice(2).join('\t');
+  const consumed = isRenameOrCopy ? 3 : 1;
+  const counts = parseNumstatCounts(addedToken, removedToken);
+
+  if (counts === undefined || filePath === undefined) {
+    return {consumed, record: undefined};
+  }
+
+  return {
+    consumed,
+    record: {added: counts.added, path: filePath, removed: counts.removed},
+  };
+};
+
+/**
+ * Split a `git diff --numstat -z` stream into one record per changed
+ * path. Two record shapes share the stream, and only a stateful walk
+ * tells them apart. An ordinary record is `added TAB removed TAB path
+ * NUL`. A rename or copy leaves the path field empty and emits the
+ * preimage and the postimage as the two fragments that follow, so the
+ * counts belong to a path three fragments along. Reading each fragment
+ * independently therefore matches none of the three and silently drops
+ * every line changed on a renamed page.
+ */
+const parseNumstatStream = (raw: string): NumstatRecord[] => {
+  const fragments = raw.split('\0');
+  const records: NumstatRecord[] = [];
+  let cursor = 0;
+
+  while (cursor < fragments.length) {
+    const {consumed, record} = readNumstatRecord(fragments, cursor);
+
+    cursor += consumed;
+
+    if (record !== undefined) records.push(record);
+  }
+
+  return records;
+};
+
+/**
+ * Sum `lines_added + lines_removed` across all `wiki/**` files in the
+ * `<base>...HEAD` diff. Matches what `git diff --shortstat` reports.
+ */
 const sumChangedLines = (cwd: string, base: string): number => {
   let raw: string;
 
@@ -199,11 +261,13 @@ const sumChangedLines = (cwd: string, base: string): number => {
     return 0;
   }
 
-  return raw.split('\0').reduce((total, entry) => {
-    const parsed = parseNumstatEntry(entry);
-
-    return parsed === undefined ? total : total + parsed.added + parsed.removed;
-  }, 0);
+  return parseNumstatStream(raw).reduce(
+    (total, record) =>
+      record.path.startsWith(WIKI_PREFIX) ?
+        total + record.added + record.removed
+      : total,
+    0
+  );
 };
 
 export const computeDiffSize = (options: ComputeOptions): DiffSizeResult => {
