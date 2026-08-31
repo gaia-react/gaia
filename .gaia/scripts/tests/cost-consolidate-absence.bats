@@ -38,9 +38,13 @@ setup() {
 }
 
 @test "UAT-007: scoped git grep for cost-consolidate is empty across .specify .gaia .claude wiki" {
+  # wiki/log.md and wiki/hot.md are each wholly overwritten with free prose, so
+  # a session summary that happens to quote this needle is that file's own
+  # wording rather than a live reference this assertion can say anything about.
   run git -C "$REPO_ROOT" grep -l cost-consolidate -- \
     .specify .gaia .claude wiki \
-    ':!.gaia/local' ':!.gaia/manifest.json' ':!CHANGELOG.md' ':!wiki/log.md' \
+    ':!.gaia/local' ':!.gaia/manifest.json' ':!CHANGELOG.md' \
+    ':!wiki/log.md' ':!wiki/hot.md' \
     ':!.gaia/scripts/tests/cost-consolidate-absence.bats' \
     ':!.gaia/tests/hooks/fixtures/audit-routing-before.tsv'
   # git grep exits 1 (not 0) when it finds no match; the assertion that
