@@ -72,7 +72,7 @@ apply_block_bounds() {
   true
 }
 
-@test "the three option labels and value mapping match FC-4, with Prefer branches (Recommended) leading" {
+@test "the option labels and value mapping match FC-4, with Prefer branches (Recommended) leading" {
   read -r start end <<< "$(isolation_block_bounds)"
   local block
   block=$(sed -n "${start},$((end - 1))p" "$DOC")

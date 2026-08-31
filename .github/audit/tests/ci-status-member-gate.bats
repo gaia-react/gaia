@@ -1506,7 +1506,7 @@ run_audit_complete_step() {
 # question returns 2, NEVER 1. A 1 means "definitively no success live", which is
 # the caller's signal to POST `pending` over whatever is currently there. Collapse
 # any "could not ask" path into a 1 and the #734 clobber returns at the SOURCE,
-# below every call-site lock in this file -- all four callers would be dutifully
+# below every call-site lock in this file -- every caller would be dutifully
 # testing `-ne 1` against an answer that is already a lie.
 #
 # The read-failure path was the only one pinned. Collapsing the usage-error path
@@ -2115,7 +2115,7 @@ run_audit_complete_step() {
 # -----------------------------------------------------------------------------
 # The COMBINED state: a rejected pending POST, alongside the members it named.
 #
-# These three are siblings of the single-arm tests above, and they exist because
+# These are siblings of the single-arm tests above, and they exist because
 # the two facts now arrive together on every run that produces either. The
 # members-pending arm alone would assert "GAIA-Audit is pending" about a status
 # that was never posted; the post-failed arm alone would send the author to
@@ -2211,7 +2211,7 @@ run_audit_complete_step() {
   # still covers a rejected SUCCESS POST, where members_pending is empty.
   #
   # The arm ORDER is what this pins; the combined-state MESSAGES are pinned by
-  # the three sibling tests above, and their shared instruction by the fourth.
+  # the sibling tests above, and their shared instruction by the fourth.
   # An invariant that only bites in the future is exactly the kind prose cannot
   # hold, because nothing re-reads prose on the day it starts mattering.
   local expected="SUCCESS_LIVE READ_FAILED MEMBERS_PENDING POST_FAILED POST_FAILED SUCCESS_STAMPED"

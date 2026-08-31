@@ -17,7 +17,7 @@
 # there. The split is by question, not by file size.
 #
 # Why the argument contract earns a suite of its own: it is the only part of
-# this script no call site can reach. The five callers all pass well-formed
+# this script no call site can reach. The callers all pass well-formed
 # arguments by construction, so every refusal below is unreachable from the
 # workflow and would otherwise ship untested. Each refusal exits 2 rather than
 # 0, which is the fail-closed answer -- an ill-formed invocation is a bug in the

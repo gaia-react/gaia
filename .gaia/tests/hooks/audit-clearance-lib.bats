@@ -2,7 +2,7 @@
 # Tests for .claude/hooks/lib/audit-clearance.sh's clearance_scan function, the
 # enumerating counterpart to the digest-keyed predicates (clearance_acceptable,
 # clearance_member_cleared, clearance_member_refused) the rest of the file
-# already covers indirectly through their four CONSUMER suites. This is the
+# already covers indirectly through their CONSUMER suites. This is the
 # library's first unit suite.
 #
 # clearance_scan applies the same well-formedness key clearance_acceptable
@@ -169,7 +169,7 @@ scan() {
 
 # ---------------------------------------------------------------------------
 # Acceptance criterion 5: every existing function in the file is unchanged.
-# Proven here structurally; the four consumer suites are run separately and
+# Proven here structurally; the consumer suites are run separately and
 # reported green in the executor's notes, and `git diff` confirms no existing
 # function body moved.
 # ---------------------------------------------------------------------------

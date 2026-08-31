@@ -74,7 +74,7 @@
 # their position relative to the `*/*` arm is free; anything nested would have
 # to precede it to be reached at all.
 #
-# Widening this set moves all three consumers at once, which is what keeps them
+# Widening this set moves every consumer at once, which is what keeps them
 # in agreement: the spawn oracle stops naming a member, the merge gate stops
 # demanding that member's marker, and the digest fold stops rotating the
 # default member's digest over content it does not read. Widening it for only

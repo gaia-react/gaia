@@ -687,7 +687,7 @@ mutate() {
 # Section A: shared-entry-point conformance (UAT-010)
 # ============================================================================
 #
-# Every check below greps all four participating files at once: the three
+# Every check below greps every participating file at once: the three
 # production guards and the stub-guard fixture. That is why this whole
 # section lives in a single-agent phase rather than three parallel edits.
 
@@ -732,7 +732,7 @@ production_guards() {
   done < <(participating_files)
 }
 
-@test "the five common entry points are called, not merely named, in all four files" {
+@test "the common entry points are called, not merely named, in every participating file" {
   # A CALL is the name immediately followed by "(". Both this file's own
   # header comments and the stub guard's name every entry point in prose,
   # so a raw name-match would misread a comment as a call.
@@ -845,7 +845,7 @@ strip_full_line_comments() {
   grep -vE '^[[:space:]]*#' "$1"
 }
 
-@test "none of the three guards or the library names a literal bats suite basename on a non-comment line" {
+@test "no participating guard, and not the library, names a literal bats suite basename on a non-comment line" {
   # UAT-006 / README C8: the discrimination must not be a per-file or
   # per-suite allowlist, and an allowlist would have to live in code.
   # Scoped to non-comment lines because the guards' header comments
@@ -971,7 +971,7 @@ extract_wiki_paths() {
   # than missed) and a statement about the pragma being honored nowhere on
   # other surfaces; it names no NEW fail-open for the bats surface.
   # Recorded as a finding rather than papered over: the plan's README
-  # assumed all three guards would state one.
+  # assumed every guard would state one.
 }
 
 @test "the wiki-style audit greps add no new match from the wiki page" {
@@ -1075,7 +1075,7 @@ mutate_guard_copy() {
 # guard. This one runs all three against a SINGLE fixture tree, so what it
 # proves is that they agree, not merely that each happens to have a test.
 
-@test "all three guards hard-error together on a tree carrying no tracked bats suite" {
+@test "every guard hard-errors together on a tree carrying no tracked bats suite" {
   local repo="$TMP/no-bats"
   mkdir -p "$repo/.husky" "$repo/.github/workflows"
   git -C "$repo" init -q .

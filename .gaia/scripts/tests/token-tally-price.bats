@@ -202,7 +202,7 @@ setup() {
 # with no row in the rate table, and token-rollup.sh already prints it. The
 # tally read only `.dollars` off the same object and discarded the rest, so the
 # per-run line a maintainer actually reads was the one surface that could report
-# a confidently wrong figure. These four tests pin the record field and both
+# a confidently wrong figure. The tests below pin the record field and both
 # stdout shapes.
 
 # ---------- 7 ----------

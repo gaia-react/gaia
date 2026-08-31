@@ -194,7 +194,7 @@ fi
 
 # --- Modify one UAT, re-run, only that file rewrites -------------------------
 
-# Snapshot all three rendered files for byte-compare after the targeted rewrite.
+# Snapshot every rendered file for byte-compare after the targeted rewrite.
 mkdir -p "$TMPDIR_RUN/snap1"
 for f in ${expected_files[@]+"${expected_files[@]}"}; do
     cp "$SPEC_DIR/$f" "$TMPDIR_RUN/snap1/$f"

@@ -257,7 +257,7 @@ set -uo pipefail
 # walk .gaia/local below are conceptually always asking for main's tree, not
 # the invoking one. Resolved via the shared resolver
 # (.gaia/scripts/main-root-lib.sh), sourced beside this file via BASH_SOURCE
-# the same way the ~14 other hooks that already depend on it do, rather than
+# the same way the other hooks that already depend on it do, rather than
 # re-deriving "where is main" a fifteenth time by hand.
 #
 # Repointing `root` itself at `gaia_resolve_main_root` was considered and

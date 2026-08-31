@@ -719,7 +719,7 @@ run_staged_merge_hook() {
   return 0
 }
 
-# The pre-gate load, and the widest exposure of the four hooks that share it:
+# The pre-gate load, and the widest exposure of the hooks that share it:
 # this one is PreToolUse and the load sits ahead of the arming gate, so an
 # unparseable verb-arming.sh denied EVERY Bash tool call rather than merges
 # alone. It parse-checks rather than taking the cheap arm for exactly that

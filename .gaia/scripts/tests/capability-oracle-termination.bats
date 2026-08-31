@@ -370,7 +370,7 @@ EOF
   grep -qF -- 'CALL	.claude/hooks/lib/helper.sh' <<<"$output"
 }
 
-# The six tests below fix the boundary of the command-substitution skip. Three
+# The tests below fix the boundary of the command-substitution skip. Three
 # things force it, and a reader who remembers only the first will re-narrow the
 # predicate and reintroduce the defect the last two exist to prevent. A DOUBLE
 # QUOTE inside a substitution shifts the flat odd/even reading of the line's

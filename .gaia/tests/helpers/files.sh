@@ -29,7 +29,7 @@
 # the class of change a writer regression produces.
 #
 # Comparing FILES sidesteps the strip, because no file's bytes ever pass through
-# a command substitution. That is the fix the three sites #1047 repaired already
+# a command substitution. That is the fix the sites #1047 repaired already
 # use by hand; this file is the reusable form of it, so the next byte-identity
 # test written reaches for a primitive rather than for `$(cat …)` out of habit.
 #

@@ -7,9 +7,10 @@
 # guard (.gaia/scripts/lint-git-path-quoting.sh), the workflow
 # run-interpolation guard (.gaia/scripts/lint-workflow-run-interpolation.sh),
 # the grep ERE-escape guard (.gaia/scripts/lint-grep-ere-escapes.sh), the
-# errexit status-read guard (.gaia/scripts/lint-errexit-status-read.sh), and the
+# errexit status-read guard (.gaia/scripts/lint-errexit-status-read.sh), the
 # oracle-blind invocation guard
-# (.gaia/scripts/lint-oracle-blind-invocations.sh).
+# (.gaia/scripts/lint-oracle-blind-invocations.sh), and the stale-cardinal guard
+# (.gaia/scripts/lint-stale-cardinals.sh).
 # Exit 0 when clean, 1 on any finding at or above the severity floor, and 1 on
 # a pass that cannot run at all (no shellcheck binary, an empty *.sh discovery
 # set, an unusable bash-3.2 interpreter). A red gate is therefore not always a
@@ -533,6 +534,21 @@ fi
 # the file:line it prints is repo-relative.
 echo "--> lint-oracle-blind-invocations (an invocation the capability oracle's anchors cannot see)"
 if ! (cd "$REPO_ROOT" && bash "$REPO_ROOT/.gaia/scripts/lint-oracle-blind-invocations.sh"); then
+  status=1
+fi
+
+# Fold in the stale-cardinal guard, for a reason none of the guards above share:
+# what it reads is not shell at all, it is the PROSE the shell carries. A
+# comment or a bats test name asserting how many of something the tree holds is
+# a claim nothing recounts, so it stays green while the set it names moves
+# underneath it, and every tool above is blind to it by construction: shellcheck
+# models the language, and the class lives in the text the language ignores.
+# This gate is where it lands rather than in a suite of its own because its scan
+# surface, every tracked *.sh and *.bats, is already this gate's surface. Run
+# from the repo root so its `git ls-files` discovery resolves and the file:line
+# it prints is repo-relative.
+echo "--> lint-stale-cardinals (a definite cardinal naming a set nothing recounts)"
+if ! (cd "$REPO_ROOT" && bash "$REPO_ROOT/.gaia/scripts/lint-stale-cardinals.sh"); then
   status=1
 fi
 

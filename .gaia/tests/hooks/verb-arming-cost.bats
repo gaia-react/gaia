@@ -216,7 +216,7 @@ build_armed_payload() {
 
 # A payload that raw-matches nothing: the raw match never hits, so the walk
 # is never paid regardless of size. 'echo ' is turned away by every one of
-# the eleven hooks' tokenizer pre-filters too (no verb fragment's first word
+# the adopting hooks' tokenizer pre-filters too (no verb fragment's first word
 # starts with 'e').
 build_nonmatch_payload() {
   local total="$1" prefix='echo '
@@ -330,7 +330,7 @@ time_view_ms() {
   [ "$REPLY_MS" -gt 0 ] || return 1
 }
 
-# The eleven adopting hooks, per README.md's frozen contract table.
+# The adopting hooks, per README.md's frozen contract table.
 eleven_hooks() {
   printf '%s\n' \
     pr-merge-audit-check.sh \

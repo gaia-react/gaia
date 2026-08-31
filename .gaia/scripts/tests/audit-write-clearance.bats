@@ -268,10 +268,10 @@ member_digest() {
   [ -z "$stray" ]
 }
 
-# Clean, zero-finding earned write lands for ALL THREE members. No report, no
+# Clean, zero-finding earned write lands for EVERY member. No report, no
 # detector; each member's filename stem equals its own body .digest.
 
-@test "clean zero-finding earned write lands for all three members, no detector involved" {
+@test "clean zero-finding earned write lands for every member, no detector involved" {
   for m in code-audit-frontend code-audit-maintainer-shell code-audit-maintainer-node; do
     d="$(member_digest "$ROOT" "$m")"
     out="$(bash "$WRITER" --root "$ROOT" --member "$m" --provenance earned)"

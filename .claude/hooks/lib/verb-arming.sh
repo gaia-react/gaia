@@ -214,10 +214,10 @@ _gaia_va_first_command() {
     [ -n "$dir" ] && [ -f "$dir/repo-scope.sh" ] || return 1
     # Suspend errexit across the load, then RESTORE WHAT WAS THERE. Under errexit
     # an unparseable copy abandons the shell here before the type check below can
-    # degrade, and in the four errexit consumers that exit is 2, the deny code; no
+    # degrade, and in the errexit consumers that exit is 2, the deny code; no
     # consumer can guard it from outside, because `bash -n` does not recurse into
     # what a file sources. The restore is conditional rather than a bare `set -e`
-    # because seven of the eleven consumers deliberately run WITHOUT errexit, and
+    # because several consumers deliberately run WITHOUT errexit, and
     # several are PreToolUse deny gates where a stray non-zero exit is a verdict.
     # Nothing returns between the suspend and the restore, so no path leaks it.
     errexit_was=0

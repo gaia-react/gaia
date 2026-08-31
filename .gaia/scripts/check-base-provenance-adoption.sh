@@ -22,7 +22,7 @@
 # concern: it governs the Code Audit Team member agents' REVIEW base, not
 # this diff-provenance resolver. It is not extended for this purpose.
 #
-# One of the three named consumers, .gaia/scripts/resolve-audit-spawn.sh, is
+# One of the named consumers, .gaia/scripts/resolve-audit-spawn.sh, is
 # itself release-excluded, so its adoption assertion is only ever complete
 # on a maintainer clone. That is not a gap this check has to close: this
 # check is release-excluded too (see .gaia/release-exclude), so it never
@@ -34,7 +34,7 @@
 # gaia_check_base_provenance_adoption <repo_root>
 #   Three assertions over tracked shell source (test suites excluded):
 #     1. Exactly one definition of audit_resolve_base_provenance exists.
-#     2. Each of the three named consumers references it.
+#     2. Each named consumer references it.
 #     3. No file other than the resolver's own and the one written
 #        exemption carries the origin-then-local fallback chain in a
 #        spelling this scan recognizes (see the narrowing at the scan
@@ -57,7 +57,7 @@ GAIA_PROVENANCE_DEF_PATTERN='^[[:space:]]*(function[[:space:]]+)?audit_resolve_b
 # *.test.* fixture built to prove this check fires.
 GAIA_PROVENANCE_TEST_EXCLUDES=(':!*.bats' ':!*/tests/*' ':!*/__tests__/*' ':!*.test.ts' ':!*.test.tsx')
 
-# The three consumers the spec names, in the order it lists them.
+# The consumers the spec names, in the order it lists them.
 GAIA_PROVENANCE_CONSUMERS=(
   '.gaia/scripts/resolve-audit-spawn.sh'
   '.claude/hooks/pr-merge-audit-check.sh'
