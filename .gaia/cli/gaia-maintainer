@@ -31769,14 +31769,7 @@ var sumWikiLinesAtRef = (cwd, ref) => {
   }
   return total;
 };
-var parseNumstatEntry = (entry) => {
-  if (entry.length === 0 || !entry.includes("	")) return void 0;
-  const parts = entry.split("	");
-  const [addedToken, removedToken, filePath] = parts;
-  if (addedToken === void 0 || removedToken === void 0 || filePath === void 0) {
-    return void 0;
-  }
-  if (!filePath.startsWith(WIKI_PREFIX)) return void 0;
+var parseNumstatCounts = (addedToken, removedToken) => {
   if (addedToken === "-" || removedToken === "-") return void 0;
   const added = Number.parseInt(addedToken, 10);
   const removed = Number.parseInt(removedToken, 10);
@@ -31784,6 +31777,36 @@ var parseNumstatEntry = (entry) => {
     added: Number.isNaN(added) ? 0 : added,
     removed: Number.isNaN(removed) ? 0 : removed
   };
+};
+var readNumstatRecord = (fragments, index) => {
+  const entry = fragments[index];
+  const parts = entry === void 0 ? [] : entry.split("	");
+  const [addedToken, removedToken, pathField] = parts;
+  if (addedToken === void 0 || removedToken === void 0 || pathField === void 0) {
+    return { consumed: 1, record: void 0 };
+  }
+  const isRenameOrCopy = pathField.length === 0;
+  const filePath = isRenameOrCopy ? fragments[index + 2] : parts.slice(2).join("	");
+  const consumed = isRenameOrCopy ? 3 : 1;
+  const counts = parseNumstatCounts(addedToken, removedToken);
+  if (counts === void 0 || filePath === void 0) {
+    return { consumed, record: void 0 };
+  }
+  return {
+    consumed,
+    record: { added: counts.added, path: filePath, removed: counts.removed }
+  };
+};
+var parseNumstatStream = (raw) => {
+  const fragments = raw.split("\0");
+  const records = [];
+  let cursor = 0;
+  while (cursor < fragments.length) {
+    const { consumed, record: record2 } = readNumstatRecord(fragments, cursor);
+    cursor += consumed;
+    if (record2 !== void 0) records.push(record2);
+  }
+  return records;
 };
 var sumChangedLines = (cwd, base) => {
   let raw;
@@ -31799,10 +31822,10 @@ var sumChangedLines = (cwd, base) => {
   } catch {
     return 0;
   }
-  return raw.split("\0").reduce((total, entry) => {
-    const parsed = parseNumstatEntry(entry);
-    return parsed === void 0 ? total : total + parsed.added + parsed.removed;
-  }, 0);
+  return parseNumstatStream(raw).reduce(
+    (total, record2) => record2.path.startsWith(WIKI_PREFIX) ? total + record2.added + record2.removed : total,
+    0
+  );
 };
 var computeDiffSize = (options) => {
   const base = options.base ?? "HEAD~1";

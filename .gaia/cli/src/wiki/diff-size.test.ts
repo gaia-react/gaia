@@ -20,6 +20,10 @@ const setupSandbox = (): Sandbox => {
   // carries `core.quotepath=false` does not silently make the non-ASCII
   // block below vacuous by removing the very quoting it exists to defeat.
   execFileSync('git', ['config', 'core.quotepath', 'true'], {cwd: root});
+  // git's own default too. Set explicitly for the same reason: a developer
+  // whose global config carries `diff.renames=false` would make the rename
+  // block below vacuous by turning every rename into an add/delete pair.
+  execFileSync('git', ['config', 'diff.renames', 'true'], {cwd: root});
   execFileSync('git', ['config', 'user.email', 'test@example.com'], {
     cwd: root,
   });
@@ -82,6 +86,20 @@ const captureStdio = (): {
 
 const fillLines = (count: number, content: string): string =>
   `${Array.from({length: count}, () => content).join('\n')}\n`;
+
+// 100 lines carried over plus 30 new ones is 77% similarity, well past
+// git's 50% rename threshold, so this is detected as a rename rather than
+// an add/delete pair.
+const renameAndExtend = (sandbox: Sandbox): void => {
+  sandbox.writeFile('wiki/old.md', fillLines(100, 'line'));
+  sandbox.commitAll('base');
+  sandbox.removeFile('wiki/old.md');
+  sandbox.writeFile(
+    'wiki/new.md',
+    fillLines(100, 'line') + fillLines(30, 'extra')
+  );
+  sandbox.commitAll('rename and extend');
+};
 
 describe('wiki diff-size', () => {
   let sandbox: Sandbox;
@@ -323,6 +341,34 @@ describe('wiki diff-size', () => {
 
       const result = computeDiffSize({cwd: sandbox.root, thresholdPct: 25});
       expect(result.baseLines).toBe(40);
+    });
+  });
+
+  describe('renames, which numstat spells across three fragments', () => {
+    test('the fixture really is a rename record, so the assertion below can fail', () => {
+      renameAndExtend(sandbox);
+
+      const numstat = execFileSync(
+        'git',
+        ['diff', '--numstat', '-z', 'HEAD~1...HEAD', '--', 'wiki/'],
+        {cwd: sandbox.root, encoding: 'utf8'}
+      );
+
+      // The counts fragment's path field is empty, so it ends at a tab
+      // immediately followed by NUL, and the preimage and postimage arrive
+      // as the two fragments after it.
+      expect(numstat).toBe('30\t0\t\0wiki/old.md\0wiki/new.md\0');
+    });
+
+    test("a renamed page's changed lines reach the numerator", () => {
+      renameAndExtend(sandbox);
+
+      const result = computeDiffSize({cwd: sandbox.root, thresholdPct: 25});
+      expect(result.baseLines).toBe(100);
+      expect(result.changedLines).toBe(30);
+      expect(result.ratioPct).toBe(30);
+      // The whole point: dropping the rename reads 0/100 and merges.
+      expect(result.decision).toBe('exceeded');
     });
   });
 });
