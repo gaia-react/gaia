@@ -1,6 +1,11 @@
 /**
- * The path-safe spelling every git command this CLI reads paths out of is
- * built from.
+ * The path-safe spelling this CLI builds its git *listing* commands from.
+ *
+ * Not every path it reads out of git comes through here: the
+ * `status --porcelain` readers behind `porcelainZPaths` build their own argv,
+ * and are safe without this because `-z` alone suffices for `status`, which
+ * that docblock states as their half of the contract. So this is the one
+ * spelling for the listing verbs rather than an assurance about every call.
  *
  * Under git's default `core.quotePath`, a path carrying a non-ASCII byte, a
  * control character, or a double quote comes back C-quoted:
