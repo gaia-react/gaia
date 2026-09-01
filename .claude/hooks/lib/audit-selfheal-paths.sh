@@ -84,9 +84,11 @@
 #
 # The BUILD-CONFIG half of this ERE is the workflow's own `has_source` file
 # pattern (code-review-audit.yml's "Detect in-scope source changes" step),
-# reused verbatim, so the two sets can never drift apart. It is the third,
-# fourth and fifth alternatives below (`package.json` / lockfile / workspace,
-# `tsconfig*.json`, root `*.config.*`).
+# reused verbatim, so the two sets can never drift apart. It is the
+# `package.json` / lockfile / workspace, `tsconfig*.json`, and root
+# `*.config.*` alternatives below. Naming them rather than their positions is
+# what survives an arm being inserted ahead of them, which is how a reader
+# verifying the no-drift contract ends up counting to the wrong alternative.
 #
 # The ROOT-TOOLING half, the last alternative, is deliberately NOT part of that
 # mirror, and the asymmetry is the point. `has_source` decides whether an audit
