@@ -16,7 +16,7 @@
  * corrupted HEAD in `#1216`, and it outlives the test into an `afterEach` that
  * `rmSync`s the repository out from under it.
  *
- * Nineteen files under `src/` build such a sandbox and commit into it, and only
+ * Files under `src/` build such a sandbox and commit into it, and only
  * `wiki/commit-classify.test.ts` gates it in its own config. That is the
  * argument for the environment rather than for a shared fixture every sandbox
  * has to remember to call: `GIT_CONFIG_*` reaches every git subprocess in the

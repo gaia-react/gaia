@@ -191,12 +191,23 @@
 #     the shape rather than to waive it, which is the demonstration that the
 #     remedy is always reachable.
 #   - A line INSIDE a multi-line template literal whose own first characters are
-#     `//` or `/*`. The full-line rule reads it as a comment, because by that
-#     point the quote that opened the literal is on an earlier line and nothing
-#     one line wide can see it. Reaching this needs the string tokenizer the
-#     full-line rule exists to avoid, and the shape has to carry the whole
-#     predicate inside the literal to cost anything at all, so it is recorded
-#     rather than chased.
+#     `//` or `/*` (or `{/*`, since the container strip runs first). The
+#     owns-its-line rule reads it as a comment, because by that point the quote
+#     that opened the literal is on an earlier line and nothing one line wide
+#     can see it. Reaching this needs the string tokenizer that rule exists to
+#     avoid, so it is recorded rather than chased.
+#
+#     Be precise about the cost, because the obvious bound is wrong. The `/*`
+#     spelling is not confined to the literal: it raises the block state, and
+#     nothing lowers that until a line carrying `*/`, which inside a literal
+#     there is no reason to expect. Every line to the end of the file is then
+#     handed to the predicate as prose, ordinary executable code included, so a
+#     phrase matching the class anywhere below reds on a line that is not a
+#     comment at all. The `//` spelling costs one line, which is the bound that
+#     does hold. Both directions fail closed, and both are visible: the report
+#     names a file and a line, and a reader looking at code rather than a
+#     comment has the answer in front of them. The suite pins this direction
+#     deliberately, so the disclosure is enforced rather than asserted.
 
 set -euo pipefail
 
@@ -465,9 +476,17 @@ readonly CFAM_AWK='
     # started the literal sits ahead of it on the same line. The header records
     # the one shape that defeats that.
     #
+    # One optional `{` is stripped ahead of those tests, which is what reaches
+    # the JSX comment container `{/* ... */}`. That form is the ordinary way to
+    # comment inside a render body, so a `.tsx` surface read without it is read
+    # in name only. Stripping it costs nothing the paragraph above relies on: a
+    # `{` cannot open a string literal, so a line whose first characters are
+    # `{/*` is still not inside one, and the owns-its-line property survives.
+    #
     # A JSDoc leader (` * `) needs no stripping. The tokenizer treats `*` as
     # punctuation, and punctuation that is not a clause ender ends a token
-    # without ending a clause, so the leader is invisible to the predicate.
+    # without ending a clause, so the leader is invisible to the predicate. The
+    # `}` closing a JSX container is invisible for the same reason.
     function cfam_prose(line,   s, p) {
       s = line
       sub(/^[ \t]+/, "", s)
@@ -477,6 +496,7 @@ readonly CFAM_AWK='
         INBLOCK = 0
         return substr(s, 1, p - 1)
       }
+      sub(/^\{[ \t]*/, "", s)
       if (substr(s, 1, 2) == "//") return substr(s, 3)
       if (substr(s, 1, 2) != "/*") return ""
       s = substr(s, 3)
@@ -490,11 +510,21 @@ readonly CFAM_AWK='
     # this reports and never suppresses. The shared library requires
     # `gaia-lint-ignore` to lead as well, which is what lets a header name the
     # word inline in prose without creating a live pragma.
-    function is_pragma(s,   tok) {
+    #
+    # It must also name THIS guard. The library arm reports through
+    # gaia_scan_pragma_here, which takes the guard name and fires for no other,
+    # so a first-token-only test here would answer for a sibling guard in a
+    # message asserting this one honors it only in *.bats, which is a claim
+    # about a rule the reader was never invoking.
+    function is_pragma(s,   tok, guard) {
       sub(/^[ \t]+/, "", s)
       tok = s
       sub(/[ \t].*$/, "", tok)
-      return (tok == "gaia-lint-ignore")
+      if (tok != "gaia-lint-ignore") return 0
+      guard = s
+      sub(/^[^ \t]+[ \t]+/, "", guard)
+      sub(/[ \t:].*$/, "", guard)
+      return (guard == "lint-stale-cardinals")
     }
 
     {

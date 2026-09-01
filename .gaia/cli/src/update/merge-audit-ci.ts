@@ -16,9 +16,8 @@
  *
  * It is READ-ONLY: it parses the baseline, latest and current YAML files with
  * js-yaml and emits a JSON verdict report. It never writes the file; the
- * `/update-gaia` skill applies
- * `applied[]` with the Edit tool so comments, key order, and quote style
- * survive.
+ * `/update-gaia` skill applies `applied[]` with the Edit tool so comments, key
+ * order, and quote style survive.
  *
  * Verdict table (identical to the package.json / pnpm-workspace steps), per
  * managed scalar key and per `audit_authors` login, with baseline `B` /

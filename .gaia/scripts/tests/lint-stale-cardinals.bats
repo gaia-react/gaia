@@ -349,7 +349,9 @@ true'
   fixture_file app/seed.ts 'export const seed = 1;'
   run_linter
   [ "$status" -eq 1 ]
-  grep -qF -- "nothing was scanned" <<<"$output"
+  # Both empty-discovery arms end in "nothing was scanned", so the needle has to
+  # be the half that names the surface, or the assertion passes on either.
+  grep -qF -- "no tracked shell scripts" <<<"$output"
 }
 
 @test "an empty bats surface is an error, never a clean tree" {
@@ -404,6 +406,37 @@ export const probe = 1;'
   run_linter
   [ "$status" -eq 1 ]
   grep -qF -- ".storybook/probe.ts:1:" <<<"$output"
+}
+
+# The JSX comment container. `{/* ... */}` is the ordinary way to comment inside
+# a render body, so a `.tsx` surface that cannot read it is read in name only.
+# Both shapes are pinned: the single-line container, and the multi-line one whose
+# opener and closer sit on different lines.
+@test "reds inside a single-line JSX comment container" {
+  fixture_repo
+  fixture_file app/probe.tsx '{/* Widening this set moves all three consumers at once. */}'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- "app/probe.tsx:1:" <<<"$output"
+}
+
+@test "reds inside a multi-line JSX comment container" {
+  fixture_repo
+  fixture_file app/probe.tsx '{/* The denial
+    its five siblings already give. */}'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- "app/probe.tsx:2:" <<<"$output"
+}
+
+# Stripping the container brace must not turn an ordinary braced code line into
+# prose: only a brace standing immediately before a comment opener is consumed.
+@test "a braced code line is not read as a JSX comment" {
+  fixture_repo
+  fixture_file app/probe.tsx '{allThreeConsumers}
+{"all three consumers"}'
+  run_linter
+  [ "$status" -eq 0 ]
 }
 
 @test "stays quiet on a trailing // comment that shares its line with code" {
@@ -462,6 +495,34 @@ export const probe = 1;'
   run_linter
   [ "$status" -eq 1 ]
   grep -qF -- "honored only in *.bats" <<<"$output"
+}
+
+# The report names this guard and asserts this guard's honoring rule, so it must
+# fire only for a pragma naming this guard. The `#` reader gets that from the
+# shared library, which takes the guard name; the C-family arm has no library and
+# has to make the same discrimination itself.
+@test "a C-family pragma naming a different guard is not reported by this one" {
+  fixture_repo
+  fixture_file app/probe.ts '// gaia-lint-ignore lint-git-path-quoting: a sibling guard, not this one
+export const probe = 1;'
+  run_linter
+  [ "$status" -eq 0 ]
+}
+
+# The documented FAIL-CLOSED direction, pinned so the header's disclosure is
+# enforced rather than asserted. A template-literal line opening with `/*` raises
+# the block state, and nothing inside a literal lowers it, so every line to the
+# end of the file is read as prose. The finding below lands on executable code
+# OUTSIDE the literal, which is the part the header has to state honestly.
+@test "a block opener inside a template literal runs on to the end of the file" {
+  fixture_repo
+  fixture_file app/probe.ts 'export const tpl = `
+/* opened inside a template literal
+`;
+export const label = "all three consumers";'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- "app/probe.ts:4:" <<<"$output"
 }
 
 @test "a real tracked C-family file with one instance injected reds" {
@@ -529,6 +590,40 @@ fixture_path_for() {
   printf '%s\n' "$1" | sed 's|\*\*/\*|probe|'
 }
 
+# rule_cfam_raw: the rule's C-family entries UNEXPANDED, in the brace form the
+# rule file writes them, which is the form the workflow filter copies. The
+# expansion cfam_globs_governed does is what the gate's own pathspecs need; the
+# filter needs the source spelling instead.
+rule_cfam_raw() {
+  sed -n '/^paths:/,/^---/p' "$REPO_ROOT/.claude/rules/code-comments.md" \
+    | sed -n "s/^[[:space:]]*- '\(.*\)'[[:space:]]*\$/\1/p" \
+    | grep -v -e "\.sh\$" -e "\.bats\$" \
+    | LC_ALL=C sort
+}
+
+# workflow_shell_filter_globs: the globs the FIRST `shell:` paths-filter block in
+# shell-lint.yml lists. First rather than every block: the macos leg carries a
+# deliberately narrower filter for a run that returns before the folded guards,
+# and folding the two together would let that leg satisfy an assertion about the
+# ubuntu one.
+workflow_shell_filter_globs() {
+  awk '
+    done_blk { next }
+    !inblk && $0 ~ /^[[:space:]]*shell:[[:space:]]*$/ { inblk = 1; next }
+    inblk {
+      if ($0 ~ /^[[:space:]]*$/) next
+      match($0, /^[[:space:]]*/)
+      if (RLENGTH < 14) { inblk = 0; done_blk = 1; next }
+      if ($0 ~ /^[[:space:]]*- /) {
+        line = $0
+        sub(/^[[:space:]]*- /, "", line)
+        gsub(/^\047|\047$/, "", line)
+        print line
+      }
+    }
+  ' "$REPO_ROOT/.github/workflows/shell-lint.yml"
+}
+
 @test "the gate's C-family pathspecs are exactly the globs the rule binds outside shell and bats" {
   local declared governed
   declared="$(cfam_globs_declared)"
@@ -574,4 +669,48 @@ fixture_path_for() {
     rel="$( fixture_path_for "$glob" )"
     grep -qF -- "$rel:1:" <<<"$output" || { echo "$rel: never scanned" >&2; return 1; }
   done < <(cfam_globs_governed)
+}
+
+# The third transcription, and the one whose absence is silent. The gate reads
+# its own pathspecs and the tests above hold those to the rule, but CI decides
+# whether the gate RUNS at all from a fourth list in shell-lint.yml. A glob added
+# to the rule and to the gate, and not to that filter, leaves a pull request
+# touching only the new surface resolving `shell=false`: the job skips the gate
+# and reports green having scanned nothing, which is the same fail-open the gate
+# itself exists to close, one layer up. workflow-filter-coverage.bats does not
+# reach it, its own header puts a gated step's transitive inputs out of scope.
+#
+# A subset rather than an equality: the filter legitimately carries globs that
+# have nothing to do with this gate (the husky hooks, the workflow tree, every
+# tracked markdown file), and each of those is owned by whichever guard put it
+# there. What is owed here is that the filter carries EVERY glob this rule binds.
+@test "shell-lint.yml's paths filter carries every C-family glob the rule binds" {
+  local glob filter
+  filter="$(workflow_shell_filter_globs)"
+  [ -n "$filter" ]
+  while IFS= read -r glob; do
+    grep -qxF -- "$glob" <<<"$filter" \
+      || { echo "$glob: bound by the rule, absent from shell-lint.yml's filter" >&2; return 1; }
+  done < <(rule_cfam_raw)
+}
+
+# Non-vacuity for the check above, every side derived so nothing here rots. The
+# rule must yield C-family entries at all, and the filter block must be read as a
+# strict superset of them. The third comparison is what pins the READ REGION: a
+# terminator that never fires swallows the macos leg's filter too, which only
+# widens the set, so both of the first two assertions survive it while the
+# subset check silently starts accepting a glob that is present in that leg
+# alone. Reading from the first `shell:` to end of file must therefore yield
+# strictly more entries than the single-block read does.
+@test "the workflow filter parity check reads one block and a non-empty rule half" {
+  local raw filter to_eof
+  raw="$(rule_cfam_raw | grep -c '')"
+  filter="$(workflow_shell_filter_globs | grep -c '')"
+  to_eof="$(
+    sed -n "/^[[:space:]]*shell:[[:space:]]*\$/,\$p" "$REPO_ROOT/.github/workflows/shell-lint.yml" \
+      | sed -n "s/^[[:space:]]*- '\(.*\)'[[:space:]]*\$/\1/p" | grep -c ''
+  )"
+  [ "$raw" -gt 0 ]
+  [ "$filter" -gt "$raw" ]
+  [ "$to_eof" -gt "$filter" ]
 }
