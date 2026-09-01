@@ -37,10 +37,9 @@ describe('IndexPage', () => {
       name: common.theme.enableLightMode,
     });
     await click(button);
-    // The click submits a fetcher to /resources/theme-switch. An unmatched
-    // path answers 404 and swaps the tree for the router's error boundary, so
-    // this tautological-looking assertion is what catches a stub route pointed
-    // somewhere the app never posts to.
+    // `button` is the pre-click reference, so this reads as a tautology and is
+    // not one: a fetcher path the stub does not register unmounts the story in
+    // favor of the router's error boundary.
     expect(button).toBeInTheDocument();
   });
 

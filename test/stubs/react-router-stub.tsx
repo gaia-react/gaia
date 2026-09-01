@@ -98,11 +98,17 @@ const decorator =
         },
         path: route.path,
       })),
-      // A theme-switch fetcher posts here; without a match the router answers
-      // 404 and the story is replaced by its error boundary.
+      // Every path the app submits a fetcher to. One the router cannot match
+      // answers 404 and replaces the story with its error boundary, so an
+      // omission here surfaces as an unrelated-looking failure in whichever
+      // story renders the control.
       {
         action: () => {},
         path: '/resources/theme-switch',
+      },
+      {
+        action: () => {},
+        path: '/actions/set-language',
       },
     ]);
 
