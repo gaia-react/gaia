@@ -561,15 +561,15 @@ fi
 # above, what it reads is not shell but the prose binding shell: the `paths:`
 # frontmatter by which .claude/rules/guards-must-fail.md and
 # .claude/rules/partial-cause-reporting.md decide which surfaces they load on. A
-# tracked *.sh neither list names is a script whose author is shown neither rule,
+# tracked shell file neither list names is one whose author is shown neither rule,
 # and nothing else in this repository notices, because a rule that loads nowhere
 # and a rule with nothing to say are the same silence. It lands in this gate
-# because its scan surface IS this gate's surface -- the tracked *.sh set -- and
+# because its scan surface IS this gate's surface -- the tracked shell set -- and
 # this is the pass every pull request runs. It is advisory here; the blocking
 # runner is its sibling suite .gaia/scripts/tests/lint-guard-rule-shell-coverage.bats
 # in the `Audit CI Tests` scripts shard, armed by that job's `**/*.sh` code
 # filter. Run from the repo root so its `git ls-files` discovery resolves.
-echo "--> lint-guard-rule-shell-coverage (a tracked *.sh the guard/diagnostic rules do not reach)"
+echo "--> lint-guard-rule-shell-coverage (tracked shell the guard/diagnostic rules do not reach)"
 if ! (cd "$REPO_ROOT" && bash "$REPO_ROOT/.gaia/scripts/lint-guard-rule-shell-coverage.sh"); then
   status=1
 fi

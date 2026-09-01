@@ -184,9 +184,11 @@ jobs:
               - '.lintstagedrc.json'
               - '.gaia/scripts/**'
               # lint-guard-rule-shell-coverage.bats (.gaia/scripts/tests/) is the
-              # blocking runner for the check that fails when a tracked *.sh is
-              # reached by neither guard nor diagnostic rule, and that check's
-              # input is the whole tracked *.sh set. Every root holding one is
+              # blocking runner for the check that fails when a tracked shell
+              # file is reached by neither guard nor diagnostic rule, and that
+              # check's input is the tracked '*.sh' set plus '.husky/*' (the
+              # extensionless hooks), whose own glob is already listed above for
+              # its own older reasons. Every root holding a '*.sh' is
               # already matched above or below EXCEPT .gaia/cli/, whose health
               # gauge and CI-shape smoke harness sit outside '.gaia/cli/src/**'
               # further down and so match no pattern here at all. Without this

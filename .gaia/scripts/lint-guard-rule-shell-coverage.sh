@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # shellcheck shell=bash
 #
-# lint-guard-rule-shell-coverage.sh: flag every tracked *.sh that the guard and
-# diagnostic rules do not reach. Exit 0 when every tracked shell script is
+# lint-guard-rule-shell-coverage.sh: flag every tracked shell file that the
+# guard and diagnostic rules do not reach. Exit 0 when every one of them is
 # governed by both rules, 1 with a per-file report on any gap, 2 on the check's
 # own failure. Run it from anywhere:
 # `bash .gaia/scripts/lint-guard-rule-shell-coverage.sh [<repo_root>]`.
@@ -44,14 +44,24 @@
 # derivation was wanted for -- a new directory cannot go unnoticed -- without
 # giving up the split.
 #
-# Scope is tracked *.sh, not every surface the two rules name. The rules also
-# bind `**/*.bats`, `.playwright/**/*.ts` and `.github/workflows/**/*.yml`;
-# `**/*.bats` reaches every tracked suite by construction, and the other two are
-# a different question from the one #1701 asked. Widening this check to another
-# file type means widening the `code:` filter in
-# .github/workflows/audit-ci-tests.yml to match, for the reason that filter's own
-# comments give: a filter narrower than the surface it arms greens a check that
-# scanned nothing. That filter carries `**/*.sh` for this check today.
+# Scope is the tracked SHELL set, and shell is not the same question as the
+# `.sh` extension. `.husky/pre-commit` is hand-written shell with no extension
+# and no shebang, and it is a guard in exactly this rule's sense: its
+# change-detection arms decide whether the Quality Gate floor runs at all, so
+# its green is read as evidence. A discovery keyed on `*.sh` alone reports clean
+# over a set that excludes it, which is the same false clean this check exists
+# to end, one file type over. So discovery is `'*.sh'` plus `'.husky/*'`, the
+# same two pathspecs .gaia/tests/shell-lint.sh already discovers through, rather
+# than a second spelling of the same set.
+#
+# It is not every surface the two rules name. They also bind `**/*.bats`,
+# `.playwright/**/*.ts` and `.github/workflows/**/*.yml`; `**/*.bats` reaches
+# every tracked suite by construction, and the other two are a different
+# question from the one #1701 asked. Widening this check to another file type
+# means widening the `code:` filter in .github/workflows/audit-ci-tests.yml to
+# match, for the reason that filter's own comments give: a filter narrower than
+# the surface it arms greens a check that scanned nothing. That filter carries
+# `**/*.sh` for this check today, and `.husky/**` for its own older reasons.
 #
 # There is no exclusion table, because as of this writing every tracked *.sh is
 # governed and an empty exclusion list is an escape hatch nobody needed yet. A
@@ -61,7 +71,7 @@
 # deliberate non-members.
 #
 # Fail-closed by construction, at each stage guards-must-fail.md names:
-#   discovery -- an empty tracked *.sh set exits 2, never 0
+#   discovery -- an empty tracked shell set exits 2, never 0
 #   arming    -- a rule file that is missing, or yields no globs, exits 2
 #   match     -- a glob using syntax glob_to_ere does not model exits 2, naming
 #                the construct, rather than quietly matching nothing
@@ -71,6 +81,13 @@
 set -uo pipefail
 
 readonly PROG="lint-guard-rule-shell-coverage"
+
+# The tracked-shell listing is staged through this file (see the discovery block
+# in main). It is script-scoped, not local to main, so the EXIT/INT/TERM trap
+# installed beside the mktemp can still name it: a trap firing on a signal runs
+# with main's locals already out of reach, which would leave the file behind on
+# exactly the interrupt the trap exists for.
+LIST_FILE=''
 
 # The rule set. GUARD_RULE and DIAGNOSTIC_RULE are the two shipped rules, each
 # asked about independently; POINTER_RULE extends both.
@@ -228,23 +245,21 @@ main() {
   # exit status distinguishable from an empty result, which a pipeline or a
   # process substitution would merge into one unreadable answer -- a listing
   # that failed and a tree holding no shell are different conditions owed
-  # different messages.
-  local list_file
-  list_file="$(mktemp "${TMPDIR:-/tmp}/$PROG.XXXXXX")" || {
-    printf '%s: could not create a temporary file for the tracked *.sh listing\n' "$PROG" >&2
+  # different messages. The two pathspecs are the header's tracked-shell set.
+  LIST_FILE="$(mktemp "${TMPDIR:-/tmp}/$PROG.XXXXXX")" || {
+    printf '%s: could not create a temporary file for the tracked shell listing\n' "$PROG" >&2
     return 2
   }
-  if ! git -C "$root" ls-files -z -- '*.sh' >"$list_file"; then
-    rm -f "$list_file"
-    printf '%s: could not list tracked *.sh in %s\n' "$PROG" "$root" >&2
+  trap 'rm -f "$LIST_FILE"' EXIT INT TERM
+  if ! git -C "$root" ls-files -z -- '*.sh' '.husky/*' >"$LIST_FILE"; then
+    printf '%s: could not list tracked shell in %s\n' "$PROG" "$root" >&2
     return 2
   fi
   # An empty set is never a clean tree here: this repository's shell is what the
   # check exists to cover, and a discovery that finds none of it would report
   # every rule fully armed having compared nothing.
-  if [ ! -s "$list_file" ]; then
-    rm -f "$list_file"
-    printf '%s: discovery found no tracked *.sh under %s\n' "$PROG" "$root" >&2
+  if [ ! -s "$LIST_FILE" ]; then
+    printf '%s: discovery found no tracked shell under %s\n' "$PROG" "$root" >&2
     return 2
   fi
 
@@ -262,12 +277,11 @@ main() {
     fi
     [ -n "$missing" ] || continue
     if [ "$findings" -eq 0 ]; then
-      printf '%s: tracked shell scripts no guard/diagnostic rule reaches:\n' "$PROG" >&2
+      printf '%s: tracked shell files no guard/diagnostic rule reaches:\n' "$PROG" >&2
     fi
     printf '  %s\n    unreached by: %s\n' "$path" "$missing" >&2
     findings=$((findings + 1))
-  done <"$list_file"
-  rm -f "$list_file"
+  done <"$LIST_FILE"
 
   if [ "$findings" -gt 0 ]; then
     printf '\n%s: %d file(s) above are governed by neither author nor rule.\n' "$PROG" "$findings" >&2

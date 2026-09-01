@@ -6,6 +6,7 @@ paths:
   - '**/*.bats'
   - '.gaia/statusline/**/*.sh'
   - '.specify/extensions/gaia/lib/**/*.sh'
+  - '.husky/*'
 ---
 <!-- gaia-harden: promoted from recurring finding_class holistic/partial-cause-reporting; pruned by /gaia-audit on obsolescence/redundancy/supersession/duplication only, never for non-recurrence -->
 

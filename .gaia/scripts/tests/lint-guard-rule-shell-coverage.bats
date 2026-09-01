@@ -21,19 +21,18 @@ setup() {
   SCRIPT_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
   CHECK="$SCRIPT_DIR/lint-guard-rule-shell-coverage.sh"
   REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-  FIXTURE_REPOS=()
-}
-
-teardown() {
-  local d
-  for d in "${FIXTURE_REPOS[@]:-}"; do
-    [ -n "$d" ] && rm -rf "$d"
-  done
-  return 0
 }
 
 # make_fixture_repo <name>: a fresh, empty git repo under BATS_TEST_TMPDIR.
 # Returns the repo path on stdout.
+#
+# There is no teardown, deliberately. Every fixture lives under
+# BATS_TEST_TMPDIR, which bats removes per test, so a cleanup loop here would
+# have nothing left to do. The shape worth naming rather than writing: this
+# helper is called as `dir="$(make_fixture_repo name)"`, and command
+# substitution is a subshell, so a `FIXTURE_REPOS+=("$dir")` inside it could
+# never reach a parent-shell array. Such a teardown iterates zero times on every
+# test while reading as cleanup that is doing work.
 make_fixture_repo() {
   local name="$1"
   local dir="$BATS_TEST_TMPDIR/$name"
@@ -42,7 +41,6 @@ make_fixture_repo() {
   git -C "$dir" config user.email t@example.com
   git -C "$dir" config user.name T
   git -C "$dir" config commit.gpgsign false
-  FIXTURE_REPOS+=("$dir")
   printf '%s' "$dir"
 }
 
@@ -257,6 +255,59 @@ write_baseline() {
   esac
 }
 
+@test "match region: a bare '**' not followed by '/' exits 2, naming that arm" {
+  local dir
+  dir="$(make_fixture_repo bare_globstar)"
+  write_baseline "$dir"
+  write_rule "$dir" '.claude/rules/guards-must-fail.md' \
+    '.gaia/**scripts/*.sh' '.gaia/statusline/**/*.sh'
+  commit_fixture "$dir"
+
+  run bash "$CHECK" "$dir"
+  [ "$status" -eq 2 ]
+  # This arm has its own message, distinct from the metacharacter arm above.
+  # Asserting the wording is what keeps the two apart: matching only
+  # "unmodeled glob syntax" would pass with this branch deleted.
+  case "$output" in
+    *'"**" not followed by "/"'*) ;;
+    *) return 1 ;;
+  esac
+}
+
+@test "discovery: an extensionless tracked .husky hook is enumerated, not skipped" {
+  local dir
+  dir="$(make_fixture_repo husky_seen)"
+  write_baseline "$dir"
+  mkdir -p "$dir/.husky"
+  # Hand-written shell with no extension and no shebang, the exact shape
+  # .husky/pre-commit takes in the real tree.
+  printf 'pnpm lint-staged\n' >"$dir/.husky/pre-commit"
+  commit_fixture "$dir"
+
+  run bash "$CHECK" "$dir"
+  [ "$status" -eq 1 ]
+  case "$output" in
+    *".husky/pre-commit"*) ;;
+    *) return 1 ;;
+  esac
+}
+
+@test "discovery: a .husky glob in both rules covers the hook" {
+  local dir
+  dir="$(make_fixture_repo husky_covered)"
+  write_baseline "$dir"
+  write_rule "$dir" '.claude/rules/guards-must-fail.md' \
+    '.gaia/scripts/**/*.sh' '.gaia/statusline/**/*.sh' '.husky/*'
+  write_rule "$dir" '.claude/rules/partial-cause-reporting.md' \
+    '.gaia/scripts/**/*.sh' '.gaia/statusline/**/*.sh' '.husky/*'
+  mkdir -p "$dir/.husky"
+  printf 'pnpm lint-staged\n' >"$dir/.husky/pre-commit"
+  commit_fixture "$dir"
+
+  run bash "$CHECK" "$dir"
+  [ "$status" -eq 0 ]
+}
+
 @test "usage: more than one argument exits 2" {
   run bash "$CHECK" "$REPO_ROOT" extra
   [ "$status" -eq 2 ]
@@ -275,7 +326,7 @@ write_baseline() {
   esac
 }
 
-@test "real repo: every tracked .sh is reached by both guard and diagnostic rules" {
+@test "real repo: every tracked shell file is reached by both guard and diagnostic rules" {
   run bash "$CHECK" "$REPO_ROOT"
   [ "$status" -eq 0 ]
 }
