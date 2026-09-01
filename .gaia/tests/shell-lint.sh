@@ -9,8 +9,9 @@
 # the grep ERE-escape guard (.gaia/scripts/lint-grep-ere-escapes.sh), the
 # errexit status-read guard (.gaia/scripts/lint-errexit-status-read.sh), the
 # oracle-blind invocation guard
-# (.gaia/scripts/lint-oracle-blind-invocations.sh), and the stale-cardinal guard
-# (.gaia/scripts/lint-stale-cardinals.sh).
+# (.gaia/scripts/lint-oracle-blind-invocations.sh), the stale-cardinal guard
+# (.gaia/scripts/lint-stale-cardinals.sh), and the guard-rule shell-coverage
+# guard (.gaia/scripts/lint-guard-rule-shell-coverage.sh).
 # Exit 0 when clean, 1 on any finding at or above the severity floor, and 1 on
 # a pass that cannot run at all (no shellcheck binary, an empty *.sh discovery
 # set, an unusable bash-3.2 interpreter). A red gate is therefore not always a
@@ -553,6 +554,28 @@ fi
 # the file:line it prints is repo-relative.
 echo "--> lint-stale-cardinals (a definite cardinal naming a set nothing recounts)"
 if ! (cd "$REPO_ROOT" && bash "$REPO_ROOT/.gaia/scripts/lint-stale-cardinals.sh"); then
+  status=1
+fi
+
+# Fold in the guard-rule shell-coverage guard. Like the stale-cardinal guard
+# above, what it reads is not shell but the prose binding shell: the `paths:`
+# frontmatter by which .claude/rules/guards-must-fail.md and
+# .claude/rules/partial-cause-reporting.md decide which surfaces they load on. A
+# tracked shell file neither list names is one whose author is shown neither rule,
+# and nothing else in this repository notices, because a rule that loads nowhere
+# and a rule with nothing to say are the same silence. It lands in this gate
+# because its scan surface IS this gate's surface -- the tracked shell set -- and
+# this is the pass every pull request runs. It is advisory here; the blocking
+# runner is its sibling suite .gaia/scripts/tests/lint-guard-rule-shell-coverage.bats
+# in the `Audit CI Tests` scripts shard, armed by that job's `**/*.sh` code
+# filter AND by its `.husky/**` entry: `**/*.sh` matches no extensionless
+# hook, so a pull request touching only .husky/pre-commit arms this check
+# through the husky glob alone. Both are named because that entry's own
+# stated reason is a different suite, and trimming it on that reason would
+# silently unarm this check for husky-only diffs.
+# Run from the repo root so its `git ls-files` discovery resolves.
+echo "--> lint-guard-rule-shell-coverage (tracked shell the guard/diagnostic rules do not reach)"
+if ! (cd "$REPO_ROOT" && bash "$REPO_ROOT/.gaia/scripts/lint-guard-rule-shell-coverage.sh"); then
   status=1
 fi
 
