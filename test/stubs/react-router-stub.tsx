@@ -6,6 +6,7 @@ import type {
 import {createRoutesStub} from 'react-router';
 import type {PartialStoryFn} from 'storybook/internal/types';
 import {addons} from 'storybook/preview-api';
+import {ACTION_PATHS} from '~/action-paths';
 
 const methods = ['DELETE', 'GET', 'PATCH', 'POST', 'PUT'];
 type Action = ActionFunction | SimpleAction | string;
@@ -99,17 +100,18 @@ const decorator =
         path: route.path,
       })),
       // Every path the app submits a fetcher to. One the router cannot match
-      // answers 404 and replaces the story with its error boundary, so an
-      // omission here surfaces as an unrelated-looking failure in whichever
-      // story renders the control.
-      {
+      // answers 404 and replaces the story with its error boundary, so a story
+      // rendering that control fails in a way that looks unrelated to it.
+      // Reading the app's own declarations is the one app dependency this file
+      // takes, and it is deliberate: leaving each story to pass its own path is
+      // what let this set fall behind the routes the app actually serves.
+      // Dropping that module breaks every story using this decorator at import,
+      // which is the loud direction to fail in next to an entry that silently
+      // stops matching.
+      ...Object.values(ACTION_PATHS).map((actionPath) => ({
         action: () => {},
-        path: '/resources/theme-switch',
-      },
-      {
-        action: () => {},
-        path: '/actions/set-language',
-      },
+        path: actionPath,
+      })),
     ]);
 
     return reactRouterStub({initialEntries: [path]});
