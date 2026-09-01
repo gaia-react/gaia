@@ -84,10 +84,16 @@ set -uo pipefail
 readonly PROG="lint-guard-rule-shell-coverage"
 
 # The tracked-shell listing is staged through this file (see the discovery block
-# in main). It is script-scoped, not local to main, so the EXIT arm installed
-# beside the mktemp can still name it: that arm runs after a signal arm exits,
-# with main's locals already out of reach, which would otherwise leave the file
-# behind on exactly the interrupt the arms exist for.
+# in main). It is script-scoped rather than a local in main because the EXIT arm
+# that unlinks it runs after main has returned on the ordinary path, with the
+# frame already popped and a local out of reach by then, so a local would leave
+# the file behind on every clean run.
+#
+# Stated without a bash version deliberately: this holds on 3.2 and 5 alike, and
+# the version-qualified forms of it are both wrong. On the INTERRUPT path the
+# two shells differ, 5 still sees the local where 3.2 does not, which is why a
+# reader checking only that path under one shell can talk themselves out of the
+# scoping either way.
 LIST_FILE=''
 
 # The rule set. GUARD_RULE and DIAGNOSTIC_RULE are the two shipped rules, each
