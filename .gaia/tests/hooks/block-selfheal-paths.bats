@@ -163,6 +163,88 @@ run_hook_bash() {
   assert_denied_by_json
 }
 
+# --- the test surface INSIDE app/, the member's own repair surface ---
+#
+# app/** is code-audit-frontend's repair surface and stays repairable, but the
+# vitest suite and the Chromatic stories that would catch a bad app/ repair
+# live inside it. Refusing app/ whole is not available here the way it is for
+# test/, so this half of the refusal set is written per shape, derived from the
+# two collectors that decide what actually gates a merge. Each shape below is
+# driven on its own; the enumeration is hand-written because no single artifact
+# holds it, so each entry carries the collector it comes from:
+#
+#   app/**/tests/**       -- the convention .claude/rules/coding-guidelines.md
+#                            pins (tests and stories in a tests/ subfolder),
+#                            refused whole the way test/ is, so a fixture or a
+#                            shared helper beside the assertions is covered too
+#   app/**/*.test.ts(x)   -- vitest.config.ts `test.include`, which collects on
+#                            the suffix and not on the directory, so a suite
+#                            outside a tests/ folder still runs and still gates
+#   app/**/*.stories.tsx  -- .storybook/main.ts `stories`, the glob Chromatic
+#                            snapshots, and Chromatic is a required merge check
+#
+# Deliberately NOT members: app/**/*.stories.ts (the Storybook glob is .tsx
+# only, so a .ts file by that name snapshots nothing), and app/** source
+# generally, which is the repair surface the member exists to fix.
+
+@test "code-audit-frontend editing a suite under app/**/tests/ is denied and names the path" {
+  run_hook_edit "code-audit-frontend" "Edit" "app/components/ThemeSwitch/tests/index.test.tsx"
+  assert_denied_by_json
+  grep -qF -- 'app/components/ThemeSwitch/tests/index.test.tsx' <<<"$output"
+}
+
+@test "code-audit-frontend editing a helper under app/**/tests/ is denied (the folder whole, not just its assertions)" {
+  run_hook_edit "code-audit-frontend" "Edit" "app/components/ThemeSwitch/tests/fixtures.ts"
+  assert_denied_by_json
+}
+
+@test "code-audit-frontend editing app/tests/ directly under app/ is denied (the arm needs no intermediate segment)" {
+  run_hook_edit "code-audit-frontend" "Edit" "app/tests/helpers.ts"
+  assert_denied_by_json
+}
+
+@test "code-audit-frontend editing an app/ suite outside a tests/ folder is denied (vitest collects on the suffix)" {
+  run_hook_edit "code-audit-frontend" "Edit" "app/utils/format.test.ts"
+  assert_denied_by_json
+  grep -qF -- 'app/utils/format.test.ts' <<<"$output"
+}
+
+@test "code-audit-frontend editing an app/ .test.tsx outside a tests/ folder is denied" {
+  run_hook_edit "code-audit-frontend" "Edit" "app/components/Button/Button.test.tsx"
+  assert_denied_by_json
+}
+
+@test "code-audit-frontend editing an app/ story is denied (Chromatic is a required merge check)" {
+  run_hook_edit "code-audit-frontend" "Edit" "app/components/ThemeSwitch/tests/index.stories.tsx"
+  assert_denied_by_json
+  grep -qF -- 'app/components/ThemeSwitch/tests/index.stories.tsx' <<<"$output"
+}
+
+@test "code-audit-frontend editing a story outside a tests/ folder is denied (the Storybook glob is depth-free)" {
+  run_hook_edit "code-audit-frontend" "Edit" "app/components/Button/Button.stories.tsx"
+  assert_denied_by_json
+}
+
+@test "Write tool: code-audit-frontend writing an app/**/tests/ suite is denied" {
+  run_hook_edit "code-audit-frontend" "Write" "app/pages/Public/IndexPage/tests/index.test.tsx"
+  assert_denied_by_json
+}
+
+@test "Bash: code-audit-frontend redirecting into an app/**/tests/ suite is denied" {
+  run_hook_bash "code-audit-frontend" "echo x > app/components/ThemeSwitch/tests/index.test.tsx"
+  assert_denied_by_json
+}
+
+@test "code-audit-frontend editing app/contests/rules.ts is allowed (the tests/ arm matches a whole segment)" {
+  run_hook_edit "code-audit-frontend" "Edit" "app/contests/rules.ts"
+  assert_allowed_by_json
+}
+
+@test "code-audit-frontend editing app/components/Button/index.tsx beside a refused suite is allowed" {
+  run_hook_edit "code-audit-frontend" "Edit" "app/components/Button/index.tsx"
+  assert_allowed_by_json
+}
+
 # --- the whole .github tree is refused, not just .github/workflows/ ---
 #
 # .github/audit/ holds the executables code-review-audit.yml runs AFTER the

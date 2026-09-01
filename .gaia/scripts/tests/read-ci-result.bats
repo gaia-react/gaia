@@ -206,20 +206,23 @@ run_body_code() {
 
 # Prints every step id, and fails rather than printing a short set. Both counts
 # are routes to a number the walk depends on that do not share a spelling with
-# what they check: the ids against the action's own count of step headers, and
-# the bodies the extractor actually read against the count of `run:` KEYS. That
-# last one is load-bearing, and counting block scalars instead would defeat it.
-# A count keyed on the same block-scalar literal the extractor matches falls by
+# what they check, which is the whole of their value: the ids against the count
+# of step HEADERS, and the bodies the extractor actually read against the count
+# of `run:` KEYS. Counting what each one checks instead would defeat both. A
+# count keyed on the same block-scalar literal the extractor matches falls by
 # one whenever the extractor does, so the two agree while walking a step short,
-# which is the silent read these exist to make loud. Counting the key instead
+# which is the silent read these exist to make loud; counting the key instead
 # means any spelling the extractor cannot dedent, a folded `run: >` among them,
-# leaves the bodies short of the keys and fails here.
+# leaves the bodies short of the keys and fails here. The ids half is the same
+# trade: a step whose `- name:` comes before its `id:` is invisible to an
+# enumeration keyed on `- id:`, so counting the header the step cannot omit is
+# what makes such a step disagree rather than vanish from both sides at once.
 enumerate_steps_or_fail() {
   local action="$1" ids id bodies=0
 
   ids="$(all_step_ids "$action")"
   [ -n "$ids" ] || return 1
-  [ "$(printf '%s\n' "$ids" | grep -c .)" -eq "$(grep -c '^    - id: ' "$action")" ] || return 1
+  [ "$(printf '%s\n' "$ids" | grep -c .)" -eq "$(grep -c '^    - ' "$action")" ] || return 1
 
   for id in $ids; do
     if [ -n "$(extract_run_body "$action" "$id")" ]; then
