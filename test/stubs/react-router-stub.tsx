@@ -98,10 +98,17 @@ const decorator =
         },
         path: route.path,
       })),
-      // to prevent theme provider error
+      // Every path the app submits a fetcher to. One the router cannot match
+      // answers 404 and replaces the story with its error boundary, so an
+      // omission here surfaces as an unrelated-looking failure in whichever
+      // story renders the control.
       {
         action: () => {},
-        path: '/actions/set-theme',
+        path: '/resources/theme-switch',
+      },
+      {
+        action: () => {},
+        path: '/actions/set-language',
       },
     ]);
 

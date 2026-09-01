@@ -1,4 +1,5 @@
 import {composeStory} from '@storybook/react-vite';
+import userEvent from '@testing-library/user-event';
 import {describe, expect, test} from 'vitest';
 import {render, screen} from 'test/rtl';
 import {LANGUAGES} from '~/languages';
@@ -27,6 +28,19 @@ describe('IndexPage', () => {
     expect(
       screen.getByRole('button', {name: common.theme.enableLightMode})
     ).toBeInTheDocument();
+  });
+
+  test('submits the theme switch without a router error', async () => {
+    const {click} = userEvent.setup();
+    render(<IndexPageStory />);
+    const button = screen.getByRole('button', {
+      name: common.theme.enableLightMode,
+    });
+    await click(button);
+    // `button` is the pre-click reference, so this reads as a tautology and is
+    // not one: a fetcher path the stub does not register unmounts the story in
+    // favor of the router's error boundary.
+    expect(button).toBeInTheDocument();
   });
 
   // Conditional: language select tracks LANGUAGES (LanguageSelect guard)
