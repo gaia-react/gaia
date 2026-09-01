@@ -82,6 +82,11 @@ emit_fail() {
 
 case "${GH_RUN_MODE:-empty}" in
   fail) emit_fail ;;
+  bloat)
+    # One unbroken line, no newline: a line-based tail carries it whole.
+    head -c "${BLOAT_BYTES:-200000}" /dev/zero | tr '\0' 'H' >&2
+    exit 1
+    ;;
   empty) echo '[]' ;;
   green)
     echo '[{"conclusion":"success","status":"completed","name":"Tests","url":"https://example.invalid/run/1"}]'
@@ -169,6 +174,23 @@ polls_made() {
   [ "$status" -eq 1 ]
   [ "$(jq -r '.conclusion' <<<"$output")" = "query-failed" ]
   [ "$(polls_made)" -ge 2 ]
+}
+
+@test "a single huge stderr line still yields a readable query-failed verdict" {
+  # The value reaches jq through argv, so an unbounded capture fails the exec
+  # itself and the script dies emitting nothing: the operator loses the diagnosis
+  # at exactly the moment the response body is the evidence. The fixture has to
+  # clear BOTH ceilings or it proves nothing on one of the two platforms this
+  # suite runs on -- Linux caps a single argument at 128 KiB (MAX_ARG_STRLEN)
+  # while macOS caps the whole list at about 1 MiB -- and at 200 KiB the mutant
+  # with the bound removed survives on macOS.
+  BLOAT_BYTES=2000000 GH_RUN_MODE=bloat run bash "$SCRIPT" deadbeef
+  [ "$status" -eq 1 ]
+  [ "$(polls_made)" -ge 1 ]
+  [ "$(jq -r '.conclusion' <<<"$output")" = "query-failed" ]
+  # Pinned to the emitted length, not merely to "smaller than the input": a bound
+  # that drifted upward would still be smaller and would still pass a comparison.
+  [ "$(jq -r '.error | length' <<<"$output")" -eq 500 ]
 }
 
 @test "a green terminal run still concludes success" {

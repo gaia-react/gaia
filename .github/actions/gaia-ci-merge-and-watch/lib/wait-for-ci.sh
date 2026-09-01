@@ -70,6 +70,17 @@ while (( SECONDS < DEADLINE )); do
     if [[ -z "$query_error" ]]; then
       query_error="gh run list exited $rc without writing to stderr"
     fi
+    # `tail -n 3` bounds lines, not bytes, so a single unbroken stderr line (a
+    # proxy returning an HTML body) survives whole and then reaches jq through
+    # argv, where Linux caps one argument at 128 KiB. Past that the exec itself
+    # fails and this script dies emitting nothing, losing the very diagnosis the
+    # value carries. Bounded with a shell slice rather than a `head -c` stage in
+    # the pipeline above: `head` exits as soon as it has its bytes, and the
+    # SIGPIPE that sends upstream makes the whole pipeline non-zero under
+    # `pipefail`, trading a lost message for a dead script. A slice can split a
+    # multibyte character; jq replaces the invalid tail with U+FFFD and the
+    # codepoint slice at the emission site trims it back off.
+    query_error="${query_error:0:4000}"
     sleep "$SLEEP_SECONDS"
     continue
   fi
@@ -115,12 +126,12 @@ while (( SECONDS < DEADLINE )); do
 done
 
 if [[ -n "$query_error" ]]; then
-  # Slice in jq rather than truncating the shell value: the cut is by codepoint,
-  # so it cannot halve a multibyte character and leave the field invalid UTF-8.
-  # The bound matters because action.yml writes this whole object into
-  # $GITHUB_OUTPUT, where an unbounded stderr line (a proxy returning an HTML
-  # body, say) would trip the per-output size limit and fail the step with a size
-  # error in place of the diagnosis this field exists to carry.
+  # Slice by codepoint, so the cut cannot halve a multibyte character. This is
+  # the bound on what action.yml writes into $GITHUB_OUTPUT, where an oversized
+  # value would trip the per-output size limit and fail the step with a size
+  # error in place of the diagnosis. It is not the only bound the value needs:
+  # the argv limit is upstream of this program, so the capture site applies its
+  # own.
   jq -c -n --arg err "$query_error" '{conclusion: "query-failed", run_url: "", error: ($err[0:500])}'
   exit 1
 fi
