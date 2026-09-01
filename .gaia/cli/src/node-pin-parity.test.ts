@@ -90,11 +90,11 @@
  * block is what points it at the real files.
  *
  * Fires on the pull request that causes the drift: `package.json`,
- * `.node-version`, `.nvmrc` and `Dockerfile` are all four in the `code` paths
+ * `.node-version`, `.nvmrc` and `Dockerfile` are each in the `code` paths
  * filter of `cli-tests.yml`, whose `Vitest (.gaia/cli)` job is a
- * declared-required context. Keep all four entries: each subject is edited
- * alone, and without its entry the guard first fires on some later, unrelated
- * `.gaia/cli/**` change.
+ * declared-required context. Keep an entry for every subject named above: each
+ * one is edited alone, and without its entry the guard first fires on some
+ * later, unrelated `.gaia/cli/**` change.
  *
  * Maintainer-only by construction: `.gaia/cli/src` is release-excluded, so an
  * adopter clone carries this test's subjects but not the test. Mirrors

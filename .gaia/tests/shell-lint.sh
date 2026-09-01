@@ -543,10 +543,14 @@ fi
 # a claim nothing recounts, so it stays green while the set it names moves
 # underneath it, and every tool above is blind to it by construction: shellcheck
 # models the language, and the class lives in the text the language ignores.
-# This gate is where it lands rather than in a suite of its own because its scan
-# surface, every tracked *.sh and *.bats, is already this gate's surface. Run
-# from the repo root so its `git ls-files` discovery resolves and the file:line
-# it prints is repo-relative.
+# This gate is where it lands rather than in a suite of its own because the
+# shell and bats half of its scan surface is already this gate's surface, and
+# this is the pass every pull request runs. Its other half, the C-family globs
+# `.claude/rules/code-comments.md` binds, reaches past this gate's own surface,
+# so the paths filter in .github/workflows/shell-lint.yml carries those globs
+# too: a filter narrower than the surface it arms greens a check that scanned
+# nothing. Run from the repo root so its `git ls-files` discovery resolves and
+# the file:line it prints is repo-relative.
 echo "--> lint-stale-cardinals (a definite cardinal naming a set nothing recounts)"
 if ! (cd "$REPO_ROOT" && bash "$REPO_ROOT/.gaia/scripts/lint-stale-cardinals.sh"); then
   status=1

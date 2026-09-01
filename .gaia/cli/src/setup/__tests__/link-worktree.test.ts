@@ -25,7 +25,7 @@ import {run as runLinkWorktree} from '../link-worktree.js';
 // via state-registry-lib.sh (which sources its sibling main-root-lib.sh),
 // resolved relative to the sandbox's main root. A sandbox is a throwaway
 // `git init`, not a checkout of this repo, so its main root needs its own
-// copies of these three tracked files to resolve against.
+// copies of the tracked files named just below to resolve against.
 const REPO_GAIA_DIR = path.join(
   resolveRepoRootFromImportMeta(import.meta.url),
   '.gaia'

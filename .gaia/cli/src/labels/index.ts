@@ -1,5 +1,5 @@
 /**
- * `gaia labels`: the three commands that read `.gaia/labels.json`.
+ * `gaia labels`: the commands that read `.gaia/labels.json`, named below.
  *
  * `sync` reconciles a repository against the registry, `docs` regenerates the
  * span of `wiki/concepts/GitHub Labels.md`, and `check` cross-references every

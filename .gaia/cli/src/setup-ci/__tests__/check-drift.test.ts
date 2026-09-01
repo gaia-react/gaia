@@ -162,7 +162,7 @@ describe('setup-ci check-drift', () => {
 
   test('flags tools as missing when the rendered workflow file does not exist', () => {
     sandbox.writeConfig({...VALID_BASE_CONFIG, setup_complete: true});
-    // Only write three of the four workflows; wiki goes missing.
+    // Write every workflow except wiki, which then reads as missing.
     writeFreshWorkflows(sandbox, [
       'update-deps',
       'pnpm-audit',
