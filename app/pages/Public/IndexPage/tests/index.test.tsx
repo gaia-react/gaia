@@ -6,8 +6,8 @@ import {LANGUAGES} from '~/languages';
 import common from '~/languages/en/common';
 import Meta, {Default} from './index.stories';
 
-// composeStory applies the story's decorators (stubs.reactRouter()) so that
-// router hooks (useFetcher, useLocation) work without a real server.
+// The story's decorator supplies a stub router, so the router hooks these
+// components call (useFetcher, useLocation) work without a real server.
 const IndexPageStory = composeStory(Default, Meta);
 
 describe('IndexPage', () => {
@@ -43,12 +43,11 @@ describe('IndexPage', () => {
     expect(button).toBeInTheDocument();
   });
 
-  // Conditional: language select tracks LANGUAGES (LanguageSelect guard)
+  // Conditional: language select
 
-  // LanguageSelect renders nothing with a single configured language and the
-  // <select> only once a second locale is added (add-locale grows LANGUAGES).
-  // Branch at declaration so the suite stays green in both modes without a
-  // conditional expect.
+  // Branch at declaration so the suite stays green whether or not a second
+  // locale is configured, without a conditional expect that would pass
+  // vacuously in the mode it does not exercise.
   test.runIf(LANGUAGES.length <= 1)(
     'renders no language select for a single configured language',
     () => {
