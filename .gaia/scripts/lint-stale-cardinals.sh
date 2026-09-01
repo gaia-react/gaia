@@ -126,14 +126,19 @@
 # shape as a fixture. Everywhere else the absence of an escape hatch is the
 # point: the rule's remedies are always available, so a `*.sh` comment that
 # cannot be reworded is a comment stating a count nothing keeps. A pragma
-# written on either unhonored surface is reported as waiving nothing, so it
-# fails visibly rather than going quietly inert.
+# NAMING THIS GUARD on either unhonored surface is reported as waiving nothing,
+# so it fails visibly rather than going quietly inert. The qualifier is
+# load-bearing rather than pedantic; the FAIL-OPEN list below carries what it
+# leaves out.
 #
 # The literal form, the token-resolution rule, and the block-continuation rule
 # are the shared library's, stated once in .gaia/scripts/guard-awk-lib.sh. The
-# C-family reader has no library to consult, so it recognizes the pragma by its
-# first token alone and reports it; that is enough, because there is nothing to
-# honor on that surface and therefore no block grammar to get right.
+# C-family reader has no library to consult, so it makes the same two-part
+# recognition itself: `gaia-lint-ignore` must lead, AND the token after it must
+# name this guard. Both halves are needed because the message it prints asserts
+# THIS guard's honored-only-in-bats rule, which is a claim about a rule the
+# author of a sibling guard's pragma was never invoking. What it does not need
+# is the block grammar, since there is nothing to honor on that surface.
 #
 # ---------------------------------------------------------------------------
 # Blind spots, split by which way each fails
@@ -149,6 +154,14 @@
 #     ("Six subcommands answer here"). The definite-determiner term is what
 #     buys the precision, and it is paid for with exactly this.
 #   - A noun outside the closed vocabulary.
+#   - A pragma on a C-family source naming a DIFFERENT guard. This one reports
+#     only a pragma naming itself, for the reason the pragma section above
+#     gives, and no library-backed guard scans this surface at all, so nothing
+#     reports that line and it waives nothing in silence. The `*.sh` and `*.bats`
+#     surfaces do not have this gap, because the sibling guards scanning them
+#     each report their own. Closing it would mean one guard answering for
+#     another guard's spelling, which is the sort of claim that goes stale
+#     without anything failing.
 #   - A cardinal and its noun split across two physical comment lines. The scan
 #     reads one line at a time, so a phrase that wraps is two half-phrases and
 #     neither one matches. This is not a rare shape: comments here wrap near 79
@@ -482,6 +495,9 @@ readonly CFAM_AWK='
     # in name only. Stripping it costs nothing the paragraph above relies on: a
     # `{` cannot open a string literal, so a line whose first characters are
     # `{/*` is still not inside one, and the owns-its-line property survives.
+    # The brace is matched as a bracket expression rather than as an escape,
+    # because a bracket expression is literal in every awk flavor while `\{`
+    # rests on each one agreeing about an escape POSIX leaves undefined.
     #
     # A JSDoc leader (` * `) needs no stripping. The tokenizer treats `*` as
     # punctuation, and punctuation that is not a clause ender ends a token
@@ -496,7 +512,7 @@ readonly CFAM_AWK='
         INBLOCK = 0
         return substr(s, 1, p - 1)
       }
-      sub(/^\{[ \t]*/, "", s)
+      sub(/^[{][ \t]*/, "", s)
       if (substr(s, 1, 2) == "//") return substr(s, 3)
       if (substr(s, 1, 2) != "/*") return ""
       s = substr(s, 3)
