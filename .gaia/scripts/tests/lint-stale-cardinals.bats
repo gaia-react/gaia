@@ -497,6 +497,21 @@ export const probe = 1;'
   grep -qF -- "honored only in *.bats" <<<"$output"
 }
 
+# The block spelling is the dominant one on this surface, and the arm that reads
+# the pragma compares a whole word rather than tokenizing, so the JSDoc leader
+# reaches it where it never reaches the class predicate. Both spellings are
+# pinned, since only one of them was silent.
+@test "a C-family pragma inside a JSDoc block reports that it waives nothing" {
+  fixture_repo
+  fixture_file app/probe.ts '/**
+ * gaia-lint-ignore lint-stale-cardinals: honored nowhere on this surface
+ */
+export const probe = 1;'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- "honored only in *.bats" <<<"$output"
+}
+
 # The report names this guard and asserts this guard's honoring rule, so it must
 # fire only for a pragma naming this guard. The `#` reader gets that from the
 # shared library, which takes the guard name; the C-family arm has no library and
@@ -527,7 +542,15 @@ export const label = "all three consumers";'
 
 @test "a real tracked C-family file with one instance injected reds" {
   fixture_repo
-  fixture_file app/real.ts "$( cat "$REPO_ROOT/.gaia/cli/src/labels/index.ts" )
+  local real
+  # Captured and asserted rather than substituted straight into the argument: a
+  # failed command substitution there does not abort under `set -e`, so a moved
+  # or renamed source would leave the fixture holding the appended line alone.
+  # The gate still reds on it and the test still passes, having stopped
+  # exercising the real tracked file its own name rests on.
+  real="$( cat "$REPO_ROOT/.gaia/cli/src/labels/index.ts" )"
+  [ -n "$real" ]
+  fixture_file app/real.ts "$real
 // and the seven files below are granted to nobody"
   run_linter
   [ "$status" -eq 1 ]

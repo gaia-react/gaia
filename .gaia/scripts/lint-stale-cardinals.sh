@@ -499,10 +499,13 @@ readonly CFAM_AWK='
     # because a bracket expression is literal in every awk flavor while `\{`
     # rests on each one agreeing about an escape POSIX leaves undefined.
     #
-    # A JSDoc leader (` * `) needs no stripping. The tokenizer treats `*` as
-    # punctuation, and punctuation that is not a clause ender ends a token
+    # A JSDoc leader (` * `) needs no stripping HERE. The tokenizer treats `*`
+    # as punctuation, and punctuation that is not a clause ender ends a token
     # without ending a clause, so the leader is invisible to the predicate. The
-    # `}` closing a JSX container is invisible for the same reason.
+    # `}` closing a JSX container is invisible for the same reason. That
+    # reasoning belongs to the predicate alone and does not reach is_pragma
+    # below, which compares a whole word instead of tokenizing and so strips the
+    # leader itself.
     function cfam_prose(line,   s, p) {
       s = line
       sub(/^[ \t]+/, "", s)
@@ -534,6 +537,14 @@ readonly CFAM_AWK='
     # about a rule the reader was never invoking.
     function is_pragma(s,   tok, guard) {
       sub(/^[ \t]+/, "", s)
+      # One optional JSDoc leader, for a reason that does NOT carry over from
+      # the class predicate: that predicate tokenizes, so a `*` ends a token and
+      # is invisible to it. This arm does not tokenize, it compares the first
+      # whitespace-delimited word, and inside a `/** */` block that word is the
+      # leader itself. Without this the block form, which is the dominant one on
+      # this surface, goes unreported, which is the quietly-inert outcome the
+      # pragma section commits to preventing.
+      sub(/^[*][ \t]*/, "", s)
       tok = s
       sub(/[ \t].*$/, "", tok)
       if (tok != "gaia-lint-ignore") return 0
