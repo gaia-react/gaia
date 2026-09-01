@@ -272,6 +272,7 @@
     ".gaia/templates/ci-issues/severity-important-revert-opened.md": "owned",
     ".gaia/templates/README.md": "owned",
     ".github/actions/gaia-ci-merge-and-watch/action.yml": "owned",
+    ".github/actions/gaia-ci-merge-and-watch/lib/read-ci-result.sh": "owned",
     ".github/actions/gaia-ci-merge-and-watch/lib/render-issue.sh": "owned",
     ".github/actions/gaia-ci-merge-and-watch/lib/wait-for-ci.sh": "owned",
     ".github/actions/gaia-ci-merge-and-watch/lib/wait-for-merge.sh": "owned",
@@ -668,7 +669,7 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-08-30T14:48:12.085Z",
+  "generated": "2026-09-01T10:39:27.352Z",
   "regions": [
     {
       "endMarker": "<!-- gaia:audit-remit:end -->",
