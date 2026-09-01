@@ -1,5 +1,6 @@
 import {useSyncExternalStore} from 'react';
 import {useFetchers} from 'react-router';
+import {ACTION_PATHS} from '~/action-paths';
 import {useOptionalRequestInfo} from '~/utils/request-info';
 import type {Theme} from '~/utils/theme.server';
 
@@ -30,7 +31,7 @@ export const useOptimisticThemeMode = ():
   'dark' | 'light' | 'system' | undefined => {
   const fetchers = useFetchers();
   const themeFetcher = fetchers.find(
-    (f) => f.formAction === '/resources/theme-switch'
+    (f) => f.formAction === ACTION_PATHS.themeSwitch
   );
   const theme = themeFetcher?.formData?.get('theme');
   if (theme === 'dark' || theme === 'light' || theme === 'system') return theme;

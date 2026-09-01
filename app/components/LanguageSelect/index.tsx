@@ -2,9 +2,8 @@ import type {ChangeEvent, FC} from 'react';
 import {useTranslation} from 'react-i18next';
 import {useFetcher, useLocation} from 'react-router';
 import {twMerge} from 'tailwind-merge';
+import {ACTION_PATHS} from '~/action-paths';
 import {LANGUAGES} from '~/languages';
-
-const SET_LANGUAGE_ACTION = '/actions/set-language';
 
 // Native <select> intentional: this is a non-Conform chrome control, not a form field.
 const LANGUAGE_LABELS: Record<string, string> = {en: 'English'};
@@ -38,7 +37,7 @@ const LanguageSelect: FC<LanguageSelectProps> = ({className, onChange}) => {
     event: ChangeEvent<HTMLFormElement>
   ) => {
     await fetcher.submit(event.currentTarget, {
-      action: SET_LANGUAGE_ACTION,
+      action: ACTION_PATHS.setLanguage,
       method: 'POST',
     });
 
@@ -47,7 +46,7 @@ const LanguageSelect: FC<LanguageSelectProps> = ({className, onChange}) => {
 
   return (
     <fetcher.Form
-      action={SET_LANGUAGE_ACTION}
+      action={ACTION_PATHS.setLanguage}
       className={twMerge('relative flex-none text-sm', className)}
       method="POST"
       onChange={handleChangeLanguageForm}
