@@ -95,10 +95,26 @@ runs:
         MERGE_SHA: ${{ steps.wait-for-merge.outputs.merge_sha }}
       run: |
         set -euo pipefail
-        result_json="$(${GITHUB_ACTION_PATH}/lib/wait-for-ci.sh "$MERGE_SHA")"
+        # `rc=0` then `|| rc=$?`; see the enable-auto-merge step for why a bare
+        # assignment followed by `rc=$?` is unreachable under `set -e`. Here the
+        # script exits non-zero on both of its non-terminal conclusions while
+        # still printing the JSON that says which one, so a bare assignment
+        # takes that status and kills the step on the assignment line with the
+        # diagnosis unread inside the variable. The step still fails at the end,
+        # it just says why first.
+        rc=0
+        result_json="$(${GITHUB_ACTION_PATH}/lib/wait-for-ci.sh "$MERGE_SHA")" || rc=$?
+        if [[ -z "$result_json" ]]; then
+          result_json="$(jq -c -n --arg rc "$rc" '{conclusion: "unknown", run_url: "", error: ("wait-for-ci.sh exited " + $rc + " without emitting a result")}')"
+        fi
+        conclusion="$(jq -r '.conclusion' <<<"$result_json")"
         echo "result=$result_json" >> "$GITHUB_OUTPUT"
-        echo "conclusion=$(jq -r '.conclusion' <<<"$result_json")" >> "$GITHUB_OUTPUT"
+        echo "conclusion=$conclusion" >> "$GITHUB_OUTPUT"
         echo "run_url=$(jq -r '.run_url // ""' <<<"$result_json")" >> "$GITHUB_OUTPUT"
+        if [[ $rc -ne 0 ]]; then
+          echo "::error title=GAIA CI::post-merge CI watch on $MERGE_SHA ended as '$conclusion': $(jq -r '.error // "no further detail was reported"' <<<"$result_json")"
+          exit "$rc"
+        fi
 
     - id: branch-on-ci
       shell: bash
@@ -195,9 +211,21 @@ runs:
         REVERT_MERGE_SHA: ${{ steps.wait-for-revert-merge.outputs.revert_merge_sha }}
       run: |
         set -euo pipefail
-        result_json="$(${GITHUB_ACTION_PATH}/lib/wait-for-ci.sh "$REVERT_MERGE_SHA")"
-        echo "revert_conclusion=$(jq -r '.conclusion' <<<"$result_json")" >> "$GITHUB_OUTPUT"
+        # Same non-zero-exit handling as the wait-for-ci step above, and for the
+        # same reason: this is the same script, so its non-terminal conclusions
+        # arrive here the same way.
+        rc=0
+        result_json="$(${GITHUB_ACTION_PATH}/lib/wait-for-ci.sh "$REVERT_MERGE_SHA")" || rc=$?
+        if [[ -z "$result_json" ]]; then
+          result_json="$(jq -c -n --arg rc "$rc" '{conclusion: "unknown", run_url: "", error: ("wait-for-ci.sh exited " + $rc + " without emitting a result")}')"
+        fi
+        revert_conclusion="$(jq -r '.conclusion' <<<"$result_json")"
+        echo "revert_conclusion=$revert_conclusion" >> "$GITHUB_OUTPUT"
         echo "revert_run_url=$(jq -r '.run_url // ""' <<<"$result_json")" >> "$GITHUB_OUTPUT"
+        if [[ $rc -ne 0 ]]; then
+          echo "::error title=GAIA CI::revert CI watch on $REVERT_MERGE_SHA ended as '$revert_conclusion': $(jq -r '.error // "no further detail was reported"' <<<"$result_json")"
+          exit "$rc"
+        fi
 
     - id: branch-on-revert-conclusion
       if: steps.open-revert.outcome == 'success' && steps.open-revert.conclusion == 'success'

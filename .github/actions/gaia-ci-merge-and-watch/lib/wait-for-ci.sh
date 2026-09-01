@@ -3,7 +3,17 @@
 #   {"conclusion":"success","run_url":"<url>"}
 #   {"conclusion":"failure","run_url":"<url>"}
 #   {"conclusion":"timeout","run_url":""}
-# Exit 0 on terminal (success | failure); exit 1 on timeout.
+#   {"conclusion":"query-failed","run_url":"","error":"<last poll's stderr>"}
+# Exit 0 on terminal (success | failure); exit 1 on timeout and query-failed.
+#
+# Exhausting the deadline is reachable from two conditions, and they are
+# reported apart because their repairs are opposites. `timeout` means the polls
+# were answered and no run reached a terminal state, which a longer deadline can
+# fix. `query-failed` means the poll itself never got an answer -- an expired
+# token, a rate limit, a network fault, a repository the token cannot see --
+# which no deadline can fix, so it carries the query's own stderr as the
+# evidence the operator picks a repair from. The last poll decides which is
+# emitted, so the verdict describes the state the script actually left off in.
 #
 # Args:
 #   $1: commit SHA to query.
@@ -20,6 +30,14 @@ COMMIT_SHA="${1:?commit sha required}"
 DEADLINE=$(( SECONDS + ${TIMEOUT_SECONDS:-5400} ))
 SLEEP_SECONDS="${SLEEP_SECONDS:-30}"
 
+# Holds the most recent poll's stderr while that poll is the last one to have
+# run, and is cleared by any poll that answers. Non-empty once the deadline is
+# reached therefore means the script never got an answer out of the poll it
+# stopped on, which is the state `query-failed` reports.
+query_error=""
+query_stderr="$(mktemp)"
+trap 'rm -f "$query_stderr"' EXIT
+
 required_contexts=""
 required_status_json="$(gh api "repos/${GITHUB_REPOSITORY}/branches/${DEFAULT_BRANCH}/protection/required_status_checks" 2>/dev/null || true)"
 
@@ -32,7 +50,31 @@ fi
 # success / skipped / neutral as failure.
 
 while (( SECONDS < DEADLINE )); do
-  runs_json="$(gh run list --commit "$COMMIT_SHA" --json conclusion,status,name,url --limit 50 2>/dev/null || echo '[]')"
+  # `rc=0` then `|| rc=$?`, never a bare assignment followed by `rc=$?`: an
+  # assignment takes its command substitution's status, so under `set -e` a
+  # failing `gh` would kill the script on the assignment line and every branch
+  # below would be dead code.
+  #
+  # Discarding stderr and substituting `[]` on failure is the shorter spelling
+  # and the one that collapses the two states: `[]` is byte-identical to what an
+  # answered poll with no runs yet returns, so the status is the only thing that
+  # separates a query nobody answered from a CI that has not started, and
+  # throwing it away leaves nothing downstream able to tell them apart.
+  rc=0
+  runs_json="$(gh run list --commit "$COMMIT_SHA" --json conclusion,status,name,url --limit 50 2>"$query_stderr")" || rc=$?
+
+  if [[ $rc -ne 0 ]]; then
+    # The tail rather than the whole stream: gh prints its usage block on some
+    # failures and the operative line is the last one.
+    query_error="$(tail -n 3 "$query_stderr" | tr -d '\r' | tr '\n' ' ' | sed 's/  */ /g; s/^ //; s/ $//')"
+    if [[ -z "$query_error" ]]; then
+      query_error="gh run list exited $rc without writing to stderr"
+    fi
+    sleep "$SLEEP_SECONDS"
+    continue
+  fi
+
+  query_error=""
 
   # Filter to required contexts when protection is configured. The branch
   # protection API names are workflow contexts; gh run list .name is the
@@ -71,6 +113,11 @@ while (( SECONDS < DEADLINE )); do
   jq -c -n '{conclusion: "success", run_url: ""}'
   exit 0
 done
+
+if [[ -n "$query_error" ]]; then
+  jq -c -n --arg err "$query_error" '{conclusion: "query-failed", run_url: "", error: $err}'
+  exit 1
+fi
 
 echo '{"conclusion":"timeout","run_url":""}'
 exit 1
