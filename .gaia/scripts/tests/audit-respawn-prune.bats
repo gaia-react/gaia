@@ -595,3 +595,19 @@ make_hook_sandbox() {
   # The unfloored mutant applies the raw 10-day window and drops it.
   [ ! -s "$ledger" ]
 }
+
+@test "the temp-ledger trap keeps the prune interruptible: no shared EXIT+signal arm" {
+  # Structural rather than behavioural, deliberately. Driving a real SIGINT at
+  # the prune races its own runtime, and the construct is what decays: a single
+  # `trap ... EXIT INT TERM` arm whose body only unlinks leaves bash resuming at
+  # the point of interruption, so an interrupt removes the temp ledger and the
+  # prune runs on to `mv` a file it no longer owns and exits 0 as though it had
+  # pruned. This pins the repaired shape so a later edit cannot re-collapse the
+  # arms with nothing red.
+  grep -nE '^[[:space:]]*trap[^#]*(INT|TERM)' "$SCRIPT" | grep -qE 'EXIT' && return 1
+  # Non-vacuity: the arms this asserts the absence of must actually exist, or
+  # the assertion above passes over a file that installs no trap at all.
+  grep -qE '^[[:space:]]*trap .* EXIT$' "$SCRIPT"
+  grep -qE '^[[:space:]]*trap .exit 130. INT$' "$SCRIPT"
+  grep -qE '^[[:space:]]*trap .exit 143. TERM$' "$SCRIPT"
+}

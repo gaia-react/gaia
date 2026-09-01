@@ -308,6 +308,22 @@ write_baseline() {
   [ "$status" -eq 0 ]
 }
 
+@test "the temp-file trap keeps the check interruptible: no shared EXIT+signal arm" {
+  # Structural rather than behavioural, deliberately. Driving a real SIGINT at
+  # this check races its own runtime, and the construct is what decays: a
+  # single `trap ... EXIT INT TERM` arm whose body only unlinks leaves bash
+  # resuming at the point of interruption, so Ctrl-C removes the temp file and
+  # the check runs on to print its verdict and exit 0 or 1 as if uninterrupted.
+  # This pins the repaired shape so a later edit cannot re-collapse the arms
+  # with nothing red.
+  grep -nE '^[[:space:]]*trap[^#]*(INT|TERM)' "$CHECK" | grep -qE 'EXIT' && return 1
+  # Non-vacuity: the arms this asserts the absence of must actually exist, or
+  # the assertion above passes over a file that installs no trap at all.
+  grep -qE '^[[:space:]]*trap .* EXIT$' "$CHECK"
+  grep -qE '^[[:space:]]*trap .exit 130. INT$' "$CHECK"
+  grep -qE '^[[:space:]]*trap .exit 143. TERM$' "$CHECK"
+}
+
 @test "usage: more than one argument exits 2" {
   run bash "$CHECK" "$REPO_ROOT" extra
   [ "$status" -eq 2 ]

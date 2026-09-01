@@ -180,7 +180,15 @@ tmp="$(mktemp "${ledger}.XXXXXX" 2>/dev/null)" || exit 0
 # Nothing else reaps a stray sibling: the janitor's outlier sweep never enters
 # telemetry/, and the ledger's registry entry matches an exact path. An
 # interrupt between here and the mv would otherwise leave one behind for good.
-trap 'rm -f -- "$tmp"' EXIT INT TERM
+#
+# Three arms, not one shared arm. Bash resumes at the point of interruption once
+# a trapped signal handler returns, so a single `EXIT INT TERM` arm that only
+# unlinks would leave an interrupt removing the temp file and the prune running
+# on to `mv` a file it no longer owns, then exiting 0 as if it had pruned. The
+# signal arms exit, and the EXIT arm they fall into owns the removal.
+trap 'rm -f -- "$tmp"' EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 write_status=0
 if [ -n "$keep_nums" ]; then

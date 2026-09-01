@@ -4,7 +4,8 @@
 # lint-guard-rule-shell-coverage.sh: flag every tracked shell file that the
 # guard and diagnostic rules do not reach. Exit 0 when every one of them is
 # governed by both rules, 1 with a per-file report on any gap, 2 on the check's
-# own failure. Run it from anywhere:
+# own failure, and 130 or 143 when a SIGINT or SIGTERM interrupts it (see the
+# trap arms in main). Run it from anywhere:
 # `bash .gaia/scripts/lint-guard-rule-shell-coverage.sh [<repo_root>]`.
 #
 # Two rules govern how shell is written in this repository:
@@ -63,8 +64,9 @@
 # the surface it arms greens a check that scanned nothing. That filter carries
 # `**/*.sh` for this check today, and `.husky/**` for its own older reasons.
 #
-# There is no exclusion table, because as of this writing every tracked *.sh is
-# governed and an empty exclusion list is an escape hatch nobody needed yet. A
+# There is no exclusion table, because as of this writing every tracked shell
+# file is governed and an empty exclusion list is an escape hatch nobody needed
+# yet. A
 # future shell file that genuinely should not be governed by either rule is a
 # decision worth writing down when it exists: add the exclusion here then, with
 # its reason, the way .gaia/tests/whole-tree-invariants.sh records its own
