@@ -115,7 +115,13 @@ while (( SECONDS < DEADLINE )); do
 done
 
 if [[ -n "$query_error" ]]; then
-  jq -c -n --arg err "$query_error" '{conclusion: "query-failed", run_url: "", error: $err}'
+  # Slice in jq rather than truncating the shell value: the cut is by codepoint,
+  # so it cannot halve a multibyte character and leave the field invalid UTF-8.
+  # The bound matters because action.yml writes this whole object into
+  # $GITHUB_OUTPUT, where an unbounded stderr line (a proxy returning an HTML
+  # body, say) would trip the per-output size limit and fail the step with a size
+  # error in place of the diagnosis this field exists to carry.
+  jq -c -n --arg err "$query_error" '{conclusion: "query-failed", run_url: "", error: ($err[0:500])}'
   exit 1
 fi
 

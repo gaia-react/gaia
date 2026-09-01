@@ -111,8 +111,15 @@ STUB
   chmod +x "$STUB_DIR/gh"
 }
 
+# Answers 0 rather than failing when the stub never ran, so a deadline eaten by
+# startup reds on the poll-count assertion that names the harness rather than on
+# a cat error that reads like a broken test.
 polls_made() {
-  cat "$STUB_STATE/polls"
+  if [ -f "$STUB_STATE/polls" ]; then
+    cat "$STUB_STATE/polls"
+  else
+    printf '0'
+  fi
 }
 
 @test "a query that never succeeds concludes query-failed, not timeout" {
@@ -181,9 +188,10 @@ polls_made() {
   # The header is the contract action.yml reads, so a conclusion that reaches
   # the caller without a header line is a contract change nobody downstream was
   # told about. What this pins is the header against the values driven above,
-  # and only that: the script builds two of its emissions through jq, so its
-  # emission set is not derivable from its text, and a fifth conclusion added
-  # with no header line is left to review rather than caught here.
+  # and only that: every conclusion but `timeout` is built inside a jq program,
+  # so the emission set is not one grep over the script's text, and a further
+  # conclusion added with no header line is left to review rather than caught
+  # here.
   documented="$(sed -n 's/^#[[:space:]]*{"conclusion":"\([a-z-]*\)".*/\1/p' "$SCRIPT" | LC_ALL=C sort)"
   [ "$documented" = "$(printf '%s\n' failure query-failed success timeout | LC_ALL=C sort)" ]
 }

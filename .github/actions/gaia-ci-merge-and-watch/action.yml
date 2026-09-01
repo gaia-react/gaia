@@ -68,7 +68,7 @@ runs:
         PR_NUMBER: ${{ inputs.pr-number }}
       run: |
         set -euo pipefail
-        result_json="$(${GITHUB_ACTION_PATH}/lib/wait-for-merge.sh "$PR_NUMBER")"
+        result_json="$("${GITHUB_ACTION_PATH}"/lib/wait-for-merge.sh "$PR_NUMBER")"
         echo "result=$result_json" >> "$GITHUB_OUTPUT"
         echo "merge_state=$(jq -r '.state' <<<"$result_json")" >> "$GITHUB_OUTPUT"
         echo "merge_sha=$(jq -r '.sha // ""' <<<"$result_json")" >> "$GITHUB_OUTPUT"
@@ -103,9 +103,15 @@ runs:
         # diagnosis unread inside the variable. The step still fails at the end,
         # it just says why first.
         rc=0
-        result_json="$(${GITHUB_ACTION_PATH}/lib/wait-for-ci.sh "$MERGE_SHA")" || rc=$?
-        if [[ -z "$result_json" ]]; then
-          result_json="$(jq -c -n --arg rc "$rc" '{conclusion: "unknown", run_url: "", error: ("wait-for-ci.sh exited " + $rc + " without emitting a result")}')"
+        result_json="$("${GITHUB_ACTION_PATH}"/lib/wait-for-ci.sh "$MERGE_SHA")" || rc=$?
+        # Parseability, not emptiness: every read below is a jq filter over this
+        # value, so an unparseable payload fails the first one and kills the step
+        # under `set -e` before the annotation runs, handing the operator a jq
+        # parse error in place of the diagnosis. `jq -e .` rejects the empty
+        # string too, so it subsumes an emptiness check rather than sitting
+        # beside one.
+        if ! jq -e . >/dev/null 2>&1 <<<"$result_json"; then
+          result_json="$(jq -c -n --arg rc "$rc" '{conclusion: "unknown", run_url: "", error: ("wait-for-ci.sh exited " + $rc + " without emitting readable JSON")}')"
         fi
         conclusion="$(jq -r '.conclusion' <<<"$result_json")"
         echo "result=$result_json" >> "$GITHUB_OUTPUT"
@@ -180,7 +186,7 @@ runs:
         REVERT_FAILED_RUN_URL: ''
       run: |
         set -euo pipefail
-        body="$(${GITHUB_ACTION_PATH}/lib/render-issue.sh "${GITHUB_WORKSPACE}/.gaia/templates/ci-issues/severity-important-revert-opened.md")"
+        body="$("${GITHUB_ACTION_PATH}"/lib/render-issue.sh "${GITHUB_WORKSPACE}/.gaia/templates/ci-issues/severity-important-revert-opened.md")"
         issue_url="$(printf '%s\n' "$body" | gh issue create \
           --title "GAIA CI: PR #${ORIGINAL_PR} reverted via PR #${REVERT_PR}" \
           --label "severity:important" \
@@ -198,7 +204,7 @@ runs:
         REVERT_PR: ${{ steps.open-revert.outputs.revert_pr }}
       run: |
         set -euo pipefail
-        result_json="$(${GITHUB_ACTION_PATH}/lib/wait-for-merge.sh "$REVERT_PR")"
+        result_json="$("${GITHUB_ACTION_PATH}"/lib/wait-for-merge.sh "$REVERT_PR")"
         echo "revert_merge_state=$(jq -r '.state' <<<"$result_json")" >> "$GITHUB_OUTPUT"
         echo "revert_merge_sha=$(jq -r '.sha // ""' <<<"$result_json")" >> "$GITHUB_OUTPUT"
 
@@ -215,9 +221,15 @@ runs:
         # same reason: this is the same script, so its non-terminal conclusions
         # arrive here the same way.
         rc=0
-        result_json="$(${GITHUB_ACTION_PATH}/lib/wait-for-ci.sh "$REVERT_MERGE_SHA")" || rc=$?
-        if [[ -z "$result_json" ]]; then
-          result_json="$(jq -c -n --arg rc "$rc" '{conclusion: "unknown", run_url: "", error: ("wait-for-ci.sh exited " + $rc + " without emitting a result")}')"
+        result_json="$("${GITHUB_ACTION_PATH}"/lib/wait-for-ci.sh "$REVERT_MERGE_SHA")" || rc=$?
+        # Parseability, not emptiness: every read below is a jq filter over this
+        # value, so an unparseable payload fails the first one and kills the step
+        # under `set -e` before the annotation runs, handing the operator a jq
+        # parse error in place of the diagnosis. `jq -e .` rejects the empty
+        # string too, so it subsumes an emptiness check rather than sitting
+        # beside one.
+        if ! jq -e . >/dev/null 2>&1 <<<"$result_json"; then
+          result_json="$(jq -c -n --arg rc "$rc" '{conclusion: "unknown", run_url: "", error: ("wait-for-ci.sh exited " + $rc + " without emitting readable JSON")}')"
         fi
         revert_conclusion="$(jq -r '.conclusion' <<<"$result_json")"
         echo "revert_conclusion=$revert_conclusion" >> "$GITHUB_OUTPUT"
@@ -259,7 +271,7 @@ runs:
       run: |
         set -euo pipefail
         gaia ci-revert mark-failed --pr "$PR_NUMBER" --json >/dev/null
-        body="$(${GITHUB_ACTION_PATH}/lib/render-issue.sh "${GITHUB_WORKSPACE}/.gaia/templates/ci-issues/severity-critical-revert-failed.md")"
+        body="$("${GITHUB_ACTION_PATH}"/lib/render-issue.sh "${GITHUB_WORKSPACE}/.gaia/templates/ci-issues/severity-critical-revert-failed.md")"
         issue_url="$(printf '%s\n' "$body" | gh issue create \
           --title "GAIA CI: revert of PR #${ORIGINAL_PR} also failed; bot stopped" \
           --label "severity:critical" \
