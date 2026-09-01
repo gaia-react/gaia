@@ -1,4 +1,5 @@
 import {composeStory} from '@storybook/react-vite';
+import userEvent from '@testing-library/user-event';
 import {describe, expect, test} from 'vitest';
 import {render, screen} from 'test/rtl';
 import {LANGUAGES} from '~/languages';
@@ -27,6 +28,20 @@ describe('IndexPage', () => {
     expect(
       screen.getByRole('button', {name: common.theme.enableLightMode})
     ).toBeInTheDocument();
+  });
+
+  test('submits the theme switch without a router error', async () => {
+    const {click} = userEvent.setup();
+    render(<IndexPageStory />);
+    const button = screen.getByRole('button', {
+      name: common.theme.enableLightMode,
+    });
+    await click(button);
+    // The click submits a fetcher to /resources/theme-switch. An unmatched
+    // path answers 404 and swaps the tree for the router's error boundary, so
+    // this tautological-looking assertion is what catches a stub route pointed
+    // somewhere the app never posts to.
+    expect(button).toBeInTheDocument();
   });
 
   // Conditional: language select tracks LANGUAGES (LanguageSelect guard)

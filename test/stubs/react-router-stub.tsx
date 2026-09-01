@@ -98,10 +98,11 @@ const decorator =
         },
         path: route.path,
       })),
-      // to prevent theme provider error
+      // A theme-switch fetcher posts here; without a match the router answers
+      // 404 and the story is replaced by its error boundary.
       {
         action: () => {},
-        path: '/actions/set-theme',
+        path: '/resources/theme-switch',
       },
     ]);
 
