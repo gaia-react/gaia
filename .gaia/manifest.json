@@ -361,6 +361,7 @@
     ".storybook/preview.ts": "owned",
     ".storybook/viewport.ts": "owned",
     ".storybook/vite.config.ts": "owned",
+    "app/action-paths.ts": "owned",
     "app/components/Button/index.tsx": "owned",
     "app/components/Button/tests/index.stories.tsx": "owned",
     "app/components/Button/tests/index.test.tsx": "owned",
@@ -524,6 +525,7 @@
     "react-router.config.ts": "owned",
     "stylelint.config.mjs": "owned",
     "test/a11y.ts": "owned",
+    "test/action-paths.test.ts": "owned",
     "test/mocks/database.ts": "owned",
     "test/mocks/faker.ts": "owned",
     "test/mocks/index.ts": "owned",
@@ -669,7 +671,7 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-09-01T10:39:27.352Z",
+  "generated": "2026-09-01T15:55:14.373Z",
   "regions": [
     {
       "endMarker": "<!-- gaia:audit-remit:end -->",

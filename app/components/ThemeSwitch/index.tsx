@@ -2,6 +2,7 @@ import type {FC} from 'react';
 import {useTranslation} from 'react-i18next';
 import {IoDesktopOutline, IoMoon, IoSunny} from 'react-icons/io5';
 import {useFetcher} from 'react-router';
+import {ACTION_PATHS} from '~/action-paths';
 import {useOptimisticThemeMode} from '~/hooks/useTheme';
 import type {action} from '~/routes/resources+/theme-switch';
 import type {Theme} from '~/utils/theme.server';
@@ -41,7 +42,7 @@ const ThemeSwitch: FC<ThemeSwitchProps> = ({userPreference}) => {
   const ThemeIcon = ICONS[mode];
 
   return (
-    <fetcher.Form action="/resources/theme-switch" method="POST">
+    <fetcher.Form action={ACTION_PATHS.themeSwitch} method="POST">
       <input name="theme" type="hidden" value={next} />
       <button
         aria-label={t(LABEL_KEYS[mode])}
