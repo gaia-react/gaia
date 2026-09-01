@@ -316,6 +316,11 @@ write_baseline() {
   # the check runs on to print its verdict and exit 0 or 1 as if uninterrupted.
   # This pins the repaired shape so a later edit cannot re-collapse the arms
   # with nothing red.
+  #
+  # Scoped to this one script on purpose, and that narrowness is the known
+  # limit rather than the intent: a per-file pin cannot find the next instance
+  # of the shape, and #1717 tracks arming the class tree-wide beside the
+  # sibling shell lints, which retires this test.
   grep -nE '^[[:space:]]*trap[^#]*(INT|TERM)' "$CHECK" | grep -qE 'EXIT' && return 1
   # Non-vacuity: the arms this asserts the absence of must actually exist, or
   # the assertion above passes over a file that installs no trap at all.

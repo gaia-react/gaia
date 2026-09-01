@@ -52,9 +52,12 @@
 #
 # Fail-safe and fail-silent by construction: an unresolvable root, a missing
 # sibling lib, an absent or empty ledger, or a missing jq are each a silent
-# no-op that leaves the ledger untouched. Always exits 0, so it can never
-# block a session start, the same contract .claude/hooks/local-janitor.sh
-# carries. No stdout in normal operation; `--help` prints usage and exits 0.
+# no-op that leaves the ledger untouched. Exits 0 on every normal and failure
+# path, so it can never block a session start, the same contract
+# .claude/hooks/local-janitor.sh carries; 130 or 143 only when a SIGINT or
+# SIGTERM interrupts the sweep, from the trap arms beside the mktemp below,
+# which is the one case where stopping is the point. No stdout in normal
+# operation; `--help` prints usage and exits 0.
 #
 # Usage:
 #   audit-respawn-prune.sh [<root>] [--help|-h]
