@@ -186,10 +186,10 @@
 #     a `//` that follows executable text is missed, and so is one inside a
 #     `/*` block a line of code opened. That is the same full-line rule the
 #     sibling guards use, and on the C-family surface it is what makes the
-#     block reader safe without a string-literal tokenizer: a `/*` or `//`
-#     inside a string literal is preceded on its line by the opening quote, so
-#     it never starts a block here. See FAIL-CLOSED for the one shape that
-#     defeats that.
+#     block reader safe without a string-literal tokenizer: only a line whose
+#     own first characters are `//` or `/*` is read as a comment, and inside a
+#     single-line string literal the opening quote sits ahead of them. See
+#     FAIL-CLOSED for the shapes that reach those first characters anyway.
 #   - Everything the shared library lists under its own FAIL-OPEN heading, since
 #     a line it classifies as bats fixture data is skipped here too.
 #
@@ -203,12 +203,15 @@
 #     where the pragma is honored. This file's own header is written to avoid
 #     the shape rather than to waive it, which is the demonstration that the
 #     remedy is always reachable.
-#   - A line INSIDE a multi-line template literal whose own first characters are
-#     `//` or `/*` (or `{/*`, since the container strip runs first). The
-#     owns-its-line rule reads it as a comment, because by that point the quote
-#     that opened the literal is on an earlier line and nothing one line wide
-#     can see it. Reaching this needs the string tokenizer that rule exists to
-#     avoid, so it is recorded rather than chased.
+#   - A continuation line whose own first characters are `//` or `/*` (or `{/*`,
+#     since the container strip runs first), inside a construct that spans
+#     lines: a multi-line template literal, a backslash-continued ordinary
+#     string literal, or a JSX text node. The owns-its-line rule reads such a
+#     line as a comment. Inside either literal form the quote that opened it is
+#     on an earlier line and nothing one line wide can see it; a JSX text node
+#     is not a literal at all, so no quote was ever ahead of those characters.
+#     Reaching any of them needs the string tokenizer that rule exists to
+#     avoid, so they are recorded rather than chased.
 #
 #     Be precise about the cost, because the obvious bound is wrong. The `/*`
 #     spelling is not confined to the literal: it raises the block state, and
@@ -485,9 +488,9 @@ readonly CFAM_AWK='
     # "" for anything else. A block stays open across lines in INBLOCK.
     #
     # Only the first non-space characters of the line can open a block, which is
-    # what keeps a `/*` inside a string literal from opening one: the quote that
-    # started the literal sits ahead of it on the same line. The header records
-    # the one shape that defeats that.
+    # what keeps a `/*` inside a single-line string literal from opening one:
+    # the quote that started the literal sits ahead of it on the same line. The
+    # header records the shapes that reach those first characters anyway.
     #
     # One optional `{` is stripped ahead of those tests, which is what reaches
     # the JSX comment container `{/* ... */}`. That form is the ordinary way to

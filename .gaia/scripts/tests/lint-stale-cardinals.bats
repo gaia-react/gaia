@@ -540,6 +540,38 @@ export const label = "all three consumers";'
   grep -qF -- "app/probe.ts:4:" <<<"$output"
 }
 
+# The template-literal test above pins one construct that spans lines. Two more
+# reach the same state, and the header lists all of them together, so they are
+# pinned together too: the disclosure is enforced rather than asserted. A
+# backslash-continued ordinary string literal puts the continuation line at the
+# head of its own line the same way a template literal does.
+@test "a block opener on a backslash-continued string line runs on to the end of the file" {
+  fixture_repo
+  fixture_file app/probe.ts 'export const s = "opened here \
+/* opened on a continued string line
+";
+export const label = "all three consumers";'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- "app/probe.ts:4:" <<<"$output"
+}
+
+# The third shape, and the one the quote-ahead reasoning never covered at all: a
+# JSX text node is not a string literal, so no opening quote was ever ahead of
+# the characters that open the block.
+@test "a block opener in a JSX text node runs on to the end of the file" {
+  fixture_repo
+  fixture_file app/probe.tsx 'export const C = () => (
+  <p>
+/* opened by JSX text
+  </p>
+);
+export const label = "all three consumers";'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- "app/probe.tsx:6:" <<<"$output"
+}
+
 @test "a real tracked C-family file with one instance injected reds" {
   fixture_repo
   local real
