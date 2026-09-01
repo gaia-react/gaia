@@ -6,6 +6,8 @@ paths:
   - '.claude/hooks/**/*.sh'
   - '.github/**/*.sh'
   - '.github/workflows/**/*.yml'
+  - '.gaia/statusline/**/*.sh'
+  - '.specify/extensions/gaia/lib/**/*.sh'
 ---
 <!-- gaia-harden: promoted from recurring finding_class holistic/hollow-assertion; pruned by /gaia-audit on obsolescence/redundancy/supersession/duplication only, never for non-recurrence -->
 <!-- gaia-harden: promoted from recurring finding_class holistic/unarmed-guard; pruned by /gaia-audit on obsolescence/redundancy/supersession/duplication only, never for non-recurrence -->
