@@ -250,7 +250,15 @@ main() {
     printf '%s: could not create a temporary file for the tracked shell listing\n' "$PROG" >&2
     return 2
   }
-  trap 'rm -f "$LIST_FILE"' EXIT INT TERM
+  # Three arms, not one shared arm. Bash resumes at the point of interruption
+  # once a trapped signal handler returns, so a single `EXIT INT TERM` arm that
+  # only unlinks the file leaves Ctrl-C removing the temp file and the check
+  # running on to print its verdict as if uninterrupted, which is strictly worse
+  # than the default disposition it replaced. The signal arms exit, and the EXIT
+  # arm they fall into owns the removal.
+  trap 'rm -f "$LIST_FILE"' EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
   if ! git -C "$root" ls-files -z -- '*.sh' '.husky/*' >"$LIST_FILE"; then
     printf '%s: could not list tracked shell in %s\n' "$PROG" "$root" >&2
     return 2

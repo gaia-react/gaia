@@ -568,7 +568,12 @@ fi
 # this is the pass every pull request runs. It is advisory here; the blocking
 # runner is its sibling suite .gaia/scripts/tests/lint-guard-rule-shell-coverage.bats
 # in the `Audit CI Tests` scripts shard, armed by that job's `**/*.sh` code
-# filter. Run from the repo root so its `git ls-files` discovery resolves.
+# filter AND by its `.husky/**` entry: `**/*.sh` matches no extensionless
+# hook, so a pull request touching only .husky/pre-commit arms this check
+# through the husky glob alone. Both are named because that entry's own
+# stated reason is a different suite, and trimming it on that reason would
+# silently unarm this check for husky-only diffs.
+# Run from the repo root so its `git ls-files` discovery resolves.
 echo "--> lint-guard-rule-shell-coverage (tracked shell the guard/diagnostic rules do not reach)"
 if ! (cd "$REPO_ROOT" && bash "$REPO_ROOT/.gaia/scripts/lint-guard-rule-shell-coverage.sh"); then
   status=1
