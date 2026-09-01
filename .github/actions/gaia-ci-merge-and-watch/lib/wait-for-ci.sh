@@ -77,9 +77,11 @@ while (( SECONDS < DEADLINE )); do
     # value carries. Bounded with a shell slice rather than a `head -c` stage in
     # the pipeline above: `head` exits as soon as it has its bytes, and the
     # SIGPIPE that sends upstream makes the whole pipeline non-zero under
-    # `pipefail`, trading a lost message for a dead script. A slice can split a
-    # multibyte character; jq replaces the invalid tail with U+FFFD and the
-    # codepoint slice at the emission site trims it back off.
+    # `pipefail`, trading a lost message for a dead script. The slice counts
+    # codepoints under a UTF-8 locale and bytes under C, so the worst case is
+    # 4000 four-byte characters, 16 KiB against that 128 KiB cap. Under C it can
+    # also split a character; jq replaces the invalid tail with U+FFFD and the
+    # emission site's own slice trims it back off.
     query_error="${query_error:0:4000}"
     sleep "$SLEEP_SECONDS"
     continue

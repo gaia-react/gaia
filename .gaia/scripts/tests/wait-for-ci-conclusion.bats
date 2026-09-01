@@ -84,7 +84,11 @@ case "${GH_RUN_MODE:-empty}" in
   fail) emit_fail ;;
   bloat)
     # One unbroken line, no newline: a line-based tail carries it whole.
-    head -c "${BLOAT_BYTES:-200000}" /dev/zero | tr '\0' 'H' >&2
+    # Deliberately no default for the size. The size is the whole point of this
+    # mode, and a default is the one value nobody revisits when the reasoning
+    # moves, so a stale one would quietly drive a later bloat test below the
+    # ceiling it exists to clear. Unset fails loudly here under `set -u`.
+    head -c "$BLOAT_BYTES" /dev/zero | tr '\0' 'H' >&2
     exit 1
     ;;
   empty) echo '[]' ;;
@@ -188,8 +192,12 @@ polls_made() {
   [ "$status" -eq 1 ]
   [ "$(polls_made)" -ge 1 ]
   [ "$(jq -r '.conclusion' <<<"$output")" = "query-failed" ]
-  # Pinned to the emitted length, not merely to "smaller than the input": a bound
-  # that drifted upward would still be smaller and would still pass a comparison.
+  # This pins the emission slice exactly and the capture bound only loosely: 500
+  # is the codepoint slice applied where the JSON is built, while the capture
+  # bound upstream of it is pinned by nothing finer than this test reaching a
+  # verdict at all rather than a dead script. Pinned to the exact length rather
+  # than to "smaller than the input", because a slice that drifted upward would
+  # still be smaller and would still pass a comparison.
   [ "$(jq -r '.error | length' <<<"$output")" -eq 500 ]
 }
 
