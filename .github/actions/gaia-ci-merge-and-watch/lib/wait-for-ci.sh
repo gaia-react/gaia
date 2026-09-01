@@ -72,14 +72,14 @@ while (( SECONDS < DEADLINE )); do
     fi
     # `tail -n 3` bounds lines, not bytes, so a single unbroken stderr line (a
     # proxy returning an HTML body) survives whole and then reaches jq through
-    # argv, where Linux caps one argument at 128 KiB. Past that the exec itself
+    # argv, where Linux caps one argument at 131,072 bytes. Past that the exec
     # fails and this script dies emitting nothing, losing the very diagnosis the
     # value carries. Bounded with a shell slice rather than a `head -c` stage in
     # the pipeline above: `head` exits as soon as it has its bytes, and the
     # SIGPIPE that sends upstream makes the whole pipeline non-zero under
     # `pipefail`, trading a lost message for a dead script. The slice counts
     # codepoints under a UTF-8 locale and bytes under C, so the worst case is
-    # 4000 four-byte characters, 16 KiB against that 128 KiB cap. Under C it can
+    # 4000 four-byte characters, 16,000 bytes against that cap. Under C it can
     # also split a character; jq replaces the invalid tail with U+FFFD and the
     # emission site's own slice trims it back off.
     query_error="${query_error:0:4000}"
