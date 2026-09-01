@@ -21,11 +21,11 @@ describe('IndexPage', () => {
 
   test('renders a labeled theme-switch button', () => {
     render(<IndexPageStory />);
-    // ThemeSwitch aria-label cycles through theme keys; default mode is
-    // "system" so the button reads t('theme.enableLightMode') = "Enable light mode".
-    // Match whichever label the alternation below admits.
+    // ThemeSwitch's aria-label names the mode the button switches to. The router
+    // stub registers no route the root loader data hangs off, so no stored
+    // preference reaches the component and the mode is the "system" default.
     expect(
-      screen.getByRole('button', {name: /light mode|dark mode|system theme/i})
+      screen.getByRole('button', {name: common.theme.enableLightMode})
     ).toBeInTheDocument();
   });
 
@@ -55,14 +55,14 @@ describe('IndexPage', () => {
     }
   );
 
-  // Absent: removed brand surface
+  // Absent: marketing chrome, branding, and layout landmarks
 
   test.each([
     ['has no GitHub CTA link', 'link', {name: /github/i}],
     ['has no feature definition-list term', 'term', undefined],
-    ['has no GaiaLogo image', 'img', {name: /gaia/i}],
-    ['has no banner landmark (Header removed)', 'banner', undefined],
-    ['has no contentinfo landmark (Footer removed)', 'contentinfo', undefined],
+    ['has no gaia-branded image', 'img', {name: /gaia/i}],
+    ['has no banner landmark', 'banner', undefined],
+    ['has no contentinfo landmark', 'contentinfo', undefined],
   ] as const)('%s', (_label, role, options) => {
     render(<IndexPageStory />);
     expect(screen.queryByRole(role, options)).not.toBeInTheDocument();
