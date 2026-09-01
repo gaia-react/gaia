@@ -164,50 +164,21 @@ STUB
   jq -e '.run_url == ""' >/dev/null <<<"$output"
 }
 
-# The extraction's whole point is that the interpretation has one home. A step
-# body that calls the poller directly, or re-inlines the fallback beside its own
-# call, puts the copies back with nothing else going red -- which is the failure
-# gaia-react/gaia#1704 was filed for, and `run:` bodies are exactly where no
-# other check in this repository would see it.
-#
-# Stated as absences plus one presence rather than as counts: a watch step added
-# later is welcome to exist, and only has to reach the poller the same way the
-# existing ones do, so a cardinal here would red on a correct change.
-@test "no step body reaches the poller or its fallback except through the helper" {
-  local action="$REPO_ROOT/.github/actions/gaia-ci-merge-and-watch/action.yml"
+# The two checks below make per-step claims about the composite action, so what
+# they are worth depends entirely on the step set they walk. That set is every
+# step the action declares, taken from the action itself, and never the subset
+# that happens to spell an invocation the way today's code spells it: a set
+# derived from the thing being checked moves with it, so a respelled call would
+# leave the walk and the expectation at once and the suite would green over half
+# the steps with its names unchanged.
 
-  # The helper is the poller's sole caller, so action.yml names the poller
-  # nowhere.
-  grep -qF -- 'lib/wait-for-ci.sh' "$action" && return 1
-
-  # And the synthesised verdict is the helper's alone; its message reappearing
-  # in a `run:` body is a re-inlined copy of the guard.
-  grep -qF -- 'without emitting readable JSON' "$action" && return 1
-
-  grep -qF -- 'lib/read-ci-result.sh' "$action"
+# Every declared step, in file order.
+all_step_ids() {
+  awk '/^    - id: / { sub(/^    - id: /, ""); print }' "$1"
 }
 
-# The helper's guarantee covers what it prints, so it is void when the helper
-# never runs: a missing file, a lost exec bit, an absent interpreter. The
-# substitution yields the empty string, `jq -r` reads nothing from it and exits
-# 0, and without a bracket in the caller the operator gets an annotation naming
-# an empty conclusion and no cause at all. Nothing else in this repository
-# executes a `run:` body, which is the blind spot gaia-react/gaia#1704 was filed
-# about, so this has to run the real body rather than read it.
-#
-# The step set is derived from the action by its invocation line rather than
-# listed here, and the count derived is checked against the count driven, so a
-# watch step added or renamed later fails loudly instead of silently shrinking
-# what this covers.
-helper_steps() {
-  awk '
-    /^    - id: / { id = $0; sub(/^    - id: /, "", id) }
-    /lib\/read-ci-result\.sh/ && id != "" { print id; id = "" }
-  ' "$1"
-}
-
-# Pulls one step's `run:` block scalar out of the action, undenting the eight
-# spaces the block carries, so the body runs as the shell it is on a runner.
+# One step's `run:` block scalar, undented, so the body runs as the shell it is
+# on a runner.
 extract_run_body() {
   awk -v want="$2" '
     $0 == "    - id: " want { in_step = 1; next }
@@ -221,13 +192,84 @@ extract_run_body() {
   ' "$1"
 }
 
+# The same body with comment lines dropped, so a check reads the shell rather
+# than the prose about it. Without this the checks below would have to key on
+# path literals precise enough to miss the surrounding comments, which is what
+# made an earlier spelling of them escapable.
+run_body_code() {
+  extract_run_body "$1" "$2" | grep -v '^[[:space:]]*#' || true
+}
+
+# Prints every step id, and fails rather than printing a short set. Both counts
+# are second, independent routes to numbers the walk depends on: the ids against
+# the action's own count of step headers, and the bodies the extractor actually
+# read against its count of block scalars. A silent short read is the failure
+# these exist for, because it leaves every per-step claim below green over a
+# subset while their names still say every step.
+enumerate_steps_or_fail() {
+  local action="$1" ids id bodies=0
+
+  ids="$(all_step_ids "$action")"
+  [ -n "$ids" ] || return 1
+  [ "$(printf '%s\n' "$ids" | grep -c .)" -eq "$(grep -c '^    - id: ' "$action")" ] || return 1
+
+  for id in $ids; do
+    if [ -n "$(extract_run_body "$action" "$id")" ]; then
+      bodies=$(( bodies + 1 ))
+    fi
+  done
+  [ "$bodies" -eq "$(grep -c '^      run: |$' "$action")" ] || return 1
+
+  printf '%s\n' "$ids"
+}
+
+# The extraction's whole point is that the interpretation has one home. A step
+# body that calls the poller directly, or re-inlines the fallback beside its own
+# call, puts the copies back with nothing else going red -- the failure
+# gaia-react/gaia#1704 was filed for, and `run:` bodies are exactly where no
+# other check in this repository would see it.
+#
+# Keyed on bare names over comment-stripped bodies, not on `lib/` path literals:
+# a direct call respelled through a variable holding the directory never writes
+# the path, and it loses the parseability guarantee just the same.
+@test "no step body reaches the poller or its fallback except through the helper" {
+  local action="$REPO_ROOT/.github/actions/gaia-ci-merge-and-watch/action.yml"
+  local ids id body helper_steps=0
+
+  ids="$(enumerate_steps_or_fail "$action")"
+
+  for id in $ids; do
+    body="$(run_body_code "$action" "$id")"
+
+    # The helper is the poller's sole caller, so no step body names the poller.
+    grep -qF -- 'wait-for-ci' <<<"$body" && return 1
+
+    # And the synthesised verdict is the helper's alone; its message in a body
+    # is a re-inlined copy of the guard.
+    grep -qF -- 'without emitting readable JSON' <<<"$body" && return 1
+
+    if grep -qF -- 'read-ci-result' <<<"$body"; then
+      helper_steps=$(( helper_steps + 1 ))
+    fi
+  done
+
+  # A per-step claim over a set nothing reaches is true and worthless, so the
+  # presence half is asserted rather than assumed.
+  [ "$helper_steps" -gt 0 ]
+}
+
+# The helper's guarantee covers what it prints, so it is void when the helper
+# never runs: a missing file, a lost exec bit, an absent interpreter. The
+# substitution yields the empty string, `jq -r` reads nothing from it and exits
+# 0, and without a bracket in the caller the operator gets an annotation naming
+# an empty conclusion and no cause at all. Nothing else in this repository
+# executes a `run:` body, which is the blind spot gaia-react/gaia#1704 was filed
+# about, so this has to run the real body rather than read it.
 @test "a helper that never runs still leaves the operator a named cause" {
   local action="$REPO_ROOT/.github/actions/gaia-ci-merge-and-watch/action.yml"
-  local steps expected driven=0
+  local ids id body body_file driven=0
 
-  steps="$(helper_steps "$action")"
-  [ -n "$steps" ]
-  expected="$(printf '%s\n' "$steps" | grep -c .)"
+  ids="$(enumerate_steps_or_fail "$action")"
 
   # Present but not executable: the shape that yields an empty capture and a
   # non-zero status with the helper never printing anything.
@@ -236,18 +278,16 @@ extract_run_body() {
   printf '#!/usr/bin/env bash\nprintf notreached\n' >"$libdir/lib/read-ci-result.sh"
   chmod 000 "$libdir/lib/read-ci-result.sh"
 
-  local step body_file
-  for step in $steps; do
-    body_file="$BATS_TEST_TMPDIR/$step.sh"
-    extract_run_body "$action" "$step" >"$body_file"
+  for id in $ids; do
+    body="$(run_body_code "$action" "$id")"
+    grep -qF -- 'read-ci-result' <<<"$body" || continue
 
-    # A short extraction reads exactly like a body with no defect in it, so what
-    # was extracted is asserted before it is trusted.
-    grep -qF -- 'lib/read-ci-result.sh' "$body_file"
+    body_file="$BATS_TEST_TMPDIR/$id.sh"
+    extract_run_body "$action" "$id" >"$body_file"
 
     GITHUB_ACTION_PATH="$libdir" \
       MERGE_SHA=deadbeef REVERT_MERGE_SHA=deadbeef \
-      GITHUB_OUTPUT="$BATS_TEST_TMPDIR/$step.out" \
+      GITHUB_OUTPUT="$BATS_TEST_TMPDIR/$id.out" \
       run bash "$body_file"
 
     [ "$status" -ne 0 ]
@@ -259,5 +299,6 @@ extract_run_body() {
     driven=$(( driven + 1 ))
   done
 
-  [ "$driven" -eq "$expected" ]
+  [ "$driven" -gt 0 ]
 }
+

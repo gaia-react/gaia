@@ -229,9 +229,11 @@ runs:
         # as the wait-for-ci step above, for the same reasons: this is the same
         # watch, so its non-terminal conclusions and both of its failure cases
         # arrive here the same way. What is this step's own is its input SHA,
-        # its local variable name, and its outputs, which differ from that
-        # step's in their keys, in their wording, and in this step publishing no
-        # raw `result=`.
+        # its local variable name, its outputs, which differ from that step's in
+        # their keys and in this step publishing no raw `result=`, and its error
+        # annotation, which names the revert watch rather than the post-merge
+        # one. The two steps' output value expressions are identical, so the
+        # wording difference is in the annotation alone.
         rc=0
         result_json="$("${GITHUB_ACTION_PATH}"/lib/read-ci-result.sh "$REVERT_MERGE_SHA")" || rc=$?
         [[ -n "$result_json" ]] || result_json="$(jq -c -n --arg rc "$rc" '{conclusion: "unknown", run_url: "", error: ("read-ci-result.sh exited " + $rc + " without running")}')"
