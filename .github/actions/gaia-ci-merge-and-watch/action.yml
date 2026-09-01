@@ -104,10 +104,23 @@ runs:
         # the end, it just says why first.
         #
         # read-ci-result.sh, not wait-for-ci.sh directly: the helper guarantees
-        # this value is parseable, which is what lets the jq filters below run
-        # unbracketed. Its header owns why that guard needs a process of its own.
+        # what it PRINTS is parseable, which is what lets the jq filters below
+        # run unbracketed. Its header owns why that guard needs a process of its
+        # own.
         rc=0
         result_json="$("${GITHUB_ACTION_PATH}"/lib/read-ci-result.sh "$MERGE_SHA")" || rc=$?
+        # That guarantee lasts exactly as long as the helper runs, so one case
+        # sits outside it: the helper never got to print at all, because the file
+        # is missing, its exec bit was lost, or its interpreter is absent. The
+        # substitution then yields the empty string, `jq -r` reads nothing from
+        # it and exits 0, and the annotation below would name an empty
+        # conclusion and no cause. The bracket is emptiness rather than
+        # parseability on purpose: this covers not-running, which is a different
+        # cause than the helper's own fallback reports, and the messages say so.
+        # It does not cover a helper killed mid-write, which leaves a partial
+        # line the jq below still dies on; that is the narrower gap, and
+        # deduplicating the substantive guard is what it is traded for.
+        [[ -n "$result_json" ]] || result_json="$(jq -c -n --arg rc "$rc" '{conclusion: "unknown", run_url: "", error: ("read-ci-result.sh exited " + $rc + " without running")}')"
         conclusion="$(jq -r '.conclusion' <<<"$result_json")"
         echo "result=$result_json" >> "$GITHUB_OUTPUT"
         echo "conclusion=$conclusion" >> "$GITHUB_OUTPUT"
@@ -212,13 +225,16 @@ runs:
         REVERT_MERGE_SHA: ${{ steps.wait-for-revert-merge.outputs.revert_merge_sha }}
       run: |
         set -euo pipefail
-        # Same helper and same non-zero-exit handling as the wait-for-ci step
-        # above, and for the same reason: this is the same watch, so its
-        # non-terminal conclusions and its unreadable-payload case arrive here
-        # the same way. Only the output keys and the annotation wording below
-        # are this step's own.
+        # Same helper, same non-zero-exit handling, and same not-running bracket
+        # as the wait-for-ci step above, for the same reasons: this is the same
+        # watch, so its non-terminal conclusions and both of its failure cases
+        # arrive here the same way. What is this step's own is its input SHA,
+        # its local variable name, and its outputs, which differ from that
+        # step's in their keys, in their wording, and in this step publishing no
+        # raw `result=`.
         rc=0
         result_json="$("${GITHUB_ACTION_PATH}"/lib/read-ci-result.sh "$REVERT_MERGE_SHA")" || rc=$?
+        [[ -n "$result_json" ]] || result_json="$(jq -c -n --arg rc "$rc" '{conclusion: "unknown", run_url: "", error: ("read-ci-result.sh exited " + $rc + " without running")}')"
         revert_conclusion="$(jq -r '.conclusion' <<<"$result_json")"
         echo "revert_conclusion=$revert_conclusion" >> "$GITHUB_OUTPUT"
         echo "revert_run_url=$(jq -r '.run_url // ""' <<<"$result_json")" >> "$GITHUB_OUTPUT"

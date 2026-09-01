@@ -37,12 +37,11 @@ setup() {
   SCRIPT="$LIB_DIR/read-ci-result.sh"
 
   STUB_DIR="$BATS_TEST_TMPDIR/bin"
-  STUB_STATE="$BATS_TEST_TMPDIR/state"
-  mkdir -p "$STUB_DIR" "$STUB_STATE"
+  mkdir -p "$STUB_DIR"
   write_gh_stub
 
   PATH="$STUB_DIR:$PATH"
-  export PATH STUB_STATE
+  export PATH
   export GITHUB_REPOSITORY="gaia-react/gaia"
   export DEFAULT_BRANCH="main"
   export TIMEOUT_SECONDS=3
@@ -186,4 +185,79 @@ STUB
   grep -qF -- 'without emitting readable JSON' "$action" && return 1
 
   grep -qF -- 'lib/read-ci-result.sh' "$action"
+}
+
+# The helper's guarantee covers what it prints, so it is void when the helper
+# never runs: a missing file, a lost exec bit, an absent interpreter. The
+# substitution yields the empty string, `jq -r` reads nothing from it and exits
+# 0, and without a bracket in the caller the operator gets an annotation naming
+# an empty conclusion and no cause at all. Nothing else in this repository
+# executes a `run:` body, which is the blind spot gaia-react/gaia#1704 was filed
+# about, so this has to run the real body rather than read it.
+#
+# The step set is derived from the action by its invocation line rather than
+# listed here, and the count derived is checked against the count driven, so a
+# watch step added or renamed later fails loudly instead of silently shrinking
+# what this covers.
+helper_steps() {
+  awk '
+    /^    - id: / { id = $0; sub(/^    - id: /, "", id) }
+    /lib\/read-ci-result\.sh/ && id != "" { print id; id = "" }
+  ' "$1"
+}
+
+# Pulls one step's `run:` block scalar out of the action, undenting the eight
+# spaces the block carries, so the body runs as the shell it is on a runner.
+extract_run_body() {
+  awk -v want="$2" '
+    $0 == "    - id: " want { in_step = 1; next }
+    in_step && /^    - / { exit }
+    in_step && $0 == "      run: |" { in_run = 1; next }
+    in_run {
+      if ($0 != "" && $0 !~ /^        /) exit
+      sub(/^        /, "")
+      print
+    }
+  ' "$1"
+}
+
+@test "a helper that never runs still leaves the operator a named cause" {
+  local action="$REPO_ROOT/.github/actions/gaia-ci-merge-and-watch/action.yml"
+  local steps expected driven=0
+
+  steps="$(helper_steps "$action")"
+  [ -n "$steps" ]
+  expected="$(printf '%s\n' "$steps" | grep -c .)"
+
+  # Present but not executable: the shape that yields an empty capture and a
+  # non-zero status with the helper never printing anything.
+  local libdir="$BATS_TEST_TMPDIR/deadlib"
+  mkdir -p "$libdir/lib"
+  printf '#!/usr/bin/env bash\nprintf notreached\n' >"$libdir/lib/read-ci-result.sh"
+  chmod 000 "$libdir/lib/read-ci-result.sh"
+
+  local step body_file
+  for step in $steps; do
+    body_file="$BATS_TEST_TMPDIR/$step.sh"
+    extract_run_body "$action" "$step" >"$body_file"
+
+    # A short extraction reads exactly like a body with no defect in it, so what
+    # was extracted is asserted before it is trusted.
+    grep -qF -- 'lib/read-ci-result.sh' "$body_file"
+
+    GITHUB_ACTION_PATH="$libdir" \
+      MERGE_SHA=deadbeef REVERT_MERGE_SHA=deadbeef \
+      GITHUB_OUTPUT="$BATS_TEST_TMPDIR/$step.out" \
+      run bash "$body_file"
+
+    [ "$status" -ne 0 ]
+    # The cause, not merely a non-zero exit: the regression this pins failed the
+    # step while reporting an empty conclusion and no detail.
+    grep -qF -- "ended as 'unknown'" <<<"$output"
+    grep -qF -- 'without running' <<<"$output"
+
+    driven=$(( driven + 1 ))
+  done
+
+  [ "$driven" -eq "$expected" ]
 }
