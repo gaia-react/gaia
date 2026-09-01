@@ -9,8 +9,9 @@
  * conflict patch the moment an adopter adds a single override, so this command
  * merges at key / map-entry granularity instead.
  *
- * It is READ-ONLY: it parses the three YAML files with js-yaml and emits a
- * JSON verdict report. It never writes the workspace file; the `/update-gaia`
+ * It is READ-ONLY: it parses the baseline, latest and current YAML files with
+ * js-yaml and emits a JSON verdict report. It never writes the workspace file;
+ * the `/update-gaia`
  * skill applies `applied[]` with the Edit tool so comments, key order, and
  * quote style survive (js-yaml `dump` would strip every comment).
  *

@@ -837,14 +837,24 @@ own_awk_functions() {
   expected="$(printf '%s\n' arm check_desync eat_word feed has_status_read pragma_offsurface report reset_state walk yfeed)"
   [ "$actual" = "$expected" ]
 
-  # The stale-cardinal guard's two private walks. tokenize is its
-  # class-detection walk and the detector cannot work without it: it splits a
-  # comment into case-folded tokens against literal character sets rather than
-  # a regex, which is the portability property its own header records.
-  # is_cardinal is the numeric half of the same decision. Neither reads shell
-  # syntax, so neither duplicates anything the library tokenizes.
+  # The stale-cardinal guard's private walks, all of them class detection or
+  # comment-syntax reading, none of them shell syntax, so none duplicates
+  # anything the library tokenizes.
+  #
+  # vocab_init, tokenize, is_cardinal, scan_prose and report_hits are the shared
+  # predicate: tokenize splits a comment into case-folded tokens against literal
+  # character sets rather than a regex, which is the portability property the
+  # guard's own header records; is_cardinal is the numeric half of the same
+  # decision; scan_prose collects rather than prints so the bats surface can
+  # consult the library about fixture data AFTER the class is decided.
+  #
+  # cfam_prose and is_pragma belong to the C-family reader, which loads no
+  # library at all. cfam_prose is the `//` and `/* */` comment extractor and the
+  # C-family surface cannot be read without it; is_pragma is the off-surface
+  # pragma report, the analogue of the gaia_scan_pragma_here call the `#` reader
+  # makes, and it exists here because the library is absent on that program.
   actual="$(own_awk_functions "$REPO_ROOT/.gaia/scripts/lint-stale-cardinals.sh")"
-  expected="$(printf '%s\n' is_cardinal tokenize)"
+  expected="$(printf '%s\n' cfam_prose is_cardinal is_pragma report_hits scan_prose tokenize vocab_init)"
   [ "$actual" = "$expected" ]
 
   actual="$(own_awk_functions "$REPO_ROOT/.gaia/scripts/tests/fixtures/stub-guard.sh")"

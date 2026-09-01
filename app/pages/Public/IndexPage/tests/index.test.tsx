@@ -23,7 +23,7 @@ describe('IndexPage', () => {
     render(<IndexPageStory />);
     // ThemeSwitch aria-label cycles through theme keys; default mode is
     // "system" so the button reads t('theme.enableLightMode') = "Enable light mode".
-    // Match any of the three possible labels.
+    // Match whichever label the alternation below admits.
     expect(
       screen.getByRole('button', {name: /light mode|dark mode|system theme/i})
     ).toBeInTheDocument();

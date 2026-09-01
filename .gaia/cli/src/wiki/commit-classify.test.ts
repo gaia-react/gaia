@@ -119,8 +119,8 @@ const sandboxGit = (root: string, args: string[]): string => {
  *
  * A second mechanism covers the same hazard for the whole run,
  * `util/git-maintenance-env.ts`, which puts the four maintenance keys in the
- * environment so the eighteen other files building a sandbox get them without
- * opting in. This list is not redundant under it: it is what this fixture's own
+ * environment so every other file building a sandbox gets them without opting
+ * in. This list is not redundant under it: it is what this fixture's own
  * hermeticity rests on, and it is the thing the test at the bottom measures.
  */
 const SANDBOX_GIT_CONFIG: [string, string][] = [

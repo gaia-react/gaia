@@ -127,6 +127,19 @@ jobs:
               # the surface it arms is the fail-open shape, so the two are
               # widened and narrowed together or not at all.
               - '**/*.md'
+              # The stale-cardinal guard reads the C-family globs
+              # .claude/rules/code-comments.md binds, a surface nothing above
+              # matches. Without these lines a pull request whose only change is
+              # a `.tsx` comment asserting a definite cardinal resolves
+              # `shell=false` and greens the check having scanned the very file
+              # it changed zero times. They mirror that guard's own CFAM_GLOBS,
+              # which its sibling suite in turn pins against the rule file, so
+              # the filter, the gate and the rule widen and narrow together.
+              - 'app/**/*.{ts,tsx,js,jsx,css}'
+              - 'test/**/*.{ts,tsx}'
+              - '.playwright/**/*.ts'
+              - '.storybook/**/*.{ts,tsx}'
+              - '.gaia/**/*.ts'
       # Install a pinned release binary rather than `apt-get install shellcheck`:
       # Ubuntu ships 0.9.0 while a maintainer's Homebrew ships newer, and their
       # directive parsers disagree, so an unpinned gate returns a different verdict

@@ -77,26 +77,28 @@
 # heuristic that is subtly wrong is not. Extending it is a one-line change, and
 # an extension that reds the tree is the gate working.
 #
+# The predicate is defined once, in PRED_AWK below, and both surface programs
+# call it. That is what keeps the two surfaces from disagreeing about what the
+# class is: a vocabulary entry, a window width or a clause-ender rule added for
+# one of them lands on the other in the same edit.
+#
 # ---------------------------------------------------------------------------
-# The scan surface, what it leaves governed-but-unscanned, and what was never
-# governed at all
+# The scan surface, and what it leaves unscanned
 # ---------------------------------------------------------------------------
 #
-# Tracked `*.sh` and `*.bats`: full-line comments, plus the `@test` name line.
-# That is where `.claude/rules/code-comments.md` and
-# `.claude/rules/bats-assertions.md` place the prohibition, and it is where the
-# instances that motivated this gate lived.
+# `.claude/rules/code-comments.md` binds a glob list, and this gate now reads
+# every entry on it. Two readers, split by comment syntax rather than by glob:
 #
-# GOVERNED AND NOT SCANNED, stated first because it is the honest gap rather
-# than the comfortable one. `code-comments.md` binds more globs this gate
-# does not read: `app/**/*.{ts,tsx,js,jsx,css}`, `test/**/*.{ts,tsx}`,
-# `.playwright/**/*.ts`, `.storybook/**/*.{ts,tsx}` and `.gaia/**/*.ts`. The
-# class occurs there today, so this is a live gap and not a theoretical one.
-# What stops the pathspec simply widening is that those surfaces comment with
-# `//` and `/* */`, so reaching them needs a second comment reader rather than
-# another glob, and a block-comment reader has to track its own open/close state
-# to avoid reading a `/*` inside a string literal as prose. That is new
-# machinery, so it is tracked separately rather than folded in here.
+# THE `#` READER, over tracked `*.sh` and `*.bats`: full-line comments, plus the
+# `@test` name line. That covers the rule's `.gaia`, `.claude/hooks`, `.github`
+# and `.specify` shell entries, and its `*.bats` entry. The shell pathspec is
+# repo-wide rather than a transcription of those entries, so a script that moves
+# out from under one of them stays scanned.
+#
+# THE `//` AND `/* */` READER, over the rule's C-family entries: `app`,
+# `test`, `.playwright`, `.storybook` and `.gaia` TypeScript, JavaScript and
+# CSS. CFAM_GLOBS below transcribes those entries, and the bats suite pins the
+# transcription against the rule file so the two cannot drift apart silently.
 #
 # NEVER GOVERNED, which is a different claim and must not be read as a carve-out
 # from the rule: Markdown appears in none of `code-comments.md`'s globs, so
@@ -123,10 +125,15 @@
 # honored inside `*.bats` only, which is where a suite has to WRITE the bad
 # shape as a fixture. Everywhere else the absence of an escape hatch is the
 # point: the rule's remedies are always available, so a `*.sh` comment that
-# cannot be reworded is a comment stating a count nothing keeps.
+# cannot be reworded is a comment stating a count nothing keeps. A pragma
+# written on either unhonored surface is reported as waiving nothing, so it
+# fails visibly rather than going quietly inert.
 #
 # The literal form, the token-resolution rule, and the block-continuation rule
-# are the shared library's, stated once in .gaia/scripts/guard-awk-lib.sh.
+# are the shared library's, stated once in .gaia/scripts/guard-awk-lib.sh. The
+# C-family reader has no library to consult, so it recognizes the pragma by its
+# first token alone and reports it; that is enough, because there is nothing to
+# honor on that surface and therefore no block grammar to get right.
 #
 # ---------------------------------------------------------------------------
 # Blind spots, split by which way each fails
@@ -161,11 +168,15 @@
 #     author did write; one shape cannot be had without the other, so the wrap
 #     is fixed by hand instead.
 #   - An ordinal or a written-out range ("the fourth of five callers").
-#   - A count in a trailing comment that shares its line with code: only a
-#     full-line comment is read, so an instance written after a `#` that follows
-#     executable text on the same line is missed. This is the same full-line
-#     rule the sibling guards use, and it is what keeps a `#` inside a quoted
-#     string from being read as a comment at all.
+#   - A count in a trailing comment that shares its line with code. Both readers
+#     take only a comment that OWNS its line: an instance written after a `#` or
+#     a `//` that follows executable text is missed, and so is one inside a
+#     `/*` block a line of code opened. That is the same full-line rule the
+#     sibling guards use, and on the C-family surface it is what makes the
+#     block reader safe without a string-literal tokenizer: a `/*` or `//`
+#     inside a string literal is preceded on its line by the opening quote, so
+#     it never starts a block here. See FAIL-CLOSED for the one shape that
+#     defeats that.
 #   - Everything the shared library lists under its own FAIL-OPEN heading, since
 #     a line it classifies as bats fixture data is skipped here too.
 #
@@ -179,6 +190,13 @@
 #     where the pragma is honored. This file's own header is written to avoid
 #     the shape rather than to waive it, which is the demonstration that the
 #     remedy is always reachable.
+#   - A line INSIDE a multi-line template literal whose own first characters are
+#     `//` or `/*`. The full-line rule reads it as a comment, because by that
+#     point the quote that opened the literal is on an earlier line and nothing
+#     one line wide can see it. Reaching this needs the string tokenizer the
+#     full-line rule exists to avoid, and the shape has to carry the whole
+#     predicate inside the literal to cost anything at all, so it is recorded
+#     rather than chased.
 
 set -euo pipefail
 
@@ -216,7 +234,40 @@ fi
 # .sh and no .bats must not pass clean carried by the rest of the surface.
 gaia_guard_bats_files lint-stale-cardinals || exit 1
 
-# The class detector.
+# The C-family pathspecs, one per glob `.claude/rules/code-comments.md` binds
+# outside the shell and bats entries, in the rule file's own order. `:(glob)` is
+# load-bearing: without it `**` is an ordinary `*` to git's matcher and a file
+# sitting directly in `app/` never matches. The sibling suite pins this list
+# against the rule file's frontmatter, so an entry added there and not here is a
+# test failure rather than a silent hole.
+CFAM_GLOBS=(
+  ':(glob)app/**/*.ts'
+  ':(glob)app/**/*.tsx'
+  ':(glob)app/**/*.js'
+  ':(glob)app/**/*.jsx'
+  ':(glob)app/**/*.css'
+  ':(glob)test/**/*.ts'
+  ':(glob)test/**/*.tsx'
+  ':(glob).playwright/**/*.ts'
+  ':(glob).storybook/**/*.ts'
+  ':(glob).storybook/**/*.tsx'
+  ':(glob).gaia/**/*.ts'
+)
+
+cfam_files=()
+while IFS= read -r -d '' f; do
+  cfam_files+=("$f")
+done < <(git -c core.quotepath=false ls-files -z -- ${CFAM_GLOBS[@]+"${CFAM_GLOBS[@]}"} | LC_ALL=C sort -z)
+
+# The same hard error the shell surface takes, for the same reason: a tree that
+# matched none of the globs above has a broken discovery rather than no code,
+# and reporting clean over it is the lie this gate exists to stop.
+if [ "${#cfam_files[@]}" -eq 0 ]; then
+  echo "lint-stale-cardinals: ERROR: no tracked C-family sources matched the scan surface; nothing was scanned" >&2
+  exit 1
+fi
+
+# The class predicate, shared by both surface programs below.
 #
 # Tokenization walks characters against literal sets with index() rather than
 # splitting on a regex character class, and that is portability rather than
@@ -231,9 +282,8 @@ gaia_guard_bats_files lint-stale-cardinals || exit 1
 # skipped over. That is what makes `hooks'` and `idiom-4` tokenize the way a
 # reader reads them, and it is why a multibyte character behaves as punctuation
 # here, which for this predicate is the right reading.
-readonly OWN_AWK='
-    BEGIN {
-      gaia_scan_reset()
+readonly PRED_AWK='
+    function vocab_init(   t, i) {
       UPPER  = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
       LOWER  = "abcdefghijklmnopqrstuvwxyz"
       DIGITS = "0123456789"
@@ -249,9 +299,9 @@ readonly OWN_AWK='
       # One of these ends a clause only when WHITESPACE or end of line follows
       # it. That test is what separates prose punctuation from the same
       # characters inside an identifier, and both readings occur constantly on
-      # this surface: a path (`.gaia/scripts/`), a label namespace (`surface:`),
-      # a filename (`README.md`). Treating those as clause ends silently
-      # discards real instances, since a barrier anywhere between the
+      # these surfaces: a path (`.gaia/scripts/`), a label namespace
+      # (`surface:`), a filename (`README.md`). Treating those as clause ends
+      # silently discards real instances, since a barrier anywhere between the
       # determiner and the noun suppresses the finding.
       ENDERS = ".!?;:"
       SPACE  = " \t"
@@ -278,13 +328,6 @@ readonly OWN_AWK='
       # suite pins it verbatim. See the header for why the window stops there.
       GAP_MAX = 1
     }
-
-    # Pass one over a *.bats file feeds the shared prepass and reports nothing.
-    # A fixture constant is bound far above the helper call that consumes it, so
-    # a forward-only scan cannot classify it; without this rule the class
-    # detector below would also run over pass one and report every bats hit
-    # twice.
-    is_bats && NR == FNR { gaia_scan_prepass($0); next }
 
     # tokenize(s): fill TOK[1..NT] with case-folded alphanumeric runs, and
     # END_AFTER[n] with 1 when a clause ender follows token n.
@@ -326,21 +369,15 @@ readonly OWN_AWK='
       return (w + 0) >= 3
     }
 
-    {
-      gaia_scan_feed($0, is_bats)
-      # The off-surface finding: a pragma naming this guard cannot waive
-      # anything outside *.bats, whether or not its target line carries an
-      # instance, so it is read here rather than at the print point below,
-      # which would go silently inert on every pragma above a clean line.
-      if (!is_bats && gaia_scan_pragma_here("lint-stale-cardinals"))
-        printf "%s:%d: gaia-lint-ignore is honored only in *.bats; this pragma waives nothing here\n", file, FNR
-
-      # Only a full-line comment, or a bats test NAME, is prose this gate
-      # judges. Everything else on these surfaces is code, where a number is a
-      # value rather than a claim about a set.
-      if ($0 !~ /^[[:space:]]*#/ && $0 !~ /^[[:space:]]*@test[[:space:]]/) next
-
-      tokenize($0)
+    # scan_prose(s): fill HIT_* with every instance in one line of prose and
+    # return how many there were. It collects rather than prints so that the
+    # bats surface can consult the shared library about fixture data and
+    # pragmas AFTER the class is decided; the library is not loaded on the
+    # C-family surface, so naming its functions in here would break that
+    # program at parse time.
+    function scan_prose(s,   i, j) {
+      NHIT = 0
+      tokenize(s)
       for (i = 1; i + 2 <= NT; i++) {
         if (!(TOK[i] in DET)) continue
         if (END_AFTER[i]) continue
@@ -355,14 +392,119 @@ readonly OWN_AWK='
             if (END_AFTER[j]) break
             continue
           }
-          if (is_bats && (gaia_scan_skip() || gaia_scan_suppressed("lint-stale-cardinals"))) break
-          printf "%s:%d: \"%s %s ... %s\" states a count of a set nothing recounts\n", \
-            file, FNR, TOK[i], TOK[i + 1], TOK[j]
+          NHIT++
+          HIT_DET[NHIT] = TOK[i]
+          HIT_CARD[NHIT] = TOK[i + 1]
+          HIT_NOUN[NHIT] = TOK[j]
           break
         }
       }
+      return NHIT
+    }
+
+    # report_hits(file, lineno): print what the last scan_prose() collected.
+    function report_hits(f, lineno,   h) {
+      for (h = 1; h <= NHIT; h++)
+        printf "%s:%d: \"%s %s ... %s\" states a count of a set nothing recounts\n", \
+          f, lineno, HIT_DET[h], HIT_CARD[h], HIT_NOUN[h]
+    }
+'
+
+# The shell and bats program.
+readonly OWN_AWK='
+    BEGIN {
+      gaia_scan_reset()
+      vocab_init()
+    }
+
+    # Pass one over a *.bats file feeds the shared prepass and reports nothing.
+    # A fixture constant is bound far above the helper call that consumes it, so
+    # a forward-only scan cannot classify it; without this rule the class
+    # detector below would also run over pass one and report every bats hit
+    # twice.
+    is_bats && NR == FNR { gaia_scan_prepass($0); next }
+
+    {
+      gaia_scan_feed($0, is_bats)
+      # The off-surface finding: a pragma naming this guard cannot waive
+      # anything outside *.bats, whether or not its target line carries an
+      # instance, so it is read here rather than at the print point below,
+      # which would go silently inert on every pragma above a clean line.
+      if (!is_bats && gaia_scan_pragma_here("lint-stale-cardinals"))
+        printf "%s:%d: gaia-lint-ignore is honored only in *.bats; this pragma waives nothing here\n", file, FNR
+
+      # Only a full-line comment, or a bats test NAME, is prose this gate
+      # judges. Everything else on these surfaces is code, where a number is a
+      # value rather than a claim about a set.
+      if ($0 !~ /^[[:space:]]*#/ && $0 !~ /^[[:space:]]*@test[[:space:]]/) next
+
+      if (!scan_prose($0)) next
+      if (is_bats && (gaia_scan_skip() || gaia_scan_suppressed("lint-stale-cardinals"))) next
+      report_hits(file, FNR)
     }
     END { gaia_scan_end(file, is_bats, "lint-stale-cardinals", 0, 1) }
+'
+
+# The C-family program: the same predicate behind a `//` and `/* */` reader.
+#
+# It loads no shared library. That library discriminates bats fixture data from
+# executed shell, a question this surface does not ask, and every function in it
+# reads shell syntax. Concatenating it here would buy nothing and would put a
+# shell tokenizer over TypeScript.
+readonly CFAM_AWK='
+    BEGIN {
+      vocab_init()
+      INBLOCK = 0
+    }
+
+    # cfam_prose(line): the comment text of a line that is WHOLLY a comment, or
+    # "" for anything else. A block stays open across lines in INBLOCK.
+    #
+    # Only the first non-space characters of the line can open a block, which is
+    # what keeps a `/*` inside a string literal from opening one: the quote that
+    # started the literal sits ahead of it on the same line. The header records
+    # the one shape that defeats that.
+    #
+    # A JSDoc leader (` * `) needs no stripping. The tokenizer treats `*` as
+    # punctuation, and punctuation that is not a clause ender ends a token
+    # without ending a clause, so the leader is invisible to the predicate.
+    function cfam_prose(line,   s, p) {
+      s = line
+      sub(/^[ \t]+/, "", s)
+      if (INBLOCK) {
+        p = index(s, "*/")
+        if (p == 0) return s
+        INBLOCK = 0
+        return substr(s, 1, p - 1)
+      }
+      if (substr(s, 1, 2) == "//") return substr(s, 3)
+      if (substr(s, 1, 2) != "/*") return ""
+      s = substr(s, 3)
+      p = index(s, "*/")
+      if (p > 0) return substr(s, 1, p - 1)
+      INBLOCK = 1
+      return s
+    }
+
+    # A pragma is recognized by its first token and honored nowhere here, so
+    # this reports and never suppresses. The shared library requires
+    # `gaia-lint-ignore` to lead as well, which is what lets a header name the
+    # word inline in prose without creating a live pragma.
+    function is_pragma(s,   tok) {
+      sub(/^[ \t]+/, "", s)
+      tok = s
+      sub(/[ \t].*$/, "", tok)
+      return (tok == "gaia-lint-ignore")
+    }
+
+    {
+      prose = cfam_prose($0)
+      if (prose == "") next
+      if (is_pragma(prose))
+        printf "%s:%d: gaia-lint-ignore is honored only in *.bats; this pragma waives nothing here\n", file, FNR
+      if (!scan_prose(prose)) next
+      report_hits(file, FNR)
+    }
 '
 
 # scan_file <path> <is_bats>: run the concatenated program over <path>. A
@@ -373,11 +515,16 @@ scan_file() {
   local is_bats="$2"
   if [ "$is_bats" -eq 1 ]; then
     awk -v file="$f" -v is_bats=1 -v scripts_dir="$_gaia_guard_lib_dir" \
-      "$GAIA_GUARD_AWK$OWN_AWK" "$f" "$f"
+      "$GAIA_GUARD_AWK$PRED_AWK$OWN_AWK" "$f" "$f"
   else
     awk -v file="$f" -v is_bats=0 -v scripts_dir="$_gaia_guard_lib_dir" \
-      "$GAIA_GUARD_AWK$OWN_AWK" "$f"
+      "$GAIA_GUARD_AWK$PRED_AWK$OWN_AWK" "$f"
   fi
+}
+
+# scan_cfam_file <path>: the C-family program over one source file.
+scan_cfam_file() {
+  awk -v file="$1" "$PRED_AWK$CFAM_AWK" "$1"
 }
 
 report=""
@@ -389,6 +536,11 @@ done
 for f in ${GAIA_GUARD_BATS_FILES[@]+"${GAIA_GUARD_BATS_FILES[@]}"}; do
   [ -f "$f" ] || continue
   hits=$(scan_file "$f" 1)
+  [ -z "$hits" ] || report+="$hits"$'\n'
+done
+for f in ${cfam_files[@]+"${cfam_files[@]}"}; do
+  [ -f "$f" ] || continue
+  hits=$(scan_cfam_file "$f")
   [ -z "$hits" ] || report+="$hits"$'\n'
 done
 
