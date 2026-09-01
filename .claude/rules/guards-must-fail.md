@@ -4,7 +4,7 @@ paths:
   - '.gaia/scripts/**/*.sh'
   - '.playwright/**/*.ts'
   - '.claude/hooks/**/*.sh'
-  - '.github/audit/**/*.sh'
+  - '.github/**/*.sh'
   - '.github/workflows/**/*.yml'
 ---
 <!-- gaia-harden: promoted from recurring finding_class holistic/hollow-assertion; pruned by /gaia-audit on obsolescence/redundancy/supersession/duplication only, never for non-recurrence -->
