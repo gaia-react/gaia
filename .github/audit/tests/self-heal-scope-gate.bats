@@ -52,6 +52,14 @@ setup() {
   mkdir -p "$SANDBOX/app" "$SANDBOX/test" "$SANDBOX/.gaia" "$SANDBOX/.github/workflows" "$SANDBOX/.github/audit"
   echo "export const x = 1;" > "$SANDBOX/app/x.ts"
   echo "export default {};" > "$SANDBOX/app/foo.config.ts"
+  # The test surface that lives INSIDE app/, the member's own repair surface:
+  # a suite and a story in the tests/ folder the component convention puts
+  # them in, and a suite outside one, which vitest still collects on the
+  # suffix. Each is driven by its own test below.
+  mkdir -p "$SANDBOX/app/components/Button/tests" "$SANDBOX/app/utils"
+  echo "test('button', () => {});" > "$SANDBOX/app/components/Button/tests/index.test.tsx"
+  echo "export default {title: 'Button'};" > "$SANDBOX/app/components/Button/tests/index.stories.tsx"
+  echo "test('format', () => {});" > "$SANDBOX/app/utils/format.test.ts"
   for i in 1 2 3 4 5 6 7 8 9 10 11; do
     echo "export const v$i = $i;" > "$SANDBOX/app/f$i.ts"
   done
@@ -235,6 +243,60 @@ output_has() { grep -qF -- "$1" "$STEP_OUTPUT"; }
   grep -qF 'package.json' <<<"$output"
   output_has "refused=true"
   output_has "refused_reason=governance-surface"
+}
+
+# -----------------------------------------------------------------------------
+# The test surface inside app/. code-audit-frontend repairs app/**, and the
+# vitest suite and the Chromatic story that would catch a bad app/ repair live
+# there too, so the refusal set reaches them per shape rather than by refusing
+# the tree. Each shape is driven on its own, paired with the app/ source edit
+# it would ride in on, which is the shape the gate exists to catch: a repair
+# and the weakening of its own check in one self-heal commit.
+# -----------------------------------------------------------------------------
+
+@test "an app/ repair carrying an app/**/tests/ suite edit is refused and names the suite" {
+  local body
+  body="$(extract_step_body 'Commit and push self-heal')"
+  echo "export const x = 2;" > "$SANDBOX/app/x.ts"
+  echo "test('button', () => { /* weakened */ });" > "$SANDBOX/app/components/Button/tests/index.test.tsx"
+
+  run run_push_fixes_step "$body"
+  [ "$status" -eq 0 ]
+  grep -qF 'app/components/Button/tests/index.test.tsx' <<<"$output"
+  output_has "refused=true"
+  output_has "refused_reason=governance-surface"
+  # Refused BEFORE commit/push: the app/ half never reaches origin either.
+  [ ! -s "$PUSH_LOG" ]
+  git -C "$SANDBOX" diff --cached --quiet
+}
+
+@test "an app/ repair carrying a story edit is refused and names the story" {
+  local body
+  body="$(extract_step_body 'Commit and push self-heal')"
+  echo "export const x = 2;" > "$SANDBOX/app/x.ts"
+  echo "export default {title: 'Button', parameters: {chromatic: {disable: true}}};" \
+    > "$SANDBOX/app/components/Button/tests/index.stories.tsx"
+
+  run run_push_fixes_step "$body"
+  [ "$status" -eq 0 ]
+  grep -qF 'app/components/Button/tests/index.stories.tsx' <<<"$output"
+  output_has "refused=true"
+  output_has "refused_reason=governance-surface"
+  [ ! -s "$PUSH_LOG" ]
+}
+
+@test "an app/ suite outside a tests/ folder is refused too (vitest collects on the suffix)" {
+  local body
+  body="$(extract_step_body 'Commit and push self-heal')"
+  echo "export const x = 2;" > "$SANDBOX/app/x.ts"
+  echo "test('format', () => { /* weakened */ });" > "$SANDBOX/app/utils/format.test.ts"
+
+  run run_push_fixes_step "$body"
+  [ "$status" -eq 0 ]
+  grep -qF 'app/utils/format.test.ts' <<<"$output"
+  output_has "refused=true"
+  output_has "refused_reason=governance-surface"
+  [ ! -s "$PUSH_LOG" ]
 }
 
 @test "an app/-only self-heal still commits and pushes (unchanged)" {
