@@ -6,8 +6,9 @@ import {LANGUAGES} from '~/languages';
 import common from '~/languages/en/common';
 import Meta, {Default} from './index.stories';
 
-// The story's decorator supplies a stub router, so the router hooks these
-// components call (useFetcher, useLocation) work without a real server.
+// The story's decorator wraps these components in a stubbed data router, so
+// the router hooks they call (useFetcher, useLocation) have the context they
+// need outside the app.
 const IndexPageStory = composeStory(Default, Meta);
 
 describe('IndexPage', () => {
