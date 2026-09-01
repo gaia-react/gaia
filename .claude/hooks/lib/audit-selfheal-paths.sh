@@ -90,8 +90,9 @@
 # what survives an arm being inserted ahead of them, which is how a reader
 # verifying the no-drift contract ends up counting to the wrong alternative.
 #
-# The ROOT-TOOLING half, the last alternative, is deliberately NOT part of that
-# mirror, and the asymmetry is the point. `has_source` decides whether an audit
+# The ROOT-TOOLING half, the `.npmrc` / `.lintstagedrc.json` / `.prettierignore`
+# / `Dockerfile` / `.env.example` / `.nvmrc` / `.node-version` alternative, is
+# deliberately NOT part of that mirror, and the asymmetry is the point. `has_source` decides whether an audit
 # RUNS; this ERE decides what a running member may REPAIR. The files below
 # are granted to `code-audit-frontend`, the roster's only `push_fixes: true`
 # member, so a diff touching one of them dispatches the member that could then
