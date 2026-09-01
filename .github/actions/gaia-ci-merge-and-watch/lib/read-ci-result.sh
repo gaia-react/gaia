@@ -22,8 +22,10 @@
 # glob reached it: the parseability guard above was itself a repair that had to
 # be applied by hand to both copies, and nothing in the repository would have
 # gone red had it landed on one (gaia-react/gaia#1704). Living here it is one
-# copy, shellcheck sees it, and .gaia/scripts/tests/read-ci-result.bats holds it
-# to the contract above.
+# copy, and one shellcheck reaches.
+# gaia:maintainer-only:start
+# .gaia/scripts/tests/read-ci-result.bats holds it to the contract above.
+# gaia:maintainer-only:end
 #
 # Args:
 #   $1: commit SHA to query, forwarded to wait-for-ci.sh.
