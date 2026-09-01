@@ -5,10 +5,12 @@
 # readable, so a step body can filter it with jq without bracketing every read.
 #
 # The class under test is a guard that used to live, byte-identical, inside two
-# `run:` bodies of the composite action. `run:` bodies are shell no `*.sh` glob
-# reaches, so nothing linted them, nothing tested them, and a repair applied to
-# one copy and not the other left the tree green (gaia-react/gaia#1704). The
-# guard now has one home, and this suite is what holds it to its contract:
+# `run:` bodies of the composite action. Those bodies are not wholly unlinted, a
+# repo-authored check does arm on them, but no `*.sh` glob reaches them, so the
+# static-analysis pass never opened them and nothing tested them, and a repair
+# applied to one copy and not the other left the tree green
+# (gaia-react/gaia#1704). The guard now has one home, and this suite is what
+# holds it to its contract:
 #
 #   - a readable payload is forwarded byte-for-byte,
 #   - an unreadable one is replaced by a synthesised `unknown` verdict that
@@ -178,12 +180,14 @@ all_step_ids() {
 }
 
 # One step's `run:` block scalar, undented, so the body runs as the shell it is
-# on a runner.
+# on a runner. Any literal block scalar, chomping indicator included: `run: |-`
+# is legal YAML that Actions runs identically, so an extractor keyed on the bare
+# `run: |` would simply not see such a step.
 extract_run_body() {
   awk -v want="$2" '
     $0 == "    - id: " want { in_step = 1; next }
     in_step && /^    - / { exit }
-    in_step && $0 == "      run: |" { in_run = 1; next }
+    in_step && $0 ~ /^      run: \|[-+]?$/ { in_run = 1; next }
     in_run {
       if ($0 != "" && $0 !~ /^        /) exit
       sub(/^        /, "")
@@ -201,11 +205,15 @@ run_body_code() {
 }
 
 # Prints every step id, and fails rather than printing a short set. Both counts
-# are second, independent routes to numbers the walk depends on: the ids against
-# the action's own count of step headers, and the bodies the extractor actually
-# read against its count of block scalars. A silent short read is the failure
-# these exist for, because it leaves every per-step claim below green over a
-# subset while their names still say every step.
+# are routes to a number the walk depends on that do not share a spelling with
+# what they check: the ids against the action's own count of step headers, and
+# the bodies the extractor actually read against the count of `run:` KEYS. That
+# last one is load-bearing, and counting block scalars instead would defeat it.
+# A count keyed on the same block-scalar literal the extractor matches falls by
+# one whenever the extractor does, so the two agree while walking a step short,
+# which is the silent read these exist to make loud. Counting the key instead
+# means any spelling the extractor cannot dedent, a folded `run: >` among them,
+# leaves the bodies short of the keys and fails here.
 enumerate_steps_or_fail() {
   local action="$1" ids id bodies=0
 
@@ -218,7 +226,7 @@ enumerate_steps_or_fail() {
       bodies=$(( bodies + 1 ))
     fi
   done
-  [ "$bodies" -eq "$(grep -c '^      run: |$' "$action")" ] || return 1
+  [ "$bodies" -eq "$(grep -c '^      run:' "$action")" ] || return 1
 
   printf '%s\n' "$ids"
 }
@@ -262,9 +270,10 @@ enumerate_steps_or_fail() {
 # never runs: a missing file, a lost exec bit, an absent interpreter. The
 # substitution yields the empty string, `jq -r` reads nothing from it and exits
 # 0, and without a bracket in the caller the operator gets an annotation naming
-# an empty conclusion and no cause at all. Nothing else in this repository
-# executes a `run:` body, which is the blind spot gaia-react/gaia#1704 was filed
-# about, so this has to run the real body rather than read it.
+# an empty conclusion and no cause at all. Executing a step body is an
+# established idiom here, but nothing else executes one of THIS action's, which
+# is the blind spot gaia-react/gaia#1704 was filed about, so this has to run the
+# real body rather than read it.
 @test "a helper that never runs still leaves the operator a named cause" {
   local action="$REPO_ROOT/.github/actions/gaia-ci-merge-and-watch/action.yml"
   local ids id body body_file driven=0
