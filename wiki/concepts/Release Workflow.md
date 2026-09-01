@@ -3,7 +3,7 @@ type: concept
 title: Release Workflow
 status: active
 created: 2026-04-22
-updated: 2026-08-15
+updated: 2026-09-01
 tags: [release, claude, maintainer, versioning]
 ---
 
@@ -60,7 +60,7 @@ The tag push triggers [`release.yml`](../../.github/workflows/release.yml), whic
 
 `release.yml` builds the tarball in five phases:
 
-1. **Stage**: drive the file set from `git ls-files` (not a raw `tar .`) and subtract `.gaia/release-exclude` patterns. `git ls-files` already ignores anything in `.gitignore` (no `.DS_Store`, `node_modules`, build output, `.idea/`); `.gaia/release-exclude` strips the tracked-but-maintainer-only content. The staging filter compiles `.gaia/release-exclude` into the anchored regexes it feeds to `grep -vE -f` by invoking `gaia-maintainer release exclude-regex`, the single compiler every release surface calls. `rsync` materializes the include list into `/tmp/gaia-vX.Y.Z/`.
+1. **Stage**: drive the file set from `git ls-files` (not a raw `tar .`) and subtract `.gaia/release-exclude` patterns. `git ls-files` already ignores anything in `.gitignore` (no `.DS_Store`, `node_modules`, build output, `.idea/`); `.gaia/release-exclude` strips the tracked-but-maintainer-only content. The staging filter compiles `.gaia/release-exclude` into the anchored regexes it feeds to `grep -vE -f` by invoking `gaia-maintainer release exclude-regex`, the single compiler every release surface calls. Every discovery site reads the tracked set through `.gaia/scripts/list-tracked-paths.sh` rather than converting a NUL-delimited `git ls-files -z` stream straight back to newlines: a tracked path holding a literal newline is the one byte that conversion cannot represent, so the script refuses such a path outright (naming it with the newline rendered) instead of silently splitting it into two records. `rsync` materializes the include list into `/tmp/gaia-vX.Y.Z/`.
 2. **Bundle-time scrub**: `gaia-maintainer release scrub /tmp/gaia-vX.Y.Z` applies the transforms in `.gaia/release-scrub.yml`: marker-delimited section strips and a leak-check pass that mirrors the `wiki-style.md` audit greps. Build fails closed on any leak. See [[Bundle-time Scrub]] for rationale.
 3. **Runtime-deps verification**: `gaia-maintainer release runtime-deps --staging /tmp/gaia-vX.Y.Z` walks shipped shell scripts and verifies every explicit path constant resolves to a shipped path, an adopter-owned sentinel, or a runtime-allocated location. Catches the leak class scrubbing cannot see; runtime references survive lexical strip.
 4. **Distribution test gate**: `bash .gaia/tests/distribution/run-all.sh` runs Layers 0+1+2 against an independently-staged tree (`build-staging.sh` re-runs the same `git ls-files` + scrub + runtime-deps phases above). Layer 0 confirms an adopter scaffold typechecks, lints, tests, and builds; Layer 1 confirms the bootstrap path survives in a PATH-stripped subshell; Layer 2 builds a Claude-in-Docker image and probes OAuth auth. The gate's `CLAUDE_CODE_OAUTH_TOKEN` comes from GAIA's GitHub organization secrets; per-run cost is $0 on the maintainer's Claude Max subscription. If any scenario fails the release halts; the tarball is never built and `gh release create` never runs, so a broken release cannot publish.

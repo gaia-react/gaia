@@ -11,6 +11,16 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-09-01 ea9f525a SKIP - prose-only guard fixes (stale-cardinal lint), no catalogued wiki page covers shell-lint.sh's awk guards
+- 2026-09-01 83b83c6e WORTHY - new .gaia/scripts/list-tracked-paths.sh guard refuses newline-bearing tracked paths at release staging → wiki/concepts/Release Workflow.md
+- 2026-09-01 7d73b71f SKIP - test-scan widening for a retired script name, no wiki-facing behavior
+- 2026-09-01 66a3b188 SKIP - internal DRY refactor (shared git path-listing helper), no behavior or contract change
+- 2026-09-01 6e61823e SKIP - stale-rationale comment cleanup in CI workflow YAML, no behavior change
+- 2026-09-01 960a0479 SKIP - test-fixture exclusion tweak, no wiki-facing behavior
+- 2026-09-01 bcfa0a1c SKIP - internal bug fix to commit-classify path parsing; Wiki Management.md's description already held
+- 2026-09-01 23d2b820 SKIP - guard fixture exemption, no wiki-facing behavior
+- 2026-09-01 bc9985a9 SKIP - internal bug fix to undocumented diff-size numstat parsing, no doc contract change
+- 2026-09-01 62ecf073 SKIP - wiki: self-referential (sync commit)
 - 2026-08-31 da2fd734 SKIP - chore: generic chore
 - 2026-08-31 784c269e SKIP - test: test-only change
 - 2026-08-31 86ce118f SKIP - test: test-only change
