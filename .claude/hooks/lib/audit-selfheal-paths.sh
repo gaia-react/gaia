@@ -92,21 +92,22 @@
 #
 # The ROOT-TOOLING half, the `.npmrc` / `.lintstagedrc.json` / `.prettierignore`
 # / `Dockerfile` / `.env.example` / `.nvmrc` / `.node-version` alternative, is
-# deliberately NOT part of that mirror, and the asymmetry is the point. `has_source` decides whether an audit
-# RUNS; this ERE decides what a running member may REPAIR. The files below
-# are granted to `code-audit-frontend`, the roster's only `push_fixes: true`
-# member, so a diff touching one of them dispatches the member that could then
-# rewrite it in its own self-heal commit. Each decides what the gates check
-# rather than what the app does: `.lintstagedrc.json` is the command
-# `.husky/pre-commit` runs through `pnpm exec lint-staged`, so a member free to
-# edit it can narrow the Quality Gate floor in the same commit as its repair;
-# `.npmrc` is the registry and install policy; `.prettierignore` decides what
-# formatting skips; `Dockerfile` builds the image; `.env.example` is the
-# environment contract; `.nvmrc` and `.node-version` decide the Node that CI and
-# local must agree on. Every SIBLING root config the same member owns is already
-# refused by the mirrored half, so refusing these restores the consistency the
-# grant broke rather than inventing a new rule. Adding them to `has_source`
-# instead would change when the audit runs, which is a different question.
+# deliberately NOT part of that mirror, and the asymmetry is the point.
+# `has_source` decides whether an audit RUNS; this ERE decides what a running
+# member may REPAIR. The files below are granted to `code-audit-frontend`, the
+# roster's only `push_fixes: true` member, so a diff touching one of them
+# dispatches the member that could then rewrite it in its own self-heal commit.
+# Each decides what the gates check rather than what the app does:
+# `.lintstagedrc.json` is the command `.husky/pre-commit` runs through `pnpm
+# exec lint-staged`, so a member free to edit it can narrow the Quality Gate
+# floor in the same commit as its repair; `.npmrc` is the registry and install
+# policy; `.prettierignore` decides what formatting skips; `Dockerfile` builds
+# the image; `.env.example` is the environment contract; `.nvmrc` and
+# `.node-version` decide the Node that CI and local must agree on. Every SIBLING
+# root config the same member owns is already refused by the mirrored half, so
+# refusing these restores the consistency the grant broke rather than inventing
+# a new rule. Adding them to `has_source` instead would change when the audit
+# runs, which is a different question.
 #
 # Bash 3.2 compatible (macOS default). Never `cd`.
 
