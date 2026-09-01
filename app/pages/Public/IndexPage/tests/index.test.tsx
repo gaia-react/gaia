@@ -55,12 +55,12 @@ describe('IndexPage', () => {
     }
   );
 
-  // Absent: no brand surface on this page
+  // Absent: marketing chrome, branding, and layout landmarks
 
   test.each([
     ['has no GitHub CTA link', 'link', {name: /github/i}],
     ['has no feature definition-list term', 'term', undefined],
-    ['has no GaiaLogo image', 'img', {name: /gaia/i}],
+    ['has no gaia-branded image', 'img', {name: /gaia/i}],
     ['has no banner landmark', 'banner', undefined],
     ['has no contentinfo landmark', 'contentinfo', undefined],
   ] as const)('%s', (_label, role, options) => {
