@@ -31,7 +31,7 @@ export const useOptimisticThemeMode = ():
   'dark' | 'light' | 'system' | undefined => {
   const fetchers = useFetchers();
   const themeFetcher = fetchers.find(
-    (f) => f.formAction === ACTION_PATHS.themeSwitch
+    (fetcher) => fetcher.formAction === ACTION_PATHS.themeSwitch
   );
   const theme = themeFetcher?.formData?.get('theme');
   if (theme === 'dark' || theme === 'light' || theme === 'system') return theme;
