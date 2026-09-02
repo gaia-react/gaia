@@ -53,19 +53,24 @@ import {resolveRepoRootFromImportMeta} from './util/repo-root-fixture.js';
 
 const REPO_ROOT = resolveRepoRootFromImportMeta(import.meta.url);
 
-// Every `--ignore-path` occurrence in a script string, in the four spellings a
-// shell accepts: space- or `=`-separated, and the value bare, double-quoted, or
-// single-quoted. A package.json script is JSON, so an embedded double quote
-// arrives escaped (`\"`); the pattern runs against the parsed string, where the
-// escape is already gone.
+// Every `--ignore-path` occurrence in a script string. The separator is a space
+// or an `=`, and the value is bare, double-quoted, or single-quoted; the value
+// alternation sits after the separator alternation, so every combination of the
+// two is read, not only the ones written out here. A package.json script is
+// JSON, so an embedded double quote arrives escaped (`\"`); the pattern runs
+// against the parsed string, where the escape is already gone.
 const IGNORE_PATH_PATTERN =
   /--ignore-path(?:=|\s+)(?:"([^"]*)"|'([^']*)'|(\S+))/g;
 
-// The gitignore entry the first assertion leans on. Matched with an optional
-// trailing slash and nothing after it, because both forms ignore the directory
-// and the repo may legitimately carry either; a longer path under it
-// (`.claude/worktrees/foo`) would not cover the directory as a whole.
-const WORKTREE_IGNORE_PATTERN = /^\.claude\/worktrees\/?$/;
+// The gitignore entry the first assertion leans on. The leading slash and the
+// trailing slash are both optional and nothing may follow, so all four
+// legitimate spellings of the same entry are accepted: bare, directory-only
+// (`.claude/worktrees/`), root-anchored (`/.claude/worktrees`), and both
+// (`/.claude/worktrees/`). Every one of them ignores the directory, so
+// rejecting any would red this guard over a rewrite that changed no behavior. A
+// longer path under it (`.claude/worktrees/foo`) is not accepted: it does not
+// cover the directory as a whole.
+const WORKTREE_IGNORE_PATTERN = /^\/?\.claude\/worktrees\/?$/;
 
 const readPackageScripts = (): Record<string, string> => {
   const raw = readFileSync(path.join(REPO_ROOT, 'package.json'), 'utf8');
@@ -95,6 +100,15 @@ const ignorePathsIn = (script: string): string[] =>
 // leaves prettier on its `['.gitignore', '.prettierignore']` default, and an
 // explicit set that still names `.gitignore`. Returning the offending paths
 // rather than a boolean is what puts them in the failure message.
+// A prettier INVOCATION, not the bare token. `.prettierignore` contains
+// `prettier`, so a substring test is satisfied by a script that only names the
+// ignore file and never runs the formatter, which is the one shape that would
+// let the assertions below report an ignore scope held over a script doing no
+// formatting at all. The command may open the script or follow a separator, and
+// may carry a runner prefix.
+const PRETTIER_INVOCATION_PATTERN =
+  /(?:^|\s|&&|\|\||;)(?:pnpm exec |pnpm dlx |npx )?prettier(?:\s|$)/;
+
 const narrowedIgnorePathsIn = (script: string): null | string[] => {
   const ignorePaths = ignorePathsIn(script);
 
@@ -103,18 +117,28 @@ const narrowedIgnorePathsIn = (script: string): null | string[] => {
   return ignorePaths.includes('.gitignore') ? null : ignorePaths;
 };
 
+// Throws rather than returning `undefined` for an absent or non-string script,
+// the same posture `node-pin-parity.test.ts` takes toward an unreadable subject:
+// a guard that cannot find what it guards has failed, not passed. It is also
+// what keeps the assertions below typed, since the CLI tsconfig sets
+// `noUncheckedIndexedAccess`.
+const readFormatScript = (): string => {
+  const {format} = readPackageScripts();
+
+  if (typeof format !== 'string') {
+    throw new TypeError('package.json declares no `format` script');
+  }
+
+  return format;
+};
+
 describe('root format script ignore scope', () => {
   test('the format script exists and runs prettier', () => {
-    const scripts = readPackageScripts();
-
-    expect(scripts.format).toBeDefined();
-    expect(scripts.format).toContain('prettier');
+    expect(readFormatScript()).toMatch(PRETTIER_INVOCATION_PATTERN);
   });
 
   test('does not narrow prettier below its default ignore set', () => {
-    const {format} = readPackageScripts();
-
-    expect(narrowedIgnorePathsIn(format)).toBeNull();
+    expect(narrowedIgnorePathsIn(readFormatScript())).toBeNull();
   });
 
   test('gitignore still covers the worktree root the guard leans on', () => {
