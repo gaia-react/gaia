@@ -827,24 +827,32 @@ _gaia_guard_scan_set() {
 #      rather than a clean tree, for the reason gaia_guard_bats_files states
 #      about its own surface. This is the ONLY status a caller may tolerate,
 #      and only where an empty surface is a legitimate tree for it.
-#   2  the call itself is wrong: a set name this library does not know, or no
-#      set named at all. Either way the guard would scan less than the rule it
-#      encodes governs and still report clean, which is the discovery-stage
-#      failure `.claude/rules/guards-must-fail.md` names.
-#   3  a named set's own `git ls-files` failed (run outside a repository, a
-#      broken object store). Distinct from 1 because the repairs differ, and
-#      distinct from a partial union because a set that returned nothing on a
-#      failed call is otherwise indistinguishable from one that legitimately
-#      matched nothing: with several sets asked for, the survivors would carry
-#      the union past the empty check and the gate would report clean over a
-#      surface it never opened.
+#   2  the call itself is wrong: a set name this library does not know, no set
+#      named at all, or one named twice. Either way the guard would scan a
+#      surface other than the one it asked for and still report clean, which is
+#      the discovery-stage failure `.claude/rules/guards-must-fail.md` names.
+#   3  the discovery machinery failed: a named set's own `git ls-files`, the
+#      sort, or the scratch file each of them needs. Distinct from 1 because
+#      the repairs differ, and distinct from a partial result because a set
+#      that returned nothing on a failed call is otherwise indistinguishable
+#      from one that legitimately matched nothing: with several sets asked for,
+#      the survivors would carry the result past the empty check and the gate
+#      would report clean over a surface it never opened.
 #
-# Each set is written to a scratch file rather than straight into a process
-# substitution, because a process substitution's subshell cannot return its
-# status here, which is what leaves a per-set failure indistinguishable from a
-# per-set empty result. Every return path removes it explicitly rather than
-# through an EXIT trap: this library is sourced, so a trap installed here would
-# replace whatever the consuming guard armed for its own cleanup.
+# It really is a union: naming a set twice is refused rather than concatenated,
+# so no path can reach the array twice and be scanned and reported twice. Across
+# distinct names the sets are disjoint by construction, which is what lets the
+# sort below leave out `-u`; a `-u` there would be a second mechanism
+# guaranteeing the same thing, and a suite cannot red on either one alone while
+# the other still holds.
+#
+# Nothing here is read through a process substitution, whose subshell cannot
+# return its status to this function. That is what leaves a failure
+# indistinguishable from an empty result, so every stage writes to a scratch
+# file whose producer's status is read before the next stage runs. Every return
+# path removes those files explicitly rather than through an EXIT trap: this
+# library is sourced, so a trap installed here would replace whatever the
+# consuming guard armed for its own cleanup.
 #
 # A read loop rather than mapfile, which is bash 4+, because these guards run on
 # stock macOS /bin/bash 3.2.57.
@@ -856,13 +864,23 @@ gaia_guard_scan_files() {
   fi
   shift
 
-  local scan_tmp name status f
+  local scan_tmp sorted_tmp name status seen f
   scan_tmp="$(mktemp -t gaia-guard-scan-XXXXXX)" || {
     printf '%s: ERROR: could not create a scratch file for the scan surface; nothing was scanned\n' "$label" >&2
     return 3
   }
 
+  seen=""
   for name in "$@"; do
+    case " $seen " in
+      *" $name "*)
+        rm -f "$scan_tmp"
+        printf '%s: ERROR: scan set "%s" named more than once; nothing was scanned\n' "$label" "$name" >&2
+        return 2
+        ;;
+    esac
+    seen="$seen $name"
+
     # The `if` is what keeps a non-zero status readable: a bare call would abort
     # under the errexit every consuming guard arms before sourcing this library.
     if _gaia_guard_scan_set "$name" >> "$scan_tmp"; then
@@ -883,11 +901,29 @@ gaia_guard_scan_files() {
     fi
   done
 
+  sorted_tmp="$(mktemp -t gaia-guard-sort-XXXXXX)" || {
+    rm -f "$scan_tmp"
+    printf '%s: ERROR: could not create a scratch file to sort the scan surface; nothing was scanned\n' "$label" >&2
+    return 3
+  }
+  if LC_ALL=C sort -z < "$scan_tmp" > "$sorted_tmp"; then
+    status=0
+  else
+    status=$?
+  fi
+  rm -f "$scan_tmp"
+  if [ "$status" -ne 0 ]; then
+    rm -f "$sorted_tmp"
+    printf '%s: ERROR: sorting the scan surface failed, sort exited %s; nothing was scanned\n' \
+      "$label" "$status" >&2
+    return 3
+  fi
+
   GAIA_GUARD_SCAN_FILES=()
   while IFS= read -r -d '' f; do
     GAIA_GUARD_SCAN_FILES+=("$f")
-  done < <(LC_ALL=C sort -z < "$scan_tmp")
-  rm -f "$scan_tmp"
+  done < "$sorted_tmp"
+  rm -f "$sorted_tmp"
 
   if [ "${#GAIA_GUARD_SCAN_FILES[@]}" -eq 0 ]; then
     printf '%s: ERROR: no tracked files matched the scan surface (%s); nothing was scanned\n' \

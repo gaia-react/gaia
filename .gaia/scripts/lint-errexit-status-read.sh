@@ -6,9 +6,15 @@
 # shellcheck disable=SC2016
 #
 # lint-errexit-status-read.sh: flag every read of `$?` that follows a bare
-# command-substitution assignment while errexit is armed. Exit 1 with a
-# file:line report on any hit, exit 0 when clean. Run it directly from the repo
-# root: `bash .gaia/scripts/lint-errexit-status-read.sh`.
+# command-substitution assignment while errexit is armed. Run it directly from
+# the repo root: `bash .gaia/scripts/lint-errexit-status-read.sh`.
+#
+# Exit 0 when clean, and 1 with a file:line report on any hit. Two statuses say
+# the gate never ran rather than that it found nothing: 2 when guard-awk-lib.sh
+# is missing beside this script or refuses one of this gate's calls to it, and 3
+# when a scan-set discovery failed. Every runner folds any non-zero into its own
+# failure today, so the split serves a person reading the output rather than a
+# caller branching on it.
 # gaia:maintainer-only:start
 #
 # Enforced by the sibling bats suite
@@ -1042,20 +1048,26 @@ sh_files=(${GAIA_GUARD_SCAN_FILES[@]+"${GAIA_GUARD_SCAN_FILES[@]}"})
 # That status and no other. Every other one the library returns says the call is
 # wrong or the discovery broke, and swallowing one here would leave this gate,
 # the only one arming the hooks as errexit-on, scanning no hook while printing
-# `clean`: the certified-clean surface the paragraph above names. The library's
-# own message went to /dev/null with the tolerated one, so this names the status
-# it refused with, which is what says which of the two happened.
+# `clean`: the certified-clean surface the paragraph above names.
+#
+# So the library's message is held rather than discarded, and replayed on every
+# status but the tolerated one. Discarding it outright would cost the operator
+# the only text that separates the causes sharing a status: status 3 is returned
+# for a failed discovery, a failed sort, and a scratch file that could not be
+# created, and the line held here is what names which.
 husky_files=()
-if gaia_guard_scan_files lint-errexit-status-read husky 2>/dev/null; then
+husky_err="$(mktemp -t gaia-errexit-husky-XXXXXX)"
+if gaia_guard_scan_files lint-errexit-status-read husky 2>"$husky_err"; then
   husky_files=(${GAIA_GUARD_SCAN_FILES[@]+"${GAIA_GUARD_SCAN_FILES[@]}"})
 else
   husky_status=$?
   if [ "$husky_status" -ne 1 ]; then
-    printf 'lint-errexit-status-read: ERROR: the husky discovery refused with status %s; nothing was scanned\n' \
-      "$husky_status" >&2
+    cat "$husky_err" >&2
+    rm -f "$husky_err"
     exit "$husky_status"
   fi
 fi
+rm -f "$husky_err"
 
 gaia_guard_scan_files lint-errexit-status-read workflows || exit 1
 yaml_files=(${GAIA_GUARD_SCAN_FILES[@]+"${GAIA_GUARD_SCAN_FILES[@]}"})

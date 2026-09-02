@@ -695,9 +695,13 @@ scan_fixture_repo() {
 }
 
 # Run outside any repository, so `git ls-files` fails rather than answering
-# empty. Without a per-set status the `workflows` failure here would be
-# invisible: `shell` is populated, so the union clears the empty check and the
-# gate reports clean over a surface it never opened.
+# empty, and status 3 separates that from the empty surface a caller is allowed
+# to tolerate. EVERY named set fails in this fixture, because failing is a
+# property of the repository rather than of the pathspec, and no fixture can
+# make one set's `git ls-files` fail while another's answers. So this pins the
+# status and not the position of the check that returns it; the unknown-set test
+# below is what pins that, on the arm where a fixture can name a refusing set
+# ahead of a resolvable one.
 @test "a set whose own discovery fails is distinguished from one that matched nothing" {
   local outside="$TMP/not-a-repo"
   mkdir -p "$outside"
@@ -705,6 +709,51 @@ scan_fixture_repo() {
   [ "$status" -eq 3 ]
   grep -qF -- "discovery failed" <<<"$output" || return 1
   grep -qF -- "nothing was scanned" <<<"$output"
+}
+
+# The refusing set is named FIRST and a resolvable set follows it, which is what
+# makes this fail against a check hoisted out of the per-set loop. Reading only
+# the last named set's status leaves this call returning 0 with the `shell` set
+# in the array: a guard scanning a surface other than the one it asked for, and
+# reporting clean, which is the whole reason the status exists.
+@test "a refusing set is caught where a later named set would still resolve" {
+  local repo
+  repo="$(scan_fixture_repo)"
+  run bash -c "cd '$repo' && . '$LIB' && gaia_guard_scan_files probe markdown shell && printf '%s\n' \"\${GAIA_GUARD_SCAN_FILES[@]}\""
+  [ "$status" -eq 2 ]
+  grep -qF -- "markdown" <<<"$output" || return 1
+  grep -qxF -- "tool.sh" <<<"$output" && return 1
+  true
+}
+
+# The sort is the one stage whose failure no repository state can produce, so it
+# is driven through a stub ahead of it on PATH. Without its status read, a sort
+# that died would empty the array and surface as status 1, which is the status a
+# caller is told it may tolerate.
+@test "a sort that fails is not reported as an empty surface" {
+  local repo stub
+  repo="$(scan_fixture_repo)"
+  stub="$TMP/stubbin"
+  mkdir -p "$stub"
+  printf '#!/bin/sh\nexit 4\n' > "$stub/sort"
+  chmod +x "$stub/sort"
+  run bash -c "cd '$repo' && . '$LIB' && PATH=\"$stub:\\$PATH\" gaia_guard_scan_files probe shell"
+  [ "$status" -eq 3 ]
+  grep -qF -- "sorting the scan surface failed" <<<"$output" || return 1
+  grep -qF -- "nothing was scanned" <<<"$output"
+}
+
+# Naming a set twice is refused rather than concatenated, which is what makes the
+# result a union now that nothing downstream deduplicates it: every path in the
+# repeated set would otherwise be scanned twice and reported twice.
+@test "a set named twice is refused rather than returned twice" {
+  local repo
+  repo="$(scan_fixture_repo)"
+  run bash -c "cd '$repo' && . '$LIB' && gaia_guard_scan_files probe shell shell && printf '%s\n' \"\${GAIA_GUARD_SCAN_FILES[@]}\""
+  [ "$status" -eq 2 ]
+  grep -qF -- "named more than once" <<<"$output" || return 1
+  grep -qxF -- "tool.sh" <<<"$output" && return 1
+  true
 }
 
 @test "the union across sets is sorted rather than concatenated set by set" {
