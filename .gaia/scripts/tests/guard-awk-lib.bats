@@ -1025,7 +1025,15 @@ production_guards() {
 assert_consumer_count() {
   local derived recount
   derived="$(library_consumers | grep -c . || true)"
-  recount="$(git -C "$REPO_ROOT" ls-files -z -- ':(exclude)*.bats' \
+  # Anchored to REPO_ROOT rather than to the ambient cwd. `git ls-files` prints
+  # paths relative to the repository it walks, and the grep consuming them
+  # resolves each one against wherever bats was started from, so a run from a
+  # subdirectory opens none of them. The worse case is the one that does not
+  # error: this repo keeps worktrees under .claude/worktrees/, and a run from a
+  # sibling checkout would grep that other tree and could agree with a
+  # derivation over this one. The `cd` is confined to the substitution's own
+  # subshell, so no cwd reaches the rest of the test.
+  recount="$(cd "$REPO_ROOT" && git ls-files -z -- ':(exclude)*.bats' \
     | xargs -0 grep -l -- '_gaia_guard_lib_dir/guard-awk-lib.sh' \
     | grep -c . || true)"
   [ "$derived" -gt 0 ] \
