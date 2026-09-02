@@ -42,14 +42,22 @@ if [ ! -x "$PROJECT_ROOT/.gaia/cli/gaia-maintainer" ]; then
   exit 1
 fi
 
-# Phase 1; Stage. Mirror release.yml lines 56-77.
+# Phase 1; Stage. Mirrors release.yml's "Stage release tree" step. Named rather
+# than cited by line, because a line range into another file goes stale the
+# first time that file gains a line and nothing recounts it.
 SCRATCH="$(mktemp -d -t gaia-dist-stage-XXXXXX)"
 trap 'rm -rf "$SCRATCH"' EXIT
 ALL_TRACKED="$SCRATCH/all-tracked.txt"
 EXCLUDE_REGEX="$SCRATCH/exclude-regex.txt"
 INCLUDE="$SCRATCH/include.txt"
 
-git -C "$PROJECT_ROOT" -c core.quotepath=false ls-files -z | tr '\0' '\n' > "$ALL_TRACKED"
+# Same shared boundary release.yml stages through, so the harness reproduces
+# production's refusal of a newline-bearing tracked path instead of
+# reproducing the lossy conversion that made the defect invisible here (#1669).
+if ! bash "$PROJECT_ROOT/.gaia/scripts/list-tracked-paths.sh" "$PROJECT_ROOT" "$ALL_TRACKED"; then
+  printf 'tracked-path discovery refused or failed; see the diagnostic above\n' >&2
+  exit 1
+fi
 
 # The maintainer CLI is the single compiler of .gaia/release-exclude into
 # anchored regexes; this harness invokes it rather than re-deriving the pattern

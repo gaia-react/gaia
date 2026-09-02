@@ -61,7 +61,7 @@ make_repo() {
 # fixture-main-dir, that exists only to prove the guard's arm consumes the
 # whole main-only-dir set rather than a hand-listed pair), one main-only FILE
 # (cache/gh-artifact-pr.json) that must NOT exempt its cache/ segment, and one
-# per-tree dir (handoff) representing the four keyed entries the flip protects.
+# per-tree dir (handoff) representing the keyed entries the flip protects.
 write_registry() {
   mkdir -p "$REPO/.gaia"
   cat >"$REPO/.gaia/state-registry.json" <<'JSON'

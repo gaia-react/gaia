@@ -489,7 +489,7 @@ doctor_unweighted() {
 # A seam directory whose round-robin split across three shards is lopsided and
 # whose weighted split is not: two heavy files at alternating positions in the
 # sorted listing land on the same shard when position decides, and on different
-# shards when weight does. Six files, so each of the three shards still draws
+# shards when weight does. Six files, so each shard still draws
 # two under round-robin and none of them is empty either way.
 seed_lopsided_tree() {
   local dir="$1" name
@@ -657,8 +657,11 @@ covering_row() {
 # for that half.
 @test "S13: every tracked .bats file is run by a shard or a named non-shard runner" {
   local tracked covered orphans orphan prefix file needle label row rc
-  tracked="$(cd "$REPO_ROOT" && git ls-files '*.bats' | LC_ALL=C sort)"
+  tracked="$(cd "$REPO_ROOT" && git -c core.quotepath=false ls-files -z '*.bats' | tr '\0' '\n' | LC_ALL=C sort)"
   [ -n "$tracked" ] || {
+    # gaia-lint-ignore lint-git-path-quoting: incidental command text in a
+    # diagnostic message string, not an invocation; there is no call here to
+    # give -z to
     echo "git ls-files found no .bats files at all; the comparison would be vacuous" >&2
     return 1
   }
@@ -725,7 +728,7 @@ EOF
   GIT_INDEX_FILE="$index" git -C "$REPO_ROOT" add -N -- "$rel"
 
   local tracked covered orphans
-  tracked="$(cd "$REPO_ROOT" && GIT_INDEX_FILE="$index" git ls-files '*.bats' | LC_ALL=C sort)"
+  tracked="$(cd "$REPO_ROOT" && GIT_INDEX_FILE="$index" git -c core.quotepath=false ls-files -z '*.bats' | tr '\0' '\n' | LC_ALL=C sort)"
   covered="$(union_of_shard_files "$SCRIPT" | LC_ALL=C sort -u)"
   orphans="$(LC_ALL=C comm -23 <(printf '%s\n' "$tracked") <(printf '%s\n' "$covered"))"
 
@@ -759,7 +762,7 @@ EOF
   GIT_INDEX_FILE="$index" git -C "$REPO_ROOT" add -N -- "$rel"
 
   local tracked covered orphans
-  tracked="$(cd "$REPO_ROOT" && GIT_INDEX_FILE="$index" git ls-files '*.bats' | LC_ALL=C sort)"
+  tracked="$(cd "$REPO_ROOT" && GIT_INDEX_FILE="$index" git -c core.quotepath=false ls-files -z '*.bats' | tr '\0' '\n' | LC_ALL=C sort)"
   covered="$(union_of_shard_files "$SCRIPT" | LC_ALL=C sort -u)"
   orphans="$(LC_ALL=C comm -23 <(printf '%s\n' "$tracked") <(printf '%s\n' "$covered"))"
 

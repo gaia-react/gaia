@@ -1,7 +1,7 @@
 #!/usr/bin/env bats
 # Doc-grep suite for the session-lock lifecycle documented in
 # `.claude/skills/gaia/references/spec.md` (the "Session-lock" operational
-# primitive, the step-2 liveness branch, and the four release sites). Pins the
+# primitive, the step-2 liveness branch, and the release sites). Pins the
 # exact prose so a future edit cannot silently drop a clause: the lock-file
 # literal, the reframe copy, the acquire/release-points phrases, the
 # not-mtime rule, the fail-open guarantee, the per-exit release anchors, the

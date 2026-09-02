@@ -285,9 +285,10 @@ describe('validateAnswers', () => {
     ['a trailing space', 'docs/a.md '],
     ['an embedded newline', 'docs/a.md\nwiki/'],
     ['an embedded carriage return', 'docs/a.md\rwiki/'],
-    // git C-quotes a tab in `ls-files` but not in `ls-files -z`, so the
-    // manifest reader and the release staging disagree about which file such
-    // a line masks. A space is quoted by neither, which is why it is allowed.
+    // git C-quotes a tab in a bare `ls-files` but not in `ls-files -z`, so an
+    // exclude line carrying one masks a different file for any reader that
+    // regresses to the bare form. A space is quoted by neither, which is why
+    // it is allowed.
     ['an embedded tab', 'docs/a\tb.md'],
     ['an empty value', ''],
   ])('withhold_metacharacter rejects %s', (_label, badPath) => {

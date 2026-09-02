@@ -11,6 +11,11 @@ import {
   MAINTENANCE_GATE_DEFAULTS,
   MAINTENANCE_GATES,
 } from '../util/git-maintenance.js';
+import {
+  NON_ASCII_STEM,
+  QUOTED_FIRST_BYTE,
+  QUOTEPATH_PIN_ARGS,
+} from '../util/non-ascii-path-fixture.js';
 import {run} from './commit-classify.js';
 import type {CommitClassification} from './commit-classify.js';
 
@@ -114,8 +119,8 @@ const sandboxGit = (root: string, args: string[]): string => {
  *
  * A second mechanism covers the same hazard for the whole run,
  * `util/git-maintenance-env.ts`, which puts the four maintenance keys in the
- * environment so the eighteen other files building a sandbox get them without
- * opting in. This list is not redundant under it: it is what this fixture's own
+ * environment so every other file building a sandbox gets them without opting
+ * in. This list is not redundant under it: it is what this fixture's own
  * hermeticity rests on, and it is the thing the test at the bottom measures.
  */
 const SANDBOX_GIT_CONFIG: [string, string][] = [
@@ -339,6 +344,39 @@ describe('wiki commit-classify', () => {
     const json = classify(sandbox);
     expect(json.commits[0]?.suggestion).toBe('WORTHY');
     expect(json.commits[0]?.suggestion_reason).toContain('wiki-heavy');
+  });
+
+  describe('paths git rewrites on the way out', () => {
+    beforeEach(() => {
+      sandboxGit(sandbox.root, [...QUOTEPATH_PIN_ARGS]);
+    });
+
+    test('the fixture path really is C-quoted, so the assertion below can fail', () => {
+      const sha = sandbox.commit('chore: rewrite concept', {
+        [`wiki/concepts/${NON_ASCII_STEM}.md`]: '# concept\n',
+      });
+
+      const listed = sandboxGit(sandbox.root, [
+        'diff-tree',
+        '--no-commit-id',
+        '--name-only',
+        '-r',
+        sha,
+      ]);
+
+      expect(listed).toContain(QUOTED_FIRST_BYTE);
+      expect(listed).not.toContain(NON_ASCII_STEM);
+    });
+
+    test('a commit whose only wiki page is non-ASCII still reads as wiki-heavy', () => {
+      sandbox.commit('chore: rewrite concept', {
+        [`wiki/concepts/${NON_ASCII_STEM}.md`]: '# concept\n',
+      });
+
+      const json = classify(sandbox);
+      expect(json.commits[0]?.suggestion).toBe('WORTHY');
+      expect(json.commits[0]?.suggestion_reason).toContain('wiki-heavy');
+    });
   });
 
   // This repo writes scoped subjects (`fix(hooks):`) essentially exclusively.

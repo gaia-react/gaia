@@ -7,6 +7,7 @@
  * non-wiki. A second hand-rolled copy is how one of them keeps a defect the
  * other has already fixed.
  */
+import {splitZStream} from './git-z.js';
 
 /**
  * The paths named by a `git status --porcelain -z` stream, status columns
@@ -33,20 +34,17 @@ export const porcelainZPaths = (out: string): string[] => {
   const paths: string[] = [];
   let expectOriginPath = false;
 
-  out
-    .split('\0')
-    .filter((record) => record.length > 0)
-    .forEach((record) => {
-      if (expectOriginPath) {
-        expectOriginPath = false;
-        paths.push(record);
+  splitZStream(out).forEach((record) => {
+    if (expectOriginPath) {
+      expectOriginPath = false;
+      paths.push(record);
 
-        return;
-      }
+      return;
+    }
 
-      expectOriginPath = /[CR]/u.test(record.slice(0, 2));
-      paths.push(record.slice(3));
-    });
+    expectOriginPath = /[CR]/u.test(record.slice(0, 2));
+    paths.push(record.slice(3));
+  });
 
   return paths;
 };

@@ -32,7 +32,7 @@
 # prose that merely NAMES the resolver while still joining a relative path.
 # Tests 1 and 2 below extract the real literal/block from the live source
 # files and run it; only test 3 (the weakest, deliberately third) is a plain
-# grep, and it is scoped tightly to the three converted sites, not repo-wide.
+# grep, and it is scoped tightly to the converted sites, not repo-wide.
 #
 # FIXTURE. A real `git init` main checkout plus a real `git worktree add`
 # linked worktree, both under BATS_TEST_TMPDIR. `.gaia/scripts/main-root-lib.sh`
@@ -113,7 +113,8 @@ _anchor_line() {
 # with `expected context address` BEFORE any assertion in the caller runs --
 # so the test fails for a reason that names neither the anchor nor the file,
 # and every assertion downstream of the extraction is silently not evaluated.
-# Six call sites route through here, so the diagnosis is worth the four lines.
+# Several call sites route through here, so the diagnosis is worth the lines
+# it costs.
 range_between() {
   local file="$1" start_pat="$2" end_pat="$3" s e
   s="$(_anchor_line "$file" "$start_pat")"
@@ -348,7 +349,7 @@ seed_decoy() {
   true
 }
 
-@test "negative space: no bare relative .gaia/local/specs/ write survives at the three converted sites" {
+@test "negative space: no bare relative .gaia/local/specs/ write survives at the converted sites" {
   s1="$(range_between "$PRESET_MD" '3. Create the SPEC folder' '4. Stamp GAIA frontmatter')"
   # s3 (7c) is where the AUDIT.md path is actually constructed, so it is the
   # range this negative check earns its keep on; the positive assertion in S2
@@ -359,7 +360,7 @@ seed_decoy() {
   s2="$(range_between "$SPEC_MD" '#### 7d. Persist AUDIT.md' '### 8. Gate 2')"
   s3="$(range_between "$SPEC_MD" '#### 7c. Disposition routing + apply' '#### 7d. Persist AUDIT.md')"
 
-  # Scoped tightly to the three write sites (not repo-wide): design section 2e
+  # Scoped tightly to the write sites (not repo-wide): design section 2e
   # notes that display prose elsewhere (spec.md:840, :916, :920, the preset's
   # confirmation line) names the generic path for a human to read and is
   # deliberately not converted. Those lines sit outside all three ranges

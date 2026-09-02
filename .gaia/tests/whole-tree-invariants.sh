@@ -40,11 +40,11 @@
 # enumerates every ordinary suite in that directory and would need an exclusion
 # entry per suite saying nothing. The one bats member is named directly instead.
 #
-# Runtime, measured on the tree at the time of writing: the twenty scripts
-# total ~74s, of which shell-lint.sh is ~37s and
-# check-script-capabilities.sh ~17s (it walks the invocation closure of every
-# allowlisted script), and the shard suite ~34s; the whole set measures
-# ~108s end to end. Every figure here is a tilde against host load, and the
+# Runtime, measured on the tree at the time of writing: the WTI_SCRIPTS members
+# total ~48s, of which shell-lint.sh is ~18s and
+# check-script-capabilities.sh ~16s (it walks the invocation closure of every
+# allowlisted script), and the shard suite ~36s; the whole set measures
+# ~83-86s end to end. Every figure here is a tilde against host load, and the
 # spread between two honest samples on different hosts is a couple of seconds
 # a member, so treat a small disagreement as noise and re-measure rather than
 # reconciling it. Time each member the way this script invokes it, the
@@ -74,9 +74,10 @@
 # to be re-visited rather than drifting unnoticed again.
 #
 # What the lever does not catch, stated so it is not mistaken for more than it
-# is: only WTI_SCRIPTS_COUNT_ASOF is machine-checked. The word "twenty" in the
-# paragraph above is prose and nothing compares it to anything, so the same
-# drift can recur one bump later; and a member swapped for another, or simply
+# is: only WTI_SCRIPTS_COUNT_ASOF is machine-checked. The runtime paragraph
+# above therefore names the member set rather than restating its cardinality in
+# prose, so there is no second, unchecked copy of the count left to drift
+# against the checked one; and a member swapped for another, or simply
 # grown, holds the count, so the runtime figures can go stale with the lever
 # satisfied.
 #
@@ -141,6 +142,9 @@ readonly WTI_EXCLUDED='.gaia/scripts/check-debt-issue-metadata.sh|argument-drive
 .gaia/scripts/lint-hook-array-guard.sh|runs transitively, shell-lint.sh invokes it and shell-lint.sh is itself a member
 .gaia/scripts/lint-workflow-run-interpolation.sh|runs transitively, shell-lint.sh invokes it and shell-lint.sh is itself a member
 .gaia/scripts/lint-oracle-blind-invocations.sh|runs transitively, shell-lint.sh invokes it and shell-lint.sh is itself a member
+.gaia/scripts/lint-stale-cardinals.sh|runs transitively, shell-lint.sh invokes it and shell-lint.sh is itself a member
+.gaia/scripts/lint-guard-rule-shell-coverage.sh|runs transitively, shell-lint.sh invokes it and shell-lint.sh is itself a member
+.gaia/scripts/lint-collapsed-signal-trap.sh|runs transitively, shell-lint.sh invokes it and shell-lint.sh is itself a member
 .gaia/tests/bats-shards.sh|harness plumbing, it partitions suites into shards rather than asserting anything; the partition itself is the bats member above
 .gaia/tests/install-bats.sh|harness plumbing, it installs the pinned bats and asserts no invariant
 .gaia/tests/run-bats-parallel.sh|harness plumbing, the hand-run entry point for the same partition
@@ -240,7 +244,7 @@ main() {
   local live_count
   live_count="$( printf '%s\n' "$WTI_SCRIPTS" | grep -c . )"
   if [ "$live_count" -ne "$WTI_SCRIPTS_COUNT_ASOF" ]; then
-    printf '%s: WTI_SCRIPTS holds %s members but the runtime paragraph above was last measured at %s; re-measure it and update both numbers.\n' \
+    printf '%s: WTI_SCRIPTS holds %s members but the runtime paragraph above was last measured at %s; re-measure the runtime paragraph above and update WTI_SCRIPTS_COUNT_ASOF.\n' \
       "$PROG" "$live_count" "$WTI_SCRIPTS_COUNT_ASOF" >&2
     return 2
   fi

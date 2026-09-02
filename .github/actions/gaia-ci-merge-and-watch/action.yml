@@ -68,7 +68,7 @@ runs:
         PR_NUMBER: ${{ inputs.pr-number }}
       run: |
         set -euo pipefail
-        result_json="$(${GITHUB_ACTION_PATH}/lib/wait-for-merge.sh "$PR_NUMBER")"
+        result_json="$("${GITHUB_ACTION_PATH}"/lib/wait-for-merge.sh "$PR_NUMBER")"
         echo "result=$result_json" >> "$GITHUB_OUTPUT"
         echo "merge_state=$(jq -r '.state' <<<"$result_json")" >> "$GITHUB_OUTPUT"
         echo "merge_sha=$(jq -r '.sha // ""' <<<"$result_json")" >> "$GITHUB_OUTPUT"
@@ -95,10 +95,40 @@ runs:
         MERGE_SHA: ${{ steps.wait-for-merge.outputs.merge_sha }}
       run: |
         set -euo pipefail
-        result_json="$(${GITHUB_ACTION_PATH}/lib/wait-for-ci.sh "$MERGE_SHA")"
+        # `rc=0` then `|| rc=$?`; see the enable-auto-merge step for why a bare
+        # assignment followed by `rc=$?` is unreachable under `set -e`. Here the
+        # helper exits non-zero on both of the poller's non-terminal conclusions
+        # while still printing the JSON that says which one, so a bare
+        # assignment takes that status and kills the step on the assignment line
+        # with the diagnosis unread inside the variable. The step still fails at
+        # the end, it just says why first.
+        #
+        # read-ci-result.sh, not wait-for-ci.sh directly: the helper guarantees
+        # what it PRINTS is parseable, which is what lets the jq filters below
+        # run unbracketed. Its header owns why that guard needs a process of its
+        # own.
+        rc=0
+        result_json="$("${GITHUB_ACTION_PATH}"/lib/read-ci-result.sh "$MERGE_SHA")" || rc=$?
+        # That guarantee lasts exactly as long as the helper runs, so one case
+        # sits outside it: the helper never got to print at all, because the file
+        # is missing, its exec bit was lost, or its interpreter is absent. The
+        # substitution then yields the empty string, `jq -r` reads nothing from
+        # it and exits 0, and the annotation below would name an empty
+        # conclusion and no cause. The bracket is emptiness rather than
+        # parseability on purpose: this covers not-running, which is a different
+        # cause than the helper's own fallback reports, and the messages say so.
+        # It does not cover a helper killed mid-write, which leaves a partial
+        # line the jq below still dies on; that is the narrower gap, and
+        # deduplicating the substantive guard is what it is traded for.
+        [[ -n "$result_json" ]] || result_json="$(jq -c -n --arg rc "$rc" '{conclusion: "unknown", run_url: "", error: ("read-ci-result.sh exited " + $rc + " without running")}')"
+        conclusion="$(jq -r '.conclusion' <<<"$result_json")"
         echo "result=$result_json" >> "$GITHUB_OUTPUT"
-        echo "conclusion=$(jq -r '.conclusion' <<<"$result_json")" >> "$GITHUB_OUTPUT"
+        echo "conclusion=$conclusion" >> "$GITHUB_OUTPUT"
         echo "run_url=$(jq -r '.run_url // ""' <<<"$result_json")" >> "$GITHUB_OUTPUT"
+        if [[ $rc -ne 0 ]]; then
+          echo "::error title=GAIA CI::post-merge CI watch on $MERGE_SHA ended as '$conclusion': $(jq -r '.error // "no further detail was reported"' <<<"$result_json")"
+          exit "$rc"
+        fi
 
     - id: branch-on-ci
       shell: bash
@@ -164,7 +194,7 @@ runs:
         REVERT_FAILED_RUN_URL: ''
       run: |
         set -euo pipefail
-        body="$(${GITHUB_ACTION_PATH}/lib/render-issue.sh "${GITHUB_WORKSPACE}/.gaia/templates/ci-issues/severity-important-revert-opened.md")"
+        body="$("${GITHUB_ACTION_PATH}"/lib/render-issue.sh "${GITHUB_WORKSPACE}/.gaia/templates/ci-issues/severity-important-revert-opened.md")"
         issue_url="$(printf '%s\n' "$body" | gh issue create \
           --title "GAIA CI: PR #${ORIGINAL_PR} reverted via PR #${REVERT_PR}" \
           --label "severity:important" \
@@ -182,7 +212,7 @@ runs:
         REVERT_PR: ${{ steps.open-revert.outputs.revert_pr }}
       run: |
         set -euo pipefail
-        result_json="$(${GITHUB_ACTION_PATH}/lib/wait-for-merge.sh "$REVERT_PR")"
+        result_json="$("${GITHUB_ACTION_PATH}"/lib/wait-for-merge.sh "$REVERT_PR")"
         echo "revert_merge_state=$(jq -r '.state' <<<"$result_json")" >> "$GITHUB_OUTPUT"
         echo "revert_merge_sha=$(jq -r '.sha // ""' <<<"$result_json")" >> "$GITHUB_OUTPUT"
 
@@ -195,9 +225,25 @@ runs:
         REVERT_MERGE_SHA: ${{ steps.wait-for-revert-merge.outputs.revert_merge_sha }}
       run: |
         set -euo pipefail
-        result_json="$(${GITHUB_ACTION_PATH}/lib/wait-for-ci.sh "$REVERT_MERGE_SHA")"
-        echo "revert_conclusion=$(jq -r '.conclusion' <<<"$result_json")" >> "$GITHUB_OUTPUT"
+        # Same helper, same non-zero-exit handling, and same not-running bracket
+        # as the wait-for-ci step above, for the same reasons: this is the same
+        # watch, so its non-terminal conclusions and both of its failure cases
+        # arrive here the same way. What is this step's own is its input SHA,
+        # its local variable name, its outputs, which differ from that step's in
+        # their keys and in this step publishing no raw `result=`, and its error
+        # annotation, which names the revert watch rather than the post-merge
+        # one. The two steps' output value expressions are identical, so the
+        # wording difference is in the annotation alone.
+        rc=0
+        result_json="$("${GITHUB_ACTION_PATH}"/lib/read-ci-result.sh "$REVERT_MERGE_SHA")" || rc=$?
+        [[ -n "$result_json" ]] || result_json="$(jq -c -n --arg rc "$rc" '{conclusion: "unknown", run_url: "", error: ("read-ci-result.sh exited " + $rc + " without running")}')"
+        revert_conclusion="$(jq -r '.conclusion' <<<"$result_json")"
+        echo "revert_conclusion=$revert_conclusion" >> "$GITHUB_OUTPUT"
         echo "revert_run_url=$(jq -r '.run_url // ""' <<<"$result_json")" >> "$GITHUB_OUTPUT"
+        if [[ $rc -ne 0 ]]; then
+          echo "::error title=GAIA CI::revert CI watch on $REVERT_MERGE_SHA ended as '$revert_conclusion': $(jq -r '.error // "no further detail was reported"' <<<"$result_json")"
+          exit "$rc"
+        fi
 
     - id: branch-on-revert-conclusion
       if: steps.open-revert.outcome == 'success' && steps.open-revert.conclusion == 'success'
@@ -231,7 +277,7 @@ runs:
       run: |
         set -euo pipefail
         gaia ci-revert mark-failed --pr "$PR_NUMBER" --json >/dev/null
-        body="$(${GITHUB_ACTION_PATH}/lib/render-issue.sh "${GITHUB_WORKSPACE}/.gaia/templates/ci-issues/severity-critical-revert-failed.md")"
+        body="$("${GITHUB_ACTION_PATH}"/lib/render-issue.sh "${GITHUB_WORKSPACE}/.gaia/templates/ci-issues/severity-critical-revert-failed.md")"
         issue_url="$(printf '%s\n' "$body" | gh issue create \
           --title "GAIA CI: revert of PR #${ORIGINAL_PR} also failed; bot stopped" \
           --label "severity:critical" \

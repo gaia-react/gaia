@@ -6,8 +6,8 @@
  * `app/**`, so the defaults below reproduce the previous hardcoded behavior
  * exactly. What the literals could not express is a repo whose source lives
  * anywhere else: GAIA's own clone keeps its product in `.gaia/` and `.claude/`
- * and touches `app/` in zero commits, so all three of rules 6/7's
- * discriminating branches were unreachable and every source commit fell
+ * and touches `app/` in zero commits, so every one of rules 6/7's
+ * discriminating branches was unreachable and every source commit fell
  * through to the fail-open default.
  *
  * Configured under `gaia.wikiClassify` in the repo's `package.json`, matching

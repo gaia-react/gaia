@@ -320,7 +320,7 @@ digest_of() {
 }
 
 # run_stdout_only <cmd...>: runs `bats run` with stderr discarded, so $output
-# is purely stdout. The four raw scripts (stages 1-4) emit a diagnostic to
+# is purely stdout. The raw scripts (stages 1-4) emit a diagnostic to
 # stderr on their fail-closed paths in addition to their stdout answer;
 # without this, bats' combined stdout+stderr capture would fold the
 # diagnostic into $output and break an exact-match assertion. Same idiom as

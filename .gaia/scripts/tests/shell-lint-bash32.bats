@@ -99,8 +99,10 @@ teardown() {
 # trivially, degrading it from "proved no sweep ran" to "the warning printed".
 # A read loop rather than `head -z`: that flag is GNU-only and absent from
 # macOS's head, which is the platform this whole gate exists for.
-# `.gaia/scripts/lint-git-path-quoting.sh` excludes *.bats by design, so nothing
-# catches this shape here.
+# `.gaia/scripts/lint-git-path-quoting.sh` now scans `*.bats` too, through the
+# shared fixture-versus-execution discriminator, so an executed helper like
+# `tracked_sh` above sits on that gate's surface rather than being exempt from
+# it.
 #
 # Args: first|last
 tracked_sh() {
@@ -141,9 +143,22 @@ gate_pass_headers() {
 # that is a syntax error only on 3.2 clears every pass above it; this pass is
 # the one that reads the tree with the interpreter the scripts declare support
 # for. Its four branches follow.
+#
+# Every invocation below runs `--only bash32-parse` rather than the whole gate,
+# and that is load-bearing rather than tidy. Each of these tests asserts the
+# bash-3.2 parse pass's own behavior plus the gate's pass/FAIL verdict, and
+# nothing about the passes above it, but the whole gate now runs three shell
+# guards that scan every tracked bats suite. Measured on this tree: the whole
+# gate takes 69 seconds where this one pass takes 1. Six invocations at the
+# wide spelling put roughly 400 seconds into one CI shard leg against a
+# 780-second cap that `wiki/decisions/Sharded CI Test Matrix.md` records as
+# unraisable. That page also names a suite's own runtime as the remaining
+# lever for this group, which is what this is. Widening one of these back to
+# the bare gate buys no assertion and costs about 68 seconds.
 
 @test "the bash-3.2 parse pass runs and stays green when every script parses" {
-  run env PATH="$STUB_DIR:$PATH" SHELL_LINT_BASH32="$STUB_DIR/bash32" bash "$GATE"
+  run env PATH="$STUB_DIR:$PATH" SHELL_LINT_BASH32="$STUB_DIR/bash32" \
+    bash "$GATE" --only bash32-parse
   [ "$status" -eq 0 ]
   grep -qF -- "bash-3.2 parse ($STUB_DIR/bash32 -n)" <<<"$output"
   grep -qF -- "shell-lint passed" <<<"$output"
@@ -153,7 +168,7 @@ gate_pass_headers() {
   first_sh="$(tracked_sh first)"
   [ -n "$first_sh" ]
   run env PATH="$STUB_DIR:$PATH" SHELL_LINT_BASH32="$STUB_DIR/bash32" \
-    BASH32_FAIL_ON="$first_sh" bash "$GATE"
+    BASH32_FAIL_ON="$first_sh" bash "$GATE" --only bash32-parse
   [ "$status" -eq 1 ]
   grep -qF -- "shell-lint FAILED" <<<"$output"
   # The interpreter's own diagnostic has to reach the operator, or the gate
@@ -175,7 +190,7 @@ gate_pass_headers() {
   [ -n "$last_sh" ]
   [ "$first_sh" != "$last_sh" ]
   run env PATH="$STUB_DIR:$PATH" SHELL_LINT_BASH32="$STUB_DIR/bash32" \
-    BASH32_FAIL_ON="$first_sh $last_sh" bash "$GATE"
+    BASH32_FAIL_ON="$first_sh $last_sh" bash "$GATE" --only bash32-parse
   [ "$status" -eq 1 ]
   grep -qF -- "shell-lint FAILED" <<<"$output"
   grep -qF -- "$first_sh: line 1: syntax error" <<<"$output"
@@ -190,7 +205,7 @@ gate_pass_headers() {
   first_sh="$(tracked_sh first)"
   [ -n "$first_sh" ]
   run env PATH="$STUB_DIR:$PATH" SHELL_LINT_BASH32="$STUB_DIR/bash32" \
-    BASH32_MAJOR=5 BASH32_FAIL_ON="$first_sh" bash "$GATE"
+    BASH32_MAJOR=5 BASH32_FAIL_ON="$first_sh" bash "$GATE" --only bash32-parse
   # A skip is not a failure: an ubuntu runner has no bash 3.2 and must still be
   # able to clear the rest of the gate.
   [ "$status" -eq 0 ]
@@ -206,7 +221,8 @@ gate_pass_headers() {
 }
 
 @test "the bash-3.2 parse pass fails closed when the interpreter is missing" {
-  run env PATH="$STUB_DIR:$PATH" SHELL_LINT_BASH32="$STUB_DIR/no-such-bash" bash "$GATE"
+  run env PATH="$STUB_DIR:$PATH" SHELL_LINT_BASH32="$STUB_DIR/no-such-bash" \
+    bash "$GATE" --only bash32-parse
   [ "$status" -eq 1 ]
   grep -qF -- "is not executable; the bash-3.2 parse pass cannot run" <<<"$output"
   grep -qF -- "shell-lint FAILED" <<<"$output"
@@ -214,7 +230,7 @@ gate_pass_headers() {
 
 @test "the bash-3.2 parse pass fails closed when the interpreter reports no version" {
   run env PATH="$STUB_DIR:$PATH" SHELL_LINT_BASH32="$STUB_DIR/bash32" \
-    BASH32_MAJOR= bash "$GATE"
+    BASH32_MAJOR= bash "$GATE" --only bash32-parse
   # Fail closed rather than skip: an interpreter whose version cannot be read is
   # one this pass cannot place on either side of the 3.2 line, and reporting
   # clean having parsed nothing is the outcome the pass is here to rule out.

@@ -29,7 +29,7 @@ setup() {
   # for an environment this suite cannot control. CI coverage comes from
   # cli-tests.yml instead, which installs the CLI's dependencies and runs
   # this file by name, so the skip never hides the binding: on that runner the
-  # guard is false and all six tests execute.
+  # guard is false and every test executes.
   [ -d "$CLI_DIR/node_modules" ] || skip "no node_modules on this runner"
 
   START_MARKER='<!-- gaia:audit-remit:start -->'
@@ -114,9 +114,8 @@ ts_scan() {
 # sandbox and classifies its outcome for the one member from what it actually
 # did, never from a count computed here. $1 = sandbox dir.
 classify_writer() {
-  local dir="$1" out status
-  out="$(bash "$WRITER" --root "$dir" --config "$dir/.gaia/audit-ci.yml" 2>&1)"
-  status=$?
+  local dir="$1" out status=0
+  out="$(bash "$WRITER" --root "$dir" --config "$dir/.gaia/audit-ci.yml" 2>&1)" || status=$?
   if [ "$status" -ne 0 ]; then
     printf 'fail'
     return 0

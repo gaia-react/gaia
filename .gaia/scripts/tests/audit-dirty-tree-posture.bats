@@ -436,7 +436,7 @@ gating_withhold_phrases() {
 }
 
 @test "the drift guard catches every withhold phrasing the gating members really use" {
-  # The four fixtures around this one are invented rewordings; this one is not.
+  # The fixtures around this one are invented rewordings; this one is not.
   # Each phrase here is lifted verbatim from a member whose paragraph a careless
   # edit would copy wholesale, which is the vector that actually happens.
   local phrase n=0

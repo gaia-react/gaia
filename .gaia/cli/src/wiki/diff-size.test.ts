@@ -3,6 +3,11 @@ import {execFileSync} from 'node:child_process';
 import {mkdirSync, mkdtempSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
+import {
+  NON_ASCII_STEM,
+  QUOTED_FIRST_BYTE,
+  QUOTEPATH_PIN_ARGS,
+} from '../util/non-ascii-path-fixture.js';
 import {computeDiffSize, run} from './diff-size.js';
 
 type Sandbox = {
@@ -16,6 +21,11 @@ type Sandbox = {
 const setupSandbox = (): Sandbox => {
   const root = mkdtempSync(path.join(tmpdir(), 'gaia-wiki-diff-size-'));
   execFileSync('git', ['init', '-q', '-b', 'main'], {cwd: root});
+  execFileSync('git', QUOTEPATH_PIN_ARGS, {cwd: root});
+  // git's own default too. Set explicitly for the same reason: a developer
+  // whose global config carries `diff.renames=false` would make the rename
+  // block below vacuous by turning every rename into an add/delete pair.
+  execFileSync('git', ['config', 'diff.renames', 'true'], {cwd: root});
   execFileSync('git', ['config', 'user.email', 'test@example.com'], {
     cwd: root,
   });
@@ -78,6 +88,20 @@ const captureStdio = (): {
 
 const fillLines = (count: number, content: string): string =>
   `${Array.from({length: count}, () => content).join('\n')}\n`;
+
+// 100 lines carried over plus 30 new ones is 77% similarity, well past
+// git's 50% rename threshold, so this is detected as a rename rather than
+// an add/delete pair.
+const renameAndExtend = (sandbox: Sandbox): void => {
+  sandbox.writeFile('wiki/old.md', fillLines(100, 'line'));
+  sandbox.commitAll('base');
+  sandbox.removeFile('wiki/old.md');
+  sandbox.writeFile(
+    'wiki/new.md',
+    fillLines(100, 'line') + fillLines(30, 'extra')
+  );
+  sandbox.commitAll('rename and extend');
+};
 
 describe('wiki diff-size', () => {
   let sandbox: Sandbox;
@@ -276,5 +300,70 @@ describe('wiki diff-size', () => {
     const exit = run(['--help'], {cwd: sandbox.root});
     expect(exit).toBe(0);
     expect(stdio.outputs.join('')).toContain('Usage: gaia wiki diff-size');
+  });
+
+  describe('paths git rewrites on the way out', () => {
+    test('the fixture path really is C-quoted, so the assertion below can fail', () => {
+      sandbox.writeFile(`wiki/${NON_ASCII_STEM}.md`, fillLines(40, 'line'));
+      sandbox.commitAll('base');
+
+      const listed = execFileSync(
+        'git',
+        ['ls-tree', '-r', '-l', 'HEAD', '--', 'wiki/'],
+        {cwd: sandbox.root, encoding: 'utf8'}
+      );
+
+      expect(listed).toContain(QUOTED_FIRST_BYTE);
+      expect(listed).not.toContain(NON_ASCII_STEM);
+    });
+
+    test('a non-ASCII page is sized by its real line count, not as zero', () => {
+      sandbox.writeFile('wiki/ascii.md', fillLines(10, 'line'));
+      sandbox.writeFile(`wiki/${NON_ASCII_STEM}.md`, fillLines(40, 'line'));
+      sandbox.commitAll('base');
+      sandbox.writeFile('README.md', 'unrelated change\n');
+      sandbox.commitAll('non-wiki edit');
+
+      const result = computeDiffSize({cwd: sandbox.root, thresholdPct: 25});
+      expect(result.baseLines).toBe(50);
+    });
+
+    test('a page whose name holds a newline stays one blob', () => {
+      sandbox.writeFile('wiki/two\nnames.md', fillLines(40, 'line'));
+      sandbox.commitAll('base');
+      sandbox.writeFile('README.md', 'unrelated change\n');
+      sandbox.commitAll('non-wiki edit');
+
+      const result = computeDiffSize({cwd: sandbox.root, thresholdPct: 25});
+      expect(result.baseLines).toBe(40);
+    });
+  });
+
+  describe('renames, which numstat spells across three fragments', () => {
+    test('the fixture really is a rename record, so the assertion below can fail', () => {
+      renameAndExtend(sandbox);
+
+      const numstat = execFileSync(
+        'git',
+        ['diff', '--numstat', '-z', 'HEAD~1...HEAD', '--', 'wiki/'],
+        {cwd: sandbox.root, encoding: 'utf8'}
+      );
+
+      // The counts fragment's path field is empty, so it ends at a tab
+      // immediately followed by NUL, and the preimage and postimage arrive
+      // as the two fragments after it.
+      expect(numstat).toBe('30\t0\t\0wiki/old.md\0wiki/new.md\0');
+    });
+
+    test("a renamed page's changed lines reach the numerator", () => {
+      renameAndExtend(sandbox);
+
+      const result = computeDiffSize({cwd: sandbox.root, thresholdPct: 25});
+      expect(result.baseLines).toBe(100);
+      expect(result.changedLines).toBe(30);
+      expect(result.ratioPct).toBe(30);
+      // The whole point: dropping the rename reads 0/100 and merges.
+      expect(result.decision).toBe('exceeded');
+    });
   });
 });

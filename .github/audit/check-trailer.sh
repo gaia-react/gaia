@@ -57,7 +57,7 @@
 #   only the LAST matching parsed line is considered.
 #
 # Exit code
-#   0 always. The workflow consumes the four output lines.
+#   0 always. The workflow consumes every output line.
 #
 # References
 #   Version normalizer: .claude/hooks/lib/gaia-version.sh

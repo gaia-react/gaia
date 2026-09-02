@@ -7,6 +7,7 @@
  */
 import {execFileSync} from 'node:child_process';
 import {MAX_GIT_BUFFER_BYTES} from '../../util/git-buffer.js';
+import {gitZArgs, splitZStream} from '../../util/git-z.js';
 
 type RunOptions = {
   cwd?: string;
@@ -209,21 +210,22 @@ const parseShortStat = (
 
 const fileListForCommit = (sha: string, cwd: string): string[] => {
   // `git diff-tree --no-commit-id --name-only -r <sha>` emits one path per
-  // line touched by `<sha>`. We prefer this to `git show --name-only`
+  // record touched by `<sha>`. We prefer this to `git show --name-only`
   // because newer git versions reject the `--no-patch --name-only` combo
   // older docs recommended.
+  //
+  // `gitZArgs` supplies the flags that keep a page whose name carries a
+  // non-ASCII byte readable here; its docblock states why they are
+  // load-bearing. The caller in `commit-classify.ts` prefix-tests these paths
+  // with `startsWith('wiki/')`, which a C-quoted spelling fails outright.
   const result = tryRunGit(
-    ['diff-tree', '--no-commit-id', '--name-only', '-r', sha],
+    gitZArgs('diff-tree', ['--no-commit-id', '--name-only', '-r', sha]),
     {cwd}
   );
 
   if (result === null) return [];
 
-  return result.split('\n').flatMap((line) => {
-    const trimmed = line.trim();
-
-    return trimmed.length > 0 ? [trimmed] : [];
-  });
+  return splitZStream(result);
 };
 
 type ChunkParse = {

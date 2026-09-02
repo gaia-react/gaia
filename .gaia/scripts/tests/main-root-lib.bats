@@ -172,9 +172,9 @@ resolve_tree_from() {
 # .gaia/statusline/gaia-statusline.sh's own formula:
 # dirname(absolute(git rev-parse --git-common-dir)), physically resolved via
 # `pwd -P`. This is the differential test's oracle for SPEC-058 success
-# criterion 2 / MIG-011: the statusline is one of the five existing sites that
+# criterion 2 / MIG-011: the statusline is one of the existing sites that
 # already normalizes physically, so it is the self-consistent predecessor to
-# compare against, not the thirteen sites that normalize logically.
+# compare against, not the sites that normalize logically.
 old_derivation() {
   local d="$1" common abs
   common="$(git -C "$d" rev-parse --git-common-dir 2>/dev/null)" || return 1

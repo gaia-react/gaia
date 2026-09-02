@@ -834,7 +834,7 @@ assert_denied_cap() {
 # allowlist asks "is this a recognized placeholder", which every honest
 # `.env.example` value fails; shape asks "is this an unbroken 13+ alphanumeric
 # run mixing letters and digits", which every one of them passes and a pasted
-# key does not. The three pattern rules run there as everywhere.
+# key does not. The pattern rules run there as everywhere.
 
 @test "a short placeholder assignment in .env.example is allowed" {
   run_hook_write_path '.env.example' "$(printf 'SESSION_SECRET=%s\n' 'local')"
@@ -972,7 +972,7 @@ assert_denied_cap() {
   assert_denied
 }
 
-# The three pattern rules do not care which file they are writing into.
+# The pattern rules do not care which file they are writing into.
 
 @test "an AWS access-key id in .env.example is still denied" {
   local aws_id="AKIA""IOSFODNN7EXAMPLE"
@@ -1045,7 +1045,7 @@ assert_denied_cap() {
   assert_allowed_by_json
 }
 
-# The test above passes both when all 200 lines were judged and when a
+# The test above passes both when every line up to the cap was judged and when a
 # regression short-circuits to allow at the cap without judging any of them, and
 # truncate-then-allow is precisely the fail-open the cap exists to refuse. This
 # one carries a secret on the LAST line under the cap, so it can only deny if

@@ -71,9 +71,9 @@
  * version is what keeps the failure loud.
  *
  * Fires on the pull request that causes the drift: root `package.json`,
- * `pnpm-lock.yaml` and `pnpm-workspace.yaml` are all three in the `code` paths
+ * `pnpm-lock.yaml` and `pnpm-workspace.yaml` are each in the `code` paths
  * filter of `cli-tests.yml`, whose `Vitest (.gaia/cli)` job is a declared-required
- * context. Keep all three entries, one per subject above, because each guard has
+ * context. Keep an entry for every subject named above, because each guard has
  * a different root-side trigger: a manifest bump for the pin, a re-resolve for the
  * transitive version (which touches no manifest at all), and a settings edit for
  * the hardening. Without them a guard first fires on some later, unrelated

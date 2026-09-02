@@ -102,7 +102,7 @@ EOF
 # per run, never once per path.
 # ---------------------------------------------------------------------------
 
-@test "surfaces exist: the classifier, the machinery list, and all three consumers" {
+@test "surfaces exist: the classifier, the machinery list, and every consumer" {
   [ -f "$SCOPE_LIB" ]
   [ -f "$MACHINERY_LIB" ]
   [ -f "$RESOLVER" ]
@@ -644,14 +644,14 @@ assert_every_machinery_path_owned() {
           echo "representative path unowned: $rep" >&2
           fail=1
         fi
-        while IFS= read -r tracked; do
+        while IFS= read -r -d '' tracked; do
           [ -n "$tracked" ] || continue
           owner="$(audit_owner_for_path "$tracked")"
           if [ -z "$owner" ]; then
             echo "tracked file unowned: $tracked (entry $entry)" >&2
             fail=1
           fi
-        done < <(git -C "$REPO_ROOT" ls-files "$prefix")
+        done < <(git -C "$REPO_ROOT" ls-files -z "$prefix")
         ;;
       ".gaia/cli/templates/workflows/code-review-audit.yml.tmpl")
         # Named exactly, not a relaxed `*)` arm: every OTHER machinery path

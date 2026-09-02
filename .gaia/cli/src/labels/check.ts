@@ -35,6 +35,7 @@ import {EXIT_CODES} from '../exit.js';
 import type {LabelRegistry} from '../schemas/labels.js';
 import {structuredError} from '../stderr.js';
 import {takeNonFlagValue} from '../util/argv.js';
+import {gitZArgs, splitZStream} from '../util/git-z.js';
 import {resolveRepoRoot} from '../util/repo-root.js';
 import {readRegistry} from './registry.js';
 
@@ -412,7 +413,14 @@ export const run = (argv: readonly string[]): number => {
     return EXIT_ENVIRONMENT;
   }
 
-  const listed = runGit(['ls-files'], {cwd: repoRoot});
+  // A C-quoted path names no file on disk, and `readScannableFile` answers
+  // null on the ENOENT that follows, so the file would be skipped with no
+  // diagnostic and its label literals never read: this guard's worst failure
+  // direction, a green run indistinguishable from one that never opened the
+  // file. `gitZArgs` states why its flags prevent that.
+  const listed = runGit(gitZArgs('ls-files'), {
+    cwd: repoRoot,
+  });
 
   if (listed.exitCode !== 0) {
     structuredError({
@@ -425,9 +433,7 @@ export const run = (argv: readonly string[]): number => {
     return EXIT_ENVIRONMENT;
   }
 
-  const files = listed.stdout
-    .split('\n')
-    .filter((file) => file !== '' && !isExcluded(file));
+  const files = splitZStream(listed.stdout).filter((file) => !isExcluded(file));
 
   const findings = scanTree(repoRoot, registry, files);
 

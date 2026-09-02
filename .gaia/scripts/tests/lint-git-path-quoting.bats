@@ -54,14 +54,26 @@ teardown() {
   return 0
 }
 
-# fixture_repo: an initialized git repo in $TMP with no files yet.
+# fixture_repo: an initialized git repo in $TMP, seeded with one benign tracked
+# file of each kind the guard's two discoveries hard-error on when empty: a
+# non-bats file for the original scan_files check, and a clean `*.bats` suite
+# for gaia_guard_bats_files. A test that only cares about one surface would
+# otherwise red on the OTHER surface's now-mandatory non-emptiness.
 fixture_repo() {
+  TMP="$(mktemp -d -t git-path-quoting-lint-XXXXXX)"
+  git -C "$TMP" init -q .
+  fixture_file seed.bats $'@test "seed" {\n  true\n}'
+}
+
+# fixture_repo_bare: like fixture_repo, but seeds nothing. For the tests that
+# assert on an EMPTY scan surface itself.
+fixture_repo_bare() {
   TMP="$(mktemp -d -t git-path-quoting-lint-XXXXXX)"
   git -C "$TMP" init -q .
 }
 
 # fixture_file <relpath> <body>: write <body> to $TMP/<relpath> and track it.
-# Call fixture_repo first.
+# Call fixture_repo or fixture_repo_bare first.
 fixture_file() {
   mkdir -p "$TMP/$(dirname "$1")"
   printf '%s\n' "$2" > "$TMP/$1"
@@ -109,7 +121,7 @@ run_linter() {
 }
 
 # The binding test. `#1229`'s Suggested fix: whichever guard lands must be shown
-# to red against at least one of the four historical sites in its pre-fix form.
+# to red against at least one of the historical sites in its pre-fix form.
 # This is .claude/hooks/worthiness-presence-check.sh:169 as it stood before
 # PR #1227 fixed it.
 @test "reds against the pre-fix worthiness-presence-check.sh derivation" {
@@ -406,6 +418,21 @@ run_linter() {
   true
 }
 
+# The `*.bats` discovery hard-errors independently of the `*.sh`/md/YAML
+# discovery: a repo carrying a tracked shell script and no tracked bats suite
+# must not print clean having scanned zero suites. `fixture_repo_bare` because
+# `fixture_repo`'s own seed would otherwise satisfy the very condition this
+# test exists to red on.
+@test "an empty bats scan set is a hard error, not a clean tree" {
+  fixture_repo_bare
+  fixture_file tracked.sh $'#!/usr/bin/env bash\necho hello'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- "no tracked bats suites matched" <<<"$output"
+  grep -qF -- "clean" <<<"$output" && return 1
+  true
+}
+
 # The command-position test recognizes `=` and `(` and nothing else. Both error
 # directions are pinned here so neither can drift unnoticed: parenthetical prose
 # is flagged (fail-closed, the repair is to reword), and a substitution opening
@@ -426,22 +453,19 @@ run_linter() {
   [ "$status" -eq 0 ]
 }
 
-# The scan surface stops at shell, husky hooks, workflow YAML and markdown. The
-# bats suites are deliberately outside it: check-audit-base-derivation.bats carries
-# five intentionally-unquoted agent-prose fixtures for assertion 4, and five
-# sibling suites run an unquoted `diff --name-only` under `core.quotePath=true`
-# as the positive control proving the hazard is real. A scanner reading raw
-# lines cannot tell those from an executed call, and "fixing" them would delete
-# the evidence the class exists.
-@test "a bats suite is outside the scan surface" {
+# `*.bats` is on the scan surface now, through guard-awk-lib.sh's shared
+# fixture-versus-execution discriminator: an executed call inside a `@test`
+# body is shell like any other, and this pins that it is reported rather than
+# exempted by file extension.
+@test "an executed call inside a bats @test body is flagged" {
   fixture_repo
   # A tracked, scannable, clean file so the empty-scan-set guard cannot make
-  # this pass for the wrong reason: the exit 0 must come from the .bats file
-  # being unscanned, not from there being nothing to scan.
+  # this pass for the wrong reason.
   fixture_file tracked.sh $'#!/usr/bin/env bash\necho hello'
   fixture_file probe.bats $'@test "x" {\n  quoted="$(git diff --name-only "${base}...HEAD")"\n}'
   run_linter
-  [ "$status" -eq 0 ]
+  [ "$status" -eq 1 ]
+  grep -qF -- "probe.bats:2" <<<"$output"
 }
 
 # 3b. The ls-files half of the class
@@ -557,10 +581,10 @@ run_linter() {
 
 # 3c. The markdown half: an executed snippet on a documentation page
 
-# The three sites `#1400` names, each in its PRE-FIX form, one per test. Their
+# The sites `#1400` names, each in its PRE-FIX form, one per test. Their
 # point is the fixture BODY, the literal pre-fix line copied from the page; the
 # paths are the real ones so a reader can trace a failing test back to what it
-# was written for. The first of the three was repaired by hand before any check
+# was written for. The first of them was repaired by hand before any check
 # could see it, so its fixture is the only remaining record that the widened
 # detector would have caught it.
 
@@ -713,4 +737,347 @@ run_linter() {
   fixture_file probe.sh $'#!/usr/bin/env bash\nfiles=$(git ls-files -z)'
   run_linter
   [ "$status" -eq 0 ]
+}
+
+# 5. `*.bats` on the scan surface
+#
+# guard-awk-lib.sh's shared discriminator tells a fixture literal, written
+# through a recognized helper, from executed shell a suite runs through
+# `bash -c` or `eval`. Everything below is against a REAL `.bats` fixture file,
+# through the two-pass `scan_bats_file` invocation.
+
+# 5a. The pragma
+
+@test "an unused pragma above a clean bats line is reported" {
+  fixture_repo
+  fixture_file tracked.sh $'#!/usr/bin/env bash\necho hello'
+  fixture_file probe.bats $'@test "x" {\n  # gaia-lint-ignore lint-git-path-quoting: nothing to suppress here\n  echo hello\n}'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- "probe.bats:2: unused gaia-lint-ignore for lint-git-path-quoting" <<<"$output"
+}
+
+@test "a pragma naming an unresolvable guard token is reported as malformed" {
+  fixture_repo
+  fixture_file tracked.sh $'#!/usr/bin/env bash\necho hello'
+  fixture_file probe.bats $'@test "x" {\n  # gaia-lint-ignore not-a-real-guard: reason given\n  echo hello\n}'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- "probe.bats:2: malformed gaia-lint-ignore: not-a-real-guard does not resolve to .gaia/scripts/not-a-real-guard.sh" <<<"$output"
+  [ "$(grep -cF -- "malformed gaia-lint-ignore" <<<"$output")" -eq 1 ]
+}
+
+@test "a pragma with a resolving token and no reason is reported as malformed" {
+  fixture_repo
+  fixture_file tracked.sh $'#!/usr/bin/env bash\necho hello'
+  fixture_file probe.bats $'@test "x" {\n  # gaia-lint-ignore lint-git-path-quoting:\n  echo hello\n}'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- "probe.bats:2: malformed gaia-lint-ignore for lint-git-path-quoting: no reason given" <<<"$output"
+  [ "$(grep -cF -- "malformed gaia-lint-ignore" <<<"$output")" -eq 1 ]
+}
+
+# This also pins the scripts_dir contract (README C1.3): the fixture repo
+# carries no .gaia/scripts/ of its own, so a token resolved cwd-relative would
+# read "lint-git-path-quoting" as orphaned. Resolution against the guard's OWN
+# directory is what lets a well-formed token here succeed.
+@test "a pragma naming this guard suppresses a genuine instance, resolved against the guard's own directory" {
+  fixture_repo
+  fixture_file tracked.sh $'#!/usr/bin/env bash\necho hello'
+  fixture_file probe.bats $'@test "x" {\n  # gaia-lint-ignore lint-git-path-quoting: the unquoted call IS the point of this test\n  changed=$(git diff --name-only "${base}...HEAD")\n}'
+  run_linter
+  [ "$status" -eq 0 ]
+}
+
+# The off-surface message names the TARGET line (where gaia_scan_pragma_here
+# answers 1), not the pragma comment's own line.
+@test "a pragma above a genuine instance in a tracked .sh file is honored nowhere" {
+  fixture_repo
+  fixture_file probe.sh $'#!/usr/bin/env bash\n# gaia-lint-ignore lint-git-path-quoting: pretending to waive this\nchanged=$(git diff --name-only "${base}...HEAD")'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- "probe.sh:3" <<<"$output"
+  grep -qF -- "probe.sh:3: gaia-lint-ignore is honored only in *.bats" <<<"$output"
+}
+
+@test "a pragma above a genuine instance in a husky hook is honored nowhere" {
+  fixture_repo
+  fixture_file .husky/pre-commit $'#!/usr/bin/env sh\n# gaia-lint-ignore lint-git-path-quoting: pretending to waive this\nchanged=$(git diff --name-only HEAD~1...HEAD)'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- ".husky/pre-commit:3" <<<"$output"
+  grep -qF -- ".husky/pre-commit:3: gaia-lint-ignore is honored only in *.bats" <<<"$output"
+}
+
+# A tilde fence rather than a backtick fence: guard-awk-lib.sh's legacy-
+# command-substitution backtick counter is not markdown-fence-aware, so an odd
+# run of backticks (a ```lang opener) leaves its tracker mid-span for the
+# comment lines that follow, and the pragma head is read as literal span data
+# rather than as a comment. A tilde fence carries no backtick at all, so the
+# pragma is read normally; see Notes for orchestrator for the backtick case.
+@test "a pragma above a genuine instance in a markdown fence is honored nowhere" {
+  fixture_repo
+  fixture_file docs/guide.md \
+    $'~~~bash\n# gaia-lint-ignore lint-git-path-quoting: pretending to waive this\ngit ls-files > list.txt\n~~~'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- "docs/guide.md:3" <<<"$output"
+  grep -qF -- "docs/guide.md:3: gaia-lint-ignore is honored only in *.bats" <<<"$output"
+}
+
+# The off-surface finding fires whether or not its target carries an instance;
+# reading it only at the detector's print point would leave it silently inert
+# on every pragma above a clean line, which is most of them.
+@test "a pragma above a clean line on a scanned .sh surface is still honored nowhere" {
+  fixture_repo
+  fixture_file probe.sh $'#!/usr/bin/env bash\n# gaia-lint-ignore lint-git-path-quoting: nothing below needs waiving\necho hello'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- "probe.sh:3: gaia-lint-ignore is honored only in *.bats" <<<"$output"
+}
+
+# The guard's own pathspec never reaches a composite action's action.yml, so a
+# pragma there is inert on both halves: no instance is claimed and no
+# honored-nowhere finding fires either, because the file is never scanned.
+@test "a pragma on an unscanned surface (.github/actions) is inert" {
+  fixture_repo
+  fixture_file tracked.sh $'#!/usr/bin/env bash\necho hello'
+  fixture_file .github/actions/probe/action.yml \
+    $'runs:\n  using: composite\n  steps:\n    - run: |\n        # gaia-lint-ignore lint-git-path-quoting: not on this surface\n        changed=$(git diff --name-only "${base}...HEAD")'
+  run_linter
+  [ "$status" -eq 0 ]
+}
+
+@test "a wrapped pragma reason across multiple comment lines still suppresses" {
+  fixture_repo
+  fixture_file tracked.sh $'#!/usr/bin/env bash\necho hello'
+  fixture_file probe.bats $'@test "x" {\n  # gaia-lint-ignore lint-git-path-quoting: the unquoted call IS\n  # the point of this test, wrapped across two comment lines\n  changed=$(git diff --name-only "${base}...HEAD")\n}'
+  run_linter
+  [ "$status" -eq 0 ]
+}
+
+@test "a stacked second pragma applies to the same target as the first" {
+  fixture_repo
+  fixture_file tracked.sh $'#!/usr/bin/env bash\necho hello'
+  fixture_file probe.bats $'@test "x" {\n  # gaia-lint-ignore lint-git-path-quoting: suppress this one\n  # gaia-lint-ignore not-a-real-guard: a second, stacked pragma\n  changed=$(git diff --name-only "${base}...HEAD")\n}'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- "diff --name-only without -z" <<<"$output" && return 1
+  grep -qF -- "malformed gaia-lint-ignore: not-a-real-guard" <<<"$output"
+}
+
+@test "a blank line terminates a pragma block, leaving it unused" {
+  fixture_repo
+  fixture_file tracked.sh $'#!/usr/bin/env bash\necho hello'
+  fixture_file probe.bats $'@test "x" {\n  # gaia-lint-ignore lint-git-path-quoting: interrupted by a blank line\n\n  changed=$(git diff --name-only "${base}...HEAD")\n}'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- "probe.bats:2: unused gaia-lint-ignore for lint-git-path-quoting" <<<"$output"
+  grep -qF -- "diff --name-only without -z" <<<"$output"
+}
+
+# A wrapped reason is textually an ordinary comment line, and the two cannot be
+# told apart, so an ordinary prose comment between the pragma head and its
+# target does not interrupt the block either.
+@test "an ordinary comment line between the pragma and its target does not interrupt it" {
+  fixture_repo
+  fixture_file tracked.sh $'#!/usr/bin/env bash\necho hello'
+  fixture_file probe.bats $'@test "x" {\n  # gaia-lint-ignore lint-git-path-quoting: the unquoted call IS the point\n  # an unrelated prose comment sits here\n  changed=$(git diff --name-only "${base}...HEAD")\n}'
+  run_linter
+  [ "$status" -eq 0 ]
+}
+
+# 5b. The argument-region rule: the binding case (UAT-014) and its neighbors
+
+# The binding test the whole SPEC exists for: a variable bound to a multi-line
+# shell body, run through `bash -c`, whose interior line carries an unquoted
+# call. `body` appears in an execution position, so the assignment arm of the
+# argument-region rule never applies to it, and the interior line is reported
+# like any other executed shell.
+@test "an interior line of a bash -c body assigned to a variable is flagged (UAT-014)" {
+  fixture_repo
+  fixture_file tracked.sh $'#!/usr/bin/env bash\necho hello'
+  fixture_file probe.bats "$(cat <<'EOF'
+@test "runs a shell body" {
+  local body
+  body='set -e
+for f in $(git ls-files); do :; done'
+  bash -c "$body"
+}
+EOF
+)"
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- "probe.bats:4" <<<"$output"
+  grep -qF -- "ls-files without -z" <<<"$output"
+}
+
+@test "an interior line of a directly-opened bash -c body is flagged" {
+  fixture_repo
+  fixture_file tracked.sh $'#!/usr/bin/env bash\necho hello'
+  fixture_file probe.bats "$(cat <<'EOF'
+@test "runs inline" {
+  bash -c '
+set -e
+for f in $(git ls-files); do :; done
+'
+}
+EOF
+)"
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- "ls-files without -z" <<<"$output"
+}
+
+# Pins the NR-to-FNR conversion (README C2, DP-001): under the two-pass
+# invocation, pass 2's NR is `file_length + FNR`. This file is long enough that
+# the two numbers cannot be mistaken for each other.
+@test "the reported line number is FNR, not the two-pass NR (README C2)" {
+  fixture_repo
+  fixture_file tracked.sh $'#!/usr/bin/env bash\necho hello'
+  fixture_file probe.bats "$(cat <<'EOF'
+@test "padded" {
+  true
+  true
+  true
+  true
+  true
+  true
+  true
+  true
+  true
+  changed=$(git diff --name-only "${base}...HEAD")
+}
+EOF
+)"
+  run_linter
+  [ "$status" -eq 1 ]
+  # 12 lines total; a missed NR-to-FNR conversion would report line 23
+  # (file_length 12 + FNR 11) rather than the call's real line, 11.
+  grep -qF -- "probe.bats:11" <<<"$output"
+  grep -qF -- "probe.bats:23" <<<"$output" && return 1
+  true
+}
+
+# UAT-015: a fixture written through a helper the recognized set does not name
+# is not data. The set names shapes, never files, so an unlisted helper fails
+# closed rather than silently joining the idiom.
+@test "a fixture written through an unrecognized helper is reported (UAT-015)" {
+  fixture_repo
+  fixture_file tracked.sh $'#!/usr/bin/env bash\necho hello'
+  fixture_file probe.bats "$(cat <<'EOF'
+@test "x" {
+  write_custom_fixture probe.sh "changed=$(git diff --name-only "${base}...HEAD")"
+}
+EOF
+)"
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- "diff --name-only without -z" <<<"$output"
+}
+
+# 5c. UAT-016: the non-bats surfaces keep exactly today's coverage
+#
+# Measured per guard (README, "What each guard reports today"): this guard
+# reports BOTH a heredoc-body instance and a backslash-continuation instance on
+# `*.sh`, husky and markdown. These pin that the `*.bats` fixture-region skip
+# did not leak onto the surfaces it must never touch.
+
+@test "an instance inside a heredoc body in a shell script is still flagged (UAT-016)" {
+  fixture_repo
+  fixture_file probe.sh $'#!/usr/bin/env bash\ncat <<EOF\nchanged=$(git diff --name-only "${base}...HEAD")\nEOF'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- "probe.sh:3" <<<"$output"
+}
+
+@test "an instance inside a heredoc body in a husky hook is still flagged (UAT-016)" {
+  fixture_repo
+  fixture_file .husky/pre-commit $'#!/usr/bin/env sh\ncat <<EOF\nchanged=$(git diff --name-only "${base}...HEAD")\nEOF'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- ".husky/pre-commit:3" <<<"$output"
+}
+
+@test "an instance inside a heredoc body in a markdown fence is still flagged (UAT-016)" {
+  fixture_repo
+  fixture_file docs/guide.md $'```bash\ncat <<EOF\nchanged=$(git diff --name-only "${base}...HEAD")\nEOF\n```'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- "docs/guide.md:3" <<<"$output"
+}
+
+@test "an instance on a backslash-continuation line in a shell script is still flagged (UAT-016)" {
+  fixture_repo
+  fixture_file probe.sh $'#!/usr/bin/env bash\nchanged=$(git diff --name-only \\\n  -z "${base}...HEAD")'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- "probe.sh:2" <<<"$output"
+}
+
+@test "an instance on a backslash-continuation line in a husky hook is still flagged (UAT-016)" {
+  fixture_repo
+  fixture_file .husky/pre-commit $'#!/usr/bin/env sh\nchanged=$(git diff --name-only \\\n  -z HEAD~1...HEAD)'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- ".husky/pre-commit:2" <<<"$output"
+}
+
+@test "an instance on a backslash-continuation line in a markdown fence is still flagged (UAT-016)" {
+  fixture_repo
+  fixture_file docs/guide.md $'```bash\nchanged=$(git diff --name-only \\\n  -z "${base}...HEAD")\n```'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- "docs/guide.md:2" <<<"$output"
+}
+
+# 5d. The desync verdict (UAT-018)
+
+@test "a bats fixture ending inside an open quote produces the desync ERROR (UAT-018)" {
+  fixture_repo
+  fixture_file tracked.sh $'#!/usr/bin/env bash\necho hello'
+  fixture_file probe.bats $'@test "x" {\n  body=\'unterminated'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- "probe.bats: ERROR: the scan lost track of shell state" <<<"$output"
+}
+
+# 5e. The real tree, and the pragma Phase 1 wrote with no reader to prove it
+#
+# .gaia/tests/lib/bats-shards.bats:662 carries a diagnostic message string that
+# contains the literal text "git ls-files". This pins the substantive claim:
+# the armed guard does not misread that string as an executed call.
+@test "the diagnostic message string in bats-shards.bats is not misread as a call" {
+  run bash -c "cd '$REPO_ROOT' && bash '$LINTER'"
+  grep -qF -- "ls-files without -z" <<<"$output" && return 1
+  true
+}
+
+# The class-remedy footer names the -z repair, which fixes a class hit and
+# nothing else. A run reddened only by pragma hygiene printed it anyway, sending
+# the operator to a repair that has nothing to do with what went red. Both
+# directions are pinned, because a gate that never prints the footer would
+# satisfy the first assertion alone.
+@test "the -z remedy footer is withheld on a run whose findings are all pragma hygiene" {
+  fixture_repo
+  # A clean non-bats file, because the guard hard-errors on an empty scan
+  # surface and this test is about the footer, not about that error.
+  fixture_file clean.sh $'#!/usr/bin/env bash\ntrue'
+  fixture_file hygiene.bats $'@test "a" {\n  # gaia-lint-ignore lint-git-path-quoting: nothing here to suppress\n  true\n}'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- "unused gaia-lint-ignore" <<<"$output"
+  grep -qF -- "Fix a diff hit:" <<<"$output" && return 1
+  grep -qF -- "Fix an ls-files hit:" <<<"$output" && return 1
+  true
+}
+
+@test "the -z remedy footer still prints when a real class hit is reported" {
+  fixture_repo
+  fixture_file clean.sh $'#!/usr/bin/env bash\ntrue'
+  fixture_file hit.bats $'@test "a" {\n  out="$(git ls-files "*.sh")"\n}'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- "Fix a diff hit:" <<<"$output"
+  grep -qF -- "Fix an ls-files hit:" <<<"$output"
 }

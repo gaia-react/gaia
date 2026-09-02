@@ -183,6 +183,25 @@ jobs:
               # running one line of the suite.
               - '.lintstagedrc.json'
               - '.gaia/scripts/**'
+              # lint-guard-rule-shell-coverage.bats (.gaia/scripts/tests/) is the
+              # blocking runner for the check that fails when a tracked shell
+              # file is reached by neither guard nor diagnostic rule, and that
+              # check's input is the tracked '*.sh' set plus '.husky/*' (the
+              # extensionless hooks), whose own glob is already listed above for
+              # its own older reasons. Every root holding a '*.sh' is
+              # already matched above or below EXCEPT .gaia/cli/, whose health
+              # gauge and CI-shape smoke harness sit outside '.gaia/cli/src/**'
+              # further down and so match no pattern here at all. Without this
+              # line a pull request adding a shell script there -- the one edit
+              # the check exists to catch -- would report `code=false`, skip
+              # every bats step, and green the job having run that scan zero
+              # times. The glob is deliberately the check's own input rather
+              # than an enumeration of the directories it currently misses: it
+              # self-maintains when shell appears somewhere new, which is the
+              # whole point of arming a hand-kept path list, and it newly arms
+              # only those files, since every other tracked *.sh already matches
+              # a pattern here.
+              - '**/*.sh'
               # check-main-root-derivation.bats (.gaia/scripts/tests/) scans
               # tracked source for a hand-rolled main-checkout derivation, and
               # settings.json is one of the files that scan reads: hook commands
@@ -400,11 +419,11 @@ jobs:
               # the assertions it broke zero times.
               - '.gaia/tests/helpers/**'
               # The .gaia/tests/lib/ suites exercise the SPEC-ledger lib scripts
-              # under .specify/extensions/gaia/lib/ (spec-archive-merged.sh and
-              # its shared cost-consolidate.sh, the allocators, ledger-update,
-              # etc.), so trigger on that source dir too. A source-only edit then
-              # runs the suite, matching the test-dir + source-dir pairing the
-              # filters above already use (.gaia/tests/hooks/** + .claude/hooks/**;
+              # under .specify/extensions/gaia/lib/ (spec-archive-merged.sh, the
+              # allocators, ledger-update, etc.), so trigger on that source dir
+              # too. A source-only edit then runs the suite, matching the
+              # test-dir + source-dir pairing the filters above already use
+              # (.gaia/tests/hooks/** + .claude/hooks/**;
               # .gaia/tests/forensics/** + .github/forensics/**).
               - '.specify/extensions/gaia/lib/**'
               # registry.bats (.gaia/tests/lib/) asserts every commands/*.md

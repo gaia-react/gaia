@@ -744,6 +744,9 @@ SHIM
   # tree with nothing wrong with it.
   local base quoted
   base="$(git -C "$SANDBOX" merge-base HEAD main)"
+  # gaia-lint-ignore lint-git-path-quoting: the unquoted call IS the experiment
+  # this test runs; repairing it would delete the proof, below, that the
+  # pre-fix spelling really does C-quote a non-ASCII path
   quoted="$(git -C "$SANDBOX" -c core.quotePath=true diff --name-only "${base}...HEAD")"
   grep -qF '"' <<<"$quoted" || {
     printf 'the pre-fix spelling did not quote %s, so this fixture proves nothing\n' "$quoted"

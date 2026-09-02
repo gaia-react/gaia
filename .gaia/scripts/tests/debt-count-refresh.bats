@@ -212,7 +212,7 @@ open_count() { jq -r '.openCount' "$CACHE"; }
   [ "$(open_count)" = "2" ]
 }
 
-# --- 7. Excludes all three claim labels together ------------------------------
+# --- 7. Excludes every claim label together ------------------------------
 # in-progress, debt:spec-pending, and debt:spec-active are distinct exclusions;
 # all three must drop. Five issues: plain, in-progress, spec-pending,
 # spec-active, and one carrying every one of them -> counts 1.

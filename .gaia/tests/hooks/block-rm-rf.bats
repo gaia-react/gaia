@@ -343,7 +343,7 @@ t'
 @test "rm -rf \\\\\$HOME denies, though it is a fail-safe false deny, not a closed hole" {
   # Honest framing: bash hands rm a file literally NAMED '$HOME' here, not the
   # home directory, so this shape was never dangerous. It denies, which fails
-  # safe, and that is all this asserts. Unlike its four siblings above it does
+  # safe, and that is all this asserts. Unlike its siblings above it does
   # NOT gate the backslash strip: the legacy '\$HOME' case arm catches the raw
   # token even with the strip deleted. Kept as a behavior lock, not as evidence
   # the strip works.

@@ -273,6 +273,7 @@
     ".gaia/templates/ci-issues/severity-important-revert-opened.md": "owned",
     ".gaia/templates/README.md": "owned",
     ".github/actions/gaia-ci-merge-and-watch/action.yml": "owned",
+    ".github/actions/gaia-ci-merge-and-watch/lib/read-ci-result.sh": "owned",
     ".github/actions/gaia-ci-merge-and-watch/lib/render-issue.sh": "owned",
     ".github/actions/gaia-ci-merge-and-watch/lib/wait-for-ci.sh": "owned",
     ".github/actions/gaia-ci-merge-and-watch/lib/wait-for-merge.sh": "owned",
@@ -361,6 +362,7 @@
     ".storybook/preview.ts": "owned",
     ".storybook/viewport.ts": "owned",
     ".storybook/vite.config.ts": "owned",
+    "app/action-paths.ts": "owned",
     "app/components/Button/index.tsx": "owned",
     "app/components/Button/tests/index.stories.tsx": "owned",
     "app/components/Button/tests/index.test.tsx": "owned",
@@ -524,6 +526,7 @@
     "react-router.config.ts": "owned",
     "stylelint.config.mjs": "owned",
     "test/a11y.ts": "owned",
+    "test/action-paths.test.ts": "owned",
     "test/mocks/database.ts": "owned",
     "test/mocks/faker.ts": "owned",
     "test/mocks/index.ts": "owned",
@@ -669,7 +672,7 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-08-30T18:38:56.735Z",
+  "generated": "2026-09-01T15:55:14.373Z",
   "regions": [
     {
       "endMarker": "<!-- gaia:audit-remit:end -->",

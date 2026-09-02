@@ -595,3 +595,11 @@ make_hook_sandbox() {
   # The unfloored mutant applies the raw 10-day window and drops it.
   [ ! -s "$ledger" ]
 }
+
+# The shared-EXIT+signal arm this file used to pin per-file is now armed
+# tree-wide by .gaia/scripts/lint-collapsed-signal-trap.sh, which every
+# shell-lint caller runs over every tracked shell file rather than over this one
+# hardcoded path (gaia-react/gaia#1717). The pin is retired rather than kept
+# beside it: a per-file assertion is the hand-kept list
+# .claude/rules/guards-must-fail.md names as an arming-stage failure, and keeping
+# one would read as though the class needed both.

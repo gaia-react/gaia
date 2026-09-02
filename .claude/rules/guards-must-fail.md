@@ -4,7 +4,11 @@ paths:
   - '.gaia/scripts/**/*.sh'
   - '.playwright/**/*.ts'
   - '.claude/hooks/**/*.sh'
+  - '.github/**/*.sh'
   - '.github/workflows/**/*.yml'
+  - '.gaia/statusline/**/*.sh'
+  - '.specify/extensions/gaia/lib/**/*.sh'
+  - '.husky/*'
 ---
 <!-- gaia-harden: promoted from recurring finding_class holistic/hollow-assertion; pruned by /gaia-audit on obsolescence/redundancy/supersession/duplication only, never for non-recurrence -->
 <!-- gaia-harden: promoted from recurring finding_class holistic/unarmed-guard; pruned by /gaia-audit on obsolescence/redundancy/supersession/duplication only, never for non-recurrence -->
@@ -20,7 +24,9 @@ Three stages sit between an input and a verdict, and a guard can lose its power 
 
 ## Anti-pattern
 
-**Discovery, the input set.** The step that builds the guard's own input set drops an element and says nothing: a glob that misses an extension, a `find` whose prune reaches further than intended, a list derived from a manifest that does not enumerate every member. The guard then reports clean over input it never opened. An empty or short input set reads exactly like a clean pass.
+**Discovery, the input set.** The step that builds the guard's own input set drops an element and says nothing: a glob that misses an extension, a `find` whose prune reaches further than intended, a list derived from a manifest that does not enumerate every member, a `git ls-files` (or any tracked-file listing) that cannot see a file which is not yet tracked. The guard then reports clean over input it never opened. An empty or short input set reads exactly like a clean pass.
+
+The untracked variant is the one that does not present as a discovery problem while it is happening, and it fires on a guard's very first validation run. A new guard and its sibling suite are both untracked at the moment the author runs the guard to see whether the tree is clean, and those two files are reliably the ones most likely to carry the class deliberately: a guard's header quotes its own class as worked counter-examples, and its suite spells the class out in fixtures. So the first run reports clean over a set that excludes exactly the files most likely to red, and that output is indistinguishable from a real clean pass.
 
 **Arming, which inputs reach the check.** The check is correct wherever it runs, but its arming condition covers less than the surface the rule governs: a path filter narrower than the files the rule binds, a `changed-files` list that omits a directory, a refinement keyed to an optional field being present. The diff that creates the obligation is the one that skips the check.
 
@@ -31,6 +37,8 @@ Three stages sit between an input and a verdict, and a guard can lose its power 
 **Prove the guard can fail before relying on it.** This is the one obligation that catches all three stages at once, and it is cheap: break the construct the guard names, run the guard, and confirm it goes red. Restore, confirm green. A guard whose red state has never been observed is an unverified claim, whatever its logic reads like. Where the break is awkward to perform by hand, commit the broken form as a fixture the suite drives deliberately.
 
 **Assert the input set is non-empty and the expected size.** A discovery step states how many elements it expects to find, or at minimum that it found any, and fails loudly when the set is short. Deriving the set from the same source the rule binds to, rather than from a hand-maintained parallel list, removes the drift that makes the two disagree.
+
+**Where the discovery reads tracked files, make the new guard and its suite visible to it before the run that validates them.** Which step suffices depends on what the listing reads. An index-reading discovery (`git ls-files`, `git grep`) sees both files once they are staged, so `git add` them first. A discovery that reads a committed ref (`git ls-tree HEAD`) is reached only by the commit, so a stage leaves it reading a set that still does not hold the two new files. The bullet above reaches that case only in its stronger form: the set is short rather than empty, so a non-empty check is satisfied and only an expected-size check reds. The step that answers for either is to run the discovery command on its own and confirm the two new paths appear in its output, which is the only thing that distinguishes a clean pass from a pass over a set that never held them.
 
 **Derive the arming condition from the surface the rule governs.** When a rule binds a set of paths, the check's trigger reads that same set rather than a hand-copied subset of it. Where the two must be written separately, a check that they still agree is itself a guard, and it is subject to this whole page.
 

@@ -20,9 +20,10 @@
 #      POSIX/HFS+/APFS: the process that creates the dir owns the lock. macOS
 #      has no util-linux flock, so this is the load-bearing path here.
 #
-# Deadlock prevention (mkdir path): a trap on EXIT INT TERM rmdirs the lock dir
-# iff this process created it; a stale lock dir older than
-# GAIA_LEDGER_LOCK_STALE_SECS is reclaimed and the mkdir retried once.
+# Deadlock prevention (mkdir path): an EXIT arm rmdirs the lock dir iff this
+# process created it, and separate INT and TERM arms exit into it so an
+# interrupt still releases the lock AND still terminates; a stale lock dir older
+# than GAIA_LEDGER_LOCK_STALE_SECS is reclaimed and the mkdir retried once.
 #
 # Env knobs (all optional, read at call time):
 #   GAIA_LEDGER_LOCK_TIMEOUT_SECS    acquisition timeout       (default 10)
@@ -106,7 +107,14 @@ with_ledger_lock() {
     echo "$((now - mtime))"
   }
 
-  trap '_with_ledger_lock_release' EXIT INT TERM
+  # One arm per disposition, never one arm shared between EXIT and a signal. A
+  # shared handler that only releases and RETURNS leaves bash resuming at the
+  # point of interruption, so during the acquisition poll below a Ctrl-C was
+  # swallowed for the whole GAIA_LEDGER_LOCK_TIMEOUT_SECS window. The signal arms
+  # exit instead, which runs the EXIT arm, which owns the release.
+  trap '_with_ledger_lock_release' EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
 
   local start_ts now_ts elapsed age
   start_ts="$(date +%s)"

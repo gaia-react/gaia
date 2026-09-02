@@ -18839,6 +18839,10 @@ var run22 = async (argv, options = {}) => {
 import { readFileSync as readFileSync14 } from "node:fs";
 import path20 from "node:path";
 
+// src/util/git-z.ts
+var gitZArgs = (verb, args = []) => ["-c", "core.quotepath=false", verb, "-z", ...args];
+var splitZStream = (raw) => raw.split("\0").filter((record2) => record2.length > 0);
+
 // src/labels/registry.ts
 import { existsSync as existsSync12, readFileSync as readFileSync13 } from "node:fs";
 import path19 from "node:path";
@@ -19222,7 +19226,9 @@ var run23 = (argv) => {
     });
     return EXIT_ENVIRONMENT;
   }
-  const listed = runGit(["ls-files"], { cwd: repoRoot });
+  const listed = runGit(gitZArgs("ls-files"), {
+    cwd: repoRoot
+  });
   if (listed.exitCode !== 0) {
     structuredError({
       code: "git_invocation_failed",
@@ -19232,7 +19238,7 @@ var run23 = (argv) => {
     });
     return EXIT_ENVIRONMENT;
   }
-  const files = listed.stdout.split("\n").filter((file2) => file2 !== "" && !isExcluded(file2));
+  const files = splitZStream(listed.stdout).filter((file2) => !isExcluded(file2));
   const findings = scanTree(repoRoot, registry2, files);
   if (parsed.json) {
     process.stdout.write(`${JSON.stringify({ findings })}
@@ -29901,7 +29907,7 @@ import path45 from "node:path";
 var porcelainZPaths = (out) => {
   const paths = [];
   let expectOriginPath = false;
-  out.split("\0").filter((record2) => record2.length > 0).forEach((record2) => {
+  splitZStream(out).forEach((record2) => {
     if (expectOriginPath) {
       expectOriginPath = false;
       paths.push(record2);
@@ -30935,14 +30941,11 @@ var parseShortStat = (stat) => {
 };
 var fileListForCommit = (sha, cwd) => {
   const result = tryRunGit(
-    ["diff-tree", "--no-commit-id", "--name-only", "-r", sha],
+    gitZArgs("diff-tree", ["--no-commit-id", "--name-only", "-r", sha]),
     { cwd }
   );
   if (result === null) return [];
-  return result.split("\n").flatMap((line) => {
-    const trimmed = line.trim();
-    return trimmed.length > 0 ? [trimmed] : [];
-  });
+  return splitZStream(result);
 };
 var parseChunk = (chunk) => {
   const trimmed = chunk.trim();
@@ -31934,11 +31937,11 @@ var parseLsTreeLine = (line) => {
 var wikiBlobsAtRef = (cwd, ref) => {
   let raw;
   try {
-    raw = git(cwd, ["ls-tree", "-r", "-l", ref, "--", "wiki/"]);
+    raw = git(cwd, gitZArgs("ls-tree", ["-r", "-l", ref, "--", "wiki/"]));
   } catch {
     return [];
   }
-  return raw.split("\n").flatMap((line) => {
+  return splitZStream(raw).flatMap((line) => {
     const parsed = parseLsTreeLine(line);
     return parsed === void 0 ? [] : [parsed];
   });
@@ -31961,14 +31964,7 @@ var sumWikiLinesAtRef = (cwd, ref) => {
   }
   return total;
 };
-var parseNumstatEntry = (entry) => {
-  if (entry.length === 0 || !entry.includes("	")) return void 0;
-  const parts = entry.split("	");
-  const [addedToken, removedToken, filePath] = parts;
-  if (addedToken === void 0 || removedToken === void 0 || filePath === void 0) {
-    return void 0;
-  }
-  if (!filePath.startsWith(WIKI_PREFIX)) return void 0;
+var parseNumstatCounts = (addedToken, removedToken) => {
   if (addedToken === "-" || removedToken === "-") return void 0;
   const added = Number.parseInt(addedToken, 10);
   const removed = Number.parseInt(removedToken, 10);
@@ -31977,24 +31973,50 @@ var parseNumstatEntry = (entry) => {
     removed: Number.isNaN(removed) ? 0 : removed
   };
 };
+var readNumstatRecord = (fragments, index) => {
+  const entry = fragments[index];
+  const parts = entry === void 0 ? [] : entry.split("	");
+  const [addedToken, removedToken, pathField] = parts;
+  if (addedToken === void 0 || removedToken === void 0 || pathField === void 0) {
+    return { consumed: 1, record: void 0 };
+  }
+  const isRenameOrCopy = pathField.length === 0;
+  const filePath = isRenameOrCopy ? fragments[index + 2] : parts.slice(2).join("	");
+  const consumed = isRenameOrCopy ? 3 : 1;
+  const counts = parseNumstatCounts(addedToken, removedToken);
+  if (counts === void 0 || filePath === void 0) {
+    return { consumed, record: void 0 };
+  }
+  return {
+    consumed,
+    record: { added: counts.added, path: filePath, removed: counts.removed }
+  };
+};
+var parseNumstatStream = (raw) => {
+  const fragments = raw.split("\0");
+  const records = [];
+  let cursor = 0;
+  while (cursor < fragments.length) {
+    const { consumed, record: record2 } = readNumstatRecord(fragments, cursor);
+    cursor += consumed;
+    if (record2 !== void 0) records.push(record2);
+  }
+  return records;
+};
 var sumChangedLines = (cwd, base) => {
   let raw;
   try {
-    raw = git(cwd, [
-      "diff",
-      "--numstat",
-      "-z",
-      `${base}...HEAD`,
-      "--",
-      "wiki/"
-    ]);
+    raw = git(
+      cwd,
+      gitZArgs("diff", ["--numstat", `${base}...HEAD`, "--", "wiki/"])
+    );
   } catch {
     return 0;
   }
-  return raw.split("\0").reduce((total, entry) => {
-    const parsed = parseNumstatEntry(entry);
-    return parsed === void 0 ? total : total + parsed.added + parsed.removed;
-  }, 0);
+  return parseNumstatStream(raw).reduce(
+    (total, record2) => record2.path.startsWith(WIKI_PREFIX) ? total + record2.added + record2.removed : total,
+    0
+  );
 };
 var computeDiffSize = (options) => {
   const base = options.base ?? "HEAD~1";

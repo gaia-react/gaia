@@ -7,6 +7,11 @@ import {mkdirSync, mkdtempSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {
+  NON_ASCII_STEM,
+  QUOTED_FIRST_BYTE,
+  QUOTEPATH_PIN_ARGS,
+} from '../util/non-ascii-path-fixture.js';
+import {
   buildManifest,
   classifyPath,
   computeDrift,
@@ -29,6 +34,7 @@ type Sandbox = {
 const setupSandbox = (): Sandbox => {
   const root = mkdtempSync(path.join(tmpdir(), 'gaia-release-manifest-'));
   execFileSync('git', ['init', '-q', '-b', 'main'], {cwd: root});
+  execFileSync('git', QUOTEPATH_PIN_ARGS, {cwd: root});
   execFileSync('git', ['config', 'user.email', 'test@example.com'], {
     cwd: root,
   });
@@ -213,6 +219,62 @@ describe('buildManifest', () => {
 
     expect(manifest.files['.gaia/scripts/keep-me.mjs']).toBeUndefined();
     expect(manifest.files['app/keep.ts']).toBe('owned');
+  });
+
+  test('the fixture path really is C-quoted, so the assertion below can fail', () => {
+    sandbox.commit('seed', {
+      '.gaia/VERSION': '0.1.0\n',
+      [`wiki/${NON_ASCII_STEM}.md`]: '# nihongo\n',
+    });
+
+    const listed = execFileSync('git', ['ls-files'], {
+      cwd: sandbox.root,
+      encoding: 'utf8',
+    });
+
+    expect(listed).toContain(QUOTED_FIRST_BYTE);
+    expect(listed).not.toContain(NON_ASCII_STEM);
+  });
+
+  test('excludes a non-ASCII path, which git C-quotes under its default core.quotePath', () => {
+    sandbox.commit('seed', {
+      '.gaia/release-exclude': `wiki/${NON_ASCII_STEM}.md\n`,
+      '.gaia/VERSION': '0.1.0\n',
+      [`wiki/${NON_ASCII_STEM}.md`]: '# nihongo\n',
+      'app/keep.ts': 'export {};\n',
+    });
+
+    const manifest = buildManifest(sandbox.root, {
+      generatedAt: '2026-05-07T00:00:00.000Z',
+    });
+
+    expect(manifest.files[`wiki/${NON_ASCII_STEM}.md`]).toBeUndefined();
+    // The C-quoted spelling names no file on disk, so it must not appear
+    // under any key: reading it would ship a path the tarball never carries.
+    expect(
+      Object.keys(manifest.files).filter((key) => key.includes('\\'))
+    ).toEqual([]);
+    expect(manifest.files['app/keep.ts']).toBe('owned');
+  });
+
+  test('reads a path carrying a literal newline by its real name', () => {
+    sandbox.commit('seed', {
+      '.gaia/release-exclude': '# none\n',
+      '.gaia/VERSION': '0.1.0\n',
+      'app/two\nlines.ts': 'export {};\n',
+    });
+
+    const manifest = buildManifest(sandbox.root, {
+      generatedAt: '2026-05-07T00:00:00.000Z',
+    });
+
+    // This case pins `-z` specifically, where the non-ASCII one above does
+    // not: git C-quotes a control character whatever `core.quotePath` says,
+    // so the quotepath setting alone would not recover the real spelling.
+    expect(manifest.files['app/two\nlines.ts']).toBe('owned');
+    expect(
+      Object.keys(manifest.files).filter((key) => key.includes('\\'))
+    ).toEqual([]);
   });
 
   test('rejects a glob-shaped exclude line loudly instead of silently mis-excluding', () => {

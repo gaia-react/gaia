@@ -31,7 +31,7 @@ setup() {
 }
 
 # make_fixture_repo <name>: a fresh throwaway tree under BATS_TEST_TMPDIR
-# carrying the three files the check reads unconditionally -- an empty
+# carrying the files the check reads unconditionally -- an empty
 # `hooks` block, an empty release-exclude, and a placeholder schema file.
 # Callers add hooks and a manifest. Returns the repo path on stdout.
 make_fixture_repo() {

@@ -1,0 +1,622 @@
+#!/usr/bin/env bash
+# SC2016 is intentional file-wide: the awk source strings below are
+# single-quoted precisely so that every `$` and awk field reference reaches awk
+# as literal program text.
+# shellcheck disable=SC2016
+#
+# lint-stale-cardinals.sh: flag a DEFINITE cardinal that names a countable set
+# of repository artifacts in a comment or a bats `@test` name, where nothing
+# recounts the set. Exit 1 with a file:line report on any hit, exit 0 when
+# clean. Run it directly from the repo root:
+# `bash .gaia/scripts/lint-stale-cardinals.sh`.
+# gaia:maintainer-only:start
+#
+# Enforced by the sibling bats suite
+# .gaia/scripts/tests/lint-stale-cardinals.bats, which the `Audit CI Tests`
+# scripts shard runs, and folded into .gaia/tests/shell-lint.sh, which is how it
+# reaches every pull request. Also runnable directly:
+# `bats .gaia/scripts/tests/lint-stale-cardinals.bats`.
+#
+# The convention behind this file's argument-region discrimination and its
+# pragma is recorded once, in wiki/decisions/Shell Guard Fixture Discrimination.md.
+# gaia:maintainer-only:end
+#
+# Why: a bare count is a name for a set, and it decays the way a name does. The
+# set grows, nothing recounts, and the number becomes a false claim a reader
+# trusts precisely because it is specific. `.claude/rules/code-comments.md`
+# (`## Counts`) states the rule and the remedy; this gate is what makes the
+# requirement checkable rather than merely asserted, the same relationship
+# .gaia/scripts/lint-shipped-issue-refs.sh has to that file's issue-reference
+# section. `.claude/rules/bats-assertions.md` states the same prohibition for a
+# `@test` name and for the comment describing a derived set, which is why a
+# `@test` line is scanned here alongside a comment.
+#
+# The remedy, in the rule's own order of preference: name the members or point
+# at what holds them and let the reader count; or, where the number genuinely
+# carries the claim, add something that recounts it and leave the number
+# self-correcting. Correcting a stale figure without adding the recount just
+# restarts the decay from a fresher number.
+#
+# ---------------------------------------------------------------------------
+# What is a candidate, and why each narrowing is there
+# ---------------------------------------------------------------------------
+#
+# A candidate is a DEFINITE DETERMINER, then a CARDINAL of at least three, then
+# a REPO-ARTIFACT PLURAL NOUN, within a short window. Each of the three terms
+# is a narrowing measured against this tree rather than assumed, because the
+# naive predicate -- a number beside a plural noun -- fires in the high hundreds
+# here and a gate nobody can keep green gets disabled.
+#
+# DEFINITE, not bare. This is the discriminator that makes the class separable
+# at all. A bare cardinal is ordinary structural English: "two ways", "three
+# things", "two arms" describe the shape of the argument being made in the very
+# same comment, and the enumeration is right there, so the phrase is rewritten
+# whenever it changes. A definite determiner is different in kind: a possessive
+# or an all-quantifier binding a cardinal to a set the reader is expected to
+# already know, of siblings, of hooks, of callers, asserts a cardinality for a
+# specific population that lives somewhere else in the tree and moves without
+# touching this sentence. Both instances of the class that were in reach on this
+# surface carried a determiner, and so did every instance already standing in
+# the tree when this gate was written; the bare-subject form ("Six subcommands
+# answer here") is real, and the FAIL-OPEN list below is where it is accounted
+# for rather than here. Dropping this term multiplies the report several-fold
+# with nothing in the added set that a reader would call a defect.
+#
+# AT LEAST THREE. A pair is the one cardinality English spends as a structural
+# word rather than as a measurement -- "the two sides", "the two halves", "the
+# two consumers" -- and its enumeration is invariably adjacent. The rule's own
+# worked examples all start above it. Admitting a cardinality of two roughly
+# doubles the report and the added entries are overwhelmingly of that shape.
+#
+# A CLOSED NOUN VOCABULARY, in NOUNS below. Without it the report is dominated
+# by nouns that name an abstraction rather than a countable artifact ("ways",
+# "shapes", "halves", "reasons"), for which there is no set to recount and so no
+# repair. The vocabulary names things this repository CONTAINS and a reader
+# could go and count. It is deliberately a closed list rather than a
+# morphological guess: a list that is short and wrong is visible, and a
+# heuristic that is subtly wrong is not. Extending it is a one-line change, and
+# an extension that reds the tree is the gate working.
+#
+# The predicate is defined once, in PRED_AWK below, and both surface programs
+# call it. That is what keeps the two surfaces from disagreeing about what the
+# class is: a vocabulary entry, a window width or a clause-ender rule added for
+# one of them lands on the other in the same edit.
+#
+# ---------------------------------------------------------------------------
+# The scan surface, and what it leaves unscanned
+# ---------------------------------------------------------------------------
+#
+# `.claude/rules/code-comments.md` binds a glob list, and this gate now reads
+# every entry on it. Two readers, split by comment syntax rather than by glob:
+#
+# THE `#` READER, over tracked `*.sh` and `*.bats`: full-line comments, plus the
+# `@test` name line. That covers the rule's `.gaia`, `.claude/hooks`, `.github`
+# and `.specify` shell entries, and its `*.bats` entry. The shell pathspec is
+# repo-wide rather than a transcription of those entries, so a script that moves
+# out from under one of them stays scanned.
+#
+# THE `//` AND `/* */` READER, over the rule's C-family entries: `app`,
+# `test`, `.playwright`, `.storybook` and `.gaia` TypeScript, JavaScript and
+# CSS. CFAM_GLOBS below transcribes those entries, and the bats suite pins the
+# transcription against the rule file so the two cannot drift apart silently.
+#
+# NEVER GOVERNED, which is a different claim and must not be read as a carve-out
+# from the rule: Markdown appears in none of `code-comments.md`'s globs, so
+# excluding it withholds nothing the rule ever asked for. The reason not to
+# widen to it anyway is worth recording, because it is the surface a reader
+# reaches for first. Tracked markdown here is dominated by DATED, FROZEN records
+# -- CHANGELOG.md, wiki/log.md, and the wiki/meta/lint-report-*.md and
+# staleness-audit-*.md series -- in which a cardinal is a true statement about
+# the tree AS IT WAS on the day the entry was written. Recounting one against
+# today's tree is not a repair; it falsifies a record whose whole value is that
+# it does not move. The rule files that DEFINE this class are markdown too, and
+# they quote the bad shape as a worked example. A gate there would demand edits
+# with no correct answer on both populations, which is the shape that gets a
+# gate switched off. Markdown would need a frozen-record exemption before it
+# could pay, and that is a different gate rather than a wider pathspec on this
+# one.
+#
+# ---------------------------------------------------------------------------
+# The pragma
+# ---------------------------------------------------------------------------
+#
+# `gaia-lint-ignore lint-stale-cardinals: <reason>` on the comment line above a
+# target waives it there and nowhere else; an unused one is reported. It is
+# honored inside `*.bats` only, which is where a suite has to WRITE the bad
+# shape as a fixture. Everywhere else the absence of an escape hatch is the
+# point: the rule's remedies are always available, so a `*.sh` comment that
+# cannot be reworded is a comment stating a count nothing keeps. A pragma
+# NAMING THIS GUARD on either unhonored surface is reported as waiving nothing,
+# so it fails visibly rather than going quietly inert. The qualifier is
+# load-bearing rather than pedantic; the FAIL-OPEN list below carries what it
+# leaves out.
+#
+# The literal form, the token-resolution rule, and the block-continuation rule
+# are the shared library's, stated once in .gaia/scripts/guard-awk-lib.sh. The
+# C-family reader has no library to consult, so it makes the same two-part
+# recognition itself: `gaia-lint-ignore` must lead, AND the token after it must
+# name this guard. Both halves are needed because the message it prints asserts
+# THIS guard's honored-only-in-bats rule, which is a claim about a rule the
+# author of a sibling guard's pragma was never invoking. What it does not need
+# is the block grammar, since there is nothing to honor on that surface.
+#
+# ---------------------------------------------------------------------------
+# Blind spots, split by which way each fails
+# ---------------------------------------------------------------------------
+#
+# FAIL-OPEN, each a real instance this scan cannot read:
+#   - A cardinal separated from its noun by more words than GAP_MAX below. The
+#     window is short on purpose: widening it starts admitting a cardinal and a
+#     noun that belong to different clauses of one sentence, which is a false
+#     positive whose demanded repair points at the wrong phrase.
+#   - A count expressed without a determiner the DET set names, most of all a
+#     possessive noun phrase ("the gate's four callers") or a bare subject
+#     ("Six subcommands answer here"). The definite-determiner term is what
+#     buys the precision, and it is paid for with exactly this.
+#   - A noun outside the closed vocabulary.
+#   - A pragma on a C-family source naming a DIFFERENT guard. This one reports
+#     only a pragma naming itself, for the reason the pragma section above
+#     gives, and no library-backed guard scans this surface at all, so nothing
+#     reports that line and it waives nothing in silence. The `*.sh` and `*.bats`
+#     surfaces do not have this gap, because the sibling guards scanning them
+#     each report their own. Closing it would mean one guard answering for
+#     another guard's spelling, which is the sort of claim that goes stale
+#     without anything failing.
+#   - A cardinal and its noun split across two physical comment lines. The scan
+#     reads one line at a time, so a phrase that wraps is two half-phrases and
+#     neither one matches. This is not a rare shape: comments here wrap near 79
+#     columns, and the shared library's own header carried a stale count in
+#     exactly this position, which this gate could not see.
+#
+#     A two-line window was considered and declined, and the reason is NOT that
+#     joining would lose the sentence-boundary protection: the clause-ender rule
+#     below fires on an ender followed by whitespace OR by end of line, so a
+#     whitespace-preserving join leaves that case exactly as protected, which a
+#     probe confirms. The reason is the seam that carries no ender at all: a
+#     bullet ending on a cardinal, above a separate bullet opening on a
+#     vocabulary noun, joins into a phrase this predicate matches and no author
+#     wrote. That is a false positive whose demanded repair points at a line
+#     break rather than at any claim. Joining a wrap is the opposite case and is
+#     what makes the window tempting, since it reconstructs the phrase the
+#     author did write; one shape cannot be had without the other, so the wrap
+#     is fixed by hand instead.
+#   - An ordinal or a written-out range ("the fourth of five callers").
+#   - A count in a trailing comment that shares its line with code. Both readers
+#     take only a comment that OWNS its line: an instance written after a `#` or
+#     a `//` that follows executable text is missed, and so is one inside a
+#     `/*` block a line of code opened. That is the same full-line rule the
+#     sibling guards use, and on the C-family surface it is what makes the
+#     block reader safe without a string-literal tokenizer: only a line whose
+#     own first characters are `//` or `/*` is read as a comment, and inside a
+#     single-line string literal the opening quote sits ahead of them. See
+#     FAIL-CLOSED for the shapes that reach those first characters anyway.
+#   - Everything the shared library lists under its own FAIL-OPEN heading, since
+#     a line it classifies as bats fixture data is skipped here too.
+#
+# FAIL-CLOSED, so each costs a correct edit and never a missed defect:
+#   - A determiner that is grammatically definite but whose noun phrase is
+#     generic ("all three cases the parser admits"), where the enumeration is
+#     immediate and the number is not really a claim about the tree. The
+#     remedy the rule prescribes -- name the shape, drop the cardinality -- is
+#     available and cheap, so this is not worth a second discrimination.
+#   - A cardinal quoted inside a comment as a counter-example, outside `*.bats`
+#     where the pragma is honored. This file's own header is written to avoid
+#     the shape rather than to waive it, which is the demonstration that the
+#     remedy is always reachable.
+#   - A continuation line whose own first characters are `//` or `/*` (or `{/*`,
+#     since the container strip runs first), inside a construct that spans
+#     lines: a multi-line template literal, a backslash-continued ordinary
+#     string literal, or a JSX text node. The owns-its-line rule reads such a
+#     line as a comment. Inside either literal form the quote that opened it is
+#     on an earlier line and nothing one line wide can see it; a JSX text node
+#     is not a literal at all, so no quote was ever ahead of those characters.
+#     Reaching any of them needs the string tokenizer that rule exists to
+#     avoid, so they are recorded rather than chased.
+#
+#     Be precise about the cost, because the obvious bound is wrong. The `/*`
+#     spelling is not confined to the literal: it raises the block state, and
+#     nothing lowers that until a line carrying `*/`, which inside a literal
+#     there is no reason to expect. Every line to the end of the file is then
+#     handed to the predicate as prose, ordinary executable code included, so a
+#     phrase matching the class anywhere below reds on a line that is not a
+#     comment at all. The `//` spelling costs one line, which is the bound that
+#     does hold. Both directions fail closed, and both are visible: the report
+#     names a file and a line, and a reader looking at code rather than a
+#     comment has the answer in front of them. The suite pins this direction
+#     deliberately, so the disclosure is enforced rather than asserted.
+
+set -euo pipefail
+
+_gaia_guard_lib_dir="${BASH_SOURCE[0]%/*}"
+if [ "$_gaia_guard_lib_dir" = "${BASH_SOURCE[0]}" ]; then _gaia_guard_lib_dir="."; fi
+# shellcheck source=.gaia/scripts/guard-awk-lib.sh
+set +e; [ -f "$_gaia_guard_lib_dir/guard-awk-lib.sh" ] && . "$_gaia_guard_lib_dir/guard-awk-lib.sh" 2>/dev/null; set -e
+type gaia_guard_bats_files >/dev/null 2>&1 || {
+  printf 'lint-stale-cardinals: guard-awk-lib.sh is missing beside this script\n' >&2
+  exit 2
+}
+
+# `git ls-files` rather than a filesystem walk, so an untracked scratch script
+# is never scanned; the same discovery .gaia/tests/shell-lint.sh uses. Collected
+# with a read loop rather than `mapfile`, which is bash 4+, because these
+# scripts run on stock macOS /bin/bash (3.2.57).
+scan_files=()
+while IFS= read -r -d '' f; do
+  scan_files+=("$f")
+done < <(git -c core.quotepath=false ls-files -z '*.sh' | LC_ALL=C sort -z)
+
+# An empty scan set is a hard error, never a clean tree. The loop above reads
+# from a process substitution, whose failure `set -o pipefail` cannot see, so a
+# `git ls-files` that errors (run outside a repository, a broken object store)
+# leaves the array empty and the scan below vacuously passes. This gate would
+# then print `clean` and exit 0 having scanned nothing, which is the lie-green
+# failure gates exist to stop. Every real tree carries tracked `*.sh`, so an
+# empty result means the discovery is wrong rather than the tree.
+if [ "${#scan_files[@]}" -eq 0 ]; then
+  echo "lint-stale-cardinals: ERROR: no tracked shell scripts matched the scan surface; nothing was scanned" >&2
+  exit 1
+fi
+
+# A separate set from scan_files, never a widened pathspec: a tree carrying
+# .sh and no .bats must not pass clean carried by the rest of the surface.
+gaia_guard_bats_files lint-stale-cardinals || exit 1
+
+# The C-family pathspecs, one per glob `.claude/rules/code-comments.md` binds
+# outside the shell and bats entries, in the rule file's own order. `:(glob)` is
+# load-bearing: without it `**` is an ordinary `*` to git's matcher and a file
+# sitting directly in `app/` never matches. The sibling suite pins this list
+# against the rule file's frontmatter, so an entry added there and not here is a
+# test failure rather than a silent hole.
+CFAM_GLOBS=(
+  ':(glob)app/**/*.ts'
+  ':(glob)app/**/*.tsx'
+  ':(glob)app/**/*.js'
+  ':(glob)app/**/*.jsx'
+  ':(glob)app/**/*.css'
+  ':(glob)test/**/*.ts'
+  ':(glob)test/**/*.tsx'
+  ':(glob).playwright/**/*.ts'
+  ':(glob).storybook/**/*.ts'
+  ':(glob).storybook/**/*.tsx'
+  ':(glob).gaia/**/*.ts'
+)
+
+cfam_files=()
+while IFS= read -r -d '' f; do
+  cfam_files+=("$f")
+done < <(git -c core.quotepath=false ls-files -z -- ${CFAM_GLOBS[@]+"${CFAM_GLOBS[@]}"} | LC_ALL=C sort -z)
+
+# The same hard error the shell surface takes, for the same reason: a tree that
+# matched none of the globs above has a broken discovery rather than no code,
+# and reporting clean over it is the lie this gate exists to stop.
+if [ "${#cfam_files[@]}" -eq 0 ]; then
+  echo "lint-stale-cardinals: ERROR: no tracked C-family sources matched the scan surface; nothing was scanned" >&2
+  exit 1
+fi
+
+# The class predicate, shared by both surface programs below.
+#
+# Tokenization walks characters against literal sets with index() rather than
+# splitting on a regex character class, and that is portability rather than
+# taste. These files carry UTF-8 in comments, CI runs a different awk from a
+# macOS checkout, and the sibling issue-reference gate recorded an awk aborting
+# a whole run with a multibyte conversion error on a regex-driven scan. index()
+# has no such freedom: a byte is either in the set or it is not. Folding case
+# during the same walk is what lets DET, CARD and NOUN below be plain lowercase
+# lists, so a comment shouting its cardinal in capitals is read like any other.
+#
+# A byte outside the alphanumeric set ENDS the current token rather than being
+# skipped over. That is what makes `hooks'` and `idiom-4` tokenize the way a
+# reader reads them, and it is why a multibyte character behaves as punctuation
+# here, which for this predicate is the right reading.
+readonly PRED_AWK='
+    function vocab_init(   t, i) {
+      UPPER  = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+      LOWER  = "abcdefghijklmnopqrstuvwxyz"
+      DIGITS = "0123456789"
+
+      # Characters that end a clause. Without them the walk reads across a
+      # sentence boundary and invents a phrase neither sentence contains: a
+      # comment closing one sentence on `... at all.` and opening the next on a
+      # cardinal hands the walk a determiner, a cardinal and a vocabulary noun
+      # in order, spanning the full stop between them. The determiner term this
+      # gate depends on is exactly what makes that collision plausible rather
+      # than rare, and the suite pins the shape as a control.
+      #
+      # One of these ends a clause only when WHITESPACE or end of line follows
+      # it. That test is what separates prose punctuation from the same
+      # characters inside an identifier, and both readings occur constantly on
+      # these surfaces: a path (`.gaia/scripts/`), a label namespace
+      # (`surface:`), a filename (`README.md`). Treating those as clause ends
+      # silently discards real instances, since a barrier anywhere between the
+      # determiner and the noun suppresses the finding.
+      ENDERS = ".!?;:"
+      SPACE  = " \t"
+
+      # Definite determiners. A possessive pronoun is included and a possessive
+      # NOUN is not, for the reason the FAIL-OPEN list in the header gives.
+      split("all the its their our your these those", t, " ")
+      for (i in t) DET[t[i]] = 1
+
+      # Spelled cardinals from three upward. Two is excluded by the header rule
+      # rather than by omission, and one is not a plural claim at all.
+      split("three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty", t, " ")
+      for (i in t) CARD[t[i]] = 1
+
+      # Nouns naming an artifact this repository CONTAINS, which is what makes
+      # a recount possible and therefore what makes the finding actionable.
+      split("agents callers commands consumers entries exemptions files fixtures guards helpers hooks jobs labels lines markers members pages rules scripts shards siblings sites skills subcommands suites tests workflows", t, " ")
+      for (i in t) NOUN[t[i]] = 1
+
+      # How many words may sit between the cardinal and its noun. One admits
+      # the ordinary compound noun phrase, which is a shape the class really
+      # takes: one of the two instances this gate was written for is a fixture
+      # count carrying a modifier between the cardinal and the noun, and the
+      # suite pins it verbatim. See the header for why the window stops there.
+      GAP_MAX = 1
+    }
+
+    # tokenize(s): fill TOK[1..NT] with case-folded alphanumeric runs, and
+    # END_AFTER[n] with 1 when a clause ender follows token n.
+    function tokenize(s,   i, n, ch, k, cur, nxt) {
+      NT = 0
+      cur = ""
+      n = length(s)
+      for (i = 1; i <= n; i++) {
+        ch = substr(s, i, 1)
+        k = index(UPPER, ch)
+        if (k > 0) {
+          cur = cur substr(LOWER, k, 1)
+          continue
+        }
+        if (index(LOWER, ch) > 0 || index(DIGITS, ch) > 0) {
+          cur = cur ch
+          continue
+        }
+        if (cur != "") { NT++; TOK[NT] = cur; END_AFTER[NT] = 0; cur = "" }
+        if (NT > 0 && index(ENDERS, ch) > 0) {
+          nxt = (i < n) ? substr(s, i + 1, 1) : ""
+          if (nxt == "" || index(SPACE, nxt) > 0) END_AFTER[NT] = 1
+        }
+      }
+      if (cur != "") { NT++; TOK[NT] = cur; END_AFTER[NT] = 0 }
+      return NT
+    }
+
+    # is_cardinal(w): a spelled cardinal from three up, or an all-digit run
+    # whose value is at least three. The digit test is guarded on the token
+    # being all digits, so a version fragment or a hash never reads as a count.
+    function is_cardinal(w,   i, ch) {
+      if (w in CARD) return 1
+      if (w == "") return 0
+      for (i = 1; i <= length(w); i++) {
+        ch = substr(w, i, 1)
+        if (index(DIGITS, ch) == 0) return 0
+      }
+      return (w + 0) >= 3
+    }
+
+    # scan_prose(s): fill HIT_* with every instance in one line of prose and
+    # return how many there were. It collects rather than prints so that the
+    # bats surface can consult the shared library about fixture data and
+    # pragmas AFTER the class is decided; the library is not loaded on the
+    # C-family surface, so naming its functions in here would break that
+    # program at parse time.
+    function scan_prose(s,   i, j) {
+      NHIT = 0
+      tokenize(s)
+      for (i = 1; i + 2 <= NT; i++) {
+        if (!(TOK[i] in DET)) continue
+        if (END_AFTER[i]) continue
+        if (!is_cardinal(TOK[i + 1])) continue
+        if (END_AFTER[i + 1]) continue
+        for (j = i + 2; j <= NT && j <= i + 2 + GAP_MAX; j++) {
+          # A second determiner opens a new noun phrase, so the cardinal and
+          # anything past it belong to different claims. Stopping here is what
+          # keeps the window from reaching past the phrase it is reading.
+          if (TOK[j] in DET) break
+          if (!(TOK[j] in NOUN)) {
+            if (END_AFTER[j]) break
+            continue
+          }
+          NHIT++
+          HIT_DET[NHIT] = TOK[i]
+          HIT_CARD[NHIT] = TOK[i + 1]
+          HIT_NOUN[NHIT] = TOK[j]
+          break
+        }
+      }
+      return NHIT
+    }
+
+    # report_hits(file, lineno): print what the last scan_prose() collected.
+    function report_hits(f, lineno,   h) {
+      for (h = 1; h <= NHIT; h++)
+        printf "%s:%d: \"%s %s ... %s\" states a count of a set nothing recounts\n", \
+          f, lineno, HIT_DET[h], HIT_CARD[h], HIT_NOUN[h]
+    }
+'
+
+# The shell and bats program.
+readonly OWN_AWK='
+    BEGIN {
+      gaia_scan_reset()
+      vocab_init()
+    }
+
+    # Pass one over a *.bats file feeds the shared prepass and reports nothing.
+    # A fixture constant is bound far above the helper call that consumes it, so
+    # a forward-only scan cannot classify it; without this rule the class
+    # detector below would also run over pass one and report every bats hit
+    # twice.
+    is_bats && NR == FNR { gaia_scan_prepass($0); next }
+
+    {
+      gaia_scan_feed($0, is_bats)
+      # The off-surface finding: a pragma naming this guard cannot waive
+      # anything outside *.bats, whether or not its target line carries an
+      # instance, so it is read here rather than at the print point below,
+      # which would go silently inert on every pragma above a clean line.
+      if (!is_bats && gaia_scan_pragma_here("lint-stale-cardinals"))
+        printf "%s:%d: gaia-lint-ignore is honored only in *.bats; this pragma waives nothing here\n", file, FNR
+
+      # Only a full-line comment, or a bats test NAME, is prose this gate
+      # judges. Everything else on these surfaces is code, where a number is a
+      # value rather than a claim about a set.
+      if ($0 !~ /^[[:space:]]*#/ && $0 !~ /^[[:space:]]*@test[[:space:]]/) next
+
+      if (!scan_prose($0)) next
+      if (is_bats && (gaia_scan_skip() || gaia_scan_suppressed("lint-stale-cardinals"))) next
+      report_hits(file, FNR)
+    }
+    END { gaia_scan_end(file, is_bats, "lint-stale-cardinals", 0, 1) }
+'
+
+# The C-family program: the same predicate behind a `//` and `/* */` reader.
+#
+# It loads no shared library. That library discriminates bats fixture data from
+# executed shell, a question this surface does not ask, and every function in it
+# reads shell syntax. Concatenating it here would buy nothing and would put a
+# shell tokenizer over TypeScript.
+readonly CFAM_AWK='
+    BEGIN {
+      vocab_init()
+      INBLOCK = 0
+    }
+
+    # cfam_prose(line): the comment text of a line that is WHOLLY a comment, or
+    # "" for anything else. A block stays open across lines in INBLOCK.
+    #
+    # Only the first non-space characters of the line can open a block, which is
+    # what keeps a `/*` inside a single-line string literal from opening one:
+    # the quote that started the literal sits ahead of it on the same line. The
+    # header records the shapes that reach those first characters anyway.
+    #
+    # One optional `{` is stripped ahead of those tests, which is what reaches
+    # the JSX comment container `{/* ... */}`. That form is the ordinary way to
+    # comment inside a render body, so a `.tsx` surface read without it is read
+    # in name only. Stripping it costs nothing the paragraph above relies on: a
+    # `{` cannot open a string literal, so a line whose first characters are
+    # `{/*` is still not inside one, and the owns-its-line property survives.
+    # The brace is matched as a bracket expression rather than as an escape,
+    # because a bracket expression is literal in every awk flavor while `\{`
+    # rests on each one agreeing about an escape POSIX leaves undefined.
+    #
+    # A JSDoc leader (` * `) needs no stripping HERE. The tokenizer treats `*`
+    # as punctuation, and punctuation that is not a clause ender ends a token
+    # without ending a clause, so the leader is invisible to the predicate. The
+    # `}` closing a JSX container is invisible for the same reason. That
+    # reasoning belongs to the predicate alone and does not reach is_pragma
+    # below, which compares a whole word instead of tokenizing and so strips the
+    # leader itself.
+    function cfam_prose(line,   s, p) {
+      s = line
+      sub(/^[ \t]+/, "", s)
+      if (INBLOCK) {
+        p = index(s, "*/")
+        if (p == 0) return s
+        INBLOCK = 0
+        return substr(s, 1, p - 1)
+      }
+      sub(/^[{][ \t]*/, "", s)
+      if (substr(s, 1, 2) == "//") return substr(s, 3)
+      if (substr(s, 1, 2) != "/*") return ""
+      s = substr(s, 3)
+      p = index(s, "*/")
+      if (p > 0) return substr(s, 1, p - 1)
+      INBLOCK = 1
+      return s
+    }
+
+    # A pragma is recognized by its first token and honored nowhere here, so
+    # this reports and never suppresses. The shared library requires
+    # `gaia-lint-ignore` to lead as well, which is what lets a header name the
+    # word inline in prose without creating a live pragma.
+    #
+    # It must also name THIS guard. The library arm reports through
+    # gaia_scan_pragma_here, which takes the guard name and fires for no other,
+    # so a first-token-only test here would answer for a sibling guard in a
+    # message asserting this one honors it only in *.bats, which is a claim
+    # about a rule the reader was never invoking.
+    function is_pragma(s,   tok, guard) {
+      sub(/^[ \t]+/, "", s)
+      # One optional JSDoc leader, for a reason that does NOT carry over from
+      # the class predicate: that predicate tokenizes, so a `*` ends a token and
+      # is invisible to it. This arm does not tokenize, it compares the first
+      # whitespace-delimited word, and inside a `/** */` block that word is the
+      # leader itself. Without this the block form, which is the dominant one on
+      # this surface, goes unreported, which is the quietly-inert outcome the
+      # pragma section commits to preventing.
+      sub(/^[*][ \t]*/, "", s)
+      tok = s
+      sub(/[ \t].*$/, "", tok)
+      if (tok != "gaia-lint-ignore") return 0
+      guard = s
+      sub(/^[^ \t]+[ \t]+/, "", guard)
+      sub(/[ \t:].*$/, "", guard)
+      return (guard == "lint-stale-cardinals")
+    }
+
+    {
+      prose = cfam_prose($0)
+      if (prose == "") next
+      if (is_pragma(prose))
+        printf "%s:%d: gaia-lint-ignore is honored only in *.bats; this pragma waives nothing here\n", file, FNR
+      if (!scan_prose(prose)) next
+      report_hits(file, FNR)
+    }
+'
+
+# scan_file <path> <is_bats>: run the concatenated program over <path>. A
+# *.bats file is named twice so the prepass sees the whole file before the
+# class detector runs; every other surface keeps a single pass.
+scan_file() {
+  local f="$1"
+  local is_bats="$2"
+  if [ "$is_bats" -eq 1 ]; then
+    awk -v file="$f" -v is_bats=1 -v scripts_dir="$_gaia_guard_lib_dir" \
+      "$GAIA_GUARD_AWK$PRED_AWK$OWN_AWK" "$f" "$f"
+  else
+    awk -v file="$f" -v is_bats=0 -v scripts_dir="$_gaia_guard_lib_dir" \
+      "$GAIA_GUARD_AWK$PRED_AWK$OWN_AWK" "$f"
+  fi
+}
+
+# scan_cfam_file <path>: the C-family program over one source file.
+scan_cfam_file() {
+  awk -v file="$1" "$PRED_AWK$CFAM_AWK" "$1"
+}
+
+report=""
+for f in ${scan_files[@]+"${scan_files[@]}"}; do
+  [ -f "$f" ] || continue
+  hits=$(scan_file "$f" 0)
+  [ -z "$hits" ] || report+="$hits"$'\n'
+done
+for f in ${GAIA_GUARD_BATS_FILES[@]+"${GAIA_GUARD_BATS_FILES[@]}"}; do
+  [ -f "$f" ] || continue
+  hits=$(scan_file "$f" 1)
+  [ -z "$hits" ] || report+="$hits"$'\n'
+done
+for f in ${cfam_files[@]+"${cfam_files[@]}"}; do
+  [ -f "$f" ] || continue
+  hits=$(scan_cfam_file "$f")
+  [ -z "$hits" ] || report+="$hits"$'\n'
+done
+
+if [ -n "$report" ]; then
+  printf '%s' "$report"
+  # The class-remedy footer names the repair for a class hit and for nothing
+  # else. A run whose findings are all pragma hygiene (unused, malformed,
+  # honored nowhere) or the desync ERROR would otherwise print a remedy that has
+  # nothing to do with what actually went red.
+  if printf '%s' "$report" \
+    | grep -v -e 'gaia-lint-ignore' -e ': ERROR: ' \
+    | grep -q '[^[:space:]]'; then
+    printf 'Fix each by preferring the set to its cardinality:\n    name the members, or point at what holds them, and let the reader count\n    or, where the number carries the claim, add a check that recounts it\nSee .claude/rules/code-comments.md (## Counts) for the rule and the remedy.\n' >&2
+  fi
+  exit 1
+fi
+
+echo "lint-stale-cardinals: clean" >&2
+exit 0

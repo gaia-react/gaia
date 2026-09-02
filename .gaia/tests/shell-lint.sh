@@ -7,9 +7,12 @@
 # guard (.gaia/scripts/lint-git-path-quoting.sh), the workflow
 # run-interpolation guard (.gaia/scripts/lint-workflow-run-interpolation.sh),
 # the grep ERE-escape guard (.gaia/scripts/lint-grep-ere-escapes.sh), the
-# errexit status-read guard (.gaia/scripts/lint-errexit-status-read.sh), and the
+# errexit status-read guard (.gaia/scripts/lint-errexit-status-read.sh), the
 # oracle-blind invocation guard
-# (.gaia/scripts/lint-oracle-blind-invocations.sh).
+# (.gaia/scripts/lint-oracle-blind-invocations.sh), the stale-cardinal guard
+# (.gaia/scripts/lint-stale-cardinals.sh), the guard-rule shell-coverage
+# guard (.gaia/scripts/lint-guard-rule-shell-coverage.sh), and the collapsed
+# signal-trap guard (.gaia/scripts/lint-collapsed-signal-trap.sh).
 # Exit 0 when clean, 1 on any finding at or above the severity floor, and 1 on
 # a pass that cannot run at all (no shellcheck binary, an empty *.sh discovery
 # set, an unusable bash-3.2 interpreter). A red gate is therefore not always a
@@ -533,6 +536,63 @@ fi
 # the file:line it prints is repo-relative.
 echo "--> lint-oracle-blind-invocations (an invocation the capability oracle's anchors cannot see)"
 if ! (cd "$REPO_ROOT" && bash "$REPO_ROOT/.gaia/scripts/lint-oracle-blind-invocations.sh"); then
+  status=1
+fi
+
+# Fold in the stale-cardinal guard, for a reason none of the guards above share:
+# what it reads is not shell at all, it is the PROSE the shell carries. A
+# comment or a bats test name asserting how many of something the tree holds is
+# a claim nothing recounts, so it stays green while the set it names moves
+# underneath it, and every tool above is blind to it by construction: shellcheck
+# models the language, and the class lives in the text the language ignores.
+# This gate is where it lands rather than in a suite of its own because the
+# shell and bats half of its scan surface is already this gate's surface, and
+# this is the pass every pull request runs. Its other half, the C-family globs
+# `.claude/rules/code-comments.md` binds, reaches past this gate's own surface,
+# so the paths filter in .github/workflows/shell-lint.yml carries those globs
+# too: a filter narrower than the surface it arms greens a check that scanned
+# nothing. Run from the repo root so its `git ls-files` discovery resolves and
+# the file:line it prints is repo-relative.
+echo "--> lint-stale-cardinals (a definite cardinal naming a set nothing recounts)"
+if ! (cd "$REPO_ROOT" && bash "$REPO_ROOT/.gaia/scripts/lint-stale-cardinals.sh"); then
+  status=1
+fi
+
+# Fold in the guard-rule shell-coverage guard. Like the stale-cardinal guard
+# above, what it reads is not shell but the prose binding shell: the `paths:`
+# frontmatter by which .claude/rules/guards-must-fail.md and
+# .claude/rules/partial-cause-reporting.md decide which surfaces they load on. A
+# tracked shell file neither list names is one whose author is shown neither rule,
+# and nothing else in this repository notices, because a rule that loads nowhere
+# and a rule with nothing to say are the same silence. It lands in this gate
+# because its scan surface IS this gate's surface -- the tracked shell set -- and
+# this is the pass every pull request runs. It is advisory here; the blocking
+# runner is its sibling suite .gaia/scripts/tests/lint-guard-rule-shell-coverage.bats
+# in the `Audit CI Tests` scripts shard, armed by that job's `**/*.sh` code
+# filter AND by its `.husky/**` entry: `**/*.sh` matches no extensionless
+# hook, so a pull request touching only .husky/pre-commit arms this check
+# through the husky glob alone. Both are named because that entry's own
+# stated reason is a different suite, and trimming it on that reason would
+# silently unarm this check for husky-only diffs.
+# Run from the repo root so its `git ls-files` discovery resolves.
+echo "--> lint-guard-rule-shell-coverage (tracked shell the guard/diagnostic rules do not reach)"
+if ! (cd "$REPO_ROOT" && bash "$REPO_ROOT/.gaia/scripts/lint-guard-rule-shell-coverage.sh"); then
+  status=1
+fi
+
+# Fold in the collapsed signal-trap guard, for the same reason as the guards
+# above: shellcheck models the syntax of a `trap` call and says nothing about
+# which dispositions may share one arm. Bash resumes at the point of
+# interruption once a trapped handler returns, so an arm shared between EXIT and
+# INT or TERM silently deletes the terminating disposition it replaced and the
+# script becomes uninterruptible. The class was repaired by hand twice and
+# pinned each time by a per-file assertion in that script's own suite, which is
+# the hand-kept list .claude/rules/guards-must-fail.md names as an arming-stage
+# failure: the third instance sat unreached by any of it. This gate is what
+# replaced those pins. Run from the repo root so its `git ls-files` discovery
+# resolves and the file:line it prints is repo-relative.
+echo "--> lint-collapsed-signal-trap (one trap arm binding EXIT with INT or TERM)"
+if ! (cd "$REPO_ROOT" && bash "$REPO_ROOT/.gaia/scripts/lint-collapsed-signal-trap.sh"); then
   status=1
 fi
 

@@ -2200,7 +2200,7 @@ _gaia_capcheck_glob_match() {
 # is load-bearing today rather than theoretical.
 #
 # Widening the set is not the repair for a miss it produces. Every character
-# added here is added for all six sites at once, and each one they gain is a
+# added here is added for every site at once, and each one they gain is a
 # position where ordinary prose can now sit in command position. The narrower
 # anchors below (`_GAIA_CAPCHECK_DOTCMD`, `_GAIA_CAPCHECK_PATHCMD`) exist because
 # that trade is decided per detector rather than once here.

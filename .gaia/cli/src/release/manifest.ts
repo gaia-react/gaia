@@ -20,6 +20,7 @@ import {z} from 'zod';
 import {execFileSync} from 'node:child_process';
 import {existsSync, readFileSync} from 'node:fs';
 import path from 'node:path';
+import {gitZArgs, splitZStream} from '../util/git-z.js';
 import {resolveRepoRoot} from '../util/repo-root.js';
 import {hasRejectedExcludeMetacharacter} from './manifest-answers.js';
 import {scanRegionDeclarations} from './region-scan.js';
@@ -236,14 +237,35 @@ export const resolveExcludePath = (repoRoot: string): string =>
 export const resolveManifestPath = (repoRoot: string): string =>
   path.resolve(repoRoot, '.gaia/manifest.json');
 
+/**
+ * The tracked file set, spelled to match the `ls-files -z` that
+ * `.github/workflows/release.yml` stages the tarball from, so neither reader
+ * classifies a path git rewrote on the way out.
+ *
+ * A C-quoted path names no file on disk, and an exclude pattern compiled from
+ * the literal path can never match one, so the file would be recorded as
+ * shipping whatever the maintainer answered. `gitZArgs` states why its flags
+ * prevent that.
+ *
+ * One asymmetry with staging survives this, in the other direction: the shell
+ * readers pipe the NUL stream through `tr '\0' '\n'` into a newline-delimited
+ * file, which a path holding a literal newline cannot survive, while it stays
+ * one entry here. Staging no longer resolves that disagreement by chance --
+ * `.gaia/scripts/list-tracked-paths.sh` refuses such a path at the boundary and
+ * names it, rather than aborting on an rsync `stat` error or publishing a
+ * tarball without the file according to whether every split name happens to
+ * exist (#1669). This side needs no counterpart guard: it records the joined
+ * path as shipping, which is correct, and the release it would disagree with
+ * now stops before a tarball exists.
+ */
 const listGitFiles = (cwd: string): string[] =>
-  execFileSync('git', ['ls-files'], {
-    cwd,
-    encoding: 'utf8',
-    stdio: ['ignore', 'pipe', 'pipe'],
-  })
-    .split('\n')
-    .filter((line) => line.length > 0);
+  splitZStream(
+    execFileSync('git', gitZArgs('ls-files'), {
+      cwd,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+  );
 
 export const buildManifest = (
   cwd: string,

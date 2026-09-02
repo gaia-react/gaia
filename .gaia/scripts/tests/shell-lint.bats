@@ -80,8 +80,10 @@ teardown() {
 # closed on a finding that was never planted in either chunk.
 # A read loop rather than `head -z`: that flag is GNU-only and absent from
 # macOS's head, which is the platform this whole gate exists for.
-# `.gaia/scripts/lint-git-path-quoting.sh` excludes *.bats by design, so nothing
-# catches this shape here.
+# `.gaia/scripts/lint-git-path-quoting.sh` now scans `*.bats` too, through the
+# shared fixture-versus-execution discriminator, so an executed helper like
+# `tracked_sh` above sits on that gate's surface rather than being exempt from
+# it.
 #
 # Args: first|last
 tracked_sh() {
@@ -124,11 +126,18 @@ gate_pass_headers() {
 # reads the gate, and so does the count that cross-checks it, so both sides of
 # that pairing shrink together when a pass is deleted from the gate and the
 # assertion stays green over the loss. This file records the same fact from the
-# other side: `.gaia/tests/whole-tree-invariants.sh` excludes six lint scripts
-# from the set it runs directly, each with the written reason that this gate
-# invokes them, and two of them have no other invoker anywhere in the tree. So
-# a pass deleted here silently stops running at all while that file goes on
-# claiming it runs.
+# other side: `.gaia/tests/whole-tree-invariants.sh` excludes a set of lint
+# scripts from the set it runs directly, each with the written reason that THIS
+# GATE invokes them. The helper below derives that set rather than restating its
+# size, so a script added to or removed from it is recounted here rather than
+# left to decay. A pass deleted from the gate therefore falsifies that file's
+# written reason, and neither side of the pairing above can see it happen.
+#
+# The consequence is scoped to that claim deliberately, and not stated as the
+# guard ceasing to run: every excluded guard also carries a sibling suite under
+# .gaia/scripts/tests/ that runs it over the real tree, so a regression still
+# reds somewhere. What is lost is this gate's enforcement of it and the truth of
+# the sentence whole-tree-invariants.sh writes about it.
 #
 # Short-read guarded the way gate_pass_headers is, and for the same reason: an
 # extraction that reads none of the lines yields an empty set that every
@@ -250,8 +259,8 @@ rig_piece() {
 
   # Both of those read the GATE, so deleting a whole pass from it shrinks the
   # expectation and the cross-check together and neither notices. The floor
-  # above is the only outside constraint, and it leaves five of the folded
-  # passes droppable. So the set is required a third time from a source the
+  # above is the only outside constraint, and it leaves every folded pass but
+  # two droppable. So the set is required a third time from a source the
   # gate cannot move: every guard whole-tree-invariants.sh declines to run
   # itself BECAUSE this gate runs it has to be a pass this gate actually ran.
   # Two of them are invoked from nowhere else in the tree, so a pass dropped
