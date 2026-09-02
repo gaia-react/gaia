@@ -26,11 +26,11 @@
 # asks the same invariant of the whole tree rather than of a list, so a site
 # nobody named here is still covered.
 #
-# The A family arms the boundary's refusal (A1) and the tree scan C2 reads
-# (A2, A3), because a guard whose red state has never been observed is an
-# unverified claim: each one breaks the thing it arms and proves some test
-# goes red. C1's own per-site assertions carry no such fixture; they were
-# verified by hand (#1691). A green check here is evidence, not assumption.
+# The A family arms the boundary's refusal (A1), the tree scan C2 reads
+# (A2, A3), and the per-site assertions C1 makes (A4), because a guard whose
+# red state has never been observed is an unverified claim: each one breaks the
+# thing it arms and proves some test goes red. A green check here is evidence,
+# not assumption.
 #
 # Assertion style per .claude/rules/bats-assertions.md: no bare mid-test
 # [[ ... ]], POSIX [ ] and grep only, so a broken assertion still fails on
@@ -129,18 +129,27 @@ track() {
   true
 }
 
-# Every tracked file under $1 that pairs the raw round-trip with an
-# `rsync --files-from` consumer, one per line. Shared by C2 and A2 so the
-# adversarial fixture exercises the same scan the contract check runs.
+# The patterns C1 and the tree scan both match with, one assignment each rather
+# than a literal at each use site. A round-trip ERE copied into both and coupled
+# only by the prose between them diverges the moment somebody widens one to
+# catch a new spelling: the other keeps matching the narrower pattern and
+# nothing goes red (#1691). One assignment makes that divergence unreachable.
+
+# An invocation of the boundary, not a mention of it. release.yml's comment
+# names the boundary by filename directly above the call, so there a bare
+# filename match is satisfied by the prose alone, while the remaining sites name
+# "the shared boundary" without the filename. Anchoring on the interpreter
+# separates the two at every site, and it holds for both spellings in use: a
+# repo-relative path and a "$PROJECT_ROOT"-prefixed one.
 #
-# The pair is the closed property, and it has to be the pair: the round-trip
-# alone is legitimate wherever the names are compared or counted rather than
-# resolved (a diagnostic `head -20`, a `comm` membership check, a roster drift
-# scan), which is most of its uses in this tree, and a guard that reds on those
-# is one that gets bypassed rather than fixed. `--files-from` is what turns a
-# name into a file the release must find on disk.
-#
-# The round-trip half is matched as a regex rather than as the one spelling the
+# The `^[^#]*` leader is what reds a reverted site, and A4 is where that is
+# observed rather than assumed. Without it the pattern is satisfied by a
+# commented-out call, while the round-trip pattern below declines a replacement
+# discovery that is not a raw round-trip, so a site that dropped the boundary
+# entirely passes both of C1's arms.
+BOUNDARY_CALL_RE='^[^#]*bash [^ ]*list-tracked-paths[.]sh'
+
+# The raw round-trip, matched as a regex rather than as the one spelling the
 # migrated sites happened to use. A scan that only recognises a copy-paste of an
 # existing site has a guarantee that expires on the first site somebody writes
 # rather than copies, so the pattern tolerates the flags and spacing between
@@ -154,6 +163,18 @@ track() {
 # matching on the consumer rather than on the call text, which is a judgment
 # about downstream rather than a closed property of the file, and the sibling
 # lint declines to make it for the same reason.
+RAW_ROUNDTRIP_RE="ls-files[^|]*-z[^|]*[|]([[:space:]]*|[^|]*[[:space:]/])tr[[:space:]]"
+
+# Every tracked file under $1 that pairs the raw round-trip with an
+# `rsync --files-from` consumer, one per line. Shared by C2 and A2 so the
+# adversarial fixture exercises the same scan the contract check runs.
+#
+# The pair is the closed property, and it has to be the pair: the round-trip
+# alone is legitimate wherever the names are compared or counted rather than
+# resolved (a diagnostic `head -20`, a `comm` membership check, a roster drift
+# scan), which is most of its uses in this tree, and a guard that reds on those
+# is one that gets bypassed rather than fixed. `--files-from` is what turns a
+# name into a file the release must find on disk.
 #
 # Each grep's status is read on three outcomes, not two: 0 matched, 1 did not,
 # and anything above that is grep failing to read the file at all. Folding the
@@ -167,13 +188,14 @@ track() {
 scan_raw_roundtrip() {
   local root="$1" f status
   while IFS= read -r -d '' f; do
-    # This suite carries both patterns as assertion literals, by construction.
+    # This suite carries the round-trip in its own pattern constant and in its
+    # arming fixtures, by construction.
     case "$f" in
       '.gaia/scripts/tests/list-tracked-paths.bats') continue ;;
     esac
 
     status=0
-    grep -qE -- "ls-files[^|]*-z[^|]*[|]([[:space:]]*|[^|]*[[:space:]/])tr[[:space:]]" "$root/$f" || status=$?
+    grep -qE -- "$RAW_ROUNDTRIP_RE" "$root/$f" || status=$?
     [ "$status" -le 1 ] || { printf 'unreadable: %s\n' "$f"; return 1; }
     [ "$status" -eq 0 ] || continue
 
@@ -186,6 +208,31 @@ scan_raw_roundtrip() {
   done < <(git -C "$root" ls-files -z)
 }
 
+# One rostered site's two assertions: it still calls the shared boundary, and it
+# carries no raw round-trip of its own. Shared by C1 and A4, so the assertions
+# C1 makes per site are the ones a fixture observes going red.
+#
+# Each grep's status is read on the same three outcomes the scan above reads,
+# and each arm names the outcome it actually hit rather than the one that
+# prompted it being written: on a rostered site, grep failing to open the file
+# is a broken roster entry rather than a clean result, and reporting it as a
+# site that dropped its call sends the reader to restore a call already there.
+assert_site_calls_boundary() {
+  local root="$1" site="$2" status
+
+  status=0
+  grep -qE -- "$BOUNDARY_CALL_RE" "$root/$site" || status=$?
+  [ "$status" -le 1 ] || { printf 'unreadable rostered site: %s\n' "$site" >&2; return 1; }
+  [ "$status" -eq 0 ] || { printf 'no list-tracked-paths.sh invocation in %s\n' "$site" >&2; return 1; }
+
+  status=0
+  grep -qE -- "$RAW_ROUNDTRIP_RE" "$root/$site" || status=$?
+  [ "$status" -le 1 ] || { printf 'unreadable rostered site: %s\n' "$site" >&2; return 1; }
+  [ "$status" -eq 0 ] && { printf 'raw ls-files round-trip still present in %s\n' "$site" >&2; return 1; }
+
+  return 0
+}
+
 # C1. Every site that discovers the tracked set for a staging build routes
 # through this script. The raw `ls-files -z | tr` round-trip returning to any
 # one of them is how this class comes back, and it is invisible in a diff that
@@ -196,7 +243,10 @@ scan_raw_roundtrip() {
 #   release.yml               produces the published tarball; the live instance
 #   lib/build-staging.sh      the harness's own staging build, which mirrors it
 #   03-marker-strip.sh        walks the tracked set a second time to pick the
-#                             marker-bearing source files out of it
+#                             marker-bearing source files out of it, and is the
+#                             one member carrying no `rsync --files-from`, so
+#                             C2 declines it by design and C1 is the only
+#                             assertion standing between it and a silent revert
 #   09-exclude-parser-parity  builds the same list over a fixture tree, and the
 #                             parity it asserts is against build-staging.sh
 #   runbook.md                a live call site, not illustration: an
@@ -216,21 +266,7 @@ scan_raw_roundtrip() {
     '.gaia/tests/distribution/03-marker-strip.sh' \
     '.gaia/tests/distribution/09-exclude-parser-parity.sh' \
     '.gaia/cli/health/runbook.md'; do
-    # An invocation, not a mention. release.yml's comment names the boundary by
-    # filename directly above the call, so there a bare filename match is
-    # satisfied by the prose alone and a reverted call that kept the comment
-    # would still pass; the other four sites name "the shared boundary" without
-    # the filename. Anchoring on the interpreter separates the two at every
-    # site, and it holds for both spellings in use: a repo-relative path and a
-    # "$PROJECT_ROOT"-prefixed one.
-    grep -qE -- 'bash [^ ]*list-tracked-paths[.]sh' "$REPO_ROOT/$site" \
-      || { printf 'no list-tracked-paths.sh invocation in %s\n' "$site" >&2; return 1; }
-    # The same pattern the tree scan carries, so a round-trip wearing a flag or
-    # a locale prefix reds here too. 03-marker-strip.sh needs it: it is the one
-    # site with no `rsync --files-from`, so C2 declines it by design and this is
-    # the only assertion standing between it and a silent revert.
-    grep -qE -- "ls-files[^|]*-z[^|]*[|]([[:space:]]*|[^|]*[[:space:]/])tr[[:space:]]" "$REPO_ROOT/$site" \
-      && { printf 'raw ls-files round-trip still present in %s\n' "$site" >&2; return 1; }
+    assert_site_calls_boundary "$REPO_ROOT" "$site" || return 1
   done
   true
 }
@@ -289,6 +325,44 @@ scan_raw_roundtrip() {
   run scan_raw_roundtrip "$FIXTURE"
   [ "$status" -ne 0 ]
   grep -qF -- 'unreadable: vanished.sh' <<<"$output"
+}
+
+# A4. Arming fixture for C1. C1 drives its assertions over the live tree, where
+# every rostered site is correct, so a green C1 is equally consistent with
+# assertions that cannot red. This plants each failure C1 exists to catch in a
+# scratch tree and drives the same helper over it, plus the correct site, so a
+# helper that reds on everything does not read as armed either.
+#
+# The reverted site is the case the anchored invocation pattern exists for: the
+# call is commented out and the replacement discovery is not a raw round-trip,
+# so an unanchored pattern is satisfied by the commented-out line while the
+# round-trip arm declines the replacement, and a site that dropped the boundary
+# entirely passes both arms.
+#
+# The unreadable site is the roster's own failure mode rather than a site's: a
+# rostered path that no longer resolves must red as the broken roster entry it
+# is, not as a site that dropped its call.
+@test "A4: the per-site assertions red on a reverted, regressed, or unreadable site" {
+  track 'clean.sh' 'bash "$PROJECT_ROOT/.gaia/scripts/list-tracked-paths.sh" "$PROJECT_ROOT" list.txt'
+  track 'reverted.sh' '# bash .gaia/scripts/list-tracked-paths.sh . list.txt
+find . -type f > list.txt; rsync -a --files-from=list.txt . out/'
+  track 'regressed.sh' "bash .gaia/scripts/list-tracked-paths.sh . list.txt
+git ls-files -z | tr '\\0' '\\n' > list.txt"
+
+  run assert_site_calls_boundary "$FIXTURE" 'clean.sh'
+  [ "$status" -eq 0 ]
+
+  run assert_site_calls_boundary "$FIXTURE" 'reverted.sh'
+  [ "$status" -ne 0 ]
+  grep -qF -- 'no list-tracked-paths.sh invocation in reverted.sh' <<<"$output"
+
+  run assert_site_calls_boundary "$FIXTURE" 'regressed.sh'
+  [ "$status" -ne 0 ]
+  grep -qF -- 'raw ls-files round-trip still present in regressed.sh' <<<"$output"
+
+  run assert_site_calls_boundary "$FIXTURE" 'gone.sh'
+  [ "$status" -ne 0 ]
+  grep -qF -- 'unreadable rostered site: gone.sh' <<<"$output"
 }
 
 # A1. Arming fixture. Strip the refusal out of a scratch copy and the
