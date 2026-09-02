@@ -939,12 +939,54 @@ mutate() {
 # The one exclusion is the suite surface, which carries the load line as the
 # literal the bracket check below compares against. That is data this file
 # reads, not a load it performs.
+#
+# Parameterized on a repo root, the way scan_fixture_repo parameterizes the
+# discovery tests above, so the reach itself can be driven against a fixture.
+# Over the real tree the widened pathspec and the directory-scoped form it
+# replaced return the same paths, so no assertion here can red on a revert of
+# the widening; the fixture test below is what does.
 library_consumers() {
-  local f
+  local root="${1:-$REPO_ROOT}" f
   while IFS= read -r f; do
-    printf '%s\n' "$REPO_ROOT/$f"
-  done < <(git -C "$REPO_ROOT" grep -l -- '_gaia_guard_lib_dir/guard-awk-lib.sh' \
+    printf '%s\n' "$root/$f"
+  done < <(git -C "$root" grep -l -- '_gaia_guard_lib_dir/guard-awk-lib.sh' \
              -- ':(exclude)*.bats')
+}
+
+# consumer_fixture_repo: a repo carrying a tracked consumer inside the guards'
+# own directory and another outside it, plus a tracked non-consumer, so the
+# derivation can be asserted to reach past .gaia/scripts/ and to stop at a file
+# that does not carry the load line.
+consumer_fixture_repo() {
+  local repo="$TMP/consumerrepo" load
+  load='set +e; [ -f "$_gaia_guard_lib_dir/guard-awk-lib.sh" ] && . "$_gaia_guard_lib_dir/guard-awk-lib.sh" 2>/dev/null; set -e'
+  mkdir -p "$repo/.gaia/scripts" "$repo/.claude/hooks"
+  git -C "$repo" init -q .
+  printf '%s\n' "$load" > "$repo/.gaia/scripts/lint-probe.sh"
+  printf '%s\n' "$load" > "$repo/.claude/hooks/probe-hook.sh"
+  printf 'x\n' > "$repo/.gaia/scripts/not-a-consumer.sh"
+  git -C "$repo" add -A
+  printf '%s' "$repo"
+}
+
+# The tree-wide pathspec is the whole claim the comment above makes, and the
+# real tree cannot hold it: the directory-scoped form the widening replaced
+# returns the same paths today, so reverting it leaves every check here green.
+# A fixture carrying a consumer outside the guards' own directory is what makes
+# the reach the thing under test rather than a count both forms agree on.
+@test "the consumer derivation reaches a consumer outside the guards' own directory" {
+  local repo
+  repo="$(consumer_fixture_repo)"
+  run library_consumers "$repo"
+  [ "$status" -eq 0 ]
+  grep -qxF -- "$repo/.claude/hooks/probe-hook.sh" <<<"$output" || return 1
+  # Non-vacuity: the same call reaches the in-directory consumer, so an empty
+  # derivation cannot satisfy the assertion above. And it stops at a tracked
+  # file carrying no load line, so a derivation returning everything cannot
+  # satisfy it either.
+  grep -qxF -- "$repo/.gaia/scripts/lint-probe.sh" <<<"$output" || return 1
+  grep -qxF -- "$repo/.gaia/scripts/not-a-consumer.sh" <<<"$output" && return 1
+  true
 }
 
 participating_files() {
@@ -966,14 +1008,30 @@ production_guards() {
 }
 
 # A derivation that came back short would leave a check asserting over a subset
-# while its name still says every, so both consumer checks confirm the count
-# against the guards known to load the library before their per-file loop runs.
-# The floor is the count the tree carries, not a slack figure: a floor below it
-# is a check that greens while consumers fall out of the derivation silently.
+# while its name still says every, so every consumer check confirms the count
+# before its per-file loop runs.
+#
+# Equality against a second walk of the same tracked files, rather than a floor
+# written down here. A floor is exact only until the consumer set grows, after
+# which it goes slack and a derivation regressing back to it still passes; a
+# recount has no such moment, because no number survives between runs. The two
+# walks reach the tree by different routes, `git grep`'s pathspec against a
+# filter over `git ls-files`, so a derivation that narrows its own pathspec
+# disagrees with the tree rather than agreeing with a literal.
+#
+# The emptiness check is separate and is not redundant with the equality: two
+# walks that both come back empty agree, and a per-element claim over nothing
+# is true without covering anything.
 assert_consumer_count() {
-  local n
-  n="$(library_consumers | grep -c .)"
-  [ "$n" -ge 7 ] || { echo "library_consumers returned $n, fewer than the 7 tracked consumers" >&2; return 1; }
+  local derived recount
+  derived="$(library_consumers | grep -c . || true)"
+  recount="$(git -C "$REPO_ROOT" ls-files -z -- ':(exclude)*.bats' \
+    | xargs -0 grep -l -- '_gaia_guard_lib_dir/guard-awk-lib.sh' \
+    | grep -c . || true)"
+  [ "$derived" -gt 0 ] \
+    || { echo "library_consumers returned nothing" >&2; return 1; }
+  [ "$derived" -eq "$recount" ] \
+    || { echo "library_consumers returned $derived, the tree carries $recount" >&2; return 1; }
 }
 
 @test "every library consumer's shellcheck source= line carries the library's full repo-relative path" {
@@ -985,10 +1043,15 @@ assert_consumer_count() {
 }
 
 @test "every library consumer brackets its library load with set +e and set -e on one line" {
-  # README C1.1's frozen block, verbatim. The load is script-relative by
-  # design and does not itself carry the full path (which lives above it,
-  # on the shellcheck source= directive line), so this checks the bracket
-  # rather than a second copy of the path.
+  # The bracket verbatim, because it is frozen rather than merely
+  # conventional: `.gaia/scripts/lint-errexit-source-guard.sh`'s header owns
+  # the two accepted shapes and states why a file that arms errexit itself
+  # takes this flat one while a library takes the state-preserving form. A
+  # reworded load would still satisfy that guard and silently stop being the
+  # shape this suite reports on, so the literal is what holds it. The load is
+  # script-relative by design and does not itself carry the full path (which
+  # lives above it, on the shellcheck source= directive line), so this checks
+  # the bracket rather than a second copy of the path.
   local f load
   assert_consumer_count || return 1
   load='set +e; [ -f "$_gaia_guard_lib_dir/guard-awk-lib.sh" ] && . "$_gaia_guard_lib_dir/guard-awk-lib.sh" 2>/dev/null; set -e'
