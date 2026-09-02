@@ -308,26 +308,13 @@ write_baseline() {
   [ "$status" -eq 0 ]
 }
 
-@test "the temp-file trap keeps the check interruptible: no shared EXIT+signal arm" {
-  # Structural rather than behavioural, deliberately. Driving a real SIGINT at
-  # this check races its own runtime, and the construct is what decays: a
-  # single `trap ... EXIT INT TERM` arm whose body only unlinks leaves bash
-  # resuming at the point of interruption, so Ctrl-C removes the temp file and
-  # the check runs on to print its verdict and exit 0 or 1 as if uninterrupted.
-  # This pins the repaired shape so a later edit cannot re-collapse the arms
-  # with nothing red.
-  #
-  # Scoped to this one script on purpose, and that narrowness is the known
-  # limit rather than the intent: a per-file pin cannot find the next instance
-  # of the shape, and #1717 tracks arming the class tree-wide beside the
-  # sibling shell lints, which retires this test.
-  grep -nE '^[[:space:]]*trap[^#]*(INT|TERM)' "$CHECK" | grep -qE 'EXIT' && return 1
-  # Non-vacuity: the arms this asserts the absence of must actually exist, or
-  # the assertion above passes over a file that installs no trap at all.
-  grep -qE '^[[:space:]]*trap .* EXIT$' "$CHECK"
-  grep -qE '^[[:space:]]*trap .exit 130. INT$' "$CHECK"
-  grep -qE '^[[:space:]]*trap .exit 143. TERM$' "$CHECK"
-}
+# The shared-EXIT+signal arm this file used to pin per-file is now armed
+# tree-wide by .gaia/scripts/lint-collapsed-signal-trap.sh, which every
+# shell-lint caller runs over every tracked shell file rather than over this one
+# hardcoded path (gaia-react/gaia#1717). The pin is retired rather than kept
+# beside it: a per-file assertion is the hand-kept list
+# .claude/rules/guards-must-fail.md names as an arming-stage failure, and keeping
+# one would read as though the class needed both.
 
 @test "usage: more than one argument exits 2" {
   run bash "$CHECK" "$REPO_ROOT" extra

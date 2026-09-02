@@ -10,8 +10,9 @@
 # errexit status-read guard (.gaia/scripts/lint-errexit-status-read.sh), the
 # oracle-blind invocation guard
 # (.gaia/scripts/lint-oracle-blind-invocations.sh), the stale-cardinal guard
-# (.gaia/scripts/lint-stale-cardinals.sh), and the guard-rule shell-coverage
-# guard (.gaia/scripts/lint-guard-rule-shell-coverage.sh).
+# (.gaia/scripts/lint-stale-cardinals.sh), the guard-rule shell-coverage
+# guard (.gaia/scripts/lint-guard-rule-shell-coverage.sh), and the collapsed
+# signal-trap guard (.gaia/scripts/lint-collapsed-signal-trap.sh).
 # Exit 0 when clean, 1 on any finding at or above the severity floor, and 1 on
 # a pass that cannot run at all (no shellcheck binary, an empty *.sh discovery
 # set, an unusable bash-3.2 interpreter). A red gate is therefore not always a
@@ -576,6 +577,22 @@ fi
 # Run from the repo root so its `git ls-files` discovery resolves.
 echo "--> lint-guard-rule-shell-coverage (tracked shell the guard/diagnostic rules do not reach)"
 if ! (cd "$REPO_ROOT" && bash "$REPO_ROOT/.gaia/scripts/lint-guard-rule-shell-coverage.sh"); then
+  status=1
+fi
+
+# Fold in the collapsed signal-trap guard, for the same reason as the guards
+# above: shellcheck models the syntax of a `trap` call and says nothing about
+# which dispositions may share one arm. Bash resumes at the point of
+# interruption once a trapped handler returns, so an arm shared between EXIT and
+# INT or TERM silently deletes the terminating disposition it replaced and the
+# script becomes uninterruptible. The class was repaired by hand twice and
+# pinned each time by a per-file assertion in that script's own suite, which is
+# the hand-kept list .claude/rules/guards-must-fail.md names as an arming-stage
+# failure: the third instance sat unreached by any of it. This gate is what
+# replaced those pins. Run from the repo root so its `git ls-files` discovery
+# resolves and the file:line it prints is repo-relative.
+echo "--> lint-collapsed-signal-trap (one trap arm binding EXIT with INT or TERM)"
+if ! (cd "$REPO_ROOT" && bash "$REPO_ROOT/.gaia/scripts/lint-collapsed-signal-trap.sh"); then
   status=1
 fi
 
