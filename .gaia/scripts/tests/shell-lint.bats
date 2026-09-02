@@ -252,8 +252,8 @@ rig_piece() {
 
   # Both of those read the GATE, so deleting a whole pass from it shrinks the
   # expectation and the cross-check together and neither notices. The floor
-  # above is the only outside constraint, and it leaves five of the folded
-  # passes droppable. So the set is required a third time from a source the
+  # above is the only outside constraint, and it leaves every folded pass but
+  # two droppable. So the set is required a third time from a source the
   # gate cannot move: every guard whole-tree-invariants.sh declines to run
   # itself BECAUSE this gate runs it has to be a pass this gate actually ran.
   # Two of them are invoked from nowhere else in the tree, so a pass dropped

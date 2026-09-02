@@ -82,40 +82,39 @@ jobs:
               # resolves `shell=false`, skips the install and the gate, and
               # greens the check having linted nothing.
               - '.husky/**'
-              # The gate folds in five guards whose scan surface INCLUDES the
-              # workflow `run:` blocks, which no *.sh glob reaches: lint-git-
-              # path-quoting.sh, lint-workflow-run-interpolation.sh, lint-grep-
-              # ere-escapes.sh, lint-errexit-status-read.sh, and lint-collapsed-
-              # signal-trap.sh. Only lint-
-              # workflow-run-interpolation.sh is workflow/action/template-only;
-              # the rest scan tracked *.sh as well, so this line is not their
-              # whole surface, it is the only path that arms the half no other
-              # line here covers. Naming the exception rather than counting the
-              # others is deliberate: a count rots the moment a guard widens its
-              # pathspec. All five are named because this line is the sole CI
-              # path for each guard's `run:`-block half, so retiring any one of
-              # them must not read as licence to drop it. Without this line a PR
-              # that changes only a workflow
-              # resolves `shell=false`, skips the gate and greens the check
-              # having linted the very files it just changed -- the same gap the
-              # .husky/** line above closes, one file type over.
+              # The gate folds in guards whose scan surface INCLUDES the
+              # workflow `run:` blocks, which no *.sh glob reaches:
+              # lint-git-path-quoting.sh, lint-workflow-run-interpolation.sh,
+              # lint-grep-ere-escapes.sh, lint-errexit-status-read.sh, and
+              # lint-collapsed-signal-trap.sh. Only
+              # lint-workflow-run-interpolation.sh is
+              # workflow/action/template-only; the rest scan tracked *.sh as
+              # well, so this line is not their whole surface, it is the only
+              # path that arms the half no other line here covers. Naming the
+              # exception rather than counting the others is deliberate: a count
+              # rots the moment a guard widens its pathspec, which is why the
+              # list above is named rather than counted too. Each one is named
+              # because this line is the sole CI path for that guard's
+              # `run:`-block half, so retiring any of them must not read as
+              # licence to drop it. Without this line a PR that changes only a
+              # workflow resolves `shell=false`, skips the gate and greens the
+              # check having linted the very files it just changed -- the same
+              # gap the .husky/** line above closes, one file type over.
               - '.github/workflows/**'
-              # The run-interpolation, grep-escape, status-read, and collapsed-
-              # signal-trap guards also
-              # scan the composite actions, which the glob above does not reach.
-              # For the status-read guard this is the load-bearing half rather
-              # than a widening: both instances of its class shipped inside a
-              # composite action, and actionlint does not lint composite step
-              # bodies at all.
+              # The run-interpolation, grep-escape, status-read, and
+              # collapsed-signal-trap guards also scan the composite actions,
+              # which the glob above does not reach. For the status-read guard
+              # this is the load-bearing half rather than a widening: both
+              # instances of its class shipped inside a composite action, and
+              # actionlint does not lint composite step bodies at all.
               - '.github/actions/**'
               # Subsumed by the glob above and kept deliberately: it is the
               # explicit record that this gate re-runs on a change to itself,
               # which survives any later narrowing of that glob.
               - '.github/workflows/shell-lint.yml'
-              # The run-interpolation, grep-escape, status-read, and collapsed-
-              # signal-trap guards also
-              # scan the adopter workflow templates. Those render into an
-              # adopter's own CI, so a
+              # The run-interpolation, grep-escape, status-read, and
+              # collapsed-signal-trap guards also scan the adopter workflow
+              # templates. Those render into an adopter's own CI, so a
               # template-only PR resolving `shell=false` would green the check
               # having left unscanned the one surface whose defects this repo's
               # review is the last place able to see.
