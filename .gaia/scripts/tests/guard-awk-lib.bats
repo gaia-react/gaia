@@ -562,6 +562,225 @@ EOF
   grep -qF -- "a.bats" <<<"$output" || return 1
 }
 
+# ---- the scan-surface discovery --------------------------------------------
+
+# scan_fixture_repo: a repo carrying one tracked member of every set the helper
+# knows, so a per-set assertion below can name what the set must NOT return as
+# well as what it must.
+scan_fixture_repo() {
+  local repo="$TMP/scanrepo"
+  mkdir -p "$repo/.husky" "$repo/.github/workflows" "$repo/.github/actions/probe"
+  mkdir -p "$repo/.gaia/cli/src/automation/templates/workflows"
+  git -C "$repo" init -q .
+  printf 'x\n' > "$repo/tool.sh"
+  printf 'x\n' > "$repo/.husky/pre-commit"
+  printf 'x\n' > "$repo/.github/workflows/ci.yml"
+  printf 'x\n' > "$repo/.github/actions/probe/action.yaml"
+  printf 'x\n' > "$repo/.gaia/cli/src/automation/templates/workflows/ci.yml.tmpl"
+  git -C "$repo" add -A
+  printf '%s' "$repo"
+}
+
+# Same contract as the bats discovery above: a pathspec matching nothing means
+# the discovery is wrong rather than the tree clean, and the caller reads that
+# as a status rather than through a substitution that would swallow it.
+@test "an empty scan surface is a hard error and a populated one fills the array" {
+  local repo="$TMP/repo"
+  mkdir -p "$repo"
+  git -C "$repo" init -q .
+  printf 'x\n' > "$repo/a.bats"
+  git -C "$repo" add -A
+  run bash -c "cd '$repo' && . '$LIB' && gaia_guard_scan_files probe shell"
+  [ "$status" -eq 1 ]
+  grep -qF -- "probe: ERROR" <<<"$output" || return 1
+  grep -qF -- "nothing was scanned" <<<"$output" || return 1
+  printf 'x\n' > "$repo/a.sh"
+  git -C "$repo" add -A
+  run bash -c "cd '$repo' && . '$LIB' && gaia_guard_scan_files probe shell && printf '%s\n' \"\${GAIA_GUARD_SCAN_FILES[@]}\""
+  [ "$status" -eq 0 ]
+  grep -qxF -- "a.sh" <<<"$output" || return 1
+}
+
+# The message names the sets that were asked for, because a caller asking for
+# more than one has no other way to learn which discovery came back empty.
+@test "the empty-surface error names the sets that were asked for" {
+  local repo="$TMP/repo"
+  mkdir -p "$repo"
+  git -C "$repo" init -q .
+  printf 'x\n' > "$repo/a.bats"
+  git -C "$repo" add -A
+  run bash -c "cd '$repo' && . '$LIB' && gaia_guard_scan_files probe husky workflows"
+  [ "$status" -eq 1 ]
+  grep -qF -- "(husky workflows)" <<<"$output" || return 1
+}
+
+@test "the shell set returns tracked *.sh and no workflow or hook" {
+  local repo
+  repo="$(scan_fixture_repo)"
+  run bash -c "cd '$repo' && . '$LIB' && gaia_guard_scan_files probe shell && printf '%s\n' \"\${GAIA_GUARD_SCAN_FILES[@]}\""
+  [ "$status" -eq 0 ]
+  grep -qxF -- "tool.sh" <<<"$output" || return 1
+  grep -qxF -- ".husky/pre-commit" <<<"$output" && return 1
+  grep -qxF -- ".github/workflows/ci.yml" <<<"$output" && return 1
+  true
+}
+
+@test "the husky set returns the extensionless hooks no extension glob matches" {
+  local repo
+  repo="$(scan_fixture_repo)"
+  run bash -c "cd '$repo' && . '$LIB' && gaia_guard_scan_files probe husky && printf '%s\n' \"\${GAIA_GUARD_SCAN_FILES[@]}\""
+  [ "$status" -eq 0 ]
+  grep -qxF -- ".husky/pre-commit" <<<"$output" || return 1
+  grep -qxF -- "tool.sh" <<<"$output" && return 1
+  true
+}
+
+# The workflow templates are `.tmpl` rather than `.yml`, so a set that returned
+# the workflows and missed them would still look populated.
+@test "the workflows set returns workflows, composite actions, and templates" {
+  local repo
+  repo="$(scan_fixture_repo)"
+  run bash -c "cd '$repo' && . '$LIB' && gaia_guard_scan_files probe workflows && printf '%s\n' \"\${GAIA_GUARD_SCAN_FILES[@]}\""
+  [ "$status" -eq 0 ]
+  grep -qxF -- ".github/workflows/ci.yml" <<<"$output" || return 1
+  grep -qxF -- ".github/actions/probe/action.yaml" <<<"$output" || return 1
+  grep -qxF -- ".gaia/cli/src/automation/templates/workflows/ci.yml.tmpl" <<<"$output" || return 1
+  grep -qxF -- "tool.sh" <<<"$output" && return 1
+  true
+}
+
+# A git pathspec glob is matched without FNM_PATHNAME, so `*.sh` crosses `/` and
+# reaches a script under .husky/. The shell set excludes the hook directory for
+# that reason: a caller asking for both sets must receive such a file once, or
+# it is scanned twice and reported twice.
+@test "a .sh under .husky belongs to the husky set alone and appears once in the union" {
+  local repo
+  repo="$(scan_fixture_repo)"
+  printf 'x\n' > "$repo/.husky/helper.sh"
+  git -C "$repo" add -A
+  run bash -c "cd '$repo' && . '$LIB' && gaia_guard_scan_files probe shell && printf '%s\n' \"\${GAIA_GUARD_SCAN_FILES[@]}\""
+  [ "$status" -eq 0 ]
+  grep -qxF -- ".husky/helper.sh" <<<"$output" && return 1
+  run bash -c "cd '$repo' && . '$LIB' && gaia_guard_scan_files probe shell husky && printf '%s\n' \"\${GAIA_GUARD_SCAN_FILES[@]}\""
+  [ "$status" -eq 0 ]
+  # The exclude is the only thing keeping this at one. The union is not
+  # deduplicated, deliberately: `sort -u` there would be a second mechanism
+  # guaranteeing the same thing, and a suite cannot red on either one alone
+  # while the other still holds.
+  [ "$(grep -cxF -- '.husky/helper.sh' <<<"$output")" -eq 1 ]
+}
+
+# The set that names it is where an unknown name is refused, so a set ahead of it
+# has already been read and appended; nothing of it reaches the caller, because
+# the array is emptied before any return. A silently-dropped set is the
+# discovery-stage failure these gates exist to stop: the guard scans less than
+# the rule it encodes governs and still reports clean.
+@test "an unknown set name is a hard error that names the set and scans nothing" {
+  local repo
+  repo="$(scan_fixture_repo)"
+  run bash -c "cd '$repo' && . '$LIB' && gaia_guard_scan_files probe shell markdown"
+  # Status 2, never 1: a caller may tolerate an empty surface where one is a
+  # legitimate tree, and must never tolerate a set name that resolved nothing
+  # because this library does not know it.
+  [ "$status" -eq 2 ]
+  grep -qF -- "markdown" <<<"$output" || return 1
+  grep -qF -- "probe: ERROR" <<<"$output" || return 1
+}
+
+@test "a call naming no set at all is a hard error rather than an empty surface" {
+  local repo
+  repo="$(scan_fixture_repo)"
+  run bash -c "cd '$repo' && . '$LIB' && gaia_guard_scan_files probe"
+  [ "$status" -eq 2 ]
+  grep -qF -- "probe: ERROR" <<<"$output" || return 1
+}
+
+# Run outside any repository, so `git ls-files` fails rather than answering
+# empty, and status 3 separates that from the empty surface a caller is allowed
+# to tolerate. EVERY named set fails in this fixture, because failing is a
+# property of the repository rather than of the pathspec, and no fixture can
+# make one set's `git ls-files` fail while another's answers. So this pins the
+# status and not the position of the check that returns it; the unknown-set test
+# below is what pins that, on the arm where a fixture can name a refusing set
+# ahead of a resolvable one.
+@test "a set whose own discovery fails is distinguished from one that matched nothing" {
+  local outside="$TMP/not-a-repo"
+  mkdir -p "$outside"
+  run bash -c "cd '$outside' && . '$LIB' && gaia_guard_scan_files probe shell workflows"
+  [ "$status" -eq 3 ]
+  grep -qF -- "discovery failed" <<<"$output" || return 1
+  grep -qF -- "nothing was scanned" <<<"$output"
+}
+
+# The refusing set is named FIRST and a resolvable set follows it, which is what
+# makes this fail against a check hoisted out of the per-set loop. Reading only
+# the last named set's status leaves this call returning 0 with the `shell` set
+# in the array: a guard scanning a surface other than the one it asked for, and
+# reporting clean, which is the whole reason the status exists.
+@test "a refusing set is caught where a later named set would still resolve" {
+  local repo
+  repo="$(scan_fixture_repo)"
+  run bash -c "cd '$repo' && . '$LIB' && gaia_guard_scan_files probe markdown shell && printf '%s\n' \"\${GAIA_GUARD_SCAN_FILES[@]}\""
+  [ "$status" -eq 2 ]
+  grep -qF -- "markdown" <<<"$output" || return 1
+  grep -qxF -- "tool.sh" <<<"$output" && return 1
+  true
+}
+
+# The sort is the one stage whose failure no repository state can produce, so it
+# is driven through a stub ahead of it on PATH. Without its status read, a sort
+# that died would empty the array and surface as status 1, which is the status a
+# caller is told it may tolerate.
+@test "a sort that fails is not reported as an empty surface" {
+  local repo stub
+  repo="$(scan_fixture_repo)"
+  stub="$TMP/stubbin"
+  mkdir -p "$stub"
+  printf '#!/bin/sh\nexit 4\n' > "$stub/sort"
+  chmod +x "$stub/sort"
+  run bash -c "cd '$repo' && . '$LIB' && PATH=\"$stub:\$PATH\" gaia_guard_scan_files probe shell"
+  [ "$status" -eq 3 ]
+  grep -qF -- "sorting the scan surface failed" <<<"$output" || return 1
+  grep -qF -- "nothing was scanned" <<<"$output"
+}
+
+# Naming a set twice is refused rather than concatenated, which is what makes the
+# result a union now that nothing downstream deduplicates it: every path in the
+# repeated set would otherwise be scanned twice and reported twice.
+@test "a set named twice is refused rather than returned twice" {
+  local repo
+  repo="$(scan_fixture_repo)"
+  run bash -c "cd '$repo' && . '$LIB' && gaia_guard_scan_files probe shell shell && printf '%s\n' \"\${GAIA_GUARD_SCAN_FILES[@]}\""
+  [ "$status" -eq 2 ]
+  grep -qF -- "named more than once" <<<"$output" || return 1
+  grep -qxF -- "tool.sh" <<<"$output" && return 1
+  true
+}
+
+# The array is emptied at the top of the function rather than on each return
+# path, and this is what holds that: a refusal reached after an earlier call
+# filled the array leaves the caller reading a surface nobody asked for while
+# the message says nothing was scanned. Two calls in one shell, because a single
+# refusing call cannot tell an emptied array from one that was never filled.
+@test "a refusal empties the surface a previous call left in the array" {
+  local repo
+  repo="$(scan_fixture_repo)"
+  run bash -c "cd '$repo' && . '$LIB' && gaia_guard_scan_files probe shell; gaia_guard_scan_files probe markdown; printf 'count=%s\n' \"\${#GAIA_GUARD_SCAN_FILES[@]}\""
+  grep -qxF -- "count=0" <<<"$output" || return 1
+  # The first call has to have filled it, or the assertion above is vacuous.
+  run bash -c "cd '$repo' && . '$LIB' && gaia_guard_scan_files probe shell; printf 'count=%s\n' \"\${#GAIA_GUARD_SCAN_FILES[@]}\""
+  grep -qxF -- "count=0" <<<"$output" && return 1
+  true
+}
+
+@test "the union across sets is sorted rather than concatenated set by set" {
+  local repo
+  repo="$(scan_fixture_repo)"
+  run bash -c "cd '$repo' && . '$LIB' && gaia_guard_scan_files probe shell husky workflows && printf '%s\n' \"\${GAIA_GUARD_SCAN_FILES[@]}\""
+  [ "$status" -eq 0 ]
+  [ "$output" = "$(LC_ALL=C sort <<<"$output")" ]
+}
+
 @test "the library sources twice in one shell without erroring under errexit" {
   run bash -c "set -euo pipefail; . '$LIB'; . '$LIB'; printf 'ok\n'"
   [ "$status" -eq 0 ]
@@ -687,13 +906,50 @@ mutate() {
 # Section A: shared-entry-point conformance (UAT-010)
 # ============================================================================
 #
-# Every check below greps every participating file at once: each production
-# guard and the stub-guard fixture. The set is enumerated once in
-# participating_files() below and read from there, so a guard added to that
-# list is held to this whole section without editing any check in it.
+# Two rosters, because two kinds of check live here and they do not cover the
+# same files.
+#
+# The load-shape checks bind every file that loads the library at all, so their
+# roster is DERIVED from the load line rather than written down: a guard added
+# as a consumer is held to them without editing this suite, which is what the
+# hand-written list failed at twice, once for a guard added beside its siblings
+# and once for a guard that became a consumer by gaining the scan-surface call.
+#
+# The awk checks bind the narrower set that concatenates GAIA_GUARD_AWK into a
+# program of its own. A consumer reading only the scan-surface discovery has no
+# awk program to hold, so widening one roster into the other would red on a
+# guard that is conforming, which is why the two stay separate.
+#
+# That narrower roster is written down rather than derived, because the
+# permitted-awk-function check below needs a per-file expectation and there is
+# nowhere else for it to live. Writing it down is also how it fell behind the
+# predicate its own header states, so what holds it there is an equality check
+# against that predicate rather than a per-file grep, which a file missing from
+# the roster is never reached by.
+
+# Every tracked file carrying the library load line, plus nothing else. The
+# library itself does not carry it, so it excludes itself.
+#
+# Searched tree-wide rather than under the guards' own directory. The load is
+# script-relative, and the fixture already resolves it two levels up, so nothing
+# stops a consumer being added under .claude/hooks/ or .github/audit/; a
+# directory-scoped search would leave such a file outside all three load-shape
+# checks while this comment claimed it was held.
+#
+# The one exclusion is the suite surface, which carries the load line as the
+# literal the bracket check below compares against. That is data this file
+# reads, not a load it performs.
+library_consumers() {
+  local f
+  while IFS= read -r f; do
+    printf '%s\n' "$REPO_ROOT/$f"
+  done < <(git -C "$REPO_ROOT" grep -l -- '_gaia_guard_lib_dir/guard-awk-lib.sh' \
+             -- ':(exclude)*.bats')
+}
 
 participating_files() {
   printf '%s\n' \
+    "$REPO_ROOT/.gaia/scripts/lint-collapsed-signal-trap.sh" \
     "$REPO_ROOT/.gaia/scripts/lint-git-path-quoting.sh" \
     "$REPO_ROOT/.gaia/scripts/lint-grep-ere-escapes.sh" \
     "$REPO_ROOT/.gaia/scripts/lint-errexit-status-read.sh" \
@@ -701,38 +957,63 @@ participating_files() {
     "$REPO_ROOT/.gaia/scripts/tests/fixtures/stub-guard.sh"
 }
 
+# The production guards are the participating files minus the one test fixture
+# among them, derived rather than re-listed: two hand-written rosters that must
+# agree is what left a guard out of both, and the second list bought nothing a
+# filter on the fixture path does not.
 production_guards() {
-  printf '%s\n' \
-    "$REPO_ROOT/.gaia/scripts/lint-git-path-quoting.sh" \
-    "$REPO_ROOT/.gaia/scripts/lint-grep-ere-escapes.sh" \
-    "$REPO_ROOT/.gaia/scripts/lint-errexit-status-read.sh" \
-    "$REPO_ROOT/.gaia/scripts/lint-stale-cardinals.sh"
+  participating_files | grep -v -- '/tests/fixtures/'
 }
 
-@test "each participating file's shellcheck source= line carries the library's full repo-relative path" {
+# A derivation that came back short would leave a check asserting over a subset
+# while its name still says every, so both consumer checks confirm the count
+# against the guards known to load the library before their per-file loop runs.
+# The floor is the count the tree carries, not a slack figure: a floor below it
+# is a check that greens while consumers fall out of the derivation silently.
+assert_consumer_count() {
+  local n
+  n="$(library_consumers | grep -c .)"
+  [ "$n" -ge 7 ] || { echo "library_consumers returned $n, fewer than the 7 tracked consumers" >&2; return 1; }
+}
+
+@test "every library consumer's shellcheck source= line carries the library's full repo-relative path" {
   local f
+  assert_consumer_count || return 1
   while IFS= read -r f; do
     grep -qF -- ".gaia/scripts/guard-awk-lib.sh" "$f" || { echo "$f: no shellcheck source= citation" >&2; return 1; }
-  done < <(participating_files)
+  done < <(library_consumers)
 }
 
-@test "each participating file brackets its library load with set +e and set -e on one line" {
+@test "every library consumer brackets its library load with set +e and set -e on one line" {
   # README C1.1's frozen block, verbatim. The load is script-relative by
   # design and does not itself carry the full path (which lives above it,
   # on the shellcheck source= directive line), so this checks the bracket
   # rather than a second copy of the path.
   local f load
+  assert_consumer_count || return 1
   load='set +e; [ -f "$_gaia_guard_lib_dir/guard-awk-lib.sh" ] && . "$_gaia_guard_lib_dir/guard-awk-lib.sh" 2>/dev/null; set -e'
   while IFS= read -r f; do
     grep -qF -- "$load" "$f" || { echo "$f: unbracketed or reworded library load" >&2; return 1; }
-  done < <(participating_files)
+  done < <(library_consumers)
 }
 
-@test "each participating file concatenates GAIA_GUARD_AWK ahead of its own awk program" {
-  local f
+# Equality, not a per-file grep over the roster: the roster is what the awk
+# checks below iterate, so a consumer that grew an awk program and was never
+# added to it is invisible to any check the roster drives. This is the one
+# assertion that can see it, and it reds both ways -- a roster entry with no awk
+# program, and an awk-carrying consumer with no roster entry.
+@test "the participating roster is exactly the library consumers that concatenate GAIA_GUARD_AWK" {
+  local f derived
+  assert_consumer_count || return 1
+  derived=""
   while IFS= read -r f; do
-    grep -qF -- '$GAIA_GUARD_AWK' "$f" || { echo "$f: no GAIA_GUARD_AWK concatenation" >&2; return 1; }
-  done < <(participating_files)
+    if grep -qF -- '$GAIA_GUARD_AWK' "$f"; then
+      derived="$derived$f
+"
+    fi
+  done < <(library_consumers)
+  [ "$(printf '%s' "$derived" | LC_ALL=C sort)" = "$(participating_files | LC_ALL=C sort)" ] \
+    || { echo "the participating roster and the awk-carrying consumers differ" >&2; return 1; }
 }
 
 @test "the common entry points are called, not merely named, in every participating file" {
@@ -761,6 +1042,7 @@ production_guards() {
     grep -qF -- "gaia_scan_pragma_here(" "$f" || { echo "$f: never calls gaia_scan_pragma_here" >&2; return 1; }
   done < <(production_guards)
   grep -qF -- "gaia_scan_run_only(" "$REPO_ROOT/.gaia/scripts/lint-errexit-status-read.sh" || return 1
+  grep -qF -- "gaia_scan_run_only(" "$REPO_ROOT/.gaia/scripts/lint-collapsed-signal-trap.sh" && return 1
   grep -qF -- "gaia_scan_run_only(" "$REPO_ROOT/.gaia/scripts/lint-git-path-quoting.sh" && return 1
   grep -qF -- "gaia_scan_run_only(" "$REPO_ROOT/.gaia/scripts/lint-grep-ere-escapes.sh" && return 1
   grep -qF -- "gaia_scan_run_only(" "$REPO_ROOT/.gaia/scripts/lint-stale-cardinals.sh" && return 1
@@ -817,6 +1099,14 @@ own_awk_functions() {
   # library's; that is a semantic claim no grep can make, so it is recorded
   # here rather than asserted.
   local actual expected
+
+  # The collapsed-trap gate's three private walks, all class detection: signal_words
+  # reads the signal list off one trap arm, in_command_position decides whether the
+  # word `trap` opens a command rather than sitting inside one, and collapsed is the
+  # verdict over the two. None of them tokenizes shell the library already reads.
+  actual="$(own_awk_functions "$REPO_ROOT/.gaia/scripts/lint-collapsed-signal-trap.sh")"
+  expected="$(printf '%s\n' collapsed in_command_position signal_words)"
+  [ "$actual" = "$expected" ]
 
   actual="$(own_awk_functions "$REPO_ROOT/.gaia/scripts/lint-git-path-quoting.sh")"
   [ "$actual" = "option_walk" ]

@@ -1,8 +1,12 @@
 #!/usr/bin/env bash
 # lint-workflow-run-interpolation.sh: flag every `${{ ... }}` expression that
-# sits inside a workflow `run:` block body. Exit 1 with a file:line report on
-# any hit, exit 0 when clean. Run it directly from the repo root:
+# sits inside a workflow `run:` block body. Run it directly from the repo root:
 # `bash .gaia/scripts/lint-workflow-run-interpolation.sh`.
+#
+# Exit 0 when clean, and 1 either with a file:line report on any hit or on a
+# scan surface that came back empty. Two statuses say the gate never ran at
+# all: 2 when guard-awk-lib.sh is missing beside this script, and 3 when the
+# scan-surface discovery failed.
 # gaia:maintainer-only:start
 #
 # Enforced by the sibling bats suite
@@ -97,34 +101,33 @@
 
 set -euo pipefail
 
-# `git ls-files` rather than a filesystem walk, so an untracked scratch workflow
-# is never scanned; the same discovery .gaia/tests/shell-lint.sh uses. Collected
-# with a read loop rather than `mapfile`, which is bash 4+, because these
-# scripts run on stock macOS /bin/bash (3.2.57).
+# Script-relative, never cwd-relative: every fixture test runs this guard with
+# cwd inside a throwaway repo that carries no .gaia/scripts/. Bracketed with
+# set +e/-e because this file arms errexit itself, the shape
+# .gaia/scripts/lint-errexit-source-guard.sh demands for an unbracketed load in
+# an errexit-reachable file. This gate reads none of the library's awk, only its
+# scan-surface discovery.
+_gaia_guard_lib_dir="${BASH_SOURCE[0]%/*}"
+if [ "$_gaia_guard_lib_dir" = "${BASH_SOURCE[0]}" ]; then _gaia_guard_lib_dir="."; fi
+# shellcheck source=.gaia/scripts/guard-awk-lib.sh
+set +e; [ -f "$_gaia_guard_lib_dir/guard-awk-lib.sh" ] && . "$_gaia_guard_lib_dir/guard-awk-lib.sh" 2>/dev/null; set -e
+type gaia_guard_scan_files >/dev/null 2>&1 || {
+  printf 'lint-workflow-run-interpolation: guard-awk-lib.sh is missing beside this script\n' >&2
+  exit 2
+}
+
+# The scan surface comes from the shared library rather than from a read loop
+# here, so every gate consuming it discovers the same set the same way and a
+# widened pathspec cannot reach one of them and miss the others. The call fills
+# GAIA_GUARD_SCAN_FILES and returns non-zero on an empty surface, which is a
+# hard error rather than a clean tree; the status is read directly, because a
+# substitution would swallow it.
 #
 # A git pathspec glob is matched without FNM_PATHNAME, so its `*` crosses `/`.
-# The one templates glob therefore reaches `partials/` and any directory added
-# under it later, which is why there is no second glob for the fragments.
-scan_files=()
-while IFS= read -r -d '' f; do
-  scan_files+=("$f")
-done < <(git -c core.quotepath=false ls-files -z \
-                      '.github/workflows/*.yml' '.github/workflows/*.yaml' \
-                      '.github/actions/*/action.yml' '.github/actions/*/action.yaml' \
-                      '.gaia/cli/src/automation/templates/workflows/*.tmpl' \
-           | LC_ALL=C sort -z)
-
-# An empty scan set is a hard error, never a clean tree. The loop above reads
-# from a process substitution, whose failure `set -o pipefail` cannot see, so a
-# `git ls-files` that errors (run outside a repository, a broken object store)
-# leaves the array empty and every check below vacuously passes. This gate would
-# then print `clean` and exit 0 having scanned nothing, which is the lie-green
-# failure gates exist to stop. Every real tree carries tracked workflows, so an
-# empty result means the discovery is wrong rather than the tree.
-if [ "${#scan_files[@]}" -eq 0 ]; then
-  echo "lint-workflow-run-interpolation: ERROR: no tracked workflows, composite actions, or workflow templates matched the scan surface; nothing was scanned" >&2
-  exit 1
-fi
+# The library's one templates glob therefore reaches `partials/` and any
+# directory added under it later, which is why it needs no second glob for the
+# fragments this gate reads.
+gaia_guard_scan_files lint-workflow-run-interpolation workflows || exit $?
 
 # scan_file <path>: print one `file:line: message` per expression in a run body.
 #
@@ -240,7 +243,7 @@ scan_file() {
 }
 
 report=""
-for f in ${scan_files[@]+"${scan_files[@]}"}; do
+for f in ${GAIA_GUARD_SCAN_FILES[@]+"${GAIA_GUARD_SCAN_FILES[@]}"}; do
   [ -f "$f" ] || continue
   hits=$(scan_file "$f")
   [ -z "$hits" ] || report+="$hits"$'\n'
