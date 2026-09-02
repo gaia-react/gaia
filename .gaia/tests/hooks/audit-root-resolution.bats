@@ -710,7 +710,8 @@ run_audit_root_block() {
 @test "stage 4 (flag: --root) supplied, from OUTSIDE: the marker's digest key matches WT's content" {
   local wt_ground_truth marker_path body_digest
   wt_ground_truth="$(digest_of "$WT" code-audit-frontend)"
-  run_stdout_only bash "$SCRIPT_WRITE_CLEARANCE" --root "$WT" --member code-audit-frontend --provenance earned
+  run_stdout_only bash "$SCRIPT_WRITE_CLEARANCE" --root "$WT" --member code-audit-frontend --provenance earned \
+    --scope-digest "$wt_ground_truth"
   [ "$status" -eq 0 ]
   marker_path="$output"
   [ -f "$marker_path" ]
@@ -735,7 +736,8 @@ run_audit_root_block() {
   subdir="$WT/app"
 
   before_snapshot="$(pool_snapshot "$WT")"
-  run_stdout_only bash "$SCRIPT_WRITE_CLEARANCE" --root "$subdir" --member code-audit-frontend --provenance earned
+  run_stdout_only bash "$SCRIPT_WRITE_CLEARANCE" --root "$subdir" --member code-audit-frontend --provenance earned \
+    --scope-digest "$(digest_of "$subdir" code-audit-frontend)"
   if [ "$status" -ne 2 ] || [ -n "$output" ]; then
     echo "baseline (unmutated) stage 4 check failed" >&2
     restore_file "$SCRIPT_WRITE_CLEARANCE" "$orig_sum"
@@ -763,7 +765,8 @@ run_audit_root_block() {
   fi
 
   before_snapshot="$(pool_snapshot "$WT")"
-  run_stdout_only bash "$SCRIPT_WRITE_CLEARANCE" --root "$subdir" --member code-audit-frontend --provenance earned
+  run_stdout_only bash "$SCRIPT_WRITE_CLEARANCE" --root "$subdir" --member code-audit-frontend --provenance earned \
+    --scope-digest "$(digest_of "$subdir" code-audit-frontend)"
   { [ "$status" -eq 2 ] && [ -z "$output" ]; } || went_red=1
 
   restore_file "$SCRIPT_WRITE_CLEARANCE" "$orig_sum"
@@ -859,7 +862,8 @@ run_audit_root_block() {
 
 @test "stage 6 (anchor: caller cd) anchored on WT, from OUTSIDE: every gh invocation ran with WT as its working directory" {
   local marker wt_phys pwd_col rest_col
-  marker=$(bash "$SCRIPT_WRITE_CLEARANCE" --root "$WT" --member code-audit-frontend --provenance earned 2>/dev/null)
+  marker=$(bash "$SCRIPT_WRITE_CLEARANCE" --root "$WT" --member code-audit-frontend --provenance earned \
+    --scope-digest "$(digest_of "$WT" code-audit-frontend)" 2>/dev/null)
   chmod -x "$WT/.gaia/scripts/resolve-audit-members.sh"
   install_gh_stub
 
@@ -883,7 +887,8 @@ run_audit_root_block() {
 
 @test "stage 6 control A (invocation: anchored on MAIN instead of WT): every gh call names MAIN; the WT-shaped assertion goes red" {
   local marker main_phys wt_phys pwd_col rest_col resolved found_wt=0
-  marker=$(bash "$SCRIPT_WRITE_CLEARANCE" --root "$MAIN" --member code-audit-frontend --provenance earned 2>/dev/null)
+  marker=$(bash "$SCRIPT_WRITE_CLEARANCE" --root "$MAIN" --member code-audit-frontend --provenance earned \
+    --scope-digest "$(digest_of "$MAIN" code-audit-frontend)" 2>/dev/null)
   chmod -x "$MAIN/.gaia/scripts/resolve-audit-members.sh"
   install_gh_stub
 
@@ -911,7 +916,8 @@ run_audit_root_block() {
 
 @test "stage 6 control B (invocation: no anchor at all, from OUTSIDE): declines 'repo slug unresolved', posts nothing" {
   local marker
-  marker=$(bash "$SCRIPT_WRITE_CLEARANCE" --root "$WT" --member code-audit-frontend --provenance earned 2>/dev/null)
+  marker=$(bash "$SCRIPT_WRITE_CLEARANCE" --root "$WT" --member code-audit-frontend --provenance earned \
+    --scope-digest "$(digest_of "$WT" code-audit-frontend)" 2>/dev/null)
   install_gh_stub
 
   run bash -c 'export PATH="$1:$PATH"; bash "$2" "$3"' _ "$GH_BIN" "$HOOK_POST" "$marker"
@@ -1046,6 +1052,68 @@ run_audit_root_block() {
 # assertion is non-vacuous, which one file establishes, and mutating the whole
 # roster would cost a backup/restore cycle per member for the same signal.
 # -----------------------------------------------------------------------------
+
+# Stage 8b: the machinery a definition INVOKES, not just the root it derives.
+# Stage 8 proves each definition's AUDIT_ROOT variable resolves to WT. That
+# says nothing about which copy of a script the definition then runs, and the
+# two came apart: the scope-digest capture is spelled
+# "$AUDIT_ROOT/.gaia/scripts/audit-scope-digest.sh" while the clearance and
+# findings writers were spelled as bare relative paths, so on a worktree audit
+# the writer ran the SESSION ROOT's copy. Both derive over the same --root,
+# but each loads its own copy's digest engine (audit-digest.sh resolves its
+# siblings from BASH_SOURCE, never from --root), and this subsystem's scope
+# digest is the first value the two derive points are compared FOR EQUALITY.
+# A pull request editing the machinery list or the digest recipe -- the
+# routine shape of work here -- would make the two disagree, refuse every
+# member's earned write with a diagnostic naming a rotation that never
+# happened, and deadlock the gate with no in-band recovery.
+
+@test "stage 8b: every clearance/findings writer invocation in every definition is AUDIT_ROOT-anchored" {
+  local m file bad
+  for m in "${ALL_MEMBERS[@]}"; do
+    file="$MAIN/.claude/agents/${m}.md"
+    [ -f "$file" ] || { echo "$m: no definition at $file" >&2; return 1; }
+    # Every invocation must carry the anchor between `bash ` and the path.
+    bad="$(grep -nE 'bash[[:space:]]+\.gaia/scripts/audit-write-(clearance|findings)\.sh' "$file" || true)"
+    [ -z "$bad" ] || {
+      echo "$m: unanchored writer invocation(s), which run the ambient cwd's copy:" >&2
+      echo "$bad" >&2
+      return 1
+    }
+    # And the anchored form must actually be present, so a definition that
+    # simply lost its handshake cannot pass this by having no call sites.
+    grep -qE 'bash[[:space:]]+"\$AUDIT_ROOT/\.gaia/scripts/audit-write-clearance\.sh"' "$file" || {
+      echo "$m: no anchored clearance-writer invocation found at all" >&2
+      return 1
+    }
+  done
+}
+
+@test "stage 8b non-vacuity (source mutation): unanchoring one writer invocation turns the assertion red; byte-identical restore verified" {
+  local file backup before after went_red=0
+  file="$MAIN/.claude/agents/code-audit-frontend.md"
+  backup="$BATS_TEST_TMPDIR/frontend-writer-anchor.bak"
+  before="$(git -C "$MAIN" hash-object "$file")"
+  cp "$file" "$backup"
+
+  perl -0pi -e 's/bash "\$AUDIT_ROOT\/\.gaia\/scripts\/audit-write-clearance\.sh"/bash .gaia\/scripts\/audit-write-clearance.sh/' "$file"
+  grep -qE 'bash[[:space:]]+\.gaia/scripts/audit-write-clearance\.sh' "$file" || {
+    cp "$backup" "$file"
+    echo "the mutation did not take; the control proves nothing" >&2
+    return 1
+  }
+
+  if ! grep -qE 'bash[[:space:]]+\.gaia/scripts/audit-write-(clearance|findings)\.sh' "$file"; then
+    went_red=0
+  else
+    went_red=1
+  fi
+
+  cp "$backup" "$file"
+  after="$(git -C "$MAIN" hash-object "$file")"
+  [ "$before" = "$after" ] || { echo "restore was not byte-identical" >&2; return 1; }
+  [ "$went_red" -eq 1 ] || { echo "stage 8b stayed green under its mutation control; the assertion is vacuous" >&2; return 1; }
+}
 
 @test "stage 8 (flag/anchor: AUDIT_ROOT supplied) from OUTSIDE: every definition resolves to WT, never MAIN" {
   local m block main_phys wt_phys

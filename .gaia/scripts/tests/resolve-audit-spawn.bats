@@ -1166,7 +1166,7 @@ code-audit-maintainer-shell"
     [ -n "$line" ] || continue
     printf '%s' "$line" | jq -e . >/dev/null || return 1
     keys="$(printf '%s' "$line" | jq -r 'keys_unsorted | join(",")')"
-    [ "$keys" = "schema,ts,branch,head,merge_base,member,digest,cleared" ] || return 1
+    [ "$keys" = "schema,kind,ts,branch,head,merge_base,member,digest,cleared" ] || return 1
   done <<<"$(ledger_lines)"
 }
 

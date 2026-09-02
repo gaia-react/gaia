@@ -216,6 +216,8 @@ wiki/decisions/Shell Guard Fixture Discrimination.md
 .playwright/e2e/react-perf-smoke.spec.ts
 # Asserts that GAIA's own bats suites agree about how they extract a step out of .github/workflows/code-review-audit.yml. Both ends are already release-excluded: the audit workflow (category 9) and the .gaia/scripts/tests and .github/audit/tests suites it enumerates (this category). Its roster is two hardcoded tables, not a derived set, so on an adopter clone carrying none of those suites every entry is stale and the check fails outright rather than sitting inert. Withholding it also keeps its roster from naming .github/audit/tests/ and .gaia/scripts/tests/ paths inside an adopter bundle.
 .gaia/scripts/check-step-body-extractor-roster.sh
+# This check asserts an invariant true of GAIA's own source: that every Code Audit Team member definition carries the scope-digest obligation literal and captures inside its own scope-resolution region. Three of the five definitions it scans are maintainer-only, and its only runners (the .gaia/scripts/tests/ bats suite and .gaia/tests/whole-tree-invariants.sh) are already release-excluded, so shipping it would ship a check nothing on an adopter clone invokes.
+.gaia/scripts/check-scope-digest-adoption.sh
 
 # --- 4. CLI maintainer source + maintainer binary ---
 # Adopters receive only the bundled adopter binary at .gaia/cli/gaia (and

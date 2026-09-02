@@ -271,6 +271,27 @@ assert_predicate_retry_fallback() {
   [ "$line_src" = "$line_art" ]
 }
 
+# 7b. The self-heal push arm must prove the marker the same way the no-push
+#     arm does. An earned clearance write refuses and writes nothing whenever
+#     the reviewer's scope digest no longer matches its write-time digest,
+#     which a self-heal commit can cause; without --require-marker on this
+#     arm, write-audit-status.sh never opens the marker at all and CI stamps
+#     GAIA-Audit success on a pushed head no member ever attested. Nothing
+#     re-runs after a GITHUB_TOKEN push, so that success is final. Pinned in
+#     all three copies because the three must stay byte-identical anyway, and
+#     a flag dropped from one of them is invisible to a reader of the others.
+
+@test "the self-heal push status writer passes --require-marker, in all three workflow copies" {
+  local f block
+  for f in "$AUDIT_WORKFLOW" "$WF_TMPL_SOURCE" "$WF_TMPL_ARTIFACT"; do
+    # The push arm is the one writer whose --sha comes from a step output
+    # rather than the event payload, so AUDIT_SHA identifies it unambiguously.
+    block="$(grep -A 3 -F -- '--sha "${AUDIT_SHA:-}"' "$f")"
+    [ -n "$block" ] || return 1
+    grep -qF -- '--require-marker' <<<"$block" || return 1
+  done
+}
+
 @test "PLAN-001: the two bundled workflow templates are byte-identical" {
   local a b
   a="$(git -C "$REPO_ROOT" hash-object "$WF_TMPL_SOURCE")"

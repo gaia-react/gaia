@@ -394,6 +394,24 @@ copy_shipped_registry() {
   [ -f "$audit_dir/beefdead.findings.json" ]
 }
 
+@test "UAT-008c: the sweep 2 findings arm reaps an aged audit/*.scope.json and keeps a fresh one" {
+  # The scope-resolution carry (.gaia/scripts/audit-scope-digest.sh) shares
+  # the findings-arm's knob and its `find` clause: same lifetime, per round
+  # per member, keyed by the audit key.
+  make_repo
+  audit_dir="$REPO/.gaia/local/audit"
+  mkdir -p "$audit_dir"
+  echo '{"schema":1,"member":"code-audit-frontend","scope_digest":"deadbeef"}' > "$audit_dir/deadbeef.code-audit-frontend.scope.json"
+  touch -t 202001010000 "$audit_dir/deadbeef.code-audit-frontend.scope.json"
+  echo '{"schema":1,"member":"code-audit-frontend","scope_digest":"beefdead"}' > "$audit_dir/beefdead.code-audit-frontend.scope.json"
+
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ -e "$audit_dir/deadbeef.code-audit-frontend.scope.json" ] && return 1
+  [ -f "$audit_dir/beefdead.code-audit-frontend.scope.json" ]
+}
+
 @test "UAT-008b: an isolation sweep-9-only run reaps neither findings.json (the owner arm, not sweep 9, is the reaper)" {
   make_repo
   audit_dir="$REPO/.gaia/local/audit"

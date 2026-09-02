@@ -56,8 +56,8 @@
 # That is why there is one tier rather than a fast default plus a
 # named slower tier. A split is worth its second name only once the honest
 # set is slow enough that people skip it, and an aggregate slow enough to
-# skip is worse than none; a minute and a half against the price of an audit
-# round is not that.
+# skip is worse than none; a minute and three-quarters against the price of
+# an audit round is not that.
 # Re-measure the WHOLE paragraph, not the figure being edited. Only the member
 # COUNT below is machine-checked, so every number here decays independently:
 # the shard suite's own figure nearly doubled as its W10 fixtures grew across
@@ -107,6 +107,7 @@ readonly WTI_SCRIPTS='.gaia/scripts/check-audit-base-derivation.sh
 .gaia/scripts/check-registry-settings-permissions.sh
 .gaia/scripts/check-registry-source-literals.sh
 .gaia/scripts/check-resolver-singleton.sh
+.gaia/scripts/check-scope-digest-adoption.sh
 .gaia/scripts/check-script-capabilities.sh
 .gaia/scripts/check-step-body-extractor-roster.sh
 .gaia/scripts/check-verb-arming-adoption.sh
@@ -121,7 +122,7 @@ readonly WTI_SCRIPTS='.gaia/scripts/check-audit-base-derivation.sh
 # The staleness lever's baseline: WTI_SCRIPTS's own member count at the time
 # the runtime paragraph above was last measured. main() compares the live
 # count against this and refuses to run on a mismatch, per that paragraph.
-readonly WTI_SCRIPTS_COUNT_ASOF=19
+readonly WTI_SCRIPTS_COUNT_ASOF=20
 
 # Members invoked as `bats <path>`. The shard partition is a whole-tree
 # invariant in the same sense as the scripts above: its input is every .bats

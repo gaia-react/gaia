@@ -691,6 +691,7 @@ run_audit_complete_step() {
   body="$(extract_step_body 'Write GAIA-Audit commit status')"
   commit_mixed_diff
   sha="$(git -C "$SANDBOX" rev-parse HEAD)"
+  write_frontend_marker
 
   run run_step "$body" "$sha"
   [ "$status" -eq 0 ]
@@ -707,6 +708,7 @@ run_audit_complete_step() {
   body="$(extract_step_body 'Write GAIA-Audit commit status')"
   commit_app_only_diff
   sha="$(git -C "$SANDBOX" rev-parse HEAD)"
+  write_frontend_marker
 
   run run_step "$body" "$sha"
   [ "$status" -eq 0 ]
@@ -717,6 +719,24 @@ run_audit_complete_step() {
   grep -qF "statuses/${sha}" "$POST_LOG"
   grep -qF "state=success" "$POST_LOG"
   grep -qF "description=1.2.3 ${digest} ${tree}" "$POST_LOG"
+}
+
+@test "push path: a diff without the frontend marker posts nothing at all" {
+  # The adversarial half of --require-marker on the self-heal push arm. An
+  # earned clearance write refuses, leaving no marker, whenever the reviewer's
+  # scope digest no longer matches its write-time digest -- an expected outcome
+  # here, because the self-heal commit rotates the digest. Without the flag this
+  # step stamped `success` on a push whose content no member ever attested, and
+  # a GITHUB_TOKEN push re-triggers nothing, so that success was final. The step
+  # must decline outright, not fall through to the pending POST: an absent
+  # required check blocks the merge exactly as a pending one does.
+  body="$(extract_step_body 'Write GAIA-Audit commit status')"
+  commit_app_only_diff
+  sha="$(git -C "$SANDBOX" rev-parse HEAD)"
+
+  run run_step "$body" "$sha"
+  [ "$status" -eq 0 ]
+  [ ! -f "$POST_LOG" ]
 }
 
 # -----------------------------------------------------------------------------
@@ -1084,6 +1104,7 @@ run_audit_complete_step() {
   local sha digest body
   sha="$(git -C "$SANDBOX" rev-parse HEAD)"
   digest="$(sandbox_frontend_digest)"
+  write_frontend_marker
   canned_success_for_digest "$digest"
 
   body="$(extract_step_body "Write GAIA-Audit commit status")"
@@ -1149,6 +1170,7 @@ run_audit_complete_step() {
   sha="$(git -C "$SANDBOX" rev-parse HEAD)"
   tree="$(sandbox_tree)"
   digest="$(sandbox_frontend_digest)"
+  write_frontend_marker
   canned_success_for_digest "$digest"
 
   body="$(extract_step_body "Write GAIA-Audit commit status")"
@@ -1189,6 +1211,7 @@ run_audit_complete_step() {
   commit_mixed_diff
   local sha body
   sha="$(git -C "$SANDBOX" rev-parse HEAD)"
+  write_frontend_marker
   status_read_fails
 
   body="$(extract_step_body "Write GAIA-Audit commit status")"
@@ -1811,6 +1834,7 @@ run_audit_complete_step() {
   body="$(extract_step_body 'Write GAIA-Audit commit status')"
   commit_app_only_diff
   sha="$(git -C "$SANDBOX" rev-parse HEAD)"
+  write_frontend_marker
   status_post_fails
 
   run run_step "$body" "$sha"
@@ -1985,6 +2009,7 @@ run_audit_complete_step() {
   body="$(extract_step_body 'Write GAIA-Audit commit status')"
   commit_mixed_diff
   sha="$(git -C "$SANDBOX" rev-parse HEAD)"
+  write_frontend_marker
   status_post_fails
 
   run run_step "$body" "$sha"

@@ -125,7 +125,11 @@ fi
 # print is a result you never see. This print is what carries the check into
 # the decision below; without it the block computes an answer and discards it.
 if [ -n "$dirty_in_scope" ]; then printf 'DIRTY IN REVIEW SCOPE:\n%s\n' "$dirty_in_scope" >&2; fi
+D_SCOPE="$("$AUDIT_ROOT/.gaia/scripts/audit-scope-digest.sh" --capture --root "$AUDIT_ROOT" --member code-audit-maintainer-shell --base "$KEY_BASE")"
+[ -n "$D_SCOPE" ] || printf 'could not capture a scope digest; the earned clearance write will refuse\n' >&2
 ```
+
+Capture your own content digest at scope resolution with `.gaia/scripts/audit-scope-digest.sh --capture`, and at marker-write time read that captured value back with `--read` and pass it as `--scope-digest`; never re-derive it in the writing call, and a rotation between the two means the review was superseded and you must be re-dispatched on the new HEAD. Re-running the scope-resolution fence above is safe and changes nothing: the capture is taken once per review, and a second `--capture` returns that first value rather than replacing it (it is replaced only once you have published a marker or a refusal keyed to it, which is what tells the script your round ended). That is enforced by the script, not by this sentence, because the fence you re-run on every handshake call carries the capture and an overwrite there would leave the writer comparing a value against itself. The one exception is a `review scope superseded` refusal from the writer: that refusal releases your capture as it exits, so a fence re-run after it hands you a NEW value instead of the one you reviewed. Your round is over at that point. Stop and ask to be re-dispatched rather than re-running the fence, or the marker you go on to earn would attest content you never read.
 
 **A non-empty `dirty_in_scope` WITHHOLDS this pass.** Every path it names holds working-tree bytes that differ from the HEAD bytes your clearance attests to, so reviewing it certifies content nobody read. Apply your own remit filter to the list first: a dirty path you would never have opened cannot make your review disagree with your marker. The one value that filter never touches is the literal `dirty-scope check failed`, which is a sentinel rather than a path and withholds unconditionally. On anything that survives, write no marker, write the findings sidecar naming each dirty path (a refusal that briefs nothing blocks a merge no one can clear), and report that you must be re-dispatched once the operator commits or reverts them. **Withhold without writing a `.refused` artifact.** That artifact is keyed to your content digest, an uncommitted edit does not rotate it, and a revert would leave a live refusal still blocking the marker your next clean pass earns. This is the self-heal rule reaching one case further, a marker only ever attests committed content; the only difference is whose uncommitted edit it is.
 
@@ -262,7 +266,7 @@ Every command below consumes `$AUDIT_ROOT`, and each Bash call re-runs the deriv
 
 ```bash
 printf '%s' '[ ...the findings array, one object per finding; [] when you found nothing... ]' \
-  | bash .gaia/scripts/audit-write-findings.sh \
+  | bash "$AUDIT_ROOT/.gaia/scripts/audit-write-findings.sh" \
       --root "$AUDIT_ROOT" \
       --member code-audit-maintainer-shell \
       --base "$KEY_BASE" \
@@ -276,20 +280,24 @@ printf '%s' '[ ...the findings array, one object per finding; [] when you found 
 
 The marker is keyed to your own content digest, not HEAD's commit sha or tree: a sha256 over exactly the files you own (see "Remit and self-skip") plus the shared gate machinery, computed by `.claude/hooks/lib/audit-digest.sh`. It attests that you audited that CONTENT: an out-of-glob change (one that touches neither your owned globs nor a machinery file) rotates nothing in your digest, so your marker keeps validating with zero re-review, including across the `GAIA-Audit` trailer stamp below (a content-preserving empty commit: it advances HEAD while leaving every blob, and therefore your digest, unchanged). That is what lets the team's members run in any order. A change to a file you own, or to any machinery file, rotates your digest and invalidates your marker, and you must re-audit. Writing the marker before the stamp also feeds the member-aware stamp gate in step 2: the trailer is never stamped while any dispatched member's own marker, this one included, is missing.
 
+Read your captured scope digest back rather than re-deriving it: a value derived in this call would be the writer's own internal derive by construction, which makes the staleness comparison vacuous. `KEY_BASE` must be re-derived in this Bash call (shell state does not persist between calls), and the scope-digest read depends on it, since the scope file is keyed by it.
+
 ```bash
-marker="$(bash .gaia/scripts/audit-write-clearance.sh \
+D_SCOPE="$("$AUDIT_ROOT/.gaia/scripts/audit-scope-digest.sh" --read --root "$AUDIT_ROOT" --member code-audit-maintainer-shell --base "$KEY_BASE")"
+marker="$(bash "$AUDIT_ROOT/.gaia/scripts/audit-write-clearance.sh" \
   --root "$AUDIT_ROOT" \
   --member code-audit-maintainer-shell \
   --provenance earned \
-  --base "$KEY_BASE")"
+  --base "$KEY_BASE" \
+  --scope-digest "$D_SCOPE")"
 ```
 
-The shared writer derives your content digest internally from `--root`, resolves the filename from it, writes atomically, and prints the marker path it wrote. Every write lands unconditionally: it replaces whatever marker was already on disk for this digest, there is no carried provenance to out-rank, only earned or refused.
+The shared writer derives your content digest internally from `--root`, resolves the filename from it, writes atomically, and prints the marker path it wrote. Every write lands unconditionally: it replaces whatever marker was already on disk for this digest, there is no carried provenance to out-rank, only earned or refused. A `review scope superseded` refusal here means your scope digest no longer matches your content digest at write time: no artifact was written and the round is forfeited. That refusal releases your now-stale capture as it exits, so the re-dispatch on the new HEAD starts from a fresh capture and clears normally instead of refusing identically forever. The release is also why you must not re-run the scope fence yourself here: it would hand you a capture for content you did not review.
 
 Withhold the marker on any unresolved Critical or unaddressed/unacknowledged Important finding; withholding it holds the shared `GAIA-Audit` gate shut via the AND-aggregator, since this member is part of the dispatched set for the diff. When you withhold after genuinely auditing this exact content, **record the refusal** with the same shared writer so the merge gate treats it as absolute, checking the refusal family before the earned family: a live refusal for the current digest denies the merge regardless of any same-digest earned marker. Stop here, the remaining handshake steps below apply only to a written marker:
 
 ```bash
-bash .gaia/scripts/audit-write-clearance.sh \
+bash "$AUDIT_ROOT/.gaia/scripts/audit-write-clearance.sh" \
   --root "$AUDIT_ROOT" \
   --member code-audit-maintainer-shell \
   --provenance refused \
@@ -303,11 +311,13 @@ Passing `--base` on the earned write too is what retires your ledger entries: th
 **Superseding your own prior refusal.** A plain earned write never clears a refusal you already wrote for the same digest: both markers sit on disk, the gate checks the refusal family first, and the merge stays blocked no matter how many times you are re-spawned. When you refused this exact digest on an earlier round and the blocking finding is now genuinely resolved, say so explicitly as you write the earned marker:
 
 ```bash
-marker="$(bash .gaia/scripts/audit-write-clearance.sh \
+D_SCOPE="$("$AUDIT_ROOT/.gaia/scripts/audit-scope-digest.sh" --read --root "$AUDIT_ROOT" --member code-audit-maintainer-shell --base "$KEY_BASE")"
+marker="$(bash "$AUDIT_ROOT/.gaia/scripts/audit-write-clearance.sh" \
   --root "$AUDIT_ROOT" \
   --member code-audit-maintainer-shell \
   --provenance earned \
   --base "$KEY_BASE" \
+  --scope-digest "$D_SCOPE" \
   --supersede-refusal "operator acknowledged the unaddressed Important with a stated reason")"
 ```
 
@@ -400,7 +410,7 @@ The finding-recurrence tally (`.gaia/cli/src/harden/tally.ts`) reads PR comments
 
 ```bash
 printf '%s' '[ ...the findings array, one object per finding; [] when you found nothing... ]' \
-  | bash .gaia/scripts/audit-write-findings.sh \
+  | bash "$AUDIT_ROOT/.gaia/scripts/audit-write-findings.sh" \
       --root "$AUDIT_ROOT" \
       --member code-audit-maintainer-shell \
       --base "$KEY_BASE" \

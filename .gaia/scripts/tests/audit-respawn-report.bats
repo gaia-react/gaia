@@ -2,11 +2,16 @@
 #
 # Conformance suite for .gaia/scripts/audit-respawn-report.sh: the query over
 # the audit re-spawn breadcrumb ledger that reports how many Code Audit Team
-# re-spawns are attributable to a peer's merge versus the branch's own edits.
+# re-spawns are attributable to a peer's merge versus the branch's own edits,
+# plus the mid-flight rotation count that pairs a scope-resolution record
+# against the next spawn breadcrumb.
 #
 # Criteria 1-23 (from the task plan) run on hand-written fixture ledgers,
-# built via the `rec` helper below, which is the right way to pin the
-# query's arithmetic precisely. The final test is deliberately different: it
+# built via the `rec` helper below (schema-2, kind "spawn"), which is the
+# right way to pin the query's arithmetic precisely. `legacy_rec` writes the
+# pre-addition schema-1 shape (no `kind` at all), kept separate so the
+# unknown-not-false reader behaviour stays testable. `scope_rec` writes a
+# schema-2 kind "scope" record. The final test is deliberately different: it
 # rebuilds a real peer-merge fixture through the actual oracle
 # (resolve-audit-spawn.sh) in an isolated sandbox and runs this script
 # against the ledger those oracle runs actually produced, proving the writer
@@ -46,13 +51,32 @@ ts_ago() {
 }
 
 # rec <branch> <member> <ts> <digest> <merge_base> <cleared>: appends one
-# C2-shaped record to $LEDGER. `head` is a fixed placeholder: the query
-# never reads it.
+# schema-2 kind:"spawn" record to $LEDGER. `head` is a fixed placeholder: the
+# query never reads it.
 rec() {
+  local branch="$1" member="$2" ts="$3" digest="$4" merge_base="$5" cleared="$6"
+  mkdir -p "$(dirname "$LEDGER")"
+  printf '{"schema":2,"kind":"spawn","ts":"%s","branch":"%s","head":"h","merge_base":"%s","member":"%s","digest":"%s","cleared":%s}\n' \
+    "$ts" "$branch" "$merge_base" "$member" "$digest" "$cleared" >>"$LEDGER"
+}
+
+# legacy_rec <branch> <member> <ts> <digest> <merge_base> <cleared>: appends
+# one PRE-ADDITION schema-1 record (no `kind` field at all) to $LEDGER, the
+# shape a tree that has not adopted schema 2 still writes.
+legacy_rec() {
   local branch="$1" member="$2" ts="$3" digest="$4" merge_base="$5" cleared="$6"
   mkdir -p "$(dirname "$LEDGER")"
   printf '{"schema":1,"ts":"%s","branch":"%s","head":"h","merge_base":"%s","member":"%s","digest":"%s","cleared":%s}\n' \
     "$ts" "$branch" "$merge_base" "$member" "$digest" "$cleared" >>"$LEDGER"
+}
+
+# scope_rec <branch> <member> <ts> <scope_digest> <merge_base>: appends one
+# schema-2 kind:"scope" record to $LEDGER.
+scope_rec() {
+  local branch="$1" member="$2" ts="$3" scope_digest="$4" merge_base="$5"
+  mkdir -p "$(dirname "$LEDGER")"
+  printf '{"schema":2,"kind":"scope","ts":"%s","branch":"%s","head":"h","merge_base":"%s","member":"%s","scope_digest":"%s"}\n' \
+    "$ts" "$branch" "$merge_base" "$member" "$scope_digest" >>"$LEDGER"
 }
 
 # stdout_only / stderr_only <args...>: the script's stdout or stderr alone,
@@ -104,11 +128,16 @@ path_without_jq() {
 
   run "$SCRIPT" --root "$ROOT" --json
   [ "$status" -eq 0 ]
+  [ "$(jq -r '.schema' <<<"$output")" = "2" ]
   [ "$(jq -r '.records' <<<"$output")" = "0" ]
   [ "$(jq -r '.transitions' <<<"$output")" = "0" ]
+  [ "$(jq -r '.exposed_pairs' <<<"$output")" = "0" ]
+  [ "$(jq -r '.lost_clearances' <<<"$output")" = "0" ]
   [ "$(jq -r '.peer_merge_respawns' <<<"$output")" = "0" ]
   [ "$(jq -r '.own_change_respawns' <<<"$output")" = "0" ]
   [ "$(jq -r '.peer_merge_rotations_upper' <<<"$output")" = "0" ]
+  [ "$(jq -r '.mid_flight_rotations' <<<"$output")" = "0" ]
+  [ "$(jq -r '.mid_flight_undeterminable' <<<"$output")" = "0" ]
 }
 
 @test "criterion 3: empty ledger file behaves the same as absent" {
@@ -345,24 +374,129 @@ path_without_jq() {
   [ "$(jq -r '.peer_merge_rotations_upper' <<<"$output")" = "0" ]
 }
 
-# 18. --json parses under jq -e . with numeric counts
+# 18. --json parses under jq -e . with numeric counts, schema 2, and the
+# frozen key order
 
-@test "criterion 18: --json output parses under jq -e . and all five counts are numbers" {
+@test "criterion 18: --json output parses under jq -e ., all counts are numbers, schema is 2, key order is frozen" {
   run "$SCRIPT" --root "$ROOT" --json
   [ "$status" -eq 0 ]
   jq -e . >/dev/null 2>&1 <<<"$output" || return 1
-  jq -e '[.records,.transitions,.peer_merge_respawns,.own_change_respawns,.peer_merge_rotations_upper] | all(type=="number")' \
+  jq -e '[.records,.transitions,.exposed_pairs,.lost_clearances,.peer_merge_respawns,.own_change_respawns,.peer_merge_rotations_upper,.mid_flight_rotations,.mid_flight_undeterminable] | all(type=="number")' \
     >/dev/null 2>&1 <<<"$output" || return 1
+  [ "$(jq -r '.schema' <<<"$output")" = "2" ]
+  [ "$(jq -r 'keys_unsorted | join(",")' <<<"$output")" = "schema,window_days,since,ledger,records,transitions,exposed_pairs,lost_clearances,peer_merge_respawns,own_change_respawns,peer_merge_rotations_upper,mid_flight_rotations,mid_flight_undeterminable" ]
 }
 
-# 19. Text output prints all three caveats
+# 19. Text output prints all four caveats
 
-@test "criterion 19: text output prints all three caveats" {
+@test "criterion 19: text output prints all four caveats" {
   run "$SCRIPT" --root "$ROOT"
   [ "$status" -eq 0 ]
   grep -qF "so within its class this is an upper bound" <<<"$output" || return 1
   grep -qF "is a lower bound on total incidence" <<<"$output" || return 1
   grep -qF "attribution is a query over recorded facts" <<<"$output" || return 1
+  grep -qF "the next oracle observation" <<<"$output" || return 1
+}
+
+# 20. exposed_pairs and lost_clearances on a hand-worked fixture
+
+@test "criterion 20: exposed_pairs and lost_clearances on a hand-worked fixture" {
+  # Pair 1 (A/memberX): earlier cleared=true (exposed), rotated, base moved,
+  # later cleared=false -> peer-merge respawn, exposed, lost clearance.
+  rec "A" "memberX" "$(ts_ago 3600)" "d1" "m1" true
+  rec "A" "memberX" "$(ts_ago 1800)" "d2" "m2" false
+  # Pair 2 (B/memberY): earlier cleared=false (not exposed), later cleared=false
+  # -> not lost (still false), not exposed.
+  rec "B" "memberY" "$(ts_ago 3600)" "e1" "n1" false
+  rec "B" "memberY" "$(ts_ago 1800)" "e2" "n2" false
+  # Pair 3 (C/memberZ): earlier cleared=true (exposed), digest unchanged
+  # (never rotated), later cleared=false -> exposed AND lost, but rotated is
+  # false so it counts in neither peer_merge_respawns nor own_change_respawns.
+  rec "C" "memberZ" "$(ts_ago 3600)" "same" "p1" true
+  rec "C" "memberZ" "$(ts_ago 1800)" "same" "p2" false
+
+  run "$SCRIPT" --root "$ROOT" --json
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '.transitions' <<<"$output")" = "3" ]
+  [ "$(jq -r '.exposed_pairs' <<<"$output")" = "2" ]
+  [ "$(jq -r '.lost_clearances' <<<"$output")" = "2" ]
+  [ "$(jq -r '.peer_merge_respawns' <<<"$output")" = "1" ]
+  [ "$(jq -r '.own_change_respawns' <<<"$output")" = "0" ]
+}
+
+# 21-23. Mid-flight rotation / undeterminable fixtures
+
+@test "criterion 21 (fixture A): a scope record paired forward against a rotated spawn breadcrumb counts as mid_flight_rotations=1, mid_flight_undeterminable=0" {
+  scope_rec "spec-077-a" "memberX" "$(ts_ago 3600)" "scopedigest" "m1"
+  rec "spec-077-a" "memberX" "$(ts_ago 1800)" "spawndigest" "m2" false
+
+  run "$SCRIPT" --root "$ROOT" --json
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '.mid_flight_rotations' <<<"$output")" = "1" ]
+  [ "$(jq -r '.mid_flight_undeterminable' <<<"$output")" = "0" ]
+}
+
+@test "criterion 22 (fixture B): a lone PRE-ADDITION spawn breadcrumb counts as mid_flight_undeterminable=1, mid_flight_rotations=0" {
+  legacy_rec "spec-077-b" "memberY" "$(ts_ago 1800)" "d1" "m1" true
+
+  run "$SCRIPT" --root "$ROOT" --json
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '.mid_flight_rotations' <<<"$output")" = "0" ]
+  [ "$(jq -r '.mid_flight_undeterminable' <<<"$output")" = "1" ]
+}
+
+@test "criterion 23 (fixture C, reachability): schema-2 spawn records with no scope record anywhere keep mid_flight_undeterminable at 0" {
+  rec "spec-077-c" "memberZ" "$(ts_ago 3600)" "d1" "m1" true
+  rec "spec-077-c" "memberZ" "$(ts_ago 1800)" "d2" "m2" false
+  rec "spec-077-c" "memberZ" "$(ts_ago 900)" "d3" "m3" true
+
+  run "$SCRIPT" --root "$ROOT" --json
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '.mid_flight_undeterminable' <<<"$output")" = "0" ]
+}
+
+@test "criterion 23b: mid_flight_rotations is a key distinct from peer_merge_respawns and peer_merge_rotations_upper" {
+  scope_rec "spec-077-d" "memberW" "$(ts_ago 3600)" "scopedigest" "m1"
+  rec "spec-077-d" "memberW" "$(ts_ago 1800)" "spawndigest" "m2" false
+
+  run "$SCRIPT" --root "$ROOT" --json
+  [ "$status" -eq 0 ]
+  # No spawn PAIR exists here (only one spawn record on this branch/member),
+  # so the spawn-only pairing counts stay zero while mid_flight_rotations,
+  # a different pairing entirely, is 1.
+  [ "$(jq -r '.peer_merge_respawns' <<<"$output")" = "0" ]
+  [ "$(jq -r '.peer_merge_rotations_upper' <<<"$output")" = "0" ]
+  [ "$(jq -r '.mid_flight_rotations' <<<"$output")" = "1" ]
+}
+
+@test "criterion 23c: the text report prints the mixed-window note iff mid_flight_undeterminable is non-zero" {
+  run "$SCRIPT" --root "$ROOT"
+  [ "$status" -eq 0 ]
+  grep -qF "mixes" <<<"$output" && return 1
+  true
+
+  legacy_rec "spec-077-e" "memberV" "$(ts_ago 1800)" "d1" "m1" true
+  run "$SCRIPT" --root "$ROOT"
+  [ "$status" -eq 0 ]
+  grep -qF "mixes" <<<"$output" || return 1
+}
+
+@test "criterion 23d: a legacy schema-1 ledger with no kind anywhere reproduces today's transitions, peer_merge_respawns, own_change_respawns, and peer_merge_rotations_upper" {
+  # A: rotated, base moved, clearance lost -> a peer-merge respawn, also
+  # counted in the upper bound.
+  legacy_rec "A" "memberX" "$(ts_ago 3600)" "d1" "m1" true
+  legacy_rec "A" "memberX" "$(ts_ago 1800)" "d2" "m2" false
+  # B: rotated, base moved, clearance NOT lost (stays true) -> counted only
+  # in the upper bound, not in peer_merge_respawns.
+  legacy_rec "B" "memberY" "$(ts_ago 3600)" "e1" "n1" true
+  legacy_rec "B" "memberY" "$(ts_ago 1800)" "e2" "n2" true
+
+  run "$SCRIPT" --root "$ROOT" --json
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '.transitions' <<<"$output")" = "2" ]
+  [ "$(jq -r '.peer_merge_respawns' <<<"$output")" = "1" ]
+  [ "$(jq -r '.own_change_respawns' <<<"$output")" = "0" ]
+  [ "$(jq -r '.peer_merge_rotations_upper' <<<"$output")" = "2" ]
 }
 
 # 24. The one end-to-end join: a real oracle ledger, not a fixture.

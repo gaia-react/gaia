@@ -7,6 +7,7 @@
 #   audit-write-clearance.sh --root <path> --member <name> \
 #                            --provenance earned|refused \
 #                            [--base <sha>] \
+#                            [--scope-digest <64-hex>] \
 #                            [--supersede-refusal <reason>] \
 #                            [--help|-h]
 #
@@ -44,6 +45,23 @@
 #                  is that briefing, derived from the member's own findings
 #                  sidecar (see "Ledger" below), so it costs the member nothing
 #                  beyond the report it already wrote.
+#   --scope-digest <64-hex>
+#                  OPTIONAL, gated on a PLAIN earned write only: never
+#                  --provenance refused, never an earned write carrying
+#                  --supersede-refusal (both write paths proceed unchanged),
+#                  and advisory-only for the one contractually never-blocking
+#                  member (mirroring its own dirty-scope exemption). A member
+#                  resolves its review scope at one HEAD, then finishes and
+#                  writes at a later one; this carries the
+#                  digest captured at scope resolution
+#                  (.gaia/scripts/audit-scope-digest.sh --capture) for
+#                  comparison against the digest this script derives fresh,
+#                  right here, from the CURRENT --root. A difference means the
+#                  member's review scope no longer describes what the marker
+#                  would attest to, so the write refuses rather than
+#                  publishing a marker keyed to unread content. A malformed
+#                  value (not exactly 64 lowercase hex) is a usage error, not a
+#                  staleness refusal.
 #
 # Behavior (all contract):
 #   - Creates <root>/.gaia/local/audit/ if absent.
@@ -114,12 +132,16 @@ usage() {
 usage: audit-write-clearance.sh --root <path> --member <name>
                                 --provenance earned|refused
                                 [--base <sha>]
+                                [--scope-digest <64-hex>]
                                 [--supersede-refusal <reason>]
                                 [--help|-h]
 
   --base <sha>                  the incremental audit base sha; maintains the
                                 re-run carry-forward ledger so a refusal briefs
                                 its own repair. Non-gating, best-effort.
+  --scope-digest <64-hex>       gated on a plain earned write; refuses when it
+                                differs from the write-time digest. See the
+                                header comment above.
   --supersede-refusal <reason>  valid only with --provenance earned; records a
                                 reasoned reversal of this member's own prior
                                 same-digest refusal and removes it.
@@ -161,6 +183,11 @@ BASE=""
 # usage error while an absent flag is the ordinary no-supersede path.
 SUPERSEDE_SEEN=0
 SUPERSEDE_REASON=""
+# SCOPE_DIGEST_SEEN mirrors SUPERSEDE_SEEN above: a member that passes an
+# empty value must hit the format-validation usage error, not read as "flag
+# absent" and slip past the staleness gate silently.
+SCOPE_DIGEST_SEEN=0
+SCOPE_DIGEST=""
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -178,6 +205,11 @@ while [ "$#" -gt 0 ]; do
       ;;
     --base)
       BASE="${2:-}"
+      shift 2 2>/dev/null || shift
+      ;;
+    --scope-digest)
+      SCOPE_DIGEST_SEEN=1
+      SCOPE_DIGEST="${2:-}"
       shift 2 2>/dev/null || shift
       ;;
     --supersede-refusal)
@@ -259,6 +291,59 @@ if [ "$SUPERSEDE_SEEN" -eq 1 ]; then
   fi
 fi
 
+# scope_advisory names the one contractually never-blocking member so the
+# gate below can key on a plain variable rather than a member-name literal.
+# On the adopter build the naming block just below is stripped, so this stays
+# 0 unconditionally: the member cannot exist on an adopter clone, and every
+# member that DOES exist there gets the full fail-closed refusal.
+scope_advisory=0
+# gaia:maintainer-only:start
+# This member is exempt in both failing arms below, exactly as it is already
+# exempt from the dirty-scope withhold -- that exemption is member-side
+# prose, not a writer branch; this is the writer's FIRST member-name
+# conditional beyond DEFAULT_MEMBER. It exists because that member is
+# contractually never-blocking, so keep the naming on the next read of this
+# file rather than deleting it as a stray inconsistency.
+if [ "$MEMBER" = "code-audit-maintainer-prose" ]; then
+  scope_advisory=1
+fi
+# gaia:maintainer-only:end
+
+# --scope-digest, when present, must be exactly 64 lowercase hex: the shape
+# the digest engine emits. This is a usage error, not a staleness refusal, so
+# a caller passing a malformed value gets a distinct diagnostic from a caller
+# whose digest genuinely rotated. Bash-3.2-safe `case`, not `[[ =~ ]]`.
+#
+# The never-blocking member is exempt here too, not only in the staleness arms
+# below. Its definition always passes --scope-digest "$D_SCOPE", and --read
+# prints nothing whenever the capture never ran, the audit key moved between two
+# of the member's Bash calls, or the janitor reaped the scope file -- so the
+# value it passes is EMPTY on exactly the paths the exemption exists to cover.
+# Exiting 2 here would make the one member that can never block a merge the one
+# that blocks it permanently, with no marker for the AND-aggregator to wait on.
+# A malformed value from that member therefore degrades to the not-supplied
+# state and falls through to the advisory arm, which reports and clears.
+_scope_digest_malformed=0
+if [ "$SCOPE_DIGEST_SEEN" -eq 1 ]; then
+  case "$SCOPE_DIGEST" in
+    *[!0-9a-f]* | '') _scope_digest_malformed=1 ;;
+  esac
+  if [ "${#SCOPE_DIGEST}" -ne 64 ]; then
+    _scope_digest_malformed=1
+  fi
+fi
+if [ "$_scope_digest_malformed" -eq 1 ]; then
+  if [ "$scope_advisory" -eq 1 ]; then
+    err "--scope-digest is not a 64-hex digest (advisory): treating as not supplied"
+    SCOPE_DIGEST_SEEN=0
+    SCOPE_DIGEST=""
+  else
+    err "--scope-digest must be a 64-hex digest"
+    usage
+    exit 2
+  fi
+fi
+
 # The member's content digest is the marker's validity key. Fail closed: never
 # write a marker keyed to an empty or partial digest.
 command -v audit_member_digest >/dev/null 2>&1 || {
@@ -269,6 +354,108 @@ digest="$(audit_member_digest "$ROOT" "$MEMBER" 2>/dev/null || true)"
 if [ -z "$digest" ]; then
   err "cannot derive a content digest for member '$MEMBER' at --root '$ROOT'"
   exit 2
+fi
+
+# _release_forfeited_capture: drop this member's stored capture as the
+# superseded refusal below exits 2.
+#
+# Why the refusal cannot just exit. `audit-scope-digest.sh` spends a stored
+# capture when a conclusion KEYED TO IT is on disk, which is the discriminator
+# that tells a finished round from a running one. A round that ends without
+# publishing anything is invisible to that test: it looks exactly like a running
+# review, so its capture survives, and because the digest rotated while the
+# round was ending, the NEXT round's earned write refuses `review scope
+# superseded` and writes no artifact -- which spends nothing either. Every round
+# after it refuses identically, forever, and the AND-aggregator holds
+# GAIA-Audit shut with no in-band recovery. Three routes end a round that way:
+# the dirty-tree withhold (the member definitions order a withhold with no
+# `.refused` artifact, then ask for a re-dispatch once the operator commits,
+# which is the rotation), a superseded forfeiture itself, and a crash or a
+# no-op-detected round.
+#
+# Publishing a `.refused` here instead would spend the capture, but at the
+# WRITE-TIME digest, which is not the one the spent test looks for; keyed to the
+# CAPTURED digest it would spend correctly and then sit on disk as a live
+# refusal blocking the very marker the next clean round earns, which is the
+# hazard the withhold prose exists to avoid. Releasing the capture is what
+# actually matches the situation: the round is over and produced nothing, so the
+# next dispatch should start from a fresh capture.
+#
+# This costs the forfeited round and nothing after it. What it deliberately does
+# NOT do is let the SAME round recover: a member that re-runs its scope fence
+# after this refusal gets a fresh capture and could then earn a marker for
+# content it reviewed at the old digest. Nothing in-band distinguishes a
+# same-round re-run from the next dispatch -- that is why the refusal message
+# says the round is forfeited in as many words, and why the member definitions
+# say the fence re-run is safe EXCEPT after this refusal.
+# Three outcomes, because the caller's diagnostic differs for each and a
+# message that asserts one of them for all three is read as a description of
+# what happened (`.claude/rules/partial-cause-reporting.md`). Saying "the
+# capture is released" on a run that released nothing points the operator at a
+# deadlock they have been told is already cleared.
+#
+#   0  released: a stored capture existed and is gone.
+#   1  nothing to release: no capture is stored, so none can strand a later
+#      round. Not a failure.
+#   2  could not resolve the scope file at all -- no key lib, no --base (the CI
+#      clearance call passes none), or an unresolvable key. A capture may or may
+#      not be sitting there; this arm cannot tell, and must not claim either.
+_release_forfeited_capture() {
+  local key="" scope_file
+  command -v gaia_audit_key >/dev/null 2>&1 || return 2
+  [ -n "$BASE" ] || return 2
+  key="$(gaia_audit_key "$BASE" "$ROOT" 2>/dev/null || true)"
+  [ -n "$key" ] || return 2
+  scope_file="${ROOT}/.gaia/local/audit/${key}.${MEMBER}.scope.json"
+  [ -f "$scope_file" ] || return 1
+  rm -f "$scope_file" || {
+    err "warning: could not release the forfeited capture at '$scope_file'; the next round will refuse identically until it is removed"
+    return 2
+  }
+  return 0
+}
+
+# Scope-digest staleness gate. Gated only on a PLAIN earned write: a refusal
+# is a claim that content should not merge, and suppressing THAT is the one
+# genuinely fail-open outcome available here, and a
+# --supersede-refusal write is the member's own reasoned reversal of its prior
+# refusal, orthogonal to whether the tree moved under it since scope
+# resolution. Each arm is its own explicit refusal rather than a
+# `[ -n "$SCOPE_DIGEST" ] && …` guard, so an absent value refuses instead of
+# silently skipping the comparison (the fail-open shape the inert
+# `AUDIT_TREE_SHA` in the four specialists already shows the cost of).
+#
+if [ "$PROVENANCE" = "earned" ] && [ "$SUPERSEDE_SEEN" -ne 1 ]; then
+  if [ "$scope_advisory" -eq 1 ]; then
+    if [ "$SCOPE_DIGEST_SEEN" -ne 1 ]; then
+      err "review scope superseded (advisory)"
+    elif [ "$SCOPE_DIGEST" != "$digest" ]; then
+      err "review scope superseded (advisory): scope=$SCOPE_DIGEST write=$digest"
+      # This arm warns and falls through to publish, and the marker it
+      # publishes is keyed to the WRITE-TIME digest, never to the captured one
+      # the spent test looks for. So without this release the capture is never
+      # spent by the very round that ends on it: it survives for the life of
+      # the audit key, and every later round re-reads it and re-emits the
+      # warning above, which the never-blocking member is instructed to record
+      # as a finding. The signal is stuck on, and the findings it produces are
+      # false. Only the mismatch arm releases; the not-supplied arm above says
+      # nothing about whether this round ended, exactly as on the blocking path.
+      _release_forfeited_capture || true
+    fi
+  elif [ "$SCOPE_DIGEST_SEEN" -ne 1 ]; then
+    err "scope digest not supplied"
+    exit 2
+  elif [ "$SCOPE_DIGEST" != "$digest" ]; then
+    err "review scope superseded: scope=$SCOPE_DIGEST write=$digest"
+    _release_forfeited_capture
+    case "$?" in
+      0) err "this round is forfeited and its capture is released; the next dispatch captures fresh." ;;
+      1) err "this round is forfeited; no stored capture was found to release, so nothing carries into the next dispatch." ;;
+      *) err "this round is forfeited, but the stored capture could not be located to release it (no --base, or the audit key does not resolve). If one is present, the next dispatch inherits it and refuses identically; clear it with audit-scope-digest.sh --capture --recapture." ;;
+    esac
+    err "Do NOT re-run the scope fence to obtain a new capture in this round: you reviewed the superseded content, and a marker earned on a fresh capture would attest content you never read."
+    exit 2
+  fi
 fi
 
 # jq builds the body. Fail closed here rather than at the write, so a missing

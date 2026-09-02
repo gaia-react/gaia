@@ -224,7 +224,8 @@
 #      never follows a symlinked scope root from a linked worktree. Three
 #      off-pattern writers still get their own dedicated reap arms
 #      elsewhere, unrelated to this sweep's registry consultation:
-#      audit/*.findings.json attached to sweep #2
+#      audit/*.findings.json and audit/*.scope.json attached to sweep #2,
+#      sharing one knob because they share one lifetime, per round per member
 #      (GAIA_AUDIT_FINDINGS_RETENTION_HOURS, default 72, floor 24),
 #      cache/gh-artifact-pr*.json attached to sweep #5b
 #      (GAIA_CACHE_ARTIFACT_RETENTION_DAYS, default 2, floor 1; the glob also
@@ -1100,11 +1101,15 @@ if [ -d "$audit_dir" ]; then
   # 72h, floor 24h). Distinct from GAIA_AUDIT_MARKER_RETENTION_HOURS above --
   # that knob keys off a marker body's own recorded audited_at field; this one
   # keys off plain file mtime, since a findings.json body carries only
-  # schema/member/findings and no branch/tree to test liveness against.
+  # schema/member/findings and no branch/tree to test liveness against. The
+  # scope-resolution carry (*.scope.json, .gaia/scripts/audit-scope-digest.sh)
+  # shares this knob rather than earning its own: it has exactly the same
+  # lifetime as a findings sidecar -- per round, per member, keyed by the
+  # audit key -- and no branch/tree of its own to test liveness against either.
   findings_hours="${GAIA_AUDIT_FINDINGS_RETENTION_HOURS:-72}"
   case "$findings_hours" in '' | *[!0-9]*) findings_hours=72 ;; esac
   [ "$findings_hours" -lt 24 ] && findings_hours=24
-  find "$audit_dir" -maxdepth 1 -type f -name '*.findings.json' \
+  find "$audit_dir" -maxdepth 1 -type f \( -name '*.findings.json' -o -name '*.scope.json' \) \
     -mmin +"$((findings_hours * 60))" -delete 2>/dev/null
 fi
 

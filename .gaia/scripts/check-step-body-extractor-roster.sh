@@ -75,6 +75,7 @@ GAIA_SBX_STEP_HEADER='      - name:'
 # The family: step-BODY extractors over code-review-audit.yml, which are the
 # copies that must agree with one another about what the body is.
 GAIA_SBX_MEMBERS='.gaia/scripts/tests/debt-origin-contract.bats
+.github/audit/tests/ci-base-resolution.bats
 .github/audit/tests/ci-guard-paths.bats
 .github/audit/tests/ci-status-member-gate.bats
 .github/audit/tests/ci-workflow-self-mod.bats

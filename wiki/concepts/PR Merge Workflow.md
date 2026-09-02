@@ -84,6 +84,20 @@ The failure shape is specific and worth naming, because it does not look like a 
 
 So before the first dispatch, not after the first refusal:
 
+- **Absorb `origin/main` first.**
+
+```bash
+git fetch origin main
+git merge --no-edit origin/main
+```
+
+The deterministic checks below are worth more against the merged tree than against the pre-merge one, because main's incoming content is exactly what the branch has not been checked against, and a red found here costs a repair commit rather than a round.
+<!-- gaia:maintainer-only:start -->
+The same is true of the whole-tree invariants run just after: their check surface is main's incoming content too, and it goes unchecked until this merge lands.
+<!-- gaia:maintainer-only:end -->
+
+A catch-up merge that lands after dispatch instead rotates a member's digest under it, the member's marker is refused as a superseded review, and the round is forfeited. This removes rotations that land before any member starts; it does not reach a merge that lands mid-round or between re-spawn waves, which is what the clearance writer's staleness refusal covers, at the cost of a forfeited round when it fires.
+
 - **Run the deterministic checks that cover the change.** The test suites for the paths touched, the linters for the languages involved, the [[Quality Gate]] when its skip logic says it applies, and any suite that consumes what changed. Green locally is the entry condition for dispatch, not a milestone passed once: re-run it after the **last** edit. Verifying, then editing prose or docs, then dispatching without re-running is the same defect as never running it, and it is the easier one to commit because the green output is still on screen.
 <!-- gaia:maintainer-only:start -->
 - **Run the whole-tree invariants as a set: `bash .gaia/tests/whole-tree-invariants.sh`.** The bullet above selects by path, and a check whose input is the whole directory has no path that selects it, so without a named set the ones that run are whichever a currently-loaded rule happens to mention, and rule activation is itself path-scoped. This is the set, and its own header carries the membership rule, the reasoning behind each deliberate non-member, and the measured runtime. It duplicates work CI already does on purpose: CI reports the same failure after the push, which costs a repair commit that moves HEAD, rotates every dispatched member's content digest, and buys a re-audit of each.
