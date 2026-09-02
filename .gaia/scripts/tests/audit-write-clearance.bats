@@ -1161,21 +1161,34 @@ EOF
 }
 
 @test "the forfeiture could-not-resolve refusal names every cause that reaches it" {
-  # The helper is the authority on how many conditions reach this arm, so that
-  # count is derived from it rather than restated here: a return-2 condition
-  # added there and left out of the message stops this test, instead of leaving
-  # a guard named for "every cause" quietly covering a subset. One assertion per
-  # named cause as well, since a single pin stays green while an edit drops one
-  # of the others and re-opens the very gap this drains. Driven through the
-  # no---base condition; what is pinned is that the parenthetical reads as the
-  # full set it is, not as a closed subset that sends the operator to rule out
-  # the wrong things.
+  # The arm this guards is the case statement's catch-all, so what it speaks for
+  # is every helper return whose status has no explicit arm, not the literal 2.
+  # Both halves of that are derived from the writer rather than restated here:
+  # a cause added later under a brand-new status routes to this same arm and
+  # must be named in it, and this file's own split of 3 out of 2 is the
+  # precedent for a new status arriving. So the guard recounts instead of
+  # trusting a sentence. One assertion per named cause as well, since a single
+  # pin stays green while an edit drops one of the others and re-opens the very
+  # gap this drains. Driven through the no---base condition; what is pinned is
+  # that the parenthetical reads as the full set it is, not as a closed subset
+  # that sends the operator to rule out the wrong things.
   causes="--base
 unresolvable audit key
 key library"
   helper="$(sed -n '/^_release_forfeited_capture() {/,/^}/p' "$WRITER")"
   [ -n "$helper" ]
-  [ "$(grep -c 'return 2' <<<"$helper")" -eq "$(grep -c . <<<"$causes")" ]
+  # The statuses the caller gives an explicit arm; everything else falls to *).
+  arms="$(sed -n '/^    _release_forfeited_capture$/,/^    esac$/p' "$WRITER" \
+          | sed -n 's/^      \([0-9][0-9]*\)).*/\1/p')"
+  [ -n "$arms" ]
+  returns="$(grep -oE 'return [0-9]+' <<<"$helper" | sed 's/^return //')"
+  [ -n "$returns" ]
+  uncaught=0
+  while IFS= read -r st; do
+    [ -n "$st" ] || continue
+    grep -qxF -- "$st" <<<"$arms" || uncaught=$((uncaught + 1))
+  done <<<"$returns"
+  [ "$uncaught" -eq "$(grep -c . <<<"$causes")" ]
 
   run bash "$WRITER" --root "$ROOT" --member code-audit-frontend --provenance earned \
     --scope-digest "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
