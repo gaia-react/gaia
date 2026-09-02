@@ -11,6 +11,23 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-09-02 3be0f64b SKIP - source-bearing path (non-test), but internal test-derivation refactor, no wiki architecture change
+- 2026-09-02 e88beae9 SKIP - source-bearing path (non-test), but internal guard discovery consolidation, no wiki architecture change
+- 2026-09-02 b4acc32a WORTHY - fixed pnpm format --ignore-path writing into live worktrees → wiki/concepts/Worktrees.md
+- 2026-09-02 dc674d9f SKIP - source-bearing path (non-test), but internal trap-arm fix, no wiki page documents this detail level
+- 2026-09-02 1acd1e03 SKIP - tests-only
+- 2026-09-02 c1159d55 SKIP - source-bearing path (non-test), but rule-paths arming only, no wiki architecture change
+- 2026-09-02 bda9e251 WORTHY - added app/action-paths.ts as single source of truth for fetcher action paths → wiki/modules/Routing.md
+- 2026-09-02 fd68820f SKIP - internal CI-watch result-reader dedup, no wiki page documents this detail level
+- 2026-09-02 aef5968f WORTHY - self-heal boundary widened to app/ test surfaces → wiki/concepts/PR Merge Workflow.md (edited within same commit, already current)
+- 2026-09-02 18aa179a SKIP - tests-only
+- 2026-09-02 8d9d2647 SKIP - test-only router-stub fix, superseded by bda9e251's action-paths centralization
+- 2026-09-02 f8b6ad20 SKIP - prior wiki-sync commit, already contains its own wiki edits
+- 2026-09-02 16813d3a SKIP - internal wait-for-ci.sh error-branch fix, no wiki page documents this detail level
+- 2026-09-02 fecdb7c8 SKIP - test-only theme-label fix, superseded by bda9e251's action-paths centralization
+- 2026-09-02 1757ca9b SKIP - source-bearing path (non-test), but internal guard predicate extraction, no wiki architecture change
+- 2026-09-02 b6cdd76a SKIP - source-bearing path (non-test), but rule-paths arming only, no wiki architecture change
+- 2026-09-02 a903898b SKIP - source-bearing path (non-test), but rule-file wording only, no wiki architecture change
 - 2026-09-01 ea9f525a SKIP - prose-only guard fixes (stale-cardinal lint), no catalogued wiki page covers shell-lint.sh's awk guards
 - 2026-09-01 83b83c6e WORTHY - new .gaia/scripts/list-tracked-paths.sh guard refuses newline-bearing tracked paths at release staging → wiki/concepts/Release Workflow.md
 - 2026-09-01 7d73b71f SKIP - test-scan widening for a retired script name, no wiki-facing behavior

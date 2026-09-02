@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-07-23
-updated: 2026-08-30
+updated: 2026-09-02
 tags: [concept, worktree, claude, hooks, state]
 ---
 
@@ -153,6 +153,8 @@ The identical write from Bash succeeds. That asymmetry is the whole surprise, an
 ## What is permanent
 
 The registry is the only list, and the session-start sweep reports every `.gaia/local/` child it does not recognize — so drift surfaces rather than vanishing. That is the defense an adopter clone carries.
+
+Repo-root tooling is a separate hazard from anything the registry governs: a command with no notion of "tree" at all can still walk into one. The `format` script (`prettier --write` over a root-anchored glob) relies on Prettier's default ignore resolution, `.gitignore` plus `.prettierignore`, to stay off untracked and build-output paths, `.claude/worktrees/` included. Passing `--ignore-path` to that command replaces Prettier's ignore set rather than adding to it, which drops the implicit `.gitignore` read and lets the same glob descend into every live worktree; a `--write` there lands silently in another session's in-flight tree. The script does not pass that flag.
 
 <!-- gaia:maintainer-only:start -->
 GAIA maintainers: three enforcement mechanisms persist in this repo and are the entire defense against re-creating the problem in the next cross-cutting feature.
