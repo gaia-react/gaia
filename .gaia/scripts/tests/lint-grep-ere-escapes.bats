@@ -484,6 +484,24 @@ grep -qE "a\tb" input.txt
   fixture_repo_bare
   run_linter
   [ "$status" -eq 1 ]
+  grep -qF -- "nothing was scanned" <<<"$output" || return 1
+  # Names the sets this gate asked for, not the phrase every empty-surface
+  # message carries: the bats error below carries it too, and would other-
+  # wise green this test over a scan discovery that reported clean over
+  # nothing.
+  grep -qF -- "the scan surface (shell husky workflows)" <<<"$output"
+}
+
+# The `|| exit $?` on the discovery call is the whole mechanism here. `|| exit 1`
+# folds a discovery that never ran into the status this gate uses for a tree it
+# read and found nothing in, and an operator handed that would go looking at the
+# tree. Run outside any repository, so `git ls-files` fails rather than answering
+# empty; that is the one discovery failure a fixture can produce without a stub.
+@test "a discovery that never ran exits distinctly from a surface that came back empty" {
+  TMP="$(mktemp -d -t grep-ere-lint-XXXXXX)"
+  run bash -c "cd '$TMP' && bash '$LINTER' 2>&1"
+  [ "$status" -eq 3 ]
+  grep -qF -- "discovery failed" <<<"$output" || return 1
   grep -qF -- "nothing was scanned" <<<"$output"
 }
 

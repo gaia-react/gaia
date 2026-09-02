@@ -93,15 +93,17 @@
 # never author it, so a linter over the framework's own shell has no adopter
 # surface -- and shell-lint.sh, its only runner, is already release-excluded
 # wholesale via the .gaia/tests entry, so shipping it would ship a check nothing
-# on an adopter clone invokes.
+# on an adopter clone invokes. It also sources guard-awk-lib.sh, withheld
+# below, so the absent dependency would decide the withhold on its own.
 .gaia/scripts/lint-git-path-quoting.sh
 # The workflow run-interpolation lint guards GAIA's own CI workflow YAML, its
 # composite actions, and the adopter workflow templates it renders CI from,
 # against a `${{ }}` expression substituted into a `run:` script body. Withheld
-# on the same reasoning as the diff-quoting lint above,
-# and on that reasoning ALONE: shell-lint.sh, its only runner, is
-# release-excluded wholesale via the `.gaia/tests` entry, so shipping this file
-# would ship a check nothing on an adopter clone invokes.
+# on the same reasoning as the diff-quoting lint above: shell-lint.sh, its only
+# runner, is release-excluded wholesale via the `.gaia/tests` entry, so shipping
+# this file would ship a check nothing on an adopter clone invokes. It also
+# sources guard-awk-lib.sh, withheld below, so the absent dependency would
+# decide the withhold on its own.
 #
 # Note what is deliberately NOT claimed here, because it is false and would be
 # the premise a future maintainer re-litigates this decision from: an adopter
@@ -114,22 +116,24 @@
 # The grep ERE-escape lint guards GAIA's own framework shell, its CI workflow and
 # composite-action YAML, and the adopter workflow templates against a
 # backslash-escaped letter in a `grep -E` pattern, which BSD grep and GNU grep
-# read differently. Withheld on the same reasoning as the two lints above, and on
-# that reasoning ALONE: shell-lint.sh, its only runner, is release-excluded
-# wholesale via the `.gaia/tests` entry, so shipping this file would ship a check
-# nothing on an adopter clone invokes. An adopter clone does have a populated
-# scan surface, for the reason the run-interpolation note above spells out, so
-# the withhold rests on the absent runner rather than on an empty surface.
+# read differently. Withheld on the same reasoning as the two lints above:
+# shell-lint.sh, its only runner, is release-excluded wholesale via the
+# `.gaia/tests` entry, so shipping this file would ship a check nothing on an
+# adopter clone invokes. It also sources guard-awk-lib.sh, withheld below, so
+# the absent dependency would decide the withhold on its own. An adopter clone
+# does have a populated scan surface, for the reason the run-interpolation note
+# above spells out, so neither withhold rests on an empty one.
 .gaia/scripts/lint-grep-ere-escapes.sh
 # The errexit status-read lint guards GAIA's own framework shell, its CI workflow
 # and composite-action YAML, and the adopter workflow templates against a `$?`
 # read that `set -e` has already made unreachable. Withheld on the same reasoning
-# as the three lints above, and on that reasoning ALONE: shell-lint.sh, its only
-# runner, is release-excluded wholesale via the `.gaia/tests` entry, so shipping
-# this file would ship a check nothing on an adopter clone invokes. An adopter
-# clone does have a populated scan surface, and the shipped workflow templates
-# render into their CI carrying the class's own exposure, so the withhold rests
-# on the absent runner rather than on an empty surface.
+# as the three lints above: shell-lint.sh, its only runner, is release-excluded
+# wholesale via the `.gaia/tests` entry, so shipping this file would ship a check
+# nothing on an adopter clone invokes. It also sources guard-awk-lib.sh, withheld
+# below, so the absent dependency would decide the withhold on its own. An
+# adopter clone does have a populated scan surface, and the shipped workflow
+# templates render into their CI carrying the class's own exposure, so neither
+# withhold rests on an empty one.
 .gaia/scripts/lint-errexit-status-read.sh
 # The shipped-issue-reference lint enforces GAIA's own authoring obligation: a
 # `#NNN` on a file GAIA ships must name gaia-react/gaia so an adopter reading it
