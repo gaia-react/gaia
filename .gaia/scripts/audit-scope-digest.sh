@@ -49,16 +49,21 @@
 # "captured_at":"..."}. JSON rather than a bare digest so a truncated write
 # fails to parse instead of silently reading as a short digest.
 #
-# STALE FILES ARE NOT TOLERATED AND NOT DETECTED HERE. `--capture` is
-# idempotent per audit key and member -- it returns an existing capture
-# unchanged, and `--recapture` is the one deliberate override; nothing here
-# checks the file's age or its recorded head against the current one. A file
-# left by an earlier round is read back verbatim, the writer sees a digest
-# that no longer matches the member's write-time digest, and it refuses with
-# "review scope superseded" -- which is the CORRECT outcome, because the
-# member's review really was scoped at the older content. Do not add a
-# "helpful" freshness check here; it would silently re-derive the guard's own
-# inertness.
+# `--capture` is idempotent per audit key, member, AND REVIEW -- it returns an
+# existing capture unchanged, and `--recapture` is the one deliberate override.
+# The review term is load-bearing and is not a freshness check: age is never
+# consulted. A capture is replaced only when the member has already published a
+# marker or a refusal keyed to it, which is what makes it the artifact of a
+# round that ENDED rather than one still running. See the SPENT-capture block
+# beside the capture arm for why the audit key alone cannot carry this: a
+# refused round does not advance the key, so idempotence per key deadlocked the
+# gate permanently on the next round.
+#
+# Do not relax that to a bare age or head comparison. The fence a member re-runs
+# on every handshake call carries the capture, and a comparison that replaced on
+# a moved head alone would overwrite the stored value with the write-time digest
+# whenever the operator commits mid-review, leaving the writer comparing a value
+# against itself and re-deriving the guard's own inertness.
 #
 # Telemetry is fail-open and adopter-safe. The scope-resolution record is
 # appended through .gaia/scripts/audit-respawn-lib.sh, sourced guarded from
@@ -262,13 +267,63 @@ fi
 #
 # --recapture is the one deliberate override, for a caller whose review
 # genuinely ends on different content than it started on.
+# The one exception, and the reason the idempotence above is scoped to a REVIEW
+# rather than to the audit key alone. The key's base advances only when a CLEAN
+# round stamps a trailer, so a round that REFUSES leaves the next round
+# resolving the same key. Without this, that next round reads the refused
+# round's capture, the repair that answered the refusal has rotated the member
+# digest, and the earned write refuses `review scope superseded` -- forever, on
+# every re-dispatch, with `--recapture` (named nowhere but the CI self-heal
+# prompt) as the only escape. The AND-aggregator then holds GAIA-Audit shut
+# with no in-band recovery.
+#
+# A stored capture is SPENT once its own member has PUBLISHED a conclusion keyed
+# to it -- a marker or a refusal. That one term separates the two cases, and it
+# is the whole test:
+#
+#   finished round, now re-dispatched -> a conclusion exists -> replace
+#   review still running              -> nothing published   -> keep
+#
+# Keeping the second is what preserves the guarantee this arm was written for:
+# the fence a member re-runs on every handshake call must not overwrite the
+# capture with the write-time digest, or the writer would compare a value
+# against itself. A running review has published nothing, so it never looks
+# spent, whether or not the operator commits underneath it.
+#
+# NO HEAD OR AGE COMPARISON. An earlier draft also required the recorded head to
+# differ from the current one, on the theory that it separated a new round from a
+# mid-review commit. It does not, and a mutation test proved it: neutralising
+# that term reds no test. The digest is derived from COMMITTED content, so it
+# cannot move without HEAD moving, which makes the head term unobservable; and
+# at an unchanged head the stored digest still equals the write-time one, so
+# replacing it changes nothing either. It was dead weight, and a term no test can
+# justify is a term the next reader has to re-derive. The conclusion is the
+# signal because it is the thing that is actually true of a finished round and
+# false of a running one.
+SCOPE_DEFAULT_MEMBER="code-audit-frontend"
+
+_scope_capture_is_spent() {
+  local captured="$1" infix
+  # Same filename family the writer builds (audit-write-clearance.sh's
+  # `infix`), so this asks for the artifact the writer actually produces.
+  # A test in audit-scope-digest.bats pins the two spellings in agreement.
+  if [ "$MEMBER" = "$SCOPE_DEFAULT_MEMBER" ]; then
+    infix=""
+  else
+    infix=".${MEMBER}"
+  fi
+  [ -f "${audit_dir}/${captured}${infix}.ok" ] && return 0
+  [ -f "${audit_dir}/${captured}${infix}.refused" ] && return 0
+  return 1
+}
+
 if [ "$RECAPTURE" -ne 1 ] && [ -f "$scope_file" ]; then
   _existing="$(jq -r '.scope_digest // empty' "$scope_file" 2>/dev/null)" || _existing=""
   case "$_existing" in
     *[!0-9a-f]*) _existing="" ;;
   esac
   [ "${#_existing}" -eq 64 ] || _existing=""
-  if [ -n "$_existing" ]; then
+  if [ -n "$_existing" ] && ! _scope_capture_is_spent "$_existing"; then
     printf '%s\n' "$_existing"
     exit 0
   fi

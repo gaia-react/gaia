@@ -331,6 +331,95 @@ rotate_in_scope() {
   [ "$stored" = "$forced" ]
 }
 
+# The SPENT-capture arm. A round that REFUSES does not advance the audit key, so
+# without this the next round inherits the refused round's capture and the
+# earned write refuses "review scope superseded" on every re-dispatch, forever.
+# The discriminator is a published conclusion, not age: these tests and the
+# "a second --capture returns the first value" test above are a matched pair
+# over the SAME rotation, differing only in whether a conclusion exists.
+
+publish_conclusion() {
+  # $1 digest, $2 suffix (.ok|.refused), $3 optional member infix
+  mkdir -p "$ROOT/.gaia/local/audit"
+  : >"$ROOT/.gaia/local/audit/${1}${3:-}${2}"
+}
+
+@test "spent: a capture with a published REFUSAL is replaced on the next round" {
+  first="$("$SCRIPT" --capture --root "$ROOT" --member "$MEMBER" --base "$BASE")"
+  publish_conclusion "$first" .refused
+  rotate_in_scope
+
+  second="$("$SCRIPT" --capture --root "$ROOT" --member "$MEMBER" --base "$BASE")"
+  [ "$second" != "$first" ]
+
+  stored="$("$SCRIPT" --read --root "$ROOT" --member "$MEMBER" --base "$BASE")"
+  [ "$stored" = "$second" ]
+}
+
+@test "spent: a published MARKER spends the capture too, not only a refusal" {
+  first="$("$SCRIPT" --capture --root "$ROOT" --member "$MEMBER" --base "$BASE")"
+  publish_conclusion "$first" .ok
+  rotate_in_scope
+
+  second="$("$SCRIPT" --capture --root "$ROOT" --member "$MEMBER" --base "$BASE")"
+  [ "$second" != "$first" ]
+}
+
+# For a SPECIALIST the digest is a poor probe: rotate_in_scope commits under
+# app/, which no specialist's digest covers, so the value cannot move whether
+# the capture was replaced or kept. The scope file's recorded `head` is the
+# probe that answers directly, and it works for either outcome.
+stored_head_for() {
+  local sf
+  sf="$(ls "$ROOT"/.gaia/local/audit/*."${1}".scope.json 2>/dev/null | head -1)"
+  [ -n "$sf" ] || return 1
+  jq -r '.head // empty' "$sf"
+}
+
+@test "spent: a specialist's conclusion is found under its own member infix" {
+  local m="code-audit-github-workflows"
+  first="$("$SCRIPT" --capture --root "$ROOT" --member "$m" --base "$BASE")"
+  before_head="$(stored_head_for "$m")"
+  publish_conclusion "$first" .refused ".${m}"
+  rotate_in_scope
+
+  "$SCRIPT" --capture --root "$ROOT" --member "$m" --base "$BASE" >/dev/null
+  after_head="$(stored_head_for "$m")"
+  [ "$after_head" != "$before_head" ]
+  [ "$after_head" = "$(git -C "$ROOT" rev-parse HEAD)" ]
+}
+
+@test "spent: ANOTHER member's conclusion does not spend this member's capture" {
+  # The infix is what keys the lookup to this member. Written bare, a
+  # specialist would read a different member's conclusion as its own.
+  local m="code-audit-github-workflows"
+  first="$("$SCRIPT" --capture --root "$ROOT" --member "$m" --base "$BASE")"
+  before_head="$(stored_head_for "$m")"
+  publish_conclusion "$first" .refused ".code-audit-maintainer-node"
+  rotate_in_scope
+
+  second="$("$SCRIPT" --capture --root "$ROOT" --member "$m" --base "$BASE")"
+  [ "$second" = "$first" ]
+  # The decisive half: the file was not rewritten, so the capture was KEPT
+  # rather than coincidentally re-deriving the same digest.
+  [ "$(stored_head_for "$m")" = "$before_head" ]
+}
+
+@test "the spent lookup and the writer agree on the default member's bare infix" {
+  # audit-scope-digest.sh builds the conclusion filename itself, so its notion of
+  # "which member gets no infix" must equal audit-write-clearance.sh's. A drift
+  # here makes the lookup miss every conclusion for one member, silently.
+  writer="$THIS_DIR/../audit-write-clearance.sh"
+  [ -f "$writer" ] || skip "audit-write-clearance.sh not present"
+
+  scope_default="$(grep -oE '^SCOPE_DEFAULT_MEMBER="[^"]+"' "$SCRIPT" | head -1 | sed 's/.*="//;s/"$//')"
+  writer_default="$(grep -oE '^DEFAULT_MEMBER="[^"]+"' "$writer" | head -1 | sed 's/.*="//;s/"$//')"
+
+  [ -n "$scope_default" ]
+  [ -n "$writer_default" ]
+  [ "$scope_default" = "$writer_default" ]
+}
+
 @test "--recapture is rejected on --read" {
   run "$SCRIPT" --read --recapture --root "$ROOT" --member "$MEMBER" --base "$BASE"
   [ "$status" -eq 2 ]
@@ -390,6 +479,38 @@ rotate_in_scope() {
   captured="$("$SCRIPT" --capture --root "$ROOT" --member "$MEMBER" --base "$BASE")"
   carried="$("$SCRIPT" --read --root "$ROOT" --member "$MEMBER" --base "$BASE")"
   [ "$carried" = "$captured" ]
+
+  run "$writer" --root "$ROOT" --member "$MEMBER" --provenance earned \
+    --base "$BASE" --scope-digest "$carried"
+  [ "$status" -eq 0 ]
+  [ -n "$(find "$ROOT/.gaia/local/audit" -name '*.ok' 2>/dev/null)" ]
+}
+
+@test "END TO END: a REFUSED round does not strand the round that repairs it" {
+  # The C1 regression test, at the level the defect actually lived. Round N
+  # refuses; the repair rotates the member digest; round N+1 re-dispatches at
+  # the SAME audit key, because only a clean round advances the key's base. The
+  # unit tests above cover the spent lookup; this proves the whole loop, through
+  # the real writer, ends in a marker instead of a permanent refusal.
+  writer="$THIS_DIR/../audit-write-clearance.sh"
+  [ -x "$writer" ] || skip "audit-write-clearance.sh not executable"
+
+  # --- round N: capture, find something, refuse ---
+  captured="$("$SCRIPT" --capture --root "$ROOT" --member "$MEMBER" --base "$BASE")"
+  run "$writer" --root "$ROOT" --member "$MEMBER" --provenance refused \
+    --base "$BASE" --scope-digest "$captured"
+  [ "$status" -eq 0 ]
+  [ -n "$(find "$ROOT/.gaia/local/audit" -name '*.refused' 2>/dev/null)" ]
+
+  # --- the repair that answers the refusal, which rotates the digest ---
+  rotate_in_scope
+
+  # --- round N+1: same key, because the refusal advanced nothing ---
+  recaptured="$("$SCRIPT" --capture --root "$ROOT" --member "$MEMBER" --base "$BASE")"
+  [ "$recaptured" != "$captured" ]
+
+  carried="$("$SCRIPT" --read --root "$ROOT" --member "$MEMBER" --base "$BASE")"
+  [ "$carried" = "$recaptured" ]
 
   run "$writer" --root "$ROOT" --member "$MEMBER" --provenance earned \
     --base "$BASE" --scope-digest "$carried"
