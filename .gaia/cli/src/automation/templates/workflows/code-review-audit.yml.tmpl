@@ -165,9 +165,9 @@ jobs:
           # could not run, and repeating the ref the rest of this workflow
           # already assumes is a safer answer there than one this step would
           # have to re-derive. Where origin/main does not resolve, because the
-          # repository's default branch is named something else, the next step
-          # exits non-zero: this path fails loudly rather than reviewing a
-          # wrong scope.
+          # repository's default branch is named something else, the base_sha
+          # resolution below exits non-zero: this path fails loudly rather than
+          # reviewing a wrong scope.
           base="$(bash .github/audit/resolve-audit-base.sh || echo origin/main)"
           echo "base=${base}" >> "$GITHUB_OUTPUT"
           # The audit key's first half must be a SHA. `base` above is a ref name
@@ -177,7 +177,15 @@ jobs:
           # from it, so a slash there escapes into the path and the write fails.
           # Resolve it once here and let the digest calls key on this, while the
           # diff prose keeps the readable ref above.
-          base_sha="$(git merge-base "${base}" HEAD 2>/dev/null || git rev-parse "${base}^{commit}" 2>/dev/null || true)"
+          # `--verify --quiet` on the fallback is load-bearing, not decoration.
+          # A BARE `git rev-parse <bad-rev>` echoes its unresolved argument on
+          # STDOUT and exits 128; the `fatal:` goes to stderr, which `2>/dev/null`
+          # discards, and `|| true` swallows the status. The substitution would
+          # then capture the literal `<ref>^{commit}` -- non-empty -- so the
+          # emptiness test below could never fire and its diagnostic could never
+          # print. `--verify --quiet` prints nothing and exits 1 instead, which is
+          # the whole reason the guard is reachable.
+          base_sha="$(git merge-base "${base}" HEAD 2>/dev/null || git rev-parse --verify --quiet "${base}^{commit}" 2>/dev/null || true)"
           if [ -z "${base_sha}" ]; then
             echo "code-review-audit: could not resolve '${base}' to a base sha" >&2
             exit 1

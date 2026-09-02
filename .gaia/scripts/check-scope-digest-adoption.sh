@@ -264,8 +264,8 @@ _gaia_sda_bad_call_sites() {
   return 1
 }
 
-# _gaia_sda_assert1 <repo_root>: assertion 1 over the five definitions plus
-# every file under the three workflow directories.
+# _gaia_sda_assert1 <repo_root>: assertion 1 over every discovered definition
+# plus every file under the workflow directories.
 _gaia_sda_assert1() {
   local repo_root="$1" failed=0 member rel file wdir wfile rel2
   for member in "${GAIA_SDA_MEMBERS[@]}"; do
@@ -293,7 +293,7 @@ _gaia_sda_assert1() {
 
 # _gaia_sda_assert2 <repo_root>: the obligation literal, read from the first
 # member and compared for byte identity (and exactly-once presence) against
-# the other four.
+# every other discovered definition.
 _gaia_sda_assert2() {
   local repo_root="$1" failed=0 i member file count
   local -a text
