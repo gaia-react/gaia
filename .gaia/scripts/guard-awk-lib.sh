@@ -779,13 +779,16 @@ gaia_guard_bats_files() {
 # that iterates before calling reads an empty array rather than an unset name.
 GAIA_GUARD_SCAN_FILES=()
 
-# gaia_guard_scan_files <guard-label> <set>...: fill GAIA_GUARD_SCAN_FILES with
-# the sorted union of the named tracked sets and return 0, or return 1 having
-# said so on stderr when a set name is unknown or the union came back empty.
+# _gaia_guard_scan_set <set-name>: emit that set's tracked paths NUL-delimited
+# and return git's own status, or emit nothing and return 2 when the name is not
+# one this library knows. Private to gaia_guard_scan_files, and the one place
+# each pathspec is written.
 #
-# The sets, and the one place each pathspec is written:
-#
-#   shell      tracked `*.sh`, minus the hook directory the `husky` set owns.
+#   shell      tracked `*.sh`, minus the hook directory the `husky` set owns. A
+#              git pathspec glob is matched without FNM_PATHNAME, so its `*`
+#              crosses `/` and a `.husky/helper.sh` would otherwise be returned
+#              by both sets: scanned twice, and reported twice, by a caller that
+#              asked for both.
 #   husky      the husky hooks, which are extensionless and so match no
 #              extension glob. `.husky/_/h` runs each one as `sh -e`, so a
 #              caller that arms them differently from an ordinary script asks
@@ -793,69 +796,99 @@ GAIA_GUARD_SCAN_FILES=()
 #   workflows  the Actions workflows and composite actions, plus the adopter
 #              workflow templates, which are `.tmpl` rather than `.yml`.
 #
-# `shell` excludes the hook directory because a git pathspec glob is matched
-# without FNM_PATHNAME, so its `*` crosses `/` and a `.husky/helper.sh` would
-# otherwise be returned by both sets: scanned twice, and reported twice, by a
-# caller that asked for both.
+# One set per call rather than one call carrying every pathspec: a `:(exclude)`
+# magic pathspec applies to the whole call, so `shell`'s exclude would also
+# empty a `husky` set asked for in the same breath.
 #
-# One `git ls-files` per set rather than one call carrying every pathspec: a
-# `:(exclude)` magic pathspec applies to the whole call, so `shell`'s exclude
-# would also empty a `husky` set asked for in the same breath.
+# `core.quotepath=false`, so a path carrying a non-ASCII byte is not handed over
+# C-quoted and silently dropped.
+_gaia_guard_scan_set() {
+  case "$1" in
+    shell) git -c core.quotepath=false ls-files -z '*.sh' ':(exclude).husky/*' ;;
+    husky) git -c core.quotepath=false ls-files -z '.husky/*' ;;
+    workflows)
+      git -c core.quotepath=false ls-files -z \
+        '.github/workflows/*.yml' '.github/workflows/*.yaml' \
+        '.github/actions/*/action.yml' '.github/actions/*/action.yaml' \
+        '.gaia/cli/src/automation/templates/workflows/*.tmpl'
+      ;;
+    *) return 2 ;;
+  esac
+}
+
+# gaia_guard_scan_files <guard-label> <set>...: fill GAIA_GUARD_SCAN_FILES with
+# the sorted union of the named tracked sets, having said on stderr what went
+# wrong on any status but 0. The status is the whole point of the shape, so the
+# caller reads it directly (`gaia_guard_scan_files <label> <set>... || exit 1`)
+# rather than through a substitution that would swallow it.
 #
-# An empty union is a hard error rather than a clean tree, for the reason
-# gaia_guard_bats_files states about its own surface, and the message names the
-# sets that were asked for, because a caller naming more than one has no other
-# way to learn which discovery broke. The status is the whole point of the
-# shape, so the caller reads it directly
-# (`gaia_guard_scan_files <label> <set>... || exit 1`) rather than through a
-# substitution that would swallow it.
+#   0  the union is non-empty and the array holds it.
+#   1  every named set resolved and the union came back empty. A hard error
+#      rather than a clean tree, for the reason gaia_guard_bats_files states
+#      about its own surface. This is the ONLY status a caller may tolerate,
+#      and only where an empty surface is a legitimate tree for it.
+#   2  the call itself is wrong: a set name this library does not know, or no
+#      set named at all. Either way the guard would scan less than the rule it
+#      encodes governs and still report clean, which is the discovery-stage
+#      failure `.claude/rules/guards-must-fail.md` names.
+#   3  a named set's own `git ls-files` failed (run outside a repository, a
+#      broken object store). Distinct from 1 because the repairs differ, and
+#      distinct from a partial union because a set that returned nothing on a
+#      failed call is otherwise indistinguishable from one that legitimately
+#      matched nothing: with several sets asked for, the survivors would carry
+#      the union past the empty check and the gate would report clean over a
+#      surface it never opened.
 #
-# An unknown set name is the same class of failure one directory short of the
-# real surface is: the guard scans less than the rule it encodes governs and
-# still reports clean. It is rejected before any read, because the reads run
-# inside a process substitution whose subshell cannot return a status here.
+# Each set is written to a scratch file rather than straight into a process
+# substitution, because a process substitution's subshell cannot return its
+# status here, which is what leaves a per-set failure indistinguishable from a
+# per-set empty result. Every return path removes it explicitly rather than
+# through an EXIT trap: this library is sourced, so a trap installed here would
+# replace whatever the consuming guard armed for its own cleanup.
 #
-# `core.quotepath=false` and a NUL-delimited read, so a path carrying a
-# non-ASCII byte is not handed over C-quoted and silently dropped. A read loop
-# rather than mapfile, which is bash 4+, because these guards run on stock macOS
-# /bin/bash 3.2.57.
+# A read loop rather than mapfile, which is bash 4+, because these guards run on
+# stock macOS /bin/bash 3.2.57.
 gaia_guard_scan_files() {
   local label="${1:-guard}"
   if [ "$#" -lt 2 ]; then
     printf '%s: ERROR: gaia_guard_scan_files needs a label and at least one scan set\n' "$label" >&2
-    return 1
+    return 2
   fi
   shift
-  local name f
+
+  local scan_tmp name status f
+  scan_tmp="$(mktemp -t gaia-guard-scan-XXXXXX)" || {
+    printf '%s: ERROR: could not create a scratch file for the scan surface; nothing was scanned\n' "$label" >&2
+    return 3
+  }
+
   for name in "$@"; do
-    case "$name" in
-      shell | husky | workflows) ;;
-      *)
-        printf '%s: ERROR: unknown scan set "%s"; nothing was scanned\n' "$label" "$name" >&2
-        return 1
-        ;;
-    esac
+    # The `if` is what keeps a non-zero status readable: a bare call would abort
+    # under the errexit every consuming guard arms before sourcing this library.
+    if _gaia_guard_scan_set "$name" >> "$scan_tmp"; then
+      status=0
+    else
+      status=$?
+    fi
+    if [ "$status" -eq 2 ]; then
+      rm -f "$scan_tmp"
+      printf '%s: ERROR: unknown scan set "%s"; nothing was scanned\n' "$label" "$name" >&2
+      return 2
+    fi
+    if [ "$status" -ne 0 ]; then
+      rm -f "$scan_tmp"
+      printf '%s: ERROR: the %s discovery failed, git exited %s; nothing was scanned\n' \
+        "$label" "$name" "$status" >&2
+      return 3
+    fi
   done
+
   GAIA_GUARD_SCAN_FILES=()
   while IFS= read -r -d '' f; do
     GAIA_GUARD_SCAN_FILES+=("$f")
-  done < <(
-    # Each pattern carries the optional leading `(`. Without it, stock macOS
-    # /bin/bash 3.2.57 reads the `)` closing a case pattern as the one closing
-    # the process substitution, and the whole file fails to parse.
-    for name in "$@"; do
-      case "$name" in
-        (shell) git -c core.quotepath=false ls-files -z '*.sh' ':(exclude).husky/*' ;;
-        (husky) git -c core.quotepath=false ls-files -z '.husky/*' ;;
-        (workflows)
-          git -c core.quotepath=false ls-files -z \
-            '.github/workflows/*.yml' '.github/workflows/*.yaml' \
-            '.github/actions/*/action.yml' '.github/actions/*/action.yaml' \
-            '.gaia/cli/src/automation/templates/workflows/*.tmpl'
-          ;;
-      esac
-    done | LC_ALL=C sort -zu
-  )
+  done < <(LC_ALL=C sort -z < "$scan_tmp")
+  rm -f "$scan_tmp"
+
   if [ "${#GAIA_GUARD_SCAN_FILES[@]}" -eq 0 ]; then
     printf '%s: ERROR: no tracked files matched the scan surface (%s); nothing was scanned\n' \
       "$label" "$*" >&2

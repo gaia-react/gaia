@@ -1035,12 +1035,26 @@ sh_files=(${GAIA_GUARD_SCAN_FILES[@]+"${GAIA_GUARD_SCAN_FILES[@]}"})
 #
 # Alone among the sets this gate reads, an empty one is a legitimate tree rather
 # than a broken discovery: a repository can carry no tracked hook at all, and the
-# call above already proved `git ls-files` answers here. So the library's status
-# is read and tolerated, and its message, which would be wrong in that case, is
-# not surfaced as this gate's own error.
+# call above already proved `git ls-files` answers here. So the library's
+# empty-surface status is tolerated, and its message, which would be wrong in
+# that case, is dropped rather than surfaced as this gate's own error.
+#
+# That status and no other. Every other one the library returns says the call is
+# wrong or the discovery broke, and swallowing one here would leave this gate,
+# the only one arming the hooks as errexit-on, scanning no hook while printing
+# `clean`: the certified-clean surface the paragraph above names. The library's
+# own message went to /dev/null with the tolerated one, so this names the status
+# it refused with, which is what says which of the two happened.
 husky_files=()
 if gaia_guard_scan_files lint-errexit-status-read husky 2>/dev/null; then
   husky_files=(${GAIA_GUARD_SCAN_FILES[@]+"${GAIA_GUARD_SCAN_FILES[@]}"})
+else
+  husky_status=$?
+  if [ "$husky_status" -ne 1 ]; then
+    printf 'lint-errexit-status-read: ERROR: the husky discovery refused with status %s; nothing was scanned\n' \
+      "$husky_status" >&2
+    exit "$husky_status"
+  fi
 fi
 
 gaia_guard_scan_files lint-errexit-status-read workflows || exit 1

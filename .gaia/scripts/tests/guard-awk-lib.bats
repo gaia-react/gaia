@@ -663,6 +663,10 @@ scan_fixture_repo() {
   grep -qxF -- ".husky/helper.sh" <<<"$output" && return 1
   run bash -c "cd '$repo' && . '$LIB' && gaia_guard_scan_files probe shell husky && printf '%s\n' \"\${GAIA_GUARD_SCAN_FILES[@]}\""
   [ "$status" -eq 0 ]
+  # The exclude is the only thing keeping this at one. The union is not
+  # deduplicated, deliberately: `sort -u` there would be a second mechanism
+  # guaranteeing the same thing, and a suite cannot red on either one alone
+  # while the other still holds.
   [ "$(grep -cxF -- '.husky/helper.sh' <<<"$output")" -eq 1 ]
 }
 
@@ -674,7 +678,10 @@ scan_fixture_repo() {
   local repo
   repo="$(scan_fixture_repo)"
   run bash -c "cd '$repo' && . '$LIB' && gaia_guard_scan_files probe shell markdown"
-  [ "$status" -eq 1 ]
+  # Status 2, never 1: a caller may tolerate an empty surface where one is a
+  # legitimate tree, and must never tolerate a set name that resolved nothing
+  # because this library does not know it.
+  [ "$status" -eq 2 ]
   grep -qF -- "markdown" <<<"$output" || return 1
   grep -qF -- "probe: ERROR" <<<"$output" || return 1
 }
@@ -683,8 +690,21 @@ scan_fixture_repo() {
   local repo
   repo="$(scan_fixture_repo)"
   run bash -c "cd '$repo' && . '$LIB' && gaia_guard_scan_files probe"
-  [ "$status" -eq 1 ]
+  [ "$status" -eq 2 ]
   grep -qF -- "probe: ERROR" <<<"$output" || return 1
+}
+
+# Run outside any repository, so `git ls-files` fails rather than answering
+# empty. Without a per-set status the `workflows` failure here would be
+# invisible: `shell` is populated, so the union clears the empty check and the
+# gate reports clean over a surface it never opened.
+@test "a set whose own discovery fails is distinguished from one that matched nothing" {
+  local outside="$TMP/not-a-repo"
+  mkdir -p "$outside"
+  run bash -c "cd '$outside' && . '$LIB' && gaia_guard_scan_files probe shell workflows"
+  [ "$status" -eq 3 ]
+  grep -qF -- "discovery failed" <<<"$output" || return 1
+  grep -qF -- "nothing was scanned" <<<"$output"
 }
 
 @test "the union across sets is sorted rather than concatenated set by set" {
