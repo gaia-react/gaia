@@ -127,15 +127,19 @@ run_step() {
   # The structural half. A regression to the bare `git rev-parse` spelling
   # restores exactly the unreachable guard this suite exists for, and the three
   # copies must not drift apart on it.
-  local f
+  local f seen=0
   for f in \
     "$REPO_ROOT/.github/workflows/code-review-audit.yml" \
     "$REPO_ROOT/.gaia/cli/src/automation/templates/workflows/code-review-audit.yml.tmpl" \
     "$REPO_ROOT/.gaia/cli/templates/workflows/code-review-audit.yml.tmpl"
   do
     [ -f "$f" ] || continue
+    seen=$(( seen + 1 ))
     grep -qF 'git rev-parse --verify --quiet "${base}^{commit}"' "$f"
     grep -qF 'git rev-parse "${base}^{commit}"' "$f" && return 1
   done
-  return 0
+  # The input-set half, per .claude/rules/guards-must-fail.md: without it a
+  # renamed or moved copy is skipped by the `-f` test and this test passes over
+  # an empty set, which is indistinguishable from passing over all three.
+  [ "$seen" -eq 3 ]
 }
