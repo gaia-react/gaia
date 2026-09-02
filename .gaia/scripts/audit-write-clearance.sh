@@ -400,6 +400,11 @@ fi
 #   2  could not resolve the scope file at all -- no key lib, no --base (the CI
 #      clearance call passes none), or an unresolvable key. A capture may or may
 #      not be sitting there; this arm cannot tell, and must not claim either.
+#   3  located, but not removed: the capture is exactly where it should be and
+#      the rm failed. Distinct from 2 precisely because the location IS known --
+#      the helper has already printed a diagnostic naming the path, so a caller
+#      that folded this into 2 would follow that diagnostic with a second
+#      message guessing at location causes, none of which is what happened.
 _release_forfeited_capture() {
   local key="" scope_file
   command -v gaia_audit_key >/dev/null 2>&1 || return 2
@@ -410,7 +415,7 @@ _release_forfeited_capture() {
   [ -f "$scope_file" ] || return 1
   rm -f "$scope_file" || {
     err "warning: could not release the forfeited capture at '$scope_file'; the next round will refuse identically until it is removed"
-    return 2
+    return 3
   }
   return 0
 }
@@ -462,6 +467,7 @@ if [ "$PROVENANCE" = "earned" ] && [ "$SUPERSEDE_SEEN" -ne 1 ]; then
     case "$?" in
       0) err "this round is forfeited and its capture is released; the next dispatch captures fresh." ;;
       1) err "this round is forfeited; no stored capture was found to release, so nothing carries into the next dispatch." ;;
+      3) err "this round is forfeited; the stored capture was located but could not be removed, so the next dispatch inherits it and refuses identically until the path named above is cleared." ;;
       *) err "this round is forfeited, but the stored capture could not be located to release it (no --base, an unresolvable audit key, or the key library not being loaded). If one is present, the next dispatch inherits it and refuses identically; clear it with audit-scope-digest.sh --capture --recapture." ;;
     esac
     err "Do NOT re-run the scope fence to obtain a new capture in this round: you reviewed the superseded content, and a marker earned on a fresh capture would attest content you never read."

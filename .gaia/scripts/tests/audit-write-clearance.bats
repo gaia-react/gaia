@@ -1161,21 +1161,46 @@ EOF
 }
 
 @test "the forfeiture could-not-resolve refusal names every cause that reaches it" {
-  # Three silent conditions return 2 from the release helper: the key library
-  # not being loaded, no --base, and an unresolvable audit key. (The rm failure
-  # returns 2 as well, but prints its own diagnostic naming the exact path, so
-  # it is self-describing and this arm never speaks for it.) Driven here through
-  # the no---base condition; what is pinned is that the parenthetical reads as
-  # the full set it is, not as a closed pair that sends the operator to rule out
-  # the wrong things.
+  # Exactly three conditions return 2 from the release helper, and this arm
+  # speaks for all three and only those: the key library not being loaded, no
+  # --base, and an unresolvable audit key. Driven here through the no---base
+  # condition; what is pinned is that the parenthetical reads as the full set it
+  # is, not as a closed subset that sends the operator to rule out the wrong
+  # things. One assertion per named cause, deliberately: a single pin would stay
+  # green while an edit dropped one of the others and silently re-opened the gap.
   run bash "$WRITER" --root "$ROOT" --member code-audit-frontend --provenance earned \
     --scope-digest "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
   [ "$status" -eq 2 ]
   grep -qF "review scope superseded" <<<"$output" || return 1
   grep -qF "could not be located to release it" <<<"$output" || return 1
   grep -qF -- "--base" <<<"$output" || return 1
+  grep -qF "unresolvable audit key" <<<"$output" || return 1
   grep -qF "key library" <<<"$output" || return 1
   true
+}
+
+@test "the forfeiture arm defers to the removal warning when the capture is located but cannot be removed" {
+  # The rm failure carries its own status and its own arm rather than sharing
+  # the could-not-locate one. On this path the capture IS located and the helper
+  # has already printed a diagnostic naming the exact path, so the shared arm
+  # would follow that with a second message guessing at location causes, none of
+  # which is what happened. A non-writable audit directory is what makes rm fail:
+  # removing a directory entry needs write permission on the directory itself.
+  base="$(git -C "$ROOT" rev-parse HEAD)"
+  key="$(bash -c '. "$1"; gaia_audit_key "$2" "$3"' _ "$THIS_DIR/../audit-key-lib.sh" "$base" "$ROOT")"
+  [ -n "$key" ]
+  mkdir -p "$AUDIT_DIR"
+  : > "$AUDIT_DIR/${key}.code-audit-frontend.scope.json"
+  chmod 500 "$AUDIT_DIR"
+  run bash "$WRITER" --root "$ROOT" --member code-audit-frontend --provenance earned \
+    --base "$base" \
+    --scope-digest "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+  chmod 700 "$AUDIT_DIR"
+  [ "$status" -eq 2 ]
+  grep -qF "could not release the forfeited capture at" <<<"$output" || return 1
+  grep -qF "could not be removed" <<<"$output" || return 1
+  grep -qF "could not be located to release it" <<<"$output" && return 1
+  return 0
 }
 
 @test "UAT-011: the prose member is advisory on a rotated digest: publishes, exits 0, advisory token, both digests" {

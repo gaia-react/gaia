@@ -213,7 +213,7 @@ Then write the following files directly to `{PLAN_DIR}/`:
               Only on an exact match, review all changes in <RESOLVED_ROOT>'s current branch compared to main, scoping every git command to `git -C <RESOLVED_ROOT>`. Identify security vulnerabilities, performance issues, code smells, anti-patterns, and refactoring opportunities."
             )
 
-        The definition re-read is a standing part of this prompt, not something the orchestrator adds when it remembers. The session resolves agent definitions from the main checkout rather than from the working root under review, so a member dispatched into a worktree whose branch edits that member's own definition runs the pre-branch prompt; a prompt predating a handshake never learned to satisfy it, and if every dispatched member is in that state the gate holds shut with nothing left that can clear it. This template's callers work in a worktree by default, which is exactly the shape that reaches it. Rationale and the full failure mode: `wiki/concepts/PR Merge Workflow.md`.
+        The definition re-read is a standing part of this prompt, not something the orchestrator adds when it remembers: the session resolves agent definitions from the main checkout, not from the working root under review. Rationale and the full failure mode: `wiki/concepts/PR Merge Workflow.md`.
 
       - **No names** → no changed file is auditable. No marker is owed, and `gh pr merge` clears with no audit spawn. An empty answer is safe to act on *because* it came from the oracle: the oracle, not the raw dispatch resolver, is what accounts for the in-scope-but-ownerless case the merge gate still blocks on.
 
