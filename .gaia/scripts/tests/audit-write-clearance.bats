@@ -1161,21 +1161,30 @@ EOF
 }
 
 @test "the forfeiture could-not-resolve refusal names every cause that reaches it" {
-  # Exactly three conditions return 2 from the release helper, and this arm
-  # speaks for all three and only those: the key library not being loaded, no
-  # --base, and an unresolvable audit key. Driven here through the no---base
-  # condition; what is pinned is that the parenthetical reads as the full set it
-  # is, not as a closed subset that sends the operator to rule out the wrong
-  # things. One assertion per named cause, deliberately: a single pin would stay
-  # green while an edit dropped one of the others and silently re-opened the gap.
+  # The helper is the authority on how many conditions reach this arm, so that
+  # count is derived from it rather than restated here: a return-2 condition
+  # added there and left out of the message stops this test, instead of leaving
+  # a guard named for "every cause" quietly covering a subset. One assertion per
+  # named cause as well, since a single pin stays green while an edit drops one
+  # of the others and re-opens the very gap this drains. Driven through the
+  # no---base condition; what is pinned is that the parenthetical reads as the
+  # full set it is, not as a closed subset that sends the operator to rule out
+  # the wrong things.
+  causes="--base
+unresolvable audit key
+key library"
+  helper="$(sed -n '/^_release_forfeited_capture() {/,/^}/p' "$WRITER")"
+  [ -n "$helper" ]
+  [ "$(grep -c 'return 2' <<<"$helper")" -eq "$(grep -c . <<<"$causes")" ]
+
   run bash "$WRITER" --root "$ROOT" --member code-audit-frontend --provenance earned \
     --scope-digest "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
   [ "$status" -eq 2 ]
   grep -qF "review scope superseded" <<<"$output" || return 1
   grep -qF "could not be located to release it" <<<"$output" || return 1
-  grep -qF -- "--base" <<<"$output" || return 1
-  grep -qF "unresolvable audit key" <<<"$output" || return 1
-  grep -qF "key library" <<<"$output" || return 1
+  while IFS= read -r cause; do
+    grep -qF -- "$cause" <<<"$output" || return 1
+  done <<<"$causes"
   true
 }
 
@@ -1185,7 +1194,9 @@ EOF
   # has already printed a diagnostic naming the exact path, so the shared arm
   # would follow that with a second message guessing at location causes, none of
   # which is what happened. A non-writable audit directory is what makes rm fail:
-  # removing a directory entry needs write permission on the directory itself.
+  # removing a directory entry needs write permission on the directory itself,
+  # which root ignores, so this fixture is unavailable there.
+  [ "$(id -u)" -eq 0 ] && skip "root ignores the mode bits this test relies on"
   base="$(git -C "$ROOT" rev-parse HEAD)"
   key="$(bash -c '. "$1"; gaia_audit_key "$2" "$3"' _ "$THIS_DIR/../audit-key-lib.sh" "$base" "$ROOT")"
   [ -n "$key" ]
