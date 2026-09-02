@@ -278,11 +278,24 @@ fi
 # with no in-band recovery.
 #
 # A stored capture is SPENT once its own member has PUBLISHED a conclusion keyed
-# to it -- a marker or a refusal. That one term separates the two cases, and it
-# is the whole test:
+# to it -- a marker or a refusal. That one term separates the two cases this
+# script can see, and it is the whole test:
 #
 #   finished round, now re-dispatched -> a conclusion exists -> replace
 #   review still running              -> nothing published   -> keep
+#
+# THE PARTITION ABOVE IS NOT EXHAUSTIVE, and the third case is why the writer
+# has a release arm. A round that ENDS WITHOUT PUBLISHING ANYTHING -- the
+# dirty-tree withhold, a superseded forfeiture, a crash -- is byte-for-byte
+# indistinguishable here from a running review, so it lands in the keep arm and
+# its capture survives it. That capture is stale the moment the operator
+# commits, and a stale capture makes the next round's earned write refuse
+# `review scope superseded` and publish nothing, which spends nothing, which
+# strands the round after it, forever. Nothing this script can read separates a
+# round that ended silently from one still going; what CAN see it is the writer,
+# at the moment it refuses a stale capture, so `_release_forfeited_capture` in
+# audit-write-clearance.sh drops the capture as that refusal exits. The cost is
+# the one forfeited round, not every round after it.
 #
 # Keeping the second is what preserves the guarantee this arm was written for:
 # the fence a member re-runs on every handshake call must not overwrite the

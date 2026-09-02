@@ -356,6 +356,50 @@ if [ -z "$digest" ]; then
   exit 2
 fi
 
+# _release_forfeited_capture: drop this member's stored capture as the
+# superseded refusal below exits 2.
+#
+# Why the refusal cannot just exit. `audit-scope-digest.sh` spends a stored
+# capture when a conclusion KEYED TO IT is on disk, which is the discriminator
+# that tells a finished round from a running one. A round that ends without
+# publishing anything is invisible to that test: it looks exactly like a running
+# review, so its capture survives, and because the digest rotated while the
+# round was ending, the NEXT round's earned write refuses `review scope
+# superseded` and writes no artifact -- which spends nothing either. Every round
+# after it refuses identically, forever, and the AND-aggregator holds
+# GAIA-Audit shut with no in-band recovery. Three routes end a round that way:
+# the dirty-tree withhold (the member definitions order a withhold with no
+# `.refused` artifact, then ask for a re-dispatch once the operator commits,
+# which is the rotation), a superseded forfeiture itself, and a crash or a
+# no-op-detected round.
+#
+# Publishing a `.refused` here instead would spend the capture, but at the
+# WRITE-TIME digest, which is not the one the spent test looks for; keyed to the
+# CAPTURED digest it would spend correctly and then sit on disk as a live
+# refusal blocking the very marker the next clean round earns, which is the
+# hazard the withhold prose exists to avoid. Releasing the capture is what
+# actually matches the situation: the round is over and produced nothing, so the
+# next dispatch should start from a fresh capture.
+#
+# This costs the forfeited round and nothing after it. What it deliberately does
+# NOT do is let the SAME round recover: a member that re-runs its scope fence
+# after this refusal gets a fresh capture and could then earn a marker for
+# content it reviewed at the old digest. Nothing in-band distinguishes a
+# same-round re-run from the next dispatch -- that is why the refusal message
+# says the round is forfeited in as many words, and why the member definitions
+# say the fence re-run is safe EXCEPT after this refusal.
+_release_forfeited_capture() {
+  local key="" scope_file
+  command -v gaia_audit_key >/dev/null 2>&1 || return 0
+  [ -n "$BASE" ] || return 0
+  key="$(gaia_audit_key "$BASE" "$ROOT" 2>/dev/null || true)"
+  [ -n "$key" ] || return 0
+  scope_file="${ROOT}/.gaia/local/audit/${key}.${MEMBER}.scope.json"
+  [ -f "$scope_file" ] || return 0
+  rm -f "$scope_file" ||
+    err "warning: could not release the forfeited capture at '$scope_file'; the next round will refuse identically until it is removed"
+}
+
 # Scope-digest staleness gate. Gated only on a PLAIN earned write: a refusal
 # is a claim that content should not merge, and suppressing THAT is the one
 # genuinely fail-open outcome available here, and a
@@ -378,6 +422,8 @@ if [ "$PROVENANCE" = "earned" ] && [ "$SUPERSEDE_SEEN" -ne 1 ]; then
     exit 2
   elif [ "$SCOPE_DIGEST" != "$digest" ]; then
     err "review scope superseded: scope=$SCOPE_DIGEST write=$digest"
+    _release_forfeited_capture
+    err "this round is forfeited and its capture is released; the next dispatch captures fresh. Do NOT re-run the scope fence to obtain a new capture in this round: you reviewed the superseded content, and a marker earned on a fresh capture would attest content you never read."
     exit 2
   fi
 fi

@@ -517,3 +517,123 @@ stored_head_for() {
   [ "$status" -eq 0 ]
   [ -n "$(find "$ROOT/.gaia/local/audit" -name '*.ok' 2>/dev/null)" ]
 }
+
+# rotate_machinery: commit a change EVERY member's digest covers, specialists
+# included. rotate_in_scope above commits under app/, which only the default
+# member's digest reaches, so it cannot move a specialist's value and any
+# specialist assertion resting on it would pass vacuously.
+rotate_machinery() {
+  mkdir -p "$ROOT/.gaia"
+  printf '%s\n' "$RANDOM$RANDOM" >>"$ROOT/.gaia/VERSION"
+  git -C "$ROOT" add .gaia/VERSION
+  git -C "$ROOT" commit --quiet -m "rotate machinery every member digest covers"
+}
+
+# The C1 regression block. The tests above cover a round that ends by PUBLISHING
+# something; these cover the third case the spent test cannot see -- a round that
+# ends having published nothing at all (the dirty-tree withhold, a forfeiture, a
+# crash). Its capture survives it, and without the writer's release arm the next
+# round refuses on the stale value and publishes nothing either, which strands
+# every round after it. The escape is in audit-write-clearance.sh, so these drive
+# the REAL writer rather than the lookup alone.
+
+@test "END TO END: a round that publishes NOTHING does not strand the round after it" {
+  writer="$THIS_DIR/../audit-write-clearance.sh"
+  [ -x "$writer" ] || skip "audit-write-clearance.sh not executable"
+
+  # --- round A: captures, then ends having published nothing ---
+  captured="$("$SCRIPT" --capture --root "$ROOT" --member "$MEMBER" --base "$BASE")"
+  [ -z "$(find "$ROOT/.gaia/local/audit" -name '*.ok' -o -name '*.refused' 2>/dev/null)" ]
+
+  # --- the operator commits, which is what the withhold prose asks for ---
+  rotate_in_scope
+
+  # --- round B: inherits the stale capture, so its earned write forfeits ---
+  inherited="$("$SCRIPT" --capture --root "$ROOT" --member "$MEMBER" --base "$BASE")"
+  [ "$inherited" = "$captured" ]
+  run "$writer" --root "$ROOT" --member "$MEMBER" --provenance earned \
+    --base "$BASE" --scope-digest "$inherited"
+  [ "$status" -eq 2 ]
+  [ -z "$(find "$ROOT/.gaia/local/audit" -name '*.ok' 2>/dev/null)" ]
+
+  # The forfeiture released the capture. Without this the next round inherits
+  # the same stale value and refuses identically, forever.
+  [ ! -f "$(scope_file_for "$ROOT" "$BASE" "$MEMBER")" ]
+
+  # --- round C: captures fresh and clears ---
+  fresh="$("$SCRIPT" --capture --root "$ROOT" --member "$MEMBER" --base "$BASE")"
+  [ "$fresh" != "$captured" ]
+  run "$writer" --root "$ROOT" --member "$MEMBER" --provenance earned \
+    --base "$BASE" --scope-digest "$fresh"
+  [ "$status" -eq 0 ]
+  [ -n "$(find "$ROOT/.gaia/local/audit" -name '*.ok' 2>/dev/null)" ]
+}
+
+@test "END TO END: the same recovery holds for a SPECIALIST member" {
+  writer="$THIS_DIR/../audit-write-clearance.sh"
+  [ -x "$writer" ] || skip "audit-write-clearance.sh not executable"
+  local m="code-audit-maintainer-shell"
+
+  captured="$("$SCRIPT" --capture --root "$ROOT" --member "$m" --base "$BASE")"
+  # Machinery, not app/: a specialist's digest does not reach app/, so
+  # rotate_in_scope would leave `captured` valid and the forfeiture below would
+  # never fire -- the test would pass without exercising anything.
+  rotate_machinery
+  [ "$("$SCRIPT" --read --root "$ROOT" --member "$m" --base "$BASE")" = "$captured" ]
+
+  run "$writer" --root "$ROOT" --member "$m" --provenance earned \
+    --base "$BASE" --scope-digest "$captured"
+  [ "$status" -eq 2 ]
+  [ ! -f "$(scope_file_for "$ROOT" "$BASE" "$m")" ]
+
+  fresh="$("$SCRIPT" --capture --root "$ROOT" --member "$m" --base "$BASE")"
+  [ "$fresh" != "$captured" ]
+  run "$writer" --root "$ROOT" --member "$m" --provenance earned \
+    --base "$BASE" --scope-digest "$fresh"
+  [ "$status" -eq 0 ]
+  [ -f "$ROOT/.gaia/local/audit/${fresh}.${m}.ok" ]
+}
+
+@test "the release is specific to a forfeiture: a running review keeps its capture" {
+  # The guarantee the keep arm exists for. A member re-runs the scope fence on
+  # every handshake Bash call; if the release were unconditional rather than
+  # bound to the superseded refusal, that re-run would hand the writer the
+  # write-time digest and it would compare a value against itself.
+  captured="$("$SCRIPT" --capture --root "$ROOT" --member "$MEMBER" --base "$BASE")"
+  rotate_in_scope
+  "$SCRIPT" --capture --root "$ROOT" --member "$MEMBER" --base "$BASE" >/dev/null
+  [ -f "$(scope_file_for "$ROOT" "$BASE" "$MEMBER")" ]
+  [ "$("$SCRIPT" --read --root "$ROOT" --member "$MEMBER" --base "$BASE")" = "$captured" ]
+}
+
+@test "the release is bound to the superseded arm: a not-supplied refusal keeps the capture" {
+  # Placement pin. The gate has three failing arms and only ONE of them means
+  # "this round reviewed content that has since moved". A member that simply
+  # omitted --scope-digest has told us nothing about whether its review ended,
+  # so discarding its capture there would throw away a running review's fence
+  # value on a caller error.
+  writer="$THIS_DIR/../audit-write-clearance.sh"
+  [ -x "$writer" ] || skip "audit-write-clearance.sh not executable"
+
+  "$SCRIPT" --capture --root "$ROOT" --member "$MEMBER" --base "$BASE" >/dev/null
+  rotate_in_scope
+  run "$writer" --root "$ROOT" --member "$MEMBER" --provenance earned --base "$BASE"
+  [ "$status" -eq 2 ]
+  [ -f "$(scope_file_for "$ROOT" "$BASE" "$MEMBER")" ]
+}
+
+@test "the release is bound to the EARNED path: a refusal write keeps the capture" {
+  # Refusals are exempt from the staleness gate entirely, so they must not
+  # reach the release either. A refusal lands at the WRITE-TIME digest, which
+  # never spends the captured one, so releasing here would discard the capture
+  # of a member that is still mid-round.
+  writer="$THIS_DIR/../audit-write-clearance.sh"
+  [ -x "$writer" ] || skip "audit-write-clearance.sh not executable"
+
+  captured="$("$SCRIPT" --capture --root "$ROOT" --member "$MEMBER" --base "$BASE")"
+  rotate_in_scope
+  run "$writer" --root "$ROOT" --member "$MEMBER" --provenance refused \
+    --base "$BASE" --scope-digest "$captured"
+  [ "$status" -eq 0 ]
+  [ -f "$(scope_file_for "$ROOT" "$BASE" "$MEMBER")" ]
+}

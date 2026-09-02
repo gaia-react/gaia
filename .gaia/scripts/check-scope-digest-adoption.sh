@@ -247,9 +247,10 @@ _gaia_sda_bad_call_sites() {
   local file="$1" label="$2" hits joined
   local rc=0
   # Capture the extraction and its status separately, so a truncated scan set is
-  # a finding rather than a silent all-pass. The status must be taken off the
-  # assignment's own failure arm: with errexit armed a command substitution
-  # hands its status to the assignment, so a following `$?` read would be dead.
+  # a finding rather than a silent all-pass. The status is taken off the
+  # assignment's own failure arm so the read is correct with or without errexit:
+  # this script arms none today, but under errexit a command substitution hands
+  # its status to the assignment and a following `$?` read would be dead.
   joined="$(_gaia_sda_extract_joined "$file")" || rc=$?
   if [ "$rc" -ne 0 ]; then
     printf '%s: unmatched backtick leaves an inline span open at end of file; the scanned set is truncated, so coverage here cannot be trusted\n' "$label"
