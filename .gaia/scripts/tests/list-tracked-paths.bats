@@ -185,6 +185,12 @@ RAW_ROUNDTRIP_RE="ls-files[^|]*-z[^|]*[|]([[:space:]]*|[^|]*[[:space:]/])tr[[:sp
 # under errexit, and the bare form survives only where the caller happens to
 # blunt it (a command substitution, or bats' own `run`), so it would abort the
 # first time somebody called this helper directly.
+#
+# The unreadable diagnostic goes to stderr, and the matched paths this returns
+# go to stdout, because C2 reads the return through a command substitution: a
+# diagnostic on stdout lands in C2's own `hits` variable, where errexit aborts
+# the assignment before anything prints it and the one cause that names a path
+# is the one an operator never sees.
 scan_raw_roundtrip() {
   local root="$1" f status
   while IFS= read -r -d '' f; do
@@ -196,12 +202,12 @@ scan_raw_roundtrip() {
 
     status=0
     grep -qE -- "$RAW_ROUNDTRIP_RE" "$root/$f" || status=$?
-    [ "$status" -le 1 ] || { printf 'unreadable: %s\n' "$f"; return 1; }
+    [ "$status" -le 1 ] || { printf 'unreadable: %s\n' "$f" >&2; return 1; }
     [ "$status" -eq 0 ] || continue
 
     status=0
     grep -qF -- '--files-from' "$root/$f" || status=$?
-    [ "$status" -le 1 ] || { printf 'unreadable: %s\n' "$f"; return 1; }
+    [ "$status" -le 1 ] || { printf 'unreadable: %s\n' "$f" >&2; return 1; }
     [ "$status" -eq 0 ] || continue
 
     printf '%s\n' "$f"
@@ -212,11 +218,13 @@ scan_raw_roundtrip() {
 # carries no raw round-trip of its own. Shared by C1 and A4, so the assertions
 # C1 makes per site are the ones a fixture observes going red.
 #
-# Each grep's status is read on the same three outcomes the scan above reads,
-# and each arm names the outcome it actually hit rather than the one that
-# prompted it being written: on a rostered site, grep failing to open the file
-# is a broken roster entry rather than a clean result, and reporting it as a
-# site that dropped its call sends the reader to restore a call already there.
+# Only the first grep reads a status above 1, and it reads it for both. On a
+# rostered site, grep failing to open the file is a broken roster entry rather
+# than a clean result, and it needs its own message rather than the one that
+# prompted the check being written, or a rostered path that no longer resolves
+# reports as a site that dropped its call. The second grep carries no such arm
+# because reaching it means the first one opened the file, and an arm nothing
+# can red is the unverified claim the A family exists to refuse.
 assert_site_calls_boundary() {
   local root="$1" site="$2" status
 
@@ -227,7 +235,6 @@ assert_site_calls_boundary() {
 
   status=0
   grep -qE -- "$RAW_ROUNDTRIP_RE" "$root/$site" || status=$?
-  [ "$status" -le 1 ] || { printf 'unreadable rostered site: %s\n' "$site" >&2; return 1; }
   [ "$status" -eq 0 ] && { printf 'raw ls-files round-trip still present in %s\n' "$site" >&2; return 1; }
 
   return 0
