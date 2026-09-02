@@ -44,4 +44,12 @@ The untracked variant is the one that does not present as a discovery problem wh
 
 **Pin the match region to the construct.** The assertion names the thing it claims: anchor the pattern, match the full value rather than a substring of it, and assert on the field carrying the behavioral claim rather than on a status code that many distinct outcomes share. When an assertion's needle would be satisfied by text the construct does not own, it is matching the wrong region.
 
+## When the guard is the deliverable
+
+Everything above binds whoever writes a guard. The obligation is easiest to lose when the guard is not a test written beside a feature but the feature itself: a refusal, a gate, a staleness check shipped as a change's whole deliverable.
+
+A verification pass enumerates what the change produced and confirms each artifact exists and behaves. For a guard that confirms only that it passes, and passing is the state an inert guard is permanently in, so the pass answers the wrong question and answers it green.
+
+**Verifying a guard-shaped deliverable means driving it into its failing state once, deliberately.** Stage the precondition it refuses on, run it, and assert the refusal, its exit status and the message carrying the claim rather than the status alone. That single adversarial fixture is the only step in a verification pass that separates a working guard from an inert one, and a change shipping several guards owes one per guard: a fixture for one says nothing about the rest.
+
 Mechanism-level cases of this on the `.bats` surface, where an assertion's status never reaches the test result at all, are `.claude/rules/bats-assertions.md`.
