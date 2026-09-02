@@ -199,8 +199,8 @@ build_sandbox() {
 @test "a read-only telemetry directory does not change --capture's stdout, stderr, or exit status" {
   require_non_root
 
-  digest_baseline="$("$SCRIPT" --capture --root "$ROOT" --member "$MEMBER" --base "$BASE" 2>/dev/null)"
-  status_baseline=$?
+  status_baseline=0
+  digest_baseline="$("$SCRIPT" --capture --root "$ROOT" --member "$MEMBER" --base "$BASE" 2>/dev/null)" || status_baseline=$?
   rm -rf "$AUDIT_DIR"
 
   ro_root="$BATS_TEST_TMPDIR/ro-root"
