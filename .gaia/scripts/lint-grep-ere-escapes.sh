@@ -6,9 +6,13 @@
 #
 # lint-grep-ere-escapes.sh: flag every backslash-escaped LETTER inside an
 # extended-regex grep pattern, across the framework's tracked shell, its CI
-# workflow and composite-action YAML, and the adopter workflow templates. Exit 1
-# with a file:line report on any hit, exit 0 when clean. Run it directly from
-# the repo root: `bash .gaia/scripts/lint-grep-ere-escapes.sh`.
+# workflow and composite-action YAML, and the adopter workflow templates. Run it
+# directly from the repo root: `bash .gaia/scripts/lint-grep-ere-escapes.sh`.
+#
+# Exit 0 when clean, and 1 either with a file:line report on any hit or on a
+# scan surface that came back empty. Two statuses say the gate never ran at
+# all: 2 when guard-awk-lib.sh is missing beside this script, and 3 when the
+# scan-surface discovery failed.
 # gaia:maintainer-only:start
 #
 # Enforced by the sibling bats suite
@@ -145,7 +149,12 @@ type gaia_guard_bats_files >/dev/null 2>&1 || {
 # GAIA_GUARD_SCAN_FILES and returns non-zero on an empty surface, which is a
 # hard error rather than a clean tree; the status is read directly, because a
 # substitution would swallow it.
-gaia_guard_scan_files lint-grep-ere-escapes shell husky workflows || exit 1
+#
+# The library's own status is carried out rather than flattened to 1: 1 says the
+# tree was read and held nothing, 3 says it was never read at all, and an
+# operator handed 1 for the second would look at the tree instead of the
+# discovery.
+gaia_guard_scan_files lint-grep-ere-escapes shell husky workflows || exit $?
 
 # A separate set from the scan surface above, never a widened pathspec: a tree
 # carrying .sh and no .bats must not pass clean carried by the rest of it.

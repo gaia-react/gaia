@@ -757,6 +757,22 @@ scan_fixture_repo() {
   true
 }
 
+# The array is emptied at the top of the function rather than on each return
+# path, and this is what holds that: a refusal reached after an earlier call
+# filled the array leaves the caller reading a surface nobody asked for while
+# the message says nothing was scanned. Two calls in one shell, because a single
+# refusing call cannot tell an emptied array from one that was never filled.
+@test "a refusal empties the surface a previous call left in the array" {
+  local repo
+  repo="$(scan_fixture_repo)"
+  run bash -c "cd '$repo' && . '$LIB' && gaia_guard_scan_files probe shell; gaia_guard_scan_files probe markdown; printf 'count=%s\n' \"\${#GAIA_GUARD_SCAN_FILES[@]}\""
+  grep -qxF -- "count=0" <<<"$output" || return 1
+  # The first call has to have filled it, or the assertion above is vacuous.
+  run bash -c "cd '$repo' && . '$LIB' && gaia_guard_scan_files probe shell; printf 'count=%s\n' \"\${#GAIA_GUARD_SCAN_FILES[@]}\""
+  grep -qxF -- "count=0" <<<"$output" && return 1
+  true
+}
+
 @test "the union across sets is sorted rather than concatenated set by set" {
   local repo
   repo="$(scan_fixture_repo)"
@@ -903,19 +919,33 @@ mutate() {
 # program of its own. A consumer reading only the scan-surface discovery has no
 # awk program to hold, so widening one roster into the other would red on a
 # guard that is conforming, which is why the two stay separate.
+#
+# That narrower roster is written down rather than derived, because the
+# permitted-awk-function check below needs a per-file expectation and there is
+# nowhere else for it to live. Writing it down is also how it fell behind the
+# predicate its own header states, so what holds it there is an equality check
+# against that predicate rather than a per-file grep, which a file missing from
+# the roster is never reached by.
 
 # Every tracked file carrying the library load line, plus nothing else. The
 # library itself does not carry it, so it excludes itself.
+#
+# One pathspec covers the test fixture as well as the guards: a git pathspec
+# glob is matched without FNM_PATHNAME, so its `*` crosses `/`, the property
+# guard-awk-lib.sh records for its own `shell` set. A second pathspec naming the
+# fixture directory returned the same paths and is left out rather than kept as
+# a decoration a reader would take for a widening.
 library_consumers() {
   local f
   while IFS= read -r f; do
     printf '%s\n' "$REPO_ROOT/$f"
   done < <(git -C "$REPO_ROOT" grep -l -- '_gaia_guard_lib_dir/guard-awk-lib.sh' \
-             '.gaia/scripts/*.sh' '.gaia/scripts/tests/fixtures/*.sh')
+             '.gaia/scripts/*.sh')
 }
 
 participating_files() {
   printf '%s\n' \
+    "$REPO_ROOT/.gaia/scripts/lint-collapsed-signal-trap.sh" \
     "$REPO_ROOT/.gaia/scripts/lint-git-path-quoting.sh" \
     "$REPO_ROOT/.gaia/scripts/lint-grep-ere-escapes.sh" \
     "$REPO_ROOT/.gaia/scripts/lint-errexit-status-read.sh" \
@@ -923,21 +953,28 @@ participating_files() {
     "$REPO_ROOT/.gaia/scripts/tests/fixtures/stub-guard.sh"
 }
 
+# The production guards are the participating files minus the one test fixture
+# among them, derived rather than re-listed: two hand-written rosters that must
+# agree is what left a guard out of both, and the second list bought nothing a
+# filter on the fixture path does not.
 production_guards() {
-  printf '%s\n' \
-    "$REPO_ROOT/.gaia/scripts/lint-git-path-quoting.sh" \
-    "$REPO_ROOT/.gaia/scripts/lint-grep-ere-escapes.sh" \
-    "$REPO_ROOT/.gaia/scripts/lint-errexit-status-read.sh" \
-    "$REPO_ROOT/.gaia/scripts/lint-stale-cardinals.sh"
+  participating_files | grep -v -- '/tests/fixtures/'
 }
 
-# A derivation that came back short would leave this asserting over a subset
-# while its name still says every, so the count is checked against the guards
-# known to load the library before the per-file loop runs.
-@test "every library consumer's shellcheck source= line carries the library's full repo-relative path" {
-  local f n
+# A derivation that came back short would leave a check asserting over a subset
+# while its name still says every, so both consumer checks confirm the count
+# against the guards known to load the library before their per-file loop runs.
+# The floor is the count the tree carries, not a slack figure: a floor below it
+# is a check that greens while consumers fall out of the derivation silently.
+assert_consumer_count() {
+  local n
   n="$(library_consumers | grep -c .)"
-  [ "$n" -ge 5 ]
+  [ "$n" -ge 7 ] || { echo "library_consumers returned $n, fewer than the 7 tracked consumers" >&2; return 1; }
+}
+
+@test "every library consumer's shellcheck source= line carries the library's full repo-relative path" {
+  local f
+  assert_consumer_count || return 1
   while IFS= read -r f; do
     grep -qF -- ".gaia/scripts/guard-awk-lib.sh" "$f" || { echo "$f: no shellcheck source= citation" >&2; return 1; }
   done < <(library_consumers)
@@ -949,17 +986,30 @@ production_guards() {
   # on the shellcheck source= directive line), so this checks the bracket
   # rather than a second copy of the path.
   local f load
+  assert_consumer_count || return 1
   load='set +e; [ -f "$_gaia_guard_lib_dir/guard-awk-lib.sh" ] && . "$_gaia_guard_lib_dir/guard-awk-lib.sh" 2>/dev/null; set -e'
   while IFS= read -r f; do
     grep -qF -- "$load" "$f" || { echo "$f: unbracketed or reworded library load" >&2; return 1; }
   done < <(library_consumers)
 }
 
-@test "each participating file concatenates GAIA_GUARD_AWK ahead of its own awk program" {
-  local f
+# Equality, not a per-file grep over the roster: the roster is what the awk
+# checks below iterate, so a consumer that grew an awk program and was never
+# added to it is invisible to any check the roster drives. This is the one
+# assertion that can see it, and it reds both ways -- a roster entry with no awk
+# program, and an awk-carrying consumer with no roster entry.
+@test "the participating roster is exactly the library consumers that concatenate GAIA_GUARD_AWK" {
+  local f derived
+  assert_consumer_count || return 1
+  derived=""
   while IFS= read -r f; do
-    grep -qF -- '$GAIA_GUARD_AWK' "$f" || { echo "$f: no GAIA_GUARD_AWK concatenation" >&2; return 1; }
-  done < <(participating_files)
+    if grep -qF -- '$GAIA_GUARD_AWK' "$f"; then
+      derived="$derived$f
+"
+    fi
+  done < <(library_consumers)
+  [ "$(printf '%s' "$derived" | LC_ALL=C sort)" = "$(participating_files | LC_ALL=C sort)" ] \
+    || { echo "the participating roster and the awk-carrying consumers differ" >&2; return 1; }
 }
 
 @test "the common entry points are called, not merely named, in every participating file" {
@@ -988,6 +1038,7 @@ production_guards() {
     grep -qF -- "gaia_scan_pragma_here(" "$f" || { echo "$f: never calls gaia_scan_pragma_here" >&2; return 1; }
   done < <(production_guards)
   grep -qF -- "gaia_scan_run_only(" "$REPO_ROOT/.gaia/scripts/lint-errexit-status-read.sh" || return 1
+  grep -qF -- "gaia_scan_run_only(" "$REPO_ROOT/.gaia/scripts/lint-collapsed-signal-trap.sh" && return 1
   grep -qF -- "gaia_scan_run_only(" "$REPO_ROOT/.gaia/scripts/lint-git-path-quoting.sh" && return 1
   grep -qF -- "gaia_scan_run_only(" "$REPO_ROOT/.gaia/scripts/lint-grep-ere-escapes.sh" && return 1
   grep -qF -- "gaia_scan_run_only(" "$REPO_ROOT/.gaia/scripts/lint-stale-cardinals.sh" && return 1
@@ -1044,6 +1095,14 @@ own_awk_functions() {
   # library's; that is a semantic claim no grep can make, so it is recorded
   # here rather than asserted.
   local actual expected
+
+  # The collapsed-trap gate's three private walks, all class detection: signal_words
+  # reads the signal list off one trap arm, in_command_position decides whether the
+  # word `trap` opens a command rather than sitting inside one, and collapsed is the
+  # verdict over the two. None of them tokenizes shell the library already reads.
+  actual="$(own_awk_functions "$REPO_ROOT/.gaia/scripts/lint-collapsed-signal-trap.sh")"
+  expected="$(printf '%s\n' collapsed in_command_position signal_words)"
+  [ "$actual" = "$expected" ]
 
   actual="$(own_awk_functions "$REPO_ROOT/.gaia/scripts/lint-git-path-quoting.sh")"
   [ "$actual" = "option_walk" ]

@@ -307,6 +307,19 @@ trapdoor EXIT INT'
   grep -qF -- "the scan surface (shell husky workflows)" <<<"$output"
 }
 
+# The `|| exit $?` on the discovery call is the whole mechanism here. `|| exit 1`
+# folds a discovery that never ran into the status this gate uses for a tree it
+# read and found nothing in, and an operator handed that would go looking at the
+# tree. Run outside any repository, so `git ls-files` fails rather than answering
+# empty; that is the one discovery failure a fixture can produce without a stub.
+@test "a discovery that never ran exits distinctly from a surface that came back empty" {
+  TMP="$(mktemp -d -t collapsed-trap-lint-XXXXXX)"
+  run bash -c "cd '$TMP' && bash '$LINTER' 2>&1"
+  [ "$status" -eq 3 ]
+  grep -qF -- "discovery failed" <<<"$output" || return 1
+  grep -qF -- "nothing was scanned" <<<"$output"
+}
+
 @test "a tree with tracked shell but no bats suite is a hard error" {
   fixture_repo_bare
   fixture_script 'true'

@@ -10,9 +10,13 @@
 # the repo root: `bash .gaia/scripts/lint-errexit-status-read.sh`.
 #
 # Exit 0 when clean, and 1 either with a file:line report on any hit or on a
-# scan set that legitimately came back empty. Two statuses say the gate never
-# ran at all: 2 when guard-awk-lib.sh is missing beside this script or refuses
-# one of this gate's calls to it, and 3 when a scan-set discovery failed. Every
+# scan set that came back empty, which this gate reads as a broken discovery
+# rather than a clean tree. The husky hooks are the one surface where an empty
+# set is a legitimate tree, and they never reach this status: that status is
+# tolerated where the hooks are read, for the reason stated there. Two statuses
+# say the gate never ran at all: 2 when guard-awk-lib.sh is missing beside this
+# script or refuses one of this gate's calls to it, and 3 when a scan-set
+# discovery failed. Every
 # runner folds any non-zero into its own failure today, so the split serves a
 # person reading the output rather than a caller branching on it.
 # gaia:maintainer-only:start
