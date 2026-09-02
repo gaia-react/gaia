@@ -76,6 +76,18 @@ jobs:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       PR_NUMBER: ${{ github.event.pull_request.number }}
       PR_BRANCH: ${{ github.event.pull_request.head.ref }}
+      # The audit key is "<base sha>.<branch slug>", and the branch half is read
+      # ambiently with `git branch --show-current`. The checkout below pins
+      # `ref: <head sha>`, so HEAD is DETACHED and that read returns empty,
+      # which makes the key undeterminable and every audit-scope-digest.sh call
+      # exit 1. This supplies the half the runner cannot read.
+      #
+      # A fixed literal, not `head.ref`: the branch half exists to partition
+      # concurrent working trees and a runner has exactly one, so it needs to be
+      # stable rather than unique, and keeping an attacker-controlled ref name
+      # out of a filesystem path costs nothing. The lib treats this as a
+      # FALLBACK, so a real branch always wins and this is inert off CI.
+      GAIA_AUDIT_KEY_BRANCH: gaia-audit-ci
     steps:
       - name: Checkout PR head
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -158,7 +170,20 @@ jobs:
           # wrong scope.
           base="$(bash .github/audit/resolve-audit-base.sh || echo origin/main)"
           echo "base=${base}" >> "$GITHUB_OUTPUT"
-          echo "code-review-audit: incremental review base = ${base}" >&2
+          # The audit key's first half must be a SHA. `base` above is a ref name
+          # on the two commonest paths -- the no-anchor answer (the first audit
+          # of any PR) and the helper-failure fallback are both the literal
+          # `origin/main` -- and audit-scope-digest.sh builds its scope-file path
+          # from it, so a slash there escapes into the path and the write fails.
+          # Resolve it once here and let the digest calls key on this, while the
+          # diff prose keeps the readable ref above.
+          base_sha="$(git merge-base "${base}" HEAD 2>/dev/null || git rev-parse "${base}^{commit}" 2>/dev/null || true)"
+          if [ -z "${base_sha}" ]; then
+            echo "code-review-audit: could not resolve '${base}' to a base sha" >&2
+            exit 1
+          fi
+          echo "base_sha=${base_sha}" >> "$GITHUB_OUTPUT"
+          echo "code-review-audit: incremental review base = ${base} (${base_sha})" >&2
 
       - name: Check for source-code changes
         id: source-changes
@@ -459,12 +484,15 @@ jobs:
             capture your own content digest with
             `bash .gaia/scripts/audit-scope-digest.sh --capture --root
             "$(git rev-parse --show-toplevel)" --member code-audit-frontend
-            --base "${{ steps.base.outputs.base }}"`, beside where you note
-            the tree you started reviewing (`AUDIT_TREE_SHA`). This cannot
-            cost this run a re-dispatch: the checkout is a detached HEAD
-            pinned to the PR head sha for the whole run, so the content this
-            review scopes cannot rotate mid-review the way a long-lived local
-            session's tree can. When the agent's report has
+            --base "${{ steps.base.outputs.base_sha }}"`, beside where you note
+            the tree you started reviewing (`AUDIT_TREE_SHA`). The pinned detached
+            checkout stops anything OUTSIDE this run from rotating that content,
+            but it does not stop this run: any self-heal commit you make below
+            rotates your own digest, so if you self-heal you MUST re-capture
+            with `--recapture` immediately after your last self-heal commit and
+            immediately before the marker write, or the write refuses with
+            `review scope superseded` and the clean audit strands the merge
+            gate. When the agent's report has
             no Critical or Important issues, you MUST stamp the GAIA-Audit
             trailer per .claude/hooks/audit-stamp-trailer.sh. The checkout is at
             a detached HEAD (PR head sha), so the stamp helper writes an empty
@@ -475,7 +503,7 @@ jobs:
             clearance writer: read your captured scope digest back with
             `bash .gaia/scripts/audit-scope-digest.sh --read --root
             "$(git rev-parse --show-toplevel)" --member code-audit-frontend
-            --base "${{ steps.base.outputs.base }}"` and pass it as
+            --base "${{ steps.base.outputs.base_sha }}"` and pass it as
             `--scope-digest`, `bash .gaia/scripts/audit-write-clearance.sh
             --root "$(git rev-parse --show-toplevel)" --member
             code-audit-frontend --provenance earned --scope-digest
@@ -489,7 +517,15 @@ jobs:
             status on HEAD, and a clean audit that leaves no marker strands the
             merge gate. Any self-heal
             file edits go in their own commit (or commits) BEFORE you call the
-            stamp helper. After the audit and stamp, post a single PR comment
+            stamp helper. Those commits rotate your content digest, so after the
+            last of them, and before the clearance write above, re-capture with
+            `bash .gaia/scripts/audit-scope-digest.sh --capture --recapture
+            --root "$(git rev-parse --show-toplevel)" --member
+            code-audit-frontend --base "${{ steps.base.outputs.base_sha }}"` and
+            read that value back for `--scope-digest`. The review genuinely ends
+            on the healed content, so this is the value the marker should
+            attest; `--recapture` is required because a plain `--capture`
+            deliberately preserves the first one. After the audit and stamp, post a single PR comment
             summarizing findings (and whether self-heal commits were pushed).
 
             FINDINGS BLOCK: append a machine-readable findings block to the END

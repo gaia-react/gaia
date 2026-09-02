@@ -1216,3 +1216,41 @@ EOF
   [ "$status" -eq 2 ]
   grep -qF -- "--scope-digest must be a 64-hex digest" <<<"$output" || return 1
 }
+
+# ========== the never-blocking member cannot be made to block ==========
+#
+# The 64-hex format validation runs ahead of the staleness arms, so before this
+# was fixed an empty --scope-digest exited 2 for EVERY member, the contractually
+# never-blocking one included. That member's definition always passes
+# --scope-digest "$D_SCOPE", and --read prints nothing whenever the capture
+# never ran, the audit key moved between two of its Bash calls, or the janitor
+# reaped the scope file. The result was that the one member that can never block
+# a merge became the one that blocked it permanently, with no marker for the
+# AND-aggregator to wait on. These pin the exemption at the format check, not
+# only at the staleness comparison.
+
+@test "advisory member: an empty --scope-digest degrades to advisory and still writes its marker" {
+  run bash "$WRITER" --root "$ROOT" --member code-audit-maintainer-prose \
+    --provenance earned --scope-digest ""
+  [ "$status" -eq 0 ]
+  grep -qF -- "advisory" <<<"$output" || return 1
+  written="$(find "$AUDIT_DIR" -name '*code-audit-maintainer-prose.ok' 2>/dev/null || true)"
+  [ -n "$written" ]
+}
+
+@test "advisory member: a malformed --scope-digest degrades to advisory and still writes its marker" {
+  run bash "$WRITER" --root "$ROOT" --member code-audit-maintainer-prose \
+    --provenance earned --scope-digest "not-a-digest"
+  [ "$status" -eq 0 ]
+  written="$(find "$AUDIT_DIR" -name '*code-audit-maintainer-prose.ok' 2>/dev/null || true)"
+  [ -n "$written" ]
+}
+
+@test "control: an ordinary member is still hard-refused on the same empty value" {
+  run bash "$WRITER" --root "$ROOT" --member code-audit-frontend \
+    --provenance earned --scope-digest ""
+  [ "$status" -eq 2 ]
+  grep -qF -- "--scope-digest must be a 64-hex digest" <<<"$output" || return 1
+  leftover="$(find "$AUDIT_DIR" -name '*.ok' 2>/dev/null || true)"
+  [ -z "$leftover" ]
+}

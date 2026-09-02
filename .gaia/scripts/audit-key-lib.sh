@@ -19,7 +19,8 @@
 # gaia_audit_key <base_sha> [<dir>]
 #   Prints "<base-sha>.<branch-slug>" and returns 0 when both halves resolve.
 #   <dir> defaults to "."; the branch is THAT tree's own
-#   (`git -C "$dir" branch --show-current`), deliberately per-tree and never
+#   (`git -C "$dir" branch --show-current`, or GAIA_AUDIT_KEY_BRANCH when that
+#   is empty because HEAD is detached), deliberately per-tree and never
 #   main-anchored -- the whole point is to discriminate trees, not resolve a
 #   root. Prints nothing and returns 1 when <base_sha> is empty, the branch
 #   is undeterminable (detached HEAD, not a git repository), or the slug
@@ -103,6 +104,20 @@ gaia_branch_slug() {
   local dir="${1:-.}"
   local branch
   branch="$(git -C "$dir" branch --show-current 2>/dev/null)" || branch=""
+  # A detached HEAD has no branch to read, and that is the ordinary state of a
+  # CI checkout pinned to a sha (`actions/checkout` with `ref: <sha>`), where
+  # the key is still needed. GAIA_AUDIT_KEY_BRANCH lets such a caller supply the
+  # discriminator it cannot read ambiently. Safe there because the reason this
+  # half exists is to partition CONCURRENT working trees, and a CI runner has
+  # exactly one: a fixed literal cannot collide with anything.
+  #
+  # A FALLBACK, never an override. It is consulted only when the ambient branch
+  # is genuinely unavailable, so a real branch always wins and a stale value
+  # left in the environment cannot silently repartition a normal checkout. An
+  # empty or unset variable leaves the undeterminable answer exactly as it was.
+  if [[ -z "$branch" ]]; then
+    branch="${GAIA_AUDIT_KEY_BRANCH:-}"
+  fi
   [[ -n "$branch" ]] || return 1
   gaia_key_slug "$branch"
 }

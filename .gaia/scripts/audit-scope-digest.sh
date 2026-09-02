@@ -29,9 +29,12 @@
 #              unreadable, unparseable, or non-64-hex: prints nothing, exits
 #              non-zero. Fails closed to empty rather than to a placeholder,
 #              so a caller that feeds this straight into
-#              `--scope-digest "$(...)"` gets an empty flag value, which the
-#              writer then refuses with "scope digest not supplied" -- the
-#              correct outcome for a member that never captured.
+#              `--scope-digest "$(...)"` gets an empty flag value. For an
+#              ordinary member the writer refuses on that, the correct outcome
+#              for a member that never captured. For the one contractually
+#              never-blocking member it degrades to the advisory arm instead,
+#              because a member that can never block a merge must not be able
+#              to strand one either.
 #
 # Scope file: <root>/.gaia/local/audit/<audit-key>.<member>.scope.json, where
 # <audit-key> is `gaia_audit_key "<key-base>" "<root>"`
@@ -70,8 +73,12 @@
 # GATE_MACHINERY_FILES (.gaia/scripts/audit-machinery-complete.sh): this
 # script decides the value a clearance attests, which is the kind of file
 # those lists exist to cover, but changing either list is out of scope here.
-# The known consequence -- an edit to this script rotates no member's digest
-# -- is accepted and recorded elsewhere.
+# The known consequence is narrower than "no member's digest": this file sits
+# under `.gaia/`, which is inside the remit globs of the member that owns the
+# framework shell, so an edit here DOES rotate that member's digest and does
+# force it to re-review. Every OTHER member's marker stays valid across it, and
+# that is the accepted gap: an edit here cannot make a member whose globs
+# exclude this path re-examine what its clearance attests.
 #
 # Bash 3.2 compatible (macOS default). Never `cd`. Resolves every lib from
 # this script's own on-disk location, never cwd, never $ROOT (the same
@@ -102,8 +109,13 @@ fi
 
 usage() {
   cat >&2 <<'EOF'
-usage: audit-scope-digest.sh --capture --root <path> --member <name> --base <key-base> [--help|-h]
+usage: audit-scope-digest.sh --capture [--recapture] --root <path> --member <name> --base <key-base> [--help|-h]
        audit-scope-digest.sh --read    --root <path> --member <name> --base <key-base>
+
+  --recapture  valid only with --capture; replace an existing capture for this
+               audit key and member instead of returning it unchanged. For a
+               caller that legitimately changed the content its review ends on
+               (CI's self-heal commit), never to refresh a stale-looking value.
 EOF
 }
 
@@ -115,6 +127,7 @@ MODE=""
 ROOT=""
 MEMBER=""
 BASE=""
+RECAPTURE=0
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -124,6 +137,10 @@ while [ "$#" -gt 0 ]; do
       ;;
     --read)
       MODE="read"
+      shift
+      ;;
+    --recapture)
+      RECAPTURE=1
       shift
       ;;
     --root)
@@ -159,6 +176,12 @@ case "$MODE" in
     ;;
 esac
 
+if [ "$RECAPTURE" -eq 1 ] && [ "$MODE" != "capture" ]; then
+  err "--recapture is valid only with --capture"
+  usage
+  exit 2
+fi
+
 if [ -z "$ROOT" ]; then
   err "--root is required"
   usage
@@ -174,6 +197,18 @@ if [ -z "$BASE" ]; then
   usage
   exit 2
 fi
+# The key is "<base>.<branch-slug>" and only the branch half is slugified, so a
+# base carrying a path separator escapes into the scope-file path and the atomic
+# mv below fails on a directory that was never created. Reject it here, where the
+# diagnostic can name the real cause: --base takes the key BASE SHA, and a caller
+# passing a ref name ("origin/main", the no-anchor answer) has a resolution bug
+# upstream rather than a filesystem problem here.
+case "$BASE" in
+  */* | .. | . | *[!0-9A-Za-z._-]*)
+    err "--base must be a key base sha, not a ref name or path: '$BASE'"
+    exit 2
+    ;;
+esac
 
 command -v jq >/dev/null 2>&1 || {
   err "jq is required"
@@ -208,6 +243,34 @@ if [ "$MODE" = "read" ]; then
 fi
 
 # MODE = capture
+
+# A capture is taken ONCE per audit key and member, at scope resolution, and a
+# re-run returns that first value unchanged rather than replacing it.
+#
+# This is structural on purpose. The scope-resolution fence each member re-runs
+# on every handshake Bash call carries this call, because shell state does not
+# survive between an agent's calls and the fence is what re-derives KEY_BASE. If
+# a re-run re-captured, it would overwrite the original with the WRITE-TIME
+# digest, and audit-write-clearance.sh would then compare that value against
+# itself: the staleness gate could never fire, and the marker it published would
+# attest content the member never reviewed. Prose alone cannot prevent that,
+# because the same file both mandates the re-run and forbids the re-derive, so
+# the guarantee lives here instead of in an instruction a member may read
+# either way.
+#
+# --recapture is the one deliberate override, for a caller whose review
+# genuinely ends on different content than it started on.
+if [ "$RECAPTURE" -ne 1 ] && [ -f "$scope_file" ]; then
+  _existing="$(jq -r '.scope_digest // empty' "$scope_file" 2>/dev/null)" || _existing=""
+  case "$_existing" in
+    *[!0-9a-f]*) _existing="" ;;
+  esac
+  [ "${#_existing}" -eq 64 ] || _existing=""
+  if [ -n "$_existing" ]; then
+    printf '%s\n' "$_existing"
+    exit 0
+  fi
+fi
 
 command -v audit_member_digest >/dev/null 2>&1 || {
   err "cannot load the digest engine (.claude/hooks/lib/audit-digest.sh)"
@@ -250,7 +313,7 @@ jq -cn \
   exit 1
 }
 
-mv -f "$tmp" "$scope_file" || {
+mv -f "$tmp" "$scope_file" 2>/dev/null || {
   rm -f "$tmp"
   err "cannot publish scope file to '$scope_file'"
   exit 1

@@ -281,3 +281,118 @@ build_sandbox() {
   D_SCOPE_READ="$("$AUDIT_ROOT/.gaia/scripts/audit-scope-digest.sh" --read --root "$AUDIT_ROOT" --member "$MEMBER" --base "$KEY_BASE")"
   [ "$D_SCOPE_READ" = "$D_SCOPE" ]
 }
+
+# ========== capture idempotence, and the end-to-end staleness proof ==========
+# rotate_in_scope: commit a change the MEMBER's own digest actually covers.
+# README.md is outside code-audit-frontend's globs (app/**, test/**, ...), so
+# committing to it rotates nothing and every assertion below it would pass
+# vacuously. The non-vacuity test in this block exists to keep that honest.
+rotate_in_scope() {
+  mkdir -p "$ROOT/app"
+  printf 'export const x = %s;\n' "$RANDOM$RANDOM" >>"$ROOT/app/rotate.ts"
+  git -C "$ROOT" add app/rotate.ts
+  git -C "$ROOT" commit --quiet -m "rotate content the member digest covers"
+}
+
+# These cover the defect that made the staleness gate inert on the reading the
+# member definitions mandate: the scope-resolution fence a member re-runs on
+# every handshake Bash call carries the --capture call, so a re-run that
+# replaced the stored value would leave the writer comparing the write-time
+# digest against itself. The guarantee is in the script, not in prose, so it is
+# proven here against the real writer rather than asserted about a document.
+
+@test "a second --capture returns the first value and does not replace it" {
+  first="$("$SCRIPT" --capture --root "$ROOT" --member "$MEMBER" --base "$BASE")"
+  [ "${#first}" -eq 64 ]
+
+  rotate_in_scope
+
+  second="$("$SCRIPT" --capture --root "$ROOT" --member "$MEMBER" --base "$BASE")"
+  [ "$second" = "$first" ]
+
+  stored="$("$SCRIPT" --read --root "$ROOT" --member "$MEMBER" --base "$BASE")"
+  [ "$stored" = "$first" ]
+}
+
+@test "non-vacuity: the rotation this suite commits really does move the member digest" {
+  before="$("$SCRIPT" --capture --root "$ROOT" --member "$MEMBER" --base "$BASE")"
+  rotate_in_scope
+  after="$("$SCRIPT" --capture --recapture --root "$ROOT" --member "$MEMBER" --base "$BASE")"
+  [ "$after" != "$before" ]
+}
+
+@test "--recapture replaces the stored capture" {
+  first="$("$SCRIPT" --capture --root "$ROOT" --member "$MEMBER" --base "$BASE")"
+  rotate_in_scope
+
+  forced="$("$SCRIPT" --capture --recapture --root "$ROOT" --member "$MEMBER" --base "$BASE")"
+  [ "$forced" != "$first" ]
+  stored="$("$SCRIPT" --read --root "$ROOT" --member "$MEMBER" --base "$BASE")"
+  [ "$stored" = "$forced" ]
+}
+
+@test "--recapture is rejected on --read" {
+  run "$SCRIPT" --read --recapture --root "$ROOT" --member "$MEMBER" --base "$BASE"
+  [ "$status" -eq 2 ]
+  printf '%s\n' "$output" | grep -qF -- "--recapture is valid only with --capture"
+}
+
+@test "a --base carrying a path separator is rejected, not left to fail at the write" {
+  run "$SCRIPT" --capture --root "$ROOT" --member "$MEMBER" --base "origin/main"
+  [ "$status" -eq 2 ]
+  printf '%s\n' "$output" | grep -qF -- "must be a key base sha"
+  # and nothing was published anywhere under the audit dir
+  [ -z "$(find "$ROOT/.gaia/local" -name '*.scope.json' 2>/dev/null)" ]
+}
+
+@test "a detached HEAD resolves no key, and GAIA_AUDIT_KEY_BRANCH supplies the missing half" {
+  git -C "$ROOT" checkout --quiet --detach HEAD
+
+  run env -u GAIA_AUDIT_KEY_BRANCH "$SCRIPT" --capture --root "$ROOT" --member "$MEMBER" --base "$BASE"
+  [ "$status" -eq 1 ]
+  printf '%s\n' "$output" | grep -qF "cannot resolve the audit key"
+
+  run env GAIA_AUDIT_KEY_BRANCH=gaia-audit-ci "$SCRIPT" --capture --root "$ROOT" --member "$MEMBER" --base "$BASE"
+  [ "$status" -eq 0 ]
+  [ "${#output}" -eq 64 ]
+
+  run env GAIA_AUDIT_KEY_BRANCH=gaia-audit-ci "$SCRIPT" --read --root "$ROOT" --member "$MEMBER" --base "$BASE"
+  [ "$status" -eq 0 ]
+  [ "${#output}" -eq 64 ]
+}
+
+@test "END TO END: a rotation between capture and write makes the earned write refuse" {
+  writer="$THIS_DIR/../audit-write-clearance.sh"
+  [ -x "$writer" ] || skip "audit-write-clearance.sh not executable"
+
+  captured="$("$SCRIPT" --capture --root "$ROOT" --member "$MEMBER" --base "$BASE")"
+  [ "${#captured}" -eq 64 ]
+
+  rotate_in_scope
+
+  # The fence re-run happens here, exactly as a member's marker-write Bash call
+  # would do it, and must not launder the stale value into a fresh one.
+  "$SCRIPT" --capture --root "$ROOT" --member "$MEMBER" --base "$BASE" >/dev/null
+  carried="$("$SCRIPT" --read --root "$ROOT" --member "$MEMBER" --base "$BASE")"
+  [ "$carried" = "$captured" ]
+
+  run "$writer" --root "$ROOT" --member "$MEMBER" --provenance earned \
+    --base "$BASE" --scope-digest "$carried"
+  [ "$status" -eq 2 ]
+  printf '%s\n' "$output" | grep -qF "review scope superseded"
+  [ -z "$(find "$ROOT/.gaia/local/audit" -name '*.ok' 2>/dev/null)" ]
+}
+
+@test "END TO END control: with no rotation the same earned write succeeds" {
+  writer="$THIS_DIR/../audit-write-clearance.sh"
+  [ -x "$writer" ] || skip "audit-write-clearance.sh not executable"
+
+  captured="$("$SCRIPT" --capture --root "$ROOT" --member "$MEMBER" --base "$BASE")"
+  carried="$("$SCRIPT" --read --root "$ROOT" --member "$MEMBER" --base "$BASE")"
+  [ "$carried" = "$captured" ]
+
+  run "$writer" --root "$ROOT" --member "$MEMBER" --provenance earned \
+    --base "$BASE" --scope-digest "$carried"
+  [ "$status" -eq 0 ]
+  [ -n "$(find "$ROOT/.gaia/local/audit" -name '*.ok' 2>/dev/null)" ]
+}

@@ -149,7 +149,16 @@ _gaia_sda_extract_joined() {
         if (in_span) { span = span " " }
       }
     }
-    END { if (cont != "") print cont }
+    END {
+      if (cont != "") print cont
+      # A span still open at end of file means an unmatched backtick absorbed
+      # everything after it. Emit what was absorbed so a call site inside it is
+      # still examined, then fail: reporting coverage over a set this parser
+      # silently truncated is the fail-open shape this check exists to prevent,
+      # and a single stray backtick in a 900-line prompt block is enough to
+      # invert the span state for the whole remainder of the file.
+      if (in_span) { if (span != "") print span; exit 3 }
+    }
   ' "$1"
 }
 
@@ -157,8 +166,18 @@ _gaia_sda_extract_joined() {
 # statement that names audit-write-clearance.sh with --provenance earned but
 # no --scope-digest. Returns 0 iff none found in <file>.
 _gaia_sda_bad_call_sites() {
-  local file="$1" label="$2" hits
-  hits="$(_gaia_sda_extract_joined "$file" \
+  local file="$1" label="$2" hits joined
+  local rc=0
+  # Capture the extraction and its status separately, so a truncated scan set is
+  # a finding rather than a silent all-pass. The status must be taken off the
+  # assignment's own failure arm: with errexit armed a command substitution
+  # hands its status to the assignment, so a following `$?` read would be dead.
+  joined="$(_gaia_sda_extract_joined "$file")" || rc=$?
+  if [ "$rc" -ne 0 ]; then
+    printf '%s: unmatched backtick leaves an inline span open at end of file; the scanned set is truncated, so coverage here cannot be trusted\n' "$label"
+    return 1
+  fi
+  hits="$(printf '%s\n' "$joined" \
     | grep -F 'audit-write-clearance.sh' \
     | grep -F -- '--provenance earned' \
     | grep -vF -- '--scope-digest')"

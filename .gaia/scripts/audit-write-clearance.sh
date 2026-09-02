@@ -291,19 +291,53 @@ if [ "$SUPERSEDE_SEEN" -eq 1 ]; then
   fi
 fi
 
+# scope_advisory names the one contractually never-blocking member so the
+# gate below can key on a plain variable rather than a member-name literal.
+# On the adopter build the naming block just below is stripped, so this stays
+# 0 unconditionally: the member cannot exist on an adopter clone, and every
+# member that DOES exist there gets the full fail-closed refusal.
+scope_advisory=0
+# gaia:maintainer-only:start
+# This member is exempt in both failing arms below, exactly as it is already
+# exempt from the dirty-scope withhold -- that exemption is member-side
+# prose, not a writer branch; this is the writer's FIRST member-name
+# conditional beyond DEFAULT_MEMBER. It exists because that member is
+# contractually never-blocking, so keep the naming on the next read of this
+# file rather than deleting it as a stray inconsistency.
+if [ "$MEMBER" = "code-audit-maintainer-prose" ]; then
+  scope_advisory=1
+fi
+# gaia:maintainer-only:end
+
 # --scope-digest, when present, must be exactly 64 lowercase hex: the shape
 # the digest engine emits. This is a usage error, not a staleness refusal, so
 # a caller passing a malformed value gets a distinct diagnostic from a caller
 # whose digest genuinely rotated. Bash-3.2-safe `case`, not `[[ =~ ]]`.
+#
+# The never-blocking member is exempt here too, not only in the staleness arms
+# below. Its definition always passes --scope-digest "$D_SCOPE", and --read
+# prints nothing whenever the capture never ran, the audit key moved between two
+# of the member's Bash calls, or the janitor reaped the scope file -- so the
+# value it passes is EMPTY on exactly the paths the exemption exists to cover.
+# Exiting 2 here would make the one member that can never block a merge the one
+# that blocks it permanently, with no marker for the AND-aggregator to wait on.
+# A malformed value from that member therefore degrades to the not-supplied
+# state and falls through to the advisory arm, which reports and clears.
+_scope_digest_malformed=0
 if [ "$SCOPE_DIGEST_SEEN" -eq 1 ]; then
   case "$SCOPE_DIGEST" in
-    *[!0-9a-f]* | '')
-      err "--scope-digest must be a 64-hex digest"
-      usage
-      exit 2
-      ;;
+    *[!0-9a-f]* | '') _scope_digest_malformed=1 ;;
   esac
   if [ "${#SCOPE_DIGEST}" -ne 64 ]; then
+    _scope_digest_malformed=1
+  fi
+fi
+if [ "$_scope_digest_malformed" -eq 1 ]; then
+  if [ "$scope_advisory" -eq 1 ]; then
+    err "--scope-digest is not a 64-hex digest (advisory): treating as not supplied"
+    SCOPE_DIGEST_SEEN=0
+    SCOPE_DIGEST=""
+  else
     err "--scope-digest must be a 64-hex digest"
     usage
     exit 2
@@ -332,23 +366,6 @@ fi
 # silently skipping the comparison (the fail-open shape the inert
 # `AUDIT_TREE_SHA` in the four specialists already shows the cost of).
 #
-# scope_advisory names the one contractually never-blocking member so the
-# gate below can key on a plain variable rather than a member-name literal.
-# On the adopter build the naming block just below is stripped, so this stays
-# 0 unconditionally: the member cannot exist on an adopter clone, and every
-# member that DOES exist there gets the full fail-closed refusal.
-scope_advisory=0
-# gaia:maintainer-only:start
-# This member is exempt in both failing arms below, exactly as it is already
-# exempt from the dirty-scope withhold -- that exemption is member-side
-# prose, not a writer branch; this is the writer's FIRST member-name
-# conditional beyond DEFAULT_MEMBER. It exists because that member is
-# contractually never-blocking, so keep the naming on the next read of this
-# file rather than deleting it as a stray inconsistency.
-if [ "$MEMBER" = "code-audit-maintainer-prose" ]; then
-  scope_advisory=1
-fi
-# gaia:maintainer-only:end
 if [ "$PROVENANCE" = "earned" ] && [ "$SUPERSEDE_SEEN" -ne 1 ]; then
   if [ "$scope_advisory" -eq 1 ]; then
     if [ "$SCOPE_DIGEST_SEEN" -ne 1 ]; then
