@@ -26,6 +26,8 @@ setup() {
   WRITER="$REPO_ROOT/.gaia/scripts/write-audit-remits.sh"
   REMIT_START='<!-- gaia:audit-remit:start -->'
   REMIT_END='<!-- gaia:audit-remit:end -->'
+  MAINTAINER_START='# gaia:maintainer-only:start'
+  MAINTAINER_END='# gaia:maintainer-only:end'
   # A hard failure, not a skip: a `skip` here would silently retire all 69+
   # tests in this suite to skipped-and-green if either committed script ever
   # went missing, which is the opposite of what a missing file should do.
@@ -41,6 +43,28 @@ setup() {
 
 assert_contains() {
   grep -qF -- "$1" <<<"$output"
+}
+
+# Strips maintainer-only blocks from the file named by $1, writing the result to
+# stdout. One copy, used by every lockstep test that needs a stripped script.
+#
+# This models `stripMarkerBlocks` in `.gaia/cli/src/release/marker-strip.ts`,
+# the parser the release scrub actually runs, and models it by substring
+# (`index`) because that is what the shipped parser does (`line.includes`).
+# Matching only at column 0 would be a narrower second implementation, free to
+# reject a block the release strips cleanly; the branches below cover the same
+# cases the shipped state machine does, including a start and end on one line
+# and an end with no open block (which the shipped parser keeps).
+strip_maintainer_only() {
+  awk -v s="$MAINTAINER_START" -v e="$MAINTAINER_END" '
+    {
+      has_s = index($0, s) > 0
+      has_e = index($0, e) > 0
+      if (!skip && has_s) { if (!has_e) skip = 1; next }
+      if (skip) { if (has_e) skip = 0; next }
+      print
+    }
+  ' "$1"
 }
 
 # Scaffolds a fixture root: the roster arrives on stdin, and the agent files and
@@ -1109,21 +1133,45 @@ YAML
   assert_contains "builtin-fallback-lockstep"
 }
 
+# The lockstep tests below strip with `strip_maintainer_only`, this suite's model
+# of the shipped scrub (`.gaia/cli/src/release/marker-strip.ts`). This one pins
+# the model to the shipped semantics rather than to a convenient subset of them:
+# the real parser recognizes a marker by substring, so it strips an indented
+# pair, and indented pairs are legitimate and already in the tree wherever a
+# block sits inside an `if` or an `else`. A model that only matched at column 0
+# would leave the maintainer-only text in the "stripped" copy, failing every
+# test below it on a file the release scrubs correctly.
+@test "lockstep: the marker model strips an indented pair, as the shipped stripper does" {
+  local f="$BATS_TEST_TMPDIR/indented-pair.sh"
+  # Built from the same constants the model matches on, so the fixture cannot
+  # drift into being a third spelling of the marker.
+  {
+    printf 'before=1\n'
+    printf '  %s\n' "$MAINTAINER_START"
+    printf '  maintainer_only=1\n'
+    printf '  %s\n' "$MAINTAINER_END"
+    printf 'after=1\n'
+  } > "$f"
+  run strip_maintainer_only "$f"
+  [ "$status" -eq 0 ]
+  assert_contains "before=1"
+  assert_contains "after=1"
+  grep -qF "maintainer_only=1" <<<"$output" && return 1
+  grep -qF "gaia:maintainer-only" <<<"$output" && return 1
+  true
+}
+
 @test "lockstep: the maintainer-only markers balance" {
   local starts ends
-  starts="$(grep -c '^# gaia:maintainer-only:start$' "$SCRIPT")"
-  ends="$(grep -c '^# gaia:maintainer-only:end$' "$SCRIPT")"
+  starts="$(grep -cF -- "$MAINTAINER_START" "$SCRIPT")"
+  ends="$(grep -cF -- "$MAINTAINER_END" "$SCRIPT")"
   [ "$starts" -ge 1 ]
   [ "$starts" -eq "$ends" ]
 }
 
 @test "lockstep: the script is valid bash with the maintainer-only block stripped" {
   local stripped="$BATS_TEST_TMPDIR/stripped.sh"
-  awk '
-    /^# gaia:maintainer-only:start$/ { skip = 1; next }
-    /^# gaia:maintainer-only:end$/ { skip = 0; next }
-    !skip
-  ' "$SCRIPT" > "$stripped"
+  strip_maintainer_only "$SCRIPT" > "$stripped"
   grep -qF "gaia:maintainer-only" "$stripped" && return 1
   bash -n "$stripped"
 }
@@ -1133,11 +1181,7 @@ YAML
   # the stripped copy's own script-relative library resolution is exercised too.
   local sb="$BATS_TEST_TMPDIR/stripped-sandbox"
   mkdir -p "$sb/.gaia/scripts" "$sb/.claude/hooks/lib"
-  awk '
-    /^# gaia:maintainer-only:start$/ { skip = 1; next }
-    /^# gaia:maintainer-only:end$/ { skip = 0; next }
-    !skip
-  ' "$SCRIPT" > "$sb/.gaia/scripts/verify-audit-roster.sh"
+  strip_maintainer_only "$SCRIPT" > "$sb/.gaia/scripts/verify-audit-roster.sh"
   cp "$REPO_ROOT/.claude/hooks/lib/audit-scope.sh" "$sb/.claude/hooks/lib/audit-scope.sh"
 
   local r="$BATS_TEST_TMPDIR/stripped-fixture"
