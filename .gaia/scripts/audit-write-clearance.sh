@@ -388,9 +388,9 @@ fi
 # same-round re-run from the next dispatch -- that is why the refusal message
 # says the round is forfeited in as many words, and why the member definitions
 # say the fence re-run is safe EXCEPT after this refusal.
-# Three outcomes, because the caller's diagnostic differs for each and a
-# message that asserts one of them for all three is read as a description of
-# what happened (`.claude/rules/partial-cause-reporting.md`). Saying "the
+# Each outcome carries its own status, because the caller's diagnostic differs
+# for each and a message that asserts one of them for all of them is read as a
+# description of what happened (`.claude/rules/partial-cause-reporting.md`). Saying "the
 # capture is released" on a run that released nothing points the operator at a
 # deadlock they have been told is already cleared.
 #
@@ -400,6 +400,11 @@ fi
 #   2  could not resolve the scope file at all -- no key lib, no --base (the CI
 #      clearance call passes none), or an unresolvable key. A capture may or may
 #      not be sitting there; this arm cannot tell, and must not claim either.
+#   3  located, but not removed: the capture is exactly where it should be and
+#      the rm failed. Distinct from 2 precisely because the location IS known --
+#      the helper has already printed a diagnostic naming the path, so a caller
+#      that folded this into 2 would follow that diagnostic with a second
+#      message guessing at location causes, none of which is what happened.
 _release_forfeited_capture() {
   local key="" scope_file
   command -v gaia_audit_key >/dev/null 2>&1 || return 2
@@ -410,7 +415,7 @@ _release_forfeited_capture() {
   [ -f "$scope_file" ] || return 1
   rm -f "$scope_file" || {
     err "warning: could not release the forfeited capture at '$scope_file'; the next round will refuse identically until it is removed"
-    return 2
+    return 3
   }
   return 0
 }
@@ -444,6 +449,17 @@ if [ "$PROVENANCE" = "earned" ] && [ "$SUPERSEDE_SEEN" -ne 1 ]; then
     fi
   elif [ "$SCOPE_DIGEST_SEEN" -ne 1 ]; then
     err "scope digest not supplied"
+    # A member dispatched into a worktree loads the agent definition the
+    # session resolved from the MAIN checkout, not from the worktree under
+    # review. On a branch that edits that member's own definition the prompt it
+    # is running therefore predates the edit, and a prompt predating this
+    # handshake never learned to capture or pass a scope digest -- so its
+    # earned write lands here. This refusal is the only channel that reaches
+    # such a member, and without naming the cause it reads as the member's own
+    # mistake: it retries identically, and if every dispatched member is in
+    # that state the AND-aggregator holds the merge gate shut with nothing left
+    # that can clear it. Naming the cause is what makes the stall self-clearing.
+    err "If you were dispatched into a worktree whose branch edits your own agent definition, the definition you are running was resolved from the main checkout and predates that edit. Re-read your own definition from --root ('$ROOT'), follow it, and retry."
     exit 2
   elif [ "$SCOPE_DIGEST" != "$digest" ]; then
     err "review scope superseded: scope=$SCOPE_DIGEST write=$digest"
@@ -451,7 +467,8 @@ if [ "$PROVENANCE" = "earned" ] && [ "$SUPERSEDE_SEEN" -ne 1 ]; then
     case "$?" in
       0) err "this round is forfeited and its capture is released; the next dispatch captures fresh." ;;
       1) err "this round is forfeited; no stored capture was found to release, so nothing carries into the next dispatch." ;;
-      *) err "this round is forfeited, but the stored capture could not be located to release it (no --base, or the audit key does not resolve). If one is present, the next dispatch inherits it and refuses identically; clear it with audit-scope-digest.sh --capture --recapture." ;;
+      3) err "this round is forfeited; the stored capture was located but could not be removed, so the next dispatch inherits it and refuses identically until the path named above is cleared." ;;
+      *) err "this round is forfeited, but the stored capture could not be located to release it (no --base, an unresolvable audit key, or the key library not being loaded). If one is present, the next dispatch inherits it and refuses identically; clear it with audit-scope-digest.sh --capture --recapture." ;;
     esac
     err "Do NOT re-run the scope fence to obtain a new capture in this round: you reviewed the superseded content, and a marker earned on a fresh capture would attest content you never read."
     exit 2
