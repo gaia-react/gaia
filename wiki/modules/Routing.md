@@ -8,7 +8,7 @@ depends_on:
   - '[[remix-flat-routes]]'
   - '[[React Router]]'
 created: 2026-04-20
-updated: 2026-06-24
+updated: 2026-09-02
 tags: [module, routing]
 ---
 
@@ -47,6 +47,10 @@ The page folder and its component are named `<PascalName>Page` (e.g. `DashboardP
 - `--action`: emit an action stub
 - `--i18n`: emit a flat `<kebab>.ts` locale file and wire it into the locale barrel (fails loudly if the barrel is absent)
 - `--dry-run`: preview what would be written without touching the filesystem
+
+### Fetcher action paths
+
+`app/action-paths.ts` exports `ACTION_PATHS`, the single source of truth for every path a fetcher submits to under `actions+`/`resources+` (e.g. `themeSwitch: '/resources/theme-switch'`). React Router derives each path from its route file's name, so a hand-copied literal at a call site goes stale silently the moment that file renames: the submission 404s, an optimistic update stops applying while the POST still succeeds, or a story renders the router's error boundary. The component, the optimistic-mode matcher, and the test router stub all read `ACTION_PATHS` instead of keeping their own copies, and `test/action-paths.test.ts` resolves the app's real route config to assert every declared path still resolves to a served route.
 
 ## Server-side i18n in loaders
 
