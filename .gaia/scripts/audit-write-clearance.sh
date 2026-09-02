@@ -388,16 +388,31 @@ fi
 # same-round re-run from the next dispatch -- that is why the refusal message
 # says the round is forfeited in as many words, and why the member definitions
 # say the fence re-run is safe EXCEPT after this refusal.
+# Three outcomes, because the caller's diagnostic differs for each and a
+# message that asserts one of them for all three is read as a description of
+# what happened (`.claude/rules/partial-cause-reporting.md`). Saying "the
+# capture is released" on a run that released nothing points the operator at a
+# deadlock they have been told is already cleared.
+#
+#   0  released: a stored capture existed and is gone.
+#   1  nothing to release: no capture is stored, so none can strand a later
+#      round. Not a failure.
+#   2  could not resolve the scope file at all -- no key lib, no --base (the CI
+#      clearance call passes none), or an unresolvable key. A capture may or may
+#      not be sitting there; this arm cannot tell, and must not claim either.
 _release_forfeited_capture() {
   local key="" scope_file
-  command -v gaia_audit_key >/dev/null 2>&1 || return 0
-  [ -n "$BASE" ] || return 0
+  command -v gaia_audit_key >/dev/null 2>&1 || return 2
+  [ -n "$BASE" ] || return 2
   key="$(gaia_audit_key "$BASE" "$ROOT" 2>/dev/null || true)"
-  [ -n "$key" ] || return 0
+  [ -n "$key" ] || return 2
   scope_file="${ROOT}/.gaia/local/audit/${key}.${MEMBER}.scope.json"
-  [ -f "$scope_file" ] || return 0
-  rm -f "$scope_file" ||
+  [ -f "$scope_file" ] || return 1
+  rm -f "$scope_file" || {
     err "warning: could not release the forfeited capture at '$scope_file'; the next round will refuse identically until it is removed"
+    return 2
+  }
+  return 0
 }
 
 # Scope-digest staleness gate. Gated only on a PLAIN earned write: a refusal
@@ -416,6 +431,16 @@ if [ "$PROVENANCE" = "earned" ] && [ "$SUPERSEDE_SEEN" -ne 1 ]; then
       err "review scope superseded (advisory)"
     elif [ "$SCOPE_DIGEST" != "$digest" ]; then
       err "review scope superseded (advisory): scope=$SCOPE_DIGEST write=$digest"
+      # This arm warns and falls through to publish, and the marker it
+      # publishes is keyed to the WRITE-TIME digest, never to the captured one
+      # the spent test looks for. So without this release the capture is never
+      # spent by the very round that ends on it: it survives for the life of
+      # the audit key, and every later round re-reads it and re-emits the
+      # warning above, which the never-blocking member is instructed to record
+      # as a finding. The signal is stuck on, and the findings it produces are
+      # false. Only the mismatch arm releases; the not-supplied arm above says
+      # nothing about whether this round ended, exactly as on the blocking path.
+      _release_forfeited_capture || true
     fi
   elif [ "$SCOPE_DIGEST_SEEN" -ne 1 ]; then
     err "scope digest not supplied"
@@ -423,7 +448,12 @@ if [ "$PROVENANCE" = "earned" ] && [ "$SUPERSEDE_SEEN" -ne 1 ]; then
   elif [ "$SCOPE_DIGEST" != "$digest" ]; then
     err "review scope superseded: scope=$SCOPE_DIGEST write=$digest"
     _release_forfeited_capture
-    err "this round is forfeited and its capture is released; the next dispatch captures fresh. Do NOT re-run the scope fence to obtain a new capture in this round: you reviewed the superseded content, and a marker earned on a fresh capture would attest content you never read."
+    case "$?" in
+      0) err "this round is forfeited and its capture is released; the next dispatch captures fresh." ;;
+      1) err "this round is forfeited; no stored capture was found to release, so nothing carries into the next dispatch." ;;
+      *) err "this round is forfeited, but the stored capture could not be located to release it (no --base, or the audit key does not resolve). If one is present, the next dispatch inherits it and refuses identically; clear it with audit-scope-digest.sh --capture --recapture." ;;
+    esac
+    err "Do NOT re-run the scope fence to obtain a new capture in this round: you reviewed the superseded content, and a marker earned on a fresh capture would attest content you never read."
     exit 2
   fi
 fi

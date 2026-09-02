@@ -371,9 +371,14 @@ publish_conclusion() {
 # probe that answers directly, and it works for either outcome.
 stored_head_for() {
   local sf
-  sf="$(ls "$ROOT"/.gaia/local/audit/*."${1}".scope.json 2>/dev/null | head -1)"
-  [ -n "$sf" ] || return 1
-  jq -r '.head // empty' "$sf"
+  # Glob directly rather than parsing `ls`: shellcheck SC2012, and a filename
+  # carrying a newline would split into two paths through the pipe.
+  for sf in "$ROOT"/.gaia/local/audit/*."${1}".scope.json; do
+    [ -f "$sf" ] || continue
+    jq -r '.head // empty' "$sf"
+    return 0
+  done
+  return 1
 }
 
 @test "spent: a specialist's conclusion is found under its own member infix" {
@@ -636,4 +641,65 @@ rotate_machinery() {
     --base "$BASE" --scope-digest "$captured"
   [ "$status" -eq 0 ]
   [ -f "$(scope_file_for "$ROOT" "$BASE" "$MEMBER")" ]
+}
+
+@test "the advisory member's capture is released too, so its warning cannot stick on" {
+  # The never-blocking member warns and falls through to publish, and it
+  # publishes at the WRITE-TIME digest, so nothing is ever keyed to the capture
+  # it took. Without a release the capture outlives every round on this audit
+  # key and the warning re-fires forever, which that member records as a finding.
+  writer="$THIS_DIR/../audit-write-clearance.sh"
+  [ -x "$writer" ] || skip "audit-write-clearance.sh not executable"
+  local m="code-audit-maintainer-prose"
+
+  captured="$("$SCRIPT" --capture --root "$ROOT" --member "$m" --base "$BASE")"
+  rotate_machinery
+
+  run "$writer" --root "$ROOT" --member "$m" --provenance earned \
+    --base "$BASE" --scope-digest "$captured"
+  [ "$status" -eq 0 ]
+  grep -qF -- "advisory" <<<"$output" || return 1
+  [ ! -f "$(scope_file_for "$ROOT" "$BASE" "$m")" ]
+
+  # The next round captures fresh, so it agrees with its own content and warns
+  # about nothing.
+  fresh="$("$SCRIPT" --capture --root "$ROOT" --member "$m" --base "$BASE")"
+  [ "$fresh" != "$captured" ]
+  run "$writer" --root "$ROOT" --member "$m" --provenance earned \
+    --base "$BASE" --scope-digest "$fresh"
+  [ "$status" -eq 0 ]
+  grep -qF -- "advisory" <<<"$output" && return 1
+  return 0
+}
+
+@test "the forfeiture diagnostic reports what actually happened, not what it hoped" {
+  # `.claude/rules/partial-cause-reporting.md`: three conditions reach this
+  # refusal and they need different operator actions, so one message asserting
+  # a release for all three sends the operator away from a live deadlock.
+  writer="$THIS_DIR/../audit-write-clearance.sh"
+  [ -x "$writer" ] || skip "audit-write-clearance.sh not executable"
+
+  # (a) a capture really is released
+  captured="$("$SCRIPT" --capture --root "$ROOT" --member "$MEMBER" --base "$BASE")"
+  rotate_in_scope
+  run "$writer" --root "$ROOT" --member "$MEMBER" --provenance earned \
+    --base "$BASE" --scope-digest "$captured"
+  [ "$status" -eq 2 ]
+  grep -qF -- "its capture is released" <<<"$output" || return 1
+
+  # (b) no capture is stored, so nothing carries forward and nothing is claimed
+  run "$writer" --root "$ROOT" --member "$MEMBER" --provenance earned \
+    --base "$BASE" --scope-digest "$captured"
+  [ "$status" -eq 2 ]
+  grep -qF -- "no stored capture" <<<"$output" || return 1
+  grep -qF -- "its capture is released" <<<"$output" && return 1
+
+  # (c) the scope file cannot be located at all, which is the CI clearance
+  # call's shape: it passes --scope-digest and no --base.
+  run "$writer" --root "$ROOT" --member "$MEMBER" --provenance earned \
+    --scope-digest "$captured"
+  [ "$status" -eq 2 ]
+  grep -qF -- "could not be located" <<<"$output" || return 1
+  grep -qF -- "its capture is released" <<<"$output" && return 1
+  return 0
 }
