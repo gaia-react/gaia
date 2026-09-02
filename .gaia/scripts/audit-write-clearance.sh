@@ -444,6 +444,17 @@ if [ "$PROVENANCE" = "earned" ] && [ "$SUPERSEDE_SEEN" -ne 1 ]; then
     fi
   elif [ "$SCOPE_DIGEST_SEEN" -ne 1 ]; then
     err "scope digest not supplied"
+    # A member dispatched into a worktree loads the agent definition the
+    # session resolved from the MAIN checkout, not from the worktree under
+    # review. On a branch that edits that member's own definition the prompt it
+    # is running therefore predates the edit, and a prompt predating this
+    # handshake never learned to capture or pass a scope digest -- so its
+    # earned write lands here. This refusal is the only channel that reaches
+    # such a member, and without naming the cause it reads as the member's own
+    # mistake: it retries identically, and if every dispatched member is in
+    # that state the AND-aggregator holds the merge gate shut with nothing left
+    # that can clear it. Naming the cause is what makes the stall self-clearing.
+    err "If you were dispatched into a worktree whose branch edits your own agent definition, the definition you are running was resolved from the main checkout and predates that edit. Re-read your own definition from --root ('$ROOT'), follow it, and retry."
     exit 2
   elif [ "$SCOPE_DIGEST" != "$digest" ]; then
     err "review scope superseded: scope=$SCOPE_DIGEST write=$digest"
@@ -451,7 +462,7 @@ if [ "$PROVENANCE" = "earned" ] && [ "$SUPERSEDE_SEEN" -ne 1 ]; then
     case "$?" in
       0) err "this round is forfeited and its capture is released; the next dispatch captures fresh." ;;
       1) err "this round is forfeited; no stored capture was found to release, so nothing carries into the next dispatch." ;;
-      *) err "this round is forfeited, but the stored capture could not be located to release it (no --base, or the audit key does not resolve). If one is present, the next dispatch inherits it and refuses identically; clear it with audit-scope-digest.sh --capture --recapture." ;;
+      *) err "this round is forfeited, but the stored capture could not be located to release it (no --base, an unresolvable audit key, or the key library not being loaded). If one is present, the next dispatch inherits it and refuses identically; clear it with audit-scope-digest.sh --capture --recapture." ;;
     esac
     err "Do NOT re-run the scope fence to obtain a new capture in this round: you reviewed the superseded content, and a marker earned on a fresh capture would attest content you never read."
     exit 2

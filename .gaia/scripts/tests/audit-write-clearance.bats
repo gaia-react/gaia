@@ -1145,6 +1145,39 @@ EOF
   return 0
 }
 
+@test "the not-supplied refusal names the stale-definition cause and points at --root" {
+  # A member dispatched into a worktree that edits its OWN agent definition
+  # resolves that definition from the main checkout, so it runs a pre-branch
+  # prompt that never learned to capture a scope digest. Its earned write lands
+  # on this arm, and the refusal text is the only thing that reaches it, so the
+  # refusal has to name that cause and the remedy rather than read as the
+  # member's own mistake.
+  run bash "$WRITER" --root "$ROOT" --member code-audit-frontend --provenance earned
+  [ "$status" -eq 2 ]
+  grep -qF "scope digest not supplied" <<<"$output" || return 1
+  grep -qF "worktree" <<<"$output" || return 1
+  grep -qF -- "--root" <<<"$output" || return 1
+  true
+}
+
+@test "the forfeiture could-not-resolve refusal names every cause that reaches it" {
+  # Three silent conditions return 2 from the release helper: the key library
+  # not being loaded, no --base, and an unresolvable audit key. (The rm failure
+  # returns 2 as well, but prints its own diagnostic naming the exact path, so
+  # it is self-describing and this arm never speaks for it.) Driven here through
+  # the no---base condition; what is pinned is that the parenthetical reads as
+  # the full set it is, not as a closed pair that sends the operator to rule out
+  # the wrong things.
+  run bash "$WRITER" --root "$ROOT" --member code-audit-frontend --provenance earned \
+    --scope-digest "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+  [ "$status" -eq 2 ]
+  grep -qF "review scope superseded" <<<"$output" || return 1
+  grep -qF "could not be located to release it" <<<"$output" || return 1
+  grep -qF -- "--base" <<<"$output" || return 1
+  grep -qF "key library" <<<"$output" || return 1
+  true
+}
+
 @test "UAT-011: the prose member is advisory on a rotated digest: publishes, exits 0, advisory token, both digests" {
   m="code-audit-maintainer-prose"
   digest="$(member_digest "$ROOT" "$m")"
