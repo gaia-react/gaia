@@ -150,6 +150,18 @@ EOF
 # once, the capture inside its own scope-resolution region, and an earned
 # call site carrying --scope-digest; plus one healthy workflow copy. Every
 # "must fail" fixture starts here and mutates one thing.
+write_roster() {
+  local dir="$1"
+  shift
+  local member
+  mkdir -p "$dir/.gaia"
+  printf 'auditors:\n' >"$dir/.gaia/audit-ci.yml"
+  for member in "$@"; do
+    printf '  - name: %s\n    globs:\n      - "app/**"\n' "$member" >>"$dir/.gaia/audit-ci.yml"
+  done
+  printf 'gate_label: null\n' >>"$dir/.gaia/audit-ci.yml"
+}
+
 write_baseline() {
   local dir="$1"
   mkdir -p "$dir/.claude/agents"
@@ -159,6 +171,9 @@ write_baseline() {
   write_member_def "$dir" code-audit-maintainer-prose
   write_member_def "$dir" code-audit-maintainer-shell
   write_healthy_workflow "$dir"
+  write_roster "$dir" code-audit-frontend code-audit-github-workflows \
+    code-audit-maintainer-node code-audit-maintainer-prose \
+    code-audit-maintainer-shell
   printf 'fixture\n' >"$dir/README.md"
 }
 
@@ -199,8 +214,8 @@ make_fixture_repo() {
   run gaia_check_scope_digest_adoption "$REPO_ROOT"
   [ "$status" -eq 0 ]
   grep -qF "earned call-site --scope-digest coverage: all pass" <<<"$output" || return 1
-  grep -qF "obligation literal: byte-identical in all five definitions" <<<"$output" || return 1
-  grep -qF "scope-resolution capture placement: all five in region" <<<"$output" || return 1
+  grep -qF "obligation literal: byte-identical across every definition" <<<"$output" || return 1
+  grep -qF "scope-resolution capture placement: every definition in region" <<<"$output" || return 1
 }
 
 @test "fixture: one earned call site dropping --scope-digest fails and names the file" {
@@ -308,6 +323,32 @@ EOF
   run gaia_check_scope_digest_adoption "$repo"
   [ "$status" -eq 1 ]
   grep -qF ".claude/agents/code-audit-github-workflows.md: MISSING" <<<"$output" || return 1
+}
+
+@test "fixture: a sixth definition dropping --scope-digest fails and names it" {
+  local repo
+  repo="$(make_fixture_repo sixth-member)"
+  # A member the roster has not been told about yet, which is the ordinary
+  # order of events: the definition lands, the roster entry follows. The
+  # hardcoded five-name array this check used to carry never opened this
+  # file, so the omission passed with exit 0 and no line naming it.
+  write_member_def "$repo" code-audit-sixth-member
+  perl -0pi -e 's/ --scope-digest "\$D_SCOPE"//g' "$repo/.claude/agents/code-audit-sixth-member.md"
+  git -C "$repo" add -A
+  git -C "$repo" commit -q -m mutate
+  run gaia_check_scope_digest_adoption "$repo"
+  [ "$status" -eq 1 ]
+  grep -qF ".claude/agents/code-audit-sixth-member.md: earned call site missing --scope-digest" <<<"$output" || return 1
+}
+
+@test "fixture: a sixth definition that is well-formed passes (the discovery is not merely noisy)" {
+  local repo
+  repo="$(make_fixture_repo sixth-member-clean)"
+  write_member_def "$repo" code-audit-sixth-member
+  git -C "$repo" add -A
+  git -C "$repo" commit -q -m mutate
+  run gaia_check_scope_digest_adoption "$repo"
+  [ "$status" -eq 0 ]
 }
 
 @test "usage: a fixture with no scan surface exits 2 rather than passing vacuously" {

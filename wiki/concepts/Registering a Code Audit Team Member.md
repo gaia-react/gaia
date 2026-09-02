@@ -30,24 +30,30 @@ Run `bash .gaia/scripts/write-audit-remits.sh`. It reads `.gaia/audit-ci.yml` an
 
 Add the new agent file's path to `AUDIT_MACHINERY_PATHS` in `.claude/hooks/lib/audit-machinery.sh`, and to the mirrored `GATE_MACHINERY_FILES` list in `.gaia/scripts/audit-machinery-complete.sh`. Every member's clearance marker keys to a content digest computed over the files it owns plus this machinery set; an agent file missing from either list rotates no digest when it changes, so a rewrite of the member's own instructions would merge unaudited by that member. `.gaia/scripts/audit-machinery-complete.sh` asserts the two lists agree.
 
-### 5. Add a finding_class bucket, if the member needs new classes
+### 5. Declare a scope-resolution anchor, only if the fence is not where the checker looks
+
+`.gaia/scripts/check-scope-digest-adoption.sh` discovers members rather than carrying a list of them, so a new definition joins its scanned set with nothing to register: it verifies that every earned clearance-write call site passes `--scope-digest`, that the frozen obligation literal is present byte-identical, and that the capture sits inside the member's own scope-resolution region. Only the last of those depends on where that region starts, and the checker assumes `## Remit and self-skip`, which is where nearly every member resolves `KEY_BASE`/`BASE_SHA` and captures.
+
+A member whose fence lives elsewhere needs one line: add `member|^<its heading regex>` to `GAIA_SDA_ANCHOR_OVERRIDES` in that script. `code-audit-frontend` is the standing example, whose fence sits under `### How to run`. Skipping this on a member that needs it does not fail open, the region extraction finds nothing and the check exits non-zero naming the member and the anchor that matched nothing.
+
+### 6. Add a finding_class bucket, if the member needs new classes
 
 A member reporting an **oracle** finding, backed by a deterministic tool (`react-doctor/`, `axe/`, `knip/`, `cve/`), needs no schema change: the tool owns the id space after its prefix, and any well-formed slug is valid. A member reporting findings in a genuinely new category needs a new closed-vocabulary bucket in the `finding_class` schema: a new prefix, a seeded `as const` union of specific classes, and that union folded into the closed-vocabulary set the validator checks against. Keep new classes genuine root-cause categories the member can assign reliably and repeatably, never a subsystem tag standing in for "somewhere in this member's remit." When in doubt, leave a class out; an unclassed finding is stamped with the classless fallback and counted as the unclassified recurrence signal rather than a draftable candidate.
 
 <!-- gaia:maintainer-only:start -->
-The schema lives at `.gaia/cli/src/schemas/finding-class.ts`, maintainer-only CLI source that never reaches an adopter clone. A bucket added there only reaches the shipped `harden-tally` command once the bundled binary is rebuilt (see step 7).
+The schema lives at `.gaia/cli/src/schemas/finding-class.ts`, maintainer-only CLI source that never reaches an adopter clone. A bucket added there only reaches the shipped `harden-tally` command once the bundled binary is rebuilt (see step 8).
 <!-- gaia:maintainer-only:end -->
 
-### 6. Integrate the recurrence tally
+### 7. Integrate the recurrence tally
 
 The finding-recurrence tally reads each member's findings sidecar to feed `/gaia-harden`'s judge-the-form logic. If the new member's finding classes need routing guidance beyond the default (a mechanizable pattern routes to a deterministic check, a judgment call routes to a prose rule), add a short paragraph to `.claude/skills/gaia/references/harden.md` describing how the new bucket routes, alongside the existing oracle / holistic / rule / workflow / prose paragraphs.
 
 <!-- gaia:maintainer-only:start -->
-### 7. Regenerate the CLI binary
+### 8. Regenerate the CLI binary
 
 A finding-class schema change only reaches the shipped `harden-tally` command once the bundled adopter binary (`.gaia/cli/gaia`) is rebuilt from `.gaia/cli/src` and committed alongside the schema edit. Skipping this leaves the schema and the binary disagreeing about the valid vocabulary.
 
-### 8. Release-exclude any test fixtures
+### 9. Release-exclude any test fixtures
 
 A `scope: maintainer-only` member's agent file, and any fixtures or bats suites written to exercise it, belong in `.gaia/release-exclude` so the release scrub strips them from the adopter bundle. A `scope: adopter` member ships as-is and needs no exclusion entry.
 <!-- gaia:maintainer-only:end -->

@@ -266,7 +266,7 @@ Every command below consumes `$AUDIT_ROOT`, and each Bash call re-runs the deriv
 
 ```bash
 printf '%s' '[ ...the findings array, one object per finding; [] when you found nothing... ]' \
-  | bash .gaia/scripts/audit-write-findings.sh \
+  | bash "$AUDIT_ROOT/.gaia/scripts/audit-write-findings.sh" \
       --root "$AUDIT_ROOT" \
       --member code-audit-maintainer-shell \
       --base "$KEY_BASE" \
@@ -284,7 +284,7 @@ Read your captured scope digest back rather than re-deriving it: a value derived
 
 ```bash
 D_SCOPE="$("$AUDIT_ROOT/.gaia/scripts/audit-scope-digest.sh" --read --root "$AUDIT_ROOT" --member code-audit-maintainer-shell --base "$KEY_BASE")"
-marker="$(bash .gaia/scripts/audit-write-clearance.sh \
+marker="$(bash "$AUDIT_ROOT/.gaia/scripts/audit-write-clearance.sh" \
   --root "$AUDIT_ROOT" \
   --member code-audit-maintainer-shell \
   --provenance earned \
@@ -297,7 +297,7 @@ The shared writer derives your content digest internally from `--root`, resolves
 Withhold the marker on any unresolved Critical or unaddressed/unacknowledged Important finding; withholding it holds the shared `GAIA-Audit` gate shut via the AND-aggregator, since this member is part of the dispatched set for the diff. When you withhold after genuinely auditing this exact content, **record the refusal** with the same shared writer so the merge gate treats it as absolute, checking the refusal family before the earned family: a live refusal for the current digest denies the merge regardless of any same-digest earned marker. Stop here, the remaining handshake steps below apply only to a written marker:
 
 ```bash
-bash .gaia/scripts/audit-write-clearance.sh \
+bash "$AUDIT_ROOT/.gaia/scripts/audit-write-clearance.sh" \
   --root "$AUDIT_ROOT" \
   --member code-audit-maintainer-shell \
   --provenance refused \
@@ -312,7 +312,7 @@ Passing `--base` on the earned write too is what retires your ledger entries: th
 
 ```bash
 D_SCOPE="$("$AUDIT_ROOT/.gaia/scripts/audit-scope-digest.sh" --read --root "$AUDIT_ROOT" --member code-audit-maintainer-shell --base "$KEY_BASE")"
-marker="$(bash .gaia/scripts/audit-write-clearance.sh \
+marker="$(bash "$AUDIT_ROOT/.gaia/scripts/audit-write-clearance.sh" \
   --root "$AUDIT_ROOT" \
   --member code-audit-maintainer-shell \
   --provenance earned \
@@ -410,7 +410,7 @@ The finding-recurrence tally (`.gaia/cli/src/harden/tally.ts`) reads PR comments
 
 ```bash
 printf '%s' '[ ...the findings array, one object per finding; [] when you found nothing... ]' \
-  | bash .gaia/scripts/audit-write-findings.sh \
+  | bash "$AUDIT_ROOT/.gaia/scripts/audit-write-findings.sh" \
       --root "$AUDIT_ROOT" \
       --member code-audit-maintainer-shell \
       --base "$KEY_BASE" \

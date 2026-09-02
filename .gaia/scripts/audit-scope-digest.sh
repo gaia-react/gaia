@@ -49,14 +49,16 @@
 # "captured_at":"..."}. JSON rather than a bare digest so a truncated write
 # fails to parse instead of silently reading as a short digest.
 #
-# STALE FILES ARE NOT TOLERATED AND NOT DETECTED HERE. `--capture` overwrites
-# unconditionally on every dispatch; nothing here checks the file's age or
-# its recorded head against the current one. A file left by an earlier round
-# is read back verbatim, the writer sees a digest that no longer matches the
-# member's write-time digest, and it refuses with "review scope superseded"
-# -- which is the CORRECT outcome, because the member's review really was
-# scoped at the older content. Do not add a "helpful" freshness check here;
-# it would silently re-derive the guard's own inertness.
+# STALE FILES ARE NOT TOLERATED AND NOT DETECTED HERE. `--capture` is
+# idempotent per audit key and member -- it returns an existing capture
+# unchanged, and `--recapture` is the one deliberate override; nothing here
+# checks the file's age or its recorded head against the current one. A file
+# left by an earlier round is read back verbatim, the writer sees a digest
+# that no longer matches the member's write-time digest, and it refuses with
+# "review scope superseded" -- which is the CORRECT outcome, because the
+# member's review really was scoped at the older content. Do not add a
+# "helpful" freshness check here; it would silently re-derive the guard's own
+# inertness.
 #
 # Telemetry is fail-open and adopter-safe. The scope-resolution record is
 # appended through .gaia/scripts/audit-respawn-lib.sh, sourced guarded from

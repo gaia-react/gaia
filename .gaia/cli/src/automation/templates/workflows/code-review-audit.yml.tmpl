@@ -1019,9 +1019,26 @@ jobs:
           # terminal "Status - audit complete" comment. A rejected status POST no
           # longer reds this step, so that comment is the only place an author is
           # told the gate is shut (gaia-react/gaia#1296).
+          #
+          # --require-marker, for the same reason the no-push writer passes it.
+          # An earned clearance write refuses, writing no marker, whenever the
+          # reviewer's scope digest no longer matches its write-time digest --
+          # an expected outcome on this arm, since a self-heal commit rotates
+          # the digest and the prompt's --recapture is what keeps them equal.
+          # Without the flag this writer would stamp success on a push whose
+          # content no member ever attested, and no later run would revisit it:
+          # GITHUB_TOKEN pushes re-trigger nothing. The digests line up on both
+          # arms this step serves -- on `pushed`, --sha is the pushed head that
+          # a correctly recaptured marker is keyed to; on `marker_only`, --sha
+          # is HEAD~1, whose tree the empty trailer commit left unchanged -- so
+          # the flag declines only on the failure it exists to catch. It also
+          # declines a run whose leftover uncommitted edits this step swept to
+          # origin, because that push really does carry content the marker does
+          # not attest.
           bash .github/audit/write-audit-status.sh \
             --sha "${AUDIT_SHA:-}" \
-            --base "${PR_BASE_SHA}"
+            --base "${PR_BASE_SHA}" \
+            --require-marker
 
       - name: Write GAIA-Audit commit status (clean, no push)
         id: clean-status

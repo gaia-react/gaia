@@ -225,7 +225,7 @@ D_FRESH="$("$AUDIT_ROOT/.gaia/scripts/audit-member-digest.sh" --root "$AUDIT_ROO
 # mid-flight; add a finding to the array below naming the rotation rather
 # than staying silent about it.
 printf '%s' '[ ...the findings array, one object per finding; [] when you found nothing... ]' \
-  | bash .gaia/scripts/audit-write-findings.sh \
+  | bash "$AUDIT_ROOT/.gaia/scripts/audit-write-findings.sh" \
       --root "$AUDIT_ROOT" \
       --member code-audit-maintainer-prose \
       --base "$KEY_BASE" \
@@ -238,7 +238,7 @@ printf '%s' '[ ...the findings array, one object per finding; [] when you found 
 **1. Mark.** Write the earned marker with the shared writer, keyed to your own content digest, not HEAD's commit sha or tree: a sha256 over exactly the files you own (see "Remit and self-skip") plus the shared gate machinery, computed by `.claude/hooks/lib/audit-digest.sh`. It attests that you audited that CONTENT: an out-of-glob change (one that touches neither your owned glob nor a machinery file) rotates nothing in your digest, so your marker keeps validating with zero re-review. A change to a file you own, or to any machinery file, rotates your digest and invalidates your marker, and you must re-audit.
 
 ```bash
-marker="$(bash .gaia/scripts/audit-write-clearance.sh \
+marker="$(bash "$AUDIT_ROOT/.gaia/scripts/audit-write-clearance.sh" \
   --root "$AUDIT_ROOT" \
   --member code-audit-maintainer-prose \
   --provenance earned \
@@ -298,7 +298,7 @@ On **every LOCAL pass**, at least one finding or genuinely clean, write a findin
 
 ```bash
 printf '%s' '[ ...the findings array, one object per finding; [] when you found nothing... ]' \
-  | bash .gaia/scripts/audit-write-findings.sh \
+  | bash "$AUDIT_ROOT/.gaia/scripts/audit-write-findings.sh" \
       --root "$AUDIT_ROOT" \
       --member code-audit-maintainer-prose \
       --base "$KEY_BASE" \

@@ -5,14 +5,14 @@
 # clearance writer's `--scope-digest` refusal only closes the loop when the
 # omission is caught before a member spends a full review round, not after
 # it calls the writer and gets refused. Nothing stops a sixth agent
-# definition, or an edit to one of the five that ship today, from dropping
+# definition, or an edit to any definition that ships today, from dropping
 # `--scope-digest` again once it lands everywhere. This check makes three
 # things machine-detectable:
 #
-#   1. Every earned clearance-write call site, across the five agent
-#      definitions and every workflow copy, passes `--scope-digest`.
+#   1. Every earned clearance-write call site, across every agent
+#      definition and every workflow copy, passes `--scope-digest`.
 #   2. The frozen scope-resolution obligation literal is present, exactly
-#      once, byte-identical, in all five agent definitions.
+#      once, byte-identical, in every agent definition.
 #   3. The capture command sits inside each definition's own
 #      scope-resolution region, not merely mentioned somewhere later in the
 #      file -- code-audit-frontend.md names `audit-scope-digest.sh` in
@@ -62,32 +62,110 @@
 #   a required parameter -- this check never derives it itself, so a bats
 #   fixture can drive it against a throwaway repo.
 
-# The five Code Audit Team members this check reasons about, in roster order.
-GAIA_SDA_MEMBERS=(
-  code-audit-frontend
-  code-audit-github-workflows
-  code-audit-maintainer-node
-  code-audit-maintainer-prose
-  code-audit-maintainer-shell
+# The Code Audit Team members this check reasons about, and assertion 3's
+# per-member region anchor beside each. Both are DISCOVERED by
+# _gaia_sda_load_members below, never transcribed here. A transcribed roster
+# cannot see the one definition this check's own header names as the thing it
+# exists to catch: a newly registered member whose earned call sites omit
+# `--scope-digest` would never be opened, every pre-merge check would pass,
+# and the defect would surface mid-round as a forfeited review. Declared
+# empty so the loader is the only writer.
+GAIA_SDA_MEMBERS=()
+GAIA_SDA_START_ANCHOR=()
+
+# Assertion 3's scope-resolution region start anchor. Nearly every member
+# resolves KEY_BASE/BASE_SHA (and captures there) directly under its own
+# "## Remit and self-skip" section, which is the default. code-audit-frontend
+# is the standing exception: its "Remit and self-skip" only decides whether
+# it reviews at all, and the fence that actually derives
+# KEY_BASE/BASE_SHA/D_SCOPE lives under "### How to run" inside
+# "## Rules-Based Audit" instead (that file's own "Re-run carry-forward
+# ledger" section names this location: "the scope-resolution block under
+# 'Rules-Based Audit' -> 'How to run'"). Giving every member the default
+# anchor would make this assertion vacuous for the one member it most needs
+# to catch drift in. The exception rides in a table keyed by member NAME
+# rather than in a positional array beside the roster, because a positional
+# pair desyncs the moment the roster gains or reorders an entry, and the
+# roster is now discovered rather than written down.
+GAIA_SDA_DEFAULT_START_ANCHOR='^## Remit and self-skip'
+GAIA_SDA_ANCHOR_OVERRIDES=(
+  'code-audit-frontend|^### How to run'
 )
 
-# Assertion 3's per-member scope-resolution region start anchor. Four of the
-# five resolve KEY_BASE/BASE_SHA (and capture there) directly under their own
-# "## Remit and self-skip" section. code-audit-frontend.md is the one
-# exception: its "Remit and self-skip" only decides whether it reviews at
-# all, and the fence that actually derives KEY_BASE/BASE_SHA/D_SCOPE lives
-# under "### How to run" inside "## Rules-Based Audit" instead (that file's
-# own "Re-run carry-forward ledger" section names this location: "the
-# scope-resolution block under 'Rules-Based Audit' -> 'How to run'"). A
-# uniform "## Remit and self-skip" anchor for all five would make this
-# assertion vacuous for the one member it most needs to catch drift in.
-GAIA_SDA_START_ANCHOR=(
-  '^### How to run'
-  '^## Remit and self-skip'
-  '^## Remit and self-skip'
-  '^## Remit and self-skip'
-  '^## Remit and self-skip'
-)
+# _gaia_sda_start_anchor <member>: this member's region anchor -- its
+# override when the table carries one, otherwise the default.
+_gaia_sda_start_anchor() {
+  local member="$1" entry
+  for entry in "${GAIA_SDA_ANCHOR_OVERRIDES[@]}"; do
+    case "$entry" in
+      "${member}|"*) printf '%s\n' "${entry#*|}"; return 0 ;;
+    esac
+  done
+  printf '%s\n' "$GAIA_SDA_DEFAULT_START_ANCHOR"
+}
+
+# _gaia_sda_roster_members <repo_root>: the member names .gaia/audit-ci.yml
+# declares, one per line; nothing when that file is absent. Parsed with the
+# same block discipline .claude/hooks/lib/audit-scope.sh's own auditors
+# reader uses -- `auditors:` opens the block and the next column-0 key closes
+# it -- rather than grepping `- name:` file-wide, which would also collect a
+# name out of an unrelated top-level list.
+_gaia_sda_roster_members() {
+  local config="$1/.gaia/audit-ci.yml"
+  [ -f "$config" ] || return 0
+  awk '
+    /^auditors[[:space:]]*:/ { in_auditors = 1; next }
+    !in_auditors { next }
+    /^[A-Za-z_]/ { in_auditors = 0; next }
+    /^[[:space:]]*-[[:space:]]*name:[[:space:]]*/ {
+      line = $0
+      sub(/^[[:space:]]*-[[:space:]]*name:[[:space:]]*/, "", line)
+      sub(/[[:space:]]*$/, "", line)
+      gsub(/"/, "", line)
+      if (line != "") print line
+    }
+  ' "$config"
+}
+
+# _gaia_sda_load_members <repo_root>: fill the two parallel arrays, in one
+# pass so they cannot desync, from the UNION of two sources.
+#
+# The definitions on disk are what makes a newly registered member visible:
+# that is the case this check's header names as its reason to exist, and a
+# transcribed roster is blind to it by construction. The roster declared in
+# .gaia/audit-ci.yml is what keeps a DELETED definition visible: discovery
+# alone cannot miss a file that is not there, it simply stops calling it a
+# member, so a member silently dropped from disk would read as clean. Each
+# source covers the other's blind spot, which is why this takes both rather
+# than picking one.
+#
+# Returns non-zero when the union is empty, which the caller reports as an
+# environment error rather than a pass: a check whose own input set came back
+# empty has verified nothing, and reporting that as clean is exactly the
+# failure .claude/rules/guards-must-fail.md names.
+_gaia_sda_load_members() {
+  local repo_root="$1" file base names="" name
+  GAIA_SDA_MEMBERS=()
+  GAIA_SDA_START_ANCHOR=()
+
+  for file in "$repo_root"/.claude/agents/code-audit-*.md; do
+    [ -f "$file" ] || continue
+    base="${file##*/}"
+    names="${names}${base%.md}
+"
+  done
+  names="${names}$(_gaia_sda_roster_members "$repo_root")"
+
+  while IFS= read -r name; do
+    [ -n "$name" ] || continue
+    GAIA_SDA_MEMBERS+=("$name")
+    GAIA_SDA_START_ANCHOR+=("$(_gaia_sda_start_anchor "$name")")
+  done <<EOF
+$(printf '%s\n' "$names" | LC_ALL=C sort -u)
+EOF
+
+  [ "${#GAIA_SDA_MEMBERS[@]}" -gt 0 ]
+}
 
 # Terminator: the next heading at level 2 or 3, whichever bounds the fence
 # for that member. Matches the extraction idiom already in
@@ -95,7 +173,7 @@ GAIA_SDA_START_ANCHOR=(
 GAIA_SDA_REGION_TERMINATOR='^#{2,3} '
 
 # The three directories carrying a workflow copy of the earned call site,
-# beside the five agent definitions. Every regular file under each is
+# beside the agent definitions. Every regular file under each is
 # scanned; nothing here depends on the copy's exact filename.
 GAIA_SDA_WORKFLOW_DIRS=(
   .github/workflows
@@ -250,7 +328,7 @@ _gaia_sda_assert2() {
     fi
   done
 
-  [ "$failed" -eq 0 ] && printf 'obligation literal: byte-identical in all five definitions\n'
+  [ "$failed" -eq 0 ] && printf 'obligation literal: byte-identical across every definition\n'
   return "$failed"
 }
 
@@ -301,7 +379,7 @@ _gaia_sda_assert3() {
       failed=1
     fi
   done
-  [ "$failed" -eq 0 ] && printf 'scope-resolution capture placement: all five in region\n'
+  [ "$failed" -eq 0 ] && printf 'scope-resolution capture placement: every definition in region\n'
   return "$failed"
 }
 
@@ -310,6 +388,11 @@ gaia_check_scope_digest_adoption() {
   local repo_root="${1:?gaia_check_scope_digest_adoption requires a repo_root argument}"
   if [ ! -d "$repo_root/.claude/agents" ]; then
     printf 'check-scope-digest-adoption: %s/.claude/agents not found; nothing to scan\n' "$repo_root" >&2
+    return 2
+  fi
+
+  if ! _gaia_sda_load_members "$repo_root"; then
+    printf 'check-scope-digest-adoption: no .claude/agents/code-audit-*.md under %s; nothing to scan\n' "$repo_root" >&2
     return 2
   fi
 

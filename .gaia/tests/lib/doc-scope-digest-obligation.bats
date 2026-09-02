@@ -10,7 +10,7 @@
 # landed), never a paraphrase transcribed into the test.
 #
 # Three literals, three reasons:
-#   Group 1: FC-2a's obligation sentence, byte-identical in all five agent
+#   Group 1: FC-2a's obligation sentence, byte-identical in every agent
 #     definitions. This is the prose half of what
 #     .gaia/scripts/check-scope-digest-adoption.sh's assertion 2 already
 #     proves mechanically; this suite exists so the pin survives even if
@@ -45,13 +45,18 @@
 setup() {
   ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
 
-  AGENTS=(
-    "$ROOT/.claude/agents/code-audit-frontend.md"
-    "$ROOT/.claude/agents/code-audit-github-workflows.md"
-    "$ROOT/.claude/agents/code-audit-maintainer-node.md"
-    "$ROOT/.claude/agents/code-audit-maintainer-prose.md"
-    "$ROOT/.claude/agents/code-audit-maintainer-shell.md"
-  )
+  # Discovered, not transcribed. A hardcoded list here would assert the
+  # obligation literal over the definitions that existed the day this suite
+  # was written, and stay green for a newly registered member that never
+  # carried the literal at all -- the same blindness the sibling check
+  # .gaia/scripts/check-scope-digest-adoption.sh was repaired for.
+  AGENTS=()
+  local agent
+  for agent in "$ROOT"/.claude/agents/code-audit-*.md; do
+    [ -f "$agent" ] && AGENTS+=("$agent")
+  done
+  # An empty discovery has verified nothing; fail rather than pass vacuously.
+  [ "${#AGENTS[@]}" -gt 0 ] || return 1
   PROSE_MEMBER="$ROOT/.claude/agents/code-audit-maintainer-prose.md"
   REGISTRATION="$ROOT/wiki/concepts/Registering a Code Audit Team Member.md"
 
@@ -66,7 +71,7 @@ setup() {
   COMPARE_AND_RECORD_LITERAL='Before writing your findings sidecar, read your captured scope digest back with `--read` and compare it to a fresh derive; when they differ, record the rotated review scope as a finding in the sidecar and say so in your report.'
 }
 
-# --- Group 1: FC-2a is byte-identical in all five agent definitions --------
+# --- Group 1: FC-2a is byte-identical in every agent definition -----------
 
 @test "Group 1: the obligation literal is present in every agent definition" {
   local f

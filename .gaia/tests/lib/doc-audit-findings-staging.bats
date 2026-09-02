@@ -160,7 +160,12 @@ setup() {
   for f in "${SPECS[@]}"; do
     local producers pipes consumers
     producers="$(grep -cE -- "^printf '%s' '.*' \\\\$" "$f" || true)"
-    pipes="$(grep -cE -- '^  \| bash \.gaia/scripts/audit-write-findings\.sh \\$' "$f" || true)"
+    # The writer path is $AUDIT_ROOT-anchored, so a worktree audit runs the
+    # AUDITED tree's copy rather than whatever sits under the session cwd.
+    # Anchored here too: an unanchored spelling must not satisfy this count,
+    # or the suite would go on passing through the very regression
+    # audit-root-resolution.bats stage 8b exists to catch.
+    pipes="$(grep -cE -- '^  \| bash "\$AUDIT_ROOT/\.gaia/scripts/audit-write-findings\.sh" \\$' "$f" || true)"
     consumers="$(grep -cE -- '^[[:space:]]*--findings -[[:space:]]*$' "$f" || true)"
     [ "$producers" -eq "$consumers" ] || {
       echo "$f: $producers printf producers, $consumers --findings - consumers" >&2

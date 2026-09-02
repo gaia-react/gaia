@@ -1053,6 +1053,68 @@ run_audit_root_block() {
 # roster would cost a backup/restore cycle per member for the same signal.
 # -----------------------------------------------------------------------------
 
+# Stage 8b: the machinery a definition INVOKES, not just the root it derives.
+# Stage 8 proves each definition's AUDIT_ROOT variable resolves to WT. That
+# says nothing about which copy of a script the definition then runs, and the
+# two came apart: the scope-digest capture is spelled
+# "$AUDIT_ROOT/.gaia/scripts/audit-scope-digest.sh" while the clearance and
+# findings writers were spelled as bare relative paths, so on a worktree audit
+# the writer ran the SESSION ROOT's copy. Both derive over the same --root,
+# but each loads its own copy's digest engine (audit-digest.sh resolves its
+# siblings from BASH_SOURCE, never from --root), and this subsystem's scope
+# digest is the first value the two derive points are compared FOR EQUALITY.
+# A pull request editing the machinery list or the digest recipe -- the
+# routine shape of work here -- would make the two disagree, refuse every
+# member's earned write with a diagnostic naming a rotation that never
+# happened, and deadlock the gate with no in-band recovery.
+
+@test "stage 8b: every clearance/findings writer invocation in every definition is AUDIT_ROOT-anchored" {
+  local m file bad
+  for m in "${ALL_MEMBERS[@]}"; do
+    file="$MAIN/.claude/agents/${m}.md"
+    [ -f "$file" ] || { echo "$m: no definition at $file" >&2; return 1; }
+    # Every invocation must carry the anchor between `bash ` and the path.
+    bad="$(grep -nE 'bash[[:space:]]+\.gaia/scripts/audit-write-(clearance|findings)\.sh' "$file" || true)"
+    [ -z "$bad" ] || {
+      echo "$m: unanchored writer invocation(s), which run the ambient cwd's copy:" >&2
+      echo "$bad" >&2
+      return 1
+    }
+    # And the anchored form must actually be present, so a definition that
+    # simply lost its handshake cannot pass this by having no call sites.
+    grep -qE 'bash[[:space:]]+"\$AUDIT_ROOT/\.gaia/scripts/audit-write-clearance\.sh"' "$file" || {
+      echo "$m: no anchored clearance-writer invocation found at all" >&2
+      return 1
+    }
+  done
+}
+
+@test "stage 8b non-vacuity (source mutation): unanchoring one writer invocation turns the assertion red; byte-identical restore verified" {
+  local file backup before after went_red=0
+  file="$MAIN/.claude/agents/code-audit-frontend.md"
+  backup="$BATS_TEST_TMPDIR/frontend-writer-anchor.bak"
+  before="$(git -C "$MAIN" hash-object "$file")"
+  cp "$file" "$backup"
+
+  perl -0pi -e 's/bash "\$AUDIT_ROOT\/\.gaia\/scripts\/audit-write-clearance\.sh"/bash .gaia\/scripts\/audit-write-clearance.sh/' "$file"
+  grep -qE 'bash[[:space:]]+\.gaia/scripts/audit-write-clearance\.sh' "$file" || {
+    cp "$backup" "$file"
+    echo "the mutation did not take; the control proves nothing" >&2
+    return 1
+  }
+
+  if ! grep -qE 'bash[[:space:]]+\.gaia/scripts/audit-write-(clearance|findings)\.sh' "$file"; then
+    went_red=0
+  else
+    went_red=1
+  fi
+
+  cp "$backup" "$file"
+  after="$(git -C "$MAIN" hash-object "$file")"
+  [ "$before" = "$after" ] || { echo "restore was not byte-identical" >&2; return 1; }
+  [ "$went_red" -eq 1 ] || { echo "stage 8b stayed green under its mutation control; the assertion is vacuous" >&2; return 1; }
+}
+
 @test "stage 8 (flag/anchor: AUDIT_ROOT supplied) from OUTSIDE: every definition resolves to WT, never MAIN" {
   local m block main_phys wt_phys
   wt_phys="$(phys "$WT")"

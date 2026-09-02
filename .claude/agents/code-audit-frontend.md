@@ -1158,7 +1158,7 @@ When the marker is warranted, the write is a mark → stamp → push → status 
 #    or refusal published ahead of its own report is exactly the state an
 #    orchestrator cannot act on. LOCAL only.
 printf '%s' '[ ...the findings array, one object per finding; [] when you found nothing... ]' \
-  | bash .gaia/scripts/audit-write-findings.sh \
+  | bash "$AUDIT_ROOT/.gaia/scripts/audit-write-findings.sh" \
       --root "$AUDIT_ROOT" \
       --member code-audit-frontend \
       --base "$KEY_BASE" \
@@ -1180,7 +1180,7 @@ printf '%s' '[ ...the findings array, one object per finding; [] when you found 
 # vacuous. KEY_BASE is re-derived in this Bash call, and the scope-digest
 # read depends on it, since the scope file is keyed by it.
 D_SCOPE="$("$AUDIT_ROOT/.gaia/scripts/audit-scope-digest.sh" --read --root "$AUDIT_ROOT" --member code-audit-frontend --base "$KEY_BASE")"
-marker="$(bash .gaia/scripts/audit-write-clearance.sh \
+marker="$(bash "$AUDIT_ROOT/.gaia/scripts/audit-write-clearance.sh" \
   --root "$AUDIT_ROOT" \
   --member code-audit-frontend \
   --provenance earned \
@@ -1328,7 +1328,7 @@ A `review scope superseded` refusal from the clearance writer means your scope d
 When you withhold the marker after genuinely auditing this exact content (a real audit that refuses it), **record the refusal** with the same shared writer. A self-healed pass is not this case: it is not a refusal, it is a repair awaiting the orchestrator's commit, so it records no refusal. A refusal is a first-class, digest-keyed artifact: it is the only way this member says "I read this exact content and I refuse". The merge gate checks the refusal family before the earned family, so a live refusal for the current digest denies the merge regardless of any same-digest earned marker.
 
 ```bash
-bash .gaia/scripts/audit-write-clearance.sh \
+bash "$AUDIT_ROOT/.gaia/scripts/audit-write-clearance.sh" \
   --root "$AUDIT_ROOT" \
   --member code-audit-frontend \
   --provenance refused \
@@ -1343,7 +1343,7 @@ Passing `--base` on the earned write too is what retires your ledger entries: th
 
 ```bash
 D_SCOPE="$("$AUDIT_ROOT/.gaia/scripts/audit-scope-digest.sh" --read --root "$AUDIT_ROOT" --member code-audit-frontend --base "$KEY_BASE")"
-marker="$(bash .gaia/scripts/audit-write-clearance.sh \
+marker="$(bash "$AUDIT_ROOT/.gaia/scripts/audit-write-clearance.sh" \
   --root "$AUDIT_ROOT" \
   --member code-audit-frontend \
   --provenance earned \
@@ -1368,7 +1368,7 @@ The finding-recurrence tally reads PR comments for a machine-readable findings b
 
 ```bash
 printf '%s' '[ ...the findings array, one object per finding; [] when you found nothing... ]' \
-  | bash .gaia/scripts/audit-write-findings.sh \
+  | bash "$AUDIT_ROOT/.gaia/scripts/audit-write-findings.sh" \
       --root "$AUDIT_ROOT" \
       --member code-audit-frontend \
       --base "$KEY_BASE" \
