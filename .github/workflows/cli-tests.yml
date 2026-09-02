@@ -155,6 +155,17 @@ jobs:
               # against the Node version an adopter's image would deploy.
               - 'Dockerfile'
               - '.nvmrc'
+              # The second subject of the format-ignore-scope guard
+              # (src/format-ignore-scope.test.ts). It holds the root `format`
+              # script to a prettier ignore set that still consults
+              # `.gitignore`, and that only protects a live worktree while
+              # `.gitignore` still covers `.claude/worktrees`. The script half
+              # lands under `package.json` above; this entry is the only cover
+              # for the other half, and an edit dropping the worktree entry
+              # touches this file alone. Without it such a pull request resolves
+              # `code=false`, skips the Vitest step, and greens this required
+              # check having never checked the premise it removed.
+              - '.gitignore'
               # The region-marker conformance suite binds the TypeScript parser
               # to the two bash readers it inherits its semantics from. It runs
               # in this job (see the step below), so an edit to either bash side
