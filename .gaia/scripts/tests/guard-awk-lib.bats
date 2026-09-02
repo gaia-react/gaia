@@ -930,17 +930,21 @@ mutate() {
 # Every tracked file carrying the library load line, plus nothing else. The
 # library itself does not carry it, so it excludes itself.
 #
-# One pathspec covers the test fixture as well as the guards: a git pathspec
-# glob is matched without FNM_PATHNAME, so its `*` crosses `/`, the property
-# guard-awk-lib.sh records for its own `shell` set. A second pathspec naming the
-# fixture directory returned the same paths and is left out rather than kept as
-# a decoration a reader would take for a widening.
+# Searched tree-wide rather than under the guards' own directory. The load is
+# script-relative, and the fixture already resolves it two levels up, so nothing
+# stops a consumer being added under .claude/hooks/ or .github/audit/; a
+# directory-scoped search would leave such a file outside all three load-shape
+# checks while this comment claimed it was held.
+#
+# The one exclusion is the suite surface, which carries the load line as the
+# literal the bracket check below compares against. That is data this file
+# reads, not a load it performs.
 library_consumers() {
   local f
   while IFS= read -r f; do
     printf '%s\n' "$REPO_ROOT/$f"
   done < <(git -C "$REPO_ROOT" grep -l -- '_gaia_guard_lib_dir/guard-awk-lib.sh' \
-             '.gaia/scripts/*.sh')
+             -- ':(exclude)*.bats')
 }
 
 participating_files() {

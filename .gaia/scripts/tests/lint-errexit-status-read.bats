@@ -1171,6 +1171,26 @@ echo done'
   grep -qF -- 'nothing was scanned' <<<"$output"
 }
 
+# The `|| exit $?` on each discovery call is the whole mechanism here. `|| exit 1`
+# folds a discovery that never ran into the status the empty-surface tests above
+# use for a surface this gate read and found nothing in, and an operator handed
+# that would go looking at the tree. Run outside any repository, so git fails rather
+# than answering empty; that is the one discovery failure a fixture can produce
+# without a stub.
+#
+# It reaches this gate's FIRST discovery call and no later one. Failing is a
+# property of the repository rather than of the pathspec, so no fixture can make
+# one set's discovery fail while another's answers, and the first failure exits
+# before the rest are asked. What the later calls rely on is the library reading
+# each set's own status, which guard-awk-lib.bats pins on its own terms.
+@test "a discovery that never ran exits distinctly from a surface that came back empty" {
+  TMP="$(mktemp -d -t errexit-status-lint-XXXXXX)"
+  run bash -c "cd '$TMP' && bash '$LINTER' 2>&1"
+  [ "$status" -eq 3 ]
+  grep -qF -- 'discovery failed' <<<"$output" || return 1
+  grep -qF -- 'nothing was scanned' <<<"$output"
+}
+
 # --- the prefix matrix, differential against a real shell -------------------
 #
 # Four defects landed on the env-prefix exclusion across four review rounds,
