@@ -562,6 +562,139 @@ EOF
   grep -qF -- "a.bats" <<<"$output" || return 1
 }
 
+# ---- the scan-surface discovery --------------------------------------------
+
+# scan_fixture_repo: a repo carrying one tracked member of every set the helper
+# knows, so a per-set assertion below can name what the set must NOT return as
+# well as what it must.
+scan_fixture_repo() {
+  local repo="$TMP/scanrepo"
+  mkdir -p "$repo/.husky" "$repo/.github/workflows" "$repo/.github/actions/probe"
+  mkdir -p "$repo/.gaia/cli/src/automation/templates/workflows"
+  git -C "$repo" init -q .
+  printf 'x\n' > "$repo/tool.sh"
+  printf 'x\n' > "$repo/.husky/pre-commit"
+  printf 'x\n' > "$repo/.github/workflows/ci.yml"
+  printf 'x\n' > "$repo/.github/actions/probe/action.yaml"
+  printf 'x\n' > "$repo/.gaia/cli/src/automation/templates/workflows/ci.yml.tmpl"
+  git -C "$repo" add -A
+  printf '%s' "$repo"
+}
+
+# Same contract as the bats discovery above: a pathspec matching nothing means
+# the discovery is wrong rather than the tree clean, and the caller reads that
+# as a status rather than through a substitution that would swallow it.
+@test "an empty scan surface is a hard error and a populated one fills the array" {
+  local repo="$TMP/repo"
+  mkdir -p "$repo"
+  git -C "$repo" init -q .
+  printf 'x\n' > "$repo/a.bats"
+  git -C "$repo" add -A
+  run bash -c "cd '$repo' && . '$LIB' && gaia_guard_scan_files probe shell"
+  [ "$status" -eq 1 ]
+  grep -qF -- "probe: ERROR" <<<"$output" || return 1
+  grep -qF -- "nothing was scanned" <<<"$output" || return 1
+  printf 'x\n' > "$repo/a.sh"
+  git -C "$repo" add -A
+  run bash -c "cd '$repo' && . '$LIB' && gaia_guard_scan_files probe shell && printf '%s\n' \"\${GAIA_GUARD_SCAN_FILES[@]}\""
+  [ "$status" -eq 0 ]
+  grep -qxF -- "a.sh" <<<"$output" || return 1
+}
+
+# The message names the sets that were asked for, because a caller asking for
+# more than one has no other way to learn which discovery came back empty.
+@test "the empty-surface error names the sets that were asked for" {
+  local repo="$TMP/repo"
+  mkdir -p "$repo"
+  git -C "$repo" init -q .
+  printf 'x\n' > "$repo/a.bats"
+  git -C "$repo" add -A
+  run bash -c "cd '$repo' && . '$LIB' && gaia_guard_scan_files probe husky workflows"
+  [ "$status" -eq 1 ]
+  grep -qF -- "(husky workflows)" <<<"$output" || return 1
+}
+
+@test "the shell set returns tracked *.sh and no workflow or hook" {
+  local repo
+  repo="$(scan_fixture_repo)"
+  run bash -c "cd '$repo' && . '$LIB' && gaia_guard_scan_files probe shell && printf '%s\n' \"\${GAIA_GUARD_SCAN_FILES[@]}\""
+  [ "$status" -eq 0 ]
+  grep -qxF -- "tool.sh" <<<"$output" || return 1
+  grep -qxF -- ".husky/pre-commit" <<<"$output" && return 1
+  grep -qxF -- ".github/workflows/ci.yml" <<<"$output" && return 1
+  true
+}
+
+@test "the husky set returns the extensionless hooks no extension glob matches" {
+  local repo
+  repo="$(scan_fixture_repo)"
+  run bash -c "cd '$repo' && . '$LIB' && gaia_guard_scan_files probe husky && printf '%s\n' \"\${GAIA_GUARD_SCAN_FILES[@]}\""
+  [ "$status" -eq 0 ]
+  grep -qxF -- ".husky/pre-commit" <<<"$output" || return 1
+  grep -qxF -- "tool.sh" <<<"$output" && return 1
+  true
+}
+
+# The workflow templates are `.tmpl` rather than `.yml`, so a set that returned
+# the workflows and missed them would still look populated.
+@test "the workflows set returns workflows, composite actions, and templates" {
+  local repo
+  repo="$(scan_fixture_repo)"
+  run bash -c "cd '$repo' && . '$LIB' && gaia_guard_scan_files probe workflows && printf '%s\n' \"\${GAIA_GUARD_SCAN_FILES[@]}\""
+  [ "$status" -eq 0 ]
+  grep -qxF -- ".github/workflows/ci.yml" <<<"$output" || return 1
+  grep -qxF -- ".github/actions/probe/action.yaml" <<<"$output" || return 1
+  grep -qxF -- ".gaia/cli/src/automation/templates/workflows/ci.yml.tmpl" <<<"$output" || return 1
+  grep -qxF -- "tool.sh" <<<"$output" && return 1
+  true
+}
+
+# A git pathspec glob is matched without FNM_PATHNAME, so `*.sh` crosses `/` and
+# reaches a script under .husky/. The shell set excludes the hook directory for
+# that reason: a caller asking for both sets must receive such a file once, or
+# it is scanned twice and reported twice.
+@test "a .sh under .husky belongs to the husky set alone and appears once in the union" {
+  local repo
+  repo="$(scan_fixture_repo)"
+  printf 'x\n' > "$repo/.husky/helper.sh"
+  git -C "$repo" add -A
+  run bash -c "cd '$repo' && . '$LIB' && gaia_guard_scan_files probe shell && printf '%s\n' \"\${GAIA_GUARD_SCAN_FILES[@]}\""
+  [ "$status" -eq 0 ]
+  grep -qxF -- ".husky/helper.sh" <<<"$output" && return 1
+  run bash -c "cd '$repo' && . '$LIB' && gaia_guard_scan_files probe shell husky && printf '%s\n' \"\${GAIA_GUARD_SCAN_FILES[@]}\""
+  [ "$status" -eq 0 ]
+  [ "$(grep -cxF -- '.husky/helper.sh' <<<"$output")" -eq 1 ]
+}
+
+# Unknown names are rejected before any read, because the reads run inside a
+# process substitution whose subshell cannot return a status to the caller. A
+# silently-dropped set is the discovery-stage failure these gates exist to stop:
+# the guard scans less than the rule it encodes governs and still reports clean.
+@test "an unknown set name is a hard error that names the set and scans nothing" {
+  local repo
+  repo="$(scan_fixture_repo)"
+  run bash -c "cd '$repo' && . '$LIB' && gaia_guard_scan_files probe shell markdown"
+  [ "$status" -eq 1 ]
+  grep -qF -- "markdown" <<<"$output" || return 1
+  grep -qF -- "probe: ERROR" <<<"$output" || return 1
+}
+
+@test "a call naming no set at all is a hard error rather than an empty surface" {
+  local repo
+  repo="$(scan_fixture_repo)"
+  run bash -c "cd '$repo' && . '$LIB' && gaia_guard_scan_files probe"
+  [ "$status" -eq 1 ]
+  grep -qF -- "probe: ERROR" <<<"$output" || return 1
+}
+
+@test "the union across sets is sorted rather than concatenated set by set" {
+  local repo
+  repo="$(scan_fixture_repo)"
+  run bash -c "cd '$repo' && . '$LIB' && gaia_guard_scan_files probe shell husky workflows && printf '%s\n' \"\${GAIA_GUARD_SCAN_FILES[@]}\""
+  [ "$status" -eq 0 ]
+  [ "$output" = "$(LC_ALL=C sort <<<"$output")" ]
+}
+
 @test "the library sources twice in one shell without erroring under errexit" {
   run bash -c "set -euo pipefail; . '$LIB'; . '$LIB'; printf 'ok\n'"
   [ "$status" -eq 0 ]

@@ -774,3 +774,92 @@ gaia_guard_bats_files() {
   fi
   return 0
 }
+
+# Filled by gaia_guard_scan_files, read by its caller. Declared here so a caller
+# that iterates before calling reads an empty array rather than an unset name.
+GAIA_GUARD_SCAN_FILES=()
+
+# gaia_guard_scan_files <guard-label> <set>...: fill GAIA_GUARD_SCAN_FILES with
+# the sorted union of the named tracked sets and return 0, or return 1 having
+# said so on stderr when a set name is unknown or the union came back empty.
+#
+# The sets, and the one place each pathspec is written:
+#
+#   shell      tracked `*.sh`, minus the hook directory the `husky` set owns.
+#   husky      the husky hooks, which are extensionless and so match no
+#              extension glob. `.husky/_/h` runs each one as `sh -e`, so a
+#              caller that arms them differently from an ordinary script asks
+#              for this set separately rather than folding it into `shell`.
+#   workflows  the Actions workflows and composite actions, plus the adopter
+#              workflow templates, which are `.tmpl` rather than `.yml`.
+#
+# `shell` excludes the hook directory because a git pathspec glob is matched
+# without FNM_PATHNAME, so its `*` crosses `/` and a `.husky/helper.sh` would
+# otherwise be returned by both sets: scanned twice, and reported twice, by a
+# caller that asked for both.
+#
+# One `git ls-files` per set rather than one call carrying every pathspec: a
+# `:(exclude)` magic pathspec applies to the whole call, so `shell`'s exclude
+# would also empty a `husky` set asked for in the same breath.
+#
+# An empty union is a hard error rather than a clean tree, for the reason
+# gaia_guard_bats_files states about its own surface, and the message names the
+# sets that were asked for, because a caller naming more than one has no other
+# way to learn which discovery broke. The status is the whole point of the
+# shape, so the caller reads it directly
+# (`gaia_guard_scan_files <label> <set>... || exit 1`) rather than through a
+# substitution that would swallow it.
+#
+# An unknown set name is the same class of failure one directory short of the
+# real surface is: the guard scans less than the rule it encodes governs and
+# still reports clean. It is rejected before any read, because the reads run
+# inside a process substitution whose subshell cannot return a status here.
+#
+# `core.quotepath=false` and a NUL-delimited read, so a path carrying a
+# non-ASCII byte is not handed over C-quoted and silently dropped. A read loop
+# rather than mapfile, which is bash 4+, because these guards run on stock macOS
+# /bin/bash 3.2.57.
+gaia_guard_scan_files() {
+  local label="${1:-guard}"
+  if [ "$#" -lt 2 ]; then
+    printf '%s: ERROR: gaia_guard_scan_files needs a label and at least one scan set\n' "$label" >&2
+    return 1
+  fi
+  shift
+  local name f
+  for name in "$@"; do
+    case "$name" in
+      shell | husky | workflows) ;;
+      *)
+        printf '%s: ERROR: unknown scan set "%s"; nothing was scanned\n' "$label" "$name" >&2
+        return 1
+        ;;
+    esac
+  done
+  GAIA_GUARD_SCAN_FILES=()
+  while IFS= read -r -d '' f; do
+    GAIA_GUARD_SCAN_FILES+=("$f")
+  done < <(
+    # Each pattern carries the optional leading `(`. Without it, stock macOS
+    # /bin/bash 3.2.57 reads the `)` closing a case pattern as the one closing
+    # the process substitution, and the whole file fails to parse.
+    for name in "$@"; do
+      case "$name" in
+        (shell) git -c core.quotepath=false ls-files -z '*.sh' ':(exclude).husky/*' ;;
+        (husky) git -c core.quotepath=false ls-files -z '.husky/*' ;;
+        (workflows)
+          git -c core.quotepath=false ls-files -z \
+            '.github/workflows/*.yml' '.github/workflows/*.yaml' \
+            '.github/actions/*/action.yml' '.github/actions/*/action.yaml' \
+            '.gaia/cli/src/automation/templates/workflows/*.tmpl'
+          ;;
+      esac
+    done | LC_ALL=C sort -zu
+  )
+  if [ "${#GAIA_GUARD_SCAN_FILES[@]}" -eq 0 ]; then
+    printf '%s: ERROR: no tracked files matched the scan surface (%s); nothing was scanned\n' \
+      "$label" "$*" >&2
+    return 1
+  fi
+  return 0
+}

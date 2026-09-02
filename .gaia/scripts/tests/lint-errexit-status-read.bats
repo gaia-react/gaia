@@ -1136,9 +1136,12 @@ echo done'
 
 # --- the gate refuses to report clean over nothing -------------------------
 
-# Each of the three messages carries `nothing was scanned`, so a grep for that
+# Every empty-surface message carries `nothing was scanned`, so a grep for that
 # phrase alone would green whichever precondition happened to fire first. Each
-# assertion below names the half it is about, or it pins the wrong surface.
+# assertion below names the set it is about, or it pins the wrong surface.
+#
+# A tree carrying no tracked hook is NOT among them: the husky set is the one
+# this gate reads tolerantly, because a repository legitimately has no hooks.
 
 @test "errors rather than passing when no tracked shell matches" {
   fixture_repo_bare
@@ -1146,7 +1149,7 @@ echo done'
   seed_bats
   run_linter
   [ "$status" -eq 1 ]
-  grep -qF -- 'no tracked *.sh or no tracked workflows' <<<"$output"
+  grep -qF -- 'the scan surface (shell)' <<<"$output"
 }
 
 @test "errors rather than passing when no tracked workflow matches" {
@@ -1155,7 +1158,7 @@ echo done'
   seed_bats
   run_linter
   [ "$status" -eq 1 ]
-  grep -qF -- 'no tracked *.sh or no tracked workflows' <<<"$output"
+  grep -qF -- 'the scan surface (workflows)' <<<"$output"
 }
 
 @test "errors rather than passing when no tracked bats suite matches" {

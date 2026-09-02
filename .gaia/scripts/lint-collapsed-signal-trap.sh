@@ -102,34 +102,16 @@ type gaia_guard_bats_files >/dev/null 2>&1 || {
   exit 2
 }
 
-# `git ls-files` rather than a filesystem walk, so an untracked scratch script is
-# never scanned; the same discovery .gaia/tests/shell-lint.sh uses. Collected
-# with a read loop rather than `mapfile`, which is bash 4+, because these scripts
-# run on stock macOS /bin/bash (3.2.57).
-scan_files=()
-while IFS= read -r -d '' f; do
-  scan_files+=("$f")
-done < <(git -c core.quotepath=false ls-files -z \
-                      '*.sh' '.husky/*' \
-                      '.github/workflows/*.yml' '.github/workflows/*.yaml' \
-                      '.github/actions/*/action.yml' '.github/actions/*/action.yaml' \
-                      '.gaia/cli/src/automation/templates/workflows/*.tmpl' \
-           | LC_ALL=C sort -z)
+# The scan surface comes from the shared library rather than from a read loop
+# here, so every gate consuming it discovers the same set the same way and a
+# widened pathspec cannot reach one of them and miss the others. The call fills
+# GAIA_GUARD_SCAN_FILES and returns non-zero on an empty surface, which is a
+# hard error rather than a clean tree; the status is read directly, because a
+# substitution would swallow it.
+gaia_guard_scan_files lint-collapsed-signal-trap shell husky workflows || exit 1
 
-# An empty scan set is a hard error, never a clean tree. The loop above reads
-# from a process substitution, whose failure `set -o pipefail` cannot see, so a
-# `git ls-files` that errors (run outside a repository, a broken object store)
-# leaves the array empty and every check below vacuously passes. This gate would
-# then print `clean` and exit 0 having scanned nothing, which is the lie-green
-# failure gates exist to stop. Every real tree carries tracked `*.sh`, so an
-# empty result means the discovery is wrong rather than the tree.
-if [ "${#scan_files[@]}" -eq 0 ]; then
-  echo "lint-collapsed-signal-trap: ERROR: no tracked shell, workflows, or workflow templates matched the scan surface; nothing was scanned" >&2
-  exit 1
-fi
-
-# A separate set from scan_files, never a widened pathspec: a tree carrying .sh
-# and no .bats must not pass clean carried by the rest of the surface.
+# A separate set from the scan surface above, never a widened pathspec: a tree
+# carrying .sh and no .bats must not pass clean carried by the rest of it.
 gaia_guard_bats_files lint-collapsed-signal-trap || exit 1
 
 # The class-detection program, concatenated after $GAIA_GUARD_AWK so it can call
@@ -339,7 +321,7 @@ scan_file() {
 }
 
 report=""
-for f in ${scan_files[@]+"${scan_files[@]}"}; do
+for f in ${GAIA_GUARD_SCAN_FILES[@]+"${GAIA_GUARD_SCAN_FILES[@]}"}; do
   [ -f "$f" ] || continue
   hits=$(scan_file "$f" 0)
   [ -z "$hits" ] || report+="$hits"$'\n'

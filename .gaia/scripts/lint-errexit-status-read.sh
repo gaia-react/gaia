@@ -1015,66 +1015,44 @@ END {
 }
 '
 
-# `git ls-files` rather than a filesystem walk, so an untracked scratch script is
-# never scanned; the same discovery .gaia/tests/shell-lint.sh uses. Collected
-# with a read loop rather than `mapfile`, which is bash 4+, because these scripts
-# run on stock macOS /bin/bash (3.2.57). NUL-delimited and `core.quotepath=false`
-# so a path carrying a non-ASCII byte is not handed over C-quoted and silently
-# dropped by the `[ -f ]` test below.
-sh_files=()
-while IFS= read -r -d '' f; do
-  sh_files+=("$f")
-done < <(git -c core.quotepath=false ls-files -z '*.sh' ':(exclude).husky/*' | LC_ALL=C sort -z)
+# The scan surface comes from the shared library rather than from a read loop
+# here, so every gate consuming it discovers the same set the same way and a
+# widened pathspec cannot reach one of them and miss the others. The call fills
+# GAIA_GUARD_SCAN_FILES and returns non-zero on an empty surface, which is a
+# hard error rather than a clean tree; the status is read directly, because a
+# substitution would swallow it.
+# Each set is copied out of the library's one global before the next call
+# overwrites it, because this gate arms the three differently below.
+gaia_guard_scan_files lint-errexit-status-read shell || exit 1
+sh_files=(${GAIA_GUARD_SCAN_FILES[@]+"${GAIA_GUARD_SCAN_FILES[@]}"})
 
-# The husky hooks are collected separately from `*.sh` because they ARM
-# differently, not merely because the glob misses them. `.husky/_/h` invokes
-# every hook as `sh -e "$s"`, so errexit is on there whether or not the hook says
-# so, exactly as it is inside an Actions `run:` body; `.husky/pre-commit` carries
-# no `set -e` and is live for the class today. Reading them off-by-default with
-# the ordinary scripts is what left that whole surface certified clean.
+# The husky hooks are read as their own set because they ARM differently, not
+# merely because the `*.sh` glob misses them. `.husky/_/h` invokes every hook as
+# `sh -e "$s"`, so errexit is on there whether or not the hook says so, exactly as
+# it is inside an Actions `run:` body; `.husky/pre-commit` carries no `set -e` and
+# is live for the class today. Reading them off-by-default with the ordinary
+# scripts is what left that whole surface certified clean.
 #
-# The `*.sh` set EXCLUDES `.husky/*` explicitly. A git pathspec glob is matched
-# without FNM_PATHNAME, so its `*` crosses `/` and a `.husky/helper.sh` would
-# otherwise be returned by both sets, scanned once armed and once not, and
-# double-listed in the report. No such file exists today; the only tracked hook
-# is extensionless.
+# Alone among the sets this gate reads, an empty one is a legitimate tree rather
+# than a broken discovery: a repository can carry no tracked hook at all, and the
+# call above already proved `git ls-files` answers here. So the library's status
+# is read and tolerated, and its message, which would be wrong in that case, is
+# not surfaced as this gate's own error.
 husky_files=()
-while IFS= read -r -d '' f; do
-  husky_files+=("$f")
-done < <(git -c core.quotepath=false ls-files -z '.husky/*' | LC_ALL=C sort -z)
-
-yaml_files=()
-while IFS= read -r -d '' f; do
-  yaml_files+=("$f")
-done < <(git -c core.quotepath=false ls-files -z \
-                      '.github/workflows/*.yml' '.github/workflows/*.yaml' \
-                      '.github/actions/*/action.yml' '.github/actions/*/action.yaml' \
-                      '.gaia/cli/src/automation/templates/workflows/*.tmpl' \
-           | LC_ALL=C sort -z)
-
-# The bats set comes from the shared library rather than from a fourth read loop
-# here, so all three consuming gates discover the same surface the same way and
-# a change to that discovery cannot reach one of them and miss the others. The
-# call fills GAIA_GUARD_BATS_FILES and returns non-zero on an empty surface; the
-# status is read directly, because a process substitution would swallow it,
-# which is the hazard the loops above already carry a comment about.
-#
-# Deliberately NOT folded into the two-set precondition below: an operator whose
-# discovery broke needs to know WHICH surface came back empty, and the library
-# message names the bats one.
-gaia_guard_bats_files lint-errexit-status-read || exit 1
-
-# An empty scan set is a hard error, never a clean tree. The loops above read
-# from a process substitution, whose failure `set -o pipefail` cannot see, so a
-# `git ls-files` that errors (run outside a repository, a broken object store)
-# leaves the arrays empty and every check below vacuously passes. This gate would
-# then print `clean` and exit 0 having scanned nothing, which is the lie-green
-# failure gates exist to stop. Every real tree carries both sets, so an empty
-# result means the discovery is wrong rather than the tree.
-if [ "${#sh_files[@]}" -eq 0 ] || [ "${#yaml_files[@]}" -eq 0 ]; then
-  echo "lint-errexit-status-read: ERROR: no tracked *.sh or no tracked workflows matched the scan surface; nothing was scanned" >&2
-  exit 1
+if gaia_guard_scan_files lint-errexit-status-read husky 2>/dev/null; then
+  husky_files=(${GAIA_GUARD_SCAN_FILES[@]+"${GAIA_GUARD_SCAN_FILES[@]}"})
 fi
+
+gaia_guard_scan_files lint-errexit-status-read workflows || exit 1
+yaml_files=(${GAIA_GUARD_SCAN_FILES[@]+"${GAIA_GUARD_SCAN_FILES[@]}"})
+
+# The bats set comes from the same library, and for the same reason: a change to
+# that discovery cannot reach one consuming gate and miss the others.
+#
+# Deliberately its own call rather than a set folded into the ones above: an
+# operator whose discovery broke needs to know WHICH surface came back empty,
+# and each call's message names only the sets that call asked for.
+gaia_guard_bats_files lint-errexit-status-read || exit 1
 
 report=""
 for f in ${sh_files[@]+"${sh_files[@]}"}; do

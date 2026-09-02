@@ -397,7 +397,8 @@ jobs:
   fixture_repo
   run_linter
   [ "$status" -eq 1 ]
-  grep -qF -- "nothing was scanned" <<<"$output"
+  grep -qF -- "nothing was scanned" <<<"$output" || return 1
+  grep -qF -- "the scan surface (workflows)" <<<"$output"
 }
 
 @test "the real repository tree is clean" {

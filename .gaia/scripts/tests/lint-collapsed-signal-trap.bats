@@ -299,7 +299,12 @@ trapdoor EXIT INT'
   fixture_repo_bare
   run_linter
   [ "$status" -eq 1 ]
-  grep -qF -- "nothing was scanned" <<<"$output"
+  grep -qF -- "nothing was scanned" <<<"$output" || return 1
+  # Names the sets this gate asked for, not the phrase every empty-surface
+  # message carries: the bats error below carries it too, and would other-
+  # wise green this test over a scan discovery that reported clean over
+  # nothing.
+  grep -qF -- "the scan surface (shell husky workflows)" <<<"$output"
 }
 
 @test "a tree with tracked shell but no bats suite is a hard error" {
