@@ -96,13 +96,20 @@ mutate_commit() {
 # space -- a lingering mention in this lib's own header comment must not keep
 # a moved sentinel looking pinned. The second assertion holds that site
 # singular, which is the "single derive point" this suite's header claims:
-# a copied digest computation would give the sentinel a second feed that the
-# first assertion alone would never have looked at.
+# a digest computation copied within this lib would give the sentinel a
+# second feed that the first assertion alone would never have looked at.
+#
+# The singularity claim reaches this file and no further. A recipe copied
+# into a DIFFERENT file is outside both assertions, deliberately: what may
+# derive a digest is the ownership classifier's and the machinery matcher's
+# answer, and restating it here would be a second list nobody recounts.
+# `grep -oF | wc -l` rather than `grep -cF`, because -c counts matching
+# LINES: a duplicate appended to the existing line would read as one site.
 # ---------------------------------------------------------------------------
 
 @test "the recipe-version sentinel feeding the digest hash is gaia-audit-digest-v1" {
   grep -qF -- "printf 'gaia-audit-digest-v1\0'" "$DIGEST_LIB" || return 1
-  sites="$(grep -cF -- "printf 'gaia-audit-digest-v1\0'" "$DIGEST_LIB")"
+  sites="$(grep -oF -- "printf 'gaia-audit-digest-v1\0'" "$DIGEST_LIB" | wc -l | tr -d ' ')"
   [ "$sites" -eq 1 ]
 }
 
