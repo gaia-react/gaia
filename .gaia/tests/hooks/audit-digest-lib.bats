@@ -78,6 +78,35 @@ mutate_commit() {
 }
 
 # ---------------------------------------------------------------------------
+# The recipe-version sentinel, pinned as a literal.
+#
+# Editing this string does not rotate a digest the way an ordinary machinery
+# edit does. It moves the whole audit key space at once: every clearance
+# marker, stamped trailer, and posted status already in the wild becomes
+# unfindable rather than stale, and there is no version field, no migration,
+# and no grace window that would let a reader tell the two apart. A typo, a
+# reflexive v1 -> v2 bump carried along by an unrelated edit, or a
+# search-and-replace that happens to catch the string would do that with the
+# whole suite still green, and the damage surfaces later as markers nobody
+# can find, with nothing pointing back at the edit.
+#
+# So the constant gets exactly one intentional edit path: change it and this
+# reds, saying what the change costs. The pin is at the hash-input site, not
+# anywhere in the file, because that is the occurrence that decides the key
+# space -- a lingering mention in this lib's own header comment must not keep
+# a moved sentinel looking pinned. The second assertion holds that site
+# singular, which is the "single derive point" this suite's header claims:
+# a copied digest computation would give the sentinel a second feed that the
+# first assertion alone would never have looked at.
+# ---------------------------------------------------------------------------
+
+@test "the recipe-version sentinel feeding the digest hash is gaia-audit-digest-v1" {
+  grep -qF -- "printf 'gaia-audit-digest-v1\0'" "$DIGEST_LIB" || return 1
+  sites="$(grep -cF -- "printf 'gaia-audit-digest-v1\0'" "$DIGEST_LIB")"
+  [ "$sites" -eq 1 ]
+}
+
+# ---------------------------------------------------------------------------
 # audit_digests_all: one line per roster member, each a 64-hex digest.
 # ---------------------------------------------------------------------------
 
