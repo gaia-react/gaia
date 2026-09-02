@@ -670,10 +670,11 @@ scan_fixture_repo() {
   [ "$(grep -cxF -- '.husky/helper.sh' <<<"$output")" -eq 1 ]
 }
 
-# Unknown names are rejected before any read, because the reads run inside a
-# process substitution whose subshell cannot return a status to the caller. A
-# silently-dropped set is the discovery-stage failure these gates exist to stop:
-# the guard scans less than the rule it encodes governs and still reports clean.
+# The set that names it is where an unknown name is refused, so a set ahead of it
+# has already been read and appended; nothing of it reaches the caller, because
+# the array is emptied before any return. A silently-dropped set is the
+# discovery-stage failure these gates exist to stop: the guard scans less than
+# the rule it encodes governs and still reports clean.
 @test "an unknown set name is a hard error that names the set and scans nothing" {
   local repo
   repo="$(scan_fixture_repo)"
@@ -737,7 +738,7 @@ scan_fixture_repo() {
   mkdir -p "$stub"
   printf '#!/bin/sh\nexit 4\n' > "$stub/sort"
   chmod +x "$stub/sort"
-  run bash -c "cd '$repo' && . '$LIB' && PATH=\"$stub:\\$PATH\" gaia_guard_scan_files probe shell"
+  run bash -c "cd '$repo' && . '$LIB' && PATH=\"$stub:\$PATH\" gaia_guard_scan_files probe shell"
   [ "$status" -eq 3 ]
   grep -qF -- "sorting the scan surface failed" <<<"$output" || return 1
   grep -qF -- "nothing was scanned" <<<"$output"
@@ -889,10 +890,29 @@ mutate() {
 # Section A: shared-entry-point conformance (UAT-010)
 # ============================================================================
 #
-# Every check below greps every participating file at once: each production
-# guard and the stub-guard fixture. The set is enumerated once in
-# participating_files() below and read from there, so a guard added to that
-# list is held to this whole section without editing any check in it.
+# Two rosters, because two kinds of check live here and they do not cover the
+# same files.
+#
+# The load-shape checks bind every file that loads the library at all, so their
+# roster is DERIVED from the load line rather than written down: a guard added
+# as a consumer is held to them without editing this suite, which is what the
+# hand-written list failed at twice, once for a guard added beside its siblings
+# and once for a guard that became a consumer by gaining the scan-surface call.
+#
+# The awk checks bind the narrower set that concatenates GAIA_GUARD_AWK into a
+# program of its own. A consumer reading only the scan-surface discovery has no
+# awk program to hold, so widening one roster into the other would red on a
+# guard that is conforming, which is why the two stay separate.
+
+# Every tracked file carrying the library load line, plus nothing else. The
+# library itself does not carry it, so it excludes itself.
+library_consumers() {
+  local f
+  while IFS= read -r f; do
+    printf '%s\n' "$REPO_ROOT/$f"
+  done < <(git -C "$REPO_ROOT" grep -l -- '_gaia_guard_lib_dir/guard-awk-lib.sh' \
+             '.gaia/scripts/*.sh' '.gaia/scripts/tests/fixtures/*.sh')
+}
 
 participating_files() {
   printf '%s\n' \
@@ -911,14 +931,19 @@ production_guards() {
     "$REPO_ROOT/.gaia/scripts/lint-stale-cardinals.sh"
 }
 
-@test "each participating file's shellcheck source= line carries the library's full repo-relative path" {
-  local f
+# A derivation that came back short would leave this asserting over a subset
+# while its name still says every, so the count is checked against the guards
+# known to load the library before the per-file loop runs.
+@test "every library consumer's shellcheck source= line carries the library's full repo-relative path" {
+  local f n
+  n="$(library_consumers | grep -c .)"
+  [ "$n" -ge 5 ]
   while IFS= read -r f; do
     grep -qF -- ".gaia/scripts/guard-awk-lib.sh" "$f" || { echo "$f: no shellcheck source= citation" >&2; return 1; }
-  done < <(participating_files)
+  done < <(library_consumers)
 }
 
-@test "each participating file brackets its library load with set +e and set -e on one line" {
+@test "every library consumer brackets its library load with set +e and set -e on one line" {
   # README C1.1's frozen block, verbatim. The load is script-relative by
   # design and does not itself carry the full path (which lives above it,
   # on the shellcheck source= directive line), so this checks the bracket
@@ -927,7 +952,7 @@ production_guards() {
   load='set +e; [ -f "$_gaia_guard_lib_dir/guard-awk-lib.sh" ] && . "$_gaia_guard_lib_dir/guard-awk-lib.sh" 2>/dev/null; set -e'
   while IFS= read -r f; do
     grep -qF -- "$load" "$f" || { echo "$f: unbracketed or reworded library load" >&2; return 1; }
-  done < <(participating_files)
+  done < <(library_consumers)
 }
 
 @test "each participating file concatenates GAIA_GUARD_AWK ahead of its own awk program" {

@@ -1,8 +1,12 @@
 #!/usr/bin/env bash
 # lint-workflow-run-interpolation.sh: flag every `${{ ... }}` expression that
-# sits inside a workflow `run:` block body. Exit 1 with a file:line report on
-# any hit, exit 0 when clean. Run it directly from the repo root:
+# sits inside a workflow `run:` block body. Run it directly from the repo root:
 # `bash .gaia/scripts/lint-workflow-run-interpolation.sh`.
+#
+# Exit 0 when clean, and 1 either with a file:line report on any hit or on a
+# scan surface that came back empty. Two statuses say the gate never ran at
+# all: 2 when guard-awk-lib.sh is missing beside this script, and 3 when the
+# scan-surface discovery failed.
 # gaia:maintainer-only:start
 #
 # Enforced by the sibling bats suite
@@ -123,7 +127,7 @@ type gaia_guard_scan_files >/dev/null 2>&1 || {
 # The library's one templates glob therefore reaches `partials/` and any
 # directory added under it later, which is why it needs no second glob for the
 # fragments this gate reads.
-gaia_guard_scan_files lint-workflow-run-interpolation workflows || exit 1
+gaia_guard_scan_files lint-workflow-run-interpolation workflows || exit $?
 
 # scan_file <path>: print one `file:line: message` per expression in a run body.
 #

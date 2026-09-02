@@ -831,6 +831,9 @@ _gaia_guard_scan_set() {
 #      named at all, or one named twice. Either way the guard would scan a
 #      surface other than the one it asked for and still report clean, which is
 #      the discovery-stage failure `.claude/rules/guards-must-fail.md` names.
+# On any status but 0 the array is empty, never the surface a previous call
+# left in it.
+#
 #   3  the discovery machinery failed: a named set's own `git ls-files`, the
 #      sort, or the scratch file each of them needs. Distinct from 1 because
 #      the repairs differ, and distinct from a partial result because a set
@@ -857,6 +860,11 @@ _gaia_guard_scan_set() {
 # A read loop rather than mapfile, which is bash 4+, because these guards run on
 # stock macOS /bin/bash 3.2.57.
 gaia_guard_scan_files() {
+  # Emptied before anything can return, so a caller that reads the array
+  # after a refusal sees the nothing the refusal's message claims rather
+  # than whatever the previous call left there.
+  GAIA_GUARD_SCAN_FILES=()
+
   local label="${1:-guard}"
   if [ "$#" -lt 2 ]; then
     printf '%s: ERROR: gaia_guard_scan_files needs a label and at least one scan set\n' "$label" >&2
@@ -919,7 +927,6 @@ gaia_guard_scan_files() {
     return 3
   fi
 
-  GAIA_GUARD_SCAN_FILES=()
   while IFS= read -r -d '' f; do
     GAIA_GUARD_SCAN_FILES+=("$f")
   done < "$sorted_tmp"

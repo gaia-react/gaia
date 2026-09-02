@@ -93,7 +93,8 @@
 # never author it, so a linter over the framework's own shell has no adopter
 # surface -- and shell-lint.sh, its only runner, is already release-excluded
 # wholesale via the .gaia/tests entry, so shipping it would ship a check nothing
-# on an adopter clone invokes.
+# on an adopter clone invokes. It also sources guard-awk-lib.sh, withheld
+# below, so the absent dependency would decide the withhold on its own.
 .gaia/scripts/lint-git-path-quoting.sh
 # The workflow run-interpolation lint guards GAIA's own CI workflow YAML, its
 # composite actions, and the adopter workflow templates it renders CI from,

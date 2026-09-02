@@ -9,12 +9,12 @@
 # command-substitution assignment while errexit is armed. Run it directly from
 # the repo root: `bash .gaia/scripts/lint-errexit-status-read.sh`.
 #
-# Exit 0 when clean, and 1 with a file:line report on any hit. Two statuses say
-# the gate never ran rather than that it found nothing: 2 when guard-awk-lib.sh
-# is missing beside this script or refuses one of this gate's calls to it, and 3
-# when a scan-set discovery failed. Every runner folds any non-zero into its own
-# failure today, so the split serves a person reading the output rather than a
-# caller branching on it.
+# Exit 0 when clean, and 1 either with a file:line report on any hit or on a
+# scan set that legitimately came back empty. Two statuses say the gate never
+# ran at all: 2 when guard-awk-lib.sh is missing beside this script or refuses
+# one of this gate's calls to it, and 3 when a scan-set discovery failed. Every
+# runner folds any non-zero into its own failure today, so the split serves a
+# person reading the output rather than a caller branching on it.
 # gaia:maintainer-only:start
 #
 # Enforced by the sibling bats suite
@@ -1029,7 +1029,7 @@ END {
 # substitution would swallow it.
 # Each set is copied out of the library's one global before the next call
 # overwrites it, because this gate arms the three differently below.
-gaia_guard_scan_files lint-errexit-status-read shell || exit 1
+gaia_guard_scan_files lint-errexit-status-read shell || exit $?
 sh_files=(${GAIA_GUARD_SCAN_FILES[@]+"${GAIA_GUARD_SCAN_FILES[@]}"})
 
 # The husky hooks are read as their own set because they ARM differently, not
@@ -1069,7 +1069,7 @@ else
 fi
 rm -f "$husky_err"
 
-gaia_guard_scan_files lint-errexit-status-read workflows || exit 1
+gaia_guard_scan_files lint-errexit-status-read workflows || exit $?
 yaml_files=(${GAIA_GUARD_SCAN_FILES[@]+"${GAIA_GUARD_SCAN_FILES[@]}"})
 
 # The bats set comes from the same library, and for the same reason: a change to
