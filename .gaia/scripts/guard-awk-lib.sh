@@ -822,6 +822,11 @@ _gaia_guard_scan_set() {
 # caller reads it directly (`gaia_guard_scan_files <label> <set>... || exit 1`)
 # rather than through a substitution that would swallow it.
 #
+# On any status but 0 the array is empty, never the surface a previous call left
+# in it. That is a property of every refusing status below rather than of any one
+# of them, which is why it is stated ahead of the list rather than beside an
+# entry in it.
+#
 #   0  the union is non-empty and the array holds it.
 #   1  every named set resolved and the union came back empty. A hard error
 #      rather than a clean tree, for the reason gaia_guard_bats_files states
@@ -831,9 +836,6 @@ _gaia_guard_scan_set() {
 #      named at all, or one named twice. Either way the guard would scan a
 #      surface other than the one it asked for and still report clean, which is
 #      the discovery-stage failure `.claude/rules/guards-must-fail.md` names.
-# On any status but 0 the array is empty, never the surface a previous call
-# left in it.
-#
 #   3  the discovery machinery failed: a named set's own `git ls-files`, the
 #      sort, or the scratch file each of them needs. Distinct from 1 because
 #      the repairs differ, and distinct from a partial result because a set
