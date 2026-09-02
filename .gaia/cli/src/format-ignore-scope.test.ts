@@ -62,15 +62,15 @@ const REPO_ROOT = resolveRepoRootFromImportMeta(import.meta.url);
 const IGNORE_PATH_PATTERN =
   /--ignore-path(?:=|\s+)(?:"([^"]*)"|'([^']*)'|(\S+))/g;
 
-// The gitignore entry the first assertion leans on. The leading slash and the
-// trailing slash are both optional and nothing may follow, so all four
-// legitimate spellings of the same entry are accepted: bare, directory-only
-// (`.claude/worktrees/`), root-anchored (`/.claude/worktrees`), and both
-// (`/.claude/worktrees/`). Every one of them ignores the directory, so
-// rejecting any would red this guard over a rewrite that changed no behavior. A
-// longer path under it (`.claude/worktrees/foo`) is not accepted: it does not
-// cover the directory as a whole.
-const WORKTREE_IGNORE_PATTERN = /^\/?\.claude\/worktrees\/?$/;
+// The gitignore entry the first assertion leans on. Accepted with either
+// prefix a root `.gitignore` uses to name this same directory, a root anchor
+// (`/`) or the any-directory glob (`**/`), and with or without the trailing
+// slash that restricts the entry to directories. Every combination ignores the
+// directory, so rejecting one would red this guard over a rewrite that changed
+// no behavior, which is a false failure a maintainer has to diagnose rather
+// than a hole. Nothing may follow: a longer path under it
+// (`.claude/worktrees/foo`) does not cover the directory as a whole.
+const WORKTREE_IGNORE_PATTERN = /^(?:\/|\*\*\/)?\.claude\/worktrees\/?$/;
 
 const readPackageScripts = (): Record<string, string> => {
   const raw = readFileSync(path.join(REPO_ROOT, 'package.json'), 'utf8');
@@ -95,20 +95,26 @@ const ignorePathsIn = (script: string): string[] =>
       doubleQuoted ?? singleQuoted ?? bare ?? ''
   );
 
+// A prettier INVOCATION, not the bare token. `.prettierignore` contains
+// `prettier`, so a substring test is satisfied by a script that only names the
+// ignore file and never runs the formatter, which is the one shape that would
+// let the assertions below report an ignore scope held over a script doing no
+// formatting at all. What separates an invocation from a mention is the
+// boundary on each side: the command opens the script or follows whitespace, a
+// separator, or a path separator, and ends at whitespace or the end. A runner
+// prefix (`pnpm exec prettier`, `npx prettier`) needs no alternation of its
+// own, since the space it puts before the command is itself the opening
+// boundary; the path separator is what admits a path-invoked
+// `./node_modules/.bin/prettier`, which would otherwise be a false red on a
+// script that does run the formatter. None of those boundaries admits
+// `.prettierignore`, whose preceding character is a dot.
+const PRETTIER_INVOCATION_PATTERN = /(?:^|\s|&&|\|\||;|\/)prettier(?:\s|$)/;
+
 // The paths a script narrows prettier's ignore set to, or `null` when it
 // narrows nothing. Two shapes narrow nothing: no `--ignore-path` at all, which
 // leaves prettier on its `['.gitignore', '.prettierignore']` default, and an
 // explicit set that still names `.gitignore`. Returning the offending paths
 // rather than a boolean is what puts them in the failure message.
-// A prettier INVOCATION, not the bare token. `.prettierignore` contains
-// `prettier`, so a substring test is satisfied by a script that only names the
-// ignore file and never runs the formatter, which is the one shape that would
-// let the assertions below report an ignore scope held over a script doing no
-// formatting at all. The command may open the script or follow a separator, and
-// may carry a runner prefix.
-const PRETTIER_INVOCATION_PATTERN =
-  /(?:^|\s|&&|\|\||;)(?:pnpm exec |pnpm dlx |npx )?prettier(?:\s|$)/;
-
 const narrowedIgnorePathsIn = (script: string): null | string[] => {
   const ignorePaths = ignorePathsIn(script);
 
