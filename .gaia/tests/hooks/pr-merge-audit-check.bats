@@ -433,13 +433,17 @@ assert_not_in_set() {
 
 @test "allows a docs/metadata-only PR (wiki + .claude + .gaia)" {
   install_gh_stub
-  # .claude/commands/*.md is ownerless docs. Skills prose (.claude/skills/**/*.md)
-  # is audited by the prose member, so it belongs to the owned-surface cases below,
-  # not here among the no-audit-needed docs. The .gaia/ file is a README for the
-  # same reason: the roster grants .gaia/*.json to the shell member, so the
-  # manifest is audited metadata rather than the unaudited kind this case is about.
+  # The .claude/ witness must be a path no roster member owns. Executable prose
+  # under .claude/ is audited by the prose member -- the skill files, and the
+  # slash commands, instruction runbooks and agent lenses beside them -- so none
+  # of those belongs here among the no-audit-needed docs; they are the
+  # owned-surface cases below. The release-notes eval directory is declared in
+  # `unowned:` (it is Python and eval config, and the roster carries no Python
+  # member), which is what makes it the right witness for the unaudited kind.
+  # The .gaia/ file is a README for the same reason: the roster grants
+  # .gaia/*.json to the shell member, so the manifest is audited metadata.
   commit_files \
-    ".claude/commands/gaia-spec.md" "updated" \
+    ".claude/skills/release-notes/eval/trigger-eval.json" "{}" \
     "wiki/concepts/PR Merge Workflow.md" "updated" \
     ".gaia/templates/README.md" "updated"
   run_merge_hook
@@ -1112,12 +1116,15 @@ assert_not_in_set() {
 
 @test "FC-4 no-deadlock: wiki + .claude + root markdown spawns nobody, and no markers still allows" {
   install_gh_stub
-  # .claude/commands/ is out of audit scope and owned by no roster member.
-  # .claude/rules/** and .claude/agents/code-audit-*.md ARE maintainer-shell-owned,
-  # so this uses a genuinely-ownerless .claude path to keep the spawn set empty.
+  # The .claude/ witness has to keep the spawn set EMPTY, which is what this
+  # case is about, so it must be a path no roster member owns. Most of .claude/
+  # is owned: .claude/rules/** and .claude/agents/code-audit-*.md by the shell
+  # member, and the executable prose (skills, commands, instructions, agent
+  # lenses) by the prose member. The release-notes eval directory is declared in
+  # `unowned:`, so it is the surviving genuinely-ownerless .claude path.
   commit_files \
     "wiki/x.md" "doc" \
-    ".claude/commands/y.md" "command" \
+    ".claude/skills/release-notes/eval/trigger-eval.json" "{}" \
     "README.md" "# changed again"
   set=$(spawn_set)
   [ -z "$set" ]
