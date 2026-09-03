@@ -17,6 +17,20 @@ trap 'exit 0' ERR
 command -v jq >/dev/null 2>&1 || exit 0
 
 payload=$(cat)
+
+# ---- TEMPORARY INSTRUMENTATION for #1740, remove before commit ----
+{
+  printf '%s\n' "--- record ---"
+  printf 'CLAUDE_PROJECT_DIR=[%s]\n' "${CLAUDE_PROJECT_DIR-<UNSET>}"
+  printf 'process_pwd=[%s]\n' "$(pwd 2>/dev/null || echo '<no pwd>')"
+  printf 'git_toplevel=[%s]\n' "$(git rev-parse --show-toplevel 2>/dev/null || echo '<not a repo>')"
+  printf 'git_common_dir=[%s]\n' "$(git rev-parse --git-common-dir 2>/dev/null || echo '<none>')"
+  printf 'payload_cwd=[%s]\n' "$(jq -r '.cwd // "<absent>"' <<<"$payload" 2>/dev/null || echo '<jq fail>')"
+  printf 'agent_id=[%s]\n' "$(jq -r '.agent_id // "<absent>"' <<<"$payload" 2>/dev/null || echo '<jq fail>')"
+  printf 'session_id=[%s]\n' "$(jq -r '.session_id // "<absent>"' <<<"$payload" 2>/dev/null || echo '<jq fail>')"
+  printf 'hook_event=[%s]\n' "$(jq -r '.hook_event_name // "<absent>"' <<<"$payload" 2>/dev/null || echo '<jq fail>')"
+} >> "/private/tmp/claude-501/-Users-stevensacks-Development-gaia-react-gaia/016dfdcc-4f36-4c07-9ee2-a8f221f993ac/scratchpad/probe.txt" 2>&1 || true
+# ---- END TEMPORARY INSTRUMENTATION ----
 tool_name=$(jq -r '.tool_name // ""' <<<"$payload")
 [ "$tool_name" = "Bash" ] || exit 0
 
