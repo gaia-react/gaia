@@ -42,6 +42,12 @@ bash .gaia/scripts/check-hook-capabilities.sh
 
 The same check also finds a registration whose command names a `.sh` path in a form it cannot reduce to a repo-relative path, or names no shell script at all; the fix is rewriting the registration to name a script file in the rooted form below.
 
+It needs bash 5. On stock macOS `/bin/bash`, which is 3.2, the closure walk loses whole files' records and reports a clean tree as `SURPLUS`, and the reach it drops can never surface as `UNDECLARED`. The check re-execs itself under a Homebrew bash 5 when it finds one and refuses with a message when it does not, so this command cannot quietly disagree with CI; if it refuses, install a bash 5 rather than reading the run that got that far.
+
+`.gaia/hook-scopes.json` and `.gaia/hook-capabilities.json` cover different sets and declare different things. `.gaia/hook-scopes.json` covers every `.sh` under `.claude/hooks/**` and declares which tree the hook's state belongs to. `.gaia/hook-capabilities.json` covers only the registered hooks and declares what the hook reaches for beyond itself. Neither manifest derives its coverage from the other.
+
+The check catches these at review time; nothing mediates a registered hook at run time.
+
 ## Rooting obligation
 
 **Every command in `.claude/settings.json` must name its script by a path that resolves independently of the shell's working directory.** `/bin/sh` runs the command string against the Bash tool's working directory, which persists for the whole session, so a bare relative registration is unfindable after a single `cd`: the script exits 127, 127 neither blocks nor is reported, and the guard layer fails open silently (#1740). Naming a script file is therefore necessary but **not** sufficient, and this is the half a reader of the previous section would otherwise get wrong.
@@ -49,8 +55,10 @@ The same check also finds a registration whose command names a `.sh` path in a f
 The sanctioned form, which resolves to the current tree at any depth inside the repository:
 
 ```
-bash "$(git rev-parse --show-toplevel 2>/dev/null || printf %s "${CLAUDE_PROJECT_DIR:-.}")/.claude/hooks/<name>.sh"
+"$(git rev-parse --show-toplevel 2>/dev/null || printf %s "${CLAUDE_PROJECT_DIR:-.}")/.claude/hooks/<name>.sh"
 ```
+
+No interpreter word. `check-hook-capabilities.sh` reduces a registration with an anchored pattern that a leading `bash ` defeats, so a command spelled that way falls through to `BAD-REGISTRATION` and reds the very check the previous section sends you here to repair. All 50 committed hook commands are spelled without it; `statusLine`, which is outside that derivation, is the one command that carries it.
 
 `$CLAUDE_PROJECT_DIR` is deliberately the fallback and not the root: it holds the session's original project directory and does not follow entry into a linked worktree, so using it alone would make a worktree session run the main checkout's hooks.
 
@@ -58,13 +66,7 @@ bash "$(git rev-parse --show-toplevel 2>/dev/null || printf %s "${CLAUDE_PROJECT
 bash .gaia/scripts/check-hook-command-rooting.sh .
 ```
 
-It runs inside `.gaia/tests/whole-tree-invariants.sh`, so an unrooted registration reds there too. It reads `.claude/settings.json` only; `.claude/settings.local.json` is a live registration layer that no tracked check can hold, so hold your own local registrations to the same form by hand.
-
-It needs bash 5. On stock macOS `/bin/bash`, which is 3.2, the closure walk loses whole files' records and reports a clean tree as `SURPLUS`, and the reach it drops can never surface as `UNDECLARED`. The check re-execs itself under a Homebrew bash 5 when it finds one and refuses with a message when it does not, so this command cannot quietly disagree with CI; if it refuses, install a bash 5 rather than reading the run that got that far.
-
-`.gaia/hook-scopes.json` and `.gaia/hook-capabilities.json` cover different sets and declare different things. `.gaia/hook-scopes.json` covers every `.sh` under `.claude/hooks/**` and declares which tree the hook's state belongs to. `.gaia/hook-capabilities.json` covers only the registered hooks and declares what the hook reaches for beyond itself. Neither manifest derives its coverage from the other.
-
-The check catches these at review time; nothing mediates a registered hook at run time.
+It runs inside `.gaia/tests/whole-tree-invariants.sh`, so an unrooted registration reds there too. It reads `.claude/settings.json` only, so no tracked check holds `.claude/settings.local.json` **to the rooting form**; hold your own local registrations to the same form by hand. That file is not unheld in general: `check-hook-capabilities.sh` flags any local `hooks` command the committed `settings.json` does not carry verbatim as `LOCAL-REGISTRATION` and exits non-zero, which is the arm a bare local spelling trips.
 
 ## Why
 

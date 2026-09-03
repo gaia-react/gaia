@@ -3,11 +3,13 @@ import {
   chmodSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
+import {resolveRepoRootFromImportMeta} from '../util/repo-root-fixture.js';
 import {extractPathRefs, run} from './runtime-deps.js';
 
 type ManifestFiles = Record<string, 'owned' | 'shared' | 'wiki-owned'>;
@@ -195,6 +197,38 @@ describe('extractPathRefs', () => {
       "SNAPSHOT_WRAPPER_PATTERN='\\.claude/shell-snapshots/'\n"
     );
     expect(refs.map((r) => r.path)).not.toContain('.claude/shell-snapshots');
+  });
+
+  test('skips the allowlisted settings.local.json token in the rooting note', () => {
+    // check-hook-command-rooting.sh names Claude Code's per-machine settings
+    // layer in the note it prints to say which registration surface it does
+    // NOT cover. The file is gitignored on both sides, so it can never have a
+    // manifest entry and the exact token is allowlisted.
+    const refs = extractPathRefs(
+      '.gaia/scripts/check-hook-command-rooting.sh',
+      "      printf 'check-hook-command-rooting: note: .claude/settings.local.json also registers hooks and is NOT covered by this check.\\n'\n"
+    );
+    expect(refs.map((r) => r.path)).not.toContain(
+      '.claude/settings.local.json'
+    );
+  });
+
+  test('the settings.local.json allowlist entry still covers the real script', () => {
+    // The entry above is load-bearing only while the note spells the path as a
+    // bare token. A reword that changes the extracted shape would make the
+    // entry dead and the reference reappear as a leak, and the corpus scan that
+    // would catch it runs at release rather than at review. Reading the real
+    // file here moves that failure to the unit suite.
+    const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
+    const relative = '.gaia/scripts/check-hook-command-rooting.sh';
+    const contents = readFileSync(path.join(repoRoot, relative), 'utf8');
+
+    expect(contents).toContain('.claude/settings.local.json');
+    expect(
+      extractPathRefs(relative, contents)
+        .map((r) => r.path)
+        .filter((p) => p.startsWith('.claude/settings.local.json'))
+    ).toEqual([]);
   });
 
   test('still flags a genuine file leak under the shell-snapshots directory', () => {

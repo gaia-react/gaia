@@ -154,11 +154,16 @@ const PATH_PREFIXES = ['.gaia/', '.claude/', '.specify/', '.github/'] as const;
  *     structurally can never have a manifest entry.
  *   - `.claude/settings.local.json`: Claude Code's own per-machine settings
  *     layer, gitignored on both sides, so it structurally can never have a
- *     manifest entry. `check-hook-command-rooting.sh` tests it with `[ -f ]`
- *     and names it in the note it prints when it is present, to say which
- *     registration surface the check does NOT cover. Absent on an adopter
- *     clone the test is simply false and the note never prints, so the
- *     reference resolves to a benign absent branch rather than a dependency.
+ *     manifest entry. `check-hook-command-rooting.sh` gates on its presence
+ *     AND on it registering hooks, then names it in the note it prints, to
+ *     say which registration surface the check does NOT cover. Absent on an
+ *     adopter clone the gate is simply false and the note never prints, so
+ *     the reference resolves to a benign absent branch rather than a
+ *     dependency. The single extracted occurrence is that printf note; the
+ *     gate's own two references sit in variable-expansion contexts the
+ *     extractor skips. `runtime-deps.test.ts` pins both halves, so a reword
+ *     that changes the extracted token fails the unit suite rather than the
+ *     release gate.
  *   - `.claude/shell-snapshots`: Claude Code's own per-Bash-call snapshot
  *     wrapper directory, referenced inside `SNAPSHOT_WRAPPER_PATTERN`, a
  *     regex literal in `spec-session-lock.sh` that MATCHES/REJECTS the
