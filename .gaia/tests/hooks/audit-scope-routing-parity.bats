@@ -43,7 +43,7 @@
 #   GAIA's executable prose                        -> code-audit-maintainer-prose
 #     (.claude/commands/**, .claude/instructions/**,
 #      .claude/agents/worthiness-evaluator.md, .gaia/cli/health/**/*.md,
-#      .github/forensics/*.md, .specify/presets/**/*.md, and the
+#      the two .github/forensics/ prompts, .specify/presets/**/*.md, and the
 #      commands/ rules/ templates/ directories under
 #      .specify/extensions/gaia/ -- instructions a language model runs,
 #      as against the inert prose and fixture corpora beside them)
@@ -115,7 +115,7 @@ setup() {
       expected="code-audit-maintainer-shell"
     elif [ "$before" = "-" ] && [[ "$path" =~ ^\.claude/agents/[^/]+/ ]]; then
       expected="code-audit-maintainer-prose"
-    elif [ "$before" = "-" ] && [[ "$path" =~ ^(\.claude/(commands|instructions)/|\.claude/agents/worthiness-evaluator\.md$|\.gaia/cli/health/.*\.md$|\.github/forensics/[^/]*\.md$|\.specify/extensions/gaia/(commands|rules|templates)/[^/]*\.md$|\.specify/presets/.*\.md$) ]]; then
+    elif [ "$before" = "-" ] && [[ "$path" =~ ^(\.claude/(commands|instructions)/|\.claude/agents/worthiness-evaluator\.md$|\.gaia/cli/health/.*\.md$|\.github/forensics/(prompt|apply-fix-prompt)\.md$|\.specify/extensions/gaia/(commands|rules|templates)/[^/]*\.md$|\.specify/presets/.*\.md$) ]]; then
       expected="code-audit-maintainer-prose"
     else
       expected="$before"

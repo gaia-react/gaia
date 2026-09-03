@@ -242,7 +242,13 @@ auditors:
       - ".claude/instructions/**"
       - ".claude/agents/worthiness-evaluator.md"
       - ".gaia/cli/health/**/*.md"
-      - ".github/forensics/*.md"
+      # The two forensics prompts by name rather than the directory's whole top
+      # level, which also carries a README that is a human-facing script table
+      # nothing executes. Taking the level whole would own that README while
+      # `.specify/extensions/gaia/README.md` stays exempt, which is the same
+      # file in the same role decided two ways in one roster.
+      - ".github/forensics/prompt.md"
+      - ".github/forensics/apply-fix-prompt.md"
       - ".specify/extensions/gaia/commands/*.md"
       - ".specify/extensions/gaia/rules/*.md"
       - ".specify/extensions/gaia/templates/*.md"
@@ -354,11 +360,14 @@ unowned:
   # exists to give it to. An extension glob would hand that exemption to a
   # second Python tool silently; a literal makes the next one report ownerless.
   - ".gaia/tests/observability/serena/usage_scan.py"
-  # Scoped to `tests/` rather than the whole subtree: the directory's top level
-  # carries `prompt.md` and `apply-fix-prompt.md`, the prompts the forensics run
-  # executes, which are the prose member's. What this entry covers is the
-  # fixture corpus -- malformed and canonical report bodies the bats suite feeds
-  # the renderer -- which is input data and executed by nothing.
+  # Scoped to `tests/` rather than the whole subtree: the two prompts the
+  # forensics run executes are named individually in the prose member's globs
+  # above. What this entry covers is the fixture corpus -- malformed and
+  # canonical report bodies the bats suite feeds the renderer -- which is input
+  # data and executed by nothing. The README beside those prompts is a script
+  # table for a human, so it is exempt on the same terms as the spec-kit one
+  # below rather than on the accident of which directory level it sits at.
+  - ".github/forensics/README.md"
   - ".github/forensics/tests/**/*.md"
   - ".serena/**"
   # Enumerated rather than a `.specify/extensions/gaia/**/*.md` subtree for the
