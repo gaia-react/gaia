@@ -211,8 +211,8 @@ auditors:
     globs:
       - ".claude/skills/**/*.md"
       - ".claude/agents/*/**"
-      - ".claude/commands/**"
-      - ".claude/instructions/**"
+      - ".claude/commands/**/*.md"
+      - ".claude/instructions/**/*.md"
       - ".claude/agents/worthiness-evaluator.md"
       - ".gaia/cli/health/**/*.md"
       - ".github/forensics/prompt.md"

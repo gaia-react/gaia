@@ -233,13 +233,22 @@ auditors:
       # that run the way a wrong skill file does, which is what earns them a
       # reviewer rather than an exemption.
       #
-      # `commands`, `rules` and `templates` are named rather than taken as whole
-      # subtrees because their siblings are inert: a README, test evidence, and
-      # the forensics fixture corpus are declared in `unowned:` below. A new
-      # directory under one of these roots is therefore reported ownerless
-      # rather than inheriting an exemption nobody decided to give it.
-      - ".claude/commands/**"
-      - ".claude/instructions/**"
+      # Under `.specify/extensions/gaia/`, `commands`, `rules` and `templates`
+      # are named rather than taken as whole subtrees because their siblings are
+      # inert: a README, test evidence, and the forensics fixture corpus are
+      # declared in `unowned:` below. A new directory under that root, or under
+      # `.github/forensics/`, is therefore reported ownerless rather than
+      # inheriting an exemption nobody decided to give it.
+      #
+      # Every entry here is extension-qualified for a second reason: this member
+      # is advisory-only and never grades a finding Critical, so a whole-subtree
+      # glob would route a future `.claude/commands/tool.sh` here and get it
+      # read for legibility rather than for quoting, portability and fail-open
+      # behaviour. Both directories hold Markdown only today, which makes this
+      # latent rather than live, and an unqualified glob is exactly how it would
+      # stop being latent without anyone deciding it should.
+      - ".claude/commands/**/*.md"
+      - ".claude/instructions/**/*.md"
       - ".claude/agents/worthiness-evaluator.md"
       - ".gaia/cli/health/**/*.md"
       # The two forensics prompts by name rather than the directory's whole top
