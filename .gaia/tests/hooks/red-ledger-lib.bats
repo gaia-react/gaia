@@ -461,7 +461,7 @@ run_lib() {
   rc=0
   ( export GITHUB_ACTIONS=true; require_node_typescript "$bare" ) >/dev/null 2>&1 || rc=$?
   [ "$rc" -ne 0 ] || {
-    echo "the gate skipped on a CI runner with no typescript; five suites would report green" >&2
+    echo "the gate skipped on a CI runner with no typescript; every suite behind it would report green" >&2
     return 1
   }
 

@@ -20,26 +20,34 @@
 #   }
 #
 # WHY THE CI BRANCH FAILS RATHER THAN SKIPPING, which is the whole point of
-# this file. These five suites previously spelled the gate inline as
+# this file. Each of the suites above previously spelled the gate inline as
 #
 #   [ -d "$ROOT/node_modules/typescript" ] || skip "typescript not installed ..."
 #
 # and bats reports a skip as `ok ... # skip`. The bats shards install no Node
-# dependencies, so all five reported green on every PR while asserting nothing,
-# and a stale cardinal inside one of them survived every run of the check that
-# exists to catch it -- found only by a human running the suite locally. That
-# is gaia-react/gaia#1748.
+# dependencies, so every one of them reported green on every PR while
+# asserting nothing, and a stale cardinal inside one of them survived every
+# run of the check that exists to catch it -- found only by a human running
+# the suite locally. That is gaia-react/gaia#1748.
 #
-# So the CI branch returns non-zero, matching `require_yaml_parser` in
+# So the CI branch returns non-zero, matching the YAML-parser gate in
 # .gaia/scripts/tests/retrigger-reachability.bats, whose comment states the
 # same argument for the same reason: on CI the dependency is a precondition
 # rather than a maybe, because the job that runs the suite installs it. Off CI
 # the skip stands -- a checkout that has not run `pnpm install` is not the
 # environment this gate is making a claim about.
 #
+# That gate's name is deliberately not spelled out above. W10 in
+# .gaia/tests/lib/audit-ci-shards.bats derives the apt step's leg list by
+# grepping each shard's suites AND their helper directories for the literal
+# names of the zsh/YAML gates, over-inclusively and on purpose. This file sits
+# in the helper directory every hooks suite shares, so spelling that name here
+# puts an apt install on hooks-1 -- a leg drawing neither package -- to satisfy
+# a comment. The pointer above says which gate without tripping the scan.
+#
 # The complement is .github/workflows/audit-ci-tests.yml's
 # "Setup Node for the node-dependent RED suites" step, gated to the exchange
-# group holding these five. Dropping either half without the other reds those
+# group holding them. Dropping either half without the other reds those
 # legs, which is the intended direction: the failure this file exists to
 # prevent is a green one.
 #

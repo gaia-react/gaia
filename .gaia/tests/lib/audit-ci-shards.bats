@@ -86,12 +86,17 @@ setup() {
   # The reasoning behind the four, and behind excluding bare `python3`, is in
   # the W10 header below.
   PKG_PATTERN='command -v zsh|zsh -c|require_yaml_parser|import yaml'
-  # The two workflow lines the adversarial cases doctor, addressed by shape
-  # rather than by text so a repack that rewrites either list stays a one-site
-  # edit in the workflow. Each matches exactly one line today, which
-  # sole_line_matching re-checks on every use; the reasoning for deriving them
-  # is above that helper.
-  APT_GATE_PATTERN='^ *- if: contains\(fromJSON\('
+  # The matrix line the adversarial cases doctor, addressed by shape rather
+  # than by text so a repack that rewrites the list stays a one-site edit in
+  # the workflow. It matches exactly one line today, which sole_line_matching
+  # re-checks on every use; the reasoning for deriving it is above that helper.
+  #
+  # The apt gate has no pattern here and is reached through gate_line_for_step
+  # instead. A shape pattern for it addressed the step as "the only `if:`
+  # carrying a contains(fromJSON(...)) gate", which is a property of how many
+  # such steps the workflow happens to have rather than of the apt step, and a
+  # second one made it ambiguous. Naming the step stays true as steps are
+  # added.
   MATRIX_SHARD_PATTERN='^ *shard: \['
 
   require_repo_path -f "$WORKFLOW" "audit-ci-tests.yml" || return 1
@@ -483,6 +488,46 @@ sole_line_matching() {
     return 1
   }
   printf '%s' "${hits#*:}"
+}
+
+# Prints the `- if:` line that opens the step named $2 in $1, so a case can
+# doctor that step's gate. Locates the step by name, then takes the last YAML
+# list-item line at or above it, and refuses when that opening line is not an
+# `if:` -- a step whose gate this returns must actually have one, and a step
+# that opens some other way would otherwise hand back the PREVIOUS step's gate
+# and doctor the wrong one.
+#
+# Fails on zero or several matches for the name, for the same reason
+# sole_line_matching does: either means the workflow changed shape, which this
+# suite has to see rather than doctor a line it did not mean to.
+gate_line_for_step() {
+  local src="$1" step="$2" hits count name_no open_no open_line
+  hits="$(grep -nF -- "name: $step" "$src")" || {
+    echo "gate_line_for_step: no step named '$step' in $src" >&2
+    return 1
+  }
+  count="$(printf '%s\n' "$hits" | grep -c '')"
+  [ "$count" -eq 1 ] || {
+    echo "gate_line_for_step: 'name: $step' matches $count lines in $src, expected exactly 1" >&2
+    printf '%s\n' "$hits" >&2
+    return 1
+  }
+  name_no="${hits%%:*}"
+  # Numbered against the head, whose line numbers are the file's own.
+  open_no="$(head -n "$name_no" "$src" | grep -nE '^ *- ' | tail -1 | cut -d: -f1)"
+  [ -n "$open_no" ] || {
+    echo "gate_line_for_step: the step named '$step' opens no list item in $src" >&2
+    return 1
+  }
+  open_line="$(sed -n "${open_no}p" "$src")"
+  case "$open_line" in
+    *"- if: "*) printf '%s' "$open_line" ;;
+    *)
+      echo "gate_line_for_step: the step named '$step' does not open with an if: gate" >&2
+      printf '%s\n' "$open_line" >&2
+      return 1
+      ;;
+  esac
 }
 
 # Fails when the transform in $2 left $1 unchanged, naming it as $3. replace_line
@@ -1249,7 +1294,7 @@ EOF
   local doctored="$BATS_TEST_TMPDIR/dropped.yml" declared needed line mutated
   require_yaml_parser
 
-  line="$(sole_line_matching "$WORKFLOW" "$APT_GATE_PATTERN")" || return 1
+  line="$(gate_line_for_step "$WORKFLOW" 'Install the YAML parser and zsh')" || return 1
   # Only the final id is followed by the closing bracket, so this drops one
   # leg rather than the tail of the list.
   mutated="$(printf '%s' "$line" | sed 's/, "[^"]*"\]/]/')"
@@ -1593,7 +1638,7 @@ copy_sharder_without_group() {
   # the file would not parse at all, which is a different failure from the one
   # under test. normalize() strips the wrapper, so the gate reaches the reader
   # exactly as GitHub would evaluate it.
-  line="$(sole_line_matching "$WORKFLOW" "$APT_GATE_PATTERN")" || return 1
+  line="$(gate_line_for_step "$WORKFLOW" 'Install the YAML parser and zsh')" || return 1
   mutated="$(printf '%s' "$line" | sed 's/- if: \(.*\)$/- if: ${{ !\1 }}/')"
   assert_doctored "$line" "$mutated" "negating the gate" || return 1
   replace_line "$WORKFLOW" "$line" "$mutated" "$doctored"

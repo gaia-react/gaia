@@ -825,7 +825,7 @@ jobs:
       - if: matrix.shard == 'sandbox' && (steps.filter.outputs.sandbox == 'true' || github.event_name == 'workflow_dispatch')
         name: Install bats
         run: bash .gaia/tests/install-bats.sh
-      # TWO installs across this job, not one, and the reason is structural:
+      # TWO installs on THIS leg, not one, and the reason is structural:
       # .gaia/cli is deliberately its own isolated pnpm workspace
       # (.gaia/cli/pnpm-workspace.yaml), so a repo-root install does not reach
       # it. The root install is what C4-04 and C4-07 need (their node helpers
@@ -834,11 +834,21 @@ jobs:
       # .gaia/cli/node_modules, which is gitignored and so absent on a fresh
       # checkout). Skipping either flips a landed, green scenario red for want
       # of an npm install, which would read as a regression in the number this
-      # program is judged by rather than as the environment gap it is. Scoped
-      # to the `concurrency` leg alone: no bats suite in any other shard
-      # depends on a Node runtime or an installed workspace dependency, which
-      # is what makes it safe for those legs to run on a box that never sets
-      # Node up at all.
+      # program is judged by rather than as the environment gap it is.
+      #
+      # This step is scoped to the `concurrency` leg, but Node itself is NOT
+      # this leg's alone. It used to say so -- "no bats suite in any other
+      # shard depends on a Node runtime or an installed workspace dependency,
+      # which is what makes it safe for those legs to run on a box that never
+      # sets Node up at all" -- and that was false the whole time: a group of
+      # suites under .gaia/tests/hooks drives the RED signal helper and the
+      # determinism classifier, both of which resolve `typescript` from the
+      # repo root.
+      # They did not red those legs, they SKIPPED, and a skip reports `ok`, so
+      # the belief and the evidence for it were the same silence.
+      # gaia-react/gaia#1748. The step below this one is what they need; keep
+      # the two separate rather than widening this one's `if:`, because they
+      # install different things for different reasons.
       - if: matrix.shard == 'concurrency' && (steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch')
         name: Setup Node and install both workspaces
         uses: ./.github/actions/gaia-setup-node
@@ -849,6 +859,51 @@ jobs:
           cache-dependency-path: |
             pnpm-lock.yaml
             .gaia/cli/pnpm-lock.yaml
+      # The root workspace for the node-dependent RED suites: red-ledger-lib,
+      # capture-red-observations, red-verify-commit-check, red-verify-e2e and
+      # worthiness-presence-check. Each drives
+      # .gaia/scripts/red-ledger/extract-test-signals.mjs and/or
+      # .gaia/scripts/classifier/classify-determinism.mjs, and both resolve
+      # `typescript` through createRequire against the repo root. Root only:
+      # none of them reaches into .gaia/cli. The list is spelled out rather
+      # than counted; the suites are the authority on how many there are.
+      #
+      # THE LEG LIST IS A WHOLE EXCHANGE GROUP, which is what makes it safe to
+      # write here. Every one of them lives in HOOKS_DIR and none is pinned, so
+      # bats-shards.sh assigns them across HOOKS_GREEDY_IDS -- hooks-2, hooks-3
+      # and hooks-4 -- and a reshuffle moves a file BETWEEN those three and
+      # never out of them. The apt step above rounds its list up to whole
+      # groups for exactly this reason and needs W10 to recompute it; this one
+      # is already at that closure, so it cannot drift under a reshuffle.
+      #
+      # AND IT HAS NO W-CHECK OF ITS OWN, DELIBERATELY. W10's header states the
+      # criterion: it exists because zsh-gated tests skip silently, while "the
+      # parser-gated suites fail loudly under GITHUB_ACTIONS, so a leg that
+      # lost python3-yaml reds. Only the first is invisible." The suites named
+      # above now fail loudly too --
+      # .gaia/tests/hooks/helpers/require-node-typescript.sh returns non-zero
+      # rather than skipping when GITHUB_ACTIONS is set -- so a leg that needs
+      # this step and does not get it reds on its own, and a derived list would
+      # be checking something already self-announcing. Dropping this step reds
+      # the legs named above; that is the intended direction.
+      #
+      # The cost is bounded by something already on this job rather than by an
+      # estimate: it is the same composite action the `concurrency` leg runs,
+      # asked for LESS work (one workspace, not both), with the pnpm store
+      # cached the same way. Those legs' own runtimes sit far enough under this
+      # job's `timeout-minutes` that adding one install plus the suites it
+      # unblocks does not approach it. The leg that is genuinely close to the
+      # cap is scripts-1, and it draws neither this step nor any of these
+      # suites.
+      - if: contains(fromJSON('["hooks-2", "hooks-3", "hooks-4"]'), matrix.shard) && (steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch')
+        name: Setup Node for the node-dependent RED suites
+        uses: ./.github/actions/gaia-setup-node
+        with:
+          install: root
+          # Root lockfile only: this step runs no .gaia/cli install, so keying
+          # the store cache on that workspace's lockfile too would rebuild the
+          # cache on bumps this leg does not consume.
+          cache-dependency-path: pnpm-lock.yaml
       # `${{ matrix.shard }}` reaches the script only through `env:`, never
       # interpolated into the run: body text itself -- the shape this repo's
       # workflows auditor checks, and what keeps it true when a future edit
