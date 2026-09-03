@@ -470,6 +470,58 @@ true'
   grep -qF -- 'BAD-REGISTRATION cat .claude/hooks/d.sh | bash' <<<"$output"
 }
 
+# ========== a command-substitution root reduces to the bare path it names ==========
+
+# .claude/settings.json roots every hook at a command substitution so the
+# command resolves independently of the shell's working directory
+# (.gaia/scripts/check-hook-command-rooting.sh owns that shape). A rooted
+# registration names exactly the file its bare form named, so it carries the
+# same obligation rather than reading as unrecognized.
+@test "a registration rooted at a command substitution is obligated, not BAD-REGISTRATION" {
+  repo="$(make_fixture_repo rooted-registration)"
+  write_registrations "$repo" \
+    PreToolUse '"$(git rev-parse --show-toplevel 2>/dev/null || printf %s "${CLAUDE_PROJECT_DIR:-.}")/.claude/hooks/a.sh"'
+  write_manifest "$repo" '[]'
+  run bash "$CHECK" "$repo"
+  grep -qF -- 'BAD-REGISTRATION' <<<"$output" && return 1
+  grep -qF -- '.claude/hooks/a.sh' <<<"$output"
+}
+
+# The strip recognizes the command-substitution SHAPE and must not become a
+# general "ignore whatever precedes the path": the four forms UAT-015 pins are
+# each still unrecognized, and this is the arm that would go quiet first.
+@test "the rooted strip does not admit a \$HOME or \${VAR} prefix" {
+  repo="$(make_fixture_repo rooted-registration-narrow)"
+  write_registrations "$repo" \
+    PreToolUse '"$HOME/.claude/hooks/a.sh"' \
+    PreToolUse '"${HOOK_DIR}/b.sh"'
+  write_manifest "$repo" '[]'
+  run bash "$CHECK" "$repo"
+  [ "$status" -eq 1 ]
+  # Per input, not one aggregate grep: a single surviving BAD-REGISTRATION line
+  # satisfies an aggregate, so a loosening that admits only the ${VAR} half
+  # leaves the test green while the construct it names is broken.
+  grep -qF -- 'BAD-REGISTRATION "$HOME/.claude/hooks/a.sh"' <<<"$output"
+  grep -qF -- 'BAD-REGISTRATION "${HOOK_DIR}/b.sh"' <<<"$output"
+}
+
+# Rooting is a prefix the strip removes, never a licence for what follows it.
+# What survives the strip has to satisfy the bare-path rule on its own, so a
+# wrapper or a pipe hidden INSIDE a rooted registration is still unrecognized.
+# Without this the strip could accept any rooted entry outright and nothing
+# would notice.
+@test "a rooted registration whose remainder is not a bare path is still BAD-REGISTRATION" {
+  repo="$(make_fixture_repo rooted-registration-remainder)"
+  write_registrations "$repo" \
+    PreToolUse '"$(git rev-parse --show-toplevel)/bash -c a.sh"' \
+    PreToolUse '"$(git rev-parse --show-toplevel)/cat b.sh | bash"'
+  write_manifest "$repo" '[]'
+  run bash "$CHECK" "$repo"
+  [ "$status" -eq 1 ]
+  grep -qF -- 'BAD-REGISTRATION "$(git rev-parse --show-toplevel)/bash -c a.sh"' <<<"$output"
+  grep -qF -- 'BAD-REGISTRATION "$(git rev-parse --show-toplevel)/cat b.sh | bash"' <<<"$output"
+}
+
 # ========== UAT-021, BAD-REGISTRATION on a script-less registration, with a clearing arm ==========
 
 @test "UAT-021: an inline pipeline and a non-shell interpreter registration are each BAD-REGISTRATION; naming a script clears it" {

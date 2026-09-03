@@ -101,6 +101,7 @@ readonly PROG="whole-tree-invariants"
 readonly WTI_SCRIPTS='.gaia/scripts/check-audit-base-derivation.sh
 .gaia/scripts/check-audit-key-callers.sh
 .gaia/scripts/check-base-provenance-adoption.sh
+.gaia/scripts/check-hook-command-rooting.sh
 .gaia/scripts/check-hook-scope-manifest.sh
 .gaia/scripts/check-main-root-derivation.sh
 .gaia/scripts/check-registry-completeness.sh
@@ -122,7 +123,7 @@ readonly WTI_SCRIPTS='.gaia/scripts/check-audit-base-derivation.sh
 # The staleness lever's baseline: WTI_SCRIPTS's own member count at the time
 # the runtime paragraph above was last measured. main() compares the live
 # count against this and refuses to run on a mismatch, per that paragraph.
-readonly WTI_SCRIPTS_COUNT_ASOF=20
+readonly WTI_SCRIPTS_COUNT_ASOF=21
 
 # Members invoked as `bats <path>`. The shard partition is a whole-tree
 # invariant in the same sense as the scripts above: its input is every .bats

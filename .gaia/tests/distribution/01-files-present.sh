@@ -179,7 +179,14 @@ if [ "${#HOOKCAP_ERRORS[@]}" -eq 0 ] && [ -e "$STAGING/.gaia/hook-capabilities.j
   # .claude/settings.json registers, with distribution-preflight-check.sh
   # absent from both.
   MANIFEST_HOOKS="$(jq -r '.hooks[]? | .hook // empty' "$STAGING/.gaia/hook-capabilities.json" 2>/dev/null | LC_ALL=C sort -u)"
-  REGISTERED_HOOKS="$(jq -r '(.hooks // {}) | to_entries[]? | (.value // [])[]? | (.hooks // [])[]? | .command // empty' "$STAGING/.claude/settings.json" 2>/dev/null | LC_ALL=C sort -u)"
+  # settings.json roots every hook command at a command substitution so it
+  # resolves independently of the shell's working directory, so the raw command
+  # is `"$(<root-expr>)/.claude/hooks/x.sh"` rather than the bare path this set
+  # is compared against. Reduce it back to the path it names.
+  # .gaia/scripts/check-hook-command-rooting.sh owns that shape and holds
+  # settings.json to it; a registration that is not rooted passes through
+  # unchanged and still has to match the manifest on its own.
+  REGISTERED_HOOKS="$(jq -r '(.hooks // {}) | to_entries[]? | (.value // [])[]? | (.hooks // [])[]? | .command // empty' "$STAGING/.claude/settings.json" 2>/dev/null | sed -E 's|^"\$\(.*\)/(.*)"$|\1|' | LC_ALL=C sort -u)"
 
   if [ "$MANIFEST_HOOKS" != "$REGISTERED_HOOKS" ]; then
     HOOKCAP_ERRORS+=("staged hook-capabilities.json entry set != staged settings.json hook registrations")

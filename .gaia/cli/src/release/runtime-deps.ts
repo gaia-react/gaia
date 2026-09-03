@@ -152,14 +152,31 @@ const PATH_PREFIXES = ['.gaia/', '.claude/', '.specify/', '.github/'] as const;
  *     directory, `$HOME/.claude/projects`, referenced by
  *     `token-tally-review.sh`. It lives outside the repo on every machine and
  *     structurally can never have a manifest entry.
+ *   - `.claude/settings.local.json`: Claude Code's own per-machine settings
+ *     layer, gitignored on both sides, so it structurally can never have a
+ *     manifest entry. `check-hook-command-rooting.sh` gates on its presence
+ *     AND on it registering hooks, then names it in the note it prints, to
+ *     say which registration surface the check does NOT cover. Absent on an
+ *     adopter clone the gate is simply false and the note never prints, so
+ *     the reference resolves to a benign absent branch rather than a
+ *     dependency. THREE occurrences extract and this one entry suppresses all
+ *     three: the gate's two `"$repo_root/.claude/settings.local.json"`
+ *     references and the printf note. The two rooted ones are extracted
+ *     rather than skipped precisely BECAUSE they sit in a variable-expansion
+ *     context: that context is what disables the substring skip, since the
+ *     static half of `$VAR/<path>` is the project-relative path this scan
+ *     wants. `runtime-deps.test.ts` asserts that exact set with the allowlist
+ *     bypassed, so any reword that stops one of them extracting fails the
+ *     unit suite rather than the release gate.
  *   - `.claude/shell-snapshots`: Claude Code's own per-Bash-call snapshot
  *     wrapper directory, referenced inside `SNAPSHOT_WRAPPER_PATTERN`, a
  *     regex literal in `spec-session-lock.sh` that MATCHES/REJECTS the
  *     wrapper's command line. It is never sourced or executed, just compared
  *     against, so it cannot be a runtime dependency.
  */
-const PROSE_PATH_ALLOWLIST: ReadonlySet<string> = new Set([
+export const PROSE_PATH_ALLOWLIST: ReadonlySet<string> = new Set([
   '.claude/projects',
+  '.claude/settings.local.json',
   '.claude/shell-snapshots',
   '.github/workflows',
   '.github/workflows/code-review-audit.yml',
@@ -277,6 +294,12 @@ const trimTrailingDotsSlashes = (candidate: string): string => {
 };
 
 type PrefixScanArgs = {
+  // Threaded rather than read from module scope so a test can bypass the
+  // allowlist and assert exactly which occurrences an entry suppresses. An
+  // entry only earns its place while something still extracts without it, and
+  // a test that cannot see the unsuppressed set cannot tell a live entry from
+  // a dead one.
+  allowlist: ReadonlySet<string>;
   filePath: string;
   lineNumber: number;
   prefix: string;
@@ -292,7 +315,7 @@ type PrefixScanArgs = {
 const consumeStep = (
   args: PrefixScanArgs & {found: number}
 ): {nextCursor: number; ref: null | PathRef} => {
-  const {filePath, found, lineNumber, prefix, stripped} = args;
+  const {allowlist, filePath, found, lineNumber, prefix, stripped} = args;
 
   // Substring-vs-rooted-path discrimination. A `.gaia/` preceded by a
   // path-body char usually means we're inside a larger absolute path
@@ -323,7 +346,7 @@ const consumeStep = (
 
   const trimmed = trimTrailingDotsSlashes(candidate);
 
-  if (trimmed.length <= prefix.length || PROSE_PATH_ALLOWLIST.has(trimmed)) {
+  if (trimmed.length <= prefix.length || allowlist.has(trimmed)) {
     return {nextCursor, ref: null};
   }
 
@@ -357,7 +380,8 @@ const collectPrefixRefs = (args: PrefixScanArgs): PathRef[] => {
 
 export const extractPathRefs = (
   filePath: string,
-  source: string
+  source: string,
+  allowlist: ReadonlySet<string> = PROSE_PATH_ALLOWLIST
 ): readonly PathRef[] => {
   const refs: PathRef[] = [];
 
@@ -368,6 +392,7 @@ export const extractPathRefs = (
       for (const prefix of PATH_PREFIXES) {
         refs.push(
           ...collectPrefixRefs({
+            allowlist,
             filePath,
             lineNumber: index + 1,
             prefix,

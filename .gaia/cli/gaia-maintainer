@@ -16727,7 +16727,7 @@ var parseFlags5 = (argv) => {
   return { flags: { mode }, ok: true };
 };
 var STATUSLINE_BLOCK = {
-  command: "bash .gaia/statusline/gaia-statusline.sh",
+  command: 'bash "$(git rev-parse --show-toplevel 2>/dev/null || printf %s "${CLAUDE_PROJECT_DIR:-.}")/.gaia/statusline/gaia-statusline.sh"',
   type: "command"
 };
 var insertAlphabetical = (source, key, value) => {
@@ -24420,6 +24420,7 @@ var RUNTIME_MARKERS = /* @__PURE__ */ new Set([
 var PATH_PREFIXES = [".gaia/", ".claude/", ".specify/", ".github/"];
 var PROSE_PATH_ALLOWLIST = /* @__PURE__ */ new Set([
   ".claude/projects",
+  ".claude/settings.local.json",
   ".claude/shell-snapshots",
   ".github/workflows",
   ".github/workflows/code-review-audit.yml"
@@ -24461,7 +24462,7 @@ var trimTrailingDotsSlashes = (candidate) => {
   return trimmed;
 };
 var consumeStep = (args) => {
-  const { filePath, found, lineNumber, prefix, stripped } = args;
+  const { allowlist, filePath, found, lineNumber, prefix, stripped } = args;
   const leading = found === 0 ? "" : stripped.charAt(found - 1);
   const isSubstring = leading.length > 0 && PATH_BODY_CHAR.test(leading) && !isVariableExpansionContext(stripped, found);
   if (isSubstring) return { nextCursor: found + 1, ref: null };
@@ -24470,7 +24471,7 @@ var consumeStep = (args) => {
   const candidate = truncated ? value.slice(0, value.lastIndexOf("/") + 1) : value;
   if (candidate.length <= prefix.length) return { nextCursor, ref: null };
   const trimmed = trimTrailingDotsSlashes(candidate);
-  if (trimmed.length <= prefix.length || PROSE_PATH_ALLOWLIST.has(trimmed)) {
+  if (trimmed.length <= prefix.length || allowlist.has(trimmed)) {
     return { nextCursor, ref: null };
   }
   return { nextCursor, ref: { filePath, line: lineNumber, path: trimmed } };
@@ -24488,7 +24489,7 @@ var collectPrefixRefs = (args) => {
   }
   return refs;
 };
-var extractPathRefs = (filePath, source) => {
+var extractPathRefs = (filePath, source, allowlist = PROSE_PATH_ALLOWLIST) => {
   const refs = [];
   for (const [index, line] of source.split("\n").entries()) {
     const stripped = stripCommentSuffix(line);
@@ -24496,6 +24497,7 @@ var extractPathRefs = (filePath, source) => {
       for (const prefix of PATH_PREFIXES) {
         refs.push(
           ...collectPrefixRefs({
+            allowlist,
             filePath,
             lineNumber: index + 1,
             prefix,

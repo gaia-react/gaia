@@ -34,7 +34,7 @@ Can the roughly 109 shipped `.sh` files (hooks, `.gaia/scripts`, spec-kit lib, C
 - **Cross-directory ledger mutex.** `with-ledger-lock.sh` is sourced by both spec-kit lib scripts and `.gaia/scripts` (token-tally, ledger migration), all contending on one lock over `ledger.json`. A partial fold races a Node process against a bash process on the same lock across the macOS-mkdir and Linux-flock split. A blanket move is blocked unless the whole consumer group co-moves.
 - **Statusline latency budget.** `gaia-statusline.sh` renders on a tight budget that Node cold-start blows.
 - **Shared-class call sites.** `.claude/settings.json` and `.github/workflows/tests.yml` are both manifest class `shared`. Rewriting either to call the binary writes a `.gaia-merge/` conflict for every customizing adopter, the exact per-adopter merge cost the premise wants to remove.
-- **Binary-to-`.sh` reverse edges.** The binary already spawns `token-tally.sh` (via `gaia wiki chain`) and writes `bash .gaia/statusline/gaia-statusline.sh` into settings during init, so no `.sh` reachable from `.gaia/cli/src` is a fold candidate regardless of its class.
+- **Binary-to-`.sh` reverse edges.** The binary already spawns `token-tally.sh` (via `gaia wiki chain`) and writes a `gaia-statusline.sh` invocation into settings during init, so no `.sh` reachable from `.gaia/cli/src` is a fold candidate regardless of its class.
 - **Adopter customizability.** Editable hook files (`block-rm-rf.sh` is about 490 lines) are a template value proposition; a compiled binary forecloses adopter guard tuning.
 
 ## Options considered

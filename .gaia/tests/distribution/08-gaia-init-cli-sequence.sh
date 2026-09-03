@@ -176,8 +176,19 @@ SETTINGS="$SCAFFOLD/.claude/settings.json"
 # parse failure here points at the merge logic, not a torn write.
 node -e "JSON.parse(require('node:fs').readFileSync('$SETTINGS','utf8'))" 2>/dev/null \
   || { fail "wire-statusline produced invalid JSON in .claude/settings.json"; exit 1; }
-grep -q '"command": "bash .gaia/statusline/gaia-statusline.sh"' "$SETTINGS" \
-  || { fail "wire-statusline did not insert canonical statusline command"; exit 1; }
+# Exact equality, not a prefix match. An earlier revision grepped only as far as
+# `--show-toplevel`, which asserted the rooting prefix and nothing else: a
+# statusline pointing at a WRONG.sh under the right prefix passed a check whose
+# failure text claims it pins the canonical command.
+# shellcheck disable=SC2016 # the literal `$(...)`/`${...}` IS the registered
+# command being asserted; expanding it here would assert the wrong thing.
+EXPECTED_STATUSLINE='bash "$(git rev-parse --show-toplevel 2>/dev/null || printf %s "${CLAUDE_PROJECT_DIR:-.}")/.gaia/statusline/gaia-statusline.sh"'
+ACTUAL_STATUSLINE="$(node -e '
+  const s = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"));
+  process.stdout.write((s.statusLine && s.statusLine.command) || "");
+' "$SETTINGS" 2>/dev/null)"
+[ "$ACTUAL_STATUSLINE" = "$EXPECTED_STATUSLINE" ] \
+  || { fail "wire-statusline did not insert the canonical statusline command (got: ${ACTUAL_STATUSLINE:-<none>})"; exit 1; }
 grep -q '"statusLine":' "$SETTINGS" \
   || { fail "wire-statusline did not insert statusLine key"; exit 1; }
 

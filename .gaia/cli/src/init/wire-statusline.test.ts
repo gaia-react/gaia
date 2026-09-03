@@ -14,6 +14,7 @@ import {
 } from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
+import {fileURLToPath} from 'node:url';
 import {readState} from './util/state.js';
 import {mergeStatusline, run} from './wire-statusline.js';
 
@@ -22,6 +23,16 @@ type Sandbox = {
   home: string;
   root: string;
 };
+
+/*
+ * The rooted statusline command wire-statusline registers, spelled out here
+ * rather than imported from the module under test: pinning it independently
+ * is the point, so a change to the registered command fails these tests.
+ */
+/* eslint-disable no-template-curly-in-string -- literal shell `${ }` syntax, not JS interpolation */
+const CANONICAL_STATUSLINE_COMMAND =
+  'bash "$(git rev-parse --show-toplevel 2>/dev/null || printf %s "${CLAUDE_PROJECT_DIR:-.}")/.gaia/statusline/gaia-statusline.sh"';
+/* eslint-enable no-template-curly-in-string */
 
 const FIXTURE_SETTINGS = {
   env: {EXAMPLE: '1'},
@@ -95,7 +106,7 @@ describe('mergeStatusline', () => {
     // env < permissions < statusLine alphabetically.
     expect(keys).toEqual(['env', 'permissions', 'statusLine']);
     expect(merged.statusLine).toEqual({
-      command: 'bash .gaia/statusline/gaia-statusline.sh',
+      command: CANONICAL_STATUSLINE_COMMAND,
       type: 'command',
     });
   });
@@ -104,7 +115,7 @@ describe('mergeStatusline', () => {
     const source = {
       env: {},
       statusLine: {
-        command: 'bash .gaia/statusline/gaia-statusline.sh',
+        command: CANONICAL_STATUSLINE_COMMAND,
         type: 'command',
       },
     };
@@ -118,9 +129,36 @@ describe('mergeStatusline', () => {
       statusLine: {command: 'bash other.sh', type: 'command'},
     });
     expect(merged.statusLine).toEqual({
-      command: 'bash .gaia/statusline/gaia-statusline.sh',
+      command: CANONICAL_STATUSLINE_COMMAND,
       type: 'command',
     });
+  });
+});
+
+describe('canonical command parity', () => {
+  /*
+   * The canonical command lives at two independent sites and no single check
+   * spans them: this module, which writes it into an adopter's settings during
+   * `/gaia-init`, and this repo's own `.claude/settings.json`, which
+   * `.gaia/scripts/check-hook-command-rooting.sh` reads. That check validates
+   * rootedness, and only in settings.json, so a CLI-side drift to a
+   * different-but-still-rooted spelling would be caught by nothing at all --
+   * which is the shape of the regression this PR's round-1 audit found here.
+   *
+   * The assertion fails, and never skips, when the file cannot be read. A check
+   * that answers green where it cannot answer is the defect #1748 records, and
+   * it would be a strange thing to reintroduce in the test closing its sibling.
+   */
+  test("matches this repo's own .claude/settings.json", () => {
+    const settingsPath = fileURLToPath(
+      new URL('../../../../.claude/settings.json', import.meta.url)
+    );
+    expect(existsSync(settingsPath)).toBe(true);
+
+    const parsed = JSON.parse(readFileSync(settingsPath, 'utf8')) as {
+      statusLine?: {command?: string};
+    };
+    expect(parsed.statusLine?.command).toBe(CANONICAL_STATUSLINE_COMMAND);
   });
 });
 
@@ -157,7 +195,7 @@ describe('init wire-statusline CLI', () => {
         env: {EXAMPLE: '1'},
         permissions: {allow: ['Bash(pnpm test:ci)'], deny: []},
         statusLine: {
-          command: 'bash .gaia/statusline/gaia-statusline.sh',
+          command: CANONICAL_STATUSLINE_COMMAND,
           type: 'command',
         },
       },
@@ -184,9 +222,7 @@ describe('init wire-statusline CLI', () => {
     const parsed = JSON.parse(readFileSync(target, 'utf8')) as {
       statusLine?: {command?: string};
     };
-    expect(parsed.statusLine?.command).toBe(
-      'bash .gaia/statusline/gaia-statusline.sh'
-    );
+    expect(parsed.statusLine?.command).toBe(CANONICAL_STATUSLINE_COMMAND);
   });
 
   test('--mode skip records state without touching settings', () => {

@@ -90,15 +90,15 @@
         "hooks": [
           {
             "type": "command",
-            "command": ".claude/hooks/provision-worktree.sh"
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/provision-worktree.sh\""
           },
           {
             "type": "command",
-            "command": ".claude/hooks/wiki-session-start.sh"
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/wiki-session-start.sh\""
           },
           {
             "type": "command",
-            "command": ".claude/hooks/debt-session-reconcile.sh"
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/debt-session-reconcile.sh\""
           }
         ]
       },
@@ -107,7 +107,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": ".claude/hooks/block-spec-plan-chain.sh"
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/block-spec-plan-chain.sh\""
           }
         ]
       }
@@ -118,15 +118,15 @@
         "hooks": [
           {
             "type": "command",
-            "command": ".claude/hooks/wiki-session-stop.sh"
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/wiki-session-stop.sh\""
           },
           {
             "type": "command",
-            "command": ".claude/hooks/wiki-squash-autocommits.sh"
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/wiki-squash-autocommits.sh\""
           },
           {
             "type": "command",
-            "command": ".claude/hooks/token-tally-review.sh"
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/token-tally-review.sh\""
           }
         ]
       }
@@ -137,11 +137,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": ".claude/hooks/wiki-drift-check.sh"
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/wiki-drift-check.sh\""
           },
           {
             "type": "command",
-            "command": ".claude/hooks/wiki-recompact-inject.sh"
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/wiki-recompact-inject.sh\""
           }
         ]
       }
@@ -152,7 +152,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": ".claude/hooks/wiki-recompact-sentinel.sh"
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/wiki-recompact-sentinel.sh\""
           }
         ]
       }
@@ -163,7 +163,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": ".claude/hooks/block-spec-plan-chain.sh",
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/block-spec-plan-chain.sh\"",
             "statusMessage": "Checking spec→plan chain guard…"
           }
         ]
@@ -173,47 +173,47 @@
         "hooks": [
           {
             "type": "command",
-            "command": ".claude/hooks/block-env-write.sh"
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/block-env-write.sh\""
           },
           {
             "type": "command",
-            "command": ".claude/hooks/block-eslint-config-edit.sh"
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/block-eslint-config-edit.sh\""
           },
           {
             "type": "command",
-            "command": ".claude/hooks/block-lockfile-edit.sh"
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/block-lockfile-edit.sh\""
           },
           {
             "type": "command",
-            "command": ".claude/hooks/block-secrets-write.sh"
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/block-secrets-write.sh\""
           },
           {
             "type": "command",
-            "command": ".claude/hooks/block-vitest-globals-tsconfig.sh"
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/block-vitest-globals-tsconfig.sh\""
           },
           {
             "type": "command",
-            "command": ".claude/hooks/check-i18n-strings.sh"
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/check-i18n-strings.sh\""
           },
           {
             "type": "command",
-            "command": ".claude/hooks/check-story-exists.sh"
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/check-story-exists.sh\""
           },
           {
             "type": "command",
-            "command": ".claude/hooks/block-manifest-write.sh"
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/block-manifest-write.sh\""
           },
           {
             "type": "command",
-            "command": ".claude/hooks/block-selfheal-paths.sh"
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/block-selfheal-paths.sh\""
           },
           {
             "type": "command",
-            "command": ".claude/hooks/block-worktree-path-mismatch.sh"
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/block-worktree-path-mismatch.sh\""
           },
           {
             "type": "command",
-            "command": ".claude/hooks/block-invalid-yaml-write.sh"
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/block-invalid-yaml-write.sh\""
           }
         ]
       },
@@ -222,76 +222,76 @@
         "hooks": [
           {
             "type": "command",
-            "command": ".claude/hooks/block-bare-test.sh"
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/block-bare-test.sh\""
           },
           {
             "type": "command",
-            "command": ".claude/hooks/block-main-destructive-git.sh",
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/block-main-destructive-git.sh\"",
             "statusMessage": "Checking main-branch protection…"
           },
           {
             "type": "command",
-            "command": ".claude/hooks/block-no-verify.sh",
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/block-no-verify.sh\"",
             "statusMessage": "Checking commit-floor bypass…"
           },
           {
             "type": "command",
-            "command": ".claude/hooks/red-verify-commit-check.sh",
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/red-verify-commit-check.sh\"",
             "statusMessage": "Checking RED-before-GREEN gate…"
           },
           {
             "type": "command",
-            "command": ".claude/hooks/block-rm-rf.sh",
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/block-rm-rf.sh\"",
             "statusMessage": "Checking rm -rf safety…"
           },
           {
             "type": "command",
-            "command": ".claude/hooks/pr-merge-audit-check.sh",
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/pr-merge-audit-check.sh\"",
             "statusMessage": "Checking PR-merge audit gate…"
           },
           {
             "type": "command",
-            "command": ".claude/hooks/token-tally-git-op.sh",
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/token-tally-git-op.sh\"",
             "statusMessage": "Recording execute-phase token tally…"
           },
           {
             "type": "command",
-            "command": ".claude/hooks/post-findings-block-on-merge.sh",
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/post-findings-block-on-merge.sh\"",
             "statusMessage": "Posting local audit findings block…"
           },
           {
             "type": "command",
-            "command": ".claude/hooks/worthiness-presence-check.sh",
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/worthiness-presence-check.sh\"",
             "statusMessage": "Checking worthiness presence gate…"
           },
           {
             "type": "command",
-            "command": ".claude/hooks/audit-disposition-check.sh",
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/audit-disposition-check.sh\"",
             "statusMessage": "Checking audit disposition ledger…"
           },
           {
             "type": "command",
-            "command": ".claude/hooks/serena-code-search-guard.sh",
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/serena-code-search-guard.sh\"",
             "statusMessage": "Checking Serena code-search routing…"
           },
           {
             "type": "command",
-            "command": ".claude/hooks/block-manifest-write.sh",
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/block-manifest-write.sh\"",
             "statusMessage": "Checking manifest-write guard…"
           },
           {
             "type": "command",
-            "command": ".claude/hooks/block-selfheal-paths.sh",
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/block-selfheal-paths.sh\"",
             "statusMessage": "Checking self-heal repair-boundary gate…"
           },
           {
             "type": "command",
-            "command": ".claude/hooks/block-env-read.sh",
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/block-env-read.sh\"",
             "statusMessage": "Checking .env read guard…"
           },
           {
             "type": "command",
-            "command": ".claude/hooks/block-spec-plan-chain.sh",
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/block-spec-plan-chain.sh\"",
             "statusMessage": "Checking spec→plan chain guard…"
           }
         ]
@@ -301,11 +301,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": ".claude/hooks/block-env-read.sh"
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/block-env-read.sh\""
           },
           {
             "type": "command",
-            "command": ".claude/hooks/block-spec-plan-chain.sh",
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/block-spec-plan-chain.sh\"",
             "statusMessage": "Checking spec→plan chain guard…"
           }
         ]
@@ -315,7 +315,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": ".claude/hooks/serena-code-search-guard.sh",
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/serena-code-search-guard.sh\"",
             "statusMessage": "Checking Serena code-search routing…"
           }
         ]
@@ -325,7 +325,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": ".claude/hooks/distribution-preflight-check.sh",
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/distribution-preflight-check.sh\"",
             "statusMessage": "Checking distribution manifest pre-flight…"
           }
         ]
@@ -335,7 +335,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": ".claude/hooks/block-serena-cross-tree-activation.sh",
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/block-serena-cross-tree-activation.sh\"",
             "statusMessage": "Checking Serena activation tree guard…"
           }
         ]
@@ -347,7 +347,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": ".claude/hooks/provision-worktree.sh"
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/provision-worktree.sh\""
           }
         ]
       },
@@ -356,31 +356,31 @@
         "hooks": [
           {
             "type": "command",
-            "command": ".claude/hooks/wiki-commit-nudge.sh"
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/wiki-commit-nudge.sh\""
           },
           {
             "type": "command",
-            "command": ".claude/hooks/token-rollup-merge.sh"
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/token-rollup-merge.sh\""
           },
           {
             "type": "command",
-            "command": ".claude/hooks/token-tally-review.sh"
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/token-tally-review.sh\""
           },
           {
             "type": "command",
-            "command": ".claude/hooks/capture-red-observations.sh"
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/capture-red-observations.sh\""
           },
           {
             "type": "command",
-            "command": ".claude/hooks/debt-sentinel-touch.sh"
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/debt-sentinel-touch.sh\""
           },
           {
             "type": "command",
-            "command": ".claude/hooks/issue-claim-release.sh"
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/issue-claim-release.sh\""
           },
           {
             "type": "command",
-            "command": ".claude/hooks/capture-gh-artifact.sh"
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/capture-gh-artifact.sh\""
           }
         ]
       }
@@ -388,7 +388,7 @@
   },
   "statusLine": {
     "type": "command",
-    "command": "bash .gaia/statusline/gaia-statusline.sh"
+    "command": "bash \"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.gaia/statusline/gaia-statusline.sh\""
   },
   "enabledPlugins": {
     "typescript-lsp@claude-plugins-official": true

@@ -1198,8 +1198,12 @@ test("adds two numbers c407", () => {
   # linker it delegates to: entering a worktree is a PostToolUse EnterWorktree
   # event, and the payload shape below is the one the harness emits (its cwd is
   # already the worktree and its tool_response names the path outright). The
-  # hook is run from the worktree's own on-disk copy, as it is in production,
-  # where settings.json names it by a path relative to the session's cwd.
+  # hook is run from the worktree's own on-disk copy, as it is in production:
+  # settings.json roots every command at `$(git rev-parse --show-toplevel)`,
+  # which is tree-scoped, so a worktree session runs its OWN tree's hooks. That
+  # is why the rooting fix (#1740) could not use $CLAUDE_PROJECT_DIR, which
+  # holds the session's original project directory and would have sent this
+  # case to the main checkout's copy instead.
   reentry_payload="$(jq -nc --arg p "$B" \
     '{tool_name: "EnterWorktree", cwd: $p, tool_response: {worktreePath: $p}}')"
   run_in "$B" -- gaia_deliver_hook "$reentry_payload" "$B/.claude/hooks/provision-worktree.sh" >/dev/null 2>&1

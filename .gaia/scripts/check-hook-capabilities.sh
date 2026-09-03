@@ -167,11 +167,34 @@ gaia_hookcap_obligated() {
   # rather than the allowed leading class; a `bash -c` wrapper and a piped
   # `.sh` path both carry a space or a `|` before the terminal `.sh`.
   local bare='^[A-Za-z0-9_.][^[:space:]|]*\.sh$'
-  local entry
+  # A registration rooted at a command substitution reduces to the bare path
+  # inside it: `"$(<root-expr>)/.claude/hooks/x.sh"` names the same one file the
+  # bare form did. .claude/settings.json roots every hook this way so that a
+  # command resolves independently of the shell's working directory;
+  # .gaia/scripts/check-hook-command-rooting.sh owns that shape and holds the
+  # file to it.
+  #
+  # This recognizes the SHAPE, not one spelling, so neither script has to carry
+  # a copy of the other's literal. It loosens nothing the paragraph above
+  # rejects: a $HOME-prefixed path, a ${VAR}-interpolated one, a `bash -c`
+  # wrapper and a piped path are all still unrecognized, because none of them is
+  # a command substitution, and whatever survives the strip must still satisfy
+  # `bare` on its own.
+  #
+  # The residual, stated rather than implied: a substitution's value is not
+  # knowable without running it, so a rooted registration is trusted to name the
+  # repository root. That is what the rooting check is for, and it is why this
+  # accepts the form rather than evaluating it.
+  local rooted='^"\$\((.*)\)/(.*)"$'
+  local entry candidate
   while IFS= read -r entry; do
     [ -n "$entry" ] || continue
-    if [[ $entry =~ $bare ]]; then
-      printf '%s\n' "$entry"
+    candidate="$entry"
+    if [[ $entry =~ $rooted ]]; then
+      candidate="${BASH_REMATCH[2]}"
+    fi
+    if [[ $candidate =~ $bare ]]; then
+      printf '%s\n' "$candidate"
     else
       printf 'BAD-REGISTRATION %s\n' "$entry"
     fi
