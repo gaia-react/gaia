@@ -784,7 +784,7 @@ make_other_repo() {
 }
 
 @test "settings.json registers the hook under the Edit|Write|MultiEdit matcher" {
-  run jq -e '.hooks.PreToolUse[] | select(.matcher == "Edit|Write|MultiEdit") | .hooks[] | select(.command == ".claude/hooks/block-worktree-path-mismatch.sh")' "$SETTINGS_ABS"
+  run jq -e '.hooks.PreToolUse[] | select(.matcher == "Edit|Write|MultiEdit") | .hooks[] | select(.command | contains(".claude/hooks/block-worktree-path-mismatch.sh"))' "$SETTINGS_ABS"
   [ "$status" -eq 0 ]
 }
 

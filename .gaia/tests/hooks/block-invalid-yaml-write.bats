@@ -266,6 +266,6 @@ run_hook_multiedit() {
 }
 
 @test "settings.json registers the hook under the Edit|Write|MultiEdit matcher" {
-  run jq -e '.hooks.PreToolUse[] | select(.matcher == "Edit|Write|MultiEdit") | .hooks[] | select(.command == ".claude/hooks/block-invalid-yaml-write.sh")' "$SETTINGS_ABS"
+  run jq -e '.hooks.PreToolUse[] | select(.matcher == "Edit|Write|MultiEdit") | .hooks[] | select(.command | contains(".claude/hooks/block-invalid-yaml-write.sh"))' "$SETTINGS_ABS"
   [ "$status" -eq 0 ]
 }

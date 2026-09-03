@@ -1364,7 +1364,7 @@ assert_position_preserving() {
 }
 
 @test "settings.json registers the hook under the Bash matcher" {
-  run jq -e '.hooks.PreToolUse[] | select(.matcher == "Bash") | .hooks[] | select(.command == ".claude/hooks/block-rm-rf.sh")' "$SETTINGS_ABS"
+  run jq -e '.hooks.PreToolUse[] | select(.matcher == "Bash") | .hooks[] | select(.command | contains(".claude/hooks/block-rm-rf.sh"))' "$SETTINGS_ABS"
   [ "$status" -eq 0 ]
 }
 

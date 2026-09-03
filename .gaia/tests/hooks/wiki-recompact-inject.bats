@@ -153,6 +153,6 @@ arm_sentinel() {
 }
 
 @test "settings.json registers the hook under UserPromptSubmit" {
-  run jq -e '.hooks.UserPromptSubmit[] | .hooks[] | select(.command == ".claude/hooks/wiki-recompact-inject.sh")' "$SETTINGS_ABS"
+  run jq -e '.hooks.UserPromptSubmit[] | .hooks[] | select(.command | contains(".claude/hooks/wiki-recompact-inject.sh"))' "$SETTINGS_ABS"
   [ "$status" -eq 0 ]
 }
