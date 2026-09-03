@@ -101,14 +101,24 @@ const parseFlags = (argv: readonly string[]): FlagParseResult => {
 };
 
 /**
- * Canonical GAIA statusline block. The wrapper at
- * `.gaia/statusline/gaia-statusline.sh` lives at a project-relative path,
- * so the same `command` string is correct for both the project- and
- * global-scoped settings files (Claude resolves the bash invocation from
- * the project's working directory at startup).
+ * Canonical GAIA statusline block. The command is rooted at the repository
+ * it belongs to rather than written relative to the working directory,
+ * matching how `.claude/settings.json` spells every hook registration and
+ * how `.gaia/scripts/check-hook-command-rooting.sh` requires them to be
+ * spelled.
+ *
+ * A project-relative `bash .gaia/statusline/...` is wrong in both scopes,
+ * not merely untidy. The working directory persists across a session, so a
+ * single `cd` leaves it unresolvable in the project scope; and in the global
+ * scope it is written into `~/.claude/settings.json`, where it is wrong from
+ * any directory but one project's root. `$CLAUDE_PROJECT_DIR` alone is not
+ * the root either: it does not follow entry into a linked worktree, so it
+ * serves only as the fallback for a working directory outside any
+ * repository.
  */
 const STATUSLINE_BLOCK = {
-  command: 'bash .gaia/statusline/gaia-statusline.sh',
+  command:
+    'bash "$(git rev-parse --show-toplevel 2>/dev/null || printf %s "${CLAUDE_PROJECT_DIR:-.}")/.gaia/statusline/gaia-statusline.sh"',
   type: 'command',
 } as const;
 

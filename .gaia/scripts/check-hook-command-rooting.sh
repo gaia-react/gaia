@@ -32,8 +32,16 @@
 #   2. the command contains no `./` or `../` path segment. Both satisfy rule 1
 #      while still resolving against the current directory: in `./.claude/...`
 #      and `x/../.claude/...` the `.claude` IS preceded by `/`, so rule 1 alone
-#      passes a command that is relative anyway. Rule 2 is the reason the two
-#      rules are separate rather than one pattern.
+#      passes a command that is relative anyway.
+#   3. the command's executed token, after an optional bare interpreter word,
+#      is anchored: it begins with `/`, or with a `$`-expansion or command
+#      substitution. Rules 1 and 2 only ever look at `.claude/` and `.gaia/`
+#      occurrences, so on their own they pass `tools/session-guard.sh` and a
+#      bare `hook.sh` -- relative commands in directories they do not
+#      enumerate. Rule 3 is what makes the check about ANCHORING rather than
+#      about two known directory names, which is what the header above claims
+#      it is. A token that names no path at all (`echo hi`) is not a path and
+#      is left alone.
 #
 # The sanctioned prefix in this repo is
 #   "$(git rev-parse --show-toplevel 2>/dev/null || printf %s "${CLAUDE_PROJECT_DIR:-.}")/"
@@ -62,6 +70,30 @@
 gaia_hook_command_rooting_commands() {
   local settings="$1"
   jq -r '[(.hooks // {} | .[][].hooks[].command), (.statusLine.command // empty)] | .[]' "$settings"
+}
+
+# _gaia_hookrooting_head_is_anchored <command>
+#   Returns 0 when the command's executed token is anchored, or names no path
+#   at all; 1 when it is a relative path. A leading BARE interpreter word (one
+#   carrying no `/`, `$`, `"` and not itself ending in `.sh`) is dropped first,
+#   so `bash <path>` is judged on <path>.
+_gaia_hookrooting_head_is_anchored() {
+  local cmd="$1" first rest
+  first="${cmd%%[[:space:]]*}"
+  case "$first" in
+    *'"'*|*'$'*|*/*|*.sh) rest="$cmd" ;;
+    "$cmd")               rest="$cmd" ;;
+    *)                    rest="${cmd#"$first"}"
+                          rest="${rest#"${rest%%[![:space:]]*}"}" ;;
+  esac
+  case "$rest" in
+    /*|'"/'*|'$'*|'"$'*|'~'*|'"~'*) return 0 ;;
+  esac
+  # Not anchored. It is only a finding if it actually names a path.
+  case "$rest" in
+    */*|*.sh|*'.sh"') return 1 ;;
+  esac
+  return 0
 }
 
 gaia_check_hook_command_rooting() {
@@ -99,6 +131,16 @@ gaia_check_hook_command_rooting() {
     # closes both. The sanctioned prefix carries no such segment: its only
     # bare dot is the `:-.}` fallback, which is followed by `}`, not `/`.
     if printf '%s' "$cmd" | grep -qF -- './'; then
+      printf 'UNROOTED: %s\n' "$cmd"
+      rc=1
+      continue
+    fi
+    # Rule 3: the executed token has to be anchored, whatever directory it
+    # names. Only the command's HEAD is inspected, never its whitespace-split
+    # tokens: the sanctioned prefix carries `2>/dev/null` inside its own
+    # substitution, and a token-wise scan reads that as a relative path and
+    # fails the very form this file exists to bless.
+    if ! _gaia_hookrooting_head_is_anchored "$cmd"; then
       printf 'UNROOTED: %s\n' "$cmd"
       rc=1
     fi

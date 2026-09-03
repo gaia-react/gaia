@@ -498,7 +498,11 @@ true'
   write_manifest "$repo" '[]'
   run bash "$CHECK" "$repo"
   [ "$status" -eq 1 ]
-  grep -qF -- 'BAD-REGISTRATION' <<<"$output"
+  # Per input, not one aggregate grep: a single surviving BAD-REGISTRATION line
+  # satisfies an aggregate, so a loosening that admits only the ${VAR} half
+  # leaves the test green while the construct it names is broken.
+  grep -qF -- 'BAD-REGISTRATION "$HOME/.claude/hooks/a.sh"' <<<"$output"
+  grep -qF -- 'BAD-REGISTRATION "${HOOK_DIR}/b.sh"' <<<"$output"
 }
 
 # Rooting is a prefix the strip removes, never a licence for what follows it.
@@ -514,7 +518,8 @@ true'
   write_manifest "$repo" '[]'
   run bash "$CHECK" "$repo"
   [ "$status" -eq 1 ]
-  grep -qF -- 'BAD-REGISTRATION' <<<"$output"
+  grep -qF -- 'BAD-REGISTRATION "$(git rev-parse --show-toplevel)/bash -c a.sh"' <<<"$output"
+  grep -qF -- 'BAD-REGISTRATION "$(git rev-parse --show-toplevel)/cat b.sh | bash"' <<<"$output"
 }
 
 # ========== UAT-021, BAD-REGISTRATION on a script-less registration, with a clearing arm ==========

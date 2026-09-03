@@ -95,7 +95,7 @@ describe('mergeStatusline', () => {
     // env < permissions < statusLine alphabetically.
     expect(keys).toEqual(['env', 'permissions', 'statusLine']);
     expect(merged.statusLine).toEqual({
-      command: 'bash .gaia/statusline/gaia-statusline.sh',
+      command: 'bash "$(git rev-parse --show-toplevel 2>/dev/null || printf %s "${CLAUDE_PROJECT_DIR:-.}")/.gaia/statusline/gaia-statusline.sh"',
       type: 'command',
     });
   });
@@ -104,7 +104,7 @@ describe('mergeStatusline', () => {
     const source = {
       env: {},
       statusLine: {
-        command: 'bash .gaia/statusline/gaia-statusline.sh',
+        command: 'bash "$(git rev-parse --show-toplevel 2>/dev/null || printf %s "${CLAUDE_PROJECT_DIR:-.}")/.gaia/statusline/gaia-statusline.sh"',
         type: 'command',
       },
     };
@@ -118,7 +118,7 @@ describe('mergeStatusline', () => {
       statusLine: {command: 'bash other.sh', type: 'command'},
     });
     expect(merged.statusLine).toEqual({
-      command: 'bash .gaia/statusline/gaia-statusline.sh',
+      command: 'bash "$(git rev-parse --show-toplevel 2>/dev/null || printf %s "${CLAUDE_PROJECT_DIR:-.}")/.gaia/statusline/gaia-statusline.sh"',
       type: 'command',
     });
   });
@@ -157,7 +157,7 @@ describe('init wire-statusline CLI', () => {
         env: {EXAMPLE: '1'},
         permissions: {allow: ['Bash(pnpm test:ci)'], deny: []},
         statusLine: {
-          command: 'bash .gaia/statusline/gaia-statusline.sh',
+          command: 'bash "$(git rev-parse --show-toplevel 2>/dev/null || printf %s "${CLAUDE_PROJECT_DIR:-.}")/.gaia/statusline/gaia-statusline.sh"',
           type: 'command',
         },
       },
@@ -185,7 +185,7 @@ describe('init wire-statusline CLI', () => {
       statusLine?: {command?: string};
     };
     expect(parsed.statusLine?.command).toBe(
-      'bash .gaia/statusline/gaia-statusline.sh'
+      'bash "$(git rev-parse --show-toplevel 2>/dev/null || printf %s "${CLAUDE_PROJECT_DIR:-.}")/.gaia/statusline/gaia-statusline.sh"'
     );
   });
 

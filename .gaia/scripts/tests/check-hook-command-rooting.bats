@@ -112,6 +112,33 @@ fixture_with() {
   grep -qF -- "block-rm-rf.sh" <<<"$output"
 }
 
+# Rules 1 and 2 only ever look at `.claude/` and `.gaia/` occurrences, so on
+# their own they pass a relative command in any other directory. These are the
+# cases that make the check about anchoring rather than about two directory
+# names, and the suite had none of them.
+@test "a relative command outside .claude/ and .gaia/ is caught" {
+  local root
+  root="$(fixture_with '["tools/session-guard.sh"]')"
+  run gaia_check_hook_command_rooting "$root"
+  [ "$status" -ne 0 ]
+  grep -qF -- "tools/session-guard.sh" <<<"$output"
+}
+
+@test "a bare relative script name with no directory at all is caught" {
+  local root
+  root="$(fixture_with '["hook.sh"]')"
+  run gaia_check_hook_command_rooting "$root"
+  [ "$status" -ne 0 ]
+  grep -qF -- "hook.sh" <<<"$output"
+}
+
+@test "a command naming no path is not a finding" {
+  local root
+  root="$(fixture_with '["echo hi"]')"
+  run gaia_check_hook_command_rooting "$root"
+  [ "$status" -eq 0 ]
+}
+
 @test "one unrooted command among rooted ones is still caught" {
   local root
   root="$(fixture_with '["\"$(git rev-parse --show-toplevel)/.claude/hooks/a.sh\"", ".claude/hooks/b.sh", "/abs/.claude/hooks/c.sh"]')"
@@ -140,10 +167,17 @@ fixture_with() {
   [ "$status" -ne 0 ]
 }
 
-# Coverage is per element: the set is derived from the artifact that owns
-# it (.claude/settings.json) rather than restated here, every derived
-# command is asserted, and a derivation that comes back short of what the
-# file holds fails instead of silently driving a subset.
+# Coverage is per element: the set is derived from the artifact that owns it
+# (.claude/settings.json) rather than restated here, and every derived command
+# is asserted.
+#
+# The cross-count below is narrower than it looks and the comment says so
+# rather than overclaiming. Both sides build the array with the same jq
+# expression, so what the pair establishes is that
+# `gaia_hook_command_rooting_commands` has not drifted from the expression
+# this suite pins, plus that no command is an empty string or carries an
+# embedded newline. A registration shape the expression itself misses is
+# invisible on BOTH sides and this pair cannot see it.
 @test "real repo: every registered command in settings.json is rooted" {
   local settings derived_count file_count
   settings="$REPO_ROOT/.claude/settings.json"

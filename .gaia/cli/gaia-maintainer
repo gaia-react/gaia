@@ -16727,7 +16727,7 @@ var parseFlags5 = (argv) => {
   return { flags: { mode }, ok: true };
 };
 var STATUSLINE_BLOCK = {
-  command: "bash .gaia/statusline/gaia-statusline.sh",
+  command: 'bash "$(git rev-parse --show-toplevel 2>/dev/null || printf %s "${CLAUDE_PROJECT_DIR:-.}")/.gaia/statusline/gaia-statusline.sh"',
   type: "command"
 };
 var insertAlphabetical = (source, key, value) => {
