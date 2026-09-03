@@ -1,9 +1,9 @@
 /**
- * Maintainer drift-guards for the three things the two workspaces must agree on,
- * each asserted against the file that actually states it: the `@gaia-react/lint`
- * pin on each manifest, the resolved version of every shared rule-bearing package
- * on each lockfile because no manifest states those, and the supply-chain
- * hardening settings on each `pnpm-workspace.yaml`.
+ * Maintainer drift-guards for what the two workspaces must agree on, each
+ * asserted against the file that actually states it: the declared pins on each
+ * manifest, the resolved version of every shared rule-bearing package on each
+ * lockfile because no manifest states those, and the supply-chain hardening
+ * settings on each `pnpm-workspace.yaml`.
  *
  * They share one cause. `.gaia/cli` is its own pnpm workspace root, so it
  * inherits nothing from the repository root and every one of these values exists
@@ -19,10 +19,27 @@
  * version, then `pnpm -C .gaia/cli install` and `pnpm -C .gaia/cli lint`, and
  * fix what the newly-arrived rules surface.
  *
- * The pin fixes the preset's own DIRECT plugin set, which is why parity is
- * asserted on it alone and not on the tool versions beside it (`eslint`,
- * `prettier`, `typescript`, `vitest`, `@types/node`). Those move without
- * changing what either workspace considers an error.
+ * The preset pin fixes the preset's own DIRECT plugin set. The parity block
+ * covers it together with the tools whose own version reaches lint output;
+ * `LINT_OUTPUT_TOOLS` below owns that criterion and states what it leaves
+ * uncovered.
+ *
+ * What it asserts is that the two manifests DECLARE the same version, never that
+ * the two versions behave the same. The stronger claim is measurably false, and
+ * on a smaller version distance than it sounds: two Prettier releases one patch
+ * series apart can agree byte-for-byte across the whole tracked TypeScript corpus
+ * and still disagree on Markdown, where the older one truncates a wikilink anchor
+ * at its first colon and discards the rest of the heading. Today only the
+ * TypeScript half is reachable, because `.gaia/cli` declares no format script and
+ * its copy is driven solely by `eslint-plugin-prettier` over `src/**`. That is
+ * wiring rather than a guarantee: the moment either workspace formats Markdown
+ * with its own copy, a version difference starts rewriting content. Asserting on
+ * the declared value is what keeps the guard from depending on which script
+ * happens to exist.
+ *
+ * Repair, when a tool's parity test goes red: converge `.gaia/cli` UP to the root
+ * version, never root down. The direction is not symmetric, because the older
+ * formatter is the one that destroys content.
  *
  * A whole class of rule-bearing package cannot be guarded on the manifest pin at
  * all, so the second describe block below asserts on the lockfiles instead.
@@ -74,10 +91,10 @@
  * `pnpm-lock.yaml` and `pnpm-workspace.yaml` are each in the `code` paths
  * filter of `cli-tests.yml`, whose `Vitest (.gaia/cli)` job is a declared-required
  * context. Keep an entry for every subject named above, because each guard has
- * a different root-side trigger: a manifest bump for the pin, a re-resolve for the
- * transitive version (which touches no manifest at all), and a settings edit for
- * the hardening. Without them a guard first fires on some later, unrelated
- * `.gaia/cli/**` change. Every `.gaia/cli` side is already covered by
+ * a different root-side trigger: a manifest bump for the declared pins, a
+ * re-resolve for the transitive version (which touches no manifest at all), and a
+ * settings edit for the hardening. Without them a guard first fires on some
+ * later, unrelated `.gaia/cli/**` change. Every `.gaia/cli` side is already covered by
  * `.gaia/cli/**`.
  *
  * Maintainer-only by construction: `.gaia/cli/src` and `.gaia/cli/package.json`
@@ -91,6 +108,38 @@ import path from 'node:path';
 import {resolveRepoRootFromImportMeta} from './util/repo-root-fixture.js';
 
 const LINT_PACKAGE = '@gaia-react/lint';
+
+// The criterion: a tool each manifest declares by hand whose own version reaches
+// lint OUTPUT. `eslint` carries the core rule implementations and
+// `eslint:recommended`. `prettier` reaches lint output one hop further out, since
+// both workspaces spread the preset's `prettier` config, which runs
+// `eslint-plugin-prettier`, and that plugin re-surfaces Prettier's own formatting
+// decisions as `prettier/prettier` errors; a formatting change between two
+// Prettier versions is therefore a change in what one workspace considers an
+// error and the other does not.
+//
+// A named set rather than the naming convention `RULE_PACKAGE_PATTERN` uses
+// below, because no naming family separates a tool that reaches lint output from
+// the ones declared beside it: a pattern here would either miss `prettier` or
+// match every devDependency.
+//
+// The honest limit, in two directions, neither hypothetical. A tool that starts
+// reaching lint output later is silent until someone edits this set, which is the
+// default-silence the pattern below exists to avoid. And the parity shape needs a
+// value on BOTH sides, so a lint-output-reaching package only one manifest
+// declares is out of reach of the shape rather than out of scope of the
+// criterion: `prettier-plugin-tailwindcss` is exactly that, a direct dependency
+// here that root supplies through its `publicHoistPattern` instead, and
+// `prettier.config.mjs` in this workspace already records it as unguarded.
+// Widening both is a decision about the criterion rather than a missing entry, so
+// it is tracked (#1755) rather than taken here. Under-covering is the safe
+// direction: the alternative is comparing a version one side never states.
+const LINT_OUTPUT_TOOLS = ['eslint', 'prettier'] as const;
+
+// Every subject the manifest guard asserts parity on. The preset pin and the
+// tools take the same two assertions over different names, so they share one
+// block; what differs between them is the repair, and the docblock owns that.
+const DECLARED_PIN_SUBJECTS = [LINT_PACKAGE, ...LINT_OUTPUT_TOOLS] as const;
 
 // Which packages earn resolution parity, expressed as the npm naming convention
 // for an ESLint rule provider rather than as a list of names. A list is the
@@ -155,16 +204,19 @@ const PARITY_EXEMPT: Record<string, string> = {
 // which would leave every comparison below passing over an empty set.
 const SHARED_FLOOR = 20;
 
-// Read from `devDependencies` alone rather than searching every section: a
-// lint preset belongs nowhere else, so a pin that turns up in `dependencies`
-// is itself the defect and should fail the declares-test rather than satisfy
-// it quietly.
-const readPin = (manifestPath: string): string | undefined => {
+// Read from `devDependencies` alone rather than searching every section: a lint
+// preset, and the tools that execute what it configures, belong nowhere else, so
+// a pin that turns up in `dependencies` is itself the defect and should fail the
+// declares-test rather than satisfy it quietly.
+const readPin = (
+  manifestPath: string,
+  packageName: string
+): string | undefined => {
   const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
     devDependencies?: Record<string, string>;
   };
 
-  return manifest.devDependencies?.[LINT_PACKAGE];
+  return manifest.devDependencies?.[packageName];
 };
 
 // Narrow js-yaml's `unknown` before reading a key off it. Local rather than
@@ -376,26 +428,31 @@ const exemptionAtoms = (list: unknown[]): unknown[] => {
   return [...atoms];
 };
 
-describe('@gaia-react/lint pin parity', () => {
+describe('declared pin parity', () => {
   const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
-  const rootPin = readPin(path.join(repoRoot, 'package.json'));
-  const cliPin = readPin(path.join(repoRoot, '.gaia', 'cli', 'package.json'));
+  const rootManifest = path.join(repoRoot, 'package.json');
+  const cliManifest = path.join(repoRoot, '.gaia', 'cli', 'package.json');
 
-  // Both sides must be present. Absent these two, a rename or a dropped entry
-  // would leave the parity test comparing `undefined` to `undefined`, and it
-  // would pass vacuously on a workspace that had stopped consuming the shared
-  // config entirely.
-  test('package.json declares @gaia-react/lint in devDependencies', () => {
-    expect(rootPin).toBeDefined();
-  });
+  // Both sides must be present. Absent this, a rename or a dropped entry would
+  // leave the parity test below comparing `undefined` to `undefined`, and it
+  // would pass vacuously on a workspace that had stopped declaring the subject
+  // at all.
+  test.each(DECLARED_PIN_SUBJECTS)(
+    'both manifests declare %s in devDependencies',
+    (subject) => {
+      expect(readPin(rootManifest, subject)).toBeDefined();
+      expect(readPin(cliManifest, subject)).toBeDefined();
+    }
+  );
 
-  test('.gaia/cli/package.json declares @gaia-react/lint in devDependencies', () => {
-    expect(cliPin).toBeDefined();
-  });
-
-  test('.gaia/cli/package.json pins the same @gaia-react/lint version as package.json', () => {
-    expect(cliPin).toBe(rootPin);
-  });
+  test.each(DECLARED_PIN_SUBJECTS)(
+    '.gaia/cli/package.json pins the same %s version as package.json',
+    (subject) => {
+      expect(readPin(cliManifest, subject)).toBe(
+        readPin(rootManifest, subject)
+      );
+    }
+  );
 });
 
 describe('rule-package resolution parity', () => {
