@@ -36,23 +36,20 @@ setup() {
   REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
   # shellcheck source=.gaia/scripts/check-hook-command-rooting.sh
   source "$CHECK"
-  FIXTURE_DIRS=()
 }
 
-teardown() {
-  local d
-  for d in "${FIXTURE_DIRS[@]:-}"; do
-    [ -n "$d" ] && rm -rf "$d"
-  done
-  return 0
-}
+# Every fixture root below is created under $BATS_TEST_TMPDIR, which bats
+# removes after each test. An earlier revision collected the roots in a
+# FIXTURE_DIRS array for a teardown to delete, which cannot work: the helper
+# is always called as `$(fixture_with ...)`, so its body runs in a subshell
+# and the array the teardown read was always empty. Letting bats own the
+# lifetime removes the class rather than repairing one instance of it.
 
 # fixture_with <command-json-array-of-strings> -> echoes a repo root whose
 # .claude/settings.json registers exactly those commands, one hook each.
 fixture_with() {
   local commands_json="$1" dir
-  dir="$(mktemp -d)"
-  FIXTURE_DIRS+=("$dir")
+  dir="$(mktemp -d "$BATS_TEST_TMPDIR/fixture.XXXXXX")"
   mkdir -p "$dir/.claude"
   jq -n --argjson cmds "$commands_json" '{
     hooks: {
@@ -132,6 +129,31 @@ fixture_with() {
   grep -qF -- "hook.sh" <<<"$output"
 }
 
+# A tilde inside double quotes is NOT expanded by sh, so `"~/tools/hook.sh"`
+# execs the literal path `~/tools/hook.sh` against the cwd. Verified by
+# execution rather than reasoned about: a directory literally named `~` makes
+# `sh -c '"~/hook.sh"'` run the script under it. The anchor list admitted this
+# spelling and returned rc=0 with the verdict that every registered command
+# resolves independently of cwd, which is the exact claim it falsifies.
+@test "a double-quoted tilde is caught, because sh does not expand it" {
+  local root
+  root="$(fixture_with '["\"~/tools/hook.sh\""]')"
+  run gaia_check_hook_command_rooting "$root"
+  [ "$status" -ne 0 ]
+  # shellcheck disable=SC2088 # "Tilde does not expand in quotes" is exactly
+  # the property under test, so the warning is confirming the assertion.
+  grep -qF -- "~/tools/hook.sh" <<<"$output"
+}
+
+# The bare spelling is the counterpart and must stay a pass: sh expands a
+# leading unquoted `~` to $HOME, so the command names an absolute path.
+@test "a bare unquoted tilde passes, because sh does expand it" {
+  local root
+  root="$(fixture_with '["~/tools/hook.sh"]')"
+  run gaia_check_hook_command_rooting "$root"
+  [ "$status" -eq 0 ]
+}
+
 @test "a command naming no path is not a finding" {
   local root
   root="$(fixture_with '["echo hi"]')"
@@ -151,8 +173,7 @@ fixture_with() {
 
 @test "an empty command set is reported as a failure, never as a pass" {
   local dir
-  dir="$(mktemp -d)"
-  FIXTURE_DIRS+=("$dir")
+  dir="$(mktemp -d "$BATS_TEST_TMPDIR/fixture.XXXXXX")"
   mkdir -p "$dir/.claude"
   printf '%s\n' '{"hooks":{}}' > "$dir/.claude/settings.json"
   run gaia_check_hook_command_rooting "$dir"
@@ -161,8 +182,7 @@ fixture_with() {
 
 @test "a missing settings.json is a usage failure, not a pass" {
   local dir
-  dir="$(mktemp -d)"
-  FIXTURE_DIRS+=("$dir")
+  dir="$(mktemp -d "$BATS_TEST_TMPDIR/fixture.XXXXXX")"
   run gaia_check_hook_command_rooting "$dir"
   [ "$status" -ne 0 ]
 }

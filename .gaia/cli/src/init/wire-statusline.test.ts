@@ -14,6 +14,7 @@ import {
 } from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
+import {fileURLToPath} from 'node:url';
 import {readState} from './util/state.js';
 import {mergeStatusline, run} from './wire-statusline.js';
 
@@ -131,6 +132,33 @@ describe('mergeStatusline', () => {
       command: CANONICAL_STATUSLINE_COMMAND,
       type: 'command',
     });
+  });
+});
+
+describe('canonical command parity', () => {
+  /*
+   * The canonical command lives at two independent sites and no single check
+   * spans them: this module, which writes it into an adopter's settings during
+   * `/gaia-init`, and this repo's own `.claude/settings.json`, which
+   * `.gaia/scripts/check-hook-command-rooting.sh` reads. That check validates
+   * rootedness, and only in settings.json, so a CLI-side drift to a
+   * different-but-still-rooted spelling would be caught by nothing at all --
+   * which is the shape of the regression this PR's round-1 audit found here.
+   *
+   * The assertion fails, and never skips, when the file cannot be read. A check
+   * that answers green where it cannot answer is the defect #1748 records, and
+   * it would be a strange thing to reintroduce in the test closing its sibling.
+   */
+  test("matches this repo's own .claude/settings.json", () => {
+    const settingsPath = fileURLToPath(
+      new URL('../../../../.claude/settings.json', import.meta.url)
+    );
+    expect(existsSync(settingsPath)).toBe(true);
+
+    const parsed = JSON.parse(readFileSync(settingsPath, 'utf8')) as {
+      statusLine?: {command?: string};
+    };
+    expect(parsed.statusLine?.command).toBe(CANONICAL_STATUSLINE_COMMAND);
   });
 });
 

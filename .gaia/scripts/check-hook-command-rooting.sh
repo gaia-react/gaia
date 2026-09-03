@@ -52,7 +52,19 @@
 # worktree session execute the main checkout's hooks instead of its own
 # tree's. See wiki/concepts/Claude Hooks.md.
 #
-# Dual-mode: source it for the functions below, or run it directly.
+# Dual-mode: source it for the functions below, or run it directly:
+#
+#   bash .gaia/scripts/check-hook-command-rooting.sh .
+#
+# ADOPTERS: that hand run is how you invoke this. It ships because
+# .claude/settings.json is manifest `shared`, so you inherit GAIA's
+# registrations and add your own, and a bare relative registration on your side
+# reintroduces the same fail-open. But every automated runner of this check is
+# maintainer-only and release-excluded (whole-tree-invariants.sh, the sibling
+# bats suite, check-hook-capabilities.sh), so on your clone NOTHING invokes it
+# for you. Run it yourself after editing your hook registrations. It is stated
+# here rather than left implied because the alternative is a check an adopter
+# has, believes is armed, and is never told anything by.
 #
 # gaia_hook_command_rooting_commands <settings-json-path>
 #   Prints every registered command string, one per line: every
@@ -87,7 +99,11 @@ _gaia_hookrooting_head_is_anchored() {
                           rest="${rest#"${rest%%[![:space:]]*}"}" ;;
   esac
   case "$rest" in
-    /*|'"/'*|'$'*|'"$'*|'~'*|'"~'*) return 0 ;;
+    # A tilde anchors only when it is UNQUOTED: sh expands a leading bare `~`
+    # to $HOME, but never one inside double quotes, so `"~/x.sh"` is the
+    # literal path `~/x.sh` resolved against the cwd. That is precisely the
+    # class this check exists to reject, so `'"~'` must not appear here.
+    /*|'"/'*|'$'*|'"$'*|'~'*) return 0 ;;
   esac
   # Not anchored. It is only a finding if it actually names a path.
   case "$rest" in
