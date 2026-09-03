@@ -69,6 +69,10 @@ import {load} from 'js-yaml';
 import {describe, expect, test} from 'vitest';
 import {existsSync, readdirSync, readFileSync, statSync} from 'node:fs';
 import path from 'node:path';
+import {
+  matchesInvocation,
+  matchesUnquotedInvocation,
+} from './util/gaia-invocation-matcher.js';
 import {resolveRepoRootFromImportMeta} from './util/repo-root-fixture.js';
 
 // Subcommands reachable only through their router with no external invoker,
@@ -117,9 +121,6 @@ const TEXT_EXTENSIONS = new Set([
   '.yaml',
   '.yml',
 ]);
-
-const escapeRegExp = (value: string): string =>
-  value.replaceAll(/[.*+?^${}()|[\]\\]/g, String.raw`\$&`);
 
 // The keys of a router's `SUBCOMMAND_HANDLERS` map. Every handler value is a
 // `run<Pascal>` symbol, so anchoring on `: run[A-Z]` selects exactly the
@@ -465,56 +466,12 @@ const invokerText =
     ).join('\n')
   : '';
 
-// An invocation-shaped string for `commandPath` in `text`: the binary name,
-// optionally closed by a quote, then the space-separated path, bounded so
-// `wiki state` never matches inside `wiki state-bump`.
+// `matchesInvocation` and its pre-widening control `matchesUnquotedInvocation`
+// live in `util/gaia-invocation-matcher.js`, which carries the argument for the
+// pattern's shape. They are shared with the `gaia-ci-*` template reference
+// guard, which decides the same question about the same binary in the opposite
+// direction; a second hand-copied regex would drift from this one silently.
 //
-// The quote class is what lets a **release-resolved** invocation count. A
-// subcommand invoked only as `"$LATEST_DIR/.gaia/cli/gaia" update merge-region`
-// puts a closing quote exactly where the separator is required, so without the
-// class the guard reads a live command as dead and the author has to mention
-// its bare form somewhere else to clear a red. Note the narrower fix does not
-// exist: an *unquoted* path prefix already matched, because `/` is neither
-// `\w` nor `-`, so the quote is the whole of the blind spot.
-//
-// This is not a loosening. The docstring's stated floor already counts an
-// invocation-shaped string in operator-facing prose, and an invocation that is
-// actually executed is stronger evidence than one that is merely written down.
-// What stays excluded is a bare path with no separator at all, so the quote is
-// admitted beside the separator and never instead of it.
-// `.gaia/tests/distribution/17-gaia-update-merge-region.sh` reached the same
-// `gaia"?` shape for the same reason.
-//
-// Takes its haystack as an argument rather than closing over `invokerText`, so
-// the pattern itself can be exercised against fixture strings. Reading the
-// oracle only through the whole repository's text cannot show the difference
-// between "this form is unmatchable" and "no such invocation exists here".
-// `quoteClass` is a parameter for exactly one reason: the skills-surface test
-// needs the pre-widening shape as a control, and a hand-copied second regex
-// would drift from this one silently. Only two callers exist, both below, and
-// both pin the value.
-const invocationPattern = (commandPath: string, quoteClass: string): RegExp => {
-  const tokens = commandPath
-    .split(' ')
-    .map(escapeRegExp)
-    .join(String.raw`\s+`);
-
-  return new RegExp(
-    String.raw`(?<![\w-])gaia(?:-maintainer)?${quoteClass}\s+${tokens}(?![\w-])`
-  );
-};
-
-const matchesInvocation = (commandPath: string, text: string): boolean =>
-  invocationPattern(commandPath, '["\']?').test(text);
-
-// The same matcher without the quote class, i.e. the shape that could not see
-// a release-resolved invocation. Used only as the control described in the
-// skills-surface test below; never as a reachability oracle.
-const matchesUnquotedInvocation = (
-  commandPath: string,
-  text: string
-): boolean => invocationPattern(commandPath, '').test(text);
-
 // A command is reachable when an invocation-shaped string for it exists in the
 // invoker text.
 const isReachable = (commandPath: string): boolean =>
@@ -622,49 +579,10 @@ describe('CLI subcommand reachability guard', () => {
     }
   );
 
-  // No `skipIf`: this exercises the pattern against fixture strings only, and
-  // the pattern travels in this file, so it is runnable wherever the file is.
-  test('the invocation pattern reads a quoted binary path', () => {
-    // A release-resolved invocation is frozen in quoted form. Why that counts
-    // is argued once, in `matchesInvocation`'s comment.
-    expect(
-      matchesInvocation(
-        'update merge-region',
-        '"$LATEST_DIR/.gaia/cli/gaia" update merge-region'
-      )
-    ).toBe(true);
-    expect(
-      matchesInvocation(
-        'release scrub',
-        "'/opt/g/.gaia/cli/gaia-maintainer' release scrub"
-      )
-    ).toBe(true);
-
-    // Regression controls for the two forms that already worked: a bare name,
-    // and an unquoted path prefix.
-    expect(
-      matchesInvocation('update merge-region', 'gaia update merge-region')
-    ).toBe(true);
-    expect(
-      matchesInvocation(
-        'update merge-region',
-        '$LATEST_DIR/.gaia/cli/gaia update merge-region'
-      )
-    ).toBe(true);
-
-    // The quote is permitted beside the separator, never instead of it.
-    expect(
-      matchesInvocation('update merge-region', 'gaia"update merge-region')
-    ).toBe(false);
-    // Both boundaries survive: a longer command name is not a prefix match,
-    // and a longer binary name is not the binary.
-    expect(
-      matchesInvocation('wiki state', '"$D/.gaia/cli/gaia" wiki state-bump')
-    ).toBe(false);
-    expect(
-      matchesInvocation('update merge-region', 'notgaia update merge-region')
-    ).toBe(false);
-  });
+  // The pattern's own behavior against fixture strings is asserted beside the
+  // module, in `util/gaia-invocation-matcher.test.ts`. It moved there when the
+  // matcher stopped travelling in this file: a shared matcher's unit test
+  // should not be reachable only through one of its two consumers.
 
   test.skipIf(!routersPresent)(
     'the release-resolved invocations in the update skill are reachability evidence',

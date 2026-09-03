@@ -24,14 +24,22 @@
  *      `/<skill>` to an existing template forces a contract update rather
  *      than slipping through unguarded.
  *
- * Completeness has one accepted gap: an *undeclared CLI* invocation added to
- * an existing template is not auto-detected. Template prompt prose mixes
- * executed `gaia <cmd>` calls with step labels (`- name: Run gaia wiki
- * chain`), so extracting CLI invocations from the text yields false
- * positives; the CLI half stays contract-declared only. Skills carry no such
- * ambiguity, a `/<slug>` token preceded by whitespace or a backtick that
- * resolves to a real skill directory is unambiguously an invocation, so
- * check 4 covers them.
+ * Completeness has one accepted gap, and it is **check 4's alone**: an
+ * *undeclared CLI* invocation added to an existing template is not
+ * auto-detected. Template prompt prose mixes executed `gaia <cmd>` calls with
+ * step labels (`- name: Run gaia wiki chain`), so EXTRACTING CLI invocations
+ * from the text yields false positives; check 4 therefore covers skills only,
+ * and the CLI half of the contract stays declared by hand. Skills carry no
+ * such ambiguity, a `/<slug>` token preceded by whitespace or a backtick that
+ * resolves to a real skill directory is unambiguously an invocation.
+ *
+ * The gap does not reach check 2, and reading it as though it did is what left
+ * `#1271` sitting as a fork. Check 2 VERIFIES a string the contract already
+ * declares; it extracts nothing, so widening how it recognizes that string
+ * cannot admit a step label, because a step label is not in the contract. That
+ * is why its CLI half matches through the shared `matchesInvocation`
+ * (`util/gaia-invocation-matcher.ts`) and its skill half, which does extract,
+ * keeps the narrower `SKILL_REF_PATTERN` lookbehind.
  *
  * The complementary `command-reachability.test.ts` guards the inverse
  * direction (every CLI leaf command has some external invoker). It cannot
@@ -48,6 +56,7 @@ import {describe, expect, test} from 'vitest';
 import {existsSync, readdirSync, readFileSync} from 'node:fs';
 import path from 'node:path';
 import type {ToolId} from '../../schemas/automation-config.js';
+import {matchesInvocation} from '../../util/gaia-invocation-matcher.js';
 import {resolveRepoRootFromImportMeta} from '../../util/repo-root-fixture.js';
 import {workflowSchedulerTemplatePath, workflowTemplatePath} from '../paths.js';
 
@@ -181,8 +190,18 @@ const collectMissingReferences = (): string[] => {
       if (!template.includes(`/${slug}`)) missing.push(`${tool}: /${slug}`);
     }
 
+    // `matchesInvocation`, not a bare `includes('gaia ' + command)`: the
+    // substring test requires a space immediately after the binary name, so a
+    // template invoking a declared command through a quoted, release-resolved
+    // path (`"$LATEST_DIR/.gaia/cli/gaia" wiki sync land`) satisfies the
+    // contract in fact and fails it in the check. That false red misdirects
+    // rather than merely annoying: it reports a reference as dropped from a
+    // template that still invokes it, and the natural repair is to edit
+    // working code to appease the checker. `#1037` fixed the same assumption
+    // in `command-reachability.test.ts`, and the invocation form that broke it
+    // there is a frozen contract in this repository.
     for (const command of contract.cli) {
-      if (!template.includes(`gaia ${command}`)) {
+      if (!matchesInvocation(command, template)) {
         missing.push(`${tool}: gaia ${command}`);
       }
     }
@@ -246,9 +265,44 @@ describe('gaia-ci-* template reference drift-guard', () => {
   test.skipIf(!ready)(
     'every declared skill and CLI reference appears in its template',
     () => {
+      // The CLI half of this check must be able to return false, else the
+      // assertion below passes vacuously. `collectMissingReferences` reads
+      // from disk with no injection point, so the control exercises its
+      // matcher against a real template directly.
+      const anyTemplate = readFileSync(templatePathFor('wiki'), 'utf8');
+
+      expect(matchesInvocation('zzz fabricated-command', anyTemplate)).toBe(
+        false
+      );
+
       expect(collectMissingReferences()).toEqual([]);
     }
   );
+
+  // No `skipIf`: the declared commands are a literal in this file and the
+  // haystack is synthesized, so this needs no template on disk.
+  test('every declared CLI command survives a quoted binary path', () => {
+    // Scoped to what this file owns: that the commands THIS contract declares
+    // are matchable in the quoted form, whatever shape a later entry takes.
+    // The matcher's own quoted-vs-unquoted behavior is asserted generically in
+    // `util/gaia-invocation-matcher.test.ts` and is not re-derived here; the
+    // rationale for admitting the quote is argued above the CLI loop in
+    // `collectMissingReferences`.
+    const declared = Object.values(TEMPLATE_CONTRACT).flatMap(
+      (contract) => contract.cli
+    );
+
+    expect(declared.length).toBeGreaterThan(0);
+
+    for (const command of declared) {
+      expect(
+        matchesInvocation(
+          command,
+          `      - run: "$LATEST_DIR/.gaia/cli/gaia" ${command} --json`
+        )
+      ).toBe(true);
+    }
+  });
 
   test.skipIf(!ready)(
     'every declared skill directory and CLI command still exists',
