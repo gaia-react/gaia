@@ -116,11 +116,13 @@ const parseFlags = (argv: readonly string[]): FlagParseResult => {
  * serves only as the fallback for a working directory outside any
  * repository.
  */
+/* eslint-disable no-template-curly-in-string -- literal shell `${ }` syntax, not JS interpolation */
 const STATUSLINE_BLOCK = {
   command:
     'bash "$(git rev-parse --show-toplevel 2>/dev/null || printf %s "${CLAUDE_PROJECT_DIR:-.}")/.gaia/statusline/gaia-statusline.sh"',
   type: 'command',
 } as const;
+/* eslint-enable no-template-curly-in-string */
 
 /**
  * Insert a single key into an object at the alphabetically-correct

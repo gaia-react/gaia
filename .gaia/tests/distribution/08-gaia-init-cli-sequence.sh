@@ -176,6 +176,8 @@ SETTINGS="$SCAFFOLD/.claude/settings.json"
 # parse failure here points at the merge logic, not a torn write.
 node -e "JSON.parse(require('node:fs').readFileSync('$SETTINGS','utf8'))" 2>/dev/null \
   || { fail "wire-statusline produced invalid JSON in .claude/settings.json"; exit 1; }
+# shellcheck disable=SC2016 # the literal `$(git rev-parse ...)` IS the registered
+# command being asserted; expanding it here would assert the wrong thing.
 grep -q '"command": "bash \\"$(git rev-parse --show-toplevel' "$SETTINGS" \
   || { fail "wire-statusline did not insert canonical statusline command"; exit 1; }
 grep -q '"statusLine":' "$SETTINGS" \

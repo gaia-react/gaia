@@ -23,6 +23,16 @@ type Sandbox = {
   root: string;
 };
 
+/*
+ * The rooted statusline command wire-statusline registers, spelled out here
+ * rather than imported from the module under test: pinning it independently
+ * is the point, so a change to the registered command fails these tests.
+ */
+/* eslint-disable no-template-curly-in-string -- literal shell `${ }` syntax, not JS interpolation */
+const CANONICAL_STATUSLINE_COMMAND =
+  'bash "$(git rev-parse --show-toplevel 2>/dev/null || printf %s "${CLAUDE_PROJECT_DIR:-.}")/.gaia/statusline/gaia-statusline.sh"';
+/* eslint-enable no-template-curly-in-string */
+
 const FIXTURE_SETTINGS = {
   env: {EXAMPLE: '1'},
   permissions: {
@@ -95,7 +105,7 @@ describe('mergeStatusline', () => {
     // env < permissions < statusLine alphabetically.
     expect(keys).toEqual(['env', 'permissions', 'statusLine']);
     expect(merged.statusLine).toEqual({
-      command: 'bash "$(git rev-parse --show-toplevel 2>/dev/null || printf %s "${CLAUDE_PROJECT_DIR:-.}")/.gaia/statusline/gaia-statusline.sh"',
+      command: CANONICAL_STATUSLINE_COMMAND,
       type: 'command',
     });
   });
@@ -104,7 +114,7 @@ describe('mergeStatusline', () => {
     const source = {
       env: {},
       statusLine: {
-        command: 'bash "$(git rev-parse --show-toplevel 2>/dev/null || printf %s "${CLAUDE_PROJECT_DIR:-.}")/.gaia/statusline/gaia-statusline.sh"',
+        command: CANONICAL_STATUSLINE_COMMAND,
         type: 'command',
       },
     };
@@ -118,7 +128,7 @@ describe('mergeStatusline', () => {
       statusLine: {command: 'bash other.sh', type: 'command'},
     });
     expect(merged.statusLine).toEqual({
-      command: 'bash "$(git rev-parse --show-toplevel 2>/dev/null || printf %s "${CLAUDE_PROJECT_DIR:-.}")/.gaia/statusline/gaia-statusline.sh"',
+      command: CANONICAL_STATUSLINE_COMMAND,
       type: 'command',
     });
   });
@@ -157,7 +167,7 @@ describe('init wire-statusline CLI', () => {
         env: {EXAMPLE: '1'},
         permissions: {allow: ['Bash(pnpm test:ci)'], deny: []},
         statusLine: {
-          command: 'bash "$(git rev-parse --show-toplevel 2>/dev/null || printf %s "${CLAUDE_PROJECT_DIR:-.}")/.gaia/statusline/gaia-statusline.sh"',
+          command: CANONICAL_STATUSLINE_COMMAND,
           type: 'command',
         },
       },
@@ -184,9 +194,7 @@ describe('init wire-statusline CLI', () => {
     const parsed = JSON.parse(readFileSync(target, 'utf8')) as {
       statusLine?: {command?: string};
     };
-    expect(parsed.statusLine?.command).toBe(
-      'bash "$(git rev-parse --show-toplevel 2>/dev/null || printf %s "${CLAUDE_PROJECT_DIR:-.}")/.gaia/statusline/gaia-statusline.sh"'
-    );
+    expect(parsed.statusLine?.command).toBe(CANONICAL_STATUSLINE_COMMAND);
   });
 
   test('--mode skip records state without touching settings', () => {
