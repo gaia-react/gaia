@@ -4,7 +4,7 @@ Do not `cd` in Bash tool calls. Use absolute paths for every command.
 
 ## Why
 
-`.claude/settings.json` registers Stop and PreToolUse hooks with **relative** command paths (e.g. `.claude/hooks/wiki-session-stop.sh`). They resolve from the shell's current directory. A single `cd` inside a Bash call persists for the rest of the session and makes every relative-path hook fail with `No such file or directory` until the shell returns to the repo root.
+`.claude/settings.json` roots every hook registration at the current tree, so a hook command resolves independently of the shell's working directory, and `.gaia/scripts/check-hook-command-rooting.sh` holds it to that. What a `cd` still moves is every *other* relative path: the working directory it sets persists for the rest of the session, so a later command written against the repo root resolves somewhere else.
 
 ## How to apply
 

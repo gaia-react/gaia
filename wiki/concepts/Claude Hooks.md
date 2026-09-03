@@ -36,11 +36,23 @@ Hooks are grouped by the safeguard they enforce, not by event type.
 
 **Payload `cwd` is per-agent, measured not documented.** `block-worktree-path-mismatch.sh` derives both roots it compares, the main checkout's and the calling agent's, from the PreToolUse payload's `cwd` field when present and usable, falling back to the hook process's own working directory otherwise. The pair always comes from one source rather than a mix, and a payload `cwd` naming an unrelated repository is refused whenever the process cwd resolves to a checkout that contradicts it. Deriving either root from the process cwd alone leaves the guard inert whenever that cwd sits outside the repository, and an inert guard here allows rather than denies. The payload `cwd` is honored only when it is also absolute (a leading slash), established once before any downstream consumer reads it: the value ultimately reaches a bare `cd`, which option-parses a leading dash (`-P`, `-L`, `-e`, or a bare `-`) instead of treating it as a path, so a non-absolute value could otherwise resolve to `$HOME` or `$OLDPWD` and pass the same-repo check spuriously. A relative or absent payload `cwd` falls back to the process cwd. Measured on Claude Code 2.1.215 by instrumenting the guard to record its process cwd, `git rev-parse --show-toplevel`, and the full PreToolUse payload across three configurations:
 
-| Configuration | hook process cwd | hook toplevel | payload `cwd` | `agent_id` |
-|---|---|---|---|---|
-| Main session, alone | main checkout | main checkout | main checkout | absent |
-| Subagent with `isolation: "worktree"` | its own worktree | its own worktree | its own worktree | present |
-| Main session write while a worktree subagent is concurrently alive | main checkout | main checkout | main checkout | absent |
+| Configuration | hook process cwd | hook toplevel | payload `cwd` | `$CLAUDE_PROJECT_DIR` | `agent_id` |
+|---|---|---|---|---|---|
+| Main session, alone | main checkout | main checkout | main checkout | main checkout | absent |
+| Subagent with `isolation: "worktree"` | its own worktree | its own worktree | its own worktree | **main checkout** | present |
+| Main session write while a worktree subagent is concurrently alive | main checkout | main checkout | main checkout | main checkout | absent |
+
+**`$CLAUDE_PROJECT_DIR` is the odd column out, and the one registration paths depend on.** Every other column is tree-scoped: a worktree session observes its own worktree in all three. `$CLAUDE_PROJECT_DIR` holds the session's original project directory and does not follow entry into a linked worktree, so in a worktree it names the main checkout while everything around it names the worktree. It is also absent from the Bash tool's own process; it is set for hook processes specifically.
+
+That asymmetry decides how `.claude/settings.json` spells a hook command. Each one is rooted at the tree it belongs to:
+
+```
+"$(git rev-parse --show-toplevel 2>/dev/null || printf %s "${CLAUDE_PROJECT_DIR:-.}")/.claude/hooks/<name>.sh"
+```
+
+A bare relative path resolves against the Bash tool's working directory, which persists for the whole session, so a single `cd` leaves every script unfindable; `/bin/sh` then exits 127, which is neither 0 nor 2 and therefore does not block, and the guard layer fails open while every tool call proceeds. Rooting at `git rev-parse --show-toplevel` resolves to the current tree at any depth inside the repository, which keeps a worktree session on its own hooks. Prefixing with `$CLAUDE_PROJECT_DIR` instead would send a worktree session to the main checkout's copies, the same resolve-from-main shape the agent registry has. The variable earns its place only as the fallback for a working directory outside any repository, and the trailing `.` behind it is what keeps the worst case equal to a bare relative path rather than worse than one. `.gaia/scripts/check-hook-command-rooting.sh` holds the file to this shape.
+
+Nothing at the registration site fails closed, because the failure being guarded against is a missing script and a missing script exits 127. The check reads the file, so it catches an unrooted registration there; a root that fails to resolve at runtime is outside what any registration-site spelling can reach.
 
 The third row is the contested case: the working directory is per-agent, not shared. The subagent's hook observes its own worktree while the parent's hook simultaneously observes the main checkout. Two facts close off the obvious alternatives: `session_id` is shared between a parent and its subagents (both report the same identifier, so nothing keyed on `session_id` can distinguish them), and `WorktreeCreate` fires under the dispatching session's `session_id` with no agent discriminator (its key set is `session_id, transcript_path, cwd, prompt_id, hook_event_name, name`, no `agent_id`, no `agent_type`).
 
