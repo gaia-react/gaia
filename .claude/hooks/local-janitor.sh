@@ -221,9 +221,9 @@
 #      registry. The sweep never recurses below maxdepth-1 -- the three
 #      zones it walks never include telemetry/, red-ledger/, handoff/,
 #      plans/, specs/, debt/, forensics/, or harden/ -- and
-#      never follows a symlinked scope root from a linked worktree. Three
-#      off-pattern writers still get their own dedicated reap arms
-#      elsewhere, unrelated to this sweep's registry consultation:
+#      never follows a symlinked scope root from a linked worktree. The
+#      off-pattern writers named below still get their own dedicated reap
+#      arms elsewhere, unrelated to this sweep's registry consultation:
 #      audit/*.findings.json and audit/*.scope.json attached to sweep #2,
 #      sharing one knob because they share one lifetime, per round per member
 #      (GAIA_AUDIT_FINDINGS_RETENTION_HOURS, default 72, floor 24),
