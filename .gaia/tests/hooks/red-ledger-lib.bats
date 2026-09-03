@@ -12,10 +12,11 @@
 
 setup() {
   REPO_ROOT=$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)
-  # This suite runs the Node signal helper, which resolves `typescript` from
-  # node_modules; skip where deps aren't installed (e.g. the lean
-  # audit-ci-tests CI box) so this suite's shard stays green there.
-  [ -d "$REPO_ROOT/node_modules/typescript" ] || skip "typescript not installed (node-dependent RED suite)"
+  # The Node helpers this suite drives resolve `typescript` from node_modules.
+  # The gate fails rather than skips on a CI runner, where the dependency is a
+  # precondition the job installs; see the helper for why.
+  . "$BATS_TEST_DIRNAME/helpers/require-node-typescript.sh"
+  require_node_typescript "$REPO_ROOT"
   HELPER="$REPO_ROOT/.gaia/scripts/red-ledger/extract-test-signals.mjs"
   LIB="$REPO_ROOT/.claude/hooks/lib/red-ledger.sh"
 
@@ -427,6 +428,51 @@ run_lib() {
   true
 }
 
+# --- the dependency gate itself ---
+
+# The one test in this file that asserts about the gate rather than through it.
+# Every other test here is gated by setup(), so weakening
+# require_node_typescript back to a bare `skip` would retire all of them in
+# silence -- `ok ... # skip` greens a leg having asserted nothing, which is the
+# defect (gaia-react/gaia#1748) this gate was written to end. This test is what
+# makes that weakening red.
+#
+# It cannot escape its own setup(), which calls the gate before any test body
+# runs. That is the same shape `require_repo_path` takes in
+# .gaia/scripts/tests/retrigger-reachability.bats, and its comment states the
+# reading this inherits: "what the test catches is the weakening, not the
+# condition." The condition is covered by the other half of the fix instead --
+# the workflow now installs the dependency on this suite's leg, so on CI
+# setup() passes and this test runs.
+@test "the typescript gate fails on a CI runner and still skips off CI" {
+  # A directory that provably lacks the dependency, rather than one that
+  # happens to: pointing the gate at a real root would make this test's result
+  # depend on whether the machine running it had installed deps.
+  local bare="$BATS_TEST_TMPDIR/no-typescript"
+  mkdir -p "$bare/node_modules"
+  local rc
+
+  # Calling the gate in a subshell is what keeps its `skip` arm from marking
+  # THIS test skipped: bats' `skip` exits 0, so the subshell's status is
+  # exactly the discriminator wanted here -- non-zero is the CI failure arm, 0
+  # is the off-CI skip arm.
+  # `export` rather than a bare assignment: the gate reads GITHUB_ACTIONS out
+  # of the environment, which is the "used externally" case SC2034 asks for.
+  rc=0
+  ( export GITHUB_ACTIONS=true; require_node_typescript "$bare" ) >/dev/null 2>&1 || rc=$?
+  [ "$rc" -ne 0 ] || {
+    echo "the gate skipped on a CI runner with no typescript; five suites would report green" >&2
+    return 1
+  }
+
+  rc=0
+  ( unset GITHUB_ACTIONS; require_node_typescript "$bare" ) >/dev/null 2>&1 || rc=$?
+  [ "$rc" -eq 0 ] || {
+    echo "the gate failed off CI, where a missing dependency must still skip" >&2
+    return 1
+  }
+}
+
 # --- signal helper: corpus standing check over the union glob set ---
 
 @test "the helper over the whole union glob set has no duplicate signal per file, and pins its file/record counts" {
@@ -456,9 +502,12 @@ run_lib() {
     '.playwright/**/*.test.ts' '.playwright/**/*.test.tsx')
 
   # Refresh both by re-running the git ls-files command above and summing the
-  # helper's output line count across the result.
+  # helper's output line count across the result. Re-derive rather than
+  # adjusting the old number by the diff's test count: the two cardinals move
+  # independently, and #1748 was a `record_count` that drifted while
+  # `file_count` stayed put.
   [ "$file_count" -eq 32 ]
-  [ "$record_count" -eq 134 ]
+  [ "$record_count" -eq 135 ]
 
   local bad_signal
   bad_signal=$(jq -r '.signal' "$corpus" | grep -vE '^sha256:[0-9a-f]{64}$' || true)

@@ -29,10 +29,11 @@
 setup() {
   . "$BATS_TEST_DIRNAME/helpers/run-hook.sh"
   HOME_ROOT=$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)
-  # Both hooks recompute RED signals via the Node helper, which resolves
-  # `typescript` from node_modules; skip where deps aren't installed (e.g. the
-  # lean audit-ci-tests CI box) so this suite's shard stays green there.
-  [ -d "$HOME_ROOT/node_modules/typescript" ] || skip "typescript not installed (node-dependent RED suite)"
+  # The Node helpers this suite drives resolve `typescript` from node_modules.
+  # The gate fails rather than skips on a CI runner, where the dependency is a
+  # precondition the job installs; see the helper for why.
+  . "$BATS_TEST_DIRNAME/helpers/require-node-typescript.sh"
+  require_node_typescript "$HOME_ROOT"
   CAPTURE_HOOK="$HOME_ROOT/.claude/hooks/capture-red-observations.sh"
   CHECK_HOOK="$HOME_ROOT/.claude/hooks/red-verify-commit-check.sh"
   BARE_TEST_HOOK="$HOME_ROOT/.claude/hooks/block-bare-test.sh"
