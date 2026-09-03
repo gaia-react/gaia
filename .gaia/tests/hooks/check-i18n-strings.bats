@@ -162,6 +162,6 @@ run_hook_edit() {
 }
 
 @test "settings.json registers the hook under the Edit|Write|MultiEdit matcher" {
-  run jq -e '.hooks.PreToolUse[] | select(.matcher == "Edit|Write|MultiEdit") | .hooks[] | select(.command | contains(".claude/hooks/check-i18n-strings.sh"))' "$SETTINGS_ABS"
+  run jq -e '.hooks.PreToolUse[] | select(.matcher == "Edit|Write|MultiEdit") | .hooks[] | select(.command | endswith("/.claude/hooks/check-i18n-strings.sh\""))' "$SETTINGS_ABS"
   [ "$status" -eq 0 ]
 }

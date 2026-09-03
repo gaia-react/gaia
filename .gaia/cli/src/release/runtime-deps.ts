@@ -152,6 +152,13 @@ const PATH_PREFIXES = ['.gaia/', '.claude/', '.specify/', '.github/'] as const;
  *     directory, `$HOME/.claude/projects`, referenced by
  *     `token-tally-review.sh`. It lives outside the repo on every machine and
  *     structurally can never have a manifest entry.
+ *   - `.claude/settings.local.json`: Claude Code's own per-machine settings
+ *     layer, gitignored on both sides, so it structurally can never have a
+ *     manifest entry. `check-hook-command-rooting.sh` tests it with `[ -f ]`
+ *     and names it in the note it prints when it is present, to say which
+ *     registration surface the check does NOT cover. Absent on an adopter
+ *     clone the test is simply false and the note never prints, so the
+ *     reference resolves to a benign absent branch rather than a dependency.
  *   - `.claude/shell-snapshots`: Claude Code's own per-Bash-call snapshot
  *     wrapper directory, referenced inside `SNAPSHOT_WRAPPER_PATTERN`, a
  *     regex literal in `spec-session-lock.sh` that MATCHES/REJECTS the
@@ -160,6 +167,7 @@ const PATH_PREFIXES = ['.gaia/', '.claude/', '.specify/', '.github/'] as const;
  */
 const PROSE_PATH_ALLOWLIST: ReadonlySet<string> = new Set([
   '.claude/projects',
+  '.claude/settings.local.json',
   '.claude/shell-snapshots',
   '.github/workflows',
   '.github/workflows/code-review-audit.yml',

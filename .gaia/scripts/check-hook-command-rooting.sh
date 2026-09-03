@@ -22,6 +22,13 @@
 # of the class that lives in the file; a root that fails to resolve at
 # RUNTIME is a residual this check cannot reach and does not claim to.
 #
+# The OTHER declared residual is the registration layer this check does not
+# read. Claude Code merges hooks from .claude/settings.local.json, which is
+# gitignored and per-machine, so it cannot be held to a tracked invariant and
+# is deliberately out of the set. That layer fails open in exactly the way
+# gaia-react/gaia#1740 describes, so the verdict below names the file it read
+# rather than claiming every registered command on the machine.
+#
 # WHAT COUNTS AS ROOTED. Two shapes, and the test is a property rather than
 # a spelling, so a future registration that reaches its root another way is
 # not forced to match a literal:
@@ -170,7 +177,14 @@ EOF
   fi
 
   if [ "$rc" -eq 0 ]; then
-    printf 'settings.json hook commands: every registered command resolves independently of cwd (%s checked)\n' "$count"
+    # The verdict names the file it read. Claude Code also runs hooks registered
+    # in .claude/settings.local.json, which is gitignored, per-machine, and NOT
+    # in this set, so an unqualified "every registered command" would claim a
+    # surface this check never opened.
+    printf '.claude/settings.json hook commands: every command registered there resolves independently of cwd (%s checked)\n' "$count"
+    if [ -f "$repo_root/.claude/settings.local.json" ]; then
+      printf 'check-hook-command-rooting: note: .claude/settings.local.json also registers hooks and is NOT covered by this check.\n'
+    fi
   fi
   return $rc
 }
