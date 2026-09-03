@@ -29,8 +29,11 @@
 #   1. every `.claude/` and `.gaia/` occurrence is preceded by `/`, which is
 #      what makes it a suffix of some root rather than a path in its own
 #      right, and
-#   2. the command contains no `../` traversal, since `x/../.claude/...`
-#      satisfies rule 1 while still resolving against the current directory.
+#   2. the command contains no `./` or `../` path segment. Both satisfy rule 1
+#      while still resolving against the current directory: in `./.claude/...`
+#      and `x/../.claude/...` the `.claude` IS preceded by `/`, so rule 1 alone
+#      passes a command that is relative anyway. Rule 2 is the reason the two
+#      rules are separate rather than one pattern.
 #
 # The sanctioned prefix in this repo is
 #   "$(git rev-parse --show-toplevel 2>/dev/null || printf %s "${CLAUDE_PROJECT_DIR:-.}")/"
@@ -91,8 +94,11 @@ gaia_check_hook_command_rooting() {
       rc=1
       continue
     fi
-    # Rule 2: a traversal satisfies rule 1 and still resolves relatively.
-    if printf '%s' "$cmd" | grep -qF -- '../'; then
+    # Rule 2: a `.` or `..` segment satisfies rule 1 and still resolves
+    # relatively. Matching `./` covers `../` as its suffix, so one pattern
+    # closes both. The sanctioned prefix carries no such segment: its only
+    # bare dot is the `:-.}` fallback, which is followed by `}`, not `/`.
+    if printf '%s' "$cmd" | grep -qF -- './'; then
       printf 'UNROOTED: %s\n' "$cmd"
       rc=1
     fi

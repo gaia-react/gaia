@@ -93,6 +93,25 @@ fixture_with() {
   grep -qF -- "gaia-statusline.sh" <<<"$output"
 }
 
+# Rule 1 alone passes both of these: the `.claude` in `./.claude/...` and in
+# `x/../.claude/...` IS preceded by `/`. They are still relative, which is why
+# the check carries a second rule rather than one pattern.
+@test "a ./ prefixed command is caught even though its path follows a slash" {
+  local root
+  root="$(fixture_with '["./.claude/hooks/block-rm-rf.sh"]')"
+  run gaia_check_hook_command_rooting "$root"
+  [ "$status" -ne 0 ]
+  grep -qF -- "block-rm-rf.sh" <<<"$output"
+}
+
+@test "a .. traversal is caught even though its path follows a slash" {
+  local root
+  root="$(fixture_with '["x/../.claude/hooks/block-rm-rf.sh"]')"
+  run gaia_check_hook_command_rooting "$root"
+  [ "$status" -ne 0 ]
+  grep -qF -- "block-rm-rf.sh" <<<"$output"
+}
+
 @test "one unrooted command among rooted ones is still caught" {
   local root
   root="$(fixture_with '["\"$(git rev-parse --show-toplevel)/.claude/hooks/a.sh\"", ".claude/hooks/b.sh", "/abs/.claude/hooks/c.sh"]')"
