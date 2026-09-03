@@ -241,9 +241,13 @@ auditors:
       # fail pairwise claimant disjointness rather than merely reach something
       # inert. The rest of the root -- `README.md`, the `test/` evidence notes,
       # and `extension.yml` -- is inert and stays declared in `unowned:` below.
-      # A new directory under that root, or under `.github/forensics/`, is
-      # therefore reported ownerless rather than inheriting an exemption nobody
-      # decided to give it.
+      # A new directory under `.github/forensics/` is therefore reported
+      # ownerless rather than inheriting an exemption nobody decided to give it.
+      # Under `.specify/extensions/gaia/` that guarantee covers Markdown only:
+      # the `unowned:` entries `**/*.yml` and `**/*.tmpl` below match at any
+      # depth, so a declarative file in a new directory there stays exempt
+      # without anyone deciding it should. Narrowing those two is a larger
+      # change than this one and is deliberately not made here.
       #
       # Every entry here is extension-qualified for a second reason: this member
       # is advisory-only and never grades a finding Critical, so a whole-subtree
