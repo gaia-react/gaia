@@ -40,6 +40,13 @@
 #      .gaia/release-exclude, .claude/settings.json, .github/CODEOWNERS)
 #   .claude/agents/*/**                            -> code-audit-maintainer-prose
 #     (the Code Audit Team's own review lenses, which dispatched nobody)
+#   GAIA's executable prose                        -> code-audit-maintainer-prose
+#     (.claude/commands/**, .claude/instructions/**,
+#      .claude/agents/worthiness-evaluator.md, .gaia/cli/health/**/*.md,
+#      the two .github/forensics/ prompts, .specify/presets/**/*.md, and the
+#      commands/ rules/ templates/ directories under
+#      .specify/extensions/gaia/ -- instructions a language model runs,
+#      as against the inert prose and fixture corpora beside them)
 #
 # This is stable and does not rot: the test iterates FIXTURE ROWS, so a file
 # added to the repo later neither breaks it nor silently escapes it. It is a
@@ -107,6 +114,8 @@ setup() {
     elif [ "$before" = "-" ] && [[ "$path" =~ ^(\.gaia/[^/]*\.(yml|json)|\.gaia/scripts/token-rates\.json|\.gaia/release-exclude|\.claude/settings\.json|\.github/CODEOWNERS)$ ]]; then
       expected="code-audit-maintainer-shell"
     elif [ "$before" = "-" ] && [[ "$path" =~ ^\.claude/agents/[^/]+/ ]]; then
+      expected="code-audit-maintainer-prose"
+    elif [ "$before" = "-" ] && [[ "$path" =~ ^(\.claude/(commands|instructions)/|\.claude/agents/worthiness-evaluator\.md$|\.gaia/cli/health/.*\.md$|\.github/forensics/(prompt|apply-fix-prompt)\.md$|\.specify/extensions/gaia/(commands|rules|templates)/[^/]*\.md$|\.specify/presets/.*\.md$) ]]; then
       expected="code-audit-maintainer-prose"
     else
       expected="$before"
