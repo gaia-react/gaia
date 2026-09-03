@@ -234,11 +234,16 @@ auditors:
       # reviewer rather than an exemption.
       #
       # Under `.specify/extensions/gaia/`, `commands`, `rules` and `templates`
-      # are named rather than taken as whole subtrees because their siblings are
-      # inert: a README, test evidence, and the forensics fixture corpus are
-      # declared in `unowned:` below. A new directory under that root, or under
-      # `.github/forensics/`, is therefore reported ownerless rather than
-      # inheriting an exemption nobody decided to give it.
+      # are named rather than taken as a whole subtree because that root's other
+      # entries are not uniformly exemptible. `lib/` is the binding one: it holds
+      # shell the shell member already claims through
+      # `.specify/extensions/gaia/lib/*.sh`, so a whole-subtree glob here would
+      # fail pairwise claimant disjointness rather than merely reach something
+      # inert. The rest of the root -- `README.md`, the `test/` evidence notes,
+      # and `extension.yml` -- is inert and stays declared in `unowned:` below.
+      # A new directory under that root, or under `.github/forensics/`, is
+      # therefore reported ownerless rather than inheriting an exemption nobody
+      # decided to give it.
       #
       # Every entry here is extension-qualified for a second reason: this member
       # is advisory-only and never grades a finding Critical, so a whole-subtree
