@@ -26,10 +26,11 @@
 setup() {
   . "$BATS_TEST_DIRNAME/helpers/run-hook.sh"
   REPO_ROOT=$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)
-  # The hook recomputes RED signals via the Node helper, which resolves
-  # `typescript` from node_modules; skip where deps aren't installed (e.g. the
-  # lean audit-ci-tests CI box) so this suite's shard stays green there.
-  [ -d "$REPO_ROOT/node_modules/typescript" ] || skip "typescript not installed (node-dependent RED suite)"
+  # The Node helpers this suite drives resolve `typescript` from node_modules.
+  # The gate fails rather than skips on a CI runner, where the dependency is a
+  # precondition the job installs; see the helper for why.
+  . "$BATS_TEST_DIRNAME/helpers/require-node-typescript.sh"
+  require_node_typescript "$REPO_ROOT"
   HOOK="$REPO_ROOT/.claude/hooks/capture-red-observations.sh"
   FIX_REL=".gaia/tests/hooks/fixtures/red-ledger"
   JSON_REL="$FIX_REL/json"

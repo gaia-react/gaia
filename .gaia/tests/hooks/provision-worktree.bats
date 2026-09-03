@@ -686,20 +686,34 @@ SH
   stub_typegen
   WT="$(add_worktree feat-nopnpm)"
 
-  # Strip only the directory the resolved `pnpm` binary lives in, leaving
-  # every other tool the hook needs (bash, git, jq, coreutils) resolvable --
-  # a curated allowlist would have to name every tool the hook and its
-  # libraries call and rot the moment one more is added. When pnpm is already
-  # absent (as it is at this point in CI, before the dependency-install
-  # steps later in the job), stripping is a no-op and the case is already
-  # naturally in effect.
-  pnpm_path="$(command -v pnpm 2>/dev/null)" || pnpm_path=""
-  filtered_path="$PATH"
-  if [ -n "$pnpm_path" ]; then
-    pnpm_dir="$(dirname "$pnpm_path")"
-    filtered_path="${filtered_path//"$pnpm_dir":/}"
-    filtered_path="${filtered_path%:"$pnpm_dir"}"
-  fi
+  # Strip EVERY directory providing a `pnpm`, leaving every other tool the
+  # hook needs (bash, git, jq, coreutils) resolvable -- a curated allowlist
+  # would have to name every tool the hook and its libraries call and rot the
+  # moment one more is added.
+  #
+  # Every such directory, not just the one `command -v` resolves first: a leg
+  # that has run pnpm/action-setup can carry pnpm in more than one directory,
+  # and removing only the first leaves the hook able to find it, so the case
+  # this test is named for never arises and the assertion below fails on a
+  # green hook. Rebuilding the list is also what makes the single-entry and
+  # first-entry positions fall out for free, where a substitution has to spell
+  # each position separately.
+  #
+  # This used to strip one directory and read the residue as safe, on the
+  # stated ground that CI reaches here with no pnpm at all. That ground is
+  # gone: the Node install for the node-dependent RED suites runs on this leg,
+  # ahead of the bats step. A test must not depend on a tool being absent from
+  # the environment by accident.
+  filtered_path=""
+  path_dirs=()
+  while IFS= read -r path_dir; do
+    path_dirs+=("$path_dir")
+  done <<<"${PATH//:/$'\n'}"
+  for path_dir in ${path_dirs[@]+"${path_dirs[@]}"}; do
+    [ -n "$path_dir" ] || continue
+    [ -x "$path_dir/pnpm" ] && continue
+    filtered_path="${filtered_path:+$filtered_path:}$path_dir"
+  done
 
   PATH="$filtered_path" run bash "$HOOK_ABS" "$WT"
   [ "$status" -eq 0 ]
