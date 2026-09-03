@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck shell=bash
 #
-# Hook-command rooting check for .claude/settings.json (#1740).
+# Hook-command rooting check for .claude/settings.json (gaia-react/gaia#1740).
 #
 # Every hook is registered as a command string, and /bin/sh runs that
 # string against the Bash tool's current working directory, which persists

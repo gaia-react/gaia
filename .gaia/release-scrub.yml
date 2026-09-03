@@ -99,12 +99,17 @@ transforms:
   # selector empties the matching element from each PreToolUse entry's hooks
   # array; a stale selector that matches nothing is a no-op. An emptied hooks[]
   # stays as [] (its matcher entry is not collapsed): well-formed and harmless.
+  # The match is strict equality, so this carries the registration VERBATIM,
+  # rooted exactly as .claude/settings.json spells it. That coupling is what
+  # makes a re-spelling of the root silently disarm this selector, and the
+  # backstop is 01-files-present.sh, which asserts this hook is absent from the
+  # staged settings.json and fails the distribution harness when it is not.
   - type: json-strip-array-element
     paths:
       - ".claude/settings.json"
     selectors:
       - path: "hooks.PreToolUse[].hooks[]"
-        match: {command: ".claude/hooks/distribution-preflight-check.sh"}
+        match: {command: '"$(git rev-parse --show-toplevel 2>/dev/null || printf %s "${CLAUDE_PROJECT_DIR:-.}")/.claude/hooks/distribution-preflight-check.sh"'}
 
   # .gaia/hook-capabilities.json's own maintainer-only row, alongside the
   # settings.json strip above. distribution-preflight-check.sh is
