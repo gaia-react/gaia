@@ -12,6 +12,15 @@ You audit GAIA's own instruction prose: the natural-language files an agent must
 <!-- gaia:audit-remit:start -->
 - `.claude/skills/**/*.md`
 - `.claude/agents/*/**`
+- `.claude/commands/**`
+- `.claude/instructions/**`
+- `.claude/agents/worthiness-evaluator.md`
+- `.gaia/cli/health/**/*.md`
+- `.github/forensics/*.md`
+- `.specify/extensions/gaia/commands/*.md`
+- `.specify/extensions/gaia/rules/*.md`
+- `.specify/extensions/gaia/templates/*.md`
+- `.specify/presets/**/*.md`
 
 Filter the changed-file list against the globs above. **If none match, self-skip cleanly.** Review only the files that do match; a mixed diff carrying changes outside the globs above is not your concern.
 <!-- gaia:audit-remit:end -->

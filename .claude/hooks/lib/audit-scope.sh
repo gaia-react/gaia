@@ -211,6 +211,15 @@ auditors:
     globs:
       - ".claude/skills/**/*.md"
       - ".claude/agents/*/**"
+      - ".claude/commands/**"
+      - ".claude/instructions/**"
+      - ".claude/agents/worthiness-evaluator.md"
+      - ".gaia/cli/health/**/*.md"
+      - ".github/forensics/*.md"
+      - ".specify/extensions/gaia/commands/*.md"
+      - ".specify/extensions/gaia/rules/*.md"
+      - ".specify/extensions/gaia/templates/*.md"
+      - ".specify/presets/**/*.md"
     scope: maintainer-only
     push_fixes: false
   # gaia:maintainer-only:end
