@@ -75,12 +75,7 @@
       "Edit(.gaia/local/audit/*.ok)",
       "Edit(.gaia/local/audit/*.refused)",
       "Edit(.husky/_/**)",
-      "Edit(pnpm-lock.yaml)",
-      "Read(**/*.key)",
-      "Read(**/*.pem)",
-      "Read(**/*credential*)",
-      "Read(**/secrets/*)",
-      "Read(.env)"
+      "Edit(pnpm-lock.yaml)"
     ]
   },
   "hooks": {
@@ -291,6 +286,11 @@
           },
           {
             "type": "command",
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/block-secrets-read.sh\"",
+            "statusMessage": "Checking secret-path read guard…"
+          },
+          {
+            "type": "command",
             "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/block-spec-plan-chain.sh\"",
             "statusMessage": "Checking spec→plan chain guard…"
           }
@@ -302,6 +302,10 @@
           {
             "type": "command",
             "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/block-env-read.sh\""
+          },
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/block-secrets-read.sh\""
           },
           {
             "type": "command",

@@ -2,15 +2,19 @@
 
 # Tests for .claude/hooks/block-env-read.sh.
 #
-# Read(.env) in settings.json already enforces against the Read tool and the
-# Bash file commands Claude Code recognizes (cat/head/tail/sed) targeting a
-# file literally named .env, at any depth. This hook closes the residual
-# gaps that rule leaves open: variant dotenv files (.env.local, .env.*, not
-# .env.example) unmatched by Read(.env); Bash sourcing, redirection, and
-# non-recognized readers against a dotenv path; and bare environment dumps
-# (env/printenv/...) that read the shell environment rather than a file. The
-# guard is heuristic defense-in-depth, not a sandbox: it always exits 0,
-# carrying the allow/deny decision in stdout JSON.
+# This hook is the WHOLE read-side guard for dotenv paths: settings.json carries
+# no Read() deny rule behind it. It covers the Read tool and the Bash readers
+# (including the grep family) against .env and every variant (.env.local,
+# .env.*, not .env.example); sourcing; redirection; `env FOO=1 <reader>`; and
+# bare environment dumps (env/printenv/...) that read the shell environment
+# rather than a file. The guard is heuristic defense-in-depth, not a sandbox: it
+# always exits 0, carrying the allow/deny decision in stdout JSON.
+#
+# The settings.json assertions at the bottom pin the absence of every Read()
+# deny rule. That absence is load-bearing rather than incidental: a single
+# Read() rule re-arms Claude Code's bypass-immune deniedPathInsideDirectory
+# circuit breaker, which forces a manual approval prompt on every recursive
+# search or copy in the tree.
 
 # shellcheck disable=SC2317
 # SC2317 (command appears unreachable) is a structural false positive on every
@@ -192,6 +196,59 @@ run_write_hook_edit() {
   assert_allowed_by_json
 }
 
+# --- Bash denies: the grep family, which needs argument grammar ---
+
+@test "grep SECRET .env is denied" {
+  run_hook_bash "grep SECRET .env"
+  assert_denied_by_json
+}
+
+@test "grep -rn SECRET .env.local is denied" {
+  run_hook_bash "grep -rn SECRET .env.local"
+  assert_denied_by_json
+}
+
+@test "rg SECRET .env.production is denied" {
+  run_hook_bash "rg SECRET .env.production"
+  assert_denied_by_json
+}
+
+@test "grep -f .env foo.txt is denied (the pattern FILE is the secret)" {
+  # -f names a file of patterns, which grep opens. The value is a read even
+  # though it sits where a discarded flag value normally would.
+  run_hook_bash "grep -f .env foo.txt"
+  assert_denied_by_json
+}
+
+@test "/usr/bin/grep SECRET .env is denied (reader reached through a path)" {
+  run_hook_bash "/usr/bin/grep SECRET .env"
+  assert_denied_by_json
+}
+
+# --- Bash allows: the grep family, pattern operand not mistaken for a path ---
+
+@test "grep -e .env .gitignore is allowed (-e supplies the pattern)" {
+  run_hook_bash "grep -e .env .gitignore"
+  assert_allowed_by_json
+}
+
+@test "grep --include=*.ts SECRET app is allowed" {
+  run_hook_bash "grep --include=*.ts SECRET app"
+  assert_allowed_by_json
+}
+
+@test "grep SECRET .env.example is allowed" {
+  run_hook_bash "grep SECRET .env.example"
+  assert_allowed_by_json
+}
+
+@test "rg --ignore-file .rgignore SECRET app is allowed" {
+  # --ignore-file names a file of globs and supplies no pattern, so the
+  # positional after it is still the pattern rather than a path.
+  run_hook_bash "rg --ignore-file .rgignore SECRET app"
+  assert_allowed_by_json
+}
+
 @test "ls -la .env is allowed (non-reading)" {
   run_hook_bash "ls -la .env"
   assert_allowed_by_json
@@ -245,12 +302,20 @@ run_write_hook_edit() {
   [ "$status" -eq 0 ]
 }
 
-@test "permissions.deny still contains the exact .env backstop entries" {
-  # Read(.env) blocks reads; Edit(.env) blocks every file-writing tool (Write,
-  # Edit, MultiEdit, NotebookEdit), so a separate Write(.env) deny is redundant
-  # and is intentionally absent.
-  run jq -e '.permissions.deny | index("Read(.env)")' "$SETTINGS_ABS"
+@test "permissions.deny carries no Read() rule at all" {
+  # Not merely "no Read(.env)": ANY Read() deny rule arms the bypass-immune
+  # deniedPathInsideDirectory breaker, so the guarantee this hook is paid to
+  # provide is the empty set, and a well-meaning re-addition of any one of them
+  # silently reinstates the prompt storm this suite exists to keep away.
+  run jq -e '[.permissions.deny[] | select(startswith("Read("))] | length == 0' "$SETTINGS_ABS"
   [ "$status" -eq 0 ]
+}
+
+@test "permissions.deny keeps the write-side .env backstop" {
+  # Edit(.env) blocks every file-writing tool (Write, Edit, MultiEdit,
+  # NotebookEdit), so a separate Write(.env) deny is redundant and is
+  # intentionally absent. Only the READ half moved to the hook layer; an Edit()
+  # rule arms no read breaker and therefore costs nothing to keep.
   run jq -e '.permissions.deny | index("Edit(.env)")' "$SETTINGS_ABS"
   [ "$status" -eq 0 ]
 }

@@ -29,8 +29,10 @@
     },
     {
       "hook": ".claude/hooks/block-env-read.sh",
-      "capabilities": [],
-      "why": "Reads a Read or Bash tool call's payload to deny a command that would read a dotenv file or dump the process environment. Pure text inspection of the payload already on stdin: no file write, network call, or invocation of another script.",
+      "capabilities": [
+        "invokes:.claude/hooks/lib/reader-operands.sh"
+      ],
+      "why": "Reads a Read or Bash tool call's payload to deny a command that would read a dotenv file or dump the process environment. Sources the shared reader-operand grammar to decide which tokens in a command name a file a reader would open, which is what lets the grep family be judged without treating its pattern operand as a path. Beyond that source it is pure text inspection of the payload already on stdin: no file write and no network call.",
       "maintainer_only": false
     },
     {
@@ -89,6 +91,14 @@
         "invokes:.gaia/scripts/state-registry-lib.sh"
       ],
       "why": "Denies a dangerous `rm -rf` invocation (root, HOME, cwd, unscoped globs, `.git`, `.claude`, `node_modules`) by matching the intercepted Bash command's own text against a repo registry of safe scratch paths; it issues no filesystem command of its own. Sources main-root-lib.sh to resolve the checkout root and state-registry-lib.sh to read that safe-scratch registry from `.gaia/state-registry.json`.",
+      "maintainer_only": false
+    },
+    {
+      "hook": ".claude/hooks/block-secrets-read.sh",
+      "capabilities": [
+        "invokes:.claude/hooks/lib/reader-operands.sh"
+      ],
+      "why": "Reads a Read or Bash tool call's payload to deny a command that would read a key, certificate, or credential path. Sources the shared reader-operand grammar for the same reason its dotenv sibling does. Beyond that source it is pure text inspection of the payload already on stdin: no file write and no network call.",
       "maintainer_only": false
     },
     {

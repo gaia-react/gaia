@@ -74,6 +74,12 @@
       "why": "Already resolver-based: reads the registry's rm_whitelist (gaia_registry_rm_whitelist, itself main-anchored through state-registry-lib.sh) to carve safe-scratch directories out of its absolute-path rm -rf deny. The whitelist is a distinct top-level registry list with no entry ids of its own, so its repo-relative targets are declared as path: tokens. Declared here, not converted (already correct)."
     },
     {
+      "hook": ".claude/hooks/block-secrets-read.sh",
+      "scope": "any",
+      "state": [],
+      "why": "Pattern-matches a Bash command string and a Read payload's file_path against a path predicate; reads no file and touches no tree-scoped state."
+    },
+    {
       "hook": ".claude/hooks/block-secrets-write.sh",
       "scope": "any",
       "state": [],
@@ -330,6 +336,12 @@
       "scope": "any",
       "state": [],
       "why": "Reads the tracked .gaia/VERSION file at a path its caller supplies; derives no root of its own and touches no tree-scoped state."
+    },
+    {
+      "hook": ".claude/hooks/lib/reader-operands.sh",
+      "scope": "any",
+      "state": [],
+      "why": "A pure text function: it takes one already-split command segment as a parameter and prints the file operands a reader would open, reading no file and writing none, so there is no root to resolve and no .gaia/local state to belong to."
     },
     {
       "hook": ".claude/hooks/lib/red-ledger.sh",

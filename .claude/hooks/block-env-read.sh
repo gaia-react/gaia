@@ -1,39 +1,69 @@
 #!/usr/bin/env bash
 # PreToolUse Read + Bash hook: read-side secret guard for dotenv files.
 #
-# Read(.env) in settings.json already enforces against the Read tool and
-# against the Bash file commands Claude Code recognizes (cat, head, tail,
-# sed) targeting a file literally named .env, at any depth. This hook does
-# not re-implement that coverage.
+# This hook is the WHOLE read-side guard for dotenv paths. It carries no
+# settings.json backstop behind it, and that is deliberate: a Read() deny rule
+# in permissions.deny arms Claude Code's deniedPathInsideDirectory circuit
+# breaker, which is bypass-immune and forces a manual approval prompt for every
+# grep, rg, diff, git, cp and mv whose target directory could contain a denied
+# path -- which, for a rule written with a `**` glob, is every directory in the
+# tree. The prompt is unconditional and cannot be waived by an allow rule, so
+# the cost is paid on every recursive search forever. Moving the whole
+# obligation here buys that back. What it costs is stated honestly below.
 #
-# It closes the residual gaps the built-in rule leaves open:
-#   - variant dotenv files (.env.local, .env.production, .env.<anything>,
-#     excluding the committed .env.example placeholder) are not matched by
-#     Read(.env), so the Read tool and even a recognized reader
-#     (cat/head/tail/sed) against a variant are otherwise unguarded.
-#   - residual Bash read paths: sourcing (source / .), redirection from a
-#     dotenv path (< / $(<...)), and readers outside the recognized
-#     cat/head/tail/sed set.
-#   - bare process-environment dumps (env, printenv, set, export -p,
-#     declare -p, compgen -v) that read the shell environment rather than a
-#     file, so no file-permission rule governs them.
+# What this guard covers:
+#   - the Read tool against .env and any variant (.env.local, .env.production,
+#     .env.<anything>), excluding the committed .env.example placeholder;
+#   - Bash readers against the same set: cat, head, tail, sed, xxd, od,
+#     hexdump, strings, nl, less, more, diff, cut, tac, paste, awk, perl, and
+#     the grep family (grep, egrep, fgrep, rgrep, rg);
+#   - sourcing (source / .), redirection from a dotenv path (< / $(<...)), and
+#     `env FOO=1 <reader> <path>`, where env runs a reader rather than dumping;
+#   - bare process-environment dumps (env, printenv, set, export -p, declare -p,
+#     compgen -v) that read the shell environment rather than a file, so no
+#     file-permission rule ever governed them.
 #
-# This is heuristic defense-in-depth, not a sandbox: it pattern-matches
-# command text and can be evaded by determined obfuscation. The airtight
-# enforcement for arbitrary subprocesses that open the file directly is the
-# OS-level sandbox (sandbox.filesystem deny-read rules, merged with the
-# Read/Edit permission denies). This hook does not reach MCP-mediated shell
-# execution (e.g. Serena's execute_shell_command), arbitrary subprocesses
-# that open the file themselves (a Node or Python script reading it
-# directly), or deliberate obfuscation of a read command.
+# The grep family needs argument grammar rather than a token sweep, because
+# `grep PATTERN FILE` puts a non-path in first position and `grep '.env'
+# .gitignore` must stay allowed. That grammar lives in lib/reader-operands.sh
+# and is shared with block-secrets-read.sh rather than written twice.
+#
+# HONEST LIMITS. This is heuristic defense-in-depth, not a sandbox: it
+# pattern-matches command text and can be evaded by determined obfuscation. It
+# does not reach MCP-mediated shell execution (e.g. Serena's
+# execute_shell_command), a subprocess that opens the file itself (a Node or
+# Python script reading it directly), or a deliberately obfuscated reader. The
+# permission rule it replaces shared every one of those limits -- it too only
+# ever saw commands Claude Code statically recognized as reads -- so the
+# exchange costs no coverage that was real. The airtight enforcement for
+# arbitrary subprocesses is the OS-level sandbox (sandbox.filesystem deny-read
+# rules), which is not configured in this repo and is the upgrade path if the
+# heuristic tier ever proves insufficient.
 set -euo pipefail
+
+_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)" || _lib_dir=''
+# Bracketed against an unparseable target, not merely a missing one: under
+# errexit a library carrying a syntax error aborts the hook mid-source, and a
+# hook that dies before reading its payload denies nothing while looking like it
+# ran. The load is allowed to fail quietly so the capability probe below is the
+# single place that decides.
+set +e
+# shellcheck source=lib/reader-operands.sh
+[ -n "$_lib_dir" ] && [ -f "$_lib_dir/reader-operands.sh" ] && . "$_lib_dir/reader-operands.sh" 2>/dev/null
+set -e
+if ! type gaia_reader_operands >/dev/null 2>&1 || ! type gaia_reader_strip_env_prefix >/dev/null 2>&1; then
+  # A guard that cannot load its own grammar must not report clean. Exiting
+  # non-zero surfaces the breakage instead of silently allowing every read.
+  printf 'block-env-read.sh: cannot load lib/reader-operands.sh\n' >&2
+  exit 1
+fi
 
 payload=$(cat)
 tool_name=$(jq -r '.tool_name // empty' <<<"$payload")
 
 DENY_READ_TOOL="BLOCKED: reading '.env' / '.env.*' files is denied to protect local secrets. Only '.env.example' is readable. This guard is heuristic defense-in-depth, not a sandbox."
 DENY_DUMP="BLOCKED: a bare environment dump (env/printenv/set) is denied so exported secrets cannot be printed into the transcript. Use 'env NAME=value <cmd>' to set a variable for a command. Heuristic defense-in-depth, not a sandbox."
-DENY_READ="BLOCKED: reading a .env / .env.* file (sourcing, redirection, or a non-recognized reader) is denied to protect local secrets. '.env.example' is exempt. Heuristic defense-in-depth, not a sandbox."
+DENY_READ="BLOCKED: reading a .env / .env.* file (a reader, sourcing, or redirection) is denied to protect local secrets. '.env.example' is exempt. Heuristic defense-in-depth, not a sandbox."
 
 deny() {
   jq -n --arg r "$1" '{
@@ -68,22 +98,6 @@ is_dotenv_path() {
   return 0
 }
 
-# Command-position anchoring (mirrors block-bare-test.sh): strip leading
-# NAME=value env-var assignments so the real command word is exposed.
-strip_env_prefix() {
-  printf '%s' "$1" | sed -E 's/^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)*//'
-}
-
-# Deny if any remaining token (after the command word) is a dotenv path.
-check_reader_args() {
-  local a
-  for a in "$@"; do
-    a=$(strip_quotes "$a")
-    is_dotenv_path "$a" && deny "$DENY_READ"
-  done
-  return 0
-}
-
 # `set` with no args, or whose first arg does not start with -/+, is a dump.
 # `set -e`, `set -euo pipefail`, `set +x` are shell options, not a dump.
 check_set_tokens() {
@@ -98,8 +112,9 @@ check_set_tokens() {
 }
 
 # `env` is a dump with no command operand (bare `env`, option flags only,
-# `env -0`). Otherwise it is a runner: strip `env` and any leading
-# NAME=value assignments, then re-evaluate the wrapped command.
+# `env -0`). With a command operand it is a runner, and the operand walk in
+# lib/reader-operands.sh judges whatever it wraps, so this arm only has to
+# decide the dump question.
 check_env_tokens() {
   local toks=("$@")
   local n=${#toks[@]}
@@ -122,30 +137,11 @@ check_env_tokens() {
   if [ "$i" -ge "$n" ]; then
     deny "$DENY_DUMP"
   fi
-
-  process_tokens "${toks[@]:$i}"
   return 0
 }
 
-# Redirection FROM a dotenv path: `< <dotenv>` or `$(< <dotenv>)`. Applies
-# regardless of command word, since the target may be a bare assignment
-# (`x=$(<.env)`) with no recognizable command word at all.
-check_redirect_from_dotenv() {
-  local seg="$1" rest cand
-  case "$seg" in
-    *'<'*) : ;;
-    *) return 0 ;;
-  esac
-  rest=$(printf '%s' "$seg" | sed -E 's/^.*<[[:space:]]*//')
-  cand=$(printf '%s' "$rest" | sed -E 's/[[:space:])].*$//')
-  cand=$(strip_quotes "$cand")
-  is_dotenv_path "$cand" && deny "$DENY_READ"
-  return 0
-}
-
-# Command-word dispatch shared by the top-level segment walk and the `env`
-# runner re-evaluation.
-process_tokens() {
+# Process-environment dumps only. File reads are the operand walk's job.
+check_dump_tokens() {
   local toks=("$@")
   local cmdword="${toks[0]:-}"
   cmdword=$(strip_quotes "$cmdword")
@@ -171,32 +167,29 @@ process_tokens() {
     compgen)
       [[ "${toks[1]:-}" == "-v" ]] && deny "$DENY_DUMP"
       ;;
-    source | .)
-      check_reader_args "${toks[@]:1}"
-      ;;
-    cat | head | tail | sed | xxd | od | hexdump | strings | nl | less | more | diff | cut | tac | paste | awk | perl)
-      check_reader_args "${toks[@]:1}"
-      ;;
   esac
   return 0
 }
 
-# Split the command on pipeline/separator boundaries (mirrors
-# block-bare-test.sh) and evaluate each segment independently.
 process_segment() {
   local seg="$1"
-  local seg_cmd
+  local seg_cmd operand
   local toks
 
-  seg_cmd=$(strip_env_prefix "$seg")
+  seg_cmd=$(gaia_reader_strip_env_prefix "$seg")
   read -r -a toks <<<"$seg_cmd"
 
   # An empty segment (e.g. between the two words of `true && cat .env.local`,
   # which the |&;() split turns into an empty run) yields an empty toks array.
   # On bash 3.2 under `set -u`, a bare "${toks[@]}" on an empty array aborts
   # with "unbound variable" before later segments are evaluated, so guard it.
-  [ "${#toks[@]}" -eq 0 ] || process_tokens "${toks[@]}"
-  check_redirect_from_dotenv "$seg"
+  [ "${#toks[@]}" -eq 0 ] || check_dump_tokens "${toks[@]}"
+
+  while IFS= read -r operand; do
+    if is_dotenv_path "$operand"; then
+      deny "$DENY_READ"
+    fi
+  done < <(gaia_reader_operands "$seg")
   return 0
 }
 
