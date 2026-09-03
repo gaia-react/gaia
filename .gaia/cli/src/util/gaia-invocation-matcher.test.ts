@@ -10,6 +10,7 @@
 import {describe, expect, test} from 'vitest';
 import {
   matchesInvocation,
+  matchesShippedInvocation,
   matchesUnquotedInvocation,
 } from './gaia-invocation-matcher.js';
 
@@ -78,6 +79,51 @@ describe('gaia invocation matcher', () => {
       matchesUnquotedInvocation(
         'update merge-region',
         '$LATEST_DIR/.gaia/cli/gaia update merge-region'
+      )
+    ).toBe(true);
+  });
+
+  test('the shipped matcher refuses the binary adopters do not receive', () => {
+    // `gaia-maintainer` is excluded from the adopter tarball, so an invocation
+    // through it is unrunnable on an adopter clone. A contract promising a
+    // command is reachable there must not be satisfied by one, which is the
+    // whole reason this matcher exists beside `matchesInvocation`.
+    expect(
+      matchesShippedInvocation(
+        'wiki sync land',
+        'gaia-maintainer wiki sync land'
+      )
+    ).toBe(false);
+    expect(
+      matchesShippedInvocation(
+        'wiki sync land',
+        '"$LATEST_DIR/.gaia/cli/gaia-maintainer" wiki sync land'
+      )
+    ).toBe(false);
+
+    // The reachability guard's matcher deliberately accepts both, because a
+    // maintainer-only command has no other legitimate invocation. Asserting the
+    // pair together is what keeps the two from collapsing back into one: a
+    // change that pointed either matcher at the other's binary class reds here.
+    expect(
+      matchesInvocation('wiki sync land', 'gaia-maintainer wiki sync land')
+    ).toBe(true);
+
+    // Everything the shipped matcher must still accept: the bare binary, an
+    // unquoted path prefix, and the quoted release-resolved path.
+    expect(
+      matchesShippedInvocation('wiki sync land', 'gaia wiki sync land')
+    ).toBe(true);
+    expect(
+      matchesShippedInvocation(
+        'wiki sync land',
+        '          .gaia/cli/gaia wiki sync land --branch-aware'
+      )
+    ).toBe(true);
+    expect(
+      matchesShippedInvocation(
+        'wiki sync land',
+        '      - run: "$LATEST_DIR/.gaia/cli/gaia" wiki sync land'
       )
     ).toBe(true);
   });

@@ -34,12 +34,24 @@
  * resolves to a real skill directory is unambiguously an invocation.
  *
  * The gap does not reach check 2, and reading it as though it did is what left
- * `#1271` sitting as a fork. Check 2 VERIFIES a string the contract already
- * declares; it extracts nothing, so widening how it recognizes that string
- * cannot admit a step label, because a step label is not in the contract. That
- * is why its CLI half matches through the shared `matchesInvocation`
- * (`util/gaia-invocation-matcher.ts`) and its skill half, which does extract,
- * keeps the narrower `SKILL_REF_PATTERN` lookbehind.
+ * `#1271` sitting as a fork. Check 4 has to decide, unprompted, whether a
+ * `gaia <cmd>` string in the text is an invocation; check 2 is told which
+ * string to look for and only asks whether it is still there. Extraction is
+ * what the false positives attach to, so a check that extracts nothing does not
+ * inherit them, and recognizing the declared string in more of its written
+ * forms costs nothing the narrower spelling was buying. That is why check 2's
+ * CLI half matches through the shared `matchesShippedInvocation`
+ * (`util/gaia-invocation-matcher.ts`) and check 4, which does extract, keeps
+ * the narrower `SKILL_REF_PATTERN` lookbehind.
+ *
+ * Check 2's own honest limit, unchanged by any of that: it asserts the declared
+ * string appears **somewhere in the template text**, prose and step labels
+ * included, not that the template executes it. `- name: Run gaia wiki sync
+ * land nightly` satisfies it, and satisfied it under the substring test too.
+ * So a green check 2 is evidence the reference has not been silently dropped,
+ * which is the drift it exists to catch, and is not evidence of a live `run:`
+ * step; nothing here guards that, and the quote class admits nothing the
+ * substring test did not already admit.
  *
  * The complementary `command-reachability.test.ts` guards the inverse
  * direction (every CLI leaf command has some external invoker). It cannot
@@ -56,7 +68,7 @@ import {describe, expect, test} from 'vitest';
 import {existsSync, readdirSync, readFileSync} from 'node:fs';
 import path from 'node:path';
 import type {ToolId} from '../../schemas/automation-config.js';
-import {matchesInvocation} from '../../util/gaia-invocation-matcher.js';
+import {matchesShippedInvocation} from '../../util/gaia-invocation-matcher.js';
 import {resolveRepoRootFromImportMeta} from '../../util/repo-root-fixture.js';
 import {workflowSchedulerTemplatePath, workflowTemplatePath} from '../paths.js';
 
@@ -190,7 +202,7 @@ const collectMissingReferences = (): string[] => {
       if (!template.includes(`/${slug}`)) missing.push(`${tool}: /${slug}`);
     }
 
-    // `matchesInvocation`, not a bare `includes('gaia ' + command)`: the
+    // `matchesShippedInvocation`, not a bare `includes('gaia ' + command)`: the
     // substring test requires a space immediately after the binary name, so a
     // template invoking a declared command through a quoted, release-resolved
     // path (`"$LATEST_DIR/.gaia/cli/gaia" wiki sync land`) satisfies the
@@ -201,7 +213,7 @@ const collectMissingReferences = (): string[] => {
     // in `command-reachability.test.ts`, and the invocation form that broke it
     // there is a frozen contract in this repository.
     for (const command of contract.cli) {
-      if (!matchesInvocation(command, template)) {
+      if (!matchesShippedInvocation(command, template)) {
         missing.push(`${tool}: gaia ${command}`);
       }
     }
@@ -271,9 +283,9 @@ describe('gaia-ci-* template reference drift-guard', () => {
       // matcher against a real template directly.
       const anyTemplate = readFileSync(templatePathFor('wiki'), 'utf8');
 
-      expect(matchesInvocation('zzz fabricated-command', anyTemplate)).toBe(
-        false
-      );
+      expect(
+        matchesShippedInvocation('zzz fabricated-command', anyTemplate)
+      ).toBe(false);
 
       expect(collectMissingReferences()).toEqual([]);
     }
@@ -296,7 +308,7 @@ describe('gaia-ci-* template reference drift-guard', () => {
 
     for (const command of declared) {
       expect(
-        matchesInvocation(
+        matchesShippedInvocation(
           command,
           `      - run: "$LATEST_DIR/.gaia/cli/gaia" ${command} --json`
         )

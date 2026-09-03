@@ -45,14 +45,8 @@ const escapeRegExp = (value: string): string =>
 // exist: an *unquoted* path prefix already matched, because `/` is neither
 // `\w` nor `-`, so the quote is the whole of the blind spot.
 //
-// This is not a loosening. For the reachability guard, the docstring's stated
-// floor already counts an invocation-shaped string in operator-facing prose,
-// and an invocation that is actually executed is stronger evidence than one
-// that is merely written down. For the template guard, the string being looked
-// for is one the contract already declares, so admitting a quote beside it
-// cannot admit anything the contract does not already name.
-// What stays excluded is a bare path with no separator at all, so the quote is
-// admitted beside the separator and never instead of it.
+// The quote is admitted beside the separator and never instead of it, so a
+// bare path with no separator at all stays excluded.
 // `.gaia/tests/distribution/17-gaia-update-merge-region.sh` reached the same
 // `gaia"?` shape for the same reason.
 //
@@ -62,30 +56,61 @@ const escapeRegExp = (value: string): string =>
 // difference between "this form is unmatchable" and "no such invocation exists
 // here".
 //
-// `quoteClass` is a parameter for exactly one reason: the pre-widening shape
-// is needed as a control, and a hand-copied second regex would drift from this
-// one silently. Only the two exported matchers below pass it, and both pin the
-// value.
-const invocationPattern = (commandPath: string, quoteClass: string): RegExp => {
+// Both classes are parameters for the same reason: each consumer needs a
+// different value, and a hand-copied second regex would drift from this one
+// silently. `binaryClass` is which binaries count (see the exports below, which
+// is where the choice is argued); `quoteClass` exists so the pre-widening shape
+// stays available as a control. Only the three exported matchers pass either
+// one, and each pins both values.
+const invocationPattern = (
+  commandPath: string,
+  binaryClass: string,
+  quoteClass: string
+): RegExp => {
   const tokens = commandPath
     .split(' ')
     .map(escapeRegExp)
     .join(String.raw`\s+`);
 
   return new RegExp(
-    String.raw`(?<![\w-])gaia(?:-maintainer)?${quoteClass}\s+${tokens}(?![\w-])`
+    String.raw`(?<![\w-])${binaryClass}${quoteClass}\s+${tokens}(?![\w-])`
   );
 };
 
-/** Whether `text` invokes `commandPath`, bare or through a quoted path. */
-export const matchesInvocation = (commandPath: string, text: string): boolean =>
-  invocationPattern(commandPath, '["\']?').test(text);
+// Either binary. The reachability guard enumerates leaf commands from both
+// entrypoints, and a maintainer-only command's only legitimate invocation is
+// `gaia-maintainer <path>`, so pinning the adopter binary there would read
+// every maintainer command as dead.
+const EITHER_BINARY = 'gaia(?:-maintainer)?';
 
-// The same matcher without the quote class, i.e. the shape that could not see
-// a release-resolved invocation. Used only as a control, in this module's own
-// test and in the reachability guard's skills-surface test, where the haystack
-// is a real corpus that may also carry a bare form; never as an oracle.
+// The adopter binary alone. `gaia-maintainer` is excluded from the adopter
+// tarball, so an invocation through it is unrunnable on an adopter clone and
+// must not satisfy a contract that promises the command is reachable there.
+const SHIPPED_BINARY = 'gaia';
+
+/**
+ * Whether `text` invokes `commandPath` through either binary, bare or through
+ * a quoted path.
+ */
+export const matchesInvocation = (commandPath: string, text: string): boolean =>
+  invocationPattern(commandPath, EITHER_BINARY, '["\']?').test(text);
+
+/**
+ * Whether `text` invokes `commandPath` through the binary adopters actually
+ * receive, bare or through a quoted path.
+ */
+export const matchesShippedInvocation = (
+  commandPath: string,
+  text: string
+): boolean =>
+  invocationPattern(commandPath, SHIPPED_BINARY, '["\']?').test(text);
+
+// The either-binary matcher without the quote class, i.e. the shape that could
+// not see a release-resolved invocation. Used only as a control, in this
+// module's own test and in the reachability guard's skills-surface test, where
+// the haystack is a real corpus that may also carry a bare form; never as an
+// oracle.
 export const matchesUnquotedInvocation = (
   commandPath: string,
   text: string
-): boolean => invocationPattern(commandPath, '').test(text);
+): boolean => invocationPattern(commandPath, EITHER_BINARY, '').test(text);
