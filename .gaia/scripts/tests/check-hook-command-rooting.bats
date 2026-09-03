@@ -254,3 +254,21 @@ fixture_with() {
     *) : ;;
   esac
 }
+
+@test "local settings note: silent when settings.local.json has an empty hooks event" {
+  local dir
+  dir="$(fixture_with '["\"$(git rev-parse --show-toplevel)/.claude/hooks/a.sh\""]')"
+  # A `hooks` key that registers no command at all. Key presence alone would
+  # print the note here, which is the sibling case the permissions-only test
+  # does not reach.
+  jq -n '{ hooks: { PreToolUse: [] } }' > "$dir/.claude/settings.local.json"
+
+  run gaia_check_hook_command_rooting "$dir"
+  [ "$status" -eq 0 ]
+  case "$output" in
+    *"settings.local.json also registers hooks"*)
+      printf 'note printed for a hooks key registering no command: %s\n' "$output" >&2
+      return 1 ;;
+    *) : ;;
+  esac
+}

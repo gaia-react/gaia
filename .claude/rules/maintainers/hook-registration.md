@@ -58,7 +58,7 @@ The sanctioned form, which resolves to the current tree at any depth inside the 
 "$(git rev-parse --show-toplevel 2>/dev/null || printf %s "${CLAUDE_PROJECT_DIR:-.}")/.claude/hooks/<name>.sh"
 ```
 
-No interpreter word. `check-hook-capabilities.sh` reduces a registration with an anchored pattern that a leading `bash ` defeats, so a command spelled that way falls through to `BAD-REGISTRATION` and reds the very check the previous section sends you here to repair. All 50 committed hook commands are spelled without it; `statusLine`, which is outside that derivation, is the one command that carries it.
+No interpreter word. `check-hook-capabilities.sh` reduces a registration with an anchored pattern that a leading `bash ` defeats, so a command spelled that way falls through to `BAD-REGISTRATION` and reds the very check the previous section sends you here to repair. Every committed hook command is spelled without it, which is what that check enforces rather than something this page counts; `statusLine`, which is outside that derivation, is the one command that carries it.
 
 `$CLAUDE_PROJECT_DIR` is deliberately the fallback and not the root: it holds the session's original project directory and does not follow entry into a linked worktree, so using it alone would make a worktree session run the main checkout's hooks.
 
@@ -70,6 +70,6 @@ It runs inside `.gaia/tests/whole-tree-invariants.sh`, so an unrooted registrati
 
 ## Why
 
-The defect is an *absence* rather than a diff line. No reviewer reading the change can see a manifest entry that was never written, and only a checker enumerating the whole directory can. Nothing in the change under review hints that either obligation exists, so the miss survives per-phase gates and pre-merge audit rounds alike and surfaces only in CI, costing a full round plus a re-audit of every dispatched member once the repair commit moves HEAD.
+The defect is an *absence* rather than a diff line. No reviewer reading the change can see a manifest entry that was never written, and only a checker enumerating the whole directory can. Nothing in the change under review hints that any of these obligations exists, so the miss survives per-phase gates and pre-merge audit rounds alike and surfaces only in CI, costing a full round plus a re-audit of every dispatched member once the repair commit moves HEAD.
 
 Guards of that shape need an instruction surface pointing at them, which is what this rule is.

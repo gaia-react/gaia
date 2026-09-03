@@ -10,7 +10,7 @@ import {
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {resolveRepoRootFromImportMeta} from '../util/repo-root-fixture.js';
-import {extractPathRefs, run} from './runtime-deps.js';
+import {extractPathRefs, PROSE_PATH_ALLOWLIST, run} from './runtime-deps.js';
 
 type ManifestFiles = Record<string, 'owned' | 'shared' | 'wiki-owned'>;
 
@@ -214,20 +214,36 @@ describe('extractPathRefs', () => {
   });
 
   test('the settings.local.json allowlist entry still covers the real script', () => {
-    // The entry above is load-bearing only while the note spells the path as a
-    // bare token. A reword that changes the extracted shape would make the
-    // entry dead and the reference reappear as a leak, and the corpus scan that
-    // would catch it runs at release rather than at review. Reading the real
-    // file here moves that failure to the unit suite.
+    // The entry is load-bearing only while the real script still produces
+    // occurrences that nothing else suppresses. Extracting WITH the allowlist
+    // cannot see that: it returns the same empty set for a live entry and for
+    // a dead one. So bypass it and assert the exact occurrences the entry
+    // answers, which goes red the moment a reword stops one of them
+    // extracting, instead of surfacing at the release corpus scan.
+    //
+    // All three are the same token. Two are the gate's own
+    // `"$repo_root/.claude/settings.local.json"` references, extracted rather
+    // than skipped because a variable-expansion context is what disables the
+    // substring skip; the third is the printf note. The line-leading `#`
+    // comments naming the path are stripped before extraction and are not in
+    // this set, which is why asserting on the file's raw text would not fail
+    // for the case this test exists to catch.
     const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
     const relative = '.gaia/scripts/check-hook-command-rooting.sh';
     const contents = readFileSync(path.join(repoRoot, relative), 'utf8');
+    const token = '.claude/settings.local.json';
 
-    expect(contents).toContain('.claude/settings.local.json');
+    expect(PROSE_PATH_ALLOWLIST.has(token)).toBe(true);
+
+    const unsuppressed = extractPathRefs(relative, contents, new Set())
+      .filter((r) => r.path === token)
+      .map((r) => r.line);
+
+    expect(unsuppressed).toHaveLength(3);
     expect(
       extractPathRefs(relative, contents)
         .map((r) => r.path)
-        .filter((p) => p.startsWith('.claude/settings.local.json'))
+        .filter((p) => p.startsWith(token))
     ).toEqual([]);
   });
 
