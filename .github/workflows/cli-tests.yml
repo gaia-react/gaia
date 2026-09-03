@@ -71,8 +71,10 @@ jobs:
               - '.gaia/cli/**'
               - '.github/workflows/cli-tests.yml'
               # The lint-pin parity guard (src/lint-pin-parity.test.ts) asserts
-              # .gaia/cli/package.json pins the same @gaia-react/lint as the
-              # root workspace. A root-only bump is what causes that drift, and
+              # .gaia/cli/package.json declares the same version as the root
+              # workspace for every pin the two share: the @gaia-react/lint
+              # preset, and the tools whose own version reaches lint output.
+              # A root-only bump to any of them is what causes that drift, and
               # tests.yml skips its whole suite for the `chore(deps):` title
               # /update-deps opens, so without this entry nothing evaluates the
               # guard on the PR that breaks it -- it would first fire on some
