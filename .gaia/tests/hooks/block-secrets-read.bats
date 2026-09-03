@@ -42,7 +42,7 @@ run_hook_bash() {
   invoke_hook "$json" "$HOOK_ABS"
 }
 
-# --- Read-tool denies, one per path class the four rules covered ---
+# --- Read-tool denies, one per path class the removed Read() globs covered ---
 
 @test "Read certs/server.key is denied" {
   run_hook_read "certs/server.key"
