@@ -469,15 +469,22 @@ jobs:
       # the kind a fixed bound cannot be sized against.
       #
       # That relation is quoted rather than the TYPICAL-CASE durations it came
-      # from, and the distinction is the whole of the policy rather than a
-      # blanket ban on numbers. A typical-case sample is dropped because every
-      # run resamples it and a later run invalidates it; two earlier statements
-      # of such samples went stale within a day of being written. A
-      # WORST-OBSERVED extreme is kept, because an observed maximum stays a
-      # lower bound on the ceiling no matter how many faster runs follow it,
-      # which is why the 422s stall and the 502s leg total above are quoted and
-      # a 0.03s step time was removed. Strip the extremes and the
-      # headroom-versus-spread argument loses the only evidence it rests on.
+      # from. THE RULE SCOPES TO THIS DOCBLOCK, because what makes it right is
+      # what this argument does with a number rather than anything about
+      # durations generally. This paragraph SIZES A BOUND against a cap, and for
+      # that a typical-case sample is worthless: every run resamples it, a later
+      # run invalidates it, and two earlier statements of such samples here went
+      # stale within a day of being written. A WORST-OBSERVED extreme is kept,
+      # because an observed maximum stays a lower bound on the ceiling no matter
+      # how many faster runs follow it, which is why the 422s stall and the 502s
+      # leg total are quoted and a 0.03s step time was dropped. Strip the
+      # extremes and this argument loses the only evidence it rests on.
+      #
+      # Elsewhere in this file, typical-case durations are quoted deliberately
+      # and stay: the cold-eslint cost, the 80-180s a wider `code:` filter would
+      # buy, the 15s the unfiltered distribution job spends. Those DOCUMENT A
+      # PRICE rather than size a bound, so a resample moves the figure without
+      # touching the decision, and the rule above does not reach them.
       - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
         name: Check the CLI workspace's security floors are applied
         run: bash .gaia/scripts/check-cli-workspace-floors.sh --no-audit

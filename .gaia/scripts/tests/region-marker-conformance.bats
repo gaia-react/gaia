@@ -27,11 +27,16 @@ setup() {
   # legs install only `bats` and `python3-yaml`, with no actions/setup-node, no
   # pnpm and no `pnpm install`. The exception is the leg holding
   # check-cli-workspace-floors.bats, which does install the CLI workspace
-  # because that suite reads YAML with js-yaml; on that one leg this guard is
-  # false and these tests execute. The sharder assigns by size and moves suites
-  # between scripts legs as they grow, so which leg that is changes, and a
-  # reshuffle landing both suites together arms this file inside audit-ci-tests
-  # with no diff to either workflow. That is a budget question rather than a
+  # because that suite reads YAML with js-yaml. THIS FILE EXECUTES INSIDE
+  # audit-ci-tests ONLY IF THE SHARDER HAPPENS TO PLACE IT ON THAT SAME LEG,
+  # and which leg that is deliberately goes unstated here: the sharder assigns
+  # by size and re-balances whenever any suite grows, so a sentence naming the
+  # present placement is stale the next time a test is added. It moved twice
+  # while this very paragraph was being written. Read the condition, not a
+  # placement, and run `bats-shards.sh files <shard>` if you need today's
+  # answer. Either way this is a budget question rather than a coverage one:
+  # `install: cli` satisfies this suite's whole precondition, so on a shared leg
+  # it runs and on a lean leg it skips. That is a budget question rather than a
   # correctness one: running in two places is fine, it just adds this runtime to
   # that leg. Skip cleanly on a lean leg rather than failing a required PR check
   # for an environment this suite cannot control. The binding is asserted

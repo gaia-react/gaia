@@ -933,6 +933,40 @@ STUB
   true
 }
 
+# THE COMPARISON IS TEXTUAL, NOT NUMERIC. awk gives a field-derived value the
+# strnum attribute, so a bare `!=` compares two versions as NUMBERS whenever both
+# look like numbers. Every fixture in this suite used three-component semvers,
+# which are not numeric, which is why this went unseen for the whole life of the
+# check and outlived the reader that used to feed the comparator.
+@test "a two-component floor bumped to 3.10 is not equal to 3.1" {
+  # The reachable shape: bumping a two-component floor from .1 to .10 without
+  # re-running pnpm dedupe. This reported `floor applied: fast-uri at 3.10` at
+  # exit 0 over a genuine drift.
+  write_workspace '  fast-uri: "3.10"'
+  write_lock '  fast-uri: "3.1"'
+  run bash "$CHECK" --no-audit "$WS"
+  [ "$status" -eq 1 ]
+  grep -qF -- 'FLOOR NOT APPLIED' <<<"$output"
+  grep -qF -- 'floor applied:' <<<"$output" && return 1
+  true
+}
+
+@test "a trailing-zero floor is not equal to its shorter twin" {
+  write_workspace '  fast-uri: "4"'
+  write_lock '  fast-uri: "4.0"'
+  run bash "$CHECK" --no-audit "$WS"
+  [ "$status" -eq 1 ]
+  grep -qF -- 'FLOOR NOT APPLIED' <<<"$output"
+}
+
+@test "an exponent-shaped version is not equal to its expanded value" {
+  write_workspace '  fast-uri: "1e2"'
+  write_lock '  fast-uri: "100"'
+  run bash "$CHECK" --no-audit "$WS"
+  [ "$status" -eq 1 ]
+  grep -qF -- 'FLOOR NOT APPLIED' <<<"$output"
+}
+
 @test "a NUL inside a version is refused, not collapsed into a matching one" {
   # The worst of the transport shapes and the least visible. js-yaml reads this
   # correctly; bash then discards the NUL in the command substitution that

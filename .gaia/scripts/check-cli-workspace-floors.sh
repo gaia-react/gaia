@@ -335,7 +335,17 @@ gaia_cwf_main() {
           k = order[i]
           if (!(k in lock))
             printf "1\tFLOOR NOT APPLIED: %s is pinned to %s in pnpm-workspace.yaml and absent from the lockfile\n", k, cfg[k]
-          else if (lock[k] != cfg[k])
+          # STRING COMPARISON, FORCED. awk gives a field-derived value the
+          # strnum attribute, so a bare `!=` compares two version strings
+          # NUMERICALLY whenever both look like numbers, and a workspace pinning
+          # 3.10 against a lockfile pinning 3.1 compared EQUAL and reported the
+          # floor applied at exit 0 over a genuine drift. Same collapse for 4
+          # against 4.0, 1e2 against 100, and 0.30 against .3. Three-component
+          # semvers are not numeric, which is the only reason this never fired
+          # on the real workspace and why it outlived the reader that used to
+          # feed this comparator. Concatenating the empty string forces both
+          # sides back to text.
+          else if ((lock[k] "") != (cfg[k] ""))
             printf "1\tFLOOR NOT APPLIED: %s is pinned to %s in pnpm-workspace.yaml and locked at %s\n", k, cfg[k], lock[k]
           else
             printf "0\tfloor applied: %s at %s\n", k, cfg[k]
