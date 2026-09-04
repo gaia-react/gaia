@@ -504,11 +504,12 @@ jobs:
       # loses the only evidence it rests on.
       #
       # Elsewhere in this file, typical-case durations are quoted deliberately
-      # and stay: the cold-eslint cost, the 80-180s a wider `code:` filter would
-      # buy, and the 15s that `shipped-surface-leak-check` spends, that being the
-      # one job here which deliberately declares no filter. Those DOCUMENT A
-      # PRICE rather than size a bound, so a resample moves the figure without
-      # touching the decision, and the rule above does not reach them.
+      # and stay, because they DOCUMENT A PRICE rather than size a bound: a
+      # resample moves the figure without touching the decision, so the rule
+      # above does not reach them. No list of them is given on purpose. One was,
+      # and it named three of the five this file carries, which is a narrower
+      # boundary than the rule it was illustrating and the kind of enumeration
+      # that goes short again every time a figure is added.
       - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
         name: Check the CLI workspace's security floors are applied
         run: bash .gaia/scripts/check-cli-workspace-floors.sh --no-audit
