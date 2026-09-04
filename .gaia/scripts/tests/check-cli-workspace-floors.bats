@@ -933,6 +933,43 @@ STUB
   true
 }
 
+@test "a NUL inside a version is refused, not collapsed into a matching one" {
+  # The worst of the transport shapes and the least visible. js-yaml reads this
+  # correctly; bash then discards the NUL in the command substitution that
+  # captures the reader output, so `3.1<NUL>6` collapsed to `3.16` and compared
+  # EQUAL to a lockfile pinning `3.16`. That is a false clean over two files
+  # pinning different values, at exit 0, whose only trace was a bash warning the
+  # script neither owns nor reads.
+  printf 'overrides:\n  fast-uri: "3.1\\x006"\n' > "$WS/pnpm-workspace.yaml"
+  printf 'overrides:\n  fast-uri: "3.16"\n' > "$WS/pnpm-lock.yaml"
+  run bash "$CHECK" --no-audit "$WS"
+  [ "$status" -eq 2 ]
+  grep -qF -- 'has a NUL, tab, carriage return or newline' <<<"$output"
+  grep -qF -- 'floor applied' <<<"$output" && return 1
+  true
+}
+
+@test "an override keyed to the empty string is refused, not dropped by the comparator" {
+  # The reader emitted this as a real row and the comparator blank-line term
+  # removed it from both lists before any comparison, so it was never compared
+  # and the run reported clean. The retired reader refused the same file.
+  printf 'overrides:\n  "": 3.1.6\n  fast-uri: 3.1.6\n' > "$WS/pnpm-workspace.yaml"
+  write_lock "  fast-uri: 3.1.6"
+  run bash "$CHECK" --no-audit "$WS"
+  [ "$status" -eq 2 ]
+  grep -qF -- 'maps an empty key, which names no package' <<<"$output"
+}
+
+@test "an empty key in the LOCKFILE is refused, not a suppressed undeclared override" {
+  # The other side of the same hole: the UNDECLARED OVERRIDE row this check
+  # exists to emit was suppressed at exit 0.
+  write_workspace "  fast-uri: 3.1.6"
+  printf 'overrides:\n  "": 9.9.9\n  fast-uri: 3.1.6\n' > "$WS/pnpm-lock.yaml"
+  run bash "$CHECK" --no-audit "$WS"
+  [ "$status" -eq 2 ]
+  grep -qF -- 'maps an empty key, which names no package' <<<"$output"
+}
+
 @test "an explicitly empty version is refused rather than reported as applied" {
   # `""` is a string, so the not-a-scalar guard passes it. Both sides empty
   # compared equal and printed `floor applied: fast-uri at ` over an override

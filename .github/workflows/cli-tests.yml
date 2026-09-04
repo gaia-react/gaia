@@ -214,10 +214,15 @@ jobs:
               # listener is a change to this file and nothing else, so without
               # this line such a pull request resolves `code=false`, skips the
               # Vitest step, and reports this required check green having run
-              # the assertion zero times. The bats copy of the same assertion is
-              # no fallback: it sits in a suite whose setup() needs
-              # node_modules/typescript, which audit-ci-tests.yml's lean box
-              # does not install, so it self-skips there on every run.
+              # the assertion zero times. The bats copy of the same assertion
+              # is no fallback, though not for the reason once written here: it
+              # sits in red-ledger-lib.bats, which the sharder puts on hooks-3,
+              # and audit-ci-tests.yml DOES install the root workspace on
+              # hooks-2/3/4. Under CI that suite runs, and where its Node
+              # precondition is unmet it REDS rather than skipping, which is the
+              # whole point of gaia-react/gaia#1748. It is no fallback because
+              # the Vitest assertion is the one this job runs, not because the
+              # bats copy is inert.
               - '.gaia/scripts/red-ledger/extract-test-signals.mjs'
               # The label registry and the JSON Schema beside it, both read from
               # the repo root by suites that live under `.gaia/cli/**`:
@@ -463,10 +468,16 @@ jobs:
       # hit. So the variance this argument turns on is network, which is exactly
       # the kind a fixed bound cannot be sized against.
       #
-      # That relation is quoted rather than the durations it came from. Every
-      # run of this job resamples them: two earlier statements of them went
-      # stale within a day of being written, and the relation held under both
-      # the superseded numbers and the current ones.
+      # That relation is quoted rather than the TYPICAL-CASE durations it came
+      # from, and the distinction is the whole of the policy rather than a
+      # blanket ban on numbers. A typical-case sample is dropped because every
+      # run resamples it and a later run invalidates it; two earlier statements
+      # of such samples went stale within a day of being written. A
+      # WORST-OBSERVED extreme is kept, because an observed maximum stays a
+      # lower bound on the ceiling no matter how many faster runs follow it,
+      # which is why the 422s stall and the 502s leg total above are quoted and
+      # a 0.03s step time was removed. Strip the extremes and the
+      # headroom-versus-spread argument loses the only evidence it rests on.
       - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
         name: Check the CLI workspace's security floors are applied
         run: bash .gaia/scripts/check-cli-workspace-floors.sh --no-audit

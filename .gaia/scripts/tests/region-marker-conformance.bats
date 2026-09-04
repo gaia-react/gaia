@@ -23,13 +23,20 @@ setup() {
 
   # This suite runs the real TypeScript parser through tsx, which needs the
   # CLI's node_modules. audit-ci-tests.yml runs this file inside whichever
-  # scripts-* shard it lands in, on a lean box that installs
-  # only `bats` and `python3-yaml`: no actions/setup-node, no pnpm, no
-  # `pnpm install`. Skip cleanly there rather than failing a required PR check
-  # for an environment this suite cannot control. CI coverage comes from
-  # cli-tests.yml instead, which installs the CLI's dependencies and runs
-  # this file by name, so the skip never hides the binding: on that runner the
-  # guard is false and every test executes.
+  # scripts-* shard it lands in, and EVERY SUCH LEG IS LEAN EXCEPT ONE: those
+  # legs install only `bats` and `python3-yaml`, with no actions/setup-node, no
+  # pnpm and no `pnpm install`. The exception is the leg holding
+  # check-cli-workspace-floors.bats, which does install the CLI workspace
+  # because that suite reads YAML with js-yaml; on that one leg this guard is
+  # false and these tests execute. The sharder assigns by size and moves suites
+  # between scripts legs as they grow, so which leg that is changes, and a
+  # reshuffle landing both suites together arms this file inside audit-ci-tests
+  # with no diff to either workflow. That is a budget question rather than a
+  # correctness one: running in two places is fine, it just adds this runtime to
+  # that leg. Skip cleanly on a lean leg rather than failing a required PR check
+  # for an environment this suite cannot control. The binding is asserted
+  # regardless by cli-tests.yml, which installs the CLI's dependencies and runs
+  # this file by name, so the skip never hides it.
   [ -d "$CLI_DIR/node_modules" ] || skip "no node_modules on this runner"
 
   START_MARKER='<!-- gaia:audit-remit:start -->'

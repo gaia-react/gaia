@@ -930,8 +930,15 @@ jobs:
           SHARD: ${{ matrix.shard }}
         run: |
           set -euo pipefail
+          # No `tr` in this pipeline. `files` already prints one repo-relative
+          # path per line, so it was a no-op, and under `set -o pipefail` it was
+          # a second exit status in the pipeline: a `tr` killed by SIGPIPE after
+          # `grep -q` exits early would resolve this to needed=0 on a leg that
+          # DOES hold the suite, which then reds at exit 2 with the install
+          # skipped. Not reachable at this size, the list being about 2KB
+          # against a 64KB pipe buffer, and removed rather than reasoned about.
           if bash .gaia/tests/bats-shards.sh files "$SHARD" \
-            | tr ' ' '\n' | grep -qF 'check-cli-workspace-floors.bats'; then
+            | grep -qF 'check-cli-workspace-floors.bats'; then
             printf 'needed=1\n' >> "$GITHUB_OUTPUT"
           else
             printf 'needed=0\n' >> "$GITHUB_OUTPUT"

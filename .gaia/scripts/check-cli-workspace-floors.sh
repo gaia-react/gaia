@@ -155,19 +155,32 @@ gaia_cwf_overrides() {
           process.stderr.write("check-cli-workspace-floors: " + path + " maps " + k + " to a value that is not a scalar\n");
           process.exit(2);
         }
+        if (k === "") {
+          process.stderr.write("check-cli-workspace-floors: " + path + " maps an empty key, which names no package\n");
+          process.exit(2);
+        }
         if (v === "") {
           process.stderr.write("check-cli-workspace-floors: " + path + " maps " + k + " to an empty version, which pins nothing\n");
           process.exit(2);
         }
-        // The line contract, not just the field separator. This reader emits one
-        // key<TAB>value LINE per entry, so a newline breaks it exactly as a tab
-        // does: js-yaml reads a block scalar correctly, and a two-line value
-        // then reaches sort and awk as TWO records, inventing a package the
-        // files do not contain at an empty version and splitting a real key into
-        // fragments. A carriage return is refused with them, since it would
-        // corrupt the same split wherever the consumer treats it as a line end.
-        if (/[\t\r\n]/.test(k) || /[\t\r\n]/.test(v)) {
-          process.stderr.write("check-cli-workspace-floors: " + path + " has a tab, carriage return or newline inside an override key or value\n");
+        // THE TRANSPORT CONTRACT, which is wider than the field separator and is
+        // where this reader is most exposed: js-yaml reads all of these values
+        // correctly and the carriage between it and the line-based comparison is
+        // what corrupts them.
+        //
+        // A NEWLINE splits one entry into two records, so a block scalar over
+        // two lines invented a package the files do not contain at an empty
+        // version, and a newline inside a double-quoted KEY split the key so the
+        // real one was named nowhere. A TAB corrupts the field split downstream.
+        // A NUL is the worst of the three and the least visible: bash discards
+        // it in the command substitution that captures this output, so a
+        // workspace pinning 3.1<NUL>6 collapsed to 3.16 and compared EQUAL to a
+        // lockfile pinning 3.16, printing the clean row over two files pinning
+        // different values, at exit 0, with the only trace a bash warning this
+        // script neither owns nor reads. A carriage return is refused with them,
+        // since a consumer treating it as a line end corrupts the same split.
+        if (/[\u0000\t\r\n]/.test(k) || /[\u0000\t\r\n]/.test(v)) {
+          process.stderr.write("check-cli-workspace-floors: " + path + " has a NUL, tab, carriage return or newline inside an override key or value\n");
           process.exit(2);
         }
         lines.push(k + "\t" + v);
@@ -301,12 +314,19 @@ gaia_cwf_main() {
     local report flag line
     report="$(awk -F'\t' '
       # LOAD-BEARING, despite looking like a redundant guard against something
-      # the parser already refuses. Each list arrives through `printf %s\n` on a
+      # the reader already refuses. Each list arrives through `printf %s\n` on a
       # shell variable, so an EMPTY list arrives as ONE BLANK LINE rather than as
       # no input at all, and this is the term that drops it. Delete it and a
       # workspace or lockfile declaring no overrides emits a phantom row naming
       # a package that does not exist, at an unchanged exit status, which is how
       # a suite watching only the status stays green over it. Pinned by fixture.
+      #
+      # IT ALSO SWALLOWS A ROW THE READER LEGITIMATELY EMITTED, and that is why
+      # the reader refuses an empty key rather than leaving this to catch it. An
+      # override keyed to the empty string reached here as a real row and was
+      # removed from BOTH lists before any comparison, so the entry was never
+      # compared and the run reported clean. Guarding it here would hide it;
+      # guarding it in the reader names it.
       $1 == "" { next }
       NR == FNR { cfg[$1] = $2; order[++n] = $1; next }
       { lock[$1] = $2; lorder[++m] = $1 }
