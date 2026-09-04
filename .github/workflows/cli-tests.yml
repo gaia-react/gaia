@@ -37,7 +37,11 @@ jobs:
     runs-on: ubuntu-latest
     # This job is a declared-required context, so a wedged install or a hung
     # Vitest run would hold every PR at "Expected" for the 6-hour runner
-    # default. Fail fast instead; the real runtime is well under a minute.
+    # default. Fail fast instead. The cap is sized for a wedged install rather
+    # than for the observed runtime, which varies by several minutes run to run
+    # because the install step does; see the advisory-arm note further down,
+    # which turns on how little of this cap is actually spare at the worst
+    # observed prefix.
     timeout-minutes: 15
     # Checkout needs it to clone, and paths-filter and setup-node both default
     # their `token` input to `github.token` for the compare API and the
@@ -194,16 +198,31 @@ jobs:
               # shellcheck can see, and a semantic weakening -- dropping the
               # template `diff -rq`, inverting a `cmp` -- is invisible to it.
               - '.gaia/scripts/verify-cli-bundle-fresh.sh'
+              # The workspace-floor check below is this script, so an edit to it
+              # must re-run the check on its own pull request, exactly as the
+              # bundle-freshness entry above does. The two subjects it reads,
+              # .gaia/cli's pnpm-workspace.yaml and its lockfile, already land
+              # under '.gaia/cli/**' at the top of this list; this file is the
+              # half nothing else here reaches. Its sibling bats suite is not
+              # listed and does not need to be: audit-ci-tests.yml runs the
+              # .gaia/scripts/tests suites, and this job asserts the check
+              # against the real workspace rather than against fixtures.
+              - '.gaia/scripts/check-cli-workspace-floors.sh'
               # src/red-ledger/extract-test-signals.test.ts spawns this helper
               # to pin its stdout-exit contract: a reader that stops before EOF
               # must leave it exiting 0 silently. Removing that helper's EPIPE
               # listener is a change to this file and nothing else, so without
               # this line such a pull request resolves `code=false`, skips the
               # Vitest step, and reports this required check green having run
-              # the assertion zero times. The bats copy of the same assertion is
-              # no fallback: it sits in a suite whose setup() needs
-              # node_modules/typescript, which audit-ci-tests.yml's lean box
-              # does not install, so it self-skips there on every run.
+              # the assertion zero times. The bats copy of the same assertion
+              # is no fallback, though not for the reason once written here: it
+              # sits in red-ledger-lib.bats, which is in the hooks exchange
+              # group, and audit-ci-tests.yml DOES install the root workspace on
+              # every leg of that group. Under CI that suite runs, and where its Node
+              # precondition is unmet it REDS rather than skipping, which is the
+              # whole point of gaia-react/gaia#1748. It is no fallback because
+              # the Vitest assertion is the one this job runs, not because the
+              # bats copy is inert.
               - '.gaia/scripts/red-ledger/extract-test-signals.mjs'
               # The label registry and the JSON Schema beside it, both read from
               # the repo root by suites that live under `.gaia/cli/**`:
@@ -365,11 +384,42 @@ jobs:
         run: pnpm -C .gaia/cli test --run
       # The region-marker conformance suite drives the real TypeScript parser
       # through tsx, so it needs .gaia/cli/node_modules and skips itself wherever
-      # they are absent. audit-ci-tests.yml runs the .gaia/scripts/tests suites on
-      # a lean box with no Node and no pnpm, so that guard is always true there
-      # and the suite reports skipped-and-green on every run. This job is the one
-      # place the dependency exists, which makes it the only place the binding
-      # between the parser and the two bash readers is actually asserted.
+      # they are absent. audit-ci-tests.yml installs that workspace on exactly
+      # ONE scripts leg, the one holding check-cli-workspace-floors.bats, so the
+      # guard is true on every other leg and the suite reports skipped-and-green
+      # there.
+      #
+      # WHETHER THIS JOB IS THE ONLY PLACE THE BINDING IS ASSERTED THEREFORE
+      # DEPENDS ON WHETHER THE SHARDER HAS PUT BOTH SUITES ON THAT SAME LEG, and
+      # that is a question to ask rather than a fact to record here: the sharder
+      # exchanges files among the scripts legs by size, so it changes whenever
+      # either suite grows, with no diff to either workflow. Three separate
+      # sentences in this change asserted a placement and all three went stale,
+      # two of them within a single round, which is why this one asserts none.
+      # `bats-shards.sh files <shard>` answers it for today.
+      #
+      # Neither answer is a correctness problem, because `install: cli` satisfies
+      # this suite's whole precondition and cli-tests.yml proves it green on a
+      # box with nothing else. What changes is BUDGET: when both share a leg, the
+      # tsx suite runs there too and its runtime lands on that leg, against the
+      # 13-minute shards cap.
+      #
+      # NO HISTORICAL LEG TOTAL IS QUOTED HERE, deliberately. Four consecutive
+      # review rounds each found the previous round's attempt at one wrong in a
+      # new way: a stale placement, then an unattributed figure, then a hedge
+      # where the answer was recoverable, then a provenance naming a commit that
+      # produced a different number entirely. Every fix was correct about what it
+      # corrected and every one carried a fresh error, because a past leg total
+      # depends on the leg, the commit, the run and where the sharder had put
+      # both suites at the time, and a sentence has to get all four right to be
+      # worth anything.
+      #
+      # MEASURE IT INSTEAD; it is cheap and it cannot go stale:
+      # `bats-shards.sh files <shard>` says which leg holds the pair today, and
+      # `gh api repos/{owner}/{repo}/actions/runs/<id>/jobs` gives that leg's
+      # per-step timings for a run of your choosing. Compare the total against
+      # the 13-minute shards cap. That recipe has taken no correction in four
+      # rounds while the numbers beside it took one each.
       # The vendored, digest-pinned install, the same one every leg of
       # audit-ci-tests.yml calls. `apt-get install -y bats` resolves to whatever
       # ubuntu-latest currently ships, which is not the pinned version, so the
@@ -395,6 +445,74 @@ jobs:
       - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
         name: Verify committed CLI binaries and templates are rebuilt from src
         run: bash .gaia/scripts/verify-cli-bundle-fresh.sh
+      # .gaia/cli is a second pnpm workspace root, and every dependency-CVE
+      # surface in this repository runs from the repository root, whose closure
+      # cannot contain it. This job is where the PARITY half of that gap
+      # closes, and only that half: `--no-audit` reports nothing about
+      # advisories in the closure. The script's docblock owns the advisory
+      # half and what the check does not catch at all.
+      #
+      # `--no-audit` runs the parity arm alone -- whether the security floors
+      # declared in pnpm-workspace.yaml are the ones the lockfile resolves
+      # against -- and that is the whole of what this job gates on.
+      #
+      # IT READS BOTH YAML FILES WITH node AND THE js-yaml IN
+      # .gaia/cli/node_modules, so it DOES depend on the install step above it
+      # and must stay ordered after it. That is a hard dependency, not a
+      # preference: the script refuses at exit 2 when node or js-yaml is absent
+      # rather than degrading to a weaker reader, so moving this step ahead of
+      # the install, dropping `install: cli`, or narrowing the install step
+      # arming condition turns a declared-required check into a hard failure
+      # whose message points at a local install command. The step arming
+      # condition here is a strict subset of the install step's, which is what
+      # keeps that ordering true rather than incidental.
+      #
+      # It needs no timeout bound of its own; the run is a node spawn plus a
+      # module load, and its duration is not quoted here because every run
+      # resamples it.
+      #
+      # Why the advisory arm is not run here is measured, and the measurement
+      # lives beside the arm in that same docblock rather than being restated
+      # twice. The part specific to this job: the smallest whole-minute bound
+      # that would not cut short the slowest call observed is five, because the
+      # docblock's own point is that the duration does not say whether a call
+      # succeeded, so a bound has to clear the ceiling rather than a successful
+      # case. Adding five minutes here leaves this job less headroom under its
+      # own 15-minute cap than the spread its own install step has been
+      # observed to vary across, so a run worse than anything yet observed, by
+      # less than that spread, would exceed the cap. The worst run observed so
+      # far still fits under it with a bounded stall, and the margin it fits by
+      # is smaller than that spread.
+      #
+      # What that spread IS, since the number invites the wrong reading: it is a
+      # registry stall inside pnpm/action-setup fetching the pnpm tarball, not
+      # install work and not a cold store cache. In one run that fetch alone took
+      # 422s before actions/setup-node had run at all, and the store cache then
+      # hit. So the variance this argument turns on is network, which is exactly
+      # the kind a fixed bound cannot be sized against.
+      #
+      # That relation is quoted rather than the TYPICAL-CASE durations it came
+      # from. THE RULE SCOPES TO THIS DOCBLOCK, because what makes it right is
+      # what this argument does with a number rather than anything about
+      # durations generally. This paragraph SIZES A BOUND against a cap, and for
+      # that a typical-case sample is worthless: every run resamples it, a later
+      # run invalidates it, and two earlier statements of such samples here went
+      # stale within a day of being written. A WORST-OBSERVED extreme is kept,
+      # because an observed maximum stays a lower bound on the ceiling no matter
+      # how many faster runs follow it, which is why the 422s stall is quoted and
+      # a 0.03s step time was dropped. Strip the extremes and this argument
+      # loses the only evidence it rests on.
+      #
+      # Elsewhere in this file, typical-case durations are quoted deliberately
+      # and stay, because they DOCUMENT A PRICE rather than size a bound: a
+      # resample moves the figure without touching the decision, so the rule
+      # above does not reach them. No list of them is given on purpose. One was,
+      # and it named three of the five this file carries, which is a narrower
+      # boundary than the rule it was illustrating and the kind of enumeration
+      # that goes short again every time a figure is added.
+      - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
+        name: Check the CLI workspace's security floors are applied
+        run: bash .gaia/scripts/check-cli-workspace-floors.sh --no-audit
 
   # PR-gated distribution harness. Before this job, the harness (run-all.sh,
   # its scenarios, lib/) ran only at tag-push (release.yml) and manual

@@ -152,6 +152,7 @@ readonly WTI_EXCLUDED='.gaia/scripts/check-debt-issue-metadata.sh|argument-drive
 .gaia/scripts/verify-cli-bundle-fresh.sh|rebuilds the CLI via pnpm bundle; a build step needing installed dependencies, not a read of the tree
 .gaia/scripts/verify-required-checks.sh|reads the live GitHub ruleset over the network, so its subject is repository configuration rather than the tree
 .gaia/tests/whole-tree-invariants.sh|this runner; a member of itself would recurse
+.gaia/scripts/check-cli-workspace-floors.sh|path-scoped and separately gated; its parity subjects are the two files under .gaia/cli/ that arm the code filter in cli-tests.yml, where it runs offline as its own step, and the network-reading advisory arm it also carries is not run in CI
 .gaia/scripts/check-hook-capabilities.sh|excluded on cost: 66-70s median standalone gate-mode cost, measured on the manifest-complete tree over two independent n=3 samples on the same host (medians 66.4s and 70.3s; the gap is host load), and 83s measured on an ubuntu-latest runner, which is the slower host; it runs instead in its own dedicated gated job in .github/workflows/audit-ci-tests.yml'
 
 usage() {
