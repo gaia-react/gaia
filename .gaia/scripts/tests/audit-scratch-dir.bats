@@ -299,8 +299,11 @@ teardown() {
 # Builds a real linked worktree off $REPO and echoes its path. Real rather
 # than mocked: gaia_is_linked_worktree is layout-derived, so a fake directory
 # would assert nothing about the predicate the script actually consults.
+# git keeps its own stderr here: when a runner cannot create a worktree, that
+# message is the only thing naming why every case below red, and the cases
+# themselves can only report the assignment that failed.
 mk_worktree() {
-  git -C "$REPO" worktree add -q "$TMP/wt" -b wt-branch 2>/dev/null
+  git -C "$REPO" worktree add -q "$TMP/wt" -b wt-branch || return 1
   printf '%s' "$TMP/wt"
 }
 
@@ -325,8 +328,12 @@ mk_worktree() {
 @test "the note does not change the mint's exit status" {
   local wt
   wt="$(mk_worktree)"
-  ( cd "$wt" && bash "$SCRIPT" code-audit-frontend deadbeef ) >/dev/null 2>&1
-  [ "$?" -eq 0 ]
+  # `run`, not a bare subshell: bats runs a test body under errexit, so a
+  # failing subshell aborts the test at the subshell itself and a following
+  # `[ "$?" -eq 0 ]` can only ever observe 0. That spelling reads as the
+  # assertion while errexit is doing the work, and it cannot fail.
+  run bash -c 'cd "$1" && bash "$2" code-audit-frontend deadbeef' _ "$wt" "$SCRIPT"
+  [ "$status" -eq 0 ]
 }
 
 @test "minting from a plain checkout says nothing: the note is worktree-only" {
