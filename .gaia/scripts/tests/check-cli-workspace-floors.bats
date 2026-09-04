@@ -888,6 +888,20 @@ STUB
 # absence must be loud. A skip, a fallback to a weaker parser, or a clean exit
 # here would reinstate exactly the failure this reader replaced: a verdict
 # reported by something that could not read the file.
+@test "a comparison that cannot run is refused, not reported clean" {
+  # Same class as the reader status check: discarded, a failing awk yields an
+  # empty report, the consuming loop prints nothing, rc stays 0, and the check
+  # reports clean over a drift it never compared.
+  write_workspace "  fast-uri: 3.1.6"
+  write_lock "  fast-uri: 3.1.4"
+  mkdir -p "$TMP/brokenbin"
+  printf '#!/bin/sh\nexit 127\n' > "$TMP/brokenbin/awk"
+  chmod +x "$TMP/brokenbin/awk"
+  PATH="$TMP/brokenbin:$PATH" run bash "$CHECK" --no-audit "$WS"
+  [ "$status" -eq 2 ]
+  grep -qF -- 'the comparison could not be run' <<<"$output"
+}
+
 @test "a missing node is refused loudly, never degraded to a clean run" {
   write_workspace "  fast-uri: 3.1.6"
   write_lock "  fast-uri: 3.1.4"

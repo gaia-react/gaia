@@ -482,7 +482,8 @@ jobs:
       #
       # Elsewhere in this file, typical-case durations are quoted deliberately
       # and stay: the cold-eslint cost, the 80-180s a wider `code:` filter would
-      # buy, the 15s the unfiltered distribution job spends. Those DOCUMENT A
+      # buy, and the 15s that `shipped-surface-leak-check` spends, that being the
+      # one job here which deliberately declares no filter. Those DOCUMENT A
       # PRICE rather than size a bound, so a resample moves the figure without
       # touching the decision, and the rule above does not reach them.
       - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'

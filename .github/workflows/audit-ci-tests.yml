@@ -919,10 +919,15 @@ jobs:
       # reddening the leg that actually holds the suite. Asking the sharder
       # which shard holds it costs one grep and cannot drift.
       #
-      # Only the one leg that holds the suite pays the install. That matters
-      # because scripts-1 is the leg this job's own notes call closest to the
-      # cap, and blanket-gating all three scripts shards would put an install on
-      # it for a suite it does not run.
+      # Only the one leg that holds the suite pays the install, whichever leg
+      # that is; blanket-gating all three scripts shards would charge the two
+      # that do not run it. NO PLACEMENT IS NAMED HERE ON PURPOSE. An earlier
+      # version of this very comment argued that the derived gate spares the leg
+      # this job calls closest to its cap, and that went stale the same day: the
+      # sharder re-balances on size, adding fixtures to the suite moved it, and
+      # the sentence then asserted the inverse of what runs. If the budget
+      # question matters on a given day, `bats-shards.sh files <shard>` answers
+      # which leg pays and the cap note in cli-tests.yml says what to check.
       - if: matrix.shard != 'sandbox' && matrix.shard != 'concurrency' && (steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch')
         id: needs-cli-workspace
         name: Ask the sharder whether this shard holds the js-yaml-dependent suite

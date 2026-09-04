@@ -34,9 +34,8 @@ setup() {
   # present placement is stale the next time a test is added. It moved twice
   # while this very paragraph was being written. Read the condition, not a
   # placement, and run `bats-shards.sh files <shard>` if you need today's
-  # answer. Either way this is a budget question rather than a coverage one:
-  # `install: cli` satisfies this suite's whole precondition, so on a shared leg
-  # it runs and on a lean leg it skips. That is a budget question rather than a
+  # answer. `install: cli` satisfies this suite's whole precondition, so on a
+  # shared leg it runs and on a lean leg it skips. That is a budget question rather than a
   # correctness one: running in two places is fine, it just adds this runtime to
   # that leg. Skip cleanly on a lean leg rather than failing a required PR check
   # for an environment this suite cannot control. The binding is asserted

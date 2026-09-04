@@ -204,6 +204,10 @@ gaia_cwf_resolve_reader() {
     printf 'check-cli-workspace-floors: node is required to read these files and was not found on PATH\n' >&2
     return 2
   }
+  command -v awk >/dev/null 2>&1 || {
+    printf 'check-cli-workspace-floors: awk is required to compare the two maps and was not found on PATH\n' >&2
+    return 2
+  }
   local candidate="$SELF_DIR/../cli/node_modules/js-yaml"
   [ -d "$candidate" ] || {
     printf 'check-cli-workspace-floors: js-yaml was not found at %s; run pnpm -C .gaia/cli install first\n' \
@@ -356,7 +360,14 @@ gaia_cwf_main() {
             printf "1\tUNDECLARED OVERRIDE: %s is locked at %s with no entry in pnpm-workspace.yaml\n", k, lock[k]
         }
       }
-    ' <(printf '%s\n' "$configured") <(printf '%s\n' "$locked"))"
+    ' <(printf '%s\n' "$configured") <(printf '%s\n' "$locked"))" || {
+      # THE STATUS IS CHECKED HERE FOR THE SAME REASON IT IS CHECKED ON THE
+      # READER. Discarded, an awk that cannot run yields an empty report, the
+      # loop below prints nothing, `rc` stays 0, and the check reports the
+      # workspace clean over a drift it never compared.
+      printf 'check-cli-workspace-floors: the comparison could not be run\n' >&2
+      return 2
+    }
 
     while IFS="$(printf '\t')" read -r flag line; do
       printf '%s\n' "$line"
