@@ -261,14 +261,14 @@ STUB
   true
 }
 
-@test "an advisory entry schema this reader cannot read is unread, not clean" {
-  # The container-level gate above asks only that `advisories` is present and
-  # `error` absent. A payload whose entries name their fields something else
-  # filters to nothing and would otherwise print the clean line. The metadata
-  # block states zero on purpose, so the cross-check below PASSES this payload
-  # and the entry-shape gate is the only thing left between it and the clean
-  # line. Without it the fixture reaches `NOT audited` through the cross-check
-  # instead and stops pinning the gate its own name refers to.
+@test "an entry naming none of the fields this reader reads is unread, not clean" {
+  # A combined-shape regression pin, NOT a gate isolator: this entry is
+  # missing severity and module_name together, so either term alone still
+  # rejects it and no single-term deletion reds this test. The three
+  # single-term isolators below do that job. This one stays because the
+  # all-fields-renamed payload is the shape pnpm would actually produce if it
+  # renamed its schema, and it is worth one test of its own. The zero metadata
+  # keeps the cross-check from being what rejects it.
   write_workspace "  fast-uri: 3.1.6"
   write_lock "  fast-uri: 3.1.6"
   mkdir -p "$TMP/bin"
@@ -416,11 +416,11 @@ STUB
 }
 
 @test "a count typed as a string beside an absent one is unread, not clean" {
-  # Isolates the `all(type == "number")` gate, which the other count fixtures
-  # only appear to pin: they each fail for an incidental reason further along,
-  # so the gate can be deleted with the rest of the suite still green. Without
-  # it `["0", null] | add` yields the string "0", which matches the clean arm's
-  # literal 0 exactly.
+  # Pins the cross-check failing CLOSED on a count it cannot read, which is
+  # the contract. It does not isolate the `all(type == "number")` term itself:
+  # with the term gone, `add` over a string and a null makes `jq` exit
+  # non-zero, and that lands on the same not-audited arm. The isolator for the
+  # term is the non-object-vulnerabilities fixture below.
   write_workspace "  fast-uri: 3.1.6"
   write_lock "  fast-uri: 3.1.6"
   mkdir -p "$TMP/bin"
@@ -590,6 +590,38 @@ STUB
   [ "$status" -eq 1 ]
   grep -qF -- 'FLOOR NOT APPLIED' <<<"$output"
   grep -qF -- 'shape this reader cannot read' <<<"$output"
+}
+
+@test "a comment carrying a colon is not read as an override" {
+  # The comment skip in the block parser is load-bearing, not tidiness: a
+  # retirement note is exactly where a colon shows up, and without the skip it
+  # parses as a key whose value is the rest of the sentence, reporting a floor
+  # that is not applied on a correct tree and failing the CI-gating arm.
+  write_workspace "  # retired by hand: see the note above
+  fast-uri: 3.1.6"
+  write_lock "  fast-uri: 3.1.6"
+  run bash "$CHECK" --no-audit "$WS"
+  [ "$status" -eq 0 ]
+  grep -qF -- 'floor applied: fast-uri' <<<"$output"
+  grep -qF -- 'FLOOR NOT APPLIED' <<<"$output" && return 1
+  true
+}
+
+@test "a key containing a colon parses the same quoted and bare" {
+  # A plain YAML key ends at a colon followed by whitespace, not at the first
+  # colon. An alias spelling carries one inside the key, and the two files
+  # quote differently -- the same asymmetry the quoting test above pins -- so
+  # splitting on the first colon makes the quoted side parse the whole key and
+  # the bare side parse a prefix. The run then reports the declared floor
+  # absent AND invents an undeclared override, on a tree that agrees.
+  write_workspace "  'foo@npm:bar': 1.2.3"
+  write_lock "  foo@npm:bar: 1.2.3"
+  run bash "$CHECK" --no-audit "$WS"
+  [ "$status" -eq 0 ]
+  grep -qF -- 'floor applied: foo@npm:bar at 1.2.3' <<<"$output"
+  grep -qF -- 'FLOOR NOT APPLIED' <<<"$output" && return 1
+  grep -qF -- 'UNDECLARED OVERRIDE' <<<"$output" && return 1
+  true
 }
 
 @test "a declared overrides block yielding no entries is refused, not called clean" {

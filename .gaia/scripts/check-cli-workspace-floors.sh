@@ -98,6 +98,14 @@ gaia_cwf_overrides() {
       line = trim($0)
       if (line == "" || substr(line, 1, 1) == "#") next
       c = substr(line, 1, 1)
+      # Declared defence, and no fixture pins it: since the plain path below
+      # ends a key at a colon followed by whitespace, it already parses every
+      # quoted key this file can carry, `unquote` stripping the quotes after
+      # the split. What this branch alone still handles is a key containing a
+      # colon FOLLOWED BY a space, which no package name can, so the branch is
+      # unfalsifiable rather than load-bearing. It stays because the quoting
+      # asymmetry between the two files is the one real hazard this parser
+      # has, and reading the quotes explicitly is how that stays legible.
       if (c == "\"" || c == "\047") {
         endq = index(substr(line, 2), c)
         if (endq == 0) next
@@ -106,7 +114,19 @@ gaia_cwf_overrides() {
         if (substr(rest, 1, 1) != ":") next
         val = substr(rest, 2)
       } else {
-        i = index(line, ":")
+        # A plain YAML key ends at the first colon FOLLOWED BY whitespace, or
+        # at a colon ending the line -- not at the first colon. A bare alias
+        # spelling such as `foo@npm:bar: 1.2.3` carries a colon inside the key
+        # itself, and splitting on the first one takes `foo@npm` with the rest
+        # as its value. That reports the declared floor absent and invents an
+        # undeclared override in the same run, on a correct tree.
+        n = length(line)
+        i = 0
+        for (p = 1; p <= n; p++) {
+          if (substr(line, p, 1) != ":") continue
+          nx = substr(line, p + 1, 1)
+          if (p == n || nx == " " || nx == "\t") { i = p; break }
+        }
         if (i == 0) next
         key = substr(line, 1, i - 1)
         val = substr(line, i + 1)
@@ -254,6 +274,12 @@ gaia_cwf_main() {
     # one level down, to the entries behind that key: a container this
     # reader can name says nothing about whether it can read what the
     # container holds.
+    # `type == "object"` and `has("advisories")` are declared defence rather
+    # than load-bearing terms, and no fixture can pin them: every payload they
+    # would reject already makes `jq` exit non-zero on `has` itself, so the
+    # gate closes either way. They are kept so the rule reads as the rule, and
+    # so a future `jq` that stops erroring on those inputs does not open the
+    # gate. `(has("error") | not)` IS load-bearing and test 24 pins it.
     if ! printf '%s' "$audit_json" \
       | jq -e 'type == "object" and has("advisories") and (has("error") | not)' >/dev/null 2>&1; then
       printf 'advisory arm: pnpm audit could not be read; this closure was NOT audited\n'
@@ -266,6 +292,10 @@ gaia_cwf_main() {
     # otherwise print the clean line, which is the container-level false clean
     # repeated one level down. An empty `advisories` object passes and is
     # correct: that is a scan that ran and found nothing.
+    # As above, `(.advisories | type) == "object"` and the per-entry
+    # `type == "object"` are declared defence that no payload can falsify,
+    # because `to_entries` errors first. The three `has(...)` terms beside them
+    # are load-bearing and each has its own isolating fixture.
     if ! printf '%s' "$audit_json" | jq -e '
       (.advisories | type) == "object"
       and (.advisories | to_entries | all(.value
