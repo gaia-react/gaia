@@ -9,11 +9,11 @@
 # refused=true/refused_reason=governance-surface -- whenever a self-heal
 # touches the tests, the CI pipeline and the rest of .github/, the .gaia/ gate
 # & roster machinery, instruction/convention surfaces, or root-level build
-# config; the set itself is AUDIT_SELFHEAL_REFUSE_ERE, and this summary is only
-# a summary of it. The SAME
-# refusal set is sourced by the local producer's PreToolUse hook
-# (.claude/hooks/block-selfheal-paths.sh, .gaia/tests/hooks/block-selfheal-paths.bats),
-# so criteria 1-4 must hold on both producers; this suite covers the CI half.
+# config. AUDIT_SELFHEAL_REFUSE_ERE is the boundary; read it rather than this
+# summary of it. The SAME refusal set is sourced by the local producer's
+# PreToolUse hook (.claude/hooks/block-selfheal-paths.sh,
+# .gaia/tests/hooks/block-selfheal-paths.bats), so criteria 1-4 must hold on
+# both producers; this suite covers the CI half.
 #
 # The step is EXECUTED as the real `run:` body extracted from the workflow
 # YAML against a sandbox repo with a local bare "origin", so this exercises
