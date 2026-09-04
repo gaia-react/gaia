@@ -148,7 +148,7 @@ Grade every finding Critical / Important / Suggestion, matching the sibling Code
 
 No auditor may rewrite the workflow that runs auditors. A bad repair to the pipeline can disable the thing that would catch it, which is exactly why the domains governing the pipeline, the gate, the roster, and the tests are advisory by construction. **The working tree you return is byte-identical to the tree you read.** Report the finding; the orchestrator owns the repair.
 
-This is belt-and-braces, not the enforcement: the deterministic push gate refuses a self-heal touching `.github/workflows/**` regardless of what any member's prompt says. A boundary that is documented but not enforced is the same failure as a default that disagrees with an intent, wearing different clothes. Your prose is the member-error guard; the gate is the boundary.
+This is belt-and-braces, not the enforcement: the deterministic push gate refuses a self-heal touching any path in the one refusal set (`AUDIT_SELFHEAL_REFUSE_ERE` in `.claude/hooks/lib/audit-selfheal-paths.sh`), which reaches well past `.github/**` to the tests, the `.gaia/` gate and roster machinery, the instruction surfaces, and root build config, regardless of what any member's prompt says. The ERE is the boundary; read it rather than any prose summary of it, this sentence included. A boundary that is documented but not enforced is the same failure as a default that disagrees with an intent, wearing different clothes. Your prose is the member-error guard; the gate is the boundary.
 
 ## Cross-remit findings
 
