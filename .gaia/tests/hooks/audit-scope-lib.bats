@@ -619,9 +619,9 @@ golden_run_hook() {
 # is machinery (its bytes must still rotate every member's digest) but
 # deliberately owns no reviewer. It is a pure byte-identical copy of its
 # source template; a reviewer reading it decides nothing the source review
-# did not already decide. The drift guard covering all twelve workflow
-# templates under `.gaia/cli/templates/workflows/` is the pin that keeps this
-# carve-out honest: it fails if any of the twelve drifts from its source.
+# did not already decide. The drift guard covering every workflow template
+# under `.gaia/cli/templates/workflows/`, partials included, is the pin that
+# keeps this carve-out honest: it fails if any of them drifts from its source.
 # ---------------------------------------------------------------------------
 
 # Assert audit_owner_for_path returns a non-empty owner for every machinery
