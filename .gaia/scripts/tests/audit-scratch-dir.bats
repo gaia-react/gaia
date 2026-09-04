@@ -281,3 +281,66 @@ teardown() {
   [ "$status" -eq 0 ]
   [ "$output" = "cache/mutation-scratch/|prefix|dir|ephemeral" ]
 }
+
+# --- the mint/populate asymmetry (gaia-react/gaia#1759) -----------------------
+#
+# A member dispatched into a linked worktree is handed a directory it cannot
+# reach with Write/Edit. The two halves fail differently, which is what makes
+# it confusing rather than obvious: the mint SUCCEEDS (mkdir -p from Bash) and
+# the populate FAILS (the runtime's own worktree confinement refuses a
+# file_path that leaves the tree, and `.gaia/local` is one symlink to main's).
+#
+# GAIA cannot make that Write succeed -- the refusal is the runtime's, not any
+# guard's -- so what the mint owes its caller is the constraint, said once, at
+# the moment the path is handed over. These cases pin that it is said in the
+# worktree case, NOT said otherwise, and said on stderr so a caller capturing
+# stdout still gets a bare path.
+
+# Builds a real linked worktree off $REPO and echoes its path. Real rather
+# than mocked: gaia_is_linked_worktree is layout-derived, so a fake directory
+# would assert nothing about the predicate the script actually consults.
+mk_worktree() {
+  git -C "$REPO" worktree add -q "$TMP/wt" -b wt-branch 2>/dev/null
+  printf '%s' "$TMP/wt"
+}
+
+@test "minting from a linked worktree says the directory must be populated from Bash" {
+  local wt err
+  wt="$(mk_worktree)"
+  err="$TMP/err"
+  ( cd "$wt" && bash "$SCRIPT" code-audit-frontend deadbeef ) >/dev/null 2>"$err"
+  grep -qF -- "Bash" "$err"
+  grep -qF -- "Write" "$err"
+}
+
+@test "the worktree note goes to stderr, so stdout is still a bare path" {
+  local wt out
+  wt="$(mk_worktree)"
+  out="$( cd "$wt" && bash "$SCRIPT" code-audit-frontend deadbeef 2>/dev/null )"
+  # Exactly one line, and it is a directory that exists.
+  [ "$(printf '%s\n' "$out" | wc -l | tr -d ' ')" = "1" ]
+  [ -d "$out" ]
+}
+
+@test "the note does not change the mint's exit status" {
+  local wt
+  wt="$(mk_worktree)"
+  ( cd "$wt" && bash "$SCRIPT" code-audit-frontend deadbeef ) >/dev/null 2>&1
+  [ "$?" -eq 0 ]
+}
+
+@test "minting from a plain checkout says nothing: the note is worktree-only" {
+  local err
+  err="$TMP/err"
+  ( cd "$REPO" && bash "$SCRIPT" code-audit-frontend deadbeef ) >/dev/null 2>"$err"
+  [ ! -s "$err" ]
+}
+
+@test "--release from a worktree is silent: releasing is rm -rf and always works" {
+  local wt err
+  wt="$(mk_worktree)"
+  err="$TMP/err"
+  ( cd "$wt" && bash "$SCRIPT" code-audit-frontend deadbeef ) >/dev/null 2>/dev/null
+  ( cd "$wt" && bash "$SCRIPT" --release code-audit-frontend deadbeef ) >/dev/null 2>"$err"
+  [ ! -s "$err" ]
+}
