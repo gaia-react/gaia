@@ -415,14 +415,21 @@ jobs:
       # without failing, so a newly published upstream advisory does not red a
       # required context on every open pull request at once. The script's
       # docblock owns what the check does not catch.
-      # Bounded because the advisory arm is a network round trip and the job's
-      # own cap is minutes away from this job's real runtime. An audit endpoint
-      # that stalls would otherwise red a declared-required context as a generic
-      # job timeout naming neither the step nor the registry, which is the
-      # attribution the apt step in audit-ci-tests.yml already bounds itself for.
+      # Bounded only as a backstop against a hang pnpm does not end on its own,
+      # and the bound has to sit ABOVE pnpm's own abort to be that. A stalled
+      # audit endpoint is not the case this is protecting against: pnpm ends
+      # the call itself at about 250s with an `error` payload, which the check
+      # reads as unaudited and reports without failing, and the two fast
+      # failure shapes, a refused port and a 503, end at about 70s. A bound
+      # below 250s kills a call that was about to end non-fatally and reds a
+      # declared-required context for a registry condition no pull request
+      # changed, which is the outcome the non-fatal advisory posture described
+      # above exists to prevent. The job's own 15-minute cap is not what this
+      # replaces either: this job runs in about 155s, so that cap carries slack
+      # pnpm's self-abort never reaches.
       - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
         name: Check the CLI workspace's security floors are applied
-        timeout-minutes: 3
+        timeout-minutes: 6
         run: bash .gaia/scripts/check-cli-workspace-floors.sh
 
   # PR-gated distribution harness. Before this job, the harness (run-all.sh,

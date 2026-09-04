@@ -221,7 +221,7 @@ gaia_cwf_main() {
   elif ! command -v jq >/dev/null 2>&1; then
     printf 'advisory arm skipped: jq is not on PATH\n'
   else
-    local audit_json advisories
+    local audit_json advisories declared
     audit_json="$(pnpm -C "$root" audit --json 2>/dev/null || true)"
     # The exit status cannot separate a scan that failed from one that
     # succeeded, because `pnpm audit` exits non-zero precisely when it FINDS
@@ -233,10 +233,25 @@ gaia_cwf_main() {
     # the one closure its own header says nothing else audits. Require the
     # `advisories` key present and no `error` key; anything else, including a
     # future payload shape naming its findings something other than
-    # `advisories`, is unread rather than clean.
+    # `advisories`, is unread rather than clean. The same reasoning applies
+    # one level down, to the entries behind that key: a container this
+    # reader can name says nothing about whether it can read what the
+    # container holds.
     if ! printf '%s' "$audit_json" \
       | jq -e 'type == "object" and has("advisories") and (has("error") | not)' >/dev/null 2>&1; then
       printf 'advisory arm: pnpm audit could not be read; this closure was NOT audited\n'
+      return "$rc"
+    fi
+    # Every entry must carry the two fields the filter below reads. An entry
+    # schema this reader does not know filters to nothing and would otherwise
+    # print the clean line, which is the container-level false clean repeated
+    # one level down. An empty `advisories` object passes and is correct: that
+    # is a scan that ran and found nothing.
+    if ! printf '%s' "$audit_json" | jq -e '
+      (.advisories | type) == "object"
+      and (.advisories | to_entries | all(.value
+        | (type == "object") and has("severity") and has("module_name")))' >/dev/null 2>&1; then
+      printf 'advisory arm: pnpm audit named advisories in a shape this reader cannot read; this closure was NOT audited\n'
       return "$rc"
     fi
     advisories="$(printf '%s' "$audit_json" | jq -r '
@@ -244,7 +259,22 @@ gaia_cwf_main() {
       | select(.value.severity == "high" or .value.severity == "critical")
       | "\(.value.severity)\t\(.value.module_name)\t\(.value.title)"' 2>/dev/null)"
     if [ -z "$advisories" ]; then
-      printf 'advisory arm: no high or critical advisories in this closure\n'
+      # Cross-check the report's own second statement of the same fact before
+      # printing the most reassuring line this file can print. A count above
+      # zero with nothing parsed means the report names findings this reader
+      # did not see, which is what a future shape that moves them out of
+      # `advisories` while leaving the empty key behind looks like from here.
+      declared="$(printf '%s' "$audit_json" | jq -r '
+        [(.metadata.vulnerabilities.high // 0), (.metadata.vulnerabilities.critical // 0)]
+        | map(select(type == "number")) | add // 0' 2>/dev/null)"
+      case "$declared" in
+      '' | 0 | *[!0-9]*)
+        printf 'advisory arm: no high or critical advisories in this closure\n'
+        ;;
+      *)
+        printf 'advisory arm: the report counts %s high or critical advisories but this reader parsed none of them; this closure was NOT audited\n' "$declared"
+        ;;
+      esac
     else
       # Reported, never fatal: see the posture note in this file's header.
       printf '%s\n' "$advisories" | while IFS="$(printf '\t')" read -r sev mod title; do

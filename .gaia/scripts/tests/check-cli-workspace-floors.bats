@@ -255,6 +255,92 @@ STUB
   true
 }
 
+@test "an advisory entry schema this reader cannot read is unread, not clean" {
+  # The container-level gate above asks only that `advisories` is present and
+  # `error` absent. A payload whose entries name their fields something else
+  # filters to nothing and would otherwise print the clean line. No metadata
+  # counts here on purpose: this pins the entry-shape gate on its own, so it
+  # reds when that gate is the only thing removed.
+  write_workspace "  fast-uri: 3.1.6"
+  write_lock "  fast-uri: 3.1.6"
+  mkdir -p "$TMP/bin"
+  cat > "$TMP/bin/pnpm" <<'STUB'
+#!/usr/bin/env bash
+cat <<'JSON'
+{"advisories":{"1098765":{"sev":"critical","mod":"fast-uri","title":"renamed entry fields"}}}
+JSON
+exit 1
+STUB
+  chmod +x "$TMP/bin/pnpm"
+  PATH="$TMP/bin:$PATH" run bash "$CHECK" "$WS"
+  [ "$status" -eq 0 ]
+  grep -qF -- 'NOT audited' <<<"$output"
+  grep -qF -- 'no high or critical advisories' <<<"$output" && return 1
+  true
+}
+
+@test "an advisories value that is not an object is unread, not clean" {
+  # `to_entries` errors on a scalar and the filter's status was discarded, so
+  # the empty result read as a clean scan.
+  write_workspace "  fast-uri: 3.1.6"
+  write_lock "  fast-uri: 3.1.6"
+  mkdir -p "$TMP/bin"
+  cat > "$TMP/bin/pnpm" <<'STUB'
+#!/usr/bin/env bash
+printf '{"advisories":5}\n'
+exit 0
+STUB
+  chmod +x "$TMP/bin/pnpm"
+  PATH="$TMP/bin:$PATH" run bash "$CHECK" "$WS"
+  [ "$status" -eq 0 ]
+  grep -qF -- 'NOT audited' <<<"$output"
+  grep -qF -- 'no high or critical advisories' <<<"$output" && return 1
+  true
+}
+
+@test "a report whose own counts contradict an empty parse is unread, not clean" {
+  # The shape a future pnpm produces by moving its findings out of `advisories`
+  # while leaving the key behind as an empty stub. Every gate above passes it,
+  # and only the report's own second statement of the same fact catches it.
+  write_workspace "  fast-uri: 3.1.6"
+  write_lock "  fast-uri: 3.1.6"
+  mkdir -p "$TMP/bin"
+  cat > "$TMP/bin/pnpm" <<'STUB'
+#!/usr/bin/env bash
+cat <<'JSON'
+{"advisories":{},"metadata":{"vulnerabilities":{"critical":1,"high":0,"low":0}}}
+JSON
+exit 1
+STUB
+  chmod +x "$TMP/bin/pnpm"
+  PATH="$TMP/bin:$PATH" run bash "$CHECK" "$WS"
+  [ "$status" -eq 0 ]
+  grep -qF -- 'NOT audited' <<<"$output"
+  grep -qF -- 'no high or critical advisories' <<<"$output" && return 1
+  true
+}
+
+@test "a report whose own counts agree with an empty parse is clean" {
+  # The regression pin for the cross-check above: a genuine clean scan still
+  # reports clean, and low-severity findings do not make it inconclusive.
+  write_workspace "  fast-uri: 3.1.6"
+  write_lock "  fast-uri: 3.1.6"
+  mkdir -p "$TMP/bin"
+  cat > "$TMP/bin/pnpm" <<'STUB'
+#!/usr/bin/env bash
+cat <<'JSON'
+{"advisories":{},"metadata":{"vulnerabilities":{"critical":0,"high":0,"low":3}}}
+JSON
+exit 0
+STUB
+  chmod +x "$TMP/bin/pnpm"
+  PATH="$TMP/bin:$PATH" run bash "$CHECK" "$WS"
+  [ "$status" -eq 0 ]
+  grep -qF -- 'no high or critical advisories' <<<"$output"
+  grep -qF -- 'NOT audited' <<<"$output" && return 1
+  true
+}
+
 @test "a declared overrides block yielding no entries is refused, not called clean" {
   # The discovery-stage failure: if the reader stops matching the shape pnpm
   # emits, both files parse to nothing, empty agrees with empty, and the gate
