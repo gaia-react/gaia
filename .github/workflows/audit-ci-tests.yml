@@ -944,9 +944,13 @@ jobs:
           # install skipped, and the surviving `bats-shards.sh files` carries
           # that identically. What closes it is the SIZE, not the stage count:
           # the largest shard list is about 2KB against a 64KB pipe buffer, so
-          # the producer always completes its single write before grep can exit.
-          # A shard list would need roughly forty times its present size for this
-          # to become reachable.
+          # the producer always completes its single write before grep can exit:
+          # `cmd_files` ends in a single `printf`, so the write is one syscall
+          # that can neither block nor go partial at this size. The buffer is
+          # about THIRTY times the largest list, `lib` at 1994 bytes, which is
+          # the margin a shard would have to grow through for this to become
+          # reachable. Measured rather than estimated, and stated as a ratio
+          # because both halves move.
           if bash .gaia/tests/bats-shards.sh files "$SHARD" \
             | grep -qF 'check-cli-workspace-floors.bats'; then
             printf 'needed=1\n' >> "$GITHUB_OUTPUT"
