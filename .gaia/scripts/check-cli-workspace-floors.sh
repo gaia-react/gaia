@@ -106,7 +106,7 @@ USAGE
 gaia_cwf_overrides() {
   local out
   out="$(
-    awk '
+    LC_ALL=C awk '
       function trim(s) {
         sub(/^[[:space:]]+/, "", s); sub(/[[:space:]]+$/, "", s); return s
       }
@@ -124,6 +124,12 @@ gaia_cwf_overrides() {
       function refuse(what, raw) {
         printf "check-cli-workspace-floors: %s:%d declares %s, which this reader does not recognize: %s\n", \
           FILENAME, FNR, what, raw > "/dev/stderr"
+        # awk runs END even on `exit`, and a refusal before the first entry
+        # leaves the counter at zero, so without this the END rule would append
+        # its own message and tell the operator the map is empty or the reader
+        # has drifted, over a file where neither is true and whose offending
+        # line was just named.
+        refused = 1
         exit 2
       }
       # A value ends at an unquoted comment tail. YAML starts a comment only at
@@ -152,14 +158,26 @@ gaia_cwf_overrides() {
       # `\357\273\277` nor `\xef\xbb\xbf` is portable in an awk regex: both
       # are silently inert on the BSD awk that ships with macOS while working
       # under gawk, which would have reproduced the very platform split this
-      # removes, in the fix for it.
+      # removes, in the fix for it. The invocation is prefixed `LC_ALL=C` so
+      # that every awk reads bytes rather than characters, which makes this true
+      # by construction instead of true on the awks that happen to be surveyed:
+      # under a multibyte locale gawk would render the sprintf as a wide
+      # character and count substr in characters, and the comparison would
+      # quietly never match.
       BEGIN { bom = sprintf("%c%c%c", 239, 187, 191) }
       NR == 1 { if (substr($0, 1, 3) == bom) $0 = substr($0, 4) }
       # Belt and braces with trim below, which also drops a trailing CR wherever
       # the runner awk counts it as [[:space:]]. This makes that independent of
       # whether it does.
       { if (substr($0, length($0), 1) == sprintf("%c", 13)) $0 = substr($0, 1, length($0) - 1) }
-      /^overrides:[[:space:]]*$/ { in_block = 1; declared = 1; next }
+      # A bare header, or one carrying only a YAML comment, opens the block. Any
+      # OTHER tail on that line refuses rather than being skipped past: skipping
+      # it read a legal annotated header as a file declaring no overrides, which
+      # printed the clean line at exit 0 over a declared floor the lockfile did
+      # not apply. That is the same silent false clean the BOM rework closed,
+      # reached through the block-open match instead.
+      /^overrides:[[:space:]]*(#.*)?$/ { in_block = 1; declared = 1; next }
+      /^overrides:/ { refuse("an overrides header with a tail this reader cannot read", $0) }
       # A key at column zero closes the mapping. A comment does not, and
       # neither does a blank line: a hand-edited map may group its entries with
       # one, and closing there would silently drop every entry below the gap.
@@ -186,19 +204,30 @@ gaia_cwf_overrides() {
           # key itself, and splitting on the first one takes `foo@npm` with the
           # rest as its value. That reports the declared floor absent and
           # invents an undeclared override in the same run, on a correct tree.
-          n = length(line)
+          # `len`, not `n`. `n` is the ENTRY COUNTER the END rule reads, and
+          # reusing the name here made a quoted-key refusal print the
+          # declared-block-yielding-no-entries message alongside its own cause,
+          # pointing an operator at loosening the reader rather than at the line
+          # just named. It was also a latent fail-open: a plain-key line leaving
+          # this rule without printing would keep the counter above zero and
+          # silently retire the END guard.
+          len = length(line)
           i = 0
-          for (p = 1; p <= n; p++) {
+          for (p = 1; p <= len; p++) {
             if (substr(line, p, 1) != ":") continue
             nx = substr(line, p + 1, 1)
-            if (p == n || nx == " " || nx == "\t") { i = p; break }
+            if (p == len || nx == " " || nx == "\t") { i = p; break }
           }
           if (i == 0) refuse("a mapping line with no key-terminating colon", raw)
           key = substr(line, 1, i - 1)
           val = substr(line, i + 1)
         }
-        key = unquote(trim(key))
-        val = trim(strip_comment(trim(val)))
+        # No unquote on the key and no outer trim on the value: a line opening
+        # with a quote is routed to the quoted branch, which strips the quotes
+        # itself, and every return path of strip_comment hands back an
+        # already-trimmed string or an exact quoted region.
+        key = trim(key)
+        val = strip_comment(trim(val))
         vq = substr(val, 1, 1)
         quoted = (length(val) >= 2 && (vq == "\"" || vq == "\047") && substr(val, length(val), 1) == vq)
         val = unquote(val)
@@ -235,10 +264,12 @@ gaia_cwf_overrides() {
         # what an entry is, rather than in a separate grep beside it. Two
         # readers of the same fact can disagree, and when they did the
         # disagreement was a false clean that appeared on one platform only.
-        if (declared && n == 0)
+        if (refused) exit 2
+        if (declared && n == 0) {
           printf "check-cli-workspace-floors: %s declares an overrides block yielding no entries; either the map is empty or this reader no longer matches the shape pnpm emits\n", \
             FILENAME > "/dev/stderr"
-        if (declared && n == 0) exit 2
+          exit 2
+        }
       }
     ' "$1"
   )" || return 2

@@ -869,6 +869,41 @@ STUB
   grep -qF -- 'a key already declared in this file' <<<"$output"
 }
 
+@test "an overrides header carrying a YAML comment is read, not treated as no block" {
+  # Legal YAML: js-yaml loads this header and returns the override intact.
+  # Skipping it read the file as declaring no overrides, which printed the clean
+  # line at exit 0 over a floor the lockfile does not apply. Both sides matter:
+  # the lockfile must declare NOTHING, or an undeclared-override row exits 1
+  # anyway and the fixture pins nothing.
+  printf 'overrides: # security floors\n  fast-uri: 3.1.6\n' > "$WS/pnpm-workspace.yaml"
+  write_lock
+  run bash "$CHECK" --no-audit "$WS"
+  grep -qF -- 'no overrides declared; no floors to check' <<<"$output" && return 1
+  [ "$status" -eq 1 ]
+}
+
+@test "an overrides header with an unreadable tail refuses rather than being skipped" {
+  printf 'overrides: {fast-uri: 3.1.6}\n' > "$WS/pnpm-workspace.yaml"
+  write_lock "  fast-uri: 3.1.6"
+  run bash "$CHECK" --no-audit "$WS"
+  [ "$status" -eq 2 ]
+  grep -qF -- 'an overrides header with a tail this reader cannot read' <<<"$output"
+}
+
+@test "a refusal names its own cause and not the no-entries cause as well" {
+  # The entry counter used to share a name with the plain-branch line length, so
+  # a quoted-key refusal left the counter at zero and the END rule fired too,
+  # telling the operator the map was empty or the reader had drifted, over a
+  # file where neither was true.
+  write_workspace "  'unterminated: 3.1.6"
+  write_lock "  fast-uri: 3.1.6"
+  run bash "$CHECK" --no-audit "$WS"
+  [ "$status" -eq 2 ]
+  grep -qF -- 'a quoted key with no closing quote' <<<"$output"
+  grep -qF -- 'yielding no entries' <<<"$output" && return 1
+  true
+}
+
 @test "a UTF-8 BOM does not turn a declared block into a clean run" {
   # This was a SILENT FALSE CLEAN that appeared only in CI. The BOM defeated
   # both the block-open match and the separate grep that used to guard it, and
