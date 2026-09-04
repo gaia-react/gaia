@@ -1711,7 +1711,7 @@ jobs:
             mode="advisory (push_fixes=false)"
           elif [ "$REFUSED" = "true" ]; then
             if [ "$REFUSED_REASON" = "governance-surface" ]; then
-              mode="self-heal REFUSED: edited a surface off-limits to self-heal (tests, the CI pipeline, .gaia/ gate & roster machinery, instruction/convention surfaces under .claude/**, .specify/**, wiki/**, or root build config); see workflow logs and review manually"
+              mode="self-heal REFUSED: edited a surface off-limits to self-heal (tests, the CI pipeline and the rest of .github/, .gaia/ gate & roster machinery, instruction/convention surfaces under .claude/**, .specify/**, wiki/**, or root build config; the set is AUDIT_SELFHEAL_REFUSE_ERE in .claude/hooks/lib/audit-selfheal-paths.sh); see workflow logs and review manually"
             else
               mode="self-heal REFUSED: diff exceeded the 10-file safety threshold (touched $REFUSED_COUNT files); see workflow logs and review manually"
             fi

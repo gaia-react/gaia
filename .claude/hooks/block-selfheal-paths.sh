@@ -154,7 +154,7 @@ is_refused_path() {
 }
 
 deny_reason() {
-  printf 'BLOCKED: self-heal may not edit %s -- off-limits to the repair boundary (tests, the CI pipeline, .gaia/ gate & roster machinery, instruction/convention surfaces, or root build config). This is a defect to report as a finding, not to repair. See .claude/hooks/lib/audit-selfheal-paths.sh.' "$1"
+  printf 'BLOCKED: self-heal may not edit %s -- off-limits to the repair boundary (tests, the CI pipeline and the rest of .github/, .gaia/ gate & roster machinery, instruction/convention surfaces, or root build config). This is a defect to report as a finding, not to repair. See .claude/hooks/lib/audit-selfheal-paths.sh.' "$1"
 }
 
 # scan_exec_positions <token>...: deny when the remit writer basename appears
