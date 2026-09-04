@@ -800,7 +800,7 @@ STUB
   write_lock "  fast-uri: 3.1.6"
   run bash "$CHECK" --no-audit "$WS"
   [ "$status" -eq 2 ]
-  grep -qF -- 'a YAML indicator this reader cannot interpret' <<<"$output"
+  grep -qF -- 'is not readable as YAML' <<<"$output"
 }
 
 @test "a YAML alias as a version is refused rather than compared as a literal token" {
@@ -808,7 +808,7 @@ STUB
   write_lock "  fast-uri: 3.1.6"
   run bash "$CHECK" --no-audit "$WS"
   [ "$status" -eq 2 ]
-  grep -qF -- 'a YAML indicator this reader cannot interpret' <<<"$output"
+  grep -qF -- 'unidentified alias' <<<"$output"
 }
 
 # THE LINE BETWEEN STRICT AND PERMISSIVE. A plain scalar carrying whitespace is
@@ -846,7 +846,7 @@ STUB
   write_lock "  fast-uri: 3.1.6"
   run bash "$CHECK" --no-audit "$WS"
   [ "$status" -eq 2 ]
-  grep -qF -- 'a quote that does not close as a scalar' <<<"$output"
+  grep -qF -- 'is not readable as YAML' <<<"$output"
 }
 
 @test "a quoted value with trailing junk after the closing quote is refused" {
@@ -854,7 +854,7 @@ STUB
   write_lock "  fast-uri: 3.1.6"
   run bash "$CHECK" --no-audit "$WS"
   [ "$status" -eq 2 ]
-  grep -qF -- 'a quote that does not close as a scalar' <<<"$output"
+  grep -qF -- 'is not readable as YAML' <<<"$output"
 }
 
 @test "a key declared twice is refused rather than resolved against the YAML rule" {
@@ -866,7 +866,9 @@ STUB
   write_lock "  fast-uri: 0.24.0"
   run bash "$CHECK" --no-audit "$WS"
   [ "$status" -eq 2 ]
-  grep -qF -- 'a key already declared in this file' <<<"$output"
+  # YAML itself treats a duplicate mapping key as an error, and the reader
+  # reports the parser's own diagnosis rather than inventing one.
+  grep -qF -- 'duplicated mapping key' <<<"$output"
 }
 
 @test "an overrides header carrying a YAML comment is read, not treated as no block" {
@@ -882,12 +884,47 @@ STUB
   [ "$status" -eq 1 ]
 }
 
-@test "an overrides header with an unreadable tail refuses rather than being skipped" {
+# NO SILENT DEGRADATION. The reader is the whole correctness argument, so its
+# absence must be loud. A skip, a fallback to a weaker parser, or a clean exit
+# here would reinstate exactly the failure this reader replaced: a verdict
+# reported by something that could not read the file.
+@test "a missing node is refused loudly, never degraded to a clean run" {
+  write_workspace "  fast-uri: 3.1.6"
+  write_lock "  fast-uri: 3.1.4"
+  mkdir -p "$TMP/emptybin"
+  # `/bin/bash` by absolute path: with PATH emptied, `bash` itself would not
+  # resolve and the run would fail at 127 before reaching the reader check,
+  # which passes the status assertion for the wrong reason.
+  PATH="$TMP/emptybin" run /bin/bash "$CHECK" --no-audit "$WS"
+  [ "$status" -eq 2 ]
+  grep -qF -- 'node is required' <<<"$output"
+  grep -qF -- 'no overrides declared; no floors to check' <<<"$output" && return 1
+  true
+}
+
+@test "a missing js-yaml is refused loudly and names how to install it" {
+  # The script resolves js-yaml relative to its own location, so a copy placed
+  # outside this repository has no workspace to find it in.
+  write_workspace "  fast-uri: 3.1.6"
+  write_lock "  fast-uri: 3.1.4"
+  mkdir -p "$TMP/elsewhere"
+  cp "$CHECK" "$TMP/elsewhere/check-cli-workspace-floors.sh"
+  run bash "$TMP/elsewhere/check-cli-workspace-floors.sh" --no-audit "$WS"
+  [ "$status" -eq 2 ]
+  grep -qF -- 'js-yaml was not found' <<<"$output"
+  grep -qF -- 'pnpm -C .gaia/cli install' <<<"$output"
+  grep -qF -- 'no overrides declared; no floors to check' <<<"$output" && return 1
+  true
+}
+
+@test "a flow-mapping overrides block is read, not refused" {
+  # A flow mapping is legal YAML and the previous hand-rolled reader could only
+  # refuse it. Reading with the serializer means the spelling stops mattering.
   printf 'overrides: {fast-uri: 3.1.6}\n' > "$WS/pnpm-workspace.yaml"
   write_lock "  fast-uri: 3.1.6"
   run bash "$CHECK" --no-audit "$WS"
-  [ "$status" -eq 2 ]
-  grep -qF -- 'an overrides header with a tail this reader cannot read' <<<"$output"
+  [ "$status" -eq 0 ]
+  grep -qF -- 'floor applied: fast-uri at 3.1.6' <<<"$output"
 }
 
 @test "a refusal names its own cause and not the no-entries cause as well" {
@@ -899,7 +936,7 @@ STUB
   write_lock "  fast-uri: 3.1.6"
   run bash "$CHECK" --no-audit "$WS"
   [ "$status" -eq 2 ]
-  grep -qF -- 'a quoted key with no closing quote' <<<"$output"
+  grep -qF -- 'is not readable as YAML' <<<"$output"
   grep -qF -- 'yielding no entries' <<<"$output" && return 1
   true
 }
@@ -941,7 +978,7 @@ STUB
   write_lock "  fast-uri: 3.1.6"
   run bash "$CHECK" --no-audit "$WS"
   [ "$status" -eq 2 ]
-  grep -qF -- 'a key with no version' <<<"$output"
+  grep -qF -- 'maps fast-uri to a value that is not a scalar' <<<"$output"
 }
 
 @test "a YAML null key inside the block is refused rather than dropped" {
@@ -949,7 +986,7 @@ STUB
   write_lock "  fast-uri: 3.1.6"
   run bash "$CHECK" --no-audit "$WS"
   [ "$status" -eq 2 ]
-  grep -qF -- 'an empty key' <<<"$output"
+  grep -qF -- 'is not readable as YAML' <<<"$output"
 }
 
 @test "a quoted key with no closing quote is refused rather than skipped" {
@@ -957,7 +994,7 @@ STUB
   write_lock "  fast-uri: 3.1.6"
   run bash "$CHECK" --no-audit "$WS"
   [ "$status" -eq 2 ]
-  grep -qF -- 'a quoted key with no closing quote' <<<"$output"
+  grep -qF -- 'is not readable as YAML' <<<"$output"
 }
 
 @test "a quoted key not followed by a colon is refused rather than guessed at" {
@@ -968,18 +1005,34 @@ STUB
   write_lock "  fast-uri: 3.1.6"
   run bash "$CHECK" --no-audit "$WS"
   [ "$status" -eq 2 ]
-  grep -qF -- 'a quoted key not followed by a colon' <<<"$output"
+  grep -qF -- 'is not readable as YAML' <<<"$output"
 }
 
-@test "a line inside the block with no key-terminating colon is refused" {
-  # A VALID entry comes first on purpose. The colon scan carries its index
-  # across records, so without a per-record reset the stale index from this
-  # first line is applied to the second and refuses for the wrong cause.
+@test "an entry line with no key-terminating colon is refused" {
+  # A valid entry first, then a bare scalar. That is not a mapping pair and
+  # js-yaml says so; the reader passes its reason through rather than inventing
+  # one of its own.
   write_workspace "  fast-uri: 3.1.6" "  broken"
   write_lock "  fast-uri: 3.1.6"
   run bash "$CHECK" --no-audit "$WS"
   [ "$status" -eq 2 ]
-  grep -qF -- 'no key-terminating colon' <<<"$output"
+  grep -qF -- 'is not readable as YAML' <<<"$output"
+}
+
+@test "an overrides block that is a bare scalar is refused as not a mapping" {
+  write_workspace "  fast-uri"
+  write_lock "  fast-uri: 3.1.6"
+  run bash "$CHECK" --no-audit "$WS"
+  [ "$status" -eq 2 ]
+  grep -qF -- 'declares an overrides block that is not a mapping' <<<"$output"
+}
+
+@test "an overrides block that is a sequence is refused as not a mapping" {
+  printf 'overrides:\n  - fast-uri\n' > "$WS/pnpm-workspace.yaml"
+  write_lock "  fast-uri: 3.1.6"
+  run bash "$CHECK" --no-audit "$WS"
+  [ "$status" -eq 2 ]
+  grep -qF -- 'declares an overrides block that is not a mapping' <<<"$output"
 }
 
 @test "the refusal names the file and the line number, not just the line" {
@@ -989,7 +1042,9 @@ STUB
   write_lock "  fast-uri: 3.1.6"
   run bash "$CHECK" --no-audit "$WS"
   [ "$status" -eq 2 ]
-  grep -qF -- "$WS/pnpm-workspace.yaml:5" <<<"$output"
+  grep -qF -- "$WS/pnpm-workspace.yaml" <<<"$output"
+  # js-yaml carries its own line reference in the message it raises.
+  grep -qE -- '\([0-9]+:[0-9]+\)' <<<"$output"
 }
 
 @test "a hand-edited map grouping its entries with a blank line keeps every entry" {

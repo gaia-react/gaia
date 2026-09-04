@@ -72,208 +72,116 @@ USAGE
 
 # gaia_cwf_overrides <yaml-file>
 #   Print the file's top-level `overrides:` mapping as normalized
-#   <key><TAB><value> lines, sorted. Quoting is stripped from both halves
-#   because the two files being compared disagree about it on a correct tree:
-#   pnpm quotes a key it has to and writes the same key bare into the lockfile
-#   it generates. Prints nothing when the file declares no overrides.
+#   <key><TAB><value> lines, sorted. Prints nothing when the file declares no
+#   overrides block. Returns 2, having said why, when the file cannot be read.
 #
-#   THIS IS A STRICT RECOGNIZER, NOT A PERMISSIVE PARSER, and that is the whole
-#   design. It is not a YAML reader, so any shape it does not recognize is one
-#   it would otherwise have to GUESS at, and a wrong guess is indistinguishable
-#   from a reading. Review caught it guessing three different shapes wrong: a
-#   key not ended where YAML ends it, a comment tail folded into the pinned
-#   version, and a value it could not read as a scalar compared as a literal
-#   token. Each printed FLOOR NOT APPLIED over a tree whose floors were all
-#   applied. So every shape this cannot read refuses at 2 and names the file,
-#   the line number and the line.
+#   THIS READS WITH js-yaml, THE LIBRARY THAT WROTE THE FILE, and that is the
+#   whole point rather than a convenience. pnpm serializes pnpm-lock.yaml with
+#   js-yaml, which is verifiable: dumping an overrides map through the copy in
+#   .gaia/cli/node_modules reproduces the live lockfile block byte-identically,
+#   quoting included. Reading it back with the same library makes the question
+#   "does this reader know that YAML shape" disappear rather than moving it.
 #
-#   THE LINE IS DRAWN AT WHAT IS AMBIGUOUS, NOT AT WHAT LOOKS UNUSUAL, and the
-#   distinction is load-bearing in both directions. A plain scalar carrying
-#   whitespace is a legal multi-range semver that js-yaml writes UNQUOTED into
-#   the lockfile, so refusing it would fail the gate on a correct tree, and no
-#   amount of quoting the workspace side would repair that: the next resolve
-#   rewrites the lockfile value unquoted again. It is accepted. What refuses is
-#   what cannot be read as a scalar at all: quoting that does not close or
-#   carries trailing junk, a leading YAML indicator opening a construct rather
-#   than a value, a duplicate key, an empty key, and a key with no version.
-#   Refusing fails toward "I cannot read this", never toward a verdict.
+#   It replaced a hand-rolled awk recognizer, and the reason is measured, not
+#   stylistic: six consecutive audit rounds each found the recognizer reading a
+#   different legal shape wrong, and every one of them printed a verdict rather
+#   than refusing. Key termination, a comment tail folded into a version, the
+#   line between plain and quoted scalars, an annotated block header, and then
+#   three more spellings of that same header, each of which js-yaml reads
+#   correctly and the recognizer reported clean over an unapplied floor. Fixing
+#   a spelling produced the next spelling; that is what says the instrument was
+#   wrong rather than any one of its readings.
 #
-#   Returns 2 and prints the offending line when it meets something it does not
-#   recognize. THE CALLER MUST CHECK, and does; a bare command substitution
-#   discards the status and hands an empty map to a comparison that then agrees
-#   with itself, which is the same false-clean shape the advisory arm below was
-#   reworked to close.
+#   FAILSAFE_SCHEMA, not the default. Under the default schema `1.10` loads as
+#   the number 1.1, and the report would then print a version the file does not
+#   contain. The failsafe schema resolves every scalar as a string, which is
+#   what a version specifier is.
+#
+#   NO SILENT DEGRADATION. If node or js-yaml is missing this returns 2 and says
+#   so; it never falls back to a weaker reader, because a weaker reader is
+#   exactly what the six rounds above were about.
 gaia_cwf_overrides() {
-  local out
+  local file="$1" out
+
+  [ -n "$GAIA_CWF_NODE" ] || return 3
   out="$(
-    LC_ALL=C awk '
-      function trim(s) {
-        sub(/^[[:space:]]+/, "", s); sub(/[[:space:]]+$/, "", s); return s
+    "$GAIA_CWF_NODE" -e '
+      const path = process.argv[1];
+      const yamlDir = process.argv[2];
+      const fs = require("fs");
+      const yaml = require(yamlDir);
+      let doc;
+      try {
+        doc = yaml.load(fs.readFileSync(path, "utf8"), { schema: yaml.FAILSAFE_SCHEMA });
+      } catch (e) {
+        process.stderr.write("check-cli-workspace-floors: " + path + " is not readable as YAML: " + e.message + "\n");
+        process.exit(2);
       }
-      function unquote(s,   q) {
-        if (length(s) >= 2) {
-          q = substr(s, 1, 1)
-          if ((q == "\"" || q == "\047") && substr(s, length(s), 1) == q)
-            return substr(s, 2, length(s) - 2)
+      if (doc === null || doc === undefined) process.exit(0);
+      if (typeof doc !== "object" || Array.isArray(doc)) {
+        process.stderr.write("check-cli-workspace-floors: " + path + " is not a YAML mapping\n");
+        process.exit(2);
+      }
+      if (!Object.prototype.hasOwnProperty.call(doc, "overrides")) process.exit(0);
+      const ov = doc.overrides;
+      // A declared block that is empty, or that is not a mapping of scalars, is
+      // refused rather than reported as no floors. Empty compared against empty
+      // agrees, and that agreement is the false clean this check exists to
+      // prevent.
+      if (ov === null) {
+        process.stderr.write("check-cli-workspace-floors: " + path + " declares an overrides block yielding no entries\n");
+        process.exit(2);
+      }
+      if (typeof ov !== "object" || Array.isArray(ov)) {
+        process.stderr.write("check-cli-workspace-floors: " + path + " declares an overrides block that is not a mapping\n");
+        process.exit(2);
+      }
+      const keys = Object.keys(ov);
+      if (keys.length === 0) {
+        process.stderr.write("check-cli-workspace-floors: " + path + " declares an overrides block yielding no entries\n");
+        process.exit(2);
+      }
+      const lines = [];
+      for (const k of keys) {
+        const v = ov[k];
+        if (typeof v !== "string") {
+          process.stderr.write("check-cli-workspace-floors: " + path + " maps " + k + " to a value that is not a scalar\n");
+          process.exit(2);
         }
-        return s
-      }
-      # Refuse rather than guess. Every arm that used to `next` past a shape it
-      # could not read now lands here, because skipping a line silently drops a
-      # declared floor out of the comparison and the comparison then agrees.
-      function refuse(what, raw) {
-        printf "check-cli-workspace-floors: %s:%d declares %s, which this reader does not recognize: %s\n", \
-          FILENAME, FNR, what, raw > "/dev/stderr"
-        # awk runs END even on `exit`, and a refusal before the first entry
-        # leaves the counter at zero, so without this the END rule would append
-        # its own message and tell the operator the map is empty or the reader
-        # has drifted, over a file where neither is true and whose offending
-        # line was just named.
-        refused = 1
-        exit 2
-      }
-      # A value ends at an unquoted comment tail. YAML starts a comment only at
-      # a # preceded by whitespace, so a # with no space before it is part of
-      # the scalar and is left alone. A quoted value keeps everything inside
-      # its quotes and may carry a comment after the closing one.
-      function strip_comment(s,   q, endq, rest) {
-        q = substr(s, 1, 1)
-        if (q == "\"" || q == "\047") {
-          endq = index(substr(s, 2), q)
-          if (endq == 0) return s
-          rest = trim(substr(s, endq + 2))
-          if (rest != "" && substr(rest, 1, 1) != "#") return s
-          return substr(s, 1, endq + 1)
+        if (k.indexOf("\t") !== -1 || v.indexOf("\t") !== -1) {
+          process.stderr.write("check-cli-workspace-floors: " + path + " has a tab inside an override key or value\n");
+          process.exit(2);
         }
-        sub(/[[:space:]]+#.*$/, "", s)
-        return s
+        lines.push(k + "\t" + v);
       }
-      # A UTF-8 BOM and a CRLF line ending are both invisible to every pattern
-      # below unless they are removed here. The BOM one was a SILENT FALSE
-      # CLEAN that appeared on one platform only: it defeated the block-open
-      # match and the separate grep that used to guard it, and those two
-      # disagreed, because macOS grep strips a BOM and GNU grep does not.
-      #
-      # THE BOM IS MATCHED BY BYTE VALUE, NOT BY AN ESCAPE IN A REGEX. Neither
-      # `\357\273\277` nor `\xef\xbb\xbf` is portable in an awk regex: both
-      # are silently inert on the BSD awk that ships with macOS while working
-      # under gawk, which would have reproduced the very platform split this
-      # removes, in the fix for it. The invocation is prefixed `LC_ALL=C` so
-      # that every awk reads bytes rather than characters, which makes this true
-      # by construction instead of true on the awks that happen to be surveyed:
-      # under a multibyte locale gawk would render the sprintf as a wide
-      # character and count substr in characters, and the comparison would
-      # quietly never match.
-      BEGIN { bom = sprintf("%c%c%c", 239, 187, 191) }
-      NR == 1 { if (substr($0, 1, 3) == bom) $0 = substr($0, 4) }
-      # Belt and braces with trim below, which also drops a trailing CR wherever
-      # the runner awk counts it as [[:space:]]. This makes that independent of
-      # whether it does.
-      { if (substr($0, length($0), 1) == sprintf("%c", 13)) $0 = substr($0, 1, length($0) - 1) }
-      # A bare header, or one carrying only a YAML comment, opens the block. Any
-      # OTHER tail on that line refuses rather than being skipped past: skipping
-      # it read a legal annotated header as a file declaring no overrides, which
-      # printed the clean line at exit 0 over a declared floor the lockfile did
-      # not apply. That is the same silent false clean the BOM rework closed,
-      # reached through the block-open match instead.
-      /^overrides:[[:space:]]*(#.*)?$/ { in_block = 1; declared = 1; next }
-      /^overrides:/ { refuse("an overrides header with a tail this reader cannot read", $0) }
-      # A key at column zero closes the mapping. A comment does not, and
-      # neither does a blank line: a hand-edited map may group its entries with
-      # one, and closing there would silently drop every entry below the gap.
-      # The lockfile also puts a blank line between the block and `importers:`,
-      # but that case is already covered by the column-zero rule reaching
-      # `importers:` itself, so it is not what decides this.
-      in_block && /^[^[:space:]#]/ { in_block = 0 }
-      in_block {
-        raw = $0
-        line = trim(raw)
-        if (line == "" || substr(line, 1, 1) == "#") next
-        c = substr(line, 1, 1)
-        if (c == "\"" || c == "\047") {
-          endq = index(substr(line, 2), c)
-          if (endq == 0) refuse("a quoted key with no closing quote", raw)
-          key = substr(line, 2, endq - 1)
-          rest = substr(line, endq + 2)
-          if (substr(rest, 1, 1) != ":") refuse("a quoted key not followed by a colon", raw)
-          val = substr(rest, 2)
-        } else {
-          # A plain YAML key ends at the first colon FOLLOWED BY whitespace, or
-          # at a colon ending the line, not at the first colon. A bare alias
-          # spelling such as `foo@npm:bar: 1.2.3` carries a colon inside the
-          # key itself, and splitting on the first one takes `foo@npm` with the
-          # rest as its value. That reports the declared floor absent and
-          # invents an undeclared override in the same run, on a correct tree.
-          # `len`, not `n`. `n` is the ENTRY COUNTER the END rule reads, and
-          # reusing the name here made a quoted-key refusal print the
-          # declared-block-yielding-no-entries message alongside its own cause,
-          # pointing an operator at loosening the reader rather than at the line
-          # just named. It was also a latent fail-open: a plain-key line leaving
-          # this rule without printing would keep the counter above zero and
-          # silently retire the END guard.
-          len = length(line)
-          i = 0
-          for (p = 1; p <= len; p++) {
-            if (substr(line, p, 1) != ":") continue
-            nx = substr(line, p + 1, 1)
-            if (p == len || nx == " " || nx == "\t") { i = p; break }
-          }
-          if (i == 0) refuse("a mapping line with no key-terminating colon", raw)
-          key = substr(line, 1, i - 1)
-          val = substr(line, i + 1)
-        }
-        # No unquote on the key and no outer trim on the value: a line opening
-        # with a quote is routed to the quoted branch, which strips the quotes
-        # itself, and every return path of strip_comment hands back an
-        # already-trimmed string or an exact quoted region.
-        key = trim(key)
-        val = strip_comment(trim(val))
-        vq = substr(val, 1, 1)
-        quoted = (length(val) >= 2 && (vq == "\"" || vq == "\047") && substr(val, length(val), 1) == vq)
-        val = unquote(val)
-        if (key == "") refuse("an empty key", raw)
-        if (val == "") refuse("a key with no version", raw)
-        # WHERE THE LINE BETWEEN STRICT AND PERMISSIVE SITS, and it is drawn by
-        # what is ambiguous rather than by what looks unusual.
-        #
-        # A plain scalar carrying whitespace is ACCEPTED. `^1.0.0 || ^2.0.0` and
-        # `1.2.3 - 2.0.0` are ordinary multi-range semvers, and js-yaml, which
-        # is what serializes pnpm-lock.yaml, writes them unquoted, so refusing
-        # them fails the gate on a correct tree and no amount of quoting the
-        # workspace side repairs it: the next resolve rewrites the lockfile
-        # value unquoted again. Whitespace here is NOT a comment this reader
-        # missed, because strip_comment above has already removed every comment
-        # tail.
-        #
-        # What IS refused is a value this reader cannot read as a scalar at all:
-        # quoting that does not close or that carries trailing junk, and a
-        # leading YAML indicator that starts a construct rather than a value,
-        # an alias, an anchor, a tag, a block scalar, a flow collection.
-        if (vq == "\"" || vq == "\047") {
-          if (!quoted) refuse("a value opening with a quote that does not close as a scalar", raw)
-        } else if (val ~ /^[*&!|>%@`,?[{}\]]/ || val ~ /^-[[:space:]]/ || val ~ /^:/) {
-          refuse("a value opening with a YAML indicator this reader cannot interpret", raw)
-        }
-        if (key in seen) refuse("a key already declared in this file", raw)
-        seen[key] = 1
-        n++
-        print key "\t" val
-      }
-      END {
-        # The declared-but-empty refusal lives HERE, in the reader that decides
-        # what an entry is, rather than in a separate grep beside it. Two
-        # readers of the same fact can disagree, and when they did the
-        # disagreement was a false clean that appeared on one platform only.
-        if (refused) exit 2
-        if (declared && n == 0) {
-          printf "check-cli-workspace-floors: %s declares an overrides block yielding no entries; either the map is empty or this reader no longer matches the shape pnpm emits\n", \
-            FILENAME > "/dev/stderr"
-          exit 2
-        }
-      }
-    ' "$1"
+      process.stdout.write(lines.join("\n") + "\n");
+    ' "$file" "$GAIA_CWF_JSYAML"
   )" || return 2
+  [ -n "$out" ] || return 0
   printf '%s\n' "$out" | sort
+}
+
+# gaia_cwf_resolve_reader
+#   Set GAIA_CWF_NODE and GAIA_CWF_JSYAML, or return 2 saying what is missing.
+#   js-yaml is resolved from THIS REPOSITORY's own .gaia/cli workspace rather
+#   than from the root under check, because the root under check is an argument
+#   and may legitimately be a fixture with no node_modules of its own.
+gaia_cwf_resolve_reader() {
+  GAIA_CWF_NODE=""
+  GAIA_CWF_JSYAML=""
+  command -v node >/dev/null 2>&1 || {
+    printf 'check-cli-workspace-floors: node is required to read these files and was not found on PATH\n' >&2
+    return 2
+  }
+  local candidate="$SELF_DIR/../cli/node_modules/js-yaml"
+  [ -d "$candidate" ] || {
+    printf 'check-cli-workspace-floors: js-yaml was not found at %s; run pnpm -C .gaia/cli install first\n' \
+      "$candidate" >&2
+    return 2
+  }
+  GAIA_CWF_NODE="$(command -v node)"
+  GAIA_CWF_JSYAML="$(cd "$candidate" && pwd)"
+  return 0
 }
 
 gaia_cwf_main() {
@@ -344,23 +252,27 @@ gaia_cwf_main() {
   printf 'workspace root: %s\n' "$root"
 
   local configured locked rc=0
-  # THE STATUS IS LOAD-BEARING, and it is the only path a refusal takes. Both
-  # the unrecognized-shape refusals and the declared-block-yielding-no-entries
-  # refusal are raised inside gaia_cwf_overrides, so a bare command substitution
-  # here would discard every one of them and hand an empty map to a comparison
-  # that agrees with itself. The reader has already named the file, and the line
-  # where there is one.
+  # Resolved once, before either file is read, so a missing reader is reported
+  # as a missing reader rather than twice as an unreadable file.
+  gaia_cwf_resolve_reader || return 2
+
+  # THE STATUS IS LOAD-BEARING, and it is the only path a refusal takes. Every
+  # refusal, an unparseable file, a declared block that is not a mapping, a
+  # declared block yielding no entries, is raised inside gaia_cwf_overrides, so
+  # a bare command substitution here would discard all of them and hand an empty
+  # map to a comparison that agrees with itself. The reader has already named
+  # the file and said what it could not read.
   configured="$(gaia_cwf_overrides "$ws_file")" || return 2
   locked="$(gaia_cwf_overrides "$lock_file")" || return 2
 
-  # An empty map here can now mean only one thing: the file declared no
-  # overrides block at all. A block that IS declared and yields no entries never
-  # reaches this point, because the reader refuses it at 2 rather than returning
-  # an empty map that empty would agree with. That refusal used to live out here
-  # as a separate `grep -q` over the same files, which is two readers of one
-  # fact, and they disagreed: a UTF-8 BOM defeated the parse and the grep
-  # differently on macOS and on the GNU grep the runner uses, so the gate
-  # reported clean in CI over a workspace it had never read.
+  # An empty map here means one thing only: the file declared no overrides block
+  # at all. A block that IS declared and yields no entries never reaches this
+  # point, because the reader refuses it rather than returning an empty map that
+  # empty would agree with. That refusal used to live out here as a separate
+  # `grep -q` over the same files, which is two readers of one fact, and they
+  # disagreed: a UTF-8 BOM defeated the parse and the grep differently on macOS
+  # and on the GNU grep the runner uses, so the gate reported clean in CI over a
+  # workspace it had never read. One reader cannot disagree with itself.
   if [ -z "$configured" ] && [ -z "$locked" ]; then
     printf 'no overrides declared; no floors to check\n'
   else

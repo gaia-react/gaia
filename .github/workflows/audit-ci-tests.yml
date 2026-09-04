@@ -904,6 +904,47 @@ jobs:
           # the store cache on that workspace's lockfile too would rebuild the
           # cache on bumps this leg does not consume.
           cache-dependency-path: pnpm-lock.yaml
+      # The CLI workspace floor check reads both YAML files with js-yaml, the
+      # library pnpm itself serializes pnpm-lock.yaml with, and resolves it from
+      # .gaia/cli/node_modules. Its suite therefore needs that workspace
+      # installed, and it refuses loudly rather than skipping when it is absent,
+      # which is the same fail-loud posture the node-dependent RED suites above
+      # take and the reason neither needs a W-check of its own.
+      #
+      # THE CONDITION IS DERIVED FROM THE SHARDER, NOT WRITTEN AS A SHARD NAME.
+      # This suite has already moved between scripts-1, scripts-2 and scripts-3
+      # as it grew, because bats-shards.sh weights shards by suite size and
+      # auto-discovers. A hard-coded name would be correct until the next time
+      # it moves and would then install on the wrong leg, arming nothing and
+      # reddening the leg that actually holds the suite. Asking the sharder
+      # which shard holds it costs one grep and cannot drift.
+      #
+      # Only the one leg that holds the suite pays the install. That matters
+      # because scripts-1 is the leg this job's own notes call closest to the
+      # cap, and blanket-gating all three scripts shards would put an install on
+      # it for a suite it does not run.
+      - if: matrix.shard != 'sandbox' && matrix.shard != 'concurrency' && (steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch')
+        id: needs-cli-workspace
+        name: Ask the sharder whether this shard holds the js-yaml-dependent suite
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          set -euo pipefail
+          if bash .gaia/tests/bats-shards.sh files "$SHARD" \
+            | tr ' ' '\n' | grep -qF 'check-cli-workspace-floors.bats'; then
+            printf 'needed=1\n' >> "$GITHUB_OUTPUT"
+          else
+            printf 'needed=0\n' >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.needs-cli-workspace.outputs.needed == '1'
+        name: Install the CLI workspace for the floor-check suite
+        uses: ./.github/actions/gaia-setup-node
+        with:
+          install: cli
+          # The CLI lockfile only: this step installs that workspace alone, so
+          # keying the store cache on the root lockfile as well would rebuild
+          # the cache on bumps this leg does not consume.
+          cache-dependency-path: .gaia/cli/pnpm-lock.yaml
       # `${{ matrix.shard }}` reaches the script only through `env:`, never
       # interpolated into the run: body text itself -- the shape this repo's
       # workflows auditor checks, and what keeps it true when a future edit
