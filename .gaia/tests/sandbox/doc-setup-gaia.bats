@@ -96,14 +96,24 @@ sandbox_block_bounds() {
   block=$(sed -n "${start},$((end - 1))p" "$DOC")
 
   printf '%s' "$block" | grep -qF 'enabling the sandbox alone does not protect .env'
-  printf '%s' "$block" | grep -qF 'Read(.env)'
-  printf '%s' "$block" | grep -qF 'Edit(.env)'
+  # The mechanism named here is sandbox.filesystem.denyRead, not a Read() deny
+  # rule. A Read() rule used to supply this coverage by merging into the sandbox
+  # boundary, and the message said so; the rules are gone, because any one of
+  # them arms Claude Code's bypass-immune approval breaker, and the boundary is
+  # declared directly instead. Pinning the mechanism by name is the point of the
+  # assertion: a message describing a rule the settings file does not carry
+  # misinforms an adopter at exactly the moment they are deciding.
+  printf '%s' "$block" | grep -qF 'sandbox.filesystem.denyRead'
   printf '%s' "$block" | grep -qF 'sandboxed Bash'
   printf '%s' "$block" | grep -qF '.env.local'
   printf '%s' "$block" | grep -qF 'docker'
   printf '%s' "$block" | grep -qF 'MCP'
   printf '%s' "$block" | grep -qF 'Vite'
   printf '%s' "$block" | grep -qF 'unsandboxed'
+  # The tool tier that still stands when the sandbox is off or degraded. The
+  # message is read on the enable path, which is where an adopter is most likely
+  # to assume the sandbox is the whole boundary.
+  printf '%s' "$block" | grep -qF 'block-env-read.sh'
 }
 
 @test "COV-003/SC7: seed blast-radius note discloses gh, uvx, and curl remain blocked" {
