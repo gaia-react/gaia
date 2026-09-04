@@ -404,19 +404,22 @@ jobs:
       # tsx suite runs there too and its runtime lands on that leg, against the
       # 13-minute shards cap.
       #
-      # WHAT THAT FIGURE IS, stated so the check can be finished from it. Three
-      # run totals, 502s, 479s and 462s, on the `scripts-2` leg at the commit
-      # that introduced the install step. The tsx suite sat on `scripts-3` at
-      # that commit, so ITS RUNTIME IS NOT INSIDE THOSE NUMBERS and has to be
-      # ADDED when the pair shares a leg. That is recoverable rather than
-      # remembered: the sharder is a deterministic partition over the byte sizes
-      # of `.gaia/scripts/tests/*.bats`, so the placement at any commit can be
-      # recomputed by running `bats-shards.sh files <shard>` against it.
+      # NO HISTORICAL LEG TOTAL IS QUOTED HERE, deliberately. Four consecutive
+      # review rounds each found the previous round's attempt at one wrong in a
+      # new way: a stale placement, then an unattributed figure, then a hedge
+      # where the answer was recoverable, then a provenance naming a commit that
+      # produced a different number entirely. Every fix was correct about what it
+      # corrected and every one carried a fresh error, because a past leg total
+      # depends on the leg, the commit, the run and where the sharder had put
+      # both suites at the time, and a sentence has to get all four right to be
+      # worth anything.
       #
-      # Treat it as a base to add to, then confirm on the leg that actually
-      # shares: `gh api repos/{owner}/{repo}/actions/runs/<id>/jobs` gives the
-      # per-step timings, and `bats-shards.sh files <shard>` says which leg to
-      # look at today.
+      # MEASURE IT INSTEAD; it is cheap and it cannot go stale:
+      # `bats-shards.sh files <shard>` says which leg holds the pair today, and
+      # `gh api repos/{owner}/{repo}/actions/runs/<id>/jobs` gives that leg's
+      # per-step timings for a run of your choosing. Compare the total against
+      # the 13-minute shards cap. That recipe has taken no correction in four
+      # rounds while the numbers beside it took one each.
       # The vendored, digest-pinned install, the same one every leg of
       # audit-ci-tests.yml calls. `apt-get install -y bats` resolves to whatever
       # ubuntu-latest currently ships, which is not the pinned version, so the
