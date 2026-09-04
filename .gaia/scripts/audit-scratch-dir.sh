@@ -252,7 +252,7 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
     . "$gaia_scratch_lib" 2>/dev/null || true
   fi
   if type gaia_is_linked_worktree >/dev/null 2>&1 && gaia_is_linked_worktree 2>/dev/null; then
-    printf 'audit-scratch-dir: populate and mutate %s with Bash (cp, sed -i, redirection).\n' "$out" >&2
+    printf 'audit-scratch-dir: populate and mutate %s with Bash (cp, redirection, an in-place sed).\n' "$out" >&2
     printf 'audit-scratch-dir: Write/Edit into it is refused -- this is a linked worktree, .gaia/local is one symlink to the main checkout, so the path leaves this tree. That confinement is enforced by the runtime, not by a GAIA guard, so there is nothing here to widen.\n' >&2
   fi
 
