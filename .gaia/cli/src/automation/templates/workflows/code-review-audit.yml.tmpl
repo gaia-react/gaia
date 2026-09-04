@@ -884,7 +884,7 @@ jobs:
           rm -f "$preserved_governance_edits"
           if printf '%s\n' "$self_heal_paths" \
               | grep -qE "$AUDIT_SELFHEAL_REFUSE_ERE"; then
-            echo "code-review-audit: self-heal touched a refused surface (tests, the CI pipeline, .gaia/ gate machinery, instruction/convention surfaces, or root build config) -- refusing." >&2
+            echo "code-review-audit: self-heal touched a refused surface (tests, the CI pipeline and the rest of .github/, .gaia/ gate & roster machinery, instruction/convention surfaces, or root build config; the set is AUDIT_SELFHEAL_REFUSE_ERE in .claude/hooks/lib/audit-selfheal-paths.sh) -- refusing." >&2
             printf '%s\n' "$self_heal_paths" \
               | grep -E "$AUDIT_SELFHEAL_REFUSE_ERE" >&2 || true
             {
