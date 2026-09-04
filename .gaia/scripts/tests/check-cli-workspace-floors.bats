@@ -139,8 +139,14 @@ write_lock() {
 }
 
 @test "a missing workspace root is an environment error, not a clean result" {
+  # The cause is asserted, not only the status. Without it the root-missing
+  # branch can be deleted and the pnpm-workspace.yaml check below it fires
+  # instead, still exiting 2 while reporting a missing file inside a directory
+  # that does not exist. That also keeps the negative assertion in the
+  # unenterable-root test from going vacuous.
   run bash "$CHECK" --no-audit "$TMP/absent"
   [ "$status" -eq 2 ]
+  grep -qF -- "the root itself is missing under $TMP/absent" <<<"$output"
 }
 
 @test "a workspace root with no pnpm-workspace.yaml is an environment error" {
@@ -475,6 +481,117 @@ STUB
   true
 }
 
+@test "an entry missing only severity is unread, not clean" {
+  # Splits what one fixture used to cover as a pair. The old entry named its
+  # fields sev and mod, so it was missing severity AND module_name and either
+  # term alone still failed the gate: `has("severity")` could be deleted with
+  # the suite green. An entry carrying module_name and title but no severity
+  # would then pass, filter out of the extraction on a null severity, and let
+  # the cross-check print the clean line over an advisory never read. The zero
+  # metadata is what makes the entry-shape gate the only thing left.
+  write_workspace "  fast-uri: 3.1.6"
+  write_lock "  fast-uri: 3.1.6"
+  mkdir -p "$TMP/bin"
+  cat > "$TMP/bin/pnpm" <<'STUB'
+#!/usr/bin/env bash
+cat <<'JSON'
+{"advisories":{"1":{"module_name":"fast-uri","title":"no severity"}},"metadata":{"vulnerabilities":{"high":0,"critical":0}}}
+JSON
+exit 0
+STUB
+  chmod +x "$TMP/bin/pnpm"
+  PATH="$TMP/bin:$PATH" run bash "$CHECK" "$WS"
+  [ "$status" -eq 0 ]
+  grep -qF -- 'NOT audited' <<<"$output"
+  grep -qF -- 'no high or critical advisories' <<<"$output" && return 1
+  true
+}
+
+@test "an entry missing only module_name is unread, not clean" {
+  # The other half of the same pair. Without `has("module_name")` this entry
+  # passes the gate, selects on its high severity, and prints an advisory line
+  # naming a literal null module.
+  write_workspace "  fast-uri: 3.1.6"
+  write_lock "  fast-uri: 3.1.6"
+  mkdir -p "$TMP/bin"
+  cat > "$TMP/bin/pnpm" <<'STUB'
+#!/usr/bin/env bash
+cat <<'JSON'
+{"advisories":{"1":{"severity":"high","title":"no module name"}},"metadata":{"vulnerabilities":{"high":0,"critical":0}}}
+JSON
+exit 1
+STUB
+  chmod +x "$TMP/bin/pnpm"
+  PATH="$TMP/bin:$PATH" run bash "$CHECK" "$WS"
+  [ "$status" -eq 0 ]
+  grep -qF -- 'NOT audited' <<<"$output"
+  grep -qF -- 'ADVISORY' <<<"$output" && return 1
+  true
+}
+
+@test "a payload carrying advisories AND an error is unread, not clean" {
+  # Pins the `has("error") | not` half of the container gate, which nothing
+  # else reaches: the error-only fixture carries no advisories key, so
+  # has("advisories") already fails it there. A partial result reported beside
+  # an error object is the only payload this term decides, and without it that
+  # payload reads as a completed scan.
+  write_workspace "  fast-uri: 3.1.6"
+  write_lock "  fast-uri: 3.1.6"
+  mkdir -p "$TMP/bin"
+  cat > "$TMP/bin/pnpm" <<'STUB'
+#!/usr/bin/env bash
+cat <<'JSON'
+{"advisories":{},"error":{"code":23,"message":"partial"},"metadata":{"vulnerabilities":{"high":0,"critical":0}}}
+JSON
+exit 1
+STUB
+  chmod +x "$TMP/bin/pnpm"
+  PATH="$TMP/bin:$PATH" run bash "$CHECK" "$WS"
+  [ "$status" -eq 0 ]
+  grep -qF -- 'NOT audited' <<<"$output"
+  grep -qF -- 'no high or critical advisories' <<<"$output" && return 1
+  true
+}
+
+@test "an unreadable audit does not swallow a floor that is not applied" {
+  # The advisory arm has three exits and only the fall-through was driven by
+  # any test, so either early return could be changed to `return 0` with the
+  # whole suite green while the program reported success over a floor it had
+  # just printed FLOOR NOT APPLIED for. This drives the container-gate exit.
+  write_workspace "  fast-uri: 3.1.6"
+  write_lock "  fast-uri: 3.1.4"
+  mkdir -p "$TMP/bin"
+  cat > "$TMP/bin/pnpm" <<'STUB'
+#!/usr/bin/env bash
+printf '{"error":{"code":23,"message":"aborted"}}\n'
+exit 1
+STUB
+  chmod +x "$TMP/bin/pnpm"
+  PATH="$TMP/bin:$PATH" run bash "$CHECK" "$WS"
+  [ "$status" -eq 1 ]
+  grep -qF -- 'FLOOR NOT APPLIED' <<<"$output"
+  grep -qF -- 'NOT audited' <<<"$output"
+}
+
+@test "an unreadable advisory shape does not swallow a floor that is not applied" {
+  # The same contract on the entry-shape gate's own exit.
+  write_workspace "  fast-uri: 3.1.6"
+  write_lock "  fast-uri: 3.1.4"
+  mkdir -p "$TMP/bin"
+  cat > "$TMP/bin/pnpm" <<'STUB'
+#!/usr/bin/env bash
+cat <<'JSON'
+{"advisories":{"1":{"sev":"critical","mod":"fast-uri"}}}
+JSON
+exit 1
+STUB
+  chmod +x "$TMP/bin/pnpm"
+  PATH="$TMP/bin:$PATH" run bash "$CHECK" "$WS"
+  [ "$status" -eq 1 ]
+  grep -qF -- 'FLOOR NOT APPLIED' <<<"$output"
+  grep -qF -- 'shape this reader cannot read' <<<"$output"
+}
+
 @test "a declared overrides block yielding no entries is refused, not called clean" {
   # The discovery-stage failure: if the reader stops matching the shape pnpm
   # emits, both files parse to nothing, empty agrees with empty, and the gate
@@ -506,7 +623,11 @@ STUB
   # this gate closes is classed holistic/overclaimed-guarantee, and a floor that
   # has quietly become a cap passes the parity arm. A reader who takes a green
   # run as "the floors are current" has been misled by the gate itself.
-  grep -qiF -- 'cap' "$CHECK"
+  # Both phrases are unique to the honest-limits paragraph. A bare 'cap' is
+  # not: it also matches the advisory-arm paragraph's "whose own cap it
+  # competes for", so deleting the paragraph this test names would leave that
+  # assertion passing and only the dedupe one red.
+  grep -qiF -- 'becomes a cap' "$CHECK"
   grep -qiF -- 'dedupe' "$CHECK"
 }
 

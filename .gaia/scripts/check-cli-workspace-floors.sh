@@ -275,7 +275,7 @@ gaia_cwf_main() {
       return "$rc"
     fi
     advisories="$(printf '%s' "$audit_json" | jq -r '
-      (.advisories // {}) | to_entries[]
+      .advisories | to_entries[]
       | select(.value.severity == "high" or .value.severity == "critical")
       | "\(.value.severity)\t\(.value.module_name)\t\(.value.title)"' 2>/dev/null)"
     if [ -z "$advisories" ]; then
