@@ -45,6 +45,21 @@
 # here instead of guessed at. Treat this list as the spellings known to be open,
 # never as a closed set.
 #
+# THE GUARD ALSO DENIES ONE THING IT SHOULD NOT, which the list above cannot
+# express because every entry there is a read that gets through. The Bash arm
+# splits command text on its character set with no regard for shell quoting, so
+# a bare `env` sitting inside a quoted regex becomes a segment whose only word
+# is `env`. check_dump_tokens reads that as a bare process dump carrying no
+# command operand and denies the whole tool call, naming an environment dump the
+# operator never wrote: an ordinary search such as a grep whose alternation
+# happens to contain the word is refused, with reason text that misdescribes the
+# cause. The direction is fail-closed and no secret escapes, so it is recorded
+# rather than repaired here; the repair is either a split that does not start a
+# segment from inside a quoted string, or a dump word that must sit in a real
+# command position before check_dump_tokens rules on it. Both are the same
+# tokenizer work the spelling above defers, and rewriting the alternation with
+# repeated `-e` operands is the workaround in the meantime.
+#
 # THE PERMISSION RULE SHARED ALL OF THOSE LIMITS AT THE TOOL TIER, and it had
 # one this hook cannot have. A Read() deny merges into the OS sandbox boundary,
 # so `Read(.env)` also denied a subprocess spawned by sandboxed Bash, including

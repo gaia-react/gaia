@@ -480,8 +480,25 @@ run_write_hook_edit() {
   [ "$status" -eq 0 ]
 }
 
+# A sandbox filesystem path with no prefix resolves against the project root, so
+# the bare pair above reaches the root dotenv and nothing deeper. This hook
+# decides on the basename and denies a dotenv at any depth, so without the
+# depth-qualified pair the tool tier and the subprocess tier disagree about the
+# same file in a monorepo.
+@test "settings.json denies the dotenv class at any depth, not only at the root" {
+  run jq -e '
+    .sandbox.filesystem.denyRead as $d
+    | ($d | index("**/.env")) != null and ($d | index("**/.env.*")) != null
+  ' "$SETTINGS_ABS"
+  [ "$status" -eq 0 ]
+}
+
 @test "settings.json keeps .env.example readable inside the sandbox deny" {
-  run jq -e '.sandbox.filesystem.allowRead | index(".env.example") != null' "$SETTINGS_ABS"
+  run jq -e '
+    .sandbox.filesystem.allowRead as $a
+    | ($a | index(".env.example")) != null
+      and ($a | index("**/.env.example")) != null
+  ' "$SETTINGS_ABS"
   [ "$status" -eq 0 ]
 }
 

@@ -39,7 +39,7 @@ setup() {
 # spelling anything here needs, and treating the object as a whole is the
 # fail-closed direction for a policy guard.
 sandbox_enables_in_committed_files() {
-  local hits
+  local hits scan_status
   # Asked as a question first, because BSD xargs runs its command once with no
   # arguments on empty input and an awk with no file operands reads stdin and
   # hangs the suite. `git grep` exits 1 on no match, which is the healthy case
@@ -53,7 +53,24 @@ sandbox_enables_in_committed_files() {
   # turns it into an awk cannot-open-file abort. Capturing would also undo the
   # very thing -z is here for, since the C-quoted spelling of a non-ASCII path
   # is what the NUL delimiter exists to avoid.
-  hits=$(git grep -z -l -F '"sandbox"' -- '*.json' '*.md' '*.yml' '*.yaml' \
+  #
+  # Each operand reaches awk carrying a `./` prefix. awk reads an operand whose
+  # name contains an unquoted `=` as a variable assignment rather than as a
+  # file, so a tracked path such as `secrets=x.json` binds a variable and is
+  # never opened: the scan then reports clean having skipped exactly the file it
+  # was handed. The prefix puts a `/` ahead of any `=`, which no assignment
+  # spelling admits. The rewrite stays on the NUL stream for the reason above.
+  #
+  # pipefail and an explicit status, because the caller invokes this function on
+  # the left of an `||` list and bash disables errexit inside a function called
+  # that way. Without both, any failure along the chain leaves `hits` empty and
+  # returns 0, so a scan that could not run is indistinguishable from a scan
+  # that ran and found nothing.
+  scan_status=0
+  hits=$(
+    set -o pipefail
+    git grep -z -l -F '"sandbox"' -- '*.json' '*.md' '*.yml' '*.yaml' \
+    | xargs -0 sh -c 'for f do printf "./%s\0" "$f"; done' sh \
     | xargs -0 awk '
     function scan(   n, i, c, inq, esc, norm, mask, pos, at, j, depth, body, m) {
       if (curfile == "") return
@@ -92,7 +109,12 @@ sandbox_enables_in_committed_files() {
     FNR == 1 { scan(); curfile = FILENAME; doc = "" }
     { doc = doc $0 "\n" }
     END { scan() }
-  ')
+  ') || scan_status=$?
+  [ "$scan_status" -eq 0 ] || {
+    printf 'committed-enable scan failed (exit %s), so it opened an unknown\n' "$scan_status"
+    printf 'subset of its candidates; a scan that cannot run is not a pass.\n'
+    return 1
+  }
   [ -z "$hits" ] || { printf '%s\n' "$hits"; return 1; }
   return 0
 }

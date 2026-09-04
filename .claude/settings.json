@@ -405,13 +405,16 @@
       "denyRead": [
         ".env",
         ".env.*",
+        "**/.env",
+        "**/.env.*",
         "**/*.key",
         "**/*.pem",
         "**/*credential*",
         "**/secrets/**"
       ],
       "allowRead": [
-        ".env.example"
+        ".env.example",
+        "**/.env.example"
       ]
     }
   },

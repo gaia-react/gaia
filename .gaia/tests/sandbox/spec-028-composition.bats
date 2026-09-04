@@ -46,10 +46,20 @@ setup() {
 
   # The subprocess tier a Read() rule used to reach by merging into the sandbox
   # boundary. Declared directly, so removing the rules did not narrow it.
+  #
+  # Each dotenv class is pinned twice, once root-anchored and once depth-
+  # qualified. A sandbox filesystem path carrying no prefix resolves against the
+  # project root, so the bare spellings reach the root dotenv only, while the
+  # secret classes beside them are `**`-prefixed and match at any depth. Both
+  # hooks decide on the basename and so cover every depth; without the `**`
+  # pair the two tiers would disagree about a monorepo dotenv such as
+  # `apps/web/.env.local`, which no test would have reported.
   run jq -e '
     .sandbox.filesystem.denyRead as $d
     | ($d | index(".env")) != null
       and ($d | index(".env.*")) != null
+      and ($d | index("**/.env")) != null
+      and ($d | index("**/.env.*")) != null
       and ($d | index("**/*.key")) != null
       and ($d | index("**/*.pem")) != null
       and ($d | index("**/*credential*")) != null
@@ -58,8 +68,14 @@ setup() {
   [ "$status" -eq 0 ]
 
   # The committed placeholder stays readable inside that deny, or the boundary
-  # is a footgun in the same way the hook would be without its exemption.
-  run jq -e '.sandbox.filesystem.allowRead | index(".env.example") != null' "$SETTINGS"
+  # is a footgun in the same way the hook would be without its exemption. The
+  # exemption is depth-qualified alongside the deny that made it necessary, or a
+  # nested `.env.example` is denied where the root one is allowed.
+  run jq -e '
+    .sandbox.filesystem.allowRead as $a
+    | ($a | index(".env.example")) != null
+      and ($a | index("**/.env.example")) != null
+  ' "$SETTINGS"
   [ "$status" -eq 0 ]
 
   # A boundary is not an enable. sandbox.enabled belongs only in the gitignored
