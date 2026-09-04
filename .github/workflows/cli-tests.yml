@@ -194,6 +194,16 @@ jobs:
               # shellcheck can see, and a semantic weakening -- dropping the
               # template `diff -rq`, inverting a `cmp` -- is invisible to it.
               - '.gaia/scripts/verify-cli-bundle-fresh.sh'
+              # The workspace-floor check below is this script, so an edit to it
+              # must re-run the check on its own pull request, exactly as the
+              # bundle-freshness entry above does. The two subjects it reads,
+              # .gaia/cli's pnpm-workspace.yaml and its lockfile, already land
+              # under '.gaia/cli/**' at the top of this list; this file is the
+              # half nothing else here reaches. Its sibling bats suite is not
+              # listed and does not need to be: audit-ci-tests.yml runs the
+              # .gaia/scripts/tests suites, and this job asserts the check
+              # against the real workspace rather than against fixtures.
+              - '.gaia/scripts/check-cli-workspace-floors.sh'
               # src/red-ledger/extract-test-signals.test.ts spawns this helper
               # to pin its stdout-exit contract: a reader that stops before EOF
               # must leave it exiting 0 silently. Removing that helper's EPIPE
@@ -395,6 +405,19 @@ jobs:
       - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
         name: Verify committed CLI binaries and templates are rebuilt from src
         run: bash .gaia/scripts/verify-cli-bundle-fresh.sh
+      # .gaia/cli is a second pnpm workspace root, and every dependency-CVE
+      # surface in this repository runs from the repository root, whose closure
+      # cannot contain it. This job is where that gap closes: the workspace is
+      # already installed above, so the marginal cost is one step. The check's
+      # exit status turns on the offline parity arm alone -- whether the
+      # security floors declared in pnpm-workspace.yaml are the ones the
+      # lockfile resolves against -- and its advisory arm reports into this log
+      # without failing, so a newly published upstream advisory does not red a
+      # required context on every open pull request at once. The script's
+      # docblock owns what the check does not catch.
+      - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
+        name: Check the CLI workspace's security floors are applied
+        run: bash .gaia/scripts/check-cli-workspace-floors.sh
 
   # PR-gated distribution harness. Before this job, the harness (run-all.sh,
   # its scenarios, lib/) ran only at tag-push (release.yml) and manual

@@ -91,11 +91,20 @@ strictPeerDependencies: false
 # Retired by hand, unlike root's. Root's block points at /update-deps Phase 0
 # and Phase 6 to toggle its keys and drop the obsolete ones; those phases scope
 # themselves to the top-level overrides map in the ROOT pnpm-workspace.yaml and
-# never open this file, and no other dependency-maintenance path reads it. So
-# once these parents bump their own pins past the versions below, these entries
-# stop being floors and quietly become caps, on a workspace whose build inlines
-# its dependencies into a shipped binary. Re-check them by hand whenever this
+# never open this file. So once these parents bump their own pins past the
+# versions below, these entries stop being floors and quietly become caps, on a
+# workspace whose build inlines its dependencies into a shipped binary. That
+# decay is still a hand check, and it is the one to make whenever this
 # workspace's lockfile is next re-resolved.
+#
+# What no longer rests on memory is whether these floors are APPLIED.
+# .gaia/scripts/check-cli-workspace-floors.sh compares this map against the
+# overrides block in the lockfile beside it and fails when they disagree, so a
+# pin that is present here and absent from the resolved tree is reported rather
+# than believed. It runs in cli-tests.yml, whose path filter arms on this
+# directory, and it also surfaces high and critical advisories in this closure,
+# which nothing else in the repository audits. It does not toggle anything and
+# so cannot tell a live floor from a spent one; that is the hand check above.
 #
 #   - cosmiconfig>js-yaml and @eslint/eslintrc>js-yaml -> 4.3.1:
 #     GHSA-5p4m-2wfm-xmqj, quadratic CPU consumption in !!omap resolution.
