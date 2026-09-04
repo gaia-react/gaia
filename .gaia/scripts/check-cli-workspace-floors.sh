@@ -32,10 +32,16 @@
 #   Advisory, needs the network, and deliberately does NOT decide the exit
 #   status. It surfaces high and critical advisories in the root's closure.
 #   Reporting-not-blocking is the posture every other local `pnpm audit` in this
-#   repository already takes, and it is the right one here for a second reason:
-#   this runs inside a required CI context, where failing on a newly published
-#   upstream advisory would red every open pull request for something none of
-#   them changed.
+#   repository already takes.
+#
+#   THE ADVISORY ARM IS NOT RUN IN CI, and that is measured rather than
+#   cautious. Across four runs of the job that gates this check it reached the
+#   registry twice and failed twice, taking between 107s and 251s either way,
+#   so its duration says nothing about whether it worked. It is a network call
+#   inside a declared-required context whose own cap it competes for, buying a
+#   result about half the time. CI therefore passes `--no-audit` and gates on
+#   the parity arm alone; this arm is for a maintainer running the check by
+#   hand, where a slow or failed call costs nothing and can be re-run.
 #
 # WHAT THIS DOES NOT CATCH, and saying so is load-bearing rather than modest. A
 # floor whose parents have bumped their own pins past it stops being a floor and
@@ -264,13 +270,16 @@ gaia_cwf_main() {
       # zero with nothing parsed means the report names findings this reader
       # did not see, which is what a future shape that moves them out of
       # `advisories` while leaving the empty key behind looks like from here.
-      # Only a literal zero earns the clean line. Every other answer, a count
-      # above zero, a count stated in some type this reader does not know, a
-      # `metadata` shape `jq` cannot index at all, or `jq` itself failing, is
-      # the same fact from here: the report says something about high and
-      # critical advisories that this reader did not manage to read.
+      # Only a report that ITSELF states zero earns the clean line. The counts
+      # are read without a `// 0` default on purpose: a default supplies the
+      # very zero the report was supposed to state, so an absent `metadata`, an
+      # absent count, or a `false` (which `//` also replaces) would buy the
+      # clean line by saying nothing. Everything else is one fact from here --
+      # a count above zero, a count in a type this reader does not know, a
+      # `metadata` shape `jq` cannot index, or `jq` failing outright -- namely
+      # that the report said something this reader did not read.
       declared="$(printf '%s' "$audit_json" | jq -r '
-        [(.metadata.vulnerabilities.high // 0), (.metadata.vulnerabilities.critical // 0)]
+        [(.metadata?.vulnerabilities?.high), (.metadata?.vulnerabilities?.critical)]
         | if all(type == "number") then add else "unreadable" end' 2>/dev/null || true)"
       case "$declared" in
       0)

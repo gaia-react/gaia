@@ -385,6 +385,28 @@ STUB
   true
 }
 
+@test "a report that states no count at all is unread, not clean" {
+  # The cross-check is worth having only if the report itself states the zero.
+  # Defaulting an absent count to 0 supplies the very answer being asked for,
+  # so a payload that says nothing about high or critical advisories would buy
+  # the clean line by saying nothing. `jq`'s `//` also replaces `false`, so it
+  # is not only absence that would slip through.
+  write_workspace "  fast-uri: 3.1.6"
+  write_lock "  fast-uri: 3.1.6"
+  mkdir -p "$TMP/bin"
+  cat > "$TMP/bin/pnpm" <<'STUB'
+#!/usr/bin/env bash
+printf '{"advisories":{}}\n'
+exit 0
+STUB
+  chmod +x "$TMP/bin/pnpm"
+  PATH="$TMP/bin:$PATH" run bash "$CHECK" "$WS"
+  [ "$status" -eq 0 ]
+  grep -qF -- 'NOT audited' <<<"$output"
+  grep -qF -- 'no high or critical advisories' <<<"$output" && return 1
+  true
+}
+
 @test "a declared overrides block yielding no entries is refused, not called clean" {
   # The discovery-stage failure: if the reader stops matching the shape pnpm
   # emits, both files parse to nothing, empty agrees with empty, and the gate
