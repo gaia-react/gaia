@@ -216,9 +216,9 @@ jobs:
               # Vitest step, and reports this required check green having run
               # the assertion zero times. The bats copy of the same assertion
               # is no fallback, though not for the reason once written here: it
-              # sits in red-ledger-lib.bats, which the sharder puts on hooks-3,
-              # and audit-ci-tests.yml DOES install the root workspace on
-              # hooks-2/3/4. Under CI that suite runs, and where its Node
+              # sits in red-ledger-lib.bats, which is in the hooks exchange
+              # group, and audit-ci-tests.yml DOES install the root workspace on
+              # every leg of that group. Under CI that suite runs, and where its Node
               # precondition is unmet it REDS rather than skipping, which is the
               # whole point of gaia-react/gaia#1748. It is no fallback because
               # the Vitest assertion is the one this job runs, not because the
@@ -384,19 +384,26 @@ jobs:
         run: pnpm -C .gaia/cli test --run
       # The region-marker conformance suite drives the real TypeScript parser
       # through tsx, so it needs .gaia/cli/node_modules and skips itself wherever
-      # they are absent. audit-ci-tests.yml runs the .gaia/scripts/tests suites on
-      # a box that installs that workspace on ONE scripts leg only, the leg the
-      # sharder puts check-cli-workspace-floors.bats on, so the guard is true on
-      # every other leg and the suite reports skipped-and-green there.
+      # they are absent. audit-ci-tests.yml installs that workspace on exactly
+      # ONE scripts leg, the one holding check-cli-workspace-floors.bats, so the
+      # guard is true on every other leg and the suite reports skipped-and-green
+      # there.
       #
-      # THAT MAKES THIS JOB THE ONLY PLACE THE BINDING IS ASSERTED ONLY WHILE THE
-      # TWO SUITES SIT ON DIFFERENT SCRIPTS LEGS, and bats-shards.sh exchanges
-      # files among scripts-1/2/3 by size, so the separation is incidental rather
-      # than enforced. A reshuffle landing both on one leg arms the tsx-driven
-      # suite inside audit-ci-tests with no diff to either workflow. That is not
-      # a correctness loss, the suite passing in two places is fine, but it adds
-      # its runtime to a leg already observed at 502s, so read it as a budget
-      # question if that leg starts timing out.
+      # WHETHER THIS JOB IS THE ONLY PLACE THE BINDING IS ASSERTED THEREFORE
+      # DEPENDS ON WHETHER THE SHARDER HAS PUT BOTH SUITES ON THAT SAME LEG, and
+      # that is a question to ask rather than a fact to record here: the sharder
+      # exchanges files among the scripts legs by size, so it changes whenever
+      # either suite grows, with no diff to either workflow. Three separate
+      # sentences in this change asserted a placement and all three went stale,
+      # two of them within a single round, which is why this one asserts none.
+      # `bats-shards.sh files <shard>` answers it for today.
+      #
+      # Neither answer is a correctness problem, because `install: cli` satisfies
+      # this suite's whole precondition and cli-tests.yml proves it green on a
+      # box with nothing else. What changes is BUDGET: when both share a leg, the
+      # tsx suite runs there too and its runtime lands on a leg observed at 502s
+      # against the 13-minute shards cap. Check that when they share, not when
+      # they might.
       # The vendored, digest-pinned install, the same one every leg of
       # audit-ci-tests.yml calls. `apt-get install -y bats` resolves to whatever
       # ubuntu-latest currently ships, which is not the pinned version, so the

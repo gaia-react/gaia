@@ -927,7 +927,8 @@ jobs:
       # sharder re-balances on size, adding fixtures to the suite moved it, and
       # the sentence then asserted the inverse of what runs. If the budget
       # question matters on a given day, `bats-shards.sh files <shard>` answers
-      # which leg pays and the cap note in cli-tests.yml says what to check.
+      # which leg pays, and the region-marker docblock in cli-tests.yml records
+      # what to check on that leg and when the check is actually owed.
       - if: matrix.shard != 'sandbox' && matrix.shard != 'concurrency' && (steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch')
         id: needs-cli-workspace
         name: Ask the sharder whether this shard holds the js-yaml-dependent suite

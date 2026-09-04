@@ -888,6 +888,20 @@ STUB
 # absence must be loud. A skip, a fallback to a weaker parser, or a clean exit
 # here would reinstate exactly the failure this reader replaced: a verdict
 # reported by something that could not read the file.
+@test "a missing awk is refused by name, not left to the comparison to discover" {
+  # The presence check only improves the diagnostic: the comparison status check
+  # below closes the absent-awk case on its own. Pinned anyway, because an
+  # unpinned guard is indistinguishable from a gap, and this file labels its
+  # genuinely unfalsifiable terms in place rather than leaving them bare.
+  write_workspace "  fast-uri: 3.1.6"
+  write_lock "  fast-uri: 3.1.4"
+  mkdir -p "$TMP/nodeonly"
+  ln -s "$(command -v node)" "$TMP/nodeonly/node"
+  PATH="$TMP/nodeonly" run /bin/bash "$CHECK" --no-audit "$WS"
+  [ "$status" -eq 2 ]
+  grep -qF -- 'awk is required to compare the two maps' <<<"$output"
+}
+
 @test "a comparison that cannot run is refused, not reported clean" {
   # Same class as the reader status check: discarded, a failing awk yields an
   # empty report, the consuming loop prints nothing, rc stays 0, and the check
