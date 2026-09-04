@@ -161,11 +161,74 @@ write_lock() {
   [ "$status" -eq 2 ]
 }
 
+# A subject that EXISTS and cannot be read is the fail-open case, and it is not
+# covered by the two tests above: -f passes, so the run goes on to read files it
+# cannot open. Both readers below then fail in the same direction at once -- awk
+# yields nothing, and the declared-block grep cannot fire because its own read
+# fails and grep exit 2 reads as "no match" inside `if grep -q` -- so empty
+# agrees with empty and the run prints the clean line over declared floors it
+# never saw. Each arm gets its own fixture, because a single both-unreadable
+# fixture would stay green if either -r check were deleted.
+@test "an unreadable pnpm-workspace.yaml is refused rather than read as no floors" {
+  [ "$(id -u)" -ne 0 ] || skip "chmod 000 is not a read barrier for root"
+  write_workspace "  fast-uri: 3.1.6"
+  write_lock "  fast-uri: 3.1.5"
+  chmod 000 "$WS/pnpm-workspace.yaml"
+  run bash "$CHECK" --no-audit "$WS"
+  chmod 644 "$WS/pnpm-workspace.yaml"
+  [ "$status" -eq 2 ]
+  grep -qF -- "pnpm-workspace.yaml exists under $WS but cannot be read" <<<"$output"
+}
+
+@test "an unreadable pnpm-lock.yaml is refused rather than read as no floors" {
+  [ "$(id -u)" -ne 0 ] || skip "chmod 000 is not a read barrier for root"
+  write_workspace "  fast-uri: 3.1.6"
+  write_lock "  fast-uri: 3.1.5"
+  chmod 000 "$WS/pnpm-lock.yaml"
+  run bash "$CHECK" --no-audit "$WS"
+  chmod 644 "$WS/pnpm-lock.yaml"
+  [ "$status" -eq 2 ]
+  grep -qF -- "pnpm-lock.yaml exists under $WS but cannot be read" <<<"$output"
+}
+
+@test "two unreadable subjects do not agree with each other into a clean run" {
+  [ "$(id -u)" -ne 0 ] || skip "chmod 000 is not a read barrier for root"
+  write_workspace "  fast-uri: 3.1.6"
+  write_lock "  fast-uri: 3.1.5"
+  chmod 000 "$WS/pnpm-workspace.yaml" "$WS/pnpm-lock.yaml"
+  run bash "$CHECK" --no-audit "$WS"
+  chmod 644 "$WS/pnpm-workspace.yaml" "$WS/pnpm-lock.yaml"
+  [ "$status" -eq 2 ]
+  # The exact shape this fixture exists for: before the -r checks, this run
+  # exited 0 on the clean line while the workspace declared a floor the lockfile
+  # contradicts.
+  # Written as the bad case plus an explicit return, not as a !-negation:
+  # set -e exempts a !-inverted status, so a !-negated absence assertion off the
+  # final line greens even when its bad case is true
+  # (.claude/rules/bats-assertions.md).
+  grep -qF -- "no overrides declared; no floors to check" <<<"$output" && return 1
+  grep -qF -- "cannot be read" <<<"$output"
+}
+
 @test "an unknown flag is refused rather than silently treated as the root" {
   write_workspace
   write_lock
   run bash "$CHECK" --audit-everything "$WS"
   [ "$status" -eq 2 ]
+  # The cause is asserted, not only the status, on the same standard the
+  # root-missing test above states. Exit 2 alone cannot tell the unknown-flag
+  # arm from the more-than-one-root guard beside it: delete either one and the
+  # other answers with the same status for the wrong reason, so a status-only
+  # assertion here survives both deletions and pins neither.
+  grep -qF -- "unknown flag --audit-everything" <<<"$output"
+}
+
+@test "a second positional root is refused rather than silently replacing the first" {
+  write_workspace
+  write_lock
+  run bash "$CHECK" --no-audit "$WS" "$WS"
+  [ "$status" -eq 2 ]
+  grep -qF -- "more than one workspace root given" <<<"$output"
 }
 
 @test "the advisory arm reports that it was skipped rather than staying silent" {

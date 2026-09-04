@@ -102,9 +102,13 @@ strictPeerDependencies: false
 # overrides block in the lockfile beside it and fails when they disagree, so a
 # pin that is present here and absent from the resolved tree is reported rather
 # than believed. It runs in cli-tests.yml, whose path filter arms on this
-# directory, and it also surfaces high and critical advisories in this closure,
-# which nothing else in the repository audits. It does not toggle anything and
-# so cannot tell a live floor from a spent one; that is the hand check above.
+# directory, and that CI step passes --no-audit: it gates on the parity
+# comparison alone and reports nothing about advisories. The script does carry
+# an advisory arm for the high and critical advisories in this closure, which
+# nothing else in the repository audits, but that arm is a hand check by the
+# decision recorded in the script docblock, not something CI runs. Neither arm
+# toggles anything, so neither can tell a live floor from a spent one; that is
+# the hand check above.
 #
 #   - cosmiconfig>js-yaml and @eslint/eslintrc>js-yaml -> 4.3.1:
 #     GHSA-5p4m-2wfm-xmqj, quadratic CPU consumption in !!omap resolution.

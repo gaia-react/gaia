@@ -421,13 +421,19 @@ jobs:
       #
       # Why the advisory arm is not run here is measured, and the measurement
       # lives beside the arm in that same docblock rather than being restated
-      # twice. The part specific to this job: at the worst prefix observed,
-      # 446s, the smallest whole-minute bound that would not cut short the
-      # slowest call observed at all, 251s, is five -- the docblock's own point
-      # is that the duration does not say whether a call succeeded, so the
-      # bound has to clear the ceiling rather than a successful case. That
-      # leaves 154s of this job's own 15-minute cap,
-      # against an install step observed to vary by 206s.
+      # twice. The part specific to this job: the smallest whole-minute bound
+      # that would not cut short the slowest call observed is five, because the
+      # docblock's own point is that the duration does not say whether a call
+      # succeeded, so a bound has to clear the ceiling rather than a successful
+      # case. Adding five minutes here leaves this job less headroom under its
+      # own 15-minute cap than the spread its own install step has been
+      # observed to vary across, so a slow install and a stalled audit in the
+      # same run would blow the cap.
+      #
+      # That relation is quoted rather than the three durations it came from.
+      # Every run of this job resamples them: two earlier statements of them
+      # went stale within a day of being written, and the relation held under
+      # both the superseded numbers and the current ones.
       - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
         name: Check the CLI workspace's security floors are applied
         run: bash .gaia/scripts/check-cli-workspace-floors.sh --no-audit

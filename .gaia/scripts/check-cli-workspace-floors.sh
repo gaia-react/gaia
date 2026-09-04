@@ -133,6 +133,10 @@ gaia_cwf_overrides() {
       }
       key = unquote(trim(key))
       val = unquote(trim(val))
+      # Declared defence, and deliberately redundant with the same test in the
+      # report awk below: a YAML null key inside the block is dropped by
+      # whichever reader meets it first, so neither one alone is falsifiable
+      # through this interface and a mutation sweep finds both surviving.
       if (key == "") next
       print key "\t" val
     }
@@ -186,6 +190,24 @@ gaia_cwf_main() {
     return 2
   fi
 
+  # -f is not enough, because a subject that exists and cannot be READ makes
+  # every reader below fail open in the same direction at once. awk yields no
+  # entries for it, and the declared-block guard cannot fire either: its own
+  # grep also cannot read the file, and grep exit 2 is indistinguishable from
+  # exit 1 inside `if grep -q`. Both parses come back empty, empty agrees with
+  # empty, and the run prints the clean line over a workspace whose floors it
+  # never managed to look at. Refusing at 2 puts an unreadable subject in the
+  # same class as an unenterable root, which is where it belongs: the reader
+  # cannot answer the question rather than having answered it clean.
+  local unreadable=""
+  [ -r "$ws_file" ] || unreadable="pnpm-workspace.yaml"
+  [ -n "$unreadable" ] || [ -r "$lock_file" ] || unreadable="pnpm-lock.yaml"
+  if [ -n "$unreadable" ]; then
+    printf 'check-cli-workspace-floors: %s exists under %s but cannot be read\n' \
+      "$unreadable" "$root" >&2
+    return 2
+  fi
+
   printf 'workspace root: %s\n' "$root"
 
   local configured locked rc=0
@@ -221,6 +243,9 @@ gaia_cwf_main() {
     # suite, so they stay byte-identical.
     local report flag line
     report="$(awk -F'\t' '
+      # Declared defence, redundant with the parser guard above by design; see
+      # the note there. Kept so this pass never emits a row for a key the
+      # parser could one day let through.
       $1 == "" { next }
       NR == FNR { cfg[$1] = $2; order[++n] = $1; next }
       { lock[$1] = $2; lorder[++m] = $1 }
