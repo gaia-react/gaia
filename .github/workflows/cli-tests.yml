@@ -499,9 +499,9 @@ jobs:
       # run invalidates it, and two earlier statements of such samples here went
       # stale within a day of being written. A WORST-OBSERVED extreme is kept,
       # because an observed maximum stays a lower bound on the ceiling no matter
-      # how many faster runs follow it, which is why the 422s stall and the 502s
-      # leg total are quoted and a 0.03s step time was dropped. Strip the
-      # extremes and this argument loses the only evidence it rests on.
+      # how many faster runs follow it, which is why the 422s stall is quoted and
+      # a 0.03s step time was dropped. Strip the extremes and this argument
+      # loses the only evidence it rests on.
       #
       # Elsewhere in this file, typical-case durations are quoted deliberately
       # and stay: the cold-eslint cost, the 80-180s a wider `code:` filter would
