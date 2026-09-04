@@ -704,16 +704,17 @@ SH
   # gone: the Node install for the node-dependent RED suites runs on this leg,
   # ahead of the bats step. A test must not depend on a tool being absent from
   # the environment by accident.
+  # `-x` alone is true for a searchable *directory* named `pnpm`, which would
+  # drop that PATH entry and every real tool it provides; `-f` first restricts
+  # the test to what `command -v` will accept as a command. The here-string
+  # feeds this loop in the current shell, not a subshell, so `filtered_path`
+  # is appended to directly and no intermediate array is needed.
   filtered_path=""
-  path_dirs=()
   while IFS= read -r path_dir; do
-    path_dirs+=("$path_dir")
-  done <<<"${PATH//:/$'\n'}"
-  for path_dir in ${path_dirs[@]+"${path_dirs[@]}"}; do
     [ -n "$path_dir" ] || continue
-    [ -x "$path_dir/pnpm" ] && continue
+    [ -f "$path_dir/pnpm" ] && [ -x "$path_dir/pnpm" ] && continue
     filtered_path="${filtered_path:+$filtered_path:}$path_dir"
-  done
+  done <<<"${PATH//:/$'\n'}"
 
   PATH="$filtered_path" run bash "$HOOK_ABS" "$WT"
   [ "$status" -eq 0 ]
