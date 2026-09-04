@@ -225,6 +225,37 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
     printf 'audit-scratch-dir: resolved %s but could not create it\n' "$gaia_scratch_path" >&2
     exit 1
   fi
+
+  # The mint and the populate fail in different places, and saying so here is
+  # the only moment either half is legible. A linked worktree's whole
+  # .gaia/local is ONE symlink to the main checkout's (link-worktree.sh), so
+  # every path under it resolves out of the acting tree. `mkdir -p` above runs
+  # from Bash and succeeds; the caller's next step is an Edit or a Write, and
+  # the runtime's own worktree confinement refuses a file_path that leaves the
+  # tree. A caller told only the path reads a success and hits a refusal it
+  # cannot place, whose stated remedy (edit the worktree copy) does not exist
+  # here, and whose most plausible-looking repair is widening a guard that is
+  # not the one refusing.
+  #
+  # Nothing in this repository can make that Write succeed: the refusal is the
+  # runtime's, and .claude/hooks/block-worktree-path-mismatch.sh already
+  # permits the path -- the registry classifies it `ephemeral`, and that hook
+  # exempts every scope but per-tree. So the note names the tool rather than
+  # promising a fix. Bash reaches the directory normally, which is what the
+  # working copy is taken with in the first place.
+  #
+  # Advisory: an unresolvable predicate skips the note rather than failing a
+  # mint that worked, matching this file's fail-open rule.
+  gaia_scratch_lib="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/main-root-lib.sh"
+  if [[ -r "$gaia_scratch_lib" ]]; then
+    # shellcheck disable=SC1090
+    . "$gaia_scratch_lib" 2>/dev/null || true
+  fi
+  if type gaia_is_linked_worktree >/dev/null 2>&1 && gaia_is_linked_worktree 2>/dev/null; then
+    printf 'audit-scratch-dir: populate and mutate %s with Bash (cp, redirection, an in-place sed).\n' "$out" >&2
+    printf 'audit-scratch-dir: Write/Edit into it is refused -- this is a linked worktree, .gaia/local is one symlink to the main checkout, so the path leaves this tree. That confinement is enforced by the runtime, not by a GAIA guard, so there is nothing here to widen.\n' >&2
+  fi
+
   printf '%s\n' "$out"
   exit 0
 fi
