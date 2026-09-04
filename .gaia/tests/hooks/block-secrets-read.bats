@@ -54,18 +54,33 @@ run_hook_grep() {
   invoke_hook "$json" "$HOOK_ABS"
 }
 
-# Run the hook with lib/reader-operands.sh made unreadable, to exercise the
-# grammar-load failure arm. The library is moved rather than deleted and the
-# move is reversed unconditionally, so a failing assertion cannot leave the
-# checkout without its guard library.
+# Run the hook with lib/reader-operands.sh absent, to exercise the grammar-load
+# failure arm.
+#
+# The hook is COPIED into this test's own temporary directory and driven from
+# there, with no library beside it. It must never be exercised by hiding the
+# real one: both read-guard suites would target the identical absolute path,
+# .gaia/tests/bats-shards.sh puts them in different shards, and
+# .gaia/tests/run-bats-parallel.sh forks every shard into ONE shared workspace.
+# While one suite held the library hidden, every allow-assertion in its sibling
+# would see the fail-closed deny, so the pair would flake against each other and
+# the concurrency-safety claim that runner makes would be false. The live
+# session's own Read, Grep and Bash calls run through these same hooks and would
+# be denied for the width of that window too.
+#
+# The hook resolves its library as `dirname "${BASH_SOURCE[0]}"/lib`, so a copy
+# in a directory with an empty lib/ beside it reaches for a file that is not
+# there, which is the missing-library arm exactly. The directory is created and
+# left empty rather than omitted so the arm under test is the absent FILE rather
+# than an unresolvable lib dir; both deny, and pinning the narrower one is what
+# makes this a test of the probe instead of a test of `cd`.
 run_hook_without_library() {
-  local json lib moved
-  lib="$HOOKS_SRC/lib/reader-operands.sh"
-  moved="$lib.bats-hidden"
+  local json dir
+  dir="$BATS_TEST_TMPDIR/nolib"
+  mkdir -p "$dir/lib"
+  cp "$HOOK_ABS" "$dir/"
   json=$(jq -n '{tool_name: "Bash", tool_input: {command: "cat README.md"}}')
-  mv "$lib" "$moved"
-  invoke_hook "$json" "$HOOK_ABS"
-  mv "$moved" "$lib"
+  invoke_hook "$json" "$dir/$(basename "$HOOK_ABS")"
 }
 
 # --- Read-tool denies, one per path class the removed Read() globs covered ---
@@ -316,4 +331,25 @@ run_hook_without_library() {
     | all(. as $needle | $d | index($needle) != null)
   ' "$SETTINGS_ABS"
   [ "$status" -eq 0 ]
+}
+
+# --- Regression: a command substitution in either spelling ---
+#
+# The segment split reaches into `$(...)` because the parens are in its
+# character set, and used not to reach into a backtick pair. The two spellings
+# of one read therefore disagreed, and the backtick form was allowed.
+
+@test "x=$(cat certs/server.key) is denied (dollar-paren substitution)" {
+  run_hook_bash 'x=$(cat certs/server.key)'
+  assert_denied_by_json
+}
+
+@test "x=`cat certs/server.key` is denied (backtick substitution)" {
+  run_hook_bash 'x=`cat certs/server.key`'
+  assert_denied_by_json
+}
+
+@test "echo `cat secrets/prod.json` is denied (reader hidden inside a backtick pair)" {
+  run_hook_bash 'echo `cat secrets/prod.json`'
+  assert_denied_by_json
 }

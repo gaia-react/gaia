@@ -33,6 +33,15 @@
 # (e.g. Serena's execute_shell_command) or a subprocess that opens the file
 # itself.
 #
+# ONE MORE SPELLING IS OPEN AND IS NONE OF THOSE. The operand walk splits a
+# segment on whitespace before quotes are stripped, so a quoted path CONTAINING
+# A SPACE arrives as two fragments and neither one strips to the real path:
+# `cat "my file.key"` is allowed where `cat my\ file.key` is denied. Coalescing
+# the fragments is tokenizer work rather than a table entry, and a half-done
+# tokenizer is how the flag tables above went wrong, so it is named here instead
+# of guessed at. Treat this list as the spellings known to be open, never as a
+# closed set.
+#
 # THE SUBPROCESS TIER IS NOT LOST WITH THE RULES, it moved. A Read() deny rule
 # merges into the OS sandbox boundary, so the four globs above also denied a
 # subprocess spawned by sandboxed Bash, which no hook can see. Deleting them
@@ -163,9 +172,15 @@ case "$tool_name" in
     cmd=$(jq -r '.tool_input.command // empty' <<<"$payload")
     [[ -n "$cmd" ]] || exit 0
 
+    # The backtick is in the set for the same reason the parens are: a
+    # substitution hides a whole command inside another one, and only splitting
+    # on it puts that command's own word in first position where the walk reads
+    # it. Without it the two substitution spellings disagree, `$(cat <secret>)`
+    # denying while the backtick form of the identical read is allowed, so
+    # coverage would turn on which spelling the caller happened to use.
     while IFS= read -r seg; do
       process_segment "$seg"
-    done < <(printf '%s\n' "$cmd" | tr '|&;()' '\n')
+    done < <(printf '%s\n' "$cmd" | tr '|&;()`' '\n')
 
     exit 0
     ;;

@@ -16,7 +16,11 @@ Enabling the sandbox is a two-tier preference, not a single flip. Tier one is a 
 
 A checked-in raw enable would be worse than no recommendation at all. Sandbox capability is machine-specific, an owner's Linux box with the right dependencies installed says nothing about a teammate's WSL1 setup or a fresh clone with none of them present. Baking in a hard "on" degrades silently to warn-and-unsandboxed the moment a machine can't back it, and forces avoidable friction on every clone that has to work around a setting it didn't choose. Recommend the intent, resolve it locally, every time.
 
-What that bans is the **enable**, not the **boundary**. `sandbox.filesystem.denyRead` is committed to `.claude/settings.json` deliberately, and carries none of the harm above: it grants no capability, cannot degrade a machine, and does nothing at all until something else turns the sandbox on. A boundary is also the half that must not be per-machine, since a deny every clone resolves for itself is a deny some clones will not have. So the two halves split on which one is a preference: whether to sandbox is the machine's call, what a sandbox must never read is the project's. `.gaia/tests/sandbox/manifest-and-enable.bats` enforces exactly that line, keying on the `enabled` key rather than on the presence of a `sandbox` block.
+What that bans is the **enable**, not the **boundary**. `sandbox.filesystem.denyRead` is committed to `.claude/settings.json` deliberately, and carries none of the harm above: it grants no capability, cannot degrade a machine, and does nothing at all until something else turns the sandbox on. A boundary is also the half that must not be per-machine, since a deny every clone resolves for itself is a deny some clones will not have. So the two halves split on which one is a preference: whether to sandbox is the machine's call, what a sandbox must never read is the project's. The line between them is the `enabled` key, not the presence of a `sandbox` block.
+
+<!-- gaia:maintainer-only:start -->
+GAIA maintainers: `.gaia/tests/sandbox/manifest-and-enable.bats` enforces that line. It reads the `enabled` key rather than banning a `sandbox` block outright, which is what lets the committed boundary stand. The JSON spelling of an enable spans two lines, so a line-oriented grep cannot see it and the check walks the flattened sandbox object with a brace counter instead.
+<!-- gaia:maintainer-only:end -->
 
 ## What the sandbox does and does NOT protect
 
