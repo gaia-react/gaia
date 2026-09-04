@@ -87,6 +87,11 @@ write_lock() {
   [ "$status" -eq 1 ]
   grep -qF -- 'morgan' <<<"$output"
   grep -qiF -- 'not applied' <<<"$output"
+  # The absent-from-lockfile arm is asserted by its own wording. Without this,
+  # disabling that arm lets the key fall through to the version-mismatch arm,
+  # which prints the same package with an empty locked version and still
+  # matches both greps above, so the arm can be removed with the suite green.
+  grep -qF -- 'absent from the lockfile' <<<"$output"
 }
 
 @test "a lockfile override with no entry in the workspace config is reported" {
@@ -95,6 +100,10 @@ write_lock() {
   run bash "$CHECK" --no-audit "$WS"
   [ "$status" -eq 1 ]
   grep -qF -- 'morgan' <<<"$output"
+  # Asserted as a PRESENCE. The sibling test that pins the clean path asserts
+  # this wording only as an absence, and an absence assertion alone leaves the
+  # wording free to be reworded away without reddening anything.
+  grep -qF -- 'UNDECLARED OVERRIDE' <<<"$output"
 }
 
 @test "a floor pinned at one version and locked at another is reported" {
@@ -104,6 +113,7 @@ write_lock() {
   [ "$status" -eq 1 ]
   grep -qF -- '3.1.6' <<<"$output"
   grep -qF -- '3.1.4' <<<"$output"
+  grep -qF -- 'and locked at' <<<"$output"
 }
 
 @test "an overrides map with no lockfile block at all is reported, not passed" {
@@ -149,16 +159,22 @@ write_lock() {
   grep -qF -- "the root itself is missing under $TMP/absent" <<<"$output"
 }
 
+# Both of these assert the CAUSE, not only the status. The readability checks
+# below return 2 for an absent file as well, so a status-only assertion here
+# survives deleting the -f check it is named for while the run reports a file
+# that "cannot be read" for a file that is not there at all.
 @test "a workspace root with no pnpm-workspace.yaml is an environment error" {
   write_lock "  fast-uri: 3.1.6"
   run bash "$CHECK" --no-audit "$WS"
   [ "$status" -eq 2 ]
+  grep -qF -- "pnpm-workspace.yaml is missing under $WS" <<<"$output"
 }
 
 @test "a workspace root with no lockfile is an environment error" {
   write_workspace "  fast-uri: 3.1.6"
   run bash "$CHECK" --no-audit "$WS"
   [ "$status" -eq 2 ]
+  grep -qF -- "pnpm-lock.yaml is missing under $WS" <<<"$output"
 }
 
 # A subject that EXISTS and cannot be read is the fail-open case, and it is not
@@ -698,6 +714,162 @@ STUB
   run bash "$CHECK" --no-audit "$WS"
   [ "$status" -eq 2 ]
   grep -qF -- 'no entries' <<<"$output"
+}
+
+@test "a declared overrides block yielding no entries is refused on the LOCKFILE side too" {
+  # Mirror of the test above, and it is not redundant with it: the guard has an
+  # arm per file, and the workspace fixture alone leaves the lockfile arm free
+  # to be turned into an unconditional continue with the suite green. The
+  # lockfile is the side pnpm actually generates, so it is the likelier of the
+  # two to change shape.
+  write_workspace "  fast-uri: 3.1.6"
+  printf 'overrides:\n  # the map pnpm would write is not in a shape this reader knows\n' \
+    > "$WS/pnpm-lock.yaml"
+  run bash "$CHECK" --no-audit "$WS"
+  [ "$status" -eq 2 ]
+  grep -qF -- 'no entries' <<<"$output"
+}
+
+# THE STRICT RECOGNIZER. Every shape below used to be skipped silently, which
+# dropped a declared floor out of the comparison and let the comparison agree
+# with itself. Each now refuses at 2 and names the line. These fixtures are what
+# make that a contract rather than an intention.
+@test "an override line annotated with a YAML comment parses as its version alone" {
+  # The phantom mismatch on a CORRECT tree, and the reason the reader is strict.
+  # Annotating an override in the natural place used to fold the comment into
+  # the pinned version, so the parity arm printed FLOOR NOT APPLIED and exited 1
+  # over a workspace whose floors were all applied. That is the failure this
+  # suite header names as the one that gets the gate switched off.
+  write_workspace "  fast-uri: 3.1.6 # GHSA-7p8r-x3mc-p8w7"
+  write_lock "  fast-uri: 3.1.6"
+  run bash "$CHECK" --no-audit "$WS"
+  [ "$status" -eq 0 ]
+  grep -qF -- 'floor applied: fast-uri at 3.1.6' <<<"$output"
+  grep -qF -- 'FLOOR NOT APPLIED' <<<"$output" && return 1
+  true
+}
+
+@test "a quoted key carrying an annotated version parses as its version alone" {
+  write_workspace "  'cosmiconfig>js-yaml': 4.3.1  # GHSA-5p4m-2wfm-xmqj"
+  write_lock "  cosmiconfig>js-yaml: 4.3.1"
+  run bash "$CHECK" --no-audit "$WS"
+  [ "$status" -eq 0 ]
+  grep -qF -- 'floor applied: cosmiconfig>js-yaml at 4.3.1' <<<"$output"
+}
+
+@test "a hash with no space before it stays part of the version, as YAML says" {
+  write_workspace "  fast-uri: 3.1.6#notacomment"
+  write_lock "  fast-uri: 3.1.6#notacomment"
+  run bash "$CHECK" --no-audit "$WS"
+  [ "$status" -eq 0 ]
+  grep -qF -- 'floor applied: fast-uri at 3.1.6#notacomment' <<<"$output"
+}
+
+@test "a quoted version may carry whitespace, because the quotes make it unambiguous" {
+  write_workspace "  fast-uri: '>=1.2.3 <2.0.0'"
+  write_lock "  fast-uri: '>=1.2.3 <2.0.0'"
+  run bash "$CHECK" --no-audit "$WS"
+  [ "$status" -eq 0 ]
+  grep -qF -- 'floor applied: fast-uri at >=1.2.3 <2.0.0' <<<"$output"
+}
+
+@test "an UNQUOTED version carrying whitespace is refused, not guessed at" {
+  # The accepted cost of strictness, asserted so it is a decision rather than a
+  # surprise: this shape is legal YAML and this reader cannot tell it apart from
+  # a comment tail it failed to strip, so it refuses instead of choosing.
+  write_workspace "  fast-uri: >=1.2.3 <2.0.0"
+  write_lock "  fast-uri: 3.1.6"
+  run bash "$CHECK" --no-audit "$WS"
+  [ "$status" -eq 2 ]
+  grep -qF -- 'an unquoted version carrying whitespace' <<<"$output"
+}
+
+@test "a key with no version is refused rather than read as an empty pin" {
+  write_workspace "  fast-uri:"
+  write_lock "  fast-uri: 3.1.6"
+  run bash "$CHECK" --no-audit "$WS"
+  [ "$status" -eq 2 ]
+  grep -qF -- 'a key with no version' <<<"$output"
+}
+
+@test "a YAML null key inside the block is refused rather than dropped" {
+  write_workspace "  :"
+  write_lock "  fast-uri: 3.1.6"
+  run bash "$CHECK" --no-audit "$WS"
+  [ "$status" -eq 2 ]
+  grep -qF -- 'an empty key' <<<"$output"
+}
+
+@test "a quoted key with no closing quote is refused rather than skipped" {
+  write_workspace "  'unterminated: 3.1.6"
+  write_lock "  fast-uri: 3.1.6"
+  run bash "$CHECK" --no-audit "$WS"
+  [ "$status" -eq 2 ]
+  grep -qF -- 'a quoted key with no closing quote' <<<"$output"
+}
+
+@test "a quoted key not followed by a colon is refused rather than guessed at" {
+  # Without this arm the reader drops the missing colon and takes the rest of
+  # the line as the version, which is a guess that happens to look right on the
+  # simplest spelling and is a guess either way.
+  write_workspace "  'fast-uri' 3.1.6"
+  write_lock "  fast-uri: 3.1.6"
+  run bash "$CHECK" --no-audit "$WS"
+  [ "$status" -eq 2 ]
+  grep -qF -- 'a quoted key not followed by a colon' <<<"$output"
+}
+
+@test "a line inside the block with no key-terminating colon is refused" {
+  write_workspace "  fast-uri"
+  write_lock "  fast-uri: 3.1.6"
+  run bash "$CHECK" --no-audit "$WS"
+  [ "$status" -eq 2 ]
+  grep -qF -- 'no key-terminating colon' <<<"$output"
+}
+
+@test "the refusal names the file and the line number, not just the line" {
+  # write_workspace emits minimumReleaseAge, a blank line, then `overrides:`,
+  # so the first entry is line 4 and the broken one is line 5.
+  write_workspace "  fast-uri: 3.1.6" "  broken"
+  write_lock "  fast-uri: 3.1.6"
+  run bash "$CHECK" --no-audit "$WS"
+  [ "$status" -eq 2 ]
+  grep -qF -- "$WS/pnpm-workspace.yaml:5" <<<"$output"
+}
+
+@test "a hand-edited map grouping its entries with a blank line keeps every entry" {
+  # This is the real reason the block closes on a column-zero key rather than on
+  # a blank line. A blank-line rule would stop at the gap and silently drop
+  # every entry below it, reporting the lockfile keys as undeclared overrides.
+  write_workspace "  fast-uri: 3.1.6" "" "  morgan: 1.11.0"
+  write_lock "  fast-uri: 3.1.6" "  morgan: 1.11.0"
+  run bash "$CHECK" --no-audit "$WS"
+  [ "$status" -eq 0 ]
+  grep -qF -- 'floor applied: morgan at 1.11.0' <<<"$output"
+  grep -qF -- 'UNDECLARED OVERRIDE' <<<"$output" && return 1
+  true
+}
+
+@test "a lockfile with no overrides block emits no phantom row for the empty map" {
+  # The blank-line term in the report awk. Each list reaches that pass through
+  # printf on a shell variable, so an empty map arrives as ONE BLANK LINE, and
+  # without that term this run prints a row naming a package that does not
+  # exist while the exit status stays exactly the same.
+  write_workspace "  fast-uri: 3.1.6"
+  write_lock
+  run bash "$CHECK" --no-audit "$WS"
+  [ "$status" -eq 1 ]
+  grep -qF -- '(empty)' <<<"$output" && return 1
+  grep -qF -- 'UNDECLARED OVERRIDE:  is locked at' <<<"$output" && return 1
+  grep -qF -- 'fast-uri' <<<"$output"
+}
+
+@test "the workspace root line names the root it actually read" {
+  write_workspace "  fast-uri: 3.1.6"
+  write_lock "  fast-uri: 3.1.6"
+  run bash "$CHECK" --no-audit "$WS"
+  [ "$status" -eq 0 ]
+  grep -qF -- "workspace root: $WS" <<<"$output"
 }
 
 @test "an advisory does not mask a floor that is not applied" {

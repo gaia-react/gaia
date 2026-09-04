@@ -76,71 +76,120 @@ USAGE
 #   because the two files being compared disagree about it on a correct tree:
 #   pnpm quotes a key it has to and writes the same key bare into the lockfile
 #   it generates. Prints nothing when the file declares no overrides.
+#
+#   THIS IS A STRICT RECOGNIZER, NOT A PERMISSIVE PARSER, and that is the whole
+#   design. It is not a YAML reader, so every shape it does not recognize is a
+#   shape it would otherwise have to GUESS at, and review caught it guessing
+#   two different ones wrong: a key not ended where YAML ends it, and a comment
+#   tail read as part of the pinned version, which printed FLOOR NOT APPLIED
+#   over a tree whose floors were all applied. A wrong guess is
+#   indistinguishable from a reading, so every shape this does not recognize
+#   refuses at 2 and names the file, the line number and the line. A
+#   legal-but-unusual line refusing is the accepted cost of that: it fails
+#   toward "I cannot read this", never toward a verdict.
+#
+#   Returns 2 and prints the offending line when it meets something it does not
+#   recognize. THE CALLER MUST CHECK, and does; a bare command substitution
+#   discards the status and hands an empty map to a comparison that then agrees
+#   with itself, which is the same false-clean shape the advisory arm below was
+#   reworked to close.
 gaia_cwf_overrides() {
-  awk '
-    function unquote(s,   q) {
-      if (length(s) >= 2) {
-        q = substr(s, 1, 1)
-        if ((q == "\"" || q == "\047") && substr(s, length(s), 1) == q)
-          return substr(s, 2, length(s) - 2)
+  local out
+  out="$(
+    awk '
+      function trim(s) {
+        sub(/^[[:space:]]+/, "", s); sub(/[[:space:]]+$/, "", s); return s
       }
-      return s
-    }
-    function trim(s) {
-      sub(/^[[:space:]]+/, "", s); sub(/[[:space:]]+$/, "", s); return s
-    }
-    /^overrides:[[:space:]]*$/ { in_block = 1; next }
-    # A key at column zero closes the mapping. A comment does not, and neither
-    # does a blank line: the lockfile puts one between the block and
-    # `importers:`, and stopping there would read every nested key under it.
-    in_block && /^[^[:space:]#]/ { in_block = 0 }
-    in_block {
-      line = trim($0)
-      if (line == "" || substr(line, 1, 1) == "#") next
-      c = substr(line, 1, 1)
-      # Declared defence, and no fixture pins it: since the plain path below
-      # ends a key at a colon followed by whitespace, it already parses every
-      # quoted key this file can carry, `unquote` stripping the quotes after
-      # the split. What this branch alone still handles is a key containing a
-      # colon FOLLOWED BY a space, which no package name can, so the branch is
-      # unfalsifiable rather than load-bearing. It stays because the quoting
-      # asymmetry between the two files is the one real hazard this parser
-      # has, and reading the quotes explicitly is how that stays legible.
-      if (c == "\"" || c == "\047") {
-        endq = index(substr(line, 2), c)
-        if (endq == 0) next
-        key = substr(line, 2, endq - 1)
-        rest = substr(line, endq + 2)
-        if (substr(rest, 1, 1) != ":") next
-        val = substr(rest, 2)
-      } else {
-        # A plain YAML key ends at the first colon FOLLOWED BY whitespace, or
-        # at a colon ending the line -- not at the first colon. A bare alias
-        # spelling such as `foo@npm:bar: 1.2.3` carries a colon inside the key
-        # itself, and splitting on the first one takes `foo@npm` with the rest
-        # as its value. That reports the declared floor absent and invents an
-        # undeclared override in the same run, on a correct tree.
-        n = length(line)
-        i = 0
-        for (p = 1; p <= n; p++) {
-          if (substr(line, p, 1) != ":") continue
-          nx = substr(line, p + 1, 1)
-          if (p == n || nx == " " || nx == "\t") { i = p; break }
+      function unquote(s,   q) {
+        if (length(s) >= 2) {
+          q = substr(s, 1, 1)
+          if ((q == "\"" || q == "\047") && substr(s, length(s), 1) == q)
+            return substr(s, 2, length(s) - 2)
         }
-        if (i == 0) next
-        key = substr(line, 1, i - 1)
-        val = substr(line, i + 1)
+        return s
       }
-      key = unquote(trim(key))
-      val = unquote(trim(val))
-      # Declared defence, and deliberately redundant with the same test in the
-      # report awk below: a YAML null key inside the block is dropped by
-      # whichever reader meets it first, so neither one alone is falsifiable
-      # through this interface and a mutation sweep finds both surviving.
-      if (key == "") next
-      print key "\t" val
-    }
-  ' "$1" | sort
+      # Refuse rather than guess. Every arm that used to `next` past a shape it
+      # could not read now lands here, because skipping a line silently drops a
+      # declared floor out of the comparison and the comparison then agrees.
+      function refuse(what, raw) {
+        printf "check-cli-workspace-floors: %s:%d declares %s, which this reader does not recognize: %s\n", \
+          FILENAME, FNR, what, raw > "/dev/stderr"
+        exit 2
+      }
+      # A value ends at an unquoted comment tail. YAML starts a comment only at
+      # a # preceded by whitespace, so a # with no space before it is part of
+      # the scalar and is left alone. A quoted value keeps everything inside
+      # its quotes and may carry a comment after the closing one.
+      function strip_comment(s,   q, endq, rest) {
+        if (s == "") return s
+        q = substr(s, 1, 1)
+        if (q == "\"" || q == "\047") {
+          endq = index(substr(s, 2), q)
+          if (endq == 0) return s
+          rest = trim(substr(s, endq + 2))
+          if (rest != "" && substr(rest, 1, 1) != "#") return s
+          return substr(s, 1, endq + 1)
+        }
+        sub(/[[:space:]]+#.*$/, "", s)
+        return s
+      }
+      /^overrides:[[:space:]]*$/ { in_block = 1; next }
+      # A key at column zero closes the mapping. A comment does not, and
+      # neither does a blank line: a hand-edited map may group its entries with
+      # one, and closing there would silently drop every entry below the gap.
+      # The lockfile also puts a blank line between the block and `importers:`,
+      # but that case is already covered by the column-zero rule reaching
+      # `importers:` itself, so it is not what decides this.
+      in_block && /^[^[:space:]#]/ { in_block = 0 }
+      in_block {
+        raw = $0
+        line = trim(raw)
+        if (line == "" || substr(line, 1, 1) == "#") next
+        c = substr(line, 1, 1)
+        if (c == "\"" || c == "\047") {
+          endq = index(substr(line, 2), c)
+          if (endq == 0) refuse("a quoted key with no closing quote", raw)
+          key = substr(line, 2, endq - 1)
+          rest = substr(line, endq + 2)
+          if (substr(rest, 1, 1) != ":") refuse("a quoted key not followed by a colon", raw)
+          val = substr(rest, 2)
+        } else {
+          # A plain YAML key ends at the first colon FOLLOWED BY whitespace, or
+          # at a colon ending the line, not at the first colon. A bare alias
+          # spelling such as `foo@npm:bar: 1.2.3` carries a colon inside the
+          # key itself, and splitting on the first one takes `foo@npm` with the
+          # rest as its value. That reports the declared floor absent and
+          # invents an undeclared override in the same run, on a correct tree.
+          n = length(line)
+          i = 0
+          for (p = 1; p <= n; p++) {
+            if (substr(line, p, 1) != ":") continue
+            nx = substr(line, p + 1, 1)
+            if (p == n || nx == " " || nx == "\t") { i = p; break }
+          }
+          if (i == 0) refuse("a mapping line with no key-terminating colon", raw)
+          key = substr(line, 1, i - 1)
+          val = substr(line, i + 1)
+        }
+        key = unquote(trim(key))
+        val = trim(strip_comment(trim(val)))
+        vq = substr(val, 1, 1)
+        quoted = (length(val) >= 2 && (vq == "\"" || vq == "\047") && substr(val, length(val), 1) == vq)
+        val = unquote(val)
+        if (key == "") refuse("an empty key", raw)
+        if (val == "") refuse("a key with no version", raw)
+        # An UNQUOTED version carrying whitespace is the one shape left that
+        # this reader cannot tell apart from a comment it failed to strip, so it
+        # refuses instead of choosing. A quoted one is unambiguous and is taken
+        # as written, which is how a range that genuinely needs a space is
+        # spelled.
+        if (!quoted && val ~ /[[:space:]]/) refuse("an unquoted version carrying whitespace", raw)
+        print key "\t" val
+      }
+    ' "$1"
+  )" || return 2
+  [ -n "$out" ] || return 0
+  printf '%s\n' "$out" | sort
 }
 
 gaia_cwf_main() {
@@ -211,8 +260,12 @@ gaia_cwf_main() {
   printf 'workspace root: %s\n' "$root"
 
   local configured locked rc=0
-  configured="$(gaia_cwf_overrides "$ws_file")"
-  locked="$(gaia_cwf_overrides "$lock_file")"
+  # The status is checked, never discarded. gaia_cwf_overrides returns 2 when it
+  # meets a shape it does not recognize, and a bare command substitution would
+  # throw that away and hand an empty map to a comparison that then agrees with
+  # itself. It has already printed which file and line it refused on.
+  configured="$(gaia_cwf_overrides "$ws_file")" || return 2
+  locked="$(gaia_cwf_overrides "$lock_file")" || return 2
 
   # A reader that stops recognizing the shape pnpm emits returns empty for both
   # files, and empty compared against empty agrees. That is indistinguishable
@@ -239,13 +292,19 @@ gaia_cwf_main() {
   if [ -z "$configured" ] && [ -z "$locked" ]; then
     printf 'no overrides declared; no floors to check\n'
   else
-    # One pass over both lists. The report wordings are pinned by the sibling
-    # suite, so they stay byte-identical.
+    # One pass over both lists. The sibling suite pins these wordings
+    # byte-identical, each by a presence assertion rather than only by an
+    # absence: `FLOOR NOT APPLIED:`, `floor applied:`, `absent from the
+    # lockfile`, `and locked at`, and `UNDECLARED OVERRIDE`.
     local report flag line
     report="$(awk -F'\t' '
-      # Declared defence, redundant with the parser guard above by design; see
-      # the note there. Kept so this pass never emits a row for a key the
-      # parser could one day let through.
+      # LOAD-BEARING, despite looking like a redundant guard against something
+      # the parser already refuses. Each list arrives through `printf %s\n` on a
+      # shell variable, so an EMPTY list arrives as ONE BLANK LINE rather than as
+      # no input at all, and this is the term that drops it. Delete it and a
+      # workspace or lockfile declaring no overrides emits a phantom row naming
+      # a package that does not exist, at an unchanged exit status, which is how
+      # a suite watching only the status stays green over it. Pinned by fixture.
       $1 == "" { next }
       NR == FNR { cfg[$1] = $2; order[++n] = $1; next }
       { lock[$1] = $2; lorder[++m] = $1 }
