@@ -78,15 +78,25 @@ USAGE
 #   it generates. Prints nothing when the file declares no overrides.
 #
 #   THIS IS A STRICT RECOGNIZER, NOT A PERMISSIVE PARSER, and that is the whole
-#   design. It is not a YAML reader, so every shape it does not recognize is a
-#   shape it would otherwise have to GUESS at, and review caught it guessing
-#   two different ones wrong: a key not ended where YAML ends it, and a comment
-#   tail read as part of the pinned version, which printed FLOOR NOT APPLIED
-#   over a tree whose floors were all applied. A wrong guess is
-#   indistinguishable from a reading, so every shape this does not recognize
-#   refuses at 2 and names the file, the line number and the line. A
-#   legal-but-unusual line refusing is the accepted cost of that: it fails
-#   toward "I cannot read this", never toward a verdict.
+#   design. It is not a YAML reader, so any shape it does not recognize is one
+#   it would otherwise have to GUESS at, and a wrong guess is indistinguishable
+#   from a reading. Review caught it guessing three different shapes wrong: a
+#   key not ended where YAML ends it, a comment tail folded into the pinned
+#   version, and a value it could not read as a scalar compared as a literal
+#   token. Each printed FLOOR NOT APPLIED over a tree whose floors were all
+#   applied. So every shape this cannot read refuses at 2 and names the file,
+#   the line number and the line.
+#
+#   THE LINE IS DRAWN AT WHAT IS AMBIGUOUS, NOT AT WHAT LOOKS UNUSUAL, and the
+#   distinction is load-bearing in both directions. A plain scalar carrying
+#   whitespace is a legal multi-range semver that js-yaml writes UNQUOTED into
+#   the lockfile, so refusing it would fail the gate on a correct tree, and no
+#   amount of quoting the workspace side would repair that: the next resolve
+#   rewrites the lockfile value unquoted again. It is accepted. What refuses is
+#   what cannot be read as a scalar at all: quoting that does not close or
+#   carries trailing junk, a leading YAML indicator opening a construct rather
+#   than a value, a duplicate key, an empty key, and a key with no version.
+#   Refusing fails toward "I cannot read this", never toward a verdict.
 #
 #   Returns 2 and prints the offending line when it meets something it does not
 #   recognize. THE CALLER MUST CHECK, and does; a bare command substitution
@@ -121,7 +131,6 @@ gaia_cwf_overrides() {
       # the scalar and is left alone. A quoted value keeps everything inside
       # its quotes and may carry a comment after the closing one.
       function strip_comment(s,   q, endq, rest) {
-        if (s == "") return s
         q = substr(s, 1, 1)
         if (q == "\"" || q == "\047") {
           endq = index(substr(s, 2), q)
@@ -133,7 +142,24 @@ gaia_cwf_overrides() {
         sub(/[[:space:]]+#.*$/, "", s)
         return s
       }
-      /^overrides:[[:space:]]*$/ { in_block = 1; next }
+      # A UTF-8 BOM and a CRLF line ending are both invisible to every pattern
+      # below unless they are removed here. The BOM one was a SILENT FALSE
+      # CLEAN that appeared on one platform only: it defeated the block-open
+      # match and the separate grep that used to guard it, and those two
+      # disagreed, because macOS grep strips a BOM and GNU grep does not.
+      #
+      # THE BOM IS MATCHED BY BYTE VALUE, NOT BY AN ESCAPE IN A REGEX. Neither
+      # `\357\273\277` nor `\xef\xbb\xbf` is portable in an awk regex: both
+      # are silently inert on the BSD awk that ships with macOS while working
+      # under gawk, which would have reproduced the very platform split this
+      # removes, in the fix for it.
+      BEGIN { bom = sprintf("%c%c%c", 239, 187, 191) }
+      NR == 1 { if (substr($0, 1, 3) == bom) $0 = substr($0, 4) }
+      # Belt and braces with trim below, which also drops a trailing CR wherever
+      # the runner awk counts it as [[:space:]]. This makes that independent of
+      # whether it does.
+      { if (substr($0, length($0), 1) == sprintf("%c", 13)) $0 = substr($0, 1, length($0) - 1) }
+      /^overrides:[[:space:]]*$/ { in_block = 1; declared = 1; next }
       # A key at column zero closes the mapping. A comment does not, and
       # neither does a blank line: a hand-edited map may group its entries with
       # one, and closing there would silently drop every entry below the gap.
@@ -178,17 +204,44 @@ gaia_cwf_overrides() {
         val = unquote(val)
         if (key == "") refuse("an empty key", raw)
         if (val == "") refuse("a key with no version", raw)
-        # An UNQUOTED version carrying whitespace is the one shape left that
-        # this reader cannot tell apart from a comment it failed to strip, so it
-        # refuses instead of choosing. A quoted one is unambiguous and is taken
-        # as written, which is how a range that genuinely needs a space is
-        # spelled.
-        if (!quoted && val ~ /[[:space:]]/) refuse("an unquoted version carrying whitespace", raw)
+        # WHERE THE LINE BETWEEN STRICT AND PERMISSIVE SITS, and it is drawn by
+        # what is ambiguous rather than by what looks unusual.
+        #
+        # A plain scalar carrying whitespace is ACCEPTED. `^1.0.0 || ^2.0.0` and
+        # `1.2.3 - 2.0.0` are ordinary multi-range semvers, and js-yaml, which
+        # is what serializes pnpm-lock.yaml, writes them unquoted, so refusing
+        # them fails the gate on a correct tree and no amount of quoting the
+        # workspace side repairs it: the next resolve rewrites the lockfile
+        # value unquoted again. Whitespace here is NOT a comment this reader
+        # missed, because strip_comment above has already removed every comment
+        # tail.
+        #
+        # What IS refused is a value this reader cannot read as a scalar at all:
+        # quoting that does not close or that carries trailing junk, and a
+        # leading YAML indicator that starts a construct rather than a value,
+        # an alias, an anchor, a tag, a block scalar, a flow collection.
+        if (vq == "\"" || vq == "\047") {
+          if (!quoted) refuse("a value opening with a quote that does not close as a scalar", raw)
+        } else if (val ~ /^[*&!|>%@`,?[{}\]]/ || val ~ /^-[[:space:]]/ || val ~ /^:/) {
+          refuse("a value opening with a YAML indicator this reader cannot interpret", raw)
+        }
+        if (key in seen) refuse("a key already declared in this file", raw)
+        seen[key] = 1
+        n++
         print key "\t" val
+      }
+      END {
+        # The declared-but-empty refusal lives HERE, in the reader that decides
+        # what an entry is, rather than in a separate grep beside it. Two
+        # readers of the same fact can disagree, and when they did the
+        # disagreement was a false clean that appeared on one platform only.
+        if (declared && n == 0)
+          printf "check-cli-workspace-floors: %s declares an overrides block yielding no entries; either the map is empty or this reader no longer matches the shape pnpm emits\n", \
+            FILENAME > "/dev/stderr"
+        if (declared && n == 0) exit 2
       }
     ' "$1"
   )" || return 2
-  [ -n "$out" ] || return 0
   printf '%s\n' "$out" | sort
 }
 
@@ -260,35 +313,23 @@ gaia_cwf_main() {
   printf 'workspace root: %s\n' "$root"
 
   local configured locked rc=0
-  # The status is checked, never discarded. gaia_cwf_overrides returns 2 when it
-  # meets a shape it does not recognize, and a bare command substitution would
-  # throw that away and hand an empty map to a comparison that then agrees with
-  # itself. It has already printed which file and line it refused on.
+  # THE STATUS IS LOAD-BEARING, and it is the only path a refusal takes. Both
+  # the unrecognized-shape refusals and the declared-block-yielding-no-entries
+  # refusal are raised inside gaia_cwf_overrides, so a bare command substitution
+  # here would discard every one of them and hand an empty map to a comparison
+  # that agrees with itself. The reader has already named the file, and the line
+  # where there is one.
   configured="$(gaia_cwf_overrides "$ws_file")" || return 2
   locked="$(gaia_cwf_overrides "$lock_file")" || return 2
 
-  # A reader that stops recognizing the shape pnpm emits returns empty for both
-  # files, and empty compared against empty agrees. That is indistinguishable
-  # from a workspace declaring no floors, so the gate would report clean over
-  # the exact surface it exists to watch, with every fixture test still green on
-  # its own hand-written shape. The block header is therefore checked textually
-  # rather than inferred from the parse. Refusing at 2 rather than reporting at
-  # 1 is deliberate: a declared block yielding no entries is a question this
-  # reader cannot answer, and it cannot separate a genuinely empty map from a
-  # shape it does not know, so it says so instead of choosing one.
-  local f
-  for f in "$ws_file" "$lock_file"; do
-    if grep -q '^overrides:' "$f"; then
-      case "$f" in
-        "$ws_file") [ -n "$configured" ] && continue ;;
-        *) [ -n "$locked" ] && continue ;;
-      esac
-      printf 'check-cli-workspace-floors: %s declares an overrides block yielding no entries; either the map is empty or this reader no longer matches the shape pnpm emits\n' \
-        "$f" >&2
-      return 2
-    fi
-  done
-
+  # An empty map here can now mean only one thing: the file declared no
+  # overrides block at all. A block that IS declared and yields no entries never
+  # reaches this point, because the reader refuses it at 2 rather than returning
+  # an empty map that empty would agree with. That refusal used to live out here
+  # as a separate `grep -q` over the same files, which is two readers of one
+  # fact, and they disagreed: a UTF-8 BOM defeated the parse and the grep
+  # differently on macOS and on the GNU grep the runner uses, so the gate
+  # reported clean in CI over a workspace it had never read.
   if [ -z "$configured" ] && [ -z "$locked" ]; then
     printf 'no overrides declared; no floors to check\n'
   else
@@ -327,7 +368,6 @@ gaia_cwf_main() {
     ' <(printf '%s\n' "$configured") <(printf '%s\n' "$locked"))"
 
     while IFS="$(printf '\t')" read -r flag line; do
-      [ -n "$line" ] || continue
       printf '%s\n' "$line"
       if [ "$flag" = "1" ]; then
         rc=1

@@ -757,6 +757,25 @@ STUB
   grep -qF -- 'floor applied: cosmiconfig>js-yaml at 4.3.1' <<<"$output"
 }
 
+@test "a quoted value carrying a hash keeps it, because the quotes protect it" {
+  # Pins the quoted arm of the comment stripper. Without it the plain arm cuts
+  # at the space-hash, leaving a value with an opening quote and no closing one,
+  # which then refuses rather than reading a legal scalar.
+  write_workspace "  fast-uri: '3.1.6 # not a comment'"
+  write_lock "  fast-uri: '3.1.6 # not a comment'"
+  run bash "$CHECK" --no-audit "$WS"
+  [ "$status" -eq 0 ]
+  grep -qF -- 'floor applied: fast-uri at 3.1.6 # not a comment' <<<"$output"
+}
+
+@test "a space before the key-terminating colon is not taken as part of the key" {
+  write_workspace "  fast-uri : 3.1.6"
+  write_lock "  fast-uri: 3.1.6"
+  run bash "$CHECK" --no-audit "$WS"
+  [ "$status" -eq 0 ]
+  grep -qF -- 'floor applied: fast-uri at 3.1.6' <<<"$output"
+}
+
 @test "a hash with no space before it stays part of the version, as YAML says" {
   write_workspace "  fast-uri: 3.1.6#notacomment"
   write_lock "  fast-uri: 3.1.6#notacomment"
@@ -773,15 +792,113 @@ STUB
   grep -qF -- 'floor applied: fast-uri at >=1.2.3 <2.0.0' <<<"$output"
 }
 
-@test "an UNQUOTED version carrying whitespace is refused, not guessed at" {
-  # The accepted cost of strictness, asserted so it is a decision rather than a
-  # surprise: this shape is legal YAML and this reader cannot tell it apart from
-  # a comment tail it failed to strip, so it refuses instead of choosing.
+@test "a value opening with a YAML indicator is refused rather than read as a version" {
+  # `>=1.2.3 <2.0.0` unquoted is not a plain scalar at all: `>` opens a folded
+  # block scalar, and js-yaml errors on this input. Refusing it is reading YAML
+  # correctly, not being conservative.
   write_workspace "  fast-uri: >=1.2.3 <2.0.0"
   write_lock "  fast-uri: 3.1.6"
   run bash "$CHECK" --no-audit "$WS"
   [ "$status" -eq 2 ]
-  grep -qF -- 'an unquoted version carrying whitespace' <<<"$output"
+  grep -qF -- 'a YAML indicator this reader cannot interpret' <<<"$output"
+}
+
+@test "a YAML alias as a version is refused rather than compared as a literal token" {
+  write_workspace "  fast-uri: *alias"
+  write_lock "  fast-uri: 3.1.6"
+  run bash "$CHECK" --no-audit "$WS"
+  [ "$status" -eq 2 ]
+  grep -qF -- 'a YAML indicator this reader cannot interpret' <<<"$output"
+}
+
+# THE LINE BETWEEN STRICT AND PERMISSIVE. A plain scalar carrying whitespace is
+# a legal multi-range semver that js-yaml writes UNQUOTED into the lockfile, so
+# refusing it fails the gate on a correct tree and quoting the workspace side
+# cannot repair it: the next resolve rewrites the lockfile value unquoted again.
+@test "a multi-range semver with an or-operator is read, not refused" {
+  write_workspace "  fast-uri: ^1.0.0 || ^2.0.0"
+  write_lock "  fast-uri: ^1.0.0 || ^2.0.0"
+  run bash "$CHECK" --no-audit "$WS"
+  [ "$status" -eq 0 ]
+  grep -qF -- 'floor applied: fast-uri at ^1.0.0 || ^2.0.0' <<<"$output"
+}
+
+@test "a hyphenated semver range is read, not refused" {
+  write_workspace "  fast-uri: 1.2.3 - 2.0.0"
+  write_lock "  fast-uri: 1.2.3 - 2.0.0"
+  run bash "$CHECK" --no-audit "$WS"
+  [ "$status" -eq 0 ]
+  grep -qF -- 'floor applied: fast-uri at 1.2.3 - 2.0.0' <<<"$output"
+}
+
+@test "a range that differs between the two files is still reported, not passed" {
+  # The arm above must not be a hole: accepting whitespace in a value cannot
+  # become accepting any two values as equal.
+  write_workspace "  fast-uri: ^1.0.0 || ^2.0.0"
+  write_lock "  fast-uri: ^1.0.0"
+  run bash "$CHECK" --no-audit "$WS"
+  [ "$status" -eq 1 ]
+  grep -qF -- 'FLOOR NOT APPLIED' <<<"$output"
+}
+
+@test "a quoted value that never closes is refused rather than compared with its quote" {
+  write_workspace "  fast-uri: 'unterminated"
+  write_lock "  fast-uri: 3.1.6"
+  run bash "$CHECK" --no-audit "$WS"
+  [ "$status" -eq 2 ]
+  grep -qF -- 'a quote that does not close as a scalar' <<<"$output"
+}
+
+@test "a quoted value with trailing junk after the closing quote is refused" {
+  write_workspace "  fast-uri: 'ok' junk"
+  write_lock "  fast-uri: 3.1.6"
+  run bash "$CHECK" --no-audit "$WS"
+  [ "$status" -eq 2 ]
+  grep -qF -- 'a quote that does not close as a scalar' <<<"$output"
+}
+
+@test "a key declared twice is refused rather than resolved against the YAML rule" {
+  # YAML resolves a duplicate mapping key to the LAST in document order; this
+  # reader sorts by value and would keep the lexically greatest, so the two
+  # disagree. Refusing is the reading consistent with the rest of this parser,
+  # and YAML itself treats a duplicate key as an error.
+  write_workspace "  fast-uri: 0.25.0" "  fast-uri: 0.24.0"
+  write_lock "  fast-uri: 0.24.0"
+  run bash "$CHECK" --no-audit "$WS"
+  [ "$status" -eq 2 ]
+  grep -qF -- 'a key already declared in this file' <<<"$output"
+}
+
+@test "a UTF-8 BOM does not turn a declared block into a clean run" {
+  # This was a SILENT FALSE CLEAN that appeared only in CI. The BOM defeated
+  # both the block-open match and the separate grep that used to guard it, and
+  # the two disagreed by platform: macOS grep strips a BOM, GNU grep does not.
+  # The LOCKFILE must declare nothing here. With an entry on the other side the
+  # run reports an undeclared override and exits 1 either way, so the fixture
+  # would pass with the BOM handling deleted and pin nothing. Both sides empty
+  # is the only shape where losing the BOM produces the clean line.
+  printf '\357\273\277overrides:\n  fast-uri: 3.1.6\n' > "$WS/pnpm-workspace.yaml"
+  write_lock
+  run bash "$CHECK" --no-audit "$WS"
+  grep -qF -- 'no overrides declared; no floors to check' <<<"$output" && return 1
+  [ "$status" -eq 1 ]
+}
+
+@test "CRLF line endings are read as the same map as LF endings" {
+  printf 'overrides:\r\n  fast-uri: 3.1.6\r\n' > "$WS/pnpm-workspace.yaml"
+  printf 'overrides:\r\n  fast-uri: 3.1.6\r\n' > "$WS/pnpm-lock.yaml"
+  run bash "$CHECK" --no-audit "$WS"
+  [ "$status" -eq 0 ]
+  grep -qF -- 'floor applied: fast-uri at 3.1.6' <<<"$output"
+}
+
+@test "a column-zero comment does not close the block and drop every entry below it" {
+  printf 'overrides:\n  fast-uri: 3.1.6\n# a comment at column zero\n  morgan: 1.11.0\n' \
+    > "$WS/pnpm-workspace.yaml"
+  write_lock "  fast-uri: 3.1.6" "  morgan: 1.11.0"
+  run bash "$CHECK" --no-audit "$WS"
+  [ "$status" -eq 0 ]
+  grep -qF -- 'floor applied: morgan at 1.11.0' <<<"$output"
 }
 
 @test "a key with no version is refused rather than read as an empty pin" {
@@ -820,7 +937,10 @@ STUB
 }
 
 @test "a line inside the block with no key-terminating colon is refused" {
-  write_workspace "  fast-uri"
+  # A VALID entry comes first on purpose. The colon scan carries its index
+  # across records, so without a per-record reset the stale index from this
+  # first line is applied to the second and refuses for the wrong cause.
+  write_workspace "  fast-uri: 3.1.6" "  broken"
   write_lock "  fast-uri: 3.1.6"
   run bash "$CHECK" --no-audit "$WS"
   [ "$status" -eq 2 ]
