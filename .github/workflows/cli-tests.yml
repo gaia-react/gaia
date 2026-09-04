@@ -404,14 +404,19 @@ jobs:
       # tsx suite runs there too and its runtime lands on that leg, against the
       # 13-minute shards cap.
       #
-      # The 502s figure this note used to lean on was ONE LEG SAMPLED ONCE, on
-      # whichever scripts leg held the floors suite when its install step was
-      # introduced, and it is not known whether the tsx suite was on that leg in
-      # that sample. So it is a floor for one leg on one day, not a constant for
-      # whichever leg shares today, and it cannot be added to or subtracted from
-      # without knowing both. Re-measure the sharing leg rather than reusing it:
-      # `gh api repos/{owner}/{repo}/actions/runs/<id>/jobs` gives per-step
-      # timings, and `bats-shards.sh files <shard>` says which leg to look at.
+      # WHAT THAT FIGURE IS, stated so the check can be finished from it. Three
+      # run totals, 502s, 479s and 462s, on the `scripts-2` leg at the commit
+      # that introduced the install step. The tsx suite sat on `scripts-3` at
+      # that commit, so ITS RUNTIME IS NOT INSIDE THOSE NUMBERS and has to be
+      # ADDED when the pair shares a leg. That is recoverable rather than
+      # remembered: the sharder is a deterministic partition over the byte sizes
+      # of `.gaia/scripts/tests/*.bats`, so the placement at any commit can be
+      # recomputed by running `bats-shards.sh files <shard>` against it.
+      #
+      # Treat it as a base to add to, then confirm on the leg that actually
+      # shares: `gh api repos/{owner}/{repo}/actions/runs/<id>/jobs` gives the
+      # per-step timings, and `bats-shards.sh files <shard>` says which leg to
+      # look at today.
       # The vendored, digest-pinned install, the same one every leg of
       # audit-ci-tests.yml calls. `apt-get install -y bats` resolves to whatever
       # ubuntu-latest currently ships, which is not the pinned version, so the
