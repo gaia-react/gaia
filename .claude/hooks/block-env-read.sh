@@ -39,11 +39,11 @@
 # ONE MORE SPELLING IS OPEN AND IS NONE OF THOSE. The operand walk splits a
 # segment on whitespace before quotes are stripped, so a quoted path CONTAINING
 # A SPACE arrives as two fragments and neither one strips to the real path:
-# `cat "my file.key"` is allowed where `cat my\ file.key` is denied. Coalescing
-# the fragments is tokenizer work rather than a table entry, and a half-done
-# tokenizer is how the flag tables above went wrong, so it is named here instead
-# of guessed at. Treat this list as the spellings known to be open, never as a
-# closed set.
+# `cat "my .env.local"` is allowed where `cat my\ .env.local` is denied.
+# Coalescing the fragments is tokenizer work rather than a table entry, and a
+# half-done tokenizer is how the flag tables above went wrong, so it is named
+# here instead of guessed at. Treat this list as the spellings known to be open,
+# never as a closed set.
 #
 # THE PERMISSION RULE SHARED ALL OF THOSE LIMITS AT THE TOOL TIER, and it had
 # one this hook cannot have. A Read() deny merges into the OS sandbox boundary,
@@ -119,14 +119,26 @@ deny() {
 
 # Dotenv path definition: the basename (after stripping surrounding quotes)
 # matches .env or .env.<token>(.<token>)*, and is not exactly .env.example.
+#
+# A GLOB SPELLING OF THE SAME READ COUNTS TOO. `cat .env*` and `cat .env.*` each
+# dump every dotenv file in the directory, the exempt one included, so a glob
+# metacharacter after the .env stem is denied on the same terms as the literal
+# path. The sibling secrets predicate gets this for free because it matches with
+# `case` globs; this one matches a regex, which no metacharacter satisfies, so
+# it has to say so in a second arm.
 is_dotenv_path() {
   local p="$1" base
   p=$(gaia_reader_strip_quotes "$p")
   [[ -n "$p" ]] || return 1
   base=$(basename -- "$p")
-  [[ "$base" =~ ^\.env(\.[A-Za-z0-9_-]+)*$ ]] || return 1
-  [[ "$base" == ".env.example" ]] && return 1
-  return 0
+  if [[ "$base" =~ ^\.env(\.[A-Za-z0-9_-]+)*$ ]]; then
+    [[ "$base" == ".env.example" ]] && return 1
+    return 0
+  fi
+  case "$base" in
+    .env*[*?[]*) return 0 ;;
+  esac
+  return 1
 }
 
 # `set` with no args, or whose first arg does not start with -/+, is a dump.

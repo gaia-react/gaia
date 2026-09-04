@@ -39,15 +39,22 @@ setup() {
 # spelling anything here needs, and treating the object as a whole is the
 # fail-closed direction for a policy guard.
 sandbox_enables_in_committed_files() {
-  local candidates hits
-  # `|| true` because git grep exits 1 on no match, which is the healthy case
+  local hits
+  # Asked as a question first, because BSD xargs runs its command once with no
+  # arguments on empty input and an awk with no file operands reads stdin and
+  # hangs the suite. `git grep` exits 1 on no match, which is the healthy case
   # here rather than an error, and the caller runs under bats' errexit.
-  candidates=$(git grep -z -l -F '"sandbox"' -- '*.json' '*.md' '*.yml' '*.yaml' || true)
-  # Guarded rather than piped straight through: BSD xargs runs its command once
-  # with no arguments on empty input, and an awk with no file operands reads
-  # stdin and hangs the suite.
-  [ -n "$candidates" ] || return 0
-  hits=$(printf '%s' "$candidates" | xargs -0 awk '
+  git grep -q -F '"sandbox"' -- '*.json' '*.md' '*.yml' '*.yaml' || return 0
+  # The NUL stream goes straight from git into xargs and is never captured on
+  # the way. Command substitution discards every NUL byte, silently on bash 3.2
+  # and with a warning on bash 5, so a captured list arrives concatenated into
+  # one name that opens nothing: with a single candidate the lone trailing NUL
+  # is stripped harmlessly and the scan works by luck, and the second candidate
+  # turns it into an awk cannot-open-file abort. Capturing would also undo the
+  # very thing -z is here for, since the C-quoted spelling of a non-ASCII path
+  # is what the NUL delimiter exists to avoid.
+  hits=$(git grep -z -l -F '"sandbox"' -- '*.json' '*.md' '*.yml' '*.yaml' \
+    | xargs -0 awk '
     function scan(   n, i, c, inq, esc, norm, mask, pos, at, j, depth, body, m) {
       if (curfile == "") return
       n = length(doc); inq = 0; esc = 0; norm = ""; mask = ""

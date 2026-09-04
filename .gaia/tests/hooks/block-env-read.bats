@@ -67,8 +67,11 @@ run_hook_grep() {
 # The hook is COPIED into this test's own temporary directory and driven from
 # there, with no library beside it. It must never be exercised by hiding the
 # real one: both read-guard suites would target the identical absolute path,
-# .gaia/tests/bats-shards.sh puts them in different shards, and
-# .gaia/tests/run-bats-parallel.sh forks every shard into ONE shared workspace.
+# .gaia/tests/bats-shards.sh weighs by file size and may put them in one shard
+# or in two, and .gaia/tests/run-bats-parallel.sh forks every shard into ONE
+# shared workspace. One shard is if anything the stronger reason rather than a
+# reprieve: the pair then runs sequentially inside a single bats invocation over
+# that same one workspace.
 # While one suite held the library hidden, every allow-assertion in its sibling
 # would see the fail-closed deny, so the pair would flake against each other and
 # the concurrency-safety claim that runner makes would be false. The live
@@ -488,17 +491,45 @@ run_write_hook_edit() {
 # character set, and used not to reach into a backtick pair. The two spellings
 # of one read therefore disagreed, and the backtick form was allowed.
 
-@test "x=$(cat .env) is denied (dollar-paren substitution)" {
+@test "x=\$(cat .env) is denied (dollar-paren substitution)" {
   run_hook_bash 'x=$(cat .env)'
   assert_denied_by_json
 }
 
-@test "x=`cat .env.local` is denied (backtick substitution)" {
+@test "x=\`cat .env.local\` is denied (backtick substitution)" {
   run_hook_bash 'x=`cat .env.local`'
   assert_denied_by_json
 }
 
-@test "echo `cat .env` is denied (reader hidden inside a backtick pair)" {
+@test "echo \`cat .env\` is denied (reader hidden inside a backtick pair)" {
   run_hook_bash 'echo `cat .env`'
   assert_denied_by_json
+}
+
+# --- Regression: a glob spelling of a dotenv read ---
+#
+# `.env*` and `.env.*` each expand to every dotenv file in the directory, so they
+# read the same bytes the literal path does. The predicate matches the literal
+# spellings with a regex, which no metacharacter satisfies, so the globs were
+# allowed while `cat .env` beside them was denied. The sibling secrets predicate
+# never had the gap, because it matches with `case` globs.
+
+@test "cat .env* is denied (glob spelling of the dotenv read)" {
+  run_hook_bash 'cat .env*'
+  assert_denied_by_json
+}
+
+@test "cat .env.* is denied (dotted glob spelling)" {
+  run_hook_bash 'cat .env.*'
+  assert_denied_by_json
+}
+
+@test "cat .env? is denied (single-character glob)" {
+  run_hook_bash 'cat .env?'
+  assert_denied_by_json
+}
+
+@test "cat .environment is allowed (the stem is not a dotenv variant)" {
+  run_hook_bash 'cat .environment'
+  assert_allowed_by_json
 }
