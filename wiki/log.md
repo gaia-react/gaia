@@ -11,6 +11,21 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-09-04 538c20fa SKIP - wiki already updated in-commit: read-side secret denial move to the hook layer reflected in wiki/concepts/Claude Hooks.md, wiki/concepts/OS Sandbox.md, wiki/modules/Claude Integration.md
+- 2026-09-04 6c099e86 SKIP - ci: CI plumbing
+- 2026-09-04 f94aaa72 SKIP - CI test-infra hardening (node-dependent RED suites fail instead of skip), internal bats plumbing, no wiki page tracks this detail
+- 2026-09-04 98f2dd79 SKIP - wiki already updated in-commit: eslint/prettier pin parity guard reflected in wiki/decisions/pnpm.md and wiki/dependencies/gaia-lint.md
+- 2026-09-04 14cd1c7e SKIP - extracted shared gaia-invocation-matcher.ts for two CLI guards, internal test-tooling consolidation, no architecture change
+- 2026-09-04 b3aab189 SKIP - wiki already updated in-commit: Code Audit Team page rewritten to stop restating .gaia/audit-ci.yml's globs, reflected in wiki/decisions/Code Audit Team.md
+- 2026-09-04 e77f94ed SKIP - wiki already updated in-commit: hook registration rooted at the tree not the shell cwd, reflected in wiki/concepts/Claude Hooks.md
+- 2026-09-04 8780f522 SKIP - wiki already covers this: code-audit-maintainer-prose member reflected in wiki/decisions/Code Audit Team.md (via later commit b3aab189's rewrite)
+- 2026-09-04 1894e282 SKIP - comment cardinality cleanup in local-janitor.sh, no architecture change
+- 2026-09-04 87b0c382 SKIP - tests-only
+- 2026-09-04 66d6149f SKIP - wiki already updated in-commit: worktree-dispatched member deadlock fix reflected in wiki/concepts/PR Merge Workflow.md
+- 2026-09-04 d27c1969 SKIP - wiki already updated in-commit: clearance now attests only member-reviewed content, reflected in wiki/decisions/Code Audit Team.md and wiki/concepts/PR Merge Workflow.md
+- 2026-09-04 09a8bbad SKIP - prior wiki-sync commit, already the artifact of a sync run
+- 2026-09-04 52e6a23a SKIP - tests-only
+- 2026-09-04 fcb9e30e SKIP - rule-prose refinement to guards-must-fail.md/plan.md (guard-shaped deliverable verification), process methodology not tracked by any wiki page
 - 2026-09-02 3be0f64b SKIP - source-bearing path (non-test), but internal test-derivation refactor, no wiki architecture change
 - 2026-09-02 e88beae9 SKIP - source-bearing path (non-test), but internal guard discovery consolidation, no wiki architecture change
 - 2026-09-02 b4acc32a WORTHY - fixed pnpm format --ignore-path writing into live worktrees → wiki/concepts/Worktrees.md
