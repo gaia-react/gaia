@@ -142,7 +142,18 @@ gaia_cwf_main() {
   # relative to their cwd; neither is worth printing verbatim. A root that does
   # not resolve keeps the string it was given, which is what the caller needs to
   # see in the error below.
-  [ -d "$root" ] && root="$(cd "$root" && pwd)"
+  #
+  # The assignment is guarded rather than written as `[ -d ... ] && root=$(cd
+  # ...)`, because `cd` fails on a directory that exists and cannot be entered,
+  # and the command substitution then assigns the empty string. That turns an
+  # unenterable root into a report that the root is missing, naming no path at
+  # all, which is both the wrong cause and the loss of the one argument the
+  # caller supplied.
+  if [ -d "$root" ]; then
+    local resolved
+    resolved="$(cd "$root" 2>/dev/null && pwd)"
+    [ -n "$resolved" ] && root="$resolved"
+  fi
 
   local ws_file="$root/pnpm-workspace.yaml"
   local lock_file="$root/pnpm-lock.yaml"
@@ -248,15 +259,18 @@ gaia_cwf_main() {
       printf 'advisory arm: pnpm audit could not be read; this closure was NOT audited\n'
       return "$rc"
     fi
-    # Every entry must carry the two fields the filter below reads. An entry
-    # schema this reader does not know filters to nothing and would otherwise
-    # print the clean line, which is the container-level false clean repeated
-    # one level down. An empty `advisories` object passes and is correct: that
-    # is a scan that ran and found nothing.
+    # Every entry must carry all three fields the extraction below reads, not
+    # only the two it selects on: an entry missing `title` passes a two-field
+    # gate and then interpolates the literal `null` into the advisory line. An
+    # entry schema this reader does not know filters to nothing and would
+    # otherwise print the clean line, which is the container-level false clean
+    # repeated one level down. An empty `advisories` object passes and is
+    # correct: that is a scan that ran and found nothing.
     if ! printf '%s' "$audit_json" | jq -e '
       (.advisories | type) == "object"
       and (.advisories | to_entries | all(.value
-        | (type == "object") and has("severity") and has("module_name")))' >/dev/null 2>&1; then
+        | (type == "object")
+          and has("severity") and has("module_name") and has("title")))' >/dev/null 2>&1; then
       printf 'advisory arm: pnpm audit named advisories in a shape this reader cannot read; this closure was NOT audited\n'
       return "$rc"
     fi

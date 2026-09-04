@@ -258,16 +258,18 @@ STUB
 @test "an advisory entry schema this reader cannot read is unread, not clean" {
   # The container-level gate above asks only that `advisories` is present and
   # `error` absent. A payload whose entries name their fields something else
-  # filters to nothing and would otherwise print the clean line. No metadata
-  # counts here on purpose: this pins the entry-shape gate on its own, so it
-  # reds when that gate is the only thing removed.
+  # filters to nothing and would otherwise print the clean line. The metadata
+  # block states zero on purpose, so the cross-check below PASSES this payload
+  # and the entry-shape gate is the only thing left between it and the clean
+  # line. Without it the fixture reaches `NOT audited` through the cross-check
+  # instead and stops pinning the gate its own name refers to.
   write_workspace "  fast-uri: 3.1.6"
   write_lock "  fast-uri: 3.1.6"
   mkdir -p "$TMP/bin"
   cat > "$TMP/bin/pnpm" <<'STUB'
 #!/usr/bin/env bash
 cat <<'JSON'
-{"advisories":{"1098765":{"sev":"critical","mod":"fast-uri","title":"renamed entry fields"}}}
+{"advisories":{"1098765":{"sev":"critical","mod":"fast-uri","title":"renamed entry fields"}},"metadata":{"vulnerabilities":{"high":0,"critical":0}}}
 JSON
 exit 1
 STUB
@@ -404,6 +406,72 @@ STUB
   [ "$status" -eq 0 ]
   grep -qF -- 'NOT audited' <<<"$output"
   grep -qF -- 'no high or critical advisories' <<<"$output" && return 1
+  true
+}
+
+@test "a count typed as a string beside an absent one is unread, not clean" {
+  # Isolates the `all(type == "number")` gate, which the other count fixtures
+  # only appear to pin: they each fail for an incidental reason further along,
+  # so the gate can be deleted with the rest of the suite still green. Without
+  # it `["0", null] | add` yields the string "0", which matches the clean arm's
+  # literal 0 exactly.
+  write_workspace "  fast-uri: 3.1.6"
+  write_lock "  fast-uri: 3.1.6"
+  mkdir -p "$TMP/bin"
+  cat > "$TMP/bin/pnpm" <<'STUB'
+#!/usr/bin/env bash
+cat <<'JSON'
+{"advisories":{},"metadata":{"vulnerabilities":{"high":"0","critical":null}}}
+JSON
+exit 0
+STUB
+  chmod +x "$TMP/bin/pnpm"
+  PATH="$TMP/bin:$PATH" run bash "$CHECK" "$WS"
+  [ "$status" -eq 0 ]
+  grep -qF -- 'NOT audited' <<<"$output"
+  grep -qF -- 'no high or critical advisories' <<<"$output" && return 1
+  true
+}
+
+@test "an advisory entry missing the title the line interpolates is unread, not clean" {
+  # Isolates the `has("title")` half of the entry-shape gate. Without it the
+  # entry passes and the advisory line prints a literal null where the title
+  # should be.
+  write_workspace "  fast-uri: 3.1.6"
+  write_lock "  fast-uri: 3.1.6"
+  mkdir -p "$TMP/bin"
+  cat > "$TMP/bin/pnpm" <<'STUB'
+#!/usr/bin/env bash
+cat <<'JSON'
+{"advisories":{"1":{"severity":"high","module_name":"fast-uri"}},"metadata":{"vulnerabilities":{"high":0,"critical":0}}}
+JSON
+exit 1
+STUB
+  chmod +x "$TMP/bin/pnpm"
+  PATH="$TMP/bin:$PATH" run bash "$CHECK" "$WS"
+  [ "$status" -eq 0 ]
+  grep -qF -- 'NOT audited' <<<"$output"
+  grep -qF -- 'ADVISORY' <<<"$output" && return 1
+  true
+}
+
+@test "a root that exists and cannot be entered is named, not reported missing" {
+  # `cd` fails on a directory with no execute bit, and an unguarded command
+  # substitution then assigns the empty string, so the error blames the root
+  # for being absent and names no path at all.
+  #
+  # Asserting merely that the path appears in $output does NOT pin this: bash
+  # prints its own `cd: ...: Permission denied` naming that same path, `run`
+  # folds stderr into $output, and the assertion passes on the broken code.
+  # Assert the message itself instead.
+  local locked="$TMP/locked"
+  mkdir -p "$locked"
+  chmod 000 "$locked"
+  run bash "$CHECK" --no-audit "$locked"
+  chmod 755 "$locked"
+  [ "$status" -eq 2 ]
+  grep -qF -- "pnpm-workspace.yaml is missing under $locked" <<<"$output"
+  grep -qF -- 'the root itself is missing under' <<<"$output" && return 1
   true
 }
 

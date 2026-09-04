@@ -407,15 +407,15 @@ jobs:
         run: bash .gaia/scripts/verify-cli-bundle-fresh.sh
       # .gaia/cli is a second pnpm workspace root, and every dependency-CVE
       # surface in this repository runs from the repository root, whose closure
-      # cannot contain it. This job is where that gap closes: the workspace is
-      # already installed above, so the marginal cost is one offline step. The
-      # script's docblock owns what the check does not catch.
+      # cannot contain it. This job is where that gap closes. The script's
+      # docblock owns what the check does not catch.
       #
       # `--no-audit` runs the parity arm alone -- whether the security floors
       # declared in pnpm-workspace.yaml are the ones the lockfile resolves
-      # against -- and that is the whole of what this job gates on. It is
-      # offline and deterministic, it measured 0.03s here, and it needs no
-      # timeout bound of its own.
+      # against -- and that is the whole of what this job gates on. It reads
+      # the two YAML files with grep and awk, so it invokes neither pnpm nor
+      # node and does NOT depend on the install step above it; it measured
+      # 0.03s here and needs no timeout bound of its own.
       #
       # The script's advisory arm is deliberately NOT run here, and the reason
       # is measured rather than cautious. Across four runs of this job it
@@ -423,9 +423,10 @@ jobs:
       # and 251s either way, so its duration cannot even be read as a signal of
       # which happened. Running it would add a network call worth a result
       # about half the time to a declared-required context, competing for this
-      # job's own 15-minute cap: at the worst prefix observed, 446s, a bound
-      # large enough not to cut a successful 251s call short leaves under 100s
-      # of that cap, against an install step observed to vary by 206s. A
+      # job's own 15-minute cap: at the worst prefix observed, 446s, the
+      # smallest whole-minute bound that would not cut a successful 251s call
+      # short is five, which leaves 154s of that cap, against an install step
+      # observed to vary by 206s. A
       # maintainer runs the arm by hand instead, where a slow or failed call
       # costs nothing and can simply be re-run.
       - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
