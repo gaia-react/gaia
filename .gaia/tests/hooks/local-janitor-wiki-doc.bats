@@ -118,12 +118,12 @@ numeral_to_int() {
 
   grep -qF -- 'maxdepth-1' <<< "$section"
 
-  # A floor, not merely non-emptiness: the sweep's paragraph names one
-  # retention knob per off-pattern writer it defers to, so a derivation that
-  # silently dropped one would still be non-empty and the loop below would
-  # still pass. The floor is tight against what that paragraph names, the
-  # same shape as the zone floor further down, and it moves only when the
-  # source paragraph does.
+  # A floor, not merely non-emptiness: source_sweep9_knobs reads the
+  # retention-knob names out of the sweep's own paragraph, so a derivation
+  # that silently dropped one would still be non-empty and the loop below
+  # would still pass. The floor is tight against what that derivation
+  # returns, the same shape as the zone floor further down, and it moves
+  # only when the source paragraph does.
   knobs=$(source_sweep9_knobs)
   [ "$(wc -l <<< "$knobs" | tr -d ' ')" -ge 3 ]
   while read -r knob; do
