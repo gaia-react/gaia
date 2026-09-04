@@ -341,6 +341,50 @@ STUB
   true
 }
 
+@test "a count stated in a type this reader cannot read is unread, not clean" {
+  # The cross-check is only worth having if it fails closed. A count pnpm
+  # states as a string, or a `vulnerabilities` this reader cannot index at all,
+  # is the same fact from here as a count above zero: the report said something
+  # this reader did not read, so the clean line must not print.
+  write_workspace "  fast-uri: 3.1.6"
+  write_lock "  fast-uri: 3.1.6"
+  mkdir -p "$TMP/bin"
+  cat > "$TMP/bin/pnpm" <<'STUB'
+#!/usr/bin/env bash
+cat <<'JSON'
+{"advisories":{},"metadata":{"vulnerabilities":{"high":"3","critical":0}}}
+JSON
+exit 0
+STUB
+  chmod +x "$TMP/bin/pnpm"
+  PATH="$TMP/bin:$PATH" run bash "$CHECK" "$WS"
+  [ "$status" -eq 0 ]
+  grep -qF -- 'NOT audited' <<<"$output"
+  grep -qF -- 'no high or critical advisories' <<<"$output" && return 1
+  true
+}
+
+@test "a vulnerabilities block that is not an object is unread, not clean" {
+  # `jq` errors rather than returning a value here, and the status of that call
+  # used to be discarded straight onto the clean arm.
+  write_workspace "  fast-uri: 3.1.6"
+  write_lock "  fast-uri: 3.1.6"
+  mkdir -p "$TMP/bin"
+  cat > "$TMP/bin/pnpm" <<'STUB'
+#!/usr/bin/env bash
+cat <<'JSON'
+{"advisories":{},"metadata":{"vulnerabilities":[{"high":3}]}}
+JSON
+exit 0
+STUB
+  chmod +x "$TMP/bin/pnpm"
+  PATH="$TMP/bin:$PATH" run bash "$CHECK" "$WS"
+  [ "$status" -eq 0 ]
+  grep -qF -- 'NOT audited' <<<"$output"
+  grep -qF -- 'no high or critical advisories' <<<"$output" && return 1
+  true
+}
+
 @test "a declared overrides block yielding no entries is refused, not called clean" {
   # The discovery-stage failure: if the reader stops matching the shape pnpm
   # emits, both files parse to nothing, empty agrees with empty, and the gate
@@ -383,9 +427,10 @@ STUB
   # stops recognizing them.
   run bash "$CHECK" --no-audit "$REPO_ROOT/.gaia/cli"
   [ "$status" -eq 0 ]
-  local key
+  local key seen=0 applied
   while IFS= read -r key; do
     [ -n "$key" ] || continue
+    seen=$((seen + 1))
     grep -qF -- "floor applied: $key" <<<"$output" || return 1
   done < <(awk '
     /^overrides:[[:space:]]*$/ { in_block = 1; next }
@@ -400,7 +445,13 @@ STUB
       print k
     }
   ' "$REPO_ROOT/.gaia/cli/pnpm-workspace.yaml")
-  true
+  # Without this the loop body running zero times greens the test on the status
+  # alone, which is the assertion the comment above calls insufficient. Compared
+  # against the script's own count rather than a literal, so the two parsers
+  # have to agree and adding a floor does not red this on a cardinal.
+  applied="$(grep -c '^floor applied: ' <<<"$output")"
+  [ "$seen" -gt 0 ]
+  [ "$seen" -eq "$applied" ]
 }
 
 @test "the default root is the CLI workspace, so CI needs no path argument" {

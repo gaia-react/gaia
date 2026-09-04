@@ -264,15 +264,20 @@ gaia_cwf_main() {
       # zero with nothing parsed means the report names findings this reader
       # did not see, which is what a future shape that moves them out of
       # `advisories` while leaving the empty key behind looks like from here.
+      # Only a literal zero earns the clean line. Every other answer, a count
+      # above zero, a count stated in some type this reader does not know, a
+      # `metadata` shape `jq` cannot index at all, or `jq` itself failing, is
+      # the same fact from here: the report says something about high and
+      # critical advisories that this reader did not manage to read.
       declared="$(printf '%s' "$audit_json" | jq -r '
         [(.metadata.vulnerabilities.high // 0), (.metadata.vulnerabilities.critical // 0)]
-        | map(select(type == "number")) | add // 0' 2>/dev/null)"
+        | if all(type == "number") then add else "unreadable" end' 2>/dev/null || true)"
       case "$declared" in
-      '' | 0 | *[!0-9]*)
+      0)
         printf 'advisory arm: no high or critical advisories in this closure\n'
         ;;
       *)
-        printf 'advisory arm: the report counts %s high or critical advisories but this reader parsed none of them; this closure was NOT audited\n' "$declared"
+        printf 'advisory arm: the report does not state zero high or critical advisories (%s) and this reader parsed none; this closure was NOT audited\n' "${declared:-unreadable}"
         ;;
       esac
     else

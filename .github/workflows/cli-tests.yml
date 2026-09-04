@@ -408,27 +408,35 @@ jobs:
       # .gaia/cli is a second pnpm workspace root, and every dependency-CVE
       # surface in this repository runs from the repository root, whose closure
       # cannot contain it. This job is where that gap closes: the workspace is
-      # already installed above, so the marginal cost is one step. The check's
-      # exit status turns on the offline parity arm alone -- whether the
-      # security floors declared in pnpm-workspace.yaml are the ones the
-      # lockfile resolves against -- and its advisory arm reports into this log
-      # without failing, so a newly published upstream advisory does not red a
-      # required context on every open pull request at once. The script's
+      # already installed above, so the marginal cost is two steps. The script's
       # docblock owns what the check does not catch.
-      # Bounded only as a backstop against a hang pnpm does not end on its own,
-      # and the bound has to sit ABOVE pnpm's own abort to be that. A stalled
-      # audit endpoint is not the case this is protecting against: pnpm ends
-      # the call itself at about 250s with an `error` payload, which the check
-      # reads as unaudited and reports without failing, and the two fast
-      # failure shapes, a refused port and a 503, end at about 70s. A bound
-      # below 250s kills a call that was about to end non-fatally and reds a
-      # declared-required context for a registry condition no pull request
-      # changed, which is the outcome the non-fatal advisory posture described
-      # above exists to prevent. The job's own 15-minute cap is not what this
-      # replaces either: this job runs in about 155s, so that cap carries slack
-      # pnpm's self-abort never reaches.
+      #
+      # Split deliberately, and the split is what makes the non-fatal advisory
+      # posture real rather than merely intended. The script's exit status turns
+      # on the offline parity arm alone -- whether the security floors declared
+      # in pnpm-workspace.yaml are the ones the lockfile resolves against -- so
+      # a newly published upstream advisory never fails it. But a STEP can fail
+      # without the script failing, by being killed at its own timeout, and that
+      # reds Vitest (.gaia/cli), a declared-required context, for a registry
+      # condition no pull request changed. So the gating step runs the parity
+      # arm alone: offline, deterministic, no network, and needing no bound. The
+      # advisory step runs the whole script under continue-on-error, where only
+      # its log output matters. Re-running the parity arm there costs nothing.
       - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
         name: Check the CLI workspace's security floors are applied
+        run: bash .gaia/scripts/check-cli-workspace-floors.sh --no-audit
+      # Bounded only as a backstop against a hang pnpm does not end on its own,
+      # and the bound sits ABOVE pnpm's own abort so that it is only ever that.
+      # pnpm ends a stalled audit itself at about 250s with an `error` payload
+      # the check reads as unaudited, and the two fast failure shapes, a refused
+      # port and a 503, end at about 70s. The job's own 15-minute cap is a poor
+      # substitute in the other direction: this job has been measured between
+      # about 280s and 700s, the spread coming from the install step above, so
+      # the worst case observed left roughly 200s under the cap rather than
+      # slack a stall could never reach.
+      - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
+        name: Report advisories in the CLI workspace's closure
+        continue-on-error: true
         timeout-minutes: 6
         run: bash .gaia/scripts/check-cli-workspace-floors.sh
 
