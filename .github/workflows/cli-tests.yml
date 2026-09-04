@@ -401,9 +401,17 @@ jobs:
       # Neither answer is a correctness problem, because `install: cli` satisfies
       # this suite's whole precondition and cli-tests.yml proves it green on a
       # box with nothing else. What changes is BUDGET: when both share a leg, the
-      # tsx suite runs there too and its runtime lands on a leg observed at 502s
-      # against the 13-minute shards cap. Check that when they share, not when
-      # they might.
+      # tsx suite runs there too and its runtime lands on that leg, against the
+      # 13-minute shards cap.
+      #
+      # The 502s figure this note used to lean on was ONE LEG SAMPLED ONCE, on
+      # whichever scripts leg held the floors suite when its install step was
+      # introduced, and it is not known whether the tsx suite was on that leg in
+      # that sample. So it is a floor for one leg on one day, not a constant for
+      # whichever leg shares today, and it cannot be added to or subtracted from
+      # without knowing both. Re-measure the sharing leg rather than reusing it:
+      # `gh api repos/{owner}/{repo}/actions/runs/<id>/jobs` gives per-step
+      # timings, and `bats-shards.sh files <shard>` says which leg to look at.
       # The vendored, digest-pinned install, the same one every leg of
       # audit-ci-tests.yml calls. `apt-get install -y bats` resolves to whatever
       # ubuntu-latest currently ships, which is not the pinned version, so the
