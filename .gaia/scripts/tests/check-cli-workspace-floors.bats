@@ -193,6 +193,81 @@ STUB
   true
 }
 
+@test "a pnpm audit that could not run is reported as unread, never as clean" {
+  # The failure this wording exists for is the reassuring one: an audit that
+  # never happened printing the same line as a closure with nothing wrong.
+  write_workspace "  fast-uri: 3.1.6"
+  write_lock "  fast-uri: 3.1.6"
+  mkdir -p "$TMP/bin"
+  cat > "$TMP/bin/pnpm" <<'STUB'
+#!/usr/bin/env bash
+printf 'ERR_PNPM_AUDIT  registry unreachable\n' >&2
+exit 1
+STUB
+  chmod +x "$TMP/bin/pnpm"
+  PATH="$TMP/bin:$PATH" run bash "$CHECK" "$WS"
+  [ "$status" -eq 0 ]
+  grep -qF -- 'NOT audited' <<<"$output"
+  grep -qF -- 'no high or critical advisories' <<<"$output" && return 1
+  true
+}
+
+@test "an error payload that parses as JSON is unread, not clean" {
+  # An unreachable registry writes a well-formed object carrying `error` and no
+  # `advisories`, so a gate that only asks whether stdout parses lets it
+  # through and the empty advisory set reads as a clean scan.
+  write_workspace "  fast-uri: 3.1.6"
+  write_lock "  fast-uri: 3.1.6"
+  mkdir -p "$TMP/bin"
+  cat > "$TMP/bin/pnpm" <<'STUB'
+#!/usr/bin/env bash
+printf '{"error":{"code":23,"message":"The operation was aborted due to timeout"}}\n'
+exit 1
+STUB
+  chmod +x "$TMP/bin/pnpm"
+  PATH="$TMP/bin:$PATH" run bash "$CHECK" "$WS"
+  [ "$status" -eq 0 ]
+  grep -qF -- 'NOT audited' <<<"$output"
+  grep -qF -- 'no high or critical advisories' <<<"$output" && return 1
+  true
+}
+
+@test "a non-zero pnpm carrying a real report still reports its advisories" {
+  # The regression pin for the fix above, and the case that makes the exit
+  # status useless as a discriminator: `pnpm audit` exits non-zero precisely
+  # when it finds something. A gate keyed on the status would silence exactly
+  # the runs that matter.
+  write_workspace "  fast-uri: 3.1.6"
+  write_lock "  fast-uri: 3.1.6"
+  mkdir -p "$TMP/bin"
+  cat > "$TMP/bin/pnpm" <<'STUB'
+#!/usr/bin/env bash
+cat <<'JSON'
+{"advisories":{"1098765":{"id":1098765,"module_name":"fast-uri","severity":"high","title":"host confusion via a backslash authority introducer"}}}
+JSON
+exit 1
+STUB
+  chmod +x "$TMP/bin/pnpm"
+  PATH="$TMP/bin:$PATH" run bash "$CHECK" "$WS"
+  [ "$status" -eq 0 ]
+  grep -qF -- 'ADVISORY (high' <<<"$output"
+  grep -qF -- 'NOT audited' <<<"$output" && return 1
+  true
+}
+
+@test "a declared overrides block yielding no entries is refused, not called clean" {
+  # The discovery-stage failure: if the reader stops matching the shape pnpm
+  # emits, both files parse to nothing, empty agrees with empty, and the gate
+  # reports clean over a workspace carrying live floors. Every fixture test
+  # here would stay green on its own hand-written shape.
+  printf 'overrides:\n  # the map pnpm would write is not in a shape this reader knows\n' \
+    > "$WS/pnpm-workspace.yaml"
+  write_lock "  fast-uri: 3.1.6"
+  run bash "$CHECK" --no-audit "$WS"
+  [ "$status" -eq 2 ]
+  grep -qF -- 'no entries' <<<"$output"
+}
+
 @test "an advisory does not mask a floor that is not applied" {
   write_workspace "  fast-uri: 3.1.6"
   write_lock "  fast-uri: 3.1.4"
@@ -215,9 +290,31 @@ STUB
   grep -qiF -- 'dedupe' "$CHECK"
 }
 
-@test "the repository's own CLI workspace is clean" {
+@test "the repository's own CLI workspace reports its floors, not merely exit 0" {
+  # Asserting only the status lets a reader that has stopped parsing the live
+  # files satisfy this test while reading nothing. The floors it names are the
+  # ones this workspace declares, so the assertion fails exactly when the parser
+  # stops recognizing them.
   run bash "$CHECK" --no-audit "$REPO_ROOT/.gaia/cli"
   [ "$status" -eq 0 ]
+  local key
+  while IFS= read -r key; do
+    [ -n "$key" ] || continue
+    grep -qF -- "floor applied: $key" <<<"$output" || return 1
+  done < <(awk '
+    /^overrides:[[:space:]]*$/ { in_block = 1; next }
+    in_block && /^[^[:space:]#]/ { in_block = 0 }
+    in_block {
+      sub(/^[[:space:]]+/, "", $0)
+      if ($0 == "" || substr($0, 1, 1) == "#") next
+      i = index($0, ":")
+      if (i == 0) next
+      k = substr($0, 1, i - 1)
+      gsub(/^['"'"'"]|['"'"'"]$/, "", k)
+      print k
+    }
+  ' "$REPO_ROOT/.gaia/cli/pnpm-workspace.yaml")
+  true
 }
 
 @test "the default root is the CLI workspace, so CI needs no path argument" {

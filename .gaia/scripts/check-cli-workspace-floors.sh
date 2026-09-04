@@ -155,34 +155,63 @@ gaia_cwf_main() {
   configured="$(gaia_cwf_overrides "$ws_file")"
   locked="$(gaia_cwf_overrides "$lock_file")"
 
+  # A reader that stops recognizing the shape pnpm emits returns empty for both
+  # files, and empty compared against empty agrees. That is indistinguishable
+  # from a workspace declaring no floors, so the gate would report clean over
+  # the exact surface it exists to watch, with every fixture test still green on
+  # its own hand-written shape. The block header is therefore checked textually
+  # rather than inferred from the parse. Refusing at 2 rather than reporting at
+  # 1 is deliberate: a declared block yielding no entries is a question this
+  # reader cannot answer, and it cannot separate a genuinely empty map from a
+  # shape it does not know, so it says so instead of choosing one.
+  local f
+  for f in "$ws_file" "$lock_file"; do
+    if grep -q '^overrides:' "$f"; then
+      case "$f" in
+        "$ws_file") [ -n "$configured" ] && continue ;;
+        *) [ -n "$locked" ] && continue ;;
+      esac
+      printf 'check-cli-workspace-floors: %s declares an overrides block yielding no entries; either the map is empty or this reader no longer matches the shape pnpm emits\n' \
+        "$f" >&2
+      return 2
+    fi
+  done
+
   if [ -z "$configured" ] && [ -z "$locked" ]; then
     printf 'no overrides declared; no floors to check\n'
   else
-    local key cfg_val lock_val
-    while IFS="$(printf '\t')" read -r key cfg_val; do
-      [ -n "$key" ] || continue
-      lock_val="$(printf '%s\n' "$locked" | awk -F'\t' -v k="$key" '$1 == k { print $2; exit }')"
-      if [ -z "$lock_val" ]; then
-        printf 'FLOOR NOT APPLIED: %s is pinned to %s in pnpm-workspace.yaml and absent from the lockfile\n' \
-          "$key" "$cfg_val"
-        rc=1
-      elif [ "$lock_val" != "$cfg_val" ]; then
-        printf 'FLOOR NOT APPLIED: %s is pinned to %s in pnpm-workspace.yaml and locked at %s\n' \
-          "$key" "$cfg_val" "$lock_val"
-        rc=1
-      else
-        printf 'floor applied: %s at %s\n' "$key" "$cfg_val"
-      fi
-    done <<<"$configured"
+    # One pass over both lists. The report wordings are pinned by the sibling
+    # suite, so they stay byte-identical.
+    local report flag line
+    report="$(awk -F'\t' '
+      $1 == "" { next }
+      NR == FNR { cfg[$1] = $2; order[++n] = $1; next }
+      { lock[$1] = $2; lorder[++m] = $1 }
+      END {
+        for (i = 1; i <= n; i++) {
+          k = order[i]
+          if (!(k in lock))
+            printf "1\tFLOOR NOT APPLIED: %s is pinned to %s in pnpm-workspace.yaml and absent from the lockfile\n", k, cfg[k]
+          else if (lock[k] != cfg[k])
+            printf "1\tFLOOR NOT APPLIED: %s is pinned to %s in pnpm-workspace.yaml and locked at %s\n", k, cfg[k], lock[k]
+          else
+            printf "0\tfloor applied: %s at %s\n", k, cfg[k]
+        }
+        for (j = 1; j <= m; j++) {
+          k = lorder[j]
+          if (!(k in cfg))
+            printf "1\tUNDECLARED OVERRIDE: %s is locked at %s with no entry in pnpm-workspace.yaml\n", k, lock[k]
+        }
+      }
+    ' <(printf '%s\n' "$configured") <(printf '%s\n' "$locked"))"
 
-    while IFS="$(printf '\t')" read -r key lock_val; do
-      [ -n "$key" ] || continue
-      if ! printf '%s\n' "$configured" | awk -F'\t' -v k="$key" '$1 == k { found = 1 } END { exit !found }'; then
-        printf 'UNDECLARED OVERRIDE: %s is locked at %s with no entry in pnpm-workspace.yaml\n' \
-          "$key" "$lock_val"
+    while IFS="$(printf '\t')" read -r flag line; do
+      [ -n "$line" ] || continue
+      printf '%s\n' "$line"
+      if [ "$flag" = "1" ]; then
         rc=1
       fi
-    done <<<"$locked"
+    done <<<"$report"
   fi
 
   if [ "$run_audit" -eq 0 ]; then
@@ -194,6 +223,22 @@ gaia_cwf_main() {
   else
     local audit_json advisories
     audit_json="$(pnpm -C "$root" audit --json 2>/dev/null || true)"
+    # The exit status cannot separate a scan that failed from one that
+    # succeeded, because `pnpm audit` exits non-zero precisely when it FINDS
+    # advisories. The shape of stdout is what separates them, and it has to be
+    # read positively: an unreachable registry writes `{"error":{...}}`, which
+    # parses perfectly well as an object, so treating a merely-parseable payload
+    # as a report reads an absent advisory set as an empty one. That turns the
+    # likeliest failure into the most reassuring line this file can print, on
+    # the one closure its own header says nothing else audits. Require the
+    # `advisories` key present and no `error` key; anything else, including a
+    # future payload shape naming its findings something other than
+    # `advisories`, is unread rather than clean.
+    if ! printf '%s' "$audit_json" \
+      | jq -e 'type == "object" and has("advisories") and (has("error") | not)' >/dev/null 2>&1; then
+      printf 'advisory arm: pnpm audit could not be read; this closure was NOT audited\n'
+      return "$rc"
+    fi
     advisories="$(printf '%s' "$audit_json" | jq -r '
       (.advisories // {}) | to_entries[]
       | select(.value.severity == "high" or .value.severity == "critical")

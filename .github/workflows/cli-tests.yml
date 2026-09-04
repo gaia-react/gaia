@@ -415,8 +415,14 @@ jobs:
       # without failing, so a newly published upstream advisory does not red a
       # required context on every open pull request at once. The script's
       # docblock owns what the check does not catch.
+      # Bounded because the advisory arm is a network round trip and the job's
+      # own cap is minutes away from this job's real runtime. An audit endpoint
+      # that stalls would otherwise red a declared-required context as a generic
+      # job timeout naming neither the step nor the registry, which is the
+      # attribution the apt step in audit-ci-tests.yml already bounds itself for.
       - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
         name: Check the CLI workspace's security floors are applied
+        timeout-minutes: 3
         run: bash .gaia/scripts/check-cli-workspace-floors.sh
 
   # PR-gated distribution harness. Before this job, the harness (run-all.sh,
