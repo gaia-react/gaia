@@ -103,7 +103,14 @@ USAGE
 gaia_cwf_overrides() {
   local file="$1" out
 
-  [ -n "$GAIA_CWF_NODE" ] || return 3
+  # Matches the docblock: this returns 2, having said why. It is defence for a
+  # direct call rather than a live path, since gaia_cwf_resolve_reader runs
+  # first and refuses on its own; `:-` because the script runs under `set -u`,
+  # where a genuinely unset variable would abort before this test is reached.
+  [ -n "${GAIA_CWF_NODE:-}" ] || {
+    printf 'check-cli-workspace-floors: the YAML reader was not resolved before use\n' >&2
+    return 2
+  }
   out="$(
     "$GAIA_CWF_NODE" -e '
       const path = process.argv[1];
@@ -148,8 +155,19 @@ gaia_cwf_overrides() {
           process.stderr.write("check-cli-workspace-floors: " + path + " maps " + k + " to a value that is not a scalar\n");
           process.exit(2);
         }
-        if (k.indexOf("\t") !== -1 || v.indexOf("\t") !== -1) {
-          process.stderr.write("check-cli-workspace-floors: " + path + " has a tab inside an override key or value\n");
+        if (v === "") {
+          process.stderr.write("check-cli-workspace-floors: " + path + " maps " + k + " to an empty version, which pins nothing\n");
+          process.exit(2);
+        }
+        // The line contract, not just the field separator. This reader emits one
+        // key<TAB>value LINE per entry, so a newline breaks it exactly as a tab
+        // does: js-yaml reads a block scalar correctly, and a two-line value
+        // then reaches sort and awk as TWO records, inventing a package the
+        // files do not contain at an empty version and splitting a real key into
+        // fragments. A carriage return is refused with them, since it would
+        // corrupt the same split wherever the consumer treats it as a line end.
+        if (/[\t\r\n]/.test(k) || /[\t\r\n]/.test(v)) {
+          process.stderr.write("check-cli-workspace-floors: " + path + " has a tab, carriage return or newline inside an override key or value\n");
           process.exit(2);
         }
         lines.push(k + "\t" + v);

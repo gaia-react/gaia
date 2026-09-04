@@ -917,6 +917,34 @@ STUB
   true
 }
 
+# THE LINE CONTRACT. The reader emits one key<TAB>value LINE per entry, so a
+# newline inside either half breaks the downstream split exactly as a tab does.
+@test "a multi-line block scalar value is refused, not split into two entries" {
+  # js-yaml reads this correctly as ONE entry whose value spans two lines. Before
+  # the guard covered newlines, sort and awk read it as two records and the run
+  # printed `floor applied: 2.0.0 at ` alongside the real row, at exit 0: a
+  # package the files do not contain, at an empty version.
+  printf 'overrides:\n  fast-uri: |\n    3.1.6\n    2.0.0\n' > "$WS/pnpm-workspace.yaml"
+  printf 'overrides:\n  fast-uri: |\n    3.1.6\n    2.0.0\n' > "$WS/pnpm-lock.yaml"
+  run bash "$CHECK" --no-audit "$WS"
+  [ "$status" -eq 2 ]
+  grep -qF -- 'newline inside an override key or value' <<<"$output"
+  grep -qF -- '2.0.0 at' <<<"$output" && return 1
+  true
+}
+
+@test "an explicitly empty version is refused rather than reported as applied" {
+  # `""` is a string, so the not-a-scalar guard passes it. Both sides empty
+  # compared equal and printed `floor applied: fast-uri at ` over an override
+  # that pins nothing. The retired reader refused this shape, so accepting it
+  # would have been a silent narrowing of the refusal set.
+  write_workspace '  fast-uri: ""'
+  write_lock '  fast-uri: ""'
+  run bash "$CHECK" --no-audit "$WS"
+  [ "$status" -eq 2 ]
+  grep -qF -- 'an empty version, which pins nothing' <<<"$output"
+}
+
 @test "a flow-mapping overrides block is read, not refused" {
   # A flow mapping is legal YAML and the previous hand-rolled reader could only
   # refuse it. Reading with the serializer means the spelling stops mattering.
@@ -1043,8 +1071,10 @@ STUB
   run bash "$CHECK" --no-audit "$WS"
   [ "$status" -eq 2 ]
   grep -qF -- "$WS/pnpm-workspace.yaml" <<<"$output"
-  # js-yaml carries its own line reference in the message it raises.
-  grep -qE -- '\([0-9]+:[0-9]+\)' <<<"$output"
+  # The LINE, not merely some line reference. Asserting any parenthesised
+  # line:column pair passes on a reader that names the wrong line, which is the
+  # half this test is named for.
+  grep -qE -- '\(5:[0-9]+\)' <<<"$output"
 }
 
 @test "a hand-edited map grouping its entries with a blank line keeps every entry" {

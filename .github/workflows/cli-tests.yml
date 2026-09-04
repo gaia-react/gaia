@@ -380,10 +380,18 @@ jobs:
       # The region-marker conformance suite drives the real TypeScript parser
       # through tsx, so it needs .gaia/cli/node_modules and skips itself wherever
       # they are absent. audit-ci-tests.yml runs the .gaia/scripts/tests suites on
-      # a lean box with no Node and no pnpm, so that guard is always true there
-      # and the suite reports skipped-and-green on every run. This job is the one
-      # place the dependency exists, which makes it the only place the binding
-      # between the parser and the two bash readers is actually asserted.
+      # a box that installs that workspace on ONE scripts leg only, the leg the
+      # sharder puts check-cli-workspace-floors.bats on, so the guard is true on
+      # every other leg and the suite reports skipped-and-green there.
+      #
+      # THAT MAKES THIS JOB THE ONLY PLACE THE BINDING IS ASSERTED ONLY WHILE THE
+      # TWO SUITES SIT ON DIFFERENT SCRIPTS LEGS, and bats-shards.sh exchanges
+      # files among scripts-1/2/3 by size, so the separation is incidental rather
+      # than enforced. A reshuffle landing both on one leg arms the tsx-driven
+      # suite inside audit-ci-tests with no diff to either workflow. That is not
+      # a correctness loss, the suite passing in two places is fine, but it adds
+      # its runtime to a leg already observed at 502s, so read it as a budget
+      # question if that leg starts timing out.
       # The vendored, digest-pinned install, the same one every leg of
       # audit-ci-tests.yml calls. `apt-get install -y bats` resolves to whatever
       # ubuntu-latest currently ships, which is not the pinned version, so the
@@ -418,10 +426,22 @@ jobs:
       #
       # `--no-audit` runs the parity arm alone -- whether the security floors
       # declared in pnpm-workspace.yaml are the ones the lockfile resolves
-      # against -- and that is the whole of what this job gates on. It reads
-      # the two YAML files with grep and awk, so it invokes neither pnpm nor
-      # node and does NOT depend on the install step above it; it measured
-      # 0.03s here and needs no timeout bound of its own.
+      # against -- and that is the whole of what this job gates on.
+      #
+      # IT READS BOTH YAML FILES WITH node AND THE js-yaml IN
+      # .gaia/cli/node_modules, so it DOES depend on the install step above it
+      # and must stay ordered after it. That is a hard dependency, not a
+      # preference: the script refuses at exit 2 when node or js-yaml is absent
+      # rather than degrading to a weaker reader, so moving this step ahead of
+      # the install, dropping `install: cli`, or narrowing the install step
+      # arming condition turns a declared-required check into a hard failure
+      # whose message points at a local install command. The step arming
+      # condition here is a strict subset of the install step's, which is what
+      # keeps that ordering true rather than incidental.
+      #
+      # It needs no timeout bound of its own; the run is a node spawn plus a
+      # module load, and its duration is not quoted here because every run
+      # resamples it.
       #
       # Why the advisory arm is not run here is measured, and the measurement
       # lives beside the arm in that same docblock rather than being restated
@@ -434,7 +454,14 @@ jobs:
       # observed to vary across, so a run worse than anything yet observed, by
       # less than that spread, would exceed the cap. The worst run observed so
       # far still fits under it with a bounded stall, and the margin it fits by
-      # is smaller than the install step routinely varies.
+      # is smaller than that spread.
+      #
+      # What that spread IS, since the number invites the wrong reading: it is a
+      # registry stall inside pnpm/action-setup fetching the pnpm tarball, not
+      # install work and not a cold store cache. In one run that fetch alone took
+      # 422s before actions/setup-node had run at all, and the store cache then
+      # hit. So the variance this argument turns on is network, which is exactly
+      # the kind a fixed bound cannot be sized against.
       #
       # That relation is quoted rather than the durations it came from. Every
       # run of this job resamples them: two earlier statements of them went
