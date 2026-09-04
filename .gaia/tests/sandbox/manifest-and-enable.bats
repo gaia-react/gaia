@@ -1,20 +1,143 @@
 #!/usr/bin/env bats
-# UAT-013: no committed file carries a raw sandbox.enabled; the real enable
-# only lands in the gitignored .claude/settings.local.json at runtime.
+# UAT-013: no committed file carries a raw sandbox enable; the real enable only
+# lands in the gitignored .claude/settings.local.json at runtime.
+#
+# WHAT THIS BANS AND WHAT IT DOES NOT. The stance in wiki/concepts/OS Sandbox.md
+# bans a committed ENABLE, and names the harm: baking in a hard "on" degrades
+# silently to unsandboxed the moment a machine cannot back it, and forces
+# friction on every clone that did not choose it. A committed BOUNDARY carries
+# none of that. `sandbox.filesystem.denyRead` grants no capability, cannot
+# degrade a machine, and is inert until something else enables the sandbox, so
+# it is sanctioned and this test must not fire on it. The distinguishing key is
+# `enabled`, and that is what the checks below read.
 
 setup() {
   REPO_ROOT=$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)
 }
 
-@test "UAT-013: no committed .json/.md/.yml/.yaml file carries a raw sandbox.enabled: true" {
+# Print the path of every committed file whose `"sandbox"` object carries an
+# `enabled` key, and return non-zero when there is one. A line-oriented grep
+# cannot answer this: in the JSON spelling the two keys sit on separate lines.
+#
+# The scan is STRING-AWARE. Flattening whitespace and counting braces blindly
+# would let a `}` inside a JSON string value drop the depth to zero and end the
+# walk before it reached the key, so an enable spelled with a brace in a
+# neighbouring string value would be missed. Each character is therefore
+# classified as inside or outside a string literal, whitespace is dropped only
+# outside one, and only an unquoted brace moves the depth.
+#
+# Two stages, and the first one is what makes the second affordable. The careful
+# walk builds its normalized copy a character at a time, which is quadratic in
+# the file's length and unbearable over this tree's larger Markdown. A file that
+# does not contain the literal `"sandbox"` anywhere cannot hold a sandbox
+# object, so `git grep -l` narrows the list to the few that can before any
+# character-wise work happens. One awk then covers that whole shortlist, rather
+# than a process per file.
+#
+# What it deliberately does not narrow: an `enabled` key anywhere inside the
+# sandbox object counts, not only one at the top of it. A nested enable is not a
+# spelling anything here needs, and treating the object as a whole is the
+# fail-closed direction for a policy guard.
+sandbox_enables_in_committed_files() {
+  local hits scan_status
+  # Asked as a question first, because BSD xargs runs its command once with no
+  # arguments on empty input and an awk with no file operands reads stdin and
+  # hangs the suite. `git grep` exits 1 on no match, which is the healthy case
+  # here rather than an error, and the caller runs under bats' errexit.
+  git grep -q -F '"sandbox"' -- '*.json' '*.md' '*.yml' '*.yaml' || return 0
+  # The NUL stream goes straight from git into xargs and is never captured on
+  # the way. Command substitution discards every NUL byte, silently on bash 3.2
+  # and with a warning on bash 5, so a captured list arrives concatenated into
+  # one name that opens nothing: with a single candidate the lone trailing NUL
+  # is stripped harmlessly and the scan works by luck, and the second candidate
+  # turns it into an awk cannot-open-file abort. Capturing would also undo the
+  # very thing -z is here for, since the C-quoted spelling of a non-ASCII path
+  # is what the NUL delimiter exists to avoid.
+  #
+  # Each operand reaches awk carrying a `./` prefix. awk reads an operand whose
+  # name contains an unquoted `=` as a variable assignment rather than as a
+  # file, so a tracked path such as `secrets=x.json` binds a variable and is
+  # never opened: the scan then reports clean having skipped exactly the file it
+  # was handed. The prefix puts a `/` ahead of any `=`, which no assignment
+  # spelling admits. The rewrite stays on the NUL stream for the reason above.
+  #
+  # pipefail and an explicit status, because the caller invokes this function on
+  # the left of an `||` list and bash disables errexit inside a function called
+  # that way. Without both, any failure along the chain leaves `hits` empty and
+  # returns 0, so a scan that could not run is indistinguishable from a scan
+  # that ran and found nothing.
+  scan_status=0
+  hits=$(
+    set -o pipefail
+    git grep -z -l -F '"sandbox"' -- '*.json' '*.md' '*.yml' '*.yaml' \
+    | xargs -0 sh -c 'for f do printf "./%s\0" "$f"; done' sh \
+    | xargs -0 awk '
+    function scan(   n, i, c, inq, esc, norm, mask, pos, at, j, depth, body, m) {
+      if (curfile == "") return
+      n = length(doc); inq = 0; esc = 0; norm = ""; mask = ""
+      for (i = 1; i <= n; i++) {
+        c = substr(doc, i, 1)
+        if (inq) {
+          norm = norm c; mask = mask "1"
+          if (esc) { esc = 0 }
+          else if (c == "\\") { esc = 1 }
+          else if (c == "\"") { inq = 0 }
+        } else if (c == " " || c == "\t" || c == "\r" || c == "\n") {
+          continue
+        } else {
+          norm = norm c
+          if (c == "\"") { inq = 1; mask = mask "1" } else { mask = mask "0" }
+        }
+      }
+      pos = 1
+      while ((i = index(substr(norm, pos), "\"sandbox\":{")) > 0) {
+        j = pos + i - 1 + 11
+        depth = 1; body = ""
+        while (j <= length(norm) && depth > 0) {
+          c = substr(norm, j, 1); m = substr(mask, j, 1)
+          if (m == "0") {
+            if (c == "{") depth++
+            else if (c == "}") depth--
+          }
+          if (depth > 0) body = body c
+          j++
+        }
+        if (body ~ /"enabled":/) print curfile
+        pos = j
+      }
+    }
+    FNR == 1 { scan(); curfile = FILENAME; doc = "" }
+    { doc = doc $0 "\n" }
+    END { scan() }
+  ') || scan_status=$?
+  [ "$scan_status" -eq 0 ] || {
+    printf 'committed-enable scan failed (exit %s), so it opened an unknown\n' "$scan_status"
+    printf 'subset of its candidates; a scan that cannot run is not a pass.\n'
+    return 1
+  }
+  [ -z "$hits" ] || { printf '%s\n' "$hits"; return 1; }
+  return 0
+}
+
+@test "UAT-013: no committed .json/.md/.yml/.yaml file carries a raw sandbox enable" {
   cd "$REPO_ROOT"
   # A raw `git grep sandbox\.enabled` also matches TS source/test files that
   # legitimately reference the property (e.g. `expect(written.sandbox.enabled)`)
   # and the two generated CLI binaries. Scoping to committed config/doc file
   # types excludes that source-level noise and pins the precise, honest form:
   # no config surface carries a real top-level enable.
+  #
+  # The dotted spelling, which covers prose and YAML.
   git grep -nF 'sandbox.enabled: true' -- '*.json' '*.md' '*.yml' '*.yaml' && return 1
-  git grep -nE '"sandbox":[[:space:]]*\{' -- '*.json' '*.md' '*.yml' '*.yaml' && return 1
+
+  # The JSON spelling, in any committed config or doc, including one quoted
+  # inside a fenced block. The file list comes from git, so the gitignored
+  # .claude/settings.local.json where the real enable belongs is never read, and
+  # it is NUL-delimited because a path carrying a non-ASCII byte comes back
+  # C-quoted from a plain `git ls-files` and the quoted form names no file the
+  # reader can open, so the scan would skip exactly the file it was handed.
+  sandbox_enables_in_committed_files || return 1
+
   return 0
 }
 

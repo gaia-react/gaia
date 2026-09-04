@@ -30,6 +30,7 @@
     ".claude/hooks/block-manifest-write.sh": "owned",
     ".claude/hooks/block-no-verify.sh": "owned",
     ".claude/hooks/block-rm-rf.sh": "owned",
+    ".claude/hooks/block-secrets-read.sh": "owned",
     ".claude/hooks/block-secrets-write.sh": "owned",
     ".claude/hooks/block-selfheal-paths.sh": "owned",
     ".claude/hooks/block-serena-cross-tree-activation.sh": "owned",
@@ -54,6 +55,7 @@
     ".claude/hooks/lib/gaia-active-plan.sh": "owned",
     ".claude/hooks/lib/gaia-ci-defer.sh": "owned",
     ".claude/hooks/lib/gaia-version.sh": "owned",
+    ".claude/hooks/lib/reader-operands.sh": "owned",
     ".claude/hooks/lib/red-ledger.sh": "owned",
     ".claude/hooks/lib/repo-scope.sh": "owned",
     ".claude/hooks/lib/verb-arming-walk.sh": "owned",
@@ -673,7 +675,7 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-09-03T01:27:04.725Z",
+  "generated": "2026-09-03T23:28:47.490Z",
   "regions": [
     {
       "endMarker": "<!-- gaia:audit-remit:end -->",

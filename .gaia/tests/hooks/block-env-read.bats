@@ -2,15 +2,19 @@
 
 # Tests for .claude/hooks/block-env-read.sh.
 #
-# Read(.env) in settings.json already enforces against the Read tool and the
-# Bash file commands Claude Code recognizes (cat/head/tail/sed) targeting a
-# file literally named .env, at any depth. This hook closes the residual
-# gaps that rule leaves open: variant dotenv files (.env.local, .env.*, not
-# .env.example) unmatched by Read(.env); Bash sourcing, redirection, and
-# non-recognized readers against a dotenv path; and bare environment dumps
-# (env/printenv/...) that read the shell environment rather than a file. The
-# guard is heuristic defense-in-depth, not a sandbox: it always exits 0,
-# carrying the allow/deny decision in stdout JSON.
+# This hook is the WHOLE read-side guard for dotenv paths: settings.json carries
+# no Read() deny rule behind it. It covers the Read tool and the Bash readers
+# (including the grep family) against .env and every variant (.env.local,
+# .env.*, not .env.example); sourcing; redirection; `env FOO=1 <reader>`; and
+# bare environment dumps (env/printenv/...) that read the shell environment
+# rather than a file. The guard is heuristic defense-in-depth, not a sandbox: it
+# always exits 0, carrying the allow/deny decision in stdout JSON.
+#
+# The settings.json assertions at the bottom pin the absence of every Read()
+# deny rule. That absence is load-bearing rather than incidental: a single
+# Read() rule re-arms Claude Code's bypass-immune deniedPathInsideDirectory
+# circuit breaker, which forces a manual approval prompt on every recursive
+# search or copy in the tree.
 
 # shellcheck disable=SC2317
 # SC2317 (command appears unreachable) is a structural false positive on every
@@ -43,6 +47,50 @@ run_hook_bash() {
   local json
   json=$(jq -n --arg c "$cmd" '{tool_name: "Bash", tool_input: {command: $c}}')
   invoke_hook "$json" "$HOOK_ABS"
+}
+
+run_hook_grep() {
+  local path="$1" glob="$2"
+  local json
+  json=$(jq -n --arg p "$path" --arg g "$glob" '{
+    tool_name: "Grep",
+    tool_input: ({pattern: "x"}
+      + (if $p == "" then {} else {path: $p} end)
+      + (if $g == "" then {} else {glob: $g} end))
+  }')
+  invoke_hook "$json" "$HOOK_ABS"
+}
+
+# Run the hook with lib/reader-operands.sh absent, to exercise the grammar-load
+# failure arm.
+#
+# The hook is COPIED into this test's own temporary directory and driven from
+# there, with no library beside it. It must never be exercised by hiding the
+# real one: both read-guard suites would target the identical absolute path,
+# .gaia/tests/bats-shards.sh weighs by file size and may put them in one shard
+# or in two, and .gaia/tests/run-bats-parallel.sh forks every shard into ONE
+# shared workspace. One shard is if anything the stronger reason rather than a
+# reprieve: the pair then runs sequentially inside a single bats invocation over
+# that same one workspace.
+# While one suite held the library hidden, every allow-assertion in its sibling
+# would see the fail-closed deny, so the pair would flake against each other and
+# the concurrency-safety claim that runner makes would be false. The live
+# session's own Read, Grep and Bash calls run through these same hooks and would
+# be denied for the width of that window too.
+#
+# The hook resolves its library as `dirname "${BASH_SOURCE[0]}"/lib`, so a copy
+# in a directory with an empty lib/ beside it reaches for a file that is not
+# there, which is the missing-library arm exactly. The directory is created and
+# left empty rather than omitted so the arm under test is the absent FILE rather
+# than an unresolvable lib dir; both deny, and pinning the narrower one is what
+# makes this a test of the probe instead of a test of `cd`.
+run_hook_without_library() {
+  local json dir
+  dir="$BATS_TEST_TMPDIR/nolib"
+  mkdir -p "$dir/lib"
+  cp "$HOOK_ABS" "$dir/"
+  json=$(jq -n '{tool_name: "Bash", tool_input: {command: "cat README.md"}}')
+  invoke_hook "$json" "$dir/$(basename "$HOOK_ABS")"
 }
 
 run_write_hook_edit() {
@@ -192,6 +240,59 @@ run_write_hook_edit() {
   assert_allowed_by_json
 }
 
+# --- Bash denies: the grep family, which needs argument grammar ---
+
+@test "grep SECRET .env is denied" {
+  run_hook_bash "grep SECRET .env"
+  assert_denied_by_json
+}
+
+@test "grep -rn SECRET .env.local is denied" {
+  run_hook_bash "grep -rn SECRET .env.local"
+  assert_denied_by_json
+}
+
+@test "rg SECRET .env.production is denied" {
+  run_hook_bash "rg SECRET .env.production"
+  assert_denied_by_json
+}
+
+@test "grep -f .env foo.txt is denied (the pattern FILE is the secret)" {
+  # -f names a file of patterns, which grep opens. The value is a read even
+  # though it sits where a discarded flag value normally would.
+  run_hook_bash "grep -f .env foo.txt"
+  assert_denied_by_json
+}
+
+@test "/usr/bin/grep SECRET .env is denied (reader reached through a path)" {
+  run_hook_bash "/usr/bin/grep SECRET .env"
+  assert_denied_by_json
+}
+
+# --- Bash allows: the grep family, pattern operand not mistaken for a path ---
+
+@test "grep -e .env .gitignore is allowed (-e supplies the pattern)" {
+  run_hook_bash "grep -e .env .gitignore"
+  assert_allowed_by_json
+}
+
+@test "grep --include=*.ts SECRET app is allowed" {
+  run_hook_bash "grep --include=*.ts SECRET app"
+  assert_allowed_by_json
+}
+
+@test "grep SECRET .env.example is allowed" {
+  run_hook_bash "grep SECRET .env.example"
+  assert_allowed_by_json
+}
+
+@test "rg --ignore-file .rgignore SECRET app is allowed" {
+  # --ignore-file names a file of globs and supplies no pattern, so the
+  # positional after it is still the pattern rather than a path.
+  run_hook_bash "rg --ignore-file .rgignore SECRET app"
+  assert_allowed_by_json
+}
+
 @test "ls -la .env is allowed (non-reading)" {
   run_hook_bash "ls -la .env"
   assert_allowed_by_json
@@ -245,12 +346,20 @@ run_write_hook_edit() {
   [ "$status" -eq 0 ]
 }
 
-@test "permissions.deny still contains the exact .env backstop entries" {
-  # Read(.env) blocks reads; Edit(.env) blocks every file-writing tool (Write,
-  # Edit, MultiEdit, NotebookEdit), so a separate Write(.env) deny is redundant
-  # and is intentionally absent.
-  run jq -e '.permissions.deny | index("Read(.env)")' "$SETTINGS_ABS"
+@test "permissions.deny carries no Read() rule at all" {
+  # Not merely "no Read(.env)": ANY Read() deny rule arms the bypass-immune
+  # deniedPathInsideDirectory breaker, so the guarantee this hook is paid to
+  # provide is the empty set, and a well-meaning re-addition of any one of them
+  # silently reinstates the prompt storm this suite exists to keep away.
+  run jq -e '[.permissions.deny[] | select(startswith("Read("))] | length == 0' "$SETTINGS_ABS"
   [ "$status" -eq 0 ]
+}
+
+@test "permissions.deny keeps the write-side .env backstop" {
+  # Edit(.env) blocks every file-writing tool (Write, Edit, MultiEdit,
+  # NotebookEdit), so a separate Write(.env) deny is redundant and is
+  # intentionally absent. Only the READ half moved to the hook layer; an Edit()
+  # rule arms no read breaker and therefore costs nothing to keep.
   run jq -e '.permissions.deny | index("Edit(.env)")' "$SETTINGS_ABS"
   [ "$status" -eq 0 ]
 }
@@ -271,4 +380,173 @@ run_write_hook_edit() {
   grep -qF -- "sandbox.filesystem" "$HOOK_ABS"
   grep -qiF -- "variant" "$HOOK_ABS"
   grep -qF -- "Serena" "$HOOK_ABS"
+}
+
+# --- Regression: a discard-listed flag that is value-less for the invoked tool ---
+#
+# Each of these was ALLOWED before the flag tables dropped -r, -T and the bare
+# --color/--colour spelling. The flag ate the pattern, the path was then taken
+# as the pattern, and the walk emitted no operand at all, so the guard passed a
+# dotenv read through in silence. `-rn` and `-R` denied throughout, which is
+# what kept the class invisible: `grep -r PATTERN PATH` is the most idiomatic
+# recursive spelling there is, and it sat untested beside two working ones.
+
+@test "grep -r SECRET .env is denied (bare -r is value-less for grep)" {
+  run_hook_bash "grep -r SECRET .env"
+  assert_denied_by_json
+}
+
+@test "grep -ir PASSWORD .env.production is denied (clustered, -r last)" {
+  run_hook_bash "grep -ir PASSWORD .env.production"
+  assert_denied_by_json
+}
+
+@test "grep -T SECRET .env is denied (bare -T is value-less for grep)" {
+  run_hook_bash "grep -T SECRET .env"
+  assert_denied_by_json
+}
+
+@test "grep --color SECRET .env is denied (optional-value for grep)" {
+  run_hook_bash "grep --color SECRET .env"
+  assert_denied_by_json
+}
+
+@test "grep --colour SECRET .env is denied" {
+  run_hook_bash "grep --colour SECRET .env"
+  assert_denied_by_json
+}
+
+@test "rg -r X .env.local is denied (over-reads the pattern, fail-closed)" {
+  run_hook_bash "rg -r X .env.local"
+  assert_denied_by_json
+}
+
+@test "grep --color=auto .env .gitignore is allowed (= form supplies its own value)" {
+  run_hook_bash "grep --color=auto .env .gitignore"
+  assert_allowed_by_json
+}
+
+# --- Grep tool: content mode returns file contents, so it reads a path ---
+
+@test "Grep path .env.production is denied" {
+  run_hook_grep ".env.production" ""
+  assert_denied_by_json
+}
+
+@test "Grep glob .env is denied (the filter selects the dotenv class)" {
+  run_hook_grep "" ".env"
+  assert_denied_by_json
+}
+
+@test "Grep path .env.example is allowed" {
+  run_hook_grep ".env.example" ""
+  assert_allowed_by_json
+}
+
+@test "Grep path app/routes is allowed" {
+  run_hook_grep "app/routes" ""
+  assert_allowed_by_json
+}
+
+@test "settings.json registers block-env-read.sh under the Grep matcher" {
+  run jq -e '.hooks.PreToolUse[] | select(.matcher == "Grep") | .hooks[] | select(.command | endswith("/.claude/hooks/block-env-read.sh\""))' "$SETTINGS_ABS"
+  [ "$status" -eq 0 ]
+}
+
+# --- Fail-closed on a grammar-load failure ---
+#
+# The arm this pins used to be `exit 1`. Only exit 2 or a structured deny blocks
+# a PreToolUse call, so a missing library allowed every dotenv read with a
+# stderr line as the only trace. Asserting the deny payload rather than the exit
+# status is the point: the exit status was 1 then and is 0 now, and neither
+# value distinguishes a guard that is running from one that is not.
+
+@test "a missing lib/reader-operands.sh denies rather than allowing the call" {
+  run_hook_without_library
+  assert_denied_by_json
+}
+
+# --- The sandbox tier the removed Read(.env) rule used to carry ---
+#
+# Read(.env) merged into the OS sandbox boundary, where it reached a subprocess
+# spawned by sandboxed Bash. A hook never sees a subprocess open(), so deleting
+# the rule without this declaration would have dropped that tier in silence.
+
+@test "settings.json declares sandbox.filesystem.denyRead for the dotenv class" {
+  run jq -e '
+    .sandbox.filesystem.denyRead as $d
+    | ($d | index(".env")) != null and ($d | index(".env.*")) != null
+  ' "$SETTINGS_ABS"
+  [ "$status" -eq 0 ]
+}
+
+# A sandbox filesystem path with no prefix resolves against the project root, so
+# the bare pair above reaches the root dotenv and nothing deeper. This hook
+# decides on the basename and denies a dotenv at any depth, so without the
+# depth-qualified pair the tool tier and the subprocess tier disagree about the
+# same file in a monorepo.
+@test "settings.json denies the dotenv class at any depth, not only at the root" {
+  run jq -e '
+    .sandbox.filesystem.denyRead as $d
+    | ($d | index("**/.env")) != null and ($d | index("**/.env.*")) != null
+  ' "$SETTINGS_ABS"
+  [ "$status" -eq 0 ]
+}
+
+@test "settings.json keeps .env.example readable inside the sandbox deny" {
+  run jq -e '
+    .sandbox.filesystem.allowRead as $a
+    | ($a | index(".env.example")) != null
+      and ($a | index("**/.env.example")) != null
+  ' "$SETTINGS_ABS"
+  [ "$status" -eq 0 ]
+}
+
+# --- Regression: a command substitution in either spelling ---
+#
+# The segment split reaches into `$(...)` because the parens are in its
+# character set, and used not to reach into a backtick pair. The two spellings
+# of one read therefore disagreed, and the backtick form was allowed.
+
+@test "x=\$(cat .env) is denied (dollar-paren substitution)" {
+  run_hook_bash 'x=$(cat .env)'
+  assert_denied_by_json
+}
+
+@test "x=\`cat .env.local\` is denied (backtick substitution)" {
+  run_hook_bash 'x=`cat .env.local`'
+  assert_denied_by_json
+}
+
+@test "echo \`cat .env\` is denied (reader hidden inside a backtick pair)" {
+  run_hook_bash 'echo `cat .env`'
+  assert_denied_by_json
+}
+
+# --- Regression: a glob spelling of a dotenv read ---
+#
+# `.env*` and `.env.*` each expand to every dotenv file in the directory, so they
+# read the same bytes the literal path does. The predicate matches the literal
+# spellings with a regex, which no metacharacter satisfies, so the globs were
+# allowed while `cat .env` beside them was denied. The sibling secrets predicate
+# never had the gap, because it matches with `case` globs.
+
+@test "cat .env* is denied (glob spelling of the dotenv read)" {
+  run_hook_bash 'cat .env*'
+  assert_denied_by_json
+}
+
+@test "cat .env.* is denied (dotted glob spelling)" {
+  run_hook_bash 'cat .env.*'
+  assert_denied_by_json
+}
+
+@test "cat .env? is denied (single-character glob)" {
+  run_hook_bash 'cat .env?'
+  assert_denied_by_json
+}
+
+@test "cat .environment is allowed (the stem is not a dotenv variant)" {
+  run_hook_bash 'cat .environment'
+  assert_allowed_by_json
 }
