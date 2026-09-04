@@ -49,6 +49,32 @@ run_hook_bash() {
   invoke_hook "$json" "$HOOK_ABS"
 }
 
+run_hook_grep() {
+  local path="$1" glob="$2"
+  local json
+  json=$(jq -n --arg p "$path" --arg g "$glob" '{
+    tool_name: "Grep",
+    tool_input: ({pattern: "x"}
+      + (if $p == "" then {} else {path: $p} end)
+      + (if $g == "" then {} else {glob: $g} end))
+  }')
+  invoke_hook "$json" "$HOOK_ABS"
+}
+
+# Run the hook with lib/reader-operands.sh made unreadable, to exercise the
+# grammar-load failure arm. The library is moved rather than deleted and the
+# move is reversed unconditionally, so a failing assertion cannot leave the
+# checkout without its guard library.
+run_hook_without_library() {
+  local json lib moved
+  lib="$HOOKS_SRC/lib/reader-operands.sh"
+  moved="$lib.bats-hidden"
+  json=$(jq -n '{tool_name: "Bash", tool_input: {command: "cat README.md"}}')
+  mv "$lib" "$moved"
+  invoke_hook "$json" "$HOOK_ABS"
+  mv "$moved" "$lib"
+}
+
 run_write_hook_edit() {
   local tool="$1" path="$2"
   local json
@@ -336,4 +362,107 @@ run_write_hook_edit() {
   grep -qF -- "sandbox.filesystem" "$HOOK_ABS"
   grep -qiF -- "variant" "$HOOK_ABS"
   grep -qF -- "Serena" "$HOOK_ABS"
+}
+
+# --- Regression: a discard-listed flag that is value-less for the invoked tool ---
+#
+# Each of these was ALLOWED before the flag tables dropped -r, -T and the bare
+# --color/--colour spelling. The flag ate the pattern, the path was then taken
+# as the pattern, and the walk emitted no operand at all, so the guard passed a
+# dotenv read through in silence. `-rn` and `-R` denied throughout, which is
+# what kept the class invisible: `grep -r PATTERN PATH` is the most idiomatic
+# recursive spelling there is, and it sat untested beside two working ones.
+
+@test "grep -r SECRET .env is denied (bare -r is value-less for grep)" {
+  run_hook_bash "grep -r SECRET .env"
+  assert_denied_by_json
+}
+
+@test "grep -ir PASSWORD .env.production is denied (clustered, -r last)" {
+  run_hook_bash "grep -ir PASSWORD .env.production"
+  assert_denied_by_json
+}
+
+@test "grep -T SECRET .env is denied (bare -T is value-less for grep)" {
+  run_hook_bash "grep -T SECRET .env"
+  assert_denied_by_json
+}
+
+@test "grep --color SECRET .env is denied (optional-value for grep)" {
+  run_hook_bash "grep --color SECRET .env"
+  assert_denied_by_json
+}
+
+@test "grep --colour SECRET .env is denied" {
+  run_hook_bash "grep --colour SECRET .env"
+  assert_denied_by_json
+}
+
+@test "rg -r X .env.local is denied (over-reads the pattern, fail-closed)" {
+  run_hook_bash "rg -r X .env.local"
+  assert_denied_by_json
+}
+
+@test "grep --color=auto .env .gitignore is allowed (= form supplies its own value)" {
+  run_hook_bash "grep --color=auto .env .gitignore"
+  assert_allowed_by_json
+}
+
+# --- Grep tool: content mode returns file contents, so it reads a path ---
+
+@test "Grep path .env.production is denied" {
+  run_hook_grep ".env.production" ""
+  assert_denied_by_json
+}
+
+@test "Grep glob .env is denied (the filter selects the dotenv class)" {
+  run_hook_grep "" ".env"
+  assert_denied_by_json
+}
+
+@test "Grep path .env.example is allowed" {
+  run_hook_grep ".env.example" ""
+  assert_allowed_by_json
+}
+
+@test "Grep path app/routes is allowed" {
+  run_hook_grep "app/routes" ""
+  assert_allowed_by_json
+}
+
+@test "settings.json registers block-env-read.sh under the Grep matcher" {
+  run jq -e '.hooks.PreToolUse[] | select(.matcher == "Grep") | .hooks[] | select(.command | endswith("/.claude/hooks/block-env-read.sh\""))' "$SETTINGS_ABS"
+  [ "$status" -eq 0 ]
+}
+
+# --- Fail-closed on a grammar-load failure ---
+#
+# The arm this pins used to be `exit 1`. Only exit 2 or a structured deny blocks
+# a PreToolUse call, so a missing library allowed every dotenv read with a
+# stderr line as the only trace. Asserting the deny payload rather than the exit
+# status is the point: the exit status was 1 then and is 0 now, and neither
+# value distinguishes a guard that is running from one that is not.
+
+@test "a missing lib/reader-operands.sh denies rather than allowing the call" {
+  run_hook_without_library
+  assert_denied_by_json
+}
+
+# --- The sandbox tier the removed Read(.env) rule used to carry ---
+#
+# Read(.env) merged into the OS sandbox boundary, where it reached a subprocess
+# spawned by sandboxed Bash. A hook never sees a subprocess open(), so deleting
+# the rule without this declaration would have dropped that tier in silence.
+
+@test "settings.json declares sandbox.filesystem.denyRead for the dotenv class" {
+  run jq -e '
+    .sandbox.filesystem.denyRead as $d
+    | ($d | index(".env")) != null and ($d | index(".env.*")) != null
+  ' "$SETTINGS_ABS"
+  [ "$status" -eq 0 ]
+}
+
+@test "settings.json keeps .env.example readable inside the sandbox deny" {
+  run jq -e '.sandbox.filesystem.allowRead | index(".env.example") != null' "$SETTINGS_ABS"
+  [ "$status" -eq 0 ]
 }

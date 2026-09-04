@@ -34,10 +34,31 @@
 # discarded. `grep -f <secret> .` reads the secret exactly as `grep x <secret>`
 # does, and only this arm can tell the difference.
 #
-# The flag tables are the UNION of GNU grep's and ripgrep's, deliberately. A
-# union misreads a flag only in the direction of consuming one extra token, and
-# the two tools' letters do not collide on any flag where that matters. Keeping
-# one table beats keeping two that must be diffed against each other by hand.
+# The flag tables are the UNION of GNU grep's and ripgrep's, deliberately, and
+# the union is safe ONLY because no discard-listed flag is value-less for either
+# tool. That condition is the whole of it, so state what breaks without it: a
+# discard-listed flag that takes no value for the tool actually invoked consumes
+# the PATTERN as its value. The next token then becomes the first positional and
+# is consumed as the pattern in turn, so the real file operand is never reached
+# and the walk emits NOTHING. That is a silent allow, not the extra-operand
+# over-deny a union is often assumed to degrade into, so a value-less collision
+# fails the guard open in exactly the case it exists to catch.
+#
+# Three collisions were found that way and are deliberately NOT discard-listed:
+# -r (GNU --recursive, value-less; ripgrep --replace, value-taking), -T (GNU
+# --initial-tab, value-less; ripgrep --type-not, value-taking), and the bare
+# --color / --colour spelling (optional-value for GNU, value-taking for
+# ripgrep). Leaving them out costs an over-read on ripgrep's spelling, where the
+# replacement text is taken as the pattern and the real pattern is emitted as an
+# operand. That is the fail-CLOSED direction: an extra candidate can only ever
+# add a deny, and it denies only if the pattern text itself looks like a secret
+# path. --colors (plural, ripgrep-only) keeps its entry because no GNU spelling
+# collides with it, and the --color=auto form is unaffected either way because
+# the `=` split supplies its own value and never reaches for the next token.
+#
+# ADDING A FLAG: check it against BOTH tools first. Value-taking in both, or
+# absent from one, is safe to discard-list. Value-less or optional-value in
+# either is not, and belongs in the exception list above instead.
 
 # Readers whose every argument is a candidate path. This is the historical set
 # from block-env-read.sh, unchanged: `awk` and `perl` take a PROGRAM as their
@@ -51,13 +72,13 @@ _GAIA_RO_GREP_READERS='grep egrep fgrep rgrep rg'
 
 # Short flags that take a value which is NOT a file to open (a pattern, a count,
 # a type name, a replacement). The value is discarded.
-_GAIA_RO_SHORT_DISCARD='emABCDdtTrg'
+_GAIA_RO_SHORT_DISCARD='emABCDdtg'
 
 # Short flags whose value IS a file grep opens. Emitted as an operand.
 _GAIA_RO_SHORT_FILE='f'
 
 # Long flags that take a value which is not a file. Matched with or without `=`.
-_GAIA_RO_LONG_DISCARD='--regexp --max-count --after-context --before-context --context --binary-files --devices --directories --label --include --exclude --exclude-dir --group-separator --colors --color --colour --type --type-not --type-add --glob --iglob --replace --pre --sort --sortr --context-separator --path-separator --field-match-separator --encoding --engine --dfa-size-limit --regex-size-limit --max-columns --max-depth --max-filesize --threads'
+_GAIA_RO_LONG_DISCARD='--regexp --max-count --after-context --before-context --context --binary-files --devices --directories --label --include --exclude --exclude-dir --group-separator --colors --type --type-not --type-add --glob --iglob --replace --pre --sort --sortr --context-separator --path-separator --field-match-separator --encoding --engine --dfa-size-limit --regex-size-limit --max-columns --max-depth --max-filesize --threads'
 
 # Long flags whose value IS a file grep opens. Split by whether the flag also
 # SUPPLIES THE PATTERN, because that is what decides whether the next positional
@@ -67,10 +88,13 @@ _GAIA_RO_LONG_DISCARD='--regexp --max-count --after-context --before-context --c
 _GAIA_RO_LONG_FILE_PATTERN='--file'
 _GAIA_RO_LONG_FILE_PLAIN='--exclude-from --ignore-file'
 
-# Strip one matching pair of surrounding quotes from a token. Mirrors the
-# helper the hooks already carry, so a token reaches the predicate in the same
-# shape whichever arm produced it.
-_gaia_ro_strip_quotes() {
+# Strip one matching pair of surrounding quotes from a token. PUBLIC, under the
+# gaia_reader_ prefix: both hooks call it for the tokens they read straight off
+# the payload, so a token reaches the predicate in the same shape whichever arm
+# produced it. It is one definition rather than three because a correction here
+# (escaped quotes, a backtick pair, nesting) has to reach every caller, and a
+# copy nobody remembers to edit diverges with no test going red.
+gaia_reader_strip_quotes() {
   local s="$1"
   case "$s" in
     \"*\") s=${s#\"}; s=${s%\"} ;;
@@ -92,7 +116,7 @@ _gaia_ro_in_list() {
 # re-check for emptiness that this function already ruled out.
 _gaia_ro_emit() {
   local v
-  v=$(_gaia_ro_strip_quotes "$1")
+  v=$(gaia_reader_strip_quotes "$1")
   if [ -n "$v" ]; then printf '%s\n' "$v"; fi
 }
 
@@ -209,7 +233,7 @@ _gaia_ro_dispatch() {
   local cmdword t i n
 
   [ "${#toks[@]}" -gt 0 ] || return 0
-  cmdword=$(_gaia_ro_strip_quotes "${toks[0]}")
+  cmdword=$(gaia_reader_strip_quotes "${toks[0]}")
   # Reach the real reader through a leading path (`/usr/bin/grep`), the way the
   # permission analyzer this guard backstops does.
   cmdword="${cmdword##*/}"

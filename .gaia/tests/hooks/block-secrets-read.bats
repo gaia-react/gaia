@@ -42,6 +42,32 @@ run_hook_bash() {
   invoke_hook "$json" "$HOOK_ABS"
 }
 
+run_hook_grep() {
+  local path="$1" glob="$2"
+  local json
+  json=$(jq -n --arg p "$path" --arg g "$glob" '{
+    tool_name: "Grep",
+    tool_input: ({pattern: "x"}
+      + (if $p == "" then {} else {path: $p} end)
+      + (if $g == "" then {} else {glob: $g} end))
+  }')
+  invoke_hook "$json" "$HOOK_ABS"
+}
+
+# Run the hook with lib/reader-operands.sh made unreadable, to exercise the
+# grammar-load failure arm. The library is moved rather than deleted and the
+# move is reversed unconditionally, so a failing assertion cannot leave the
+# checkout without its guard library.
+run_hook_without_library() {
+  local json lib moved
+  lib="$HOOKS_SRC/lib/reader-operands.sh"
+  moved="$lib.bats-hidden"
+  json=$(jq -n '{tool_name: "Bash", tool_input: {command: "cat README.md"}}')
+  mv "$lib" "$moved"
+  invoke_hook "$json" "$HOOK_ABS"
+  mv "$moved" "$lib"
+}
+
 # --- Read-tool denies, one per path class the removed Read() globs covered ---
 
 @test "Read certs/server.key is denied" {
@@ -195,5 +221,99 @@ run_hook_bash() {
 
 @test "permissions.deny carries none of the four replaced Read() globs" {
   run jq -e '[.permissions.deny[] | select(startswith("Read("))] | length == 0' "$SETTINGS_ABS"
+  [ "$status" -eq 0 ]
+}
+
+# --- Regression: a discard-listed flag that is value-less for the invoked tool ---
+#
+# Each of these was ALLOWED before the flag tables dropped -r, -T and the bare
+# --color/--colour spelling. The flag ate the pattern, the path was then taken
+# as the pattern, and the walk emitted no operand at all, so the guard passed a
+# secret read through in silence. `-rn` denied throughout, which is what kept
+# the class invisible: the idiomatic spelling sat untested beside a working one.
+
+@test "grep -r TOKEN certs/server.key is denied (bare -r is value-less for grep)" {
+  run_hook_bash "grep -r TOKEN certs/server.key"
+  assert_denied_by_json
+}
+
+@test "grep -r TOKEN secrets/prod.json is denied" {
+  run_hook_bash "grep -r TOKEN secrets/prod.json"
+  assert_denied_by_json
+}
+
+@test "grep -T TOKEN certs/server.pem is denied (bare -T is value-less for grep)" {
+  run_hook_bash "grep -T TOKEN certs/server.pem"
+  assert_denied_by_json
+}
+
+@test "grep --color TOKEN certs/server.key is denied (optional-value for grep)" {
+  run_hook_bash "grep --color TOKEN certs/server.key"
+  assert_denied_by_json
+}
+
+@test "grep --colour TOKEN certs/server.key is denied" {
+  run_hook_bash "grep --colour TOKEN certs/server.key"
+  assert_denied_by_json
+}
+
+@test "rg -r X secrets/prod.json is denied (over-reads the pattern, fail-closed)" {
+  run_hook_bash "rg -r X secrets/prod.json"
+  assert_denied_by_json
+}
+
+@test "grep --color=auto server.key .gitignore is allowed (= form supplies its own value)" {
+  run_hook_bash "grep --color=auto server.key .gitignore"
+  assert_allowed_by_json
+}
+
+# --- Grep tool: content mode returns file contents, so it reads a path ---
+
+@test "Grep path certs/server.key is denied" {
+  run_hook_grep "certs/server.key" ""
+  assert_denied_by_json
+}
+
+@test "Grep path secrets/prod.json is denied" {
+  run_hook_grep "secrets/prod.json" ""
+  assert_denied_by_json
+}
+
+@test "Grep glob *.key is denied (the filter selects the secret class)" {
+  run_hook_grep "" "*.key"
+  assert_denied_by_json
+}
+
+@test "Grep path app/lib/keychain.ts is allowed" {
+  run_hook_grep "app/lib/keychain.ts" ""
+  assert_allowed_by_json
+}
+
+@test "settings.json registers block-secrets-read.sh under the Grep matcher" {
+  run jq -e '.hooks.PreToolUse[] | select(.matcher == "Grep") | .hooks[] | select(.command | endswith("/.claude/hooks/block-secrets-read.sh\""))' "$SETTINGS_ABS"
+  [ "$status" -eq 0 ]
+}
+
+# --- Fail-closed on a grammar-load failure ---
+#
+# The arm this pins used to be `exit 1`. Only exit 2 or a structured deny blocks
+# a PreToolUse call, so a missing library allowed every secret read with a
+# stderr line as the only trace. Asserting the deny payload rather than the exit
+# status is the point: the exit status was 1 then and is 0 now, and neither
+# value distinguishes a guard that is running from one that is not.
+
+@test "a missing lib/reader-operands.sh denies rather than allowing the call" {
+  run_hook_without_library
+  assert_denied_by_json
+}
+
+# --- The sandbox tier the removed Read() rules used to carry ---
+
+@test "settings.json declares sandbox.filesystem.denyRead for the secret classes" {
+  run jq -e '
+    .sandbox.filesystem.denyRead as $d
+    | ["**/*.key", "**/*.pem", "**/*credential*", "**/secrets/**"]
+    | all(. as $needle | $d | index($needle) != null)
+  ' "$SETTINGS_ABS"
   [ "$status" -eq 0 ]
 }

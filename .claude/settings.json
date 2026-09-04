@@ -319,6 +319,16 @@
         "hooks": [
           {
             "type": "command",
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/block-env-read.sh\"",
+            "statusMessage": "Checking .env read guard…"
+          },
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/block-secrets-read.sh\"",
+            "statusMessage": "Checking secret-path read guard…"
+          },
+          {
+            "type": "command",
             "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/serena-code-search-guard.sh\"",
             "statusMessage": "Checking Serena code-search routing…"
           }
@@ -389,6 +399,21 @@
         ]
       }
     ]
+  },
+  "sandbox": {
+    "filesystem": {
+      "denyRead": [
+        ".env",
+        ".env.*",
+        "**/*.key",
+        "**/*.pem",
+        "**/*credential*",
+        "**/secrets/**"
+      ],
+      "allowRead": [
+        ".env.example"
+      ]
+    }
   },
   "statusLine": {
     "type": "command",

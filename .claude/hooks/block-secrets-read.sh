@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# PreToolUse Read + Bash hook: read-side guard for key, certificate, and
+# PreToolUse Read + Grep + Bash hook: read-side guard for key, certificate, and
 # credential paths. The read-side counterpart to block-secrets-write.sh, which
 # judges write CONTENT; this one judges read PATHS.
 #
@@ -31,8 +31,16 @@
 # heuristic defense-in-depth, not a sandbox. It pattern-matches command text and
 # can be evaded by obfuscation. It does not reach MCP-mediated shell execution
 # (e.g. Serena's execute_shell_command) or a subprocess that opens the file
-# itself. The airtight tier is the OS-level sandbox (sandbox.filesystem
-# deny-read rules), which this repo does not configure.
+# itself.
+#
+# THE SUBPROCESS TIER IS NOT LOST WITH THE RULES, it moved. A Read() deny rule
+# merges into the OS sandbox boundary, so the four globs above also denied a
+# subprocess spawned by sandboxed Bash, which no hook can see. Deleting them
+# would have dropped that tier silently, so the same four classes are now
+# declared directly as `sandbox.filesystem.denyRead` entries in
+# .claude/settings.json. That key is not a permission rule and does not arm the
+# breaker, and it is inert on a machine that has not enabled the sandbox, which
+# is the tier split `wiki/concepts/OS Sandbox.md` describes.
 set -euo pipefail
 
 _lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)" || _lib_dir=''
@@ -45,10 +53,33 @@ set +e
 # shellcheck source=lib/reader-operands.sh
 [ -n "$_lib_dir" ] && [ -f "$_lib_dir/reader-operands.sh" ] && . "$_lib_dir/reader-operands.sh" 2>/dev/null
 set -e
-if ! type gaia_reader_operands >/dev/null 2>&1; then
-  # A guard that cannot load its own grammar must not report clean.
+if ! type gaia_reader_operands >/dev/null 2>&1 \
+  || ! type gaia_reader_strip_quotes >/dev/null 2>&1; then
+  # A guard that cannot load its own grammar must not report clean, and only a
+  # structured deny achieves that. A non-zero exit other than 2 is a NON-BLOCKING
+  # error in the PreToolUse contract (`wiki/concepts/Claude Hooks.md`): the tool
+  # call proceeds and the status is advisory, so the `exit 1` this replaced left
+  # every secret read allowed with a stderr line as the only trace. The deny is
+  # emitted with printf rather than through deny() below, because deny() shells
+  # out to jq and this arm must hold even when the environment is the reason the
+  # load failed. Denying every Read, Grep and Bash call is the intended cost: a
+  # missing or unparseable library means this hook is not guarding anything, and
+  # a loud stop is preferable to a silent one on a broken install.
   printf 'block-secrets-read.sh: cannot load lib/reader-operands.sh\n' >&2
-  exit 1
+  # Spelled in jq's own output shape, spaces included, because that is the
+  # form every other deny in this tree emits and the form the suites' shared
+  # assertion matches on. A compact spelling is equally valid JSON and would
+  # deny correctly while reading as an allow to the harness.
+  cat <<'DENY_JSON'
+{
+  "hookSpecificOutput": {
+    "hookEventName": "PreToolUse",
+    "permissionDecision": "deny",
+    "permissionDecisionReason": "BLOCKED: block-secrets-read.sh could not load lib/reader-operands.sh, so the read-side secret guard is not running. This denial is fail-closed by design. Restore .claude/hooks/lib/reader-operands.sh to clear it."
+  }
+}
+DENY_JSON
+  exit 0
 fi
 
 payload=$(cat)
@@ -68,18 +99,9 @@ deny() {
   exit 0
 }
 
-strip_quotes() {
-  local s="$1"
-  case "$s" in
-    \"*\") s=${s#\"}; s=${s%\"} ;;
-    \'*\') s=${s#\'}; s=${s%\'} ;;
-  esac
-  printf '%s' "$s"
-}
-
 is_secret_path() {
   local p="$1" base lower
-  p=$(strip_quotes "$p")
+  p=$(gaia_reader_strip_quotes "$p")
   [[ -n "$p" ]] || return 1
 
   base=$(basename -- "$p")
@@ -119,6 +141,21 @@ case "$tool_name" in
     file_path=$(jq -r '.tool_input.file_path // empty' <<<"$payload")
     [[ -n "$file_path" ]] || exit 0
     is_secret_path "$file_path" && deny "$DENY_READ_TOOL"
+    exit 0
+    ;;
+
+  Grep)
+    # The Grep tool returns file CONTENT in content mode, so it reads a path the
+    # same way Read does. `path` is the file or directory searched; `glob` is
+    # the filter, and a filter naming a secret class (`*.key`) selects exactly
+    # the files this guard exists to keep out of the transcript. Both are judged
+    # by the same predicate. The glob arm is best-effort by construction: it
+    # reads a pattern with the path predicate, so it catches the literal shapes
+    # (`*.key`, `secrets/**`) and not every glob that could expand onto one.
+    grep_path=$(jq -r '.tool_input.path // empty' <<<"$payload")
+    grep_glob=$(jq -r '.tool_input.glob // empty' <<<"$payload")
+    [[ -n "$grep_path" ]] && is_secret_path "$grep_path" && deny "$DENY_READ_TOOL"
+    [[ -n "$grep_glob" ]] && is_secret_path "$grep_glob" && deny "$DENY_READ_TOOL"
     exit 0
     ;;
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# PreToolUse Read + Bash hook: read-side secret guard for dotenv files.
+# PreToolUse Read + Grep + Bash hook: read-side secret guard for dotenv files.
 #
 # This hook is the WHOLE read-side guard for dotenv paths. It carries no
 # settings.json backstop behind it, and that is deliberate: a Read() deny rule
@@ -14,6 +14,8 @@
 # What this guard covers:
 #   - the Read tool against .env and any variant (.env.local, .env.production,
 #     .env.<anything>), excluding the committed .env.example placeholder;
+#   - the Grep tool's `path` and `glob`, which in content mode return file
+#     contents and so read a path exactly as Read does;
 #   - Bash readers against the same set: cat, head, tail, sed, xxd, od,
 #     hexdump, strings, nl, less, more, diff, cut, tac, paste, awk, perl, and
 #     the grep family (grep, egrep, fgrep, rgrep, rg);
@@ -32,13 +34,20 @@
 # pattern-matches command text and can be evaded by determined obfuscation. It
 # does not reach MCP-mediated shell execution (e.g. Serena's
 # execute_shell_command), a subprocess that opens the file itself (a Node or
-# Python script reading it directly), or a deliberately obfuscated reader. The
-# permission rule it replaces shared every one of those limits -- it too only
-# ever saw commands Claude Code statically recognized as reads -- so the
-# exchange costs no coverage that was real. The airtight enforcement for
-# arbitrary subprocesses is the OS-level sandbox (sandbox.filesystem deny-read
-# rules), which is not configured in this repo and is the upgrade path if the
-# heuristic tier ever proves insufficient.
+# Python script reading it directly), or a deliberately obfuscated reader.
+#
+# THE PERMISSION RULE SHARED ALL OF THOSE LIMITS AT THE TOOL TIER, and it had
+# one this hook cannot have. A Read() deny merges into the OS sandbox boundary,
+# so `Read(.env)` also denied a subprocess spawned by sandboxed Bash, including
+# the app's own tooling when Claude ran it. A hook sees tool-call text and never
+# a subprocess open(), so deleting the rule would have dropped that tier in
+# silence for every adopter who enabled the sandbox. It is declared directly
+# instead: `sandbox.filesystem.denyRead` in .claude/settings.json now carries
+# .env and its variants. That key is not a permission rule, so it does not arm
+# the breaker, and it is inert until a machine enables the sandbox, which is the
+# owner-recommends / machine-resolves split `wiki/concepts/OS Sandbox.md` sets
+# out. At the tool tier, which is this hook's tier, the exchange costs no
+# coverage that was real.
 set -euo pipefail
 
 _lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)" || _lib_dir=''
@@ -51,11 +60,34 @@ set +e
 # shellcheck source=lib/reader-operands.sh
 [ -n "$_lib_dir" ] && [ -f "$_lib_dir/reader-operands.sh" ] && . "$_lib_dir/reader-operands.sh" 2>/dev/null
 set -e
-if ! type gaia_reader_operands >/dev/null 2>&1 || ! type gaia_reader_strip_env_prefix >/dev/null 2>&1; then
-  # A guard that cannot load its own grammar must not report clean. Exiting
-  # non-zero surfaces the breakage instead of silently allowing every read.
+if ! type gaia_reader_operands >/dev/null 2>&1 \
+  || ! type gaia_reader_strip_env_prefix >/dev/null 2>&1 \
+  || ! type gaia_reader_strip_quotes >/dev/null 2>&1; then
+  # A guard that cannot load its own grammar must not report clean, and only a
+  # structured deny achieves that. A non-zero exit other than 2 is a NON-BLOCKING
+  # error in the PreToolUse contract (`wiki/concepts/Claude Hooks.md`): the tool
+  # call proceeds and the status is advisory, so the `exit 1` this replaced left
+  # every dotenv read allowed with a stderr line as the only trace. The deny is
+  # emitted with printf rather than through deny() below, because deny() shells
+  # out to jq and this arm must hold even when the environment is the reason the
+  # load failed. Denying every Read, Grep and Bash call is the intended cost: a
+  # missing or unparseable library means this hook is not guarding anything, and
+  # a loud stop is preferable to a silent one on a broken install.
   printf 'block-env-read.sh: cannot load lib/reader-operands.sh\n' >&2
-  exit 1
+  # Spelled in jq's own output shape, spaces included, because that is the
+  # form every other deny in this tree emits and the form the suites' shared
+  # assertion matches on. A compact spelling is equally valid JSON and would
+  # deny correctly while reading as an allow to the harness.
+  cat <<'DENY_JSON'
+{
+  "hookSpecificOutput": {
+    "hookEventName": "PreToolUse",
+    "permissionDecision": "deny",
+    "permissionDecisionReason": "BLOCKED: block-env-read.sh could not load lib/reader-operands.sh, so the read-side dotenv guard is not running. This denial is fail-closed by design. Restore .claude/hooks/lib/reader-operands.sh to clear it."
+  }
+}
+DENY_JSON
+  exit 0
 fi
 
 payload=$(cat)
@@ -76,21 +108,11 @@ deny() {
   exit 0
 }
 
-# Strip one matching pair of surrounding quotes from a token.
-strip_quotes() {
-  local s="$1"
-  case "$s" in
-    \"*\") s=${s#\"}; s=${s%\"} ;;
-    \'*\') s=${s#\'}; s=${s%\'} ;;
-  esac
-  printf '%s' "$s"
-}
-
 # Dotenv path definition: the basename (after stripping surrounding quotes)
 # matches .env or .env.<token>(.<token>)*, and is not exactly .env.example.
 is_dotenv_path() {
   local p="$1" base
-  p=$(strip_quotes "$p")
+  p=$(gaia_reader_strip_quotes "$p")
   [[ -n "$p" ]] || return 1
   base=$(basename -- "$p")
   [[ "$base" =~ ^\.env(\.[A-Za-z0-9_-]+)*$ ]] || return 1
@@ -144,7 +166,7 @@ check_env_tokens() {
 check_dump_tokens() {
   local toks=("$@")
   local cmdword="${toks[0]:-}"
-  cmdword=$(strip_quotes "$cmdword")
+  cmdword=$(gaia_reader_strip_quotes "$cmdword")
 
   case "$cmdword" in
     env)
@@ -198,6 +220,21 @@ case "$tool_name" in
     file_path=$(jq -r '.tool_input.file_path // empty' <<<"$payload")
     [[ -n "$file_path" ]] || exit 0
     is_dotenv_path "$file_path" && deny "$DENY_READ_TOOL"
+    exit 0
+    ;;
+
+  Grep)
+    # The Grep tool returns file CONTENT in content mode, so it reads a path the
+    # same way Read does. `path` is the file or directory searched; `glob` is the
+    # filter, and a filter naming a dotenv path selects exactly the files this
+    # guard exists to keep out of the transcript. The glob arm is best-effort by
+    # construction: it reads a pattern with the path predicate, so it catches a
+    # literal `.env` or `.env.local` and not every glob that could expand onto
+    # one. There is no dump arm here, because the Grep tool reads files only.
+    grep_path=$(jq -r '.tool_input.path // empty' <<<"$payload")
+    grep_glob=$(jq -r '.tool_input.glob // empty' <<<"$payload")
+    [[ -n "$grep_path" ]] && is_dotenv_path "$grep_path" && deny "$DENY_READ_TOOL"
+    [[ -n "$grep_glob" ]] && is_dotenv_path "$grep_glob" && deny "$DENY_READ_TOOL"
     exit 0
     ;;
 
