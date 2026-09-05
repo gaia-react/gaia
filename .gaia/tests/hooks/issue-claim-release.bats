@@ -244,9 +244,13 @@ assert_nothing_released() { [ ! -s "$FAKE_GH_STATE/issue_edits" ]; }
 
 @test "4d: a pr view that never answers releases nothing, and the re-reads stop" {
   # 4b's bound on the other arm into the loop: a state that never settles and a
-  # call that never answers are separate ways to stay in it, and this hook runs
-  # as PostToolUse, so a re-read that failed to terminate would hang the tool
-  # result rather than merely losing a release.
+  # call that never answers are separate ways to stay in it.
+  #
+  # What the upper bound catches is a bound that grew, not a bound that went
+  # away. bats has no per-test timeout and run_hook imposes none, so a loop
+  # that never terminates never reaches the assertion at all: it hangs the
+  # runner and the job dies on its own timeout with no test attributed. Read a
+  # green here as "the cap is still small", never as "the loop still ends".
   export FAKE_GH_PR_VIEW_FAIL_CALLS=99
   export FAKE_GH_PR_BODY="Closes #12"
   run_hook 'gh pr merge 42'
@@ -831,23 +835,23 @@ assert_nothing_released() { [ ! -s "$FAKE_GH_STATE/issue_edits" ]; }
   assert_released_once "77"
 }
 
-# 7ap-7as: a word-initial unquoted `#` opens a shell COMMENT, so gh receives
-# none of it. Read as ordinary text those words reach the flag parser, and a
-# `--repo` among them wins over the one the merge carried, because the parser
-# keeps the last one it sees and the shared guard captures greedily. 7ap is the
-# harm that reaches: a merge landing in the SIBLING repository, stripping claims
-# here. 7aq and 7ar are the controls that the arm cuts a comment rather than
-# every `#`. 7as pins the stop rather than a skip to the newline: a comment
-# hiding a leading command must not promote the words after it into the first
-# command, which is the one shape a skip would get wrong.
-@test "7ap: a trailing comment's --repo does not turn a foreign merge into a home release" {
+# 7az-7bb and 7as: a word-initial unquoted `#` opens a shell COMMENT, so gh
+# receives none of it. Read as ordinary text those words reach the flag parser,
+# and a `--repo` among them wins over the one the merge carried, because the
+# parser keeps the last one it sees and the shared guard captures greedily.
+# 7az is the harm that reaches: a merge landing in the SIBLING repository,
+# stripping claims here. 7ba and 7bb are the controls that the arm cuts a
+# comment rather than every `#`. 7as pins the stop rather than a skip to the
+# newline: a comment hiding a leading command must not promote the words after
+# it into the first command, which is the one shape a skip would get wrong.
+@test "7az: a trailing comment's --repo does not turn a foreign merge into a home release" {
   export FAKE_GH_PR_BODY="Closes #77"
   run_hook 'gh pr merge --repo other-org/other-repo 5 # was --repo gaia-react/gaia'
   [ "$status" -eq 0 ]
   assert_nothing_released
 }
 
-@test "7aq: a trailing comment does not cost a home merge its release" {
+@test "7ba: a trailing comment does not cost a home merge its release" {
   export FAKE_GH_PR_BODY="Closes #77"
   run_hook 'gh pr merge 5 --squash # ship it'
   [ "$status" -eq 0 ]
@@ -855,7 +859,7 @@ assert_nothing_released() { [ ! -s "$FAKE_GH_STATE/issue_edits" ]; }
   assert_released_once "77"
 }
 
-@test "7ar: a mid-word # is ordinary text, not a comment" {
+@test "7bb: a mid-word # is ordinary text, not a comment" {
   export FAKE_GH_PR_BODY="Closes #77"
   run_hook 'gh pr merge --body fix#77 5'
   [ "$status" -eq 0 ]
