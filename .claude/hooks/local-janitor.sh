@@ -279,7 +279,7 @@ root=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
 
 main_root_lib="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd)/.gaia/scripts/main-root-lib.sh"
 if [ -f "$main_root_lib" ]; then
-  # shellcheck disable=SC1091
+  # shellcheck source=/dev/null
   . "$main_root_lib" 2>/dev/null || true
 fi
 main_root=""
