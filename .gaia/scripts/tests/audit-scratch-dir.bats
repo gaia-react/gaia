@@ -53,13 +53,13 @@ setup() {
   #
   # Unpinned, running the suite from a linked worktree fires the mint's
   # advisory note on stderr; `run` captures "$@" 2>&1, so $output becomes the
-  # two note lines PLUS the path, and every `[ -d "$output" ]` is asserting
-  # against a three-line string. That is gaia-react/gaia#1780: 29/29 from a
-  # plain checkout, 25/29 from a worktree, at one commit, with CI only ever
-  # reporting the first. The mint itself was never at fault -- the directory
-  # is on disk in both environments.
+  # note lines PLUS the path, and every `[ -d "$output" ]` above is then
+  # asserting against a multi-line string. That is gaia-react/gaia#1780: the
+  # suite was green from a plain checkout and red from a worktree at one
+  # commit, and CI only ever runs the first. The mint itself was never at
+  # fault -- the directory is on disk in both environments.
   #
-  # Deliberately NOT a guard or a skip on the four assertions: that would
+  # Deliberately NOT a guard or a skip on the assertions that red: that would
   # leave them unrun in a worktree, which is the same invisibility pointed
   # the other way. The `mint/populate asymmetry` cases want the worktree
   # answer and cd into their own, in their own subshells, so this does not
