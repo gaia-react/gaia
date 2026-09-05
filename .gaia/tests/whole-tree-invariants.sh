@@ -147,6 +147,8 @@ readonly WTI_EXCLUDED='.gaia/scripts/check-debt-issue-metadata.sh|argument-drive
 .gaia/scripts/lint-guard-rule-shell-coverage.sh|runs transitively, shell-lint.sh invokes it and shell-lint.sh is itself a member
 .gaia/scripts/lint-collapsed-signal-trap.sh|runs transitively, shell-lint.sh invokes it and shell-lint.sh is itself a member
 .gaia/scripts/lint-hook-wiki-inventory.sh|runs transitively, shell-lint.sh invokes it and shell-lint.sh is itself a member
+.gaia/scripts/lint-wiki-cached-version.sh|runs transitively, shell-lint.sh invokes it and shell-lint.sh is itself a member
+.gaia/scripts/lint-hook-advisory-classification.sh|runs transitively, shell-lint.sh invokes it and shell-lint.sh is itself a member
 .gaia/tests/bats-shards.sh|harness plumbing, it partitions suites into shards rather than asserting anything; the partition itself is the bats member above
 .gaia/tests/install-bats.sh|harness plumbing, it installs the pinned bats and asserts no invariant
 .gaia/tests/run-bats-parallel.sh|harness plumbing, the hand-run entry point for the same partition

@@ -2,7 +2,6 @@
 type: dependency
 status: active
 package: 'remix-toast, sonner'
-version: '4.0.0, 2.0.7'
 role: toasts
 created: 2026-04-20
 updated: 2026-04-20

@@ -2,7 +2,6 @@
 type: dependency
 status: active
 package: msw
-version: 2.14.6
 role: api-mocking
 created: 2026-04-20
 updated: 2026-06-24

@@ -19,7 +19,7 @@ A hook starts in the component that needs it. When a second component needs the 
 
 ## Conventions
 
-Named export, `use` prefix, one hook per file, kebab-case filename, tests in `app/hooks/tests/{name}.test.ts`. Use `/new-hook` to scaffold. See [[Coding Guidelines]] for file-naming rules.
+Named export, `use` prefix, one hook per file, tests in `app/hooks/tests/{name}.test.ts`. Use `/new-hook` to scaffold. See [[Coding Guidelines]] for file-naming rules.
 
 For the current bundled inventory and signatures, query Serena (`.claude/rules/code-search.md`).
 

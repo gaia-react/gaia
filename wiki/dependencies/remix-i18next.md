@@ -2,7 +2,6 @@
 type: dependency
 status: active
 package: remix-i18next
-version: 8.0.0
 role: i18n
 created: 2026-04-20
 updated: 2026-06-27
@@ -15,14 +14,16 @@ i18n integration built on `i18next` for React Router. GAIA wires it through midd
 
 ## Companion
 
-- `i18next` 26.3.1
-- `react-i18next` 17.0.8
-- `i18next-browser-languagedetector` 8.2.1
-- `accept-language-parser` 1.5.0
-- `storybook-react-i18next` 10.1.2
+Versions come from `package.json`.
+
+- `i18next`
+- `react-i18next`
+- `i18next-browser-languagedetector`
+- `accept-language-parser`
+- `storybook-react-i18next`
 
 > [!note] Single shared version, no forcing override
-> `i18next`, `react-i18next`, and `remix-i18next` are each declared as direct dependencies, so pnpm resolves a single shared copy of each (`remix-i18next` declares `i18next`/`react-i18next` as peers, `react-i18next` declares `i18next` as a peer) and consumers stay on one version without any override. Dependency `overrides` live in `pnpm-workspace.yaml` (pnpm 11 ignores the package.json `pnpm` field); the only current override is a security floor on `qs`. See [[pnpm]] and [[pnpm-overrides]] for the override audit flow.
+> `i18next`, `react-i18next`, and `remix-i18next` are each declared as direct dependencies, so pnpm resolves a single shared copy of each (`remix-i18next` declares `i18next`/`react-i18next` as peers, `react-i18next` declares `i18next` as a peer) and consumers stay on one version without any override. Dependency `overrides` live in `pnpm-workspace.yaml` (pnpm 11 ignores the package.json `pnpm` field). See [[pnpm]] and [[pnpm-overrides]] for the override audit flow and the current override list.
 
 ## Client wiring
 

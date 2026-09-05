@@ -2,7 +2,6 @@
 type: dependency
 status: active
 package: remix-flat-routes
-version: 0.8.5
 role: routing-adapter
 created: 2026-04-20
 updated: 2026-04-20

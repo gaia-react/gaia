@@ -2,7 +2,6 @@
 type: dependency
 status: active
 package: storybook
-version: 10.5.8
 role: component-development-and-visual-testing
 created: 2026-04-20
 updated: 2026-08-22

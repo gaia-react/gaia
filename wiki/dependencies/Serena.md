@@ -2,7 +2,6 @@
 type: dependency
 status: active
 package: serena
-version: v1.2.0
 role: code-intelligence-mcp
 created: 2026-05-04
 updated: 2026-07-03

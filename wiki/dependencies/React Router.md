@@ -2,7 +2,6 @@
 type: dependency
 status: active
 package: react-router
-version: 8.0.1
 role: framework
 created: 2026-04-20
 updated: 2026-06-27

@@ -3,7 +3,7 @@ type: component
 path: app/components/Form/Field/
 status: active
 language: typescript
-purpose: Label + input + status wrapper used by every GAIA Form component
+purpose: Label + input + status wrapper several GAIA Form components wrap directly
 depends_on: [[Form Components]]
 created: 2026-04-20
 updated: 2026-06-24
@@ -12,11 +12,11 @@ tags: [component, forms, wrapper]
 
 # Form Field
 
-The layout shell every other Form component wraps. Renders label, children, and a status block (description, error, max-length counter).
+The layout shell several Form components wrap directly; others use its `FieldLabel` or `FieldStatus` pieces individually. Renders label, children, and a status block (description, error, max-length counter).
 
-## Why every input reaches for Field
+## Why inputs reach for Field
 
-Inputs accept `description`, `error`, `extra`, and `label`, then forward them. Field owns the layout; inputs own the control + validation wiring. This keeps each input file focused on its native HTML element and lets Field evolve independently: change the status-row layout once, every input picks it up.
+Inputs accept `description`, `error`, `extra`, and `label`, then forward them. Field owns the layout; inputs own the control + validation wiring. This keeps each input file focused on its native HTML element and lets Field evolve independently: change the status-row layout once, every consumer picks it up.
 
 ## Discriminated `type` prop
 

@@ -50,7 +50,7 @@ web-first `expect` assertion; Playwright retries until timeout.
 
 ## Hydration barrier
 
-React Router 7 SSR renders before JS hydrates. Call the hydration helper
+React Router SSR renders before JS hydrates. Call the hydration helper
 **before** any interaction:
 
 ```ts

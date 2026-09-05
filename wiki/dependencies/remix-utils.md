@@ -2,7 +2,6 @@
 type: dependency
 status: active
 package: remix-utils
-version: 9.3.1
 role: utility-belt
 created: 2026-06-25
 updated: 2026-06-25

@@ -2,7 +2,6 @@
 type: dependency
 status: active
 package: '@gaia-react/lint'
-version: 2.1.0
 role: lint-config
 created: 2026-04-27
 updated: 2026-08-29
