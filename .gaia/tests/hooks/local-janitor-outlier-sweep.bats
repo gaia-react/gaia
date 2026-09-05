@@ -529,6 +529,26 @@ copy_shipped_registry() {
   [ ! -e "$MAIN/.gaia/local/cache/spec-chain-sess123.json" ]
 }
 
+@test "MAIN-CACHE-03: the sweep 5 audit-round-cap arm reaps an aged cache/audit-rounds-*.json at MAIN's cache when invoked from a linked worktree, and keeps a fresh one" {
+  make_repo
+  MAIN="$REPO"
+  mkdir -p "$MAIN/.gaia/local/cache"
+  echo '{}' > "$MAIN/.gaia/local/cache/audit-rounds-sess-aged.json"
+  touch -t 202001010000 "$MAIN/.gaia/local/cache/audit-rounds-sess-aged.json"
+  echo '{}' > "$MAIN/.gaia/local/cache/audit-rounds-sess-fresh.json"
+
+  WT="$MAIN/.claude/worktrees/wt-cache3"
+  mkdir -p "$MAIN/.claude/worktrees"
+  git -C "$MAIN" worktree add -q -b wt-cache3-branch "$WT"
+  mkdir -p "$WT/.gaia/local/cache"
+
+  cd "$WT"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ ! -e "$MAIN/.gaia/local/cache/audit-rounds-sess-aged.json" ]
+  [ -f "$MAIN/.gaia/local/cache/audit-rounds-sess-fresh.json" ]
+}
+
 # --- CG-001: sweep 5's own age arm reaps the spec-session-*.lock glob -------
 
 @test "CG-001: the sweep 5 age arm reaps an aged spec-session-<id>.lock" {

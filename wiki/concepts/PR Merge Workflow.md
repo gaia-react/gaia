@@ -265,6 +265,8 @@ A usable rule names a disposition for **every** way the round can come back, inc
 
 #### The three-round session cap
 
+Machine-enforced by `.claude/hooks/block-fourth-audit-round.sh`, which denies an `Agent` dispatch of a `code-audit-*` member once this session has already dispatched three waves on this branch. A wave is identified by the acting checkout's HEAD tree: every member one dispatch spawns shares that tree, so a whole round's parallel members cost one wave, and the single hardened re-dispatch of a member that no-op'd ([[#No-op detection and retry for each dispatched member]]) costs nothing, because it carries the tree unchanged. The deny is not a merge blocker: it denies a dispatch, never `gh pr merge`, and clearance semantics are untouched.
+
 A session dispatches at most **three rounds** on a branch. A round is one dispatch wave, whatever that wave spawns: a first dispatch of every owed member is one round, and so is a later re-dispatch of the single member whose digest rotated, because what the cap bounds is this session's budget rather than the members' work. Round three's findings are fixed, committed, and pushed like any other round's; what the cap forbids is the fourth wave.
 
 The bound is on **context and cost**, not on convergence. Reading a round well means reading it against what the earlier rounds said, and by the fourth the session holds three reports plus the whole repair history in a context it is about to compact, paying audit rates to reason from a transcript it can no longer see straight. Left alone the loop has no stop of its own, because every round it dispatches produces the fixes that buy the next one, and unattended that is unbounded spend. It is the same failure [[#When rounds stop: pre-commit a disposition for every branch]] describes, answered with a bound rather than a judgement, because the judgement gets made mid-loop by the session least able to make it.
@@ -286,6 +288,8 @@ The cap binds the work, not the transcript. Continuing this branch's rounds insi
 That prompt is the whole handoff. It lands in a session that can see none of this one's scrollback, so it carries its own context instead of referring to it: the PR number, the branch and its base, that three rounds are already spent, where the re-run carry-forward ledger sits (`.gaia/local/audit/<AUDIT_KEY>.rerun.json`) and that the fixer reads `remaining[]` and `fixed_last_round[]` from it, what each round fixed, which findings are accepted residuals already recorded in the PR body, and an instruction to re-read this page and resume at step 1. Fence it so it pastes as one unit.
 
 The count is per session, not per branch, so the resuming session starts a fresh three. A branch that genuinely needs six rounds gets them, three at a time, each read by a session with the room to read them.
+
+`/clear` releases the count for the next session, the same sanctioned handoff described above: a human resumes by typing `/clear` and pasting the continuation prompt, and that reset is what lets the resuming session start its fresh three. Compaction does not release it, deliberately: releasing it there would reset the guard at the exact point described above, where the session holds the whole repair history in a context it is about to compact. There is no override flag: when a fourth round is genuinely warranted, the fresh session above is the sanctioned path, not a workaround.
 
 #### Cross-remit findings
 
