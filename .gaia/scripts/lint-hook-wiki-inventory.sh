@@ -107,8 +107,10 @@ hook_commands() {
 # one, so the empty-set arm in main cannot see it, which is exactly the
 # discovery-stage fail-open `.claude/rules/guards-must-fail.md` names. Every
 # registration in this tree is flat under `.claude/hooks/` today, so the class
-# is armed against the shape rather than against a live instance; the size
-# check in main is the fail-closed backstop for the spellings no regex reads.
+# is armed against the shape rather than against a live instance; the
+# unreadable-spelling arm in main is the fail-closed backstop for a command
+# this pattern cannot read at all, and it reaches no further than that (see
+# the limit stated at that arm).
 registered_hooks() {
   local root="$1"
   hook_commands "$root" |
@@ -198,28 +200,36 @@ main() {
     return 2
   fi
 
-  # The expected-SIZE half, and it is a different assertion from the non-empty
-  # half above rather than a stronger spelling of it. A registration whose
-  # command the name regex cannot read is dropped silently and individually: the
-  # set is short rather than empty, so the arm above stays satisfied and the
-  # check reports clean over a hook the page may never mention. Count the
-  # commands that name the directory at all, with a fixed-string match that
-  # depends on no path grammar, and refuse to answer when fewer distinct names
-  # came back than there are commands to have produced them.
+  # The UNREADABLE-SPELLING arm, a different assertion from the non-empty half
+  # above rather than a stronger spelling of it. A registration whose command
+  # the name pattern cannot read is dropped silently and individually: the set
+  # is short rather than empty, so the arm above stays satisfied and the check
+  # reports clean over a hook the page may never mention.
   #
-  # Distinct names can legitimately be FEWER than commands, because one hook
-  # registered on several events contributes one name per registration, so the
-  # comparison is against the count of distinct commands rather than of all of
-  # them. What it catches is a command that yielded no name at all.
-  local cmd_total name_total
-  cmd_total="$(hook_commands "$root" | sort -u | grep -c .)"
-  name_total="$(grep -c . <"$LIST_FILE")"
-  if [ "$cmd_total" -gt "$name_total" ]; then
-    printf '%s: %s registers %s distinct command(s) naming .claude/hooks/ but only %s hook name(s) could be read out of them.\n' \
-      "$PROG" "$SETTINGS" "$cmd_total" "$name_total" >&2
-    printf 'A registration spelling this check cannot parse is dropped silently, so it refuses\n' >&2
-    printf 'rather than compare a short set against the page. Teach registered_hooks the new\n' >&2
-    printf 'spelling rather than leaving it to match nothing.\n' >&2
+  # Ask the question directly, per command, rather than comparing set sizes.
+  # A count comparison answers a different question than it appears to: one hook
+  # registered on several events with any difference in command text (an added
+  # argument, a redirect, a wrapper) is several distinct commands and one name,
+  # so the counts differ with nothing wrong and the refusal tells the reader to
+  # teach this function a spelling it read correctly. Selecting the commands
+  # that yielded no name is exact in this direction and needs no reasoning about
+  # duplicate registrations at all.
+  #
+  # What it reaches, stated so the comment is not read as more: a command from
+  # which NO name could be read. A single command naming two hooks, only one of
+  # them readable, still yields a name and passes here, so its unreadable half
+  # stays invisible. No count-based or per-command presence test reaches that
+  # shape; only parsing every name out of every command would, and every
+  # registration in this tree names exactly one hook.
+  local unreadable
+  unreadable="$(hook_commands "$root" | grep -vE '\.claude/hooks/[A-Za-z0-9_./-]+\.sh')"
+  if [ -n "$unreadable" ]; then
+    printf '%s: %s registers a hook command naming .claude/hooks/ from which no hook name could be read:\n' \
+      "$PROG" "$SETTINGS" >&2
+    printf '%s\n' "$unreadable" | sed -e 's/^/  /' >&2
+    printf 'A spelling this check cannot parse is dropped silently, so it refuses rather than\n' >&2
+    printf 'compare a short set against the page. Teach registered_hooks the new spelling\n' >&2
+    printf 'rather than leaving it to match nothing.\n' >&2
     return 2
   fi
 

@@ -163,12 +163,12 @@ write_inventory() {
   [ "$status" -eq 0 ]
 }
 
-@test "a registration whose command the name regex cannot read exits 2 rather than comparing a short set" {
+@test "a command from which no hook name can be read exits 2 rather than comparing a short set" {
   local dir
   dir="$(make_fixture unreadable_spelling)"
-  # Two distinct commands naming the directory; the second carries a character
-  # the name class does not model, so it yields no name at all. That is the
-  # silent partial drop the size check exists to refuse: the set is short
+  # Two commands naming the directory; the second carries a character the name
+  # class does not model, so it yields no name at all. That is the silent
+  # partial drop the unreadable-spelling arm exists to refuse: the set is short
   # rather than empty, so the non-empty arm alone stays satisfied.
   {
     printf '{\n  "hooks": {\n    "PreToolUse": [\n'
@@ -186,15 +186,44 @@ write_inventory() {
 
   run bash "$CHECK" "$dir"
   [ "$status" -eq 2 ]
-  grep -qF -- 'could be read out of them' <<<"$output"
+  grep -qF -- 'no hook name could be read' <<<"$output"
+  # The refusal names the offending command, so the fixer does not have to find
+  # it by re-reading the whole registration set.
+  grep -qF -- 'weird name.sh' <<<"$output"
 }
 
-@test "one hook registered on several events is not mistaken for an unreadable spelling" {
+@test "the same hook registered on several events with differing command text is not mistaken for an unreadable spelling" {
+  local dir
+  dir="$(make_fixture repeated_registration_differing)"
+  # The discriminating case, and the one an aggregate count gets wrong: two
+  # commands that differ in text, both readable, yielding one name. A size
+  # comparison sees 2 commands against 1 name and refuses; the per-command test
+  # asks whether each command yielded a name, both did, and this passes.
+  {
+    printf '{\n  "hooks": {\n    "PreToolUse": [\n'
+    printf '      {\n        "matcher": "Bash",\n        "hooks": [\n'
+    printf '          {\n            "type": "command",\n'
+    printf '            "command": "\\"$(git rev-parse --show-toplevel)/.claude/hooks/alpha.sh\\""\n'
+    printf '          }\n        ]\n      }\n'
+    printf '    ],\n    "PostToolUse": [\n'
+    printf '      {\n        "matcher": "Bash",\n        "hooks": [\n'
+    printf '          {\n            "type": "command",\n'
+    printf '            "command": "\\"$(git rev-parse --show-toplevel)/.claude/hooks/alpha.sh\\" --strict"\n'
+    printf '          }\n        ]\n      }\n'
+    printf '    ]\n  }\n}\n'
+  } >"$dir/$SETTINGS_REL"
+  write_inventory "$dir" alpha.sh
+
+  run bash "$CHECK" "$dir"
+  [ "$status" -eq 0 ]
+}
+
+@test "the same command registered on several events is one distinct command, not a short set" {
   local dir
   dir="$(make_fixture repeated_registration)"
-  # The same hook on two events is two commands and one name. The size check
-  # compares against DISTINCT commands for exactly this reason, so this must
-  # pass rather than red as a short set.
+  # Byte-identical command text on two events. Kept alongside the differing-text
+  # case above rather than replaced by it: this is the shape that reaches the
+  # check today, and the two exercise different halves of the question.
   {
     printf '{\n  "hooks": {\n    "PreToolUse": [\n'
     printf '      {\n        "matcher": "Bash",\n        "hooks": [\n'

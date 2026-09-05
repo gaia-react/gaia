@@ -608,8 +608,10 @@ fi
 # the root explicitly rather than resolving one ambiently: it reads two fixed
 # paths and needs neither a working checkout nor git on PATH to compare them,
 # and this harness already holds the value its argument-free arm would re-derive.
+# Hence no `cd` and no subshell either, unlike the siblings above, whose
+# tracked-file discovery genuinely needs the working directory.
 echo "--> lint-hook-wiki-inventory (a registered hook absent from the bundled-hooks inventory)"
-if ! (cd "$REPO_ROOT" && bash "$REPO_ROOT/.gaia/scripts/lint-hook-wiki-inventory.sh" "$REPO_ROOT"); then
+if ! bash "$REPO_ROOT/.gaia/scripts/lint-hook-wiki-inventory.sh" "$REPO_ROOT"; then
   status=1
 fi
 
