@@ -25,7 +25,7 @@ The end-to-end path of a form submission in GAIA.
    - Returns `dataWithToast(...)` from `remix-toast` for an inline toast
 6. Conform binds errors back to fields automatically.
 
-This is the recommended template pattern. No shipped route action implements it; the live working examples are the `InputEmail`, `InputPassword`, and `YearMonthDay` Storybook stories under `app/components/Form/`. The one shipped action, `app/routes/actions+/set-language.ts`, validates with plain `z.safeParse` rather than `parseWithZod`/`submission.reply()`.
+This is the recommended template pattern. No shipped route action implements it; the live working examples are the `InputEmail`, `InputPassword`, and `YearMonthDay` Storybook stories under `app/components/Form/`. The shipped route actions (`app/routes/actions+/set-language.ts`, `app/routes/resources+/theme-switch.tsx`) validate with plain `z.safeParse` rather than `parseWithZod`/`submission.reply()`.
 
 ## Stateful custom inputs
 

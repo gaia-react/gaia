@@ -28,7 +28,7 @@ The `composeStory` pattern means integration tests and visual regression share o
 
 ## Vitest
 
-Config at `vitest.config.ts`. Looks for `*.test.{ts,tsx}` anywhere in `app/`. Runs against `happy-dom`.
+Config at `vitest.config.ts`; see its `test.include` for the covered directories. Runs against `happy-dom`.
 
 > [!warning] Never run bare `pnpm test` in CI
 > Bare `pnpm test` enters watch mode and never exits. Use `pnpm test --run`. See [[Test Runner]].
@@ -44,7 +44,7 @@ Always use Storybook stories with `composeStory`. Never manually mock framework 
 
 ### a11y scanning
 
-The shipped e2e specs are axe-core a11y scans. `.playwright/a11y.ts` exports `expectNoSeriousA11yViolations(page, testInfo, options?)`: critical and serious violations fail the test; moderate and minor violations attach as an `axe-advisory.json` and surface via `console.warn`. `.playwright/fixtures.ts` exposes the `makeAxeBuilder` fixture (WCAG 2.0/2.1 A and AA tags) for custom scans.
+Most shipped e2e specs are axe-core a11y scans; others cover hydration errors and render-performance smoke. `.playwright/a11y.ts` exports `expectNoSeriousA11yViolations(page, testInfo, options?)`: critical and serious violations fail the test; moderate and minor violations attach as an `axe-advisory.json` and surface via `console.warn`. `.playwright/fixtures.ts` exposes the `makeAxeBuilder` fixture (WCAG 2.0/2.1 A and AA tags) for custom scans.
 
 ### Cold-start hydration self-heal
 

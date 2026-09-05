@@ -25,7 +25,7 @@ When authoring or editing any file under `.claude/`:
 - Cross-file dispatches in a skill or command: ``Read `.claude/instructions/add-locale.md` ``.
 - Shell commands (`rm`, `grep`, `find`): repo-relative paths, they resolve from the agent's pwd which is the project root.
 - Self-delete steps: `rm .claude/instructions/<file>.md`.
-- Verification commands: prefer the package-script form (`pnpm typecheck`, `pnpm lint`) over `pnpm -C <path>` because `-C` requires an absolute path.
+- Verification commands: prefer the package-script form (`pnpm typecheck`, `pnpm lint`) over `pnpm -C <path>`; the script names the target without a path at all.
 - Discovery `grep` commands: paths like `app`, `test`, `wiki`, `.claude`, no leading slash.
 
 If a path absolutely must be unambiguous (rare), derive root dynamically:

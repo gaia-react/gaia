@@ -2,7 +2,6 @@
 type: dependency
 status: active
 package: spec-kit
-version: v0.8.5
 role: spec-authoring-engine
 created: 2026-05-06
 updated: 2026-06-24
@@ -36,11 +35,11 @@ uvx --from "git+https://github.com/github/spec-kit.git@v0.8.5" specify preset ad
 
 - `/gaia-spec`: Socratic discovery wrapper (see [[GAIA Spec]]). The user-facing entry point.
 - `/speckit.specify`: invoked by the wrapper. Direct invocation also works in a GAIA project; the GAIA preset still produces GAIA-shaped artifacts.
-- `/speckit.clarify`: not invoked by the wrapper. `/gaia-spec` runs GAIA's own Socratic loop instead. A direct `/speckit.clarify` invocation still works but is not part of the `/gaia-spec` flow.
+- `/speckit.clarify`: replaced outright by the GAIA preset (`strategy: replace`), so a direct invocation redirects into `/gaia-spec`, which runs GAIA's own Socratic clarify loop.
 
 ## Architecture
 
-GAIA distributes a spec-kit **extension** at `.specify/extensions/gaia/` (declares the `speckit.gaia.spec` wrapper plus five hook-target commands, `constitution-check`, `self-review`, `lint`, `uat-write`, `wiki-promote`, and the unhooked `spec-close` lifecycle command) and a **preset** at `.specify/presets/gaia/` (replaces `speckit.specify` under `strategy: wrap` and replaces `spec-template`). Both are GAIA-internal: not published to spec-kit's catalog; distribution is via the GAIA template.
+GAIA distributes a spec-kit **extension** at `.specify/extensions/gaia/` (see `extension.yml` for the full command list) and a **preset** at `.specify/presets/gaia/` (see `preset.yml` for what it replaces). Both are GAIA-internal: not published to spec-kit's catalog; distribution is via the GAIA template.
 
 The extension also automates the implement half of the SPEC lifecycle: the `before_implement` hook (`uat-write`) renders the active SPEC's PO-authored UATs into Playwright e2e specs at `.playwright/e2e/spec-NNN/` before `/speckit-implement` edits source, and the `after_implement` hook (`wiki-promote`) promotes merged SPEC content into the wiki on `/speckit-implement` completion. The unhooked `spec-close` command closes a SPEC after its PR merges, optionally draining a deferred wiki-promote, then prompting to archive, delete, or keep the local SPEC artifact.
 

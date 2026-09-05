@@ -2,7 +2,6 @@
 type: dependency
 status: active
 package: i18next
-version: 26.3.1
 role: i18n-core
 created: 2026-04-20
 updated: 2026-06-24

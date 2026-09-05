@@ -2,7 +2,6 @@
 type: dependency
 status: active
 package: '@playwright/test'
-version: 1.61.0
 role: e2e-testing
 created: 2026-04-20
 updated: 2026-06-24

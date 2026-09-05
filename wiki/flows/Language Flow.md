@@ -15,7 +15,7 @@ How a user's language preference flows through the request lifecycle.
    - `getLanguage(context)` reads the resolved language
    - Sets the `lng` cookie via `languageCookie.serialize(language)` so the choice survives the redirect
    - Renders `<html lang={i18n.language}>` so the client can pick up the SSR language
-3. **Client init** (`app/entry.client.tsx`): i18next inits with `initReactI18next` + `LanguageDetector`, `detection: {caches: [], order: ['htmlTag']}`, and `ns: getInitialNamespaces()`, so the client reads the language from the `<html lang>` attribute rather than the cookie or navigator. The `App` effect then calls `i18n.changeLanguage(language)` to keep client-side i18next in sync on navigation.
+3. **Client init** (`app/entry.client.tsx`): i18next inits with `initReactI18next` + `LanguageDetector`, `detection: {caches: [], order: ['htmlTag']}`, and `ns: Object.keys(i18n.resources[DEFAULT_LOCALE])`, so the client reads the language from the `<html lang>` attribute rather than the cookie or navigator. The `App` effect then calls `i18n.changeLanguage(language)` to keep client-side i18next in sync on navigation.
 4. **Switcher**: `LanguageSelect` component → `POST /actions/set-language` (`app/routes/actions+/set-language.ts`) validates the language and `redirectUrl`, sets the `lng` cookie, and returns a `replace()` redirect to that URL so loaders rerun with the new language.
 
 API requests that need the resolved language pass it per call via the `language` request option; there is no global API language state. See [[API Service Pattern]].

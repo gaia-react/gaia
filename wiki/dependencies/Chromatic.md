@@ -2,7 +2,6 @@
 type: dependency
 status: active
 package: chromatic
-version: 17.7.2
 role: visual-regression
 created: 2026-04-20
 updated: 2026-07-07
@@ -26,7 +25,7 @@ Visual regression service that consumes Storybook stories. Runs in CI via `.gith
 The `.github/workflows/chromatic.yml` workflow triggers on every `push` but does not always run Chromatic:
 
 - Commits whose subject matches `chore(deps):` or `chore(deps-dev):` short-circuit (dep-bump PRs run the quality gate locally before pushing).
-- A `paths-filter` allowlists Storybook-affecting changes (`app/**`, `.storybook/**`, `public/**`, `package.json`, `pnpm-lock.yaml`, `tsconfig*.json`, `vite.config.*`, and the workflow file). Pushes touching nothing on the list report the required check green without running Chromatic.
+- A `paths-filter` allowlists Storybook-affecting paths; see the `code:` filter block in `.github/workflows/chromatic.yml` for the current list. Pushes touching nothing on the list report the required check green without running Chromatic.
 
 ## Preview publishes no environment values
 

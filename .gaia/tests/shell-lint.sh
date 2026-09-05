@@ -13,7 +13,10 @@
 # (.gaia/scripts/lint-stale-cardinals.sh), the guard-rule shell-coverage
 # guard (.gaia/scripts/lint-guard-rule-shell-coverage.sh), the collapsed
 # signal-trap guard (.gaia/scripts/lint-collapsed-signal-trap.sh), and the
-# bundled-hooks inventory guard (.gaia/scripts/lint-hook-wiki-inventory.sh).
+# bundled-hooks inventory guard (.gaia/scripts/lint-hook-wiki-inventory.sh),
+# the wiki cached-version guard (.gaia/scripts/lint-wiki-cached-version.sh),
+# and the hook advisory-classification guard
+# (.gaia/scripts/lint-hook-advisory-classification.sh).
 # Exit 0 when clean, 1 on any finding at or above the severity floor, and 1 on
 # a pass that cannot run at all (no shellcheck binary, an empty *.sh discovery
 # set, an unusable bash-3.2 interpreter). A red gate is therefore not always a
@@ -612,6 +615,26 @@ fi
 # tracked-file discovery genuinely needs the working directory.
 echo "--> lint-hook-wiki-inventory (a registered hook absent from the bundled-hooks inventory)"
 if ! bash "$REPO_ROOT/.gaia/scripts/lint-hook-wiki-inventory.sh" "$REPO_ROOT"; then
+  status=1
+fi
+
+# Two guards over wiki prose that caches a fact the tree already answers. They
+# ride here for the reason the inventory guard above does: neither subject is
+# shell, and this harness is the folded home for every guard shellcheck cannot
+# model. Their arming lines are already on the `Shell Lint` paths filter --
+# `**/*.md` for the pages, `**/*.sh` for the hook bodies the classification
+# oracle reads, and `.claude/settings.json` for the registrations it reads them
+# through -- so neither needed a filter entry of its own.
+#
+# Both take the root explicitly rather than resolving one ambiently, so neither
+# needs a subshell or a `cd`.
+echo "--> lint-wiki-cached-version (a hand-kept version in wiki frontmatter)"
+if ! bash "$REPO_ROOT/.gaia/scripts/lint-wiki-cached-version.sh" "$REPO_ROOT"; then
+  status=1
+fi
+
+echo "--> lint-hook-advisory-classification (a blocking hook filed under an Advisory heading)"
+if ! bash "$REPO_ROOT/.gaia/scripts/lint-hook-advisory-classification.sh" "$REPO_ROOT"; then
   status=1
 fi
 

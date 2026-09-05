@@ -38,11 +38,11 @@ For the current full rule list, query Serena or list `.claude/rules/`.
 
 ## Hooks: wired through `settings.json`
 
-Hooks are bash scripts wired through `.claude/settings.json`. The set covers four event types:
+Hooks are bash scripts wired through `.claude/settings.json`. See its `hooks` keys for the covered event types.
 
 ### Blocking hooks (deny risky actions)
 
-These are the load-bearing safety net. They block the action outright and return a message:
+This section describes the load-bearing ones; see [[Claude Hooks]] for the full bundled-hook inventory:
 
 - `block-env-write.sh`: denies writes to `.env` / `.env.*` (allows `.env.example`). Local secrets must stay gitignored.
 - `block-env-read.sh`: the whole tool-tier read guard for `.env` and every `.env.<env>` variant (`.env.local`, `.env.production`), covering the Read tool, the Grep tool's `path` and `glob`, and Bash readers, sourcing, redirection, and bare `env`/`printenv` dumps; allows `.env.example`. Heuristic defense-in-depth, not a sandbox. Registered on the `Read`, `Grep`, and `Bash` matchers.
@@ -58,12 +58,12 @@ These are the load-bearing safety net. They block the action outright and return
 - `red-verify-commit-check.sh`: denies `git commit` when a new-at-HEAD test that now passes has no recorded failing (RED) run matching its current content. The sibling `capture-red-observations.sh` (PostToolUse) records REDs at test-run time; this enforces them at commit, the mechanical-TDD RED-before-GREEN gate.
 - `worthiness-presence-check.sh`: denies `gh pr merge` when an emergent test the PR changed has no worthiness-ledger line matching its current content (see the worthiness-evaluator agent below).
 - `serena-code-search-guard.sh`: denies a bare-identifier symbol search scoped to `app/**`/`test/**` TS/TSX, whether it arrives through the `Grep` tool or as a single `grep`/`rg`/`ag` through `Bash`, routing it to Serena's symbol tools instead; re-running the identical search passes. No-ops without a registered Serena MCP server and a `tsconfig.json`. See [[Serena Integration]].
+- `pr-merge-audit-check.sh`: denies `gh pr merge` until every dispatched Code Audit Team member has written its clearance marker under `.gaia/local/audit/`. See [[PR Merge Workflow]].
 
 ### Advisory hooks (nudge, don't block)
 
 - `check-i18n-strings.sh`: reminds to use `t()` for user-facing strings in pages/components
 - `check-story-exists.sh`: reminds to add a Storybook story for new components
-- `pr-merge-audit-check.sh`: reminds to run `code-review-audit` before merging. See [[PR Merge Workflow]].
 
 ### Wiki coherence (a layered system)
 
@@ -86,7 +86,7 @@ A linked worktree's `.gaia/local` is one symlink to the main checkout's (see [[W
 
 ## Agents
 
-[[Code Review Audit Agent]] runs automatically before every PR merge (per [[PR Merge Workflow]]). After its own pass over security / performance / smells / architecture / robustness / maintainability, it dispatches up to three file-scope-gated specialist subagents (React patterns when `.tsx` files changed, TypeScript & architecture when `.ts`/`.tsx` changed, translation when `t(` / `useTranslation` is present) in parallel from a single tool call, alongside the deterministic oracles `react-doctor`, `pnpm knip`, and `pnpm audit`. A subagent with no matching files is skipped.
+[[Code Review Audit Agent]] runs automatically before every PR merge (per [[PR Merge Workflow]]). The pre-merge gate is a multi-member Code Audit Team, not one agent: resolve the dispatched members with `bash .gaia/scripts/resolve-audit-spawn.sh` and spawn each one it names. See [[PR Merge Workflow]] for the dispatch and clearance mechanics.
 
 Pre-seeded with GAIA's architecture knowledge. Durable findings belong in the wiki (`wiki/concepts/Code Review Audit Agent.md` and adjacent pages). The `.claude/agent-memory/` path is a gitignored scratch path (created on demand under a per-agent subdir such as `code-review-audit/`), not a source of truth.
 
@@ -94,18 +94,13 @@ Pre-seeded with GAIA's architecture knowledge. Durable findings belong in the wi
 
 ## Skills
 
-`.claude/skills/` holds these groups:
+`.claude/skills/` holds workflow, scaffolder, context-triggered, and maintainer-only skills; see [[Claude Skills]] for the full grouped table, or list the folder directly for the current inventory.
 
-- **Standalone GAIA workflows**: `gaia-handoff`, `gaia-pickup`, `gaia-wiki`
-- **Scaffolders**: `new-component`, `new-hook`, `new-route`, `new-service`, `update-deps`, `update-gaia`
-- **Context-triggered**: `a11y-fixes`, `eslint-fixes`, `playwright-cli`, `react-code`, `skeleton-loaders`, `tailwind`, `tdd`, `typescript`
-- **Maintainer-only**: `release-notes`
-
-The workflow and scaffolder skills are user-invoked. Context-triggered skills activate automatically when their `description:` matches the user's intent (`a11y-fixes` resolves axe-core accessibility violations from Vitest / Playwright / the code-review-audit a11y bucket). See [[Claude Skills]] for the full grouped table; for the current file inventory, query Serena.
+Workflow and scaffolder skills are user-invoked. Context-triggered skills activate automatically when their `description:` matches the user's intent (`a11y-fixes` resolves axe-core accessibility violations from Vitest / Playwright / the `code-audit-frontend` agent's a11y bucket).
 
 ## settings.json
 
-Registers PreToolUse hooks on `Edit|Write|MultiEdit`, `Bash`, `Grep`, and `Read` matchers; PostToolUse hooks on `Bash` (`wiki-commit-nudge.sh`, `capture-red-observations.sh`) and on `EnterWorktree` (`provision-worktree.sh`); UserPromptSubmit, PostCompact (`wiki-recompact-sentinel.sh`), and SessionStart / Stop wiki-coherence hooks. It registers no `WorktreeCreate` and no `WorktreeRemove` hook: the harness owns worktree creation and removal natively, under the same `.claude/worktrees/<name>/` layout, and the branch it cuts is named `worktree-<name>` with every `/` in `<name>` written as `+`. Worktree *provisioning* is a separate concern from creation, and it is GAIA's: `provision-worktree.sh` runs on session start and on worktree entry, re-links the shared state the registry declares and regenerates the worktree's typed routes, and is idempotent, so a worktree with broken links, or one made by a plain `git worktree add`, repairs itself on the next entry. Provisioning on entry rather than at creation is what lets it reach a worktree GAIA had no hand in making. Sets `env.CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` and a `statusLine` command, and enables the `typescript-lsp@claude-plugins-official` plugin. Serena MCP is registered user-globally with the `claude-code` context and `--project-from-cwd` auto-activation (`claude mcp add serena -s user`), not in this file (see [[Serena Integration]]).
+Registers PreToolUse and PostToolUse hooks across several matchers (see `.claude/settings.json` for the current set), plus UserPromptSubmit, PostCompact (`wiki-recompact-sentinel.sh`), and SessionStart / Stop wiki-coherence hooks. It registers no `WorktreeCreate` and no `WorktreeRemove` hook: the harness owns worktree creation and removal natively, under the same `.claude/worktrees/<name>/` layout, and the branch it cuts is named `worktree-<name>` with every `/` in `<name>` written as `+`. Worktree *provisioning* is a separate concern from creation, and it is GAIA's: `provision-worktree.sh` runs on session start and on worktree entry, re-links the shared state the registry declares and regenerates the worktree's typed routes, and is idempotent, so a worktree with broken links, or one made by a plain `git worktree add`, repairs itself on the next entry. Provisioning on entry rather than at creation is what lets it reach a worktree GAIA had no hand in making. Sets `env.CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` and a `statusLine` command, and enables the `typescript-lsp@claude-plugins-official` plugin. Serena MCP is registered user-globally with the `claude-code` context and `--project-from-cwd` auto-activation (`claude mcp add serena -s user`), not in this file (see [[Serena Integration]]).
 
 `permissions.allow` covers routine git / gh / pnpm operations plus scoped edits for `.claude/**`, `.gaia/**`, `wiki/**`, and `CHANGELOG.md`. `permissions.deny` covers `.env` writes (`Edit(.env)`), `pnpm-lock.yaml` writes, `.husky/_/**` internals, force-push variants on `main`/`master`, and `git reset --hard HEAD~*`. It carries no `Read()` rule: any such rule arms a bypass-immune approval breaker on every search and copy command, so read-side denial lives in the hook layer and, for sandboxed subprocesses, in `sandbox.filesystem.denyRead`. `Edit(<glob>)` is the write-side rule form: the file permission checks match only `Read(path)` and `Edit(path)` rules, and an `Edit` rule covers every file-editing tool (Write, Edit, MultiEdit, NotebookEdit), so a `Write(<glob>)` rule is accepted, never matched, and draws a startup warning naming the settings file it sits in. `block-env-read.sh` and `block-secrets-read.sh` deliver the whole tool tier, as heuristic defense-in-depth, not a sandbox. The OS-level sandbox is the tier that reaches an arbitrary subprocess, and GAIA declares its read boundary in `sandbox.filesystem.denyRead` rather than leaning on a permission rule to merge into it; those entries stay inert until a machine enables the sandbox, which GAIA does not do by default. Both permission lists are alphabetized; path globs are repo-relative (no leading `/`).
 

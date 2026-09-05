@@ -2,7 +2,6 @@
 type: dependency
 status: active
 package: 'react-icons'
-version: 5.6.0
 role: icons
 created: 2026-05-01
 updated: 2026-06-24
@@ -11,7 +10,7 @@ tags: [dependency, icons]
 
 # react-icons
 
-Icon library providing thousands of icons as React components. GAIA uses `react-icons/io5` (Ionicons 5) for UI icons and `react-icons/fa6` (Font Awesome 6) for brand icons.
+Icon library providing thousands of icons as React components. GAIA uses `react-icons/io5` (Ionicons 5) for icons.
 
 ## Usage
 
@@ -36,7 +35,6 @@ const Icon = icon;
 | Package           | Purpose                                       | Example                                      |
 | ----------------- | --------------------------------------------- | -------------------------------------------- |
 | `react-icons/io5` | UI icons (search, close, info, warning, etc.) | `IoSearch`, `IoClose`, `IoInformationCircle` |
-| `react-icons/fa6` | Brand icons (GitHub, etc.)                    | `FaGithub`                                   |
 
 ## Why react-icons
 

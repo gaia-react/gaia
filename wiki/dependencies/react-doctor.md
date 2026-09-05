@@ -2,7 +2,6 @@
 type: dependency
 status: active
 package: react-doctor
-version: latest (npx, not a project dependency)
 role: react-quality-scanner
 created: 2026-06-23
 updated: 2026-07-02

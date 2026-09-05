@@ -2,7 +2,6 @@
 type: dependency
 status: active
 package: zod
-version: 4.4.3
 role: schema-validation
 created: 2026-04-20
 updated: 2026-06-24

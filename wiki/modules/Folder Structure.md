@@ -15,7 +15,6 @@ tags: [module, structure]
 
 | Folder             | Concern                                    | Wiki page      |
 | ------------------ | ------------------------------------------ | -------------- |
-| `assets/`          | Global images / svgs                       | -              |
 | `components/`      | Shared UI components                       | [[Components]] |
 | `hooks/`           | Global custom hooks                        | [[Hooks]]      |
 | `languages/`       | TypeScript-based i18n strings              | [[i18n]]       |
