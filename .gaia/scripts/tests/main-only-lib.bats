@@ -1,8 +1,8 @@
 #!/usr/bin/env bats
 #
 # Conformance suite for .gaia/scripts/main-only-lib.sh (task 5.3): the shared
-# main-only-flow refusal helper /update-gaia, /update-deps, and /gaia-release
-# source instead of each carrying its own copy-pasted detection.
+# main-only-flow refusal helper the classified flows source instead of each
+# carrying its own copy-pasted detection. CALL_SITE_FILES below is the roster.
 #
 # Run under bash 5 (bash 3.2's `[[ ]]` skip-under-set-e gap is real; see
 # .claude/rules/bats-assertions.md): `source .gaia/scripts/bats5.sh && bats5
@@ -192,8 +192,8 @@ gaia_refuse_if_worktree "/update-gaia" my_state
 
 # ---------- as the call sites actually invoke it ----------
 #
-# Every test above sources $LIB by ABSOLUTE path under bash. The three call
-# sites do neither: they are markdown blocks an agent runs through its shell
+# Every test above sources $LIB by ABSOLUTE path under bash. The call sites
+# do neither: they are markdown blocks an agent runs through its shell
 # tool, so the sourcing shell is that machine's login shell (zsh on a stock
 # Mac, not bash as a settings.json-registered hook gets), and the line they run
 # is the repo-relative `. .gaia/scripts/main-only-lib.sh` from a checkout root.
@@ -324,15 +324,21 @@ CALL_SITE_FLOW_NAMES=(
 # plan execution the moment the flow enters the worktree it just created.
 #
 # distribution-audit joins them on a different warrant, and one worth stating
-# because the refusal did sit on it. main-only-lib.sh's own docblock scopes
-# the refusal to flows that write `.gaia/VERSION`, a lockfile, or cache state
-# and open or drive a PR. /distribution-audit does none of those: it writes
-# `.gaia/manifest.json` and `.gaia/release-exclude`, git-tracked branch-scoped
-# files a linked worktree isolates correctly. Meanwhile the `gh pr create`
-# distribution pre-flight demands that answer land on the worktree's own
-# branch, which the main checkout cannot supply, so a refusal here made the
-# hook's own remediation unfollowable. The release path's main-only property
-# is enforced at /gaia-release's own call site above, not here.
+# because the refusal did sit on it. What decides it is what the flow writes:
+# /distribution-audit writes `.gaia/manifest.json` and `.gaia/release-exclude`,
+# git-tracked branch-scoped files a linked worktree isolates correctly, and it
+# writes nothing under `.gaia/local`, so a worktree run collides with no shared
+# state. Meanwhile the `gh pr create` distribution pre-flight demands that
+# answer land on the worktree's own branch, which the main checkout cannot
+# supply, so a refusal here made the hook's own remediation unfollowable. The
+# release path's main-only property is enforced at /gaia-release's own call
+# site above, not here.
+#
+# Deliberately not resting that on main-only-lib.sh's docblock, which reads as
+# the criterion and is not one: three flows above (/gaia-serena-sync,
+# /gaia-react-perf, /gaia-fitness) carry the refusal while matching none of the
+# limbs it names. CALL_SITE_FILES is the roster; the docblock records the
+# original motivating case.
 NO_CALL_SITE_FILES=(
   ".claude/commands/distribution-audit.md"
   ".claude/commands/gaia-plan.md"
