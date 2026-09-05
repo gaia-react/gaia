@@ -851,6 +851,27 @@ jobs:
       # install different things for different reasons.
       - if: matrix.shard == 'concurrency' && (steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch')
         name: Setup Node and install both workspaces
+        # Sized for fast failure and honest attribution, the same reasoning the
+        # apt step above states at length, and NOT sized to the leg. Every
+        # gaia-setup-node step in this job carries this same cap: they differ
+        # in how much they install, but what a cap buys here is a bound on a
+        # STALLED registry fetch or Node tarball download, and a stall does
+        # not care which workspace it was asked for.
+        #
+        # Five minutes is measured rather than estimated. Across recent CI
+        # runs these steps took 27-43 seconds each with the pnpm store warm,
+        # and this one, installing both workspaces, was the slowest of them
+        # every time. The cap is about seven times that, which is the margin a
+        # cold store has to fill before this fires on real work.
+        #
+        # Under the job's own 13-minute cap on purpose, and W12 in
+        # .gaia/tests/lib/audit-ci-shards.bats holds it there: a step cap at or
+        # above the job's can never fire first, so the job would red with a
+        # generic timeout naming no step, which is the attribution this exists
+        # to buy. Under it, the apt step's 6 and this 5 still sum to 11 on the
+        # legs that draw both, so whichever one hangs is killed by its own cap
+        # with the job cap still unreached.
+        timeout-minutes: 5
         uses: ./.github/actions/gaia-setup-node
         with:
           install: both
@@ -897,6 +918,9 @@ jobs:
       # suites.
       - if: contains(fromJSON('["hooks-2", "hooks-3", "hooks-4"]'), matrix.shard) && (steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch')
         name: Setup Node for the node-dependent RED suites
+        # Same cap, same reasoning as the concurrency leg's step above; W12
+        # holds every gaia-setup-node step to it.
+        timeout-minutes: 5
         uses: ./.github/actions/gaia-setup-node
         with:
           install: root
@@ -960,6 +984,9 @@ jobs:
           fi
       - if: steps.needs-cli-workspace.outputs.needed == '1'
         name: Install the CLI workspace for the floor-check suite
+        # Same cap, same reasoning as the concurrency leg's step above; W12
+        # holds every gaia-setup-node step to it.
+        timeout-minutes: 5
         uses: ./.github/actions/gaia-setup-node
         with:
           install: cli

@@ -151,6 +151,17 @@ teardown() {
 #                         EVERY job, whose `if:` mentions steps.filter.outputs.
 #   runinterp               one `<job-id>\t<step-name>` line per step whose RAW
 #                         (unnormalized) `run:` body contains a literal `${{`
+#   setupnodecaps          one
+#                         `<job-id>\t<step-name>\t<capkind>\t<cap>\t<job-cap>`
+#                         line per step that `uses:` the gaia-setup-node
+#                         composite action, across EVERY job. `capkind` reuses
+#                         cap_kind's 'int'/'missing'/'other' vocabulary; `cap`
+#                         and `job-cap` are the integers, or empty where the
+#                         corresponding kind is not 'int'. Enumerated from the
+#                         `uses:` value rather than from a list of step names,
+#                         so a call site added later is reached by
+#                         construction rather than by remembering to add it
+#                         here.
 #   aggok <job-id>         'yes' when EVERY entry in that job's own `needs:`
 #                         has some single step that both references
 #                         needs.<entry>.result (in its `run:` body or through
@@ -315,6 +326,26 @@ elif mode == 'runinterp':
             if '${{' in body:
                 name = str(step.get('name', '')) or str(step.get('uses', ''))
                 print('%s\t%s' % (jid, name))
+elif mode == 'setupnodecaps':
+    for jid, job in jobs.items():
+        job_kind = cap_kind(jid)
+        job_cap = cap_of(jid)
+        for step in job.get('steps') or []:
+            if not isinstance(step, dict):
+                continue
+            if '.github/actions/gaia-setup-node' not in str(step.get('uses', '')):
+                continue
+            name = str(step.get('name', '')) or str(step.get('uses', ''))
+            if 'timeout-minutes' not in step:
+                kind, cap = 'missing', ''
+            else:
+                value = step['timeout-minutes']
+                if isinstance(value, bool) or not isinstance(value, int):
+                    kind, cap = 'other', ''
+                else:
+                    kind, cap = 'int', str(value)
+            print('%s\t%s\t%s\t%s\t%s' % (
+                jid, name, kind, cap, '' if job_kind != 'int' else str(job_cap)))
 elif mode == 'aggok':
     require_job(rest[0])
     exit_re = re.compile(r'\bexit\s+[1-9][0-9]*\b')
@@ -1920,4 +1951,101 @@ concurrency_tree_needs_packages() {
     return 1
   }
   true
+}
+
+# W12. Every gaia-setup-node step is capped with an integer literal that fires
+# before its job's own cap.
+#
+# The apt step already carries `timeout-minutes: 6` and says why in so many
+# words -- "Sized for fast failure and honest attribution" -- so the reasoning
+# was in this file before this check was. What was missing was anything that
+# holds a NEW call site to it: W5 caps jobs and says nothing about steps, and
+# a step with no cap runs until the job's 13-minute cap fires, which reds
+# `Audit CI Tests` (a declared-required context) with a generic job-timeout
+# message rather than an error attributed to the install.
+#
+# That gap is not hypothetical. gaia-react/gaia#1762 was filed against the two
+# uncapped call sites this file then held; by the time it was drained a third
+# had been added, uncapped, in the same shape. Enumerating the sites from the
+# `uses:` value is what makes the fourth one reachable without an edit here.
+#
+# The cap must also be strictly under its job's cap. A step cap at or above
+# the job's can never fire first, so it reads as a bound while buying none of
+# the attribution that is the whole point.
+#
+# Each adversarial fixture below doctors by full-line equality on
+# `        timeout-minutes: 5`, which every one of these steps carries at the
+# same indentation, so each fixture breaks all of them at once. That is W5's
+# own fixture style and it is sufficient here: the check reports the whole set
+# and reds on any member, so breaking the set proves the same branch a single
+# member would. The eight-space indent is what keeps the pattern off the
+# four-space job-level `timeout-minutes: 5` the aggregator carries.
+
+setup_node_caps() {
+  read_wf setupnodecaps "$1"
+}
+
+@test "W12: every gaia-setup-node step declares an integer cap under its job's cap" {
+  require_yaml_parser
+  local jid name kind cap job_cap seen="" gaps=""
+  while IFS=$'\t' read -r jid name kind cap job_cap; do
+    [ -n "$jid" ] || continue
+    seen="x"
+    if [ "$kind" != "int" ]; then
+      gaps="${gaps}${jid}/${name} (${kind}); "
+      continue
+    fi
+    [ -n "$job_cap" ] || { gaps="${gaps}${jid}/${name} (job uncapped); "; continue; }
+    [ "$cap" -lt "$job_cap" ] || gaps="${gaps}${jid}/${name} (${cap}m not under the job's ${job_cap}m); "
+  done < <(setup_node_caps "$WORKFLOW")
+
+  # A guard over an empty set passes without asserting anything, and this one
+  # enumerates its subjects rather than pinning them, so an empty read is
+  # indistinguishable from "the action was renamed" unless it reds here.
+  [ -n "$seen" ] || {
+    echo "no gaia-setup-node step found in $(basename "$WORKFLOW"); this guard is reaching nothing" >&2
+    return 1
+  }
+  [ -z "$gaps" ] || { echo "uncapped or over-capped gaia-setup-node step(s): ${gaps}" >&2; return 1; }
+}
+
+@test "W12 adversarial: a gaia-setup-node step with no cap is caught" {
+  require_yaml_parser
+  local doctored="$BATS_TEST_TMPDIR/w12a.yml"
+  delete_line "$WORKFLOW" "        timeout-minutes: 5" "$doctored"
+
+  setup_node_caps "$doctored" | cut -f3 | grep -qxF 'missing' || {
+    echo "deleting the step caps did not read back as missing" >&2
+    return 1
+  }
+}
+
+@test "W12 adversarial: an expression-valued step cap is caught" {
+  require_yaml_parser
+  local doctored="$BATS_TEST_TMPDIR/w12b.yml"
+  replace_line "$WORKFLOW" "        timeout-minutes: 5" \
+    "        timeout-minutes: \${{ github.event_name }}" "$doctored"
+
+  setup_node_caps "$doctored" | cut -f3 | grep -qxF 'other' || {
+    echo "an expression-valued step cap still read as an integer" >&2
+    return 1
+  }
+}
+
+@test "W12 adversarial: a step cap at the job's own cap is caught" {
+  require_yaml_parser
+  local doctored="$BATS_TEST_TMPDIR/w12c.yml"
+  replace_line "$WORKFLOW" "        timeout-minutes: 5" "        timeout-minutes: 13" "$doctored"
+
+  local jid name kind cap job_cap over=""
+  while IFS=$'\t' read -r jid name kind cap job_cap; do
+    [ "$kind" = "int" ] || continue
+    [ -n "$job_cap" ] || continue
+    [ "$cap" -lt "$job_cap" ] || over="x"
+  done < <(setup_node_caps "$doctored")
+
+  [ -n "$over" ] || {
+    echo "raising the step caps to the job's own 13m did not read as over-capped" >&2
+    return 1
+  }
 }
