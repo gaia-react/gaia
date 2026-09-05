@@ -74,6 +74,21 @@ teardown() {
   true
 }
 
+# --- the fixture itself ------------------------------------------------------
+
+@test "setup pins the acting tree, so no case inherits the tree bats was launched from" {
+  # setup()'s cd is this file's whole answer to gaia-react/gaia#1780, and on
+  # its own it is unarmed: delete it and every case still passes from a plain
+  # checkout, which is the only environment CI runs, while a developer running
+  # from a linked worktree is back to the original red. Asserting the fixture
+  # makes that deletion visible from ANY tree.
+  #
+  # This is not the guard the note in setup() rules out. That one would have
+  # gated the assertions that red, leaving them unrun in a worktree; this
+  # leaves every case running and asserts only the tree they run in.
+  [ "$PWD" = "$REPO" ]
+}
+
 # --- path shape --------------------------------------------------------------
 
 @test "the minted path carries the audit key AND the member name" {
