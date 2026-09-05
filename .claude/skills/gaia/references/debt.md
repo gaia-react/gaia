@@ -396,7 +396,7 @@ Once the PR is up, drive it straight to merge with no confirmation prompt: the f
 Two endings look like that controlled stop and are not it. Each keeps its claim, because the work is still going somewhere:
 
 - **A `--auto` merge still queued when the poll window closes.** It is still progressing toward merge, so the claim stays in place until it resolves (below). Record the cost as at any run end, passing the `--github-*` flags, since the PR is open.
-- **A stop at the three-round session cap** (`wiki/concepts/PR Merge Workflow.md`, `#### The three-round session cap`). The third round's fixes are pushed, the PR stays open, and the work resumes in the session a human starts from the continuation prompt this run emits, so the claim stays in place. The run does not restart the loop in a subagent, a fork, or a session it starts itself to get around the cap. A fourth dispatch wave in this session, on this branch, is machine-denied by `.claude/hooks/block-fourth-audit-round.sh`, not merely prescribed here. Record the cost as at any run end, passing the `--github-*` flags, since the PR is open.
+- **A stop at the three-round session cap** (`wiki/concepts/PR Merge Workflow.md`, `#### The three-round session cap`). The third round's fixes are pushed, the PR stays open, and the work resumes in the session a human starts from the continuation prompt this run emits, so the claim stays in place. Record the cost as at any run end, passing the `--github-*` flags, since the PR is open.
 
 Resolve the PR to completion through `wiki/concepts/PR Merge Workflow.md`, read it, don't merge from memory. Follow its marker handshake; do **not** substitute a bare `gh pr merge`:
 

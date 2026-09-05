@@ -145,6 +145,15 @@ jobs:
               - '.playwright/**/*.ts'
               - '.storybook/**/*.{ts,tsx}'
               - '.gaia/**/*.ts'
+              # The bundled-hooks inventory guard reads .claude/settings.json,
+              # which nothing above matches. Registering a hook usually adds a
+              # script under .claude/hooks/ too, and `**/*.sh` arms on that, but
+              # a PR that only REGISTERS an already-present script changes
+              # settings.json alone: it would resolve `shell=false` and green the
+              # check having never compared the registration it just added
+              # against the page. The other half of that guard's surface, the
+              # page itself, is already reached by the `**/*.md` line above.
+              - '.claude/settings.json'
       # Install a pinned release binary rather than `apt-get install shellcheck`:
       # Ubuntu ships 0.9.0 while a maintainer's Homebrew ships newer, and their
       # directive parsers disagree, so an unpinned gate returns a different verdict
