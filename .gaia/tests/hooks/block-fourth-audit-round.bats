@@ -109,12 +109,39 @@ commit_change() {
 # roster_members: every code-audit-* member .gaia/audit-ci.yml's auditors:
 # block names, derived rather than hand-listed so the roster's other members
 # stay bound to this suite as the roster grows.
+#
+# It reconciles rather than merely reads, the form
+# .gaia/tests/hooks/audit-root-resolution.bats already commits over this same
+# file. A scan that recognizes one spelling of an entry answers a short read
+# and a complete one identically, and the short read is the dangerous half: the
+# one test that catches a narrowed member filter would stay green over the
+# member it never drove. So count the entries at the list indent, count the
+# `- name: X` reads, and refuse on the difference rather than returning the
+# names it happened to recognize.
 roster_members() {
   awk '
-    /^auditors:/ { on = 1; next }
-    on && /^  - name: / { print $3; next }
-    on && /^[^[:space:]]/ { on = 0 }
-  ' "$AUDIT_CI_YML"
+    /^[[:space:]]*#/ { next }
+    /^[[:space:]]*$/ { next }
+    /^auditors[[:space:]]*:/ { in_block = 1; next }
+    /^[^[:space:]]/ { in_block = 0; next }
+    !in_block { next }
+    /^[[:space:]]+-([[:space:]]|$)/ {
+      match($0, /^[[:space:]]+/)
+      indent = RLENGTH
+      if (entry_indent == 0) entry_indent = indent
+      if (indent != entry_indent) next
+      entries++
+      if ($2 == "name:" && $3 != "" && $3 !~ /^#/) names[++n] = $3
+      next
+    }
+    END {
+      if (entries != n) {
+        printf "roster_members: %s has %d auditors entr(ies) but %d readable `- name: X`; an entry this scan cannot read would silently shrink the roster\n", FILENAME, entries, n > "/dev/stderr"
+        exit 1
+      }
+      for (i = 1; i <= n; i++) print names[i]
+    }
+  ' "$1"
 }
 
 # --- Deny arm: the guard's failing state, driven deliberately ----------------
@@ -228,7 +255,13 @@ roster_members() {
 
 @test "every code-audit-* roster member counts toward the cap, not only code-audit-frontend" {
   local members
-  members=$(roster_members)
+  # Captured rather than piped into the loop: a process substitution discards
+  # roster_members' exit status, which is the whole signal when an entry is
+  # spelled in a way the scan cannot read.
+  members=$(roster_members "$AUDIT_CI_YML") || {
+    echo "roster_members could not read $AUDIT_CI_YML's auditors: block; see its message above" >&2
+    return 1
+  }
   [ -n "$members" ] || { echo "roster_members read nothing out of $AUDIT_CI_YML's auditors: block" >&2; return 1; }
 
   local m

@@ -1250,8 +1250,14 @@ fi
 # stays where it is written.
 main_cache_dir="$main_root/.gaia/local/cache"
 if [ -d "$main_cache_dir" ]; then
+  # The audit-rounds glob carries a trailing * so it reaches the counter's own
+  # atomic-write temp file as well (audit-rounds-<session>.json.XXXXXX, left
+  # behind when the writer dies between its mktemp and its mv). The state
+  # registry's entry recognizes that half, so sweep #9 above never reports it:
+  # without this reach it would be neither reaped nor surfaced, which is the
+  # inverse of the orphan the gh-artifact arm below was widened to avoid.
   find "$main_cache_dir" -maxdepth 1 -type f \( \
-      -name 'spec-chain-*.json' -o -name 'audit-rounds-*.json' \
+      -name 'spec-chain-*.json' -o -name 'audit-rounds-*.json*' \
     \) -mtime +14 -delete 2>/dev/null
 
   # cache/gh-artifact-pr*.json: mtime-only, on its own floor-clamped knob
