@@ -14,7 +14,7 @@ The gate is **repo-scoped** via `.claude/hooks/lib/repo-scope.sh`: it enforces t
 
 ## Who audits: the dispatched member set
 
-The gate is a roster, not a single agent. `bash .gaia/scripts/resolve-audit-spawn.sh` names the Code Audit Team members this diff owes an audit to, one per line, deduped and sorted, and always exits 0. Empty output carries **two** meanings, and either way it is safe to act on directly with no need to unpack which one applies: either nothing in the diff is auditable and no member is owed, or every dispatched member's own valid current-digest marker is already present, so there is nothing left to spawn. Either way `gh pr merge` proceeds with no further agent dispatch, because the oracle, not the raw dispatch resolver, is what accounts for the in-scope-but-ownerless case the merge gate still blocks on. Every member the oracle still names writes its own clearance (see Marker key below). See [[Code Audit Team]] for the roster and dispatch mechanism.
+The gate is a roster, not a single agent. `bash .gaia/scripts/resolve-audit-spawn.sh` names the Code Audit Team members this diff owes an audit to, one per line, deduped and sorted, and always exits 0. Empty output carries **two** meanings, and either way it is safe to act on directly with no need to unpack which one applies: either nothing in the diff is auditable and no member is owed, or every dispatched member's own valid current-digest marker is already present, so there is nothing left to spawn. Either way `gh pr merge` proceeds with no further agent dispatch, because the oracle, not the raw dispatch resolver, is what accounts for the in-scope-but-ownerless case the merge gate still blocks on. Both meanings hold only while the checkout you ran it in is still on the branch under review; an empty result is not a clearance signal a separate observer can read, and such a check keys on the marker body's `tree` field instead ([[#Marker key]]). Every member the oracle still names writes its own clearance (see Marker key below). See [[Code Audit Team]] for the roster and dispatch mechanism.
 
 The `code-audit-frontend` agent's own self-skip calls the oracle with `--no-carry-forward` (the flag's own name; it disables the digest-marker-presence filter and emits the unfiltered dispatch set). Its self-skip must key on "the diff does not dispatch me", never on "I was already cleared": a self-skip that read the filtered output would stand down whenever it happened to already hold a valid marker, disabling the one lever that can catch a stale or wrong filter result, spawning the member for real, whose fresh earned clearance then simply overwrites the old one. A human running the oracle by hand, or any other caller, gets the filtered (digest-marker-aware) output by default. There is no carry-forward clearance machinery behind this flag: it toggles a plain presence check, not an anchor-selection or minting step.
 
@@ -148,6 +148,8 @@ It prints one member (agent) name per line, deduped and sorted, and always exits
   Two things do **not** substitute for it. Working in the main checkout sidesteps the mismatch, because there the registry and the tree under review are the same tree, but that is a property of how a given branch chose to isolate rather than something the dispatch can rely on. And the writer's own refusal names this cause at the point of failure, which makes an already-stalled round self-clearing; naming a cause after the stall is a weaker instrument than not stalling.
 
 - **No names** → empty output means either of two different things, and either way it is safe to act on with no further spawn: no changed file is auditable, so no marker is owed, or every dispatched member's own valid current-digest marker is already present, so nothing is left to spawn. Either way `gh pr merge` clears with no audit spawn, *because* the answer came from the oracle: the oracle, not the raw dispatch resolver, is what accounts for the in-scope-but-ownerless case the merge gate still blocks on.
+
+  **Both readings assume the checkout you ran it in is still on the branch under review, and a clearance check must not assume it.** The oracle answers about the diff the acting checkout currently holds, so a checkout sitting on `main` has no diff and returns empty for a third reason entirely: nothing was audited and nothing cleared. That is indistinguishable from the two safe readings by emptiness alone, and it is reachable without anyone changing branches deliberately, a peer session's cleanup arm can move the main checkout's HEAD out from under a row mid-audit ([[#Cleanup under worktree isolation]]). So a monitor or a resume check keyed on emptiness reports CLEARED for a pull request nothing audited. **Key a clearance check on the marker body's `tree` field matching the row's own tree, never on an empty spawn set.** Emptiness is safe to act on where you already know the checkout's branch, which is the in-session merge path this section describes; it is not a clearance signal a separate observer can read.
 
 - **The oracle is absent** (an older checkout, an interrupted install) → fall back to `bash .gaia/scripts/resolve-audit-members.sh`, and treat an EMPTY result as "spawn `code-audit-frontend`" (fail-closed). Never treat an unanswerable question as "nothing owed".
 
@@ -513,9 +515,17 @@ That poll is the whole verification. A local error printed by `gh pr merge` afte
 
 Cleanup is what differs, because the two isolation modes hold the branch differently. Take the arm matching how the work is isolated; [[Task Orchestration]] covers how that choice is made.
 
+**Read what the main checkout is holding before you pick an arm.** Both arms are run from a shell in the main checkout, and only one of them moves that checkout's HEAD, so isolation mode alone does not decide which is safe:
+
+```bash
+git -C <main-checkout> rev-parse --abbrev-ref HEAD
+```
+
+Anything other than `main` means another session holds the main checkout on its own branch. Take the worktree arm and run no `git checkout` at all. This is not a hypothetical: several worktree rows can merge while a separate main-checkout row is mid-audit on its branch, and the feature-branch arm's `git checkout main` then yanks HEAD out from under it. Nothing is lost when that happens, the branch, the pull request and the working tree all survive, but the interrupted member's own tree self-check fires and its round is forfeited, which is a whole member read spent for nothing. The sharper half is quieter: with the main checkout sitting on `main`, `resolve-audit-spawn.sh` returns an empty spawn set because `main` has no diff, not because anything cleared, and a monitor keyed on emptiness reads that as CLEARED. Such a check keys on the marker body's `tree` field matching the row's own tree instead ([[#Marker key]]).
+
 ### Cleanup under feature-branch isolation
 
-The session sits in the main checkout and holds the branch directly:
+The session sits in the main checkout and holds the branch directly, and the precondition above holds, HEAD is the branch being cleaned up rather than a peer's:
 
 ```bash
 git checkout main && git pull origin main
@@ -525,7 +535,7 @@ git fetch --prune origin
 
 ### Cleanup under worktree isolation
 
-The main checkout already holds `main`, so `git checkout main` from inside a linked worktree fails with `fatal: 'main' is already used by worktree at <path>`. That is a property of linked worktrees, not a merge failure, and it makes the feature-branch sequence above unusable from a worktree. Reap the worktree centrally instead:
+A `git checkout main` from inside a linked worktree fails with `fatal: 'main' is already used by worktree at <path>` whenever the main checkout is on `main`. That is a property of linked worktrees, not a merge failure, and it makes the feature-branch sequence above unusable from a worktree. Reap the worktree centrally instead:
 
 ```bash
 # from a shell in the main checkout, never from the worktree being removed
@@ -533,6 +543,8 @@ git worktree remove --force .claude/worktrees/<branch-name>
 git branch -D <pr-branch>  # force needed for squash (orphaned commits)
 git fetch --prune origin
 ```
+
+**This sequence carries no `git checkout`, and that is load-bearing rather than incidental.** `git worktree remove` followed by `git branch -D` leaves the main checkout's HEAD exactly where it was, which is what makes the arm safe to run while a peer session holds that checkout on its own branch. Do not prepend the feature-branch arm's `git checkout main && git pull` to it: the sequence is not missing a step, and adding one is the precise move the precondition above exists to prevent.
 
 `--force` is required because the worktree holds a branch whose commits the squash merge absorbed without making them ancestors of `main`, so git otherwise refuses to remove it. The `git branch -D` step is what actually drops the local branch on this path: `--delete-branch` deletes the remote branch server-side, but its local half checks out the default branch first, which is precisely the step that fails here. If the branch is already gone, the command reports `branch not found` and nothing is wrong.
 

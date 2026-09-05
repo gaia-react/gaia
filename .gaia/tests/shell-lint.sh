@@ -11,8 +11,9 @@
 # oracle-blind invocation guard
 # (.gaia/scripts/lint-oracle-blind-invocations.sh), the stale-cardinal guard
 # (.gaia/scripts/lint-stale-cardinals.sh), the guard-rule shell-coverage
-# guard (.gaia/scripts/lint-guard-rule-shell-coverage.sh), and the collapsed
-# signal-trap guard (.gaia/scripts/lint-collapsed-signal-trap.sh).
+# guard (.gaia/scripts/lint-guard-rule-shell-coverage.sh), the collapsed
+# signal-trap guard (.gaia/scripts/lint-collapsed-signal-trap.sh), and the
+# bundled-hooks inventory guard (.gaia/scripts/lint-hook-wiki-inventory.sh).
 # Exit 0 when clean, 1 on any finding at or above the severity floor, and 1 on
 # a pass that cannot run at all (no shellcheck binary, an empty *.sh discovery
 # set, an unusable bash-3.2 interpreter). A red gate is therefore not always a
@@ -593,6 +594,20 @@ fi
 # resolves and the file:line it prints is repo-relative.
 echo "--> lint-collapsed-signal-trap (one trap arm binding EXIT with INT or TERM)"
 if ! (cd "$REPO_ROOT" && bash "$REPO_ROOT/.gaia/scripts/lint-collapsed-signal-trap.sh"); then
+  status=1
+fi
+
+# The bundled-hooks inventory in wiki/concepts/Claude Hooks.md is hand-kept, and
+# it drifted silently until four registered hooks were missing from it at once
+# (gaia-react/gaia#1786). This gate is what makes the next omission red on the
+# pull request that registers the hook. Its subjects are .claude/settings.json
+# and that page, neither of them shell, so it rides here rather than earning a
+# workflow of its own: this harness is already the folded home for every guard
+# that shellcheck cannot model, and the arming line for settings.json lives in
+# .github/workflows/shell-lint.yml's paths filter alongside the others. Run from
+# the repo root so its subject paths resolve.
+echo "--> lint-hook-wiki-inventory (a registered hook absent from the bundled-hooks inventory)"
+if ! (cd "$REPO_ROOT" && bash "$REPO_ROOT/.gaia/scripts/lint-hook-wiki-inventory.sh"); then
   status=1
 fi
 

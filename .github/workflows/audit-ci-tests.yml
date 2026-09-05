@@ -344,6 +344,17 @@ jobs:
               # skip every bats step, and green the job having run the very
               # assertion written to catch that edit zero times.
               - 'wiki/concepts/GAIA Audit.md'
+              # lint-hook-wiki-inventory.bats (.gaia/scripts/tests/) is the
+              # blocking runner for the check that fails when a hook registered
+              # in .claude/settings.json is absent from this page, and the page
+              # is one of that check's two subjects: its real-tree test reds when
+              # an entry is dropped from it. settings.json, the other subject, is
+              # already listed above for its own older reasons. This page matches
+              # no other pattern here, so without this line a wiki-only edit
+              # removing an inventory entry -- one of the two edits the check
+              # exists to catch -- would report `code=false`, skip every bats
+              # step, and green the job having run that comparison zero times.
+              - 'wiki/concepts/Claude Hooks.md'
               # doc-countability-prose.bats (.gaia/tests/lib/) greps this page
               # for the superseded classless-finding claims (a classless finding
               # is "not a countable finding", "omitted from findings[]",
