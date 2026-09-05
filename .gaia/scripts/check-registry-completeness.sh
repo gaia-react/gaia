@@ -48,6 +48,7 @@ audit-findings-rerun-sidecars
 audit-mutation-scratch
 audit-progress-log
 audit-respawn-ledger
+audit-round-counter
 audit-scope-digests
 audit-security-notes
 audit-window-breadcrumb

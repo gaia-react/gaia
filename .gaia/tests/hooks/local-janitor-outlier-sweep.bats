@@ -529,6 +529,75 @@ copy_shipped_registry() {
   [ ! -e "$MAIN/.gaia/local/cache/spec-chain-sess123.json" ]
 }
 
+@test "MAIN-CACHE-03: the sweep 5 audit-round-cap arm reaps an aged cache/audit-rounds-*.json at MAIN's cache when invoked from a linked worktree, and keeps a fresh one" {
+  make_repo
+  MAIN="$REPO"
+  mkdir -p "$MAIN/.gaia/local/cache"
+  echo '{}' > "$MAIN/.gaia/local/cache/audit-rounds-sess-aged.json"
+  touch -t 202001010000 "$MAIN/.gaia/local/cache/audit-rounds-sess-aged.json"
+  echo '{}' > "$MAIN/.gaia/local/cache/audit-rounds-sess-fresh.json"
+
+  WT="$MAIN/.claude/worktrees/wt-cache3"
+  mkdir -p "$MAIN/.claude/worktrees"
+  git -C "$MAIN" worktree add -q -b wt-cache3-branch "$WT"
+  mkdir -p "$WT/.gaia/local/cache"
+
+  cd "$WT"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ ! -e "$MAIN/.gaia/local/cache/audit-rounds-sess-aged.json" ]
+  [ -f "$MAIN/.gaia/local/cache/audit-rounds-sess-fresh.json" ]
+}
+
+@test "MAIN-CACHE-04: the sweep 5 audit-round-cap arm reaps an aged atomic-write leftover at MAIN's cache when invoked from a linked worktree, and keeps a fresh one" {
+  make_repo
+  MAIN="$REPO"
+  mkdir -p "$MAIN/.gaia/local/cache"
+  echo '{}' > "$MAIN/.gaia/local/cache/audit-rounds-sess-aged.json.AbC123"
+  touch -t 202001010000 "$MAIN/.gaia/local/cache/audit-rounds-sess-aged.json.AbC123"
+  echo '{}' > "$MAIN/.gaia/local/cache/audit-rounds-sess-fresh.json.XyZ789"
+
+  WT="$MAIN/.claude/worktrees/wt-cache4"
+  mkdir -p "$MAIN/.claude/worktrees"
+  git -C "$MAIN" worktree add -q -b wt-cache4-branch "$WT"
+  mkdir -p "$WT/.gaia/local/cache"
+
+  cd "$WT"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ ! -e "$MAIN/.gaia/local/cache/audit-rounds-sess-aged.json.AbC123" ]
+  [ -f "$MAIN/.gaia/local/cache/audit-rounds-sess-fresh.json.XyZ789" ]
+}
+
+# The reap arm above and the recognition arm below are two sweeps, so they are
+# two tests. Sweep 9 walks the ACTING tree's local dir, so a recognition claim
+# asserted from inside the worktree fixture above would be reading a directory
+# MAIN's leftover never sits in, and would pass whatever the registry said.
+@test "MAIN-CACHE-05: the state registry recognizes the round counter's atomic-write leftover, so sweep 9 leaves it unreported" {
+  make_repo
+  # The shipped registry, not this suite's fixture stand-in. The claim under
+  # test is that the real `audit-round-counter` entry covers the temp half, and
+  # a fixture registry would only ever pin the fixture.
+  cp "$GAIA_DIR_REAL/state-registry.json" "$REPO/.gaia/state-registry.json"
+  cache_dir="$REPO/.gaia/local/cache"
+  mkdir -p "$cache_dir"
+  echo '{}' > "$cache_dir/audit-rounds-sess-fresh.json"
+  echo '{}' > "$cache_dir/audit-rounds-sess-fresh.json.XyZ789"
+
+  cd "$REPO"
+  GAIA_JANITOR_SWEEP_ONLY=outliers run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ -f "$cache_dir/audit-rounds-sess-fresh.json.XyZ789" ]
+  printf '%s\n' "$output" | grep -qF 'audit-rounds-sess-fresh.json.XyZ789' && {
+    echo "sweep 9 reported the registry-recognized atomic-write leftover" >&2
+    return 1
+  }
+  # Explicit, because the absence check above is this test's last statement:
+  # with the needle absent, grep's own non-zero status would otherwise become
+  # the test's result and fail it in exactly the case it exists to pass.
+  true
+}
+
 # --- CG-001: sweep 5's own age arm reaps the spec-session-*.lock glob -------
 
 @test "CG-001: the sweep 5 age arm reaps an aged spec-session-<id>.lock" {

@@ -24,6 +24,7 @@
     ".claude/hooks/block-env-read.sh": "owned",
     ".claude/hooks/block-env-write.sh": "owned",
     ".claude/hooks/block-eslint-config-edit.sh": "owned",
+    ".claude/hooks/block-fourth-audit-round.sh": "owned",
     ".claude/hooks/block-invalid-yaml-write.sh": "owned",
     ".claude/hooks/block-lockfile-edit.sh": "owned",
     ".claude/hooks/block-main-destructive-git.sh": "owned",
@@ -675,7 +676,7 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-09-03T23:28:47.490Z",
+  "generated": "2026-09-05T05:31:15.634Z",
   "regions": [
     {
       "endMarker": "<!-- gaia:audit-remit:end -->",

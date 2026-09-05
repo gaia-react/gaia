@@ -38,6 +38,12 @@
       "why": "Pattern-matches the payload's own file_path only; touches no tree-scoped state."
     },
     {
+      "hook": ".claude/hooks/block-fourth-audit-round.sh",
+      "scope": "main-only",
+      "state": ["audit-round-counter"],
+      "why": "Reads and writes the session-keyed audit round counter under cache/, anchored on gaia_resolve_main_root so one session's count follows it from the main checkout into a worktree and back."
+    },
+    {
       "hook": ".claude/hooks/block-invalid-yaml-write.sh",
       "scope": "any",
       "state": [],

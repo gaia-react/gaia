@@ -133,7 +133,9 @@
 #      and react-perf run dirs
 #      (<run>/renders.json) at the root of .gaia/local/cache, once older than 14
 #      days. A spec-chain-*.json is the spec→plan chain guard's per-session
-#      sentinel (block-spec-plan-chain.sh); it is keyed on session_id, so an old
+#      sentinel (block-spec-plan-chain.sh), and an audit-rounds-*.json is the
+#      pre-merge audit gate's per-session round counter
+#      (block-fourth-audit-round.sh); both are keyed on session_id, so an old
 #      one can never match a live session and is inert long before it is stale.
 #      All of them are age-gated
 #      rather than reference-checked: a generous window survives a paused
@@ -1248,8 +1250,15 @@ fi
 # stays where it is written.
 main_cache_dir="$main_root/.gaia/local/cache"
 if [ -d "$main_cache_dir" ]; then
-  find "$main_cache_dir" -maxdepth 1 -type f -name 'spec-chain-*.json' \
-    -mtime +14 -delete 2>/dev/null
+  # The audit-rounds glob carries a trailing * so it reaches the counter's own
+  # atomic-write temp file as well (audit-rounds-<session>.json.XXXXXX, left
+  # behind when the writer dies between its mktemp and its mv). The state
+  # registry's entry recognizes that half, so sweep #9 above never reports it:
+  # without this reach it would be neither reaped nor surfaced, which is the
+  # inverse of the orphan the gh-artifact arm below was widened to avoid.
+  find "$main_cache_dir" -maxdepth 1 -type f \( \
+      -name 'spec-chain-*.json' -o -name 'audit-rounds-*.json*' \
+    \) -mtime +14 -delete 2>/dev/null
 
   # cache/gh-artifact-pr*.json: mtime-only, on its own floor-clamped knob
   # (default 2d, floor 1d). The glob is the family pattern for "every
