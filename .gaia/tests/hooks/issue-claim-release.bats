@@ -246,11 +246,11 @@ assert_nothing_released() { [ ! -s "$FAKE_GH_STATE/issue_edits" ]; }
   # 4b's bound on the other arm into the loop: a state that never settles and a
   # call that never answers are separate ways to stay in it.
   #
-  # What the upper bound catches is a bound that grew, not a bound that went
-  # away. bats has no per-test timeout and run_hook imposes none, so a loop
-  # that never terminates never reaches the assertion at all: it hangs the
-  # runner and the job dies on its own timeout with no test attributed. Read a
-  # green here as "the cap is still small", never as "the loop still ends".
+  # A red here means the cap grew. A cap that went away produces no red at all:
+  # this suite sets no per-test timeout (bats offers BATS_TEST_TIMEOUT, and
+  # setup_file is the latest useful place to set one) and run_hook imposes
+  # none, so a loop that never terminates emits neither ok nor not ok and the
+  # job dies on its own timeout with nothing attributed to this test.
   export FAKE_GH_PR_VIEW_FAIL_CALLS=99
   export FAKE_GH_PR_BODY="Closes #12"
   run_hook 'gh pr merge 42'
