@@ -100,6 +100,7 @@ debt-origin|debt-origin-lib.sh|exec|runs verbatim with the changed-value placeho
 disposition-sidecar|audit-member-digest.sh|exec|runs verbatim against this checkout
 findings-block|post-findings-block.sh --pr|static|posts a comment to a live PR
 merge-and-poll|gh pr merge <N> --squash|static|merges a live PR
+main-checkout-head|rev-parse --abbrev-ref HEAD|exec|read-only git plumbing, runs against a fixture checkout substituted for the placeholder
 cleanup-branch|git checkout main && git pull origin main|static|checks out main and deletes a branch in this checkout
 cleanup-worktree|git worktree remove --force|static|removes a worktree in this checkout
 TABLE
@@ -725,6 +726,26 @@ FAKE
   run bash -c "cd '$REPO_ROOT' && AUDIT_ROOT='$outside' bash '$script'"
   [ "$status" -eq 0 ]
   grep -qF -- 'base=[]' <<<"$output"
+}
+
+@test "fence main-checkout-head: it names the branch the main checkout is holding" {
+  script="$(materialize 'rev-parse --abbrev-ref HEAD')"
+  # A fixture checkout rather than this one. The page's claim is that this
+  # command discriminates `main` from a peer session's branch, and a checkout
+  # that happens to sit on one of the two exercises only that arm; the
+  # fixture is driven through both.
+  fixture="${BATS_TEST_TMPDIR}/main-checkout"
+  git init -q -b main "$fixture"
+  git -C "$fixture" -c user.email=fence@example.invalid -c user.name=fence \
+    commit -q --allow-empty -m 'fixture'
+  sub_literal "$script" '<main-checkout>' "$fixture"
+  run bash "$script"
+  [ "$status" -eq 0 ]
+  grep -qx 'main' <<<"$output"
+  git -C "$fixture" checkout -q -b peer-branch
+  run bash "$script"
+  [ "$status" -eq 0 ]
+  grep -qx 'peer-branch' <<<"$output"
 }
 
 @test "fence disposition-sidecar: it builds a sidecar path under the main checkout's audit directory" {
