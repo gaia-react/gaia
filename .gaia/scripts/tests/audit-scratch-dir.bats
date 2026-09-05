@@ -53,7 +53,7 @@ setup() {
   #
   # Unpinned, running the suite from a linked worktree fires the mint's
   # advisory note on stderr; `run` captures "$@" 2>&1, so $output becomes the
-  # note lines PLUS the path, and every `[ -d "$output" ]` above is then
+  # note lines PLUS the path, and every `[ -d "$output" ]` in the file is then
   # asserting against a multi-line string. That is gaia-react/gaia#1780: the
   # suite was green from a plain checkout and red from a worktree at one
   # commit, and CI only ever runs the first. The mint itself was never at
@@ -68,10 +68,6 @@ setup() {
 }
 
 teardown() {
-  # Leave the fixture before deleting it: setup() left the cwd inside $TMP,
-  # and a shell whose cwd has been unlinked emits its own diagnostics on the
-  # next command that needs one.
-  cd "$BATS_TEST_DIRNAME" 2>/dev/null || cd / || true
   [ -n "${TMP:-}" ] && rm -rf "$TMP"
   true
 }
