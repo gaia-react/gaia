@@ -919,7 +919,8 @@ jobs:
       - if: contains(fromJSON('["hooks-2", "hooks-3", "hooks-4"]'), matrix.shard) && (steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch')
         name: Setup Node for the node-dependent RED suites
         # Same cap, same reasoning as the concurrency leg's step above; W12
-        # holds every gaia-setup-node step to it.
+        # holds every gaia-setup-node step in THIS workflow to it, and reaches
+        # no other workflow's (gaia-react/gaia#1793).
         timeout-minutes: 5
         uses: ./.github/actions/gaia-setup-node
         with:
@@ -985,7 +986,8 @@ jobs:
       - if: steps.needs-cli-workspace.outputs.needed == '1'
         name: Install the CLI workspace for the floor-check suite
         # Same cap, same reasoning as the concurrency leg's step above; W12
-        # holds every gaia-setup-node step to it.
+        # holds every gaia-setup-node step in THIS workflow to it, and reaches
+        # no other workflow's (gaia-react/gaia#1793).
         timeout-minutes: 5
         uses: ./.github/actions/gaia-setup-node
         with:

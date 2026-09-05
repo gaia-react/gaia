@@ -153,9 +153,11 @@ teardown() {
 #                         (unnormalized) `run:` body contains a literal `${{`
 #   setupnodecaps          one
 #                         `<job-id>\t<step-name>\t<capkind>\t<cap>\t<job-cap>`
-#                         line per step that `uses:` the gaia-setup-node
-#                         composite action, across EVERY job. `capkind` reuses
-#                         cap_kind's 'int'/'missing'/'other' vocabulary; `cap`
+#                         line per step whose `uses:`, normalized, is exactly
+#                         the gaia-setup-node composite action, across EVERY
+#                         job. `capkind` comes
+#                         from the same kind_of callee cap_kind uses, so a job
+#                         cap and a step cap cannot answer differently; `cap`
 #                         and `job-cap` are the integers, or empty where the
 #                         corresponding kind is not 'int'. Enumerated from the
 #                         `uses:` value rather than from a list of step names,
@@ -230,13 +232,22 @@ def needs_of(jid):
     return []
 
 
-def cap_kind(jid):
-    if 'timeout-minutes' not in jobs[jid]:
+def kind_of(mapping):
+    """The cap kind a job or step mapping declares: 'missing', 'other' (a
+    bool or any non-int, which reads as uncapped downstream), or 'int'. One
+    callee for both, because a job cap and a step cap answer the same question
+    and two copies of the rule would drift apart silently, each exercised by a
+    different check."""
+    if 'timeout-minutes' not in mapping:
         return 'missing'
-    value = jobs[jid]['timeout-minutes']
+    value = mapping['timeout-minutes']
     if isinstance(value, bool) or not isinstance(value, int):
         return 'other'
     return 'int'
+
+
+def cap_kind(jid):
+    return kind_of(jobs[jid])
 
 
 def cap_of(jid):
@@ -333,17 +344,20 @@ elif mode == 'setupnodecaps':
         for step in job.get('steps') or []:
             if not isinstance(step, dict):
                 continue
-            if '.github/actions/gaia-setup-node' not in str(step.get('uses', '')):
+            # Exact on the action's identity, not a substring of its path: a
+            # sibling action named with this one as a prefix
+            # (`gaia-setup-node-foo`) is a DIFFERENT action, and a substring
+            # test would report it under this check's name while missing that
+            # the real one had been renamed away. Normalized first because
+            # `uses:` legally spells the same local action several ways.
+            used = str(step.get('uses', '')).strip().split('@', 1)[0]
+            if used.startswith('./'):
+                used = used[2:]
+            if used != '.github/actions/gaia-setup-node':
                 continue
             name = str(step.get('name', '')) or str(step.get('uses', ''))
-            if 'timeout-minutes' not in step:
-                kind, cap = 'missing', ''
-            else:
-                value = step['timeout-minutes']
-                if isinstance(value, bool) or not isinstance(value, int):
-                    kind, cap = 'other', ''
-                else:
-                    kind, cap = 'int', str(value)
+            kind = kind_of(step)
+            cap = str(step['timeout-minutes']) if kind == 'int' else ''
             print('%s\t%s\t%s\t%s\t%s' % (
                 jid, name, kind, cap, '' if job_kind != 'int' else str(job_cap)))
 elif mode == 'aggok':
@@ -1953,8 +1967,8 @@ concurrency_tree_needs_packages() {
   true
 }
 
-# W12. Every gaia-setup-node step is capped with an integer literal that fires
-# before its job's own cap.
+# W12. Every gaia-setup-node step in audit-ci-tests.yml is capped with an
+# integer literal that fires before its job's own cap.
 #
 # The apt step already carries `timeout-minutes: 6` and says why in so many
 # words -- "Sized for fast failure and honest attribution" -- so the reasoning
@@ -1967,7 +1981,14 @@ concurrency_tree_needs_packages() {
 # That gap is not hypothetical. gaia-react/gaia#1762 was filed against the two
 # uncapped call sites this file then held; by the time it was drained a third
 # had been added, uncapped, in the same shape. Enumerating the sites from the
-# `uses:` value is what makes the fourth one reachable without an edit here.
+# `uses:` value, rather than from a list of step names, is what makes the next
+# one in THIS workflow reachable without an edit here.
+#
+# The reach stops at this workflow. `setupnodecaps` walks `$WORKFLOW` alone, so
+# the same composite action invoked from any other workflow is outside what
+# this check can report, and W5, the sibling that does run tree-wide, asserts a
+# cap per JOB and says nothing about steps. gaia-react/gaia#1793 tracks the
+# uncapped call sites that gap leaves and the widening that would reach them.
 #
 # The cap must also be strictly under its job's cap. A step cap at or above
 # the job's can never fire first, so it reads as a bound while buying none of
@@ -1979,73 +2000,125 @@ concurrency_tree_needs_packages() {
 # own fixture style and it is sufficient here: the check reports the whole set
 # and reds on any member, so breaking the set proves the same branch a single
 # member would. The eight-space indent is what keeps the pattern off the
-# four-space job-level `timeout-minutes: 5` the aggregator carries.
+# four-space job-level `timeout-minutes: 5`, which belongs to
+# `hook-capabilities-live-tree` rather than to any step.
+#
+# Every fixture drives `setup_node_cap_gaps`, the same predicate the check
+# itself calls, rather than re-reading `setupnodecaps` and re-deciding in its
+# own body. That is this file's own header rule at the top, and the reason for
+# it is exact here: a predicate written inline in the `@test` body runs only
+# against the healthy workflow, where every branch it takes is the passing one,
+# so weakening the comparison or gutting an arm leaves the whole set green.
+# `workflow_timeout_gaps` in .gaia/scripts/tests/retrigger-reachability.bats is
+# the shape being copied.
 
 setup_node_caps() {
   read_wf setupnodecaps "$1"
 }
 
-@test "W12: every gaia-setup-node step declares an integer cap under its job's cap" {
-  require_yaml_parser
+# Every capping gap the gaia-setup-node steps in <workflow-file> present, one
+# line per gap, empty when it has none. Returns non-zero when the set is empty,
+# which is a gap of its own rather than a clean read: this enumerates its
+# subjects from the `uses:` value instead of pinning them, so a renamed action
+# yields nothing and would otherwise be indistinguishable from every step
+# passing.
+setup_node_cap_gaps() {
+  local file="$1"
   local jid name kind cap job_cap seen="" gaps=""
+
   while IFS=$'\t' read -r jid name kind cap job_cap; do
     [ -n "$jid" ] || continue
     seen="x"
     if [ "$kind" != "int" ]; then
-      gaps="${gaps}${jid}/${name} (${kind}); "
+      gaps="${gaps}${jid}/${name}: cap is ${kind}, not an integer literal"$'\n'
       continue
     fi
-    [ -n "$job_cap" ] || { gaps="${gaps}${jid}/${name} (job uncapped); "; continue; }
-    [ "$cap" -lt "$job_cap" ] || gaps="${gaps}${jid}/${name} (${cap}m not under the job's ${job_cap}m); "
-  done < <(setup_node_caps "$WORKFLOW")
+    if [ -z "$job_cap" ]; then
+      gaps="${gaps}${jid}/${name}: the owning job declares no integer cap"$'\n'
+      continue
+    fi
+    [ "$cap" -lt "$job_cap" ] \
+      || gaps="${gaps}${jid}/${name}: ${cap}m is not under the job's ${job_cap}m"$'\n'
+  done < <(setup_node_caps "$file")
 
-  # A guard over an empty set passes without asserting anything, and this one
-  # enumerates its subjects rather than pinning them, so an empty read is
-  # indistinguishable from "the action was renamed" unless it reds here.
-  [ -n "$seen" ] || {
-    echo "no gaia-setup-node step found in $(basename "$WORKFLOW"); this guard is reaching nothing" >&2
+  if [ -z "$seen" ]; then
+    printf '%s: no gaia-setup-node step found; this check is reaching nothing\n' \
+      "$(basename "$file")"
+    return 1
+  fi
+
+  printf '%s' "$gaps"
+  [ -z "$gaps" ]
+}
+
+@test "W12: every gaia-setup-node step declares an integer cap under its job's cap" {
+  require_yaml_parser
+  local gaps
+  gaps="$(setup_node_cap_gaps "$WORKFLOW")" || {
+    echo "$gaps" >&2
     return 1
   }
-  [ -z "$gaps" ] || { echo "uncapped or over-capped gaia-setup-node step(s): ${gaps}" >&2; return 1; }
+  [ -z "$gaps" ] || { echo "$gaps" >&2; return 1; }
 }
 
 @test "W12 adversarial: a gaia-setup-node step with no cap is caught" {
   require_yaml_parser
-  local doctored="$BATS_TEST_TMPDIR/w12a.yml"
+  local doctored="$BATS_TEST_TMPDIR/w12a.yml" gaps
   delete_line "$WORKFLOW" "        timeout-minutes: 5" "$doctored"
 
-  setup_node_caps "$doctored" | cut -f3 | grep -qxF 'missing' || {
-    echo "deleting the step caps did not read back as missing" >&2
+  gaps="$(setup_node_cap_gaps "$doctored")" && {
+    echo "deleting every step cap left the check reporting no gaps" >&2
+    return 1
+  }
+  printf '%s' "$gaps" | grep -qF 'cap is missing, not an integer literal' || {
+    echo "an absent step cap was not reported as missing: ${gaps}" >&2
     return 1
   }
 }
 
 @test "W12 adversarial: an expression-valued step cap is caught" {
   require_yaml_parser
-  local doctored="$BATS_TEST_TMPDIR/w12b.yml"
+  local doctored="$BATS_TEST_TMPDIR/w12b.yml" gaps
   replace_line "$WORKFLOW" "        timeout-minutes: 5" \
     "        timeout-minutes: \${{ github.event_name }}" "$doctored"
 
-  setup_node_caps "$doctored" | cut -f3 | grep -qxF 'other' || {
-    echo "an expression-valued step cap still read as an integer" >&2
+  gaps="$(setup_node_cap_gaps "$doctored")" && {
+    echo "an expression-valued step cap left the check reporting no gaps" >&2
+    return 1
+  }
+  printf '%s' "$gaps" | grep -qF 'cap is other, not an integer literal' || {
+    echo "an expression-valued step cap was not reported as non-integer: ${gaps}" >&2
     return 1
   }
 }
 
 @test "W12 adversarial: a step cap at the job's own cap is caught" {
   require_yaml_parser
-  local doctored="$BATS_TEST_TMPDIR/w12c.yml"
+  local doctored="$BATS_TEST_TMPDIR/w12c.yml" gaps
   replace_line "$WORKFLOW" "        timeout-minutes: 5" "        timeout-minutes: 13" "$doctored"
 
-  local jid name kind cap job_cap over=""
-  while IFS=$'\t' read -r jid name kind cap job_cap; do
-    [ "$kind" = "int" ] || continue
-    [ -n "$job_cap" ] || continue
-    [ "$cap" -lt "$job_cap" ] || over="x"
-  done < <(setup_node_caps "$doctored")
+  gaps="$(setup_node_cap_gaps "$doctored")" && {
+    echo "a step cap equal to the job's own 13m left the check reporting no gaps" >&2
+    return 1
+  }
+  printf '%s' "$gaps" | grep -qF "13m is not under the job's 13m" || {
+    echo "a step cap equal to the job's cap was not reported as over-capped: ${gaps}" >&2
+    return 1
+  }
+}
 
-  [ -n "$over" ] || {
-    echo "raising the step caps to the job's own 13m did not read as over-capped" >&2
+@test "W12 adversarial: a workflow with no gaia-setup-node step reds rather than passing empty" {
+  require_yaml_parser
+  local doctored="$BATS_TEST_TMPDIR/w12d.yml" gaps
+  replace_line "$WORKFLOW" "        uses: ./.github/actions/gaia-setup-node" \
+    "        uses: ./.github/actions/gaia-setup-node-renamed" "$doctored"
+
+  gaps="$(setup_node_cap_gaps "$doctored")" && {
+    echo "renaming the action away left the check reporting a clean read" >&2
+    return 1
+  }
+  printf '%s' "$gaps" | grep -qF 'this check is reaching nothing' || {
+    echo "an empty enumeration was not reported as reaching nothing: ${gaps}" >&2
     return 1
   }
 }
