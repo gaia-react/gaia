@@ -218,7 +218,7 @@ write_inventory() {
   [ "$status" -eq 0 ]
 }
 
-@test "the same command registered on several events is one distinct command, not a short set" {
+@test "byte-identical command text on several events yields one readable name and passes" {
   local dir
   dir="$(make_fixture repeated_registration)"
   # Byte-identical command text on two events. Kept alongside the differing-text
@@ -243,6 +243,36 @@ write_inventory() {
   [ "$status" -eq 0 ]
 }
 
+@test "when every command names the directory but none is readable, the precise cause wins over the empty-set message" {
+  local dir
+  dir="$(make_fixture all_unreadable)"
+  # Both registrations name .claude/hooks/ and neither yields a name, so the
+  # recovered set is empty. The empty-set arm would fire here and report that no
+  # command names the directory, which is false of both. The unreadable-spelling
+  # arm runs first for exactly this overlap.
+  {
+    printf '{\n  "hooks": {\n    "PreToolUse": [\n'
+    printf '      {\n        "matcher": "Bash",\n        "hooks": [\n'
+    printf '          {\n            "type": "command",\n'
+    printf '            "command": "bash .claude/hooks/weird name.sh"\n'
+    printf '          }\n        ]\n      },\n'
+    printf '      {\n        "matcher": "Bash",\n        "hooks": [\n'
+    printf '          {\n            "type": "command",\n'
+    printf '            "command": "bash .claude/hooks/second name.sh"\n'
+    printf '          }\n        ]\n      }\n'
+    printf '    ]\n  }\n}\n'
+  } >"$dir/$SETTINGS_REL"
+  write_inventory "$dir" alpha.sh
+
+  run bash "$CHECK" "$dir"
+  [ "$status" -eq 2 ]
+  grep -qF -- 'no hook name could be read' <<<"$output"
+  # The empty-set arm's message would be false here, so it must not be the one
+  # that fired.
+  grep -qF -- 'No command under the hooks key names that directory' <<<"$output" && return 1
+  true
+}
+
 @test "settings registering no hook under .claude/hooks/ exits 2 rather than reporting the page complete" {
   local dir
   dir="$(make_fixture no_hooks)"
@@ -252,9 +282,11 @@ write_inventory() {
   run bash "$CHECK" "$dir"
   [ "$status" -eq 2 ]
   grep -qF -- 'discovery found no hook' <<<"$output"
-  # The message must admit both conditions that reach this branch, per
+  # The unreadable-spelling arm above has already ruled out the other condition
+  # that used to share this branch, so the message names the one cause that can
+  # still reach it rather than hedging across two, per
   # .claude/rules/partial-cause-reporting.md.
-  grep -qF -- 'registration spelling changed' <<<"$output"
+  grep -qF -- 'No command under the hooks key names that directory' <<<"$output"
 }
 
 @test "a registration naming a directory other than .claude/hooks/ is not counted, and exits 2 when it is the only one" {

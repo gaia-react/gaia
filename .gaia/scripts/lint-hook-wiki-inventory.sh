@@ -71,11 +71,21 @@ LIST_FILE=''
 readonly SETTINGS=".claude/settings.json"
 readonly INVENTORY="wiki/concepts/Claude Hooks.md"
 
+# The one spelling of a hook name inside a registration command, named once and
+# read by both consumers: `registered_hooks` extracts with it, and main's
+# unreadable-spelling arm selects the commands it does NOT match. Those two are
+# the same question asked in opposite directions, so they must move together.
+# Spelled separately they would not: the arm's own refusal tells the fixer to
+# teach `registered_hooks` a new spelling, and doing exactly that would leave
+# the arm still selecting the command and refusing again, now with a message
+# that has become false, while the suite stayed green.
+readonly HOOK_NAME_RE='\.claude/hooks/[A-Za-z0-9_./-]+\.sh'
+
 # hook_commands <repo_root>
 #
 # Print every `.hooks.<Event>[].hooks[].command` string in settings.json that
-# names `.claude/hooks/`, one per line. This is the denominator the size check
-# in main compares the recovered names against.
+# names `.claude/hooks/`, one per line. This is the set main's
+# unreadable-spelling arm tests one command at a time.
 hook_commands() {
   local root="$1"
   jq -r '
@@ -114,7 +124,7 @@ hook_commands() {
 registered_hooks() {
   local root="$1"
   hook_commands "$root" |
-    grep -oE '\.claude/hooks/[A-Za-z0-9_./-]+\.sh' |
+    grep -oE "$HOOK_NAME_RE" |
     sed -e 's#^\.claude/hooks/##' |
     sort -u
 }
@@ -185,26 +195,11 @@ main() {
     printf '%s: %s is missing, unreadable, or not valid JSON\n' "$PROG" "$SETTINGS" >&2
     return 2
   fi
-  registered_hooks "$root" >"$LIST_FILE"
-
-  # An empty set is never a clean tree here: this repository registers dozens of
-  # hooks, and a discovery that finds none of them would report the inventory
-  # complete having compared nothing. Reached by a settings file whose `hooks`
-  # key is absent or empty, and by a registration spelling that no longer names
-  # `.claude/hooks/` in its command; the two are indistinguishable at this point
-  # and the message says so.
-  if [ ! -s "$LIST_FILE" ]; then
-    printf '%s: discovery found no hook registered under .claude/hooks/ in %s.\n' "$PROG" "$SETTINGS" >&2
-    printf 'Either the hooks key registers nothing, or the registration spelling changed\n' >&2
-    printf 'and no longer names that directory in the command; %s parses as JSON either way.\n' "$SETTINGS" >&2
-    return 2
-  fi
-
-  # The UNREADABLE-SPELLING arm, a different assertion from the non-empty half
-  # above rather than a stronger spelling of it. A registration whose command
+  # The UNREADABLE-SPELLING arm, a different assertion from the non-empty one
+  # below rather than a stronger spelling of it. A registration whose command
   # the name pattern cannot read is dropped silently and individually: the set
-  # is short rather than empty, so the arm above stays satisfied and the check
-  # reports clean over a hook the page may never mention.
+  # is short rather than empty, so the non-empty arm stays satisfied and the
+  # check reports clean over a hook the page may never mention.
   #
   # Ask the question directly, per command, rather than comparing set sizes.
   # A count comparison answers a different question than it appears to: one hook
@@ -221,15 +216,40 @@ main() {
   # stays invisible. No count-based or per-command presence test reaches that
   # shape; only parsing every name out of every command would, and every
   # registration in this tree names exactly one hook.
+  #
+  # It runs BEFORE the non-empty arm because the two overlap on one input and
+  # only this one describes it correctly. A settings file whose every command
+  # names the directory and whose every command is unreadable produces an empty
+  # name set, so the non-empty arm below would fire and tell the operator the
+  # spelling no longer names `.claude/hooks/`, which is false of every command
+  # it just read. Ordered this way the precise cause wins, and it prints the
+  # offending command text; the register-nothing case is unaffected, because an
+  # empty command set leaves this `grep -v` with nothing to select and falls
+  # through to the arm that does describe it.
   local unreadable
-  unreadable="$(hook_commands "$root" | grep -vE '\.claude/hooks/[A-Za-z0-9_./-]+\.sh')"
+  unreadable="$(hook_commands "$root" | grep -vE "$HOOK_NAME_RE")"
   if [ -n "$unreadable" ]; then
     printf '%s: %s registers a hook command naming .claude/hooks/ from which no hook name could be read:\n' \
       "$PROG" "$SETTINGS" >&2
     printf '%s\n' "$unreadable" | sed -e 's/^/  /' >&2
     printf 'A spelling this check cannot parse is dropped silently, so it refuses rather than\n' >&2
-    printf 'compare a short set against the page. Teach registered_hooks the new spelling\n' >&2
-    printf 'rather than leaving it to match nothing.\n' >&2
+    printf 'compare a short set against the page. Teach the HOOK_NAME_RE pattern above the new\n' >&2
+    printf 'spelling rather than leaving it to match nothing.\n' >&2
+    return 2
+  fi
+
+  registered_hooks "$root" >"$LIST_FILE"
+
+  # An empty set is never a clean tree here: this repository registers dozens of
+  # hooks, and a discovery that finds none of them would report the inventory
+  # complete having compared nothing. By the time this runs the arm above has
+  # ruled out an unreadable spelling, so the remaining cause is a settings file
+  # whose `hooks` key registers nothing naming `.claude/hooks/` at all.
+  if [ ! -s "$LIST_FILE" ]; then
+    printf '%s: discovery found no hook registered under .claude/hooks/ in %s.\n' "$PROG" "$SETTINGS" >&2
+    printf 'No command under the hooks key names that directory; %s parses as JSON, and every\n' "$SETTINGS" >&2
+    printf 'command that does name it was readable, so this is a registration set, not a\n' >&2
+    printf 'spelling this check failed to parse.\n' >&2
     return 2
   fi
 
