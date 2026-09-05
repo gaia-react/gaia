@@ -13,14 +13,14 @@
 # test resolves a real main checkout or writes anywhere under the repo's own
 # .gaia/local.
 #
-# TWO HALVES, and which tree each assumes is stated rather than left to be
-# inferred. Everything down to the registry-conformance case assumes a PLAIN
-# checkout, and setup() pins one so that assumption is a fixture rather than
-# an accident of where bats was launched. The `mint/populate asymmetry` block
-# at the foot chooses its own tree per case instead, each in its own subshell:
-# most build a linked worktree, and its closing negative control deliberately
-# takes the plain fixture, because what that case pins is the note staying
-# SILENT off a worktree. Nothing in between straddles the two.
+# WHICH TREE A CASE RUNS IN is stated here rather than left to be inferred,
+# because the subject reads it from the process working directory and this
+# file has cases on both sides of that. setup() pins a PLAIN checkout, so a
+# case that says nothing about trees gets one, and that is a fixture rather
+# than an accident of where bats was launched. A case needing a different
+# answer cds there itself and the pin decides nothing for it; the
+# `mint/populate asymmetry` block at the foot is where those live, and it
+# carries both answers rather than one.
 #
 # Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 #
@@ -46,12 +46,13 @@ setup() {
   git -C "$REPO" add f
   git -C "$REPO" commit -qm init
 
-  # Pin the ACTING tree, not only the key's tree. Every case below hands $REPO
-  # to the script as <dir>, which is the tree gaia_audit_key reads -- but the
-  # script separately consults gaia_is_linked_worktree with NO argument, and
-  # that reads the PROCESS WORKING DIRECTORY. Left ambient, that is whatever
-  # tree bats happened to be launched from, which no case here controls and
-  # every case here has an opinion about.
+  # Pin the ACTING tree, not only the key's tree. The script takes its KEY
+  # tree from the <dir> positional, which defaults to the process working
+  # directory, and its ACTING tree from gaia_is_linked_worktree with NO
+  # argument, which is that working directory and nothing else. So a case can
+  # name the first and nothing but this cd names the second. Left ambient the
+  # second is whatever tree bats happened to be launched from, which no case
+  # here controls.
   #
   # Unpinned, running the suite from a linked worktree fires the mint's
   # advisory note on stderr; `run` captures "$@" 2>&1, so $output becomes the
@@ -63,9 +64,8 @@ setup() {
   #
   # Deliberately NOT a guard or a skip on the assertions that red: that would
   # leave them unrun in a worktree, which is the same invisibility pointed
-  # the other way. The `mint/populate asymmetry` cases each choose their own
-  # tree in their own subshell, worktree or plain, so this pin does not reach
-  # any of them.
+  # the other way. A case that cds for itself overrides this pin by doing so,
+  # so nothing below has to be exempted from it by hand.
   cd "$REPO" || return 1
 }
 
