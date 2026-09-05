@@ -13,6 +13,13 @@
 # test resolves a real main checkout or writes anywhere under the repo's own
 # .gaia/local.
 #
+# TWO HALVES, and which tree each assumes is stated rather than left to be
+# inferred. Everything down to the registry-conformance case assumes a PLAIN
+# checkout, and setup() pins one so that assumption is a fixture rather than
+# an accident of where bats was launched. The `mint/populate asymmetry` block
+# at the foot wants the other answer and builds its own linked worktree per
+# case. Nothing in between straddles the two.
+#
 # Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 #
 # Run under bash 5 (bash 3.2's `[[ ]]` skip-under-set-e gap is real):
@@ -36,9 +43,35 @@ setup() {
   : >"$REPO/f"
   git -C "$REPO" add f
   git -C "$REPO" commit -qm init
+
+  # Pin the ACTING tree, not only the key's tree. Every case below hands $REPO
+  # to the script as <dir>, which is the tree gaia_audit_key reads -- but the
+  # script separately consults gaia_is_linked_worktree with NO argument, and
+  # that reads the PROCESS WORKING DIRECTORY. Left ambient, that is whatever
+  # tree bats happened to be launched from, which no case here controls and
+  # every case here has an opinion about.
+  #
+  # Unpinned, running the suite from a linked worktree fires the mint's
+  # advisory note on stderr; `run` captures "$@" 2>&1, so $output becomes the
+  # two note lines PLUS the path, and every `[ -d "$output" ]` is asserting
+  # against a three-line string. That is gaia-react/gaia#1780: 29/29 from a
+  # plain checkout, 25/29 from a worktree, at one commit, with CI only ever
+  # reporting the first. The mint itself was never at fault -- the directory
+  # is on disk in both environments.
+  #
+  # Deliberately NOT a guard or a skip on the four assertions: that would
+  # leave them unrun in a worktree, which is the same invisibility pointed
+  # the other way. The `mint/populate asymmetry` cases want the worktree
+  # answer and cd into their own, in their own subshells, so this does not
+  # reach them.
+  cd "$REPO" || return 1
 }
 
 teardown() {
+  # Leave the fixture before deleting it: setup() left the cwd inside $TMP,
+  # and a shell whose cwd has been unlinked emits its own diagnostics on the
+  # next command that needs one.
+  cd "$BATS_TEST_DIRNAME" 2>/dev/null || cd / || true
   [ -n "${TMP:-}" ] && rm -rf "$TMP"
   true
 }
