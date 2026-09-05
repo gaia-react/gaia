@@ -3,11 +3,12 @@
 # Structural guard for .github/workflows/audit-ci-tests.yml's fan-out shape:
 # a matrix job (`shards`) plus a thin aggregator (`audit-ci-tests`) that
 # carries the declared-required check name. This is C3 in
-# .gaia/local/plans/PLAN-014/README.md; the checks below (W1-W10) each guard
+# .gaia/local/plans/PLAN-014/README.md; the W-numbered checks below each guard
 # one of the constraints that page's task doc lays out for this workflow,
-# since breaking any one of them wedges every pull request. W10 is the one
-# addition that page does not name: it guards the per-leg apt list, which
-# postdates it.
+# since breaking any one of them wedges every pull request. The range is
+# deliberately unbounded here: several checks postdate that page and guard
+# surfaces it never named, so a bounded list would be a count this file has to
+# keep in step with itself. Each check's own header says what it guards.
 #
 # Every test drives its check through a helper that takes the workflow's path
 # as an argument, never a predicate written inline against the live file, so
@@ -155,11 +156,15 @@ teardown() {
 #                         `<job-id>\t<step-name>\t<capkind>\t<cap>\t<job-cap>`
 #                         line per step whose `uses:`, normalized, is exactly
 #                         the gaia-setup-node composite action, across EVERY
-#                         job. `capkind` comes
-#                         from the same kind_of callee cap_kind uses, so a job
-#                         cap and a step cap cannot answer differently; `cap`
-#                         and `job-cap` are the integers, or empty where the
-#                         corresponding kind is not 'int'. Enumerated from the
+#                         job. `capkind` comes from the same kind_of
+#                         callee cap_kind uses, so a job cap and a step cap
+#                         cannot answer differently; `cap`
+#                         and `job-cap` are the integers, or the sentinel `-`
+#                         where the corresponding kind is not 'int'. A
+#                         sentinel rather than an empty field because tab is
+#                         IFS *whitespace*, so a bash `IFS=$'\t' read` folds
+#                         two adjacent tabs into one delimiter and every later
+#                         field binds one position early. Enumerated from the
 #                         `uses:` value rather than from a list of step names,
 #                         so a call site added later is reached by
 #                         construction rather than by remembering to add it
@@ -357,9 +362,12 @@ elif mode == 'setupnodecaps':
                 continue
             name = str(step.get('name', '')) or str(step.get('uses', ''))
             kind = kind_of(step)
-            cap = str(step['timeout-minutes']) if kind == 'int' else ''
+            # `-` rather than an empty string for an absent value: tab is IFS
+            # whitespace in bash, so `IFS=$'\t' read` collapses adjacent tabs
+            # and an empty field silently shifts every field after it.
+            cap = str(step['timeout-minutes']) if kind == 'int' else '-'
             print('%s\t%s\t%s\t%s\t%s' % (
-                jid, name, kind, cap, '' if job_kind != 'int' else str(job_cap)))
+                jid, name, kind, cap, str(job_cap) if job_kind == 'int' else '-'))
 elif mode == 'aggok':
     require_job(rest[0])
     exit_re = re.compile(r'\bexit\s+[1-9][0-9]*\b')
@@ -2005,7 +2013,8 @@ concurrency_tree_needs_packages() {
 #
 # Every fixture drives `setup_node_cap_gaps`, the same predicate the check
 # itself calls, rather than re-reading `setupnodecaps` and re-deciding in its
-# own body. That is this file's own header rule at the top, and the reason for
+# own body, and there is one fixture per outcome that predicate can produce,
+# each greping the gap string only its own arm emits. That is this file's own header rule at the top, and the reason for
 # it is exact here: a predicate written inline in the `@test` body runs only
 # against the healthy workflow, where every branch it takes is the passing one,
 # so weakening the comparison or gutting an arm leaves the whole set green.
@@ -2033,7 +2042,7 @@ setup_node_cap_gaps() {
       gaps="${gaps}${jid}/${name}: cap is ${kind}, not an integer literal"$'\n'
       continue
     fi
-    if [ -z "$job_cap" ]; then
+    if [ "$job_cap" = "-" ]; then
       gaps="${gaps}${jid}/${name}: the owning job declares no integer cap"$'\n'
       continue
     fi
@@ -2041,8 +2050,13 @@ setup_node_cap_gaps() {
       || gaps="${gaps}${jid}/${name}: ${cap}m is not under the job's ${job_cap}m"$'\n'
   done < <(setup_node_caps "$file")
 
+  # Two conditions reach an empty read and the repairs differ, so the message
+  # names both rather than the one that prompted it: the action was renamed or
+  # its last call site removed, OR `read_wf` exited 2 (unparseable YAML, no
+  # jobs mapping) and printed its own line to stderr. Process substitution
+  # discards that status, which is why it is named here instead of tested.
   if [ -z "$seen" ]; then
-    printf '%s: no gaia-setup-node step found; this check is reaching nothing\n' \
+    printf '%s: no gaia-setup-node step read. Either the action was renamed or its last call site removed, or read_wf failed to parse this file (check its stderr above). Either way this check is now reaching nothing.\n' \
       "$(basename "$file")"
     return 1
   fi
@@ -2107,6 +2121,21 @@ setup_node_cap_gaps() {
   }
 }
 
+@test "W12 adversarial: a step whose owning job declares no cap is caught" {
+  require_yaml_parser
+  local doctored="$BATS_TEST_TMPDIR/w12e.yml" gaps
+  delete_line "$WORKFLOW" "    timeout-minutes: 13" "$doctored"
+
+  gaps="$(setup_node_cap_gaps "$doctored")" && {
+    echo "removing the owning job's own cap left the check reporting no gaps" >&2
+    return 1
+  }
+  printf '%s' "$gaps" | grep -qF 'the owning job declares no integer cap' || {
+    echo "a step whose job declares no cap was not reported: ${gaps}" >&2
+    return 1
+  }
+}
+
 @test "W12 adversarial: a workflow with no gaia-setup-node step reds rather than passing empty" {
   require_yaml_parser
   local doctored="$BATS_TEST_TMPDIR/w12d.yml" gaps
@@ -2117,7 +2146,7 @@ setup_node_cap_gaps() {
     echo "renaming the action away left the check reporting a clean read" >&2
     return 1
   }
-  printf '%s' "$gaps" | grep -qF 'this check is reaching nothing' || {
+  printf '%s' "$gaps" | grep -qF 'this check is now reaching nothing' || {
     echo "an empty enumeration was not reported as reaching nothing: ${gaps}" >&2
     return 1
   }
