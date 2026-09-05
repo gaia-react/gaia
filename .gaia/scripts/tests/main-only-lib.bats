@@ -1,8 +1,8 @@
 #!/usr/bin/env bats
 #
 # Conformance suite for .gaia/scripts/main-only-lib.sh (task 5.3): the shared
-# main-only-flow refusal helper /update-gaia, /update-deps, and /gaia-release
-# source instead of each carrying its own copy-pasted detection.
+# main-only-flow refusal helper the classified flows source instead of each
+# carrying its own copy-pasted detection. CALL_SITE_FILES below is the roster.
 #
 # Run under bash 5 (bash 3.2's `[[ ]]` skip-under-set-e gap is real; see
 # .claude/rules/bats-assertions.md): `source .gaia/scripts/bats5.sh && bats5
@@ -192,8 +192,8 @@ gaia_refuse_if_worktree "/update-gaia" my_state
 
 # ---------- as the call sites actually invoke it ----------
 #
-# Every test above sources $LIB by ABSOLUTE path under bash. The three call
-# sites do neither: they are markdown blocks an agent runs through its shell
+# Every test above sources $LIB by ABSOLUTE path under bash. The call sites
+# do neither: they are markdown blocks an agent runs through its shell
 # tool, so the sourcing shell is that machine's login shell (zsh on a stock
 # Mac, not bash as a settings.json-registered hook gets), and the line they run
 # is the repo-relative `. .gaia/scripts/main-only-lib.sh` from a checkout root.
@@ -282,11 +282,10 @@ install_libs() {
 # hardcoded here instead, with this comment naming where the classification
 # itself lives.
 
-# The fourteen classified flows, and each one's flow-name literal at the
-# same array index. Order matches the RUNBOOK.md classification's own
-# ordering, not alphabetical.
+# The classified flows that carry the refusal, and each one's flow-name
+# literal at the same array index. Order matches the RUNBOOK.md
+# classification's own ordering, not alphabetical.
 CALL_SITE_FILES=(
-  ".claude/commands/distribution-audit.md"
   ".claude/commands/gaia-audit.md"
   ".claude/commands/gaia-debt.md"
   ".claude/commands/gaia-fitness.md"
@@ -302,7 +301,6 @@ CALL_SITE_FILES=(
   ".claude/skills/update-gaia/SKILL.md"
 )
 CALL_SITE_FLOW_NAMES=(
-  "/distribution-audit"
   "/gaia-audit"
   "/gaia-debt"
   "/gaia-fitness"
@@ -318,13 +316,32 @@ CALL_SITE_FLOW_NAMES=(
   "/update-gaia"
 )
 
-# The six flows that must never carry the refusal: each provisions or drives
+# The flows that must never carry the refusal: each provisions or drives
 # its own worktree mid-flow (gaia-plan, gaia-debt's fix path) or must stay
 # reachable from inside one (gaia-spec, gaia-forensics, gaia-handoff,
 # gaia-pickup, file-tech-debt). This half is what catches a future drive-by
 # adding the refusal to one of these, e.g. onto /gaia-plan, which would break
 # plan execution the moment the flow enters the worktree it just created.
+#
+# distribution-audit joins them on a different warrant, and one worth stating
+# because the refusal did sit on it. What decides it is what the flow writes:
+# /distribution-audit writes `.gaia/manifest.json` and `.gaia/release-exclude`,
+# git-tracked branch-scoped files a linked worktree isolates correctly, and it
+# writes nothing under `.gaia/local`, so a worktree run collides with no shared
+# state. Meanwhile the `gh pr create` distribution pre-flight demands that
+# answer land on the worktree's own branch, which the main checkout cannot
+# supply, so a refusal here made the hook's own remediation unfollowable. The
+# release path's main-only property is enforced at /gaia-release's own call
+# site above, not here.
+#
+# That warrant stands on its own and deliberately does not rest on
+# main-only-lib.sh's docblock, which reads like the classification criterion
+# and is not one. Taking the docblock at face value reaches the same verdict
+# anyway: its sentence is a conjunction, a VERSION/lockfile/cache-state write
+# AND opening or driving a PR, and /distribution-audit satisfies neither half.
+# CALL_SITE_FILES is the roster, and tests 14 and 15 are what enforce it.
 NO_CALL_SITE_FILES=(
+  ".claude/commands/distribution-audit.md"
   ".claude/commands/gaia-plan.md"
   ".claude/commands/gaia-spec.md"
   ".claude/commands/gaia-forensics.md"
@@ -333,7 +350,7 @@ NO_CALL_SITE_FILES=(
   ".claude/skills/file-tech-debt/SKILL.md"
 )
 
-# Seven of the fourteen are thin dispatchers: a "Read `.claude/..." line
+# Seven of the call-site roster are thin dispatchers: a "Read `.claude/..." line
 # sends the agent to a reference file, and a refusal call placed BELOW that
 # line greps as present but never runs, because the agent follows the
 # reference instead of reading the rest of the file. This is the frozen set
@@ -374,7 +391,7 @@ extract_block() {
 
 # ---------- roster census ----------
 
-@test "call-site roster: each of the fourteen classified flows carries exactly one line-anchored invocation" {
+@test "call-site roster: every classified flow carries exactly one line-anchored invocation" {
   local f count
   for f in "${CALL_SITE_FILES[@]}"; do
     count=$(grep -c '^[[:space:]]*gaia_refuse_if_worktree "' "$REPO_ROOT/$f" || true)
@@ -382,7 +399,7 @@ extract_block() {
   done
 }
 
-@test "call-site roster: the six worktree-callable flows carry none" {
+@test "call-site roster: the worktree-callable flows carry none" {
   local f count
   for f in "${NO_CALL_SITE_FILES[@]}"; do
     count=$(grep -c '^[[:space:]]*gaia_refuse_if_worktree "' "$REPO_ROOT/$f" || true)
@@ -411,7 +428,7 @@ extract_block() {
 
 # ---------- per-call-site execution, under the shell the call site really uses ----------
 
-@test "call-site execution: all fourteen extracted blocks refuse correctly under bash, from a real linked worktree" {
+@test "call-site execution: every extracted block refuses correctly under bash, from a real linked worktree" {
   make_repo
   install_libs "$REPO"
   make_worktree "$REPO" mol-bash mol-bash-branch
@@ -437,7 +454,7 @@ extract_block() {
   return 0
 }
 
-@test "call-site execution: all fourteen extracted blocks refuse correctly under zsh, from a real linked worktree" {
+@test "call-site execution: every extracted block refuses correctly under zsh, from a real linked worktree" {
   command -v zsh >/dev/null 2>&1 || skip "zsh not installed"
   make_repo
   install_libs "$REPO"

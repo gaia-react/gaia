@@ -9,19 +9,6 @@ Maintainer-only. Thin orchestrator over `.gaia/cli/gaia-maintainer`, which owns 
 
 `.gaia/release-exclude` is the distribution boundary: a file ships to adopters if and only if git tracks it and no line in that file masks it. `.gaia/manifest.json` is the update policy `/update-gaia` consumes, and incidentally the ledger of which shipping files a maintainer has acknowledged. A file that git tracks, that no exclude line masks, and that the manifest does not yet list is "unanswered": it would ship, but nobody has said so on purpose.
 
-## Pre-flight: Worktree check
-
-This command drives the release CLI's manifest regeneration and answers the shipping boundary for the clone. If invoked from a linked worktree, reject hard: `gaia_refuse_if_worktree` (`.gaia/scripts/main-only-lib.sh`) asks the shared resolver which tree this is and refuses out loud, naming the main checkout, when the answer is a worktree.
-
-Detection (run this first, before anything else):
-
-```bash
-. .gaia/scripts/main-only-lib.sh
-gaia_refuse_if_worktree "/distribution-audit" || exit 1
-```
-
-If the detection does not fire, fall through to `## Step 1. Find the unanswered files` below.
-
 ## Step 1. Find the unanswered files
 
 ```bash
