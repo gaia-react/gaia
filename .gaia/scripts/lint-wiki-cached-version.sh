@@ -67,6 +67,48 @@ frontmatter_field_line() {
   ' "$1"
 }
 
+# empty_discovery_cause <repo_root>
+#
+# Print the cause of an empty tracked-page listing. THREE conditions reach that
+# arm and the repair differs for each, so each is named rather than one of them
+# being named confidently (.claude/rules/partial-cause-reporting.md):
+#
+#   not a repository        -- git has already printed its own diagnostic above
+#   a root below the toplevel -- git exits 0 and prints NOTHING, which is the
+#                            silent one: the listing is scoped to that
+#                            subdirectory, so the operator would otherwise be
+#                            sent to inspect a wiki tree that is fine while the
+#                            repair is the root they passed
+#   a genuinely empty wiki  -- the remaining case
+#
+# The middle case is why the git-diagnostic heuristic alone is not enough: its
+# absence does not mean the wiki is empty.
+empty_discovery_cause() {
+  local root="$1" prefix
+  printf '%s: discovery listed no tracked markdown under wiki/ in %s.\n' "$PROG" "$root"
+  # `--show-prefix`, not a comparison against `--show-toplevel`. The toplevel
+  # comes back as a PHYSICAL path, so on a host where the caller passed a path
+  # through a symlink -- /tmp on macOS is /private/tmp -- the two strings differ
+  # for a root that IS the toplevel, and the comparison reports the wrong cause
+  # confidently. The prefix answers the question directly: it is the empty
+  # string exactly when the root is the toplevel, whatever spelling reached it.
+  if ! prefix="$(git -C "$root" rev-parse --show-prefix 2>/dev/null)"; then
+    printf 'Cause: %s is not a usable git repository; the git diagnostic above this line\n' "$root"
+    printf 'states which. Pass a root that is a working checkout.\n'
+
+    return 0
+  fi
+  if [ -n "$prefix" ]; then
+    printf 'Cause: %s sits below its repository toplevel, at %s within it. The listing is\n' "$root" "$prefix"
+    printf 'scoped to the directory it is given, so it reports nothing here and prints no\n'
+    printf 'diagnostic at all. Pass the toplevel.\n'
+
+    return 0
+  fi
+  printf 'Cause: the wiki tree of %s holds no tracked page. This tree carries dozens, so\n' "$root"
+  printf 'that is a deleted or unstaged tree rather than a surface with nothing on it.\n'
+}
+
 main() {
   local root
   if [ "$#" -gt 1 ]; then
@@ -116,12 +158,9 @@ main() {
   # listing is consumed by the loop itself; `seen` is what the pre-sweep
   # emptiness test would have asked, and nothing is reported when it is zero.
   if [ "$seen" -eq 0 ]; then
-    printf '%s: discovery listed no tracked markdown under wiki/ in %s.\n' "$PROG" "$root" >&2
-    printf 'Two conditions reach this, and the repair differs: the wiki tree holds no tracked\n' >&2
-    printf 'page, or the root is not a usable git repository at all. Any git diagnostic above\n' >&2
-    printf 'this line is the second case; its absence is the first. Either way this is a broken\n' >&2
-    printf 'discovery rather than a clean surface; it would otherwise report every page\n' >&2
-    printf 'compliant having read none of them.\n' >&2
+    empty_discovery_cause "$root" >&2
+    printf 'Either way this is a broken discovery rather than a clean surface; it would\n' >&2
+    printf 'otherwise report every page compliant having read none of them.\n' >&2
     return 2
   fi
 

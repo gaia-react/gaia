@@ -438,6 +438,56 @@ write_page() {
   grep -qF -- 'wiki directory not found' <<<"$output"
 }
 
+# The empty-discovery arm, which is a byte-for-byte sibling of the one in
+# lint-wiki-cached-version.sh with no shared source between them. Covered here
+# too, deliberately: with the arm tested on one copy only, a repair or a
+# regression landing on the other has nothing red. Three conditions reach it and
+# the repair differs for each.
+
+@test "empty discovery, cause 1: a wiki directory holding no tracked markdown" {
+  local dir
+  dir="$(make_fixture empty_wiki)"
+  write_settings "$dir" denier.sh
+  write_hook "$dir" denier.sh deny
+  git -C "$dir" add -A
+
+  run bash "$CHECK" "$dir"
+  [ "$status" -eq 2 ]
+  grep -qF -- 'discovery listed no tracked markdown' <<<"$output"
+  grep -qF -- 'holds no tracked page' <<<"$output"
+}
+
+@test "empty discovery, cause 2: a root that is not a git repository" {
+  local dir="$BATS_TEST_TMPDIR/not_a_repo_cls"
+  mkdir -p "$dir/.claude/hooks" "$dir/wiki"
+  printf '{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"\\"$(git rev-parse --show-toplevel)/.claude/hooks/denier.sh\\""}]}]}}\n' >"$dir/.claude/settings.json"
+  printf '#!/usr/bin/env bash\nexit 2\n' >"$dir/.claude/hooks/denier.sh"
+  chmod +x "$dir/.claude/hooks/denier.sh"
+
+  run bash "$CHECK" "$dir"
+  [ "$status" -eq 2 ]
+  grep -qF -- 'not a usable git repository' <<<"$output"
+  grep -qE -- 'not a git repository|fatal' <<<"$output"
+}
+
+@test "empty discovery, cause 3: a root below its repository toplevel" {
+  local dir
+  dir="$(make_fixture below_toplevel_cls)"
+  write_settings "$dir" denier.sh
+  write_hook "$dir" denier.sh deny
+  write_page "$dir" nudger.sh
+  mkdir -p "$dir/sub/.claude/hooks" "$dir/sub/wiki"
+  cp "$dir/.claude/settings.json" "$dir/sub/.claude/settings.json"
+  cp "$dir/.claude/hooks/denier.sh" "$dir/sub/.claude/hooks/denier.sh"
+  track_fixture "$dir"
+
+  run bash "$CHECK" "$dir/sub"
+  [ "$status" -eq 2 ]
+  grep -qF -- 'sits below its repository toplevel' <<<"$output"
+  grep -qF -- 'holds no tracked page' <<<"$output" && return 1
+  true
+}
+
 @test "a root argument that is not a directory exits 2" {
   run bash "$CHECK" "$BATS_TEST_TMPDIR/nope"
   [ "$status" -eq 2 ]

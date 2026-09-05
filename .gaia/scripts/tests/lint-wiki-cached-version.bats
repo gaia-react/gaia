@@ -176,25 +176,45 @@ write_page() {
   grep -qF -- 'wiki directory not found' <<<"$output"
 }
 
-@test "a wiki directory holding no tracked markdown exits 2 rather than reporting clean" {
+# Three conditions reach the empty-discovery arm and the repair differs for each,
+# so each gets its own test rather than one standing for the set.
+
+@test "empty discovery, cause 1: a wiki directory holding no tracked markdown" {
   local dir
   dir="$(make_fixture empty_wiki)"
 
   run bash "$CHECK" "$dir"
   [ "$status" -eq 2 ]
   grep -qF -- 'discovery listed no tracked markdown' <<<"$output"
+  grep -qF -- 'holds no tracked page' <<<"$output"
 }
 
-@test "a root that is not a git repository names that cause rather than only the empty wiki" {
+@test "empty discovery, cause 2: a root that is not a git repository" {
   local dir="$BATS_TEST_TMPDIR/not_a_repo"
   mkdir -p "$dir/wiki/dependencies"
-  # Both conditions reach the same arm and the repairs differ: an empty wiki is
-  # a content question, a broken root is not. Suppressing the listing command
-  # stderr would leave the operator inspecting a wiki tree that is fine.
+
   run bash "$CHECK" "$dir"
   [ "$status" -eq 2 ]
   grep -qF -- 'not a usable git repository' <<<"$output"
+  # The listing command states which, which is why its stderr is not suppressed.
   grep -qE -- 'not a git repository|fatal' <<<"$output"
+}
+
+@test "empty discovery, cause 3: a root below its repository toplevel" {
+  local dir
+  dir="$(make_fixture below_toplevel)"
+  mkdir -p "$dir/sub/wiki"
+  write_page "$dir" wiki/dependencies/Alpha.md 'type: dependency'
+  track_fixture "$dir"
+  # The silent one, and the reason the git-diagnostic heuristic alone is not
+  # enough: the listing is scoped to the directory it is given, so it exits 0
+  # and prints nothing at all. Without its own arm the operator is sent to
+  # inspect a wiki tree that is fine.
+  run bash "$CHECK" "$dir/sub"
+  [ "$status" -eq 2 ]
+  grep -qF -- 'sits below its repository toplevel' <<<"$output"
+  grep -qF -- 'holds no tracked page' <<<"$output" && return 1
+  true
 }
 
 @test "a root argument that is not a directory exits 2" {
