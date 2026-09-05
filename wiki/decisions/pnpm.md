@@ -4,7 +4,7 @@ status: active
 priority: 1
 date: 2026-04-26
 created: 2026-04-26
-updated: 2026-08-05
+updated: 2026-09-05
 tags: [decision, tooling, package-manager, security]
 ---
 
@@ -41,6 +41,8 @@ Caret ranges (`^x.y.z`) are kept in `package.json`. The lockfile is the authorit
 
 <!-- gaia:maintainer-only:start -->
 `.gaia/cli` is a second, independent pnpm root: its own `pnpm-workspace.yaml` and `pnpm-lock.yaml`, resolved separately from the repository root. It carries the same supply-chain settings as root, `minimumReleaseAge`, `minimumReleaseAgeStrict`, `trustPolicy`, `trustPolicyExclude`, `minimumReleaseAgeExclude`, with each exclusion entry checked against that workspace's own dependency closure rather than copied wholesale from root's. `.gaia/cli/src/lint-pin-parity.test.ts` asserts both workspaces resolve identical values for every cross-workspace floor: the release-age minimum, its strict-enforcement flag, the trust policy, and the resolved version of every rule-bearing package each lockfile freezes independently through `eslint-config-airbnb-extended`'s floating range. That last set is chosen by the npm naming convention for an ESLint plugin or shared config rather than by a list, so a plugin arriving through the same range is guarded without an edit; a package neither workspace loads is named in the test's exemption map with the reason it is not compared. That lockfile half covers what each workspace resolves through a range. What each workspace states for itself is guarded on the manifests instead, in the same test: the `@gaia-react/lint` pin plus the tools whose own version reaches lint output, `eslint` and `prettier`. Parity there is on the declared version and never on behaviour. The manifest guard needs a value on both sides to compare, so a lint-output-reaching package only one workspace declares, `prettier-plugin-tailwindcss`, stays outside it. `cli-tests.yml` includes root `pnpm-lock.yaml`, `pnpm-workspace.yaml`, and `package.json` in its path filter so the guard runs on the pull request that moves any of them, not only on a later `.gaia/cli/**` change.
+
+Every dependency-CVE surface in this repository (the `/update-deps` override audit, the code-review agent's advisory oracle, the CI cron template) runs `pnpm audit` from the repository root only, so the CLI's second root is invisible to all of them; its overrides map carries security floors retired by hand, and its build inlines that closure into a binary adopters receive. `.gaia/scripts/check-cli-workspace-floors.sh` reports on it directly, run from the same CI job that installs `.gaia/cli`. Its parity arm is offline, deterministic, and decides the exit status: the `overrides:` map in the CLI workspace's `pnpm-workspace.yaml` must match the `overrides:` block in its own lockfile, the same drift `pnpm-overrides` calls out for the repository root, checked here for the second root instead. A separate advisory arm surfaces high/critical findings in the CLI's closure but needs the network and does not decide the exit status, and CI passes `--no-audit` to skip it there; a maintainer runs it by hand when a slow or failed registry call is tolerable. Passing parity means the floors are applied as configured, not that they are still needed: a floor whose parents have since bumped their own pins past it quietly becomes a cap, and that decay needs the interactive override audit's toggle-and-re-resolve, not this read-only check, to catch.
 <!-- gaia:maintainer-only:end -->
 
 ## Override audit
