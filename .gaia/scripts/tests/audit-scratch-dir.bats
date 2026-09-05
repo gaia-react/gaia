@@ -17,8 +17,10 @@
 # inferred. Everything down to the registry-conformance case assumes a PLAIN
 # checkout, and setup() pins one so that assumption is a fixture rather than
 # an accident of where bats was launched. The `mint/populate asymmetry` block
-# at the foot wants the other answer and builds its own linked worktree per
-# case. Nothing in between straddles the two.
+# at the foot chooses its own tree per case instead, each in its own subshell:
+# most build a linked worktree, and its closing negative control deliberately
+# takes the plain fixture, because what that case pins is the note staying
+# SILENT off a worktree. Nothing in between straddles the two.
 #
 # Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 #
@@ -61,9 +63,9 @@ setup() {
   #
   # Deliberately NOT a guard or a skip on the assertions that red: that would
   # leave them unrun in a worktree, which is the same invisibility pointed
-  # the other way. The `mint/populate asymmetry` cases want the worktree
-  # answer and cd into their own, in their own subshells, so this does not
-  # reach them.
+  # the other way. The `mint/populate asymmetry` cases each choose their own
+  # tree in their own subshell, worktree or plain, so this pin does not reach
+  # any of them.
   cd "$REPO" || return 1
 }
 
