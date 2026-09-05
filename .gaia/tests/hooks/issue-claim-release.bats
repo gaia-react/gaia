@@ -242,6 +242,20 @@ assert_nothing_released() { [ ! -s "$FAKE_GH_STATE/issue_edits" ]; }
   assert_released_once "12"
 }
 
+@test "4d: a pr view that never answers releases nothing, and the re-reads stop" {
+  # 4b's bound on the other arm into the loop: a state that never settles and a
+  # call that never answers are separate ways to stay in it, and this hook runs
+  # as PostToolUse, so a re-read that failed to terminate would hang the tool
+  # result rather than merely losing a release.
+  export FAKE_GH_PR_VIEW_FAIL_CALLS=99
+  export FAKE_GH_PR_BODY="Closes #12"
+  run_hook 'gh pr merge 42'
+  [ "$status" -eq 0 ]
+  assert_nothing_released
+  [ "$(pr_view_calls)" -ge 2 ]
+  [ "$(pr_view_calls)" -le 5 ]
+}
+
 @test "5: a body with no closing reference releases nothing" {
   export FAKE_GH_PR_BODY="See discussion, no keyword here"
   run_hook 'gh pr merge 42'

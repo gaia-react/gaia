@@ -38,7 +38,7 @@ Automatic release is the common path, not a guarantee. Seven shapes leave the cl
 
 **A pull request that closes nothing by keyword.** The release reads GitHub's closing keywords out of the pull request body. A merged pull request that only references an issue (`Refs #<n>`), or names none at all, leaves the claim set; a claimed issue needs a real closing reference to release automatically.
 
-**A merge queued with `--auto`.** It lands server-side after the command returns. The hook requires `MERGED` at the moment it runs, sees an open pull request, and never runs again, because the merge that follows fires no tool call.
+**A merge queued with `--auto`.** It lands server-side after the command returns. The hook requires `MERGED` within the bounded window it re-reads over, and a queued merge lands far outside that window, so it sees an open pull request and never runs again, because the merge that follows fires no tool call.
 
 **A merge that is not the first command in its tool call.** The hook reads one tool call and requires the merge to lead it, so anything ahead of the merge releases nothing. It abstains rather than guessing, and the asymmetry is the point: an abstention costs a label removed by hand, while a guess costs a label stripped off an issue in this repository that the merge never closed. The same abstention covers the spellings it can only read approximately, a clustered single-dash shorthand and a `--repo` naming another repository or another host.
 
