@@ -22,6 +22,8 @@ An issue already carrying `in-progress` is held by someone else. The right move 
 
 `.claude/hooks/issue-claim-release.sh` fires on a tool call whose **first** command is a `gh pr merge` naming this repository, and strips `in-progress` from every issue the merged pull request's body closes, matching GitHub's own closing keywords. It confirms the pull request actually reads `MERGED` before touching any label. A merge rejected by branch protection or a pending check leaves the work in flight, and releasing the claim on that rejection would hand a live ticket to a second worker while the first is still mid-review.
 
+That confirmation re-reads the state over a short bounded window rather than deciding on one immediate look. The hook runs microseconds after the merge call returns, GitHub answers from a replica, and a read landing inside the replication window reports a merged pull request as still open. Under worktree isolation the window is fully exposed: `--delete-branch` normally fills it with local git work, and that work fails at once when the default branch is checked out in another tree, so the hook arrives with none of the delay that hid the race elsewhere. The window is bounded rather than waited out, because a rejected merge and an `--auto` merge both leave the pull request open for far longer than any replica lag, and declining on those is the behavior above.
+
 Every qualifier in that first sentence is a condition the release can fail, and each failure is silent: the merge lands, the issue closes, and the claim stays. Known limitations below enumerates them.
 
 ## Division of labor

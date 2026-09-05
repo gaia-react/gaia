@@ -10,8 +10,10 @@
 # the merge actually landed before it acts: a `gh pr merge` rejected by branch
 # protection or a pending check leaves the work in flight, and releasing the
 # claim on that rejection would let a second person start it while the first
-# is still mid-review. So it resolves the pull request with one `gh pr view`
-# call and requires .state == "MERGED" before touching any label.
+# is still mid-review. So it resolves the pull request with `gh pr view` and
+# requires .state == "MERGED" before touching any label, re-reading over a
+# short bounded window so a replica that has not caught up with the merge
+# does not read as a rejection.
 #
 # Fire-and-forget after that: it NEVER blocks or fails a merge (PostToolUse,
 # always exit 0). It touches no .gaia/local state, releasing a claim is a
@@ -134,18 +136,41 @@ case "$ref" in
     ;;
 esac
 
-# One gh pr view call, reused for both fields. No ref means the current
-# branch, which is gh's own default when none is passed; --repo is omitted
-# on that arm because gh rejects the flag without a selector, and cwd
+# One gh pr view call per read, reused for both fields. No ref means the
+# current branch, which is gh's own default when none is passed; --repo is
+# omitted on that arm because gh rejects the flag without a selector, and cwd
 # already resolves to the home repo.
-if [ -n "$ref" ]; then
-  pr_json=$(gh pr view --repo "$home" "$ref" --json state,body 2>/dev/null) || exit 0
-else
-  pr_json=$(gh pr view --json state,body 2>/dev/null) || exit 0
-fi
-
-state=$(printf '%s' "$pr_json" | jq -r '.state // ""' 2>/dev/null)
-[ "$state" = "MERGED" ] || exit 0
+#
+# The state is re-read rather than decided on one immediate look. This hook
+# runs microseconds after the merge call returns, GitHub answers the state
+# from a replica, and a read that lands inside that replication window
+# reports the pull request still open. Concluding "not merged" there releases
+# nothing, silently, on a merge that landed. The window is normally covered by
+# the local git work `--delete-branch` does after the merge; under worktree
+# isolation that work fails immediately (the default branch is checked out in
+# another tree), so the hook arrives with none of the delay that was hiding
+# the race. Re-reading also carries a `gh pr view` that fails outright, which
+# used to end the hook on one transient error.
+#
+# Bounded, because the state that never settles is the one this hook must
+# decline on: a merge rejected by branch protection, and one queued with
+# --auto, both leave the pull request open indefinitely, and waiting them out
+# is neither possible nor correct. The budget is what a replication window
+# costs, not what a merge costs, so it is small enough to spend in full on
+# every rejected merge.
+attempt=1
+while :; do
+  if [ -n "$ref" ]; then
+    pr_json=$(gh pr view --repo "$home" "$ref" --json state,body 2>/dev/null) || pr_json=""
+  else
+    pr_json=$(gh pr view --json state,body 2>/dev/null) || pr_json=""
+  fi
+  state=$(printf '%s' "$pr_json" | jq -r '.state // ""' 2>/dev/null)
+  [ "$state" = "MERGED" ] && break
+  [ "$attempt" -ge 3 ] && exit 0
+  attempt=$((attempt + 1))
+  sleep 1
+done
 
 body=$(printf '%s' "$pr_json" | jq -r '.body // ""' 2>/dev/null)
 
