@@ -46,6 +46,7 @@ setup() {
   mkdir -p "$FAKE_GH_STATE"
   : > "$FAKE_GH_STATE/issue_edits"
   : > "$FAKE_GH_STATE/issue_edit_repos"
+  : > "$FAKE_GH_STATE/pr_view_calls"
   write_gh_stub
   export FAKE_GH_STATE
   export FAKE_GH_PR_STATE="${FAKE_GH_PR_STATE:-MERGED}"
@@ -57,10 +58,10 @@ teardown() {
   return 0
 }
 
-# Fake `gh` answering exactly the three calls this hook makes: `repo view`
-# (the home repo), `pr view` (once, with both fields) and
-# `issue edit ... --remove-label ...`. State lives under $FAKE_GH_STATE so a
-# test can assert on it after run_hook.
+# Fake `gh` answering the calls this hook makes: `repo view` (the home repo),
+# `pr view` (both fields at once, and re-read while the state has not settled
+# on MERGED) and `issue edit ... --remove-label ...`. State lives under
+# $FAKE_GH_STATE so a test can assert on it after run_hook.
 #
 # `pr view` reproduces real gh's precedence, verified against gh 2.96: a URL
 # selector resolves the repository from the URL and OVERRIDES --repo. Without
@@ -111,7 +112,28 @@ case "$1" in
         [ -n "$repo" ] || repo="$HOME_REPO"
         printf '%s' "$ref" > "$STATE/pr_view_ref"
         printf '%s' "$repo" > "$STATE/pr_view_repo"
-        jq -n --arg s "${FAKE_GH_PR_STATE:-MERGED}" --arg b "${FAKE_GH_PR_BODY:-}" \
+        echo x >> "$STATE/pr_view_calls"
+        calls=$(wc -l < "$STATE/pr_view_calls" | tr -d ' ')
+        # FAKE_GH_PR_STATE_SEQ answers successive `pr view` calls from a
+        # whitespace-separated list, so a test can put a state that changes
+        # between reads in front of the hook. Past the end of the list the
+        # last entry repeats, which is what a state that never settles looks
+        # like. Unset, every call answers FAKE_GH_PR_STATE, as before.
+        state="${FAKE_GH_PR_STATE:-MERGED}"
+        if [ -n "${FAKE_GH_PR_STATE_SEQ:-}" ]; then
+          i=0
+          for s in $FAKE_GH_PR_STATE_SEQ; do
+            i=$((i + 1))
+            state="$s"
+            [ "$i" -ge "$calls" ] && break
+          done
+        fi
+        # The same shape for the call itself failing: the first
+        # FAKE_GH_PR_VIEW_FAIL_CALLS reads exit non-zero with no output.
+        if [ "$calls" -le "${FAKE_GH_PR_VIEW_FAIL_CALLS:-0}" ]; then
+          exit 1
+        fi
+        jq -n --arg s "$state" --arg b "${FAKE_GH_PR_BODY:-}" \
           '{state: $s, body: $b}'
         exit "${FAKE_GH_PR_VIEW_EXIT:-0}"
         ;;
@@ -152,6 +174,7 @@ run_hook() {
   invoke_hook_in "$REPO" "$input" "$HOOK_ABS"
 }
 
+pr_view_calls() { wc -l < "$FAKE_GH_STATE/pr_view_calls" | tr -d ' '; }
 released_issues() { cat "$FAKE_GH_STATE/issue_edits" 2>/dev/null; }
 assert_released_once() { [ "$(grep -cxF -- "$1" <<<"$(released_issues)")" -eq 1 ]; }
 assert_nothing_released() { [ ! -s "$FAKE_GH_STATE/issue_edits" ]; }
@@ -185,6 +208,56 @@ assert_nothing_released() { [ ! -s "$FAKE_GH_STATE/issue_edits" ]; }
   run_hook 'gh pr merge 42'
   [ "$status" -eq 0 ]
   assert_nothing_released
+}
+
+# 4a-4c: the state read is re-read briefly rather than decided on one
+# immediate read. The hook runs microseconds after the merge call returns, and
+# GitHub answers the state from a replica, so a merge that landed can still
+# read OPEN on the first look. Deciding there is silent and costs the release.
+@test "4a: a state that reads not-MERGED and then MERGED releases the issue" {
+  export FAKE_GH_PR_STATE_SEQ="OPEN MERGED"
+  export FAKE_GH_PR_BODY="Closes #12"
+  run_hook 'gh pr merge 42'
+  [ "$status" -eq 0 ]
+  assert_released_once "12"
+}
+
+@test "4b: a state that never settles on MERGED releases nothing, and the re-reads stop" {
+  export FAKE_GH_PR_STATE_SEQ="OPEN"
+  export FAKE_GH_PR_BODY="Closes #12"
+  run_hook 'gh pr merge 42'
+  [ "$status" -eq 0 ]
+  assert_nothing_released
+  # Both directions: it did re-read, and the re-reading is bounded rather than
+  # waiting out a pull request that a rejected merge leaves open indefinitely.
+  [ "$(pr_view_calls)" -ge 2 ]
+  [ "$(pr_view_calls)" -le 5 ]
+}
+
+@test "4c: a pr view that fails and then succeeds releases the issue" {
+  export FAKE_GH_PR_VIEW_FAIL_CALLS=1
+  export FAKE_GH_PR_BODY="Closes #12"
+  run_hook 'gh pr merge 42'
+  [ "$status" -eq 0 ]
+  assert_released_once "12"
+}
+
+@test "4d: a pr view that never answers releases nothing, and the re-reads stop" {
+  # 4b's bound on the other arm into the loop: a state that never settles and a
+  # call that never answers are separate ways to stay in it.
+  #
+  # A red here means the cap grew. A cap that went away produces no red at all:
+  # this suite sets no per-test timeout (bats offers BATS_TEST_TIMEOUT, and
+  # setup_file is the latest useful place to set one) and run_hook imposes
+  # none, so a loop that never terminates emits neither ok nor not ok and the
+  # job dies on its own timeout with nothing attributed to this test.
+  export FAKE_GH_PR_VIEW_FAIL_CALLS=99
+  export FAKE_GH_PR_BODY="Closes #12"
+  run_hook 'gh pr merge 42'
+  [ "$status" -eq 0 ]
+  assert_nothing_released
+  [ "$(pr_view_calls)" -ge 2 ]
+  [ "$(pr_view_calls)" -le 5 ]
 }
 
 @test "5: a body with no closing reference releases nothing" {
@@ -762,23 +835,23 @@ assert_nothing_released() { [ ! -s "$FAKE_GH_STATE/issue_edits" ]; }
   assert_released_once "77"
 }
 
-# 7ap-7as: a word-initial unquoted `#` opens a shell COMMENT, so gh receives
-# none of it. Read as ordinary text those words reach the flag parser, and a
-# `--repo` among them wins over the one the merge carried, because the parser
-# keeps the last one it sees and the shared guard captures greedily. 7ap is the
-# harm that reaches: a merge landing in the SIBLING repository, stripping claims
-# here. 7aq and 7ar are the controls that the arm cuts a comment rather than
-# every `#`. 7as pins the stop rather than a skip to the newline: a comment
-# hiding a leading command must not promote the words after it into the first
-# command, which is the one shape a skip would get wrong.
-@test "7ap: a trailing comment's --repo does not turn a foreign merge into a home release" {
+# 7az-7bb and 7as: a word-initial unquoted `#` opens a shell COMMENT, so gh
+# receives none of it. Read as ordinary text those words reach the flag parser,
+# and a `--repo` among them wins over the one the merge carried, because the
+# parser keeps the last one it sees and the shared guard captures greedily.
+# 7az is the harm that reaches: a merge landing in the SIBLING repository,
+# stripping claims here. 7ba and 7bb are the controls that the arm cuts a
+# comment rather than every `#`. 7as pins the stop rather than a skip to the
+# newline: a comment hiding a leading command must not promote the words after
+# it into the first command, which is the one shape a skip would get wrong.
+@test "7az: a trailing comment's --repo does not turn a foreign merge into a home release" {
   export FAKE_GH_PR_BODY="Closes #77"
   run_hook 'gh pr merge --repo other-org/other-repo 5 # was --repo gaia-react/gaia'
   [ "$status" -eq 0 ]
   assert_nothing_released
 }
 
-@test "7aq: a trailing comment does not cost a home merge its release" {
+@test "7ba: a trailing comment does not cost a home merge its release" {
   export FAKE_GH_PR_BODY="Closes #77"
   run_hook 'gh pr merge 5 --squash # ship it'
   [ "$status" -eq 0 ]
@@ -786,7 +859,7 @@ assert_nothing_released() { [ ! -s "$FAKE_GH_STATE/issue_edits" ]; }
   assert_released_once "77"
 }
 
-@test "7ar: a mid-word # is ordinary text, not a comment" {
+@test "7bb: a mid-word # is ordinary text, not a comment" {
   export FAKE_GH_PR_BODY="Closes #77"
   run_hook 'gh pr merge --body fix#77 5'
   [ "$status" -eq 0 ]

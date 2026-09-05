@@ -22,6 +22,8 @@ An issue already carrying `in-progress` is held by someone else. The right move 
 
 `.claude/hooks/issue-claim-release.sh` fires on a tool call whose **first** command is a `gh pr merge` naming this repository, and strips `in-progress` from every issue the merged pull request's body closes, matching GitHub's own closing keywords. It confirms the pull request actually reads `MERGED` before touching any label. A merge rejected by branch protection or a pending check leaves the work in flight, and releasing the claim on that rejection would hand a live ticket to a second worker while the first is still mid-review.
 
+That confirmation re-reads the state over a short bounded window rather than deciding on one immediate look. The hook runs microseconds after the merge call returns, GitHub answers from a replica, and a read landing inside the replication window reports a merged pull request as still open. Under worktree isolation the window is fully exposed: `--delete-branch` normally fills it with local git work, and that work fails at once when the default branch is checked out in another tree, so the hook arrives with none of the delay that hid the race elsewhere. The window is bounded rather than waited out, because a rejected merge and an `--auto` merge both leave the pull request open for far longer than any replica lag, and declining on those is the behavior above.
+
 Every qualifier in that first sentence is a condition the release can fail, and each failure is silent: the merge lands, the issue closes, and the claim stays. Known limitations below enumerates them.
 
 ## Division of labor
@@ -36,7 +38,7 @@ Automatic release is the common path, not a guarantee. Seven shapes leave the cl
 
 **A pull request that closes nothing by keyword.** The release reads GitHub's closing keywords out of the pull request body. A merged pull request that only references an issue (`Refs #<n>`), or names none at all, leaves the claim set; a claimed issue needs a real closing reference to release automatically.
 
-**A merge queued with `--auto`.** It lands server-side after the command returns. The hook requires `MERGED` at the moment it runs, sees an open pull request, and never runs again, because the merge that follows fires no tool call.
+**A merge queued with `--auto`.** It lands server-side after the command returns. The hook requires `MERGED` within the bounded window it re-reads over, and a queued merge lands far outside that window, so it sees an open pull request and never runs again, because the merge that follows fires no tool call.
 
 **A merge that is not the first command in its tool call.** The hook reads one tool call and requires the merge to lead it, so anything ahead of the merge releases nothing. It abstains rather than guessing, and the asymmetry is the point: an abstention costs a label removed by hand, while a guess costs a label stripped off an issue in this repository that the merge never closed. The same abstention covers the spellings it can only read approximately, a clustered single-dash shorthand and a `--repo` naming another repository or another host.
 
