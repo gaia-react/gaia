@@ -55,10 +55,15 @@
 # exits 0 silently, so a harness that never delivers this event, or a
 # roster member named off the code-audit- convention, leaves the guard
 # inert rather than misfiring. "Inert" and "working" are indistinguishable
-# from this file alone, which is why the change this hook ships with also
-# carries a live end-to-end fixture (seed the counter with three dummy
-# trees, attempt one real member dispatch, assert the deny) rather than
-# trusting the bats suite alone to prove the enforcement point is live.
+# from this file alone, and the bats suite cannot close that: it invokes this
+# script directly and never exercises the .claude/settings.json registration,
+# so a matcher edit, a rename, or a dropped registration leaves every test
+# green. Nothing in the tree re-proves the enforcement point, and this header
+# claims no such guard. What proves it is a live drive: seed the counter with
+# three dummy trees, attempt one real member dispatch, assert the deny. That
+# is a step the pre-merge gate's own verify-your-own-work obligation
+# (.claude/rules/pr-merge.md) puts on whoever changes the registration, not a
+# fixture standing watch here.
 #
 # SCOPE: only tool_input.subagent_type matching code-audit-* counts. The
 # roster does not pin the literal subagent_type a member's own internal
@@ -101,12 +106,22 @@ if [ "$event" = "SessionStart" ]; then
   source_kind=$(jq -r '.source // empty' <<<"$payload" 2>/dev/null) || exit 0
   session=$(jq -r '.session_id // empty' <<<"$payload" 2>/dev/null) || exit 0
   if [ "$source_kind" = "clear" ] && [ -n "$session" ] && [[ "$session" =~ ^[A-Za-z0-9._-]+$ ]]; then
+    # Same root input as the PreToolUse arm below: the payload's own cwd when
+    # it is absolute, else the process one. The arms must agree, because a
+    # reset resolved from a different root than the write removes a file the
+    # counter was never in, and the count then survives the one release this
+    # hook documents and offers no override for.
+    reset_cwd=$(jq -r '.cwd // empty' <<<"$payload" 2>/dev/null) || reset_cwd=""
+    case "$reset_cwd" in
+      /*) ;;
+      *) reset_cwd="$PWD" ;;
+    esac
     gaia_scripts="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd)"
     if [ -n "${gaia_scripts:-}" ]; then
       gaia_scripts="$gaia_scripts/.gaia/scripts"
       # shellcheck source=/dev/null
       if source "$gaia_scripts/main-root-lib.sh" 2>/dev/null; then
-        root=$(gaia_resolve_main_root 2>/dev/null) || root=""
+        root=$(gaia_resolve_main_root "$reset_cwd" 2>/dev/null) || root=""
         [ -n "$root" ] && rm -f "$root/.gaia/local/cache/audit-rounds-${session}.json" 2>/dev/null
       fi
     fi

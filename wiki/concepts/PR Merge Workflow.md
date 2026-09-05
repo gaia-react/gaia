@@ -287,7 +287,7 @@ The cap binds the work, not the transcript. Continuing this branch's rounds insi
 
 That prompt is the whole handoff. It lands in a session that can see none of this one's scrollback, so it carries its own context instead of referring to it: the PR number, the branch and its base, that three rounds are already spent, where the re-run carry-forward ledger sits (`.gaia/local/audit/<AUDIT_KEY>.rerun.json`) and that the fixer reads `remaining[]` and `fixed_last_round[]` from it, what each round fixed, which findings are accepted residuals already recorded in the PR body, and an instruction to re-read this page and resume at step 1. Fence it so it pastes as one unit.
 
-The count is per session, not per branch, so the resuming session starts a fresh three. A branch that genuinely needs six rounds gets them, three at a time, each read by a session with the room to read them.
+The reset is keyed to the session, so the resuming session starts a fresh three. A branch that genuinely needs six rounds gets them, three at a time, each read by a session with the room to read them.
 
 `/clear` releases the count for the next session, the same sanctioned handoff described above: a human resumes by typing `/clear` and pasting the continuation prompt, and that reset is what lets the resuming session start its fresh three. Compaction does not release it, deliberately: releasing it there would reset the guard at the exact point described above, where the session holds the whole repair history in a context it is about to compact. There is no override flag: when a fourth round is genuinely warranted, the fresh session above is the sanctioned path, not a workaround.
 

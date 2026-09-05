@@ -325,6 +325,23 @@ roster_members() {
   assert_allowed_by_json
 }
 
+# The reset arm and the counting arm have to name the same root from the same
+# input. A reset resolved from the process working directory instead removes a
+# file the counter was never written to, and the count then survives the one
+# release the hook documents and offers no override for. Driven from outside
+# any repository, which is where the two inputs visibly disagree.
+@test "SessionStart with source clear resolves the counter from the payload cwd, not from the process working directory" {
+  seed_counter "$SESSION" "$(current_branch)" fake-tree-1 fake-tree-2 fake-tree-3
+  local outside payload
+  outside=$(mktemp -d -t round-cap-outside-XXXXXX)
+  payload=$(jq -n --arg s "$SESSION" --arg cwd "$REPO" \
+    '{session_id: $s, hook_event_name: "SessionStart", source: "clear", cwd: $cwd}')
+  cd "$outside"
+  invoke_hook "$payload" "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ ! -e "$(counter_path)" ]
+}
+
 @test "SessionStart with source resume, and separately startup, leave a three-tree counter intact and the next fourth wave still denied" {
   seed_counter "$SESSION" "$(current_branch)" fake-tree-1 fake-tree-2 fake-tree-3
   run_session_start "resume"

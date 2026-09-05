@@ -549,7 +549,7 @@ copy_shipped_registry() {
   [ -f "$MAIN/.gaia/local/cache/audit-rounds-sess-fresh.json" ]
 }
 
-@test "MAIN-CACHE-04: the sweep 5 audit-round-cap arm reaps an aged atomic-write leftover, which the registry recognizes so sweep 9 never reports it" {
+@test "MAIN-CACHE-04: the sweep 5 audit-round-cap arm reaps an aged atomic-write leftover at MAIN's cache when invoked from a linked worktree, and keeps a fresh one" {
   make_repo
   MAIN="$REPO"
   mkdir -p "$MAIN/.gaia/local/cache"
@@ -567,11 +567,29 @@ copy_shipped_registry() {
   [ "$status" -eq 0 ]
   [ ! -e "$MAIN/.gaia/local/cache/audit-rounds-sess-aged.json.AbC123" ]
   [ -f "$MAIN/.gaia/local/cache/audit-rounds-sess-fresh.json.XyZ789" ]
-  # Recognized by the registry, so the off-pattern outlier sweep stays silent
-  # about it. A leftover that is reported but never reaped, or reaped but
-  # reported meanwhile, are both the drift this pair exists to pin.
+}
+
+# The reap arm above and the recognition arm below are two sweeps, so they are
+# two tests. Sweep 9 walks the ACTING tree's local dir, so a recognition claim
+# asserted from inside the worktree fixture above would be reading a directory
+# MAIN's leftover never sits in, and would pass whatever the registry said.
+@test "MAIN-CACHE-05: the state registry recognizes the round counter's atomic-write leftover, so sweep 9 leaves it unreported" {
+  make_repo
+  # The shipped registry, not this suite's fixture stand-in. The claim under
+  # test is that the real `audit-round-counter` entry covers the temp half, and
+  # a fixture registry would only ever pin the fixture.
+  cp "$GAIA_DIR_REAL/state-registry.json" "$REPO/.gaia/state-registry.json"
+  cache_dir="$REPO/.gaia/local/cache"
+  mkdir -p "$cache_dir"
+  echo '{}' > "$cache_dir/audit-rounds-sess-fresh.json"
+  echo '{}' > "$cache_dir/audit-rounds-sess-fresh.json.XyZ789"
+
+  cd "$REPO"
+  GAIA_JANITOR_SWEEP_ONLY=outliers run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ -f "$cache_dir/audit-rounds-sess-fresh.json.XyZ789" ]
   printf '%s\n' "$output" | grep -qF 'audit-rounds-sess-fresh.json.XyZ789' && {
-    echo "sweep 9 reported a registry-recognized atomic-write leftover" >&2
+    echo "sweep 9 reported the registry-recognized atomic-write leftover" >&2
     return 1
   }
   # Explicit, because the absence check above is this test's last statement:
