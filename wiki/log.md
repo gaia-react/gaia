@@ -11,6 +11,15 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-09-05 cfec387e SKIP - tests-only comment cardinal removal
+- 2026-09-05 315594fd SKIP - OS Sandbox two-spelling scoping already corrected in the commit
+- 2026-09-05 2e1dab5d SKIP - three-round audit session cap already documented in the commit (wiki/concepts/PR Merge Workflow.md, wiki/concepts/Claude Hooks.md)
+- 2026-09-05 0a35059b WORTHY - new .gaia/cli workspace security-floor CI check -> wiki/decisions/pnpm.md (Maintainer CLI workspace)
+- 2026-09-05 7392a8b2 SKIP - self-heal refusal boundary prose already repointed in wiki/concepts/Registering a Code Audit Team Member.md by the commit
+- 2026-09-05 8e19a407 SKIP - worktree scratch-dir Write/Edit refusal already documented in wiki/concepts/Worktrees.md
+- 2026-09-05 458a0b22 SKIP - guard/prose tightening, wiki page already updated in the commit itself
+- 2026-09-05 af94e24a SKIP - tests-only PATH rebuild predicate tightening
+- 2026-09-05 032b8fc3 SKIP - wiki: self-referential sync commit
 - 2026-09-04 538c20fa SKIP - wiki already updated in-commit: read-side secret denial move to the hook layer reflected in wiki/concepts/Claude Hooks.md, wiki/concepts/OS Sandbox.md, wiki/modules/Claude Integration.md
 - 2026-09-04 6c099e86 SKIP - ci: CI plumbing
 - 2026-09-04 f94aaa72 SKIP - CI test-infra hardening (node-dependent RED suites fail instead of skip), internal bats plumbing, no wiki page tracks this detail
