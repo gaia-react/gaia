@@ -3,8 +3,9 @@
 # .gaia/tests/hooks: red-ledger-lib, capture-red-observations,
 # red-verify-commit-check, red-verify-e2e and worthiness-presence-check.
 #
-# They all drive .gaia/scripts/red-ledger/extract-test-signals.mjs and
-# .gaia/scripts/classifier/classify-determinism.mjs, each of which resolves
+# They all drive .gaia/scripts/red-ledger/extract-test-signals.mjs;
+# red-verify-commit-check, red-verify-e2e and worthiness-presence-check also
+# drive .gaia/scripts/classifier/classify-determinism.mjs. Both resolve
 # `typescript` through createRequire against the repo root's node_modules. With
 # that absent the suites cannot answer at all.
 #
