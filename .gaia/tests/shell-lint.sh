@@ -604,10 +604,12 @@ fi
 # and that page, neither of them shell, so it rides here rather than earning a
 # workflow of its own: this harness is already the folded home for every guard
 # that shellcheck cannot model, and the arming line for settings.json lives in
-# .github/workflows/shell-lint.yml's paths filter alongside the others. Run from
-# the repo root so its subject paths resolve.
+# .github/workflows/shell-lint.yml's paths filter alongside the others. It takes
+# the root explicitly rather than resolving one ambiently: it reads two fixed
+# paths and needs neither a working checkout nor git on PATH to compare them,
+# and this harness already holds the value its argument-free arm would re-derive.
 echo "--> lint-hook-wiki-inventory (a registered hook absent from the bundled-hooks inventory)"
-if ! (cd "$REPO_ROOT" && bash "$REPO_ROOT/.gaia/scripts/lint-hook-wiki-inventory.sh"); then
+if ! (cd "$REPO_ROOT" && bash "$REPO_ROOT/.gaia/scripts/lint-hook-wiki-inventory.sh" "$REPO_ROOT"); then
   status=1
 fi
 

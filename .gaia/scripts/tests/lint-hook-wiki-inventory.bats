@@ -1,4 +1,10 @@
 #!/usr/bin/env bats
+# SC2016 is intentional file-wide: the fixture writers below are single-quoted
+# precisely so that the command-substitution form in the fixture registration
+# and the backticks in the fixture markdown reach the file as literal text,
+# which is what makes them fixtures of the real spellings rather than of what
+# this shell would expand them to.
+# shellcheck disable=SC2016
 #
 # Conformance suite for .gaia/scripts/lint-hook-wiki-inventory.sh -- the gate
 # that keeps wiki/concepts/Claude Hooks.md's bundled-hooks inventory from going
@@ -131,6 +137,78 @@ write_inventory() {
     printf '# Claude Hooks\n\n## Bundled hooks\n\n'
     printf -- '- **`.claude/hooks/alpha.sh`**: named with its directory.\n'
   } >"$dir/$INVENTORY_REL"
+
+  run bash "$CHECK" "$dir"
+  [ "$status" -eq 0 ]
+}
+
+@test "a hook registered below a subdirectory of .claude/hooks/ still enters the set, and reds when the page omits it" {
+  local dir
+  dir="$(make_fixture nested_hook)"
+  write_settings "$dir" alpha.sh nested/beta.sh
+  write_inventory "$dir" alpha.sh
+
+  run bash "$CHECK" "$dir"
+  [ "$status" -eq 1 ]
+  grep -qF -- 'nested/beta.sh' <<<"$output"
+}
+
+@test "a hook registered below a subdirectory counts as inventoried when the page names it" {
+  local dir
+  dir="$(make_fixture nested_hook_ok)"
+  write_settings "$dir" alpha.sh nested/beta.sh
+  write_inventory "$dir" alpha.sh nested/beta.sh
+
+  run bash "$CHECK" "$dir"
+  [ "$status" -eq 0 ]
+}
+
+@test "a registration whose command the name regex cannot read exits 2 rather than comparing a short set" {
+  local dir
+  dir="$(make_fixture unreadable_spelling)"
+  # Two distinct commands naming the directory; the second carries a character
+  # the name class does not model, so it yields no name at all. That is the
+  # silent partial drop the size check exists to refuse: the set is short
+  # rather than empty, so the non-empty arm alone stays satisfied.
+  {
+    printf '{\n  "hooks": {\n    "PreToolUse": [\n'
+    printf '      {\n        "matcher": "Bash",\n        "hooks": [\n'
+    printf '          {\n            "type": "command",\n'
+    printf '            "command": "\\"$(git rev-parse --show-toplevel)/.claude/hooks/alpha.sh\\""\n'
+    printf '          }\n        ]\n      },\n'
+    printf '      {\n        "matcher": "Bash",\n        "hooks": [\n'
+    printf '          {\n            "type": "command",\n'
+    printf '            "command": "bash .claude/hooks/weird name.sh"\n'
+    printf '          }\n        ]\n      }\n'
+    printf '    ]\n  }\n}\n'
+  } >"$dir/$SETTINGS_REL"
+  write_inventory "$dir" alpha.sh
+
+  run bash "$CHECK" "$dir"
+  [ "$status" -eq 2 ]
+  grep -qF -- 'could be read out of them' <<<"$output"
+}
+
+@test "one hook registered on several events is not mistaken for an unreadable spelling" {
+  local dir
+  dir="$(make_fixture repeated_registration)"
+  # The same hook on two events is two commands and one name. The size check
+  # compares against DISTINCT commands for exactly this reason, so this must
+  # pass rather than red as a short set.
+  {
+    printf '{\n  "hooks": {\n    "PreToolUse": [\n'
+    printf '      {\n        "matcher": "Bash",\n        "hooks": [\n'
+    printf '          {\n            "type": "command",\n'
+    printf '            "command": "\\"$(git rev-parse --show-toplevel)/.claude/hooks/alpha.sh\\""\n'
+    printf '          }\n        ]\n      }\n'
+    printf '    ],\n    "PostToolUse": [\n'
+    printf '      {\n        "matcher": "Bash",\n        "hooks": [\n'
+    printf '          {\n            "type": "command",\n'
+    printf '            "command": "\\"$(git rev-parse --show-toplevel)/.claude/hooks/alpha.sh\\""\n'
+    printf '          }\n        ]\n      }\n'
+    printf '    ]\n  }\n}\n'
+  } >"$dir/$SETTINGS_REL"
+  write_inventory "$dir" alpha.sh
 
   run bash "$CHECK" "$dir"
   [ "$status" -eq 0 ]

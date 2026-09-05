@@ -71,17 +71,12 @@ LIST_FILE=''
 readonly SETTINGS=".claude/settings.json"
 readonly INVENTORY="wiki/concepts/Claude Hooks.md"
 
-# registered_hooks <repo_root>
+# hook_commands <repo_root>
 #
-# Print the basename of every hook script registered under `.hooks` in
-# settings.json, one per line, sorted and deduplicated.
-#
-# Scoped to commands naming `.claude/hooks/`, which is what makes this the
-# registered-HOOK set rather than every `.sh` a hook command happens to mention.
-# The registration shape is `.hooks.<Event>[].hooks[].command`, and the command
-# is a quoted absolute path built from a root expansion, so the basename is
-# recovered from the path text rather than from the JSON structure.
-registered_hooks() {
+# Print every `.hooks.<Event>[].hooks[].command` string in settings.json that
+# names `.claude/hooks/`, one per line. This is the denominator the size check
+# in main compares the recovered names against.
+hook_commands() {
   local root="$1"
   jq -r '
     .hooks // {}
@@ -90,7 +85,34 @@ registered_hooks() {
     | .hooks[]?
     | .command // empty
   ' "$root/$SETTINGS" 2>/dev/null |
-    grep -oE '\.claude/hooks/[A-Za-z0-9_.-]+\.sh' |
+    grep -F '.claude/hooks/'
+}
+
+# registered_hooks <repo_root>
+#
+# Print every hook script registered under `.hooks` in settings.json as its
+# path relative to `.claude/hooks/`, one per line, sorted and deduplicated.
+#
+# Scoped to commands naming `.claude/hooks/`, which is what makes this the
+# registered-HOOK set rather than every `.sh` a hook command happens to mention.
+# The registration shape is `.hooks.<Event>[].hooks[].command`, and the command
+# is a quoted absolute path built from a root expansion, so the name is
+# recovered from the path text rather than from the JSON structure.
+#
+# The character class carries `/` deliberately. Without it the match cannot
+# cross a directory separator, so a hook registered one level down
+# (`.claude/hooks/nested/beta.sh`) yields no match at all and never enters the
+# set compared against the page: the check then reports clean over a registered
+# hook the inventory never mentions. That is a partial drop rather than a total
+# one, so the empty-set arm in main cannot see it, which is exactly the
+# discovery-stage fail-open `.claude/rules/guards-must-fail.md` names. Every
+# registration in this tree is flat under `.claude/hooks/` today, so the class
+# is armed against the shape rather than against a live instance; the size
+# check in main is the fail-closed backstop for the spellings no regex reads.
+registered_hooks() {
+  local root="$1"
+  hook_commands "$root" |
+    grep -oE '\.claude/hooks/[A-Za-z0-9_./-]+\.sh' |
     sed -e 's#^\.claude/hooks/##' |
     sort -u
 }
@@ -173,6 +195,31 @@ main() {
     printf '%s: discovery found no hook registered under .claude/hooks/ in %s.\n' "$PROG" "$SETTINGS" >&2
     printf 'Either the hooks key registers nothing, or the registration spelling changed\n' >&2
     printf 'and no longer names that directory in the command; %s parses as JSON either way.\n' "$SETTINGS" >&2
+    return 2
+  fi
+
+  # The expected-SIZE half, and it is a different assertion from the non-empty
+  # half above rather than a stronger spelling of it. A registration whose
+  # command the name regex cannot read is dropped silently and individually: the
+  # set is short rather than empty, so the arm above stays satisfied and the
+  # check reports clean over a hook the page may never mention. Count the
+  # commands that name the directory at all, with a fixed-string match that
+  # depends on no path grammar, and refuse to answer when fewer distinct names
+  # came back than there are commands to have produced them.
+  #
+  # Distinct names can legitimately be FEWER than commands, because one hook
+  # registered on several events contributes one name per registration, so the
+  # comparison is against the count of distinct commands rather than of all of
+  # them. What it catches is a command that yielded no name at all.
+  local cmd_total name_total
+  cmd_total="$(hook_commands "$root" | sort -u | grep -c .)"
+  name_total="$(grep -c . <"$LIST_FILE")"
+  if [ "$cmd_total" -gt "$name_total" ]; then
+    printf '%s: %s registers %s distinct command(s) naming .claude/hooks/ but only %s hook name(s) could be read out of them.\n' \
+      "$PROG" "$SETTINGS" "$cmd_total" "$name_total" >&2
+    printf 'A registration spelling this check cannot parse is dropped silently, so it refuses\n' >&2
+    printf 'rather than compare a short set against the page. Teach registered_hooks the new\n' >&2
+    printf 'spelling rather than leaving it to match nothing.\n' >&2
     return 2
   fi
 
