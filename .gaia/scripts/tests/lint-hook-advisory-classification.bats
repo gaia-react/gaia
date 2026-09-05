@@ -222,17 +222,17 @@ write_page() {
   [ "$status" -eq 0 ]
 }
 
-@test "an entry that names no hook in its leading position grades nothing, whatever its prose names" {
+@test "an entry that names no hook in its leading code span grades nothing, whatever its prose names" {
   local dir
   dir="$(make_fixture prose_led_entry)"
   write_settings "$dir" denier.sh nudger.sh
   write_hook "$dir" denier.sh deny
   write_hook "$dir" nudger.sh advisory
-  # The discriminating fixture for the entry-position narrowing, and the one the
+  # The discriminating fixture for the entry-span narrowing, and the one the
   # test above cannot be: there, the entry name is the FIRST `.sh` on the line,
-  # so scanning the whole line and scanning the entry position find the same
-  # name and agree. Here the only `.sh` on the line sits in the prose, so the
-  # two answers differ and the narrowing is what decides. Without it this line
+  # so scanning the whole line and scanning the entry span find the same name
+  # and agree. Here the only `.sh` on the line sits in the prose, so the two
+  # answers differ and the narrowing is what decides. Without it this line
   # grades a blocking hook the entry never classified.
   {
     printf '# Fixture Hooks\n\n### Advisory (Bash)\n\n'
@@ -242,6 +242,106 @@ write_page() {
 
   run bash "$CHECK" "$dir"
   [ "$status" -eq 0 ]
+}
+
+@test "a prose bullet carrying no colon at all grades nothing, the case a colon-keyed narrowing misses" {
+  local dir
+  dir="$(make_fixture prose_no_colon)"
+  write_settings "$dir" denier.sh nudger.sh
+  write_hook "$dir" denier.sh deny
+  write_hook "$dir" nudger.sh advisory
+  # A colon-keyed narrowing falls back to the whole line when the item carries
+  # no colon, so this ordinary cross-reference reds the check and the author is
+  # told to move an entry that is not one. It is the sentence the guard's own
+  # header names as prose that must not be graded, so the header is a claim
+  # about this repository and this is the test that answers it.
+  {
+    printf '# Fixture Hooks\n\n### Advisory (Bash)\n\n'
+    printf -- '- Unlike denier.sh, this one only nudges and never stops the call\n'
+  } >"$dir/$PAGE_REL"
+  track_fixture "$dir"
+
+  run bash "$CHECK" "$dir"
+  [ "$status" -eq 0 ]
+}
+
+@test "a prose bullet naming a hook ahead of a later colon grades nothing" {
+  local dir
+  dir="$(make_fixture prose_late_colon)"
+  write_settings "$dir" denier.sh nudger.sh
+  write_hook "$dir" denier.sh deny
+  write_hook "$dir" nudger.sh advisory
+  # The other half of the colon-keyed fallback: the colon exists but falls after
+  # the name, so the text before it still holds the mention.
+  {
+    printf '# Fixture Hooks\n\n### Advisory (Bash)\n\n'
+    printf -- '- When denier.sh denies a call this one does nothing: it only records.\n'
+  } >"$dir/$PAGE_REL"
+  track_fixture "$dir"
+
+  run bash "$CHECK" "$dir"
+  [ "$status" -eq 0 ]
+}
+
+@test "a bullet whose prose names a hook ahead of its own code span grades nothing" {
+  local dir
+  dir="$(make_fixture prose_before_span)"
+  write_settings "$dir" denier.sh nudger.sh
+  write_hook "$dir" denier.sh deny
+  write_hook "$dir" nudger.sh advisory
+  # The input that separates the span-START test from the closing-backtick test
+  # alone. Every other prose fixture here has no hook name before its first
+  # backtick, so dropping the start test still finds nothing and the suite
+  # agrees under either rule. Here the prose ahead of the span names a blocking
+  # hook, so only the start test keeps this line ungraded.
+  {
+    printf '# Fixture Hooks\n\n### Advisory (Bash)\n\n'
+    printf -- '- unlike denier.sh, see `nudger.sh` below for the nudging one\n'
+  } >"$dir/$PAGE_REL"
+  track_fixture "$dir"
+
+  run bash "$CHECK" "$dir"
+  [ "$status" -eq 0 ]
+}
+
+@test "an entry whose code span is unwrapped by bold is still graded" {
+  local dir
+  dir="$(make_fixture plain_span_entry)"
+  write_settings "$dir" denier.sh misfiled.sh
+  write_hook "$dir" denier.sh deny
+  write_hook "$dir" misfiled.sh deny
+  # The bold wrapper is optional on these pages, so dropping it must not drop
+  # the grading with it: narrowing that only reads the bolded shape would be a
+  # silent fail-open on every plainly-spanned entry.
+  {
+    printf '# Fixture Hooks\n\n### Advisory (Bash)\n\n'
+    printf -- '- `misfiled.sh`: a fixture entry with no bold wrapper.\n'
+  } >"$dir/$PAGE_REL"
+  track_fixture "$dir"
+
+  run bash "$CHECK" "$dir"
+  [ "$status" -eq 1 ]
+  grep -qF -- 'misfiled.sh' <<<"$output"
+}
+
+@test "an entry carrying a parenthetical after its code span is still graded" {
+  local dir
+  dir="$(make_fixture annotated_entry)"
+  write_settings "$dir" denier.sh misfiled.sh
+  write_hook "$dir" denier.sh deny
+  write_hook "$dir" misfiled.sh deny
+  # The shape the real pages use for a hook whose event matters, and the one a
+  # narrowing keyed to the first colon would also read correctly; it is here so
+  # the span narrowing is held to the same live shapes.
+  {
+    printf '# Fixture Hooks\n\n### Advisory (Bash)\n\n'
+    printf -- '- **`misfiled.sh`** (PreToolUse, Bash): a fixture entry.\n'
+  } >"$dir/$PAGE_REL"
+  track_fixture "$dir"
+
+  run bash "$CHECK" "$dir"
+  [ "$status" -eq 1 ]
+  grep -qF -- 'misfiled.sh' <<<"$output"
 }
 
 @test "a hook registered only on PostToolUse cannot stop a call and is never blocking" {

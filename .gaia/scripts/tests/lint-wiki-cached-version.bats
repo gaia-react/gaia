@@ -131,6 +131,21 @@ write_page() {
   [ "$status" -eq 0 ]
 }
 
+@test "a space before the colon does not evade the check" {
+  local dir
+  dir="$(make_fixture spaced_colon)"
+  # YAML accepts `version : 1.2.3`, so a fixed-string test for `version:` reads
+  # this page as clean while the forbidden cache is standing on it. The evasion
+  # needs no intent to reach the tree: it is a legal spelling an editor or a
+  # formatter can produce.
+  write_page "$dir" wiki/dependencies/Alpha.md 'type: dependency' 'version : 1.2.3'
+  track_fixture "$dir"
+
+  run bash "$CHECK" "$dir"
+  [ "$status" -eq 1 ]
+  grep -qF -- 'Alpha.md' <<<"$output"
+}
+
 @test "a field whose name merely ends in version is not a hit" {
   local dir
   dir="$(make_fixture suffix_field)"
@@ -167,7 +182,19 @@ write_page() {
 
   run bash "$CHECK" "$dir"
   [ "$status" -eq 2 ]
-  grep -qF -- 'discovery found no tracked markdown' <<<"$output"
+  grep -qF -- 'discovery listed no tracked markdown' <<<"$output"
+}
+
+@test "a root that is not a git repository names that cause rather than only the empty wiki" {
+  local dir="$BATS_TEST_TMPDIR/not_a_repo"
+  mkdir -p "$dir/wiki/dependencies"
+  # Both conditions reach the same arm and the repairs differ: an empty wiki is
+  # a content question, a broken root is not. Suppressing the listing command
+  # stderr would leave the operator inspecting a wiki tree that is fine.
+  run bash "$CHECK" "$dir"
+  [ "$status" -eq 2 ]
+  grep -qF -- 'not a usable git repository' <<<"$output"
+  grep -qE -- 'not a git repository|fatal' <<<"$output"
 }
 
 @test "a root argument that is not a directory exits 2" {

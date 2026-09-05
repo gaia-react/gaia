@@ -46,8 +46,18 @@
 # PRESENCE question. Classification is not conferred by a mention: a sentence
 # reading "unlike block-rm-rf.sh, this one only nudges" names a blocking hook
 # inside an advisory section and is entirely correct prose. What confers the
-# classification is the list ENTRY, so only a list item naming the hook in its
-# leading position is graded.
+# classification is the list ENTRY, so only the name inside the item's LEADING
+# CODE SPAN is graded, which is the shape every entry on these pages uses:
+# an optional bold wrapper around a backtick-delimited filename, at the head of
+# the item.
+#
+# The leading span, not "the text before the first colon", and the difference is
+# a whole false-positive class rather than a refinement. Keying on the colon
+# leaves a bullet that carries none, or one whose colon falls after the name,
+# scanning the entire line, so ordinary cross-referencing prose in an advisory
+# section reds the check and is handed a repair instruction telling the author
+# to move an entry that is not an entry. The span test has no such fallback: a
+# bullet with no leading code span is graded not at all.
 #
 # THE ORACLE, and its one deliberate asymmetry. A hook BLOCKS when it is
 # registered on PreToolUse and its body, comments excluded, either emits a
@@ -157,12 +167,19 @@ advisory_entries() {
       next
     }
     inadvisory && /^[[:space:]]*[-*][[:space:]]/ {
-      # The entry position: everything up to the first colon, which is where
-      # every entry on these pages puts the name it is classifying. Prose after
-      # the colon may name any hook it likes without being graded.
+      # The entry position is the LEADING CODE SPAN of the list item, which is
+      # where every entry on these pages puts the name it is classifying. Prose
+      # elsewhere in the item may name any hook it likes without being graded,
+      # and an item that opens with prose rather than a span is not an entry and
+      # is graded not at all.
       head = $0
-      c = index(head, ":")
-      if (c > 0) head = substr(head, 1, c - 1)
+      sub(/^[[:space:]]*[-*][[:space:]]+/, "", head)   # the list marker
+      sub(/^\*\*/, "", head)                           # an optional bold wrapper
+      if (substr(head, 1, 1) != "`") next
+      head = substr(head, 2)
+      c = index(head, "`")
+      if (c == 0) next
+      head = substr(head, 1, c - 1)
       if (match(head, /[A-Za-z0-9_.-]+\.sh/))
         printf "%d:%s\n", NR, substr(head, RSTART, RLENGTH)
     }
@@ -272,15 +289,17 @@ EOF
     done <<ENTRIES
 $(advisory_entries "$root/$page")
 ENTRIES
-  done < <(git -C "$root" ls-files -z -- 'wiki/*.md' 'wiki/**/*.md' 2>/dev/null)
+  done < <(git -C "$root" ls-files -z -- 'wiki/*.md' 'wiki/**/*.md')
 
   # Checked after the sweep rather than before it, because the NUL-delimited
   # listing is consumed by the loop itself; `seen` is what the pre-sweep
   # emptiness test would have asked, and nothing is reported when it is zero.
   if [ "$seen" -eq 0 ]; then
-    printf '%s: discovery found no tracked markdown under wiki/ in %s.\n' "$PROG" "$root" >&2
-    printf 'This tree carries dozens of wiki pages, so an empty set is a broken discovery\n' >&2
-    printf 'rather than a surface with no advisory sections on it.\n' >&2
+    printf '%s: discovery listed no tracked markdown under wiki/ in %s.\n' "$PROG" "$root" >&2
+    printf 'Two conditions reach this, and the repair differs: the wiki tree holds no tracked\n' >&2
+    printf 'page, or the root is not a usable git repository at all. Any git diagnostic above\n' >&2
+    printf 'this line is the second case; its absence is the first. Either way this is a broken\n' >&2
+    printf 'discovery rather than a surface with no advisory sections on it.\n' >&2
     return 2
   fi
 

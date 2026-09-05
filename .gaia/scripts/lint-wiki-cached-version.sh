@@ -54,11 +54,16 @@ readonly FORBIDDEN_FIELD="version"
 # frontmatter block, or nothing. The block is the region between the first line
 # (which must be exactly `---`) and the next `---` line. A file with no leading
 # fence has no frontmatter and yields nothing.
+#
+# The colon is matched across optional horizontal whitespace rather than as the
+# byte after the field name, because YAML accepts `version : 1.2.3` and a
+# fixed-string test for `version:` reports clean over it. The construct the
+# check forbids would then be standing on the page with the check green.
 frontmatter_field_line() {
   awk -v field="$FORBIDDEN_FIELD" '
     NR == 1 { if ($0 != "---") exit 0; inblock = 1; next }
     inblock && $0 == "---" { exit 0 }
-    inblock && index($0, field ":") == 1 { printf "%d:%s\n", NR, $0; exit 0 }
+    inblock && $0 ~ ("^" field "[[:space:]]*:") { printf "%d:%s\n", NR, $0; exit 0 }
   ' "$1"
 }
 
@@ -105,16 +110,18 @@ main() {
     fi
     printf '  %s:%s\n' "$file" "$hit" >&2
     findings=$((findings + 1))
-  done < <(git -C "$root" ls-files -z -- 'wiki/*.md' 'wiki/**/*.md' 2>/dev/null)
+  done < <(git -C "$root" ls-files -z -- 'wiki/*.md' 'wiki/**/*.md')
 
   # Checked after the sweep rather than before it, because the NUL-delimited
   # listing is consumed by the loop itself; `seen` is what the pre-sweep
   # emptiness test would have asked, and nothing is reported when it is zero.
   if [ "$seen" -eq 0 ]; then
-    printf '%s: discovery found no tracked markdown under wiki/ in %s.\n' "$PROG" "$root" >&2
-    printf 'This tree carries dozens of wiki pages, so an empty set is a broken discovery\n' >&2
-    printf 'rather than a clean surface; it would otherwise report every page compliant\n' >&2
-    printf 'having read none of them.\n' >&2
+    printf '%s: discovery listed no tracked markdown under wiki/ in %s.\n' "$PROG" "$root" >&2
+    printf 'Two conditions reach this, and the repair differs: the wiki tree holds no tracked\n' >&2
+    printf 'page, or the root is not a usable git repository at all. Any git diagnostic above\n' >&2
+    printf 'this line is the second case; its absence is the first. Either way this is a broken\n' >&2
+    printf 'discovery rather than a clean surface; it would otherwise report every page\n' >&2
+    printf 'compliant having read none of them.\n' >&2
     return 2
   fi
 
