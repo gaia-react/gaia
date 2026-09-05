@@ -282,11 +282,10 @@ install_libs() {
 # hardcoded here instead, with this comment naming where the classification
 # itself lives.
 
-# The fourteen classified flows, and each one's flow-name literal at the
-# same array index. Order matches the RUNBOOK.md classification's own
-# ordering, not alphabetical.
+# The classified flows that carry the refusal, and each one's flow-name
+# literal at the same array index. Order matches the RUNBOOK.md
+# classification's own ordering, not alphabetical.
 CALL_SITE_FILES=(
-  ".claude/commands/distribution-audit.md"
   ".claude/commands/gaia-audit.md"
   ".claude/commands/gaia-debt.md"
   ".claude/commands/gaia-fitness.md"
@@ -302,7 +301,6 @@ CALL_SITE_FILES=(
   ".claude/skills/update-gaia/SKILL.md"
 )
 CALL_SITE_FLOW_NAMES=(
-  "/distribution-audit"
   "/gaia-audit"
   "/gaia-debt"
   "/gaia-fitness"
@@ -318,13 +316,25 @@ CALL_SITE_FLOW_NAMES=(
   "/update-gaia"
 )
 
-# The six flows that must never carry the refusal: each provisions or drives
+# The flows that must never carry the refusal: each provisions or drives
 # its own worktree mid-flow (gaia-plan, gaia-debt's fix path) or must stay
 # reachable from inside one (gaia-spec, gaia-forensics, gaia-handoff,
 # gaia-pickup, file-tech-debt). This half is what catches a future drive-by
 # adding the refusal to one of these, e.g. onto /gaia-plan, which would break
 # plan execution the moment the flow enters the worktree it just created.
+#
+# distribution-audit joins them on a different warrant, and one worth stating
+# because the refusal did sit on it. main-only-lib.sh's own docblock scopes
+# the refusal to flows that write `.gaia/VERSION`, a lockfile, or cache state
+# and open or drive a PR. /distribution-audit does none of those: it writes
+# `.gaia/manifest.json` and `.gaia/release-exclude`, git-tracked branch-scoped
+# files a linked worktree isolates correctly. Meanwhile the `gh pr create`
+# distribution pre-flight demands that answer land on the worktree's own
+# branch, which the main checkout cannot supply, so a refusal here made the
+# hook's own remediation unfollowable. The release path's main-only property
+# is enforced at /gaia-release's own call site above, not here.
 NO_CALL_SITE_FILES=(
+  ".claude/commands/distribution-audit.md"
   ".claude/commands/gaia-plan.md"
   ".claude/commands/gaia-spec.md"
   ".claude/commands/gaia-forensics.md"
@@ -333,7 +343,7 @@ NO_CALL_SITE_FILES=(
   ".claude/skills/file-tech-debt/SKILL.md"
 )
 
-# Seven of the fourteen are thin dispatchers: a "Read `.claude/..." line
+# Seven of the call-site roster are thin dispatchers: a "Read `.claude/..." line
 # sends the agent to a reference file, and a refusal call placed BELOW that
 # line greps as present but never runs, because the agent follows the
 # reference instead of reading the rest of the file. This is the frozen set
@@ -374,7 +384,7 @@ extract_block() {
 
 # ---------- roster census ----------
 
-@test "call-site roster: each of the fourteen classified flows carries exactly one line-anchored invocation" {
+@test "call-site roster: every classified flow carries exactly one line-anchored invocation" {
   local f count
   for f in "${CALL_SITE_FILES[@]}"; do
     count=$(grep -c '^[[:space:]]*gaia_refuse_if_worktree "' "$REPO_ROOT/$f" || true)
@@ -382,7 +392,7 @@ extract_block() {
   done
 }
 
-@test "call-site roster: the six worktree-callable flows carry none" {
+@test "call-site roster: the worktree-callable flows carry none" {
   local f count
   for f in "${NO_CALL_SITE_FILES[@]}"; do
     count=$(grep -c '^[[:space:]]*gaia_refuse_if_worktree "' "$REPO_ROOT/$f" || true)
@@ -411,7 +421,7 @@ extract_block() {
 
 # ---------- per-call-site execution, under the shell the call site really uses ----------
 
-@test "call-site execution: all fourteen extracted blocks refuse correctly under bash, from a real linked worktree" {
+@test "call-site execution: every extracted block refuses correctly under bash, from a real linked worktree" {
   make_repo
   install_libs "$REPO"
   make_worktree "$REPO" mol-bash mol-bash-branch
@@ -437,7 +447,7 @@ extract_block() {
   return 0
 }
 
-@test "call-site execution: all fourteen extracted blocks refuse correctly under zsh, from a real linked worktree" {
+@test "call-site execution: every extracted block refuses correctly under zsh, from a real linked worktree" {
   command -v zsh >/dev/null 2>&1 || skip "zsh not installed"
   make_repo
   install_libs "$REPO"
