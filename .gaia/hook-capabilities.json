@@ -48,6 +48,15 @@
       "maintainer_only": false
     },
     {
+      "hook": ".claude/hooks/block-fourth-audit-round.sh",
+      "capabilities": [
+        "fs-write:.gaia/local/cache/**",
+        "invokes:.gaia/scripts/main-root-lib.sh"
+      ],
+      "why": "Denies a fourth Code Audit Team dispatch wave in one session by counting each wave's HEAD tree in a session-keyed counter under `.gaia/local/cache/`. Sources main-root-lib.sh to resolve the checkout root for that counter's path; reads no marker, makes no network call, and runs no git write.",
+      "maintainer_only": false
+    },
+    {
       "hook": ".claude/hooks/block-invalid-yaml-write.sh",
       "capabilities": [],
       "why": "Reads an Edit/Write/MultiEdit tool call's before/after content to deny a write that newly breaks a YAML region (a `.yml`/`.yaml` file, or Markdown frontmatter) that was valid before the call. Parses the payload's own before/after text in memory; no file write, network call, or invocation of another script.",

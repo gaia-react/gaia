@@ -232,6 +232,18 @@
       "source": "SPEC-061 §main-only"
     },
     {
+      "id": "audit-round-counter",
+      "path": "cache/audit-rounds-*.json|cache/audit-rounds-*.json.*",
+      "match": "glob",
+      "kind": "file",
+      "scope": "main-only",
+      "keyed_by": null,
+      "why": "The pre-merge audit gate's per-session round counter, deliberately resolved to main and keyed by session id, so the count follows one session across a tree switch and a fresh session starts a fresh three.",
+      "writer": "code",
+      "reaped_by": "stale cache sweep",
+      "source": "PLAN-020 §main-only, applied to the pre-merge audit gate's per-session round counter"
+    },
+    {
       "id": "worktree-reap-miss-memo",
       "path": "cache/worktree-reap-misses.txt|cache/worktree-reap-misses.txt.*.tmp",
       "match": "glob",
