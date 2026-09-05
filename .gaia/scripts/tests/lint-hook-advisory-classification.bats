@@ -222,6 +222,28 @@ write_page() {
   [ "$status" -eq 0 ]
 }
 
+@test "an entry that names no hook in its leading position grades nothing, whatever its prose names" {
+  local dir
+  dir="$(make_fixture prose_led_entry)"
+  write_settings "$dir" denier.sh nudger.sh
+  write_hook "$dir" denier.sh deny
+  write_hook "$dir" nudger.sh advisory
+  # The discriminating fixture for the entry-position narrowing, and the one the
+  # test above cannot be: there, the entry name is the FIRST `.sh` on the line,
+  # so scanning the whole line and scanning the entry position find the same
+  # name and agree. Here the only `.sh` on the line sits in the prose, so the
+  # two answers differ and the narrowing is what decides. Without it this line
+  # grades a blocking hook the entry never classified.
+  {
+    printf '# Fixture Hooks\n\n### Advisory (Bash)\n\n'
+    printf -- '- The nudge layer: see denier.sh for the shape a refusal takes instead.\n'
+  } >"$dir/$PAGE_REL"
+  track_fixture "$dir"
+
+  run bash "$CHECK" "$dir"
+  [ "$status" -eq 0 ]
+}
+
 @test "a hook registered only on PostToolUse cannot stop a call and is never blocking" {
   local dir
   dir="$(make_fixture post_only)"
