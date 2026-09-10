@@ -69,13 +69,13 @@
  * package no workspace loads.
  *
  * The rule in play there is `import-x/no-unresolved`. `eslint-plugin-import`
- * contributes no enabled rule to either workspace's resolved config, and the
- * resolver list is `import-x`'s own node resolver plus
- * `eslint-import-resolver-typescript`, which is why that resolver is the one
- * family member earning a version comparison while
- * `eslint-import-resolver-node` and `eslint-module-utils` are exempted below.
- * Both readings come from `eslint --print-config`, the instrument the criterion
- * paragraph below names.
+ * contributes no enabled rule to either workspace's resolved config, so it is
+ * exempted below as a plugin no workspace loads, and the resolver list is
+ * `import-x`'s own node resolver plus `eslint-import-resolver-typescript`, which
+ * is why that resolver is the one family member earning a version comparison
+ * while `eslint-import-resolver-node` and `eslint-module-utils` are exempted
+ * below. Both readings come from `eslint --print-config`, the instrument the
+ * criterion paragraph below names.
  *
  * The criterion behind both, worth stating once: parity is worth enforcing for a
  * package whose rules a workspace actually runs, and worth nothing for one whose
@@ -223,21 +223,26 @@ const PARITY_EXEMPT: Record<string, string> = {
   '@next/eslint-plugin-next':
     'loaded by neither workspace, so a version difference changes no rule; converging it is churn that re-diverges on the next re-resolve',
 
-  // Both entries below are read with the criterion paragraph's own instrument,
+  // The next two entries are read with the criterion paragraph's own instrument,
   // `eslint --print-config`, against `app/root.tsx` and `.gaia/cli/src/exit.ts`,
   // and both readings are identical in the two workspaces. Nothing in the repo
   // recounts them, because doing so needs the root workspace installed, so
   // re-take them there on either trigger: an `import-x` resolver-settings move,
-  // or any of the canonical rules the `eslint-module-utils` entry names being
-  // enabled.
+  // or a rule reaching `eslint-module-utils` being enabled, which is any
+  // `import/*` rule or any of the canonical rules the `eslint-module-utils`
+  // entry names.
   //
-  // That second trigger reaches BOTH entries, which is why it is stated here
-  // rather than on the entry that makes it obvious. `eslint-module-utils/resolve`
+  // That second trigger reaches BOTH entries whenever the enabled rule resolves
+  // specifiers, which is why it is stated here rather than on the entry that
+  // makes it obvious. An `import/*` rule that resolves nothing still loads the
+  // helper through its other submodules, so it takes the helper entry alone and
+  // leaves the resolver entry standing. `eslint-module-utils/resolve`
   // falls back to the default `node` resolver when `import/resolver` is unset,
   // and it is unset in both workspaces, and that fallback loads
   // `eslint-import-resolver-node` by conventional name. So enabling a rule that
-  // reaches `eslint-module-utils` starts routing resolution through the resolver
-  // entry's subject as well, and neither exemption survives it. Reading the
+  // resolves specifiers through `eslint-module-utils` starts routing resolution
+  // through the resolver entry's subject as well, and neither exemption survives
+  // it. Reading the
   // resolver entry's own `import-x` condition as its whole trigger is the trap:
   // that condition never fires in this scenario.
   //
@@ -258,7 +263,20 @@ const PARITY_EXEMPT: Record<string, string> = {
   // above with it, which is why the reason below names the rules instead of the
   // plugin.
   'eslint-module-utils':
-    'reaches a rule only through eslint-plugin-import, which contributes no enabled rule to either resolved config, and through canonical require-extension, no-barrel-import and no-export-all, each off in both workspaces; so its version reaches no rule either workspace runs',
+    'reaches a rule through two consumers and neither runs one: eslint-plugin-import, exempt below for contributing no enabled rule to either resolved config, and canonical require-extension, no-barrel-import and no-export-all, each off in both workspaces; so its version reaches no rule either workspace runs',
+
+  // Loaded by neither workspace, the same shape and the same reading as the
+  // `@next/eslint-plugin-next` entry: no `import/*` rule appears in either
+  // resolved config and neither workspace registers the plugin at all. It
+  // arrives by the same `eslint-config-airbnb-extended` caret, so the same
+  // convergence cost applies unchanged.
+  //
+  // It is also the premise the `eslint-module-utils` entry above rests on for
+  // one of that helper's consumers, so enabling any `import/*` rule invalidates
+  // this entry and that one together; the comment heading the resolver and
+  // helper entries says when the resolver entry falls with them.
+  'eslint-plugin-import':
+    'loaded by neither workspace (no import/* rule in either resolved config), so a version difference changes no rule; converging it is churn that re-diverges on the next re-resolve',
 };
 
 // Anti-vacuity floor for the shared population, not a pin on its size. The live
