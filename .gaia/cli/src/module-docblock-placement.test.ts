@@ -22,10 +22,10 @@
  *
  * # What counts as an offense
  *
- * A `/**`-opening block comment inside the file's LEADING import block that is
- * followed by a blank line or by another import. Both are positions no author
- * picks for a declaration's JSDoc, so both indicate a module docblock that the
- * sort has stranded.
+ * A JSDoc comment, `/**`-opening and not empty, inside the file's LEADING
+ * import block that is followed by a blank line or by another import. Both are
+ * positions no author picks for a declaration's JSDoc, so both indicate a
+ * module docblock that the sort has stranded.
  *
  * The leading import block is the header region only: the run of import
  * declarations at the top of the file, as the TypeScript parser reads them,
@@ -125,10 +125,15 @@ const findStrandedDocblock = (source: string): null | number => {
         node === file.endOfFileToken ||
         lineOf(node.getStart(file)) > lineOf(comment.end);
       const lineBelow = lineStarts[lineOf(comment.end) + 1] ?? source.length;
+      // An empty `/**/` opens with `/**` but is not JSDoc: the TypeScript
+      // scanner makes the same fourth-character test before reading one.
+      const isDocblock =
+        source.startsWith('/**', comment.pos) &&
+        source.charAt(comment.pos + 3) !== '/';
 
       if (
         index > 0 &&
-        source.startsWith('/**', comment.pos) &&
+        isDocblock &&
         (isImport(node) || (endsItsLine && isBlankFrom(lineBelow)))
       ) {
         return lineOf(comment.pos) + 1;
@@ -407,6 +412,18 @@ describe('module docblock placement', () => {
       ' * Doc for the call below.',
       ' */',
       'importantThing();',
+    ].join('\n');
+
+    expect(findStrandedDocblock(source)).toBeNull();
+  });
+
+  // An empty `/**/` between header imports is a plain block comment, so it
+  // strands nothing and the move-to-line-1 repair would not apply to it.
+  test('ignores an empty block comment between header imports', () => {
+    const source = [
+      "import {z} from 'zod';",
+      '/**/',
+      "import fs from 'node:fs';",
     ].join('\n');
 
     expect(findStrandedDocblock(source)).toBeNull();
