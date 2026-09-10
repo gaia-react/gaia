@@ -22,10 +22,10 @@
  *
  * # What counts as an offense
  *
- * A JSDoc comment, `/**`-opening and not empty, inside the file's LEADING
- * import block that is followed by a blank line or by another import. Both are
- * positions no author picks for a declaration's JSDoc, so both indicate a
- * module docblock that the sort has stranded.
+ * A JSDoc comment inside the file's LEADING import block that is followed by a
+ * blank line or by another import. Both are positions no author picks for a
+ * declaration's JSDoc, so both indicate a module docblock that the sort has
+ * stranded.
  *
  * The leading import block is the header region only: the run of import
  * declarations at the top of the file, as the TypeScript parser reads them,
