@@ -2,8 +2,8 @@
  * Maintainer guard: a module docblock precedes the file's first import.
  *
  * A `/** … *\/` block placed *below* the first import no longer documents the
- * module. JSDoc binds by adjacency, so it attaches to whatever follows it —
- * usually the next `import` statement — and the file's primary explanation is
+ * module. JSDoc binds by adjacency, so it attaches to whatever follows it,
+ * usually the next `import` statement, and the file's primary explanation is
  * silently misattributed to a dependency.
  *
  * # Why this needs a guard rather than a sweep
@@ -22,27 +22,49 @@
  *
  * # What counts as an offense
  *
- * A `/**`-opening block comment inside the file's LEADING import block that is
- * followed by a blank line or by another import. Both are positions no author
- * picks for a declaration's JSDoc, so both indicate a module docblock that the
- * sort has stranded.
+ * A JSDoc comment inside the file's LEADING import block that is followed by a
+ * blank line or by another import. Both are positions no author picks for a
+ * declaration's JSDoc, so both indicate a module docblock that the sort has
+ * stranded.
  *
- * The leading import block is the header region only: it ends at the first
- * statement that is not an import, a comment, or blank. A file may open with
- * its docblock, import, and then import again further down beside the code that
- * needs it (`setup-ci/__tests__/sandbox.ts`); the later import is not part of
- * the header and a JSDoc beside it is not this defect.
+ * The leading import block is the header region only: the run of import
+ * declarations at the top of the file, as the TypeScript parser reads them,
+ * ending at the first statement of any other kind. An import declaration is
+ * `import … from`, a side-effect `import '…'`, `import type`, or
+ * `import x = …` (a `require(…)` or a namespace alias) with or without
+ * `export`; `import.meta` and a dynamic `import(…)` are expressions and close
+ * the header like any other statement. Comments and blank lines are trivia to
+ * the parser, so they never close it. A file may open with its docblock,
+ * import, and then import again further down beside the code that needs it
+ * (`setup-ci/__tests__/sandbox.ts`); the later import is not part of the header
+ * and a JSDoc beside it is not this defect.
+ *
+ * # Why the header is read from the TypeScript AST
+ *
+ * Where a statement ends is a parser's question. A line scanner has to find
+ * terminators and comment boundaries in raw text, and every comment or string
+ * shape it does not model moves a boundary without a sound: a `;` inside a
+ * comment ends an import early, a block comment left open across lines hides
+ * one, and `import (` reads as a declaration. Stripping comments correctly also
+ * needs string awareness, since `import x from 'https://cdn/x.js';` would lose
+ * its specifier to a naive `//` strip, and that is a tokenizer. So the guard
+ * uses the compiler's own: statements from `ts.createSourceFile`, and each
+ * statement's comments from `ts.getLeadingCommentRanges`.
+ *
+ * `typescript` resolves here as this workspace's devDependency, which holds only
+ * while the guard stays test-resident. Moving it into shipped CLI source would
+ * need `typescript` in `dependencies`.
  *
  * # Scope boundary (v1), and it is a floor rather than a clean bill of health
  *
- * A docblock sitting immediately above the first declaration — no blank line
- * between them — is NOT reported, because at that position a module docblock
- * and an ordinary JSDoc for that declaration are textually identical and only a
- * reader can tell them apart. `schemas/zod-error.ts` documents its one export
- * from there and is correct; `release/exclude-parser-parity.test.ts` describes
- * the whole file from there and arguably is not. Reporting the position would
- * make the guard demand that every documented first export lose its JSDoc, so
- * the ambiguous case is deliberately left to judgment.
+ * A docblock leading the first declaration, with no blank line between them, is
+ * NOT reported, because at that position a module docblock and an ordinary
+ * JSDoc for that declaration are textually identical and only a reader can tell
+ * them apart. `schemas/zod-error.ts` documents its one export from there and is
+ * correct; `release/exclude-parser-parity.test.ts` describes the whole file from
+ * there and arguably is not. Reporting the position would make the guard demand
+ * that every documented first export lose its JSDoc, so the ambiguous case is
+ * deliberately left to judgment.
  *
  * Repair, when this goes red: move the reported docblock to line 1, above every
  * import. `eslint --fix` leaves it there; the sort has no reason to move a
@@ -52,141 +74,73 @@
  * adopter clone carries neither these sources nor this test, and the suite skips
  * there. Mirrors `command-reachability.test.ts`.
  */
+import ts from 'typescript';
 import {describe, expect, test} from 'vitest';
 import {existsSync, readFileSync} from 'node:fs';
 import path from 'node:path';
 import {resolveRepoRootFromImportMeta} from './util/repo-root-fixture.js';
 import {collectTreeFiles, TS_SOURCE_EXTENSIONS} from './util/tree-walk.js';
 
-/** Line index of the `*\/` closing the block comment opened at `start`. */
-const blockCommentEnd = (lines: readonly string[], start: number): number => {
-  let end = start;
-
-  while (end < lines.length && !(lines[end] ?? '').includes('*/')) {
-    end += 1;
-  }
-
-  return end;
-};
-
-/**
- * A statement terminator, tolerating a trailing comment that closes on the same
- * line.
- *
- * A bare `endsWith(';')` misses `import x from 'y'; // note`, and missing it is
- * not a near-miss: the scan then runs past the docblock below that import to
- * the NEXT import's terminator, steps over the docblock entirely, and the guard
- * reports the file clean on exactly the defect it exists to catch. One
- * `// eslint-disable-line` added by ordinary editing would have disabled this
- * guard for that whole file, silently.
- *
- * Two shapes are outside it, both known and both failing silent-green (tracked
- * in #1275): a trailing block comment left open to a later line, and a
- * `;` appearing inside a comment on a continuation line of a multi-line import,
- * which terminates that import early. Closing either means stripping comment
- * content before the test, and doing that correctly needs string awareness as
- * well, since `import x from 'https://cdn/x.js';` would otherwise have its
- * specifier eaten. That is a tokenizer, and a tokenizer is the argument for
- * reading this from the TypeScript AST rather than from lines at all.
- */
-const STATEMENT_END = /;\s*(?:\/\/.*|\/\*.*\*\/)?$/;
-
-/**
- * An import DECLARATION at the start of a line.
- *
- * The three excluded characters are the three ways `import` starts something
- * that is not a declaration, and each one misread the header differently:
- * `\w` for `importantThing();`, `.` for `import.meta.hot?.accept();`, and `(`
- * for a dynamic `import('./x');`. No import declaration is ever followed by any
- * of them. `\b` alone is not enough, since it matches between `t` and `.`.
- */
-const IMPORT_START = /^import(?![.\w(])/;
-
-/**
- * Line index of the last line of the import statement opening at `start`.
- * A multi-line `import {…} from '…';` ends on its own closing line, so the
- * scan runs to the first line that terminates a statement.
- */
-const importEnd = (lines: readonly string[], start: number): number => {
-  let end = start;
-
-  while (end < lines.length && !STATEMENT_END.test((lines[end] ?? '').trim())) {
-    end += 1;
-  }
-
-  return end;
-};
-
-/**
- * Line index of the first line that carries a statement, skipping the content
- * the header treats as transparent: blank lines, `//` notes, and further block
- * comments. Returns `lines.length` when the file ends first.
- */
-const nextStatement = (lines: readonly string[], from: number): number => {
-  let index = from;
-
-  while (index < lines.length) {
-    const line = (lines[index] ?? '').trim();
-
-    if (line === '' || line.startsWith('//')) {
-      index += 1;
-    } else if (line.startsWith('/*')) {
-      index = blockCommentEnd(lines, index) + 1;
-    } else {
-      return index;
-    }
-  }
-
-  return lines.length;
-};
-
-/**
- * Whether a docblock closing at `end` is left attached to nothing.
- *
- * A blank line immediately below detaches it outright. Otherwise the question
- * is what it actually binds to, which is the next STATEMENT rather than the
- * next line: an `import` makes it JSDoc for a dependency, and any other
- * statement is the ambiguous case the scope boundary leaves alone. Reading the
- * next line alone would let a `// group banner` between the docblock and its
- * import hide the very thing this guard exists to report.
- */
-const detachesDocblock = (lines: readonly string[], end: number): boolean =>
-  (lines[end + 1] ?? '').trim() === '' ||
-  IMPORT_START.test((lines[nextStatement(lines, end + 1)] ?? '').trim());
+const isImport = (node: ts.Node): boolean =>
+  ts.isImportDeclaration(node) || ts.isImportEqualsDeclaration(node);
 
 /**
  * Reports the 1-based line of the first stranded module docblock, or `null`
  * when the file's header is well-formed.
  *
- * Every line is classified on its trimmed form. Classifying on the raw line
- * fails open in both directions: an indented `/**` falls through to the closing
- * branch and ends the header early, so a docblock stranded below it reads as
- * clean, while `importantThing();` matches a bare `startsWith('import')` and
- * holds the header open past where it closes.
+ * A comment opening on the same line as the previous statement's end is not
+ * among the next statement's leading comments: it trails the statement before
+ * it. No author puts a module docblock there, so the guard does not look.
  */
 const findStrandedDocblock = (source: string): null | number => {
-  const lines = source.split('\n');
-  let index = 0;
-  let sawImport = false;
+  const file = ts.createSourceFile(
+    'module.ts',
+    source,
+    ts.ScriptTarget.Latest,
+    false,
+    ts.ScriptKind.TS
+  );
+  const lineStarts = file.getLineStarts();
+  const lineOf = (position: number): number =>
+    file.getLineAndCharacterOfPosition(position).line;
+  const isBlankFrom = (position: number): boolean =>
+    source
+      .slice(position, lineStarts[lineOf(position) + 1] ?? source.length)
+      .trim() === '';
 
-  while (index < lines.length) {
-    const line = (lines[index] ?? '').trim();
+  // The end-of-file token leads with whatever follows the last statement, so a
+  // docblock below a file that is all imports is still read. A non-import
+  // returns, so every node past the first has only imports before it.
+  for (const [index, node] of [
+    ...file.statements,
+    file.endOfFileToken,
+  ].entries()) {
+    for (const comment of ts.getLeadingCommentRanges(source, node.pos) ?? []) {
+      // A docblock sharing its line with code is attached to that code, so the
+      // blank-line test applies only when the statement it leads starts on a
+      // later line; a trailing comment on the docblock's line is not code. The
+      // end-of-file token is exempt because it can start on that same line in
+      // a file with no final newline, where nothing follows at all.
+      const endsItsLine =
+        node === file.endOfFileToken ||
+        lineOf(node.getStart(file)) > lineOf(comment.end);
+      const lineBelow = lineStarts[lineOf(comment.end) + 1] ?? source.length;
+      // An empty `/**/` opens with `/**` but is not JSDoc: the TypeScript
+      // scanner makes the same fourth-character test before reading one.
+      const isDocblock =
+        source.startsWith('/**', comment.pos) &&
+        source.charAt(comment.pos + 3) !== '/';
 
-    if (line === '' || line.startsWith('//')) {
-      index += 1;
-    } else if (line.startsWith('/*')) {
-      const end = blockCommentEnd(lines, index);
-
-      if (sawImport && line.startsWith('/**') && detachesDocblock(lines, end)) {
-        return index + 1;
+      if (
+        index > 0 &&
+        isDocblock &&
+        (isImport(node) || (endsItsLine && isBlankFrom(lineBelow)))
+      ) {
+        return lineOf(comment.pos) + 1;
       }
+    }
 
-      index = end + 1;
-    } else if (IMPORT_START.test(line)) {
-      sawImport = true;
-      index = importEnd(lines, index) + 1;
-    } else {
-      // The first non-import statement closes the header region.
+    if (!isImport(node)) {
       return null;
     }
   }
@@ -254,9 +208,27 @@ describe('module docblock placement', () => {
       ],
       3,
     ],
-    // A comment between the docblock and its import must not hide it. Reading
-    // only the line below the docblock reported `null` here, which is the shape
-    // an `import/order` group banner or an `eslint-disable-next-line` produces.
+    [
+      'reports a docblock stranded below a file that is all imports',
+      [
+        "import {z} from 'zod';",
+        "import fs from 'node:fs';",
+        '',
+        '/**',
+        ' * What this module is.',
+        ' */',
+        '',
+      ],
+      4,
+    ],
+    [
+      'reports a docblock at the end of a file with no final newline',
+      ["import {z} from 'zod';", '', '/**', ' * What this module is.', ' */'],
+      3,
+    ],
+    // A comment between the docblock and its import must not hide it: that is
+    // the shape an `import/order` group banner or an `eslint-disable-next-line`
+    // produces.
     [
       'reports a docblock stranded above a commented import',
       [
@@ -275,10 +247,9 @@ describe('module docblock placement', () => {
     expect(findStrandedDocblock(lines.join('\n'))).toBe(expected);
   });
 
-  // A trailing comment on the import above means the line does not end with
-  // `;`. Scanning for a bare `;` ran past this docblock to the next import's
-  // terminator and stepped over it, so the guard reported clean on the defect
-  // it exists to catch.
+  // A trailing comment on the import above must not hide the docblock below
+  // it, or one `// eslint-disable-line` added by ordinary editing disables the
+  // guard for that whole file.
   test('reports a docblock stranded below a commented import line', () => {
     const source = [
       "import {z} from 'zod'; // eslint-disable-line",
@@ -307,8 +278,8 @@ describe('module docblock placement', () => {
     expect(findStrandedDocblock(source)).toBe(2);
   });
 
-  // Classifying on the raw line let an indented `/**` close the header early,
-  // so anything stranded below it read as clean.
+  // An indented comment is still trivia, so it must not close the header, or
+  // anything stranded below it reads as clean.
   test('does not let an indented block comment close the header', () => {
     const source = [
       "import {z} from 'zod';",
@@ -324,10 +295,9 @@ describe('module docblock placement', () => {
     expect(findStrandedDocblock(source)).toBe(3);
   });
 
-  // The mirror image: a bare `startsWith('import')` matched `importantThing();`
-  // and held the header open past the statement that closes it, so the docblock
-  // below was reported as stranded when the header had in fact already ended.
-  // The trailing blank line is what makes this discriminate: without it the
+  // An identifier that merely starts with `import` is an ordinary statement,
+  // so it closes the header and the docblock below it is not stranded. The
+  // trailing blank line is what makes this discriminate: without it the
   // docblock binds to the declaration and both readings agree on `null`.
   test('an import-prefixed identifier closes the header', () => {
     const source = [
@@ -343,8 +313,7 @@ describe('module docblock placement', () => {
     expect(findStrandedDocblock(source)).toBeNull();
   });
 
-  // `\b` matches between `t` and `.`, so a word-boundary test alone reads
-  // `import.meta` as an import declaration and holds the header open.
+  // `import.meta` is an expression, not a declaration, so it closes the header.
   test('an import.meta statement closes the header', () => {
     const source = [
       "import {z} from 'zod';",
@@ -373,9 +342,69 @@ describe('module docblock placement', () => {
     expect(findStrandedDocblock(source)).toBeNull();
   });
 
-  // Same word-boundary bug reached through the other caller: if the next
-  // statement below a docblock is read as an import, the docblock is reported
-  // stranded when it is really JSDoc for the call it sits on.
+  // Whitespace before the paren still spells a dynamic import expression, so
+  // the docblock above it is JSDoc for that call and the header has closed.
+  test('a dynamic import call spelled with a space closes the header', () => {
+    const source = [
+      "import {z} from 'zod';",
+      '/**',
+      ' * Doc for the dynamic import below.',
+      ' */',
+      "import ('./side-effect.js');",
+    ].join('\n');
+
+    expect(findStrandedDocblock(source)).toBeNull();
+  });
+
+  // A trailing block comment closing on a later line hides the import's
+  // terminator from a line reader, which runs past this docblock to the next
+  // import's terminator and steps over it.
+  test('reports a docblock below an import whose trailing comment spans lines', () => {
+    const source = [
+      "import {z} from 'zod'; /* a",
+      '   b */',
+      '/**',
+      ' * What this module is.',
+      ' */',
+      "import fs from 'node:fs';",
+    ].join('\n');
+
+    expect(findStrandedDocblock(source)).toBe(3);
+  });
+
+  // A `;` inside a comment on a continuation line does not end the import.
+  // Reading it as the end makes `} from 'x';` the first non-import statement,
+  // which closes the header above the docblock stranded below it.
+  test('reports a docblock below a multi-line import with a commented semicolon', () => {
+    const source = [
+      'import {',
+      '  a, // see foo;',
+      "} from 'x';",
+      '/**',
+      ' * What this module is.',
+      ' */',
+      "import fs from 'node:fs';",
+    ].join('\n');
+
+    expect(findStrandedDocblock(source)).toBe(4);
+  });
+
+  // The scope boundary counts `import x = require(…)` as a header import, so a
+  // docblock between it and the next import is stranded like any other.
+  test('treats an import-equals declaration as part of the header', () => {
+    const source = [
+      "import fs = require('node:fs');",
+      '/**',
+      ' * What this module is.',
+      ' */',
+      "import {z} from 'zod';",
+    ].join('\n');
+
+    expect(findStrandedDocblock(source)).toBe(2);
+  });
+
+  // An import-prefixed identifier below a docblock is not an import, so the
+  // docblock is JSDoc for the call it sits on rather than stranded.
   test('an import-prefixed identifier does not detach the docblock above it', () => {
     const source = [
       "import {z} from 'zod';",
@@ -383,6 +412,18 @@ describe('module docblock placement', () => {
       ' * Doc for the call below.',
       ' */',
       'importantThing();',
+    ].join('\n');
+
+    expect(findStrandedDocblock(source)).toBeNull();
+  });
+
+  // An empty `/**/` between header imports is a plain block comment, so it
+  // strands nothing and the move-to-line-1 repair would not apply to it.
+  test('ignores an empty block comment between header imports', () => {
+    const source = [
+      "import {z} from 'zod';",
+      '/**/',
+      "import fs from 'node:fs';",
     ].join('\n');
 
     expect(findStrandedDocblock(source)).toBeNull();
@@ -416,6 +457,33 @@ describe('module docblock placement', () => {
     ].join('\n');
 
     expect(findStrandedDocblock(source)).toBeNull();
+  });
+
+  // A docblock sharing its closing line with the declaration it documents is
+  // attached to that declaration, whatever the line below it holds.
+  test('accepts a docblock on the same line as the declaration it documents', () => {
+    const source = [
+      "import {z} from 'zod';",
+      '/** What the export beside it does. */ export const value = 1;',
+      '',
+    ].join('\n');
+
+    expect(findStrandedDocblock(source)).toBeNull();
+  });
+
+  // A trailing comment on a docblock's closing line is not code, so it attaches
+  // the docblock to nothing and the blank line below still strands it.
+  test('reports a docblock whose closing line carries a trailing comment', () => {
+    const source = [
+      "import {z} from 'zod';",
+      '/**',
+      ' * What this module is.',
+      ' */ // note',
+      '',
+      'export const value = 1;',
+    ].join('\n');
+
+    expect(findStrandedDocblock(source)).toBe(2);
   });
 
   // A second import block beside the code that needs it is not the header, so
