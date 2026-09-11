@@ -38,9 +38,10 @@
  * `.github/workflows/` is absent, mirroring the sibling guards.
  */
 import {describe, expect, test} from 'vitest';
-import {existsSync, readdirSync, readFileSync} from 'node:fs';
+import {existsSync, readFileSync} from 'node:fs';
 import path from 'node:path';
 import {resolveRepoRootFromImportMeta} from '../../util/repo-root-fixture.js';
+import {collectTreeFiles} from '../../util/tree-walk.js';
 import {githubWorkflowsDirectory, workflowTemplatePath} from '../paths.js';
 
 type ActionPin = {
@@ -90,24 +91,23 @@ const extractPins = (text: string, source: string): readonly ActionPin[] =>
     return [{...parsed, line: index + 1, source}];
   });
 
+const TEMPLATE_EXTENSIONS: ReadonlySet<string> = new Set(['.tmpl']);
+
+// Both spellings, because GitHub honors both. `.github/actions/` is scanned
+// with the same set as `.github/workflows/`: a composite action is YAML too.
+const YAML_EXTENSIONS: ReadonlySet<string> = new Set(['.yaml', '.yml']);
+
 const collectPins = (
   dir: string,
-  extensions: readonly string[],
+  extensions: ReadonlySet<string>,
   prefix: string
 ): readonly ActionPin[] =>
-  readdirSync(dir, {withFileTypes: true}).flatMap((entry) => {
-    const full = path.join(dir, entry.name);
-
-    if (entry.isDirectory()) {
-      return collectPins(full, extensions, `${prefix}${entry.name}/`);
-    }
-
-    if (!extensions.some((extension) => entry.name.endsWith(extension))) {
-      return [];
-    }
-
-    return extractPins(readFileSync(full, 'utf8'), `${prefix}${entry.name}`);
-  });
+  collectTreeFiles(dir, extensions).flatMap((relative) =>
+    extractPins(
+      readFileSync(path.join(dir, relative), 'utf8'),
+      `${prefix}${relative}`
+    )
+  );
 
 const describePin = (pin: ActionPin): string =>
   `${pin.source}:${pin.line} ${pin.action}@${pin.ref}`;
@@ -129,7 +129,7 @@ const liveActionsDir = path.join(repoRoot, '.github', 'actions');
 // different repairs.
 const templatePins = collectPins(
   sourceTemplatesDir,
-  ['.tmpl'],
+  TEMPLATE_EXTENSIONS,
   'src/automation/templates/workflows/'
 );
 
@@ -143,19 +143,19 @@ const templatePins = collectPins(
 // otherwise sit outside every comparison below: the agreement test would not
 // see it drift from the workflows, and a template pinning the same action
 // would be compared against a live set that does not contain it.
-// Collected separately so the recursion into `.github/actions/` is expressed
+// Collected separately so the walk into `.github/actions/` is expressed
 // once; the SHA-shape test below asserts over the whole live set, workflows
 // included. A composite action pinned to a moving major tag and used by no
 // workflow would otherwise pass every test here: it agrees with itself, and no
 // template pins it, so neither comparison reaches it.
 const liveActionPins =
   existsSync(liveActionsDir) ?
-    collectPins(liveActionsDir, ['.yml', '.yaml'], '../actions/')
+    collectPins(liveActionsDir, YAML_EXTENSIONS, '../actions/')
   : [];
 
 const liveWorkflowPins = [
   ...(existsSync(liveWorkflowsDir) ?
-    collectPins(liveWorkflowsDir, ['.yml', '.yaml'], '')
+    collectPins(liveWorkflowsDir, YAML_EXTENSIONS, '')
   : []),
   ...liveActionPins,
 ];
