@@ -3225,15 +3225,23 @@ PY
 # W16's recomputation from the tree, one `<page>|<armed legs>` row per page of
 # the class PyYAML reads from <workflow>. See arming_scan_py for the rules.
 #
-# Two kinds of file in the input set name narrowable pages without reading them,
-# and both are counted rather than special-cased. This suite is a discovered
-# `lib` suite, and w16_declared_table names every page, so it is a namer of all
-# and the namer-of-all rule drops it. Of the committed fixtures under
+# Files in the input set that name narrowable pages without reading them are
+# counted rather than special-cased. This suite is a discovered `lib` suite, and
+# w16_declared_table names every page, so it is a namer of all and the
+# namer-of-all rule drops it. Of the committed fixtures under
 # .gaia/tests/lib/fixtures/spec-078/, which sit in a fixtures/ subtree beside
 # the `lib` suites, only codefilter-token-out-of-set.yml names wiki/.state.json,
 # so it attributes to `lib`; paths-filter-pin-bumped.yml names no narrowable
-# page. Neither can move an armed set: `lib` holds this suite, which rule 5
-# arms on every page anyway.
+# page. None of those can move an armed set: `lib` holds this suite, which rule
+# 5 arms on every page anyway.
+#
+# .gaia/tests/hooks/fixtures/audit-routing-before.tsv does move armed sets. It
+# is a frozen path inventory in the fixtures/ subtree beside the `hooks-*`
+# suites, listing most of wiki/ and reading none of it. While it lists every
+# class page the namer-of-all rule drops it; once the class holds a page it does
+# not list, it is a namer of every class page it does list, and each of those
+# rows gains every `hooks-*` leg with no hooks suite reading the page. That
+# over-arms, the safe direction, and #1994 tracks it.
 arming_recompute() {
   local sharder="$1" root="$2" workflow="$3" conc_dir="$4" conc_leg="$5" stats="${6:-}"
   local class legs data
@@ -3778,13 +3786,19 @@ arming_baseline_false() {
 w16_declared_table() {
   cat <<'TABLE'
 wiki/.state.json|concurrency hooks-1 hooks-2 hooks-3 hooks-4 lib misc scripts-1 scripts-2 scripts-3
-wiki/concepts/Audit Disposition and Debt Fix.md|lib scripts-1 scripts-2 scripts-3
-wiki/concepts/Claude Hooks.md|lib scripts-1 scripts-2 scripts-3
-wiki/concepts/Code Review Audit Agent.md|lib
-wiki/concepts/GAIA Audit.md|lib
-wiki/concepts/PR Merge Workflow.md|hooks-2 hooks-3 hooks-4 lib misc scripts-1 scripts-2 scripts-3
-wiki/concepts/Policy-Memory Loop.md|lib
-wiki/concepts/Task Orchestration.md|lib scripts-1 scripts-2 scripts-3
+wiki/concepts/Audit Disposition and Debt Fix.md|hooks-1 hooks-2 hooks-3 hooks-4 lib scripts-1 scripts-2 scripts-3
+wiki/concepts/Claude Hooks.md|hooks-1 hooks-2 hooks-3 hooks-4 lib scripts-1 scripts-2 scripts-3
+wiki/concepts/Code Review Audit Agent.md|hooks-1 hooks-2 hooks-3 hooks-4 lib
+wiki/concepts/GAIA Audit.md|hooks-1 hooks-2 hooks-3 hooks-4 lib
+wiki/concepts/Issue Claim.md|lib
+wiki/concepts/Local Working State.md|hooks-1 hooks-2 hooks-3 hooks-4 lib
+wiki/concepts/PR Merge Workflow.md|hooks-1 hooks-2 hooks-3 hooks-4 lib misc scripts-1 scripts-2 scripts-3
+wiki/concepts/Policy-Memory Loop.md|hooks-1 hooks-2 hooks-3 hooks-4 lib
+wiki/concepts/Registering a Code Audit Team Member.md|lib
+wiki/concepts/Task Orchestration.md|hooks-1 hooks-2 hooks-3 hooks-4 lib scripts-1 scripts-2 scripts-3
+wiki/decisions/Code Audit Team.md|hooks-1 hooks-2 hooks-3 hooks-4 lib
+wiki/decisions/Shell Guard Fixture Discrimination.md|lib scripts-1 scripts-2 scripts-3
+wiki/index.md|hooks-1 hooks-2 hooks-3 hooks-4 lib misc scripts-1 scripts-2 scripts-3
 TABLE
 }
 

@@ -399,6 +399,33 @@ jobs:
               # job having run that comparison zero times. Same
               # test-dir/source-dir pairing as the entries above.
               - 'wiki/concepts/Task Orchestration.md'
+              # Each page from here through wiki/index.md is opened and asserted
+              # on by the suite named beside it, and matches no other pattern
+              # here, so without its line a wiki-only edit to that page would
+              # report `code=false`, skip every bats step, and green the job
+              # having run that suite's assertions zero times. A suite that only
+              # names a page in a comment, or reuses its path inside a synthetic
+              # temp repo, never reads the tracked file, so it earns no entry.
+              #
+              # doc-issue-claim-parity.bats (.gaia/tests/lib/) compares, path by
+              # path, this page's list of merges that leave the claim in place
+              # against the same list in .claude/rules/issue-claim.md.
+              - 'wiki/concepts/Issue Claim.md'
+              # local-janitor-wiki-doc.bats (.gaia/tests/hooks/) cross-checks
+              # this page's janitor sweep enumeration against the hook source.
+              - 'wiki/concepts/Local Working State.md'
+              # doc-scope-digest-obligation.bats (.gaia/tests/lib/) requires the
+              # scope-digest obligation literal under this page's step-1 heading.
+              - 'wiki/concepts/Registering a Code Audit Team Member.md'
+              # doc-audit-rekey-record-prose.bats (.gaia/tests/lib/) greps this
+              # page's re-spawn breadcrumbs section for the settled re-key record.
+              - 'wiki/decisions/Code Audit Team.md'
+              # guard-awk-lib.bats (.gaia/scripts/tests/) reads this page's
+              # pinned headings and runs the wiki-style audit greps over it.
+              - 'wiki/decisions/Shell Guard Fixture Discrimination.md'
+              # The same suite reads this page's Decisions (ADRs) section for the
+              # page above's registration inside the maintainer-only block.
+              - 'wiki/index.md'
               # The doc-setup-gaia-isolation and doc-gaia-init-isolation suites
               # (.gaia/tests/lib/) grep the /setup-gaia Phase 3.5 clause and the
               # /gaia-init Step 9 question block; trigger on the two command
