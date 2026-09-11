@@ -314,13 +314,14 @@
     {
       "hook": ".claude/hooks/provision-worktree.sh",
       "capabilities": [
+        "network",
         "fs-write:**",
         "fs-write:.gaia/local",
         "fs-write:.gaia/local/**",
         "invokes:.gaia/scripts/link-worktree.sh",
         "invokes:.gaia/scripts/main-root-lib.sh"
       ],
-      "why": "On entering or starting a session inside a linked worktree, re-links the shared state the worktree registry declares and regenerates the typed routes the worktree's own branch needs, idempotently. Sources `link-worktree.sh`, which symlinks each shared path under `.gaia/local` from the worktree side to the main checkout, hence `fs-write:.gaia/local` and `fs-write:.gaia/local/**`; the symlink's worktree-side location is wherever the session's own checkout sits, which is what the caller-chosen `fs-write:**` stands for. Sources main-root-lib.sh to resolve the main checkout.",
+      "why": "On entering or starting a session inside a linked worktree, re-links the shared state the worktree registry declares and regenerates the typed routes the worktree's own branch needs, idempotently. Sources `link-worktree.sh`, which symlinks each shared path under `.gaia/local` from the worktree side to the main checkout, hence `fs-write:.gaia/local` and `fs-write:.gaia/local/**`; the symlink's worktree-side location is wherever the session's own checkout sits, which is what the caller-chosen `fs-write:**` stands for. Sources main-root-lib.sh to resolve the main checkout. `network` is the frozen-lockfile `pnpm install` it runs for the tree root, and for the `.gaia/cli` workspace where that workspace carries its own lockfile: a frozen install refuses to rewrite the lockfile but still downloads from the package registry whenever the store lacks a locked package.",
       "maintainer_only": false
     },
     {

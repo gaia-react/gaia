@@ -435,6 +435,7 @@ A release change that requires the adopter to act, run a command or hand-migrate
 
 ### Fixed
 
+- the hook and script capability checks now count a package-manager install as network reach. They could not see one, so worktree provisioning's lockfile installs went undeclared and the check read a hand-written `network` declaration as surplus; the provisioning hook now declares it. The checks are maintainer-only and adopters see no change (#1995)
 - worktree provisioning now installs the `.gaia/cli` workspace's dependencies alongside the tree's own. That workspace is its own pnpm root, so a fresh worktree had no CLI dependencies and every suite resolving one failed there while passing on the main checkout, a false red a drainer had to diagnose before trusting the run. The CLI install is gated on the workspace's own lockfile, which is release-excluded, so adopters see no change (#1990)
 
 - `/update-deps` now gates every override change its post-update audit keeps. That audit could re-floor or remove an override and hand back no quality-gate result, and nothing said what to do when the gate failed, so a change that broke the build could stay in the tree while the final report and the commit both read as gated. The audit's agent now re-runs the gate whenever it changes an override, restores the previous values when the gate fails, and returns the gate result for the final report (#1985)

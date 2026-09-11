@@ -163,7 +163,7 @@ _gaia_capcheck_strip_literals() {
 # Command words that only ever mean reach when the shell is going to run them:
 # every name the detectors below look for, plus the `.` builtin. Held with
 # leading and trailing spaces so a membership test is one `case`.
-_GAIA_CAPCHECK_QUOTED_WORDS=" mkdir rm touch tee install mktemp cp mv ln sed find bash sh source . curl wget gh git "
+_GAIA_CAPCHECK_QUOTED_WORDS=" mkdir rm touch tee install mktemp cp mv ln sed find bash sh source . curl wget gh git pnpm npm yarn "
 
 # The characters, besides the space, that can bound one of those words inside a
 # double-quoted span. A membership test delimited by spaces alone missed every
@@ -2368,18 +2368,45 @@ _GAIA_CAPCHECK_DOTCMD='(^|[;|&(`{}]|(^|[[:space:]])(if|then|else|do|elif|while|u
 # of one that does.
 _GAIA_CAPCHECK_PATHCMD='(^|[;|&`]|\$\(|[[:space:]]then[[:space:]]|[[:space:]]else[[:space:]]|[[:space:]]do[[:space:]]|[[:space:]]elif[[:space:]]|[[:space:]]![[:space:]])[[:space:]]*'
 
-# _gaia_capcheck_detect_network <text>: curl, wget, any gh invocation, and the
-# remote-touching git verbs. Deliberately not matched: `command -v gh` and
-# friends, where `gh` is an argument rather than the command -- the match
-# requires a lowercase subcommand letter after it.
+# _gaia_capcheck_detect_network <text>: curl, wget, any gh invocation, the
+# remote-touching git verbs, and a package-manager install. Deliberately not
+# matched: `command -v gh` and friends, where `gh` is an argument rather than the
+# command -- the match requires a lowercase subcommand letter after it.
+#
+# The install arm counts an install as reach because it downloads whenever the
+# store lacks a locked package; a frozen lockfile refuses to rewrite the lockfile
+# and still downloads. Flags may stand between the manager and its verb, each
+# with at most one operand (`pnpm -C <dir> install`), and `command -v pnpm`
+# stays unmatched because no install verb follows it.
+#
+# It is a vocabulary, not a parse, so it errs in both directions. Among what it
+# does not see: a bare `yarn`, which installs with no verb; `pnpm dlx`, `pnpm
+# fetch`, `pnpm audit`, `npx`, and the update verbs, which reach the registry
+# too; a manager reached through a path or an expansion
+# (`./node_modules/.bin/pnpm install`); and a flag followed by two operands, or
+# by one quoted operand holding a space, since the second word stands where the
+# verb has to. What it over-reads: the word after a boolean flag is taken as
+# that flag's operand, so `pnpm --silent run install` reads the script name as
+# the verb. The flag repeat is unbounded, so a line of thousands of
+# manager-and-flag pairs matches in quadratic time under glibc. The positive
+# and negative tables in check-hook-capabilities.bats pin what it does decide.
+#
+# The verb arms end at a shell separator as well as at whitespace, because a
+# verb is the last word of its command as often as not: `(cd "$d" && pnpm
+# install)`, `out=$(npm ci)`, `git fetch;`. The curl/wget arm keeps the
+# whitespace-only end, since a `curl)` there is far likelier to be a case
+# pattern than a call with no arguments.
 _gaia_capcheck_detect_network() {
   local t="$1"
+  local end="([[:space:]);|&<>\`]|\$)"
   local p1="${_GAIA_CAPCHECK_CMD}(curl|wget)([[:space:]]|\$)"
   local p2="${_GAIA_CAPCHECK_CMD}gh[[:space:]]+[a-z]"
-  local p3="${_GAIA_CAPCHECK_CMD}git([[:space:]]+-[Cc][[:space:]]+[^[:space:]]+)?[[:space:]]+(fetch|push|clone|pull|ls-remote)([[:space:]]|\$)"
+  local p3="${_GAIA_CAPCHECK_CMD}git([[:space:]]+-[Cc][[:space:]]+[^[:space:]]+)?[[:space:]]+(fetch|push|clone|pull|ls-remote)${end}"
+  local p4="${_GAIA_CAPCHECK_CMD}(pnpm|npm|yarn)([[:space:]]+-[^[:space:]]+([[:space:]]+[^-[:space:]][^[:space:]]*)?)*[[:space:]]+(install|i|add|ci)${end}"
   [[ $t =~ $p1 ]] && return 0
   [[ $t =~ $p2 ]] && return 0
   [[ $t =~ $p3 ]] && return 0
+  [[ $t =~ $p4 ]] && return 0
   return 1
 }
 
