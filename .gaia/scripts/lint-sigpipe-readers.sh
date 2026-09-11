@@ -188,7 +188,11 @@
 # scoped. The minimum cannot rise above the raw count: the depth walk is
 # monotone in the depth it starts from, so from zero, by induction, every line
 # ends at or below where the raw count would end it, and the strip can remove a
-# false negative but never add one. The arming test itself reads the raw line.
+# false negative but never add one. The same misalignment can pull the carry
+# BELOW the true depth, when an apostrophe inside a double-quoted word pairs
+# across a real open `$(`: an arming scoped to that substitution then reads as
+# file-level and the file over-reports, the direction that costs a correct
+# edit. The arming test itself reads the raw line.
 #
 # The script arm applies the same depth test to a FILE, and TWO shapes reach a
 # false negative through it, the direction this gate must not be wrong in, so
@@ -225,8 +229,11 @@
 # code, whatever its delimiter's quoting), or escaped as `\$(` inside double
 # quotes (a backslash is not read); and an unbalanced quoted `$(` on the SAME
 # line as the arming, `grep -nF 'x=$(' f; set -euo pipefail`, because the
-# arming test reads the raw line. Each needs the quote state a shell tokenizer
-# carries across lines, rather than a per-line character count.
+# arming test reads the raw line. The multi-line program and the heredoc body
+# need state carried across lines; the others need a tokenizer's reading of one
+# line rather than a character count, and the same-line arming needs less than
+# that: the minimum the carry takes at end of line, taken at the arming
+# position instead.
 #
 # Neither shape changes what this tree reports, and the honest form of that is
 # a differential rather than an absence. Run the gate with the cross-line carry

@@ -901,9 +901,11 @@ printf "%s" "$changed" | grep -q needle'
 }
 
 # The workflow arm carries its depth across a block the same way the script arm
-# carries it across a file, through the same carry, so both quoted-literal
-# fixtures the script arm pins are pinned here too: a repair reaching one arm
-# and not the other reopens the asymmetry the shared carry exists to prevent.
+# carries it across a file, through the same carry, so the script arm's
+# unbalanced-literal and strip-raise fixtures are mirrored here: a repair
+# reaching one arm and not the other reopens the asymmetry the shared carry
+# exists to prevent. The balanced fixture is not mirrored, because what it pins
+# is the same-line `)` decrement in depth_at, which both arms share.
 @test "an unbalanced dollar-paren inside a single-quoted argument leaves the block armed" {
   fixture_repo
   fixture_workflow 'grep -nF '"'"'x=$('"'"' file.txt
