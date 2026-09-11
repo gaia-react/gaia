@@ -1,17 +1,21 @@
 # shellcheck shell=bash
 # Shared breadcrumb lib for the GitHub pull-request artifact a run produced.
 #
-# Sourced by two producers that must agree on one on-disk shape:
+# Sourced by the callers that must agree on one on-disk shape:
 # .claude/hooks/capture-gh-artifact.sh (the sole writer, fires when
-# `gh pr create` succeeds) and token-tally.sh's `--action execute` path (the
-# sole reader, never deletes). Every other cost record, the five prose
-# maintenance commands and the /gaia-wiki chain, binds its artifact by direct
-# pass-through instead: the agent reads the URL `gh pr create` printed into
-# its own tool result and hands the number straight to the tally, because
-# those runs check out and delete their working branch before the run ends,
-# so a branch-keyed breadcrumb could never be reclaimed at that point. Only
-# plan execution has no agent in the loop (its rows come from a PreToolUse
-# hook on `git commit` / `git push`), so it alone reads this breadcrumb.
+# `gh pr create` succeeds) and its readers, none of which deletes the file.
+# token-tally.sh's `--action execute` path reads it for cost records. Every
+# other cost record, the five prose maintenance commands and the /gaia-wiki
+# chain, binds its artifact by direct pass-through instead: the agent reads the
+# URL `gh pr create` printed into its own tool result and hands the number
+# straight to the tally, because those runs check out and delete their working
+# branch before the run ends, so a branch-keyed breadcrumb could never be
+# reclaimed at that point. Only plan execution has no agent in the loop (its
+# rows come from a PreToolUse hook on `git commit` / `git push`), so among cost
+# records it alone reads this breadcrumb. .claude/hooks/block-main-destructive-git.sh
+# reads it too, as proof that a session owns the branch it holds the main
+# checkout on; it relies on the branch-keyed filename and the session and branch
+# match below, and passes a long ttl because a session id never repeats.
 #
 # No side effects at source time; this file defines functions only. Every
 # function below returns 0 and degrades to nothing on failure, never

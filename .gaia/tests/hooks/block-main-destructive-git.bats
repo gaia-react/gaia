@@ -24,8 +24,9 @@ setup() {
   git -C "$REPO" add README.md
   git -C "$REPO" commit --quiet -m "init"
 
-  # The hook sources the repo-scope helper relative to cwd; give the tmp repo
-  # a real copy so the foreign-repo bypass resolves.
+  # The hook loads its libraries from its own on-disk location, never from cwd,
+  # so these copies are not the ones it runs; stage_hook_tree below is the
+  # form that puts a library the test controls in front of the hook.
   mkdir -p "$REPO/.claude/hooks/lib"
   cp "$HOOKS_SRC/lib/repo-scope.sh" "$REPO/.claude/hooks/lib/repo-scope.sh"
   # The jq-availability arm runs ahead of the repo-scope load and refuses when
@@ -391,13 +392,17 @@ run_hop() {
   assert_denied_by_json
 }
 
-@test "hop guard: git checkout -b, -, and --detach in a peer-held main checkout are denied" {
+@test "hop guard: checkout's branch-creating, detaching, and previous-branch forms are denied in a peer-held main checkout" {
   hold_feature_with_pr 42
   run_hop 'git checkout -b brand-new' sid-peer
   assert_denied_by_json
   run_hop 'git checkout -' sid-peer
   assert_denied_by_json
   run_hop 'git checkout --detach' sid-peer
+  assert_denied_by_json
+  run_hop 'git checkout -B brand-new' sid-peer
+  assert_denied_by_json
+  run_hop 'git checkout --orphan o2' sid-peer
   assert_denied_by_json
 }
 

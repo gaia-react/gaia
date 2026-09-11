@@ -215,13 +215,18 @@ hop_target() {
 # restores pass: anything carrying `--`, `-p`, or a pathspec file, and two or
 # more operands (a tree-ish plus paths).
 #
-# Honest limits, each of which passes: a `git checkout <name>` that git would
-# DWIM into a new tracking branch from a remote, since it does not resolve as a
-# commit-ish locally (the feature-branch cleanup's `git checkout main` always
-# resolves); a `cd` into the main checkout earlier in the same command, since the
-# target comes from `-C` or the payload's cwd, never from a `cd`; `--git-dir` or
-# `--work-tree` aiming a command run elsewhere at the main checkout, for the same
-# reason; and `gh pr checkout`, whose command word is not `git`.
+# Honest limits. The guard reads words split on whitespace, never the command as
+# the shell would expand it, so spellings that need the shell's own reading pass.
+# They include: a `git checkout <name>` that git would DWIM into a new tracking
+# branch from a remote, since it does not resolve as a commit-ish locally (the
+# feature-branch cleanup's `git checkout main` always resolves); a `cd` into the
+# main checkout earlier in the same command, since the target comes from `-C` or
+# the payload's cwd, never from a `cd`; `--git-dir` or `--work-tree` aiming a
+# command run elsewhere at the main checkout, for the same reason; a `-C` whose
+# path is quoted with a space in it, carries an unexpanded variable or `~`, or is
+# a relative `-C` stacked on an earlier one; a global option whose value this
+# parser does not know to skip, such as `--config-env`; and `gh pr checkout`,
+# whose command word is not `git`.
 hop_moves_head() {
   local target="$1" operand="" n=0 t skip_next=0
   case "$git_sub" in
