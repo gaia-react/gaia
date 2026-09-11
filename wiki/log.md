@@ -11,6 +11,7 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-09-11 85eff7a9 SKIP - prior wiki-sync commit (#1965), already self-documenting via its own state/log edit
 - 2026-09-10 666c904b WORTHY - per-leg CI narrowing for wiki-only PRs → wiki/decisions/Sharded CI Test Matrix.md already updated in-commit
 - 2026-09-10 39a6a06e SKIP - shell lint-gate correctness fix, no wiki page describes this gate's match boundary
 - 2026-09-10 2f25d63f WORTHY - hypothetical-path marker replaces HYPOTHETICAL_EXAMPLE_PATHS list → wiki/decisions/{Code Audit Team,Quality Gate,Wiki Management}.md already updated in-commit
