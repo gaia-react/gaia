@@ -469,7 +469,10 @@ EOF
 # --- fixture: no background maintenance survives into teardown --------------
 # GIT_TRACE2_EVENT records a child's argv as a `child_start` event in the
 # spawning process's trace, so a --detach run is visible without waiting on it.
-# Both argv spellings count: modern git spawns `maintenance`, older git `gc`.
+# Both argv spellings count, so the control sees a spawn on any git: modern
+# git spawns `maintenance`, pre-2.29 git `gc`. The subject arm needs 2.29 or
+# later: earlier git spawns `gc --auto` on every commit and gc.auto=0 only
+# empties its work, so a correctly gated repo would still count one there.
 # A bare "no spawn" also holds when the trace saw nothing, so the control arm
 # commits into a repo that writes git's own defaults for the gates (a personal
 # ~/.gitconfig carrying gc.auto=0 would otherwise gate it) and must see one.
