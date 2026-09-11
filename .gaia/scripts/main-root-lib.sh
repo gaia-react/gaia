@@ -88,6 +88,16 @@
 #   a worktree's directory name: nothing requires a worktree to live under
 #   .claude/worktrees/, and name-shaped keys have already had to move once.
 #
+# gaia_resolve_common_dir [dir]
+#   Repository identity: the physically resolved git common directory of
+#   `dir` (default: the process working directory), the one directory a main
+#   checkout and every linked worktree of it share, so two directories are in
+#   the same repository exactly when their answers are equal. Cheaper than
+#   comparing two gaia_resolve_main_root answers, which also locate and
+#   validate a root. SUCCESS: prints the directory as one line; returns 0.
+#   FAILURE (`dir` is not inside a repository): prints nothing on stdout;
+#   returns non-zero.
+#
 # Neither function holds state between calls: two independent resolutions,
 # for two different directories, are safe in one process.
 #
@@ -97,12 +107,14 @@
 #   if gaia_is_linked_worktree "$some_dir"; then ...; fi
 #   tree_root="$(gaia_resolve_tree_root "$some_dir")" || { echo "no tree: $?" >&2; }
 #   key="$(gaia_tree_key "$some_dir")" || { echo "no key: $?" >&2; }
+#   common="$(gaia_resolve_common_dir "$some_dir")" || { echo "no repo" >&2; }
 #
 # Usage (executable):
 #   bash .gaia/scripts/main-root-lib.sh [dir]                # resolve
 #   bash .gaia/scripts/main-root-lib.sh --is-worktree [dir]  # predicate
 #   bash .gaia/scripts/main-root-lib.sh --tree-root [dir]    # per-tree resolve
 #   bash .gaia/scripts/main-root-lib.sh --tree-key [dir]     # per-tree key
+#   bash .gaia/scripts/main-root-lib.sh --common-dir [dir]   # repository identity
 
 # Run git with the three repository-discovery overrides stripped from the
 # environment, so every call here answers from on-disk layout alone.
@@ -306,6 +318,22 @@ gaia_resolve_tree_root() {
   return 0
 }
 
+# gaia_resolve_common_dir: see the header contract above.
+gaia_resolve_common_dir() {
+  local dir="${1:-}"
+  local -a g
+  if [[ -n "$dir" ]]; then
+    g=(_gaia_git -C "$dir")
+  else
+    g=(_gaia_git)
+  fi
+
+  local raw
+  raw="$("${g[@]}" rev-parse --git-common-dir 2>/dev/null)" || return 1
+  [[ -n "$raw" ]] || return 1
+  _gaia_physical_dir "$(_gaia_abs_path "$raw" "${dir:-$PWD}")"
+}
+
 # gaia_tree_key: see the header contract above.
 gaia_tree_key() {
   local dir="${1:-}"
@@ -351,6 +379,11 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
   if [[ "${1:-}" == "--tree-key" ]]; then
     shift
     gaia_tree_key "${1:-}"
+    exit $?
+  fi
+  if [[ "${1:-}" == "--common-dir" ]]; then
+    shift
+    gaia_resolve_common_dir "${1:-}"
     exit $?
   fi
   gaia_resolve_main_root "${1:-}"

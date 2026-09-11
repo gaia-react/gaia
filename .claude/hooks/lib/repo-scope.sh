@@ -54,19 +54,24 @@ _gaia_repo_scope_unquote() {
   printf '%s' "$v"
 }
 
-# The physically resolved git common directory of $1 (default: cwd), the one
-# directory a main checkout and every linked worktree of it share, so equal
-# answers mean the same repository. gaia_resolve_main_root keys its own
-# validation on the same fact, but it also resolves and validates a root, and
-# this runs on nearly every git tool call. The three discovery overrides are
-# stripped for the reason .gaia/scripts/main-root-lib.sh gives: an exported
-# GIT_DIR answers for every git call regardless of `-C`.
-_gaia_repo_scope_common_dir() {
-  ( cd "${1:-.}" 2>/dev/null || exit 1
-    c=$(env -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR \
-      git rev-parse --git-common-dir 2>/dev/null) || exit 1
-    [ -n "$c" ] || exit 1
-    cd "$c" 2>/dev/null && pwd -P )
+# The shared main-checkout resolver, loaded from this library's own on-disk
+# location (never cwd: a hook suite runs from a sandbox with no .gaia/).
+# Errexit is suspended across the load and restored to what it was, for the
+# reason .claude/hooks/lib/verb-arming.sh gives at its own repo-scope load: a
+# parse error abandons the shell from a condition context too, and in the
+# errexit consumers that exit is the deny code.
+_gaia_repo_scope_load_main_root() {
+  local root errexit_was
+  type gaia_resolve_common_dir >/dev/null 2>&1 && return 0
+  root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." 2>/dev/null && pwd)" || return 1
+  [ -f "$root/.gaia/scripts/main-root-lib.sh" ] || return 1
+  errexit_was=0
+  case $- in *e*) errexit_was=1 ;; esac
+  set +e
+  # shellcheck source=/dev/null
+  . "$root/.gaia/scripts/main-root-lib.sh" 2>/dev/null
+  if [ "$errexit_was" = 1 ]; then set -e; fi
+  type gaia_resolve_common_dir >/dev/null 2>&1
 }
 
 cmd_targets_foreign_repo() {
@@ -138,10 +143,14 @@ cmd_targets_foreign_repo() {
     '~/'*) target_dir="$HOME/${target_dir:2}" ;;
   esac
 
-  # Same repository means same common directory; a target whose repository
-  # cannot be resolved has no identity to compare, so enforce.
-  a=$(_gaia_repo_scope_common_dir "$target_dir") || return 1
-  b=$(_gaia_repo_scope_common_dir) || return 1
+  # Same repository means same git common directory, which a main checkout
+  # shares with every linked worktree of it. The resolver's identity answer
+  # rather than two main-root resolutions: this runs on nearly every git tool
+  # call. Without the resolver, or for a target whose repository cannot be
+  # resolved, there is no identity to compare, so enforce.
+  _gaia_repo_scope_load_main_root || return 1
+  a=$(gaia_resolve_common_dir "$target_dir") || return 1
+  b=$(gaia_resolve_common_dir) || return 1
   [ -n "$a" ] && [ -n "$b" ] || return 1
   [ "$a" != "$b" ] && return 0
   return 1
