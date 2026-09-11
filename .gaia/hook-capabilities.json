@@ -108,9 +108,10 @@
       "capabilities": [
         "invokes:.claude/hooks/lib/jq-availability.sh",
         "invokes:.claude/hooks/lib/repo-scope.sh",
+        "invokes:.gaia/scripts/main-root-lib.sh",
         "network"
       ],
-      "why": "Denies a `git commit`/`git push` that carries a hook-bypass flag (`--no-verify`, `-n`, `HUSKY=0`, `-c core.hooksPath=`), by matching the intercepted Bash command's own text; it issues no git command of its own. Sources the shared repo-scope helper to exempt a command aimed at a different repository, and the shared jq-availability arm; `network` is the repo-scope helper's own `gh repo view` call, made to confirm which repository the intercepted command targets.",
+      "why": "Denies a `git commit`/`git push` that carries a hook-bypass flag (`--no-verify`, `-n`, `HUSKY=0`, `-c core.hooksPath=`), by matching the intercepted Bash command's own text; it issues no git command of its own. Sources the shared repo-scope helper to exempt a command aimed at a different repository, which loads the main-root resolver to compare a `-C` or `cd` target's repository, and the shared jq-availability arm; `network` is static reach: the repo-scope library carries a `gh repo view` call on its act-on-home path, which this hook does not take.",
       "maintainer_only": false
     },
     {
@@ -256,10 +257,11 @@
         "network",
         "invokes:.claude/hooks/lib/jq-availability.sh",
         "invokes:.claude/hooks/lib/repo-scope.sh",
+        "invokes:.gaia/scripts/main-root-lib.sh",
         "invokes:.claude/hooks/lib/verb-arming-walk.sh",
         "invokes:.claude/hooks/lib/verb-arming.sh"
       ],
-      "why": "Denies `gh pr create` when a file this branch newly ships has no ship-or-withhold answer in the committed `.gaia/manifest.json`, so a maintainer learns it locally before the equivalent CI job goes red, once armed through the shared arming decision (`.claude/hooks/lib/verb-arming.sh`, which lazily loads `.claude/hooks/lib/verb-arming-walk.sh` for its data-proving view). Sources the shared repo-scope helper to exempt a command aimed at a different repository, and the shared jq-availability arm; `network` is that helper's own `gh repo view` call, made to confirm which repository the intercepted command targets. Never itself writes a file or calls `gh` to create or modify anything: it only inspects the manifest already on disk and denies the pending call.",
+      "why": "Denies `gh pr create` when a file this branch newly ships has no ship-or-withhold answer in the committed `.gaia/manifest.json`, so a maintainer learns it locally before the equivalent CI job goes red, once armed through the shared arming decision (`.claude/hooks/lib/verb-arming.sh`, which lazily loads `.claude/hooks/lib/verb-arming-walk.sh` for its data-proving view). Sources the shared repo-scope helper to exempt a command aimed at a different repository, which loads the main-root resolver to compare a `-C` or `cd` target's repository, and the shared jq-availability arm; `network` is static reach: the repo-scope library carries a `gh repo view` call on its act-on-home path, which this hook does not take. Never itself writes a file or calls `gh` to create or modify anything: it only inspects the manifest already on disk and denies the pending call.",
       "maintainer_only": true
     },
     {
@@ -268,10 +270,11 @@
         "network",
         "github-write",
         "invokes:.claude/hooks/lib/repo-scope.sh",
+        "invokes:.gaia/scripts/main-root-lib.sh",
         "invokes:.claude/hooks/lib/verb-arming-walk.sh",
         "invokes:.claude/hooks/lib/verb-arming.sh"
       ],
-      "why": "After a `gh pr merge` for this repository that GitHub confirms landed (`gh pr view --json state`), armed through the shared arming decision (`.claude/hooks/lib/verb-arming.sh`, which lazily loads `.claude/hooks/lib/verb-arming-walk.sh` for its data-proving view), strips the `in-progress` claim label from every issue the merged pull request closes by keyword (`gh issue edit --remove-label`). Sources the shared repo-scope helper to exempt a command aimed at a different repository; both the confirmation read and the label edit are the source of its `network` and `github-write` reach. Touches no local file: releasing a claim is a GitHub-side label write only.",
+      "why": "After a `gh pr merge` for this repository that GitHub confirms landed (`gh pr view --json state`), armed through the shared arming decision (`.claude/hooks/lib/verb-arming.sh`, which lazily loads `.claude/hooks/lib/verb-arming-walk.sh` for its data-proving view), strips the `in-progress` claim label from every issue the merged pull request closes by keyword (`gh issue edit --remove-label`). Sources the shared repo-scope helper to exempt a command aimed at a different repository, which loads the main-root resolver to compare a `-C` or `cd` target's repository; both the confirmation read and the label edit are the source of its `network` and `github-write` reach. Touches no local file: releasing a claim is a GitHub-side label write only.",
       "maintainer_only": false
     },
     {
@@ -281,13 +284,14 @@
         "github-write",
         "tmp",
         "invokes:.claude/hooks/lib/repo-scope.sh",
+        "invokes:.gaia/scripts/main-root-lib.sh",
         "invokes:.claude/hooks/lib/verb-arming-walk.sh",
         "invokes:.claude/hooks/lib/verb-arming.sh",
         "invokes:.gaia/scripts/audit-key-lib.sh",
         "invokes:.gaia/scripts/post-findings-block.sh",
         "invokes:.gaia/scripts/read-audit-ci-config.sh"
       ],
-      "why": "On a real `gh pr merge` invocation running under local audit mode, armed through the shared arming decision (`.claude/hooks/lib/verb-arming.sh`, which lazily loads `.claude/hooks/lib/verb-arming-walk.sh` for its data-proving view), resolves the pull request (`gh pr view`) and calls the post-findings-block producer so a local merge still contributes to the finding-recurrence tally, the same record CI mode already posts. Sources the shared repo-scope helper to exempt a foreign-repo command, the audit-key library, the post-findings-block producer itself, and the audit-CI config reader; `github-write` and the rest of its `network` reach are the producer's own posting call, made with the tally data this hook resolves from the merge, not with any other tool-call content. Resolves no audit base, and reaches no resolver: the producer selects its sidecars on the branch half of the key alone, across every base, so the incremental base this hook used to resolve is exactly the value that narrowed the block to one round (gaia-react/gaia#1573). That removal is what takes the resolver, the version normalizer it sourced, and the four audit predicate libraries it loaded by loop variable (scope, machinery, rules-changed, clearance) out of this hook's reach. Never denies the merge or emits a permission decision; a scratch file backs the producer's own working state.",
+      "why": "On a real `gh pr merge` invocation running under local audit mode, armed through the shared arming decision (`.claude/hooks/lib/verb-arming.sh`, which lazily loads `.claude/hooks/lib/verb-arming-walk.sh` for its data-proving view), resolves the pull request (`gh pr view`) and calls the post-findings-block producer so a local merge still contributes to the finding-recurrence tally, the same record CI mode already posts. Sources the shared repo-scope helper to exempt a foreign-repo command (which loads the main-root resolver to compare a `-C` or `cd` target's repository), the audit-key library, the post-findings-block producer itself, and the audit-CI config reader; `github-write` and the rest of its `network` reach are the producer's own posting call, made with the tally data this hook resolves from the merge, not with any other tool-call content. Resolves no audit base, and reaches no resolver: the producer selects its sidecars on the branch half of the key alone, across every base, so the incremental base this hook used to resolve is exactly the value that narrowed the block to one round (gaia-react/gaia#1573). That removal is what takes the resolver, the version normalizer it sourced, and the four audit predicate libraries it loaded by loop variable (scope, machinery, rules-changed, clearance) out of this hook's reach. Never denies the merge or emits a permission decision; a scratch file backs the producer's own working state.",
       "maintainer_only": false
     },
     {

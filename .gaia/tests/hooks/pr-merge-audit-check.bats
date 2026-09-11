@@ -1288,7 +1288,7 @@ setup_linked_worktree() {
 }
 
 run_merge_hook_in_worktree() {
-  local cmd="gh pr merge 30 --squash --delete-branch"
+  local cmd="${1:-gh pr merge 30 --squash --delete-branch}"
   local json
   json=$(jq -n --arg c "$cmd" '{tool_name: "Bash", tool_input: {command: $c}}')
   invoke_hook_in "$WT" "$json" "$HOOK_ABS"
@@ -1339,6 +1339,64 @@ teardown_linked_worktree() {
   teardown_linked_worktree
   [ "$status" -eq 0 ]
   [[ "$output" == *'"permissionDecision": "deny"'* ]]
+}
+
+# A `--repo` naming this repository is this repository wherever the merge runs
+# from. Neither the worktree's directory nor REPO's is named `gaia`, so a
+# comparison against a checkout's directory name reads both merges below as
+# foreign and exits before any audit check.
+@test "linked worktree: --repo naming this repository is still gated" {
+  commit_files "app/x.ts" "export const x = 1"
+  git -C "$REPO" remote add origin https://github.com/gaia-react/gaia.git
+  setup_linked_worktree
+
+  run_merge_hook_in_worktree "gh pr merge 30 --repo gaia-react/gaia --squash --delete-branch"
+  teardown_linked_worktree
+  [ "$status" -eq 0 ]
+  grep -qF -- '"permissionDecision": "deny"' <<<"$output"
+}
+
+@test "linked worktree: a quoted --repo naming this repository is still gated" {
+  commit_files "app/x.ts" "export const x = 1"
+  git -C "$REPO" remote add origin https://github.com/gaia-react/gaia.git
+  setup_linked_worktree
+
+  run_merge_hook_in_worktree 'gh pr merge 30 --repo "gaia-react/gaia" --squash --delete-branch'
+  teardown_linked_worktree
+  [ "$status" -eq 0 ]
+  grep -qF -- '"permissionDecision": "deny"' <<<"$output"
+}
+
+@test "linked worktree: a brace-expanded --repo naming this repository is still gated" {
+  commit_files "app/x.ts" "export const x = 1"
+  git -C "$REPO" remote add origin https://github.com/gaia-react/gaia.git
+  setup_linked_worktree
+
+  run_merge_hook_in_worktree 'gh pr merge 30 --repo {gaia-react/gaia,} --squash --delete-branch'
+  teardown_linked_worktree
+  [ "$status" -eq 0 ]
+  grep -qF -- '"permissionDecision": "deny"' <<<"$output"
+}
+
+@test "linked worktree: --repo naming another repository exits before the gate" {
+  commit_files "app/x.ts" "export const x = 1"
+  git -C "$REPO" remote add origin https://github.com/gaia-react/gaia.git
+  setup_linked_worktree
+
+  run_merge_hook_in_worktree "gh pr merge 30 --repo other-org/other-repo --squash --delete-branch"
+  teardown_linked_worktree
+  [ "$status" -eq 0 ]
+  grep -qF -- '"permissionDecision": "deny"' <<<"$output" && return 1
+  true
+}
+
+@test "checkout not named for the repository: --repo naming this repository is still gated" {
+  commit_files "app/x.ts" "export const x = 1"
+  git -C "$REPO" remote add origin https://github.com/gaia-react/gaia.git
+
+  run_merge_hook "gh pr merge 30 --repo gaia-react/gaia --squash --delete-branch"
+  [ "$status" -eq 0 ]
+  grep -qF -- '"permissionDecision": "deny"' <<<"$output"
 }
 
 # ---------------------------------------------------------------------------

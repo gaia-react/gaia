@@ -5,8 +5,9 @@
 #
 # The sibling `cmd_targets_foreign_repo` serves BLOCKING consumers, where
 # "home" means enforce, so it resolves every ambiguity to "home" and compares
-# only the repo-NAME half of a `-R`/`--repo` value against the checkout's
-# directory basename. A consumer that ACTS on the home repo inverts both
+# only the repo-NAME half of a `-R`/`--repo` value against the repository
+# names the home repo's remotes point at. A consumer that ACTS on the home
+# repo inverts both
 # properties: reading a foreign command as home makes it write to a pull
 # request or an issue the command never named, so ambiguity resolves to
 # "foreign", and the comparison is the whole [HOST/]OWNER/REPO that gh uses to
@@ -19,10 +20,11 @@
 #
 # The suite drives the REAL lib (sourced by absolute path, never copied)
 # against a sandbox git repo, with a fake `gh` on PATH answering
-# `repo view --json nameWithOwner,url`. The sandbox's directory basename and
-# its home slug are deliberately UNRELATED (`gaia` vs `acme/widgets`), which
-# is what lets a single fixture tell the two comparisons apart: a value the
-# name-half comparison calls home and the slug comparison calls foreign.
+# `repo view --json nameWithOwner,url`. The repository the sandbox's origin
+# remote points at and its home slug are deliberately UNRELATED (`gaia` vs
+# `acme/widgets`), which is what lets a single fixture tell the two
+# comparisons apart: a value the name-half comparison calls home and the slug
+# comparison calls foreign.
 
 setup() {
   command -v jq >/dev/null 2>&1 || skip "jq required"
@@ -41,6 +43,7 @@ setup() {
     git -C "$d" add README.md
     git -C "$d" commit --quiet -m "init"
   done
+  git -C "$REPO" remote add origin https://github.com/me/gaia.git
 
   GH_BIN="$BATS_TEST_TMPDIR/bin"
   mkdir -p "$GH_BIN"
@@ -95,10 +98,10 @@ name_half_verdict() {
 }
 
 @test "s1: a same-named sibling is foreign, where the name-half guard says home" {
-  # The load-bearing fixture. The sandbox directory is `gaia`, so
-  # `--repo other-org/gaia` matches the name-half comparison and reads as home
-  # there; the home slug is `acme/widgets`, so the whole-slug comparison reads
-  # it as the different repository it is.
+  # The load-bearing fixture. The sandbox's origin remote points at a
+  # repository named `gaia`, so `--repo other-org/gaia` matches the name-half
+  # comparison and reads as home there; the home slug is `acme/widgets`, so
+  # the whole-slug comparison reads it as the different repository it is.
   [ "$(name_half_verdict 'gh pr merge --repo other-org/gaia 5')" = "home" ]
   [ "$(verdict 'gh pr merge --repo other-org/gaia 5')" = "foreign" ]
 }

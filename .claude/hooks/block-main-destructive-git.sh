@@ -70,11 +70,9 @@ _scope_lib="$_hook_root/.claude/hooks/lib/repo-scope.sh"
 set +e; [ -n "$_hook_root" ] && [ -f "$_scope_lib" ] && . "$_scope_lib" 2>/dev/null; set -e
 #
 # A verdict for the commit and push rules only, never for the hop guard below.
-# The helper compares working-tree toplevels, and a linked worktree of THIS
-# repository has a different toplevel from the main checkout, so a worktree
-# session's `git -C <main-checkout> checkout main` reads as foreign here. That
-# command is exactly the peer the hop guard exists to stop, so the hop guard
-# makes its own same-repository test instead.
+# The helper answers "same repository", and every linked worktree of THIS
+# repository is the same repository. The hop guard asks a narrower question,
+# whether the target is the main checkout itself, so it makes its own test.
 foreign_repo=0
 if type cmd_targets_foreign_repo >/dev/null 2>&1 \
    && cmd_targets_foreign_repo "$cmd"; then
@@ -368,9 +366,21 @@ while IFS= read -r seg; do
   esac
   [ "$foreign_repo" -eq 1 ] && continue
 
+  # The checkout this segment acts on: its own `-C`, else the leading `cd` the
+  # repo-scope verdict resolved, else this hook's working directory. A `cd`
+  # into a linked worktree is this repository but another checkout, with its
+  # own branch.
+  #
+  # Honest limit: the leading `cd` target stands for every segment, and a later
+  # `cd` does not replace it. From a main checkout on main,
+  # `cd <worktree> && git status && cd <main> && git commit` therefore reads
+  # the worktree's branch and allows a commit that lands on main
+  # (gaia-react/gaia#2014).
+  branch_dir="${git_cwd:-${GAIA_REPO_SCOPE_LEAD_CD:-}}"
+
   # 1. Block commits while HEAD is on main or master.
   if [[ "$norm" =~ git[[:space:]]+commit([[:space:]]|$) ]]; then
-    branch=$(current_branch "$git_cwd")
+    branch=$(current_branch "$branch_dir")
     if [[ "$branch" == "main" || "$branch" == "master" ]]; then
       deny "Commits to '$branch' are forbidden (wiki/concepts/Git Workflow.md). Create a feature branch first."
     fi
@@ -388,7 +398,7 @@ while IFS= read -r seg; do
   #    names main/master/HEAD as the source. Closes the "forgot to switch
   #    branches" footgun.
   if [[ "$norm" =~ git[[:space:]]+push ]]; then
-    branch=$(current_branch "$git_cwd")
+    branch=$(current_branch "$branch_dir")
     on_main=0
     [[ "$branch" == "main" || "$branch" == "master" ]] && on_main=1
 

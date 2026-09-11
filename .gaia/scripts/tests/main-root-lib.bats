@@ -672,13 +672,73 @@ resolve_key_from() {
   [ "$output" = "$expected" ]
 }
 
+# ---------- gaia_resolve_common_dir ----------
+# The repository-identity half of the resolver: a main checkout and every
+# linked worktree of it answer with one directory, and two repositories never
+# do.
+
+resolve_common() {
+  run bash -c 'bash "$1" --common-dir "$2" 2>/dev/null' _ "$LIB" "$1"
+}
+
+@test "gaia_resolve_common_dir: a main checkout and its linked worktree answer with the same physical directory" {
+  make_repo
+  make_worktree "$REPO" "w" "commonwtbranch"
+  resolve_common "$REPO"
+  [ "$status" -eq 0 ]
+  [ "$output" = "$REPO/.git" ]
+  resolve_common "$WT"
+  [ "$status" -eq 0 ]
+  [ "$output" = "$REPO/.git" ]
+}
+
+@test "gaia_resolve_common_dir: two different repositories answer differently" {
+  make_repo
+  local first="$REPO"
+  make_repo
+  resolve_common "$first"
+  local a="$output"
+  resolve_common "$REPO"
+  [ "$status" -eq 0 ]
+  [ -n "$a" ]
+  [ "$a" != "$output" ]
+}
+
+@test "gaia_resolve_common_dir: a supplied relative dir operand resolves against the process cwd" {
+  make_repo
+  mkdir -p "$REPO/sub"
+  run bash -c 'cd "$1" && bash "$2" --common-dir sub 2>/dev/null' _ "$REPO" "$LIB"
+  [ "$status" -eq 0 ]
+  [ "$output" = "$REPO/.git" ]
+}
+
+@test "gaia_resolve_common_dir: outside any git repository fails, empty stdout" {
+  local outside
+  outside=$(mktemp -d -t gaia-mrl-cd-outside-XXXXXX)
+  CLEANUP_DIRS+=("$outside")
+  resolve_common "$outside"
+  [ "$status" -ne 0 ]
+  [ -z "$output" ]
+}
+
+@test "gaia_resolve_common_dir: GIT_DIR exported in the environment does not override the layout-derived answer" {
+  make_repo
+  local other
+  other=$(mktemp -d -t gaia-mrl-cd-other-XXXXXX)
+  CLEANUP_DIRS+=("$other")
+  git -C "$other" init -q --initial-branch=main
+  run bash -c 'GIT_DIR="$1/.git" bash "$2" --common-dir "$3" 2>/dev/null' _ "$other" "$LIB" "$REPO"
+  [ "$status" -eq 0 ]
+  [ "$output" = "$REPO/.git" ]
+}
+
 # ---------- structural ----------
 
 @test "structural: main-root-lib.sh is executable" {
   [ -x "$LIB" ]
 }
 
-@test "structural: sourcing the library defines all four functions with no side effects" {
+@test "structural: sourcing the library defines every public function with no side effects" {
   run bash -c '
     # shellcheck disable=SC1090
     source "$1"
@@ -686,6 +746,7 @@ resolve_key_from() {
     type gaia_is_linked_worktree >/dev/null
     type gaia_resolve_tree_root >/dev/null
     type gaia_tree_key >/dev/null
+    type gaia_resolve_common_dir >/dev/null
     echo OK
   ' _ "$LIB"
   [ "$status" -eq 0 ]

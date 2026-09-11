@@ -365,7 +365,7 @@
       "hook": ".claude/hooks/lib/repo-scope.sh",
       "scope": "any",
       "state": [],
-      "why": "Compares the home repo's git toplevel against a command's target repo for cross-repo scoping; touches no .gaia/local state."
+      "why": "Compares the home repo's identity (its shared git common directory, and the repository names its remotes point at) against a command's target repo for cross-repo scoping; touches no .gaia/local state."
     },
     {
       "hook": ".claude/hooks/lib/verb-arming-walk.sh",
