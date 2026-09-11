@@ -11,6 +11,17 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-09-11 72ab2e64 SKIP - capability-oracle network detector widened for package-manager installs, Code Audit Team.md already describes the oracle generically
+- 2026-09-11 919ed27 SKIP - leg-arming code: filter widened for wiki-page bats suites, Sharded CI Test Matrix.md already points at leg-arming.sh generically
+- 2026-09-11 bf01dd8 SKIP - worktree provisioning installs .gaia/cli workspace, wiki/concepts/Claude Hooks.md already updated in-commit
+- 2026-09-11 e25d9c6 SKIP - audit-CI bound-check bugfix, no wiki-visible behavior change
+- 2026-09-11 041bc82 SKIP - update-deps Phase 6 dispatch fix, wiki/decisions/pnpm.md's pointer to SKILL.md already covers it
+- 2026-09-11 7b7aeeb SKIP - tests-only
+- 2026-09-11 d6a78e0 SKIP - prior wiki-sync commit, no action needed
+- 2026-09-11 d29d511 SKIP - bats-runner background-maintenance race fix, internal test infra already pointed at generically
+- 2026-09-11 6724900 SKIP - tests-only
+- 2026-09-11 2c843ab SKIP - update-deps Phase 0 stale-floor detection, wiki/decisions/pnpm.md already updated in-commit
+- 2026-09-11 b3f29cf SKIP - sigpipe-gate arming heuristic bugfix, internal lint-check logic no wiki page enumerates
 - 2026-09-11 4dab40a7 SKIP - devDependency pin-parity guard widened; wiki/dependencies/gaia-lint.md and wiki/decisions/pnpm.md already updated by the commit itself
 - 2026-09-11 8f075be6 SKIP - sigpipe gate carry-count fix; narrow script-internal correctness fix, no wiki page covers this detail
 - 2026-09-11 3d61382e SKIP - bats fixture git-maintenance gating, tests-only
