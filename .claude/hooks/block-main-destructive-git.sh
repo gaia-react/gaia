@@ -208,12 +208,12 @@ hop_moves_head() {
   for t in ${rest[@]+"${rest[@]}"}; do
     if [ "$skip_next" -eq 1 ]; then skip_next=0; continue; fi
     case "$t" in
-      *'>' | *'<') skip_next=1 ;;
-      *[\<\>]*) ;;
-      -) n=$((n + 1)); operand=- ;;
-      -*) ;;
-      *) n=$((n + 1)); operand="$t" ;;
+      *'>' | *'<') skip_next=1; continue ;;
+      *[\<\>]*) continue ;;
+      -*) [ "$t" = - ] || continue ;;
     esac
+    [ "$n" -eq 0 ] && operand="$t"
+    n=$((n + 1))
   done
   [ "$n" -eq 1 ] || return 1
   [ "$operand" = - ] && return 0
@@ -244,7 +244,7 @@ hop_guard() {
   [ "$(gaia_resolve_main_root "$target" 2>/dev/null)" = "$main_root" ] || return 0
 
   branch=$(git -C "$target" symbolic-ref --short -q HEAD 2>/dev/null) || return 0
-  case "$branch" in '' | main | master) return 0 ;; esac
+  case "$branch" in main | master) return 0 ;; esac
   default=$(git -C "$target" symbolic-ref --short -q refs/remotes/origin/HEAD 2>/dev/null) || default=""
   [ -n "$default" ] && [ "$branch" = "${default#origin/}" ] && return 0
 

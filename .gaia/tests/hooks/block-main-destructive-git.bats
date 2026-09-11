@@ -380,6 +380,10 @@ run_hop() {
   write_breadcrumb feature sid-owner
   run_hop 'git checkout main' sid-peer
   assert_denied_by_json
+  run_hop 'git checkout main 2>/dev/null' sid-peer
+  assert_denied_by_json
+  run_hop 'git checkout main > /dev/null' sid-peer
+  assert_denied_by_json
 }
 
 @test "hop guard: git checkout -b and git checkout - in a peer-held main checkout are denied" {
@@ -468,7 +472,9 @@ run_hop() {
   assert_allowed_by_json
   run_hop 'git checkout main -- README.md' sid-peer
   assert_allowed_by_json
-  run_hop 'git checkout -p' sid-peer
+  run_hop 'git checkout -p main' sid-peer
+  assert_allowed_by_json
+  run_hop 'git checkout -- main' sid-peer
   assert_allowed_by_json
   run_hop 'git checkout main README.md' sid-peer
   assert_allowed_by_json
