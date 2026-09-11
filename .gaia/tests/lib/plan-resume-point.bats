@@ -23,6 +23,17 @@ setup() {
   git -C "$REPO" config user.email test@example.com
   git -C "$REPO" config user.name Test
   git -C "$REPO" config commit.gpgsign false
+  # Left ungated, every `git commit` spawns a detached `git maintenance run
+  # --auto`, a git process that can outlive the test; a late write of its into
+  # .git/objects fails teardown's `rm -rf` with "Directory not empty".
+  # maintenance.auto is the gate on modern git, gc.auto on git predating the
+  # maintenance task set; the autoDetach pair (both spellings, since modern git
+  # reads maintenance.autoDetach first) keeps any run that starts anyway in the
+  # foreground, finished before the commit returns.
+  git -C "$REPO" config gc.auto 0
+  git -C "$REPO" config maintenance.auto false
+  git -C "$REPO" config gc.autoDetach false
+  git -C "$REPO" config maintenance.autoDetach false
   PLAN="$REPO/plan"
   mkdir -p "$PLAN"
 }
@@ -452,4 +463,44 @@ EOF
   [ "${lines[1]}" = "COMPLETE 1 $sha1" ]
   [ "${lines[2]}" = "COMPLETE 2 $sha2" ]
   [ "${#lines[@]}" -eq 3 ]
+}
+
+# --- fixture: no background maintenance survives into teardown --------------
+# GIT_TRACE2_EVENT records a child's argv as a `child_start` event in the
+# spawning process's trace, so a --detach run is visible without waiting on it.
+# Both argv spellings count: modern git spawns `maintenance`, older git `gc`.
+# A bare "no spawn" also holds when the trace saw nothing, so the control arm
+# commits into a repo that writes git's own defaults for the gates (a personal
+# ~/.gitconfig carrying gc.auto=0 would otherwise gate it) and must see one.
+# Limit: on git 2.55 either gate alone suppresses the spawn, so the subject arm
+# reds only when setup() drops both; it pins the pair, not each key.
+
+_maintenance_spawns() {
+  grep -F '"child_start"' "$1" 2>/dev/null | grep -cE '"(maintenance|gc)"' || true
+}
+
+@test "fixture: a repo with the maintenance gates at git's defaults spawns maintenance on commit (control)" {
+  ctl="$(mktemp -d -t gaia-resume-ctl-XXXXXX)"
+  git -C "$ctl" init --quiet --initial-branch=main
+  git -C "$ctl" config user.email test@example.com
+  git -C "$ctl" config user.name Test
+  git -C "$ctl" config commit.gpgsign false
+  git -C "$ctl" config gc.auto 6700
+  git -C "$ctl" config maintenance.auto true
+  # Not gates: they keep the control's own run in the foreground, so it cannot
+  # outlive the commit into the rm -rf below.
+  git -C "$ctl" config gc.autoDetach false
+  git -C "$ctl" config maintenance.autoDetach false
+  GIT_TRACE2_EVENT="$ctl.trace" git -C "$ctl" commit --quiet --allow-empty -m control
+  n="$(_maintenance_spawns "$ctl.trace")"
+  rm -rf "$ctl" "$ctl.trace"
+  [ "$n" -gt 0 ]
+}
+
+@test "fixture: committing into the setup() repo spawns no background maintenance" {
+  trace="$(mktemp -t gaia-resume-trace-XXXXXX)"
+  GIT_TRACE2_EVENT="$trace" git -C "$REPO" commit --quiet --allow-empty -m subject
+  n="$(_maintenance_spawns "$trace")"
+  rm -f "$trace"
+  [ "$n" -eq 0 ]
 }
