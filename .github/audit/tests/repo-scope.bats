@@ -13,10 +13,10 @@
 # regression coverage.
 #
 # Each test sources the helper, then calls it from inside a `git init`'d HOME
-# fixture so its cwd-based `git rev-parse --show-toplevel` resolves to that
-# fixture. A second `git init`'d SIBLING fixture stands in for the foreign
-# repo. Both toplevels are canonicalised with `pwd -P`, so the macOS
-# /var → /private/var symlink under BATS_TEST_TMPDIR does not matter.
+# fixture so its cwd-based home-repo lookup resolves to that fixture. A second
+# `git init`'d SIBLING fixture stands in for the foreign repo. The helper
+# compares physically resolved roots, so the macOS /var → /private/var symlink
+# under BATS_TEST_TMPDIR does not matter.
 #
 
 setup() {
@@ -91,5 +91,122 @@ in_home() {
 
 @test "literal \$CG token (unexpandable variable): home (enforce)" {
   run in_home 'git -C "$CG" push origin main'
+  [ "$status" -ne 0 ]
+}
+
+# -----------------------------------------------------------------------------
+# 7. The home repository is a repository, not a directory. Two checkouts get
+#    this wrong under a directory-name or toplevel comparison: a linked
+#    worktree, whose toplevel is its own directory, and any checkout whose
+#    directory is not named for the repository. HOME_REPO's directory is
+#    `home` and its worktree's is `wt`, while the repository is acme/widget,
+#    so every case below is both at once.
+# -----------------------------------------------------------------------------
+
+add_widget_remote() {
+  git -C "$1" remote add origin https://github.com/acme/widget.git
+}
+
+add_worktree() {
+  WT="$BATS_TEST_TMPDIR/wt"
+  git -C "$HOME_REPO" worktree add --quiet -b wt "$WT" main
+}
+
+in_dir() {
+  ( cd "$1" && cmd_targets_foreign_repo "$2" )
+}
+
+@test "--repo <home> from a checkout not named for the repository: home (enforce)" {
+  add_widget_remote "$HOME_REPO"
+  run in_home "gh pr merge 5 --repo acme/widget --squash"
+  [ "$status" -ne 0 ]
+}
+
+@test "--repo <home> from a linked worktree: home (enforce)" {
+  add_widget_remote "$HOME_REPO"
+  add_worktree
+  run in_dir "$WT" "gh pr merge 5 --repo acme/widget --squash"
+  [ "$status" -ne 0 ]
+}
+
+@test "-R, =, URL, .git and case spellings of <home> from a linked worktree: home (enforce)" {
+  add_widget_remote "$HOME_REPO"
+  add_worktree
+  run in_dir "$WT" "gh pr merge 5 -R acme/widget"
+  [ "$status" -ne 0 ]
+  run in_dir "$WT" "gh pr merge 5 --repo=acme/widget"
+  [ "$status" -ne 0 ]
+  run in_dir "$WT" "gh pr merge 5 --repo https://github.com/acme/widget.git"
+  [ "$status" -ne 0 ]
+  run in_dir "$WT" "gh pr merge 5 --repo github.com/acme/widget"
+  [ "$status" -ne 0 ]
+  run in_dir "$WT" "gh pr merge 5 --repo ACME/Widget"
+  [ "$status" -ne 0 ]
+}
+
+@test "--repo naming another repository from a linked worktree: foreign (allow)" {
+  add_widget_remote "$HOME_REPO"
+  add_worktree
+  run in_dir "$WT" "gh pr merge 5 --repo acme/other --squash"
+  [ "$status" -eq 0 ]
+}
+
+@test "--repo <name> of any remote reads as home, so a same-named fork over-enforces" {
+  git -C "$HOME_REPO" remote add origin git@github.com:me/widget.git
+  run in_home "gh pr merge 5 --repo acme/widget"
+  [ "$status" -ne 0 ]
+}
+
+@test "--repo with no remote to name the home repository: home (enforce, fail closed)" {
+  run in_home "gh pr merge 5 --repo acme/other"
+  [ "$status" -ne 0 ]
+}
+
+@test "--repo value not shaped [HOST/]OWNER/REPO: home (enforce, fail closed)" {
+  add_widget_remote "$HOME_REPO"
+  run in_home "gh pr merge 5 --repo other"
+  [ "$status" -ne 0 ]
+}
+
+@test "git -C <main checkout> from a linked worktree: home (enforce)" {
+  add_worktree
+  run in_dir "$WT" "git -C \"$HOME_REPO\" push origin main"
+  [ "$status" -ne 0 ]
+}
+
+@test "git -C <linked worktree> from the main checkout: home (enforce)" {
+  add_worktree
+  run in_home "git -C $WT commit -m x"
+  [ "$status" -ne 0 ]
+}
+
+@test "cd <main checkout> && git push from a linked worktree: home (enforce)" {
+  add_worktree
+  run in_dir "$WT" "cd '$HOME_REPO' && git push origin main"
+  [ "$status" -ne 0 ]
+}
+
+@test "git -C <sibling repository> from a linked worktree: foreign (allow)" {
+  add_worktree
+  run in_dir "$WT" "git -C \"$SIBLING_REPO\" push origin main"
+  [ "$status" -eq 0 ]
+}
+
+@test "two git -C flags: home (enforce, the last-wins form is not modelled)" {
+  run in_home "git -C $SIBLING_REPO -C $SIBLING_REPO push origin main"
+  [ "$status" -ne 0 ]
+}
+
+# A copy of the library with no main-checkout resolver beside it cannot say
+# which repository a -C target belongs to, so it must enforce rather than
+# fall back to comparing toplevels, which is the comparison that misreads a
+# linked worktree.
+@test "git -C <sibling> with the main-root resolver unavailable: home (enforce, fail closed)" {
+  local stage="$BATS_TEST_TMPDIR/stage"
+  mkdir -p "$stage/.claude/hooks/lib"
+  cp "$LIB" "$stage/.claude/hooks/lib/repo-scope.sh"
+  run bash -c 'cd "$1" && . "$2" && cmd_targets_foreign_repo "$3"' _ \
+    "$HOME_REPO" "$stage/.claude/hooks/lib/repo-scope.sh" \
+    "git -C $SIBLING_REPO push origin main"
   [ "$status" -ne 0 ]
 }

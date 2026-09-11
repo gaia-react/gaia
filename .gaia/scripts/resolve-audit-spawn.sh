@@ -107,10 +107,10 @@
 #        (honoring --base).
 #     2. Base unresolvable -> the default member (the hook's bypass returns
 #        1 there and the merge denies; fail-closed mirror).
-#     3. Empty diff -> the default member (the hook's bypass treats an empty
-#        diff as unusable input, not as "nothing to audit"; mirror it). The
-#        arm itself records why splitting "unresolvable" from "empty" here is
-#        a trap rather than the obvious cleanup it looks like.
+#     3. Empty diff -> nobody when the diff command exited zero and the
+#        base's provenance is decisive (`remote` or `supplied`), the default
+#        member otherwise, mirroring the hook's own empty-range rule. The
+#        arm states why a `local` base is not decisive.
 #     4. Otherwise classify every changed path via the shared out-of-scope
 #        allowlist predicate. Any path that predicate does not admit is IN
 #        SCOPE and prints the default member; all paths admitted prints

@@ -401,13 +401,15 @@ assert_allow() {
   # A PR against another repo has no bearing on this repo's distribution
   # boundary, so the repo-scope exemption allows it before any manifest work.
   # `--repo other/elsewhere` is the helper's authoritative form: gh ignores cwd
-  # when it is given, and the repo basename differs from the fixture's, so the
-  # helper resolves it as foreign.
+  # when it is given, and the name differs from every remote's, so the helper
+  # resolves it as foreign. The remote is what gives the fixture an identity;
+  # without one the helper cannot call anything foreign and enforces.
   #
   # The mock is installed deliberately. Without it the hook would allow via the
   # adopter-inertness guard instead, and this test would still pass with the
   # exemption deleted. With it, the only path to ALLOW is the exemption itself.
   install_maintainer_mock
+  git -C "$FIXTURE" remote add origin https://github.com/acme/fixture.git
   run_hook "gh pr create --repo other/elsewhere --title x"
   assert_allow
 }

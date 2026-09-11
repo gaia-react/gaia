@@ -70,11 +70,9 @@ _scope_lib="$_hook_root/.claude/hooks/lib/repo-scope.sh"
 set +e; [ -n "$_hook_root" ] && [ -f "$_scope_lib" ] && . "$_scope_lib" 2>/dev/null; set -e
 #
 # A verdict for the commit and push rules only, never for the hop guard below.
-# The helper compares working-tree toplevels, and a linked worktree of THIS
-# repository has a different toplevel from the main checkout, so a worktree
-# session's `git -C <main-checkout> checkout main` reads as foreign here. That
-# command is exactly the peer the hop guard exists to stop, so the hop guard
-# makes its own same-repository test instead.
+# The helper answers "same repository", and every linked worktree of THIS
+# repository is the same repository. The hop guard asks a narrower question,
+# whether the target is the main checkout itself, so it makes its own test.
 foreign_repo=0
 if type cmd_targets_foreign_repo >/dev/null 2>&1 \
    && cmd_targets_foreign_repo "$cmd"; then

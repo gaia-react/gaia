@@ -84,9 +84,9 @@ fi
 # This hook ACTS on the home repository, it posts a findings block onto a pull
 # request, so it takes repo-scope's act-on-home entry point rather than the
 # blocking one. The blocking guard compares only the repo-NAME half of a
-# `--repo` value against the checkout's directory basename, which reads a
-# same-named fork (`--repo other-org/gaia` run from a checkout named `gaia`,
-# the ordinary fork topology) as home; this hook would then resolve THIS
+# `--repo` value against the home repo's remote names, which reads a
+# same-named fork (`--repo other-org/gaia` run from a clone of `gaia`, the
+# ordinary fork topology) as home; this hook would then resolve THIS
 # repository's pull request of that number and post onto a pull request the
 # command never touched. The act-on-home entry point compares the whole
 # HOST/OWNER/REPO, and it reads the merge with the lib's first-command scan, so
