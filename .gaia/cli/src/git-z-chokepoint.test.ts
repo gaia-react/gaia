@@ -15,7 +15,9 @@
  * # What counts as an offense
  *
  * A string literal naming a listing verb, standing as an element of an array
- * literal: the shape of a raw git argv. The verb a `gitZArgs(verb, …)` call
+ * literal: the shape of a raw git argv. A wrapper that leaves the element's
+ * value the verb (parentheses, a type assertion, `as`, `satisfies`, a
+ * conditional branch) still counts. The verb a `gitZArgs(verb, …)` call
  * names is a call argument rather than an array element, so every routed call
  * passes by construction and no allowlist of callers is needed.
  *
@@ -121,6 +123,29 @@ const holdsStatements = (node: ts.Node): boolean =>
   ts.isCaseClause(node) ||
   ts.isDefaultClause(node);
 
+/**
+ * The array element a literal stands as, reached through the wrappers that
+ * leave its value the verb: parentheses, a type assertion, `as`, `satisfies`,
+ * and either branch of a conditional. Without the climb, `['ls-files' as
+ * const]` is a raw argv the direct-parent test never sees.
+ */
+const argvElementOf = (node: ts.Node): ts.Node => {
+  let current = node;
+
+  while (
+    ts.isParenthesizedExpression(current.parent) ||
+    ts.isAsExpression(current.parent) ||
+    ts.isSatisfiesExpression(current.parent) ||
+    ts.isTypeAssertionExpression(current.parent) ||
+    (ts.isConditionalExpression(current.parent) &&
+      current.parent.condition !== current)
+  ) {
+    current = current.parent;
+  }
+
+  return current;
+};
+
 /** The statement an expression sits in: the node whose parent lists it. */
 const statementOf = (node: ts.Node): ts.Node => {
   let current = node;
@@ -210,7 +235,7 @@ const findOffenses = (source: string): Findings => {
     if (
       !isStringLiteral(node) ||
       !LISTING_VERBS.has(node.text) ||
-      !ts.isArrayLiteralExpression(node.parent)
+      !ts.isArrayLiteralExpression(argvElementOf(node).parent)
     ) {
       return;
     }
@@ -403,17 +428,49 @@ describe('git listing argv is built by gitZArgs', () => {
     expect(findOffenses('runGit([`ls-tree`]);').offenses).toEqual([1]);
   });
 
+  test.each([
+    ['parentheses', "runGit([('ls-files')]);"],
+    ['an as-assertion', "runGit(['ls-files' as const]);"],
+    ['satisfies', "runGit(['ls-files' satisfies string]);"],
+    ['an angle-bracket assertion', "runGit([<string>'ls-files']);"],
+    ['nested wrappers', "runGit([(('ls-files') as string)]);"],
+  ])('reports a verb wrapped in %s', (_label, source) => {
+    expect(findOffenses(source).offenses).toEqual([1]);
+  });
+
+  test('reports both branches of a conditional element', () => {
+    const source = lines([
+      'runGit([',
+      "  cached ? 'diff' : 'diff-tree',",
+      "  '--',",
+      ']);',
+    ]);
+
+    expect(findOffenses(source).offenses).toEqual([2, 2]);
+  });
+
+  test.each([
+    [
+      "a verb compared in a conditional's test",
+      "runGit([verb === 'ls-files' ? '-r' : '-l']);",
+    ],
+    [
+      'a verb standing as the whole condition',
+      "runGit([('ls-files') ? '-r' : '-l']);",
+    ],
+    [
+      'a routed argv spread into a longer one',
+      "run([...gitZArgs('ls-tree', ['-r', ref]), '--', 'wiki/']);",
+    ],
+  ])('passes %s', (_label, source) => {
+    expect(findOffenses(source).offenses).toEqual([]);
+  });
+
   test('passes a call routed through gitZArgs', () => {
     const source = lines([
       "runGit(gitZArgs('ls-files'));",
       "git(cwd, gitZArgs('diff', ['--numstat', range]));",
     ]);
-
-    expect(findOffenses(source).offenses).toEqual([]);
-  });
-
-  test('passes a routed argv spread into a longer one', () => {
-    const source = "run([...gitZArgs('ls-tree', ['-r', ref]), '--', 'wiki/']);";
 
     expect(findOffenses(source).offenses).toEqual([]);
   });

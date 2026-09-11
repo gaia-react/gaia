@@ -7,7 +7,8 @@
 #
 # TypeScript is not this script's surface. The CLI's git listing calls are
 # argv arrays rather than shell words, and .gaia/cli/src/git-z-chokepoint.test.ts
-# guards them instead, by holding every one to the `gitZArgs` spelling.
+# guards them instead: it requires a literal listing verb in an argv array to be
+# built through `gitZArgs`, and its own header states the shapes it cannot see.
 # gaia:maintainer-only:start
 #
 # Enforced by the sibling bats suite
