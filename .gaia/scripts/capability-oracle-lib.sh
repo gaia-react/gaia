@@ -2377,10 +2377,19 @@ _GAIA_CAPCHECK_PATHCMD='(^|[;|&`]|\$\(|[[:space:]]then[[:space:]]|[[:space:]]els
 # store lacks a locked package; a frozen lockfile refuses to rewrite the lockfile
 # and still downloads. Flags may stand between the manager and its verb, each
 # with at most one operand (`pnpm -C <dir> install`), and `command -v pnpm`
-# stays unmatched because no install verb follows it. What it misses: a bare
-# `yarn`, which installs with no verb; `pnpm dlx`, `npx`, and the update verbs,
-# which fetch too; any manager other than pnpm, npm and yarn; and a flag
-# followed by two operands, since the second one stands where the verb has to.
+# stays unmatched because no install verb follows it.
+#
+# It is a vocabulary, not a parse, so it errs in both directions. Among what it
+# does not see: a bare `yarn`, which installs with no verb; `pnpm dlx`, `pnpm
+# fetch`, `pnpm audit`, `npx`, and the update verbs, which reach the registry
+# too; a manager reached through a path or an expansion
+# (`./node_modules/.bin/pnpm install`); and a flag followed by two operands, or
+# by one quoted operand holding a space, since the second word stands where the
+# verb has to. What it over-reads: the word after a boolean flag is taken as
+# that flag's operand, so `pnpm --silent run install` reads the script name as
+# the verb. The flag repeat is unbounded, so a line of thousands of
+# manager-and-flag pairs matches in quadratic time under glibc. The positive
+# and negative tables in check-hook-capabilities.bats pin what it does decide.
 #
 # The verb arms end at a shell separator as well as at whitespace, because a
 # verb is the last word of its command as often as not: `(cd "$d" && pnpm

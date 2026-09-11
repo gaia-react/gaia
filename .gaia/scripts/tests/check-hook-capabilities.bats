@@ -755,7 +755,7 @@ pnpm -C "$tree/.gaia/cli" install --frozen-lockfile'
   [ -z "$missed" ] || { printf 'not read as reach:%s\n' "$missed"; return 1; }
 }
 
-@test "the network detector does not read a package manager that installs nothing as reach" {
+@test "the network detector does not read a run script, a non-install verb, or a quoted message as reach" {
   local line hit=""
   for line in \
     'command -v pnpm >/dev/null 2>&1' \
