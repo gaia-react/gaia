@@ -11,6 +11,16 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-09-11 4dab40a7 SKIP - devDependency pin-parity guard widened; wiki/dependencies/gaia-lint.md and wiki/decisions/pnpm.md already updated by the commit itself
+- 2026-09-11 8f075be6 SKIP - sigpipe gate carry-count fix; narrow script-internal correctness fix, no wiki page covers this detail
+- 2026-09-11 3d61382e SKIP - bats fixture git-maintenance gating, tests-only
+- 2026-09-11 30543a5a SKIP - W14 pin-refusal test comment, tests-only
+- 2026-09-11 ea3aaaea SKIP - chore(deps): version bump only
+- 2026-09-11 469ff547 SKIP - wiki: self-referential sync commit
+- 2026-09-11 45c84397 SKIP - module-docblock guard AST rewrite; wiki/decisions/TypeScript 7 Readiness.md already updated by the commit itself
+- 2026-09-11 36619162 WORTHY - banned working-tree-rewriting git ops for /gaia-plan task sub-agents → wiki/concepts/Task Orchestration.md
+- 2026-09-11 e68ede61 SKIP - eslint-plugin-import parity exemption, tests-only
+- 2026-09-11 ddf90479 SKIP - colonless gaia:hypothetical path-fix in dead-paths.ts; no wiki page documents that parsing rule, reflected in .claude/skills/gaia/references/wiki/lint.md
 - 2026-09-11 85eff7a9 SKIP - prior wiki-sync commit (#1965), already self-documenting via its own state/log edit
 - 2026-09-10 666c904b WORTHY - per-leg CI narrowing for wiki-only PRs → wiki/decisions/Sharded CI Test Matrix.md already updated in-commit
 - 2026-09-10 39a6a06e SKIP - shell lint-gate correctness fix, no wiki page describes this gate's match boundary
