@@ -445,6 +445,8 @@ describe('labels/check tracked-file discovery', () => {
   });
 
   test('the fixture path really is C-quoted, so the assertion below can fail', () => {
+    // gaia-lint-ignore git-z-chokepoint: runs without -z on purpose, since
+    // the quoted output is what proves the fixture can fail the assertion.
     const listed = execFileSync('git', ['ls-files'], {
       cwd: fixture,
       encoding: 'utf8',

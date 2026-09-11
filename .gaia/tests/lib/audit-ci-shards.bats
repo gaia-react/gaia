@@ -3237,11 +3237,14 @@ PY
 #
 # .gaia/tests/hooks/fixtures/audit-routing-before.tsv does move armed sets. It
 # is a frozen path inventory in the fixtures/ subtree beside the `hooks-*`
-# suites, listing most of wiki/ and reading none of it. While it lists every
+# suites, listing most of wiki/ and reading none of it. While it names every
 # class page the namer-of-all rule drops it; once the class holds a page it does
-# not list, it is a namer of every class page it does list, and each of those
-# rows gains every `hooks-*` leg with no hooks suite reading the page. That
-# over-arms, the safe direction, and #1994 tracks it.
+# not name, it is a namer of every class page it does name and attributes each
+# of those rows to every `hooks-*` shard. A row widens only by the hooks legs
+# its other namers do not already arm, so a page a hooks suite or hooks helper
+# already names gains less than one nothing else under hooks/ names. That
+# over-arms, the safe direction, and leg-arming.sh's header records it as an
+# accepted cost; the declared table holds the result.
 arming_recompute() {
   local sharder="$1" root="$2" workflow="$3" conc_dir="$4" conc_leg="$5" stats="${6:-}"
   local class legs data

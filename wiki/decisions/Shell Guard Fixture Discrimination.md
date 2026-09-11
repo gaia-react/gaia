@@ -4,7 +4,7 @@ status: active
 priority: 2
 date: 2026-08-30
 created: 2026-08-30
-updated: 2026-08-30
+updated: 2026-09-11
 tags: [decision, shell, lint, bats, awk-lib]
 ---
 
@@ -32,6 +32,12 @@ shared library carries the discrimination that makes that safe: it tells a scann
 line apart as fixture data or executed shell, and it reads a suppression pragma that
 lets a suite keep a deliberately broken line without the guard reporting it as a
 defect.
+
+None of these guards reads TypeScript. The path-listing class does reach the CLI's
+TypeScript source, but a git call there is an argv array rather than a line of
+shell, so nothing on this page applies to it. `.gaia/cli/src/git-z-chokepoint.test.ts`
+guards that surface instead, and its own docblock states what it reaches and how its
+exemption marker mirrors the pragma below.
 
 ## Why the suppression is bats-only
 
