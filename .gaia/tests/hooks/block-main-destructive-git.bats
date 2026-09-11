@@ -153,6 +153,18 @@ run_hook_from() {
   assert_denied_by_json
 }
 
+@test "a leading cd whose target does not resolve, from a main checkout on main: commit and push are denied" {
+  on_main
+  # shellcheck disable=SC2016 # the literal, unexpanded variable is the case
+  run_hook_from 'cd "$UNSET_VAR" && git commit -m x' "$REPO"
+  assert_denied_by_json
+  run_hook_from 'cd /nonexistent; git commit -m x' "$REPO"
+  assert_denied_by_json
+  # shellcheck disable=SC2016
+  run_hook_from 'cd ${ROOT}; git push' "$REPO"
+  assert_denied_by_json
+}
+
 @test "a -C into a linked worktree does not lend its branch to a later bare commit on main" {
   on_main
   local wt="$BATS_TEST_TMPDIR/wt"

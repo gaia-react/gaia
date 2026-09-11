@@ -75,11 +75,17 @@ _gaia_repo_scope_load_main_root() {
 }
 
 # Set by cmd_targets_foreign_repo to the directory a leading `cd` moves the
-# command into, resolved the way the verdict resolved it, and empty when the
-# command has no leading `cd` or names its directory with `-C` instead. A home
-# verdict on a `cd` into a linked worktree means "this repository" but not
-# "this checkout", so a caller that reads per-checkout state (the branch)
-# reads it there rather than from its own working directory.
+# command into, once that directory resolves as this repository, and empty
+# otherwise. A home verdict on a `cd` into a linked worktree means "this
+# repository" but not "this checkout", so a caller that reads per-checkout
+# state (the branch) reads it there rather than from its own working
+# directory.
+#
+# Honest limit: only the arm that decides the verdict publishes it, so a
+# `-R`/`--repo` anywhere in the command, or any `git -C`, leaves it empty
+# even behind a leading `cd`, and such a caller reads its own directory
+# again. That is the pre-existing reading for those spellings, never a
+# looser one.
 GAIA_REPO_SCOPE_LEAD_CD=""
 
 cmd_targets_foreign_repo() {
@@ -158,8 +164,6 @@ cmd_targets_foreign_repo() {
     '~') target_dir="$HOME" ;;
     '~/'*) target_dir="$HOME/${target_dir:2}" ;;
   esac
-  # shellcheck disable=SC2034 # read by block-main-destructive-git.sh, never here
-  [ "$lead" = 1 ] && GAIA_REPO_SCOPE_LEAD_CD="$target_dir"
 
   # Same repository means same git common directory, which a main checkout
   # shares with every linked worktree of it. The resolver's identity answer
@@ -171,6 +175,11 @@ cmd_targets_foreign_repo() {
   b=$(gaia_resolve_common_dir) || return 1
   [ -n "$a" ] && [ -n "$b" ] || return 1
   [ "$a" != "$b" ] && return 0
+  # Published only once the target resolved as this repository: an
+  # unresolvable one enforces, and a caller reading its branch from a path git
+  # cannot open would read no branch at all and let the command through.
+  # shellcheck disable=SC2034 # read by block-main-destructive-git.sh, never here
+  [ "$lead" = 1 ] && GAIA_REPO_SCOPE_LEAD_CD="$target_dir"
   return 1
 }
 
