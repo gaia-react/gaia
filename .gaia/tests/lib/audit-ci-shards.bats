@@ -4065,14 +4065,20 @@ EOF
   done <<<"$group"
 }
 
-# The shape adversarial cases use for the class comparison are the ones the two
-# readers really do read differently, confirmed inside each case before the
+# The workflow shapes adversarial cases use for the class comparison are ones
+# PyYAML reads and the awk reader refuses, confirmed inside each case before the
 # comparison is asked about: a double-quoted scalar carrying an escape the awk
-# reader does not decode, which PyYAML decodes and the awk reader refuses; and a
-# plain scalar folded onto a continuation line that opens with `- `, which
-# PyYAML folds into one path and the awk reader reads as two entries. A plain
-# double-quoted scalar with no escape reads identically in both, so it could
-# not red.
+# reader does not decode; and a plain scalar folded onto a continuation line
+# that opens with `- `, which PyYAML folds into one path and a reader taking
+# every `- ` line as an entry would split into two. A plain double-quoted
+# scalar with no escape reads identically in both, so it could not red. An
+# entry shifted shallower than the list's entry indent is refused too, and
+# PyYAML rejects that workflow outright rather than reading it.
+#
+# The comparison's own disagreement branch is driven by a doctored script
+# rather than a doctored workflow: a shape both readers accept and read
+# differently is exactly what the awk reader exists to refuse, so a healthy
+# reader offers none.
 @test "W16 adversarial: an escaped double-quoted code: entry reds the class comparison" {
   require_yaml_parser
   local pages page line mutated doctored="$BATS_TEST_TMPDIR/class-escape.yml"
@@ -4100,9 +4106,10 @@ EOF
   grep -qF -- 'could not derive the class' <<<"$output"
 }
 
-@test "W16 adversarial: a folded plain code: entry that both readers accept but read differently reds the class comparison" {
+@test "W16 adversarial: a folded plain code: entry is refused by the awk reader rather than split into two entries" {
   require_yaml_parser
-  local pages page head tail indent line doctored="$BATS_TEST_TMPDIR/class-fold.yml" awk_class
+  local pages page head tail indent line doctored="$BATS_TEST_TMPDIR/class-fold.yml"
+  local err="$BATS_TEST_TMPDIR/class-fold.err" rc=0
   pages="$(arming_parser_class "$WORKFLOW")" || return 1
   page="$(printf '%s\n' "$pages" | grep -F ' ' | sed -n 1p)"
   [ -n "$page" ] || {
@@ -4120,24 +4127,73 @@ $indent  - $tail" "$doctored"
     return 1
   }
 
-  # Confirm the divergence before relying on it: both readers succeed, and
-  # they read different paths.
+  # Confirm the premise before relying on it: PyYAML reads one folded path.
   arming_parser_class "$doctored" | grep -qxF -- "$head - $tail" || {
     echo "PyYAML did not fold the entry into '$head - $tail'" >&2
     return 1
   }
-  awk_class="$(LEG_ARMING_WORKFLOW="$doctored" bash "$ARMING_SCRIPT" class 2>/dev/null)" || {
-    echo "the awk reader refused the folded entry, so this case would not reach the set comparison" >&2
+  LEG_ARMING_WORKFLOW="$doctored" bash "$ARMING_SCRIPT" class >/dev/null 2>"$err" || rc=$?
+  [ "$rc" -ne 0 ] || {
+    echo "the awk reader accepted an entry PyYAML folds into '$head - $tail'" >&2
     return 1
   }
-  grep -qxF -- "$head" <<<"$awk_class" || {
-    echo "the awk reader did not read '$head' as an entry of its own" >&2
+  grep -qF -- 'multi-line entry' "$err" || {
+    echo "the awk reader refused the folded entry for another reason:" >&2
+    cat "$err" >&2
     return 1
   }
 
   run assert_arming_class "$ARMING_SCRIPT" "$doctored"
   [ "$status" -ne 0 ] || {
-    echo "two readers reading different classes was not caught" >&2
+    echo "a folded entry the awk reader refuses was not caught" >&2
+    return 1
+  }
+  grep -qF -- 'could not derive the class' <<<"$output"
+}
+
+@test "W16 adversarial: a code: entry shifted shallower than the list's entry indent is refused by the awk reader" {
+  require_yaml_parser
+  local pages page line mutated doctored="$BATS_TEST_TMPDIR/class-shallow.yml"
+  local err="$BATS_TEST_TMPDIR/class-shallow.err" rc=0
+  pages="$(arming_parser_class "$WORKFLOW")" || return 1
+  # code_entry_line finds only a bare quoted entry, never a change-type
+  # mapping; the space-carrying pages the cases above pick are written bare.
+  page="$(printf '%s\n' "$pages" | grep -F ' ' | sed -n 1p)"
+  line="$(code_entry_line "$WORKFLOW" "$page")" || return 1
+  mutated="${line# }"
+  assert_doctored "$line" "$mutated" "shifting the entry for $page one column shallower" || return 1
+  replace_line "$WORKFLOW" "$line" "$mutated" "$doctored"
+
+  # Confirm the premise before relying on it: PyYAML reads no entry here.
+  arming_parser_class "$doctored" >/dev/null 2>&1 && {
+    echo "PyYAML read the shifted entry for $page, so refusing it would be a divergence" >&2
+    return 1
+  }
+  LEG_ARMING_WORKFLOW="$doctored" bash "$ARMING_SCRIPT" class >/dev/null 2>"$err" || rc=$?
+  [ "$rc" -ne 0 ] || {
+    echo "the awk reader accepted an entry shifted off the list's entry indent" >&2
+    return 1
+  }
+  grep -qF -- 'off the entry indent' "$err" || {
+    echo "the awk reader refused the shifted entry for another reason:" >&2
+    cat "$err" >&2
+    return 1
+  }
+}
+
+@test "W16 adversarial: an arming script reading a different class than PyYAML reds the class comparison" {
+  require_yaml_parser
+  local line mutated doctored="$BATS_TEST_TMPDIR/leg-arming.sh"
+  line="$(sole_line_matching "$ARMING_SCRIPT" 'index\(v, "wiki/"\) == 1\) print v$')" || return 1
+  mutated="$line \"-doctored\""
+  assert_doctored "$line" "$mutated" "suffixing every page the awk reader prints" || return 1
+  replace_line "$ARMING_SCRIPT" "$line" "$mutated" "$doctored"
+
+  # The copy sits outside any checkout, so it cannot derive its root itself.
+  export LEG_ARMING_ROOT="$REPO_ROOT"
+  run assert_arming_class "$doctored" "$WORKFLOW"
+  [ "$status" -ne 0 ] || {
+    echo "a script reading a class PyYAML does not was not caught" >&2
     return 1
   }
   grep -qF -- 'read different classes' <<<"$output"

@@ -204,10 +204,13 @@ resolve_seam() {
 # whatever its indent, a line indented at or below the `filters:` key ends the
 # block string, and a non-comment line at or below the `code:` key's indent
 # ends the list unless it is itself a `- ` entry, which is YAML's compact
-# sequence form. An entry is a quoted or plain string, or a change-type
-# mapping (`deleted: 'x'`) whose one inline value is the path. A multi-line
-# entry, a flow collection, or an escape this reader does not decode is a
-# failure rather than a guess.
+# sequence form. Only a `- ` at the first entry's indent opens an entry: one
+# indented deeper is either a continuation YAML folds into a plain entry above
+# or a malformed list, never an entry of its own. An entry is a quoted
+# or plain string, or a change-type mapping (`deleted: 'x'`) whose one inline
+# value is the path. A multi-line entry, a `- ` line off the list's own indent,
+# a flow collection, or an escape this reader does not decode is a failure
+# rather than a guess.
 derive_class() {
   local wf="$1" out rc=0
   if [ ! -f "$wf" ] || [ ! -r "$wf" ]; then
@@ -275,6 +278,7 @@ derive_class() {
       steps = 0
       failed = 0
       top = -1
+      sind = -1
     }
     { sub(/\r$/, "") }
     /^[ \t]*(-[ \t]+)?uses:[ \t]*.?dorny\/paths-filter@/ { steps++ }
@@ -318,6 +322,8 @@ derive_class() {
         next
       }
       if ($0 !~ /^ *-([ \t]|$)/) bail("a line inside the code: list that is neither an entry nor a comment")
+      if (sind < 0) sind = ind($0)
+      else if (ind($0) != sind) bail("a - line off the entry indent of the code: list, which YAML reads as a multi-line entry or a malformed list, never as a new entry")
       s = $0
       sub(/^ *-[ \t]*/, "", s)
       if (s == "") bail("a code: entry with no inline value")
