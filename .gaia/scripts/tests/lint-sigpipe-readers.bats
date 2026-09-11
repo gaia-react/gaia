@@ -517,6 +517,36 @@ printf "%s" "$a" | grep -q needle'
   grep -qF -- "check.sh:4:" <<<"$output"
 }
 
+# The unbalanced literal on the arming's OWN line rather than an earlier one.
+# The carry never reaches it, since the carry only feeds the next line, so the
+# arming test takes the same minimum at the arming position: a raw read puts
+# the set at depth 1, arms nothing, and every reader in the file goes
+# unreported.
+@test "an unbalanced dollar-paren on the arming line leaves the file armed" {
+  fixture_repo
+  fixture_file check.sh '#!/usr/bin/env bash
+grep -nF '"'"'x=$('"'"' file.txt; set -euo pipefail
+printf "%s" "$a" | grep -q needle'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- "check.sh:3:" <<<"$output"
+}
+
+# The no-rise property at the arming position. Here the strip pairs the
+# apostrophe with the quote opening the later word and leaves the prefix at
+# depth 1, while the raw prefix is balanced. The arming test is the raw test OR
+# the stripped one, never the stripped one alone, and this reds if it is ever
+# simplified to the strip.
+@test "a single-quote strip that would raise the depth at the arming does not disarm the file" {
+  fixture_repo
+  fixture_file check.sh '#!/usr/bin/env bash
+x=$(echo "it'"'"'s"); y='"'"'z'"'"'; set -euo pipefail
+printf "%s" "$a" | grep -q needle'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- "check.sh:3:" <<<"$output"
+}
+
 # --- the pipefail closure --------------------------------------------------
 #
 # pipefail is a process option, so a sourced library runs under whatever its
@@ -924,6 +954,24 @@ printf "%s" "$a" | grep -q needle'
   run_linter
   [ "$status" -eq 1 ]
   grep -qF -- ".github/workflows/probe.yml:8:" <<<"$output"
+}
+
+@test "an unbalanced dollar-paren on the arming line leaves the block armed" {
+  fixture_repo
+  fixture_workflow 'grep -nF '"'"'x=$('"'"' file.txt; set -euo pipefail
+printf "%s" "$a" | grep -q needle'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- ".github/workflows/probe.yml:7:" <<<"$output"
+}
+
+@test "a single-quote strip that would raise the depth at the arming does not disarm the block" {
+  fixture_repo
+  fixture_workflow 'x=$(echo "it'"'"'s"); y='"'"'z'"'"'; set -euo pipefail
+printf "%s" "$a" | grep -q needle'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- ".github/workflows/probe.yml:7:" <<<"$output"
 }
 
 # The mirror image of the substitution-scoped tests above, and the reason the
