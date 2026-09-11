@@ -1,18 +1,14 @@
 #!/usr/bin/env bats
 
-# Tests for .claude/hooks/block-main-destructive-git.sh.
-#
-# The hook blocks commits to main/master, force-push to main/master, and any
-# plain `git push` originating from main/master (PR-only flow). It fires only on
-# a real `git` INVOCATION in command position; command text that merely
-# mentions `git commit` / `git push` (a grep pattern, an echo string, an
-# argument to another program) does not trip it. Foreign-repo commands pass via
-# the shared repo-scope helper.
+# Tests for .claude/hooks/block-main-destructive-git.sh. The hook's own header
+# states what it blocks. It fires only on a real `git` INVOCATION in command
+# position; command text that merely mentions `git commit` / `git push` (a grep
+# pattern, an echo string, an argument to another program) does not trip it.
 #
 # Each test drives the hook as the harness does: a PreToolUse JSON payload on
-# stdin, run with the repo as the working directory (the hook resolves the
-# current branch from cwd and loads .claude/hooks/lib/repo-scope.sh relative to
-# cwd). The hook always exits 0; allow vs deny is carried in stdout.
+# stdin, run with the repo as the working directory, which is where the hook
+# resolves the current branch. The hook always exits 0; allow vs deny is carried
+# in stdout.
 
 setup() {
   . "$BATS_TEST_DIRNAME/helpers/run-hook.sh"
@@ -92,6 +88,15 @@ run_hook() {
 @test "home-repo git -C commit on main is denied" {
   on_main
   run_hook "git -C $REPO commit -m \"x\""
+  assert_denied_by_json
+}
+
+# `-C` after the subcommand is commit's reuse-message option, not a directory.
+@test "git commit -C HEAD on main is denied" {
+  on_main
+  run_hook 'git commit --allow-empty -C HEAD'
+  assert_denied_by_json
+  run_hook 'git commit --allow-empty -m x -C HEAD'
   assert_denied_by_json
 }
 
@@ -386,11 +391,35 @@ run_hop() {
   assert_denied_by_json
 }
 
-@test "hop guard: git checkout -b and git checkout - in a peer-held main checkout are denied" {
+@test "hop guard: git checkout -b, -, and --detach in a peer-held main checkout are denied" {
   hold_feature_with_pr 42
   run_hop 'git checkout -b brand-new' sid-peer
   assert_denied_by_json
   run_hop 'git checkout -' sid-peer
+  assert_denied_by_json
+  run_hop 'git checkout --detach' sid-peer
+  assert_denied_by_json
+}
+
+# `-C` after `switch` is force-create, not a directory, so reading it as git's
+# own `-C` aimed the guard at a directory named for the branch and let it pass.
+@test "hop guard: git switch -C in a peer-held main checkout is denied" {
+  hold_feature_with_pr 42
+  run_hop 'git switch -C other' sid-peer
+  assert_denied_by_json
+  run_hop 'git switch -C main main' sid-peer
+  assert_denied_by_json
+  local wt="$BATS_TEST_TMPDIR/wt"
+  git -C "$REPO" worktree add --quiet -b wt-branch "$wt"
+  run_hop "git -C $REPO switch -C other" sid-peer "$wt"
+  assert_denied_by_json
+}
+
+@test "hop guard: git's own options ahead of the subcommand do not hide it" {
+  hold_feature_with_pr 42
+  run_hop 'git -c advice.detachedHead=false switch other' sid-peer
+  assert_denied_by_json
+  run_hop 'git --git-dir .git checkout main' sid-peer
   assert_denied_by_json
 }
 
@@ -416,6 +445,17 @@ run_hop() {
   write_breadcrumb feature sid-owner
   run_hop 'git switch other' sid-owner
   assert_allowed_by_json
+}
+
+@test "hop guard: the owner is matched before any gh call" {
+  hold_feature_with_pr 42
+  write_breadcrumb feature sid-owner
+  export GH_STUB=hang
+  local start=$SECONDS
+  run_hop 'git switch other' sid-owner
+  assert_allowed_by_json
+  grep -qF -- 'timed out' <<<"$output" && return 1
+  [ $((SECONDS - start)) -lt 4 ]
 }
 
 @test "hop guard: a missing breadcrumb counts as not the owner" {
@@ -456,6 +496,33 @@ run_hop() {
   assert_allowed_by_json
   grep -qF -- 'timed out' <<<"$output"
   [ $((SECONDS - start)) -lt 20 ]
+}
+
+@test "hop guard: gh missing from PATH fails open with the named cause" {
+  hold_feature_with_pr 42
+  # A PATH holding every tool the hook and its libraries call, and no gh.
+  local tools="$BATS_TEST_TMPDIR/tools" tool src
+  mkdir -p "$tools"
+  for tool in bash cat jq git sed tr dirname basename find env mkdir grep head \
+      wc date sleep rm shasum sha256sum perl awk; do
+    src=$(command -v "$tool" 2>/dev/null) || continue
+    ln -s "$src" "$tools/$tool"
+  done
+  PATH="$tools" run_hop 'git checkout main' sid-peer
+  assert_allowed_by_json
+  grep -qF -- 'gh is not on PATH' <<<"$output"
+}
+
+@test "hop guard: an unloadable breadcrumb library fails open with the named cause" {
+  stage_hook_tree
+  stub_gh
+  export GH_STUB=open:42
+  git -C "$STAGED_ROOT" branch --quiet other
+  git -C "$STAGED_ROOT" checkout --quiet -B feature
+  [ ! -e "$STAGED_ROOT/.gaia/scripts/gh-artifact-lib.sh" ]
+  run_staged 'git switch other'
+  assert_allowed_by_json
+  grep -qF -- 'gh-artifact-lib.sh did not load' <<<"$output"
 }
 
 @test "hop guard: a checkout run inside a linked worktree is allowed" {
