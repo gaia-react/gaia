@@ -3237,9 +3237,9 @@ PY
 #
 # .gaia/tests/hooks/fixtures/audit-routing-before.tsv does move armed sets. It
 # is a frozen path inventory in the fixtures/ subtree beside the `hooks-*`
-# suites, listing most of wiki/ and reading none of it. While it lists every
+# suites, listing most of wiki/ and reading none of it. While it names every
 # class page the namer-of-all rule drops it; once the class holds a page it does
-# not list, it is a namer of every class page it does list and attributes each
+# not name, it is a namer of every class page it does name and attributes each
 # of those rows to every `hooks-*` shard. A row widens only by the hooks legs
 # its other namers do not already arm, so a page a hooks suite or hooks helper
 # already names gains less than one nothing else under hooks/ names. That
