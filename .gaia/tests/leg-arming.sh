@@ -97,6 +97,19 @@
 # gap: a suite that drives a page-reading script without naming the page
 # itself, in its own source, sits on a leg the gate may decline to arm.
 #
+# The rule also costs something in the safe direction, and that cost is
+# accepted too. A path inventory written once into a fixtures/ subtree and
+# never regenerated lists the class pages that existed when it was written and
+# none added since. It is a namer of all only until the class gains a page it
+# does not list. After that it is a namer of every page it does list, and arms
+# every shard holding a suite beside it for each of them, though it reads none.
+# Every rule that would drop such a file tells one namer from another by a
+# guess: a threshold, a classification of fixtures by shape, or a file named
+# here. Each guess under-arms when it is wrong, and the scan takes an exception
+# in that direction only where the class itself derives it, as it derives the
+# namer-of-all rule. The over-arming is bounded, because a frozen inventory
+# cannot list a page written after it.
+#
 # It writes nothing to $GITHUB_OUTPUT, $GITHUB_ENV or $GITHUB_STEP_SUMMARY.
 # Those files are line-oriented, a filename may carry a newline, and one echoed
 # diagnostic would let a crafted name append its own record and disarm every

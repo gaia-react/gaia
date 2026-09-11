@@ -4,7 +4,7 @@ status: active
 priority: 2
 date: 2026-08-13
 created: 2026-08-13
-updated: 2026-08-25
+updated: 2026-09-11
 tags: [decision, ci, performance, github-actions, bats]
 ---
 
@@ -117,6 +117,8 @@ The per-leg gate is a step output computed by one script, not a second `dorny/pa
 The narrowing is derived from the suites at run time, through the sharder's exchange groups, and defaults to arming the full matrix on anything it cannot resolve.
 
 A file that names every page the narrowing can distinguish between contributes nothing to any single page's arming decision, and is excluded from the namer set of all of them. This is a real, accepted under-arming risk rather than a footnote: a suite that genuinely read every one of those pages would be excluded too, and would not arm on a change to any of them. No such suite exists today, the leg holding the suite that checks this narrowing arms unconditionally regardless, and every other rule in the decision order fails open, but the risk stands as stated.
+
+The same rule carries an accepted cost in the safe direction. A path inventory that is written once and never regenerated is a namer of all only until the narrowing gains a page it does not list. From then on it arms its directory's legs for every page it does list, though it reads none of them. Every rule that would drop it tells one namer from another by a guess that under-arms when wrong, so the over-arming stands, bounded by what the frozen inventory lists.
 
 Measured against the tree, the saving is runner-minutes before it is wall clock. Some pages are named only by `lib`'s own suites and arm that single leg, which moves both wall clock and runner-minutes; others also reach the scripts group, whose legs sit on the critical path, so narrowing to them moves runner-minutes only. `wiki/.state.json`, the file every wiki sync rewrites, would arm nearly the whole matrix through this lever alone.
 
