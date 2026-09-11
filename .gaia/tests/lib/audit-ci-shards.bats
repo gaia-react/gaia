@@ -112,8 +112,9 @@ setup() {
   # it is harmless, because `lib` arms unconditionally regardless.
   SPEC078_FIXTURES="$BATS_TEST_DIRNAME/fixtures/spec-078"
   # The dorny/paths-filter version lever one's premises (step 0 of the task
-  # doc) were verified against, recorded once here so W14 and its header
-  # comment cannot disagree with each other about which pin they mean.
+  # doc), and leg-arming.sh's listing-cap premise, were verified against,
+  # recorded once here so W14 and its header comment cannot disagree with
+  # each other about which pin they mean.
   PATHS_FILTER_PINNED_SHA='ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d'
   PATHS_FILTER_PINNED_TAG='v4.0.3'
   # The per-leg arming gate W16 to W18 pin, and the concurrency seam it scans
@@ -910,7 +911,8 @@ assert_no_renamed_or_copied_tokens() {
 # assert_paths_filter_pin_matches <workflow>: the sole dorny/paths-filter
 # `uses:` line's SHA and tag comment equal PATHS_FILTER_PINNED_SHA and
 # PATHS_FILTER_PINNED_TAG, the pair lever one's premises (task-lever-one.md
-# step 0) were verified against. A version drift moving either half
+# step 0), and the listing cap leg-arming.sh's pagination rule rests on, were
+# verified against. A version drift moving either half
 # invalidates those premises silently -- a grouped dependency bump nobody
 # reads closely -- so the refusal names both recorded values and where to
 # re-derive each premise.
@@ -930,7 +932,7 @@ assert_paths_filter_pin_matches() {
   if [ "$sha" = "$PATHS_FILTER_PINNED_SHA" ] && [ "$tag" = "$PATHS_FILTER_PINNED_TAG" ]; then
     return 0
   fi
-  echo "$workflow pins dorny/paths-filter@$sha ($tag), lever one's premises were verified against $PATHS_FILTER_PINNED_SHA ($PATHS_FILTER_PINNED_TAG). Re-derive against the pinned source at the new SHA: the accepted change-status set (file.ts:6-13) and its unvalidated per-entry cast (filter.ts:171-176); the plain array membership check that lets an unrecognized token match nothing forever (filter.ts:123-125); and the pull-request lane's rename decomposition -- the token input defaults to github.token (action.yml:5-8), so this lane takes getChangedFilesFromApi (main.ts:101-107), which replaces a renamed row with an added-new-path row plus a deleted-previous-path row (main.ts:227-239)." >&2
+  echo "$workflow pins dorny/paths-filter@$sha ($tag), lever one's premises, and the listing cap leg-arming.sh's pagination rule rests on, were verified against $PATHS_FILTER_PINNED_SHA ($PATHS_FILTER_PINNED_TAG). Re-derive against the pinned source at the new SHA: the accepted change-status set (file.ts:6-13) and its unvalidated per-entry cast (filter.ts:171-176); the plain array membership check that lets an unrecognized token match nothing forever (filter.ts:123-125); the pull-request lane's rename decomposition -- the token input defaults to github.token (action.yml:5-8), so this lane takes getChangedFilesFromApi (main.ts:101-107), which replaces a renamed row with an added-new-path row plus a deleted-previous-path row (main.ts:227-239); and that lane's listing cap, which leg-arming.sh's PAGINATION_CAP threshold must match -- it pages pulls.listFiles (main.ts:211-218) and returns whatever the pages yield, reconciling no total, so the list stops exactly where GitHub's endpoint stops listing." >&2
   return 1
 }
 
@@ -2456,7 +2458,10 @@ concurrency_tree_needs_packages() {
 # an unvendored dependency, dorny/paths-filter, that a grouped weekly
 # dependency bump moves without anyone reading the diff. This pins the
 # workflow's dorny/paths-filter version to the pair the premises in
-# task-lever-one.md's step 0 were verified against.
+# task-lever-one.md's step 0 were verified against. leg-arming.sh's
+# pagination rule rests on one more property of the same pin, the
+# pull-request lane's listing cap, so the refusal names that premise beside
+# lever one's.
 
 @test "W14: the workflow's dorny/paths-filter pin matches the version lever one's premises were verified against" {
   assert_paths_filter_pin_matches "$WORKFLOW"
@@ -2474,6 +2479,22 @@ concurrency_tree_needs_packages() {
   }
   printf '%s\n' "$output" | grep -qF -- '0000000000000000000000000000000000000000' || {
     echo "the refusal did not name the fixture's bumped SHA" >&2
+    return 1
+  }
+}
+
+@test "W14 adversarial: the bumped-pin refusal names the listing-cap premise leg-arming's pagination rule rests on" {
+  run assert_paths_filter_pin_matches "$SPEC078_FIXTURES/paths-filter-pin-bumped.yml"
+  [ "$status" -ne 0 ] || {
+    echo "the bumped-pin fixture did not red" >&2
+    return 1
+  }
+  printf '%s\n' "$output" | grep -qF -- 'pulls.listFiles (main.ts:211-218)' || {
+    echo "the refusal did not cite the pinned source's listFiles pagination" >&2
+    return 1
+  }
+  printf '%s\n' "$output" | grep -qF -- 'PAGINATION_CAP' || {
+    echo "the refusal did not name the leg-arming rule that rests on the listing cap" >&2
     return 1
   }
 }
