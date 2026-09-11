@@ -2368,18 +2368,29 @@ _GAIA_CAPCHECK_DOTCMD='(^|[;|&(`{}]|(^|[[:space:]])(if|then|else|do|elif|while|u
 # of one that does.
 _GAIA_CAPCHECK_PATHCMD='(^|[;|&`]|\$\(|[[:space:]]then[[:space:]]|[[:space:]]else[[:space:]]|[[:space:]]do[[:space:]]|[[:space:]]elif[[:space:]]|[[:space:]]![[:space:]])[[:space:]]*'
 
-# _gaia_capcheck_detect_network <text>: curl, wget, any gh invocation, and the
-# remote-touching git verbs. Deliberately not matched: `command -v gh` and
-# friends, where `gh` is an argument rather than the command -- the match
-# requires a lowercase subcommand letter after it.
+# _gaia_capcheck_detect_network <text>: curl, wget, any gh invocation, the
+# remote-touching git verbs, and a package-manager install. Deliberately not
+# matched: `command -v gh` and friends, where `gh` is an argument rather than the
+# command -- the match requires a lowercase subcommand letter after it.
+#
+# The install arm counts an install as reach because it downloads whenever the
+# store lacks a locked package; a frozen lockfile refuses to rewrite the lockfile
+# and still downloads. Flags may stand between the manager and its verb, each
+# with at most one operand (`pnpm -C <dir> install`), and `command -v pnpm`
+# stays unmatched because no install verb follows it. What it misses: a bare
+# `yarn`, which installs with no verb; `pnpm dlx`, `npx`, and the update verbs,
+# which fetch too; any manager other than pnpm, npm and yarn; and a flag
+# followed by two operands, since the second one stands where the verb has to.
 _gaia_capcheck_detect_network() {
   local t="$1"
   local p1="${_GAIA_CAPCHECK_CMD}(curl|wget)([[:space:]]|\$)"
   local p2="${_GAIA_CAPCHECK_CMD}gh[[:space:]]+[a-z]"
   local p3="${_GAIA_CAPCHECK_CMD}git([[:space:]]+-[Cc][[:space:]]+[^[:space:]]+)?[[:space:]]+(fetch|push|clone|pull|ls-remote)([[:space:]]|\$)"
+  local p4="${_GAIA_CAPCHECK_CMD}(pnpm|npm|yarn)([[:space:]]+-[^[:space:]]+([[:space:]]+[^-[:space:]][^[:space:]]*)?)*[[:space:]]+(install|i|add|ci)([[:space:]]|\$)"
   [[ $t =~ $p1 ]] && return 0
   [[ $t =~ $p2 ]] && return 0
   [[ $t =~ $p3 ]] && return 0
+  [[ $t =~ $p4 ]] && return 0
   return 1
 }
 

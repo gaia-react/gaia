@@ -671,6 +671,78 @@ curl https://example.com/'
   [ "$(grep -c -- "invokes:.claude/hooks/b.sh" <<<"$output")" -eq 1 ]
 }
 
+# ========== a package-manager install is network reach ==========
+#
+# An install reaches the registry whenever the store lacks a locked package,
+# frozen lockfile or not. The first fixture drives the check end to end on
+# provision-worktree.sh's own spelling, the second on a flag standing between
+# the manager and its verb; the tables below them drive the detector directly,
+# one spelling per element, because a table is cheap there and a full check run
+# per spelling is not.
+
+@test "a hook installing behind a subshell cd while its entry omits network is UNDECLARED" {
+  repo="$(make_fixture_repo install-undeclared)"
+  add_hook "$repo" .claude/hooks/prov.sh '#!/usr/bin/env bash
+if (cd "$dir" && pnpm install --frozen-lockfile) >/dev/null 2>&1; then :; fi'
+  write_registrations "$repo" SessionStart .claude/hooks/prov.sh
+  write_manifest "$repo" '[{"hook":".claude/hooks/prov.sh","capabilities":[],
+    "why":"declared as reaching nothing","maintainer_only":false}]'
+  run bash "$CHECK" "$repo"
+  [ "$status" -eq 1 ]
+  grep -qF -- "UNDECLARED .claude/hooks/prov.sh network .claude/hooks/prov.sh:2" <<<"$output"
+}
+
+@test "network declared for an install with a flag before its verb is reached, not SURPLUS" {
+  repo="$(make_fixture_repo install-declared)"
+  add_hook "$repo" .claude/hooks/prov.sh '#!/usr/bin/env bash
+pnpm -C "$tree/.gaia/cli" install --frozen-lockfile'
+  write_registrations "$repo" SessionStart .claude/hooks/prov.sh
+  write_manifest "$repo" '[{"hook":".claude/hooks/prov.sh","capabilities":["network"],
+    "why":"installs the workspace from its lockfile","maintainer_only":false}]'
+  run bash "$CHECK" "$repo"
+  grep -qF -- "SURPLUS .claude/hooks/prov.sh network" <<<"$output" && return 1
+  [ "$status" -eq 0 ]
+}
+
+@test "the network detector reads each install spelling below as reach" {
+  local line missed=""
+  for line in \
+    'pnpm install' \
+    'pnpm install --frozen-lockfile' \
+    'pnpm i' \
+    'pnpm add zod' \
+    'pnpm -C "$tree/.gaia/cli" install' \
+    'pnpm --dir=.gaia/cli install' \
+    'pnpm --filter app --silent install' \
+    'npm ci' \
+    'npm install' \
+    'npm --prefix app i' \
+    'yarn install' \
+    'yarn add zod' \
+    '  if (cd "$dir" && pnpm install --frozen-lockfile) >/dev/null 2>&1; then'; do
+    _gaia_capcheck_detect_network "$line" || missed="$missed
+  $line"
+  done
+  [ -z "$missed" ] || { printf 'not read as reach:%s\n' "$missed"; return 1; }
+}
+
+@test "the network detector does not read a package manager that installs nothing as reach" {
+  local line hit=""
+  for line in \
+    'command -v pnpm >/dev/null 2>&1' \
+    'pnpm run lint' \
+    'pnpm -C .gaia/cli run build' \
+    'pnpm --version' \
+    'pnpm exec eslint --fix' \
+    'pnpm install-completion' \
+    'npm i18n-report' \
+    'run_step install node --version'; do
+    _gaia_capcheck_detect_network "$line" && hit="$hit
+  $line"
+  done
+  [ -z "$hit" ] || { printf 'read as reach:%s\n' "$hit"; return 1; }
+}
+
 # ========== UAT-017, the shared oracle, sourced not forked ==========
 #
 # The vendored pre-fix copy at .gaia/scripts/tests/fixtures/capability-oracle
