@@ -21,12 +21,22 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 echo "==> .gaia/tests/forensics/run-all.sh"
 
+# Every run goes through bats5, which gates git's background maintenance for
+# the run; a bare `bats` here would leave fixture commits racing their own
+# teardown on this hand-run path alone.
+# shellcheck source=../../scripts/bats5.sh
+. "$HERE/../../scripts/bats5.sh"
+
 # Ensure bats is available; attempt npx fallback if not on PATH.
 if ! command -v bats >/dev/null 2>&1; then
   echo "bats not found on PATH; attempting: npx -y bats@latest"
   if command -v npx >/dev/null 2>&1; then
-    # Run via npx; replace this process so $? propagates correctly.
-    exec npx -y bats@latest "$HERE"/*.bats
+    # bats5 calls `bats`, so pointing that name at npx keeps the fallback
+    # gated too. Under errexit a failing run exits with its own status.
+    # shellcheck disable=SC2329  # invoked indirectly, by bats5
+    bats() { npx -y bats@latest "$@"; }
+    bats5 "$HERE"/*.bats
+    exit 0
   else
     echo "ERROR: bats not installed and npx not available. Install it with one of the options in this script's header." >&2
     exit 1
@@ -35,7 +45,7 @@ fi
 
 for f in "$HERE"/*.bats; do
   echo "--> $(basename "$f")"
-  bats "$f"
+  bats5 "$f"
 done
 
 echo "==> all forensics tests passed"

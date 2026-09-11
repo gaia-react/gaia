@@ -819,6 +819,35 @@ check_gate_parity() {
   [ "$ours" = "$theirs" ]
 }
 
+# The vitest side's gate list in file $1, as the `key=value` words the shell
+# runners loop over: one pair per entry of its MAINTENANCE_SUPPRESSION array.
+# Prints nothing when any entry line fails to parse as a pair, so a reshaped
+# entry reads as no list rather than as the shorter list that did parse.
+ts_gate_list() {
+  local block entries pairs
+  block="$(awk '/^const MAINTENANCE_SUPPRESSION/ {f = 1; next} f && /^\];$/ {exit} f' "$1")"
+  entries="$(grep -c '^ *\[' <<<"$block" || true)"
+  pairs="$(sed -n "s/^ *\['\([^']*\)', '\([^']*\)'\],\$/\1=\2/p" <<<"$block")"
+  [ -n "$pairs" ] || return 0
+  [ "$(printf '%s\n' "$pairs" | wc -l | tr -d ' ')" -eq "$entries" ] || return 0
+  printf '%s\n' "$pairs" | paste -sd' ' -
+}
+
+# The shell gate list in file $1: the words of its `for kv in ...; do` line.
+shell_gate_list() {
+  sed -n 's/^ *for kv in \(.*\); do$/\1/p' "$1"
+}
+
+# Exit 0 when vitest file $1 and bats5 $2 carry the same non-empty gate list.
+check_ts_gate_parity() {
+  local ts sh
+  ts="$(ts_gate_list "$1")"
+  sh="$(shell_gate_list "$2")"
+  [ -n "$ts" ] || return 1
+  [ -n "$sh" ] || return 1
+  [ "$ts" = "$sh" ]
+}
+
 # A9 fixture: empties run's gate list on the copy, so the count it exports is
 # the ambient one and the suites it runs get git's own maintenance resolution.
 # What this proves is that S17's subject arm can red, not merely that the gates
@@ -884,6 +913,25 @@ doctor_dropped_gate() {
   local copy
   copy="$(doctor_dropped_gate)"
   run check_gate_parity "$copy" "$BATS_TEST_DIRNAME/../../scripts/bats5.sh"
+  [ "$status" -eq 1 ]
+}
+
+# The vitest setup file is where the reasoning for each key lives, so it is
+# where a key is likeliest to be added first. S19 carries that edit to the
+# shell runners by going red until they match it.
+@test "S19: bats5.sh's maintenance gate list matches the vitest side's" {
+  run check_ts_gate_parity "$BATS_TEST_DIRNAME/../../cli/src/util/git-maintenance-env.ts" \
+    "$BATS_TEST_DIRNAME/../../scripts/bats5.sh"
+  [ "$status" -eq 0 ]
+}
+
+@test "A11: a key added only on the vitest side reds S19's parity check" {
+  local ts
+  ts="$BATS_TEST_TMPDIR/git-maintenance-env.ts"
+  awk '{print} /^  \[.maintenance\.autoDetach., .false.\],$/ {print "  [\x27maintenance.strategy\x27, \x27none\x27],"}' \
+    "$BATS_TEST_DIRNAME/../../cli/src/util/git-maintenance-env.ts" >"$ts"
+  grep -qF "['maintenance.strategy', 'none']," "$ts"
+  run check_ts_gate_parity "$ts" "$BATS_TEST_DIRNAME/../../scripts/bats5.sh"
   [ "$status" -eq 1 ]
 }
 
@@ -1023,7 +1071,7 @@ covering_row() {
 $orphans
 EOF
 
-  return "$rc"
+  [ "$rc" -eq 0 ]
 }
 
 @test "S13 adversarial: an orphan suite outside the seam is caught" {
