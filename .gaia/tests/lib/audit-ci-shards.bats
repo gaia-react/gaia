@@ -4156,7 +4156,9 @@ $indent  - $tail" "$doctored"
   local pages page line mutated doctored="$BATS_TEST_TMPDIR/class-shallow.yml"
   local err="$BATS_TEST_TMPDIR/class-shallow.err" rc=0
   pages="$(arming_parser_class "$WORKFLOW")" || return 1
-  page="$(printf '%s\n' "$pages" | sed -n 1p)"
+  # code_entry_line finds only a bare quoted entry, never a change-type
+  # mapping; the space-carrying pages the cases above pick are written bare.
+  page="$(printf '%s\n' "$pages" | grep -F ' ' | sed -n 1p)"
   line="$(code_entry_line "$WORKFLOW" "$page")" || return 1
   mutated="${line# }"
   assert_doctored "$line" "$mutated" "shifting the entry for $page one column shallower" || return 1
