@@ -111,10 +111,10 @@ setup() {
   # `lib`; paths-filter-pin-bumped.yml names no narrowable page. Either way
   # it is harmless, because `lib` arms unconditionally regardless.
   SPEC078_FIXTURES="$BATS_TEST_DIRNAME/fixtures/spec-078"
-  # The dorny/paths-filter version lever one's premises (step 0 of the task
-  # doc), and leg-arming.sh's listing-cap premise, were verified against,
-  # recorded once here so W14 and its header comment cannot disagree with
-  # each other about which pin they mean.
+  # The dorny/paths-filter version lever one's premises, and leg-arming.sh's
+  # listing-cap premise, were verified against, recorded once here so W14 and
+  # its header comment cannot disagree with each other about which pin they
+  # mean.
   PATHS_FILTER_PINNED_SHA='ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d'
   PATHS_FILTER_PINNED_TAG='v4.0.3'
   # The per-leg arming gate W16 to W18 pin, and the concurrency seam it scans
@@ -910,10 +910,9 @@ assert_no_renamed_or_copied_tokens() {
 
 # assert_paths_filter_pin_matches <workflow>: the sole dorny/paths-filter
 # `uses:` line's SHA and tag comment equal PATHS_FILTER_PINNED_SHA and
-# PATHS_FILTER_PINNED_TAG, the pair lever one's premises (task-lever-one.md
-# step 0), and the listing cap leg-arming.sh's pagination rule rests on, were
-# verified against. A version drift moving either half
-# invalidates those premises silently -- a grouped dependency bump nobody
+# PATHS_FILTER_PINNED_TAG, the pair lever one's premises, and the listing cap
+# leg-arming.sh's pagination rule rests on, were verified against. A version
+# drift moving either half invalidates those premises silently -- a grouped dependency bump nobody
 # reads closely -- so the refusal names both recorded values and where to
 # re-derive each premise.
 assert_paths_filter_pin_matches() {
@@ -2457,9 +2456,8 @@ concurrency_tree_needs_packages() {
 # W14 (SPEC-078 lever one, UAT-025). Lever one's premises are properties of
 # an unvendored dependency, dorny/paths-filter, that a grouped weekly
 # dependency bump moves without anyone reading the diff. This pins the
-# workflow's dorny/paths-filter version to the pair the premises in
-# task-lever-one.md's step 0 were verified against. leg-arming.sh's
-# pagination rule rests on one more property of the same pin, the
+# workflow's dorny/paths-filter version to the pair lever one's premises were
+# verified against. leg-arming.sh's pagination rule rests on one more property of the same pin, the
 # pull-request lane's listing cap, so the refusal names that premise beside
 # lever one's.
 
@@ -5345,16 +5343,26 @@ assert_arming_fallback_present() {
 # MAX_ARG_STRLEN, which fails the step's execve before leg-arming.sh's own
 # fail-open can run. The match anchors the whole value end to end, `${{` to
 # `}}` with only optional whitespace outside the construct, so no trailing
-# clause after the '' fallback can widen what the expression evaluates. The
-# operator is pinned to <= so a flipped or widened comparison cannot turn the
-# bound into a floor that arms every leg. The integer is pinned to a positive
-# number of at most four digits: wide enough that a retune within that range
-# still matches, narrow enough to rule out an effectively unbounded value --
-# the kernel's per-string limit is 131072 bytes, and a five-digit count could
-# never fit under it at any realistic path length.
+# clause after the '' fallback can widen what the expression evaluates. A
+# value spanning more than one line is refused before the match: stepfield
+# returns a block scalar raw and grep anchors each line separately, so a `|-`
+# block whose first line is the bounded construct would otherwise pass while
+# the lines after it render the unbounded list. The operator is pinned to <=
+# so a flipped or widened comparison cannot turn the bound into a floor that
+# arms every leg. The integer is pinned to a positive number of at most four
+# digits, which rejects a five-digit bound and nothing tighter. It does not
+# enforce the byte limit: a four-digit bound can still overrun it, and that
+# direction fails the step's execve and reds the leg rather than passing.
 assert_changed_files_json_bounded() {
   local workflow="$1" value
   value="$(read_wf stepfield "$workflow" shards "$ARMING_STEP_NAME" env.CHANGED_FILES_JSON)"
+  case "$value" in
+    *$'\n'*)
+      echo "the '$ARMING_STEP_NAME' step's env.CHANGED_FILES_JSON spans more than one line, so a line past the bounded construct can render an unbounded list; expected a single-line value:" >&2
+      printf '%s\n' "$value" >&2
+      return 1
+      ;;
+  esac
   printf '%s' "$value" | grep -qE -- "^\\\$\{\{ *github\.event\.pull_request\.changed_files *<= *[1-9][0-9]{0,3} *&& *steps\.filter\.outputs\.code_files *\|\| *'' *\}\}\$" && return 0
   echo "the '$ARMING_STEP_NAME' step's env.CHANGED_FILES_JSON is '$value', expected steps.filter.outputs.code_files gated behind a github.event.pull_request.changed_files <= bound of at most four digits, anchored end to end with an '' fallback (the guard against an oversized env string failing this step's execve before the script's own fail-open runs)" >&2
   return 1
@@ -5631,7 +5639,7 @@ assert_arming_body_no_changed_files_leak() {
   require_yaml_parser
   local doctored="$BATS_TEST_TMPDIR/w19-changed-files-json-five-digit.yml" line mutated
   line="$(sole_line_matching "$WORKFLOW" '^ *CHANGED_FILES_JSON: ')" || return 1
-  mutated="$(printf '%s' "$line" | sed 's/<= 1000/<= 10000/')"
+  mutated="$(printf '%s' "$line" | sed -E 's/<= *[0-9]+/<= 10000/')"
   assert_doctored "$line" "$mutated" "widening the bound to a five-digit value" || return 1
   replace_line "$WORKFLOW" "$line" "$mutated" "$doctored"
 
@@ -5642,6 +5650,30 @@ assert_arming_body_no_changed_files_leak() {
   }
   printf '%s\n' "$output" | grep -qF -- "$ARMING_STEP_NAME" || {
     echo "the refusal did not name the step" >&2
+    return 1
+  }
+}
+
+# The block's first line is the live bounded value unchanged, so the per-line
+# anchors alone would pass it; only the multi-line refusal can red this case,
+# which is why it asserts that refusal's wording rather than the step name.
+@test "W19 adversarial: CHANGED_FILES_JSON as a block scalar carrying the unbounded list after the bounded line is caught" {
+  require_yaml_parser
+  local doctored="$BATS_TEST_TMPDIR/w19-changed-files-json-block-scalar.yml" line mutated indent value
+  line="$(sole_line_matching "$WORKFLOW" '^ *CHANGED_FILES_JSON: ')" || return 1
+  indent="${line%%CHANGED_FILES_JSON:*}"
+  value="${line#*CHANGED_FILES_JSON: }"
+  mutated="$(printf '%sCHANGED_FILES_JSON: |-\n%s  %s\n%s  ${{ steps.filter.outputs.code_files }}' "$indent" "$indent" "$value" "$indent")"
+  assert_doctored "$line" "$mutated" "rewriting CHANGED_FILES_JSON as a two-line block scalar" || return 1
+  replace_line "$WORKFLOW" "$line" "$mutated" "$doctored"
+
+  run assert_changed_files_json_bounded "$doctored"
+  [ "$status" -ne 0 ] || {
+    echo "a block scalar carrying the bare code_files expression after the bounded line did not red" >&2
+    return 1
+  }
+  printf '%s\n' "$output" | grep -qF -- 'spans more than one line' || {
+    echo "the refusal did not name the multi-line value" >&2
     return 1
   }
 }

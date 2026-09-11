@@ -748,10 +748,13 @@ jobs:
           LEG_ID: ${{ matrix.shard }}
           # A changed-file COUNT stands in for the kernel's per-string
           # MAX_ARG_STRLEN, a BYTE limit, because a workflow expression cannot
-          # measure the rendered list's length directly. At the bound, each
-          # entry averages about 131 bytes before the limit is reached, far
-          # above a typical path, but the count is still a proxy rather than
-          # the real measure: a list of unusually long paths under the count
+          # measure the rendered list's length directly. GitHub counts a
+          # rename as one changed file, but the filter's pull-request lane
+          # lists it as two entries, the added new path and the deleted
+          # previous one, so at the bound the list can hold twice the count
+          # and each entry averages about 65 bytes before the limit is
+          # reached. That is still above a typical path, but the count is a
+          # proxy rather than the real measure: a list of unusually long paths under the count
           # bound could still exceed the byte limit, which fails this step's
           # execve and reds the leg rather than silently passing (fail-closed,
           # never a false green). Above the bound, the expression withholds
