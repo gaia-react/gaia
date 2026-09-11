@@ -15,9 +15,9 @@
  * # What counts as an offense
  *
  * A string literal naming a listing verb, standing as an element of an array
- * literal: the shape of a raw git argv. A wrapper that leaves the element's
- * value the verb (parentheses, a type assertion, `as`, `satisfies`, a
- * conditional branch) still counts. The verb a `gitZArgs(verb, …)` call
+ * literal: the shape of a raw git argv. The literal still counts inside
+ * parentheses, a type assertion, `as`, `satisfies`, or either branch of a
+ * conditional, and inside no other wrapper. The verb a `gitZArgs(verb, …)` call
  * names is a call argument rather than an array element, so every routed call
  * passes by construction and no allowlist of callers is needed.
  *
@@ -56,6 +56,9 @@
  * - A verb reaching an argv through a variable (`const verb = 'ls-files'`) or
  *   as a variadic call argument (`git(cwd, 'ls-files')`). Neither shape exists
  *   in this source, and catching them needs data flow, not a literal test.
+ * - A verb inside any other wrapper: a logical or comma operand
+ *   (`verb ?? 'ls-files'`, `(0, 'ls-files')`) or a non-null assertion
+ *   (`'ls-files'!`). None exists here.
  * - A shell command string (`execSync('git ls-files')`). None exists here; a
  *   string like that is a command line, not an argv element.
  * - TypeScript outside `.gaia/cli/src`, where nothing runs a git listing.
@@ -436,6 +439,16 @@ describe('git listing argv is built by gitZArgs', () => {
     ['nested wrappers', "runGit([(('ls-files') as string)]);"],
   ])('reports a verb wrapped in %s', (_label, source) => {
     expect(findOffenses(source).offenses).toEqual([1]);
+  });
+
+  // The stated blind spot, pinned so a later widening is a deliberate act and
+  // the header's list cannot drift from what the climb actually reaches.
+  test.each([
+    ['a nullish operand', "runGit([verb ?? 'ls-files']);"],
+    ['a comma operand', "runGit([(0, 'ls-files')]);"],
+    ['a non-null assertion', "runGit(['ls-files'!]);"],
+  ])('does not reach a verb inside %s', (_label, source) => {
+    expect(findOffenses(source).offenses).toEqual([]);
   });
 
   test('reports both branches of a conditional element', () => {
