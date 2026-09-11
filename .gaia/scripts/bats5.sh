@@ -47,18 +47,24 @@ bats5() {
   # since modern git reads maintenance.autoDetach first) keeps any run that
   # starts anyway in the foreground. An environment entry reaches every git
   # subprocess regardless of cwd and outranks repo-local config; a test that
-  # needs git's own resolution sets GIT_CONFIG_COUNT=0 for that one call. An
-  # ambient GIT_CONFIG_* entry is overwritten for the run rather than appended
-  # to; one that matters (a runner's safe.directory) fails every git call loudly
-  # rather than changing behavior silently. Prefixed to this one command rather than exported: sourced, bats5 runs in
-  # the caller's shell, and an export would gate maintenance in every real
-  # repository that shell touches afterwards.
-  GIT_CONFIG_COUNT=4 \
-    GIT_CONFIG_KEY_0=gc.auto GIT_CONFIG_VALUE_0=0 \
-    GIT_CONFIG_KEY_1=maintenance.auto GIT_CONFIG_VALUE_1=false \
-    GIT_CONFIG_KEY_2=gc.autoDetach GIT_CONFIG_VALUE_2=false \
-    GIT_CONFIG_KEY_3=maintenance.autoDetach GIT_CONFIG_VALUE_3=false \
+  # needs git's own resolution sets GIT_CONFIG_COUNT=0 for that one call.
+  #
+  # Appended after any GIT_CONFIG_* entries the environment already carries
+  # rather than written over them: a dropped core.hooksPath or url.insteadOf
+  # would change a suite's behavior with nothing to say so. git applies the
+  # entries in order and a later one wins, so the gates hold even against an
+  # ambient entry naming the same key. The subshell keeps every export out of
+  # the caller's shell, which is where a sourced bats5 runs: an export there
+  # would gate maintenance in every real repository that shell touches later.
+  (
+    n="${GIT_CONFIG_COUNT:-0}"
+    for kv in gc.auto=0 maintenance.auto=false gc.autoDetach=false maintenance.autoDetach=false; do
+      export "GIT_CONFIG_KEY_$n=${kv%%=*}" "GIT_CONFIG_VALUE_$n=${kv#*=}"
+      n=$((n + 1))
+    done
+    export GIT_CONFIG_COUNT="$n"
     bats "$@"
+  )
 }
 
 # When executed directly (not sourced), run the guard immediately.

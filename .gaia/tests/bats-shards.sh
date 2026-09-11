@@ -537,17 +537,21 @@ EOF
   # teardown deleting that repository, a false red on a clean tree. An
   # environment entry reaches every git subprocess regardless of cwd and
   # outranks repo-local config, so a suite added later is covered without
-  # opting in. The key set, and why each key is in it, is the vitest side's:
-  # .gaia/cli/src/util/git-maintenance-env.ts. Both CI's shard legs and
-  # run-bats-parallel.sh reach bats only through this line, so this one site
-  # covers them. A test that needs git's own resolution sets GIT_CONFIG_COUNT=0
-  # for that one call.
-  GIT_CONFIG_COUNT=4 \
-    GIT_CONFIG_KEY_0=gc.auto GIT_CONFIG_VALUE_0=0 \
-    GIT_CONFIG_KEY_1=maintenance.auto GIT_CONFIG_VALUE_1=false \
-    GIT_CONFIG_KEY_2=gc.autoDetach GIT_CONFIG_VALUE_2=false \
-    GIT_CONFIG_KEY_3=maintenance.autoDetach GIT_CONFIG_VALUE_3=false \
+  # opting in. Why each key is in the list is the vitest side's:
+  # .gaia/cli/src/util/git-maintenance-env.ts. The list itself, and the
+  # append-after-ambient shape, are .gaia/scripts/bats5.sh's, held equal to it
+  # by bats-shards.bats. Both CI's shard legs and run-bats-parallel.sh reach
+  # bats only through this block, so this one site covers them. A test that
+  # needs git's own resolution sets GIT_CONFIG_COUNT=0 for that one call.
+  (
+    n="${GIT_CONFIG_COUNT:-0}"
+    for kv in gc.auto=0 maintenance.auto=false gc.autoDetach=false maintenance.autoDetach=false; do
+      export "GIT_CONFIG_KEY_$n=${kv%%=*}" "GIT_CONFIG_VALUE_$n=${kv#*=}"
+      n=$((n + 1))
+    done
+    export GIT_CONFIG_COUNT="$n"
     bats ${argv[@]+"${argv[@]}"}
+  )
 }
 
 main() {

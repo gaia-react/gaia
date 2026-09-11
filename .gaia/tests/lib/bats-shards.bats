@@ -246,7 +246,7 @@ misc"
   [ "$output" = "$expected" ]
   grep -qF -- 'sandbox' <<<"$output" && return 1
   grep -qF -- 'concurrency' <<<"$output" && return 1
-  return 0
+  true
 }
 
 @test "S5: hooks-1 is exactly the pinned singleton" {
@@ -756,7 +756,9 @@ seed_anchor_tree() {
 # an explicit maintenance.auto=true only the environment's maintenance.auto
 # entry suppresses the spawn, so the subject arm reds when that key leaves run's
 # gates and stays green when gc.auto does; gc.auto matters only on git predating
-# the maintenance task set, which CI does not run.
+# the maintenance task set, which CI does not run. So S17 pins maintenance.auto
+# alone, and S18 holds the rest: it keeps run's gating block equal to
+# bats5.sh's, whose own suite pins every pair.
 #
 # AT_TEST stands in for bats' test keyword and is swapped in on the way out,
 # for the reason write_trivial_bats gives.
@@ -796,15 +798,50 @@ AT_TEST "subject" {
 FIXTURE
 }
 
-# A9 fixture: zeroes run's gate count on the copy, so the suites it runs get
-# git's own maintenance resolution. What this proves is that S17's subject arm
-# can red, not merely that the gates are spelled out in the script.
+# The gating block in file $1, indentation stripped: every line from the
+# ambient-count read through the count export, so the key list and the
+# append-after-ambient shape are compared together. Prints nothing unless the
+# block opens exactly once, so a second copy, or a block rewritten to overwrite
+# the ambient entries, reads as no block rather than as whichever matched.
+gate_block() {
+  [ "$(grep -c '^ *n="${GIT_CONFIG_COUNT:-0}"$' "$1")" -eq 1 ] || return 0
+  sed -n '/^ *n="${GIT_CONFIG_COUNT:-0}"$/,/^ *export GIT_CONFIG_COUNT="$n"$/p' "$1" |
+    sed 's/^ *//'
+}
+
+# Exit 0 when sharder $1 and bats5 $2 carry the same non-empty gating block.
+check_gate_parity() {
+  local ours theirs
+  ours="$(gate_block "$1")"
+  theirs="$(gate_block "$2")"
+  [ -n "$ours" ] || return 1
+  [ -n "$theirs" ] || return 1
+  [ "$ours" = "$theirs" ]
+}
+
+# A9 fixture: empties run's gate list on the copy, so the count it exports is
+# the ambient one and the suites it runs get git's own maintenance resolution.
+# What this proves is that S17's subject arm can red, not merely that the gates
+# are spelled out in the script.
 doctor_ungated_run() {
   local dest
   dest="$(copy_sharder a9-ungated-run.sh)"
-  grep -qx '  GIT_CONFIG_COUNT=4 \\' "$dest" || return 1
-  sed 's/^  GIT_CONFIG_COUNT=4 \\$/  GIT_CONFIG_COUNT=0 \\/' "$dest" >"$dest.new"
+  [ -n "$(gate_block "$dest")" ] || return 1
+  sed 's/^\( *for kv in\) .*\(; do\)$/\1\2/' "$dest" >"$dest.new"
   mv "$dest.new" "$dest"
+  grep -qxF '    for kv in; do' "$dest" || return 1
+  printf '%s\n' "$dest"
+}
+
+# A10 fixture: drops one gate from run's list on the copy, the drift S18
+# exists to catch. gc.autoDetach is one of the keys S17 cannot see go missing.
+doctor_dropped_gate() {
+  local dest
+  dest="$(copy_sharder a10-dropped-gate.sh)"
+  grep -qF ' gc.autoDetach=false ' "$dest" || return 1
+  sed 's/ gc\.autoDetach=false / /' "$dest" >"$dest.new"
+  mv "$dest.new" "$dest"
+  grep -qF ' gc.autoDetach=false ' "$dest" && return 1
   printf '%s\n' "$dest"
 }
 
@@ -836,6 +873,18 @@ doctor_ungated_run() {
   [ "$status" -eq 1 ]
   grep -qE '^ok [0-9]+ control$' <<<"$output"
   grep -qE '^not ok [0-9]+ subject$' <<<"$output"
+}
+
+@test "S18: run's maintenance gating block matches bats5.sh's" {
+  run check_gate_parity "$SCRIPT" "$BATS_TEST_DIRNAME/../../scripts/bats5.sh"
+  [ "$status" -eq 0 ]
+}
+
+@test "A10: a gate dropped from run's list reds S18's parity check" {
+  local copy
+  copy="$(doctor_dropped_gate)"
+  run check_gate_parity "$copy" "$BATS_TEST_DIRNAME/../../scripts/bats5.sh"
+  [ "$status" -eq 1 ]
 }
 
 # S13's allowlist: a tracked .bats file that no shard resolves, paired with
