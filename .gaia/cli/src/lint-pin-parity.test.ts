@@ -20,8 +20,8 @@
  * fix what the newly-arrived rules surface.
  *
  * The preset pin fixes the preset's own DIRECT plugin set. The parity block
- * covers it together with the tools whose own version reaches lint output;
- * `LINT_OUTPUT_TOOLS` below owns that criterion and states what it leaves
+ * covers it together with every other package both manifests declare;
+ * `MANIFEST_PARITY_EXEMPT` below owns that criterion and states what it leaves
  * uncovered.
  *
  * What it asserts is that the two manifests DECLARE the same version, never that
@@ -117,37 +117,58 @@ import {resolveRepoRootFromImportMeta} from './util/repo-root-fixture.js';
 
 const LINT_PACKAGE = '@gaia-react/lint';
 
-// The criterion: a tool each manifest declares by hand whose own version reaches
-// lint OUTPUT. `eslint` carries the core rule implementations and
+// The criterion: a package BOTH manifests declare by hand whose own version
+// reaches lint OUTPUT. `eslint` carries the core rule implementations and
 // `eslint:recommended`. `prettier` reaches lint output one hop further out, since
 // both workspaces spread the preset's `prettier` config, which runs
 // `eslint-plugin-prettier`, and that plugin re-surfaces Prettier's own formatting
 // decisions as `prettier/prettier` errors; a formatting change between two
 // Prettier versions is therefore a change in what one workspace considers an
-// error and the other does not.
+// error and the other does not. `typescript` is loaded by the parser on every
+// lint run and its checker feeds every typed rule, and a declaration package
+// both workspaces compile (`@types/node`, and the types `vite` and `vitest`
+// carry) is part of the program those typed rules read, so a version gap there
+// is a gap in what a rule like `sonarjs/deprecation` reports.
 //
-// A named set rather than the naming convention `RULE_PACKAGE_PATTERN` uses
-// below, because no naming family separates a tool that reaches lint output from
-// the ones declared beside it: a pattern here would either miss `prettier` or
-// match every devDependency.
+// Selected as the INTERSECTION of the two manifests' `devDependencies` rather
+// than as a named set, on the argument `RULE_PACKAGE_PATTERN` below makes for its
+// own selector: a list makes the DEFAULT silence, so a package that starts
+// meeting the criterion is unguarded until someone edits the list. A pattern
+// would not do here, because no naming family separates a tool that reaches lint
+// output from the ones declared beside it; the intersection needs none, since it
+// matches only what both manifests state. A shared package that should NOT be
+// compared is named in this map with its reason, and that is the only way out.
 //
-// The honest limit, in two directions, neither hypothetical. A tool that starts
-// reaching lint output later is silent until someone edits this set, which is the
-// default-silence the pattern below exists to avoid. And the parity shape needs a
-// value on BOTH sides, so a lint-output-reaching package only one manifest
-// declares is out of reach of the shape rather than out of scope of the
-// criterion: `prettier-plugin-tailwindcss` is exactly that, a direct dependency
-// here that root supplies through its `publicHoistPattern` instead, and
-// `prettier.config.mjs` in this workspace already records it as unguarded.
-// Widening both is a decision about the criterion rather than a missing entry, so
-// it is tracked (#1755) rather than taken here. Under-covering is the safe
-// direction: the alternative is comparing a version one side never states.
-const LINT_OUTPUT_TOOLS = ['eslint', 'prettier'] as const;
+// Kept apart from `PARITY_EXEMPT` because the two select from different
+// populations: that map's hygiene test reads the lockfiles' shared rule-bearing
+// set, which no package here belongs to. The contract is the same: absent means
+// guarded, the reason is data so a stale entry explains itself in the failure
+// message, and a hygiene test reds when an entry stops naming a package both
+// manifests declare.
+//
+// The honest limit: a package only one manifest declares has no second value to
+// compare, so it is outside this selector by shape. `prettier-plugin-tailwindcss`
+// is the live case, a direct dependency here that root supplies through its
+// `publicHoistPattern` instead. The lockfile block below guards it, reading the
+// version each workspace actually resolves rather than one a manifest states.
+const MANIFEST_PARITY_EXEMPT: Record<string, string> = {
+  esbuild:
+    'reaches lint output in neither workspace and a TypeScript program only in root, by one declaration file through vite types, so no rule .gaia/cli runs reads its version',
+  tsx: 'a script runner with no path to lint output or to either TypeScript program, so a version difference changes no rule',
+};
 
-// Every subject the manifest guard asserts parity on. The preset pin and the
-// tools take the same two assertions over different names, so they share one
-// block; what differs between them is the repair, and the docblock owns that.
-const DECLARED_PIN_SUBJECTS = [LINT_PACKAGE, ...LINT_OUTPUT_TOOLS] as const;
+// The subjects whose ABSENCE from one manifest is the interesting event, pinned
+// for presence only. The intersection cannot see a departure: a package leaving
+// one manifest leaves the intersection with it, and its comparison disappears
+// rather than failing. Coverage still comes from the intersection, so a shared
+// package missing from this list is compared all the same; the lockfile block
+// below pins `typescript-eslint` by name for the same reason.
+const REQUIRED_SHARED_PINS = [
+  LINT_PACKAGE,
+  'eslint',
+  'prettier',
+  'typescript',
+] as const;
 
 // Which packages earn resolution parity, expressed as the npm naming convention
 // for an ESLint rule provider rather than as a list of names. A list is the
@@ -161,7 +182,8 @@ const DECLARED_PIN_SUBJECTS = [LINT_PACKAGE, ...LINT_OUTPUT_TOOLS] as const;
 // Each arm matches something today (asserted, so a broken arm cannot pass
 // vacuously): a scoped provider (`@stylistic/eslint-plugin`,
 // `@typescript-eslint/eslint-plugin`), an unscoped one (`eslint-plugin-unicorn`,
-// `eslint-config-prettier`), the `eslint-import-resolver-` family, the bare
+// `eslint-config-prettier`), the `eslint-import-resolver-` family, the
+// `prettier-plugin-` family (`prettier-plugin-tailwindcss`), the bare
 // `typescript-eslint` meta-package, which follows no convention because it is the
 // flat-config entry point rather than a plugin, and the bare
 // `eslint-module-utils`. `eslint-config-*` is in deliberately: a shared config
@@ -177,6 +199,17 @@ const DECLARED_PIN_SUBJECTS = [LINT_PACKAGE, ...LINT_OUTPUT_TOOLS] as const;
 // themselves by a stable npm naming family, so the convention-over-list argument
 // that justifies the arms above justifies these.
 //
+// The `prettier-plugin-` arm stands on the same ground from one step further
+// out. A Prettier plugin provides no ESLint rule, but its output reaches lint
+// output anyway: `eslint-plugin-prettier` re-surfaces every formatting decision
+// as a `prettier/prettier` error, so a plugin version difference is a difference
+// in what each workspace considers an error. It is also the one route to a
+// plugin root never declares: `prettier-plugin-tailwindcss` is a direct
+// dependency of `.gaia/cli` and reaches root only through `@gaia-react/lint`, so
+// the manifest block above cannot compare it and the lockfiles can. The scoped
+// spelling (`@scope/prettier-plugin-*`) is outside the arm: neither workspace
+// resolves one, and an arm with nothing to match would pass vacuously.
+//
 // `eslint-module-utils` is a bare name because it is one package under no naming
 // family, which is the same ground `typescript-eslint` beside it stands on. The
 // honest limit: a bare name covers the package rather than the class, so another
@@ -190,7 +223,7 @@ const DECLARED_PIN_SUBJECTS = [LINT_PACKAGE, ...LINT_OUTPUT_TOOLS] as const;
 // `typescript-eslint` meta-package depends on the parser and the plugin at its
 // own exact version, so the parser cannot float away from a guarded meta-package.
 const RULE_PACKAGE_PATTERN =
-  /^(?:@[^/]+\/eslint-(?:plugin|config)|eslint-(?:plugin|config|import-resolver)-|typescript-eslint$|eslint-module-utils$)/;
+  /^(?:@[^/]+\/eslint-(?:plugin|config)|eslint-(?:plugin|config|import-resolver)-|prettier-plugin-|typescript-eslint$|eslint-module-utils$)/;
 
 // The escape hatch, and the ONLY one: a package named here is not compared **by
 // version**, and its entry must say why. Absent from this map means guarded,
@@ -242,9 +275,8 @@ const PARITY_EXEMPT: Record<string, string> = {
   // `eslint-import-resolver-node` by conventional name. So enabling a rule that
   // resolves specifiers through `eslint-module-utils` starts routing resolution
   // through the resolver entry's subject as well, and neither exemption survives
-  // it. Reading the
-  // resolver entry's own `import-x` condition as its whole trigger is the trap:
-  // that condition never fires in this scenario.
+  // it. Reading the resolver entry's own `import-x` condition as its whole
+  // trigger is the trap: that condition never fires in this scenario.
   //
   // Presence parity still binds both, which is the half neither exemption
   // relaxes: each is inside the selector, so if its subject starts reaching rule
@@ -288,17 +320,17 @@ const SHARED_FLOOR = 20;
 
 // Read from `devDependencies` alone rather than searching every section: a lint
 // preset, and the tools that execute what it configures, belong nowhere else, so
-// a pin that turns up in `dependencies` is itself the defect and should fail the
-// declares-test rather than satisfy it quietly.
-const readPin = (
-  manifestPath: string,
-  packageName: string
-): string | undefined => {
+// a pin that turns up in `dependencies` is itself the defect. For an anchor in
+// `REQUIRED_SHARED_PINS` it fails the declares-test; any other package moving
+// sections leaves the intersection, which is the departure that list names.
+const readDevelopmentDependencies = (
+  manifestPath: string
+): Record<string, string> => {
   const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
     devDependencies?: Record<string, string>;
   };
 
-  return manifest.devDependencies?.[packageName];
+  return manifest.devDependencies ?? {};
 };
 
 // Narrow js-yaml's `unknown` before reading a key off it. Local rather than
@@ -528,29 +560,57 @@ const exemptionAtoms = (list: unknown[]): unknown[] => {
 
 describe('declared pin parity', () => {
   const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
-  const rootManifest = path.join(repoRoot, 'package.json');
-  const cliManifest = path.join(repoRoot, '.gaia', 'cli', 'package.json');
+  const rootPins = readDevelopmentDependencies(
+    path.join(repoRoot, 'package.json')
+  );
+  const cliPins = readDevelopmentDependencies(
+    path.join(repoRoot, '.gaia', 'cli', 'package.json')
+  );
+
+  const shared = Object.keys(rootPins)
+    .filter((name) => Object.hasOwn(cliPins, name))
+    .toSorted((left, right) => left.localeCompare(right));
+
+  const guarded = shared.filter(
+    (name) => !Object.hasOwn(MANIFEST_PARITY_EXEMPT, name)
+  );
+
+  const pinsOf = (
+    pins: Record<string, string>
+  ): Record<string, string | undefined> =>
+    Object.fromEntries(guarded.map((name) => [name, pins[name]]));
 
   // Both sides must be present. Absent this, a rename or a dropped entry would
-  // leave the parity test below comparing `undefined` to `undefined`, and it
-  // would pass vacuously on a workspace that had stopped declaring the subject
-  // at all.
-  test.each(DECLARED_PIN_SUBJECTS)(
+  // take the subject out of the intersection, and the comparison below would
+  // pass over a workspace that had stopped declaring it at all.
+  test.each(REQUIRED_SHARED_PINS)(
     'both manifests declare %s in devDependencies',
     (subject) => {
-      expect(readPin(rootManifest, subject)).toBeDefined();
-      expect(readPin(cliManifest, subject)).toBeDefined();
+      expect(rootPins[subject]).toBeDefined();
+      expect(cliPins[subject]).toBeDefined();
     }
   );
 
-  test.each(DECLARED_PIN_SUBJECTS)(
-    '.gaia/cli/package.json pins the same %s version as package.json',
-    (subject) => {
-      expect(readPin(cliManifest, subject)).toBe(
-        readPin(rootManifest, subject)
-      );
-    }
-  );
+  // Asserted over ENTRIES so a stale exemption's own reason lands in the failure
+  // output, the same shape as the lockfile block's hygiene test.
+  test('every manifest parity exemption still names a package both manifests declare', () => {
+    expect(
+      Object.fromEntries(
+        Object.entries(MANIFEST_PARITY_EXEMPT).filter(
+          ([name]) => !shared.includes(name)
+        )
+      )
+    ).toStrictEqual({});
+  });
+
+  // One record rather than one test per package, so a multi-package drift
+  // reports every offender with both versions at once. The anchors are asserted
+  // into the compared set first: presence alone would let an anchor be exempted
+  // out of the comparison with every test here still green.
+  test('.gaia/cli/package.json pins the same version as package.json for every shared devDependency', () => {
+    expect(guarded).toEqual(expect.arrayContaining([...REQUIRED_SHARED_PINS]));
+    expect(pinsOf(cliPins)).toStrictEqual(pinsOf(rootPins));
+  });
 });
 
 describe('rule-package resolution parity', () => {
@@ -628,6 +688,9 @@ describe('rule-package resolution parity', () => {
       shared.some((name) => name.startsWith('eslint-import-resolver-'))
     ).toBe(true);
     expect(shared.includes('eslint-import-resolver-typescript')).toBe(true);
+    expect(shared.some((name) => name.startsWith('prettier-plugin-'))).toBe(
+      true
+    );
     expect(shared.includes('typescript-eslint')).toBe(true);
     expect(shared.includes('eslint-module-utils')).toBe(true);
   });
