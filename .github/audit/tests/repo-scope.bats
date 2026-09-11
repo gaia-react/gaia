@@ -164,6 +164,29 @@ in_dir() {
   [ "$status" -eq 0 ]
 }
 
+@test "--repo value the shell expands: home (enforce, fail closed)" {
+  add_widget_remote "$HOME_REPO"
+  run in_home 'gh pr merge 5 --repo {acme/widget,}'
+  [ "$status" -ne 0 ]
+  run in_home 'gh pr merge 5 --repo acme/{widget,}'
+  [ "$status" -ne 0 ]
+  run in_home 'gh pr merge 5 --repo acme/widge?'
+  [ "$status" -ne 0 ]
+  run in_home 'gh pr merge 5 --repo ~/widget'
+  [ "$status" -ne 0 ]
+}
+
+@test "a leading cd target is published for the caller, and cleared when there is none" {
+  add_worktree
+  run bash -c 'cd "$1" && . "$2" && cmd_targets_foreign_repo "cd '"'"'$3'"'"' && git commit -m x"; printf "%s" "$GAIA_REPO_SCOPE_LEAD_CD"' _ "$HOME_REPO" "$LIB" "$WT"
+  [ "$output" = "$WT" ]
+  run bash -c 'cd "$1" && . "$2" && GAIA_REPO_SCOPE_LEAD_CD=stale && cmd_targets_foreign_repo "git commit -m x"; printf "%s" "$GAIA_REPO_SCOPE_LEAD_CD"' _ "$HOME_REPO" "$LIB"
+  [ -z "$output" ]
+  # A -C target belongs to its own segment, never to the command as a whole.
+  run bash -c 'cd "$1" && . "$2" && cmd_targets_foreign_repo "git -C $3 status && git commit -m x"; printf "%s" "$GAIA_REPO_SCOPE_LEAD_CD"' _ "$HOME_REPO" "$LIB" "$WT"
+  [ -z "$output" ]
+}
+
 @test "--repo value still carrying a quote after one layer is stripped: home (enforce, fail closed)" {
   add_widget_remote "$HOME_REPO"
   run in_home 'gh pr merge 5 --repo "acme/other x"'

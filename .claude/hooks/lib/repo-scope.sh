@@ -74,10 +74,19 @@ _gaia_repo_scope_load_main_root() {
   type gaia_resolve_common_dir >/dev/null 2>&1
 }
 
+# Set by cmd_targets_foreign_repo to the directory a leading `cd` moves the
+# command into, resolved the way the verdict resolved it, and empty when the
+# command has no leading `cd` or names its directory with `-C` instead. A home
+# verdict on a `cd` into a linked worktree means "this repository" but not
+# "this checkout", so a caller that reads per-checkout state (the branch)
+# reads it there rather than from its own working directory.
+GAIA_REPO_SCOPE_LEAD_CD=""
+
 cmd_targets_foreign_repo() {
   local cmd="$1"
-  local target_dir ghrepo name remotes a b
+  local target_dir ghrepo name remotes nl a b lead=0
 
+  GAIA_REPO_SCOPE_LEAD_CD=""
   git rev-parse --show-toplevel >/dev/null 2>&1 || return 1
 
   # 1. Explicit `gh ... -R owner/repo` / `--repo owner/repo` (space OR `=`
@@ -98,9 +107,12 @@ cmd_targets_foreign_repo() {
   ghrepo=$(printf '%s' "$cmd" | sed -nE 's/.*(-R|--repo)[[:space:]=]+([^[:space:]]+).*/\2/p' | head -1)
   if [ -n "$ghrepo" ]; then
     ghrepo=$(_gaia_repo_scope_unquote "$ghrepo")
-    # A quote, escape or expansion left over is a value the shell rewrites
-    # before gh sees it, so what gh names is unknown.
-    case "$ghrepo" in *[\"\'\\\$\`]*) return 1 ;; esac
+    # Only the characters a [HOST/]OWNER/REPO or a URL spelling of one holds.
+    # Anything else (a quote left over, an escape, `$`, a backtick, a brace,
+    # a glob, a tilde) is a value the shell may rewrite before gh sees it, so
+    # what gh names is unknown. An allowlist, because each blocklist of those
+    # left the next expansion out.
+    case "$ghrepo" in *[![:alnum:]._:/-]*) return 1 ;; esac
     # gh refuses a value with no owner, so it names no repository to exempt.
     case "$ghrepo" in */*) ;; *) return 1 ;; esac
     name=$(_gaia_repo_scope_repo_name "$ghrepo")
@@ -109,7 +121,10 @@ cmd_targets_foreign_repo() {
       | while read -r _ url; do _gaia_repo_scope_repo_name "$url"; echo; done)
     # No remote names the home repo, so there is nothing to call foreign.
     [ -n "$remotes" ] || return 1
-    grep -qxF -- "$name" <<<"$remotes" && return 1
+    # A shell match rather than grep: a matcher that fails to run would read
+    # as "no match" and exempt the command.
+    nl=$'\n'
+    case "$nl$remotes$nl" in *"$nl$name$nl"*) return 1 ;; esac
     return 0
   fi
 
@@ -125,6 +140,7 @@ cmd_targets_foreign_repo() {
   # 3. Leading `cd <path> &&|;` before the git/gh invocation.
   if [ -z "$target_dir" ]; then
     target_dir=$(printf '%s' "$cmd" | sed -nE 's/^[[:space:]]*cd[[:space:]]+([^[:space:]]+)[[:space:]]*(\&\&|;).*/\1/p' | head -1)
+    lead=1
   fi
 
   # No redirection found: the command runs against the home repo.
@@ -142,6 +158,8 @@ cmd_targets_foreign_repo() {
     '~') target_dir="$HOME" ;;
     '~/'*) target_dir="$HOME/${target_dir:2}" ;;
   esac
+  # shellcheck disable=SC2034 # read by block-main-destructive-git.sh, never here
+  [ "$lead" = 1 ] && GAIA_REPO_SCOPE_LEAD_CD="$target_dir"
 
   # Same repository means same git common directory, which a main checkout
   # shares with every linked worktree of it. The resolver's identity answer

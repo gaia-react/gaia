@@ -127,6 +127,40 @@ run_hook() {
   assert_allowed_by_json
 }
 
+# A linked worktree is this repository, so a `cd` into one is enforced, and
+# enforced against the branch the command runs on rather than the session's.
+run_hook_from() {
+  local json
+  json=$(jq -n --arg c "$1" --arg d "$2" '{tool_name: "Bash", cwd: $d, tool_input: {command: $c}}')
+  invoke_hook_in "$2" "$json" "$HOOK_ABS"
+}
+
+@test "cd into a linked worktree on its own branch, from a main checkout on main: commit and push are allowed" {
+  on_main
+  local wt="$BATS_TEST_TMPDIR/wt"
+  git -C "$REPO" worktree add --quiet -b wt-branch "$wt"
+  run_hook_from "cd '$wt' && git commit -m x" "$REPO"
+  assert_allowed_by_json
+  run_hook_from "cd '$wt' && git push origin wt-branch" "$REPO"
+  assert_allowed_by_json
+}
+
+@test "cd into the main checkout on main, from a linked worktree: commit is denied" {
+  on_main
+  local wt="$BATS_TEST_TMPDIR/wt"
+  git -C "$REPO" worktree add --quiet -b wt-branch "$wt"
+  run_hook_from "cd '$REPO' && git commit -m x" "$wt"
+  assert_denied_by_json
+}
+
+@test "a -C into a linked worktree does not lend its branch to a later bare commit on main" {
+  on_main
+  local wt="$BATS_TEST_TMPDIR/wt"
+  git -C "$REPO" worktree add --quiet -b wt-branch "$wt"
+  run_hook_from "git -C $wt status && git commit -m x" "$REPO"
+  assert_denied_by_json
+}
+
 @test "a non-git command is ignored" {
   on_main
   run_hook 'pnpm run build'

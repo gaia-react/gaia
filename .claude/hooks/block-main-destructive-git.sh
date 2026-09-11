@@ -366,9 +366,15 @@ while IFS= read -r seg; do
   esac
   [ "$foreign_repo" -eq 1 ] && continue
 
+  # The checkout this segment acts on: its own `-C`, else the leading `cd` the
+  # repo-scope verdict resolved, else this hook's working directory. A `cd`
+  # into a linked worktree is this repository but another checkout, with its
+  # own branch.
+  branch_dir="${git_cwd:-${GAIA_REPO_SCOPE_LEAD_CD:-}}"
+
   # 1. Block commits while HEAD is on main or master.
   if [[ "$norm" =~ git[[:space:]]+commit([[:space:]]|$) ]]; then
-    branch=$(current_branch "$git_cwd")
+    branch=$(current_branch "$branch_dir")
     if [[ "$branch" == "main" || "$branch" == "master" ]]; then
       deny "Commits to '$branch' are forbidden (wiki/concepts/Git Workflow.md). Create a feature branch first."
     fi
@@ -386,7 +392,7 @@ while IFS= read -r seg; do
   #    names main/master/HEAD as the source. Closes the "forgot to switch
   #    branches" footgun.
   if [[ "$norm" =~ git[[:space:]]+push ]]; then
-    branch=$(current_branch "$git_cwd")
+    branch=$(current_branch "$branch_dir")
     on_main=0
     [[ "$branch" == "main" || "$branch" == "master" ]] && on_main=1
 
