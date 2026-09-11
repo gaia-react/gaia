@@ -3778,13 +3778,19 @@ arming_baseline_false() {
 w16_declared_table() {
   cat <<'TABLE'
 wiki/.state.json|concurrency hooks-1 hooks-2 hooks-3 hooks-4 lib misc scripts-1 scripts-2 scripts-3
-wiki/concepts/Audit Disposition and Debt Fix.md|lib scripts-1 scripts-2 scripts-3
-wiki/concepts/Claude Hooks.md|lib scripts-1 scripts-2 scripts-3
-wiki/concepts/Code Review Audit Agent.md|lib
-wiki/concepts/GAIA Audit.md|lib
-wiki/concepts/PR Merge Workflow.md|hooks-2 hooks-3 hooks-4 lib misc scripts-1 scripts-2 scripts-3
-wiki/concepts/Policy-Memory Loop.md|lib
-wiki/concepts/Task Orchestration.md|lib scripts-1 scripts-2 scripts-3
+wiki/concepts/Audit Disposition and Debt Fix.md|hooks-1 hooks-2 hooks-3 hooks-4 lib scripts-1 scripts-2 scripts-3
+wiki/concepts/Claude Hooks.md|hooks-1 hooks-2 hooks-3 hooks-4 lib scripts-1 scripts-2 scripts-3
+wiki/concepts/Code Review Audit Agent.md|hooks-1 hooks-2 hooks-3 hooks-4 lib
+wiki/concepts/GAIA Audit.md|hooks-1 hooks-2 hooks-3 hooks-4 lib
+wiki/concepts/Issue Claim.md|lib
+wiki/concepts/Local Working State.md|hooks-1 hooks-2 hooks-3 hooks-4 lib
+wiki/concepts/PR Merge Workflow.md|hooks-1 hooks-2 hooks-3 hooks-4 lib misc scripts-1 scripts-2 scripts-3
+wiki/concepts/Policy-Memory Loop.md|hooks-1 hooks-2 hooks-3 hooks-4 lib
+wiki/concepts/Registering a Code Audit Team Member.md|lib
+wiki/concepts/Task Orchestration.md|hooks-1 hooks-2 hooks-3 hooks-4 lib scripts-1 scripts-2 scripts-3
+wiki/decisions/Code Audit Team.md|hooks-1 hooks-2 hooks-3 hooks-4 lib
+wiki/decisions/Shell Guard Fixture Discrimination.md|lib scripts-1 scripts-2 scripts-3
+wiki/index.md|hooks-1 hooks-2 hooks-3 hooks-4 lib misc scripts-1 scripts-2 scripts-3
 TABLE
 }
 
