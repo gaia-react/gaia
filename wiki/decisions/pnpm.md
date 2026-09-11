@@ -47,7 +47,7 @@ Every dependency-CVE surface in this repository (the `/update-deps` override aud
 
 ## Override audit
 
-Overrides drift. The `update-deps` skill's Phase 0 toggles each `overrides` key out, re-resolves with `pnpm dedupe`, then runs two tests, `pnpm ls` for peer-dep errors and `pnpm audit` for reintroduced advisories, and removes only an override that regresses neither. Phase 6 re-checks retained overrides after a wave updates surrounding packages. The re-resolution primitive is `pnpm dedupe`, not `pnpm install`: an overrides-only change does not re-resolve under `pnpm install`, which short-circuits with "Already up to date" and leaves the floor unapplied. See [[pnpm-overrides]].
+Overrides drift. The `update-deps` skill audits every `overrides` key before a run and re-audits the retained ones after the waves land; its Phase 0 section in `.claude/skills/update-deps/SKILL.md` owns the procedure and the verdicts it reports. The re-resolution primitive it uses is `pnpm dedupe`, not `pnpm install`: an overrides-only change does not re-resolve under `pnpm install`, which short-circuits with "Already up to date" and leaves the floor unapplied. See [[pnpm-overrides]].
 
 ## Release-age-aware version selection
 
