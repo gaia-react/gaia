@@ -3225,15 +3225,23 @@ PY
 # W16's recomputation from the tree, one `<page>|<armed legs>` row per page of
 # the class PyYAML reads from <workflow>. See arming_scan_py for the rules.
 #
-# Two kinds of file in the input set name narrowable pages without reading them,
-# and both are counted rather than special-cased. This suite is a discovered
-# `lib` suite, and w16_declared_table names every page, so it is a namer of all
-# and the namer-of-all rule drops it. Of the committed fixtures under
+# Files in the input set that name narrowable pages without reading them are
+# counted rather than special-cased. This suite is a discovered `lib` suite, and
+# w16_declared_table names every page, so it is a namer of all and the
+# namer-of-all rule drops it. Of the committed fixtures under
 # .gaia/tests/lib/fixtures/spec-078/, which sit in a fixtures/ subtree beside
 # the `lib` suites, only codefilter-token-out-of-set.yml names wiki/.state.json,
 # so it attributes to `lib`; paths-filter-pin-bumped.yml names no narrowable
-# page. Neither can move an armed set: `lib` holds this suite, which rule 5
-# arms on every page anyway.
+# page. None of those can move an armed set: `lib` holds this suite, which rule
+# 5 arms on every page anyway.
+#
+# .gaia/tests/hooks/fixtures/audit-routing-before.tsv does move armed sets. It
+# is a frozen path inventory in the fixtures/ subtree beside the `hooks-*`
+# suites, listing most of wiki/ and reading none of it. While it lists every
+# class page the namer-of-all rule drops it; once the class holds a page it does
+# not list, it is a namer of every class page it does list, and each of those
+# rows gains every `hooks-*` leg with no hooks suite reading the page. That
+# over-arms, the safe direction, and #1994 tracks it.
 arming_recompute() {
   local sharder="$1" root="$2" workflow="$3" conc_dir="$4" conc_leg="$5" stats="${6:-}"
   local class legs data
