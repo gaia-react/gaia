@@ -205,8 +205,8 @@ resolve_seam() {
 # block string, and a non-comment line at or below the `code:` key's indent
 # ends the list unless it is itself a `- ` entry, which is YAML's compact
 # sequence form. Only a `- ` at the first entry's indent opens an entry: one
-# indented deeper is a continuation YAML folds into the entry above's plain
-# scalar, however much it looks like an entry of its own. An entry is a quoted
+# indented deeper is either a continuation YAML folds into a plain entry above
+# or a malformed list, never an entry of its own. An entry is a quoted
 # or plain string, or a change-type mapping (`deleted: 'x'`) whose one inline
 # value is the path. A multi-line entry, a `- ` line off the list's own indent,
 # a flow collection, or an escape this reader does not decode is a failure
