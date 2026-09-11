@@ -722,6 +722,7 @@ pnpm -C "$tree/.gaia/cli" install --frozen-lockfile'
     'pnpm add zod' \
     'pnpm -C "$tree/.gaia/cli" install' \
     'pnpm --dir=.gaia/cli install' \
+    "pnpm -C 'my dir' install" \
     'pnpm --filter app --silent install' \
     'npm ci' \
     'npm install' \
@@ -734,6 +735,7 @@ pnpm -C "$tree/.gaia/cli" install --frozen-lockfile'
     'pnpm install>/dev/null' \
     'pnpm install|tee log' \
     'pnpm install&' \
+    'pnpm run build && pnpm install' \
     'out=$(npm ci)' \
     'out="$(npm ci)"' \
     'out=`npm ci`'; do
@@ -770,6 +772,13 @@ pnpm -C "$tree/.gaia/cli" install --frozen-lockfile'
     'pnpm run install' \
     'npm --prefix app run ci' \
     'pnpm --filter app run install' \
+    'pnpm --silent run install' \
+    'pnpm --silent exec install' \
+    'npm -s run ci' \
+    'npm -s run-script ci' \
+    'pnpm -r run add' \
+    'pnpm -r exec install' \
+    'pnpm --silent dlx add' \
     'log "try pnpm add zod to fix"' \
     'log "install failed -- run npm ci there first"' \
     'echo "hint: yarn add the missing peer (or npm i it)"'; do
@@ -777,6 +786,19 @@ pnpm -C "$tree/.gaia/cli" install --frozen-lockfile'
   $line"
   done
   [ -z "$hit" ] || { printf 'read as reach:%s\n' "$hit"; return 1; }
+}
+
+# The bound is asserted as behaviour rather than timed. What it prevents is
+# quadratic time under glibc only, and macOS libc stays linear on the unbounded
+# repeat too, so a timing test here cannot fail on a Mac. A verb one flag past
+# the ceiling going unread is what an unbounded repeat cannot do on any libc.
+@test "the install arm reads flags up to its ceiling before the verb, and none past it" {
+  local ceiling="$_GAIA_CAPCHECK_INSTALL_FLAG_CEILING" line="pnpm" n
+  [[ "$ceiling" =~ ^[1-9][0-9]*$ ]] || { echo "no flag ceiling in the lib: '$ceiling'"; return 1; }
+  for ((n = 0; n < ceiling; n++)); do line="$line -x"; done
+  reads_as_reach "$line install" || { echo "not read as reach: $line install"; return 1; }
+  reads_as_reach "$line -x install" && { echo "read as reach: $line -x install"; return 1; }
+  true
 }
 
 # ========== UAT-017, the shared oracle, sourced not forked ==========
