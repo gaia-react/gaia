@@ -448,24 +448,68 @@ printf "%s" "$changed" | grep -q needle'
   [ "$status" -eq 0 ]
 }
 
-# The depth the script arm now carries from one line to the next is a plain
-# character count, so a `$( ... )` written as DATA rather than as code counts
-# too: a grep pattern, a printf template, a message. Balanced, it opens and
-# closes on the same line and the carry returns to zero, so a real arming below
-# it still arms and the reader below THAT is still reported. That is the half
-# that has to keep working for the carry to be worth having, and it is the half
-# a repair to the carry could break silently, since breaking it reports nothing
-# rather than reporting too much.
-#
-# The unbalanced case is the accepted blind spot the gate header states: the
-# carry never returns to zero, the arming below reads as scoped, and the file
-# goes unreported. It is deliberately NOT pinned by a fixture here. A test
-# asserting a false negative reds on the day somebody repairs it, which is
-# backwards for a suite whose job is to red when the gate goes quiet.
+# The script arm's cross-line carry, and the fixture that fails when it is
+# driven to zero. The mirror of the workflow arm's split-across-lines test: a
+# substitution opened on one line scopes the arming on the next, so the file
+# stays unarmed and the reader below the closing paren is not reported. Most
+# positive carries in the tree are exactly this shape, which is why the repair
+# for a quoted `$(` lowers the carry rather than dropping it.
+@test "a substitution-scoped set -o pipefail does not arm the file: split across lines" {
+  fixture_repo
+  fixture_script_unarmed 'changed=$(
+  set -o pipefail
+  git diff --name-only -z | tr "\0" "\n"
+)
+printf "%s" "$changed" | grep -q needle'
+  run_linter
+  [ "$status" -eq 0 ]
+}
+
+# The depth both arms carry is a character count, so a `$( ... )` written as
+# DATA rather than as code counts too: a grep pattern, a printf template, a
+# message. Balanced, it opens and closes on the same line and the carry returns
+# to zero, so a real arming below it still arms and the reader below THAT is
+# still reported. What this pins is the same-line `)` decrement; it stays green
+# with the cross-line carry removed, so the split-substitution fixture above is
+# what pins the carry.
 @test "a balanced dollar-paren inside a quoted argument leaves the file armed" {
   fixture_repo
   fixture_file check.sh '#!/usr/bin/env bash
 grep -nF "x=$(cmd)" file.txt
+set -euo pipefail
+printf "%s" "$a" | grep -q needle'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- "check.sh:4:" <<<"$output"
+}
+
+# Unbalanced, a quoted `$(` never spends its `)` on its own line. Counted raw it
+# leaves the carry above zero, the file-level arming below reads as scoped, and
+# every reader in the file goes unreported with nothing said. The carry takes
+# the lower of the raw count and a count with single-quoted spans removed, and
+# the removed span is where the literal sits.
+@test "an unbalanced dollar-paren inside a single-quoted argument leaves the file armed" {
+  fixture_repo
+  fixture_file check.sh '#!/usr/bin/env bash
+grep -nF '"'"'x=$('"'"' file.txt
+set -euo pipefail
+printf "%s" "$a" | grep -q needle'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- "check.sh:4:" <<<"$output"
+}
+
+# Why the carry is the LOWER of the two counts rather than the stripped count
+# alone. A strip cannot tell a quote opening a span from an apostrophe inside a
+# double-quoted string, so here it pairs the apostrophe with the first quote of
+# the later single-quoted word, deletes the `)` between them, and leaves an
+# unbalanced `$(` on a line whose raw count is balanced. A stripped-only carry
+# reads the arming below as scoped and reports nothing; this reds if the
+# minimum is ever simplified to the strip.
+@test "a single-quote strip that would raise the carry does not disarm the file" {
+  fixture_repo
+  fixture_file check.sh '#!/usr/bin/env bash
+x=$(echo "it'"'"'s"); y='"'"'z'"'"'
 set -euo pipefail
 printf "%s" "$a" | grep -q needle'
   run_linter
@@ -854,6 +898,32 @@ changed=$(
 printf "%s" "$changed" | grep -q needle'
   run_linter
   [ "$status" -eq 0 ]
+}
+
+# The workflow arm carries its depth across a block the same way the script arm
+# carries it across a file, through the same carry, so the script arm's
+# unbalanced-literal and strip-raise fixtures are mirrored here: a repair
+# reaching one arm and not the other reopens the asymmetry the shared carry
+# exists to prevent. The balanced fixture is not mirrored, because what it pins
+# is the same-line `)` decrement in depth_at, which both arms share.
+@test "an unbalanced dollar-paren inside a single-quoted argument leaves the block armed" {
+  fixture_repo
+  fixture_workflow 'grep -nF '"'"'x=$('"'"' file.txt
+set -euo pipefail
+printf "%s" "$a" | grep -q needle'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- ".github/workflows/probe.yml:8:" <<<"$output"
+}
+
+@test "a single-quote strip that would raise the carry does not disarm the block" {
+  fixture_repo
+  fixture_workflow 'x=$(echo "it'"'"'s"); y='"'"'z'"'"'
+set -euo pipefail
+printf "%s" "$a" | grep -q needle'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- ".github/workflows/probe.yml:8:" <<<"$output"
 }
 
 # The mirror image of the substitution-scoped tests above, and the reason the
