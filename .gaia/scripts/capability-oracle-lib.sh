@@ -2368,6 +2368,16 @@ _GAIA_CAPCHECK_DOTCMD='(^|[;|&(`{}]|(^|[[:space:]])(if|then|else|do|elif|while|u
 # of one that does.
 _GAIA_CAPCHECK_PATHCMD='(^|[;|&`]|\$\(|[[:space:]]then[[:space:]]|[[:space:]]else[[:space:]]|[[:space:]]do[[:space:]]|[[:space:]]elif[[:space:]]|[[:space:]]![[:space:]])[[:space:]]*'
 
+# How many flags the install arm reads between a manager and its verb. Why a
+# ceiling at all: under glibc an unbounded flag repeat is retried from every
+# manager start position when no verb ends the run, so REJECTING a line of many
+# manager-and-flag pairs costs quadratic time, and this walk gates every merge.
+# A matching line is cheap either way, since the first position matches, and
+# macOS libc stays linear either way. The value is headroom over the longest
+# flag run on either capability surface: the whole-tree --print-reach of both
+# checks reads the same under this ceiling as under an unbounded repeat.
+_GAIA_CAPCHECK_INSTALL_FLAG_CEILING=6
+
 # _gaia_capcheck_detect_network <text>: curl, wget, any gh invocation, the
 # remote-touching git verbs, and a package-manager install. Deliberately not
 # matched: `command -v gh` and friends, where `gh` is an argument rather than the
@@ -2383,13 +2393,23 @@ _GAIA_CAPCHECK_PATHCMD='(^|[;|&`]|\$\(|[[:space:]]then[[:space:]]|[[:space:]]els
 # does not see: a bare `yarn`, which installs with no verb; `pnpm dlx`, `pnpm
 # fetch`, `pnpm audit`, `npx`, and the update verbs, which reach the registry
 # too; a manager reached through a path or an expansion
-# (`./node_modules/.bin/pnpm install`); and a flag followed by two operands, or
-# by one quoted operand holding a space, since the second word stands where the
-# verb has to. What it over-reads: the word after a boolean flag is taken as
-# that flag's operand, so `pnpm --silent run install` reads the script name as
-# the verb. The flag repeat is unbounded, so a line of thousands of
-# manager-and-flag pairs matches in quadratic time under glibc. The positive
-# and negative tables in check-hook-capabilities.bats pin what it does decide.
+# (`./node_modules/.bin/pnpm install`); a flag followed by two operands, or by
+# one double-quoted operand holding a space, since the second word stands where
+# the verb has to; and more flags than _GAIA_CAPCHECK_INSTALL_FLAG_CEILING. A
+# single-quoted operand is blanked by the literal strip before this runs, so
+# `pnpm -C 'my dir' install` reaches it with an operand-less flag and is read.
+# The positive and negative tables in check-hook-capabilities.bats pin what it
+# does decide.
+#
+# Each flag's operand is optional, so after a boolean flag the slot takes the
+# next word whatever it is. When that word is a subcommand, the script or
+# binary name behind it stands where the verb has to: `pnpm --silent run
+# install` runs a script called install. So a match whose span holds `run`,
+# `exec`, `dlx`, or `run-script` as a word is refused. The refusal judges the
+# leftmost match only, which leaves two misses: a refused span followed on the
+# same logical line by a real install (`pnpm -s run install && pnpm install`),
+# and a flag whose real operand is one of those words (`pnpm --filter run
+# install`).
 #
 # The verb arms end at a shell separator as well as at whitespace, because a
 # verb is the last word of its command as often as not: `(cd "$d" && pnpm
@@ -2402,12 +2422,14 @@ _gaia_capcheck_detect_network() {
   local p1="${_GAIA_CAPCHECK_CMD}(curl|wget)([[:space:]]|\$)"
   local p2="${_GAIA_CAPCHECK_CMD}gh[[:space:]]+[a-z]"
   local p3="${_GAIA_CAPCHECK_CMD}git([[:space:]]+-[Cc][[:space:]]+[^[:space:]]+)?[[:space:]]+(fetch|push|clone|pull|ls-remote)${end}"
-  local p4="${_GAIA_CAPCHECK_CMD}(pnpm|npm|yarn)([[:space:]]+-[^[:space:]]+([[:space:]]+[^-[:space:]][^[:space:]]*)?)*[[:space:]]+(install|i|add|ci)${end}"
+  local p4="${_GAIA_CAPCHECK_CMD}(pnpm|npm|yarn)([[:space:]]+-[^[:space:]]+([[:space:]]+[^-[:space:]][^[:space:]]*)?){0,${_GAIA_CAPCHECK_INSTALL_FLAG_CEILING}}[[:space:]]+(install|i|add|ci)${end}"
+  local subcmd='[[:space:]](run|exec|dlx|run-script)[[:space:]]'
   [[ $t =~ $p1 ]] && return 0
   [[ $t =~ $p2 ]] && return 0
   [[ $t =~ $p3 ]] && return 0
-  [[ $t =~ $p4 ]] && return 0
-  return 1
+  [[ $t =~ $p4 ]] || return 1
+  [[ ${BASH_REMATCH[0]} =~ $subcmd ]] && return 1
+  return 0
 }
 
 # _gaia_capcheck_detect_github_write <text>: an authenticated mutating gh verb.
