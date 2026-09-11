@@ -252,7 +252,7 @@ Each `.advisories` key is one advisory ID; `audit-baseline.txt` is the set of ad
      | "\(.id) \(.severity) patched: \(.patched_versions)"' /tmp/audit-baseline.json
    ```
 
-   A value that is not an exact version (a range, or a `$` reference) cannot be matched this way. Skip it here, and name it in the report beside any baseline advisory on its target package, so the maintainer judges it.
+   A value that is not an exact version (a range, or a `$` reference) cannot be matched this way. Skip it here and note it as **unchecked**, naming beside it any baseline advisory on its target package, so the maintainer judges it.
 3. A match means the floor is **stale**. Re-floor it, the Bump remedy in `wiki/dependencies/pnpm-audit.md`: set the value to the lowest published version the advisory's `patched_versions` admits above the current pin, taking the highest such version when several advisories match. When `patched_versions` admits nothing (`<0.0.0`, no patched release exists), leave the pin and note it as **stale (no patch)**.
 
 Once every stale key is re-floored, run `pnpm dedupe` once to apply the new pins, then recapture both baseline files with the command above, so the toggle loop diffs against the corrected tree. If that `pnpm dedupe` exits non-zero, restore the old pins, note each as **stale (re-floor failed)**, and continue with the original baseline. Note each applied key as **re-floored**, with its old pin, its new pin, and the advisory IDs. A re-floored key still runs through the toggle loop below like every other key, so its report line carries both verdicts (re-floored, then retained or removed); a re-floored key the loop removes means the patched release now arrives without the pin.
@@ -273,7 +273,7 @@ Then, for each override key, one at a time, leaving every other `pnpm-workspace.
    - Peer-dep errors **or** any newly introduced advisory → the override is load-bearing. Restore the key. Note as **retained** (record which test failed, and the advisory ID + package if it was the security-floor test).
    - Neither regressed → the override is obsolete. Leave it removed. Note as **removed**.
 
-The security-floor test is **severity-agnostic on purpose**: an override is a deliberate maintainer artifact, so any advisory it was silencing, at any severity, is reason to keep it. This is intentionally stricter than the high/critical surfacing floor in `.claude/rules/dep-audit.md`: deciding whether to *delete a maintainer's pin* warrants more caution than deciding whether to *surface* an advisory for review. A maintainer who wants a pin gone removes it by hand. The stale-floor classification is severity-agnostic for the same reason: a pin that no longer clears its own package's advisories is wrong at any severity.
+The security-floor test is **severity-agnostic on purpose**: an override is a deliberate maintainer artifact, so any advisory it was silencing, at any severity, is reason to keep it. This is intentionally stricter than the high/critical surfacing floor in the Noise scoping section of `wiki/dependencies/pnpm-audit.md`: deciding whether to *delete a maintainer's pin* warrants more caution than deciding whether to *surface* an advisory for review. A maintainer who wants a pin gone removes it by hand. The stale-floor classification is severity-agnostic for the same reason: a pin that no longer clears its own package's advisories is wrong at any severity.
 
 **After the toggle loop, assert the lockfile matches config.** Once every retained key is restored, the lockfile's top-level `overrides:` block must list exactly the keys present in the `overrides:` map in `pnpm-workspace.yaml`. Compare the two; on any drift (a config key missing from the lockfile block, or vice versa) the floor is unapplied, so run `pnpm dedupe` once more and re-run the quality gate. This assertion guarantees that every retained floor is applied, never silently disabled. It says nothing about whether a floor is current; the stale-floor classification before the toggle loop owns that. Note the tradeoff: `pnpm dedupe` re-optimizes the whole tree, so a single toggle can yield a wider lockfile diff than the one key it touched (it may also drop now-redundant transitives). That broader diff is expected, and correct, the alternative is an unapplied override.
 
@@ -397,7 +397,7 @@ Report back: updated packages, breaking changes applied, any skipped reason, qua
 
 ## Phase 6: Post-update override audit
 
-For every override that was **retained** in Phase 0, repeat the full Phase 0 audit (the stale-floor classification, then both the peer-dep and the security-floor check, re-capturing a fresh advisory baseline against the now-updated tree) now that surrounding packages have moved. A version that landed in Wave A or Wave B may have resolved the original peer-dep conflict or carried the patched transitive dependency that made a security-floor pin obsolete. The toggle test re-resolves with `pnpm dedupe`, never a bare `pnpm install`, exactly as in Phase 0. This is the last phase that mutates the `overrides:` map, so the lockfile settles here: close it with the same assertion Phase 0 runs, the lockfile's `overrides:` block must list exactly the keys in `pnpm-workspace.yaml`, repairing any drift with `pnpm dedupe` and re-running the quality gate. Run this as a **Haiku agent**.
+For every override that was **retained** in Phase 0, repeat the full Phase 0 audit (the stale-floor classification, then both the peer-dep and the security-floor check, re-capturing a fresh advisory baseline against the now-updated tree) now that surrounding packages have moved. A version that landed in Wave A or Wave B may have resolved the original peer-dep conflict or carried the patched transitive dependency that made a security-floor pin obsolete. The toggle test re-resolves with `pnpm dedupe`, never a bare `pnpm install`, exactly as in Phase 0. This is the last phase that mutates the `overrides:` map, so the lockfile settles here: close it with the same assertion Phase 0 runs, the lockfile's `overrides:` block must list exactly the keys in `pnpm-workspace.yaml`, repairing any drift with `pnpm dedupe` and re-running the quality gate. Run this as a **Haiku agent**: pass it the Phase 0 section above verbatim, restricted to the keys retained in Phase 0, and have it return the override audit results the Return value names. If it re-floors or removes any key, it re-runs the quality gate before returning, since no Wave agent gated that change.
 
 ## Phase 7: Final report
 
@@ -429,6 +429,10 @@ Print the report. Do not commit.
 ### Overrides audited
 - Removed: <key>, <reason>
 - Retained: <key>, <reason>
+- Re-floored: <key>, <old pin> to <new pin>, <advisory IDs>, then retained or removed
+- Stale (no patch): <key>, <pin>, <advisory IDs>
+- Stale (re-floor failed): <key>, <pin>, <advisory IDs>
+- Unchecked: <key>, <value>, <baseline advisories on its target package, or none>
 
 ### Skipped packages
 | Package | Reason |
@@ -454,7 +458,7 @@ git add -A
 git commit -F <commit-message-file>
 ```
 
-The commit **subject** must be `chore(deps): <concise summary of what moved>` (use `chore(deps-dev):` when every bump is a devDependency). That subject is load-bearing: it triggers the dep-bump bypass in the merge gate (`wiki/concepts/PR Merge Workflow.md`), so the PR is turnkey-mergeable without a code-audit-frontend marker. Routing the message through a file rather than `-m` keeps package-manager keywords from tripping shell-hook false positives. The Wave agents already ran the full quality gate, so nothing else is owed before committing.
+The commit **subject** must be `chore(deps): <concise summary of what moved>` (use `chore(deps-dev):` when every bump is a devDependency). That subject is load-bearing: it triggers the dep-bump bypass in the merge gate (`wiki/concepts/PR Merge Workflow.md`), so the PR is turnkey-mergeable without a code-audit-frontend marker. Routing the message through a file rather than `-m` keeps package-manager keywords from tripping shell-hook false positives. The Wave agents already ran the full quality gate over their changes, and Phase 6 re-ran it over any override it changed, so nothing else is owed before committing.
 
 Then branch on where the run started.
 
