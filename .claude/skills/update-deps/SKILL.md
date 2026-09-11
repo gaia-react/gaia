@@ -403,8 +403,8 @@ Run this as a **Haiku agent**. Its dispatch carries every Phase 6 duty, so pass 
 
 - **The recipe.** The Phase 0 section and the Quality gate subsection above verbatim, restricted to the keys retained in Phase 0, so every quality-gate run it owes runs those same commands.
 - **When to gate.** Run the quality gate once, after the lockfile assertion, whenever it re-floored or removed any key or repaired lockfile drift. No Wave agent gated that change. This replaces the drift-only trigger in the Phase 0 section.
-- **On a failed gate.** Restore every key it re-floored or removed to its Phase 0 value, run `pnpm dedupe` to apply the restore, and re-run the lockfile assertion. This is the counterpart of Wave A reverting its whole batch: one gate run cannot say which key broke it, so the restore takes them all. Report each restored removal as **retained (quality gate failed)** and each restored re-floor as **stale (re-floor failed)**.
-- **What to return.** The override audit results and the quality gate results the Return value names, including a failed gate and the restore that followed it, so the Phase 7 Quality gate section has the Phase 6 run to report.
+- **On a failed gate.** Restore every key it re-floored or removed to the value it held when this Phase 6 run began, run `pnpm dedupe` to apply the restore, and re-run the lockfile assertion. This is the counterpart of Wave A reverting its whole batch: one gate run cannot say which key broke it, so the restore takes them all. Report each restored removal as **retained (quality gate failed)** and each restored re-floor as **stale (re-floor failed)**. When it changed no key and the gate ran only for a drift repair, there is nothing to restore: report the failure for the maintainer to resolve.
+- **What to return.** The override audit results (removed / retained, each re-floored key, and each stale or unchecked key left for the maintainer) and the quality gate results, including a failed gate and whatever restore followed it, so the Phase 7 Quality gate section has the Phase 6 run to report.
 
 ## Phase 7: Final report
 
@@ -465,7 +465,7 @@ git add -A
 git commit -F <commit-message-file>
 ```
 
-The commit **subject** must be `chore(deps): <concise summary of what moved>` (use `chore(deps-dev):` when every bump is a devDependency). That subject is load-bearing: it triggers the dep-bump bypass in the merge gate (`wiki/concepts/PR Merge Workflow.md`), so the PR is turnkey-mergeable without a code-audit-frontend marker. Routing the message through a file rather than `-m` keeps package-manager keywords from tripping shell-hook false positives. The Wave agents already ran the full quality gate over their changes, and Phase 6 kept only the override changes that passed it, so nothing else is owed before committing.
+The commit **subject** must be `chore(deps): <concise summary of what moved>` (use `chore(deps-dev):` when every bump is a devDependency). That subject is load-bearing: it triggers the dep-bump bypass in the merge gate (`wiki/concepts/PR Merge Workflow.md`), so the PR is turnkey-mergeable without a code-audit-frontend marker. Routing the message through a file rather than `-m` keeps package-manager keywords from tripping shell-hook false positives. The Wave agents already ran the full quality gate over their changes, and Phase 6 kept only the override changes that passed it, so nothing else is owed before committing. A Phase 6 gate failure with nothing to restore is already in the report's Quality gate section for the maintainer.
 
 Then branch on where the run started.
 
