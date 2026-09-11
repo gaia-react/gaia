@@ -213,14 +213,20 @@
 # holds the carry above zero until some later line spends a `)`, so a genuine
 # file-level `set -euo pipefail` in between reads as scoped and every reader in
 # the file goes unreported. It stands on both arms alike, since both carry
-# through the one function. The single-quoted form is closed by the minimum
-# above and pinned by a fixture on each arm. What the strip does not reach stays
-# open on both: a literal `$(` in a trailing `#` comment (only a full-line
-# comment is skipped), in a heredoc body (a body is scanned as code, whatever
-# its delimiter's quoting), or escaped as `\$(` inside double quotes (a
-# backslash is not read), and an unbalanced quoted `$(` on the SAME line as the
-# arming, `grep -nF 'x=$(' f; set -euo pipefail`, because the arming test reads
-# the raw line. Each needs a shell tokenizer rather than a character count.
+# through the one function. The minimum closes the single-quoted form, and a
+# fixture on each arm pins it, only where the span opens and closes on one line
+# with no earlier stray quote on that line, because the strip reads one line at
+# a time and pairs quotes by position. Everything outside that stays open on
+# both arms, among it: a literal `$(` on a quote-free line inside a
+# single-quoted program spanning several lines (an awk or jq body); an
+# apostrophe inside double quotes ahead of the literal on the same line,
+# `echo "it's"; grep -nF 'x=$(' f`; a literal `$(` in a trailing `#` comment
+# (only a full-line comment is skipped), in a heredoc body (a body is scanned as
+# code, whatever its delimiter's quoting), or escaped as `\$(` inside double
+# quotes (a backslash is not read); and an unbalanced quoted `$(` on the SAME
+# line as the arming, `grep -nF 'x=$(' f; set -euo pipefail`, because the
+# arming test reads the raw line. Each needs the quote state a shell tokenizer
+# carries across lines, rather than a per-line character count.
 #
 # Neither shape changes what this tree reports, and the honest form of that is
 # a differential rather than an absence. Run the gate with the cross-line carry
