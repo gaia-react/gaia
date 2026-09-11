@@ -177,7 +177,8 @@ parse_git_globals() {
     kept+=("$t")
     i=$((i + 1))
   done
-  norm="${kept[*]}"
+  norm=""
+  [ "${#kept[@]}" -eq 0 ] || norm="${kept[*]}"
 }
 
 # --- main-checkout hop guard -------------------------------------------------
