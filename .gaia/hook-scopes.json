@@ -197,7 +197,7 @@
       "hook": ".claude/hooks/provision-worktree.sh",
       "scope": "per-tree",
       "state": ["path:.react-router/types"],
-      "why": "Provisions the linked worktree a session is working in, resolving that tree from the hook payload (EnterWorktree's own worktreePath, else the payload cwd) and confirming it with gaia_is_linked_worktree before acting. The one path it writes itself is that worktree's generated typed routes, a per-checkout gitignored directory with no registry entry. The shared-state symlinks are delegated to .gaia/scripts/link-worktree.sh, which reads the registry itself, so this hook names no .gaia/local path of its own."
+      "why": "Provisions the linked worktree a session is working in, resolving that tree from the hook payload (EnterWorktree's own worktreePath, else the payload cwd) and confirming it with gaia_is_linked_worktree before acting. What it writes itself is per-checkout, gitignored, and has no registry entry: that worktree's generated typed routes, and the node_modules its frozen-lockfile install populates in each pnpm workspace root that carries its own lockfile. The shared-state symlinks are delegated to .gaia/scripts/link-worktree.sh, which reads the registry itself, so this hook names no .gaia/local path of its own."
     },
     {
       "hook": ".claude/hooks/red-verify-commit-check.sh",

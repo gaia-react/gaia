@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Provision the linked worktree a session is working in: re-link the shared
-# state the registry declares, and regenerate the typed routes the worktree's
-# own branch needs.
+# state the registry declares, install the dependencies its own lockfiles
+# commit, and regenerate the typed routes the worktree's own branch needs.
 #
 # Provisioning is a property a worktree must HOLD, not an event that happened
 # once when it was created. A worktree whose symlinks were broken by hand, one
@@ -243,17 +243,26 @@ fi
 # left alone. A tree with a lockfile but no pnpm on PATH, or an install that
 # fails, keeps whatever dependencies it already had; either way typegen below
 # still runs.
-if [ -f "$tree/pnpm-lock.yaml" ]; then
+install_workspace() {
+  local dir="$1"
+  [ -f "$dir/pnpm-lock.yaml" ] || return 0
   if command -v pnpm >/dev/null 2>&1; then
-    if (cd "$tree" && pnpm install --frozen-lockfile) >/dev/null 2>&1; then
-      log "installed dependencies in $tree"
+    if (cd "$dir" && pnpm install --frozen-lockfile) >/dev/null 2>&1; then
+      log "installed dependencies in $dir"
     else
-      log "INSTALL FAILED for $tree (non-fatal): the tree keeps whatever dependencies it already had -- run 'pnpm install' there to see why; a package.json/pnpm-lock.yaml disagreement is refused here by design"
+      log "INSTALL FAILED for $dir (non-fatal): the tree keeps whatever dependencies it already had -- run 'pnpm install' there to see why; a package.json/pnpm-lock.yaml disagreement is refused here by design"
     fi
   else
-    log "no pnpm found on PATH -- dependency install skipped for $tree"
+    log "no pnpm found on PATH -- dependency install skipped for $dir"
   fi
-fi
+}
+
+install_workspace "$tree"
+# .gaia/cli declares its own pnpm workspace root, so the install above never
+# populates its node_modules, and anything resolving a CLI dependency from
+# there fails in a fresh worktree while passing in the main checkout. Where
+# that directory carries no lockfile of its own the call is a no-op.
+install_workspace "$tree/.gaia/cli"
 
 # ---------- regenerate the typed routes ----------
 # `.react-router/types` is gitignored, so it exists only where it was generated
