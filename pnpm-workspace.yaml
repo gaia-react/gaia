@@ -90,25 +90,26 @@ strictPeerDependencies: false
 # whose removal no longer reintroduces an advisory, so none of these is
 # load-bearing beyond the advisory it names.
 #
-#   - js-yaml@^4.0.0 -> 4.3.1: GHSA-5p4m-2wfm-xmqj, quadratic CPU consumption
-#     in !!omap resolution. Reached through cosmiconfig (^4.1.0) and
-#     @eslint/eslintrc (^4.3.0). Scoped to the 4.x line so that a 3.x consumer,
-#     if one ever enters the tree, is not silently carried across a major.
-#     4.3.2 exists but was published 2026-08-26, inside the seven-day
-#     minimumReleaseAge window above; 4.3.1 clears the advisory and installs
-#     today.
-#   - fast-uri -> 3.1.5: GHSA-7p8r-x3mc-p8w7, host confusion via a backslash
-#     authority introducer, plus the two earlier host-confusion advisories it
-#     supersedes. Reached through ajv (^3.0.1) in the eslint toolchain.
-#   - morgan -> 1.11.0: GHSA-4vj7-5mj6-jm8m, log forging via an unneutralized
-#     :remote-user. Reached through @react-router/serve (^1.10.1), which makes
-#     this the one entry here sitting on a runtime path. 1.12.0 exists but was
-#     published 2026-08-28 and is inside the release-age window; 1.11.0 clears
-#     the advisory.
+#   - js-yaml@^4.0.0 -> 4.3.2: GHSA-2883-xcg3-v3hh, CPU exhaustion through empty
+#     merge sources that maxTotalMergeKeys does not count; also clears
+#     GHSA-5p4m-2wfm-xmqj (quadratic CPU in !!omap resolution). Reached through
+#     cosmiconfig (^4.1.0) and @eslint/eslintrc (^4.3.0). Scoped to the 4.x line
+#     so that a 3.x consumer, if one ever enters the tree, is not silently
+#     carried across a major.
+#   - fast-uri -> 3.1.7: GHSA-5jgf-p345-68v8, GHSA-f65p-4m7j-42xc,
+#     GHSA-fph4-wmhf-6fwf and GHSA-jqff-g426-hqxp, host confusion and SSRF in
+#     URI normalization, each fixed in 3.1.6; also clears GHSA-7p8r-x3mc-p8w7
+#     and the host-confusion advisories it supersedes. 3.1.7 is the newest 3.x
+#     release past the release-age window. Reached through ajv (^3.0.1) in the
+#     eslint toolchain.
+#   - morgan -> 1.12.0: GHSA-jxfw-x594-9x9m, log forging via unescaped Unicode
+#     line separators; also clears GHSA-4vj7-5mj6-jm8m (log forging via an
+#     unneutralized :remote-user). Reached through @react-router/serve
+#     (^1.10.1), which makes this the one entry here sitting on a runtime path.
 overrides:
-  'js-yaml@^4.0.0': 4.3.1
-  fast-uri: 3.1.5
-  morgan: 1.11.0
+  'js-yaml@^4.0.0': 4.3.2
+  fast-uri: 3.1.7
+  morgan: 1.12.0
 
 # Build-script approval. pnpm 11 replaces the onlyBuiltDependencies allowlist
 # with the allowBuilds map (true = the package may run install/build scripts).
