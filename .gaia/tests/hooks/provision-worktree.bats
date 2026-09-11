@@ -105,6 +105,16 @@ add_lockfile() {
   git -C "$MAIN" commit -q -m "add lockfile"
 }
 
+# add_cli_lockfile: the same placeholder, committed at the .gaia/cli workspace
+# root, which pnpm treats as its own workspace and the root install never
+# reaches.
+add_cli_lockfile() {
+  mkdir -p "$MAIN/.gaia/cli"
+  echo lockfile > "$MAIN/.gaia/cli/pnpm-lock.yaml"
+  git -C "$MAIN" add -A
+  git -C "$MAIN" commit -q -m "add cli lockfile"
+}
+
 # stub_pnpm [exit_code]: a pnpm stand-in prepended onto PATH, standing in for
 # the real package manager the same way stub_typegen stands in for
 # react-router. Every invocation appends the cwd it ran in to PNPM_LOG, so the
@@ -726,6 +736,54 @@ SH
   [ "$status" -eq 0 ]
   grep -qF -- "INSTALL FAILED for $WT" <<<"$output" || return 1
   [ -f "$WT/.react-router/types/.stamp" ]
+}
+
+# The CLI workspace is a second pnpm root with its own lockfile, so the root
+# install leaves its node_modules empty and every suite resolving a CLI
+# dependency from there reds in a fresh worktree.
+@test "the .gaia/cli workspace is installed on entry when it carries its own lockfile" {
+  make_main
+  add_lockfile
+  add_cli_lockfile
+  stub_pnpm
+  WT="$(add_worktree feat-install-cli)"
+
+  run bash "$HOOK_ABS" "$WT"
+  [ "$status" -eq 0 ]
+  [ "$(cat "$PNPM_LOG")" = "$(printf '%s\n%s' "$WT" "$WT/.gaia/cli")" ]
+}
+
+@test "a failed .gaia/cli install is logged against that workspace and is non-fatal" {
+  make_main
+  add_lockfile
+  add_cli_lockfile
+  stub_typegen
+  stub_pnpm 1
+  WT="$(add_worktree feat-install-cli-fail)"
+
+  run bash "$HOOK_ABS" "$WT"
+  [ "$status" -eq 0 ]
+  grep -qF -- "INSTALL FAILED for $WT/.gaia/cli" <<<"$output" || return 1
+  [ -f "$WT/.react-router/types/.stamp" ]
+}
+
+# The adopter shape: .gaia/cli ships its bundled binary but not its lockfile,
+# which is release-excluded, so the directory exists and the install must not.
+@test "a .gaia/cli directory with no lockfile of its own gets no install" {
+  make_main
+  add_lockfile
+  mkdir -p "$MAIN/.gaia/cli"
+  echo bundle > "$MAIN/.gaia/cli/gaia"
+  git -C "$MAIN" add -A
+  git -C "$MAIN" commit -q -m "add cli bundle"
+  stub_pnpm
+  WT="$(add_worktree feat-install-cli-adopter)"
+
+  run bash "$HOOK_ABS" "$WT"
+  [ "$status" -eq 0 ]
+  [ "$(cat "$PNPM_LOG")" = "$WT" ] || return 1
+  grep -qF -- "$WT/.gaia/cli" <<<"$output" && return 1
+  true
 }
 
 # The other half of test 8's pair: when the tree HAS its own CLI, it is used
