@@ -167,15 +167,32 @@
 # tree writes, and reading it as block-level arming would report every one of
 # those blocks. So the body-text test fires only at command-substitution depth
 # zero, tracked by counting `$(` against `)` across the block and clamped at
-# zero. The clamp is what makes a miscount safe rather than merely bounded: a
-# stray `)` (a `case` pattern, an arithmetic `))`) can only push the depth DOWN
-# toward zero, which reads a substitution-scoped `set` as block-level and
-# reports a block that was not armed. That direction costs a correct edit; the
-# other direction is the missed defect this gate exists to prevent.
+# zero. A miscount can go either way, and the two ways are not equally safe. A
+# stray `)` (a `case` pattern, an arithmetic `))`) pushes the depth DOWN, which
+# reads a substitution-scoped `set` as block-level and reports a block that was
+# not armed: that direction costs a correct edit, and the clamp keeps it from
+# going below zero. A `$(` that is data rather than code pushes the depth UP,
+# which reads a real arming as scoped and reports nothing: that is the missed
+# defect this gate exists to prevent, and the carry below is built against it.
 #
-# The script arm applies the same depth test to a FILE, and TWO shapes reach the
-# same accepted blind spot through it. Both are false negatives, the direction
-# this gate must not be wrong in, so neither is left implied by the other.
+# The depth a line hands the next one is the LOWER of two counts over that
+# line, both walked from the same carried-in depth: the raw line, and a copy
+# with each single-quoted span removed, from one quote to the next, where an
+# unterminated quote stays with everything after it. Single quotes are the
+# tractable case because shell allows no escape inside them, so a literal `$(`
+# in a single-quoted `grep -F` pattern drops out while a live `$(` inside double
+# quotes stays. The stripped count alone is not safe: a strip cannot tell a
+# quote that opens a span from an apostrophe inside a double-quoted string, so
+# `x=$(echo "it's"); y='z'` strips to an unbalanced `$(` on a line whose raw
+# count is balanced, and a stripped-only carry would read the next arming as
+# scoped. The minimum cannot rise above the raw count: the depth walk is
+# monotone in the depth it starts from, so from zero, by induction, every line
+# ends at or below where the raw count would end it, and the strip can remove a
+# false negative but never add one. The arming test itself reads the raw line.
+#
+# The script arm applies the same depth test to a FILE, and TWO shapes reach a
+# false negative through it, the direction this gate must not be wrong in, so
+# neither is left implied by the other.
 #
 # The first is a multi-line
 #
@@ -191,19 +208,19 @@
 # identical shape in a `run:` body already reads clean, so what changed is that
 # the two arms now agree about it.
 #
-# The second is an UNBALANCED literal `$(` sitting on an earlier non-comment
-# line, in a `grep -F` pattern or a `printf` template rather than in real code.
-# The carry is a plain character count, so it cannot tell a quoted one from a
-# live one, and the depth it hands the next line does not return to zero until
-# some later line spends a `)`: a genuine file-level `set -euo pipefail` in
-# between reads at depth above zero and does not arm, and every reader in that
-# file goes unreported. This one is NOT
-# inherited from the workflow arm by analogy, it is the same defect standing on
-# both arms, since that arm carries `subdepth` across a block the same way and
-# has since gaia-react/gaia#1936. Closing it needs the carry computed from a
-# copy of the line with single-quoted spans removed, in both arms, which is a
-# behaviour change on a live tree rather than a comment, so it is tracked
-# separately rather than folded in here.
+# The second is a literal `$(` that is DATA rather than code, sitting unbalanced
+# on an earlier non-comment line: a `grep -F` pattern, a `printf` template. It
+# holds the carry above zero until some later line spends a `)`, so a genuine
+# file-level `set -euo pipefail` in between reads as scoped and every reader in
+# the file goes unreported. It stands on both arms alike, since both carry
+# through the one function. The single-quoted form is closed by the minimum
+# above and pinned by a fixture on each arm. What the strip does not reach stays
+# open on both: a literal `$(` in a trailing `#` comment (only a full-line
+# comment is skipped), in a heredoc body (a body is scanned as code, whatever
+# its delimiter's quoting), or escaped as `\$(` inside double quotes (a
+# backslash is not read), and an unbalanced quoted `$(` on the SAME line as the
+# arming, `grep -nF 'x=$(' f; set -euo pipefail`, because the arming test reads
+# the raw line. Each needs a shell tokenizer rather than a character count.
 #
 # Neither shape changes what this tree reports, and the honest form of that is
 # a differential rather than an absence. Run the gate with the cross-line carry
@@ -211,19 +228,16 @@
 # so nothing in this tree has an arming status that turns on the carry. That is
 # the claim; it is cheap to re-check and it is the one that matters.
 #
-# What is NOT true, and was asserted here once: that no line ends at a positive
-# carry. Hundreds do, across dozens of tracked files, wherever a quoted `$(`
-# sits in a pattern or a message. They are harmless for two reasons this file
-# should name rather than imply. Every one of them is spent by a later `)`, so
-# no tracked file reaches end of file still carrying depth. And a file like
-# .claude/hooks/block-secrets-write.sh arms far above its literal block, so
-# `armed` is already 1 by the time the carry rises and nothing downstream can
-# lower it. Neither reason is a property of the carry being safe in general,
-# which is exactly why the differential above is what the claim rests on.
+# Lines that end at a positive carry are common, and they are not this defect:
+# nearly all are genuine multi-line substitutions, which the carry is right to
+# scope, and every one is spent by a later `)`, so no tracked file reaches end
+# of file still carrying depth. A repair that drove the carry to zero
+# everywhere would stop scoping those to correct a handful of literals, which
+# is why the strip only ever lowers the carry, and why a fixture pins the script
+# arm's cross-line carry directly.
 #
-# The balanced case, a whole `$( ... )` inside one quoted argument, is NOT
-# affected and is pinned by a fixture, because it is the half that has to keep
-# working for the carry to be worth having at all.
+# The balanced case, a whole `$( ... )` inside one quoted argument, returns to
+# zero on its own line under either count and is pinned by a fixture.
 #
 # `defaults.run.shell`, at job or workflow level, would move the resolved shell
 # for every step under it. This gate REFUSES rather than resolves it: a
@@ -422,9 +436,10 @@ function carries_pipe(l,   tail) {
 # The command-substitution nesting depth at character `upto` of `s`, starting
 # from the carried-in `subdepth` and clamped at zero. Clamped, not merely
 # bounded: the header states why that direction is the safe one. Both arms carry
-# `subdepth` from one line to the next, and each resets it where its own unit of
-# arming begins: the workflow arm at every run: key, the shell arm never, since
-# that arm is handed one file per awk invocation and the file IS the unit.
+# `subdepth` from one line to the next through carry_at below, and each resets
+# it where its own unit of arming begins: the workflow arm at every run: key,
+# the shell arm never, since that arm is handed one file per awk invocation and
+# the file IS the unit.
 function depth_at(s, upto,   i, d, c) {
   d = subdepth
   for (i = 1; i < upto; i++) {
@@ -433,6 +448,34 @@ function depth_at(s, upto,   i, d, c) {
     else if (c == ")" && d > 0) d--
   }
   return d
+}
+
+# The line with every single-quoted span removed, a quote through the next
+# quote. An unterminated quote stays, with everything after it, so that tail
+# counts as raw. Double-quoted text is left alone, since a `$( )` inside double
+# quotes is live.
+function strip_squoted(s,   out, q, rest, e) {
+  out = ""
+  while ((q = index(s, "\047")) > 0) {
+    rest = substr(s, q + 1)
+    e = index(rest, "\047")
+    if (e == 0) break
+    out = out substr(s, 1, q - 1)
+    s = substr(rest, e + 1)
+  }
+  return out s
+}
+
+# The depth this line hands the next one: the LOWER of the raw count and the
+# count over the stripped copy, both walked from the same carried-in depth. The
+# stripped count alone can rise above the raw one; the header states why only
+# the lower of the two keeps the carry from disarming anything the raw count
+# arms.
+function carry_at(l,   raw, t, cut) {
+  raw = depth_at(l, length(l) + 1)
+  t = strip_squoted(l)
+  cut = depth_at(t, length(t) + 1)
+  return (cut < raw) ? cut : raw
 }
 
 # Whether this line arms pipefail for the file or block AROUND it, which is the
@@ -488,7 +531,7 @@ readonly SHELL_AWK='
   # reason: a substitution opened on one line and closed on another scopes every
   # arming between them.
   if (!armed && arms_at_depth_zero(line)) armed = 1
-  subdepth = depth_at(line, length(line) + 1)
+  subdepth = carry_at(line)
 
   # A source edge. The load token is recognized anywhere a command may start,
   # not at line start only, because the bracketed load this tree uses for an
@@ -666,7 +709,7 @@ function body(l, n,   i, k) {
   # would drift the depth against real code.
   if (bare ~ /^#/) return
   if (!armed && arms_at_depth_zero(l)) armed = 1
-  subdepth = depth_at(l, length(l) + 1)
+  subdepth = carry_at(l)
   k = scan_pipeline(l)
   for (i = 1; i <= k; i++) { pend++; pline[pend] = n; ptext[pend] = hitbuf[i] }
   prev_pipe = carries_pipe(l)
