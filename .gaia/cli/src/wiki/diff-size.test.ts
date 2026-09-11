@@ -3,6 +3,7 @@ import {execFileSync} from 'node:child_process';
 import {mkdirSync, mkdtempSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
+import {gitZArgs} from '../util/git-z.js';
 import {
   NON_ASCII_STEM,
   QUOTED_FIRST_BYTE,
@@ -307,6 +308,8 @@ describe('wiki diff-size', () => {
       sandbox.writeFile(`wiki/${NON_ASCII_STEM}.md`, fillLines(40, 'line'));
       sandbox.commitAll('base');
 
+      // gaia-lint-ignore git-z-chokepoint: runs without -z on purpose, since
+      // the quoted output is what proves the fixture can fail the assertion.
       const listed = execFileSync(
         'git',
         ['ls-tree', '-r', '-l', 'HEAD', '--', 'wiki/'],
@@ -345,7 +348,7 @@ describe('wiki diff-size', () => {
 
       const numstat = execFileSync(
         'git',
-        ['diff', '--numstat', '-z', 'HEAD~1...HEAD', '--', 'wiki/'],
+        gitZArgs('diff', ['--numstat', 'HEAD~1...HEAD', '--', 'wiki/']),
         {cwd: sandbox.root, encoding: 'utf8'}
       );
 

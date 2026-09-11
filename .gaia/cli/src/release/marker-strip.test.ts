@@ -61,6 +61,7 @@ import {describe, expect, test} from 'vitest';
 import {execFileSync} from 'node:child_process';
 import {readFileSync} from 'node:fs';
 import path from 'node:path';
+import {gitZArgs, splitZStream} from '../util/git-z.js';
 import {resolveRepoRootFromImportMeta} from '../util/repo-root-fixture.js';
 import {stripMarkerBlocks} from './marker-strip.js';
 import {loadConfig} from './scrub.js';
@@ -144,15 +145,12 @@ const END_MARKER = '# gaia:maintainer-only:end';
  * list is the arming condition, and a model added to a suite the list does not
  * name is precisely the drift this guard exists to catch.
  */
-const MODEL_SUITES = execFileSync(
-  'git',
-  ['-C', REPO_ROOT, 'ls-files', '*.bats'],
-  {
+const MODEL_SUITES = splitZStream(
+  execFileSync('git', gitZArgs('ls-files', ['*.bats']), {
+    cwd: REPO_ROOT,
     encoding: 'utf8',
-  }
+  })
 )
-  .split('\n')
-  .filter((suite) => suite !== '')
   .map((suite) => ({
     suite,
     text: readFileSync(path.join(REPO_ROOT, suite), 'utf8'),
