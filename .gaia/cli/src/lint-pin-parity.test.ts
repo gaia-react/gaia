@@ -14,15 +14,10 @@
  * pin, so CI said nothing while `.gaia/cli/src` was checked by a rule set the
  * rest of the repo had left behind.
  *
- * Repair, when the parity test below goes red: set
- * `.gaia/cli/package.json`'s `@gaia-react/lint` to the root `package.json`
- * version, then `pnpm -C .gaia/cli install` and `pnpm -C .gaia/cli lint`, and
- * fix what the newly-arrived rules surface.
- *
- * The preset pin fixes the preset's own DIRECT plugin set. The parity block
- * covers it together with every other package both manifests declare;
- * `MANIFEST_PARITY_EXEMPT` below owns that criterion and states what it leaves
- * uncovered.
+ * The preset pin fixes the preset's own DIRECT plugin set. The declared pin
+ * parity block covers it together with every other package both manifests
+ * declare in `devDependencies`; `MANIFEST_PARITY_EXEMPT` below owns that
+ * criterion and states what it leaves uncovered.
  *
  * What it asserts is that the two manifests DECLARE the same version, never that
  * the two versions behave the same. The stronger claim is measurably false, and
@@ -37,9 +32,11 @@
  * the declared value is what keeps the guard from depending on which script
  * happens to exist.
  *
- * Repair, when a tool's parity test goes red: converge `.gaia/cli` UP to the root
- * version, never root down. The direction is not symmetric, because the older
- * formatter is the one that destroys content.
+ * Repair, when the declared pin parity test goes red: set each package the
+ * failure names in `.gaia/cli/package.json` to the root `package.json` version,
+ * never root down, then `pnpm -C .gaia/cli install` and `pnpm -C .gaia/cli
+ * lint`, and fix what the newly-arrived rules surface. The direction is not
+ * symmetric, because the older formatter is the one that destroys content.
  *
  * A whole class of rule-bearing package cannot be guarded on the manifest pin at
  * all, so the second describe block below asserts on the lockfiles instead.
@@ -151,6 +148,12 @@ const LINT_PACKAGE = '@gaia-react/lint';
 // is the live case, a direct dependency here that root supplies through its
 // `publicHoistPattern` instead. The lockfile block below guards it, reading the
 // version each workspace actually resolves rather than one a manifest states.
+//
+// A package both manifests declare under `dependencies` is outside the selector
+// by choice, even where it meets the criterion. `zod` is the live case: a runtime dependency the build bundles into
+// the binary adopters receive, so its version is a release decision rather than
+// a lint one, and a guard forcing the two to converge would make that decision
+// from a lint test.
 const MANIFEST_PARITY_EXEMPT: Record<string, string> = {
   esbuild:
     'reaches lint output in neither workspace and a TypeScript program only in root, by one declaration file through vite types, so no rule .gaia/cli runs reads its version',
@@ -912,7 +915,7 @@ describe('supply-chain hardening parity', () => {
   // still applies to anything. pnpm honours glob patterns in these lists, so a
   // single `'*'` entry exempts every package while leaving both scalars at their
   // floor, both lists in containment, and all of the above green: the hardening
-  // is fully disabled with nothing red. Measured rather than reasoned — with `'*'`
+  // is fully disabled with nothing red. Measured rather than reasoned: with `'*'`
   // present, widening the window to 20160 installs clean, where the same widening
   // without it fails naming 19 entries.
   //
