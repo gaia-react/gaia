@@ -227,6 +227,8 @@ describe('buildManifest', () => {
       [`wiki/${NON_ASCII_STEM}.md`]: '# nihongo\n',
     });
 
+    // gaia-lint-ignore git-z-chokepoint: runs without -z on purpose, since
+    // the quoted output is what proves the fixture can fail the assertion.
     const listed = execFileSync('git', ['ls-files'], {
       cwd: sandbox.root,
       encoding: 'utf8',

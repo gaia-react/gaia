@@ -4,6 +4,10 @@
 # its CI workflow YAML, and the fenced code blocks of its tracked markdown. Exit
 # 1 with a file:line report on any hit, exit 0 when clean. Run it directly from
 # the repo root: `bash .gaia/scripts/lint-git-path-quoting.sh`.
+#
+# TypeScript is not this script's surface. The CLI's git listing calls are
+# argv arrays rather than shell words, and .gaia/cli/src/git-z-chokepoint.test.ts
+# guards them instead, by holding every one to the `gitZArgs` spelling.
 # gaia:maintainer-only:start
 #
 # Enforced by the sibling bats suite
