@@ -370,6 +370,12 @@ while IFS= read -r seg; do
   # repo-scope verdict resolved, else this hook's working directory. A `cd`
   # into a linked worktree is this repository but another checkout, with its
   # own branch.
+  #
+  # Honest limit: the leading `cd` target stands for every segment, and a later
+  # `cd` does not replace it. From a main checkout on main,
+  # `cd <worktree> && git status && cd <main> && git commit` therefore reads
+  # the worktree's branch and allows a commit that lands on main
+  # (gaia-react/gaia#2014).
   branch_dir="${git_cwd:-${GAIA_REPO_SCOPE_LEAD_CD:-}}"
 
   # 1. Block commits while HEAD is on main or master.
