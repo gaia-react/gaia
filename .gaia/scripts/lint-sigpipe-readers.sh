@@ -192,7 +192,9 @@
 # BELOW the true depth, when an apostrophe inside a double-quoted word pairs
 # across a real open `$(`: an arming scoped to that substitution then reads as
 # file-level and the file over-reports, the direction that costs a correct
-# edit. The arming test itself reads the raw line.
+# edit. The arming test takes the same minimum at the arming position, over the
+# line's prefix up to it, so the same holds there: it arms at least wherever the
+# raw count arms, and the misalignment can only over-arm.
 #
 # The script arm applies the same depth test to a FILE, and TWO shapes reach a
 # false negative through it, the direction this gate must not be wrong in, so
@@ -220,20 +222,18 @@
 # through the one function. The minimum closes the single-quoted form, and a
 # fixture on each arm pins it, only where the span opens and closes on one line
 # with no earlier stray quote on that line, because the strip reads one line at
-# a time and pairs quotes by position. Everything outside that stays open on
-# both arms, among it: a literal `$(` on a quote-free line inside a
-# single-quoted program spanning several lines (an awk or jq body); an
-# apostrophe inside double quotes ahead of the literal on the same line,
-# `echo "it's"; grep -nF 'x=$(' f`; a literal `$(` in a trailing `#` comment
-# (only a full-line comment is skipped), in a heredoc body (a body is scanned as
-# code, whatever its delimiter's quoting), or escaped as `\$(` inside double
-# quotes (a backslash is not read); and an unbalanced quoted `$(` on the SAME
-# line as the arming, `grep -nF 'x=$(' f; set -euo pipefail`, because the
-# arming test reads the raw line. The multi-line program and the heredoc body
-# need state carried across lines; the others need a tokenizer's reading of one
-# line rather than a character count, and the same-line arming needs less than
-# that: the minimum the carry takes at end of line, taken at the arming
-# position instead.
+# a time and pairs quotes by position. That scope holds whether the literal sits
+# on an earlier line or on the arming's own line, `grep -nF 'x=$(' f; set -euo
+# pipefail`, because the arming test takes the same minimum at the arming
+# position. Everything outside that stays open on both arms, among it: a literal
+# `$(` on a quote-free line inside a single-quoted program spanning several
+# lines (an awk or jq body); an apostrophe inside double quotes ahead of the
+# literal on the same line, `echo "it's"; grep -nF 'x=$(' f`; a literal `$(` in
+# a trailing `#` comment (only a full-line comment is skipped), in a heredoc body
+# (a body is scanned as code, whatever its delimiter's quoting), or escaped as
+# `\$(` inside double quotes (a backslash is not read). The multi-line program
+# and the heredoc body need state carried across lines; the others need a
+# tokenizer's reading of one line rather than a character count.
 #
 # Neither shape changes what this tree reports, and the honest form of that is
 # a differential rather than an absence. Run the gate with the cross-line carry
@@ -505,12 +505,22 @@ function carry_at(l,   raw, t, cut) {
 # trailing boundary narrow enough to reject the leftmost occurrence outright:
 # the same boundary gaia-react/gaia#1941 had to widen. Walking every occurrence
 # is what makes the boundary and the depth test independent of each other.
-function arms_at_depth_zero(l,   s, off, pos) {
+#
+# Each occurrence arms when EITHER the raw prefix or the single-quote-stripped
+# prefix sits at depth zero, the same minimum carry_at takes at end of line,
+# taken at the arming position, so the stripped read can only add arming. The
+# stripped prefix INCLUDES the character at pos: the match begins at its leading
+# boundary character, which in the substitution-scoped x=$(set -o pipefail; ...)
+# idiom is the paren of its dollar-paren, and depth_at reads that paren only as
+# the lookahead after the dollar. Cutting one character earlier drops it and
+# reads the scoped arming as file-level.
+function arms_at_depth_zero(l,   s, off, pos, t) {
   s = l
   off = 0
   while (match(s, PIPEFAIL_RE)) {
     pos = off + RSTART
-    if (depth_at(l, pos) == 0) return 1
+    t = strip_squoted(substr(l, 1, pos))
+    if (depth_at(l, pos) == 0 || depth_at(t, length(t) + 1) == 0) return 1
     off = pos
     s = substr(l, pos + 1)
   }
