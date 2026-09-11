@@ -58,8 +58,8 @@
     {
       "hook": ".claude/hooks/block-main-destructive-git.sh",
       "scope": "main-only",
-      "state": ["machine-markers"],
-      "why": "Reads the setup-in-progress standdown sentinel, a per-machine marker anchored to main; a resolver failure falls back to the prior process-cwd derivation rather than allowing, since this guard is fail-closed on ambiguity, never fail-open."
+      "state": ["machine-markers", "gh-artifact-pr-cache"],
+      "why": "Reads the setup-in-progress standdown sentinel, a per-machine marker anchored to main; a resolver failure falls back to the prior process-cwd derivation rather than allowing, since the commit and push rules are fail-closed on ambiguity, never fail-open. The main-checkout hop guard also reads the main-anchored `gh pr create` breadcrumb through the resolver-based gh-artifact library, which derives its own path; that guard is a safety net and fails open on anything it cannot check."
     },
     {
       "hook": ".claude/hooks/block-manifest-write.sh",

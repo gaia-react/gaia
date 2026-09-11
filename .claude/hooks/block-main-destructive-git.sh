@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# PreToolUse Bash hook: block commits to main/master and force-push to main/master.
+# PreToolUse Bash hook: block commits to main/master and force-push to main/master,
+# and block a peer session moving the main checkout's HEAD off a branch another
+# session holds there with an open pull request.
 #
 # Command-position anchoring: the rules fire only when `git` is the command word
 # of a pipeline segment (start of command, after a `| & ; ( )` separator, or
@@ -8,7 +10,8 @@
 # a path, an argument to another program such as `grep -n -e git commit file`)
 # is not an invocation and never fires.
 #
-# Policy: wiki/concepts/Git Workflow.md
+# Policy: wiki/concepts/Git Workflow.md; the hop guard enforces the main-checkout
+# precondition in wiki/concepts/PR Merge Workflow.md.
 set -euo pipefail
 
 payload=$(cat)
@@ -65,9 +68,17 @@ cmd=$(echo "$payload" | jq -r '.tool_input.command // empty')
 _hook_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd)" || _hook_root=''
 _scope_lib="$_hook_root/.claude/hooks/lib/repo-scope.sh"
 set +e; [ -n "$_hook_root" ] && [ -f "$_scope_lib" ] && . "$_scope_lib" 2>/dev/null; set -e
+#
+# A verdict for the commit and push rules only, never for the hop guard below.
+# The helper compares working-tree toplevels, and a linked worktree of THIS
+# repository has a different toplevel from the main checkout, so a worktree
+# session's `git -C <main-checkout> checkout main` reads as foreign here. That
+# command is exactly the peer the hop guard exists to stop, so the hop guard
+# makes its own same-repository test instead.
+foreign_repo=0
 if type cmd_targets_foreign_repo >/dev/null 2>&1 \
    && cmd_targets_foreign_repo "$cmd"; then
-  exit 0
+  foreign_repo=1
 fi
 
 # The shared main-root resolver, sourced from this hook's own on-disk location
@@ -133,6 +144,208 @@ current_branch() {
   fi
 }
 
+# parse_git_globals <segment>: split one segment's git invocation at its
+# subcommand. Only a `-C` between `git` and the subcommand word is git's own
+# directory option. Past the subcommand it belongs to the subcommand
+# (`git switch -C <branch>`, `git commit -C <commit>`) and names no directory,
+# and reading it as one aimed every check at a directory named for a branch or
+# a commit, so both of those passed. Sets git_cwd (the last global `-C` path, so
+# `git -C <a> -C <b> commit` cannot slip past the commit and push rules on the
+# first one), norm (the segment minus its global `-C` pairs, for the commit and
+# push regexes), git_sub (the subcommand word), and git_args (the words after
+# it).
+parse_git_globals() {
+  local -a w kept
+  local i=0 n t globals=0
+  git_cwd="" git_sub=""
+  git_args=()
+  read -ra w <<<"$1"
+  n=${#w[@]}
+  while [ "$i" -lt "$n" ]; do
+    t="${w[$i]}"
+    if [ "$globals" -eq 1 ]; then
+      case "$t" in
+        -C) git_cwd="${w[$((i + 1))]:-}"; i=$((i + 2)); continue ;;
+        -c | --git-dir | --work-tree | --namespace)
+          kept+=("$t" "${w[$((i + 1))]:-}"); i=$((i + 2)); continue ;;
+        -*) ;;
+        *) globals=2; git_sub="$t"; git_args=("${w[@]:$((i + 1))}") ;;
+      esac
+    elif [ "$globals" -eq 0 ] && [ "$t" = git ]; then
+      globals=1
+    fi
+    kept+=("$t")
+    i=$((i + 1))
+  done
+  norm=""
+  [ "${#kept[@]}" -eq 0 ] || norm="${kept[*]}"
+}
+
+# --- main-checkout hop guard -------------------------------------------------
+#
+# Several sessions share one main checkout: one can hold it on its own branch
+# mid-audit while worktree sessions merge around it, and the feature-branch
+# cleanup's `git checkout main` then yanks that HEAD away and forfeits the
+# holder's audit round. Prose asking the next session to read HEAD first did not
+# hold, so the move is denied here. It is a safety net behind that prose rather
+# than a gate: anything it cannot check fails open, with one stderr line.
+
+# The directory a git segment acts on: its last global `-C` path (resolved
+# against the payload's cwd when relative), else the payload's cwd, else this
+# process's.
+hop_target() {
+  local dir="$1" base
+  base=$(printf '%s' "$payload" | jq -r '.cwd // empty' 2>/dev/null) || base=""
+  [ -n "$base" ] || base="$PWD"
+  case "$dir" in
+    \"*\") dir="${dir#\"}"; dir="${dir%\"}" ;;
+    \'*\') dir="${dir#\'}"; dir="${dir%\'}" ;;
+  esac
+  case "$dir" in
+    '') printf '%s' "$base" ;;
+    /*) printf '%s' "$dir" ;;
+    *) printf '%s/%s' "$base" "$dir" ;;
+  esac
+}
+
+# hop_moves_head <target>: 0 when the segment parse_git_globals just read is a
+# checkout or switch that moves HEAD. Every `git switch` does, and so does
+# `git checkout` with `-b`/`-B`/`--orphan`/`--detach`, with `-` (the previous
+# branch), or with exactly one operand that resolves as a commit-ish. Path
+# restores pass: anything carrying `--`, `-p`, or a pathspec file, and two or
+# more operands (a tree-ish plus paths).
+#
+# Honest limits. The guard reads words split on whitespace, never the command as
+# the shell would expand it, so spellings that need the shell's own reading pass.
+# They include: a `git checkout <name>` that git would DWIM into a new tracking
+# branch from a remote, since it does not resolve as a commit-ish locally (the
+# feature-branch cleanup's `git checkout main` always resolves); a `cd` into the
+# main checkout earlier in the same command, since the target comes from `-C` or
+# the payload's cwd, never from a `cd`; `--git-dir` or `--work-tree` aiming a
+# command run elsewhere at the main checkout, for the same reason; a `-C` whose
+# path is quoted with a space in it, carries an unexpanded variable or `~`, or is
+# a relative `-C` stacked on an earlier one; a global option whose value this
+# parser does not know to skip, such as `--config-env`; and `gh pr checkout`,
+# whose command word is not `git`.
+hop_moves_head() {
+  local target="$1" operand="" n=0 t skip_next=0
+  case "$git_sub" in
+    switch) return 0 ;;
+    checkout) ;;
+    *) return 1 ;;
+  esac
+  for t in ${git_args[@]+"${git_args[@]}"}; do
+    case "$t" in -b | -B | --orphan | --detach) return 0 ;; esac
+  done
+  for t in ${git_args[@]+"${git_args[@]}"}; do
+    case "$t" in -- | -p | --patch | --pathspec-from-file*) return 1 ;; esac
+  done
+  # Redirections are not operands: `git checkout main 2>/dev/null` names one.
+  for t in ${git_args[@]+"${git_args[@]}"}; do
+    if [ "$skip_next" -eq 1 ]; then skip_next=0; continue; fi
+    case "$t" in
+      *'>' | *'<') skip_next=1; continue ;;
+      *[\<\>]*) continue ;;
+      -*) [ "$t" = - ] || continue ;;
+    esac
+    [ "$n" -eq 0 ] && operand="$t"
+    n=$((n + 1))
+  done
+  [ "$n" -eq 1 ] || return 1
+  [ "$operand" = - ] && return 0
+  case "$operand" in
+    \"*\") operand="${operand#\"}"; operand="${operand%\"}" ;;
+    \'*\') operand="${operand#\'}"; operand="${operand%\'}" ;;
+  esac
+  git -C "$target" rev-parse --verify -q "${operand}^{commit}" >/dev/null 2>&1
+}
+
+hop_unchecked() {
+  printf 'block-main-destructive-git.sh: could not check whether %s has an open pull request (%s); allowing the command.\n' "$1" "$2" >&2
+}
+
+# hop_guard <target>: deny when all of these hold. The target is this
+# repository's main checkout, not a linked worktree. Its HEAD is a branch other
+# than main, master, or the default origin/HEAD names. That branch has an open
+# pull request. And this session is not the one whose `gh pr create` opened it,
+# per the breadcrumb .claude/hooks/capture-gh-artifact.sh writes; a missing
+# breadcrumb counts as not the owner. The owner's post-merge cleanup passes
+# because its pull request is no longer open by then, and subagents share their
+# parent's session id, so they count as the owner too.
+hop_guard() {
+  local target="$1" branch default out rc sid bc errexit_was
+  command -v gaia_is_linked_worktree >/dev/null 2>&1 || return 0
+  command -v gaia_resolve_main_root >/dev/null 2>&1 || return 0
+  gaia_is_linked_worktree "$target" && return 0
+  [ "$(gaia_resolve_main_root "$target" 2>/dev/null)" = "$main_root" ] || return 0
+
+  branch=$(git -C "$target" symbolic-ref --short -q HEAD 2>/dev/null) || return 0
+  case "$branch" in main | master) return 0 ;; esac
+  default=$(git -C "$target" symbolic-ref --short -q refs/remotes/origin/HEAD 2>/dev/null) || default=""
+  [ -n "$default" ] && [ "$branch" = "${default#origin/}" ] && return 0
+
+  # The owner match is local and decides the verdict whatever the pull request's
+  # state, so it runs before the network call rather than after it.
+  errexit_was=0
+  case $- in *e*) errexit_was=1 ;; esac
+  set +e
+  if [ -n "$_hook_root" ] && [ -f "$_hook_root/.gaia/scripts/gh-artifact-lib.sh" ]; then
+    # shellcheck source=/dev/null
+    . "$_hook_root/.gaia/scripts/gh-artifact-lib.sh" 2>/dev/null
+  fi
+  if [ "$errexit_was" = 1 ]; then set -e; fi
+  if command -v gaia_gh_artifact_read >/dev/null 2>&1; then
+    sid=$(printf '%s' "$payload" | jq -r '.session_id // empty' 2>/dev/null) || sid=""
+    if [ -n "$sid" ]; then
+      bc=$(gaia_gh_artifact_path "$(gaia_gh_artifact_cache_dir)" "$branch")
+      # A year, not the lib's one-day default: session ids never repeat, so a
+      # match proves ownership at any age, and the janitor's retention already
+      # bounds how long the file lives.
+      [ -n "$(gaia_gh_artifact_read "$bc" "$sid" "$branch" 31536000)" ] && return 0
+    fi
+  fi
+
+  if ! command -v gh >/dev/null 2>&1; then
+    hop_unchecked "$branch" "gh is not on PATH"
+    return 0
+  fi
+  # `gh` has no request timeout of its own, and a blackholed network would hold
+  # every checkout for an OS-length stall. Five seconds is several times a
+  # normal `gh pr list` round-trip; past it the guard gives up and allows.
+  out=$(
+    cd "$target" || exit 125
+    gh pr list --head "$branch" --state open --json number --jq '.[0].number // empty' 2>/dev/null &
+    pid=$!
+    ticks=0
+    while kill -0 "$pid" 2>/dev/null; do
+      if [ "$ticks" -ge 50 ]; then
+        kill "$pid" 2>/dev/null || true
+        exit 124
+      fi
+      sleep 0.1
+      ticks=$((ticks + 1))
+    done
+    wait "$pid"
+  ) && rc=0 || rc=$?
+  case "$rc" in
+    0) ;;
+    124) hop_unchecked "$branch" "gh pr list timed out after 5s"; return 0 ;;
+    125) hop_unchecked "$branch" "could not enter $target to run gh pr list"; return 0 ;;
+    *) hop_unchecked "$branch" "the open pull-request lookup, gh pr list, exited $rc"; return 0 ;;
+  esac
+  [ -n "$out" ] || return 0
+  if ! [[ "$out" =~ ^[0-9]+$ ]]; then
+    hop_unchecked "$branch" "gh pr list answered with something other than a pull-request number"
+    return 0
+  fi
+  if ! command -v gaia_gh_artifact_read >/dev/null 2>&1; then
+    hop_unchecked "$branch" "gh-artifact-lib.sh did not load, so this session cannot be matched to the pull request's creator"
+    return 0
+  fi
+
+  deny "The main checkout is holding branch '$branch', which has open pull request #$out: another session is working there, and moving this checkout's HEAD would pull the branch out from under it and forfeit its audit round. If you are cleaning up after a merge, take the worktree arm in wiki/concepts/PR Merge Workflow.md, which runs no git checkout. If this is your own branch, run the command yourself with the ! prefix."
+}
+
 # Walk each command-position segment. Separators (`| & ; ( )`, newlines) become
 # line breaks so every line begins at a command word; leading env-var
 # assignments are stripped to expose it. The commit/push rules act only on
@@ -145,14 +358,15 @@ while IFS= read -r seg; do
   seg_cmd=$(printf '%s' "$seg" | sed -E 's/^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)*//')
   [[ "$seg_cmd" =~ ^git([[:space:]]|$) ]] || continue
 
-  # Normalize this segment: strip EVERY -C <path> for regex matching; capture
-  # the path git would actually use for branch queries. git applies multiple -C
-  # cumulatively with the last absolute one winning, so capture the LAST
-  # occurrence (greedy .* consumes through it), a first-only capture lets
-  # `git -C <a> -C <b> commit` slip past the commit/push regexes. Handles
-  # `git -C /abs/path` (required by shell-cwd rule).
-  git_cwd=$(printf '%s' "$seg" | sed -nE 's/.*[[:space:]]-C[[:space:]]+([^[:space:]]+).*/\1/p')
-  norm=$(printf '%s' "$seg" | sed -E 's/[[:space:]]-C[[:space:]]+[^[:space:]]+//g')
+  parse_git_globals "$seg"
+
+  case "$git_sub" in
+    checkout | switch)
+      hop_dir=$(hop_target "$git_cwd")
+      if hop_moves_head "$hop_dir"; then hop_guard "$hop_dir"; fi
+      ;;
+  esac
+  [ "$foreign_repo" -eq 1 ] && continue
 
   # 1. Block commits while HEAD is on main or master.
   if [[ "$norm" =~ git[[:space:]]+commit([[:space:]]|$) ]]; then
