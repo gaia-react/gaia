@@ -435,6 +435,8 @@ A release change that requires the adopter to act, run a command or hand-migrate
 
 ### Fixed
 
+- worktree provisioning now installs the `.gaia/cli` workspace's dependencies alongside the tree's own. That workspace is its own pnpm root, so a fresh worktree had no CLI dependencies and every suite resolving one failed there while passing on the main checkout, a false red a drainer had to diagnose before trusting the run. The CLI install is gated on the workspace's own lockfile, which is release-excluded, so adopters see no change (#1990)
+
 - a bats run started through `.gaia/scripts/bats5.sh` no longer lets git's background maintenance race a test's own teardown. Every `git commit` into a fixture repository spawns a detached `git maintenance run --auto` that can outlive the test and fail its cleanup of that repository, a false red on a clean tree; the runner now switches auto-maintenance off for every git process the run spawns, and only for that run, so a shell that sources it keeps normal maintenance in its real repositories. A test that needs git's own maintenance behavior sets `GIT_CONFIG_COUNT=0` for that call. GAIA's own sharded CI legs and parallel hand run carry the same gate (#1983)
 
 - `/update-deps` now catches a security-floor override that has gone stale, where the version it pins has since picked up an advisory of its own. The override audit only compared advisories before and after removing each pin, so a pin that was itself vulnerable looked the same either way and was kept or dropped without anyone learning it needed raising, and a low or moderate advisory on it surfaced nowhere. The audit now checks each pin against its own package's advisories first, raises a stale one to the patched release, and reports it as re-floored (#1978)
