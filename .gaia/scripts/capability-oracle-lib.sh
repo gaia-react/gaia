@@ -2405,8 +2405,13 @@ _GAIA_CAPCHECK_INSTALL_FLAG_CEILING=6
 # next word whatever it is. When that word is a subcommand, the script or
 # binary name behind it stands where the verb has to: `pnpm --silent run
 # install` runs a script called install. So a match whose span holds `run`,
-# `exec`, `dlx`, or `run-script` as a word is refused. The refusal judges the
-# leftmost match only, which leaves two misses: a refused span followed on the
+# `exec`, `dlx`, or `run-script` as a word is refused. Any other word that
+# takes a name still over-reads there, an alias or another subcommand alike
+# (`npm -s x install`, `npm -s rum ci`, `pnpm -s test install`); refusing those
+# too trades a miss on a flag whose operand happens to be that word (`pnpm -C x
+# install`). The refusal judges the one span the match reports, the longest
+# from the leftmost start, so it also misses a real install whose span runs on
+# past its verb (`pnpm -s i -x run install`), a refused span followed on the
 # same logical line by a real install (`pnpm -s run install && pnpm install`),
 # and a flag whose real operand is one of those words (`pnpm --filter run
 # install`).

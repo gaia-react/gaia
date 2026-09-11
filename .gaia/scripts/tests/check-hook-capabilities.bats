@@ -722,6 +722,7 @@ pnpm -C "$tree/.gaia/cli" install --frozen-lockfile'
     'pnpm add zod' \
     'pnpm -C "$tree/.gaia/cli" install' \
     'pnpm --dir=.gaia/cli install' \
+    "pnpm -C 'my dir' install" \
     'pnpm --filter app --silent install' \
     'npm ci' \
     'npm install' \
