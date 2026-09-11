@@ -531,7 +531,28 @@ cmd_run() {
   done <<EOF
 $out
 EOF
-  bats ${argv[@]+"${argv[@]}"}
+  # Gate git's background auto-maintenance for every git process the suites
+  # spawn. Left ungated, every `git commit` into a fixture repository spawns a
+  # detached `git maintenance run --auto` that can outlive its test and race the
+  # teardown deleting that repository, a false red on a clean tree. An
+  # environment entry reaches every git subprocess regardless of cwd and
+  # outranks repo-local config, so a suite added later is covered without
+  # opting in. Why each key is in the list is the vitest side's:
+  # .gaia/cli/src/util/git-maintenance-env.ts. The list itself, and the
+  # append-after-ambient shape, are .gaia/scripts/bats5.sh's; bats-shards.bats
+  # holds this block equal to that one, and that list equal to the vitest
+  # side's. Both CI's shard legs and run-bats-parallel.sh reach
+  # bats only through this block, so this one site covers them. A test that
+  # needs git's own resolution sets GIT_CONFIG_COUNT=0 for that one call.
+  (
+    n="${GIT_CONFIG_COUNT:-0}"
+    for kv in gc.auto=0 maintenance.auto=false gc.autoDetach=false maintenance.autoDetach=false; do
+      export "GIT_CONFIG_KEY_$n=${kv%%=*}" "GIT_CONFIG_VALUE_$n=${kv#*=}"
+      n=$((n + 1))
+    done
+    export GIT_CONFIG_COUNT="$n"
+    bats ${argv[@]+"${argv[@]}"}
+  )
 }
 
 main() {

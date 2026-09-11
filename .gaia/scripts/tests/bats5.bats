@@ -39,3 +39,57 @@ setup() {
   [ -z "${resolved_bash+set}" ]
   [ -z "${major+set}" ]
 }
+
+# The runner driving this suite may itself set the gates, so each test below
+# clears them first: a pass has to come from bats5, not from the environment
+# it inherited.
+_clear_git_config_env() {
+  unset GIT_CONFIG_COUNT GIT_CONFIG_KEY_0 GIT_CONFIG_VALUE_0 \
+    GIT_CONFIG_KEY_1 GIT_CONFIG_VALUE_1 GIT_CONFIG_KEY_2 GIT_CONFIG_VALUE_2 \
+    GIT_CONFIG_KEY_3 GIT_CONFIG_VALUE_3
+}
+
+@test "bats5 hands bats the git maintenance gates" {
+  _clear_git_config_env
+  recorded="${BATS_TEST_TMPDIR}/env"
+  bats() { env >"$recorded"; }
+  # shellcheck disable=SC1090
+  source "$SCRIPT"
+  bats5 noop
+  grep -qxF 'GIT_CONFIG_COUNT=4' "$recorded"
+  grep -qxF 'GIT_CONFIG_KEY_0=gc.auto' "$recorded"
+  grep -qxF 'GIT_CONFIG_VALUE_0=0' "$recorded"
+  grep -qxF 'GIT_CONFIG_KEY_1=maintenance.auto' "$recorded"
+  grep -qxF 'GIT_CONFIG_VALUE_1=false' "$recorded"
+  grep -qxF 'GIT_CONFIG_KEY_2=gc.autoDetach' "$recorded"
+  grep -qxF 'GIT_CONFIG_VALUE_2=false' "$recorded"
+  grep -qxF 'GIT_CONFIG_KEY_3=maintenance.autoDetach' "$recorded"
+  grep -qxF 'GIT_CONFIG_VALUE_3=false' "$recorded"
+}
+
+@test "bats5 appends its gates after an ambient git config entry and keeps it" {
+  _clear_git_config_env
+  export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=core.hooksPath GIT_CONFIG_VALUE_0=/ambient/hooks
+  recorded="${BATS_TEST_TMPDIR}/env"
+  bats() { env >"$recorded"; }
+  # shellcheck disable=SC1090
+  source "$SCRIPT"
+  bats5 noop
+  grep -qxF 'GIT_CONFIG_COUNT=5' "$recorded"
+  grep -qxF 'GIT_CONFIG_KEY_0=core.hooksPath' "$recorded"
+  grep -qxF 'GIT_CONFIG_VALUE_0=/ambient/hooks' "$recorded"
+  grep -qxF 'GIT_CONFIG_KEY_1=gc.auto' "$recorded"
+  grep -qxF 'GIT_CONFIG_KEY_4=maintenance.autoDetach' "$recorded"
+  [ "$GIT_CONFIG_COUNT" = 1 ]
+}
+
+@test "bats5 leaves no git maintenance gate in the caller's shell" {
+  _clear_git_config_env
+  bats() { :; }
+  # shellcheck disable=SC1090
+  source "$SCRIPT"
+  bats5 noop
+  [ -z "${GIT_CONFIG_COUNT+set}" ]
+  [ -z "${GIT_CONFIG_KEY_0+set}" ]
+  [ -z "${GIT_CONFIG_VALUE_0+set}" ]
+}

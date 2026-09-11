@@ -39,7 +39,32 @@ bats5() {
     echo "# brew install bash, then re-run before trusting this pass count." >&2
     echo "############################################################" >&2
   fi
-  bats "$@"
+  # Gate git's background auto-maintenance for the run. Left ungated, every
+  # `git commit` into a fixture repository spawns a detached
+  # `git maintenance run --auto` that can outlive its test and race the teardown
+  # deleting that repository. maintenance.auto gates modern git and gc.auto git
+  # predating the maintenance task set; the autoDetach pair (both spellings,
+  # since modern git reads maintenance.autoDetach first) keeps any run that
+  # starts anyway in the foreground. An environment entry reaches every git
+  # subprocess regardless of cwd and outranks repo-local config; a test that
+  # needs git's own resolution sets GIT_CONFIG_COUNT=0 for that one call.
+  #
+  # Appended after any GIT_CONFIG_* entries the environment already carries
+  # rather than written over them: a dropped core.hooksPath or url.insteadOf
+  # would change a suite's behavior with nothing to say so. git applies the
+  # entries in order and a later one wins, so the gates hold even against an
+  # ambient entry naming the same key. The subshell keeps every export out of
+  # the caller's shell, which is where a sourced bats5 runs: an export there
+  # would gate maintenance in every real repository that shell touches later.
+  (
+    n="${GIT_CONFIG_COUNT:-0}"
+    for kv in gc.auto=0 maintenance.auto=false gc.autoDetach=false maintenance.autoDetach=false; do
+      export "GIT_CONFIG_KEY_$n=${kv%%=*}" "GIT_CONFIG_VALUE_$n=${kv#*=}"
+      n=$((n + 1))
+    done
+    export GIT_CONFIG_COUNT="$n"
+    bats "$@"
+  )
 }
 
 # When executed directly (not sourced), run the guard immediately.

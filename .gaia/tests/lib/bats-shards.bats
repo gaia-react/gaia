@@ -246,7 +246,7 @@ misc"
   [ "$output" = "$expected" ]
   grep -qF -- 'sandbox' <<<"$output" && return 1
   grep -qF -- 'concurrency' <<<"$output" && return 1
-  return 0
+  true
 }
 
 @test "S5: hooks-1 is exactly the pinned singleton" {
@@ -738,6 +738,203 @@ seed_anchor_tree() {
   [ "$files_count" -eq 2 ]
 }
 
+# Writes a fixture suite proving, from inside a bats run, whether that run
+# gates git's background maintenance. GIT_TRACE2_EVENT records a child's argv as
+# a `child_start` event in the spawning process's trace, so a --detach run is
+# visible without waiting on it; both argv spellings count, since pre-2.29 git
+# spawns `gc` where modern git spawns `maintenance`. The subject arm needs 2.29
+# or later: earlier git spawns `gc --auto` on every commit and gc.auto=0 only
+# empties its work, so a correctly gated run would still count one there.
+#
+# Each repository writes git's own defaults for the gates, so a personal
+# ~/.gitconfig carrying gc.auto=0 cannot gate it and the environment is the only
+# thing that can. A bare "no spawn" also holds when the trace saw nothing, so
+# the control arm clears the environment's gates for its one commit and must
+# see a spawn. The autoDetach pair is not a gate: it keeps any spawned run in
+# the foreground, so it cannot outlive the commit into bats' removal of
+# $BATS_TEST_TMPDIR. Limit: measured on git 2.55, against a repository carrying
+# an explicit maintenance.auto=true only the environment's maintenance.auto
+# entry suppresses the spawn, so the subject arm reds when that key leaves run's
+# gates and stays green when gc.auto does; gc.auto matters only on git predating
+# the maintenance task set, which CI does not run. So S17 pins maintenance.auto
+# alone, and S18 holds the rest: it keeps run's gating block equal to
+# bats5.sh's, whose own suite pins every pair.
+#
+# AT_TEST stands in for bats' test keyword and is swapped in on the way out,
+# for the reason write_trivial_bats gives.
+write_maintenance_fixture() {
+  sed 's/^AT_TEST /@test /' >"$1" <<'FIXTURE'
+#!/usr/bin/env bats
+
+_spawns() {
+  grep -F '"child_start"' "$1" 2>/dev/null | grep -cE '"(maintenance|gc)"' || true
+}
+
+_repo_at_git_defaults() {
+  mkdir "$1"
+  git -C "$1" init --quiet --initial-branch=main
+  git -C "$1" config user.email test@example.com
+  git -C "$1" config user.name Test
+  git -C "$1" config commit.gpgsign false
+  git -C "$1" config gc.auto 6700
+  git -C "$1" config maintenance.auto true
+  git -C "$1" config gc.autoDetach false
+  git -C "$1" config maintenance.autoDetach false
+}
+
+AT_TEST "control" {
+  _repo_at_git_defaults "$BATS_TEST_TMPDIR/repo"
+  GIT_CONFIG_COUNT=0 GIT_TRACE2_EVENT="$BATS_TEST_TMPDIR/trace" \
+    git -C "$BATS_TEST_TMPDIR/repo" commit --quiet --allow-empty -m control
+  [ "$(_spawns "$BATS_TEST_TMPDIR/trace")" -gt 0 ]
+}
+
+AT_TEST "subject" {
+  _repo_at_git_defaults "$BATS_TEST_TMPDIR/repo"
+  GIT_TRACE2_EVENT="$BATS_TEST_TMPDIR/trace" \
+    git -C "$BATS_TEST_TMPDIR/repo" commit --quiet --allow-empty -m subject
+  [ "$(_spawns "$BATS_TEST_TMPDIR/trace")" -eq 0 ]
+}
+FIXTURE
+}
+
+# The gating block in file $1, indentation stripped: every line from the
+# ambient-count read through the count export, so the key list and the
+# append-after-ambient shape are compared together. Prints nothing unless the
+# block opens exactly once, so a second copy, or a block rewritten to overwrite
+# the ambient entries, reads as no block rather than as whichever matched.
+gate_block() {
+  [ "$(grep -c '^ *n="${GIT_CONFIG_COUNT:-0}"$' "$1")" -eq 1 ] || return 0
+  sed -n '/^ *n="${GIT_CONFIG_COUNT:-0}"$/,/^ *export GIT_CONFIG_COUNT="$n"$/p' "$1" |
+    sed 's/^ *//'
+}
+
+# Exit 0 when sharder $1 and bats5 $2 carry the same non-empty gating block.
+check_gate_parity() {
+  local ours theirs
+  ours="$(gate_block "$1")"
+  theirs="$(gate_block "$2")"
+  [ -n "$ours" ] || return 1
+  [ -n "$theirs" ] || return 1
+  [ "$ours" = "$theirs" ]
+}
+
+# The vitest side's gate list in file $1, as the `key=value` words the shell
+# runners loop over: one pair per entry of its MAINTENANCE_SUPPRESSION array.
+# Prints nothing when any entry line fails to parse as a pair, so a reshaped
+# entry reads as no list rather than as the shorter list that did parse.
+ts_gate_list() {
+  local block entries pairs
+  block="$(awk '/^const MAINTENANCE_SUPPRESSION/ {f = 1; next} f && /^\];$/ {exit} f' "$1")"
+  entries="$(grep -c '^ *\[' <<<"$block" || true)"
+  pairs="$(sed -n "s/^ *\['\([^']*\)', '\([^']*\)'\],\$/\1=\2/p" <<<"$block")"
+  [ -n "$pairs" ] || return 0
+  [ "$(printf '%s\n' "$pairs" | wc -l | tr -d ' ')" -eq "$entries" ] || return 0
+  printf '%s\n' "$pairs" | paste -sd' ' -
+}
+
+# The shell gate list in file $1: the words of its `for kv in ...; do` line.
+shell_gate_list() {
+  sed -n 's/^ *for kv in \(.*\); do$/\1/p' "$1"
+}
+
+# Exit 0 when vitest file $1 and bats5 $2 carry the same non-empty gate list.
+check_ts_gate_parity() {
+  local ts sh
+  ts="$(ts_gate_list "$1")"
+  sh="$(shell_gate_list "$2")"
+  [ -n "$ts" ] || return 1
+  [ -n "$sh" ] || return 1
+  [ "$ts" = "$sh" ]
+}
+
+# A9 fixture: empties run's gate list on the copy, so the count it exports is
+# the ambient one and the suites it runs get git's own maintenance resolution.
+# What this proves is that S17's subject arm can red, not merely that the gates
+# are spelled out in the script.
+doctor_ungated_run() {
+  local dest
+  dest="$(copy_sharder a9-ungated-run.sh)"
+  [ -n "$(gate_block "$dest")" ] || return 1
+  sed 's/^\( *for kv in\) .*\(; do\)$/\1\2/' "$dest" >"$dest.new"
+  mv "$dest.new" "$dest"
+  grep -qxF '    for kv in; do' "$dest" || return 1
+  printf '%s\n' "$dest"
+}
+
+# A10 fixture: drops one gate from run's list on the copy, the drift S18
+# exists to catch. gc.autoDetach is one of the keys S17 cannot see go missing.
+doctor_dropped_gate() {
+  local dest
+  dest="$(copy_sharder a10-dropped-gate.sh)"
+  grep -qF ' gc.autoDetach=false ' "$dest" || return 1
+  sed 's/ gc\.autoDetach=false / /' "$dest" >"$dest.new"
+  mv "$dest.new" "$dest"
+  grep -qF ' gc.autoDetach=false ' "$dest" && return 1
+  printf '%s\n' "$dest"
+}
+
+# The outer GIT_CONFIG_COUNT=0 is what makes a pass mean anything: this suite
+# normally runs under bats-shards.sh itself, and an inherited gate would green
+# the subject arm with run's own export deleted.
+@test "S17: run gates git's background maintenance for every suite it runs" {
+  local d ok_count
+  d="$BATS_TEST_TMPDIR/s17-lib"
+  mkdir -p "$d"
+  write_maintenance_fixture "$d/maintenance.bats"
+
+  GIT_CONFIG_COUNT=0 LIB_DIR="$d" run bash "$SCRIPT" run lib
+  [ "$status" -eq 0 ]
+  grep -qE '^ok [0-9]+ control$' <<<"$output"
+  grep -qE '^ok [0-9]+ subject$' <<<"$output"
+  ok_count=$(grep -c '^ok ' <<<"$output")
+  [ "$ok_count" -eq 2 ]
+}
+
+@test "A9: a run that leaves maintenance ungated reds S17's subject arm" {
+  local copy d
+  copy="$(doctor_ungated_run)"
+  d="$BATS_TEST_TMPDIR/a9-lib"
+  mkdir -p "$d"
+  write_maintenance_fixture "$d/maintenance.bats"
+
+  GIT_CONFIG_COUNT=0 LIB_DIR="$d" run bash "$copy" run lib
+  [ "$status" -eq 1 ]
+  grep -qE '^ok [0-9]+ control$' <<<"$output"
+  grep -qE '^not ok [0-9]+ subject$' <<<"$output"
+}
+
+@test "S18: run's maintenance gating block matches bats5.sh's" {
+  run check_gate_parity "$SCRIPT" "$BATS_TEST_DIRNAME/../../scripts/bats5.sh"
+  [ "$status" -eq 0 ]
+}
+
+@test "A10: a gate dropped from run's list reds S18's parity check" {
+  local copy
+  copy="$(doctor_dropped_gate)"
+  run check_gate_parity "$copy" "$BATS_TEST_DIRNAME/../../scripts/bats5.sh"
+  [ "$status" -eq 1 ]
+}
+
+# The vitest setup file is where the reasoning for each key lives, so it is
+# where a key is likeliest to be added first. S19 carries that edit to the
+# shell runners by going red until they match it.
+@test "S19: bats5.sh's maintenance gate list matches the vitest side's" {
+  run check_ts_gate_parity "$BATS_TEST_DIRNAME/../../cli/src/util/git-maintenance-env.ts" \
+    "$BATS_TEST_DIRNAME/../../scripts/bats5.sh"
+  [ "$status" -eq 0 ]
+}
+
+@test "A11: a key added only on the vitest side reds S19's parity check" {
+  local ts
+  ts="$BATS_TEST_TMPDIR/git-maintenance-env.ts"
+  awk '{print} /^  \[.maintenance\.autoDetach., .false.\],$/ {print "  [\x27maintenance.strategy\x27, \x27none\x27],"}' \
+    "$BATS_TEST_DIRNAME/../../cli/src/util/git-maintenance-env.ts" >"$ts"
+  grep -qF "['maintenance.strategy', 'none']," "$ts"
+  run check_ts_gate_parity "$ts" "$BATS_TEST_DIRNAME/../../scripts/bats5.sh"
+  [ "$status" -eq 1 ]
+}
+
 # S13's allowlist: a tracked .bats file that no shard resolves, paired with
 # the runner that does execute it. Four tab-separated fields per row: the path
 # prefix, the file to look in, the LITERAL text that invokes the runner, and a
@@ -874,7 +1071,7 @@ covering_row() {
 $orphans
 EOF
 
-  return "$rc"
+  [ "$rc" -eq 0 ]
 }
 
 @test "S13 adversarial: an orphan suite outside the seam is caught" {
