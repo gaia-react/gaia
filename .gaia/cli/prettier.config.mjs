@@ -34,10 +34,11 @@
  * ERR_MODULE_NOT_FOUND surfaces while ESLint is linting the first file and
  * reads as an ESLint crash rather than as a reported lint violation.
  *
- * Its version tracks the one `@gaia-react/lint` pins, and no check enforces
- * that: `src/lint-pin-parity.test.ts` compares lockfile versions only for names
- * matching its `RULE_PACKAGE_PATTERN`, which this plugin's name does not match.
- * Move the two together whenever the `@gaia-react/lint` pin moves.
+ * Its version tracks the one `@gaia-react/lint` pins, because root declares no
+ * version of its own and resolves the copy that preset depends on. The lockfile
+ * block of `src/lint-pin-parity.test.ts` holds the two together: it compares the
+ * version each workspace resolves for every `prettier-plugin-*` package, so
+ * moving the `@gaia-react/lint` pin without moving this one reds there.
  */
 import config from '@gaia-react/lint/prettier';
 

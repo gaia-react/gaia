@@ -60,7 +60,7 @@ export default defineConfig([
 
 | Group | Key rules | Notes |
 |---|---|---|
-| `base` | Standard TS/JS hygiene | — |
+| `base` | Standard TS/JS hygiene | - |
 | `react` | React-specific rules including `no-null-render` (autofix: converts `return null` in render context to `return undefined`; does not touch loaders, actions, or utilities) | `no-null-render` added in 1.8.0 |
 | `reactRouter` | React Router relaxations scoped to `**/routes/**/*.tsx`, e.g. `no-empty-pattern` | Split out of `react` into its own opt-in group in 2.0.0, since the path convention it relaxed for is shared with other file-based routers and silently weakened lint for any consumer on a different one |
 | `testing` | D-8 test-honesty: `vitest/prefer-called-with`, `no-restricted-imports` (blocks `*.server` / internals from consumer tests) | Added in 1.6.0 |
@@ -68,8 +68,8 @@ export default defineConfig([
 | `playwright` | `eslint-plugin-playwright` recommended, scoped to `.playwright/**`; `expect-expect` counts `expect*()` helpers as the assertion, `no-skipped-test` allows the conditional `test.skip(condition, reason)` form | block reaches files from 1.11.0; `allowConditional` added there |
 | `guardrails` | `no-enum`, `no-switch`, `no-jsx-iife`, `no-zod-enum` (errors on `z.enum([...])`; use `z.literal([...])` for string unions) custom plugins; `gaia/no-restricted-syntax` selectors ban `cond ? <JSX/> : null` and `cond ? null : <JSX/>` (flag-only, no autofix) and flag `.length && <JSX/>` numeric-0 leaks (report-only); the `sonarjs` recommended set, whose `parameterized-tests` errors where three or more sibling tests differ only by their data and wants one `test.each` table instead (no autofix) | `.length` selector added in 1.8.0; `no-zod-enum` added in 1.9.0; `sonarjs/parameterized-tests` reaches files from 2.1.0 |
 | `styleHygiene` | `import-x/no-restricted-paths` with carve-outs: `resources+/` and `actions+/` routes are exempt for UI layers | Carve-out added in 1.6.0 |
-| `betterTailwind` | Tailwind class ordering and hygiene | — |
-| `prettier` | Formatting via Prettier as an ESLint rule | — |
+| `betterTailwind` | Tailwind class ordering and hygiene | - |
+| `prettier` | Formatting via Prettier as an ESLint rule | - |
 
 The `resources+/` and `actions+/` carve-out means UI-layer files may import typed action/loader types from flat-file resource routes without an `eslint-disable` comment. Consumer tests must not import from `*.server` files or internal server surfaces; the `test/setup.ts` global Vitest setupFile is the single sanctioned place to start the MSW harness.
 
@@ -83,7 +83,7 @@ The `resources+/` and `actions+/` carve-out means UI-layer files may import type
 `.gaia/cli` (`@gaia-react/cli`) is a second consumer, with its own `.gaia/cli/eslint.config.mjs` in its separate pnpm workspace. It consumes `base`/`react`/`testing`/`styleHygiene`/`guardrails`/`prettier` with `sourceDir: 'src'`, omitting the React-app-only presets (`storybook`, `playwright`, `reactRouter`, `betterTailwind`). It spreads `react` only because `base` transitively references `react/*` rules; the ruleset is inert on the CLI's non-JSX TypeScript. It disables a small Node/CLI set (`sonarjs/no-os-command-from-path`, `no-relative-import-paths`, `check-file/folder-match-with-fex`, `testing-library/render-result-naming-convention`) and extends the `unicorn/prevent-abbreviations` ignore list for CLI idioms. `.gaia/cli/eslint.config.mjs` is the source of truth for the full rule table.
 
 <!-- gaia:maintainer-only:start -->
-Because `.gaia/cli` pins `@gaia-react/lint` independently in its own lockfile, nothing else keeps its version in step with the root workspace's pin. `.gaia/cli/src/lint-pin-parity.test.ts` asserts both workspaces declare the same version, and `cli-tests.yml` includes root `package.json` in its path filter so the guard runs on the pull request that causes any drift, not just on a later unrelated `.gaia/cli/**` change. The same test also pins the two workspaces' `minimumReleaseAge`, `trustPolicy`, and the resolved version of every ESLint plugin, shared config, and import resolver they both install in parity. It asserts the declared `eslint` and `prettier` versions agree too, alongside the `@gaia-react/lint` pin and on the same manifests, because both tools reach lint output on their own terms: `eslint` supplies the rule implementations, and `prettier` surfaces its formatting decisions as `prettier/prettier` errors through the preset's `eslint-plugin-prettier`. That assertion is on the declared version alone; a package only one workspace declares, `prettier-plugin-tailwindcss`, has no counterpart to compare against and stays uncovered. See [[pnpm]] for the full cross-workspace hardening.
+Because `.gaia/cli` pins `@gaia-react/lint` independently in its own lockfile, nothing else keeps its version in step with the root workspace's pin. `.gaia/cli/src/lint-pin-parity.test.ts` asserts both workspaces declare the same version, and `cli-tests.yml` includes root `package.json` in its path filter so the guard runs on the pull request that causes any drift, not just on a later unrelated `.gaia/cli/**` change. The same test holds the rest of what the two workspaces must agree on in parity: the declared version of every devDependency both manifests share, the resolved version of every rule-bearing package both lockfiles freeze, and the supply-chain settings on each workspace. The test is the owner of what is compared and what is exempt, on both halves, and a manifest assertion is on the declared version alone, never on behaviour. See [[pnpm]] for the full cross-workspace hardening.
 <!-- gaia:maintainer-only:end -->
 
 ## See also
