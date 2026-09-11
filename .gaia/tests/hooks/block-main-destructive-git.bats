@@ -309,3 +309,192 @@ run_staged() {
   run_staged 'git status' /bin/bash
   assert_allowed_by_json
 }
+
+# --- main-checkout hop guard ---
+#
+# A peer session moving the main checkout's HEAD off a branch another session
+# holds there with an open pull request is denied. `gh` is a stub on PATH whose
+# answer GH_STUB selects: `open:<n>` lists one open pull request, `none` lists
+# nothing (merged, closed, never opened), `fail` exits non-zero, `hang` never
+# answers, `garbage` answers with something that is not a number. The owner is
+# proved by the `gh pr create` breadcrumb, written here through the same lib the
+# capture hook writes it with, so the path and shape cannot drift from the
+# reader's.
+
+stub_gh() {
+  STUB_BIN="$BATS_TEST_TMPDIR/bin"
+  mkdir -p "$STUB_BIN"
+  cat >"$STUB_BIN/gh" <<'STUB'
+#!/usr/bin/env bash
+[ "$1 $2" = "pr list" ] || exit 1
+case "${GH_STUB:-none}" in
+  open:*) printf '%s\n' "${GH_STUB#open:}" ;;
+  none) ;;
+  fail) echo "gh: authentication required" >&2; exit 4 ;;
+  hang) exec sleep 30 ;;
+  garbage) echo "not-a-number" ;;
+esac
+STUB
+  chmod +x "$STUB_BIN/gh"
+  export PATH="$STUB_BIN:$PATH"
+}
+
+# hold_feature_with_pr <number>: the main checkout sits on `feature`, a second
+# branch `other` exists to switch to, and `feature` has an open pull request.
+hold_feature_with_pr() {
+  stub_gh
+  git -C "$REPO" branch --quiet other
+  git -C "$REPO" checkout --quiet -B feature
+  export GH_STUB="open:$1"
+}
+
+write_breadcrumb() {
+  local branch="$1" sid="$2" bc_path
+  # shellcheck source=/dev/null
+  . "${HOOKS_SRC%/.claude/hooks}/.gaia/scripts/gh-artifact-lib.sh"
+  bc_path="$(gaia_gh_artifact_path "$REPO/.gaia/local/cache" "$branch")"
+  gaia_gh_artifact_write "$bc_path" 42 example/repo "$branch" "$sid"
+}
+
+# run_hop <command> [session_id] [cwd]
+run_hop() {
+  local json
+  json=$(jq -n --arg c "$1" --arg s "${2:-sid-peer}" --arg d "${3:-$REPO}" \
+    '{tool_name: "Bash", session_id: $s, cwd: $d, tool_input: {command: $c}}')
+  invoke_hook_in "${3:-$REPO}" "$json" "$HOOK_ABS"
+}
+
+@test "hop guard: a peer switching the main checkout off a branch with an open PR is denied" {
+  hold_feature_with_pr 42
+  write_breadcrumb feature sid-owner
+  run_hop 'git switch other' sid-peer
+  assert_denied_by_json
+  grep -qF -- "'feature'" <<<"$output"
+  grep -qF -- '#42' <<<"$output"
+  grep -qF -- 'worktree arm' <<<"$output"
+  grep -qF -- 'with the ! prefix' <<<"$output"
+}
+
+@test "hop guard: a peer's git checkout main off a branch with an open PR is denied" {
+  hold_feature_with_pr 42
+  write_breadcrumb feature sid-owner
+  run_hop 'git checkout main' sid-peer
+  assert_denied_by_json
+}
+
+@test "hop guard: git checkout -b and git checkout - in a peer-held main checkout are denied" {
+  hold_feature_with_pr 42
+  run_hop 'git checkout -b brand-new' sid-peer
+  assert_denied_by_json
+  run_hop 'git checkout -' sid-peer
+  assert_denied_by_json
+}
+
+@test "hop guard: a checkout aimed at a different repository's main checkout is allowed" {
+  hold_feature_with_pr 42
+  git -C "$FOREIGN" commit --quiet --allow-empty -m init
+  git -C "$FOREIGN" branch --quiet other
+  git -C "$FOREIGN" checkout --quiet -B feature
+  run_hop "git -C $FOREIGN switch other" sid-peer
+  assert_allowed_by_json
+}
+
+@test "hop guard: a worktree session aiming git -C at the peer-held main checkout is denied" {
+  hold_feature_with_pr 42
+  local wt="$BATS_TEST_TMPDIR/wt"
+  git -C "$REPO" worktree add --quiet -b wt-branch "$wt"
+  run_hop "git -C $REPO checkout main" sid-peer "$wt"
+  assert_denied_by_json
+}
+
+@test "hop guard: the session that created the PR may hop off its own branch" {
+  hold_feature_with_pr 42
+  write_breadcrumb feature sid-owner
+  run_hop 'git switch other' sid-owner
+  assert_allowed_by_json
+}
+
+@test "hop guard: a missing breadcrumb counts as not the owner" {
+  hold_feature_with_pr 42
+  run_hop 'git switch other' sid-owner
+  assert_denied_by_json
+}
+
+@test "hop guard: a branch whose PR is merged or closed is allowed" {
+  hold_feature_with_pr 42
+  export GH_STUB=none
+  run_hop 'git checkout main' sid-peer
+  assert_allowed_by_json
+}
+
+@test "hop guard: a gh failure fails open with one stderr line naming the cause" {
+  hold_feature_with_pr 42
+  export GH_STUB=fail
+  run_hop 'git checkout main' sid-peer
+  assert_allowed_by_json
+  grep -qF -- 'could not check' <<<"$output"
+  grep -qF -- 'exited 4' <<<"$output"
+}
+
+@test "hop guard: a gh answer that is not a PR number fails open" {
+  hold_feature_with_pr 42
+  export GH_STUB=garbage
+  run_hop 'git checkout main' sid-peer
+  assert_allowed_by_json
+  grep -qF -- 'could not check' <<<"$output"
+}
+
+@test "hop guard: a gh call that never answers is cut off and fails open" {
+  hold_feature_with_pr 42
+  export GH_STUB=hang
+  local start=$SECONDS
+  run_hop 'git checkout main' sid-peer
+  assert_allowed_by_json
+  grep -qF -- 'timed out' <<<"$output"
+  [ $((SECONDS - start)) -lt 20 ]
+}
+
+@test "hop guard: a checkout run inside a linked worktree is allowed" {
+  hold_feature_with_pr 42
+  local wt="$BATS_TEST_TMPDIR/wt"
+  git -C "$REPO" worktree add --quiet -b wt-branch "$wt"
+  run_hop 'git switch other' sid-peer "$wt"
+  assert_allowed_by_json
+}
+
+@test "hop guard: path-restore forms are allowed" {
+  hold_feature_with_pr 42
+  run_hop 'git checkout -- README.md' sid-peer
+  assert_allowed_by_json
+  run_hop 'git checkout main -- README.md' sid-peer
+  assert_allowed_by_json
+  run_hop 'git checkout -p' sid-peer
+  assert_allowed_by_json
+  run_hop 'git checkout main README.md' sid-peer
+  assert_allowed_by_json
+  run_hop 'git checkout README.md' sid-peer
+  assert_allowed_by_json
+}
+
+@test "hop guard: hopping off the default branch is allowed" {
+  hold_feature_with_pr 42
+  git -C "$REPO" checkout --quiet main
+  run_hop 'git switch other' sid-peer
+  assert_allowed_by_json
+}
+
+@test "hop guard: hopping off the default branch origin/HEAD names is allowed" {
+  hold_feature_with_pr 42
+  git -C "$REPO" checkout --quiet -B trunk
+  git -C "$REPO" update-ref refs/remotes/origin/trunk HEAD
+  git -C "$REPO" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/trunk
+  run_hop 'git switch other' sid-peer
+  assert_allowed_by_json
+}
+
+@test "hop guard: hopping off a detached HEAD is allowed" {
+  hold_feature_with_pr 42
+  git -C "$REPO" checkout --quiet --detach
+  run_hop 'git switch other' sid-peer
+  assert_allowed_by_json
+}

@@ -84,12 +84,15 @@
     {
       "hook": ".claude/hooks/block-main-destructive-git.sh",
       "capabilities": [
+        "fs-write:**",
         "invokes:.claude/hooks/lib/jq-availability.sh",
         "invokes:.claude/hooks/lib/repo-scope.sh",
+        "invokes:.gaia/scripts/audit-key-lib.sh",
+        "invokes:.gaia/scripts/gh-artifact-lib.sh",
         "invokes:.gaia/scripts/main-root-lib.sh",
         "network"
       ],
-      "why": "Denies a `git commit` to main/master and a force-push or plain push originating from main/master, by matching the intercepted Bash command's own text; it issues no git command of its own. Sources the shared repo-scope helper to exempt a command aimed at a different repository, main-root-lib.sh to resolve the checkout root, and the shared jq-availability arm; `network` is the repo-scope helper's own `gh repo view` call, made to confirm which repository the intercepted command targets.",
+      "why": "Denies a `git commit` to main/master and a force-push or plain push originating from main/master, by matching the intercepted Bash command's own text, and denies a peer session's checkout or switch that would move the main checkout's HEAD off a branch holding an open pull request. Its own git calls only read: the current branch, whether a checkout operand resolves as a commit, and which checkout is the main one. Sources the shared repo-scope helper to exempt a command aimed at a different repository, main-root-lib.sh to resolve the checkout root and tell a linked worktree from the main checkout, the shared jq-availability arm, and gh-artifact-lib.sh (which sources audit-key-lib.sh) to read the `gh pr create` breadcrumb that proves the session owns the held branch. `fs-write:**` is that library's breadcrumb writer, reachable in the sourced closure; this hook only ever calls its reader. `network` is the hook's own bounded `gh pr list` call for the held branch's open pull request, plus the repo-scope helper's `gh repo view` call, made to confirm which repository the intercepted command targets.",
       "maintainer_only": false
     },
     {
