@@ -119,15 +119,20 @@ add_cli_lockfile() {
 # the real package manager the same way stub_typegen stands in for
 # react-router. Every invocation appends the cwd it ran in to PNPM_LOG, so the
 # assertions can tell which tree the install ran in, and how many times it
-# ran. Exits with <exit_code> (default 0).
+# ran, and its argument list to PNPM_ARGS_LOG, so they can tell the install
+# stayed frozen: a plain `pnpm install` rewrites a tracked lockfile the hook's
+# user never asked it to touch. Exits with <exit_code> (default 0).
 stub_pnpm() {
   local exit_code="${1:-0}"
   PNPM_STUB_DIR="$(mktemp -d -t gaia-provision-pnpm-XXXXXX)"
   PNPM_LOG="$PNPM_STUB_DIR/pnpm.log"
+  PNPM_ARGS_LOG="$PNPM_STUB_DIR/pnpm-args.log"
   : > "$PNPM_LOG"
+  : > "$PNPM_ARGS_LOG"
   cat > "$PNPM_STUB_DIR/pnpm" <<SH
 #!/bin/sh
 pwd -P >> "$PNPM_LOG"
+printf '%s\n' "\$*" >> "$PNPM_ARGS_LOG"
 exit $exit_code
 SH
   chmod +x "$PNPM_STUB_DIR/pnpm"
@@ -659,7 +664,8 @@ SH
   [ "$status" -eq 0 ]
   [ -s "$PNPM_LOG" ] || return 1
   # The stub records the cwd it ran in: the worktree, never main.
-  [ "$(cat "$PNPM_LOG")" = "$WT" ]
+  [ "$(cat "$PNPM_LOG")" = "$WT" ] || return 1
+  [ "$(cat "$PNPM_ARGS_LOG")" = "install --frozen-lockfile" ]
 }
 
 @test "dependencies are installed on every entry, not only when node_modules is absent" {
@@ -750,7 +756,20 @@ SH
 
   run bash "$HOOK_ABS" "$WT"
   [ "$status" -eq 0 ]
-  [ "$(cat "$PNPM_LOG")" = "$(printf '%s\n%s' "$WT" "$WT/.gaia/cli")" ]
+  [ "$(cat "$PNPM_LOG")" = "$(printf '%s\n%s' "$WT" "$WT/.gaia/cli")" ] || return 1
+  [ "$(cat "$PNPM_ARGS_LOG")" = "$(printf 'install --frozen-lockfile\ninstall --frozen-lockfile')" ] || return 1
+  grep -qF -- "installed dependencies in $WT/.gaia/cli" <<<"$output"
+}
+
+@test "pnpm absent from PATH: the .gaia/cli skip is logged against that workspace" {
+  make_main
+  add_lockfile
+  add_cli_lockfile
+  WT="$(add_worktree feat-install-cli-nopnpm)"
+
+  PATH="$(path_without pnpm)" run bash "$HOOK_ABS" "$WT"
+  [ "$status" -eq 0 ]
+  grep -qF -- "dependency install skipped for $WT/.gaia/cli" <<<"$output"
 }
 
 @test "a failed .gaia/cli install is logged against that workspace and is non-fatal" {

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Provision the linked worktree a session is working in: re-link the shared
-# state the registry declares, and regenerate the typed routes the worktree's
-# own branch needs.
+# state the registry declares, install the dependencies its own lockfiles
+# commit, and regenerate the typed routes the worktree's own branch needs.
 #
 # Provisioning is a property a worktree must HOLD, not an event that happened
 # once when it was created. A worktree whose symlinks were broken by hand, one
