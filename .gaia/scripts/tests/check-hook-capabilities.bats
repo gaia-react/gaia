@@ -679,6 +679,15 @@ curl https://example.com/'
 # the manager and its verb; the tables below them drive the detector directly,
 # one spelling per element, because a table is cheap there and a full check run
 # per spelling is not.
+#
+# reads_as_reach hands the detector what a scanned line hands it: the text after
+# both strip passes, so a double-quoted message is judged the way the check
+# judges it rather than as raw bytes it never sees.
+reads_as_reach() {
+  _gaia_capcheck_strip_literals "$1"
+  _gaia_capcheck_strip_quoted_code "$_GAIA_CAPCHECK_RET"
+  _gaia_capcheck_detect_network "$_GAIA_CAPCHECK_RET"
+}
 
 @test "a hook installing behind a subshell cd while its entry omits network is UNDECLARED" {
   repo="$(make_fixture_repo install-undeclared)"
@@ -719,8 +728,28 @@ pnpm -C "$tree/.gaia/cli" install --frozen-lockfile'
     'npm --prefix app i' \
     'yarn install' \
     'yarn add zod' \
-    '  if (cd "$dir" && pnpm install --frozen-lockfile) >/dev/null 2>&1; then'; do
-    _gaia_capcheck_detect_network "$line" || missed="$missed
+    '  if (cd "$dir" && pnpm install --frozen-lockfile) >/dev/null 2>&1; then' \
+    '  if (cd "$dir" && pnpm install) >/dev/null 2>&1; then' \
+    'pnpm install; echo done' \
+    'pnpm install>/dev/null' \
+    'pnpm install|tee log' \
+    'pnpm install&' \
+    'out=$(npm ci)' \
+    'out="$(npm ci)"' \
+    'out=`npm ci`'; do
+    reads_as_reach "$line" || missed="$missed
+  $line"
+  done
+  [ -z "$missed" ] || { printf 'not read as reach:%s\n' "$missed"; return 1; }
+}
+
+@test "the network detector reads a remote git verb ending at a shell separator as reach" {
+  local line missed=""
+  for line in \
+    '(git fetch)' \
+    'git -C "$repo" fetch; echo done' \
+    'heads=$(git ls-remote)'; do
+    reads_as_reach "$line" || missed="$missed
   $line"
   done
   [ -z "$missed" ] || { printf 'not read as reach:%s\n' "$missed"; return 1; }
@@ -736,8 +765,15 @@ pnpm -C "$tree/.gaia/cli" install --frozen-lockfile'
     'pnpm exec eslint --fix' \
     'pnpm install-completion' \
     'npm i18n-report' \
-    'run_step install node --version'; do
-    _gaia_capcheck_detect_network "$line" && hit="$hit
+    'run_step install node --version' \
+    'npm run ci' \
+    'pnpm run install' \
+    'npm --prefix app run ci' \
+    'pnpm --filter app run install' \
+    'log "try pnpm add zod to fix"' \
+    'log "install failed -- run npm ci there first"' \
+    'echo "hint: yarn add the missing peer (or npm i it)"'; do
+    reads_as_reach "$line" && hit="$hit
   $line"
   done
   [ -z "$hit" ] || { printf 'read as reach:%s\n' "$hit"; return 1; }

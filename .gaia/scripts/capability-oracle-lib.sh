@@ -163,7 +163,7 @@ _gaia_capcheck_strip_literals() {
 # Command words that only ever mean reach when the shell is going to run them:
 # every name the detectors below look for, plus the `.` builtin. Held with
 # leading and trailing spaces so a membership test is one `case`.
-_GAIA_CAPCHECK_QUOTED_WORDS=" mkdir rm touch tee install mktemp cp mv ln sed find bash sh source . curl wget gh git "
+_GAIA_CAPCHECK_QUOTED_WORDS=" mkdir rm touch tee install mktemp cp mv ln sed find bash sh source . curl wget gh git pnpm npm yarn "
 
 # The characters, besides the space, that can bound one of those words inside a
 # double-quoted span. A membership test delimited by spaces alone missed every
@@ -2381,12 +2381,19 @@ _GAIA_CAPCHECK_PATHCMD='(^|[;|&`]|\$\(|[[:space:]]then[[:space:]]|[[:space:]]els
 # `yarn`, which installs with no verb; `pnpm dlx`, `npx`, and the update verbs,
 # which fetch too; any manager other than pnpm, npm and yarn; and a flag
 # followed by two operands, since the second one stands where the verb has to.
+#
+# The verb arms end at a shell separator as well as at whitespace, because a
+# verb is the last word of its command as often as not: `(cd "$d" && pnpm
+# install)`, `out=$(npm ci)`, `git fetch;`. The curl/wget arm keeps the
+# whitespace-only end, since a `curl)` there is far likelier to be a case
+# pattern than a call with no arguments.
 _gaia_capcheck_detect_network() {
   local t="$1"
+  local end="([[:space:]);|&<>\`]|\$)"
   local p1="${_GAIA_CAPCHECK_CMD}(curl|wget)([[:space:]]|\$)"
   local p2="${_GAIA_CAPCHECK_CMD}gh[[:space:]]+[a-z]"
-  local p3="${_GAIA_CAPCHECK_CMD}git([[:space:]]+-[Cc][[:space:]]+[^[:space:]]+)?[[:space:]]+(fetch|push|clone|pull|ls-remote)([[:space:]]|\$)"
-  local p4="${_GAIA_CAPCHECK_CMD}(pnpm|npm|yarn)([[:space:]]+-[^[:space:]]+([[:space:]]+[^-[:space:]][^[:space:]]*)?)*[[:space:]]+(install|i|add|ci)([[:space:]]|\$)"
+  local p3="${_GAIA_CAPCHECK_CMD}git([[:space:]]+-[Cc][[:space:]]+[^[:space:]]+)?[[:space:]]+(fetch|push|clone|pull|ls-remote)${end}"
+  local p4="${_GAIA_CAPCHECK_CMD}(pnpm|npm|yarn)([[:space:]]+-[^[:space:]]+([[:space:]]+[^-[:space:]][^[:space:]]*)?)*[[:space:]]+(install|i|add|ci)${end}"
   [[ $t =~ $p1 ]] && return 0
   [[ $t =~ $p2 ]] && return 0
   [[ $t =~ $p3 ]] && return 0
