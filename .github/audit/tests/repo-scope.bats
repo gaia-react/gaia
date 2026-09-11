@@ -144,6 +144,34 @@ in_dir() {
   [ "$status" -ne 0 ]
 }
 
+# The capture reads the raw command text, so a quoted value arrives with its
+# quotes while gh receives it without them.
+@test "quoted spellings of <home>: home (enforce)" {
+  add_widget_remote "$HOME_REPO"
+  run in_home 'gh pr merge 5 --repo "acme/widget"'
+  [ "$status" -ne 0 ]
+  run in_home "gh pr merge 5 --repo 'acme/widget'"
+  [ "$status" -ne 0 ]
+  run in_home 'gh pr merge 5 -R "acme/widget"'
+  [ "$status" -ne 0 ]
+  run in_home 'gh pr merge 5 --repo="acme/widget"'
+  [ "$status" -ne 0 ]
+}
+
+@test "quoted spelling of another repository: foreign (allow)" {
+  add_widget_remote "$HOME_REPO"
+  run in_home 'gh pr merge 5 --repo "acme/other"'
+  [ "$status" -eq 0 ]
+}
+
+@test "--repo value still carrying a quote after one layer is stripped: home (enforce, fail closed)" {
+  add_widget_remote "$HOME_REPO"
+  run in_home 'gh pr merge 5 --repo "acme/other x"'
+  [ "$status" -ne 0 ]
+  run in_home 'gh pr merge 5 --repo acme/other\"'
+  [ "$status" -ne 0 ]
+}
+
 @test "--repo naming another repository from a linked worktree: foreign (allow)" {
   add_widget_remote "$HOME_REPO"
   add_worktree
@@ -197,16 +225,10 @@ in_dir() {
   [ "$status" -ne 0 ]
 }
 
-# A copy of the library with no main-checkout resolver beside it cannot say
-# which repository a -C target belongs to, so it must enforce rather than
-# fall back to comparing toplevels, which is the comparison that misreads a
-# linked worktree.
-@test "git -C <sibling> with the main-root resolver unavailable: home (enforce, fail closed)" {
-  local stage="$BATS_TEST_TMPDIR/stage"
-  mkdir -p "$stage/.claude/hooks/lib"
-  cp "$LIB" "$stage/.claude/hooks/lib/repo-scope.sh"
-  run bash -c 'cd "$1" && . "$2" && cmd_targets_foreign_repo "$3"' _ \
-    "$HOME_REPO" "$stage/.claude/hooks/lib/repo-scope.sh" \
-    "git -C $SIBLING_REPO push origin main"
-  [ "$status" -ne 0 ]
+# An exported GIT_DIR answers every git call regardless of -C, so read
+# through it the sibling and home would share one common directory.
+@test "git -C <sibling> with GIT_DIR exported for the home repo: foreign (allow)" {
+  run bash -c 'cd "$1" && . "$2" && GIT_DIR="$1/.git" && export GIT_DIR && cmd_targets_foreign_repo "$3"' _ \
+    "$HOME_REPO" "$LIB" "git -C $SIBLING_REPO push origin main"
+  [ "$status" -eq 0 ]
 }

@@ -41,25 +41,32 @@ _gaia_repo_scope_repo_name() {
   printf '%s' "${v##*[/:]}"
 }
 
-# The main-checkout resolver, loaded from this library's own on-disk location
-# (never cwd, which is why an ancestor rather than a path is resolved here: a
-# hook suite runs from a sandbox with no .gaia/). Errexit is suspended across
-# the load and restored to what it was, for the reason
-# .claude/hooks/lib/verb-arming.sh gives at its own repo-scope load: a parse
-# error abandons the shell from a condition context too, and in the errexit
-# consumers that exit is the deny code.
-_gaia_repo_scope_load_main_root() {
-  local root errexit_was
-  type gaia_resolve_main_root >/dev/null 2>&1 && return 0
-  root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." 2>/dev/null && pwd)" || return 1
-  [ -f "$root/.gaia/scripts/main-root-lib.sh" ] || return 1
-  errexit_was=0
-  case $- in *e*) errexit_was=1 ;; esac
-  set +e
-  # shellcheck source=/dev/null
-  . "$root/.gaia/scripts/main-root-lib.sh" 2>/dev/null
-  if [ "$errexit_was" = 1 ]; then set -e; fi
-  type gaia_resolve_main_root >/dev/null 2>&1
+# Strip one layer of surrounding quotes a space-delimited capture keeps:
+# callers legitimately write `git -C "/abs/path"`, `cd '/abs/path' &&` and
+# `--repo "owner/repo"`, and the shell hands the command the value without
+# them.
+_gaia_repo_scope_unquote() {
+  local v="$1"
+  case "$v" in
+    \"*\") v="${v#\"}"; v="${v%\"}" ;;
+    \'*\') v="${v#\'}"; v="${v%\'}" ;;
+  esac
+  printf '%s' "$v"
+}
+
+# The physically resolved git common directory of $1 (default: cwd), the one
+# directory a main checkout and every linked worktree of it share, so equal
+# answers mean the same repository. gaia_resolve_main_root keys its own
+# validation on the same fact, but it also resolves and validates a root, and
+# this runs on nearly every git tool call. The three discovery overrides are
+# stripped for the reason .gaia/scripts/main-root-lib.sh gives: an exported
+# GIT_DIR answers for every git call regardless of `-C`.
+_gaia_repo_scope_common_dir() {
+  ( cd "${1:-.}" 2>/dev/null || exit 1
+    c=$(env -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR \
+      git rev-parse --git-common-dir 2>/dev/null) || exit 1
+    [ -n "$c" ] || exit 1
+    cd "$c" 2>/dev/null && pwd -P )
 }
 
 cmd_targets_foreign_repo() {
@@ -71,11 +78,12 @@ cmd_targets_foreign_repo() {
   # 1. Explicit `gh ... -R owner/repo` / `--repo owner/repo` (space OR `=`
   #    form). gh ignores cwd when this is given, so it is authoritative.
   #
-  #    The home repo's names are its remotes' repository names. Remotes live
-  #    in the shared git config, so every worktree reads the same set, and
-  #    none of them depends on what a checkout's directory is called. Every
-  #    remote counts rather than only the one `gh` would pick, because a fork
-  #    clone's `gh pr merge` resolves to its `upstream` remote, not `origin`.
+  #    The home repo's names are the repository names its remotes point at.
+  #    Remotes live in the shared git config, so every worktree reads the same
+  #    set, and none of them depends on what a checkout's directory is called.
+  #    Every remote counts rather than only the one `gh` would pick, because a
+  #    fork clone's `gh pr merge` resolves to its `upstream` remote, not
+  #    `origin`.
   #
   #    Comparison is repo-NAME only: a same-named fork (`-R myfork/<homename>`)
   #    classifies as home and over-enforces, fail-closed and safe, but worth
@@ -84,6 +92,10 @@ cmd_targets_foreign_repo() {
   #    repository where a fork clone has two.
   ghrepo=$(printf '%s' "$cmd" | sed -nE 's/.*(-R|--repo)[[:space:]=]+([^[:space:]]+).*/\2/p' | head -1)
   if [ -n "$ghrepo" ]; then
+    ghrepo=$(_gaia_repo_scope_unquote "$ghrepo")
+    # A quote, escape or expansion left over is a value the shell rewrites
+    # before gh sees it, so what gh names is unknown.
+    case "$ghrepo" in *[\"\'\\\$\`]*) return 1 ;; esac
     # gh refuses a value with no owner, so it names no repository to exempt.
     case "$ghrepo" in */*) ;; *) return 1 ;; esac
     name=$(_gaia_repo_scope_repo_name "$ghrepo")
@@ -113,14 +125,7 @@ cmd_targets_foreign_repo() {
   # No redirection found: the command runs against the home repo.
   [ -n "$target_dir" ] || return 1
 
-  # Strip one layer of surrounding quotes the capture may have included
-  # (callers legitimately write `git -C "/abs/path"` or `cd '/abs/path' &&`).
-  # The space-delimited capture keeps the quotes, which would defeat the
-  # `git -C "$target_dir"` lookup below.
-  case "$target_dir" in
-    \"*\") target_dir="${target_dir#\"}"; target_dir="${target_dir%\"}" ;;
-    \'*\') target_dir="${target_dir#\'}"; target_dir="${target_dir%\'}" ;;
-  esac
+  target_dir=$(_gaia_repo_scope_unquote "$target_dir")
 
   # Expand a leading ~ (our cross-repo flows use ~/path targets). The tilde
   # arrives as a literal character in the command text, bash never expanded
@@ -133,13 +138,10 @@ cmd_targets_foreign_repo() {
     '~/'*) target_dir="$HOME/${target_dir:2}" ;;
   esac
 
-  # Same repository means same main checkout, the root that owns git's common
-  # directory, which every linked worktree shares. This is the same-repository
-  # test the hop guard in .claude/hooks/block-main-destructive-git.sh makes.
-  # Without the resolver there is no identity to compare, so enforce.
-  _gaia_repo_scope_load_main_root || return 1
-  a=$(gaia_resolve_main_root "$target_dir" 2>/dev/null) || return 1
-  b=$(gaia_resolve_main_root 2>/dev/null) || return 1
+  # Same repository means same common directory; a target whose repository
+  # cannot be resolved has no identity to compare, so enforce.
+  a=$(_gaia_repo_scope_common_dir "$target_dir") || return 1
+  b=$(_gaia_repo_scope_common_dir) || return 1
   [ -n "$a" ] && [ -n "$b" ] || return 1
   [ "$a" != "$b" ] && return 0
   return 1
@@ -167,10 +169,11 @@ cmd_targets_foreign_repo() {
 # Comparison. gh identifies a repository as [HOST/]OWNER/REPO, so this compares
 # the WHOLE value against one `gh repo view --json nameWithOwner,url` call,
 # case-insensitively because GitHub resolves OWNER/REPO that way. The guard
-# above compares the repo-NAME half against the home repo's remote names,
-# which reads a same-named fork (`--repo other-org/<homename>` from a clone of
-# `<homename>`, the ordinary fork topology) as home. That is the safe direction
-# there and the wrong one here.
+# above compares the repo-NAME half against the repository names the home
+# repo's remotes point at, which reads a same-named fork
+# (`--repo other-org/<homename>` from a clone of `<homename>`, the ordinary
+# fork topology) as home. That is the safe direction there and the wrong one
+# here.
 #
 # Usage (from a hook that acts on the home repo, after extracting $cmd):
 #   _lib="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)"

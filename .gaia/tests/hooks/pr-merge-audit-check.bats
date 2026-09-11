@@ -1356,6 +1356,17 @@ teardown_linked_worktree() {
   grep -qF -- '"permissionDecision": "deny"' <<<"$output"
 }
 
+@test "linked worktree: a quoted --repo naming this repository is still gated" {
+  commit_files "app/x.ts" "export const x = 1"
+  git -C "$REPO" remote add origin https://github.com/gaia-react/gaia.git
+  setup_linked_worktree
+
+  run_merge_hook_in_worktree 'gh pr merge 30 --repo "gaia-react/gaia" --squash --delete-branch'
+  teardown_linked_worktree
+  [ "$status" -eq 0 ]
+  grep -qF -- '"permissionDecision": "deny"' <<<"$output"
+}
+
 @test "linked worktree: --repo naming another repository exits before the gate" {
   commit_files "app/x.ts" "export const x = 1"
   git -C "$REPO" remote add origin https://github.com/gaia-react/gaia.git
