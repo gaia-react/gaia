@@ -821,12 +821,14 @@ check_gate_parity() {
 
 # The vitest side's gate list in file $1, as the `key=value` words the shell
 # runners loop over: one pair per entry of its MAINTENANCE_SUPPRESSION array.
-# Prints nothing when any entry line fails to parse as a pair, so a reshaped
-# entry reads as no list rather than as the shorter list that did parse.
+# Every array line that is neither blank nor a `//` comment counts as an entry,
+# and the list prints nothing unless each one parses as a pair, so a reshaped
+# entry, a spread or a named constant among them, reads as no list rather than
+# as the shorter list that did parse.
 ts_gate_list() {
   local block entries pairs
   block="$(awk '/^const MAINTENANCE_SUPPRESSION/ {f = 1; next} f && /^\];$/ {exit} f' "$1")"
-  entries="$(grep -c '^ *\[' <<<"$block" || true)"
+  entries="$(grep -cvE '^[[:space:]]*(//|$)' <<<"$block" || true)"
   pairs="$(sed -n "s/^ *\['\([^']*\)', '\([^']*\)'\],\$/\1=\2/p" <<<"$block")"
   [ -n "$pairs" ] || return 0
   [ "$(printf '%s\n' "$pairs" | wc -l | tr -d ' ')" -eq "$entries" ] || return 0
@@ -931,6 +933,20 @@ doctor_dropped_gate() {
   awk '{print} /^  \[.maintenance\.autoDetach., .false.\],$/ {print "  [\x27maintenance.strategy\x27, \x27none\x27],"}' \
     "$BATS_TEST_DIRNAME/../../cli/src/util/git-maintenance-env.ts" >"$ts"
   grep -qF "['maintenance.strategy', 'none']," "$ts"
+  run check_ts_gate_parity "$ts" "$BATS_TEST_DIRNAME/../../scripts/bats5.sh"
+  [ "$status" -eq 1 ]
+}
+
+# A spread and a named constant are one shape to ts_gate_list, an entry line
+# that is not a bracketed pair, so this samples the spread. The pairs that do
+# parse still equal bats5.sh's list, which leaves the entry count as the only
+# thing that can red it.
+@test "A12: an entry that is not a bracketed pair reds S19's parity check" {
+  local ts
+  ts="$BATS_TEST_TMPDIR/git-maintenance-env.ts"
+  awk '{print} /^  \[.maintenance\.autoDetach., .false.\],$/ {print "  ...EXTRA_GATES,"}' \
+    "$BATS_TEST_DIRNAME/../../cli/src/util/git-maintenance-env.ts" >"$ts"
+  grep -qxF '  ...EXTRA_GATES,' "$ts"
   run check_ts_gate_parity "$ts" "$BATS_TEST_DIRNAME/../../scripts/bats5.sh"
   [ "$status" -eq 1 ]
 }
