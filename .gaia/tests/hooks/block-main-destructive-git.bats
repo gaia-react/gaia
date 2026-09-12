@@ -241,6 +241,35 @@ run_hook_from() {
   assert_denied_by_json
 }
 
+# Two independent conditions reach this deny and their repairs differ, so each
+# one carries its own message (.claude/rules/partial-cause-reporting.md). An
+# operator denied for the refspec is already standing on a feature branch:
+# telling them to create one names a cause they have ruled out and never names
+# the respelling that clears the deny.
+@test "a refspec-triggered push deny names the refspec cause, not the branch" {
+  on_feature
+  run_hook 'git push origin HEAD'
+  assert_denied_by_json
+  grep -qF -- 'refspec names main, master or HEAD' <<<"$output"
+  grep -qF -- 'Create a feature branch and open a PR' <<<"$output" && return 1
+  true
+}
+
+# The on-main cause keeps its own repair, and it answers first where both
+# conditions hold: leaving main settles the refspec too, so the operator reads
+# the repair that clears the push rather than the narrower one.
+@test "an on-main push deny names the branch cause, and outranks the refspec cause" {
+  on_main
+  run_hook 'git push'
+  assert_denied_by_json
+  grep -qF -- 'Create a feature branch and open a PR' <<<"$output"
+  run_hook 'git push origin main'
+  assert_denied_by_json
+  grep -qF -- 'Create a feature branch and open a PR' <<<"$output"
+  grep -qF -- 'refspec names main, master or HEAD' <<<"$output" && return 1
+  true
+}
+
 # --- allowed ---
 
 # The operand scan must not read an ordinary feature push as a push to main, and

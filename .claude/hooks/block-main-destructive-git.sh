@@ -684,8 +684,15 @@ while IFS= read -r seg; do
       refspec_main=1
     fi
 
-    if [[ "$on_main" -eq 1 || "$refspec_main" -eq 1 ]]; then
+    # Each condition denies with its own message because the repairs differ:
+    # switching branches clears the first and does nothing for the second,
+    # which needs the refspec itself respelled. On-main is answered first, so an
+    # operator who is both standing on main and naming it reads the branch
+    # repair, which settles the refspec too.
+    if [ "$on_main" -eq 1 ]; then
       deny "Plain 'git push' from main/master is forbidden (wiki/concepts/Git Workflow.md). Create a feature branch and open a PR."
+    elif [ "$refspec_main" -eq 1 ]; then
+      deny "This push's refspec names main, master or HEAD, which is forbidden from any branch (wiki/concepts/Git Workflow.md). Name the branch you are pushing explicitly and open a PR."
     fi
   fi
 done < <(printf '%s\n' "$cmd" | tr '|&;()' '\n')
