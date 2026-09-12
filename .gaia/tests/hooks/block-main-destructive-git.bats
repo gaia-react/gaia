@@ -483,13 +483,20 @@ stage_hook_tree() {
   # The whole hooks directory, lib/ included, rather than the libraries this
   # hook happens to load today: an enumeration goes short the moment the hook
   # gains a load, and the cases below would then drive a hook degraded in a way
-  # none of them names while still reporting green. Each case removes or
-  # corrupts only the library it is named for. Staging the directory wholesale
-  # also keeps the jq-availability arm present, which runs ahead of the loads
-  # under test and refuses when it cannot find its own library, answering every
-  # case with that refusal instead of with the decision under test.
+  # none of them names while still reporting green. Each case then degrades one
+  # named library and nothing else, by corrupting it, by removing it, or by
+  # relying on it never having been staged at all. Staging the directory
+  # wholesale also keeps the jq-availability arm present, which runs ahead of
+  # the loads under test and refuses when it cannot find its own library,
+  # answering every case with that refusal instead of with the decision under
+  # test.
   cp -R "$HOOKS_SRC" "$STAGED_ROOT/.claude/hooks"
   # Outside the hooks directory, so the wholesale copy above does not reach it.
+  # This line is therefore the hand-maintained list the comment above argues
+  # against: a second .gaia/scripts load on the hook's live path has to be added
+  # here, or it goes short with nothing red. Copying that directory wholesale is
+  # not available as the fix, because a case below degrades by
+  # gh-artifact-lib.sh never being staged and asserts its absence.
   cp "${HOOKS_SRC%/.claude/hooks}/.gaia/scripts/main-root-lib.sh" "$STAGED_ROOT/.gaia/scripts/"
   git -C "$STAGED_ROOT" init --quiet --initial-branch=main
   git -C "$STAGED_ROOT" config user.email "test@example.com"
