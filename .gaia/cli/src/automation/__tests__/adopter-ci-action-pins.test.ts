@@ -36,6 +36,15 @@
  * Maintainer-only by construction: `.gaia/cli/src` is release-excluded, so this
  * test is absent on adopter clones. The parity test additionally skips when
  * `.github/workflows/` is absent, mirroring the sibling guards.
+ *
+ * `partials/node-setup.yml.tmpl` pins neither `pnpm/action-setup` nor
+ * `actions/setup-node` directly: it calls `./.github/actions/gaia-setup-node`,
+ * a local composite action with no ref to pin, so the corpus this file scans
+ * no longer carries that partial's pins. Both pins still live inside the
+ * composite itself, which `liveActionPins` already collects from
+ * `.github/actions/`, and `code-review-audit.yml.tmpl` still pins both
+ * directly, so the parity test still has a template-side pin to compare
+ * against the maintainer workflows.
  */
 import {describe, expect, test} from 'vitest';
 import {existsSync, readFileSync} from 'node:fs';

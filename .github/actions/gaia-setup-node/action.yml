@@ -31,6 +31,11 @@ description: |
   caller passing `install: none` that also runs no pnpm of its own belongs on
   `actions/setup-node` directly, at the same pin, rather than here.
 
+  Deliberately excludes one caller whose provisioning sits ahead of a quality
+  gate that runs under a handled-failure flag: this composite performs a
+  workspace install, and folding that caller's install in here would convert
+  a handled gate failure into a hard job failure.
+
   Every step here shares one `if:` with its caller: a composite action cannot
   gate its own steps individually from the outside, but the caller's `uses:`
   step can carry that `if:`, and the whole composite skips as a unit.

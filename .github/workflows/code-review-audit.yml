@@ -371,6 +371,9 @@ jobs:
           steps.phase.outputs.reached_audit == 'true' &&
           steps.decision.outputs.should_run == 'true' &&
           steps.trailer.outputs.skip == 'false'
+        # Bounds a stalled fetch, not a budget for the work; strictly under the
+        # job's 60-minute cap so this step fires first and names the install.
+        timeout-minutes: 5
         uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
 
       - name: Setup Node
