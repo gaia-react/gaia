@@ -739,6 +739,12 @@ jobs:
           steps.verdict.outputs.verdict == 'auto-fixable' &&
           steps.scope.outputs.ok == 'true' &&
           steps.verify-diff.outputs.diff_ok == 'true'
+        # Bounds a stalled fetch, not a budget for the work: strictly under
+        # the job's own 30-minute cap so this step fires first and the job
+        # reds with a step name attached rather than a generic job timeout.
+        # See .github/actions/gaia-setup-node/action.yml for this project's
+        # broader pnpm-provisioning reasoning.
+        timeout-minutes: 5
         uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10
 
       - name: Setup Node
