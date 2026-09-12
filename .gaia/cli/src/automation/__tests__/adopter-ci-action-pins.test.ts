@@ -93,10 +93,13 @@ const extractPins = (text: string, source: string): readonly ActionPin[] =>
 
 const TEMPLATE_EXTENSIONS: ReadonlySet<string> = new Set(['.tmpl']);
 
-// Both spellings, because GitHub honors both. `.github/actions/` is scanned
-// with the same set as `.github/workflows/`: a composite action is YAML too.
 const YAML_EXTENSIONS: ReadonlySet<string> = new Set(['.yaml', '.yml']);
 
+// The shared walk reports regular files only, so a symlinked workflow, action
+// or template is not scanned and its pins never reach the assertions below.
+// Worth stating at the call site because the miss is silent in the
+// safe-looking direction: every assertion here compares against an empty
+// array, so a corpus that quietly got smaller still reads as a pass.
 const collectPins = (
   dir: string,
   extensions: ReadonlySet<string>,
