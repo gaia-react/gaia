@@ -492,11 +492,9 @@ stage_hook_tree() {
   # test.
   cp -R "$HOOKS_SRC" "$STAGED_ROOT/.claude/hooks"
   # Outside the hooks directory, so the wholesale copy above does not reach it.
-  # This line is therefore the hand-maintained list the comment above argues
-  # against: a second .gaia/scripts load on the hook's live path has to be added
-  # here, or it goes short with nothing red. Copying that directory wholesale is
-  # not available as the fix, because a case below degrades by
-  # gh-artifact-lib.sh never being staged and asserts its absence.
+  # This line stays a hand-maintained list for that reason: a further
+  # .gaia/scripts load the hook's live path gains has to be added here, or it
+  # goes short with nothing red.
   cp "${HOOKS_SRC%/.claude/hooks}/.gaia/scripts/main-root-lib.sh" "$STAGED_ROOT/.gaia/scripts/"
   git -C "$STAGED_ROOT" init --quiet --initial-branch=main
   git -C "$STAGED_ROOT" config user.email "test@example.com"
