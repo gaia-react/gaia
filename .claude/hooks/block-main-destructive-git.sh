@@ -60,10 +60,14 @@ cmd=$(echo "$payload" | jq -r '.tool_input.command // empty')
 # substitution has no reachable failure to degrade from, while one that changes
 # directory into a lib child does.
 # gaia:maintainer-only:start
-# That is why this hook sits on the excluded side of the degrade table in
-# .gaia/tests/hooks/audit-hook-lib-degrade.bats: it reaches no reporting path on
-# a degraded run, because a missing carve-out is a silent fail-open here rather
-# than a deny, and its entry there names this warrant.
+# That warrant covers this ancestor resolve alone, and not the file. The hook is
+# a DRIVEN member of the lib-degrade suite in
+# .gaia/tests/hooks/audit-hook-lib-degrade.bats, reached through the
+# jq-availability load above, which does resolve a `lib` child. That suite
+# derives its membership from the hooks themselves and is the authority on which
+# side of its table this file sits, so the answer is not restated here: a
+# restatement nothing couples to that suite is how the claim this replaces went
+# stale, and a corrected one would start the same decay again.
 # gaia:maintainer-only:end
 _hook_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd)" || _hook_root=''
 _scope_lib="$_hook_root/.claude/hooks/lib/repo-scope.sh"
