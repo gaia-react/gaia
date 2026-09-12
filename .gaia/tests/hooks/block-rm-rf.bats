@@ -1391,13 +1391,24 @@ assert_position_preserving() {
 stage_rmrf_tree() {
   STAGED_ROOT="$BATS_TEST_TMPDIR/staged"
   rm -rf "$STAGED_ROOT"
-  mkdir -p "$STAGED_ROOT/.claude/hooks/lib" "$STAGED_ROOT/.gaia/scripts"
-  cp "$HOOK_ABS" "$STAGED_ROOT/.claude/hooks/"
-  # The jq-availability arm runs ahead of everything these fixtures degrade, and
-  # refuses when it cannot load its own library, so a staged tree without it
-  # would answer every case below with that refusal rather than with the
-  # degrade under test.
-  cp "$HOOKS_SRC/lib/jq-availability.sh" "$STAGED_ROOT/.claude/hooks/lib/"
+  # `mkdir -p` stops at .claude on purpose: the copy below becomes
+  # $STAGED_ROOT/.claude/hooks, and creating that destination first would nest
+  # the source inside it instead.
+  mkdir -p "$STAGED_ROOT/.claude" "$STAGED_ROOT/.gaia/scripts"
+  # Staged wholesale rather than named library by library, so the staged set is
+  # derived from the hooks directory instead of restated here: a library this
+  # hook gains reaches the staged tree without anyone remembering this helper,
+  # and each case below then degrades only the library it is named for. It also
+  # keeps the jq-availability arm present, which runs ahead of everything these
+  # fixtures degrade and refuses when it cannot load its own library, so a
+  # staged tree without it would answer every case with that refusal rather
+  # than with the degrade under test.
+  cp -R "$HOOKS_SRC" "$STAGED_ROOT/.claude/hooks"
+  # Outside the hooks directory, so the wholesale copy above does not reach it.
+  # This line stays a hand-maintained list for that reason: a further
+  # .gaia/scripts load the hook's live path gains has to be added here, unless a
+  # case deliberately pins that library's absence, or the staged tree goes short
+  # with nothing red.
   cp "${HOOKS_SRC%/.claude/hooks}/.gaia/scripts/main-root-lib.sh" \
      "${HOOKS_SRC%/.claude/hooks}/.gaia/scripts/state-registry-lib.sh" \
      "$STAGED_ROOT/.gaia/scripts/"
