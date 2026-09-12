@@ -11,6 +11,17 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-09-12 bd795f4b SKIP - internal bug fixes to block-main-destructive-git.sh (quote-aware global parser, per-segment cd tracking, switch no-op carve-out), existing wiki descriptions stay accurate at their altitude
+- 2026-09-12 95e8045 WORTHY - arms audit-ci-tests.yml code: filter on every wiki path -> wiki/decisions/Sharded CI Test Matrix.md corrected, wiki/.state.json no longer 'does not arm code: at all'
+- 2026-09-12 7c710d6 SKIP - tests-only, drives block-no-verify's repo-scope degrade tests through staged tree
+- 2026-09-12 b8dd1e6 SKIP - tests-only, drives repo-scope degrade tests through staged hook tree
+- 2026-09-12 7b84113 SKIP - internal bug fix to RED-verify/worthiness-presence gates' tree resolution, no wiki claim about cwd-vs-command-target to correct
+- 2026-09-12 d1e6b25 WORTHY - wiki already updated in-commit: PR Merge Workflow and Release-Notes CHANGELOG entries now cite issue number, no further edit needed
+- 2026-09-12 d1c8b86 SKIP - internal bug fix to repo-scope.sh's -R/--repo reading, no wiki claim about this mechanism to correct
+- 2026-09-12 c04765c SKIP - wiki: self-referential sync commit
+- 2026-09-12 f85b134 SKIP - internal bug fixes to block-main-destructive-git.sh subcommand keying and hop guard; existing Git Workflow/Claude Hooks descriptions stay accurate at their altitude
+- 2026-09-12 055a49c SKIP - internal cli refactor consolidating collectPins onto shared tree walk, no behavior wiki documents
+- 2026-09-12 40f1259 WORTHY - wiki already updated in-commit: PR Merge Workflow gh 2.99.0 --delete-branch bound, Wiki Sync auto-merge remote-delete claim, no further edit needed
 - 2026-09-12 692904fd SKIP - wiki/concepts/Git Workflow.md already updated in-commit (repo-scope matches remotes, not checkout directory)
 - 2026-09-12 54145795 SKIP - wiki/concepts/Claude Hooks.md and wiki/concepts/PR Merge Workflow.md already updated in-commit (main-checkout hop guard)
 - 2026-09-12 1dacd926 SKIP - internal accuracy fix to capability-oracle-lib.sh install-arm matching, no capability declaration or documented behavior moves
