@@ -10,9 +10,12 @@
 # repo-scope helper.
 #
 # Each test drives the hook exactly as the harness does: a PreToolUse JSON
-# payload on stdin, run with the repo as the working directory (the hook loads
-# .claude/hooks/lib/repo-scope.sh relative to cwd, so the helper is copied into
-# the tmp repo). The hook always exits 0; allow vs deny is carried in stdout
+# payload on stdin, run with the repo as the working directory, which is where
+# the shared repo-scope helper resolves the home repository's identity from: it
+# reads the toplevel and the remote URLs of whatever repo cwd sits in. The hook
+# loads that helper from its own on-disk location rather than from cwd, so the
+# staged-tree harness below is what puts a library a test controls in front of
+# it. The hook always exits 0; allow vs deny is carried in stdout
 # a deny emits `"permissionDecision": "deny"`, an allow emits nothing. The
 # deny cases double as a jq/setup canary: a missing jq would exit early with no
 # output and those assertions would fail rather than false-pass.
@@ -31,11 +34,6 @@ setup() {
   git -C "$REPO" add README.md
   git -C "$REPO" commit --quiet -m "init"
   git -C "$REPO" checkout --quiet -b feature
-
-  # The hook sources the repo-scope helper relative to cwd; give the tmp repo
-  # a real copy so the foreign-repo bypass resolves.
-  mkdir -p "$REPO/.claude/hooks/lib"
-  cp "$HOOKS_SRC/lib/repo-scope.sh" "$REPO/.claude/hooks/lib/repo-scope.sh"
 
   # A second, distinct repo for the foreign-repo case.
   FOREIGN=$(mktemp -d -t no-verify-foreign-XXXXXX)
@@ -220,20 +218,13 @@ run_hook() {
   return 0
 }
 
-# --- an unparseable repo-scope.sh degrades, it does not deny ---
+# --- the staged-tree harness the degrade cases below share ---
 #
-# The repo-scope load sits under this hook's `set -euo pipefail`, so before the
-# fix an unparseable copy abandoned the shell ahead of the `type
-# cmd_targets_foreign_repo` check on the next line. That exits 2, the
-# PreToolUse deny code, refusing every git command the hook matches -- including
-# the very edit that would repair the library. Unlike the verb-arming sites,
-# this one denies on bash 5 as well as on 3.2, so neither case below needs a
-# /bin/bash pin to have teeth.
-#
-# The pair is what discriminates. The allow case alone is satisfied by a hook
-# that stopped enforcing entirely, so the deny twin proves the degrade kept the
-# floor: without cmd_targets_foreign_repo the foreign-repo carve-out simply does
-# not fire, which is the fail-closed direction this hook documents at :47-50.
+# The repo-scope load resolves off BASH_SOURCE, never off the process working
+# directory, so expressing a degraded library needs a COPY of the hook in a tree
+# the test controls: running the real $HOOK_ABS leaves it resolving the real
+# checkout's library beside itself, whatever a fixture does to a copy anywhere
+# else.
 
 # Overwrites <path> with an unresolved-merge-conflict body: the file opens and
 # reads fine, so an existence test passes it, and bash cannot parse it.
@@ -242,20 +233,74 @@ write_conflicted_lib() {
     printf 'y() { :; }\n'; printf '>>>>>>> other\n'; } > "$1"
 }
 
+stage_hook_tree() {
+  STAGED_ROOT="$BATS_TEST_TMPDIR/staged"
+  rm -rf "$STAGED_ROOT"
+  mkdir -p "$STAGED_ROOT/.claude/hooks/lib"
+  cp "$HOOK_ABS" "$STAGED_ROOT/.claude/hooks/"
+  cp "$HOOKS_SRC/lib/repo-scope.sh" "$STAGED_ROOT/.claude/hooks/lib/"
+  # The jq-availability arm runs ahead of the load under test and refuses when
+  # it cannot find its own library, so a staged tree without it answers every
+  # case with that refusal instead of the decision under test.
+  cp "$HOOKS_SRC/lib/jq-availability.sh" "$STAGED_ROOT/.claude/hooks/lib/"
+  STAGED_HOOK="$STAGED_ROOT/.claude/hooks/block-no-verify.sh"
+}
+
+# Run the staged copy of the hook, from inside the staged tree.
+run_staged() {
+  local json
+  json=$(jq -n --arg c "$1" '{tool_name: "Bash", tool_input: {command: $c}}')
+  invoke_hook_in "$STAGED_ROOT" "$json" "$STAGED_HOOK"
+}
+
+# --- a degraded repo-scope.sh degrades the hook, it does not deny ---
+#
+# The repo-scope load sits under this hook's `set -euo pipefail`, so without the
+# bracket suspending errexit an unparseable copy abandons the shell ahead of the
+# `type cmd_targets_foreign_repo` check on the next line. That exits 2, the
+# PreToolUse deny code, refusing every git command the hook matches -- including
+# the very edit that would repair the library. Unlike the verb-arming sites,
+# this one denies on bash 5 as well as on 3.2, so neither conflict-marker case
+# needs a /bin/bash pin to have teeth.
+#
+# Each pair is what discriminates. The allow case alone is satisfied by a hook
+# that stopped enforcing entirely, so the deny twin proves the degrade kept the
+# floor: without cmd_targets_foreign_repo the foreign-repo carve-out simply does
+# not fire, which is the fail-closed direction the hook's own repo-scope comment
+# documents.
+#
+# The absent-library case pins those same two directions against a different
+# trigger, and an unbracketed load alone is not a probe that can red it: with
+# the library missing, the `[ -f ]` guard ahead of the source short-circuits,
+# and errexit exempts a non-final command in an `&&` list, so that path never
+# reaches the source the bracket protects. Dropping that guard along with the
+# bracket is what reds it, by turning a missing library into the same abandoned
+# shell.
+
 @test "repo-scope.sh holding conflict markers: an ordinary git command is still allowed" {
-  write_conflicted_lib "$REPO/.claude/hooks/lib/repo-scope.sh"
-  run_hook 'git status'
+  stage_hook_tree
+  write_conflicted_lib "$STAGED_ROOT/.claude/hooks/lib/repo-scope.sh"
+  run_staged 'git status'
   assert_allowed_by_json
 }
 
 @test "repo-scope.sh holding conflict markers: a --no-verify commit is still denied" {
-  write_conflicted_lib "$REPO/.claude/hooks/lib/repo-scope.sh"
-  run_hook 'git commit --no-verify -m x'
+  stage_hook_tree
+  write_conflicted_lib "$STAGED_ROOT/.claude/hooks/lib/repo-scope.sh"
+  run_staged 'git commit --no-verify -m x'
   assert_denied_by_json
 }
 
 @test "repo-scope.sh absent entirely: an ordinary git command is still allowed" {
-  rm -f "$REPO/.claude/hooks/lib/repo-scope.sh"
-  run_hook 'git status'
+  stage_hook_tree
+  rm -f "$STAGED_ROOT/.claude/hooks/lib/repo-scope.sh"
+  run_staged 'git status'
   assert_allowed_by_json
+}
+
+@test "repo-scope.sh absent entirely: a --no-verify commit is still denied" {
+  stage_hook_tree
+  rm -f "$STAGED_ROOT/.claude/hooks/lib/repo-scope.sh"
+  run_staged 'git commit --no-verify -m x'
+  assert_denied_by_json
 }
