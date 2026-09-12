@@ -26,7 +26,7 @@
 # ships the substring search as its own companion assertion, proving the
 # oracle it replaces was the wrong one.
 #
-# Discovery walks four roots (.github/workflows, .github/actions,
+# Discovery walks these roots (.github/workflows, .github/actions,
 # .gaia/cli/src/automation/templates/workflows,
 # .gaia/cli/templates/workflows) from the tracked tree via `git ls-files`,
 # matching `uses:` on either arm: the composite's normalized local path, or
@@ -66,7 +66,7 @@
 #
 # Relationship to the step-body extractor roster
 # (`.gaia/scripts/check-step-body-extractor-roster.sh`): this suite names
-# `code-review-audit.yml` -- it is one of the files the four discovery roots
+# `code-review-audit.yml` -- it is one of the files the discovery roots
 # reach -- but it never extracts a step BODY out of it, and none of its own
 # literals reproduce that check's six-space step-header prefix (this suite's
 # own anchors sit at four-space job-level or eight-space step-level
@@ -130,7 +130,7 @@ setup() {
   require_repo_path -f "$PARTIAL_SRC" "partials/node-setup.yml.tmpl" || return 1
   require_repo_path -f "$PNPM_AUDIT_TMPL_SRC" "gaia-ci-pnpm-audit.yml.tmpl" || return 1
 
-  # The four discovery roots -- .github/workflows, .github/actions, and the
+  # The discovery roots -- .github/workflows, .github/actions, and the
   # two adopter template directories under .gaia/cli -- are the whole
   # tracked-tree surface that can carry a provisioning uses: line: the first
   # two are where a maintainer-authored workflow or composite action lives,
@@ -151,7 +151,7 @@ setup() {
     '.gaia/cli/templates/workflows/**')
 
   [ "${#PROVISIONING_FILES[@]}" -gt 0 ] || {
-    echo "no files discovered across the four provisioning-discovery roots; every test here would assert over an empty set" >&2
+    echo "no files discovered across the provisioning-discovery roots; every test here would assert over an empty set" >&2
     return 1
   }
 }
@@ -373,7 +373,7 @@ provisioning_rel_path() {
 }
 
 # The second, independent authority the empty/short-read guard compares
-# against: a git grep over the four real discovery roots, anchored on
+# against: a git grep over the real discovery roots, anchored on
 # `uses:` so the pinned-SHA header comments in forensics-triage.yml and
 # audit-ci-tests.yml (which name pnpm/action-setup in prose) are not counted
 # as steps. Always reads the REAL repository tree regardless of which files
@@ -493,7 +493,7 @@ provisioning_attribution_gaps() {
   local tracked
   tracked="$(provisioning_tracked_count)"
   if [ "$derived" -lt "$tracked" ]; then
-    gaps="${gaps}derived set holds ${derived} provisioning step(s) across the files scanned; the tracked-tree git grep over the four discovery roots holds ${tracked}. This discovery is reading fewer call sites than exist."$'\n'
+    gaps="${gaps}derived set holds ${derived} provisioning step(s) across the files scanned; the tracked-tree git grep over the discovery roots holds ${tracked}. The two authorities read different sets, so a shortfall has more than one cause and they are not distinguishable from the counts alone: discovery may be reading fewer call sites than exist, or the grep may be counting a provisioning uses: line inside a file discovery excludes from the parseable set for carrying an unrendered mustache token, or inside one it searches that discovery never opens at all. Compare the two file lists before concluding a call site is missing."$'\n'
   fi
 
   printf '%s' "$gaps"
@@ -586,7 +586,7 @@ PY
 
 # ---------------------------------------------------------------------------
 
-@test "every provisioning step across the four discovery roots is capped, attributed, and complete" {
+@test "every provisioning step across the discovery roots is capped, attributed, and complete" {
   require_yaml_parser
   local gaps
   gaps="$(provisioning_attribution_gaps "${PROVISIONING_FILES[@]}")" || {
@@ -607,9 +607,13 @@ PY
 # comment alone, on the file exactly as it stands, which is what makes the
 # structural check above load-bearing rather than decorative.
 @test "a bare substring search for the composite's bounded-install literal is satisfied by prose alone" {
-  run grep -n 'timeout -k' "$ACTION_FILE"
+  # Anchored to a comment line deliberately. Unanchored, this matches a real
+  # bounded `run:` step just as readily, so adding one to the composite would
+  # break the construct this test's name claims while leaving it green: the
+  # same match-region failure the header argues the structural check replaces.
+  run grep -nE '^[[:space:]]*#.*timeout -k' "$ACTION_FILE"
   [ "$status" -eq 0 ] || {
-    echo "expected 'timeout -k' to appear in $ACTION_FILE (it lives in a docblock comment, not a bounded run: step); its absence would mean this companion assertion no longer demonstrates anything" >&2
+    echo "expected 'timeout -k' to appear in a COMMENT line of $ACTION_FILE; its absence there would mean this companion assertion no longer demonstrates that a bare substring oracle is satisfied by prose" >&2
     return 1
   }
 }
@@ -789,7 +793,7 @@ PY
   local tracked gaps
   tracked="$(provisioning_tracked_count)"
 
-  # A single real, healthy file rather than the full four-root set: the
+  # A single real, healthy file rather than the full root set: the
   # structural read of it is clean on its own terms (it has no attribution
   # gap of its own), so only the independent tracked-tree comparison can
   # catch that this is not the whole tree.

@@ -398,12 +398,12 @@ describe('workflow templates: push re-authentication (issue #581)', () => {
   });
 });
 
-// The rendered partial's single `uses:` step carries no `with:` block, so
-// behaviour-preservation rests entirely on these two composite defaults.
-// Neither is legible from the three-line partial itself, so a later change to
-// either would silently change what an adopter installs unless something
-// here pins it.
-describe('gaia-setup-node composite: inputs the rendered partial depends on', () => {
+// The rendered partial's single `uses:` step carries no `with:` block, so what
+// an adopter installs is decided entirely inside the composite. None of it is
+// legible from the one-line partial, so a change there would silently change
+// adopter CI unless something here pins it: the two defaults the partial
+// relies on, and the install command those defaults select.
+describe('gaia-setup-node composite: what the rendered partial depends on', () => {
   const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
   const actionPath = path.join(
     repoRoot,
@@ -414,7 +414,13 @@ describe('gaia-setup-node composite: inputs the rendered partial depends on', ()
   );
   const action = load(readFileSync(actionPath, 'utf8')) as {
     inputs: {install: {default: string}};
-    runs: {steps: readonly {name: string; with?: {cache?: string}}[]};
+    runs: {
+      steps: readonly {
+        name: string;
+        run?: string;
+        with?: {cache?: string};
+      }[];
+    };
   };
 
   test('defaults to installing the root workspace', () => {
@@ -427,5 +433,18 @@ describe('gaia-setup-node composite: inputs the rendered partial depends on', ()
     );
 
     expect(setupNode?.with?.cache).toBe('pnpm');
+  });
+
+  // The rendered snapshot carried this command literally until the partial
+  // routed through the composite, so the snapshot was what reddened when it
+  // changed. The default above only selects which install runs, never what
+  // that install does, so without this the command an adopter's CI executes
+  // is pinned by nothing.
+  test('installs the root workspace from the lockfile', () => {
+    const install = action.runs.steps.find(
+      (step) => step.name === 'Install root dependencies'
+    );
+
+    expect(install?.run?.trim()).toBe('pnpm install --frozen-lockfile');
   });
 });
