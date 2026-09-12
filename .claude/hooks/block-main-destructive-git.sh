@@ -60,10 +60,14 @@ cmd=$(echo "$payload" | jq -r '.tool_input.command // empty')
 # substitution has no reachable failure to degrade from, while one that changes
 # directory into a lib child does.
 # gaia:maintainer-only:start
-# That is why this hook sits on the excluded side of the degrade table in
-# .gaia/tests/hooks/audit-hook-lib-degrade.bats: it reaches no reporting path on
-# a degraded run, because a missing carve-out is a silent fail-open here rather
-# than a deny, and its entry there names this warrant.
+# That warrant covers this ancestor resolve alone, and not the file. The hook is
+# a DRIVEN member of the lib-degrade suite in
+# .gaia/tests/hooks/audit-hook-lib-degrade.bats, reached through the
+# jq-availability load above, which does resolve a `lib` child. That suite
+# derives its membership from the hooks themselves and is the authority on which
+# side of its table this file sits, so the answer is not restated here: a
+# restatement nothing couples to that suite is how the claim this replaces went
+# stale, and a corrected one would start the same decay again.
 # gaia:maintainer-only:end
 _hook_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd)" || _hook_root=''
 _scope_lib="$_hook_root/.claude/hooks/lib/repo-scope.sh"
@@ -142,6 +146,135 @@ current_branch() {
   fi
 }
 
+# resolve_same_repo_dir <dir>: print <dir> when it names THIS repository, and
+# print nothing otherwise. Always succeeds, so a caller assigning its output
+# under errexit is not abandoned by a directory that does not resolve; an empty
+# answer leaves the caller reading its own working directory, which is the
+# fail-closed direction this guard takes everywhere else.
+resolve_same_repo_dir() {
+  local dir="$1" a b
+  [ -n "$dir" ] || return 0
+  # The tilde arrives as a literal character, never expanded, because it reached
+  # this hook as text inside the tool call rather than through a shell. SC2088
+  # fires on the quoted tilde, but these are case PATTERNS matching that literal
+  # character, not an expansion attempt.
+  # shellcheck disable=SC2088
+  case "$dir" in
+    '~') dir="$HOME" ;;
+    '~/'*) dir="$HOME/${dir:2}" ;;
+  esac
+  command -v gaia_resolve_common_dir >/dev/null 2>&1 || return 0
+  a=$(gaia_resolve_common_dir "$dir" 2>/dev/null) || return 0
+  b=$(gaia_resolve_common_dir 2>/dev/null) || return 0
+  [ -n "$a" ] && [ -n "$b" ] && [ "$a" = "$b" ] && printf '%s' "$dir"
+  return 0
+}
+
+# cmd_has_unquoted_group <string>: 0 when the command carries a `(` or `)`
+# outside quotes.
+#
+# A `cd` inside a subshell moves nothing once the group closes, and the segment
+# walk below splits on those characters without recording which one it split at,
+# so a tracked `cd` cannot be scoped to the group it belongs to. Tracking stands
+# down for the whole command instead, leaving every segment read against this
+# hook's own working directory.
+#
+# Quoting is modelled rather than pattern-matched because the distinction is
+# load-bearing: a parenthesis inside a quoted value is ordinary text, and a
+# commit subject routinely carries one, so a test that merely looked for the
+# character would stand tracking down on an ordinary commit and deny it.
+#
+# What the stand-down reaches beyond a real subshell is an ordinary unquoted
+# command substitution, which carries the same characters: a `cd` into a linked
+# worktree followed by a push whose refspec comes from one is read against this
+# hook's own working directory rather than the worktree's, and denied. That is a
+# false deny rather than a miss, and the escape is running the command with the
+# `!` prefix.
+#
+# The leading `case` is a fast path for the ordinary command that carries no
+# parenthesis at all, which keeps the character walk off every invocation.
+cmd_has_unquoted_group() {
+  local s="$1" BLOCK=256 base=0 n_s block n_b k c q="" esc=0
+  case "$s" in
+    *'('* | *')'*) ;;
+    *) return 1 ;;
+  esac
+  n_s=${#s}
+  while [ "$base" -lt "$n_s" ]; do
+    block="${s:$base:$BLOCK}"
+    base=$((base + BLOCK))
+    k=0
+    n_b=${#block}
+    while [ "$k" -lt "$n_b" ]; do
+      c="${block:$k:1}"
+      k=$((k + 1))
+      if [ "$esc" = 1 ]; then esc=0; continue; fi
+      if [ "$c" = "\\" ] && [ "$q" != "'" ]; then esc=1; continue; fi
+      if [ -n "$q" ]; then
+        [ "$c" = "$q" ] && q=""
+        continue
+      fi
+      case "$c" in
+        '"' | "'") q="$c" ;;
+        '(' | ')') return 0 ;;
+      esac
+    done
+  done
+  return 1
+}
+
+# split_git_words <string>: split one segment into shell-like words in the
+# array `w`, modelling quoting the way the shell does -- a quote opens a span in
+# which whitespace is ordinary text, and a backslash escapes the character after
+# it -- and handing the words back unquoted.
+#
+# `read -ra` splits on whitespace alone, so a quoted global-option value
+# carrying whitespace arrived as fragments and the fragment after the space
+# landed in the slot the subcommand is read from, leaving every rule armed on
+# git_sub reading a subcommand that was never spelled (gaia-react/gaia#2020).
+#
+# A word accumulates into `chunk` and reaches `word` once per block rather than
+# once per character, and the walk indexes inside a block rather than into the
+# whole string. `word="$word$c"` costs O(word) and a quoted span has no length
+# bound, so a multi-kilobyte commit message made the naive walk quadratic: a
+# synchronous stall on a blocking hook, at a size an ordinary `-m` body reaches.
+split_git_words() {
+  local s="$1" NL=$'\n' TAB=$'\t'
+  local BLOCK=256 base=0 n_s block n_b k c
+  local q="" esc=0 word="" chunk="" have=0
+  w=()
+  n_s=${#s}
+  while [ "$base" -lt "$n_s" ]; do
+    block="${s:$base:$BLOCK}"
+    base=$((base + BLOCK))
+    k=0
+    n_b=${#block}
+    while [ "$k" -lt "$n_b" ]; do
+      c="${block:$k:1}"
+      k=$((k + 1))
+      if [ "$esc" = 1 ]; then esc=0; chunk="$chunk$c"; have=1; continue; fi
+      # A backslash is literal inside single quotes, as in the shell itself.
+      if [ "$c" = "\\" ] && [ "$q" != "'" ]; then esc=1; continue; fi
+      if [ -n "$q" ]; then
+        if [ "$c" = "$q" ]; then q=""; else chunk="$chunk$c"; fi
+        have=1
+        continue
+      fi
+      case "$c" in
+        '"' | "'") q="$c"; have=1 ;;
+        ' ' | "$TAB" | "$NL")
+          [ "$have" = 1 ] && w+=("$word$chunk")
+          word=""; chunk=""; have=0 ;;
+        *) chunk="$chunk$c"; have=1 ;;
+      esac
+    done
+    word="$word$chunk"
+    chunk=""
+  done
+  [ "$have" = 1 ] && w+=("$word$chunk")
+  return 0
+}
+
 # parse_git_globals <segment>: split one segment's git invocation at its
 # subcommand. Only a `-C` between `git` and the subcommand word is git's own
 # directory option. Past the subcommand it belongs to the subcommand
@@ -152,19 +285,40 @@ current_branch() {
 # first one), norm (the segment minus its global `-C` pairs, for the commit and
 # push regexes), git_sub (the subcommand word), and git_args (the words after
 # it).
+#
+# Honest limits, and they bind every rule armed on git_sub below rather than any
+# one of them. These spellings reach the subcommand slot carrying something
+# other than the subcommand, so the guard reads no subcommand and allows:
+#
+#   - a value-taking global option absent from the table below, whose value is a
+#     bare word. The table mirrors the options git itself takes a separated
+#     value for, and one missing from it hands its own value to the slot.
+#   - a separator, a quote, or a value produced by an expansion (`$VAR`,
+#     `$(...)`, a backtick, `~`), which is ordinary word text to a scan that
+#     models quoting but does not expand.
+#   - a quoted value carrying one of the `| & ; ( )` characters the segment walk
+#     below cuts on, since that cut happens before this parser sees the segment.
+#
+# Closing any of them needs the shell's own evaluation of the command, which a
+# PreToolUse hook reading `tool_input.command` as text does not have.
 parse_git_globals() {
   local -a w kept
   local i=0 n t globals=0
   git_cwd="" git_sub=""
   git_args=()
-  read -ra w <<<"$1"
+  split_git_words "$1"
   n=${#w[@]}
   while [ "$i" -lt "$n" ]; do
     t="${w[$i]}"
     if [ "$globals" -eq 1 ]; then
       case "$t" in
         -C) git_cwd="${w[$((i + 1))]:-}"; i=$((i + 2)); continue ;;
-        -c | --git-dir | --work-tree | --namespace)
+        # Every global git takes a SEPARATED value for. An option missing here
+        # falls to the `-*` arm and its value reaches the catch-all that assigns
+        # the subcommand, which is the disarm, so this table tracking git's own
+        # is what keeps the arming honest. The `=`-joined spellings need no
+        # entry: they are one word, so the subcommand still lands next.
+        -c | --git-dir | --work-tree | --namespace | --config-env | --exec-path | --attr-source)
           kept+=("$t" "${w[$((i + 1))]:-}"); i=$((i + 2)); continue ;;
         -*) ;;
         *) globals=2; git_sub="$t"; git_args=("${w[@]:$((i + 1))}") ;;
@@ -177,6 +331,46 @@ parse_git_globals() {
   done
   norm=""
   [ "${#kept[@]}" -eq 0 ] || norm="${kept[*]}"
+}
+
+# push_refspec_names_main: 0 when the words after a `push` subcommand carry a
+# refspec whose SOURCE is main, master, or HEAD. It reads the operands rather
+# than a fixed position: the ref was pinned to the word after the remote, so an
+# option written ahead of the remote shifted both and the push was allowed
+# (gaia-react/gaia#2021). Rule 2 below still caught the shape when a force flag
+# was present, which is what left the plain push as the hole.
+#
+# The first operand is the remote and every operand after it is a refspec, so a
+# push naming several is read whole rather than at its first one. A `--` ends
+# git's option parsing and is not itself an operand. A leading `+` on a refspec
+# is the force marker and is not part of the ref name.
+#
+# Honest limits. An option absent from the value-taking table below leaves its
+# value read as an operand, which shifts the remote and every refspec after it;
+# where that value happens to spell a branch the result is a false deny rather
+# than a false allow, which is the safe direction for a guard whose escape is
+# running the command with the `!` prefix. A refspec naming main only as its
+# DESTINATION (`feature:main`) is not read here: that is the reading this rule
+# has always had, and narrowing or widening it is a separate question from where
+# the ref sits.
+push_refspec_names_main() {
+  local t seen_remote=0 skip_next=0 ref
+  for t in ${git_args[@]+"${git_args[@]}"}; do
+    if [ "$skip_next" -eq 1 ]; then skip_next=0; continue; fi
+    case "$t" in
+      --) continue ;;
+      -o | --push-option | --repo | --receive-pack | --exec)
+        skip_next=1; continue ;;
+      -*) continue ;;
+    esac
+    if [ "$seen_remote" -eq 0 ]; then seen_remote=1; continue; fi
+    ref="${t#+}"
+    case "$ref" in
+      HEAD | main | master) return 0 ;;
+      HEAD:* | main:* | master:*) return 0 ;;
+    esac
+  done
+  return 1
 }
 
 # --- main-checkout hop guard -------------------------------------------------
@@ -207,37 +401,51 @@ hop_target() {
 }
 
 # hop_moves_head <target>: 0 when the segment parse_git_globals just read is a
-# checkout or switch that moves HEAD. Every `git switch` does, and so does
-# `git checkout` with `-b`/`-B`/`--orphan`/`--detach`, with `-` (the previous
-# branch), or with exactly one operand that resolves as a commit-ish. Path
-# restores pass: anything carrying `--`, `-p`, or a pathspec file, and two or
-# more operands (a tree-ish plus paths).
+# checkout or switch that moves HEAD. That is a branch-creating or detaching
+# form of either one, `-` (the previous branch), or exactly one operand that
+# resolves as a commit-ish and is neither HEAD nor the branch HEAD already
+# points at. Path restores pass: anything carrying `--`, `-p`, or a pathspec
+# file, and two or more operands (a tree-ish plus paths).
 #
-# Honest limits. The guard reads words split on whitespace, never the command as
-# the shell would expand it, so spellings that need the shell's own reading pass.
-# They include: a `git checkout <name>` that git would DWIM into a new tracking
-# branch from a remote, since it does not resolve as a commit-ish locally (the
-# feature-branch cleanup's `git checkout main` always resolves); a `cd` into the
+# Honest limits. The guard reads the command as text, never as the shell would
+# expand it, so spellings that need the shell's own reading pass. They include:
+# a `git checkout <name>` that git would DWIM into a new tracking branch from a
+# remote, since it does not resolve as a commit-ish locally (the feature-branch
+# cleanup's `git checkout main` always resolves), where `switch` takes the
+# opposite answer and denies an operand that resolves nowhere; a `cd` into the
 # main checkout earlier in the same command, since the target comes from `-C` or
 # the payload's cwd, never from a `cd`; `--git-dir` or `--work-tree` aiming a
 # command run elsewhere at the main checkout, for the same reason; a `-C` whose
-# path is quoted with a space in it, carries an unexpanded variable or `~`, or is
-# a relative `-C` stacked on an earlier one; a global option whose value this
-# parser does not know to skip, such as `--config-env`; and `gh pr checkout`,
-# whose command word is not `git`.
+# path carries an unexpanded variable or `~`, or is a relative `-C` stacked on an
+# earlier one; a global option this parser does not know takes a separated value,
+# whose own value then lands in the slot the subcommand is read from; and
+# `gh pr checkout`, whose command word is not `git`.
 hop_moves_head() {
   local target="$1" operand="" n=0 t skip_next=0 cur ref
+  # The two subcommands spell their branch-creating flags differently, and the
+  # difference is why they are read apart rather than together: `-c`/`-C` create
+  # a branch for `switch` and mean something else entirely for `checkout`, where
+  # `-C` is commit's reuse-message option. Past this point the operand analysis
+  # is shared, so a switch naming the branch HEAD already holds reaches the same
+  # no-op carve-out a checkout naming it does.
   case "$git_sub" in
-    switch) return 0 ;;
-    checkout) ;;
+    switch)
+      for t in ${git_args[@]+"${git_args[@]}"}; do
+        case "$t" in
+          -c | -C | --create | --force-create | --orphan | --detach) return 0 ;;
+        esac
+      done
+      ;;
+    checkout)
+      for t in ${git_args[@]+"${git_args[@]}"}; do
+        case "$t" in -b | -B | --orphan | --detach) return 0 ;; esac
+      done
+      for t in ${git_args[@]+"${git_args[@]}"}; do
+        case "$t" in -- | -p | --patch | --pathspec-from-file*) return 1 ;; esac
+      done
+      ;;
     *) return 1 ;;
   esac
-  for t in ${git_args[@]+"${git_args[@]}"}; do
-    case "$t" in -b | -B | --orphan | --detach) return 0 ;; esac
-  done
-  for t in ${git_args[@]+"${git_args[@]}"}; do
-    case "$t" in -- | -p | --patch | --pathspec-from-file*) return 1 ;; esac
-  done
   # Redirections are not operands: `git checkout main 2>/dev/null` names one.
   for t in ${git_args[@]+"${git_args[@]}"}; do
     if [ "$skip_next" -eq 1 ]; then skip_next=0; continue; fi
@@ -255,7 +463,18 @@ hop_moves_head() {
     \"*\") operand="${operand#\"}"; operand="${operand%\"}" ;;
     \'*\') operand="${operand#\'}"; operand="${operand%\'}" ;;
   esac
-  git -C "$target" rev-parse --verify -q "${operand}^{commit}" >/dev/null 2>&1 || return 1
+  if ! git -C "$target" rev-parse --verify -q "${operand}^{commit}" >/dev/null 2>&1; then
+    # An unresolvable operand is not a no-op for `switch`: git DWIMs a name
+    # carried only by a remote into a new tracking branch and moves HEAD, and a
+    # bare name resolves against refs/remotes/<name> rather than
+    # refs/remotes/<remote>/<name>, so the test above cannot see one. Denying a
+    # name that resolves nowhere at all refuses a command git would reject
+    # anyway, which is the safe direction. `checkout` keeps the opposite answer,
+    # the DWIM limit its honest-limits block above records
+    # (gaia-react/gaia#2018).
+    if [ "$git_sub" = switch ]; then return 0; fi
+    return 1
+  fi
 
   # A commit-ish operand still moves nothing when it names HEAD itself, or the
   # branch HEAD already points at, so neither is a hop. Denying them refused a
@@ -382,11 +601,31 @@ hop_guard() {
 # assignments are stripped to expose it. The commit/push rules act only on
 # segments whose command word is `git`, so `git commit` / `git push` appearing
 # as TEXT in another program's arguments never trips the gate.
+# The directory a `cd` moves into governs every segment after it, so it is
+# tracked as the walk goes rather than resolved once for the whole command. A
+# command-wide value could not be replaced by a later `cd`, so a command that
+# stepped into a worktree and back read the worktree's branch for a commit that
+# landed on main.
+lead_cd=""
+cd_tracking=1
+if cmd_has_unquoted_group "$cmd"; then cd_tracking=0; fi
+
 while IFS= read -r seg; do
   # Command word = the first token after any leading whitespace + env-var
   # assignments (`WORD=value `). bash 3.2 does not populate BASH_REMATCH
   # reliably, so strip with sed rather than a capture loop.
   seg_cmd=$(printf '%s' "$seg" | sed -E 's/^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)*//')
+
+  # A target that does not resolve as this repository CLEARS the tracked
+  # directory rather than leaving the previous one standing: the command has
+  # moved somewhere this guard cannot read a branch from, and keeping the
+  # previous target would read a branch the command had already left.
+  if [ "$cd_tracking" -eq 1 ] && [[ "$seg_cmd" =~ ^cd([[:space:]]|$) ]]; then
+    split_git_words "$seg_cmd"
+    lead_cd=$(resolve_same_repo_dir "${w[1]:-}")
+    continue
+  fi
+
   [[ "$seg_cmd" =~ ^git([[:space:]]|$) ]] || continue
 
   parse_git_globals "$seg"
@@ -399,17 +638,11 @@ while IFS= read -r seg; do
   esac
   [ "$foreign_repo" -eq 1 ] && continue
 
-  # The checkout this segment acts on: its own `-C`, else the leading `cd` the
-  # repo-scope verdict resolved, else this hook's working directory. A `cd`
+  # The checkout this segment acts on: its own `-C`, else the directory the most
+  # recent preceding `cd` moved into, else this hook's working directory. A `cd`
   # into a linked worktree is this repository but another checkout, with its
   # own branch.
-  #
-  # Honest limit: the leading `cd` target stands for every segment, and a later
-  # `cd` does not replace it. From a main checkout on main,
-  # `cd <worktree> && git status && cd <main> && git commit` therefore reads
-  # the worktree's branch and allows a commit that lands on main
-  # (gaia-react/gaia#2014).
-  branch_dir="${git_cwd:-${GAIA_REPO_SCOPE_LEAD_CD:-}}"
+  branch_dir="${git_cwd:-$lead_cd}"
 
   # The words after the subcommand, where a push's own refspec lives. The
   # main/master tests below read these rather than the whole segment: arming the
@@ -443,12 +676,11 @@ while IFS= read -r seg; do
     [[ "$branch" == "main" || "$branch" == "master" ]] && on_main=1
 
     # Refspec-targeted push from main/master/HEAD: e.g. `git push origin main`,
-    # `git push origin HEAD:main`, `git push origin main:main`. Matched against
-    # the words AFTER the subcommand, so a global option ahead of `push` cannot
-    # carry the refspec out of the pattern's reach the way anchoring the
-    # pattern on a literal `git push` did.
+    # `git push origin HEAD:main`, `git push origin main:main`. Read from the
+    # operands after the subcommand, so neither a global option ahead of `push`
+    # nor one ahead of the remote can carry the refspec out of reach.
     refspec_main=0
-    if [[ "$push_args" =~ ^[^[:space:]]+[[:space:]]+(HEAD|main|master)([[:space:]]|:|$) ]]; then
+    if push_refspec_names_main; then
       refspec_main=1
     fi
 

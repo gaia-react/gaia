@@ -48,6 +48,14 @@ run_hook() {
   invoke_hook_in "$REPO" "$json" "$HOOK_ABS"
 }
 
+# Same, for a case whose verdict turns on the directory the command runs in:
+# the payload carries that directory as its cwd and the hook is invoked there.
+run_hook_from() {
+  local json
+  json=$(jq -n --arg c "$1" --arg d "$2" '{tool_name: "Bash", cwd: $d, tool_input: {command: $c}}')
+  invoke_hook_in "$2" "$json" "$HOOK_ABS"
+}
+
 
 
 # --- denied ---
@@ -150,7 +158,113 @@ run_hook() {
   assert_denied_by_json
 }
 
+# The segment was split on whitespace alone, so a quoted global-option value
+# carrying a space arrived as fragments and the fragment after the space landed
+# in the slot the subcommand is read from. Every rule armed on that slot then
+# read a subcommand nobody spelled, and a commit on main was allowed (#2020).
+@test "a quoted global-option value carrying whitespace does not hide the subcommand on main" {
+  on_main
+  run_hook 'git -c "user.name=a b" commit -m x'
+  assert_denied_by_json
+  run_hook "git -c 'user.name=a b' commit -m x"
+  assert_denied_by_json
+  run_hook 'git --namespace "a b" commit -m x'
+  assert_denied_by_json
+  run_hook 'git -c "user.name=a b" push origin main'
+  assert_denied_by_json
+  run_hook 'git -c "user.name=a b" push --force origin main'
+  assert_denied_by_json
+}
+
+# The quoting was never the mechanism. A value-taking global the parser's table
+# did not list fell to the unknown-option arm, and its VALUE reached the same
+# slot, so these spellings disarm the rules with no quoting and no whitespace at
+# all. The `=`-joined form denying is what made the separated ones easy to
+# miss (#2020).
+@test "a global option taking a separated value does not hide the subcommand on main" {
+  on_main
+  run_hook 'git --exec-path /usr/bin commit -m x'
+  assert_denied_by_json
+  run_hook 'git --attr-source HEAD commit -m x'
+  assert_denied_by_json
+  run_hook 'git --config-env user.name=ENVVAR commit -m x'
+  assert_denied_by_json
+  run_hook 'git --exec-path /usr/bin push origin main'
+  assert_denied_by_json
+  run_hook 'git --config-env=user.name=ENVVAR commit -m x'
+  assert_denied_by_json
+}
+
+# The same split reaching the directory the branch is read from: the `-C` value
+# broke at the space, so the rules resolved a branch from a path git could not
+# open, read no branch at all, and allowed the commit (#2020).
+@test "a -C path carrying whitespace is still enforced on main" {
+  local spaced="$BATS_TEST_TMPDIR/dir with space"
+  mkdir -p "$spaced"
+  git -C "$spaced" init --quiet --initial-branch=main
+  git -C "$spaced" config user.email "test@example.com"
+  git -C "$spaced" config user.name "Test"
+  git -C "$spaced" config commit.gpgsign false
+  echo "# readme" > "$spaced/README.md"
+  git -C "$spaced" add README.md
+  git -C "$spaced" commit --quiet -m init
+  run_hook_from "git -C \"$spaced\" commit -m x" "$spaced"
+  assert_denied_by_json
+}
+
+# The ref was pinned to the word after the remote, so an option written ahead of
+# the remote shifted both positions and the push was allowed. Rule 2 still caught
+# the shape when a force flag was present, which is what left the plain push as
+# the hole (#2021).
+@test "an option ahead of the remote does not hide a refspec push naming main" {
+  on_feature
+  run_hook 'git push --quiet origin main'
+  assert_denied_by_json
+  run_hook 'git push -q origin main'
+  assert_denied_by_json
+  run_hook 'git push --quiet origin HEAD:main'
+  assert_denied_by_json
+  run_hook 'git push --quiet --no-verify origin master'
+  assert_denied_by_json
+}
+
+# The operands after the remote are all refspecs, so a push naming several is
+# read whole rather than at its first one, and a `--` ends option parsing
+# without itself becoming the remote (#2021).
+@test "a refspec naming main is read past an earlier refspec and past a -- separator" {
+  on_feature
+  run_hook 'git push --quiet origin feature main'
+  assert_denied_by_json
+  run_hook 'git push origin -- main'
+  assert_denied_by_json
+  run_hook 'git push --quiet origin +main'
+  assert_denied_by_json
+}
+
 # --- allowed ---
+
+# The operand scan must not read an ordinary feature push as a push to main, and
+# a push option's own value is not a refspec.
+@test "an option ahead of the remote does not create a false deny on a feature push" {
+  on_feature
+  run_hook 'git push --quiet origin feature'
+  assert_allowed_by_json
+  run_hook 'git push -o ci.skip origin feature'
+  assert_allowed_by_json
+  run_hook 'git push --quiet --no-verify origin feature'
+  assert_allowed_by_json
+}
+
+# Modelling quotes must not buy the deny side at the cost of a false deny: a
+# quoted argument carrying a branch name is ordinary text, and a push option's
+# own quoted value is not a refspec.
+@test "a quoted argument carrying whitespace does not create a false deny on a feature branch" {
+  on_feature
+  run_hook 'git commit -m "touch up main and master"'
+  assert_allowed_by_json
+  run_hook 'git push origin feature -o "ci.skip main"'
+  assert_allowed_by_json
+}
 
 @test "git commit on a feature branch is allowed" {
   on_feature
@@ -178,12 +292,6 @@ run_hook() {
 
 # A linked worktree is this repository, so a `cd` into one is enforced, and
 # enforced against the branch the command runs on rather than the session's.
-run_hook_from() {
-  local json
-  json=$(jq -n --arg c "$1" --arg d "$2" '{tool_name: "Bash", cwd: $d, tool_input: {command: $c}}')
-  invoke_hook_in "$2" "$json" "$HOOK_ABS"
-}
-
 @test "cd into a linked worktree on its own branch, from a main checkout on main: commit and push are allowed" {
   on_main
   local wt="$BATS_TEST_TMPDIR/wt"
@@ -220,6 +328,49 @@ run_hook_from() {
   git -C "$REPO" worktree add --quiet -b wt-branch "$wt"
   run_hook_from "git -C $wt status && git commit -m x" "$REPO"
   assert_denied_by_json
+}
+
+# The leading `cd` target stood for every segment and a later `cd` did not
+# replace it, so a command that stepped into a worktree and back read the
+# worktree's branch and allowed a commit that landed on main (#2014).
+@test "a later cd in the same command decides the checkout a commit is read against" {
+  on_main
+  local wt="$BATS_TEST_TMPDIR/wt"
+  git -C "$REPO" worktree add --quiet -b wt-branch "$wt"
+  run_hook_from "cd '$wt' && git status && cd '$REPO' && git commit -m x" "$REPO"
+  assert_denied_by_json
+  run_hook_from "cd '$wt' && git status && cd '$REPO' && git push" "$REPO"
+  assert_denied_by_json
+}
+
+@test "a later cd into a linked worktree is read in place of the leading one" {
+  on_main
+  local wt="$BATS_TEST_TMPDIR/wt"
+  git -C "$REPO" worktree add --quiet -b wt-branch "$wt"
+  run_hook_from "cd '$REPO' && git status && cd '$wt' && git commit -m x" "$REPO"
+  assert_allowed_by_json
+}
+
+# A `cd` inside a subshell moves nothing once the group closes, and the segment
+# walk cannot tell which character it split at, so tracking stands down for the
+# whole command and the commit is read against the hook's own directory (#2014).
+@test "a cd inside a subshell does not lend its branch to a later commit on main" {
+  on_main
+  local wt="$BATS_TEST_TMPDIR/wt"
+  git -C "$REPO" worktree add --quiet -b wt-branch "$wt"
+  run_hook_from "(cd '$wt' && git status) && git commit -m x" "$REPO"
+  assert_denied_by_json
+}
+
+# The stand-down reads quoting rather than the bare character, because a commit
+# subject routinely carries a parenthesis and standing tracking down on one
+# would deny an ordinary commit made after a `cd` into a worktree (#2014).
+@test "a parenthesis inside a quoted commit subject does not stand down cd tracking" {
+  on_main
+  local wt="$BATS_TEST_TMPDIR/wt"
+  git -C "$REPO" worktree add --quiet -b wt-branch "$wt"
+  run_hook_from "cd '$wt' && git commit -m 'debt(hooks): x'" "$REPO"
+  assert_allowed_by_json
 }
 
 @test "a non-git command is ignored" {
@@ -676,6 +827,56 @@ run_hop() {
   run_staged 'git switch other'
   assert_allowed_by_json
   grep -qF -- 'main-root-lib.sh did not load' <<<"$output"
+}
+
+# The switch arm returned before the no-op carve-out ever inspected the operand,
+# so a switch to the branch HEAD already holds was denied although it moves
+# nothing, which is the same no-op deny the carve-out repairs on the checkout
+# arm. The session most likely to hit it is the branch's own owner after a
+# restart, whose new session id no longer matches the breadcrumb (#2018).
+@test "hop guard: a switch that moves nothing is allowed in a peer-held main checkout" {
+  hold_feature_with_pr 42
+  run_hop 'git switch feature' sid-peer
+  assert_allowed_by_json
+  # The controls: a switch that really moves HEAD is still denied, and so is
+  # every branch-creating and detaching spelling the arm lists, each of which
+  # moves HEAD whatever the operand says. Driven per spelling rather than
+  # sampled, because this test is the arm's only coverage and a spelling
+  # dropped from the case list is invisible to a suite that drives its siblings.
+  run_hop 'git switch other' sid-peer
+  assert_denied_by_json
+  run_hop 'git switch -c brand-new' sid-peer
+  assert_denied_by_json
+  run_hop 'git switch -C feature' sid-peer
+  assert_denied_by_json
+  run_hop 'git switch --create brand-new' sid-peer
+  assert_denied_by_json
+  run_hop 'git switch --force-create feature' sid-peer
+  assert_denied_by_json
+  run_hop 'git switch --orphan o2' sid-peer
+  assert_denied_by_json
+  run_hop 'git switch --detach' sid-peer
+  assert_denied_by_json
+}
+
+# A bare name resolves against refs/remotes/<name>, never
+# refs/remotes/origin/<name>, so a branch that exists only on the remote fails
+# the operand's commit-ish test and reads as moving nothing. `git switch` DWIMs
+# that same name into a new tracking branch and moves HEAD, which is the hop the
+# guard exists to refuse, and the fail-open diagnostic is never reached either
+# (gaia-react/gaia#2018).
+@test "hop guard: a switch to a remote-only branch is denied in a peer-held main checkout" {
+  hold_feature_with_pr 42
+  git -C "$REPO" update-ref refs/remotes/origin/remoteonly HEAD
+  # The precondition the case turns on: the bare name does not resolve locally.
+  [ -z "$(git -C "$REPO" rev-parse --verify -q remoteonly 2>/dev/null)" ] || return 1
+  run_hop 'git switch remoteonly' sid-peer
+  assert_denied_by_json
+  # A name with no local and no remote counterpart takes the same path. Denying
+  # it refuses a command git would reject anyway, which is the safe direction
+  # for a guard whose escape is running it with the ! prefix.
+  run_hop 'git switch nonexistent' sid-peer
+  assert_denied_by_json
 }
 
 # A checkout naming the branch HEAD already holds, or HEAD itself, moves
