@@ -11,6 +11,12 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-09-12 692904fd SKIP - wiki/concepts/Git Workflow.md already updated in-commit (repo-scope matches remotes, not checkout directory)
+- 2026-09-12 54145795 SKIP - wiki/concepts/Claude Hooks.md and wiki/concepts/PR Merge Workflow.md already updated in-commit (main-checkout hop guard)
+- 2026-09-12 1dacd926 SKIP - internal accuracy fix to capability-oracle-lib.sh install-arm matching, no capability declaration or documented behavior moves
+- 2026-09-12 56bfe919 SKIP - wiki/decisions/Shell Guard Fixture Discrimination.md already updated in-commit (TypeScript listing argv guard out of scope for shell guards)
+- 2026-09-12 7bfd7e28 SKIP - wiki/decisions/Sharded CI Test Matrix.md already updated in-commit (namer over-arming accepted cost)
+- 2026-09-12 12dc6b94 SKIP - wiki: self-referential
 - 2026-09-11 72ab2e64 SKIP - capability-oracle network detector widened for package-manager installs, Code Audit Team.md already describes the oracle generically
 - 2026-09-11 919ed27 SKIP - leg-arming code: filter widened for wiki-page bats suites, Sharded CI Test Matrix.md already points at leg-arming.sh generically
 - 2026-09-11 bf01dd8 SKIP - worktree provisioning installs .gaia/cli workspace, wiki/concepts/Claude Hooks.md already updated in-commit
