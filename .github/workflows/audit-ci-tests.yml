@@ -634,6 +634,28 @@ jobs:
               - '.node-version'
               - 'package.json'
               - '.npmrc'
+              # Every wiki/ entry above names one page a suite reads, so a
+              # wiki-only pull request touching any OTHER page matches nothing
+              # in this filter, resolves `code=false`, and skips every bats step
+              # below. Some of those suites assert a property of every tracked
+              # file rather than of a page they name, and a wiki page can
+              # violate one, so that skip greens a declared-required context
+              # having run those assertions zero times, and the red then lands
+              # on the next pull request that happens to arm them. A wiki sync
+              # touches wiki/log.md and a content-only rewrite of
+              # wiki/.state.json, neither of which the entries above match, so
+              # this is the routine case rather than a corner. The glob
+              # self-maintains where the per-page entries cannot: a page added
+              # later arms through it without anyone editing this list.
+              #
+              # It arms the JOB and decides no LEG. A page named by one of the
+              # per-page entries above stays a member of the narrowable class
+              # leg-arming.sh derives, and that class matches by exact string
+              # equality, so this glob can only add a member and never remove
+              # one. The gap that leaves, and why it is accepted rather than
+              # overlooked, is recorded at the narrowing rule in
+              # .gaia/tests/leg-arming.sh.
+              - 'wiki/**'
             # The .gaia/tests/sandbox/ conformance tree gets its OWN filter
             # output instead of joining `code:` above, and the reason is cost,
             # not tidiness. One of its suites git-greps every committed
@@ -649,9 +671,10 @@ jobs:
             # match a bit under a third of tracked files, but they are
             # the documentation and configuration types, so the PRs that arm
             # `sandbox` alone are the ones that used to run no step at all: a
-            # wiki-only change now runs `apt-get update`, unless its paths also
-            # match `code:` above, in which case the full bats matrix runs
-            # instead. `apt-get update` is the flakiest operation in this job,
+            # docs-only change whose paths match nothing in `code:` above runs
+            # `apt-get update`, while one whose paths do match it runs the full
+            # bats matrix instead. Every path under `wiki/` sits in the latter
+            # set. `apt-get update` is the flakiest operation in this job,
             # and this is a declared-required context, so a mirror hash-sum
             # mismatch can now red a required check on a docs-only PR. A pure app-only change is not in
             # that set: app/ is .tsx/.ts/.css and matches neither output, so it

@@ -940,6 +940,29 @@ EOF
     fi
   done
 
+  # HONEST LIMIT of this narrowing, accepted rather than overlooked.
+  #
+  # Widening the workflow's `code:` filter cannot reach this decision. Class
+  # membership is exact string equality, so an added entry only grows the class:
+  # a changed path equal to a class member never reaches the out-of-class arm
+  # above and is still decided here, per leg. A `wiki/**` entry in that filter
+  # therefore arms the JOB for pages outside the class, and changes nothing for
+  # pages inside it.
+  #
+  # The cost, and it is real. Some suites assert a property of every tracked
+  # file rather than of a page they name, so a wiki page can violate one without
+  # appearing anywhere in it, which leaves the scan above no way to attribute
+  # them to it. For a class page whose namers sit outside a leg's exchange
+  # group, this declines that leg, and those assertions do not run for an edit
+  # to that page alone. That is accepted: telling a whole-tree suite from a
+  # page-reading one needs a rule that guesses, and a wrong guess under-arms,
+  # the one direction this file refuses to fail in.
+  #
+  # A whole-tree suite escapes the gap when it shares an exchange group with
+  # CHECK_SUITE_REL, which rule 5 arms unconditionally. That is a property of
+  # where the sharder currently places it rather than a protection whole-tree
+  # suites hold as a class, so a reshuffle moving it out of that group takes the
+  # exemption with it and this gap widens silently.
   decline "no file naming a changed page is attributed to this leg's exchange group (changed: $count, narrowable pages named: ${#named[@]} of ${#class[@]})"
 }
 
