@@ -27,6 +27,26 @@
 # The hook always exits 0; allow vs deny is carried in stdout: a deny emits
 # `"permissionDecision": "deny"`, an allow emits nothing.
 
+# Mirror the repo-relative layout the hook resolves from a tree's own root, in
+# whatever tree a case aims a merge at. Every such tree needs its own copy: the
+# signal helper is invoked by the repo-relative path red_ledger_signal_script
+# returns, run from the tree the gate decides the merge acts on, so a linked
+# worktree lacking it emits no signals and drops out of the offender scan.
+install_tree_links() {
+  local dir="$1"
+  mkdir -p "$dir/.claude/hooks/lib" "$dir/.gaia/scripts"
+  ln -sfn "$HOME_ROOT/.claude/hooks/lib/red-ledger.sh" "$dir/.claude/hooks/lib/red-ledger.sh"
+  ln -sfn "$HOME_ROOT/.claude/hooks/lib/repo-scope.sh" "$dir/.claude/hooks/lib/repo-scope.sh"
+  ln -sfn "$HOME_ROOT/.claude/hooks/lib/worthiness-ledger.sh" "$dir/.claude/hooks/lib/worthiness-ledger.sh"
+  ln -sfn "$HOME_ROOT/.gaia/scripts/red-ledger" "$dir/.gaia/scripts/red-ledger"
+  ln -sfn "$HOME_ROOT/.gaia/scripts/classifier" "$dir/.gaia/scripts/classifier"
+  # red_ledger_path and worthiness_ledger_path (inside the symlinked libs
+  # above) each source this relative to THEIR OWN location to reach
+  # gaia_tree_key, so it needs to resolve inside the tree too, not just from
+  # the hook's own BASH_SOURCE.
+  ln -sfn "$HOME_ROOT/.gaia/scripts/main-root-lib.sh" "$dir/.gaia/scripts/main-root-lib.sh"
+}
+
 setup() {
   . "$BATS_TEST_DIRNAME/helpers/run-hook.sh"
   HOME_ROOT=$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)
@@ -44,18 +64,7 @@ setup() {
   git -C "$REPO" config user.name "Test"
   git -C "$REPO" config commit.gpgsign false
 
-  # Mirror the repo-relative layout the hook resolves from pwd.
-  mkdir -p "$REPO/.claude/hooks/lib" "$REPO/.gaia/scripts"
-  ln -s "$HOME_ROOT/.claude/hooks/lib/red-ledger.sh" "$REPO/.claude/hooks/lib/red-ledger.sh"
-  ln -s "$HOME_ROOT/.claude/hooks/lib/repo-scope.sh" "$REPO/.claude/hooks/lib/repo-scope.sh"
-  ln -s "$HOME_ROOT/.claude/hooks/lib/worthiness-ledger.sh" "$REPO/.claude/hooks/lib/worthiness-ledger.sh"
-  ln -s "$HOME_ROOT/.gaia/scripts/red-ledger" "$REPO/.gaia/scripts/red-ledger"
-  ln -s "$HOME_ROOT/.gaia/scripts/classifier" "$REPO/.gaia/scripts/classifier"
-  # red_ledger_path and worthiness_ledger_path (inside the symlinked libs
-  # above) each source this relative to THEIR OWN location to reach
-  # gaia_tree_key, so it needs to resolve inside REPO too, not just from the
-  # hook's own BASH_SOURCE.
-  ln -s "$HOME_ROOT/.gaia/scripts/main-root-lib.sh" "$REPO/.gaia/scripts/main-root-lib.sh"
+  install_tree_links "$REPO"
 
   # Base commit on main with a non-test file so HEAD/merge-base exist. The
   # symlinks are untracked; they never enter the diff.
@@ -72,19 +81,21 @@ teardown() {
 }
 
 # Commit a file on the feature branch (so it appears in the merge-base diff).
+# The optional third argument names the tree to commit in, defaulting to the
+# tmp repo; a case that aims a merge at a linked worktree commits there.
 commit_file() {
-  local path="$1" content="$2"
-  mkdir -p "$REPO/$(dirname "$path")"
-  printf '%s' "$content" > "$REPO/$path"
-  git -C "$REPO" add "$path"
-  git -C "$REPO" commit --quiet -m "change $path"
+  local path="$1" content="$2" root="${3:-$REPO}"
+  mkdir -p "$root/$(dirname "$path")"
+  printf '%s' "$content" > "$root/$path"
+  git -C "$root" add "$path"
+  git -C "$root" commit --quiet -m "change $path"
 }
 
 # Compute the (fullName,signal) NDJSON for a repo-relative path's CURRENT on-disk
 # content, using the same helper the hook uses, run from the tmp repo.
 signals_for() {
-  local rel="$1"
-  ( cd "$REPO" && node "$HELPER" "$rel" )
+  local rel="$1" root="${2:-$REPO}"
+  ( cd "$root" && node "$HELPER" "$rel" )
 }
 
 # Append a worthiness-ledger line. Args: file fullName signal verdict [artifact].
@@ -92,9 +103,9 @@ signals_for() {
 # the seed lands exactly where the hook itself will look, rather than a
 # second hardcoded copy of the keyed literal.
 seed_ledger() {
-  local file="$1" full="$2" sig="$3" verdict="${4:-keep}" artifact="${5:-}"
+  local file="$1" full="$2" sig="$3" verdict="${4:-keep}" artifact="${5:-}" root="${6:-$REPO}"
   local ledger
-  ledger="$( . "$REPO/.claude/hooks/lib/worthiness-ledger.sh" && worthiness_ledger_path "$REPO" )"
+  ledger="$( . "$root/.claude/hooks/lib/worthiness-ledger.sh" && worthiness_ledger_path "$root" )"
   mkdir -p "$(dirname "$ledger")"
   if [ -n "$artifact" ]; then
     jq -nc --arg f "$file" --arg n "$full" --arg s "$sig" --arg v "$verdict" --arg a "$artifact" \
@@ -110,13 +121,13 @@ seed_ledger() {
 # Seed a matching ledger line for one test of a changed file (computes the real
 # current signal so the match is exact).
 seed_matching() {
-  local rel="$1" want_full="$2" verdict="${3:-keep}"
+  local rel="$1" want_full="$2" verdict="${3:-keep}" root="${4:-$REPO}"
   local ndjson sig
-  ndjson=$(signals_for "$rel")
+  ndjson=$(signals_for "$rel" "$root")
   sig=$(printf '%s\n' "$ndjson" \
     | jq -r --arg n "$want_full" 'select(.fullName == $n) | .signal' | head -1)
   [ -n "$sig" ] || { echo "no signal for '$want_full' in $rel" >&2; return 1; }
-  seed_ledger "$rel" "$want_full" "$sig" "$verdict"
+  seed_ledger "$rel" "$want_full" "$sig" "$verdict" "" "$root"
 }
 
 # Run the hook with a `gh pr merge` command, from inside the tmp repo.
@@ -475,4 +486,64 @@ run_merge_hook_lib_absent() {
   [ "$status" -eq 0 ]
   denied
   grep -qF 'verb-arming.sh' <<<"$output" || return 1
+}
+
+# ---------------------------------------------------------------------------
+# The tree the merge acts on, not the tree the session sits in.
+#
+# A linked worktree is the same repository, so the repo-scope guard reads a
+# leading `cd <worktree> &&` as home and this gate keeps enforcing. What it
+# must not keep reading is its own checkout: the merge-base diff and the
+# per-tree ledger both belong to the checkout the merge acts on
+# (gaia-react/gaia#2013).
+# ---------------------------------------------------------------------------
+
+# A linked worktree of REPO, cut from main so its own merge-base diff holds
+# only what a case commits there, and provisioned the way REPO itself is.
+# Sets WT.
+make_worktree() {
+  WT="$BATS_TEST_TMPDIR/wt"
+  git -C "$REPO" worktree add --quiet -b wt-branch "$WT" main
+  install_tree_links "$WT"
+}
+
+# Run the hook with an explicit payload cwd. run_merge_hook leaves that field
+# unset, which is the shape the cases above want; these cases set it because
+# the tree the command targets and the tree the session stands in differ here,
+# and the field is how the gate learns the latter.
+run_merge_hook_in() {
+  local cwd="$1" cmd="$2" json
+  json=$(jq -nc --arg c "$cmd" --arg d "$cwd" \
+    '{tool_name:"Bash", cwd:$d, tool_input:{command:$c}}')
+  invoke_hook_in "$cwd" "$json" "$HOOK_ABS"
+}
+
+@test "a leading cd into a linked worktree reads that worktree's changed tests" {
+  make_worktree
+  commit_file "app/components/Foo/tests/index.test.tsx" "$EMERGENT_TEST" "$WT"
+  run_merge_hook_in "$REPO" "cd $WT && gh pr merge 30 --squash"
+  [ "$status" -eq 0 ]
+  denied
+  grep -qF -- "renders a label" <<<"$output"
+}
+
+@test "a leading cd into a linked worktree does not read the session checkout's changed tests" {
+  # The false-deny half. The session's own un-ledgered emergent test belongs to
+  # a tree this merge never lands on.
+  make_worktree
+  commit_file "app/components/Foo/tests/index.test.tsx" "$EMERGENT_TEST"
+  run_merge_hook_in "$REPO" "cd $WT && gh pr merge 30 --squash"
+  [ "$status" -eq 0 ]
+  refute_denied
+}
+
+@test "a matching verdict in the target worktree's own ledger allows the merge" {
+  # The ledger is per-tree state, so following the command's target has to
+  # reach the ledger lookup as well as the diff.
+  make_worktree
+  commit_file "app/components/Foo/tests/index.test.tsx" "$EMERGENT_TEST" "$WT"
+  seed_matching "app/components/Foo/tests/index.test.tsx" "renders a label" "keep" "$WT"
+  run_merge_hook_in "$REPO" "cd $WT && gh pr merge 30 --squash"
+  [ "$status" -eq 0 ]
+  refute_denied
 }

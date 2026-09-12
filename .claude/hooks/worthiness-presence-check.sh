@@ -200,6 +200,17 @@ source_cwd="$PWD"
 if [[ "$payload_cwd" == /* ]] && gaia_resolve_tree_root "$payload_cwd" >/dev/null 2>&1; then
   source_cwd="$payload_cwd"
 fi
+# The command's own target outranks both. A home verdict covers this
+# REPOSITORY, and every linked worktree of it is this repository, so a leading
+# `cd <worktree> &&` ahead of the merge means the merge acts on a checkout that
+# is not this hook's, while the payload cwd is only where the agent was
+# standing. The merge-base diff and the per-tree ledger below both belong to
+# that checkout. The repo-scope verdict publishes the `cd` target only once it
+# resolved as this repository, so an unresolvable one never reaches here.
+if [ -n "${GAIA_REPO_SCOPE_LEAD_CD:-}" ] \
+   && gaia_resolve_tree_root "$GAIA_REPO_SCOPE_LEAD_CD" >/dev/null 2>&1; then
+  source_cwd="$GAIA_REPO_SCOPE_LEAD_CD"
+fi
 tree_root="$(gaia_resolve_tree_root "$source_cwd" 2>/dev/null)" || exit 0
 
 # Worthiness ledger location (sibling to the RED ledger), anchored on and
@@ -208,18 +219,20 @@ tree_root="$(gaia_resolve_tree_root "$source_cwd" 2>/dev/null)" || exit 0
 ledger="$(worthiness_ledger_path "$tree_root")" || exit 0
 
 # ---------------------------------------------------------------------------
-# Resolve the PR base, the default branch this work forks from. Prefer the
+# Resolve the PR base, the default branch this work forks from, in the ACTING
+# tree: the branch being merged is that checkout's HEAD, so a base resolved
+# anywhere else scopes the diff to another branch's changes. Prefer the
 # remote's advertised default; fall back to main. The merge base scopes the diff
 # to THIS PR's changes, not unrelated drift already on the base branch. Mirrors
 # pr-merge-audit-check.sh's check_out_of_scope_pr. Fail-open: an unresolved base
 # or an empty diff means nothing in scope for this gate.
 # ---------------------------------------------------------------------------
-default_branch=$(git symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null \
+default_branch=$(git -C "$tree_root" symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null \
   | sed 's@^refs/remotes/origin/@@')
 [ -n "$default_branch" ] || default_branch="main"
 
-base=$(git merge-base HEAD "origin/${default_branch}" 2>/dev/null \
-  || git merge-base HEAD "${default_branch}" 2>/dev/null \
+base=$(git -C "$tree_root" merge-base HEAD "origin/${default_branch}" 2>/dev/null \
+  || git -C "$tree_root" merge-base HEAD "${default_branch}" 2>/dev/null \
   || true)
 [ -n "$base" ] || exit 0
 
@@ -228,7 +241,7 @@ base=$(git merge-base HEAD "origin/${default_branch}" 2>/dev/null \
 # or control bytes comes back wrapped in literal double quotes, matches none of
 # them, and the gate passes on the input it exists to hold. The `tr` restores
 # the newlines the read loop below splits on.
-changed=$(git diff --name-only -z "${base}...HEAD" 2>/dev/null | tr '\0' '\n' || true)
+changed=$(git -C "$tree_root" diff --name-only -z "${base}...HEAD" 2>/dev/null | tr '\0' '\n' || true)
 [ -n "$changed" ] || exit 0
 
 # Echo "emergent" only when the classifier affirmatively classifies the given
