@@ -24,16 +24,6 @@ setup() {
   git -C "$REPO" add README.md
   git -C "$REPO" commit --quiet -m "init"
 
-  # The hook loads its libraries from its own on-disk location, never from cwd,
-  # so these copies are not the ones it runs; stage_hook_tree below is the
-  # form that puts a library the test controls in front of the hook.
-  mkdir -p "$REPO/.claude/hooks/lib"
-  cp "$HOOKS_SRC/lib/repo-scope.sh" "$REPO/.claude/hooks/lib/repo-scope.sh"
-  # The jq-availability arm runs ahead of the repo-scope load and refuses when
-  # it cannot find its own library, so a staged tree without it answers every
-  # case here with that refusal instead of the decision under test.
-  cp "$HOOKS_SRC/lib/jq-availability.sh" "$REPO/.claude/hooks/lib/jq-availability.sh"
-
   # A second, distinct repo for the foreign-repo case.
   FOREIGN=$(mktemp -d -t block-main-foreign-XXXXXX)
   git -C "$FOREIGN" init --quiet --initial-branch=main
@@ -321,18 +311,12 @@ run_hook_from() {
   assert_denied_by_json
 }
 
-# --- an unparseable repo-scope.sh degrades, it does not deny ---
+# --- the staged-tree harness the degrade cases below share ---
 #
-# The repo-scope load sits under this hook's `set -euo pipefail`, so before the
-# fix an unparseable copy abandoned the shell ahead of the `type
-# cmd_targets_foreign_repo` check on the next line, exiting 2 -- the PreToolUse
-# deny code -- for every git command the hook matches. It denies on bash 5 as
-# well as on 3.2, so neither case below needs a /bin/bash pin to have teeth.
-#
-# The pair discriminates: the allow case alone is satisfied by a hook that
-# stopped enforcing, so the deny twin proves the degrade kept the main-branch
-# floor. Without cmd_targets_foreign_repo the foreign-repo carve-out does not
-# fire, which is the fail-closed direction this hook documents at :21-24.
+# Each library load in this hook resolves off BASH_SOURCE, never off the process
+# working directory, so expressing a degraded library needs a COPY of the hook in
+# a tree the test controls: running the real $HOOK_ABS leaves it resolving the
+# real checkout's libraries whatever a fixture does to a copy anywhere else.
 
 # Overwrites <path> with an unresolved-merge-conflict body: the file opens and
 # reads fine, so an existence test passes it, and bash cannot parse it.
@@ -341,43 +325,15 @@ write_conflicted_lib() {
     printf 'y() { :; }\n'; printf '>>>>>>> other\n'; } > "$1"
 }
 
-@test "repo-scope.sh holding conflict markers: an ordinary git command is still allowed" {
-  on_feature
-  write_conflicted_lib "$REPO/.claude/hooks/lib/repo-scope.sh"
-  run_hook 'git status'
-  assert_allowed_by_json
-}
-
-@test "repo-scope.sh holding conflict markers: a commit on main is still denied" {
-  on_main
-  write_conflicted_lib "$REPO/.claude/hooks/lib/repo-scope.sh"
-  run_hook 'git commit -m "x"'
-  assert_denied_by_json
-}
-
-@test "repo-scope.sh absent entirely: a commit on main is still denied" {
-  on_main
-  rm -f "$REPO/.claude/hooks/lib/repo-scope.sh"
-  run_hook 'git commit -m "x"'
-  assert_denied_by_json
-}
-
-# --- an unparseable main-root-lib.sh degrades, it does not deny ---
-#
-# The second load in this hook resolves .gaia/scripts/main-root-lib.sh off
-# BASH_SOURCE, so expressing the unparseable case needs a COPY of the hook in a
-# tree the test controls; running the real $HOOK_ABS would always resolve the
-# real checkout's libs. Pinned to stock /bin/bash: the `|| true` arm this load
-# already carried survives on bash 5 and is abandoned ahead of on 3.2, so only
-# a /bin/bash run tells the fix apart from the arm it replaced. On a bash-5
-# /bin/bash (Linux CI) these pass either way.
-
 stage_hook_tree() {
   STAGED_ROOT="$BATS_TEST_TMPDIR/staged"
   rm -rf "$STAGED_ROOT"
   mkdir -p "$STAGED_ROOT/.claude/hooks/lib" "$STAGED_ROOT/.gaia/scripts"
   cp "$HOOK_ABS" "$STAGED_ROOT/.claude/hooks/"
   cp "$HOOKS_SRC/lib/repo-scope.sh" "$STAGED_ROOT/.claude/hooks/lib/"
+  # The jq-availability arm runs ahead of the library loads under test and
+  # refuses when it cannot find its own library, so a staged tree without it
+  # answers every case with that refusal instead of the decision under test.
   cp "$HOOKS_SRC/lib/jq-availability.sh" "$STAGED_ROOT/.claude/hooks/lib/"
   cp "${HOOKS_SRC%/.claude/hooks}/.gaia/scripts/main-root-lib.sh" "$STAGED_ROOT/.gaia/scripts/"
   git -C "$STAGED_ROOT" init --quiet --initial-branch=main
@@ -396,6 +352,48 @@ run_staged() {
   json=$(jq -n --arg c "$1" '{tool_name: "Bash", tool_input: {command: $c}}')
   run bash -c 'cd "$1" && printf %s "$2" | $4 "$3"' _ "$STAGED_ROOT" "$json" "$STAGED_HOOK" "$interp"
 }
+
+# --- an unparseable repo-scope.sh degrades, it does not deny ---
+#
+# The repo-scope load sits under this hook's `set -euo pipefail`, so before the
+# fix an unparseable copy abandoned the shell ahead of the `type
+# cmd_targets_foreign_repo` check on the next line, exiting 2 -- the PreToolUse
+# deny code -- for every git command the hook matches. It denies on bash 5 as
+# well as on 3.2, so neither case below needs a /bin/bash pin to have teeth.
+#
+# The pair discriminates: the allow case alone is satisfied by a hook that
+# stopped enforcing, so the deny twin proves the degrade kept the main-branch
+# floor. Without cmd_targets_foreign_repo the foreign-repo carve-out does not
+# fire, which is the fail-closed direction this hook documents at :21-24.
+
+@test "repo-scope.sh holding conflict markers: an ordinary git command is still allowed" {
+  stage_hook_tree
+  git -C "$STAGED_ROOT" checkout --quiet -B feature
+  write_conflicted_lib "$STAGED_ROOT/.claude/hooks/lib/repo-scope.sh"
+  run_staged 'git status'
+  assert_allowed_by_json
+}
+
+@test "repo-scope.sh holding conflict markers: a commit on main is still denied" {
+  stage_hook_tree
+  write_conflicted_lib "$STAGED_ROOT/.claude/hooks/lib/repo-scope.sh"
+  run_staged 'git commit -m "x"'
+  assert_denied_by_json
+}
+
+@test "repo-scope.sh absent entirely: a commit on main is still denied" {
+  stage_hook_tree
+  rm -f "$STAGED_ROOT/.claude/hooks/lib/repo-scope.sh"
+  run_staged 'git commit -m "x"'
+  assert_denied_by_json
+}
+
+# --- an unparseable main-root-lib.sh degrades, it does not deny ---
+#
+# Pinned to stock /bin/bash: the `|| true` arm this load already carried
+# survives on bash 5 and is abandoned ahead of on 3.2, so only a /bin/bash run
+# tells the fix apart from the arm it replaced. On a bash-5 /bin/bash (Linux
+# CI) these pass either way.
 
 @test "control: the staged hook denies a commit on main under stock /bin/bash" {
   [ -x /bin/bash ] || skip "no /bin/bash"
