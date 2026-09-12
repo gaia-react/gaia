@@ -269,3 +269,56 @@ in_dir() {
     "$HOME_REPO" "$LIB" "git -C $SIBLING_REPO push origin main"
   [ "$status" -eq 0 ]
 }
+
+# -----------------------------------------------------------------------------
+# A `-R` that belongs to some other program is not gh's repository flag. The
+# value was read from the whole command text, so a slash-bearing path operand
+# anywhere in the tool call named a repository none of the home repo's remotes
+# match: every commit guard sourcing this helper then skipped its rules for the
+# whole command, and the merge gate exited before any clearance check (#2011).
+#
+# Each case needs a remote, because a home repo with none has no name to
+# compare and already fails closed one line earlier, which would pass these
+# for a reason that has nothing to do with what they pin.
+# -----------------------------------------------------------------------------
+
+@test "another program's -R operand does not name a repository: home (enforce)" {
+  add_widget_remote "$HOME_REPO"
+  run in_home "cp -R app/foo /tmp/x && git commit -m y"
+  [ "$status" -ne 0 ]
+  run in_home "grep -R app/routes . && git commit -m y"
+  [ "$status" -ne 0 ]
+}
+
+@test "a trailing command's -R does not decide the gh invocation: home (enforce)" {
+  add_widget_remote "$HOME_REPO"
+  run in_home "gh pr merge 5 && ls -R a/b"
+  [ "$status" -ne 0 ]
+  run in_home "gh pr merge 30 --squash && grep -R app/routes ."
+  [ "$status" -ne 0 ]
+}
+
+# The scan hands back unquoted WORDS, so a flag value carrying the text of
+# another flag stays one word and never reads as that flag.
+@test "--repo text inside a quoted flag value does not name a repository: home (enforce)" {
+  add_widget_remote "$HOME_REPO"
+  run in_home 'gh pr merge 30 --squash --body "see --repo foo/bar for context"'
+  [ "$status" -ne 0 ]
+}
+
+@test "the gh invocation's own --repo still decides: foreign (allow)" {
+  add_widget_remote "$HOME_REPO"
+  run in_home "gh pr merge 5 --repo other-org/other-repo"
+  [ "$status" -eq 0 ]
+  run in_home "gh pr merge 5 -R other-org/other-repo --squash"
+  [ "$status" -eq 0 ]
+}
+
+# A command whose first word is not `gh` carries no repository flag to read, so
+# the arms below it decide, and the leading `cd` reaches the publish it used to
+# be cut off from by any `-R` in the tool call.
+@test "a leading cd is published even when a later command carries a -R" {
+  add_worktree
+  run bash -c 'cd "$1" && . "$2" && cmd_targets_foreign_repo "cd '"'"'$3'"'"' && git commit -m x && grep -R TODO app"; printf "%s" "$GAIA_REPO_SCOPE_LEAD_CD"' _ "$HOME_REPO" "$LIB" "$WT"
+  [ "$output" = "$WT" ]
+}

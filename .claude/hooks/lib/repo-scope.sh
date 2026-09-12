@@ -42,9 +42,10 @@ _gaia_repo_scope_repo_name() {
 }
 
 # Strip one layer of surrounding quotes a space-delimited capture keeps:
-# callers legitimately write `git -C "/abs/path"`, `cd '/abs/path' &&` and
-# `--repo "owner/repo"`, and the shell hands the command the value without
-# them.
+# callers legitimately write `git -C "/abs/path"` and `cd '/abs/path' &&`, and
+# the shell hands the command the value without them. The `-R`/`--repo` value
+# needs none of this: it comes from the word scan, which hands back words the
+# way the shell would.
 _gaia_repo_scope_unquote() {
   local v="$1"
   case "$v" in
@@ -81,22 +82,37 @@ _gaia_repo_scope_load_main_root() {
 # state (the branch) reads it there rather than from its own working
 # directory.
 #
-# Honest limit: only the arm that decides the verdict publishes it, so a
-# `-R`/`--repo` anywhere in the command, or any `git -C`, leaves it empty
-# even behind a leading `cd`, and such a caller reads its own directory
-# again. That is the pre-existing reading for those spellings, never a
-# looser one.
+# Honest limit: only the arm that decides the verdict publishes it, so any
+# `git -C` leaves it empty even behind a leading `cd`, and such a caller
+# reads its own directory again. That is the pre-existing reading for that
+# spelling, never a looser one. A `-R`/`--repo` no longer cuts the publish
+# off: it is read only from a first command that is a `gh` invocation, and a
+# leading `cd` is not a prefix such a command can carry.
 GAIA_REPO_SCOPE_LEAD_CD=""
 
 cmd_targets_foreign_repo() {
   local cmd="$1"
-  local target_dir ghrepo name remotes nl a b lead=0
+  local target_dir ghrepo name remotes nl a b lead=0 tok i n
 
   GAIA_REPO_SCOPE_LEAD_CD=""
   git rev-parse --show-toplevel >/dev/null 2>&1 || return 1
 
   # 1. Explicit `gh ... -R owner/repo` / `--repo owner/repo` (space OR `=`
-  #    form). gh ignores cwd when this is given, so it is authoritative.
+  #    form), read from the FIRST command in the tool call and only when that
+  #    command is a `gh` invocation. gh ignores cwd when this is given, so it
+  #    is authoritative for the command carrying it.
+  #
+  #    Which command the flag belongs to is the whole question here. `-R` is an
+  #    ordinary flag of other programs, and a slash-bearing operand of one is
+  #    indistinguishable from a slug by shape, so reading the value out of the
+  #    raw command text answered "foreign" for `cp -R a/b x && git commit` and
+  #    every consumer skipped its rules for the whole command
+  #    (gaia-react/gaia#2011). The word scan below is the one the act-on-home
+  #    entry point already reads a merge through, and it settles both halves:
+  #    it models quotes and escapes, so `--repo` inside a quoted `--body` stays
+  #    text, and it stops at the first separator, so a later command's flag is
+  #    never in reach. A first command that is not `gh` carries no repository
+  #    flag to read at all, and the arms below decide instead.
   #
   #    The home repo's names are the repository names its remotes point at.
   #    Remotes live in the shared git config, so every worktree reads the same
@@ -110,9 +126,32 @@ cmd_targets_foreign_repo() {
   #    knowing for fork workflows. `gh repo view` would name the whole slug,
   #    but it is a network call on a blocking hook's path and it names one
   #    repository where a fork clone has two.
-  ghrepo=$(printf '%s' "$cmd" | sed -nE 's/.*(-R|--repo)[[:space:]=]+([^[:space:]]+).*/\2/p' | head -1)
+  ghrepo=""
+  if gaia_scan_first_command "$cmd" \
+     && [ "${GAIA_FIRST_COMMAND_WORDS[0]}" = "gh" ]; then
+    n=${#GAIA_FIRST_COMMAND_WORDS[@]}
+    i=1
+    while [ "$i" -lt "$n" ]; do
+      tok="${GAIA_FIRST_COMMAND_WORDS[$i]}"
+      i=$((i + 1))
+      case "$tok" in
+        # gh's flag library keeps the LAST spelling it reads, so the walk does
+        # not stop at the first one.
+        #
+        # An ATTACHED shorthand (`-Rowner/repo`) is deliberately not read. Only
+        # the flags a given gh subcommand takes a value for decide whether such
+        # a word is a repository or some other flag's value (`--subject
+        # -Rfoo/bar`), and this entry point serves every subcommand, so it
+        # models no per-subcommand flag set. Leaving the shape unread enforces,
+        # which is this guard's safe direction.
+        -R|--repo)
+          [ "$i" -lt "$n" ] && ghrepo="${GAIA_FIRST_COMMAND_WORDS[$i]}"
+          ;;
+        -R=*|--repo=*) ghrepo="${tok#*=}" ;;
+      esac
+    done
+  fi
   if [ -n "$ghrepo" ]; then
-    ghrepo=$(_gaia_repo_scope_unquote "$ghrepo")
     # Only the characters a [HOST/]OWNER/REPO or a URL spelling of one holds.
     # Anything else (a quote left over, an escape, `$`, a backtick, a brace,
     # a glob, a tilde) is a value the shell may rewrite before gh sees it, so

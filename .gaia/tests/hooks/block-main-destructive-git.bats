@@ -92,6 +92,18 @@ run_hook() {
   assert_denied_by_json
 }
 
+# A `-R` belonging to another program in the same tool call was read as gh's
+# repository flag, so the shared repo-scope helper answered "foreign" and this
+# guard skipped its commit rule for the whole command (#2011). The remote is
+# required: with none, the helper has no repository name to compare and fails
+# closed a line earlier, which would pass this test without exercising it.
+@test "a trailing program's -R does not exempt a commit on main" {
+  git -C "$REPO" remote add origin https://github.com/acme/widget.git
+  on_main
+  run_hook 'git commit -m x && grep -R app/routes .'
+  assert_denied_by_json
+}
+
 # `-C` after the subcommand is commit's reuse-message option, not a directory.
 @test "git commit -C HEAD on main is denied" {
   on_main
