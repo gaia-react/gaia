@@ -838,13 +838,44 @@ run_hop() {
   hold_feature_with_pr 42
   run_hop 'git switch feature' sid-peer
   assert_allowed_by_json
-  # The controls: a switch that really moves HEAD is still denied, and so are
-  # switch's create and detach forms, which move HEAD whatever the operand says.
+  # The controls: a switch that really moves HEAD is still denied, and so is
+  # every branch-creating and detaching spelling the arm lists, each of which
+  # moves HEAD whatever the operand says. Driven per spelling rather than
+  # sampled, because this test is the arm's only coverage and a spelling
+  # dropped from the case list is invisible to a suite that drives its siblings.
   run_hop 'git switch other' sid-peer
+  assert_denied_by_json
+  run_hop 'git switch -c brand-new' sid-peer
   assert_denied_by_json
   run_hop 'git switch -C feature' sid-peer
   assert_denied_by_json
+  run_hop 'git switch --create brand-new' sid-peer
+  assert_denied_by_json
+  run_hop 'git switch --force-create feature' sid-peer
+  assert_denied_by_json
+  run_hop 'git switch --orphan o2' sid-peer
+  assert_denied_by_json
   run_hop 'git switch --detach' sid-peer
+  assert_denied_by_json
+}
+
+# A bare name resolves against refs/remotes/<name>, never
+# refs/remotes/origin/<name>, so a branch that exists only on the remote fails
+# the operand's commit-ish test and reads as moving nothing. `git switch` DWIMs
+# that same name into a new tracking branch and moves HEAD, which is the hop the
+# guard exists to refuse, and the fail-open diagnostic is never reached either
+# (gaia-react/gaia#2018).
+@test "hop guard: a switch to a remote-only branch is denied in a peer-held main checkout" {
+  hold_feature_with_pr 42
+  git -C "$REPO" update-ref refs/remotes/origin/remoteonly HEAD
+  # The precondition the case turns on: the bare name does not resolve locally.
+  [ -z "$(git -C "$REPO" rev-parse --verify -q remoteonly 2>/dev/null)" ] || return 1
+  run_hop 'git switch remoteonly' sid-peer
+  assert_denied_by_json
+  # A name with no local and no remote counterpart takes the same path. Denying
+  # it refuses a command git would reject anyway, which is the safe direction
+  # for a guard whose escape is running it with the ! prefix.
+  run_hop 'git switch nonexistent' sid-peer
   assert_denied_by_json
 }
 
