@@ -5,7 +5,7 @@ description: Maintainer-only. Translate a version's GAIA CHANGELOG entries into 
 
 # release-notes
 
-Translate one version's CHANGELOG entries into adopter-facing release notes. The CHANGELOG is written for GAIA's own contributors: terse, imperative, full of internal mechanics and PR numbers. Adopters read the website. They don't care that an ADR was reframed or a memory was promoted; they care what GAIA now does for _their_ project. This skill is the translation layer between the two audiences.
+Translate one version's CHANGELOG entries into adopter-facing release notes. The CHANGELOG is written for GAIA's own contributors: terse, imperative, full of internal mechanics and issue numbers. Adopters read the website. They don't care that an ADR was reframed or a memory was promoted; they care what GAIA now does for _their_ project. This skill is the translation layer between the two audiences.
 
 **Maintainer-only.** Adopters never release GAIA, so this skill ships nowhere, it's excluded from the distribution tarball by `.gaia/release-exclude` (category 1), the same as `/gaia-release`. It pairs with `/gaia-release` but runs independently: you can point it at the `[Unreleased]` block while cutting a release, or at any historical `## [x.y.z]` block to backfill the website.
 

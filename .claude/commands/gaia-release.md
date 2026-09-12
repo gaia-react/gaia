@@ -308,7 +308,7 @@ Push, own Bash invocation, **literal path inlined** (substitute the path printed
 git -C /abs/path/to/website push origin main
 ```
 
-**GitHub release body (adopter notes).** Step 12's tag fired `release.yml`, which created the GitHub release with the raw `## [<NEW_VERSION>]` CHANGELOG block as a fallback body. That block is contributor-facing (terse, internal, PR-numbered); overwrite it with the same adopter notes just generated. `render-release-md.mjs` derives markdown from the committed `<NEW_VERSION>.ts`, so the GitHub release and the website changelog never drift:
+**GitHub release body (adopter notes).** Step 12's tag fired `release.yml`, which created the GitHub release with the raw `## [<NEW_VERSION>]` CHANGELOG block as a fallback body. That block is contributor-facing (terse, internal, issue-numbered); overwrite it with the same adopter notes just generated. `render-release-md.mjs` derives markdown from the committed `<NEW_VERSION>.ts`, so the GitHub release and the website changelog never drift:
 
 ```bash
 node "$WEB/scripts/render-release-md.mjs" <NEW_VERSION> > "/tmp/gh-notes-v<NEW_VERSION>.md"
