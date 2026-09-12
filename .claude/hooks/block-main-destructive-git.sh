@@ -252,6 +252,46 @@ parse_git_globals() {
   [ "${#kept[@]}" -eq 0 ] || norm="${kept[*]}"
 }
 
+# push_refspec_names_main: 0 when the words after a `push` subcommand carry a
+# refspec whose SOURCE is main, master, or HEAD. It reads the operands rather
+# than a fixed position: the ref was pinned to the word after the remote, so an
+# option written ahead of the remote shifted both and the push was allowed
+# (gaia-react/gaia#2021). Rule 2 below still caught the shape when a force flag
+# was present, which is what left the plain push as the hole.
+#
+# The first operand is the remote and every operand after it is a refspec, so a
+# push naming several is read whole rather than at its first one. A `--` ends
+# git's option parsing and is not itself an operand. A leading `+` on a refspec
+# is the force marker and is not part of the ref name.
+#
+# Honest limits. An option absent from the value-taking table below leaves its
+# value read as an operand, which shifts the remote and every refspec after it;
+# where that value happens to spell a branch the result is a false deny rather
+# than a false allow, which is the safe direction for a guard whose escape is
+# running the command with the `!` prefix. A refspec naming main only as its
+# DESTINATION (`feature:main`) is not read here: that is the reading this rule
+# has always had, and narrowing or widening it is a separate question from where
+# the ref sits.
+push_refspec_names_main() {
+  local t seen_remote=0 skip_next=0 ref
+  for t in ${git_args[@]+"${git_args[@]}"}; do
+    if [ "$skip_next" -eq 1 ]; then skip_next=0; continue; fi
+    case "$t" in
+      --) continue ;;
+      -o | --push-option | --repo | --receive-pack | --exec)
+        skip_next=1; continue ;;
+      -*) continue ;;
+    esac
+    if [ "$seen_remote" -eq 0 ]; then seen_remote=1; continue; fi
+    ref="${t#+}"
+    case "$ref" in
+      HEAD | main | master) return 0 ;;
+      HEAD:* | main:* | master:*) return 0 ;;
+    esac
+  done
+  return 1
+}
+
 # --- main-checkout hop guard -------------------------------------------------
 #
 # Several sessions share one main checkout: one can hold it on its own branch
@@ -516,12 +556,11 @@ while IFS= read -r seg; do
     [[ "$branch" == "main" || "$branch" == "master" ]] && on_main=1
 
     # Refspec-targeted push from main/master/HEAD: e.g. `git push origin main`,
-    # `git push origin HEAD:main`, `git push origin main:main`. Matched against
-    # the words AFTER the subcommand, so a global option ahead of `push` cannot
-    # carry the refspec out of the pattern's reach the way anchoring the
-    # pattern on a literal `git push` did.
+    # `git push origin HEAD:main`, `git push origin main:main`. Read from the
+    # operands after the subcommand, so neither a global option ahead of `push`
+    # nor one ahead of the remote can carry the refspec out of reach.
     refspec_main=0
-    if [[ "$push_args" =~ ^[^[:space:]]+[[:space:]]+(HEAD|main|master)([[:space:]]|:|$) ]]; then
+    if push_refspec_names_main; then
       refspec_main=1
     fi
 

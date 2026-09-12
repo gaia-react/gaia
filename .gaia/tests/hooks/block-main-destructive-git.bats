@@ -48,6 +48,14 @@ run_hook() {
   invoke_hook_in "$REPO" "$json" "$HOOK_ABS"
 }
 
+# Same, for a case whose verdict turns on the directory the command runs in:
+# the payload carries that directory as its cwd and the hook is invoked there.
+run_hook_from() {
+  local json
+  json=$(jq -n --arg c "$1" --arg d "$2" '{tool_name: "Bash", cwd: $d, tool_input: {command: $c}}')
+  invoke_hook_in "$2" "$json" "$HOOK_ABS"
+}
+
 
 
 # --- denied ---
@@ -204,7 +212,48 @@ run_hook() {
   assert_denied_by_json
 }
 
+# The ref was pinned to the word after the remote, so an option written ahead of
+# the remote shifted both positions and the push was allowed. Rule 2 still caught
+# the shape when a force flag was present, which is what left the plain push as
+# the hole (#2021).
+@test "an option ahead of the remote does not hide a refspec push naming main" {
+  on_feature
+  run_hook 'git push --quiet origin main'
+  assert_denied_by_json
+  run_hook 'git push -q origin main'
+  assert_denied_by_json
+  run_hook 'git push --quiet origin HEAD:main'
+  assert_denied_by_json
+  run_hook 'git push --quiet --no-verify origin master'
+  assert_denied_by_json
+}
+
+# The operands after the remote are all refspecs, so a push naming several is
+# read whole rather than at its first one, and a `--` ends option parsing
+# without itself becoming the remote (#2021).
+@test "a refspec naming main is read past an earlier refspec and past a -- separator" {
+  on_feature
+  run_hook 'git push --quiet origin feature main'
+  assert_denied_by_json
+  run_hook 'git push origin -- main'
+  assert_denied_by_json
+  run_hook 'git push --quiet origin +main'
+  assert_denied_by_json
+}
+
 # --- allowed ---
+
+# The operand scan must not read an ordinary feature push as a push to main, and
+# a push option's own value is not a refspec.
+@test "an option ahead of the remote does not create a false deny on a feature push" {
+  on_feature
+  run_hook 'git push --quiet origin feature'
+  assert_allowed_by_json
+  run_hook 'git push -o ci.skip origin feature'
+  assert_allowed_by_json
+  run_hook 'git push --quiet --no-verify origin feature'
+  assert_allowed_by_json
+}
 
 # Modelling quotes must not buy the deny side at the cost of a false deny: a
 # quoted argument carrying a branch name is ordinary text, and a push option's
@@ -243,12 +292,6 @@ run_hook() {
 
 # A linked worktree is this repository, so a `cd` into one is enforced, and
 # enforced against the branch the command runs on rather than the session's.
-run_hook_from() {
-  local json
-  json=$(jq -n --arg c "$1" --arg d "$2" '{tool_name: "Bash", cwd: $d, tool_input: {command: $c}}')
-  invoke_hook_in "$2" "$json" "$HOOK_ABS"
-}
-
 @test "cd into a linked worktree on its own branch, from a main checkout on main: commit and push are allowed" {
   on_main
   local wt="$BATS_TEST_TMPDIR/wt"
