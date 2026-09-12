@@ -390,11 +390,11 @@ hop_target() {
 }
 
 # hop_moves_head <target>: 0 when the segment parse_git_globals just read is a
-# checkout or switch that moves HEAD. Every `git switch` does, and so does
-# `git checkout` with `-b`/`-B`/`--orphan`/`--detach`, with `-` (the previous
-# branch), or with exactly one operand that resolves as a commit-ish. Path
-# restores pass: anything carrying `--`, `-p`, or a pathspec file, and two or
-# more operands (a tree-ish plus paths).
+# checkout or switch that moves HEAD. That is a branch-creating or detaching
+# form of either one, `-` (the previous branch), or exactly one operand that
+# resolves as a commit-ish and is neither HEAD nor the branch HEAD already
+# points at. Path restores pass: anything carrying `--`, `-p`, or a pathspec
+# file, and two or more operands (a tree-ish plus paths).
 #
 # Honest limits. The guard reads words split on whitespace, never the command as
 # the shell would expand it, so spellings that need the shell's own reading pass.
@@ -410,17 +410,30 @@ hop_target() {
 # whose command word is not `git`.
 hop_moves_head() {
   local target="$1" operand="" n=0 t skip_next=0 cur ref
+  # The two subcommands spell their branch-creating flags differently, and the
+  # difference is why they are read apart rather than together: `-c`/`-C` create
+  # a branch for `switch` and mean something else entirely for `checkout`, where
+  # `-C` is commit's reuse-message option. Past this point the operand analysis
+  # is shared, so a switch naming the branch HEAD already holds reaches the same
+  # no-op carve-out a checkout naming it does.
   case "$git_sub" in
-    switch) return 0 ;;
-    checkout) ;;
+    switch)
+      for t in ${git_args[@]+"${git_args[@]}"}; do
+        case "$t" in
+          -c | -C | --create | --force-create | --orphan | --detach) return 0 ;;
+        esac
+      done
+      ;;
+    checkout)
+      for t in ${git_args[@]+"${git_args[@]}"}; do
+        case "$t" in -b | -B | --orphan | --detach) return 0 ;; esac
+      done
+      for t in ${git_args[@]+"${git_args[@]}"}; do
+        case "$t" in -- | -p | --patch | --pathspec-from-file*) return 1 ;; esac
+      done
+      ;;
     *) return 1 ;;
   esac
-  for t in ${git_args[@]+"${git_args[@]}"}; do
-    case "$t" in -b | -B | --orphan | --detach) return 0 ;; esac
-  done
-  for t in ${git_args[@]+"${git_args[@]}"}; do
-    case "$t" in -- | -p | --patch | --pathspec-from-file*) return 1 ;; esac
-  done
   # Redirections are not operands: `git checkout main 2>/dev/null` names one.
   for t in ${git_args[@]+"${git_args[@]}"}; do
     if [ "$skip_next" -eq 1 ]; then skip_next=0; continue; fi

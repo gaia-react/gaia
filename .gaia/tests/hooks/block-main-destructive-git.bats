@@ -829,6 +829,25 @@ run_hop() {
   grep -qF -- 'main-root-lib.sh did not load' <<<"$output"
 }
 
+# The switch arm returned before the no-op carve-out ever inspected the operand,
+# so a switch to the branch HEAD already holds was denied although it moves
+# nothing, which is the same no-op deny the carve-out repairs on the checkout
+# arm. The session most likely to hit it is the branch's own owner after a
+# restart, whose new session id no longer matches the breadcrumb (#2018).
+@test "hop guard: a switch that moves nothing is allowed in a peer-held main checkout" {
+  hold_feature_with_pr 42
+  run_hop 'git switch feature' sid-peer
+  assert_allowed_by_json
+  # The controls: a switch that really moves HEAD is still denied, and so are
+  # switch's create and detach forms, which move HEAD whatever the operand says.
+  run_hop 'git switch other' sid-peer
+  assert_denied_by_json
+  run_hop 'git switch -C feature' sid-peer
+  assert_denied_by_json
+  run_hop 'git switch --detach' sid-peer
+  assert_denied_by_json
+}
+
 # A checkout naming the branch HEAD already holds, or HEAD itself, moves
 # nothing, so denying it refuses a no-op (#2005).
 @test "hop guard: a checkout that moves nothing is allowed in a peer-held main checkout" {
