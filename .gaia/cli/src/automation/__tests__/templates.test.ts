@@ -1,9 +1,12 @@
 import {load} from 'js-yaml';
 import {describe, expect, test} from 'vitest';
+import {readFileSync} from 'node:fs';
+import path from 'node:path';
 import type {
   AutomationConfig,
   ToolId,
 } from '../../schemas/automation-config.js';
+import {resolveRepoRootFromImportMeta} from '../../util/repo-root-fixture.js';
 import {workflowPartialsDirectory, workflowTemplatePath} from '../paths.js';
 import {renderWorkflowTemplate} from '../render.js';
 import {buildWorkflowVars} from '../workflow-vars.js';
@@ -58,11 +61,7 @@ const stepNames = (doc: Record<string, unknown>): readonly string[] =>
 // The setup a skipped tick must not pay for, and the `if:` that spares it.
 // The negative form is what lets one partial serve both the `run` job and a
 // job gated at the job level with no `pre_run` step of its own.
-const GATED_SETUP_STEPS = [
-  'Setup pnpm',
-  'Setup Node',
-  'Install dependencies',
-] as const;
+const GATED_SETUP_STEPS = ['Setup Node and install'] as const;
 
 const SKIP_GATE = "steps.pre_run.outputs.decision != 'skip'";
 
@@ -347,9 +346,9 @@ describe('workflow templates: cross-tool invariants', () => {
     }
   );
 
-  // All three, not the install alone: setup-node's `cache: 'pnpm'` post step
-  // saves the store unconditionally, so an ungated setup-node above a skipped
-  // install fails the job saving a store nothing created.
+  // One gate suffices because the composite skips as a unit: gating the
+  // `uses:` step spares every step inside it, including the post step that
+  // would otherwise save a pnpm store no install created.
   test.each(tools)('gates every setup step on the decision (%s)', (tool) => {
     const steps = jobSteps(parseRendered(renderForTool(tool)), 'run');
     const gates = GATED_SETUP_STEPS.map(
@@ -396,5 +395,37 @@ describe('workflow templates: push re-authentication (issue #581)', () => {
     expect(reauthBeforeWaveB).toBeLessThan(waveBPushAt);
     // Both the run-job auto-merge push and the wave-B group push re-auth.
     expect(rendered.split(REAUTH).length - 1).toBe(2);
+  });
+});
+
+// The rendered partial's single `uses:` step carries no `with:` block, so
+// behaviour-preservation rests entirely on these two composite defaults.
+// Neither is legible from the three-line partial itself, so a later change to
+// either would silently change what an adopter installs unless something
+// here pins it.
+describe('gaia-setup-node composite: inputs the rendered partial depends on', () => {
+  const repoRoot = resolveRepoRootFromImportMeta(import.meta.url);
+  const actionPath = path.join(
+    repoRoot,
+    '.github',
+    'actions',
+    'gaia-setup-node',
+    'action.yml'
+  );
+  const action = load(readFileSync(actionPath, 'utf8')) as {
+    inputs: {install: {default: string}};
+    runs: {steps: readonly {name: string; with?: {cache?: string}}[]};
+  };
+
+  test('defaults to installing the root workspace', () => {
+    expect(action.inputs.install.default).toBe('root');
+  });
+
+  test('caches the pnpm store on its Setup Node step', () => {
+    const setupNode = action.runs.steps.find(
+      (step) => step.name === 'Setup Node'
+    );
+
+    expect(setupNode?.with?.cache).toBe('pnpm');
   });
 });
