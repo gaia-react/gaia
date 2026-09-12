@@ -10,7 +10,7 @@ Maintainer-only skill that translates a version's CHANGELOG entries into adopter
 
 ## Purpose
 
-The CHANGELOG is written for GAIA's own contributors: terse, imperative, full of internal mechanics and PR numbers. Adopters reading the website care what GAIA now does for their project, not internal implementation details.
+The CHANGELOG is written for GAIA's own contributors: terse, imperative, full of internal mechanics and issue numbers. Adopters reading the website care what GAIA now does for their project, not internal implementation details.
 
 ## Outputs
 
