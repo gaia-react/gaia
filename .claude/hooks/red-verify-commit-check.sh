@@ -104,12 +104,56 @@ cmd=$(echo "$input" | jq -r '.tool_input.command // ""' 2>/dev/null)
 # Fast path: short-circuit when `git` is not an invoked command word anywhere.
 [[ "$cmd" =~ (^|[[:space:]&;|()])git([[:space:]]|$) ]] || exit 0
 
+# The directory a segment's `git -C <dir>` names, read only from BETWEEN `git`
+# and the subcommand word. Past the subcommand the flag belongs to the
+# subcommand and names no directory: `git commit -C <commit>` reuses that
+# commit's message, so reading it as a directory aims every read below at a
+# path named for a commit, where git answers nothing and the whole check drops
+# out into a silent pass. Git applies multiple global `-C` cumulatively with
+# the LAST winning, so the walk keeps the last rather than stopping at the
+# first. Echoes nothing when the segment carries none.
+#
+# Honest limit: the words are split on whitespace, never read as the shell
+# would expand them, so a `-C` whose path is quoted with a space in it, or
+# carries an unexpanded variable or `~`, is not recovered. That leaves the
+# directory empty, which falls back to the payload cwd below -- the tree this
+# gate already read -- rather than to a wrong one.
+git_segment_c() {
+  local -a w
+  local i=0 n t out="" seen_git=0
+  read -ra w <<<"$1"
+  n=${#w[@]}
+  while [ "$i" -lt "$n" ]; do
+    t="${w[$i]}"
+    if [ "$seen_git" -eq 1 ]; then
+      case "$t" in
+        -C) out="${w[$((i + 1))]:-}"; i=$((i + 2)); continue ;;
+        -c | --git-dir | --work-tree | --namespace) i=$((i + 2)); continue ;;
+        -*) ;;
+        *) break ;;
+      esac
+    elif [ "$t" = git ]; then
+      seen_git=1
+    fi
+    i=$((i + 1))
+  done
+  case "$out" in
+    \"*\") out="${out#\"}"; out="${out%\"}" ;;
+    \'*\') out="${out#\'}"; out="${out%\'}" ;;
+  esac
+  printf '%s' "$out"
+}
+
 saw_commit=0
+commit_c=""
 while IFS= read -r seg; do
   # Command word = first token after leading whitespace + env-var assignments.
   seg_cmd=$(printf '%s' "$seg" | sed -E 's/^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)*//')
   [[ "$seg_cmd" =~ ^git([[:space:]]|$) ]] || continue
-  [[ "$seg" =~ (^|[[:space:]])commit([[:space:]]|$) ]] && saw_commit=1
+  if [[ "$seg" =~ (^|[[:space:]])commit([[:space:]]|$) ]]; then
+    saw_commit=1
+    commit_c=$(git_segment_c "$seg_cmd")
+  fi
 done < <(printf '%s\n' "$cmd" | tr '|&;()' '\n')
 
 [ "$saw_commit" -eq 1 ] || exit 0
@@ -133,6 +177,36 @@ if type cmd_targets_foreign_repo >/dev/null 2>&1 \
 fi
 
 # ---------------------------------------------------------------------------
+# The checkout this commit acts on. A home verdict covers this REPOSITORY, and
+# every linked worktree of it is this repository, so a home command can still
+# be aimed at a checkout that is not this hook's: `git -C <worktree> commit`,
+# or a leading `cd <worktree> &&`. The staged set, the HEAD blob, and the
+# per-tree ledger below all belong to that checkout, so each is read from it
+# rather than from wherever this process happens to sit.
+#
+# The precedence is the one block-main-destructive-git.sh's branch_dir uses:
+# the segment's own `-C`, else the leading `cd` the repo-scope verdict
+# publishes, else the payload cwd the resolver validates further down. That
+# verdict publishes the `cd` target only once it resolved as this repository,
+# so an unresolvable one never reaches here.
+# ---------------------------------------------------------------------------
+payload_cwd=$(echo "$input" | jq -r '.cwd // empty' 2>/dev/null)
+cmd_dir="${commit_c:-${GAIA_REPO_SCOPE_LEAD_CD:-}}"
+# A relative target resolves against the acting agent's own directory, the way
+# the payload cwd itself is read, never against this process's, which nobody
+# chose.
+case "$cmd_dir" in
+  '' | /*) ;;
+  *)
+    if [[ "$payload_cwd" == /* ]]; then
+      cmd_dir="$payload_cwd/$cmd_dir"
+    else
+      cmd_dir="$PWD/$cmd_dir"
+    fi
+    ;;
+esac
+
+# ---------------------------------------------------------------------------
 # Shared RED-ledger lib: ledger path, repo-relative normalization, and the
 # signal-helper wrapper. Without it we cannot compute identity, so fail-open.
 # ---------------------------------------------------------------------------
@@ -146,22 +220,6 @@ command -v node >/dev/null 2>&1 || exit 0
 
 # This hook only enforces where git answers (a real work tree at pwd).
 git rev-parse --is-inside-work-tree >/dev/null 2>&1 || exit 0
-
-# ---------------------------------------------------------------------------
-# Staged test files new/modified at HEAD, filtered to the vitest include glob
-# (app/**/*.test.ts|tsx, confirmed against vitest.config.ts: './app/**/*.test.{ts,tsx}').
-# A pure deletion/rename-away cannot add a new passing test, so --diff-filter=ACM.
-#
-# `-z` is what makes the glob filter below reachable at all: without it git
-# C-quotes a path carrying a non-ASCII byte, so `app/café.test.ts` arrives as
-# `"app/caf\303\251.test.ts"`, matches no `app/*` case, and the gate exits
-# having verified nothing. The records are translated back to newlines because
-# the consumer reads them from a here-doc; a path holding a literal newline is
-# the separate, far rarer class .gaia/scripts/lint-git-path-quoting.sh declares
-# out of its scope.
-# ---------------------------------------------------------------------------
-staged=$(git diff --cached --name-only -z --diff-filter=ACM 2>/dev/null | tr '\0' '\n' || true)
-[ -n "$staged" ] || exit 0
 
 # The shared main-root resolver, sourced from this hook's own checkout via
 # BASH_SOURCE (never process cwd): the RED ledger is per-tree state, so its
@@ -177,12 +235,36 @@ source "$gaia_scripts/main-root-lib.sh" 2>/dev/null || exit 0
 # rather than by a raw git call this hook writes itself. Payload cwd is
 # measured, not contracted, and only established on PreToolUse, so the
 # fallback is mandatory.
-payload_cwd=$(echo "$input" | jq -r '.cwd // empty' 2>/dev/null)
 source_cwd="$PWD"
 if [[ "$payload_cwd" == /* ]] && gaia_resolve_tree_root "$payload_cwd" >/dev/null 2>&1; then
   source_cwd="$payload_cwd"
 fi
+# The command's own target outranks both: that is the checkout the commit lands
+# in, while the payload cwd is only where the agent was standing when it ran
+# the command. A target the resolver cannot answer for is left behind rather
+# than enforced against, which keeps the reads on the directory this gate would
+# have read anyway.
+if [ -n "$cmd_dir" ] && gaia_resolve_tree_root "$cmd_dir" >/dev/null 2>&1; then
+  source_cwd="$cmd_dir"
+fi
 tree_root="$(gaia_resolve_tree_root "$source_cwd" 2>/dev/null)" || exit 0
+
+# ---------------------------------------------------------------------------
+# Staged test files new/modified at HEAD in the ACTING tree, filtered to the
+# vitest include glob (app/**/*.test.ts|tsx, confirmed against vitest.config.ts:
+# './app/**/*.test.{ts,tsx}').
+# A pure deletion/rename-away cannot add a new passing test, so --diff-filter=ACM.
+#
+# `-z` is what makes the glob filter below reachable at all: without it git
+# C-quotes a path carrying a non-ASCII byte, so `app/café.test.ts` arrives as
+# `"app/caf\303\251.test.ts"`, matches no `app/*` case, and the gate exits
+# having verified nothing. The records are translated back to newlines because
+# the consumer reads them from a here-doc; a path holding a literal newline is
+# the separate, far rarer class .gaia/scripts/lint-git-path-quoting.sh declares
+# out of its scope.
+# ---------------------------------------------------------------------------
+staged=$(git -C "$tree_root" diff --cached --name-only -z --diff-filter=ACM 2>/dev/null | tr '\0' '\n' || true)
+[ -n "$staged" ] || exit 0
 
 ledger=$(red_ledger_path "$tree_root") || exit 0
 signal_script=$(red_ledger_signal_script)
@@ -283,7 +365,7 @@ while IFS= read -r path; do
   # -> every current test is new. If HEAD content is unparseable we cannot prove
   # a test pre-existed; treat the HEAD set as empty (conservative: more tests
   # look new), but a genuinely new file is the common case on this path.
-  head_src=$(git show "HEAD:$rel" 2>/dev/null || true)
+  head_src=$(git -C "$tree_root" show "HEAD:$rel" 2>/dev/null || true)
   head_fullnames=""
   if [ -n "$head_src" ]; then
     # From the acting tree, like the two reads above: $signal_script is the bare
