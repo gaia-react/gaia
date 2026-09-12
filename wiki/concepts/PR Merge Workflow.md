@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-04-20
-updated: 2026-08-01
+updated: 2026-09-12
 tags: [concept, ci, review]
 ---
 
@@ -535,7 +535,7 @@ git fetch --prune origin
 
 ### Cleanup under worktree isolation
 
-A `git checkout main` from inside a linked worktree fails with `fatal: 'main' is already used by worktree at <path>` whenever the main checkout is on `main`. That is a property of linked worktrees, not a merge failure, and it makes the feature-branch sequence above unusable from a worktree. Reap the worktree centrally instead:
+A `git checkout main` from inside a linked worktree fails with `fatal: 'main' is already used by worktree at '<path>'` whenever the main checkout is on `main`. That is a property of linked worktrees, not a merge failure, and it makes the feature-branch sequence above unusable from a worktree. Reap the worktree centrally instead:
 
 ```bash
 # from a shell in the main checkout, never from the worktree being removed
@@ -546,19 +546,21 @@ git fetch --prune origin
 
 **This sequence carries no `git checkout`, and that is load-bearing rather than incidental.** `git worktree remove` followed by `git branch -D` leaves the main checkout's HEAD exactly where it was, which is what makes the arm safe to run while a peer session holds that checkout on its own branch. Do not prepend the feature-branch arm's `git checkout main && git pull` to it: the sequence is not missing a step, and adding one is the precise move the precondition above exists to prevent.
 
-`--force` is required because the worktree holds a branch whose commits the squash merge absorbed without making them ancestors of `main`, so git otherwise refuses to remove it. The `git branch -D` step is what actually drops the local branch on this path: `--delete-branch` deletes the remote branch server-side, but its local half checks out the default branch first, which is precisely the step that fails here. If the branch is already gone, the command reports `branch not found` and nothing is wrong.
+`--force` is required because the worktree holds a branch whose commits the squash merge absorbed without making them ancestors of `main`, so git otherwise refuses to remove it. On a `gh` below 2.99.0 the `git branch -D` step is what actually drops the local branch on this path. `--delete-branch` deletes the local branch first and the remote branch second, and its local half checks out the default branch before deleting, which is precisely the step that fails here; because that step fails, `gh` returns before reaching its own remote delete. The remote branch still disappears on a repository configured to delete head branches on merge, so that setting rather than `gh` is what removes it here. From `gh` 2.99.0 on, the local delete is skipped with a warning naming this cleanup, and `gh` does delete the remote branch itself. If the branch is already gone, the command reports `branch not found` and nothing is wrong.
 
 An agent driving the merge in-session removes its own worktree with the runtime's `ExitWorktree({action: "remove", discard_changes: true})`, gated on the confirmed `MERGED` state; `discard_changes` is safe there for the same reason `--force` is here. From a context that cannot call it, a fresh session or a sub-agent with a pinned working directory, the shell sequence above is the session-independent equivalent. See [[Audit Disposition and Debt Fix]] and [[Worktrees]].
 
 ## Local-sync failure mode
 
-When `gh pr merge` exits with `fatal: 'main' is already used by worktree at <path>`, **the GitHub-side merge has already succeeded**. The local checkout step is what failed, not the merge itself. Under worktree isolation this is the expected outcome rather than an anomaly, and it appears even in runs that perform no manual cleanup at all: `--delete-branch` runs its own local branch delete, which begins by checking out the default branch that the main checkout already holds. Confirm with:
+This failure mode belongs to `gh` below 2.99.0. When `gh pr merge` exits non-zero with `fatal: 'main' is already used by worktree at '<path>'`, **the GitHub-side merge has already succeeded**. The local checkout step is what failed, not the merge itself. Under worktree isolation this is the expected outcome rather than an anomaly, and it appears even in runs that perform no manual cleanup at all: `--delete-branch` runs its own local branch delete, which begins by checking out the default branch that the main checkout already holds. Driving the same merge from the main checkout fails one step later instead, at the delete itself, with `error: cannot delete branch '<branch>' used by worktree at '<path>'`; the merge has equally already succeeded. From `gh` 2.99.0 on, `gh` skips the local delete with a warning, deletes the remote branch, and exits 0, so the merge reports success under both isolation modes and this section describes nothing a reader on that version will see. Confirm with:
 
 ```
 gh pr view <N> --json state
 ```
 
 If `state == "MERGED"`, do NOT retry the merge. Treat it as merged, run any post-merge steps (wiki-sync, spec-close, etc.), and clean up through [[#Cleanup under worktree isolation]] above rather than the feature-branch sequence. Retrying compounds the problem and can produce a duplicate squash on a non-existent branch.
+
+**With `--auto`, the exit status depends on the merge state at call time**, so it is not a property of the isolation mode alone. When GitHub queues the merge behind remaining checks, `gh` deletes neither branch and exits 0, and the repository's own head-branch deletion setting is then the only thing that removes the remote branch once the merge lands. When the pull request is immediately mergeable, `gh` merges on the spot and takes the same local delete path a plain merge takes, so a worktree run on a `gh` below 2.99.0 sees the failure above. Neither case revises what the poll reports.
 
 ## Second merge gate: the worthiness presence gate
 
