@@ -330,6 +330,49 @@ run_hook_from() {
   assert_denied_by_json
 }
 
+# The leading `cd` target stood for every segment and a later `cd` did not
+# replace it, so a command that stepped into a worktree and back read the
+# worktree's branch and allowed a commit that landed on main (#2014).
+@test "a later cd in the same command decides the checkout a commit is read against" {
+  on_main
+  local wt="$BATS_TEST_TMPDIR/wt"
+  git -C "$REPO" worktree add --quiet -b wt-branch "$wt"
+  run_hook_from "cd '$wt' && git status && cd '$REPO' && git commit -m x" "$REPO"
+  assert_denied_by_json
+  run_hook_from "cd '$wt' && git status && cd '$REPO' && git push" "$REPO"
+  assert_denied_by_json
+}
+
+@test "a later cd into a linked worktree is read in place of the leading one" {
+  on_main
+  local wt="$BATS_TEST_TMPDIR/wt"
+  git -C "$REPO" worktree add --quiet -b wt-branch "$wt"
+  run_hook_from "cd '$REPO' && git status && cd '$wt' && git commit -m x" "$REPO"
+  assert_allowed_by_json
+}
+
+# A `cd` inside a subshell moves nothing once the group closes, and the segment
+# walk cannot tell which character it split at, so tracking stands down for the
+# whole command and the commit is read against the hook's own directory (#2014).
+@test "a cd inside a subshell does not lend its branch to a later commit on main" {
+  on_main
+  local wt="$BATS_TEST_TMPDIR/wt"
+  git -C "$REPO" worktree add --quiet -b wt-branch "$wt"
+  run_hook_from "(cd '$wt' && git status) && git commit -m x" "$REPO"
+  assert_denied_by_json
+}
+
+# The stand-down reads quoting rather than the bare character, because a commit
+# subject routinely carries a parenthesis and standing tracking down on one
+# would deny an ordinary commit made after a `cd` into a worktree (#2014).
+@test "a parenthesis inside a quoted commit subject does not stand down cd tracking" {
+  on_main
+  local wt="$BATS_TEST_TMPDIR/wt"
+  git -C "$REPO" worktree add --quiet -b wt-branch "$wt"
+  run_hook_from "cd '$wt' && git commit -m 'debt(hooks): x'" "$REPO"
+  assert_allowed_by_json
+}
+
 @test "a non-git command is ignored" {
   on_main
   run_hook 'pnpm run build'

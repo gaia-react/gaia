@@ -142,6 +142,76 @@ current_branch() {
   fi
 }
 
+# resolve_same_repo_dir <dir>: print <dir> when it names THIS repository, and
+# print nothing otherwise. Always succeeds, so a caller assigning its output
+# under errexit is not abandoned by a directory that does not resolve; an empty
+# answer leaves the caller reading its own working directory, which is the
+# fail-closed direction this guard takes everywhere else.
+resolve_same_repo_dir() {
+  local dir="$1" a b
+  [ -n "$dir" ] || return 0
+  # The tilde arrives as a literal character, never expanded, because it reached
+  # this hook as text inside the tool call rather than through a shell. SC2088
+  # fires on the quoted tilde, but these are case PATTERNS matching that literal
+  # character, not an expansion attempt.
+  # shellcheck disable=SC2088
+  case "$dir" in
+    '~') dir="$HOME" ;;
+    '~/'*) dir="$HOME/${dir:2}" ;;
+  esac
+  command -v gaia_resolve_common_dir >/dev/null 2>&1 || return 0
+  a=$(gaia_resolve_common_dir "$dir" 2>/dev/null) || return 0
+  b=$(gaia_resolve_common_dir 2>/dev/null) || return 0
+  [ -n "$a" ] && [ -n "$b" ] && [ "$a" = "$b" ] && printf '%s' "$dir"
+  return 0
+}
+
+# cmd_has_unquoted_group <string>: 0 when the command carries a `(` or `)`
+# outside quotes.
+#
+# A `cd` inside a subshell moves nothing once the group closes, and the segment
+# walk below splits on those characters without recording which one it split at,
+# so a tracked `cd` cannot be scoped to the group it belongs to. Tracking stands
+# down for the whole command instead, leaving every segment read against this
+# hook's own working directory.
+#
+# Quoting is modelled rather than pattern-matched because the distinction is
+# load-bearing: a parenthesis inside a quoted value is ordinary text, and a
+# commit subject routinely carries one, so a test that merely looked for the
+# character would stand tracking down on an ordinary commit and deny it.
+#
+# The leading `case` is a fast path for the ordinary command that carries no
+# parenthesis at all, which keeps the character walk off every invocation.
+cmd_has_unquoted_group() {
+  local s="$1" BLOCK=256 base=0 n_s block n_b k c q="" esc=0
+  case "$s" in
+    *'('* | *')'*) ;;
+    *) return 1 ;;
+  esac
+  n_s=${#s}
+  while [ "$base" -lt "$n_s" ]; do
+    block="${s:$base:$BLOCK}"
+    base=$((base + BLOCK))
+    k=0
+    n_b=${#block}
+    while [ "$k" -lt "$n_b" ]; do
+      c="${block:$k:1}"
+      k=$((k + 1))
+      if [ "$esc" = 1 ]; then esc=0; continue; fi
+      if [ "$c" = "\\" ] && [ "$q" != "'" ]; then esc=1; continue; fi
+      if [ -n "$q" ]; then
+        [ "$c" = "$q" ] && q=""
+        continue
+      fi
+      case "$c" in
+        '"' | "'") q="$c" ;;
+        '(' | ')') return 0 ;;
+      esac
+    done
+  done
+  return 1
+}
+
 # split_git_words <string>: split one segment into shell-like words in the
 # array `w`, modelling quoting the way the shell does -- a quote opens a span in
 # which whitespace is ordinary text, and a backslash escapes the character after
@@ -495,11 +565,31 @@ hop_guard() {
 # assignments are stripped to expose it. The commit/push rules act only on
 # segments whose command word is `git`, so `git commit` / `git push` appearing
 # as TEXT in another program's arguments never trips the gate.
+# The directory a `cd` moves into governs every segment after it, so it is
+# tracked as the walk goes rather than resolved once for the whole command. A
+# command-wide value could not be replaced by a later `cd`, so a command that
+# stepped into a worktree and back read the worktree's branch for a commit that
+# landed on main.
+lead_cd=""
+cd_tracking=1
+if cmd_has_unquoted_group "$cmd"; then cd_tracking=0; fi
+
 while IFS= read -r seg; do
   # Command word = the first token after any leading whitespace + env-var
   # assignments (`WORD=value `). bash 3.2 does not populate BASH_REMATCH
   # reliably, so strip with sed rather than a capture loop.
   seg_cmd=$(printf '%s' "$seg" | sed -E 's/^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)*//')
+
+  # A target that does not resolve as this repository CLEARS the tracked
+  # directory rather than leaving the previous one standing: the command has
+  # moved somewhere this guard cannot read a branch from, and keeping the
+  # previous target would read a branch the command had already left.
+  if [ "$cd_tracking" -eq 1 ] && [[ "$seg_cmd" =~ ^cd([[:space:]]|$) ]]; then
+    split_git_words "$seg_cmd"
+    lead_cd=$(resolve_same_repo_dir "${w[1]:-}")
+    continue
+  fi
+
   [[ "$seg_cmd" =~ ^git([[:space:]]|$) ]] || continue
 
   parse_git_globals "$seg"
@@ -512,17 +602,11 @@ while IFS= read -r seg; do
   esac
   [ "$foreign_repo" -eq 1 ] && continue
 
-  # The checkout this segment acts on: its own `-C`, else the leading `cd` the
-  # repo-scope verdict resolved, else this hook's working directory. A `cd`
+  # The checkout this segment acts on: its own `-C`, else the directory the most
+  # recent preceding `cd` moved into, else this hook's working directory. A `cd`
   # into a linked worktree is this repository but another checkout, with its
   # own branch.
-  #
-  # Honest limit: the leading `cd` target stands for every segment, and a later
-  # `cd` does not replace it. From a main checkout on main,
-  # `cd <worktree> && git status && cd <main> && git commit` therefore reads
-  # the worktree's branch and allows a commit that lands on main
-  # (gaia-react/gaia#2014).
-  branch_dir="${git_cwd:-${GAIA_REPO_SCOPE_LEAD_CD:-}}"
+  branch_dir="${git_cwd:-$lead_cd}"
 
   # The words after the subcommand, where a push's own refspec lives. The
   # main/master tests below read these rather than the whole segment: arming the
