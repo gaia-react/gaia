@@ -142,6 +142,58 @@ current_branch() {
   fi
 }
 
+# split_git_words <string>: split one segment into shell-like words in the
+# array `w`, modelling quoting the way the shell does -- a quote opens a span in
+# which whitespace is ordinary text, and a backslash escapes the character after
+# it -- and handing the words back unquoted.
+#
+# `read -ra` splits on whitespace alone, so a quoted global-option value
+# carrying whitespace arrived as fragments and the fragment after the space
+# landed in the slot the subcommand is read from, leaving every rule armed on
+# git_sub reading a subcommand that was never spelled (gaia-react/gaia#2020).
+#
+# A word accumulates into `chunk` and reaches `word` once per block rather than
+# once per character, and the walk indexes inside a block rather than into the
+# whole string. `word="$word$c"` costs O(word) and a quoted span has no length
+# bound, so a multi-kilobyte commit message made the naive walk quadratic: a
+# synchronous stall on a blocking hook, at a size an ordinary `-m` body reaches.
+split_git_words() {
+  local s="$1" NL=$'\n' TAB=$'\t'
+  local BLOCK=256 base=0 n_s block n_b k c
+  local q="" esc=0 word="" chunk="" have=0
+  w=()
+  n_s=${#s}
+  while [ "$base" -lt "$n_s" ]; do
+    block="${s:$base:$BLOCK}"
+    base=$((base + BLOCK))
+    k=0
+    n_b=${#block}
+    while [ "$k" -lt "$n_b" ]; do
+      c="${block:$k:1}"
+      k=$((k + 1))
+      if [ "$esc" = 1 ]; then esc=0; chunk="$chunk$c"; have=1; continue; fi
+      # A backslash is literal inside single quotes, as in the shell itself.
+      if [ "$c" = "\\" ] && [ "$q" != "'" ]; then esc=1; continue; fi
+      if [ -n "$q" ]; then
+        if [ "$c" = "$q" ]; then q=""; else chunk="$chunk$c"; fi
+        have=1
+        continue
+      fi
+      case "$c" in
+        '"' | "'") q="$c"; have=1 ;;
+        ' ' | "$TAB" | "$NL")
+          [ "$have" = 1 ] && w+=("$word$chunk")
+          word=""; chunk=""; have=0 ;;
+        *) chunk="$chunk$c"; have=1 ;;
+      esac
+    done
+    word="$word$chunk"
+    chunk=""
+  done
+  [ "$have" = 1 ] && w+=("$word$chunk")
+  return 0
+}
+
 # parse_git_globals <segment>: split one segment's git invocation at its
 # subcommand. Only a `-C` between `git` and the subcommand word is git's own
 # directory option. Past the subcommand it belongs to the subcommand
@@ -152,19 +204,40 @@ current_branch() {
 # first one), norm (the segment minus its global `-C` pairs, for the commit and
 # push regexes), git_sub (the subcommand word), and git_args (the words after
 # it).
+#
+# Honest limits, and they bind every rule armed on git_sub below rather than any
+# one of them. These spellings reach the subcommand slot carrying something
+# other than the subcommand, so the guard reads no subcommand and allows:
+#
+#   - a value-taking global option absent from the table below, whose value is a
+#     bare word. The table mirrors the options git itself takes a separated
+#     value for, and one missing from it hands its own value to the slot.
+#   - a separator, a quote, or a value produced by an expansion (`$VAR`,
+#     `$(...)`, a backtick, `~`), which is ordinary word text to a scan that
+#     models quoting but does not expand.
+#   - a quoted value carrying one of the `| & ; ( )` characters the segment walk
+#     below cuts on, since that cut happens before this parser sees the segment.
+#
+# Closing any of them needs the shell's own evaluation of the command, which a
+# PreToolUse hook reading `tool_input.command` as text does not have.
 parse_git_globals() {
   local -a w kept
   local i=0 n t globals=0
   git_cwd="" git_sub=""
   git_args=()
-  read -ra w <<<"$1"
+  split_git_words "$1"
   n=${#w[@]}
   while [ "$i" -lt "$n" ]; do
     t="${w[$i]}"
     if [ "$globals" -eq 1 ]; then
       case "$t" in
         -C) git_cwd="${w[$((i + 1))]:-}"; i=$((i + 2)); continue ;;
-        -c | --git-dir | --work-tree | --namespace)
+        # Every global git takes a SEPARATED value for. An option missing here
+        # falls to the `-*` arm and its value reaches the catch-all that assigns
+        # the subcommand, which is the disarm, so this table tracking git's own
+        # is what keeps the arming honest. The `=`-joined spellings need no
+        # entry: they are one word, so the subcommand still lands next.
+        -c | --git-dir | --work-tree | --namespace | --config-env | --exec-path | --attr-source)
           kept+=("$t" "${w[$((i + 1))]:-}"); i=$((i + 2)); continue ;;
         -*) ;;
         *) globals=2; git_sub="$t"; git_args=("${w[@]:$((i + 1))}") ;;

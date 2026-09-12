@@ -150,7 +150,72 @@ run_hook() {
   assert_denied_by_json
 }
 
+# The segment was split on whitespace alone, so a quoted global-option value
+# carrying a space arrived as fragments and the fragment after the space landed
+# in the slot the subcommand is read from. Every rule armed on that slot then
+# read a subcommand nobody spelled, and a commit on main was allowed (#2020).
+@test "a quoted global-option value carrying whitespace does not hide the subcommand on main" {
+  on_main
+  run_hook 'git -c "user.name=a b" commit -m x'
+  assert_denied_by_json
+  run_hook "git -c 'user.name=a b' commit -m x"
+  assert_denied_by_json
+  run_hook 'git --namespace "a b" commit -m x'
+  assert_denied_by_json
+  run_hook 'git -c "user.name=a b" push origin main'
+  assert_denied_by_json
+  run_hook 'git -c "user.name=a b" push --force origin main'
+  assert_denied_by_json
+}
+
+# The quoting was never the mechanism. A value-taking global the parser's table
+# did not list fell to the unknown-option arm, and its VALUE reached the same
+# slot, so these spellings disarm the rules with no quoting and no whitespace at
+# all. The `=`-joined form denying is what made the separated ones easy to
+# miss (#2020).
+@test "a global option taking a separated value does not hide the subcommand on main" {
+  on_main
+  run_hook 'git --exec-path /usr/bin commit -m x'
+  assert_denied_by_json
+  run_hook 'git --attr-source HEAD commit -m x'
+  assert_denied_by_json
+  run_hook 'git --config-env user.name=ENVVAR commit -m x'
+  assert_denied_by_json
+  run_hook 'git --exec-path /usr/bin push origin main'
+  assert_denied_by_json
+  run_hook 'git --config-env=user.name=ENVVAR commit -m x'
+  assert_denied_by_json
+}
+
+# The same split reaching the directory the branch is read from: the `-C` value
+# broke at the space, so the rules resolved a branch from a path git could not
+# open, read no branch at all, and allowed the commit (#2020).
+@test "a -C path carrying whitespace is still enforced on main" {
+  local spaced="$BATS_TEST_TMPDIR/dir with space"
+  mkdir -p "$spaced"
+  git -C "$spaced" init --quiet --initial-branch=main
+  git -C "$spaced" config user.email "test@example.com"
+  git -C "$spaced" config user.name "Test"
+  git -C "$spaced" config commit.gpgsign false
+  echo "# readme" > "$spaced/README.md"
+  git -C "$spaced" add README.md
+  git -C "$spaced" commit --quiet -m init
+  run_hook_from "git -C \"$spaced\" commit -m x" "$spaced"
+  assert_denied_by_json
+}
+
 # --- allowed ---
+
+# Modelling quotes must not buy the deny side at the cost of a false deny: a
+# quoted argument carrying a branch name is ordinary text, and a push option's
+# own quoted value is not a refspec.
+@test "a quoted argument carrying whitespace does not create a false deny on a feature branch" {
+  on_feature
+  run_hook 'git commit -m "touch up main and master"'
+  assert_allowed_by_json
+  run_hook 'git push origin feature -o "ci.skip main"'
+  assert_allowed_by_json
+}
 
 @test "git commit on a feature branch is allowed" {
   on_feature
