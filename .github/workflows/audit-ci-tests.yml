@@ -215,7 +215,12 @@ jobs:
               # wiki/.state.json stays tracked and the `merge` attribute git
               # resolves for it -- nothing about the bytes inside the file. A
               # content-only rewrite, which is what a wiki sync commits, changes
-              # neither, so it is deliberately unarmed here: `deleted` is the
+              # neither, so this entry deliberately does not match one. That
+              # narrows the ENTRY rather than the output: the wiki glob further
+              # down matches this path on any change type, so a wiki sync does
+              # resolve `code=true` and does run the full matrix. What the
+              # keying buys is that this entry is not what arms it. `deleted`
+              # is the
               # change type that carries an untracking (a plain deletion or a
               # `git rm --cached`), and it also carries a rename out of wiki/,
               # because the pull-request lane -- the lane this workflow runs the
@@ -634,6 +639,28 @@ jobs:
               - '.node-version'
               - 'package.json'
               - '.npmrc'
+              # Every wiki/ entry above names one page a suite reads, so a
+              # wiki-only pull request touching any OTHER page matches nothing
+              # in this filter, resolves `code=false`, and skips every bats step
+              # below. Some of those suites assert a property of every tracked
+              # file rather than of a page they name, and a wiki page can
+              # violate one, so that skip greens a declared-required context
+              # having run those assertions zero times, and the red then lands
+              # on the next pull request that happens to arm them. A wiki sync
+              # touches wiki/log.md and a content-only rewrite of
+              # wiki/.state.json, neither of which the entries above match, so
+              # this is the routine case rather than a corner. The glob
+              # self-maintains where the per-page entries cannot: a page added
+              # later arms through it without anyone editing this list.
+              #
+              # It arms the JOB and decides no LEG. A page named by one of the
+              # per-page entries above stays a member of the narrowable class
+              # leg-arming.sh derives, and that class matches by exact string
+              # equality, so this glob can only add a member and never remove
+              # one. The gap that leaves, and why it is accepted rather than
+              # overlooked, is recorded at the narrowing rule in
+              # .gaia/tests/leg-arming.sh.
+              - 'wiki/**'
             # The .gaia/tests/sandbox/ conformance tree gets its OWN filter
             # output instead of joining `code:` above, and the reason is cost,
             # not tidiness. One of its suites git-greps every committed
@@ -641,19 +668,21 @@ jobs:
             # it is those four globs and nothing narrower. Folding them into
             # `code:` would arm this job's two pnpm installs and the INV-7
             # concurrency meter on very nearly every pull request. As its own
-            # output it arms only the bats step below, plus the apt install that
-            # step needs.
+            # output it arms only that leg's own steps, none of which run apt.
             #
             # Be honest about what that still costs, because it is a real change
             # in this job's posture rather than a free addition. Those four globs
             # match a bit under a third of tracked files, but they are
             # the documentation and configuration types, so the PRs that arm
             # `sandbox` alone are the ones that used to run no step at all: a
-            # wiki-only change now runs `apt-get update`, unless its paths also
-            # match `code:` above, in which case the full bats matrix runs
-            # instead. `apt-get update` is the flakiest operation in this job,
-            # and this is a declared-required context, so a mirror hash-sum
-            # mismatch can now red a required check on a docs-only PR. A pure app-only change is not in
+            # docs-only change whose paths match nothing in `code:` above now
+            # runs the sandbox leg's bats step, while one whose paths do match
+            # it runs the full bats matrix instead. Every path under `wiki/`
+            # sits in the latter set. That leg runs no apt at all: the apt
+            # step's own leg list omits `sandbox` and it is gated on `code`
+            # besides, so a sandbox-only pull request carries none of the
+            # mirror-flakiness exposure apt brings to a declared-required
+            # context. A pure app-only change is not in
             # that set: app/ is .tsx/.ts/.css and matches neither output, so it
             # still runs nothing. The broad read set is the honest one and
             # narrowing it would trade a visible cost for a silent gap; the

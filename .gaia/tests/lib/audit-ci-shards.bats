@@ -3787,6 +3787,14 @@ arming_baseline_false() {
 # LC_ALL=C sorted, the format compare_arming_tables prints a disagreeing table
 # in, so a repair is a copy of that table.
 w16_declared_table() {
+  # The glob row is printed from a single-quoted string rather than written into
+  # the heredoc below, and it has to stay that way. W18 scans this suite for a
+  # `wiki/` path carrying a glob that could reach a class member, because the
+  # arming scan matches pages literally and cannot see one. A heredoc body is
+  # bare text to that scanner, so the row reads there as exactly the shape W18
+  # exists to catch, while single quotes are the form its own repair text names
+  # for a pattern. Folding this line back into the heredoc reds W18.
+  printf '%s\n' 'wiki/**|audit concurrency hooks-1 hooks-2 hooks-3 hooks-4 lib scripts-1 scripts-2 scripts-3'
   cat <<'TABLE'
 wiki/.state.json|concurrency hooks-1 hooks-2 hooks-3 hooks-4 lib misc scripts-1 scripts-2 scripts-3
 wiki/concepts/Audit Disposition and Debt Fix.md|hooks-1 hooks-2 hooks-3 hooks-4 lib scripts-1 scripts-2 scripts-3
@@ -3805,7 +3813,7 @@ wiki/index.md|hooks-1 hooks-2 hooks-3 hooks-4 lib misc scripts-1 scripts-2 scrip
 TABLE
 }
 
-W16_REPAIR='Repair: if the change that moved it is intended, copy that table into w16_declared_table in .gaia/tests/lib/audit-ci-shards.bats; otherwise a suite now names a page on a leg the gate does not arm, or the gate arms a leg holding no namer.'
+W16_REPAIR='Repair: if the change that moved it is intended, copy that table into w16_declared_table in .gaia/tests/lib/audit-ci-shards.bats; otherwise a suite now names a page on a leg the gate does not arm, the gate arms a leg holding no namer, or a class member whose basename is itself a glob gained or lost an incidental basename match in some suite.'
 
 # assert_arming_class <script> <workflow>
 #
