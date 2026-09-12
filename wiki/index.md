@@ -103,7 +103,7 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 - [[Dark Mode Modernization]]
 - [[Content Security Policy]]: per-request nonce CSP; Report-Only pending an upstream React Router fix; documents the `unsafe-inline` and no-`report-uri` trade-offs.
 - [[Dispatched-Check Rollup via Polling]]: in-loop pollers stamp dispatched-workflow jobs via the Checks API so they land in `statusCheckRollup`; documents why a `workflow_run` listener is not viable under `GITHUB_TOKEN`.
-- [[Composite Action Step Timeouts]]: every `gaia-setup-node` call site carries its own `timeout-minutes`, strictly under its job's cap, so a stalled install reds by step name rather than by a generic job timeout; enforced by a check across every workflow.
+- [[Composite Action Step Timeouts]]: every `gaia-setup-node` call site carries its own `timeout-minutes`, strictly under its job's cap, so a stalled install reds by step name rather than by a generic job timeout; the page names what enforces it and what it covers.
 - [[Code Audit Team]]: config-driven auditor roster + dispatch resolver; AND-aggregation across dispatched members at the merge gate; maintainer-only shell/node members.
 - [[Deliberate Configuration Asymmetries]]: config that differs from its siblings on purpose; the `.claude/hooks/` Edit carve-out, the skill `model:` pinning criterion, the non-opt-outable update check, and the seeded agent-teams flag.
 <!-- gaia:maintainer-only:start -->
