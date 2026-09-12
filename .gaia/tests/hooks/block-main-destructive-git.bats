@@ -508,13 +508,22 @@ write_conflicted_lib() {
 stage_hook_tree() {
   STAGED_ROOT="$BATS_TEST_TMPDIR/staged"
   rm -rf "$STAGED_ROOT"
-  mkdir -p "$STAGED_ROOT/.claude/hooks/lib" "$STAGED_ROOT/.gaia/scripts"
-  cp "$HOOK_ABS" "$STAGED_ROOT/.claude/hooks/"
-  cp "$HOOKS_SRC/lib/repo-scope.sh" "$STAGED_ROOT/.claude/hooks/lib/"
-  # The jq-availability arm runs ahead of the library loads under test and
-  # refuses when it cannot find its own library, so a staged tree without it
-  # answers every case with that refusal instead of the decision under test.
-  cp "$HOOKS_SRC/lib/jq-availability.sh" "$STAGED_ROOT/.claude/hooks/lib/"
+  mkdir -p "$STAGED_ROOT/.claude" "$STAGED_ROOT/.gaia/scripts"
+  # The whole hooks directory, lib/ included, rather than the libraries this
+  # hook happens to load today: an enumeration goes short the moment the hook
+  # gains a load, and the cases below would then drive a hook degraded in a way
+  # none of them names while still reporting green. Each case then degrades one
+  # named library and nothing else, by corrupting it, by removing it, or by
+  # relying on it never having been staged at all. Staging the directory
+  # wholesale also keeps the jq-availability arm present, which runs ahead of
+  # the loads under test and refuses when it cannot find its own library,
+  # answering every case with that refusal instead of with the decision under
+  # test.
+  cp -R "$HOOKS_SRC" "$STAGED_ROOT/.claude/hooks"
+  # Outside the hooks directory, so the wholesale copy above does not reach it.
+  # This line stays a hand-maintained list for that reason: a further
+  # .gaia/scripts load the hook's live path gains has to be added here, or it
+  # goes short with nothing red.
   cp "${HOOKS_SRC%/.claude/hooks}/.gaia/scripts/main-root-lib.sh" "$STAGED_ROOT/.gaia/scripts/"
   git -C "$STAGED_ROOT" init --quiet --initial-branch=main
   git -C "$STAGED_ROOT" config user.email "test@example.com"
