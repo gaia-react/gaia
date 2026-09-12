@@ -358,13 +358,22 @@ run_staged() {
 # The repo-scope load sits under this hook's `set -euo pipefail`, so before the
 # fix an unparseable copy abandoned the shell ahead of the `type
 # cmd_targets_foreign_repo` check on the next line, exiting 2 -- the PreToolUse
-# deny code -- for every git command the hook matches. It denies on bash 5 as
-# well as on 3.2, so neither case below needs a /bin/bash pin to have teeth.
+# deny code -- for every git command the hook matches. That holds on bash 5 as
+# well as on 3.2, so neither conflict-marker case below needs a /bin/bash pin to
+# have teeth.
 #
-# The pair discriminates: the allow case alone is satisfied by a hook that
-# stopped enforcing, so the deny twin proves the degrade kept the main-branch
-# floor. Without cmd_targets_foreign_repo the foreign-repo carve-out does not
-# fire, which is the fail-closed direction this hook documents at :21-24.
+# The conflict-marker pair discriminates: the allow case alone is satisfied by a
+# hook that stopped enforcing, so the deny twin proves the degrade kept the
+# main-branch floor. Without cmd_targets_foreign_repo the foreign-repo carve-out
+# does not fire, which is the fail-closed direction the hook's own repo-scope
+# comment documents.
+#
+# The absent-library case pins the other direction, and an unbracketed load is
+# not a probe that can red it: with the library missing, the `[ -f ]` guard ahead
+# of the source short-circuits, and errexit exempts a non-final command in an
+# `&&` list, so that path never reaches the source the bracket protects. What
+# reds it is the degrade failing open, a missing library leaving the hook a
+# pass-through instead of holding the main-branch floor.
 
 @test "repo-scope.sh holding conflict markers: an ordinary git command is still allowed" {
   stage_hook_tree
