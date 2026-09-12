@@ -946,8 +946,11 @@ EOF
   # membership is exact string equality, so an added entry only grows the class:
   # a changed path equal to a class member never reaches the out-of-class arm
   # above and is still decided here, per leg. A `wiki/**` entry in that filter
-  # therefore arms the JOB for pages outside the class, and changes nothing for
-  # pages inside it.
+  # therefore arms the JOB for pages outside the class. For a page inside it,
+  # an added entry can only grow that page's armed set, never shrink one: the
+  # class also feeds the namer-of-all exclusion, so a new member can flip a
+  # file from naming every page to naming only some, which adds legs rather
+  # than removing them.
   #
   # The cost, and it is real. Some suites assert a property of every tracked
   # file rather than of a page they name, so a wiki page can violate one without

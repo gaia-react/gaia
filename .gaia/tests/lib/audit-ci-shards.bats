@@ -3813,7 +3813,7 @@ wiki/index.md|hooks-1 hooks-2 hooks-3 hooks-4 lib misc scripts-1 scripts-2 scrip
 TABLE
 }
 
-W16_REPAIR='Repair: if the change that moved it is intended, copy that table into w16_declared_table in .gaia/tests/lib/audit-ci-shards.bats; otherwise a suite now names a page on a leg the gate does not arm, or the gate arms a leg holding no namer.'
+W16_REPAIR='Repair: if the change that moved it is intended, copy that table into w16_declared_table in .gaia/tests/lib/audit-ci-shards.bats; otherwise a suite now names a page on a leg the gate does not arm, the gate arms a leg holding no namer, or a class member whose basename is itself a glob gained or lost an incidental basename match in some suite.'
 
 # assert_arming_class <script> <workflow>
 #
