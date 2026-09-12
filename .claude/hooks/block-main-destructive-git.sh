@@ -411,6 +411,13 @@ while IFS= read -r seg; do
   # (gaia-react/gaia#2014).
   branch_dir="${git_cwd:-${GAIA_REPO_SCOPE_LEAD_CD:-}}"
 
+  # The words after the subcommand, where a push's own refspec lives. The
+  # main/master tests below read these rather than the whole segment: arming the
+  # rules on the parsed subcommand brings a global option's own VALUE within
+  # reach of a pattern the old literal `git push` anchor kept it out of, and
+  # `-c user.name=main` names no branch.
+  push_args="${git_args[*]+${git_args[*]}}"
+
   # 1. Block commits while HEAD is on main or master.
   if [ "$git_sub" = commit ]; then
     branch=$(current_branch "$branch_dir")
@@ -422,7 +429,7 @@ while IFS= read -r seg; do
   # 2. Block force-push when target mentions main or master.
   if [ "$git_sub" = push ] \
      && [[ "$norm" =~ (--force|--force-with-lease|[[:space:]]-f([[:space:]]|$)) ]] \
-     && [[ "$norm" =~ (main|master)([[:space:]]|$|:) ]]; then
+     && [[ "$push_args" =~ (main|master)([[:space:]]|$|:) ]]; then
     deny "Force-push to main/master is forbidden (wiki/concepts/Git Workflow.md)."
   fi
 
@@ -441,7 +448,6 @@ while IFS= read -r seg; do
     # carry the refspec out of the pattern's reach the way anchoring the
     # pattern on a literal `git push` did.
     refspec_main=0
-    push_args="${git_args[*]+${git_args[*]}}"
     if [[ "$push_args" =~ ^[^[:space:]]+[[:space:]]+(HEAD|main|master)([[:space:]]|:|$) ]]; then
       refspec_main=1
     fi

@@ -129,6 +129,25 @@ run_hook() {
   assert_denied_by_json
 }
 
+# Arming the push rules on the parsed subcommand brings a global option's own
+# VALUE within reach of the force and main/master tests, which the old literal
+# `git push` anchor excluded by construction. A `-c` value is not a refspec, so
+# reading one as a push target is a false deny the arming must not introduce.
+@test "a git -c value naming main does not read as a force-push to main" {
+  on_feature
+  run_hook 'git -c user.name=main push --force origin feature'
+  assert_allowed_by_json
+}
+
+# The short force flag is the first word after the subcommand, so a pattern
+# demanding whitespace before it matches in the whole segment and misses in the
+# argument list.
+@test "the short force flag as the first push argument is still denied to main" {
+  on_feature
+  run_hook 'git push -f origin main'
+  assert_denied_by_json
+}
+
 # --- allowed ---
 
 @test "git commit on a feature branch is allowed" {
