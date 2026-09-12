@@ -668,7 +668,7 @@ jobs:
             # it is those four globs and nothing narrower. Folding them into
             # `code:` would arm this job's two pnpm installs and the INV-7
             # concurrency meter on very nearly every pull request. As its own
-            # output it arms only the bats step below, which needs no apt.
+            # output it arms only that leg's own steps, none of which run apt.
             #
             # Be honest about what that still costs, because it is a real change
             # in this job's posture rather than a free addition. Those four globs
