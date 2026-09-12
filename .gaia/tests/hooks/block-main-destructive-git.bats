@@ -101,6 +101,34 @@ run_hook() {
   assert_denied_by_json
 }
 
+# A git global option ahead of the subcommand hid the invocation from the
+# commit and push rules, which matched the subcommand only where it sat
+# directly after the word `git`, so the PR-only flow was defeated by an option
+# with nothing to do with the branch (#2003).
+@test "a git global option ahead of commit does not hide it on main" {
+  on_main
+  run_hook 'git -c user.name=x commit -m "y"'
+  assert_denied_by_json
+  run_hook 'git --no-pager commit -m "y"'
+  assert_denied_by_json
+}
+
+@test "a git global option ahead of push does not hide it on main" {
+  on_main
+  run_hook 'git -c pack.threads=1 push'
+  assert_denied_by_json
+  run_hook 'git --no-pager push'
+  assert_denied_by_json
+}
+
+@test "a git global option ahead of a refspec push naming main does not hide it" {
+  on_feature
+  run_hook 'git -c pack.threads=1 push origin main'
+  assert_denied_by_json
+  run_hook 'git --no-pager push origin HEAD:main'
+  assert_denied_by_json
+}
+
 # --- allowed ---
 
 @test "git commit on a feature branch is allowed" {
@@ -368,7 +396,9 @@ run_staged() {
 # holds there with an open pull request is denied. `gh` is a stub on PATH whose
 # answer GH_STUB selects: `open:<n>` lists one open pull request, `none` lists
 # nothing (merged, closed, never opened), `fail` exits non-zero, `hang` never
-# answers, `garbage` answers with something that is not a number. The owner is
+# answers, `hangwrap` never answers from a child the stub does NOT exec (the
+# wrapper shape a real `gh` shim takes), `garbage` answers with something that
+# is not a number. The owner is
 # proved by the `gh pr create` breadcrumb, written here through the same lib the
 # capture hook writes it with, so the path and shape cannot drift from the
 # reader's.
@@ -384,6 +414,7 @@ case "${GH_STUB:-none}" in
   none) ;;
   fail) echo "gh: authentication required" >&2; exit 4 ;;
   hang) exec sleep 30 ;;
+  hangwrap) sleep 30 ;;
   garbage) echo "not-a-number" ;;
 esac
 STUB
@@ -549,6 +580,21 @@ run_hop() {
   [ $((SECONDS - start)) -lt 20 ]
 }
 
+# The bound killed the pid it backgrounded, but the output was read through the
+# command substitution's pipe, which stays open until every process holding it
+# exits. A `gh` that runs the real binary without `exec` leaves that child
+# holding the pipe, so the bound did not hold and the diagnostic claimed one
+# that had (#2004).
+@test "hop guard: a gh wrapper that does not exec is still cut off at the bound" {
+  hold_feature_with_pr 42
+  export GH_STUB=hangwrap
+  local start=$SECONDS
+  run_hop 'git checkout main' sid-peer
+  assert_allowed_by_json
+  grep -qF -- 'timed out' <<<"$output"
+  [ $((SECONDS - start)) -lt 20 ]
+}
+
 @test "hop guard: gh missing from PATH fails open with the named cause" {
   hold_feature_with_pr 42
   # A PATH holding every tool the hook and its libraries call, and no gh.
@@ -574,6 +620,37 @@ run_hop() {
   run_staged 'git switch other'
   assert_allowed_by_json
   grep -qF -- 'gh-artifact-lib.sh did not load' <<<"$output"
+  # The lookup that failed is whose session opened the pull request, not whether
+  # one is open: that answer is already in hand by the time this arm runs (#2007).
+  grep -qF -- 'whether this session opened' <<<"$output"
+}
+
+# The guard's header promises a stderr line for anything it cannot check, and
+# the arm taken when the main-root resolver is missing returned silently, so a
+# peer's hop was allowed with no diagnostic anywhere (#2007).
+@test "hop guard: an unloadable main-root-lib.sh fails open with the named cause" {
+  stage_hook_tree
+  stub_gh
+  export GH_STUB=open:42
+  rm -f "$STAGED_ROOT/.gaia/scripts/main-root-lib.sh"
+  git -C "$STAGED_ROOT" branch --quiet other
+  git -C "$STAGED_ROOT" checkout --quiet -B feature
+  run_staged 'git switch other'
+  assert_allowed_by_json
+  grep -qF -- 'main-root-lib.sh did not load' <<<"$output"
+}
+
+# A checkout naming the branch HEAD already holds, or HEAD itself, moves
+# nothing, so denying it refuses a no-op (#2005).
+@test "hop guard: a checkout that moves nothing is allowed in a peer-held main checkout" {
+  hold_feature_with_pr 42
+  run_hop 'git checkout feature' sid-peer
+  assert_allowed_by_json
+  run_hop 'git checkout HEAD' sid-peer
+  assert_allowed_by_json
+  # The control: a checkout that really moves HEAD is still denied.
+  run_hop 'git checkout other' sid-peer
+  assert_denied_by_json
 }
 
 @test "hop guard: a checkout run inside a linked worktree is allowed" {

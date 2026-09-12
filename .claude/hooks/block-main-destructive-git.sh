@@ -226,7 +226,7 @@ hop_target() {
 # parser does not know to skip, such as `--config-env`; and `gh pr checkout`,
 # whose command word is not `git`.
 hop_moves_head() {
-  local target="$1" operand="" n=0 t skip_next=0
+  local target="$1" operand="" n=0 t skip_next=0 cur ref
   case "$git_sub" in
     switch) return 0 ;;
     checkout) ;;
@@ -255,11 +255,26 @@ hop_moves_head() {
     \"*\") operand="${operand#\"}"; operand="${operand%\"}" ;;
     \'*\') operand="${operand#\'}"; operand="${operand%\'}" ;;
   esac
-  git -C "$target" rev-parse --verify -q "${operand}^{commit}" >/dev/null 2>&1
+  git -C "$target" rev-parse --verify -q "${operand}^{commit}" >/dev/null 2>&1 || return 1
+
+  # A commit-ish operand still moves nothing when it names HEAD itself, or the
+  # branch HEAD already points at, so neither is a hop. Denying them refused a
+  # no-op, and the session most likely to hit it is the branch owner's own
+  # after a restart, whose new session id no longer matches the breadcrumb.
+  [ "$operand" = HEAD ] && return 1
+  cur=$(git -C "$target" symbolic-ref -q HEAD 2>/dev/null) || cur=""
+  ref=$(git -C "$target" rev-parse --symbolic-full-name "$operand" 2>/dev/null) || ref=""
+  [ -n "$cur" ] && [ "$ref" = "$cur" ] && return 1
+  return 0
 }
 
+# The guard's fail-open diagnostic. It takes the WHOLE message rather than a
+# branch plus a cause: the arms below do not all fail at the same lookup, and
+# one is reached before a branch name has been resolved at all, so a template
+# naming one lookup misreports the others
+# (.claude/rules/partial-cause-reporting.md).
 hop_unchecked() {
-  printf 'block-main-destructive-git.sh: could not check whether %s has an open pull request (%s); allowing the command.\n' "$1" "$2" >&2
+  printf 'block-main-destructive-git.sh: %s; allowing the command.\n' "$1" >&2
 }
 
 # hop_guard <target>: deny when all of these hold. The target is this
@@ -271,9 +286,12 @@ hop_unchecked() {
 # because its pull request is no longer open by then, and subagents share their
 # parent's session id, so they count as the owner too.
 hop_guard() {
-  local target="$1" branch default out rc sid bc errexit_was
-  command -v gaia_is_linked_worktree >/dev/null 2>&1 || return 0
-  command -v gaia_resolve_main_root >/dev/null 2>&1 || return 0
+  local target="$1" branch default out rc sid bc errexit_was tmp
+  if ! command -v gaia_is_linked_worktree >/dev/null 2>&1 \
+     || ! command -v gaia_resolve_main_root >/dev/null 2>&1; then
+    hop_unchecked "could not check whether $target is this repository's main checkout (main-root-lib.sh did not load)"
+    return 0
+  fi
   gaia_is_linked_worktree "$target" && return 0
   [ "$(gaia_resolve_main_root "$target" 2>/dev/null)" = "$main_root" ] || return 0
 
@@ -304,15 +322,26 @@ hop_guard() {
   fi
 
   if ! command -v gh >/dev/null 2>&1; then
-    hop_unchecked "$branch" "gh is not on PATH"
+    hop_unchecked "could not check whether '$branch' has an open pull request (gh is not on PATH)"
     return 0
   fi
   # `gh` has no request timeout of its own, and a blackholed network would hold
   # every checkout for an OS-length stall. Five seconds is several times a
   # normal `gh pr list` round-trip; past it the guard gives up and allows.
-  out=$(
+  #
+  # The answer lands in a file rather than a command substitution's pipe. The
+  # bound kills only the pid it backgrounded, so a `gh` on PATH that runs the
+  # real binary WITHOUT `exec` leaves that grandchild alive still holding the
+  # pipe, and a substitution waits for every process holding it: the bound
+  # would not hold, and the diagnostic would claim one that had.
+  tmp=$(mktemp -t gaia-hop-pr-XXXXXX 2>/dev/null) || tmp=""
+  if [ -z "$tmp" ]; then
+    hop_unchecked "could not check whether '$branch' has an open pull request (no temporary file could be created for the gh pr list output)"
+    return 0
+  fi
+  (
     cd "$target" || exit 125
-    gh pr list --head "$branch" --state open --json number --jq '.[0].number // empty' 2>/dev/null &
+    gh pr list --head "$branch" --state open --json number --jq '.[0].number // empty' >"$tmp" 2>/dev/null &
     pid=$!
     ticks=0
     while kill -0 "$pid" 2>/dev/null; do
@@ -325,19 +354,23 @@ hop_guard() {
     done
     wait "$pid"
   ) && rc=0 || rc=$?
+  out=$(cat "$tmp" 2>/dev/null) || out=""
+  rm -f "$tmp"
   case "$rc" in
     0) ;;
-    124) hop_unchecked "$branch" "gh pr list timed out after 5s"; return 0 ;;
-    125) hop_unchecked "$branch" "could not enter $target to run gh pr list"; return 0 ;;
-    *) hop_unchecked "$branch" "the open pull-request lookup, gh pr list, exited $rc"; return 0 ;;
+    124) hop_unchecked "could not check whether '$branch' has an open pull request (gh pr list timed out after 5s)"; return 0 ;;
+    125) hop_unchecked "could not check whether '$branch' has an open pull request ($target could not be entered to run gh pr list)"; return 0 ;;
+    *) hop_unchecked "could not check whether '$branch' has an open pull request (the open pull-request lookup, gh pr list, exited $rc)"; return 0 ;;
   esac
   [ -n "$out" ] || return 0
   if ! [[ "$out" =~ ^[0-9]+$ ]]; then
-    hop_unchecked "$branch" "gh pr list answered with something other than a pull-request number"
+    hop_unchecked "could not check whether '$branch' has an open pull request (gh pr list answered with something other than a pull-request number)"
     return 0
   fi
+  # The open pull request is in hand by here, so the lookup that can still fail
+  # is whose session opened it, not whether one is open.
   if ! command -v gaia_gh_artifact_read >/dev/null 2>&1; then
-    hop_unchecked "$branch" "gh-artifact-lib.sh did not load, so this session cannot be matched to the pull request's creator"
+    hop_unchecked "could not check whether this session opened the open pull request on '$branch' (gh-artifact-lib.sh did not load)"
     return 0
   fi
 
@@ -379,7 +412,7 @@ while IFS= read -r seg; do
   branch_dir="${git_cwd:-${GAIA_REPO_SCOPE_LEAD_CD:-}}"
 
   # 1. Block commits while HEAD is on main or master.
-  if [[ "$norm" =~ git[[:space:]]+commit([[:space:]]|$) ]]; then
+  if [ "$git_sub" = commit ]; then
     branch=$(current_branch "$branch_dir")
     if [[ "$branch" == "main" || "$branch" == "master" ]]; then
       deny "Commits to '$branch' are forbidden (wiki/concepts/Git Workflow.md). Create a feature branch first."
@@ -387,7 +420,7 @@ while IFS= read -r seg; do
   fi
 
   # 2. Block force-push when target mentions main or master.
-  if [[ "$norm" =~ git[[:space:]]+push ]] \
+  if [ "$git_sub" = push ] \
      && [[ "$norm" =~ (--force|--force-with-lease|[[:space:]]-f([[:space:]]|$)) ]] \
      && [[ "$norm" =~ (main|master)([[:space:]]|$|:) ]]; then
     deny "Force-push to main/master is forbidden (wiki/concepts/Git Workflow.md)."
@@ -397,15 +430,19 @@ while IFS= read -r seg; do
   #    Triggers when HEAD is on main/master OR when the push refspec explicitly
   #    names main/master/HEAD as the source. Closes the "forgot to switch
   #    branches" footgun.
-  if [[ "$norm" =~ git[[:space:]]+push ]]; then
+  if [ "$git_sub" = push ]; then
     branch=$(current_branch "$branch_dir")
     on_main=0
     [[ "$branch" == "main" || "$branch" == "master" ]] && on_main=1
 
     # Refspec-targeted push from main/master/HEAD: e.g. `git push origin main`,
-    # `git push origin HEAD:main`, `git push origin main:main`.
+    # `git push origin HEAD:main`, `git push origin main:main`. Matched against
+    # the words AFTER the subcommand, so a global option ahead of `push` cannot
+    # carry the refspec out of the pattern's reach the way anchoring the
+    # pattern on a literal `git push` did.
     refspec_main=0
-    if [[ "$norm" =~ git[[:space:]]+push[[:space:]]+[^[:space:]]+[[:space:]]+(HEAD|main|master)([[:space:]]|:|$) ]]; then
+    push_args="${git_args[*]+${git_args[*]}}"
+    if [[ "$push_args" =~ ^[^[:space:]]+[[:space:]]+(HEAD|main|master)([[:space:]]|:|$) ]]; then
       refspec_main=1
     fi
 

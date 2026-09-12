@@ -77,7 +77,7 @@ gaia_gh_artifact_cache_dir() {
 #
 # The branch is an explicit argument, never derived here: gaia_audit_key
 # derives its own branch from a directory, but this function must not,
-# because both of its callers already resolve a branch and pass it straight
+# because every caller already resolves a branch and passes it straight
 # to gaia_gh_artifact_write / gaia_gh_artifact_read. A second internal
 # derivation here could disagree with the one the caller passes, keying the
 # FILENAME off one value while the body gets stamped with another -- a
@@ -109,7 +109,7 @@ gaia_gh_artifact_path() {
   # format arguments would print "gh-artifact-pr..json" -- the unkeyed shared
   # path this function's contract promises never to invent. A failing slug
   # takes the same empty-output exit as an empty cache_dir or branch, which
-  # both callers already handle by skipping.
+  # every caller already handles by skipping.
   local slug
   slug="$(gaia_key_slug "$branch")" || return 0
   printf '%s' "$cache_dir/gh-artifact-pr.$slug.json"
