@@ -4,7 +4,7 @@ status: active
 priority: 2
 date: 2026-08-13
 created: 2026-08-13
-updated: 2026-09-11
+updated: 2026-09-12
 tags: [decision, ci, performance, github-actions, bats]
 ---
 
@@ -122,7 +122,9 @@ The same rule carries an accepted cost in the safe direction. A path inventory t
 
 Measured against the tree, the saving is runner-minutes before it is wall clock. Some pages are named only by `lib`'s own suites and arm that single leg, which moves both wall clock and runner-minutes; others also reach the scripts group, whose legs sit on the critical path, so narrowing to them moves runner-minutes only. `wiki/.state.json`, the file every wiki sync rewrites, would arm nearly the whole matrix through this lever alone.
 
-A `code:` filter entry may be qualified by change type, and the `wiki/.state.json` entry is: a content-only rewrite of that file, which is what every wiki sync does to it, does not arm `code:` at all. What makes that safe is the checker the entry narrows against being blind to the file's content, not the entry being cheap; the invariant pinning that lives beside the per-leg gate's own invariants.
+A `code:` filter entry may be qualified by change type, and the `wiki/.state.json` entry is: a content-only rewrite of that file, which is what every wiki sync does to it, does not match that entry. That narrows the entry rather than the filter's output, because a separate `wiki/**` entry matches every path under `wiki/` on any change type, so a wiki sync still resolves `code=true` and runs the full matrix. What the change-type keying buys is that the `wiki/.state.json` entry specifically is not what arms it. What makes the keying safe is the checker that entry narrows against being blind to the file's content, not the entry being cheap; the invariant pinning that lives beside the per-leg gate's own invariants.
+
+The `wiki/**` entry exists because the per-page entries above it name one page each: a wiki-only pull request touching a page none of them names matched nothing before it was added, resolved `code=false`, and skipped every bats step, including suites that assert a property of every tracked file rather than of a page they name. It arms the job and decides no leg: a page the per-page entries already name stays a member of the narrowable class `.gaia/tests/leg-arming.sh` derives (matched by exact string equality), so the glob can only add a member to that class, never remove one.
 
 See `.gaia/tests/leg-arming.sh` for the decision, `.gaia/tests/bats-shards.sh` for the exchange groups it is derived through, and `.gaia/tests/lib/audit-ci-shards.bats` for what pins it, including the per-page armed-leg table.
 
