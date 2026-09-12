@@ -17,10 +17,9 @@
 # so the degrade cases at the end run a copy of the hook from a staged tree
 # instead, with that tree as the working directory, which is what puts a library
 # the test controls in front of it. The hook always exits 0; allow vs deny is
-# carried in stdout
-# a deny emits `"permissionDecision": "deny"`, an allow emits nothing. The
-# deny cases double as a jq/setup canary: a missing jq would exit early with no
-# output and those assertions would fail rather than false-pass.
+# carried in stdout: a deny emits `"permissionDecision": "deny"`, an allow emits
+# nothing. The deny cases double as a jq/setup canary: a missing jq would exit
+# early with no output and those assertions would fail rather than false-pass.
 
 setup() {
   . "$BATS_TEST_DIRNAME/helpers/run-hook.sh"
@@ -238,13 +237,16 @@ write_conflicted_lib() {
 stage_hook_tree() {
   STAGED_ROOT="$BATS_TEST_TMPDIR/staged"
   rm -rf "$STAGED_ROOT"
-  mkdir -p "$STAGED_ROOT/.claude/hooks/lib"
-  cp "$HOOK_ABS" "$STAGED_ROOT/.claude/hooks/"
-  cp "$HOOKS_SRC/lib/repo-scope.sh" "$STAGED_ROOT/.claude/hooks/lib/"
-  # The jq-availability arm runs ahead of the load under test and refuses when
-  # it cannot find its own library, so a staged tree without it answers every
-  # case with that refusal instead of the decision under test.
-  cp "$HOOKS_SRC/lib/jq-availability.sh" "$STAGED_ROOT/.claude/hooks/lib/"
+  mkdir -p "$STAGED_ROOT/.claude"
+  # The whole hooks directory, lib/ included, rather than the libraries this
+  # hook happens to load today: an enumeration goes short the moment the hook
+  # gains a load, and the cases below would then drive a hook degraded in a way
+  # none of them names while still reporting green. Each case removes or
+  # corrupts only the library it is named for. Staging the directory wholesale
+  # also keeps the jq-availability arm present, which runs ahead of the load
+  # under test and refuses when it cannot find its own library, answering every
+  # case with that refusal instead of with the decision under test.
+  cp -R "$HOOKS_SRC" "$STAGED_ROOT/.claude/hooks"
   STAGED_HOOK="$STAGED_ROOT/.claude/hooks/block-no-verify.sh"
 }
 
@@ -276,8 +278,10 @@ run_staged() {
 # the library missing, the `[ -f ]` guard ahead of the source short-circuits,
 # and errexit exempts a non-final command in an `&&` list, so that path never
 # reaches the source the bracket protects. Dropping that guard along with the
-# bracket is what reds it, by turning a missing library into the same abandoned
-# shell.
+# bracket is what reds it, and the shape of that failure differs from the
+# conflict-marker pair above: the shell is abandoned on a status PreToolUse does
+# not read as a deny, so the hook returns no verdict at all rather than a
+# refusal, and both halves of the pair red on the missing verdict.
 
 @test "repo-scope.sh holding conflict markers: an ordinary git command is still allowed" {
   stage_hook_tree
