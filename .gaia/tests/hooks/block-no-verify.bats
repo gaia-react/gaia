@@ -9,13 +9,15 @@
 # core.hooksPath=` override. Foreign-repo commands pass via the shared
 # repo-scope helper.
 #
-# Each test drives the hook exactly as the harness does: a PreToolUse JSON
-# payload on stdin, run with the repo as the working directory, which is where
-# the shared repo-scope helper resolves the home repository's identity from: it
-# reads the toplevel and the remote URLs of whatever repo cwd sits in. The hook
-# loads that helper from its own on-disk location rather than from cwd, so the
-# staged-tree harness below is what puts a library a test controls in front of
-# it. The hook always exits 0; allow vs deny is carried in stdout
+# Most tests drive the hook exactly as the harness does: a PreToolUse JSON
+# payload on stdin, run with the tmp repo as the working directory, which is
+# where the shared repo-scope helper resolves the home repository's identity
+# from: it reads the toplevel and the remote URLs of whatever repo cwd sits in.
+# The hook loads that helper from its own on-disk location rather than from cwd,
+# so the degrade cases at the end run a copy of the hook from a staged tree
+# instead, with that tree as the working directory, which is what puts a library
+# the test controls in front of it. The hook always exits 0; allow vs deny is
+# carried in stdout
 # a deny emits `"permissionDecision": "deny"`, an allow emits nothing. The
 # deny cases double as a jq/setup canary: a missing jq would exit early with no
 # output and those assertions would fail rather than false-pass.
