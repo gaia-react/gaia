@@ -25,6 +25,28 @@
 # helper still resolves `typescript` from the home repo's node_modules via
 # createRequire(import.meta.url), so the signal recompute works.
 
+# Mirror the repo-relative layout the hook resolves from a tree's own root, in
+# whatever tree a case aims a commit at. Every such tree needs its own copy:
+# the signal helper is invoked by the repo-relative path
+# red_ledger_signal_script returns, run from the tree the gate decides the
+# commit acts on, so a linked worktree lacking it emits no signals and drops
+# out of the offender scan.
+install_tree_links() {
+  local dir="$1"
+  mkdir -p "$dir/.claude/hooks/lib" "$dir/.gaia/scripts"
+  ln -sfn "$HOME_ROOT/.claude/hooks/lib/red-ledger.sh" "$dir/.claude/hooks/lib/red-ledger.sh"
+  ln -sfn "$HOME_ROOT/.claude/hooks/lib/repo-scope.sh" "$dir/.claude/hooks/lib/repo-scope.sh"
+  ln -sfn "$HOME_ROOT/.gaia/scripts/red-ledger" "$dir/.gaia/scripts/red-ledger"
+  # red_ledger_path (inside the symlinked red-ledger.sh above) sources this
+  # relative to ITS OWN location to reach gaia_tree_key, so it needs to
+  # resolve inside the tree too, not just from the hook's own BASH_SOURCE.
+  ln -sfn "$HOME_ROOT/.gaia/scripts/main-root-lib.sh" "$dir/.gaia/scripts/main-root-lib.sh"
+  # The determinism carve-out classifies the test file via this helper; symlink
+  # it so the hook resolves it from the tree exactly as in production. The
+  # symlinked helper resolves `typescript` from the home repo's node_modules.
+  ln -sfn "$HOME_ROOT/.gaia/scripts/classifier" "$dir/.gaia/scripts/classifier"
+}
+
 setup() {
   . "$BATS_TEST_DIRNAME/helpers/run-hook.sh"
   HOME_ROOT=$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)
@@ -42,19 +64,7 @@ setup() {
   git -C "$REPO" config user.name "Test"
   git -C "$REPO" config commit.gpgsign false
 
-  # Mirror the repo-relative layout the hook resolves from pwd.
-  mkdir -p "$REPO/.claude/hooks/lib" "$REPO/.gaia/scripts"
-  ln -s "$HOME_ROOT/.claude/hooks/lib/red-ledger.sh" "$REPO/.claude/hooks/lib/red-ledger.sh"
-  ln -s "$HOME_ROOT/.claude/hooks/lib/repo-scope.sh" "$REPO/.claude/hooks/lib/repo-scope.sh"
-  ln -s "$HOME_ROOT/.gaia/scripts/red-ledger" "$REPO/.gaia/scripts/red-ledger"
-  # red_ledger_path (inside the symlinked red-ledger.sh above) sources this
-  # relative to ITS OWN location to reach gaia_tree_key, so it needs to
-  # resolve inside REPO too, not just from the hook's own BASH_SOURCE.
-  ln -s "$HOME_ROOT/.gaia/scripts/main-root-lib.sh" "$REPO/.gaia/scripts/main-root-lib.sh"
-  # The determinism carve-out classifies the test file via this helper; symlink
-  # it so the hook resolves it from pwd exactly as in production. The symlinked
-  # helper resolves `typescript` from the home repo's node_modules.
-  ln -s "$HOME_ROOT/.gaia/scripts/classifier" "$REPO/.gaia/scripts/classifier"
+  install_tree_links "$REPO"
 
   # Seed a HEAD commit with a non-test file so HEAD exists. The symlinks are
   # untracked working-tree entries; they never enter the staged diff.
@@ -68,12 +78,14 @@ teardown() {
   return 0
 }
 
-# Write file content (creating parent dirs) and stage it in the tmp repo.
+# Write file content (creating parent dirs) and stage it. The optional third
+# argument names the tree to stage in, defaulting to the tmp repo; a case that
+# aims a commit at a linked worktree stages there instead.
 stage_file() {
-  local path="$1" content="$2"
-  mkdir -p "$REPO/$(dirname "$path")"
-  printf '%s' "$content" > "$REPO/$path"
-  git -C "$REPO" add "$path"
+  local path="$1" content="$2" root="${3:-$REPO}"
+  mkdir -p "$root/$(dirname "$path")"
+  printf '%s' "$content" > "$root/$path"
+  git -C "$root" add "$path"
 }
 
 # Commit a file at HEAD (so a later staged edit is an EXISTING-test edit, not
@@ -89,8 +101,8 @@ commit_file_at_head() {
 # Compute the (fullName,signal) NDJSON for a repo-relative path's CURRENT
 # on-disk content, using the same helper the hook uses, run from the tmp repo.
 signals_for() {
-  local rel="$1"
-  ( cd "$REPO" && node "$HELPER" "$rel" )
+  local rel="$1" root="${2:-$REPO}"
+  ( cd "$root" && node "$HELPER" "$rel" )
 }
 
 # Append a ledger line. Args: file fullName signal [failureKind]. Writes to
@@ -98,9 +110,9 @@ signals_for() {
 # exactly where the hook itself will look, rather than a second hardcoded
 # copy of the keyed literal.
 seed_ledger() {
-  local file="$1" full="$2" sig="$3" kind="${4:-assertion}"
+  local file="$1" full="$2" sig="$3" kind="${4:-assertion}" root="${5:-$REPO}"
   local ledger
-  ledger="$( . "$REPO/.claude/hooks/lib/red-ledger.sh" && red_ledger_path "$REPO" )"
+  ledger="$( . "$root/.claude/hooks/lib/red-ledger.sh" && red_ledger_path "$root" )"
   mkdir -p "$(dirname "$ledger")"
   jq -nc --arg f "$file" --arg n "$full" --arg s "$sig" --arg k "$kind" \
     '{schema:1, file:$f, fullName:$n, signal:$s, failureKind:$k, observedAt:"2026-06-04T00:00:00Z"}' \
@@ -110,13 +122,13 @@ seed_ledger() {
 # Seed a matching valid RED for one test of a staged file (computes the real
 # current signal so the match is exact).
 seed_matching_red() {
-  local rel="$1" want_full="$2"
+  local rel="$1" want_full="$2" root="${3:-$REPO}"
   local ndjson sig
-  ndjson=$(signals_for "$rel")
+  ndjson=$(signals_for "$rel" "$root")
   sig=$(printf '%s\n' "$ndjson" \
     | jq -r --arg n "$want_full" 'select(.fullName == $n) | .signal' | head -1)
   [ -n "$sig" ] || { echo "no signal for '$want_full' in $rel" >&2; return 1; }
-  seed_ledger "$rel" "$want_full" "$sig"
+  seed_ledger "$rel" "$want_full" "$sig" assertion "$root"
 }
 
 # Run the hook with a `git commit` command, from inside the tmp repo.
@@ -621,4 +633,81 @@ test("uses wall-clock time", () => {
   [ "$status" -eq 0 ]
   grep -qF -- "adds two numbers" <<<"$output"
   denied
+}
+
+# --- the tree the commit acts on, not the tree the session sits in ---
+#
+# A linked worktree is the same repository, so the repo-scope guard reads a
+# `git -C <worktree>` or a leading `cd <worktree> &&` as home and this gate
+# keeps enforcing. What it must not keep reading is its own checkout: the
+# staged set, the HEAD blob, and the per-tree ledger all belong to the checkout
+# the commit lands in (gaia-react/gaia#2013).
+
+# A linked worktree of REPO, provisioned the way REPO itself is. Sets WT.
+make_worktree() {
+  WT="$BATS_TEST_TMPDIR/wt"
+  git -C "$REPO" worktree add --quiet -b wt-branch "$WT"
+  install_tree_links "$WT"
+}
+
+# Run the hook with an explicit payload cwd. run_commit_hook leaves that field
+# unset, which is the shape the cases above want; these cases set it because
+# the tree the command targets and the tree the session stands in differ here,
+# and the field is how the gate learns the latter.
+run_commit_hook_in() {
+  local cwd="$1" cmd="$2" json
+  json=$(jq -nc --arg c "$cmd" --arg d "$cwd" \
+    '{tool_name:"Bash", cwd:$d, tool_input:{command:$c}}')
+  invoke_hook_in "$cwd" "$json" "$HOOK_ABS"
+}
+
+@test "a -C into a linked worktree reads that worktree's staged tests" {
+  make_worktree
+  stage_file "app/utils/x/index.test.ts" "$PASSING_TEST" "$WT"
+  run_commit_hook_in "$REPO" "git -C $WT commit -m change"
+  [ "$status" -eq 0 ]
+  denied
+  grep -qF -- "adds two numbers" <<<"$output"
+}
+
+@test "a -C into a linked worktree does not read the session checkout's staged tests" {
+  # The false-deny half. The session's own staged, un-RED'd test belongs to a
+  # tree this commit never touches, so naming it refuses a commit for a RED
+  # that commit does not owe.
+  make_worktree
+  stage_file "app/utils/x/index.test.ts" "$PASSING_TEST"
+  run_commit_hook_in "$REPO" "git -C $WT commit -m change"
+  [ "$status" -eq 0 ]
+  refute_denied
+}
+
+@test "a leading cd into a linked worktree reads that worktree's staged tests" {
+  make_worktree
+  stage_file "app/utils/x/index.test.ts" "$PASSING_TEST" "$WT"
+  run_commit_hook_in "$REPO" "cd $WT && git commit -m change"
+  [ "$status" -eq 0 ]
+  denied
+  grep -qF -- "adds two numbers" <<<"$output"
+}
+
+@test "a matching RED in the target worktree's own ledger allows the commit" {
+  # The ledger is per-tree state, so following the command's target has to
+  # reach the ledger lookup as well as the staged read.
+  make_worktree
+  stage_file "app/utils/x/index.test.ts" "$PASSING_TEST" "$WT"
+  seed_matching_red "app/utils/x/index.test.ts" "adds two numbers" "$WT"
+  run_commit_hook_in "$REPO" "git -C $WT commit -m change"
+  [ "$status" -eq 0 ]
+  refute_denied
+}
+
+@test "commit's own -C names a commit, so the session's staged tests are still read" {
+  # `git commit -C <commit>` reuses that commit's message. Read as a directory
+  # it aims the gate at a path named for a commit, where git answers nothing
+  # and every read below drops out into a silent pass.
+  stage_file "app/utils/x/index.test.ts" "$PASSING_TEST"
+  run_commit_hook_in "$REPO" "git commit -C HEAD -m change"
+  [ "$status" -eq 0 ]
+  denied
+  grep -qF -- "adds two numbers" <<<"$output"
 }
