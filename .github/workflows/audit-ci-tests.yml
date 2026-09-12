@@ -625,6 +625,16 @@ jobs:
               - '.gaia/state-registry.json'
               - '.gaia/state-registry.schema.json'
               - '.gaia/cli/src/**'
+              # The build artifact copy of the adopter workflow templates.
+              # provisioning-attribution.bats reads this directory as one of
+              # its four provisioning-discovery roots, and it is otherwise
+              # reached only through `.gaia/cli/src/**` above, which covers
+              # the source templates, not the regenerated copy. Without this
+              # entry, a change to the artifact alone (a `bundle:adopter` run
+              # with no matching source edit) resolves `code=false`, skips
+              # every bats step, and greens the job having run that guard
+              # zero times over the file it changed.
+              - '.gaia/cli/templates/workflows/**'
               - '.claude/commands/gaia-release.md'
               - 'pnpm-lock.yaml'
               - '.gaia/cli/pnpm-lock.yaml'
