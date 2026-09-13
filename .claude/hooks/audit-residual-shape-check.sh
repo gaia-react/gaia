@@ -305,7 +305,7 @@ ${waive_replace_count} heading(s) must be renamed to: ${CANON_WAIVE}"
   fi
   if [ "$both_replace_count" -gt 0 ]; then
     reason="${reason}
-${both_replace_count} heading(s) are ambiguous on the accept/waive axis; rename each to whichever of ${CANON_ACCEPT} or ${CANON_WAIVE} matches its meaning."
+${both_replace_count} heading(s) must be renamed to whichever of ${CANON_ACCEPT} or ${CANON_WAIVE} matches the meaning, the two being ambiguous on the accept/waive axis."
   fi
 fi
 

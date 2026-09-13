@@ -1000,7 +1000,7 @@ run_bounded() {
   [ -z "$output" ]
 }
 
-@test "real repo: a source written into an if condition is reach the walker sees" {
+@test "real repo: the walker reaches a library sourced inside an if condition" {
   # The merge gates load `verb-arming.sh` as `if . "$lib" && type ...`, and a
   # condition is command position: the library and everything it reaches
   # belong to each gate's closure. This is pinned on the real tree rather than

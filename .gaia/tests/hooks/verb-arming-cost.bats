@@ -376,8 +376,9 @@ CEILING_ALL_HOOKS_ORDINARY_MS=1000
 
 # Every adopting hook, one 16KB raw-matching `gh pr merge` tool call (most pay
 # the walk; the rest raw-miss and skip it). Measured ~320-365ms. Headroom:
-# 2000/365 ~= 5.5x. Margin below every hook in the roster byte-walking at
-# 1010ms apiece. Ceiling unchanged, for the reason the ordinary one gives.
+# 2000/365 ~= 5.5x. Margin below one byte-walk per adopting hook, at the list
+# length this was measured at, each paying the 1010ms byte-walk figure:
+# 12120/2000 ~= 6.1x. Ceiling unchanged, for the reason the ordinary one gives.
 CEILING_ALL_HOOKS_RAWMATCH_MS=2000
 
 # Past-bound (32KB), one hook (token-tally-git-op.sh), armed for real: the

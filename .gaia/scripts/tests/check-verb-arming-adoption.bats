@@ -3,7 +3,7 @@
 # Conformance suite for .gaia/scripts/check-verb-arming-adoption.sh: the
 # adopting hooks stay a single-source-of-truth over the arming decision only
 # because nothing lets that fact drift silently. This suite is what actually
-# fails a build when a twelfth hook spells its own pattern pair, when a hook
+# fails a build when a further hook spells its own pattern pair, when a hook
 # arms through a grep re-implementation instead of the shared function, when
 # the registered-hook roster drifts from the roster this suite enumerates, or
 # when a deny-capable hook's library-absent fail direction moves without a
@@ -197,7 +197,7 @@ commit_all() {
   grep -qF "roster: registered adopters match the enumerated set" <<<"$output" || return 1
 }
 
-@test "fixture: a twelfth hook with a private start_re/sep_re pair fails and names file and line (case 1)" {
+@test "fixture: a further hook with a private start_re/sep_re pair fails and names file and line (case 1)" {
   local repo
   repo="$(make_fixture_repo twelfth-hook)"
   cat >"$repo/.claude/hooks/rogue-verb-check.sh" <<'EOF'
