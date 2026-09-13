@@ -751,6 +751,10 @@ jobs:
       # cache also drops the pnpm bootstrap this job never uses. The pin is
       # unchanged, which is what keeps adopter-ci-action-pins.test.ts green.
       - name: Setup Node
+        # Bounds a stalled Node tarball fetch, not a budget for the work:
+        # strictly under this job's own 10-minute cap so a stall reds with this
+        # step's name rather than as a generic job timeout.
+        timeout-minutes: 3
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: '.node-version'
