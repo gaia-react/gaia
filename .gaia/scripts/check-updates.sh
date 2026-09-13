@@ -11,6 +11,8 @@
 #   - hardenCandidateCount (recurring code-review findings ready to harden)
 #   - hardenUnclassifiedCount (classless recurring findings over threshold;
 #                     a seed-a-class-or-investigate signal, never a candidate)
+#   - residueCandidateCount (keyed audit residue aged 30+ days, ready to
+#                     triage via /gaia-residue)
 #   - auditNudge / auditNudgeReason / auditLastAppliedAt / auditMemoryCount /
 #                  auditMemoryBaseline (knowledge-audit drift signals)
 #   - checkedAt      (Unix epoch seconds)
@@ -84,6 +86,7 @@ prev_outdated_count=0
 prev_gaia_latest=""
 prev_harden_count=0
 prev_harden_unclassified=0
+prev_residue_count=0
 prev_audit_last_applied_at=0
 prev_audit_memory_count=0
 prev_audit_memory_baseline=0
@@ -98,6 +101,7 @@ if [ -f "$CACHE_FILE" ] && command -v jq >/dev/null 2>&1; then
   prev_gaia_latest=$(jq -r '.gaiaLatest // ""' "$CACHE_FILE" 2>/dev/null)
   prev_harden_count=$(jq -r '.hardenCandidateCount // 0' "$CACHE_FILE" 2>/dev/null)
   prev_harden_unclassified=$(jq -r '.hardenUnclassifiedCount // 0' "$CACHE_FILE" 2>/dev/null)
+  prev_residue_count=$(jq -r '.residueCandidateCount // 0' "$CACHE_FILE" 2>/dev/null)
   prev_audit_last_applied_at=$(jq -r '.auditLastAppliedAt // 0' "$CACHE_FILE" 2>/dev/null)
   prev_audit_memory_count=$(jq -r '.auditMemoryCount // 0' "$CACHE_FILE" 2>/dev/null)
   prev_audit_memory_baseline=$(jq -r '.auditMemoryBaseline // 0' "$CACHE_FILE" 2>/dev/null)
@@ -204,6 +208,40 @@ case "$harden_count" in
 esac
 case "$unclassified_count" in
   ''|*[!0-9]*) unclassified_count=0 ;;
+esac
+
+# ---------- residueCandidateCount ----------
+# Aged-residue tally for the /gaia-residue nudge.
+# `residue-tally --count-only` is mandatory here: the refresher must never
+# do head-object resolution, which costs 8.6-15.5s per
+# fetch and grows the object store from 7.4MB to 66MB over fourteen fetches;
+# a refresher that resolves is the failure this flag exists to prevent. It
+# emits `aged_candidate_count` (survivors whose age_days >= 30, computed over
+# the full post-suppression population before the cap) and a `gh_ok` flag.
+# On a gh/network failure it exits 0 emitting aged_candidate_count 0 and
+# gh_ok false, so this consumer honors gh_ok and keeps the previous cached
+# count rather than resetting the nudge to 0. `count_approximate` is always
+# true in --count-only mode (a coordinate-only suppression match, not a
+# resolved-content bind); it is informational for a human reading the
+# tally's own JSON, never branched on here, and never written to this cache.
+# Falls back to the previous cached count on any failure: missing binary,
+# gh/network error (gh_ok false), parse error.
+residue_count="$prev_residue_count"
+if [ -x "$GAIA_BIN" ] && command -v jq >/dev/null 2>&1; then
+  residue_json="$(cd "$PROJECT_ROOT" && "$GAIA_BIN" residue-tally --count-only 2>/dev/null)"
+  if [ -n "$residue_json" ]; then
+    parsed=$(printf '%s' "$residue_json" | jq -r '.aged_candidate_count // empty' 2>/dev/null)
+    gh_ok=$(printf '%s' "$residue_json" | jq -r '.gh_ok // false' 2>/dev/null)
+    if [ "$gh_ok" = "true" ]; then
+      case "$parsed" in
+        ''|*[!0-9]*) ;;
+        *) residue_count="$parsed" ;;
+      esac
+    fi
+  fi
+fi
+case "$residue_count" in
+  ''|*[!0-9]*) residue_count=0 ;;
 esac
 
 # ---------- auditNudge ----------
@@ -482,6 +520,7 @@ if command -v jq >/dev/null 2>&1; then
     --argjson gaiaHasUpdate "$gaia_has_update" \
     --argjson hardenCandidateCount "$harden_count" \
     --argjson hardenUnclassifiedCount "$unclassified_count" \
+    --argjson residueCandidateCount "$residue_count" \
     --argjson auditNudge "$audit_nudge" \
     --arg auditNudgeReason "$audit_nudge_reason" \
     --argjson auditLastAppliedAt "$audit_last_applied_at" \
@@ -489,14 +528,14 @@ if command -v jq >/dev/null 2>&1; then
     --argjson auditMemoryBaseline "$audit_memory_baseline" \
     --argjson serenaLangDrift "$serena_lang_drift_json" \
     --argjson auditDriftBaseline "$audit_drift_baseline" \
-    '{checkedAt: $checkedAt, outdatedCount: $outdatedCount, gaiaCurrent: $gaiaCurrent, gaiaLatest: $gaiaLatest, gaiaHasUpdate: $gaiaHasUpdate, hardenCandidateCount: $hardenCandidateCount, hardenUnclassifiedCount: $hardenUnclassifiedCount, auditNudge: $auditNudge, auditNudgeReason: $auditNudgeReason, auditLastAppliedAt: $auditLastAppliedAt, auditMemoryCount: $auditMemoryCount, auditMemoryBaseline: $auditMemoryBaseline, serenaLangDrift: $serenaLangDrift, auditDriftBaseline: $auditDriftBaseline}' \
+    '{checkedAt: $checkedAt, outdatedCount: $outdatedCount, gaiaCurrent: $gaiaCurrent, gaiaLatest: $gaiaLatest, gaiaHasUpdate: $gaiaHasUpdate, hardenCandidateCount: $hardenCandidateCount, hardenUnclassifiedCount: $hardenUnclassifiedCount, residueCandidateCount: $residueCandidateCount, auditNudge: $auditNudge, auditNudgeReason: $auditNudgeReason, auditLastAppliedAt: $auditLastAppliedAt, auditMemoryCount: $auditMemoryCount, auditMemoryBaseline: $auditMemoryBaseline, serenaLangDrift: $serenaLangDrift, auditDriftBaseline: $auditDriftBaseline}' \
     > "$tmp_file" 2>/dev/null
 else
   # jq not available; emit valid JSON via printf. auditDriftBaseline is empty
   # for the same reason serenaLangDrift is: deriving it requires jq, and with
   # no jq there is no coveredPaths list to suppress against either.
-  printf '{"checkedAt":%s,"outdatedCount":%s,"gaiaCurrent":"%s","gaiaLatest":"%s","gaiaHasUpdate":%s,"hardenCandidateCount":%s,"hardenUnclassifiedCount":%s,"auditNudge":%s,"auditNudgeReason":"%s","auditLastAppliedAt":%s,"auditMemoryCount":%s,"auditMemoryBaseline":%s,"serenaLangDrift":[],"auditDriftBaseline":{}}\n' \
-    "$now" "$outdated_count" "$gaia_current" "$gaia_latest" "$gaia_has_update" "$harden_count" "$unclassified_count" "$audit_nudge" "$audit_nudge_reason" "$audit_last_applied_at" "$audit_memory_count" "$audit_memory_baseline" \
+  printf '{"checkedAt":%s,"outdatedCount":%s,"gaiaCurrent":"%s","gaiaLatest":"%s","gaiaHasUpdate":%s,"hardenCandidateCount":%s,"hardenUnclassifiedCount":%s,"residueCandidateCount":%s,"auditNudge":%s,"auditNudgeReason":"%s","auditLastAppliedAt":%s,"auditMemoryCount":%s,"auditMemoryBaseline":%s,"serenaLangDrift":[],"auditDriftBaseline":{}}\n' \
+    "$now" "$outdated_count" "$gaia_current" "$gaia_latest" "$gaia_has_update" "$harden_count" "$unclassified_count" "$residue_count" "$audit_nudge" "$audit_nudge_reason" "$audit_last_applied_at" "$audit_memory_count" "$audit_memory_baseline" \
     > "$tmp_file" 2>/dev/null
 fi
 

@@ -53,6 +53,7 @@ run_saturated_statusline() {
   "outdatedCount": 3,
   "hardenCandidateCount": 2,
   "hardenUnclassifiedCount": 1,
+  "residueCandidateCount": 5,
   "auditNudge": true,
   "auditNudgeReason": "stale",
   "serenaLangDrift": ["go"]
@@ -84,6 +85,7 @@ rendered_commands() {
     "Run /gaia-audit" \
     "Run /gaia-debt" \
     "Run /gaia-harden" \
+    "Run /gaia-residue" \
     "Run /gaia-serena-sync" \
     "Run /update-deps" \
     "Run /update-gaia")

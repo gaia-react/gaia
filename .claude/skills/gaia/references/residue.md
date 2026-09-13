@@ -72,7 +72,9 @@ One human answer per residual, never batched, collected through an explicit user
 - **The finding class is the residual's own.** Pass the `class` carried in the candidate's `raw_key` verbatim as the recipe's `<finding_class>`, so the filed issue's dedup key is byte-identical to the residual's own key. Never mint a fresh class.
 - **`handler:<class>`** is that same class.
 - **`severity:<tier>`** comes from the recipe's own severity vocabulary, chosen from the residual's failure-mode text and its canonical disposition, and it is a judgment asked of the human alongside the promote answer, not guessed by the command.
-- **`surface:<side>`** comes from the cited path, per the recipe's own adopter/maintainer split.
+  <!-- gaia:maintainer-only:start -->
+- **`surface:<side>`** comes from the cited path, per the recipe's own adopter/maintainer split. Maintainer repository only; scrubbed from adopter bundles.
+  <!-- gaia:maintainer-only:end -->
 - **`difficulty:<grade>`** is supplied: the command has already read the cited line to resolve it, so a promoted residual is graded using the recipe's own rubric.
 - The provenance line's `changed` field is `unknown`: this run holds no fork-point changed-file set, and `unknown` is the honest value there, not `0`.
 

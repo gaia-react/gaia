@@ -1,0 +1,128 @@
+[
+  {
+    "body": "## Verification\nRan the suite.\n\n## Accepted residuals (recorded, not fixed)\n- MARKER_2000_A1, lint issue in service <!-- gaia-debt-key: v1 class=lint path=app/services/foo.ts line=10 -->\n- MARKER_2000_A2, type issue in model <!-- gaia-debt-key: v1 class=types path=app/models/bar.ts line=20 -->\n\n## Out-of-scope machinery findings (recorded, not filed)\n- MARKER_2000_W1, infra concern <!-- gaia-debt-key: v1 class=infra path=app/infra/baz.ts line=5 -->\n\n## What changed\nNothing residual here.",
+    "headRefOid": "sha2000",
+    "mergedAt": "2026-07-01T00:00:00Z",
+    "number": 2000
+  },
+  {
+    "body": "## Accepted residuals (recorded, not fixed)\n- MARKER_2001_STILL, cache eviction bug <!-- gaia-debt-key: v1 class=bug path=app/cache/evict.ts line=8 -->",
+    "headRefOid": "sha2001",
+    "mergedAt": "2026-08-01T00:00:00Z",
+    "number": 2001
+  },
+  {
+    "body": "## Accepted residuals (recorded, not fixed)\n- MARKER_2002_MOVED, helper relocated <!-- gaia-debt-key: v1 class=lint path=app/utils/helper.ts line=4 -->",
+    "headRefOid": "sha2002",
+    "mergedAt": "2026-08-05T00:00:00Z",
+    "number": 2002
+  },
+  {
+    "body": "## Out-of-scope machinery findings (recorded, not filed)\n- MARKER_2003_GONE, deleted module reference <!-- gaia-debt-key: v1 class=infra path=app/legacy/oldmodule.ts line=3 -->",
+    "headRefOid": "sha2003",
+    "mergedAt": "2026-08-10T00:00:00Z",
+    "number": 2003
+  },
+  {
+    "body": "## Accepted residuals (recorded, not fixed)\n- MARKER_2004_BLANK, blank cited line <!-- gaia-debt-key: v1 class=lint path=app/blank/file.ts line=2 -->",
+    "headRefOid": "sha2004",
+    "mergedAt": "2026-08-12T00:00:00Z",
+    "number": 2004
+  },
+  {
+    "body": "## Accepted residuals (recorded, not fixed)\n- MARKER_3001_KEYLESS, no key attached",
+    "headRefOid": "sha3001",
+    "mergedAt": "2026-09-05T00:00:00Z",
+    "number": 3001
+  },
+  {
+    "body": "## Out-of-scope machinery findings (recorded, not filed)\n- MARKER_3002_TWOKEY, two keys present <!-- gaia-debt-key: v1 class=dupe path=app/dup/first.ts line=1 --> and also <!-- gaia-debt-key: v1 class=dupe path=app/dup/second.ts line=2 -->",
+    "headRefOid": "sha3002",
+    "mergedAt": "2026-09-06T00:00:00Z",
+    "number": 3002
+  },
+  {
+    "body": "## Accepted residuals (recorded, not fixed)\nMARKER_3003_PROSE before any bullet mentions a key <!-- gaia-debt-key: v1 class=lint path=app/prose/example.ts line=1 --> for illustration.\n- MARKER_3003_REAL, keyed entry <!-- gaia-debt-key: v1 class=lint path=app/prose/real.ts line=9 -->\n\n## Documentation\nExample usage: <!-- gaia-debt-key: v1 class=lint path=app/docs/sample.ts line=1 --> is how you wrap a key.",
+    "headRefOid": "sha3003",
+    "mergedAt": "2026-09-07T00:00:00Z",
+    "number": 3003
+  },
+  {
+    "body": "## Accepted residuals\n- MARKER_3004_REFUSED, would be keyed if canonical <!-- gaia-debt-key: v1 class=lint path=app/refused/thing.ts line=1 -->",
+    "headRefOid": "sha3004",
+    "mergedAt": "2026-09-08T00:00:00Z",
+    "number": 3004
+  },
+  {
+    "body": "### Accepted residuals (recorded, not fixed)\n- MARKER_3005_LEVEL3, under a level-three spelling <!-- gaia-debt-key: v1 class=lint path=app/level3/thing.ts line=1 -->",
+    "headRefOid": "sha3005",
+    "mergedAt": "2026-09-09T00:00:00Z",
+    "number": 3005
+  },
+  {
+    "body": "## Accepted residuals (recorded, not fixed)\n- MARKER_3006_SPACEPATH, key whose path contains a space <!-- gaia-debt-key: v1 class=lint path=app/my dir/file.ts line=1 -->",
+    "headRefOid": "sha3006",
+    "mergedAt": "2026-09-10T00:00:00Z",
+    "number": 3006
+  },
+  {
+    "body": "## Accepted residuals (recorded, not fixed)\n- MARKER_3007_ABS, absolute path <!-- gaia-debt-key: v1 class=lint path=/etc/passwd line=1 -->\n- MARKER_3007_TRAV, traversal path <!-- gaia-debt-key: v1 class=lint path=../../etc/passwd line=1 -->\n- MARKER_3007_DASH, leading dash path <!-- gaia-debt-key: v1 class=lint path=-rf/danger.ts line=1 -->\n- MARKER_3007_ZERO, line zero <!-- gaia-debt-key: v1 class=lint path=app/zero/thing.ts line=0 -->",
+    "headRefOid": "sha3007",
+    "mergedAt": "2026-09-11T00:00:00Z",
+    "number": 3007
+  },
+  {
+    "body": "## Out-of-scope machinery findings (recorded, not filed)\n- MARKER_3008_NOV1, key missing v1 token <!-- gaia-debt-key: class=lint path=app/nov1/thing.ts line=1 -->",
+    "headRefOid": "sha3008",
+    "mergedAt": "2026-09-12T00:00:00Z",
+    "number": 3008
+  },
+  {
+    "body": "## Accepted residuals (recorded, not fixed)\n- MARKER_3009_SQUASH, squash merge with no provenance line <!-- gaia-debt-key: v1 class=lint path=app/squash/thing.ts line=6 -->",
+    "headRefOid": "sha3009",
+    "mergedAt": "2026-09-13T00:00:00Z",
+    "number": 3009
+  },
+  {
+    "body": "## Accepted residuals (recorded, not fixed)\n- MARKER_4001_ARM1, suppressed by an open issue key with no v1 token <!-- gaia-debt-key: v1 class=lint path=app/issuearm/arm1.ts line=1 -->\n- MARKER_4001_ARM2, suppressed by a declined-closed issue key <!-- gaia-debt-key: v1 class=lint path=app/issuearm/arm2.ts line=2 -->\n- MARKER_4001_ARM3, suppressed by a bare path:line mention <!-- gaia-debt-key: v1 class=lint path=app/issuearm/arm3.ts line=3 -->\n- MARKER_4001_PROMOTED, previously promoted, closed completed <!-- gaia-debt-key: v1 class=lint path=app/issuearm/promoted.ts line=4 -->",
+    "headRefOid": "sha4001",
+    "mergedAt": "2026-09-02T00:00:00Z",
+    "number": 4001
+  },
+  {
+    "body": "## Accepted residuals (recorded, not fixed)\n- MARKER_5001_A1, volume entry one <!-- gaia-debt-key: v1 class=holistic/unclassified path=app/misc/a1.ts line=1 -->\n- MARKER_5001_A2, volume entry two <!-- gaia-debt-key: v1 class=holistic/unclassified path=app/misc/a2.ts line=2 -->",
+    "headRefOid": "sha5001",
+    "mergedAt": "2026-09-01T00:00:00Z",
+    "number": 5001
+  },
+  {
+    "body": "## Out-of-scope machinery findings (recorded, not filed)\n- MARKER_5002_B1, volume entry one <!-- gaia-debt-key: v1 class=holistic/unclassified path=app/misc/b1.ts line=1 -->\n- MARKER_5002_B2, volume entry two <!-- gaia-debt-key: v1 class=holistic/unclassified path=app/misc/b2.ts line=2 -->",
+    "headRefOid": "sha5002",
+    "mergedAt": "2026-09-02T00:00:00Z",
+    "number": 5002
+  },
+  {
+    "body": "## Accepted residuals (recorded, not fixed)\n- MARKER_5003_C1, volume entry one <!-- gaia-debt-key: v1 class=holistic/unclassified path=app/misc/c1.ts line=1 -->\n- MARKER_5003_C2, volume entry two <!-- gaia-debt-key: v1 class=holistic/unclassified path=app/misc/c2.ts line=2 -->",
+    "headRefOid": "sha5003",
+    "mergedAt": "2026-09-03T00:00:00Z",
+    "number": 5003
+  },
+  {
+    "body": "## Out-of-scope machinery findings (recorded, not filed)\n- MARKER_5004_D1, volume entry one <!-- gaia-debt-key: v1 class=holistic/unclassified path=app/misc/d1.ts line=1 -->\n- MARKER_5004_D2, volume entry two <!-- gaia-debt-key: v1 class=holistic/unclassified path=app/misc/d2.ts line=2 -->",
+    "headRefOid": "sha5004",
+    "mergedAt": "2026-09-04T00:00:00Z",
+    "number": 5004
+  },
+  {
+    "body": "## Accepted residuals (recorded, not fixed)\n- MARKER_5005_E1, volume entry one <!-- gaia-debt-key: v1 class=holistic/unclassified path=app/misc/e1.ts line=1 -->\n- MARKER_5005_E2, volume entry two <!-- gaia-debt-key: v1 class=holistic/unclassified path=app/misc/e2.ts line=2 -->",
+    "headRefOid": "sha5005",
+    "mergedAt": "2026-09-05T00:00:00Z",
+    "number": 5005
+  },
+  {
+    "body": "## Out-of-scope machinery findings (recorded, not filed)\n- MARKER_5006_F1, volume entry one <!-- gaia-debt-key: v1 class=holistic/unclassified path=app/misc/f1.ts line=1 -->\n- MARKER_5006_F2, volume entry two <!-- gaia-debt-key: v1 class=holistic/unclassified path=app/misc/f2.ts line=2 -->",
+    "headRefOid": "sha5006",
+    "mergedAt": "2026-09-06T00:00:00Z",
+    "number": 5006
+  }
+]

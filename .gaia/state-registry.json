@@ -229,7 +229,7 @@
       "why": "The residue triage command's derived read cache (per-pull-request attribution and resolved cited lines, keyed by pull-request number and head sha) and its resumable per-run cursor. Derived state, never a record: a cold cache reproduces the same candidate list. Main-only rather than shared, so keyed_by stays null per the schema's rule and the two concrete filenames show up in `path` instead. Named `residual`, not `residue`: this registry's own top-level `residue` array names an unrelated concept, orphaned machine-local state reaped by the janitor.",
       "writer": "code",
       "reaped_by": "stale cache sweep",
-      "source": "SPEC-081"
+      "source": "SPEC-081 §main-only"
     },
     {
       "id": "spec-chain-guard",
