@@ -234,6 +234,15 @@ wiki/decisions/Shell Guard Fixture Discrimination.md
 .gaia/scripts/check-step-body-extractor-roster.sh
 # This check asserts an invariant true of GAIA's own source: that every Code Audit Team member definition carries the scope-digest obligation literal and captures inside its own scope-resolution region. Three of the five definitions it scans are maintainer-only, and its only runners (the .gaia/scripts/tests/ bats suite and .gaia/tests/whole-tree-invariants.sh) are already release-excluded, so shipping it would ship a check nothing on an adopter clone invokes.
 .gaia/scripts/check-scope-digest-adoption.sh
+# The audit-residual dismissal store records this repository's own triage
+# decisions: assertions about this repository's code that are false about
+# an adopter's. The machinery ships and the data does not. Without this
+# line the store would ship as an `owned` file, costing an adopter one
+# overwrite at the newly-owned transition and perpetual `.gaia-merge`
+# patch noise thereafter. The manifest is derived by skipping what this
+# file excludes, so the store's absence from `.gaia/manifest.json` is a
+# consequence of this line and never the mechanism.
+.gaia/audit-residual-dismissals.jsonl
 
 # --- 4. CLI maintainer source + maintainer binary ---
 # Adopters receive only the bundled adopter binary at .gaia/cli/gaia (and

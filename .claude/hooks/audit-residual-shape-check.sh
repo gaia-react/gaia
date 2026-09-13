@@ -34,6 +34,13 @@
 # text stderr, no JSON) rather than let a fail-open `jq`-dependent gate read
 # as "nothing to check". Every other abstention above permits.
 #
+# GAIA_AUDIT_RESIDUAL_DEBUG_EMIT, when set to a non-empty file path, is a
+# read-only observability seam: the gate appends one line per entry unit it
+# attributes beneath a canonical heading to that path, in the fixed format the
+# residue tally's conformance fixture compares against its own attribution.
+# With the variable unset, the gate's behavior is unchanged, and a failure to
+# write the named path never changes a verdict.
+#
 # See wiki/concepts/PR Merge Workflow.md and
 # wiki/concepts/Audit Disposition and Debt Fix.md for the full contract.
 
@@ -205,10 +212,12 @@ REFUSED_REPLACEMENTS=(
   waive
 )
 
-# C2's entry-unit boundary and C3's frozen key grammar.
+# C2's entry-unit boundary and C3's frozen key grammar. The capture group
+# around the inner text changes no character of the matched language; it only
+# gives the debug emit below a way to read the key without its <!-- --> wrapper.
 heading_re='^#{1,6}[[:space:]]'
 top_bullet_re='^([-*+]|[0-9]{1,9}[.)])[[:space:]]'
-key_re='<!-- gaia-debt-key: v1 class=[^ ]+ path=[^ ]+ line=[0-9]+ -->'
+key_re='<!-- gaia-debt-key: (v1 class=[^ ]+ path=[^ ]+ line=[0-9]+) -->'
 
 offending_count=0
 accept_replace_count=0
@@ -220,21 +229,43 @@ keyless_lines=""
 unit_open=0
 unit_start_line=0
 unit_keyed=0
+unit_key=""
 in_canonical=0
+section_disposition=""
+
+# Resolved once, before the loop, rather than re-read per line.
+_debug_emit_path="${GAIA_AUDIT_RESIDUAL_DEBUG_EMIT:-}"
 
 # Closes the currently open entry unit (a no-op when none is open), scoring
-# it keyless when C3's grammar never appeared inside it.
+# it keyless when C3's grammar never appeared inside it. A unit only ever
+# opens while in_canonical is set (the top-bullet arm below is gated on it),
+# so every unit reaching here belongs to the section named by
+# section_disposition and is eligible for the debug emit.
 close_unit() {
-  if [ "$unit_open" = 1 ] && [ "$unit_keyed" != 1 ]; then
-    keyless_count=$((keyless_count + 1))
-    if [ -n "$keyless_lines" ]; then
-      keyless_lines="${keyless_lines}, ${unit_start_line}"
-    else
-      keyless_lines="$unit_start_line"
+  if [ "$unit_open" = 1 ]; then
+    if [ "$unit_keyed" != 1 ]; then
+      keyless_count=$((keyless_count + 1))
+      if [ -n "$keyless_lines" ]; then
+        keyless_lines="${keyless_lines}, ${unit_start_line}"
+      else
+        keyless_lines="$unit_start_line"
+      fi
+    fi
+    if [ -n "$_debug_emit_path" ]; then
+      # The brace group's own redirect, not a per-command one on printf: an
+      # open failure on `>>` (a missing or unwritable path) is reported by the
+      # shell before a same-command `2>/dev/null` would take effect, so only a
+      # redirect on the enclosing group swallows it. `|| true` covers every
+      # other write failure the same way. Either way the verdict above is
+      # already decided and cannot be touched by this.
+      { printf 'residual-attribution\tunit_start_line=%s\tdisposition=%s\tkeyed=%s\tkey=%s\n' \
+          "$unit_start_line" "$section_disposition" "$unit_keyed" "${unit_key:--}" \
+          >> "$_debug_emit_path"; } 2>/dev/null || true
     fi
   fi
   unit_open=0
   unit_keyed=0
+  unit_key=""
 }
 
 # One pass, 1-indexed. A here-string, not a piped subshell, so the counters
@@ -250,6 +281,11 @@ while IFS= read -r raw_line || [ -n "$raw_line" ]; do
     trimmed="$(printf '%s' "$raw_line" | sed -e 's/[[:space:]]*$//')"
     if [ "$trimmed" = "$CANON_ACCEPT" ] || [ "$trimmed" = "$CANON_WAIVE" ]; then
       in_canonical=1
+      if [ "$trimmed" = "$CANON_ACCEPT" ]; then
+        section_disposition=accept
+      else
+        section_disposition=waive
+      fi
     else
       i=0
       n=${#REFUSED_HEADINGS[@]}
@@ -278,10 +314,12 @@ while IFS= read -r raw_line || [ -n "$raw_line" ]; do
     unit_keyed=0
     if [[ "$raw_line" =~ $key_re ]]; then
       unit_keyed=1
+      [ -n "$unit_key" ] || unit_key="${BASH_REMATCH[1]}"
     fi
   elif [ "$unit_open" = 1 ]; then
     if [[ "$raw_line" =~ $key_re ]]; then
       unit_keyed=1
+      [ -n "$unit_key" ] || unit_key="${BASH_REMATCH[1]}"
     fi
   fi
 done <<< "$body"

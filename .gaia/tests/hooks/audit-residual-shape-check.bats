@@ -189,6 +189,14 @@ assert_permits_silently() {
   [ -z "$output" ] || return 1
 }
 
+# expected_emit_line START DISPOSITION KEYED KEY: builds one line in the
+# GAIA_AUDIT_RESIDUAL_DEBUG_EMIT format, for equality assertions against a
+# line the hook actually wrote (`.claude/rules/bats-assertions.md`: equality
+# over a substring match wherever the whole value is the claim).
+expected_emit_line() {
+  printf 'residual-attribution\tunit_start_line=%s\tdisposition=%s\tkeyed=%s\tkey=%s' "$1" "$2" "$3" "$4"
+}
+
 # Deliberately excluded literals (README.md C1's exclusion table), hand-
 # transcribed because the hook carries no data structure for an exclusion --
 # it is simply absent from both the canonical and refused sets. Each entry's
@@ -681,4 +689,338 @@ EXCLUDED_HEADINGS=(
   run_hook_at "$mutant" "$body"
   [ "$status" -eq 0 ] || return 1
   [ -z "$output" ] || return 1
+}
+
+# ---------------------------------------------------------------------------
+# Group 9: GAIA_AUDIT_RESIDUAL_DEBUG_EMIT, the opt-in gate attribution emit
+# (Phase 1c). Additive instrumentation only: Groups 1-8 above prove the
+# merge-path recognizer is untouched, this group proves the emit's own
+# behavior. Every test unsets the variable immediately after use so it never
+# leaks into a later test in the same suite run.
+# ---------------------------------------------------------------------------
+
+@test "with the debug-emit variable unset, four representative merge-path outputs are byte-identical to the pre-existing pinned assertions" {
+  unset GAIA_AUDIT_RESIDUAL_DEBUG_EMIT
+
+  local clean_body
+  clean_body="$(join_lines "$CANON_ACCEPT" "- residual-alpha1, keyed" "<!-- gaia-debt-key: v1 class=lint path=app/alpha1.ts line=1 -->")"
+  drive_body "$clean_body"
+  assert_permits_silently
+
+  drive_body "## Accepted residuals"
+  assert_denied_by_json
+  grep -qF -- "Offending heading count: 1" <<<"$output" || return 1
+
+  local keyless_body
+  keyless_body="$(join_lines "$CANON_ACCEPT" "- residual-beta1, no key")"
+  drive_body "$keyless_body"
+  assert_denied_by_json
+  grep -qF -- "Keyless entry count: 1" <<<"$output" || return 1
+
+  local both_body
+  both_body="$(join_lines "## Accepted residuals" "$CANON_WAIVE" "- residual-gamma1, keyless under waive")"
+  drive_body "$both_body"
+  assert_denied_by_json
+  grep -qF -- "Offending heading count: 1" <<<"$output" || return 1
+  grep -qF -- "Keyless entry count: 1" <<<"$output" || return 1
+}
+
+@test "with the debug-emit variable unset, no emit file appears in a dedicated empty probe directory" {
+  local probe_dir="$BATS_TEST_TMPDIR/emit-probe"
+  mkdir -p "$probe_dir"
+  unset GAIA_AUDIT_RESIDUAL_DEBUG_EMIT
+  local body
+  body="$(join_lines "$CANON_ACCEPT" "- residual-delta2, keyed" "<!-- gaia-debt-key: v1 class=lint path=app/delta2.ts line=1 -->")"
+  drive_body "$body"
+  assert_permits_silently
+  [ ! -e "$probe_dir/out.tsv" ] || return 1
+  [ -z "$(ls -A "$probe_dir")" ] || return 1
+}
+
+@test "with the debug-emit variable pointed at a non-writable directory, the gate's output is identical to the unset run for the same body" {
+  local nowrite_dir="$BATS_TEST_TMPDIR/emit-nowrite" body l unset_status unset_output set_status set_output
+  mkdir -p "$nowrite_dir"
+  chmod 000 "$nowrite_dir"
+  body="$(join_lines "$CANON_ACCEPT" "- residual-echo2, no key")"
+  l="$(line_of "residual-echo2" "$body")"
+
+  unset GAIA_AUDIT_RESIDUAL_DEBUG_EMIT
+  drive_body "$body"
+  unset_status="$status"
+  unset_output="$output"
+
+  export GAIA_AUDIT_RESIDUAL_DEBUG_EMIT="$nowrite_dir/out.tsv"
+  drive_body "$body"
+  set_status="$status"
+  set_output="$output"
+  unset GAIA_AUDIT_RESIDUAL_DEBUG_EMIT
+  chmod 755 "$nowrite_dir"
+
+  [ "$set_status" -eq "$unset_status" ] || return 1
+  [ "$set_output" = "$unset_output" ] || return 1
+  grep -qF -- "Keyless entry count: 1" <<<"$set_output" || return 1
+  grep -qF -- "Opening-bullet line number(s): ${l}." <<<"$set_output" || return 1
+}
+
+@test "a body with one keyed accept unit and one keyed waive unit emits exactly two attribution lines in body order" {
+  local emit_file="$BATS_TEST_TMPDIR/emit-two.tsv" body l1 l2
+  body="$(join_lines \
+    "$CANON_ACCEPT" \
+    "- residual-foxtrot2, keyed <!-- gaia-debt-key: v1 class=lint path=app/foxtrot2.ts line=1 -->" \
+    "$CANON_WAIVE" \
+    "- residual-golf2, keyed <!-- gaia-debt-key: v1 class=lint path=app/golf2.ts line=2 -->")"
+  l1="$(line_of "residual-foxtrot2" "$body")"
+  l2="$(line_of "residual-golf2" "$body")"
+
+  export GAIA_AUDIT_RESIDUAL_DEBUG_EMIT="$emit_file"
+  drive_body "$body"
+  unset GAIA_AUDIT_RESIDUAL_DEBUG_EMIT
+  assert_permits_silently
+
+  [ "$(wc -l < "$emit_file")" -eq 2 ] || return 1
+  [ "$(sed -n '1p' "$emit_file")" = "$(expected_emit_line "$l1" accept 1 "v1 class=lint path=app/foxtrot2.ts line=1")" ] || return 1
+  [ "$(sed -n '2p' "$emit_file")" = "$(expected_emit_line "$l2" waive 1 "v1 class=lint path=app/golf2.ts line=2")" ] || return 1
+}
+
+@test "a unit carrying two distinct valid keys on separate lines emits the first" {
+  local emit_file="$BATS_TEST_TMPDIR/emit-firstkey.tsv" body l
+  body="$(join_lines \
+    "$CANON_ACCEPT" \
+    "- residual-hotel2, first key on this line <!-- gaia-debt-key: v1 class=lint path=app/hotel2-first.ts line=1 -->" \
+    "  second key on a continuation line <!-- gaia-debt-key: v1 class=lint path=app/hotel2-second.ts line=2 -->")"
+  l="$(line_of "residual-hotel2" "$body")"
+
+  export GAIA_AUDIT_RESIDUAL_DEBUG_EMIT="$emit_file"
+  drive_body "$body"
+  unset GAIA_AUDIT_RESIDUAL_DEBUG_EMIT
+  assert_permits_silently
+
+  [ "$(wc -l < "$emit_file")" -eq 1 ] || return 1
+  [ "$(sed -n '1p' "$emit_file")" = "$(expected_emit_line "$l" accept 1 "v1 class=lint path=app/hotel2-first.ts line=1")" ] || return 1
+}
+
+@test "a unit carrying two keys on one line emits the leftmost" {
+  local emit_file="$BATS_TEST_TMPDIR/emit-leftmost.tsv" body l
+  body="$(join_lines \
+    "$CANON_ACCEPT" \
+    "- residual-india2 <!-- gaia-debt-key: v1 class=lint path=app/india2-left.ts line=1 --> and <!-- gaia-debt-key: v1 class=lint path=app/india2-right.ts line=2 -->")"
+  l="$(line_of "residual-india2" "$body")"
+
+  export GAIA_AUDIT_RESIDUAL_DEBUG_EMIT="$emit_file"
+  drive_body "$body"
+  unset GAIA_AUDIT_RESIDUAL_DEBUG_EMIT
+  assert_permits_silently
+
+  [ "$(wc -l < "$emit_file")" -eq 1 ] || return 1
+  [ "$(sed -n '1p' "$emit_file")" = "$(expected_emit_line "$l" accept 1 "v1 class=lint path=app/india2-left.ts line=1")" ] || return 1
+}
+
+@test "a keyless unit beneath a canonical heading emits one line with keyed=0 and key=-" {
+  local emit_file="$BATS_TEST_TMPDIR/emit-keyless.tsv" body l
+  body="$(join_lines "$CANON_ACCEPT" "- residual-juliet2, no key")"
+  l="$(line_of "residual-juliet2" "$body")"
+
+  export GAIA_AUDIT_RESIDUAL_DEBUG_EMIT="$emit_file"
+  drive_body "$body"
+  unset GAIA_AUDIT_RESIDUAL_DEBUG_EMIT
+  assert_denied_by_json
+
+  [ "$(wc -l < "$emit_file")" -eq 1 ] || return 1
+  [ "$(sed -n '1p' "$emit_file")" = "$(expected_emit_line "$l" accept 0 "-")" ] || return 1
+}
+
+@test "a key in prose beneath a canonical heading before any bullet opens no unit and emits no line" {
+  local emit_file="$BATS_TEST_TMPDIR/emit-prose-key.tsv" body
+  body="$(join_lines \
+    "$CANON_ACCEPT" \
+    "Prose carrying a key before any bullet <!-- gaia-debt-key: v1 class=lint path=app/kilo2.ts line=1 -->")"
+
+  export GAIA_AUDIT_RESIDUAL_DEBUG_EMIT="$emit_file"
+  drive_body "$body"
+  unset GAIA_AUDIT_RESIDUAL_DEBUG_EMIT
+  assert_permits_silently
+
+  [ ! -e "$emit_file" ] || return 1
+}
+
+@test "a key beneath a recognized-but-refused heading emits no line" {
+  local emit_file="$BATS_TEST_TMPDIR/emit-refused-heading.tsv" body
+  body="$(join_lines \
+    "## Accepted residuals" \
+    "- residual-lima2, keyed <!-- gaia-debt-key: v1 class=lint path=app/lima2.ts line=1 -->")"
+
+  export GAIA_AUDIT_RESIDUAL_DEBUG_EMIT="$emit_file"
+  drive_body "$body"
+  unset GAIA_AUDIT_RESIDUAL_DEBUG_EMIT
+  assert_denied_by_json
+
+  [ ! -e "$emit_file" ] || return 1
+}
+
+@test "a key beneath no heading at all emits no line" {
+  local emit_file="$BATS_TEST_TMPDIR/emit-no-heading.tsv" body
+  body="- residual-mike2, keyed but under no heading <!-- gaia-debt-key: v1 class=lint path=app/mike2.ts line=1 -->"
+
+  export GAIA_AUDIT_RESIDUAL_DEBUG_EMIT="$emit_file"
+  drive_body "$body"
+  unset GAIA_AUDIT_RESIDUAL_DEBUG_EMIT
+  assert_permits_silently
+
+  [ ! -e "$emit_file" ] || return 1
+}
+
+@test "a canonical literal spelled at level three is not recognized and emits no line" {
+  local emit_file="$BATS_TEST_TMPDIR/emit-level3.tsv" body
+  body="$(join_lines \
+    "### Accepted residuals (recorded, not fixed)" \
+    "- residual-november2, keyed <!-- gaia-debt-key: v1 class=lint path=app/november2.ts line=1 -->")"
+
+  export GAIA_AUDIT_RESIDUAL_DEBUG_EMIT="$emit_file"
+  drive_body "$body"
+  unset GAIA_AUDIT_RESIDUAL_DEBUG_EMIT
+  assert_permits_silently
+
+  [ ! -e "$emit_file" ] || return 1
+}
+
+@test "for a keyless unit, the emitted unit_start_line matches the line number in the existing keyless-entry deny report" {
+  local emit_file="$BATS_TEST_TMPDIR/emit-crosscheck.tsv" body reported_line emitted_line
+  body="$(join_lines "$CANON_ACCEPT" "- residual-oscar2, no key")"
+
+  export GAIA_AUDIT_RESIDUAL_DEBUG_EMIT="$emit_file"
+  drive_body "$body"
+  unset GAIA_AUDIT_RESIDUAL_DEBUG_EMIT
+  assert_denied_by_json
+
+  reported_line="$(grep -oE 'Opening-bullet line number\(s\): [0-9]+' <<<"$output" | grep -oE '[0-9]+')"
+  emitted_line="$(sed -n '1p' "$emit_file" | sed -E 's/.*unit_start_line=([0-9]+).*/\1/')"
+  [ -n "$reported_line" ] || return 1
+  [ "$emitted_line" = "$reported_line" ] || return 1
+}
+
+@test "two runs against the same body append to the emit file rather than truncating it" {
+  local emit_file="$BATS_TEST_TMPDIR/emit-append.tsv" body line1 line2
+  body="$(join_lines "$CANON_ACCEPT" "- residual-papa2, keyed <!-- gaia-debt-key: v1 class=lint path=app/papa2.ts line=1 -->")"
+
+  export GAIA_AUDIT_RESIDUAL_DEBUG_EMIT="$emit_file"
+  drive_body "$body"
+  drive_body "$body"
+  unset GAIA_AUDIT_RESIDUAL_DEBUG_EMIT
+
+  [ "$(wc -l < "$emit_file")" -eq 2 ] || return 1
+  line1="$(sed -n '1p' "$emit_file")"
+  line2="$(sed -n '2p' "$emit_file")"
+  [ "$line1" = "$line2" ] || return 1
+}
+
+@test "the debug emit file is not produced when gh is absent from PATH (pre-loop permit)" {
+  local emit_file="$BATS_TEST_TMPDIR/emit-no-gh.tsv"
+  export GAIA_AUDIT_RESIDUAL_DEBUG_EMIT="$emit_file"
+  PATH="$(path_shim_without gh)"
+  export PATH
+  [ -z "$(command -v gh)" ] || return 1
+  run_residual_hook
+  unset GAIA_AUDIT_RESIDUAL_DEBUG_EMIT
+  assert_permits_silently
+  [ ! -e "$emit_file" ] || return 1
+}
+
+@test "the debug emit file is not produced when gh exits non-zero (pre-loop permit)" {
+  local emit_file="$BATS_TEST_TMPDIR/emit-gh-fail.tsv"
+  export GAIA_AUDIT_RESIDUAL_DEBUG_EMIT="$emit_file"
+  install_gh_mock fail
+  run_residual_hook
+  unset GAIA_AUDIT_RESIDUAL_DEBUG_EMIT
+  assert_permits_silently
+  [ ! -e "$emit_file" ] || return 1
+}
+
+@test "the debug emit file is not produced on a foreign-repo merge (pre-loop permit)" {
+  local emit_file="$BATS_TEST_TMPDIR/emit-foreign-repo.tsv"
+  export GAIA_AUDIT_RESIDUAL_DEBUG_EMIT="$emit_file"
+  run_residual_hook_gh "gh pr merge 5 --repo other-org/other-repo --squash"
+  unset GAIA_AUDIT_RESIDUAL_DEBUG_EMIT
+  assert_permits_silently
+  [ ! -e "$emit_file" ] || return 1
+}
+
+@test "the debug emit file is not produced on a Bash call carrying no gh pr merge (pre-loop permit)" {
+  local emit_file="$BATS_TEST_TMPDIR/emit-non-merge.tsv"
+  export GAIA_AUDIT_RESIDUAL_DEBUG_EMIT="$emit_file"
+  run_residual_hook_gh "pnpm test"
+  unset GAIA_AUDIT_RESIDUAL_DEBUG_EMIT
+  assert_permits_silently
+  [ ! -e "$emit_file" ] || return 1
+}
+
+@test "a body with no recognized heading at all emits no line, even though its permit is evaluated after the parse loop" {
+  local emit_file="$BATS_TEST_TMPDIR/emit-no-recognized-heading.tsv" body
+  body="$(join_lines "## Verification" "Ran the suite." "## What changed" "Nothing residual here.")"
+
+  export GAIA_AUDIT_RESIDUAL_DEBUG_EMIT="$emit_file"
+  drive_body "$body"
+  unset GAIA_AUDIT_RESIDUAL_DEBUG_EMIT
+  assert_permits_silently
+  [ ! -e "$emit_file" ] || return 1
+}
+
+@test "a clean body with keyed units beneath both canonical headings emits one line per unit even though it permits" {
+  local emit_file="$BATS_TEST_TMPDIR/emit-clean-permit.tsv" body l1 l2
+  body="$(join_lines \
+    "$CANON_ACCEPT" \
+    "- residual-november3, keyed" \
+    "<!-- gaia-debt-key: v1 class=lint path=app/november3.ts line=1 -->" \
+    "$CANON_WAIVE" \
+    "- residual-oscar3, keyed" \
+    "<!-- gaia-debt-key: v1 class=lint path=app/oscar3.ts line=2 -->")"
+  l1="$(line_of "residual-november3" "$body")"
+  l2="$(line_of "residual-oscar3" "$body")"
+
+  export GAIA_AUDIT_RESIDUAL_DEBUG_EMIT="$emit_file"
+  drive_body "$body"
+  unset GAIA_AUDIT_RESIDUAL_DEBUG_EMIT
+  assert_permits_silently
+
+  [ "$(wc -l < "$emit_file")" -eq 2 ] || return 1
+  [ "$(sed -n '1p' "$emit_file")" = "$(expected_emit_line "$l1" accept 1 "v1 class=lint path=app/november3.ts line=1")" ] || return 1
+  [ "$(sed -n '2p' "$emit_file")" = "$(expected_emit_line "$l2" waive 1 "v1 class=lint path=app/oscar3.ts line=2")" ] || return 1
+}
+
+@test "guard-must-fail: a one-character change to the deny reason text reds the byte-identity check the real hook passes" {
+  local dir mutant body
+  dir="$(make_mutant_dir mutant-deny-text)"
+  mutant="$dir/audit-residual-shape-check.sh"
+  sed 's/Offending heading count/Offendxng heading count/' "$HOOK_ABS" > "$mutant"
+  chmod +x "$mutant"
+
+  body="## Accepted residuals"
+
+  run_hook_at "$mutant" "$body"
+  grep -qF -- "Offending heading count: 1" <<<"$output" && return 1
+
+  drive_body "$body"
+  grep -qF -- "Offending heading count: 1" <<<"$output" || return 1
+}
+
+@test "guard-must-fail: forcing disposition=waive for an accept unit reds the emitted-disposition check the real hook passes" {
+  local dir mutant body l emit_file_mutant emit_file_real
+  dir="$(make_mutant_dir mutant-disposition)"
+  mutant="$dir/audit-residual-shape-check.sh"
+  sed 's/section_disposition=accept/section_disposition=waive/' "$HOOK_ABS" > "$mutant"
+  chmod +x "$mutant"
+
+  body="$(join_lines "$CANON_ACCEPT" "- residual-quebec2, keyed <!-- gaia-debt-key: v1 class=lint path=app/quebec2.ts line=1 -->")"
+  l="$(line_of "residual-quebec2" "$body")"
+
+  emit_file_mutant="$BATS_TEST_TMPDIR/emit-mutant-disposition.tsv"
+  export GAIA_AUDIT_RESIDUAL_DEBUG_EMIT="$emit_file_mutant"
+  run_hook_at "$mutant" "$body"
+  unset GAIA_AUDIT_RESIDUAL_DEBUG_EMIT
+  [ "$(sed -n '1p' "$emit_file_mutant")" = "$(expected_emit_line "$l" accept 1 "v1 class=lint path=app/quebec2.ts line=1")" ] && return 1
+
+  emit_file_real="$BATS_TEST_TMPDIR/emit-real-disposition.tsv"
+  export GAIA_AUDIT_RESIDUAL_DEBUG_EMIT="$emit_file_real"
+  drive_body "$body"
+  unset GAIA_AUDIT_RESIDUAL_DEBUG_EMIT
+  [ "$(sed -n '1p' "$emit_file_real")" = "$(expected_emit_line "$l" accept 1 "v1 class=lint path=app/quebec2.ts line=1")" ] || return 1
 }
