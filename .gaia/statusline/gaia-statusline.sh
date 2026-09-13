@@ -221,6 +221,22 @@ else
       if [ -n "$serena_drift" ]; then
         segments+=("$(printf '\033[01;31mRun /gaia-serena-sync (Serena missing: %s)\033[00m' "$serena_drift")")
       fi
+      # Residue nudge: renders once at least RESIDUE_NUDGE_THRESHOLD keyed
+      # candidates have aged past 30 days (the age dial lives in the tally,
+      # computed pre-cap over the full post-suppression population) and
+      # clears once the count falls back below it. Both dials are calibrated
+      # against a corpus younger than one quarter and are re-measured after
+      # two.
+      RESIDUE_NUDGE_THRESHOLD=5
+      residue_count=$(jq -r '.residueCandidateCount // 0' "$CACHE_FILE" 2>/dev/null)
+      case "$residue_count" in
+        ''|*[!0-9]*) residue_count=0 ;;
+      esac
+      if [ "$residue_count" -ge "$RESIDUE_NUDGE_THRESHOLD" ] 2>/dev/null; then
+        residue_suffix="s"
+        [ "$residue_count" -eq 1 ] && residue_suffix=""
+        segments+=("$(printf '\033[01;37mRun /gaia-residue (%d aged residual%s)\033[00m' "$residue_count" "$residue_suffix")")
+      fi
     fi
     # Debt-backlog nudge, read from the pinned debt cache. Independent of
     # update-check.json so it renders whenever an open tech-debt count exists.

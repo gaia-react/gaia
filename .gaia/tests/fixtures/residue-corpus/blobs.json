@@ -1,0 +1,8 @@
+{
+  "sha2001:app/cache/evict.ts": "// cache eviction module\nexport function evict() {\n  let evictedCount = 0;\n  const seen = new Set();\n  for (const key of seen) {\n    seen.delete(key);\n  }\n  const evictedCount2 = evictedCount;\n  return evictedCount2;\n}",
+  "HEAD:app/cache/evict.ts": "// cache eviction module\nexport function evict() {\n  let evictedCount = 0;\n  const seen = new Set();\n  for (const key of seen) {\n    seen.delete(key);\n  }\n  const evictedCount2 = evictedCount;\n  return evictedCount2;\n}",
+  "sha2002:app/utils/helper.ts": "export const helperOther = 'x';\n// two\n// three\nexport const helperLine = 'moved-marker';",
+  "HEAD:app/utils/helper.ts": "// reorganized file\nexport const helperOther = 'x';\n// helper moved down\nexport const somethingElse = 1;\nexport const helperLine = 'moved-marker';",
+  "sha2003:app/legacy/oldmodule.ts": "// legacy module\n// two\nconst LEGACY_FLAG = true;",
+  "sha2004:app/blank/file.ts": "line one content\n\nline three"
+}

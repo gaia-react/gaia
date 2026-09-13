@@ -1,0 +1,34 @@
+[
+  {
+    "body": "<!-- gaia-debt-key: class=lint path=app/issuearm/arm1.ts line=1 --> tracked separately.",
+    "labels": [],
+    "number": 9001,
+    "state": "OPEN",
+    "stateReason": null
+  },
+  {
+    "body": "<!-- gaia-debt-key: v1 class=lint path=app/issuearm/arm2.ts line=2 --> declined as out of scope.",
+    "labels": [
+      {
+        "name": "wontfix"
+      }
+    ],
+    "number": 9002,
+    "state": "CLOSED",
+    "stateReason": null
+  },
+  {
+    "body": "See app/issuearm/arm3.ts:3 for the bare mention this arm matches.",
+    "labels": [],
+    "number": 9003,
+    "state": "OPEN",
+    "stateReason": null
+  },
+  {
+    "body": "<!-- gaia-debt-key: v1 class=lint path=app/issuearm/promoted.ts line=4 --> fixed and closed.",
+    "labels": [],
+    "number": 9004,
+    "state": "CLOSED",
+    "stateReason": null
+  }
+]

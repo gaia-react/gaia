@@ -25,6 +25,7 @@
     {
       "hook": ".claude/hooks/audit-residual-shape-check.sh",
       "capabilities": [
+        "fs-write:**",
         "network",
         "invokes:.claude/hooks/lib/jq-availability.sh",
         "invokes:.claude/hooks/lib/repo-scope.sh",
@@ -32,7 +33,7 @@
         "invokes:.claude/hooks/lib/verb-arming.sh",
         "invokes:.gaia/scripts/main-root-lib.sh"
       ],
-      "why": "Denies `gh pr merge` when the pull-request body records an audit residual disposition under a non-canonical heading or an unkeyed entry, once armed through the shared arming decision (`.claude/hooks/lib/verb-arming.sh`, which lazily loads `.claude/hooks/lib/verb-arming-walk.sh` for its data-proving view). Sources the shared repo-scope helper (which transitively loads the main-root library) to decline a foreign-repo merge and to resolve which pull request the merge names, and the shared jq-availability arm. `network` is this hook's own `gh pr view` call, made to read the pull-request body it judges; no write of any kind, so `github-write` is not declared.",
+      "why": "Denies `gh pr merge` when the pull-request body records an audit residual disposition under a non-canonical heading or an unkeyed entry, once armed through the shared arming decision (`.claude/hooks/lib/verb-arming.sh`, which lazily loads `.claude/hooks/lib/verb-arming-walk.sh` for its data-proving view). Sources the shared repo-scope helper (which transitively loads the main-root library) to decline a foreign-repo merge and to resolve which pull request the merge names, and the shared jq-availability arm. `network` is this hook's own `gh pr view` call, made to read the pull-request body it judges; it transmits nothing, so `github-write` is not declared. `fs-write:**` is the opt-in attribution emit: when `GAIA_AUDIT_RESIDUAL_DEBUG_EMIT` carries a non-empty path the gate appends one line per attributed entry unit to it, and the destination is whatever the operator names rather than a path this hook picks, which is what the caller-designates-it term stands for. The append is best-effort and can never change a verdict; with the variable empty or absent the gate writes nothing at all.",
       "maintainer_only": false
     },
     {

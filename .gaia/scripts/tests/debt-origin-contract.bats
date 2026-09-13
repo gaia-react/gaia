@@ -181,9 +181,18 @@ extract_sole_bash_fence_matching() {
 
 @test "2b. the token's presence across the tree is exhaustively accounted for" {
   # The other direction of 2a: every tracked file naming the token is either
-  # one of the five routes above, the owner, the exempt helper, or the wiki
-  # concept page. A new emitter appearing with no decision made about it is
-  # exactly what this half catches.
+  # one of the five routes above, the owner, the exempt helper, the wiki
+  # concept page, or a consumer fixture reproducing an emitted body verbatim.
+  # A new emitter appearing with no decision made about it is exactly what
+  # this half catches.
+  #
+  # The consumer-fixture arm is the same category the EXCLUDE_PATHSPEC entries
+  # for `.gaia/tests/` and `.gaia/scripts/tests/` already carry, reached from
+  # the third test tree those two do not name. It is spelled as an accounted
+  # file rather than a fourth exclusion so that a real emitter added under the
+  # CLI source still reds here; assertion 3's pointer obligation applies to it
+  # unchanged, which is what keeps an accounted fixture from becoming a place
+  # to state the contract a second time.
   #
   # CHANGELOG.md is deliberately NOT on this list. A rollout sweep is GAIA's
   # own migration and lives in a maintainer-only block; a release note quoting
@@ -203,6 +212,7 @@ extract_sole_bash_fence_matching() {
         "wiki/concepts/PR Merge Workflow.md" | \
         ".claude/skills/file-tech-debt/SKILL.md" | \
         ".gaia/scripts/debt-origin-lib.sh" | \
+        ".gaia/cli/src/residue/__tests__/tally.test.ts" | \
         "wiki/concepts/Audit Disposition and Debt Fix.md") ;;
       *)
         printf 'unaccounted-for file names gaia-debt-origin: %s\n' "$f" >&2
