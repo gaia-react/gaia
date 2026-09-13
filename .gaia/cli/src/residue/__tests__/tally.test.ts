@@ -293,6 +293,11 @@ describe('gaia residue-tally', () => {
     expect(emitted.candidate_count).toBe(1);
   });
 
+  // The provenance line below is the real emitted shape, not a stand-in, so
+  // that the attribution this asserts is the one production bodies exercise.
+  // `.claude/skills/file-tech-debt/SKILL.md` owns that shape; nothing here
+  // states or re-derives it, and a drift in it belongs to the owner rather
+  // than to this fixture.
   test('the resolved line comes from the pull-request head object, identically whether or not a provenance line sits beside the key', () => {
     const blobs = {'sha1:app/a.ts': 'preamble\nthe cited line\n'};
     const rootWithProvenance = makeRoot({

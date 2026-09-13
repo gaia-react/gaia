@@ -241,6 +241,17 @@ _debug_emit_path="${GAIA_AUDIT_RESIDUAL_DEBUG_EMIT:-}"
 # opens while in_canonical is set (the top-bullet arm below is gated on it),
 # so every unit reaching here belongs to the section named by
 # section_disposition and is eligible for the debug emit.
+#
+# $1 is the debug emit path, passed in rather than read from the enclosing
+# `_debug_emit_path` binding. The destination is whatever the operator names
+# in GAIA_AUDIT_RESIDUAL_DEBUG_EMIT -- the harness points it at a scratch
+# directory and, in one case, at a deliberately non-writable one -- so there
+# is no literal this file could name instead, and the honest capability term
+# for such a write is the caller-designates-it one (`fs-write:**`, the same
+# term the audit-clearance callers declare). Taking it as a parameter is what
+# states that in the grammar `.gaia/scripts/check-hook-capabilities.sh` reads:
+# a positional IS the caller's answer, where a variable read from the
+# environment resolves to no path the oracle can name.
 close_unit() {
   if [ "$unit_open" = 1 ]; then
     if [ "$unit_keyed" != 1 ]; then
@@ -251,7 +262,7 @@ close_unit() {
         keyless_lines="$unit_start_line"
       fi
     fi
-    if [ -n "$_debug_emit_path" ]; then
+    if [ -n "$1" ]; then
       # The brace group's own redirect, not a per-command one on printf: an
       # open failure on `>>` (a missing or unwritable path) is reported by the
       # shell before a same-command `2>/dev/null` would take effect, so only a
@@ -260,7 +271,7 @@ close_unit() {
       # already decided and cannot be touched by this.
       { printf 'residual-attribution\tunit_start_line=%s\tdisposition=%s\tkeyed=%s\tkey=%s\n' \
           "$unit_start_line" "$section_disposition" "$unit_keyed" "${unit_key:--}" \
-          >> "$_debug_emit_path"; } 2>/dev/null || true
+          >> "$1"; } 2>/dev/null || true
     fi
   fi
   unit_open=0
@@ -276,7 +287,7 @@ while IFS= read -r raw_line || [ -n "$raw_line" ]; do
   line_no=$((line_no + 1))
 
   if [[ "$raw_line" =~ $heading_re ]]; then
-    close_unit
+    close_unit "$_debug_emit_path"
     in_canonical=0
     trimmed="$(printf '%s' "$raw_line" | sed -e 's/[[:space:]]*$//')"
     if [ "$trimmed" = "$CANON_ACCEPT" ] || [ "$trimmed" = "$CANON_WAIVE" ]; then
@@ -308,7 +319,7 @@ while IFS= read -r raw_line || [ -n "$raw_line" ]; do
   [ "$in_canonical" = 1 ] || continue
 
   if [[ "$raw_line" =~ $top_bullet_re ]]; then
-    close_unit
+    close_unit "$_debug_emit_path"
     unit_open=1
     unit_start_line=$line_no
     unit_keyed=0
@@ -323,7 +334,7 @@ while IFS= read -r raw_line || [ -n "$raw_line" ]; do
     fi
   fi
 done <<< "$body"
-close_unit
+close_unit "$_debug_emit_path"
 
 [ "$offending_count" -gt 0 ] || [ "$keyless_count" -gt 0 ] || exit 0
 
