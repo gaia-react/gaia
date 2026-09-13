@@ -1,5 +1,6 @@
 import {describe, expect, test} from 'vitest';
 import {
+  appendFileSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -73,6 +74,22 @@ const expectRefusalLeavesStoreUnchanged = (
 
   const after = readFileSync(storeFilePath(root));
   expect(after.equals(before)).toBe(true);
+};
+
+// The precondition a merge conflict resolved without `insert_final_newline`
+// leaves behind. Without the guard the append lands on the end of the last
+// line and `readStore` drops both records as one unparseable line.
+const seedWithoutTrailingNewline = (root: string): StoreRecord => {
+  const seeded = baseRecord({line: 1, reason: 'seeded by hand'});
+
+  appendRecords(root, [seeded]);
+
+  const filePath = storeFilePath(root);
+  const raw = readFileSync(filePath, 'utf8');
+
+  writeFileSync(filePath, raw.replace(/\n$/, ''));
+
+  return seeded;
 };
 
 describe('residue/store', () => {
@@ -594,6 +611,83 @@ describe('residue/store', () => {
         writeFileSync(scratchPath, withoutLine);
 
         expect(containsExclusionLine(scratchPath)).toBe(false);
+      } finally {
+        sandbox.cleanup();
+      }
+    });
+  });
+
+  describe('append onto a store missing its final newline', () => {
+    test('keeps both the prior record and the appended one readable', () => {
+      const sandbox = setupSandbox();
+
+      try {
+        seedWithoutTrailingNewline(sandbox.root);
+        appendRecords(sandbox.root, [
+          baseRecord({line: 2, reason: 'appended after the truncation'}),
+        ]);
+
+        const {records, skipped} = readStore(sandbox.root);
+
+        expect(skipped).toEqual([]);
+        expect(records.map((record) => record.line)).toEqual([1, 2]);
+        expect(records.map((record) => record.reason)).toEqual([
+          'seeded by hand',
+          'appended after the truncation',
+        ]);
+      } finally {
+        sandbox.cleanup();
+      }
+    });
+
+    test('the prior record still suppresses its own coordinate', () => {
+      const sandbox = setupSandbox();
+
+      try {
+        seedWithoutTrailingNewline(sandbox.root);
+        appendRecords(sandbox.root, [baseRecord({line: 2})]);
+
+        const {records} = readStore(sandbox.root);
+
+        expect(
+          hasCoordinateRecord(records, {line: 1, path: baseRecord().path})
+        ).toBe(true);
+      } finally {
+        sandbox.cleanup();
+      }
+    });
+
+    test('guard-must-fail: concatenating instead of separating loses both records', () => {
+      const sandbox = setupSandbox();
+
+      try {
+        const seeded = seedWithoutTrailingNewline(sandbox.root);
+        const filePath = storeFilePath(sandbox.root);
+
+        // The pre-fix behavior, written directly: append with no separator.
+        appendFileSync(filePath, `${JSON.stringify({...seeded, line: 2})}\n`, {
+          flag: 'a',
+        });
+
+        const {records, skipped} = readStore(sandbox.root);
+
+        expect(records).toEqual([]);
+        expect(skipped).toHaveLength(1);
+      } finally {
+        sandbox.cleanup();
+      }
+    });
+
+    test('an empty store takes no separator', () => {
+      const sandbox = setupSandbox();
+
+      try {
+        appendRecords(sandbox.root, [baseRecord({line: 7})]);
+
+        expect(readFileSync(storeFilePath(sandbox.root), 'utf8')).not.toMatch(
+          /^\n/
+        );
+        expect(readStore(sandbox.root).records).toHaveLength(1);
       } finally {
         sandbox.cleanup();
       }

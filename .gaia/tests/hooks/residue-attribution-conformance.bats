@@ -233,9 +233,10 @@ assert_nonempty_matching_size() {
   sort "$BATS_TEST_TMPDIR/mc-mutant-raw.txt" > "$BATS_TEST_TMPDIR/mc-mutant.sorted.txt"
   mutant_sorted="$BATS_TEST_TMPDIR/mc-mutant.sorted.txt"
 
-  # Every unit beneath a waive-canonical heading (PRs 2000, 2003, 3002, 3008,
-  # 5002, 5004, 5006) is no longer recognized by the mutant, so its tuples
-  # vanish from the mutant's output: the comparison MUST fail.
+  # Every unit beneath a waive-canonical heading is no longer recognized by the
+  # mutant, so its tuples vanish from the mutant's output: the comparison MUST
+  # fail. Which pull requests those are is derived from the oracle below rather
+  # than listed here, so the corpus can grow without rotting a comment.
   if diff "$mutant_sorted" "$oracle_sorted" >/dev/null 2>&1; then
     echo "mutation control did not diverge: the CANON_WAIVE mutant still agrees with the oracle" >&2
     return 1

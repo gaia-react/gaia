@@ -4,7 +4,7 @@ A triage drain over the keyed audit residue recorded under the two canonical hea
 
 ## Execution model, READ FIRST
 
-Interactive and human-gated. Promote is one question per entry and never auto-advances. The agent never runs `git add`, `git commit`, or `git push` during the per-candidate loop; one end-of-run publish step runs after the last disposition. This command never fixes anything and never edits a file any residual cites.
+Interactive and human-gated. Promote is one question per entry and never auto-advances. The agent never runs `git add`, `git commit`, or `git push` during the per-candidate loop; one end-of-run publish step runs after the last disposition.
 
 ## Naming disambiguation
 
@@ -28,7 +28,7 @@ Every subcommand reads the live list from the tally primitive. Re-run it; never 
 .gaia/cli/gaia residue-tally
 ```
 
-Bind to the top-level fields it prints: `gh_ok`, `count_approximate`, `candidate_count`, `remaining_count`, `aged_candidate_count`, and `total_keyed_count`. The four counts are four different populations and are not interchangeable:
+Bind to the top-level fields it prints: `gh_ok`, `count_approximate`, `candidate_count`, `remaining_count`, `aged_candidate_count`, `total_keyed_count`, `candidates`, `malformed`, `store_skipped`, and `window`. The four counts are four different populations and are not interchangeable:
 
 - `total_keyed_count` is every keyed unit attributed, before any suppression. The corpus size. It never shrinks as the drain proceeds.
 - `remaining_count` is the suppression survivors, before the cursor skip and before the cap. What is still open.
@@ -43,6 +43,12 @@ Then the three terminating reads:
 - `gh_ok` is `true` and `candidate_count` is `0`: report that no keyed residual is currently open, and stop.
 - Otherwise: proceed to the triage loop below.
 
+Three populations never reach that loop, so nothing else will mention them. Report each one that is non-empty alongside the candidate list, before the first question, and carry the reason the emit gives rather than a summary of it:
+
+- `malformed` holds entry units whose key matched the gate's grammar but failed field validation. They are withheld from triage by design, and the reason is reported so the key can be repaired in its own pull-request body. A run that stays silent here leaves a residual no one can act on and no one knows about.
+- `store_skipped` holds dismissal-store lines that could not be read. Each one is a disposition that has stopped suppressing, so a suppression a reviewer believes is in place is not.
+- `window.truncated` is `true` when the window read hit its own iteration bound, so the corpus may be incomplete and every count below it is a floor. Say so; never present a truncated read as a whole one.
+
 ## Bounding the run
 
 The per-run cap defaults to 10, overridden with `GAIA_RESIDUE_CAP`. Candidates are ordered oldest merge date first. The cursor at `.gaia/local/cache/residual-cursor.json` advances after each confirmed disposition, so an interrupted run resumes where it stopped rather than re-asking; `.gaia/cli/gaia residue-cursor clear` starts the list over.
@@ -53,7 +59,7 @@ The per-run cap defaults to 10, overridden with `GAIA_RESIDUE_CAP`. Candidates a
 
 Pass only the candidate's own `cursor_token` from the tally emit, never a path. A residual's path is text from a merged pull request, and this call is agent Bash, a shell; the token is closed over `[A-Za-z0-9_-]` by construction so it cannot carry a shell metacharacter, a space, or a leading dash, and there is no `--path` flag to reach for instead.
 
-The cap means the candidate list is a batch, not the whole population. Report `remaining_count` as what is left when a human asks, never `total_keyed_count`, which never shrinks as the drain proceeds.
+The cap means the candidate list is a batch, not the whole population. Report `remaining_count` as what is left when a human asks, never `total_keyed_count`.
 
 ## Present each candidate
 
@@ -194,6 +200,7 @@ Apply the shared tally machinery in `.claude/skills/gaia/references/cost-record.
 - `.gaia/local/cache/residual-attribution.json`, the derived read cache;
 - `.gaia/local/cache/residual-cursor.json`, the resumable cursor;
 - the transient reason file under `.gaia/local/audit/`, deleted in its own tool call;
-- the filing recipe's own transient issue-body file under `.gaia/local/audit/`, and the debt-count staleness sentinel that recipe touches.
+- the filing recipe's own transient issue-body file under `.gaia/local/audit/`, and the debt-count staleness sentinel that recipe touches;
+- the shared machine-local telemetry ledger the mandatory cost record appends to, through `.claude/skills/gaia/references/cost-record.md`. It is not this workflow's own file and its shape is that reference's business, but a run does write it, so a self-check against this list has to expect it.
 
 Nothing else. Not a source file, not a configuration file, and above all not a file any residual cites.

@@ -19,6 +19,7 @@ import {resolveRepoRoot} from '../util/repo-root.js';
 import {attributeBody} from './attribution.js';
 import type {AttributionResult} from './attribution.js';
 import {
+  attributionBodyDigest,
   prCacheKey,
   readAttributionCache,
   readCursor,
@@ -131,9 +132,17 @@ const parseArgs = (
     ) {
       // handled above
     } else if (token === '--cap') {
+      // Refuse rather than skip: advancing past an unparseable value swallows
+      // whatever sits in the value position, so `--cap --count-only` would eat
+      // the mode flag and silently run the resolving path `--count-only`
+      // forbids. An unknown argument is already an error; so is this.
       const parsedCap = parseCapValue(argv[index + 1]);
 
-      if (parsedCap !== null) flags.cap = parsedCap;
+      if (parsedCap === null) {
+        return {error: `--cap needs a positive integer: ${argv[index + 1]}`};
+      }
+
+      flags.cap = parsedCap;
       index += 1;
     } else {
       return {error: `unknown argument: ${token}`};
@@ -288,8 +297,10 @@ const makeCachingResolve =
 
 // Merges an incremental `mergedPrs` read onto the existing cache: seeds with
 // every previously-cached pull request, then overlays the freshly-read ones,
-// reusing a cached attribution only when the head SHA still matches (a
-// changed SHA invalidates that pull request's entry).
+// reusing a cached attribution only when the head SHA **and** the digest of
+// the body that attribution was computed from both still match. The SHA alone
+// is not enough: editing a merged pull request's body is the natural repair
+// for a key reported in `malformed[]`, and that edit moves no SHA.
 const mergeAttributionCache = (
   cache: AttributionCache,
   mergedPrsResult: MergedPrsResult & {ok: true}
@@ -312,13 +323,15 @@ const mergeAttributionCache = (
 
   for (const pr of mergedPrsResult.prs) {
     const existing = updatedCache.prs[prCacheKey(pr.number)];
+    const digest = attributionBodyDigest(pr.body);
     const attribution =
-      existing?.headRefOid === pr.headRefOid ?
+      existing?.headRefOid === pr.headRefOid && existing.bodyDigest === digest ?
         existing.attribution
       : attributeBody(pr.body);
 
     updatedCache.prs[prCacheKey(pr.number)] = {
       attribution,
+      bodyDigest: digest,
       headRefOid: pr.headRefOid,
       mergedAt: pr.mergedAt,
     };

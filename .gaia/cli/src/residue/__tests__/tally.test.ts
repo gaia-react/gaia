@@ -86,6 +86,71 @@ const listTree = (root: string): string[] => {
   return out.toSorted((a, b) => a.localeCompare(b));
 };
 
+// Advancing past an unparseable `--cap` value consumed whatever sat in the
+// value position, so a following mode flag was swallowed and its contract
+// silently broken. An unknown argument is already an error; so is this.
+const CAP_CORPUS: FixtureCorpus = {
+  prs: [
+    {
+      body: bodyWithKey(ACCEPT_HEADING, 'x/y', 'app/a.ts', 1),
+      headRefOid: 'sha1',
+      mergedAt: '2026-01-01T00:00:00Z',
+      number: 1,
+    },
+  ],
+};
+
+const runWithCapValue = (
+  root: string,
+  value: string[]
+): {code: number; stderr: string} => {
+  const errors: string[] = [];
+
+  vi.spyOn(process.stderr, 'write').mockImplementation((chunk: unknown) => {
+    errors.push(typeof chunk === 'string' ? chunk : String(chunk));
+
+    return true;
+  });
+
+  const code = run(['--cap', ...value], {
+    cwd: root,
+    env: {GAIA_RESIDUE_FIXTURE_DIR: root},
+    now: fixedNow,
+  });
+
+  return {code, stderr: errors.join('')};
+};
+
+// Editing a merged body is the natural repair for a key the tally reports in
+// `malformed[]`, and that edit moves no head SHA. Keying on the SHA alone made
+// the repair invisible until the cache was deleted by hand.
+const corpusWithBody = (body: string): FixtureCorpus => ({
+  blobs: {},
+  issues: [],
+  prs: [
+    {
+      body,
+      headRefOid: 'sha-unchanged',
+      mergedAt: '2026-01-01T00:00:00Z',
+      number: 1,
+    },
+  ],
+});
+
+const tallyCounts = (
+  root: string
+): {candidate_count: number; malformed: unknown[]} => {
+  const out = capture();
+
+  run(['--count-only'], {
+    cwd: root,
+    env: {GAIA_RESIDUE_FIXTURE_DIR: root},
+    now: fixedNow,
+  });
+
+  return out.json() as {candidate_count: number; malformed: unknown[]};
+};
+
 describe('gaia residue-tally', () => {
   const dirs: string[] = [];
 
@@ -593,5 +658,68 @@ describe('gaia residue-tally', () => {
     expect(added).toEqual([
       path.join('.gaia', 'local', 'cache', 'residual-attribution.json'),
     ]);
+  });
+
+  describe('--cap refuses a value it cannot use', () => {
+    test('`--cap --count-only` is refused rather than eating the mode flag', () => {
+      const {code, stderr} = runWithCapValue(makeRoot(CAP_CORPUS), [
+        '--count-only',
+      ]);
+
+      expect(code).not.toBe(0);
+      expect(stderr).toMatch(/--cap needs a positive integer/);
+    });
+
+    test.each([
+      ['a non-numeric value', 'abc'],
+      ['zero', '0'],
+      ['a negative value', '-3'],
+    ])('%s is refused instead of falling back to the default', (_name, bad) => {
+      const {code, stderr} = runWithCapValue(makeRoot(CAP_CORPUS), [bad]);
+
+      expect(code).not.toBe(0);
+      expect(stderr).toMatch(/--cap needs a positive integer/);
+    });
+
+    test('a positive value is still accepted', () => {
+      const {code} = runWithCapValue(makeRoot(CAP_CORPUS), ['3']);
+
+      expect(code).toBe(0);
+    });
+  });
+
+  describe('the attribution cache sees a merged pull-request body edit', () => {
+    test('a body repaired in place re-attributes on the warm cache', () => {
+      const root = makeRoot(
+        corpusWithBody(bodyWithKey(ACCEPT_HEADING, 'x/y', '/absolute/a.ts', 1))
+      );
+
+      const cold = tallyCounts(root);
+
+      expect(cold.malformed).toHaveLength(1);
+      expect(cold.candidate_count).toBe(0);
+
+      // The repair: same pull request, same head SHA, corrected key.
+      writeFileSync(
+        path.join(root, 'prs.json'),
+        JSON.stringify(
+          corpusWithBody(bodyWithKey(ACCEPT_HEADING, 'x/y', 'app/a.ts', 1)).prs
+        )
+      );
+
+      const warm = tallyCounts(root);
+
+      expect(warm.malformed).toEqual([]);
+      expect(warm.candidate_count).toBe(1);
+    });
+
+    test('an unchanged body still reuses its cached attribution', () => {
+      const root = makeRoot(
+        corpusWithBody(bodyWithKey(ACCEPT_HEADING, 'x/y', 'app/a.ts', 1))
+      );
+
+      expect(tallyCounts(root).candidate_count).toBe(1);
+      expect(tallyCounts(root).candidate_count).toBe(1);
+    });
   });
 });

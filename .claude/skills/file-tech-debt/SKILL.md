@@ -182,6 +182,7 @@ It fails open throughout: each field it cannot resolve becomes the literal `unkn
 | pre-merge orchestrator cross-remit disposition | `wiki/concepts/PR Merge Workflow.md` | resolved | resolved |
 | knowledge-audit filing block | `.claude/skills/gaia/references/audit.md` | `unknown` | resolved |
 | comprehensive-audit filing offer and direct human invocation | this file | `unknown` | resolved |
+| residue triage promote arm | `.claude/skills/gaia/references/residue.md` | `unknown` | resolved |
 
 The continuous-integration row is `unknown` by construction rather than by omission, and the construction is the step ordering **One route cannot call it** above already describes: a workflow step inherits no session id, so the pre-rendering step has nothing to read. Note what this does *not* rest on: the job itself does host a Claude Code session further down, so a step reordered to render provenance from inside the agent would start resolving one. Nothing is owed there today, and the two columns are unrelated, a route can resolve either one without the other.
 

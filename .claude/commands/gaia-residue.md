@@ -1,7 +1,7 @@
 ---
 name: gaia-residue
 description: Triage drain over the keyed audit residue recorded in merged pull-request bodies. Enumerates candidates, resolves each one's cited line, and takes one disposition per entry, promote to a tech-debt issue, dismiss, or keep. Never fixes anything. Pass `list` to see live candidates or `why <path>:<line>` to explain one.
-argument-hint: [review|list|why <path>:<line>]
+argument-hint: [review|list|why <path>:<line>|<path>:<line>]
 ---
 
 Run the GAIA **residue** workflow with these arguments: `$ARGUMENTS`
@@ -19,4 +19,4 @@ gaia_refuse_if_worktree "/gaia-residue" || exit 1
 
 If the detection does not fire, fall through to the workflow dispatch line below.
 
-Read `.claude/skills/gaia/references/residue.md` from the project root and follow it exactly. That reference is written to consume an argument string, treat the arguments above as that input (the leading token selects the subcommand: `review`, `list`, or `why <path>:<line>`). If no arguments were provided, follow the reference's no-argument path (which defaults to `review`).
+Read `.claude/skills/gaia/references/residue.md` from the project root and follow it exactly. That reference is written to consume an argument string, treat the arguments above as that input (the leading token selects the subcommand: `review`, `list`, `why <path>:<line>`, or a bare `<path>:<line>`, which explains that candidate directly). If no arguments were provided, follow the reference's no-argument path (which defaults to `review`).

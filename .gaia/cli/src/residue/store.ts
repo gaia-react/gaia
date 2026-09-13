@@ -24,7 +24,16 @@
  * the parsed object untouched, so a future reader that understands it is
  * not robbed by this one.
  */
-import {appendFileSync, existsSync, mkdirSync, readFileSync} from 'node:fs';
+import {
+  appendFileSync,
+  closeSync,
+  existsSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  readSync,
+  statSync,
+} from 'node:fs';
 import path from 'node:path';
 
 export const STORE_RELATIVE_PATH = '.gaia/audit-residual-dismissals.jsonl';
@@ -165,6 +174,34 @@ const serializeRecord = (record: StoreRecord): string =>
     source_pr: record.source_pr,
   });
 
+// `'\n'` when the store exists, is non-empty, and does not already end in a
+// newline; `''` otherwise. Reads only the final byte, so the store's size
+// does not decide the cost.
+const storeNewlinePrefix = (filePath: string): string => {
+  if (!existsSync(filePath)) return '';
+
+  let handle: number | undefined;
+
+  try {
+    const {size} = statSync(filePath);
+
+    if (size === 0) return '';
+
+    const lastByte = Buffer.alloc(1);
+
+    handle = openSync(filePath, 'r');
+    readSync(handle, lastByte, 0, 1, size - 1);
+
+    return lastByte.toString('utf8') === '\n' ? '' : '\n';
+  } catch {
+    // Unreadable for any reason: the append below is what reports the real
+    // failure, so do not turn a read problem into a spurious newline.
+    return '';
+  } finally {
+    if (handle !== undefined) closeSync(handle);
+  }
+};
+
 export const appendRecords = (
   repoRoot: string,
   records: readonly StoreRecord[]
@@ -180,7 +217,15 @@ export const appendRecords = (
   const body = records.map((record) => `${serializeRecord(record)}\n`).join('');
 
   mkdirSync(path.dirname(filePath), {recursive: true});
-  appendFileSync(filePath, body, {flag: 'a'});
+  // A store whose last line lost its newline, which a merge conflict resolved
+  // without `insert_final_newline` produces, would otherwise take this append
+  // onto the end of that line. `readStore` then drops BOTH records as one
+  // unparseable line: the prior dismissal stops suppressing and the record
+  // just written was never readable, while this call still exits 0. Nothing
+  // here creates that state, but this is where it becomes destructive.
+  appendFileSync(filePath, `${storeNewlinePrefix(filePath)}${body}`, {
+    flag: 'a',
+  });
 };
 
 export const readKeepWindowDays = (env: NodeJS.ProcessEnv): number => {

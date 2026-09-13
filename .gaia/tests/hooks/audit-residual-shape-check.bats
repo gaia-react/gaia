@@ -725,16 +725,39 @@ EXCLUDED_HEADINGS=(
   grep -qF -- "Keyless entry count: 1" <<<"$output" || return 1
 }
 
-@test "with the debug-emit variable unset, no emit file appears in a dedicated empty probe directory" {
-  local probe_dir="$BATS_TEST_TMPDIR/emit-probe"
+@test "with the debug-emit variable unset, the very path the set run writes stays absent" {
+  # The probe path has to be one the hook demonstrably reaches, or both closing
+  # assertions hold for any hook behavior at all: a path nothing was ever told
+  # about is absent whether the emit is correct, broken, or writing somewhere
+  # else entirely. So drive the same body twice over one path, proving it
+  # reachable in the set run before asserting it untouched in the unset one,
+  # and snapshot the whole test tmpdir around the unset run so a stray write
+  # anywhere beneath it is caught rather than only one at the probe path.
+  #
+  # What this still cannot catch: an emit that defaults to a hard-coded sink
+  # OUTSIDE $BATS_TEST_TMPDIR. Nothing here enumerates the filesystem, so that
+  # case is covered instead by the byte-identity test below, which pins the
+  # unset run's own output against the set run's.
+  local probe_dir="$BATS_TEST_TMPDIR/emit-probe" emit_file body before after
+  emit_file="$probe_dir/out.tsv"
   mkdir -p "$probe_dir"
-  unset GAIA_AUDIT_RESIDUAL_DEBUG_EMIT
-  local body
   body="$(join_lines "$CANON_ACCEPT" "- residual-delta2, keyed" "<!-- gaia-debt-key: v1 class=lint path=app/delta2.ts line=1 -->")"
+
+  export GAIA_AUDIT_RESIDUAL_DEBUG_EMIT="$emit_file"
+  drive_body "$body"
+  unset GAIA_AUDIT_RESIDUAL_DEBUG_EMIT
+  assert_permits_silently
+  [ -s "$emit_file" ] || return 1
+
+  rm -f "$emit_file"
+  before="$(find "$BATS_TEST_TMPDIR" -type f | sort)"
+
   drive_body "$body"
   assert_permits_silently
-  [ ! -e "$probe_dir/out.tsv" ] || return 1
-  [ -z "$(ls -A "$probe_dir")" ] || return 1
+  after="$(find "$BATS_TEST_TMPDIR" -type f | sort)"
+
+  [ ! -e "$emit_file" ] || return 1
+  [ "$before" = "$after" ] || return 1
 }
 
 @test "with the debug-emit variable pointed at a non-writable directory, the gate's output is identical to the unset run for the same body" {

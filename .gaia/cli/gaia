@@ -20709,11 +20709,13 @@ var run29 = async (argv) => {
 };
 
 // src/residue/cache.ts
+import { createHash as createHash2 } from "node:crypto";
 import { existsSync as existsSync14, mkdirSync as mkdirSync9, readFileSync as readFileSync19, unlinkSync as unlinkSync2 } from "node:fs";
 import path26 from "node:path";
 var CACHE_DIR_SEGMENTS = [".gaia", "local", "cache"];
 var ATTRIBUTION_CACHE_FILE = "residual-attribution.json";
 var CURSOR_FILE = "residual-cursor.json";
+var attributionBodyDigest = (body) => createHash2("sha256").update(body, "utf8").digest("hex");
 var emptyAttributionCache = () => ({
   high_water_merged_at: null,
   prs: {},
@@ -21252,7 +21254,16 @@ var unresolvedResolver = () => ({
 });
 
 // src/residue/store.ts
-import { appendFileSync, existsSync as existsSync15, mkdirSync as mkdirSync10, readFileSync as readFileSync21 } from "node:fs";
+import {
+  appendFileSync,
+  closeSync as closeSync2,
+  existsSync as existsSync15,
+  mkdirSync as mkdirSync10,
+  openSync as openSync2,
+  readFileSync as readFileSync21,
+  readSync,
+  statSync as statSync2
+} from "node:fs";
 import path28 from "node:path";
 var STORE_RELATIVE_PATH = ".gaia/audit-residual-dismissals.jsonl";
 var STORE_SCHEMA_VERSION = "v1";
@@ -21326,6 +21337,22 @@ var serializeRecord = (record2) => JSON.stringify({
   schema: record2.schema,
   source_pr: record2.source_pr
 });
+var storeNewlinePrefix = (filePath) => {
+  if (!existsSync15(filePath)) return "";
+  let handle;
+  try {
+    const { size } = statSync2(filePath);
+    if (size === 0) return "";
+    const lastByte = Buffer.alloc(1);
+    handle = openSync2(filePath, "r");
+    readSync(handle, lastByte, 0, 1, size - 1);
+    return lastByte.toString("utf8") === "\n" ? "" : "\n";
+  } catch {
+    return "";
+  } finally {
+    if (handle !== void 0) closeSync2(handle);
+  }
+};
 var appendRecords = (repoRoot, records) => {
   records.forEach(assertNoEmbeddedNewline);
   if (records.length === 0) return;
@@ -21333,7 +21360,9 @@ var appendRecords = (repoRoot, records) => {
   const body = records.map((record2) => `${serializeRecord(record2)}
 `).join("");
   mkdirSync10(path28.dirname(filePath), { recursive: true });
-  appendFileSync(filePath, body, { flag: "a" });
+  appendFileSync(filePath, `${storeNewlinePrefix(filePath)}${body}`, {
+    flag: "a"
+  });
 };
 var readKeepWindowDays = (env) => {
   const raw = env.GAIA_RESIDUE_KEEP_DAYS;
@@ -21859,7 +21888,10 @@ var parseArgs9 = (argv, env) => {
     if (token !== void 0 && (NOOP_TOKENS.has(token) || applyBooleanFlag(token, flags))) {
     } else if (token === "--cap") {
       const parsedCap = parseCapValue(argv[index + 1]);
-      if (parsedCap !== null) flags.cap = parsedCap;
+      if (parsedCap === null) {
+        return { error: `--cap needs a positive integer: ${argv[index + 1]}` };
+      }
+      flags.cap = parsedCap;
       index += 1;
     } else {
       return { error: `unknown argument: ${token}` };
@@ -21960,9 +21992,11 @@ var mergeAttributionCache = (cache, mergedPrsResult) => {
   }
   for (const pr of mergedPrsResult.prs) {
     const existing = updatedCache.prs[prCacheKey(pr.number)];
-    const attribution = existing?.headRefOid === pr.headRefOid ? existing.attribution : attributeBody(pr.body);
+    const digest = attributionBodyDigest(pr.body);
+    const attribution = existing?.headRefOid === pr.headRefOid && existing.bodyDigest === digest ? existing.attribution : attributeBody(pr.body);
     updatedCache.prs[prCacheKey(pr.number)] = {
       attribution,
+      bodyDigest: digest,
       headRefOid: pr.headRefOid,
       mergedAt: pr.mergedAt
     };
@@ -22662,7 +22696,7 @@ var run33 = (argv, options = {}) => {
 };
 
 // src/scaffold/component.ts
-import { existsSync as existsSync19, statSync as statSync2 } from "node:fs";
+import { existsSync as existsSync19, statSync as statSync3 } from "node:fs";
 import path32 from "node:path";
 import { fileURLToPath as fileURLToPath2 } from "node:url";
 
@@ -22912,7 +22946,7 @@ var buildStoryTitle = (parent, componentName) => {
   if (stripped === "") return `Components/${componentName}`;
   return `Components/${stripped}/${componentName}`;
 };
-var defaultIsDirectory = (absPath) => existsSync19(absPath) && statSync2(absPath).isDirectory();
+var defaultIsDirectory = (absPath) => existsSync19(absPath) && statSync3(absPath).isDirectory();
 var renderComponentFile = (options) => {
   const { componentName, props, templatesRoot } = options;
   const templatePath = path32.join(
@@ -31261,7 +31295,7 @@ var run63 = (argv, options = {}) => {
 
 // src/update/regen-regions.ts
 import { execFileSync as execFileSync4 } from "node:child_process";
-import { createHash as createHash2 } from "node:crypto";
+import { createHash as createHash3 } from "node:crypto";
 import {
   chmodSync,
   copyFileSync as copyFileSync2,
@@ -31273,7 +31307,7 @@ import {
   readlinkSync as readlinkSync2,
   realpathSync as realpathSync3,
   rmSync as rmSync4,
-  statSync as statSync3,
+  statSync as statSync4,
   symlinkSync as symlinkSync2,
   writeFileSync as writeFileSync12
 } from "node:fs";
@@ -31567,7 +31601,7 @@ var performBackup = (inputs) => {
     }
     let stat;
     try {
-      stat = statSync3(srcAbs);
+      stat = statSync4(srcAbs);
     } catch {
       return;
     }
@@ -31679,7 +31713,7 @@ var collectScopeDigests = (root, scopeDirs) => {
         }
         digests.set(repoRelative, {
           content,
-          digest: createHash2("sha256").update(content).digest("hex"),
+          digest: createHash3("sha256").update(content).digest("hex"),
           kind: "file",
           mode: stat.mode
         });
@@ -33145,11 +33179,11 @@ var run67 = (argv, options = {}) => {
 };
 
 // src/wiki/dead-paths.ts
-import { readFileSync as readFileSync40, statSync as statSync5 } from "node:fs";
+import { readFileSync as readFileSync40, statSync as statSync6 } from "node:fs";
 import path52 from "node:path";
 
 // src/wiki/util/markdown-corpus.ts
-import { statSync as statSync4 } from "node:fs";
+import { statSync as statSync5 } from "node:fs";
 import path51 from "node:path";
 
 // src/util/tree-walk.ts
@@ -33178,7 +33212,7 @@ var isGeneratedContentExempt = (relativePath) => GENERATED_CONTENT_EXEMPT_PATHS.
 var collectWikiMarkdown = (cwd) => {
   const wikiDir = path51.join(cwd, WIKI_DIR);
   try {
-    statSync4(wikiDir);
+    statSync5(wikiDir);
   } catch {
     return [];
   }
@@ -33245,7 +33279,7 @@ var isTrackedPath = (token) => {
 var shouldSkipFile = (relPath) => isWikiScanExempt(relPath) || isGeneratedContentExempt(relPath) || relPath.startsWith(LOCAL_EXEMPT_PREFIX);
 var pathExists = (root, candidate) => {
   try {
-    statSync5(path52.join(root, candidate));
+    statSync6(path52.join(root, candidate));
     return true;
   } catch {
     return false;
@@ -33987,7 +34021,7 @@ var run72 = (argv, options = {}) => {
 };
 
 // src/wiki/near-collisions.ts
-import { existsSync as existsSync32, readdirSync as readdirSync5, statSync as statSync6 } from "node:fs";
+import { existsSync as existsSync32, readdirSync as readdirSync5, statSync as statSync7 } from "node:fs";
 import path56 from "node:path";
 var HELP_TEXT71 = `Usage: gaia wiki near-collisions [--max-distance 3]
 
@@ -34035,7 +34069,7 @@ var levenshtein = (a, b) => {
 var isCollectibleSlugFile = (entry) => entry.isFile() && entry.name.endsWith(".md") && !SKIPPED_FILES.has(entry.name) && !entry.name.startsWith("_");
 var collectDomainSlugs = (wikiRoot) => DOMAIN_DIRS.flatMap((domain2) => {
   const domainDir = path56.join(wikiRoot, domain2);
-  if (!existsSync32(domainDir) || !statSync6(domainDir).isDirectory()) {
+  if (!existsSync32(domainDir) || !statSync7(domainDir).isDirectory()) {
     return [];
   }
   const entries = readdirSync5(domainDir, { withFileTypes: true });
@@ -34134,7 +34168,7 @@ var run73 = (argv, options = {}) => {
 };
 
 // src/wiki/page-index.ts
-import { existsSync as existsSync33, readdirSync as readdirSync6, readFileSync as readFileSync44, statSync as statSync7 } from "node:fs";
+import { existsSync as existsSync33, readdirSync as readdirSync6, readFileSync as readFileSync44, statSync as statSync8 } from "node:fs";
 import path57 from "node:path";
 
 // src/wiki/util/wikilinks.ts
@@ -34218,7 +34252,7 @@ var readPageRecord = (domainDir, domain2, entry) => {
 };
 var collectDomainPages = (wikiRoot, domain2) => {
   const domainDir = path57.join(wikiRoot, domain2);
-  if (!existsSync33(domainDir) || !statSync7(domainDir).isDirectory()) return [];
+  if (!existsSync33(domainDir) || !statSync8(domainDir).isDirectory()) return [];
   const entries = readdirSync6(domainDir, { withFileTypes: true });
   return entries.filter((entry) => isIndexablePage(entry)).map((entry) => readPageRecord(domainDir, domain2, entry));
 };
@@ -34602,7 +34636,7 @@ var run77 = (argv, options = {}) => {
 };
 
 // src/wiki/state.ts
-import { existsSync as existsSync36, readdirSync as readdirSync7, readFileSync as readFileSync46, statSync as statSync8 } from "node:fs";
+import { existsSync as existsSync36, readdirSync as readdirSync7, readFileSync as readFileSync46, statSync as statSync9 } from "node:fs";
 import path60 from "node:path";
 var HELP_TEXT76 = `Usage: gaia wiki state [--json]
 `;
@@ -34627,7 +34661,7 @@ var countDomainPages = (wikiRoot) => {
   const counts = {};
   for (const domain2 of DOMAIN_DIRS3) {
     const domainDir = path60.join(wikiRoot, domain2);
-    if (!existsSync36(domainDir) || !statSync8(domainDir).isDirectory()) {
+    if (!existsSync36(domainDir) || !statSync9(domainDir).isDirectory()) {
       counts[domain2] = 0;
     } else {
       const entries = readdirSync7(domainDir, { withFileTypes: true });

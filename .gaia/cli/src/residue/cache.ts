@@ -8,11 +8,16 @@
  * `.gaia/local/cache/` tree and degrade to empty on any read failure
  * (missing, unparseable, wrong shape): a cold cache reproduces the same
  * candidate list, more slowly, so neither is ever required for correctness.
- * A merged pull request's body stays editable after the gate ran, so the
- * attribution cache keys each entry by pull-request number **and** head SHA;
- * a changed SHA invalidates that entry rather than trusting a stale
- * attribution.
+ * A merged pull request's body stays editable after the gate ran, and editing
+ * it is the natural repair for a key the tally reports in `malformed[]`. That
+ * edit changes no SHA, so the head SHA cannot detect it: the attribution cache
+ * keys each entry by pull-request number, head SHA, **and** a digest of the
+ * body it attributed. A changed SHA or a changed body invalidates that entry
+ * rather than trusting a stale attribution. An entry written before the digest
+ * existed carries none, which compares unequal and re-attributes, so an older
+ * cache degrades to a cold read rather than to a wrong answer.
  */
+import {createHash} from 'node:crypto';
 import {existsSync, mkdirSync, readFileSync, unlinkSync} from 'node:fs';
 import path from 'node:path';
 import {atomicWriteFileSync} from '../util/atomic-write.js';
@@ -32,9 +37,16 @@ export type AttributionCache = {
 
 export type CachedPrAttribution = {
   attribution: AttributionResult;
+  bodyDigest: string;
   headRefOid: string;
   mergedAt: string;
 };
+
+// The digest an entry carries alongside its head SHA. Editing a merged pull
+// request's body changes no SHA, so this is the only field that can see that
+// edit.
+export const attributionBodyDigest = (body: string): string =>
+  createHash('sha256').update(body, 'utf8').digest('hex');
 
 export type CachedResolution = {
   resolution: ResolutionKind;
