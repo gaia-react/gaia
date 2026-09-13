@@ -23,6 +23,19 @@
       "maintainer_only": false
     },
     {
+      "hook": ".claude/hooks/audit-residual-shape-check.sh",
+      "capabilities": [
+        "network",
+        "invokes:.claude/hooks/lib/jq-availability.sh",
+        "invokes:.claude/hooks/lib/repo-scope.sh",
+        "invokes:.claude/hooks/lib/verb-arming-walk.sh",
+        "invokes:.claude/hooks/lib/verb-arming.sh",
+        "invokes:.gaia/scripts/main-root-lib.sh"
+      ],
+      "why": "Denies `gh pr merge` when the pull-request body records an audit residual disposition under a non-canonical heading or an unkeyed entry, once armed through the shared arming decision (`.claude/hooks/lib/verb-arming.sh`, which lazily loads `.claude/hooks/lib/verb-arming-walk.sh` for its data-proving view). Sources the shared repo-scope helper (which transitively loads the main-root library) to decline a foreign-repo merge and to resolve which pull request the merge names, and the shared jq-availability arm. `network` is this hook's own `gh pr view` call, made to read the pull-request body it judges; no write of any kind, so `github-write` is not declared.",
+      "maintainer_only": false
+    },
+    {
       "hook": ".claude/hooks/block-bare-test.sh",
       "capabilities": [
         "invokes:.claude/hooks/lib/jq-availability.sh"

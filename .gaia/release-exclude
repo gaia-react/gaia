@@ -77,8 +77,8 @@
 # shipping it would ship a check nothing on an adopter clone invokes.
 .gaia/scripts/check-base-provenance-adoption.sh
 # This check asserts an invariant true of GAIA's own source: that the shared
-# verb-arming decision stays a singleton and that GAIA's own eleven hooks
-# adopt it. An adopter does not write GAIA's hooks or its shared library. Its
+# verb-arming decision stays a singleton and that GAIA's own hooks all adopt
+# it. An adopter does not write GAIA's hooks or its shared library. Its
 # only runners (the .gaia/scripts/tests/ bats suite and
 # .gaia/tests/whole-tree-invariants.sh, run from audit-ci-tests.yml) are
 # already release-excluded, so shipping it would ship a check nothing on an

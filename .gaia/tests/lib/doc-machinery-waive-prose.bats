@@ -23,6 +23,14 @@
 # disqualifier is gate-checked (arm (a) of that amendment), so these groups
 # are the only mechanism holding the wording steady across surfaces.
 #
+# Groups A-H pin a sibling disposition despite this file's waive-only name:
+# the accept-and-note heading `## Accepted residuals (recorded, not fixed)`,
+# frozen alongside the pre-existing machinery-waive heading, plus the waive
+# prose's own new statement of the wrapped dedup-key grammar (Group H). The
+# file is not renamed: the shard listing and the tests README convention
+# both read it by this name, and a rename buys nothing this comment does not
+# already say.
+#
 # Section extraction: `extract_section` takes its terminator as an argument
 # so a shallow scan never swallows a sibling section whole (see
 # doc-difficulty-prose.bats's header for the concrete swallow hazard). The
@@ -606,4 +614,190 @@ setup() {
 @test "Group 12: the retired unconditional-union phrasing is absent from code-audit-frontend.md" {
   grep -qF -- 'is not **both** non-security and in the union above' "$FRONTEND" && return 1
   true
+}
+
+# --- Group A: the accept-and-note heading, with its article, at every ------
+# carrying surface (SPEC-080). Mirrors Group 9's shape: the full frozen
+# sequence including the leading article, never the bare literal, so a
+# stray occurrence cannot satisfy the check by accident.
+#
+# wiki/concepts/PR Merge Workflow.md states the instruction at four sites
+# across three sections (digest economics, the pre-commit-a-disposition
+# bullet, and both bullets inside the three-round session cap); each gets its
+# own scoped assertion. The cap section states the heading twice, in two
+# bullets whose surrounding wording differs, so a bare fragment grep there
+# would pass on either bullet alone and miss a mutation of the other; each of
+# the two assertions below pins enough of its own bullet's wording to land
+# on that bullet specifically within the shared section.
+
+@test "Group A: the digest-economics section carries the accept-and-note heading, with its article" {
+  local section
+  section="$(extract_section_or_fail "$WIKI" "^#### Applying the audit's own Suggestions: digest economics" '^#{3,4} ')" || return 1
+  printf '%s\n' "$section" | grep -qF -- 'under the heading `## Accepted residuals (recorded, not fixed)`' || return 1
+}
+
+@test "Group A: the pre-commit-a-disposition section carries the accept-and-note heading, with its article" {
+  local section
+  section="$(extract_section_or_fail "$WIKI" '^#### When rounds stop: pre-commit a disposition for every branch' '^#{3,4} ')" || return 1
+  printf '%s\n' "$section" | grep -qF -- 'under the heading `## Accepted residuals (recorded, not fixed)`' || return 1
+}
+
+@test "Group A: the three-round-session-cap section carries the accept-and-note heading, with its article, at its 'does not stop a round' bullet" {
+  local section
+  section="$(extract_section_or_fail "$WIKI" '^#### The three-round session cap' '^#{3,4} ')" || return 1
+  printf '%s\n' "$section" | grep -qF -- 'is accept-and-note under the heading `## Accepted residuals (recorded, not fixed)` in the PR body and merges.' || return 1
+}
+
+@test "Group A: the three-round-session-cap section carries the accept-and-note heading, with its article, at its continuation-prompt paragraph" {
+  local section
+  section="$(extract_section_or_fail "$WIKI" '^#### The three-round session cap' '^#{3,4} ')" || return 1
+  printf '%s\n' "$section" | grep -qF -- 'already recorded under the heading `## Accepted residuals (recorded, not fixed)` in the PR body,' || return 1
+}
+
+@test "Group A: the Out-of-scope waive section (Audit Disposition and Debt Fix.md) carries the accept-and-note heading, with its article" {
+  local section
+  section="$(extract_section_or_fail "$DISPOSITION" '^### Out-of-scope waive' '^#{2,3} ')" || return 1
+  printf '%s\n' "$section" | grep -qF -- 'under the heading `## Accepted residuals (recorded, not fixed)`' || return 1
+}
+
+@test "Group A: section B-mw (code-audit-frontend.md) carries the accept-and-note heading, with its article" {
+  local section
+  section="$(extract_section_or_fail "$FRONTEND" '^### B-mw\. Machinery-path waive' '^#{2,3} ')" || return 1
+  printf '%s\n' "$section" | grep -qF -- 'under the heading `## Accepted residuals (recorded, not fixed)`' || return 1
+}
+
+# --- Group B: the four entry fields, at every carrying surface -------------
+# Mirrors Group 3. The digest-economics section states its accept-and-note
+# fields once, so a section-scoped grep is safe there. code-audit-
+# frontend.md states the same four field literals a second time, in the
+# pre-existing waive instruction that shares section B-mw's span with the
+# new accept-and-note paragraph; a section-scoped grep there would pass on
+# the waive text alone and miss a mutation of the new paragraph, so that
+# assertion is scoped to the accept-and-note paragraph by its own lead
+# sentence instead.
+
+@test "Group B: the digest-economics section states all four accept-and-note entry fields" {
+  local section
+  section="$(extract_section_or_fail "$WIKI" "^#### Applying the audit's own Suggestions: digest economics" '^#{3,4} ')" || return 1
+  printf '%s\n' "$section" | grep -qF -- "file:line" || return 1
+  printf '%s\n' "$section" | grep -qF -- "failure mode" || return 1
+  printf '%s\n' "$section" | grep -qF -- "dedup key" || return 1
+  printf '%s\n' "$section" | grep -qF -- "provenance line" || return 1
+}
+
+@test "Group B: the B-mw accept-and-note paragraph states all four entry fields" {
+  local para
+  para="$(extract_paragraph_from_lead "$FRONTEND" 'A sibling disposition, recorded the same way.')"
+  [ -n "$para" ] || {
+    echo "the sibling-disposition paragraph matched nothing in $FRONTEND; a scoped assertion here would pass vacuously" >&2
+    return 1
+  }
+  printf '%s\n' "$para" | grep -qF -- "file:line" || return 1
+  printf '%s\n' "$para" | grep -qF -- "failure mode" || return 1
+  printf '%s\n' "$para" | grep -qF -- "dedup key" || return 1
+  printf '%s\n' "$para" | grep -qF -- "provenance line" || return 1
+}
+
+# --- Group C: the two headings stay distinct --------------------------------
+
+@test "Group C: the digest-economics section states the two headings stay distinct because the dispositions differ" {
+  local section
+  section="$(extract_section_or_fail "$WIKI" "^#### Applying the audit's own Suggestions: digest economics" '^#{3,4} ')" || return 1
+  printf '%s\n' "$section" | grep -qF -- "the two mean different things" || return 1
+}
+
+@test "Group C: neither canonical literal appears as a column-0 heading in any pinned file" {
+  local f
+  for f in "$WIKI" "$DISPOSITION" "$FRONTEND"; do
+    grep -qE '^## (Accepted residuals \(recorded, not fixed\)|Out-of-scope machinery findings \(recorded, not filed\))' "$f" && {
+      echo "a canonical literal appears as a structural column-0 heading in $f" >&2
+      return 1
+    }
+  done
+  true
+}
+
+# --- Group D: the enumeration command, verbatim (Contract C7) --------------
+# Pinned by load-bearing fragment rather than retyped whole, so trimming any
+# one fragment reds independently.
+
+@test "Group D: the digest-economics section carries the C7 enumeration command by its load-bearing fragments" {
+  local section
+  section="$(extract_section_or_fail "$WIKI" "^#### Applying the audit's own Suggestions: digest economics" '^#{3,4} ')" || return 1
+  printf '%s\n' "$section" | grep -qF -- "gh pr list --state merged" || return 1
+  printf '%s\n' "$section" | grep -qF -- "--limit 2000" || return 1
+  printf '%s\n' "$section" | grep -qF -- "--json number,body" || return 1
+  printf '%s\n' "$section" | grep -qF -- "<!-- gaia-debt-key: " || return 1
+  printf '%s\n' "$section" | grep -qF -- "capture(" || return 1
+  printf '%s\n' "$section" | grep -qF -- '.body // ""' || return 1
+}
+
+@test "Group D: the C7 command is a gh query, never a tree search" {
+  local block
+  block="$(awk '/^gh pr list --state merged/,/^```$/' "$WIKI")"
+  [ -n "$block" ] || {
+    echo "the C7 command block matched nothing in $WIKI; a scoped assertion here would pass vacuously" >&2
+    return 1
+  }
+  printf '%s\n' "$block" | grep -qF -- "git grep" && return 1
+  true
+}
+
+# --- Group E: the forward binding and the no-sweep statement ---------------
+
+@test "Group E: the digest-economics section states the convention binds forward and does not sweep the existing record" {
+  local section
+  section="$(extract_section_or_fail "$WIKI" "^#### Applying the audit's own Suggestions: digest economics" '^#{3,4} ')" || return 1
+  printf '%s\n' "$section" | grep -qF -- "governs what gets recorded from here on" || return 1
+  printf '%s\n' "$section" | grep -qF -- "is left as it stands" || return 1
+}
+
+@test "Group E: no pinned accept-and-note section carries banned change-narration vocabulary" {
+  local section
+  section="$(extract_section_or_fail "$WIKI" "^#### Applying the audit's own Suggestions: digest economics" '^#{3,4} ')" || return 1
+  printf '%s\n' "$section" | grep -qE -- 'was changed|previously did|as of ' && return 1
+  section="$(extract_section_or_fail "$WIKI" '^#### When rounds stop: pre-commit a disposition for every branch' '^#{3,4} ')" || return 1
+  printf '%s\n' "$section" | grep -qE -- 'was changed|previously did|as of ' && return 1
+  section="$(extract_section_or_fail "$WIKI" '^#### The three-round session cap' '^#{3,4} ')" || return 1
+  printf '%s\n' "$section" | grep -qE -- 'was changed|previously did|as of ' && return 1
+  section="$(extract_section_or_fail "$DISPOSITION" '^### Out-of-scope waive' '^#{2,3} ')" || return 1
+  printf '%s\n' "$section" | grep -qE -- 'was changed|previously did|as of ' && return 1
+  section="$(extract_section_or_fail "$FRONTEND" '^### B-mw\. Machinery-path waive' '^#{2,3} ')" || return 1
+  printf '%s\n' "$section" | grep -qE -- 'was changed|previously did|as of ' && return 1
+  true
+}
+
+# --- Group F: the permissive-phrasing ban still holds for the new heading --
+# No new assertion: Group 9's existing "a heading such as" absence check
+# already runs tree-wide over $WIKI, $FRONTEND, and $DISPOSITION, the same
+# three files A1 resolved for this change, so it already covers the new
+# heading with nothing to extend. Duplicating it here would assert the same
+# thing twice.
+
+# --- Group H: decision D4, the waive prose states the enforced key grammar -
+# New group: the check now refuses a keyless entry beneath the canonical
+# WAIVE heading too, judged on contract C3's wrapped grammar, so the waive
+# prose must state that wrapped form rather than "its dedup key" alone.
+# Section B-mw states the wrapped form twice, once in the pre-existing waive
+# instruction and once in the new accept-and-note paragraph beside it, so
+# its assertion below pins enough surrounding text to land on the waive
+# occurrence specifically rather than passing on the accept-and-note
+# occurrence alone.
+
+@test "Group H: cross-remit section states the wrapped dedup-key grammar for a waived finding" {
+  local section
+  section="$(extract_section_or_fail "$WIKI" '^#### Cross-remit findings' '^#{3,4} ')" || return 1
+  printf '%s\n' "$section" | grep -qF -- 'wrapped `<!-- gaia-debt-key: … -->` form (`.claude/skills/file-tech-debt/SKILL.md`)' || return 1
+}
+
+@test "Group H: the Out-of-scope waive section states the wrapped dedup-key grammar for a waived finding" {
+  local section
+  section="$(extract_section_or_fail "$DISPOSITION" '^### Out-of-scope waive' '^#{2,3} ')" || return 1
+  printf '%s\n' "$section" | grep -qF -- 'wrapped `<!-- gaia-debt-key: … -->` form (`.claude/skills/file-tech-debt/SKILL.md`)' || return 1
+}
+
+@test "Group H: section B-mw's waive instruction states the wrapped dedup-key grammar, at its own occurrence" {
+  local section
+  section="$(extract_section_or_fail "$FRONTEND" '^### B-mw\. Machinery-path waive' '^#{2,3} ')" || return 1
+  printf '%s\n' "$section" | grep -qF -- 'its dedup key in the wrapped `<!-- gaia-debt-key: … -->` form (`.claude/skills/file-tech-debt/SKILL.md`), and, on its own line immediately after the dedup key, the provenance line emitted the same way section E emits one' || return 1
 }

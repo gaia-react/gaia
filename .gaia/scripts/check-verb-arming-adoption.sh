@@ -4,10 +4,11 @@
 # Adoption check for the shared verb-arming decision
 # (.claude/hooks/lib/verb-arming.sh, .claude/hooks/lib/verb-arming-walk.sh).
 #
-# Nothing stops a twelfth hook from spelling its own start_re/sep_re pattern
+# Nothing stops a further hook from spelling its own start_re/sep_re pattern
 # pair, or arming through a grep-based re-implementation instead of the
 # shared function, or the set of adopting hooks from drifting away from the
-# eleven SPEC-075 enumerates. This check makes all three machine-detectable,
+# roster GAIA_VERB_ADOPTING_HOOKS below enumerates. This check makes all
+# three machine-detectable,
 # plus the two frozen contracts around the library itself: it is a singleton,
 # and the one written exemption from its fail-closed default (README.md's
 # `### Fail directions`) stays exactly one hook wide.
@@ -24,7 +25,7 @@
 #     4. No file arms through a grep invocation whose pattern operand
 #        carries both a shell-separator alternation and an arming verb.
 #     5. The registered hooks (.claude/settings.json) that reference
-#        gaia_verb_armed equal exactly the eleven in assertion 2.
+#        gaia_verb_armed equal exactly the roster assertion 2 enumerates.
 #     6. Every deny-capable hook denies when the library cannot be loaded,
 #        except the one written exemption, which must still take the
 #        fail-open direction and still be deny-capable elsewhere.
@@ -53,6 +54,7 @@ GAIA_VERB_ADOPTING_HOOKS=(
   pr-merge-audit-check.sh
   worthiness-presence-check.sh
   audit-disposition-check.sh
+  audit-residual-shape-check.sh
   distribution-preflight-check.sh
   post-findings-block-on-merge.sh
   token-tally-git-op.sh
@@ -97,15 +99,16 @@ GAIA_VERB_GREP_IDIOM_SEP_1='&&'
 GAIA_VERB_GREP_IDIOM_SEP_2=';'
 GAIA_VERB_GREP_IDIOM_SEP_3='||'
 
-# The four deny-capable hooks (README.md's frozen table, "Can deny: yes"),
-# and the anchors that tell fail-closed from fail-open apart. Every one of
-# the three merge gates shares the same reason string, byte for byte except
-# its leading label, which is why a literal substring anchors it rather than
-# a per-hook one.
+# The deny-capable hooks (README.md's frozen table, "Can deny: yes"), and
+# the anchors that tell fail-closed from fail-open apart. Every one of the
+# merge gates shares the same reason string, byte for byte except its
+# leading label, which is why a literal substring anchors it rather than a
+# per-hook one.
 GAIA_VERB_DENY_CAPABLE_HOOKS=(
   pr-merge-audit-check.sh
   worthiness-presence-check.sh
   audit-disposition-check.sh
+  audit-residual-shape-check.sh
   distribution-preflight-check.sh
 )
 GAIA_VERB_FAIL_CLOSED_ANCHOR='cannot load the shared verb-arming decision'
@@ -291,7 +294,7 @@ EOF
   enumerated="$(printf '%s' "$enumerated" | LC_ALL=C sort -u)"
 
   if [ "$adopting_registered" = "$enumerated" ]; then
-    printf 'roster: registered adopters match the enumerated eleven\n'
+    printf 'roster: registered adopters match the enumerated set\n'
     return 0
   fi
 

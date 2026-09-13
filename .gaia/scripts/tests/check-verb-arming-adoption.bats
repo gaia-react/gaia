@@ -1,13 +1,13 @@
 #!/usr/bin/env bats
 #
 # Conformance suite for .gaia/scripts/check-verb-arming-adoption.sh: the
-# eleven hooks stay a single-source-of-truth over the arming decision only
+# adopting hooks stay a single-source-of-truth over the arming decision only
 # because nothing lets that fact drift silently. This suite is what actually
-# fails a build when a twelfth hook spells its own pattern pair, when a hook
+# fails a build when a further hook spells its own pattern pair, when a hook
 # arms through a grep re-implementation instead of the shared function, when
-# the registered-hook roster drifts from the enumerated eleven, or when a
-# deny-capable hook's library-absent fail direction moves without a written
-# exemption.
+# the registered-hook roster drifts from the roster this suite enumerates, or
+# when a deny-capable hook's library-absent fail direction moves without a
+# written exemption.
 #
 # Every test drives the check through its <repo_root> parameter against a
 # fixture tree, matching check-base-provenance-adoption.bats's reasoning: a
@@ -36,9 +36,9 @@ teardown() {
   return 0
 }
 
-# write_baseline <dir>: a healthy tree -- the library's two definitions, all
-# eleven hooks adopting gaia_verb_armed and registered in settings.json to
-# match, the three merge gates denying on a missing library, and
+# write_baseline <dir>: a healthy tree -- the library's two definitions,
+# every enumerated hook adopting gaia_verb_armed and registered in
+# settings.json to match, the merge gates denying on a missing library, and
 # distribution-preflight-check.sh taking the written fail-open exemption
 # while staying deny-capable. Every "must fail" fixture starts here and
 # mutates one thing.
@@ -67,7 +67,7 @@ gaia_verb_arm_view() {
 }
 EOF
 
-  for h in pr-merge-audit-check worthiness-presence-check audit-disposition-check; do
+  for h in pr-merge-audit-check worthiness-presence-check audit-disposition-check audit-residual-shape-check; do
     cat >"$dir/.claude/hooks/$h.sh" <<EOF
 #!/usr/bin/env bash
 . "\$(dirname "\${BASH_SOURCE[0]}")/lib/verb-arming.sh" 2>/dev/null
@@ -119,6 +119,7 @@ EOF
         {"type": "command", "command": ".claude/hooks/pr-merge-audit-check.sh"},
         {"type": "command", "command": ".claude/hooks/worthiness-presence-check.sh"},
         {"type": "command", "command": ".claude/hooks/audit-disposition-check.sh"},
+        {"type": "command", "command": ".claude/hooks/audit-residual-shape-check.sh"},
         {"type": "command", "command": ".claude/hooks/distribution-preflight-check.sh"}
       ]}
     ],
@@ -193,10 +194,10 @@ commit_all() {
   grep -qF "gaia_verb_armed definitions found: 1" <<<"$output" || return 1
   grep -qF "gaia_verb_arm_view definitions found: 1" <<<"$output" || return 1
   grep -qF ".claude/hooks/pr-merge-audit-check.sh: adopted" <<<"$output" || return 1
-  grep -qF "roster: registered adopters match the enumerated eleven" <<<"$output" || return 1
+  grep -qF "roster: registered adopters match the enumerated set" <<<"$output" || return 1
 }
 
-@test "fixture: a twelfth hook with a private start_re/sep_re pair fails and names file and line (case 1)" {
+@test "fixture: a further hook with a private start_re/sep_re pair fails and names file and line (case 1)" {
   local repo
   repo="$(make_fixture_repo twelfth-hook)"
   cat >"$repo/.claude/hooks/rogue-verb-check.sh" <<'EOF'

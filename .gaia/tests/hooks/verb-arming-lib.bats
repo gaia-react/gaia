@@ -651,14 +651,15 @@ write_conflicted_lib() {
 }
 
 # The load guard suspends errexit across the source and must put back exactly
-# what it found. Seven of this library's eleven consumers deliberately run
-# WITHOUT errexit -- audit-disposition-check.sh, pr-merge-audit-check.sh,
-# worthiness-presence-check.sh, debt-sentinel-touch.sh, issue-claim-release.sh,
-# distribution-preflight-check.sh and token-tally-review.sh -- and several are
-# PreToolUse deny gates where a stray non-zero exit becomes a verdict. An
-# unconditional `set -e` restore would arm errexit in all seven, so this case
-# pins the restore as conditional. It needs no interpreter pin: the leak it
-# guards against is present on bash 3.2 and bash 5 alike.
+# what it found. Several of this library's consumers deliberately run
+# WITHOUT errexit -- audit-disposition-check.sh, audit-residual-shape-check.sh,
+# pr-merge-audit-check.sh, worthiness-presence-check.sh, debt-sentinel-touch.sh,
+# issue-claim-release.sh, distribution-preflight-check.sh and
+# token-tally-review.sh -- and several are PreToolUse deny gates where a stray
+# non-zero exit becomes a verdict. An unconditional `set -e` restore would arm
+# errexit in every one of them, so this case pins the restore as conditional.
+# It needs no interpreter pin: the leak it guards against is present on bash
+# 3.2 and bash 5 alike.
 @test "a load from a caller without errexit leaves errexit off" {
   local lib; lib="$(stage_lib noerrexit)"
   run bash -c '

@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-06-30
-updated: 2026-09-10
+updated: 2026-09-13
 tags: [concept, claude, review]
 ---
 
@@ -57,7 +57,9 @@ Two disqualifiers narrow what may be waived inside that eligible set, and neithe
 
 Either path term alone is sufficient, and a gate-machinery finding satisfies the path condition whether or not the pull request touches it. An empty eligibility set disengages the waive rather than opening it, and a finding satisfying neither term files or diverts as usual. Comparison is **exact whole-string equality** against repo-relative POSIX paths, never a prefix, suffix, basename, or substring match; the changed-file enumeration is NUL-delimited so a legitimately quoted path never reads as an offender. A dedup key the path extractor cannot parse is itself an offender, failing closed.
 
-A machinery-waived finding is recorded as a `machinery_waived` entry in the disposition-ledger sidecar (with its dedup key) **and** listed in the PR body under the heading `## Out-of-scope machinery findings (recorded, not filed)`. The sidecar is gitignored and janitor-reaped, so the PR body is the durable, human-readable record of what was waived. The PR-body entry carries the same provenance line a filed issue carries, from the same helper, which is what makes the waived listing greppable, since it is otherwise agent prose with no code behind it. The disposition enum value `machinery_waived` and the sidecar schema carry no field for the changed-files term; the union lives entirely in how the abuse-check reads the existing `path=`.
+A machinery-waived finding is recorded as a `machinery_waived` entry in the disposition-ledger sidecar (with its dedup key) **and** listed in the PR body under the heading `## Out-of-scope machinery findings (recorded, not filed)`, its dedup key written there in the wrapped `<!-- gaia-debt-key: … -->` form (`.claude/skills/file-tech-debt/SKILL.md`). The sidecar is gitignored and janitor-reaped, so the PR body is the durable, human-readable record of what was waived. The PR-body entry carries the same provenance line a filed issue carries, from the same helper, which is what makes the waived listing greppable, since it is otherwise agent prose with no code behind it. The disposition enum value `machinery_waived` and the sidecar schema carry no field for the changed-files term; the union lives entirely in how the abuse-check reads the existing `path=`.
+
+An **accepted residual** is a distinct disposition from a machinery waive: a waive covers an out-of-scope finding on an eligible path, while an accepted residual is an in-scope Suggestion or finding the operator defers rather than fixing in this pull request, in the member's own remit ([[PR Merge Workflow#Applying the audit's own Suggestions: digest economics]]). It is recorded under the heading `## Accepted residuals (recorded, not fixed)` in the pull request body and nowhere else: it adds no disposition-sidecar value, no sidecar entry, and no dependence on any gitignored, janitor-reaped store.
 
 **Binding a waive to its pull request.** The sidecar is named by the default member's content digest, which does not rotate for a diff touching nothing that member owns and no machinery, so one sidecar can be read while judging several consecutive pull requests. A `machinery_waived` entry's changed-files term is therefore evaluated only when the sidecar is **attributable** to the pull request under judgment, decided from its recorded `branch` and `sha`. A recorded branch that differs from the branch under judgment is decisive on its own and sets the entry aside, so it neither clears nor denies. Otherwise the recorded `sha` answers: a sha belonging to another branch's live history is set aside, while a sha this branch's own rewrite (an amend, rebase, or force-push) has orphaned is still judged against the rewritten HEAD's diff.
 
