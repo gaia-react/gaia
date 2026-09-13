@@ -8,6 +8,12 @@
       "why": "Reads/derives the disposition-ledger sidecar under audit/, the symlinked shared store every checkout reaches through main; anchors on gaia_resolve_main_root so the check reads the one real copy regardless of which tree the merge command runs from."
     },
     {
+      "hook": ".claude/hooks/audit-residual-shape-check.sh",
+      "scope": "any",
+      "state": [],
+      "why": "Reads a pull-request body over the network via `gh pr view`; no .gaia/local state at all."
+    },
+    {
       "hook": ".claude/hooks/audit-stamp-trailer.sh",
       "scope": "any",
       "state": [],

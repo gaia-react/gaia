@@ -87,6 +87,7 @@ Each script reads `tool_input.command` from stdin and filters by content; there 
 - **`red-verify-commit-check.sh`** (PreToolUse, Bash deny): before each `git commit`, checks every new-at-HEAD test file against the RED-observation ledger. Requires a ledger RED whose content signal still matches the current test body; no matching entry denies the commit, naming the offending test. Fail-open on missing tooling or unparseable test files. See [[TDD RED Verification]].
 - **`worthiness-presence-check.sh`** (PreToolUse, Bash deny): before each `gh pr merge` (armed through the shared verb-arming decision below), scopes to the emergent test files the PR changed and denies the merge when a changed emergent test has no worthiness-ledger line matching its current content signal. Sits alongside `pr-merge-audit-check.sh` as an independent deny on the same event. Checks presence plus signal match only, never the verdict. No-op when zero emergent tests changed; fail-open on missing tooling or unparseable files. See [[Worthiness Presence Gate]].
 - **`pr-merge-audit-check.sh`** (PreToolUse, Bash deny): denies `gh pr merge` until every Code Audit Team member the branch's scope resolves to has written its clearance marker under `.gaia/local/audit/`, and denies again when a member's markers are stale against the pushed head. Its siblings on this event are `worthiness-presence-check.sh` above and `post-findings-block-on-merge.sh`. See [[PR Merge Workflow]].
+- **`audit-residual-shape-check.sh`** (PreToolUse, Bash deny): before each `gh pr merge` (armed through the shared verb-arming decision below), reads the pull-request body and denies when a recognized residual-disposition heading is spelled outside its canonical form, or when a canonical heading has an entry beneath it carrying no dedup key. A shape check only: it never judges whether a finding should have been recorded, and it detects nothing that was never written down. See [[Audit Disposition and Debt Fix]].
 
 ### Code-search safeguard (Grep)
 
@@ -120,15 +121,16 @@ Neither of these denies anything; both repair state that a session's entry point
 
 ### Shared verb-arming decision
 
-Eleven Bash-matcher hooks each decide whether a tool call carries an invocation of a verb they care about (`gh pr merge`, `gh pr create`, `git commit`/`push`, `gh issue create`/`edit`/`close`/`reopen`) through one shared library rather than a private pattern pair apiece. The decision runs in three passes. First, a raw text match against the whole command string, the same match every hook paid before the decision was shared, so no spelling that armed before stops arming. Second, on a raw hit only, a same-length view of the command is built in which every heredoc body proven to be inert data is masked out (written with `cat` or `tee` to a plain file, no expansion on the opener line, an unambiguous delimiter that actually closes later in the text), and the same match runs again against that view; a heredoc body carrying a merge command no longer arms a hook on its own. Third, a tokenizer reads the shell's own first command and arms on the verb regardless of how its characters are quoted, closing the gap where a quoted verb defeated every text match. **Wherever the decision cannot tell, it keeps the raw-match answer**: an uncertain input never trades a possible over-arm for a possible miss.
+Bash-matcher hooks decide whether a tool call carries an invocation of a verb they care about (`gh pr merge`, `gh pr create`, `git commit`/`push`, `gh issue create`/`edit`/`close`/`reopen`) through one shared library rather than a private pattern pair apiece. The decision runs in three passes. First, a raw text match against the whole command string, the same match every hook paid before the decision was shared, so no spelling that armed before stops arming. Second, on a raw hit only, a same-length view of the command is built in which every heredoc body proven to be inert data is masked out (written with `cat` or `tee` to a plain file, no expansion on the opener line, an unambiguous delimiter that actually closes later in the text), and the same match runs again against that view; a heredoc body carrying a merge command no longer arms a hook on its own. Third, a tokenizer reads the shell's own first command and arms on the verb regardless of how its characters are quoted, closing the gap where a quoted verb defeated every text match. **Wherever the decision cannot tell, it keeps the raw-match answer**: an uncertain input never trades a possible over-arm for a possible miss.
 
-All eleven adopting hooks, and whether an armed call can deny the tool call outright:
+Every adopting hook, and whether an armed call can deny the tool call outright:
 
 | Hook | Event | Can deny |
 |---|---|---|
 | `pr-merge-audit-check.sh` | PreToolUse | yes |
 | `worthiness-presence-check.sh` | PreToolUse | yes |
 | `audit-disposition-check.sh` | PreToolUse | yes |
+| `audit-residual-shape-check.sh` | PreToolUse | yes |
 | `distribution-preflight-check.sh` | PreToolUse | yes |
 | `post-findings-block-on-merge.sh` | PreToolUse | no |
 | `token-tally-git-op.sh` | PreToolUse | no |

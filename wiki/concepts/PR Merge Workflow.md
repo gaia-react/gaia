@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-04-20
-updated: 2026-09-12
+updated: 2026-09-13
 tags: [concept, ci, review]
 ---
 
@@ -253,6 +253,25 @@ Both arms assume the Suggestion is correct. A Suggestion is a finding, not a spe
 
 This is operator guidance about **in-scope Suggestions and accepted findings**, distinct from **in-flight-fix promotion** (the audit's own automatic same-run repair of a qualifying **out-of-scope** finding through the self-heal path; see [[Audit Disposition and Debt Fix]]). In-flight-fix promotion is the audit repairing out-of-scope debt itself as it reviews; this is the operator deciding whether an in-scope Suggestion is worth folding into an already-marked PR. They do not overlap.
 
+Record accept-and-note under the heading `## Accepted residuals (recorded, not fixed)` in the pull request body, one entry per residual: its `file:line`, a one-line failure mode, its dedup key, and, on its own line immediately after the dedup key, the provenance line. The dedup key is the wrapped `<!-- gaia-debt-key: … -->` HTML-comment form (`.claude/skills/file-tech-debt/SKILL.md`); a bare inline "Dedup key: …" line with no wrapper is refused at merge. The heading stays distinct from the machinery-waive heading beside it because the two mean different things: a waive is an out-of-scope finding on an eligible path, an accepted residual is in the member's own remit.
+
+Every recorded residual is machine-enumerable by one query over merged pull request bodies:
+
+```bash
+gh pr list --state merged --limit 2000 --json number,body \
+  --jq '.[] as $pr
+        | ($pr.body // "") | split("\n")[]
+        | select(test("<!-- gaia-debt-key: "))
+        | capture("<!-- gaia-debt-key: (?<key>v1 class=[^ ]+ path=(?<path>[^ ]+) line=(?<line>[0-9]+)) -->")
+        | "\($pr.number)\t\(.path):\(.line)\t\(.key)"'
+```
+
+This queries `gh` rather than the working tree because a pull request body lives in GitHub's API, reaching no clone and no release tarball, so `git grep` cannot reach it; the body outlives the disposition sidecar's retention clock, though it stays editable after merge. `--limit` bounds how far back the query reaches; raise it on a clone whose merged pull request count exceeds it. The `// ""` guard exists because a pull request with no body arrives as JSON `null`, and `null | split("\n")` aborts the whole query.
+
+The convention governs what gets recorded from here on; the existing record in already-merged pull requests is left as it stands. A residual recorded against a merged pull request names a path and a line at a commit a squash-merge has since rewritten, the entries are recoverable only through the same lossy extraction the convention exists to make unnecessary, and repairing the pile at scale forces a full-scope re-review of every dispatched member rather than one delta review.
+
+An accepted in-scope residual adds no disposition-sidecar value, no sidecar entry, and no dependence on any gitignored, janitor-reaped store; its only record is the pull request body.
+
 #### When rounds stop: pre-commit a disposition for every branch
 
 The fix loop above says to re-spawn until the audit reports clean, and the digest economics beside it license accept-and-note instead. Choosing between them *after* a finding is on the table is the failure, because at that point the question is no longer what the rule was, it is whether this particular finding is worth one more round, and asked that way it answers yes almost every time. Write the rule down before the round runs.
@@ -260,7 +279,7 @@ The fix loop above says to re-spawn until the audit reports clean, and the diges
 A usable rule names a disposition for **every** way the round can come back, including carrying on. A rule that says only "stop and reconsider" has decided nothing: the same question returns one round later with no rule left standing. Three branches, and the third is the one commonly left open:
 
 - **Clean** → merge.
-- **Only accepted residuals, or prose an earlier round wrote** → accept-and-note in the PR body and merge. Repeat findings on the previous round's own repair are the signal that each pass is enriching the artifact rather than correcting it, and every widening of a prose list invites the next one.
+- **Only accepted residuals, or prose an earlier round wrote** → accept-and-note under the heading `## Accepted residuals (recorded, not fixed)` in the PR body and merge. Repeat findings on the previous round's own repair are the signal that each pass is enriching the artifact rather than correcting it, and every widening of a prose list invites the next one.
 - **A new, reproduced defect in the logic this change authored** → name the concrete outcome rather than deferring it, because "run another round" is not a disposition, it is the absence of one. Say what ships, what gets filed instead, and who decides. Where the round turns on a design decision an operator settled, retiring that decision is the operator's call, so the fallback is to report and recommend rather than to overturn it.
 
 **A round count is evidence, not a verdict.** What says a guard is the wrong instrument is the **direction** of its repairs, whether each one leaves the artifact smaller, and **where** the defects land: in the parser, the comparison, the payload, or the design. A fifth round in a part that has been stable since the third is a different finding from a fifth round in the same place, and the count alone cannot tell them apart.
@@ -276,7 +295,7 @@ The bound is on **context and cost**, not on convergence. Reading a round well m
 Three things the cap does not do:
 
 - **It does not license a merge.** Clearance is unchanged: `gh pr merge` stays denied until every dispatched member holds a marker for its own current digest, and round three's fixes rotate the digests they touch, so the hook denies the merge with no help from this rule. A capped stop leaves a pushed branch and an open PR.
-- **It does not stop a round that ends the work.** The dispositions above resolve first, at any round number including the third: a clean round merges, and a round carrying only accepted residuals or prose an earlier round wrote is accept-and-note in the PR body and merges. The cap binds only where the disposition would be another round.
+- **It does not stop a round that ends the work.** The dispositions above resolve first, at any round number including the third: a clean round merges, and a round carrying only accepted residuals or prose an earlier round wrote is accept-and-note under the heading `## Accepted residuals (recorded, not fixed)` in the PR body and merges. The cap binds only where the disposition would be another round.
 - **It does not judge the change.** A count is evidence, not a verdict, so the direction of the repairs and where the defects land still decide whether this branch deserves a fourth round at all or needs a different instrument. The cap ends the session, not the question.
 
 Reaching the cap is a stop, and a stop hands the work forward:
@@ -287,7 +306,7 @@ Reaching the cap is a stop, and a stop hands the work forward:
 
 The cap binds the work, not the transcript. Continuing this branch's rounds inside a subagent, a fork, or a fresh session this one starts spends the same money against the same branch and defeats the bound; the session that resumes is one a human starts by pasting the prompt.
 
-That prompt is the whole handoff. It lands in a session that can see none of this one's scrollback, so it carries its own context instead of referring to it: the PR number, the branch and its base, that three rounds are already spent, where the re-run carry-forward ledger sits (`.gaia/local/audit/<AUDIT_KEY>.rerun.json`) and that the fixer reads `remaining[]` and `fixed_last_round[]` from it, what each round fixed, which findings are accepted residuals already recorded in the PR body, and an instruction to re-read this page and resume at step 1. Fence it so it pastes as one unit.
+That prompt is the whole handoff. It lands in a session that can see none of this one's scrollback, so it carries its own context instead of referring to it: the PR number, the branch and its base, that three rounds are already spent, where the re-run carry-forward ledger sits (`.gaia/local/audit/<AUDIT_KEY>.rerun.json`) and that the fixer reads `remaining[]` and `fixed_last_round[]` from it, what each round fixed, which findings are accepted residuals already recorded under the heading `## Accepted residuals (recorded, not fixed)` in the PR body, and an instruction to re-read this page and resume at step 1. Fence it so it pastes as one unit.
 
 The reset is keyed to the session, so the resuming session starts a fresh three. A branch that genuinely needs six rounds gets them, three at a time, each read by a session with the room to read them.
 
@@ -336,7 +355,7 @@ Two disqualifiers narrow what may be waived inside that eligible set, and neithe
 
 A waive files nothing: no tech-debt issue, no issue number, and no touch of the debt-count staleness sentinel (`.gaia/local/debt/refresh-requested`).
 
-Every waived finding is listed in the pull request body under the heading `## Out-of-scope machinery findings (recorded, not filed)`, one entry per finding, each carrying its `file:line`, a one-line failure mode, and its dedup key.
+Every waived finding is listed in the pull request body under the heading `## Out-of-scope machinery findings (recorded, not filed)`, one entry per finding, each carrying its `file:line`, a one-line failure mode, and its dedup key in the wrapped `<!-- gaia-debt-key: … -->` form (`.claude/skills/file-tech-debt/SKILL.md`).
 
 The changed-file set comes from the eligibility derivation block in `.claude/agents/code-audit-frontend.md` (the `FULL_BASE` / `full_changed` fence beside its review-scope block), re-run in the same Bash call because shell state does not persist between calls; it is never the member's TS/TSX-filtered review-scope set, which excludes every surface this rule exists for.
 

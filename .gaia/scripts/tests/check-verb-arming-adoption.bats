@@ -67,7 +67,7 @@ gaia_verb_arm_view() {
 }
 EOF
 
-  for h in pr-merge-audit-check worthiness-presence-check audit-disposition-check; do
+  for h in pr-merge-audit-check worthiness-presence-check audit-disposition-check audit-residual-shape-check; do
     cat >"$dir/.claude/hooks/$h.sh" <<EOF
 #!/usr/bin/env bash
 . "\$(dirname "\${BASH_SOURCE[0]}")/lib/verb-arming.sh" 2>/dev/null
@@ -119,6 +119,7 @@ EOF
         {"type": "command", "command": ".claude/hooks/pr-merge-audit-check.sh"},
         {"type": "command", "command": ".claude/hooks/worthiness-presence-check.sh"},
         {"type": "command", "command": ".claude/hooks/audit-disposition-check.sh"},
+        {"type": "command", "command": ".claude/hooks/audit-residual-shape-check.sh"},
         {"type": "command", "command": ".claude/hooks/distribution-preflight-check.sh"}
       ]}
     ],
@@ -193,7 +194,7 @@ commit_all() {
   grep -qF "gaia_verb_armed definitions found: 1" <<<"$output" || return 1
   grep -qF "gaia_verb_arm_view definitions found: 1" <<<"$output" || return 1
   grep -qF ".claude/hooks/pr-merge-audit-check.sh: adopted" <<<"$output" || return 1
-  grep -qF "roster: registered adopters match the enumerated eleven" <<<"$output" || return 1
+  grep -qF "roster: registered adopters match the enumerated set" <<<"$output" || return 1
 }
 
 @test "fixture: a twelfth hook with a private start_re/sep_re pair fails and names file and line (case 1)" {

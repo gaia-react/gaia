@@ -96,6 +96,7 @@ catchup-merge|git merge --no-edit origin/main|static|merges `origin/main` into t
 spawn-roster|resolve-audit-spawn.sh|exec|runs verbatim against this checkout
 noop-classify|audit-noop-detect.sh --shape audit-team-member|exec|runs against a fixture root, marker and sidecar
 wave-stamp|WAVE_STAMP="$(mktemp)"|exec|runs verbatim, and the claim under test is where mktemp puts the file
+residual-enumerate|gh pr list --state merged|static|reaches github.com for every merged pull request's body
 debt-origin|debt-origin-lib.sh|exec|runs verbatim with the changed-value placeholder filled in
 disposition-sidecar|audit-member-digest.sh|exec|runs verbatim against this checkout
 findings-block|post-findings-block.sh --pr|static|posts a comment to a live PR

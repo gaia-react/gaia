@@ -63,8 +63,8 @@
 #   if [ "$errexit_was" = 1 ]; then set -e; fi
 #   type some_fn >/dev/null 2>&1 || <degrade>
 #
-# A library's callers do not all arm errexit -- verb-arming.sh has eleven and
-# seven do not -- so a flat `set -e` ARMS errexit in those seven, and the caller
+# A library's callers do not all arm errexit -- verb-arming.sh has several
+# consumers that do not -- so a flat `set -e` ARMS errexit in those, and the caller
 # then dies at its next non-zero command. That is why the flat shape is a hit at
 # a library site rather than a style preference, and why this check answers a
 # second question per site: is this file an ENTRY POINT, or is it sourced?
