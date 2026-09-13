@@ -893,6 +893,57 @@ describe('gaia residue-tally', () => {
       expect((out.json() as {gh_ok: boolean}).gh_ok).toBe(true);
     });
 
+    test('a cache entry whose malformed[] holds a non-record emits no fieldless row', () => {
+      // `malformed[]` elements are spread into the emit rather than read field
+      // by field, so a non-record here costs a row carrying only `pr_number`
+      // instead of a crash. That is quieter than the `entries[]` case above
+      // and worse to debug: the operator is shown a malformed residual with no
+      // key and no reason, for a pull request whose body has neither.
+      const root = makeRoot(
+        corpusWithBody(bodyWithKey(ACCEPT_HEADING, 'x/y', 'app/a.ts', 1))
+      );
+
+      tallyCounts(root);
+
+      const cachePath = path.join(
+        root,
+        '.gaia',
+        'local',
+        'cache',
+        'residual-attribution.json'
+      );
+
+      writeFileSync(
+        cachePath,
+        JSON.stringify({
+          high_water_merged_at: '2026-02-01T00:00:00Z',
+          prs: {
+            99: {
+              attribution: {entries: [], keyless: [], malformed: [null]},
+              bodyDigest: 'deadbeef',
+              headRefOid: 'sha-99',
+              mergedAt: '2025-01-01T00:00:00Z',
+            },
+          },
+          resolutions: {},
+          schema: 'v1',
+        })
+      );
+
+      // `unknown[]`, deliberately not cast to a row type: the whole point is
+      // that a non-record can arrive here, so a cast asserting otherwise would
+      // make the null branch unreachable by type while it stays reachable at
+      // run time.
+      const emitted = tallyCounts(root).malformed;
+
+      expect(
+        emitted.filter(
+          (row) =>
+            typeof row !== 'object' || row === null || !('raw_key' in row)
+        )
+      ).toEqual([]);
+    });
+
     test('an unchanged body reuses its cached attribution instead of re-attributing', () => {
       // Counting candidates across two runs cannot see this: a run that
       // ignores the cache entirely produces the identical count. Only the
