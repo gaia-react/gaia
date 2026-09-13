@@ -381,6 +381,10 @@ jobs:
           steps.phase.outputs.reached_audit == 'true' &&
           steps.decision.outputs.should_run == 'true' &&
           steps.trailer.outputs.skip == 'false'
+        # Bounds a stalled Node tarball fetch, not a budget for the work;
+        # strictly under the job's 60-minute cap so this step fires first and
+        # names the Node install rather than redding as a generic job timeout.
+        timeout-minutes: 3
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version-file: '.node-version'
