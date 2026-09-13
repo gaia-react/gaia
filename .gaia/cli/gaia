@@ -21627,9 +21627,11 @@ var matchInnerKey = (line, keyPattern2) => {
   ).exec(line);
   return match?.[1] ?? null;
 };
+var headingText = (line) => line.replace(HEADING_PATTERN, "");
 var canonicalDisposition = (trimmedHeading, predicates) => {
-  if (trimmedHeading === predicates.canonAccept) return "accept";
-  if (trimmedHeading === predicates.canonWaive) return "waive";
+  const text = headingText(trimmedHeading);
+  if (text === headingText(predicates.canonAccept)) return "accept";
+  if (text === headingText(predicates.canonWaive)) return "waive";
   return null;
 };
 var attributeBodyWith = (body, predicates) => {

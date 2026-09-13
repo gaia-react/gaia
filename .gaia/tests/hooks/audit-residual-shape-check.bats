@@ -899,11 +899,82 @@ EXCLUDED_HEADINGS=(
   [ ! -e "$emit_file" ] || return 1
 }
 
-@test "a canonical literal spelled at level three is not recognized and emits no line" {
-  local emit_file="$BATS_TEST_TMPDIR/emit-level3.tsv" body
+@test "a canonical literal spelled at a deeper level is recognized and emits its unit" {
+  local emit_file body marker text emitted
+  text="${CANON_ACCEPT#'## '}"
+
+  for marker in '#' '###' '######'; do
+    emit_file="$BATS_TEST_TMPDIR/emit-level-${#marker}.tsv"
+    rm -f "$emit_file"
+    body="$(join_lines \
+      "$marker $text" \
+      "- residual-november2, keyed <!-- gaia-debt-key: v1 class=lint path=app/november2.ts line=1 -->")"
+
+    export GAIA_AUDIT_RESIDUAL_DEBUG_EMIT="$emit_file"
+    drive_body "$body"
+    unset GAIA_AUDIT_RESIDUAL_DEBUG_EMIT
+    assert_permits_silently
+
+    [ -f "$emit_file" ] || return 1
+    emitted="$(wc -l < "$emit_file" | tr -d ' ')"
+    [ "$emitted" -eq 1 ] || return 1
+    grep -qF -- "disposition=accept" "$emit_file" || return 1
+    grep -qF -- "key=v1 class=lint path=app/november2.ts line=1" "$emit_file" || return 1
+  done
+}
+
+@test "a keyless entry beneath a canonical literal spelled at a deeper level denies, the same as at level two" {
+  local body
   body="$(join_lines \
-    "### Accepted residuals (recorded, not fixed)" \
-    "- residual-november2, keyed <!-- gaia-debt-key: v1 class=lint path=app/november2.ts line=1 -->")"
+    "### ${CANON_WAIVE#'## '}" \
+    "- residual-november3, no key attached")"
+
+  drive_body "$body"
+  assert_denied_by_json
+  grep -qF -- "Keyless entry count: 1" <<<"$output" || return 1
+}
+
+@test "a refused heading spelled at a deeper level is refused too, keeping its own replacement mapping" {
+  local i heading replacement text
+  for i in "${!REFUSED_HEADINGS[@]}"; do
+    heading="${REFUSED_HEADINGS[$i]}"
+    replacement="${REFUSED_REPLACEMENTS[$i]}"
+    text="${heading#'## '}"
+
+    drive_body "### $text"
+    assert_denied_by_json
+    grep -qF -- "Offending heading count: 1" <<<"$output" || return 1
+    case "$replacement" in
+      accept)
+        grep -qF -- "$CANON_ACCEPT" <<<"$output" || return 1
+        grep -qF -- "$CANON_WAIVE" <<<"$output" && return 1
+        ;;
+      waive)
+        grep -qF -- "$CANON_WAIVE" <<<"$output" || return 1
+        grep -qF -- "$CANON_ACCEPT" <<<"$output" && return 1
+        ;;
+      both)
+        grep -qF -- "$CANON_ACCEPT" <<<"$output" || return 1
+        grep -qF -- "$CANON_WAIVE" <<<"$output" || return 1
+        ;;
+      *)
+        echo "unexpected replacement token '$replacement' for heading '$heading'" >&2
+        return 1
+        ;;
+    esac
+  done
+
+  # The loop's last arm ends in a `&& return 1` absence check, whose own
+  # non-zero status would otherwise become this test's result on the pass
+  # case (`.claude/rules/bats-assertions.md`).
+  true
+}
+
+@test "level-blindness widens the heading marker only, never the spacing after it" {
+  local emit_file="$BATS_TEST_TMPDIR/emit-wide-space.tsv" body
+  body="$(join_lines \
+    "###  ${CANON_ACCEPT#'## '}" \
+    "- residual-november4, keyed <!-- gaia-debt-key: v1 class=lint path=app/november4.ts line=1 -->")"
 
   export GAIA_AUDIT_RESIDUAL_DEBUG_EMIT="$emit_file"
   drive_body "$body"

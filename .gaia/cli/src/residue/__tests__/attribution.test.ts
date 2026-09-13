@@ -170,10 +170,33 @@ describe('attributeBody, entry attribution', () => {
     expect(result.keyless_count).toBe(result.keyless.length);
   });
 
-  test('attributes nothing beneath a level-three spelling of a canonical heading', () => {
+  test('attributes beneath a canonical heading spelled at any level, not only at level two', () => {
+    const accept = CANON_ACCEPT.replace('## ', '');
+    const waive = CANON_WAIVE.replace('## ', '');
+
+    for (const marker of ['#', '###', '######']) {
+      const lines = [
+        `${marker} ${accept}`,
+        `- An accepted entry ${key('a/one', 'app/one.ts', 1)}`,
+        `${marker} ${waive}`,
+        `- A waived entry ${key('w/one', 'app/two.ts', 2)}`,
+      ];
+      const result = attributeBody(bodyOf(lines));
+
+      expect(
+        result.entries.map((entry) => [entry.disposition, entry.key.path])
+      ).toStrictEqual([
+        ['accept', 'app/one.ts'],
+        ['waive', 'app/two.ts'],
+      ]);
+      expect(result.keyless).toStrictEqual([]);
+    }
+  });
+
+  test('level-blindness widens the heading marker only, never the spacing after it', () => {
     const result = attributeBody(
       bodyOf([
-        `### ${CANON_ACCEPT.replace('## ', '')}`,
+        `###  ${CANON_ACCEPT.replace('## ', '')}`,
         `- An entry ${key('a/one', 'app/one.ts', 1)}`,
       ])
     );
