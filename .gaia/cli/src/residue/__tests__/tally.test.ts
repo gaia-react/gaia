@@ -4,6 +4,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readdirSync,
+  readFileSync,
   rmSync,
   statSync,
   writeFileSync,
@@ -708,6 +709,18 @@ describe('gaia residue-tally', () => {
       expect(stderr).toMatch(/--cap needs a positive integer/);
     });
 
+    test('an absent value is named as missing rather than as `undefined`', () => {
+      // Every case above supplies a token after `--cap`, so the end-of-argv
+      // arm renders its message unasserted. Interpolating the absent token
+      // shows the operator a JavaScript sentinel for a cause that is "you
+      // typed nothing".
+      const {code, stderr} = runWithCapValue(makeRoot(CAP_CORPUS), []);
+
+      expect(code).not.toBe(0);
+      expect(stderr).toMatch(/--cap needs a positive integer value/);
+      expect(stderr).not.toMatch(/undefined/);
+    });
+
     test('a positive value is still accepted', () => {
       const {code} = runWithCapValue(makeRoot(CAP_CORPUS), ['3']);
 
@@ -790,9 +803,11 @@ describe('gaia residue-tally', () => {
     });
 
     test('a cache entry of an unexpected shape does not crash the window scan', () => {
-      // `isValidCache` checks the container, not its entries, so a hand-edited
-      // or truncated cache reaches the scan. Exiting 0 over a cache it cannot
-      // use is this command's stated contract.
+      // A hand-edited or truncated cache reaches the scan, and exiting 0 over
+      // a cache it cannot use is this command's stated contract. This case
+      // covers a pull-request entry that is wrong at its top level; the
+      // sibling below covers one that is wrong inside `entries[]`, which is
+      // where the consumers actually dereference.
       const root = makeRoot(
         corpusWithBody(bodyWithKey(ACCEPT_HEADING, 'x/y', 'app/a.ts', 1))
       );
@@ -829,6 +844,55 @@ describe('gaia residue-tally', () => {
       expect((out.json() as {gh_ok: boolean}).gh_ok).toBe(true);
     });
 
+    test('a cache entry whose entries[] holds a non-record does not crash the window scan', () => {
+      // The entry passes every container check: `attribution.entries` is an
+      // array. `compute-candidates.ts` then reads `entry.key.class` two levels
+      // in, so validating only the array hands it a `null` to dereference and
+      // the command exits non-zero with a stack trace, against both its own
+      // always-exits-0 contract and the cache's promise to degrade to empty.
+      const root = makeRoot(
+        corpusWithBody(bodyWithKey(ACCEPT_HEADING, 'x/y', 'app/a.ts', 1))
+      );
+
+      tallyCounts(root);
+
+      const cachePath = path.join(
+        root,
+        '.gaia',
+        'local',
+        'cache',
+        'residual-attribution.json'
+      );
+
+      writeFileSync(
+        cachePath,
+        JSON.stringify({
+          high_water_merged_at: '2026-02-01T00:00:00Z',
+          prs: {
+            99: {
+              attribution: {entries: [null], keyless: [], malformed: []},
+              bodyDigest: 'deadbeef',
+              headRefOid: 'sha-99',
+              mergedAt: '2025-01-01T00:00:00Z',
+            },
+          },
+          resolutions: {},
+          schema: 'v1',
+        })
+      );
+
+      const out = capture();
+
+      expect(
+        run([], {
+          cwd: root,
+          env: {GAIA_RESIDUE_FIXTURE_DIR: root},
+          now: fixedNow,
+        })
+      ).toBe(0);
+      expect((out.json() as {gh_ok: boolean}).gh_ok).toBe(true);
+    });
+
     test('an unchanged body reuses its cached attribution instead of re-attributing', () => {
       // Counting candidates across two runs cannot see this: a run that
       // ignores the cache entirely produces the identical count. Only the
@@ -842,6 +906,46 @@ describe('gaia residue-tally', () => {
       tallyCounts(root);
 
       expect(attributeBodySpy).not.toHaveBeenCalled();
+    });
+
+    test('a high-water mark of the wrong type discards the cache rather than being read as a date', () => {
+      // The field is typed `null | string` and compared as a date. Counting
+      // candidates cannot see a wrong value here either, for the same reason
+      // the test above gives, so reuse-versus-rediscovery is again the only
+      // observable that separates a validated cache from an unvalidated one.
+      const root = makeRoot(
+        corpusWithBody(bodyWithKey(ACCEPT_HEADING, 'x/y', 'app/a.ts', 1))
+      );
+
+      tallyCounts(root);
+
+      const cachePath = path.join(
+        root,
+        '.gaia',
+        'local',
+        'cache',
+        'residual-attribution.json'
+      );
+
+      const cached: unknown = JSON.parse(readFileSync(cachePath, 'utf8'));
+
+      writeFileSync(
+        cachePath,
+        JSON.stringify({
+          ...(cached as Record<string, unknown>),
+          high_water_merged_at: 42,
+        })
+      );
+
+      attributeBodySpy.mockClear();
+      tallyCounts(root);
+
+      // Not a bare `toHaveBeenCalled()`: `vitest/prefer-called-with` autofixes
+      // that into an empty `toHaveBeenCalledWith()`, which asserts something
+      // else entirely. The count is the stronger claim anyway: this corpus
+      // carries two merges, so re-attributing both is what distinguishes the
+      // whole cache being discarded from one entry of it being refreshed.
+      expect(attributeBodySpy).toHaveBeenCalledTimes(2);
     });
   });
 });

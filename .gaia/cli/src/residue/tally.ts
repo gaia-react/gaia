@@ -136,10 +136,20 @@ const parseArgs = (
       // whatever sits in the value position, so `--cap --count-only` would eat
       // the mode flag and silently run the resolving path `--count-only`
       // forbids. An unknown argument is already an error; so is this.
-      const parsedCap = parseCapValue(argv[index + 1]);
+      const capValue = argv[index + 1];
+      const parsedCap = parseCapValue(capValue);
 
       if (parsedCap === null) {
-        return {error: `--cap needs a positive integer: ${argv[index + 1]}`};
+        // Two conditions reach this refusal and they need different words: a
+        // value that is present and unusable, and no value at all. Naming the
+        // absent one by interpolation shows the operator a JavaScript
+        // sentinel where the cause is that they typed nothing.
+        return {
+          error:
+            capValue === undefined ?
+              '--cap needs a positive integer value'
+            : `--cap needs a positive integer: ${capValue}`,
+        };
       }
 
       flags.cap = parsedCap;

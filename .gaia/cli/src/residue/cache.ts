@@ -77,18 +77,45 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 // through and turns the next property read into an uncaught TypeError. This
 // command's contract is to exit 0 over a cache it cannot use, which means a
 // bad entry has to be caught here, where the whole cache degrades to empty.
+//
+// The depth is set by where a consumer stops dereferencing, not by the type's
+// own nesting: `compute-candidates.ts` reads two levels in, through
+// `entry.key`, so an element check that stopped at the array would still hand
+// it a `null` to dereference. `malformed[]` elements are spread rather than
+// read field by field, so a record check is the whole of what they need; a
+// non-record there costs a fieldless emitted row instead of a crash, which is
+// why the two arrays are validated to different depths. Being stricter than a
+// consumer needs is the safe direction anyway: an over-strict predicate costs
+// a cold read, and a cold read is this cache's documented fallback.
+const isValidResidueKey = (value: unknown): boolean =>
+  isRecord(value) &&
+  typeof value.class === 'string' &&
+  typeof value.line === 'number' &&
+  typeof value.path === 'string';
+
+const isValidAttributedEntry = (value: unknown): boolean =>
+  isRecord(value) &&
+  typeof value.disposition === 'string' &&
+  typeof value.failure_mode === 'string' &&
+  typeof value.raw_key === 'string' &&
+  isValidResidueKey(value.key);
+
 const isValidPrEntry = (value: unknown): value is CachedPrAttribution =>
   isRecord(value) &&
   typeof value.headRefOid === 'string' &&
   typeof value.mergedAt === 'string' &&
   isRecord(value.attribution) &&
   Array.isArray(value.attribution.entries) &&
+  value.attribution.entries.every(isValidAttributedEntry) &&
   Array.isArray(value.attribution.keyless) &&
-  Array.isArray(value.attribution.malformed);
+  Array.isArray(value.attribution.malformed) &&
+  value.attribution.malformed.every(isRecord);
 
 const isValidCache = (value: unknown): value is AttributionCache =>
   isRecord(value) &&
   value.schema === 'v1' &&
+  (value.high_water_merged_at === null ||
+    typeof value.high_water_merged_at === 'string') &&
   isRecord(value.prs) &&
   isRecord(value.resolutions) &&
   Object.values(value.prs).every(isValidPrEntry);

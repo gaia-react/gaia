@@ -252,6 +252,16 @@ _debug_emit_path="${GAIA_AUDIT_RESIDUAL_DEBUG_EMIT:-}"
 # states that in the grammar `.gaia/scripts/check-hook-capabilities.sh` reads:
 # a positional IS the caller's answer, where a variable read from the
 # environment resolves to no path the oracle can name.
+#
+# Two honest limits of that. The guard below spells `${1:-}` rather than `$1`
+# because this file runs under `set -u`: an arm added later that closes a unit
+# without passing the path would abort the whole hook before it writes its
+# deny JSON, and a PreToolUse exit that is not 2 does not block, so a
+# fail-closed gate would silently permit. And because the resolved term is
+# read off the positional rather than off the real destination, narrowing that
+# destination to a path this file picks would leave the term at `**` and the
+# declaration unreported as too wide; re-derive the declaration by hand if
+# that ever happens rather than trusting the check to notice.
 close_unit() {
   if [ "$unit_open" = 1 ]; then
     if [ "$unit_keyed" != 1 ]; then
@@ -262,7 +272,7 @@ close_unit() {
         keyless_lines="$unit_start_line"
       fi
     fi
-    if [ -n "$1" ]; then
+    if [ -n "${1:-}" ]; then
       # The brace group's own redirect, not a per-command one on printf: an
       # open failure on `>>` (a missing or unwritable path) is reported by the
       # shell before a same-command `2>/dev/null` would take effect, so only a
