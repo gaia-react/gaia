@@ -256,7 +256,7 @@ _debug_emit_path="${GAIA_AUDIT_RESIDUAL_DEBUG_EMIT:-}"
 # Two honest limits of that. The guard below spells `${1:-}` rather than `$1`
 # because this file runs under `set -u`: an arm added later that closes a unit
 # without passing the path would abort the whole hook before it writes its
-# deny JSON, and a PreToolUse exit that is not 2 does not block, so a
+# deny JSON, and a non-zero PreToolUse exit other than 2 does not block, so a
 # fail-closed gate would silently permit. And because the resolved term is
 # read off the positional rather than off the real destination, narrowing that
 # destination to a path this file picks would leave the term at `**` and the

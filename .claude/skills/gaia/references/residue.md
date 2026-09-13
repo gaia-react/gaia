@@ -39,11 +39,11 @@ Bind to the top-level fields it prints: `gh_ok`, `count_approximate`, `candidate
 
 Then the three terminating reads:
 
-- `gh_ok` is `false`: report, verbatim, `could not read the merged-PR window; this is not an all-clear, re-run when \`gh\` is available`, then report the populations below and stop. Never claim no findings.
+- `gh_ok` is `false`: report, verbatim, `could not complete the GitHub reads; this is not an all-clear, re-run when \`gh\` is available`, then report the populations below and stop. Never claim no findings. Two independent reads set it, the merged-PR window and the tech-debt issue list, and the emit does not say which; naming one of them would send the operator to debug a call that succeeded.
 - `gh_ok` is `true` and `candidate_count` is `0`: report the populations below, then that no keyed residual is currently open, and stop.
 - Otherwise: proceed to the triage loop below.
 
-Which populations a stop arm carries live differs by arm. The zero-candidate arm carries both, and it is the one that bites: announcing that nothing is open over a truncated corpus, or over a dismissal store some of whose lines could not be read, is exactly the false all-clear this section exists to prevent. The `gh_ok` is `false` arm carries `store_skipped` live, but its `malformed` is always emitted empty whether or not malformed keys exist, so an empty `malformed` there means **unknown**, never none; report it as unknown rather than reporting nothing.
+Which populations a stop arm carries live differs by arm. The zero-candidate arm carries both, and it is the one that bites: announcing that nothing is open over a truncated corpus, or over a dismissal store some of whose lines could not be read, is exactly the false all-clear this section exists to prevent. The `gh_ok` is `false` arms carry `store_skipped` live, but their `malformed` is always emitted empty whether or not malformed keys exist, so an empty `malformed` there means **unknown**, never none; report it as unknown rather than reporting nothing.
 
 These populations never reach the triage loop, so nothing else will mention them. Report each one that is non-empty, carrying the `reason` each entry gives rather than a summary of it; where the arm above says a population is unknown rather than empty, report it as unknown instead of staying silent. On `review` that is alongside the candidate list, before the first question; on `list` and `why`, alongside the printed result; and on either terminating stop above, alongside that stop's own report, before the run ends:
 

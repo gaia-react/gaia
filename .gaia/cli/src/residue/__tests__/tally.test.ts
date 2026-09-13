@@ -944,6 +944,52 @@ describe('gaia residue-tally', () => {
       ).toEqual([]);
     });
 
+    test('a cached resolution that is not a record does not crash the run', () => {
+      // The sibling of the `prs` map, and the one whose blast radius is wider:
+      // `makeCachingResolve` hands a cached value straight back, so the crash
+      // reaches `residue-record` too, losing an operator's dismissal rather
+      // than only a read. Keyed the way `resolutionCacheKey` spells it, so the
+      // lookup hits rather than missing and silently passing.
+      const root = makeRoot({
+        blobs: {'sha1:app/a.ts': 'preamble\nthe cited line\n'},
+        issues: [],
+        prs: [
+          {
+            body: bodyWithKey(ACCEPT_HEADING, 'x/y', 'app/a.ts', 2),
+            headRefOid: 'sha1',
+            mergedAt: '2026-01-01T00:00:00Z',
+            number: 1,
+          },
+        ],
+      });
+
+      // A run first, so the cache directory exists and the path written below
+      // is the one the command actually reads rather than one this test
+      // invented; the whole file is then replaced.
+      tallyCounts(root);
+
+      writeFileSync(
+        path.join(root, '.gaia', 'local', 'cache', 'residual-attribution.json'),
+        JSON.stringify({
+          high_water_merged_at: null,
+          prs: {},
+          resolutions: {'sha1:app/a.ts:2': null},
+          schema: 'v1',
+        })
+      );
+
+      const out = capture();
+
+      expect(
+        run([], {
+          cwd: root,
+          env: {GAIA_RESIDUE_FIXTURE_DIR: root},
+          now: fixedNow,
+        })
+      ).toBe(0);
+      expect((out.json() as {gh_ok: boolean}).gh_ok).toBe(true);
+    });
+
     test('an unchanged body reuses its cached attribution instead of re-attributing', () => {
       // Counting candidates across two runs cannot see this: a run that
       // ignores the cache entirely produces the identical count. Only the

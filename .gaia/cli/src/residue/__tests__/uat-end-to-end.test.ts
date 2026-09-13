@@ -573,8 +573,8 @@ const skillText = readFileSync(SKILL_REFERENCE_PATH, 'utf8');
 
 const SKILL_LITERALS: {name: string; text: string}[] = [
   {
-    name: 'UAT-008: the failed-window literal, verbatim',
-    text: 'could not read the merged-PR window; this is not an all-clear, re-run when \\`gh\\` is available',
+    name: 'UAT-008: the failed-read literal, verbatim',
+    text: 'could not complete the GitHub reads; this is not an all-clear, re-run when \\`gh\\` is available',
   },
   {
     name: 'UAT-013: the review subcommand definition',

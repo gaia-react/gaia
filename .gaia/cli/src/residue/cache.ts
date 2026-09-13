@@ -100,6 +100,16 @@ const isValidAttributedEntry = (value: unknown): boolean =>
   typeof value.raw_key === 'string' &&
   isValidResidueKey(value.key);
 
+// The resolution map is the `prs` map's sibling and takes the same treatment
+// for the same reason: `makeCachingResolve` returns a cached value straight
+// through to `compute-candidates.ts`, and `record-cmd.ts` reads its line text
+// while appending an operator's dismissal, so a non-record here costs that
+// dismissal rather than merely a stale read.
+const isValidResolution = (value: unknown): boolean =>
+  isRecord(value) &&
+  typeof value.resolution === 'string' &&
+  typeof value.resolved_line_text === 'string';
+
 const isValidPrEntry = (value: unknown): value is CachedPrAttribution =>
   isRecord(value) &&
   typeof value.headRefOid === 'string' &&
@@ -118,7 +128,8 @@ const isValidCache = (value: unknown): value is AttributionCache =>
     typeof value.high_water_merged_at === 'string') &&
   isRecord(value.prs) &&
   isRecord(value.resolutions) &&
-  Object.values(value.prs).every(isValidPrEntry);
+  Object.values(value.prs).every(isValidPrEntry) &&
+  Object.values(value.resolutions).every(isValidResolution);
 
 const attributionCachePath = (repoRoot: string): string =>
   path.join(repoRoot, ...CACHE_DIR_SEGMENTS, ATTRIBUTION_CACHE_FILE);
