@@ -220,6 +220,18 @@
       "source": "SPEC-061 §main-only"
     },
     {
+      "id": "residual-triage-caches",
+      "path": "cache/residual-attribution.json|cache/residual-cursor.json",
+      "match": "exact",
+      "kind": "file",
+      "scope": "main-only",
+      "keyed_by": null,
+      "why": "The residue triage command's derived read cache (per-pull-request attribution and resolved cited lines, keyed by pull-request number and head sha) and its resumable per-run cursor. Derived state, never a record: a cold cache reproduces the same candidate list. Main-only rather than shared, so keyed_by stays null per the schema's rule and the two concrete filenames show up in `path` instead. Named `residual`, not `residue`: this registry's own top-level `residue` array names an unrelated concept, orphaned machine-local state reaped by the janitor.",
+      "writer": "code",
+      "reaped_by": "stale cache sweep",
+      "source": "SPEC-081"
+    },
+    {
       "id": "spec-chain-guard",
       "path": "cache/spec-chain-*.json",
       "match": "glob",

@@ -16,6 +16,8 @@ A release change that requires the adopter to act, run a command or hand-migrate
 
 ### Added
 
+- audit residue recorded in merged pull-request bodies now has a drain. `/gaia-residue` triages one entry at a time into a filed tech-debt issue, a recorded dismissal, or a deliberate keep, and it never fixes anything itself
+
 - a stalled Node download while a workflow provisions its toolchain now reds with the step that stalled, rather than as a generic job timeout attributed to no step. The `Setup Node` steps that call `actions/setup-node` directly declared no bound of their own while the pnpm step beside each one did, so a stall ran to the whole job's cap; on a declared-required check that blocks a pull request with a failure pointing at nothing, and re-running it does not diagnose it. This bounds attribution only: it does not make a registry stall survivable, and what changes is which step is named when the lane reds. The audit workflow ships as a template, so the bound reaches an adopter when `/update-gaia` refreshes it (#2041)
 
 - pnpm provisioning is now attributable everywhere GAIA provisions it, not only at the shared composite's call sites. Adopter CI workflows' provisioning now routes through that composite, gaining the step bound and the fast-failure retry it never had, and reaching an already-installed adopter only on their next `/setup-gaia` re-render, never through `/update-gaia`. This does not make a registry stall survivable; what changes is which step is named when the lane reds (#1783)

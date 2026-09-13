@@ -23,6 +23,9 @@ import {run as runInit} from './init/index.js';
 import {run as runLabels} from './labels/index.js';
 import {run as runPing} from './ping/index.js';
 import {run as runReactPerf} from './react-perf/index.js';
+import {run as runResidueCursor} from './residue/cursor-cmd.js';
+import {run as runResidueRecord} from './residue/record-cmd.js';
+import {run as runResidueTally} from './residue/tally.js';
 import {run as runSandbox} from './sandbox/index.js';
 import {run as runScaffold} from './scaffold/index.js';
 import {run as runSetupCi} from './setup-ci/index.js';
@@ -53,6 +56,9 @@ const HELP_TEXT = `Usage: gaia <subcommand> [args]
   setup-ci status|check-drift|check-audit-drift|detect-remote|warn-existing-tools|check-admin|dismiss-personal|opt-out-team|enable-delete-branch|verify-run|finalize|write-tool-mode|write-isolation-policy
   sandbox detect|seed|apply|record|status
   ping --event <init|setup|update> [--field value ...]
+  residue-tally [--count-only] [--attribute-only] [--cap N] [--no-cap] [--json]
+  residue-cursor show|advance --token T|clear
+  residue-record --disposition dismissed|kept|suppressed --token T [--token T ...] --reason-file F
 `;
 
 const printHelp = (): void => {
@@ -79,6 +85,9 @@ const SUBCOMMAND_HANDLERS: Readonly<
   labels: runLabels,
   ping: runPing,
   'react-perf': runReactPerf,
+  'residue-cursor': runResidueCursor,
+  'residue-record': runResidueRecord,
+  'residue-tally': runResidueTally,
   sandbox: runSandbox,
   scaffold: runScaffold,
   setup: runSetup,
