@@ -39,11 +39,13 @@ Bind to the top-level fields it prints: `gh_ok`, `count_approximate`, `candidate
 
 Then the three terminating reads:
 
-- `gh_ok` is `false`: report, verbatim, `could not read the merged-PR window; this is not an all-clear, re-run when \`gh\` is available`, and stop. Never claim no findings.
-- `gh_ok` is `true` and `candidate_count` is `0`: report that no keyed residual is currently open, and stop.
+- `gh_ok` is `false`: report, verbatim, `could not read the merged-PR window; this is not an all-clear, re-run when \`gh\` is available`, then report the populations below and stop. Never claim no findings.
+- `gh_ok` is `true` and `candidate_count` is `0`: report the populations below, then that no keyed residual is currently open, and stop.
 - Otherwise: proceed to the triage loop below.
 
-These populations never reach that loop, so nothing else will mention them. Report each one that is non-empty, carrying the `reason` each entry gives rather than a summary of it; on `review` that is alongside the candidate list, before the first question, and on `list` and `why` it is alongside the printed result:
+Both stop arms carry those populations live, so reporting them is part of the stop rather than something the triage loop would have done later. The zero-candidate arm is the one that bites: announcing that nothing is open over a truncated corpus, or over a dismissal store some of whose lines could not be read, is exactly the false all-clear this section exists to prevent.
+
+These populations never reach the triage loop, so nothing else will mention them. Report each one that is non-empty, carrying the `reason` each entry gives rather than a summary of it. On `review` that is alongside the candidate list, before the first question; on `list` and `why`, alongside the printed result; and on either terminating stop above, alongside that stop's own report, before the run ends:
 
 - `malformed` holds entry units whose key matched the gate's grammar but failed field validation. They are withheld from triage by design, and the reason is reported so the key can be repaired in its own pull-request body. A run that stays silent here leaves a residual no one can act on and no one knows about.
 - `store_skipped` holds dismissal-store lines that could not be read. Each one is a disposition that has stopped suppressing, so a suppression a reviewer believes is in place is not.

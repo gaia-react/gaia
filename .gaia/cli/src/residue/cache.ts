@@ -20,7 +20,11 @@
  * The digest only ever sees an edit on a pull request the incremental window
  * re-reads, since an entry nothing re-reads is never compared. `tally.ts`'s
  * `incrementalWindowStart` is what keeps the two in step, lowering the window
- * to cover every entry still carrying a malformed key.
+ * to cover every entry still carrying a malformed key. It does that on the
+ * interactive run only: that widening is bounded by the age of the oldest
+ * unrepaired malformed key rather than by how many exist, so `--count-only`,
+ * which the statusline refresher calls on every tick, keeps the plain
+ * high-water mark and lags a repair until the next interactive run.
  */
 import {createHash} from 'node:crypto';
 import {existsSync, mkdirSync, readFileSync, unlinkSync} from 'node:fs';
@@ -68,11 +72,26 @@ export const emptyAttributionCache = (): AttributionCache => ({
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
+// Every consumer reads `entry.attribution.<field>` without a guard of its own,
+// so validating the container alone lets a hand-edited or truncated cache
+// through and turns the next property read into an uncaught TypeError. This
+// command's contract is to exit 0 over a cache it cannot use, which means a
+// bad entry has to be caught here, where the whole cache degrades to empty.
+const isValidPrEntry = (value: unknown): value is CachedPrAttribution =>
+  isRecord(value) &&
+  typeof value.headRefOid === 'string' &&
+  typeof value.mergedAt === 'string' &&
+  isRecord(value.attribution) &&
+  Array.isArray(value.attribution.entries) &&
+  Array.isArray(value.attribution.keyless) &&
+  Array.isArray(value.attribution.malformed);
+
 const isValidCache = (value: unknown): value is AttributionCache =>
   isRecord(value) &&
   value.schema === 'v1' &&
   isRecord(value.prs) &&
-  isRecord(value.resolutions);
+  isRecord(value.resolutions) &&
+  Object.values(value.prs).every(isValidPrEntry);
 
 const attributionCachePath = (repoRoot: string): string =>
   path.join(repoRoot, ...CACHE_DIR_SEGMENTS, ATTRIBUTION_CACHE_FILE);

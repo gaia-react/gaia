@@ -731,10 +731,97 @@ describe('gaia residue-tally', () => {
         )
       );
 
-      const warm = tallyCounts(root);
+      // The interactive run, not `--count-only`: only this path widens the
+      // window, which is what makes the repair visible.
+      const out = capture();
+
+      run([], {
+        cwd: root,
+        env: {GAIA_RESIDUE_FIXTURE_DIR: root},
+        now: fixedNow,
+      });
+
+      const warm = out.json() as {
+        candidate_count: number;
+        malformed: unknown[];
+      };
 
       expect(warm.malformed).toEqual([]);
       expect(warm.candidate_count).toBe(2);
+    });
+
+    test('--count-only never widens the window, so the refresher keeps its incremental read', () => {
+      // The widening is bounded by the AGE of the oldest malformed key, and
+      // nothing retires one, so on the refresher's path it would be a
+      // permanently full-corpus read. It under-reports a just-repaired entry
+      // instead, until the next interactive run.
+      const root = makeRoot(
+        corpusWithBody(bodyWithKey(ACCEPT_HEADING, 'x/y', '/absolute/a.ts', 1))
+      );
+
+      tallyCounts(root);
+
+      writeFileSync(
+        path.join(root, 'prs.json'),
+        JSON.stringify(
+          corpusWithBody(bodyWithKey(ACCEPT_HEADING, 'x/y', 'app/a.ts', 1)).prs
+        )
+      );
+
+      // --count-only does not see the repair...
+      expect(tallyCounts(root).malformed).toHaveLength(1);
+
+      // ...and the interactive run does, then leaves a cache that agrees.
+      const out = capture();
+
+      run([], {
+        cwd: root,
+        env: {GAIA_RESIDUE_FIXTURE_DIR: root},
+        now: fixedNow,
+      });
+
+      expect((out.json() as {malformed: unknown[]}).malformed).toEqual([]);
+      expect(tallyCounts(root).malformed).toEqual([]);
+    });
+
+    test('a cache entry of an unexpected shape does not crash the window scan', () => {
+      // `isValidCache` checks the container, not its entries, so a hand-edited
+      // or truncated cache reaches the scan. Exiting 0 over a cache it cannot
+      // use is this command's stated contract.
+      const root = makeRoot(
+        corpusWithBody(bodyWithKey(ACCEPT_HEADING, 'x/y', 'app/a.ts', 1))
+      );
+
+      tallyCounts(root);
+
+      const cachePath = path.join(
+        root,
+        '.gaia',
+        'local',
+        'cache',
+        'residual-attribution.json'
+      );
+
+      writeFileSync(
+        cachePath,
+        JSON.stringify({
+          high_water_merged_at: '2026-02-01T00:00:00Z',
+          prs: {1: {}, abc: {}},
+          resolutions: {},
+          schema: 'v1',
+        })
+      );
+
+      const out = capture();
+
+      expect(
+        run([], {
+          cwd: root,
+          env: {GAIA_RESIDUE_FIXTURE_DIR: root},
+          now: fixedNow,
+        })
+      ).toBe(0);
+      expect((out.json() as {gh_ok: boolean}).gh_ok).toBe(true);
     });
 
     test('an unchanged body reuses its cached attribution instead of re-attributing', () => {

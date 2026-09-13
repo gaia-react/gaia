@@ -20723,7 +20723,8 @@ var emptyAttributionCache = () => ({
   schema: "v1"
 });
 var isRecord = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
-var isValidCache = (value) => isRecord(value) && value.schema === "v1" && isRecord(value.prs) && isRecord(value.resolutions);
+var isValidPrEntry = (value) => isRecord(value) && typeof value.headRefOid === "string" && typeof value.mergedAt === "string" && isRecord(value.attribution) && Array.isArray(value.attribution.entries) && Array.isArray(value.attribution.keyless) && Array.isArray(value.attribution.malformed);
+var isValidCache = (value) => isRecord(value) && value.schema === "v1" && isRecord(value.prs) && isRecord(value.resolutions) && Object.values(value.prs).every(isValidPrEntry);
 var attributionCachePath = (repoRoot) => path26.join(repoRoot, ...CACHE_DIR_SEGMENTS, ATTRIBUTION_CACHE_FILE);
 var readAttributionCache = (repoRoot) => {
   try {
@@ -21912,9 +21913,9 @@ var latestIsoTimestamp = (timestamps) => {
   }
   return latest;
 };
-var incrementalWindowStart = (cache) => {
+var incrementalWindowStart = (cache, countOnly) => {
   const highWater = cache.high_water_merged_at;
-  if (highWater === null) return null;
+  if (highWater === null || countOnly) return highWater;
   let oldestMalformed = null;
   for (const entry of Object.values(cache.prs)) {
     const carriesMalformed = entry.attribution.malformed.length > 0;
@@ -22053,7 +22054,9 @@ var run32 = (argv, options = {}) => {
   const cache = readAttributionCache(repoRoot);
   const emitCursor = cursorForEmit(cursor);
   const capForEmpty = parsed.value.cap ?? 0;
-  const mergedPrsResult = provider.mergedPrs(incrementalWindowStart(cache));
+  const mergedPrsResult = provider.mergedPrs(
+    incrementalWindowStart(cache, parsed.value.countOnly)
+  );
   if (!mergedPrsResult.ok) {
     printEmit(
       buildFailureEmit({

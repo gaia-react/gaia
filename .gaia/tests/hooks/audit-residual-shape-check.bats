@@ -739,9 +739,12 @@ EXCLUDED_HEADINGS=(
   # other test in this suite reaches that case either. The byte-identity test
   # below is not it: that one compares stdout, stderr and exit status, and
   # close_unit silences its own write, so a stray file on disk changes none of
-  # the bytes being compared. Reaching the case would mean driving the hook
-  # under a controlled HOME and PWD and asserting no new file appears beneath
-  # them, which is a larger test than this one.
+  # the bytes being compared. Driving the hook under a controlled HOME and PWD
+  # would reach the relative and $HOME-rooted spellings, but not a hard-coded
+  # absolute literal elsewhere, which is the spelling this paragraph opened by
+  # naming; that one needs a broader sweep still. The case is left open rather
+  # than partially claimed. It is hypothetical today: `_debug_emit_path` has no
+  # default at all, so there is no sink to find.
   local probe_dir="$BATS_TEST_TMPDIR/emit-probe" emit_file body before after
   emit_file="$probe_dir/out.tsv"
   mkdir -p "$probe_dir"

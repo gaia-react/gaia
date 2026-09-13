@@ -175,18 +175,35 @@ const latestIsoTimestamp = (timestamps: readonly string[]): null | string => {
 // the window still re-reads, and after one full run that window starts at the
 // NEWEST merge: precisely the pull request least likely to need re-reading.
 // Repairing a key this tally reported as malformed is an edit to an older
-// merged body, so lower the start to the oldest merge still carrying one. The
-// extra read is bounded by how many malformed keys exist, and it collapses
-// back to the plain high-water mark once they are repaired.
+// merged body, so lower the start to the oldest merge still carrying one.
 //
-// Only malformed keys earn this. Any other body edit is equally invisible on
-// an older merge, but nothing tells an operator to make one, and widening this
-// to every cached entry would re-read the whole corpus every run, which is the
-// incremental cache's entire reason for existing.
-const incrementalWindowStart = (cache: AttributionCache): null | string => {
+// State the cost honestly, because it is larger than it looks. `mergedPrs`
+// takes a DATE, so the widening is not bounded by how many malformed keys
+// exist but by the AGE of the oldest one: a single unrepaired key on the
+// oldest merged pull request admits every pull request merged since it.
+// Nothing retires a malformed entry either, since an unrepaired body keeps its
+// digest and so keeps its `malformed[]`, so the window stays at that width on
+// every run until the key is repaired. It is wide and persistent, not wide and
+// transient.
+//
+// That is why `--count-only` never widens. The statusline refresher calls it
+// on every tick, and a permanently full-corpus `gh pr list --json body` there
+// is exactly the standing cost the incremental cache exists to prevent. The
+// price of excluding it is bounded and one-directional: between a repair and
+// the next interactive run, the refresher's counts omit the repaired entry, so
+// the nudge under-reports rather than inventing work. The interactive run pays
+// the wide read, sees the repair, and rewrites the cache the refresher then
+// reads.
+//
+// Only malformed keys earn the widening at all. Any other body edit is equally
+// invisible on an older merge, but nothing tells an operator to make one.
+const incrementalWindowStart = (
+  cache: AttributionCache,
+  countOnly: boolean
+): null | string => {
   const highWater = cache.high_water_merged_at;
 
-  if (highWater === null) return null;
+  if (highWater === null || countOnly) return highWater;
 
   let oldestMalformed: null | string = null;
 
@@ -433,7 +450,9 @@ export const run = (
   const emitCursor = cursorForEmit(cursor);
   const capForEmpty = parsed.value.cap ?? 0;
 
-  const mergedPrsResult = provider.mergedPrs(incrementalWindowStart(cache));
+  const mergedPrsResult = provider.mergedPrs(
+    incrementalWindowStart(cache, parsed.value.countOnly)
+  );
 
   if (!mergedPrsResult.ok) {
     printEmit(
