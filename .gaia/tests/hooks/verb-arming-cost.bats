@@ -21,8 +21,8 @@
 #   32KB past-bound ~1-3ms (bash 3.2, the slow host this budget is written for).
 #
 #   Every adopting hook, one tool call: a 200-character ordinary `git commit`
-#   totals ~265-285ms; a 16KB raw-matching `gh pr merge` (most pay the walk;
-#   the rest raw-miss and skip it) totals ~320-365ms.
+#   totals ~260-325ms; a 16KB raw-matching `gh pr merge` (most pay the walk;
+#   the rest raw-miss and skip it) totals ~330-390ms.
 #
 #   Both figures were re-measured when four hooks took a `bash -n` parse check
 #   on their pre-gate verb-arming load (gaia-react/gaia#1556). What that change
@@ -336,6 +336,7 @@ adopting_hooks() {
     pr-merge-audit-check.sh \
     worthiness-presence-check.sh \
     audit-disposition-check.sh \
+    audit-residual-shape-check.sh \
     distribution-preflight-check.sh \
     post-findings-block-on-merge.sh \
     token-tally-git-op.sh \
@@ -366,17 +367,17 @@ CEILING_ONE_HOOK_RAWMATCH_MS=300
 CEILING_ONE_HOOK_NONMATCH_MS=150
 
 # Every adopting hook, one 200-character ordinary `git commit` tool call.
-# Measured ~265-285ms. Headroom: 1000/285 ~= 3.5x. Margin below one byte-walk
+# Measured ~260-325ms. Headroom: 1000/325 ~= 3.1x. Margin below one byte-walk
 # per adopting hook, at the list length this was measured at, each paying
 # the 1010ms byte-walk figure (the "walk gets paid unconditionally" failure
-# this also guards against): 11110/1000 ~= 11.1x. The ceiling itself is
+# this also guards against): 12120/1000 ~= 12.1x. The ceiling itself is
 # unchanged: it is set against the 1010ms byte-walk reference rather than
 # against this machine's number, so re-measuring the number does not move it.
 CEILING_ALL_HOOKS_ORDINARY_MS=1000
 
 # Every adopting hook, one 16KB raw-matching `gh pr merge` tool call (most pay
-# the walk; the rest raw-miss and skip it). Measured ~320-365ms. Headroom:
-# 2000/365 ~= 5.5x. Margin below one byte-walk per adopting hook, at the list
+# the walk; the rest raw-miss and skip it). Measured ~330-390ms. Headroom:
+# 2000/390 ~= 5.1x. Margin below one byte-walk per adopting hook, at the list
 # length this was measured at, each paying the 1010ms byte-walk figure:
 # 12120/2000 ~= 6.1x. Ceiling unchanged, for the reason the ordinary one gives.
 CEILING_ALL_HOOKS_RAWMATCH_MS=2000
