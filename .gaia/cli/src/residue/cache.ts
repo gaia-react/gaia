@@ -16,6 +16,11 @@
  * rather than trusting a stale attribution. An entry written before the digest
  * existed carries none, which compares unequal and re-attributes, so an older
  * cache degrades to a cold read rather than to a wrong answer.
+ *
+ * The digest only ever sees an edit on a pull request the incremental window
+ * re-reads, since an entry nothing re-reads is never compared. `tally.ts`'s
+ * `incrementalWindowStart` is what keeps the two in step, lowering the window
+ * to cover every entry still carrying a malformed key.
  */
 import {createHash} from 'node:crypto';
 import {existsSync, mkdirSync, readFileSync, unlinkSync} from 'node:fs';

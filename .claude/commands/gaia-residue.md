@@ -19,4 +19,4 @@ gaia_refuse_if_worktree "/gaia-residue" || exit 1
 
 If the detection does not fire, fall through to the workflow dispatch line below.
 
-Read `.claude/skills/gaia/references/residue.md` from the project root and follow it exactly. That reference is written to consume an argument string, treat the arguments above as that input (the leading token selects the subcommand: `review`, `list`, `why <path>:<line>`, or a bare `<path>:<line>`, which explains that candidate directly). If no arguments were provided, follow the reference's no-argument path (which defaults to `review`).
+Read `.claude/skills/gaia/references/residue.md` from the project root and follow it exactly. That reference is written to consume an argument string, treat the arguments above as that input (the leading token selects the subcommand: `review`, `list`, or `why <path>:<line>`; an argument string that is nothing but a bare `<path>:<line>` coordinate explains that candidate directly). If no arguments were provided, follow the reference's no-argument path (which defaults to `review`).

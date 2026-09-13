@@ -10,8 +10,19 @@ import {
 } from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
+import * as attribution from '../attribution.js';
 import {run as runCursor} from '../cursor-cmd.js';
 import {run} from '../tally.js';
+
+// A passthrough spy: the tally's real behavior is unchanged, but whether a
+// body was attributed again or read from the cache becomes observable.
+vi.mock('../attribution.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof attribution>();
+
+  return {...actual, attributeBody: vi.fn(actual.attributeBody)};
+});
+
+const attributeBodySpy = vi.mocked(attribution.attributeBody);
 
 type FixtureCorpus = {
   blobs?: Record<string, string>;
@@ -124,6 +135,11 @@ const runWithCapValue = (
 // Editing a merged body is the natural repair for a key the tally reports in
 // `malformed[]`, and that edit moves no head SHA. Keying on the SHA alone made
 // the repair invisible until the cache was deleted by hand.
+// Two pull requests, and the one under repair is deliberately NOT the newest
+// merge. A one-pull-request corpus is trivially at the cache's high-water
+// mark, so the incremental window re-reads it whatever the window logic does,
+// and the digest comparison looks correct while never running for the entry
+// that needs it.
 const corpusWithBody = (body: string): FixtureCorpus => ({
   blobs: {},
   issues: [],
@@ -133,6 +149,12 @@ const corpusWithBody = (body: string): FixtureCorpus => ({
       headRefOid: 'sha-unchanged',
       mergedAt: '2026-01-01T00:00:00Z',
       number: 1,
+    },
+    {
+      body: bodyWithKey(ACCEPT_HEADING, 'x/y', 'app/newer.ts', 9),
+      headRefOid: 'sha-newer',
+      mergedAt: '2026-02-01T00:00:00Z',
+      number: 2,
     },
   ],
 });
@@ -697,9 +719,11 @@ describe('gaia residue-tally', () => {
       const cold = tallyCounts(root);
 
       expect(cold.malformed).toHaveLength(1);
-      expect(cold.candidate_count).toBe(0);
+      expect(cold.candidate_count).toBe(1);
 
-      // The repair: same pull request, same head SHA, corrected key.
+      // The repair: the OLDER pull request, same head SHA, corrected key. The
+      // newer merge is untouched, so the cache's high-water mark sits above
+      // the entry being repaired.
       writeFileSync(
         path.join(root, 'prs.json'),
         JSON.stringify(
@@ -710,16 +734,22 @@ describe('gaia residue-tally', () => {
       const warm = tallyCounts(root);
 
       expect(warm.malformed).toEqual([]);
-      expect(warm.candidate_count).toBe(1);
+      expect(warm.candidate_count).toBe(2);
     });
 
-    test('an unchanged body still reuses its cached attribution', () => {
+    test('an unchanged body reuses its cached attribution instead of re-attributing', () => {
+      // Counting candidates across two runs cannot see this: a run that
+      // ignores the cache entirely produces the identical count. Only the
+      // attribution call itself distinguishes reuse from re-attribution.
       const root = makeRoot(
         corpusWithBody(bodyWithKey(ACCEPT_HEADING, 'x/y', 'app/a.ts', 1))
       );
 
-      expect(tallyCounts(root).candidate_count).toBe(1);
-      expect(tallyCounts(root).candidate_count).toBe(1);
+      tallyCounts(root);
+      attributeBodySpy.mockClear();
+      tallyCounts(root);
+
+      expect(attributeBodySpy).not.toHaveBeenCalled();
     });
   });
 });

@@ -170,6 +170,42 @@ const latestIsoTimestamp = (timestamps: readonly string[]): null | string => {
   return latest;
 };
 
+// The merge date the incremental read starts from. Normally the cache's
+// high-water mark, but a body digest can only see an edit on a pull request
+// the window still re-reads, and after one full run that window starts at the
+// NEWEST merge: precisely the pull request least likely to need re-reading.
+// Repairing a key this tally reported as malformed is an edit to an older
+// merged body, so lower the start to the oldest merge still carrying one. The
+// extra read is bounded by how many malformed keys exist, and it collapses
+// back to the plain high-water mark once they are repaired.
+//
+// Only malformed keys earn this. Any other body edit is equally invisible on
+// an older merge, but nothing tells an operator to make one, and widening this
+// to every cached entry would re-read the whole corpus every run, which is the
+// incremental cache's entire reason for existing.
+const incrementalWindowStart = (cache: AttributionCache): null | string => {
+  const highWater = cache.high_water_merged_at;
+
+  if (highWater === null) return null;
+
+  let oldestMalformed: null | string = null;
+
+  for (const entry of Object.values(cache.prs)) {
+    const carriesMalformed = entry.attribution.malformed.length > 0;
+
+    if (
+      carriesMalformed &&
+      (oldestMalformed === null || entry.mergedAt < oldestMalformed)
+    ) {
+      oldestMalformed = entry.mergedAt;
+    }
+  }
+
+  if (oldestMalformed === null) return highWater;
+
+  return oldestMalformed < highWater ? oldestMalformed : highWater;
+};
+
 const resolveRoot = (cwd: string): string => {
   try {
     return resolveRepoRoot(cwd);
@@ -300,7 +336,10 @@ const makeCachingResolve =
 // reusing a cached attribution only when the head SHA **and** the digest of
 // the body that attribution was computed from both still match. The SHA alone
 // is not enough: editing a merged pull request's body is the natural repair
-// for a key reported in `malformed[]`, and that edit moves no SHA.
+// for a key reported in `malformed[]`, and that edit moves no SHA. The digest
+// is compared only for the pull requests this read returned, so seeing such an
+// edit depends on `incrementalWindowStart` having lowered the window far
+// enough to return them.
 const mergeAttributionCache = (
   cache: AttributionCache,
   mergedPrsResult: MergedPrsResult & {ok: true}
@@ -394,7 +433,7 @@ export const run = (
   const emitCursor = cursorForEmit(cursor);
   const capForEmpty = parsed.value.cap ?? 0;
 
-  const mergedPrsResult = provider.mergedPrs(cache.high_water_merged_at);
+  const mergedPrsResult = provider.mergedPrs(incrementalWindowStart(cache));
 
   if (!mergedPrsResult.ok) {
     printEmit(

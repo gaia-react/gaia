@@ -21912,6 +21912,19 @@ var latestIsoTimestamp = (timestamps) => {
   }
   return latest;
 };
+var incrementalWindowStart = (cache) => {
+  const highWater = cache.high_water_merged_at;
+  if (highWater === null) return null;
+  let oldestMalformed = null;
+  for (const entry of Object.values(cache.prs)) {
+    const carriesMalformed = entry.attribution.malformed.length > 0;
+    if (carriesMalformed && (oldestMalformed === null || entry.mergedAt < oldestMalformed)) {
+      oldestMalformed = entry.mergedAt;
+    }
+  }
+  if (oldestMalformed === null) return highWater;
+  return oldestMalformed < highWater ? oldestMalformed : highWater;
+};
 var resolveRoot5 = (cwd) => {
   try {
     return resolveRepoRoot(cwd);
@@ -22040,7 +22053,7 @@ var run32 = (argv, options = {}) => {
   const cache = readAttributionCache(repoRoot);
   const emitCursor = cursorForEmit(cursor);
   const capForEmpty = parsed.value.cap ?? 0;
-  const mergedPrsResult = provider.mergedPrs(cache.high_water_merged_at);
+  const mergedPrsResult = provider.mergedPrs(incrementalWindowStart(cache));
   if (!mergedPrsResult.ok) {
     printEmit(
       buildFailureEmit({

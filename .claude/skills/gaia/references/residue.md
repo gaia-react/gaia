@@ -43,11 +43,12 @@ Then the three terminating reads:
 - `gh_ok` is `true` and `candidate_count` is `0`: report that no keyed residual is currently open, and stop.
 - Otherwise: proceed to the triage loop below.
 
-Three populations never reach that loop, so nothing else will mention them. Report each one that is non-empty alongside the candidate list, before the first question, and carry the reason the emit gives rather than a summary of it:
+These populations never reach that loop, so nothing else will mention them. Report each one that is non-empty, carrying the `reason` each entry gives rather than a summary of it; on `review` that is alongside the candidate list, before the first question, and on `list` and `why` it is alongside the printed result:
 
 - `malformed` holds entry units whose key matched the gate's grammar but failed field validation. They are withheld from triage by design, and the reason is reported so the key can be repaired in its own pull-request body. A run that stays silent here leaves a residual no one can act on and no one knows about.
 - `store_skipped` holds dismissal-store lines that could not be read. Each one is a disposition that has stopped suppressing, so a suppression a reviewer believes is in place is not.
-- `window.truncated` is `true` when the window read hit its own iteration bound, so the corpus may be incomplete and every count below it is a floor. Say so; never present a truncated read as a whole one.
+
+`window` is different: the emit always carries it, and it holds no reason to relay. Report it, on the same terms and at the same point in each subcommand, only when `window.truncated` is `true`. That means the window read hit its own iteration bound, so the corpus may be incomplete and every count is a floor rather than a total. Say so; never present a truncated read as a whole one.
 
 ## Bounding the run
 
@@ -201,6 +202,6 @@ Apply the shared tally machinery in `.claude/skills/gaia/references/cost-record.
 - `.gaia/local/cache/residual-cursor.json`, the resumable cursor;
 - the transient reason file under `.gaia/local/audit/`, deleted in its own tool call;
 - the filing recipe's own transient issue-body file under `.gaia/local/audit/`, and the debt-count staleness sentinel that recipe touches;
-- the shared machine-local telemetry ledger the mandatory cost record appends to, through `.claude/skills/gaia/references/cost-record.md`. It is not this workflow's own file and its shape is that reference's business, but a run does write it, so a self-check against this list has to expect it.
+- `.gaia/local/telemetry/cost.jsonl`, the shared machine-local telemetry ledger the mandatory cost record appends to. Not this workflow's own file, and its shape is owned by `.gaia/scripts/token-tally.sh`, but a run does write it, so a self-check against this list has to expect it.
 
 Nothing else. Not a source file, not a configuration file, and above all not a file any residual cites.
