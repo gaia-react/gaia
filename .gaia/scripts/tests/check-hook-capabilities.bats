@@ -1001,18 +1001,19 @@ run_bounded() {
 }
 
 @test "real repo: a source written into an if condition is reach the walker sees" {
-  # The three merge gates load `verb-arming.sh` as `if . "$lib" && type ...`,
-  # and a condition is command position: the library and everything it reaches
+  # The merge gates load `verb-arming.sh` as `if . "$lib" && type ...`, and a
+  # condition is command position: the library and everything it reaches
   # belong to each gate's closure. This is pinned on the real tree rather than
   # a fixture because the reconciliation gate cannot catch a regression here.
-  # All three already DECLARE the target, and a declared `invokes:` is trusted
-  # rather than reported as SURPLUS, so an anchor that stopped seeing this shape
-  # would leave the gate green and shrink the closure in silence -- the exact
-  # failure this shape was filed for (#1549).
+  # Every one of them already DECLARES the target, and a declared `invokes:`
+  # is trusted rather than reported as SURPLUS, so an anchor that stopped
+  # seeing this shape would leave the gate green and shrink the closure in
+  # silence -- the exact failure this shape was filed for (#1549).
   local hook
   for hook in .claude/hooks/audit-disposition-check.sh \
               .claude/hooks/pr-merge-audit-check.sh \
-              .claude/hooks/worthiness-presence-check.sh; do
+              .claude/hooks/worthiness-presence-check.sh \
+              .claude/hooks/audit-residual-shape-check.sh; do
     run gaia_hookcap_reach "$REPO_ROOT" "$hook"
     [ "$status" -eq 0 ]
     grep -qxF -- "invokes:.claude/hooks/lib/verb-arming.sh" <<<"$output" || return 1

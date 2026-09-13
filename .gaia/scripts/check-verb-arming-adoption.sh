@@ -99,11 +99,11 @@ GAIA_VERB_GREP_IDIOM_SEP_1='&&'
 GAIA_VERB_GREP_IDIOM_SEP_2=';'
 GAIA_VERB_GREP_IDIOM_SEP_3='||'
 
-# The four deny-capable hooks (README.md's frozen table, "Can deny: yes"),
-# and the anchors that tell fail-closed from fail-open apart. Every one of
-# the three merge gates shares the same reason string, byte for byte except
-# its leading label, which is why a literal substring anchors it rather than
-# a per-hook one.
+# The deny-capable hooks (README.md's frozen table, "Can deny: yes"), and
+# the anchors that tell fail-closed from fail-open apart. Every one of the
+# merge gates shares the same reason string, byte for byte except its
+# leading label, which is why a literal substring anchors it rather than a
+# per-hook one.
 GAIA_VERB_DENY_CAPABLE_HOOKS=(
   pr-merge-audit-check.sh
   worthiness-presence-check.sh

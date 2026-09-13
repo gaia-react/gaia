@@ -21,8 +21,8 @@
 #   32KB past-bound ~1-3ms (bash 3.2, the slow host this budget is written for).
 #
 #   Every adopting hook, one tool call: a 200-character ordinary `git commit`
-#   totals ~265-285ms; a 16KB raw-matching `gh pr merge` (8 of 11 hooks pay
-#   the walk, 3 raw-miss and skip it) totals ~320-365ms.
+#   totals ~265-285ms; a 16KB raw-matching `gh pr merge` (most pay the walk;
+#   the rest raw-miss and skip it) totals ~320-365ms.
 #
 #   Both figures were re-measured when four hooks took a `bash -n` parse check
 #   on their pre-gate verb-arming load (gaia-react/gaia#1556). What that change
@@ -376,8 +376,8 @@ CEILING_ALL_HOOKS_ORDINARY_MS=1000
 
 # Every adopting hook, one 16KB raw-matching `gh pr merge` tool call (most pay
 # the walk; the rest raw-miss and skip it). Measured ~320-365ms. Headroom:
-# 2000/365 ~= 5.5x. Margin below 8 hooks each byte-walking at 1010ms:
-# 8080/2000 ~= 4.0x. Ceiling unchanged, for the reason the ordinary one gives.
+# 2000/365 ~= 5.5x. Margin below every hook in the roster byte-walking at
+# 1010ms apiece. Ceiling unchanged, for the reason the ordinary one gives.
 CEILING_ALL_HOOKS_RAWMATCH_MS=2000
 
 # Past-bound (32KB), one hook (token-tally-git-op.sh), armed for real: the

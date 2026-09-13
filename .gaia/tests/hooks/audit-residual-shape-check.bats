@@ -266,6 +266,29 @@ EXCLUDED_HEADINGS=(
   grep -qF -- "$CANON_WAIVE" <<<"$output" || return 1
 }
 
+@test "an accept-mapped and a waive-mapped refused heading in one body are each named with their own count, never a rename to both literals" {
+  local body
+  body="$(join_lines "## Accepted residuals" "## Waived findings")"
+  drive_body "$body"
+  assert_denied_by_json
+  grep -qF -- "Offending heading count: 2" <<<"$output" || return 1
+  grep -qF -- "1 heading(s) must be renamed to: ${CANON_ACCEPT}" <<<"$output" || return 1
+  grep -qF -- "1 heading(s) must be renamed to: ${CANON_WAIVE}" <<<"$output" || return 1
+  grep -qF -- "Rename each to: ${CANON_ACCEPT} and ${CANON_WAIVE}" <<<"$output" && return 1
+  true
+}
+
+@test "the ambiguous both-mapped heading alongside a single-target heading names every applicable canonical without conflating them" {
+  local body
+  body="$(join_lines "## Noted, not filed" "## Accepted residuals")"
+  drive_body "$body"
+  assert_denied_by_json
+  grep -qF -- "Offending heading count: 2" <<<"$output" || return 1
+  grep -qF -- "1 heading(s) must be renamed to: ${CANON_ACCEPT}" <<<"$output" || return 1
+  grep -qF -- "heading(s) must be renamed to: ${CANON_WAIVE}" <<<"$output" && return 1
+  grep -qF -- "ambiguous on the accept/waive axis" <<<"$output" || return 1
+}
+
 # ---------------------------------------------------------------------------
 # Group 2: refusal on a keyless entry (C2, C4).
 # ---------------------------------------------------------------------------

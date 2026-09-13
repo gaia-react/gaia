@@ -1,13 +1,13 @@
 #!/usr/bin/env bats
 #
 # Conformance suite for .gaia/scripts/check-verb-arming-adoption.sh: the
-# eleven hooks stay a single-source-of-truth over the arming decision only
+# adopting hooks stay a single-source-of-truth over the arming decision only
 # because nothing lets that fact drift silently. This suite is what actually
 # fails a build when a twelfth hook spells its own pattern pair, when a hook
 # arms through a grep re-implementation instead of the shared function, when
-# the registered-hook roster drifts from the enumerated eleven, or when a
-# deny-capable hook's library-absent fail direction moves without a written
-# exemption.
+# the registered-hook roster drifts from the roster this suite enumerates, or
+# when a deny-capable hook's library-absent fail direction moves without a
+# written exemption.
 #
 # Every test drives the check through its <repo_root> parameter against a
 # fixture tree, matching check-base-provenance-adoption.bats's reasoning: a
@@ -36,9 +36,9 @@ teardown() {
   return 0
 }
 
-# write_baseline <dir>: a healthy tree -- the library's two definitions, all
-# eleven hooks adopting gaia_verb_armed and registered in settings.json to
-# match, the three merge gates denying on a missing library, and
+# write_baseline <dir>: a healthy tree -- the library's two definitions,
+# every enumerated hook adopting gaia_verb_armed and registered in
+# settings.json to match, the merge gates denying on a missing library, and
 # distribution-preflight-check.sh taking the written fail-open exemption
 # while staying deny-capable. Every "must fail" fixture starts here and
 # mutates one thing.

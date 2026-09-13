@@ -211,8 +211,9 @@ top_bullet_re='^([-*+]|[0-9]{1,9}[.)])[[:space:]]'
 key_re='<!-- gaia-debt-key: v1 class=[^ ]+ path=[^ ]+ line=[0-9]+ -->'
 
 offending_count=0
-need_accept=0
-need_waive=0
+accept_replace_count=0
+waive_replace_count=0
+both_replace_count=0
 keyless_count=0
 keyless_lines=""
 
@@ -256,9 +257,9 @@ while IFS= read -r raw_line || [ -n "$raw_line" ]; do
         if [ "$trimmed" = "${REFUSED_HEADINGS[$i]}" ]; then
           offending_count=$((offending_count + 1))
           case "${REFUSED_REPLACEMENTS[$i]}" in
-            accept) need_accept=1 ;;
-            waive) need_waive=1 ;;
-            both) need_accept=1; need_waive=1 ;;
+            accept) accept_replace_count=$((accept_replace_count + 1)) ;;
+            waive) waive_replace_count=$((waive_replace_count + 1)) ;;
+            both) both_replace_count=$((both_replace_count + 1)) ;;
           esac
           break
         fi
@@ -288,24 +289,24 @@ close_unit
 
 [ "$offending_count" -gt 0 ] || [ "$keyless_count" -gt 0 ] || exit 0
 
-canon_list=""
-if [ "$need_accept" = 1 ]; then
-  canon_list="$CANON_ACCEPT"
-fi
-if [ "$need_waive" = 1 ]; then
-  if [ -n "$canon_list" ]; then
-    canon_list="${canon_list} and ${CANON_WAIVE}"
-  else
-    canon_list="$CANON_WAIVE"
-  fi
-fi
-
 reason="PR merge gate: this pull request's body records an audit residual disposition in a shape no command can find."
 
 if [ "$offending_count" -gt 0 ]; then
   reason="${reason}
 
-Offending heading count: ${offending_count} (a recognized but non-canonical spelling). Rename each to: ${canon_list}."
+Offending heading count: ${offending_count} (recognized but non-canonical spelling(s))."
+  if [ "$accept_replace_count" -gt 0 ]; then
+    reason="${reason}
+${accept_replace_count} heading(s) must be renamed to: ${CANON_ACCEPT}"
+  fi
+  if [ "$waive_replace_count" -gt 0 ]; then
+    reason="${reason}
+${waive_replace_count} heading(s) must be renamed to: ${CANON_WAIVE}"
+  fi
+  if [ "$both_replace_count" -gt 0 ]; then
+    reason="${reason}
+${both_replace_count} heading(s) are ambiguous on the accept/waive axis; rename each to whichever of ${CANON_ACCEPT} or ${CANON_WAIVE} matches its meaning."
+  fi
 fi
 
 if [ "$keyless_count" -gt 0 ]; then
