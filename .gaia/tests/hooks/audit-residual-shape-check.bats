@@ -735,9 +735,13 @@ EXCLUDED_HEADINGS=(
   # anywhere beneath it is caught rather than only one at the probe path.
   #
   # What this still cannot catch: an emit that defaults to a hard-coded sink
-  # OUTSIDE $BATS_TEST_TMPDIR. Nothing here enumerates the filesystem, so that
-  # case is covered instead by the byte-identity test below, which pins the
-  # unset run's own output against the set run's.
+  # OUTSIDE $BATS_TEST_TMPDIR. Nothing here enumerates the filesystem, and no
+  # other test in this suite reaches that case either. The byte-identity test
+  # below is not it: that one compares stdout, stderr and exit status, and
+  # close_unit silences its own write, so a stray file on disk changes none of
+  # the bytes being compared. Reaching the case would mean driving the hook
+  # under a controlled HOME and PWD and asserting no new file appears beneath
+  # them, which is a larger test than this one.
   local probe_dir="$BATS_TEST_TMPDIR/emit-probe" emit_file body before after
   emit_file="$probe_dir/out.tsv"
   mkdir -p "$probe_dir"
