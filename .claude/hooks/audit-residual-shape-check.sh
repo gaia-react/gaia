@@ -219,6 +219,33 @@ heading_re='^#{1,6}[[:space:]]'
 top_bullet_re='^([-*+]|[0-9]{1,9}[.)])[[:space:]]'
 key_re='<!-- gaia-debt-key: (v1 class=[^ ]+ path=[^ ]+ line=[0-9]+) -->'
 
+# A heading is classified by its TEXT, not by its whole line. The leading `#`
+# run and the one whitespace character after it are stripped from the line
+# under test and from each recognizer literal before every comparison below,
+# so a canonical or refused spelling written one level deeper classifies the
+# same way it does at level two. Without this, `heading_re` still recognizes
+# the deeper line as a heading, so it closes the open unit and drops out of
+# the canonical section, and every entry beneath it is skipped: the gate
+# returns clean over residuals recorded in a shape no command can read, which
+# is the exact failure it exists to prevent.
+#
+# Two things widen, and the separator's LENGTH is deliberately not one of
+# them. The marker run widens from exactly two `#` to one through six. The
+# separator widens too, from the literal space each level-two literal carries
+# to any single `[[:space:]]` member, so a tab-separated spelling classifies
+# where it previously matched neither arm; that is intended, because a tab
+# renders as the same heading a space does, and it is the same character class
+# `heading_re` above already admits. What does not widen is how MANY
+# separator characters are stripped: the expression takes one `[[:space:]]`
+# rather than a `*` run, so `##  Accepted residuals (recorded, not fixed)`,
+# two spaces, stays unrecognized exactly as it was. The literals stay written
+# at level two and the remediation text below still names that form, so an
+# author who follows it lands on the canonical spelling rather than on
+# whichever wider one the gate now tolerates.
+heading_text_sed='s/^#\{1,6\}[[:space:]]//'
+CANON_ACCEPT_TEXT="${CANON_ACCEPT#'## '}"
+CANON_WAIVE_TEXT="${CANON_WAIVE#'## '}"
+
 offending_count=0
 accept_replace_count=0
 waive_replace_count=0
@@ -299,10 +326,10 @@ while IFS= read -r raw_line || [ -n "$raw_line" ]; do
   if [[ "$raw_line" =~ $heading_re ]]; then
     close_unit "$_debug_emit_path"
     in_canonical=0
-    trimmed="$(printf '%s' "$raw_line" | sed -e 's/[[:space:]]*$//')"
-    if [ "$trimmed" = "$CANON_ACCEPT" ] || [ "$trimmed" = "$CANON_WAIVE" ]; then
+    heading_text="$(printf '%s' "$raw_line" | sed -e 's/[[:space:]]*$//' -e "$heading_text_sed")"
+    if [ "$heading_text" = "$CANON_ACCEPT_TEXT" ] || [ "$heading_text" = "$CANON_WAIVE_TEXT" ]; then
       in_canonical=1
-      if [ "$trimmed" = "$CANON_ACCEPT" ]; then
+      if [ "$heading_text" = "$CANON_ACCEPT_TEXT" ]; then
         section_disposition=accept
       else
         section_disposition=waive
@@ -311,7 +338,7 @@ while IFS= read -r raw_line || [ -n "$raw_line" ]; do
       i=0
       n=${#REFUSED_HEADINGS[@]}
       while [ "$i" -lt "$n" ]; do
-        if [ "$trimmed" = "${REFUSED_HEADINGS[$i]}" ]; then
+        if [ "$heading_text" = "${REFUSED_HEADINGS[$i]#'## '}" ]; then
           offending_count=$((offending_count + 1))
           case "${REFUSED_REPLACEMENTS[$i]}" in
             accept) accept_replace_count=$((accept_replace_count + 1)) ;;

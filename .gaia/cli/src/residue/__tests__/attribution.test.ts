@@ -170,10 +170,47 @@ describe('attributeBody, entry attribution', () => {
     expect(result.keyless_count).toBe(result.keyless.length);
   });
 
-  test('attributes nothing beneath a level-three spelling of a canonical heading', () => {
+  test('attributes beneath a canonical heading spelled at any level, not only at level two', () => {
+    const accept = CANON_ACCEPT.replace('## ', '');
+    const waive = CANON_WAIVE.replace('## ', '');
+
+    for (const marker of ['#', '###', '######']) {
+      const lines = [
+        `${marker} ${accept}`,
+        `- An accepted entry ${key('a/one', 'app/one.ts', 1)}`,
+        `${marker} ${waive}`,
+        `- A waived entry ${key('w/one', 'app/two.ts', 2)}`,
+      ];
+      const result = attributeBody(bodyOf(lines));
+
+      expect(
+        result.entries.map((entry) => [entry.disposition, entry.key.path])
+      ).toStrictEqual([
+        ['accept', 'app/one.ts'],
+        ['waive', 'app/two.ts'],
+      ]);
+      expect(result.keyless).toStrictEqual([]);
+    }
+  });
+
+  test('the separator widens to any one whitespace character, so a tab-separated canonical heading is canonical', () => {
     const result = attributeBody(
       bodyOf([
-        `### ${CANON_ACCEPT.replace('## ', '')}`,
+        `##\t${CANON_ACCEPT.replace('## ', '')}`,
+        `- An entry ${key('a/one', 'app/one.ts', 1)}`,
+      ])
+    );
+
+    expect(result.entries.map((entry) => entry.key.path)).toStrictEqual([
+      'app/one.ts',
+    ]);
+    expect(result.keyless).toStrictEqual([]);
+  });
+
+  test('the separator never widens to a run of whitespace, so a two-space canonical heading is not canonical', () => {
+    const result = attributeBody(
+      bodyOf([
+        `###  ${CANON_ACCEPT.replace('## ', '')}`,
         `- An entry ${key('a/one', 'app/one.ts', 1)}`,
       ])
     );
