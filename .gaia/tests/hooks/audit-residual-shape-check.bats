@@ -970,11 +970,26 @@ EXCLUDED_HEADINGS=(
   true
 }
 
-@test "level-blindness widens the heading marker only, never the spacing after it" {
+@test "the separator widens to any one whitespace character, so a tab-separated canonical heading is recognized" {
+  local emit_file="$BATS_TEST_TMPDIR/emit-tab-sep.tsv" body
+  body="$(join_lines \
+    "$(printf '##\t%s' "${CANON_ACCEPT#'## '}")" \
+    "- residual-november4, keyed <!-- gaia-debt-key: v1 class=lint path=app/november4.ts line=1 -->")"
+
+  export GAIA_AUDIT_RESIDUAL_DEBUG_EMIT="$emit_file"
+  drive_body "$body"
+  unset GAIA_AUDIT_RESIDUAL_DEBUG_EMIT
+  assert_permits_silently
+
+  [ -f "$emit_file" ] || return 1
+  grep -qF -- "key=v1 class=lint path=app/november4.ts line=1" "$emit_file" || return 1
+}
+
+@test "the separator never widens to a RUN of whitespace, so a two-space canonical heading stays unrecognized" {
   local emit_file="$BATS_TEST_TMPDIR/emit-wide-space.tsv" body
   body="$(join_lines \
     "###  ${CANON_ACCEPT#'## '}" \
-    "- residual-november4, keyed <!-- gaia-debt-key: v1 class=lint path=app/november4.ts line=1 -->")"
+    "- residual-november5, keyed <!-- gaia-debt-key: v1 class=lint path=app/november5.ts line=1 -->")"
 
   export GAIA_AUDIT_RESIDUAL_DEBUG_EMIT="$emit_file"
   drive_body "$body"

@@ -193,7 +193,21 @@ describe('attributeBody, entry attribution', () => {
     }
   });
 
-  test('level-blindness widens the heading marker only, never the spacing after it', () => {
+  test('the separator widens to any one whitespace character, so a tab-separated canonical heading is canonical', () => {
+    const result = attributeBody(
+      bodyOf([
+        `##\t${CANON_ACCEPT.replace('## ', '')}`,
+        `- An entry ${key('a/one', 'app/one.ts', 1)}`,
+      ])
+    );
+
+    expect(result.entries.map((entry) => entry.key.path)).toStrictEqual([
+      'app/one.ts',
+    ]);
+    expect(result.keyless).toStrictEqual([]);
+  });
+
+  test('the separator never widens to a run of whitespace, so a two-space canonical heading is not canonical', () => {
     const result = attributeBody(
       bodyOf([
         `###  ${CANON_ACCEPT.replace('## ', '')}`,

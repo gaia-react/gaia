@@ -229,13 +229,19 @@ key_re='<!-- gaia-debt-key: (v1 class=[^ ]+ path=[^ ]+ line=[0-9]+) -->'
 # returns clean over residuals recorded in a shape no command can read, which
 # is the exact failure it exists to prevent.
 #
-# The marker is the only thing that widens. The whitespace run after it does
-# not, which is why the expression strips a single `[[:space:]]` rather than a
-# `*` run: `###  Accepted residuals (recorded, not fixed)` stays unrecognized
-# exactly as `##  ...` already was, so this is level blindness and nothing
-# else. The literals stay written at level two and the remediation text below
-# still names that form, so an author who follows it lands on the canonical
-# spelling rather than on whichever deeper one the gate now tolerates.
+# Two things widen, and the separator's LENGTH is deliberately not one of
+# them. The marker run widens from exactly two `#` to one through six. The
+# separator widens too, from the literal space each level-two literal carries
+# to any single `[[:space:]]` member, so a tab-separated spelling classifies
+# where it previously matched neither arm; that is intended, because a tab
+# renders as the same heading a space does, and it is the same character class
+# `heading_re` above already admits. What does not widen is how MANY
+# separator characters are stripped: the expression takes one `[[:space:]]`
+# rather than a `*` run, so `##  Accepted residuals (recorded, not fixed)`,
+# two spaces, stays unrecognized exactly as it was. The literals stay written
+# at level two and the remediation text below still names that form, so an
+# author who follows it lands on the canonical spelling rather than on
+# whichever wider one the gate now tolerates.
 heading_text_sed='s/^#\{1,6\}[[:space:]]//'
 CANON_ACCEPT_TEXT="${CANON_ACCEPT#'## '}"
 CANON_WAIVE_TEXT="${CANON_WAIVE#'## '}"

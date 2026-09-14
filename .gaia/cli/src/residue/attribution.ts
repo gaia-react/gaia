@@ -38,10 +38,13 @@
  * leading `#` run and the one whitespace character after it are stripped from
  * the line under test and from each canonical literal before the comparison,
  * so the heading LEVEL is not load-bearing and a level-three spelling of a
- * canonical literal is canonical. The marker is the only thing that widens:
- * the whitespace run after it does not, so `###  <canonical text>` is still
- * not canonical. That is the gate's behavior and diverging from it here in
- * either direction would break the agreement that is the point.
+ * canonical literal is canonical. Two things widen with it: the marker run,
+ * and the separator, which is any single member of the pattern's character
+ * class rather than the literal space the canonical literals carry, so a
+ * tab-separated spelling is canonical too. What does not widen is how many
+ * separator characters are stripped, so `###  <canonical text>`, two spaces,
+ * is still not canonical. That is the gate's behavior and diverging from it
+ * here in either direction would break the agreement that is the point.
  */
 import {KEY_PATTERN, parseKey} from './key.js';
 import type {ResidueKey} from './key.js';
