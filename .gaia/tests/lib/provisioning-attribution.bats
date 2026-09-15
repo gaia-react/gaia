@@ -457,8 +457,9 @@ partial_job_cap_floor() {
 # `.gaia/tests/lib/audit-ci-shards.bats`'s own `setup_node_cap_gaps` in
 # shape: a per-file read whose failure becomes a reported gap rather than a
 # silent contribution of zero, an emptiness verdict over the WHOLE argument
-# list (never per file, since most files legitimately call neither action
-# from any step), and a short-read verdict this suite adds on top, comparing
+# list (never per file, since most files legitimately call none of the
+# matched actions from any step), and a short-read verdict this suite adds on
+# top, comparing
 # against the independent tracked-tree count above. Returns non-zero exactly
 # when `gaps` is non-empty OR the derived set came back empty.
 provisioning_attribution_gaps() {
@@ -475,7 +476,7 @@ provisioning_attribution_gaps() {
     if [ "$(head -n1 "$out")" = "EXCLUDED-MUSTACHE" ]; then
       continue
     fi
-    # shellcheck disable=SC2034  # match (composite/direct) is a positional field in the tab-separated row read_pv prints; kept named and in place so the fields after it are not shifted, even though `surface` alone decides the branch below
+    # shellcheck disable=SC2034  # match (composite/pnpm/node) is a positional field in the tab-separated row read_pv prints; kept named and in place so the fields after it are not shifted, even though `surface` alone decides the branch below
     while IFS=$'\t' read -r surface job name match capkind cap jobcapkind jobcap; do
       [ -n "$surface" ] || continue
       derived=$((derived + 1))
@@ -511,11 +512,12 @@ provisioning_attribution_gaps() {
   rm -f "$out" "$err"
 
   # One condition reaches an empty read: every readable file loaded and none
-  # of them called either action, so it was renamed or its last call site
-  # was removed. Checked before the short-read comparison below, which needs
-  # a non-zero derived count to be a meaningful ratio at all.
+  # of them called any action classify_uses matches, so each was renamed or
+  # its last call site was removed. Checked before the short-read comparison
+  # below, which needs a non-zero derived count to be a meaningful ratio at
+  # all.
   if [ "$derived" -eq 0 ]; then
-    printf 'no provisioning step read across the files scanned, though every readable one loaded: both actions were renamed, or every call site was removed. Either way this check is now reaching nothing.\n'
+    printf 'no provisioning step read across the files scanned, though every readable one loaded: every action classify_uses matches was renamed, or every call site was removed. Either way this check is now reaching nothing.\n'
     return 1
   fi
 
