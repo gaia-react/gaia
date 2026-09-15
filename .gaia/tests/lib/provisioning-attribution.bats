@@ -394,10 +394,12 @@ provisioning_rel_path() {
 
 # The second, independent authority the empty/short-read guard compares
 # against: a git grep over the real discovery roots, anchored on
-# `uses:` so the pinned-SHA header comments in forensics-triage.yml,
-# audit-ci-tests.yml, code-review-audit.yml and cli-tests.yml (which name
-# pnpm/action-setup and actions/setup-node in prose) are not counted
-# as steps. Always reads the REAL repository tree regardless of which files
+# `uses:` so a prose mention of any matched action is never counted as a
+# step, whatever shape it takes -- a pinned-SHA header block, an inline body
+# comment, an input description. The anchor is what excludes them, so it does
+# so wherever they turn up; naming the files that happen to carry one today
+# would be a list to keep rather than a property of the grep.
+# Always reads the REAL repository tree regardless of which files
 # a caller's own file-list argument narrows to -- that independence is the
 # whole point: a fixture narrowing the file-list argument still gets
 # compared against the true tracked-tree count, not against itself.
