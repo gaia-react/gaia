@@ -246,6 +246,15 @@ fi
 # <prefix-mode> `1` suppresses the RIGHT boundary test only. A namespace prefix
 # is by definition followed by the rest of a name, so requiring a non-name
 # character after it would match nothing.
+#
+# `.` and `:` are in that character set because a label name may carry either,
+# and that alone would make the two commonest prose shapes invisible: a
+# sentence ending on the spelling, and a definition item headed by it. Both are
+# ordinary in the wiki tree this scan reads, and missing them is the fail-open
+# the whole gate exists to end. So in full-spelling mode a trailing `.` or `:`
+# is itself a boundary WHEN nothing name-shaped follows it, which grades the
+# sentence and the definition while still declining to grade a filename or a
+# sibling label in the same namespace.
 scan_term() {
   local term="$1" prefix_mode="$2" why="$3"
   local files=() f status=0
@@ -255,7 +264,14 @@ scan_term() {
   # `|| true` would turn that into an empty file list, a clean report, and an
   # exit 0 over a tree this never read. The root guard above removes the
   # reachable cause; this removes the class.
-  git -C "$ROOT" grep -F -l -- "$term" \
+  # `-z` is not decoration. Under git's default core.quotePath a path carrying
+  # a non-ASCII byte, a control character, a quote or a backslash prints
+  # C-QUOTED, and the quoted spelling names no file on disk: awk is then handed
+  # an unopenable path, the carrier is never graded, and the run dies carrying
+  # neither this script's prefix nor any of its documented reasons, discarding
+  # whatever earlier terms had already reported. `-z` turns the quoting off and
+  # the NUL read below is what keeps the framing unambiguous.
+  git -C "$ROOT" grep -F -l -z -- "$term" \
     -- ${EXCLUDED_PATHSPECS[@]+"${EXCLUDED_PATHSPECS[@]}"} \
     >"$MATCHES_FILE" 2>"$STDERR_FILE" || status=$?
 
@@ -265,7 +281,7 @@ scan_term() {
     exit 2
   fi
 
-  while IFS= read -r f; do
+  while IFS= read -r -d '' f; do
     [ -n "$f" ] && files+=("$f")
   done <"$MATCHES_FILE"
 
@@ -301,6 +317,12 @@ scan_term() {
           after  = (end >= length($0)) ? "" : substr($0, end + 1, 1)
           left_ok  = (before == "" || index(NAMECHARS, before) == 0)
           right_ok = (prefix_mode == "1" || after == "" || index(NAMECHARS, after) == 0)
+          if (!right_ok && (after == "." || after == ":")) {
+            # `old-claim.` and `old-claim:` end here; `old-claim.md` and a
+            # sibling label under the same namespace do not.
+            trailing = (end + 1 >= length($0)) ? "" : substr($0, end + 2, 1)
+            right_ok = (trailing == "" || index(NAMECHARS, trailing) == 0)
+          }
           if (left_ok && right_ok) {
             printf "%s:%d: %s: %s\n", file, FNR, term, why
             break

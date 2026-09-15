@@ -264,6 +264,81 @@ RENAMED_ONE='{
   [ "$status" -eq 0 ]
 }
 
+# Prose shapes. The scan's whole advantage over a literal extractor is that it
+# reaches prose, so the shapes prose actually takes are what decide whether it
+# does. A term followed by a space is the easy one and was the only one tested;
+# these are the two that were silently missed, plus the two neighbours that
+# must stay un-graded so the repair cannot be a blanket one.
+
+@test "a spelling ending a sentence is graded" {
+  local dir
+  dir="$(make_fixture shape_period)"
+  write_registry "$dir" "$RENAMED_ONE"
+  printf 'The drain strips old-claim.\n' >"$dir/wiki/Notes.md"
+  track_fixture "$dir"
+
+  run bash "$CHECK" "$dir"
+  [ "$status" -eq 1 ]
+  grep -qF -- 'wiki/Notes.md:1' <<<"$output"
+}
+
+@test "a spelling heading a definition item is graded" {
+  local dir
+  dir="$(make_fixture shape_colon)"
+  write_registry "$dir" "$RENAMED_ONE"
+  printf 'old-claim: the label that marked it\n' >"$dir/wiki/Notes.md"
+  track_fixture "$dir"
+
+  run bash "$CHECK" "$dir"
+  [ "$status" -eq 1 ]
+  grep -qF -- 'wiki/Notes.md:1' <<<"$output"
+}
+
+@test "a filename extending the spelling past a dot is not graded" {
+  local dir
+  dir="$(make_fixture shape_dotted)"
+  write_registry "$dir" "$RENAMED_ONE"
+  printf 'touch old-claim.json\n' >"$dir/.gaia/scripts/x.sh"
+  track_fixture "$dir"
+
+  run bash "$CHECK" "$dir"
+  [ "$status" -eq 0 ]
+}
+
+@test "a sibling label under the same namespace is not graded" {
+  local dir
+  dir="$(make_fixture shape_namespaced)"
+  write_registry "$dir" '{
+    "labels": [
+      {"name": "claim:new", "renamedFrom": ["old-claim"]},
+      {"name": "old-claim:critical", "renamedFrom": []}
+    ]
+  }'
+  printf 'gh issue list --label old-claim:critical\n' >"$dir/.gaia/scripts/x.sh"
+  track_fixture "$dir"
+
+  run bash "$CHECK" "$dir"
+  [ "$status" -eq 0 ]
+}
+
+@test "a carrier whose path git would C-quote is graded, not dropped" {
+  local dir
+  dir="$(make_fixture cquoted)"
+  write_registry "$dir" "$RENAMED_ONE"
+  # Under core.quotePath, `git grep -l` prints this name C-quoted, which names
+  # no file on disk. Without -z the scan hands awk an unopenable path: the
+  # carrier goes ungraded and the run dies with awk's message rather than this
+  # script's.
+  printf 'the old-claim label is read here\n' >"$dir/wiki/caf$(printf '\303\251').md"
+  track_fixture "$dir"
+
+  run bash "$CHECK" "$dir"
+  [ "$status" -eq 1 ]
+  grep -qF -- ':1: old-claim' <<<"$output"
+  grep -qF -- "can't open file" <<<"$output" && return 1
+  true
+}
+
 # The boundary arm. A rename can leave the old spelling as a prefix or a suffix
 # of the new one, and a fixed-string scan would then flag every live carrier and
 # leave the gate un-greenable. Both directions get a fixture, because they are
