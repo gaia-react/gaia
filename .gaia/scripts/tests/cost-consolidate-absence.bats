@@ -22,9 +22,10 @@
 # this test's own filename as a data row, never a call to the retired script.
 # The dedup-key corpus (.gaia/tests/fixtures/dedup-key-corpus/) is excluded on
 # those same grounds: it is a verbatim capture of every residual key recorded in
-# this repository's merged pull-request bodies and open issues, so a key whose
-# path field happens to cite this suite's own file is a captured data row and
-# not a reference to the retired script. Nothing under that directory executes.
+# this repository's merged pull-request bodies and its tech-debt issues in every
+# state, so a key whose path field happens to cite this suite's own file is a
+# captured data row and not a reference to the retired script. Nothing under
+# that directory executes.
 #
 # The grep names no positive root: its subject is the whole tracked tree minus
 # those exclusions. Listing the roots instead is the obvious alternative, and it

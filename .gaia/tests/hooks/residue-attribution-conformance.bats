@@ -407,10 +407,10 @@ TABLE
 # whole line and `.+` runs straight across the first closer, which is the very
 # splice class SPEC-082 exists to close. That splice is exercised only
 # against other readers, by the suites driving the `two-keys-one-line.md`
-# fixture (`git grep -ln two-keys-one-line` names them, so the set is counted
-# at read time rather than cached here); none of them reaches these two
-# patterns, so for them it stands open by the decision below rather than by
-# coverage.
+# fixture (`git grep -ln two-keys-one-line -- '*.bats' '*.test.ts'` names
+# them, so the set is counted at read time rather than cached here); none of
+# them reaches these two patterns, so for them it stands open by the decision
+# below rather than by coverage.
 # The decision not to convert them does not rest on the splice being
 # impossible: it rests on conversion narrowing a blocking pre-file guard,
 # which SPEC-082 puts under `ask_first` with the default do not. The
@@ -625,9 +625,15 @@ TABLE
       # machine's tooling last wrote; this plan folder, the reason's own
       # example, is deleted at archive. Asserting presence would red on a
       # green tree over state the tree does not carry. So the substance is
-      # confirmed opportunistically, where the directory exists, and its
-      # absence is reported rather than either failed or passed over in
-      # silence.
+      # confirmed opportunistically, where the directory exists.
+      #
+      # The absent-directory branch writes a notice rather than failing, and
+      # that notice is legible only to a reader who runs this suite with the
+      # output of passing tests shown. bats discards it otherwise, so on CI,
+      # where the directory is always absent, it reaches nobody. That is the
+      # accepted shape: the branch exists so the arm does not silently mean
+      # less than its name on a checkout without the directory, and there is
+      # no channel from a passing bats test to a CI log to put it on.
       if [ -d "$REPO_ROOT/$extra_path" ]; then
         grep -rlE 'path=(\(\?<path>|\()?\[\^>(\\n)?\]' "$REPO_ROOT/$extra_path" >/dev/null 2>&1 || {
           echo "exclusion '$id': $extra_path exists on this checkout but no file under it carries the pattern text a plain grep can see; the claimed reason does not hold here" >&2
