@@ -378,21 +378,27 @@ The wrapped `gaia-debt-key` format (step 1) and the label spellings (step 6) are
 
 **Key format.** The wrapped comment format is a contract shared with every reader that parses it, and the authoritative reader set is found by searching rather than read from a list here, because a reader can assert the contract in a docblock while carrying no key literal at all: `git grep -n 'gaia-debt-key'`, paired with a search for the terminator the key parser currently uses for the `path=` field, taken from a reader the first prong just returned rather than named here, and a search for prose describing the `path` field. Search for the grammar you are moving away from, never one a past migration already moved away from: a spent spelling greps clean and reads as done. Naming today's spelling in this sentence would make it spent on the next move, which is why it describes the shape instead. Change the key format only once that search is clean against the change.
 
-**Label spellings.** Change any label spelling **only in lockstep** with all of these. Unlike the key format above, this is an enumeration rather than a search, because a consumer can read a label without defining one and no registry-rooted derivation finds those. That makes the list the thing that goes stale: treat it as the best known set, not a proof of completeness, and pair a rename with `git grep` for the literal spelling and for each namespace prefix.
+**Label spellings.** A rename is complete when the old spelling reaches no consumer, and that half is **checked rather than enumerated**. Record the previous name in `.gaia/labels.json`'s `renamedFrom` as part of the rename itself: that entry is what `gaia labels sync` reads to issue `gh label edit <old> --name <new>`, and it is also the term a scan of the tracked tree searches for. So rename registry-first, then `git grep` the old spelling, and each namespace prefix the rename retires, until the tree is clean of both.
+<!-- gaia:maintainer-only:start -->
+
+`.gaia/scripts/lint-retired-label-spellings.sh` runs that scan deterministically, as a member of `.gaia/tests/whole-tree-invariants.sh`, so a rename that leaves a carrier behind reds before the merge instead of surfacing later as a degraded count. It needs no roster: it takes its search terms from `renamedFrom` and reads every tracked file outside the historical, generated and test surfaces its own `EXCLUDED_PATHSPECS` array names, with the reasons written beside it. Its one blind spot is a rename that never records `renamedFrom`, which `gaia labels sync` already punishes by creating a second label instead of renaming the first.
+<!-- gaia:maintainer-only:end -->
+
+The list below is **annotation, not the contract**. It makes no completeness claim and nothing depends on it making one; its parentheticals say how each consumer behaves when a rename misses it, loudly or silently, which is what decides the order to migrate in and what to distrust while a rename is in flight. The paragraphs after it own the per-consumer detail and this list does not restate any of it.
 
 - `.gaia/statusline/gaia-statusline.sh` (carries no spelling; it renders debt-derived UI, so it is checked defensively)
-- `.gaia/scripts/debt-count-refresh.sh`
-- `.claude/hooks/debt-session-reconcile.sh`
-- `.claude/skills/gaia/references/debt.md`
-- `.gaia/scripts/check-debt-issue-metadata.sh`
-- `.claude/rules/issue-claim.md`
-- `.claude/hooks/issue-claim-release.sh`
-- `.claude/hooks/lib/audit-dispositions.sh`
-- `.github/actions/gaia-ci-merge-and-watch/action.yml` (`severity:important`, `severity:critical`)
-- `.gaia/labels.json`
+- `.gaia/scripts/debt-count-refresh.sh` (silent)
+- `.claude/hooks/debt-session-reconcile.sh` (silent)
+- `.claude/skills/gaia/references/debt.md` (silent: instructions keep reading as correct while naming a label nothing applies)
+- `.gaia/scripts/check-debt-issue-metadata.sh` (loud, and first)
+- `.claude/rules/issue-claim.md` (silent, for the same reason `debt.md` is)
+- `.claude/hooks/issue-claim-release.sh` (silent)
+- `.claude/hooks/lib/audit-dispositions.sh` (loud but misdirected: the query returns empty rather than erroring, which reads as every filed entry missing)
+- `.github/actions/gaia-ci-merge-and-watch/action.yml` (`severity:important`, `severity:critical`; loud, but only on the revert path, so it can sit unfired for a long time)
+- `.gaia/labels.json` (neither loud nor silent: it is the rename itself rather than a carrier of it)
 <!-- gaia:maintainer-only:start -->
-- `.gaia/cli/src/labels/registry.ts` (every governed namespace prefix)
-- `.gaia/cli/health/comprehensive/runbook.md`
+- `.gaia/cli/src/labels/registry.ts` (every governed namespace prefix; silent, and held as bare prefixes, which no search for a full spelling reaches)
+- `.gaia/cli/health/comprehensive/runbook.md` (silent: a pasted command fails in a human's terminal rather than in CI)
 - Tests: `.gaia/tests/hooks/debt-sentinel-touch.bats`, `.gaia/tests/hooks/debt-session-reconcile.bats`, `.gaia/scripts/tests/debt-count-refresh.bats`, `.gaia/tests/statusline/audit-nudge-drift-suppression.bats`, `.gaia/scripts/tests/check-debt-issue-metadata.bats`, `.gaia/tests/hooks/issue-claim-release.bats`
 
 One carve-out, so the per-namespace paragraphs below do not each have to restate it: `.gaia/cli/src/labels/registry.ts`'s `NAMESPACE_PREFIXES` array hardcodes **every** governed prefix, so it is an edit for every namespace rename without exception. The consumer counts those paragraphs give ("one of them reads it", "two of them read it") are counts over the reader set each paragraph describes, and they do not include this one.
