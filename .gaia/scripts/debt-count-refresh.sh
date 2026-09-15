@@ -195,8 +195,8 @@ if command -v gh >/dev/null 2>&1; then
     # scan is unanchored, so a match can also begin at body prose quoting
     # the opener; there the output does change, and changes for the better
     # (the lazy form spliced across the `>` in the prose, this one fails
-    # from that start and advances to the real opener). See Finding 1 in
-    # `.gaia/tests/fixtures/dedup-key-corpus/README.md`.
+    # from that start and advances to the real opener). The recorded-key
+    # corpus carries exactly one line of that shape.
     paths_out=$(printf '%s' "$issues_json" | jq -c '[.[] | (.body // "") | scan("<!-- gaia-debt-key:[^>]*?path=([^>\n]+) line=")] | flatten | unique' 2>/dev/null)
     case "$count_out" in
       ''|*[!0-9]*) ;;
