@@ -63,7 +63,7 @@
     {
       "pr_number": 3006,
       "tuples": [
-        "2|accept|0|-"
+        "2|accept|1|v1 class=lint path=app/my dir/file.ts line=1"
       ]
     },
     {

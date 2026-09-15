@@ -6,10 +6,9 @@
  *
  * Arms 1 and 2 read issue-body keys through `parseWrappedKeys`, never
  * `parseKey`: the filer's own grammar anchors on the wrapped
- * `<!-- gaia-debt-key:` opener, does not require the `v1` token, and reads a
- * path containing a space, all of which `parseKey`'s stricter gate grammar
- * would refuse. Suppression must agree with the filer on its own leniencies,
- * not with the merge gate.
+ * `<!-- gaia-debt-key:` opener and does not require the `v1` token, which
+ * `parseKey`'s stricter gate grammar would refuse. Suppression must agree
+ * with the filer on its own leniencies, not with the merge gate.
  */
 import {escapeRegExp} from '../util/escape-regexp.js';
 import type {IssueRecord} from './corpus.js';

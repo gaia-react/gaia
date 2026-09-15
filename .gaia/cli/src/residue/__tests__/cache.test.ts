@@ -45,7 +45,7 @@ describe('attribution cache', () => {
     mkdirSync(path.join(root, '.gaia', 'local', 'cache'), {recursive: true});
     writeFileSync(
       path.join(root, '.gaia', 'local', 'cache', 'residual-attribution.json'),
-      '{"schema":"v1","prs":{"1":',
+      '{"schema":"v2","prs":{"1":',
       {flag: 'w'}
     );
 

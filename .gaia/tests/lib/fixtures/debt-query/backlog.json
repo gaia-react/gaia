@@ -26,5 +26,12 @@
     "labels": [{ "name": "tech-debt" }],
     "createdAt": "2026-01-04T00:00:00Z",
     "body": "A human filed this directly, describing a slow query on the reports page, with no dedup key and no handler class."
+  },
+  {
+    "number": 105,
+    "title": "Keyed suggestion issue whose path contains a space (SPEC-082 fixture)",
+    "labels": [{ "name": "tech-debt" }, { "name": "severity:suggestion" }],
+    "createdAt": "2026-01-05T00:00:00Z",
+    "body": "A residual cited on a spaced wiki path, added so the ordering query's spaced-path handling is exercised.\n\n<!-- gaia-debt-key: v1 class=holistic/unclassified path=wiki/concepts/PR Merge Workflow.md line=175 -->"
   }
 ]

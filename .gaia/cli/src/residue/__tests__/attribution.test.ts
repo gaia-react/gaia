@@ -36,6 +36,12 @@ const key = (className: string, keyPath: string, line: number): string =>
 const withoutGroups = (source: string): string =>
   source.replaceAll(/[()]/g, '');
 
+// UAT-004 named mutant helper: reverts a key-grammar source's path
+// terminator from the closer-scoped spelling back to the pre-change
+// space-scoped one.
+const revertPathTerminatorToSpace = (source: string): string =>
+  source.replace('path=[^>]+', 'path=[^ ]+');
+
 const MIXED_LINES = [
   '# Summary',
   `Prose outside any canonical section, carrying ${key('x/prose', 'app/prose.ts', 1)}.`,
@@ -382,5 +388,42 @@ describe('recognizer parity with the merge gate', () => {
     expect(withoutGroups(KEY_PATTERN.source)).toBe(
       withoutGroups(hookAssignment('key_re'))
     );
+  });
+
+  // UAT-004 named mutant (SPEC-082). The test above is green at HEAD and
+  // green after this SPEC's grammar move, so on its own it discriminates
+  // nothing: forgetting to move one side would pass it just as cleanly.
+  // This drives the actual partial-edit failure mode by reverting each
+  // side's path terminator from the closer-scoped spelling back to the
+  // pre-change space-scoped one and asserting the parity comparison fails.
+  //
+  // `withoutGroups` strips capture parentheses from BOTH sides (see its own
+  // comment above `withoutGroups`'s definition), so a mutant differing only
+  // in parentheses is a deliberate equivalence class this test does not
+  // catch; the conformance table in
+  // `.gaia/tests/hooks/residue-attribution-conformance.bats` is what covers
+  // that class instead.
+  //
+  // `path=[^ ]+` below is the one sanctioned occurrence of the pre-change
+  // terminator under `.gaia/cli/src/`: the acceptance criterion that
+  // `git grep -n 'path=\[\^ \]' -- .gaia/cli/src .gaia/cli/gaia ':!*__tests__*'`
+  // returns nothing excludes `__tests__` precisely so this mutant can live
+  // here. A later sweep repairing this occurrence would be a mistake.
+  test("UAT-004 named mutant: reverting either side's path terminator to a space fails the parity comparison", () => {
+    const tsSide = KEY_PATTERN.source;
+    const gateSide = hookAssignment('key_re');
+
+    // Sanity: the real (unmutated) comparison this parity test makes.
+    expect(withoutGroups(tsSide)).toBe(withoutGroups(gateSide));
+
+    const mutatedTsSide = revertPathTerminatorToSpace(tsSide);
+
+    expect(mutatedTsSide).not.toBe(tsSide);
+    expect(withoutGroups(mutatedTsSide)).not.toBe(withoutGroups(gateSide));
+
+    const mutatedGateSide = revertPathTerminatorToSpace(gateSide);
+
+    expect(mutatedGateSide).not.toBe(gateSide);
+    expect(withoutGroups(tsSide)).not.toBe(withoutGroups(mutatedGateSide));
   });
 });
