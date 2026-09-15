@@ -975,11 +975,18 @@ changed=$(git -C "$AUDIT_ROOT" diff --name-only -z "${KEY_BASE}...HEAD" -- x)
   # at all reports zero and passes. Pin both candidate sets as non-empty: the
   # BASE_SHA namers assertion 2 ranges over, and the exempted FULL_BASE
   # derivation assertion 1 must be deciding about rather than never meeting.
+  # gaia-lint-ignore lint-git-path-quoting: bats `run` captures stdout into
+  # $output, which cannot hold a NUL byte, so -z here would concatenate the
+  # paths into one unsplittable string rather than delimit them; both
+  # assertions are non-emptiness plus a fixed ASCII path literal, which git
+  # never quotes
   run git -C "$REPO_ROOT" grep -lIF 'BASE_SHA' -- '.claude/agents/'
   [ "$status" -eq 0 ]
   [ -n "$output" ]
   grep -qF "code-audit-frontend.md" <<<"$output" || return 1
 
+  # gaia-lint-ignore lint-git-path-quoting: same `run`-into-$output shape and
+  # same fixed-ASCII-literal assertion as the call above
   run git -C "$REPO_ROOT" grep -lIE '^FULL_BASE=' -- '.claude/agents/'
   [ "$status" -eq 0 ]
   grep -qF "code-audit-maintainer-shell.md" <<<"$output" || return 1

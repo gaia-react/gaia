@@ -252,6 +252,10 @@ LEDGER=".gaia/local/audit/$(gaia_audit_key "$KEY_BASE").rerun.json"
   # no candidate at all reports zero and passes. Pin the candidate set as
   # non-empty so a future move of the agent definitions out from under
   # `.claude/agents/` surfaces as a red here rather than as a silent green.
+  # gaia-lint-ignore lint-git-path-quoting: bats `run` captures stdout into
+  # $output, which cannot hold a NUL byte, so -z here would concatenate the
+  # paths rather than delimit them; the assertion is non-emptiness plus a fixed
+  # ASCII path literal, which git never quotes
   run git -C "$REPO_ROOT" grep -lIE 'findings\.json|rerun\.json' -- '.claude/agents/'
   [ "$status" -eq 0 ]
   [ -n "$output" ]

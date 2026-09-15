@@ -127,10 +127,13 @@ extract_sole_bash_fence_matching() {
   # this needle is the OR of the two exact statements: either phrasing
   # drifting, or a third file adopting either one verbatim, reds this test.
   local got expected
-  got="$(git -C "$REPO_ROOT" grep -lF \
+  # -z, and `sort -z` with it, so a carrier whose path holds a non-ASCII byte
+  # arrives verbatim instead of C-quoted; the `tr` back to newlines is the
+  # boundary the exact-set comparison below cannot move.
+  got="$(git -C "$REPO_ROOT" grep -lF -z \
     -e '`drain`, `plan`, `maintenance`, `adhoc`, `unknown`' \
     -e 'drain, plan, maintenance, adhoc, unknown' \
-    -- "${EXCLUDE_PATHSPEC[@]}" | LC_ALL=C sort)"
+    -- "${EXCLUDE_PATHSPEC[@]}" | LC_ALL=C sort -z | tr '\0' '\n')"
   expected="$(printf '%s\n%s\n' ".gaia/scripts/debt-origin-lib.sh" ".claude/skills/file-tech-debt/SKILL.md" | LC_ALL=C sort)"
   [ "$got" = "$expected" ] || {
     printf 'mode-vocabulary needle matched:\n%s\nexpected exactly:\n%s\n' "$got" "$expected" >&2
@@ -146,7 +149,8 @@ extract_sole_bash_fence_matching() {
   # bare `-batch` needle returns more than the owner+helper pair; this row's
   # full text returns exactly two).
   local got expected
-  got="$(git -C "$REPO_ROOT" grep -lF -- 'debt/<members>-batch' -- "${EXCLUDE_PATHSPEC[@]}" | LC_ALL=C sort)"
+  # -z plus `sort -z`, for the reason given on the same shape in 1a above.
+  got="$(git -C "$REPO_ROOT" grep -lF -z -- 'debt/<members>-batch' -- "${EXCLUDE_PATHSPEC[@]}" | LC_ALL=C sort -z | tr '\0' '\n')"
   expected="$(printf '%s\n%s\n' ".gaia/scripts/debt-origin-lib.sh" ".claude/skills/file-tech-debt/SKILL.md" | LC_ALL=C sort)"
   [ "$got" = "$expected" ] || {
     printf 'convention-table-row needle matched:\n%s\nexpected exactly:\n%s\n' "$got" "$expected" >&2
@@ -199,9 +203,12 @@ extract_sole_bash_fence_matching() {
   # one verbatim would drag the token in and instruct adopters to run a sweep
   # that can only match issues they filed themselves. Leave CHANGELOG.md off,
   # so that regression fails here.
-  local got f
-  got="$(git -C "$REPO_ROOT" grep -lF -- "gaia-debt-origin" -- "${EXCLUDE_PATHSPEC[@]}")"
-  while IFS= read -r f; do
+  # -z and a NUL read straight off a process substitution: a carrier whose path
+  # holds a non-ASCII byte would otherwise arrive C-quoted, match no arm of the
+  # case below, and red as "unaccounted-for" under a name no file on disk has.
+  # Command substitution is not an option on the way -- it discards NUL bytes.
+  local f
+  while IFS= read -r -d '' f; do
     [ -n "$f" ] || continue
     case "$f" in
       ".claude/agents/code-audit-frontend.md" | \
@@ -219,9 +226,7 @@ extract_sole_bash_fence_matching() {
         return 1
         ;;
     esac
-  done <<EOF
-$got
-EOF
+  done < <(git -C "$REPO_ROOT" grep -lF -z -- "gaia-debt-origin" -- "${EXCLUDE_PATHSPEC[@]}")
 }
 
 # ========== 3. the pointer rule ==========
@@ -230,9 +235,9 @@ EOF
   # Same shape and reasoning as assertion 2 of check-audit-key-callers.sh: a
   # token-presence net over the whole file, so descriptive prose satisfies it
   # exactly as an executable reference does.
-  local got f
-  got="$(git -C "$REPO_ROOT" grep -lF -- "gaia-debt-origin" -- "${EXCLUDE_PATHSPEC[@]}")"
-  while IFS= read -r f; do
+  # -z and a NUL read, for the reason given on the same shape in 2a above.
+  local f
+  while IFS= read -r -d '' f; do
     [ -n "$f" ] || continue
     case "$f" in
       ".claude/skills/file-tech-debt/SKILL.md" | ".gaia/scripts/debt-origin-lib.sh")
@@ -243,9 +248,7 @@ EOF
       printf '%s names gaia-debt-origin but never points at the owner file\n' "$f" >&2
       return 1
     }
-  done <<EOF
-$got
-EOF
+  done < <(git -C "$REPO_ROOT" grep -lF -z -- "gaia-debt-origin" -- "${EXCLUDE_PATHSPEC[@]}")
 }
 
 # ========== 4. the dedup key still matches (deterministic-consumer safety) ==========

@@ -92,8 +92,16 @@ extract_function() {
 @test "exactly one classifier: every out-of-scope allowlist arm lives in one tracked file" {
   while IFS= read -r lit; do
     [ -n "$lit" ] || continue
-    matches="$(git -C "$REPO_ROOT" grep -lF -- "$lit" -- '*.sh')"
-    count="$(printf '%s\n' "$matches" | grep -c .)"
+    # -z and a NUL read: a carrier whose path holds a non-ASCII byte would
+    # otherwise arrive C-quoted and fail the exact-path assertion below under a
+    # name no file on disk has. Command substitution discards NUL bytes, so the
+    # records are accumulated in the loop instead of captured from one.
+    matches=""
+    while IFS= read -r -d '' m; do
+      matches="${matches}${m}
+"
+    done < <(git -C "$REPO_ROOT" grep -lF -z -- "$lit" -- '*.sh')
+    count="$(printf '%s' "$matches" | grep -c .)"
     [ "$count" -eq 1 ] || return 1
     grep -qxF ".claude/hooks/lib/audit-scope.sh" <<<"$matches" || return 1
   done <<EOF
