@@ -1,0 +1,9 @@
+[
+  {
+    "number": 9001,
+    "title": "Fixture: a residual continuation line carrying two wrapped keys",
+    "labels": [{ "name": "tech-debt" }, { "name": "severity:suggestion" }],
+    "createdAt": "2026-01-05T00:00:00Z",
+    "body": "A residual whose continuation line carries two wrapped keys\n<!-- gaia-debt-key: v1 class=a path=wiki/concepts/PR Merge Workflow.md line=7 --> and <!-- gaia-debt-key: v1 class=b path=wiki/concepts/Task Orchestration.md line=9 -->"
+  }
+]
