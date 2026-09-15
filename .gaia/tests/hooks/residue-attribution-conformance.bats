@@ -405,8 +405,11 @@ TABLE
 # terminates the path on the closer, so the greedy `.+` has nowhere to run.
 # On an unindented line carrying TWO, the anchored pattern still matches the
 # whole line and `.+` runs straight across the first closer, which is the very
-# splice class SPEC-082 exists to close. What covers that case is the
-# one-key-per-line corpus property (Deliverable 4), not these two patterns.
+# splice class SPEC-082 exists to close. That splice is exercised only
+# against other readers, by Deliverable 4a (the gate) and Arm 2 of
+# `.gaia/tests/lib/doc-debt-query.bats` (the filer's jq scan); nothing reaches
+# these two patterns, so for them it stands open by the decision below rather
+# than by coverage.
 # The decision not to convert them does not rest on the splice being
 # impossible: it rests on conversion narrowing a blocking pre-file guard,
 # which SPEC-082 puts under `ask_first` with the default do not. The
