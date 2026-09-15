@@ -26,6 +26,10 @@ Conventional prefixes in this repo: `feat/`, `fix/`, `chore/`, `refactor/`, `tes
 
 No `--force`, `--force-with-lease`, or `-f` to `main`/`master`; upstream history is shared. Fix conflicts with a merge or rebase on the feature branch, then open a PR.
 
+## 3. Never push directly to `main` or `master`
+
+The hook denies two independent conditions on `git push`, each with its own message and its own repair: a plain push while HEAD sits on `main`/`master` (switch to a feature branch and open a PR), and a push whose refspec names `main`, `master`, or `HEAD` as the destination from any branch (name the branch being pushed explicitly and open a PR instead). Standing on main while also naming it in the refspec answers as the first cause, since its repair, switching branches, settles the second too.
+
 ## Setup standdown
 
 Both invariants above have one temporary, explicit exception. `/setup-gaia` provisions a greenfield repo by landing GAIA's own CI-install commit directly on the default branch: that commit has nothing to audit and the branch is not yet a collaboration surface. For that single commit+push it suspends the hook via a machine-local, gitignored sentinel `.gaia/local/setup-in-progress`, then removes it. The sentinel is honored only while fresh (mtime within 10 minutes), so a stale one left behind by a crashed setup self-heals and enforcement resumes on its own; it is gitignored, so it never rides into a clone. Resting state is fully enforcing.
