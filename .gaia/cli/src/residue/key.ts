@@ -81,9 +81,13 @@ const CONTROL_CHARACTERS: readonly (readonly [string, string])[] = [
  * ` line=` and any further space stays inside the path, so `path=app/a.ts
  * line=1` written with two spaces parses `ok` with a trailing space and reads
  * as a different coordinate from the same file filed without it. Under the
- * old space-terminated grammar that typo landed in `malformed[]` with a
- * reason instead. It is disposable through the normal drain rather than a
- * livelock: it resolves `unresolvable` and is dismissible.
+ * old space-terminated grammar the comment matched no key at all, so the unit
+ * was keyless and the gate denied the merge over it; `malformed[]` is reached
+ * only once the pattern matches and field validation then fails, which it
+ * never did here. The regression is therefore merge-denied becoming silently
+ * accepted as a distinct coordinate, not reported becoming accepted. It is
+ * still disposable through the normal drain rather than a livelock: it
+ * resolves `unresolvable` and is dismissible.
  */
 export const normalizeRepoRelativePath = (raw: string): Validated<string> => {
   if (raw === '') {

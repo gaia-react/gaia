@@ -400,11 +400,16 @@ TABLE
 # field and deliberately does NOT take the closer-terminated grammar. Prong 2
 # greps for the post-change `[^>]` spellings, so a reader left on `path=.+` is
 # invisible to the derivation by construction and can never appear in the
-# symmetric difference. That is safe here and unsafe in general: it is safe
-# because both of these are fully anchored on `^<!-- ... -->$`, so the trailing
-# ` line=<int> -->` already terminates the path on the closer and the greedy
-# `.+` cannot run past it; converting them would narrow a blocking pre-file
-# guard, which SPEC-082 puts under `ask_first` with the default do not. The
+# symmetric difference. The anchor is what makes it survivable rather than
+# safe: on a line carrying ONE key comment the trailing ` line=<int> -->`
+# terminates the path on the closer, so the greedy `.+` has nowhere to run.
+# On an unindented line carrying TWO, the anchored pattern still matches the
+# whole line and `.+` runs straight across the first closer, which is the very
+# splice class SPEC-082 exists to close. What covers that case is the
+# one-key-per-line corpus property (Deliverable 4), not these two patterns.
+# The decision not to convert them does not rest on the splice being
+# impossible: it rests on conversion narrowing a blocking pre-file guard,
+# which SPEC-082 puts under `ask_first` with the default do not. The
 # table exists so the omission is stated rather than silent, and so that a
 # later edit to either reader reds here instead of passing unseen.
 non_movers() {

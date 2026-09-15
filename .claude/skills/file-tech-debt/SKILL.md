@@ -376,11 +376,11 @@ This query is a triage aid, not a gate. Legitimate members of the result set exi
 
 The wrapped `gaia-debt-key` format (step 1) and the label spellings (step 6) are not just prose here, they are a contract shared with several consumers and their tests. Step 2's dedup **matching basis** is `path=`+`line=` (ignoring `class=`), but that only changes which issue this recipe treats as a match, it does not change the wrapped key format (step 1) or any label spelling (step 6), so none of the consumers below need a change on account of it.
 
-**Key format.** The wrapped comment format is a contract shared with every reader that parses it, and the authoritative reader set is found by searching rather than read from a list here, because a reader can assert the contract in a docblock while carrying no key literal at all: `git grep -n 'gaia-debt-key'`, paired with a search for the `path=` grammar literal you are replacing, read off `.gaia/cli/src/residue/key.ts` rather than named here, and a search for prose describing the `path` field. Search for the grammar you are moving away from, never one a past migration already moved away from: a spent spelling greps clean and reads as done. Naming today's spelling in this sentence would make it spent on the next move, which is why it points at the reader instead. Change the key format only once that search is clean against the change.
+**Key format.** The wrapped comment format is a contract shared with every reader that parses it, and the authoritative reader set is found by searching rather than read from a list here, because a reader can assert the contract in a docblock while carrying no key literal at all: `git grep -n 'gaia-debt-key'`, paired with a search for the terminator the key parser currently uses for the `path=` field, taken from a reader the first prong just returned rather than named here, and a search for prose describing the `path` field. Search for the grammar you are moving away from, never one a past migration already moved away from: a spent spelling greps clean and reads as done. Naming today's spelling in this sentence would make it spent on the next move, which is why it describes the shape instead. Change the key format only once that search is clean against the change.
 
 **Label spellings.** Change any label spelling **only in lockstep** with all of these. Unlike the key format above, this is an enumeration rather than a search, because a consumer can read a label without defining one and no registry-rooted derivation finds those. That makes the list the thing that goes stale: treat it as the best known set, not a proof of completeness, and pair a rename with `git grep` for the literal spelling and for each namespace prefix.
 
-- `.gaia/statusline/gaia-statusline.sh`
+- `.gaia/statusline/gaia-statusline.sh` (carries no spelling; it renders debt-derived UI, so it is checked defensively)
 - `.gaia/scripts/debt-count-refresh.sh`
 - `.claude/hooks/debt-session-reconcile.sh`
 - `.claude/skills/gaia/references/debt.md`
@@ -388,12 +388,15 @@ The wrapped `gaia-debt-key` format (step 1) and the label spellings (step 6) are
 - `.claude/rules/issue-claim.md`
 - `.claude/hooks/issue-claim-release.sh`
 - `.claude/hooks/lib/audit-dispositions.sh`
+- `.github/actions/gaia-ci-merge-and-watch/action.yml` (`severity:important`, `severity:critical`)
 - `.gaia/labels.json`
 <!-- gaia:maintainer-only:start -->
 - `.gaia/cli/src/labels/registry.ts` (every governed namespace prefix)
-- `.github/actions/gaia-ci-merge-and-watch/action.yml` (`severity:important`, `severity:critical`)
 - `.gaia/cli/health/comprehensive/runbook.md`
 - Tests: `.gaia/tests/hooks/debt-sentinel-touch.bats`, `.gaia/tests/hooks/debt-session-reconcile.bats`, `.gaia/scripts/tests/debt-count-refresh.bats`, `.gaia/tests/statusline/audit-nudge-drift-suppression.bats`, `.gaia/scripts/tests/check-debt-issue-metadata.bats`, `.gaia/tests/hooks/issue-claim-release.bats`
+
+One carve-out, so the per-namespace paragraphs below do not each have to restate it: `.gaia/cli/src/labels/registry.ts`'s `NAMESPACE_PREFIXES` array hardcodes **every** governed prefix, so it is an edit for every namespace rename without exception. The consumer counts those paragraphs give ("one of them reads it", "two of them read it") are counts over the reader set each paragraph describes, and they do not include this one.
+
 <!-- gaia:maintainer-only:end -->
 
 `.gaia/labels.json` is the registry where every spelling this section governs is defined, rather than a consumer of them. Rename there by changing the entry's `name` and appending the old spelling to its `renamedFrom`, then regenerate the wiki page with `.gaia/cli/gaia labels docs`. `labels sync` takes its label definitions from that file and nowhere else, so a rename that works every consumer in the list above and skips the registry leaves sync creating the old label forever and the new one never.
