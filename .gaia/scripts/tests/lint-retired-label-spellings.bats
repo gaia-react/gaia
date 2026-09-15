@@ -376,6 +376,73 @@ RENAMED_ONE='{
 
 # Environment arms: each reports rather than passing as clean.
 
+# The discovery guard. `git grep` returning nothing is byte-identical to
+# scanning and finding nothing, so every way it can decline to answer has to be
+# refused ahead of the scan rather than reported as clean.
+
+@test "a root that is not a git repository exits 2, never clean, even with real carriers" {
+  local dir="$BATS_TEST_TMPDIR/not_a_repo"
+  mkdir -p "$dir/.gaia" "$dir/docs"
+  write_registry "$dir" "$RENAMED_ONE"
+  printf 'gh issue list --label old-claim\n' >"$dir/docs/a.md"
+
+  run bash "$CHECK" "$dir"
+  [ "$status" -eq 2 ]
+  grep -qF -- 'nothing was scanned' <<<"$output"
+  grep -qF -- 'clean' <<<"$output" && return 1
+  true
+}
+
+@test "a git grep that cannot answer exits 2, not clean, on a valid repository root" {
+  local dir
+  dir="$(make_fixture bad_index)"
+  write_registry "$dir" "$RENAMED_ONE"
+  printf 'gh issue list --label old-claim\n' >"$dir/.gaia/scripts/reader.sh"
+  track_fixture "$dir"
+
+  # A poisoned index rather than a chmod, so the test holds where bats runs as
+  # root. It reaches the one arm the root guard above cannot cover: `rev-parse`
+  # reads no index and still answers, so the root passes every precondition and
+  # only `git grep` fails. Without the status test this run would report clean
+  # over a tree carrying a real carrier.
+  printf 'not an index\n' >"$BATS_TEST_TMPDIR/garbage-index"
+
+  GIT_INDEX_FILE="$BATS_TEST_TMPDIR/garbage-index" run bash "$CHECK" "$dir"
+  [ "$status" -eq 2 ]
+  grep -qF -- 'nothing was scanned' <<<"$output"
+  grep -qF -- 'lint-retired-label-spellings: clean' <<<"$output" && return 1
+  true
+}
+
+@test "a subdirectory of a repository exits 2: the pathspecs would anchor wrong" {
+  local dir
+  dir="$(make_fixture subdir)"
+  write_registry "$dir" "$RENAMED_ONE"
+  printf 'gh issue list --label old-claim\n' >"$dir/.gaia/scripts/reader.sh"
+  track_fixture "$dir"
+
+  run bash "$CHECK" "$dir/.gaia"
+  [ "$status" -eq 2 ]
+  grep -qF -- 'not a git repository root' <<<"$output"
+}
+
+@test "a root that is not a directory exits 2" {
+  run bash "$CHECK" "$BATS_TEST_TMPDIR/absent"
+  [ "$status" -eq 2 ]
+  grep -qF -- 'is not a directory' <<<"$output"
+}
+
+@test "a second argument is refused rather than silently ignored" {
+  local dir
+  dir="$(make_fixture two_args)"
+  write_registry "$dir" "$RENAMED_ONE"
+  track_fixture "$dir"
+
+  run bash "$CHECK" "$dir" extra
+  [ "$status" -eq 2 ]
+  grep -qF -- 'usage:' <<<"$output"
+}
+
 @test "a missing registry exits 2 rather than reporting clean" {
   local dir
   dir="$(make_fixture no_registry)"

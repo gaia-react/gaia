@@ -52,10 +52,42 @@
 
 set -euo pipefail
 
+if [ "$#" -gt 1 ]; then
+  echo "lint-retired-label-spellings: ERROR: usage: $0 [<repo_root>]" >&2
+  exit 2
+fi
+
 ROOT="${1:-}"
 
+# Derived under an explicit guard rather than bare: outside a repository the
+# bare form dies under errexit with git's own status and diagnostic, which
+# carries neither the exit 2 this script's header documents nor its prefix.
 if [ -z "$ROOT" ]; then
-  ROOT="$(git rev-parse --show-toplevel)"
+  if ! ROOT="$(git rev-parse --show-toplevel 2>&1)"; then
+    echo "lint-retired-label-spellings: ERROR: cannot derive a repository root: $ROOT" >&2
+    exit 2
+  fi
+fi
+
+if [ ! -d "$ROOT" ]; then
+  echo "lint-retired-label-spellings: ERROR: $ROOT is not a directory" >&2
+  exit 2
+fi
+
+# The scan discovers over `git grep`, and a `git grep` that cannot run returns
+# nothing, which is byte-identical to "scanned it, found no violations". This
+# subsystem has settled that question twice already, in
+# .gaia/scripts/check-audit-key-callers.sh and
+# .gaia/scripts/check-audit-base-derivation.sh, and this is the same guard: a
+# root that is not a repository root is refused here rather than reported clean
+# after reading nothing. `--show-prefix` must be EMPTY as well as successful,
+# since it succeeds from a subdirectory too, where the pathspecs below would be
+# resolved against the wrong anchor.
+if ! prefix="$(git -C "$ROOT" rev-parse --show-prefix 2>&1)" ||
+  [ -n "$prefix" ] ||
+  [ "$(git -C "$ROOT" rev-parse --is-inside-work-tree 2>/dev/null || true)" != "true" ]; then
+  echo "lint-retired-label-spellings: ERROR: $ROOT is not a git repository root; nothing was scanned" >&2
+  exit 2
 fi
 
 REGISTRY="$ROOT/.gaia/labels.json"
@@ -80,13 +112,17 @@ fi
 #   tests                   a rename's own migration test drives the old
 #                           spelling through the sync path on purpose.
 #
-# `CHANGELOG.md`, `wiki/log.md`, `wiki/hot.md`, `wiki/meta/` and the two bundles
-# are the same entries `SCAN_EXCLUDED` carries in .gaia/cli/src/labels/check.ts,
-# so the two label scans agree on what counts as a historical surface. The
-# registry and the test entries are this scan's own; `SCAN_EXCLUDED`'s remaining
-# entry, `.gaia/local/`, has no counterpart here because `git grep` walks only
-# tracked paths and that tree is gitignored, so an entry for it could never
-# change an outcome and no fixture could exercise it.
+# As of this writing, `CHANGELOG.md`, `wiki/log.md`, `wiki/hot.md`, `wiki/meta/`
+# and the two bundles are also the entries `SCAN_EXCLUDED` carries in
+# .gaia/cli/src/labels/check.ts, so the two label scans then agreed on what
+# counts as a historical surface. That is an observation rather than a contract:
+# the two lists are independent and nothing reconciles them, so re-read that
+# array rather than trusting this sentence. Divergence is fail-closed either
+# way, since an entry only ever narrows what this scan reads. The registry and
+# the test entries are this scan's own; `SCAN_EXCLUDED`'s remaining entry,
+# `.gaia/local/`, has no counterpart here because `git grep` walks only tracked
+# paths and that tree is gitignored, so an entry for it could never change an
+# outcome and no fixture could exercise it.
 EXCLUDED_PATHSPECS=(
   ':!CHANGELOG.md'
   ':!wiki/log.md'
@@ -112,7 +148,14 @@ fi
 # it, which is precisely the byte the framing depends on.
 PAIRS_FILE="$(mktemp)"
 PREFIXES_FILE="$(mktemp)"
-trap 'rm -f "$PAIRS_FILE" "$PREFIXES_FILE"' EXIT
+REPORT_FILE="$(mktemp)"
+MATCHES_FILE="$(mktemp)"
+# Diagnostics land here rather than beside the data. Merging them would put
+# bytes carrying no NUL ahead of the first record, lengthening that term
+# exactly the way the `@tsv` reasoning below exists to prevent, on any jq that
+# warns while still exiting 0.
+STDERR_FILE="$(mktemp)"
+trap 'rm -f "$PAIRS_FILE" "$PREFIXES_FILE" "$REPORT_FILE" "$MATCHES_FILE" "$STDERR_FILE"' EXIT
 
 # Retired full spellings, as NUL-delimited `<old>` then `<new>` records. A name
 # may be renamed more than once, so `renamedFrom` is flattened per entry rather
@@ -131,9 +174,9 @@ trap 'rm -f "$PAIRS_FILE" "$PREFIXES_FILE"' EXIT
 # registry would otherwise abort carrying jq's own exit code, which a caller
 # reads as neither a finding nor a clean run.
 if ! jq -j '.labels[] | . as $entry | .renamedFrom[]? | ., "\u0000", $entry.name, "\u0000"' \
-  "$REGISTRY" >"$PAIRS_FILE" 2>&1; then
+  "$REGISTRY" >"$PAIRS_FILE" 2>"$STDERR_FILE"; then
   echo "lint-retired-label-spellings: ERROR: cannot read $REGISTRY:" >&2
-  cat "$PAIRS_FILE" >&2
+  cat "$STDERR_FILE" >&2
   exit 2
 fi
 
@@ -166,9 +209,9 @@ if ! jq -j '
     | map(select(IN($live[]) | not))
     | .[]
     | ., "\u0000"
-  ' "$REGISTRY" >"$PREFIXES_FILE" 2>&1; then
+  ' "$REGISTRY" >"$PREFIXES_FILE" 2>"$STDERR_FILE"; then
   echo "lint-retired-label-spellings: ERROR: cannot read $REGISTRY:" >&2
-  cat "$PREFIXES_FILE" >&2
+  cat "$STDERR_FILE" >&2
   exit 2
 fi
 
@@ -177,14 +220,22 @@ if [ ! -s "$PAIRS_FILE" ] && [ ! -s "$PREFIXES_FILE" ]; then
   exit 0
 fi
 
-# scan_term <term> <prefix-mode> <why>: print one `file:line: message` per
-# occurrence of <term> that is a whole label spelling rather than a fragment of
-# a longer one.
+# scan_term <term> <prefix-mode> <why>: append one `file:line: message` to
+# REPORT_FILE per tracked LINE carrying <term> as a whole label spelling rather
+# than as a fragment of a longer one. One message per line, not per occurrence:
+# a second hit on a line the report already names adds nothing a reader acts on.
+#
+# It appends to a file rather than printing, so its callers can invoke it
+# directly. Reading it through a command substitution would run it in a
+# subshell, where the `exit 2` below sets the SUBSHELL's status and leaves
+# whether the run stops at all to errexit propagating through an assignment,
+# which is too much subtlety to put under a guard whose whole subject is not
+# reporting clean over a tree it never read.
 #
 # The boundary test exists because a rename can leave the old spelling as a
-# PREFIX of the new one -- retiring `in-progress` in favour of
-# `in-progress-now` would otherwise make every live carrier a finding and the
-# gate un-greenable. Membership is tested with awk's index() against a literal
+# prefix OR a suffix of the new one, and either way a fixed-string scan would
+# make every live carrier a finding and the gate un-greenable. Both sides are
+# tested, and each is separately armed by its own fixture. Membership is tested with awk's index() against a literal
 # character set rather than with a regex, for the reason the sibling
 # lint-shipped-issue-refs.sh states at length: a label name carries no
 # guaranteed charset (GitHub permits spaces, and `good first issue` is in this
@@ -197,12 +248,26 @@ fi
 # character after it would match nothing.
 scan_term() {
   local term="$1" prefix_mode="$2" why="$3"
-  local files=() f
+  local files=() f status=0
+
+  # Status 1 is "no carrier", the ordinary case, and is the only failure
+  # swallowed. Anything above it is git declining to answer, and an unqualified
+  # `|| true` would turn that into an empty file list, a clean report, and an
+  # exit 0 over a tree this never read. The root guard above removes the
+  # reachable cause; this removes the class.
+  git -C "$ROOT" grep -F -l -- "$term" \
+    -- ${EXCLUDED_PATHSPECS[@]+"${EXCLUDED_PATHSPECS[@]}"} \
+    >"$MATCHES_FILE" 2>"$STDERR_FILE" || status=$?
+
+  if [ "$status" -gt 1 ]; then
+    echo "lint-retired-label-spellings: ERROR: git grep exited $status scanning for a retired spelling; nothing was scanned" >&2
+    cat "$STDERR_FILE" >&2
+    exit 2
+  fi
 
   while IFS= read -r f; do
     [ -n "$f" ] && files+=("$f")
-  done < <(git -C "$ROOT" grep -F -l -- "$term" \
-    -- ${EXCLUDED_PATHSPECS[@]+"${EXCLUDED_PATHSPECS[@]}"} || true)
+  done <"$MATCHES_FILE"
 
   if [ "${#files[@]}" -eq 0 ]; then
     return 0
@@ -243,26 +308,22 @@ scan_term() {
           pos = end + 1
         }
       }
-    ' "$ROOT/$f"
+    ' "$ROOT/$f" >>"$REPORT_FILE"
   done
 }
 
-report=""
-
 while IFS= read -r -d '' old && IFS= read -r -d '' new; do
   [ -n "$old" ] || continue
-  hits="$(scan_term "$old" 0 "retired label spelling, renamed to \`$new\` in .gaia/labels.json; migrate this carrier")"
-  [ -z "$hits" ] || report+="$hits"$'\n'
+  scan_term "$old" 0 "retired label spelling, renamed to \`$new\` in .gaia/labels.json; migrate this carrier"
 done <"$PAIRS_FILE"
 
 while IFS= read -r -d '' prefix; do
   [ -n "$prefix" ] || continue
-  hits="$(scan_term "$prefix" 1 "retired label namespace prefix; no live entry in .gaia/labels.json carries it")"
-  [ -z "$hits" ] || report+="$hits"$'\n'
+  scan_term "$prefix" 1 "retired label namespace prefix; no live entry in .gaia/labels.json carries it"
 done <"$PREFIXES_FILE"
 
-if [ -n "$report" ]; then
-  printf '%s' "$report"
+if [ -s "$REPORT_FILE" ]; then
+  cat "$REPORT_FILE"
   echo "A rename is only complete once every carrier moves. See .claude/skills/file-tech-debt/SKILL.md (## Contract-preserve note) for which consumer breaks first." >&2
   exit 1
 fi
