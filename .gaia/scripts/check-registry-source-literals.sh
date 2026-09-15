@@ -91,10 +91,14 @@ GAIA_CHECKB_SKILL_PATHSPECS=(
 )
 
 # _gaia_checkb_code_files <repo_root>: tier-1 files that contain the literal
-# ".gaia/local/" at least once, one per line.
+# ".gaia/local/" at least once, NUL-delimited. NUL rather than newline because
+# `-z` is what stops git C-quoting a path carrying a non-ASCII byte, and a
+# C-quoted path names no file on disk for the reader below to open. Its sole
+# caller reads it through a process substitution, so the records survive; a
+# command substitution would discard the NULs and undo the fix.
 _gaia_checkb_code_files() {
   local repo_root="$1"
-  git -C "$repo_root" grep -lIF '.gaia/local/' -- "${GAIA_CHECKB_CODE_PATHSPECS[@]}" 2>/dev/null
+  git -C "$repo_root" grep -lIF -z '.gaia/local/' -- "${GAIA_CHECKB_CODE_PATHSPECS[@]}" 2>/dev/null
 }
 
 # _gaia_checkb_is_comment_line <line> <ext>: true when <line>, trimmed of
@@ -151,7 +155,8 @@ _gaia_checkb_normalize() {
 # caller, which also picks a representative citation per unique relpath).
 _gaia_checkb_extract() {
   local repo_root="$1" file ext ln text frag rel
-  while IFS= read -r file; do
+  # -d '' to match the NUL-delimited stream _gaia_checkb_code_files emits.
+  while IFS= read -r -d '' file; do
     [ -n "$file" ] || continue
     case "$file" in
       *.sh) ext="sh" ;;

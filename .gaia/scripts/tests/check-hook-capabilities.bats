@@ -821,12 +821,21 @@ pnpm -C "$tree/.gaia/cli" install --frozen-lockfile'
 }
 
 @test "UAT-017: exactly one production definition of each closure function exists outside the vendored fixture" {
-  local fn hits
+  local fn hits hit
   local vendored=".gaia/scripts/tests/fixtures/capability-oracle/pre-change-oracle.sh"
   for fn in _gaia_capcheck_closure _gaia_capcheck_scan_writes _gaia_capcheck_strip_tests; do
-    hits="$(git -C "$REPO_ROOT" grep -l -E -- "^${fn}\(\) \{" -- '*.sh' \
-      | grep -vxF -- "$vendored" || true)"
-    [ "$(printf '%s\n' "$hits" | grep -c .)" -eq 1 ] || return 1
+    # -z and a NUL read: a definition in a file whose path carries a non-ASCII
+    # byte would otherwise be C-quoted, so it would not match the vendored path
+    # this filter excludes and would not match the expected path asserted below.
+    # Command substitution cannot carry the records -- it discards NUL bytes --
+    # so the filter moves into the loop body.
+    hits=""
+    while IFS= read -r -d '' hit; do
+      [ "$hit" = "$vendored" ] && continue
+      hits="${hits}${hit}
+"
+    done < <(git -C "$REPO_ROOT" grep -l -E -z -- "^${fn}\(\) \{" -- '*.sh')
+    [ "$(printf '%s' "$hits" | grep -c .)" -eq 1 ] || return 1
     grep -qxF -- ".gaia/scripts/capability-oracle-lib.sh" <<<"$hits" || return 1
   done
 }

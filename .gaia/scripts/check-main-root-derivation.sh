@@ -168,7 +168,27 @@ _gaia_scan_worktrees_surgery() {
 _gaia_scan_porcelain_first_line() {
   local repo_root="$1"
   local matches
-  matches="$(git -C "$repo_root" grep -n -- 'worktree list --porcelain' -- . "${GAIA_MAIN_ROOT_DERIVATION_EXCLUDE[@]}" 2>/dev/null)" \
+  # `-c core.quotepath=false` because the split below PARSES the path out of the
+  # record and opens it. Under git's default quoting a match in a file whose
+  # name carries a non-ASCII byte arrives as `"caf\303\251.sh":2:...`, so the
+  # `%%:*` trim yields a name carrying a leading double quote and octal escapes,
+  # the `sed` below cannot open it, its `2>/dev/null` swallows the error, the
+  # window comes back empty, and the match is never printed: this guard reports
+  # clean over a violation it never read.
+  #
+  # Turning the quoting off at the call is the right repair rather than `-z`,
+  # which changes the record's own delimiter and would need the split rewritten.
+  # `.gaia/scripts/lint-git-path-quoting.sh` does not and will not flag this
+  # call, because a `-n` record's path field is parsed by some callers and only
+  # displayed by others and nothing in the call text tells those apart; that
+  # guard's blind-spot block names this site as the live instance of the shape.
+  #
+  # What the flag does NOT close, so the next reader does not treat it as a
+  # general remedy: it stops only bytes above 0x80 counting as unusual, so a
+  # tracked name carrying a double quote or a backslash is still C-quoted and
+  # still defeats the trim, and a name carrying a colon defeats the trim whatever
+  # the quoting does. Those arms have no live case here; the non-ASCII one does.
+  matches="$(git -C "$repo_root" -c core.quotepath=false grep -n -- 'worktree list --porcelain' -- . "${GAIA_MAIN_ROOT_DERIVATION_EXCLUDE[@]}" 2>/dev/null)" \
     || return 0
   [ -n "$matches" ] || return 0
 

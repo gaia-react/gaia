@@ -118,14 +118,19 @@ setup() {
   # is false still exits 0, so a final candidate that does not match cannot
   # leave the loop non-zero and abort the test under bats' `set -e` before its
   # own assertion runs.
+  #
+  # -z and a NUL read on the discovery: a carrier whose path holds a non-ASCII
+  # byte would otherwise arrive C-quoted, the `grep -qE` below would be handed
+  # a name that opens no file, and the carrier would go unexamined -- so the
+  # assertion would pass having looked at less than it claims.
   hits=""
-  while IFS= read -r f; do
+  while IFS= read -r -d '' f; do
     [ -n "$f" ] || continue
     if grep -qE -- "$first_line" "$REPO_ROOT/$f"; then
       hits="${hits}${f}
 "
     fi
-  done <<<"$(cd "$REPO_ROOT" && git grep -lE -- "$cr_strip" -- '*.sh' '*.yml' '*.tmpl')"
+  done < <(cd "$REPO_ROOT" && git grep -lE -z -- "$cr_strip" -- '*.sh' '*.yml' '*.tmpl')
 
   [ "$hits" = ".claude/hooks/lib/gaia-version.sh
 " ]

@@ -1,7 +1,8 @@
 #!/usr/bin/env bats
 # Tests for .gaia/scripts/lint-git-path-quoting.sh: the static gate that flags
-# an executed `git diff --name-only` or `git ls-files` which omits `-z`, so
-# git's default `core.quotePath` cannot C-quote a path the caller then parses.
+# an executed `git diff --name-only`, `git ls-files`, or listing `git grep`
+# which omits `-z`, so git's default `core.quotePath` cannot C-quote a path the
+# caller then parses.
 #
 # Two jobs, the same pair the sibling array-guard suite carries: prove the
 # detector fires on a known-bad fixture in each scanned file type (shell, husky
@@ -35,6 +36,13 @@
 #   form. The three `@test`s under "3c. The markdown half" are that requirement,
 #   one per site, paired with the controls that keep the fence rule from
 #   claiming the illustrative mentions that surround them.
+#
+#   `#2055` makes it binding for the third listing verb, `git grep`. The group
+#   under "3d. The grep half" pairs six pre-fix site fixtures -- the live
+#   instance from `#2054` plus the five further call sites the issue names --
+#   with a test per documented listing spelling and the negative controls that
+#   keep the widened match from claiming a `git grep` which prints match lines
+#   rather than paths.
 #
 # Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 #
@@ -749,6 +757,220 @@ run_linter() {
   run_linter
   [ "$status" -eq 1 ]
   grep -qF -- "docs/guide.md:2" <<<"$output"
+}
+
+# 3d. The grep half of the class
+
+# `#2055` makes the class binding for the third listing verb. The six `@test`s
+# immediately below are that requirement: the live instance the issue was filed
+# off, plus one per further pre-fix call site it names. Their point is the
+# fixture BODY, the literal pre-fix line copied from each site; the paths are
+# the real ones so a reader can trace a failing test back to what it was written
+# for.
+#
+# The first is the one that was not hypothetical. It landed green in
+# gaia-react/gaia#2054 and was repaired on that branch; its fixture is now the
+# only remaining record that the widened detector would have caught it.
+
+@test "reds against the pre-fix lint-retired-label-spellings.sh carrier discovery" {
+  fixture_repo
+  fixture_file .gaia/scripts/lint-retired-label-spellings.sh \
+    $'#!/usr/bin/env bash\ngit -C "$ROOT" grep -F -l -- "$term" \\\n  -- "${SCAN_PATHSPEC[@]}"'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- ".gaia/scripts/lint-retired-label-spellings.sh:2" <<<"$output"
+}
+
+@test "reds against the pre-fix check-audit-base-derivation.sh BASE_SHA namers" {
+  fixture_repo
+  fixture_file .gaia/scripts/check-audit-base-derivation.sh \
+    $'#!/usr/bin/env bash\nbase_files="$(git -C "$repo_root" grep -lIF "$GAIA_AUDIT_BASE_VAR" -- \'.claude/agents/\' 2>/dev/null)"'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- ".gaia/scripts/check-audit-base-derivation.sh:2" <<<"$output"
+}
+
+@test "reds against the pre-fix check-audit-key-callers.sh artifact namers" {
+  fixture_repo
+  fixture_file .gaia/scripts/check-audit-key-callers.sh \
+    $'#!/usr/bin/env bash\nartifact_files="$(git -C "$repo_root" grep -lIE "$GAIA_AUDIT_ARTIFACT_NAME_PATTERN" -- \'.claude/agents/\' 2>/dev/null)"'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- ".gaia/scripts/check-audit-key-callers.sh:2" <<<"$output"
+}
+
+@test "reds against the pre-fix check-registry-source-literals.sh tier-1 discovery" {
+  fixture_repo
+  fixture_file .gaia/scripts/check-registry-source-literals.sh \
+    $'#!/usr/bin/env bash\ngit -C "$repo_root" grep -lIF \'.gaia/local/\' -- "${GAIA_CHECKB_CODE_PATHSPECS[@]}" 2>/dev/null'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- ".gaia/scripts/check-registry-source-literals.sh:2" <<<"$output"
+}
+
+@test "reds against the pre-fix check-step-body-extractor-roster.sh workflow namers" {
+  fixture_repo
+  fixture_file .gaia/scripts/check-step-body-extractor-roster.sh \
+    $'#!/usr/bin/env bash\nnamed="$(git -C "$repo_root" grep -lF -e "$GAIA_SBX_WORKFLOW" -- \'*.bats\' 2>/dev/null | LC_ALL=C sort)"'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- ".gaia/scripts/check-step-body-extractor-roster.sh:2" <<<"$output"
+}
+
+@test "reds against the pre-fix check-step-body-extractor-roster.sh header namers" {
+  fixture_repo
+  fixture_file .gaia/scripts/check-step-body-extractor-roster.sh \
+    $'#!/usr/bin/env bash\nheaders="$(git -C "$repo_root" grep -lF -e "$GAIA_SBX_STEP_HEADER" -- \'*.bats\' 2>/dev/null | LC_ALL=C sort)"'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- ".gaia/scripts/check-step-body-extractor-roster.sh:2" <<<"$output"
+}
+
+# The five listing spellings git documents, one test each. This IS an
+# enumeration, and it is affordable only because the set is closed: a sixth
+# spelling cannot appear without a git release that also changes the command's
+# documented output contract. The header states that; these pin it.
+
+@test "a separated grep -l is flagged" {
+  fixture_repo
+  fixture_file probe.sh $'#!/usr/bin/env bash\nfor f in $(git grep -l needle); do :; done'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- "probe.sh:2" <<<"$output"
+}
+
+@test "a clustered grep -lIF is flagged" {
+  fixture_repo
+  fixture_file probe.sh $'#!/usr/bin/env bash\nfor f in $(git grep -lIF needle); do :; done'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- "probe.sh:2" <<<"$output"
+}
+
+@test "a grep --files-with-matches is flagged" {
+  fixture_repo
+  fixture_file probe.sh $'#!/usr/bin/env bash\nfor f in $(git grep --files-with-matches needle); do :; done'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- "probe.sh:2" <<<"$output"
+}
+
+@test "a grep --name-only is flagged" {
+  fixture_repo
+  fixture_file probe.sh $'#!/usr/bin/env bash\nfor f in $(git grep --name-only needle); do :; done'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- "probe.sh:2" <<<"$output"
+}
+
+@test "a grep -L is flagged" {
+  fixture_repo
+  fixture_file probe.sh $'#!/usr/bin/env bash\nfor f in $(git grep -L needle); do :; done'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- "probe.sh:2" <<<"$output"
+}
+
+@test "a grep --files-without-match is flagged" {
+  fixture_repo
+  fixture_file probe.sh $'#!/usr/bin/env bash\nfor f in $(git grep --files-without-match needle); do :; done'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- "probe.sh:2" <<<"$output"
+}
+
+# The negative controls: what the widened match must NOT claim. A grep that
+# prints match lines rather than paths carries none of this class, and claiming
+# it would red the gate on call sites with no failure mode behind them, which is
+# how a gate gets bypassed rather than fixed.
+
+@test "a grep -l carrying a standalone -z passes" {
+  fixture_repo
+  fixture_file probe.sh \
+    $'#!/usr/bin/env bash\nwhile IFS= read -r -d \'\' f; do :; done < <(git grep -l -z needle)'
+  run_linter
+  [ "$status" -eq 0 ]
+}
+
+@test "a clustered grep -lIF whose -z is standalone passes" {
+  fixture_repo
+  fixture_file probe.sh \
+    $'#!/usr/bin/env bash\nwhile IFS= read -r -d \'\' f; do :; done < <(git -C "$r" grep -lIF -z "$n" -- \'*.sh\')'
+  run_linter
+  [ "$status" -eq 0 ]
+}
+
+@test "a grep with no listing flag is off the surface" {
+  fixture_repo
+  fixture_file probe.sh $'#!/usr/bin/env bash\nhits="$(git -C "$r" grep -nIE "$pattern" -- \'.claude/agents/\')"'
+  run_linter
+  [ "$status" -eq 0 ]
+}
+
+@test "a grep -q existence assertion is off the surface, carrying no listing flag" {
+  fixture_repo
+  fixture_file probe.sh \
+    $'#!/usr/bin/env bash\nif ! git -C "$r" grep -qF \'needle\' -- "$f"; then :; fi'
+  run_linter
+  [ "$status" -eq 0 ]
+}
+
+# The documented asymmetry: the listing flags are read inside a cluster, -z is
+# not. Approximating a cluster read on the ARMING half costs a false positive;
+# doing it on the DISARMING half would cost a missed defect, in a gate whose
+# whole purpose is closing fail-open holes. So this reds, fail-CLOSED, and the
+# repair is to write the flag as its own token.
+@test "a clustered -lz does not vouch for the call, fail-closed by design" {
+  fixture_repo
+  fixture_file probe.sh $'#!/usr/bin/env bash\nfor f in $(git grep -lz needle); do :; done'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- "probe.sh:2" <<<"$output"
+}
+
+# The termination rule applied to a positional PATTERN rather than a positional
+# revision: the same stop that keeps a pathspec from vouching for a call.
+@test "a -z after grep's positional pattern reads as missing, fail-closed by design" {
+  fixture_repo
+  fixture_file probe.sh $'#!/usr/bin/env bash\nfor f in $(git grep -l needle -z); do :; done'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- "probe.sh:2" <<<"$output"
+}
+
+@test "a -z inside a grep pathspec does not vouch for the call" {
+  fixture_repo
+  fixture_file probe.sh $'#!/usr/bin/env bash\nfiles=$(git grep -l needle -- "docs/a -z b.md")'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- "probe.sh:2" <<<"$output"
+}
+
+# The `invoked` discrimination, on the verb most likely to appear with no `git`
+# in front of it: a plain grep in a pipeline is a different command entirely and
+# quotes nothing.
+@test "a plain grep -l with no git in front is not an invocation" {
+  fixture_repo
+  fixture_file probe.sh $'#!/usr/bin/env bash\nhits="$(printf \'%s\\n\' "$text" | grep -l needle)"'
+  run_linter
+  [ "$status" -eq 0 ]
+}
+
+@test "a grep -l inside a markdown code span is prose, not an invocation" {
+  fixture_repo
+  fixture_file tracked.sh $'#!/usr/bin/env bash\necho hello'
+  fixture_file docs/guide.md $'# Guide\n\nUse `git grep -l needle` to list carriers.'
+  run_linter
+  [ "$status" -eq 0 ]
+}
+
+@test "an unquoted grep -l is reported as grep -l and hinted with its own idiom" {
+  fixture_repo
+  fixture_file probe.sh $'#!/usr/bin/env bash\nfor f in $(git grep -l needle); do :; done'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- "grep -l without -z" <<<"$output"
+  grep -qF -- "git grep -lIF -z" <<<"$output"
 }
 
 # 4. Reporting contract

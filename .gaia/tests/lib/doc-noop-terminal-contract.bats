@@ -90,10 +90,17 @@ derive_surfaces() {
   # `|| rc=$?`, never a bare assignment then a `$?` read: an assignment takes
   # its command substitution's status, so under the errexit bats runs each body
   # with, the bare form abandons the caller HERE and every arm below is dead.
+  #
+  # `-z` keeps git from C-quoting a surface whose path carries a non-ASCII
+  # byte; the `tr` back to newlines is the boundary the newline-joined consumers
+  # below cannot move. The pipeline runs under `set -o pipefail` inside the
+  # substitution so the status captured is still git's own -- without it `$?`
+  # would be tr's, which is always 0, and the rc>1 arm that separates "git could
+  # not read this repository" from "the marker phrase moved" would go dead.
   rc=0
-  raw="$(git -C "$ROOT" grep -lEI -- "$TERMINAL_RE" -- \
+  raw="$(set -o pipefail; git -C "$ROOT" grep -lEI -z -- "$TERMINAL_RE" -- \
     ':!.gaia/tests/*' ':!.gaia/local/*' \
-    ':!wiki/log.md' ':!wiki/hot.md' ':!CHANGELOG.md')" || rc=$?
+    ':!wiki/log.md' ':!wiki/hot.md' ':!CHANGELOG.md' | tr '\0' '\n')" || rc=$?
   if [ "$rc" -gt 1 ]; then
     return 2
   fi

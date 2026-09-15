@@ -63,6 +63,11 @@ setup() {
 }
 
 @test "UAT-007: git grep for cost-consolidate is empty across the whole tracked tree" {
+  # gaia-lint-ignore lint-git-path-quoting: the assertion below is emptiness of
+  # $output, and quoting cannot turn a non-empty result empty or an empty one
+  # non-empty -- the same reasoning the guard header applies to a `git status
+  # --porcelain` emptiness test; bats `run` cannot carry NUL through $output
+  # either
   run git -C "$REPO_ROOT" grep -l cost-consolidate -- \
     ':!.gaia/local' ':!.gaia/manifest.json' ':!CHANGELOG.md' \
     ':!wiki/log.md' ':!wiki/hot.md' \
