@@ -11,6 +11,9 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-09-15 cb2a4713 SKIP - path-quoting guard armed on git grep listing spellings; internal CI guard scope, no wiki page enumerates verb coverage to update
+- 2026-09-15 53d3678c SKIP - step-cap widening to direct actions/setup-node steps; wiki/decisions/Composite Action Step Timeouts.md already updated in-PR, no further sync edit needed
+- 2026-09-15 08ca9c93 SKIP - previous wiki-sync's own commit (log/state advance, pages already edited in-PR); nothing further to catalogue
 - 2026-09-15 22a446a1 SKIP - internal file-tech-debt/SKILL.md rename-checking convention + new whole-tree invariant script; process detail already documented at point of use, no wiki architectural claim changed
 - 2026-09-15 137c3db1 WORTHY - dedup-key path terminator moved (SPEC-082); already self-documented inline (wiki/concepts/PR Merge Workflow.md regex updated)
 - 2026-09-15 51d90127 SKIP - internal bug fix (heading-level recognition); no documented behavior changed, canonical heading spelling unchanged
