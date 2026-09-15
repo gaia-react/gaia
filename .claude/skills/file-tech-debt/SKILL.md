@@ -381,21 +381,21 @@ The wrapped `gaia-debt-key` format (step 1) and the label spellings (step 6) are
 **Label spellings.** A rename is complete when the old spelling reaches no consumer, and that half is **checked rather than enumerated**. Record the previous name in `.gaia/labels.json`'s `renamedFrom` as part of the rename itself: that entry is what `gaia labels sync` reads to issue `gh label edit <old> --name <new>`, and it is also the term a scan of the tracked tree searches for. So rename registry-first, then `git grep` the old spelling, and each namespace prefix the rename retires, until the tree is clean of both.
 <!-- gaia:maintainer-only:start -->
 
-`.gaia/scripts/lint-retired-label-spellings.sh` runs that scan deterministically, as a member of `.gaia/tests/whole-tree-invariants.sh`, so a rename that leaves a carrier behind reds before the merge instead of surfacing later as a degraded count. It needs no roster: it takes its search terms from `renamedFrom` and reads every tracked file outside the surfaces whose job is to name a retired spelling (`CHANGELOG.md`, `wiki/log.md`, the registry's own record, and the tests that drive the old spelling on purpose). Its one blind spot is a rename that never records `renamedFrom`, which `gaia labels sync` already punishes by creating a second label instead of renaming the first.
+`.gaia/scripts/lint-retired-label-spellings.sh` runs that scan deterministically, as a member of `.gaia/tests/whole-tree-invariants.sh`, so a rename that leaves a carrier behind reds before the merge instead of surfacing later as a degraded count. It needs no roster: it takes its search terms from `renamedFrom` and reads every tracked file outside the historical, generated and test surfaces its own `EXCLUDED_PATHSPECS` array names, with the reasons written beside it. Its one blind spot is a rename that never records `renamedFrom`, which `gaia labels sync` already punishes by creating a second label instead of renaming the first.
 <!-- gaia:maintainer-only:end -->
 
 The list below is **annotation, not the contract**. It makes no completeness claim and nothing depends on it making one; its parentheticals say how each consumer behaves when a rename misses it, loudly or silently, which is what decides the order to migrate in and what to distrust while a rename is in flight. The paragraphs after it own the per-consumer detail and this list does not restate any of it.
 
 - `.gaia/statusline/gaia-statusline.sh` (carries no spelling; it renders debt-derived UI, so it is checked defensively)
-- `.gaia/scripts/debt-count-refresh.sh` (silent: the open count degrades)
-- `.claude/hooks/debt-session-reconcile.sh` (silent: the same count, reconciled downward)
+- `.gaia/scripts/debt-count-refresh.sh` (silent)
+- `.claude/hooks/debt-session-reconcile.sh` (silent)
 - `.claude/skills/gaia/references/debt.md` (silent: instructions keep reading as correct while naming a label nothing applies)
-- `.gaia/scripts/check-debt-issue-metadata.sh` (loud, and first: a filing is rejected on the spot)
+- `.gaia/scripts/check-debt-issue-metadata.sh` (loud, and first)
 - `.claude/rules/issue-claim.md` (silent, for the same reason `debt.md` is)
-- `.claude/hooks/issue-claim-release.sh` (silent: best-effort, so every claim it should release stays set)
+- `.claude/hooks/issue-claim-release.sh` (silent)
 - `.claude/hooks/lib/audit-dispositions.sh` (loud but misdirected: the query returns empty rather than erroring, which reads as every filed entry missing)
 - `.github/actions/gaia-ci-merge-and-watch/action.yml` (`severity:important`, `severity:critical`; loud, but only on the revert path, so it can sit unfired for a long time)
-- `.gaia/labels.json` (the rename itself rather than a carrier of it; skipping it is what leaves every entry above unreachable by any scan)
+- `.gaia/labels.json` (neither loud nor silent: it is the rename itself rather than a carrier of it)
 <!-- gaia:maintainer-only:start -->
 - `.gaia/cli/src/labels/registry.ts` (every governed namespace prefix; silent, and held as bare prefixes, which no search for a full spelling reaches)
 - `.gaia/cli/health/comprehensive/runbook.md` (silent: a pasted command fails in a human's terminal rather than in CI)

@@ -74,21 +74,24 @@ fi
 #   wiki/log.md, wiki/hot.md, wiki/meta/
 #                           the wiki's historical and audit surfaces, already
 #                           exempt from the sibling prose audits.
-#   .gaia/local/            gitignored runtime state.
 #   .gaia/labels.json       the registry itself; `renamedFrom` IS the record.
 #   .gaia/cli/gaia*         generated bundles whose literals are the source
 #                           files' literals, already scanned.
 #   tests                   a rename's own migration test drives the old
 #                           spelling through the sync path on purpose.
 #
-# The first six mirror `SCAN_EXCLUDED` in .gaia/cli/src/labels/check.ts, so the
-# two label scans agree on what counts as a historical surface.
+# `CHANGELOG.md`, `wiki/log.md`, `wiki/hot.md`, `wiki/meta/` and the two bundles
+# are the same entries `SCAN_EXCLUDED` carries in .gaia/cli/src/labels/check.ts,
+# so the two label scans agree on what counts as a historical surface. The
+# registry and the test entries are this scan's own; `SCAN_EXCLUDED`'s remaining
+# entry, `.gaia/local/`, has no counterpart here because `git grep` walks only
+# tracked paths and that tree is gitignored, so an entry for it could never
+# change an outcome and no fixture could exercise it.
 EXCLUDED_PATHSPECS=(
   ':!CHANGELOG.md'
   ':!wiki/log.md'
   ':!wiki/hot.md'
   ':!wiki/meta/'
-  ':!.gaia/local/'
   ':!.gaia/labels.json'
   ':!.gaia/cli/gaia'
   ':!.gaia/cli/gaia-maintainer'
@@ -104,16 +107,33 @@ if ! command -v jq >/dev/null 2>&1; then
   exit 2
 fi
 
-# Retired full spellings, as `<old><TAB><new>`. A name may be renamed more than
-# once, so `renamedFrom` is flattened per entry rather than taken as a scalar.
+# The two derivations below land in files rather than in variables, because the
+# framing byte is NUL and a command substitution cannot carry one: bash drops
+# it, which is precisely the byte the framing depends on.
+PAIRS_FILE="$(mktemp)"
+PREFIXES_FILE="$(mktemp)"
+trap 'rm -f "$PAIRS_FILE" "$PREFIXES_FILE"' EXIT
+
+# Retired full spellings, as NUL-delimited `<old>` then `<new>` records. A name
+# may be renamed more than once, so `renamedFrom` is flattened per entry rather
+# than taken as a scalar.
+#
+# NUL rather than a tab or a line, and that is load-bearing rather than
+# fastidious: jq's `@tsv` escapes a backslash, a tab and a newline, so a
+# spelling carrying any of them would reach the scan LONGER than it left the
+# registry, match no carrier, and let the run report clean on a rename that
+# never completed. A NUL is the one byte a label name cannot contain, so the
+# framing needs no escaping and nothing can be lengthened by it. This is the
+# same fail-open direction the awk note further down describes, reached by a
+# different route.
 #
 # The status is read explicitly rather than left to errexit: a malformed
 # registry would otherwise abort carrying jq's own exit code, which a caller
 # reads as neither a finding nor a clean run.
-if ! retired_names="$(
-  jq -r '.labels[] | . as $entry | .renamedFrom[]? | [., $entry.name] | @tsv' "$REGISTRY" 2>&1
-)"; then
-  echo "lint-retired-label-spellings: ERROR: cannot read $REGISTRY: $retired_names" >&2
+if ! jq -j '.labels[] | . as $entry | .renamedFrom[]? | ., "\u0000", $entry.name, "\u0000"' \
+  "$REGISTRY" >"$PAIRS_FILE" 2>&1; then
+  echo "lint-retired-label-spellings: ERROR: cannot read $REGISTRY:" >&2
+  cat "$PAIRS_FILE" >&2
   exit 2
 fi
 
@@ -134,17 +154,25 @@ fi
 # guard blind to instances of its own class. Describing the shape is what the
 # sibling key-format contract in .claude/skills/file-tech-debt/SKILL.md
 # prescribes for the same reason.
-retired_prefixes="$(
-  jq -r '
+#
+# Guarded on the same terms as the call above, and not merely for symmetry: an
+# entry carrying a `renamedFrom` but no `name` parses fine, clears that call,
+# and aborts this one, so the unguarded form would exit with jq's own code
+# rather than the documented environment status.
+if ! jq -j '
     ([.labels[].name | select(contains(":")) | sub(":.*$"; ":")] | unique) as $live
     | [.labels[] | .renamedFrom[]? | select(contains(":")) | sub(":.*$"; ":")]
     | unique
     | map(select(IN($live[]) | not))
     | .[]
-  ' "$REGISTRY"
-)"
+    | ., "\u0000"
+  ' "$REGISTRY" >"$PREFIXES_FILE" 2>&1; then
+  echo "lint-retired-label-spellings: ERROR: cannot read $REGISTRY:" >&2
+  cat "$PREFIXES_FILE" >&2
+  exit 2
+fi
 
-if [ -z "$retired_names" ] && [ -z "$retired_prefixes" ]; then
+if [ ! -s "$PAIRS_FILE" ] && [ ! -s "$PREFIXES_FILE" ]; then
   echo "lint-retired-label-spellings: no retired spellings recorded in .gaia/labels.json; nothing to scan" >&2
   exit 0
 fi
@@ -181,9 +209,20 @@ scan_term() {
   fi
 
   for f in ${files[@]+"${files[@]}"}; do
-    awk -v file="$f" -v term="$term" -v prefix_mode="$prefix_mode" -v why="$why" '
+    # Every string that came from the registry or from git reaches awk through
+    # the environment rather than through `-v`, which escape-processes its
+    # value: `-v term='a\bc'` yields a 2-character term for a 3-character
+    # spelling, `git grep -F` still returns the carrier file, and the awk pass
+    # then matches nothing and the run reports clean. That is the fail-open
+    # direction, and it is the same reason the boundary test below uses index()
+    # against a literal set rather than a pattern built from the term.
+    AWK_FILE="$f" AWK_TERM="$term" AWK_WHY="$why" \
+    awk -v prefix_mode="$prefix_mode" '
       BEGIN {
         NAMECHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789:._-"
+        file = ENVIRON["AWK_FILE"]
+        term = ENVIRON["AWK_TERM"]
+        why  = ENVIRON["AWK_WHY"]
         tlen = length(term)
       }
       {
@@ -210,21 +249,17 @@ scan_term() {
 
 report=""
 
-while IFS="$(printf '\t')" read -r old new; do
+while IFS= read -r -d '' old && IFS= read -r -d '' new; do
   [ -n "$old" ] || continue
   hits="$(scan_term "$old" 0 "retired label spelling, renamed to \`$new\` in .gaia/labels.json; migrate this carrier")"
   [ -z "$hits" ] || report+="$hits"$'\n'
-done <<EOF
-$retired_names
-EOF
+done <"$PAIRS_FILE"
 
-while IFS= read -r prefix; do
+while IFS= read -r -d '' prefix; do
   [ -n "$prefix" ] || continue
   hits="$(scan_term "$prefix" 1 "retired label namespace prefix; no live entry in .gaia/labels.json carries it")"
   [ -z "$hits" ] || report+="$hits"$'\n'
-done <<EOF
-$retired_prefixes
-EOF
+done <"$PREFIXES_FILE"
 
 if [ -n "$report" ]; then
   printf '%s' "$report"

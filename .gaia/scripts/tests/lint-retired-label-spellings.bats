@@ -112,8 +112,15 @@ RENAMED_ONE='{
   grep -qF -- 'beta.sh' <<<"$output"
 }
 
-# The historical and test surfaces, one test each: the repair differs for each,
-# and a single test standing for the set would not notice one arm dropping out.
+# The historical and test surfaces, one test per pathspec: the repair differs
+# for each, and a single test standing for the set would not notice one arm
+# dropping out. That is a claim about coverage, so it is stated only because
+# every entry in `EXCLUDED_PATHSPECS` has a test below that reds when its own
+# entry is deleted. Two pairs need care and get separate fixtures for it: a
+# `*.test.ts` under a `__tests__/` directory satisfies both pathspecs, so the
+# `__tests__/` fixture uses a file no extension rule reaches, and
+# `.gaia/tests/` and `.gaia/scripts/tests/` are distinct prefixes rather than
+# one.
 
 @test "the CHANGELOG is exempt: its old entries name the old spelling correctly" {
   local dir
@@ -147,14 +154,99 @@ RENAMED_ONE='{
   [ "$status" -eq 0 ]
 }
 
-@test "a test file is exempt: the rename's own migration test drives the old spelling" {
+@test "the wiki's rolling cache is exempt: it is regenerated, not migrated" {
   local dir
-  dir="$(make_fixture tests_exempt)"
+  dir="$(make_fixture wikihot)"
+  write_registry "$dir" "$RENAMED_ONE"
+  printf -- '- last session drained an old-claim issue\n' >"$dir/wiki/hot.md"
+  track_fixture "$dir"
+
+  run bash "$CHECK" "$dir"
+  [ "$status" -eq 0 ]
+}
+
+@test "the wiki's audit surface is exempt: it records prior audits verbatim" {
+  local dir
+  dir="$(make_fixture wikimeta)"
+  write_registry "$dir" "$RENAMED_ONE"
+  mkdir -p "$dir/wiki/meta"
+  printf -- '- the old-claim label was audited on 2026-01-01\n' >"$dir/wiki/meta/audit.md"
+  track_fixture "$dir"
+
+  run bash "$CHECK" "$dir"
+  [ "$status" -eq 0 ]
+}
+
+@test "the generated bundles are exempt: their literals are the sources' literals" {
+  local dir
+  dir="$(make_fixture bundles)"
+  write_registry "$dir" "$RENAMED_ONE"
+  mkdir -p "$dir/.gaia/cli"
+  printf 'gh issue list --label old-claim\n' >"$dir/.gaia/cli/gaia"
+  printf 'gh issue list --label old-claim\n' >"$dir/.gaia/cli/gaia-maintainer"
+  track_fixture "$dir"
+
+  run bash "$CHECK" "$dir"
+  [ "$status" -eq 0 ]
+}
+
+@test "a .bats suite is exempt: the rename's own migration test drives the old spelling" {
+  local dir
+  dir="$(make_fixture bats_exempt)"
+  write_registry "$dir" "$RENAMED_ONE"
+  printf '@test "renames old-claim" { true; }\n' >"$dir/.gaia/scripts/sample.bats"
+  track_fixture "$dir"
+
+  run bash "$CHECK" "$dir"
+  [ "$status" -eq 0 ]
+}
+
+@test "a .test.ts file is exempt for the same reason" {
+  local dir
+  dir="$(make_fixture testts_exempt)"
+  write_registry "$dir" "$RENAMED_ONE"
+  mkdir -p "$dir/.gaia/cli/src/labels"
+  printf "expect(plan).toEqual(['label', 'edit', 'old-claim', '--name', 'new-claim']);\n" \
+    >"$dir/.gaia/cli/src/labels/sync.test.ts"
+  track_fixture "$dir"
+
+  run bash "$CHECK" "$dir"
+  [ "$status" -eq 0 ]
+}
+
+@test "a __tests__ file no extension rule reaches is exempt on its own pathspec" {
+  local dir
+  dir="$(make_fixture tests_dir_exempt)"
   write_registry "$dir" "$RENAMED_ONE"
   mkdir -p "$dir/.gaia/cli/src/labels/__tests__"
-  printf "expect(plan).toEqual(['label', 'edit', 'old-claim', '--name', 'new-claim']);\n" \
-    >"$dir/.gaia/cli/src/labels/__tests__/sync.test.ts"
-  printf '@test "renames old-claim" { true; }\n' >"$dir/.gaia/scripts/sample.bats"
+  # Deliberately not a .test.ts: a fixture that were one would stay green with
+  # the __tests__ pathspec deleted, which is the shape this test exists to red.
+  printf "export const LEGACY = 'old-claim';\n" \
+    >"$dir/.gaia/cli/src/labels/__tests__/fixtures.ts"
+  track_fixture "$dir"
+
+  run bash "$CHECK" "$dir"
+  [ "$status" -eq 0 ]
+}
+
+@test "the framework bats tree is exempt by directory, not by extension" {
+  local dir
+  dir="$(make_fixture gaia_tests_exempt)"
+  write_registry "$dir" "$RENAMED_ONE"
+  mkdir -p "$dir/.gaia/tests/helpers"
+  printf "readonly CLAIM=old-claim\n" >"$dir/.gaia/tests/helpers/claim.sh"
+  track_fixture "$dir"
+
+  run bash "$CHECK" "$dir"
+  [ "$status" -eq 0 ]
+}
+
+@test "the script-suite tree is exempt on its own pathspec, distinct from the one above" {
+  local dir
+  dir="$(make_fixture scripts_tests_exempt)"
+  write_registry "$dir" "$RENAMED_ONE"
+  mkdir -p "$dir/.gaia/scripts/tests/helpers"
+  printf "readonly CLAIM=old-claim\n" >"$dir/.gaia/scripts/tests/helpers/claim.sh"
   track_fixture "$dir"
 
   run bash "$CHECK" "$dir"
@@ -174,7 +266,10 @@ RENAMED_ONE='{
 
 # The boundary arm. A rename can leave the old spelling as a prefix or a suffix
 # of the new one, and a fixed-string scan would then flag every live carrier and
-# leave the gate un-greenable.
+# leave the gate un-greenable. Both directions get a fixture, because they are
+# two different guards: the prefix case is the awk right-boundary test and the
+# suffix case is the left one, and a suite driving only one leaves the other
+# free to be deleted.
 
 @test "a live name that merely contains the retired spelling is not a hit" {
   local dir
@@ -185,6 +280,21 @@ RENAMED_ONE='{
     ]
   }'
   printf 'gh issue edit 1 --add-label in-progress-now\n' >"$dir/.gaia/scripts/reader.sh"
+  track_fixture "$dir"
+
+  run bash "$CHECK" "$dir"
+  [ "$status" -eq 0 ]
+}
+
+@test "a live name that merely ends with the retired spelling is not a hit" {
+  local dir
+  dir="$(make_fixture boundary_suffix)"
+  write_registry "$dir" '{
+    "labels": [
+      {"name": "now-in-progress", "renamedFrom": ["in-progress"]}
+    ]
+  }'
+  printf 'gh issue edit 1 --add-label now-in-progress\n' >"$dir/.gaia/scripts/reader.sh"
   track_fixture "$dir"
 
   run bash "$CHECK" "$dir"
@@ -243,6 +353,27 @@ RENAMED_ONE='{
   [ "$status" -eq 0 ]
 }
 
+@test "a retired spelling carrying a backslash still reaches the awk pass" {
+  local dir
+  dir="$(make_fixture backslash)"
+  # `awk -v term=...` escape-processes its value, so a backslash-bearing
+  # spelling would reach awk shorter than it left the registry: git grep -F
+  # still returns the carrier, the awk pass then matches nothing, and the run
+  # reports clean. That is the fail-open direction, which is why the term
+  # travels through the environment instead.
+  write_registry "$dir" '{
+    "labels": [
+      {"name": "new-claim", "renamedFrom": ["old\\bclaim"]}
+    ]
+  }'
+  printf 'gh issue list --label "old\\bclaim"\n' >"$dir/.gaia/scripts/reader.sh"
+  track_fixture "$dir"
+
+  run bash "$CHECK" "$dir"
+  [ "$status" -eq 1 ]
+  grep -qF -- 'reader.sh:1' <<<"$output"
+}
+
 # Environment arms: each reports rather than passing as clean.
 
 @test "a missing registry exits 2 rather than reporting clean" {
@@ -259,6 +390,20 @@ RENAMED_ONE='{
   local dir
   dir="$(make_fixture malformed)"
   printf '{ not json\n' >"$dir/.gaia/labels.json"
+  track_fixture "$dir"
+
+  run bash "$CHECK" "$dir"
+  [ "$status" -eq 2 ]
+  grep -qF -- 'cannot read' <<<"$output"
+}
+
+@test "a registry whose entry has renamedFrom but no name exits 2, not jq's own code" {
+  local dir
+  dir="$(make_fixture nameless)"
+  # Parses, and clears the full-spellings read, which never touches `name`.
+  # Only the prefix read compares a name against ":", so this is the shape that
+  # reaches the second jq call and nothing else does.
+  write_registry "$dir" '{"labels": [{"renamedFrom": ["old-claim"]}]}'
   track_fixture "$dir"
 
   run bash "$CHECK" "$dir"
