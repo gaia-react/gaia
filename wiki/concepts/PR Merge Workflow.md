@@ -262,7 +262,7 @@ gh pr list --state merged --limit 2000 --json number,body \
   --jq '.[] as $pr
         | ($pr.body // "") | split("\n")[]
         | select(test("<!-- gaia-debt-key: "))
-        | capture("<!-- gaia-debt-key: (?<key>v1 class=[^ ]+ path=(?<path>[^ ]+) line=(?<line>[0-9]+)) -->")
+        | capture("<!-- gaia-debt-key: (?<key>v1 class=[^ ]+ path=(?<path>[^>]+) line=(?<line>[0-9]+)) -->")
         | "\($pr.number)\t\(.path):\(.line)\t\(.key)"'
 ```
 

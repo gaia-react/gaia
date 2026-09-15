@@ -20720,14 +20720,14 @@ var emptyAttributionCache = () => ({
   high_water_merged_at: null,
   prs: {},
   resolutions: {},
-  schema: "v1"
+  schema: "v2"
 });
 var isRecord = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
 var isValidResidueKey = (value) => isRecord(value) && typeof value.class === "string" && typeof value.line === "number" && typeof value.path === "string";
 var isValidAttributedEntry = (value) => isRecord(value) && typeof value.disposition === "string" && typeof value.failure_mode === "string" && typeof value.raw_key === "string" && isValidResidueKey(value.key);
 var isValidResolution = (value) => isRecord(value) && typeof value.resolution === "string" && typeof value.resolved_line_text === "string";
 var isValidPrEntry = (value) => isRecord(value) && typeof value.headRefOid === "string" && typeof value.mergedAt === "string" && isRecord(value.attribution) && Array.isArray(value.attribution.entries) && value.attribution.entries.every(isValidAttributedEntry) && Array.isArray(value.attribution.keyless) && Array.isArray(value.attribution.malformed) && value.attribution.malformed.every(isRecord);
-var isValidCache = (value) => isRecord(value) && value.schema === "v1" && (value.high_water_merged_at === null || typeof value.high_water_merged_at === "string") && isRecord(value.prs) && isRecord(value.resolutions) && Object.values(value.prs).every(isValidPrEntry) && Object.values(value.resolutions).every(isValidResolution);
+var isValidCache = (value) => isRecord(value) && value.schema === "v2" && (value.high_water_merged_at === null || typeof value.high_water_merged_at === "string") && isRecord(value.prs) && isRecord(value.resolutions) && Object.values(value.prs).every(isValidPrEntry) && Object.values(value.resolutions).every(isValidResolution);
 var attributionCachePath = (repoRoot) => path26.join(repoRoot, ...CACHE_DIR_SEGMENTS, ATTRIBUTION_CACHE_FILE);
 var readAttributionCache = (repoRoot) => {
   try {
@@ -20777,9 +20777,9 @@ var clearCursor = (repoRoot) => {
 // src/residue/key.ts
 var KEY_PATTERN = (
   // eslint-disable-next-line sonarjs/concise-regex -- byte parity with the gate's ERE
-  /<!-- gaia-debt-key: (v1 class=[^ ]+ path=[^ ]+ line=[0-9]+) -->/
+  /<!-- gaia-debt-key: (v1 class=[^ ]+ path=[^>]+ line=[0-9]+) -->/
 );
-var LENIENT_KEY_PATTERN = /<!-- gaia-debt-key:[^>]*?path=(.+?) line=/;
+var LENIENT_KEY_PATTERN = /<!-- gaia-debt-key:[^>]*?path=([^>\n]+) line=/;
 var MAX_LINE = 1e7;
 var CONTROL_CHARACTERS = [
   ["\0", "NUL"],
@@ -20856,7 +20856,7 @@ var parseKeyLine = (raw) => {
   return { ok: true, value };
 };
 var KEY_FIELD_PATTERNS = {
-  gate: /^v1 class=([^ ]+) path=([^ ]+) line=(\d+)$/
+  gate: /^v1 class=([^ ]+) path=([^>]+) line=(\d+)$/
 };
 var parseKey = (innerKey, grammar) => {
   const fields = KEY_FIELD_PATTERNS[grammar].exec(innerKey);
@@ -20869,7 +20869,7 @@ var parseKey = (innerKey, grammar) => {
     }
     return {
       ok: false,
-      reason: "key does not match the gate grammar `v1 class=<class> path=<path> line=<line>`; a path carrying a space is the usual cause"
+      reason: "key does not match the gate grammar `v1 class=<class> path=<path> line=<line>`; a missing or malformed field is the usual cause"
     };
   }
   const [, rawClass = "", rawPath = "", rawLine = ""] = fields;

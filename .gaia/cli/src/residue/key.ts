@@ -15,10 +15,11 @@
  * `LENIENT_KEY_PATTERN` reproduces the tech-debt filer's grammar
  * (`.gaia/scripts/debt-count-refresh.sh`). Suppression matching against
  * tech-debt issue bodies uses it, because the thing suppression must agree
- * with is the filer, not the gate. It anchors on the wrapped comment opener,
- * it does not require `v1`, and its lazy ` line=` terminator is what lets a
- * path contain a space, as filed issues do. `parseWrappedKeys` serves that
- * side.
+ * with is the filer, not the gate. It anchors on the wrapped comment opener
+ * and it does not require `v1`. Both grammars terminate the path on the key
+ * comment's own closer rather than on a space; this side also stops at a
+ * newline because its subject is a whole body and a key never spans one.
+ * `parseWrappedKeys` serves that side.
  *
  * A caller may not substitute one for the other. Reading FEWER issue keys
  * than the filer matches is a livelock: the drain keeps offering a residual
@@ -36,10 +37,11 @@
  */
 export const KEY_PATTERN =
   // eslint-disable-next-line sonarjs/concise-regex -- byte parity with the gate's ERE
-  /<!-- gaia-debt-key: (v1 class=[^ ]+ path=[^ ]+ line=[0-9]+) -->/;
+  /<!-- gaia-debt-key: (v1 class=[^ ]+ path=[^>]+ line=[0-9]+) -->/;
 
 /** The filer's grammar, applied to a whole issue body; group 1 is the path. */
-export const LENIENT_KEY_PATTERN = /<!-- gaia-debt-key:[^>]*?path=(.+?) line=/;
+export const LENIENT_KEY_PATTERN =
+  /<!-- gaia-debt-key:[^>]*?path=([^>\n]+) line=/;
 
 /**
  * Upper bound on a cited line number. Well above any file this repo or an
@@ -175,7 +177,7 @@ export const parseKeyLine = (raw: string): Validated<number> => {
 // reads a whole issue body, not a pre-extracted inner key, so it cannot be
 // reached by swapping a pattern here. `parseWrappedKeys` is its only door.
 const KEY_FIELD_PATTERNS = {
-  gate: /^v1 class=([^ ]+) path=([^ ]+) line=(\d+)$/,
+  gate: /^v1 class=([^ ]+) path=([^>]+) line=(\d+)$/,
 } as const;
 
 /** Parses and validates an inner key (`v1 class=… path=… line=…`). */
@@ -196,7 +198,7 @@ export const parseKey = (
     return {
       ok: false,
       reason:
-        'key does not match the gate grammar `v1 class=<class> path=<path> line=<line>`; a path carrying a space is the usual cause',
+        'key does not match the gate grammar `v1 class=<class> path=<path> line=<line>`; a missing or malformed field is the usual cause',
     };
   }
 

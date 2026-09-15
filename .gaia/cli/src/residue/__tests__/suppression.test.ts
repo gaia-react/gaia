@@ -90,7 +90,7 @@ describe('evaluateIssueArms', () => {
     });
   });
 
-  test('a spaced-path key and a no-v1 key are each read by parseWrappedKeys and each suppress', () => {
+  test('a spaced-path key and a no-v1 key are each read by parseWrappedKeys and each suppress, the no-v1 leniency surviving after the path terminator moved', () => {
     const spacedPathIssue = issue({
       body: '<!-- gaia-debt-key: v1 class=x/y path=app/some file.ts line=3 -->',
       state: 'OPEN',

@@ -588,7 +588,7 @@ describe('gaia residue-tally', () => {
     mkdirSync(path.join(root, '.gaia', 'local', 'cache'), {recursive: true});
     writeFileSync(
       path.join(root, '.gaia', 'local', 'cache', 'residual-attribution.json'),
-      '{"schema":"v1","prs":{'
+      '{"schema":"v2","prs":{'
     );
 
     expect(() =>
@@ -828,7 +828,7 @@ describe('gaia residue-tally', () => {
           high_water_merged_at: '2026-02-01T00:00:00Z',
           prs: {1: {}, abc: {}},
           resolutions: {},
-          schema: 'v1',
+          schema: 'v2',
         })
       );
 
@@ -877,7 +877,7 @@ describe('gaia residue-tally', () => {
             },
           },
           resolutions: {},
-          schema: 'v1',
+          schema: 'v2',
         })
       );
 
@@ -926,7 +926,7 @@ describe('gaia residue-tally', () => {
             },
           },
           resolutions: {},
-          schema: 'v1',
+          schema: 'v2',
         })
       );
 
@@ -974,7 +974,7 @@ describe('gaia residue-tally', () => {
           high_water_merged_at: null,
           prs: {},
           resolutions: {'sha1:app/a.ts:2': null},
-          schema: 'v1',
+          schema: 'v2',
         })
       );
 

@@ -230,9 +230,11 @@ check_labels() {
 # lazy: repository paths legally contain spaces, and this repository has one
 # under an existing key (`path=wiki/concepts/PR Merge Workflow.md`). A
 # space-intolerant pattern reports every such key as malformed, which on the
-# blocking `--pre-file` path would refuse a correct filing outright. The greedy
-# form plus the anchored ` line=<int> -->` tail performs the same split
-# `.claude/skills/gaia/references/debt.md`'s own capture performs.
+# blocking `--pre-file` path would refuse a correct filing outright. This
+# pattern stays greedy and anchored; `.claude/skills/gaia/references/debt.md`'s
+# own capture instead terminates on the key comment's closer. The two agree on
+# every key that carries one `path=` token and no `>` in its path, which is
+# every key this repository records.
 #
 # CRLF is handled by normalizing the body before it reaches these patterns (see
 # `check_body`), never by an escape inside the pattern itself. `\r` in an ERE is
