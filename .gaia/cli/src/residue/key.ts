@@ -73,8 +73,17 @@ const CONTROL_CHARACTERS: readonly (readonly [string, string])[] = [
  * Validates a repo-relative POSIX path and returns its normalized form.
  *
  * Normalization collapses repeated separators, drops `./` segments, and
- * strips a trailing separator, so trivial spelling variants of one path
- * cannot bypass the shared coordinate identity `sameCoordinate` compares on.
+ * strips a trailing separator, so those spelling variants of one path cannot
+ * bypass the shared coordinate identity `sameCoordinate` compares on.
+ *
+ * Whitespace is NOT among them. Now that the path field terminates on the
+ * comment's closer rather than on a space, one space separates the path from
+ * ` line=` and any further space stays inside the path, so `path=app/a.ts
+ * line=1` written with two spaces parses `ok` with a trailing space and reads
+ * as a different coordinate from the same file filed without it. Under the
+ * old space-terminated grammar that typo landed in `malformed[]` with a
+ * reason instead. It is disposable through the normal drain rather than a
+ * livelock: it resolves `unresolvable` and is dismissible.
  */
 export const normalizeRepoRelativePath = (raw: string): Validated<string> => {
   if (raw === '') {

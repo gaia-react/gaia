@@ -302,8 +302,8 @@ render_backlog() {
   printf '%s\n' "$program" >"$mutant_file"
   sub_literal_once "$mutant_file" 'path=(?<path>[^>\n]+)' 'path=(?<path>.+)'
   mutant_output="$("$bin" "$(cat "$mutant_file")" "$fixture2")"
-  mutant_issue="$(jq '.[] | select(.number == 9001)' <<<"$mutant_output")"
-  mutant_path="$(jq -r '.key.path' <<<"$mutant_issue")"
+  mutant_issue="$("$bin" '.[] | select(.number == 9001)' <<<"$mutant_output")"
+  mutant_path="$("$bin" -r '.key.path' <<<"$mutant_issue")"
   case "$mutant_path" in
     *"Task Orchestration.md"*) : ;;
     *)
@@ -354,8 +354,8 @@ render_backlog() {
   printf '%s\n' "$program" >"$mutant_file"
   sub_literal_once "$mutant_file" 'path=(?<path>[^>\n]+)' 'path=(?<path>[^>]+)'
   mutant_output="$("$bin" "$(cat "$mutant_file")" "$wrapped")"
-  mutant_issue="$(jq '.[] | select(.number == 9002)' <<<"$mutant_output")"
-  mutant_path="$(jq -r '.key.path' <<<"$mutant_issue")"
+  mutant_issue="$("$bin" '.[] | select(.number == 9002)' <<<"$mutant_output")"
+  mutant_path="$("$bin" -r '.key.path' <<<"$mutant_issue")"
   case "$mutant_path" in
     *$'\n'*) : ;;
     *)

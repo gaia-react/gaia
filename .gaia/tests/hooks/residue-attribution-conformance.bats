@@ -268,12 +268,16 @@ assert_nonempty_matching_size() {
 # honest, is the only place that couples them.
 # ---------------------------------------------------------------------------
 
-# reader_table: id|file|subject|literal, one row per reader that parses the
-# dedup key's path=... field. `subject` is `line` or `body`; `literal` is
-# the reader's exact post-change pattern text. Authored from running the
+# reader_table: id|file|subject|literal, one row per reader that terminates
+# the dedup key's path=... field on the key comment's own closer. It is NOT
+# every reader that parses that field: two readers deliberately stay on the
+# pre-change `path=.+` and are held by non_movers() below, which is where to
+# look before concluding this table is the whole set. `subject` is `line` or
+# `body`; `literal` is the reader's exact post-change pattern text. Authored from running the
 # three derivation prongs below and reading their output, not copied from
-# the plan doc; reconcile_reader_table (below) re-derives the set at every
-# run so this table cannot drift from the tree in silence.
+# the plan doc; the first SPEC-082 test below re-derives the set at every
+# run, comparing derived_file_counts against table_file_counts in both
+# directions, so this table cannot drift from the tree in silence.
 reader_table() {
   cat <<'TABLE'
 1|.claude/hooks/audit-residual-shape-check.sh|line|<!-- gaia-debt-key: (v1 class=[^ ]+ path=[^>]+ line=[0-9]+) -->
@@ -315,7 +319,10 @@ NESTED_TEST_EXCLUSION=".gaia/cli/src/residue/__tests__/"
 
 # Prong 1: the key literal, file-level locator only. Cannot separate row 6
 # from row 7 inside one file, and most of what it returns is not a reader at
-# all; it exists to prove no candidate file is missing from scope.
+# all; it is a smoke check that the scope resolves to something, not a
+# reconciliation. The two-way reconciliation below runs over prong 2 and
+# prong 3, so a file prong 1 names is not thereby required to appear in
+# reader_table or exclusion_table.
 prong1_locator() {
   git -C "$REPO_ROOT" grep -n 'gaia-debt-key' -- "${READER_SCOPE_DIRS[@]}"
 }
@@ -389,6 +396,41 @@ gaia-local|.gaia/local/|plan and working-state artifacts, including this plan, q
 TABLE
 }
 
+# non_movers: file|literal, every reader that parses the dedup key's path
+# field and deliberately does NOT take the closer-terminated grammar. Prong 2
+# greps for the post-change `[^>]` spellings, so a reader left on `path=.+` is
+# invisible to the derivation by construction and can never appear in the
+# symmetric difference. That is safe here and unsafe in general: it is safe
+# because both of these are fully anchored on `^<!-- ... -->$`, so the trailing
+# ` line=<int> -->` already terminates the path on the closer and the greedy
+# `.+` cannot run past it; converting them would narrow a blocking pre-file
+# guard, which SPEC-082 puts under `ask_first` with the default do not. The
+# table exists so the omission is stated rather than silent, and so that a
+# later edit to either reader reds here instead of passing unseen.
+non_movers() {
+  cat <<'TABLE'
+.gaia/scripts/check-debt-issue-metadata.sh|^<!-- gaia-debt-key: v1 class=[^ ]+ path=.+ line=[0-9]+ -->$
+.gaia/scripts/check-debt-issue-metadata.sh|s/^<!-- gaia-debt-key: v1 class=[^ ]+ path=(.+) line=[0-9]+ -->$/\1/p
+TABLE
+}
+
+@test "SPEC-082: the two deliberate non-movers still carry their pre-change path grammar" {
+  local file literal found=0
+  while IFS='|' read -r file literal; do
+    [ -n "$file" ] || continue
+    found=$((found + 1))
+    grep -qF -- "$literal" "$REPO_ROOT/$file" || {
+      echo "non-mover missing from $file: $literal" >&2
+      echo "either this reader took the closer-terminated grammar, in which case it belongs in reader_table and this row goes, or it drifted; neither may pass silently" >&2
+      return 1
+    }
+  done < <(non_movers)
+  [ "$found" -eq 2 ] || {
+    echo "expected 2 non-mover rows, read $found" >&2
+    return 1
+  }
+}
+
 # ---------------------------------------------------------------------------
 # Deliverable 1 / acceptance criteria 1-2b.
 # ---------------------------------------------------------------------------
@@ -422,8 +464,10 @@ TABLE
   }
 
   # 2a: the widened spelling is load-bearing. The narrower spelling must
-  # match every LINE-scoped row (1, 2, 4, 5, 6, 8) and miss all four
-  # BODY-scoped rows (9, 10, 11, 12).
+  # match every LINE-scoped row that carries a pattern and miss all four
+  # BODY-scoped rows (9, 10, 11, 12). The assertion below carries the
+  # enumeration in its own failure message; do not restate it here, a
+  # second copy is what drifts.
   prong2_narrow_out="$(prong2_narrower_spelling)"
   echo "prong 2's narrower spelling output (for comparison):" >&2
   printf '%s\n' "$prong2_narrow_out" >&2
@@ -434,7 +478,7 @@ TABLE
     return 1
   }
   printf '%s\n' "$prong2_narrow_out" | grep -qF 'path=[^>\n]' && {
-    echo "the narrower spelling matched a body-scoped ([^>\\n]) literal; it should miss all four" >&2
+    printf '%s\n' "the narrower spelling matched a body-scoped ([^>\\n]) literal; it should miss all four" >&2
     return 1
   }
 

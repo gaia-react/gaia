@@ -190,8 +190,13 @@ if command -v gh >/dev/null 2>&1; then
     # which is the one direction the header's safety argument does not cover.
     # The path runs to the key comment's own closer, excluding a newline
     # because a key never spans one, and that is what lets it contain a
-    # space, as several filed issues do. Output is unchanged while each key
-    # comment carries one ` line=` token.
+    # space, as several filed issues do. Output is unchanged for any match
+    # that begins at a real key comment carrying one ` line=` token. The
+    # scan is unanchored, so a match can also begin at body prose quoting
+    # the opener; there the output does change, and changes for the better
+    # (the lazy form spliced across the `>` in the prose, this one fails
+    # from that start and advances to the real opener). See Finding 1 in
+    # `.gaia/tests/fixtures/dedup-key-corpus/README.md`.
     paths_out=$(printf '%s' "$issues_json" | jq -c '[.[] | (.body // "") | scan("<!-- gaia-debt-key:[^>]*?path=([^>\n]+) line=")] | flatten | unique' 2>/dev/null)
     case "$count_out" in
       ''|*[!0-9]*) ;;
