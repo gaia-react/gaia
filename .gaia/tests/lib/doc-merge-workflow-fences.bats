@@ -96,7 +96,7 @@ catchup-merge|git merge --no-edit origin/main|static|merges `origin/main` into t
 spawn-roster|resolve-audit-spawn.sh|exec|runs verbatim against this checkout
 noop-classify|audit-noop-detect.sh --shape audit-team-member|exec|runs against a fixture root, marker and sidecar
 wave-stamp|WAVE_STAMP="$(mktemp)"|exec|runs verbatim, and the claim under test is where mktemp puts the file
-residual-enumerate|gh pr list --state merged|static|reaches github.com for every merged pull request's body
+residual-enumerate|gh pr list --state merged|exec|the --jq PROGRAM TEXT is extracted and run against the committed residue-corpus fixture, standing in for the network call
 debt-origin|debt-origin-lib.sh|exec|runs verbatim with the changed-value placeholder filled in
 disposition-sidecar|audit-member-digest.sh|exec|runs verbatim against this checkout
 findings-block|post-findings-block.sh --pr|static|posts a comment to a live PR
@@ -326,6 +326,91 @@ flags_for() {
 # certify its own copy.
 script_parses_flag() {
   grep -qE "(^|[|[:space:]])${2//./\\.}[)|=]" "$1"
+}
+
+# ---------------------------------------------------------------------------
+# Enumeration-query program extraction (residual-enumerate)
+# ---------------------------------------------------------------------------
+
+# jq_bin: `jq` or `gojq`, whichever is on PATH; empty when neither is.
+# The enumeration query is line-scoped (the fence splits each pull-request
+# body on newlines before it captures), so the negated bracket class the
+# path field uses cannot cross a line either way; unlike debt.md's
+# body-scoped capture, there is no newline-exclusion behavior here that
+# differs between jq's Oniguruma and gojq's Go RE2, so one engine suffices.
+jq_bin() {
+  if command -v jq >/dev/null 2>&1; then
+    echo jq
+  elif command -v gojq >/dev/null 2>&1; then
+    echo gojq
+  fi
+}
+
+# extract_enumeration_jq_program <fence-file>: the residual-enumerate
+# fence's bare --jq PROGRAM TEXT, run directly rather than transcribed.
+#
+# A different shape from doc-debt-query.bats' extract_jq_program, and
+# reusing that extractor here would silently drop this program's first
+# clause: debt.md opens its fence with a bare `--jq '` line and the program
+# starts on the line AFTER it; this fence opens with `--jq '.[] as $pr` and
+# the program starts on that SAME line, at the text following the quote. It
+# closes the way this fence writes it too: the final unescaped `'` inline at
+# the end of the last program line, never a bare-quote line of its own.
+#
+# Asserts the program's own first line is the literal `.[] as $pr` before
+# returning it, so a future reflow of the fence, or a page edit that moves
+# the anchor, reds here with a message naming the extraction rather than
+# handing jq a truncated or empty program that fails somewhere else with no
+# clue why.
+extract_enumeration_jq_program() {
+  awk -v q="'" '
+    !found {
+      m = index($0, "--jq " q)
+      if (m == 0) next
+      found = 1
+      buf[++n] = substr($0, m + length("--jq " q))
+      next
+    }
+    { buf[++n] = $0 }
+    END {
+      if (n == 0) {
+        print "extract_enumeration_jq_program: no --jq " q " opener found" > "/dev/stderr"
+        exit 1
+      }
+      last = buf[n]
+      if (substr(last, length(last), 1) != q) {
+        print "extract_enumeration_jq_program: the last program line does not end with a closing quote, the fence shape may have changed: " last > "/dev/stderr"
+        exit 1
+      }
+      buf[n] = substr(last, 1, length(last) - 1)
+      if (buf[1] != ".[] as $pr") {
+        print "extract_enumeration_jq_program: expected the program to start with .[] as $pr, got: " buf[1] > "/dev/stderr"
+        exit 1
+      }
+      for (i = 1; i <= n; i++) print buf[i]
+    }
+  ' "$1"
+}
+
+# residue_pr_fixture <number>...: a JSON array subset of the committed
+# residue corpus (.gaia/tests/fixtures/residue-corpus/prs.json) holding only
+# the named pull requests, written to a fresh file whose path is printed.
+# Reusing that committed corpus, rather than hand-writing a pull-request
+# body here, keeps this suite's subject the same body the
+# residue-attribution conformance suite pins, not a second copy of it.
+residue_pr_fixture() {
+  local corpus="${REPO_ROOT}/.gaia/tests/fixtures/residue-corpus/prs.json"
+  local out nums
+  # No .json suffix on the template: macOS mktemp does not randomize the
+  # X-run when a literal suffix follows it, and silently reuses the same
+  # literal path on a second call in the same test, which collided here.
+  out="$(mktemp "${BATS_TEST_TMPDIR}/pr-subset-XXXXXX")"
+  nums="$(printf '%s,' "$@")"
+  nums="[${nums%,}]"
+  "$(jq_bin)" -c --argjson nums "$nums" \
+    '[.[] | select(.number as $n | $nums | index($n) != null)]' \
+    "$corpus" >"$out"
+  printf '%s\n' "$out"
 }
 
 # ---------------------------------------------------------------------------
@@ -758,4 +843,95 @@ FAKE
   sidecar="$(value_of sidecar)"
   grep -qE '^[0-9a-f]{64}$' <<<"$digest"
   grep -qF -- "/.gaia/local/audit/${digest}.dispositions.json" <<<"$sidecar"
+}
+
+@test "fence residual-enumerate: the extracted enumeration query emits the spaced-path residual verbatim" {
+  bin="$(jq_bin)"
+  [ -n "$bin" ] || skip "neither jq nor gojq on PATH"
+  fence="$(materialize 'gh pr list --state merged')"
+  program="$(extract_enumeration_jq_program "$fence")"
+  fixture="$(residue_pr_fixture 3006)"
+  # PR 3006 is the committed residue-corpus fixture standing in for the
+  # network call: the live merged record carries no dedup key on a spaced
+  # path, so this residual is otherwise unreachable without editing a merged
+  # pull request body, which the convention forbids.
+  output="$("$bin" -r "$program" "$fixture")"
+  expected=$'3006\tapp/my dir/file.ts:1\tv1 class=lint path=app/my dir/file.ts line=1'
+  if [ "$output" != "$expected" ]; then
+    echo "enumeration query emitted: ${output}" >&2
+    echo "expected:                  ${expected}" >&2
+    return 1
+  fi
+}
+
+@test "fence residual-enumerate: the pre-change class misses the spaced path, and a bare greedy class splices a two-key line" {
+  bin="$(jq_bin)"
+  [ -n "$bin" ] || skip "neither jq nor gojq on PATH"
+  fence="$(materialize 'gh pr list --state merged')"
+  program="$(extract_enumeration_jq_program "$fence")"
+  program_file="${BATS_TEST_TMPDIR}/enum-program.jq"
+  printf '%s\n' "$program" >"$program_file"
+
+  # Mutant 1, the pre-change spelling: [^ ]+ instead of [^>]+.
+  reverted_file="${BATS_TEST_TMPDIR}/enum-program-reverted.jq"
+  cp "$program_file" "$reverted_file"
+  sub_literal "$reverted_file" 'path=(?<path>[^>]+)' 'path=(?<path>[^ ]+)'
+
+  # Mutant 2, a bare greedy class that is not the alternative fix: .+
+  # instead of [^>]+.
+  greedy_file="${BATS_TEST_TMPDIR}/enum-program-greedy.jq"
+  cp "$program_file" "$greedy_file"
+  sub_literal "$greedy_file" 'path=(?<path>[^>]+)' 'path=(?<path>.+)'
+
+  fixture_3006="$(residue_pr_fixture 3006)"
+  fixture_3002="$(residue_pr_fixture 3002)"
+
+  # Mutant 1 over PR 3006's spaced path: the committed [^>]+ class is what
+  # makes this residual enumerable at all, so the reverted class must find
+  # nothing for it.
+  reverted_output="$("$bin" -r "$(cat "$reverted_file")" "$fixture_3006")"
+  if [ -n "$reverted_output" ]; then
+    echo "reverted [^ ]+ class unexpectedly emitted: ${reverted_output}" >&2
+    return 1
+  fi
+
+  # Mutant 2 needs a different fixture to discriminate: over PR 3006's
+  # single-key line the greedy class agrees with the committed one, there is
+  # nothing on that line for it to overrun into. PR 3002 carries a single
+  # line with two wrapped keys; a class able to cross the first key's own
+  # '-->' splices the second key's line number onto the first key's path.
+  committed_3002="$("$bin" -r "$(cat "$program_file")" "$fixture_3002")"
+  expected_3002=$'3002\tapp/dup/first.ts:1\tv1 class=dupe path=app/dup/first.ts line=1'
+  if [ "$committed_3002" != "$expected_3002" ]; then
+    echo "committed [^>]+ class over the two-key line: ${committed_3002}" >&2
+    return 1
+  fi
+  greedy_3002="$("$bin" -r "$(cat "$greedy_file")" "$fixture_3002")"
+  if [ "$greedy_3002" = "$expected_3002" ]; then
+    echo "expected the greedy .+ class to splice the two-key line, it did not" >&2
+    return 1
+  fi
+  echo "greedy .+ class over the two-key line: ${greedy_3002}" >&2
+}
+
+@test "fence residual-enumerate: the extractor reds on a debt.md-shaped reflow rather than silently truncating" {
+  fence="$(materialize 'gh pr list --state merged')"
+  program="$(extract_enumeration_jq_program "$fence")"
+
+  # Reflows the fence into debt.md's shape: the opening quote alone on its
+  # own line, and the closing quote alone on its own line, rather than
+  # inline at the end of the last program line. This suite's own extractor
+  # is written for this fence's shape, not debt.md's, so it must red here
+  # with its own message instead of silently handing jq a truncated program.
+  reflowed="${BATS_TEST_TMPDIR}/enum-reflowed.sh"
+  {
+    printf 'gh pr list --state merged --limit 2000 --json number,body \\\n'
+    printf "  --jq '\n"
+    printf '%s\n' "$program"
+    printf "'\n"
+  } >"$reflowed"
+
+  run extract_enumeration_jq_program "$reflowed"
+  [ "$status" -ne 0 ]
+  grep -qF -- "extract_enumeration_jq_program:" <<<"$output" || return 1
 }

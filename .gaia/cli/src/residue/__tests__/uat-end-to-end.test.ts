@@ -14,6 +14,7 @@
 import {afterEach, describe, expect, test, vi} from 'vitest';
 import {
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
@@ -24,8 +25,15 @@ import {
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {resolveRepoRootFromImportMeta} from '../../util/repo-root-fixture.js';
-import {attributeBodyWith, DEFAULT_PREDICATES} from '../attribution.js';
+import {
+  attributeBody,
+  attributeBodyWith,
+  DEFAULT_PREDICATES,
+} from '../attribution.js';
+import type {AttributionResult} from '../attribution.js';
+import {attributionBodyDigest} from '../cache.js';
 import {run as runCursor} from '../cursor-cmd.js';
+import {KEY_PATTERN, parseKey, parseWrappedKeys} from '../key.js';
 import {run as runRecord} from '../record-cmd.js';
 import {appendRecords, readStore} from '../store.js';
 import type {StoreRecord} from '../store.js';
@@ -33,6 +41,10 @@ import {run as runTally} from '../tally.js';
 
 const REPO_ROOT = resolveRepoRootFromImportMeta(import.meta.url);
 const CORPUS_DIR = path.join(REPO_ROOT, '.gaia/tests/fixtures/residue-corpus');
+const DEDUP_CORPUS_DIR = path.join(
+  REPO_ROOT,
+  '.gaia/tests/fixtures/dedup-key-corpus'
+);
 const SKILL_REFERENCE_PATH = path.join(
   REPO_ROOT,
   '.claude/skills/gaia/references/residue.md'
@@ -118,6 +130,15 @@ const assertExactNewFiles = (
 };
 
 const FIXTURE_ENV = {GAIA_RESIDUE_FIXTURE_DIR: CORPUS_DIR};
+
+// UAT-014: an attribution recorded as keyless, the shape the pre-change
+// reader produced for a spaced path it could not parse as a key at all.
+const buildStaleAttribution = (): AttributionResult => ({
+  entries: [],
+  keyless: [{disposition: 'accept', unit_start_line: 2}],
+  keyless_count: 1,
+  malformed: [],
+});
 
 // ---------------------------------------------------------------------------
 // UAT-012 mutation control, tally side. The gate-side control lives in
@@ -561,6 +582,285 @@ describe('UAT-013', () => {
 
     expect(emitted.candidate_count).toBeGreaterThan(0);
     expect(emitted.candidates).toHaveLength(emitted.candidate_count);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// SPEC-082 (task-conformance-suite.md, Deliverable 5): the TypeScript half of
+// the dedup-key path terminator's cross-consumer conformance. The bats
+// suite's frozen reader table and per-row mutants own the tree-wide
+// coupling; these cases pin the two TypeScript readers (`parseKey`,
+// `parseWrappedKeys`) and `attributeBody`'s use of them.
+// ---------------------------------------------------------------------------
+
+describe("SPEC-082: a spaced path terminates on the key comment's own closer", () => {
+  // Plan-time finding (README.md, "Plan-time findings the orchestrator must
+  // carry forward", #1): UAT-002 asserts a key carrying an embedded
+  // malformed tail (`path=app/a.ts line=1 line=2`) goes gate-keyed AND
+  // CLI-malformed[]. The CLI half is false under the frozen two-spelling
+  // contract: the greedy path group backtracks to `app/a.ts line=1`, the
+  // trailing ` line=2` satisfies the anchor, and parseKey returns ok. This
+  // pins the ACTUAL behavior rather than the SPEC's stated one; no
+  // validator is added to make the SPEC's sentence true, since doing so
+  // would mint a third path-terminator spelling, which success criterion 3
+  // and always[5] forbid.
+  test('UAT-002 deviation: a key carrying an embedded malformed tail (two " line=" tokens) is gate-keyed but resolves to the spliced path in entries[], not malformed[]', () => {
+    const parsed = parseKey(
+      'v1 class=lint path=app/a.ts line=1 line=2',
+      'gate'
+    );
+
+    expect(parsed).toStrictEqual({
+      ok: true,
+      value: {class: 'lint', line: 2, path: 'app/a.ts line=1', version: 'v1'},
+    });
+
+    const body = [
+      '## Accepted residuals (recorded, not fixed)',
+      '- MARKER_UAT002, an embedded malformed tail <!-- gaia-debt-key: v1 class=lint path=app/a.ts line=1 line=2 -->',
+    ].join('\n');
+    const result = attributeBody(body);
+
+    // The CLI-malformed[] backstop UAT-002 describes does not exist for
+    // this input: the unit lands in entries[], keyed, with the spliced path.
+    expect(result.malformed).toStrictEqual([]);
+    expect(result.entries).toHaveLength(1);
+    expect(result.entries[0]?.key).toStrictEqual({
+      class: 'lint',
+      line: 2,
+      path: 'app/a.ts line=1',
+      version: 'v1',
+    });
+  });
+
+  test('parseKey accepts a spaced path under the gate grammar, and attributeBody attributes the same residual over the real corpus body', () => {
+    const parsed = parseKey(
+      'v1 class=lint path=app/my dir/file.ts line=1',
+      'gate'
+    );
+
+    expect(parsed).toStrictEqual({
+      ok: true,
+      value: {
+        class: 'lint',
+        line: 1,
+        path: 'app/my dir/file.ts',
+        version: 'v1',
+      },
+    });
+
+    const prs = JSON.parse(
+      readFileSync(path.join(CORPUS_DIR, 'prs.json'), 'utf8')
+    ) as {body: string; number: number}[];
+    const pr3006 = prs.find((pr) => pr.number === 3006);
+
+    expect(pr3006).toBeDefined();
+
+    const result = attributeBody(pr3006?.body ?? '');
+
+    expect(result.entries).toHaveLength(1);
+    const entry = result.entries[0];
+
+    expect(
+      `${entry?.unit_start_line}|${entry?.disposition}|1|${entry?.raw_key}`
+    ).toBe('2|accept|1|v1 class=lint path=app/my dir/file.ts line=1');
+  });
+
+  test("#1250's recorded key: parseWrappedKeys and parseKey both yield the same coordinate they did before the change", () => {
+    const wrapped = readFileSync(
+      path.join(DEDUP_CORPUS_DIR, 'issue-1250-key.txt'),
+      'utf8'
+    ).trim();
+
+    expect(parseWrappedKeys(wrapped)).toStrictEqual([
+      {line: 175, path: 'wiki/concepts/PR Merge Workflow.md'},
+    ]);
+
+    // parseKey takes the INNER key; the fixture holds the WRAPPED form, so
+    // group 1 is extracted with KEY_PATTERN first, exactly as a real caller
+    // (attribution.ts) does.
+    const inner = KEY_PATTERN.exec(wrapped)?.[1];
+
+    expect(inner).toBeDefined();
+    expect(parseKey(inner ?? '', 'gate')).toStrictEqual({
+      ok: true,
+      value: {
+        class: 'holistic/unclassified',
+        line: 175,
+        path: 'wiki/concepts/PR Merge Workflow.md',
+        version: 'v1',
+      },
+    });
+  });
+
+  test('parseWrappedKeys does not cross the decoy newline; a path group with no newline exclusion splices across it and loses the real key', () => {
+    const body = readFileSync(
+      path.join(DEDUP_CORPUS_DIR, 'multiline-decoy-body.txt'),
+      'utf8'
+    );
+
+    expect(parseWrappedKeys(body)).toStrictEqual([
+      {line: 42, path: 'app/real.ts'},
+    ]);
+
+    // The livelock this module's docblock names: a path group excluding only
+    // '>' (never '\n') crosses the decoy's newline and swallows the real key.
+    const noNewlineExclusion = /path=([^>]+) line=/g;
+    const spliced = [...body.matchAll(noNewlineExclusion)];
+
+    expect(spliced).toHaveLength(1);
+    expect(spliced[0]?.[1]).toContain('\n');
+    expect(spliced.some((match) => match[1] === 'app/real.ts')).toBe(false);
+  });
+
+  test('attributeBody pins raw_key to the FIRST of two wrapped keys sharing a continuation line (UAT-003 arm a, TypeScript mirror)', () => {
+    const body = readFileSync(
+      path.join(DEDUP_CORPUS_DIR, 'two-keys-one-line.md'),
+      'utf8'
+    );
+    const result = attributeBody(body);
+
+    expect(result.entries).toHaveLength(1);
+    // Neither a path nor a line is asserted here: the gate itself yields
+    // neither for this shape (Deliverable 4a, the bats-side driver of the
+    // gate's own emitted key=), and this is the mirror of that answer, not a
+    // richer reading of it.
+    expect(result.entries[0]?.raw_key).toBe(
+      'v1 class=a path=wiki/concepts/PR Merge Workflow.md line=7'
+    );
+  });
+
+  test("UAT-008: the keyless remediation text, substituted into its own fields, matches the gate's own key_re", () => {
+    const hookPath = path.join(
+      REPO_ROOT,
+      '.claude/hooks/audit-residual-shape-check.sh'
+    );
+    const hookSource = readFileSync(hookPath, 'utf8');
+
+    // Extracted rather than transcribed: this locates whichever wrapped-key
+    // literal in the remediation sentence carries the placeholder runs,
+    // distinguishing it from the key_re assignment (which carries none).
+    const wrappedKeyLiterals =
+      hookSource.match(/<!-- gaia-debt-key:[^\n]*?-->/g) ?? [];
+    const remediation = wrappedKeyLiterals.find((literal) =>
+      literal.includes('...')
+    );
+
+    expect(remediation).toBeDefined();
+
+    const fixtureValues = ['lint', 'wiki/concepts/PR Merge Workflow.md', '175'];
+    let valueIndex = 0;
+    const substituted = (remediation ?? '').replaceAll(
+      '...',
+      () => fixtureValues[valueIndex++] ?? ''
+    );
+
+    const keyReSource = /^key_re='(.*)'$/m.exec(hookSource)?.[1];
+
+    expect(keyReSource).toBeDefined();
+    expect(new RegExp(keyReSource ?? '').test(substituted)).toBe(true);
+  });
+});
+
+describe('UAT-014: the attribution cache schema bump is the discriminator, not the digest', () => {
+  test('a cache stamped with the pre-change schema is discarded wholesale, and the spaced-path residual re-attributes keyed', () => {
+    const root = makeTemporaryRoot();
+    const prs = JSON.parse(
+      readFileSync(path.join(CORPUS_DIR, 'prs.json'), 'utf8')
+    ) as {body: string; headRefOid: string; mergedAt: string; number: number}[];
+    const pr3006 = prs.find((pr) => pr.number === 3006);
+
+    expect(pr3006).toBeDefined();
+
+    const preChangeCache = {
+      high_water_merged_at: pr3006?.mergedAt ?? null,
+      prs: {
+        '3006': {
+          attribution: buildStaleAttribution(),
+          bodyDigest: attributionBodyDigest(pr3006?.body ?? ''),
+          headRefOid: pr3006?.headRefOid ?? '',
+          mergedAt: pr3006?.mergedAt ?? '',
+        },
+      },
+      resolutions: {},
+      schema: 'v1',
+    };
+    const cacheDir = path.join(root, '.gaia', 'local', 'cache');
+
+    mkdirSync(cacheDir, {recursive: true});
+    writeFileSync(
+      path.join(cacheDir, 'residual-attribution.json'),
+      `${JSON.stringify(preChangeCache)}\n`
+    );
+
+    const out = capture();
+    const exitCode = runTally(['--no-cap'], {
+      cwd: root,
+      env: FIXTURE_ENV,
+      now: FIXED_NOW,
+    });
+
+    expect(exitCode).toBe(0);
+    const emitted = out.json() as {candidates: {line: number; path: string}[]};
+
+    expect(
+      emitted.candidates.some(
+        (c) => c.path === 'app/my dir/file.ts' && c.line === 1
+      )
+    ).toBe(true);
+  });
+
+  test('the same scenario under the CURRENT schema stamp is served straight from the cache, not re-attributed', () => {
+    const root = makeTemporaryRoot();
+    const prs = JSON.parse(
+      readFileSync(path.join(CORPUS_DIR, 'prs.json'), 'utf8')
+    ) as {body: string; headRefOid: string; mergedAt: string; number: number}[];
+    const pr3006 = prs.find((pr) => pr.number === 3006);
+
+    expect(pr3006).toBeDefined();
+
+    const dayBeforeMerge = new Date(
+      Date.parse(pr3006?.mergedAt ?? '') - DAY_MS
+    ).toISOString();
+    const currentSchemaCache = {
+      high_water_merged_at: dayBeforeMerge,
+      prs: {
+        '3006': {
+          attribution: buildStaleAttribution(),
+          // The digest matches the real body byte for byte: reuse happens
+          // here anyway, which is what proves the schema bump is the
+          // discriminator rather than the digest.
+          bodyDigest: attributionBodyDigest(pr3006?.body ?? ''),
+          headRefOid: pr3006?.headRefOid ?? '',
+          mergedAt: pr3006?.mergedAt ?? '',
+        },
+      },
+      resolutions: {},
+      schema: 'v2',
+    };
+    const cacheDir = path.join(root, '.gaia', 'local', 'cache');
+
+    mkdirSync(cacheDir, {recursive: true});
+    writeFileSync(
+      path.join(cacheDir, 'residual-attribution.json'),
+      `${JSON.stringify(currentSchemaCache)}\n`
+    );
+
+    const out = capture();
+    const exitCode = runTally(['--no-cap'], {
+      cwd: root,
+      env: FIXTURE_ENV,
+      now: FIXED_NOW,
+    });
+
+    expect(exitCode).toBe(0);
+    const emitted = out.json() as {candidates: {line: number; path: string}[]};
+
+    expect(
+      emitted.candidates.some(
+        (c) => c.path === 'app/my dir/file.ts' && c.line === 1
+      )
+    ).toBe(false);
   });
 });
 
