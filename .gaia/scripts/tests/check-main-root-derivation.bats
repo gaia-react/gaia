@@ -174,6 +174,32 @@ commit_fixture() {
   grep -qF "worktree list --porcelain piped to a first-record reader: 1" <<<"$output" || return 1
 }
 
+# The scan PARSES the path out of its own `git grep -n` record and opens it, so
+# git's default `core.quotePath` is what decides whether it can. Under the
+# default a violation in a file whose name carries a non-ASCII byte arrives as
+# `"caf\303\251.sh":2:...`; the `%%:*` trim then yields a name carrying a
+# leading double quote and octal escapes, the `sed` window read cannot open it,
+# its `2>/dev/null` swallows the error, and the violation is never printed.
+# That is this guard reporting clean over a file it never read, which is the
+# exact fail-open the guard exists to stop elsewhere.
+#
+# `.gaia/scripts/lint-git-path-quoting.sh` does not flag a `-n` call and says so
+# in its blind-spot block, naming this site, so this fixture is the only thing
+# standing between the repair and a silent revert of it.
+@test "fixture: a violation in a non-ASCII-named file is still read, not lost to C-quoting" {
+  local repo
+  repo="$(make_fixture_repo porcelain-quotepath)"
+  {
+    printf '#!/usr/bin/env bash\n'
+    printf 'main_root=$(git worktree list --porcelain | head -1 | cut -d" " -f2)\n'
+  } >"$repo/café.sh"
+  commit_fixture "$repo"
+  run gaia_check_main_root_derivation "$repo"
+  [ "$status" -eq 1 ]
+  grep -qF "worktree list --porcelain piped to a first-record reader: 1" <<<"$output" || return 1
+  grep -qF "café.sh" <<<"$output" || return 1
+}
+
 @test "fixture: worktree list --porcelain piped to a full awk parse does not fail" {
   local repo
   repo="$(make_fixture_repo porcelain-full-awk)"

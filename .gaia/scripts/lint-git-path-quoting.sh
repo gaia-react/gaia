@@ -124,12 +124,22 @@
 #
 # The listing flags themselves are a CLOSED set, which is what makes naming them
 # different in kind from the enumerations this file refuses elsewhere: git
-# documents exactly five spellings that make `git grep` print paths -- `-l`,
-# `--files-with-matches`, `--name-only`, `-L` and `--files-without-match` -- and
-# a sixth cannot appear without a git release that also changes the command's
-# documented output contract. The two short spellings are read inside a
-# CLUSTER (`-lIF` arms, and so would `-LIF`), because clustering is how every
-# real call in this tree writes them.
+# documents exactly five spellings that make `git grep` print a path AS THE
+# WHOLE RECORD -- `-l`, `--files-with-matches`, `--name-only`, `-L` and
+# `--files-without-match` -- and a sixth cannot appear without a git release
+# that also changes the command's documented output contract. The two short
+# spellings are read inside a CLUSTER (`-lIF` arms, and so would `-LIF`),
+# because clustering is how every real call in this tree writes them.
+#
+# "As the whole record" is the load-bearing half of that sentence, not a
+# qualifier. `git grep -n`, and the bare default form, print the path too, as
+# the first COLON-DELIMITED FIELD of a larger record, and git C-quotes it there
+# by the identical mechanism. This gate does not reach those, and the blind-spot
+# block below states that as a miss rather than leaving this sentence to be read
+# as covering it. What keeps them off the surface is the same rule that keeps
+# the `ls-files` carve-outs honest: whether a record's path field is parsed out
+# and opened, or merely printed to a human alongside the matched text, is a
+# judgment about the consumer, and the two shapes are textually identical.
 #
 # The `-z` half is deliberately NOT cluster-aware, and the asymmetry is the
 # point: reading a letter out of a cluster is exact for a flag letter and
@@ -377,6 +387,20 @@ fi
 #     an ordinary argument where a revision reads as one; the same sentence
 #     applies unchanged, including that every call in this tree writes its
 #     options first.
+#   - A `git grep -n`, or a bare `git grep`, whose caller PARSES the path out of
+#     the record it prints. The path is the record's first colon-delimited
+#     field and git quotes it exactly as it quotes a listing call's, so such a
+#     caller carries this class in full; a caller that only shows the record to
+#     a human carries none of it. Nothing in the call text separates the two, so
+#     arming on `-n` would red every match-line call in this tree to reach the
+#     few that parse, which is how a gate gets bypassed rather than fixed. This
+#     is therefore a deliberate fail-OPEN miss rather than an oversight, and it
+#     is the one blind spot here with a known live instance:
+#     `.gaia/scripts/check-main-root-derivation.sh` reads a `-n` record and
+#     opens the path it extracts. That call site carries `-c core.quotepath=false`
+#     as its own local repair, which is the remedy for this shape, since a
+#     caller that needs the path parsed can turn the quoting off without a flag
+#     this scanner could see anyway.
 #
 # One FALSE POSITIVE the `grep` half adds, fail-CLOSED and stated with the
 # others above rather than left to be discovered:
@@ -401,7 +425,8 @@ readonly OWN_AWK='
     # option_walk(window): walk the option region following a call, setting
     # has_z when a standalone -z appears in it, has_name_only when --name-only
     # does, existence_only when --error-unmatch does, and has_list when one of
-    # the five spellings that make `git grep` print paths does. All four are
+    # the five spellings that make `git grep` print a path as the whole record
+    # does; the header states why -n is not among them. All four are
     # deliberately global: awk has no other way to return a tuple. The walk
     # stops at the first token that is not an option, which is exactly where a
     # pathspec would begin, so a pathspec can never vouch for the call. It is

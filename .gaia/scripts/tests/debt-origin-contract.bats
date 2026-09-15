@@ -207,9 +207,17 @@ extract_sole_bash_fence_matching() {
   # holds a non-ASCII byte would otherwise arrive C-quoted, match no arm of the
   # case below, and red as "unaccounted-for" under a name no file on disk has.
   # Command substitution is not an option on the way -- it discards NUL bytes.
-  local f
+  #
+  # `n` restores the empty-set backstop the command-substitution form used to
+  # get for free. `git grep` exits 1 on zero matches, and a failing
+  # command-substitution ASSIGNMENT aborts under the errexit bats runs each body
+  # with; a process substitution's status is discarded instead, so an empty
+  # stream would mean zero iterations and a vacuous pass, which is exactly what
+  # `.claude/rules/bats-assertions.md` requires a derivation not to do.
+  local f n=0
   while IFS= read -r -d '' f; do
     [ -n "$f" ] || continue
+    n=$((n + 1))
     case "$f" in
       ".claude/agents/code-audit-frontend.md" | \
         ".github/workflows/code-review-audit.yml" | \
@@ -227,6 +235,10 @@ extract_sole_bash_fence_matching() {
         ;;
     esac
   done < <(git -C "$REPO_ROOT" grep -lF -z -- "gaia-debt-origin" -- "${EXCLUDE_PATHSPEC[@]}")
+  [ "$n" -gt 0 ] || {
+    printf 'the gaia-debt-origin carrier discovery returned nothing; this test proves nothing\n' >&2
+    return 1
+  }
 }
 
 # ========== 3. the pointer rule ==========
@@ -235,10 +247,12 @@ extract_sole_bash_fence_matching() {
   # Same shape and reasoning as assertion 2 of check-audit-key-callers.sh: a
   # token-presence net over the whole file, so descriptive prose satisfies it
   # exactly as an executable reference does.
-  # -z and a NUL read, for the reason given on the same shape in 2a above.
-  local f
+  # -z and a NUL read, and the `n` non-empty pin, both for the reasons given on
+  # the same shape in 2a above.
+  local f n=0
   while IFS= read -r -d '' f; do
     [ -n "$f" ] || continue
+    n=$((n + 1))
     case "$f" in
       ".claude/skills/file-tech-debt/SKILL.md" | ".gaia/scripts/debt-origin-lib.sh")
         continue # the owner and its exempt implementation owe no pointer
@@ -249,6 +263,10 @@ extract_sole_bash_fence_matching() {
       return 1
     }
   done < <(git -C "$REPO_ROOT" grep -lF -z -- "gaia-debt-origin" -- "${EXCLUDE_PATHSPEC[@]}")
+  [ "$n" -gt 0 ] || {
+    printf 'the gaia-debt-origin carrier discovery returned nothing; this test proves nothing\n' >&2
+    return 1
+  }
 }
 
 # ========== 4. the dedup key still matches (deterministic-consumer safety) ==========
