@@ -1,5 +1,14 @@
 #!/usr/bin/env bats
 #
+# Every fixture below writes literal shell source into a file with a
+# single-quoted `printf`, so the `$main`, `${var%...}` and `$(...)` inside those
+# strings are the SUBJECT under test and must reach the file unexpanded. That is
+# SC2016's whole pattern, and it fires on every one of them; file-scoped rather
+# than per-line because the shape is the suite's own idiom, not an exception to
+# it. Without this the oracle's output for this file is a page of known-benign
+# info that a future reader has to re-adjudicate before finding a real one.
+# shellcheck disable=SC2016
+#
 # Conformance suite for .gaia/scripts/check-main-root-derivation.sh -- Check
 # B, task 7.4's regression gate. Where check-resolver-singleton.sh (Check A)
 # catches a second named resolver DEFINITION, this check catches a
@@ -49,6 +58,13 @@ make_fixture_repo() {
   git -C "$dir" config user.email t@example.com
   git -C "$dir" config user.name T
   git -C "$dir" config commit.gpgsign false
+  # Pinned for the same reason as the three above: a fixture must not take its
+  # verdict from the host. `core.quotePath` defaults to true, and the non-ASCII
+  # fixture below proves its repair by relying on that default, so on a host or
+  # runner image whose global config sets it false that test would pass with the
+  # repair reverted -- an inert guard, reporting green in exactly the case it
+  # exists to catch.
+  git -C "$dir" config core.quotePath true
   FIXTURE_REPOS+=("$dir")
   printf '%s' "$dir"
 }

@@ -122,24 +122,32 @@
 # carve-outs stay on the right side of and the reason they are affordable. So
 # every executed `git grep` that lists file names is on the surface.
 #
-# The listing flags themselves are a CLOSED set, which is what makes naming them
-# different in kind from the enumerations this file refuses elsewhere: git
-# documents exactly five spellings that make `git grep` print a path AS THE
-# WHOLE RECORD -- `-l`, `--files-with-matches`, `--name-only`, `-L` and
-# `--files-without-match` -- and a sixth cannot appear without a git release
-# that also changes the command's documented output contract. The two short
-# spellings are read inside a CLUSTER (`-lIF` arms, and so would `-LIF`),
-# because clustering is how every real call in this tree writes them.
+# What the arming covers is five spellings, each of which makes `git grep` print
+# a path AS THE WHOLE RECORD: `-l`, `--files-with-matches`, `--name-only`, `-L`
+# and `--files-without-match`. The two short spellings are read inside a CLUSTER
+# (`-lIF` arms, and so would `-LIF`), because clustering is how every real call
+# in this tree writes them.
 #
-# "As the whole record" is the load-bearing half of that sentence, not a
-# qualifier. `git grep -n`, and the bare default form, print the path too, as
-# the first COLON-DELIMITED FIELD of a larger record, and git C-quotes it there
-# by the identical mechanism. This gate does not reach those, and the blind-spot
-# block below states that as a miss rather than leaving this sentence to be read
-# as covering it. What keeps them off the surface is the same rule that keeps
-# the `ls-files` carve-outs honest: whether a record's path field is parsed out
-# and opened, or merely printed to a human alongside the matched text, is a
-# judgment about the consumer, and the two shapes are textually identical.
+# That is the set this file ARMS ON, stated as such, and deliberately not as a
+# claim that no sixth spelling exists. `--heading` is a sixth, documented in the
+# git already installed rather than in some future release: it prints the
+# filename on a record of its own above that file's matches, C-quoted by the
+# identical mechanism. It is left off the surface because its stream INTERLEAVES
+# path records with match records, so anything reading it is reading a rendering
+# meant for a human rather than a path list, and no call in this tree writes it.
+# A closed-set claim would have been the load-bearing half of an enumeration, and
+# the one enumeration this file permits itself has to survive being checked
+# against the installed tool, so it asserts its own reach instead.
+#
+# "As the whole record" is doing real work in that sentence. `git grep -n`, and
+# the bare default form, print the path too, as the first COLON-DELIMITED FIELD
+# of a larger record, and git C-quotes it there by the identical mechanism. This
+# gate does not reach those either, and the blind-spot block below states it as a
+# miss rather than leaving the sentence above to be read as covering it. What
+# keeps them off the surface is the same rule that keeps the `ls-files`
+# carve-outs honest: whether a record's path field is parsed out and opened, or
+# merely printed to a human alongside the matched text, is a judgment about the
+# consumer, and the two shapes are textually identical.
 #
 # The `-z` half is deliberately NOT cluster-aware, and the asymmetry is the
 # point: reading a letter out of a cluster is exact for a flag letter and
@@ -398,9 +406,16 @@ fi
 #     is the one blind spot here with a known live instance:
 #     `.gaia/scripts/check-main-root-derivation.sh` reads a `-n` record and
 #     opens the path it extracts. That call site carries `-c core.quotepath=false`
-#     as its own local repair, which is the remedy for this shape, since a
-#     caller that needs the path parsed can turn the quoting off without a flag
-#     this scanner could see anyway.
+#     as its own local repair, which closes the NON-ASCII arm of the quoting and
+#     nothing else: that flag only stops bytes above 0x80 counting as unusual, so
+#     a tracked name carrying a double quote or a backslash is still C-quoted
+#     with it set, and a name carrying a colon defeats a `first-field` split
+#     whatever the quoting does. `-z` is the only complete remedy for a parse
+#     site, and it is unavailable to a `-n` caller without rewriting the split,
+#     since `-z` changes the record's own delimiter. The flag is the right repair
+#     THERE because the non-ASCII arm is the one with a live case in this tree;
+#     it is not a general close of the shape, and a second parse site is not
+#     made safe by copying one flag onto it.
 #
 # One FALSE POSITIVE the `grep` half adds, fail-CLOSED and stated with the
 # others above rather than left to be discovered:
