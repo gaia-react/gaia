@@ -406,10 +406,11 @@ TABLE
 # On an unindented line carrying TWO, the anchored pattern still matches the
 # whole line and `.+` runs straight across the first closer, which is the very
 # splice class SPEC-082 exists to close. That splice is exercised only
-# against other readers, by Deliverable 4a (the gate) and Arm 2 of
-# `.gaia/tests/lib/doc-debt-query.bats` (the filer's jq scan); nothing reaches
-# these two patterns, so for them it stands open by the decision below rather
-# than by coverage.
+# against other readers, by the suites driving the `two-keys-one-line.md`
+# fixture (`git grep -ln two-keys-one-line` names them, so the set is counted
+# at read time rather than cached here); none of them reaches these two
+# patterns, so for them it stands open by the decision below rather than by
+# coverage.
 # The decision not to convert them does not rest on the splice being
 # impossible: it rests on conversion narrowing a blocking pre-file guard,
 # which SPEC-082 puts under `ask_first` with the default do not. The
@@ -612,19 +613,29 @@ TABLE
       # .gaia/local/ is gitignored (.gitignore:64), so a git-grep-based
       # derivation can never reach it regardless of scope: the pathspec
       # exclude is doubly inert here (outside READER_SCOPE_DIRS AND
-      # unreachable by git grep at all). The stated reason is still real --
-      # confirmed with a plain filesystem grep, which git's index does not
-      # gate -- so this branch verifies the substance of the claim by the
-      # only tool that can see it, rather than asserting a git-grep pickup
-      # that cannot happen.
-      [ -d "$REPO_ROOT/$extra_path" ] || {
-        echo "exclusion '$id': $extra_path does not exist" >&2
-        return 1
-      }
-      grep -rlE 'path=(\(\?<path>|\()?\[\^>(\\n)?\]' "$REPO_ROOT/$extra_path" >/dev/null 2>&1 || {
-        echo "exclusion '$id': no file under $extra_path carries the pattern text a plain grep can see; the claimed reason does not hold" >&2
-        return 1
-      }
+      # unreachable by git grep at all). The git-grep invariance asserted
+      # below is the half that holds on every checkout, so it is the half
+      # that gates.
+      #
+      # The stated reason -- that there is pattern text under there for a
+      # plain filesystem grep to see -- is a claim about untracked working
+      # state, and this suite cannot turn that into a gate in either
+      # direction. A fresh clone and every CI runner have no .gaia/local/ at
+      # all, and on a checkout that has one its contents are whatever that
+      # machine's tooling last wrote; this plan folder, the reason's own
+      # example, is deleted at archive. Asserting presence would red on a
+      # green tree over state the tree does not carry. So the substance is
+      # confirmed opportunistically, where the directory exists, and its
+      # absence is reported rather than either failed or passed over in
+      # silence.
+      if [ -d "$REPO_ROOT/$extra_path" ]; then
+        grep -rlE 'path=(\(\?<path>|\()?\[\^>(\\n)?\]' "$REPO_ROOT/$extra_path" >/dev/null 2>&1 || {
+          echo "exclusion '$id': $extra_path exists on this checkout but no file under it carries the pattern text a plain grep can see; the claimed reason does not hold here" >&2
+          return 1
+        }
+      else
+        echo "exclusion '$id': $extra_path is absent on this checkout (untracked working state), so the filesystem half of its reason is unconfirmed; the git-grep invariance below still gates" >&2
+      fi
       local prong2_baseline
       prong2_baseline="$(prong2_row_producer | wc -l | tr -d ' ')"
       lifted_hits="$(git -C "$REPO_ROOT" grep -nE 'path=(\(\?<path>|\()?\[\^>(\\n)?\]' -- "${READER_SCOPE_DIRS[@]}" ":!$NESTED_TEST_EXCLUSION" "$extra_path" 2>/dev/null | wc -l | tr -d ' ')"
