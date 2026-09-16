@@ -894,17 +894,35 @@ jobs:
           # nothing refusable. `set -o pipefail` does not see it either -- the
           # failing call is a command inside a group, not a pipeline component
           # -- so per-call capture is the only spelling that catches it.
+          #
+          # Every producer is recorded, not just the last one to fail: a later
+          # status would otherwise overwrite an earlier one and the message would
+          # name the wrong command, or a `tr`/`cat` failure would be reported as
+          # a git failure.
           enum_z="$(mktemp)"
           enum_paths="$(mktemp)"
           enum_status=0
-          git diff --name-only -z HEAD >> "$enum_z" || enum_status=$?
-          git diff --cached --name-only -z >> "$enum_z" || enum_status=$?
-          # The third call keeps its own `|| true`: origin/$PR_BRANCH is
-          # legitimately absent before the branch's first push, and that is not
-          # an enumeration failure.
-          git diff --name-only -z "origin/${PR_BRANCH}..HEAD" >> "$enum_z" 2>/dev/null || true
-          tr '\0' '\n' < "$enum_z" >> "$enum_paths" || enum_status=$?
-          cat "$preserved_governance_edits" >> "$enum_paths" || enum_status=$?
+          enum_failed=""
+          note_enum_failure() {
+            enum_status="$1"
+            enum_failed="${enum_failed}${enum_failed:+; }$2 exited $1"
+          }
+          git diff --name-only -z HEAD >> "$enum_z" || note_enum_failure $? "git diff HEAD"
+          git diff --cached --name-only -z >> "$enum_z" || note_enum_failure $? "git diff --cached"
+          # The third call is the only producer that can see a path the self-heal
+          # already COMMITTED, so its status is load-bearing in exactly the case
+          # the other two are blind to. What is legitimately absent here is the
+          # REF, not the answer: before the branch's first push there is no
+          # origin/$PR_BRANCH to diff against. So gate on the ref existing, the
+          # same shape the base_ref check above uses, instead of swallowing every
+          # status with `|| true`, and leave git's own diagnostic on stderr where
+          # the run log keeps it.
+          if git rev-parse --verify --quiet "origin/${PR_BRANCH}^{commit}" >/dev/null 2>&1; then
+            git diff --name-only -z "origin/${PR_BRANCH}..HEAD" >> "$enum_z" \
+              || note_enum_failure $? "git diff origin/${PR_BRANCH}..HEAD"
+          fi
+          tr '\0' '\n' < "$enum_z" >> "$enum_paths" || note_enum_failure $? "tr"
+          cat "$preserved_governance_edits" >> "$enum_paths" || note_enum_failure $? "cat"
           rm -f "$enum_z" "$preserved_governance_edits"
           if [ "$enum_status" -ne 0 ]; then
             # Refuse IN-BAND and exit 0 rather than letting the step die. None
@@ -913,7 +931,7 @@ jobs:
             # no status at all on a required check, which blocks every merge on
             # the branch. Refusing keeps the repair boundary shut AND lets those
             # writers run.
-            echo "code-review-audit: could not enumerate the self-heal's changed paths (git exited $enum_status) -- refusing rather than judging a partial path list." >&2
+            echo "code-review-audit: could not enumerate the self-heal's changed paths ($enum_failed) -- refusing rather than judging a partial path list." >&2
             {
               echo "pushed=false"
               echo "marker_only=false"

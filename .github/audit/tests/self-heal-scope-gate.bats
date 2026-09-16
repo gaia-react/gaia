@@ -594,28 +594,48 @@ output_has() { grep -qF -- "$1" "$STEP_OUTPUT"; }
 # Criterion 12: the path enumeration feeding the gate fails CLOSED.
 # -----------------------------------------------------------------------------
 
-# Re-stub `git` so exactly one enumeration call -- the worktree-vs-HEAD spelling
-# that opens the scope gate's path derivation -- fails the way a corrupt object
-# store, a ref deleted mid-run, or a leftover index.lock makes it fail. Matched
-# on the exact argv the derivation uses: the .claude/ evidence capture earlier in
-# the same step spells the same subcommand with a `-- .claude` pathspec and has
-# to keep working, or these tests would be exercising the capture instead of the
+# Re-stub `git` so exactly ONE enumeration call fails, the way a corrupt object
+# store, a ref deleted mid-run, or a leftover index.lock makes it fail. The
+# caller passes the exact argv the derivation uses, because the surrounding step
+# spells neighbouring calls almost identically -- the .claude/ evidence capture
+# uses the same subcommand with a `-- .claude` pathspec, and the ref-existence
+# probe guarding the third call is a `rev-parse` -- and every one of those has to
+# keep working, or these tests would be exercising a neighbour instead of the
 # gate. `push` keeps the setup stub's behaviour, so an unrefused run still
 # reaches PUSH_LOG and refuse-versus-push stays observable.
-break_head_enumeration() {
+break_enumeration_call() {
+  local argv="$1"
   cat > "$GIT_STUB_BIN/git" <<EOF
 #!/usr/bin/env bash
 if [ "\$1" = "push" ]; then
   printf '%s\n' "\$*" >> "$PUSH_LOG"
   exit 0
 fi
-if [ "\$*" = "diff --name-only -z HEAD" ]; then
+if [ "\$*" = "$argv" ]; then
   echo "fatal: unable to read tree (simulated)" >&2
   exit 128
 fi
 exec "$REAL_GIT" "\$@"
 EOF
   chmod +x "$GIT_STUB_BIN/git"
+}
+
+# The same idea for the enumeration producers that are not git. `$2`, when
+# given, is the exact argv that must fail and every other invocation reaches the
+# real binary; omitted, every invocation fails. Stubs land in the same directory
+# the git stub does, which is what run_push_fixes_step puts on PATH.
+break_command() {
+  local name="$1" argv="${2:-}" real
+  real="$(command -v "$name")"
+  cat > "$GIT_STUB_BIN/$name" <<EOF
+#!/usr/bin/env bash
+if [ -z '$argv' ] || [ "\$*" = '$argv' ]; then
+  echo "$name: simulated failure" >&2
+  exit 3
+fi
+exec "$real" "\$@"
+EOF
+  chmod +x "$GIT_STUB_BIN/$name"
 }
 
 @test "a failed path enumeration refuses in-band rather than judging a partial list" {
@@ -629,7 +649,7 @@ EOF
   # here would strand the pull request on a required check.
   local body
   body="$(extract_step_body 'Commit and push self-heal')"
-  break_head_enumeration
+  break_enumeration_call "diff --name-only -z HEAD"
   echo "export const x = 2;" > "$SANDBOX/app/x.ts"
 
   run run_push_fixes_step "$body"
@@ -649,7 +669,7 @@ EOF
   # would catch its own bad repair.
   local body
   body="$(extract_step_body 'Commit and push self-heal')"
-  break_head_enumeration
+  break_enumeration_call "diff --name-only -z HEAD"
   echo "test('x', () => { /* agent edit */ });" > "$SANDBOX/test/x.test.ts"
 
   run run_push_fixes_step "$body"
@@ -659,6 +679,99 @@ EOF
   [ ! -s "$PUSH_LOG" ]
   output_has "refused=true"
   git -C "$SANDBOX" diff --cached --quiet
+}
+
+@test "a failed origin..HEAD enumeration refuses, not just the worktree spelling" {
+  # The committed half. Worktree-vs-HEAD and index-vs-HEAD cannot see a path the
+  # self-heal already COMMITTED, so this call is that path's only producer, and
+  # a `|| true` on it is the same fail-open the other two just closed: the
+  # committed refused-surface path drops out of the list, the ERE matches
+  # nothing, and the commit is pushed with the gate silent.
+  local body
+  body="$(extract_step_body 'Commit and push self-heal')"
+  break_enumeration_call "diff --name-only -z origin/pr-branch..HEAD"
+  echo "test('x', () => { /* agent edit */ });" > "$SANDBOX/test/x.test.ts"
+  git -C "$SANDBOX" commit --quiet -am "agent commits a refused-surface edit"
+
+  run run_push_fixes_step "$body"
+  [ "$status" -eq 0 ]
+  [ ! -s "$PUSH_LOG" ]
+  output_has "refused=true"
+  output_has "refused_reason=path-enumeration-failed"
+}
+
+@test "an absent origin/<branch> is not an enumeration failure and does not refuse" {
+  # The one case the retired `|| true` existed to tolerate, now carried by a
+  # ref-existence probe instead. Before the branch's first push there is nothing
+  # to diff against, which is an answer rather than a failure, so the step must
+  # run past the gate. Drop the probe and let the bare call report its own
+  # status, and this refuses every first-push run instead. It does not reach the
+  # push: with no origin ref the later `ahead` count is 0 and the step stands
+  # down there, which is pre-existing behaviour this gate does not change.
+  local body
+  body="$(extract_step_body 'Commit and push self-heal')"
+  git -C "$SANDBOX" push --quiet origin --delete pr-branch
+  git -C "$SANDBOX" update-ref -d refs/remotes/origin/pr-branch
+  echo "export const x = 2;" > "$SANDBOX/app/x.ts"
+
+  run run_push_fixes_step "$body"
+  [ "$status" -eq 0 ]
+  grep -qF 'refused=true' "$STEP_OUTPUT" && return 1
+  # Reached the post-gate arm rather than the refusal arm.
+  output_has "pushed=false"
+}
+
+@test "a failed index-vs-HEAD enumeration refuses, the staged-only producer" {
+  # The third git producer. It is the only spelling that sees a path the agent
+  # STAGED and never committed, which the suite already treats as load-bearing
+  # above; a status discarded here drops exactly that path from the list.
+  local body
+  body="$(extract_step_body 'Commit and push self-heal')"
+  break_enumeration_call "diff --cached --name-only -z"
+  echo "export const x = 2;" > "$SANDBOX/app/x.ts"
+
+  run run_push_fixes_step "$body"
+  [ "$status" -eq 0 ]
+  [ ! -s "$PUSH_LOG" ]
+  output_has "refused=true"
+  output_has "refused_reason=path-enumeration-failed"
+}
+
+@test "a failed NUL-to-newline conversion refuses too, not only the git producers" {
+  # `tr` carries every git-produced path into the list the refusal ERE reads, so
+  # its failure loses the same paths a failed git call would. Argv-scoped: the
+  # untracked-file reporting earlier in the step spells `tr` three other ways,
+  # one of them identically, and it is reached only when untracked files exist.
+  local body
+  body="$(extract_step_body 'Commit and push self-heal')"
+  # -z, though the assertion is emptiness: the path-quoting guard arms on the
+  # spelling rather than on what the consumer does with it, and a bare listing
+  # here would red it. Emptiness reads the same either way.
+  [ -z "$(git -C "$SANDBOX" ls-files --others --exclude-standard -z)" ]
+  break_command tr '\0 \n'
+  echo "export const x = 2;" > "$SANDBOX/app/x.ts"
+
+  run run_push_fixes_step "$body"
+  [ "$status" -eq 0 ]
+  [ ! -s "$PUSH_LOG" ]
+  output_has "refused=true"
+  output_has "refused_reason=path-enumeration-failed"
+}
+
+@test "a failed read of the preserved .claude/ evidence refuses too" {
+  # The fifth producer carries the .claude/ agent edits captured before the
+  # untrusted-PR restore erased them from view. Losing it silently is the exact
+  # false positive that capture exists to prevent, inverted.
+  local body
+  body="$(extract_step_body 'Commit and push self-heal')"
+  break_command cat
+  echo "export const x = 2;" > "$SANDBOX/app/x.ts"
+
+  run run_push_fixes_step "$body"
+  [ "$status" -eq 0 ]
+  [ ! -s "$PUSH_LOG" ]
+  output_has "refused=true"
+  output_has "refused_reason=path-enumeration-failed"
 }
 
 @test "the three code-review-audit.yml copies are byte-identical" {
