@@ -63,6 +63,37 @@
 #   if [ "$errexit_was" = 1 ]; then set -e; fi
 #   type some_fn >/dev/null 2>&1 || <degrade>
 #
+# A third requirement cuts ACROSS both shapes rather than adding a third one. A
+# file that arms `trap ... ERR` has to disarm and re-arm the trap across the
+# load as well as suspending errexit. The two mechanisms are independent:
+# `set +e` stops errexit from aborting on a failing command and does nothing
+# about an armed ERR trap, which fires on that same command regardless. So an
+# unparseable target fires the trap mid-source and the shell leaves from inside
+# the load, which is the outcome this check is named for, reached through the
+# one door `set +e` does not close:
+#
+#   trap - ERR
+#   set +e
+#   . X 2>/dev/null
+#   set -e
+#   trap 'exit 0' ERR
+#   type some_fn >/dev/null 2>&1 || <degrade>
+#
+# Reference fix: .claude/hooks/wiki-session-stop.sh, one of the sites repaired
+# for gaia-react/gaia#1856. Every one of those had been passing this lint while
+# carrying the defect, which is what put the requirement here rather than
+# leaving it to review.
+#
+# `trap '' ERR` is the IGNORE disposition and `trap -p ERR` is a query; neither
+# installs a handler, so neither demands the disarm. Two accepted misses, both
+# deliberate. The arm reads a trap the file writes ITSELF, so a library that
+# INHERITS an armed trap from whichever caller sourced it is outside it -- the
+# same boundary the state-preserving shape exists to straddle for errexit, and
+# closing it would owe a second closure beside the errexit one in pass 2. And a
+# handler saved and restored through `$(trap -p ERR)` and `eval` is invisible
+# for the ordinary reason, that the walk masks command substitutions; it costs
+# nothing today, because no file in the tree writes it.
+#
 # A library's callers do not all arm errexit -- verb-arming.sh has several
 # consumers that do not -- so a flat `set -e` ARMS errexit in those, and the caller
 # then dies at its next non-zero command. That is why the flat shape is a hit at
@@ -585,7 +616,46 @@ records="$(awk '
   FNR == 1 { if (n > 0) flush(); n = 0; file = FILENAME }
   { n++; L[n] = decomment($0); RAW[n] = $0; QL[n] = blank_quoted(L[n]) }
 
+  # ERR-trap disposition from one `trap` call. `s` starts at the `trap` token on
+  # the quote-blanked masked line; the return is "errarm" when the call INSTALLS
+  # a handler for ERR, "errdis" when it removes or ignores one, and "" when the
+  # call does not name ERR or installs nothing.
+  #
+  # Read off the quote-blanked view like every other predicate in the walk, so a
+  # `trap ... ERR` spelled inside a string arms nothing. That view keeps the
+  # quote characters and blanks what sits between them, which is what lets the
+  # EMPTY handler be told from a non-empty one: an empty handler bound to ERR is
+  # the ignore disposition, fires nothing, and owes no disarm. The action is read
+  # by hand rather than by a quote-stripping regex because an octal escape
+  # inside an ERE is not portable across the awks this runs on.
+  function trap_err(s,   tail, i, c, len, act, rest, w, nw, saw) {
+    tail = s
+    sub(/^trap[[:space:]]+/, "", tail)
+    # Stop at the first command separator, so a one-line `trap - ERR; set +e`
+    # does not read the rest of the line as part of the signal list. A separator
+    # inside a quoted handler was blanked to a space before this ran.
+    sub(/[;&|)}].*$/, "", tail)
+    len = length(tail)
+    c = substr(tail, 1, 1)
+    if (c == "\047" || c == "\"") {
+      for (i = 2; i <= len && substr(tail, i, 1) != c; i++) ;
+      act = (i == 2) ? "E" : "A"
+      i++
+    } else {
+      for (i = 1; i <= len && substr(tail, i, 1) !~ /[[:space:]]/; i++) ;
+      act = substr(tail, 1, i - 1)
+    }
+    saw = 0
+    nw = split(substr(tail, i), w, /[[:space:]]+/)
+    for (i = 1; i <= nw; i++) if (w[i] == "ERR") saw = 1
+    if (!saw) return ""
+    if (act == "-p" || act == "-l") return ""
+    if (act == "-" || act == "E") return "errdis"
+    return "errarm"
+  }
+
   function flush(   i, s, j, k, pos, ev, evn, evt, evp, suspended, armed, tgt,
+                    errarmed,
                     sn, sline, sshape, sdepth, back, found, res, capture,
                     m, q, cur, pfx, indepth, blockdepth, capdepth,
                     mstart, mlen, lps, lpa, np) {
@@ -682,6 +752,31 @@ records="$(awk '
         off = pos + mlen - 1
         rest = substr(rest, mstart + mlen)
       }
+      # ERR-trap arms and disarms, into the SAME event stream as the suspends and
+      # restores above rather than a flag beside it. Positions are measured over
+      # `q` like every other event, so a one-line
+      # `trap - ERR; set +e; . X; set -e` is read in the order the shell runs it,
+      # and a re-arm written after one load still governs the next load below it.
+      rest = q
+      off = 0
+      while (match(rest, /(^|[;&|(){}[:space:]])trap[[:space:]]/)) {
+        mstart = RSTART
+        mlen = RLENGTH
+        # The match may have consumed a leading separator; the token starts after
+        # it. Snapshot before `trap_err` runs, since it calls match() itself.
+        if (substr(rest, mstart, 4) != "trap") { mstart++; mlen-- }
+        pos = off + mstart
+        ev = trap_err(substr(rest, mstart))
+        if (ev != "") {
+          evn++
+          evt[evn] = ev
+          evl[evn] = i
+          evp[evn] = pos
+          evx[evn] = ""
+        }
+        off = pos + mlen - 1
+        rest = substr(rest, mstart + mlen)
+      }
       lps = load_pos(m, q)
       if (lps != "") {
         np = split(lps, lpa, " ")
@@ -718,7 +813,10 @@ records="$(awk '
     }
     suspended = 0
     armed = 0
+    errarmed = 0
     for (i = 1; i <= evn; i++) {
+      if (evt[i] == "errarm") { errarmed = 1; continue }
+      if (evt[i] == "errdis") { errarmed = 0; continue }
       if (evt[i] == "susp") { suspended = 1; continue }
       if (evt[i] == "rest") {
         if (suspended) suspended = 0
@@ -733,6 +831,12 @@ records="$(awk '
           if (evt[j] == "rest") { shape = evx[j]; break }
           if (evt[j] == "susp") break
         }
+        # An armed ERR trap fires on the failing load whatever errexit is doing,
+        # so a bracket that restores errexit and leaves the trap armed brackets
+        # nothing. Carried as a SUFFIX rather than as a shape of its own: a flat
+        # restore in a sourced file is a second, independent defect at the same
+        # site, and pass 2 reports whichever of the two apply.
+        if (errarmed && shape != "leak") shape = shape "+err"
       } else {
         # `bash -n X` naming the same target, on this line or on a preceding
         # line whose block the load is INSIDE. The multi-line
@@ -857,8 +961,18 @@ records="$(awk '
       why = ""
       if (SS[k] == "none") why = "unguarded load in an errexit-reachable file"
       else if (SS[k] == "leak") why = "errexit suspended across the load and never restored"
-      else if (SS[k] == "flat" && (!(SF[k] in ARM) || SF[k] in INBOUND)) \
-        why = "flat `set -e` restore in a sourced file, which arms errexit in callers that had it off"
+      else {
+        # The `+err` suffix is independent of the shape it rides, so both are
+        # decoded and a site carrying both reports both.
+        base = SS[k]
+        errt = sub(/\+err$/, "", base)
+        if (base == "flat" && (!(SF[k] in ARM) || SF[k] in INBOUND)) \
+          why = "flat `set -e` restore in a sourced file, which arms errexit in callers that had it off"
+        if (errt) {
+          if (why != "") why = why "; and "
+          why = why "an ERR trap is armed across the load, so the trap fires on the failing load whatever errexit is doing"
+        }
+      }
       if (why == "") continue
       hits++
       printf "%s:%s: %s\n", SF[k], SL[k], why
@@ -876,6 +990,11 @@ In a library, which inherits errexit from its caller:
   errexit_was=0; case $- in *e*) errexit_was=1 ;; esac
   set +e; . X 2>/dev/null
   if [ "$errexit_was" = 1 ]; then set -e; fi
+Where the file also arms an ERR trap, disarm and re-arm it across the load:
+`set +e` does not disarm a trap, and the trap fires on the failing load anyway.
+  trap - ERR
+  set +e; . X 2>/dev/null; set -e
+  trap 'exit 0' ERR
 Then let the existing `type <fn> >/dev/null 2>&1 || <degrade>` decide.
 MSG
   exit 1

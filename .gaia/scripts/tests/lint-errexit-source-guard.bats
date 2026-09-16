@@ -930,3 +930,119 @@ $line"
   run bash -c "cd '$TMP' && bash '$LINTER'"
   [ "$status" -eq 0 ]
 }
+
+# 21. An armed ERR trap defeats a `set +e` bracket
+#
+# The two mechanisms are independent. `set +e` stops errexit from aborting on a
+# failing command and does nothing about an armed ERR trap, which fires on that
+# same command regardless. So a file that arms `trap ... ERR` and then brackets
+# its load in `set +e` ALONE still exits from inside the load when the target is
+# unparseable, which is the outcome this whole check is named for. The bracket
+# has to disarm and re-arm the trap across the load, which is what the sites
+# repaired for gaia-react/gaia#1856 actually write.
+#
+# Scope, and the accepted miss it carries: the arm reads a trap the file writes
+# ITSELF. A library that inherits an armed trap from whichever caller sourced it
+# is outside it, the same way the `cond` shape exists because a library inherits
+# errexit, and closing that would owe a second closure beside the errexit one.
+
+@test "flags a set +e bracket around a load while an ERR trap is armed" {
+  new_fixture
+  plant .claude/hooks/probe.sh $'#!/usr/bin/env bash\nset -euo pipefail\ntrap \'exit 0\' ERR\nset +e\n. .claude/hooks/lib/helper.sh 2>/dev/null\nset -e\n'
+  plant .claude/hooks/lib/helper.sh $'helper() { :; }\n'
+  run bash -c "cd '$TMP' && bash '$LINTER'"
+  [ "$status" -eq 1 ]
+  grep -qF -- ".claude/hooks/probe.sh:5" <<<"$output"
+  grep -qF -- "ERR trap is armed" <<<"$output"
+}
+
+@test "flags the armed-trap one-liner bracket too" {
+  new_fixture
+  plant .claude/hooks/probe.sh $'#!/usr/bin/env bash\nset -euo pipefail\ntrap \'exit 0\' ERR\nset +e; [ -f .claude/hooks/lib/helper.sh ] && . .claude/hooks/lib/helper.sh 2>/dev/null; set -e\n'
+  plant .claude/hooks/lib/helper.sh $'helper() { :; }\n'
+  run bash -c "cd '$TMP' && bash '$LINTER'"
+  [ "$status" -eq 1 ]
+  grep -qF -- ".claude/hooks/probe.sh:4" <<<"$output"
+  grep -qF -- "ERR trap is armed" <<<"$output"
+}
+
+# The repaired shape, as .claude/hooks/wiki-session-stop.sh writes it.
+@test "accepts a bracket that disarms and re-arms the ERR trap across the load" {
+  new_fixture
+  plant .claude/hooks/probe.sh $'#!/usr/bin/env bash\nset -euo pipefail\ntrap \'exit 0\' ERR\ntrap - ERR\nset +e\n. .claude/hooks/lib/helper.sh 2>/dev/null\nset -e\ntrap \'exit 0\' ERR\n'
+  plant .claude/hooks/lib/helper.sh $'helper() { :; }\n'
+  run bash -c "cd '$TMP' && bash '$LINTER'"
+  [ "$status" -eq 0 ]
+}
+
+@test "accepts the disarm and re-arm written on one line with the bracket" {
+  new_fixture
+  plant .claude/hooks/probe.sh $'#!/usr/bin/env bash\nset -euo pipefail\ntrap \'exit 0\' ERR\ntrap - ERR; set +e; . .claude/hooks/lib/helper.sh 2>/dev/null; set -e; trap \'exit 0\' ERR\n'
+  plant .claude/hooks/lib/helper.sh $'helper() { :; }\n'
+  run bash -c "cd '$TMP' && bash '$LINTER'"
+  [ "$status" -eq 0 ]
+}
+
+# A state machine, not a file-level flag: the re-arm after the first load is what
+# makes the SECOND load a hit, and only an ordered walk tells the two apart.
+@test "judges a second load against the re-armed trap above it" {
+  new_fixture
+  plant .claude/hooks/probe.sh $'#!/usr/bin/env bash\nset -euo pipefail\ntrap \'exit 0\' ERR\ntrap - ERR\nset +e\n. .claude/hooks/lib/a.sh 2>/dev/null\nset -e\ntrap \'exit 0\' ERR\nset +e\n. .claude/hooks/lib/b.sh 2>/dev/null\nset -e\n'
+  plant .claude/hooks/lib/a.sh $'a() { :; }\n'
+  plant .claude/hooks/lib/b.sh $'b() { :; }\n'
+  run bash -c "cd '$TMP' && bash '$LINTER'"
+  [ "$status" -eq 1 ]
+  grep -qF -- ".claude/hooks/probe.sh:10" <<<"$output"
+  grep -qF -- ".claude/hooks/probe.sh:6" <<<"$output" && return 1
+  true
+}
+
+@test "a trap on a signal other than ERR does not demand the disarm" {
+  new_fixture
+  plant .claude/hooks/probe.sh $'#!/usr/bin/env bash\nset -euo pipefail\ntrap \'echo bye\' EXIT\nset +e\n. .claude/hooks/lib/helper.sh 2>/dev/null\nset -e\n'
+  plant .claude/hooks/lib/helper.sh $'helper() { :; }\n'
+  run bash -c "cd '$TMP' && bash '$LINTER'"
+  [ "$status" -eq 0 ]
+}
+
+# `trap '' ERR` sets the IGNORE disposition, so nothing fires on the failing
+# load and the bracket alone suffices. `trap -p ERR` is a query that installs
+# nothing at all.
+@test "an ignored ERR trap and a query form do not demand the disarm" {
+  new_fixture
+  plant .claude/hooks/probe.sh $'#!/usr/bin/env bash\nset -euo pipefail\ntrap \'\' ERR\ntrap -p ERR >/dev/null\nset +e\n. .claude/hooks/lib/helper.sh 2>/dev/null\nset -e\n'
+  plant .claude/hooks/lib/helper.sh $'helper() { :; }\n'
+  run bash -c "cd '$TMP' && bash '$LINTER'"
+  [ "$status" -eq 0 ]
+}
+
+# The quote-blanked view, like every other predicate in the walk: a trap spelled
+# inside a string arms nothing, and one spelled in a heredoc body is data.
+@test "an ERR trap spelled inside a string does not demand the disarm" {
+  new_fixture
+  plant .claude/hooks/probe.sh $'#!/usr/bin/env bash\nset -euo pipefail\necho "write trap x ERR at the top"\nset +e\n. .claude/hooks/lib/helper.sh 2>/dev/null\nset -e\n'
+  plant .claude/hooks/lib/helper.sh $'helper() { :; }\n'
+  run bash -c "cd '$TMP' && bash '$LINTER'"
+  [ "$status" -eq 0 ]
+}
+
+@test "a disarm spelled inside a heredoc body does not clear a real arm" {
+  new_fixture
+  plant .claude/hooks/probe.sh $'#!/usr/bin/env bash\nset -euo pipefail\ntrap \'exit 0\' ERR\ncat <<\'MSG\'\ntrap - ERR\nMSG\nset +e\n. .claude/hooks/lib/helper.sh 2>/dev/null\nset -e\n'
+  plant .claude/hooks/lib/helper.sh $'helper() { :; }\n'
+  run bash -c "cd '$TMP' && bash '$LINTER'"
+  [ "$status" -eq 1 ]
+  grep -qF -- ".claude/hooks/probe.sh:8" <<<"$output"
+}
+
+# The demand reaches the state-preserving shape too, not just the flat one.
+@test "flags a state-preserving bracket in a library that arms an ERR trap itself" {
+  new_fixture
+  plant .claude/hooks/probe.sh $'#!/usr/bin/env bash\nset -euo pipefail\ntrap \'exit 0\' ERR\ntrap - ERR\nset +e\n. .claude/hooks/lib/mid.sh 2>/dev/null\nset -e\ntrap \'exit 0\' ERR\n'
+  plant .claude/hooks/lib/mid.sh $'errexit_was=0; case $- in *e*) errexit_was=1 ;; esac\ntrap \'exit 0\' ERR\nset +e\n. .claude/hooks/lib/deep.sh 2>/dev/null\nif [ "$errexit_was" = 1 ]; then set -e; fi\n'
+  plant .claude/hooks/lib/deep.sh $'deep() { :; }\n'
+  run bash -c "cd '$TMP' && bash '$LINTER'"
+  [ "$status" -eq 1 ]
+  grep -qF -- ".claude/hooks/lib/mid.sh:4" <<<"$output"
+  grep -qF -- "ERR trap is armed" <<<"$output"
+}
