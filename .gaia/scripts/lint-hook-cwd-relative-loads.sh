@@ -66,7 +66,7 @@
 # WHAT COUNTS AS A HIT, four positions, each one a place a bare literal is
 # resolved against the working directory at run time:
 #
-#   [ -f .claude/hooks/lib/x.sh ]        a file-test primary's operand
+#   [ -f .claude/hooks/lib/x.sh ]        a file-test operand naming a code file
 #   . .gaia/scripts/x.sh                 a `.` or `source` operand
 #   bash .gaia/scripts/x.sh              an interpreter's script argument
 #   lib=".gaia/scripts/x.mjs"            an assignment naming a code file
@@ -108,9 +108,12 @@
 #     catches this only where the literal carries a code extension, so an
 #     extensionless binary or a data file passes. Both live instances of that
 #     shape were repaired by hand when this gate landed.
-#   - A bare literal in a FILE TEST that carries no code extension, whether it
-#     names a directory (`[ -d .claude/hooks ]`), an extensionless executable,
-#     or a code file written without its suffix. That operand resolves against
+#   - A bare literal in a FILE TEST carrying no extension from the pinned set
+#     the arm requires, which is the same set the assignment arm requires and
+#     is narrower than "a code file": a directory (`[ -d .claude/hooks ]`), an
+#     extensionless executable, a code file written without its suffix, and a
+#     code file whose extension is simply not in the set (`.ts`, `.zsh`, `.rb`)
+#     all pass. That operand resolves against
 #     the working directory like any other, so this is a real miss rather than
 #     a shape the gate disagrees is a defect. It is the price of the code-
 #     extension pin on that arm, and the pin is worth it: unpinned, the arm
@@ -121,6 +124,15 @@
 #     the pin fails in the cheaper direction. No hook currently tests a bare
 #     state path directly; every live site tests through a variable, which is
 #     why this arm went unpinned as long as it did.
+#   - A NEGATED file test (`[ ! -f .claude/hooks/lib/x.sh ] && exit 0`). The
+#     arm requires the test primary immediately after the bracket, so the `!`
+#     displaces it and no arm matches. This is the idiomatic spelling of the
+#     stand-down the gate exists to prevent, and it is the positive twin of the
+#     motivating example above, so it is worth naming rather than leaving to a
+#     reader to discover: the unnegated form on the same path reports. No live
+#     instance exists under `.claude/hooks/`. Admitting an optional negation is
+#     a widening of what this gate reaches rather than a repair of what it says,
+#     so it is tracked as its own row (#2070).
 #   - The same indirection where the variable is not assigned a literal at all
 #     but computed per iteration, which no assignment arm can reach: a
 #     repo-relative path derived from a diff listing and then tested
