@@ -11,6 +11,14 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-09-16 9be49f3b SKIP - per-tree state path rooting fix, brings hooks in line with already-accurate wiki description
+- 2026-09-16 4222a4a0 SKIP - cwd-relative-loads gate refinement, already covered by wiki pointer to .claude/rules/shell-cwd.md
+- 2026-09-16 a25d1bd6 WORTHY - self-heal refuses in-band on step abort → wiki/concepts/Code Review Audit CI.md
+- 2026-09-16 f9c94ece WORTHY - self-heal refuses in-band on enumeration failure → wiki/concepts/Code Review Audit CI.md
+- 2026-09-16 8a1289d1 WORTHY - shipped-tree leak assertion extracted + fail-closed → wiki/concepts/Release Workflow.md
+- 2026-09-16 23dcc91b SKIP - internal bats-suite roster derivation fix, no documented contract touched
+- 2026-09-16 be5ad0c0 SKIP - supersede-scope exemption fix; wiki already points to the staleness gate's own header as the source of the condition
+- 2026-09-16 ad048963 SKIP - wiki: self-referential
 - 2026-09-15 cb2a4713 SKIP - path-quoting guard armed on git grep listing spellings; internal CI guard scope, no wiki page enumerates verb coverage to update
 - 2026-09-15 53d3678c SKIP - step-cap widening to direct actions/setup-node steps; wiki/decisions/Composite Action Step Timeouts.md already updated in-PR, no further sync edit needed
 - 2026-09-15 08ca9c93 SKIP - previous wiki-sync's own commit (log/state advance, pages already edited in-PR); nothing further to catalogue
