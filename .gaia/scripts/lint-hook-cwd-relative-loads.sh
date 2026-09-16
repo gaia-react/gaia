@@ -63,6 +63,13 @@
 # quoted-versus-unquoted: `[ -f ".claude/hooks/lib/x.sh" ]` is the same defect
 # as its bare spelling, while `[ -f "$_lib_dir/x.sh" ]` is the repair.
 #
+# The file-test position is read on a second axis too: a NEGATED spelling is
+# the same defect as its unnegated twin, so `[ ! -f .claude/hooks/lib/x.sh ]
+# && exit 0` reports exactly as `[ -f .claude/hooks/lib/x.sh ] || exit 0` does.
+# That negated form is the idiomatic spelling of the capability-probe
+# stand-down in the motivating example above, which is why it is named here
+# rather than left to a reader to infer from the arm.
+#
 # WHAT COUNTS AS A HIT, four positions, each one a place a bare literal is
 # resolved against the working directory at run time:
 #
