@@ -174,16 +174,32 @@ jobs:
           # Shipped-tree leak assertion (AUDIT directive 4): verify no
           # release-excluded path survived into the very tree that becomes the
           # tarball — not only the independently re-staged distribution-gate
-          # tree. Reuses the exclude regex compiled above. A legitimately empty
-          # exclude list (no /tmp/exclude-regex.txt content) has nothing to leak.
-          if [ -s /tmp/exclude-regex.txt ]; then
-            leaked="$( (cd "$STAGING" && find . -type f | sed 's|^\./||') \
-              | grep -E -f /tmp/exclude-regex.txt || true )"
-            if [ -n "$leaked" ]; then
-              echo "::error::release-excluded path(s) leaked into $STAGING:" >&2
-              printf '%s\n' "$leaked" >&2
-              exit 1
-            fi
+          # tree. Reuses the exclude regex compiled above.
+          #
+          # The assertion lives in a script rather than inline, on the same
+          # ground the tracked-path boundary above does: this gate's failing
+          # state has to be observable, and the shape it replaces read a failed
+          # or partial scan as "nothing leaked" (#2061) with nothing in the
+          # repository going red when the scan did not happen. A `run:` body can
+          # be driven from a suite here, through a helper that extracts the step
+          # text out of the workflow, so the choice is between a suite holding a
+          # hand-kept extractor in agreement with a step header and a suite
+          # calling a script by its path. The second one has no extractor to
+          # keep, and `.gaia/scripts/tests/assert-no-release-leak.bats` drives
+          # both the refusal and each way the scan can be left unanswerable.
+          #
+          # The script distinguishes a leak (exit 1) from a scan that could not
+          # complete (exit 2); both abort the release, and the annotation says
+          # which was hit so a maintainer is not sent hunting a path that leaked
+          # from a run where nothing was scanned.
+          leak_rc=0
+          bash .gaia/scripts/assert-no-release-leak.sh "$STAGING" /tmp/exclude-regex.txt || leak_rc=$?
+          if [ "$leak_rc" -eq 1 ]; then
+            echo "::error::release-excluded path(s) leaked into $STAGING; see the paths above" >&2
+            exit 1
+          elif [ "$leak_rc" -ne 0 ]; then
+            echo "::error::shipped-tree leak scan did not complete (exit $leak_rc); leak-freedom is unproven" >&2
+            exit 1
           fi
 
       - name: Bundle-time scrub (marker-strip + leak-check)
