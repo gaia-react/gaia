@@ -1046,3 +1046,50 @@ $line"
   grep -qF -- ".claude/hooks/lib/mid.sh:4" <<<"$output"
   grep -qF -- "ERR trap is armed" <<<"$output"
 }
+
+# 22. The signal word, case and quoting
+#
+# Bash accepts the pseudo-signal in any case and through a quoted word, so `err`
+# and `"ERR"` arm and disarm exactly as `ERR` does. The disarm direction is the
+# one that costs: a disarm the walk cannot read leaves it believing a trap is
+# still live, and reds a file that had in fact disarmed it.
+
+@test "a lowercase err arm demands the disarm" {
+  new_fixture
+  plant .claude/hooks/probe.sh $'#!/usr/bin/env bash\nset -euo pipefail\ntrap \'exit 0\' err\nset +e\n. .claude/hooks/lib/helper.sh 2>/dev/null\nset -e\n'
+  plant .claude/hooks/lib/helper.sh $'helper() { :; }\n'
+  run bash -c "cd '$TMP' && bash '$LINTER'"
+  [ "$status" -eq 1 ]
+  grep -qF -- ".claude/hooks/probe.sh:5" <<<"$output"
+  grep -qF -- "ERR trap is armed" <<<"$output"
+}
+
+@test "a quoted ERR arm demands the disarm" {
+  new_fixture
+  plant .claude/hooks/probe.sh $'#!/usr/bin/env bash\nset -euo pipefail\ntrap \'exit 0\' "ERR"\nset +e\n. .claude/hooks/lib/helper.sh 2>/dev/null\nset -e\n'
+  plant .claude/hooks/lib/helper.sh $'helper() { :; }\n'
+  run bash -c "cd '$TMP' && bash '$LINTER'"
+  [ "$status" -eq 1 ]
+  grep -qF -- ".claude/hooks/probe.sh:5" <<<"$output"
+  grep -qF -- "ERR trap is armed" <<<"$output"
+}
+
+# The direction that would red a correct file: a disarm the walk cannot read.
+@test "a lowercase and a quoted disarm are both honored" {
+  new_fixture
+  plant .claude/hooks/probe.sh $'#!/usr/bin/env bash\nset -euo pipefail\ntrap \'exit 0\' ERR\ntrap - err\nset +e\n. .claude/hooks/lib/a.sh 2>/dev/null\nset -e\ntrap \'exit 0\' ERR\ntrap - "ERR"\nset +e\n. .claude/hooks/lib/b.sh 2>/dev/null\nset -e\n'
+  plant .claude/hooks/lib/a.sh $'a() { :; }\n'
+  plant .claude/hooks/lib/b.sh $'b() { :; }\n'
+  run bash -c "cd '$TMP' && bash '$LINTER'"
+  [ "$status" -eq 0 ]
+}
+
+# A trap bound to several signals at once still arms ERR.
+@test "an ERR arm inside a multi-signal list demands the disarm" {
+  new_fixture
+  plant .claude/hooks/probe.sh $'#!/usr/bin/env bash\nset -euo pipefail\ntrap \'exit 0\' EXIT ERR INT\nset +e\n. .claude/hooks/lib/helper.sh 2>/dev/null\nset -e\n'
+  plant .claude/hooks/lib/helper.sh $'helper() { :; }\n'
+  run bash -c "cd '$TMP' && bash '$LINTER'"
+  [ "$status" -eq 1 ]
+  grep -qF -- ".claude/hooks/probe.sh:5" <<<"$output"
+}
