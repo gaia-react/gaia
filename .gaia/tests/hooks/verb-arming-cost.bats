@@ -330,21 +330,20 @@ time_view_ms() {
   [ "$REPLY_MS" -gt 0 ] || return 1
 }
 
-# The adopting hooks, per README.md's frozen contract table.
+# The adopting hooks, derived from the roster that owns them rather than
+# copied. Sourcing the dual-mode .gaia/scripts/check-verb-arming-adoption.sh
+# exposes GAIA_VERB_ADOPTING_HOOKS, which that check already holds set-equal to
+# the registered hooks in .claude/settings.json in both directions, so this
+# derivation inherits a reconciled roster. A literal copy here would be a
+# second roster with nothing reconciling it: the check excludes every *.bats
+# file from its tracked-tree walk by design (GAIA_VERB_TEST_EXCLUDES), so a
+# hook missing from a copy kept here would silently never be timed by the two
+# all-hooks ceilings below, and nothing in the tree would red. The check is
+# dual-mode, so sourcing it defines the roster and runs nothing.
 adopting_hooks() {
-  printf '%s\n' \
-    pr-merge-audit-check.sh \
-    worthiness-presence-check.sh \
-    audit-disposition-check.sh \
-    audit-residual-shape-check.sh \
-    distribution-preflight-check.sh \
-    post-findings-block-on-merge.sh \
-    token-tally-git-op.sh \
-    token-tally-review.sh \
-    token-rollup-merge.sh \
-    issue-claim-release.sh \
-    debt-sentinel-touch.sh \
-    capture-gh-artifact.sh
+  # shellcheck source=.gaia/scripts/check-verb-arming-adoption.sh
+  . "$BATS_TEST_DIRNAME/../../scripts/check-verb-arming-adoption.sh"
+  printf '%s\n' "${GAIA_VERB_ADOPTING_HOOKS[@]}"
 }
 
 # ---------------------------------------------------------------------------
@@ -473,23 +472,31 @@ CEILING_VIEW_16K_MS=100
 @test "cost: every adopting hook processes one ordinary 200-byte git-commit tool call within budget" {
   local cmd
   cmd="git commit -m x $(head -c 180 < /dev/zero | tr '\0' 'y')"
-  local total=0 h
+  local total=0 h armed=0
   while IFS= read -r h; do
     time_hook_ms "$HOOKS_DIR/$h" "$cmd"
     total=$(( total + REPLY_MS ))
+    armed=$(( armed + 1 ))
   done < <(adopting_hooks)
-  echo "all-hooks total, 200B ordinary git commit: ${total}ms (ceiling ${CEILING_ALL_HOOKS_ORDINARY_MS}ms)" >&2
+  # A derivation that fails yields no hooks, and a loop over none of them sums
+  # to zero, which sits under every ceiling. Without this the test greens on
+  # exactly the failure that leaves it measuring nothing.
+  [ "$armed" -gt 0 ]
+  echo "all-hooks total over ${armed} hooks, 200B ordinary git commit: ${total}ms (ceiling ${CEILING_ALL_HOOKS_ORDINARY_MS}ms)" >&2
   [ "$total" -le "$CEILING_ALL_HOOKS_ORDINARY_MS" ]
 }
 
 @test "cost: every adopting hook processes one 16KB raw-matching gh-pr-merge tool call within budget" {
   local cmd
   cmd=$(build_armed_payload "gh pr merge 1" 16384)
-  local total=0 h
+  local total=0 h armed=0
   while IFS= read -r h; do
     time_hook_ms "$HOOKS_DIR/$h" "$cmd"
     total=$(( total + REPLY_MS ))
+    armed=$(( armed + 1 ))
   done < <(adopting_hooks)
-  echo "all-hooks total, 16KB raw-matching gh pr merge: ${total}ms (ceiling ${CEILING_ALL_HOOKS_RAWMATCH_MS}ms)" >&2
+  # Same non-empty guard as the row above, for the same reason.
+  [ "$armed" -gt 0 ]
+  echo "all-hooks total over ${armed} hooks, 16KB raw-matching gh pr merge: ${total}ms (ceiling ${CEILING_ALL_HOOKS_RAWMATCH_MS}ms)" >&2
   [ "$total" -le "$CEILING_ALL_HOOKS_RAWMATCH_MS" ]
 }
