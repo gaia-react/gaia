@@ -184,6 +184,20 @@
 # tracked-file list is built, so the withhold rests on the absent caller alone,
 # and shipping it later would be a re-decision rather than a correction.
 .gaia/scripts/list-tracked-paths.sh
+# The shipped-tree leak assertion: it proves no release-excluded path survived
+# into the tree that becomes the tarball. Withheld on the absent caller, the same
+# ground the tracked-path boundary above rests on: its one caller is release.yml
+# (category 9), and an adopter clone never stages a GAIA release, so nothing
+# there would invoke it. Its blocking runner, the sibling bats suite
+# .gaia/scripts/tests/assert-no-release-leak.bats, is release-excluded by the
+# separate .gaia/scripts/tests entry in category 3. What is NOT claimed: the
+# script takes a staging directory and a pattern file as arguments and is
+# generic over both, so shipping it later would be a re-decision rather than a
+# correction. There is a second, narrower reason to withhold it that the
+# tracked-path boundary does not carry: its subject is the maintainer-only
+# distribution boundary itself, which is a GAIA-internal concern an adopter has
+# no counterpart to.
+.gaia/scripts/assert-no-release-leak.sh
 # Deterministic lint over GAIA's own hook layer; every runner (shell-lint.sh and its sibling bats suite) is release-excluded, so an adopter clone would carry a check nothing invokes. The repaired hooks themselves ship.
 .gaia/scripts/lint-hook-cwd-relative-loads.sh
 # Deterministic lint over GAIA's own hook layer, withheld on the same terms as its two siblings above: every runner is release-excluded, so an adopter clone would carry a check nothing invokes. The shared arm it enforces (.claude/hooks/lib/jq-availability.sh) and the hooks reaching it both ship.
