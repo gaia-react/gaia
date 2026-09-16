@@ -2143,6 +2143,23 @@ run_audit_complete_step() {
   return 0
 }
 
+@test "audit-complete comment: a step-abort refusal names its own cause" {
+  # Same shape as the enumeration-failure arm above, for the reason the trap
+  # that produces this reason exists: a reason with no arm of its own falls
+  # through to the ELSE and is reported to the pull request as "diff exceeded
+  # the 10-file safety threshold (touched  files)". On this reason that is
+  # worse than merely false -- the step may have died before it staged a single
+  # file, so the message names a gate the run never reached.
+  body="$(extract_step_body 'Status - audit complete')"
+  run run_audit_complete_step "$body" "" "" "" "" "" "true" "true" "step-aborted"
+  [ "$status" -eq 0 ]
+
+  [ -f "$COMMENT_LOG" ]
+  grep -qF "self-heal step aborted" "$COMMENT_LOG"
+  grep -qF "10-file safety threshold" "$COMMENT_LOG" && return 1
+  return 0
+}
+
 @test "audit-complete comment: a co-dispatched pending member is named, not reported as green" {
   body="$(extract_step_body 'Status - audit complete')"
   run run_audit_complete_step "$body" "code-audit-maintainer-shell" "false"

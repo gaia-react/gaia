@@ -653,6 +653,30 @@ EOF
   chmod +x "$GIT_STUB_BIN/$name"
 }
 
+# Re-stub `git` so exactly ONE call fails, `push` INCLUDED. break_enumeration_call
+# above deliberately keeps `push` succeeding, so refuse-versus-push stays
+# observable on every enumeration fixture; the step-abort fixtures below need
+# the opposite, because `git push` is one of the commands that abort this step
+# and a stub that always succeeds it cannot drive that site at all. The
+# failing arm is tested FIRST here for the same reason: a `push` argv has to
+# reach it rather than the logging arm.
+break_git_call() {
+  local argv="$1"
+  cat > "$GIT_STUB_BIN/git" <<EOF
+#!/usr/bin/env bash
+if [ "\$*" = "$argv" ]; then
+  echo "fatal: simulated failure" >&2
+  exit 128
+fi
+if [ "\$1" = "push" ]; then
+  printf '%s\n' "\$*" >> "$PUSH_LOG"
+  exit 0
+fi
+exec "$REAL_GIT" "\$@"
+EOF
+  chmod +x "$GIT_STUB_BIN/git"
+}
+
 break_command() {
   local name="$1" argv="${2:-}" real
   real="$(command -v "$name")"
@@ -823,8 +847,10 @@ EOF
 @test "a failed scratch-file allocation refuses too, rather than killing the step" {
   # The enumeration's own three `mktemp` calls, the same plain-assignment shape.
   # Scoped past the first two, which belong to the .claude/ evidence capture
-  # earlier in the step: those are a separate, pre-existing hard-abort path
-  # (gaia-react/gaia#2066) and this fixture deliberately does not reach them.
+  # earlier in the step. Those two are the step's EXIT trap's problem, not this
+  # arm's (criterion 13 below drives them), and the scoping is what keeps the
+  # two fixtures distinguishable: reaching them from here would report the
+  # generic `step-aborted` where this arm's whole claim is the specific reason.
   local body
   body="$(extract_step_body 'Commit and push self-heal')"
   break_command_after mktemp 2
@@ -835,6 +861,155 @@ EOF
   [ ! -s "$PUSH_LOG" ]
   output_has "refused=true"
   output_has "refused_reason=path-enumeration-failed"
+}
+
+# -----------------------------------------------------------------------------
+# Criterion 13: this step cannot end the run with no GAIA-Audit status at all.
+#
+# Every terminal status writer downstream carries an implicit `success()`, and
+# `Status - audit aborted` selects on `steps.audit.outcome != 'success'`, which
+# a clean audit followed by a dying self-heal step does not satisfy. So a hard
+# abort anywhere in this body left the pull request on a required check that
+# never posts, with a re-run diagnosing nothing. The step's EXIT trap converts
+# any non-zero exit into the same in-band refusal the named refusals use, under
+# `refused_reason=step-aborted`.
+#
+# Each fixture drives a DIFFERENT call site, chosen to span the three regions
+# the named refusals cannot reach: ahead of the enumeration's own status
+# capture, outside git entirely, and past the gate's verdict. One site says
+# nothing about the others -- the per-call-site arm this trap replaced named a
+# hand-kept subset of the step's aborting commands, and left `git add -u`,
+# `git commit` and `git push` out of it, the three likeliest to fail for real.
+# -----------------------------------------------------------------------------
+
+@test "an abort AHEAD of the enumeration's capture refuses in-band rather than stranding the PR" {
+  # `git config user.name`, the first command after the trap is armed and far
+  # ahead of any refusal machinery. Nothing captured its status before the trap
+  # existed: the step died at 128 with an empty $GITHUB_OUTPUT, and the five
+  # terminal status writers were all skipped behind their implicit success().
+  local body
+  body="$(extract_step_body 'Commit and push self-heal')"
+  break_git_call "config user.name gaia-code-review-audit[bot]"
+  echo "export const x = 2;" > "$SANDBOX/app/x.ts"
+
+  run run_push_fixes_step "$body"
+  [ "$status" -eq 0 ]
+  output_has "refused=true"
+  output_has "refused_reason=step-aborted"
+  [ ! -s "$PUSH_LOG" ]
+  git -C "$SANDBOX" diff --cached --quiet
+}
+
+@test "an abort in a NON-git command refuses in-band too" {
+  # The .claude/ evidence capture's own `mktemp`, the site this issue named
+  # first. Unscoped, so the FIRST invocation fails -- break_command_after's
+  # enumeration fixture skips past exactly these two -- which proves the trap
+  # is not a git-shaped guard wearing a general name.
+  local body
+  body="$(extract_step_body 'Commit and push self-heal')"
+  break_command mktemp
+  echo "export const x = 2;" > "$SANDBOX/app/x.ts"
+
+  run run_push_fixes_step "$body"
+  [ "$status" -eq 0 ]
+  output_has "refused=true"
+  output_has "refused_reason=step-aborted"
+  # The specific reason must NOT be claimed: the enumeration never ran, so
+  # reporting path-enumeration-failed here would name a gate that was never
+  # reached.
+  output_has "refused_reason=path-enumeration-failed" && return 1
+  [ ! -s "$PUSH_LOG" ]
+}
+
+@test "an abort PAST the gate's verdict refuses in-band and reports pushed=false" {
+  # `git push`, the last command in the step and the one most likely to fail for
+  # real (auth blip, protected branch, a rejected non-fast-forward). It sits
+  # after the scope gate has passed and after the self-heal commit exists, so it
+  # is the one site where an abort could plausibly have half-succeeded. The
+  # refusal must still say pushed=false, because nothing reached origin.
+  local body
+  body="$(extract_step_body 'Commit and push self-heal')"
+  break_git_call "push origin HEAD:pr-branch"
+  echo "export const x = 2;" > "$SANDBOX/app/x.ts"
+
+  run run_push_fixes_step "$body"
+  [ "$status" -eq 0 ]
+  output_has "refused=true"
+  output_has "refused_reason=step-aborted"
+  output_has "pushed=true" && return 1
+  [ ! -s "$PUSH_LOG" ]
+}
+
+@test "a step-abort refusal writes the pair the clean-no-push stamp step selects on" {
+  # The composition, rather than either half. `Write GAIA-Audit commit status
+  # (clean, no push)` is the only writer an aborted step can reach, and it
+  # selects on `pushed != 'true' && marker_only != 'true'`. A refusal that wrote
+  # neither output would satisfy that condition by absence and still reach the
+  # writer, but a LATER edit setting one of them -- marker_only=true is the
+  # tempting one, since a dying step did leave local commits -- would route the
+  # abort to the self-heal stamp step instead, which stamps the sha the step
+  # never pushed. Pin the pair explicitly for that reason.
+  local body
+  body="$(extract_step_body 'Commit and push self-heal')"
+  break_git_call "push origin HEAD:pr-branch"
+  echo "export const x = 2;" > "$SANDBOX/app/x.ts"
+
+  run run_push_fixes_step "$body"
+  [ "$status" -eq 0 ]
+  output_has "refused_reason=step-aborted"
+  output_has "pushed=false"
+  output_has "marker_only=false"
+
+  # And the step it therefore reaches still selects on exactly that pair. This
+  # half is source text because no suite in this repo can execute a step `if:`
+  # condition: extract_step_body reads the `run:` body alone.
+  local cond
+  cond="$(awk '
+    index($0, "- name: Write GAIA-Audit commit status (clean, no push)") { grab=1; next }
+    grab && /^      - name: / { exit }
+    grab { print }
+  ' "$WORKFLOW")"
+  grep -qF "steps.push-fixes.outputs.pushed != 'true'" <<<"$cond"
+  grep -qF "steps.push-fixes.outputs.marker_only != 'true'" <<<"$cond"
+}
+
+@test "the trap stays silent on a named refusal that exits 0" {
+  # The other half of "writes only on a non-zero status", on the governance-surface
+  # arm; the sibling below drives the push arm. The trap runs on EVERY exit, and
+  # each of the step's exit-0 arms writes its outputs immediately before its own
+  # `exit` -- the push arm excepted, which writes its outputs and falls off the
+  # end of the body, reaching status 0 through the trap rather than through an
+  # `exit` statement of its own. A trap that wrote unconditionally would append a second,
+  # contradictory refused_reason after the real one and the comment ladder would
+  # report whichever GitHub read last. The four arms neither fixture drives are
+  # deliberately unpinned: the trap's silence is one `[ "$abort_status" -ne 0 ]`
+  # test that does not vary per arm, so a third fixture would re-drive the same
+  # branch through a different caller.
+  local body
+  body="$(extract_step_body 'Commit and push self-heal')"
+  echo "test('x', () => { /* changed */ });" > "$SANDBOX/test/x.test.ts"
+
+  run run_push_fixes_step "$body"
+  [ "$status" -eq 0 ]
+  output_has "refused_reason=governance-surface"
+  output_has "refused_reason=step-aborted" && return 1
+  return 0
+}
+
+@test "the trap stays silent on a clean self-heal that really pushes" {
+  # The success path, which is where an unconditional trap would do the most
+  # damage: a `pushed=false` appended after `pushed=true` turns a pushed
+  # self-heal into a refusal in the PR comment and sends the stamp to the wrong
+  # writer.
+  local body
+  body="$(extract_step_body 'Commit and push self-heal')"
+  echo "export const x = 4;" > "$SANDBOX/app/x.ts"
+
+  run run_push_fixes_step "$body"
+  [ "$status" -eq 0 ]
+  output_has "pushed=true"
+  output_has "refused=true" && return 1
+  [ -s "$PUSH_LOG" ]
 }
 
 @test "the three code-review-audit.yml copies are byte-identical" {
