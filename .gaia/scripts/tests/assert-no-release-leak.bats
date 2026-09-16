@@ -208,12 +208,24 @@ patterns() {
     "$REPO_ROOT/.github/workflows/release.yml"
 }
 
-# C2. The caller must also read the script's status rather than discarding it. A
-# `|| true` anywhere on that invocation would restore the exact fail-open the
-# script exists to close, one layer up.
-@test "C2: release.yml does not discard the leak assertion's status" {
-  run grep -n -- 'assert-no-release-leak.sh' "$REPO_ROOT/.github/workflows/release.yml"
-  [ "$status" -eq 0 ]
-  grep -qF -- '|| true' <<<"$output" && return 1
-  true
+# C2. The caller must also read the script's status rather than discarding it,
+# because discarding it restores the exact fail-open the script exists to close,
+# one layer up.
+#
+# This pins the whole status-capturing invocation, and the arm that acts on what
+# it captured, rather than scanning the invocation's neighbourhood for a
+# forbidden spelling. A scan is the shape that reads as stricter and is not: its
+# match region is whichever lines carry the script's name, so `|| :` on the same
+# line and `|| true` on a backslash continuation both escape it, and either one
+# leaves the status variable at its initialised zero with both workflow arms
+# skipped and this test green. release.yml already writes four commands across
+# backslash continuations, one of them a command whose status is read, so the
+# escaping spelling is one an ordinary reflow produces. Pinning the invocation
+# inverts that: any reshaping of it reds here, and the failure names the line to
+# look at rather than a spelling to hunt for.
+@test "C2: release.yml captures the leak assertion's status and acts on it" {
+  grep -qF -- 'bash .gaia/scripts/assert-no-release-leak.sh "$STAGING" /tmp/exclude-regex.txt || leak_rc=$?' \
+    "$REPO_ROOT/.github/workflows/release.yml"
+  grep -qF -- '[ "$leak_rc" -eq 1 ]' "$REPO_ROOT/.github/workflows/release.yml"
+  grep -qF -- '[ "$leak_rc" -ne 0 ]' "$REPO_ROOT/.github/workflows/release.yml"
 }

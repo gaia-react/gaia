@@ -43,7 +43,11 @@
 # can leak).
 #
 # Exit 1 on the refusal, and only on the refusal: at least one release-excluded
-# path is present in the staged tree. Every offending path is named on stdout.
+# path is present in the staged tree. Every offending path is named on stderr,
+# beside the diagnostic naming the tree; nothing is written to stdout on any
+# path out of this script. So a caller that wants the list captures stderr, and
+# one that captures stdout alone is handed the empty string on a real leak,
+# which is the same empty-means-clean shape this script exists to close.
 #
 # Exit 2 on every condition that leaves the question UNANSWERED, which is the
 # whole point of the split: a usage error, a staging directory that is missing

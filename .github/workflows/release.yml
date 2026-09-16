@@ -186,7 +186,14 @@ jobs:
           # hand-kept extractor in agreement with a step header and a suite
           # calling a script by its path. The second one has no extractor to
           # keep, and `.gaia/scripts/tests/assert-no-release-leak.bats` drives
-          # both the refusal and each way the scan can be left unanswerable.
+          # the refusal plus the unanswerable cases a fixture can stage: a bad
+          # argument count, a missing staging tree, an unreadable pattern file,
+          # a walk that cannot finish, an empty staged tree, and a pattern the
+          # matcher rejects. The scratch-file arm is deliberately not among
+          # them: arming it means pointing the script's `mktemp` at a location
+          # it cannot write, and BSD `mktemp` ignores `TMPDIR`, so that fixture
+          # would arm on the CI runner and silently not arm on a maintainer's
+          # Mac, which is the hollow-guard shape this whole change is about.
           #
           # The script distinguishes a leak (exit 1) from a scan that could not
           # complete (exit 2); both abort the release, and the annotation says
