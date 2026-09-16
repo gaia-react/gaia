@@ -23,9 +23,10 @@ setup() {
 }
 
 teardown() {
-  # `return 0` because the guard is an AND-list: with no $WORK to remove it
+  # `return 0` because each guard is an AND-list: with no $WORK to remove it
   # would otherwise leave teardown non-zero and fail an innocent test.
   [ -n "${WORK:-}" ] && rm -rf "$WORK"
+  [ -n "${I18N_REPO:-}" ] && rm -rf "$I18N_REPO"
   return 0
 }
 
@@ -153,6 +154,35 @@ run_hook_edit() {
   # Removing both is what reddens it.
   invoke_hook_in "$WORK" 'not json' "$HOOK_ABS"
   [ "$status" -eq 0 ]
+}
+
+# --- the marker belongs to the tree, not to the cwd it was written from -----
+# Every scenario above runs in a throwaway directory that is also the working
+# directory, where a tree-rooted marker and a bare one name the same file. This
+# hook has no repository gate above the marker write, so from a subdirectory a
+# bare path writes a SECOND marker and the once-per-session suppression the
+# tests above pin silently stops holding. A git repo is needed here, and only
+# here, because that is what gives the acting tree a root to resolve.
+
+@test "the marker lands at the tree root when the session runs from a subdirectory" {
+  I18N_REPO=$("$BATS_TEST_DIRNAME/helpers/tmp-git-repo.sh")
+  mkdir -p "$I18N_REPO/sub/deeper"
+  local json
+  json=$(jq -n '{session_id: "S1", hook_event_name: "PreToolUse", tool_name: "Edit", tool_input: {file_path: "app/pages/Public/HomePage/index.tsx"}}')
+
+  invoke_hook_in "$I18N_REPO/sub" "$json" "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  grep -qF -- "t() from useTranslation()" <<<"$output" || return 1
+  [ -f "$I18N_REPO/.claude/i18n-strings-checked" ] || return 1
+  [ -f "$I18N_REPO/sub/.claude/i18n-strings-checked" ] && return 1
+
+  # Same session, a different depth: one tree-rooted marker means the
+  # suppression holds across depths instead of nagging once per directory.
+  invoke_hook_in "$I18N_REPO/sub/deeper" "$json" "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ] || return 1
+  [ -f "$I18N_REPO/sub/deeper/.claude/i18n-strings-checked" ] && return 1
+  return 0
 }
 
 # --- structural ---

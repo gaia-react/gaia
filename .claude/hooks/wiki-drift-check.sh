@@ -11,6 +11,40 @@ set -euo pipefail
 # Best-effort: any internal failure exits 0. Never block prompt submission.
 trap 'exit 0' ERR
 
+# Root resolution, hoisted above the drain below because that block is itself
+# hoisted above every early exit and so must not depend on any of them. Two
+# values, because this hook spans two questions one root cannot answer:
+#
+#   _hook_root  WHERE this checkout's own libraries are, from this file's
+#               on-disk location rather than the process working directory.
+#               Used for both the resolver load here and the deferral lib
+#               further down.
+#   main_root   WHICH TREE the base-catch-up report belongs to. It is
+#               main-anchored shared state: local-janitor.sh writes it under
+#               gaia_resolve_main_root, so the reader names that same root
+#               rather than resolving whatever tree the drain happens to run
+#               in. From any directory below a checkout's root the two answers
+#               differ outright. From a worktree ROOT they happen to agree,
+#               but only through provisioning: provision-worktree.sh replaces
+#               a linked worktree's .gaia/local with one symlink to main's, so
+#               a working-directory-relative path landed on main's store by a
+#               second mechanism rather than by naming it. That hook exists to
+#               repair the symlink whenever it finds it broken, which is the
+#               statement that it can be, so the drain does not rest on it.
+#
+# Bracketed in `set +e` because errexit is armed above, matching the deferral
+# load below. The fallback chain ends at `pwd`, which is exactly what a bare
+# repo-relative literal resolves to, so a checkout where neither the resolver
+# nor git answers behaves as it did before the path was rooted at all.
+_hook_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd)" || _hook_root=''
+_main_root_lib="$_hook_root/.gaia/scripts/main-root-lib.sh"
+set +e; [ -n "$_hook_root" ] && [ -f "$_main_root_lib" ] && . "$_main_root_lib" 2>/dev/null; set -e
+main_root=''
+if type gaia_resolve_main_root >/dev/null 2>&1; then
+  main_root="$(gaia_resolve_main_root 2>/dev/null)" || main_root=''
+fi
+[ -n "$main_root" ] || main_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+
 # Drain the janitor's one-line base-catch-up report, if any. Delivered here
 # because a UserPromptSubmit hook's stdout is injected into the conversation,
 # which a SessionStart hook's exit-0 stderr is not. Read-and-delete, so the
@@ -18,7 +52,7 @@ trap 'exit 0' ERR
 # Placed above every early exit below (jq, work-tree, wiki/.state.json) so a
 # checkout missing any of those still delivers the line; nothing has consumed
 # stdin yet at this point.
-catchup_report=".gaia/local/cache/shared/wiki-base-catchup.report"
+catchup_report="$main_root/.gaia/local/cache/shared/wiki-base-catchup.report"
 if [ -f "$catchup_report" ]; then
   head -n 1 "$catchup_report" 2>/dev/null || true
   rm -f "$catchup_report" 2>/dev/null || true
@@ -32,6 +66,11 @@ payload=$(cat)
 session_id=$(jq -r '.session_id // empty' <<<"$payload" 2>/dev/null || echo "")
 [ -n "$session_id" ] || exit 0
 
+# Deliberately bare, unlike the main-rooted report above. This marker is
+# per-tree session state: it belongs to whichever checkout the session runs in,
+# which is what a path relative to the working directory names here, because
+# the `wiki/.state.json` test above has already exited from anywhere the
+# working directory is not that checkout's root.
 marker=".claude/wiki-drift-checked"
 if [ -f "$marker" ] && grep -q "^session_id=$session_id$" "$marker" 2>/dev/null; then
   exit 0
@@ -43,12 +82,12 @@ fi
 # Bracketed in `set +e` because errexit is armed above: an unparseable copy (an
 # unresolved merge conflict, a truncated write) would otherwise abandon the hook
 # at the load, before the `type` check below can degrade it to "not managed".
-# Rooted at this file's own on-disk location, never at the process working
-# directory: a bare test is false from anywhere below the repository root, and
-# the `type` check reads that as a missing library. Through the ancestor rather
-# than a lib child, for the reason block-main-destructive-git.sh states at the
-# same load: the ancestor cannot fail, so no degrade branch is owed.
-_hook_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd)" || _hook_root=''
+# Reuses the `_hook_root` resolved at the top of this file, which is this
+# file's own on-disk location and never the process working directory: a bare
+# test is false from anywhere below the repository root, and the `type` check
+# reads that as a missing library. Through the ancestor rather than a lib
+# child, for the reason block-main-destructive-git.sh states at the same load:
+# the ancestor cannot fail, so no degrade branch is owed.
 _defer_lib="$_hook_root/.claude/hooks/lib/gaia-ci-defer.sh"
 set +e; [ -n "$_hook_root" ] && [ -f "$_defer_lib" ] && . "$_defer_lib" 2>/dev/null; set -e
 if type gaia_ci_defer_if_managed >/dev/null 2>&1; then
