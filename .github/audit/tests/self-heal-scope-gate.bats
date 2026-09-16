@@ -977,7 +977,9 @@ EOF
   # The other half of "writes only on a non-zero status", on the governance-surface
   # arm; the sibling below drives the push arm. The trap runs on EVERY exit, and
   # each of the step's exit-0 arms writes its outputs immediately before its own
-  # `exit 0`. A trap that wrote unconditionally would append a second,
+  # `exit` -- the push arm excepted, which writes its outputs and falls off the
+  # end of the body, reaching status 0 through the trap rather than through an
+  # `exit` statement of its own. A trap that wrote unconditionally would append a second,
   # contradictory refused_reason after the real one and the comment ladder would
   # report whichever GitHub read last. The four arms neither fixture drives are
   # deliberately unpinned: the trap's silence is one `[ "$abort_status" -ne 0 ]`

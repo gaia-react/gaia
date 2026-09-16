@@ -731,9 +731,18 @@ jobs:
           # `pushed=false` / `marker_only=false` is the pair the shipped
           # refusals already write, so an aborted step routes to the
           # clean-no-push stamp step, which requires a marker keyed to the
-          # PUSHED head's digest. Whatever this step built locally before dying
-          # is unattested, so nothing is stamped and the merge gate stays shut;
-          # the refusal buys a truthful status and comment, never clearance.
+          # PUSHED head's digest. Whatever this step built before dying is
+          # unattested, so nothing is stamped and the merge gate stays shut; the
+          # refusal buys a truthful status and comment, never clearance.
+          #
+          # `pushed=false` is what the trap knows, not always what happened: an
+          # abort between `git push` returning and the push arm writing its
+          # outputs leaves a head on the remote that this step reports as
+          # unpushed, and the re-trigger step below gates on `pushed == 'true'`,
+          # so that head carries no check runs. The gate stays shut either way,
+          # and before this trap the same failure posted no status at all, so
+          # this is a residual of a path the trap improves rather than one it
+          # opens. Telling it apart needs its own reason and its own fixture.
           refuse_step_abort() {
             abort_status=$?
             trap - EXIT
@@ -1852,7 +1861,7 @@ jobs:
             elif [ "$REFUSED_REASON" = "path-enumeration-failed" ]; then
               mode="self-heal REFUSED: the changed-path enumeration failed, so the off-limits-surface check had only a partial list to judge; see workflow logs and review manually"
             elif [ "$REFUSED_REASON" = "step-aborted" ]; then
-              mode="self-heal REFUSED: the self-heal step aborted before it finished, so nothing reached the PR branch and the off-limits-surface check may never have run; see workflow logs and review manually"
+              mode="self-heal REFUSED: the self-heal step aborted before it reported, so what it completed is unknown and the off-limits-surface check may never have run; see workflow logs and review manually"
             else
               mode="self-heal REFUSED: diff exceeded the 10-file safety threshold (touched $REFUSED_COUNT files); see workflow logs and review manually"
             fi
