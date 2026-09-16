@@ -91,7 +91,8 @@
 # costs there: it would leave the walk believing a trap is still live and red a
 # file that had in fact disarmed it.
 #
-# Three accepted misses, all deliberate, and none of them live in this tree.
+# Three accepted misses, all deliberate. The first two have no instance in this
+# tree; the third does, and it is named below.
 # The arm reads a trap the file writes ITSELF, so a library that INHERITS an
 # armed trap from whichever caller sourced it is outside it -- the same boundary
 # the state-preserving shape exists to straddle for errexit, and closing it
@@ -884,8 +885,11 @@ records="$(awk '
           if (evt[j] == "susp") break
         }
         # An armed ERR trap fires on the failing load whatever errexit is doing,
-        # so a bracket that restores errexit and leaves the trap armed brackets
-        # nothing. Carried as a SUFFIX rather than as a shape of its own: a flat
+        # unless an enclosing AND-OR list exempts it, so a bracket that restores
+        # errexit and leaves the trap armed brackets nothing. The exemption is
+        # not carved out here, for the reason the header gives: this check
+        # credits `||` nowhere.
+        # Carried as a SUFFIX rather than as a shape of its own: a flat
         # restore in a sourced file is a second, independent defect at the same
         # site, and pass 2 reports whichever of the two apply.
         if (errarmed && shape != "leak") shape = shape "+err"
