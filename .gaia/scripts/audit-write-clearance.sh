@@ -466,7 +466,10 @@ fi
 # carrying a `supersedes` block with a stated reason and a timestamp, so it
 # cannot be taken silently. The qualifier is load-bearing: the advisory
 # softening below lets the never-blocking member publish on a mismatched
-# digest with no refusal ever written, and that route is silent. It is
+# digest with no refusal ever written, and that route leaves no durable
+# record. It warns on stderr on the way past, so an operator watching the run
+# sees it, but the marker it publishes records no supersession and no artifact
+# survives to discriminate it from an ordinary earned write. That route is
 # pre-existing, and this gate neither closes it nor pretends to.
 if [ "$PROVENANCE" = "earned" ] && [ "$supersede_retires_refusal" -ne 1 ]; then
   if [ "$scope_advisory" -eq 1 ]; then
