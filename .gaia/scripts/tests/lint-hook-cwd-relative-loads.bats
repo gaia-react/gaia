@@ -120,6 +120,24 @@ type red_ledger_path >/dev/null 2>&1 || exit 0'
   grep -qF -- "a file-test operand names a bare repo-relative path" <<<"$output"
 }
 
+@test "reds against the NEGATED spelling of the historical shape" {
+  # The positive twin of the test above, and the idiomatic spelling of the
+  # stand-down this gate exists to prevent: `[ ! -f <lib> ] && exit 0` reads a
+  # moved working directory as a missing library exactly as the unnegated form
+  # does. The `!` stands where the arm requires the test primary, so reaching it
+  # takes an explicit optional negation rather than falling out of the unnegated
+  # pattern. Both bracket forms and the quoted spelling ride this one test
+  # because the negation is admitted once, ahead of the rest of the arm.
+  fixture_repo
+  fixture_hook '[ ! -f .claude/hooks/lib/red-ledger.sh ] && exit 0
+[[ ! -f ".gaia/scripts/ledger-path-lib.sh" ]] && exit 0'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- ".claude/hooks/check.sh:3:" <<<"$output" || return 1
+  grep -qF -- ".claude/hooks/check.sh:4:" <<<"$output" || return 1
+  grep -qF -- "a file-test operand names a bare repo-relative path" <<<"$output"
+}
+
 @test "flags a bare source operand" {
   fixture_repo
   fixture_hook '. .gaia/scripts/ledger-path-lib.sh'
@@ -250,6 +268,19 @@ bash "$_lib_dir/../../.gaia/scripts/token-tally.sh"'
   true
 }
 
+@test "quiet on the NEGATED spelling of the repair it advertises" {
+  # The negative control for the widening: the arm admits a `!` in front of the
+  # primary, so the variable-rooted repair written in the negated stand-down
+  # style has to stay the repair rather than become a finding.
+  fixture_repo
+  fixture_hook '_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)" || _lib_dir=""
+[ ! -f "$_lib_dir/red-ledger.sh" ] && exit 0'
+  run_linter
+  [ "$status" -eq 0 ]
+  grep -qF -- "check.sh" <<<"$output" && return 1
+  true
+}
+
 @test "quiet on a per-tree state path in ASSIGNMENT position" {
   fixture_repo
   fixture_hook 'marker=".claude/wiki-drift-checked"
@@ -272,6 +303,21 @@ config_path=".gaia/automation.json"'
   fixture_repo
   fixture_hook '[ -f .claude/wiki-drift-checked ] || exit 0
 [ -f ".gaia/automation.json" ] || exit 0'
+  run_linter
+  [ "$status" -eq 0 ]
+  grep -qF -- "check.sh" <<<"$output" && return 1
+  true
+}
+
+@test "quiet on a NEGATED per-tree state path in FILE TEST position" {
+  # The sibling above pins the unnegated spelling. Admitting a negation into the
+  # arm must not re-open the misdirection that pin closed: a state path carries
+  # no code extension in either spelling, so the negated form gives up the
+  # operand for the same reason and the gate stays silent rather than
+  # prescribing the `${BASH_SOURCE[0]}` root its own header rules out for state.
+  fixture_repo
+  fixture_hook '[ ! -f .claude/wiki-drift-checked ] && exit 0
+[ ! -f ".gaia/automation.json" ] && exit 0'
   run_linter
   [ "$status" -eq 0 ]
   grep -qF -- "check.sh" <<<"$output" && return 1

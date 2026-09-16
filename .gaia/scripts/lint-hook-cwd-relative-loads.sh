@@ -124,15 +124,6 @@
 #     the pin fails in the cheaper direction. No hook currently tests a bare
 #     state path directly; every live site tests through a variable, which is
 #     why this arm went unpinned as long as it did.
-#   - A NEGATED file test (`[ ! -f .claude/hooks/lib/x.sh ] && exit 0`). The
-#     arm requires the test primary immediately after the bracket, so the `!`
-#     displaces it and no arm matches. This is the idiomatic spelling of the
-#     stand-down the gate exists to prevent, and it is the positive twin of the
-#     motivating example above, so it is worth naming rather than leaving to a
-#     reader to discover: the unnegated form on the same path reports. No live
-#     instance exists under `.claude/hooks/`. Admitting an optional negation is
-#     a widening of what this gate reaches rather than a repair of what it says,
-#     so it is tracked as its own row (#2070).
 #   - The same indirection where the variable is not assigned a literal at all
 #     but computed per iteration, which no assignment arm can reach: a
 #     repo-relative path derived from a diff listing and then tested
@@ -326,7 +317,15 @@ readonly OWN_AWK='
       # script follows a linked worktree. A gate cannot hand out the defect it
       # exists to prevent, so this arm gives up the operands it cannot tell
       # apart. What that costs is written under KNOWN BLIND SPOTS above.
-      TEST_PAT   = "(\\[|\\[\\[)[[:space:]]+-[a-zA-Z][[:space:]]+[\"\047]?\\.(claude|gaia|specify)/[^\"\047[:space:]]*\\.(sh|bash|mjs|cjs|js|py)[\"\047]?([[:space:]]|;|$)"
+      # The optional `(![[:space:]]+)?` admits an in-bracket negation, so
+      # `[ ! -f <lib> ] && exit 0` is read as the same defect as its unnegated
+      # twin. That spelling is the idiomatic capability-probe stand-down this
+      # gate exists to prevent, and the negation displaces the test primary, so
+      # without it the arm matched nothing at all. It sits ahead of the primary
+      # and changes nothing after it, so the code-extension pin still decides
+      # which operands the arm gives up: a negated state path stays as quiet as
+      # its unnegated spelling.
+      TEST_PAT   = "(\\[|\\[\\[)[[:space:]]+(![[:space:]]+)?-[a-zA-Z][[:space:]]+[\"\047]?\\.(claude|gaia|specify)/[^\"\047[:space:]]*\\.(sh|bash|mjs|cjs|js|py)[\"\047]?([[:space:]]|;|$)"
       # The `^[[:space:]]*` branch is what reaches an INDENTED load, which is
       # the idiomatic spelling of this class: a `.` on its own line inside an
       # `if`/`while`/`case` body. A bare `^` would require the operator at
