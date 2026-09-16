@@ -231,9 +231,10 @@
       "hook": ".claude/hooks/check-i18n-strings.sh",
       "capabilities": [
         "fs-write:.claude",
-        "fs-write:.claude/i18n-strings-checked"
+        "fs-write:.claude/i18n-strings-checked",
+        "invokes:.gaia/scripts/main-root-lib.sh"
       ],
-      "why": "Reads a Write tool call's target path and, for a page or component file, prints an advisory reminder about hardcoded JSX strings once per session, tracked by a marker file under `.claude/`. Only writes that marker; never calls the network or invokes another script.",
+      "why": "Reads a Write tool call's target path and, for a page or component file, prints an advisory reminder about hardcoded JSX strings once per session, tracked by a marker file under `.claude/`. Sources `.gaia/scripts/main-root-lib.sh` to resolve the acting tree so the marker lands at that tree's root rather than under whatever directory the session edits from: nothing above the write gates on the repository, so an unresolved root splits the marker per directory and the once-per-session contract stops holding. Writes only that marker; never calls the network.",
       "maintainer_only": false
     },
     {
@@ -442,9 +443,10 @@
     {
       "hook": ".claude/hooks/wiki-commit-nudge.sh",
       "capabilities": [
-        "invokes:.claude/hooks/lib/gaia-ci-defer.sh"
+        "invokes:.claude/hooks/lib/gaia-ci-defer.sh",
+        "invokes:.gaia/scripts/main-root-lib.sh"
       ],
-      "why": "On `git commit`, injects a one-line context nudge naming the commit and the current wiki-drift count. Sources `.claude/hooks/lib/gaia-ci-defer.sh` to stand down under CI-managed wiki mode; it reads commit metadata and an on-disk drift count and writes nothing.",
+      "why": "On `git commit`, injects a one-line context nudge naming the commit and the current wiki-drift count. Sources `.claude/hooks/lib/gaia-ci-defer.sh` to stand down under CI-managed wiki mode, and reaches `.gaia/scripts/main-root-lib.sh` through it, because that lib resolves the acting tree to find the config rather than trusting the working directory: this hook's only gate is `git rev-parse --is-inside-work-tree`, true at any depth, so it is the caller that actually reaches the deferral check from a subdirectory. It reads commit metadata and an on-disk drift count and writes nothing.",
       "maintainer_only": false
     },
     {
@@ -453,9 +455,10 @@
         "fs-write:.claude",
         "fs-write:.claude/wiki-drift-checked",
         "fs-write:.gaia/local/cache/shared/wiki-base-catchup.report",
-        "invokes:.claude/hooks/lib/gaia-ci-defer.sh"
+        "invokes:.claude/hooks/lib/gaia-ci-defer.sh",
+        "invokes:.gaia/scripts/main-root-lib.sh"
       ],
-      "why": "On a user prompt, injects a once-per-session reminder when `wiki/.state.json` has drifted from HEAD, tracked by a marker under `.claude/`. Also drains a base-catch-up report the session-start janitor may have left under `.gaia/local/cache/shared/`, deleting it after printing so the line surfaces exactly once. Sources `.claude/hooks/lib/gaia-ci-defer.sh` to stand down under CI-managed wiki mode.",
+      "why": "On a user prompt, injects a once-per-session reminder when `wiki/.state.json` has drifted from HEAD, tracked by a marker under `.claude/`. Also drains a base-catch-up report the session-start janitor may have left under `.gaia/local/cache/shared/`, deleting it after printing so the line surfaces exactly once. Sources `.gaia/scripts/main-root-lib.sh` to resolve the MAIN checkout for that drain, matching the root the janitor writes it under, so a session in a linked worktree drains a report main is holding instead of leaving it there forever; the session marker stays with the acting tree. Sources `.claude/hooks/lib/gaia-ci-defer.sh` to stand down under CI-managed wiki mode.",
       "maintainer_only": false
     },
     {
@@ -531,9 +534,10 @@
         "fs-write:.claude",
         "fs-write:.claude/wiki-safety-checked",
         "fs-write:.git/claude-session-start",
-        "invokes:.claude/hooks/lib/gaia-ci-defer.sh"
+        "invokes:.claude/hooks/lib/gaia-ci-defer.sh",
+        "invokes:.gaia/scripts/main-root-lib.sh"
       ],
-      "why": "On session stop, when wiki files were committed this session or the session ended without a full wiki-sync advance, prints a refresh or sync reminder, tracked by marker files under `.claude/` and a session-start marker under `.git/`. Sources `.claude/hooks/lib/gaia-ci-defer.sh` to stand down under CI-managed wiki mode; it writes only its own local markers.",
+      "why": "On session stop, when wiki files were committed this session or the session ended without a full wiki-sync advance, prints a refresh or sync reminder, tracked by marker files under `.claude/` and a session-start marker under `.git/`. Sources `.claude/hooks/lib/gaia-ci-defer.sh` to stand down under CI-managed wiki mode, and reaches `.gaia/scripts/main-root-lib.sh` through it, because that lib resolves the acting tree to locate the config rather than trusting the working directory. It writes only its own local markers.",
       "maintainer_only": false
     },
     {

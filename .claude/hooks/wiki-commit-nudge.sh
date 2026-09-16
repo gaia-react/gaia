@@ -25,9 +25,11 @@ grep -qE -- '--amend([[:space:]]|=|$)' <<<"$cmd" && exit 0
 
 # GAIA CI deferral. When wiki.mode == "ci", local automatic triggers stand
 # down so they don't collide with the cron-managed wiki run.
-# Bracketed in `set +e` because errexit is armed above: an unparseable copy (an
-# unresolved merge conflict, a truncated write) would otherwise abandon the hook
-# at the load, before the `type` check below can degrade it to "not managed".
+# The ERR trap is disarmed across the load, not merely `set +e`. The two are
+# independent: the trap armed above fires on a failing command whatever errexit
+# is set to, so an unparseable copy (an unresolved merge conflict, a truncated
+# write) would fire it mid-source and exit 0 from inside the load, dropping the
+# whole nudge, rather than degrading to "not managed" at the `type` check below.
 # Rooted at this file's own on-disk location, never at the process working
 # directory: a bare test is false from anywhere below the repository root, and
 # the `type` check reads that as a missing library. Through the ancestor rather
@@ -35,7 +37,12 @@ grep -qE -- '--amend([[:space:]]|=|$)' <<<"$cmd" && exit 0
 # same load: the ancestor cannot fail, so no degrade branch is owed.
 _hook_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd)" || _hook_root=''
 _defer_lib="$_hook_root/.claude/hooks/lib/gaia-ci-defer.sh"
-set +e; [ -n "$_hook_root" ] && [ -f "$_defer_lib" ] && . "$_defer_lib" 2>/dev/null; set -e
+trap - ERR
+set +e
+# shellcheck source=/dev/null
+[ -n "$_hook_root" ] && [ -f "$_defer_lib" ] && . "$_defer_lib" 2>/dev/null
+set -e
+trap 'exit 0' ERR
 if type gaia_ci_defer_if_managed >/dev/null 2>&1; then
   gaia_ci_defer_if_managed wiki || true
 fi

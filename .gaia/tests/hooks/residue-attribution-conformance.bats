@@ -627,18 +627,31 @@ TABLE
       # green tree over state the tree does not carry. So the substance is
       # confirmed opportunistically, where the directory exists.
       #
-      # The absent-directory branch writes a notice rather than failing, and
-      # that notice is legible only to a reader who runs this suite with the
-      # output of passing tests shown. bats discards it otherwise, so on CI,
-      # where the directory is always absent, it reaches nobody. That is the
-      # accepted shape: the branch exists so the arm does not silently mean
-      # less than its name on a checkout without the directory, and there is
-      # no channel from a passing bats test to a CI log to put it on.
+      # Both branches write a notice rather than failing, and those notices are
+      # legible only to a reader who runs this suite with the output of passing
+      # tests shown. bats discards them otherwise, so on CI they reach nobody.
+      # That is the accepted shape: the branches exist so the arm does not
+      # silently mean less than its name, and there is no channel from a
+      # passing bats test to a CI log to put them on.
+      #
+      # THE PRESENT-BUT-EMPTY BRANCH MUST NOT FAIL, for exactly the reason the
+      # paragraph above gives for not asserting presence. The directory's
+      # existence says nothing about its contents: both are untracked working
+      # state, and on a CI runner the directory is created by whichever sibling
+      # suites happen to share this shard. `capture-red-observations.bats` is
+      # one -- its header states that it runs its hook from the repo root and
+      # writes the resolved, gitignored .gaia/local/red-ledger/ path -- and
+      # nothing it writes there carries this pattern. Which suites share a
+      # shard is decided by the weight-based partition in
+      # .gaia/tests/bats-shards.sh, so it is re-derived whenever any suite in
+      # the directory grows. A branch that reds on that is a gate on shard
+      # assignment wearing this arm's name, and it reds a green tree.
       if [ -d "$REPO_ROOT/$extra_path" ]; then
-        grep -rlE 'path=(\(\?<path>|\()?\[\^>(\\n)?\]' "$REPO_ROOT/$extra_path" >/dev/null 2>&1 || {
-          echo "exclusion '$id': $extra_path exists on this checkout but no file under it carries the pattern text a plain grep can see; the claimed reason does not hold here" >&2
-          return 1
-        }
+        if grep -rlE 'path=(\(\?<path>|\()?\[\^>(\\n)?\]' "$REPO_ROOT/$extra_path" >/dev/null 2>&1; then
+          echo "exclusion '$id': $extra_path carries the pattern text on this checkout, so the filesystem half of its reason is confirmed here" >&2
+        else
+          echo "exclusion '$id': $extra_path exists on this checkout but carries no pattern text a plain grep can see (untracked working state, whatever this machine's tooling last wrote), so the filesystem half of its reason is unconfirmed; the git-grep invariance below still gates" >&2
+        fi
       else
         echo "exclusion '$id': $extra_path is absent on this checkout (untracked working state), so the filesystem half of its reason is unconfirmed; the git-grep invariance below still gates" >&2
       fi
