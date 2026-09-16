@@ -47,10 +47,12 @@
 #                  beyond the report it already wrote.
 #   --scope-digest <64-hex>
 #                  OPTIONAL, gated on a PLAIN earned write only: never
-#                  --provenance refused, never an earned write carrying
-#                  --supersede-refusal (both write paths proceed unchanged),
-#                  and advisory-only for the one contractually never-blocking
-#                  member (mirroring its own dirty-scope exemption). A member
+#                  --provenance refused; an earned write carrying
+#                  --supersede-refusal is conditionally exempt, see the
+#                  staleness gate's own header comment further down for the
+#                  exact condition, and advisory-only for the one
+#                  contractually never-blocking member (mirroring its own
+#                  dirty-scope exemption). A member
 #                  resolves its review scope at one HEAD, then finishes and
 #                  writes at a later one; this carries the
 #                  digest captured at scope resolution
@@ -420,17 +422,56 @@ _release_forfeited_capture() {
   return 0
 }
 
-# Scope-digest staleness gate. Gated only on a PLAIN earned write: a refusal
-# is a claim that content should not merge, and suppressing THAT is the one
-# genuinely fail-open outcome available here, and a
-# --supersede-refusal write is the member's own reasoned reversal of its prior
-# refusal, orthogonal to whether the tree moved under it since scope
-# resolution. Each arm is its own explicit refusal rather than a
-# `[ -n "$SCOPE_DIGEST" ] && …` guard, so an absent value refuses instead of
-# silently skipping the comparison (the fail-open shape the inert
-# `AUDIT_TREE_SHA` in the four specialists already shows the cost of).
+audit_dir="${ROOT}/.gaia/local/audit"
+
+# Filename family for this member/provenance: keyed to the member's content
+# digest, not the tree.
+if [ "$MEMBER" = "$DEFAULT_MEMBER" ]; then
+  infix=""
+else
+  infix=".${MEMBER}"
+fi
+earned_path="${audit_dir}/${digest}${infix}.ok"
+refused_path="${audit_dir}/${digest}${infix}.refused"
+
+# Whether a --supersede-refusal write actually has something to supersede.
+# The flag alone is not enough: the gate below and do_supersede further down
+# both need to agree on this, so it is derived once here rather than each
+# re-deriving its own copy that could drift from the other's.
+supersede_retires_refusal=0
+if [ "$SUPERSEDE_SEEN" -eq 1 ] && [ -f "$refused_path" ]; then
+  supersede_retires_refusal=1
+fi
+
+# Scope-digest staleness gate. Gated on a PLAIN earned write, a category
+# that includes a --supersede-refusal write with no sibling refusal on disk:
+# the flag exists so a member can retire its OWN prior same-digest refusal,
+# and that act requires the refusal to actually be there. A write carrying the
+# flag with nothing to retire is, by this writer's own filename family, an
+# ordinary earned write, so it takes the ordinary earned write's gate rather
+# than skipping it. A --provenance refused write is exempt throughout: a
+# refusal is a claim that content should not merge, and suppressing THAT is
+# the one genuinely fail-open outcome available here. Each arm below is its
+# own explicit refusal rather than a `[ -n "$SCOPE_DIGEST" ] && …` guard, so
+# an absent value refuses instead of silently skipping the comparison (the
+# fail-open shape the inert `AUDIT_TREE_SHA` in the four specialists already
+# shows the cost of).
 #
-if [ "$PROVENANCE" = "earned" ] && [ "$SUPERSEDE_SEEN" -ne 1 ]; then
+# This gate does not make a stale-scope marker unreachable. A --provenance
+# refused write is itself exempt and needs no digest, so the same outcome
+# reaches an .ok marker in two calls: write a refusal, then supersede it with
+# a mismatched --scope-digest. What this gate removes is the one-call form
+# that left nothing behind; for a blocking member the surviving two-call
+# route leaves a `.refused` artifact on disk on the way and publishes a body
+# carrying a `supersedes` block with a stated reason and a timestamp, so it
+# cannot be taken silently. The qualifier is load-bearing: the advisory
+# softening below lets the never-blocking member publish on a mismatched
+# digest with no refusal ever written, and that route leaves no durable
+# record. It warns on stderr on the way past, so an operator watching the run
+# sees it, but the marker it publishes records no supersession and no artifact
+# survives to discriminate it from an ordinary earned write. That route is
+# pre-existing, and this gate neither closes it nor pretends to.
+if [ "$PROVENANCE" = "earned" ] && [ "$supersede_retires_refusal" -ne 1 ]; then
   if [ "$scope_advisory" -eq 1 ]; then
     if [ "$SCOPE_DIGEST_SEEN" -ne 1 ]; then
       err "review scope superseded (advisory)"
@@ -519,18 +560,6 @@ fi
 
 audited_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
-audit_dir="${ROOT}/.gaia/local/audit"
-
-# Filename family for this member/provenance: keyed to the member's content
-# digest, not the tree.
-if [ "$MEMBER" = "$DEFAULT_MEMBER" ]; then
-  infix=""
-else
-  infix=".${MEMBER}"
-fi
-earned_path="${audit_dir}/${digest}${infix}.ok"
-refused_path="${audit_dir}/${digest}${infix}.refused"
-
 case "$PROVENANCE" in
   earned)  target="$earned_path" ;;
   refused) target="$refused_path" ;;
@@ -541,10 +570,10 @@ esac
 # same-digest refusal is actually on disk. Absent the flag, do_supersede stays
 # false and the sibling refusal is never touched: an earned write can only clear
 # a refusal that its author explicitly, reasonedly reverses, never a bare re-run
-# (the anti-gaming invariant). With the flag but no sibling refusal, the earned
-# write is a plain idempotent write, no supersedes block, no error.
+# (the anti-gaming invariant). See the staleness gate's header comment above
+# for what happens with the flag but no sibling refusal on disk.
 do_supersede=false
-if [ "$PROVENANCE" = "earned" ] && [ "$SUPERSEDE_SEEN" -eq 1 ] && [ -f "$refused_path" ]; then
+if [ "$PROVENANCE" = "earned" ] && [ "$supersede_retires_refusal" -eq 1 ]; then
   do_supersede=true
 fi
 
