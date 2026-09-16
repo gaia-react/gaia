@@ -10,8 +10,9 @@
 # roster GAIA_VERB_ADOPTING_HOOKS below enumerates. This check makes all
 # three machine-detectable,
 # plus the two frozen contracts around the library itself: it is a singleton,
-# and the one written exemption from its fail-closed default (README.md's
-# `### Fail directions`) stays exactly one hook wide.
+# and the one written exemption from its fail-closed default stays exactly one
+# hook wide. GAIA_VERB_FAIL_OPEN_EXEMPT_HOOKS below carries that exemption
+# together with the reason it exists.
 #
 # Dual-mode, mirroring check-base-provenance-adoption.sh: source it for
 # gaia_check_verb_arming_adoption, or run it directly as a script.
@@ -99,7 +100,8 @@ GAIA_VERB_GREP_IDIOM_SEP_1='&&'
 GAIA_VERB_GREP_IDIOM_SEP_2=';'
 GAIA_VERB_GREP_IDIOM_SEP_3='||'
 
-# The deny-capable hooks (README.md's frozen table, "Can deny: yes"), and
+# The deny-capable hooks (the "Can deny" column of the adopting-hook table
+# under "Shared verb-arming decision" in wiki/concepts/Claude Hooks.md), and
 # the anchors that tell fail-closed from fail-open apart. Every one of the
 # merge gates shares the same reason string, byte for byte except its
 # leading label, which is why a literal substring anchors it rather than a
