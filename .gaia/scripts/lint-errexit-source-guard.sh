@@ -91,18 +91,27 @@
 # costs there: it would leave the walk believing a trap is still live and red a
 # file that had in fact disarmed it.
 #
-# Three accepted misses, all deliberate. The first two have no instance in this
-# tree; the third does, and it is named below.
+# Three accepted misses, all deliberate. Whether the tree holds an instance of
+# one is a fact about the tree rather than about the miss, so each carries its
+# own answer below and no tally up here stands in for them.
+#
 # The arm reads a trap the file writes ITSELF, so a library that INHERITS an
 # armed trap from whichever caller sourced it is outside it -- the same boundary
 # the state-preserving shape exists to straddle for errexit, and closing it
-# would owe a second closure beside the errexit one in pass 2. A handler saved
-# and restored through `$(trap -p ERR)` and `eval` is invisible for the ordinary
-# reason, that the walk masks command substitutions. And the requirement is
-# armed only inside the errexit-reachable closure, which the trap itself does
-# not need: an armed ERR trap aborts on a failing load with no errexit anywhere.
-# That last one is a decided scope rather than an oversight. Seeding REACH from
-# an ERR arm as well as from an errexit arm would red
+# would owe a second closure beside the errexit one in pass 2. Live here:
+# .claude/hooks/lib/gaia-active-plan.sh brackets its own load state-preservingly
+# and disarms no trap, and token-rollup-merge.sh and token-tally-git-op.sh both
+# source it while arming errexit AND an ERR trap. So widening this one would red
+# a real site rather than none.
+#
+# A handler saved and restored through `$(trap -p ERR)` and `eval` is invisible
+# for the ordinary reason, that the walk masks command substitutions. Nothing in
+# the tree writes it.
+#
+# And the requirement is armed only inside the errexit-reachable closure, which
+# the trap itself does not need: an armed ERR trap aborts on a failing load with
+# no errexit anywhere. That one is a decided scope rather than an oversight.
+# Seeding REACH from an ERR arm as well as from an errexit arm would red
 # .claude/hooks/token-tally-review.sh, which arms the trap, never arms errexit,
 # and loads unbracketed on purpose: its own comment records the trap firing as
 # the intended exit-0 degrade. Widening the closure would have to answer that
