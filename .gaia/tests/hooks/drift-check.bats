@@ -272,6 +272,49 @@ EOF
 # linked worktree, where a main-rooted marker would be observable as a write
 # into the main checkout: this is the assertion that the site-1 rooting above
 # was not applied to its sibling by reflex.
+# --- the resolver load degrades rather than abandoning the hook -------------
+# The load disarms the ERR trap as well as errexit. Those are independent: the
+# trap fires on a failing command whatever errexit is set to, so with only the
+# `set +e` bracket an unparseable library exits 0 from inside the source -- and
+# this load sits ABOVE the drain, which is the placement the drain's own
+# comment calls load-bearing, so the report would go undelivered with nothing
+# said. Without this case, reverting the disarm leaves the suite green. Same
+# shape as the library-holding-conflict-markers cases the block-no-verify and
+# block-rm-rf suites already carry.
+
+# An unresolved-merge-conflict body: the file opens and reads fine, so an
+# existence test passes it, and bash cannot parse it.
+write_conflicted_lib() {
+  { printf '<<<<<<< HEAD\n'; printf 'x() { :; }\n'; printf '=======\n'
+    printf 'y() { :; }\n'; printf '>>>>>>> other\n'; } > "$1"
+}
+
+@test "main-root-lib.sh holding conflict markers: the report is still drained" {
+  REPO=$("$HELPERS/tmp-git-repo.sh")
+  cd "$REPO"
+  mkdir -p "$REPO/.gaia/local/cache/shared"
+  printf '[wiki base] fast-forward of main to origin/main refused (divergence); local base is behind. Resolve by hand; the next qualifying session retries.\n' \
+    > "$REPO/.gaia/local/cache/shared/wiki-base-catchup.report"
+
+  local staged="$BATS_TEST_TMPDIR/staged"
+  rm -rf "$staged"
+  # The whole tree rather than the one library, so the hook finds every sibling
+  # it loads and this case drives the degrade it is named for.
+  local hooks_src
+  hooks_src="$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)"
+  mkdir -p "$staged/.claude" "$staged/.gaia"
+  cp -R "$hooks_src" "$staged/.claude/hooks"
+  cp -R "${hooks_src%/.claude/hooks}/.gaia/scripts" "$staged/.gaia/scripts"
+  write_conflicted_lib "$staged/.gaia/scripts/main-root-lib.sh"
+
+  input=$("$HELPERS/mock-hook-input.sh" user-prompt-submit S1)
+  invoke_hook_in "$REPO" "$input" "$staged/.claude/hooks/wiki-drift-check.sh"
+  [ "$status" -eq 0 ]
+  grep -qF -- '[wiki base] fast-forward of main to origin/main refused' <<<"$output" || return 1
+  [ -f "$REPO/.gaia/local/cache/shared/wiki-base-catchup.report" ] && return 1
+  return 0
+}
+
 @test "the session marker stays in the acting tree when run from a worktree" {
   REPO=$("$HELPERS/tmp-git-repo.sh")
   cd "$REPO"
