@@ -899,14 +899,45 @@ jobs:
           # status would otherwise overwrite an earlier one and the message would
           # name the wrong command, or a `tr`/`cat` failure would be reported as
           # a git failure.
-          enum_z="$(mktemp)"
-          enum_paths="$(mktemp)"
+          #
+          # The reduce step and the scratch files it needs are routed through the
+          # same capture as the producers. `self_heal_paths="$(sort -u ...)"` was
+          # a plain assignment, which takes the substitution's status, so a
+          # failing `sort` killed the step and landed on precisely the outcome
+          # the in-band refusal below exists to prevent; the same shape applies
+          # to a failing `mktemp`. Sorting into a third file rather than into a
+          # variable is what makes that status readable here.
           enum_status=0
           enum_failed=""
+          enum_z=""
+          enum_paths=""
+          enum_sorted=""
           note_enum_failure() {
             enum_status="$1"
             enum_failed="${enum_failed}${enum_failed:+; }$2 exited $1"
           }
+          # Refuse IN-BAND and exit 0 rather than letting the step die. None of
+          # the terminal GAIA-Audit status writers downstream carries `always()`,
+          # so a hard failure here would end the pull request with no status at
+          # all on a required check, which blocks every merge on the branch.
+          # Refusing keeps the repair boundary shut AND lets those writers run.
+          # A scratch path that never got assigned is the empty string, so the
+          # cleanup is guarded rather than left to trip `set -e` on the way out.
+          refuse_enumeration() {
+            echo "code-review-audit: could not enumerate the self-heal's changed paths ($enum_failed) -- refusing rather than judging a partial path list." >&2
+            {
+              echo "pushed=false"
+              echo "marker_only=false"
+              echo "refused=true"
+              echo "refused_reason=path-enumeration-failed"
+            } >> "$GITHUB_OUTPUT"
+            rm -f -- "$enum_z" "$enum_paths" "$enum_sorted" "$preserved_governance_edits" 2>/dev/null || true
+            exit 0
+          }
+          enum_z="$(mktemp)" || note_enum_failure $? "mktemp"
+          enum_paths="$(mktemp)" || note_enum_failure $? "mktemp"
+          enum_sorted="$(mktemp)" || note_enum_failure $? "mktemp"
+          [ "$enum_status" -eq 0 ] || refuse_enumeration
           git diff --name-only -z HEAD >> "$enum_z" || note_enum_failure $? "git diff HEAD"
           git diff --cached --name-only -z >> "$enum_z" || note_enum_failure $? "git diff --cached"
           # The third call is the only producer that can see a path the self-heal
@@ -923,26 +954,14 @@ jobs:
           fi
           tr '\0' '\n' < "$enum_z" >> "$enum_paths" || note_enum_failure $? "tr"
           cat "$preserved_governance_edits" >> "$enum_paths" || note_enum_failure $? "cat"
-          rm -f "$enum_z" "$preserved_governance_edits"
-          if [ "$enum_status" -ne 0 ]; then
-            # Refuse IN-BAND and exit 0 rather than letting the step die. None
-            # of the terminal GAIA-Audit status writers downstream carries
-            # `always()`, so a hard failure here would end the pull request with
-            # no status at all on a required check, which blocks every merge on
-            # the branch. Refusing keeps the repair boundary shut AND lets those
-            # writers run.
-            echo "code-review-audit: could not enumerate the self-heal's changed paths ($enum_failed) -- refusing rather than judging a partial path list." >&2
-            {
-              echo "pushed=false"
-              echo "marker_only=false"
-              echo "refused=true"
-              echo "refused_reason=path-enumeration-failed"
-            } >> "$GITHUB_OUTPUT"
-            rm -f "$enum_paths"
-            exit 0
-          fi
-          self_heal_paths="$(sort -u < "$enum_paths")"
-          rm -f "$enum_paths"
+          sort -u < "$enum_paths" > "$enum_sorted" || note_enum_failure $? "sort"
+          rm -f "$enum_z" "$enum_paths" "$preserved_governance_edits"
+          [ "$enum_status" -eq 0 ] || refuse_enumeration
+          # `$(<file)` rather than `$(cat file)`: a redirection the shell performs
+          # itself, so the last read of the enumeration adds no external command
+          # whose status would need routing too.
+          self_heal_paths="$(<"$enum_sorted")"
+          rm -f "$enum_sorted"
           if printf '%s\n' "$self_heal_paths" \
               | grep -qE "$AUDIT_SELFHEAL_REFUSE_ERE"; then
             echo "code-review-audit: self-heal touched a refused surface (tests, the CI pipeline and the rest of .github/, .gaia/ gate & roster machinery, instruction/convention surfaces, or root build config; the set is AUDIT_SELFHEAL_REFUSE_ERE in .claude/hooks/lib/audit-selfheal-paths.sh) -- refusing." >&2
@@ -1141,10 +1160,17 @@ jobs:
           # be a local agent pushing an empty trailer commit, the very HEAD-moving
           # workaround this design avoids.
           #
-          # This path also covers a REFUSED self-heal. `refused` means the
-          # self-heal was off-limits -- an instruction/convention surface
-          # (.claude/**, .specify/**, wiki/**) or a >10-file sprawl -- NOT that
-          # the audit failed or the tree is dirty, so it must not gate this stamp.
+          # This path also covers a REFUSED self-heal, on any of the three
+          # reasons: the self-heal was off-limits (an instruction/convention
+          # surface: .claude/**, .specify/**, wiki/**), it was a >10-file
+          # sprawl, or its changed paths could not be enumerated so the
+          # off-limits check had nothing trustworthy to judge. The third differs
+          # in kind from the other two -- the gate could not judge, rather than
+          # judged and refused -- and lands here the same way, since it writes
+          # the pushed=false / marker_only=false pair this step selects on. None
+          # of the three means the audit failed or the tree is dirty, so none of
+          # them may gate this stamp: nothing was pushed either way, so the
+          # pushed head's tree is still the tree that will merge.
           #
           # --require-marker is therefore the sole proven-clean check for every
           # no-push case, clean and refused alike: the agent writes

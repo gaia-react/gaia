@@ -603,6 +603,14 @@ output_has() { grep -qF -- "$1" "$STEP_OUTPUT"; }
 # keep working, or these tests would be exercising a neighbour instead of the
 # gate. `push` keeps the setup stub's behaviour, so an unrefused run still
 # reaches PUSH_LOG and refuse-versus-push stays observable.
+#
+# That deconfliction is NOT exhaustive, and the difference matters. The staging
+# block further down spells `git diff --cached --name-only -z` and
+# `tr '\0' '\n'` byte-identically, so these stubs would break those too; what
+# keeps them unreached is only that the refusal `exit 0` sits ahead of that
+# block. Move the gate after the staging block, or add a test that expects to
+# reach the push path with a stub armed, and a neighbour breaks with no
+# assertion naming the drift.
 break_enumeration_call() {
   local argv="$1"
   cat > "$GIT_STUB_BIN/git" <<EOF
@@ -624,6 +632,27 @@ EOF
 # given, is the exact argv that must fail and every other invocation reaches the
 # real binary; omitted, every invocation fails. Stubs land in the same directory
 # the git stub does, which is what run_push_fixes_step puts on PATH.
+# For a command the step calls several times, where only a later call belongs to
+# the enumeration. Succeeds for the first $2 invocations, then fails. `mktemp` is
+# the case: the .claude/ evidence capture takes the first two, and the
+# enumeration's own three follow.
+break_command_after() {
+  local name="$1" after="$2" real counter
+  real="$(command -v "$name")"
+  counter="$BATS_TEST_TMPDIR/${name}.calls"
+  : > "$counter"
+  cat > "$GIT_STUB_BIN/$name" <<EOF
+#!/usr/bin/env bash
+printf 'x' >> "$counter"
+if [ "\$(wc -c < "$counter" | tr -d ' ')" -gt "$after" ]; then
+  echo "$name: simulated failure" >&2
+  exit 3
+fi
+exec "$real" "\$@"
+EOF
+  chmod +x "$GIT_STUB_BIN/$name"
+}
+
 break_command() {
   local name="$1" argv="${2:-}" real
   real="$(command -v "$name")"
@@ -765,6 +794,40 @@ EOF
   local body
   body="$(extract_step_body 'Commit and push self-heal')"
   break_command cat
+  echo "export const x = 2;" > "$SANDBOX/app/x.ts"
+
+  run run_push_fixes_step "$body"
+  [ "$status" -eq 0 ]
+  [ ! -s "$PUSH_LOG" ]
+  output_has "refused=true"
+  output_has "refused_reason=path-enumeration-failed"
+}
+
+@test "a failed sort refuses too: the reduce step, not only the producers" {
+  # `sort -u` consumes the list the five producers just built. As a plain
+  # assignment from a command substitution it took the substitution's status
+  # under `set -eu` and killed the step, which is the stranded-required-check
+  # outcome the in-band refusal exists to avoid. It sorts into a file now.
+  local body
+  body="$(extract_step_body 'Commit and push self-heal')"
+  break_command sort '-u'
+  echo "export const x = 2;" > "$SANDBOX/app/x.ts"
+
+  run run_push_fixes_step "$body"
+  [ "$status" -eq 0 ]
+  [ ! -s "$PUSH_LOG" ]
+  output_has "refused=true"
+  output_has "refused_reason=path-enumeration-failed"
+}
+
+@test "a failed scratch-file allocation refuses too, rather than killing the step" {
+  # The enumeration's own three `mktemp` calls, the same plain-assignment shape.
+  # Scoped past the first two, which belong to the .claude/ evidence capture
+  # earlier in the step: those are a separate, pre-existing hard-abort path
+  # (gaia-react/gaia#2066) and this fixture deliberately does not reach them.
+  local body
+  body="$(extract_step_body 'Commit and push self-heal')"
+  break_command_after mktemp 2
   echo "export const x = 2;" > "$SANDBOX/app/x.ts"
 
   run run_push_fixes_step "$body"
