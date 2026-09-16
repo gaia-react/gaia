@@ -32,13 +32,22 @@ trap 'exit 0' ERR
 #               repair the symlink whenever it finds it broken, which is the
 #               statement that it can be, so the drain does not rest on it.
 #
-# Bracketed in `set +e` because errexit is armed above, matching the deferral
-# load below. The fallback chain ends at `pwd`, which is exactly what a bare
-# repo-relative literal resolves to, so a checkout where neither the resolver
-# nor git answers behaves as it did before the path was rooted at all.
+# The ERR trap is disarmed across the load, not merely `set +e`. The two are
+# independent: the trap armed above fires on a failing command whatever errexit
+# is set to, so an unparseable library (an unresolved merge conflict, a
+# truncated write) would fire it mid-source and exit 0 from inside this load --
+# above the drain below, which would then silently not run. `set +e` alone does
+# not prevent that. The fallback chain ends at `pwd`, which is exactly what a
+# bare repo-relative literal resolves to, so a checkout where neither the
+# resolver nor git answers behaves as it did before the path was rooted at all.
 _hook_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd)" || _hook_root=''
 _main_root_lib="$_hook_root/.gaia/scripts/main-root-lib.sh"
-set +e; [ -n "$_hook_root" ] && [ -f "$_main_root_lib" ] && . "$_main_root_lib" 2>/dev/null; set -e
+trap - ERR
+set +e
+# shellcheck source=/dev/null
+[ -n "$_hook_root" ] && [ -f "$_main_root_lib" ] && . "$_main_root_lib" 2>/dev/null
+set -e
+trap 'exit 0' ERR
 main_root=''
 if type gaia_resolve_main_root >/dev/null 2>&1; then
   main_root="$(gaia_resolve_main_root 2>/dev/null)" || main_root=''
@@ -79,17 +88,24 @@ fi
 # GAIA CI deferral. When wiki.mode == "ci", local automatic triggers stand
 # down so they don't collide with the cron-managed wiki run. The marker is
 # NOT advanced here so a future config change still gets the drift check.
-# Bracketed in `set +e` because errexit is armed above: an unparseable copy (an
-# unresolved merge conflict, a truncated write) would otherwise abandon the hook
-# at the load, before the `type` check below can degrade it to "not managed".
-# Reuses the `_hook_root` resolved at the top of this file, which is this
-# file's own on-disk location and never the process working directory: a bare
-# test is false from anywhere below the repository root, and the `type` check
-# reads that as a missing library. Through the ancestor rather than a lib
-# child, for the reason block-main-destructive-git.sh states at the same load:
-# the ancestor cannot fail, so no degrade branch is owed.
+# Disarmed and bracketed on the same terms as the resolver load above, and for
+# the same reason: an unparseable copy (an unresolved merge conflict, a
+# truncated write) must degrade to "not managed" at the `type` check below
+# rather than abandon the hook at the load, and `set +e` alone does not deliver
+# that while the ERR trap is armed. Reuses the `_hook_root` resolved at the top
+# of this file, which is this file's own on-disk location and never the process
+# working directory: a bare test is false from anywhere below the repository
+# root, and the `type` check reads that as a missing library. Through the
+# ancestor rather than a lib child, for the reason
+# block-main-destructive-git.sh states at the same load: the ancestor cannot
+# fail, so no degrade branch is owed.
 _defer_lib="$_hook_root/.claude/hooks/lib/gaia-ci-defer.sh"
-set +e; [ -n "$_hook_root" ] && [ -f "$_defer_lib" ] && . "$_defer_lib" 2>/dev/null; set -e
+trap - ERR
+set +e
+# shellcheck source=/dev/null
+[ -n "$_hook_root" ] && [ -f "$_defer_lib" ] && . "$_defer_lib" 2>/dev/null
+set -e
+trap 'exit 0' ERR
 if type gaia_ci_defer_if_managed >/dev/null 2>&1; then
   gaia_ci_defer_if_managed wiki || true
 fi

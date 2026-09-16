@@ -30,10 +30,18 @@ session_id=$(jq -r '.session_id // empty' <<<"$payload" 2>/dev/null || echo "")
 # loaded from this file's own on-disk location, and the fallback chain ends at
 # `pwd`, which is what the bare literal resolved to, so the deliberate
 # no-repository case (this hook nags on a path shape, not on a checkout) is
-# unchanged. Bracketed in `set +e` because errexit is armed above.
+# unchanged. The ERR trap is disarmed across the load as well as errexit: the
+# two are independent, and the trap armed above fires on a failing command
+# whatever errexit is set to, so an unparseable library would otherwise exit 0
+# from inside this load and drop the reminder entirely.
 _hook_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd)" || _hook_root=''
 _main_root_lib="$_hook_root/.gaia/scripts/main-root-lib.sh"
-set +e; [ -n "$_hook_root" ] && [ -f "$_main_root_lib" ] && . "$_main_root_lib" 2>/dev/null; set -e
+trap - ERR
+set +e
+# shellcheck source=/dev/null
+[ -n "$_hook_root" ] && [ -f "$_main_root_lib" ] && . "$_main_root_lib" 2>/dev/null
+set -e
+trap 'exit 0' ERR
 tree_root=''
 if type gaia_resolve_tree_root >/dev/null 2>&1; then
   tree_root="$(gaia_resolve_tree_root 2>/dev/null)" || tree_root=''

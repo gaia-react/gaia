@@ -9,9 +9,12 @@
 # wrong files, firing on every edit instead of once, or going silent entirely,
 # and each of those is invisible in normal use. The tests below pin all three.
 #
-# The once-per-session marker (.claude/i18n-strings-checked) is written
-# relative to the working directory, so every scenario runs in a throwaway
-# directory via `invoke_hook_in` rather than in the repo.
+# The once-per-session marker (.claude/i18n-strings-checked) is resolved to the
+# acting tree's root, with pwd as the last fallback. Most scenarios below run
+# in a throwaway directory that is not a repository at all, where that fallback
+# is what answers, so they observe the marker in the directory they run from;
+# the two tree-rooting scenarios at the end build a real checkout, because a
+# root is exactly what they need something to resolve.
 
 setup() {
   . "$BATS_TEST_DIRNAME/helpers/run-hook.sh"
@@ -182,6 +185,29 @@ run_hook_edit() {
   [ "$status" -eq 0 ]
   [ -z "$output" ] || return 1
   [ -f "$I18N_REPO/sub/deeper/.claude/i18n-strings-checked" ] && return 1
+  return 0
+}
+
+# The subdirectory scenario above cannot tell the two resolvers apart: in a
+# plain checkout gaia_resolve_tree_root and gaia_resolve_main_root return the
+# same path by construction, so swapping one for the other in the hook leaves
+# it green while every worktree session writes its marker into the main
+# checkout and suppresses the main session's reminder. A linked worktree is the
+# input that discriminates, and this is the i18n counterpart of the axis
+# drift-check.bats pins for its own sibling.
+@test "the marker lands in the acting worktree, not in the main checkout" {
+  I18N_REPO=$("$BATS_TEST_DIRNAME/helpers/tmp-git-repo.sh")
+  local wt="$I18N_REPO/.claude/worktrees/wt"
+  git -C "$I18N_REPO" worktree add --quiet -b wt-branch "$wt" main
+  rm -f "$I18N_REPO/.claude/i18n-strings-checked"
+  local json
+  json=$(jq -n '{session_id: "S1", hook_event_name: "PreToolUse", tool_name: "Edit", tool_input: {file_path: "app/pages/Public/HomePage/index.tsx"}}')
+
+  invoke_hook_in "$wt" "$json" "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  grep -qF -- "t() from useTranslation()" <<<"$output" || return 1
+  [ -f "$wt/.claude/i18n-strings-checked" ] || return 1
+  [ -f "$I18N_REPO/.claude/i18n-strings-checked" ] && return 1
   return 0
 }
 
