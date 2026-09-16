@@ -675,7 +675,7 @@ scrub_maintainer_only() {
   m="code-audit-maintainer-shell"
   d="$(member_digest "$ROOT" "$m")"
   out="$(bash "$WRITER" --root "$ROOT" --member "$m" --provenance earned \
-    --supersede-refusal "nothing on disk to supersede")"
+    --scope-digest "$d" --supersede-refusal "nothing on disk to supersede")"
   [ "$out" = "$AUDIT_DIR/${d}.${m}.ok" ]
   [ "$(jq -r .provenance "$out")" = "earned" ]
   # No sibling refusal existed, so no supersedes block is recorded.
