@@ -250,10 +250,28 @@ bash "$_lib_dir/../../.gaia/scripts/token-tally.sh"'
   true
 }
 
-@test "quiet on a per-tree state path, which needs a different root" {
+@test "quiet on a per-tree state path in ASSIGNMENT position" {
   fixture_repo
   fixture_hook 'marker=".claude/wiki-drift-checked"
 config_path=".gaia/automation.json"'
+  run_linter
+  [ "$status" -eq 0 ]
+  grep -qF -- "check.sh" <<<"$output" && return 1
+  true
+}
+
+@test "quiet on a per-tree state path in FILE TEST position" {
+  # The sibling above pins the assignment arm, which reaches this shape only
+  # because it is pinned to a code extension. The file-test arm is the other
+  # position a state path is written in, and it needs the same pin for the same
+  # reason: the remedy it hands out roots the operand at `${BASH_SOURCE[0]}`,
+  # which is the root the gate's own header rules out for state, because a
+  # `main-only` marker rooted at the script's directory follows a linked
+  # worktree. Every live state site tests through a variable today, so this arm
+  # is unexercised by the tree and only a fixture reaches it.
+  fixture_repo
+  fixture_hook '[ -f .claude/wiki-drift-checked ] || exit 0
+[ -f ".gaia/automation.json" ] || exit 0'
   run_linter
   [ "$status" -eq 0 ]
   grep -qF -- "check.sh" <<<"$output" && return 1
