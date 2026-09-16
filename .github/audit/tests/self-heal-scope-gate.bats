@@ -590,6 +590,77 @@ output_has() { grep -qF -- "$1" "$STEP_OUTPUT"; }
   true
 }
 
+# -----------------------------------------------------------------------------
+# Criterion 12: the path enumeration feeding the gate fails CLOSED.
+# -----------------------------------------------------------------------------
+
+# Re-stub `git` so exactly one enumeration call -- the worktree-vs-HEAD spelling
+# that opens the scope gate's path derivation -- fails the way a corrupt object
+# store, a ref deleted mid-run, or a leftover index.lock makes it fail. Matched
+# on the exact argv the derivation uses: the .claude/ evidence capture earlier in
+# the same step spells the same subcommand with a `-- .claude` pathspec and has
+# to keep working, or these tests would be exercising the capture instead of the
+# gate. `push` keeps the setup stub's behaviour, so an unrefused run still
+# reaches PUSH_LOG and refuse-versus-push stays observable.
+break_head_enumeration() {
+  cat > "$GIT_STUB_BIN/git" <<EOF
+#!/usr/bin/env bash
+if [ "\$1" = "push" ]; then
+  printf '%s\n' "\$*" >> "$PUSH_LOG"
+  exit 0
+fi
+if [ "\$*" = "diff --name-only -z HEAD" ]; then
+  echo "fatal: unable to read tree (simulated)" >&2
+  exit 128
+fi
+exec "$REAL_GIT" "\$@"
+EOF
+  chmod +x "$GIT_STUB_BIN/git"
+}
+
+@test "a failed path enumeration refuses in-band rather than judging a partial list" {
+  # The derivation used to end in `| sort -u` inside a command substitution.
+  # `shopt inherit_errexit` is off under the step's `bash -e` plus `set -eu`, so
+  # a git call failing in there neither aborted the group nor reached the
+  # substitution's status: the list came back partial at status 0 and the step
+  # fell through to `git add -u` and the push with the refusal never consulted.
+  # Refusal is in-band (status 0, outputs written) on purpose: no terminal
+  # GAIA-Audit status writer downstream carries `always()`, so a hard failure
+  # here would strand the pull request on a required check.
+  local body
+  body="$(extract_step_body 'Commit and push self-heal')"
+  break_head_enumeration
+  echo "export const x = 2;" > "$SANDBOX/app/x.ts"
+
+  run run_push_fixes_step "$body"
+  [ "$status" -eq 0 ]
+  output_has "refused=true"
+  output_has "refused_reason=path-enumeration-failed"
+  [ ! -s "$PUSH_LOG" ]
+  git -C "$SANDBOX" diff --cached --quiet
+}
+
+@test "a refused-surface edit visible only to the failed enumeration call is never pushed" {
+  # The consequence the refusal exists to prevent, rather than the refusal
+  # itself. test/x.test.ts is edited in the WORKTREE only, so worktree-vs-HEAD
+  # is the one call of the three that can report it; with that call failing, the
+  # pre-fix derivation handed the refusal ERE a list the refused path had
+  # silently dropped out of, and the self-heal pushed an edit to the tests that
+  # would catch its own bad repair.
+  local body
+  body="$(extract_step_body 'Commit and push self-heal')"
+  break_head_enumeration
+  echo "test('x', () => { /* agent edit */ });" > "$SANDBOX/test/x.test.ts"
+
+  run run_push_fixes_step "$body"
+  [ "$status" -eq 0 ]
+  # PUSH_LOG first: the harm this fixture exists to catch is the push, and
+  # asserting it ahead of the outputs makes the pre-fix failure name it.
+  [ ! -s "$PUSH_LOG" ]
+  output_has "refused=true"
+  git -C "$SANDBOX" diff --cached --quiet
+}
+
 @test "the three code-review-audit.yml copies are byte-identical" {
   local src="$REPO_ROOT/.gaia/cli/src/automation/templates/workflows/code-review-audit.yml.tmpl"
   local artifact="$REPO_ROOT/.gaia/cli/templates/workflows/code-review-audit.yml.tmpl"

@@ -445,14 +445,15 @@ run_comment_step() {
 # is appended last because the sibling has no equivalent.
 run_audit_complete_step() {
   local body="$1" members_pending="${2:-}" success_stamped="${3:-}" success_live="${4:-}" \
-        read_failed="${5:-}" post_failed="${6:-}" push_fixes="${7:-true}"
+        read_failed="${5:-}" post_failed="${6:-}" push_fixes="${7:-true}" \
+        refused="${8:-false}" refused_reason="${9:-}"
   ( cd "$SANDBOX" \
     && RUNNER_TEMP="$RUNNER_TEMP_DIR" \
        PR_NUMBER="1" \
        PUSHED="false" \
-       REFUSED="false" \
+       REFUSED="$refused" \
        REFUSED_COUNT="0" \
-       REFUSED_REASON="" \
+       REFUSED_REASON="$refused_reason" \
        PUSH_FIXES="$push_fixes" \
        MEMBERS_PENDING="$members_pending" \
        SUCCESS_STAMPED="$success_stamped" \
@@ -2125,6 +2126,21 @@ run_audit_complete_step() {
   [ -f "$COMMENT_LOG" ]
   grep -qF "code-review-audit complete" "$COMMENT_LOG"
   grep -qF "merge gate is NOT satisfied" "$COMMENT_LOG"
+}
+
+@test "audit-complete comment: an enumeration-failure refusal names its own cause" {
+  # The refusal message is a switch on REFUSED_REASON whose ELSE arm is the
+  # >10-file threshold text. A reason with no arm of its own is reported to the
+  # pull request as "diff exceeded the 10-file safety threshold (touched  files)"
+  # -- false, empty-countered, and pointing the reader at the wrong gate.
+  body="$(extract_step_body 'Status - audit complete')"
+  run run_audit_complete_step "$body" "" "" "" "" "" "true" "true" "path-enumeration-failed"
+  [ "$status" -eq 0 ]
+
+  [ -f "$COMMENT_LOG" ]
+  grep -qF "changed-path enumeration failed" "$COMMENT_LOG"
+  grep -qF "10-file safety threshold" "$COMMENT_LOG" && return 1
+  return 0
 }
 
 @test "audit-complete comment: a co-dispatched pending member is named, not reported as green" {

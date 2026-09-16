@@ -881,17 +881,50 @@ jobs:
           # The last input is the .claude/ evidence captured before that reset
           # removed it from view. It is already newline-delimited, so it joins
           # after the `tr` rather than inside the NUL-delimited group.
-          self_heal_paths="$(
+          #
+          # Each producer's exit status is read HERE, in the step's own shell,
+          # one call at a time, rather than inferred from a command substitution
+          # that ends in a pipe. `shopt inherit_errexit` is off under GitHub's
+          # `bash -e {0}`, and this step's own `set -eu` does not turn it on, so
+          # a git call that fails inside a substitution neither aborts the group
+          # nor reaches the substitution's status: the enumeration comes back
+          # PARTIAL at status 0, the refusal ERE below is matched against a path
+          # set silently missing whatever the failed call would have
+          # contributed, and the self-heal is pushed as though it had touched
+          # nothing refusable. `set -o pipefail` does not see it either -- the
+          # failing call is a command inside a group, not a pipeline component
+          # -- so per-call capture is the only spelling that catches it.
+          enum_z="$(mktemp)"
+          enum_paths="$(mktemp)"
+          enum_status=0
+          git diff --name-only -z HEAD >> "$enum_z" || enum_status=$?
+          git diff --cached --name-only -z >> "$enum_z" || enum_status=$?
+          # The third call keeps its own `|| true`: origin/$PR_BRANCH is
+          # legitimately absent before the branch's first push, and that is not
+          # an enumeration failure.
+          git diff --name-only -z "origin/${PR_BRANCH}..HEAD" >> "$enum_z" 2>/dev/null || true
+          tr '\0' '\n' < "$enum_z" >> "$enum_paths" || enum_status=$?
+          cat "$preserved_governance_edits" >> "$enum_paths" || enum_status=$?
+          rm -f "$enum_z" "$preserved_governance_edits"
+          if [ "$enum_status" -ne 0 ]; then
+            # Refuse IN-BAND and exit 0 rather than letting the step die. None
+            # of the terminal GAIA-Audit status writers downstream carries
+            # `always()`, so a hard failure here would end the pull request with
+            # no status at all on a required check, which blocks every merge on
+            # the branch. Refusing keeps the repair boundary shut AND lets those
+            # writers run.
+            echo "code-review-audit: could not enumerate the self-heal's changed paths (git exited $enum_status) -- refusing rather than judging a partial path list." >&2
             {
-              {
-                git diff --name-only -z HEAD
-                git diff --cached --name-only -z
-                git diff --name-only -z "origin/${PR_BRANCH}..HEAD" 2>/dev/null || true
-              } | tr '\0' '\n'
-              cat "$preserved_governance_edits"
-            } | sort -u
-          )"
-          rm -f "$preserved_governance_edits"
+              echo "pushed=false"
+              echo "marker_only=false"
+              echo "refused=true"
+              echo "refused_reason=path-enumeration-failed"
+            } >> "$GITHUB_OUTPUT"
+            rm -f "$enum_paths"
+            exit 0
+          fi
+          self_heal_paths="$(sort -u < "$enum_paths")"
+          rm -f "$enum_paths"
           if printf '%s\n' "$self_heal_paths" \
               | grep -qE "$AUDIT_SELFHEAL_REFUSE_ERE"; then
             echo "code-review-audit: self-heal touched a refused surface (tests, the CI pipeline and the rest of .github/, .gaia/ gate & roster machinery, instruction/convention surfaces, or root build config; the set is AUDIT_SELFHEAL_REFUSE_ERE in .claude/hooks/lib/audit-selfheal-paths.sh) -- refusing." >&2
@@ -1722,6 +1755,8 @@ jobs:
           elif [ "$REFUSED" = "true" ]; then
             if [ "$REFUSED_REASON" = "governance-surface" ]; then
               mode="self-heal REFUSED: edited a surface off-limits to self-heal (tests, the CI pipeline and the rest of .github/, .gaia/ gate & roster machinery, instruction/convention surfaces under .claude/**, .specify/**, wiki/**, or root build config; the set is AUDIT_SELFHEAL_REFUSE_ERE in .claude/hooks/lib/audit-selfheal-paths.sh); see workflow logs and review manually"
+            elif [ "$REFUSED_REASON" = "path-enumeration-failed" ]; then
+              mode="self-heal REFUSED: the changed-path enumeration failed, so the off-limits-surface check had only a partial list to judge; see workflow logs and review manually"
             else
               mode="self-heal REFUSED: diff exceeded the 10-file safety threshold (touched $REFUSED_COUNT files); see workflow logs and review manually"
             fi
