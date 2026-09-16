@@ -9,9 +9,14 @@
 # shared function, or the set of adopting hooks from drifting away from the
 # roster GAIA_VERB_ADOPTING_HOOKS below enumerates. This check makes all
 # three machine-detectable,
-# plus the two frozen contracts around the library itself: it is a singleton,
-# and the one written exemption from its fail-closed default (README.md's
-# `### Fail directions`) stays exactly one hook wide.
+# plus the frozen contract that the library itself is a singleton.
+#
+# What it establishes about the fail-closed default is narrower than the width
+# of the carve-out: assertion 6 holds each written exemption to taking the
+# fail-open direction and to still being deny-capable elsewhere, and nothing
+# here reads how many exemptions there are. A second entry that satisfies
+# assertion 6 passes silently, so the carve-out's width rests on the prose at
+# GAIA_VERB_FAIL_OPEN_EXEMPT_HOOKS below, not on a check.
 #
 # Dual-mode, mirroring check-base-provenance-adoption.sh: source it for
 # gaia_check_verb_arming_adoption, or run it directly as a script.
@@ -49,7 +54,8 @@ GAIA_VERB_ARM_VIEW_DEF_PATTERN='^[[:space:]]*(function[[:space:]]+)?gaia_verb_ar
 # fires.
 GAIA_VERB_TEST_EXCLUDES=(':!*.bats' ':!*/tests/*' ':!*/__tests__/*' ':!*.test.ts' ':!*.test.tsx')
 
-# The adopting hooks, in the order SPEC-075's plan README lists them.
+# The adopting hooks, in the order the adopting-hook table under "Shared
+# verb-arming decision" in wiki/concepts/Claude Hooks.md lists them.
 GAIA_VERB_ADOPTING_HOOKS=(
   pr-merge-audit-check.sh
   worthiness-presence-check.sh
@@ -99,7 +105,8 @@ GAIA_VERB_GREP_IDIOM_SEP_1='&&'
 GAIA_VERB_GREP_IDIOM_SEP_2=';'
 GAIA_VERB_GREP_IDIOM_SEP_3='||'
 
-# The deny-capable hooks (README.md's frozen table, "Can deny: yes"), and
+# The deny-capable hooks (the "Can deny" column of the adopting-hook table
+# under "Shared verb-arming decision" in wiki/concepts/Claude Hooks.md), and
 # the anchors that tell fail-closed from fail-open apart. Every one of the
 # merge gates shares the same reason string, byte for byte except its
 # leading label, which is why a literal substring anchors it rather than a
