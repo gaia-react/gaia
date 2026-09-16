@@ -202,30 +202,56 @@ patterns() {
 
 # C1. The caller binding. release.yml must reach the shipped-tree leak assertion
 # through this script, so the inline shape cannot return to the workflow without
-# this test going red.
+# this test going red. It reads live shell only, for the reason C2's header
+# gives: a pin satisfied by its own subject sat inside a YAML comment is
+# satisfied by the edit that disables the thing it pins.
 @test "C1: release.yml runs the leak assertion through this script" {
-  grep -qF -- 'bash .gaia/scripts/assert-no-release-leak.sh' \
-    "$REPO_ROOT/.github/workflows/release.yml"
+  run grep -vE '^[[:space:]]*#' "$REPO_ROOT/.github/workflows/release.yml"
+  [ "$status" -eq 0 ]
+  grep -qF -- 'bash .gaia/scripts/assert-no-release-leak.sh' <<<"$output"
 }
 
 # C2. The caller must also read the script's status rather than discarding it,
 # because discarding it restores the exact fail-open the script exists to close,
 # one layer up.
 #
-# This pins the whole status-capturing invocation, and the arm that acts on what
-# it captured, rather than scanning the invocation's neighbourhood for a
-# forbidden spelling. A scan is the shape that reads as stricter and is not: its
-# match region is whichever lines carry the script's name, so `|| :` on the same
-# line and `|| true` on a backslash continuation both escape it, and either one
-# leaves the status variable at its initialised zero with both workflow arms
-# skipped and this test green. release.yml already writes four commands across
-# backslash continuations, one of them a command whose status is read, so the
-# escaping spelling is one an ordinary reflow produces. Pinning the invocation
-# inverts that: any reshaping of it reds here, and the failure names the line to
-# look at rather than a spelling to hunt for.
+# This pins the whole status-capturing block, rather than scanning the
+# invocation's neighbourhood for a forbidden spelling. A scan is the shape that
+# reads as stricter and is not: its match region is whichever lines carry the
+# script's name, so `|| :` on the same line and `|| true` on a backslash
+# continuation both escape it, and either one leaves the status variable at its
+# initialised zero with both workflow arms skipped and this test green.
+# release.yml already writes several commands across backslash continuations,
+# one of them a command whose status is read, so the escaping spelling is one an
+# ordinary reflow produces.
+#
+# Two properties of the pin are load-bearing, and the second is the one a
+# substring pin silently lacks. It reads only lines that are not YAML comments,
+# because a pin matched anywhere in the file is satisfied by its own subject sat
+# inside a comment: prefixing the invocation with a `#` disables the whole
+# assertion and leaves an unanchored pin green. And it requires the lines to be
+# contiguous and in order, so an arm cannot be deleted, reordered, or downgraded
+# from `exit 1` to a warning while the remaining fragments still satisfy three
+# independent line matches. What this pin therefore claims, exactly: the block
+# below appears in release.yml as live shell, in this order, with nothing
+# between its lines. Any edit to it reds here and the failure prints the block
+# to compare against.
 @test "C2: release.yml captures the leak assertion's status and acts on it" {
-  grep -qF -- 'bash .gaia/scripts/assert-no-release-leak.sh "$STAGING" /tmp/exclude-regex.txt || leak_rc=$?' \
-    "$REPO_ROOT/.github/workflows/release.yml"
-  grep -qF -- '[ "$leak_rc" -eq 1 ]' "$REPO_ROOT/.github/workflows/release.yml"
-  grep -qF -- '[ "$leak_rc" -ne 0 ]' "$REPO_ROOT/.github/workflows/release.yml"
+  local live expected
+  live="$(grep -vE '^[[:space:]]*#' "$REPO_ROOT/.github/workflows/release.yml" \
+    | sed 's/^[[:space:]]*//' | tr '\n' '\001')"
+  # The pin literals below carry $STAGING, $? and $leak_rc as text, which is the
+  # point: expanding them in this shell would build a needle matching nothing.
+  # shellcheck disable=SC2016
+  expected="$(printf '%s\001' \
+    'leak_rc=0' \
+    'bash .gaia/scripts/assert-no-release-leak.sh "$STAGING" /tmp/exclude-regex.txt || leak_rc=$?' \
+    'if [ "$leak_rc" -eq 1 ]; then' \
+    'echo "::error::release-excluded path(s) leaked into $STAGING; see the paths above" >&2' \
+    'exit 1' \
+    'elif [ "$leak_rc" -ne 0 ]; then' \
+    'echo "::error::shipped-tree leak scan did not complete (exit $leak_rc); leak-freedom is unproven" >&2' \
+    'exit 1' \
+    'fi')"
+  grep -qF -- "$expected" <<<"$live"
 }
