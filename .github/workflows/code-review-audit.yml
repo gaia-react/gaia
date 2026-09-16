@@ -1852,7 +1852,7 @@ jobs:
             elif [ "$REFUSED_REASON" = "path-enumeration-failed" ]; then
               mode="self-heal REFUSED: the changed-path enumeration failed, so the off-limits-surface check had only a partial list to judge; see workflow logs and review manually"
             elif [ "$REFUSED_REASON" = "step-aborted" ]; then
-              mode="self-heal REFUSED: the self-heal step aborted before it finished, so nothing was committed or pushed and the off-limits-surface check may never have run; see workflow logs and review manually"
+              mode="self-heal REFUSED: the self-heal step aborted before it finished, so nothing reached the PR branch and the off-limits-surface check may never have run; see workflow logs and review manually"
             else
               mode="self-heal REFUSED: diff exceeded the 10-file safety threshold (touched $REFUSED_COUNT files); see workflow logs and review manually"
             fi

@@ -973,12 +973,16 @@ EOF
   grep -qF "steps.push-fixes.outputs.marker_only != 'true'" <<<"$cond"
 }
 
-@test "the trap stays silent on every path that exits 0" {
-  # The other half of "writes only on a non-zero status". The trap runs on EVERY
-  # exit, the named refusals included, and each of those writes its outputs
-  # immediately before its own `exit 0`. A trap that wrote unconditionally would
-  # append a second, contradictory refused_reason after the real one and the
-  # comment ladder would report whichever GitHub read last.
+@test "the trap stays silent on a named refusal that exits 0" {
+  # The other half of "writes only on a non-zero status", on the governance-surface
+  # arm; the sibling below drives the push arm. The trap runs on EVERY exit, and
+  # each of the step's exit-0 arms writes its outputs immediately before its own
+  # `exit 0`. A trap that wrote unconditionally would append a second,
+  # contradictory refused_reason after the real one and the comment ladder would
+  # report whichever GitHub read last. The four arms neither fixture drives are
+  # deliberately unpinned: the trap's silence is one `[ "$abort_status" -ne 0 ]`
+  # test that does not vary per arm, so a third fixture would re-drive the same
+  # branch through a different caller.
   local body
   body="$(extract_step_body 'Commit and push self-heal')"
   echo "test('x', () => { /* changed */ });" > "$SANDBOX/test/x.test.ts"
