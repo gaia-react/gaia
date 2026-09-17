@@ -331,6 +331,18 @@ marker=".claude/some-marker"
   [ "$status" -eq 0 ]
 }
 
+@test "derive arm: a path: token under .gaia/local qualifies the entry, so a bare literal fails" {
+  local repo; repo="$(make_fixture_repo derive-pathlocal)"
+  add_hook "$repo" "foo.sh" '#!/usr/bin/env bash
+report=".gaia/local/cache/shared/x.report"
+cat "$report"'
+  write_manifest "$repo" '[{"hook":".claude/hooks/foo.sh","scope":"main-only","state":["path:.gaia/local/cache/shared/x.report"],"why":"x"}]'
+  commit_all "$repo"
+  run gaia_check_hook_manifest_derive_arm "$repo"
+  [ "$status" -eq 1 ]
+  grep -qF "bare .gaia/local literal" <<<"$output" || return 1
+}
+
 @test "derive arm: a hook that inherits its root via a resolver-backed lib name, holding no literal of its own, passes" {
   local repo; repo="$(make_fixture_repo derive-inherits)"
   add_hook "$repo" "foo.sh" '#!/usr/bin/env bash

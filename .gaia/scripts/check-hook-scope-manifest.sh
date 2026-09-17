@@ -221,8 +221,9 @@ gaia_check_hook_manifest_schema() {
 
 # gaia_check_hook_manifest_derive_arm <repo_root>
 #   Assertion 3. For every entry whose `state` includes a registry id
-#   classified main-only, shared, or per-tree (a bare `path:` token never
-#   counts), the hook has no bare `.gaia/local` literal, and, when it holds
+#   classified main-only, shared, or per-tree, or a `path:` token under
+#   `.gaia/local` (any other `path:` token never counts, since it names a
+#   tracked working file), the hook has no bare `.gaia/local` literal, and, when it holds
 #   any live reference at all, names a resolver-backed lib.
 gaia_check_hook_manifest_derive_arm() {
   local repo_root="${1:?gaia_check_hook_manifest_derive_arm requires a repo_root argument}"
@@ -241,6 +242,7 @@ gaia_check_hook_manifest_derive_arm() {
     while IFS= read -r tok; do
       [ -n "$tok" ] || continue
       case "$tok" in
+        path:.gaia/local | path:.gaia/local/*) has_qualifying=1; continue ;;
         path:?*) continue ;;
       esac
       grep -qxF -- "$tok" <<<"$qualifying_ids" && has_qualifying=1
