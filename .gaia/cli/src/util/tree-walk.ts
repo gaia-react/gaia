@@ -46,9 +46,14 @@ export const normalizeEntry = (entry: string, separator: string): string =>
  *
  * Only regular files are reported, so a caller may read each entry without
  * stating it first: a directory whose own name carries a matching extension
- * would otherwise reach `readFileSync` and throw `EISDIR`. A symlink is not a
- * regular file here, so the walk does not follow one, and a caller that needs
- * to owns that stat.
+ * would otherwise reach `readFileSync` and throw `EISDIR`.
+ *
+ * A symlink is neither reported nor descended, whether it points at a file or
+ * a directory, and a caller that needs to follow one owns that stat. The walk
+ * recurses by hand rather than passing `recursive: true` to `readdirSync`
+ * because that option descends a symlinked directory and reports what sits
+ * under it as regular files, so a caller that rewrites its entries, as the
+ * release scrub does, would write outside the root it named.
  *
  * No directory is excluded. A caller that walks a tree holding a build or
  * vendor directory owns that filter, which is the honest shape while no caller
@@ -61,18 +66,23 @@ export const normalizeEntry = (entry: string, separator: string): string =>
 export const collectTreeFiles = (
   root: string,
   extensions: ReadonlySet<string> | typeof EVERY_EXTENSION
-): readonly string[] =>
-  readdirSync(root, {recursive: true, withFileTypes: true})
-    .filter(
-      (entry) =>
-        entry.isFile() &&
-        (extensions === EVERY_EXTENSION ||
-          extensions.has(path.extname(entry.name).toLowerCase()))
-    )
-    .map((entry) =>
-      normalizeEntry(
-        path.relative(root, path.join(entry.parentPath, entry.name)),
-        path.sep
-      )
-    )
-    .toSorted((a, b) => a.localeCompare(b));
+): readonly string[] => {
+  const walk = (directory: string): string[] =>
+    readdirSync(directory, {withFileTypes: true}).flatMap((entry) => {
+      const absolute = path.join(directory, entry.name);
+
+      if (entry.isDirectory()) {
+        return walk(absolute);
+      }
+
+      return (
+          entry.isFile() &&
+            (extensions === EVERY_EXTENSION ||
+              extensions.has(path.extname(entry.name).toLowerCase()))
+        ) ?
+          [normalizeEntry(path.relative(root, absolute), path.sep)]
+        : [];
+    });
+
+  return walk(root).toSorted((a, b) => a.localeCompare(b));
+};

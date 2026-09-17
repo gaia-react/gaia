@@ -29,8 +29,7 @@
  * declaring module:
  *
  * - A call to `readdirSync` that passes the `recursive` option as a true
- *   literal. That is the shape the shared module's own docblock names as what
- *   the next author writes.
+ *   literal, the one-line walk the next author reaches for first.
  * - A function that calls itself by name and lists a directory somewhere in its
  *   body: a function declaration, or an arrow or function expression bound to a
  *   `const`. The listing is any call named `readdirSync`, `readdir`,
@@ -51,8 +50,8 @@
  *
  * `update/regen-regions.ts` falls outside both shapes on the merits rather than
  * by exemption. It walks iteratively, draining an explicit pending list with no
- * self-call, because `lstat` has to refuse to descend a symlinked subdirectory
- * that the `recursive` option would walk straight through.
+ * self-call, and records each symlink it meets as a snapshot entry of its own,
+ * which a walk that reports regular files only has no way to give it.
  *
  * Further shapes are unreached, and a copy taking any of them slips:
  *
@@ -84,7 +83,7 @@
  * Repair, when this goes red: delete the private walk and import
  * `collectTreeFiles` from `…/util/tree-walk.js`, with the extension set the
  * walk needs or `EVERY_EXTENSION`. If the new walk genuinely needs something
- * the shared one does not give, such as refusing to descend a symlink, say so
+ * the shared one does not give, such as reporting a symlink itself, say so
  * where it is declared and give it the iterative shape `regen-regions.ts`
  * takes.
  *

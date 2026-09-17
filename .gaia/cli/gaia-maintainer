@@ -24352,14 +24352,16 @@ import { readdirSync as readdirSync2 } from "node:fs";
 import path26 from "node:path";
 var EVERY_EXTENSION = "every-extension";
 var normalizeEntry = (entry, separator) => entry.split(separator).join("/");
-var collectTreeFiles = (root, extensions) => readdirSync2(root, { recursive: true, withFileTypes: true }).filter(
-  (entry) => entry.isFile() && (extensions === EVERY_EXTENSION || extensions.has(path26.extname(entry.name).toLowerCase()))
-).map(
-  (entry) => normalizeEntry(
-    path26.relative(root, path26.join(entry.parentPath, entry.name)),
-    path26.sep
-  )
-).toSorted((a, b) => a.localeCompare(b));
+var collectTreeFiles = (root, extensions) => {
+  const walk = (directory) => readdirSync2(directory, { withFileTypes: true }).flatMap((entry) => {
+    const absolute = path26.join(directory, entry.name);
+    if (entry.isDirectory()) {
+      return walk(absolute);
+    }
+    return entry.isFile() && (extensions === EVERY_EXTENSION || extensions.has(path26.extname(entry.name).toLowerCase())) ? [normalizeEntry(path26.relative(root, absolute), path26.sep)] : [];
+  });
+  return walk(root).toSorted((a, b) => a.localeCompare(b));
+};
 
 // src/release/marker-strip.ts
 var stripMarkerBlocks = (source, startMarker, endMarker) => {

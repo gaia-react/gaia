@@ -134,6 +134,23 @@ describe('collectTreeFiles', () => {
     expect(collectTreeFiles(dir, TS_SOURCE_EXTENSIONS)).toEqual(['real.ts']);
   });
 
+  // `readdirSync`'s own `recursive` option descends a symlinked directory and
+  // reports what sits under it as regular files. A caller that rewrites what
+  // it is handed would then write outside the root it named.
+  test('does not descend a symlinked directory', () => {
+    const outside = mkdtempSync(path.join(tmpdir(), 'gaia-collect-outside-'));
+
+    try {
+      seed(outside, 'escaped.ts');
+      seed(dir, 'real.ts');
+      symlinkSync(outside, path.join(dir, 'linked'));
+
+      expect(collectTreeFiles(dir, EVERY_EXTENSION)).toEqual(['real.ts']);
+    } finally {
+      rmSync(outside, {force: true, recursive: true});
+    }
+  });
+
   test('throws when the root does not exist', () => {
     expect(() =>
       collectTreeFiles(path.join(dir, 'absent'), TS_SOURCE_EXTENSIONS)
