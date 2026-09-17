@@ -146,11 +146,15 @@
 #
 # What is bats-only and what is not: the fixture-region rule, suppression, the
 # run-only exemption and the desync verdict are inert when is_bats is 0. Pragma
-# BLOCK parsing runs on every surface, so gaia_scan_pragma_here answers on a
-# `*.sh`, husky, workflow-YAML or markdown line and the naming guard can report a
+# BLOCK parsing runs on every surface, so gaia_scan_pragma_here answers on any
+# scanned line but a `*.bats` one and the naming guard can report a
 # pragma that is honored nowhere. Malformed-pragma errors are not bats-scoped
 # either: the designated owner emits them wherever it finds them, so a malformed
-# pragma anywhere in the tree is seen exactly once. The UNUSED-pragma error is
+# pragma is seen exactly once across that owner's own scan surface. That surface
+# is not every surface this library serves: the composite actions under
+# `.github/actions/` reach the sibling gates through the `workflows` set below
+# and reach the owner through nothing, so a malformed pragma written in one is
+# reported by no gate. The UNUSED-pragma error is
 # bats-scoped, because outside `*.bats` nothing can consume a pragma and the
 # honored-nowhere finding already covers that line.
 #

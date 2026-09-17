@@ -5,8 +5,8 @@
 # caller then parses.
 #
 # Two jobs, the same pair the sibling array-guard suite carries: prove the
-# detector fires on a known-bad fixture in each scanned file type (shell, husky
-# hook, workflow YAML, a fenced block in markdown) and stays quiet on every
+# detector fires on a known-bad fixture in each file type the guard's two
+# discoveries reach, and stays quiet on every
 # legitimate shape (a `-z` call, a comment, a markdown code span, unfenced
 # markdown prose, a string constant, an untracked file), and assert the real
 # scanned tree is clean so a regression fails CI.
@@ -135,7 +135,7 @@ run_linter() {
 
 # 1. The real scanned tree is clean (regression gate)
 
-@test "the real scanned tree (shell + husky + workflow YAML + markdown) passes the lint" {
+@test "the real scanned tree passes the lint" {
   run bash -c "cd '$REPO_ROOT' && bash '$LINTER'"
   [ "$status" -eq 0 ]
 }
@@ -165,6 +165,32 @@ run_linter() {
   run_linter
   [ "$status" -eq 1 ]
   grep -qF -- ".github/workflows/ci.yml:5" <<<"$output"
+}
+
+# The adopter workflow templates render into a repository this gate never runs
+# in, so a quoting defect written here ships and is scanned nowhere. Several of
+# them have no `.github/workflows` twin in this tree, so the twin's own scan is
+# not a stand-in for this one.
+@test "flags an unquoted diff --name-only in an adopter workflow template" {
+  fixture_repo
+  fixture_file .gaia/cli/src/automation/templates/workflows/gaia-ci.yml.tmpl \
+    $'jobs:\n  a:\n    steps:\n      - run: |\n          changed=$(git diff --name-only "${BASE}...HEAD")'
+  run_linter
+  [ "$status" -eq 1 ]
+  grep -qF -- ".gaia/cli/src/automation/templates/workflows/gaia-ci.yml.tmpl:5" <<<"$output"
+}
+
+# The built copy under `.gaia/cli/templates/workflows/` carries the same bytes,
+# and scanning it too would report every hit twice and name a path the repair
+# must not hand-edit, since the next `bundle:adopter` discards it. Source-only
+# is the same split `.gaia/audit-ci.yml` and the sibling gates already declare.
+@test "the built copy of an adopter workflow template is not scanned" {
+  fixture_repo
+  fixture_file probe.sh 'true'
+  fixture_file .gaia/cli/templates/workflows/gaia-ci.yml.tmpl \
+    $'jobs:\n  a:\n    steps:\n      - run: |\n          changed=$(git diff --name-only "${BASE}...HEAD")'
+  run_linter
+  [ "$status" -eq 0 ]
 }
 
 # The binding test. `#1229`'s Suggested fix: whichever guard lands must be shown
