@@ -10,6 +10,7 @@ import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {
   collectTreeFiles,
+  EVERY_EXTENSION,
   normalizeEntry,
   TS_SOURCE_EXTENSIONS,
 } from './tree-walk.js';
@@ -100,6 +101,24 @@ describe('collectTreeFiles', () => {
     expect(collectTreeFiles(dir, new Set(['.md']))).toEqual(['prose.md']);
   });
 
+  // An extensionless file and a dotfile are the entries an extension set can
+  // never name, so they are what tells "every file" from "every extension
+  // anyone listed".
+  test('keeps every regular file when handed every extension', () => {
+    seed(dir, 'code.ts');
+    seed(dir, 'Makefile');
+    seed(dir, '.gitignore');
+    seed(dir, 'nested/prose.md');
+    mkdirSync(path.join(dir, 'empty'));
+
+    expect(collectTreeFiles(dir, EVERY_EXTENSION)).toEqual([
+      '.gitignore',
+      'code.ts',
+      'Makefile',
+      'nested/prose.md',
+    ]);
+  });
+
   // Reported, this would reach a caller's `readFileSync` and throw EISDIR.
   test('excludes a directory whose name carries a matching extension', () => {
     mkdirSync(path.join(dir, 'looks-like-a-file.ts'));
@@ -113,6 +132,23 @@ describe('collectTreeFiles', () => {
     symlinkSync(path.join(dir, 'real.ts'), path.join(dir, 'link.ts'));
 
     expect(collectTreeFiles(dir, TS_SOURCE_EXTENSIONS)).toEqual(['real.ts']);
+  });
+
+  // `readdirSync`'s own `recursive` option descends a symlinked directory and
+  // reports what sits under it as regular files. A caller that rewrites what
+  // it is handed would then write outside the root it named.
+  test('does not descend a symlinked directory', () => {
+    const outside = mkdtempSync(path.join(tmpdir(), 'gaia-collect-outside-'));
+
+    try {
+      seed(outside, 'escaped.ts');
+      seed(dir, 'real.ts');
+      symlinkSync(outside, path.join(dir, 'linked'));
+
+      expect(collectTreeFiles(dir, EVERY_EXTENSION)).toEqual(['real.ts']);
+    } finally {
+      rmSync(outside, {force: true, recursive: true});
+    }
   });
 
   test('throws when the root does not exist', () => {

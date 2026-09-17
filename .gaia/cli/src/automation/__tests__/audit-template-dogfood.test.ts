@@ -9,9 +9,10 @@
  * source was edited without updating the other.
  */
 import {describe, expect, test} from 'vitest';
-import {existsSync, readdirSync, readFileSync} from 'node:fs';
+import {existsSync, readFileSync} from 'node:fs';
 import path from 'node:path';
 import {resolveRepoRootFromImportMeta} from '../../util/repo-root-fixture.js';
+import {collectTreeFiles, EVERY_EXTENSION} from '../../util/tree-walk.js';
 import {workflowAuditTemplatePath} from '../paths.js';
 
 describe('audit-template dogfood drift-guard', () => {
@@ -64,19 +65,11 @@ describe('audit-template dogfood drift-guard', () => {
 const cpRemediation =
   'cp -r .gaia/cli/src/automation/templates/workflows/. .gaia/cli/templates/workflows/';
 
-/** Recursively lists files under `dir` as paths relative to `dir`, sorted. */
-const listFilesRelative = (dir: string): string[] => {
-  const collect = (current: string): string[] =>
-    readdirSync(current, {withFileTypes: true}).flatMap((entry) => {
-      const full = path.join(current, entry.name);
-
-      return entry.isDirectory() ? collect(full) : [full];
-    });
-
-  return collect(dir)
-    .map((file) => path.relative(dir, file))
-    .toSorted((a, b) => a.localeCompare(b));
-};
+// The shared walk reports regular files only, so a symlinked template on either
+// side is compared by neither assertion below. Both directories are populated
+// by `cp -r` from tracked files, and the repository tracks no symlink.
+const listFilesRelative = (dir: string): readonly string[] =>
+  collectTreeFiles(dir, EVERY_EXTENSION);
 
 const artifactRelativePath = (relative: string): string =>
   path.join('.gaia/cli/templates/workflows', relative);
