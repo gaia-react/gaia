@@ -73,10 +73,10 @@ code-audit-maintainer-shell"
   # purpose: a wrapped command cannot be asserted with a fixed-string grep. The
   # behavioural tests below are what prove it runs over the right list; this
   # pin is what makes a change to the status call itself visible.
-  CHECK_LINE='if ! dirty="$(printf '"'"'%s\0'"'"' "${changed[@]}" | xargs -0 git -C "$root" status --porcelain --)"; then'
+  CHECK_LINE='if ! printf '"'"'%s\0'"'"' "${changed[@]}" | xargs -0 git -C "$root" status --porcelain -z -- > "$ars_tmp/dirty"; then'
 
   # The print of the result to stderr, beside the DIRTY= lines on stdout.
-  PRINT_LINE='printf '"'"'DIRTY IN REVIEW SCOPE:\n%s\n'"'"' "$dirty" >&2'
+  PRINT_LINE='printf '"'"'%s\n'"'"' "${dirty[@]}" >&2'
 
   # The sentinel the remit filter must never discard, and the artifact rule that
   # keeps a withheld pass from stranding a digest-keyed refusal across a revert.
@@ -88,7 +88,7 @@ code-audit-maintainer-shell"
   # pins the prose promising the sentinel is never remit-filtered, and
   # CHECK_LINE pins only the `if` that detects the failure. Matched without
   # leading indentation: the content is what must not drift.
-  SENTINEL_LINE='dirty="dirty-scope check failed"'
+  SENTINEL_LINE='dirty=("dirty-scope check failed")'
 
   # The byte-identical refusal contract.
   REFUSAL='**Any `DIRTY=` line WITHHOLDS this pass.**'
@@ -455,7 +455,7 @@ assert_pin_breaks() {
 
 @test "the check pin breaks when the status call changes meaning (non-vacuity)" {
   # --untracked-files=no narrows what the check can see.
-  assert_pin_breaks "$SCRIPT" check 's|status --porcelain --)|status --porcelain --untracked-files=no --)|' "$CHECK_LINE"
+  assert_pin_breaks "$SCRIPT" check 's|status --porcelain -z -- >|status --porcelain -z --untracked-files=no -- >|' "$CHECK_LINE"
 }
 
 @test "the refusal pin breaks when the refusal becomes a warning (non-vacuity)" {
@@ -463,11 +463,11 @@ assert_pin_breaks() {
 }
 
 @test "the print pin breaks when the result stops reaching stderr (non-vacuity)" {
-  assert_pin_breaks "$SCRIPT" print 's|"$dirty" >&2|"$dirty"|' "$PRINT_LINE"
+  assert_pin_breaks "$SCRIPT" print 's|"${dirty\[@\]}" >&2|"${dirty[@]}"|' "$PRINT_LINE"
 }
 
 @test "the sentinel-assignment pin breaks when the arm stops failing closed (non-vacuity)" {
-  assert_pin_breaks "$SCRIPT" sentinel_line 's|dirty="dirty-scope check failed"|dirty=""|' "$SENTINEL_LINE"
+  assert_pin_breaks "$SCRIPT" sentinel_line 's|dirty=("dirty-scope check failed")|dirty=()|' "$SENTINEL_LINE"
 }
 
 @test "the fail-closed behaviour reds when the resolver's sentinel is emptied (non-vacuity)" {
@@ -476,7 +476,7 @@ assert_pin_breaks() {
   # a clean tree on a status that could not run, and the behavioural test's
   # assertion must see that.
   local mutant repo shim="$BATS_TEST_TMPDIR/shim-mutant"
-  mutant="$(mutate_copy "$SCRIPT" sentinel_run 's|dirty="dirty-scope check failed"|dirty=""|' "$SENTINEL_LINE")" || return 1
+  mutant="$(mutate_copy "$SCRIPT" sentinel_run 's|dirty=("dirty-scope check failed")|dirty=()|' "$SENTINEL_LINE")" || return 1
   repo="$(make_repo status-fails-mutant "$mutant")"
   failing_status_shim "$shim"
   PATH="$shim:$PATH" run_member_resolver code-audit-maintainer-shell "$repo" || return 1

@@ -146,8 +146,9 @@ value_of() {
   run --separate-stderr "$repo/.gaia/scripts/audit-resolve-scope.sh" --member code-audit-maintainer-shell --root "$repo"
   [ "$status" -eq 0 ]
   keys="$(printf '%s\n' "$output" | sed -n 's/=.*//p' | awk '!seen[$0]++' | tr '\n' ' ')"
-  [ "$keys" = "AUDIT_ROOT FULL_BASE BASE_REF BASE_REASON KEY_REF ANCHOR_TREE BASE_SHA KEY_BASE D_SCOPE FULL_CHANGED CHANGED " ]
+  [ "$keys" = "AUDIT_ROOT FULL_BASE BASE_REF BASE_REASON KEY_REF ANCHOR_TREE BASE_SHA KEY_BASE AUDIT_KEY D_SCOPE FULL_CHANGED CHANGED " ]
   [ "$(value_of "$output" FULL_BASE)" = "$full_base" ]
+  [ "$(value_of "$output" AUDIT_KEY)" = "$full_base.feat" ]
   [ "$(value_of "$output" BASE_SHA)" = "$full_base" ]
   [ "$(value_of "$output" KEY_BASE)" = "$full_base" ]
   [[ "$(value_of "$output" D_SCOPE)" =~ ^[0-9a-f]{64}$ ]] || return 1
@@ -266,6 +267,21 @@ value_of() {
   [[ "$stderr" == *"DIRTY IN REVIEW SCOPE"* ]] || return 1
 }
 
+@test "a dirty path holding a space prints raw, byte for byte like its CHANGED line" {
+  # Porcelain without -z quotes such a path, so a member's remit glob applied
+  # to the DIRTY line misses the file its CHANGED line names.
+  local repo name
+  repo="$(make_repo dirty-space)"
+  name="$(printf 'app/my caf\303\251.ts')"
+  git -C "$repo" checkout -q -b feat
+  commit_file "$repo" "$name"
+  printf 'edit\n' >> "$repo/$name"
+  run --separate-stderr "$repo/.gaia/scripts/audit-resolve-scope.sh" --member code-audit-maintainer-shell --root "$repo"
+  [ "$status" -eq 0 ]
+  printf '%s\n' "$output" | grep -qxF "CHANGED=$name"
+  printf '%s\n' "$output" | grep -qxF "DIRTY= M $name"
+}
+
 @test "a clean review list prints no DIRTY line" {
   local repo
   repo="$(make_repo clean)"
@@ -314,6 +330,60 @@ EOF
   run --separate-stderr "$repo/.gaia/scripts/audit-resolve-scope.sh" --member code-audit-maintainer-shell --root "$repo"
   second="$(value_of "$output" D_SCOPE)"
   [ "$second" = "$first" ]
+}
+
+@test "AUDIT_KEY is empty on a detached HEAD, where the branch half of the key is undeterminable" {
+  local repo
+  repo="$(make_repo detached)"
+  git -C "$repo" checkout -q -b feat
+  commit_file "$repo" app/a.ts
+  git -C "$repo" checkout -q --detach HEAD
+  run --separate-stderr "$repo/.gaia/scripts/audit-resolve-scope.sh" --member code-audit-maintainer-shell --root "$repo"
+  [ "$status" -eq 0 ]
+  printf '%s\n' "$output" | grep -qxF 'AUDIT_KEY='
+  [ -n "$(value_of "$output" KEY_BASE)" ]
+}
+
+# ---------- a diff that cannot list paths ----------------------------------------
+
+# fail_git_diff <dir>: a git shim that fails only `diff`, so the empty list a
+# swallowed failure would leave can only come from the diff under test.
+fail_git_diff() {
+  mkdir -p "$1"
+  cat > "$1/git" <<EOF
+#!/usr/bin/env bash
+for a in "\$@"; do [ "\$a" = diff ] && exit 128; done
+exec $(command -v git) "\$@"
+EOF
+  chmod +x "$1/git"
+}
+
+@test "a membership diff that fails exits 1 rather than printing an empty FULL_CHANGED" {
+  local repo shim
+  repo="$(make_repo full-diff-fails)"
+  git -C "$repo" checkout -q -b feat
+  commit_file "$repo" app/a.ts
+  shim="$BATS_TEST_TMPDIR/shim-full"
+  fail_git_diff "$shim"
+  run --separate-stderr env PATH="$shim:$PATH" "$repo/.gaia/scripts/audit-resolve-scope.sh" --member code-audit-maintainer-shell --root "$repo"
+  [ "$status" -eq 1 ]
+  grep -qF -- 'could not list the whole pull request' <<<"$stderr"
+  grep -qF -- 'D_SCOPE=' <<<"$output" && return 1
+  true
+}
+
+@test "a review diff that fails exits 1 rather than printing an empty CHANGED" {
+  local repo shim
+  repo="$(make_repo review-diff-fails)"
+  git -C "$repo" checkout -q -b feat
+  commit_file "$repo" app/a.ts
+  shim="$BATS_TEST_TMPDIR/shim-review"
+  fail_git_diff "$shim"
+  run --separate-stderr env PATH="$shim:$PATH" "$repo/.gaia/scripts/audit-resolve-scope.sh" --member code-audit-frontend --root "$repo" --skip-full-base
+  [ "$status" -eq 1 ]
+  grep -qF -- 'could not list the review increment' <<<"$stderr"
+  grep -qF -- 'D_SCOPE=' <<<"$output" && return 1
+  true
 }
 
 @test "a missing base-provenance resolver exits 1 and names it, rather than resolving a private base" {

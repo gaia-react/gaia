@@ -440,6 +440,12 @@ owners_of() {
       printf 'member %s resolved key %s, expected %s\n' "$m" "$key" "$expected_key"
       return 1
     fi
+    # The key a member reads its re-run ledger by is the one its resolver
+    # prints, carried as a literal, so the printed value must be this same key.
+    if [ "$(scope_values "$m" "$repo" AUDIT_KEY)" != "$expected_key" ]; then
+      printf 'member %s resolver printed AUDIT_KEY %s, expected %s\n' "$m" "$(scope_values "$m" "$repo" AUDIT_KEY)" "$expected_key"
+      return 1
+    fi
   done
 
   # Shared-form agreement: the key every member resolves equals what the
@@ -1270,6 +1276,27 @@ make_stacked_repo() {
     printf 'write side and verify side disagree.\nwrite:\n%s\nverify:\n%s\n' "$write" "$verify" >&2
     return 1
   }
+}
+
+@test "the eligibility fence refuses an unset AUDIT_ROOT rather than reading the ambient repository" {
+  # A member types AUDIT_ROOT=<root> ahead of the fence. Without it, every
+  # git -C "$AUDIT_ROOT" exits 0 against whatever repository the shell sits in,
+  # and the waive set, the provenance value, and the oracle gate all describe
+  # that tree. elig_eval injects AUDIT_ROOT, so this runs the fence bare, from
+  # inside an unrelated repository that would otherwise resolve cleanly.
+  local repo ambient fence
+  repo="$(make_repo elig-unset-root)"
+  ambient="$(make_repo elig-ambient)"
+  git -C "$ambient" checkout -q -b feat
+  commit_file "$ambient" "ambient-only.txt" "ambient change"
+  fence="$(extract_eligibility_fence "$AGENTS_DIR/code-audit-frontend.md")"
+  [ -n "$fence" ]
+  run --separate-stderr env -u AUDIT_ROOT -u GITHUB_ACTIONS bash -c "cd \"\$1\" && ${fence}
+printf 'FULL_BASE=%s\n' \"\$FULL_BASE\"" _ "$ambient"
+  [ "$status" -ne 0 ]
+  grep -qF -- 'AUDIT_ROOT is unset' <<<"$stderr"
+  grep -qF -- 'FULL_BASE=' <<<"$output" && return 1
+  true
 }
 
 @test "an unverifiable declared base falls back to the advertised default" {

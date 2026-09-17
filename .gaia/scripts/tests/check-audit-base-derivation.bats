@@ -927,6 +927,7 @@ changed=$(git -C "$AUDIT_ROOT" diff --name-only -z "${KEY_BASE}...HEAD" -- x)
 # alone stays green on every one of them.
 
 # copy_resolver <repo>: the real resolver at its real path in <repo>.
+# shellcheck disable=SC2329 # called from @test bodies, which shellcheck does not see
 copy_resolver() {
   mkdir -p "$1/.gaia/scripts"
   cp "$REPO_ROOT/.gaia/scripts/audit-resolve-scope.sh" "$1/.gaia/scripts/audit-resolve-scope.sh"
@@ -935,6 +936,7 @@ copy_resolver() {
 # mutate_resolver <repo> <perl-substitution> <needle-after>: applies the
 # substitution and fails the test unless <needle-after> is then present, so
 # a substitution that silently matched nothing cannot pass as red evidence.
+# shellcheck disable=SC2329 # called from @test bodies, which shellcheck does not see
 mutate_resolver() {
   local file="$1/.gaia/scripts/audit-resolve-scope.sh"
   perl -pi -e "$2" "$file"

@@ -8,7 +8,7 @@
 #
 # Why a script and not a fenced block in the member definition: a member
 # dispatched into a linked worktree runs under the runtime's worktree
-# confinement, which refuses a multi-command block, a `git` call inside a
+# confinement, which refuses a multi-command block naming `git`, a `git` call inside a
 # command substitution, and a command name computed at runtime, however the
 # block's git calls are spelled. A script invoked by its literal path runs
 # regardless of what it does inside, and its git calls stay under shellcheck
@@ -35,20 +35,23 @@
 #
 # Output (stdout), one KEY=value per line, in this order:
 #   AUDIT_ROOT FULL_BASE BASE_REF BASE_REASON KEY_REF ANCHOR_TREE BASE_SHA
-#   KEY_BASE D_SCOPE, then one FULL_CHANGED=<path> per whole-PR path, one
+#   KEY_BASE AUDIT_KEY D_SCOPE, then one FULL_CHANGED=<path> per whole-PR path, one
 #   CHANGED=<path> per review-scope path, one DIRTY=<status line> per dirty
-#   in-scope entry. An unresolved scalar prints with an empty value. FULL_BASE
-#   is omitted under --skip-full-base.
+#   in-scope entry, its path raw rather than quoted. An unresolved scalar prints
+#   with an empty value: AUDIT_KEY is empty whenever KEY_BASE or the branch is
+#   undeterminable, a detached HEAD among them, and every artifact keyed on it
+#   is skipped fail-open. FULL_BASE is omitted under --skip-full-base.
 #
 # Exit status:
 #   0  resolved. Warnings about an empty base or a failed capture go to stderr
 #      and do not change the status, because each consumer downstream already
 #      refuses on the empty value it would receive.
-#   1  the membership base is unresolvable, or the base-provenance resolver it
-#      comes from is missing. Nothing after it runs: an empty
-#      FULL_BASE makes FULL_CHANGED empty at status 0, which reads exactly like
-#      a pull request that touched nothing in the member's remit, and a
-#      self-skip there writes no marker at all.
+#   1  the membership base is unresolvable, the base-provenance resolver it
+#      comes from is missing, or a diff listing either changed-path list fails.
+#      Nothing after it runs: an empty FULL_BASE or a failed diff makes the
+#      list empty at status 0, which reads exactly like a pull request that
+#      touched nothing in the member's remit, and a self-skip there writes no
+#      marker at all. The stderr line names which of the causes it hit.
 #   2  usage error, or a --root this script refuses.
 #
 # Confinement: the script derives its own tree from its on-disk location and
@@ -119,6 +122,15 @@ fi
 
 printf 'AUDIT_ROOT=%s\n' "$root"
 
+# Each diff and the status write to a file first, so their exit status is read.
+# A process substitution discards it, and a failed diff then yields an empty
+# list at status 0.
+ars_tmp="$(mktemp -d "${TMPDIR:-/tmp}/audit-resolve-scope.XXXXXX")" || {
+  printf 'audit-resolve-scope: could not create a temporary directory\n' >&2
+  exit 1
+}
+trap 'rm -rf "$ars_tmp"' EXIT
+
 full_changed=()
 if [ "$skip_full_base" -eq 0 ]; then
   # FULL_BASE decides one thing, the self-skip, so it comes from the same
@@ -144,9 +156,14 @@ if [ "$skip_full_base" -eq 0 ]; then
     fi
     exit 1
   fi
+  if ! git -C "$root" diff --name-only -z "${FULL_BASE}...HEAD" > "$ars_tmp/full" 2>"$ars_tmp/full.err"; then
+    printf 'could not list the whole pull request (%s...HEAD): %s; membership scope is unresolvable, do NOT self-skip\n' \
+      "$FULL_BASE" "$(head -1 "$ars_tmp/full.err")" >&2
+    exit 1
+  fi
   while IFS= read -r -d '' path; do
     full_changed+=("$path")
-  done < <(git -C "$root" diff --name-only -z "${FULL_BASE}...HEAD" 2>/dev/null)
+  done < "$ars_tmp/full"
 fi
 
 # The resolver reads its tree from the working directory, so it runs from the
@@ -177,14 +194,30 @@ printf 'ANCHOR_TREE=%s\n' "$ANCHOR_TREE"
 printf 'BASE_SHA=%s\n' "$BASE_SHA"
 printf 'KEY_BASE=%s\n' "$KEY_BASE"
 
+# The artifact key a member reads its re-run ledger by. Printed rather than
+# derived member-side, because deriving it means sourcing a library, which is a
+# multi-command block.
+AUDIT_KEY=""
+if [ -n "$KEY_BASE" ] && [ -f "$self_root/.gaia/scripts/audit-key-lib.sh" ]; then
+  # shellcheck source=/dev/null
+  . "$self_root/.gaia/scripts/audit-key-lib.sh"
+  AUDIT_KEY="$(gaia_audit_key "$KEY_BASE" "$root" 2>/dev/null)" || AUDIT_KEY=""
+fi
+printf 'AUDIT_KEY=%s\n' "$AUDIT_KEY"
+
 # Three-dot against HEAD: the clearance digest is computed over HEAD's tracked
 # content, so the review list must name HEAD's changes, not the working tree's
 # and not an advanced ref tip's.
 changed=()
 if [ -n "$BASE_SHA" ]; then
+  if ! git -C "$root" diff --name-only -z "${BASE_SHA}...HEAD" -- ${review_paths[@]+"${review_paths[@]}"} > "$ars_tmp/review" 2>"$ars_tmp/review.err"; then
+    printf 'could not list the review increment (%s...HEAD): %s; review scope is unresolvable\n' \
+      "$BASE_SHA" "$(head -1 "$ars_tmp/review.err")" >&2
+    exit 1
+  fi
   while IFS= read -r -d '' path; do
     changed+=("$path")
-  done < <(git -C "$root" diff --name-only -z "${BASE_SHA}...HEAD" -- ${review_paths[@]+"${review_paths[@]}"} 2>/dev/null)
+  done < "$ars_tmp/review"
 fi
 
 # `Read` returns working-tree bytes while the clearance attests to HEAD, so a
@@ -192,11 +225,20 @@ fi
 # is checked, never the whole tree. This fails closed: a status that cannot run
 # reports the sentinel rather than reading as clean. xargs keeps a large list
 # under the argument-length limit and exits non-zero when any batch fails.
-dirty=""
+# -z keeps each path raw, matching the CHANGED lines a member filters by the
+# same globs; without it a path holding a space or a non-ASCII byte is quoted.
+# A rename record, which carries its original path as a second record, cannot
+# arise: status reports one only when both paths are in the pathspec, and a
+# staged rename's new path is not in HEAD, so it is never in the review list.
+dirty=()
 if [ "${#changed[@]}" -gt 0 ]; then
-  if ! dirty="$(printf '%s\0' "${changed[@]}" | xargs -0 git -C "$root" status --porcelain --)"; then
+  if ! printf '%s\0' "${changed[@]}" | xargs -0 git -C "$root" status --porcelain -z -- > "$ars_tmp/dirty"; then
     printf 'dirty-scope check could not run; refusing rather than assuming a clean tree\n' >&2
-    dirty="dirty-scope check failed"
+    dirty=("dirty-scope check failed")
+  else
+    while IFS= read -r -d '' rec; do
+      dirty+=("$rec")
+    done < "$ars_tmp/dirty"
   fi
 fi
 
@@ -204,7 +246,7 @@ fi
 # in the same review returns the first value (audit-scope-digest.sh owns that),
 # so re-running this script mid-review changes nothing.
 D_SCOPE="$("$root/.gaia/scripts/audit-scope-digest.sh" --capture --root "$root" --member "$member" --base "$KEY_BASE")" || D_SCOPE=""
-[ -n "$D_SCOPE" ] || printf 'could not capture a scope digest; the earned clearance write will refuse\n' >&2
+[ -n "$D_SCOPE" ] || printf 'could not capture a scope digest; a gating member'"'"'s earned clearance write will refuse without one\n' >&2
 printf 'D_SCOPE=%s\n' "$D_SCOPE"
 
 for path in ${full_changed[@]+"${full_changed[@]}"}; do
@@ -213,9 +255,10 @@ done
 for path in ${changed[@]+"${changed[@]}"}; do
   printf 'CHANGED=%s\n' "$path"
 done
-if [ -n "$dirty" ]; then
-  printf 'DIRTY IN REVIEW SCOPE:\n%s\n' "$dirty" >&2
-  printf '%s\n' "$dirty" | while IFS= read -r line; do
+if [ "${#dirty[@]}" -gt 0 ]; then
+  printf 'DIRTY IN REVIEW SCOPE:\n' >&2
+  printf '%s\n' "${dirty[@]}" >&2
+  for line in "${dirty[@]}"; do
     printf 'DIRTY=%s\n' "$line"
   done
 fi
