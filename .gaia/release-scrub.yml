@@ -111,18 +111,19 @@ transforms:
       - path: "hooks.PreToolUse[].hooks[]"
         match: {command: '"$(git rev-parse --show-toplevel 2>/dev/null || printf %s "${CLAUDE_PROJECT_DIR:-.}")/.claude/hooks/distribution-preflight-check.sh"'}
 
-  # .gaia/hook-capabilities.json's own maintainer-only row, alongside the
+  # The maintainer-only preflight row in both hook manifests, alongside the
   # settings.json strip above. distribution-preflight-check.sh is
-  # release-excluded, so leaving its manifest entry in place would ship an
-  # entry no shipped registration names, an ORPHAN by the manifest's own
-  # coverage rule, on every adopter clone, undetectably, because the checker
-  # that would catch it is release-excluded too.
-  # Deliberately diverges from .gaia/hook-scopes.json, which ships its own
-  # preflight entry unscrubbed: that manifest carries no coverage rule an
-  # unscrubbed entry could contradict, and this one does.
+  # release-excluded, so leaving its entry in place would ship an ORPHAN by
+  # each manifest's own coverage rule on every adopter clone.
+  # .gaia/hook-capabilities.json's checker is release-excluded, so there the
+  # orphan would ship undetectably. .gaia/hook-scopes.json's checker,
+  # check-hook-scope-manifest.sh, ships, and a hand run of it reds on the
+  # orphan; 01-files-present.sh runs the staged checker against the staged
+  # tree to hold that.
   - type: json-strip-array-element
     paths:
       - ".gaia/hook-capabilities.json"
+      - ".gaia/hook-scopes.json"
     selectors:
       - path: "hooks[]"
         match: {hook: ".claude/hooks/distribution-preflight-check.sh"}
