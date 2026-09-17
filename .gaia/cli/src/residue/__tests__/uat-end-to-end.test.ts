@@ -16,15 +16,14 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
-  readdirSync,
   readFileSync,
   rmSync,
-  statSync,
   writeFileSync,
 } from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {resolveRepoRootFromImportMeta} from '../../util/repo-root-fixture.js';
+import {collectTreeFiles, EVERY_EXTENSION} from '../../util/tree-walk.js';
 import {
   attributeBody,
   attributeBodyWith,
@@ -81,24 +80,10 @@ const capture = () => {
   return {json: (): unknown => JSON.parse(lines.at(-1) ?? '{}')};
 };
 
-const listTree = (root: string): string[] => {
-  const out: string[] = [];
-
-  const walk = (dir: string): void => {
-    if (!existsSync(dir)) return;
-
-    for (const name of readdirSync(dir)) {
-      const full = path.join(dir, name);
-
-      if (statSync(full).isDirectory()) walk(full);
-      else out.push(path.relative(root, full).split(path.sep).join('/'));
-    }
-  };
-
-  walk(root);
-
-  return out;
-};
+// Regular files only: a symlink the drain created would not read as a stray
+// write. The tally and the cursor write their caches as plain files.
+const listTree = (root: string): readonly string[] =>
+  collectTreeFiles(root, EVERY_EXTENSION);
 
 // Throws (rather than returning a boolean) so the guards-must-fail proof
 // below can drive it with `expect(() => ...).toThrow()`.

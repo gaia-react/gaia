@@ -25,66 +25,55 @@
  *
  * # What counts as an offense
  *
- * A call to `readdirSync` that passes the `recursive` option as a true literal,
- * in any `.ts` file under `.gaia/cli/src` outside the declaring module.
+ * Either of two shapes, in any `.ts` file under `.gaia/cli/src` outside the
+ * declaring module:
  *
- * That is the shape all but one of the copies enumerated above took, and the
- * one the shared module's own docblock names as what the next author writes. It is also
- * the only recursive-walk shape in this tree with no live instance outside
- * `util/tree-walk.ts`, which is what lets this guard ship with no allowlist
- * beside the declaring-module exemption.
+ * - A call to `readdirSync` that passes the `recursive` option as a true
+ *   literal. That is the shape the shared module's own docblock names as what
+ *   the next author writes.
+ * - A function that calls itself by name and lists a directory somewhere in its
+ *   body: a function declaration, or an arrow or function expression bound to a
+ *   `const`. The listing is any call named `readdirSync`, `readdir`,
+ *   `opendirSync` or `opendir`, bare or through a receiver such as `fs.`. That
+ *   is the shape a walk takes when its author reaches for no option at all.
  *
- * # Scope boundary (v1), and it is a floor rather than a clean bill of health
+ * The second shape is read from the TypeScript AST rather than from text,
+ * because recognizing it means knowing where a function body starts and ends,
+ * and text cannot say that without becoming a tokenizer. A self-call and a
+ * listing each match countless ordinary lines here; only their sharing one
+ * function's body makes a walk. `typescript` resolves here as this workspace's
+ * devDependency, which holds only while the guard stays test-resident.
  *
- * A hand-rolled walk that recurses into its own function is deliberately NOT
- * reported. Reporting the shape would red on every live construct that takes
- * it, and those split two ways rather than one.
+ * A walk that takes every file whatever its extension is not a reason to keep a
+ * private copy: the shared walk takes `EVERY_EXTENSION` for exactly that case.
  *
- * Some are walks the shared module genuinely does not serve.
- * `release/scrub.ts`'s `walkFiles` and `audit-template-dogfood.test.ts`'s
- * `collect` take every file whatever its extension, a mode `collectTreeFiles`
- * deliberately has no parameter for.
+ * # What this does not reach, and it is a floor rather than a clean bill of health
  *
- * `adopter-ci-action-pins.test.ts`'s `collectPins` is not one of those. It
- * accumulates a prefix joined to each relative path, which is what
- * `collectTreeFiles` already returns, so the shared walk expresses it. Its one
- * real divergence is that it reads every non-directory entry, where the shared
- * walk reports regular files only, so a symlinked workflow file would drop out
- * of the pin set on consolidation. It sits outside this guard because the
- * match shape does not read it, not because it was measured and found to
- * differ, and consolidating it is real work this guard does not do.
+ * `update/regen-regions.ts` falls outside both shapes on the merits rather than
+ * by exemption. It walks iteratively, draining an explicit pending list with no
+ * self-call, because `lstat` has to refuse to descend a symlinked subdirectory
+ * that the `recursive` option would walk straight through.
  *
- * So reaching that shape would owe an allowlist for the first group while
- * `collectPins` ought to go red, and telling the two apart means deciding where
- * a function body starts and ends in arbitrary source, which is a tokenizer,
- * and a tokenizer is the argument for reading this from the TypeScript AST
- * rather than from lines at all.
+ * Further shapes are unreached, and a copy taking any of them slips:
  *
- * `update/regen-regions.ts` sits outside both shapes rather than inside either.
- * It walks iteratively, draining an explicit pending list with no self-call, so
- * the self-recursion shape would never match it however that shape were spelled,
- * and it reaches for neither the option nor a recursive call because `lstat`
- * has to refuse to descend a symlinked subdirectory that the `recursive`
- * option would walk straight through. It is therefore not an exemption and
- * carries no entry here: it was measured against the match and falls outside it
- * on the merits, which is what settling the fork on this guard was meant to
- * establish.
+ * - Any other iterative walk, for the same reason `regen-regions.ts` is not
+ *   read.
+ * - Mutual recursion, where two functions each call the other, and recursion
+ *   through `this.` or any property call rather than a bare name.
+ * - A function reaching the tree through an alias or a wrapper that is not
+ *   named as a listing, such as a local helper around `readdirSync`.
+ * - The `recursive` option reached through a variable or a spread rather than
+ *   written as a literal, or passed to anything but `readdirSync`.
+ * - An option list long enough to push `recursive` past the bounded gap the
+ *   text match allows after the call, and a read whose own argument list
+ *   carries a `…Sync(` call ahead of the option, as in
+ *   `readdirSync(realpathSync(root), …)`, which the neighbouring-call bound
+ *   cannot tell from the nested `fs` call it exists to skip.
  *
- * Further shapes are unreached, and a copy taking any of them slips: the
- * `recursive` option reached through a variable or a spread rather than written
- * as a literal; the promise-based `readdir` or `opendir`, neither of which this
- * tree uses today; an option list long enough to push `recursive` past the
- * bounded gap the match allows after the call; and a read whose own argument
- * list carries a `…Sync(` call ahead of the option, as in
- * `readdirSync(realpathSync(root), …)`, which the neighbouring-call bound
- * cannot tell from the nested `fs` call it exists to skip.
- *
- * The last two are the price of the two bounds rather than oversights, and
- * neither is reachable by a call anyone writes here today: the gap's ceiling
- * sits far above the option list this API accepts, and no live `readdirSync`
- * call in this tree takes a `…Sync(` argument. Both stay documented rather than
- * closed, because closing either means parsing the call rather than bounding
- * the text around it, which is the tokenizer this guard declines to be.
+ * The last two are the price of the text match's two bounds rather than
+ * oversights, and neither is reachable by a call anyone writes here today: the
+ * gap's ceiling sits far above the option list this API accepts, and no live
+ * `readdirSync` call in this tree takes a `…Sync(` argument.
  *
  * Nothing is exempted by path except the declaring module itself, which is the
  * one place the declaration belongs. There is deliberately no allowlist beside
@@ -92,20 +81,24 @@
  * `escape-regexp-uniqueness.test.ts` shipped: if something turns out to need to
  * be unlisted, design the allowlist then.
  *
- * Repair, when this goes red: delete the private walk and
- * `import {collectTreeFiles, TS_SOURCE_EXTENSIONS} from '…/util/tree-walk.js'`.
- * If the new walk genuinely needs something the shared one does not give, say
- * so where it is declared and give it the per-directory shape this guard does
- * not read as a copy.
+ * Repair, when this goes red: delete the private walk and import
+ * `collectTreeFiles` from `…/util/tree-walk.js`, with the extension set the
+ * walk needs or `EVERY_EXTENSION`. If the new walk genuinely needs something
+ * the shared one does not give, such as refusing to descend a symlink, say so
+ * where it is declared and give it the iterative shape `regen-regions.ts`
+ * takes.
  *
  * Because this file sits inside the surface it scans, its fixtures are
  * assembled at runtime rather than written as literals: a fixture spelled out
- * as a call would be reported as the very copy it plants.
+ * as a call would be reported as the very copy it plants. The self-recursive
+ * fixtures need no such care: they sit inside string literals, which the AST
+ * never reads as functions.
  *
  * Maintainer-only by construction: `.gaia/cli/src` is release-excluded, so an
  * adopter clone carries neither these sources nor this test, and the corpus
  * scan skips there. Mirrors `escape-regexp-uniqueness.test.ts`.
  */
+import ts from 'typescript';
 import {describe, expect, test} from 'vitest';
 import {CLI_SRC, testDeclaredOnce} from './util/uniqueness-guard-fixture.js';
 
@@ -126,16 +119,108 @@ import {CLI_SRC, testDeclaredOnce} from './util/uniqueness-guard-fixture.js';
 const RECURSIVE_DIRECTORY_READ =
   /readdirSync\s*\((?:(?!Sync\s*\()[^;]){0,200}?recursive\s*:\s*true/u;
 
+/** The `fs` calls that list a directory, matched by name whatever the receiver. */
+const DIRECTORY_READS: ReadonlySet<string> = new Set([
+  'opendir',
+  'opendirSync',
+  'readdir',
+  'readdirSync',
+]);
+
 /**
- * Reports the 1-based line of the first recursive directory read, or `null`
- * when the source contains none.
+ * The identifier a function calls itself by: a declaration's own name, or the
+ * `const` an arrow or function expression is bound to.
+ */
+const selfName = (node: ts.Node): null | string => {
+  if (ts.isFunctionDeclaration(node)) {
+    return node.name?.text ?? null;
+  }
+
+  return (
+      (ts.isArrowFunction(node) || ts.isFunctionExpression(node)) &&
+        ts.isVariableDeclaration(node.parent) &&
+        ts.isIdentifier(node.parent.name)
+    ) ?
+      node.parent.name.text
+    : null;
+};
+
+/**
+ * The 1-based line of the first function that calls itself by name and lists a
+ * directory somewhere in its body, or `null` when the source holds none.
+ */
+const findSelfRecursiveWalk = (source: string): null | number => {
+  const file = ts.createSourceFile(
+    'module.ts',
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TS
+  );
+
+  /**
+   * What the calls inside `node` are made through: `bare` holds identifier
+   * callees alone, the only spelling a self-call is recognized by, and `named`
+   * adds a property call's name, so `fs.readdirSync` reads as a listing.
+   */
+  const calleeNames = (
+    node: ts.Node
+  ): {bare: Set<string>; named: Set<string>} => {
+    const bare = new Set<string>();
+    const named = new Set<string>();
+
+    const collect = (child: ts.Node): void => {
+      if (ts.isCallExpression(child)) {
+        if (ts.isIdentifier(child.expression)) {
+          bare.add(child.expression.text);
+          named.add(child.expression.text);
+        } else if (ts.isPropertyAccessExpression(child.expression)) {
+          named.add(child.expression.name.text);
+        }
+      }
+
+      ts.forEachChild(child, collect);
+    };
+
+    ts.forEachChild(node, collect);
+
+    return {bare, named};
+  };
+
+  // Depth-first in source order, so the first walk found is the first written,
+  // and a helper wrapping a walk is visited before the walk inside it.
+  const visit = (node: ts.Node): null | number => {
+    const name = selfName(node);
+
+    if (name !== null) {
+      const {bare, named} = calleeNames(node);
+
+      if (
+        bare.has(name) &&
+        [...DIRECTORY_READS].some((read) => named.has(read))
+      ) {
+        return file.getLineAndCharacterOfPosition(node.getStart(file)).line + 1;
+      }
+    }
+
+    return ts.forEachChild(node, visit) ?? null;
+  };
+
+  return visit(file);
+};
+
+/**
+ * Reports the 1-based line of the first recursive walk of either shape, or
+ * `null` when the source contains none.
  */
 const findRecursiveWalk = (source: string): null | number => {
   const match = RECURSIVE_DIRECTORY_READ.exec(source);
+  const lines = [
+    match === null ? null : source.slice(0, match.index).split('\n').length,
+    findSelfRecursiveWalk(source),
+  ].filter((line) => line !== null);
 
-  return match === null ? null : (
-      source.slice(0, match.index).split('\n').length
-    );
+  return lines.length === 0 ? null : Math.min(...lines);
 };
 
 /** The one module allowed to walk a tree recursively. */
@@ -210,10 +295,8 @@ describe('tree walk uniqueness', () => {
     expect(findRecursiveWalk(source)).toBeNull();
   });
 
-  // The documented v1 floor: the guard stays green on this shape, which live
-  // constructs in this tree take for reasons the scope-boundary section above
-  // splits two ways.
-  test('accepts a hand-rolled walk that recurses per directory', () => {
+  // The shape no option names: the walk is the function calling itself.
+  test('reports a hand-rolled walk that recurses per directory', () => {
     const source = [
       'const walk = (dir: string): string[] => {',
       `  const entries = ${asDirectoryRead([FILE_TYPES_OPTION])};`,
@@ -222,6 +305,71 @@ describe('tree walk uniqueness', () => {
       '    entry.isDirectory() ? walk(join(dir, entry.name)) : [entry.name]',
       '  );',
       '};',
+    ].join('\n');
+
+    expect(findRecursiveWalk(source)).toBe(1);
+  });
+
+  // A declaration rather than a bound arrow, reading through a namespace import.
+  test('reports a function declaration that recurses per directory', () => {
+    const source = [
+      'import fs from "node:fs";',
+      '',
+      'function walk(dir: string): string[] {',
+      '  return fs.readdirSync(dir).flatMap((name) => walk(name));',
+      '}',
+    ].join('\n');
+
+    expect(findRecursiveWalk(source)).toBe(3);
+  });
+
+  // The live instances hide the walk inside a helper, so the report has to name
+  // the inner function rather than the one a reader calls.
+  test('reports a walk nested inside another function at its own line', () => {
+    const source = [
+      'const listTree = (root: string): string[] => {',
+      '  const out: string[] = [];',
+      '',
+      '  const walk = (dir: string): void => {',
+      '    for (const name of readdirSync(dir)) walk(name);',
+      '  };',
+      '',
+      '  walk(root);',
+      '',
+      '  return out;',
+      '};',
+    ].join('\n');
+
+    expect(findRecursiveWalk(source)).toBe(4);
+  });
+
+  // Recursion is not the offense on its own: a tree of data is walked the same
+  // way, and this corpus has many.
+  test('accepts a recursive function that reads no directory', () => {
+    const source = [
+      'const depth = (node: Node): number =>',
+      '  1 + Math.max(0, ...node.children.map((child) => depth(child)));',
+    ].join('\n');
+
+    expect(findRecursiveWalk(source)).toBeNull();
+  });
+
+  // A call through a receiver reaches whatever that receiver holds, not the
+  // enclosing function, so sharing its name is not recursion.
+  test('accepts a same-named call made through a receiver', () => {
+    const source = [
+      'const walk = (dir: string): string[] =>',
+      '  readdirSync(dir).flatMap((name) => visitor.walk(name));',
+    ].join('\n');
+
+    expect(findRecursiveWalk(source)).toBeNull();
+  });
+
+  // Nor is reading a directory: the per-directory listing is the ordinary case.
+  test('accepts a directory read in a function that never calls itself', () => {
+    const source = [
+      'const names = (dir: string): string[] =>',
+      `  ${LIST_CALL}.filter((name) => name.endsWith(".md"));`,
     ].join('\n');
 
     expect(findRecursiveWalk(source)).toBeNull();

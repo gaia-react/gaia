@@ -14,6 +14,12 @@ import path from 'node:path';
 export const TS_SOURCE_EXTENSIONS: ReadonlySet<string> = new Set(['.ts']);
 
 /**
+ * The extension argument that keeps every regular file, an extensionless one
+ * and a dotfile included, which no extension set can name.
+ */
+export const EVERY_EXTENSION = 'every-extension';
+
+/**
  * `entry` with `separator` rewritten to POSIX `/`.
  *
  * The separator is a parameter so that this has a falsifiable test. `path.sep`
@@ -31,7 +37,8 @@ export const normalizeEntry = (entry: string, separator: string): string =>
  *
  * The extension set is a required parameter rather than a default, because a
  * default is how a caller that meant "everything" silently gets a narrower
- * corpus and reads the resulting empty answer as a clean pass.
+ * corpus and reads the resulting empty answer as a clean pass. A caller that
+ * does mean everything says so with `EVERY_EXTENSION`, for the same reason.
  *
  * Normalization is unconditional: a POSIX-separated entry is correct for every
  * caller, and a caller that compares an entry against a repo-relative module
@@ -53,12 +60,14 @@ export const normalizeEntry = (entry: string, separator: string): string =>
  */
 export const collectTreeFiles = (
   root: string,
-  extensions: ReadonlySet<string>
+  extensions: ReadonlySet<string> | typeof EVERY_EXTENSION
 ): readonly string[] =>
   readdirSync(root, {recursive: true, withFileTypes: true})
     .filter(
       (entry) =>
-        entry.isFile() && extensions.has(path.extname(entry.name).toLowerCase())
+        entry.isFile() &&
+        (extensions === EVERY_EXTENSION ||
+          extensions.has(path.extname(entry.name).toLowerCase()))
     )
     .map((entry) =>
       normalizeEntry(
