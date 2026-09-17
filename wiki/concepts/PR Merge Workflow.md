@@ -357,7 +357,7 @@ A waive files nothing: no tech-debt issue, no issue number, and no touch of the 
 
 Every waived finding is listed in the pull request body under the heading `## Out-of-scope machinery findings (recorded, not filed)`, one entry per finding, each carrying its `file:line`, a one-line failure mode, and its dedup key in the wrapped `<!-- gaia-debt-key: … -->` form (`.claude/skills/file-tech-debt/SKILL.md`).
 
-The changed-file set comes from the eligibility derivation block in `.claude/agents/code-audit-frontend.md` (the `FULL_BASE` / `full_changed` fence beside its review-scope block), re-run in the same Bash call because shell state does not persist between calls; it is never the member's TS/TSX-filtered review-scope set, which excludes every surface this rule exists for.
+The changed-file set is the `ELIG_CHANGED` lines `.claude/agents/code-audit-frontend.md`'s scope-resolver command prints under `--eligibility` (`.gaia/scripts/audit-resolve-scope.sh`); it is never the member's TS/TSX-filtered review-scope set, which excludes every surface this rule exists for.
 
 The gate-machinery set is whatever `audit_path_is_machinery` (`.claude/hooks/lib/audit-machinery.sh`) accepts, the same classifier both merge gates apply when they re-verify the waive, so the orchestrator and the gates read one definition of gate machinery rather than two.
 

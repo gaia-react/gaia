@@ -75,6 +75,7 @@ AUDIT_GLOBAL_RULES_PATHS="$(cat <<'EOF'
 .gaia/scripts/audit-member-digest.sh
 .gaia/scripts/audit-key-lib.sh
 .gaia/scripts/audit-resolve-scope.sh
+.gaia/scripts/audit-seed-dispositions.sh
 .gaia/scripts/main-root-lib.sh
 .gaia/scripts/resolve-audit-members.sh
 # gaia:maintainer-only:start

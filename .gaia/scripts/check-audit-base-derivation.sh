@@ -34,8 +34,7 @@
 # specialist's membership base, review base, key base, and both changed-file
 # diffs are derived: a definition resolves its scope by invoking it rather
 # than by carrying a fence, so a check reading the definitions alone would
-# police the one derivation left in prose (the default member's eligibility
-# fence) and none of the ones that decide what a specialist reviews. The script
+# police none of the derivations that decide what a specialist reviews. The script
 # spells its bases with the same upper-case names a fence does, so every
 # by-name rule below applies to it unchanged. Where a verdict line says "agent
 # files", read it as this whole scan set.
@@ -62,20 +61,20 @@
 #      and the "Full-PR scope (load-bearing)" note in
 #      .github/audit/gate-pending-members.sh). A member that self-skipped on
 #      the increment could write no marker while membership still demanded
-#      one, deadlocking the merge. The default member keeps its own
-#      `FULL_BASE` for a different job: the eligibility set the out-of-scope
+#      one, deadlocking the merge. The default member's whole-PR base is
+#      `ELIG_BASE`, for a different job: the eligibility set the out-of-scope
 #      machinery-waive abuse-check reads (.claude/hooks/lib/audit-dispositions.sh),
 #      never a review base either. Those two whole-PR bases answer to
-#      different branches, and this exemption covers both: a specialist's
-#      merge-bases against the advertised default, because membership is safe
-#      wide, while the eligibility one merge-bases against the branch the pull
-#      request merges into, because a wider set there waives findings that
-#      should be filed. So the exemption is not a loophole in this
-#      check; it is the other half of the design, and the variable name is
-#      what tells a legitimate whole-PR base apart from a drifted review base
-#      regardless of which job it serves. The assignment that owns a
-#      `merge-base` call is the nearest `IDENT=` to its left, and `FULL_BASE`
-#      is the only name allowed to own a call that does not pass `BASE_REF`.
+#      different branches, which is why they carry different names: a
+#      specialist's merge-bases against the advertised default, because
+#      membership is safe wide, while the eligibility one merge-bases against
+#      the branch the pull request merges into, because a wider set there
+#      waives findings that should be filed. So the exemption is not a loophole
+#      in this check; it is the other half of the design, and the variable name
+#      is what tells a legitimate whole-PR base apart from a drifted review
+#      base. The assignment that owns a `merge-base` call is the nearest
+#      `IDENT=` to its left, and `FULL_BASE` and `ELIG_BASE` are the only names
+#      allowed to own a call that does not pass `BASE_REF`.
 #
 #      A second bare merge-base is exempted the same way: `KEY_BASE`, the
 #      shared, pull-request-wide artifact key base every dispatched member
@@ -127,9 +126,9 @@
 #
 #      Same shape as (1): a wide fixed-string net (`diff --name-only`) narrowed
 #      in awk, where the discriminations are expressible. A call is a violation
-#      when it names ANY spelling of the review base (`resolve-audit-base.sh`,
-#      `BASE_REF`, `BASE_SHA`, `FULL_BASE`, `KEY_BASE`) and carries no `...`
-#      range.
+#      when it names ANY spelling of a base (`resolve-audit-base.sh`,
+#      `BASE_REF`, `BASE_SHA`, `FULL_BASE`, `KEY_BASE`, `ELIG_BASE`) and
+#      carries no `...` range.
 #
 #      All five spellings, not only the pre-merge-base ones, because what
 #      makes a call wrong is the two-dot comparison and NOT which variable
@@ -266,10 +265,9 @@
 #   without touching real tracked source.
 #
 # GREEN against this repo's real scan surface: every review base is resolved
-# through the resolver, the only bare merge-base left is the named `FULL_BASE`
-# exemption (the resolver's membership derivation and the default member's
-# eligibility one), and every changed-file diff is a three-dot range against
-# HEAD carrying `-z`.
+# through the resolver, the only bare merge-bases left are the named
+# exemptions, and every changed-file diff is a three-dot range against HEAD
+# carrying `-z`.
 
 # The resolver script scanned beside the definitions (see the header).
 GAIA_AUDIT_SCOPE_RESOLVER='.gaia/scripts/audit-resolve-scope.sh'
@@ -333,9 +331,9 @@ GAIA_AUDIT_DIFF_CALL='diff --name-only'
 # applying the two discriminations the ERE cannot express. A line survives
 # when it carries at least one `merge-base` call that neither takes BASE_REF
 # inside its own argument list (the resolver-derived shape this check
-# requires) nor is owned by FULL_BASE or KEY_BASE (the self-skip base, the
-# default member's waive-eligibility base, and the shared artifact-key base,
-# all deliberately exempt). Both tests are per CALL, never per line: "its own
+# requires) nor is owned by FULL_BASE, ELIG_BASE, or KEY_BASE (the self-skip
+# base, the default member's waive-eligibility base, and the shared
+# artifact-key base, all deliberately exempt). Both tests are per CALL, never per line: "its own
 # argument list" ends at the `)` that closes the call, so a BASE_REF named
 # anywhere after that vouches for nothing.
 #
@@ -417,7 +415,7 @@ _gaia_drop_full_base_matches() {
           name = substr(left, RSTART, RLENGTH - 1)
           left = substr(left, RSTART + RLENGTH)
         }
-        if (name != "FULL_BASE" && name != "KEY_BASE") { print; next }
+        if (name != "FULL_BASE" && name != "ELIG_BASE" && name != "KEY_BASE") { print; next }
         consumed += pos + 9
         rest = substr(content, consumed + 1)
       }
@@ -521,6 +519,7 @@ _gaia_keep_diff_matches_missing() {
                 || index(window, "BASE_REF") > 0 \
                 || index(window, "BASE_SHA") > 0 \
                 || index(window, "FULL_BASE") > 0 \
+                || index(window, "ELIG_BASE") > 0 \
                 || index(window, "KEY_BASE") > 0
 
         # A base-consuming call must carry the token, and `anchored` decides

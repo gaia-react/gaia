@@ -46,6 +46,9 @@ AUDIT_MACHINERY_PATHS="$(cat <<'EOF'
 # whether it self-skips: it derives the review and membership bases and the
 # changed-file lists each member acts on.
 .gaia/scripts/audit-resolve-scope.sh
+# audit-seed-dispositions.sh carries a still-open disposition receipt across a
+# frontend digest rotation, which both merge gates re-verify.
+.gaia/scripts/audit-seed-dispositions.sh
 .gaia/scripts/audit-machinery-complete.sh
 .gaia/scripts/audit-rules-changed-complete.sh
 .claude/hooks/lib/audit-dispositions.sh

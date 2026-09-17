@@ -98,24 +98,6 @@ extract_fenced_bash_after_heading() {
   ' "$file"
 }
 
-# extract_sole_bash_fence_matching <file> <ere-pattern>
-#   Prints the single ```bash ... ``` fence (fence markers matched regardless
-#   of leading indentation, so a fence nested inside a list item is still
-#   found) anywhere in <file> whose body carries at least one LINE matching
-#   <ere-pattern>. Exits 1 unless exactly one such fence exists in the whole
-#   file, the same "exactly one candidate" discipline as the heading-anchored
-#   extractor above, for content that needs no heading to disambiguate (each
-#   marker used below is unique to one fence in its file).
-extract_sole_bash_fence_matching() {
-  local file="$1" pattern="$2"
-  awk -v pat="$pattern" '
-    /^[[:space:]]*```bash[[:space:]]*$/ { infence = 1; buf = ""; has = 0; next }
-    /^[[:space:]]*```[[:space:]]*$/ { if (infence) { if (has) { found++; printf "%s", buf } }; infence = 0; next }
-    infence { buf = buf $0 "\n"; if ($0 ~ pat) has = 1 }
-    END { if (found != 1) exit 1 }
-  ' "$file"
-}
-
 # ========== 1. exactly one file states the contract ==========
 
 @test "1a. the closed mode vocabulary is stated only by the owner and the exempt helper" {
@@ -444,19 +426,69 @@ git_identity() {
   git -C "$1" config commit.gpgsign false
 }
 
-@test "7a. the eligibility set carries no pathspec: a non-TypeScript file resolves changed=1" {
-  local fence repo out
-  fence="$(extract_sole_bash_fence_matching "$REPO_ROOT/.claude/agents/code-audit-frontend.md" '^FULL_BASE=')" || {
-    echo "expected exactly one fence assigning FULL_BASE at column 0 in code-audit-frontend.md" >&2
+# resolver_repo <dir> <initial-branch>: a committed repository carrying the
+# scope resolver and everything it reaches for, at their real repo-relative
+# paths, since the resolver refuses a --root that is not the tree it sits in.
+resolver_repo() {
+  local dir="$1" branch="$2"
+  mkdir -p "$dir/.gaia/scripts" "$dir/.gaia/local/audit" "$dir/.github/audit" "$dir/.claude/hooks/lib"
+  cp "$REPO_ROOT/.gaia/scripts/audit-resolve-scope.sh" \
+    "$REPO_ROOT/.gaia/scripts/audit-scope-digest.sh" \
+    "$REPO_ROOT/.gaia/scripts/audit-key-lib.sh" \
+    "$REPO_ROOT/.gaia/scripts/audit-respawn-lib.sh" \
+    "$REPO_ROOT/.gaia/scripts/audit-member-digest.sh" \
+    "$dir/.gaia/scripts/"
+  cp "$REPO_ROOT/.github/audit/resolve-audit-base.sh" "$dir/.github/audit/"
+  cp "$REPO_ROOT/.gaia/audit-ci.yml" "$dir/.gaia/"
+  cp "$REPO_ROOT/.claude/hooks/lib/audit-scope.sh" \
+    "$REPO_ROOT/.claude/hooks/lib/audit-base-provenance.sh" \
+    "$REPO_ROOT/.claude/hooks/lib/audit-rules-changed.sh" \
+    "$REPO_ROOT/.claude/hooks/lib/audit-clearance.sh" \
+    "$REPO_ROOT/.claude/hooks/lib/audit-digest.sh" \
+    "$REPO_ROOT/.claude/hooks/lib/audit-machinery.sh" \
+    "$REPO_ROOT/.claude/hooks/lib/gaia-version.sh" \
+    "$dir/.claude/hooks/lib/"
+  chmod +x "$dir/.gaia/scripts/audit-resolve-scope.sh" "$dir/.gaia/scripts/audit-scope-digest.sh" \
+    "$dir/.github/audit/resolve-audit-base.sh"
+  printf '2.0.0\n' > "$dir/.gaia/VERSION"
+  git -C "$dir" init -q --initial-branch="$branch"
+  git_identity "$dir"
+  git -C "$dir" add -A && git -C "$dir" commit -q -m init
+}
+
+# frontend_changed_verdicts <repo> <path>...: runs the default member's own
+# resolver command against <repo> with one `--finding-path` per <path>, the
+# way the member re-runs it per filed finding, and prints its
+# DEBT_ORIGIN_CHANGED lines. Fails when the definition carries no such
+# command, or when that command does not ask for the eligibility set.
+frontend_changed_verdicts() {
+  local repo="$1" line out p
+  shift
+  line="$(awk '
+    /^```bash$/ { infence = 1; next }
+    /^```$/     { infence = 0; next }
+    infence && /^<root>\/\.gaia\/scripts\/audit-resolve-scope\.sh / { line = $0; found++ }
+    END         { if (found != 1) exit 1; print line }
+  ' "$REPO_ROOT/.claude/agents/code-audit-frontend.md")" || {
+    echo "expected exactly one resolver command line in code-audit-frontend.md" >&2
     return 1
   }
+  grep -qF -- '--eligibility' <<<"$line" || {
+    echo "the default member's resolver command does not pass --eligibility" >&2
+    return 1
+  }
+  for p in "$@"; do
+    line="$line --finding-path '$p'"
+  done
+  out="$(env -u GITHUB_ACTIONS -u GITHUB_BASE_REF PATH="$BATS_TEST_TMPDIR/no-gh:$PATH" bash -c "${line//<root>/$repo}" 2>/dev/null)" || return 1
+  printf '%s\n' "$out" | grep '^DEBT_ORIGIN_CHANGED='
+}
+
+@test "7a. the eligibility set carries no pathspec: a non-TypeScript file resolves changed=1" {
+  local repo out p
 
   repo="$BATS_TEST_TMPDIR/no-pathspec"
-  mkdir -p "$repo"
-  git -C "$repo" init -q --initial-branch=main
-  git_identity "$repo"
-  echo init >"$repo/f"
-  git -C "$repo" add -A && git -C "$repo" commit -q -m init
+  resolver_repo "$repo" main
   git -C "$repo" checkout -q -b feat
   mkdir -p "$repo/app"
   echo 'export const a = 1' >"$repo/app/a.ts"
@@ -464,72 +496,52 @@ git_identity() {
   echo 'echo hi' >"$repo/script.sh"
   git -C "$repo" add -A && git -C "$repo" commit -q -m "one ts file and two non-ts files"
 
-  out="$(AUDIT_ROOT="$repo" bash -c "${fence}"'; printf "%s\n" "$full_changed"')"
-  local p
+  out="$(frontend_changed_verdicts "$repo" app/a.ts note.md script.sh)" || return 1
   for p in app/a.ts note.md script.sh; do
-    grep -qxF "$p" <<<"$out" || {
-      printf 'eligibility set missing %s (this is the "*.ts/*.tsx" pathspec a "helpful" future edit would silently add): %s\n' "$p" "$out" >&2
+    grep -qxF "DEBT_ORIGIN_CHANGED=1 $p" <<<"$out" || {
+      printf 'expected changed=1 for %s (this is the "*.ts/*.tsx" pathspec a "helpful" future edit would silently add): %s\n' "$p" "$out" >&2
       return 1
     }
   done
 }
 
 @test "7b. an unresolvable base yields changed=unknown, never 0" {
-  local full_base_fence changed_fence repo result
-
-  full_base_fence="$(extract_sole_bash_fence_matching "$REPO_ROOT/.claude/agents/code-audit-frontend.md" '^FULL_BASE=')" || {
-    echo "expected exactly one fence assigning FULL_BASE at column 0 in code-audit-frontend.md" >&2
-    return 1
-  }
-  changed_fence="$(extract_sole_bash_fence_matching "$REPO_ROOT/.claude/agents/code-audit-frontend.md" '^[[:space:]]*debt_origin_changed=')" || {
-    echo "expected exactly one fence assigning debt_origin_changed in code-audit-frontend.md" >&2
-    return 1
-  }
+  local repo result
 
   # A repo with no origin remote and a branch other than main: the
   # default-branch probe finds no refs/remotes/origin/HEAD, falls back to
   # the literal "main", and neither origin/main nor main exists, so both
-  # merge-base arms fail and FULL_BASE comes back empty. Reachable on a real
-  # adopter clone (git init + git remote add creates no origin/HEAD symref),
-  # not a contrivance.
+  # merge-base arms fail and the eligibility base comes back empty. Reachable
+  # on a real adopter clone (git init + git remote add creates no origin/HEAD
+  # symref), not a contrivance.
   repo="$BATS_TEST_TMPDIR/no-base"
-  mkdir -p "$repo"
-  git -C "$repo" init -q --initial-branch=master
-  git_identity "$repo"
-  echo init >"$repo/f"
-  git -C "$repo" add -A && git -C "$repo" commit -q -m init
+  resolver_repo "$repo" master
 
-  result="$(AUDIT_ROOT="$repo" bash -c "${full_base_fence}
-${changed_fence}
-printf '%s\n' \"\$debt_origin_changed\"")"
+  result="$(frontend_changed_verdicts "$repo" f)" || return 1
 
-  [ "$result" = "unknown" ] || {
-    printf 'debt_origin_changed was %s on an unresolvable base, want unknown\n' "$result" >&2
+  [ "$result" = "DEBT_ORIGIN_CHANGED=unknown f" ] || {
+    printf 'verdict was %s on an unresolvable base, want unknown\n' "$result" >&2
     return 1
   }
   # Explicit: the never-0 promise is a distinct assertion, not implied by the
   # equality check above.
-  [ "$result" != "0" ] || {
-    echo "debt_origin_changed resolved to 0 on an unresolvable base; 0 asserts the PR did not touch the file, which an unresolvable base can never assert" >&2
+  grep -qF -- 'DEBT_ORIGIN_CHANGED=0' <<<"$result" && {
+    echo "changed resolved to 0 on an unresolvable base; 0 asserts the PR did not touch the file, which an unresolvable base can never assert" >&2
     return 1
   }
+  true
 }
 
 @test "7c. the eligibility diff is three-dot, never two-dot" {
-  local fence
-  fence="$(extract_sole_bash_fence_matching "$REPO_ROOT/.claude/agents/code-audit-frontend.md" '^FULL_BASE=')" || {
-    echo "expected exactly one fence assigning FULL_BASE at column 0 in code-audit-frontend.md" >&2
-    return 1
-  }
-  grep -qF -- '"${FULL_BASE}...HEAD"' <<<"$fence" || {
-    echo "the eligibility fence no longer diffs \${FULL_BASE}...HEAD (three-dot); a two-dot form compares the base to the working tree instead" >&2
+  grep -qF -- '"${ELIG_BASE}...HEAD"' "$REPO_ROOT/.gaia/scripts/audit-resolve-scope.sh" || {
+    echo "the resolver no longer diffs \${ELIG_BASE}...HEAD (three-dot); a two-dot form compares the base to the working tree instead" >&2
     return 1
   }
 }
 
-# Tests 7a through 7c extract the fence from `.claude/agents/code-audit-frontend.md`,
-# so they guard the LOCAL route only. The continuous-integration route asks the
-# same question of a value the event payload already carries, which is a second
+# Tests 7a and 7b run the resolver command `.claude/agents/code-audit-frontend.md`
+# carries, so with 7c they guard the LOCAL route only. The
+# continuous-integration route asks the same question of a value the event payload already carries, which is a second
 # implementation of the same two properties. Without this test, adding a
 # pathspec or switching three-dot to two-dot in the workflow would make a
 # continuous-integration filing report `changed=0` for a finding on a

@@ -17,6 +17,7 @@
 # Usage:
 #   <root>/.gaia/scripts/audit-resolve-scope.sh --member <name> --root <root>
 #       [--review-path <pathspec>]... [--skip-full-base] [--base-override <ref>]
+#       [--eligibility [--finding-path <path>]...]
 #
 #   --member          The member resolving its scope. Passed to
 #                     resolve-audit-base.sh --member and to the capture.
@@ -32,27 +33,43 @@
 #   --base-override   Use <ref> as the review base in place of the resolver's
 #                     first line. KEY_REF, BASE_REASON and ANCHOR_TREE still
 #                     come from the resolver, which made that decision.
+#   --eligibility     Also resolve the default member's waive-eligibility set:
+#                     the whole-PR fork point against the branch the pull
+#                     request merges into (ELIG_BASE) and every path it
+#                     changes, unfiltered (ELIG_CHANGED). Only this flag
+#                     consults `gh`.
+#   --finding-path    A finding's repo-relative path to answer "did this pull
+#                     request change it" for, against the eligibility set.
+#                     Repeatable. Requires --eligibility.
 #
 # Output (stdout), one KEY=value per line, in this order:
 #   AUDIT_ROOT FULL_BASE BASE_REF BASE_REASON KEY_REF ANCHOR_TREE BASE_SHA
-#   KEY_BASE AUDIT_KEY D_SCOPE, then one FULL_CHANGED=<path> per whole-PR path, one
-#   CHANGED=<path> per review-scope path, one DIRTY=<status line> per dirty
-#   in-scope entry, its path raw rather than quoted. An unresolved scalar prints
-#   with an empty value: AUDIT_KEY is empty whenever KEY_BASE or the branch is
-#   undeterminable, a detached HEAD among them, and every artifact keyed on it
-#   is skipped fail-open. FULL_BASE is omitted under --skip-full-base.
+#   KEY_BASE AUDIT_KEY ELIG_BASE D_SCOPE, then one FULL_CHANGED=<path> per
+#   whole-PR path, one CHANGED=<path> per review-scope path, one
+#   ELIG_CHANGED=<path> per eligibility path, one
+#   DEBT_ORIGIN_CHANGED=<1|0|unknown> <path> per --finding-path, one
+#   DIRTY=<status line> per dirty in-scope entry, its path raw rather than
+#   quoted. An unresolved scalar prints with an empty value: AUDIT_KEY is empty
+#   whenever KEY_BASE or the branch is undeterminable, a detached HEAD among
+#   them, and every artifact keyed on it is skipped fail-open. FULL_BASE is
+#   omitted under --skip-full-base; ELIG_BASE and both eligibility lists are
+#   omitted without --eligibility.
 #
 # Exit status:
 #   0  resolved. Warnings about an empty base or a failed capture go to stderr
 #      and do not change the status, because each consumer downstream already
-#      refuses on the empty value it would receive.
+#      refuses on the empty value it would receive. An eligibility base that
+#      does not resolve, or whose diff fails, is one of these: ELIG_BASE prints
+#      empty and every verdict is `unknown`, which disengages the waive rather
+#      than stopping the audit that reads it.
 #   1  the membership base is unresolvable, the base-provenance resolver it
 #      comes from is missing, or a diff listing either changed-path list fails.
 #      Nothing after it runs: an empty FULL_BASE or a failed diff makes the
 #      list empty at status 0, which reads exactly like a pull request that
 #      touched nothing in the member's remit, and a self-skip there writes no
 #      marker at all. The stderr line names which of the causes it hit.
-#   2  usage error, or a --root this script refuses.
+#   2  usage error (a --finding-path without --eligibility among them), or a
+#      --root this script refuses.
 #
 # Confinement: the script derives its own tree from its on-disk location and
 # refuses a --root that does not resolve to that same tree. A member can
@@ -63,7 +80,7 @@
 # of the right tree passes.
 
 _ars_usage() {
-  printf 'usage: audit-resolve-scope.sh --member <name> --root <root> [--review-path <pathspec>]... [--skip-full-base] [--base-override <ref>]\n' >&2
+  printf 'usage: audit-resolve-scope.sh --member <name> --root <root> [--review-path <pathspec>]... [--skip-full-base] [--base-override <ref>] [--eligibility [--finding-path <path>]...]\n' >&2
 }
 
 member=""
@@ -71,7 +88,9 @@ root_arg=""
 root_given=0
 skip_full_base=0
 base_override=""
+eligibility=0
 review_paths=()
+finding_paths=()
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --member)
@@ -88,6 +107,11 @@ while [ "$#" -gt 0 ]; do
     --base-override)
       [ "$#" -ge 2 ] || { _ars_usage; exit 2; }
       base_override="$2"; shift 2 ;;
+    --eligibility)
+      eligibility=1; shift ;;
+    --finding-path)
+      [ "$#" -ge 2 ] || { _ars_usage; exit 2; }
+      finding_paths+=("$2"); shift 2 ;;
     -h|--help)
       _ars_usage; exit 0 ;;
     *)
@@ -97,6 +121,11 @@ while [ "$#" -gt 0 ]; do
 done
 
 if [ -z "$member" ] || [ "$root_given" -eq 0 ]; then
+  _ars_usage
+  exit 2
+fi
+if [ "${#finding_paths[@]}" -gt 0 ] && [ "$eligibility" -eq 0 ]; then
+  printf 'audit-resolve-scope: --finding-path requires --eligibility\n' >&2
   _ars_usage
   exit 2
 fi
@@ -205,6 +234,57 @@ if [ -n "$KEY_BASE" ] && [ -f "$self_root/.gaia/scripts/audit-key-lib.sh" ]; the
 fi
 printf 'AUDIT_KEY=%s\n' "$AUDIT_KEY"
 
+# The eligibility set decides which out-of-scope findings the default member's
+# machinery waive may cover, so it is taken against the branch this pull
+# request MERGES INTO, never the advertised default: on a pull request stacked
+# on another branch, a default-branch fork point hands the waive every file the
+# base branch changed. A declared base counts only when its remote-tracking ref
+# resolves, since a bare local branch of the same name could sit on this pull
+# request's own commits and empty the set.
+#
+# The ladder is deliberately not the verify side's
+# (.claude/hooks/lib/audit-dispositions.sh): its `origin/<default>` arm is a
+# short revspec a local branch of that name shadows, where the verify side
+# reads the fully-qualified ref.
+#
+# Unlike FULL_BASE, an unresolvable ELIG_BASE does not stop the script. The
+# default member's self-skip is oracle-based, so an empty base costs the waive
+# brake and nothing else. The base is tested, never the diff's emptiness: git
+# resolves an empty left side to HEAD, so an unresolved base and a resolved
+# base with no differences both yield an empty diff, and only one of them
+# means "unknown".
+elig_changed=()
+if [ "$eligibility" -eq 1 ]; then
+  pr_branch=""
+  if [ "${GITHUB_ACTIONS:-}" = "true" ] && [ -n "${GITHUB_BASE_REF:-}" ]; then
+    pr_branch="$GITHUB_BASE_REF"
+  elif command -v gh >/dev/null 2>&1; then
+    pr_branch="$( (cd "$root" && gh pr view --json baseRefName --jq '.baseRefName') 2>/dev/null || true)"
+  fi
+  elig_ref=""
+  if [ -n "$pr_branch" ] && git -C "$root" rev-parse --verify --quiet "refs/remotes/origin/${pr_branch}" >/dev/null 2>&1; then
+    elig_ref="refs/remotes/origin/${pr_branch}"
+  fi
+  default_branch="$(git -C "$root" symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@')"
+  [ -n "$default_branch" ] || default_branch="main"
+  primary_ref="${elig_ref:-origin/${default_branch}}"
+  fallback_ref="${elig_ref:-${default_branch}}"
+  ELIG_BASE="$(git -C "$root" merge-base HEAD "$primary_ref" 2>/dev/null || git -C "$root" merge-base HEAD "$fallback_ref" 2>/dev/null || true)"
+  if [ -z "$ELIG_BASE" ]; then
+    printf 'no eligibility base against %s or %s: the machinery waive disengages and every provenance verdict is unknown\n' \
+      "$primary_ref" "$fallback_ref" >&2
+  elif ! git -C "$root" diff --name-only -z "${ELIG_BASE}...HEAD" > "$ars_tmp/elig" 2>"$ars_tmp/elig.err"; then
+    printf 'could not list the eligibility set (%s...HEAD): %s; the machinery waive disengages and every provenance verdict is unknown\n' \
+      "$ELIG_BASE" "$(head -1 "$ars_tmp/elig.err")" >&2
+    ELIG_BASE=""
+  else
+    while IFS= read -r -d '' path; do
+      elig_changed+=("$path")
+    done < "$ars_tmp/elig"
+  fi
+  printf 'ELIG_BASE=%s\n' "$ELIG_BASE"
+fi
+
 # Three-dot against HEAD: the clearance digest is computed over HEAD's tracked
 # content, so the review list must name HEAD's changes, not the working tree's
 # and not an advanced ref tip's.
@@ -254,6 +334,25 @@ for path in ${full_changed[@]+"${full_changed[@]}"}; do
 done
 for path in ${changed[@]+"${changed[@]}"}; do
   printf 'CHANGED=%s\n' "$path"
+done
+for path in ${elig_changed[@]+"${elig_changed[@]}"}; do
+  printf 'ELIG_CHANGED=%s\n' "$path"
+done
+# Whole-string equality against the set, never a prefix or substring test. An
+# unresolved base answers `unknown`, never `0`: `0` asserts the pull request did
+# not touch the path, which an unresolved base cannot assert.
+for finding in ${finding_paths[@]+"${finding_paths[@]}"}; do
+  verdict="unknown"
+  if [ -n "$ELIG_BASE" ]; then
+    verdict="0"
+    for path in ${elig_changed[@]+"${elig_changed[@]}"}; do
+      if [ "$path" = "$finding" ]; then
+        verdict="1"
+        break
+      fi
+    done
+  fi
+  printf 'DEBT_ORIGIN_CHANGED=%s %s\n' "$verdict" "$finding"
 done
 if [ "${#dirty[@]}" -gt 0 ]; then
   printf 'DIRTY IN REVIEW SCOPE:\n' >&2
