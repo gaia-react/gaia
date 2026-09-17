@@ -730,8 +730,8 @@ PY
   local line mutated once="$BATS_TEST_TMPDIR/renamed-once.yml"
   local doctored="$BATS_TEST_TMPDIR/renamed.yml" gaps
   line="$(sole_line_matching "$CODE_REVIEW_AUDIT" \
-    '^        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6\.0\.10$')" || return 1
-  mutated="        uses: pnpm/action-setup-renamed@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10"
+    '^        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6\.1\.0$')" || return 1
+  mutated="        uses: pnpm/action-setup-renamed@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0"
   assert_doctored "$line" "$mutated" "renaming the pnpm call site away" || return 1
   replace_line "$CODE_REVIEW_AUDIT" "$line" "$mutated" "$once"
 
