@@ -8,9 +8,10 @@
 # nothing structural stops a repair to one from leaving the other behind. That
 # already happened once: a widened value-taking option table landed in the
 # destructive gate alone, and the commit gate went on reading the payload cwd
-# for spellings the other gate resolved. The divergence is silent in both hooks,
-# because each falls back to a tree it would have read anyway, so this suite is
-# the only place it goes red.
+# for spellings the other gate resolved. Neither hook reports the divergence: a
+# commit gate that misses a spelling falls back to the payload cwd, and a
+# destructive gate that misses one reads no subcommand and allows, so this suite
+# is the only place it goes red.
 #
 # Each walk is driven as its hook defines it: every top-level function in the
 # hook file is loaded into its own bash process, so the two copies of any shared
@@ -23,12 +24,14 @@ setup() {
 }
 
 # walk_dirs <hook> <walk>: read segments from stdin, print the directory the
-# named walk resolves for each, one per line. Exits 3 when the walk is not
-# defined after loading, so a renamed function reads as a failure rather than
-# as a column of empty directories.
+# named walk resolves for each, one per line, then a closing `end` line so a
+# caller's command substitution cannot strip trailing empty directories. Exits 3
+# when the walk is not defined after loading, so a renamed function reads as a
+# failure rather than as a column of empty directories.
 walk_dirs() {
   local hook="$1" walk="$2" defs
   defs=$(awk '/^[A-Za-z_][A-Za-z0-9_]*\(\) \{$/ { p = 1 } p { print } p && /^}$/ { p = 0 }' "$hook")
+  # shellcheck disable=SC2016 # the program expands DEFS and WALK in the child, from its environment
   DEFS="$defs" WALK="$walk" "$BASH" -c '
     eval "$DEFS"
     declare -F "$WALK" >/dev/null || exit 3
@@ -41,6 +44,7 @@ walk_dirs() {
       fi
       printf "%s\n" "$d"
     done
+    printf "end\n"
   '
 }
 
@@ -55,6 +59,9 @@ check_rows() {
   expected=$(printf '%s\n' "$rows" | cut -d'|' -f2-)
   commit=$(printf '%s\n' "$segs" | walk_dirs "$COMMIT_HOOK" git_segment_c) || { echo "git_segment_c not loadable"; return 1; }
   destructive=$(printf '%s\n' "$segs" | walk_dirs "$DESTRUCTIVE_HOOK" parse_git_globals) || { echo "parse_git_globals not loadable"; return 1; }
+  [ "${commit##*$'\n'}" = end ] && [ "${destructive##*$'\n'}" = end ] || { echo "a walk exited before reading every row"; return 1; }
+  commit="${commit%$'\n'end}"
+  destructive="${destructive%$'\n'end}"
 
   # A walk yielding fewer lines than it was fed would pair every later row with
   # the wrong answer, so the line counts have to match before any row is read.
@@ -74,15 +81,28 @@ check_rows() {
 }
 
 # option_table <hook> <walk>: the value-taking global options the walk skips,
-# read from the `-c | ...` case arm inside its own function body, since a hook
-# can carry an arm of the same shape for a subcommand's options. Fails unless
-# the body holds exactly one such arm.
+# read from every case arm inside its own function body (a hook can carry arms
+# of the same shape for a subcommand's options elsewhere) whose body steps past
+# two words, on the pattern's own line or the line after it. `-C` is excluded:
+# it is the option being resolved, not skipped. Fails when no option is found.
 option_table() {
-  local arms
-  arms=$(awk -v f="$2" '$0 == f "() {" { p = 1 } p { print } p && /^}$/ { exit }' "$1" \
-    | grep -E '^[[:space:]]*-c \|.*\)')
-  [ "$(printf '%s\n' "$arms" | grep -c .)" -eq 1 ] || return 1
-  printf '%s\n' "$arms" | sed -E 's/\).*//' | tr '|' '\n' | tr -d ' ' | grep .
+  awk -v f="$2" '
+    $0 == f "() {" { p = 1; next }
+    !p { next }
+    /^}$/ { exit }
+    pending != "" { if ($0 ~ /i \+ 2/) emit(pending); pending = "" }
+    /^[[:space:]]*-[^)]*\)/ {
+      pat = $0; sub(/^[[:space:]]*/, "", pat); sub(/\).*/, "", pat)
+      rest = $0; sub(/^[^)]*\)/, "", rest)
+      if (rest ~ /i \+ 2/) emit(pat)
+      else if (rest !~ /;;/) pending = pat
+    }
+    function emit(s,   n, a, k) {
+      n = split(s, a, "|")
+      for (k = 1; k <= n; k++) { gsub(/ /, "", a[k]); if (a[k] != "-C" && a[k] != "") { print a[k]; found = 1 } }
+    }
+    END { exit found ? 0 : 1 }
+  ' "$1"
 }
 
 @test "both walks resolve the same global -C directory on the shared corpus" {
@@ -129,8 +149,12 @@ EOF
 
 @test "every value-taking global either walk skips is skipped by both" {
   local commit_opts destructive_opts opts rows opt
-  commit_opts=$(option_table "$COMMIT_HOOK" git_segment_c) || { echo "commit gate option arm not found exactly once"; return 1; }
-  destructive_opts=$(option_table "$DESTRUCTIVE_HOOK" parse_git_globals) || { echo "destructive gate option arm not found exactly once"; return 1; }
+  commit_opts=$(option_table "$COMMIT_HOOK" git_segment_c) || { echo "no skipped option found in git_segment_c"; return 1; }
+  destructive_opts=$(option_table "$DESTRUCTIVE_HOOK" parse_git_globals) || { echo "no skipped option found in parse_git_globals"; return 1; }
+  # A reader that silently stopped matching arms would shrink the set rather
+  # than empty it; `-c` sits in both tables, so its absence means a short read.
+  grep -qx -- -c <<<"$commit_opts" || { echo "commit gate read is short: no -c"; return 1; }
+  grep -qx -- -c <<<"$destructive_opts" || { echo "destructive gate read is short: no -c"; return 1; }
   opts=$(printf '%s\n%s\n' "$commit_opts" "$destructive_opts" | sort -u)
   [ -n "$opts" ] || { echo "no options derived"; return 1; }
   rows=""

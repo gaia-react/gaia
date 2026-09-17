@@ -116,8 +116,8 @@ cmd=$(echo "$input" | jq -r '.tool_input.command // ""' 2>/dev/null)
 # This walk and `parse_git_globals` in block-main-destructive-git.sh read the
 # same grammar and are kept as two copies, so a change to the option table or
 # the word split below belongs in both. A walk that stops recognizing a
-# spelling raises nothing in either hook: each falls back to a tree it would
-# have read anyway.
+# spelling raises nothing in either hook: this one falls back to the payload
+# cwd, and the destructive gate reads no subcommand and allows.
 #
 # Honest limit: the words are read with the shell's quoting but never its
 # expansion, so a `-C` whose path carries an unexpanded variable, `$(...)`, or
