@@ -190,7 +190,59 @@ run_hook_without_library() {
   assert_denied_by_json
 }
 
-@test "every plain-file flag reader-operands.sh carries denies a secret passed as its value" {
+# --- Bash: filter flags whose value SELECTS the files a search reads ---
+#
+# The Grep tool arm already denies a `glob` naming a secret class; these pin the
+# Bash spellings of the same filter to the same verdict.
+
+@test "rg -g '*.key' TOKEN is denied (the filter selects the secret class)" {
+  run_hook_bash "rg -g '*.key' TOKEN"
+  assert_denied_by_json
+}
+
+@test "rg --glob '*.key' TOKEN is denied" {
+  run_hook_bash "rg --glob '*.key' TOKEN"
+  assert_denied_by_json
+}
+
+@test "rg --iglob '*.key' TOKEN is denied" {
+  run_hook_bash "rg --iglob '*.key' TOKEN"
+  assert_denied_by_json
+}
+
+@test "grep -r TOKEN --include='*.key' . is denied" {
+  run_hook_bash "grep -r TOKEN --include='*.key' ."
+  assert_denied_by_json
+}
+
+@test "grep -r TOKEN --include='*.pem' . is denied" {
+  run_hook_bash "grep -r TOKEN --include='*.pem' ."
+  assert_denied_by_json
+}
+
+@test "rg -g '!*.key' TOKEN is allowed (a negated glob excludes the class)" {
+  run_hook_bash "rg -g '!*.key' TOKEN"
+  assert_allowed_by_json
+}
+
+@test "grep -r TOKEN --exclude=*.key . is allowed (--exclude names files not read)" {
+  run_hook_bash "grep -r TOKEN --exclude=*.key ."
+  assert_allowed_by_json
+}
+
+@test "grep -r TOKEN --exclude-dir=secrets . is allowed" {
+  run_hook_bash "grep -r TOKEN --exclude-dir=secrets ."
+  assert_allowed_by_json
+}
+
+@test "rg -g '*.ts' server.key app is allowed (the select flag still consumes its value)" {
+  # If -g stopped consuming its value, '*.ts' would be taken as the pattern and
+  # server.key emitted as a file operand.
+  run_hook_bash "rg -g '*.ts' server.key app"
+  assert_allowed_by_json
+}
+
+@test "every plain-file and select flag reader-operands.sh carries denies a secret passed as its value" {
   local lib="$HOOKS_SRC/lib/reader-operands.sh"
   # shellcheck source=.claude/hooks/lib/reader-operands.sh disable=SC1091
   . "$lib"
@@ -217,19 +269,21 @@ run_hook_without_library() {
     return 1
   fi
 
-  # Subtract the tables that carry no plain-file flag, rather than selecting
-  # the ones that do by name. Selecting would rest the comparison on a naming
-  # convention this test cannot enforce; subtracting puts the burden the other
-  # way, so a new table is a mismatch until someone either gives it a grammar
-  # arm below or writes it into this list. Deliberately not plain-file tables:
-  # PLAIN_READERS and GREP_READERS hold command words rather than flags, and
-  # SHORT_DISCARD and LONG_DISCARD hold the flags whose value the walk throws
-  # away instead of opening.
+  # Subtract the tables that carry no flag whose value reaches the predicate,
+  # rather than selecting the ones that do by name. Selecting would rest the
+  # comparison on a naming convention this test cannot enforce; subtracting puts
+  # the burden the other way, so a new table is a mismatch until someone either
+  # gives it a grammar arm below or writes it into this list. Deliberately not
+  # judged tables: PLAIN_READERS and GREP_READERS hold command words rather than
+  # flags, and SHORT_DISCARD and LONG_DISCARD hold the flags whose value the
+  # walk throws away. The FILE tables name a file the reader opens; the SELECT
+  # tables name a glob choosing which files a recursive search opens.
   found=$(printf '%s\n' "$declared" \
     | grep -vxE '_GAIA_RO_(PLAIN_READERS|GREP_READERS|SHORT_DISCARD|LONG_DISCARD)') || true
-  known=$(printf '%s\n' _GAIA_RO_LONG_FILE_PATTERN _GAIA_RO_LONG_FILE_PLAIN _GAIA_RO_SHORT_FILE | sort)
+  known=$(printf '%s\n' _GAIA_RO_LONG_FILE_PATTERN _GAIA_RO_LONG_FILE_PLAIN _GAIA_RO_SHORT_FILE \
+    _GAIA_RO_LONG_SELECT _GAIA_RO_SHORT_SELECT | sort)
   if [ "$found" != "$known" ]; then
-    echo "the plain-file tables in lib/reader-operands.sh are not the ones this test builds commands for" >&2
+    echo "the judged-flag tables in lib/reader-operands.sh are not the ones this test builds commands for" >&2
     echo "  lib:  $(echo "$found" | tr '\n' ' ')" >&2
     echo "  test: $(echo "$known" | tr '\n' ' ')" >&2
     return 1
@@ -271,6 +325,17 @@ run_hook_without_library() {
     cmds+=("rg $f certs/server.key TOKEN app")
     cmds+=("rg $f=certs/server.key TOKEN app")
   done
+  i=0
+  while [ "$i" -lt "${#_GAIA_RO_SHORT_SELECT}" ]; do
+    c="${_GAIA_RO_SHORT_SELECT:$i:1}"
+    cmds+=("rg -$c '*.key' TOKEN")
+    cmds+=("rg -$c*.key TOKEN")
+    i=$((i + 1))
+  done
+  for f in $_GAIA_RO_LONG_SELECT; do
+    cmds+=("rg $f '*.key' TOKEN")
+    cmds+=("rg $f='*.key' TOKEN")
+  done
 
   local cmd allowed=0
   for cmd in "${cmds[@]}"; do
@@ -281,6 +346,41 @@ run_hook_without_library() {
     fi
   done
   [ "$allowed" -eq 0 ]
+}
+
+@test "every select flag reader-operands.sh carries allows a negated glob naming the secret class" {
+  local lib="$HOOKS_SRC/lib/reader-operands.sh"
+  # shellcheck source=.claude/hooks/lib/reader-operands.sh disable=SC1091
+  . "$lib"
+
+  # The test above holds the select tables to the library's declarations, so
+  # this one only refuses a table emptied in place before deriving from it.
+  if [ -z "$_GAIA_RO_SHORT_SELECT" ] || [ -z "$_GAIA_RO_LONG_SELECT" ]; then
+    echo "a select table is empty in lib/reader-operands.sh" >&2
+    return 1
+  fi
+
+  local cmds=() f c i=0
+  while [ "$i" -lt "${#_GAIA_RO_SHORT_SELECT}" ]; do
+    c="${_GAIA_RO_SHORT_SELECT:$i:1}"
+    cmds+=("rg -$c '!*.key' TOKEN")
+    cmds+=("rg -$c!*.key TOKEN")
+    i=$((i + 1))
+  done
+  for f in $_GAIA_RO_LONG_SELECT; do
+    cmds+=("rg $f '!*.key' TOKEN")
+    cmds+=("rg $f='!*.key' TOKEN")
+  done
+
+  local cmd denied=0
+  for cmd in "${cmds[@]}"; do
+    run_hook_bash "$cmd"
+    if [ "$status" -ne 0 ] || grep -qF -- '"permissionDecision": "deny"' <<<"$output"; then
+      echo "not allowed: $cmd" >&2
+      denied=1
+    fi
+  done
+  [ "$denied" -eq 0 ]
 }
 
 @test "x=\$(<certs/server.key) is denied (redirection)" {

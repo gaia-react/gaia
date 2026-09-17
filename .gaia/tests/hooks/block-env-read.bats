@@ -273,6 +273,38 @@ run_write_hook_edit() {
   assert_allowed_by_json
 }
 
+# --- Bash: filter flags whose value SELECTS the files a search reads ---
+
+@test "grep -r SECRET --include='.env' . is denied (the filter selects the dotenv class)" {
+  run_hook_bash "grep -r SECRET --include='.env' ."
+  assert_denied_by_json
+}
+
+@test "rg -g '.env*' SECRET is denied" {
+  run_hook_bash "rg -g '.env*' SECRET"
+  assert_denied_by_json
+}
+
+@test "rg --glob=.env.local SECRET is denied" {
+  run_hook_bash "rg --glob=.env.local SECRET"
+  assert_denied_by_json
+}
+
+@test "rg -g '!.env*' SECRET is allowed (a negated glob excludes the class)" {
+  run_hook_bash "rg -g '!.env*' SECRET"
+  assert_allowed_by_json
+}
+
+@test "grep -r SECRET --exclude=.env . is allowed (--exclude names files not read)" {
+  run_hook_bash "grep -r SECRET --exclude=.env ."
+  assert_allowed_by_json
+}
+
+@test "rg -g '*.ts' .env app is allowed (the select flag still consumes its value)" {
+  run_hook_bash "rg -g '*.ts' .env app"
+  assert_allowed_by_json
+}
+
 @test "grep SECRET .env.example is allowed" {
   run_hook_bash "grep SECRET .env.example"
   assert_allowed_by_json

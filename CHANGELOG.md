@@ -16,6 +16,8 @@ A release change that requires the adopter to act, run a command or hand-migrate
 
 ### Fixed
 
+- the read-side secret and dotenv guards now deny a Bash search that names the protected class in a filter flag, such as `rg -g '*.key'` or `grep -r --include='.env'`, matching the verdict the Grep tool already gave the same filter. Those filter values were discarded, so a recursive search reached exactly the files the guard exists to keep out; negated globs and `--exclude` stay allowed (#1767)
+
 - a Code Audit Team member dispatched into a linked worktree can now run its scope resolution and gate handshake as written. The runtime's worktree confinement refused the members' multi-command scope block and several handshake spellings, so every worktree-isolated round improvised its own split in the step that decides which tree gets certified, and one such split captured the scope digest after the review instead of before it. Scope resolution now runs as one script, `.gaia/scripts/audit-resolve-scope.sh`, invoked by its literal path, every later command carries its values as typed literals rather than shell variables, and the findings array is staged as a file in the member's own scratch directory. The script and the two shipped members reach adopters on their next `/update-gaia` (#1871, #1956)
 
 - the release no longer ships a hook tree-scope manifest entry for a maintainer-only hook it excludes. The shipped `check-hook-scope-manifest.sh` reads that entry as an orphan, so running it by hand on an adopter clone failed on a hook the adopter never had. The distribution harness now runs the shipped checker against the staged release tree, so a reintroduced orphan fails the build. The fix reaches adopters on their next `/update-gaia` (#2075)

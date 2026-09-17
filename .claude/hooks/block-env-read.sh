@@ -45,6 +45,14 @@
 # here instead of guessed at. Treat this list as the spellings known to be open,
 # never as a closed set.
 #
+# A search filter is judged as a glob by the path predicate, the same
+# best-effort reading the Grep tool arm gives its `glob`. It catches the literal
+# shapes (`rg -g '.env*'`, `--include=.env.local`) and passes any glob that only
+# expands onto a dotenv file: `--include='*'`, a brace glob such as
+# `{.env,x}`, a bracket such as `.[e]nv`. A `!`-prefixed filter is never
+# judged, since ripgrep and ugrep read it as an exclusion, so GNU or BSD grep
+# given `--include='!.env'` for a file really named that way also passes.
+#
 # THE GUARD ALSO DENIES ONE THING IT SHOULD NOT, which the list above cannot
 # express because every entry there is a read that gets through. The Bash arm
 # splits command text on its character set with no regard for shell quoting, so
