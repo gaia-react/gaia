@@ -5,8 +5,8 @@
 # caller then parses.
 #
 # Two jobs, the same pair the sibling array-guard suite carries: prove the
-# detector fires on a known-bad fixture in each scanned file type (shell, husky
-# hook, workflow YAML, a fenced block in markdown) and stays quiet on every
+# detector fires on a known-bad fixture in each file type the guard's own
+# `scan_files` pathspec reaches, and stays quiet on every
 # legitimate shape (a `-z` call, a comment, a markdown code span, unfenced
 # markdown prose, a string constant, an untracked file), and assert the real
 # scanned tree is clean so a regression fails CI.

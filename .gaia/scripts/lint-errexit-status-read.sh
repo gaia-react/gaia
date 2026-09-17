@@ -125,10 +125,13 @@
 #     an instance -- reading it only where a hit fires would make the finding
 #     silently inert over every pragma above a clean line, which is most of them.
 #     Malformed pragmas, an unresolvable guard token or a missing reason, are the
-#     sibling lint-git-path-quoting.sh's to report: it carries the widest scan
-#     surface of the gates that read this pragma, so a malformed one anywhere in
-#     the tree is named exactly once rather than once per gate. This gate reports
-#     only the UNUSED pragma that names it.
+#     sibling lint-git-path-quoting.sh's to report, so a malformed one is named
+#     once rather than once per gate. One surface is left unowned by that
+#     arrangement rather than covered by it: that gate does not scan the
+#     composite actions under .github/actions/, which this gate and the other
+#     siblings reach through the shared `workflows` set, so a malformed pragma
+#     written in one is reported nowhere. This gate reports only the UNUSED
+#     pragma that names it.
 #
 # One file type is deliberately out of the surface:
 #

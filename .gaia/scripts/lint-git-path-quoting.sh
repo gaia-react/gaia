@@ -280,9 +280,13 @@ gaia_guard_bats_files lint-git-path-quoting || exit $?
 # The template pathspec below is the SOURCE directory, never the built copy
 # under `.gaia/cli/templates/workflows/` that `bundle:adopter` re-creates from
 # it: scanning both would report every hit twice and name a path whose repair
-# the next build discards. Its spelling is the one `guard-awk-lib.sh`'s
-# `workflows` set writes, so the two discoveries cannot disagree about which
-# half of the pair is authoritative. Artifact-equals-source is held by
+# the next build discards. Its spelling is hand-copied from `guard-awk-lib.sh`'s
+# `workflows` set and nothing binds the two, so a move of the template directory
+# has to be written in both places: that set is what every sibling gate on this
+# surface discovers through, and this gate alone inlines its own pathspec. The
+# two are already not equal, and deliberately so -- `workflows` also carries
+# `.github/actions/*/action.yml`, which this gate does not scan and whose
+# exclusion the sibling suite pins. Artifact-equals-source is held by
 # `audit-template-dogfood.test.ts` and `verify-cli-bundle-fresh.sh`, so a
 # repair to the source that never regenerates reds there rather than here.
 scan_files=()
@@ -383,8 +387,8 @@ fi
 #     set is read as executed shell rather than data, so it reds until the set
 #     is extended or the line carries a suppression pragma.
 #   - The suppression pragma is itself a residual on every OTHER surface: a
-#     `gaia-lint-ignore lint-git-path-quoting: ...` comment above a line in a
-#     `*.sh`, husky, workflow-YAML or markdown file waives nothing there. This
+#     `gaia-lint-ignore lint-git-path-quoting: ...` comment above a line on any
+#     scanned surface but `*.bats` waives nothing there. This
 #     guard is the designated reader for the pragma, and reports that shape as
 #     honored nowhere outside `*.bats` rather than treating it as a fix.
 #
