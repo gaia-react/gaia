@@ -117,7 +117,8 @@ cmd=$(echo "$input" | jq -r '.tool_input.command // ""' 2>/dev/null)
 # same grammar and are kept as two copies, so a change to the option table or
 # the word split below belongs in both. A walk that stops recognizing a
 # spelling raises nothing in either hook: this one falls back to the payload
-# cwd, and the destructive gate reads no subcommand and allows.
+# cwd, and the destructive gate reads the option's value as its subcommand,
+# which disarms its subcommand rules.
 #
 # Honest limit: the words are read with the shell's quoting but never its
 # expansion, so a `-C` whose path carries an unexpanded variable, `$(...)`, or

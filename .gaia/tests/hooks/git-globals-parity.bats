@@ -10,8 +10,9 @@
 # destructive gate alone, and the commit gate went on reading the payload cwd
 # for spellings the other gate resolved. Neither hook reports the divergence: a
 # commit gate that misses a spelling falls back to the payload cwd, and a
-# destructive gate that misses one reads no subcommand and allows, so this suite
-# is the only place it goes red.
+# destructive gate that misses one reads the option's value as its subcommand,
+# which disarms its subcommand rules, so this suite is the only place it goes
+# red.
 #
 # Each walk is driven as its hook defines it: every top-level function in the
 # hook file is loaded into its own bash process, so the two copies of any shared
@@ -81,27 +82,33 @@ check_rows() {
 }
 
 # option_table <hook> <walk>: the value-taking global options the walk skips,
-# read from every case arm inside its own function body (a hook can carry arms
-# of the same shape for a subcommand's options elsewhere) whose body steps past
-# two words, on the pattern's own line or the line after it. `-C` is excluded:
-# it is the option being resolved, not skipped. Fails when no option is found.
+# read from the case arms inside its own function body (a hook can carry arms of
+# the same shape for a subcommand's options elsewhere). Besides `-C`, the option
+# being resolved, and the `-*` catch-all, every option arm in a walk skips a
+# value, so every such arm has to be recognized as stepping past two words, on
+# its own line or the next. An arm that is not is reported and fails the read
+# rather than dropping out of the set, so a skip spelled some other way reds the
+# suite instead of escaping it. Also fails when no option is found.
 option_table() {
   awk -v f="$2" '
-    $0 == f "() {" { p = 1; next }
-    !p { next }
-    /^}$/ { exit }
-    pending != "" { if ($0 ~ /i \+ 2/) emit(pending); pending = "" }
-    /^[[:space:]]*-[^)]*\)/ {
-      pat = $0; sub(/^[[:space:]]*/, "", pat); sub(/\).*/, "", pat)
-      rest = $0; sub(/^[^)]*\)/, "", rest)
-      if (rest ~ /i \+ 2/) emit(pat)
-      else if (rest !~ /;;/) pending = pat
-    }
     function emit(s,   n, a, k) {
       n = split(s, a, "|")
-      for (k = 1; k <= n; k++) { gsub(/ /, "", a[k]); if (a[k] != "-C" && a[k] != "") { print a[k]; found = 1 } }
+      for (k = 1; k <= n; k++) { gsub(/[[:space:]]/, "", a[k]); if (a[k] != "") { print a[k]; found = 1 } }
     }
-    END { exit found ? 0 : 1 }
+    function unread(s) { print "unrecognized option arm: " s > "/dev/stderr"; bad = 1 }
+    $0 == f "() {" { p = 1; next }
+    !p { next }
+    /^}$/ { p = 0; exit }
+    pending != "" { if ($0 ~ /i[[:space:]]*\+[[:space:]]*2/) emit(pending); else unread(pending); pending = "" }
+    /^[[:space:]]*-[^)]*\)/ {
+      pat = $0; sub(/^[[:space:]]*/, "", pat); sub(/\).*/, "", pat)
+      if (pat == "-C" || pat == "-*") next
+      rest = $0; sub(/^[^)]*\)/, "", rest)
+      if (rest ~ /i[[:space:]]*\+[[:space:]]*2/) emit(pat)
+      else if (rest ~ /;;/) unread(pat)
+      else pending = pat
+    }
+    END { exit (found && !bad) ? 0 : 1 }
   ' "$1"
 }
 
@@ -149,8 +156,8 @@ EOF
 
 @test "every value-taking global either walk skips is skipped by both" {
   local commit_opts destructive_opts opts rows opt
-  commit_opts=$(option_table "$COMMIT_HOOK" git_segment_c) || { echo "no skipped option found in git_segment_c"; return 1; }
-  destructive_opts=$(option_table "$DESTRUCTIVE_HOOK" parse_git_globals) || { echo "no skipped option found in parse_git_globals"; return 1; }
+  commit_opts=$(option_table "$COMMIT_HOOK" git_segment_c 2>&1) || { echo "git_segment_c option table unreadable: $commit_opts"; return 1; }
+  destructive_opts=$(option_table "$DESTRUCTIVE_HOOK" parse_git_globals 2>&1) || { echo "parse_git_globals option table unreadable: $destructive_opts"; return 1; }
   # A reader that silently stopped matching arms would shrink the set rather
   # than empty it; `-c` sits in both tables, so its absence means a short read.
   grep -qx -- -c <<<"$commit_opts" || { echo "commit gate read is short: no -c"; return 1; }
