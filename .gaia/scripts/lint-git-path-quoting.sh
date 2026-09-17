@@ -284,9 +284,9 @@ gaia_guard_bats_files lint-git-path-quoting || exit $?
 # `workflows` set and nothing binds the two, so a move of the template directory
 # has to be written in both places: that set is what every sibling gate on this
 # surface discovers through, and this gate alone inlines its own pathspec. The
-# two are already not equal, and deliberately so -- `workflows` also carries
-# `.github/actions/*/action.yml`, which this gate does not scan and whose
-# exclusion the sibling suite pins. Artifact-equals-source is held by
+# two are already not equal, and deliberately so -- `workflows` also carries the
+# composite actions under `.github/actions/`, which this gate does not scan and
+# whose exclusion the sibling suite pins. Artifact-equals-source is held by
 # `audit-template-dogfood.test.ts` and `verify-cli-bundle-fresh.sh`, so a
 # repair to the source that never regenerates reds there rather than here.
 scan_files=()
