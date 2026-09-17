@@ -188,9 +188,16 @@ if command -v gh >/dev/null 2>&1; then
     # not the bare key name, so body prose that merely mentions the key cannot
     # inject a path. That direction matters: a false match would ADD suppression,
     # which is the one direction the header's safety argument does not cover.
-    # The lazy ` line=` terminator is what lets a path contain spaces, as
-    # several filed issues do.
-    paths_out=$(printf '%s' "$issues_json" | jq -c '[.[] | (.body // "") | scan("<!-- gaia-debt-key:[^>]*?path=(.+?) line=")] | flatten | unique' 2>/dev/null)
+    # The path runs to the key comment's own closer, excluding a newline
+    # because a key never spans one, and that is what lets it contain a
+    # space, as several filed issues do. Output is unchanged for any match
+    # that begins at a real key comment carrying one ` line=` token. The
+    # scan is unanchored, so a match can also begin at body prose quoting
+    # the opener; there the output does change, and changes for the better
+    # (the lazy form spliced across the `>` in the prose, this one fails
+    # from that start and advances to the real opener). The recorded-key
+    # corpus carries exactly one line of that shape.
+    paths_out=$(printf '%s' "$issues_json" | jq -c '[.[] | (.body // "") | scan("<!-- gaia-debt-key:[^>]*?path=([^>\n]+) line=")] | flatten | unique' 2>/dev/null)
     case "$count_out" in
       ''|*[!0-9]*) ;;
       *) open_count="$count_out"; recompute_ok=true ;;

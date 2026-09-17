@@ -95,10 +95,19 @@ GAIA_SBX_NOT_MEMBERS='.gaia/scripts/tests/distribution-audit-pr-gate.bats|step-b
 # Prints every tracked `.bats` file carrying BOTH literals, sorted. git grep
 # exits 1 when it matches nothing, which is a normal outcome here rather than a
 # script error, so its status is not allowed to abort the caller.
+#
+# `-z` on both discoveries, and `sort -z` with them, so git prints each path
+# verbatim instead of C-quoting one that carries a non-ASCII byte; the sort has
+# to take `-z` too or it re-joins the records on newlines and undoes it. The
+# `tr` back to newlines is the boundary this function cannot move: `comm` below
+# and the pinned roster tables above are newline-joined by construction. That
+# leaves a path containing a literal NEWLINE still mis-split, which is the
+# separate and far rarer class .gaia/scripts/lint-git-path-quoting.sh names as
+# out of its scope; the quoting class it does close is closed here.
 _gaia_sbx_candidates() {
   local repo_root="$1" named headers
-  named="$(git -C "$repo_root" grep -lF -e "$GAIA_SBX_WORKFLOW" -- '*.bats' 2>/dev/null | LC_ALL=C sort)"
-  headers="$(git -C "$repo_root" grep -lF -e "$GAIA_SBX_STEP_HEADER" -- '*.bats' 2>/dev/null | LC_ALL=C sort)"
+  named="$(git -C "$repo_root" grep -lF -z -e "$GAIA_SBX_WORKFLOW" -- '*.bats' 2>/dev/null | LC_ALL=C sort -z | tr '\0' '\n')"
+  headers="$(git -C "$repo_root" grep -lF -z -e "$GAIA_SBX_STEP_HEADER" -- '*.bats' 2>/dev/null | LC_ALL=C sort -z | tr '\0' '\n')"
   [ -n "$named" ] && [ -n "$headers" ] || return 0
   comm -12 <(printf '%s\n' "$named") <(printf '%s\n' "$headers")
 }

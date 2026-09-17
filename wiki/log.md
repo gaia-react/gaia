@@ -11,6 +11,28 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-09-16 9be49f3b SKIP - per-tree state path rooting fix, brings hooks in line with already-accurate wiki description
+- 2026-09-16 4222a4a0 SKIP - cwd-relative-loads gate refinement, already covered by wiki pointer to .claude/rules/shell-cwd.md
+- 2026-09-16 a25d1bd6 WORTHY - self-heal refuses in-band on step abort → wiki/concepts/Code Review Audit CI.md
+- 2026-09-16 f9c94ece WORTHY - self-heal refuses in-band on enumeration failure → wiki/concepts/Code Review Audit CI.md
+- 2026-09-16 8a1289d1 WORTHY - shipped-tree leak assertion extracted + fail-closed → wiki/concepts/Release Workflow.md
+- 2026-09-16 23dcc91b SKIP - internal bats-suite roster derivation fix, no documented contract touched
+- 2026-09-16 be5ad0c0 SKIP - supersede-scope exemption fix; wiki already points to the staleness gate's own header as the source of the condition
+- 2026-09-16 ad048963 SKIP - wiki: self-referential
+- 2026-09-15 cb2a4713 SKIP - path-quoting guard armed on git grep listing spellings; internal CI guard scope, no wiki page enumerates verb coverage to update
+- 2026-09-15 53d3678c SKIP - step-cap widening to direct actions/setup-node steps; wiki/decisions/Composite Action Step Timeouts.md already updated in-PR, no further sync edit needed
+- 2026-09-15 08ca9c93 SKIP - previous wiki-sync's own commit (log/state advance, pages already edited in-PR); nothing further to catalogue
+- 2026-09-15 22a446a1 SKIP - internal file-tech-debt/SKILL.md rename-checking convention + new whole-tree invariant script; process detail already documented at point of use, no wiki architectural claim changed
+- 2026-09-15 137c3db1 WORTHY - dedup-key path terminator moved (SPEC-082); already self-documented inline (wiki/concepts/PR Merge Workflow.md regex updated)
+- 2026-09-15 51d90127 SKIP - internal bug fix (heading-level recognition); no documented behavior changed, canonical heading spelling unchanged
+- 2026-09-15 f9491703 WORTHY - new /gaia-residue triage drain over keyed audit residue -> added section to wiki/concepts/Audit Disposition and Debt Fix.md, updated wiki/index.md
+- 2026-09-15 88bdcd45 WORTHY - canonical accepted-residuals destination (SPEC-080 phase 1); already self-documented inline (wiki/concepts/Audit Disposition and Debt Fix.md, wiki/concepts/Claude Hooks.md, wiki/concepts/PR Merge Workflow.md)
+- 2026-09-15 c9232a31 WORTHY - capped bare actions/setup-node steps; already self-documented inline (wiki/decisions/Composite Action Step Timeouts.md)
+- 2026-09-15 ddb5277b WORTHY - uniform pnpm provisioning attribution; already self-documented inline (wiki/concepts/Update Workflow.md, wiki/decisions/Composite Action Step Timeouts.md, wiki/decisions/pnpm.md, wiki/index.md)
+- 2026-09-15 67b1e959 SKIP - test-only: derive staged hook libraries from the hooks directory
+- 2026-09-15 fffa15c1 SKIP - test-only: stage the whole hooks directory for staged-tree degrade cases
+- 2026-09-15 a3ce1567 WORTHY - push-deny hook splits its message by cause; added the undocumented refspec-names-main condition to wiki/concepts/Git Workflow.md and wiki/concepts/Claude Hooks.md
+- 2026-09-15 a4daeef8 SKIP - prior sync's own commit (wiki: sync through bd795f4), no source change
 - 2026-09-12 bd795f4b SKIP - internal bug fixes to block-main-destructive-git.sh (quote-aware global parser, per-segment cd tracking, switch no-op carve-out), existing wiki descriptions stay accurate at their altitude
 - 2026-09-12 95e8045 WORTHY - arms audit-ci-tests.yml code: filter on every wiki path -> wiki/decisions/Sharded CI Test Matrix.md corrected, wiki/.state.json no longer 'does not arm code: at all'
 - 2026-09-12 7c710d6 SKIP - tests-only, drives block-no-verify's repo-scope degrade tests through staged tree

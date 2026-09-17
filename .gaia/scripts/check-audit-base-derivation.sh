@@ -572,18 +572,21 @@ gaia_check_audit_base_derivation() {
   printf 'review bases derived by a bare merge-base against the default branch: %s\n' "$bare_count"
 
   # ---------- assertion 2: every BASE_SHA namer names the resolver ----------
-  local base_files f missing_count=0
-  base_files="$(git -C "$repo_root" grep -lIF "$GAIA_AUDIT_BASE_VAR" -- '.claude/agents/' 2>/dev/null)"
-  if [ -n "$base_files" ]; then
-    while IFS= read -r f; do
-      [ -n "$f" ] || continue
-      if ! git -C "$repo_root" grep -qF "$GAIA_AUDIT_BASE_RESOLVER" -- "$f" 2>/dev/null; then
-        printf 'names BASE_SHA but never names resolve-audit-base.sh: %s\n' "$f"
-        missing_count=$((missing_count + 1))
-        resolver_failed=1
-      fi
-    done <<< "$base_files"
-  fi
+  # NUL-delimited discovery read directly from a process substitution, never
+  # captured into a variable first: command substitution DISCARDS NUL bytes, so
+  # `x="$(git grep -lz ...)"` re-joins the records and undoes the `-z`. The loop
+  # body assigns `missing_count` and `resolver_failed`, which is the other half
+  # of why this is a process substitution rather than a pipe -- a pipe would run
+  # the body in a subshell and throw both away.
+  local f missing_count=0
+  while IFS= read -r -d '' f; do
+    [ -n "$f" ] || continue
+    if ! git -C "$repo_root" grep -qF "$GAIA_AUDIT_BASE_RESOLVER" -- "$f" 2>/dev/null; then
+      printf 'names BASE_SHA but never names resolve-audit-base.sh: %s\n' "$f"
+      missing_count=$((missing_count + 1))
+      resolver_failed=1
+    fi
+  done < <(git -C "$repo_root" grep -lIF -z "$GAIA_AUDIT_BASE_VAR" -- '.claude/agents/' 2>/dev/null)
   printf 'agent files naming BASE_SHA without naming resolve-audit-base.sh: %s\n' "$missing_count"
 
   # ---------- assertion 3: no diff consumes an un-anchored base ----------

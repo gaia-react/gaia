@@ -6,9 +6,10 @@
 #
 # THE PROVISIONING-STEP SET. `.gaia/tests/lib/audit-ci-shards.bats`'s W12
 # reads `.github/workflows/*.yml`/`*.yaml` only, and its match predicate
-# covers `gaia-setup-node` call sites only. It never opens the composite
-# action itself, never reaches the adopter template directories, and says
-# nothing about a direct `pnpm/action-setup` step. Its subject derivation is
+# covers `gaia-setup-node` and bare `actions/setup-node` call sites only. It
+# never opens the composite action itself, never reaches the adopter template
+# directories, and says nothing about a direct `pnpm/action-setup` step, which
+# provisions pnpm without provisioning Node. Its subject derivation is
 # deliberately single-authority and its own reach tests exist to pin THAT
 # authority, so extending it would introduce a second derivation into the
 # suite built to prevent exactly that -- this is a sibling, not an extension,
@@ -29,8 +30,14 @@
 # Discovery walks these roots (.github/workflows, .github/actions,
 # .gaia/cli/src/automation/templates/workflows,
 # .gaia/cli/templates/workflows) from the tracked tree via `git ls-files`,
-# matching `uses:` on either arm: the composite's normalized local path, or
-# `pnpm/action-setup` before its `@`. Most of the tracked files under the two
+# matching `uses:` on any of its arms: the composite's normalized local path,
+# or `pnpm/action-setup` or `actions/setup-node` before its `@`. A step of the
+# last shape is capped on the same terms as a composite call site, and for the
+# same reason, a stalled tarball fetch that otherwise burns the owning job's
+# whole cap and reds attributed to no step; the composite's OWN inner
+# `actions/setup-node` step is exempt, not because of which action it calls but
+# because of where it sits, and the `surface` field below is what carries that.
+# Most of the tracked files under the two
 # template roots are Handlebars sources and are not YAML: an unrendered
 # `{{VAR}}` or `{{> partial }}` token means the file will never parse, on
 # purpose, so this suite excludes a file carrying one of those from the
@@ -176,8 +183,9 @@ teardown() {
 #                       step-sequence document, `job` is `-` and
 #                       `job-capkind` is the literal `external`, since the
 #                       fragment has no owning job of its own -- see
-#                       partial_job_cap_floor). `match` is `composite` or
-#                       `direct`, mirroring the two match arms. Before
+#                       partial_job_cap_floor). `match` is `composite`,
+#                       `pnpm`, or `node`, naming which action the step
+#                       calls -- see classify_uses. Before
 #                       parsing, the raw text is checked for an unrendered
 #                       Handlebars token (`{{` not immediately preceded by
 #                       `$`, which excludes a GitHub Actions `${{ }}`
@@ -237,13 +245,23 @@ def kind_of(mapping):
 
 
 def classify_uses(raw_uses):
-    """'composite', 'direct', or None. Exact identity, never a substring: a
-    sibling action named with this one as a prefix is a DIFFERENT action,
-    and the `@`-pinned suffix is stripped before either comparison so a SHA
-    bump cannot change the verdict. `uses:` legally spells the local action
-    several ways (a leading `./`, a trailing `/`); the normalization has to
-    reach every one of them, because a spelling it misses is SKIPPED rather
-    than reported, which is a short read rather than an empty one."""
+    """Which provisioning action a step calls -- 'composite' for the
+    gaia-setup-node composite, 'pnpm' for a direct pnpm/action-setup, 'node'
+    for a direct actions/setup-node -- or None for a step that calls none of
+    them. Each arm names the action rather than how it is reached, because
+    more than one of them is reached directly and 'direct' would no longer
+    tell them apart.
+
+    Exact identity, never a substring: a sibling action named with one of
+    these as a prefix is a DIFFERENT action, and the `@`-pinned suffix is
+    stripped before every comparison so a SHA bump cannot change the verdict.
+    `uses:` legally spells the local action several ways (a leading `./`, a
+    trailing `/`); the normalization has to reach every one of them, because
+    a spelling it misses is SKIPPED rather than reported, which is a short
+    read rather than an empty one. The two marketplace refs are compared
+    against the value BEFORE the `./` strip, for the mirror-image reason:
+    `./actions/setup-node` names a local action of this repository's own,
+    which is a different thing from the published one."""
     used_full = str(raw_uses).strip()
     if not used_full:
         return None
@@ -253,7 +271,9 @@ def classify_uses(raw_uses):
     if local == '.github/actions/gaia-setup-node':
         return 'composite'
     if used == 'pnpm/action-setup':
-        return 'direct'
+        return 'pnpm'
+    if used == 'actions/setup-node':
+        return 'node'
     return None
 
 
@@ -339,7 +359,7 @@ elif mode == 'construct':
     for i, step in enumerate(steps):
         if not isinstance(step, dict):
             continue
-        if (classify_uses(step.get('uses', '')) == 'direct'
+        if (classify_uses(step.get('uses', '')) == 'pnpm'
                 and step.get('continue-on-error') is True
                 and step.get('id')):
             first_idx, first_id = i, str(step['id'])
@@ -350,7 +370,7 @@ elif mode == 'construct':
     for step in steps[first_idx + 1:]:
         if not isinstance(step, dict):
             continue
-        if classify_uses(step.get('uses', '')) != 'direct':
+        if classify_uses(step.get('uses', '')) != 'pnpm':
             continue
         gate = normalize(step.get('if', ''))
         if gate == "steps.%s.outcome == 'failure'" % first_id and 'continue-on-error' not in step:
@@ -374,15 +394,26 @@ provisioning_rel_path() {
 
 # The second, independent authority the empty/short-read guard compares
 # against: a git grep over the real discovery roots, anchored on
-# `uses:` so the pinned-SHA header comments in forensics-triage.yml and
-# audit-ci-tests.yml (which name pnpm/action-setup in prose) are not counted
-# as steps. Always reads the REAL repository tree regardless of which files
+# `uses:` so a prose mention of any matched action is never counted as a
+# step, whatever shape it takes -- a pinned-SHA header block, an inline body
+# comment, an input description. The anchor is what excludes them, so it does
+# so wherever they turn up; naming the files that happen to carry one today
+# would be a list to keep rather than a property of the grep.
+# Always reads the REAL repository tree regardless of which files
 # a caller's own file-list argument narrows to -- that independence is the
 # whole point: a fixture narrowing the file-list argument still gets
 # compared against the true tracked-tree count, not against itself.
+#
+# Its arms track classify_uses's, and they have to: this authority counts
+# call sites, not capped ones, so an arm classify_uses admits while this grep
+# does not leaves the two agreeing only by accident, and an arm this grep
+# admits while classify_uses does not reports a short read on a healthy tree.
+# The composite's own inner steps are counted here exactly as they are derived
+# there; exempting them from the CAP requirement is the `surface` field's job,
+# downstream of both counts, so neither authority has to know about it.
 provisioning_tracked_count() {
   git -C "$REPO_ROOT" grep -nE \
-    'uses:[[:space:]]*(\./)?\.github/actions/gaia-setup-node|uses:[[:space:]]*pnpm/action-setup' \
+    'uses:[[:space:]]*(\./)?\.github/actions/gaia-setup-node|uses:[[:space:]]*pnpm/action-setup|uses:[[:space:]]*actions/setup-node' \
     -- '.github/workflows' '.github/actions' \
        '.gaia/cli/src/automation/templates/workflows' '.gaia/cli/templates/workflows' \
     | grep -c ''
@@ -428,8 +459,9 @@ partial_job_cap_floor() {
 # `.gaia/tests/lib/audit-ci-shards.bats`'s own `setup_node_cap_gaps` in
 # shape: a per-file read whose failure becomes a reported gap rather than a
 # silent contribution of zero, an emptiness verdict over the WHOLE argument
-# list (never per file, since most files legitimately call neither action
-# from any step), and a short-read verdict this suite adds on top, comparing
+# list (never per file, since most files legitimately call none of the
+# matched actions from any step), and a short-read verdict this suite adds on
+# top, comparing
 # against the independent tracked-tree count above. Returns non-zero exactly
 # when `gaps` is non-empty OR the derived set came back empty.
 provisioning_attribution_gaps() {
@@ -446,7 +478,7 @@ provisioning_attribution_gaps() {
     if [ "$(head -n1 "$out")" = "EXCLUDED-MUSTACHE" ]; then
       continue
     fi
-    # shellcheck disable=SC2034  # match (composite/direct) is a positional field in the tab-separated row read_pv prints; kept named and in place so the fields after it are not shifted, even though `surface` alone decides the branch below
+    # shellcheck disable=SC2034  # match (composite/pnpm/node) is a positional field in the tab-separated row read_pv prints; kept named and in place so the fields after it are not shifted, even though `surface` alone decides the branch below
     while IFS=$'\t' read -r surface job name match capkind cap jobcapkind jobcap; do
       [ -n "$surface" ] || continue
       derived=$((derived + 1))
@@ -482,11 +514,12 @@ provisioning_attribution_gaps() {
   rm -f "$out" "$err"
 
   # One condition reaches an empty read: every readable file loaded and none
-  # of them called either action, so it was renamed or its last call site
-  # was removed. Checked before the short-read comparison below, which needs
-  # a non-zero derived count to be a meaningful ratio at all.
+  # of them called any action classify_uses matches, so each was renamed or
+  # its last call site was removed. Checked before the short-read comparison
+  # below, which needs a non-zero derived count to be a meaningful ratio at
+  # all.
   if [ "$derived" -eq 0 ]; then
-    printf 'no provisioning step read across the files scanned, though every readable one loaded: both actions were renamed, or every call site was removed. Either way this check is now reaching nothing.\n'
+    printf 'no provisioning step read across the files scanned, though every readable one loaded: every action classify_uses matches was renamed, or every call site was removed. Either way this check is now reaching nothing.\n'
     return 1
   fi
 
@@ -686,17 +719,30 @@ PY
   }
 }
 
+# EVERY call site in the file, which this workflow needs two passes to reach:
+# it provisions pnpm and Node from two separate steps, and a surviving call
+# site of either shape keeps the derived set non-empty, which is a short read
+# rather than the empty one this arm is about. Doctoring one and asserting the
+# empty-set refusal would be asserting the wrong arm, and it would pass today
+# only because nothing else in the file matched.
 @test "gap: every call site renamed away fires the empty-set refusal rather than a clean pass" {
   require_yaml_parser
-  local line mutated doctored="$BATS_TEST_TMPDIR/renamed.yml" gaps
+  local line mutated once="$BATS_TEST_TMPDIR/renamed-once.yml"
+  local doctored="$BATS_TEST_TMPDIR/renamed.yml" gaps
   line="$(sole_line_matching "$CODE_REVIEW_AUDIT" \
     '^        uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6\.0\.10$')" || return 1
   mutated="        uses: pnpm/action-setup-renamed@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6.0.10"
-  assert_doctored "$line" "$mutated" "renaming the call site away" || return 1
-  replace_line "$CODE_REVIEW_AUDIT" "$line" "$mutated" "$doctored"
+  assert_doctored "$line" "$mutated" "renaming the pnpm call site away" || return 1
+  replace_line "$CODE_REVIEW_AUDIT" "$line" "$mutated" "$once"
+
+  line="$(sole_line_matching "$once" \
+    '^        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7\.0\.0$')" || return 1
+  mutated="        uses: actions/setup-node-renamed@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0"
+  assert_doctored "$line" "$mutated" "renaming the Node call site away" || return 1
+  replace_line "$once" "$line" "$mutated" "$doctored"
 
   gaps="$(provisioning_attribution_gaps "$doctored")" && {
-    echo "renaming the only call site away left the check reporting a clean read" >&2
+    echo "renaming every call site away left the check reporting a clean read" >&2
     return 1
   }
   printf '%s' "$gaps" | grep -qF 'this check is now reaching nothing' || {
@@ -790,8 +836,18 @@ PY
 
 @test "gap: a root set narrower than the tracked tree fires the short-read refusal, naming the difference" {
   require_yaml_parser
-  local tracked gaps
+  local tracked derived gaps
   tracked="$(provisioning_tracked_count)"
+  # The count this one file's own steps come to, read rather than written
+  # down: a literal here would be a second authority on how many provisioning
+  # steps the workflow has, and it rots silently the next time one is added.
+  # Reading it from the same structural reader the aggregator uses is what the
+  # assertion is about, that the message reports the count it actually derived.
+  derived="$(read_pv steps "$FORENSICS_TRIAGE" | grep -c '')" || return 1
+  [ "$derived" -gt 0 ] || {
+    echo "the file this fixture narrows to contributes no provisioning step, so the short read below would be an empty read instead" >&2
+    return 1
+  }
 
   # A single real, healthy file rather than the full root set: the
   # structural read of it is clean on its own terms (it has no attribution
@@ -801,8 +857,8 @@ PY
     echo "narrowing the scanned set to one file left the check reporting a clean read" >&2
     return 1
   }
-  printf '%s' "$gaps" | grep -qF "derived set holds 1 provisioning step(s)" || {
-    echo "the short read did not name its own derived count: ${gaps}" >&2
+  printf '%s' "$gaps" | grep -qF "derived set holds ${derived} provisioning step(s)" || {
+    echo "the short read did not name its own derived count (${derived}): ${gaps}" >&2
     return 1
   }
   printf '%s' "$gaps" | grep -qF "holds ${tracked}" || {
@@ -843,4 +899,63 @@ PY
     echo "a trailing-slash spelling was not recognized as a composite match: ${rows}" >&2
     return 1
   }
+}
+
+# The arm gaia-react/gaia#2042 added, driven on a direct `actions/setup-node`
+# step rather than on a composite or pnpm call site. Every other cap fixture
+# above doctors the eight-space `timeout-minutes: 5` this workflow's pnpm step
+# carries, which an arm that already existed answers for, so none of them says
+# anything about this one. The gap is grepped with the step's own name attached
+# for the same reason: `cap is missing` alone is emitted by every arm, and a
+# fixture matching it on this file would pass while reporting the pnpm step.
+# If the step is renamed the grep stops matching and this fixture reds, which
+# is the direction to fail in.
+@test "gap: a direct actions/setup-node step with no cap is reported as missing" {
+  require_yaml_parser
+  local line doctored="$BATS_TEST_TMPDIR/no-node-cap.yml" gaps
+  line="$(sole_line_matching "$CODE_REVIEW_AUDIT" '^        timeout-minutes: 3$')" || return 1
+  delete_line "$CODE_REVIEW_AUDIT" "$line" "$doctored"
+
+  gaps="$(provisioning_attribution_gaps "$doctored")" && {
+    echo "deleting the direct actions/setup-node step's cap left the check reporting no gaps" >&2
+    return 1
+  }
+  printf '%s' "$gaps" | grep -qF 'Setup Node: cap is missing, not an integer literal' || {
+    echo "an absent cap on a direct actions/setup-node step was not reported as missing: ${gaps}" >&2
+    return 1
+  }
+}
+
+# The half the arm above would otherwise break, and the reason the fix is a
+# subject-set split rather than a wider matcher: the composite's OWN inner
+# `actions/setup-node` step carries no cap and cannot, because a composite
+# action's steps take no `timeout-minutes` at all. It is therefore read as a
+# provisioning step -- so both counting authorities agree about it -- and
+# exempted from the cap requirement by its `surface`, never by being held out
+# of the match. Asserted rather than assumed because the healthy tree reports
+# clean under either arrangement: an exemption keyed on the action instead of
+# the surface, and a match arm that skipped the composite file outright, are
+# both indistinguishable from this one on a green run.
+@test "the composite's own actions/setup-node step is read as a provisioning step yet exempt from the cap requirement" {
+  require_yaml_parser
+  local rows gaps
+  rows="$(read_pv steps "$ACTION_FILE")" || {
+    echo "the composite action would not parse: ${rows}" >&2
+    return 1
+  }
+  printf '%s\n' "$rows" \
+    | awk -F'\t' '$1 == "composite" && $4 == "node" && $5 == "missing" && $7 == "exempt"' \
+    | grep -q '.' || {
+    echo "the composite's own uncapped actions/setup-node step was not read as an exempt composite-surface step: ${rows}" >&2
+    return 1
+  }
+
+  # The short-read refusal fires on any single-file argument, so the status is
+  # not the claim here; what the file must not produce is a CAP gap.
+  gaps="$(provisioning_attribution_gaps "$ACTION_FILE")" || true
+  printf '%s' "$gaps" | grep -qF 'cap is missing' && {
+    echo "the composite's own steps were reported as capping gaps, though a composite step cannot declare a cap: ${gaps}" >&2
+    return 1
+  }
+  true
 }

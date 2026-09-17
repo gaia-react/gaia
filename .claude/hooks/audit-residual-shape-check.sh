@@ -217,7 +217,7 @@ REFUSED_REPLACEMENTS=(
 # gives the debug emit below a way to read the key without its <!-- --> wrapper.
 heading_re='^#{1,6}[[:space:]]'
 top_bullet_re='^([-*+]|[0-9]{1,9}[.)])[[:space:]]'
-key_re='<!-- gaia-debt-key: (v1 class=[^ ]+ path=[^ ]+ line=[0-9]+) -->'
+key_re='<!-- gaia-debt-key: (v1 class=[^ ]+ path=[^>]+ line=[0-9]+) -->'
 
 # A heading is classified by its TEXT, not by its whole line. The leading `#`
 # run and the one whitespace character after it are stripped from the line

@@ -675,11 +675,70 @@ scrub_maintainer_only() {
   m="code-audit-maintainer-shell"
   d="$(member_digest "$ROOT" "$m")"
   out="$(bash "$WRITER" --root "$ROOT" --member "$m" --provenance earned \
-    --supersede-refusal "nothing on disk to supersede")"
+    --scope-digest "$d" --supersede-refusal "nothing on disk to supersede")"
   [ "$out" = "$AUDIT_DIR/${d}.${m}.ok" ]
   [ "$(jq -r .provenance "$out")" = "earned" ]
   # No sibling refusal existed, so no supersedes block is recorded.
   jq -e '.supersedes == null' "$out" >/dev/null
+}
+
+# ========== the narrowed supersede operand, pinned ==========
+#
+# The gate exempts --supersede-refusal from the staleness comparison only
+# when a sibling refusal is actually on disk. Widening that operand back to
+# the flag-only form reds "supersede: no refusal on disk, a mismatched
+# --scope-digest refuses" and "supersede: no refusal on disk, an absent
+# --scope-digest refuses by its own token": both call the flag with nothing to
+# supersede, so a flag-only gate skips the comparison outright and each
+# publishes instead of refusing. The surviving two-call route below stays
+# green either way, because it writes a real refusal first and a widened
+# operand never reaches that path.
+
+@test "supersede: no refusal on disk, a mismatched --scope-digest refuses" {
+  m="code-audit-maintainer-shell"
+  d="$(member_digest "$ROOT" "$m")"
+  stale="ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+  run bash "$WRITER" --root "$ROOT" --member "$m" --provenance earned \
+    --supersede-refusal "nothing on disk to supersede" --scope-digest "$stale"
+  [ "$status" -eq 2 ]
+  grep -qF -- "review scope superseded" <<<"$output" || return 1
+  grep -qF -- "$stale" <<<"$output" || return 1
+  grep -qF -- "$d" <<<"$output" || return 1
+  [ ! -f "$AUDIT_DIR/${d}.${m}.ok" ]
+}
+
+@test "supersede: no refusal on disk, an absent --scope-digest refuses by its own token" {
+  m="code-audit-maintainer-shell"
+  d="$(member_digest "$ROOT" "$m")"
+  run bash "$WRITER" --root "$ROOT" --member "$m" --provenance earned \
+    --supersede-refusal "nothing on disk to supersede"
+  [ "$status" -eq 2 ]
+  grep -qF -- "scope digest not supplied" <<<"$output" || return 1
+  grep -qF -- "review scope superseded" <<<"$output" && return 1
+  [ ! -f "$AUDIT_DIR/${d}.${m}.ok" ]
+}
+
+@test "supersede: the surviving two-call route publishes a supersedes block naming the reason and the time" {
+  # The narrowing does not make a stale-scope marker unreachable: writing a
+  # refusal and then superseding it with a mismatched digest still reaches an
+  # .ok marker. What it buys is that the route cannot be taken silently -- the
+  # refusal has to exist on disk first, and the body it publishes records who
+  # superseded it, why, and when.
+  m="code-audit-maintainer-shell"
+  d="$(member_digest "$ROOT" "$m")"
+  refused="$AUDIT_DIR/${d}.${m}.refused"
+  reason="operator accepted the tradeoff after review"
+  bash "$WRITER" --root "$ROOT" --member "$m" --provenance refused >/dev/null
+  [ -f "$refused" ] || return 1
+
+  stale="ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+  out="$(bash "$WRITER" --root "$ROOT" --member "$m" --provenance earned \
+    --supersede-refusal "$reason" --scope-digest "$stale")"
+  [ "$out" = "$AUDIT_DIR/${d}.${m}.ok" ]
+  [ ! -f "$refused" ]
+  [ "$(jq -r .supersedes.provenance "$out")" = "refused" ]
+  [ "$(jq -r .supersedes.reason "$out")" = "$reason" ]
+  [ "$(jq -r .supersedes.superseded_at "$out")" = "$(jq -r .audited_at "$out")" ]
 }
 
 # Re-run carry-forward ledger (--base)
@@ -1348,6 +1407,31 @@ key library"
   [ "$status" -eq 0 ]
   written="$(find "$AUDIT_DIR" -name '*code-audit-maintainer-prose.ok' 2>/dev/null || true)"
   [ -n "$written" ]
+}
+
+# Widening the supersede operand back to the flag-only form also reds this
+# one: with the gate skipped, the never-blocking member emits no advisory text
+# on this path at all, so the presence assertion below fails. That red is what
+# shows the operand is what arms the advisory warning, not evidence of a
+# broken test.
+
+@test "advisory member: the never-blocking member warns on the narrowed gate and still publishes" {
+  # The advisory arms live INSIDE the staleness gate, so requiring a sibling
+  # refusal is also what makes this member speak on this path: a gate it skips
+  # emits nothing at all, a gate it enters warns before publishing. What the
+  # contract protects, that this member never refuses, holds either way.
+  m="code-audit-maintainer-prose"
+  digest="$(member_digest "$ROOT" "$m")"
+  printf '1.6.2\n' > "$ROOT/.gaia/VERSION"
+  git -C "$ROOT" add .gaia/VERSION
+  git -C "$ROOT" commit --quiet -m "rotate"
+  new_digest="$(member_digest "$ROOT" "$m")"
+
+  run bash "$WRITER" --root "$ROOT" --member "$m" --provenance earned \
+    --supersede-refusal "nothing on disk to supersede" --scope-digest "$digest"
+  [ "$status" -eq 0 ]
+  grep -qF -- "review scope superseded (advisory)" <<<"$output" || return 1
+  [ -f "$AUDIT_DIR/${new_digest}.${m}.ok" ]
 }
 
 @test "control: an ordinary member is still hard-refused on the same empty value" {

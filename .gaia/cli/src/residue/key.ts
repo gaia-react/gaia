@@ -15,10 +15,11 @@
  * `LENIENT_KEY_PATTERN` reproduces the tech-debt filer's grammar
  * (`.gaia/scripts/debt-count-refresh.sh`). Suppression matching against
  * tech-debt issue bodies uses it, because the thing suppression must agree
- * with is the filer, not the gate. It anchors on the wrapped comment opener,
- * it does not require `v1`, and its lazy ` line=` terminator is what lets a
- * path contain a space, as filed issues do. `parseWrappedKeys` serves that
- * side.
+ * with is the filer, not the gate. It anchors on the wrapped comment opener
+ * and it does not require `v1`. Both grammars terminate the path on the key
+ * comment's own closer rather than on a space; this side also stops at a
+ * newline because its subject is a whole body and a key never spans one.
+ * `parseWrappedKeys` serves that side.
  *
  * A caller may not substitute one for the other. Reading FEWER issue keys
  * than the filer matches is a livelock: the drain keeps offering a residual
@@ -36,10 +37,11 @@
  */
 export const KEY_PATTERN =
   // eslint-disable-next-line sonarjs/concise-regex -- byte parity with the gate's ERE
-  /<!-- gaia-debt-key: (v1 class=[^ ]+ path=[^ ]+ line=[0-9]+) -->/;
+  /<!-- gaia-debt-key: (v1 class=[^ ]+ path=[^>]+ line=[0-9]+) -->/;
 
 /** The filer's grammar, applied to a whole issue body; group 1 is the path. */
-export const LENIENT_KEY_PATTERN = /<!-- gaia-debt-key:[^>]*?path=(.+?) line=/;
+export const LENIENT_KEY_PATTERN =
+  /<!-- gaia-debt-key:[^>]*?path=([^>\n]+) line=/;
 
 /**
  * Upper bound on a cited line number. Well above any file this repo or an
@@ -71,8 +73,21 @@ const CONTROL_CHARACTERS: readonly (readonly [string, string])[] = [
  * Validates a repo-relative POSIX path and returns its normalized form.
  *
  * Normalization collapses repeated separators, drops `./` segments, and
- * strips a trailing separator, so trivial spelling variants of one path
- * cannot bypass the shared coordinate identity `sameCoordinate` compares on.
+ * strips a trailing separator, so those spelling variants of one path cannot
+ * bypass the shared coordinate identity `sameCoordinate` compares on.
+ *
+ * Whitespace is NOT among them. Now that the path field terminates on the
+ * comment's closer rather than on a space, one space separates the path from
+ * ` line=` and any further space stays inside the path, so `path=app/a.ts
+ * line=1` written with two spaces parses `ok` with a trailing space and reads
+ * as a different coordinate from the same file filed without it. Under the
+ * old space-terminated grammar the comment matched no key at all, so the unit
+ * was keyless and the gate denied the merge over it; `malformed[]` is reached
+ * only once the pattern matches and field validation then fails, which it
+ * never did here. The regression is therefore merge-denied becoming silently
+ * accepted as a distinct coordinate, not reported becoming accepted. It is
+ * still disposable through the normal drain rather than a livelock: it
+ * resolves `unresolvable` and is dismissible.
  */
 export const normalizeRepoRelativePath = (raw: string): Validated<string> => {
   if (raw === '') {
@@ -175,7 +190,7 @@ export const parseKeyLine = (raw: string): Validated<number> => {
 // reads a whole issue body, not a pre-extracted inner key, so it cannot be
 // reached by swapping a pattern here. `parseWrappedKeys` is its only door.
 const KEY_FIELD_PATTERNS = {
-  gate: /^v1 class=([^ ]+) path=([^ ]+) line=(\d+)$/,
+  gate: /^v1 class=([^ ]+) path=([^>]+) line=(\d+)$/,
 } as const;
 
 /** Parses and validates an inner key (`v1 class=… path=… line=…`). */
@@ -196,7 +211,7 @@ export const parseKey = (
     return {
       ok: false,
       reason:
-        'key does not match the gate grammar `v1 class=<class> path=<path> line=<line>`; a path carrying a space is the usual cause',
+        'key does not match the gate grammar `v1 class=<class> path=<path> line=<line>`; a missing or malformed field is the usual cause',
     };
   }
 

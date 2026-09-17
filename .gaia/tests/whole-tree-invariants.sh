@@ -116,6 +116,7 @@ readonly WTI_SCRIPTS='.gaia/scripts/check-audit-base-derivation.sh
 .gaia/scripts/audit-rules-changed-complete.sh
 .gaia/scripts/audit-machinery-complete.sh
 .gaia/scripts/lint-errexit-source-guard.sh
+.gaia/scripts/lint-retired-label-spellings.sh
 .gaia/scripts/lint-shipped-issue-refs.sh
 .gaia/scripts/verify-audit-roster.sh
 .gaia/tests/shell-lint.sh'
@@ -123,7 +124,7 @@ readonly WTI_SCRIPTS='.gaia/scripts/check-audit-base-derivation.sh
 # The staleness lever's baseline: WTI_SCRIPTS's own member count at the time
 # the runtime paragraph above was last measured. main() compares the live
 # count against this and refuses to run on a mismatch, per that paragraph.
-readonly WTI_SCRIPTS_COUNT_ASOF=21
+readonly WTI_SCRIPTS_COUNT_ASOF=22
 
 # Members invoked as `bats <path>`. The shard partition is a whole-tree
 # invariant in the same sense as the scripts above: its input is every .bats

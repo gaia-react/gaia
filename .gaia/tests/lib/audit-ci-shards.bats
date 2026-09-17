@@ -246,7 +246,8 @@ teardown() {
 #   setupnodecaps          one
 #                         `<job-id>\t<step-name>\t<capkind>\t<cap>\t<job-cap>`
 #                         line per step whose `uses:`, normalized, is exactly
-#                         the gaia-setup-node composite action, across EVERY
+#                         the gaia-setup-node composite action or a bare
+#                         `actions/setup-node`, across EVERY
 #                         job. `capkind` comes from the same kind_of
 #                         callee cap_kind uses, so a job cap and a step cap
 #                         cannot answer differently; `cap`
@@ -541,8 +542,8 @@ elif mode == 'setupnodecaps':
         for step in job.get('steps') or []:
             if not isinstance(step, dict):
                 continue
-            # Exact on the action's identity, not a substring of its path: a
-            # sibling action named with this one as a prefix
+            # Exact on each action's identity, not a substring of its path: a
+            # sibling action named with one of these as a prefix
             # (`gaia-setup-node-foo`) is a DIFFERENT action, and a substring
             # test would report it under this check's name while missing that
             # the real one had been renamed away. Normalized first because
@@ -552,11 +553,19 @@ elif mode == 'setupnodecaps':
             # rather than an empty one, so the sites spelled the expected way
             # keep `setup_node_cap_gaps` out of its empty-set arm and the check
             # reports clean over a step it never opened.
-            used = str(step.get('uses', '')).strip().split('@', 1)[0]
-            if used.startswith('./'):
-                used = used[2:]
-            used = used.rstrip('/')
-            if used != '.github/actions/gaia-setup-node':
+            #
+            # Two identities, because a workflow provisions Node either
+            # through the composite or by calling `actions/setup-node`
+            # itself, and an uncapped step of either shape burns the owning
+            # job's whole cap and reds as a job timeout attributed to no
+            # step. The marketplace ref is compared BEFORE the `./` strip:
+            # `./actions/setup-node` names a local action in this repository
+            # that happens to share the path, which is a different thing.
+            raw = str(step.get('uses', '')).strip().split('@', 1)[0]
+            local = raw[2:] if raw.startswith('./') else raw
+            local = local.rstrip('/')
+            if (local != '.github/actions/gaia-setup-node'
+                    and raw != 'actions/setup-node'):
                 continue
             name = str(step.get('name', '')) or str(step.get('uses', ''))
             kind = kind_of(step)
@@ -2527,8 +2536,17 @@ concurrency_tree_needs_packages() {
   }
 }
 
-# W12. Every gaia-setup-node step in EVERY workflow is capped with an integer
-# literal that fires before its job's own cap.
+# W12. Every Node-provisioning step in EVERY workflow is capped with an integer
+# literal that fires before its job's own cap. Two step shapes provision Node,
+# the `gaia-setup-node` composite and a bare `actions/setup-node`, and the
+# attribution argument below is indifferent to which one stalls, so the subject
+# set holds both. A workflow-level step is the only surface that can carry the
+# cap at all: a composite action's own steps take no `timeout-minutes`, which is
+# why the composite is bounded from its caller and why a direct call site has to
+# declare its own. This check never opens the composite -- its subject set is
+# `.github/workflows/` -- so that exemption needs no arm here; the sibling suite
+# `.gaia/tests/lib/provisioning-attribution.bats`, whose discovery does reach
+# `.github/actions`, is where it is spelled out.
 #
 # The apt step already carries `timeout-minutes: 6` and says why in so many
 # words -- "Sized for fast failure and honest attribution" -- so the reasoning
@@ -2558,10 +2576,20 @@ concurrency_tree_needs_packages() {
 # repair of the instance.
 #
 # Enumerating steps from the `uses:` value and workflows from the directory are
-# the same move applied to the two axes this check can be narrowed on. Neither
-# is a convenience: each is what keeps a site added later reachable without an
-# edit here, and a check narrowed on either axis reports clean over what it
-# never opened.
+# the same move applied to two of the axes this check can be narrowed on.
+# Neither is a convenience: each is what keeps a site added later reachable
+# without an edit here, and a check narrowed on either axis reports clean over
+# what it never opened.
+#
+# The identity set is the third axis, and it is the one the first two cannot
+# widen for themselves: a step spelled with an action this matcher does not
+# admit is outside the check however many files and steps the other two reach,
+# and a workflow holding only such steps reports clean. gaia-react/gaia#2042 is
+# that axis narrowing in the same shape the other two already had: the caps on
+# the direct `actions/setup-node` call sites were added with nothing holding
+# them, so deleting one left every assertion here green. The fixtures at the end
+# of this block pin the added arm on its own file, where a doctored cap cannot
+# be answered for by a composite call site in the same workflow.
 #
 # The cap must also be strictly under its job's cap. A step cap at or above
 # the job's can never fire first, so it reads as a bound while buying none of
@@ -2614,15 +2642,15 @@ setup_node_caps() {
   read_wf setupnodecaps "$1"
 }
 
-# Every capping gap the gaia-setup-node steps in <workflow-file>... present, one
-# line per gap, each naming its own workflow, empty when they have none.
+# Every capping gap the Node-provisioning steps in <workflow-file>... present,
+# one line per gap, each naming its own workflow, empty when they have none.
 # Returns non-zero when NO step was read across the whole argument list, which
 # is a gap of its own rather than a clean read: this enumerates its subjects
 # from the `uses:` value instead of pinning them, so a renamed action yields
 # nothing and would otherwise be indistinguishable from every step passing.
 #
 # The emptiness verdict is over the whole list, not per file. Most workflows
-# legitimately call this action from no step at all, so a per-file verdict would
+# legitimately provision Node from no step at all, so a per-file verdict would
 # report every one of them as reaching nothing the moment the check went
 # tree-wide. The adversarial fixtures below pass a single doctored file, where
 # the two verdicts coincide.
@@ -2646,7 +2674,7 @@ setup_node_cap_gaps() {
     # .gaia/scripts/tests/retrigger-reachability.bats reports its own per-file
     # zero for the same reason; this is that shape.
     if ! setup_node_caps "$file" > "$caps"; then
-      gaps="${gaps}${wf}: could not be read (unparseable YAML, or no jobs mapping), so its gaia-setup-node steps were never opened"$'\n'
+      gaps="${gaps}${wf}: could not be read (unparseable YAML, or no jobs mapping), so its Node-provisioning steps were never opened"$'\n'
       continue
     fi
     while IFS=$'\t' read -r jid name kind cap job_cap; do
@@ -2667,13 +2695,14 @@ setup_node_cap_gaps() {
   rm -f "$caps"
 
   # One condition now reaches an empty read: every workflow loaded and none
-  # called the action, so it was renamed or its last call site removed. The
+  # provisioned Node, so both actions were renamed or their last call sites
+  # removed. The
   # unreadable-file case used to land here too and no longer does; it is a
   # named gap above, which is the stronger report because it says which file.
   # Guarded on `gaps` as well as `seen` so a run whose only workflows were
   # unreadable reports them rather than replacing them with this message.
   if [ -z "$seen" ] && [ -z "$gaps" ]; then
-    printf 'no gaia-setup-node step read across the workflows scanned, though every one of them loaded. The action was renamed, or its last call site was removed. Either way this check is now reaching nothing.\n'
+    printf 'no Node-provisioning step read across the workflows scanned, though every one of them loaded. Both actions this check admits were renamed, or their last call sites were removed. Either way this check is now reaching nothing.\n'
     return 1
   fi
 
@@ -2681,7 +2710,7 @@ setup_node_cap_gaps() {
   [ -z "$gaps" ]
 }
 
-# The workflow files in <workflow-file>... that call gaia-setup-node from at
+# The workflow files in <workflow-file>... that provision Node from at
 # least one step, one basename per line, and `unreadable:<basename>` for one
 # that would not load. Only the reach tests read this; the check itself needs
 # the gaps, not the file set.
@@ -2708,7 +2737,7 @@ setup_node_workflows() {
   rm -f "$caps"
 }
 
-@test "W12: every gaia-setup-node step declares an integer cap under its job's cap" {
+@test "W12: every Node-provisioning step declares an integer cap under its job's cap" {
   require_yaml_parser
   local gaps
   gaps="$(setup_node_cap_gaps "${WORKFLOW_FILES[@]}")" || {
@@ -2761,7 +2790,7 @@ setup_node_workflows() {
   }
 }
 
-@test "W12 reach: gaia-setup-node call sites are read across more than one workflow" {
+@test "W12 reach: Node-provisioning call sites are read across more than one workflow" {
   require_yaml_parser
   local read_set scanned pinned unreadable
   # Counting the workflows that CONTRIBUTE a step, not the ones scanned: a set
@@ -2788,7 +2817,7 @@ setup_node_workflows() {
     return 1
   }
   [ "$scanned" -gt 1 ] || {
-    echo "gaia-setup-node steps were read from $scanned workflow(s); the check has re-narrowed to a single file" >&2
+    echo "Node-provisioning steps were read from $scanned workflow(s); the check has re-narrowed to a single file" >&2
     return 1
   }
 }
@@ -2895,7 +2924,7 @@ setup_node_workflows() {
   }
 }
 
-@test "W12 adversarial: a workflow with no gaia-setup-node step reds rather than passing empty" {
+@test "W12 adversarial: a workflow with no Node-provisioning step reds rather than passing empty" {
   require_yaml_parser
   local doctored="$BATS_TEST_TMPDIR/w12d.yml" gaps
   replace_line "$WORKFLOW" "        uses: ./.github/actions/gaia-setup-node" \
@@ -2933,6 +2962,60 @@ setup_node_workflows() {
     return 1
   }
   [ -z "$gaps" ] || { echo "$gaps" >&2; return 1; }
+}
+
+# The premise the two fixtures below rest on: this workflow provisions Node with
+# a direct `actions/setup-node` step and with nothing else. Asserted rather than
+# assumed, because a composite call site added to the same file later would
+# answer for both of them through the arm that already existed, leaving each one
+# green while it proved nothing about the direct arm it was written for. That is
+# the same silent-widening failure the fixtures exist to catch, one layer up.
+assert_direct_only_provisioning() {
+  grep -qE '^[[:space:]]*uses:[[:space:]]*(\./)?\.github/actions/gaia-setup-node' "$1" && {
+    echo "$(basename "$1") now calls the gaia-setup-node composite as well, so it no longer isolates the direct actions/setup-node arm" >&2
+    return 1
+  }
+  grep -qE '^[[:space:]]*uses:[[:space:]]*actions/setup-node@' "$1" || {
+    echo "$(basename "$1") no longer carries a direct actions/setup-node step, so a fixture resting on it proves nothing" >&2
+    return 1
+  }
+}
+
+@test "W12 reach: a workflow provisioning Node only through a direct actions/setup-node step is read" {
+  require_yaml_parser
+  local gaps
+  assert_direct_only_provisioning "$POLLER_WORKFLOW" || return 1
+
+  # The clean read IS the claim. While the matcher admitted the composite
+  # alone, this file contributed no step at all and the predicate answered with
+  # its empty-set refusal, so a non-zero status here is the check re-narrowing
+  # to the composite rather than a capping gap.
+  gaps="$(setup_node_cap_gaps "$POLLER_WORKFLOW")" || {
+    echo "a workflow whose only Node provisioning is a direct actions/setup-node step read as reaching nothing: ${gaps}" >&2
+    return 1
+  }
+  [ -z "$gaps" ] || { echo "$gaps" >&2; return 1; }
+}
+
+@test "W12 adversarial: a direct actions/setup-node step with no cap is caught" {
+  require_yaml_parser
+  local doctored="$BATS_TEST_TMPDIR/w12i.yml" gaps
+  assert_direct_only_provisioning "$POLLER_WORKFLOW" || return 1
+
+  delete_line "$POLLER_WORKFLOW" "        timeout-minutes: 3" "$doctored"
+  cmp -s "$POLLER_WORKFLOW" "$doctored" && {
+    echo "the direct step's cap literal is stale, so doctoring changed nothing and this fixture proves nothing" >&2
+    return 1
+  }
+
+  gaps="$(setup_node_cap_gaps "$doctored")" && {
+    echo "deleting the direct actions/setup-node step's cap left the check reporting no gaps" >&2
+    return 1
+  }
+  printf '%s' "$gaps" | grep -qF 'cap is missing, not an integer literal' || {
+    echo "an absent cap on a direct actions/setup-node step was not reported as missing: ${gaps}" >&2
+    return 1
+  }
 }
 
 # W16 to W18 pin .gaia/tests/leg-arming.sh, the per-leg arming gate (SPEC-078

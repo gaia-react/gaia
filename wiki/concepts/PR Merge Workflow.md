@@ -262,7 +262,7 @@ gh pr list --state merged --limit 2000 --json number,body \
   --jq '.[] as $pr
         | ($pr.body // "") | split("\n")[]
         | select(test("<!-- gaia-debt-key: "))
-        | capture("<!-- gaia-debt-key: (?<key>v1 class=[^ ]+ path=(?<path>[^ ]+) line=(?<line>[0-9]+)) -->")
+        | capture("<!-- gaia-debt-key: (?<key>v1 class=[^ ]+ path=(?<path>[^>]+) line=(?<line>[0-9]+)) -->")
         | "\($pr.number)\t\(.path):\(.line)\t\(.key)"'
 ```
 
@@ -429,7 +429,7 @@ A refusal also carries a **server-side** signal, because the local hook is not t
 
 The spawn oracle reads the refusal family for the same reason the gate does. `resolve-audit-spawn.sh`'s presence filter treats a member as cleared only when its valid current-digest earned marker is present **and** no live same-digest refusal outranks it. Without that second read the oracle and the merge gate answer differently about one state, because the writer publishes a refusal beside any same-digest earned marker rather than replacing it: the oracle reports "nobody owed" while the merge stays denied, and the operator is told there is no member left to run.
 
-A refusal is retired by its **author**, never by the gate inferring supersession from timestamps. Resolving the finding is the ordinary path: the repair edits a file the member owns, which rotates that member's digest and leaves the refusal keyed to content nobody is merging. A second path exists because an Important finding also clears by operator acknowledgment with a stated reason, which moves no bytes and so leaves the digest identical. There the member re-audits and writes its earned marker with `--supersede-refusal "<reason>"`; the shared writer records the reversal in the marker body and removes that member's own refusal, publishing the earned marker first so a crash leaves both artifacts and the gate shut rather than neither. A plain earned write never touches a refusal. That asymmetry is what keeps refusal-precedence from decaying into "newest marker wins" and preserves it as the control that stops someone re-running an auditor until it passes: a bare re-spawn against unchanged, still-unaddressed content refuses again.
+A refusal is retired by its **author**, never by the gate inferring supersession from timestamps. Resolving the finding is the ordinary path: the repair edits a file the member owns, which rotates that member's digest and leaves the refusal keyed to content nobody is merging. A second path exists because an Important finding also clears by operator acknowledgment with a stated reason, which moves no bytes and so leaves the digest identical. There the member re-audits and writes its earned marker with `--supersede-refusal "<reason>"`; the shared writer records the reversal in the marker body and removes that member's own refusal, publishing the earned marker first so a crash leaves both artifacts and the gate shut rather than neither. That flag only exempts the write from the writer's review-scope staleness comparison when the refusal it retires is actually on disk; the exact condition is stated in the staleness gate's own header comment in `.gaia/scripts/audit-write-clearance.sh`. A plain earned write never touches a refusal. That asymmetry is what keeps refusal-precedence from decaying into "newest marker wins" and preserves it as the control that stops someone re-running an auditor until it passes: a bare re-spawn against unchanged, still-unaddressed content refuses again.
 
 #### Signals
 

@@ -1043,9 +1043,11 @@ mutate() {
 # the widening; the fixture test below is what does.
 library_consumers() {
   local root="${1:-$REPO_ROOT}" f
-  while IFS= read -r f; do
+  # -z and a NUL read: without it git C-quotes any consumer whose path carries
+  # a non-ASCII byte, and the quoted spelling names no file the caller can open.
+  while IFS= read -r -d '' f; do
     printf '%s\n' "$root/$f"
-  done < <(git -C "$root" grep -l -- '_gaia_guard_lib_dir/guard-awk-lib.sh' \
+  done < <(git -C "$root" grep -l -z -- '_gaia_guard_lib_dir/guard-awk-lib.sh' \
              -- ':(exclude)*.bats')
 }
 

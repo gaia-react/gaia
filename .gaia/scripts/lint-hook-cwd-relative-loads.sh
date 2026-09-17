@@ -63,10 +63,17 @@
 # quoted-versus-unquoted: `[ -f ".claude/hooks/lib/x.sh" ]` is the same defect
 # as its bare spelling, while `[ -f "$_lib_dir/x.sh" ]` is the repair.
 #
+# The file-test position is read on a second axis too: a NEGATED spelling is
+# the same defect as its unnegated twin, so `[ ! -f .claude/hooks/lib/x.sh ]
+# && exit 0` reports exactly as `[ -f .claude/hooks/lib/x.sh ] || exit 0` does.
+# That negated form is the idiomatic spelling of the capability-probe
+# stand-down in the motivating example above, which is why it is named here
+# rather than left to a reader to infer from the arm.
+#
 # WHAT COUNTS AS A HIT, four positions, each one a place a bare literal is
 # resolved against the working directory at run time:
 #
-#   [ -f .claude/hooks/lib/x.sh ]        a file-test primary's operand
+#   [ -f .claude/hooks/lib/x.sh ]        a file-test operand naming a code file
 #   . .gaia/scripts/x.sh                 a `.` or `source` operand
 #   bash .gaia/scripts/x.sh              an interpreter's script argument
 #   lib=".gaia/scripts/x.mjs"            an assignment naming a code file
@@ -80,8 +87,10 @@
 #     hook's state belongs to is declared per hook in .gaia/hook-scopes.json,
 #     so rooting one at the script's directory would make a `main-only` marker
 #     follow a linked worktree. They are cwd-sensitive too, and the repair
-#     needs each site read against its declared scope; the assignment arm is
-#     pinned to a code extension for exactly that reason.
+#     needs each site read against its declared scope; the file-test and
+#     assignment arms are both pinned to a code extension for exactly that
+#     reason, so neither one hands a state path the wrong root. What that pin
+#     costs each arm is under KNOWN BLIND SPOTS below.
 #   - A git PATHSPEC or revision path (`git rev-parse "HEAD:$p"`). That syntax
 #     is resolved by git against the repository root, never against cwd, so a
 #     bare literal there is already correct and rewriting it would be churn.
@@ -106,6 +115,22 @@
 #     catches this only where the literal carries a code extension, so an
 #     extensionless binary or a data file passes. Both live instances of that
 #     shape were repaired by hand when this gate landed.
+#   - A bare literal in a FILE TEST carrying no extension from the pinned set
+#     the arm requires, which is the same set the assignment arm requires and
+#     is narrower than "a code file": a directory (`[ -d .claude/hooks ]`), an
+#     extensionless executable, a code file written without its suffix, and a
+#     code file whose extension is simply not in the set (`.ts`, `.zsh`, `.rb`)
+#     all pass. That operand resolves against
+#     the working directory like any other, so this is a real miss rather than
+#     a shape the gate disagrees is a defect. It is the price of the code-
+#     extension pin on that arm, and the pin is worth it: unpinned, the arm
+#     cannot tell code from per-tree state, and the remedy it prints is wrong
+#     for state in the specific way the STATE exclusion above describes. A gate
+#     that stays silent on a defect costs a missed repair, while one that
+#     prescribes the wrong root manufactures the class it exists to prevent, so
+#     the pin fails in the cheaper direction. No hook currently tests a bare
+#     state path directly; every live site tests through a variable, which is
+#     why this arm went unpinned as long as it did.
 #   - The same indirection where the variable is not assigned a literal at all
 #     but computed per iteration, which no assignment arm can reach: a
 #     repo-relative path derived from a diff listing and then tested
@@ -291,7 +316,23 @@ readonly OWN_AWK='
       # `[\"\047]?` is the optional opening quote, double or single. It sits
       # before the literal dot in all three arms, so the quoted and unquoted
       # spellings of one defect are read the same way.
-      TEST_PAT   = "(\\[|\\[\\[)[[:space:]]+-[a-zA-Z][[:space:]]+[\"\047]?\\.(claude|gaia|specify)/"
+      # Pinned to a code extension, the same set ASSIGN_PAT requires and for the
+      # same reason: without the pin this arm also matches a per-tree STATE path
+      # (`[ -f .claude/wiki-drift-checked ]`) and hands it the
+      # `${BASH_SOURCE[0]}` remedy, which is the root the header above rules out
+      # for state, because a `main-only` marker rooted at the directory of the
+      # script follows a linked worktree. A gate cannot hand out the defect it
+      # exists to prevent, so this arm gives up the operands it cannot tell
+      # apart. What that costs is written under KNOWN BLIND SPOTS above.
+      # The optional `(![[:space:]]+)?` admits an in-bracket negation, so
+      # `[ ! -f <lib> ] && exit 0` is read as the same defect as its unnegated
+      # twin. That spelling is the idiomatic capability-probe stand-down this
+      # gate exists to prevent, and the negation displaces the test primary, so
+      # without it the arm matched nothing at all. It sits ahead of the primary
+      # and changes nothing after it, so the code-extension pin still decides
+      # which operands the arm gives up: a negated state path stays as quiet as
+      # its unnegated spelling.
+      TEST_PAT   = "(\\[|\\[\\[)[[:space:]]+(![[:space:]]+)?-[a-zA-Z][[:space:]]+[\"\047]?\\.(claude|gaia|specify)/[^\"\047[:space:]]*\\.(sh|bash|mjs|cjs|js|py)[\"\047]?([[:space:]]|;|$)"
       # The `^[[:space:]]*` branch is what reaches an INDENTED load, which is
       # the idiomatic spelling of this class: a `.` on its own line inside an
       # `if`/`while`/`case` body. A bare `^` would require the operator at

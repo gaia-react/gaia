@@ -1,0 +1,3 @@
+<!-- gaia-debt-key: v1 class=decoy path=a.ts line=
+prose
+<!-- gaia-debt-key: v1 class=real path=app/real.ts line=42 -->

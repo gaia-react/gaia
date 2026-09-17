@@ -27,10 +27,10 @@
  *   entry is withheld and the reason is reported rather than the key dropped.
  * - `entries` is everything else.
  *
- * A near-miss key that fails the gate's own grammar (no `v1` token, a spaced
- * path) is therefore NOT malformed here: the gate does not see it as a key at
- * all, so its unit is keyless on both sides. `parseKey` still refuses such a
- * key with its own reason for a caller holding one from elsewhere.
+ * A near-miss key that fails the gate's own grammar (no `v1` token) is
+ * therefore NOT malformed here: the gate does not see it as a key at all, so
+ * its unit is keyless on both sides. `parseKey` still refuses such a key with
+ * its own reason for a caller holding one from elsewhere.
  *
  * # Inherited behavior this module reproduces deliberately
  *
@@ -174,8 +174,8 @@ const closeUnit = (unit: OpenUnit, result: AttributionResult): void => {
 };
 
 // The inner key of the leftmost grammar match on one line, or null. The gate
-// matches its key regex line by line, so this does too: a `[^ ]+` field must
-// never be allowed to span a line break.
+// matches its key regex line by line, so this does too: a `>`-negated field
+// applied to a whole body would run past the end of its own comment.
 const matchInnerKey = (line: string, keyPattern: RegExp): null | string => {
   const match = new RegExp(
     keyPattern.source,

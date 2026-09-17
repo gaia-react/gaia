@@ -15,6 +15,9 @@
 #     .claude/settings.json's own hook registrations, with
 #     distribution-preflight-check.sh absent from both; and every entry
 #     marked maintainer_only:false agrees with the hook's presence in staging.
+#  6. .gaia/scripts/check-hook-scope-manifest.sh ships and passes against the
+#     staged tree, so running it by hand on an adopter clone does not red on
+#     a .gaia/hook-scopes.json entry for a hook the release excludes.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 source "$HERE/lib/lib.sh"
@@ -259,4 +262,20 @@ if [ "${#HOOKCAP_ERRORS[@]}" -gt 0 ]; then
   exit 1
 fi
 
-pass "manifest, exclude list, sentinels, script-capabilities boundary, and hook-capabilities boundary all consistent with staging"
+# 6. Hook-scopes checker, run the way an adopter runs it: the staged copy
+# against the staged tree. Its coverage arm reds on an orphan entry, one naming
+# a hook that is not on disk, so a release-excluded hook left in the staged
+# .gaia/hook-scopes.json fails here.
+HOOKSCOPE_CHECKER=".gaia/scripts/check-hook-scope-manifest.sh"
+if [ ! -e "$STAGING/$HOOKSCOPE_CHECKER" ]; then
+  fail "missing from staging: $HOOKSCOPE_CHECKER"
+  exit 1
+fi
+if ! HOOKSCOPE_OUT="$(bash "$STAGING/$HOOKSCOPE_CHECKER" "$STAGING" 2>&1)"; then
+  log "hook-scopes manifest check fails against the staged tree:"
+  log "$HOOKSCOPE_OUT"
+  fail "staged $HOOKSCOPE_CHECKER reds on the staged tree"
+  exit 1
+fi
+
+pass "manifest, exclude list, sentinels, script-capabilities boundary, hook-capabilities boundary, and hook-scopes manifest all consistent with staging"

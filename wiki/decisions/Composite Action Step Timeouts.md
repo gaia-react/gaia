@@ -4,7 +4,7 @@ status: active
 priority: 3
 date: 2026-09-07
 created: 2026-09-07
-updated: 2026-09-08
+updated: 2026-09-15
 tags: [decision, ci, github-actions]
 ---
 
@@ -18,7 +18,7 @@ Every call site that `uses: ./.github/actions/gaia-setup-node` carries its own `
 
 A workflow step that calls `actions/setup-node` directly, rather than through the composite, carries a cap on the same terms and at the same Node-only sizing: the stall it bounds is a Node tarball fetch rather than a pnpm install, and an uncapped one reds as a generic job timeout the same way. The composite's own inner steps carry no cap and cannot, because a composite action's steps take no `timeout-minutes` at all. That is why the caller's step-level cap is what bounds the whole composite, and why a direct call site has to declare its own.
 
-Both halves are enforced upstream, in GAIA's own CI: every `gaia-setup-node` call site carries a cap, and that cap sits under its job's. The enforcing checks derive their subject set from the tracked tree rather than a hand-named list, so a call site added anywhere they cover fails a check rather than going unnoticed. Their subject set is the composite's call sites; a direct `actions/setup-node` step is held to this rule by the rule alone, as is any call site on an adopter clone, which runs none of these checks.
+Both halves are enforced upstream, in GAIA's own CI: every call site of either shape carries a cap, and that cap sits under its job's. The enforcing checks derive their subject set from the tracked tree rather than a hand-named list, so a call site added anywhere they cover fails a check rather than going unnoticed. Their subject set holds the composite's call sites and a workflow's direct `actions/setup-node` steps alike. The composite's own inner steps are read alongside those and exempted on the surface they sit on rather than held out of the match, so the exemption stays a property of where a step lives and cannot quietly widen into a class of steps nothing checks. A call site on an adopter clone is held to this rule by the rule alone, since an adopter runs none of these checks.
 
 The composite retries a failed pnpm install once, pausing 15 seconds between attempts. A caller's cap therefore has to cover two install attempts plus the pause, not one. The composite's own docblock enumerates what its provisioning covers and already sizes the pause against the leanest caller's cap; call sites point at the composite for that set rather than keeping a local copy that goes stale the next time the composite's provisioning changes.
 

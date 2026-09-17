@@ -705,6 +705,59 @@ jobs:
           PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
         run: |
           set -eu
+          # Any non-zero exit from this step's body converts into the same
+          # in-band refusal its three named refusals already use, under
+          # `refused_reason=step-aborted`. Without it a failure anywhere in the
+          # body ends the job with NO `GAIA-Audit` commit status at all: the
+          # five terminal status writers downstream each carry an implicit
+          # `success()`, and `Status - audit aborted` selects on
+          # `steps.audit.outcome != 'success'`, which a clean audit followed by
+          # a dying push step does not satisfy. `GAIA-Audit` is a required
+          # context, so the pull request strands on a check that never posts and
+          # a re-run diagnoses nothing.
+          #
+          # A trap rather than a status capture per call site: every command in
+          # this body aborts it, nothing reds when another is added, and a
+          # hand-maintained enumeration of the ones that matter is wrong the
+          # moment the step grows. The trap names no call site, so it cannot
+          # fall behind.
+          #
+          # It writes only on a NON-ZERO status, so every `exit 0` path keeps
+          # the outputs it already wrote. Each of those paths -- the three named
+          # refusals, the marker-only arm, the nothing-ahead arm and the push
+          # arm -- writes its outputs immediately before its own `exit`, so no
+          # partial output set is ever on disk when an abort arrives here.
+          #
+          # `pushed=false` / `marker_only=false` is the pair the shipped
+          # refusals already write, so an aborted step routes to the
+          # clean-no-push stamp step, which requires a marker keyed to the
+          # PUSHED head's digest. Whatever this step built before dying is
+          # unattested, so nothing is stamped and the merge gate stays shut; the
+          # refusal buys a truthful status and comment, never clearance.
+          #
+          # `pushed=false` is what the trap knows, not always what happened: an
+          # abort between `git push` returning and the push arm writing its
+          # outputs leaves a head on the remote that this step reports as
+          # unpushed, and the re-trigger step below gates on `pushed == 'true'`,
+          # so that head carries no check runs. The gate stays shut either way,
+          # and before this trap the same failure posted no status at all, so
+          # this is a residual of a path the trap improves rather than one it
+          # opens. Telling it apart needs its own reason and its own fixture.
+          refuse_step_abort() {
+            abort_status=$?
+            trap - EXIT
+            if [ "$abort_status" -ne 0 ]; then
+              echo "code-review-audit: the self-heal step aborted (exit $abort_status) -- refusing in-band so the terminal GAIA-Audit status writers still run." >&2
+              {
+                echo "pushed=false"
+                echo "marker_only=false"
+                echo "refused=true"
+                echo "refused_reason=step-aborted"
+              } >> "$GITHUB_OUTPUT"
+            fi
+            exit 0
+          }
+          trap refuse_step_abort EXIT
           # Push gate: any combination of (a) commits the agent made
           # (self-heal commits and/or the stamp helper's empty trailer
           # commit) ahead of origin, OR (b) leftover uncommitted edits
@@ -881,17 +934,91 @@ jobs:
           # The last input is the .claude/ evidence captured before that reset
           # removed it from view. It is already newline-delimited, so it joins
           # after the `tr` rather than inside the NUL-delimited group.
-          self_heal_paths="$(
+          #
+          # Each producer's exit status is read HERE, in the step's own shell,
+          # one call at a time, rather than inferred from a command substitution
+          # that ends in a pipe. `shopt inherit_errexit` is off under GitHub's
+          # `bash -e {0}`, and this step's own `set -eu` does not turn it on, so
+          # a git call that fails inside a substitution neither aborts the group
+          # nor reaches the substitution's status: the enumeration comes back
+          # PARTIAL at status 0, the refusal ERE below is matched against a path
+          # set silently missing whatever the failed call would have
+          # contributed, and the self-heal is pushed as though it had touched
+          # nothing refusable. `set -o pipefail` does not see it either -- the
+          # failing call is a command inside a group, not a pipeline component
+          # -- so per-call capture is the only spelling that catches it.
+          #
+          # Every producer is recorded, not just the last one to fail: a later
+          # status would otherwise overwrite an earlier one and the message would
+          # name the wrong command, or a `tr`/`cat` failure would be reported as
+          # a git failure.
+          #
+          # The reduce step and the scratch files it needs are routed through the
+          # same capture as the producers. `self_heal_paths="$(sort -u ...)"` was
+          # a plain assignment, which takes the substitution's status, so a
+          # failing `sort` killed the step and landed on precisely the outcome
+          # the in-band refusal below exists to prevent; the same shape applies
+          # to a failing `mktemp`. Sorting into a third file rather than into a
+          # variable is what makes that status readable here.
+          enum_status=0
+          enum_failed=""
+          enum_z=""
+          enum_paths=""
+          enum_sorted=""
+          note_enum_failure() {
+            enum_status="$1"
+            enum_failed="${enum_failed}${enum_failed:+; }$2 exited $1"
+          }
+          # Refuse IN-BAND and exit 0 rather than letting the step die. None of
+          # the terminal GAIA-Audit status writers downstream carries `always()`,
+          # so a hard failure here would end the pull request with no status at
+          # all on a required check, which blocks every merge on the branch.
+          # Refusing keeps the repair boundary shut AND lets those writers run.
+          # The step's EXIT trap now backstops every call site for the same
+          # outcome; this arm stays because it names the cause -- a partial path
+          # list the gate could not judge -- where the trap can only report that
+          # the step died.
+          # A scratch path that never got assigned is the empty string, so the
+          # cleanup is guarded rather than left to trip `set -e` on the way out.
+          refuse_enumeration() {
+            echo "code-review-audit: could not enumerate the self-heal's changed paths ($enum_failed) -- refusing rather than judging a partial path list." >&2
             {
-              {
-                git diff --name-only -z HEAD
-                git diff --cached --name-only -z
-                git diff --name-only -z "origin/${PR_BRANCH}..HEAD" 2>/dev/null || true
-              } | tr '\0' '\n'
-              cat "$preserved_governance_edits"
-            } | sort -u
-          )"
-          rm -f "$preserved_governance_edits"
+              echo "pushed=false"
+              echo "marker_only=false"
+              echo "refused=true"
+              echo "refused_reason=path-enumeration-failed"
+            } >> "$GITHUB_OUTPUT"
+            rm -f -- "$enum_z" "$enum_paths" "$enum_sorted" "$preserved_governance_edits" 2>/dev/null || true
+            exit 0
+          }
+          enum_z="$(mktemp)" || note_enum_failure $? "mktemp"
+          enum_paths="$(mktemp)" || note_enum_failure $? "mktemp"
+          enum_sorted="$(mktemp)" || note_enum_failure $? "mktemp"
+          [ "$enum_status" -eq 0 ] || refuse_enumeration
+          git diff --name-only -z HEAD >> "$enum_z" || note_enum_failure $? "git diff HEAD"
+          git diff --cached --name-only -z >> "$enum_z" || note_enum_failure $? "git diff --cached"
+          # The third call is the only producer that can see a path the self-heal
+          # already COMMITTED, so its status is load-bearing in exactly the case
+          # the other two are blind to. What is legitimately absent here is the
+          # REF, not the answer: before the branch's first push there is no
+          # origin/$PR_BRANCH to diff against. So gate on the ref existing, the
+          # same shape the base_ref check above uses, instead of swallowing every
+          # status with `|| true`, and leave git's own diagnostic on stderr where
+          # the run log keeps it.
+          if git rev-parse --verify --quiet "origin/${PR_BRANCH}^{commit}" >/dev/null 2>&1; then
+            git diff --name-only -z "origin/${PR_BRANCH}..HEAD" >> "$enum_z" \
+              || note_enum_failure $? "git diff origin/${PR_BRANCH}..HEAD"
+          fi
+          tr '\0' '\n' < "$enum_z" >> "$enum_paths" || note_enum_failure $? "tr"
+          cat "$preserved_governance_edits" >> "$enum_paths" || note_enum_failure $? "cat"
+          sort -u < "$enum_paths" > "$enum_sorted" || note_enum_failure $? "sort"
+          rm -f "$enum_z" "$enum_paths" "$preserved_governance_edits"
+          [ "$enum_status" -eq 0 ] || refuse_enumeration
+          # `$(<file)` rather than `$(cat file)`: a redirection the shell performs
+          # itself, so the last read of the enumeration adds no external command
+          # whose status would need routing too.
+          self_heal_paths="$(<"$enum_sorted")"
+          rm -f "$enum_sorted"
           if printf '%s\n' "$self_heal_paths" \
               | grep -qE "$AUDIT_SELFHEAL_REFUSE_ERE"; then
             echo "code-review-audit: self-heal touched a refused surface (tests, the CI pipeline and the rest of .github/, .gaia/ gate & roster machinery, instruction/convention surfaces, or root build config; the set is AUDIT_SELFHEAL_REFUSE_ERE in .claude/hooks/lib/audit-selfheal-paths.sh) -- refusing." >&2
@@ -1090,10 +1217,19 @@ jobs:
           # be a local agent pushing an empty trailer commit, the very HEAD-moving
           # workaround this design avoids.
           #
-          # This path also covers a REFUSED self-heal. `refused` means the
-          # self-heal was off-limits -- an instruction/convention surface
-          # (.claude/**, .specify/**, wiki/**) or a >10-file sprawl -- NOT that
-          # the audit failed or the tree is dirty, so it must not gate this stamp.
+          # This path also covers a REFUSED self-heal, on any of the four
+          # reasons: the self-heal was off-limits (an instruction/convention
+          # surface: .claude/**, .specify/**, wiki/**), it was a >10-file
+          # sprawl, its changed paths could not be enumerated so the off-limits
+          # check had nothing trustworthy to judge, or the step aborted outright
+          # and its EXIT trap refused for it. The last two differ in kind from
+          # the first two -- the gate could not judge, or never reached its
+          # verdict, rather than judged and refused -- and land here the same
+          # way, since both write the pushed=false / marker_only=false pair this
+          # step selects on. None of the four means the audit failed or the tree
+          # is dirty, so none of them may gate this stamp: nothing was pushed
+          # either way, so the pushed head's tree is still the tree that will
+          # merge.
           #
           # --require-marker is therefore the sole proven-clean check for every
           # no-push case, clean and refused alike: the agent writes
@@ -1722,6 +1858,10 @@ jobs:
           elif [ "$REFUSED" = "true" ]; then
             if [ "$REFUSED_REASON" = "governance-surface" ]; then
               mode="self-heal REFUSED: edited a surface off-limits to self-heal (tests, the CI pipeline and the rest of .github/, .gaia/ gate & roster machinery, instruction/convention surfaces under .claude/**, .specify/**, wiki/**, or root build config; the set is AUDIT_SELFHEAL_REFUSE_ERE in .claude/hooks/lib/audit-selfheal-paths.sh); see workflow logs and review manually"
+            elif [ "$REFUSED_REASON" = "path-enumeration-failed" ]; then
+              mode="self-heal REFUSED: the changed-path enumeration failed, so the off-limits-surface check had only a partial list to judge; see workflow logs and review manually"
+            elif [ "$REFUSED_REASON" = "step-aborted" ]; then
+              mode="self-heal REFUSED: the self-heal step aborted before it reported, so what it completed is unknown and the off-limits-surface check may never have run; see workflow logs and review manually"
             else
               mode="self-heal REFUSED: diff exceeded the 10-file safety threshold (touched $REFUSED_COUNT files); see workflow logs and review manually"
             fi

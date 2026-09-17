@@ -57,6 +57,63 @@ jq_bin() {
   fi
 }
 
+# report_engines: prints, on one stdout line, the space-separated jq
+# binaries on PATH (some of jq/gojq, or nothing), and states on stderr which
+# of the two is absent. The ordering query is body-scoped, so its newline
+# exclusion behaves differently under jq's Oniguruma and gojq's Go RE2 in
+# principle; a body-scoped case this suite adds drives every engine present
+# rather than the first one found, and reports an absent engine explicitly
+# rather than silently skipping it.
+report_engines() {
+  local present="" absent=""
+  command -v jq >/dev/null 2>&1 && present="jq" || absent="jq"
+  if command -v gojq >/dev/null 2>&1; then
+    present="${present:+$present }gojq"
+  else
+    absent="${absent:+$absent }gojq"
+  fi
+  if [ -n "$absent" ]; then
+    echo "engine accounting: absent from PATH: ${absent}" >&2
+  fi
+  echo "engine accounting: exercised: ${present:-none}" >&2
+  printf '%s\n' "$present"
+}
+
+# sub_literal_once <file> <needle> <replacement>: literal (non-regex)
+# substring substitution, in place, first occurrence per line. Mirrors
+# doc-merge-workflow-fences.bats' sub_literal; duplicated rather than shared
+# because the two suites are independent bats files with no common library.
+#
+# Reads the needle/replacement out of the environment rather than via awk's
+# own -v assignment: awk's -v processes C-style backslash escapes in the
+# assigned value, so a needle containing the literal two characters `\n`
+# (this query's own jq-regex newline escape) arrives as an actual newline
+# instead, and index() then finds it nowhere on a single physical line.
+# ENVIRON values carry no such processing.
+sub_literal_once() {
+  local file="$1" out
+  out="${file}.sub"
+  SUB_NEEDLE="$2" SUB_REPLACEMENT="$3" awk '
+    BEGIN { n = ENVIRON["SUB_NEEDLE"]; r = ENVIRON["SUB_REPLACEMENT"] }
+    {
+      line = $0
+      p = index(line, n)
+      if (p > 0) {
+        print substr(line, 1, p - 1) r substr(line, p + length(n))
+        hits++
+      } else {
+        print line
+      }
+    }
+    END { exit hits ? 0 : 1 }
+  ' "$file" >"$out" || {
+    echo "substitution needle absent from ${file}: ${2}" >&2
+    rm -f "$out"
+    return 1
+  }
+  mv "$out" "$file"
+}
+
 # The ordering query's whole fenced code block, anchored on the unique
 # `--jq '` line: the last ``` fence before it opens the block, the first ```
 # fence after it closes it. Arm 1's structural greps run over this.
@@ -196,4 +253,114 @@ render_backlog() {
     body_len="$(jq -r '.body | length' <<<"$issue")"
     [ "$body_len" -gt 0 ] || return 1
   done
+}
+
+@test "Arm 2: a spaced path key parses verbatim with its own line number" {
+  engines="$(report_engines)"
+  [ -n "$engines" ] || skip "neither jq nor gojq on PATH"
+  program="$(extract_jq_program)"
+  for eng in $engines; do
+    output="$("$eng" "$program" "$FIXTURE")"
+    issue5="$("$eng" --arg n 105 '.[] | select(.number == ($n | tonumber))' <<<"$output")"
+    path="$("$eng" -r '.key.path' <<<"$issue5")"
+    line="$("$eng" '.key.line' <<<"$issue5")"
+    if [ "$path" != "wiki/concepts/PR Merge Workflow.md" ] || [ "$line" != "175" ]; then
+      echo "engine ${eng}: key.path=${path} key.line=${line}" >&2
+      return 1
+    fi
+  done
+}
+
+@test "Arm 2: a two-key continuation line yields the first key's own path and line, and a pre-change greedy capture would splice them" {
+  engines="$(report_engines)"
+  [ -n "$engines" ] || skip "neither jq nor gojq on PATH"
+  fixture2="$REPO_ROOT/.gaia/tests/fixtures/dedup-key-corpus/two-keys-one-line-issues.json"
+  [ -f "$fixture2" ] || {
+    echo "fixture absent: ${fixture2}" >&2
+    return 1
+  }
+  program="$(extract_jq_program)"
+
+  for eng in $engines; do
+    output="$("$eng" "$program" "$fixture2")"
+    issue="$("$eng" '.[] | select(.number == 9001)' <<<"$output")"
+    path="$("$eng" -r '.key.path' <<<"$issue")"
+    line="$("$eng" '.key.line' <<<"$issue")"
+    if [ "$path" != "wiki/concepts/PR Merge Workflow.md" ] || [ "$line" != "7" ]; then
+      echo "engine ${eng}: key.path=${path} key.line=${line}" >&2
+      return 1
+    fi
+  done
+
+  # Guard-can-fail: the pre-change spelling this query carried before
+  # SPEC-082 was a bare greedy path=(?<path>.+), which has no closer to stop
+  # at and backtracks to the LAST ` line=<NUM>) -->` in the body, splicing
+  # across both keys and attaching the second key's line number to the
+  # first key's class.
+  bin="$(jq_bin)"
+  mutant_file="${BATS_TEST_TMPDIR}/debt-program-greedy.jq"
+  printf '%s\n' "$program" >"$mutant_file"
+  sub_literal_once "$mutant_file" 'path=(?<path>[^>\n]+)' 'path=(?<path>.+)'
+  mutant_output="$("$bin" "$(cat "$mutant_file")" "$fixture2")"
+  mutant_issue="$("$bin" '.[] | select(.number == 9001)' <<<"$mutant_output")"
+  mutant_path="$("$bin" -r '.key.path' <<<"$mutant_issue")"
+  case "$mutant_path" in
+    *"Task Orchestration.md"*) : ;;
+    *)
+      echo "expected the pre-change greedy capture to splice across both keys, got: ${mutant_path}" >&2
+      return 1
+      ;;
+  esac
+}
+
+@test "Arm 2: the multiline decoy body does not swallow the real key, and a newline-unsafe class would" {
+  engines="$(report_engines)"
+  [ -n "$engines" ] || skip "neither jq nor gojq on PATH"
+  decoy="$REPO_ROOT/.gaia/tests/fixtures/dedup-key-corpus/multiline-decoy-body.txt"
+  [ -f "$decoy" ] || {
+    echo "fixture absent: ${decoy}" >&2
+    return 1
+  }
+  program="$(extract_jq_program)"
+
+  for eng in $engines; do
+    wrapped="${BATS_TEST_TMPDIR}/decoy-issue-${eng}.json"
+    "$eng" -n --rawfile body "$decoy" \
+      '[{number: 9002, title: "decoy", createdAt: "2026-01-06T00:00:00Z", labels: [], body: $body}]' \
+      >"$wrapped"
+    output="$("$eng" "$program" "$wrapped")"
+    issue="$("$eng" '.[] | select(.number == 9002)' <<<"$output")"
+    path="$("$eng" -r '.key.path' <<<"$issue")"
+    case "$path" in
+      *$'\n'*)
+        echo "engine ${eng}: the committed capture leaked a newline into the path: ${path}" >&2
+        return 1
+        ;;
+    esac
+    if [ "$path" != "app/real.ts" ]; then
+      echo "engine ${eng}: the committed capture did not land on the real key: ${path}" >&2
+      return 1
+    fi
+  done
+
+  # Guard-can-fail: a class missing the newline exclusion is the mutation
+  # this row exists to catch, and it must swallow the real key.
+  bin="$(jq_bin)"
+  wrapped="${BATS_TEST_TMPDIR}/decoy-issue-mutant.json"
+  "$bin" -n --rawfile body "$decoy" \
+    '[{number: 9002, title: "decoy", createdAt: "2026-01-06T00:00:00Z", labels: [], body: $body}]' \
+    >"$wrapped"
+  mutant_file="${BATS_TEST_TMPDIR}/debt-program-no-newline-exclusion.jq"
+  printf '%s\n' "$program" >"$mutant_file"
+  sub_literal_once "$mutant_file" 'path=(?<path>[^>\n]+)' 'path=(?<path>[^>]+)'
+  mutant_output="$("$bin" "$(cat "$mutant_file")" "$wrapped")"
+  mutant_issue="$("$bin" '.[] | select(.number == 9002)' <<<"$mutant_output")"
+  mutant_path="$("$bin" -r '.key.path' <<<"$mutant_issue")"
+  case "$mutant_path" in
+    *$'\n'*) : ;;
+    *)
+      echo "expected the newline-unsafe mutant to leak a newline into the path, got: ${mutant_path}" >&2
+      return 1
+      ;;
+  esac
 }

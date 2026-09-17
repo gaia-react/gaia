@@ -20,6 +20,12 @@
 # (.gaia/tests/hooks/fixtures/audit-routing-before.tsv) is excluded on the same
 # grounds: it is a generated enumeration of every tracked path, so it carries
 # this test's own filename as a data row, never a call to the retired script.
+# The dedup-key corpus (.gaia/tests/fixtures/dedup-key-corpus/) is excluded on
+# those same grounds: it is a verbatim capture of every residual key recorded in
+# this repository's merged pull-request bodies and its tech-debt issues in every
+# state, so a key whose path field happens to cite this suite's own file is a
+# captured data row and not a reference to the retired script. Nothing under
+# that directory executes.
 #
 # The grep names no positive root: its subject is the whole tracked tree minus
 # those exclusions. Listing the roots instead is the obvious alternative, and it
@@ -57,11 +63,17 @@ setup() {
 }
 
 @test "UAT-007: git grep for cost-consolidate is empty across the whole tracked tree" {
+  # gaia-lint-ignore lint-git-path-quoting: the assertion below is emptiness of
+  # $output, and quoting cannot turn a non-empty result empty or an empty one
+  # non-empty -- the same reasoning the guard header applies to a `git status
+  # --porcelain` emptiness test; bats `run` cannot carry NUL through $output
+  # either
   run git -C "$REPO_ROOT" grep -l cost-consolidate -- \
     ':!.gaia/local' ':!.gaia/manifest.json' ':!CHANGELOG.md' \
     ':!wiki/log.md' ':!wiki/hot.md' \
     ':!.gaia/scripts/tests/cost-consolidate-absence.bats' \
-    ':!.gaia/tests/hooks/fixtures/audit-routing-before.tsv'
+    ':!.gaia/tests/hooks/fixtures/audit-routing-before.tsv' \
+    ':!.gaia/tests/fixtures/dedup-key-corpus'
   # git grep exits 1 (not 0) when it finds no match; the assertion that
   # matters is emptiness of $output, not the exit code.
   [ -z "$output" ]

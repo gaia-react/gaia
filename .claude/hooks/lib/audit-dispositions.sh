@@ -490,7 +490,7 @@ EOF
       # Fail closed on the key shape. A key the extractor cannot parse is an
       # offender, and neither term is evaluated for it, so a malformed key is
       # never cleared by a changed-files match on a path it does not name.
-      if ! LC_ALL=C grep -qE '^v1 class=[^[:space:]]+ path=.+ line=[0-9]+$' <<<"$key"; then
+      if ! LC_ALL=C grep -qE '^v1 class=[^[:space:]]+ path=[^>]+ line=[0-9]+$' <<<"$key"; then
         offenders="${offenders}machinery-waived-not-eligible: ${key}
 "
         continue

@@ -143,7 +143,7 @@
       "hook": ".claude/hooks/check-i18n-strings.sh",
       "scope": "per-tree",
       "state": ["path:.claude/i18n-strings-checked"],
-      "why": "Writes a once-per-session advisory marker at a fixed repo-relative path in whatever checkout the session runs in; a tracked-working-file marker, not .gaia/local state, so no root to resolve (Pattern D: declared, no conversion)."
+      "why": "Writes a once-per-session advisory marker into whatever checkout the session runs in, resolved through gaia_resolve_tree_root (falling back to git rev-parse --show-toplevel, then pwd) rather than named relative to the process working directory. Nothing above the write gates on the repository, so the acting tree has to be resolved rather than assumed: a working-directory-relative path writes a separate marker under every directory the session edits from, under one session id, and the once-per-session suppression the marker exists to provide silently stops holding."
     },
     {
       "hook": ".claude/hooks/check-story-exists.sh",
@@ -244,8 +244,8 @@
     {
       "hook": ".claude/hooks/wiki-drift-check.sh",
       "scope": "per-tree",
-      "state": ["path:.claude/wiki-drift-checked"],
-      "why": "Writes a once-per-session drift-reminder marker at a fixed repo-relative path in whatever checkout the session runs in; a tracked-working-file marker, not .gaia/local state. Detects the repository via git rev-parse --is-inside-work-tree, so it stays live in a linked worktree rather than going dead at a .git-is-a-directory test."
+      "state": ["path:.claude/wiki-drift-checked", "path:.gaia/local/cache/shared/wiki-base-catchup.report"],
+      "why": "Two state paths in two different trees, which one scope cannot express; declared here in prose the way local-janitor.sh's entry declares its own main-root sub-sweep. The scope above is the marker's: a once-per-session drift-reminder tracked-working-file marker belonging to whatever checkout the session runs in, left relative to the working directory because the wiki/.state.json test above it has already exited from anywhere that is not that checkout's root. The base-catch-up report is the exception and is MAIN-anchored .gaia/local state: local-janitor.sh writes it under gaia_resolve_main_root, so this hook drains it under gaia_resolve_main_root too (falling back to git rev-parse --show-toplevel, then pwd). Against the acting tree the two answers differ outright from any directory below a checkout's root, where the drain is reached because it sits above every early exit. From a worktree ROOT they happen to agree, but only through provisioning: provision-worktree.sh replaces a linked worktree's .gaia/local with one symlink to main's, so a working-directory-relative path reached main's store by a second mechanism rather than by naming it, and that hook exists to repair the symlink whenever it finds it broken. Detects the repository via git rev-parse --is-inside-work-tree, so it stays live in a linked worktree rather than going dead at a .git-is-a-directory test; the drain deliberately sits above that test and every other early exit, so its root resolution does too."
     },
     {
       "hook": ".claude/hooks/wiki-recompact-inject.sh",
@@ -341,7 +341,7 @@
       "hook": ".claude/hooks/lib/gaia-ci-defer.sh",
       "scope": "any",
       "state": [],
-      "why": "Reads .gaia/automation.json, a tracked repo-relative config file, not .gaia/local state; touches no tree-scoped state."
+      "why": "Reads .gaia/automation.json, a tracked config file belonging to the acting tree, resolved through gaia_resolve_tree_root (falling back to git rev-parse --show-toplevel, then pwd) inside the function body rather than named relative to the process working directory. A caller reached from a subdirectory otherwise misses the config and takes the absent-config default, which fails toward RUNNING: a tool the operator put in ci mode fires its local trigger anyway, with output byte-identical to carrying no config at all. Writes nothing and touches no .gaia/local state of its own."
     },
     {
       "hook": ".claude/hooks/lib/gaia-version.sh",

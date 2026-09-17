@@ -93,7 +93,7 @@ describe('normalizeRepoRelativePath, accepted forms', () => {
     });
   });
 
-  test('accepts a path carrying a space, which only the lenient side produces', () => {
+  test('accepts a path carrying a space', () => {
     expect(normalizeRepoRelativePath('app/my file.ts')).toStrictEqual({
       ok: true,
       value: 'app/my file.ts',
@@ -214,13 +214,16 @@ describe('parseWrappedKeys, the filer grammar', () => {
     );
   });
 
-  test('returns a key whose path carries a space, which the gate grammar refuses', () => {
+  test('parseWrappedKeys and parseKey agree on a spaced-path key', () => {
     const inner = 'v1 class=a/one path=app/my file.ts line=5';
 
     expect(parseWrappedKeys(wrapped(inner))).toStrictEqual([
       {line: 5, path: 'app/my file.ts'},
     ]);
-    expect(refusal(parseKey(inner, 'gate'))).toContain('gate grammar');
+    expect(validated(parseKey(inner, 'gate'))).toMatchObject({
+      line: 5,
+      path: 'app/my file.ts',
+    });
   });
 
   test('returns every key in body order and drops one it cannot validate', () => {
