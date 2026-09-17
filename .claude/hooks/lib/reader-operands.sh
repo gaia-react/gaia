@@ -40,12 +40,16 @@
 # the Grep tool arm already denies the same filter given as its `glob`. Their
 # value is a glob rather than a path, so the predicate catches the literal
 # shapes (`*.key`, `.env*`) and not every glob that could expand onto one; each
-# hook's HONEST LIMITS names what gets through. A value with a leading `!` is
-# dropped instead: ripgrep reads it as an EXCLUSION, and so does the ugrep that
-# Claude Code's own shell runs as `grep`, so judging it would deny a search for
-# steering clear of the class. GNU and BSD grep take that `!` literally, which
-# leaves a file whose name really begins with `!` unjudged on those two. The
-# flags that only ever exclude (--exclude, --exclude-dir) stay discarded.
+# hook's HONEST LIMITS names what gets through. The value is split on commas and
+# each element judged alone, because the ugrep that Claude Code's own shell runs
+# as `grep` reads it as a list (`-g '!*.md,*.key'` still searches key files). A
+# comma inside a ripgrep brace glob splits into fragments that match nothing,
+# the brace-glob pass the limits already name. An element with a leading `!` is
+# dropped, and so is one with a leading `^`: ripgrep reads `!` as an EXCLUSION
+# and ugrep reads both that way, so judging them would deny a search for
+# steering clear of the class. GNU and BSD grep take both characters literally,
+# which leaves a file whose name really begins with one unjudged on those two.
+# The flags that only ever exclude (--exclude, --exclude-dir) stay discarded.
 #
 # The flag tables are the UNION of GNU grep's and ripgrep's, deliberately, and
 # the union is safe ONLY because no discard-listed flag is value-less for either
@@ -91,7 +95,9 @@ _GAIA_RO_SHORT_DISCARD='emABCDdt'
 _GAIA_RO_SHORT_FILE='f'
 
 # Short and long flags whose value is a glob selecting the files a search reads.
-# Emitted unless the value is `!`-negated.
+# Each non-negated element of the value is emitted. Not a closed set of every
+# way to select files: ripgrep's --type-add definitions and ugrep's extension
+# filters select too, and each hook's HONEST LIMITS names them as open.
 _GAIA_RO_SHORT_SELECT='g'
 _GAIA_RO_LONG_SELECT='--include --glob --iglob'
 
@@ -138,14 +144,23 @@ _gaia_ro_emit() {
   if [ -n "$v" ]; then printf '%s\n' "$v"; fi
 }
 
-# Emit a select flag's glob unless it is `!`-negated.
+# Emit each element of a select flag's comma-separated glob list, skipping the
+# negated ones.
 _gaia_ro_emit_select() {
-  local v
+  local v el
+  local parts=()
   v=$(gaia_reader_strip_quotes "$1")
-  case "$v" in
-    '!'*) return 0 ;;
-  esac
-  _gaia_ro_emit "$v"
+  # An empty array expands as unbound under bash 3.2 with set -u.
+  [ -n "$v" ] || return 0
+  # read -a rather than an unquoted IFS split, which would also pathname-expand
+  # a glob element against the working directory.
+  IFS=',' read -r -a parts <<<"$v"
+  for el in "${parts[@]}"; do
+    case "$el" in
+      '!'* | '^'*) ;;
+      *) _gaia_ro_emit "$el" ;;
+    esac
+  done
 }
 
 # Emit the file operands of a grep-family invocation. Arguments are the tokens

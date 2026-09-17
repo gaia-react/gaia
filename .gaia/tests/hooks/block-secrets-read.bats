@@ -225,6 +225,26 @@ run_hook_without_library() {
   assert_allowed_by_json
 }
 
+@test "grep -r -g '!*.md,*.key' TOKEN . is denied (ugrep negates each comma-list element alone)" {
+  run_hook_bash "grep -r -g '!*.md,*.key' TOKEN ."
+  assert_denied_by_json
+}
+
+@test "grep -r --glob='*.md,*.key' TOKEN . is denied (each comma-list element is judged)" {
+  run_hook_bash "grep -r --glob='*.md,*.key' TOKEN ."
+  assert_denied_by_json
+}
+
+@test "grep -r -g '!*.key,!*.pem' TOKEN . is allowed (every element negated)" {
+  run_hook_bash "grep -r -g '!*.key,!*.pem' TOKEN ."
+  assert_allowed_by_json
+}
+
+@test "grep -r -g '^*.key' TOKEN . is allowed (ugrep reads a leading ^ as an exclusion)" {
+  run_hook_bash "grep -r -g '^*.key' TOKEN ."
+  assert_allowed_by_json
+}
+
 @test "grep -r TOKEN --exclude=*.key . is allowed (--exclude names files not read)" {
   run_hook_bash "grep -r TOKEN --exclude=*.key ."
   assert_allowed_by_json

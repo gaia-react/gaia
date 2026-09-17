@@ -290,9 +290,22 @@ run_write_hook_edit() {
   assert_denied_by_json
 }
 
-@test "rg -g '!.env*' SECRET is allowed (a negated glob excludes the class)" {
+@test "rg -g '!.env*' SECRET stays allowed" {
+  # Not a guard on the negation skip: is_dotenv_path never matches a basename
+  # starting with `!`, so this stays green with the skip removed. The skip is
+  # guarded by the table-driven negated-glob test in block-secrets-read.bats.
   run_hook_bash "rg -g '!.env*' SECRET"
   assert_allowed_by_json
+}
+
+@test "grep -r -g '!*.md,.env*' SECRET . is denied (ugrep negates each comma-list element alone)" {
+  run_hook_bash "grep -r -g '!*.md,.env*' SECRET ."
+  assert_denied_by_json
+}
+
+@test "grep -r -g '*.md,.env.local' SECRET . is denied (each comma-list element is judged)" {
+  run_hook_bash "grep -r -g '*.md,.env.local' SECRET ."
+  assert_denied_by_json
 }
 
 @test "grep -r SECRET --exclude=.env . is allowed (--exclude names files not read)" {
