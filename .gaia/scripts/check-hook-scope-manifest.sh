@@ -14,8 +14,8 @@
 #                  token is either a real .gaia/state-registry.json entry id
 #                  or a well-formed `path:<repo-relative-path>` token.
 #   3. Derive arm  for every entry whose `state` includes a REGISTRY id
-#                  (never a bare `path:` token) classified main-only, shared,
-#                  or per-tree in the registry, the hook contains no BARE
+#                  classified main-only, shared, or per-tree in the registry,
+#                  or a `path:` token under `.gaia/local`, the hook contains no BARE
 #                  `.gaia/local` literal (one not immediately preceded by a
 #                  path-join character, i.e. reached without a resolved-root
 #                  variable) -- and, when it holds any live `.gaia/local`
@@ -23,10 +23,10 @@
 #                  (main-root-lib.sh, state-registry-lib.sh,
 #                  gaia-active-plan.sh, red-ledger.sh, ledger-path-lib.sh, or
 #                  gh-artifact-lib.sh) so the joined root traces back to one.
-#                  An entry whose `state` holds only `path:` tokens (Pattern
-#                  D, a tracked per-checkout working file with no registry
-#                  entry) is exempt -- there is no `.gaia/local` root to
-#                  derive.
+#                  An entry whose `state` holds only `path:` tokens outside
+#                  `.gaia/local` (Pattern D, a tracked per-checkout working
+#                  file with no registry entry) is exempt -- there is no
+#                  `.gaia/local` root to derive.
 #   4. Any honesty every scope: any entry's hook contains no live
 #                  `.gaia/local` reference at all (a comment mention is
 #                  allowed; a bare or resolved literal is not), so an `any`
@@ -265,7 +265,7 @@ gaia_check_hook_manifest_derive_arm() {
     fi
   done < <(jq -r '.hooks[] | [.hook, (.state // [] | tostring)] | @tsv' "$manifest")
 
-  [ "$rc" -eq 0 ] && printf 'derive arm: every main-only/shared/per-tree-backed entry is bare-literal-free and resolver-backed\n'
+  [ "$rc" -eq 0 ] && printf 'derive arm: every main-only/shared/per-tree-backed or .gaia/local path:-backed entry is bare-literal-free and resolver-backed\n'
   return $rc
 }
 

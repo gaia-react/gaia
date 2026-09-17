@@ -7,8 +7,8 @@
 # Four assertions, each with its own function: coverage (every
 # .claude/hooks/**/*.sh has exactly one entry), schema (manifest + schema are
 # valid JSON, every state token is a known registry id or a well-formed
-# path: token), the derive arm (a main-only/shared/per-tree-backed entry's
-# hook has no bare .gaia/local literal), and any honesty (a scope: any
+# path: token), the derive arm (a main-only/shared/per-tree-backed or
+# .gaia/local path:-backed entry's hook has no bare .gaia/local literal), and any honesty (a scope: any
 # entry's hook has no bare .gaia/local literal either).
 #
 # Run under bash 5 (bash 3.2's `[[ ]]` skip-under-set-e gap is real; see
@@ -341,6 +341,18 @@ cat "$report"'
   run gaia_check_hook_manifest_derive_arm "$repo"
   [ "$status" -eq 1 ]
   grep -qF "bare .gaia/local literal" <<<"$output" || return 1
+}
+
+@test "derive arm: a path: token outside .gaia/local does not qualify the entry, even beside a bare literal" {
+  local repo; repo="$(make_fixture_repo derive-pathtracked)"
+  add_hook "$repo" "foo.sh" '#!/usr/bin/env bash
+: > ".claude/some-marker"
+report=".gaia/local/cache/x.report"
+cat "$report"'
+  write_manifest "$repo" '[{"hook":".claude/hooks/foo.sh","scope":"per-tree","state":["path:.claude/some-marker","path:.gaia/localish"],"why":"x"}]'
+  commit_all "$repo"
+  run gaia_check_hook_manifest_derive_arm "$repo"
+  [ "$status" -eq 0 ]
 }
 
 @test "derive arm: a hook that inherits its root via a resolver-backed lib name, holding no literal of its own, passes" {
