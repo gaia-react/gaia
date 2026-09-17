@@ -16,7 +16,12 @@
 # converted: the worthiness presence check, fail-open and deliberately out
 # of scope, and the disposition sidecar's changed-set helper, whose body IS
 # the resolver -- lifted, not copied, so there is nothing left there to
-# exempt.
+# exempt. The scope resolver's eligibility base is a third carrier, exempt
+# rather than converted: its ladder deliberately keeps its own spelling of
+# the default-branch arm, which a local branch named `origin/<default>` can
+# shadow where this resolver's fully-qualified ref cannot, and
+# .gaia/scripts/tests/audit-base-agreement.bats pins that divergence. Adopting
+# the resolver there would change the waive-eligibility set, not tidy it.
 #
 # check-audit-base-derivation.sh is a different check over a different
 # concern: it governs the Code Audit Team member agents' REVIEW base, not
@@ -64,7 +69,7 @@ GAIA_PROVENANCE_CONSUMERS=(
   '.gaia/scripts/resolve-audit-members.sh'
 )
 
-# The chain's one written exemption plus the resolver's own file. No entry
+# The chain's written exemptions plus the resolver's own file. No entry
 # for .claude/hooks/lib/audit-dispositions.sh: after adoption its
 # changed-set helper carries no origin-then-local chain at all, because that
 # helper's body became this resolver's definition rather than staying a
@@ -72,6 +77,7 @@ GAIA_PROVENANCE_CONSUMERS=(
 GAIA_PROVENANCE_ALLOWED_CHAIN_FILES=(
   '.claude/hooks/lib/audit-base-provenance.sh'
   '.claude/hooks/worthiness-presence-check.sh'
+  '.gaia/scripts/audit-resolve-scope.sh'
 )
 
 # _gaia_provenance_singleton <repo_root>: assertion 1. Prints every matching

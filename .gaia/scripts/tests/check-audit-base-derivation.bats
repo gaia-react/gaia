@@ -367,6 +367,62 @@ Derived per .github/audit/resolve-audit-base.sh.
   grep -qF "review bases derived by a bare merge-base against the default branch: 1" <<<"$output" || return 1
 }
 
+# ELIG_BASE joins FULL_BASE and KEY_BASE in the by-name exemption. It is the
+# default member's waive-eligibility fork point, merge-based against the branch
+# the pull request merges into, and it is never a review base; its call passes
+# no BASE_REF, so only the name can admit it.
+ELIG_BASE_DERIVED_OK='```bash
+ELIG_BASE="$(git -C "$root" merge-base HEAD "$primary_ref" 2>/dev/null || git -C "$root" merge-base HEAD "$fallback_ref" 2>/dev/null || true)"
+if ! git -C "$root" diff --name-only -z "${ELIG_BASE}...HEAD" > "$tmp/elig"; then
+```
+'
+
+# The same eligibility diff in the two-dot, quoting form: ELIG_BASE is a base
+# spelling assertions 3 and 4 must recognise, or a drift on it goes unseen.
+DIFF_ELIG_BASE_TWO_DOT_NO_Z='```bash
+if ! git -C "$root" diff --name-only "${ELIG_BASE}" > "$tmp/elig"; then
+```
+'
+
+# A name that merely ends in ELIG_BASE is not the exempt name.
+NOT_ELIG_BASE_BARE='```bash
+MY_ELIG_BASE="$(git -C "$root" merge-base HEAD main)"
+```
+'
+
+@test "fixture: ELIG_BASE's eligibility derivation is exempt by name, same as FULL_BASE" {
+  local repo
+  repo="$(make_fixture_repo elig-base-derived-ok)"
+  write_agent_file "$repo" code-audit-frontend.md "$ELIG_BASE_DERIVED_OK"
+  commit_fixture_repo "$repo"
+  run gaia_check_audit_base_derivation "$repo"
+  [ "$status" -eq 0 ]
+  grep -qF "review bases derived by a bare merge-base against the default branch: 0" <<<"$output" || return 1
+  grep -qF "review diffs consuming a base that never reached the fork point: 0" <<<"$output" || return 1
+  grep -qF "changed-file diffs that let git C-quote a path: 0" <<<"$output" || return 1
+}
+
+@test "fixture: a name merely ending in ELIG_BASE is not exempt by name" {
+  local repo
+  repo="$(make_fixture_repo not-elig-base)"
+  write_agent_file "$repo" code-audit-frontend.md "$NOT_ELIG_BASE_BARE"
+  commit_fixture_repo "$repo"
+  run gaia_check_audit_base_derivation "$repo"
+  [ "$status" -eq 1 ]
+  grep -qF "review bases derived by a bare merge-base against the default branch: 1" <<<"$output" || return 1
+}
+
+@test "fixture: a two-dot, unquoted diff on ELIG_BASE fails both assertions 3 and 4" {
+  local repo
+  repo="$(make_fixture_repo diff-elig-base-two-dot)"
+  write_agent_file "$repo" code-audit-frontend.md "$DIFF_ELIG_BASE_TWO_DOT_NO_Z"
+  commit_fixture_repo "$repo"
+  run gaia_check_audit_base_derivation "$repo"
+  [ "$status" -eq 1 ]
+  grep -qF "review diffs consuming a base that never reached the fork point: 1" <<<"$output" || return 1
+  grep -qF "changed-file diffs that let git C-quote a path: 1" <<<"$output" || return 1
+}
+
 # ---------- assertion 2: every BASE_SHA namer names the resolver ----------
 
 @test "fixture: a file naming BASE_SHA without ever naming the resolver fails assertion 2" {
@@ -1026,9 +1082,10 @@ mutate_resolver() {
   # normalized to `changed="$(git ...)"` drops out of the net entirely.
   # The net reads the definitions AND the resolver script, where the
   # specialists' diffs live: the script writes each diff to a file under an
-  # exit-status test (`if ! git ... diff ... > file`), so that spelling joins the
-  # assignment one, and an indented assignment counts as much as a column-0 one.
-  run git -C "$REPO_ROOT" grep -hIE '^[[:space:]]*[a-z_]+="?\$\(git .*diff --name-only|^[[:space:]]*if ! git .*diff --name-only' -- '.claude/agents/' '.gaia/scripts/audit-resolve-scope.sh'
+  # exit-status test (`if ! git ... diff ... > file`, or its `elif` arm), so that
+  # spelling joins the assignment one, and an indented assignment counts as much
+  # as a column-0 one.
+  run git -C "$REPO_ROOT" grep -hIE '^[[:space:]]*[a-z_]+="?\$\(git .*diff --name-only|^[[:space:]]*(el)?if ! git .*diff --name-only' -- '.claude/agents/' '.gaia/scripts/audit-resolve-scope.sh'
   [ "$status" -eq 0 ]
   [ -n "$output" ]
   # Pin the breadth, not just non-emptiness. `[ -n "$output" ]` is satisfied by
@@ -1058,11 +1115,11 @@ mutate_resolver() {
   done <<< "$output"
 }
 
-@test "real repo: the guarantee above is not vacuous -- definitions do name BASE_SHA and do keep a FULL_BASE" {
+@test "real repo: the guarantee above is not vacuous -- the scan surface names BASE_SHA and keeps an exempt whole-PR base" {
   # Both verdicts are counts of violations, so a scan that saw no candidate
   # at all reports zero and passes. Pin both candidate sets as non-empty: the
-  # BASE_SHA namers assertion 2 ranges over, and the exempted FULL_BASE
-  # derivation assertion 1 must be deciding about rather than never meeting.
+  # BASE_SHA namers assertion 2 ranges over, and the exempted whole-PR
+  # derivations assertion 1 must be deciding about rather than never meeting.
   # gaia-lint-ignore lint-git-path-quoting: bats `run` captures stdout into
   # $output, which cannot hold a NUL byte, so -z here would concatenate the
   # paths into one unsplittable string rather than delimit them; both
@@ -1074,11 +1131,13 @@ mutate_resolver() {
   grep -qF "code-audit-frontend.md" <<<"$output" || return 1
   grep -qF ".gaia/scripts/audit-resolve-scope.sh" <<<"$output" || return 1
 
+  # The default member's eligibility fork point is a bare merge-base the
+  # resolver owns under the exempt name ELIG_BASE.
   # gaia-lint-ignore lint-git-path-quoting: same `run`-into-$output shape and
   # same fixed-ASCII-literal assertion as the call above
-  run git -C "$REPO_ROOT" grep -lIE '^[[:space:]]*FULL_BASE="?\$\(git ' -- '.claude/agents/' '.gaia/scripts/audit-resolve-scope.sh'
+  run git -C "$REPO_ROOT" grep -lIE '^[[:space:]]*ELIG_BASE="?\$\(git -C "\$root" merge-base ' -- '.gaia/scripts/audit-resolve-scope.sh'
   [ "$status" -eq 0 ]
-  grep -qF "code-audit-frontend.md" <<<"$output" || return 1
+  grep -qF ".gaia/scripts/audit-resolve-scope.sh" <<<"$output" || return 1
 
   # The resolver takes its membership FULL_BASE from the shared
   # base-provenance resolver rather than a bare merge-base, so the by-name

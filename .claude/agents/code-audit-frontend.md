@@ -47,7 +47,7 @@ printf '%s\n' "$AUDIT_ROOT"
 
 Run it once, as its own Bash call, with the dispatched `AUDIT_ROOT=` assignment ahead of it when the orchestrator supplied one. It prints the root resolved physically, and that printed path is what `<root>` stands for in every command below. The fallback is the working directory rather than `git rev-parse --show-toplevel` because a `git` call inside a command substitution is a shape a worktree-confined member cannot run. What that fallback does not do, lift a subdirectory to its checkout root or refuse a path outside any repository, is refused downstream instead: the scope resolver and the clearance writer each reject a `--root` that is not a checkout root.
 
-**From here on, every value travels as a literal typed into the command, never as a shell variable or a command substitution.** Replace `<root>`, and each `<NAME>` a command below prints, with its value before running the command that consumes it. Keep the single quotes a command puts around a value such as `'<ANCHOR_TREE>'`: the resolver prints `ANCHOR_TREE` empty on every `no-anchor` round, and a bare empty value drops out of the command, leaving its flag to take the next argument as its value, where `''` stays an argument of its own. Two constraints meet in that rule. Shell state does not persist between your Bash calls, so a variable set in one call is empty in the next, and an empty root resolves whatever tree the session sits in without saying so: `git -C ""` exits 0 against the ambient tree, and so does `cd ""` on bash 3.2. And a member dispatched into a linked worktree runs under the runtime's worktree confinement, which refuses a multi-command block that names `git`, a `git` call inside a command substitution, a pipe feeding a program text that carries the token `git`, and a command name computed at runtime, whatever the command actually does. Every root, oracle, scope, and handshake command below that names `git` is one plain command with literal arguments, which runs in every mode. The root fence and the `cd <root> &&` ahead of each gate hook name no `git`, and the hooks need that `cd` because they read their checkout from the working directory. Run each fence as its own call. The disposition pipeline's compound blocks (the eligibility base, the provenance line, and the seed-forward) still read `AUDIT_ROOT` and the other values as shell variables: run each of those as one Bash call with the assignments it reads typed ahead of it, `AUDIT_ROOT=<root>` among them.
+**From here on, every value travels as a literal typed into the command, never as a shell variable or a command substitution.** Replace `<root>`, and each `<NAME>` a command below prints, with its value before running the command that consumes it. Keep the single quotes a command puts around a value such as `'<ANCHOR_TREE>'`: the resolver prints `ANCHOR_TREE` empty on every `no-anchor` round, and a bare empty value drops out of the command, leaving its flag to take the next argument as its value, where `''` stays an argument of its own. Two constraints meet in that rule. Shell state does not persist between your Bash calls, so a variable set in one call is empty in the next, and an empty root resolves whatever tree the session sits in without saying so: `git -C ""` exits 0 against the ambient tree, and so does `cd ""` on bash 3.2. And a member dispatched into a linked worktree runs under the runtime's worktree confinement, which refuses a multi-command block that names `git`, a `git` call inside a command substitution, a pipe feeding a program text that carries the token `git`, and a command name computed at runtime, whatever the command actually does. Every root, oracle, scope, and handshake command below that names `git` is one plain command with literal arguments, which runs in every mode. The root fence and the `cd <root> &&` ahead of each gate hook name no `git`, and the hooks need that `cd` because they read their checkout from the working directory. Run each fence as its own call. The disposition pipeline's commands, the eligibility set, the provenance line, and the seed-forward, are plain commands with literal arguments on the same terms.
 
 Do not re-derive that set by hand. On a **local** run, at the start of every review, ask the dispatch oracle whether this diff dispatches you, with `--no-carry-forward`. A local run is one where neither `GITHUB_ACTIONS` nor `CI` is set. The oracle's output is `spawn_set` below:
 
@@ -316,9 +316,9 @@ Record a non-security out-of-scope finding as **`machinery_waived`** (not filed)
 1. The finding is **non-security** per section B's classification, read as section B's own flag, never re-derived. A security-class finding is **never** waived, on any repo including a confirmed PRIVATE one; it takes its section D (divert) or section E (private file) path. Security screens FIRST, exactly as for promotion.
 2. The finding's `path` is in the **union** of two sets:
    - a **gate-machinery path**: it matches the `AUDIT_MACHINERY_PATHS` set (`audit_path_is_machinery` in `.claude/hooks/lib/audit-machinery.sh`: never a `.bats` suite; otherwise an exact-or-`/**`-prefix match). That set is the self-referential machinery, the files whose bytes change what a member reviews, who reviews it, where a clearance lands, or whether a clearance is believed. A machinery path qualifies whether or not this PR touches it.
-   - a path **this PR already changes**: it appears in `full_changed` (see "Resolve the review scope"), compared by **exact whole-string equality** against a repo-relative POSIX path. Never a prefix, suffix, basename, or substring test, and never the TS/TSX-filtered review scope.
+   - a path **this PR already changes**: it appears on an `ELIG_CHANGED=` line (see "Resolve the review scope"), compared by **exact whole-string equality** against a repo-relative POSIX path. Never a prefix, suffix, basename, or substring test, and never the TS/TSX-filtered review scope.
 
-   An empty `full_changed` contributes nothing to the union, which **disengages** the waive rather than opening it: a finding on a non-machinery path then routes to the ordinary filing path.
+   An empty `ELIG_BASE` contributes nothing to the union, which **disengages** the waive rather than opening it: a finding on a non-machinery path then routes to the ordinary filing path.
 
 **Disqualifiers.** Two disqualifiers narrow what may be waived inside that eligible set, and neither widens it: a finding must clear both to stay eligible. No gate checks either one; they sit on the same agent-judgment wall the non-security screen sits on.
 
@@ -378,16 +378,15 @@ This assignment has a direct, intended effect on the gaia-harden recurrence tall
 
 Follow the **file-tech-debt** skill (`.claude/skills/file-tech-debt/SKILL.md`), the source of truth for building the wrapped `gaia-debt-key`, running the dedup query (open + declined-closed + keyless `path:line` fallback, never `gh` full-text search), filing with `gh issue create --body-file` (never `--body <argv>`, which the CI `--verbose` run would echo into the public Actions log), creating the `tech-debt` + `severity:<tier>` + `handler:<class>` + `difficulty:<grade>` labels idempotently, running its blocking pre-file metadata check (`.gaia/scripts/check-debt-issue-metadata.sh --pre-file`) before `gh issue create` and not filing on a finding, the issue-body schema (dedup-key line + `file:line` + failure mode + suggested fix, and no classification line of any kind: the handler class rides as `handler:prompt|plan|spec` and the difficulty grade as `difficulty:<grade>`, both labels, never body lines), emitting `handler:spec` when the out-of-scope fix must begin with a design SPEC, a new subsystem, a schema or contract decision, or a cross-cutting redesign, the `gaia-debt-origin` provenance line, and touching the debt-count sentinel.
 
-**Emit the provenance line.** For each finding this pipeline files, call the provenance helper anchored to `$AUDIT_ROOT`, never bare: a fresh shell leaves `AUDIT_ROOT` unset, and a bare invocation would resolve the script, and the branch it reports, from whatever tree the session's shell happens to sit in, silently, the same trap "Resolve the audited root first" names for `git -C ""`.
+**Emit the provenance line.** For each finding this pipeline files, call the provenance helper by its path under the working root and with `--dir <root>`, never bare: a bare invocation would resolve the script, and the branch it reports, from whatever tree the session's shell happens to sit in, silently, the same trap "Resolve the audited root first" names for `git -C ""`.
 
 **In continuous integration, do not run this call at all.** Your tool policy there grants no rule for it, so the attempt is denied and the line goes missing on the surface that files the most. The workflow resolves provenance in a step of its own ahead of you and leaves the rendered lines on disk; read the one matching the finding's `changed` value and paste it, deriving no field yourself. That prompt names the paths. `.claude/skills/file-tech-debt/SKILL.md` owns why the split exists.
 
 ```bash
-origin="$(cd "${AUDIT_ROOT:-/dev/null/unset}" 2>/dev/null && bash .gaia/scripts/debt-origin-lib.sh \
-  --changed "$debt_origin_changed" --dir . 2>/dev/null || true)"
+bash <root>/.gaia/scripts/debt-origin-lib.sh --changed '<DEBT_ORIGIN_VERDICT>' --dir <root>
 ```
 
-`$debt_origin_changed` is resolved once per finding under "Provenance `changed` field" (Rules-Based Audit, "Resolve the review scope"). Place `$origin` on its own line in the issue body, immediately after the `gaia-debt-key` line, never merged into it. If it is empty, omit the line and continue: **never block, fail, retry, or defer a filing because provenance is partial, absent, or malformed.** Provenance is diagnostic, not identity, so it is not a marker precondition, it never enters the disposition gate (section G), and the disposition-ledger sidecar (section F) gains **no field** for it. The field list, the value vocabulary, and the convention table live in `.claude/skills/file-tech-debt/SKILL.md`'s provenance section; this agent restates neither.
+`<DEBT_ORIGIN_VERDICT>` is the finding's verdict alone, the FIRST token of that path's `DEBT_ORIGIN_CHANGED=<verdict> <path>` line, resolved under "Provenance `changed` field" (Rules-Based Audit, "Resolve the review scope"). Pass the verdict by itself, never the whole printed line: `debt-origin-lib.sh` accepts only `0`, `1` and `unknown`, so a `<verdict> <path>` pair degrades silently to `changed=unknown`. The call prints one line. Carry that printed line as a literal onto its own line in the issue body, immediately after the `gaia-debt-key` line, never merged into it. If the call prints nothing or fails, omit the line and continue: **never block, fail, retry, or defer a filing because provenance is partial, absent, or malformed.** Provenance is diagnostic, not identity, so it is not a marker precondition, it never enters the disposition gate (section G), and the disposition-ledger sidecar (section F) gains **no field** for it. The field list, the value vocabulary, and the convention table live in `.claude/skills/file-tech-debt/SKILL.md`'s provenance section; this agent restates neither.
 
 **E.7. Record `filed` with `issue_number`** in the disposition-ledger sidecar (section F).
 
@@ -733,19 +732,20 @@ Rule-based line-level checks are done by specialist subagents in parallel with `
 
 **When the invoking context supplies a base, that base overrides `BASE_REF` (and therefore `BASE_SHA`) only.** CI passes `<base>...HEAD` in the agent prompt; pass it as `--base-override <base>` on the command below, in place of the resolver's own `BASE_REF`. `KEY_REF` and `KEY_BASE` still come from the resolver call inside that command regardless, because the resolver, not the supplied base, made the reason/anchor decision those values carry. On that path this member does NOT pass `--review-base` / `--base-reason` / `--anchor-tree` to the findings sidecar writer, because the resolver did not make the decision being recorded. Only CI supplies a base, and every member skips the sidecar in CI outright, so the record is moot there.
 
-Otherwise this command is the file's ONE derivation of `BASE_REF`, `BASE_REASON`, `KEY_REF`, `ANCHOR_TREE`, `BASE_SHA`, `KEY_BASE`, `AUDIT_KEY`, and `CHANGED`, and every later consumer, the ledger, the findings sidecar, the handshake's `--base`, takes the value it printed rather than deriving its own. Nothing about it is conditional on being local: only the ledger READ further down is local-only, never the base it reads from.
+Otherwise this command is the file's ONE derivation of `BASE_REF`, `BASE_REASON`, `KEY_REF`, `ANCHOR_TREE`, `BASE_SHA`, `KEY_BASE`, `AUDIT_KEY`, `CHANGED`, `ELIG_BASE`, and `ELIG_CHANGED`, and every later consumer, the ledger, the findings sidecar, the handshake's `--base`, takes the value it printed rather than deriving its own. Nothing about it is conditional on being local: only the ledger READ further down is local-only, never the base it reads from.
 
 ```bash
-<root>/.gaia/scripts/audit-resolve-scope.sh --member code-audit-frontend --root <root> --skip-full-base --review-path '*.ts' --review-path '*.tsx'
+<root>/.gaia/scripts/audit-resolve-scope.sh --member code-audit-frontend --root <root> --skip-full-base --eligibility --review-path '*.ts' --review-path '*.tsx'
 ```
 
 It prints one `KEY=value` line per value, and those lines are the only place each value exists, so carry each one you use below as a literal. The script's header (`.gaia/scripts/audit-resolve-scope.sh`) owns how each is derived. What each means to you:
 
-- **Exit 2 is a refused root.** The script refuses a `--root` that does not resolve to the checkout it sits in, so one tree's scope is never resolved with another tree's machinery. Check that the same working root is typed in both places. `--skip-full-base` is deliberate: your self-skip is oracle-based, so the membership base the specialists stop on is not yours to resolve, and the eligibility base below is a different base.
+- **Exit 2 is a refused root.** The script refuses a `--root` that does not resolve to the checkout it sits in, so one tree's scope is never resolved with another tree's machinery. Check that the same working root is typed in both places. `--skip-full-base` is deliberate: your self-skip is oracle-based, so the membership base the specialists stop on is not yours to resolve, and the eligibility base is a different base.
 - `CHANGED=` lines name your review scope, `BASE_SHA...HEAD` filtered to `*.ts` / `*.tsx`.
 - `BASE_SHA` is the **incremental** base: the newest ancestor of HEAD this pull request already cleared, resolved by `.github/audit/resolve-audit-base.sh --member` (a `GAIA-Audit` trailer, a commit status, or this member's own earned clearance under the current `.gaia/VERSION`), or the branch the pull request merges into when none exists. It scopes the review, per member, and can anchor on this member's own earned clearance. `KEY_BASE` keys every artifact, the findings sidecar, the re-run ledger, and the ledger's freshness test, from the SAME shared pull-request-wide base every dispatched member resolves, because the ledger is one file per round and members keyed to different bases would each read and write their own, hiding a sibling's recorded re-run with no error raised anywhere. `BASE_REASON` and `ANCHOR_TREE` are the decision record passed to the findings sidecar writer; neither scopes nor keys anything. `AUDIT_KEY` is `KEY_BASE` plus the current branch, the key the re-run ledger is read by, and it prints empty when either half is undeterminable. A stderr warning that either base is empty means the review scope or the artifact keying is unreliable, and the writers below reject an empty `--base`.
 - `DIRTY=` lines name entries in `CHANGED` whose working-tree bytes differ from HEAD (below). A status that cannot run prints `DIRTY=dirty-scope check failed` rather than reading as clean.
 - `D_SCOPE` is your content digest, captured at scope resolution. A stderr warning that it could not be captured means the earned clearance write will refuse.
+- `ELIG_BASE` and the `ELIG_CHANGED=` lines are the **eligibility** set, under `--eligibility`: the whole-PR fork point against the branch this pull request merges into, and every path the pull request changes from it, unfiltered. They decide the waive (section B-mw), the provenance `changed` field, and the oracle gate below, and never what you review. `ELIG_BASE` prints empty, at status 0, when that base does not resolve or its diff fails; the stderr warning names which.
 
 Capture your own content digest at scope resolution with `.gaia/scripts/audit-scope-digest.sh --capture`, and at marker-write time read that captured value back with `--read` and pass it as `--scope-digest`; never re-derive it in the writing call, and a rotation between the two means the review was superseded and you must be re-dispatched on the new HEAD. The scope resolver above takes that capture as its last step and prints it as `D_SCOPE`, so there is no separate `--capture` call to make. Re-running the resolver mid-review is safe and changes nothing: a second capture returns the first value rather than replacing it (it is replaced only once you have published a marker or a refusal keyed to it, which is what tells the script your round ended), and the script enforces that, not this sentence.
 
@@ -757,84 +757,11 @@ The one exception is a `review scope superseded` refusal from the writer: that r
 
 **Any `DIRTY=` line WITHHOLDS this pass.** Every path those lines name holds working-tree bytes that differ from the HEAD bytes your clearance attests to, so reviewing it certifies content nobody read. Apply your own remit filter to the list first: a dirty path you would never have opened cannot make your review disagree with your marker. The one value that filter never touches is the literal `dirty-scope check failed`, which is a sentinel rather than a path and withholds unconditionally. On anything that survives, write no marker, write the findings sidecar naming each dirty path (a refusal that briefs nothing blocks a merge no one can clear), and report that you must be re-dispatched once the operator commits or reverts them. **Withhold without writing a `.refused` artifact.** That artifact is keyed to your content digest, an uncommitted edit does not rotate it, and a revert would leave a live refusal still blocking the marker your next clean pass earns. This is the self-heal rule reaching one case further, a marker only ever attests committed content; the only difference is whose uncommitted edit it is.
 
-```bash
-# FULL_BASE is the whole-PR fork point, and it decides exactly one thing: the
-# ELIGIBILITY changed-file set the out-of-scope waive rule reads. It is not a
-# review base and never scopes what you review. The CHANGED= lines above stay
-# the review scope, filtered to TS/TSX, and nothing here touches it.
-#
-# The fork point is taken against the branch this pull request MERGES INTO,
-# never the repository's advertised default. Every extra file in this set is
-# one more finding the waive may cover instead of filing, so on a pull request
-# stacked on another branch a default-branch fork point hands the waive every
-# file the BASE branch changed. GITHUB_BASE_REF answers it under Actions,
-# where the event sets it; the pull request's own record answers it otherwise.
-# Either answer counts only when its remote-tracking ref resolves, since a bare
-# local branch of the same name could sit on this pull request's own commits
-# and empty the set. The verify side of this same set
-# (.claude/hooks/lib/audit-dispositions.sh) reads the two sources in the same
-# order, which is what keeps a waive you make here from being denied there;
-# that file's header carries the one residual gap, an audit run before the
-# pull request exists, and why it is left open.
-#
-# Type AUDIT_ROOT=<root> ahead of this block in the same Bash call; shell state
-# does not carry it from an earlier call. Unset, every `git -C "$AUDIT_ROOT"`
-# below exits 0 against whatever repository the shell sits in, and on bash 3.2,
-# macOS's /bin/bash, so does `cd ""`, so the block refuses rather than
-# resolving the wrong tree's fork point.
-if [ -z "${AUDIT_ROOT:-}" ]; then
-  printf 'AUDIT_ROOT is unset: type AUDIT_ROOT=<root> ahead of this block\n' >&2
-  exit 1
-fi
-pr_branch=""
-if [ "${GITHUB_ACTIONS:-}" = "true" ] && [ -n "${GITHUB_BASE_REF:-}" ]; then
-  pr_branch="$GITHUB_BASE_REF"
-elif [ -n "$AUDIT_ROOT" ] && command -v gh >/dev/null 2>&1; then
-  pr_branch=$( (cd "$AUDIT_ROOT" 2>/dev/null && gh pr view --json baseRefName --jq '.baseRefName') 2>/dev/null || true)
-fi
-elig_ref=""
-if [ -n "$pr_branch" ] && git -C "$AUDIT_ROOT" rev-parse --verify --quiet "refs/remotes/origin/${pr_branch}" >/dev/null 2>&1; then
-  elig_ref="refs/remotes/origin/${pr_branch}"
-fi
-default_branch=$(git -C "$AUDIT_ROOT" symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@')
-[ -n "$default_branch" ] || default_branch="main"
-primary_ref="${elig_ref:-origin/${default_branch}}"
-fallback_ref="${elig_ref:-${default_branch}}"
-FULL_BASE=$(git -C "$AUDIT_ROOT" merge-base HEAD "$primary_ref" 2>/dev/null || git -C "$AUDIT_ROOT" merge-base HEAD "$fallback_ref" 2>/dev/null || true)
-# An empty FULL_BASE does NOT stop this member. The specialists guard theirs
-# with `exit 1` because an empty base there produces a false self-skip and a
-# deadlocked merge; this member's self-skip is oracle-based, so an empty base
-# costs the waive brake and nothing else, and stopping would convert a lost
-# brake into an aborted audit. Test the BASE, never the diff's emptiness: git
-# resolves an empty left side to HEAD, so an unresolved base and a resolved
-# base with no differences both yield an empty diff, and only one of them
-# means "unknown".
-if [ -n "$FULL_BASE" ]; then
-  full_changed=$(git -C "$AUDIT_ROOT" diff --name-only -z "${FULL_BASE}...HEAD" 2>/dev/null | tr '\0' '\n' || true)
-else
-  full_changed=""
-fi
-```
+**Two lists, two jobs.** `CHANGED` is the **review scope** and decides what you review; it stays filtered to `*.ts` / `*.tsx`. `ELIG_CHANGED` is the **eligibility** set and decides only which out-of-scope findings the waive in section B-mw can cover; it is deliberately unfiltered by file type, because the surfaces that waive exists for are shell, markdown, YAML, and bats. Its base is taken against the branch this pull request merges into, never the repository's advertised default: every extra file in the set is one more finding the waive may cover instead of filing, so on a pull request stacked on another branch a default-branch fork point would hand the waive every file the base branch changed. The verify side of this same set (`.claude/hooks/lib/audit-dispositions.sh`) reads the pull request's base in the same order, which is what keeps a waive you make here from being denied there; that file's header carries the residual gaps. The values the resolver printed are literals you carry forward, so nothing re-derives them later in the review.
 
-**Two lists, two jobs.** `CHANGED` is the **review scope** and decides what you review; it stays filtered to `*.ts` / `*.tsx`. `full_changed` is the **eligibility** set and decides only which out-of-scope findings the waive in section B-mw can cover; it is deliberately unfiltered by file type, because the surfaces that waive exists for are shell, markdown, YAML, and bats. Shell state does NOT persist between an agent's Bash calls, so every later call using `full_changed` re-runs this block ahead of itself, with `AUDIT_ROOT=<root>` typed ahead of both; the block refuses to run without it. Dispatched into a linked worktree, the runtime's confinement refuses this block outright; treat that exactly as an unresolvable `FULL_BASE`: the waive disengages and findings take the filing path, `debt_origin_changed` is `unknown`, and the oracles run.
+An empty `ELIG_BASE` **disengages** the waive rather than opening it: with no eligibility set, an out-of-scope finding on a non-machinery path takes the ordinary filing path (sections C/D/E). Test `ELIG_BASE`, never the emptiness of the list: git resolves an empty left side to HEAD, so an unresolvable base and a resolved base with no differences both yield no `ELIG_CHANGED=` line, and only one of them means nothing changed.
 
-An empty `full_changed` **disengages** the waive rather than opening it: with no eligibility set, an out-of-scope finding on a non-machinery path takes the ordinary filing path (sections C/D/E). One limitation is accepted rather than worked around: a path containing a literal newline splits into two lines inside the variable, so it never matches by whole-string equality, the brake disengages for that path, and the finding is filed. That is the safe direction.
-
-**Provenance `changed` field.** Section E's `gaia-debt-origin` emission needs a third answer, "did this pull request touch the finding's cited path at all", distinct from both `CHANGED` above (the TS/TSX-filtered review scope) and the incremental `BASE_SHA` (the last-cleared-ancestor base, which on a re-audit round covers only the delta since the previous round). `FULL_BASE` and `full_changed` above already resolve exactly that question for the machinery waive: the whole-PR fork point, no pathspec, three-dot against HEAD. <!-- honors AUDIT plan-time directive 2 (reuse the fork-point set, add no third base-derivation site) --> Reuse them rather than deriving a second copy: a second fence assigning `FULL_BASE` at column 0 would fail the eligibility-fence extractor that guards this file, which requires exactly one such fence in it, and a second, independently-typed derivation of the same fork point is itself the drift `check-audit-base-derivation.sh` exists to catch, whatever name it carries.
-
-For each finding this pipeline files or waives, resolve:
-
-```bash
-if [ -z "$FULL_BASE" ]; then
-  debt_origin_changed="unknown"
-elif grep -qxF "<the finding's repo-relative path>" <<<"$full_changed"; then
-  debt_origin_changed="1"
-else
-  debt_origin_changed="0"
-fi
-```
-
-An unresolvable `FULL_BASE` yields `unknown` for every finding in this run, never `0`: `0` asserts the pull request did not touch the file, and an unresolvable base asserts nothing.
+**Provenance `changed` field.** Section E's `gaia-debt-origin` emission needs a third answer, "did this pull request touch the finding's cited path at all", distinct from both `CHANGED` above (the TS/TSX-filtered review scope) and the incremental `BASE_SHA` (the last-cleared-ancestor base, which on a re-audit round covers only the delta since the previous round). The eligibility set already resolves exactly that question for the machinery waive: the whole-PR fork point, no pathspec, three-dot against HEAD. <!-- honors AUDIT plan-time directive 2 (reuse the fork-point set, add no third base-derivation site) --> The resolver answers it rather than you: once the list of findings this pipeline files or waives is final, run the review-scope command above again a single time with one `--finding-path '<the finding's repo-relative path>'` appended per finding, and read each `DEBT_ORIGIN_CHANGED=<value> <path>` line. Re-running it is safe for the reason given above. The value is `1` when the path is in the eligibility set by whole-string equality, `0` when it is not, and `unknown` for every finding when `ELIG_BASE` is empty, never `0`: `0` asserts the pull request did not touch the file, and an unresolvable base asserts nothing.
 
 1. **Identify changed files**: the `CHANGED=` lines, from the review-scope command above.
    - **Read the re-run ledger (LOCAL only) as the prior-round briefing.** Its path is `<root>/.gaia/local/audit/<AUDIT_KEY>.rerun.json`, with `<AUDIT_KEY>` the value the scope resolver printed (full definition under "Re-run carry-forward ledger"). When NOT in CI (`GITHUB_ACTIONS`/`CI` unset) and `AUDIT_KEY` is non-empty, read the ledger if it is present, valid (`jq -e .` on that path), and fresh (recorded `.branch` and `.base_sha` match the current branch and `KEY_BASE`): its `remaining[]` is the deterministic prior-round briefing of in-scope open findings and `fixed_last_round[]` is what the last round closed, replacing reliance on a main-thread-authored prompt summary. Fail open: an absent, corrupt, or stale ledger means no prior briefing, behave as today. Skip the ledger entirely in CI. `KEY_BASE` and `AUDIT_KEY` travel forward as literals to the marker-write step below, where the clean-pass cleanup and the non-clean write reuse them without recomputation (like `AUDIT_TREE_SHA`).
@@ -844,9 +771,9 @@ An unresolvable `FULL_BASE` yields `unknown` for every finding in this run, neve
    - No `.tsx` files changed → skip Subagent 1 (React Patterns & Accessibility)
    - No `.ts` or `.tsx` files changed → skip Subagent 2 (TypeScript & Architecture)
    - No files with `useTranslation` or `t(` references → skip Subagent 3 (Translation)
-   - The pull request changed nothing at all → skip all three deterministic oracles in step 3 (react-doctor, knip, `pnpm audit`). The condition is `[ -n "$FULL_BASE" ] && [ -z "$full_changed" ]`, on the eligibility block's own values above; re-run that block first in the same call, with `AUDIT_ROOT=<root>` typed ahead of it, since shell state does not persist between calls.
+   - The pull request changed nothing at all → skip all three deterministic oracles in step 3 (react-doctor, knip, `pnpm audit`). The condition is a non-empty `ELIG_BASE` with no `ELIG_CHANGED=` line, read off the values the resolver printed above.
 
-   The oracle gate is deliberately weaker than the three specialist gates above, and it reads a **different list**. The specialists gate on file extension against `CHANGED`, which is the TS/TSX-filtered review scope. The oracles cannot: all three are whole-repo by design (knip's dead-code view and `pnpm audit`'s CVE view are both global), so a lockfile or config change carrying no `.ts` in the diff must still run them, and `CHANGED` is empty for exactly that diff. They gate on `full_changed`, the unfiltered whole-PR set the eligibility block already derives, and only on its emptiness: a pull request that changed nothing is the one case where a whole-repo oracle provably has nothing new to report. Test `FULL_BASE` alongside it for the reason that block states, an unresolvable base and a resolved base with no differences both yield an empty diff and only one of them means nothing changed, so an unresolvable base runs the oracles. Reuse those two values rather than deriving a third base: a second fork-point fence fails the eligibility-fence extractor that guards this file.
+   The oracle gate is deliberately weaker than the three specialist gates above, and it reads a **different list**. The specialists gate on file extension against `CHANGED`, which is the TS/TSX-filtered review scope. The oracles cannot: all three are whole-repo by design (knip's dead-code view and `pnpm audit`'s CVE view are both global), so a lockfile or config change carrying no `.ts` in the diff must still run them, and `CHANGED` is empty for exactly that diff. They gate on `ELIG_CHANGED`, the unfiltered whole-PR set the resolver already printed, and only on its emptiness: a pull request that changed nothing is the one case where a whole-repo oracle provably has nothing new to report. Test `ELIG_BASE` alongside it for the reason stated above, so an unresolvable base runs the oracles. Reuse those values rather than deriving another base: a second derivation of the same fork point is the drift `check-audit-base-derivation.sh` exists to catch.
 3. **Dispatch what step 2 left, in parallel, in one tool-call message**:
    - 1 × `Agent` (Task) call per surviving subagent (foreground, results merge on return). Dispatch each specialist via the **Agent (Task) tool** with an explicit `subagent_type` (a general reviewer), passing the rules and the changed-file list in the prompt per the "Subagent instructions template" below. Never route a specialist through the **Skill** tool, and never pass a `subagent:<name> files:<paths>` argument string: no such argument exists. The values `react-patterns`, `typescript`, and `translation` are rule-injection labels from the extension files' `subagents:` frontmatter (they select which specialist prompt receives which injected rules), NOT skill or command names. Treating one as a skill misroutes to a fuzzy-matched command (e.g. `/gaia-audit`), which rejects the args and aborts the audit before its marker is written.
    - 1 × `Bash` call for `npx -y react-doctor@latest . --verbose --diff` (also foreground, runs alongside)
@@ -1091,15 +1018,13 @@ Decide the disposition entries (section F) at this marker-decision point regardl
 
 It prints the prior digest, `<prev_frontend_digest>` below, or nothing.
 
-then call the shared helper (`disposition_seed_forward`, sourced from `.claude/hooks/lib/audit-dispositions.sh`) to union every still-open entry (`filed`, or `pending` with `pending_reason` `"definitive"`) from the prior digest's sidecar into the new one, in place:
+then seed the new sidecar from the prior one. The script runs the shared helper (`disposition_seed_forward`, in `.claude/hooks/lib/audit-dispositions.sh`) to union every still-open entry (`filed`, or `pending` with `pending_reason` `"definitive"`) from the prior digest's sidecar into the new one, in place, and builds both sidecar paths from the two digests itself:
 
 ```bash
-disposition_seed_forward \
-  <root>/.gaia/local/audit/<prev_frontend_digest>.dispositions.json \
-  <root>/.gaia/local/audit/<new_frontend_digest>.dispositions.json
+<root>/.gaia/scripts/audit-seed-dispositions.sh --root <root> --prev-digest '<prev_frontend_digest>' --new-digest '<new_frontend_digest>'
 ```
 
-A fresh entry already present in the new sidecar always wins a key collision; a seeded entry only ever adds keys. This is a single deterministic hop, not a search: each digest rotation seeds from its immediate predecessor, so a still-open receipt propagates across an arbitrary run of rotations that never re-encounter the finding, because every hop already carries forward what the hop before it carried. An empty `<prev_frontend_digest>` (no resolvable base, or the digest engine failed) or an absent prior sidecar is a safe no-op, per the helper's own fail-safe contract.
+A fresh entry already present in the new sidecar always wins a key collision; a seeded entry only ever adds keys. This is a single deterministic hop, not a search: each digest rotation seeds from its immediate predecessor, so a still-open receipt propagates across an arbitrary run of rotations that never re-encounter the finding, because every hop already carries forward what the hop before it carried. An empty `<prev_frontend_digest>` (no resolvable base, or the digest engine failed) or an absent prior sidecar is a safe no-op at status 0, so run the command either way; the script's header owns its exit codes.
 
 Knip, react-doctor, and dependency-CVE (`pnpm audit`) advisories remain advisory and never block the marker.
 
@@ -1175,7 +1100,7 @@ Run the two lookups only when `stamp_line` is exactly `stamp: empty commit (crea
 cd <root> && .claude/hooks/post-audit-status.sh <marker>
 ```
 
-**5. Dispositions sidecar.** Write the disposition-ledger sidecar (section F), keyed to YOUR OWN frontend digest, the same digest the marker in step 1 is keyed to: `<new_frontend_digest>` is the file name of `<marker>` without its `.ok` suffix, and the sidecar is `<root>/.gaia/local/audit/<new_frontend_digest>.dispositions.json`. Write the section-F dispositions JSON there (decided at the marker-decision point, with `"sha":"<HEAD_SHA>"` as a plain data field), then seed it forward from the immediately-prior frontend digest's sidecar with the two "Seed-forward" commands above, skipping the seed when the prior digest printed nothing, so a still-open receipt survives the rotation even when this fresh incremental audit does not re-encounter the finding. A `filed` entry whose finding matched an already-open issue through the file-tech-debt dedup records THAT issue's existing key and issue_number (see section F "Key relationship"), never a freshly-derived key; a newly-filed issue records the freshly-built key it just wrote into the new issue's body.
+**5. Dispositions sidecar.** Write the disposition-ledger sidecar (section F), keyed to YOUR OWN frontend digest, the same digest the marker in step 1 is keyed to: `<new_frontend_digest>` is the file name of `<marker>` without its `.ok` suffix, and the sidecar is `<root>/.gaia/local/audit/<new_frontend_digest>.dispositions.json`. Write the section-F dispositions JSON there (decided at the marker-decision point, with `"sha":"<HEAD_SHA>"` as a plain data field), then seed it forward from the immediately-prior frontend digest's sidecar with the two "Seed-forward" commands above, so a still-open receipt survives the rotation even when this fresh incremental audit does not re-encounter the finding. A `filed` entry whose finding matched an already-open issue through the file-tech-debt dedup records THAT issue's existing key and issue_number (see section F "Key relationship"), never a freshly-derived key; a newly-filed issue records the freshly-built key it just wrote into the new issue's body.
 
 **6. Ledger cleanup.** Clean-pass cleanup of the re-run ledger (LOCAL only): the marker is written, so the re-run loop ended clean for this base. Remove the base-keyed ledger best-effort, and skip it in CI (the ledger is never written there). See "Re-run carry-forward ledger". This is an additional best-effort file op; it does not alter the marker / trailer / status / dispositions-sidecar writes. Skip it too when `AUDIT_KEY` is empty, because an empty key still interpolates into a well-formed path that names no ledger:
 

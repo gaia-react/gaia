@@ -19,6 +19,11 @@ bats_require_minimum_version 1.5.0
 
 setup() {
   THIS_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")" && pwd)"
+  # A `gh` that answers nothing, so the probes that put this directory first on
+  # PATH never reach the developer's real `gh` or its GH_REPO / GH_HOST.
+  mkdir -p "$BATS_TEST_TMPDIR/no-gh"
+  printf '#!/usr/bin/env bash\nexit 1\n' > "$BATS_TEST_TMPDIR/no-gh/gh"
+  chmod +x "$BATS_TEST_TMPDIR/no-gh/gh"
   REPO_ROOT="$(git -C "$THIS_DIR" rev-parse --show-toplevel)"
   if ! command -v jq >/dev/null 2>&1; then
     if [ -n "${GITHUB_ACTIONS:-}" ]; then
@@ -397,4 +402,176 @@ EOF
   grep -qF -- 'base-provenance resolver missing' <<<"$stderr"
   grep -qF -- 'KEY_BASE=' <<<"$output" && return 1
   true
+}
+
+# ---------- --eligibility: the default member's waive-eligibility set --------
+#
+# The eligibility base is the fork point against the branch the pull request
+# merges into, resolved by its own ladder, and it is not the membership base:
+# an unresolvable one prints empty at status 0, because it costs the default
+# member its waive brake and nothing else.
+
+# stacked_repo <name>: HEAD's branch forks from `release`, which forks from
+# the advertised default. `app/base-only.ts` belongs to the base branch alone.
+stacked_repo() {
+  local repo
+  repo="$(make_repo "$1")"
+  git -C "$repo" checkout -q -b release
+  commit_file "$repo" app/base-only.ts
+  git -C "$repo" checkout -q -b feat
+  commit_file "$repo" app/feat-only.ts
+  git -C "$repo" update-ref refs/remotes/origin/main refs/heads/main
+  git -C "$repo" update-ref refs/remotes/origin/release refs/heads/release
+  git -C "$repo" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main
+  printf '%s' "$repo"
+}
+
+# gh_shim <dir> <base-ref> <log>: a `gh` whose `pr view` answers <base-ref>
+# and records every invocation in <log>.
+gh_shim() {
+  mkdir -p "$1"
+  cat > "$1/gh" <<SHIM
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >> "$3"
+[ "\$1" = pr ] && printf '%s\n' "$2"
+exit 0
+SHIM
+  chmod +x "$1/gh"
+}
+
+@test "--eligibility prints ELIG_BASE after AUDIT_KEY and one ELIG_CHANGED line per whole-PR path, unfiltered" {
+  local repo keys
+  repo="$(make_repo elig-shape)"
+  git -C "$repo" checkout -q -b feat
+  commit_file "$repo" app/a.ts
+  commit_file "$repo" scripts/c.sh
+  run --separate-stderr env -u GITHUB_ACTIONS -u GITHUB_BASE_REF PATH="$BATS_TEST_TMPDIR/no-gh:$PATH" \
+    "$repo/.gaia/scripts/audit-resolve-scope.sh" --member code-audit-frontend --root "$repo" \
+    --skip-full-base --eligibility --review-path '*.ts'
+  [ "$status" -eq 0 ]
+  keys="$(printf '%s\n' "$output" | sed -n 's/=.*//p' | awk '!seen[$0]++' | tr '\n' ' ')"
+  [ "$keys" = "AUDIT_ROOT BASE_REF BASE_REASON KEY_REF ANCHOR_TREE BASE_SHA KEY_BASE AUDIT_KEY ELIG_BASE D_SCOPE CHANGED ELIG_CHANGED " ]
+  [ "$(value_of "$output" ELIG_BASE)" = "$(git -C "$repo" merge-base HEAD main)" ]
+  printf '%s\n' "$output" | grep -qxF 'ELIG_CHANGED=app/a.ts'
+  printf '%s\n' "$output" | grep -qxF 'ELIG_CHANGED=scripts/c.sh'
+  [ "$(printf '%s\n' "$output" | grep -cxF 'CHANGED=scripts/c.sh')" -eq 0 ]
+}
+
+@test "without --eligibility no ELIG_ line prints and gh is never called" {
+  local repo shim log
+  repo="$(stacked_repo elig-off)"
+  shim="$BATS_TEST_TMPDIR/gh-off"
+  log="$BATS_TEST_TMPDIR/gh-off.log"
+  gh_shim "$shim" release "$log"
+  run --separate-stderr env -u GITHUB_ACTIONS -u GITHUB_BASE_REF PATH="$shim:$PATH" \
+    "$repo/.gaia/scripts/audit-resolve-scope.sh" --member code-audit-frontend --root "$repo" --skip-full-base
+  [ "$status" -eq 0 ]
+  grep -qF -- 'ELIG_' <<<"$output" && return 1
+  [ ! -s "$log" ]
+}
+
+@test "--eligibility takes the base from the pull request's own record when Actions declares none" {
+  local repo shim log
+  repo="$(stacked_repo elig-record)"
+  shim="$BATS_TEST_TMPDIR/gh-record"
+  log="$BATS_TEST_TMPDIR/gh-record.log"
+  gh_shim "$shim" release "$log"
+  run --separate-stderr env -u GITHUB_ACTIONS -u GITHUB_BASE_REF PATH="$shim:$PATH" \
+    "$repo/.gaia/scripts/audit-resolve-scope.sh" --member code-audit-frontend --root "$repo" --skip-full-base --eligibility
+  [ "$status" -eq 0 ]
+  grep -qF -- 'pr view' "$log"
+  [ "$(value_of "$output" ELIG_BASE)" = "$(git -C "$repo" rev-parse release)" ]
+  printf '%s\n' "$output" | grep -qxF 'ELIG_CHANGED=app/feat-only.ts'
+  [ "$(printf '%s\n' "$output" | grep -cxF 'ELIG_CHANGED=app/base-only.ts')" -eq 0 ]
+}
+
+@test "--eligibility reads GITHUB_BASE_REF under Actions" {
+  local repo
+  repo="$(stacked_repo elig-actions)"
+  run --separate-stderr env GITHUB_ACTIONS=true GITHUB_BASE_REF=release \
+    "$repo/.gaia/scripts/audit-resolve-scope.sh" --member code-audit-frontend --root "$repo" --skip-full-base --eligibility
+  [ "$status" -eq 0 ]
+  [ "$(value_of "$output" ELIG_BASE)" = "$(git -C "$repo" rev-parse release)" ]
+  [ "$(printf '%s\n' "$output" | grep -cxF 'ELIG_CHANGED=app/base-only.ts')" -eq 0 ]
+}
+
+@test "--eligibility falls back to the advertised default when the declared base has no remote-tracking ref" {
+  local repo
+  repo="$(stacked_repo elig-unverifiable)"
+  run --separate-stderr env GITHUB_ACTIONS=true GITHUB_BASE_REF=no-such-branch \
+    "$repo/.gaia/scripts/audit-resolve-scope.sh" --member code-audit-frontend --root "$repo" --skip-full-base --eligibility
+  [ "$status" -eq 0 ]
+  [ "$(value_of "$output" ELIG_BASE)" = "$(git -C "$repo" merge-base HEAD origin/main)" ]
+  printf '%s\n' "$output" | grep -qxF 'ELIG_CHANGED=app/base-only.ts'
+}
+
+@test "an unresolvable eligibility base prints ELIG_BASE empty at status 0, with no ELIG_CHANGED line" {
+  local repo
+  repo="$(make_repo elig-no-base master)"
+  run --separate-stderr env -u GITHUB_ACTIONS -u GITHUB_BASE_REF PATH="$BATS_TEST_TMPDIR/no-gh:$PATH" \
+    "$repo/.gaia/scripts/audit-resolve-scope.sh" --member code-audit-frontend --root "$repo" --skip-full-base --eligibility
+  [ "$status" -eq 0 ]
+  printf '%s\n' "$output" | grep -qxF 'ELIG_BASE='
+  grep -qF -- 'ELIG_CHANGED=' <<<"$output" && return 1
+  grep -qF -- 'no eligibility base' <<<"$stderr"
+}
+
+@test "an eligibility diff that fails prints ELIG_BASE empty at status 0 rather than an empty set on a resolved base" {
+  local repo shim
+  repo="$(make_repo elig-diff-fails)"
+  git -C "$repo" checkout -q -b feat
+  commit_file "$repo" app/a.ts
+  # Fails only a pathspec-less diff: the review diff always carries `--`.
+  shim="$BATS_TEST_TMPDIR/shim-elig"
+  mkdir -p "$shim"
+  cat > "$shim/git" <<SHIM
+#!/usr/bin/env bash
+has_diff=0; has_sep=0
+for a in "\$@"; do [ "\$a" = diff ] && has_diff=1; [ "\$a" = -- ] && has_sep=1; done
+[ "\$has_diff" -eq 1 ] && [ "\$has_sep" -eq 0 ] && exit 128
+exec $(command -v git) "\$@"
+SHIM
+  chmod +x "$shim/git"
+  run --separate-stderr env -u GITHUB_ACTIONS -u GITHUB_BASE_REF PATH="$shim:$BATS_TEST_TMPDIR/no-gh:$PATH" \
+    "$repo/.gaia/scripts/audit-resolve-scope.sh" --member code-audit-frontend --root "$repo" --skip-full-base \
+    --eligibility --finding-path app/a.ts
+  [ "$status" -eq 0 ]
+  printf '%s\n' "$output" | grep -qxF 'ELIG_BASE='
+  printf '%s\n' "$output" | grep -qxF 'DEBT_ORIGIN_CHANGED=unknown app/a.ts'
+  grep -qF -- 'could not list the eligibility set' <<<"$stderr"
+}
+
+@test "--finding-path prints 1 for a path the pull request changed and 0 for one it did not" {
+  local repo
+  repo="$(make_repo elig-verdict)"
+  git -C "$repo" checkout -q -b feat
+  commit_file "$repo" "docs/has space.md"
+  commit_file "$repo" app/a.ts
+  run --separate-stderr env -u GITHUB_ACTIONS -u GITHUB_BASE_REF PATH="$BATS_TEST_TMPDIR/no-gh:$PATH" \
+    "$repo/.gaia/scripts/audit-resolve-scope.sh" --member code-audit-frontend --root "$repo" --skip-full-base \
+    --eligibility --finding-path "docs/has space.md" --finding-path app --finding-path untouched.sh
+  [ "$status" -eq 0 ]
+  printf '%s\n' "$output" | grep -qxF 'DEBT_ORIGIN_CHANGED=1 docs/has space.md'
+  # Whole-string equality: a directory prefix of a changed path is not changed.
+  printf '%s\n' "$output" | grep -qxF 'DEBT_ORIGIN_CHANGED=0 app'
+  printf '%s\n' "$output" | grep -qxF 'DEBT_ORIGIN_CHANGED=0 untouched.sh'
+}
+
+@test "--finding-path on an unresolvable base prints unknown, never 0" {
+  local repo
+  repo="$(make_repo elig-unknown master)"
+  run --separate-stderr env -u GITHUB_ACTIONS -u GITHUB_BASE_REF PATH="$BATS_TEST_TMPDIR/no-gh:$PATH" \
+    "$repo/.gaia/scripts/audit-resolve-scope.sh" --member code-audit-frontend --root "$repo" --skip-full-base \
+    --eligibility --finding-path app/a.ts
+  [ "$status" -eq 0 ]
+  printf '%s\n' "$output" | grep -qxF 'DEBT_ORIGIN_CHANGED=unknown app/a.ts'
+  grep -qF -- 'DEBT_ORIGIN_CHANGED=0' <<<"$output" && return 1
+  true
+}
+
+@test "--finding-path without --eligibility is a usage error" {
+  local repo
+  repo="$(make_repo elig-usage)"
+  run "$repo/.gaia/scripts/audit-resolve-scope.sh" --member code-audit-frontend --root "$repo" --skip-full-base --finding-path app/a.ts
+  [ "$status" -eq 2 ]
 }

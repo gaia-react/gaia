@@ -270,6 +270,21 @@ EOF
   grep -qF "(allowed carrier)" <<<"$output" || return 1
 }
 
+@test "fixture: the scope resolver's eligibility ladder passes and is named as allowed" {
+  local repo
+  repo="$(make_fixture_repo exemption-resolver)"
+  mkdir -p "$repo/.gaia/scripts"
+  cat >"$repo/.gaia/scripts/audit-resolve-scope.sh" <<'EOF'
+#!/usr/bin/env bash
+ELIG_BASE="$(git -C "$root" merge-base HEAD "$primary_ref" 2>/dev/null || git -C "$root" merge-base HEAD "$fallback_ref" 2>/dev/null || true)"
+EOF
+  commit_all "$repo"
+  run gaia_check_base_provenance_adoption "$repo"
+  [ "$status" -eq 0 ]
+  grep -qF ".gaia/scripts/audit-resolve-scope.sh:2:" <<<"$output" || return 1
+  grep -qF "(allowed carrier)" <<<"$output" || return 1
+}
+
 @test "fixture: the real single-call shapes are not flagged" {
   local repo
   repo="$(make_fixture_repo single-call-shapes)"
@@ -281,6 +296,24 @@ EOF
   commit_all "$repo"
   run gaia_check_base_provenance_adoption "$repo"
   [ "$status" -eq 0 ]
+}
+
+# The whole-file chain exemption for .gaia/scripts/audit-resolve-scope.sh is
+# safe only while that file derives its whole-PR base through the shared
+# resolver. The chain scan compares allowed carriers by PATH, so without this
+# pin a re-inlined origin-then-local ladder anywhere in that file reads as an
+# allowed carrier, and assertion 1's by-name FULL_BASE exemption greens it too.
+# Same shape as resolve-audit-members.bats's COV-003 adoption pin.
+@test "pin: the exempted resolver still derives its whole-PR base through the shared resolver" {
+  local resolver="$SCRIPT_DIR/audit-resolve-scope.sh"
+  grep -qF 'audit_resolve_base_provenance "$root" default-branch' "$resolver" || {
+    echo "audit-resolve-scope.sh no longer adopts audit_resolve_base_provenance; its chain exemption would now cover a re-inlined ladder" >&2
+    return 1
+  }
+  grep -qF "'.gaia/scripts/audit-resolve-scope.sh'" "$CHECK" || {
+    echo "the resolver's allowed-carrier entry is gone; this pin guards nothing" >&2
+    return 1
+  }
 }
 
 @test "usage: no repo_root and not a git repository exits 2" {

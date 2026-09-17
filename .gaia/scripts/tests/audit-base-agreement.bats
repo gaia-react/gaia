@@ -26,8 +26,9 @@
 # member types the working root in, runs it against a scratch repo carrying a
 # stamped clean round, and reads the KEY=value lines it prints. A member whose
 # command drifts (wrong member name, missing or extra flag, a private
-# derivation beside it) reds here. The default member's eligibility fence is
-# still a fenced block and is still extracted and executed as one.
+# derivation beside it) reds here. The default member's eligibility set comes
+# out of that same command, under its `--eligibility` flag, so it is driven the
+# same way.
 #
 # Probes:
 #   1. KEY_BASE + key agreement across every member, matching what the
@@ -44,7 +45,7 @@
 #   3b. the degraded arm: an unloadable classifier lib resets every member to
 #       full scope
 #   3c. the non-agent callers still invoke the resolver argument-lessly
-#   4. the eligibility-widening fence: presence and fork-point resolution,
+#   4. the eligibility-widening set: presence and fork-point resolution,
 #      unfiltered distinctness from the review-scope set, the review-scope
 #      command staying untouched, no empty-base guard, and write-side/verify-side
 #      agreement across three repository shapes
@@ -208,28 +209,6 @@ extract_resolver_line() {
   ' "$1"
 }
 
-# extract_eligibility_fence <agent-file>
-#
-# Prints the one ```bash fence in <agent-file> whose body assigns FULL_BASE at
-# column 0. Exits 1 when the file carries zero or more than one such fence, so
-# a definition that stops declaring its eligibility base reds here rather than
-# silently contributing an empty snippet.
-#
-# A second extractor rather than a parameter on extract_resolver_line: that
-# helper's exactly-one contract is asserted against every member (each one
-# carries a resolver command), while this one is asserted against the default
-# member alone (only it carries a FULL_BASE fence). Collapsing them into one
-# parameterized helper would let one member's second block satisfy another
-# member's requirement, which is exactly the drift this suite exists to catch.
-extract_eligibility_fence() {
-  awk '
-    /^```bash$/ { infence = 1; buf = ""; has = 0; next }
-    /^```$/     { if (infence) { if (has) { printf "%s", buf; found++ } ; infence = 0 } ; next }
-    infence     { buf = buf $0 "\n"; if ($0 ~ /^FULL_BASE=/) has = 1 }
-    END         { if (found != 1) exit 1 }
-  ' "$1"
-}
-
 # --- scratch repo ------------------------------------------------------------
 #
 # A repo carrying the machinery the snippets reach for, at its real
@@ -343,17 +322,20 @@ scope_values() {
   printf '%s\n' "$out" | sed -n "s/^$3=//p"
 }
 
-# elig_eval <member> <repo> <trailer>: runs the default member's real
-# eligibility fence against <repo>, then <trailer> in the same shell, and
-# prints the trailer's stdout. `set -u` is deliberately NOT applied: an unset
-# variable is the very drift this suite is written to catch, and it must
-# surface as a failed assertion on a printed empty value rather than as an
-# abort whose message reads the same as a missing binary.
+# elig_eval <member> <repo> <KEY>: runs the member's real resolver command
+# against <repo> and prints every value it printed for <KEY> (`ELIG_BASE`, or
+# one `ELIG_CHANGED` line per path). Returns 1 when the resolver fails or
+# prints no `ELIG_BASE=` line at all, which is what a definition that drops
+# `--eligibility` from its command produces: an absent set must red here
+# rather than read as a resolved empty one.
 elig_eval() {
-  local member="$1" repo="$2" trailer="$3" fence
-  fence="$(extract_eligibility_fence "$AGENTS_DIR/${member}.md")" || return 1
-  AUDIT_ROOT="$repo" bash -c "${fence}
-${trailer}"
+  local member="$1" repo="$2" key="$3" out
+  out="$(scope_eval "$member" "$repo")" || return 1
+  grep -q '^ELIG_BASE=' <<<"$out" || {
+    printf '%s: its resolver command printed no ELIG_BASE line; is --eligibility missing?\n' "$member" >&2
+    return 1
+  }
+  printf '%s\n' "$out" | sed -n "s/^${key}=//p"
 }
 
 # base_sha_for <member> <repo>: the per-member review base, BASE_SHA.
@@ -1003,18 +985,19 @@ probe_deadlock() {
   true
 }
 
-# ---------- probe 4: the eligibility-widening fence --------------------------
+# ---------- probe 4: the eligibility-widening set ----------------------------
 #
 # The out-of-scope machinery-waive rule reads an ELIGIBILITY set that is wider
 # than the review scope: the union of the gate-machinery paths and every file
-# this pull request already changes. `full_changed`, assigned by a second
-# ```bash fence in code-audit-frontend.md, is that set's write side; the
-# shared library's `_disposition_changed_set` is its verify side. Four things
-# about the write side are load-bearing and none of them is checked by any
-# other suite in this tree: that the fence exists at all and resolves the
-# fork point, that its set is distinct from the TS/TSX-filtered review-scope
-# set, that it continues rather than exiting when the base cannot resolve,
-# and that it agrees byte for byte with the verify side.
+# this pull request already changes. The `ELIG_CHANGED` lines the default
+# member's resolver command prints under `--eligibility` are that set's write
+# side; the shared library's `_disposition_changed_set` is its verify side.
+# Four things about the write side are load-bearing and none of them is
+# checked by any other suite in this tree: that the definition's command asks
+# for it at all and it resolves the fork point, that its set is distinct from
+# the TS/TSX-filtered review-scope set, that the command continues rather than
+# exiting when the base cannot resolve, and that it agrees byte for byte with
+# the verify side.
 
 @test "the eligibility derivation is present and resolves the fork point" {
   local repo expected_base full_base full_changed
@@ -1026,8 +1009,8 @@ probe_deadlock() {
 
   expected_base="$(git -C "$repo" merge-base HEAD main)"
 
-  full_base="$(elig_eval code-audit-frontend "$repo" 'printf "%s\n" "${FULL_BASE:-}"')" || {
-    echo "the eligibility fence failed to run" >&2
+  full_base="$(elig_eval code-audit-frontend "$repo" ELIG_BASE)" || {
+    echo "the default member's resolver command failed to resolve an eligibility set" >&2
     return 1
   }
   [ "$full_base" = "$expected_base" ] || {
@@ -1035,7 +1018,7 @@ probe_deadlock() {
     return 1
   }
 
-  full_changed="$(elig_eval code-audit-frontend "$repo" 'printf "%s\n" "${full_changed:-}"')"
+  full_changed="$(elig_eval code-audit-frontend "$repo" ELIG_CHANGED)"
   [ -n "$full_changed" ] || {
     echo "full_changed came back empty" >&2
     return 1
@@ -1059,7 +1042,7 @@ probe_deadlock() {
   commit_file "$repo" "docs/readme.md" "a markdown file"
   commit_file "$repo" ".github/workflows/fixture.yml" "a yaml file"
 
-  eligibility="$(elig_eval code-audit-frontend "$repo" 'printf "%s\n" "${full_changed:-}"')"
+  eligibility="$(elig_eval code-audit-frontend "$repo" ELIG_CHANGED)"
   review="$(scope_values code-audit-frontend "$repo" CHANGED)"
 
   grep -qxF "bin/setup.sh" <<<"$eligibility" || {
@@ -1116,15 +1099,15 @@ probe_deadlock() {
   }
 }
 
-@test "the eligibility fence carries no empty-base guard" {
+@test "the eligibility derivation carries no empty-base guard" {
   local repo rc full_changed
 
   repo="$(make_no_base_repo)"
 
   rc=0
-  full_changed="$(elig_eval code-audit-frontend "$repo" 'printf "%s\n" "${full_changed:-}"' 2>&1)" || rc=$?
+  full_changed="$(elig_eval code-audit-frontend "$repo" ELIG_CHANGED)" || rc=$?
   [ "$rc" -eq 0 ] || {
-    printf 'eligibility fence exited %s on an unresolvable base, expected 0: %s\n' "$rc" "$full_changed" >&2
+    printf 'the eligibility derivation failed with %s on an unresolvable base, expected an empty set: %s\n' "$rc" "$full_changed" >&2
     return 1
   }
   [ -z "$full_changed" ] || {
@@ -1135,7 +1118,7 @@ probe_deadlock() {
 
 # assert_write_verify_agree <acting-root> <label>
 #
-# Drives the agent's eligibility fence (write side) and the shared library's
+# Drives the agent's resolver command (write side) and the shared library's
 # _disposition_changed_set (verify side) against the SAME acting root and
 # asserts the two changed-file sets are byte-identical. The library is
 # sourced from THIS repo's own copy (never the scratch repo's): it is pure
@@ -1143,20 +1126,19 @@ probe_deadlock() {
 # question here is agreement on that root's diff, not the library's own
 # portability.
 #
-# Normalization, per README.md frozen contract A: the write side holds
-# full_changed in a shell VARIABLE, which cannot carry a NUL, so its
-# `-z`-delimited diff is piped through `tr '\0' '\n'` before the variable is
-# ever assigned. The verify side writes its NUL-delimited set to a file, kept
+# Normalization, per README.md frozen contract A: the write side prints one
+# `ELIG_CHANGED=` line per path, read here as newline-delimited, from a
+# `-z`-delimited diff. The verify side writes its NUL-delimited set to a file, kept
 # on disk so the NULs survive, and is normalized here with the same `tr`. The
 # two sides agree on paths and order and differ only in delimiter; that
 # normalization is the whole of this helper, not a shortcut around it. A path
 # containing a literal newline is the accepted, named limitation on both
-# sides (see the fence's own comment).
+# sides.
 assert_write_verify_agree() {
   local root="$1" label="$2" write verify outfile
 
-  write="$(elig_eval code-audit-frontend "$root" 'printf "%s\n" "${full_changed:-}"')" || {
-    echo "$label: the eligibility fence failed to run" >&2
+  write="$(elig_eval code-audit-frontend "$root" ELIG_CHANGED)" || {
+    echo "$label: the default member's resolver command failed to resolve an eligibility set" >&2
     return 1
   }
 
@@ -1253,8 +1235,8 @@ make_stacked_repo() {
   export GITHUB_ACTIONS=true
   export GITHUB_BASE_REF=release
 
-  write="$(elig_eval code-audit-frontend "$repo" 'printf "%s\n" "${full_changed:-}"')" || {
-    echo "the eligibility fence failed to run" >&2
+  write="$(elig_eval code-audit-frontend "$repo" ELIG_CHANGED)" || {
+    echo "the default member's resolver command failed to resolve an eligibility set" >&2
     return 1
   }
   grep -qxF "app/feat-only.ts" <<<"$write" || {
@@ -1278,24 +1260,26 @@ make_stacked_repo() {
   }
 }
 
-@test "the eligibility fence refuses an unset AUDIT_ROOT rather than reading the ambient repository" {
-  # A member types AUDIT_ROOT=<root> ahead of the fence. Without it, every
-  # git -C "$AUDIT_ROOT" exits 0 against whatever repository the shell sits in,
-  # and the waive set, the provenance value, and the oracle gate all describe
-  # that tree. elig_eval injects AUDIT_ROOT, so this runs the fence bare, from
-  # inside an unrelated repository that would otherwise resolve cleanly.
-  local repo ambient fence
+@test "the eligibility derivation refuses an empty root rather than reading the ambient repository" {
+  # The member types the working root into its resolver command. Left empty,
+  # every `git -C ""` exits 0 against whatever repository the shell sits in,
+  # and the waive set, the provenance value, and the oracle gate would all
+  # describe that tree. This runs the definition's own command with its
+  # `--root` emptied, from inside an unrelated repository that would otherwise
+  # resolve cleanly.
+  local repo ambient line q="'"
   repo="$(make_repo elig-unset-root)"
   ambient="$(make_repo elig-ambient)"
   git -C "$ambient" checkout -q -b feat
   commit_file "$ambient" "ambient-only.txt" "ambient change"
-  fence="$(extract_eligibility_fence "$AGENTS_DIR/code-audit-frontend.md")"
-  [ -n "$fence" ]
-  run --separate-stderr env -u AUDIT_ROOT -u GITHUB_ACTIONS bash -c "cd \"\$1\" && ${fence}
-printf 'FULL_BASE=%s\n' \"\$FULL_BASE\"" _ "$ambient"
+  line="$(extract_resolver_line "$AGENTS_DIR/code-audit-frontend.md")"
+  grep -qF -- '--eligibility' <<<"$line"
+  line="${line//--root <root>/--root $q$q}"
+  line="${line//<root>/$repo}"
+  run --separate-stderr env -u GITHUB_ACTIONS bash -c "cd \"\$1\" && ${line}" _ "$ambient"
   [ "$status" -ne 0 ]
-  grep -qF -- 'AUDIT_ROOT is unset' <<<"$stderr"
-  grep -qF -- 'FULL_BASE=' <<<"$output" && return 1
+  grep -qF -- '--root is empty' <<<"$stderr"
+  grep -qF -- 'ELIG_BASE=' <<<"$output" && return 1
   true
 }
 
@@ -1312,8 +1296,8 @@ printf 'FULL_BASE=%s\n' \"\$FULL_BASE\"" _ "$ambient"
   export GITHUB_BASE_REF=no-such-branch
 
   expected="$(git -C "$repo" diff --name-only -z "$(git -C "$repo" merge-base HEAD origin/main)...HEAD" | tr '\0' '\n')"
-  write="$(elig_eval code-audit-frontend "$repo" 'printf "%s\n" "${full_changed:-}"')" || {
-    echo "the eligibility fence failed to run" >&2
+  write="$(elig_eval code-audit-frontend "$repo" ELIG_CHANGED)" || {
+    echo "the default member's resolver command failed to resolve an eligibility set" >&2
     return 1
   }
   [ "$write" = "$expected" ] || {
@@ -1356,8 +1340,8 @@ EOF
   repo="$(make_stacked_repo elig-record)"
   install_pr_view_mock release
 
-  write="$(elig_eval code-audit-frontend "$repo" 'printf "%s\n" "${full_changed:-}"')" || {
-    echo "the eligibility fence failed to run" >&2
+  write="$(elig_eval code-audit-frontend "$repo" ELIG_CHANGED)" || {
+    echo "the default member's resolver command failed to resolve an eligibility set" >&2
     return 1
   }
   grep -qxF "app/feat-only.ts" <<<"$write" || {
@@ -1491,7 +1475,7 @@ EOF
 
   # Both sides must take their non-Actions arm here, or this pins nothing.
   # Under Actions the job exports GITHUB_BASE_REF for the whole run, the write
-  # side's fence resolves its base from that instead of from origin/<default>,
+  # side's derivation resolves its base from that instead of from origin/<default>,
   # and the shadowing branch this test exists to exercise is never consulted.
   # That is a real environment difference, not a flake: the same test passes
   # locally and fails on CI without this.
@@ -1508,8 +1492,8 @@ EOF
   git -C "$repo" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main
   git -C "$repo" branch origin/main main
 
-  write="$(elig_eval code-audit-frontend "$repo" 'printf "%s\n" "${full_changed:-}"')" || {
-    echo "the eligibility fence failed to run" >&2
+  write="$(elig_eval code-audit-frontend "$repo" ELIG_CHANGED)" || {
+    echo "the default member's resolver command failed to resolve an eligibility set" >&2
     return 1
   }
   outfile="$BATS_TEST_TMPDIR/dp002-verify"
@@ -1520,8 +1504,8 @@ EOF
   verify="$(tr '\0' '\n' < "$outfile")"
 
   # Pin the divergence rather than assert agreement: the write side (the
-  # default member's own out-of-scope base fence, still out of scope for this
-  # change) takes the shadowing local branch and sees no difference, while the
+  # default member's eligibility derivation, whose ladder deliberately keeps
+  # its own spelling) takes the shadowing local branch and sees no difference, while the
   # verify side (the shared resolver, on the fully-qualified spelling) takes
   # the real remote-tracking ref and sees the advance.
   [ -z "$write" ] || {

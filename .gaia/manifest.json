@@ -231,6 +231,7 @@
     ".gaia/scripts/audit-rules-changed-complete.sh": "owned",
     ".gaia/scripts/audit-scope-digest.sh": "owned",
     ".gaia/scripts/audit-scratch-dir.sh": "owned",
+    ".gaia/scripts/audit-seed-dispositions.sh": "owned",
     ".gaia/scripts/audit-window-lib.sh": "owned",
     ".gaia/scripts/audit-write-clearance.sh": "owned",
     ".gaia/scripts/audit-write-findings.sh": "owned",
@@ -682,7 +683,7 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-09-17T09:15:10.601Z",
+  "generated": "2026-09-17T16:47:57.690Z",
   "regions": [
     {
       "endMarker": "<!-- gaia:audit-remit:end -->",
