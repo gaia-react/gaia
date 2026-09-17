@@ -7,9 +7,10 @@
 # Four assertions, each with its own function: coverage (every
 # .claude/hooks/**/*.sh has exactly one entry), schema (manifest + schema are
 # valid JSON, every state token is a known registry id or a well-formed
-# path: token), the derive arm (a main-only/shared/per-tree-backed entry's
-# hook has no bare .gaia/local literal), and any honesty (a scope: any
-# entry's hook has no bare .gaia/local literal either).
+# canonical path: token), the derive arm (a main-only/shared/per-tree-backed
+# or .gaia/local path:-backed entry's hook has no bare .gaia/local literal),
+# and any honesty (a scope: any entry's hook has no bare .gaia/local literal
+# either).
 #
 # Run under bash 5 (bash 3.2's `[[ ]]` skip-under-set-e gap is real; see
 # .claude/rules/bats-assertions.md): `source .gaia/scripts/bats5.sh && bats5
@@ -122,7 +123,7 @@ commit_all() {
   [ "$status" -eq 0 ]
 }
 
-@test "real repo: the derive arm holds for every main-only/shared/per-tree-backed entry" {
+@test "real repo: the derive arm holds for every main-only/shared/per-tree-backed or .gaia/local path:-backed entry" {
   run gaia_check_hook_manifest_derive_arm "$REPO_ROOT"
   [ "$status" -eq 0 ]
 }
@@ -235,6 +236,20 @@ exit 0"
   [ "$status" -eq 0 ]
 }
 
+@test "schema: a non-canonical path: token that would slip past the derive arm's .gaia/local prefix fails" {
+  local tok repo i=0
+  for tok in "path:./.gaia/local/cache/x" "path:.gaia//local/cache" "path:.gaia/local/../local/x" "path:/.gaia/local/x" "path:.gaia/./local/x" "path:.." "path:.gaia/local/x/"; do
+    i=$((i + 1)); repo="$(make_fixture_repo "schema-noncanon-$i")"
+    add_hook "$repo" "foo.sh" "#!/usr/bin/env bash
+exit 0"
+    write_manifest "$repo" "[{\"hook\":\".claude/hooks/foo.sh\",\"scope\":\"main-only\",\"state\":[\"$tok\"],\"why\":\"x\"}]"
+    commit_all "$repo"
+    run gaia_check_hook_manifest_schema "$repo"
+    [ "$status" -eq 1 ] || { echo "accepted: $tok"; return 1; }
+    grep -qF "non-canonical path: token" <<<"$output" || { echo "wrong message for $tok: $output"; return 1; }
+  done
+}
+
 @test "schema: a malformed hook path (not under .claude/hooks/, or not .sh) fails" {
   local repo; repo="$(make_fixture_repo schema-badpath)"
   write_manifest "$repo" '[{"hook":"scripts/foo.sh","scope":"any","state":[],"why":"x"}]'
@@ -320,12 +335,36 @@ cat "$ledger"'
   [ "$status" -eq 0 ]
 }
 
-@test "derive arm: an entry whose state is path:-only (Pattern D) is exempt" {
+@test "derive arm: an entry whose state is path:-only outside .gaia/local (Pattern D) is exempt" {
   local repo; repo="$(make_fixture_repo derive-pathonly)"
   add_hook "$repo" "foo.sh" '#!/usr/bin/env bash
 marker=".claude/some-marker"
 : > "$marker"'
   write_manifest "$repo" '[{"hook":".claude/hooks/foo.sh","scope":"per-tree","state":["path:.claude/some-marker"],"why":"x"}]'
+  commit_all "$repo"
+  run gaia_check_hook_manifest_derive_arm "$repo"
+  [ "$status" -eq 0 ]
+}
+
+@test "derive arm: a path: token under .gaia/local qualifies the entry, so a bare literal fails" {
+  local repo; repo="$(make_fixture_repo derive-pathlocal)"
+  add_hook "$repo" "foo.sh" '#!/usr/bin/env bash
+report=".gaia/local/cache/shared/x.report"
+cat "$report"'
+  write_manifest "$repo" '[{"hook":".claude/hooks/foo.sh","scope":"main-only","state":["path:.gaia/local/cache/shared/x.report"],"why":"x"}]'
+  commit_all "$repo"
+  run gaia_check_hook_manifest_derive_arm "$repo"
+  [ "$status" -eq 1 ]
+  grep -qF "bare .gaia/local literal" <<<"$output" || return 1
+}
+
+@test "derive arm: a path: token outside .gaia/local does not qualify the entry, even beside a bare literal" {
+  local repo; repo="$(make_fixture_repo derive-pathtracked)"
+  add_hook "$repo" "foo.sh" '#!/usr/bin/env bash
+: > ".claude/some-marker"
+report=".gaia/local/cache/x.report"
+cat "$report"'
+  write_manifest "$repo" '[{"hook":".claude/hooks/foo.sh","scope":"per-tree","state":["path:.claude/some-marker","path:.gaia/localish"],"why":"x"}]'
   commit_all "$repo"
   run gaia_check_hook_manifest_derive_arm "$repo"
   [ "$status" -eq 0 ]

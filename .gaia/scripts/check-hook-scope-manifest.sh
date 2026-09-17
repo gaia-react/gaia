@@ -12,10 +12,11 @@
 #                  that does not exist on disk); no duplicates.
 #   2. Schema      the manifest and its schema are valid JSON; every `state`
 #                  token is either a real .gaia/state-registry.json entry id
-#                  or a well-formed `path:<repo-relative-path>` token.
+#                  or a canonical `path:<repo-relative-path>` token (no
+#                  leading `/`, and no `.`, `..`, or empty segment).
 #   3. Derive arm  for every entry whose `state` includes a REGISTRY id
-#                  (never a bare `path:` token) classified main-only, shared,
-#                  or per-tree in the registry, the hook contains no BARE
+#                  classified main-only, shared, or per-tree in the registry,
+#                  or a `path:` token under `.gaia/local`, the hook contains no BARE
 #                  `.gaia/local` literal (one not immediately preceded by a
 #                  path-join character, i.e. reached without a resolved-root
 #                  variable) -- and, when it holds any live `.gaia/local`
@@ -23,10 +24,10 @@
 #                  (main-root-lib.sh, state-registry-lib.sh,
 #                  gaia-active-plan.sh, red-ledger.sh, ledger-path-lib.sh, or
 #                  gh-artifact-lib.sh) so the joined root traces back to one.
-#                  An entry whose `state` holds only `path:` tokens (Pattern
-#                  D, a tracked per-checkout working file with no registry
-#                  entry) is exempt -- there is no `.gaia/local` root to
-#                  derive.
+#                  An entry whose `state` holds only `path:` tokens outside
+#                  `.gaia/local` (Pattern D, a tracked per-checkout working
+#                  file with no registry entry) is exempt -- there is no
+#                  `.gaia/local` root to derive.
 #   4. Any honesty every scope: any entry's hook contains no live
 #                  `.gaia/local` reference at all (a comment mention is
 #                  allowed; a bare or resolved literal is not), so an `any`
@@ -198,11 +199,19 @@ gaia_check_hook_manifest_schema() {
   local known_ids
   known_ids="$(jq -r '.entries[].id' "$registry")"
 
-  local bad_state=""
+  # A path: token must be spelled canonically: the derive arm arms on the
+  # literal `.gaia/local` prefix, so `./.gaia/local` or `.gaia//local` would
+  # name the same state and slip past it.
+  local bad_state="" noncanonical=""
   local hook_path token
   while IFS=$'\t' read -r hook_path token; do
     [ -n "$token" ] || continue
     case "$token" in
+      path:. | path:.. | path:/* | path:./* | path:../* | *//* | */./* | */../* | */. | */.. | */)
+        noncanonical="${noncanonical}${hook_path}: ${token}
+"
+        continue
+        ;;
       path:?*) continue ;;
     esac
     if ! grep -qxF -- "$token" <<<"$known_ids"; then
@@ -214,6 +223,10 @@ gaia_check_hook_manifest_schema() {
     printf 'schema: unrecognized state token(s):\n%s' "$bad_state"
     rc=1
   fi
+  if [ -n "$noncanonical" ]; then
+    printf 'schema: non-canonical path: token(s) (absolute, or a ., .., or empty segment):\n%s' "$noncanonical"
+    rc=1
+  fi
 
   [ "$rc" -eq 0 ] && printf 'schema: manifest + schema valid JSON; every state token is a known registry id or a well-formed path: token\n'
   return $rc
@@ -221,8 +234,9 @@ gaia_check_hook_manifest_schema() {
 
 # gaia_check_hook_manifest_derive_arm <repo_root>
 #   Assertion 3. For every entry whose `state` includes a registry id
-#   classified main-only, shared, or per-tree (a bare `path:` token never
-#   counts), the hook has no bare `.gaia/local` literal, and, when it holds
+#   classified main-only, shared, or per-tree, or a `path:` token under
+#   `.gaia/local` (any other `path:` token never counts, since it names a
+#   tracked working file), the hook has no bare `.gaia/local` literal, and, when it holds
 #   any live reference at all, names a resolver-backed lib.
 gaia_check_hook_manifest_derive_arm() {
   local repo_root="${1:?gaia_check_hook_manifest_derive_arm requires a repo_root argument}"
@@ -241,6 +255,7 @@ gaia_check_hook_manifest_derive_arm() {
     while IFS= read -r tok; do
       [ -n "$tok" ] || continue
       case "$tok" in
+        path:.gaia/local | path:.gaia/local/*) has_qualifying=1; continue ;;
         path:?*) continue ;;
       esac
       grep -qxF -- "$tok" <<<"$qualifying_ids" && has_qualifying=1
@@ -263,7 +278,7 @@ gaia_check_hook_manifest_derive_arm() {
     fi
   done < <(jq -r '.hooks[] | [.hook, (.state // [] | tostring)] | @tsv' "$manifest")
 
-  [ "$rc" -eq 0 ] && printf 'derive arm: every main-only/shared/per-tree-backed entry is bare-literal-free and resolver-backed\n'
+  [ "$rc" -eq 0 ] && printf 'derive arm: every main-only/shared/per-tree-backed or .gaia/local path:-backed entry is bare-literal-free and resolver-backed\n'
   return $rc
 }
 
