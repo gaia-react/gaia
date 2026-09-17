@@ -42,6 +42,16 @@
 # of guessed at. Treat this list as the spellings known to be open, never as a
 # closed set.
 #
+# A search filter is judged as a glob by the path predicate, the same
+# best-effort reading the Grep tool arm below gives its `glob`. It catches the
+# literal shapes (`rg -g '*.key'`, `--include='*.pem'`) and passes any glob that
+# only expands onto a secret: `--include='*'`, a brace glob such as
+# `*.{key,pem}`, an `--iglob` in another case. A filter element starting `!` or
+# `^` is never judged, since ripgrep and ugrep read those as exclusions, so GNU
+# or BSD grep given `--include='!x.key'` for a file really named that way also
+# passes. File selection spelled as a type rather than a glob is not read at
+# all: `rg --type-add k:*.key -tk`, and ugrep's extension filters.
+#
 # THE SUBPROCESS TIER IS NOT LOST WITH THE RULES, it moved. A Read() deny rule
 # merges into the OS sandbox boundary, so the four globs above also denied a
 # subprocess spawned by sandboxed Bash, which no hook can see. Deleting them
