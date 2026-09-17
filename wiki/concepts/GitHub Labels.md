@@ -67,7 +67,7 @@ Sync is conservative by design. It renames rather than deleting and recreating, 
 | --- | --- | --- | --- |
 | `in-progress` | `ffd33d` | Someone is actively working this issue right now; do not pick it up | always |
 | `debt:spec-pending` | `a6e3b8` | Handed to /gaia-spec; parked until the SPEC pipeline starts | tech-debt |
-| `debt:spec-active` | `3b9b58` | SPEC is being authored, planned, or executed for this issue | tech-debt |
+| `debt:spec-active` | `3b9b58` | SPEC is underway for this issue, or holds it open on a recorded trigger | tech-debt |
 
 ### Modifier
 

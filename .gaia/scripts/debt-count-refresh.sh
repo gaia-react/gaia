@@ -157,7 +157,8 @@ mkdir -p "$DEBT_DIR" 2>/dev/null
 # Count open issues carrying the `tech-debt` label via gh, excluding any that
 # also carry `in-progress` (the shared claim label, set by /gaia-debt or by
 # hand) or either park label, `debt:spec-pending` (handed off to /gaia-spec, not
-# yet started) and `debt:spec-active` (the SPEC pipeline is running), so a
+# yet started) and `debt:spec-active` (the SPEC pipeline is running, or the
+# SPEC holds the issue open on a recorded trigger), so a
 # claimed or parked issue does not inflate the nudge for a peer session. The two
 # park labels are excluded on identical terms: an issue is no less parked for
 # having started, and the split exists so a stalled handoff stays visible as
