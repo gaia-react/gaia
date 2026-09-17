@@ -5,8 +5,8 @@
 # .claude/hooks/block-secrets-read.sh. Does no work at source time.
 #
 # Both guards ask one question of a Bash command segment, "which tokens in it
-# name a file that a reader will open?", and differ only in the predicate they
-# then apply to the answer. This library owns the question; each hook owns its
+# name or select a file that a reader will open?", and differ only in the
+# predicate they then apply to the answer. This library owns the question; each hook owns its
 # own answer. Splitting it this way is what keeps the grep arm below written
 # once: it is the only part of either guard that needs real argument grammar,
 # and a second hand-rolled copy of it would drift.
@@ -33,6 +33,23 @@
 # values ARE opened by grep itself, so they are emitted as operands rather than
 # discarded. `grep -f <secret> .` reads the secret exactly as `grep x <secret>`
 # does, and only this arm can tell the difference.
+#
+# The filter flags that SELECT which files a recursive search reads (--include,
+# and ripgrep's --glob, --iglob and -g) are emitted too, because
+# `rg -g '*.key' TOKEN` reads every key file as surely as naming one would, and
+# the Grep tool arm already denies the same filter given as its `glob`. Their
+# value is a glob rather than a path, so the predicate catches the literal
+# shapes (`*.key`, `.env*`) and not every glob that could expand onto one; each
+# hook's HONEST LIMITS names what gets through. The value is split on commas and
+# each element judged alone, because the ugrep that Claude Code's own shell runs
+# as `grep` reads it as a list (`-g '!*.md,*.key'` still searches key files). A
+# comma inside a ripgrep brace glob splits into fragments that match nothing,
+# the brace-glob pass the limits already name. An element with a leading `!` is
+# dropped, and so is one with a leading `^`: ripgrep reads `!` as an EXCLUSION
+# and ugrep reads both that way, so judging them would deny a search for
+# steering clear of the class. GNU and BSD grep take both characters literally,
+# which leaves a file whose name really begins with one unjudged on those two.
+# The flags that only ever exclude (--exclude, --exclude-dir) stay discarded.
 #
 # The flag tables are the UNION of GNU grep's and ripgrep's, deliberately, and
 # the union is safe ONLY because no discard-listed flag is value-less for either
@@ -72,13 +89,20 @@ _GAIA_RO_GREP_READERS='grep egrep fgrep rgrep rg'
 
 # Short flags that take a value which is NOT a file to open (a pattern, a count,
 # a type name, a replacement). The value is discarded.
-_GAIA_RO_SHORT_DISCARD='emABCDdtg'
+_GAIA_RO_SHORT_DISCARD='emABCDdt'
 
 # Short flags whose value IS a file grep opens. Emitted as an operand.
 _GAIA_RO_SHORT_FILE='f'
 
+# Short and long flags whose value is a glob selecting the files a search reads.
+# Each non-negated element of the value is emitted. Not a closed set of every
+# way to select files: ripgrep's --type-add definitions and ugrep's extension
+# filters select too, and each hook's HONEST LIMITS names them as open.
+_GAIA_RO_SHORT_SELECT='g'
+_GAIA_RO_LONG_SELECT='--include --glob --iglob'
+
 # Long flags that take a value which is not a file. Matched with or without `=`.
-_GAIA_RO_LONG_DISCARD='--regexp --max-count --after-context --before-context --context --binary-files --devices --directories --label --include --exclude --exclude-dir --group-separator --colors --type --type-not --type-add --glob --iglob --replace --pre --sort --sortr --context-separator --path-separator --field-match-separator --encoding --engine --dfa-size-limit --regex-size-limit --max-columns --max-depth --max-filesize --threads'
+_GAIA_RO_LONG_DISCARD='--regexp --max-count --after-context --before-context --context --binary-files --devices --directories --label --exclude --exclude-dir --group-separator --colors --type --type-not --type-add --replace --pre --sort --sortr --context-separator --path-separator --field-match-separator --encoding --engine --dfa-size-limit --regex-size-limit --max-columns --max-depth --max-filesize --threads'
 
 # Long flags whose value IS a file grep opens. Split by whether the flag also
 # SUPPLIES THE PATTERN, because that is what decides whether the next positional
@@ -120,6 +144,25 @@ _gaia_ro_emit() {
   if [ -n "$v" ]; then printf '%s\n' "$v"; fi
 }
 
+# Emit each element of a select flag's comma-separated glob list, skipping the
+# negated ones.
+_gaia_ro_emit_select() {
+  local v el
+  local parts=()
+  v=$(gaia_reader_strip_quotes "$1")
+  # An empty array expands as unbound under bash 3.2 with set -u.
+  [ -n "$v" ] || return 0
+  # read -a rather than an unquoted IFS split, which would also pathname-expand
+  # a glob element against the working directory.
+  IFS=',' read -r -a parts <<<"$v"
+  for el in "${parts[@]}"; do
+    case "$el" in
+      '!'* | '^'*) ;;
+      *) _gaia_ro_emit "$el" ;;
+    esac
+  done
+}
+
 # Emit the file operands of a grep-family invocation. Arguments are the tokens
 # AFTER the command word.
 _gaia_ro_grep_operands() {
@@ -127,7 +170,8 @@ _gaia_ro_grep_operands() {
   local n=${#toks[@]}
   local i=0
   # pending is the disposition of a value the previous flag expects in the NEXT
-  # token: "file" to emit it, "discard" to drop it, empty for neither.
+  # token: "file" to emit it, "select" to emit it unless negated, "discard" to
+  # drop it, empty for neither.
   local pending=''
   # Set once -e/-f/--regexp/--file has supplied the pattern, which is what makes
   # the first positional operand a FILE rather than the pattern.
@@ -142,6 +186,7 @@ _gaia_ro_grep_operands() {
 
     if [ -n "$pending" ]; then
       if [ "$pending" = 'file' ]; then _gaia_ro_emit "$t"; fi
+      if [ "$pending" = 'select' ]; then _gaia_ro_emit_select "$t"; fi
       pending=''
       continue
     fi
@@ -165,6 +210,12 @@ _gaia_ro_grep_operands() {
         else
           pending='file'
         fi
+      elif _gaia_ro_in_list "$name" "$_GAIA_RO_LONG_SELECT"; then
+        if [ -n "$val" ]; then
+          _gaia_ro_emit_select "$val"
+        else
+          pending='select'
+        fi
       elif _gaia_ro_in_list "$name" "$_GAIA_RO_LONG_DISCARD"; then
         if [ "$name" = '--regexp' ]; then pattern_flagged=0; fi
         if [ -z "$val" ]; then pending='discard'; fi
@@ -183,6 +234,14 @@ _gaia_ro_grep_operands() {
             _gaia_ro_emit "$rest"
           else
             pending='file'
+          fi
+          break
+        fi
+        if [ "$_GAIA_RO_SHORT_SELECT" != "${_GAIA_RO_SHORT_SELECT/$c/}" ]; then
+          if [ -n "$rest" ]; then
+            _gaia_ro_emit_select "$rest"
+          else
+            pending='select'
           fi
           break
         fi
