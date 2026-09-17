@@ -238,7 +238,7 @@ exit 0"
 
 @test "schema: a non-canonical path: token that would slip past the derive arm's .gaia/local prefix fails" {
   local tok repo i=0
-  for tok in "path:./.gaia/local/cache/x" "path:.gaia//local/cache" "path:.gaia/local/../local/x" "path:/.gaia/local/x" "path:.gaia/./local/x"; do
+  for tok in "path:./.gaia/local/cache/x" "path:.gaia//local/cache" "path:.gaia/local/../local/x" "path:/.gaia/local/x" "path:.gaia/./local/x" "path:.." "path:.gaia/local/x/"; do
     i=$((i + 1)); repo="$(make_fixture_repo "schema-noncanon-$i")"
     add_hook "$repo" "foo.sh" "#!/usr/bin/env bash
 exit 0"

@@ -207,7 +207,7 @@ gaia_check_hook_manifest_schema() {
   while IFS=$'\t' read -r hook_path token; do
     [ -n "$token" ] || continue
     case "$token" in
-      path:/* | path:./* | path:../* | *//* | */./* | */../* | */. | */..)
+      path:. | path:.. | path:/* | path:./* | path:../* | *//* | */./* | */../* | */. | */.. | */)
         noncanonical="${noncanonical}${hook_path}: ${token}
 "
         continue
@@ -224,7 +224,7 @@ gaia_check_hook_manifest_schema() {
     rc=1
   fi
   if [ -n "$noncanonical" ]; then
-    printf 'schema: non-canonical path: token(s) (absolute, or a ./, .., or // segment):\n%s' "$noncanonical"
+    printf 'schema: non-canonical path: token(s) (absolute, or a ., .., or empty segment):\n%s' "$noncanonical"
     rc=1
   fi
 
