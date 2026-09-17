@@ -36,8 +36,12 @@
 #   --eligibility     Also resolve the default member's waive-eligibility set:
 #                     the whole-PR fork point against the branch the pull
 #                     request merges into (ELIG_BASE) and every path it
-#                     changes, unfiltered (ELIG_CHANGED). Only this flag
-#                     consults `gh`.
+#                     changes, unfiltered (ELIG_CHANGED). No other option in
+#                     THIS script consults `gh`; the base resolver every run
+#                     invokes may itself call `gh api` when GH_TOKEN and
+#                     GITHUB_REPOSITORY are both set, which is what the
+#                     suite's "gh is never called" probe depends on being
+#                     unset.
 #   --finding-path    A finding's repo-relative path to answer "did this pull
 #                     request change it" for, against the eligibility set.
 #                     Repeatable. Requires --eligibility.

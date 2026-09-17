@@ -298,6 +298,24 @@ EOF
   [ "$status" -eq 0 ]
 }
 
+# The whole-file chain exemption for .gaia/scripts/audit-resolve-scope.sh is
+# safe only while that file derives its whole-PR base through the shared
+# resolver. The chain scan compares allowed carriers by PATH, so without this
+# pin a re-inlined origin-then-local ladder anywhere in that file reads as an
+# allowed carrier, and assertion 1's by-name FULL_BASE exemption greens it too.
+# Same shape as resolve-audit-members.bats's COV-003 adoption pin.
+@test "pin: the exempted resolver still derives its whole-PR base through the shared resolver" {
+  local resolver="$SCRIPT_DIR/audit-resolve-scope.sh"
+  grep -qF 'audit_resolve_base_provenance "$root" default-branch' "$resolver" || {
+    echo "audit-resolve-scope.sh no longer adopts audit_resolve_base_provenance; its chain exemption would now cover a re-inlined ladder" >&2
+    return 1
+  }
+  grep -qF "'.gaia/scripts/audit-resolve-scope.sh'" "$CHECK" || {
+    echo "the resolver's allowed-carrier entry is gone; this pin guards nothing" >&2
+    return 1
+  }
+}
+
 @test "usage: no repo_root and not a git repository exits 2" {
   local dir="$BATS_TEST_TMPDIR/not-a-repo"
   mkdir -p "$dir"

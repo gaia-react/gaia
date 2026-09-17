@@ -32,7 +32,10 @@
 #   0  seeded, or a no-op: an empty prior digest, an absent or unparseable
 #      prior sidecar, or no jq. The last three are disposition_seed_forward's
 #      own fail-safe contract, which a still-open receipt costs nothing to
-#      honour: the prior sidecar stays on disk.
+#      honour: the prior sidecar stays on disk. A union that could not be
+#      WRITTEN reports 0 here too, because the helper returns 0 on each of
+#      its merge, mktemp, printf and mv arms, so this status is never
+#      evidence that a receipt moved, only that nothing raised.
 #   2  usage error, a digest that is not 64 lowercase hex, a missing library,
 #      or a --root this script refuses.
 

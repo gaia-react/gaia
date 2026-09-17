@@ -222,9 +222,11 @@
 #      NULs back, which fails open the same way: bash drops NUL bytes in a
 #      command substitution, so every path concatenates into one token that
 #      matches no glob. Requiring the conversion is not available to this net,
-#      because the net cannot tell a fence from prose and code-audit-frontend.md
-#      states the command inside a markdown code span with no pipeline after
-#      it, which such a requirement would red.
+#      because the net cannot tell one line from a whole pipeline: the
+#      resolver writes each diff to a file under an exit-status test and reads
+#      it back through a NUL-delimited `while` loop on later lines, so the
+#      conversion no line-scoped requirement can see is there, and requiring
+#      it per line would red that correct spelling.
 # gaia:maintainer-only:start
 #      The behavioural suite next door executes the real fences against a
 #      repository carrying a non-ASCII path, which is what covers that shape.
@@ -282,8 +284,8 @@ GAIA_AUDIT_SCOPE_RESOLVER='.gaia/scripts/audit-resolve-scope.sh'
 # `origin/${default_branch}`, the bare `"${default_branch}"` fallback, and a
 # literal `merge-base HEAD main` are three spellings of one drift, and the
 # third defeats a branch-name literal in the pattern: `main` appears in the
-# ordinary English of these files (`main-thread-authored` at
-# code-audit-frontend.md:654), so an ERE carrying it reds a correct tree.
+# ordinary English of these files (`main-thread-authored`, in
+# code-audit-frontend.md), so an ERE carrying it reds a correct tree.
 #
 # So the check identifies the ONE shape that is right instead. A review base
 # derived through the resolver always passes BASE_REF to its own merge-base
