@@ -229,3 +229,38 @@ setup() {
   done
   true
 }
+
+# --- Group 3: a value the scope resolver prints empty still reaches its flag --
+
+@test "no spec hands a resolver value to a flag unquoted" {
+  # A member types each resolver value into the command as a literal. The
+  # resolver prints ANCHOR_TREE empty on every no-anchor round, which is every
+  # first dispatch on a branch, so a bare `--anchor-tree <ANCHOR_TREE>` becomes
+  # a flag with nothing after it and takes the next flag as its value: the
+  # sidecar writer then exits 2 on `--findings` as an unrecognized argument,
+  # and no report of record is written. Observed live from a linked worktree.
+  # Single quotes keep an empty value as its own `''` argument.
+  for f in "${SPECS[@]}"; do
+    local offenders
+    offenders="$(grep -nE -- '--[a-z-]+ <[A-Z_]+>' "$f" || true)"
+    [ -z "$offenders" ] || {
+      echo "$f passes a resolver value to a flag unquoted: $offenders" >&2
+      return 1
+    }
+  done
+}
+
+@test "every spec carries the quoted anchor-tree form and states why" {
+  # The floor for the rule above: a spec that stopped prescribing the sidecar
+  # write, or dropped the flag, would pass an absence check on nothing.
+  for f in "${SPECS[@]}"; do
+    grep -qF -- "--anchor-tree '<ANCHOR_TREE>'" "$f" || {
+      echo "$f carries no quoted --anchor-tree form" >&2
+      return 1
+    }
+    grep -qF -- 'Keep the single quotes a command puts around a value' "$f" || {
+      echo "$f does not state why a resolver value is single-quoted" >&2
+      return 1
+    }
+  done
+}

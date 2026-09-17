@@ -47,7 +47,7 @@ printf '%s\n' "$AUDIT_ROOT"
 
 Run it once, as its own Bash call, with the dispatched `AUDIT_ROOT=` assignment ahead of it when the orchestrator supplied one. It prints the root resolved physically, and that printed path is what `<root>` stands for in every command below. The fallback is the working directory rather than `git rev-parse --show-toplevel` because a `git` call inside a command substitution is a shape a worktree-confined member cannot run. What that fallback does not do, lift a subdirectory to its checkout root or refuse a path outside any repository, is refused downstream instead: the scope resolver and the clearance writer each reject a `--root` that is not a checkout root.
 
-**From here on, every value travels as a literal typed into the command, never as a shell variable or a command substitution.** Replace `<root>`, and each `<NAME>` a command below prints, with its value before running the command that consumes it. Two constraints meet in that rule. Shell state does not persist between your Bash calls, so a variable set in one call is empty in the next, and an empty root resolves whatever tree the session sits in without saying so: `git -C ""` exits 0 against the ambient tree, and so does `cd ""` on bash 3.2. And a member dispatched into a linked worktree runs under the runtime's worktree confinement, which refuses a multi-command block, a `git` call inside a command substitution, a pipe feeding a program text that carries the token `git`, and a command name computed at runtime, whatever the command actually does. One plain command per Bash call, with literal arguments, runs in every mode, so the root, oracle, scope, and handshake commands below are each written as one: run each fence as its own call. The disposition pipeline's compound blocks (the eligibility base, the ledger key, the provenance line, and the seed-forward) still read `AUDIT_ROOT` and the other values as shell variables: run each of those as one Bash call with the assignments it reads typed ahead of it, `AUDIT_ROOT=<root>` among them.
+**From here on, every value travels as a literal typed into the command, never as a shell variable or a command substitution.** Replace `<root>`, and each `<NAME>` a command below prints, with its value before running the command that consumes it. Keep the single quotes a command puts around a value such as `'<ANCHOR_TREE>'`: the resolver prints `ANCHOR_TREE` empty on every `no-anchor` round, and a bare empty value drops out of the command, leaving its flag to take the next argument as its value, where `''` stays an argument of its own. Two constraints meet in that rule. Shell state does not persist between your Bash calls, so a variable set in one call is empty in the next, and an empty root resolves whatever tree the session sits in without saying so: `git -C ""` exits 0 against the ambient tree, and so does `cd ""` on bash 3.2. And a member dispatched into a linked worktree runs under the runtime's worktree confinement, which refuses a multi-command block, a `git` call inside a command substitution, a pipe feeding a program text that carries the token `git`, and a command name computed at runtime, whatever the command actually does. One plain command per Bash call, with literal arguments, runs in every mode, so the root, oracle, scope, and handshake commands below are each written as one: run each fence as its own call. The disposition pipeline's compound blocks (the eligibility base, the ledger key, the provenance line, and the seed-forward) still read `AUDIT_ROOT` and the other values as shell variables: run each of those as one Bash call with the assignments it reads typed ahead of it, `AUDIT_ROOT=<root>` among them.
 
 Do not re-derive that set by hand. On a **local** run, at the start of every review, ask the dispatch oracle whether this diff dispatches you, with `--no-carry-forward`. A local run is one where neither `GITHUB_ACTIONS` nor `CI` is set. The oracle's output is `spawn_set` below:
 
@@ -1085,7 +1085,7 @@ Decide the disposition entries (section F) at this marker-decision point regardl
 **Seed-forward.** A fresh incremental audit reviews only the delta since the resolved base and does not re-encounter a prior out-of-scope finding, so re-keying the sidecar to a new digest would otherwise silently drop a still-open receipt across the rotation. Before finishing the sidecar write, compute the PRIOR frontend digest at the incremental base (the same per-member `BASE_SHA` resolved for the review scope above, see "Resolve the review scope"):
 
 ```bash
-<root>/.gaia/scripts/audit-member-digest.sh --root <root> --member code-audit-frontend --ref <BASE_SHA>
+<root>/.gaia/scripts/audit-member-digest.sh --root <root> --member code-audit-frontend --ref '<BASE_SHA>'
 ```
 
 It prints the prior digest, `<prev_frontend_digest>` below, or nothing.
@@ -1116,17 +1116,17 @@ printf '%s' '[ ...the findings array, one object per finding; [] when you found 
 bash <root>/.gaia/scripts/audit-write-findings.sh \
   --root <root> \
   --member code-audit-frontend \
-  --base <KEY_BASE> \
-  --review-base <BASE_SHA> \
-  --base-reason <BASE_REASON> \
-  --anchor-tree <ANCHOR_TREE> \
+  --base '<KEY_BASE>' \
+  --review-base '<BASE_SHA>' \
+  --base-reason '<BASE_REASON>' \
+  --anchor-tree '<ANCHOR_TREE>' \
   --findings <scratch>/findings.json
 ```
 
 **1. Mark.** Write the earned clearance BEFORE the stamp (mark-before-stamp): this feeds the member-aware stamp gate in step 2 and closes the crash window, since a trailer is never believed while any dispatched member's marker is missing. Read the scope digest captured at scope resolution back rather than re-deriving it here: a value derived at write time would be the writer's own internal derive by construction, which makes the staleness comparison vacuous. The read prints `<SCOPE_DIGEST>`, and its scope file is keyed by `<KEY_BASE>`:
 
 ```bash
-<root>/.gaia/scripts/audit-scope-digest.sh --read --root <root> --member code-audit-frontend --base <KEY_BASE>
+<root>/.gaia/scripts/audit-scope-digest.sh --read --root <root> --member code-audit-frontend --base '<KEY_BASE>'
 ```
 
 ```bash
@@ -1134,8 +1134,8 @@ bash <root>/.gaia/scripts/audit-write-clearance.sh \
   --root <root> \
   --member code-audit-frontend \
   --provenance earned \
-  --base <KEY_BASE> \
-  --scope-digest <SCOPE_DIGEST>
+  --base '<KEY_BASE>' \
+  --scope-digest '<SCOPE_DIGEST>'
 ```
 
 The writer derives your content digest from `--root`, keys the marker to the content the audit ENDS on (after self-heal, before the stamp), and prints the marker path, `<marker>` below. The write is unconditional: it replaces any marker already on disk for this digest.
@@ -1232,7 +1232,7 @@ bash <root>/.gaia/scripts/audit-write-clearance.sh \
   --root <root> \
   --member code-audit-frontend \
   --provenance refused \
-  --base <KEY_BASE>
+  --base '<KEY_BASE>'
 ```
 
 `--base` is what makes the refusal self-describing. A refusal blocks the merge and is retired only by its own author, so an operator who cannot learn what you refused on can neither repair it nor legitimately supersede it: superseding requires stating a reason they are not in a position to state. With `--base` the writer derives the re-run carry-forward ledger (`.gaia/local/audit/<audit-key>.rerun.json`) from the findings sidecar you wrote in step 0, so `remaining[]` names every open finding with its path, line, failure mode and recommended repair. Pass the same `KEY_BASE` you gave the sidecar writer. The ledger is non-gating and best-effort: it never blocks a merge, no hook reads it, and a failure there never fails your marker write. Your `remaining[]` entries are rebuilt from your sidecar on every round, so a finding it no longer names is closed; a co-dispatched member's entries are never touched.
@@ -1242,7 +1242,7 @@ Passing `--base` on the earned write too is what retires your ledger entries: th
 **Superseding your own prior refusal.** A plain earned write never clears a refusal you already wrote for the same digest: both markers sit on disk, the gate checks the refusal family first, and the merge stays blocked no matter how many times you are re-spawned. When you refused this exact digest on an earlier round and the blocking finding is now genuinely resolved, say so explicitly as you write the earned marker, adding `--supersede-refusal "<why it is now cleared>"` to the earned invocation in step 1 above:
 
 ```bash
-<root>/.gaia/scripts/audit-scope-digest.sh --read --root <root> --member code-audit-frontend --base <KEY_BASE>
+<root>/.gaia/scripts/audit-scope-digest.sh --read --root <root> --member code-audit-frontend --base '<KEY_BASE>'
 ```
 
 ```bash
@@ -1250,8 +1250,8 @@ bash <root>/.gaia/scripts/audit-write-clearance.sh \
   --root <root> \
   --member code-audit-frontend \
   --provenance earned \
-  --base <KEY_BASE> \
-  --scope-digest <SCOPE_DIGEST> \
+  --base '<KEY_BASE>' \
+  --scope-digest '<SCOPE_DIGEST>' \
   --supersede-refusal "operator acknowledged the unaddressed Important with a stated reason"
 ```
 
@@ -1277,10 +1277,10 @@ printf '%s' '[ ...the findings array, one object per finding; [] when you found 
 bash <root>/.gaia/scripts/audit-write-findings.sh \
   --root <root> \
   --member code-audit-frontend \
-  --base <KEY_BASE> \
-  --review-base <BASE_SHA> \
-  --base-reason <BASE_REASON> \
-  --anchor-tree <ANCHOR_TREE> \
+  --base '<KEY_BASE>' \
+  --review-base '<BASE_SHA>' \
+  --base-reason '<BASE_REASON>' \
+  --anchor-tree '<ANCHOR_TREE>' \
   --findings <scratch>/findings.json
 ```
 

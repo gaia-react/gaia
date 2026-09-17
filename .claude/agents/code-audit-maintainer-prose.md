@@ -40,7 +40,7 @@ printf '%s\n' "$AUDIT_ROOT"
 
 Run it once, as its own Bash call, with the dispatched `AUDIT_ROOT=` assignment ahead of it when the orchestrator supplied one. It prints the root resolved physically, and that printed path is what `<root>` stands for in every command below. The fallback is the working directory rather than `git rev-parse --show-toplevel` because a `git` call inside a command substitution is a shape a worktree-confined member cannot run. What that fallback does not do, lift a subdirectory to its checkout root or refuse a path outside any repository, is refused downstream instead: the scope resolver below and the clearance writer each reject a `--root` that is not a checkout root.
 
-**From here on, every value travels as a literal typed into the command, never as a shell variable or a command substitution.** Replace `<root>`, and each `<NAME>` the scope resolver prints, with its value before running the command. Two constraints meet in that rule. Shell state does not persist between your Bash calls, so a variable set in one call is empty in the next, and an empty root resolves whatever tree the session sits in without saying so: `git -C ""` exits 0 against the ambient tree, and so does `cd ""` on bash 3.2. And a member dispatched into a linked worktree runs under the runtime's worktree confinement, which refuses a multi-command block, a `git` call inside a command substitution, a pipe feeding a program text that carries the token `git`, and a command name computed at runtime, whatever the command actually does. One plain command per Bash call, with literal arguments, runs in every mode, so every command below is written as one: run each fence as its own call.
+**From here on, every value travels as a literal typed into the command, never as a shell variable or a command substitution.** Replace `<root>`, and each `<NAME>` the scope resolver prints, with its value before running the command. Keep the single quotes a command puts around a value such as `'<ANCHOR_TREE>'`: the resolver prints `ANCHOR_TREE` empty on every `no-anchor` round, and a bare empty value drops out of the command, leaving its flag to take the next argument as its value, where `''` stays an argument of its own. Two constraints meet in that rule. Shell state does not persist between your Bash calls, so a variable set in one call is empty in the next, and an empty root resolves whatever tree the session sits in without saying so: `git -C ""` exits 0 against the ambient tree, and so does `cd ""` on bash 3.2. And a member dispatched into a linked worktree runs under the runtime's worktree confinement, which refuses a multi-command block, a `git` call inside a command substitution, a pipe feeding a program text that carries the token `git`, and a command name computed at runtime, whatever the command actually does. One plain command per Bash call, with literal arguments, runs in every mode, so every command below is written as one: run each fence as its own call.
 
 At the start of every run, resolve your review scope with one command:
 
@@ -169,7 +169,7 @@ Every command below takes `<root>` and the values the scope resolver printed as 
 Before writing your findings sidecar, read your captured scope digest back with `--read` and compare it to a fresh derive; when they differ, record the rotated review scope as a finding in the sidecar and say so in your report. You still write your earned clearance and never block the merge.
 
 ```bash
-<root>/.gaia/scripts/audit-scope-digest.sh --read --root <root> --member code-audit-maintainer-prose --base <KEY_BASE>
+<root>/.gaia/scripts/audit-scope-digest.sh --read --root <root> --member code-audit-maintainer-prose --base '<KEY_BASE>'
 ```
 
 ```bash
@@ -186,10 +186,10 @@ printf '%s' '[ ...the findings array, one object per finding; [] when you found 
 bash <root>/.gaia/scripts/audit-write-findings.sh \
   --root <root> \
   --member code-audit-maintainer-prose \
-  --base <KEY_BASE> \
-  --review-base <BASE_SHA> \
-  --base-reason <BASE_REASON> \
-  --anchor-tree <ANCHOR_TREE> \
+  --base '<KEY_BASE>' \
+  --review-base '<BASE_SHA>' \
+  --base-reason '<BASE_REASON>' \
+  --anchor-tree '<ANCHOR_TREE>' \
   --findings <scratch>/findings.json
 ```
 
@@ -200,8 +200,8 @@ bash <root>/.gaia/scripts/audit-write-clearance.sh \
   --root <root> \
   --member code-audit-maintainer-prose \
   --provenance earned \
-  --base <KEY_BASE> \
-  --scope-digest <SCOPE_DIGEST>
+  --base '<KEY_BASE>' \
+  --scope-digest '<SCOPE_DIGEST>'
 ```
 
 The writer prints the marker path it wrote, `<marker>` below. Do NOT include a `--provenance refused` path, you never refuse. The `--scope-digest` check is advisory-only for you in both its failing arms (an absent flag or a mismatch): either prints `review scope superseded (advisory)` on stderr, but the marker still publishes and the write still exits 0. That is a record, not a block; a rotated review scope is what step 0 above already put in your findings sidecar.
@@ -258,10 +258,10 @@ printf '%s' '[ ...the findings array, one object per finding; [] when you found 
 bash <root>/.gaia/scripts/audit-write-findings.sh \
   --root <root> \
   --member code-audit-maintainer-prose \
-  --base <KEY_BASE> \
-  --review-base <BASE_SHA> \
-  --base-reason <BASE_REASON> \
-  --anchor-tree <ANCHOR_TREE> \
+  --base '<KEY_BASE>' \
+  --review-base '<BASE_SHA>' \
+  --base-reason '<BASE_REASON>' \
+  --anchor-tree '<ANCHOR_TREE>' \
   --findings <scratch>/findings.json
 ```
 

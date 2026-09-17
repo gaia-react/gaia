@@ -48,7 +48,7 @@ printf '%s\n' "$AUDIT_ROOT"
 
 Run it once, as its own Bash call, with the dispatched `AUDIT_ROOT=` assignment ahead of it when the orchestrator supplied one. It prints the root resolved physically, and that printed path is what `<root>` stands for in every command below. The fallback is the working directory rather than `git rev-parse --show-toplevel` because a `git` call inside a command substitution is a shape a worktree-confined member cannot run. What that fallback does not do, lift a subdirectory to its checkout root or refuse a path outside any repository, is refused downstream instead: the scope resolver below and the clearance writer each reject a `--root` that is not a checkout root.
 
-**From here on, every value travels as a literal typed into the command, never as a shell variable or a command substitution.** Replace `<root>`, and each `<NAME>` the scope resolver prints, with its value before running the command. Two constraints meet in that rule. Shell state does not persist between your Bash calls, so a variable set in one call is empty in the next, and an empty root resolves whatever tree the session sits in without saying so: `git -C ""` exits 0 against the ambient tree, and so does `cd ""` on bash 3.2. And a member dispatched into a linked worktree runs under the runtime's worktree confinement, which refuses a multi-command block, a `git` call inside a command substitution, a pipe feeding a program text that carries the token `git`, and a command name computed at runtime, whatever the command actually does. One plain command per Bash call, with literal arguments, runs in every mode, so every command below is written as one: run each fence as its own call.
+**From here on, every value travels as a literal typed into the command, never as a shell variable or a command substitution.** Replace `<root>`, and each `<NAME>` the scope resolver prints, with its value before running the command. Keep the single quotes a command puts around a value such as `'<ANCHOR_TREE>'`: the resolver prints `ANCHOR_TREE` empty on every `no-anchor` round, and a bare empty value drops out of the command, leaving its flag to take the next argument as its value, where `''` stays an argument of its own. Two constraints meet in that rule. Shell state does not persist between your Bash calls, so a variable set in one call is empty in the next, and an empty root resolves whatever tree the session sits in without saying so: `git -C ""` exits 0 against the ambient tree, and so does `cd ""` on bash 3.2. And a member dispatched into a linked worktree runs under the runtime's worktree confinement, which refuses a multi-command block, a `git` call inside a command substitution, a pipe feeding a program text that carries the token `git`, and a command name computed at runtime, whatever the command actually does. One plain command per Bash call, with literal arguments, runs in every mode, so every command below is written as one: run each fence as its own call.
 
 At the start of every run, resolve your review scope with one command:
 
@@ -210,10 +210,10 @@ printf '%s' '[ ...the findings array, one object per finding; [] when you found 
 bash <root>/.gaia/scripts/audit-write-findings.sh \
   --root <root> \
   --member code-audit-maintainer-shell \
-  --base <KEY_BASE> \
-  --review-base <BASE_SHA> \
-  --base-reason <BASE_REASON> \
-  --anchor-tree <ANCHOR_TREE> \
+  --base '<KEY_BASE>' \
+  --review-base '<BASE_SHA>' \
+  --base-reason '<BASE_REASON>' \
+  --anchor-tree '<ANCHOR_TREE>' \
   --findings <scratch>/findings.json
 ```
 
@@ -224,7 +224,7 @@ The marker is keyed to your own content digest, not HEAD's commit sha or tree: a
 Read your captured scope digest back rather than re-deriving it: a value derived at write time would be the writer's own internal derive by construction, which makes the staleness comparison vacuous. The read prints the captured value, `<SCOPE_DIGEST>` below, and its scope file is keyed by `<KEY_BASE>`, so pass the same one you gave the sidecar writer.
 
 ```bash
-<root>/.gaia/scripts/audit-scope-digest.sh --read --root <root> --member code-audit-maintainer-shell --base <KEY_BASE>
+<root>/.gaia/scripts/audit-scope-digest.sh --read --root <root> --member code-audit-maintainer-shell --base '<KEY_BASE>'
 ```
 
 ```bash
@@ -232,8 +232,8 @@ bash <root>/.gaia/scripts/audit-write-clearance.sh \
   --root <root> \
   --member code-audit-maintainer-shell \
   --provenance earned \
-  --base <KEY_BASE> \
-  --scope-digest <SCOPE_DIGEST>
+  --base '<KEY_BASE>' \
+  --scope-digest '<SCOPE_DIGEST>'
 ```
 
 The shared writer derives your content digest internally from `--root`, resolves the filename from it, writes atomically, and prints the marker path it wrote, `<marker>` below. Every write lands unconditionally: it replaces whatever marker was already on disk for this digest, there is no carried provenance to out-rank, only earned or refused. A `review scope superseded` refusal here means your scope digest no longer matches your content digest at write time: no artifact was written and the round is forfeited. That refusal releases your now-stale capture as it exits, so the re-dispatch on the new HEAD starts from a fresh capture and clears normally instead of refusing identically forever. The release is also why you must not re-run the scope fence yourself here: it would hand you a capture for content you did not review.
@@ -245,7 +245,7 @@ bash <root>/.gaia/scripts/audit-write-clearance.sh \
   --root <root> \
   --member code-audit-maintainer-shell \
   --provenance refused \
-  --base <KEY_BASE>
+  --base '<KEY_BASE>'
 ```
 
 `--base` is what makes the refusal self-describing. A refusal blocks the merge and is retired only by its own author, so an operator who cannot learn what you refused on can neither repair it nor legitimately supersede it: superseding requires stating a reason they are not in a position to state. With `--base` the writer derives the re-run carry-forward ledger (`.gaia/local/audit/<audit-key>.rerun.json`) from the findings sidecar you wrote in step 0, so `remaining[]` names every open finding with its path, line, failure mode and recommended repair. Pass the same `KEY_BASE` you gave the sidecar writer. The ledger is non-gating and best-effort: it never blocks a merge, no hook reads it, and a failure there never fails your marker write. Your `remaining[]` entries are rebuilt from your sidecar on every round, so a finding it no longer names is closed; a co-dispatched member's entries are never touched.
@@ -255,7 +255,7 @@ Passing `--base` on the earned write too is what retires your ledger entries: th
 **Superseding your own prior refusal.** A plain earned write never clears a refusal you already wrote for the same digest: both markers sit on disk, the gate checks the refusal family first, and the merge stays blocked no matter how many times you are re-spawned. When you refused this exact digest on an earlier round and the blocking finding is now genuinely resolved, say so explicitly as you write the earned marker:
 
 ```bash
-<root>/.gaia/scripts/audit-scope-digest.sh --read --root <root> --member code-audit-maintainer-shell --base <KEY_BASE>
+<root>/.gaia/scripts/audit-scope-digest.sh --read --root <root> --member code-audit-maintainer-shell --base '<KEY_BASE>'
 ```
 
 ```bash
@@ -263,8 +263,8 @@ bash <root>/.gaia/scripts/audit-write-clearance.sh \
   --root <root> \
   --member code-audit-maintainer-shell \
   --provenance earned \
-  --base <KEY_BASE> \
-  --scope-digest <SCOPE_DIGEST> \
+  --base '<KEY_BASE>' \
+  --scope-digest '<SCOPE_DIGEST>' \
   --supersede-refusal "operator acknowledged the unaddressed Important with a stated reason"
 ```
 
@@ -359,10 +359,10 @@ printf '%s' '[ ...the findings array, one object per finding; [] when you found 
 bash <root>/.gaia/scripts/audit-write-findings.sh \
   --root <root> \
   --member code-audit-maintainer-shell \
-  --base <KEY_BASE> \
-  --review-base <BASE_SHA> \
-  --base-reason <BASE_REASON> \
-  --anchor-tree <ANCHOR_TREE> \
+  --base '<KEY_BASE>' \
+  --review-base '<BASE_SHA>' \
+  --base-reason '<BASE_REASON>' \
+  --anchor-tree '<ANCHOR_TREE>' \
   --findings <scratch>/findings.json
 ```
 
