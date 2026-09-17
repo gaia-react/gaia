@@ -1025,10 +1025,10 @@ mutate_resolver() {
   # immediately after the `=` matches the unquoted form alone, so a definition
   # normalized to `changed="$(git ...)"` drops out of the net entirely.
   # The net reads the definitions AND the resolver script, where the
-  # specialists' diffs live: the script consumes its diffs through process
-  # substitution (`done < <(git ... diff ...)`), so that spelling joins the
+  # specialists' diffs live: the script writes each diff to a file under an
+  # exit-status test (`if ! git ... diff ... > file`), so that spelling joins the
   # assignment one, and an indented assignment counts as much as a column-0 one.
-  run git -C "$REPO_ROOT" grep -hIE '^[[:space:]]*[a-z_]+="?\$\(git .*diff --name-only|< <\(git .*diff --name-only' -- '.claude/agents/' '.gaia/scripts/audit-resolve-scope.sh'
+  run git -C "$REPO_ROOT" grep -hIE '^[[:space:]]*[a-z_]+="?\$\(git .*diff --name-only|^[[:space:]]*if ! git .*diff --name-only' -- '.claude/agents/' '.gaia/scripts/audit-resolve-scope.sh'
   [ "$status" -eq 0 ]
   [ -n "$output" ]
   # Pin the breadth, not just non-emptiness. `[ -n "$output" ]` is satisfied by
