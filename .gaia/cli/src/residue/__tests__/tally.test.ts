@@ -3,14 +3,13 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
-  readdirSync,
   readFileSync,
   rmSync,
-  statSync,
   writeFileSync,
 } from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
+import {collectTreeFiles, EVERY_EXTENSION} from '../../util/tree-walk.js';
 import * as attribution from '../attribution.js';
 import {run as runCursor} from '../cursor-cmd.js';
 import {run} from '../tally.js';
@@ -79,24 +78,10 @@ const bodyWithKey = (
 const ACCEPT_HEADING = '## Accepted residuals (recorded, not fixed)';
 const fixedNow = () => new Date('2026-06-01T00:00:00Z');
 
-const listTree = (root: string): string[] => {
-  const out: string[] = [];
-
-  const walk = (dir: string): void => {
-    if (!existsSync(dir)) return;
-
-    for (const name of readdirSync(dir)) {
-      const full = path.join(dir, name);
-
-      if (statSync(full).isDirectory()) walk(full);
-      else out.push(path.relative(root, full));
-    }
-  };
-
-  walk(root);
-
-  return out.toSorted((a, b) => a.localeCompare(b));
-};
+// Regular files only: a symlink the tally created would not read as a stray
+// write. The tally writes its caches as plain files, never as links.
+const listTree = (root: string): readonly string[] =>
+  collectTreeFiles(root, EVERY_EXTENSION);
 
 // Advancing past an unparseable `--cap` value consumed whatever sat in the
 // value position, so a following mode flag was swallowed and its contract

@@ -39,13 +39,14 @@
  */
 import {load as parseYaml} from 'js-yaml';
 import {z} from 'zod';
-import {existsSync, readdirSync, readFileSync, statSync} from 'node:fs';
+import {existsSync, readFileSync, statSync} from 'node:fs';
 import path from 'node:path';
 import {EXIT_CODES} from '../exit.js';
 import {structuredError} from '../stderr.js';
 import {takeValue} from '../util/argv.js';
 import {atomicWriteFileSync} from '../util/atomic-write.js';
 import {escapeRegExp} from '../util/escape-regexp.js';
+import {collectTreeFiles, EVERY_EXTENSION} from '../util/tree-walk.js';
 import {extractWikilinks} from '../wiki/util/wikilinks.js';
 import {parseExcludeLines} from './manifest.js';
 import {stripMarkerBlocks} from './marker-strip.js';
@@ -251,24 +252,6 @@ const matchesAnyGlob = (
   relativePath: string,
   globs: readonly string[]
 ): boolean => globs.some((glob) => globToRegex(glob).test(relativePath));
-
-// Walk
-
-const walkFiles = (root: string, current: string = root): string[] => {
-  const out: string[] = [];
-
-  for (const entry of readdirSync(current, {withFileTypes: true})) {
-    const full = path.join(current, entry.name);
-
-    if (entry.isDirectory()) {
-      out.push(...walkFiles(root, full));
-    } else if (entry.isFile()) {
-      out.push(path.relative(root, full).split(path.sep).join('/'));
-    }
-  }
-
-  return out;
-};
 
 // Marker strip
 
@@ -949,7 +932,7 @@ const addSlugsForExcludeLine = (
 
   addSlug(path.basename(line));
 
-  for (const relative of walkFiles(absolute)) {
+  for (const relative of collectTreeFiles(absolute, EVERY_EXTENSION)) {
     if (relative.endsWith('.md')) addSlug(slugFromPath(relative));
   }
 };
@@ -1114,7 +1097,7 @@ const addTitlesForExcludeLine = (
 
   if (!isDirectory(absolute)) return;
 
-  for (const relative of walkFiles(absolute)) {
+  for (const relative of collectTreeFiles(absolute, EVERY_EXTENSION)) {
     if (relative.endsWith('.md')) addTitle(slugFromPath(relative));
   }
 };
@@ -1424,7 +1407,7 @@ const tryLoadConfigOrReport = (configPath: string): null | ScrubConfig => {
 
 const tryWalkFilesOrReport = (stagingDir: string): null | readonly string[] => {
   try {
-    return walkFiles(stagingDir);
+    return collectTreeFiles(stagingDir, EVERY_EXTENSION);
   } catch (error) {
     structuredError({
       code: 'staging_walk_failed',

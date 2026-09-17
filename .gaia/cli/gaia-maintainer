@@ -24350,15 +24350,18 @@ import path27 from "node:path";
 // src/util/tree-walk.ts
 import { readdirSync as readdirSync2 } from "node:fs";
 import path26 from "node:path";
+var EVERY_EXTENSION = "every-extension";
 var normalizeEntry = (entry, separator) => entry.split(separator).join("/");
-var collectTreeFiles = (root, extensions) => readdirSync2(root, { recursive: true, withFileTypes: true }).filter(
-  (entry) => entry.isFile() && extensions.has(path26.extname(entry.name).toLowerCase())
-).map(
-  (entry) => normalizeEntry(
-    path26.relative(root, path26.join(entry.parentPath, entry.name)),
-    path26.sep
-  )
-).toSorted((a, b) => a.localeCompare(b));
+var collectTreeFiles = (root, extensions) => {
+  const walk = (directory) => readdirSync2(directory, { withFileTypes: true }).flatMap((entry) => {
+    const absolute = path26.join(directory, entry.name);
+    if (entry.isDirectory()) {
+      return walk(absolute);
+    }
+    return entry.isFile() && (extensions === EVERY_EXTENSION || extensions.has(path26.extname(entry.name).toLowerCase())) ? [normalizeEntry(path26.relative(root, absolute), path26.sep)] : [];
+  });
+  return walk(root).toSorted((a, b) => a.localeCompare(b));
+};
 
 // src/release/marker-strip.ts
 var stripMarkerBlocks = (source, startMarker, endMarker) => {
@@ -24931,7 +24934,7 @@ var run32 = (argv, options = {}) => {
 };
 
 // src/release/scrub.ts
-import { existsSync as existsSync21, readdirSync as readdirSync3, readFileSync as readFileSync26, statSync as statSync3 } from "node:fs";
+import { existsSync as existsSync21, readFileSync as readFileSync26, statSync as statSync3 } from "node:fs";
 import path29 from "node:path";
 
 // src/wiki/util/wikilinks.ts
@@ -25062,18 +25065,6 @@ var globToRegex = (glob) => {
   return new RegExp(`^${transformed}$`);
 };
 var matchesAnyGlob = (relativePath, globs) => globs.some((glob) => globToRegex(glob).test(relativePath));
-var walkFiles = (root, current = root) => {
-  const out = [];
-  for (const entry of readdirSync3(current, { withFileTypes: true })) {
-    const full = path29.join(current, entry.name);
-    if (entry.isDirectory()) {
-      out.push(...walkFiles(root, full));
-    } else if (entry.isFile()) {
-      out.push(path29.relative(root, full).split(path29.sep).join("/"));
-    }
-  }
-  return out;
-};
 var applyMarkerStrip = (stagingRoot, files, transform2) => {
   const filesTouched = [];
   const unbalanced = [];
@@ -25412,7 +25403,7 @@ var addSlugsForExcludeLine = (line, cwd, addSlug) => {
   const absolute = path29.join(cwd, line);
   if (!isDirectory(absolute)) return;
   addSlug(path29.basename(line));
-  for (const relative of walkFiles(absolute)) {
+  for (const relative of collectTreeFiles(absolute, EVERY_EXTENSION)) {
     if (relative.endsWith(".md")) addSlug(slugFromPath(relative));
   }
 };
@@ -25495,7 +25486,7 @@ var addTitlesForExcludeLine = (line, cwd, addTitle) => {
   }
   const absolute = path29.join(cwd, line);
   if (!isDirectory(absolute)) return;
-  for (const relative of walkFiles(absolute)) {
+  for (const relative of collectTreeFiles(absolute, EVERY_EXTENSION)) {
     if (relative.endsWith(".md")) addTitle(slugFromPath(relative));
   }
 };
@@ -25664,7 +25655,7 @@ var tryLoadConfigOrReport = (configPath) => {
 };
 var tryWalkFilesOrReport = (stagingDir) => {
   try {
-    return walkFiles(stagingDir);
+    return collectTreeFiles(stagingDir, EVERY_EXTENSION);
   } catch (error51) {
     structuredError({
       code: "staging_walk_failed",
@@ -27532,7 +27523,7 @@ import {
   existsSync as existsSync27,
   lstatSync,
   mkdirSync as mkdirSync9,
-  readdirSync as readdirSync4,
+  readdirSync as readdirSync3,
   readlinkSync,
   realpathSync as realpathSync2,
   renameSync as renameSync5,
@@ -27769,7 +27760,7 @@ var run41 = (argv, options = {}) => {
       worktreeRoot
     })
   ];
-  const envSpecs = readdirSync4(mainRoot).filter((name) => isShareableEnvironmentFile(name)).toSorted((a, b) => a.localeCompare(b)).map((name) => ({ ensureTargetDir: false, relativePath: name }));
+  const envSpecs = readdirSync3(mainRoot).filter((name) => isShareableEnvironmentFile(name)).toSorted((a, b) => a.localeCompare(b)).map((name) => ({ ensureTargetDir: false, relativePath: name }));
   const envActions = envSpecs.map(
     (spec) => linkOne({ mainRoot, spec, symlink, timestamp: timestamp2, worktreeRoot })
   );
@@ -29866,7 +29857,7 @@ import {
   existsSync as existsSync31,
   lstatSync as lstatSync2,
   mkdirSync as mkdirSync12,
-  readdirSync as readdirSync5,
+  readdirSync as readdirSync4,
   readFileSync as readFileSync37,
   readlinkSync as readlinkSync2,
   realpathSync as realpathSync3,
@@ -30235,7 +30226,7 @@ var collectScopeDigests = (root, scopeDirs) => {
       const parent = absDir;
       let names = [];
       try {
-        names = readdirSync5(parent);
+        names = readdirSync4(parent);
       } catch {
         digests.set(relativeKey(root, parent), { kind: "unreadable" });
       }
@@ -32403,7 +32394,7 @@ var run59 = (argv, options = {}) => {
 };
 
 // src/wiki/near-collisions.ts
-import { existsSync as existsSync34, readdirSync as readdirSync6, statSync as statSync8 } from "node:fs";
+import { existsSync as existsSync34, readdirSync as readdirSync5, statSync as statSync8 } from "node:fs";
 import path51 from "node:path";
 var HELP_TEXT58 = `Usage: gaia wiki near-collisions [--max-distance 3]
 
@@ -32454,7 +32445,7 @@ var collectDomainSlugs = (wikiRoot) => DOMAIN_DIRS2.flatMap((domain2) => {
   if (!existsSync34(domainDir) || !statSync8(domainDir).isDirectory()) {
     return [];
   }
-  const entries = readdirSync6(domainDir, { withFileTypes: true });
+  const entries = readdirSync5(domainDir, { withFileTypes: true });
   const slugs = entries.filter((entry) => isCollectibleSlugFile(entry)).map((entry) => entry.name.replace(/\.md$/u, "")).toSorted(
     (left, right) => left < right ? -1 : left > right ? 1 : 0
   );
@@ -32550,7 +32541,7 @@ var run60 = (argv, options = {}) => {
 };
 
 // src/wiki/page-index.ts
-import { existsSync as existsSync35, readdirSync as readdirSync7, readFileSync as readFileSync43, statSync as statSync9 } from "node:fs";
+import { existsSync as existsSync35, readdirSync as readdirSync6, readFileSync as readFileSync43, statSync as statSync9 } from "node:fs";
 import path52 from "node:path";
 var HELP_TEXT59 = `Usage: gaia wiki page-index [--json]
 
@@ -32616,7 +32607,7 @@ var readPageRecord = (domainDir, domain2, entry) => {
 var collectDomainPages = (wikiRoot, domain2) => {
   const domainDir = path52.join(wikiRoot, domain2);
   if (!existsSync35(domainDir) || !statSync9(domainDir).isDirectory()) return [];
-  const entries = readdirSync7(domainDir, { withFileTypes: true });
+  const entries = readdirSync6(domainDir, { withFileTypes: true });
   return entries.filter((entry) => isIndexablePage(entry)).map((entry) => readPageRecord(domainDir, domain2, entry));
 };
 var collectPages = (wikiRoot) => DOMAIN_DIRS3.flatMap((domain2) => collectDomainPages(wikiRoot, domain2));
