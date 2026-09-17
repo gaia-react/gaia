@@ -16,7 +16,7 @@
 #     distribution-preflight-check.sh absent from both; and every entry
 #     marked maintainer_only:false agrees with the hook's presence in staging.
 #  6. .gaia/scripts/check-hook-scope-manifest.sh ships and passes against the
-#     staged tree, so the hand run the shipped wiki documents does not red on
+#     staged tree, so running it by hand on an adopter clone does not red on
 #     a .gaia/hook-scopes.json entry for a hook the release excludes.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
