@@ -113,22 +113,32 @@ cmd=$(echo "$input" | jq -r '.tool_input.command // ""' 2>/dev/null)
 # the LAST winning, so the walk keeps the last rather than stopping at the
 # first. Echoes nothing when the segment carries none.
 #
-# Honest limit: the words are split on whitespace, never read as the shell
-# would expand them, so a `-C` whose path is quoted with a space in it, or
-# carries an unexpanded variable or `~`, is not recovered. That leaves the
-# directory empty, which falls back to the payload cwd below -- the tree this
-# gate already read -- rather than to a wrong one.
+# This walk and `parse_git_globals` in block-main-destructive-git.sh read the
+# same grammar and are kept as two copies, so a change to the option table or
+# the word split below belongs in both. A walk that stops recognizing a
+# spelling raises nothing in either hook: each falls back to a tree it would
+# have read anyway.
+#
+# Honest limit: the words are read with the shell's quoting but never its
+# expansion, so a `-C` whose path carries an unexpanded variable, `$(...)`, or
+# `~` resolves to that literal text. The resolver below answers nothing for it,
+# which falls back to the payload cwd -- the tree this gate already read --
+# rather than to a wrong one.
 git_segment_c() {
   local -a w
   local i=0 n t out="" seen_git=0
-  read -ra w <<<"$1"
+  split_git_words "$1"
   n=${#w[@]}
   while [ "$i" -lt "$n" ]; do
     t="${w[$i]}"
     if [ "$seen_git" -eq 1 ]; then
       case "$t" in
         -C) out="${w[$((i + 1))]:-}"; i=$((i + 2)); continue ;;
-        -c | --git-dir | --work-tree | --namespace) i=$((i + 2)); continue ;;
+        # Every global git takes a SEPARATED value for. A missing one leaves its
+        # value in the subcommand slot, which ends the walk before a later `-C`.
+        # `--exec-path` is deliberately absent: without `=` it takes no value,
+        # git prints its exec path and exits, and nothing after it runs.
+        -c | --git-dir | --work-tree | --namespace | --config-env | --attr-source) i=$((i + 2)); continue ;;
         -*) ;;
         *) break ;;
       esac
@@ -137,11 +147,50 @@ git_segment_c() {
     fi
     i=$((i + 1))
   done
-  case "$out" in
-    \"*\") out="${out#\"}"; out="${out%\"}" ;;
-    \'*\') out="${out#\'}"; out="${out%\'}" ;;
-  esac
   printf '%s' "$out"
+}
+
+# split_git_words <string>: split one segment into shell-like words in the
+# array `w`, modelling quoting the way the shell does -- a quote opens a span in
+# which whitespace is ordinary text, and a backslash escapes the character after
+# it -- and handing the words back unquoted. The same copy as the one in
+# block-main-destructive-git.sh, whose docblock carries why it accumulates a
+# block at a time rather than a character at a time.
+split_git_words() {
+  local s="$1" NL=$'\n' TAB=$'\t'
+  local BLOCK=256 base=0 n_s block n_b k c
+  local q="" esc=0 word="" chunk="" have=0
+  w=()
+  n_s=${#s}
+  while [ "$base" -lt "$n_s" ]; do
+    block="${s:$base:$BLOCK}"
+    base=$((base + BLOCK))
+    k=0
+    n_b=${#block}
+    while [ "$k" -lt "$n_b" ]; do
+      c="${block:$k:1}"
+      k=$((k + 1))
+      if [ "$esc" = 1 ]; then esc=0; chunk="$chunk$c"; have=1; continue; fi
+      # A backslash is literal inside single quotes, as in the shell itself.
+      if [ "$c" = "\\" ] && [ "$q" != "'" ]; then esc=1; continue; fi
+      if [ -n "$q" ]; then
+        if [ "$c" = "$q" ]; then q=""; else chunk="$chunk$c"; fi
+        have=1
+        continue
+      fi
+      case "$c" in
+        '"' | "'") q="$c"; have=1 ;;
+        ' ' | "$TAB" | "$NL")
+          [ "$have" = 1 ] && w+=("$word$chunk")
+          word=""; chunk=""; have=0 ;;
+        *) chunk="$chunk$c"; have=1 ;;
+      esac
+    done
+    word="$word$chunk"
+    chunk=""
+  done
+  [ "$have" = 1 ] && w+=("$word$chunk")
+  return 0
 }
 
 saw_commit=0

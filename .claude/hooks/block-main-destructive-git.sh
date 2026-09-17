@@ -318,7 +318,10 @@ parse_git_globals() {
         # the subcommand, which is the disarm, so this table tracking git's own
         # is what keeps the arming honest. The `=`-joined spellings need no
         # entry: they are one word, so the subcommand still lands next.
-        -c | --git-dir | --work-tree | --namespace | --config-env | --exec-path | --attr-source)
+        # `--exec-path` is deliberately absent: without `=` it takes no value,
+        # git prints its exec path and exits, and nothing after it runs. The
+        # same table lives in `git_segment_c` in red-verify-commit-check.sh.
+        -c | --git-dir | --work-tree | --namespace | --config-env | --attr-source)
           kept+=("$t" "${w[$((i + 1))]:-}"); i=$((i + 2)); continue ;;
         -*) ;;
         *) globals=2; git_sub="$t"; git_args=("${w[@]:$((i + 1))}") ;;
