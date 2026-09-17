@@ -201,7 +201,7 @@
     {
       "name": "debt:spec-active",
       "color": "3b9b58",
-      "description": "SPEC is being authored, planned, or executed for this issue",
+      "description": "SPEC is underway for this issue, or holds it open on a recorded trigger",
       "axis": "lifecycle",
       "audience": "adopter",
       "features": ["tech-debt"],

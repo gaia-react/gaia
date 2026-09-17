@@ -60,7 +60,7 @@ Most setups treat Claude as a tool you hold: bolt a `CLAUDE.md` onto the root an
 
 ## How GAIA Makes Claude Trustworthy
 
-- **Coding principles, enforced.** GAIA embeds [Karpathy's four coding principles](https://github.com/forrestchang/andrej-karpathy-skills/blob/main/CLAUDE.md) (Think Before Coding, Simplicity First, Surgical Changes, Goal-Driven Execution) plus two of GAIA's own: Always Use TDD and Always Verify Your Work.
+- **Coding principles, enforced.** GAIA keeps the coding principles current models still need, Simplicity First and Surgical Changes (adapted from [Karpathy's](https://github.com/forrestchang/andrej-karpathy-skills/blob/main/CLAUDE.md)), plus two of GAIA's own: Always Use TDD and Always Verify Your Work.
 - **Best practices baked in, debt blocked at the source.** Rules encode the conventions directly instead of hoping Claude infers them from whatever's already in the repo, and block debt-accumulating patterns from being written at all: untyped exports, untested components, hardcoded strings, a11y gaps.
 - **Consistently clean code.** 1,450 lint rules, strict TypeScript, Prettier, and Knip enforce style, correctness, and dead-code detection on every file Claude touches. No negotiation, no drift.
 - **Bundled skills wired in for write-time quality.** `typescript`, `react-code`, `tailwind`, `tdd`, `playwright-cli`, `skeleton-loaders`, `eslint-fixes`, and `a11y-fixes` load on demand when Claude edits matching files or a tool reports a fixable violation. The `tdd` skill drives a red-green-refactor loop tailored for Vitest, React Testing Library, Storybook `composeStory`, and MSW.

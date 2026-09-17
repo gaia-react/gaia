@@ -2,23 +2,14 @@
 type: concept
 status: active
 created: 2026-04-20
-updated: 2026-04-21
+updated: 2026-09-17
 tags: [concept, coding-rules]
 ---
 
 # Coding Guidelines
 
-GAIA coding guidelines live in `.claude/rules/coding-guidelines.md` and the per-domain rule files enumerated in [[Claude Integration]].
+GAIA coding guidelines live in `.claude/rules/coding-guidelines.md` and the per-domain rule files enumerated in [[Claude Integration]]. The rule file owns the principles and their wording.
 
-## Coding Principles
+## What belongs in the rule
 
-Every coding rule embeds [Karpathy's four principles](https://github.com/forrestchang/andrej-karpathy-skills/blob/main/CLAUDE.md), plus two added by GAIA:
-
-| Principle                   | Description                                                                      |
-| --------------------------- | -------------------------------------------------------------------------------- |
-| **Think Before Coding**     | Surface assumptions, push back on complexity, ask when unclear.                  |
-| **Simplicity First**        | Write the minimum code that solves the problem; no speculative abstractions.     |
-| **Surgical Changes**        | Touch only what is needed; match existing style; leave unbroken things alone.    |
-| **Goal-Driven Execution**   | Define verifiable success criteria before starting; loop until verified.         |
-| **Always Use TDD**          | Vitest for units, Playwright for user flows, tests before code.                  |
-| **Always Verify Your Work** | Run the quality gate process; fix all warnings and errors before reporting done. |
+A line belongs in the rule when it records a project choice the model cannot work out on its own. A line that only compensates for a model weakness does not: it goes stale as models improve, and emphatic wording gets over-applied by a model that follows instructions literally. General reasoning discipline (pushing back, characterizing a risk before acting on it, stating a plan) lives in `CLAUDE.md`, not here.
