@@ -270,6 +270,21 @@ EOF
   grep -qF "(allowed carrier)" <<<"$output" || return 1
 }
 
+@test "fixture: the scope resolver's eligibility ladder passes and is named as allowed" {
+  local repo
+  repo="$(make_fixture_repo exemption-resolver)"
+  mkdir -p "$repo/.gaia/scripts"
+  cat >"$repo/.gaia/scripts/audit-resolve-scope.sh" <<'EOF'
+#!/usr/bin/env bash
+ELIG_BASE="$(git -C "$root" merge-base HEAD "$primary_ref" 2>/dev/null || git -C "$root" merge-base HEAD "$fallback_ref" 2>/dev/null || true)"
+EOF
+  commit_all "$repo"
+  run gaia_check_base_provenance_adoption "$repo"
+  [ "$status" -eq 0 ]
+  grep -qF ".gaia/scripts/audit-resolve-scope.sh:2:" <<<"$output" || return 1
+  grep -qF "(allowed carrier)" <<<"$output" || return 1
+}
+
 @test "fixture: the real single-call shapes are not flagged" {
   local repo
   repo="$(make_fixture_repo single-call-shapes)"
