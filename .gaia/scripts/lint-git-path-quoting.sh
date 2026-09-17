@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # lint-git-path-quoting.sh: flag every executed `git diff --name-only`, every
 # executed `git ls-files`, and every executed `git grep` that LISTS FILE NAMES,
-# which omits `-z`, across the framework's tracked shell, its CI workflow YAML,
-# and the fenced code blocks of its tracked markdown. Exit
+# which omits `-z`, across the scan surface the `scan_files` pathspec below
+# declares and the comment above it explains. Exit
 # 1 with a file:line report on any hit, exit 0 when clean. Run it directly from
 # the repo root: `bash .gaia/scripts/lint-git-path-quoting.sh`.
 #
@@ -258,7 +258,9 @@ type gaia_guard_bats_files >/dev/null 2>&1 || {
 gaia_guard_bats_files lint-git-path-quoting || exit $?
 
 # Scan surface: tracked shell, the extensionless husky hooks, the workflow YAML
-# whose `run:` blocks are shell by another name, tracked markdown, whose
+# whose `run:` blocks are shell by another name, the adopter workflow templates
+# that render into that same YAML in a repository this gate never runs in,
+# tracked markdown, whose
 # fenced blocks are shell by another name on any page a rule tells the agent to
 # execute, and tracked `*.bats`, collected as its own set below. `git ls-files`
 # rather than a filesystem walk, so an untracked scratch script or a vendored
@@ -274,10 +276,19 @@ gaia_guard_bats_files lint-git-path-quoting || exit $?
 # suite runs through `bash -c` or `eval`; see
 # wiki/decisions/Shell Guard Fixture Discrimination.md for the convention and
 # the reasoning behind the argument-region rule and the suppression pragma.
+#
+# The template pathspec below is the SOURCE directory, never the built copy
+# under `.gaia/cli/templates/workflows/` that `bundle:adopter` re-creates from
+# it: scanning both would report every hit twice and name a path whose repair
+# the next build discards. Its spelling is the one `guard-awk-lib.sh`'s
+# `workflows` set writes, so the two discoveries cannot disagree about which
+# half of the pair is authoritative. Artifact-equals-source is held by
+# `audit-template-dogfood.test.ts` and `verify-cli-bundle-fresh.sh`, so a
+# repair to the source that never regenerates reds there rather than here.
 scan_files=()
 while IFS= read -r -d '' f; do
   scan_files+=("$f")
-done < <(git -c core.quotepath=false ls-files -z '*.sh' '.husky/*' '.github/workflows/*.yml' '.github/workflows/*.yaml' '*.md' | LC_ALL=C sort -z)
+done < <(git -c core.quotepath=false ls-files -z '*.sh' '.husky/*' '.github/workflows/*.yml' '.github/workflows/*.yaml' '.gaia/cli/src/automation/templates/workflows/*.tmpl' '*.md' | LC_ALL=C sort -z)
 
 # An empty scan set is a hard error, never a clean tree. The loop above reads
 # from a process substitution, whose failure `set -o pipefail` cannot see, so a
