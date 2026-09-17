@@ -1267,14 +1267,14 @@ make_stacked_repo() {
   # describe that tree. This runs the definition's own command with its
   # `--root` emptied, from inside an unrelated repository that would otherwise
   # resolve cleanly.
-  local repo ambient line
+  local repo ambient line q="'"
   repo="$(make_repo elig-unset-root)"
   ambient="$(make_repo elig-ambient)"
   git -C "$ambient" checkout -q -b feat
   commit_file "$ambient" "ambient-only.txt" "ambient change"
   line="$(extract_resolver_line "$AGENTS_DIR/code-audit-frontend.md")"
   grep -qF -- '--eligibility' <<<"$line"
-  line="${line//--root <root>/--root \'\'}"
+  line="${line//--root <root>/--root $q$q}"
   line="${line//<root>/$repo}"
   run --separate-stderr env -u GITHUB_ACTIONS bash -c "cd \"\$1\" && ${line}" _ "$ambient"
   [ "$status" -ne 0 ]

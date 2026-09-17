@@ -243,7 +243,7 @@ printf 'AUDIT_KEY=%s\n' "$AUDIT_KEY"
 # request's own commits and empty the set.
 #
 # The ladder is deliberately not the verify side's
-# (.claude/hooks/lib/audit-dispositions.sh): its `origin/<default>` arm is a
+# (.claude/hooks/lib/audit-base-provenance.sh): its `origin/<default>` arm is a
 # short revspec a local branch of that name shadows, where the verify side
 # reads the fully-qualified ref.
 #

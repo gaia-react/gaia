@@ -130,7 +130,7 @@
 #      `BASE_REF`, `BASE_SHA`, `FULL_BASE`, `KEY_BASE`, `ELIG_BASE`) and
 #      carries no `...` range.
 #
-#      All five spellings, not only the pre-merge-base ones, because what
+#      All of these spellings, not only the pre-merge-base ones, because what
 #      makes a call wrong is the two-dot comparison and NOT which variable
 #      reached it: `git diff --name-only "${BASE_SHA}"` compares against the
 #      working tree exactly as `"$BASE_REF"` does. A rule keyed to the

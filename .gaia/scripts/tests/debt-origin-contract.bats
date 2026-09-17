@@ -38,6 +38,11 @@ require_jq() {
 
 setup() {
   REPO_ROOT="$(git -C "$BATS_TEST_DIRNAME" rev-parse --show-toplevel)"
+  # A `gh` that answers nothing, so the probes that put this directory first on
+  # PATH never reach the developer's real `gh` or its GH_REPO / GH_HOST.
+  mkdir -p "$BATS_TEST_TMPDIR/no-gh"
+  printf '#!/usr/bin/env bash\nexit 1\n' > "$BATS_TEST_TMPDIR/no-gh/gh"
+  chmod +x "$BATS_TEST_TMPDIR/no-gh/gh"
   require_jq
   # GitHub Actions exports GITHUB_HEAD_REF on a pull_request event, and
   # .gaia/scripts/tests/ runs there. Nothing below resolves a real branch
