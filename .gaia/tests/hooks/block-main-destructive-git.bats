@@ -183,16 +183,27 @@ run_hook_from() {
 # miss (#2020).
 @test "a global option taking a separated value does not hide the subcommand on main" {
   on_main
-  run_hook 'git --exec-path /usr/bin commit -m x'
-  assert_denied_by_json
   run_hook 'git --attr-source HEAD commit -m x'
   assert_denied_by_json
   run_hook 'git --config-env user.name=ENVVAR commit -m x'
   assert_denied_by_json
-  run_hook 'git --exec-path /usr/bin push origin main'
+  run_hook 'git --attr-source HEAD push origin main'
   assert_denied_by_json
   run_hook 'git --config-env=user.name=ENVVAR commit -m x'
   assert_denied_by_json
+  run_hook 'git --exec-path=/usr/bin commit -m x'
+  assert_denied_by_json
+}
+
+# `--exec-path` has no separated-value form: without `=`, git prints its exec
+# path and exits, so the words after it never run. Skipping the next word as its
+# value would deny a command that commits and pushes nothing.
+@test "a bare --exec-path is not read as taking the next word as its value" {
+  on_main
+  run_hook 'git --exec-path /usr/bin commit -m x'
+  assert_allowed_by_json
+  run_hook 'git --exec-path /usr/bin push origin main'
+  assert_allowed_by_json
 }
 
 # The same split reaching the directory the branch is read from: the `-C` value
