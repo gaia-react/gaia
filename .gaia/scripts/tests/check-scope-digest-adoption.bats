@@ -7,7 +7,7 @@
 # suite is what actually fails a build when an earned call site loses the
 # flag, when the frozen obligation literal drifts or goes missing, or when
 # the capture line survives only outside the region where scope is
-# resolved.
+# resolved, or when the resolver script stops capturing.
 #
 # Every test drives the check through its <repo_root> parameter against a
 # fixture tree, matching check-verb-arming-adoption.bats's reasoning: a
@@ -45,7 +45,8 @@ teardown() {
 OBLIGATION_LITERAL='Capture your own content digest at scope resolution with `.gaia/scripts/audit-scope-digest.sh --capture`, and at marker-write time read that captured value back with `--read` and pass it as `--scope-digest`; never re-derive it in the writing call, and a rotation between the two means the review was superseded and you must be re-dispatched on the new HEAD.'
 
 # write_member_def <dir> <member>: a healthy "simple" member definition --
-# scope resolved and captured directly under "## Remit and self-skip", the
+# scope resolved (the resolver command, which captures) directly under
+# "## Remit and self-skip", the
 # frozen literal in the same paragraph, and an earned call site (backslash-
 # continued, flag on the last line) under a later section, matching the real
 # shape of the four non-default members.
@@ -57,8 +58,7 @@ write_member_def() {
 Some remit text for ${member}.
 
 \`\`\`bash
-KEY_BASE="deadbeef"
-D_SCOPE="\$("\$AUDIT_ROOT/.gaia/scripts/audit-scope-digest.sh" --capture --root "\$AUDIT_ROOT" --member ${member} --base "\$KEY_BASE")"
+<root>/.gaia/scripts/audit-resolve-scope.sh --member ${member} --root <root>
 \`\`\`
 
 ${OBLIGATION_LITERAL}
@@ -81,7 +81,7 @@ EOF
 
 # write_frontend_def <dir>: the one structurally different member. Its
 # "Remit and self-skip" only decides whether it runs at all; the actual
-# scope-resolution fence (and the capture) sits under "### How to run"
+# scope-resolution command (which captures) sits under "### How to run"
 # inside "## Rules-Based Audit" instead, matching the real file.
 write_frontend_def() {
   local dir="$1"
@@ -96,8 +96,7 @@ capture happens in this section.
 ### How to run
 
 \`\`\`bash
-KEY_BASE="deadbeef"
-D_SCOPE="\$("\$AUDIT_ROOT/.gaia/scripts/audit-scope-digest.sh" --capture --root "\$AUDIT_ROOT" --member code-audit-frontend --base "\$KEY_BASE")"
+<root>/.gaia/scripts/audit-resolve-scope.sh --member code-audit-frontend --root <root> --skip-full-base --review-path '*.ts'
 \`\`\`
 
 ${OBLIGATION_LITERAL}
@@ -177,9 +176,22 @@ write_settings() {
   return 0
 }
 
+# write_resolver <dir>: the resolver script every definition invokes, reduced
+# to what assertion 3 reads of it: its header's prose mention of the capture
+# (which must not satisfy the check) and the quoted-path capture call.
+write_resolver() {
+  local dir="$1"
+  mkdir -p "$dir/.gaia/scripts"
+  cat >"$dir/.gaia/scripts/audit-resolve-scope.sh" <<'EOF'
+#!/usr/bin/env bash
+# The capture runs last; audit-scope-digest.sh --capture owns idempotency.
+D_SCOPE="$("$root/.gaia/scripts/audit-scope-digest.sh" --capture --root "$root" --member "$member" --base "$KEY_BASE")" || D_SCOPE=""
+EOF
+}
+
 # write_baseline <dir>: a healthy tree -- all five member definitions
 # (four "simple", one frontend-shaped), each with the obligation literal
-# once, the capture inside its own scope-resolution region, and an earned
+# once, the resolver command inside its own scope-resolution region, and an earned
 # call site carrying --scope-digest; plus one healthy workflow copy. Every
 # "must fail" fixture starts here and mutates one thing.
 write_roster() {
@@ -203,6 +215,7 @@ write_baseline() {
   write_member_def "$dir" code-audit-maintainer-prose
   write_member_def "$dir" code-audit-maintainer-shell
   write_healthy_workflow "$dir"
+  write_resolver "$dir"
   write_settings "$dir"
   write_roster "$dir" code-audit-frontend code-audit-github-workflows \
     code-audit-maintainer-node code-audit-maintainer-prose \
@@ -265,8 +278,7 @@ make_fixture_repo() {
 Some remit text for code-audit-maintainer-node.
 
 \`\`\`bash
-KEY_BASE="deadbeef"
-D_SCOPE="\$("\$AUDIT_ROOT/.gaia/scripts/audit-scope-digest.sh" --capture --root "\$AUDIT_ROOT" --member code-audit-maintainer-node --base "\$KEY_BASE")"
+<root>/.gaia/scripts/audit-resolve-scope.sh --member code-audit-maintainer-node --root <root>
 \`\`\`
 
 ${OBLIGATION_LITERAL}
@@ -288,6 +300,8 @@ EOF
   run gaia_check_scope_digest_adoption "$repo"
   [ "$status" -eq 1 ]
   grep -qF ".claude/agents/code-audit-maintainer-node.md: earned call site missing --scope-digest" <<<"$output" || return 1
+  # Isolation: the only defect is the flag, so assertion 3 stays green.
+  grep -qF "scope-resolution capture placement: every definition in region" <<<"$output" || return 1
 }
 
 @test "fixture: an earned call site spanning continuation lines with the flag on a later line passes (join is load-bearing)" {
@@ -331,8 +345,7 @@ ${OBLIGATION_LITERAL}
 
 Some review text. Mentioned here instead, far outside the region:
 \`\`\`bash
-KEY_BASE="deadbeef"
-D_SCOPE="\$("\$AUDIT_ROOT/.gaia/scripts/audit-scope-digest.sh" --capture --root "\$AUDIT_ROOT" --member code-audit-maintainer-shell --base "\$KEY_BASE")"
+<root>/.gaia/scripts/audit-resolve-scope.sh --member code-audit-maintainer-shell --root <root>
 marker="\$(bash .gaia/scripts/audit-write-clearance.sh \\
   --root "\$AUDIT_ROOT" \\
   --member code-audit-maintainer-shell \\
@@ -346,6 +359,57 @@ EOF
   run gaia_check_scope_digest_adoption "$repo"
   [ "$status" -eq 1 ]
   grep -qF ".claude/agents/code-audit-maintainer-shell.md: capture NOT found in its scope-resolution region" <<<"$output" || return 1
+}
+
+@test "fixture: a resolver command naming another member fails (assertion 3 is per member)" {
+  local repo
+  repo="$(make_fixture_repo wrong-member)"
+  perl -0pi -e 's/audit-resolve-scope\.sh --member code-audit-maintainer-node --root/audit-resolve-scope.sh --member code-audit-maintainer-shell --root/' \
+    "$repo/.claude/agents/code-audit-maintainer-node.md"
+  grep -qF 'audit-resolve-scope.sh --member code-audit-maintainer-shell --root' "$repo/.claude/agents/code-audit-maintainer-node.md" || {
+    echo "the mutation did not take; this test proves nothing" >&2
+    return 1
+  }
+  git -C "$repo" add -A
+  git -C "$repo" commit -q -m mutate
+  run gaia_check_scope_digest_adoption "$repo"
+  [ "$status" -eq 1 ]
+  grep -qF ".claude/agents/code-audit-maintainer-node.md: capture NOT found in its scope-resolution region" <<<"$output" || return 1
+  grep -qF ".claude/agents/code-audit-maintainer-shell.md: capture found in its scope-resolution region" <<<"$output" || return 1
+}
+
+@test "fixture: a resolver command whose member name merely extends this one fails" {
+  local repo
+  repo="$(make_fixture_repo extended-member)"
+  perl -0pi -e 's/audit-resolve-scope\.sh --member code-audit-maintainer-node --root/audit-resolve-scope.sh --member code-audit-maintainer-node-v2 --root/' \
+    "$repo/.claude/agents/code-audit-maintainer-node.md"
+  run gaia_check_scope_digest_adoption "$repo"
+  [ "$status" -eq 1 ]
+  grep -qF ".claude/agents/code-audit-maintainer-node.md: capture NOT found in its scope-resolution region" <<<"$output" || return 1
+}
+
+@test "fixture: a resolver script whose capture call is deleted fails, even with every definition in region" {
+  local repo
+  repo="$(make_fixture_repo resolver-no-capture)"
+  perl -ni -e 'print unless /audit-scope-digest\.sh" --capture --root/' "$repo/.gaia/scripts/audit-resolve-scope.sh"
+  grep -qF 'audit-scope-digest.sh" --capture --root' "$repo/.gaia/scripts/audit-resolve-scope.sh" && {
+    echo "the mutation did not take; this test proves nothing" >&2
+    return 1
+  }
+  run gaia_check_scope_digest_adoption "$repo"
+  [ "$status" -eq 1 ]
+  grep -qF ".gaia/scripts/audit-resolve-scope.sh: capture NOT found" <<<"$output" || return 1
+  # The header's prose mention of the capture must not answer for the call.
+  grep -qF 'audit-scope-digest.sh --capture' "$repo/.gaia/scripts/audit-resolve-scope.sh" || return 1
+}
+
+@test "fixture: a missing resolver script fails" {
+  local repo
+  repo="$(make_fixture_repo resolver-missing)"
+  rm "$repo/.gaia/scripts/audit-resolve-scope.sh"
+  run gaia_check_scope_digest_adoption "$repo"
+  [ "$status" -eq 1 ]
+  grep -qF ".gaia/scripts/audit-resolve-scope.sh: MISSING" <<<"$output" || return 1
 }
 
 @test "fixture: a definition missing entirely fails and names it across all three assertions" {

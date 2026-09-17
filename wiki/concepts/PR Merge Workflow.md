@@ -136,7 +136,7 @@ It prints one member (agent) name per line, deduped and sorted, and always exits
   ```
   Agent(
     subagent_type: "<member-name>",
-    prompt: "Working root: <RESOLVED_ROOT>, the absolute path of the checkout under review; the orchestrator substitutes the value it resolved from the isolation reference at dispatch time. Before running any handshake command, set AUDIT_ROOT=<RESOLVED_ROOT>. Expected HEAD tree: <EXPECTED_TREE>, the tree captured immediately before this dispatch wave.
+    prompt: "Working root: <RESOLVED_ROOT>, the absolute path of the checkout under review; the orchestrator substitutes the value it resolved from the isolation reference at dispatch time. Run your definition's root fence with AUDIT_ROOT=<RESOLVED_ROOT> ahead of it, then type <RESOLVED_ROOT> wherever a command in your definition writes <root>, never carrying it in a shell variable. Expected HEAD tree: <EXPECTED_TREE>, the tree captured immediately before this dispatch wave.
     MANDATORY FIRST ACTION, before any review: run `git -C <RESOLVED_ROOT> rev-parse HEAD^{tree}` and compare it to <EXPECTED_TREE>. If that command errors (missing path, git unavailable) OR the value does not match exactly, STOP, do not review, do not write a marker, and return only the mismatch or error as your entire output.
     MANDATORY SECOND ACTION, still before any review: read your own agent definition at `<RESOLVED_ROOT>/.claude/agents/<member-name>.md` and follow that copy for the rest of this round, in place of the definition you were dispatched with. Where the two differ, the copy under the working root wins.
     Only on an exact match, review all changes in <RESOLVED_ROOT>'s current branch compared to main, scoping every git command to `git -C <RESOLVED_ROOT>`. Identify security vulnerabilities, performance issues, code smells, anti-patterns, and refactoring opportunities."
@@ -326,7 +326,7 @@ When the out-of-scope arm files a tech-debt issue, the filing carries a `gaia-de
 For `changed`, the orchestrator reuses the whole-PR fork point in the same spelling the audit machinery already computes, adding no derivation of a new shape:
 
 ```bash
-AUDIT_ROOT="${AUDIT_ROOT:-$(git rev-parse --show-toplevel)}"
+AUDIT_ROOT="$(cd "${AUDIT_ROOT:-$PWD}" 2>/dev/null && pwd -P)"
 default_branch=$(git -C "$AUDIT_ROOT" symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null \
   | sed 's@^refs/remotes/origin/@@')
 [ -n "$default_branch" ] || default_branch="main"

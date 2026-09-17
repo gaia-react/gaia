@@ -42,6 +42,10 @@ AUDIT_MACHINERY_PATHS="$(cat <<'EOF'
 .gaia/scripts/main-root-lib.sh
 .gaia/scripts/audit-key-lib.sh
 .gaia/scripts/audit-member-digest.sh
+# audit-resolve-scope.sh decides what every specialist member reviews and
+# whether it self-skips: it derives the review and membership bases and the
+# changed-file lists each member acts on.
+.gaia/scripts/audit-resolve-scope.sh
 .gaia/scripts/audit-machinery-complete.sh
 .gaia/scripts/audit-rules-changed-complete.sh
 .claude/hooks/lib/audit-dispositions.sh

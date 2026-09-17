@@ -919,6 +919,88 @@ changed=$(git -C "$AUDIT_ROOT" diff --name-only -z "${KEY_BASE}...HEAD" -- x)
   grep -qF "changed-file diffs that let git C-quote a path: 0" <<<"$output" || return 1
 }
 
+# ---------- the resolver script is part of the scan surface ----------
+#
+# Each fixture copies the REAL resolver into the fixture tree and breaks one
+# construct in it with a substitution that must take, so these prove the
+# widened pathspec reaches the script: a check still reading the definitions
+# alone stays green on every one of them.
+
+# copy_resolver <repo>: the real resolver at its real path in <repo>.
+copy_resolver() {
+  mkdir -p "$1/.gaia/scripts"
+  cp "$REPO_ROOT/.gaia/scripts/audit-resolve-scope.sh" "$1/.gaia/scripts/audit-resolve-scope.sh"
+}
+
+# mutate_resolver <repo> <perl-substitution> <needle-after>: applies the
+# substitution and fails the test unless <needle-after> is then present, so
+# a substitution that silently matched nothing cannot pass as red evidence.
+mutate_resolver() {
+  local file="$1/.gaia/scripts/audit-resolve-scope.sh"
+  perl -pi -e "$2" "$file"
+  grep -qF -- "$3" "$file" || {
+    echo "the mutation did not take; this test proves nothing" >&2
+    return 1
+  }
+}
+
+@test "resolver: the real resolver script passes all four assertions" {
+  local repo
+  repo="$(make_fixture_repo resolver-ok)"
+  copy_resolver "$repo"
+  commit_fixture_repo "$repo"
+  run gaia_check_audit_base_derivation "$repo"
+  [ "$status" -eq 0 ]
+}
+
+@test "resolver: a BASE_SHA derived by a bare merge-base in the script fails assertion 1" {
+  local repo
+  repo="$(make_fixture_repo resolver-bare)"
+  copy_resolver "$repo"
+  mutate_resolver "$repo" 's/merge-base "\$BASE_REF" HEAD/merge-base HEAD "origin\/main"/' 'BASE_SHA="$(git -C "$root" merge-base HEAD "origin/main"'
+  commit_fixture_repo "$repo"
+  run gaia_check_audit_base_derivation "$repo"
+  [ "$status" -eq 1 ]
+  grep -qF "review bases derived by a bare merge-base against the default branch: 1" <<<"$output" || return 1
+  grep -qF ".gaia/scripts/audit-resolve-scope.sh:" <<<"$output" || return 1
+}
+
+@test "resolver: a script naming BASE_SHA but never the base resolver fails assertion 2" {
+  local repo
+  repo="$(make_fixture_repo resolver-unnamed)"
+  copy_resolver "$repo"
+  mutate_resolver "$repo" 's/resolve-audit-base\.sh/resolve-base-elsewhere.sh/g' 'resolve-base-elsewhere.sh'
+  grep -qF 'resolve-audit-base.sh' "$repo/.gaia/scripts/audit-resolve-scope.sh" && return 1
+  commit_fixture_repo "$repo"
+  run gaia_check_audit_base_derivation "$repo"
+  [ "$status" -eq 1 ]
+  grep -qF "names BASE_SHA but never names resolve-audit-base.sh: .gaia/scripts/audit-resolve-scope.sh" <<<"$output" || return 1
+}
+
+@test "resolver: a two-dot review diff in the script fails assertion 3" {
+  local repo
+  repo="$(make_fixture_repo resolver-two-dot)"
+  copy_resolver "$repo"
+  mutate_resolver "$repo" 's/"\$\{BASE_SHA\}\.\.\.HEAD"/"\${BASE_SHA}"/' 'diff --name-only -z "${BASE_SHA}" --'
+  commit_fixture_repo "$repo"
+  run gaia_check_audit_base_derivation "$repo"
+  [ "$status" -eq 1 ]
+  grep -qF "review diffs consuming a base that never reached the fork point: 1" <<<"$output" || return 1
+  grep -qF ".gaia/scripts/audit-resolve-scope.sh:" <<<"$output" || return 1
+}
+
+@test "resolver: a membership diff in the script without -z fails assertion 4" {
+  local repo
+  repo="$(make_fixture_repo resolver-quoting)"
+  copy_resolver "$repo"
+  mutate_resolver "$repo" 's/diff --name-only -z "\$\{FULL_BASE\}/diff --name-only "\${FULL_BASE}/' 'diff --name-only "${FULL_BASE}...HEAD"'
+  commit_fixture_repo "$repo"
+  run gaia_check_audit_base_derivation "$repo"
+  [ "$status" -eq 1 ]
+  grep -qF "changed-file diffs that let git C-quote a path: 1" <<<"$output" || return 1
+  grep -qF ".gaia/scripts/audit-resolve-scope.sh:" <<<"$output" || return 1
+}
+
 # ---------- real repo: the standing guarantee ----------
 
 @test "real repo: every Code Audit Team definition resolves its review base through the resolver" {
@@ -940,7 +1022,11 @@ changed=$(git -C "$AUDIT_ROOT" diff --name-only -z "${KEY_BASE}...HEAD" -- x)
   # The `"?` accepts both spellings of the assignment. Requiring `$(` to sit
   # immediately after the `=` matches the unquoted form alone, so a definition
   # normalized to `changed="$(git ...)"` drops out of the net entirely.
-  run git -C "$REPO_ROOT" grep -hIE '^[a-z_]+="?\$\(git .*diff --name-only' -- '.claude/agents/'
+  # The net reads the definitions AND the resolver script, where the
+  # specialists' diffs live: the script consumes its diffs through process
+  # substitution (`done < <(git ... diff ...)`), so that spelling joins the
+  # assignment one, and an indented assignment counts as much as a column-0 one.
+  run git -C "$REPO_ROOT" grep -hIE '^[[:space:]]*[a-z_]+="?\$\(git .*diff --name-only|< <\(git .*diff --name-only' -- '.claude/agents/' '.gaia/scripts/audit-resolve-scope.sh'
   [ "$status" -eq 0 ]
   [ -n "$output" ]
   # Pin the breadth, not just non-emptiness. `[ -n "$output" ]` is satisfied by
@@ -950,7 +1036,7 @@ changed=$(git -C "$AUDIT_ROOT" diff --name-only -z "${KEY_BASE}...HEAD" -- x)
   # to relax the assertion back to non-emptiness.
   # The pin and the message it prints read ONE constant, so an update to the
   # number cannot leave the failure text claiming a different expectation.
-  expected_lines=9
+  expected_lines=3
   net_lines="$(grep -c . <<<"$output")"
   [ "$net_lines" -eq "$expected_lines" ] || {
     printf 'roster diff-line net covered %s lines, expected %s\n' \
@@ -980,16 +1066,28 @@ changed=$(git -C "$AUDIT_ROOT" diff --name-only -z "${KEY_BASE}...HEAD" -- x)
   # paths into one unsplittable string rather than delimit them; both
   # assertions are non-emptiness plus a fixed ASCII path literal, which git
   # never quotes
-  run git -C "$REPO_ROOT" grep -lIF 'BASE_SHA' -- '.claude/agents/'
+  run git -C "$REPO_ROOT" grep -lIF 'BASE_SHA' -- '.claude/agents/' '.gaia/scripts/audit-resolve-scope.sh'
   [ "$status" -eq 0 ]
   [ -n "$output" ]
   grep -qF "code-audit-frontend.md" <<<"$output" || return 1
+  grep -qF ".gaia/scripts/audit-resolve-scope.sh" <<<"$output" || return 1
 
   # gaia-lint-ignore lint-git-path-quoting: same `run`-into-$output shape and
   # same fixed-ASCII-literal assertion as the call above
-  run git -C "$REPO_ROOT" grep -lIE '^FULL_BASE=' -- '.claude/agents/'
+  run git -C "$REPO_ROOT" grep -lIE '^[[:space:]]*FULL_BASE="?\$\(git ' -- '.claude/agents/' '.gaia/scripts/audit-resolve-scope.sh'
   [ "$status" -eq 0 ]
-  grep -qF "code-audit-maintainer-shell.md" <<<"$output" || return 1
+  grep -qF "code-audit-frontend.md" <<<"$output" || return 1
+
+  # The resolver takes its membership FULL_BASE from the shared
+  # base-provenance resolver rather than a bare merge-base, so the by-name
+  # exemption it still exercises is KEY_BASE's. Pin that candidate the same
+  # way, so assertion 1 is shown deciding about the script rather than never
+  # meeting a merge-base in it.
+  # gaia-lint-ignore lint-git-path-quoting: same `run`-into-$output shape and
+  # same fixed-ASCII-literal assertion as the calls above
+  run git -C "$REPO_ROOT" grep -lIE '^[[:space:]]*\[ -z "\$KEY_REF" \] \|\| KEY_BASE="\$\(git -C "\$root" merge-base ' -- '.gaia/scripts/audit-resolve-scope.sh'
+  [ "$status" -eq 0 ]
+  grep -qF ".gaia/scripts/audit-resolve-scope.sh" <<<"$output" || return 1
 }
 
 # ---------- structural ----------

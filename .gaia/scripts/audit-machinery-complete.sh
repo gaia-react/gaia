@@ -44,6 +44,7 @@ GATE_MACHINERY_FILES="$(cat <<'EOF'
 .claude/hooks/lib/gaia-version.sh
 .gaia/scripts/audit-write-clearance.sh
 .gaia/scripts/audit-member-digest.sh
+.gaia/scripts/audit-resolve-scope.sh
 .gaia/scripts/audit-machinery-complete.sh
 .gaia/scripts/resolve-audit-members.sh
 # gaia:maintainer-only:start

@@ -501,27 +501,26 @@ extract_audit_root_block() {
 }
 
 # run_audit_root_block <AUDIT_ROOT-or-empty> <cwd> <block> -> runs the
-# extracted block in a fresh bash script anchored on <cwd>, then prints the
-# resulting $AUDIT_ROOT. Writing the block to a temp file sidesteps the
-# quoting hazard of nesting the block's own double quotes inside a `bash -c`
-# string.
+# extracted block, and only the block, in a fresh bash script anchored on
+# <cwd>, and its stdout is the answer. The block prints the root it resolved,
+# and that printed path is the value a member types as `<root>` into every
+# later command, so the printed line, not a variable read back afterwards, is
+# what these tests compare. A block that derives correctly but prints the
+# wrong thing (or nothing) is a broken block. Writing the block to a temp file
+# sidesteps the quoting hazard of nesting the block's own double quotes
+# inside a `bash -c` string.
 #
-# An empty block is refused rather than run. The script would then be the
-# trailing printf alone, which echoes the supplied AUDIT_ROOT straight back
-# without deriving anything, and every caller here compares that output
-# against a root it supplied itself. That is a passing answer produced by no
-# derivation at all, so it fails closed and names itself.
+# An empty block is refused rather than run. An empty script prints nothing
+# and exits 0, so a caller asserting only the status would pass on no
+# derivation at all; it fails closed and names itself instead.
 run_audit_root_block() {
   local audit_root_env="$1" cwd="$2" block="$3" script
   if [ -z "$block" ]; then
-    echo "run_audit_root_block: empty block; refusing to echo AUDIT_ROOT back as if a derivation produced it" >&2
+    echo "run_audit_root_block: empty block; refusing to run a derivation that is not there" >&2
     return 2
   fi
   script="$(mktemp "$BATS_TEST_TMPDIR/audit-root-block-XXXXXX")"
-  {
-    printf '%s\n' "$block"
-    printf 'printf %%s "$AUDIT_ROOT"\n'
-  } > "$script"
+  printf '%s\n' "$block" > "$script"
   if [ -n "$audit_root_env" ]; then
     ( cd "$cwd" && AUDIT_ROOT="$audit_root_env" bash "$script" )
   else
@@ -1054,12 +1053,16 @@ run_audit_root_block() {
 # -----------------------------------------------------------------------------
 
 # Stage 8b: the machinery a definition INVOKES, not just the root it derives.
-# Stage 8 proves each definition's AUDIT_ROOT variable resolves to WT. That
-# says nothing about which copy of a script the definition then runs, and the
-# two came apart: the scope-digest capture is spelled
-# "$AUDIT_ROOT/.gaia/scripts/audit-scope-digest.sh" while the clearance and
-# findings writers were spelled as bare relative paths, so on a worktree audit
-# the writer ran the SESSION ROOT's copy. Both derive over the same --root,
+# Stage 8 proves each definition's root block prints WT. That says nothing
+# about which copy of a script the definition then runs, and the two came
+# apart once: the scope-digest capture was root-anchored while the clearance
+# and findings writers were spelled as bare relative paths, so on a worktree
+# audit the writer ran the SESSION ROOT's copy. Every writer invocation is now
+# spelled `bash <root>/.gaia/scripts/audit-write-...`, where `<root>` is the
+# literal path the root block printed and the member types into the command
+# (a shell variable does not survive between a member's Bash calls, and a
+# worktree-confined member cannot run a computed command path), so `<root>`
+# is the anchor this stage pins. Both derive over the same --root,
 # but each loads its own copy's digest engine (audit-digest.sh resolves its
 # siblings from BASH_SOURCE, never from --root), and this subsystem's scope
 # digest is the first value the two derive points are compared FOR EQUALITY.
@@ -1068,7 +1071,7 @@ run_audit_root_block() {
 # member's earned write with a diagnostic naming a rotation that never
 # happened, and deadlock the gate with no in-band recovery.
 
-@test "stage 8b: every clearance/findings writer invocation in every definition is AUDIT_ROOT-anchored" {
+@test "stage 8b: every clearance/findings writer invocation in every definition is anchored at the literal <root>" {
   local m file bad
   for m in "${ALL_MEMBERS[@]}"; do
     file="$MAIN/.claude/agents/${m}.md"
@@ -1082,7 +1085,7 @@ run_audit_root_block() {
     }
     # And the anchored form must actually be present, so a definition that
     # simply lost its handshake cannot pass this by having no call sites.
-    grep -qE 'bash[[:space:]]+"\$AUDIT_ROOT/\.gaia/scripts/audit-write-clearance\.sh"' "$file" || {
+    grep -qE 'bash[[:space:]]+<root>/\.gaia/scripts/audit-write-clearance\.sh' "$file" || {
       echo "$m: no anchored clearance-writer invocation found at all" >&2
       return 1
     }
@@ -1096,7 +1099,7 @@ run_audit_root_block() {
   before="$(git -C "$MAIN" hash-object "$file")"
   cp "$file" "$backup"
 
-  perl -0pi -e 's/bash "\$AUDIT_ROOT\/\.gaia\/scripts\/audit-write-clearance\.sh"/bash .gaia\/scripts\/audit-write-clearance.sh/' "$file"
+  perl -0pi -e 's/bash <root>\/\.gaia\/scripts\/audit-write-clearance\.sh/bash .gaia\/scripts\/audit-write-clearance.sh/' "$file"
   grep -qE 'bash[[:space:]]+\.gaia/scripts/audit-write-clearance\.sh' "$file" || {
     cp "$backup" "$file"
     echo "the mutation did not take; the control proves nothing" >&2

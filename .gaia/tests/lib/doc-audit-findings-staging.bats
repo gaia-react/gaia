@@ -15,20 +15,26 @@
 # Observed live during a round on PR #1186, where the prose member found a
 # stale staging file holding another member's findings.
 #
-# The fix is stdin, not a better filename. A name derived from the audit key
-# closes neither case, because the key is a base sha plus a branch slug over a
-# shared base every co-dispatched member resolves alike, and that base advances
-# only when a clean round stamps its trailer, so the re-dispatch after a
-# withheld round recomputes the key it just used. Reading the
-# array from stdin removes the staging file, so there is no name to collide on
-# and nothing to leave behind.
+# The fix is a staging directory no sibling can share, written fresh in the
+# call before the writer. `audit-scratch-dir.sh <member> <KEY_BASE>` mints a
+# directory keyed to the audit key AND the member name, so co-dispatched members
+# never pick the same file. A name derived from the audit key alone closes
+# neither case, because the key is a base sha plus a branch slug over a shared
+# base every co-dispatched member resolves alike, and that base advances only
+# when a clean round stamps its trailer, so the re-dispatch after a withheld
+# round recomputes the key it just used. Writing the file fresh with `printf`
+# immediately before the writer is what keeps an earlier round's file from
+# republishing.
 #
-# The array reaches stdin through a single-quoted `printf` payload rather than
-# through a heredoc. Worktree isolation refuses a heredoc outright (`this
-# command is too complex to verify that it stays inside the worktree`), so on
-# any pull request audited from a linked worktree a heredoc form is unrunnable
-# and each member improvises a spelling of its own -- the drift the
-# single-writer design exists to prevent, arriving by a second route.
+# The stage is a `printf` redirect, and the writer a separate command, rather
+# than a pipe, a heredoc, or the `Write` tool, because worktree isolation
+# refuses each of those: a pipe feeding a program text that carries the token
+# `git` (any finding path under `.github/` does), a heredoc outright (`this
+# command is too complex to verify that it stays inside the worktree`), and
+# `Write` into the scratch directory, which resolves into the main checkout
+# through the `.gaia/local` symlink. On a pull request audited from a linked
+# worktree each of those is unrunnable, and each member improvises a spelling of
+# its own -- the drift the single-writer design exists to prevent.
 #
 # The single quotes around the payload are load-bearing rather than stylistic:
 # finding text carries `$` tokens and backticks routinely (this suite's own
@@ -79,44 +85,27 @@ setup() {
   done
 }
 
-# --- Group 2: the prescribed call reads the array from stdin ---------------
+# --- Group 2: the prescribed call reads a member-private staged file ----------
 
-@test "every findings invocation in every spec is the stdin form" {
+@test "every findings invocation in every spec reads the member-private staged file" {
   # One rule, stated once: the flag appears only in the pinned form. Every line
-  # mentioning `--findings` must be `--findings -` and nothing else, so a
-  # staged path (`--findings /tmp/x.json`), a redirect (`--findings - < x`), a
-  # revived heredoc (`--findings - <<'FINDINGS'`), and prose that hands the
-  # writer a path all fail the same way, without a second check enumerating
-  # argument shapes.
+  # mentioning `--findings` must be `--findings <scratch>/findings.json` and
+  # nothing else, so stdin (`--findings -`), a fixed session-scratchpad path
+  # (`--findings /tmp/x.json`), a revived heredoc, and prose that hands the
+  # writer some other path all fail the same way, without a second check
+  # enumerating argument shapes. Anchored end to end, so a line carrying the
+  # pinned form and then more (a redirect, a heredoc opener) fails too.
   #
-  # The pattern is anchored end-to-end rather than matched as a substring,
-  # which is what makes the redirect and the heredoc fail here: both carry
-  # `--findings -` and then keep going, so an unanchored needle would accept
-  # them. Group 3 pins the producer on the other side of the pipe; this rule
-  # owns the flag alone.
-  #
-  # Matching line by line rather than balancing two counts is the other half:
-  # counts invite two scopes, and an anchored total compared against an
-  # unanchored one is satisfiable from prose, so a spec carrying one staged
-  # invocation and one prose copy of the pinned literal balances and passes.
-  # This has no arithmetic to get backwards and names the offending line.
-  # The offenders check runs FIRST, and the order is load-bearing for the
-  # diagnostic rather than for the verdict. Both branches reach the same
-  # failure, but a spec whose write drifted into another shape satisfies
-  # neither, so with the presence check first it reported "prescribes no
-  # sidecar write at all" for a spec that does prescribe one, and the early
-  # return short-circuited the check that would have named the offending line.
-  # Reporting drift first leaves the presence branch reachable only when the
-  # file carries no `--findings` line of any shape, which is what its message
-  # now says.
+  # The offenders check runs FIRST so a drifted spec is reported by its
+  # offending line rather than as "prescribes no sidecar write at all".
   for f in "${SPECS[@]}"; do
     local offenders
-    offenders="$(grep -n -- '--findings' "$f" | grep -vE -- '^[0-9]+:[[:space:]]*--findings -[[:space:]]*$' || true)"
+    offenders="$(grep -n -- '--findings' "$f" | grep -vE -- '^[0-9]+:[[:space:]]*--findings <scratch>/findings\.json[[:space:]]*$' || true)"
     [ -z "$offenders" ] || {
-      echo "$f: --findings appears outside the pinned stdin form: $offenders" >&2
+      echo "$f: --findings appears outside the pinned staged-file form: $offenders" >&2
       return 1
     }
-    grep -qE -- '^[[:space:]]*--findings -[[:space:]]*$' "$f" || {
+    grep -qE -- '^[[:space:]]*--findings <scratch>/findings\.json[[:space:]]*$' "$f" || {
       echo "$f carries no --findings line of any shape, so it prescribes no sidecar write at all" >&2
       return 1
     }
@@ -135,44 +124,41 @@ setup() {
   true
 }
 
-# --- Group 3: the stdin producer on the other side of the pipe --------------
+# --- Group 3: the producer that stages the file, paired with its writer ---------
 
-@test "every findings invocation is one pipeline from printf to the writer" {
-  # Group 2 pins the flag. This pins the rest of the pipeline: the single-quoted
-  # producer, and the pipe that connects it to the writer.
+@test "every staged producer is immediately followed by its writer call" {
+  # Group 2 pins the flag. This pins the producer and ties each one to a writer.
   #
-  # The pipe count is not redundant with the producer count, and the difference
-  # is the whole reason this test is not just a producer tally. Counting
-  # balances cardinalities and associates nothing, so `producers == consumers`
-  # alone is satisfied by a spec that redirects its `printf` into a staged file
-  # on a continuation line and issues the writer as a separate command: the
-  # counts still match, a bare `--findings -` line survives, and no heredoc
-  # appears, so every other test here passes while that spec prescribes exactly
-  # the shared staging file this suite exists to forbid, plus a writer call
-  # blocking on a stdin nothing feeds. Requiring an anchored pipe leader per
-  # consumer is what rejects it. The pre-change form had no such hole because
-  # its pinned literal carried the heredoc opener on the flag line itself, which
-  # forced the array inline and left no free-standing producer to redirect.
+  # Counts alone balance cardinalities and associate nothing: a spec could stage
+  # the array in one place and call the writer somewhere unrelated, so the
+  # member runs the writer against whatever file an earlier call left, which
+  # is the stale republish this suite exists to forbid. So each producer must be
+  # followed, fence to fence, by the literal-root writer call: its own fence
+  # closes, one blank line, the next fence opens on the writer. The writer is
+  # anchored at `<root>` for the reason audit-root-resolution.bats stage 8b
+  # gives: an unanchored spelling runs the session cwd's copy of the writer.
   #
-  # All three counts are anchored to one scope: a spec sentence quoting any one
-  # half inline would otherwise inflate that side with nothing on the others to
-  # match it, failing a spec whose invocations are all well-formed.
+  # The totals are checked too, so a writer call with no producer ahead of it
+  # (reading a file nothing in the spec stages) fails as well.
   for f in "${SPECS[@]}"; do
-    local producers pipes consumers
-    producers="$(grep -cE -- "^printf '%s' '.*' \\\\$" "$f" || true)"
-    # The writer path is $AUDIT_ROOT-anchored, so a worktree audit runs the
-    # AUDITED tree's copy rather than whatever sits under the session cwd.
-    # Anchored here too: an unanchored spelling must not satisfy this count,
-    # or the suite would go on passing through the very regression
-    # audit-root-resolution.bats stage 8b exists to catch.
-    pipes="$(grep -cE -- '^  \| bash "\$AUDIT_ROOT/\.gaia/scripts/audit-write-findings\.sh" \\$' "$f" || true)"
-    consumers="$(grep -cE -- '^[[:space:]]*--findings -[[:space:]]*$' "$f" || true)"
-    [ "$producers" -eq "$consumers" ] || {
-      echo "$f: $producers printf producers, $consumers --findings - consumers" >&2
-      return 1
-    }
-    [ "$pipes" -eq "$consumers" ] || {
-      echo "$f: $pipes piped writer calls, $consumers --findings - consumers; a producer that is not piped into the writer stages a file" >&2
+    local producers writers consumers unpaired
+    producers="$(grep -cE -- "^printf '%s' '.*' > <scratch>/findings\\.json$" "$f" || true)"
+    writers="$(grep -cE -- '^bash <root>/\.gaia/scripts/audit-write-findings\.sh \\$' "$f" || true)"
+    consumers="$(grep -cE -- '^[[:space:]]*--findings <scratch>/findings\.json[[:space:]]*$' "$f" || true)"
+    [ "$producers" -gt 0 ] || { echo "$f: no staged printf producer" >&2; return 1; }
+    [ "$producers" -eq "$writers" ] || { echo "$f: $producers producers, $writers writer calls" >&2; return 1; }
+    [ "$writers" -eq "$consumers" ] || { echo "$f: $writers writer calls, $consumers staged-file consumers" >&2; return 1; }
+    unpaired="$(awk '
+      { line[NR] = $0 }
+      END {
+        for (i = 1; i <= NR; i++) {
+          if (line[i] ~ /^printf .%s. .*> <scratch>\/findings\.json$/) {
+            if (!(line[i+1] == "```" && line[i+2] == "" && line[i+3] == "```bash" && line[i+4] ~ /^bash <root>\/\.gaia\/scripts\/audit-write-findings\.sh \\$/)) print i
+          }
+        }
+      }' "$f")"
+    [ -z "$unpaired" ] || {
+      echo "$f: producer(s) at line(s) $unpaired are not immediately followed by the writer call" >&2
       return 1
     }
   done
@@ -188,29 +174,50 @@ setup() {
   true
 }
 
+@test "no spec pipes the payload into the writer, which the isolation guard refuses" {
+  # A pipe into the writer is the superseded stdin form. The confinement
+  # refuses it whenever the payload carries the token `git`, which any finding
+  # path under `.github/` does, so it is unrunnable from a linked worktree.
+  for f in "${SPECS[@]}"; do
+    grep -qE -- '\|[[:space:]]*bash[[:space:]].*audit-write-findings\.sh' "$f" && return 1
+  done
+  true
+}
+
 @test "no spec has revived the heredoc the isolation guard refuses" {
-  # The construct this suite's pinned form exists to avoid. It is subsumed by
-  # Group 2's anchored rule and kept anyway, so a revival reads as the
-  # regression it is rather than as a generic flag-shape failure: a heredoc
-  # form cannot run at all on a pull request audited from a linked worktree.
+  # Subsumed by Group 2's anchored rule for the flag line, and extended to the
+  # producer, so a revival reads as the regression it is: a heredoc form cannot
+  # run at all on a pull request audited from a linked worktree.
   for f in "${SPECS[@]}"; do
     grep -qF -- '--findings - <<' "$f" && return 1
+    grep -qE -- "^printf '%s'.*<<" "$f" && return 1
   done
   true
 }
 
 # --- Group 4: the prose states the rule the command encodes ----------------
 # The operative clause, not the rationale around it: a spec whose command
-# drifts back to a file while this sentence stays put is the failure #1190
-# names, so the sentence must be the instruction rather than its explanation.
+# drifts while this sentence stays put is the failure #1190 names, so the
+# sentence must be the instruction rather than its explanation.
 
 @test "every spec states the operative staging rule" {
   for f in "${SPECS[@]}"; do
-    grep -qF -- 'Stage nothing: the array goes in through the single-quoted `printf` payload above, never through a file.' "$f" || {
+    grep -qF -- '**Stage the array in your own scratch directory, as a file written fresh with `printf` in the call immediately before the writer.**' "$f" || {
       echo "$f does not state the staging rule its own command encodes" >&2
       return 1
     }
+    grep -qF -- 'and a heredoc is refused outright' "$f" || {
+      echo "$f no longer states that the heredoc form is refused" >&2
+      return 1
+    }
   done
+}
+
+@test "no spec still states the superseded stdin staging rule" {
+  for f in "${SPECS[@]}"; do
+    grep -qF -- 'Stage nothing: the array goes in through the single-quoted `printf` payload above, never through a file.' "$f" && return 1
+  done
+  true
 }
 
 @test "no spec still offers a staged temp file as the alternative" {

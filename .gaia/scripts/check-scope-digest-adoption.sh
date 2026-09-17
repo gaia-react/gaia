@@ -13,12 +13,18 @@
 #      definition and every workflow copy, passes `--scope-digest`.
 #   2. The frozen scope-resolution obligation literal is present, exactly
 #      once, byte-identical, in every agent definition.
-#   3. The capture command sits inside each definition's own
-#      scope-resolution region, not merely mentioned somewhere later in the
-#      file -- code-audit-frontend.md names `audit-scope-digest.sh` in
-#      several places outside that region, so a whole-file grep would still
-#      pass on a definition whose capture had been deleted from the fence
-#      and survived only as a stray mention elsewhere.
+#   3. The capture happens at scope resolution. A definition resolves its
+#      scope with one command, `<root>/.gaia/scripts/audit-resolve-scope.sh
+#      --member <that member> --root <root>`, and that script performs the
+#      capture. So the assertion has two halves: the resolver command, naming
+#      THIS member, sits inside each definition's own scope-resolution
+#      region, not merely somewhere later in the file (code-audit-frontend.md
+#      names the resolver and `audit-scope-digest.sh` in several places
+#      outside that region, so a whole-file grep would still pass on a
+#      definition whose command survived only as a stray mention); and the
+#      resolver script itself still calls `audit-scope-digest.sh --capture`,
+#      since a definition invoking a resolver that no longer captures says
+#      it captures while nothing does.
 #   4. Every pre-approval granted for these two scripts actually covers a
 #      call site that is spelled the way the grant is spelled. A permission
 #      rule is a literal prefix match, so a grant and an invocation can
@@ -94,14 +100,13 @@ GAIA_SDA_MEMBERS=()
 GAIA_SDA_START_ANCHOR=()
 
 # Assertion 3's scope-resolution region start anchor. Nearly every member
-# resolves KEY_BASE/BASE_SHA (and captures there) directly under its own
+# resolves its scope (and captures there) directly under its own
 # "## Remit and self-skip" section, which is the default. code-audit-frontend
 # is the standing exception: its "Remit and self-skip" only decides whether
-# it reviews at all, and the fence that actually derives
+# it reviews at all, and the resolver command that actually derives
 # KEY_BASE/BASE_SHA/D_SCOPE lives under "### How to run" inside
 # "## Rules-Based Audit" instead (that file's own "Re-run carry-forward
-# ledger" section names this location: "the scope-resolution block under
-# 'Rules-Based Audit' -> 'How to run'"). Giving every member the default
+# ledger" section names this location). Giving every member the default
 # anchor would make this assertion vacuous for the one member it most needs
 # to catch drift in. The exception rides in a table keyed by member NAME
 # rather than in a positional array beside the roster, because a positional
@@ -377,9 +382,14 @@ _gaia_sda_extract_section() {
   ' "$1"
 }
 
-# _gaia_sda_assert3 <repo_root>: the capture command sits inside each
-# member's own scope-resolution region (GAIA_SDA_START_ANCHOR), not merely
-# somewhere later in the file.
+# The resolver every definition invokes at scope resolution, and the capture
+# spelling assertion 3 requires inside it.
+GAIA_SDA_RESOLVER='.gaia/scripts/audit-resolve-scope.sh'
+
+# _gaia_sda_assert3 <repo_root>: the resolver command, naming this member,
+# sits inside each member's own scope-resolution region
+# (GAIA_SDA_START_ANCHOR), not merely somewhere later in the file; and the
+# resolver script still performs the capture.
 _gaia_sda_assert3() {
   local repo_root="$1" failed=0 i member file section
   for i in "${!GAIA_SDA_MEMBERS[@]}"; do
@@ -396,23 +406,35 @@ _gaia_sda_assert3() {
       failed=1
       continue
     fi
-    # 'sh" --capture --root', not a bare 'sh --capture': the obligation
-    # literal itself (required by assertion 2, and it lives in this same
-    # region) mentions `.gaia/scripts/audit-scope-digest.sh --capture` in
-    # prose, backtick-closed with no --root after it. A bare substring match
-    # would pass on that mention alone even with the real command deleted,
-    # which is the exact vacuous-pass failure mode this assertion exists to
-    # catch. The real invocation's quoted-path form
-    # (`"$AUDIT_ROOT/.../audit-scope-digest.sh" --capture --root ...`)
-    # always closes the quote immediately before --capture and is always
-    # followed by --root; the prose mention never is.
-    if printf '%s\n' "$section" | grep -qF -- 'audit-scope-digest.sh" --capture --root'; then
+    # The needle is the resolver's name followed by `--member <this member>`
+    # and a space, not the bare script name: prose in the same region names
+    # the script in backticks with no `--member` after it, and a bare match
+    # would pass on that mention alone with the command deleted. The
+    # trailing space is what keeps a sibling whose name extends this one
+    # from answering for it, and naming the member at all is what reds a
+    # command copied from another definition unedited, which would resolve
+    # and capture under the wrong member's name. `--root` must ride the same
+    # line, as it does on the real command.
+    if printf '%s\n' "$section" | grep -F -- "audit-resolve-scope.sh --member ${member} " | grep -qF -- ' --root '; then
       printf '.claude/agents/%s.md: capture found in its scope-resolution region\n' "$member"
     else
-      printf '.claude/agents/%s.md: capture NOT found in its scope-resolution region (may exist only outside it)\n' "$member"
+      printf '.claude/agents/%s.md: capture NOT found in its scope-resolution region (no %s --member %s --root command there; may exist only outside it)\n' "$member" "$GAIA_SDA_RESOLVER" "$member"
       failed=1
     fi
   done
+  # 'sh" --capture --root', not a bare 'sh --capture': the resolver's header
+  # names `audit-scope-digest.sh --capture` in prose too. The real
+  # invocation's quoted-path form closes the quote immediately before
+  # --capture and is followed by --root; the prose mention never is.
+  if [ ! -f "$repo_root/$GAIA_SDA_RESOLVER" ]; then
+    printf '%s: MISSING, so no definition that invokes it captures\n' "$GAIA_SDA_RESOLVER"
+    failed=1
+  elif grep -qF -- 'audit-scope-digest.sh" --capture --root' "$repo_root/$GAIA_SDA_RESOLVER"; then
+    printf '%s: capture found\n' "$GAIA_SDA_RESOLVER"
+  else
+    printf '%s: capture NOT found, so no definition that invokes it captures\n' "$GAIA_SDA_RESOLVER"
+    failed=1
+  fi
   [ "$failed" -eq 0 ] && printf 'scope-resolution capture placement: every definition in region\n'
   return "$failed"
 }

@@ -29,7 +29,21 @@
 # .gaia/scripts/tests/audit-base-agreement.bats.
 # gaia:maintainer-only:end
 #
-# Over `.claude/agents/`, FOUR assertions:
+# Over `.claude/agents/` and `.gaia/scripts/audit-resolve-scope.sh`, FOUR
+# assertions. The resolver script is scanned because it is where every
+# specialist's membership base, review base, key base, and both changed-file
+# diffs are derived: a definition resolves its scope by invoking it rather
+# than by carrying a fence, so a check reading the definitions alone would
+# police the one derivation left in prose (the default member's eligibility
+# fence) and none of the ones that decide what a specialist reviews. The script
+# spells its bases with the same upper-case names a fence does, so every
+# by-name rule below applies to it unchanged. Where a verdict line says "agent
+# files", read it as this whole scan set.
+#
+# Honest limit of that surface: every assertion reads it through `git grep`,
+# which sees the index, so a resolver renamed or deleted drops out silently and
+# the counts stay 0. The behavioural suite that executes the resolver reds on
+# that; this check does not.
 #
 #   1. No REVIEW base is derived by a bare `merge-base` against a branch.
 #      The review base must come from `.github/audit/resolve-audit-base.sh`,
@@ -142,8 +156,8 @@
 #      describing it, this sentence included. Deliberately no count here: it
 #      said three while the code had grown to cut on five.
 #
-#      This assertion scans `.claude/agents/code-audit-*.md`, NOT the whole
-#      directory that (1) and (2) range over. Only a Code Audit Team member HAS
+#      This assertion scans `.claude/agents/code-audit-*.md` (plus the
+#      resolver script), NOT the whole directory that (1) and (2) range over. Only a Code Audit Team member HAS
 #      a review base; an agent that takes its file list from the orchestrator
 #      (.claude/agents/worthiness-evaluator.md) has nothing for this rule to be
 #      about, and scanning it buys only a false-positive surface, since its
@@ -243,19 +257,23 @@
 # "Executable entry" at the bottom).
 #
 # gaia_check_audit_base_derivation <repo_root>
-#   Runs `git -C <repo_root> grep` over `.claude/agents/` (recursive) for
-#   every assertion. Prints every match line, then one verdict line per
+#   Runs `git -C <repo_root> grep` over `.claude/agents/` (recursive) and the
+#   resolver script for every assertion. Prints every match line, then one verdict line per
 #   assertion. Returns 0 when ALL FOUR hold, 1 otherwise.
 #   <repo_root> is a required parameter -- this check never derives it
 #   itself: a CI caller passes the plain checkout root, a bats fixture
 #   passes a temp repo, so "would this literal fail the check" is testable
 #   without touching real tracked source.
 #
-# GREEN against this repo's real `.claude/agents/`: every definition
-# resolves its review base through the resolver, the only bare merge-base
-# left is the named `FULL_BASE` exemption (each specialist's self-skip
-# derivation and the default member's eligibility one), and every changed-file
-# diff is a three-dot range against HEAD carrying `-z`.
+# GREEN against this repo's real scan surface: every review base is resolved
+# through the resolver, the only bare merge-base left is the named `FULL_BASE`
+# exemption (the resolver's membership derivation and the default member's
+# eligibility one), and every changed-file diff is a three-dot range against
+# HEAD carrying `-z`.
+
+# The resolver script scanned beside the definitions (see the header).
+GAIA_AUDIT_SCOPE_RESOLVER='.gaia/scripts/audit-resolve-scope.sh'
+
 
 # Assertion 1's candidate shape: any assignment whose value reaches a
 # `merge-base` call. Deliberately a wide net -- BOTH discriminations that
@@ -562,7 +580,7 @@ gaia_check_audit_base_derivation() {
   # git grep exits 1 when it finds nothing, a normal outcome here, not a
   # script error -- so it is not run under -e and its status is captured
   # explicitly via the variable assignment instead.
-  candidates="$(git -C "$repo_root" grep -nIE "$GAIA_AUDIT_BARE_MERGE_BASE_PATTERN" -- '.claude/agents/' 2>/dev/null)"
+  candidates="$(git -C "$repo_root" grep -nIE "$GAIA_AUDIT_BARE_MERGE_BASE_PATTERN" -- '.claude/agents/' "$GAIA_AUDIT_SCOPE_RESOLVER" 2>/dev/null)"
   bare_matches="$(printf '%s\n' "$candidates" | _gaia_drop_full_base_matches)"
   if [ -n "$bare_matches" ]; then
     printf '%s\n' "$bare_matches"
@@ -586,7 +604,7 @@ gaia_check_audit_base_derivation() {
       missing_count=$((missing_count + 1))
       resolver_failed=1
     fi
-  done < <(git -C "$repo_root" grep -lIF -z "$GAIA_AUDIT_BASE_VAR" -- '.claude/agents/' 2>/dev/null)
+  done < <(git -C "$repo_root" grep -lIF -z "$GAIA_AUDIT_BASE_VAR" -- '.claude/agents/' "$GAIA_AUDIT_SCOPE_RESOLVER" 2>/dev/null)
   printf 'agent files naming BASE_SHA without naming resolve-audit-base.sh: %s\n' "$missing_count"
 
   # ---------- assertion 3: no diff consumes an un-anchored base ----------
@@ -595,7 +613,7 @@ gaia_check_audit_base_derivation() {
   # and differ only in the token each requires, so a second `git grep` would be
   # the same list resolved twice with the two able to disagree.
   local diff_candidates diff_matches diff_count=0
-  diff_candidates="$(git -C "$repo_root" grep -nIF "$GAIA_AUDIT_DIFF_CALL" -- '.claude/agents/code-audit-*.md' 2>/dev/null)"
+  diff_candidates="$(git -C "$repo_root" grep -nIF "$GAIA_AUDIT_DIFF_CALL" -- '.claude/agents/code-audit-*.md' "$GAIA_AUDIT_SCOPE_RESOLVER" 2>/dev/null)"
   diff_matches="$(printf '%s\n' "$diff_candidates" | _gaia_keep_diff_matches_missing '...')"
   if [ -n "$diff_matches" ]; then
     printf '%s\n' "$diff_matches"
