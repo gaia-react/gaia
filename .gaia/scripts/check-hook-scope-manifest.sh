@@ -12,7 +12,8 @@
 #                  that does not exist on disk); no duplicates.
 #   2. Schema      the manifest and its schema are valid JSON; every `state`
 #                  token is either a real .gaia/state-registry.json entry id
-#                  or a well-formed `path:<repo-relative-path>` token.
+#                  or a canonical `path:<repo-relative-path>` token (no
+#                  leading `/`, and no `.`, `..`, or empty segment).
 #   3. Derive arm  for every entry whose `state` includes a REGISTRY id
 #                  classified main-only, shared, or per-tree in the registry,
 #                  or a `path:` token under `.gaia/local`, the hook contains no BARE
@@ -198,11 +199,19 @@ gaia_check_hook_manifest_schema() {
   local known_ids
   known_ids="$(jq -r '.entries[].id' "$registry")"
 
-  local bad_state=""
+  # A path: token must be spelled canonically: the derive arm arms on the
+  # literal `.gaia/local` prefix, so `./.gaia/local` or `.gaia//local` would
+  # name the same state and slip past it.
+  local bad_state="" noncanonical=""
   local hook_path token
   while IFS=$'\t' read -r hook_path token; do
     [ -n "$token" ] || continue
     case "$token" in
+      path:/* | path:./* | path:../* | *//* | */./* | */../* | */. | */..)
+        noncanonical="${noncanonical}${hook_path}: ${token}
+"
+        continue
+        ;;
       path:?*) continue ;;
     esac
     if ! grep -qxF -- "$token" <<<"$known_ids"; then
@@ -212,6 +221,10 @@ gaia_check_hook_manifest_schema() {
   done < <(jq -r '.hooks[] | .hook as $h | (.state // [])[] | "\($h)\t\(.)"' "$manifest")
   if [ -n "$bad_state" ]; then
     printf 'schema: unrecognized state token(s):\n%s' "$bad_state"
+    rc=1
+  fi
+  if [ -n "$noncanonical" ]; then
+    printf 'schema: non-canonical path: token(s) (absolute, or a ./, .., or // segment):\n%s' "$noncanonical"
     rc=1
   fi
 

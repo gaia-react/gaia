@@ -34,7 +34,7 @@
             "type": "string",
             "pattern": "^([a-z0-9]+(-[a-z0-9]+)*|path:.+)$"
           },
-          "description": "State-registry entry ids (.gaia/state-registry.json) the hook touches, or a path:<repo-relative-path> token for a tracked per-checkout working file with no registry entry (e.g. wiki/hot.md, a .claude/* session marker). Empty for scope: any."
+          "description": "State-registry entry ids (.gaia/state-registry.json) the hook touches, or a canonical path:<repo-relative-path> token for a path with no registry entry id: a tracked per-checkout working file (e.g. wiki/hot.md, a .claude/* session marker), or a .gaia/local target the registry names without an id (e.g. an rm_whitelist directory). A path: token under .gaia/local arms the same bare-literal check a registry id does. Empty for scope: any."
         },
         "why": {
           "type": "string",
