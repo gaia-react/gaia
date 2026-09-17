@@ -19,10 +19,15 @@
 # co-dispatched members to one KEY_BASE, and it binds them within a round,
 # which is exactly the scope this suite drives.
 #
-# This suite drives the REAL derivation snippets out of the REAL agent
-# definitions -- it never restates them -- against a scratch repo carrying a
-# stamped clean round. A member whose prose drifts to a private derivation
-# reds here.
+# This suite drives the REAL scope resolution out of the REAL agent
+# definitions -- it never restates it. Each definition invokes
+# .gaia/scripts/audit-resolve-scope.sh by one fenced command line; the suite
+# extracts that line, substitutes the fixture's path for `<root>` exactly as a
+# member types the working root in, runs it against a scratch repo carrying a
+# stamped clean round, and reads the KEY=value lines it prints. A member whose
+# command drifts (wrong member name, missing or extra flag, a private
+# derivation beside it) reds here. The default member's eligibility fence is
+# still a fenced block and is still extracted and executed as one.
 #
 # Probes:
 #   1. KEY_BASE + key agreement across every member, matching what the
@@ -41,7 +46,7 @@
 #   3c. the non-agent callers still invoke the resolver argument-lessly
 #   4. the eligibility-widening fence: presence and fork-point resolution,
 #      unfiltered distinctness from the review-scope set, the review-scope
-#      fence staying untouched, no empty-base guard, and write-side/verify-side
+#      command staying untouched, no empty-base guard, and write-side/verify-side
 #      agreement across three repository shapes
 #
 # Run under bash 5 (bash 3.2's `[[ ]]` skip-under-set-e gap is real; see
@@ -139,6 +144,8 @@ setup() {
 make_no_base_repo() {
   local dir="$BATS_TEST_TMPDIR/no-base"
   mkdir -p "$dir/.gaia/scripts"
+  cp "$REPO_ROOT/.gaia/scripts/audit-resolve-scope.sh" "$dir/.gaia/scripts/"
+  chmod +x "$dir/.gaia/scripts/audit-resolve-scope.sh"
   git -C "$dir" init -q --initial-branch=master
   git -C "$dir" config user.email t@example.com
   git -C "$dir" config user.name T
@@ -150,15 +157,14 @@ make_no_base_repo() {
 }
 
 @test "every specialist stops instead of self-skipping when FULL_BASE cannot resolve" {
-  local repo member fence rc out
+  local repo member rc out
   repo="$(make_no_base_repo)"
   for member in "${SPECIALISTS[@]}"; do
-    fence="$(extract_base_fence "$AGENTS_DIR/${member}.md")" || return 1
     rc=0
-    out="$(AUDIT_ROOT="$repo" bash -c "$fence" 2>&1)" || rc=$?
-    # Non-zero is the whole point: an empty FULL_BASE makes `full_changed`
-    # empty at status 0, which the self-skip arm would read as "nothing in my
-    # remit" and answer with no marker at all.
+    out="$(scope_eval "$member" "$repo" 2>&1)" || rc=$?
+    # Non-zero is the whole point: an empty FULL_BASE makes the FULL_CHANGED
+    # list empty at status 0, which the self-skip arm would read as "nothing in
+    # my remit" and answer with no marker at all.
     [ "$rc" -ne 0 ] || {
       echo "$member continued with an unresolvable FULL_BASE; its self-skip would write no marker" >&2
       return 1
@@ -171,11 +177,10 @@ make_no_base_repo() {
 }
 
 @test "the FULL_BASE guard stays silent when the base does resolve" {
-  local repo member fence out
+  local repo member out
   repo="$(make_repo full-base-control)"
   for member in "${SPECIALISTS[@]}"; do
-    fence="$(extract_base_fence "$AGENTS_DIR/${member}.md")" || return 1
-    out="$(AUDIT_ROOT="$repo" bash -c "$fence" 2>&1)" || return 1
+    out="$(scope_eval "$member" "$repo" 2>&1)" || return 1
     grep -qF "do NOT self-skip" <<<"$out" && {
       echo "$member's guard fired on a repo whose base resolves fine" >&2
       return 1
@@ -186,16 +191,20 @@ make_no_base_repo() {
 
 # --- fence extraction --------------------------------------------------------
 #
-# Prints the one ```bash fence in <agent-file> whose body assigns BASE_SHA at
-# column 0. Exits 1 when the file carries zero or more than one such fence,
-# so a definition that stops declaring its base reds here rather than
-# silently contributing an empty snippet.
-extract_base_fence() {
+# extract_resolver_line <agent-file>
+#
+# Prints the one fenced command line in <agent-file> that invokes the scope
+# resolver, `<root>/.gaia/scripts/audit-resolve-scope.sh ...`, exactly as the
+# definition spells it. Exits 1 when the file carries zero or more than one
+# such line, so a definition that stops resolving its scope, or grows a second
+# private resolution beside the first, reds here rather than silently
+# contributing an empty or ambiguous command.
+extract_resolver_line() {
   awk '
-    /^```bash$/ { infence = 1; buf = ""; has = 0; next }
-    /^```$/     { if (infence) { if (has) { printf "%s", buf; found++ } ; infence = 0 } ; next }
-    infence     { buf = buf $0 "\n"; if ($0 ~ /^BASE_SHA=/) has = 1 }
-    END         { if (found != 1) exit 1 }
+    /^```bash$/ { infence = 1; next }
+    /^```$/     { infence = 0; next }
+    infence && /^<root>\/\.gaia\/scripts\/audit-resolve-scope\.sh / { line = $0; found++ }
+    END         { if (found != 1) exit 1; print line }
   ' "$1"
 }
 
@@ -206,11 +215,11 @@ extract_base_fence() {
 # a definition that stops declaring its eligibility base reds here rather than
 # silently contributing an empty snippet.
 #
-# A second extractor rather than a parameter on extract_base_fence: that
+# A second extractor rather than a parameter on extract_resolver_line: that
 # helper's exactly-one contract is asserted against every member (each one
-# carries a BASE_SHA fence), while this one is asserted against the default
+# carries a resolver command), while this one is asserted against the default
 # member alone (only it carries a FULL_BASE fence). Collapsing them into one
-# parameterized helper would let one member's second fence satisfy another
+# parameterized helper would let one member's second block satisfy another
 # member's requirement, which is exactly the drift this suite exists to catch.
 extract_eligibility_fence() {
   awk '
@@ -250,8 +259,17 @@ make_repo() {
   chmod +x "$dir/.gaia/scripts/audit-write-clearance.sh"
   cp "$REPO_ROOT/.gaia/scripts/audit-member-digest.sh" "$dir/.gaia/scripts/"
   chmod +x "$dir/.gaia/scripts/audit-member-digest.sh"
+  # The resolver refuses a --root that is not the tree it sits in, so every
+  # fixture carries its own copy, plus the capture script and the lib that
+  # script loads.
+  cp "$REPO_ROOT/.gaia/scripts/audit-resolve-scope.sh" \
+    "$REPO_ROOT/.gaia/scripts/audit-scope-digest.sh" \
+    "$REPO_ROOT/.gaia/scripts/audit-respawn-lib.sh" \
+    "$dir/.gaia/scripts/"
+  chmod +x "$dir/.gaia/scripts/audit-resolve-scope.sh" "$dir/.gaia/scripts/audit-scope-digest.sh"
   cp "$REPO_ROOT/.gaia/audit-ci.yml" "$dir/.gaia/"
   cp "$REPO_ROOT/.claude/hooks/lib/audit-scope.sh" "$dir/.claude/hooks/lib/"
+  cp "$REPO_ROOT/.claude/hooks/lib/audit-base-provenance.sh" "$dir/.claude/hooks/lib/"
   cp "$REPO_ROOT/.claude/hooks/lib/audit-rules-changed.sh" "$dir/.claude/hooks/lib/"
   cp "$REPO_ROOT/.claude/hooks/lib/audit-clearance.sh" "$dir/.claude/hooks/lib/"
   cp "$REPO_ROOT/.claude/hooks/lib/audit-digest.sh" "$dir/.claude/hooks/lib/"
@@ -299,22 +317,38 @@ GAIA-Audit: 2.0.0 ${digest} ${tree}"
 
 # --- snippet execution -------------------------------------------------------
 #
-# fence_eval <member> <repo> <trailer>: runs that member's real derivation
-# fence against <repo>, then <trailer> in the same shell, and prints the
-# trailer's stdout. `set -u` is deliberately NOT applied: an unset variable
-# is the very drift this suite is written to catch, and it must surface as a
-# failed assertion on a printed empty value rather than as an abort whose
-# message reads the same as a missing binary.
-fence_eval() {
-  local member="$1" repo="$2" trailer="$3" fence
-  fence="$(extract_base_fence "$AGENTS_DIR/${member}.md")" || return 1
-  AUDIT_ROOT="$repo" bash -c "${fence}
-${trailer}"
+# scope_eval <member> <repo>: runs that member's real resolver command against
+# <repo> and prints its stdout, returning its status. `<root>` is replaced by
+# the fixture path textually, the substitution a member makes when it types the
+# working root in; the result runs through `bash -c` so the definition's own
+# quoting (the frontend's `'*.ts'` pathspecs) is parsed as a shell parses it.
+# stderr is left alone so a caller can read the resolver's diagnostics.
+scope_eval() {
+  local member="$1" repo="$2" line
+  line="$(extract_resolver_line "$AGENTS_DIR/${member}.md")" || {
+    printf '%s: expected exactly one resolver command line in its definition\n' "$member" >&2
+    return 1
+  }
+  bash -c "${line//<root>/$repo}"
 }
 
-# elig_eval <member> <repo> <trailer>: the eligibility-fence counterpart to
-# fence_eval, see its header for the `set -u` rationale (deliberately absent
-# here too).
+# scope_values <member> <repo> <KEY>: every value the member's resolver printed
+# for <KEY>, one per line. A scalar prints one line; FULL_CHANGED and CHANGED
+# print one line per path. A resolver that failed yields nothing, which every
+# caller asserts against rather than trusting. Its stderr is left attached, so
+# the extractor's "expected exactly one" diagnostic reaches a failing test.
+scope_values() {
+  local out
+  out="$(scope_eval "$1" "$2")" || true
+  printf '%s\n' "$out" | sed -n "s/^$3=//p"
+}
+
+# elig_eval <member> <repo> <trailer>: runs the default member's real
+# eligibility fence against <repo>, then <trailer> in the same shell, and
+# prints the trailer's stdout. `set -u` is deliberately NOT applied: an unset
+# variable is the very drift this suite is written to catch, and it must
+# surface as a failed assertion on a printed empty value rather than as an
+# abort whose message reads the same as a missing binary.
 elig_eval() {
   local member="$1" repo="$2" trailer="$3" fence
   fence="$(extract_eligibility_fence "$AGENTS_DIR/${member}.md")" || return 1
@@ -324,7 +358,7 @@ ${trailer}"
 
 # base_sha_for <member> <repo>: the per-member review base, BASE_SHA.
 base_sha_for() {
-  fence_eval "$1" "$2" 'printf "%s\n" "${BASE_SHA:-}"'
+  scope_values "$1" "$2" BASE_SHA
 }
 
 # member_digest <member> <repo>: the member's content digest at repo's HEAD,
@@ -338,7 +372,7 @@ member_digest() {
 # base, KEY_BASE. Members may legitimately disagree on BASE_SHA; they must
 # never disagree on this.
 key_base_for() {
-  fence_eval "$1" "$2" 'printf "%s\n" "${KEY_BASE:-}"'
+  scope_values "$1" "$2" KEY_BASE
 }
 
 # audit_key_for <member> <repo>: gaia_audit_key over KEY_BASE, never BASE_SHA
@@ -404,6 +438,12 @@ owners_of() {
     fi
     if [ "$key" != "$expected_key" ]; then
       printf 'member %s resolved key %s, expected %s\n' "$m" "$key" "$expected_key"
+      return 1
+    fi
+    # The key a member reads its re-run ledger by is the one its resolver
+    # prints, carried as a literal, so the printed value must be this same key.
+    if [ "$(scope_values "$m" "$repo" AUDIT_KEY)" != "$expected_key" ]; then
+      printf 'member %s resolver printed AUDIT_KEY %s, expected %s\n' "$m" "$(scope_values "$m" "$repo" AUDIT_KEY)" "$expected_key"
       return 1
     fi
   done
@@ -483,11 +523,11 @@ owners_of() {
   }
 
   # UAT-013: demonstrated by the member's OWN derivation, not by the
-  # resolver's output alone. M's narrower base makes its own `changed` set
+  # resolver's output alone. M's narrower base makes its own CHANGED set
   # strictly smaller than N's, and both smaller than the whole-PR diff.
   local changed_m changed_n m_lines n_lines full_lines
-  changed_m="$(fence_eval "$m" "$repo" 'printf "%s\n" "${changed:-}"')"
-  changed_n="$(fence_eval "$n" "$repo" 'printf "%s\n" "${changed:-}"')"
+  changed_m="$(scope_values "$m" "$repo" CHANGED)"
+  changed_n="$(scope_values "$n" "$repo" CHANGED)"
   m_lines="$(grep -c . <<<"$changed_m" || true)"
   n_lines="$(grep -c . <<<"$changed_n" || true)"
   # Counting consumer: -z plus counting the NUL separators themselves, never the
@@ -524,7 +564,7 @@ owners_of() {
 #
 # The frontend is the member probed because it is the one whose scope is a
 # TS/TSX pathspec; the specialists' identical form is already covered by
-# probe 1's shared BASE_SHA and by their own fences here.
+# probe 1's shared BASE_SHA and by their own resolver commands here.
 
 @test "the frontend's changed-file list is HEAD's content, not the working tree's" {
   local repo changed
@@ -553,7 +593,7 @@ owners_of() {
   # two-dot pulls it in, where no marker can cover it.
   printf 'export const scratch = 3\n' > "$repo/app/dirty.ts"
 
-  changed="$(fence_eval code-audit-frontend "$repo" 'printf "%s\n" "${changed:-}"')"
+  changed="$(scope_values code-audit-frontend "$repo" CHANGED)"
 
   grep -qF 'app/reverted.ts' <<<"$changed" || {
     printf 'a file changed in HEAD but reverted in the working tree fell out of review scope, while the marker still covers it: %s\n' "$changed" >&2
@@ -593,7 +633,7 @@ owners_of() {
   git -C "$repo" commit -q -m "main advances with an unrelated file"
   git -C "$repo" checkout -q feat
 
-  changed="$(fence_eval code-audit-frontend "$repo" 'printf "%s\n" "${changed:-}"')"
+  changed="$(scope_values code-audit-frontend "$repo" CHANGED)"
 
   grep -qF 'app/pr-touched.ts' <<<"$changed" || {
     printf 'the file this PR actually changed is missing from review scope: %s\n' "$changed" >&2
@@ -730,8 +770,8 @@ probe_deadlock() {
   commit_file "$repo" "$machinery" "machinery change"
 
   local incremental full
-  incremental="$(fence_eval "$member" "$repo" 'printf "%s\n" "${changed:-}"')"
-  full="$(fence_eval "$member" "$repo" 'printf "%s\n" "${full_changed:-}"')"
+  incremental="$(scope_values "$member" "$repo" CHANGED)"
+  full="$(scope_values "$member" "$repo" FULL_CHANGED)"
 
   # The increment is the machinery file alone; the whole-PR list also carries
   # the owned one.
@@ -808,12 +848,12 @@ probe_deadlock() {
 @test "deadlock: each specialist's self-skip prose is wired to the whole-PR list" {
   local m
   for m in "${SPECIALISTS[@]}"; do
-    grep -qF 'full_changed' "$AGENTS_DIR/${m}.md" || {
-      printf '%s never names full_changed\n' "$m"
+    grep -qF 'FULL_CHANGED=' "$AGENTS_DIR/${m}.md" || {
+      printf '%s never names the FULL_CHANGED= lines\n' "$m"
       return 1
     }
-    grep -qF 'If no `full_changed` path matches' "$AGENTS_DIR/${m}.md" || {
-      printf '%s does not key its self-skip arm on full_changed\n' "$m"
+    grep -qF 'If no `FULL_CHANGED` path matches' "$AGENTS_DIR/${m}.md" || {
+      printf '%s does not key its self-skip arm on FULL_CHANGED\n' "$m"
       return 1
     }
   done
@@ -842,7 +882,7 @@ probe_deadlock() {
   for m in "${MEMBERS[@]}"; do
     local base reason
     base="$(base_sha_for "$m" "$repo")"
-    reason="$(fence_eval "$m" "$repo" 'printf "%s\n" "${BASE_REASON:-}"')"
+    reason="$(scope_values "$m" "$repo" BASE_REASON)"
     [ "$base" = "$full_base" ] || {
       printf '%s: BASE_SHA %s advanced past the fork point %s despite an unloadable machinery lib\n' \
         "$m" "$base" "$full_base" >&2
@@ -885,7 +925,7 @@ probe_deadlock() {
 
 # ---------- probe 3b: the membership list survives an unusual path -----------
 #
-# `full_changed` decides whether a specialist runs at all, and git's default
+# The FULL_CHANGED list decides whether a specialist runs at all, and git's default
 # `core.quotePath` makes that decision fail OPEN. `diff --name-only` C-quotes
 # any path carrying non-ASCII or control bytes, emitting the surrounding double
 # quotes as literal characters, and a quoted token matches no remit glob. The
@@ -915,9 +955,9 @@ probe_deadlock() {
   commit_file "$repo" ".claude/skills/naïve/SKILL.md" "prose"
 
   for member in "${SPECIALISTS[@]}"; do
-    full="$(fence_eval "$member" "$repo" 'printf "%s\n" "${full_changed:-}"')"
+    full="$(scope_values "$member" "$repo" FULL_CHANGED)"
     # Checked before the quoting assertion: an empty list carries no double
-    # quote either, so a fence that stopped resolving anything would sail
+    # quote either, so a command that stopped resolving anything would sail
     # through the check below rather than failing it.
     [ -n "$full" ] || {
       printf '%s: whole-PR list came back empty\n' "$member"
@@ -1020,7 +1060,7 @@ probe_deadlock() {
   commit_file "$repo" ".github/workflows/fixture.yml" "a yaml file"
 
   eligibility="$(elig_eval code-audit-frontend "$repo" 'printf "%s\n" "${full_changed:-}"')"
-  review="$(fence_eval code-audit-frontend "$repo" 'printf "%s\n" "${changed:-}"')"
+  review="$(scope_values code-audit-frontend "$repo" CHANGED)"
 
   grep -qxF "bin/setup.sh" <<<"$eligibility" || {
     printf 'eligibility set missing bin/setup.sh: %s\n' "$eligibility" >&2
@@ -1041,8 +1081,8 @@ probe_deadlock() {
   }
 }
 
-@test "the review-scope fence is untouched by the eligibility widening" {
-  local repo fence pathspec_count base expected got
+@test "the review-scope command is untouched by the eligibility widening" {
+  local repo line pathspec_count base expected got
 
   repo="$(make_repo review-scope-untouched)"
   git -C "$repo" checkout -q -b feat
@@ -1051,21 +1091,25 @@ probe_deadlock() {
   git -C "$repo" add -A
   git -C "$repo" commit -q -m "add a.ts"
 
-  fence="$(extract_base_fence "$AGENTS_DIR/code-audit-frontend.md")" || {
-    echo "exactly one BASE_SHA-assigning fence no longer resolves" >&2
+  line="$(extract_resolver_line "$AGENTS_DIR/code-audit-frontend.md")" || {
+    echo "exactly one resolver command line no longer resolves" >&2
     return 1
   }
 
-  pathspec_count="$(grep -oF -- "'*.ts' '*.tsx'" <<<"$fence" | wc -l | tr -d ' ')"
+  pathspec_count="$(grep -oF -- "--review-path '*.ts' --review-path '*.tsx'" <<<"$line" | wc -l | tr -d ' ')"
   [ "$pathspec_count" -eq 1 ] || {
-    printf "expected exactly one '*.ts' '*.tsx' pathspec in the review-scope fence, found %s\n" "$pathspec_count" >&2
+    printf "expected exactly one '*.ts' '*.tsx' review-path pair in the review-scope command, found %s\n" "$pathspec_count" >&2
+    return 1
+  }
+  [ "$(grep -o -- '--review-path' <<<"$line" | wc -l | tr -d ' ')" -eq 2 ] || {
+    printf 'the review-scope command carries a review path beyond the TS/TSX pair: %s\n' "$line" >&2
     return 1
   }
 
   base="$(base_sha_for code-audit-frontend "$repo")"
   [ -n "$base" ]
   expected="$(git -C "$repo" diff --name-only -z "${base}...HEAD" -- '*.ts' '*.tsx' | tr '\0' '\n')"
-  got="$(fence_eval code-audit-frontend "$repo" 'printf "%s\n" "${changed:-}"')"
+  got="$(scope_values code-audit-frontend "$repo" CHANGED)"
   [ "$got" = "$expected" ] || {
     printf 'review-scope fence produced %s, expected %s\n' "$got" "$expected" >&2
     return 1
@@ -1232,6 +1276,27 @@ make_stacked_repo() {
     printf 'write side and verify side disagree.\nwrite:\n%s\nverify:\n%s\n' "$write" "$verify" >&2
     return 1
   }
+}
+
+@test "the eligibility fence refuses an unset AUDIT_ROOT rather than reading the ambient repository" {
+  # A member types AUDIT_ROOT=<root> ahead of the fence. Without it, every
+  # git -C "$AUDIT_ROOT" exits 0 against whatever repository the shell sits in,
+  # and the waive set, the provenance value, and the oracle gate all describe
+  # that tree. elig_eval injects AUDIT_ROOT, so this runs the fence bare, from
+  # inside an unrelated repository that would otherwise resolve cleanly.
+  local repo ambient fence
+  repo="$(make_repo elig-unset-root)"
+  ambient="$(make_repo elig-ambient)"
+  git -C "$ambient" checkout -q -b feat
+  commit_file "$ambient" "ambient-only.txt" "ambient change"
+  fence="$(extract_eligibility_fence "$AGENTS_DIR/code-audit-frontend.md")"
+  [ -n "$fence" ]
+  run --separate-stderr env -u AUDIT_ROOT -u GITHUB_ACTIONS bash -c "cd \"\$1\" && ${fence}
+printf 'FULL_BASE=%s\n' \"\$FULL_BASE\"" _ "$ambient"
+  [ "$status" -ne 0 ]
+  grep -qF -- 'AUDIT_ROOT is unset' <<<"$stderr"
+  grep -qF -- 'FULL_BASE=' <<<"$output" && return 1
+  true
 }
 
 @test "an unverifiable declared base falls back to the advertised default" {

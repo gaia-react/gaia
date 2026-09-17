@@ -6,30 +6,37 @@
 # .claude/hooks/lib/audit-digest.sh), while the member reviews a file by
 # `Read`ing it, which returns WORKING-TREE bytes. On a dirty tree those two
 # disagree, so a pass that reviews the working copy can write a marker
-# certifying content nobody read. The posture that closes it is a refusal:
-# each member checks `git status --porcelain` over its OWN resolved `changed`
-# set immediately after resolving it, and refuses the pass when that set is
-# dirty.
+# certifying content nobody read. The posture that closes it is a refusal: the
+# scope resolver every member runs (.gaia/scripts/audit-resolve-scope.sh)
+# checks `git status --porcelain` over that member's OWN review list right after
+# resolving it and prints one `DIRTY=` line per dirty entry, and a gating member
+# refuses the pass on any such line.
 #
-# Scoping the check to `changed` rather than the whole tree is load-bearing in
-# both directions. It is wide enough, because `changed` is exactly the set the
-# member reads and certifies. And it is narrow enough that a sibling member
-# self-healing in a different remit, which is legitimate and expected under
-# concurrent dispatch, cannot refuse this member's pass.
+# Scoping the check to the review list rather than the whole tree is
+# load-bearing in both directions. It is wide enough, because that list is
+# exactly the set the member reads and certifies. And it is narrow enough that a
+# sibling member self-healing in a different remit, which is legitimate and
+# expected under concurrent dispatch, cannot refuse this member's pass.
 #
-# These assertions are structural, in the shape of audit-guard-structural.bats:
-# the posture is agent-executed instruction prose rather than code, so it
-# cannot be exercised end to end. What is checkable is that every member
-# carries the same check, the same refusal contract, and carries the check
-# AFTER the derivation it depends on. Every pin carries its own non-vacuity
-# proof at the bottom of this file; see the comment there for why those are
-# meaning-changing edits rather than deletions of the pinned string.
+# The suite holds the posture in two halves. The check itself is code, so it is
+# driven BEHAVIOURALLY: each member's own resolver invocation, lifted out of its
+# definition, runs against a fixture with a dirty in-scope file, a clean tree, a
+# dirty out-of-scope file, and a git whose `status` fails. The refusal contract
+# is agent-executed instruction prose, so it is held STRUCTURALLY, in the shape
+# of audit-guard-structural.bats: every member invokes the resolver ahead of the
+# contract that consumes its output, and carries the same contract. Every pin
+# carries its own non-vacuity proof at the bottom of this file; see the comment
+# there for why those are meaning-changing edits rather than deletions of the
+# pinned string.
 #
 # Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
+
+bats_require_minimum_version 1.5.0
 
 setup() {
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
   REPO_ROOT="$( cd "$THIS_DIR/../../.." && pwd )"
+  SCRIPT="$REPO_ROOT/.gaia/scripts/audit-resolve-scope.sh"
 
   # The Code Audit Team members. The list is spelled out rather than
   # globbed: a glob would silently pass if a member file were renamed away,
@@ -37,8 +44,6 @@ setup() {
   # authority on how many; deliberately no ROSTER count here or in any comment
   # or test name below, because such a count rots the next time a member joins
   # or leaves and the rotted number reads as an assertion nobody has checked.
-  # Counts of other things below (fixtures, phrasings) are not that class and
-  # stay.
   MEMBERS="code-audit-frontend
 code-audit-github-workflows
 code-audit-maintainer-node
@@ -47,12 +52,12 @@ code-audit-maintainer-shell"
 
   # The members whose clearance actually gates a merge. They carry the
   # withhold contract. The prose member is deliberately NOT among them: it is
-  # advisory-only and its own file states, absolutely and in five places, that
-  # it always writes an earned marker and never deadlocks a merge. A clearance
-  # that always clears attests nothing about content, so withholding there would
-  # buy no guarantee while breaking the contract the member exists to keep. It
-  # records the divergence instead. Splitting the pins this way is what stops
-  # the two contracts from silently contradicting each other.
+  # advisory-only and its own file states that it always writes an earned
+  # marker and never deadlocks a merge. A clearance that always clears attests
+  # nothing about content, so withholding there would buy no guarantee while
+  # breaking the contract the member exists to keep. It records the divergence
+  # instead. Splitting the pins this way is what stops the two contracts from
+  # silently contradicting each other.
   GATING="code-audit-frontend
 code-audit-github-workflows
 code-audit-maintainer-node
@@ -60,20 +65,18 @@ code-audit-maintainer-shell"
   ADVISORY="code-audit-maintainer-prose"
 
   # The advisory member's counterpart pins.
-  EXEMPTION='**A non-empty `dirty_in_scope` does NOT withhold your pass, and the exemption is deliberate.**'
-  ADVISORY_ANCHOR='record any working-tree dirt within `changed`'
-  ADVISORY_ARTIFACT='**Do not reach for a `.refused` artifact here under any reading:**' 
+  EXEMPTION='**A `DIRTY=` line does NOT withhold your pass, and the exemption is deliberate.**'
+  ADVISORY_ANCHOR='record any `DIRTY=` line'
+  ADVISORY_ARTIFACT='**Do not reach for a `.refused` artifact here under any reading:**'
 
-  # The byte-identical detection line. One line on purpose: a wrapped command
-  # cannot be asserted byte-for-byte with a fixed-string grep, and byte
-  # identity across the member files is what keeps the members from drifting
-  # into subtly different checks.
-  CHECK_LINE='if [ -n "$changed" ] && ! dirty_in_scope=$(printf '"'"'%s\n'"'"' "$changed" | tr '"'"'\n'"'"' '"'"'\0'"'"' | xargs -0 git -C "$AUDIT_ROOT" status --porcelain --); then'
+  # The detection line, pinned in the one place it now lives. One line on
+  # purpose: a wrapped command cannot be asserted with a fixed-string grep. The
+  # behavioural tests below are what prove it runs over the right list; this
+  # pin is what makes a change to the status call itself visible.
+  CHECK_LINE='if ! printf '"'"'%s\0'"'"' "${changed[@]}" | xargs -0 git -C "$root" status --porcelain -z -- > "$ars_tmp/dirty"; then'
 
-  # The byte-identical print of the result. Load-bearing rather than cosmetic:
-  # shell state does not survive between an agent's Bash calls, so a check whose
-  # answer is never printed cannot reach any decision the member makes.
-  PRINT_LINE='if [ -n "$dirty_in_scope" ]; then printf '"'"'DIRTY IN REVIEW SCOPE:\n%s\n'"'"' "$dirty_in_scope" >&2; fi'
+  # The print of the result to stderr, beside the DIRTY= lines on stdout.
+  PRINT_LINE='printf '"'"'%s\n'"'"' "${dirty[@]}" >&2'
 
   # The sentinel the remit filter must never discard, and the artifact rule that
   # keeps a withheld pass from stranding a digest-keyed refusal across a revert.
@@ -82,21 +85,17 @@ code-audit-maintainer-shell"
 
   # The assignment that PRODUCES the sentinel the carve-out above protects.
   # Pinned separately because the two say different things: SENTINEL_CARVEOUT
-  # pins the prose promising the sentinel is never remit-filtered, and CHECK_LINE
-  # pins only the `if` that detects the failure. Deleting this line from every
-  # member left the suite fully green while the fail-closed arm produced
-  # nothing to withhold on, which is the suite's own stated anti-goal. Matched
-  # without leading indentation: the content is what must not drift, and pinning
-  # the block's indentation too would red on a reflow that changes no meaning.
-  SENTINEL_LINE='dirty_in_scope="dirty-scope check failed"'
+  # pins the prose promising the sentinel is never remit-filtered, and
+  # CHECK_LINE pins only the `if` that detects the failure. Matched without
+  # leading indentation: the content is what must not drift.
+  SENTINEL_LINE='dirty=("dirty-scope check failed")'
 
   # The byte-identical refusal contract.
-  REFUSAL='**A non-empty `dirty_in_scope` WITHHOLDS this pass.**'
+  REFUSAL='**Any `DIRTY=` line WITHHOLDS this pass.**'
 
   # The obligation the refusal owes, pinned separately from the sentence that
   # opens it. A refusal that briefs nothing blocks a merge no one can clear, so
-  # the sidecar write is the load-bearing half; pinning only the bolded opener
-  # would let this clause be reworded or dropped with the suite still green.
+  # the sidecar write is the load-bearing half.
   SIDECAR_CLAUSE='write the findings sidecar naming each dirty path'
 
   # Withhold-shaped clauses, as an ERE alternation, for the advisory member's
@@ -105,63 +104,48 @@ code-audit-maintainer-shell"
   # rather than the one bolded sentence a byte-identical pin could see.
   #
   # Two spellings are deliberately NOT in it, both because the advisory member
-  # carries them legitimately. `write no marker` is its self-skip arm ("the only
-  # `no marker` case is the self-skip above"), and an unqualified `withhold`
-  # covers its own exemption prose ("why the gating members withhold on
-  # it", "withholding would buy no guarantee"). Matching the verb plus the thing
-  # withheld is what separates an instruction to this member from a description
-  # of a sibling.
+  # carries them legitimately. `write no marker` is its self-skip arm, and an
+  # unqualified `withhold` covers its own exemption prose ("why the gating
+  # members withhold on it"). Matching the verb plus the thing withheld is what
+  # separates an instruction to this member from a description of a sibling.
   #
-  # `the` belongs in the determiner class as much as `this` and `your` do, and
-  # leaving it out missed the likeliest vector of all. `Withhold the marker on
-  # any unresolved Critical…` is a VERBATIM handshake sentence gating members
-  # carry, so copy-pasting a sibling's real paragraph is the most
-  # probable way this member acquires the contract, and it was the one shape the
-  # scan could not see. The test below derives its fixtures from the gating
-  # members themselves rather than from invented rewordings, so a phrasing this
-  # class cannot reach reds when a sibling adopts it, not after it is pasted.
+  # `the` belongs in the determiner class as much as `this` and `your` do:
+  # `Withhold the marker on any unresolved Critical…` is a VERBATIM handshake
+  # sentence gating members carry, so copy-pasting a sibling's real paragraph is
+  # the most probable way this member acquires the contract.
   WITHHOLD_SHAPED='withhold(s|ing)? (this|your|the) (pass|clearance|marker)'
 
   # The one legitimate form the alternation above still reaches: the exemption
-  # sentence's own negation, `does NOT withhold your pass`.
-  #
-  # The negator is ANCHORED TO THE VERB rather than merely required somewhere in
-  # the context window, and that anchor is the whole strength of this exclusion.
-  # Unanchored, any of these words appearing within 30 characters of a real
-  # withhold clause discards it, and they saturate this prose: `never` alone
-  # appears 33 times in the advisory member. Two house-style clauses got through
-  # the unanchored form, both carrying the contradiction the guard exists to
-  # catch, and both are pinned as fixtures below:
-  #
-  #   "…cannot be trusted, so withhold your marker until it is clean."
-  #   "This member never self-heals, and it will withhold this pass on dirt."
-  #
-  # Every term here is a way for a real withhold clause to go unseen, so the
-  # exclusion stays as narrow as the one legitimate sentence requires.
+  # sentence's own negation, `does NOT withhold your pass`. The negator is
+  # ANCHORED TO THE VERB rather than merely required somewhere nearby, because
+  # `never` and `cannot` saturate this prose and an unanchored exclusion
+  # discards real withhold clauses beside them (fixtures below).
   WITHHOLD_NEGATED='(does not|never|cannot) +withhold'
 
   # The run-order anchor, so the refusal is reachable from the member's own
-  # order of operations rather than stated only beside the code block. The
-  # specialists carry it in Methodology step 1; the default member's
-  # scope run order lives under "Rules-Based Audit" -> "How to run", and it
-  # carries the same phrase there.
-  METHOD_ANCHOR='refuse the pass when the working tree is dirty within `changed`'
+  # order of operations rather than stated only beside the resolver command. The
+  # specialists carry it in Methodology step 1; the default member's scope run
+  # order lives under "Rules-Based Audit" -> "How to run". The two phrase the
+  # condition differently, so the pin is the verb both share.
+  METHOD_ANCHOR='refuse the pass on any `DIRTY=` line'
 }
 
 member_path() {
   printf '%s/.claude/agents/%s.md' "$REPO_ROOT" "$1"
 }
 
+# resolver_invocation FILE: the scope-resolver command inside FILE's bash
+# fences, one per line. Fence-scoped so a prose mention of the script cannot
+# stand in for the command the member actually runs.
+resolver_invocation() {
+  awk '/^```bash$/ { f = 1; next } /^```$/ { f = 0 } f && /^<root>\/\.gaia\/scripts\/audit-resolve-scope\.sh --member / { print }' "$1"
+}
+
 # withhold_drift FILE: print every withhold-shaped clause in FILE that is not
 # the exemption's own negation, one per line with up to 30 characters of
-# preceding context so a reader can see which sentence tripped it. Case
-# insensitive on purpose: a reworded clause has no reason to keep the shouted
-# spelling of the sentence the gating members carry.
-#
-# Newlines are folded to spaces before matching, because `grep` is line-scoped
-# and a clause split across a line break would otherwise be invisible. The
-# guarded file carries unwrapped paragraphs today, so this closes the hole
-# before a reflow opens it rather than after.
+# preceding context. Case insensitive on purpose. Newlines are folded to spaces
+# first, because `grep` is line-scoped and a clause split across a line break
+# would otherwise be invisible.
 withhold_drift() {
   tr '\n' ' ' < "$1" | grep -oiE ".{0,30}$WITHHOLD_SHAPED" | grep -viE "$WITHHOLD_NEGATED"
   # Both greps exit 1 on no match, which is the passing case here, so the
@@ -169,19 +153,106 @@ withhold_drift() {
   return 0
 }
 
+# --- Behavioural fixture -----------------------------------------------------
+
+# make_repo NAME [SCRIPT_SRC]: a committed repo carrying the resolver and
+# everything it reaches for, on a feature branch that changed app/a.ts, with
+# other/untouched.md committed on the base. SCRIPT_SRC overrides the resolver
+# copied in, which is how the behavioural non-vacuity control runs a mutant.
+make_repo() {
+  local name="$1" script_src="${2:-$SCRIPT}"
+  local dir="$BATS_TEST_TMPDIR/$name"
+  mkdir -p "$dir/.gaia/scripts" "$dir/.gaia/local/audit" \
+    "$dir/.github/audit" "$dir/.claude/hooks/lib" "$dir/other" "$dir/app"
+  cp "$script_src" "$dir/.gaia/scripts/audit-resolve-scope.sh"
+  cp "$REPO_ROOT/.gaia/scripts/audit-scope-digest.sh" \
+    "$REPO_ROOT/.gaia/scripts/audit-key-lib.sh" \
+    "$REPO_ROOT/.gaia/scripts/audit-respawn-lib.sh" \
+    "$REPO_ROOT/.gaia/scripts/audit-member-digest.sh" \
+    "$dir/.gaia/scripts/"
+  chmod +x "$dir/.gaia/scripts/audit-resolve-scope.sh" "$dir/.gaia/scripts/audit-scope-digest.sh"
+  cp "$REPO_ROOT/.github/audit/resolve-audit-base.sh" "$dir/.github/audit/"
+  chmod +x "$dir/.github/audit/resolve-audit-base.sh"
+  cp "$REPO_ROOT/.gaia/audit-ci.yml" "$dir/.gaia/"
+  cp "$REPO_ROOT/.claude/hooks/lib/audit-scope.sh" \
+    "$REPO_ROOT/.claude/hooks/lib/audit-base-provenance.sh" \
+    "$REPO_ROOT/.claude/hooks/lib/audit-rules-changed.sh" \
+    "$REPO_ROOT/.claude/hooks/lib/audit-clearance.sh" \
+    "$REPO_ROOT/.claude/hooks/lib/audit-digest.sh" \
+    "$REPO_ROOT/.claude/hooks/lib/audit-machinery.sh" \
+    "$REPO_ROOT/.claude/hooks/lib/gaia-version.sh" \
+    "$dir/.claude/hooks/lib/"
+  printf '2.0.0\n' > "$dir/.gaia/VERSION"
+  printf 'base\n' > "$dir/other/untouched.md"
+  git -C "$dir" init -q --initial-branch=main
+  git -C "$dir" config user.email t@example.com
+  git -C "$dir" config user.name T
+  git -C "$dir" config commit.gpgsign false
+  git -C "$dir" add -A
+  git -C "$dir" commit -q -m init
+  git -C "$dir" checkout -q -b feat
+  printf 'change\n' > "$dir/app/a.ts"
+  git -C "$dir" add -A
+  git -C "$dir" commit -q -m "touch app/a.ts"
+  printf '%s' "$(cd "$dir" && pwd -P)"
+}
+
+# run_member_resolver MEMBER REPO: runs MEMBER's own resolver invocation, as its
+# definition spells it, with <root> substituted by REPO. Output lands in bats'
+# $output / $stderr / $status.
+run_member_resolver() {
+  local member="$1" repo="$2" cmd
+  cmd="$(resolver_invocation "$(member_path "$member")")"
+  [ -n "$cmd" ] || { echo "no resolver invocation in $member" >&2; return 1; }
+  cmd="${cmd//<root>/$repo}"
+  run --separate-stderr bash -c "$cmd"
+}
+
+# failing_status_shim DIR: a git that fails only `status`, so every other call
+# the resolver makes runs for real and a sentinel can only come from the check.
+failing_status_shim() {
+  local shim="$1"
+  mkdir -p "$shim"
+  cat > "$shim/git" <<EOF
+#!/usr/bin/env bash
+for a in "\$@"; do [ "\$a" = status ] && exit 128; done
+exec $(command -v git) "\$@"
+EOF
+  chmod +x "$shim/git"
+}
+
+# --- Structural pins ----------------------------------------------------------
+
 @test "every member file exists" {
   for m in $MEMBERS; do
     [ -f "$(member_path "$m")" ] || return 1
   done
 }
 
-@test "every member carries the byte-identical dirty-scope check" {
+@test "every member runs the scope resolver, exactly once, under its own member name" {
+  local m cmd n
   for m in $MEMBERS; do
-    assert_carries "$(member_path "$m")" "$CHECK_LINE" || {
-      echo "missing or drifted dirty-scope check: $m" >&2
+    cmd="$(resolver_invocation "$(member_path "$m")")"
+    n="$(printf '%s' "$cmd" | grep -c 'audit-resolve-scope' || true)"
+    [ "$n" -eq 1 ] || { echo "$m: expected one resolver invocation in a bash fence, found $n" >&2; return 1; }
+    grep -qF -- "--member $m --root <root>" <<<"$cmd" || {
+      echo "$m: resolver invocation does not name its own member and root: $cmd" >&2
       return 1
     }
   done
+}
+
+@test "the dirty-scope check lives once, in the resolver, and no member carries a private copy" {
+  local m n
+  n="$(grep -cF -- "$CHECK_LINE" "$SCRIPT" || true)"
+  [ "$n" -eq 1 ] || { echo "resolver carries the dirty-scope check $n times" >&2; return 1; }
+  for m in $MEMBERS; do
+    grep -qE 'status --porcelain' "$(member_path "$m")" && {
+      echo "$m derives its own dirty-scope check beside the resolver's" >&2
+      return 1
+    }
+  done
+  true
 }
 
 @test "every GATING member carries the byte-identical withhold contract" {
@@ -193,15 +264,18 @@ withhold_drift() {
   done
 }
 
-@test "the check sits after the changed= derivation it reads" {
+@test "the resolver runs before the dirty contract that reads its output" {
+  local m f needle invocation_line contract_line
   for m in $MEMBERS; do
     f="$(member_path "$m")"
-    derivation_line="$(grep -nF -- 'changed=$(git -C "$AUDIT_ROOT" diff --name-only -z "${BASE_SHA}...HEAD"' "$f" | head -1 | cut -d: -f1)"
-    check_line="$(grep -nF -- "$CHECK_LINE" "$f" | head -1 | cut -d: -f1)"
-    [ -n "$derivation_line" ] || { echo "no review-base derivation found: $m" >&2; return 1; }
-    [ -n "$check_line" ] || { echo "no dirty-scope check found: $m" >&2; return 1; }
-    [ "$check_line" -gt "$derivation_line" ] || {
-      echo "dirty-scope check precedes the derivation it reads: $m" >&2
+    needle="$REFUSAL"
+    [ "$m" = "$ADVISORY" ] && needle="$EXEMPTION"
+    invocation_line="$(grep -nF -- "<root>/.gaia/scripts/audit-resolve-scope.sh --member $m" "$f" | head -1 | cut -d: -f1)"
+    contract_line="$(grep -nF -- "$needle" "$f" | head -1 | cut -d: -f1)"
+    [ -n "$invocation_line" ] || { echo "no resolver invocation found: $m" >&2; return 1; }
+    [ -n "$contract_line" ] || { echo "no dirty contract found: $m" >&2; return 1; }
+    [ "$contract_line" -gt "$invocation_line" ] || {
+      echo "dirty contract precedes the resolver it reads: $m" >&2
       return 1
     }
   done
@@ -216,22 +290,18 @@ withhold_drift() {
   done
 }
 
-@test "every member assigns the fail-closed sentinel it withholds on" {
-  for m in $MEMBERS; do
-    assert_carries "$(member_path "$m")" "$SENTINEL_LINE" || {
-      echo "fail-closed arm produces no sentinel to withhold on: $m" >&2
-      return 1
-    }
-  done
+@test "the resolver assigns the fail-closed sentinel" {
+  assert_carries "$SCRIPT" "$SENTINEL_LINE" || {
+    echo "fail-closed arm produces no sentinel to withhold on" >&2
+    return 1
+  }
 }
 
-@test "every member prints the result it computed" {
-  for m in $MEMBERS; do
-    assert_carries "$(member_path "$m")" "$PRINT_LINE" || {
-      echo "computes dirty_in_scope and never prints it: $m" >&2
-      return 1
-    }
-  done
+@test "the resolver prints the result it computed to stderr" {
+  assert_carries "$SCRIPT" "$PRINT_LINE" || {
+    echo "computes the dirty set and never prints it to stderr" >&2
+    return 1
+  }
 }
 
 @test "every GATING member exempts the failure sentinel from the remit filter" {
@@ -270,14 +340,9 @@ withhold_drift() {
 
 @test "the advisory member never acquires the withhold contract" {
   # Written as a positive match on the bad case per the bats-assertions rule.
-  # This is the assertion that would have caught the round-4 Critical: applying
-  # the withhold byte-identically to every member contradicted this member's own
-  # always-clear charter, and a presence-only pin reported green either way.
-  #
-  # Scanned by meaning rather than by the one bolded sentence. An exact-string
-  # absence check only ever caught the byte-identical copy-paste: leaving the
-  # exemption paragraph intact and ADDING a reworded withhold clause restored
-  # the same contradiction with every test still green.
+  # Scanned by meaning rather than by the one bolded sentence: an exact-string
+  # absence check only ever caught the byte-identical copy-paste, while ADDING a
+  # reworded withhold clause restored the same contradiction.
   f="$(member_path "$ADVISORY")"
   drift="$(withhold_drift "$f")"
   [ -z "$drift" ] || {
@@ -292,32 +357,82 @@ withhold_drift() {
   true
 }
 
+# --- Behavioural: each member's own invocation --------------------------------
+
+@test "every member's resolver reports a dirty in-scope file as a DIRTY line" {
+  local m repo
+  repo="$(make_repo dirty-in-scope)"
+  printf 'edit\n' >> "$repo/app/a.ts"
+  for m in $MEMBERS; do
+    run_member_resolver "$m" "$repo" || return 1
+    [ "$status" -eq 0 ] || { echo "$m: resolver exited $status: $stderr" >&2; return 1; }
+    grep -qxF 'DIRTY= M app/a.ts' <<<"$output" || { echo "$m: no DIRTY line for a dirty in-scope file" >&2; return 1; }
+    grep -qF 'DIRTY IN REVIEW SCOPE:' <<<"$stderr" || { echo "$m: dirty set never reached stderr" >&2; return 1; }
+  done
+}
+
+@test "every member's resolver reports nothing on a clean review list" {
+  local m repo
+  repo="$(make_repo clean)"
+  for m in $MEMBERS; do
+    run_member_resolver "$m" "$repo" || return 1
+    [ "$status" -eq 0 ] || { echo "$m: resolver exited $status: $stderr" >&2; return 1; }
+    grep -q '^DIRTY=' <<<"$output" && { echo "$m: DIRTY line on a clean tree" >&2; return 1; }
+    true
+  done
+}
+
+@test "a dirty file outside the review list cannot refuse the pass" {
+  local m repo
+  repo="$(make_repo dirty-out-of-scope)"
+  printf 'edit\n' >> "$repo/other/untouched.md"
+  for m in $MEMBERS; do
+    run_member_resolver "$m" "$repo" || return 1
+    [ "$status" -eq 0 ] || { echo "$m: resolver exited $status: $stderr" >&2; return 1; }
+    grep -q '^DIRTY=' <<<"$output" && { echo "$m: a sibling's dirt outside the review list reached DIRTY" >&2; return 1; }
+    true
+  done
+}
+
+@test "every member's resolver fails closed to the sentinel when status cannot run" {
+  local m repo shim="$BATS_TEST_TMPDIR/shim"
+  repo="$(make_repo status-fails)"
+  failing_status_shim "$shim"
+  for m in $MEMBERS; do
+    PATH="$shim:$PATH" run_member_resolver "$m" "$repo" || return 1
+    [ "$status" -eq 0 ] || { echo "$m: resolver exited $status: $stderr" >&2; return 1; }
+    grep -qxF 'DIRTY=dirty-scope check failed' <<<"$output" || {
+      echo "$m: a status that could not run read as a clean tree" >&2
+      return 1
+    }
+  done
+}
+
 # --- Non-vacuity ------------------------------------------------------------
 #
 # These prove the pins above are worth something, and they are deliberately NOT
 # "delete the pinned string, confirm it is gone". That form is a tautology: it
-# can only fail if `grep -v` is broken, so it holds for any pin however weak,
-# including the hollow one an earlier revision of this suite actually carried.
+# can only fail if `grep -v` is broken, so it holds for any pin however weak.
 #
-# Each proof instead applies a MEANING-CHANGING edit to a copy of a real member
-# and requires the pin to stop holding. A pin strong enough to be worth having
-# breaks under it; a pin weakened to some short common substring survives the
-# edit, the assertion still holds, and the proof reds. That is the property
-# worth asserting, and it needs no arbitrary minimum-length floor to get it.
+# Each proof instead applies a MEANING-CHANGING edit to a COPY of a real member
+# or of the resolver and requires the pin to stop holding. A pin strong enough
+# to be worth having breaks under it; a pin weakened to some short common
+# substring survives the edit and the proof reds. Tracked files are never
+# touched.
 
 # assert_carries FILE NEEDLE: the single definition of "this file satisfies the
-# pin". Both the real-member tests and the mutants call THIS function, so a
-# mutant cannot pass by exercising a re-implementation of the check.
+# pin". Both the real tests and the mutants call THIS function, so a mutant
+# cannot pass by exercising a re-implementation of the check.
 assert_carries() {
   grep -qF -- "$2" "$1"
 }
 
-# mutate_member TAG SED_EXPR: copy the shell member, confirm the copy satisfies
+# mutate_copy SRC TAG SED_EXPR NEEDLE: copy SRC, confirm the copy satisfies
 # NEEDLE before the edit (so a red is the mutation talking, not a broken
 # fixture), apply the edit, and print the mutant's path.
-mutate_member() {
-  local tag="$1" expr="$2" needle="$3" tmp="$BATS_TEST_TMPDIR/mutant-$1.md"
-  cp "$(member_path code-audit-maintainer-shell)" "$tmp"
+mutate_copy() {
+  local src="$1" tag="$2" expr="$3" needle="$4" tmp="$BATS_TEST_TMPDIR/mutant-$2"
+  cp "$src" "$tmp"
   assert_carries "$tmp" "$needle" || {
     echo "fixture broken: pin does not hold before mutation ($tag)" >&2
     return 1
@@ -326,48 +441,70 @@ mutate_member() {
   printf '%s' "$tmp"
 }
 
-# assert_pin_breaks TAG SED_EXPR NEEDLE: the whole shape in one line.
+# assert_pin_breaks SRC TAG SED_EXPR NEEDLE: the whole shape in one line.
 assert_pin_breaks() {
   local mutant
-  mutant="$(mutate_member "$1" "$2" "$3")" || return 1
-  # Bad case written as a positive match per the bats-assertions rule: a
-  # `!`-negation here would be exempted by set -e and green silently.
-  assert_carries "$mutant" "$3" && {
-    echo "pin still holds after a meaning-changing edit; it is too weak to assert the posture ($1)" >&2
+  mutant="$(mutate_copy "$1" "$2" "$3" "$4")" || return 1
+  # Bad case written as a positive match per the bats-assertions rule.
+  assert_carries "$mutant" "$4" && {
+    echo "pin still holds after a meaning-changing edit; it is too weak to assert the posture ($2)" >&2
     return 1
   }
   return 0
 }
 
 @test "the check pin breaks when the status call changes meaning (non-vacuity)" {
-  # --untracked-files=no narrows what the check can see. A pin that does not
-  # cover the status invocation survives this and the test reds.
-  assert_pin_breaks check 's|status --porcelain --|status --porcelain --untracked-files=no --|' "$CHECK_LINE"
+  # --untracked-files=no narrows what the check can see.
+  assert_pin_breaks "$SCRIPT" check 's|status --porcelain -z -- >|status --porcelain -z --untracked-files=no -- >|' "$CHECK_LINE"
 }
 
 @test "the refusal pin breaks when the refusal becomes a warning (non-vacuity)" {
-  assert_pin_breaks refusal 's|WITHHOLDS this pass|is worth noting|' "$REFUSAL"
+  assert_pin_breaks "$(member_path code-audit-maintainer-shell)" refusal 's|WITHHOLDS this pass|is worth noting|' "$REFUSAL"
 }
 
 @test "the print pin breaks when the result stops reaching stderr (non-vacuity)" {
-  assert_pin_breaks print 's|>&2; fi|; fi|' "$PRINT_LINE"
+  assert_pin_breaks "$SCRIPT" print 's|"${dirty\[@\]}" >&2|"${dirty[@]}"|' "$PRINT_LINE"
 }
 
 @test "the sentinel-assignment pin breaks when the arm stops failing closed (non-vacuity)" {
-  # The mutant keeps the failure branch and its warning and only empties the
-  # value it assigns, so the check reports a clean tree on a status that could
-  # not run. A pin covering the variable name alone survives this and the test
-  # reds, which is the weakness that let the line go unpinned in the first place.
-  assert_pin_breaks sentinel_line 's|dirty_in_scope="dirty-scope check failed"|dirty_in_scope=""|' "$SENTINEL_LINE"
+  assert_pin_breaks "$SCRIPT" sentinel_line 's|dirty=("dirty-scope check failed")|dirty=()|' "$SENTINEL_LINE"
+}
+
+@test "the fail-closed behaviour reds when the resolver's sentinel is emptied (non-vacuity)" {
+  # The behavioural half's own control: the same mutation as above, run rather
+  # than grepped. A resolver that keeps its warning but assigns nothing reports
+  # a clean tree on a status that could not run, and the behavioural test's
+  # assertion must see that.
+  local mutant repo shim="$BATS_TEST_TMPDIR/shim-mutant"
+  mutant="$(mutate_copy "$SCRIPT" sentinel_run 's|dirty=("dirty-scope check failed")|dirty=()|' "$SENTINEL_LINE")" || return 1
+  repo="$(make_repo status-fails-mutant "$mutant")"
+  failing_status_shim "$shim"
+  PATH="$shim:$PATH" run_member_resolver code-audit-maintainer-shell "$repo" || return 1
+  [ "$status" -eq 0 ] || { echo "mutant resolver exited $status: $stderr" >&2; return 1; }
+  grep -qxF 'DIRTY=dirty-scope check failed' <<<"$output" && {
+    echo "the sentinel assertion still holds against a resolver that no longer fails closed" >&2
+    return 1
+  }
+  true
+}
+
+@test "the dirty-in-scope behaviour reds when the check stops running (non-vacuity)" {
+  local mutant repo
+  mutant="$(mutate_copy "$SCRIPT" check_run 's|if \[ "${#changed\[@\]}" -gt 0 \]; then|if false; then|' 'if [ "${#changed[@]}" -gt 0 ]; then')" || return 1
+  repo="$(make_repo dirty-mutant "$mutant")"
+  printf 'edit\n' >> "$repo/app/a.ts"
+  run_member_resolver code-audit-maintainer-shell "$repo" || return 1
+  [ "$status" -eq 0 ] || { echo "mutant resolver exited $status: $stderr" >&2; return 1; }
+  grep -qxF 'DIRTY= M app/a.ts' <<<"$output" && {
+    echo "the DIRTY assertion still holds against a resolver whose check never runs" >&2
+    return 1
+  }
+  true
 }
 
 # assert_drift_caught TAG CLAUSE: the advisory member with CLAUSE inserted ahead
 # of the handshake's "There is no withhold path here", exemption paragraph left
 # exactly where it is, must trip the drift guard.
-#
-# That insertion shape is the failure the byte-identical absence check could not
-# see: nothing is reworded in place, a clause is ADDED, and the old exact-string
-# pin reported green on every one of these.
 assert_drift_caught() {
   local tag="$1" clause="$2" src tmp anchor
   src="$(member_path "$ADVISORY")"
@@ -399,33 +536,22 @@ assert_drift_caught() {
 }
 
 @test "the advisory drift guard catches a reworded withhold clause (non-vacuity)" {
-  assert_drift_caught reworded 'When `dirty_in_scope` comes back non-empty, you withhold this pass and report that you must be re-dispatched once the operator commits or reverts.'
+  assert_drift_caught reworded 'When a `DIRTY=` line comes back, you withhold this pass and report that you must be re-dispatched once the operator commits or reverts.'
 }
 
 @test "the advisory drift guard is not evaded by a nearby 'cannot' (non-vacuity)" {
-  # The negator is anchored to the verb, so a `cannot` that negates something
-  # else in the same sentence no longer discards the clause beside it. Under an
-  # unanchored exclusion this clause passed and the suite stayed green.
   assert_drift_caught nearby_cannot 'A pass over a dirty tree cannot be trusted, so withhold your marker until it is clean.'
 }
 
 @test "the advisory drift guard is not evaded by a nearby 'never' (non-vacuity)" {
-  # `never` appears throughout this member legitimately, which is exactly why an
-  # unanchored exclusion was a fail-open rather than a narrow carve-out.
   assert_drift_caught nearby_never 'This member never self-heals, and it will withhold this pass on dirt.'
 }
 
 # gating_withhold_phrases: every withhold-bearing phrase the GATING members
-# actually carry, deduped, one per line.
-#
-# Extraction is deliberately BROADER than WITHHOLD_SHAPED (any determiner, not
-# the three that pattern admits), because its job is to describe what the
-# siblings really say rather than to judge it. What it feeds is the test below,
-# which requires the drift scan to catch each one. That inverts the usual
-# failure: instead of the scan being taught one more phrasing every time a
-# reviewer finds one, a phrasing the scan cannot see reds here as soon as a
-# gating member adopts it, which is well before anyone can paste it into the
-# advisory member.
+# actually carry, deduped, one per line. Extraction is deliberately BROADER than
+# WITHHOLD_SHAPED, because its job is to describe what the siblings really say
+# rather than to judge it; a phrasing the scan cannot see reds here as soon as a
+# gating member adopts it.
 gating_withhold_phrases() {
   local m
   for m in $GATING; do
@@ -436,9 +562,6 @@ gating_withhold_phrases() {
 }
 
 @test "the drift guard catches every withhold phrasing the gating members really use" {
-  # The fixtures around this one are invented rewordings; this one is not.
-  # Each phrase here is lifted verbatim from a member whose paragraph a careless
-  # edit would copy wholesale, which is the vector that actually happens.
   local phrase n=0
   while IFS= read -r phrase; do
     [ -n "$phrase" ] || continue
@@ -451,8 +574,7 @@ PHRASES
 
   # A floor, so a broken extraction cannot quietly turn this into a test that
   # asserts nothing. It sits below the number of distinct phrasings the gating
-  # members carry today, so a legitimate rewording does not red it while a
-  # collapsed extraction does.
+  # members carry today.
   [ "$n" -ge 4 ] || {
     echo "extraction yielded only $n phrases; the derived fixture set has gone vacuous" >&2
     return 1
@@ -460,29 +582,23 @@ PHRASES
 }
 
 @test "the advisory drift guard sees a clause split across a line break (non-vacuity)" {
-  # `grep` is line-scoped, so the scan folds newlines before matching. Written
-  # as a fixture rather than trusted: the guarded file's paragraphs are
-  # unwrapped today, and a reflow is what would otherwise open this hole.
-  #
-  # The break is written `\n` rather than as a literal newline in the argument.
-  # awk processes escape sequences in a `-v` assignment, so this reaches the
-  # mutant as a real line break, while a literal one is a hard error on the BSD
-  # awk this suite has to run under as well ("newline in string").
+  # awk processes escape sequences in a `-v` assignment, so `\n` reaches the
+  # mutant as a real line break, while a literal one is a hard error on BSD awk.
   assert_drift_caught line_split 'When the check comes back non-empty you\nwithhold this pass until the operator commits or reverts.'
 }
 
 @test "the sentinel pin breaks when the carve-out is softened (non-vacuity)" {
-  assert_pin_breaks sentinel 's|withholds unconditionally|is worth a look|' "$SENTINEL_CARVEOUT"
+  assert_pin_breaks "$(member_path code-audit-maintainer-shell)" sentinel 's|withholds unconditionally|is worth a look|' "$SENTINEL_CARVEOUT"
 }
 
 @test "the artifact pin breaks when the prohibition is softened (non-vacuity)" {
-  assert_pin_breaks artifact 's|Withhold without writing|Consider not writing|' "$NO_REFUSAL_ARTIFACT"
+  assert_pin_breaks "$(member_path code-audit-maintainer-shell)" artifact 's|Withhold without writing|Consider not writing|' "$NO_REFUSAL_ARTIFACT"
 }
 
 @test "the sidecar pin breaks when the obligation is softened (non-vacuity)" {
-  assert_pin_breaks sidecar 's|write the findings sidecar naming each dirty path|mention the dirty paths somewhere|' "$SIDECAR_CLAUSE"
+  assert_pin_breaks "$(member_path code-audit-maintainer-shell)" sidecar 's|write the findings sidecar naming each dirty path|mention the dirty paths somewhere|' "$SIDECAR_CLAUSE"
 }
 
 @test "the run-order pin breaks when the anchor stops refusing (non-vacuity)" {
-  assert_pin_breaks anchor 's|refuse the pass when the working tree is dirty|warn when the working tree is dirty|' "$METHOD_ANCHOR"
+  assert_pin_breaks "$(member_path code-audit-maintainer-shell)" anchor 's|refuse the pass|warn|g' "$METHOD_ANCHOR"
 }

@@ -37,21 +37,22 @@ Your globs above are a **second precedence tier**: every claimant member's globs
 
 You are the Code Audit Team's **default member**.
 
-Resolve the audited root first, before the dispatch-oracle call below and every later root-consuming command. The orchestrator dispatches you with a "Working root:" line and an `AUDIT_ROOT` assignment; that value is authoritative. The ambient toplevel is the fallback only when no working root was supplied. It resolves here, ahead of the oracle, because that call decides whether you review at all: answered from the ambient cwd while your clearance keys to the supplied root, it reads one tree and certifies another.
+Resolve the audited root first, before the dispatch-oracle call below and every later root-consuming command. The orchestrator dispatches you with a "Working root:" line and an `AUDIT_ROOT` assignment; that value is authoritative. The ambient directory is the fallback only when no working root was supplied. It resolves here, ahead of the oracle, because that call decides whether you review at all: answered from the ambient cwd while your clearance keys to the supplied root, it reads one tree and certifies another.
 
 ```bash
-AUDIT_ROOT="${AUDIT_ROOT:-$(git rev-parse --show-toplevel)}"
-AUDIT_ROOT="$(git -C "$AUDIT_ROOT" rev-parse --show-toplevel)" || exit 1
+AUDIT_ROOT="${AUDIT_ROOT:-$PWD}"
+AUDIT_ROOT="$(cd "$AUDIT_ROOT" 2>/dev/null && pwd -P)" && [ -n "$AUDIT_ROOT" ] || exit 1
+printf '%s\n' "$AUDIT_ROOT"
 ```
 
-Shell state does NOT persist between an agent's Bash calls, so every later call that uses `$AUDIT_ROOT` re-runs those two lines first, re-issuing the dispatched `AUDIT_ROOT=` assignment ahead of them when the orchestrator supplied one: in a fresh shell `AUDIT_ROOT` is unset, so the first line's fallback fires and reproduces the ambient tree, not the supplied root. A call that skips them sees an empty value, and the three consumers do not fail alike: `--root "$AUDIT_ROOT"` expands to `--root ""` and fails closed loudly; `git -C "$AUDIT_ROOT" ...` becomes `git -C ""`, which exits 0 against whatever tree the session happens to sit in, silently and regardless of shell; and `cd "$AUDIT_ROOT" && ...` is shell-dependent, since `cd ""` returns 0 on bash 3.2 and runs the chain ambiently, while bash 5 prints `cd: null directory` and returns 1 so the chain never runs. Silent ambient resolution is the failure to guard against, and `git -C` reaches it everywhere.
+Run it once, as its own Bash call, with the dispatched `AUDIT_ROOT=` assignment ahead of it when the orchestrator supplied one. It prints the root resolved physically, and that printed path is what `<root>` stands for in every command below. The fallback is the working directory rather than `git rev-parse --show-toplevel` because a `git` call inside a command substitution is a shape a worktree-confined member cannot run. What that fallback does not do, lift a subdirectory to its checkout root or refuse a path outside any repository, is refused downstream instead: the scope resolver and the clearance writer each reject a `--root` that is not a checkout root.
 
-Do not re-derive that set by hand. On a **local** run, at the start of every review, ask the dispatch oracle whether this diff dispatches you, with `--no-carry-forward`:
+**From here on, every value travels as a literal typed into the command, never as a shell variable or a command substitution.** Replace `<root>`, and each `<NAME>` a command below prints, with its value before running the command that consumes it. Keep the single quotes a command puts around a value such as `'<ANCHOR_TREE>'`: the resolver prints `ANCHOR_TREE` empty on every `no-anchor` round, and a bare empty value drops out of the command, leaving its flag to take the next argument as its value, where `''` stays an argument of its own. Two constraints meet in that rule. Shell state does not persist between your Bash calls, so a variable set in one call is empty in the next, and an empty root resolves whatever tree the session sits in without saying so: `git -C ""` exits 0 against the ambient tree, and so does `cd ""` on bash 3.2. And a member dispatched into a linked worktree runs under the runtime's worktree confinement, which refuses a multi-command block that names `git`, a `git` call inside a command substitution, a pipe feeding a program text that carries the token `git`, and a command name computed at runtime, whatever the command actually does. Every root, oracle, scope, and handshake command below that names `git` is one plain command with literal arguments, which runs in every mode. The root fence and the `cd <root> &&` ahead of each gate hook name no `git`, and the hooks need that `cd` because they read their checkout from the working directory. Run each fence as its own call. The disposition pipeline's compound blocks (the eligibility base, the provenance line, and the seed-forward) still read `AUDIT_ROOT` and the other values as shell variables: run each of those as one Bash call with the assignments it reads typed ahead of it, `AUDIT_ROOT=<root>` among them.
+
+Do not re-derive that set by hand. On a **local** run, at the start of every review, ask the dispatch oracle whether this diff dispatches you, with `--no-carry-forward`. A local run is one where neither `GITHUB_ACTIONS` nor `CI` is set. The oracle's output is `spawn_set` below:
 
 ```bash
-if [ -z "${GITHUB_ACTIONS:-}" ] && [ -z "${CI:-}" ]; then
-  spawn_set="$(cd "$AUDIT_ROOT" && bash .gaia/scripts/resolve-audit-spawn.sh --no-carry-forward 2>/dev/null || true)"
-fi
+cd <root> && bash .gaia/scripts/resolve-audit-spawn.sh --no-carry-forward
 ```
 
 **`--no-carry-forward` is load-bearing, not optional.** The flag name is unchanged, but what it does today is skip the digest-marker-presence filter entirely and emit the unfiltered dispatch set, byte-for-byte. Your self-skip must key on **"the diff does not dispatch me"**, never on **"I was pre-cleared"**. Without this flag, a member the resolver deliberately spawned because its current-digest marker is already present would read the filtered set, see itself absent, and stand down on "I was pre-cleared", disabling the one lever that can catch a bad clearance: spawning the member to see what it actually says. With the unfiltered oracle you still audit whenever the diff dispatches you; the shared writer's earned-only model means your fresh **earned** write simply replaces whatever marker was on disk for this digest, there is no carried provenance for it to out-rank.
@@ -193,7 +194,7 @@ Run all four checks against each collected candidate:
 
 **Fail any check, drop or demote the finding.** A finding that cannot cite a line or name a concrete failure mode is dropped. A finding that is real but whose severity you cannot defend at the assigned tier is demoted to the tier you can defend (and dropped if that lands below Suggestion). Demote rather than delete when the defect is genuine but smaller than first judged.
 
-**Evidence that needs real bytes on disk goes in a scratch directory you own.** Establishing that a guard is not hollow means breaking the construct it names and watching its check go red, and the tree under review is the wrong place for it even though you self-heal: a mutation is not a repair, your self-heal boundary excludes the tests and gate machinery such a mutation would target, and an uncommitted edit left behind withholds this pass. Take a private working copy from `bash .gaia/scripts/audit-scratch-dir.sh code-audit-frontend "$KEY_BASE"` (it prints the path), release it with `bash .gaia/scripts/audit-scratch-dir.sh --release code-audit-frontend "$KEY_BASE"` when you are done, and never improvise a path in the session scratchpad every member of your wave shares. **Populate and mutate it with Bash, never with `Write`/`Edit`.** Dispatched into a linked worktree, that directory resolves into the main checkout, because a worktree's whole `.gaia/local` is one symlink to it, so a `Write` or `Edit` naming a path there is refused for leaving your tree, while `cp`, redirection and an in-place `sed` reach it normally; the mint prints that reminder on stderr when it applies. The refusal is the runtime's own worktree confinement rather than a GAIA guard, so there is nothing to widen and it is not a finding. Re-run the `AUDIT_ROOT` and `KEY_BASE` derivation in the same Bash call as the mint, and again in the call that releases: shell state does not persist between your Bash calls, so an unset `KEY_BASE` mints `nokey.code-audit-frontend` instead, and a release that did re-derive it then removes a directory that was never created while the real one is left for the janitor.
+**Evidence that needs real bytes on disk goes in a scratch directory you own.** Establishing that a guard is not hollow means breaking the construct it names and watching its check go red, and the tree under review is the wrong place for it even though you self-heal: a mutation is not a repair, your self-heal boundary excludes the tests and gate machinery such a mutation would target, and an uncommitted edit left behind withholds this pass. Take a private working copy from `bash <root>/.gaia/scripts/audit-scratch-dir.sh code-audit-frontend <KEY_BASE>` (it prints the path), release it with `bash <root>/.gaia/scripts/audit-scratch-dir.sh --release code-audit-frontend <KEY_BASE>` once you are done and your findings sidecar is written, and never improvise a path in the session scratchpad every member of your wave shares. **Populate and mutate it with Bash, never with `Write`/`Edit`.** Dispatched into a linked worktree, that directory resolves into the main checkout, because a worktree's whole `.gaia/local` is one symlink to it, so a `Write` or `Edit` naming a path there is refused for leaving your tree, while `cp`, redirection and an in-place `sed` reach it normally; the mint prints that reminder on stderr when it applies. The refusal is the runtime's own worktree confinement rather than a GAIA guard, so there is nothing to widen and it is not a finding. The same holds for the confinement's refusals of a multi-command block, a `git` call inside a command substitution, and a command name computed at runtime, which "Resolve the audited root first" names: they are why the commands in this file are plain calls with literal arguments, and a member meeting one on a command of its own re-spells it that way rather than reporting it. Type the same `<KEY_BASE>` into the mint and the release: an empty one mints `nokey.code-audit-frontend` instead, and a release naming the real base then removes a directory that was never created while the real one is left for the janitor.
 
 **Adversarially verify every Critical and Important survivor.** The four checks above are self-applied, so they share your blind spots. Before a holistic finding is reported at Critical or Important, hand it to a fresh-context refuter that did not produce it. Spawn one `Agent` refuter per surviving Critical/Important holistic finding, in parallel from a single tool-call message (the same dispatch discipline as the rule-based subagents). This pass applies only to your own (probabilistic) findings at those two tiers; Suggestions stay self-policed, and the react-doctor / knip / pnpm audit oracles and the rule-based subagent findings are out of scope.
 
@@ -288,7 +289,7 @@ This decision runs **after** section B's security classification and **before** 
 
 Promote a non-security out-of-scope finding into the self-heal path, repaired in place rather than filed, **if and only if all five** of these hold:
 
-1. The finding's file is in the audit's **changed TS/TSX file set**: the exact `changed` set the audit already resolved in "Rules-Based Audit" → "How to run" step 1 (`git -C "$AUDIT_ROOT" diff --name-only -z "${BASE_SHA}...HEAD" -- '*.ts' '*.tsx'`). Read that value; do not re-derive it, or this filter and the review can disagree about which files the audit covered. A changed non-TS file (a `*.mjs` config, a CSS file) is out.
+1. The finding's file is in the audit's **changed TS/TSX file set**: the exact `CHANGED=` set the audit already resolved in "Rules-Based Audit" → "How to run" (`.gaia/scripts/audit-resolve-scope.sh`). Read those lines; do not re-derive them, or this filter and the review can disagree about which files the audit covered. A changed non-TS file (a `*.mjs` config, a CSS file) is out.
 2. The file is **inside the self-heal repair boundary**: it does NOT match `AUDIT_SELFHEAL_REFUSE_ERE` (`.claude/hooks/lib/audit-selfheal-paths.sh`). A file in the refusal set (`test/**`, a root `*.config.ts`, `.claude/**`, and the rest of that set) is out, because `block-selfheal-paths.sh` would hard-deny the edit and leave the finding with no disposition at all.
 3. The file is in **your own remit** (your declared globs, see "Remit and self-skip", evaluated at the second precedence tier), not a cross-remit file a claimant member owns.
 4. The finding is **non-security** per section B's classification, read as section B's own flag, bound on **every repo including a confirmed PRIVATE one**. Never re-derive "non-security" from the `finding_class` tag or a fresh screen.
@@ -344,13 +345,13 @@ A finding that fails either condition above, or that either disqualifier catches
 
 Probe the issue backend once at the start of the disposition flow:
 
-- **Definitive-absent** → waive: file nothing, the disposition gate waives, out-of-scope findings revert to prose only, the marker writes. Record `backend: "absent"`. Triggers: repo unresolvable, `gh` unauthenticated, Issues disabled (detected by `( cd "$AUDIT_ROOT" && gh repo view --json hasIssuesEnabled )` false **or** a structurally-failing issue-list probe, **never** `gh repo view` resolution alone), or the viewer lacks write permission.
+- **Definitive-absent** → waive: file nothing, the disposition gate waives, out-of-scope findings revert to prose only, the marker writes. Record `backend: "absent"`. Triggers: repo unresolvable, `gh` unauthenticated, Issues disabled (detected by `cd <root> && gh repo view --json hasIssuesEnabled` false **or** a structurally-failing issue-list probe, **never** `gh repo view` resolution alone), or the viewer lacks write permission.
 - **Transient/ambiguous** → do not waive, do not drop: timeout, rate-limit, 5xx. Record `backend: "transient"`; surface the finding and retain it for the next run (dedup makes the retry safe). Never block the merge.
 - **Present** → proceed with dedup / filing / divert. Record `backend: "present"`.
 
 ### D. Security-class divert (fail-safe)
 
-`( cd "$AUDIT_ROOT" && gh repo view --json visibility )` returns `PUBLIC | PRIVATE | INTERNAL`. **Re-read it immediately before each security-relevant write** (TOCTOU); treat any non-confirmed-`PRIVATE` state as divert.
+`cd <root> && gh repo view --json visibility` returns `PUBLIC | PRIVATE | INTERNAL`. **Re-read it immediately before each security-relevant write** (TOCTOU); treat any non-confirmed-`PRIVATE` state as divert.
 
 - security-class on **PUBLIC or INTERNAL** → **divert**, never a public/internal issue:
   - **local run**: write a redacted operator surface to `.gaia/local/audit/security/<HEAD-sha>.md` (gitignored) and surface a redacted pointer, **count only, no detail**, in the report. Surface to the operator and wait; never auto-draft an advisory, never auto-disclose. Record disposition `diverted`.
@@ -392,7 +393,7 @@ origin="$(cd "${AUDIT_ROOT:-/dev/null/unset}" 2>/dev/null && bash .gaia/scripts/
 
 ### F. Disposition-ledger sidecar
 
-The disposition **entries** (the per-finding content) are decided at the marker-decision point, but the sidecar **file** `.gaia/local/audit/<frontend-digest>.dispositions.json` (gitignored) is written keyed to **your own frontend content digest**, the same digest the marker in "Audit marker (gate handshake)" is keyed to. Because the trailer stamp is a content-preserving empty commit, it rotates no digest, so the sidecar written before the stamp needs no post-stamp re-key. The merge gate's disposition backstop looks the sidecar up at exactly this path once your marker is valid for the current digest, and **fails closed** (denies the merge) when a valid marker has no sidecar at that path. Write `findings: []` when there are no out-of-scope findings, so the backstop can distinguish "audit ran, none identified" from "no sidecar". Set `backend` to the probe outcome. Set `sha` to the acting tree's HEAD and `branch` to `git -C "$AUDIT_ROOT" symbolic-ref --quiet --short HEAD` (empty string on a detached HEAD, never a fabricated name): the two are what let both gates tell an entry recorded for this pull request from one recorded for a different one, and section B-mw explains why `branch` carries that weight rather than `sha` alone. Seed the sidecar forward from the immediately-prior frontend digest's sidecar (see "Seed-forward" under "Audit marker (gate handshake)") so a still-open receipt survives the digest rotation.
+The disposition **entries** (the per-finding content) are decided at the marker-decision point, but the sidecar **file** `.gaia/local/audit/<frontend-digest>.dispositions.json` (gitignored) is written keyed to **your own frontend content digest**, the same digest the marker in "Audit marker (gate handshake)" is keyed to. Because the trailer stamp is a content-preserving empty commit, it rotates no digest, so the sidecar written before the stamp needs no post-stamp re-key. The merge gate's disposition backstop looks the sidecar up at exactly this path once your marker is valid for the current digest, and **fails closed** (denies the merge) when a valid marker has no sidecar at that path. Write `findings: []` when there are no out-of-scope findings, so the backstop can distinguish "audit ran, none identified" from "no sidecar". Set `backend` to the probe outcome. Set `sha` to the acting tree's HEAD and `branch` to what `git -C <root> symbolic-ref --quiet --short HEAD` prints (empty string on a detached HEAD, never a fabricated name): the two are what let both gates tell an entry recorded for this pull request from one recorded for a different one, and section B-mw explains why `branch` carries that weight rather than `sha` alone. Seed the sidecar forward from the immediately-prior frontend digest's sidecar (see "Seed-forward" under "Audit marker (gate handshake)") so a still-open receipt survives the digest rotation.
 
 ```json
 {
@@ -595,7 +596,7 @@ The ledger is **LOCAL-FLOW-ONLY and NON-GATING.** It never gates the merge, no h
 .gaia/local/audit/<AUDIT_KEY>.rerun.json
 ```
 
-`<AUDIT_KEY>` is `gaia_audit_key "$KEY_BASE"` (`.gaia/scripts/audit-key-lib.sh`): the shared pull-request-wide base sha plus the current branch, so two worktrees sharing a base sha never collide on this filename. `.gaia/local/audit/` is gitignored via `.gaia/local/` in `.gitignore`, so the ledger never reaches git.
+`<AUDIT_KEY>` is `gaia_audit_key "$KEY_BASE"` (`.gaia/scripts/audit-key-lib.sh`), which the scope resolver prints as `AUDIT_KEY`: the shared pull-request-wide base sha plus the current branch, so two worktrees sharing a base sha never collide on this filename. `.gaia/local/audit/` is gitignored via `.gaia/local/` in `.gitignore`, so the ledger never reaches git.
 
 Key on the **base**, not HEAD. The marker (`<digest>.ok`) and the dispositions sidecar (`<digest>.dispositions.json`) key on your own content digest because they certify the exact content being merged, the endpoint, which rotates on every fix that touches an owned or machinery path. The ledger keys on the shared **base**, the fixed anchor the review extends from, because it accumulates "what is still wrong relative to that cleared base" across the moving HEAD, and because one ledger serves the whole dispatched set (see "Writer behavior"), which requires every member to land on the same key regardless of how far each member's own per-member review base narrowed. The key is `git merge-base "$KEY_REF" HEAD`, which holds still across the fix commits inside a round in both base cases:
 
@@ -610,17 +611,10 @@ A base-keyed filename therefore survives the HEAD moves within a round with no H
 
 `BASE_REF`, `BASE_SHA`, `KEY_REF`, and `KEY_BASE` have exactly one derivation in this file, the scope-resolution block under "Rules-Based Audit" → "How to run". One fence produces all four, but they are deliberately two different bases doing two different jobs: `BASE_SHA` scopes what this member reads, per member, and can anchor on this member's own earned clearance; `KEY_BASE` keys what every dispatched member writes, shared across the whole set, because the artifact key combines the base with the branch and the shared re-run ledger is one file per round. Members keyed to different bases would each read and write their own ledger, so a re-run one recorded would be invisible to the others with no error raised anywhere. The single-fence origin still guarantees the two values cannot drift out of step with what the fence itself resolved, even though they are not one value.
 
-**Re-run that block first, in this same Bash call.** Shell state does NOT persist between an agent's Bash calls, so `KEY_BASE` is unset in a fresh shell no matter how many earlier calls set it, and this snippet is not self-contained without it. Consuming an empty `KEY_BASE` fails quietly in two different ways: `gaia_audit_key ""` returns non-zero, so `AUDIT_KEY` empties and the ledger is skipped on its documented fail-open path, while `--base ""` is rejected outright by `audit-write-findings.sh` and the report of record never lands. Prepending the derivation is what every consumer below does, and it is why the derivation is the one thing in this file written to be re-run rather than referenced.
+**Carry `AUDIT_KEY` from the scope resolver's output as a literal, never from a derivation of your own.** The resolver prints it beside `KEY_BASE`, derived from that same value, so the key anchors on the shared `KEY_BASE` rather than on HEAD, which lets it survive the HEAD moves each fix commit produces, and rather than on the per-member `BASE_SHA`, so every dispatched member's write lands under the same key. The ledger's path is then a literal:
 
-```bash
-# The scope-resolution block from "How to run" runs FIRST, in this same call,
-# so KEY_BASE is set. The key anchors on the shared KEY_BASE rather than on
-# HEAD, so it survives the HEAD moves each fix commit produces, and rather
-# than on the per-member BASE_SHA, so every dispatched member's write lands
-# under the same key.
-. "$AUDIT_ROOT/.gaia/scripts/audit-key-lib.sh"
-if ! AUDIT_KEY="$(gaia_audit_key "$KEY_BASE" "$AUDIT_ROOT")"; then AUDIT_KEY=""; fi
-LEDGER="$AUDIT_ROOT/.gaia/local/audit/${AUDIT_KEY}.rerun.json"
+```
+<root>/.gaia/local/audit/<AUDIT_KEY>.rerun.json
 ```
 
 If `AUDIT_KEY` is empty (the base or the branch is undeterminable), skip the ledger entirely (fail-open; behave as today). In CI the agent prompt provides `<base>...HEAD`; use that same base when present, but the ledger is skipped in CI regardless (see "CI gating").
@@ -682,7 +676,7 @@ Per-finding identity for cross-round dedup / closure-confirmation = (`finding_cl
 ### Reader contract (fail-open)
 
 - File absent → no prior briefing; behave as today (read the full report the audit emits in its return whenever it could not write the ledger, see "Return contract").
-- `jq -e . "$LEDGER"` fails (corrupt / partial write) → treat as absent.
+- `jq -e .` on the ledger path fails (corrupt / partial write) → treat as absent.
 - Stale: recorded `.branch` != current `git branch --show-current`, OR recorded `.base_sha` != resolved `KEY_BASE` → treat as absent and overwrite fresh.
 - The ledger **never gates** anything.
 
@@ -737,81 +731,37 @@ Rule-based line-level checks are done by specialist subagents in parallel with `
 
 #### Resolve the review scope
 
-**When the invoking context supplies a base, that base overrides `BASE_REF` (and therefore `BASE_SHA`) only.** CI passes `<base>...HEAD` in the agent prompt; use it in place of the fence's own `BASE_REF`. `KEY_REF` and `KEY_BASE` still come from the fence's own resolver call below regardless, because the resolver, not the supplied base, made the reason/anchor decision those values carry. On that path this member does NOT pass `--review-base` / `--base-reason` / `--anchor-tree` to the findings sidecar writer, because the resolver did not make the decision being recorded. Only CI supplies a base, and every member skips the sidecar in CI outright, so the record is moot there.
+**When the invoking context supplies a base, that base overrides `BASE_REF` (and therefore `BASE_SHA`) only.** CI passes `<base>...HEAD` in the agent prompt; pass it as `--base-override <base>` on the command below, in place of the resolver's own `BASE_REF`. `KEY_REF` and `KEY_BASE` still come from the resolver call inside that command regardless, because the resolver, not the supplied base, made the reason/anchor decision those values carry. On that path this member does NOT pass `--review-base` / `--base-reason` / `--anchor-tree` to the findings sidecar writer, because the resolver did not make the decision being recorded. Only CI supplies a base, and every member skips the sidecar in CI outright, so the record is moot there.
 
-Otherwise this block is the file's ONE derivation of `BASE_REF`, `BASE_REASON`, `KEY_REF`, `ANCHOR_TREE`, `BASE_SHA`, `KEY_BASE`, and `changed`, and every later consumer, the ledger, the findings sidecar, the handshake's `--base`, re-runs it rather than deriving its own. Nothing about it is conditional on being local: only the ledger READ further down is local-only, never the base it reads from.
+Otherwise this command is the file's ONE derivation of `BASE_REF`, `BASE_REASON`, `KEY_REF`, `ANCHOR_TREE`, `BASE_SHA`, `KEY_BASE`, `AUDIT_KEY`, and `CHANGED`, and every later consumer, the ledger, the findings sidecar, the handshake's `--base`, takes the value it printed rather than deriving its own. Nothing about it is conditional on being local: only the ledger READ further down is local-only, never the base it reads from.
 
 ```bash
-# BASE_SHA is the INCREMENTAL base: the newest ancestor of HEAD this PR
-# already cleared, resolved by .github/audit/resolve-audit-base.sh --member.
-# It returns the most recent ancestor carrying a clean-audit signal under the
-# current .gaia/VERSION (a GAIA-Audit trailer, a commit status, or this
-# member's own earned clearance), or the branch this pull request merges into
-# when none exists (origin/main outside Actions, or when no base ref is
-# declared). Shell
-# state does NOT persist between an agent's Bash calls, so every later call
-# using one of these values re-runs this snippet, and the AUDIT_ROOT
-# derivation it depends on, ahead of itself.
-BASE_OUT="$(cd "$AUDIT_ROOT" && .github/audit/resolve-audit-base.sh --member code-audit-frontend)"
-BASE_REF="$(printf '%s\n' "$BASE_OUT" | sed -n 1p)"     # <sha> | origin/main | origin/<base-ref> | main
-BASE_REASON="$(printf '%s\n' "$BASE_OUT" | sed -n 2p)"
-KEY_REF="$(printf '%s\n' "$BASE_OUT" | sed -n 3p)"
-ANCHOR_TREE="$(printf '%s\n' "$BASE_OUT" | sed -n 4p)"
-BASE_SHA="$(git -C "$AUDIT_ROOT" merge-base "${BASE_REF}" HEAD 2>/dev/null || true)"
-KEY_BASE="$(git -C "$AUDIT_ROOT" merge-base "${KEY_REF}" HEAD 2>/dev/null || true)"
-# Two bases, two jobs. BASE_SHA scopes the review below (`changed`), per
-# member, and can anchor on this member's own earned clearance. KEY_BASE
-# keys every artifact -- the findings sidecar, the re-run ledger, and the
-# ledger's freshness test -- from the SAME shared pull-request-wide base
-# every dispatched member resolves (line 3 of BASE_OUT), because the ledger
-# is one file per round and members keyed to different bases would each read
-# and write their own, hiding a sibling's recorded re-run with no error
-# raised anywhere. BASE_REASON and ANCHOR_TREE are the
-# decision record passed to the findings sidecar writer; neither scopes nor
-# keys anything.
-#
-# An empty BASE_SHA does NOT make the diff below fail: git resolves the
-# empty left side to HEAD, so `changed` comes back empty with status 0 and
-# is indistinguishable from a genuinely empty increment. Say so here, where
-# the silence is created, rather than leaving it to the handshake further
-# down that rejects --base "".
-[ -n "$BASE_SHA" ] || printf 'resolve-audit-base returned no base; review scope is unreliable\n' >&2
-[ -n "$KEY_BASE" ] || printf 'resolve-audit-base returned no shared key base; artifact keying is unreliable\n' >&2
-changed=$(git -C "$AUDIT_ROOT" diff --name-only -z "${BASE_SHA}...HEAD" -- '*.ts' '*.tsx' 2>/dev/null | tr '\0' '\n' || true)
-# `Read` returns WORKING-TREE bytes while your clearance attests to a digest
-# over HEAD (`git ls-tree HEAD`, .claude/hooks/lib/audit-digest.sh), so a pass
-# over a dirty tree certifies content it never read. Check the set you just
-# resolved, never the whole tree; your own remit filter, below, is what keeps a
-# sibling member's legitimate self-heal out of your answer. Your own self-heal
-# cannot have run yet at this point in the order. This FAILS CLOSED: a status
-# that cannot run refuses rather than reading as clean, and the empty-`changed`
-# guard is what stops that from turning an empty review scope into a refusal.
-dirty_in_scope=""
-if [ -n "$changed" ] && ! dirty_in_scope=$(printf '%s\n' "$changed" | tr '\n' '\0' | xargs -0 git -C "$AUDIT_ROOT" status --porcelain --); then
-  printf 'dirty-scope check could not run; refusing rather than assuming a clean tree\n' >&2
-  dirty_in_scope="dirty-scope check failed"
-fi
-# Shell state does not survive between your Bash calls, so a result you do not
-# print is a result you never see. This print is what carries the check into
-# the decision below; without it the block computes an answer and discards it.
-if [ -n "$dirty_in_scope" ]; then printf 'DIRTY IN REVIEW SCOPE:\n%s\n' "$dirty_in_scope" >&2; fi
-D_SCOPE="$("$AUDIT_ROOT/.gaia/scripts/audit-scope-digest.sh" --capture --root "$AUDIT_ROOT" --member code-audit-frontend --base "$KEY_BASE")"
-[ -n "$D_SCOPE" ] || printf 'could not capture a scope digest; the earned clearance write will refuse\n' >&2
+<root>/.gaia/scripts/audit-resolve-scope.sh --member code-audit-frontend --root <root> --skip-full-base --review-path '*.ts' --review-path '*.tsx'
 ```
 
-Capture your own content digest at scope resolution with `.gaia/scripts/audit-scope-digest.sh --capture`, and at marker-write time read that captured value back with `--read` and pass it as `--scope-digest`; never re-derive it in the writing call, and a rotation between the two means the review was superseded and you must be re-dispatched on the new HEAD. Re-running the scope-resolution fence above is safe and changes nothing: the capture is taken once per review, and a second `--capture` returns that first value rather than replacing it (it is replaced only once you have published a marker or a refusal keyed to it, which is what tells the script your round ended). That is enforced by the script, not by this sentence, because the fence you re-run on every handshake call carries the capture and an overwrite there would leave the writer comparing a value against itself. The one exception is a `review scope superseded` refusal from the writer: that refusal releases your capture as it exits, so a fence re-run after it hands you a NEW value instead of the one you reviewed. Your round is over at that point. Stop and ask to be re-dispatched rather than re-running the fence, or the marker you go on to earn would attest content you never read.
+It prints one `KEY=value` line per value, and those lines are the only place each value exists, so carry each one you use below as a literal. The script's header (`.gaia/scripts/audit-resolve-scope.sh`) owns how each is derived. What each means to you:
 
-**Three-dot, against HEAD, is the whole point.** `changed` names the content your marker will attest to. Your clearance digest is computed over tracked files **at HEAD** (`git ls-tree HEAD`, `.claude/hooks/lib/audit-digest.sh`), so a review scope resolved against anything other than HEAD lets you certify a digest over content you never read. The two-dot form (`<base>`, no `...HEAD`) compares the base to the WORKING TREE, and it fails in three ways at once. A change committed to this PR and then reverted in the working tree drops out of `changed` entirely while your marker still covers the committed version. An uncommitted edit enters `changed` while no marker covers it and the dispatch oracle that decided you run at all never saw it. And when the base is a ref rather than a sha (`origin/<base-ref>` under Actions, `origin/main` otherwise, the no-audited-ancestor fallback) whose tip has advanced past this branch's fork point, every file the default branch changed enters `changed` too, none of which this PR touched. Three-dot resolves its own merge base, so it is immune to all three. Every other member resolves `${BASE_SHA}...HEAD`; you resolve it identically, and `.gaia/scripts/check-audit-base-derivation.sh` holds every definition there.
+- **Exit 2 is a refused root.** The script refuses a `--root` that does not resolve to the checkout it sits in, so one tree's scope is never resolved with another tree's machinery. Check that the same working root is typed in both places. `--skip-full-base` is deliberate: your self-skip is oracle-based, so the membership base the specialists stop on is not yours to resolve, and the eligibility base below is a different base.
+- `CHANGED=` lines name your review scope, `BASE_SHA...HEAD` filtered to `*.ts` / `*.tsx`.
+- `BASE_SHA` is the **incremental** base: the newest ancestor of HEAD this pull request already cleared, resolved by `.github/audit/resolve-audit-base.sh --member` (a `GAIA-Audit` trailer, a commit status, or this member's own earned clearance under the current `.gaia/VERSION`), or the branch the pull request merges into when none exists. It scopes the review, per member, and can anchor on this member's own earned clearance. `KEY_BASE` keys every artifact, the findings sidecar, the re-run ledger, and the ledger's freshness test, from the SAME shared pull-request-wide base every dispatched member resolves, because the ledger is one file per round and members keyed to different bases would each read and write their own, hiding a sibling's recorded re-run with no error raised anywhere. `BASE_REASON` and `ANCHOR_TREE` are the decision record passed to the findings sidecar writer; neither scopes nor keys anything. `AUDIT_KEY` is `KEY_BASE` plus the current branch, the key the re-run ledger is read by, and it prints empty when either half is undeterminable. A stderr warning that either base is empty means the review scope or the artifact keying is unreliable, and the writers below reject an empty `--base`.
+- `DIRTY=` lines name entries in `CHANGED` whose working-tree bytes differ from HEAD (below). A status that cannot run prints `DIRTY=dirty-scope check failed` rather than reading as clean.
+- `D_SCOPE` is your content digest, captured at scope resolution. A stderr warning that it could not be captured means the earned clearance write will refuse.
 
-**What this aligns is the file LIST; `dirty_in_scope` is what aligns the BYTES.** `Read` returns working-tree bytes, so on a dirty tree a file named in `changed` can still hold content HEAD does not, and your marker would again cover bytes you did not read. The check above catches that for the files you review, which is why the run order here is: resolve the scope, then refuse the pass when the working tree is dirty within `changed`, before anything is read. It does not reach a file you open for CONTEXT rather than review, a caller or a test that is not itself in `changed`, so reach for the reviewed delta itself (`git -C "$AUDIT_ROOT" diff "${BASE_SHA}...HEAD" -- <file>`) rather than the file's current state whenever that distinction could change a finding.
+Capture your own content digest at scope resolution with `.gaia/scripts/audit-scope-digest.sh --capture`, and at marker-write time read that captured value back with `--read` and pass it as `--scope-digest`; never re-derive it in the writing call, and a rotation between the two means the review was superseded and you must be re-dispatched on the new HEAD. The scope resolver above takes that capture as its last step and prints it as `D_SCOPE`, so there is no separate `--capture` call to make. Re-running the resolver mid-review is safe and changes nothing: a second capture returns the first value rather than replacing it (it is replaced only once you have published a marker or a refusal keyed to it, which is what tells the script your round ended), and the script enforces that, not this sentence.
 
-**A non-empty `dirty_in_scope` WITHHOLDS this pass.** Every path it names holds working-tree bytes that differ from the HEAD bytes your clearance attests to, so reviewing it certifies content nobody read. Apply your own remit filter to the list first: a dirty path you would never have opened cannot make your review disagree with your marker. The one value that filter never touches is the literal `dirty-scope check failed`, which is a sentinel rather than a path and withholds unconditionally. On anything that survives, write no marker, write the findings sidecar naming each dirty path (a refusal that briefs nothing blocks a merge no one can clear), and report that you must be re-dispatched once the operator commits or reverts them. **Withhold without writing a `.refused` artifact.** That artifact is keyed to your content digest, an uncommitted edit does not rotate it, and a revert would leave a live refusal still blocking the marker your next clean pass earns. This is the self-heal rule reaching one case further, a marker only ever attests committed content; the only difference is whose uncommitted edit it is.
+The one exception is a `review scope superseded` refusal from the writer: that refusal releases your capture as it exits, so a resolver re-run after it hands you a NEW value instead of the one you reviewed. Your round is over at that point. Stop and ask to be re-dispatched rather than re-running the resolver, or the marker you go on to earn would attest content you never read.
+
+**Three-dot, against HEAD, is the whole point.** `CHANGED` names the content your marker will attest to. Your clearance digest is computed over tracked files **at HEAD** (`git ls-tree HEAD`, `.claude/hooks/lib/audit-digest.sh`), so a review scope resolved against anything other than HEAD lets you certify a digest over content you never read. The two-dot form (`<base>`, no `...HEAD`) compares the base to the WORKING TREE, and it fails in three ways at once. A change committed to this PR and then reverted in the working tree drops out of `CHANGED` entirely while your marker still covers the committed version. An uncommitted edit enters `CHANGED` while no marker covers it and the dispatch oracle that decided you run at all never saw it. And when the base is a ref rather than a sha (`origin/<base-ref>` under Actions, `origin/main` otherwise, the no-audited-ancestor fallback) whose tip has advanced past this branch's fork point, every file the default branch changed enters `CHANGED` too, none of which this PR touched. Three-dot resolves its own merge base, so it is immune to all three. Every other member resolves `${BASE_SHA}...HEAD`; you resolve it identically, and `.gaia/scripts/check-audit-base-derivation.sh` holds every definition there.
+
+**What this aligns is the file LIST; the `DIRTY=` lines are what align the BYTES.** `Read` returns working-tree bytes, so on a dirty tree a file named in `CHANGED` can still hold content HEAD does not, and your marker would again cover bytes you did not read. The check above catches that for the files you review, which is why the run order here is: resolve the scope, then refuse the pass on any `DIRTY=` line, before anything is read. It does not reach a file you open for CONTEXT rather than review, a caller or a test that is not itself in `CHANGED`, so reach for the reviewed delta itself (`git -C <root> diff <BASE_SHA>...HEAD -- <file>`) rather than the file's current state whenever that distinction could change a finding.
+
+**Any `DIRTY=` line WITHHOLDS this pass.** Every path those lines name holds working-tree bytes that differ from the HEAD bytes your clearance attests to, so reviewing it certifies content nobody read. Apply your own remit filter to the list first: a dirty path you would never have opened cannot make your review disagree with your marker. The one value that filter never touches is the literal `dirty-scope check failed`, which is a sentinel rather than a path and withholds unconditionally. On anything that survives, write no marker, write the findings sidecar naming each dirty path (a refusal that briefs nothing blocks a merge no one can clear), and report that you must be re-dispatched once the operator commits or reverts them. **Withhold without writing a `.refused` artifact.** That artifact is keyed to your content digest, an uncommitted edit does not rotate it, and a revert would leave a live refusal still blocking the marker your next clean pass earns. This is the self-heal rule reaching one case further, a marker only ever attests committed content; the only difference is whose uncommitted edit it is.
 
 ```bash
 # FULL_BASE is the whole-PR fork point, and it decides exactly one thing: the
 # ELIGIBILITY changed-file set the out-of-scope waive rule reads. It is not a
-# review base and never scopes what you review. `changed` above stays the
-# review scope, filtered to TS/TSX, and nothing here touches it.
+# review base and never scopes what you review. The CHANGED= lines above stay
+# the review scope, filtered to TS/TSX, and nothing here touches it.
 #
 # The fork point is taken against the branch this pull request MERGES INTO,
 # never the repository's advertised default. Every extra file in this set is
@@ -827,9 +777,15 @@ Capture your own content digest at scope resolution with `.gaia/scripts/audit-sc
 # that file's header carries the one residual gap, an audit run before the
 # pull request exists, and why it is left open.
 #
-# The AUDIT_ROOT test is not redundant with the `cd`. On bash 3.2, macOS's
-# /bin/bash, `cd ""` succeeds and leaves the subshell wherever the session
-# already was, so an unset AUDIT_ROOT would read whatever repository that is.
+# Type AUDIT_ROOT=<root> ahead of this block in the same Bash call; shell state
+# does not carry it from an earlier call. Unset, every `git -C "$AUDIT_ROOT"`
+# below exits 0 against whatever repository the shell sits in, and on bash 3.2,
+# macOS's /bin/bash, so does `cd ""`, so the block refuses rather than
+# resolving the wrong tree's fork point.
+if [ -z "${AUDIT_ROOT:-}" ]; then
+  printf 'AUDIT_ROOT is unset: type AUDIT_ROOT=<root> ahead of this block\n' >&2
+  exit 1
+fi
 pr_branch=""
 if [ "${GITHUB_ACTIONS:-}" = "true" ] && [ -n "${GITHUB_BASE_REF:-}" ]; then
   pr_branch="$GITHUB_BASE_REF"
@@ -860,11 +816,11 @@ else
 fi
 ```
 
-**Two lists, two jobs.** `changed` is the **review scope** and decides what you review; it stays filtered to `*.ts` / `*.tsx`. `full_changed` is the **eligibility** set and decides only which out-of-scope findings the waive in section B-mw can cover; it is deliberately unfiltered by file type, because the surfaces that waive exists for are shell, markdown, YAML, and bats. Shell state does NOT persist between an agent's Bash calls, so every later call using `full_changed` re-runs this block, and the `AUDIT_ROOT` derivation it depends on, ahead of itself, the same rule the review-scope block states for its own values.
+**Two lists, two jobs.** `CHANGED` is the **review scope** and decides what you review; it stays filtered to `*.ts` / `*.tsx`. `full_changed` is the **eligibility** set and decides only which out-of-scope findings the waive in section B-mw can cover; it is deliberately unfiltered by file type, because the surfaces that waive exists for are shell, markdown, YAML, and bats. Shell state does NOT persist between an agent's Bash calls, so every later call using `full_changed` re-runs this block ahead of itself, with `AUDIT_ROOT=<root>` typed ahead of both; the block refuses to run without it. Dispatched into a linked worktree, the runtime's confinement refuses this block outright; treat that exactly as an unresolvable `FULL_BASE`: the waive disengages and findings take the filing path, `debt_origin_changed` is `unknown`, and the oracles run.
 
 An empty `full_changed` **disengages** the waive rather than opening it: with no eligibility set, an out-of-scope finding on a non-machinery path takes the ordinary filing path (sections C/D/E). One limitation is accepted rather than worked around: a path containing a literal newline splits into two lines inside the variable, so it never matches by whole-string equality, the brake disengages for that path, and the finding is filed. That is the safe direction.
 
-**Provenance `changed` field.** Section E's `gaia-debt-origin` emission needs a third answer, "did this pull request touch the finding's cited path at all", distinct from both `changed` above (the TS/TSX-filtered review scope) and the incremental `BASE_SHA` (the last-cleared-ancestor base, which on a re-audit round covers only the delta since the previous round). `FULL_BASE` and `full_changed` above already resolve exactly that question for the machinery waive: the whole-PR fork point, no pathspec, three-dot against HEAD. <!-- honors AUDIT plan-time directive 2 (reuse the fork-point set, add no third base-derivation site) --> Reuse them rather than deriving a second copy: a second fence assigning `FULL_BASE` at column 0 would fail the eligibility-fence extractor that guards this file, which requires exactly one such fence in it, and a second, independently-typed derivation of the same fork point is itself the drift `check-audit-base-derivation.sh` exists to catch, whatever name it carries.
+**Provenance `changed` field.** Section E's `gaia-debt-origin` emission needs a third answer, "did this pull request touch the finding's cited path at all", distinct from both `CHANGED` above (the TS/TSX-filtered review scope) and the incremental `BASE_SHA` (the last-cleared-ancestor base, which on a re-audit round covers only the delta since the previous round). `FULL_BASE` and `full_changed` above already resolve exactly that question for the machinery waive: the whole-PR fork point, no pathspec, three-dot against HEAD. <!-- honors AUDIT plan-time directive 2 (reuse the fork-point set, add no third base-derivation site) --> Reuse them rather than deriving a second copy: a second fence assigning `FULL_BASE` at column 0 would fail the eligibility-fence extractor that guards this file, which requires exactly one such fence in it, and a second, independently-typed derivation of the same fork point is itself the drift `check-audit-base-derivation.sh` exists to catch, whatever name it carries.
 
 For each finding this pipeline files or waives, resolve:
 
@@ -880,17 +836,17 @@ fi
 
 An unresolvable `FULL_BASE` yields `unknown` for every finding in this run, never `0`: `0` asserts the pull request did not touch the file, and an unresolvable base asserts nothing.
 
-1. **Identify changed files**: `changed`, from the review-scope block above.
-   - **Read the re-run ledger (LOCAL only) as the prior-round briefing.** From the shared `KEY_BASE` above, compute `AUDIT_KEY="$(gaia_audit_key "$KEY_BASE" "$AUDIT_ROOT")" || AUDIT_KEY=""` (`.gaia/scripts/audit-key-lib.sh`) and `LEDGER="$AUDIT_ROOT/.gaia/local/audit/${AUDIT_KEY}.rerun.json"` (full definition under "Re-run carry-forward ledger"). When NOT in CI (`GITHUB_ACTIONS`/`CI` unset) and `AUDIT_KEY` is non-empty, read the ledger if it is present, valid (`jq -e . "$LEDGER"`), and fresh (recorded `.branch` and `.base_sha` match the current branch and `KEY_BASE`): its `remaining[]` is the deterministic prior-round briefing of in-scope open findings and `fixed_last_round[]` is what the last round closed, replacing reliance on a main-thread-authored prompt summary. Fail open: an absent, corrupt, or stale ledger means no prior briefing, behave as today. Skip the ledger entirely in CI. `KEY_BASE`, `AUDIT_KEY`, and `LEDGER` travel forward to the marker-write step below, where the clean-pass cleanup and the non-clean write reuse them without recomputation (like `AUDIT_TREE_SHA`).
+1. **Identify changed files**: the `CHANGED=` lines, from the review-scope command above.
+   - **Read the re-run ledger (LOCAL only) as the prior-round briefing.** Its path is `<root>/.gaia/local/audit/<AUDIT_KEY>.rerun.json`, with `<AUDIT_KEY>` the value the scope resolver printed (full definition under "Re-run carry-forward ledger"). When NOT in CI (`GITHUB_ACTIONS`/`CI` unset) and `AUDIT_KEY` is non-empty, read the ledger if it is present, valid (`jq -e .` on that path), and fresh (recorded `.branch` and `.base_sha` match the current branch and `KEY_BASE`): its `remaining[]` is the deterministic prior-round briefing of in-scope open findings and `fixed_last_round[]` is what the last round closed, replacing reliance on a main-thread-authored prompt summary. Fail open: an absent, corrupt, or stale ledger means no prior briefing, behave as today. Skip the ledger entirely in CI. `KEY_BASE` and `AUDIT_KEY` travel forward as literals to the marker-write step below, where the clean-pass cleanup and the non-clean write reuse them without recomputation (like `AUDIT_TREE_SHA`).
    - When the base is an audited ancestor, everything before it was already cleared; only the delta needs review. **For any exported symbol whose signature or contract changed in the delta, grep its importers and check them even if unchanged**, a cleared caller can still break from a delta change.
    - Once the changed-file list is resolved and before dispatching subagents, emit the `scope resolved` breadcrumb (see Progress breadcrumbs).
 2. **Gate each dispatch** on scope, don't spawn work that has nothing to review:
    - No `.tsx` files changed → skip Subagent 1 (React Patterns & Accessibility)
    - No `.ts` or `.tsx` files changed → skip Subagent 2 (TypeScript & Architecture)
    - No files with `useTranslation` or `t(` references → skip Subagent 3 (Translation)
-   - The pull request changed nothing at all → skip all three deterministic oracles in step 3 (react-doctor, knip, `pnpm audit`). The condition is `[ -n "$FULL_BASE" ] && [ -z "$full_changed" ]`, on the eligibility block's own values above; re-run that block first, since shell state does not persist between calls.
+   - The pull request changed nothing at all → skip all three deterministic oracles in step 3 (react-doctor, knip, `pnpm audit`). The condition is `[ -n "$FULL_BASE" ] && [ -z "$full_changed" ]`, on the eligibility block's own values above; re-run that block first in the same call, with `AUDIT_ROOT=<root>` typed ahead of it, since shell state does not persist between calls.
 
-   The oracle gate is deliberately weaker than the three specialist gates above, and it reads a **different list**. The specialists gate on file extension against `changed`, which is the TS/TSX-filtered review scope. The oracles cannot: all three are whole-repo by design (knip's dead-code view and `pnpm audit`'s CVE view are both global), so a lockfile or config change carrying no `.ts` in the diff must still run them, and `changed` is empty for exactly that diff. They gate on `full_changed`, the unfiltered whole-PR set the eligibility block already derives, and only on its emptiness: a pull request that changed nothing is the one case where a whole-repo oracle provably has nothing new to report. Test `FULL_BASE` alongside it for the reason that block states, an unresolvable base and a resolved base with no differences both yield an empty diff and only one of them means nothing changed, so an unresolvable base runs the oracles. Reuse those two values rather than deriving a third base: a second fork-point fence fails the eligibility-fence extractor that guards this file.
+   The oracle gate is deliberately weaker than the three specialist gates above, and it reads a **different list**. The specialists gate on file extension against `CHANGED`, which is the TS/TSX-filtered review scope. The oracles cannot: all three are whole-repo by design (knip's dead-code view and `pnpm audit`'s CVE view are both global), so a lockfile or config change carrying no `.ts` in the diff must still run them, and `CHANGED` is empty for exactly that diff. They gate on `full_changed`, the unfiltered whole-PR set the eligibility block already derives, and only on its emptiness: a pull request that changed nothing is the one case where a whole-repo oracle provably has nothing new to report. Test `FULL_BASE` alongside it for the reason that block states, an unresolvable base and a resolved base with no differences both yield an empty diff and only one of them means nothing changed, so an unresolvable base runs the oracles. Reuse those two values rather than deriving a third base: a second fork-point fence fails the eligibility-fence extractor that guards this file.
 3. **Dispatch what step 2 left, in parallel, in one tool-call message**:
    - 1 × `Agent` (Task) call per surviving subagent (foreground, results merge on return). Dispatch each specialist via the **Agent (Task) tool** with an explicit `subagent_type` (a general reviewer), passing the rules and the changed-file list in the prompt per the "Subagent instructions template" below. Never route a specialist through the **Skill** tool, and never pass a `subagent:<name> files:<paths>` argument string: no such argument exists. The values `react-patterns`, `typescript`, and `translation` are rule-injection labels from the extension files' `subagents:` frontmatter (they select which specialist prompt receives which injected rules), NOT skill or command names. Treating one as a skill misroutes to a fuzzy-matched command (e.g. `/gaia-audit`), which rejects the args and aborts the audit before its marker is written.
    - 1 × `Bash` call for `npx -y react-doctor@latest . --verbose --diff` (also foreground, runs alongside)
@@ -1094,15 +1050,12 @@ If a candidate truly does not violate any listed rule, don't report it. If no vi
 At the very start of the review, before any rule-based subagents fire and before any self-heal edits, capture the tree the audit is about to review and initialize the self-heal flag. `AUDIT_TREE_SHA` is passed to the trailer-stamp helper at marker-write time and also keys the progress breadcrumb file (see Progress breadcrumbs), so it must be captured before the first breadcrumb write, not just before the marker.
 
 ```bash
-AUDIT_TREE_SHA="$(git -C "$AUDIT_ROOT" rev-parse HEAD^{tree})"
-AUDIT_SELF_HEALED="false"
+git -C <root> rev-parse 'HEAD^{tree}'
 ```
 
-If, during the review, you repair anything in the working tree (a self-heal pass), set:
+It prints the tree, `<AUDIT_TREE_SHA>` below. `<AUDIT_SELF_HEALED>` starts as `false`.
 
-```bash
-AUDIT_SELF_HEALED="true"
-```
+If, during the review, you repair anything in the working tree (a self-heal pass), `<AUDIT_SELF_HEALED>` as `true`.
 
 `AUDIT_SELF_HEALED` travels forward to the marker-write step below.
 
@@ -1133,155 +1086,101 @@ Decide the disposition entries (section F) at this marker-decision point regardl
 **Seed-forward.** A fresh incremental audit reviews only the delta since the resolved base and does not re-encounter a prior out-of-scope finding, so re-keying the sidecar to a new digest would otherwise silently drop a still-open receipt across the rotation. Before finishing the sidecar write, compute the PRIOR frontend digest at the incremental base (the same per-member `BASE_SHA` resolved for the review scope above, see "Resolve the review scope"):
 
 ```bash
-prev_frontend_digest="$("$AUDIT_ROOT/.gaia/scripts/audit-member-digest.sh" \
-  --root "$AUDIT_ROOT" \
-  --member code-audit-frontend \
-  --ref "$BASE_SHA" 2>/dev/null || true)"
+<root>/.gaia/scripts/audit-member-digest.sh --root <root> --member code-audit-frontend --ref '<BASE_SHA>'
 ```
+
+It prints the prior digest, `<prev_frontend_digest>` below, or nothing.
 
 then call the shared helper (`disposition_seed_forward`, sourced from `.claude/hooks/lib/audit-dispositions.sh`) to union every still-open entry (`filed`, or `pending` with `pending_reason` `"definitive"`) from the prior digest's sidecar into the new one, in place:
 
 ```bash
 disposition_seed_forward \
-  "$AUDIT_ROOT/.gaia/local/audit/${prev_frontend_digest}.dispositions.json" \
-  "$AUDIT_ROOT/.gaia/local/audit/${new_frontend_digest}.dispositions.json"
+  <root>/.gaia/local/audit/<prev_frontend_digest>.dispositions.json \
+  <root>/.gaia/local/audit/<new_frontend_digest>.dispositions.json
 ```
 
-A fresh entry already present in the new sidecar always wins a key collision; a seeded entry only ever adds keys. This is a single deterministic hop, not a search: each digest rotation seeds from its immediate predecessor, so a still-open receipt propagates across an arbitrary run of rotations that never re-encounter the finding, because every hop already carries forward what the hop before it carried. An empty `prev_frontend_digest` (no resolvable base, or the digest engine failed) or an absent prior sidecar is a safe no-op, per the helper's own fail-safe contract.
+A fresh entry already present in the new sidecar always wins a key collision; a seeded entry only ever adds keys. This is a single deterministic hop, not a search: each digest rotation seeds from its immediate predecessor, so a still-open receipt propagates across an arbitrary run of rotations that never re-encounter the finding, because every hop already carries forward what the hop before it carried. An empty `<prev_frontend_digest>` (no resolvable base, or the digest engine failed) or an absent prior sidecar is a safe no-op, per the helper's own fail-safe contract.
 
 Knip, react-doctor, and dependency-CVE (`pnpm audit`) advisories remain advisory and never block the marker.
 
 When the marker is warranted, the write is a mark → stamp → push → status sequence, run in that fixed order. The marker is written first, before the stamp, so it feeds the member-aware stamp gate immediately below and closes the crash window: a trailer is never believed while any dispatched member's own marker, this one included, is missing. The stamp runs next: the helper picks amend vs empty-commit per the placement rule and never pushes. Because the stamp is a content-preserving empty commit, it changes no blob sha, so it rotates no digest and the marker written in step 1 stays valid after it, there is no repair write. The trailer commit is pushed next, before the status call, only on the empty-commit path and only on an attached tracking branch, since that push is what makes the remote PR head the trailer commit and lets the status POST (which targets the remote head) land on the sha branch protection checks; on the amend path there is nothing new to push, and the status helper declines until the operator pushes, which is the correct fail-safe. Which reason it gives follows the tree: a tree-preserving amend, a plain re-stamp that leaves every blob byte-identical to the pushed head, declines `stamp not pushed`, because the tree guard is blind to a commit that moves only the sha; a tree-changing amend, the audit's own self-heal HEAD, declines `audited tree not on pushed head`, because the content really did change there and the tree guard fires first. Finally, the `GAIA-Audit` success commit status is posted, gated on the marker file already existing; it is best-effort, when `gh` is absent or unauthenticated the marker still clears the Claude merge path while the github.com button stays blocked until a success status lands (a fail-safe asymmetry that never inverts). The shared clearance writer (`.gaia/scripts/audit-write-clearance.sh`) writes the marker unconditionally: every write lands, overwriting whatever was already on disk for this digest; provenance is `earned` or `refused` only, there is no carried family to out-rank:
 
-```bash
-# 0. Write the findings sidecar FIRST, before any clearance artifact (see
-#    "Findings sidecar" below for the full field contract). It is your report
-#    of record, so it exists before the artifact that gates on it: a marker
-#    or refusal published ahead of its own report is exactly the state an
-#    orchestrator cannot act on. LOCAL only.
-printf '%s' '[ ...the findings array, one object per finding; [] when you found nothing... ]' \
-  | bash "$AUDIT_ROOT/.gaia/scripts/audit-write-findings.sh" \
-      --root "$AUDIT_ROOT" \
-      --member code-audit-frontend \
-      --base "$KEY_BASE" \
-      --review-base "$BASE_SHA" \
-      --base-reason "$BASE_REASON" \
-      --anchor-tree "$ANCHOR_TREE" \
-      --findings -
+Each numbered step below is its own Bash call, with `<root>` and every value an earlier command printed typed in as literals (see "Resolve the audited root first").
 
-# 1. Write the earned clearance BEFORE the stamp (mark-before-stamp): this
-#    feeds the member-aware stamp gate in step 2 and closes the crash window
-#    -- a trailer is never believed while any dispatched member's marker is
-#    missing. The writer derives your content digest from --root, keys the
-#    marker to the content the audit ENDS on (after self-heal, before the
-#    stamp), and prints the marker path. The write is unconditional: it
-#    replaces any marker already on disk for this digest.
-# Read the scope digest captured at scope resolution back rather than
-# re-deriving it here: a value derived in this call would be the writer's own
-# internal derive by construction, which makes the staleness comparison
-# vacuous. KEY_BASE is re-derived in this Bash call, and the scope-digest
-# read depends on it, since the scope file is keyed by it.
-D_SCOPE="$("$AUDIT_ROOT/.gaia/scripts/audit-scope-digest.sh" --read --root "$AUDIT_ROOT" --member code-audit-frontend --base "$KEY_BASE")"
-marker="$(bash "$AUDIT_ROOT/.gaia/scripts/audit-write-clearance.sh" \
-  --root "$AUDIT_ROOT" \
+**0. Sidecar.** Write the findings sidecar FIRST, before any clearance artifact (see "Findings sidecar" below for the full field contract). It is your report of record, so it exists before the artifact that gates on it: a marker or refusal published ahead of its own report is exactly the state an orchestrator cannot act on. LOCAL only. `<scratch>` is the directory `bash <root>/.gaia/scripts/audit-scratch-dir.sh code-audit-frontend <KEY_BASE>` prints. Stage the array, then hand the file to the writer:
+
+```bash
+printf '%s' '[ ...the findings array, one object per finding; [] when you found nothing... ]' > <scratch>/findings.json
+```
+
+```bash
+bash <root>/.gaia/scripts/audit-write-findings.sh \
+  --root <root> \
+  --member code-audit-frontend \
+  --base '<KEY_BASE>' \
+  --review-base '<BASE_SHA>' \
+  --base-reason '<BASE_REASON>' \
+  --anchor-tree '<ANCHOR_TREE>' \
+  --findings <scratch>/findings.json
+```
+
+**1. Mark.** Write the earned clearance BEFORE the stamp (mark-before-stamp): this feeds the member-aware stamp gate in step 2 and closes the crash window, since a trailer is never believed while any dispatched member's marker is missing. Read the scope digest captured at scope resolution back rather than re-deriving it here: a value derived at write time would be the writer's own internal derive by construction, which makes the staleness comparison vacuous. The read prints `<SCOPE_DIGEST>`, and its scope file is keyed by `<KEY_BASE>`:
+
+```bash
+<root>/.gaia/scripts/audit-scope-digest.sh --read --root <root> --member code-audit-frontend --base '<KEY_BASE>'
+```
+
+```bash
+bash <root>/.gaia/scripts/audit-write-clearance.sh \
+  --root <root> \
   --member code-audit-frontend \
   --provenance earned \
-  --base "$KEY_BASE" \
-  --scope-digest "$D_SCOPE")"
+  --base '<KEY_BASE>' \
+  --scope-digest '<SCOPE_DIGEST>'
+```
 
-# 2. Stamp HEAD with the GAIA-Audit trailer (amend or empty-commit per the
-#    placement rule). The empty commit changes no blob sha, so it rotates no
-#    digest and the step-1 marker stays valid. Member-aware: it declines
-#    `members pending <list>` when a co-dispatched member has not yet written
-#    its own marker for this content, expected on a multi-member diff and
-#    harmless, the last member to clear is the one whose call actually lands
-#    the trailer. The helper creates the commit locally only, push is deferred
-#    to step 3. HEAD_SHA is captured after the stamp: it travels into the
-#    sidecar's own "sha" JSON field below as plain data (never the sidecar's
-#    validity key, which is the digest).
-stamp_line=$(
-  cd "$AUDIT_ROOT" &&
-  AUDIT_TREE_SHA="$AUDIT_TREE_SHA" AUDIT_SELF_HEALED="$AUDIT_SELF_HEALED" \
-    .claude/hooks/audit-stamp-trailer.sh
-)
-HEAD_SHA="$(git -C "$AUDIT_ROOT" rev-parse HEAD)"
+The writer derives your content digest from `--root`, keys the marker to the content the audit ENDS on (after self-heal, before the stamp), and prints the marker path, `<marker>` below. The write is unconditional: it replaces any marker already on disk for this digest.
 
-# 3. Push the stamp commit, BEFORE the status call, only when the helper
-#    created an empty commit AND HEAD is on an attached tracking branch
-#    with an upstream. Amend paths add no new commit (the next operator
-#    push carries the trailer); detached HEAD has no upstream from the
-#    agent's vantage (CI's own commit-and-push step handles propagation).
-#    Pushing here, ahead of step 4, is what makes the remote PR head the
-#    trailer commit, so the status POST lands on the sha branch
-#    protection checks instead of a local-only one. Every git call in
-#    this step anchors to $AUDIT_ROOT, because step 2 creates the stamp
-#    commit there: both preconditions are properties of the audited
-#    tree, and an ambient push sends the session tree's own branch to
-#    its own upstream, which leaves the trailer unpushed while
-#    push_status still reads "pushed".
-push_status="not_attempted"
-if [ "$stamp_line" = "stamp: empty commit (created locally)" ]; then
-  head_branch=$(git -C "$AUDIT_ROOT" symbolic-ref --short -q HEAD 2>/dev/null || true)
-  upstream=""
-  if [ -n "$head_branch" ]; then
-    upstream=$(git -C "$AUDIT_ROOT" rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null || true)
-  fi
-  if [ -n "$head_branch" ] && [ -n "$upstream" ]; then
-    if git -C "$AUDIT_ROOT" push --quiet 2>/dev/null; then
-      push_status="pushed"
-    else
-      push_status="push_failed"
-    fi
-  else
-    push_status="detached"
-  fi
-fi
+**2. Stamp.** Stamp HEAD with the GAIA-Audit trailer (amend or empty-commit per the placement rule), passing the tree captured under "Audit-run env" and your self-heal flag. The empty commit changes no blob sha, so it rotates no digest and the step-1 marker stays valid. Member-aware: it declines `members pending <list>` when a co-dispatched member has not yet written its own marker for this content, expected on a multi-member diff and harmless, since the last member to clear is the one whose call actually lands the trailer. The helper creates the commit locally only; the push is step 3. The one line it prints is `stamp_line` below:
 
-# 4. Post the GAIA-Audit success status on the remote PR head, gated on
-#    the marker existing first (the helper re-checks `[ -f "$marker" ]`).
-#    Best-effort: gh absent / unauthenticated skips the POST and the
-#    marker still clears the Claude merge path, while the github.com
-#    button stays blocked until a success status lands. The status POST
-#    never runs ahead of the marker.
-audit_status_line=$(cd "$AUDIT_ROOT" && .claude/hooks/post-audit-status.sh "$marker")
+```bash
+cd <root> && AUDIT_TREE_SHA=<AUDIT_TREE_SHA> AUDIT_SELF_HEALED=<AUDIT_SELF_HEALED> .claude/hooks/audit-stamp-trailer.sh
+```
 
-# 5. Write the disposition-ledger sidecar (section F), keyed to YOUR OWN
-#    frontend digest -- the same digest the marker in step 1 is keyed to,
-#    read back from the marker filename the writer printed. Seed it
-#    forward from the immediately-prior frontend digest's sidecar (see
-#    "Seed-forward" above) so a still-open receipt survives the rotation
-#    even when this fresh incremental audit does not re-encounter the
-#    finding. A `filed` entry whose finding matched an already-open issue
-#    through the file-tech-debt dedup records THAT issue's existing key and
-#    issue_number (see section F "Key relationship"), never a freshly-
-#    derived key; a newly-filed issue records the freshly-built key it just
-#    wrote into the new issue's body.
-new_frontend_digest="$(basename "$marker" .ok)"
-sidecar="$AUDIT_ROOT/.gaia/local/audit/${new_frontend_digest}.dispositions.json"
-# Write the section-F dispositions JSON (decided at the marker-decision
-# point, with "sha":"$HEAD_SHA" as a plain data field) to "$sidecar".
-prev_frontend_digest="$("$AUDIT_ROOT/.gaia/scripts/audit-member-digest.sh" \
-  --root "$AUDIT_ROOT" \
-  --member code-audit-frontend \
-  --ref "$BASE_SHA" 2>/dev/null || true)"
-if [ -n "$prev_frontend_digest" ]; then
-  disposition_seed_forward \
-    "$AUDIT_ROOT/.gaia/local/audit/${prev_frontend_digest}.dispositions.json" \
-    "$sidecar"
-fi
+Then read HEAD after the stamp, `<HEAD_SHA>` below. It travels into the dispositions sidecar's own `"sha"` JSON field as plain data, never the sidecar's validity key, which is the digest:
 
-# 6. Clean-pass cleanup of the re-run ledger (LOCAL only): the marker is
-#    written, so the re-run loop ended clean for this base. Remove the
-#    base-keyed ledger best-effort. Skip in CI (the ledger is never written
-#    there). See "Re-run carry-forward ledger". This is an additional
-#    best-effort file op; it does not alter the marker / trailer / status /
-#    dispositions-sidecar writes. The guard names both values the removal
-#    depends on: $LEDGER is the path it removes, and $AUDIT_KEY is the
-#    fail-open arm, because an empty key still interpolates into a
-#    well-formed path that names no ledger.
-if [ -z "${GITHUB_ACTIONS:-}" ] && [ -z "${CI:-}" ] && [ -n "$AUDIT_KEY" ] && [ -n "$LEDGER" ]; then
-  rm -f "$LEDGER"
-fi
+```bash
+git -C <root> rev-parse HEAD
+```
+
+**3. Push.** Push the stamp commit, BEFORE the status call, only when the helper created an empty commit AND HEAD is on an attached tracking branch with an upstream. Amend paths add no new commit (the next operator push carries the trailer); a detached HEAD has no upstream from the agent's vantage (CI's own commit-and-push step handles propagation). Pushing here, ahead of step 4, is what makes the remote PR head the trailer commit, so the status POST lands on the sha branch protection checks instead of a local-only one. Every git call in this step anchors to `<root>`, because step 2 creates the stamp commit there: both preconditions are properties of the audited tree, and an ambient push sends the session tree's own branch to its own upstream, which leaves the trailer unpushed while `push_status` still reads `pushed`.
+
+```bash
+git -C <root> symbolic-ref --short -q HEAD
+```
+
+```bash
+git -C <root> rev-parse --abbrev-ref --symbolic-full-name '@{u}'
+```
+
+```bash
+git -C <root> push --quiet
+```
+
+Run the two lookups only when `stamp_line` is exactly `stamp: empty commit (created locally)`, and the push only when the first lookup printed a branch and the second printed an upstream. Then record `push_status` from what happened: `pushed` when the push exits 0, `push_failed` when it exits non-zero, `detached` when either lookup printed nothing, and `not_attempted` when `stamp_line` was anything else.
+
+**4. Status.** Post the GAIA-Audit success status on the remote PR head, gated on the marker existing first (the helper re-checks that the marker file exists). Best-effort: `gh` absent or unauthenticated skips the POST and the marker still clears the Claude merge path, while the github.com button stays blocked until a success status lands. The status POST never runs ahead of the marker. The one line it prints is `audit_status_line` below:
+
+```bash
+cd <root> && .claude/hooks/post-audit-status.sh <marker>
+```
+
+**5. Dispositions sidecar.** Write the disposition-ledger sidecar (section F), keyed to YOUR OWN frontend digest, the same digest the marker in step 1 is keyed to: `<new_frontend_digest>` is the file name of `<marker>` without its `.ok` suffix, and the sidecar is `<root>/.gaia/local/audit/<new_frontend_digest>.dispositions.json`. Write the section-F dispositions JSON there (decided at the marker-decision point, with `"sha":"<HEAD_SHA>"` as a plain data field), then seed it forward from the immediately-prior frontend digest's sidecar with the two "Seed-forward" commands above, skipping the seed when the prior digest printed nothing, so a still-open receipt survives the rotation even when this fresh incremental audit does not re-encounter the finding. A `filed` entry whose finding matched an already-open issue through the file-tech-debt dedup records THAT issue's existing key and issue_number (see section F "Key relationship"), never a freshly-derived key; a newly-filed issue records the freshly-built key it just wrote into the new issue's body.
+
+**6. Ledger cleanup.** Clean-pass cleanup of the re-run ledger (LOCAL only): the marker is written, so the re-run loop ended clean for this base. Remove the base-keyed ledger best-effort, and skip it in CI (the ledger is never written there). See "Re-run carry-forward ledger". This is an additional best-effort file op; it does not alter the marker / trailer / status / dispositions-sidecar writes. Skip it too when `AUDIT_KEY` is empty, because an empty key still interpolates into a well-formed path that names no ledger:
+
+```bash
+rm -f <root>/.gaia/local/audit/<AUDIT_KEY>.rerun.json
 ```
 
 After the marker decision is made (marker written or not, self-heal applied or not), emit the `report stamped` breadcrumb (see Progress breadcrumbs). Example counts: `marker written, self-heal none` or `marker not written, self-heal applied`.
@@ -1330,11 +1229,11 @@ A `review scope superseded` refusal from the clearance writer means your scope d
 When you withhold the marker after genuinely auditing this exact content (a real audit that refuses it), **record the refusal** with the same shared writer. A self-healed pass is not this case: it is not a refusal, it is a repair awaiting the orchestrator's commit, so it records no refusal. A refusal is a first-class, digest-keyed artifact: it is the only way this member says "I read this exact content and I refuse". The merge gate checks the refusal family before the earned family, so a live refusal for the current digest denies the merge regardless of any same-digest earned marker.
 
 ```bash
-bash "$AUDIT_ROOT/.gaia/scripts/audit-write-clearance.sh" \
-  --root "$AUDIT_ROOT" \
+bash <root>/.gaia/scripts/audit-write-clearance.sh \
+  --root <root> \
   --member code-audit-frontend \
   --provenance refused \
-  --base "$KEY_BASE"
+  --base '<KEY_BASE>'
 ```
 
 `--base` is what makes the refusal self-describing. A refusal blocks the merge and is retired only by its own author, so an operator who cannot learn what you refused on can neither repair it nor legitimately supersede it: superseding requires stating a reason they are not in a position to state. With `--base` the writer derives the re-run carry-forward ledger (`.gaia/local/audit/<audit-key>.rerun.json`) from the findings sidecar you wrote in step 0, so `remaining[]` names every open finding with its path, line, failure mode and recommended repair. Pass the same `KEY_BASE` you gave the sidecar writer. The ledger is non-gating and best-effort: it never blocks a merge, no hook reads it, and a failure there never fails your marker write. Your `remaining[]` entries are rebuilt from your sidecar on every round, so a finding it no longer names is closed; a co-dispatched member's entries are never touched.
@@ -1344,19 +1243,22 @@ Passing `--base` on the earned write too is what retires your ledger entries: th
 **Superseding your own prior refusal.** A plain earned write never clears a refusal you already wrote for the same digest: both markers sit on disk, the gate checks the refusal family first, and the merge stays blocked no matter how many times you are re-spawned. When you refused this exact digest on an earlier round and the blocking finding is now genuinely resolved, say so explicitly as you write the earned marker, adding `--supersede-refusal "<why it is now cleared>"` to the earned invocation in step 1 above:
 
 ```bash
-D_SCOPE="$("$AUDIT_ROOT/.gaia/scripts/audit-scope-digest.sh" --read --root "$AUDIT_ROOT" --member code-audit-frontend --base "$KEY_BASE")"
-marker="$(bash "$AUDIT_ROOT/.gaia/scripts/audit-write-clearance.sh" \
-  --root "$AUDIT_ROOT" \
+<root>/.gaia/scripts/audit-scope-digest.sh --read --root <root> --member code-audit-frontend --base '<KEY_BASE>'
+```
+
+```bash
+bash <root>/.gaia/scripts/audit-write-clearance.sh \
+  --root <root> \
   --member code-audit-frontend \
   --provenance earned \
-  --base "$KEY_BASE" \
-  --scope-digest "$D_SCOPE" \
-  --supersede-refusal "operator acknowledged the unaddressed Important with a stated reason")"
+  --base '<KEY_BASE>' \
+  --scope-digest '<SCOPE_DIGEST>' \
+  --supersede-refusal "operator acknowledged the unaddressed Important with a stated reason"
 ```
 
 The writer records the reversal in the marker body and removes your own refusal. Reach for it **only** after re-auditing this content and finding the blocker actually resolved or explicitly acknowledged by the operator, never to clear a refusal you still stand behind. It applies to unchanged content: repairing the finding edits a file you own, which rotates your digest and retires the refusal with it, so no supersede is needed there.
 
-Even when you do not write the marker, **still write the disposition-ledger sidecar** (the section-F entries you decided at the marker-decision point) keyed to your **current** frontend digest, which has not moved because the stamp sequence above did not run: `sidecar="$AUDIT_ROOT/.gaia/local/audit/$("$AUDIT_ROOT/.gaia/scripts/audit-member-digest.sh" --root "$AUDIT_ROOT" --member code-audit-frontend).dispositions.json"`. This preserves the "regardless of outcome" guarantee, so that a later hand-written marker for this same content remains backstop-checkable against a real sidecar.
+Even when you do not write the marker, **still write the disposition-ledger sidecar** (the section-F entries you decided at the marker-decision point) keyed to your **current** frontend digest, which has not moved because the stamp sequence above did not run: `<root>/.gaia/scripts/audit-member-digest.sh --root <root> --member code-audit-frontend` prints it, and the sidecar is `<root>/.gaia/local/audit/<that digest>.dispositions.json`. This preserves the "regardless of outcome" guarantee, so that a later hand-written marker for this same content remains backstop-checkable against a real sidecar.
 
 Also on a non-clean pass (marker NOT written), **write/update the re-run ledger** (LOCAL only, best-effort), the deterministic carry-forward briefing the next re-audit and the fixer read. Skip in CI (`GITHUB_ACTIONS`/`CI` set) and skip when `AUDIT_KEY` is empty. Set `round` to the prior valid same-branch same-base ledger's `round` + 1 (else 1), carrying `first_seen_round` for findings that persist across rounds; populate `remaining` (in-scope open findings: Critical + unaddressed Important + unresolved/escalated Suggestions), `fixed_last_round` (in-scope findings self-healed this round), `head_sha` = current HEAD, `branch`, `base_sha` = `KEY_BASE`, and `updated_at`. Write atomically (temp file + `mv`); a write failure never aborts the audit. This is an additional best-effort file write alongside the disposition sidecar above; it must NOT alter, replace, or reorder the marker / trailer / status / dispositions-sidecar writes. See "Re-run carry-forward ledger".
 
@@ -1366,23 +1268,26 @@ Never write a marker for content other than current `HEAD`. The shared writer de
 
 The finding-recurrence tally reads PR comments for a machine-readable findings block; CI's own workflow prompt already emits one (`code-review-audit.yml:359-372`), but a PR audited by the local producer left the tally with nothing. Close that gap yourself: on **every LOCAL pass**, clean or not, marker written or withheld, write a findings sidecar. **Skip this entirely in CI** (`GITHUB_ACTIONS`/`CI` set): CI's own prompt already covers it, unrelated to this file.
 
-**Write it with the shared writer, never by hand**, and write it **before** any clearance artifact (step 0 of the gate handshake above). The writer derives the path, validates every entry, and publishes atomically:
+**Write it with the shared writer, never by hand**, and write it **before** any clearance artifact (step 0 of the gate handshake above). The writer derives the path, validates every entry, and publishes atomically. `<scratch>` is the directory `bash <root>/.gaia/scripts/audit-scratch-dir.sh code-audit-frontend <KEY_BASE>` prints. Stage the array, then hand the file to the writer:
 
 ```bash
-printf '%s' '[ ...the findings array, one object per finding; [] when you found nothing... ]' \
-  | bash "$AUDIT_ROOT/.gaia/scripts/audit-write-findings.sh" \
-      --root "$AUDIT_ROOT" \
-      --member code-audit-frontend \
-      --base "$KEY_BASE" \
-      --review-base "$BASE_SHA" \
-      --base-reason "$BASE_REASON" \
-      --anchor-tree "$ANCHOR_TREE" \
-      --findings -
+printf '%s' '[ ...the findings array, one object per finding; [] when you found nothing... ]' > <scratch>/findings.json
+```
+
+```bash
+bash <root>/.gaia/scripts/audit-write-findings.sh \
+  --root <root> \
+  --member code-audit-frontend \
+  --base '<KEY_BASE>' \
+  --review-base '<BASE_SHA>' \
+  --base-reason '<BASE_REASON>' \
+  --anchor-tree '<ANCHOR_TREE>' \
+  --findings <scratch>/findings.json
 ```
 
 Pass the same `KEY_BASE` you already resolved for the re-run carry-forward ledger (see "Re-run carry-forward ledger" above), never a second derivation. The writer keys the file with `gaia_audit_key` internally, landing it at `.gaia/local/audit/${AUDIT_KEY}.code-audit-frontend.findings.json`, and declines `findings-sidecar: declined: audit key unresolved` when the base or the branch is undeterminable, the same fail-open rule the ledger itself follows. `--review-base`, `--base-reason`, and `--anchor-tree` carry the per-member decision record (the review base, the resolver's reason token, and the anchoring clearance's recorded tree) into the sidecar's `review_base` object; pass all three from the same single resolver invocation the scope-resolution block already made.
 
-**Stage nothing: the array goes in through the single-quoted `printf` payload above, never through a file.** Members dispatched in one parallel wave share a session scratchpad, so any fixed staging filename is a filename every member picks: one member's array reaches another member's published sidecar under that member's name, and a file left by an earlier round republishes as a fresh report. Neither is visible downstream, because the sidecar is your report of record and the no-op classifier reads it to tell a real pass from a lost one. The audit key rotates between rounds once a clean round's trailer advances the base it is built from, but every member in one wave computes that same base and branch and therefore that same key, and a round that ends without a marker advances nothing, so naming the staging file after the key closes neither case. Keep the payload in single quotes: that is what holds a `$` or a backtick inside your finding text literal, and it is why an apostrophe inside a finding is written `'\''`. Do not reach for a heredoc here: worktree isolation refuses that construct outright (`this command is too complex to verify that it stays inside the worktree`), so a heredoc form is unrunnable on any PR audited from a linked worktree and leaves each member to invent its own spelling. The writer prints the sidecar path on stdout and nothing downstream reads it, so this form captures nothing.
+**Stage the array in your own scratch directory, as a file written fresh with `printf` in the call immediately before the writer.** Members dispatched in one parallel wave share a session scratchpad, so a fixed staging filename there is one every member picks: one member's array reaches another member's published sidecar under that member's name. The directory `audit-scratch-dir.sh` mints is keyed to the audit key AND your member name, so no sibling can land on it. Write it fresh every time: the key advances only when a clean round stamps its trailer, so the same path survives a re-dispatch, and handing the writer a file an earlier call left republishes a stale report as a fresh one. Neither failure is visible downstream, because the sidecar is your report of record and the no-op classifier reads it to tell a real pass from a lost one. Keep the payload in single quotes: that is what holds a `$` or a backtick inside your finding text literal, and it is why an apostrophe inside a finding is written `'\''`. The stage is a Bash redirect for three reasons, each a construct worktree isolation refuses: a pipe into the writer is refused whenever the payload carries the token `git`, which any finding path under `.github/` does; `Write` into this directory is refused because it resolves into the main checkout through the `.gaia/local` symlink; and a heredoc is refused outright. The writer prints the sidecar path on stdout and nothing downstream reads it.
 
 Shape (one entry per finding; the writer rejects the write and names the offending index if any required field is missing):
 
