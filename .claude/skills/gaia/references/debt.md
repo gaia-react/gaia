@@ -424,8 +424,8 @@ Resolve the PR to completion through `wiki/concepts/PR Merge Workflow.md`, read 
 
   **Every other kind of drop is out of this check's scope, and reopening one would be wrong.** A member released by a pre-isolation screen, dropped at claim time to a peer session, or parked on a SPEC with either park label never reached this PR's body, because the body is written after isolation, so no trailer of this run's can close it and there is nothing here to catch. Meanwhile each of those members is legitimately closable by something else while this PR is still open: a released member is back in the backlog where a peer session may fix and merge it, and a spec-parked member closes exactly as intended when its SPEC's implementation PR merges carrying `Closes #N`. Reading `CLOSED` is the success case for those, so reopening on it would undo a real fix and, for a parked member, fight the count rule that already removed it from `openCount`. Scope the check to the post-commit drops and leave the rest alone.
 
-  On `MERGED`, run post-merge cleanup by isolation mode:
-  - **Feature-branch isolation:** unchanged. `git checkout main && git pull`, `git branch -D <branch>`, `git fetch --prune`. (Run ends here; see `## Cost record (run end)`.)
+  On `MERGED`, first capture the branch the fix was built on (`git branch --show-current`, as its own plain call), and keep the literal for the cost record's `--branch-name` (`## Cost record (run end)`): both arms below leave the session on `main`, so the tally that runs after them cannot recover it. Then run post-merge cleanup by isolation mode:
+  - **Feature-branch isolation:** `git checkout main && git pull`, `git branch -D <branch>`, `git fetch --prune`. (Run ends here; see `## Cost record (run end)`.)
   - **Worktree mode:** run Post-merge worktree cleanup below instead. Do not `git branch -D` a worktree-held branch.
 
   If it is still queued when the poll window closes, the run also ends there (the report above and the return without cleanup); see `## Cost record (run end)`.

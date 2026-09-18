@@ -77,8 +77,8 @@ JSON
   # shellcheck source=/dev/null
   . "$LIB"
 
-  # A real repo, because gaia_resolve_rate_overlay derives the overlay path from
-  # `git rev-parse --show-toplevel` exactly as gaia_resolve_rate_table does.
+  # A real repo, because gaia_resolve_rate_overlay resolves the overlay against
+  # the main checkout through gaia_resolve_main_root.
   git -C "$SANDBOX" init -q
   git -C "$SANDBOX" config user.email "gaia-test@example.com"
   git -C "$SANDBOX" config user.name "GAIA Test"
@@ -562,4 +562,42 @@ JSON
   # already names the model.
   [ "$(printf '%s\n' "$output" | awk 'END{print NR}')" = "1" ]
   grep -qF -- 'unpriced model(s) claude-sonnet-4-6' <<<"$output"
+}
+
+# ---------- 13. the overlay belongs to the main checkout, not the ambient one ----------
+# .gaia/local/ is gitignored, so the overlay file exists only in the main
+# checkout: a linked worktree's own root never holds one. Resolving the path from
+# the ambient toplevel therefore prices a worktree run off the shipped table
+# alone whenever the worktree lacks the provisioned .gaia/local symlink (a plain
+# `git worktree add`, or a failed link), with no unpriced marker, which is the same
+# confidently-wrong figure the overlay exists to repair. The two below pin the
+# resolver and the pricing behavior riding on it. gaia_resolve_main_root answers
+# for the tree owning git's common directory from anywhere, which is the property
+# that makes the answer independent of where the run happens to execute.
+@test "the overlay path resolves to the main checkout when cwd is a linked worktree" {
+  git -C "$SANDBOX" commit -q --allow-empty -m init
+  wt="$BATS_TEST_TMPDIR/overlay-wt"
+  git -C "$SANDBOX" worktree add -q -b overlay-wt "$wt"
+
+  run bash -c 'cd "$2" || exit 1; . "$1"; gaia_resolve_rate_overlay' _ "$LIB" "$wt"
+  [ "$status" -eq 0 ]
+  [ "$output" = "$SANDBOX/.gaia/local/token-rates.local.json" ]
+}
+
+@test "an overlay only the main checkout holds still prices a run whose cwd is a linked worktree" {
+  cat > "$OVERLAY" <<'JSON'
+{ "models": { "claude-brand-new-1": [ { "input": 10, "output": 50 } ] } }
+JSON
+  git -C "$SANDBOX" commit -q --allow-empty -m init
+  wt="$BATS_TEST_TMPDIR/priced-wt"
+  git -C "$SANDBOX" worktree add -q -b priced-wt "$wt"
+
+  # A plain call, never $( ): gaia_apply_rate_overlay assigns to globals and a
+  # subshell would drop them, the same reason every other call here is bare.
+  run bash -c 'cd "$3" || exit 1; . "$1"
+    shipped="$(gaia_load_rate_table "$2")"
+    gaia_apply_rate_overlay "$shipped"
+    printf "%s" "$GAIA_RATE_OVERLAY_MODELS"' _ "$LIB" "$SHIPPED" "$wt"
+  [ "$status" -eq 0 ]
+  [ "$output" = "claude-brand-new-1" ]
 }

@@ -656,3 +656,54 @@ assert_github_absent_and_not_partial() {
 
   diff <(printf '%s\n' "$out_without") <(printf '%s\n' "$out_with")
 }
+
+# ---------- 32-34: --branch-name, the branch captured before cleanup ----------
+# Every prescribed merge path cleans up before the tally runs, and both cleanups
+# leave the session on main: feature-branch isolation checks main out, worktree
+# isolation leaves the worktree for the main checkout. So each case below runs
+# the tally from a checkout sitting on main, which is what the ambient lookup
+# answers, and asserts the row names the branch the caller captured instead.
+
+# run_command_in <dir> [extra-args...]: drives --action command --command
+# gaia-debt from inside <dir>, so the ambient lookup answers for <dir>.
+run_command_in() {
+  local dir="$1"
+  shift
+  run bash -c 'd="$1"; shift; cd "$d" && bash "$@"' _ "$dir" "$SCRIPT" \
+    --action command --command gaia-debt "$@" \
+    --session-id "$ANCHOR_SESSION" --projects-root "$ANCHOR" --ledger "$LEDGER"
+}
+
+@test "32: feature-branch cleanup -- --branch-name attributes the row to the work branch, not the main the checkout returned to" {
+  repo="$BATS_TEST_TMPDIR/fb32"
+  mk_exec_repo "$repo" "debt/42-some-fix"
+  git -C "$repo" checkout -q -b main
+  [ "$(git -C "$repo" branch --show-current)" = "main" ]
+
+  run_command_in "$repo" --branch-name "debt/42-some-fix"
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '.git_branch' <<<"$(last_row)")" = "debt/42-some-fix" ]
+}
+
+@test "33: worktree cleanup -- --branch-name attributes the row to the removed worktree's branch, not main" {
+  repo="$BATS_TEST_TMPDIR/wt33"
+  wt="$BATS_TEST_TMPDIR/wt33-tree"
+  mk_exec_repo "$repo" "main"
+  git -C "$repo" worktree add -q "$wt" -b "worktree-debt+42-some-fix"
+  git -C "$repo" worktree remove --force "$wt"
+  [ ! -d "$wt" ]
+  [ "$(git -C "$repo" branch --show-current)" = "main" ]
+
+  run_command_in "$repo" --branch-name "worktree-debt+42-some-fix"
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '.git_branch' <<<"$(last_row)")" = "worktree-debt+42-some-fix" ]
+}
+
+@test "34: without --branch-name the row keeps the ambient branch" {
+  repo="$BATS_TEST_TMPDIR/amb34"
+  mk_exec_repo "$repo" "feature/ambient"
+
+  run_command_in "$repo"
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '.git_branch' <<<"$(last_row)")" = "feature/ambient" ]
+}
