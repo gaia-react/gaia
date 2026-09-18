@@ -7,7 +7,7 @@ import {
 import * as runProcess from '../util/run-process.js';
 import type {ProcessResult} from '../util/run-process.js';
 
-type Row = {mergedAt: string; number: number};
+type Row = {createdAt: string; mergedAt: string; number: number};
 
 const ok = (rows: unknown): ProcessResult => ({
   exitCode: 0,
@@ -18,14 +18,19 @@ const ok = (rows: unknown): ProcessResult => ({
 const searchOf = (args: readonly string[]): string =>
   args[args.indexOf('--search') + 1] ?? '';
 
-// `count` rows, newest first, numbered down from `topNumber` and merged one
-// minute apart ending at `oldestMinute` minutes past the day's start.
+const at = (minute: number): string =>
+  new Date(Date.UTC(2026, 8, 1, 0, minute)).toISOString();
+
+// `count` rows in gh's own order, newest-created first, numbered down from
+// `topNumber` and created one minute apart ending at `oldestMinute`. Each
+// merges a minute after it was created.
 const page = (count: number, topNumber: number, oldestMinute: number): Row[] =>
   Array.from({length: count}, (_, index) => {
     const minute = oldestMinute + (count - 1 - index);
 
     return {
-      mergedAt: new Date(Date.UTC(2026, 8, 1, 0, minute)).toISOString(),
+      createdAt: at(minute),
+      mergedAt: at(minute + 1),
       number: topNumber - index,
     };
   });
@@ -55,17 +60,25 @@ describe('readMergedPrWindow', () => {
     const fields = (args[args.indexOf('--json') + 1] ?? '').split(',');
     expect(fields).toHaveLength(3);
     expect(fields).toEqual(
-      expect.arrayContaining(['comments', 'mergedAt', 'number'])
+      expect.arrayContaining(['comments', 'createdAt', 'number'])
     );
-    expect(searchOf(args)).toBe('merged:>=2026-06-20');
+    expect(searchOf(args)).toBe('merged:>=2026-06-20 sort:created-desc');
   });
 
-  test('walks past a full page with a narrower upper bound and dedupes the overlap', () => {
+  test('walks past a full page on the created-at sort key, keeping a PR open across the boundary', () => {
     const first = page(MERGED_PR_PAGE_CEILING, 5000, 100);
-    const oldest = first.at(-1);
+    const boundary = first.at(-1);
+    // Created before the first page's oldest creation, merged after its
+    // newest merge: a cursor on mergedAt would bound it out of both pages.
+    const longLived: Row = {
+      createdAt: at(50),
+      mergedAt: at(5000),
+      number: 3500,
+    };
     const second = [
-      ...(oldest === undefined ? [] : [oldest]),
-      ...page(5, 3999, 0),
+      ...(boundary === undefined ? [] : [boundary]),
+      longLived,
+      ...page(3, 3499, 0),
     ];
     const gh = vi
       .spyOn(runProcess, 'runGh')
@@ -79,12 +92,15 @@ describe('readMergedPrWindow', () => {
     });
 
     expect(gh).toHaveBeenCalledTimes(2);
+    expect(searchOf(gh.mock.calls[0]?.[0] ?? [])).toBe(
+      'merged:>=2026-06-20 sort:created-desc'
+    );
     expect(searchOf(gh.mock.calls[1]?.[0] ?? [])).toBe(
-      `merged:>=2026-06-20 merged:<=${oldest?.mergedAt}`
+      `merged:>=2026-06-20 sort:created-desc created:<=${boundary?.createdAt}`
     );
     expect(result).toEqual({
       ok: true,
-      prs: [...first, ...page(5, 3999, 0)],
+      prs: [...first, longLived, ...page(3, 3499, 0)],
       truncated: false,
     });
   });
@@ -104,12 +120,12 @@ describe('readMergedPrWindow', () => {
     expect(result).toMatchObject({ok: true, truncated: true});
   });
 
-  test('omits --search entirely when there is no lower bound and no page has filled', () => {
+  test('pins the created-at order even with no lower bound', () => {
     const gh = vi.spyOn(runProcess, 'runGh').mockReturnValue(ok([]));
 
     readMergedPrWindow<Row>({cwd: '/repo', fields: [], sinceIso: null});
 
-    expect(gh.mock.calls[0]?.[0]).not.toContain('--search');
+    expect(searchOf(gh.mock.calls[0]?.[0] ?? [])).toBe('sort:created-desc');
   });
 
   test.each([

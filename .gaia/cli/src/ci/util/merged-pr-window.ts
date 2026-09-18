@@ -5,8 +5,14 @@
  * 1000 results and still exits 0, so `--limit` above that is ignored and one
  * query cannot tell a 1000-PR window from a larger one it cut short. `gh` has
  * no cursor or page flag, so a full page is never treated as complete: the
- * walk re-queries with an upper bound at that page's oldest `mergedAt` until
+ * walk re-queries with an upper bound at that page's oldest `createdAt` until
  * a page comes back short.
+ *
+ * The cursor has to be the sort key. Pages come back newest-created first, so
+ * a bound on `mergedAt` would skip a PR created before a page's cutoff but
+ * merged after that page's oldest merge, a PR left open across the boundary,
+ * which lands in neither page. `sort:created-desc` pins that order rather
+ * than relying on the search default.
  */
 import {runGh} from './run-process.js';
 
@@ -19,13 +25,13 @@ export type MergedPrWindow<T> =
 
 type ReadOptions = {
   cwd: string;
-  /** `--json` fields beyond the `number` and `mergedAt` the walk needs. */
+  /** `--json` fields beyond the `number` and `createdAt` the walk needs. */
   fields: readonly string[];
   /** The `merged:>=` lower bound, or null for every merged PR. */
   sinceIso: null | string;
 };
 
-type WindowRecord = {mergedAt: string; number: number};
+type WindowRecord = {createdAt: string; number: number};
 
 const readPage = <T>(
   cwd: string,
@@ -41,11 +47,9 @@ const readPage = <T>(
     json,
     '--limit',
     String(MERGED_PR_PAGE_CEILING),
+    '--search',
+    searchClauses.join(' '),
   ];
-
-  if (searchClauses.length > 0) {
-    args.push('--search', searchClauses.join(' '));
-  }
 
   const result = runGh(args, {cwd});
 
@@ -62,13 +66,13 @@ const readPage = <T>(
   return Array.isArray(parsed) ? (parsed as T[]) : null;
 };
 
-// Deliberately an if-statement, not a `a < b ? a : b` reduce: `mergedAt` is
+// Deliberately an if-statement, not a `a < b ? a : b` reduce: `createdAt` is
 // an ISO date string, and `Math.min` would coerce it to NaN.
-const oldestMergedAt = (page: readonly WindowRecord[]): string => {
-  let oldest = page[0]?.mergedAt ?? '';
+const oldestCreatedAt = (page: readonly WindowRecord[]): string => {
+  let oldest = page[0]?.createdAt ?? '';
 
   for (const pr of page) {
-    if (pr.mergedAt < oldest) oldest = pr.mergedAt;
+    if (pr.createdAt < oldest) oldest = pr.createdAt;
   }
 
   return oldest;
@@ -76,23 +80,24 @@ const oldestMergedAt = (page: readonly WindowRecord[]): string => {
 
 /**
  * `truncated` is true when every page in the budget came back full, so the
- * window holds PRs older than any read.
+ * window holds PRs created earlier than any read.
  */
 export const readMergedPrWindow = <T extends WindowRecord>({
   cwd,
   fields,
   sinceIso,
 }: ReadOptions): MergedPrWindow<T> => {
-  const json = [...new Set(['mergedAt', 'number', ...fields])].join(',');
-  const lowerBound = sinceIso === null ? [] : [`merged:>=${sinceIso}`];
+  const json = [...new Set(['createdAt', 'number', ...fields])].join(',');
+  const ordered = [
+    ...(sinceIso === null ? [] : [`merged:>=${sinceIso}`]),
+    'sort:created-desc',
+  ];
   const byNumber = new Map<number, T>();
   let upperBoundClause: null | string = null;
 
   for (let pages = 0; pages < MERGED_PR_WINDOW_MAX_PAGES; pages += 1) {
     const clauses: readonly string[] =
-      upperBoundClause === null ? lowerBound : (
-        [...lowerBound, upperBoundClause]
-      );
+      upperBoundClause === null ? ordered : [...ordered, upperBoundClause];
     const page: null | T[] = readPage<T>(cwd, json, clauses);
 
     if (page === null) return {ok: false};
@@ -103,7 +108,7 @@ export const readMergedPrWindow = <T extends WindowRecord>({
       return {ok: true, prs: [...byNumber.values()], truncated: false};
     }
 
-    upperBoundClause = `merged:<=${oldestMergedAt(page)}`;
+    upperBoundClause = `created:<=${oldestCreatedAt(page)}`;
   }
 
   return {ok: true, prs: [...byNumber.values()], truncated: true};

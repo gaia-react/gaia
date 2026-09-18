@@ -116,12 +116,12 @@ const stubClasslessWindow = (prNumbers: readonly number[]): void => {
   );
 };
 
-// One full search page of finding-less PRs, merged a minute apart, so the
-// window walk has an oldest `mergedAt` to narrow its next query on.
+// One full search page of finding-less PRs, created a minute apart, so the
+// window walk has an oldest `createdAt` to narrow its next query on.
 const fullSearchPage = (topNumber: number) =>
   Array.from({length: MERGED_PR_PAGE_CEILING}, (_, index) => ({
     comments: [] as {body: string}[],
-    mergedAt: new Date(Date.UTC(2026, 8, 2) - index * 60_000).toISOString(),
+    createdAt: new Date(Date.UTC(2026, 8, 2) - index * 60_000).toISOString(),
     number: topNumber - index,
   }));
 
@@ -899,11 +899,11 @@ describe('harden-tally run', () => {
         stubGh([
           {
             ...ghPr(3001, [recurringFinding(3001)]),
-            mergedAt: '2026-08-01T00:00:00Z',
+            createdAt: '2026-08-01T00:00:00Z',
           },
           {
             ...ghPr(3000, [recurringFinding(3000)]),
-            mergedAt: '2026-07-31T00:00:00Z',
+            createdAt: '2026-07-31T00:00:00Z',
           },
         ])
       );
@@ -966,6 +966,8 @@ describe('harden-tally run', () => {
     expect(args).toContain('list');
     expect(args).toContain('merged');
     const searchIndex = args.indexOf('--search');
-    expect(args[searchIndex + 1]).toMatch(/^merged:>=\d{4}-\d{2}-\d{2}$/);
+    expect(args[searchIndex + 1]).toMatch(
+      /^merged:>=\d{4}-\d{2}-\d{2} sort:created-desc$/
+    );
   });
 });

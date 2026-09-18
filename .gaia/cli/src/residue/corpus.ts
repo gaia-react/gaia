@@ -96,9 +96,9 @@ const ISSUE_LIST_LIMIT = 1000;
 const ISSUE_JSON_FIELDS = 'number,body,labels,state,stateReason';
 
 const mergedPrsLive = (cwd: string, sinceIso: null | string): MergedPrsResult =>
-  readMergedPrWindow<PrRecord>({
+  readMergedPrWindow<PrRecord & {createdAt: string}>({
     cwd,
-    fields: ['body', 'headRefOid'],
+    fields: ['body', 'headRefOid', 'mergedAt'],
     sinceIso,
   });
 

@@ -16979,11 +16979,10 @@ var readPage = (cwd, json3, searchClauses) => {
     "--json",
     json3,
     "--limit",
-    String(MERGED_PR_PAGE_CEILING)
+    String(MERGED_PR_PAGE_CEILING),
+    "--search",
+    searchClauses.join(" ")
   ];
-  if (searchClauses.length > 0) {
-    args.push("--search", searchClauses.join(" "));
-  }
   const result = runGh(args, { cwd });
   if (result.exitCode !== 0) return null;
   let parsed;
@@ -16994,10 +16993,10 @@ var readPage = (cwd, json3, searchClauses) => {
   }
   return Array.isArray(parsed) ? parsed : null;
 };
-var oldestMergedAt = (page) => {
-  let oldest = page[0]?.mergedAt ?? "";
+var oldestCreatedAt = (page) => {
+  let oldest = page[0]?.createdAt ?? "";
   for (const pr of page) {
-    if (pr.mergedAt < oldest) oldest = pr.mergedAt;
+    if (pr.createdAt < oldest) oldest = pr.createdAt;
   }
   return oldest;
 };
@@ -17006,19 +17005,22 @@ var readMergedPrWindow = ({
   fields,
   sinceIso
 }) => {
-  const json3 = [.../* @__PURE__ */ new Set(["mergedAt", "number", ...fields])].join(",");
-  const lowerBound = sinceIso === null ? [] : [`merged:>=${sinceIso}`];
+  const json3 = [.../* @__PURE__ */ new Set(["createdAt", "number", ...fields])].join(",");
+  const ordered = [
+    ...sinceIso === null ? [] : [`merged:>=${sinceIso}`],
+    "sort:created-desc"
+  ];
   const byNumber = /* @__PURE__ */ new Map();
   let upperBoundClause = null;
   for (let pages = 0; pages < MERGED_PR_WINDOW_MAX_PAGES; pages += 1) {
-    const clauses = upperBoundClause === null ? lowerBound : [...lowerBound, upperBoundClause];
+    const clauses = upperBoundClause === null ? ordered : [...ordered, upperBoundClause];
     const page = readPage(cwd, json3, clauses);
     if (page === null) return { ok: false };
     for (const pr of page) byNumber.set(pr.number, pr);
     if (page.length < MERGED_PR_PAGE_CEILING) {
       return { ok: true, prs: [...byNumber.values()], truncated: false };
     }
-    upperBoundClause = `merged:<=${oldestMergedAt(page)}`;
+    upperBoundClause = `created:<=${oldestCreatedAt(page)}`;
   }
   return { ok: true, prs: [...byNumber.values()], truncated: true };
 };
@@ -21129,7 +21131,7 @@ var ISSUE_LIST_LIMIT = 1e3;
 var ISSUE_JSON_FIELDS = "number,body,labels,state,stateReason";
 var mergedPrsLive = (cwd, sinceIso) => readMergedPrWindow({
   cwd,
-  fields: ["body", "headRefOid"],
+  fields: ["body", "headRefOid", "mergedAt"],
   sinceIso
 });
 var techDebtIssuesLive = (cwd) => {

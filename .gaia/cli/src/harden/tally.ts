@@ -139,7 +139,7 @@ const recordFromGhPr = (pr: GhPr): null | TallyPrRecord => {
  * case.
  */
 const fetchWindowPrs = (cwd: string, now: Date): WindowPrs => {
-  const window = readMergedPrWindow<{mergedAt: string; number: number}>({
+  const window = readMergedPrWindow<{createdAt: string; number: number}>({
     cwd,
     fields: ['comments'],
     sinceIso: windowStartDate(now),
