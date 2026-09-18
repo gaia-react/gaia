@@ -11,13 +11,18 @@
  * into the cache; `/gaia-harden review` re-runs this to get the live list.
  *
  * No LLM, no drafting, no writes other than (indirectly) the ledger prune. The
- * window read is the only network access and it is non-fatal: a gh failure
- * yields an empty candidate list rather than aborting the refresher.
+ * window read is the only network access and it is non-fatal: a gh failure or
+ * a window the paged read cannot finish yields an empty candidate list and
+ * `gh_ok: false` rather than aborting the refresher.
  */
 import path from 'node:path';
-import {runGh} from '../ci/util/run-process.js';
-import type {ProcessResult} from '../ci/util/run-process.js';
+import {
+  MERGED_PR_PAGE_CEILING,
+  MERGED_PR_WINDOW_MAX_PAGES,
+  readMergedPrWindow,
+} from '../ci/util/merged-pr-window.js';
 import {EXIT_CODES} from '../exit.js';
+import {structuredError} from '../stderr.js';
 import {computeTally, windowClasses} from './compute-tally.js';
 import type {TallyPrRecord, TallyResult} from './compute-tally.js';
 import {coveredClassesFromRules} from './covered-classes.js';
@@ -38,7 +43,10 @@ const HELP_TEXT = `Usage: gaia harden-tally
   classless (unclassified) finding recurring the same way surfaces separately
   as the \`unclassified\` field instead of a candidate.
 
-  Network failures are non-fatal: gh errors yield an empty candidate list.
+  Network failures are non-fatal: gh errors yield an empty candidate list
+  and gh_ok: false. A window the paged read cannot finish does the same,
+  with a window_truncated error on stderr, since reading part of it as the
+  whole would undercount every class.
 `;
 
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
@@ -124,45 +132,38 @@ const recordFromGhPr = (pr: GhPr): null | TallyPrRecord => {
  * Reads the merged-PR window via gh. Returns one record per PR that carries a
  * parseable findings block, merging every auditor's findings on that PR
  * (latest block wins per auditor; see `recordFromGhPr`), alongside `ghOk`.
- * `ghOk` is `false` on any gh failure (non-zero exit, unparseable JSON, or a
- * well-formed-but-non-array response, all read failures rather than empty
- * windows) and `true` otherwise, including a genuinely empty window. The
+ * `ghOk` is `false` on any read failure (non-zero exit, unparseable JSON, a
+ * well-formed-but-non-array response) and on a window the paged read could not
+ * finish, and `true` otherwise, including a genuinely empty window. The
  * refresher never blocks: an empty `prs` list is returned in every failure
  * case.
  */
 const fetchWindowPrs = (cwd: string, now: Date): WindowPrs => {
-  const search = `merged:>=${windowStartDate(now)}`;
-  const ghResult: ProcessResult = runGh(
-    [
-      'pr',
-      'list',
-      '--state',
-      'merged',
-      '--search',
-      search,
-      '--limit',
-      '200',
-      '--json',
-      'number,comments',
-    ],
-    {cwd}
-  );
+  const window = readMergedPrWindow<{createdAt: string; number: number}>({
+    cwd,
+    fields: ['comments'],
+    sinceIso: windowStartDate(now),
+  });
 
-  if (ghResult.exitCode !== 0) return {ghOk: false, prs: []};
+  if (!window.ok) return {ghOk: false, prs: []};
 
-  let parsed: unknown;
+  // An unfinished window is not a complete one: reading it as whole would
+  // undercount every class and let the ledger prune declines the unread PRs
+  // still carry. The stderr line is what separates this from an outage, whose
+  // remedy (wait for gh) does not fix it.
+  if (window.truncated) {
+    structuredError({
+      code: 'window_truncated',
+      message: `the merged-PR window holds more than ${MERGED_PR_WINDOW_MAX_PAGES * MERGED_PR_PAGE_CEILING} PRs, more than the paged read covers; report this as a GAIA bug`,
+      subcommand: 'harden-tally',
+    });
 
-  try {
-    parsed = JSON.parse(ghResult.stdout);
-  } catch {
     return {ghOk: false, prs: []};
   }
 
-  if (!Array.isArray(parsed)) return {ghOk: false, prs: []};
-
   const records: TallyPrRecord[] = [];
 
-  for (const value of parsed) {
+  for (const value of window.prs) {
     const pr = parseGhPr(value);
     const record = pr === null ? null : recordFromGhPr(pr);
 

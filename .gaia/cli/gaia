@@ -15645,6 +15645,10 @@ var run7 = (command, args, options = {}) => {
     cwd: options.cwd ?? process.cwd(),
     encoding: "utf8",
     env: options.env ?? process.env,
+    // Node's 1 MiB default kills the child on overflow, which reads here as a
+    // plain exit 1. `harden-tally`'s 90-day `gh pr list --json comments`
+    // window runs past 1 MiB, so the default reads it as a gh failure.
+    maxBuffer: MAX_GIT_BUFFER_BYTES,
     stdio: ["ignore", "pipe", "pipe"]
   });
   const exitCode = result.status ?? 1;
@@ -16963,6 +16967,64 @@ var run12 = (argv, options = {}) => {
 // src/harden/tally.ts
 import path9 from "node:path";
 
+// src/ci/util/merged-pr-window.ts
+var MERGED_PR_PAGE_CEILING = 1e3;
+var MERGED_PR_WINDOW_MAX_PAGES = 20;
+var readPage = (cwd, json3, searchClauses) => {
+  const args = [
+    "pr",
+    "list",
+    "--state",
+    "merged",
+    "--json",
+    json3,
+    "--limit",
+    String(MERGED_PR_PAGE_CEILING),
+    "--search",
+    searchClauses.join(" ")
+  ];
+  const result = runGh(args, { cwd });
+  if (result.exitCode !== 0) return null;
+  let parsed;
+  try {
+    parsed = JSON.parse(result.stdout);
+  } catch {
+    return null;
+  }
+  return Array.isArray(parsed) ? parsed : null;
+};
+var oldestCreatedAt = (page) => {
+  let oldest = page[0]?.createdAt ?? "";
+  for (const pr of page) {
+    if (pr.createdAt < oldest) oldest = pr.createdAt;
+  }
+  return oldest;
+};
+var readMergedPrWindow = ({
+  cwd,
+  fields,
+  sinceIso
+}) => {
+  const json3 = [.../* @__PURE__ */ new Set(["createdAt", "number", ...fields])].join(",");
+  const ordered = [
+    ...sinceIso === null ? [] : [`merged:>=${sinceIso}`],
+    "sort:created-desc"
+  ];
+  const byNumber = /* @__PURE__ */ new Map();
+  let upperBoundClause = null;
+  for (let pages = 0; pages < MERGED_PR_WINDOW_MAX_PAGES; pages += 1) {
+    const clauses = upperBoundClause === null ? ordered : [...ordered, upperBoundClause];
+    const page = readPage(cwd, json3, clauses);
+    if (page === null) return { ok: false };
+    for (const pr of page) byNumber.set(pr.number, pr);
+    if (page.length < MERGED_PR_PAGE_CEILING) {
+      return { ok: true, prs: [...byNumber.values()], truncated: false };
+    }
+    upperBoundClause = `created:<=${oldestCreatedAt(page)}`;
+  }
+  return { ok: true, prs: [...byNumber.values()], truncated: true };
+};
+
 // src/schemas/finding-class.ts
 var ORACLE_PREFIXES = [
   "react-doctor",
@@ -17338,7 +17400,10 @@ var HELP_TEXT12 = `Usage: gaia harden-tally
   classless (unclassified) finding recurring the same way surfaces separately
   as the \`unclassified\` field instead of a candidate.
 
-  Network failures are non-fatal: gh errors yield an empty candidate list.
+  Network failures are non-fatal: gh errors yield an empty candidate list
+  and gh_ok: false. A window the paged read cannot finish does the same,
+  with a window_truncated error on stderr, since reading part of it as the
+  whole would undercount every class.
 `;
 var HELP_TOKENS12 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var WINDOW_DAYS = 90;
@@ -17371,32 +17436,22 @@ var recordFromGhPr = (pr) => {
   return { findings: [...byAuditor.values()].flat(), pr_number: pr.number };
 };
 var fetchWindowPrs = (cwd, now) => {
-  const search = `merged:>=${windowStartDate(now)}`;
-  const ghResult = runGh(
-    [
-      "pr",
-      "list",
-      "--state",
-      "merged",
-      "--search",
-      search,
-      "--limit",
-      "200",
-      "--json",
-      "number,comments"
-    ],
-    { cwd }
-  );
-  if (ghResult.exitCode !== 0) return { ghOk: false, prs: [] };
-  let parsed;
-  try {
-    parsed = JSON.parse(ghResult.stdout);
-  } catch {
+  const window = readMergedPrWindow({
+    cwd,
+    fields: ["comments"],
+    sinceIso: windowStartDate(now)
+  });
+  if (!window.ok) return { ghOk: false, prs: [] };
+  if (window.truncated) {
+    structuredError({
+      code: "window_truncated",
+      message: `the merged-PR window holds more than ${MERGED_PR_WINDOW_MAX_PAGES * MERGED_PR_PAGE_CEILING} PRs, more than the paged read covers; report this as a GAIA bug`,
+      subcommand: "harden-tally"
+    });
     return { ghOk: false, prs: [] };
   }
-  if (!Array.isArray(parsed)) return { ghOk: false, prs: [] };
   const records = [];
-  for (const value of parsed) {
+  for (const value of window.prs) {
     const pr = parseGhPr(value);
     const record2 = pr === null ? null : recordFromGhPr(pr);
     if (record2 !== null) records.push(record2);
@@ -21072,57 +21127,13 @@ var fixtureProvider = (dir) => {
     }
   };
 };
-var PR_LIST_CEILING = 1e3;
-var MAX_WINDOW_ITERATIONS = 20;
 var ISSUE_LIST_LIMIT = 1e3;
 var ISSUE_JSON_FIELDS = "number,body,labels,state,stateReason";
-var runPrListPage = (cwd, searchClauses) => {
-  const args = [
-    "pr",
-    "list",
-    "--state",
-    "merged",
-    "--json",
-    "number,body,headRefOid,mergedAt",
-    "--limit",
-    String(PR_LIST_CEILING)
-  ];
-  if (searchClauses.length > 0) {
-    args.push("--search", searchClauses.join(" "));
-  }
-  const result = runGh(args, { cwd });
-  if (result.exitCode !== 0) return null;
-  let parsed;
-  try {
-    parsed = JSON.parse(result.stdout);
-  } catch {
-    return null;
-  }
-  return Array.isArray(parsed) ? parsed : null;
-};
-var oldestMergedAt = (page) => {
-  let oldest = page[0]?.mergedAt ?? "";
-  for (const pr of page) {
-    if (pr.mergedAt < oldest) oldest = pr.mergedAt;
-  }
-  return oldest;
-};
-var mergedPrsLive = (cwd, sinceIso) => {
-  const lowerBound = sinceIso === null ? [] : [`merged:>=${sinceIso}`];
-  const byNumber = /* @__PURE__ */ new Map();
-  let upperBoundClause = null;
-  for (let iteration = 0; iteration < MAX_WINDOW_ITERATIONS; iteration += 1) {
-    const clauses = upperBoundClause === null ? lowerBound : [...lowerBound, upperBoundClause];
-    const page = runPrListPage(cwd, clauses);
-    if (page === null) return { ok: false };
-    for (const pr of page) byNumber.set(pr.number, pr);
-    if (page.length < PR_LIST_CEILING) {
-      return { ok: true, prs: [...byNumber.values()], truncated: false };
-    }
-    upperBoundClause = `merged:<=${oldestMergedAt(page)}`;
-  }
-  return { ok: true, prs: [...byNumber.values()], truncated: true };
-};
+var mergedPrsLive = (cwd, sinceIso) => readMergedPrWindow({
+  cwd,
+  fields: ["body", "headRefOid", "mergedAt"],
+  sinceIso
+});
 var techDebtIssuesLive = (cwd) => {
   const openResult = runGh(
     [
