@@ -138,21 +138,42 @@ mkdir -p "$CACHE_DIR" 2>/dev/null
 # finishes, so without a lock every render during a run launches another full
 # run, each paging the merged-PR window through gh. `mkdir` is the atomic
 # test-and-set. A lock older than LOCK_STALE_MINUTES belongs to a run that was
-# killed before its EXIT trap fired; it is renamed aside (a rename succeeds
-# for only one contender) and retaken, so a crash cannot block every future
-# refresh. Held or lost: exit 0 and leave the cache to the run that holds it.
+# killed before its EXIT trap fired, or one stalled on the network (nothing
+# here carries a timeout); it is renamed aside and retaken, so a crash cannot
+# block every future refresh. Held or lost: exit 0 and leave the cache to the
+# run that holds it.
+#
+# The staleness probe and the rename are separate steps: two contenders can
+# see the same stale lock, and by the time the slower one renames, the faster
+# one has already retaken a live lock in its place. So the staleness is
+# re-checked on the renamed directory (a rename keeps its mtime), and a live
+# lock is handed back. The owner file covers the other half: a stalled holder
+# whose lock was reclaimed removes the lock on exit only while it still holds
+# it, never a successor's.
+#
+# Honest limit: a stalled holder keeps running after its lock is reclaimed,
+# and a hand-back that loses to a third contender leaves that contender
+# running beside the faster one. Each costs one duplicate refresh, whose cache
+# write is an atomic mv.
 LOCK_DIR="$CACHE_DIR/.update-check.lock"
 LOCK_STALE_MINUTES=10
+lock_is_stale() {
+  [ -n "$(find "$1" -maxdepth 0 -mmin +"$LOCK_STALE_MINUTES" 2>/dev/null)" ]
+}
 if ! mkdir "$LOCK_DIR" 2>/dev/null; then
-  if [ -n "$(find "$LOCK_DIR" -maxdepth 0 -mmin +"$LOCK_STALE_MINUTES" 2>/dev/null)" ] \
-    && mv "$LOCK_DIR" "$LOCK_DIR.stale.$$" 2>/dev/null; then
+  if lock_is_stale "$LOCK_DIR" && mv "$LOCK_DIR" "$LOCK_DIR.stale.$$" 2>/dev/null; then
+    if ! lock_is_stale "$LOCK_DIR.stale.$$"; then
+      mv "$LOCK_DIR.stale.$$" "$LOCK_DIR" 2>/dev/null
+      exit 0
+    fi
     rm -rf "$LOCK_DIR.stale.$$" 2>/dev/null
     mkdir "$LOCK_DIR" 2>/dev/null || exit 0
   else
     exit 0
   fi
 fi
-trap 'rmdir "$LOCK_DIR" 2>/dev/null' EXIT
+printf '%s\n' "$$" > "$LOCK_DIR/owner" 2>/dev/null
+trap '[ "$(cat "$LOCK_DIR/owner" 2>/dev/null)" = "$$" ] && rm -rf "$LOCK_DIR" 2>/dev/null' EXIT
 
 # ---------- outdatedCount ----------
 # Count only the updates /update-deps will actually apply. The `update-deps

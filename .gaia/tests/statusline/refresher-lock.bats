@@ -137,6 +137,51 @@ wait_for_entered() {
   [ -d "$LOCK_DIR" ]
 }
 
+@test "a run whose lock was reclaimed leaves its successor's lock in place on exit" {
+  : > "$MOCK_HOLD"
+  bash "$REFRESH_ROOT/.gaia/scripts/check-updates.sh" &
+  held_pid=$!
+  wait_for_entered
+
+  # A successor reclaimed the held run's lock as stale and took its own.
+  rm -rf "$LOCK_DIR"
+  mkdir "$LOCK_DIR"
+
+  rm -f "$MOCK_HOLD"
+  wait "$held_pid"
+  [ -d "$LOCK_DIR" ]
+}
+
+# Two contenders saw the same stale lock; the other already reclaimed it, so
+# the lock this run renames aside is live. A `find` stub reports the lock
+# stale on its first probe only, which reproduces that interleaving
+# deterministically: the lock on disk is fresh.
+@test "a reclaim that finds the renamed lock live hands it back and does not run" {
+  real_find=$(command -v find)
+  cat > "$GH_BIN/find" <<EOF
+#!/usr/bin/env bash
+case "\$1" in
+  *.update-check.lock)
+    if [ ! -e "$BATS_TEST_TMPDIR/probed" ]; then
+      : > "$BATS_TEST_TMPDIR/probed"
+      printf '%s\n' "\$1"
+      exit 0
+    fi
+    ;;
+esac
+exec "$real_find" "\$@"
+EOF
+  chmod +x "$GH_BIN/find"
+  mkdir "$LOCK_DIR"
+  printf 'other\n' > "$LOCK_DIR/owner"
+
+  run bash "$REFRESH_ROOT/.gaia/scripts/check-updates.sh"
+  [ "$status" -eq 0 ]
+  [ ! -e "$MOCK_LOG" ]
+  [ ! -f "$CACHE_FILE" ]
+  [ "$(cat "$LOCK_DIR/owner")" = "other" ]
+}
+
 @test "a stale lock left by a killed run is reclaimed and the refresh proceeds" {
   mkdir "$LOCK_DIR"
   touch -t 200001010000 "$LOCK_DIR"
