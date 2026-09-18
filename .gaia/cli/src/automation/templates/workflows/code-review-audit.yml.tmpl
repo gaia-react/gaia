@@ -395,6 +395,10 @@ jobs:
           steps.phase.outputs.reached_audit == 'true' &&
           steps.decision.outputs.should_run == 'true' &&
           steps.trailer.outputs.skip == 'false'
+        # Bounds a stalled registry fetch, not a budget for the work: a stall
+        # fails here, where the failed-run status backstop sees it, instead of
+        # eating the audit step's headroom until the job is cancelled.
+        timeout-minutes: 10
         run: pnpm install --frozen-lockfile
 
       - name: Compute audit step timeout
@@ -405,13 +409,14 @@ jobs:
           steps.trailer.outputs.skip == 'false'
         env:
           BUDGET_SECONDS: ${{ steps.config.outputs.budget_seconds }}
-          # Ceiling for the audit step, 15 minutes under the job's
-          # `timeout-minutes: 60` to leave room for the setup steps before the
-          # audit and the push, status, and comment steps after it. A job that
-          # reaches its own limit is cancelled rather than failed, so the
-          # failed-run status backstop never runs; the audit step's own timeout
-          # counts as a failure, so it has to fire first. Raise this only with
-          # the job's limit. .github/audit/tests/ci-audit-step-timeout.bats pins it.
+          # Ceiling for the audit step, under the job's `timeout-minutes: 60`
+          # with room for setup at ordinary durations before the audit and the
+          # push, status, and comment steps after it. A job that reaches its
+          # own limit is cancelled rather than failed, so the failed-run status
+          # backstop never runs; the audit step's own timeout counts as a
+          # failure, so it has to fire first.
+          # .github/audit/tests/ci-audit-step-timeout.bats holds it at least
+          # 10 minutes under the job's limit.
           AUDIT_STEP_MAX_MINUTES: 45
         run: |
           set -eu
@@ -1816,9 +1821,10 @@ jobs:
         # truthful comment. `outcome != 'success'` is the only reliable
         # signal that the audit did not run cleanly (the audit step's
         # `conclusion` is forced to success by `continue-on-error`).
-        # Common causes: max-turns hit, SDK error, transient API
-        # failure, or a workflow-validation refusal that slipped past
-        # the self-modification skip. After commenting, `exit 1`
+        # Common causes: the audit step's own timeout, max-turns hit,
+        # SDK error, transient API failure, or a workflow-validation
+        # refusal that slipped past the self-modification skip. After
+        # commenting, `exit 1`
         # surfaces the abort as a red check on the PR; without it, the
         # green-check-plus-aborted-comment combo silently hides real
         # audit failures from PR authors.
@@ -1830,7 +1836,7 @@ jobs:
         run: |
           set -eu
           bash .github/audit/cra-status-upsert.sh "$PR_NUMBER" \
-            "code-review-audit aborted: workflow validation refusal, max-turns, SDK error, or transient API failure (see workflow run logs)"
+            "code-review-audit aborted: audit step timeout (budget_seconds, or its ceiling under the job limit), workflow validation refusal, max-turns, SDK error, or transient API failure (see workflow run logs)"
           exit 1
 
       - name: Status - audit complete

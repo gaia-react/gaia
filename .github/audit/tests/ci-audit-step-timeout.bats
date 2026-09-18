@@ -72,7 +72,8 @@ run_step() {
   run run_step 1800
   [ "$status" -eq 0 ]
   [ "$output" = "30" ]
-  ! grep -q '::warning::' "$BATS_TEST_TMPDIR/stdout"
+  grep -q '::warning::' "$BATS_TEST_TMPDIR/stdout" && return 1
+  true
 }
 
 @test "a budget past the cap clamps to the cap and warns" {
@@ -92,7 +93,8 @@ run_step() {
   run run_step $(( $(step_cap) * 60 ))
   [ "$status" -eq 0 ]
   [ "$output" = "$(step_cap)" ]
-  ! grep -q '::warning::' "$BATS_TEST_TMPDIR/stdout"
+  grep -q '::warning::' "$BATS_TEST_TMPDIR/stdout" && return 1
+  true
 }
 
 @test "missing or zero budget still defaults to 30, and 1s still floors to 1" {
