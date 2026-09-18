@@ -133,6 +133,27 @@ fi
 
 mkdir -p "$CACHE_DIR" 2>/dev/null
 
+# Single-flight lock. The statusline fires this script on every render, and
+# the TTL gate above reads `checkedAt`, which is only written when a run
+# finishes, so without a lock every render during a run launches another full
+# run, each paging the merged-PR window through gh. `mkdir` is the atomic
+# test-and-set. A lock older than LOCK_STALE_MINUTES belongs to a run that was
+# killed before its EXIT trap fired; it is renamed aside (a rename succeeds
+# for only one contender) and retaken, so a crash cannot block every future
+# refresh. Held or lost: exit 0 and leave the cache to the run that holds it.
+LOCK_DIR="$CACHE_DIR/.update-check.lock"
+LOCK_STALE_MINUTES=10
+if ! mkdir "$LOCK_DIR" 2>/dev/null; then
+  if [ -n "$(find "$LOCK_DIR" -maxdepth 0 -mmin +"$LOCK_STALE_MINUTES" 2>/dev/null)" ] \
+    && mv "$LOCK_DIR" "$LOCK_DIR.stale.$$" 2>/dev/null; then
+    rm -rf "$LOCK_DIR.stale.$$" 2>/dev/null
+    mkdir "$LOCK_DIR" 2>/dev/null || exit 0
+  else
+    exit 0
+  fi
+fi
+trap 'rmdir "$LOCK_DIR" 2>/dev/null' EXIT
+
 # ---------- outdatedCount ----------
 # Count only the updates /update-deps will actually apply. The `update-deps
 # run` primitive runs the same Phase 1-3 filtering the skill does; the ESLint
