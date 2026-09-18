@@ -415,8 +415,6 @@ jobs:
           # own limit is cancelled rather than failed, so the failed-run status
           # backstop never runs; the audit step's own timeout counts as a
           # failure, so it has to fire first.
-          # .github/audit/tests/ci-audit-step-timeout.bats holds it at least
-          # 10 minutes under the job's limit.
           AUDIT_STEP_MAX_MINUTES: 45
         run: |
           set -eu
