@@ -48,7 +48,7 @@
 # newline ends the comment and the remainder of the value begins a new command.
 #
 # Scan surface: `.github/workflows/`, the composite actions under
-# `.github/actions/*/action.yml`, and the adopter workflow templates under
+# `.github/actions/`, and the adopter workflow templates under
 # .gaia/cli/src/automation/templates/workflows/ (including its `partials/`). A
 # composite action's `run:` steps are the same shell-by-another-name as a
 # workflow's and carry the identical hazard, and the workflows here invoke them,
