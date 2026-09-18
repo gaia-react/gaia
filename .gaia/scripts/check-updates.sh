@@ -11,6 +11,11 @@
 #   - hardenCandidateCount (recurring code-review findings ready to harden)
 #   - hardenUnclassifiedCount (classless recurring findings over threshold;
 #                     a seed-a-class-or-investigate signal, never a candidate)
+#   - hardenNudgeReason (the composed text the /gaia-harden segment renders;
+#                     the two counts above keep being written even though the
+#                     statusline no longer reads them directly, so a cache
+#                     written before this field existed still has a value to
+#                     seed the reason from on the first post-upgrade refresh)
 #   - residueCandidateCount (keyed audit residue aged 30+ days, ready to
 #                     triage via /gaia-residue)
 #   - auditNudge / auditNudgeReason / auditLastAppliedAt / auditMemoryCount /
@@ -71,12 +76,33 @@ fi
 CACHE_DIR="$STATE_ROOT/.gaia/local/cache/shared"
 CACHE_FILE="$CACHE_DIR/update-check.json"
 VERSION_FILE="$GAIA_DIR/VERSION"
+# The review snapshot lives at registry scope "shared", same anchor as the
+# cache: one physical copy per clone, under the main checkout.
+HARDEN_SNAPSHOT_FILE="$STATE_ROOT/.gaia/local/harden/reviewed.json"
 
 # Source the Serena language-drift library (Phase 1). Guarded so a missing
 # library never breaks the refresher.
 SERENA_LIB="$GAIA_DIR/scripts/lib/serena-lang.sh"
 # shellcheck source=.gaia/scripts/lib/serena-lang.sh
 [ -f "$SERENA_LIB" ] && . "$SERENA_LIB"
+
+# Today's harden-nudge count text: shared by the no-snapshot composition
+# below and the upgrade-window seed for a cache written before
+# hardenNudgeReason existed, so the two cannot drift out of step with each
+# other or with gaia-statusline.sh's identical composition.
+harden_count_reason() {
+  local count="$1" unclassified="$2" reason="" noun
+  if [ "$count" -gt 0 ] 2>/dev/null; then
+    noun="recurring patterns"
+    [ "$count" -eq 1 ] && noun="recurring pattern"
+    reason=$(printf '%d %s' "$count" "$noun")
+  fi
+  if [ "$unclassified" -gt 0 ] 2>/dev/null; then
+    [ -n "$reason" ] && reason="${reason}, "
+    reason=$(printf '%s%d unclassified' "$reason" "$unclassified")
+  fi
+  printf '%s' "$reason"
+}
 
 now=$(date +%s)
 
@@ -86,6 +112,7 @@ prev_outdated_count=0
 prev_gaia_latest=""
 prev_harden_count=0
 prev_harden_unclassified=0
+prev_harden_reason=""
 prev_residue_count=0
 prev_audit_last_applied_at=0
 prev_audit_memory_count=0
@@ -101,6 +128,16 @@ if [ -f "$CACHE_FILE" ] && command -v jq >/dev/null 2>&1; then
   prev_gaia_latest=$(jq -r '.gaiaLatest // ""' "$CACHE_FILE" 2>/dev/null)
   prev_harden_count=$(jq -r '.hardenCandidateCount // 0' "$CACHE_FILE" 2>/dev/null)
   prev_harden_unclassified=$(jq -r '.hardenUnclassifiedCount // 0' "$CACHE_FILE" 2>/dev/null)
+  # A cache written before hardenNudgeReason existed (the upgrade window) has
+  # no key to read, so seed it from the counts it does carry with today's
+  # composition, never "": otherwise the first refresh after an upgrade that
+  # lands on gh_ok false would write an empty reason and silently drop a
+  # nudge the old cache was showing.
+  if jq -e 'has("hardenNudgeReason")' "$CACHE_FILE" >/dev/null 2>&1; then
+    prev_harden_reason=$(jq -r '.hardenNudgeReason // ""' "$CACHE_FILE" 2>/dev/null)
+  else
+    prev_harden_reason=$(harden_count_reason "$prev_harden_count" "$prev_harden_unclassified")
+  fi
   prev_residue_count=$(jq -r '.residueCandidateCount // 0' "$CACHE_FILE" 2>/dev/null)
   prev_audit_last_applied_at=$(jq -r '.auditLastAppliedAt // 0' "$CACHE_FILE" 2>/dev/null)
   prev_audit_memory_count=$(jq -r '.auditMemoryCount // 0' "$CACHE_FILE" 2>/dev/null)
@@ -123,6 +160,15 @@ if [ -f "$CACHE_FILE" ] && command -v jq >/dev/null 2>&1; then
   case "$prev_audit_memory_baseline" in
     ''|*[!0-9]*) prev_audit_memory_baseline=0 ;;
   esac
+fi
+
+# Race token: the review snapshot's own reviewed_at, read now and again right
+# before the cache write. Plain string equality only (a completed review
+# clears the cache directly, this is not the clock the TTL gate uses), empty
+# on an absent, unparseable, or field-missing snapshot.
+snapshot_token_t0=""
+if [ -f "$HARDEN_SNAPSHOT_FILE" ] && command -v jq >/dev/null 2>&1; then
+  snapshot_token_t0="$(jq -r '.reviewed_at // empty' "$HARDEN_SNAPSHOT_FILE" 2>/dev/null)"
 fi
 
 # TTL gate.
@@ -215,7 +261,7 @@ case "$outdated_count" in
   ''|*[!0-9]*) outdated_count=0 ;;
 esac
 
-# ---------- hardenCandidateCount / hardenUnclassifiedCount ----------
+# ---------- hardenCandidateCount / hardenUnclassifiedCount / hardenNudgeReason ----------
 # Recurring-finding tally for the policy-memory loop. `harden-tally` reads the
 # rolling 90-day merged-PR window via gh, counts distinct PRs per finding_class
 # at any severity (severity_max is a running-max ranking signal, not an
@@ -229,14 +275,34 @@ esac
 # resetting the nudges to 0. Falls back to the previous cached counts on any
 # failure: missing binary, gh/network error or truncated window (gh_ok
 # false), parse error.
+#
+# hardenNudgeReason is the text the statusline actually renders; the two
+# counts above keep being written for the upgrade-window seed (see
+# prev_harden_reason). Without a review snapshot (snapshot_present not true:
+# no snapshot yet, or a pre-SPEC/mock binary), the reason is today's count
+# text via harden_count_reason. With one, it names the trigger events
+# harden-tally reports: schema_change, the new_class count, one
+# "<last path segment of finding_class> rising" per rising_class in
+# triggers[] order, then "unclassified rising"; empty when triggers is empty.
+# gh_ok false (or no reading at all) keeps prev_harden_reason.
+#
+# snapshot_present and snapshot_reviewed_at are read from the tally JSON
+# regardless of gh_ok: harden-tally emits them "still" on a gh_ok-false run
+# (a review can complete while the window read itself fails), and the race
+# check below needs this run's own reading of both to catch that case.
 harden_count="$prev_harden_count"
 unclassified_count="$prev_harden_unclassified"
+harden_reason="$prev_harden_reason"
+snapshot_present="false"
+snapshot_reviewed_at=""
 if [ -x "$GAIA_BIN" ] && command -v jq >/dev/null 2>&1; then
   tally_json="$(cd "$PROJECT_ROOT" && "$GAIA_BIN" harden-tally 2>/dev/null)"
   if [ -n "$tally_json" ]; then
     parsed=$(printf '%s' "$tally_json" | jq -r '.candidate_count // empty' 2>/dev/null)
     unclassified_parsed=$(printf '%s' "$tally_json" | jq -r '.unclassified.distinct_pr_count // 0' 2>/dev/null)
     gh_ok=$(printf '%s' "$tally_json" | jq -r '.gh_ok // false' 2>/dev/null)
+    snapshot_present=$(printf '%s' "$tally_json" | jq -r '.snapshot_present // false' 2>/dev/null)
+    snapshot_reviewed_at=$(printf '%s' "$tally_json" | jq -r '.snapshot_reviewed_at // empty' 2>/dev/null)
     if [ "$gh_ok" = "true" ]; then
       case "$parsed" in
         ''|*[!0-9]*) ;;
@@ -246,6 +312,21 @@ if [ -x "$GAIA_BIN" ] && command -v jq >/dev/null 2>&1; then
         ''|*[!0-9]*) ;;
         *) unclassified_count="$unclassified_parsed" ;;
       esac
+      if [ "$snapshot_present" = "true" ]; then
+        harden_reason=$(printf '%s' "$tally_json" | jq -r '
+          [.triggers[]?] as $triggers
+          | ($triggers | map(select(.type=="new_class")) | length) as $newk
+          | [
+              (if ($triggers | any(.type=="schema_change")) then "tally changed" else empty end),
+              (if $newk > 0 then (if $newk == 1 then "1 new pattern" else "\($newk) new patterns" end) else empty end),
+              ($triggers[] | select(.type=="rising_class") | (.finding_class | split("/") | last) + " rising"),
+              (if ($triggers | any(.type=="rising_unclassified")) then "unclassified rising" else empty end)
+            ]
+          | join(", ")
+        ' 2>/dev/null)
+      else
+        harden_reason=$(harden_count_reason "$harden_count" "$unclassified_count")
+      fi
     fi
   fi
 fi
@@ -551,6 +632,29 @@ if [ -n "$gaia_current" ] && [ -n "$gaia_latest" ] && [ "$gaia_current" != "$gai
   fi
 fi
 
+# ---------- harden reason race check ----------
+# A completed review clears hardenNudgeReason in the cache directly (the
+# /gaia-audit precedent), so a refresh already in flight when that happens
+# must not overwrite the clear with a reason computed against the superseded
+# snapshot. Re-read the snapshot's reviewed_at now and compare it, by plain
+# string equality only, against the startup read and against this run's own
+# tally reading of it. Either mismatch means a review landed mid-refresh:
+# discard the reason and zero checkedAt rather than trust it. Only these two
+# fields change on a race; every other field is written as computed. Honest
+# limit: this compares two reads of one file, so a review landing between the
+# re-read below and the mv is not seen, and costs one stale render until the
+# next refresh.
+snapshot_token_now=""
+if [ -f "$HARDEN_SNAPSHOT_FILE" ] && command -v jq >/dev/null 2>&1; then
+  snapshot_token_now="$(jq -r '.reviewed_at // empty' "$HARDEN_SNAPSHOT_FILE" 2>/dev/null)"
+fi
+checked_at_out="$now"
+if [ "$snapshot_token_now" != "$snapshot_token_t0" ] \
+  || { [ "$snapshot_present" = "true" ] && [ "$snapshot_token_now" != "$snapshot_reviewed_at" ]; }; then
+  harden_reason=""
+  checked_at_out=0
+fi
+
 # ---------- Write cache atomically ----------
 tmp_file="$(mktemp "$CACHE_DIR/.update-check.XXXXXX" 2>/dev/null)"
 if [ -z "$tmp_file" ]; then
@@ -559,13 +663,14 @@ fi
 
 if command -v jq >/dev/null 2>&1; then
   jq -n \
-    --argjson checkedAt "$now" \
+    --argjson checkedAt "$checked_at_out" \
     --argjson outdatedCount "$outdated_count" \
     --arg gaiaCurrent "$gaia_current" \
     --arg gaiaLatest "$gaia_latest" \
     --argjson gaiaHasUpdate "$gaia_has_update" \
     --argjson hardenCandidateCount "$harden_count" \
     --argjson hardenUnclassifiedCount "$unclassified_count" \
+    --arg hardenNudgeReason "$harden_reason" \
     --argjson residueCandidateCount "$residue_count" \
     --argjson auditNudge "$audit_nudge" \
     --arg auditNudgeReason "$audit_nudge_reason" \
@@ -574,14 +679,16 @@ if command -v jq >/dev/null 2>&1; then
     --argjson auditMemoryBaseline "$audit_memory_baseline" \
     --argjson serenaLangDrift "$serena_lang_drift_json" \
     --argjson auditDriftBaseline "$audit_drift_baseline" \
-    '{checkedAt: $checkedAt, outdatedCount: $outdatedCount, gaiaCurrent: $gaiaCurrent, gaiaLatest: $gaiaLatest, gaiaHasUpdate: $gaiaHasUpdate, hardenCandidateCount: $hardenCandidateCount, hardenUnclassifiedCount: $hardenUnclassifiedCount, residueCandidateCount: $residueCandidateCount, auditNudge: $auditNudge, auditNudgeReason: $auditNudgeReason, auditLastAppliedAt: $auditLastAppliedAt, auditMemoryCount: $auditMemoryCount, auditMemoryBaseline: $auditMemoryBaseline, serenaLangDrift: $serenaLangDrift, auditDriftBaseline: $auditDriftBaseline}' \
+    '{checkedAt: $checkedAt, outdatedCount: $outdatedCount, gaiaCurrent: $gaiaCurrent, gaiaLatest: $gaiaLatest, gaiaHasUpdate: $gaiaHasUpdate, hardenCandidateCount: $hardenCandidateCount, hardenUnclassifiedCount: $hardenUnclassifiedCount, hardenNudgeReason: $hardenNudgeReason, residueCandidateCount: $residueCandidateCount, auditNudge: $auditNudge, auditNudgeReason: $auditNudgeReason, auditLastAppliedAt: $auditLastAppliedAt, auditMemoryCount: $auditMemoryCount, auditMemoryBaseline: $auditMemoryBaseline, serenaLangDrift: $serenaLangDrift, auditDriftBaseline: $auditDriftBaseline}' \
     > "$tmp_file" 2>/dev/null
 else
   # jq not available; emit valid JSON via printf. auditDriftBaseline is empty
   # for the same reason serenaLangDrift is: deriving it requires jq, and with
   # no jq there is no coveredPaths list to suppress against either.
-  printf '{"checkedAt":%s,"outdatedCount":%s,"gaiaCurrent":"%s","gaiaLatest":"%s","gaiaHasUpdate":%s,"hardenCandidateCount":%s,"hardenUnclassifiedCount":%s,"residueCandidateCount":%s,"auditNudge":%s,"auditNudgeReason":"%s","auditLastAppliedAt":%s,"auditMemoryCount":%s,"auditMemoryBaseline":%s,"serenaLangDrift":[],"auditDriftBaseline":{}}\n' \
-    "$now" "$outdated_count" "$gaia_current" "$gaia_latest" "$gaia_has_update" "$harden_count" "$unclassified_count" "$residue_count" "$audit_nudge" "$audit_nudge_reason" "$audit_last_applied_at" "$audit_memory_count" "$audit_memory_baseline" \
+  # hardenNudgeReason is built from digits, fixed words, commas, spaces, and
+  # class slug segments ([a-z0-9-]) only, so printf needs no extra escaping.
+  printf '{"checkedAt":%s,"outdatedCount":%s,"gaiaCurrent":"%s","gaiaLatest":"%s","gaiaHasUpdate":%s,"hardenCandidateCount":%s,"hardenUnclassifiedCount":%s,"hardenNudgeReason":"%s","residueCandidateCount":%s,"auditNudge":%s,"auditNudgeReason":"%s","auditLastAppliedAt":%s,"auditMemoryCount":%s,"auditMemoryBaseline":%s,"serenaLangDrift":[],"auditDriftBaseline":{}}\n' \
+    "$checked_at_out" "$outdated_count" "$gaia_current" "$gaia_latest" "$gaia_has_update" "$harden_count" "$unclassified_count" "$harden_reason" "$residue_count" "$audit_nudge" "$audit_nudge_reason" "$audit_last_applied_at" "$audit_memory_count" "$audit_memory_baseline" \
     > "$tmp_file" 2>/dev/null
 fi
 

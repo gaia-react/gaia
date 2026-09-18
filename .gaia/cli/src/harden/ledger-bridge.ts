@@ -7,8 +7,10 @@
  * frozen ledger CLI contract (the verbs + exit codes), not to ledger internals.
  *
  * Contract consumed:
- *   - `harden-ledger is-suppressed --finding-class <c> --current-pr-count <n>`
- *     exits 0 when suppressed, non-zero when the class should re-surface.
+ *   - `harden-ledger is-suppressed --finding-class <c> --current-pr-count <n>
+ *     --current-audited-pr-count <d>` exits 0 when suppressed, exit 1 when
+ *     the class should re-surface, exit 2 (INVALID_ARGUMENTS) on a malformed
+ *     call, and any other non-zero code on a read error.
  *   - `harden-ledger prune --window-classes <c1,c2,...>` self-cleans the ledger.
  *
  * The runner is injectable so the tally tests drive suppression deterministically
@@ -56,9 +58,10 @@ export const makeLedgerSuppressionPredicate =
     runLedger = defaultLedgerRunner,
   }: BridgeOptions): ((
     findingClass: string,
-    currentPrCount: number
+    currentPrCount: number,
+    currentAuditedPrCount: number
   ) => boolean) =>
-  (findingClass, currentPrCount) => {
+  (findingClass, currentPrCount, currentAuditedPrCount) => {
     const result = runLedger(
       [
         'harden-ledger',
@@ -67,19 +70,19 @@ export const makeLedgerSuppressionPredicate =
         findingClass,
         '--current-pr-count',
         String(currentPrCount),
+        '--current-audited-pr-count',
+        String(currentAuditedPrCount),
       ],
       cwd
     );
 
     // Exit-code discrimination. OK (0) → suppressed. The legitimate
-    // not-suppressed code (1, returned for both no_decline_entry and
-    // threshold_reached) → not suppressed; mapping 1 → not-suppressed is safe
-    // only because the bridge always supplies well-formed --finding-class /
-    // --current-pr-count args, so is-suppressed's arg-error path (which also
-    // exits 1) is unreachable here. Any OTHER non-zero code (CONFIG_INVALID 30
-    // for a corrupt/version-skewed ledger, STORAGE_INACCESSIBLE 20, ...) is a
-    // read error: fail closed → stay suppressed, so a corrupt ledger never
-    // silently re-surfaces a declined candidate.
+    // not-suppressed code (1, returned for no_decline_entry, legacy_entry,
+    // schema_version_mismatch, and material_rise) → not suppressed. Any OTHER
+    // non-zero code — INVALID_ARGUMENTS (2) for a malformed call, CONFIG_INVALID
+    // (30) for a corrupt ledger, STORAGE_INACCESSIBLE (20), ... — is a refusal
+    // or a read error: fail closed → stay suppressed, so neither a malformed
+    // call nor a corrupt ledger silently re-surfaces a declined candidate.
     if (result.exitCode === EXIT_CODES.OK) return true;
     if (result.exitCode === EXIT_CODES.UNKNOWN_SUBCOMMAND) return false;
 

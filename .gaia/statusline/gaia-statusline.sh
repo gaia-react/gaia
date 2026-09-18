@@ -181,8 +181,8 @@ else
       outdated_count=$(jq -r '.outdatedCount // 0' "$CACHE_FILE" 2>/dev/null)
       gaia_has_update=$(jq -r '.gaiaHasUpdate // false' "$CACHE_FILE" 2>/dev/null)
       gaia_latest=$(jq -r '.gaiaLatest // empty' "$CACHE_FILE" 2>/dev/null)
-      harden_count=$(jq -r '.hardenCandidateCount // 0' "$CACHE_FILE" 2>/dev/null)
-      harden_unclassified=$(jq -r '.hardenUnclassifiedCount // 0' "$CACHE_FILE" 2>/dev/null)
+      has_harden_reason=$(jq -r 'has("hardenNudgeReason")' "$CACHE_FILE" 2>/dev/null)
+      harden_reason=$(jq -r '.hardenNudgeReason // empty' "$CACHE_FILE" 2>/dev/null)
       audit_nudge=$(jq -r '.auditNudge // false' "$CACHE_FILE" 2>/dev/null)
       audit_reason=$(jq -r '.auditNudgeReason // empty' "$CACHE_FILE" 2>/dev/null)
       serena_drift=$(jq -r '(.serenaLangDrift // []) | join(", ")' "$CACHE_FILE" 2>/dev/null)
@@ -193,23 +193,35 @@ else
       if [ -n "$outdated_count" ] && [ "$outdated_count" -gt 0 ] 2>/dev/null; then
         segments+=("$(printf '\033[01;33mRun /update-deps (%d outdated)\033[00m' "$outdated_count")")
       fi
-      # Both counts are discharged by the same bare `/gaia-harden` run, and no
+      # Both signals are discharged by the same bare `/gaia-harden` run, and no
       # argument selects between them, so they stack into one segment's reason
       # parameter rather than into a second segment naming the same command.
       # Same shape as the /gaia-audit segment below, which folds its reason in
-      # the same way.
-      harden_reason=""
-      if [ -n "$harden_count" ] && [ "$harden_count" -gt 0 ] 2>/dev/null; then
-        harden_noun="recurring patterns"
-        [ "$harden_count" -eq 1 ] && harden_noun="recurring pattern"
-        harden_reason=$(printf '%d %s' "$harden_count" "$harden_noun")
-      fi
-      if [ -n "$harden_unclassified" ] && [ "$harden_unclassified" -gt 0 ] 2>/dev/null; then
-        [ -n "$harden_reason" ] && harden_reason="${harden_reason}, "
-        harden_reason=$(printf '%s%d unclassified' "$harden_reason" "$harden_unclassified")
-      fi
-      if [ -n "$harden_reason" ]; then
-        segments+=("$(printf '\033[01;35mRun /gaia-harden (%s)\033[00m' "$harden_reason")")
+      # the same way. This reads the refresher's own cached composition only:
+      # it never reads the review snapshot itself. A cache written before
+      # hardenNudgeReason existed has no key to read, so it falls back to
+      # composing today's count text the same way the refresher's own
+      # upgrade-window seed does.
+      if [ "$has_harden_reason" = "true" ]; then
+        if [ -n "$harden_reason" ]; then
+          segments+=("$(printf '\033[01;35mRun /gaia-harden (%s)\033[00m' "$harden_reason")")
+        fi
+      else
+        harden_count=$(jq -r '.hardenCandidateCount // 0' "$CACHE_FILE" 2>/dev/null)
+        harden_unclassified=$(jq -r '.hardenUnclassifiedCount // 0' "$CACHE_FILE" 2>/dev/null)
+        fallback_reason=""
+        if [ -n "$harden_count" ] && [ "$harden_count" -gt 0 ] 2>/dev/null; then
+          harden_noun="recurring patterns"
+          [ "$harden_count" -eq 1 ] && harden_noun="recurring pattern"
+          fallback_reason=$(printf '%d %s' "$harden_count" "$harden_noun")
+        fi
+        if [ -n "$harden_unclassified" ] && [ "$harden_unclassified" -gt 0 ] 2>/dev/null; then
+          [ -n "$fallback_reason" ] && fallback_reason="${fallback_reason}, "
+          fallback_reason=$(printf '%s%d unclassified' "$fallback_reason" "$harden_unclassified")
+        fi
+        if [ -n "$fallback_reason" ]; then
+          segments+=("$(printf '\033[01;35mRun /gaia-harden (%s)\033[00m' "$fallback_reason")")
+        fi
       fi
       if [ "$audit_nudge" = "true" ]; then
         if [ -n "$audit_reason" ]; then

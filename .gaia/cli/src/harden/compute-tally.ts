@@ -18,6 +18,13 @@
  * was missing can discharge the signal rather than see it re-surface every
  * tally. Findings repeated within a single PR still collapse to one
  * distinct-PR increment either way.
+ *
+ * `class_inventory` carries every non-fallback class the window counted at
+ * least once, below-threshold classes included, so a review snapshot holds
+ * the full picture and a class crossing the threshold later reads as a rise
+ * rather than a "new pattern". `audited_pr_count` is the window's denominator
+ * (`prs.length`), passed to `suppressedClass` alongside each class's own
+ * count so the decline ledger can compare shares instead of raw counts.
  */
 import {
   isOracleFindingClass,
@@ -27,12 +34,25 @@ import {
 
 export const RECURRENCE_THRESHOLD = 3;
 
+export type ClassInventoryEntry = {
+  distinct_pr_count: number;
+  finding_class: string;
+};
+
 export type ComputeTallyArgs = {
   /** True when a promoted rule already covers the class (drop it). */
   coveredClass: (findingClass: string) => boolean;
   prs: readonly TallyPrRecord[];
-  /** True when the decline ledger suppresses the class at this PR count. */
-  suppressedClass: (findingClass: string, currentPrCount: number) => boolean;
+  /**
+   * True when the decline ledger suppresses the class at this PR count out of
+   * this audited-PR denominator (the window's total audited-PR count, passed
+   * unconditionally so the ledger's share-based rule can compare against it).
+   */
+  suppressedClass: (
+    findingClass: string,
+    currentPrCount: number,
+    currentAuditedPrCount: number
+  ) => boolean;
   windowDays: number;
 };
 
@@ -60,9 +80,12 @@ export type TallyPrRecord = {
 };
 
 export type TallyResult = {
+  audited_pr_count: number;
   candidate_count: number;
   candidates: TallyCandidate[];
+  class_inventory: ClassInventoryEntry[];
   unclassified: null | UnclassifiedSignal;
+  unclassified_window_count: null | number;
   window_days: number;
 };
 
@@ -96,6 +119,7 @@ type PerPrCollapse = {
   severity: Map<string, Severity>;
 };
 
+// tally-semantics:start
 // Collapses one PR's findings into per-key aggregates so a key counts once
 // per PR regardless of how many findings carry it, tracking the PR-local
 // severity max (running max across error > warning > suggestion) and the
@@ -207,6 +231,137 @@ const aggregateByClass = (
 
   return byClass;
 };
+// tally-semantics:end
+
+type FallbackOutcome = {
+  unclassified: null | UnclassifiedSignal;
+  unclassifiedWindowCount: null | number;
+};
+
+type FallbackOutcomeArgs = {
+  aggregate: ClassAggregate;
+  atThreshold: boolean;
+  distinctPrCount: number;
+  suppressed: boolean;
+};
+
+// The classless bucket is never covered and never a candidate, but its
+// surfacing is gated by the decline ledger's suppression like every seeded
+// class, and it never joins the inventory of seeded classes.
+const fallbackOutcome = ({
+  aggregate,
+  atThreshold,
+  distinctPrCount,
+  suppressed,
+}: FallbackOutcomeArgs): FallbackOutcome => ({
+  unclassified:
+    atThreshold && !suppressed ?
+      {
+        area_tags: aggregate.areaTags,
+        distinct_pr_count: distinctPrCount,
+        pr_numbers: aggregate.prNumbers,
+        severity_max: aggregate.severityMax,
+      }
+    : null,
+  unclassifiedWindowCount:
+    distinctPrCount >= 1 && !suppressed ? distinctPrCount : null,
+});
+
+type SeededEntry = {
+  candidate: null | TallyCandidate;
+  inventoryEntry: ClassInventoryEntry | null;
+};
+
+type SeededEntryArgs = {
+  aggregate: ClassAggregate;
+  atThreshold: boolean;
+  covered: boolean;
+  distinctPrCount: number;
+  findingClass: string;
+  suppressed: boolean;
+};
+
+const seededEntry = ({
+  aggregate,
+  atThreshold,
+  covered,
+  distinctPrCount,
+  findingClass,
+  suppressed,
+}: SeededEntryArgs): SeededEntry => {
+  const eligible = !covered && !suppressed;
+
+  return {
+    candidate:
+      atThreshold && eligible ?
+        {
+          area_tags: aggregate.areaTags,
+          distinct_pr_count: distinctPrCount,
+          finding_class: findingClass,
+          is_oracle: isOracleFindingClass(findingClass),
+          pr_numbers: aggregate.prNumbers,
+          severity_max: aggregate.severityMax,
+        }
+      : null,
+    inventoryEntry:
+      distinctPrCount >= 1 && eligible ?
+        {distinct_pr_count: distinctPrCount, finding_class: findingClass}
+      : null,
+  };
+};
+
+type ClassOutcome = FallbackOutcome & SeededEntry;
+
+type ClassOutcomeArgs = {
+  aggregate: ClassAggregate;
+  auditedPrCount: number;
+  coveredClass: ComputeTallyArgs['coveredClass'];
+  findingClass: string;
+  suppressedClass: ComputeTallyArgs['suppressedClass'];
+};
+
+// One class's full disposition (candidate, inventory entry, and/or the
+// fallback signal), so the loop in `computeTally` stays a flat sequence of
+// null-checks rather than branching on the fallback class itself.
+const classOutcome = ({
+  aggregate,
+  auditedPrCount,
+  coveredClass,
+  findingClass,
+  suppressedClass,
+}: ClassOutcomeArgs): ClassOutcome => {
+  const distinctPrCount = aggregate.prNumbers.length;
+  const atThreshold = distinctPrCount >= RECURRENCE_THRESHOLD;
+  // Below-threshold keys are never queried: this run's ledger prune drops any
+  // decline whose class fell below the threshold, so a below-threshold key
+  // has no live decline to honor, and skipping the query avoids one process
+  // spawn per rare class.
+  const suppressed =
+    atThreshold ?
+      suppressedClass(findingClass, distinctPrCount, auditedPrCount)
+    : false;
+
+  if (findingClass === OUT_OF_SCOPE_FALLBACK_FINDING_CLASS) {
+    return {
+      candidate: null,
+      inventoryEntry: null,
+      ...fallbackOutcome({aggregate, atThreshold, distinctPrCount, suppressed}),
+    };
+  }
+
+  return {
+    ...seededEntry({
+      aggregate,
+      atThreshold,
+      covered: coveredClass(findingClass),
+      distinctPrCount,
+      findingClass,
+      suppressed,
+    }),
+    unclassified: null,
+    unclassifiedWindowCount: null,
+  };
+};
 
 export const computeTally = ({
   coveredClass,
@@ -215,51 +370,41 @@ export const computeTally = ({
   windowDays,
 }: ComputeTallyArgs): TallyResult => {
   const byClass = aggregateByClass(prs);
+  const auditedPrCount = prs.length;
 
   const candidates: TallyCandidate[] = [];
+  const classInventory: ClassInventoryEntry[] = [];
   let unclassified: null | UnclassifiedSignal = null;
+  let unclassifiedWindowCount: null | number = null;
 
   for (const [findingClass, aggregate] of byClass) {
-    const distinctPrCount = aggregate.prNumbers.length;
+    const outcome = classOutcome({
+      aggregate,
+      auditedPrCount,
+      coveredClass,
+      findingClass,
+      suppressedClass,
+    });
 
-    // The classless bucket is never covered and never a candidate, but its
-    // surfacing is now gated by the decline ledger's suppression too (see the
-    // module docblock).
-    if (findingClass === OUT_OF_SCOPE_FALLBACK_FINDING_CLASS) {
-      if (
-        distinctPrCount >= RECURRENCE_THRESHOLD &&
-        !suppressedClass(findingClass, distinctPrCount)
-      ) {
-        unclassified = {
-          area_tags: aggregate.areaTags,
-          distinct_pr_count: distinctPrCount,
-          pr_numbers: aggregate.prNumbers,
-          severity_max: aggregate.severityMax,
-        };
-      }
-    } else {
-      const qualifies =
-        distinctPrCount >= RECURRENCE_THRESHOLD &&
-        !coveredClass(findingClass) &&
-        !suppressedClass(findingClass, distinctPrCount);
+    if (outcome.candidate !== null) candidates.push(outcome.candidate);
 
-      if (qualifies) {
-        candidates.push({
-          area_tags: aggregate.areaTags,
-          distinct_pr_count: distinctPrCount,
-          finding_class: findingClass,
-          is_oracle: isOracleFindingClass(findingClass),
-          pr_numbers: aggregate.prNumbers,
-          severity_max: aggregate.severityMax,
-        });
-      }
+    if (outcome.inventoryEntry !== null) {
+      classInventory.push(outcome.inventoryEntry);
+    }
+    if (outcome.unclassified !== null) unclassified = outcome.unclassified;
+
+    if (outcome.unclassifiedWindowCount !== null) {
+      unclassifiedWindowCount = outcome.unclassifiedWindowCount;
     }
   }
 
   return {
+    audited_pr_count: auditedPrCount,
     candidate_count: candidates.length,
     candidates,
+    class_inventory: classInventory,
     unclassified,
+    unclassified_window_count: unclassifiedWindowCount,
     window_days: windowDays,
   };
 };
