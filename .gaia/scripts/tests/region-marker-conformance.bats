@@ -65,7 +65,7 @@ auditors:
     globs:
       - "fixture/a/**"
       - "fixture/b/**"
-    scope: adopter
+    audience: adopter
     push_fixes: true
     default: true
 YAML

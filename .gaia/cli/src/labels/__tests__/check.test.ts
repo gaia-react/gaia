@@ -252,13 +252,13 @@ describe('labels/check deliberate-negative vocabulary fixtures', () => {
   // Every one arrives through `run bash "$CHECK"`, not through `gh`, so
   // constraint 2 excludes it without a test-fixture allowlist.
   const invalid = [
-    'surface:internal',
+    'audience:internal',
     'severity:blocker',
     'difficulty:trivial',
-    'handler:agent',
+    'footprint:agent',
     'fold:optional',
     'fold:maybe',
-    'handler:',
+    'footprint:',
     'fold:',
     'severity:',
     'difficulty:',
@@ -292,8 +292,8 @@ describe('labels/check the token rule', () => {
   test('placeholders and shell expansions are skipped, never reported', () => {
     const placeholders = [
       'severity:<tier>',
-      'handler:<class>',
-      'surface:<side>',
+      'footprint:<class>',
+      'audience:<side>',
       'difficulty:<grade>',
       '$label',
       '"$n"',

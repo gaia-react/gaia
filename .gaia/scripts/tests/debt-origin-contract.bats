@@ -669,14 +669,14 @@ frontend_changed_verdicts() {
   }
 }
 
-# ========== 8. the rollout section stays maintainer-only ==========
+# ========== 8. a rollout section stays maintainer-only ==========
 
-@test "8a. the rollout section sits inside a maintainer-only block" {
-  # The sweep can do nothing in a clone that is not this one: the handler
-  # backfill selects on a `Handler:` body-line convention that only ever
-  # existed here. Shipping it hands an adopter an instruction whose best case
-  # is a no-op and whose worst case stamps their own unrelated `tech-debt`
-  # issues. The marker-strip transform covers `.claude/**/*.md`, so the wrap is
+@test "8a. any rollout section sits inside a maintainer-only block" {
+  # A rollout section is GAIA's own migration record: a backlog sweep written
+  # against this repository's issues does nothing useful in any other clone.
+  # Shipping one hands an adopter an instruction whose best case is a no-op
+  # and whose worst case stamps their own unrelated `tech-debt` issues. None
+  # exists today; the guard holds for the next one. The marker-strip transform covers `.claude/**/*.md`, so the wrap is
   # what keeps it out of the bundle, and nothing else would notice an unwrap.
   # Match the markers by substring, not by equality, and count a same-line
   # start+end pair as one balanced block before either single-marker rule can
@@ -691,7 +691,7 @@ frontend_changed_verdicts() {
   # `:end` does not leave a wrap open at end of file: the next block's `:end`
   # closes the opened `:start`, the next block's `:start` is swallowed inside
   # it, and stripMarkerBlocks reports unbalanced=[] having silently stripped
-  # everything between them; for the rollout block's own `:end` that takes
+  # everything between them, which takes whole sections such as
   # `## Brake self-check` and `## Contract-preserve note` out of the adopter
   # copy. The scrub only fails a wrap still open at EOF or an
   # end-without-start, so it passes that mutant, and
@@ -718,9 +718,8 @@ frontend_changed_verdicts() {
     index($0, "<!-- gaia:maintainer-only:start -->") && index($0, "<!-- gaia:maintainer-only:end -->") { starts++; ends++; next }
     index($0, "<!-- gaia:maintainer-only:start -->") { inblock = 1; starts++; next }
     index($0, "<!-- gaia:maintainer-only:end -->")   { inblock = 0; ends++; next }
-    /^## Rollout: / { seen++; if (!inblock) print "SKILL.md:" NR ": " $0 }
+    /^## Rollout: / { if (!inblock) print "SKILL.md:" NR ": " $0 }
     END {
-      if (seen != 1) print "expected 1 rollout section, found " seen
       if (starts != ends) print "unbalanced maintainer-only markers: " starts + 0 " start, " ends + 0 " end"
     }
   ' "$skill")"

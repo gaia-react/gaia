@@ -1,15 +1,15 @@
 [
   {
     "number": 101,
-    "title": "Keyed critical issue with a well-formed key and handler:prompt",
-    "labels": [{ "name": "tech-debt" }, { "name": "severity:critical" }, { "name": "handler:prompt" }],
+    "title": "Keyed critical issue with a well-formed key and footprint:narrow",
+    "labels": [{ "name": "tech-debt" }, { "name": "severity:critical" }, { "name": "footprint:narrow" }],
     "createdAt": "2026-01-01T00:00:00Z",
     "body": "A null check is missing before the property access, so a malformed payload throws instead of failing gracefully.\n\n<!-- gaia-debt-key: v1 class=holistic/unclassified path=app/foo.ts line=4 -->"
   },
   {
     "number": 102,
-    "title": "Keyed suggestion issue on the same path with handler:plan",
-    "labels": [{ "name": "tech-debt" }, { "name": "severity:suggestion" }, { "name": "handler:plan" }],
+    "title": "Keyed suggestion issue on the same path with footprint:wide",
+    "labels": [{ "name": "tech-debt" }, { "name": "severity:suggestion" }, { "name": "footprint:wide" }],
     "createdAt": "2026-01-02T00:00:00Z",
     "body": "The same file carries a second, unrelated cleanup opportunity further down.\n\n<!-- gaia-debt-key: v1 class=holistic/unclassified path=app/foo.ts line=42 -->"
   },
@@ -22,10 +22,10 @@
   },
   {
     "number": 104,
-    "title": "Keyless human-filed issue with no severity and no handler label",
+    "title": "Keyless human-filed issue with no severity and no footprint label",
     "labels": [{ "name": "tech-debt" }],
     "createdAt": "2026-01-04T00:00:00Z",
-    "body": "A human filed this directly, describing a slow query on the reports page, with no dedup key and no handler class."
+    "body": "A human filed this directly, describing a slow query on the reports page, with no dedup key and no footprint class."
   },
   {
     "number": 105,

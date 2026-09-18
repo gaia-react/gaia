@@ -334,7 +334,7 @@ readonly PRED_AWK='
       # it. That test is what separates prose punctuation from the same
       # characters inside an identifier, and both readings occur constantly on
       # these surfaces: a path (`.gaia/scripts/`), a label namespace
-      # (`surface:`), a filename (`README.md`). Treating those as clause ends
+      # (`severity:`), a filename (`README.md`). Treating those as clause ends
       # silently discards real instances, since a barrier anywhere between the
       # determiner and the noun suppresses the finding.
       ENDERS = ".!?;:"

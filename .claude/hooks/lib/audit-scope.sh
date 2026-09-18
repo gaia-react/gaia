@@ -124,7 +124,7 @@ audit_self_mod_classify() {
 # `# gaia:maintainer-only` markers;
 # the release scrub strips marker-delimited blocks from shipped `.sh` files,
 # so a shipped script's fallback carries only the default (frontend) member
-# and the workflows member, both adopter-scope.
+# and the workflows member, both adopter-audience.
 # These markers MUST survive verbatim: dropping, reflowing, or moving them
 # makes an adopter's merge gate demand clearances from members whose agent
 # definitions the adopter does not have, a permanent local merge deadlock.
@@ -155,7 +155,7 @@ auditors:
       - ".env.example"
       - ".nvmrc"
       - ".node-version"
-    scope: adopter
+    audience: adopter
     push_fixes: true
     default: true
   - name: code-audit-github-workflows
@@ -164,7 +164,7 @@ auditors:
       - ".github/workflows/*.yaml"
       - ".github/actions/**/*.yml"
       - ".github/actions/**/*.yaml"
-    scope: adopter
+    audience: adopter
     push_fixes: false
   # gaia:maintainer-only:start
   - name: code-audit-maintainer-shell
@@ -187,7 +187,7 @@ auditors:
       - ".github/dependabot.yml"
       - ".claude/agents/code-audit-*.md"
       - ".claude/rules/**"
-    scope: maintainer-only
+    audience: maintainer
     push_fixes: false
   - name: code-audit-maintainer-node
     globs:
@@ -205,7 +205,7 @@ auditors:
       - ".gaia/cli/*.config.cjs"
       - ".gaia/cli/*.config.js"
       - ".gaia/scripts/**/*.mjs"
-    scope: maintainer-only
+    audience: maintainer
     push_fixes: false
   - name: code-audit-maintainer-prose
     globs:
@@ -221,7 +221,7 @@ auditors:
       - ".specify/extensions/gaia/rules/*.md"
       - ".specify/extensions/gaia/templates/*.md"
       - ".specify/presets/**/*.md"
-    scope: maintainer-only
+    audience: maintainer
     push_fixes: false
   # gaia:maintainer-only:end
 YAML

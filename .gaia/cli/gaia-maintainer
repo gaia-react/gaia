@@ -17289,9 +17289,9 @@ var readRegistry = (repoRoot) => {
 var NAMESPACE_PREFIXES = [
   "severity:",
   "difficulty:",
-  "handler:",
+  "footprint:",
   "debt:",
-  "surface:",
+  "audience:",
   "fold:"
 ];
 var suggestedColorFor = (registry2, name) => {

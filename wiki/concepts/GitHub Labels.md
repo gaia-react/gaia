@@ -23,6 +23,10 @@ The registry documents each label's shape; it does not document how one is used 
 - `.gaia/cli/gaia labels check` fails when a label literal in the tree is absent from the registry.
 
 Sync is conservative by design. It renames rather than deleting and recreating, because a delete strips the label from every issue and pull request carrying it. It reports an unknown live label instead of touching it. Color is operator wins and description is GAIA wins, so a deliberate recolor survives an update while a stale description does not. A rename is the one exception: it carries the registry's color with it, under no flag. Sync cannot tell a registry recolor from an operator's own, so a renamed entry's leftover color would sit unreconciled indefinitely; the rename resolves that in the registry's favour, at the cost of an operator's recolor of the old name not surviving the rename. Nothing is deleted without `--prune-deprecated` or `--enforce-blocked`, and `--enforce-blocked` counts a label's carriers on both surfaces, issues and pull requests, before reading it as uncarried; a label it cannot count on either surface is never deleted. A token without label-write scope produces a list of manual `gh` commands and a zero exit rather than a failed setup. That list means two different things, so the degraded output and the `--json` `degradedAt` field name which refusal happened: after a refused write it is the mutations still owed, while after a refused read the plan was computed against an assumed-empty repository and the list is the whole registry.
+<!-- gaia:maintainer-only:start -->
+
+The `audience` axis answers two questions at two layers, under one name. A registry entry's `audience` field decides which clones receive the label; an `audience:*` label records which side can observe the defect it is filed against. So the two `audience:*` entries carry `"audience": "maintainer"` themselves: only this repository files against the split, while `audience:adopter` still means an adopter can observe the defect. The Code Audit Team roster's `audience:` field in `.gaia/audit-ci.yml` uses the same two values for the same split.
+<!-- gaia:maintainer-only:end -->
 
 <!-- gaia:labels:generated-start -->
 
@@ -57,9 +61,9 @@ Sync is conservative by design. It renames rather than deleting and recreating, 
 
 | Label | Color | Description | Created by |
 | --- | --- | --- | --- |
-| `handler:prompt` | `d4c5f9` | Fix is one logical unit in one file, no contract change | tech-debt |
-| `handler:plan` | `8957e5` | Fix is larger or structural; drains via /gaia-plan | tech-debt |
-| `handler:spec` | `4c2889` | Design-first; drains via a /gaia-spec handoff | tech-debt |
+| `footprint:narrow` | `d4c5f9` | Fix is one logical unit in one file, no contract change; drains inline | tech-debt |
+| `footprint:wide` | `8957e5` | Fix is larger or structural; drains inline | tech-debt |
+| `footprint:spec` | `4c2889` | Design-first; drains via a /gaia-spec handoff | tech-debt |
 
 ### Lifecycle
 
@@ -134,8 +138,8 @@ These labels serve the GAIA maintainer repository. Sync never creates them on an
 
 | Label | Color | Description | Created by |
 | --- | --- | --- | --- |
-| `surface:adopter` | `d9a86c` | Defect an adopter can observe in something GAIA ships | tech-debt |
-| `surface:maintainer` | `8a5a2b` | Defect observable only in the GAIA maintainer repository | tech-debt |
+| `audience:adopter` | `d9a86c` | Defect an adopter can observe in something GAIA ships | tech-debt |
+| `audience:maintainer` | `8a5a2b` | Defect observable only in the GAIA maintainer repository | tech-debt |
 
 <!-- gaia:maintainer-only:end -->
 ## Deliberately absent

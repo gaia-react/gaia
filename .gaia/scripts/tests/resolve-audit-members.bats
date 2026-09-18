@@ -72,7 +72,7 @@ auditors:
       - "*.config.mjs"
       - "*.config.cjs"
       - "*.config.js"
-    scope: adopter
+    audience: adopter
     push_fixes: true
     default: true
   # gaia:maintainer-only:start
@@ -84,12 +84,12 @@ auditors:
       - ".specify/extensions/gaia/lib/*.sh"
       - ".github/**/*.sh"
       - ".github/**/*.bats"
-    scope: maintainer-only
+    audience: maintainer
     push_fixes: false
   - name: code-audit-maintainer-node
     globs:
       - ".gaia/cli/src/**"
-    scope: maintainer-only
+    audience: maintainer
     push_fixes: false
   # gaia:maintainer-only:end
 YAML
@@ -105,7 +105,7 @@ auditors:
       - "app/**"
       - "test/**"
       - ".storybook/**"
-    scope: adopter
+    audience: adopter
     push_fixes: true
     default: true
 YAML
@@ -400,13 +400,13 @@ auditors:
   - name: code-audit-frontend
     globs:
       - "app/**"
-    scope: adopter
+    audience: adopter
     push_fixes: true
     default: true
   - name: code-audit-example
     globs:
       - "examples/**"
-    scope: adopter
+    audience: adopter
     push_fixes: true
 YAML
   stage examples/widget.ts
@@ -672,7 +672,7 @@ auditors:
   - name: code-audit-frontend
     globs:
       - "app/**"
-    scope: adopter
+    audience: adopter
     push_fixes: true
     default: true
 YAML

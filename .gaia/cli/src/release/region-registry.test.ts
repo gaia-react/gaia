@@ -44,12 +44,12 @@ describe('rosterAgentPaths', () => {
         '  - name: code-audit-frontend',
         '    globs:',
         '      - "app/**"',
-        '    scope: adopter',
+        '    audience: adopter',
         '    default: true',
         '  - name: code-audit-maintainer-node',
         '    globs:',
         '      - ".gaia/cli/src/**/*.ts"',
-        '    scope: maintainer-only',
+        '    audience: maintainer',
         '',
       ].join('\n')
     );

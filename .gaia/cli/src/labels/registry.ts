@@ -83,9 +83,9 @@ export const blockedEntries = (
 export const NAMESPACE_PREFIXES: readonly string[] = [
   'severity:',
   'difficulty:',
-  'handler:',
+  'footprint:',
   'debt:',
-  'surface:',
+  'audience:',
   'fold:',
 ];
 

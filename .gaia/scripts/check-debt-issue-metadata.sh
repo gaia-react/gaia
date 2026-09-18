@@ -28,11 +28,8 @@
 # is silent until a drainer trips over it weeks later. This is the read-back.
 # gaia:maintainer-only:start
 #
-# The `surface:` namespace is the one rule here that SKILL.md did not previously
-# state. The two labels existed in the tracker and were applied by hand often
-# enough to look like a convention, while being documented nowhere and emitted
-# by no filing route. Step 6 of the recipe now defines them; this gate is what
-# makes that definition checkable.
+# The `audience:` namespace is defined by step 6 of the recipe; this gate is
+# what makes that definition checkable.
 # gaia:maintainer-only:end
 
 set -euo pipefail
@@ -48,10 +45,10 @@ readonly PROG="check-debt-issue-metadata"
 # immediately, which is the loud direction to fail in.
 readonly SEVERITY_VALUES="critical important suggestion"
 # gaia:maintainer-only:start
-readonly SURFACE_VALUES="adopter maintainer"
+readonly AUDIENCE_VALUES="adopter maintainer"
 # gaia:maintainer-only:end
 readonly DIFFICULTY_VALUES="easy medium hard"
-readonly HANDLER_VALUES="prompt plan spec"
+readonly FOOTPRINT_VALUES="narrow wide spec"
 # One permitted value today. A single-valued namespace is still a namespace
 # rather than a bare label, because the axis it opens ("what does this repair's
 # cost depend on") admits more answers than the one case that motivated it, and
@@ -170,14 +167,14 @@ check_labels() {
   check_ns_values "$subject" "$labels" 'severity:' "$SEVERITY_VALUES" "severity"
   # gaia:maintainer-only:start
 
-  # Exactly one surface. Unlike severity there is no fallback band: an
+  # Exactly one audience. Unlike severity there is no fallback band: an
   # unlabeled issue is simply unfiled against the adopter/maintainer split
   # that decides who the defect is visible to.
-  n="$(count_ns "$labels" 'surface:')"
+  n="$(count_ns "$labels" 'audience:')"
   if [ "$n" -ne 1 ]; then
-    finding "$subject" "surface-count" "expected exactly one \`surface:\` label, found $n"
+    finding "$subject" "audience-count" "expected exactly one \`audience:\` label, found $n"
   fi
-  check_ns_values "$subject" "$labels" 'surface:' "$SURFACE_VALUES" "surface"
+  check_ns_values "$subject" "$labels" 'audience:' "$AUDIENCE_VALUES" "audience"
   # gaia:maintainer-only:end
 
   # Difficulty is optional by design: a filing that did not read the cited code
@@ -189,17 +186,17 @@ check_labels() {
   fi
   check_ns_values "$subject" "$labels" 'difficulty:' "$DIFFICULTY_VALUES" "difficulty"
 
-  # Handler is optional here for a different reason than difficulty is. Every
+  # Footprint is optional here for a different reason than difficulty is. Every
   # filing route this recipe governs emits one, but nothing downstream depends
   # on the value: the drain re-derives spec-versus-implement from the cited code
-  # and grades prompt-versus-plan itself, so an absent class costs one line of
+  # and grades narrow-versus-wide itself, so an absent class costs one line of
   # `why` output and never a misroute. Demanding presence would demand a value
   # no decision reads, and it would make every human-filed issue a finding.
-  n="$(count_ns "$labels" 'handler:')"
+  n="$(count_ns "$labels" 'footprint:')"
   if [ "$n" -gt 1 ]; then
-    finding "$subject" "handler-count" "expected at most one \`handler:\` label, found $n"
+    finding "$subject" "footprint-count" "expected at most one \`footprint:\` label, found $n"
   fi
-  check_ns_values "$subject" "$labels" 'handler:' "$HANDLER_VALUES" "handler"
+  check_ns_values "$subject" "$labels" 'footprint:' "$FOOTPRINT_VALUES" "footprint"
 
   # Fold is optional in the strongest sense of the three: it marks a minority of
   # findings, so absence is the ordinary case rather than an omission, and

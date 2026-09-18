@@ -297,7 +297,7 @@ describe('update merge-audit-ci', () => {
       '  - name: code-audit-frontend',
       '    globs:',
       '      - "app/**"',
-      '    scope: adopter',
+      '    audience: adopter',
       '    push_fixes: true',
       '    default: true',
       '',
@@ -305,7 +305,7 @@ describe('update merge-audit-ci', () => {
     const withWorkflows = `${frontendOnly}  - name: code-audit-github-workflows
     globs:
       - ".github/workflows/*.yml"
-    scope: adopter
+    audience: adopter
     push_fixes: false
 `;
 
@@ -324,9 +324,9 @@ describe('update merge-audit-ci', () => {
         key: 'code-audit-github-workflows',
         kind: 'entry',
         latest: {
+          audience: 'adopter',
           globs: ['.github/workflows/*.yml'],
           push_fixes: false,
-          scope: 'adopter',
         },
         section: 'auditors',
       },
@@ -340,7 +340,7 @@ describe('update merge-audit-ci', () => {
   - name: code-audit-frontend
     globs:
       - "app/**"
-    scope: adopter
+    audience: adopter
     push_fixes: true
     default: true
 `
@@ -352,7 +352,7 @@ describe('update merge-audit-ci', () => {
     globs:
       - "app/**"
       - "test/**"
-    scope: adopter
+    audience: adopter
     push_fixes: true
     default: true
 `
@@ -363,13 +363,13 @@ describe('update merge-audit-ci', () => {
   - name: code-audit-frontend
     globs:
       - "app/**"
-    scope: adopter
+    audience: adopter
     push_fixes: true
     default: true
   - name: my-custom-auditor
     globs:
       - "custom/**"
-    scope: adopter
+    audience: adopter
     push_fixes: false
 `
     );
@@ -392,24 +392,24 @@ describe('update merge-audit-ci', () => {
     expect(report.applied).toEqual([
       {
         adopter: {
+          audience: 'adopter',
           default: true,
           globs: ['app/**'],
           push_fixes: true,
-          scope: 'adopter',
         },
         baseline: {
+          audience: 'adopter',
           default: true,
           globs: ['app/**'],
           push_fixes: true,
-          scope: 'adopter',
         },
         key: 'code-audit-frontend',
         kind: 'entry',
         latest: {
+          audience: 'adopter',
           default: true,
           globs: ['app/**', 'test/**'],
           push_fixes: true,
-          scope: 'adopter',
         },
         section: 'auditors',
       },
@@ -423,7 +423,7 @@ describe('update merge-audit-ci', () => {
   - name: code-audit-frontend
     globs:
       - "app/**"
-    scope: adopter
+    audience: adopter
     push_fixes: true
 `
     );
@@ -434,7 +434,7 @@ describe('update merge-audit-ci', () => {
     globs:
       - "app/**"
       - "test/**"
-    scope: adopter
+    audience: adopter
     push_fixes: true
 `
     );
@@ -445,7 +445,7 @@ describe('update merge-audit-ci', () => {
     globs:
       - "app/**"
       - "app/routes/**"
-    scope: adopter
+    audience: adopter
     push_fixes: true
 `
     );
@@ -471,7 +471,7 @@ describe('update merge-audit-ci', () => {
   - name: code-audit-legacy
     globs:
       - "legacy/**"
-    scope: adopter
+    audience: adopter
     push_fixes: false
 `
     );
@@ -482,7 +482,7 @@ describe('update merge-audit-ci', () => {
   - name: code-audit-legacy
     globs:
       - "legacy/**"
-    scope: adopter
+    audience: adopter
     push_fixes: false
 `
     );
@@ -502,14 +502,14 @@ describe('update merge-audit-ci', () => {
       `auditors:
   - globs:
       - "app/**"
-    scope: adopter
+    audience: adopter
   - name: 42
     globs:
       - "other/**"
   - name: code-audit-frontend
     globs:
       - "app/**"
-    scope: adopter
+    audience: adopter
     push_fixes: true
 `
     );
@@ -519,7 +519,7 @@ describe('update merge-audit-ci', () => {
   - name: code-audit-frontend
     globs:
       - "app/**"
-    scope: adopter
+    audience: adopter
     push_fixes: true
 `
     );
@@ -529,7 +529,7 @@ describe('update merge-audit-ci', () => {
   - name: code-audit-frontend
     globs:
       - "app/**"
-    scope: adopter
+    audience: adopter
     push_fixes: true
 `
     );

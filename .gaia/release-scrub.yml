@@ -128,8 +128,8 @@ transforms:
       - path: "hooks[]"
         match: {hook: ".claude/hooks/distribution-preflight-check.sh"}
 
-  # Maintainer-audience entries in the label registry. `surface:adopter` and
-  # `surface:maintainer` classify a defect against GAIA's own distribution
+  # Maintainer-audience entries in the label registry. `audience:adopter` and
+  # `audience:maintainer` classify a defect against GAIA's own distribution
   # boundary, and the forensics-audience entries name a workflow an adopter
   # never runs; unwrapped, both reach adopters as vocabulary nothing on their
   # clone creates or reads. The array is the registry itself, so only the
@@ -137,7 +137,7 @@ transforms:
   # shape, an adopter clone still needs its adopter-audience entries. A
   # selector matching nothing is a silent no-op (see the transform-family
   # comment at the top of this file), which is why the
-  # `surface-label-vocabulary` leak-check below is the backstop: it fails the
+  # `audience-label-vocabulary` leak-check below is the backstop: it fails the
   # build the moment this selector stops matching, so the two compose into a
   # check neither is alone.
   - type: json-strip-array-element
@@ -307,34 +307,37 @@ transforms:
         scope:
           - "**"
 
-      # ---- Maintainer-only `surface:` label vocabulary ----
-      # The `surface:adopter` / `surface:maintainer` axis classifies a defect
+      # ---- Maintainer-only `audience:` label vocabulary ----
+      # The `audience:adopter` / `audience:maintainer` axis classifies a defect
       # against GAIA's own distribution boundary, and its tie-breaker ("a
-      # release-excluded path is surface:maintainer") is uncomputable on an
+      # release-excluded path is audience:maintainer") is uncomputable on an
       # adopter clone, which has no release-exclude list. Unwrapped, it reaches
       # adopters as a mandatory field whose value never varies and that nothing
       # reads. The spans live behind maintainer-only markers in
       # `.claude/skills/file-tech-debt/SKILL.md`,
       # `.claude/agents/code-audit-frontend.md`,
       # `.claude/skills/gaia/references/audit.md`,
+      # `.claude/skills/gaia/references/residue.md`,
       # `.gaia/scripts/check-debt-issue-metadata.sh`, and
       # `wiki/concepts/Audit Disposition and Debt Fix.md`; this check is what
       # fails the build when a re-add lands outside them.
       #
-      # The pattern is deliberately wider than `surface:(adopter|maintainer)`.
+      # The pattern is deliberately wider than `audience:(adopter|maintainer)`.
       # That spelling alone would clear a tree still shipping the whole
       # enforcement block, because the axis also spells itself as the
-      # placeholder `surface:<side>` in the skill's invocation flags, as the
-      # brace form `surface: {adopter | maintainer, ...}` in the audit
-      # reference's finding block, as `surface:*` in the wiki page, and as the
-      # shell declaration `SURFACE_VALUES`. The optional whitespace before the
-      # alternation is what reaches that brace form, which writes a space after
-      # the colon where every other carrier does not. It is NOT widened to a
-      # bare `surface:`, which matches ordinary prose ("Scan surface:", "stop
-      # and surface:") and the `--color-surface:` token in the tailwind skill.
-      - id: surface-label-vocabulary
-        description: "Maintainer-only `surface:` label vocabulary surviving the marker strip"
-        pattern: "surface:\\s*(\\{|adopter|maintainer|<side>|\\*)|SURFACE_VALUES"
+      # placeholder `audience:<side>` in the skill's invocation flags, as the
+      # brace form `audience: {adopter | maintainer, ...}` in the audit
+      # reference's finding block, as `audience:*` in the wiki page, and as the
+      # shell declaration `AUDIENCE_VALUES`. Whitespace after the colon is
+      # allowed only before the brace, the one carrier that writes a space
+      # there. It is NOT allowed before a value: the Code Audit Team roster's
+      # `audience: adopter` field ships in `.gaia/audit-ci.yml` and the built-in
+      # fallback roster, and a pattern reaching it would fail every release
+      # build on a legitimate file. The registry's JSON `"audience": "adopter"`
+      # field misses both forms, because the closing quote breaks the colon.
+      - id: audience-label-vocabulary
+        description: "Maintainer-only `audience:` label vocabulary surviving the marker strip"
+        pattern: "audience:\\s*\\{|audience:(adopter|maintainer|<side>|\\*)|AUDIENCE_VALUES"
         scope:
           - "**"
 

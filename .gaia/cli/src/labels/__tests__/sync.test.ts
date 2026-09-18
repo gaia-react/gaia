@@ -165,10 +165,10 @@ describe('labels/sync planSync create sets', () => {
       'difficulty:medium',
       'enhancement',
       'fold:required',
+      'footprint:narrow',
+      'footprint:spec',
+      'footprint:wide',
       'gaia-ci',
-      'handler:plan',
-      'handler:prompt',
-      'handler:spec',
       'in-progress',
       'needs-human',
       'run-audit',
@@ -206,6 +206,8 @@ describe('labels/sync planSync create sets', () => {
 
   test('the maintainer audience creates the adopter set as well as its own', () => {
     expect(createNames(plan({audience: 'maintainer'}))).toEqual([
+      'audience:adopter',
+      'audience:maintainer',
       'auto-fixable',
       'bug',
       'debt:spec-active',
@@ -215,12 +217,12 @@ describe('labels/sync planSync create sets', () => {
       'difficulty:medium',
       'enhancement',
       'fold:required',
+      'footprint:narrow',
+      'footprint:spec',
+      'footprint:wide',
       'gaia-ci',
       'gaia-forensics',
       'gaia-triaged',
-      'handler:plan',
-      'handler:prompt',
-      'handler:spec',
       'in-progress',
       'needs-human',
       'non-issue',
@@ -229,14 +231,12 @@ describe('labels/sync planSync create sets', () => {
       'severity:critical',
       'severity:important',
       'severity:suggestion',
-      'surface:adopter',
-      'surface:maintainer',
       'tech-debt',
       'wontfix',
     ]);
   });
 
-  test('the maintainer audience with tech-debt off drops the surface axis', () => {
+  test('the maintainer audience with tech-debt off drops the audience axis', () => {
     const names = createNames(
       plan({audience: 'maintainer', features: ['gaia-ci', 'forensics']})
     );

@@ -231,19 +231,19 @@ setup() {
 }
 
 @test "UAT-004: SKILL.md's step 6 states the exactly-one invariant for each mandatory namespace, and for the optional grade" {
-  # Severity and handler are mandatory on every clone; difficulty is stated
+  # Severity and footprint are mandatory on every clone; difficulty is stated
   # conditionally, because a filing that did not read the cited code omits the
   # grade rather than guessing one. Both halves are pinned, so a rewrite cannot
   # quietly promote the grade to mandatory or demote a mandatory label to
   # optional.
-  grep -qF -- "**exactly one** severity label, plus **exactly one** handler label" "$VOCAB" || return 1
+  grep -qF -- "**exactly one** severity label, plus **exactly one** footprint label" "$VOCAB" || return 1
   grep -qF -- "a filing that carries a difficulty grade (see step 7) carries exactly one difficulty label as well" "$VOCAB" || return 1
-  # Surface is mandatory too, but only on the maintainer repository: its span
+  # Audience is mandatory too, but only on the maintainer repository: its span
   # is marker-wrapped so adopters never receive a field whose value cannot
   # vary on their clone (gaia-react/gaia#1437). Pinned separately from the
   # shipped invariant so a rewrite that folds it back into the shipped
   # sentence fails here instead of leaking past the release scrub.
-  grep -qF -- "carries **exactly one** \`surface:\` label as well" "$VOCAB" || return 1
+  grep -qF -- "carries **exactly one** \`audience:\` label as well" "$VOCAB" || return 1
 }
 
 @test "SKILL.md carries the three rider paragraphs beside the rubric block" {
@@ -252,15 +252,15 @@ setup() {
   grep -qF -- "carry no information about the finding" "$VOCAB" || return 1
 }
 
-@test "UAT-005: the label loops create every difficulty label, both surface labels, every handler label, and still create the pre-existing ones" {
+@test "UAT-005: the label loops create every difficulty label, both audience labels, every footprint label, and still create the pre-existing ones" {
   grep -qF -- "for label in tech-debt severity:critical severity:important severity:suggestion" "$VOCAB" || return 1
-  grep -qF -- "handler:prompt handler:plan handler:spec" "$VOCAB" || return 1
+  grep -qF -- "footprint:narrow footprint:wide footprint:spec" "$VOCAB" || return 1
   grep -qF -- "difficulty:easy difficulty:medium difficulty:hard wontfix; do" "$VOCAB" || return 1
-  # The two surface labels moved out of the shipped loop into a second,
+  # The two audience labels moved out of the shipped loop into a second,
   # marker-wrapped loop of their own (gaia-react/gaia#1437). Pinned as its own
   # `for label in` line rather than a bare spelling, so a rewrite that folds
   # them back into the shipped loop fails here.
-  grep -qF -- "for label in surface:adopter surface:maintainer; do" "$VOCAB" || return 1
+  grep -qF -- "for label in audience:adopter audience:maintainer; do" "$VOCAB" || return 1
 }
 
 @test "neither label loop states a count of its own" {
@@ -290,14 +290,14 @@ setup() {
 }
 
 @test "UAT-004: both gh issue create forms carry --body-file and the mandatory non-grade labels, graded and ungraded" {
-  grep -qF -- 'gh issue create --label tech-debt --label severity:<tier> --label handler:<class> --label difficulty:<grade> --body-file "$body_file"' "$VOCAB" || return 1
-  grep -qF -- 'gh issue create --label tech-debt --label severity:<tier> --label handler:<class> --body-file "$body_file"' "$VOCAB" || return 1
-  # `--label surface:<side>` is no longer on either shipped form: it rides in
+  grep -qF -- 'gh issue create --label tech-debt --label severity:<tier> --label footprint:<class> --label difficulty:<grade> --body-file "$body_file"' "$VOCAB" || return 1
+  grep -qF -- 'gh issue create --label tech-debt --label severity:<tier> --label footprint:<class> --body-file "$body_file"' "$VOCAB" || return 1
+  # `--label audience:<side>` is no longer on either shipped form: it rides in
   # the marker-wrapped note instead (gaia-react/gaia#1437). Pinned as an
   # absence on the shipped forms plus a presence in the note, so a rewrite
   # that puts it back inline fails here rather than at the release scrub.
-  grep -qF -- 'gh issue create --label tech-debt --label severity:<tier> --label surface:<side>' "$VOCAB" && return 1
-  grep -qF -- 'on both `gh issue create` forms as `--label surface:<side>`' "$VOCAB" || return 1
+  grep -qF -- 'gh issue create --label tech-debt --label severity:<tier> --label audience:<side>' "$VOCAB" && return 1
+  grep -qF -- 'on both `gh issue create` forms as `--label audience:<side>`' "$VOCAB" || return 1
 }
 
 @test "UAT-004: the issue-body schema section assigns neither namespace, and no capital-D Difficulty: line exists anywhere" {
@@ -307,60 +307,25 @@ setup() {
   # now states, in prose, that both axes are labels and not body fields, which
   # names them while being the opposite of the defect this pins.
   printf '%s\n' "$section" | grep -qFi 'difficulty:' && return 1
-  printf '%s\n' "$section" | grep -qFi 'handler:' && return 1
+  printf '%s\n' "$section" | grep -qFi 'footprint:' && return 1
   assert_absent_fixed_cs_across "Difficulty:" "$VOCAB"
 }
 
-@test "the superseded Handler: body line survives in SKILL.md only inside its backfill rollout section" {
-  # Not a whole-file absence check: the backfill sweep has to name the legacy
-  # spelling, because reading it off pre-existing bodies is the entire job. Any
-  # OTHER occurrence is the writer schema growing the body line back.
-  local range start end line hits
-  # Split explicitly rather than through `read -r start end`. When the start
-  # pattern matches nothing, section_line_range prints a LEADING-SPACE line
-  # (" <end>"), and `read` collapses IFS whitespace, so `start` silently takes
-  # the end value and `end` comes back empty. The missing-section guard below
-  # then passes on a range that describes nothing, and the loop's
-  # `[ "$line" -gt "" ]` errors with `integer expected`; inside an `if A || B`
-  # condition `set -e` is suppressed, so the condition reads false and every
-  # out-of-section hit is accepted. That is a live path, not a hypothetical:
-  # this section is a one-time backfill sweep meant to be deleted once every
-  # repository has run it, and its deletion is exactly what would retire the
-  # guard while the body-line spelling it forbids could return unnoticed.
-  range="$(section_line_range "$VOCAB" '^## Rollout: backfill the handler class' '^## ')"
-  start="${range%% *}"
-  end="${range##* }"
-  [ -n "$start" ] && [ -n "$end" ] || {
-    echo "the handler backfill rollout section is missing from SKILL.md" >&2
-    return 1
-  }
-  hits="$(grep -n -F -- 'Handler:' "$VOCAB" | cut -d: -f1)"
-  # Presence, not just absence-outside. With no hits at all the loop never runs
-  # and the test greens through its trailing `true`, which is the same vacuous
-  # pass the missing-section guard above exists to prevent, reached by the other
-  # door: the sweep needs the legacy spelling to do its job, so zero occurrences
-  # means the backfill lost its subject.
-  [ -n "$hits" ] || {
-    echo "no Handler: spelling survives in SKILL.md at all; the backfill sweep has lost its subject" >&2
-    return 1
-  }
-  for line in $hits; do
-    if [ "$line" -lt "$start" ] || [ "$line" -gt "$end" ]; then
-      echo "a Handler: body-line spelling survives at SKILL.md:${line}, outside the backfill section" >&2
-      return 1
-    fi
-  done
-  true
+@test "the superseded Handler: body line survives nowhere in SKILL.md" {
+  # The class rides as a `footprint:` label (step 6). A `Handler:` spelling
+  # anywhere in the file is the writer schema growing the retired body line
+  # back, since no backfill sweep remains to need it.
+  assert_absent_fixed_cs_across "Handler:" "$VOCAB"
 }
 
-@test "SKILL.md defines every handler label and states one color family for them" {
-  grep -qF -- "handler:prompt" "$VOCAB" || return 1
-  grep -qF -- "handler:plan" "$VOCAB" || return 1
-  grep -qF -- "handler:spec" "$VOCAB" || return 1
+@test "SKILL.md defines every footprint label and states one color family for them" {
+  grep -qF -- "footprint:narrow" "$VOCAB" || return 1
+  grep -qF -- "footprint:wide" "$VOCAB" || return 1
+  grep -qF -- "footprint:spec" "$VOCAB" || return 1
   grep -qF -- "share one color family" "$VOCAB" || return 1
 }
 
-@test "SKILL.md states the handler label is validated when present and never demanded" {
+@test "SKILL.md states the footprint label is validated when present and never demanded" {
   grep -qF -- "absence is not a finding" "$VOCAB" || return 1
 }
 

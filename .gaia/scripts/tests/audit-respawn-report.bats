@@ -515,7 +515,7 @@ auditors:
       - "app/**"
       - "test/**"
       - ".storybook/**"
-    scope: adopter
+    audience: adopter
     push_fixes: true
     default: true
   - name: code-audit-maintainer-shell
@@ -526,12 +526,12 @@ auditors:
       - ".specify/extensions/gaia/lib/*.sh"
       - ".github/**/*.sh"
       - ".github/**/*.bats"
-    scope: maintainer-only
+    audience: maintainer
     push_fixes: false
   - name: code-audit-maintainer-node
     globs:
       - ".gaia/cli/src/**"
-    scope: maintainer-only
+    audience: maintainer
     push_fixes: false
 YAML
 }
