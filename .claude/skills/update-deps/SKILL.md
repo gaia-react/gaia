@@ -412,11 +412,11 @@ Run this as a **Haiku agent**. Its dispatch carries every Phase 6 duty, so pass 
 `.gaia/cli` is a second workspace root with its own `package.json` and lockfile. `.gaia/cli/src/lint-pin-parity.test.ts` requires it to pin every devDependency it shares with the root at the root's version, except the keys of `MANIFEST_PARITY_EXEMPT` in that file. The phases above bump the root alone, so a run that moves a shared pin leaves the required `Vitest (.gaia/cli)` check red. Run this phase inline, after Phase 6 and before the report:
 
 1. For each devDependency declared in both root `package.json` and `.gaia/cli/package.json`, that is not a key of `MANIFEST_PARITY_EXEMPT`, and whose CLI spec differs from the root's, set the CLI spec to the root's verbatim. The direction is always CLI to root; never edit the root to match the CLI. When nothing differs, skip the rest of this phase.
-2. Run `pnpm -C .gaia/cli install`, then `pnpm -C .gaia/cli lint`, `pnpm -C .gaia/cli typecheck`, and `pnpm -C .gaia/cli test`. The test run includes the pin-parity test, whose lockfile resolution-parity half raising the manifest pins does not settle on its own.
+2. Run `pnpm -C .gaia/cli install`, then `pnpm -C .gaia/cli lint`, `pnpm -C .gaia/cli typecheck`, and `pnpm -C .gaia/cli test`. Install first: the pin-parity test also checks lockfile resolutions, and editing the manifest pins alone does not update them.
 3. Run `pnpm -C .gaia/cli bundle`, then `bash .gaia/scripts/verify-cli-bundle-fresh.sh` from the repository root. Phase 8's `git add -A` commits any bundle that moved.
 4. Add a `.gaia/cli pin sync` row to the report's Quality gate table naming each raised pin (`<name>: <old> → <new>`) and the step 2 and 3 results. On a failure, keep the raised pins, since reverting them guarantees the red check this phase exists to prevent, and let the row carry the failure for the maintainer.
 
-The raised pins put `.gaia/cli/package.json` and its lockfile in the diff, which dispatches `code-audit-maintainer-node`. Phase 8's merge step covers that dispatch.
+The raised pins put `.gaia/cli/package.json` and its lockfile in the diff, which dispatches `code-audit-maintainer-node`. On a run that started on `main`/`master`, Phase 8's merge step covers that dispatch; on any other run, the branch owner does.
 <!-- gaia:maintainer-only:end -->
 
 ## Phase 7: Final report
@@ -431,6 +431,9 @@ Build the report **only** from the agent reports returned to you, plus the snooz
 - **Skipped packages**: _only_ packages that were attempted and reverted mid-run (peer-dep conflict, quality-gate failure, manual revert by an agent). **Never** include packages filtered out before installation by a policy rule (e.g. the ESLint 9.x cap or the release-age cooldown). Those are silent by design, surfacing them is noise that adopters see every run. When you cannot tell whether a package was policy-filtered before installation or attempted and reverted mid-run, include it in Skipped, a spurious row is recoverable but a silently dropped real failure is not. If nothing was actually skipped during the run, write "None" or omit the table.
 - **Snoozed (deferred this run)**: the companion groups the human chose to skip in the preview, with the version each was snoozed at. These quiet the statusline for 14 days (or until a newer version ships); they are not failures. Omit the section if the human chose "Update all".
 - **Quality gate**: the gate result reported by the agents, verbatim.
+<!-- gaia:maintainer-only:start -->
+- **Phase 6b**: runs inline rather than as an agent, so its `.gaia/cli pin sync` row is the one exception to building the report only from agent reports. Include it whenever Phase 6b raised a pin, including a failed step it kept in the diff.
+<!-- gaia:maintainer-only:end -->
 
 If a section would be empty, write "None" rather than leaving it blank or fabricating filler.
 
@@ -491,7 +494,7 @@ Then branch on where the run started.
 2. Open a PR against `main`. Title: the commit subject. Body: the migration report rendered as markdown, via `--body-file` on a temp file (same false-positive reason). Capture the PR number `<N>` and its URL.
 3. **Merge when green, then clean up locally.** This step runs only on a `main`/`master` run, it is what "completes the flow." Merge per `wiki/concepts/PR Merge Workflow.md` (the `chore(deps)` title clears its audit-marker gate via the dep-bump bypass):
 <!-- gaia:maintainer-only:start -->
-   First, run `bash .gaia/scripts/resolve-audit-spawn.sh` and spawn each member it names other than `code-audit-frontend`, per that workflow page's "Spawn the dispatched Code Audit Team members" section. Phase 6b's pin sync always puts `code-audit-maintainer-node` here. The `chore(deps)` title waives only `code-audit-frontend`, in the merge hook, in CI, and in the stamp and status hooks, so each other member's earned marker is what completes the handshake. Skip this and `GAIA-Audit` stays at `members pending` and the queued merge waits on it indefinitely.
+   First, run `bash .gaia/scripts/resolve-audit-spawn.sh` and spawn each member it names other than `code-audit-frontend`, per that workflow page's "Spawn the dispatched Code Audit Team members" section. Whenever Phase 6b raised a pin, `code-audit-maintainer-node` is among them. The `chore(deps)` title waives only `code-audit-frontend`, in the merge hook, in CI, and in the stamp and status hooks, so each other member's earned marker is what completes the handshake. Skip this and `GAIA-Audit` stays at `members pending` and the queued merge waits on it indefinitely.
 <!-- gaia:maintainer-only:end -->
    ```bash
    gh pr merge <N> --squash --delete-branch --auto
