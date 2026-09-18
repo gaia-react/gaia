@@ -77,8 +77,8 @@
 #     such files. Arming unconditionally would demand a rewrite of every one of
 #     them with no defect behind any.
 #
-#   `.github/workflows/`, `.github/actions/*/action.yml`, and the adopter
-#     workflow templates under .gaia/cli/src/automation/templates/workflows/ --
+#   `.github/workflows/`, the composite actions under `.github/actions/`, and
+#     the adopter workflow templates under .gaia/cli/src/automation/templates/workflows/ --
 #     `run:` bodies only, armed BY DEFAULT. GitHub Actions runs a step body as
 #     `bash -e {0}` (and `bash -eo pipefail {0}` under an explicit
 #     `shell: bash`), so errexit is on whether or not the body says so, which is
