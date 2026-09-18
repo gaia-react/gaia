@@ -360,19 +360,23 @@ const handleIsSuppressed = (
   // wrongly re-surface a declined candidate).
   if (ledger === null) return EXIT_CODES.CONFIG_INVALID;
 
+  const notSuppressed = (reason: string): number => {
+    structuredError({
+      code: 'not_suppressed',
+      finding_class: findingClass,
+      reason,
+    });
+
+    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  };
+
   const entry = ledger.declines.find(
     (decline) => decline.finding_class === findingClass
   );
 
   // No entry: not suppressed (re-surface).
   if (entry === undefined) {
-    structuredError({
-      code: 'not_suppressed',
-      finding_class: findingClass,
-      reason: 'no_decline_entry',
-    });
-
-    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+    return notSuppressed('no_decline_entry');
   }
 
   // A legacy entry (recorded before the denominator existed, or read from a
@@ -382,13 +386,7 @@ const handleIsSuppressed = (
     entry.declined_at_audited_pr_count === undefined ||
     entry.tally_schema_version === undefined
   ) {
-    structuredError({
-      code: 'not_suppressed',
-      finding_class: findingClass,
-      reason: 'legacy_entry',
-    });
-
-    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+    return notSuppressed('legacy_entry');
   }
 
   // An entry recorded under a different tally schema version was measured
@@ -396,13 +394,7 @@ const handleIsSuppressed = (
   // recurrence threshold, or audited-PR predicate), so its stored count is
   // not comparable to the live one.
   if (entry.tally_schema_version !== TALLY_SCHEMA_VERSION) {
-    structuredError({
-      code: 'not_suppressed',
-      finding_class: findingClass,
-      reason: 'schema_version_mismatch',
-    });
-
-    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+    return notSuppressed('schema_version_mismatch');
   }
 
   const suppressed = !isMaterialRise({
@@ -413,13 +405,7 @@ const handleIsSuppressed = (
   });
 
   if (!suppressed) {
-    structuredError({
-      code: 'not_suppressed',
-      finding_class: findingClass,
-      reason: 'material_rise',
-    });
-
-    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+    return notSuppressed('material_rise');
   }
 
   return EXIT_CODES.OK;

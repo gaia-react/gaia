@@ -17171,32 +17171,25 @@ var handleIsSuppressed = (argv, options) => {
   if (repoRoot === null) return EXIT_CODES.STORAGE_INACCESSIBLE;
   const ledger = loadLedger(repoRoot, "is-suppressed");
   if (ledger === null) return EXIT_CODES.CONFIG_INVALID;
+  const notSuppressed = (reason) => {
+    structuredError({
+      code: "not_suppressed",
+      finding_class: findingClass,
+      reason
+    });
+    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  };
   const entry = ledger.declines.find(
     (decline) => decline.finding_class === findingClass
   );
   if (entry === void 0) {
-    structuredError({
-      code: "not_suppressed",
-      finding_class: findingClass,
-      reason: "no_decline_entry"
-    });
-    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+    return notSuppressed("no_decline_entry");
   }
   if (entry.declined_at_audited_pr_count === void 0 || entry.tally_schema_version === void 0) {
-    structuredError({
-      code: "not_suppressed",
-      finding_class: findingClass,
-      reason: "legacy_entry"
-    });
-    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+    return notSuppressed("legacy_entry");
   }
   if (entry.tally_schema_version !== TALLY_SCHEMA_VERSION) {
-    structuredError({
-      code: "not_suppressed",
-      finding_class: findingClass,
-      reason: "schema_version_mismatch"
-    });
-    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+    return notSuppressed("schema_version_mismatch");
   }
   const suppressed = !isMaterialRise({
     baseAuditedPrCount: entry.declined_at_audited_pr_count,
@@ -17205,12 +17198,7 @@ var handleIsSuppressed = (argv, options) => {
     liveCount: currentPrCount
   });
   if (!suppressed) {
-    structuredError({
-      code: "not_suppressed",
-      finding_class: findingClass,
-      reason: "material_rise"
-    });
-    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+    return notSuppressed("material_rise");
   }
   return EXIT_CODES.OK;
 };

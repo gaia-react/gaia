@@ -162,19 +162,20 @@ if [ -f "$CACHE_FILE" ] && command -v jq >/dev/null 2>&1; then
   esac
 fi
 
-# Race token: the review snapshot's own reviewed_at, read now and again right
-# before the cache write. Plain string equality only (a completed review
-# clears the cache directly, this is not the clock the TTL gate uses), empty
-# on an absent, unparseable, or field-missing snapshot.
-snapshot_token_t0=""
-if [ -f "$HARDEN_SNAPSHOT_FILE" ] && command -v jq >/dev/null 2>&1; then
-  snapshot_token_t0="$(jq -r '.reviewed_at // empty' "$HARDEN_SNAPSHOT_FILE" 2>/dev/null)"
-fi
-
 # TTL gate.
 age=$((now - prev_checked_at))
 if [ "$age" -lt "$TTL" ]; then
   exit 0
+fi
+
+# Race token: the review snapshot's own reviewed_at, read here (past the TTL
+# gate, since only a refresh needs it) and again right before the cache
+# write. Plain string equality only (a completed review clears the cache
+# directly, this is not the clock the TTL gate uses), empty on an absent,
+# unparseable, or field-missing snapshot.
+snapshot_token_t0=""
+if [ -f "$HARDEN_SNAPSHOT_FILE" ] && command -v jq >/dev/null 2>&1; then
+  snapshot_token_t0="$(jq -r '.reviewed_at // empty' "$HARDEN_SNAPSHOT_FILE" 2>/dev/null)"
 fi
 
 mkdir -p "$CACHE_DIR" 2>/dev/null

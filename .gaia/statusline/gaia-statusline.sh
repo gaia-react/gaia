@@ -181,8 +181,11 @@ else
       outdated_count=$(jq -r '.outdatedCount // 0' "$CACHE_FILE" 2>/dev/null)
       gaia_has_update=$(jq -r '.gaiaHasUpdate // false' "$CACHE_FILE" 2>/dev/null)
       gaia_latest=$(jq -r '.gaiaLatest // empty' "$CACHE_FILE" 2>/dev/null)
-      has_harden_reason=$(jq -r 'has("hardenNudgeReason")' "$CACHE_FILE" 2>/dev/null)
-      harden_reason=$(jq -r '.hardenNudgeReason // empty' "$CACHE_FILE" 2>/dev/null)
+      # One spawn for both reads: a leading 1 or 0 says whether the key exists,
+      # and the rest is the reason itself.
+      harden_reason_raw=$(jq -r 'if has("hardenNudgeReason") then "1" + ((.hardenNudgeReason // "") | tostring) else "0" end' "$CACHE_FILE" 2>/dev/null)
+      has_harden_reason="${harden_reason_raw:0:1}"
+      harden_reason="${harden_reason_raw#?}"
       audit_nudge=$(jq -r '.auditNudge // false' "$CACHE_FILE" 2>/dev/null)
       audit_reason=$(jq -r '.auditNudgeReason // empty' "$CACHE_FILE" 2>/dev/null)
       serena_drift=$(jq -r '(.serenaLangDrift // []) | join(", ")' "$CACHE_FILE" 2>/dev/null)
@@ -202,7 +205,7 @@ else
       # hardenNudgeReason existed has no key to read, so it falls back to
       # composing today's count text the same way the refresher's own
       # upgrade-window seed does.
-      if [ "$has_harden_reason" = "true" ]; then
+      if [ "$has_harden_reason" = "1" ]; then
         if [ -n "$harden_reason" ]; then
           segments+=("$(printf '\033[01;35mRun /gaia-harden (%s)\033[00m' "$harden_reason")")
         fi
