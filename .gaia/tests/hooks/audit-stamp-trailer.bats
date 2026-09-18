@@ -804,6 +804,8 @@ run_waiver_case() {
   install_title_stub "chore(deps): bump vite to 8.3.0"
   git -C "$REPO" remote add origin "$REMOTE"
   git -C "$REPO" push --quiet --set-upstream origin feature
+  # Every test assigns before_sha before reading it, so no sibling's value leaks.
+  # shellcheck disable=SC2030
   before_sha=$(git -C "$REPO" rev-parse HEAD)
   before_tree=$(git -C "$REPO" rev-parse "HEAD^{tree}")
 
@@ -840,6 +842,27 @@ run_waiver_case() {
   [ ! -s "$FAKEBIN/gh-calls" ]
 }
 
+@test "chore(deps) waiver: no title read when frontend is dispatched and already marked" {
+  install_resolver
+  install_chore_deps_predicate
+  commit_mixed_diff
+  install_title_stub "chore(deps): bump vite to 8.3.0"
+  # Log every gh invocation, so the assertion reads what the hook called.
+  mv "$FAKEBIN/gh" "$FAKEBIN/gh-real"
+  printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >> "%s/gh-calls"\nexec "%s/gh-real" "$@"\n' "$FAKEBIN" "$FAKEBIN" > "$FAKEBIN/gh"
+  chmod +x "$FAKEBIN/gh"
+  before_tree=$(git -C "$REPO" rev-parse "HEAD^{tree}")
+  write_marker code-audit-frontend
+  write_marker code-audit-maintainer-shell
+
+  cd "$REPO"
+  PATH="$FAKEBIN:$PATH" AUDIT_TREE_SHA="$before_tree" AUDIT_SELF_HEALED="false" run "$HOOK_ABS"
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "stamp: amended onto HEAD (un-pushed)" ]
+  [ ! -s "$FAKEBIN/gh-calls" ]
+}
+
 @test "chore(deps) waiver: an absent predicate fails closed even on a dep-bump title" {
   install_resolver
   commit_mixed_diff
@@ -849,6 +872,8 @@ run_waiver_case() {
 
   [ "$status" -eq 0 ]
   [ "$output" = "stamp: declined: members pending code-audit-frontend" ]
+  # run_waiver_case sets before_sha in this test's own shell, not a sibling's.
+  # shellcheck disable=SC2031
   [ "$before_sha" = "$(git -C "$REPO" rev-parse HEAD)" ]
   [ -z "$(trailer_on_head)" ]
 }

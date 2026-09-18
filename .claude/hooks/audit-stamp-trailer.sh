@@ -229,7 +229,12 @@ fi
 # digest in field 2, and the readers that honor a trailer check version and
 # digest, never the title, so it stays valid if the pull request is later
 # retitled away from chore(deps). CI's own chore(deps) success status has the
-# same shape, and any content change rotates the digest and retires it.
+# same shape, and any content change rotates the digest and retires it for the
+# digest-checking readers. It does not retire it as an incremental-review anchor:
+# .github/audit/resolve-audit-base.sh reads a trailer as a whole-team anchor on
+# version alone, so after such a retitle and a later app/ change, frontend
+# reviews only the delta past the trailer. CI's chore(deps) status anchors the
+# same way.
 frontend_waiver=""
 chore_deps_waives_frontend() {
   if [ -z "$frontend_waiver" ]; then
