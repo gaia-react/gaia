@@ -184,6 +184,18 @@
       "source": "SPEC-061 §shared"
     },
     {
+      "id": "harden-review-snapshot",
+      "path": "harden/reviewed.json|harden/review-tally.json",
+      "match": "exact",
+      "kind": "file",
+      "scope": "shared",
+      "keyed_by": "singleton per-clone snapshot; atomic replace, so a review completed in one tree unconditionally supersedes another's",
+      "why": "What a completed /gaia-harden review saw: the audited-PR denominator, the class inventory, and when it ran, plus the start-of-run tally it was built from. The nudge it silences is machine-scoped like the decline ledger, so one copy per clone is the only scope at which a review can discharge what it reviewed. Shared through the registry-driven symlink, so a review completed in a linked worktree lands in the main checkout's copy and survives that worktree's removal.",
+      "writer": "code",
+      "reaped_by": null,
+      "source": "SPEC-084 §shared"
+    },
+    {
       "id": "specs-main",
       "path": "specs/",
       "match": "prefix",

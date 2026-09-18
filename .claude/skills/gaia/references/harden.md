@@ -8,13 +8,13 @@ v1 owns prose-rule create/edit end to end. Skills and deterministic checks are r
 
 Execute the playbook yourself in the current conversation. This is an interactive, human-gated flow: each candidate's approve / decline / defer / redirect choice is the human's, never the agent's. Do not dispatch a subagent to make those calls and do not auto-advance past a candidate without a human answer.
 
-The agent never runs `git add`, `git commit`, or `git push` *during* the per-candidate flow: each approve / decline / defer lands in the working tree or the ledger (or persists nothing), and the human owns every call. After the last candidate is dispositioned, one end-of-run publish step (`## Publish approved changes (end of run)`) runs on a **main-branch run only**: if at least one approval produced a working-tree change, it branches, commits, pushes, and opens a PR so the human does not have to ask for it. It then merges only when the human approved *every* candidate this run and answers a merge prompt (never automatically); on any selective run it leaves the PR open for review. It does nothing on a non-default branch (the changes ride that branch's own PR). A decline writes one bounded entry to the machine-local, gitignored ledger and nowhere else. A defer persists nothing.
+The agent never runs `git add`, `git commit`, or `git push` *during* the per-candidate flow: each approve / decline / defer lands in the working tree or the ledger (or persists nothing), and the human owns every call. After the last candidate is dispositioned, one end-of-run publish step (`## Publish approved changes (end of run)`) runs on a **main-branch run only**: if at least one approval produced a working-tree change, it branches, commits, pushes, and opens a PR so the human does not have to ask for it. It then merges only when the human approved *every* candidate this run and answers a merge prompt (never automatically); on any selective run it leaves the PR open for review. It does nothing on a non-default branch (the changes ride that branch's own PR). A decline writes one bounded entry to the machine-local, gitignored ledger and nowhere else. A defer persists nothing of its own. Besides the decline ledger, a completed review writes one more machine-local file, the review snapshot, and clears the cached statusline nudge; see `## Record the review (end of run)`.
 
 ## Argument parsing
 
 Tokenize the first whitespace-separated word of `$ARGUMENTS`:
 
-- `review` (or empty `$ARGUMENTS`) → the full interactive flow. This is the default an empty `$ARGUMENTS` resolves to, so the statusline nudge (`Run /gaia-harden (N recurring pattern)` for one, `Run /gaia-harden (N recurring patterns)` for more) points here without carrying a `review` token.
+- `review` (or empty `$ARGUMENTS`) → the full interactive flow. This is the default an empty `$ARGUMENTS` resolves to, so the statusline nudge points here without carrying a `review` token. The nudge text is today's count form (`Run /gaia-harden (N recurring pattern)` for one, `Run /gaia-harden (N recurring patterns)` for more) only on a clone with no review snapshot; after a completed review it instead names the trigger (`tally changed`, `N new pattern(s)`, `<class> rising`, `unclassified rising`), and it stays silent while nothing has changed since that review. See `wiki/concepts/Policy-Memory Loop.md` for the trigger model.
 - `list` → print the live candidates with their distinct-PR counts and the recommended form. No authoring, no prompts.
 - `why` → the remainder of `$ARGUMENTS` is a `finding_class`. Explain that one candidate: the PRs it recurred on, the recommended form, and the rationale. No authoring, no prompts.
 
@@ -24,11 +24,19 @@ If the first token is none of `review` / `list` / `why` and `$ARGUMENTS` is non-
 
 Every subcommand reads the live list from the tally primitive. Re-run it; never trust a stale count.
 
+In `review` mode, save the tally to a file and read it from there, since the end-of-run Record section needs the same run's tally:
+
+```bash
+mkdir -p .gaia/local/harden && .gaia/cli/gaia harden-tally > .gaia/local/harden/review-tally.json
+```
+
+`list` and `why` keep the plain call and write nothing:
+
 ```bash
 .gaia/cli/gaia harden-tally
 ```
 
-It prints JSON to stdout:
+A structured `malformed_snapshot` error on stderr means the prior review snapshot is ignored for this run's triggers; the next completed review replaces it. It prints JSON to stdout:
 
 ```jsonc
 {
@@ -50,9 +58,30 @@ It prints JSON to stdout:
     "pr_numbers": [401, 405, 409],
     "area_tags": ["app/routes"],
     "severity_max": "suggestion"
-  }
+  },
+  "audited_pr_count": 400,
+  "tally_schema_version": 1,
+  "class_inventory": [
+    {"finding_class": "holistic/a", "distinct_pr_count": 40}
+  ],
+  "unclassified_window_count": 120,
+  "snapshot_present": true,
+  "snapshot_reviewed_at": "2026-09-18T10:00:00.000Z",
+  "triggers": [
+    {"type": "schema_change"},
+    {"type": "new_class", "finding_class": "holistic/c"},
+    {"type": "rising_class", "finding_class": "holistic/drifting-duplicate"},
+    {"type": "rising_unclassified"}
+  ]
 }
 ```
+
+- `audited_pr_count`: the window's audited-PR denominator, the count decline and snapshot records bind as `--audited-pr-count`.
+- `tally_schema_version`: the tally's counting-semantics version; a mismatch against the review snapshot is the `schema_change` trigger.
+- `class_inventory`: every non-fallback class counted at least once in the window, below-threshold included.
+- `unclassified_window_count`: the classless fallback count, even below its own signal threshold.
+- `snapshot_present` / `snapshot_reviewed_at`: whether a schema-valid review snapshot was read, and when it was recorded.
+- `triggers`: what changed against the last completed review's snapshot; empty when there is no snapshot or `gh_ok` is `false`.
 
 `unclassified` is `null` when no classless cluster has crossed the recurrence threshold; otherwise it carries `distinct_pr_count`, `pr_numbers`, `area_tags`, and `severity_max` for that one cluster.
 
@@ -60,8 +89,8 @@ Bind to these fields per candidate: `finding_class`, `distinct_pr_count`, `pr_nu
 
 - **`gh_ok` is `false` and stderr carries a `window_truncated` error**: the window holds more merged PRs than the tally's paged read covers. Report "the merged-PR window is too large for the tally to read; this is not an all-clear, report it as a GAIA bug" and stop. Re-running does not help. (Run ends here; see `## Cost record (run end)`.)
 - **`gh_ok` is `false` otherwise**: a `gh`/network outage. Report "could not read the merged-PR window; this is not an all-clear, re-run when `gh` is available" and stop, never claiming no findings. (Run ends here; see `## Cost record (run end)`.)
-- **`gh_ok` is `true`, `candidate_count` is `0`, `unclassified` is `null`**: report "no recurring findings crossed the threshold in the last 90 days" and stop. (Run ends here; see `## Cost record (run end)`.)
-- **`gh_ok` is `true`, `candidate_count` is `0`, `unclassified` is non-null**: do NOT stop. Skip the per-candidate loop (there is nothing to judge) and go straight to `## Unclassified recurrence signal (seed-a-class-or-investigate)` below.
+- **`gh_ok` is `true`, `candidate_count` is `0`, `unclassified` is `null`**: report "no recurring findings crossed the threshold in the last 90 days". In `review` mode, before stopping, run the combined record-and-clear block from `## Record the review (end of run)` as one Bash call: shell variables do not persist across separate calls, so the record and the clear must run together. On a non-zero `record_status`, report it the way that section says (quote the structured error code); either way this stop does not proceed to Publish. `list`/`why` stop as today, writing nothing. (Run ends here; see `## Cost record (run end)`.)
+- **`gh_ok` is `true`, `candidate_count` is `0`, `unclassified` is non-null**: do NOT stop. Skip the per-candidate loop (there is nothing to judge) and go straight to `## Unclassified recurrence signal (seed-a-class-or-investigate)` below, which in `review` mode flows on to `## Record the review (end of run)`.
 - **Otherwise**: run the per-candidate loop below.
 
 ## Judge-the-form logic (the heart of the command)
@@ -104,11 +133,11 @@ A recurring finding proves the problem is real, the cost of NOT acting. It does 
 
 Prose is the weakest form on this axis: it advises rather than enforces, a capable agent may already honor it or may rationalize past it, and it costs context on every matching task. A deterministic check enforces. So the efficacy lens reinforces Axis 2: when the pattern is mechanizable, prefer the check.
 
-The evidence bar is deliberately low, a couple of before/after task replays or a single reproduction of the agent ignoring vs following the guidance, never a benchmark. If the recommended form is prose and you cannot name even that cheap evidence (because it restates a principle a strong agent already honors, or the anti-pattern is judgment-laden and easy to talk past), say so in the rationale and surface **weak efficacy evidence, consider defer until it recurs again, or decline** in the action framing. Never auto-decline, the human owns the call; the lens sharpens the recommendation and the rationale, nothing more.
+The evidence bar is deliberately low, a couple of before/after task replays or a single reproduction of the agent ignoring vs following the guidance, never a benchmark. If the recommended form is prose and you cannot name even that cheap evidence (because it restates a principle a strong agent already honors, or the anti-pattern is judgment-laden and easy to talk past), say so in the rationale and surface **weak efficacy evidence, consider defer as a snooze until the class rises materially or the tally changes, or decline** in the action framing. Never auto-decline, the human owns the call; the lens sharpens the recommendation and the rationale, nothing more.
 
 ### Present and act
 
-For each candidate, present: the finding_class, its distinct-PR count and the PRs it recurred on, the recommended form, and the one-line rationale. Then offer the action set: **approve / decline / defer / redirect**. Collect that choice through an explicit user-question step, one question per candidate, and never auto-advance past a candidate without a human answer, the same way `/gaia-spec` gates each of its questions. This reinforces the "Execution model, READ FIRST" note: the call is the human's, not the agent's. The two persisting actions differ: `decline` writes a machine-local, evidence-gated ledger entry; `defer` persists nothing and simply nudges again on the next tally.
+For each candidate, present: the finding_class, its distinct-PR count and the PRs it recurred on, the recommended form, and the one-line rationale. Then offer the action set: **approve / decline / defer / redirect**. Collect that choice through an explicit user-question step, one question per candidate, and never auto-advance past a candidate without a human answer, the same way `/gaia-spec` gates each of its questions. This reinforces the "Execution model, READ FIRST" note: the call is the human's, not the agent's. The two persisting actions differ: `decline` writes a machine-local, evidence-gated ledger entry; `defer` persists nothing of its own, but the review snapshot a completed review writes still snoozes it until the class rises materially or the tally's counting changes, the same trigger rule that governs every other candidate; it still appears in `list` and in the next review.
 
 `redirect` means the engineer overrides the form choice (e.g. "make it a prose rule even though you recommended a skill"). Honor the override and run that form's action handling. Axis-2 guardrails win over a redirect, though: a redirect cannot force a prose rule for an oracle class, and a redirect toward an enforcement-edit cannot manufacture one where no existing check or quality-gate step exists.
 
@@ -141,23 +170,25 @@ Produce ONLY a skill scaffold; activate nothing and write no `.claude/rules/` fi
 
 Make the existing deterministic check blocking or add it to the quality gate. This is an edit to existing enforcement wiring (the tool's rule file, the `code-audit-frontend` agent, the quality gate doc, or the CI workflow), not a new prose rule. Land the edit in the working tree; the end-of-run publish step commits and PRs it (`## Publish approved changes (end of run)`).
 
-**No provenance marker (deterministic-check / skill / enforcement-edit forms).** These three approve handlers author no `.claude/rules/` marker, so the statusline nudge persists until the pattern stops recurring and ages out of the window (or a promoted rule later covers the class); it is not silenced immediately the way a prose approval is.
+**No provenance marker (deterministic-check / skill / enforcement-edit forms).** These three approve handlers author no `.claude/rules/` marker, but they no longer leave the statusline nudge persisting on their own: the completed review still snapshots the class the way it snapshots every other candidate, so the nudge returns only on a trigger (the class rises materially, or the tally's counting changes), not on every tally the way it used to. It is not silenced by a promoted-rule coverage marker the way a prose approval is, but the review snapshot governs it on the same terms as decline and defer.
 
 ### decline
 
 Record one bounded entry to the machine-local ledger, passing the candidate's current distinct-PR count:
 
 ```bash
-.gaia/cli/gaia harden-ledger record --finding-class "<finding_class>" --pr-count <distinct_pr_count>
+.gaia/cli/gaia harden-ledger record --finding-class "<finding_class>" --pr-count <distinct_pr_count> --audited-pr-count <audited_pr_count>
 ```
 
-Check the `harden-ledger record` exit code before reporting the outcome. On exit `0` the entry is written: report the machine-local decline as described below. On any non-zero exit (notably `CONFIG_INVALID` 30 for a corrupt or version-skewed ledger, or `STORAGE_INACCESSIBLE` 20) the entry was NOT recorded: tell the engineer the decline did not persist and why, and do not claim success. Because nothing was suppressed, the candidate re-surfaces on the next tally.
+Check the `harden-ledger record` exit code before reporting the outcome. On exit `0` the entry is written: report the machine-local decline as described below. On any non-zero exit (notably `CONFIG_INVALID` 30 for a corrupt or version-skewed ledger, or `STORAGE_INACCESSIBLE` 20; `record` itself never exits `2`, that code is `is-suppressed`'s for a malformed call) the entry was NOT recorded: tell the engineer the decline did not persist and why, and do not claim success. Because nothing was suppressed, the candidate re-surfaces on the next tally. A failed decline write does not halt the review: the run continues to the next candidate and, after the last one, proceeds through the unclassified section to `## Record the review (end of run)`, so the snapshot still records; the declined-but-unsuppressed class simply reappears in the next review.
 
-State that the decline is machine-local only (the ledger is gitignored) and never shared: a teammate still sees the nudge and can approve. The decline re-surfaces on evidence, the ledger handles that: the candidate returns when the window's distinct-PR count for the class rises to at least 3 above its count at the time of decline. That count is a snapshot of the rolling 90-day window, not a monotonic tally of PRs merged since the decline, so window churn (old PRs aging out) can lower it and thereby delay or indefinitely prevent re-surface. A mis-decline is reversible: re-record with a corrected count, or let `.gaia/cli/gaia harden-ledger prune` drop the entry once the class leaves the window, the undo and hygiene path for the ledger.
+State that the decline is machine-local only (the ledger is gitignored) and never shared: a teammate still sees the nudge and can approve. The decline re-surfaces on evidence, the ledger handles that: the candidate returns once the rise from the count recorded at decline to the live count is material, the same share-based material-rise rule that governs every other trigger (see `wiki/concepts/Policy-Memory Loop.md`), with a floor requiring at least 3 more distinct PRs, and measured against the same tally schema version. An entry recorded before this rule existed, or under a different schema version, is a legacy entry and never suppresses; re-decline it to restore a suppression under the live rule. A mis-decline is reversible: re-record with a corrected count, or let `.gaia/cli/gaia harden-ledger prune` drop the entry once the class leaves the window, the undo and hygiene path for the ledger.
+
+`.gaia/local` is shared across a clone's linked worktrees, so a sibling worktree still on an older GAIA reads the version-2 ledger as invalid: its `is-suppressed` fails the ledger load and exits `CONFIG_INVALID` 30 before it looks up any entry, and its bridge maps every exit other than `1` to suppressed. Every class is then suppressed in that worktree, not only the declined ones: the failure is closed (nothing is wrongly re-surfaced) but it is silent. `/gaia-harden` itself refuses to run inside a linked worktree (`gaia_refuse_if_worktree` in `.claude/commands/gaia-harden.md`), so no review ever runs there to report that all-clear; what actually happens in the worktree is the background refresher's own `harden-tally` call, filtered through the same suppressed-everything bridge, silently dropping every candidate from the statusline nudge until the worktree updates. A review reporting the all-clear only happens when the main checkout itself is the one still running the older GAIA. An older refresher (`.gaia/scripts/check-updates.sh`) running from such a worktree also rewrites the shared cache without the `hardenNudgeReason` key, so the statusline falls back to the count text until an updated refresher next runs.
 
 ### defer
 
-Persist nothing. The candidate stays in the next tally pass and ages out of the rolling 90-day window if it stops recurring and no one acts. Do not write the ledger, do not draft a file.
+Persist nothing of its own: do not write the ledger, do not draft a file. The review snapshot a completed review writes still snoozes the candidate on the same trigger rule as any other, until the class rises materially or the tally's counting changes. It never hides the candidate from `list` or from the next review; it only silences the statusline nudge until a trigger fires.
 
 ## The prose-rule template (fill in, then write)
 
@@ -207,22 +238,47 @@ The `marker.test.ts` guard asserts every doc copy reproduces `markerComment(...)
 
 Runs once in `review` mode, after the last candidate is dispositioned (or immediately, skipping straight here, when `candidate_count` was `0`). This section sits outside the per-candidate approve/decline/defer/redirect loop above.
 
-When `unclassified` is `null`, skip this section silently and proceed to `## Publish approved changes (end of run)`.
+When `unclassified` is `null`, skip this section silently and proceed to `## Record the review (end of run)`.
 
 When `unclassified` is non-null, present it to the engineer as a distinct signal, separate from any candidate: the closed finding_class vocabulary may be missing something, or the cluster warrants investigation on its own. Show its `distinct_pr_count`, `pr_numbers`, and `severity_max`. State explicitly:
 
 - It is NEVER placed in the draftable candidate set. `/gaia-harden` NEVER drafts a path-scoped rule, a deterministic-check sketch, a skill scaffold, or any other artifact for it.
 - It carries no approve / decline / defer / redirect action; there is nothing to ask the engineer to disposition here.
 - Seeding a class does **not** reclassify the cluster's findings. The tally buckets each finding on the literal class string its pull request recorded, so a finding written down as classless stays classless until it ages out of the window. Seeding reaches forward only, to what a member assigns next.
-- Because of that, the signal carries a **suppression**, recorded the way a decline is: `.gaia/cli/gaia harden-ledger record --finding-class holistic/unclassified --pr-count <distinct_pr_count>`, passing the count the signal currently carries. The signal falls silent, and it returns once the window's distinct-pull-request count rises at least 3 above the recorded one. Only the baseline is a stored number; the count it is compared against is a live rolling-window snapshot, so window churn as old pull requests age out lowers that count and can delay the return indefinitely, which is the caveat `ledger.ts` states at its own subtraction. A baseline recorded at the wrong count is corrected by recording again with the right one, and the `### decline` prune undo reaches this entry on the same terms as any other: once the classless cluster stops recurring at the threshold, the prune drops the baseline with it, so the next unrelated classless cluster is measured from zero rather than from a high-water mark nothing in the window still supports.
+- Because of that, the signal carries a **suppression**, recorded the way a decline is: `.gaia/cli/gaia harden-ledger record --finding-class holistic/unclassified --pr-count <distinct_pr_count> --audited-pr-count <audited_pr_count>`, passing the count the signal currently carries. The signal falls silent, and it returns on the same share-based material-rise rule as every other trigger (see `wiki/concepts/Policy-Memory Loop.md`), with the same distinct-PR floor, measured against the same tally schema version. Only the baseline is a stored snapshot; the live count it is compared against is read from the rolling 90-day window each time, so window churn as old pull requests age out can lower the live share and thereby delay or indefinitely prevent the return. A baseline recorded at the wrong count is corrected by recording again with the right one, and the `### decline` prune undo reaches this entry on the same terms as any other: once the classless cluster stops recurring at the threshold, the prune drops the baseline with it, so the next unrelated classless cluster is measured from zero rather than from a high-water mark nothing in the window still supports.
 - The suppression is machine-local: the ledger is gitignored and per-clone (the state registry shares one copy across a clone's worktrees), so it silences the nudge for the maintainer who records it while the change it discharges is committed and shared. Every other clone keeps seeing the nudge until the cluster ages out.
-- The nudge is rendered by the statusline from a count `.gaia/scripts/check-updates.sh` caches, so the discharge is only observable there once that refresher next runs. To confirm the record landed without waiting, read the ledger directly: `.gaia/cli/gaia harden-ledger list`.
+- The nudge is rendered by the statusline from the reason the refresher caches, which `## Record the review (end of run)` clears at once. To confirm the record landed without waiting, read the ledger directly: `.gaia/cli/gaia harden-ledger list`.
 
-Then proceed to `## Publish approved changes (end of run)`, which publishes only what the candidate loop approved (this section authors nothing, so it never triggers a publish on its own).
+Then proceed to `## Record the review (end of run)`.
+
+## Record the review (end of run)
+
+Runs once, in `review` mode only, after the last candidate is dispositioned and `## Unclassified recurrence signal (seed-a-class-or-investigate)` has run. An abandoned run, one where a candidate was left without an answer, never reaches this section and writes nothing. `list`, `why`, and a `gh_ok` false fetch never reach it either.
+
+Record the snapshot from this run's own start-of-run tally (the file `## Fetch the live candidate list` saved), then, only on exit `0`, clear the cached nudge so the next statusline render stops showing it (model on `.claude/skills/gaia/references/audit.md`'s cache-bust, main-root-resolved, jq with an `rm -f` fallback). Run both as one Bash call: shell variables do not persist across separate calls.
+
+```bash
+.gaia/cli/gaia harden-ledger snapshot record --tally-file .gaia/local/harden/review-tally.json
+record_status=$?
+if [ "$record_status" -eq 0 ]; then
+  CACHE_ROOT="$(bash .gaia/scripts/main-root-lib.sh 2>/dev/null || git rev-parse --show-toplevel)"
+  CACHE="$CACHE_ROOT/.gaia/local/cache/shared/update-check.json"
+  if [ -f "$CACHE" ]; then
+    if command -v jq >/dev/null 2>&1; then
+      tmp="$(mktemp)"
+      jq '.hardenNudgeReason = "" | .checkedAt = 0' "$CACHE" > "$tmp" && mv "$tmp" "$CACHE"
+    else
+      rm -f "$CACHE"
+    fi
+  fi
+fi
+```
+
+On a non-zero `record_status`, the snapshot did NOT record: report that the review is complete but its snapshot did not, quoting the structured error code (`PAYLOAD_VALIDATION_FAILED` 11 means the saved tally was refused, malformed or read from a `gh_ok: false` run; `STORAGE_INACCESSIBLE` 20 means the saved tally could not be read); the block above already skips the cache clear in that case. Either way, continue to `## Publish approved changes (end of run)` regardless. A failed record never blocks publishing, and a publish failure never undoes a snapshot that did record.
 
 ## Publish approved changes (end of run)
 
-Runs once, in `review` mode only, after the last candidate is dispositioned. `list` and `why` never reach it (they author nothing). It exists so an engineer who approved at least one change does not then have to ask for a branch and PR by hand.
+Runs once, in `review` mode only, after `## Record the review (end of run)`. `list` and `why` never reach it (they author nothing). It exists so an engineer who approved at least one change does not then have to ask for a branch and PR by hand.
 
 **Precondition.** During the per-candidate loop, track whether any candidate was approved through a handler that writes to the working tree: **new prose rule**, **edit existing prose rule**, or **enforcement edit**. The scaffold-only handlers (deterministic-check sketch, skill scaffold) write no file and never count, and decline / defer produce no change. If no approval produced a working-tree change, there is nothing to publish: say so briefly and stop. (Run ends here; see `## Cost record (run end)`.)
 
@@ -309,8 +365,9 @@ Apply the shared tally machinery in `.claude/skills/gaia/references/cost-record.
 - Never auto-activate a skill or a deterministic check. v1 owns only prose-rule create/edit end to end; the other two forms are scaffold-only.
 - Every drafted prose rule is mandatorily path-scoped (`paths:` frontmatter), and carries the verbatim provenance marker.
 - A decline is machine-local only (gitignored ledger); it never vetoes the candidate for a teammate.
-- A defer persists nothing.
+- A defer persists nothing of its own; the review snapshot snoozes it on the same trigger rule as any other candidate.
 - Recommend exactly one form per candidate, with rationale; check edit-vs-new first; bias to the lowest-context-weight form. Never reflexively author a prose rule.
 - Factor the efficacy lens (Axis 3) into the recommendation and rationale: a recurring finding proves the problem, not the fix. When the recommended form is prose and no cheap evidence shows it would change behavior, surface that as a defer/decline signal for the human, never as an auto-decline.
 - This loop keys only on `finding_class` recurrence from the PR window.
-- The `unclassified` signal is never a draftable candidate and is never auto-drafted: it carries no approve/decline/defer/redirect action and authors no artifact. It carries a suppression instead, on the terms `## Unclassified recurrence signal (seed-a-class-or-investigate)` states, including its release by the prune. Relaxing this guardrail is deliberate: seeding provably cannot shrink the cluster it answers, so without a suppression a maintainer who does exactly the right thing is nagged for it for up to ninety days. No later change widens this further without the same justification.
+- The review snapshot is written only by a completed review-mode run, from that run's own start-of-run tally, never by `list`, `why`, a `gh_ok` false fetch, or an interrupted (abandoned) review.
+- The `unclassified` signal is never a draftable candidate and is never auto-drafted: it carries no approve/decline/defer/redirect action and authors no artifact. It carries a suppression instead, on the terms `## Unclassified recurrence signal (seed-a-class-or-investigate)` states, including its release by the prune. Relaxing this guardrail is deliberate: seeding provably cannot shrink the cluster it answers. What spares the maintainer the nudge is no longer the suppression alone, the review snapshot does that on the same trigger terms as every other candidate; the suppression's own job is narrower, it removes the unclassified section from a review until the signal rises materially, so a review that has already seen it is not asked to re-litigate an unchanged cluster. No later change widens this further without the same justification.

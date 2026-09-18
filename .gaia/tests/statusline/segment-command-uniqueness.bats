@@ -98,3 +98,31 @@ rendered_commands() {
   dupes=$(rendered_commands "$output" | uniq -d)
   [ -z "$dupes" ]
 }
+
+# Same invariant, but with the cache carrying hardenNudgeReason: the harden
+# segment now renders from that key rather than from the two counts, and the
+# multi-trigger reason text must still produce exactly one /gaia-harden
+# segment rather than one per trigger it names.
+@test "one /gaia-harden segment when the cache carries a multi-trigger hardenNudgeReason" {
+  cat > "$MAIN/.gaia/local/cache/shared/update-check.json" <<'JSON'
+{
+  "gaiaHasUpdate": true,
+  "gaiaLatest": "9.9.9",
+  "outdatedCount": 3,
+  "hardenNudgeReason": "1 new pattern, drifting-duplicate rising",
+  "residueCandidateCount": 5,
+  "auditNudge": true,
+  "auditNudgeReason": "stale",
+  "serenaLangDrift": ["go"]
+}
+JSON
+  mkdir -p "$MAIN/.gaia/local/debt"
+  printf '{"openCount":4}' > "$MAIN/.gaia/local/debt/count.json"
+  json=$(jq -n --arg d "$MAIN" '{workspace: {current_dir: $d}, cwd: $d, model: {display_name: "Test"}, context_window: {used_percentage: 10}}')
+  run env HOME="$TMP_HOME" bash -c "printf '%s' '$json' | bash '$MAIN/.gaia/statusline/gaia-statusline.sh'"
+  [ "$status" -eq 0 ]
+  grep -qF -- "Run /gaia-harden (1 new pattern, drifting-duplicate rising)" <<<"$output"
+  [ "$(grep -oF -- "Run /gaia-harden" <<<"$output" | wc -l | tr -d ' ')" -eq 1 ]
+  dupes=$(rendered_commands "$output" | uniq -d)
+  [ -z "$dupes" ]
+}

@@ -1,4 +1,4 @@
-import {describe, expect, test} from 'vitest';
+import {describe, expect, test, vi} from 'vitest';
 import {isValidFindingClass} from '../../schemas/finding-class.js';
 import {computeTally, windowClasses} from '../compute-tally.js';
 import type {TallyPrRecord} from '../compute-tally.js';
@@ -10,6 +10,18 @@ const pr = (
 
 const noCover = (): boolean => false;
 const noSuppress = (): boolean => false;
+
+// `findings` distinct classless-fallback PRs, numbered 1..findings.
+const fallbackWindow = (findings: number): TallyPrRecord[] =>
+  Array.from({length: findings}, (_unused, index) =>
+    pr(index + 1, [
+      {
+        area_tags: [],
+        finding_class: 'holistic/unclassified',
+        severity: 'warning',
+      },
+    ])
+  );
 
 describe('computeTally', () => {
   test('surfaces a class seen on 3 distinct PRs at warning severity', () => {
@@ -492,8 +504,8 @@ describe('computeTally', () => {
     expect(result.candidate_count).toBe(0);
   });
 
-  test('drops a class the ledger reports suppressed and passes the live PR count', () => {
-    const seen: number[] = [];
+  test('drops a class the ledger reports suppressed and passes the live PR count and audited-PR denominator', () => {
+    const seen: [number, number][] = [];
     const result = computeTally({
       coveredClass: noCover,
       prs: [3, 2, 1].map((n) =>
@@ -505,8 +517,8 @@ describe('computeTally', () => {
           },
         ])
       ),
-      suppressedClass: (_c, currentPrCount) => {
-        seen.push(currentPrCount);
+      suppressedClass: (_c, currentPrCount, currentAuditedPrCount) => {
+        seen.push([currentPrCount, currentAuditedPrCount]);
 
         return true;
       },
@@ -514,7 +526,7 @@ describe('computeTally', () => {
     });
 
     expect(result.candidate_count).toBe(0);
-    expect(seen).toContain(3);
+    expect(seen).toContainEqual([3, 3]);
   });
 
   test('windowClasses returns classes with >= threshold recurrence regardless of suppression', () => {
@@ -566,21 +578,25 @@ describe('computeTally', () => {
     expect(notSuppressed.unclassified).not.toBeNull();
   });
 
-  test('the suppression predicate receives the fallback class and its own distinct-PR count', () => {
-    const seen: [string, number][] = [];
+  test('the suppression predicate receives the fallback class, its own distinct-PR count, and the audited-PR denominator', () => {
+    const seen: [string, number, number][] = [];
 
     computeTally({
       coveredClass: noCover,
       prs: fallbackPrs,
-      suppressedClass: (findingClass, currentPrCount) => {
-        seen.push([findingClass, currentPrCount]);
+      suppressedClass: (
+        findingClass,
+        currentPrCount,
+        currentAuditedPrCount
+      ) => {
+        seen.push([findingClass, currentPrCount, currentAuditedPrCount]);
 
         return false;
       },
       windowDays: 90,
     });
 
-    expect(seen).toEqual([['holistic/unclassified', 3]]);
+    expect(seen).toEqual([['holistic/unclassified', 3, 3]]);
   });
 
   test('the fallback is still not a candidate under suppression or without it', () => {
@@ -598,5 +614,130 @@ describe('computeTally', () => {
         )
       ).toBe(false);
     }
+  });
+
+  test('class_inventory holds a below-threshold class without it becoming a candidate; a covered or suppressed class holds neither; suppressedClass is queried only at threshold, with (class, count, prs.length)', () => {
+    const calls: [string, number, number][] = [];
+    const suppressedClass = vi.fn(
+      (
+        findingClass: string,
+        currentPrCount: number,
+        currentAuditedPrCount: number
+      ) => {
+        calls.push([findingClass, currentPrCount, currentAuditedPrCount]);
+
+        return findingClass === 'axe/color-contrast';
+      }
+    );
+
+    const prs = [
+      pr(101, [
+        {
+          area_tags: [],
+          finding_class: 'holistic/stale-figure',
+          severity: 'warning',
+        },
+      ]),
+      pr(102, [
+        {
+          area_tags: [],
+          finding_class: 'holistic/stale-figure',
+          severity: 'warning',
+        },
+      ]),
+      ...[201, 202, 203].map((n) =>
+        pr(n, [
+          {
+            area_tags: [],
+            finding_class: 'rule/switch-statement',
+            severity: 'warning',
+          },
+        ])
+      ),
+      ...[301, 302, 303].map((n) =>
+        pr(n, [
+          {
+            area_tags: [],
+            finding_class: 'axe/color-contrast',
+            severity: 'warning',
+          },
+        ])
+      ),
+    ];
+
+    const result = computeTally({
+      coveredClass: (c) => c === 'rule/switch-statement',
+      prs,
+      suppressedClass,
+      windowDays: 90,
+    });
+
+    expect(result.candidates).toEqual([]);
+    expect(result.class_inventory).toEqual([
+      {distinct_pr_count: 2, finding_class: 'holistic/stale-figure'},
+    ]);
+    expect(calls).toContainEqual(['rule/switch-statement', 3, 8]);
+    expect(calls).toContainEqual(['axe/color-contrast', 3, 8]);
+    expect(
+      calls.some(([findingClass]) => findingClass === 'holistic/stale-figure')
+    ).toBe(false);
+  });
+
+  test('unclassified_window_count: below-threshold count, absent, suppressed-at-threshold, and unsuppressed-at-threshold', () => {
+    expect(
+      computeTally({
+        coveredClass: noCover,
+        prs: fallbackWindow(2),
+        suppressedClass: noSuppress,
+        windowDays: 90,
+      }).unclassified_window_count
+    ).toBe(2);
+
+    expect(
+      computeTally({
+        coveredClass: noCover,
+        prs: [],
+        suppressedClass: noSuppress,
+        windowDays: 90,
+      }).unclassified_window_count
+    ).toBeNull();
+
+    const suppressed = computeTally({
+      coveredClass: noCover,
+      prs: fallbackWindow(5),
+      suppressedClass: () => true,
+      windowDays: 90,
+    });
+    expect(suppressed.unclassified_window_count).toBeNull();
+    expect(suppressed.unclassified).toBeNull();
+
+    const unsuppressed = computeTally({
+      coveredClass: noCover,
+      prs: fallbackWindow(5),
+      suppressedClass: () => false,
+      windowDays: 90,
+    });
+    expect(unsuppressed.unclassified_window_count).toBe(5);
+  });
+
+  test('audited_pr_count equals prs.length, including a PR whose record has an empty findings array', () => {
+    const result = computeTally({
+      coveredClass: noCover,
+      prs: [
+        pr(1, [
+          {
+            area_tags: [],
+            finding_class: 'holistic/stale-figure',
+            severity: 'warning',
+          },
+        ]),
+        pr(2, []),
+        pr(3, []),
+      ],
+      suppressedClass: noSuppress,
+      windowDays: 90,
+    });
+
+    expect(result.audited_pr_count).toBe(3);
   });
 });

@@ -289,7 +289,8 @@ JSON
 
   # Every pre-existing field is still present.
   for key in checkedAt outdatedCount gaiaCurrent gaiaLatest gaiaHasUpdate \
-    hardenCandidateCount auditNudge auditNudgeReason auditLastAppliedAt \
+    hardenCandidateCount hardenUnclassifiedCount hardenNudgeReason \
+    auditNudge auditNudgeReason auditLastAppliedAt \
     auditMemoryCount auditMemoryBaseline serenaLangDrift; do
     [ "$(jq "has(\"$key\")" "$cache")" = "true" ] || return 1
   done

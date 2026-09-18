@@ -12,7 +12,7 @@ const notSuppressed = (): ProcessResult => ({
 });
 
 describe('makeLedgerSuppressionPredicate', () => {
-  test('treats exit 0 as suppressed and passes the class + live count to the ledger', () => {
+  test('treats exit 0 as suppressed and passes the class, live count, and live denominator to the ledger', () => {
     const calls: string[][] = [];
     const predicate = makeLedgerSuppressionPredicate({
       cwd: '/repo',
@@ -23,7 +23,7 @@ describe('makeLedgerSuppressionPredicate', () => {
       },
     });
 
-    expect(predicate('axe/color-contrast', 5)).toBe(true);
+    expect(predicate('axe/color-contrast', 5, 400)).toBe(true);
 
     const args = calls.at(-1) ?? [];
     expect(args).toContain('harden-ledger');
@@ -32,6 +32,8 @@ describe('makeLedgerSuppressionPredicate', () => {
     expect(args[classIndex + 1]).toBe('axe/color-contrast');
     const countIndex = args.indexOf('--current-pr-count');
     expect(args[countIndex + 1]).toBe('5');
+    const auditedCountIndex = args.indexOf('--current-audited-pr-count');
+    expect(args[auditedCountIndex + 1]).toBe('400');
   });
 
   test('treats exit 1 (the legitimate not-suppressed code) as not suppressed', () => {
@@ -40,7 +42,22 @@ describe('makeLedgerSuppressionPredicate', () => {
       runLedger: notSuppressed,
     });
 
-    expect(predicate('axe/color-contrast', 5)).toBe(false);
+    expect(predicate('axe/color-contrast', 5, 400)).toBe(false);
+  });
+
+  test('fails closed on INVALID_ARGUMENTS (a malformed call)', () => {
+    const predicate = makeLedgerSuppressionPredicate({
+      cwd: '/repo',
+      runLedger: () => ({
+        exitCode: EXIT_CODES.INVALID_ARGUMENTS,
+        stderr: '',
+        stdout: '',
+      }),
+    });
+
+    // Fail-closed: an argument-error exit stays suppressed rather than
+    // re-surfacing a candidate on a malformed call.
+    expect(predicate('axe/color-contrast', 5, 400)).toBe(true);
   });
 
   test('fails closed on CONFIG_INVALID (a corrupt / version-skewed ledger)', () => {
@@ -55,7 +72,7 @@ describe('makeLedgerSuppressionPredicate', () => {
 
     // Fail-closed: an error exit stays suppressed so a corrupt ledger never
     // silently re-surfaces a declined candidate.
-    expect(predicate('axe/color-contrast', 5)).toBe(true);
+    expect(predicate('axe/color-contrast', 5, 400)).toBe(true);
   });
 
   test('fails closed on STORAGE_INACCESSIBLE', () => {
@@ -68,7 +85,7 @@ describe('makeLedgerSuppressionPredicate', () => {
       }),
     });
 
-    expect(predicate('axe/color-contrast', 5)).toBe(true);
+    expect(predicate('axe/color-contrast', 5, 400)).toBe(true);
   });
 });
 

@@ -66,6 +66,7 @@ const defaultOnReject: OnReject = (reason, detail) => {
   );
 };
 
+// tally-semantics:start
 const parseFinding = (
   value: unknown,
   onReject: OnReject
@@ -170,3 +171,4 @@ export const parseFindingsBlock = (
 
   return {auditor, findings: result};
 };
+// tally-semantics:end

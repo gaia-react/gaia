@@ -7,13 +7,19 @@
  * any severity, drops classes a promoted rule already covers or the decline
  * ledger suppresses, self-cleans the ledger, and prints the candidate list
  * plus the classless `unclassified` recurrence signal as JSON to stdout. The
- * statusline refresher mirrors `candidate_count` and the unclassified count
- * into the cache; `/gaia-harden review` re-runs this to get the live list.
+ * statusline refresher composes a nudge reason from `triggers` (or from
+ * counts when no review snapshot exists); `/gaia-harden review` re-runs this
+ * to get the live list.
  *
  * No LLM, no drafting, no writes other than (indirectly) the ledger prune. The
  * window read is the only network access and it is non-fatal: a gh failure or
  * a window the paged read cannot finish yields an empty candidate list and
  * `gh_ok: false` rather than aborting the refresher.
+ *
+ * `audited_pr_count` and `class_inventory` give a review snapshot the full
+ * denominator and vocabulary it needs; `triggers` names what changed against
+ * the last completed review's snapshot (`.gaia/local/harden/reviewed.json`),
+ * evaluated by `evaluateTriggers` (`triggers.ts`).
  */
 import path from 'node:path';
 import {
@@ -22,6 +28,7 @@ import {
   readMergedPrWindow,
 } from '../ci/util/merged-pr-window.js';
 import {EXIT_CODES} from '../exit.js';
+import {readReviewSnapshot} from '../schemas/review-snapshot.js';
 import {structuredError} from '../stderr.js';
 import {computeTally, windowClasses} from './compute-tally.js';
 import type {TallyPrRecord, TallyResult} from './compute-tally.js';
@@ -32,7 +39,10 @@ import {
   pruneLedger,
 } from './ledger-bridge.js';
 import type {LedgerRunner} from './ledger-bridge.js';
+import {TALLY_SCHEMA_VERSION} from './material-rise.js';
 import {parseFindingsBlock} from './parse-findings-block.js';
+import {evaluateTriggers} from './triggers.js';
+import type {HardenTrigger} from './triggers.js';
 
 const HELP_TEXT = `Usage: gaia harden-tally
 
@@ -43,6 +53,13 @@ const HELP_TEXT = `Usage: gaia harden-tally
   classless (unclassified) finding recurring the same way surfaces separately
   as the \`unclassified\` field instead of a candidate.
 
+  Also emits audited_pr_count (the window's audited-PR denominator),
+  class_inventory (every uncovered, unsuppressed counted class,
+  below-threshold included), unclassified_window_count (the classless
+  count below its signal threshold), tally_schema_version, and, against
+  the last completed review's snapshot, snapshot_present /
+  snapshot_reviewed_at / triggers.
+
   Network failures are non-fatal: gh errors yield an empty candidate list
   and gh_ok: false. A window the paged read cannot finish does the same,
   with a window_truncated error on stderr, since reading part of it as the
@@ -50,10 +67,17 @@ const HELP_TEXT = `Usage: gaia harden-tally
 `;
 
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
-const WINDOW_DAYS = 90;
 
-/** The emitted tally JSON: the pure result plus the window-read success flag. */
-type EmittedTally = TallyResult & {gh_ok: boolean};
+export const WINDOW_DAYS = 90;
+
+/** The emitted tally JSON: the pure result plus the window-read fields. */
+type EmittedTally = TallyResult & {
+  gh_ok: boolean;
+  snapshot_present: boolean;
+  snapshot_reviewed_at: null | string;
+  tally_schema_version: number;
+  triggers: HardenTrigger[];
+};
 
 type RunOptions = {
   cwd?: string;
@@ -82,6 +106,7 @@ type GhPr = {
   number: number;
 };
 
+// tally-semantics:start
 const parseGhPr = (value: unknown): GhPr | null => {
   if (typeof value !== 'object' || value === null) return null;
   const v = value as Record<string, unknown>;
@@ -112,8 +137,10 @@ const parseGhPr = (value: unknown): GhPr | null => {
 // block from the SAME auditor supersedes its own earlier one (a re-run audit
 // supersedes an earlier run), while blocks from DIFFERENT auditors on the
 // same PR both survive. The merged record flattens every auditor's surviving
-// findings in Map insertion order (gh's chronological comment order).
-// Returns null when no comment carries a parseable block.
+// findings in Map insertion order (gh's chronological comment order). A PR
+// with at least one parseable block (even one with an empty findings array)
+// is "audited": this is the predicate `audited_pr_count` counts. Returns null
+// when no comment carries a parseable block.
 const recordFromGhPr = (pr: GhPr): null | TallyPrRecord => {
   const byAuditor = new Map<string, TallyPrRecord['findings']>();
 
@@ -172,6 +199,7 @@ const fetchWindowPrs = (cwd: string, now: Date): WindowPrs => {
 
   return {ghOk: true, prs: records};
 };
+// tally-semantics:end
 
 export const run = (
   argv: readonly string[],
@@ -206,11 +234,58 @@ export const run = (
   // this fails closed, matching `makeLedgerSuppressionPredicate`.
   if (ghOk) pruneLedger({cwd, runLedger, windowClasses: windowClasses(prs)});
 
+  // Read the review snapshot unconditionally (not gated on `ghOk`), so a
+  // malformed snapshot is always reported. A malformed snapshot reads as
+  // absent for trigger purposes: trusting a corrupt file's counts would risk
+  // a wrong comparison, and a missing one already falls back to the
+  // count-based nudge text the statusline refresher composes when no
+  // snapshot exists.
+  const snapshotResult = readReviewSnapshot(cwd);
+
+  if (snapshotResult.status === 'malformed') {
+    structuredError({
+      code: 'malformed_snapshot',
+      message: snapshotResult.error,
+      subcommand: 'harden-tally',
+    });
+  }
+
+  const snapshot =
+    snapshotResult.status === 'ok' ? snapshotResult.snapshot : null;
+
+  // Triggers only evaluate against a real snapshot read on a successful
+  // window read: a failed `gh` read yields an empty, non-authoritative
+  // `prs`/`candidates`, so comparing it to the snapshot would report a false
+  // "everything vanished" rather than staying silent until the window reads
+  // again.
+  const triggers: HardenTrigger[] =
+    ghOk && snapshot !== null ?
+      evaluateTriggers({
+        live: {
+          auditedPrCount: tallyResult.audited_pr_count,
+          candidates: tallyResult.candidates,
+          tallySchemaVersion: TALLY_SCHEMA_VERSION,
+          unclassified:
+            tallyResult.unclassified === null ?
+              null
+            : {distinct_pr_count: tallyResult.unclassified.distinct_pr_count},
+        },
+        snapshot,
+      })
+    : [];
+
   // Emit `gh_ok` at the I/O boundary so a gh outage is distinguishable from an
   // all-clear. It stays off the pure `TallyResult`: the tally core cannot know
   // whether the window read succeeded. The read is non-fatal, so run() still
   // exits 0 in every case.
-  const emitted: EmittedTally = {...tallyResult, gh_ok: ghOk};
+  const emitted: EmittedTally = {
+    ...tallyResult,
+    gh_ok: ghOk,
+    snapshot_present: snapshot !== null,
+    snapshot_reviewed_at: snapshot?.reviewed_at ?? null,
+    tally_schema_version: TALLY_SCHEMA_VERSION,
+    triggers,
+  };
 
   process.stdout.write(`${JSON.stringify(emitted)}\n`);
 

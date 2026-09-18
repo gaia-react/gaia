@@ -5,7 +5,14 @@ import path from 'node:path';
 import {MERGED_PR_PAGE_CEILING} from '../../ci/util/merged-pr-window.js';
 import * as runProcess from '../../ci/util/run-process.js';
 import type {ProcessResult} from '../../ci/util/run-process.js';
+import {
+  ReviewTallyInputSchema,
+  snapshotFromTally,
+  writeReviewSnapshot,
+} from '../../schemas/review-snapshot.js';
+import type {ReviewSnapshot} from '../../schemas/review-snapshot.js';
 import {markerComment} from '../marker.js';
+import {isMaterialRise, TALLY_SCHEMA_VERSION} from '../material-rise.js';
 import {run} from '../tally.js';
 
 type Sandbox = {
@@ -96,6 +103,49 @@ const stubGh = (prs: unknown[]): ProcessResult => ({
 const parseStdout = (out: string[]): Record<string, unknown> =>
   JSON.parse(out.join('').trim()) as Record<string, unknown>;
 
+const REFERENCE_NOW = new Date('2026-09-18T10:00:00.000Z');
+
+const snapshotPath = (root: string): string =>
+  path.join(root, '.gaia', 'local', 'harden', 'reviewed.json');
+
+const writeRawSnapshot = (root: string, contents: string): void => {
+  mkdirSync(path.dirname(snapshotPath(root)), {recursive: true});
+  writeFileSync(snapshotPath(root), contents);
+};
+
+// Stubs a window of `recurring` PRs carrying `findingClass` plus `bystanders`
+// audited PRs carrying an unrelated seeded class, so a test can drive both
+// the numerator (the class under test) and the denominator
+// (`audited_pr_count`) independently.
+const stubClassWindow = (args: {
+  bystanders: number;
+  findingClass: string;
+  recurring: number;
+}): void => {
+  const recurringPrs = Array.from({length: args.recurring}, (_u, index) =>
+    ghPr(index + 1, [
+      findingsComment(index + 1, 'ci', [
+        {area_tags: [], finding_class: args.findingClass, severity: 'warning'},
+      ]),
+    ])
+  );
+  const bystanderPrs = Array.from({length: args.bystanders}, (_u, index) =>
+    ghPr(args.recurring + index + 1, [
+      findingsComment(args.recurring + index + 1, 'ci', [
+        {
+          area_tags: [],
+          finding_class: 'holistic/stale-figure',
+          severity: 'warning',
+        },
+      ]),
+    ])
+  );
+
+  vi.spyOn(runProcess, 'runGh').mockReturnValue(
+    stubGh([...recurringPrs, ...bystanderPrs])
+  );
+};
+
 // Stubs the window read as one classless finding per named PR, so a test can
 // drive the fallback bucket's distinct-PR count directly.
 const stubClasslessWindow = (prNumbers: readonly number[]): void => {
@@ -139,7 +189,10 @@ type FakeLedger = {
   runLedger: (argv: readonly string[]) => ProcessResult;
 };
 
-type FakeStore = Map<string, {declined_at_pr_count: number}>;
+type FakeStore = Map<
+  string,
+  {declined_at_audited_pr_count: number; declined_at_pr_count: number}
+>;
 
 const fakeFlag = (
   argv: readonly string[],
@@ -153,23 +206,42 @@ const fakeFlag = (
 const fakeRecord = (store: FakeStore, argv: readonly string[]): void => {
   const findingClass = fakeFlag(argv, '--finding-class');
   const prCount = Number(fakeFlag(argv, '--pr-count'));
+  const auditedPrCount = Number(fakeFlag(argv, '--audited-pr-count'));
 
   if (findingClass !== undefined) {
-    store.set(findingClass, {declined_at_pr_count: prCount});
+    store.set(findingClass, {
+      declined_at_audited_pr_count: auditedPrCount,
+      declined_at_pr_count: prCount,
+    });
   }
 };
 
+// Mirrors the real `harden-ledger is-suppressed`, which delegates to the same
+// `isMaterialRise` the tally imports, so this fake agrees with the real
+// ledger instead of a rule nothing ships any more.
 const fakeIsSuppressed = (
   store: FakeStore,
   argv: readonly string[]
 ): number => {
   const findingClass = fakeFlag(argv, '--finding-class') ?? '';
   const currentPrCount = Number(fakeFlag(argv, '--current-pr-count'));
+  const currentAuditedPrCount = Number(
+    fakeFlag(argv, '--current-audited-pr-count')
+  );
   const entry = store.get(findingClass);
 
   if (entry === undefined) return 1;
 
-  return currentPrCount - entry.declined_at_pr_count < 3 ? 0 : 1;
+  return (
+      isMaterialRise({
+        baseAuditedPrCount: entry.declined_at_audited_pr_count,
+        baseCount: entry.declined_at_pr_count,
+        liveAuditedPrCount: currentAuditedPrCount,
+        liveCount: currentPrCount,
+      })
+    ) ?
+      1
+    : 0;
 };
 
 // Mirrors `handlePrune`: every key the window-classes set does not name is
@@ -768,6 +840,8 @@ describe('harden-tally run', () => {
       'knip/exports',
       '--pr-count',
       '4',
+      '--audited-pr-count',
+      '4',
     ]);
 
     const ledgerCalls: string[][] = [];
@@ -846,6 +920,8 @@ describe('harden-tally run', () => {
       'holistic/unclassified',
       '--pr-count',
       '3',
+      '--audited-pr-count',
+      '3',
     ]);
 
     stdout.out.length = 0;
@@ -867,6 +943,8 @@ describe('harden-tally run', () => {
       '--finding-class',
       'holistic/unclassified',
       '--pr-count',
+      '8',
+      '--audited-pr-count',
       '8',
     ]);
 
@@ -933,6 +1011,8 @@ describe('harden-tally run', () => {
       'knip/exports',
       '--pr-count',
       '4',
+      '--audited-pr-count',
+      '4',
     ]);
 
     const stderr = vi
@@ -969,5 +1049,253 @@ describe('harden-tally run', () => {
     expect(args[searchIndex + 1]).toMatch(
       /^merged:>=\d{4}-\d{2}-\d{2} sort:created-desc$/
     );
+  });
+
+  test('UAT-002/UAT-003: audited_pr_count, tally_schema_version, and no-snapshot triggers', () => {
+    vi.spyOn(runProcess, 'runGh').mockReturnValue(
+      stubGh([
+        ghPr(1, [
+          findingsComment(1, 'ci', [
+            {
+              area_tags: [],
+              finding_class: 'holistic/stale-figure',
+              severity: 'warning',
+            },
+          ]),
+        ]),
+        ghPr(2, [findingsComment(2, 'ci', [])]),
+        ghPr(3, [
+          findingsComment(3, 'ci', [
+            {
+              area_tags: [],
+              finding_class: 'holistic/stale-figure',
+              severity: 'warning',
+            },
+          ]),
+        ]),
+        ghPr(4, []),
+        ghPr(5, []),
+      ])
+    );
+
+    run([], {
+      cwd: sandbox.root,
+      runLedger: () => ({exitCode: 1, stderr: '', stdout: ''}),
+    });
+
+    const printed = parseStdout(stdout.out);
+    expect(printed.audited_pr_count).toBe(3);
+    expect(printed.tally_schema_version).toBe(TALLY_SCHEMA_VERSION);
+    expect(printed.snapshot_present).toBe(false);
+    expect(printed.snapshot_reviewed_at).toBeNull();
+    expect(printed.triggers).toEqual([]);
+    expect(ReviewTallyInputSchema.safeParse(printed).success).toBe(true);
+  });
+
+  test('a snapshot written from a first run reads back unchanged on an identical re-run, candidates included', () => {
+    stubClassWindow({
+      bystanders: 0,
+      findingClass: 'holistic/overclaimed-guarantee',
+      recurring: 3,
+    });
+
+    run([], {
+      cwd: sandbox.root,
+      runLedger: () => ({exitCode: 1, stderr: '', stdout: ''}),
+    });
+    const firstEmitted = ReviewTallyInputSchema.parse(parseStdout(stdout.out));
+
+    writeReviewSnapshot(
+      sandbox.root,
+      snapshotFromTally(firstEmitted, REFERENCE_NOW)
+    );
+
+    stdout.out.length = 0;
+    run([], {
+      cwd: sandbox.root,
+      runLedger: () => ({exitCode: 1, stderr: '', stdout: ''}),
+    });
+
+    const printed = parseStdout(stdout.out);
+    expect(printed.snapshot_present).toBe(true);
+    expect(printed.snapshot_reviewed_at).toBe(REFERENCE_NOW.toISOString());
+    expect(printed.triggers).toEqual([]);
+    const candidates = printed.candidates as Record<string, unknown>[];
+    expect(
+      candidates.some(
+        (c) => c.finding_class === 'holistic/overclaimed-guarantee'
+      )
+    ).toBe(true);
+    expect(ReviewTallyInputSchema.safeParse(printed).success).toBe(true);
+  });
+
+  test('a schema-version mismatch refuses every other trigger, clearing after a fresh snapshot; repeated on an all-clear window', () => {
+    stubClassWindow({
+      bystanders: 0,
+      findingClass: 'holistic/n-plus-one',
+      recurring: 3,
+    });
+
+    const mismatchedSnapshot: ReviewSnapshot = {
+      audited_pr_count: 3,
+      classes: {},
+      reviewed_at: REFERENCE_NOW.toISOString(),
+      tally_schema_version: TALLY_SCHEMA_VERSION + 1,
+      unclassified: null,
+      version: 1,
+      window_days: 90,
+    };
+    writeReviewSnapshot(sandbox.root, mismatchedSnapshot);
+
+    run([], {
+      cwd: sandbox.root,
+      runLedger: () => ({exitCode: 1, stderr: '', stdout: ''}),
+    });
+    expect(parseStdout(stdout.out).triggers).toEqual([{type: 'schema_change'}]);
+
+    const firstEmitted = ReviewTallyInputSchema.parse(parseStdout(stdout.out));
+    writeReviewSnapshot(
+      sandbox.root,
+      snapshotFromTally(firstEmitted, REFERENCE_NOW)
+    );
+
+    stdout.out.length = 0;
+    run([], {
+      cwd: sandbox.root,
+      runLedger: () => ({exitCode: 1, stderr: '', stdout: ''}),
+    });
+    expect(parseStdout(stdout.out).triggers).toEqual([]);
+
+    // Repeat on an all-clear window (candidate_count 0, unclassified null).
+    vi.spyOn(runProcess, 'runGh').mockReturnValue(stubGh([]));
+    writeReviewSnapshot(sandbox.root, mismatchedSnapshot);
+
+    stdout.out.length = 0;
+    run([], {
+      cwd: sandbox.root,
+      runLedger: () => ({exitCode: 1, stderr: '', stdout: ''}),
+    });
+    expect(parseStdout(stdout.out).triggers).toEqual([{type: 'schema_change'}]);
+
+    const allClearEmitted = ReviewTallyInputSchema.parse(
+      parseStdout(stdout.out)
+    );
+    writeReviewSnapshot(
+      sandbox.root,
+      snapshotFromTally(allClearEmitted, REFERENCE_NOW)
+    );
+
+    stdout.out.length = 0;
+    run([], {
+      cwd: sandbox.root,
+      runLedger: () => ({exitCode: 1, stderr: '', stdout: ''}),
+    });
+    expect(parseStdout(stdout.out).triggers).toEqual([]);
+  });
+
+  test('a malformed snapshot (invalid JSON, and valid JSON failing the schema) is ignored, not trusted', () => {
+    stubClassWindow({
+      bystanders: 0,
+      findingClass: 'holistic/swallowed-error',
+      recurring: 3,
+    });
+
+    for (const contents of ['{"broken":', '{"version":2}']) {
+      writeRawSnapshot(sandbox.root, contents);
+      stdout.out.length = 0;
+      const stderr = vi
+        .spyOn(process.stderr, 'write')
+        .mockImplementation(() => true);
+
+      run([], {
+        cwd: sandbox.root,
+        runLedger: () => ({exitCode: 1, stderr: '', stdout: ''}),
+      });
+
+      const printed = parseStdout(stdout.out);
+      expect(printed.snapshot_present).toBe(false);
+      expect(printed.triggers).toEqual([]);
+      const candidates = printed.candidates as Record<string, unknown>[];
+      expect(candidates.length).toBeGreaterThan(0);
+      expect(ReviewTallyInputSchema.safeParse(printed).success).toBe(true);
+
+      const diagnostic = JSON.parse(
+        String(stderr.mock.calls[0]?.[0])
+      ) as Record<string, unknown>;
+      expect(diagnostic.code).toBe('malformed_snapshot');
+      stderr.mockRestore();
+    }
+  });
+
+  test('gh_ok false with a valid snapshot present: triggers empty, audited_pr_count 0, snapshot_present true', () => {
+    writeReviewSnapshot(sandbox.root, {
+      audited_pr_count: 10,
+      classes: {},
+      reviewed_at: REFERENCE_NOW.toISOString(),
+      tally_schema_version: TALLY_SCHEMA_VERSION,
+      unclassified: null,
+      version: 1,
+      window_days: 90,
+    });
+
+    vi.spyOn(runProcess, 'runGh').mockReturnValue({
+      exitCode: 4,
+      stderr: 'gh: not authenticated',
+      stdout: '',
+    });
+
+    run([], {
+      cwd: sandbox.root,
+      runLedger: () => ({exitCode: 1, stderr: '', stdout: ''}),
+    });
+
+    const printed = parseStdout(stdout.out);
+    expect(printed.triggers).toEqual([]);
+    expect(printed.audited_pr_count).toBe(0);
+    expect(printed.snapshot_present).toBe(true);
+  });
+
+  test('20a: a class suppressed at review start is absent from that snapshot, so its later re-surfacing reads as new_class, not rising_class (accepted behavior, never reviewed under that snapshot)', () => {
+    stubClassWindow({
+      bystanders: 2,
+      findingClass: 'holistic/n-plus-one',
+      recurring: 3,
+    });
+
+    // First run: the ledger fake reports the class suppressed, so it is
+    // absent from both candidates and class_inventory in this run's emitted
+    // JSON, and therefore absent from the snapshot built from it.
+    run([], {
+      cwd: sandbox.root,
+      runLedger: (argv) =>
+        argv.includes('is-suppressed') ?
+          {exitCode: 0, stderr: '', stdout: ''}
+        : {exitCode: 1, stderr: '', stdout: ''},
+    });
+    const suppressedEmitted = ReviewTallyInputSchema.parse(
+      parseStdout(stdout.out)
+    );
+    expect(
+      suppressedEmitted.class_inventory.some(
+        (entry) => entry.finding_class === 'holistic/n-plus-one'
+      )
+    ).toBe(false);
+
+    writeReviewSnapshot(
+      sandbox.root,
+      snapshotFromTally(suppressedEmitted, REFERENCE_NOW)
+    );
+
+    // Second run, same window: an empty fake store stands in for a decline
+    // that re-surfaced, so the ledger no longer reports it suppressed.
+    stdout.out.length = 0;
+    run([], {
+      cwd: sandbox.root,
+      runLedger: () => ({exitCode: 1, stderr: '', stdout: ''}),
+    });
+
+    expect(parseStdout(stdout.out).triggers).toEqual([
+      {finding_class: 'holistic/n-plus-one', type: 'new_class'},
+    ]);
   });
 });

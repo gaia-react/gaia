@@ -1,18 +1,21 @@
 /**
- * `gaia harden-ledger {list|record|is-suppressed|prune}`
+ * `gaia harden-ledger {list|record|is-suppressed|prune|snapshot}`
  *
  * The machine-local decline ledger CLI. When an engineer declines a hardening
  * candidate the decline is recorded only on their machine (gitignored), so it
  * never vetoes the rule for a teammate. Re-surfacing is evidence-based, not a
- * timer: a declined class stays suppressed for that engineer until the window's
- * distinct-PR count for the class rises at least 3 above its snapshot at the
- * decline. That is a delta between two rolling-window snapshots, not a monotonic
- * count of PRs merged since the decline, so window churn (old PRs aging out) can
- * lower the current count and thereby delay or indefinitely prevent re-surface.
+ * timer, and shares the same material-rise rule the `/gaia-harden` nudge
+ * triggers use (`isMaterialRise`, `material-rise.ts`): a declined class stays
+ * suppressed until the live count's rise over its snapshot at the decline is
+ * material, measured against the audited-PR denominator on both sides. An
+ * entry recorded before the denominator existed, or under a different
+ * `TALLY_SCHEMA_VERSION`, is legacy and never suppresses, because a raw count
+ * with no denominator cannot be compared to a live share honestly.
  *
  * The tally refresher READS this surface (`is-suppressed`, `prune`); the
- * `/gaia-harden` command WRITES to it (`record`) on decline. Both bind to the
- * verbs and exit-code semantics below.
+ * `/gaia-harden` command WRITES to it (`record`) on decline; a completed
+ * review WRITES to the sibling `snapshot` verbs (dispatched to
+ * `snapshot.ts`). All three bind to the verbs and exit-code semantics below.
  *
  * Ledger file: `.gaia/local/harden/declines.json` (gitignored). Schema and
  * atomic writer in `schemas/decline-ledger.ts`. The path is shared across the
@@ -29,35 +32,37 @@ import {
 import type {DeclineLedger} from '../schemas/decline-ledger.js';
 import {structuredError} from '../stderr.js';
 import {resolveRepoRoot} from '../util/repo-root.js';
+import {isMaterialRise, TALLY_SCHEMA_VERSION} from './material-rise.js';
+import {runSnapshot} from './snapshot.js';
 
 const HELP_TEXT = `Usage: gaia harden-ledger <subcommand> [args]
 
   list
     Print the decline ledger as JSON to stdout
-    ({"version":1,"declines":[]} when absent).
+    ({"version":2,"declines":[]} when absent).
 
-  record --finding-class <c> --pr-count <n>
+  record --finding-class <c> --pr-count <n> --audited-pr-count <d>
     Upsert one bounded entry keyed by finding_class (re-record overwrites the
-    timestamp and PR count). One entry per class.
+    timestamp, PR count, and audited-PR denominator). One entry per class.
+    Stamps the entry with the live TALLY_SCHEMA_VERSION.
 
-  is-suppressed --finding-class <c> --current-pr-count <n>
-    Exit 0 (suppressed) when an entry exists and current-pr-count minus its
-    declined_at_pr_count is below the re-surface threshold (3); exit 1
-    (not suppressed) otherwise.
+  is-suppressed --finding-class <c> --current-pr-count <n> --current-audited-pr-count <d>
+    Exit 0 (suppressed) when an entry exists, is version-2-complete, was
+    recorded under the live TALLY_SCHEMA_VERSION, and the rise from its
+    snapshot to the current count/denominator is not material (see
+    material-rise.ts). Exit 1 (not suppressed) otherwise. Exit 2
+    (INVALID_ARGUMENTS) on a malformed call.
 
   prune --window-classes <c1,c2,...>
     Remove any decline entry whose finding_class is not in the comma-separated
     set (no qualifying evidence left in the window). Idempotent.
+
+  snapshot <record|show> [args]
+    Dispatches to the review-snapshot verbs. See
+    \`gaia harden-ledger snapshot --help\`.
 `;
 
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
-
-// Re-surface threshold: a declined class stays suppressed until the window's
-// distinct-PR count for the class rises at least this far above its snapshot at
-// the decline. The comparison is a window-snapshot delta, not a monotonic count
-// of PRs merged since the decline, so window churn can delay or prevent
-// re-surface.
-const RESURFACE_THRESHOLD = 3;
 
 // A parsed-args result is always an object (never a bare string), so a
 // consuming function's return type never mixes an object shape with a
@@ -150,6 +155,7 @@ const handleList = (argv: readonly string[], options: RunOptions): number => {
 // --- record --------------------------------------------------------------
 
 type RecordArgs = {
+  auditedPrCount: number | undefined;
   findingClass: string | undefined;
   prCount: number | undefined;
 };
@@ -157,6 +163,7 @@ type RecordArgs = {
 const parseRecordArgs = (argv: readonly string[]): ParseResult<RecordArgs> => {
   let findingClass: string | undefined;
   let prCount: number | undefined;
+  let auditedPrCount: number | undefined;
 
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];
@@ -167,12 +174,15 @@ const parseRecordArgs = (argv: readonly string[]): ParseResult<RecordArgs> => {
     } else if (token === '--pr-count') {
       prCount = parseCountFlag(argv[index + 1]);
       index += 1;
+    } else if (token === '--audited-pr-count') {
+      auditedPrCount = parseCountFlag(argv[index + 1]);
+      index += 1;
     } else {
       return {error: `unknown argument: ${token}`};
     }
   }
 
-  return {value: {findingClass, prCount}};
+  return {value: {auditedPrCount, findingClass, prCount}};
 };
 
 const handleRecord = (argv: readonly string[], options: RunOptions): number => {
@@ -188,7 +198,7 @@ const handleRecord = (argv: readonly string[], options: RunOptions): number => {
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
 
-  const {findingClass, prCount} = parsed.value;
+  const {auditedPrCount, findingClass, prCount} = parsed.value;
 
   if (findingClass === undefined || findingClass === '') {
     structuredError({
@@ -211,6 +221,17 @@ const handleRecord = (argv: readonly string[], options: RunOptions): number => {
     return EXIT_CODES.UNKNOWN_SUBCOMMAND;
   }
 
+  if (auditedPrCount === undefined) {
+    structuredError({
+      code: 'invalid_arguments',
+      message:
+        'harden-ledger record requires --audited-pr-count <d> (non-negative integer)',
+      subcommand: 'harden-ledger record',
+    });
+
+    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  }
+
   const repoRoot = resolveRoot(options, 'record');
 
   if (repoRoot === null) return EXIT_CODES.STORAGE_INACCESSIBLE;
@@ -222,8 +243,10 @@ const handleRecord = (argv: readonly string[], options: RunOptions): number => {
   const declinedAt = (options.now ?? (() => new Date()))().toISOString();
   const entry = {
     declined_at: declinedAt,
+    declined_at_audited_pr_count: auditedPrCount,
     declined_at_pr_count: prCount,
     finding_class: findingClass,
+    tally_schema_version: TALLY_SCHEMA_VERSION,
   };
 
   // Upsert: one bounded entry per class. Re-record overwrites in place.
@@ -245,6 +268,7 @@ const handleRecord = (argv: readonly string[], options: RunOptions): number => {
 // --- is-suppressed -------------------------------------------------------
 
 type IsSuppressedArgs = {
+  currentAuditedPrCount: number | undefined;
   currentPrCount: number | undefined;
   findingClass: string | undefined;
 };
@@ -254,6 +278,7 @@ const parseIsSuppressedArgs = (
 ): ParseResult<IsSuppressedArgs> => {
   let findingClass: string | undefined;
   let currentPrCount: number | undefined;
+  let currentAuditedPrCount: number | undefined;
 
   for (let index = 0; index < argv.length; index += 1) {
     const token = argv[index];
@@ -264,12 +289,15 @@ const parseIsSuppressedArgs = (
     } else if (token === '--current-pr-count') {
       currentPrCount = parseCountFlag(argv[index + 1]);
       index += 1;
+    } else if (token === '--current-audited-pr-count') {
+      currentAuditedPrCount = parseCountFlag(argv[index + 1]);
+      index += 1;
     } else {
       return {error: `unknown argument: ${token}`};
     }
   }
 
-  return {value: {currentPrCount, findingClass}};
+  return {value: {currentAuditedPrCount, currentPrCount, findingClass}};
 };
 
 const handleIsSuppressed = (
@@ -285,10 +313,10 @@ const handleIsSuppressed = (
       subcommand: 'harden-ledger is-suppressed',
     });
 
-    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+    return EXIT_CODES.INVALID_ARGUMENTS;
   }
 
-  const {currentPrCount, findingClass} = parsed.value;
+  const {currentAuditedPrCount, currentPrCount, findingClass} = parsed.value;
 
   if (findingClass === undefined || findingClass === '') {
     structuredError({
@@ -297,7 +325,7 @@ const handleIsSuppressed = (
       subcommand: 'harden-ledger is-suppressed',
     });
 
-    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+    return EXIT_CODES.INVALID_ARGUMENTS;
   }
 
   if (currentPrCount === undefined) {
@@ -308,7 +336,18 @@ const handleIsSuppressed = (
       subcommand: 'harden-ledger is-suppressed',
     });
 
-    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+    return EXIT_CODES.INVALID_ARGUMENTS;
+  }
+
+  if (currentAuditedPrCount === undefined) {
+    structuredError({
+      code: 'invalid_arguments',
+      message:
+        'harden-ledger is-suppressed requires --current-audited-pr-count <d> (non-negative integer)',
+      subcommand: 'harden-ledger is-suppressed',
+    });
+
+    return EXIT_CODES.INVALID_ARGUMENTS;
   }
 
   const repoRoot = resolveRoot(options, 'is-suppressed');
@@ -321,38 +360,52 @@ const handleIsSuppressed = (
   // wrongly re-surface a declined candidate).
   if (ledger === null) return EXIT_CODES.CONFIG_INVALID;
 
+  const notSuppressed = (reason: string): number => {
+    structuredError({
+      code: 'not_suppressed',
+      finding_class: findingClass,
+      reason,
+    });
+
+    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+  };
+
   const entry = ledger.declines.find(
     (decline) => decline.finding_class === findingClass
   );
 
   // No entry: not suppressed (re-surface).
   if (entry === undefined) {
-    structuredError({
-      code: 'not_suppressed',
-      finding_class: findingClass,
-      reason: 'no_decline_entry',
-    });
-
-    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+    return notSuppressed('no_decline_entry');
   }
 
-  // Evidence-based, not a timer: subtract the decline-time window snapshot from
-  // the current window snapshot and compare the delta against the re-surface
-  // threshold. This is a window-snapshot delta, not a monotonic count of PRs
-  // merged since the decline, so window churn can lower the current count and
-  // delay or prevent re-surface.
-  const mergedSinceDecline = currentPrCount - entry.declined_at_pr_count;
-  const suppressed = mergedSinceDecline < RESURFACE_THRESHOLD;
+  // A legacy entry (recorded before the denominator existed, or read from a
+  // version-1 file) carries no honest live share to compare against, so it
+  // never suppresses.
+  if (
+    entry.declined_at_audited_pr_count === undefined ||
+    entry.tally_schema_version === undefined
+  ) {
+    return notSuppressed('legacy_entry');
+  }
+
+  // An entry recorded under a different tally schema version was measured
+  // against semantics the live tally no longer uses (a different window,
+  // recurrence threshold, or audited-PR predicate), so its stored count is
+  // not comparable to the live one.
+  if (entry.tally_schema_version !== TALLY_SCHEMA_VERSION) {
+    return notSuppressed('schema_version_mismatch');
+  }
+
+  const suppressed = !isMaterialRise({
+    baseAuditedPrCount: entry.declined_at_audited_pr_count,
+    baseCount: entry.declined_at_pr_count,
+    liveAuditedPrCount: currentAuditedPrCount,
+    liveCount: currentPrCount,
+  });
 
   if (!suppressed) {
-    structuredError({
-      code: 'not_suppressed',
-      finding_class: findingClass,
-      merged_since_decline: mergedSinceDecline,
-      reason: 'threshold_reached',
-    });
-
-    return EXIT_CODES.UNKNOWN_SUBCOMMAND;
+    return notSuppressed('material_rise');
   }
 
   return EXIT_CODES.OK;
@@ -450,6 +503,7 @@ export const run = (
   if (sub === 'record') return handleRecord(rest, options);
   if (sub === 'is-suppressed') return handleIsSuppressed(rest, options);
   if (sub === 'prune') return handlePrune(rest, options);
+  if (sub === 'snapshot') return runSnapshot(rest, options);
 
   structuredError({
     code: 'unknown_subcommand',
