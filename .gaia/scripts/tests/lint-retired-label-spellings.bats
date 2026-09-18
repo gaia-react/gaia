@@ -392,8 +392,8 @@ RENAMED_ONE='{
   grep -qF -- 'reader.sh:1' <<<"$output"
 }
 
-# The namespace-prefix arm: unarmed on the real tree today, because every
-# retired spelling's prefix is still live, so only a fixture reaches it.
+# The namespace-prefix arm. The real tree arms it whenever a whole namespace
+# retires; these fixtures pin its boundary independently of that.
 
 @test "a retired namespace prefix is a hit even where no full spelling remains" {
   local dir
@@ -410,6 +410,56 @@ RENAMED_ONE='{
   [ "$status" -eq 1 ]
   grep -qF -- 'registry.ts:1' <<<"$output"
   grep -qF -- 'priority:' <<<"$output"
+}
+
+@test "a retired prefix is graded in every carrier shape a namespace is spelled in" {
+  local dir
+  dir="$(make_fixture retired_prefix_shapes)"
+  write_registry "$dir" '{
+    "labels": [
+      {"name": "sev:critical", "renamedFrom": ["priority:critical"]}
+    ]
+  }'
+  printf '%s\n' \
+    "select(startswith(\"priority:\"))" \
+    'one `priority:` label' \
+    'exactly one `priority:*` label' \
+    '--label priority:<tier>' \
+    'a priority:high filing' \
+    'the namespace (priority:) is retired' >"$dir/.gaia/scripts/carriers.md"
+  track_fixture "$dir"
+
+  run bash "$CHECK" "$dir"
+  [ "$status" -eq 1 ]
+  local line
+  for line in 1 2 3 4 5 6; do
+    grep -qF -- "carriers.md:$line:" <<<"$output" || {
+      echo "carrier shape on line $line was not graded" >&2
+      return 1
+    }
+  done
+}
+
+@test "a retired prefix that is also an English word is not graded in prose" {
+  # A namespace named after an ordinary word leaves that word behind in prose
+  # and code once it retires: a colon ending a clause, or a parameter
+  # annotation. Neither is followed by a name or a quote, which is what every
+  # real carrier shape above has.
+  local dir
+  dir="$(make_fixture retired_prefix_prose)"
+  write_registry "$dir" '{
+    "labels": [
+      {"name": "sev:critical", "renamedFrom": ["priority:critical"]}
+    ]
+  }'
+  printf '%s\n' \
+    '# Scan priority: every tracked file' \
+    'the one thing to surface as a priority:' \
+    'const f = (priority: number) => priority;' >"$dir/.gaia/scripts/prose.ts"
+  track_fixture "$dir"
+
+  run bash "$CHECK" "$dir"
+  [ "$status" -eq 0 ]
 }
 
 @test "a prefix a live entry still carries is never scanned" {

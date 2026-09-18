@@ -229,18 +229,18 @@ auditors:
   - name: code-audit-default
     globs:
       - "zzz-default-only/**"
-    scope: adopter
+    audience: adopter
     push_fixes: true
     default: true
   - name: code-audit-a
     globs:
       - "$1"
-    scope: adopter
+    audience: adopter
     push_fixes: false
   - name: code-audit-b
     globs:
       - "$2"
-    scope: adopter
+    audience: adopter
     push_fixes: false
 YAML
   run_root "$r"
@@ -348,13 +348,13 @@ auditors:
     globs:
       - ".github/workflows/**"
       - "app/**"
-    scope: adopter
+    audience: adopter
     push_fixes: true
     default: true
   - name: code-audit-a
     globs:
       - ".github/workflows/*.yml"
-    scope: adopter
+    audience: adopter
     push_fixes: false
 YAML
   run_root "$r"
@@ -368,18 +368,18 @@ auditors:
   - name: code-audit-default
     globs:
       - "**"
-    scope: adopter
+    audience: adopter
     push_fixes: true
     default: true
   - name: code-audit-a
     globs:
       - "a/**/*.ts"
-    scope: adopter
+    audience: adopter
     push_fixes: false
   - name: code-audit-b
     globs:
       - "b/**/*.sh"
-    scope: adopter
+    audience: adopter
     push_fixes: false
 YAML
   run_root "$r"

@@ -22,7 +22,7 @@
 # the wrong reason later.
 #
 # Two of the fixtures are the live defects that motivated the gate, kept as
-# named tests so the connection survives: an issue filed with no `surface:`
+# named tests so the connection survives: an issue filed with no `audience:`
 # label, and an issue filed with no dedup key at all.
 #
 # Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md. Note the
@@ -62,7 +62,7 @@ EOF
 }
 
 # The label set a correct graded filing carries.
-GOOD_LABELS='tech-debt,severity:important,surface:adopter,handler:prompt,difficulty:easy'
+GOOD_LABELS='tech-debt,severity:important,audience:adopter,footprint:narrow,difficulty:easy'
 
 # assert_code <finding-code>: the run's output names this finding code.
 assert_code() {
@@ -87,30 +87,30 @@ refute_code() {
 }
 
 @test "an ungraded filing is clean: the difficulty label is optional by design" {
-  run bash "$CHECK" --pre-file --labels 'tech-debt,severity:suggestion,surface:maintainer' --body-file "$BODY"
+  run bash "$CHECK" --pre-file --labels 'tech-debt,severity:suggestion,audience:maintainer' --body-file "$BODY"
   [ "$status" -eq 0 ]
 }
 
 # ---------------------------------------------------------------------------
-# surface: the namespace with no prior enforcement at all
+# audience: the namespace with no prior enforcement at all
 # ---------------------------------------------------------------------------
 
-@test "RED, live defect: a filing with no surface: label is rejected" {
+@test "RED, live defect: a filing with no audience: label is rejected" {
   run bash "$CHECK" --pre-file --labels 'tech-debt,severity:important,difficulty:easy' --body-file "$BODY"
   [ "$status" -eq 1 ]
-  assert_code "surface-count"
+  assert_code "audience-count"
 }
 
-@test "two surface: labels are rejected" {
-  run bash "$CHECK" --pre-file --labels "$GOOD_LABELS,surface:maintainer" --body-file "$BODY"
+@test "two audience: labels are rejected" {
+  run bash "$CHECK" --pre-file --labels "$GOOD_LABELS,audience:maintainer" --body-file "$BODY"
   [ "$status" -eq 1 ]
-  assert_code "surface-count"
+  assert_code "audience-count"
 }
 
-@test "a surface: value outside the permitted set is rejected" {
-  run bash "$CHECK" --pre-file --labels 'tech-debt,severity:important,surface:internal' --body-file "$BODY"
+@test "a audience: value outside the permitted set is rejected" {
+  run bash "$CHECK" --pre-file --labels 'tech-debt,severity:important,audience:internal' --body-file "$BODY"
   [ "$status" -eq 1 ]
-  assert_code "surface-value"
+  assert_code "audience-value"
 }
 
 # ---------------------------------------------------------------------------
@@ -118,7 +118,7 @@ refute_code() {
 # ---------------------------------------------------------------------------
 
 @test "a filing with no severity: label is rejected" {
-  run bash "$CHECK" --pre-file --labels 'tech-debt,surface:adopter' --body-file "$BODY"
+  run bash "$CHECK" --pre-file --labels 'tech-debt,audience:adopter' --body-file "$BODY"
   [ "$status" -eq 1 ]
   assert_code "severity-count"
 }
@@ -130,7 +130,7 @@ refute_code() {
 }
 
 @test "a severity: value outside the permitted set is rejected" {
-  run bash "$CHECK" --pre-file --labels 'tech-debt,severity:blocker,surface:adopter' --body-file "$BODY"
+  run bash "$CHECK" --pre-file --labels 'tech-debt,severity:blocker,audience:adopter' --body-file "$BODY"
   [ "$status" -eq 1 ]
   assert_code "severity-value"
 }
@@ -144,52 +144,52 @@ refute_code() {
 }
 
 @test "a difficulty: value outside the permitted set is rejected" {
-  run bash "$CHECK" --pre-file --labels 'tech-debt,severity:important,surface:adopter,difficulty:trivial' --body-file "$BODY"
+  run bash "$CHECK" --pre-file --labels 'tech-debt,severity:important,audience:adopter,difficulty:trivial' --body-file "$BODY"
   [ "$status" -eq 1 ]
   assert_code "difficulty-value"
 }
 
 # ---------------------------------------------------------------------------
-# handler: validated when present, never demanded
+# footprint: validated when present, never demanded
 # ---------------------------------------------------------------------------
 
-@test "a filing with no handler: label is clean, the human-filed case" {
+@test "a filing with no footprint: label is clean, the human-filed case" {
   # Absence is deliberately not a finding. Nothing downstream depends on the
   # value: the drain re-derives spec-versus-implement from the cited code and
-  # grades prompt-versus-plan itself, so demanding presence would demand a value
+  # grades narrow-versus-wide itself, so demanding presence would demand a value
   # no decision reads, and would make every hand-filed issue a finding.
-  run bash "$CHECK" --pre-file --labels 'tech-debt,severity:important,surface:adopter' --body-file "$BODY"
+  run bash "$CHECK" --pre-file --labels 'tech-debt,severity:important,audience:adopter' --body-file "$BODY"
   [ "$status" -eq 0 ]
-  refute_code "handler"
+  refute_code "footprint"
 }
 
-@test "each permitted handler: value is accepted" {
+@test "each permitted footprint: value is accepted" {
   local v
-  for v in prompt plan spec; do
-    run bash "$CHECK" --pre-file --labels "tech-debt,severity:important,surface:adopter,handler:$v" --body-file "$BODY"
+  for v in narrow wide spec; do
+    run bash "$CHECK" --pre-file --labels "tech-debt,severity:important,audience:adopter,footprint:$v" --body-file "$BODY"
     [ "$status" -eq 0 ] || return 1
   done
 }
 
-@test "two handler: labels are rejected" {
-  run bash "$CHECK" --pre-file --labels "$GOOD_LABELS,handler:spec" --body-file "$BODY"
+@test "two footprint: labels are rejected" {
+  run bash "$CHECK" --pre-file --labels "$GOOD_LABELS,footprint:spec" --body-file "$BODY"
   [ "$status" -eq 1 ]
-  assert_code "handler-count"
+  assert_code "footprint-count"
 }
 
-@test "a handler: value outside the permitted set is rejected" {
-  run bash "$CHECK" --pre-file --labels 'tech-debt,severity:important,surface:adopter,handler:agent' --body-file "$BODY"
+@test "a footprint: value outside the permitted set is rejected" {
+  run bash "$CHECK" --pre-file --labels 'tech-debt,severity:important,audience:adopter,footprint:agent' --body-file "$BODY"
   [ "$status" -eq 1 ]
-  assert_code "handler-value"
+  assert_code "footprint-value"
 }
 
-@test "RED: an unfilled handler placeholder is a finding, not a dropped flag" {
-  run bash "$CHECK" --pre-file --labels 'tech-debt,severity:important,surface:adopter,handler:' --body-file "$BODY"
+@test "RED: an unfilled footprint placeholder is a finding, not a dropped flag" {
+  run bash "$CHECK" --pre-file --labels 'tech-debt,severity:important,audience:adopter,footprint:' --body-file "$BODY"
   [ "$status" -eq 1 ]
-  assert_code "handler-value"
-  # The count check cannot catch this: `handler:` is one label, so at-most-one
+  assert_code "footprint-value"
+  # The count check cannot catch this: `footprint:` is one label, so at-most-one
   # holds and only the value is wrong.
-  refute_code "handler-count"
+  refute_code "footprint-count"
 }
 
 # ---------------------------------------------------------------------------
@@ -239,7 +239,7 @@ refute_code() {
 # hits, since the recipe substitutes placeholders into this argv.
 
 @test "RED: an empty namespace value is a finding, not an absence" {
-  run bash "$CHECK" --pre-file --labels 'tech-debt,severity:,surface:adopter' --body-file "$BODY"
+  run bash "$CHECK" --pre-file --labels 'tech-debt,severity:,audience:adopter' --body-file "$BODY"
   [ "$status" -eq 1 ]
   assert_code "severity-value"
   # The count check cannot catch this: `severity:` is one label, so the count
@@ -248,22 +248,22 @@ refute_code() {
 }
 
 @test "RED: an unfilled difficulty placeholder is a finding, not a dropped flag" {
-  run bash "$CHECK" --pre-file --labels 'tech-debt,severity:important,surface:adopter,difficulty:' --body-file "$BODY"
+  run bash "$CHECK" --pre-file --labels 'tech-debt,severity:important,audience:adopter,difficulty:' --body-file "$BODY"
   [ "$status" -eq 1 ]
   assert_code "difficulty-value"
 }
 
 @test "RED: two values crammed into one label are rejected, not checked separately" {
   # Both halves are individually legal, so a word-splitting loop passed this.
-  run bash "$CHECK" --pre-file --labels 'tech-debt,severity:important,surface:adopter maintainer' --body-file "$BODY"
+  run bash "$CHECK" --pre-file --labels 'tech-debt,severity:important,audience:adopter maintainer' --body-file "$BODY"
   [ "$status" -eq 1 ]
-  assert_code "surface-value"
+  assert_code "audience-value"
 }
 
 @test "RED: a glob in a label value is reported as one finding, not expanded" {
-  run bash "$CHECK" --pre-file --labels 'tech-debt,severity:important,surface:*' --body-file "$BODY"
+  run bash "$CHECK" --pre-file --labels 'tech-debt,severity:important,audience:*' --body-file "$BODY"
   [ "$status" -eq 1 ]
-  assert_code "surface-value"
+  assert_code "audience-value"
   # The bad case: the glob expanded against the working directory and the run
   # reported a finding per repository-root entry instead of one naming the label.
   grep -qF -- "CHANGELOG.md" <<<"$output" && return 1
@@ -271,7 +271,7 @@ refute_code() {
 }
 
 @test "a filing with no tech-debt label is rejected" {
-  run bash "$CHECK" --pre-file --labels 'severity:important,surface:adopter' --body-file "$BODY"
+  run bash "$CHECK" --pre-file --labels 'severity:important,audience:adopter' --body-file "$BODY"
   [ "$status" -eq 1 ]
   assert_code "missing-tech-debt"
 }
@@ -390,7 +390,7 @@ refute_code() {
   [ "$status" -eq 1 ]
   assert_code "missing-tech-debt"
   assert_code "severity-count"
-  assert_code "surface-count"
+  assert_code "audience-count"
   assert_code "missing-dedup-key"
   grep -qF -- "4 finding(s)" <<<"$output" || return 1
 }
@@ -464,7 +464,7 @@ stub_gh_failing() {
   ]'
   run bash "$CHECK" --sweep
   [ "$status" -eq 1 ]
-  assert_code "surface-count"
+  assert_code "audience-count"
   assert_code "missing-dedup-key"
 }
 
@@ -474,7 +474,7 @@ stub_gh_failing() {
   # The drain's own capture is unanchored and accepts it; this gate must too.
   stub_gh '[
     {"number":400,
-     "labels":[{"name":"tech-debt"},{"name":"severity:important"},{"name":"surface:adopter"}],
+     "labels":[{"name":"tech-debt"},{"name":"severity:important"},{"name":"audience:adopter"}],
      "body":"<!-- gaia-debt-key: v1 class=c path=app/a.ts line=1 -->\r\nsome prose\r\n"}
   ]'
   run bash "$CHECK" --sweep
@@ -495,7 +495,7 @@ stub_gh_failing() {
   }'
   run bash "$CHECK" --issue 200
   [ "$status" -eq 1 ]
-  assert_code "surface-count"
+  assert_code "audience-count"
   assert_code "missing-dedup-key"
 }
 
@@ -515,21 +515,21 @@ stub_gh_failing() {
 
 # --- the marker-stripped (adopter) shape of this script ---------------------
 #
-# The `surface:` namespace is maintainer-only: its rubric's tie-breaker ("a
-# release-excluded path is surface:maintainer") is uncomputable on an adopter
+# The `audience:` namespace is maintainer-only: its rubric's tie-breaker ("a
+# release-excluded path is audience:maintainer") is uncomputable on an adopter
 # clone, so the declaration and the enforcement block both sit behind
 # `# gaia:maintainer-only` markers and leave the bundle (gaia-react/gaia#1437).
 #
 # The hazard that wrap creates is a runtime one, not a syntax one. Under
-# `set -euo pipefail` a strip that took the `SURFACE_VALUES` declaration but
+# `set -euo pipefail` a strip that took the `AUDIENCE_VALUES` declaration but
 # left its `check_ns_values` reader behind aborts on an unbound variable at the
-# FIRST filing, taking the severity, difficulty, handler, and fold checks down
+# FIRST filing, taking the severity, difficulty, footprint, and fold checks down
 # with it, and `bash -n` parses that file clean. So these tests strip through
 # the real shipped stripper (`gaia-maintainer release scrub`, never a second
 # parser written here) and then RUN the result.
 #
 # Only the stripped shape is tested here. The unstripped half needs nothing new:
-# the `surface:` tests above already prove the axis stays mandatory, and
+# the `audience:` tests above already prove the axis stays mandatory, and
 # the wrap changes nothing they read.
 #
 # Maintainer-only by construction: this suite is release-excluded, and so is
@@ -612,15 +612,15 @@ YAML
   printf '%s\n' "$stage/.gaia/scripts/check-debt-issue-metadata.sh"
 }
 
-@test "the stripped script drops the surface requirement: a filing with no surface: label is clean" {
+@test "the stripped script drops the audience requirement: a filing with no audience: label is clean" {
   require_stripper
   local stripped
   stripped="$(stripped_check)" || return 1
 
-  grep -qF -- 'SURFACE_VALUES' "$stripped" && return 1
+  grep -qF -- 'AUDIENCE_VALUES' "$stripped" && return 1
 
   run bash "$stripped" --pre-file \
-    --labels 'tech-debt,severity:important,handler:prompt,difficulty:easy' \
+    --labels 'tech-debt,severity:important,footprint:narrow,difficulty:easy' \
     --body-file "$BODY"
   [ "$status" -eq 0 ]
 }
@@ -636,12 +636,12 @@ YAML
   stripped="$(stripped_check)" || return 1
 
   run bash "$stripped" --pre-file \
-    --labels 'tech-debt,severity:blocker,difficulty:trivial,handler:agent,fold:maybe' \
+    --labels 'tech-debt,severity:blocker,difficulty:trivial,footprint:agent,fold:maybe' \
     --body-file "$BODY"
   [ "$status" -eq 1 ]
   assert_code "severity-value"
   assert_code "difficulty-value"
-  assert_code "handler-value"
+  assert_code "footprint-value"
   assert_code "fold-value"
   refute_code "unbound variable"
 }

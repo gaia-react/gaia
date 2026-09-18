@@ -66,9 +66,9 @@ retrigger_workflows:
 # its own domain here: a claimant's globs are matched first, first-match-wins
 # over roster order; the default's globs are evaluated only after every
 # claimant has failed to match. Exactly one entry carries `default: true`.
-# Entries with `scope: maintainer-only` are wrapped in the marker comments
+# Entries with `audience: maintainer` are wrapped in the marker comments
 # below and stripped from the adopter bundle at release time, so an adopter
-# clone audits only adopter-scope surfaces.
+# clone audits only adopter-audience surfaces.
 auditors:
   - name: code-audit-frontend
     globs:
@@ -107,7 +107,7 @@ auditors:
       - ".env.example"
       - ".nvmrc"
       - ".node-version"
-    scope: adopter
+    audience: adopter
     push_fixes: true
     default: true
   - name: code-audit-github-workflows
@@ -116,7 +116,7 @@ auditors:
       - ".github/workflows/*.yaml"
       - ".github/actions/**/*.yml"
       - ".github/actions/**/*.yaml"
-    scope: adopter
+    audience: adopter
     push_fixes: false
   # gaia:maintainer-only:start
   - name: code-audit-maintainer-shell
@@ -170,7 +170,7 @@ auditors:
       - ".github/dependabot.yml"
       - ".claude/agents/code-audit-*.md"
       - ".claude/rules/**"
-    scope: maintainer-only
+    audience: maintainer
     push_fixes: false
   - name: code-audit-maintainer-node
     globs:
@@ -213,7 +213,7 @@ auditors:
       # The framework's executable Node beside the shell scripts. The shell
       # member's `.gaia/**/*.sh` never reaches these, so they dispatched nobody.
       - ".gaia/scripts/**/*.mjs"
-    scope: maintainer-only
+    audience: maintainer
     push_fixes: false
   - name: code-audit-maintainer-prose
     globs:
@@ -271,7 +271,7 @@ auditors:
       - ".specify/extensions/gaia/rules/*.md"
       - ".specify/extensions/gaia/templates/*.md"
       - ".specify/presets/**/*.md"
-    scope: maintainer-only
+    audience: maintainer
     push_fixes: false
   # gaia:maintainer-only:end
 

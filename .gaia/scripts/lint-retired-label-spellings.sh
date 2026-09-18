@@ -243,9 +243,15 @@ fi
 # awk implementation between a macOS checkout and the runner that gates the
 # merge.
 #
-# <prefix-mode> `1` suppresses the RIGHT boundary test only. A namespace prefix
-# is by definition followed by the rest of a name, so requiring a non-name
-# character after it would match nothing.
+# <prefix-mode> `1` inverts the RIGHT boundary test. A namespace prefix is by
+# definition followed by the rest of a name, so requiring a non-name character
+# after it would match nothing. It declines only a prefix followed by
+# whitespace or the end of the line, which is how a prefix that is also an
+# ordinary word appears in prose and in a parameter annotation; everything else
+# is graded, a continuing name, a string literal, a code span, a glob, a
+# placeholder, so a delimiter shape nobody listed fails closed. The cost is a
+# bare prefix written as prose would write the word, which nothing here can
+# tell from the word.
 #
 # `.` and `:` are in that character set because a label name may carry either,
 # and that alone would make the two commonest prose shapes invisible: a
@@ -316,7 +322,10 @@ scan_term() {
           before = (start == 1) ? "" : substr($0, start - 1, 1)
           after  = (end >= length($0)) ? "" : substr($0, end + 1, 1)
           left_ok  = (before == "" || index(NAMECHARS, before) == 0)
-          right_ok = (prefix_mode == "1" || after == "" || index(NAMECHARS, after) == 0)
+          if (prefix_mode == "1")
+            right_ok = (after != "" && after != " " && after != "\t")
+          else
+            right_ok = (after == "" || index(NAMECHARS, after) == 0)
           if (!right_ok && (after == "." || after == ":")) {
             # `old-claim.` and `old-claim:` end here; `old-claim.md` and a
             # sibling label under the same namespace do not.

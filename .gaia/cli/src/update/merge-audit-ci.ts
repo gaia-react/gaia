@@ -253,7 +253,7 @@ const parseAuthors = (value: unknown): Map<string, AuthorEntry> => {
 
 /**
  * Parse a YAML `auditors:` list into a name → member-config map. Each
- * member's whole mapping (`globs`, `scope`, `push_fixes`, `default`) is
+ * member's whole mapping (`globs`, `audience`, `push_fixes`, `default`) is
  * compared and applied as a single unit, mirroring `parseAuthors`'s `mode`
  * value: `name` is the map key (like `login`), the rest of the item is the
  * value (like `mode`). A per-glob merge would let an adopter's roster end up

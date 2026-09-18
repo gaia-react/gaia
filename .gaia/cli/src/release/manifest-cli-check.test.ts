@@ -489,7 +489,7 @@ describe('run --check', () => {
         '  - name: test-auditor',
         '    globs:',
         '      - "app/**"',
-        '    scope: adopter',
+        '    audience: adopter',
         '    default: true',
         '',
       ].join('\n'),

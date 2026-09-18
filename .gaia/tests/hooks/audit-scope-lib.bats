@@ -334,13 +334,13 @@ auditors:
   - name: code-audit-example
     globs:
       - "app/**"
-    scope: adopter
+    audience: adopter
     push_fixes: true
     default: true
   - name: code-audit-claimant
     globs:
       - "app/special/**"
-    scope: adopter
+    audience: adopter
     push_fixes: false
 YAML
 
@@ -351,12 +351,12 @@ auditors:
   - name: code-audit-claimant
     globs:
       - "app/special/**"
-    scope: adopter
+    audience: adopter
     push_fixes: false
   - name: code-audit-example
     globs:
       - "app/**"
-    scope: adopter
+    audience: adopter
     push_fixes: true
     default: true
 YAML
@@ -831,7 +831,7 @@ EOF
 # The scrub markers survive. Balanced start/end markers, and a marker-
 # stripped copy of the module (simulating the release scrub) yields a
 # roster naming exactly two members, code-audit-frontend (the default) and
-# code-audit-github-workflows (a claimant, adopter-scope, unmarked): the
+# code-audit-github-workflows (a claimant, adopter-audience, unmarked): the
 # maintainer-only members are gone, and everything outside the markers stays.
 # ---------------------------------------------------------------------------
 

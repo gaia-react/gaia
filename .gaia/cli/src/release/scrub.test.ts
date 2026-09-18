@@ -1369,13 +1369,13 @@ describe('audit-ci.yml / shipped-shell marker-strip', () => {
         '  - name: code-audit-frontend',
         '    globs:',
         '      - "app/**"',
-        '    scope: adopter',
+        '    audience: adopter',
         '    default: true',
         '  # gaia:maintainer-only:start',
         '  - name: code-audit-maintainer-shell',
         '    globs:',
         '      - ".gaia/**/*.sh"',
-        '    scope: maintainer-only',
+        '    audience: maintainer',
         '  # gaia:maintainer-only:end',
         '',
       ].join('\n')
@@ -2486,19 +2486,19 @@ describe('shipped absolute-paths check', () => {
 // Handed to the real engine as shipped, same shape as the absolute-paths block
 // above: the check plus its holding transform, siblings filtered out so an
 // unrelated pattern cannot decide these fixtures.
-const shippedSurfaceVocabularyConfig = (): string => {
-  const {check, transform} = shippedLeakCheck('surface-label-vocabulary');
+const shippedAudienceVocabularyConfig = (): string => {
+  const {check, transform} = shippedLeakCheck('audience-label-vocabulary');
 
   return dumpYaml({transforms: [{...transform, checks: [check]}]});
 };
 
-describe('shipped surface-label-vocabulary check', () => {
+describe('shipped audience-label-vocabulary check', () => {
   let sandbox: Sandbox;
   let stdio: ReturnType<typeof captureStdio>;
 
   beforeEach(() => {
     stdio = captureStdio();
-    sandbox = setupSandbox({config: shippedSurfaceVocabularyConfig()});
+    sandbox = setupSandbox({config: shippedAudienceVocabularyConfig()});
   });
 
   afterEach(() => {
@@ -2510,32 +2510,32 @@ describe('shipped surface-label-vocabulary check', () => {
   test('flags every spelling the axis actually ships in', () => {
     // One fixture per branch of the alternation, six in all, each written so
     // that branch is the only one it matches. Pinning by carrier instead would
-    // leave `maintainer` untested, because the brace-form and SURFACE_VALUES
+    // leave `maintainer` untested, because the brace-form and AUDIENCE_VALUES
     // carriers happen to also contain the word: dropping `maintainer|` from
     // the pattern would keep every fixture matching while a maintainer-side
-    // re-add shipped unflagged. A naive `surface:(adopter|maintainer)` pattern
+    // re-add shipped unflagged. A naive `audience:(adopter|maintainer)` pattern
     // catches only two of the six (gaia-react/gaia#1437), so a tree still
     // shipping the whole enforcement block would clear it.
-    sandbox.writeStaged('wiki/page.md', 'exactly one `surface:*` label\n');
+    sandbox.writeStaged('wiki/page.md', 'exactly one `audience:*` label\n');
     sandbox.writeStaged(
       '.claude/skills/file-tech-debt/SKILL.md',
-      '--label surface:<side> \\\n'
+      '--label audience:<side> \\\n'
     );
     sandbox.writeStaged(
       '.claude/skills/gaia/references/audit.md',
-      '  surface: {adopter | maintainer, against the rubric}\n'
+      '  audience: {adopter | maintainer, against the rubric}\n'
     );
     sandbox.writeStaged(
       '.gaia/scripts/check.sh',
-      'readonly SURFACE_VALUES="adopter maintainer"\n'
+      'readonly AUDIENCE_VALUES="adopter maintainer"\n'
     );
     sandbox.writeStaged(
       '.claude/agents/some-agent.md',
-      'one of `surface:adopter`\n'
+      'one of `audience:adopter`\n'
     );
     sandbox.writeStaged(
       '.claude/skills/vocabulary.md',
-      '| `surface:maintainer` | observable only in the GAIA repository. |\n'
+      '| `audience:maintainer` | observable only in the GAIA repository. |\n'
     );
 
     expect(run([sandbox.stagingDir, '--config', sandbox.configPath])).toBe(1);
@@ -2550,24 +2550,27 @@ describe('shipped surface-label-vocabulary check', () => {
     expect(out).toContain('.claude/skills/vocabulary.md');
   });
 
-  test('does not flag the ordinary prose and CSS uses of the bare word', () => {
-    // The reason the pattern is not widened to a bare `surface:`. All four of
-    // these ship today; flagging any of them would fail every release build.
+  test('does not flag the shipped roster field, the registry field, or the CLI flag', () => {
+    // The reason whitespace is allowed only before the brace. The roster's
+    // `audience:` field ships on every adopter member, in the config and in
+    // the built-in fallback roster, and the registry's JSON field ships on
+    // every adopter-audience entry; flagging any of them would fail every
+    // release build on a legitimate file.
     sandbox.writeStaged(
-      '.gaia/scripts/lint-thing.sh',
-      '# Scan surface: tracked shell, the husky hooks, the workflow YAML\n'
+      '.gaia/audit-ci.yml',
+      '  - name: code-audit-frontend\n    audience: adopter\n'
     );
     sandbox.writeStaged(
-      '.claude/skills/gaia/references/plan.md',
-      'stop and surface: "No SPEC found for <RAW>."\n'
+      '.claude/hooks/lib/audit-scope.sh',
+      '    audience: maintainer\n'
     );
     sandbox.writeStaged(
-      '.claude/skills/tailwind/SKILL.md',
-      '--color-surface: #181c1e;\n'
+      '.gaia/labels.json',
+      '{"name": "bug", "audience": "adopter"}\n'
     );
     sandbox.writeStaged(
-      '.claude/agents/some-node-agent.md',
-      'A bumped entry is a supply-chain surface: confirm it is imported.\n'
+      '.claude/skills/some-skill.md',
+      '.gaia/cli/gaia labels sync --audience maintainer\n'
     );
 
     expect(run([sandbox.stagingDir, '--config', sandbox.configPath])).toBe(0);

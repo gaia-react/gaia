@@ -134,33 +134,33 @@
       "reason": null
     },
     {
-      "name": "handler:prompt",
+      "name": "footprint:narrow",
       "color": "d4c5f9",
-      "description": "Fix is one logical unit in one file, no contract change",
+      "description": "Fix is one logical unit in one file, no contract change; drains inline",
       "axis": "reach",
       "audience": "adopter",
       "features": ["tech-debt"],
       "managed": true,
       "deprecated": false,
       "blocked": false,
-      "renamedFrom": [],
+      "renamedFrom": ["handler:prompt"],
       "reason": null
     },
     {
-      "name": "handler:plan",
+      "name": "footprint:wide",
       "color": "8957e5",
-      "description": "Fix is larger or structural; drains via /gaia-plan",
+      "description": "Fix is larger or structural; drains inline",
       "axis": "reach",
       "audience": "adopter",
       "features": ["tech-debt"],
       "managed": true,
       "deprecated": false,
       "blocked": false,
-      "renamedFrom": [],
+      "renamedFrom": ["handler:plan"],
       "reason": null
     },
     {
-      "name": "handler:spec",
+      "name": "footprint:spec",
       "color": "4c2889",
       "description": "Design-first; drains via a /gaia-spec handoff",
       "axis": "reach",
@@ -169,7 +169,7 @@
       "managed": true,
       "deprecated": false,
       "blocked": false,
-      "renamedFrom": [],
+      "renamedFrom": ["handler:spec"],
       "reason": null
     },
     {
@@ -329,7 +329,7 @@
       "reason": null
     },
     {
-      "name": "surface:adopter",
+      "name": "audience:adopter",
       "color": "d9a86c",
       "description": "Defect an adopter can observe in something GAIA ships",
       "axis": "audience",
@@ -338,11 +338,11 @@
       "managed": true,
       "deprecated": false,
       "blocked": false,
-      "renamedFrom": [],
+      "renamedFrom": ["surface:adopter"],
       "reason": null
     },
     {
-      "name": "surface:maintainer",
+      "name": "audience:maintainer",
       "color": "8a5a2b",
       "description": "Defect observable only in the GAIA maintainer repository",
       "axis": "audience",
@@ -351,7 +351,7 @@
       "managed": true,
       "deprecated": false,
       "blocked": false,
-      "renamedFrom": [],
+      "renamedFrom": ["surface:maintainer"],
       "reason": null
     },
     {

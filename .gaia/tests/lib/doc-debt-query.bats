@@ -3,9 +3,9 @@
 # Doc-conformance suite for /gaia-debt's backlog-ordering `--jq` query
 # (.claude/skills/gaia/references/debt.md), the most load-bearing line in the
 # file: the deterministic sort every subcommand (list, why, fix) shares, and
-# the source of the `labels`, `key`, `body`, and `handler` fields the
+# the source of the `labels`, `key`, `body`, and `footprint` fields the
 # clustering pass, the two security screens, and the spec screen all read.
-# `handler` is resolved out of the `labels` projection, the same way `sev` and
+# `footprint` is resolved out of the `labels` projection, the same way `sev` and
 # `difficulty` are; a body-line capture is the shape this suite forbids.
 #
 # Two arms.
@@ -28,7 +28,7 @@
 # measure debt.md instead of measuring itself, and a hand-copied program would
 # stay green through a regression in the real file.
 #
-# Arm 2 asserts one key at a time (`.key.line`, `.handler`, `.labels`,
+# Arm 2 asserts one key at a time (`.key.line`, `.footprint`, `.labels`,
 # `.body`), never a whole-object comparison. A later phase adds a `difficulty`
 # field to this same program; a whole-object assertion would break on a change
 # that is correct by design, a per-key assertion does not.
@@ -158,9 +158,9 @@ render_backlog() {
   printf '%s\n' "$block" | grep -qF -- "<!-- gaia-debt-key: v1 " || return 1
 }
 
-@test "Arm 1: handler resolves from the labels projection, not from a body capture" {
+@test "Arm 1: footprint resolves from the labels projection, not from a body capture" {
   block="$(extract_query_fence)"
-  printf '%s\n' "$block" | grep -qF -- 'map(select(startswith("handler:")) | ltrimstr("handler:"))' || return 1
+  printf '%s\n' "$block" | grep -qF -- 'map(select(startswith("footprint:")) | ltrimstr("footprint:"))' || return 1
   # The bad case: the superseded body-line regex, matched as the CLASS rather
   # than as one frozen spelling. It parses null on any body a human reformatted,
   # which is the silent-parse the label representation exists to remove, so its
@@ -221,26 +221,26 @@ render_backlog() {
   [ "$(jq '.key.line' <<<"$issue2")" = "42" ]
 }
 
-@test "Arm 2: handler resolves the handler: label's value, prefix stripped" {
+@test "Arm 2: footprint resolves the footprint: label's value, prefix stripped" {
   bin="$(jq_bin)"
   [ -n "$bin" ] || skip "neither jq nor gojq on PATH"
   output="$(render_backlog)"
   issue1="$(jq --arg n 101 '.[] | select(.number == ($n | tonumber))' <<<"$output")"
   issue2="$(jq --arg n 102 '.[] | select(.number == ($n | tonumber))' <<<"$output")"
-  [ "$(jq -r '.handler' <<<"$issue1")" = "prompt" ]
-  [ "$(jq -r '.handler' <<<"$issue2")" = "plan" ]
+  [ "$(jq -r '.footprint' <<<"$issue1")" = "narrow" ]
+  [ "$(jq -r '.footprint' <<<"$issue2")" = "wide" ]
 }
 
-@test "Arm 2: a malformed key and an unlabelled issue both emit key: null and handler: null" {
+@test "Arm 2: a malformed key and an unlabelled issue both emit key: null and footprint: null" {
   bin="$(jq_bin)"
   [ -n "$bin" ] || skip "neither jq nor gojq on PATH"
   output="$(render_backlog)"
   issue3="$(jq --arg n 103 '.[] | select(.number == ($n | tonumber))' <<<"$output")"
   issue4="$(jq --arg n 104 '.[] | select(.number == ($n | tonumber))' <<<"$output")"
   [ "$(jq '.key' <<<"$issue3")" = "null" ]
-  [ "$(jq '.handler' <<<"$issue3")" = "null" ]
+  [ "$(jq '.footprint' <<<"$issue3")" = "null" ]
   [ "$(jq '.key' <<<"$issue4")" = "null" ]
-  [ "$(jq '.handler' <<<"$issue4")" = "null" ]
+  [ "$(jq '.footprint' <<<"$issue4")" = "null" ]
 }
 
 @test "Arm 2: every issue emits a non-empty string body, the security-screen contract made mechanical" {
