@@ -179,7 +179,7 @@ esac
 # candidate_count plus a separate `unclassified` recurrence signal (non-null
 # only at/above the recurrence threshold) and a gh_ok flag. Runs in this same
 # TTL pass; network is non-fatal: on a gh/network failure, or a window too
-# large for its one gh page, harden-tally exits 0
+# large for its paged read to finish, harden-tally exits 0
 # emitting candidate_count 0, unclassified null, and gh_ok false, so this
 # consumer honors gh_ok and keeps the previous cached counts rather than
 # resetting the nudges to 0. Falls back to the previous cached counts on any

@@ -9,6 +9,7 @@
  */
 import {readFileSync} from 'node:fs';
 import path from 'node:path';
+import {readMergedPrWindow} from '../ci/util/merged-pr-window.js';
 import {runGh} from '../ci/util/run-process.js';
 import {execGaiaGit, execGaiaGitRaw} from '../util/git-env.js';
 
@@ -91,90 +92,15 @@ export const fixtureProvider = (dir: string): CorpusProvider => {
 
 // --- live provider ----------------------------------------------------------
 
-// `gh pr list` exposes `--limit` and `--search`, and no cursor or page flag;
-// `--limit` is a ceiling it paginates internally up to, and nothing more. A
-// page landing exactly on the ceiling is therefore ambiguous (a corpus of
-// exactly that size, or a truncated read), so it is never treated as
-// complete: the walk re-queries with a narrower upper bound instead.
-const PR_LIST_CEILING = 1000;
-const MAX_WINDOW_ITERATIONS = 20;
 const ISSUE_LIST_LIMIT = 1000;
 const ISSUE_JSON_FIELDS = 'number,body,labels,state,stateReason';
 
-const runPrListPage = (
-  cwd: string,
-  searchClauses: string[]
-): null | PrRecord[] => {
-  const args = [
-    'pr',
-    'list',
-    '--state',
-    'merged',
-    '--json',
-    'number,body,headRefOid,mergedAt',
-    '--limit',
-    String(PR_LIST_CEILING),
-  ];
-
-  if (searchClauses.length > 0) {
-    args.push('--search', searchClauses.join(' '));
-  }
-
-  const result = runGh(args, {cwd});
-
-  if (result.exitCode !== 0) return null;
-
-  let parsed: unknown;
-
-  try {
-    parsed = JSON.parse(result.stdout);
-  } catch {
-    return null;
-  }
-
-  return Array.isArray(parsed) ? (parsed as PrRecord[]) : null;
-};
-
-// Deliberately an if-statement, not a `a < b ? a : b` reduce: `mergedAt` is
-// an ISO date string, and `Math.min` would coerce it to NaN.
-const oldestMergedAt = (page: readonly PrRecord[]): string => {
-  let oldest = page[0]?.mergedAt ?? '';
-
-  for (const pr of page) {
-    if (pr.mergedAt < oldest) oldest = pr.mergedAt;
-  }
-
-  return oldest;
-};
-
-const mergedPrsLive = (
-  cwd: string,
-  sinceIso: null | string
-): MergedPrsResult => {
-  const lowerBound = sinceIso === null ? [] : [`merged:>=${sinceIso}`];
-  const byNumber = new Map<number, PrRecord>();
-  let upperBoundClause: null | string = null;
-
-  for (let iteration = 0; iteration < MAX_WINDOW_ITERATIONS; iteration += 1) {
-    const clauses =
-      upperBoundClause === null ? lowerBound : (
-        [...lowerBound, upperBoundClause]
-      );
-    const page = runPrListPage(cwd, clauses);
-
-    if (page === null) return {ok: false};
-
-    for (const pr of page) byNumber.set(pr.number, pr);
-
-    if (page.length < PR_LIST_CEILING) {
-      return {ok: true, prs: [...byNumber.values()], truncated: false};
-    }
-
-    upperBoundClause = `merged:<=${oldestMergedAt(page)}`;
-  }
-
-  return {ok: true, prs: [...byNumber.values()], truncated: true};
-};
+const mergedPrsLive = (cwd: string, sinceIso: null | string): MergedPrsResult =>
+  readMergedPrWindow<PrRecord>({
+    cwd,
+    fields: ['body', 'headRefOid'],
+    sinceIso,
+  });
 
 const techDebtIssuesLive = (cwd: string): TechDebtIssuesResult => {
   const openResult = runGh(

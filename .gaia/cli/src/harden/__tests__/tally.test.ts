@@ -2,6 +2,7 @@ import {afterEach, beforeEach, describe, expect, test, vi} from 'vitest';
 import {mkdirSync, mkdtempSync, rmSync, writeFileSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
+import {MERGED_PR_PAGE_CEILING} from '../../ci/util/merged-pr-window.js';
 import * as runProcess from '../../ci/util/run-process.js';
 import type {ProcessResult} from '../../ci/util/run-process.js';
 import {markerComment} from '../marker.js';
@@ -115,21 +116,23 @@ const stubClasslessWindow = (prNumbers: readonly number[]): void => {
   );
 };
 
-const limitArgument = (args: readonly string[]): number =>
-  Number(args[args.indexOf('--limit') + 1]);
+// One full search page of finding-less PRs, merged a minute apart, so the
+// window walk has an oldest `mergedAt` to narrow its next query on.
+const fullSearchPage = (topNumber: number) =>
+  Array.from({length: MERGED_PR_PAGE_CEILING}, (_, index) => ({
+    comments: [] as {body: string}[],
+    mergedAt: new Date(Date.UTC(2026, 8, 2) - index * 60_000).toISOString(),
+    number: topNumber - index,
+  }));
 
-// Answers the window read with `limit - shortBy` finding-less PRs, the limit
-// taken from the argv the tally actually sends, so the fixture tracks the
-// source's page size rather than a copy of it.
-const stubWindowOfLimitMinus = (shortBy: number): void => {
-  vi.spyOn(runProcess, 'runGh').mockImplementation((args) =>
-    stubGh(
-      Array.from({length: limitArgument(args) - shortBy}, (_, index) =>
-        ghPr(index + 1, [])
-      )
-    )
-  );
-};
+const recurringFinding = (prNumber: number) =>
+  findingsComment(prNumber, 'ci', [
+    {
+      area_tags: ['app'],
+      finding_class: 'rule/switch-statement',
+      severity: 'warning',
+    },
+  ]);
 
 type FakeLedger = {
   has: (findingClass: string) => boolean;
@@ -886,8 +889,41 @@ describe('harden-tally run', () => {
     expect(unclassified.distinct_pr_count).toBe(3);
   });
 
-  test('reads a window that fills the --limit page as truncated, gh_ok false, ledger unpruned', () => {
-    stubWindowOfLimitMinus(0);
+  test('counts PRs past the first search page, so the 1000-result cap is not the window', () => {
+    const first = fullSearchPage(5000).map((pr, index) =>
+      index === 0 ? {...pr, comments: [recurringFinding(5000)]} : pr
+    );
+    vi.spyOn(runProcess, 'runGh')
+      .mockReturnValueOnce(stubGh(first))
+      .mockReturnValueOnce(
+        stubGh([
+          {
+            ...ghPr(3001, [recurringFinding(3001)]),
+            mergedAt: '2026-08-01T00:00:00Z',
+          },
+          {
+            ...ghPr(3000, [recurringFinding(3000)]),
+            mergedAt: '2026-07-31T00:00:00Z',
+          },
+        ])
+      );
+
+    run([], {
+      cwd: sandbox.root,
+      runLedger: () => ({exitCode: 1, stderr: '', stdout: ''}),
+    });
+
+    const printed = parseStdout(stdout.out);
+    expect(printed.gh_ok).toBe(true);
+    const candidates = printed.candidates as Record<string, unknown>[];
+    expect(candidates[0]?.finding_class).toBe('rule/switch-statement');
+    expect(candidates[0]?.distinct_pr_count).toBe(3);
+  });
+
+  test('reads a window the walk cannot finish as unread: gh_ok false, ledger unpruned, window_truncated', () => {
+    vi.spyOn(runProcess, 'runGh').mockImplementation(() =>
+      stubGh(fullSearchPage(90_000))
+    );
 
     const fake = makeFakeLedger();
     fake.runLedger([
@@ -915,30 +951,6 @@ describe('harden-tally run', () => {
       unknown
     >;
     expect(diagnostic.code).toBe('window_truncated');
-  });
-
-  test('reads a window one short of the --limit page as complete', () => {
-    stubWindowOfLimitMinus(1);
-
-    run([], {
-      cwd: sandbox.root,
-      runLedger: () => ({exitCode: 1, stderr: '', stdout: ''}),
-    });
-
-    expect(parseStdout(stdout.out).gh_ok).toBe(true);
-  });
-
-  test('requests a --limit page well above one window of merged PRs, so the page is not the bound', () => {
-    const ghSpy = vi.spyOn(runProcess, 'runGh').mockReturnValue(stubGh([]));
-
-    run([], {
-      cwd: sandbox.root,
-      runLedger: () => ({exitCode: 1, stderr: '', stdout: ''}),
-    });
-
-    expect(
-      limitArgument(ghSpy.mock.calls[0]?.[0] ?? [])
-    ).toBeGreaterThanOrEqual(3000);
   });
 
   test('queries the 90-day merged-PR window via gh', () => {

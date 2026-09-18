@@ -16,7 +16,7 @@ A release change that requires the adopter to act, run a command or hand-migrate
 
 ### Fixed
 
-- `/gaia-harden` and its statusline nudge now count recurring audit findings across the full 90-day window instead of only the newest 200 merged pull requests, which on a busy repository covered little more than two weeks and understated every count. A window too large for the tally's single read now reports itself as unread rather than passing for a complete one, so it can no longer quietly drop decline-ledger entries or show stale counts as current. Declines recorded against the smaller counts may resurface once. The CLI and the `/gaia-harden` reference ship, so the fix reaches adopters on their next `/update-gaia` (#2111)
+- `/gaia-harden` and its statusline nudge now count recurring audit findings across the full 90-day window instead of only the newest 200 merged pull requests, which on a busy repository covered little more than two weeks and understated every count. The read pages past GitHub search's 1000-result cap, and a window too large even for that reports itself as unread rather than passing for a complete one. Declines recorded against the smaller counts may resurface once. The CLI and the `/gaia-harden` reference ship, so the fix reaches adopters on their next `/update-gaia` (#2111, #2112)
 
 - the CLI GAIA ships now bundles `js-yaml` 4.3.2, clearing a high-severity advisory (GHSA-2883-xcg3-v3hh) in which a crafted YAML document with empty merge sources could consume unbounded CPU. The CLI only parses first-party files, but it inlines its dependencies, so an adopter's own scanner reads the binary as carrying the vulnerable copy (#2110)
 
