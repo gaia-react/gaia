@@ -16,6 +16,8 @@ A release change that requires the adopter to act, run a command or hand-migrate
 
 ### Fixed
 
+- the CLI GAIA ships now bundles `js-yaml` 4.3.2, clearing a high-severity advisory (GHSA-2883-xcg3-v3hh) in which a crafted YAML document with empty merge sources could consume unbounded CPU. The CLI only parses first-party files, but it inlines its dependencies, so an adopter's own scanner reads the binary as carrying the vulnerable copy (#2110)
+
 - cost records written at the end of a merged run now name the branch the work was done on rather than `main`. The merge paths clean up before the cost tally runs, and both kinds of cleanup (checking out `main`, or leaving a worktree) moved the branch the tally read, so most pull-request-bearing rows were attributed to `main`. The branch is now captured before cleanup and handed to the tally with a new `--branch-name` flag. The machine-local rate overlay is now also found from a linked worktree that lacks the provisioned `.gaia/local` link, where it was silently skipped. Both reach adopters on their next `/update-gaia` (#1938)
 
 - the default Code Audit Team member now carries still-open tech-debt receipts forward across audit rounds. Its seed-forward step called a library function its own shell never loaded, so it failed on every run and a later round could drop a filed or pending disposition, leaving the merge gates to re-verify fewer entries than they should. Its disposition steps now run as single literal-path commands, which a worktree-dispatched member is never refused on; the fix reaches adopters on their next `/update-gaia` (#2084)
