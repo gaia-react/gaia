@@ -19,7 +19,7 @@
     {
       "name": "bug",
       "color": "d73a4a",
-      "description": "Something GAIA ships is not working",
+      "description": "Existing behavior is broken or wrong",
       "axis": "type",
       "audience": "adopter",
       "features": [],
@@ -43,9 +43,22 @@
       "reason": null
     },
     {
+      "name": "documentation",
+      "color": "0075ca",
+      "description": "Improvements or additions to documentation",
+      "axis": "type",
+      "audience": "adopter",
+      "features": [],
+      "managed": true,
+      "deprecated": false,
+      "blocked": false,
+      "renamedFrom": [],
+      "reason": null
+    },
+    {
       "name": "security",
       "color": "a1121b",
-      "description": "Dependency CVE or security defect, opened by GAIA CI",
+      "description": "Security defect or dependency CVE",
       "axis": "type",
       "audience": "adopter",
       "features": ["gaia-ci"],
@@ -136,7 +149,7 @@
     {
       "name": "footprint:narrow",
       "color": "d4c5f9",
-      "description": "Fix is one logical unit in one file, no contract change; drains inline",
+      "description": "Fix is one logical unit in one file, no contract change",
       "axis": "reach",
       "audience": "adopter",
       "features": ["tech-debt"],
@@ -149,7 +162,7 @@
     {
       "name": "footprint:wide",
       "color": "8957e5",
-      "description": "Fix is larger or structural; drains inline",
+      "description": "Fix spans files, changes a contract, or is structural",
       "axis": "reach",
       "audience": "adopter",
       "features": ["tech-debt"],
@@ -162,7 +175,7 @@
     {
       "name": "footprint:spec",
       "color": "4c2889",
-      "description": "Design-first; drains via a /gaia-spec handoff",
+      "description": "Fix must start with a design SPEC; drains via /gaia-spec",
       "axis": "reach",
       "audience": "adopter",
       "features": ["tech-debt"],
@@ -227,7 +240,7 @@
     {
       "name": "wontfix",
       "color": "e5e5e5",
-      "description": "Deliberately declined; never re-file this finding",
+      "description": "Deliberately declined; do not re-file",
       "axis": "disposition",
       "audience": "adopter",
       "features": [],
