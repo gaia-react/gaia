@@ -14,8 +14,9 @@
 #   .claude/hooks/audit-stamp-trailer.sh
 #
 #   Argument-less. Reads its inputs from the environment + git state, plus the
-#   pull request's title through `gh`, and only when code-audit-frontend is
-#   dispatched and has no marker (the chore(deps) waiver below).
+#   pull request's title through `gh`, read only when the member resolver
+#   dispatches code-audit-frontend and it has no marker (the chore(deps) waiver
+#   below).
 #
 # Required env input
 #   AUDIT_TREE_SHA      The tree-sha the audit reviewed (captured at audit
@@ -217,8 +218,9 @@ fi
 # loop's refusal-first read, both below. Fail-closed: no gh, no pull request, an unreadable title, or an
 # absent predicate all leave frontend pending.
 #
-# The title is read at most once, and only when the frontend marker is missing,
-# so a run with a frontend marker makes no network call. It is read HERE, ahead
+# The title is read at most once, and only when the resolver dispatches frontend
+# and its marker is missing, so a run with a frontend marker, or one frontend
+# does not audit at all, makes no network call. It is read HERE, ahead
 # of the stamp lock, not inside the member loop: the lock is reclaimed as stale
 # after 15 seconds with no heartbeat, so a `gh` call stalling inside it would let
 # a racing member take the lock and stamp a second trailer.
@@ -242,7 +244,20 @@ chore_deps_waives_frontend() {
   fi
   [ "$frontend_waiver" = "true" ]
 }
-if command -v clearance_member_cleared >/dev/null 2>&1 \
+
+# The member set, resolved ahead of the stamp lock for the waiver's title read
+# above and consumed by the member-aware gate below, which also owns the
+# decisions on an absent or failing resolver. It depends only on the tree, which
+# nothing between here and the gate changes.
+resolver="${repo_root}/.gaia/scripts/resolve-audit-members.sh"
+resolver_rc=0
+members=""
+if [ -x "$resolver" ]; then
+  members="$( cd "$repo_root" && bash "$resolver" 2>/dev/null )" || resolver_rc=$?
+fi
+if [ -x "$resolver" ] && [ "$resolver_rc" -eq 0 ] \
+   && grep -qx 'code-audit-frontend' <<< "$members" \
+   && command -v clearance_member_cleared >/dev/null 2>&1 \
    && ! clearance_member_cleared "$repo_root" "$frontend_digest" code-audit-frontend; then
   chore_deps_waives_frontend || true
 fi
@@ -337,10 +352,7 @@ if clearance_member_refused "$repo_root" "$frontend_digest" code-audit-frontend;
   exit 0
 fi
 
-resolver="${repo_root}/.gaia/scripts/resolve-audit-members.sh"
 if [ -x "$resolver" ]; then
-  resolver_rc=0
-  members="$( cd "$repo_root" && bash "$resolver" 2>/dev/null )" || resolver_rc=$?
   if [ "$resolver_rc" -ne 0 ]; then
     emit_decline "member resolver could not answer"
     exit 0

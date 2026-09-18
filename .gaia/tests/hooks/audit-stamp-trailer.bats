@@ -27,9 +27,11 @@
 #   11. UAT-008: stamped trailer's field 2 is the frontend content digest
 #       (64-hex) and field 3 is the real HEAD tree (40-hex), distinctly
 #   12. chore(deps) waiver                   -> a dep-bump PR title waives an unmarked
-#                                               code-audit-frontend; a non-matching or
-#                                               unreadable title, or an absent predicate,
-#                                               leaves it pending
+#                                               code-audit-frontend and no other member;
+#                                               a non-matching or unreadable title, or an
+#                                               absent predicate, leaves it pending; a
+#                                               diff that does not dispatch frontend
+#                                               reads no title at all
 #
 # The helper never pushes; the agent caller pushes after writing the
 # audit marker (see .claude/agents/code-review-audit.md "Audit marker
@@ -793,6 +795,49 @@ run_waiver_case() {
   [ "$output" = "stamp: declined: members pending code-audit-frontend" ]
   [ "$before_sha" = "$(git -C "$REPO" rev-parse HEAD)" ]
   [ -z "$(trailer_on_head)" ]
+}
+
+@test "chore(deps) waiver: waives frontend only, so an unmarked co-dispatched member stays pending" {
+  install_resolver
+  install_chore_deps_predicate
+  commit_mixed_diff
+  install_title_stub "chore(deps): bump vite to 8.3.0"
+  git -C "$REPO" remote add origin "$REMOTE"
+  git -C "$REPO" push --quiet --set-upstream origin feature
+  before_sha=$(git -C "$REPO" rev-parse HEAD)
+  before_tree=$(git -C "$REPO" rev-parse "HEAD^{tree}")
+
+  cd "$REPO"
+  PATH="$FAKEBIN:$PATH" AUDIT_TREE_SHA="$before_tree" AUDIT_SELF_HEALED="false" run "$HOOK_ABS"
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "stamp: declined: members pending code-audit-maintainer-shell" ]
+  [ "$before_sha" = "$(git -C "$REPO" rev-parse HEAD)" ]
+  [ -z "$(trailer_on_head)" ]
+}
+
+@test "chore(deps) waiver: no title read when the diff does not dispatch frontend" {
+  install_resolver
+  install_chore_deps_predicate
+  git -C "$REPO" checkout --quiet -b feature
+  mkdir -p "$REPO/.gaia/scripts"
+  echo "#!/bin/bash" > "$REPO/.gaia/scripts/example.sh"
+  git -C "$REPO" add .gaia/scripts/example.sh
+  git -C "$REPO" commit --quiet -m "shell-only change"
+  install_title_stub "chore(deps): bump vite to 8.3.0"
+  # Log every gh invocation, so the assertion reads what the hook called.
+  mv "$FAKEBIN/gh" "$FAKEBIN/gh-real"
+  printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >> "%s/gh-calls"\nexec "%s/gh-real" "$@"\n' "$FAKEBIN" "$FAKEBIN" > "$FAKEBIN/gh"
+  chmod +x "$FAKEBIN/gh"
+  before_tree=$(git -C "$REPO" rev-parse "HEAD^{tree}")
+  write_marker code-audit-maintainer-shell
+
+  cd "$REPO"
+  PATH="$FAKEBIN:$PATH" AUDIT_TREE_SHA="$before_tree" AUDIT_SELF_HEALED="false" run "$HOOK_ABS"
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "stamp: amended onto HEAD (un-pushed)" ]
+  [ ! -s "$FAKEBIN/gh-calls" ]
 }
 
 @test "chore(deps) waiver: an absent predicate fails closed even on a dep-bump title" {

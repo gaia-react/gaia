@@ -22,7 +22,8 @@
 #
 # `gh` is mocked on a prepended PATH. The mock answers `gh auth status` (ok or
 # fail per the test), `gh repo view --json nameWithOwner` (a fixed slug),
-# `gh pr view --json headRefOid` (the pushed head sha captured by push_branch),
+# `gh pr view --json headRefOid,title` (the pushed head sha captured by
+# push_branch, plus the PR title when a test writes one),
 # and `gh api .../statuses ... --method POST` (records the invocation only when
 # the target sha exists on a bare remote, proving it is genuinely fetchable,
 # not just that the mock accepted it unconditionally).
@@ -56,6 +57,9 @@
 #      short sha re-resolves to the sha the POST actually targeted (#794).
 #   5. Frontend digest unavailable (masked sha256 tool) → declines fail-closed,
 #      never posts a status with a missing or empty digest field.
+#   6. chore(deps) waiver: a dep-bump PR title waives an unmarked
+#      code-audit-frontend and no other member; a non-matching or unreadable
+#      title leaves it pending, and a frontend refusal still outranks the waiver.
 
 setup() {
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
@@ -423,6 +427,26 @@ run_shell_member_handshake() {
 
   [ "$status" -eq 0 ]
   [ "$output" = "status: declined: members pending code-audit-frontend" ]
+  [ ! -f "$POST_LOG" ]
+}
+
+@test "chore(deps) waiver: waives frontend only, so an unmarked co-dispatched member stays pending" {
+  install_gh_mock ok
+  install_resolver
+  install_chore_deps_predicate
+  commit_mixed_diff
+  printf '%s' "chore(deps): bump vite to 8.3.0" > "$BATS_TEST_TMPDIR/pr-title"
+  # Frontend holds its own marker and shell holds none. Only a waiver widened
+  # past frontend would clear shell here, so this is what pins it to frontend.
+  frontend_digest=$(digest_of "$SANDBOX" code-audit-frontend)
+  mkdir -p "$SANDBOX/.gaia/local/audit"
+  caller=".gaia/local/audit/${frontend_digest}.ok"
+  write_body "$SANDBOX/$caller" code-audit-frontend
+
+  run run_helper "$caller"
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "status: declined: members pending code-audit-maintainer-shell" ]
   [ ! -f "$POST_LOG" ]
 }
 
