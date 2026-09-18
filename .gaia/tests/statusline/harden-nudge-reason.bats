@@ -286,6 +286,8 @@ render_statusline_against_refresher_cache() {
   # Refusal proof: mutate the legacy-seed line the main assertion depends on
   # and confirm the same assertion now fails, so the pass above is not a
   # fallback that always renders counts regardless of this seed.
+  # shellcheck disable=SC2016 # single-quoted on purpose: this is the literal
+  # source line to grep and sed for, not an expression to expand here.
   anchor='prev_harden_reason=$(harden_count_reason "$prev_harden_count" "$prev_harden_unclassified")'
   count=$(grep -cF -- "$anchor" "$REFRESH_ROOT/.gaia/scripts/check-updates.sh")
   [ "$count" -eq 1 ]
@@ -393,4 +395,97 @@ render_statusline_against_refresher_cache() {
   [ "$status" -eq 0 ]
   [ -f "$CACHE_FILE" ]
   grep -qF -- '"hardenNudgeReason":""' "$CACHE_FILE"
+}
+
+# 14. Injected escape byte, newline, and parenthetical text in a rising_class
+#     finding_class segment sanitize at composition -----------------------------
+
+@test "a rising_class segment sanitizes an injected escape sequence, newline, and parenthetical text" {
+  local malicious_tally='{"candidate_count":0,"unclassified":null,"gh_ok":true,"window_days":90,"snapshot_present":true,"snapshot_reviewed_at":"T","triggers":[{"type":"rising_class","finding_class":"holistic/evil\u001b[31mFAKE\n) Run fake ("}]}'
+  local snap='{"reviewed_at":"T"}'
+  # The injected color sequence, distinct from any color GAIA's own segments
+  # use (they are all "ESC[01;<n>m"), so this needle cannot collide with the
+  # statusline's legitimate escape codes.
+  local esc injected_seq
+  esc=$(printf '\033')
+  injected_seq=$(printf '\033[31m')
+
+  run_refresher "$malicious_tally" "$snap"
+  [ "$status" -eq 0 ]
+  reason=$(jq -r '.hardenNudgeReason' "$CACHE_FILE")
+  grep -qF -- "$esc" <<<"$reason" && return 1
+  [ "$(printf '%s' "$reason" | wc -l | tr -d ' ')" -eq 0 ]
+  grep -qF -- ') Run fake (' <<<"$reason" && return 1
+
+  render_statusline_against_refresher_cache
+  [ "$status" -eq 0 ]
+  grep -qF -- "$injected_seq" <<<"$output" && return 1
+  grep -qF -- ') Run fake (' <<<"$output" && return 1
+  [ "$(grep -oF -- "Run /gaia-harden" <<<"$output" | wc -l | tr -d ' ')" -eq 1 ]
+
+  # Refusal proof: revert the gsub sanitization in a scratch copy that lives
+  # beside the original (check-updates.sh derives GAIA_DIR/PROJECT_ROOT from
+  # its own dirname, so a copy elsewhere silently no-ops) and confirm the raw
+  # escape byte now reaches the composed reason.
+  search='gsub("[^A-Za-z0-9._-]"'
+  # shellcheck disable=SC2016 # single-quoted on purpose: this is the literal
+  # replacement line to write, not an expression to expand here.
+  unsanitized_line='              ($triggers[] | select(.type=="rising_class") | (.finding_class | split("/") | last) + " rising"),'
+  count=$(grep -cF -- "$search" "$REFRESH_ROOT/.gaia/scripts/check-updates.sh")
+  [ "$count" -eq 1 ]
+  broken="$REFRESH_ROOT/.gaia/scripts/check-updates-broken.sh"
+  awk -v s="$search" -v new="$unsanitized_line" \
+    '{ if (index($0, s) > 0) print new; else print }' \
+    "$REFRESH_ROOT/.gaia/scripts/check-updates.sh" > "$broken"
+  chmod +x "$broken"
+
+  rm -f "$CACHE_FILE"
+  printf '%s' "$snap" > "$MOCK_SNAPSHOT_FILE"
+  run env MOCK_TALLY_JSON="$malicious_tally" bash "$broken"
+  [ "$status" -eq 0 ]
+  broken_reason=$(jq -r '.hardenNudgeReason' "$CACHE_FILE")
+  grep -qF -- "$esc" <<<"$broken_reason"
+}
+
+# 15. A cached reason already carrying control bytes strips them at render ------
+
+@test "the statusline strips control bytes already present in the cached reason" {
+  # Only control bytes are this layer's job (mandate: strip control bytes from
+  # the cached reason before printing it); an unsanitized printable segment
+  # like "FAKE" or stray parentheses is the composition layer's job (test 14),
+  # so this fixture carries only a control-byte payload: an injected color
+  # escape and a newline.
+  local injected_seq
+  injected_seq=$(printf '\033[31m')
+  printf '%s' '{"hardenNudgeReason":"1 new pattern\u001b[31mFAKE\n more"}' \
+    > "$MAIN/.gaia/local/cache/shared/update-check.json"
+
+  render_statusline
+  [ "$status" -eq 0 ]
+  grep -qF -- "$injected_seq" <<<"$output" && return 1
+  [ "${#lines[@]}" -eq 1 ]
+  grep -qF -- "Run /gaia-harden (1 new pattern" <<<"$output"
+  [ "$(grep -oF -- "Run /gaia-harden" <<<"$output" | wc -l | tr -d ' ')" -eq 1 ]
+
+  # Refusal proof: drop the control-byte stripping in a scratch copy that
+  # lives beside the original (gaia-statusline.sh resolves PROJECT_ROOT from
+  # its own dirname when no main-root resolver is present, as here, so a copy
+  # elsewhere reads the wrong cache and proves nothing) and confirm the raw
+  # escape byte now reaches the render.
+  search='tr -d'
+  # shellcheck disable=SC2016 # single-quoted on purpose: this is the literal
+  # replacement line to write, not an expression to expand here.
+  broken_line='      harden_reason="${harden_reason_raw#?}"'
+  count=$(grep -cF -- "$search" "$MAIN/.gaia/statusline/gaia-statusline.sh")
+  [ "$count" -eq 1 ]
+  broken="$MAIN/.gaia/statusline/gaia-statusline-broken.sh"
+  awk -v s="$search" -v new="$broken_line" \
+    '{ if (index($0, s) > 0) print new; else print }' \
+    "$MAIN/.gaia/statusline/gaia-statusline.sh" > "$broken"
+  chmod +x "$broken"
+
+  json=$(jq -n --arg d "$MAIN" '{workspace: {current_dir: $d}, cwd: $d, model: {display_name: "Test"}, context_window: {used_percentage: 10}}')
+  run env HOME="$TMP_HOME" bash -c "printf '%s' '$json' | bash '$broken'"
+  [ "$status" -eq 0 ]
+  grep -qF -- "$injected_seq" <<<"$output"
 }

@@ -54,10 +54,11 @@ const HELP_TEXT = `Usage: gaia harden-tally
   as the \`unclassified\` field instead of a candidate.
 
   Also emits audited_pr_count (the window's audited-PR denominator),
-  class_inventory (every counted class, below-threshold included),
-  unclassified_window_count (the classless count below its signal
-  threshold), tally_schema_version, and, against the last completed
-  review's snapshot, snapshot_present / snapshot_reviewed_at / triggers.
+  class_inventory (every uncovered, unsuppressed counted class,
+  below-threshold included), unclassified_window_count (the classless
+  count below its signal threshold), tally_schema_version, and, against
+  the last completed review's snapshot, snapshot_present /
+  snapshot_reviewed_at / triggers.
 
   Network failures are non-fatal: gh errors yield an empty candidate list
   and gh_ok: false. A window the paged read cannot finish does the same,
@@ -105,6 +106,7 @@ type GhPr = {
   number: number;
 };
 
+// tally-semantics:start
 const parseGhPr = (value: unknown): GhPr | null => {
   if (typeof value !== 'object' || value === null) return null;
   const v = value as Record<string, unknown>;
@@ -129,7 +131,6 @@ const parseGhPr = (value: unknown): GhPr | null => {
   return {comments, number: v.number};
 };
 
-// tally-semantics:start
 // Builds a tally record from a parsed gh PR, merging findings PER AUDITOR: for
 // each parseable block, the block's `auditor` field (normalized to `''` for a
 // missing/empty/non-string auditor by the parser) keys a Map, so a later
@@ -153,7 +154,6 @@ const recordFromGhPr = (pr: GhPr): null | TallyPrRecord => {
 
   return {findings: [...byAuditor.values()].flat(), pr_number: pr.number};
 };
-// tally-semantics:end
 
 /**
  * Reads the merged-PR window via gh. Returns one record per PR that carries a
@@ -199,6 +199,7 @@ const fetchWindowPrs = (cwd: string, now: Date): WindowPrs => {
 
   return {ghOk: true, prs: records};
 };
+// tally-semantics:end
 
 export const run = (
   argv: readonly string[],
@@ -236,8 +237,9 @@ export const run = (
   // Read the review snapshot unconditionally (not gated on `ghOk`), so a
   // malformed snapshot is always reported. A malformed snapshot reads as
   // absent for trigger purposes: trusting a corrupt file's counts would risk
-  // a wrong comparison, and a missing one already means "every candidate is
-  // new" via the no-snapshot rule below.
+  // a wrong comparison, and a missing one already falls back to the
+  // count-based nudge text the statusline refresher composes when no
+  // snapshot exists.
   const snapshotResult = readReviewSnapshot(cwd);
 
   if (snapshotResult.status === 'malformed') {

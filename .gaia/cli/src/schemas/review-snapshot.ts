@@ -8,10 +8,13 @@
  * tally; the resulting snapshot is what trigger evaluation compares the live
  * tally against.
  *
- * The file lives at `.gaia/local/harden/reviewed.json` (gitignored). A
- * corrupt or hand-edited file fails loud (the discriminated `read*` result
- * carries `status: 'malformed'`) rather than being silently treated as
- * absent, which would wrongly re-fire the nudge on a reading nobody made.
+ * The file lives at `.gaia/local/harden/reviewed.json` (gitignored).
+ * `harden-ledger snapshot show` fails loud on a corrupt or hand-edited file
+ * (exit 30, `status: 'malformed'`) rather than printing it. The nudge path
+ * reads the same file through `harden-tally`, which reports a malformed
+ * snapshot as `snapshot_present: false` plus a structured stderr error; the
+ * statusline refresher discards stderr and falls back to the count-based
+ * nudge text instead of trusting the corrupt counts.
  */
 import {z} from 'zod';
 import {existsSync, mkdirSync, readFileSync} from 'node:fs';

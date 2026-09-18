@@ -89,7 +89,9 @@ SERENA_LIB="$GAIA_DIR/scripts/lib/serena-lang.sh"
 # Today's harden-nudge count text: shared by the no-snapshot composition
 # below and the upgrade-window seed for a cache written before
 # hardenNudgeReason existed, so the two cannot drift out of step with each
-# other or with gaia-statusline.sh's identical composition.
+# other. gaia-statusline.sh keeps its own copy of this composition for its
+# legacy-cache fallback; harden-nudge-reason.bats pins both surfaces to the
+# same rendered text.
 harden_count_reason() {
   local count="$1" unclassified="$2" reason="" noun
   if [ "$count" -gt 0 ] 2>/dev/null; then
@@ -284,7 +286,9 @@ esac
 # text via harden_count_reason. With one, it names the trigger events
 # harden-tally reports: schema_change, the new_class count, one
 # "<last path segment of finding_class> rising" per rising_class in
-# triggers[] order, then "unclassified rising"; empty when triggers is empty.
+# triggers[] order (the segment stripped to [A-Za-z0-9._-], since class
+# names come from PR comments any author can write), then "unclassified
+# rising"; empty when triggers is empty.
 # gh_ok false (or no reading at all) keeps prev_harden_reason.
 #
 # snapshot_present and snapshot_reviewed_at are read from the tally JSON
@@ -320,7 +324,7 @@ if [ -x "$GAIA_BIN" ] && command -v jq >/dev/null 2>&1; then
           | [
               (if ($triggers | any(.type=="schema_change")) then "tally changed" else empty end),
               (if $newk > 0 then (if $newk == 1 then "1 new pattern" else "\($newk) new patterns" end) else empty end),
-              ($triggers[] | select(.type=="rising_class") | (.finding_class | split("/") | last) + " rising"),
+              ($triggers[] | select(.type=="rising_class") | (.finding_class | split("/") | last | gsub("[^A-Za-z0-9._-]"; "") | if . == "" then "a pattern" else . end) + " rising"),
               (if ($triggers | any(.type=="rising_unclassified")) then "unclassified rising" else empty end)
             ]
           | join(", ")
@@ -686,8 +690,10 @@ else
   # jq not available; emit valid JSON via printf. auditDriftBaseline is empty
   # for the same reason serenaLangDrift is: deriving it requires jq, and with
   # no jq there is no coveredPaths list to suppress against either.
-  # hardenNudgeReason is built from digits, fixed words, commas, spaces, and
-  # class slug segments ([a-z0-9-]) only, so printf needs no extra escaping.
+  # harden_reason is always the empty string on this path: both places that
+  # compute it (the tally-driven composition above and the cache seed at
+  # startup) require jq themselves, so neither branch ever runs without it.
+  # Nothing here needs escaping.
   printf '{"checkedAt":%s,"outdatedCount":%s,"gaiaCurrent":"%s","gaiaLatest":"%s","gaiaHasUpdate":%s,"hardenCandidateCount":%s,"hardenUnclassifiedCount":%s,"hardenNudgeReason":"%s","residueCandidateCount":%s,"auditNudge":%s,"auditNudgeReason":"%s","auditLastAppliedAt":%s,"auditMemoryCount":%s,"auditMemoryBaseline":%s,"serenaLangDrift":[],"auditDriftBaseline":{}}\n' \
     "$checked_at_out" "$outdated_count" "$gaia_current" "$gaia_latest" "$gaia_has_update" "$harden_count" "$unclassified_count" "$harden_reason" "$residue_count" "$audit_nudge" "$audit_nudge_reason" "$audit_last_applied_at" "$audit_memory_count" "$audit_memory_baseline" \
     > "$tmp_file" 2>/dev/null

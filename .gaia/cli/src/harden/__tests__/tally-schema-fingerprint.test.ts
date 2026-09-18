@@ -1,8 +1,9 @@
 /**
  * Pins the tally's counting semantics (AUDIT directive 14): the audited-PR
- * predicate and per-auditor merge (`tally.ts`), the collapse/aggregate pass
- * (`compute-tally.ts`), and the findings-block acceptance logic
- * (`parse-findings-block.ts`). Each is wrapped in a
+ * predicate, per-auditor merge, and window PR-selection loop (`tally.ts`),
+ * the collapse/aggregate/class-disposition pass that also derives the
+ * audited-PR denominator (`compute-tally.ts`), and the findings-block
+ * acceptance logic (`parse-findings-block.ts`). Each is wrapped in a
  * `// tally-semantics:start` / `// tally-semantics:end` region; this test
  * hashes the three regions together (comments stripped, whitespace
  * normalized) and pins the hash alongside the three constants that also
@@ -126,7 +127,7 @@ describe('tally counting-semantics fingerprint', () => {
       tallySchemaVersion: TALLY_SCHEMA_VERSION,
       windowDays: WINDOW_DAYS,
     }).toEqual({
-      hash: '261cac83e0819a0d6ccac4c663f51e601eb2452093c28fc62a89c8290f51aa41',
+      hash: '3f4231eb6ba66cccecad9cc4bdf8e40a0182d17b49b2f0be25e1d29e053d67d7',
       recurrenceThreshold: 3,
       tallySchemaVersion: 1,
       windowDays: 90,

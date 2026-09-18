@@ -185,7 +185,12 @@ else
       # and the rest is the reason itself.
       harden_reason_raw=$(jq -r 'if has("hardenNudgeReason") then "1" + ((.hardenNudgeReason // "") | tostring) else "0" end' "$CACHE_FILE" 2>/dev/null)
       has_harden_reason="${harden_reason_raw:0:1}"
-      harden_reason="${harden_reason_raw#?}"
+      # A cached reason is untrusted: harden-tally's finding_class segments and
+      # the review snapshot both originate in PR text any author controls, so
+      # strip control bytes (escape sequences, newlines) before this reaches a
+      # terminal, even though the refresher's own composition already
+      # constrains the class-name segment it builds the reason from.
+      harden_reason="$(printf '%s' "${harden_reason_raw#?}" | tr -d '\000-\037\177')"
       audit_nudge=$(jq -r '.auditNudge // false' "$CACHE_FILE" 2>/dev/null)
       audit_reason=$(jq -r '.auditNudgeReason // empty' "$CACHE_FILE" 2>/dev/null)
       serena_drift=$(jq -r '(.serenaLangDrift // []) | join(", ")' "$CACHE_FILE" 2>/dev/null)

@@ -17815,10 +17815,11 @@ var HELP_TEXT13 = `Usage: gaia harden-tally
   as the \`unclassified\` field instead of a candidate.
 
   Also emits audited_pr_count (the window's audited-PR denominator),
-  class_inventory (every counted class, below-threshold included),
-  unclassified_window_count (the classless count below its signal
-  threshold), tally_schema_version, and, against the last completed
-  review's snapshot, snapshot_present / snapshot_reviewed_at / triggers.
+  class_inventory (every uncovered, unsuppressed counted class,
+  below-threshold included), unclassified_window_count (the classless
+  count below its signal threshold), tally_schema_version, and, against
+  the last completed review's snapshot, snapshot_present /
+  snapshot_reviewed_at / triggers.
 
   Network failures are non-fatal: gh errors yield an empty candidate list
   and gh_ok: false. A window the paged read cannot finish does the same,

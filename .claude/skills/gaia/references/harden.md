@@ -89,19 +89,26 @@ Bind to these fields per candidate: `finding_class`, `distinct_pr_count`, `pr_nu
 
 - **`gh_ok` is `false` and stderr carries a `window_truncated` error**: the window holds more merged PRs than the tally's paged read covers. Report "the merged-PR window is too large for the tally to read; this is not an all-clear, report it as a GAIA bug" and stop. Re-running does not help. (Run ends here; see `## Cost record (run end)`.)
 - **`gh_ok` is `false` otherwise**: a `gh`/network outage. Report "could not read the merged-PR window; this is not an all-clear, re-run when `gh` is available" and stop, never claiming no findings. (Run ends here; see `## Cost record (run end)`.)
-- **`gh_ok` is `true`, `candidate_count` is `0`, `unclassified` is `null`**: report "no recurring findings crossed the threshold in the last 90 days". In `review` mode, before stopping, run the snapshot record command:
+- **`gh_ok` is `true`, `candidate_count` is `0`, `unclassified` is `null`**: report "no recurring findings crossed the threshold in the last 90 days". In `review` mode, before stopping, run the snapshot record command and, only on its exit 0, the cache-clear block from `## Record the review (end of run)`, in the same Bash call: shell state does not persist across separate calls, so the record and the clear must run together.
 
   ```bash
   .gaia/cli/gaia harden-ledger snapshot record --tally-file .gaia/local/harden/review-tally.json
+  record_status=$?
+  if [ "$record_status" -eq 0 ]; then
+    CACHE_ROOT="$(bash .gaia/scripts/main-root-lib.sh 2>/dev/null || git rev-parse --show-toplevel)"
+    CACHE="$CACHE_ROOT/.gaia/local/cache/shared/update-check.json"
+    if [ -f "$CACHE" ]; then
+      if command -v jq >/dev/null 2>&1; then
+        tmp="$(mktemp)"
+        jq '.hardenNudgeReason = "" | .checkedAt = 0' "$CACHE" > "$tmp" && mv "$tmp" "$CACHE"
+      else
+        rm -f "$CACHE"
+      fi
+    fi
+  fi
   ```
 
-  Only on exit 0, run the cache-clear step of `## Record the review (end of run)`:
-
-  ```bash
-  jq '.hardenNudgeReason = "" | .checkedAt = 0' "$CACHE" > "$tmp" && mv "$tmp" "$CACHE"
-  ```
-
-  On a non-zero exit, report it the way that section does (quote the structured error code) and skip the cache clear. `list`/`why` stop as today, writing nothing. (Run ends here; see `## Cost record (run end)`.)
+  On a non-zero `record_status`, report it the way `## Record the review (end of run)` does (quote the structured error code) and skip the cache clear, the block above already skips it in that case. `list`/`why` stop as today, writing nothing. (Run ends here; see `## Cost record (run end)`.)
 - **`gh_ok` is `true`, `candidate_count` is `0`, `unclassified` is non-null**: do NOT stop. Skip the per-candidate loop (there is nothing to judge) and go straight to `## Unclassified recurrence signal (seed-a-class-or-investigate)` below, which in `review` mode flows on to `## Record the review (end of run)`.
 - **Otherwise**: run the per-candidate loop below.
 
@@ -196,7 +203,7 @@ Check the `harden-ledger record` exit code before reporting the outcome. On exit
 
 State that the decline is machine-local only (the ledger is gitignored) and never shared: a teammate still sees the nudge and can approve. The decline re-surfaces on evidence, the ledger handles that: the candidate returns once the rise from the count recorded at decline to the live count is material, the same share-based material-rise rule that governs every other trigger (see `wiki/concepts/Policy-Memory Loop.md`), with a floor requiring at least 3 more distinct PRs, and measured against the same tally schema version. An entry recorded before this rule existed, or under a different schema version, is a legacy entry and never suppresses; re-decline it to restore a suppression under the live rule. A mis-decline is reversible: re-record with a corrected count, or let `.gaia/cli/gaia harden-ledger prune` drop the entry once the class leaves the window, the undo and hygiene path for the ledger.
 
-`.gaia/local` is shared across a clone's linked worktrees, so a sibling worktree still on an older GAIA reads the version-2 ledger as invalid: its `is-suppressed` fails the ledger load and exits `CONFIG_INVALID` 30 before it looks up any entry, and its bridge maps every exit other than `1` to suppressed. Every class is then suppressed in that worktree, not only the declined ones, so a review run there reports the all-clear until the worktree updates: the failure is closed (nothing is wrongly re-surfaced) but it is silent. An older refresher (`.gaia/scripts/check-updates.sh`) running from such a worktree also rewrites the shared cache without the `hardenNudgeReason` key, so the statusline falls back to the count text until an updated refresher next runs.
+`.gaia/local` is shared across a clone's linked worktrees, so a sibling worktree still on an older GAIA reads the version-2 ledger as invalid: its `is-suppressed` fails the ledger load and exits `CONFIG_INVALID` 30 before it looks up any entry, and its bridge maps every exit other than `1` to suppressed. Every class is then suppressed in that worktree, not only the declined ones: the failure is closed (nothing is wrongly re-surfaced) but it is silent. `/gaia-harden` itself refuses to run inside a linked worktree (`gaia_refuse_if_worktree` in `.claude/commands/gaia-harden.md`), so no review ever runs there to report that all-clear; what actually happens in the worktree is the background refresher's own `harden-tally` call, filtered through the same suppressed-everything bridge, silently dropping every candidate from the statusline nudge until the worktree updates. A review reporting the all-clear only happens when the main checkout itself is the one still running the older GAIA. An older refresher (`.gaia/scripts/check-updates.sh`) running from such a worktree also rewrites the shared cache without the `hardenNudgeReason` key, so the statusline falls back to the count text until an updated refresher next runs.
 
 ### defer
 
@@ -276,7 +283,7 @@ Record the snapshot from this run's own start-of-run tally (the file `## Fetch t
 On exit `0`, clear the cached nudge so the next statusline render stops showing it (model on `.claude/skills/gaia/references/audit.md`'s cache-bust, main-root-resolved, jq with an `rm -f` fallback):
 
 ```bash
-CACHE_ROOT="$(bash .gaia/scripts/main-root-lib.sh)"
+CACHE_ROOT="$(bash .gaia/scripts/main-root-lib.sh 2>/dev/null || git rev-parse --show-toplevel)"
 CACHE="$CACHE_ROOT/.gaia/local/cache/shared/update-check.json"
 if [ -f "$CACHE" ]; then
   if command -v jq >/dev/null 2>&1; then

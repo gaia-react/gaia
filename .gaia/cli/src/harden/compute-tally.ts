@@ -19,12 +19,13 @@
  * tally. Findings repeated within a single PR still collapse to one
  * distinct-PR increment either way.
  *
- * `class_inventory` carries every non-fallback class the window counted at
- * least once, below-threshold classes included, so a review snapshot holds
- * the full picture and a class crossing the threshold later reads as a rise
- * rather than a "new pattern". `audited_pr_count` is the window's denominator
- * (`prs.length`), passed to `suppressedClass` alongside each class's own
- * count so the decline ledger can compare shares instead of raw counts.
+ * `class_inventory` carries every non-fallback, uncovered, unsuppressed class
+ * the window counted at least once, below-threshold classes included, so a
+ * review snapshot holds the full picture and a class crossing the threshold
+ * later reads as a rise rather than a "new pattern". `audited_pr_count` is
+ * the window's denominator (`prs.length`), passed to `suppressedClass`
+ * alongside each class's own count so the decline ledger can compare shares
+ * instead of raw counts.
  */
 import {
   isOracleFindingClass,
@@ -231,7 +232,6 @@ const aggregateByClass = (
 
   return byClass;
 };
-// tally-semantics:end
 
 type FallbackOutcome = {
   unclassified: null | UnclassifiedSignal;
@@ -408,6 +408,7 @@ export const computeTally = ({
     window_days: windowDays,
   };
 };
+// tally-semantics:end
 
 /**
  * The set of keys with qualifying recurrence evidence (>= threshold distinct
