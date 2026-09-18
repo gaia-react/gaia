@@ -110,8 +110,10 @@ strictPeerDependencies: false
 # toggles anything, so neither can tell a live floor from a spent one; that is
 # the hand check above.
 #
-#   - cosmiconfig>js-yaml and @eslint/eslintrc>js-yaml -> 4.3.1:
-#     GHSA-5p4m-2wfm-xmqj, quadratic CPU consumption in !!omap resolution.
+#   - cosmiconfig>js-yaml and @eslint/eslintrc>js-yaml -> 4.3.2:
+#     GHSA-2883-xcg3-v3hh, maxTotalMergeKeys not limiting CPU use for empty
+#     merge sources; also clears GHSA-5p4m-2wfm-xmqj, quadratic CPU
+#     consumption in !!omap resolution, fixed in 4.3.1.
 #     Written as the two arrival paths rather than as a bare `js-yaml@^4.0.0`,
 #     because a workspace override outranks a DIRECT dependency as well as a
 #     transitive one: pnpm applies it to every match and rewrites the
@@ -128,6 +130,6 @@ strictPeerDependencies: false
 #     closure already resolved, because pinning down to root's value would be a
 #     downgrade that buys nothing. The two are not meant to match.
 overrides:
-  'cosmiconfig>js-yaml': 4.3.1
-  '@eslint/eslintrc>js-yaml': 4.3.1
+  'cosmiconfig>js-yaml': 4.3.2
+  '@eslint/eslintrc>js-yaml': 4.3.2
   fast-uri: 3.1.6
