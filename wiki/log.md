@@ -11,6 +11,25 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-09-18 b95068f6 SKIP - run-interpolation scan-surface header wording names composite-action dir; internal script header detail, no wiki page covers it
+- 2026-09-18 9a969852 SKIP - cost tally --branch-name capture-before-cleanup rule; wiki/concepts/Cost Data Contract.md already updated by the same PR
+- 2026-09-18 0ad7572d SKIP - tests-only change
+- 2026-09-18 23622e21 SKIP - tests-only change
+- 2026-09-18 35a421c8 SKIP - lint-git-path-quoting scan surface widened to *.yml.tmpl; guard-specific scan surface owned by the guard's own header, not restated in wiki
+- 2026-09-18 fd6b7c1b SKIP - sandbox deny-tier settings-merge rationale; wiki/concepts/OS Sandbox.md already updated by the same PR
+- 2026-09-18 69d038cd WORTHY - default member's disposition pipeline (eligibility, provenance, seed-forward) moved to literal-path commands, no longer refused under worktree confinement -> wiki/concepts/Worktrees.md
+- 2026-09-18 785d7669 SKIP - commit gate's -C walk parity fix with the destructive gate; internal hook implementation detail, no wiki page covers it
+- 2026-09-18 e4adf0ba SKIP - CLI self-recursive tree-walk guard widening; internal CLI implementation detail, no wiki page covers it
+- 2026-09-18 2ed0cdf1 SKIP - grep filter-flag handling in read guards; already documented in wiki/concepts/Claude Hooks.md's reader-operands.sh entry
+- 2026-09-18 f6805414 SKIP - debt:spec-active hand-release cases enumerated; wiki/concepts/Audit Disposition and Debt Fix.md and GitHub Labels.md already updated by the same PR
+- 2026-09-18 30f05004 SKIP - coding-guidelines trim; wiki/concepts/Coding Guidelines.md already mirrored by the same PR
+- 2026-09-18 03c9ec14 SKIP - audit scope resolution moved to audit-resolve-scope.sh; already reflected in wiki/concepts/Code Review Audit Agent.md, PR Merge Workflow.md, Worktrees.md by the same PR
+- 2026-09-18 7c6ea942 SKIP - ci: CI plumbing (dependabot github-actions bump)
+- 2026-09-18 a113ef4e SKIP - wiki-drift-check manifest-derive arm fix for .gaia/local path: tokens; internal registry-schema detail
+- 2026-09-18 861404a9 SKIP - release-scrub hook-scopes.json entry fix; general scrub mechanism already documented, this is a narrow config correction
+- 2026-09-18 c6288330 SKIP - errexit ERR-trap-disarm guard fix; guard-specific detail owned by script header, not the shared Shell Guard Fixture Discrimination page
+- 2026-09-18 40741a4e SKIP - cwd-loads guard bracket-negation fix; guard-specific behavior owned by the script header, not restated in wiki
+- 2026-09-18 6e5e7e2f SKIP - prior wiki-sync commit, no new content to catalogue
 - 2026-09-16 9be49f3b SKIP - per-tree state path rooting fix, brings hooks in line with already-accurate wiki description
 - 2026-09-16 4222a4a0 SKIP - cwd-relative-loads gate refinement, already covered by wiki pointer to .claude/rules/shell-cwd.md
 - 2026-09-16 a25d1bd6 WORTHY - self-heal refuses in-band on step abort → wiki/concepts/Code Review Audit CI.md
