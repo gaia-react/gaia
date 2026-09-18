@@ -623,11 +623,11 @@ jobs:
             `.claude/skills/file-tech-debt/SKILL.md`.
 
             SELF-HEAL CONSTRAINTS: read before making any edits:
-            1. Run `git diff --name-only -z ${{ github.event.pull_request.base.sha }}...HEAD`
-               first, and read its output as NUL-separated paths: without `-z`,
-               git quotes a path holding a non-ASCII or special character, and
-               the quoted form does not match the real file. Self-heal edits are
-               ONLY permitted on files that appear in this list. Never edit a file that was not changed by this PR. The
+            1. Run `git -c core.quotePath=false diff --name-only ${{ github.event.pull_request.base.sha }}...HEAD`
+               first. Without `core.quotePath=false`, git quotes a path holding a
+               non-ASCII character, and the quoted form does not match the real
+               file. Self-heal edits are ONLY permitted on files that appear in
+               this list. Never edit a file that was not changed by this PR. The
                base sha rather than origin/main: on a PR stacked on another
                branch the range from main also carries the base branch's own
                commits, so the permitted set would be a superset of what this PR
@@ -1930,6 +1930,11 @@ jobs:
       # `exit 1`. That position is safe because it posts only when the head
       # carries no `GAIA-Audit` status at all: a writer that already posted
       # success or pending before the failure keeps it.
+      #
+      # A job that reaches its own `timeout-minutes` is cancelled rather than
+      # failed, so `failure()` is false and this step does not run. Widening
+      # the guard to `cancelled()` is not the answer: a newer run cancelling
+      # this one also lands there, and that run owns the status.
       # ----------------------------------------------------------------
 
       - name: Write GAIA-Audit commit status (failed run)
@@ -1954,7 +1959,9 @@ jobs:
           # Residual race, accepted: a local success landing between this read
           # and the POST below is overwritten. It fails closed, and the local
           # producer re-posts on its next run.
-          if ! existing="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${sha}/status" \
+          # per_page=100: the combined status lists 30 contexts by default, and
+          # a GAIA-Audit status past the first page would read as absent.
+          if ! existing="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${sha}/status?per_page=100" \
               --jq '.statuses[] | select(.context == "GAIA-Audit") | .state')"; then
             echo "code-review-audit: could not read the GAIA-Audit status on ${sha}; not posting failure." >&2
             exit 0

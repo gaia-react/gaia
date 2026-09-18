@@ -172,6 +172,7 @@ install_gh_mock() {
   # No live success unless a test asks for one. Defensive: a leaked value would
   # silently stand the gate down in an unrelated test.
   unset GH_CANNED_SUCCESS_DESC
+  unset GH_COMBINED_STATUS_JSON
   unset GH_STATUS_READ_FAILS
   GH_BIN="$BATS_TEST_TMPDIR/bin"
   mkdir -p "$GH_BIN"
@@ -185,13 +186,25 @@ case "$1" in
     # Reads end in /status (combined status). Writes are POSTs to /statuses/<sha>,
     # which end in the sha, so the two never collide.
     case "$2" in
-      */status)
+      */status|*/status\?*)
         # Simulate an unreadable status (auth blip, rate limit, network): gh
         # exits non-zero. The guard must treat this as "could not ask", NOT as
         # "no success live".
         if [ -n "${GH_STATUS_READ_FAILS:-}" ]; then
           echo "gh: could not read status" >&2
           exit 1
+        fi
+        # A test that sets GH_COMBINED_STATUS_JSON gets the caller's own --jq
+        # filter applied to that document with real jq, so a filter that
+        # selects the wrong context is exercised rather than bypassed.
+        if [ -n "${GH_COMBINED_STATUS_JSON:-}" ]; then
+          filter="."
+          while [ "$#" -gt 0 ]; do
+            [ "$1" = "--jq" ] && { filter="$2"; break; }
+            shift
+          done
+          printf '%s' "$GH_COMBINED_STATUS_JSON" | jq -r "$filter"
+          exit $?
         fi
         if [ -n "${GH_CANNED_SUCCESS_DESC:-}" ]; then
           printf '%s\n' "$GH_CANNED_SUCCESS_DESC"
@@ -2408,16 +2421,37 @@ run_backstop() {
   return 0
 }
 
-@test "failed-run backstop: leaves an existing GAIA-Audit status in place" {
-  # The read answers with a live status, standing in for a success or pending a
-  # writer posted before the job failed.
+# combined_status <context>=<state>...: a combined-status document carrying
+# one status per pair, the shape the backstop's read filters.
+combined_status() {
+  local pair list=""
+  for pair in "$@"; do
+    list="${list:+${list},}{\"context\":\"${pair%%=*}\",\"state\":\"${pair#*=}\"}"
+  done
+  export GH_COMBINED_STATUS_JSON="{\"state\":\"pending\",\"statuses\":[${list}]}"
+}
+
+@test "failed-run backstop: leaves an existing GAIA-Audit success or pending in place" {
   body="$(extract_step_body "$BACKSTOP_STEP")"
   sha="$(git -C "$SANDBOX" rev-parse HEAD)"
-  canned_success_for_digest "anydigest"
+
+  for state in success pending; do
+    rm -f "$POST_LOG"
+    combined_status "Tests=success" "GAIA-Audit=${state}"
+    run run_backstop "$body" "$sha"
+    [ "$status" -eq 0 ]
+    [ ! -f "$POST_LOG" ] || return 1
+  done
+}
+
+@test "failed-run backstop: a head carrying only other contexts still gets failure" {
+  body="$(extract_step_body "$BACKSTOP_STEP")"
+  sha="$(git -C "$SANDBOX" rev-parse HEAD)"
+  combined_status "Tests=success" "Chromatic=pending"
 
   run run_backstop "$body" "$sha"
   [ "$status" -eq 0 ]
-  [ ! -f "$POST_LOG" ]
+  grep -qF "state=failure" "$POST_LOG"
 }
 
 @test "failed-run backstop: an unreadable status stands down rather than post" {
