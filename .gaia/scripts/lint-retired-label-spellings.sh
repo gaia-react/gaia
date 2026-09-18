@@ -249,9 +249,11 @@ fi
 # whitespace or the end of the line, which is how a prefix that is also an
 # ordinary word appears in prose and in a parameter annotation; everything else
 # is graded, a continuing name, a string literal, a code span, a glob, a
-# placeholder, so a delimiter shape nobody listed fails closed. The cost is a
-# bare prefix written as prose would write the word, which nothing here can
-# tell from the word.
+# placeholder, so a delimiter shape nobody listed fails closed. The cost is any
+# carrier that puts whitespace after the prefix: a bare prefix written as prose
+# would write the word, which nothing here can tell from the word, and with it
+# a key-value `ns: value` or a brace set `ns: {a | b}`, which a rename has to
+# find by hand.
 #
 # `.` and `:` are in that character set because a label name may carry either,
 # and that alone would make the two commonest prose shapes invisible: a

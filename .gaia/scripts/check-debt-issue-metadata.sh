@@ -28,11 +28,8 @@
 # is silent until a drainer trips over it weeks later. This is the read-back.
 # gaia:maintainer-only:start
 #
-# The `audience:` namespace is the one rule here that SKILL.md did not previously
-# state. The two labels existed in the tracker and were applied by hand often
-# enough to look like a convention, while being documented nowhere and emitted
-# by no filing route. Step 6 of the recipe now defines them; this gate is what
-# makes that definition checkable.
+# The `audience:` namespace is defined by step 6 of the recipe; this gate is
+# what makes that definition checkable.
 # gaia:maintainer-only:end
 
 set -euo pipefail

@@ -412,7 +412,7 @@ RENAMED_ONE='{
   grep -qF -- 'priority:' <<<"$output"
 }
 
-@test "a retired prefix is graded in every carrier shape a namespace is spelled in" {
+@test "a retired prefix is graded in every carrier shape not delimited by whitespace" {
   local dir
   dir="$(make_fixture retired_prefix_shapes)"
   write_registry "$dir" '{
