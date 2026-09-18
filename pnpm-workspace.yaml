@@ -90,7 +90,16 @@ strictPeerDependencies: false
 # whose removal no longer reintroduces an advisory, so none of these is
 # load-bearing beyond the advisory it names. Document each entry below with the
 # advisory it clears and the parent that reaches it.
-overrides: {}
+#
+#   - browserslist -> 4.28.9: GHSA-c83g-rgw3-j3cx, unbounded memory growth from a
+#     query cache with no eviction; also clears GHSA-73wf-gq98-2v4g (crash or
+#     prototype write via untrusted browserslist-stats.json). Both fixed in
+#     4.28.7; 4.28.9 is the newest 4.x release past the release-age window.
+#     Reached through @babel/helper-compilation-targets (via @react-router/dev,
+#     eslint-plugin-react-hooks, react-docgen) and core-js-compat (via
+#     eslint-plugin-unicorn), all build- and lint-time only.
+overrides:
+  browserslist: 4.28.9
 
 # Build-script approval. pnpm 11 replaces the onlyBuiltDependencies allowlist
 # with the allowBuilds map (true = the package may run install/build scripts).
