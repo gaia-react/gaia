@@ -65,7 +65,15 @@
 #     [--run-id <id>] \
 #     [--github-type pr|issue] [--github-number <int>] [--github-repo <owner>/<name>] \
 #     [--session-id <id>] [--projects-root <dir>] [--ledger <path>] \
-#     [--rate-table <path>] [--cache-dir <dir>]
+#     [--rate-table <path>] [--cache-dir <dir>] [--branch-name <branch>]
+#
+# `--branch-name` (any action) records the given branch as `git_branch` in place
+# of the ambient `git branch --show-current`. It exists because the prescribed
+# merge paths clean up before the tally runs: feature-branch cleanup checks main
+# out and worktree cleanup leaves the worktree, so by then the ambient answer is
+# main, not the branch the work was done on. The caller captures the branch
+# before cleanup and hands it in. Its spelling avoids the substring `git`, which
+# the Claude Code runtime's worktree guard reads as a git invocation.
 #
 # `--command` is validated against a closed set of the maintenance commands; an
 # unrecognized or absent value degrades to a partial row rather than a crash or
@@ -208,11 +216,12 @@ RUN_ID_ARG=""
 GITHUB_TYPE_ARG=""
 GITHUB_NUMBER_ARG=""
 GITHUB_REPO_ARG=""
+BRANCH_NAME_ARG=""
 
 while [[ $# -gt 0 ]]; do
   key="$1"
   case "$key" in
-    --action|--spec-id|--plan-id|--plan-slug|--out-dir|--session-id|--projects-root|--ledger|--rate-table|--cache-dir|--command|--run-id|--github-type|--github-number|--github-repo)
+    --action|--spec-id|--plan-id|--plan-slug|--out-dir|--session-id|--projects-root|--ledger|--rate-table|--cache-dir|--command|--run-id|--github-type|--github-number|--github-repo|--branch-name)
       val="${2:-}"
       case "$key" in
         --action)        ACTION="$val" ;;
@@ -230,6 +239,7 @@ while [[ $# -gt 0 ]]; do
         --github-type)   GITHUB_TYPE_ARG="$val" ;;
         --github-number) GITHUB_NUMBER_ARG="$val" ;;
         --github-repo)   GITHUB_REPO_ARG="$val" ;;
+        --branch-name)   BRANCH_NAME_ARG="$val" ;;
       esac
       # `shift 2` fails (and does NOT shift) when a flag is the final arg with no
       # value, which would spin this loop forever; fall back to a single shift.
@@ -241,6 +251,14 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+resolve_branch() {
+  if [[ -n "$BRANCH_NAME_ARG" ]]; then
+    printf '%s' "$BRANCH_NAME_ARG"
+  else
+    git branch --show-current 2>/dev/null || true
+  fi
+}
 
 SESSION_ID="${SESSION_ID_ARG:-${CLAUDE_CODE_SESSION_ID:-}}"
 PROJECTS_ROOT="${PROJECTS_ROOT_ARG:-$HOME/.claude/projects}"
@@ -461,7 +479,7 @@ if [[ "$ACTION" == "review" ]]; then
     fi
   fi
 
-  GIT_BRANCH="$(git branch --show-current 2>/dev/null || true)"
+  GIT_BRANCH="$(resolve_branch)"
   PROJECT_ID="$(compute_project_id 2>/dev/null || true)"
   TS="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   partial_bool=false
@@ -861,7 +879,7 @@ fi
 # ---------- git_branch (moved up: FC-6's execute breadcrumb read below needs
 #            it before the record build; project identity stays at its
 #            original site further down) ----------
-GIT_BRANCH="$(git branch --show-current 2>/dev/null || true)"
+GIT_BRANCH="$(resolve_branch)"
 
 # ---------- FC-2: nest the adversarial-audit annotation (spec/plan only) ----------
 # A strict subset drill-down of the phase record just aggregated above: never

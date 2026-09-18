@@ -646,7 +646,7 @@ Otherwise the working tree carries the applied `wiki/` / `.claude/` / `CLAUDE.md
    done
    ```
 
-   - **`MERGED`** → clean up locally, then print the merged PR URL:
+   - **`MERGED`** → capture the branch first (`git branch --show-current`, keep the literal for the tally's `--branch-name`; see `## Cost record (run end)`), then clean up locally and print the merged PR URL:
 
      ```bash
      git checkout main && git pull origin main
@@ -686,6 +686,8 @@ Standalone final step, one call:
 ```bash
 bash .gaia/scripts/token-tally.sh --action command --command gaia-audit
 ```
+
+**Branch pass-through.** On the `MERGED` path the cleanup has already checked out `main`, so append `--branch-name '<branch>'` with the literal captured before it. The capture-before-cleanup rule and why it exists live in `.claude/skills/gaia/references/cost-record.md`.
 
 **Artifact pass-through.** When this run opened a pull request and the URL `gh pr create` printed appeared in this run's own Bash tool result, append:
 

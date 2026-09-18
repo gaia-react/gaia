@@ -73,11 +73,35 @@ gaia_load_rate_table() {
 # becomes a conflict patch on every release thereafter. .gaia/local/ is
 # gitignored and holds no manifest paths, so an overlay there survives a release
 # untouched. It must never be registered in .gaia/manifest.json.
+#
+# Resolved against the MAIN checkout, never the ambient one. Being gitignored is
+# exactly what makes the overlay a main-checkout file: a linked worktree's own
+# root never holds one, so an ambient toplevel would price every worktree run off
+# the shipped table alone, silently and with no unpriced marker to show for it.
+# gaia_resolve_main_root answers for the tree owning git's common directory from
+# anywhere, which is the property that makes the answer independent of where the
+# run executes.
 gaia_resolve_rate_overlay() {
-  local toplevel
-  toplevel="$(git rev-parse --show-toplevel 2>/dev/null)"
-  [[ -z "$toplevel" ]] && return 1
-  printf '%s' "$toplevel/.gaia/local/token-rates.local.json"
+  local script_dir main_root errexit_was
+  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  # Suspend errexit across the load, then RESTORE WHAT WAS THERE. A copy that is
+  # present but unparseable abandons the shell AT the source, and this library is
+  # sourced by callers that deliberately run without errexit, so arming it
+  # unconditionally would kill them at their next non-zero command. Same idiom,
+  # and the same reasoning, as gaia_gh_artifact_cache_dir.
+  errexit_was=0
+  case $- in *e*) errexit_was=1 ;; esac
+  set +e
+  # shellcheck source=.gaia/scripts/main-root-lib.sh
+  source "$script_dir/main-root-lib.sh" 2>/dev/null
+  if [ "$errexit_was" = 1 ]; then set -e; fi
+
+  # The resolver's own stderr stays suppressed, and an unavailable copy leaves
+  # gaia_resolve_main_root undefined, which lands on the same non-zero return. No
+  # git repository at all is the ordinary case here, and every caller already
+  # degrades to the shipped table on a non-zero return without a word.
+  main_root="$(gaia_resolve_main_root 2>/dev/null)" || return 1
+  printf '%s' "$main_root/.gaia/local/token-rates.local.json"
 }
 
 # gaia_apply_rate_overlay <shipped_table_json> <rate_table_override>

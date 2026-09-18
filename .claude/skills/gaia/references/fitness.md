@@ -312,14 +312,15 @@ Heal already cut and switched to `chore/gaia-fitness-<timestamp>` (the `$BRANCH`
 
    `--auto` queues the merge behind required checks (the oracle check above already confirmed whether a marker is owed for this diff). Bounded-poll `gh pr view <N> --json state` for `MERGED` (~2-3 minutes):
 
-   - **`MERGED`** → clean up, record cost (pass-through: `gh pr create` above already printed the URL), then print the merged PR URL:
+   - **`MERGED`** → clean up, record cost (pass-through: `gh pr create` above already printed the URL, and `--branch-name` carries the literal `$BRANCH` value, since the checkout below leaves the session on `main`; see `.claude/skills/gaia/references/cost-record.md`), then print the merged PR URL:
 
      ```bash
      git -C "$PROJECT_ROOT" checkout main && git -C "$PROJECT_ROOT" pull origin main
      git -C "$PROJECT_ROOT" branch -D "$BRANCH"
      git -C "$PROJECT_ROOT" fetch --prune origin
      bash .gaia/scripts/token-tally.sh --action command --command gaia-fitness \
-       --github-type pr --github-number <N> --github-repo '<owner>/<name>'
+       --github-type pr --github-number <N> --github-repo '<owner>/<name>' \
+       --branch-name '<branch>'
      ```
 
      Relay the tally's `Cost:` line as the last line of the reply, after the merged PR URL.
