@@ -16,6 +16,8 @@ A release change that requires the adopter to act, run a command or hand-migrate
 
 ### Fixed
 
+- the statusline's background refresher now runs one at a time. The statusline starts it on every render, and until a run finished writing its cache each new render started another full run, so with the slower full-window harden tally a busy session could stack several refreshers paging GitHub at once and risk rate-limiting that leaves the nudges stale. A run that finds another in flight now exits, and a lock left by a killed run is reclaimed after ten minutes (#2113)
+
 - `/gaia-harden` and its statusline nudge now count recurring audit findings across the full 90-day window instead of only the newest 200 merged pull requests, which on a busy repository covered little more than two weeks and understated every count. The read pages past GitHub search's 1000-result cap, and a window too large even for that reports itself as unread rather than passing for a complete one. Declines recorded against the smaller counts may resurface once. The CLI and the `/gaia-harden` reference ship, so the fix reaches adopters on their next `/update-gaia` (#2111, #2112)
 
 - the CLI GAIA ships now bundles `js-yaml` 4.3.2, clearing a high-severity advisory (GHSA-2883-xcg3-v3hh) in which a crafted YAML document with empty merge sources could consume unbounded CPU. The CLI only parses first-party files, but it inlines its dependencies, so an adopter's own scanner reads the binary as carrying the vulnerable copy (#2110)
