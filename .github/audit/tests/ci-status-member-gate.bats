@@ -172,6 +172,7 @@ install_gh_mock() {
   # No live success unless a test asks for one. Defensive: a leaked value would
   # silently stand the gate down in an unrelated test.
   unset GH_CANNED_SUCCESS_DESC
+  unset GH_COMBINED_STATUS_JSON
   unset GH_STATUS_READ_FAILS
   GH_BIN="$BATS_TEST_TMPDIR/bin"
   mkdir -p "$GH_BIN"
@@ -185,13 +186,25 @@ case "$1" in
     # Reads end in /status (combined status). Writes are POSTs to /statuses/<sha>,
     # which end in the sha, so the two never collide.
     case "$2" in
-      */status)
+      */status|*/status\?*)
         # Simulate an unreadable status (auth blip, rate limit, network): gh
         # exits non-zero. The guard must treat this as "could not ask", NOT as
         # "no success live".
         if [ -n "${GH_STATUS_READ_FAILS:-}" ]; then
           echo "gh: could not read status" >&2
           exit 1
+        fi
+        # A test that sets GH_COMBINED_STATUS_JSON gets the caller's own --jq
+        # filter applied to that document with real jq, so a filter that
+        # selects the wrong context is exercised rather than bypassed.
+        if [ -n "${GH_COMBINED_STATUS_JSON:-}" ]; then
+          filter="."
+          while [ "$#" -gt 0 ]; do
+            [ "$1" = "--jq" ] && { filter="$2"; break; }
+            shift
+          done
+          printf '%s' "$GH_COMBINED_STATUS_JSON" | jq -r "$filter"
+          exit $?
         fi
         if [ -n "${GH_CANNED_SUCCESS_DESC:-}" ]; then
           printf '%s\n' "$GH_CANNED_SUCCESS_DESC"
@@ -622,11 +635,13 @@ run_audit_complete_step() {
   # One HEAD_SHA event-payload binding for each of the three steps in the loop
   # above (the local-mode stand-down and the two skip-path stamps, out-of-scope
   # and chore-deps), plus the workflow-self-modification check, the pre-existing
-  # clean-no-push stamp, and the progress-breadcrumb print step (resolves the
+  # clean-no-push stamp, the progress-breadcrumb print step (resolves the
   # tree the agent keyed its breadcrumb file to, for the same reason: a
-  # self-heal commit can move the runner's local HEAD before this step runs).
+  # self-heal commit can move the runner's local HEAD before this step runs),
+  # and the failed-run backstop, which falls back to it when no self-heal
+  # resolved an audit_sha.
   run grep -cF 'HEAD_SHA: ${{ github.event.pull_request.head.sha }}' "$WORKFLOW"
-  [ "$output" -eq 6 ]
+  [ "$output" -eq 7 ]
 }
 
 # -----------------------------------------------------------------------------
@@ -2349,4 +2364,114 @@ run_audit_complete_step() {
   grep -qF "code-review-audit complete" "$COMMENT_LOG"
   grep -qF "merge gate is NOT satisfied" "$COMMENT_LOG" && return 1
   return 0
+}
+
+# -----------------------------------------------------------------------------
+# Failed-run backstop
+#
+# The one writer that runs after a failure. It posts `failure` only onto a head
+# that carries no GAIA-Audit status at all, so it can never replace the success
+# or pending a writer posted before the job failed.
+# -----------------------------------------------------------------------------
+
+BACKSTOP_STEP="Write GAIA-Audit commit status (failed run)"
+
+# run_backstop <body> <head-sha> [<audit-sha>]: the backstop's body with the
+# runner env it reads. <audit-sha> defaults to empty, the shape of every path
+# where no self-heal resolved one.
+run_backstop() {
+  local body="$1" head="$2" audit="${3-}"
+  ( cd "$SANDBOX" \
+    && GITHUB_REPOSITORY="gaia-react/gaia" \
+       GITHUB_SERVER_URL="https://github.com" \
+       GITHUB_RUN_ID="4242" \
+       HEAD_SHA="$head" \
+       AUDIT_SHA="$audit" \
+       bash "$body" )
+}
+
+@test "failed-run backstop: posts failure with a run link onto a head with no GAIA-Audit status" {
+  body="$(extract_step_body "$BACKSTOP_STEP")"
+  sha="$(git -C "$SANDBOX" rev-parse HEAD)"
+
+  run run_backstop "$body" "$sha"
+  [ "$status" -eq 0 ]
+
+  [ -f "$POST_LOG" ]
+  grep -qF "statuses/${sha}" "$POST_LOG"
+  grep -qF "state=failure" "$POST_LOG"
+  grep -qF "context=GAIA-Audit" "$POST_LOG"
+  grep -qF "target_url=https://github.com/gaia-react/gaia/actions/runs/4242" "$POST_LOG"
+  # GitHub rejects a status description over 140 characters.
+  desc="$(sed -n 's/.*description=//p' "$POST_LOG")"
+  [ -n "$desc" ]
+  [ "${#desc}" -le 140 ]
+}
+
+@test "failed-run backstop: targets the self-heal head when one was resolved" {
+  body="$(extract_step_body "$BACKSTOP_STEP")"
+  head="$(git -C "$SANDBOX" rev-parse HEAD)"
+  healed="0123456789abcdef0123456789abcdef01234567"
+
+  run run_backstop "$body" "$head" "$healed"
+  [ "$status" -eq 0 ]
+
+  grep -qF "statuses/${healed}" "$POST_LOG"
+  grep -qF "statuses/${head}" "$POST_LOG" && return 1
+  return 0
+}
+
+# combined_status <context>=<state>...: a combined-status document carrying
+# one status per pair, the shape the backstop's read filters.
+combined_status() {
+  local pair list=""
+  for pair in "$@"; do
+    list="${list:+${list},}{\"context\":\"${pair%%=*}\",\"state\":\"${pair#*=}\"}"
+  done
+  export GH_COMBINED_STATUS_JSON="{\"state\":\"pending\",\"statuses\":[${list}]}"
+}
+
+@test "failed-run backstop: leaves an existing GAIA-Audit success or pending in place" {
+  body="$(extract_step_body "$BACKSTOP_STEP")"
+  sha="$(git -C "$SANDBOX" rev-parse HEAD)"
+
+  for state in success pending; do
+    rm -f "$POST_LOG"
+    combined_status "Tests=success" "GAIA-Audit=${state}"
+    run run_backstop "$body" "$sha"
+    [ "$status" -eq 0 ]
+    [ ! -f "$POST_LOG" ] || return 1
+  done
+}
+
+@test "failed-run backstop: a head carrying only other contexts still gets failure" {
+  body="$(extract_step_body "$BACKSTOP_STEP")"
+  sha="$(git -C "$SANDBOX" rev-parse HEAD)"
+  combined_status "Tests=success" "Chromatic=pending"
+
+  run run_backstop "$body" "$sha"
+  [ "$status" -eq 0 ]
+  grep -qF "state=failure" "$POST_LOG"
+}
+
+@test "failed-run backstop: an unreadable status stands down rather than post" {
+  body="$(extract_step_body "$BACKSTOP_STEP")"
+  sha="$(git -C "$SANDBOX" rev-parse HEAD)"
+  status_read_fails
+
+  run run_backstop "$body" "$sha"
+  [ "$status" -eq 0 ]
+  [ ! -f "$POST_LOG" ]
+  grep -qF "could not read" <<<"$output"
+}
+
+@test "failed-run backstop: a rejected POST does not red the step" {
+  body="$(extract_step_body "$BACKSTOP_STEP")"
+  sha="$(git -C "$SANDBOX" rev-parse HEAD)"
+  status_post_fails
+
+  run run_backstop "$body" "$sha"
+  [ "$status" -eq 0 ]
+  grep -qF "state=failure" "$POST_LOG"
+  grep -qF "was rejected" <<<"$output"
 }

@@ -623,8 +623,10 @@ jobs:
             `.claude/skills/file-tech-debt/SKILL.md`.
 
             SELF-HEAL CONSTRAINTS: read before making any edits:
-            1. Run `git diff --name-only ${{ github.event.pull_request.base.sha }}...HEAD`
-               first. Self-heal edits are ONLY permitted on files that appear in
+            1. Run `git -c core.quotePath=false diff --name-only ${{ github.event.pull_request.base.sha }}...HEAD`
+               first. Without `core.quotePath=false`, git quotes a path holding a
+               non-ASCII character, and the quoted form does not match the real
+               file. Self-heal edits are ONLY permitted on files that appear in
                this list. Never edit a file that was not changed by this PR. The
                base sha rather than origin/main: on a PR stacked on another
                branch the range from main also carries the base branch's own
@@ -1913,3 +1915,69 @@ jobs:
           fi
           bash .github/audit/cra-status-upsert.sh "$PR_NUMBER" \
             "code-review-audit complete: ${mode}${stamp}"
+
+      # ----------------------------------------------------------------
+      # Failed-run backstop. Every step above carries GitHub's implicit
+      # `success()`, so one failed step skips every writer after it and the
+      # job ends with NO `GAIA-Audit` status at all. `GAIA-Audit` is a
+      # required context, so the pull request then waits on a check that
+      # never arrives, with nothing saying why. A per-step EXIT trap cannot
+      # close that: the checkout and setup steps are `uses:` steps no shell
+      # trap reaches.
+      #
+      # Last in the job so it also covers a failure in the re-trigger step,
+      # in a terminal comment step, and the audit-aborted step's deliberate
+      # `exit 1`. That position is safe because it posts only when the head
+      # carries no `GAIA-Audit` status at all: a writer that already posted
+      # success or pending before the failure keeps it.
+      #
+      # A job that reaches its own `timeout-minutes` is cancelled rather than
+      # failed, so `failure()` is false and this step does not run. Widening
+      # the guard to `cancelled()` is not the answer: a newer run cancelling
+      # this one also lands there, and that run owns the status.
+      # ----------------------------------------------------------------
+
+      - name: Write GAIA-Audit commit status (failed run)
+        if: |
+          failure() &&
+          steps.gate.outputs.gated != 'true'
+        env:
+          # The pushed PR head. A self-heal push moves the head to audit_sha, and
+          # on the marker-only arm audit_sha is the event head itself, so it is
+          # the live head whenever it is set.
+          AUDIT_SHA: ${{ steps.push-fixes.outputs.audit_sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -eu
+          sha="${AUDIT_SHA:-$HEAD_SHA}"
+          # Any GAIA-Audit state already on the head is a writer's decision
+          # (or the local producer's success), and `failure` must not replace
+          # it. An unreadable status stands down for the same reason: this
+          # step cannot tell "nothing posted" from "could not look", and the
+          # red job already says the run failed.
+          #
+          # Residual race, accepted: a local success landing between this read
+          # and the POST below is overwritten. It fails closed, and the local
+          # producer re-posts on its next run.
+          # per_page=100: the combined status lists 30 contexts by default, and
+          # a GAIA-Audit status past the first page would read as absent.
+          if ! existing="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${sha}/status?per_page=100" \
+              --jq '.statuses[] | select(.context == "GAIA-Audit") | .state')"; then
+            echo "code-review-audit: could not read the GAIA-Audit status on ${sha}; not posting failure." >&2
+            exit 0
+          fi
+          if [ -n "$existing" ]; then
+            echo "code-review-audit: GAIA-Audit is already ${existing} on ${sha}; leaving it." >&2
+            exit 0
+          fi
+          # The description holds for every cause that reaches this step, so it
+          # names none of them; target_url makes the check's Details link open
+          # this run, where the failed step is marked.
+          if ! gh api "repos/${GITHUB_REPOSITORY}/statuses/${sha}" \
+              --method POST \
+              --field state=failure \
+              --field context=GAIA-Audit \
+              --field target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+              --field description="code-review-audit failed before posting a result; open Details for the failed step"; then
+            echo "code-review-audit: the failure GAIA-Audit status POST to ${sha} was rejected; nothing posted." >&2
+          fi
