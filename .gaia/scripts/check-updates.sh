@@ -178,11 +178,13 @@ esac
 # eligibility gate), drops promoted/suppressed classes, and emits
 # candidate_count plus a separate `unclassified` recurrence signal (non-null
 # only at/above the recurrence threshold) and a gh_ok flag. Runs in this same
-# TTL pass; network is non-fatal: on a gh/network failure harden-tally exits 0
+# TTL pass; network is non-fatal: on a gh/network failure, or a window too
+# large for its one gh page, harden-tally exits 0
 # emitting candidate_count 0, unclassified null, and gh_ok false, so this
 # consumer honors gh_ok and keeps the previous cached counts rather than
 # resetting the nudges to 0. Falls back to the previous cached counts on any
-# failure: missing binary, gh/network error (gh_ok false), parse error.
+# failure: missing binary, gh/network error or truncated window (gh_ok
+# false), parse error.
 harden_count="$prev_harden_count"
 unclassified_count="$prev_harden_unclassified"
 if [ -x "$GAIA_BIN" ] && command -v jq >/dev/null 2>&1; then

@@ -15645,6 +15645,10 @@ var run7 = (command, args, options = {}) => {
     cwd: options.cwd ?? process.cwd(),
     encoding: "utf8",
     env: options.env ?? process.env,
+    // Node's 1 MiB default kills the child on overflow, which reads here as a
+    // plain exit 1. `harden-tally`'s 90-day `gh pr list --json comments`
+    // window runs past 1 MiB, so the default reads it as a gh failure.
+    maxBuffer: MAX_GIT_BUFFER_BYTES,
     stdio: ["ignore", "pipe", "pipe"]
   });
   const exitCode = result.status ?? 1;
@@ -17338,10 +17342,14 @@ var HELP_TEXT12 = `Usage: gaia harden-tally
   classless (unclassified) finding recurring the same way surfaces separately
   as the \`unclassified\` field instead of a candidate.
 
-  Network failures are non-fatal: gh errors yield an empty candidate list.
+  Network failures are non-fatal: gh errors yield an empty candidate list
+  and gh_ok: false. A window too large for one gh page does the same, with a
+  window_truncated error on stderr, since reading part of it as the whole
+  would undercount every class.
 `;
 var HELP_TOKENS12 = /* @__PURE__ */ new Set(["--help", "-h", "help"]);
 var WINDOW_DAYS = 90;
+var WINDOW_PR_LIMIT = 3e3;
 var windowStartDate = (now) => {
   const start = new Date(now.getTime() - WINDOW_DAYS * 24 * 60 * 60 * 1e3);
   return start.toISOString().slice(0, 10);
@@ -17381,7 +17389,7 @@ var fetchWindowPrs = (cwd, now) => {
       "--search",
       search,
       "--limit",
-      "200",
+      String(WINDOW_PR_LIMIT),
       "--json",
       "number,comments"
     ],
@@ -17395,6 +17403,14 @@ var fetchWindowPrs = (cwd, now) => {
     return { ghOk: false, prs: [] };
   }
   if (!Array.isArray(parsed)) return { ghOk: false, prs: [] };
+  if (parsed.length >= WINDOW_PR_LIMIT) {
+    structuredError({
+      code: "window_truncated",
+      message: `the merged-PR window filled the ${WINDOW_PR_LIMIT}-PR page; raise WINDOW_PR_LIMIT in harden/tally.ts`,
+      subcommand: "harden-tally"
+    });
+    return { ghOk: false, prs: [] };
+  }
   const records = [];
   for (const value of parsed) {
     const pr = parseGhPr(value);

@@ -11,13 +11,15 @@
  * into the cache; `/gaia-harden review` re-runs this to get the live list.
  *
  * No LLM, no drafting, no writes other than (indirectly) the ledger prune. The
- * window read is the only network access and it is non-fatal: a gh failure
- * yields an empty candidate list rather than aborting the refresher.
+ * window read is the only network access and it is non-fatal: a gh failure or
+ * a window too large for one page yields an empty candidate list and
+ * `gh_ok: false` rather than aborting the refresher.
  */
 import path from 'node:path';
 import {runGh} from '../ci/util/run-process.js';
 import type {ProcessResult} from '../ci/util/run-process.js';
 import {EXIT_CODES} from '../exit.js';
+import {structuredError} from '../stderr.js';
 import {computeTally, windowClasses} from './compute-tally.js';
 import type {TallyPrRecord, TallyResult} from './compute-tally.js';
 import {coveredClassesFromRules} from './covered-classes.js';
@@ -38,11 +40,20 @@ const HELP_TEXT = `Usage: gaia harden-tally
   classless (unclassified) finding recurring the same way surfaces separately
   as the \`unclassified\` field instead of a candidate.
 
-  Network failures are non-fatal: gh errors yield an empty candidate list.
+  Network failures are non-fatal: gh errors yield an empty candidate list
+  and gh_ok: false. A window too large for one gh page does the same, with a
+  window_truncated error on stderr, since reading part of it as the whole
+  would undercount every class.
 `;
 
 const HELP_TOKENS = new Set(['--help', '-h', 'help']);
 const WINDOW_DAYS = 90;
+
+// Roughly three times one window's merged-PR volume on this repository, which
+// `gh pr list --state merged --search merged:>=<start> --json number` counts.
+// `gh` returns at most this many, so a full page cannot be told apart from a
+// longer window cut short: `fetchWindowPrs` reports it as a failed read.
+const WINDOW_PR_LIMIT = 3000;
 
 /** The emitted tally JSON: the pure result plus the window-read success flag. */
 type EmittedTally = TallyResult & {gh_ok: boolean};
@@ -124,9 +135,10 @@ const recordFromGhPr = (pr: GhPr): null | TallyPrRecord => {
  * Reads the merged-PR window via gh. Returns one record per PR that carries a
  * parseable findings block, merging every auditor's findings on that PR
  * (latest block wins per auditor; see `recordFromGhPr`), alongside `ghOk`.
- * `ghOk` is `false` on any gh failure (non-zero exit, unparseable JSON, or a
- * well-formed-but-non-array response, all read failures rather than empty
- * windows) and `true` otherwise, including a genuinely empty window. The
+ * `ghOk` is `false` on any gh failure (non-zero exit, unparseable JSON, a
+ * well-formed-but-non-array response, or a page filled to `WINDOW_PR_LIMIT`,
+ * all read failures rather than empty or complete windows) and `true`
+ * otherwise, including a genuinely empty window. The
  * refresher never blocks: an empty `prs` list is returned in every failure
  * case.
  */
@@ -141,7 +153,7 @@ const fetchWindowPrs = (cwd: string, now: Date): WindowPrs => {
       '--search',
       search,
       '--limit',
-      '200',
+      String(WINDOW_PR_LIMIT),
       '--json',
       'number,comments',
     ],
@@ -159,6 +171,20 @@ const fetchWindowPrs = (cwd: string, now: Date): WindowPrs => {
   }
 
   if (!Array.isArray(parsed)) return {ghOk: false, prs: []};
+
+  // A full page is a truncated window: reading it as complete would undercount
+  // every class and let the ledger prune declines the unread PRs still carry.
+  // The stderr line is what separates this from an outage, whose remedy (wait
+  // for gh) does not fix it.
+  if (parsed.length >= WINDOW_PR_LIMIT) {
+    structuredError({
+      code: 'window_truncated',
+      message: `the merged-PR window filled the ${WINDOW_PR_LIMIT}-PR page; raise WINDOW_PR_LIMIT in harden/tally.ts`,
+      subcommand: 'harden-tally',
+    });
+
+    return {ghOk: false, prs: []};
+  }
 
   const records: TallyPrRecord[] = [];
 

@@ -115,6 +115,22 @@ const stubClasslessWindow = (prNumbers: readonly number[]): void => {
   );
 };
 
+const limitArgument = (args: readonly string[]): number =>
+  Number(args[args.indexOf('--limit') + 1]);
+
+// Answers the window read with `limit - shortBy` finding-less PRs, the limit
+// taken from the argv the tally actually sends, so the fixture tracks the
+// source's page size rather than a copy of it.
+const stubWindowOfLimitMinus = (shortBy: number): void => {
+  vi.spyOn(runProcess, 'runGh').mockImplementation((args) =>
+    stubGh(
+      Array.from({length: limitArgument(args) - shortBy}, (_, index) =>
+        ghPr(index + 1, [])
+      )
+    )
+  );
+};
+
 type FakeLedger = {
   has: (findingClass: string) => boolean;
   runLedger: (argv: readonly string[]) => ProcessResult;
@@ -868,6 +884,61 @@ describe('harden-tally run', () => {
     >;
     expect(unclassified).not.toBeNull();
     expect(unclassified.distinct_pr_count).toBe(3);
+  });
+
+  test('reads a window that fills the --limit page as truncated, gh_ok false, ledger unpruned', () => {
+    stubWindowOfLimitMinus(0);
+
+    const fake = makeFakeLedger();
+    fake.runLedger([
+      'harden-ledger',
+      'record',
+      '--finding-class',
+      'knip/exports',
+      '--pr-count',
+      '4',
+    ]);
+
+    const stderr = vi
+      .spyOn(process.stderr, 'write')
+      .mockImplementation(() => true);
+
+    const exit = run([], {cwd: sandbox.root, runLedger: fake.runLedger});
+    expect(exit).toBe(0);
+
+    const printed = parseStdout(stdout.out);
+    expect(printed.gh_ok).toBe(false);
+    expect(printed.candidate_count).toBe(0);
+    expect(fake.has('knip/exports')).toBe(true);
+    const diagnostic = JSON.parse(String(stderr.mock.calls[0]?.[0])) as Record<
+      string,
+      unknown
+    >;
+    expect(diagnostic.code).toBe('window_truncated');
+  });
+
+  test('reads a window one short of the --limit page as complete', () => {
+    stubWindowOfLimitMinus(1);
+
+    run([], {
+      cwd: sandbox.root,
+      runLedger: () => ({exitCode: 1, stderr: '', stdout: ''}),
+    });
+
+    expect(parseStdout(stdout.out).gh_ok).toBe(true);
+  });
+
+  test('requests a --limit page well above one window of merged PRs, so the page is not the bound', () => {
+    const ghSpy = vi.spyOn(runProcess, 'runGh').mockReturnValue(stubGh([]));
+
+    run([], {
+      cwd: sandbox.root,
+      runLedger: () => ({exitCode: 1, stderr: '', stdout: ''}),
+    });
+
+    expect(
+      limitArgument(ghSpy.mock.calls[0]?.[0] ?? [])
+    ).toBeGreaterThanOrEqual(3000);
   });
 
   test('queries the 90-day merged-PR window via gh', () => {
