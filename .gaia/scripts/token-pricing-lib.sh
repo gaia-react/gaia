@@ -75,12 +75,12 @@ gaia_load_rate_table() {
 # untouched. It must never be registered in .gaia/manifest.json.
 #
 # Resolved against the MAIN checkout, never the ambient one. Being gitignored is
-# exactly what makes the overlay a main-checkout file: a linked worktree's own
-# root never holds one, so an ambient toplevel would price every worktree run off
-# the shipped table alone, silently and with no unpriced marker to show for it.
-# gaia_resolve_main_root answers for the tree owning git's common directory from
-# anywhere, which is the property that makes the answer independent of where the
-# run executes.
+# exactly what makes the overlay a main-checkout file: a linked worktree reaches
+# it only through the provisioned .gaia/local symlink, so an ambient toplevel
+# prices a worktree run off the shipped table alone whenever that link is absent
+# (a plain `git worktree add`, or a failed link), silently and with no unpriced
+# marker. gaia_resolve_main_root answers for the tree owning git's common
+# directory from anywhere, so the answer holds whether or not provisioning ran.
 gaia_resolve_rate_overlay() {
   local script_dir main_root errexit_was
   script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

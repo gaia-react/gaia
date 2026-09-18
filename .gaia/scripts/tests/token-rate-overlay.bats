@@ -77,8 +77,8 @@ JSON
   # shellcheck source=/dev/null
   . "$LIB"
 
-  # A real repo, because gaia_resolve_rate_overlay derives the overlay path from
-  # `git rev-parse --show-toplevel` exactly as gaia_resolve_rate_table does.
+  # A real repo, because gaia_resolve_rate_overlay resolves the overlay against
+  # the main checkout through gaia_resolve_main_root.
   git -C "$SANDBOX" init -q
   git -C "$SANDBOX" config user.email "gaia-test@example.com"
   git -C "$SANDBOX" config user.name "GAIA Test"
@@ -567,8 +567,9 @@ JSON
 # ---------- 13. the overlay belongs to the main checkout, not the ambient one ----------
 # .gaia/local/ is gitignored, so the overlay file exists only in the main
 # checkout: a linked worktree's own root never holds one. Resolving the path from
-# the ambient toplevel therefore prices every worktree-isolated run off the
-# shipped table alone, with no unpriced marker to show for it, which is the same
+# the ambient toplevel therefore prices a worktree run off the shipped table
+# alone whenever the worktree lacks the provisioned .gaia/local symlink (a plain
+# `git worktree add`, or a failed link), with no unpriced marker, which is the same
 # confidently-wrong figure the overlay exists to repair. The two below pin the
 # resolver and the pricing behavior riding on it. gaia_resolve_main_root answers
 # for the tree owning git's common directory from anywhere, which is the property

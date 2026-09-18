@@ -72,8 +72,9 @@
 # merge paths clean up before the tally runs: feature-branch cleanup checks main
 # out and worktree cleanup leaves the worktree, so by then the ambient answer is
 # main, not the branch the work was done on. The caller captures the branch
-# before cleanup and hands it in. Its spelling avoids the substring `git`, which
-# the Claude Code runtime's worktree guard reads as a git invocation.
+# before cleanup and hands it in; the tally cannot run before cleanup instead,
+# because the Claude Code runtime refuses this call from inside a worktree
+# session.
 #
 # `--command` is validated against a closed set of the maintenance commands; an
 # unrecognized or absent value degrades to a partial row rather than a crash or
