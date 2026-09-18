@@ -98,8 +98,13 @@ strictPeerDependencies: false
 #     Reached through @babel/helper-compilation-targets (via @react-router/dev,
 #     eslint-plugin-react-hooks, react-docgen) and core-js-compat (via
 #     eslint-plugin-unicorn), all build- and lint-time only.
+#   - qs -> 6.16.0: GHSA-4mjr-xmp4-gh2g and GHSA-x5fp-wj9c-mxmx, both fixed in
+#     6.16.0. Reached through @react-router/serve -> express -> body-parser,
+#     whose ^6.15.2 range already admits the fix. This is the runtime server
+#     path: body-parser parses request bodies with qs in production.
 overrides:
   browserslist: 4.28.9
+  qs: 6.16.0
 
 # Build-script approval. pnpm 11 replaces the onlyBuiltDependencies allowlist
 # with the allowBuilds map (true = the package may run install/build scripts).
