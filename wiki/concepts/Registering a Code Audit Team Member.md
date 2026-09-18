@@ -53,6 +53,8 @@ The finding-recurrence tally reads each member's findings sidecar to feed `/gaia
 
 A finding-class schema change only reaches the shipped `harden-tally` command once the bundled adopter binary (`.gaia/cli/gaia`) is rebuilt from `.gaia/cli/src` and committed alongside the schema edit. Skipping this leaves the schema and the binary disagreeing about the valid vocabulary.
 
+A change to how the tally counts, the window, the recurrence threshold, which PRs count as audited, how one PR's findings from several auditors merge, or which findings blocks and findings the parser accepts, bumps `TALLY_SCHEMA_VERSION` in `.gaia/cli/src/harden/material-rise.ts` in the same change and re-pins the fingerprint test beside the tally: `.gaia/cli/src/harden/tally.ts`, `.gaia/cli/src/harden/compute-tally.ts`, and `.gaia/cli/src/harden/parse-findings-block.ts`, over their `tally-semantics` regions. A comment-only edit inside one of those regions does not move the fingerprint, and a new finding_class bucket alone does not bump the version. A bump fires exactly one "tally changed" nudge and voids every share baseline recorded under the old counting.
+
 ### 9. Release-exclude any test fixtures
 
 A `audience: maintainer` member's agent file, and any fixtures or bats suites written to exercise it, belong in `.gaia/release-exclude` so the release scrub strips them from the adopter bundle. A `audience: adopter` member ships as-is and needs no exclusion entry.

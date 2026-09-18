@@ -60,6 +60,7 @@ forensics
 gh-artifact-pr-cache
 handoff
 harden-declines
+harden-review-snapshot
 health-audit-scratch-files
 health-audit-scratch-subtrees
 machine-markers

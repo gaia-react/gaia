@@ -40,6 +40,8 @@ Because the folder is invisible to git, residue a subsystem leaves behind never 
 | `handoff/`, `forensics/` | [[GAIA Handoff]] / [[Forensics]] | live | drop zones |
 | `telemetry/` | [[Cost Data Contract]] | live | an append-only cost ledger (`cost.jsonl`) |
 | `harden/declines.json` | `/gaia-harden` | live | one copy shared by every tree, so an operator decline made in a linked worktree suppresses the candidate everywhere and survives the worktree's removal |
+| `harden/reviewed.json` | `/gaia-harden` | live | the review snapshot; written at a completed review, read by `harden-tally`, one copy per clone shared by every tree, replaced by the next completed review |
+| `harden/review-tally.json` | `/gaia-harden` | live | the saved start-of-run tally a review builds its snapshot from; overwritten by the next review |
 
 A linked worktree's `.gaia/local` is a single symlink to the main checkout's `.gaia/local`, so every path in the table above resolves to one copy rather than forking per tree. `.gaia/state-registry.json` declares each entry's scope, and an entry that has to stay private to one tree gets that isolation from a tree key in its own path rather than from a directory of its own; see [[Worktrees]]. The same linking covers a second, disjoint set: the checkout-root gitignored `.env` / `.env.*` files (every basename matching `.env` or `.env.*`, excluding the committed `.env.example`). Each linked worktree gets `<worktree>/.env` (and any `.env.*`) symlinked to the main checkout's copy, so the worktree's `pnpm dev` and Playwright runs read the same local secrets without a manual copy. These files live at the checkout root, not under `.gaia/local/`, so they aren't rows in the table above.
 

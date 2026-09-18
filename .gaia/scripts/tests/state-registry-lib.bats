@@ -391,6 +391,8 @@ run_in_repo() {
     "forensics/2026-07-23-x.md:per-tree"
     "handoff/HANDOFF-2026-07-23-x.md:per-tree"
     "harden/declines.json:shared"
+    "harden/reviewed.json:shared"
+    "harden/review-tally.json:shared"
     "specs/ledger.json:main-only"
     "plans/ledger.json:main-only"
     "cache/gh-artifact-pr.treeA.json:main-only"
