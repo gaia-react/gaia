@@ -13,6 +13,7 @@ import { pathToFileURL } from "node:url";
 // src/exit.ts
 var EXIT_CODES = {
   CONFIG_INVALID: 30,
+  INVALID_ARGUMENTS: 2,
   OK: 0,
   PAYLOAD_VALIDATION_FAILED: 11,
   STORAGE_INACCESSIBLE: 20,
@@ -35368,7 +35369,7 @@ var HELP_TEXT80 = `Usage: gaia <subcommand> [args]
   wiki state|commit-classify|state-init|state-bump|log-prepend|page-index|orphans|near-collisions|dead-paths|frontmatter|empty-sections|diff-size|chain|sync land|sync await
   fitness render-card [--cols N]
   labels check|docs|sync
-  harden-ledger list|record|is-suppressed|prune
+  harden-ledger list|record|is-suppressed|prune|snapshot
   harden-tally
   automation read-config|cron-decide|render-workflows|install-audit-workflow
   ci-check-subject --subject "<text>"
