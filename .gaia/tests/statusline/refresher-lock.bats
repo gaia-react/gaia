@@ -143,9 +143,11 @@ wait_for_entered() {
   held_pid=$!
   wait_for_entered
 
-  # A successor reclaimed the held run's lock as stale and took its own.
+  # A successor reclaimed the held run's lock as stale and took its own,
+  # writing its own owner file as every real successor does.
   rm -rf "$LOCK_DIR"
   mkdir "$LOCK_DIR"
+  printf 'other\n' > "$LOCK_DIR/owner"
 
   rm -f "$MOCK_HOLD"
   wait "$held_pid"

@@ -154,7 +154,9 @@ mkdir -p "$CACHE_DIR" 2>/dev/null
 # Honest limit: a stalled holder keeps running after its lock is reclaimed,
 # and a hand-back that loses to a third contender leaves that contender
 # running beside the faster one. Each costs one duplicate refresh, whose cache
-# write is an atomic mv.
+# write is an atomic mv. And a contender that renames a lock aside in the
+# instant between its taker's mkdir and owner write hands it back ownerless,
+# so no run releases it and refreshes wait out LOCK_STALE_MINUTES.
 LOCK_DIR="$CACHE_DIR/.update-check.lock"
 LOCK_STALE_MINUTES=10
 lock_is_stale() {
