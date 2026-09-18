@@ -40,24 +40,42 @@
 # enumerates every ordinary suite in that directory and would need an exclusion
 # entry per suite saying nothing. The one bats member is named directly instead.
 #
-# Runtime, measured on the tree at the time of writing: the WTI_SCRIPTS members
-# total ~48s, of which shell-lint.sh is ~18s and
-# check-script-capabilities.sh ~16s (it walks the invocation closure of every
-# allowlisted script), and the shard suite ~36s; the whole set measures
-# ~83-86s end to end. Every figure here is a tilde against host load, and the
-# spread between two honest samples on different hosts is a couple of seconds
-# a member, so treat a small disagreement as noise and re-measure rather than
-# reconciling it. Time each member the way this script invokes it, the
-# WTI_SCRIPTS members with `bash <path> >/dev/null </dev/null` and the
-# WTI_BATS member with `bats <path>`, and time the aggregate by running this
-# script. Running `bash` at the bats member is not merely wrong-and-loud: its
-# `local` declarations fail outside a function, so the body's paths expand
-# unrooted and it attempts a write at `/` before dying on a syntax error.
-# That is why there is one tier rather than a fast default plus a
-# named slower tier. A split is worth its second name only once the honest
-# set is slow enough that people skip it, and an aggregate slow enough to
-# skip is worse than none; a minute and three-quarters against the price of
-# an audit round is not that.
+# Runtime. Every figure below is one sample, indicative and host-dependent
+# rather than a contract: a loaded host moves them by several times the spread
+# between two honest samples, so re-measure rather than reconcile a
+# disagreement. Sampled on an otherwise idle Apple M2 Pro (12 cores, macOS 27)
+# in 2026-09: the WTI_SCRIPTS members total ~144s, of which shell-lint.sh is
+# ~112s and check-script-capabilities.sh ~10s (it walks the invocation closure
+# of every allowlisted script), and the shard suite ~232s; the whole set
+# measures ~375s end to end, a little over six minutes. Two aggregate samples
+# agreed within three seconds of each other and the members sum to the
+# aggregate, so the parts and the whole here are one measurement rather than
+# two that have drifted apart.
+#
+# A second host type is on record for one member only. shell-lint.sh is its
+# own CI gate, and that job's shellcheck step measures roughly 85-160s on
+# ubuntu-latest across repeated successful runs, which brackets the local
+# figure rather than contradicting it. The runner itself has no CI
+# counterpart, so its aggregate is local-only by construction and a second
+# host type for it is not something that can be asked for.
+#
+# Time each member the way this script invokes it, the WTI_SCRIPTS members
+# with `bash <path> >/dev/null </dev/null` and the WTI_BATS member with
+# `bats <path>`, and time the aggregate by running this script. Running `bash`
+# at the bats member is not merely wrong-and-loud: its `local` declarations
+# fail outside a function, so the body's paths expand unrooted and it attempts
+# a write at `/` before dying on a syntax error.
+#
+# There is one tier rather than a fast default plus a named slower tier. A
+# split is worth its second name only once the honest set is slow enough that
+# people skip it, and an aggregate slow enough to skip is worse than none; six
+# minutes against the price of an audit round is still not that. The margin is
+# narrower than it reads, though, and two things are worth weighing the next
+# time these figures are taken rather than re-argued here: nearly the whole
+# aggregate is two members, and the cost exclusion recorded in WTI_EXCLUDED
+# below was granted at a standalone figure smaller than what shell-lint.sh now
+# costs inline.
+#
 # Re-measure the WHOLE paragraph, not the figure being edited. Only the member
 # COUNT below is machine-checked, so every number here decays independently:
 # the shard suite's own figure nearly doubled as its W10 fixtures grew across
