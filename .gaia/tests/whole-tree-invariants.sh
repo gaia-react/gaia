@@ -34,7 +34,7 @@
 # fails if a candidate appears in neither table. That suite sweeps the five
 # `.sh` naming families that have produced a member (`check-*`, `audit-*-
 # complete`, `lint-*` and `verify-*` under .gaia/scripts/, plus .gaia/tests/*.sh),
-# rather than `check-*` alone: five members live outside that one glob. The
+# rather than `check-*` alone: WTI_SCRIPTS holds members outside that glob. The
 # `.bats` family is deliberately not swept even though WTI_BATS names a member
 # from it, because the only glob that would reach it, .gaia/tests/lib/*.bats,
 # enumerates every ordinary suite in that directory and would need an exclusion

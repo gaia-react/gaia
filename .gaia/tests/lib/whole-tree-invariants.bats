@@ -80,11 +80,11 @@ stub_exits() {
   excluded="$output"
 
   # Sweep every `.sh` naming family that has produced a member, not just
-  # `check-*`. Five of the runner's own members (the two audit-*-complete
-  # checks, lint-shipped-issue-refs, verify-audit-roster, and shell-lint) live
-  # outside that one glob, so a `check-*`-only sweep leaves the families they
-  # belong to unwatched: a checker added there and left off the roster would
-  # join neither table and this test would still pass.
+  # `check-*`. Every WTI_SCRIPTS entry in the runner that is not a
+  # `.gaia/scripts/check-*.sh` path lives outside that one glob, so a
+  # `check-*`-only sweep leaves the families they belong to unwatched: a checker
+  # added there and left off the roster would join neither table and this test
+  # would still pass.
   #
   # The `.bats` family is out on purpose, though WTI_BATS names a member from
   # it. The only glob that reaches it, .gaia/tests/lib/*.bats, enumerates every
