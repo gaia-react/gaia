@@ -8,7 +8,8 @@
 #
 # The expressions are not unit-testable through GitHub, so this suite evaluates
 # them directly. `eval_guard` translates the GitHub Actions expression subset the
-# workflow uses (`steps.<id>.outputs.<name>`, `steps.<id>.outcome`, `always()`,
+# workflow uses (`steps.<id>.outputs.<name>`, `steps.<id>.outcome`, the status
+# functions and the implicit `success()` GitHub adds to a guard naming none,
 # single-quoted literals, `==`, `!=`, `&&`, `||`, parentheses) into a bash
 # condition list and evaluates it against a scenario's step-output state.
 #
@@ -78,27 +79,72 @@ extract_guard() {
 # `steps.gate.outputs.gated=false`. Any context reference the pairs do not name
 # resolves to the empty string, which is what GitHub yields for a skipped step.
 # Returns 0 when the guard fires, 1 when it does not.
+#
+# The job's status is the pseudo-pair `job.failed=true`, which no guard spells:
+# it is the state GitHub's status functions read. An expression that calls none
+# of them is evaluated as `success() && (<expr>)`, because that is what GitHub
+# does with it, and that implicit prefix is why one failed step skips every
+# later step that does not ask for failure() or always() by name.
 eval_guard() {
   local expr="$1"
   shift
 
-  local pair key value escaped script
+  local pair key value escaped script job_failed
   script=""
+  job_failed=""
   for pair in "$@"; do
     key="${pair%%=*}"
     value="${pair#*=}"
-    escaped="$( printf '%s' "$key" | sed 's/[.[\*^$]/\\&/g' )"
+    case "$key" in
+      job.failed) job_failed="$value"; continue ;;
+      failed_at) continue ;;
+    esac
+    # Escaped for a sed pattern in-process: this runs once per pair per guard,
+    # thousands of times a run, and a `sed` fork per key dominated the suite.
+    escaped="${key//\\/\\\\}"
+    escaped="${escaped//./\\.}"
+    escaped="${escaped//\[/\\[}"
+    escaped="${escaped//\*/\\*}"
+    escaped="${escaped//^/\\^}"
+    escaped="${escaped//\$/\\\$}"
     script="${script}s|${escaped}|'${value}'|g;"
   done
+  # `job.status` reads the same state as the status functions but is not
+  # translated. Refused before anything can short-circuit, so a guard spelling
+  # it stops the suite on every path rather than only on the ones it evaluates.
+  case "$expr" in
+    *job.*)
+      printf 'eval_guard: untranslated reference in: %s\n' "$expr" >&2
+      return 2
+      ;;
+  esac
+  case "$expr" in
+    *'always()'*|*'failure()'*|*'success()'*|*'cancelled()'*) ;;
+    *)
+      # The implicit success() is false on a failed job, so the whole guard is,
+      # and there is nothing left to translate.
+      [ "$job_failed" = "true" ] && return 1
+      expr="success() && ( ${expr} )"
+      ;;
+  esac
   # Unnamed references are skipped steps: empty string.
   script="${script}s|steps\\.[A-Za-z0-9_-]*\\.outputs\\.[A-Za-z0-9_]*|''|g;"
   script="${script}s|steps\\.[A-Za-z0-9_-]*\\.outcome|''|g;"
   script="${script}s|always()|'ALWAYS'|g;"
+  # A cancelled run is not modelled: cancellation stops the job rather than
+  # running a guard, so no scenario here can reach a step on it.
+  script="${script}s|cancelled()|'CANCELLED'|g;"
+  if [ "$job_failed" = "true" ]; then
+    script="${script}s|success()|'NOT'|g;s|failure()|'ALWAYS'|g;"
+  else
+    script="${script}s|success()|'ALWAYS'|g;s|failure()|'NOT'|g;"
+  fi
   # Comparisons become POSIX test commands; `&&`, `||` and parens are already
   # valid bash once the operands are.
   script="${script}s|'\\([^']*\\)'[[:space:]]*==[[:space:]]*'\\([^']*\\)'|[ \"\\1\" = \"\\2\" ]|g;"
   script="${script}s|'\\([^']*\\)'[[:space:]]*!=[[:space:]]*'\\([^']*\\)'|[ \"\\1\" != \"\\2\" ]|g;"
   script="${script}s|'ALWAYS'|[ 1 = 1 ]|g;"
+  script="${script}s|'NOT'|[ 1 = 0 ]|g;s|'CANCELLED'|[ 1 = 0 ]|g;"
 
   local condition
   condition="$( printf '%s' "$expr" | sed "$script" | tr '\n' ' ' )"
@@ -124,19 +170,77 @@ eval_guard() {
   eval "$condition"
 }
 
-# fired_steps <ctx-pair>...: newline-separated names of every guarded step whose
-# `if:` fires under the given state, in file order.
-fired_steps() {
-  local step guard rc
+# all_steps: names of every step in the job, guarded or not, in file order.
+all_steps() {
+  awk '/^      - name: / { print substr($0, index($0, "name: ") + 6) }' "$WORKFLOW"
+}
+
+# ensure_guard_table: build, once per test, a table of every step as
+# `<name><TAB><guard>` in file order, the guard joined onto one line (eval_guard
+# joins it anyway) and empty for an unguarded step, and point GUARD_TABLE at it.
+# The failed-run tests evaluate every step's guard once per failure point, and
+# re-parsing the workflow for each of those makes the suite run for minutes.
+# Called directly rather than in a command substitution, so the variable lands
+# in the caller's shell.
+ensure_guard_table() {
+  GUARD_TABLE="$BATS_TEST_TMPDIR/guard-table"
+  [ -f "$GUARD_TABLE" ] && return 0
+  local step
   while IFS= read -r step; do
     [ -n "$step" ] || continue
-    guard="$( extract_guard "$step" )"
+    printf '%s\t%s\n' "$step" "$( extract_guard "$step" | tr '\n' ' ' | sed 's/ *$//' )"
+  done > "$GUARD_TABLE.tmp" <<STEPS
+$( all_steps )
+STEPS
+  mv "$GUARD_TABLE.tmp" "$GUARD_TABLE"
+}
+
+# in_list <needle> <newline-list>: exact whole-line membership, in-process.
+in_list() {
+  case $'\n'"$2"$'\n' in
+    *$'\n'"$1"$'\n'*) return 0 ;;
+  esac
+  return 1
+}
+
+# fired_steps <ctx-pair>...: newline-separated names of every guarded step whose
+# `if:` fires under the given state, in file order.
+#
+# The pseudo-pair `failed_at=<step name>` states that the named step ran and
+# failed the job, so every step after it in file order is evaluated with
+# `job.failed=true`. Unguarded steps are walked for that purpose only: they are
+# never printed, since the fired set is a claim about guards. Naming a step that
+# does not exist, or a guarded step that did not fire, is a harness misuse and
+# aborts, because a failure the job cannot reach would otherwise read as a
+# scenario that simply fired nothing.
+fired_steps() {
+  local step guard rc failed_at job_failed reached pair
+  failed_at=""
+  job_failed=""
+  reached=no
+  for pair in "$@"; do
+    case "$pair" in
+      failed_at=*) failed_at="${pair#failed_at=}" ;;
+    esac
+  done
+  ensure_guard_table
+  if [ -n "$failed_at" ] && ! grep -q -F -- "${failed_at}"$'\t' "$GUARD_TABLE"; then
+    printf 'fired_steps: failed_at names no step: %s\n' "$failed_at" >&2
+    return 2
+  fi
+  while IFS=$'\t' read -r step guard; do
+    [ -n "$step" ] || continue
     if [ -z "$guard" ]; then
-      printf 'fired_steps: no guard extracted for step: %s\n' "$step" >&2
-      return 2
+      # Unguarded: it runs whenever the job has not failed yet, and there is
+      # one failure per scenario, so reaching it by name is reaching it.
+      if [ "$step" = "$failed_at" ]; then
+        reached=yes
+        job_failed=true
+      fi
+      continue
     fi
     rc=0
-    eval_guard "$guard" "$@" || rc=$?
+    eval_guard "$guard" "$@" "job.failed=${job_failed}" || rc=$?
     # rc 1 is an honest "did not fire"; anything higher is a harness failure and
     # must abort rather than read as a step that stayed quiet.
     if [ "$rc" -gt 1 ]; then
@@ -144,9 +248,15 @@ fired_steps() {
       return 2
     fi
     [ "$rc" -eq 0 ] && printf '%s\n' "$step"
-  done <<EOF
-$( guarded_steps )
-EOF
+    if [ "$step" = "$failed_at" ]; then
+      [ "$rc" -eq 0 ] && reached=yes
+      job_failed=true
+    fi
+  done < "$GUARD_TABLE"
+  if [ -n "$failed_at" ] && [ "$reached" != yes ]; then
+    printf 'fired_steps: failed_at names a step that never ran: %s\n' "$failed_at" >&2
+    return 2
+  fi
   return 0
 }
 
@@ -227,6 +337,41 @@ EOF
   [ "$count" -ge 20 ]
 }
 
+@test "harness: a guard naming no status function carries the implicit success()" {
+  run eval_guard "steps.a.outputs.x == 'true'" "steps.a.outputs.x=true"
+  [ "$status" -eq 0 ]
+  run eval_guard "steps.a.outputs.x == 'true'" "steps.a.outputs.x=true" "job.failed=true"
+  [ "$status" -eq 1 ]
+}
+
+@test "harness: failure() fires only once the job has failed" {
+  run eval_guard "failure() && steps.a.outputs.x != 'true'" "steps.a.outputs.x=false"
+  [ "$status" -eq 1 ]
+  run eval_guard "failure() && steps.a.outputs.x != 'true'" "steps.a.outputs.x=false" "job.failed=true"
+  [ "$status" -eq 0 ]
+  run eval_guard "failure() && steps.a.outputs.x != 'true'" "steps.a.outputs.x=true" "job.failed=true"
+  [ "$status" -eq 1 ]
+}
+
+@test "harness: always() fires on a failed job and job.status is refused" {
+  run eval_guard "always()" "job.failed=true"
+  [ "$status" -eq 0 ]
+  run eval_guard "job.status == 'failure'" "job.failed=true"
+  [ "$status" -eq 2 ]
+}
+
+@test "harness: failed_at skips every later step and refuses a step that never ran" {
+  # Checkout PR head is unguarded and first, so failing there skips every
+  # guarded step that carries the implicit success().
+  local fired
+  fired="$( fired_steps "steps.gate.outputs.gated=false" "failed_at=Checkout PR head" )" || return 1
+  grep -qxF 'Check chore-deps title' <<<"$fired" && return 1
+  run fired_steps "steps.gate.outputs.gated=true" "failed_at=Run code-review-audit (claude-code-action)"
+  [ "$status" -eq 2 ]
+  run fired_steps "failed_at=No such step"
+  [ "$status" -eq 2 ]
+}
+
 # ---------------------------------------------------------------------------
 # Terminal-path scenarios.
 #
@@ -287,7 +432,8 @@ scenario_ctx() {
         "steps.decision.outputs.should_run=true" \
         "steps.trailer.outputs.skip=false" \
         "steps.config.outputs.push_fixes=true" \
-        "steps.audit.outcome=failure"
+        "steps.audit.outcome=failure" \
+        "failed_at=Status - audit aborted"
       ;;
     complete-pushed)
       printf '%s\n' \
@@ -321,6 +467,10 @@ scenario_ctx() {
       ;;
   esac
 }
+
+# The failed-run backstop: the one writer that runs after a failure rather than
+# on a terminal path of its own.
+BACKSTOP="Write GAIA-Audit commit status (failed run)"
 
 SCENARIOS="gated chore-deps no-source self-modified trailer-match stand-down aborted complete-pushed complete-clean"
 
@@ -462,7 +612,21 @@ Compute audit step timeout
 Resolve debt provenance
 Run code-review-audit (claude-code-action)
 Print audit progress breadcrumbs
-Status - audit aborted"
+Status - audit aborted
+${BACKSTOP}"
+}
+
+@test "terminal path: the audit-aborted comment step fails the job" {
+  # The aborted scenario states failed_at on this step, and that pair is what
+  # fires the backstop there. It is warranted only while the step really ends
+  # the job red, so pin the body's own exit.
+  local body
+  body="$( awk '
+    !grab && $0 == "      - name: Status - audit aborted" { grab = 1; next }
+    grab && /^      - name: / { exit }
+    grab { print }
+  ' "$WORKFLOW" )"
+  grep -qx '          exit 1' <<<"$body"
 }
 
 @test "terminal path: audit complete, self-heal pushed" {
@@ -727,4 +891,121 @@ assert_stood_down() {
   local guard
   guard="$( extract_guard 'Resolve audit phase' )"
   [ -z "$guard" ]
+}
+
+# ---------------------------------------------------------------------------
+# Failed runs.
+#
+# Every guard above carries GitHub's implicit success(), so one failed step
+# skips every later writer and the job ends with no GAIA-Audit status at all.
+# GAIA-Audit is a required context, so that strands the pull request on a check
+# that never arrives. The backstop is the one step that runs after a failure.
+# ---------------------------------------------------------------------------
+
+# scenario_pairs_without_failure <scenario>: the scenario's pairs minus its own
+# failed_at, one per line, so a caller can model a different failure point.
+scenario_pairs_without_failure() {
+  scenario_ctx "$1" | grep -v '^failed_at=' || true
+}
+
+# fired_after_failure <scenario> <step>: the fired set when <step> fails on
+# <scenario>'s path.
+fired_after_failure() {
+  local name="$1" step="$2" pair
+  set --
+  while IFS= read -r pair; do
+    [ -n "$pair" ] && set -- "$@" "$pair"
+  done <<PAIRS
+$( scenario_pairs_without_failure "$name" )
+PAIRS
+  fired_with "$@" "failed_at=${step}"
+}
+
+# steps_run_on <scenario>: every step that runs on the scenario's path with no
+# failure anywhere: each unguarded step, plus each guarded step that fires.
+steps_run_on() {
+  local name="$1" fired pair step guard
+  set --
+  while IFS= read -r pair; do
+    [ -n "$pair" ] && set -- "$@" "$pair"
+  done <<PAIRS
+$( scenario_pairs_without_failure "$name" )
+PAIRS
+  fired="$( fired_with "$@" )" || return 1
+  ensure_guard_table
+  while IFS=$'\t' read -r step guard; do
+    [ -n "$step" ] || continue
+    if [ -z "$guard" ] || in_list "$step" "$fired"; then
+      printf '%s\n' "$step"
+    fi
+  done < "$GUARD_TABLE"
+}
+
+@test "failed run: the backstop is the only step after a failure at any step that runs" {
+  # Derived per element: every non-gated scenario, every step that runs on it.
+  # A step's failure must leave the steps before it as they were and fire
+  # exactly the backstop after it. The gated path is excluded here because it
+  # posts no GAIA-Audit status by design; the next test holds it.
+  local scenario step fired ran expected s guard pos_seen count
+  # bats traces every simple command through an inherited DEBUG trap, which
+  # costs more than the evaluation itself across this many failure points: with
+  # it this one test runs for well over a minute, without it for seconds.
+  # Assertions here fail by explicit return, so the trap's line tracking is all
+  # that is given up.
+  trap - DEBUG
+  set +T
+  count=0
+  for scenario in $SCENARIOS; do
+    [ "$scenario" = gated ] && continue
+    ensure_guard_table
+    ran="$( steps_run_on "$scenario" )" || return 1
+    [ -n "$ran" ] || { printf 'no steps run on %s\n' "$scenario" >&2; return 1; }
+    while IFS= read -r step; do
+      [ -n "$step" ] || continue
+      [ "$step" = "$BACKSTOP" ] && continue
+      fired="$( fired_after_failure "$scenario" "$step" )" || return 1
+      # The guarded steps that ran up to and including the failed one, in file
+      # order, then the backstop.
+      expected=""
+      pos_seen=no
+      while IFS=$'\t' read -r s guard; do
+        [ -n "$s" ] || continue
+        [ "$pos_seen" = yes ] && break
+        if [ -n "$guard" ] && in_list "$s" "$ran"; then
+          expected="${expected}${s}"$'\n'
+        fi
+        [ "$s" = "$step" ] && pos_seen=yes
+      done < "$GUARD_TABLE"
+      expected="${expected}${BACKSTOP}"
+      if [ "$fired" != "$expected" ]; then
+        printf 'scenario %s, failed at %s\nexpected:\n%s\n\nactual:\n%s\n' \
+          "$scenario" "$step" "$expected" "$fired" >&2
+        return 1
+      fi
+      count=$(( count + 1 ))
+    done <<RAN
+$ran
+RAN
+  done
+  # Non-vacuity floor: the non-gated paths share a long unguarded prefix, so a
+  # derivation that silently shrank would fall far below this.
+  [ "$count" -ge 40 ]
+}
+
+@test "failed run: the gate-label-missing path posts nothing even when its comment fails" {
+  local fired
+  fired="$( fired_after_failure gated "Status - skipped (gate label missing)" )" || return 1
+  [ "$fired" = "Status - skipped (gate label missing)" ]
+}
+
+@test "failed run: the backstop never fires on a scenario that does not fail" {
+  local scenario fired checked
+  checked=0
+  for scenario in $SCENARIOS; do
+    scenario_ctx "$scenario" | grep -q '^failed_at=' && continue
+    fired="$( fired_in "$scenario" )" || return 1
+    grep -qxF -- "$BACKSTOP" <<<"$fired" && return 1
+    checked=$(( checked + 1 ))
+  done
+  [ "$checked" -gt 0 ]
 }
