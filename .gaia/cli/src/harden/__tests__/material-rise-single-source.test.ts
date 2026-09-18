@@ -6,53 +6,41 @@
  * caller bypassing the shared function.
  */
 import {describe, expect, test} from 'vitest';
-import {readdirSync, readFileSync} from 'node:fs';
 import path from 'node:path';
-import {fileURLToPath} from 'node:url';
-
-const HARDEN_DIR = path.join(
-  path.dirname(fileURLToPath(import.meta.url)),
-  '..'
-);
+import {
+  CLI_SRC,
+  testDeclaredOnce,
+} from '../../util/uniqueness-guard-fixture.js';
 
 const RATIO_IDENTIFIER = /\bRISE_RATIO_(NUM|DEN)\b/;
 
-// Recursively lists every `.ts` file under `dir`, excluding any `__tests__`
-// directory.
-const listTsFiles = (dir: string): string[] => {
-  const files: string[] = [];
+const findRatioIdentifier = (source: string): null | number => {
+  const line = source
+    .split('\n')
+    .findIndex((text) => RATIO_IDENTIFIER.test(text));
 
-  for (const entry of readdirSync(dir, {withFileTypes: true})) {
-    if (entry.name === '__tests__') {
-      // Excluded: fixtures and this scanner itself legitimately name the
-      // identifiers under test.
-    } else {
-      const fullPath = path.join(dir, entry.name);
-
-      if (entry.isDirectory()) {
-        files.push(...listTsFiles(fullPath));
-      } else if (entry.isFile() && entry.name.endsWith('.ts')) {
-        files.push(fullPath);
-      }
-    }
-  }
-
-  return files;
+  return line === -1 ? null : line + 1;
 };
 
 describe('RISE_RATIO_NUM / RISE_RATIO_DEN stay single-sourced in material-rise.ts', () => {
-  test('24: no other file under harden/ (excluding __tests__/) references either constant', () => {
-    const offenders = listTsFiles(HARDEN_DIR)
-      .filter((file) => path.basename(file) !== 'material-rise.ts')
-      .filter((file) => RATIO_IDENTIFIER.test(readFileSync(file, 'utf8')));
-
-    expect(offenders).toEqual([]);
+  testDeclaredOnce({
+    corpusFloor: 12,
+    corpusRoot: path.join(CLI_SRC, 'harden'),
+    declaringModule: 'material-rise.ts',
+    findOffense: findRatioIdentifier,
+    // Fixtures and this scanner itself legitimately name the identifiers under
+    // test, so a private copy planted there is not the drift this guard exists
+    // to catch.
+    isExempt: (relative) => relative.includes('__tests__'),
+    offense: 'references RISE_RATIO_NUM or RISE_RATIO_DEN',
   });
 
-  test('25: refusal — the scanner reports a hit on an inline reimplementation', () => {
+  // No `skipIf`: this runs against an assembled string, so it holds on any
+  // clone and it is what establishes that the detector can report at all.
+  test('refusal: the scanner reports a hit on an inline reimplementation', () => {
     const inlineReimplementation =
       'const r = liveCount * RISE_RATIO_DEN >= RISE_RATIO_NUM * baseCount;';
 
-    expect(RATIO_IDENTIFIER.test(inlineReimplementation)).toBe(true);
+    expect(findRatioIdentifier(inlineReimplementation)).toBe(1);
   });
 });
