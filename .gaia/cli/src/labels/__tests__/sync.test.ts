@@ -163,6 +163,7 @@ describe('labels/sync planSync create sets', () => {
       'difficulty:easy',
       'difficulty:hard',
       'difficulty:medium',
+      'documentation',
       'enhancement',
       'fold:required',
       'footprint:narrow',
@@ -186,12 +187,13 @@ describe('labels/sync planSync create sets', () => {
 
     expect(names).not.toContain('gaia-ci');
     expect(names).not.toContain('security');
-    expect(names).toHaveLength(19);
+    expect(names).toHaveLength(20);
   });
 
   test('tech-debt off leaves the always-on set plus the GAIA CI set', () => {
     expect(createNames(plan({features: ['gaia-ci', 'forensics']}))).toEqual([
       'bug',
+      'documentation',
       'enhancement',
       'gaia-ci',
       'in-progress',
@@ -215,6 +217,7 @@ describe('labels/sync planSync create sets', () => {
       'difficulty:easy',
       'difficulty:hard',
       'difficulty:medium',
+      'documentation',
       'enhancement',
       'fold:required',
       'footprint:narrow',
@@ -244,6 +247,7 @@ describe('labels/sync planSync create sets', () => {
     expect(names).toEqual([
       'auto-fixable',
       'bug',
+      'documentation',
       'enhancement',
       'gaia-ci',
       'gaia-forensics',

@@ -28,7 +28,7 @@ const names = (
 describe('labels/registry readRegistry', () => {
   test('parses the committed .gaia/labels.json', () => {
     expect(registry.version).toBe(1);
-    expect(registry.labels).toHaveLength(31);
+    expect(registry.labels).toHaveLength(32);
   });
 
   test('labelsRegistryPath joins onto the given root', () => {
@@ -70,7 +70,7 @@ describe('labels/registry readRegistry', () => {
 });
 
 describe('labels/registry creatableEntries', () => {
-  test('every feature on yields the twenty-one adopter-role entries', () => {
+  test('every feature on yields the twenty-two adopter-role entries', () => {
     expect(names('adopter', ['tech-debt', 'gaia-ci', 'forensics'])).toEqual([
       'bug',
       'debt:spec-active',
@@ -78,6 +78,7 @@ describe('labels/registry creatableEntries', () => {
       'difficulty:easy',
       'difficulty:hard',
       'difficulty:medium',
+      'documentation',
       'enhancement',
       'fold:required',
       'footprint:narrow',
@@ -104,6 +105,7 @@ describe('labels/registry creatableEntries', () => {
       'difficulty:easy',
       'difficulty:hard',
       'difficulty:medium',
+      'documentation',
       'enhancement',
       'fold:required',
       'footprint:narrow',
@@ -123,6 +125,7 @@ describe('labels/registry creatableEntries', () => {
   test('tech-debt off leaves the always-on set plus the GAIA CI set', () => {
     expect(names('adopter', ['gaia-ci', 'forensics'])).toEqual([
       'bug',
+      'documentation',
       'enhancement',
       'gaia-ci',
       'in-progress',
@@ -163,6 +166,7 @@ describe('labels/registry creatableEntries', () => {
       'difficulty:easy',
       'difficulty:hard',
       'difficulty:medium',
+      'documentation',
       'enhancement',
       'fold:required',
       'footprint:narrow',
