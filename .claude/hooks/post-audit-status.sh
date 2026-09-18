@@ -47,7 +47,8 @@
 #   hasn't cleared yet, the POST is skipped (the button stays blocked) but the
 #   clearance the caller already wrote is untouched. A SUCCESS status is never
 #   posted without every dispatched member's marker present and none of them
-#   holding a live refusal, and an absent status never inverts into a cleared
+#   holding a live refusal, save a code-audit-frontend marker the chore(deps)
+#   title waiver excuses (a frontend refusal is never excused), and an absent status never inverts into a cleared
 #   gate. Order-independent: each member calls this script after writing its
 #   own marker, so whichever member finishes last is the one whose call
 #   actually posts.

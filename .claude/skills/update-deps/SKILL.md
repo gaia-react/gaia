@@ -412,7 +412,7 @@ Run this as a **Haiku agent**. Its dispatch carries every Phase 6 duty, so pass 
 `.gaia/cli` is a second workspace root with its own `package.json` and lockfile. `.gaia/cli/src/lint-pin-parity.test.ts` requires it to pin every devDependency it shares with the root at the root's version, except the keys of `MANIFEST_PARITY_EXEMPT` in that file. The phases above bump the root alone, so a run that moves a shared pin leaves the required `Vitest (.gaia/cli)` check red. Run this phase inline, after Phase 6 and before the report:
 
 1. For each devDependency declared in both root `package.json` and `.gaia/cli/package.json`, that is not a key of `MANIFEST_PARITY_EXEMPT`, and whose CLI spec differs from the root's, set the CLI spec to the root's verbatim. The direction is always CLI to root; never edit the root to match the CLI. Skip the rest of this phase only when nothing differs **and** the run left the root `pnpm-lock.yaml` unchanged: a root re-resolve can move a transitive version the pin-parity test compares without touching any pin.
-2. Run `pnpm -C .gaia/cli install`, then `pnpm -C .gaia/cli lint`, `pnpm -C .gaia/cli typecheck`, and `pnpm -C .gaia/cli test`. The pin-parity test also compares the versions both lockfiles resolve for a few transitive rule packages, which neither the pin edit nor the install repairs. When that half fails, follow the Repair paragraph in the test file's header comment rather than adding a pin.
+2. Run `pnpm -C .gaia/cli install`, then `pnpm -C .gaia/cli lint`, `pnpm -C .gaia/cli typecheck`, and `pnpm -C .gaia/cli test`. The pin-parity test also compares the versions both lockfiles resolve for a few transitive rule packages, which neither the pin edit nor the install repairs. When that half fails, follow the header's Repair paragraph for the lockfile parity test (re-resolve the lagging workspace with `pnpm update <package>`) rather than adding a pin.
 3. Run `pnpm -C .gaia/cli bundle`, then `bash .gaia/scripts/verify-cli-bundle-fresh.sh` from the repository root. Phase 8's `git add -A` commits any bundle that moved.
 4. Add a `.gaia/cli pin sync` row to the report's Quality gate table naming each raised pin (`<name>: <old> → <new>`) and the step 2 and 3 results. On a failure, keep the raised pins, since reverting them guarantees the red check this phase exists to prevent, and let the row carry the failure for the maintainer.
 
@@ -432,7 +432,7 @@ Build the report **only** from the agent reports returned to you, plus the snooz
 - **Snoozed (deferred this run)**: the companion groups the human chose to skip in the preview, with the version each was snoozed at. These quiet the statusline for 14 days (or until a newer version ships); they are not failures. Omit the section if the human chose "Update all".
 - **Quality gate**: the gate result reported by the agents, verbatim.
 <!-- gaia:maintainer-only:start -->
-- **Phase 6b**: runs inline rather than as an agent, so its `.gaia/cli pin sync` row is the one exception to building the report only from agent reports. Include it whenever Phase 6b raised a pin, including a failed step it kept in the diff.
+- **Phase 6b**: runs inline rather than as an agent, so its `.gaia/cli pin sync` row is the one exception to building the report only from agent reports. Include it whenever Phase 6b ran past step 1, including a failed step it kept in the diff.
 <!-- gaia:maintainer-only:end -->
 
 If a section would be empty, write "None" rather than leaving it blank or fabricating filler.

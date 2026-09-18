@@ -294,7 +294,8 @@ fi
 
 # -----------------------------------------------------------------------------
 # Member-aware gate: the trailer certifies that EVERY dispatched Code Audit Team
-# member cleared this CONTENT, not just the caller. Mirrors the member-aware
+# member cleared this CONTENT, not just the caller, save a code-audit-frontend
+# the chore(deps) waiver above excuses. Mirrors the member-aware
 # gate in .claude/hooks/post-audit-status.sh. Each member is keyed to its OWN
 # digest (owned files + machinery), not the frontend digest or the tree.
 # An ABSENT or non-executable resolver falls back to the caller's own clean
@@ -375,7 +376,9 @@ if [ -x "$resolver" ]; then
        || clearance_member_refused "$repo_root" "$member_digest" "$m"; then
       pending="${pending}${pending:+ }${m}"
     elif ! clearance_member_cleared "$repo_root" "$member_digest" "$m"; then
-      if [ "$m" != "code-audit-frontend" ] || ! chore_deps_waives_frontend; then
+      # The cached answer only: the title read belongs ahead of the lock, so a
+      # frontend the pre-lock read never resolved stays pending here.
+      if [ "$m" != "code-audit-frontend" ] || [ "$frontend_waiver" != "true" ]; then
         pending="${pending}${pending:+ }${m}"
       fi
     fi
