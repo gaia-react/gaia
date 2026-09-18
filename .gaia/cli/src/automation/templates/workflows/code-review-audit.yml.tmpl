@@ -405,6 +405,14 @@ jobs:
           steps.trailer.outputs.skip == 'false'
         env:
           BUDGET_SECONDS: ${{ steps.config.outputs.budget_seconds }}
+          # Ceiling for the audit step, 15 minutes under the job's
+          # `timeout-minutes: 60` to leave room for the setup steps before the
+          # audit and the push, status, and comment steps after it. A job that
+          # reaches its own limit is cancelled rather than failed, so the
+          # failed-run status backstop never runs; the audit step's own timeout
+          # counts as a failure, so it has to fire first. Raise this only with
+          # the job's limit. .github/audit/tests/ci-audit-step-timeout.bats pins it.
+          AUDIT_STEP_MAX_MINUTES: 45
         run: |
           set -eu
           # Convert budget_seconds → minutes (rounded up). Floor of 1 so
@@ -416,6 +424,10 @@ jobs:
           else
             minutes=$(( (BUDGET_SECONDS + 59) / 60 ))
             [ "$minutes" -lt 1 ] && minutes=1
+          fi
+          if [ "$minutes" -gt "$AUDIT_STEP_MAX_MINUTES" ]; then
+            echo "::warning::budget_seconds=${BUDGET_SECONDS} exceeds the audit step's ${AUDIT_STEP_MAX_MINUTES}-minute ceiling under the job's time limit; capping at ${AUDIT_STEP_MAX_MINUTES} minutes."
+            minutes=$AUDIT_STEP_MAX_MINUTES
           fi
           echo "minutes=$minutes" >> "$GITHUB_OUTPUT"
 
