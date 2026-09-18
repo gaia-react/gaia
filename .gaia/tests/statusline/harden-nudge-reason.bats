@@ -342,6 +342,49 @@ render_statusline_against_refresher_cache() {
   [ "$(jq -r '.checkedAt' "$CACHE_FILE")" = "0" ]
 }
 
+# 9a. Race: arm (b) alone, the tally's own snapshot read disagrees with the
+# file the script re-reads, with the file itself unchanged throughout (C7) ---
+
+@test "race: the tally's snapshot read disagrees with the unchanged file (arm b)" {
+  # The snapshot file never changes across the run, so arm (a)'s two script
+  # reads agree ("X" both times) and cannot fire on its own. harden-tally's
+  # reported snapshot_reviewed_at ("Q") disagrees with that file anyway,
+  # simulating its own snapshot read landing on a different value than the
+  # file the script re-reads before the write.
+  printf '{"reviewed_at":"X"}' > "$MOCK_SNAPSHOT_FILE"
+  run env \
+    MOCK_TALLY_JSON='{"candidate_count":0,"unclassified":null,"gh_ok":true,"window_days":90,"snapshot_present":true,"snapshot_reviewed_at":"Q","triggers":[{"type":"new_class","finding_class":"holistic/a"}]}' \
+    bash "$REFRESH_ROOT/.gaia/scripts/check-updates.sh"
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '.hardenNudgeReason' "$CACHE_FILE")" = "" ]
+  [ "$(jq -r '.checkedAt' "$CACHE_FILE")" = "0" ]
+
+  # Refusal proof: drop arm (b) from the race check in a scratch copy that
+  # lives beside the original (check-updates.sh derives GAIA_DIR/PROJECT_ROOT
+  # from its own dirname, so a copy elsewhere resolves every path against the
+  # wrong tree) and confirm the same inputs now compose and keep the reason,
+  # so the pass above is not a fallback that always clears it.
+  search='|| { [ "$snapshot_present" = "true" ] && [ "$snapshot_token_now" != "$snapshot_reviewed_at" ]; }; then'
+  # shellcheck disable=SC2016 # single-quoted on purpose: this is the literal
+  # replacement line to write, not an expression to expand here.
+  neutered_line='; then'
+  count=$(grep -cF -- "$search" "$REFRESH_ROOT/.gaia/scripts/check-updates.sh")
+  [ "$count" -eq 1 ]
+  broken="$REFRESH_ROOT/.gaia/scripts/check-updates-broken.sh"
+  awk -v s="$search" -v new="$neutered_line" \
+    '{ if (index($0, s) > 0) print new; else print }' \
+    "$REFRESH_ROOT/.gaia/scripts/check-updates.sh" > "$broken"
+  chmod +x "$broken"
+
+  rm -f "$CACHE_FILE"
+  printf '{"reviewed_at":"X"}' > "$MOCK_SNAPSHOT_FILE"
+  run env \
+    MOCK_TALLY_JSON='{"candidate_count":0,"unclassified":null,"gh_ok":true,"window_days":90,"snapshot_present":true,"snapshot_reviewed_at":"Q","triggers":[{"type":"new_class","finding_class":"holistic/a"}]}' \
+    bash "$broken"
+  [ "$status" -eq 0 ]
+  [ "$(jq -r '.hardenNudgeReason' "$CACHE_FILE")" = "1 new pattern" ]
+}
+
 # 10. No race, same inputs: refusal-state control for 8 and 9 -----------------
 
 @test "no race: identical inputs to the race tests, without the rewrite" {

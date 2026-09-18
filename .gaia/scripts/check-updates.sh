@@ -292,9 +292,11 @@ esac
 # gh_ok false (or no reading at all) keeps prev_harden_reason.
 #
 # snapshot_present and snapshot_reviewed_at are read from the tally JSON
-# regardless of gh_ok: harden-tally emits them "still" on a gh_ok-false run
-# (a review can complete while the window read itself fails), and the race
-# check below needs this run's own reading of both to catch that case.
+# regardless of gh_ok: harden-tally emits them on a gh_ok-false run too, and
+# the race check below (arm b) needs this run's own values to catch
+# harden-tally's own snapshot reading disagreeing with the file the script
+# re-reads before the write, a mismatch arm (a) cannot see because both of
+# the script's own reads of that file agree with each other.
 harden_count="$prev_harden_count"
 unclassified_count="$prev_harden_unclassified"
 harden_reason="$prev_harden_reason"
@@ -642,11 +644,15 @@ fi
 # /gaia-audit precedent), so a refresh already in flight when that happens
 # must not overwrite the clear with a reason computed against the superseded
 # snapshot. Re-read the snapshot's reviewed_at now and compare it, by plain
-# string equality only, against the startup read and against this run's own
-# tally reading of it. Either mismatch means a review landed mid-refresh:
-# discard the reason and zero checkedAt rather than trust it. Only these two
-# fields change on a race; every other field is written as computed. Honest
-# limit: this compares two reads of one file, so a review landing between the
+# string equality only, against two prior readings. Arm (a): the script's own
+# startup read, catching a review landing between the script's two reads of
+# the file. Arm (b): harden-tally's own read of the snapshot, catching that
+# read disagreeing with the file the script re-reads here even when the
+# script's two reads agree with each other, e.g. a resolver or root mismatch
+# between the CLI and the script. Either mismatch: discard the reason and
+# zero checkedAt rather than trust it. Only these two fields change on a
+# race; every other field is written as computed. Honest limit: this
+# compares reads taken at different times, so a review landing between the
 # re-read below and the mv is not seen, and costs one stale render until the
 # next refresh.
 snapshot_token_now=""

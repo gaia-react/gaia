@@ -89,26 +89,7 @@ Bind to these fields per candidate: `finding_class`, `distinct_pr_count`, `pr_nu
 
 - **`gh_ok` is `false` and stderr carries a `window_truncated` error**: the window holds more merged PRs than the tally's paged read covers. Report "the merged-PR window is too large for the tally to read; this is not an all-clear, report it as a GAIA bug" and stop. Re-running does not help. (Run ends here; see `## Cost record (run end)`.)
 - **`gh_ok` is `false` otherwise**: a `gh`/network outage. Report "could not read the merged-PR window; this is not an all-clear, re-run when `gh` is available" and stop, never claiming no findings. (Run ends here; see `## Cost record (run end)`.)
-- **`gh_ok` is `true`, `candidate_count` is `0`, `unclassified` is `null`**: report "no recurring findings crossed the threshold in the last 90 days". In `review` mode, before stopping, run the snapshot record command and, only on its exit 0, the cache-clear block from `## Record the review (end of run)`, in the same Bash call: shell state does not persist across separate calls, so the record and the clear must run together.
-
-  ```bash
-  .gaia/cli/gaia harden-ledger snapshot record --tally-file .gaia/local/harden/review-tally.json
-  record_status=$?
-  if [ "$record_status" -eq 0 ]; then
-    CACHE_ROOT="$(bash .gaia/scripts/main-root-lib.sh 2>/dev/null || git rev-parse --show-toplevel)"
-    CACHE="$CACHE_ROOT/.gaia/local/cache/shared/update-check.json"
-    if [ -f "$CACHE" ]; then
-      if command -v jq >/dev/null 2>&1; then
-        tmp="$(mktemp)"
-        jq '.hardenNudgeReason = "" | .checkedAt = 0' "$CACHE" > "$tmp" && mv "$tmp" "$CACHE"
-      else
-        rm -f "$CACHE"
-      fi
-    fi
-  fi
-  ```
-
-  On a non-zero `record_status`, report it the way `## Record the review (end of run)` does (quote the structured error code) and skip the cache clear, the block above already skips it in that case. `list`/`why` stop as today, writing nothing. (Run ends here; see `## Cost record (run end)`.)
+- **`gh_ok` is `true`, `candidate_count` is `0`, `unclassified` is `null`**: report "no recurring findings crossed the threshold in the last 90 days". In `review` mode, before stopping, run the combined record-and-clear block from `## Record the review (end of run)` as one Bash call: shell variables do not persist across separate calls, so the record and the clear must run together. On a non-zero `record_status`, report it the way that section says (quote the structured error code); either way this stop does not proceed to Publish. `list`/`why` stop as today, writing nothing. (Run ends here; see `## Cost record (run end)`.)
 - **`gh_ok` is `true`, `candidate_count` is `0`, `unclassified` is non-null**: do NOT stop. Skip the per-candidate loop (there is nothing to judge) and go straight to `## Unclassified recurrence signal (seed-a-class-or-investigate)` below, which in `review` mode flows on to `## Record the review (end of run)`.
 - **Otherwise**: run the per-candidate loop below.
 
@@ -274,28 +255,26 @@ Then proceed to `## Record the review (end of run)`.
 
 Runs once, in `review` mode only, after the last candidate is dispositioned and `## Unclassified recurrence signal (seed-a-class-or-investigate)` has run. An abandoned run, one where a candidate was left without an answer, never reaches this section and writes nothing. `list`, `why`, and a `gh_ok` false fetch never reach it either.
 
-Record the snapshot from this run's own start-of-run tally (the file `## Fetch the live candidate list` saved):
+Record the snapshot from this run's own start-of-run tally (the file `## Fetch the live candidate list` saved), then, only on exit `0`, clear the cached nudge so the next statusline render stops showing it (model on `.claude/skills/gaia/references/audit.md`'s cache-bust, main-root-resolved, jq with an `rm -f` fallback). Run both as one Bash call: shell variables do not persist across separate calls.
 
 ```bash
 .gaia/cli/gaia harden-ledger snapshot record --tally-file .gaia/local/harden/review-tally.json
-```
-
-On exit `0`, clear the cached nudge so the next statusline render stops showing it (model on `.claude/skills/gaia/references/audit.md`'s cache-bust, main-root-resolved, jq with an `rm -f` fallback):
-
-```bash
-CACHE_ROOT="$(bash .gaia/scripts/main-root-lib.sh 2>/dev/null || git rev-parse --show-toplevel)"
-CACHE="$CACHE_ROOT/.gaia/local/cache/shared/update-check.json"
-if [ -f "$CACHE" ]; then
-  if command -v jq >/dev/null 2>&1; then
-    tmp="$(mktemp)"
-    jq '.hardenNudgeReason = "" | .checkedAt = 0' "$CACHE" > "$tmp" && mv "$tmp" "$CACHE"
-  else
-    rm -f "$CACHE"
+record_status=$?
+if [ "$record_status" -eq 0 ]; then
+  CACHE_ROOT="$(bash .gaia/scripts/main-root-lib.sh 2>/dev/null || git rev-parse --show-toplevel)"
+  CACHE="$CACHE_ROOT/.gaia/local/cache/shared/update-check.json"
+  if [ -f "$CACHE" ]; then
+    if command -v jq >/dev/null 2>&1; then
+      tmp="$(mktemp)"
+      jq '.hardenNudgeReason = "" | .checkedAt = 0' "$CACHE" > "$tmp" && mv "$tmp" "$CACHE"
+    else
+      rm -f "$CACHE"
+    fi
   fi
 fi
 ```
 
-On a non-zero exit, the snapshot did NOT record: report that the review is complete but its snapshot did not, quoting the structured error code (`PAYLOAD_VALIDATION_FAILED` 11 means the saved tally was refused, malformed or read from a `gh_ok: false` run; `STORAGE_INACCESSIBLE` 20 means the saved tally could not be read), skip the cache clear, and continue to `## Publish approved changes (end of run)` regardless. A failed record never blocks publishing, and a publish failure never undoes a snapshot that did record.
+On a non-zero `record_status`, the snapshot did NOT record: report that the review is complete but its snapshot did not, quoting the structured error code (`PAYLOAD_VALIDATION_FAILED` 11 means the saved tally was refused, malformed or read from a `gh_ok: false` run; `STORAGE_INACCESSIBLE` 20 means the saved tally could not be read); the block above already skips the cache clear in that case. Either way, continue to `## Publish approved changes (end of run)` regardless. A failed record never blocks publishing, and a publish failure never undoes a snapshot that did record.
 
 ## Publish approved changes (end of run)
 

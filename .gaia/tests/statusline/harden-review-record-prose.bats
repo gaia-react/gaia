@@ -1,11 +1,14 @@
 #!/usr/bin/env bats
 
 # Pins the /gaia-harden playbook's review-completion contract mechanically:
-# the start-of-run tally save, the all-clear early-stop's snapshot record and
-# cache clear, the end-of-run "Record the review" section's placement and
-# content, and the --audited-pr-count flag on both ledger record call sites
-# (decline and the unclassified signal). .gaia/tests/statusline/ is already
-# armed by harden.md edits in .github/workflows/audit-ci-tests.yml.
+# the start-of-run tally save, the single combined record-and-clear block that
+# lives once inside "## Record the review (end of run)" (record, capture its
+# exit status, then a guarded cache clear, all inside one fenced Bash block so
+# it runs as one Bash call), the all-clear early stop's reference to that same
+# section rather than a copy of it, that section's placement ahead of Publish,
+# and the --audited-pr-count flag on both ledger record call sites (decline
+# and the unclassified signal). .gaia/tests/statusline/ is already armed by
+# harden.md edits in .github/workflows/audit-ci-tests.yml.
 
 setup() {
   HARDEN_MD=$(cd "$BATS_TEST_DIRNAME/../../../.claude/skills/gaia/references" && pwd)/harden.md
@@ -41,6 +44,19 @@ delete_first_match_in_range() {
   ' "$file" > "${file}.del" && mv "${file}.del" "$file"
 }
 
+# insert_after <file> <line_no> <text_file>
+#   Inserts every line of <text_file> into <file> immediately after the
+#   1-indexed line <line_no>.
+insert_after() {
+  local file="$1" line_no="$2" text_file="$3"
+  awk -v line_no="$line_no" -v text_file="$text_file" '
+    { print }
+    NR==line_no {
+      while ((getline l < text_file) > 0) print l
+    }
+  ' "$file" > "${file}.ins" && mv "${file}.ins" "$file"
+}
+
 # check_record_prose <file>
 #   Returns 0 only when every condition below holds against <file>; prints
 #   one line naming the first failed condition and returns 1 otherwise.
@@ -60,33 +76,23 @@ check_record_prose() {
     | grep -qE "harden-tally >.*\.gaia/local/harden/review-tally\.json" \
     || { echo "Fetch section missing the harden-tally > review-tally.json save"; return 1; }
 
-  # 2. All-clear region: the candidate_count 0 / unclassified null line up to Judge-the-form.
+  # 2. All-clear bullet (one unwrapped paragraph line): references the Record
+  #    section, and carries no copy of either the record literal or the
+  #    cache-clear literal (single-source). Scoped to that one line, not the
+  #    wider region down to Judge-the-form, so a mutation here is not masked
+  #    by the neighboring non-null bullet's own "Record the review" mention.
   local allclear_start
   allclear_start=$(grep -n 'candidate_count.*is .0.*unclassified.*is .null' "$file" | head -1 | cut -d: -f1)
   if [ -z "$allclear_start" ]; then
     echo "missing the candidate_count 0 / unclassified null all-clear line"
     return 1
   fi
-
-  local ac_record_rel ac_clear_rel ac_record_abs ac_clear_abs
-  ac_record_rel=$(sed -n "${allclear_start},${judge_line}p" "$file" | grep -n "harden-ledger snapshot record --tally-file" | head -1 | cut -d: -f1)
-  if [ -z "$ac_record_rel" ]; then
-    echo "all-clear region missing the snapshot record literal"
-    return 1
-  fi
-  sed -n "${allclear_start},${judge_line}p" "$file" | grep -qF "Record the review" \
-    || { echo "all-clear region missing a reference to Record the review"; return 1; }
-  ac_clear_rel=$(sed -n "${allclear_start},${judge_line}p" "$file" | grep -n '\.hardenNudgeReason = ""' | head -1 | cut -d: -f1)
-  if [ -z "$ac_clear_rel" ]; then
-    echo "all-clear region missing the cache-clear step"
-    return 1
-  fi
-  ac_record_abs=$((allclear_start + ac_record_rel - 1))
-  ac_clear_abs=$((allclear_start + ac_clear_rel - 1))
-  if [ "$ac_clear_abs" -le "$ac_record_abs" ]; then
-    echo "all-clear region's cache-clear step is not after the record literal"
-    return 1
-  fi
+  sed -n "${allclear_start}p" "$file" | grep -qF "Record the review" \
+    || { echo "all-clear bullet missing a reference to Record the review"; return 1; }
+  sed -n "${allclear_start}p" "$file" | grep -qF "harden-ledger snapshot record --tally-file" \
+    && { echo "all-clear bullet carries its own copy of the snapshot record literal"; return 1; }
+  sed -n "${allclear_start}p" "$file" | grep -qF '.hardenNudgeReason = ""' \
+    && { echo "all-clear bullet carries its own copy of the cache-clear literal"; return 1; }
 
   # 3. Record the review heading exists, between Unclassified and Publish.
   local unclassified_line record_heading_line publish_line
@@ -102,26 +108,62 @@ check_record_prose() {
     return 1
   fi
 
-  # 4. Inside the Record section: the record literal, then the cache-clear literal.
-  local rs_record_rel rs_clear_rel rs_record_abs rs_clear_abs
+  # 4. Inside the Record section: the record literal, then the captured exit
+  #    status, then the exit-0 guard, then the cache-clear literal, in that
+  #    order, so the combined block reads as one runnable sequence.
+  local rs_record_rel rs_status_rel rs_guard_rel rs_clear_rel
   rs_record_rel=$(sed -n "${record_heading_line},${publish_line}p" "$file" | grep -n "harden-ledger snapshot record --tally-file" | head -1 | cut -d: -f1)
   if [ -z "$rs_record_rel" ]; then
     echo "Record section missing the snapshot record literal"
     return 1
   fi
-  rs_clear_rel=$(sed -n "${record_heading_line},${publish_line}p" "$file" | grep -n '\.hardenNudgeReason = ""' | head -1 | cut -d: -f1)
+  rs_status_rel=$(sed -n "${record_heading_line},${publish_line}p" "$file" | grep -nF 'record_status=$?' | head -1 | cut -d: -f1)
+  if [ -z "$rs_status_rel" ]; then
+    echo "Record section missing the record_status capture"
+    return 1
+  fi
+  rs_guard_rel=$(sed -n "${record_heading_line},${publish_line}p" "$file" | grep -nF '"$record_status" -eq 0' | head -1 | cut -d: -f1)
+  if [ -z "$rs_guard_rel" ]; then
+    echo "Record section missing the record_status -eq 0 guard"
+    return 1
+  fi
+  rs_clear_rel=$(sed -n "${record_heading_line},${publish_line}p" "$file" | grep -nF '.hardenNudgeReason = ""' | head -1 | cut -d: -f1)
   if [ -z "$rs_clear_rel" ]; then
     echo "Record section missing the cache-clear literal"
     return 1
   fi
+
+  local rs_record_abs rs_status_abs rs_guard_abs rs_clear_abs
   rs_record_abs=$((record_heading_line + rs_record_rel - 1))
+  rs_status_abs=$((record_heading_line + rs_status_rel - 1))
+  rs_guard_abs=$((record_heading_line + rs_guard_rel - 1))
   rs_clear_abs=$((record_heading_line + rs_clear_rel - 1))
-  if [ "$rs_clear_abs" -le "$rs_record_abs" ]; then
-    echo "Record section's cache-clear literal is not after the record literal"
+
+  if [ "$rs_status_abs" -le "$rs_record_abs" ] || [ "$rs_guard_abs" -le "$rs_status_abs" ] || [ "$rs_clear_abs" -le "$rs_guard_abs" ]; then
+    echo "Record section's record/status/guard/clear literals are out of order"
     return 1
   fi
 
-  # 5. Both ledger record call sites carry --audited-pr-count.
+  # 5. The record literal and the cache-clear literal sit inside the same
+  #    fenced bash block (no ``` fence boundary between them), so they run
+  #    together as one Bash call: shell variables do not persist across
+  #    separate calls.
+  local between_fence_count
+  between_fence_count=$(sed -n "$((rs_record_abs + 1)),$((rs_clear_abs - 1))p" "$file" | grep -c '^```')
+  if [ "$between_fence_count" -ne 0 ]; then
+    echo "Record section's record and clear literals are not inside one fenced bash block"
+    return 1
+  fi
+
+  # 6. The cache-clear jq expression is single-sourced across the whole file.
+  local clear_count
+  clear_count=$(grep -cF '.hardenNudgeReason = "" | .checkedAt = 0' "$file")
+  if [ "$clear_count" -ne 1 ]; then
+    echo "the cache-clear jq expression appears $clear_count times, expected exactly 1"
+    return 1
+  fi
+
+  # 7. Both ledger record call sites carry --audited-pr-count.
   local decline_start defer_start
   decline_start=$(grep -n "^### decline" "$file" | head -1 | cut -d: -f1)
   defer_start=$(grep -n "^### defer" "$file" | head -1 | cut -d: -f1)
@@ -179,7 +221,7 @@ check_no_stale_phrasing() {
   record_heading_line=$(grep -n "^## Record the review (end of run)" "$copy" | head -1 | cut -d: -f1)
   publish_line=$(grep -n "^## Publish approved changes (end of run)" "$copy" | head -1 | cut -d: -f1)
   rec_rel=$(sed -n "${record_heading_line},${publish_line}p" "$copy" | grep -n "harden-ledger snapshot record --tally-file" | head -1 | cut -d: -f1)
-  clear_rel=$(sed -n "${record_heading_line},${publish_line}p" "$copy" | grep -n '\.hardenNudgeReason = ""' | head -1 | cut -d: -f1)
+  clear_rel=$(sed -n "${record_heading_line},${publish_line}p" "$copy" | grep -nF '.hardenNudgeReason = ""' | head -1 | cut -d: -f1)
   rec_abs=$((record_heading_line + rec_rel - 1))
   clear_abs=$((record_heading_line + clear_rel - 1))
   swap_lines "$copy" "$rec_abs" "$clear_abs"
@@ -187,24 +229,41 @@ check_no_stale_phrasing() {
   [ "$status" -ne 0 ]
 }
 
-@test "refuses when the record literal is deleted from the all-clear region" {
-  local copy="$BATS_TEST_TMPDIR/harden-allclear-no-record.md"
+@test "refuses when the all-clear region no longer references Record the review" {
+  local copy="$BATS_TEST_TMPDIR/harden-allclear-no-reference.md"
   cp "$HARDEN_MD" "$copy"
-  local allclear_start judge_line
+  local allclear_start
   allclear_start=$(grep -n 'candidate_count.*is .0.*unclassified.*is .null' "$copy" | head -1 | cut -d: -f1)
-  judge_line=$(grep -n "^## Judge-the-form logic" "$copy" | head -1 | cut -d: -f1)
-  delete_first_match_in_range "$copy" "$allclear_start" "$judge_line" "harden-ledger snapshot record --tally-file"
+  sed -i.bak "${allclear_start}s/Record the review/XXXXXXXXXX/" "$copy"
   run check_record_prose "$copy"
   [ "$status" -ne 0 ]
 }
 
-@test "refuses when the cache-clear step is deleted from the all-clear region" {
-  local copy="$BATS_TEST_TMPDIR/harden-allclear-no-clear.md"
+@test "refuses when the all-clear region regains a duplicate copy of the record-and-clear block" {
+  local copy="$BATS_TEST_TMPDIR/harden-allclear-duplicated-block.md"
   cp "$HARDEN_MD" "$copy"
-  local allclear_start judge_line
+  local allclear_start dup
   allclear_start=$(grep -n 'candidate_count.*is .0.*unclassified.*is .null' "$copy" | head -1 | cut -d: -f1)
-  judge_line=$(grep -n "^## Judge-the-form logic" "$copy" | head -1 | cut -d: -f1)
-  delete_first_match_in_range "$copy" "$allclear_start" "$judge_line" '.hardenNudgeReason = ""'
+  dup="$BATS_TEST_TMPDIR/dup-block.txt"
+  cat > "$dup" <<'EOF'
+.gaia/cli/gaia harden-ledger snapshot record --tally-file .gaia/local/harden/review-tally.json
+record_status=$?
+if [ "$record_status" -eq 0 ]; then
+  jq '.hardenNudgeReason = "" | .checkedAt = 0' "$CACHE" > "$tmp" && mv "$tmp" "$CACHE"
+fi
+EOF
+  insert_after "$copy" "$allclear_start" "$dup"
+  run check_record_prose "$copy"
+  [ "$status" -ne 0 ]
+}
+
+@test "refuses when the cache-clear jq expression is duplicated elsewhere in the file" {
+  local copy="$BATS_TEST_TMPDIR/harden-jq-duplicated.md"
+  cp "$HARDEN_MD" "$copy"
+  cat >> "$copy" <<'EOF'
+
+jq '.hardenNudgeReason = "" | .checkedAt = 0' "$CACHE" > "$tmp"
+EOF
   run check_record_prose "$copy"
   [ "$status" -ne 0 ]
 }
