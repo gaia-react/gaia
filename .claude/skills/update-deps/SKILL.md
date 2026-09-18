@@ -406,6 +406,19 @@ Run this as a **Haiku agent**. Its dispatch carries every Phase 6 duty, so pass 
 - **On a failed gate.** Restore every key it re-floored or removed to the value it held when this Phase 6 run began, run `pnpm dedupe` to apply the restore, and re-run the lockfile assertion. This is the counterpart of Wave A reverting its whole batch: one gate run cannot say which key broke it, so the restore takes them all. Report each restored removal as **retained (quality gate failed)** and each restored re-floor as **stale (re-floor failed)**. When it changed no key and the gate ran only for a drift repair, there is nothing to restore: report the failure for the maintainer to resolve.
 - **What to return.** The override audit results (removed / retained, each re-floored key, and each stale or unchecked key left for the maintainer) and the quality gate results, including a failed gate and whatever restore followed it, so the Phase 7 Quality gate section has the Phase 6 run to report.
 
+<!-- gaia:maintainer-only:start -->
+## Phase 6b: `.gaia/cli` pin sync (GAIA maintainer repository)
+
+`.gaia/cli` is a second workspace root with its own `package.json` and lockfile. `.gaia/cli/src/lint-pin-parity.test.ts` requires it to pin every devDependency it shares with the root at the root's version, except the keys of `MANIFEST_PARITY_EXEMPT` in that file. The phases above bump the root alone, so a run that moves a shared pin leaves the required `Vitest (.gaia/cli)` check red. Run this phase inline, after Phase 6 and before the report:
+
+1. For each devDependency declared in both root `package.json` and `.gaia/cli/package.json`, that is not a key of `MANIFEST_PARITY_EXEMPT`, and whose CLI spec differs from the root's, set the CLI spec to the root's verbatim. The direction is always CLI to root; never edit the root to match the CLI. Skip the rest of this phase only when nothing differs **and** the run left the root `pnpm-lock.yaml` unchanged: a root re-resolve can move a transitive version the pin-parity test compares without touching any pin.
+2. Run `pnpm -C .gaia/cli install`, then `pnpm -C .gaia/cli lint`, `pnpm -C .gaia/cli typecheck`, and `pnpm -C .gaia/cli test`. The pin-parity test also compares the versions both lockfiles resolve for a few transitive rule packages, which neither the pin edit nor the install repairs. When that half fails, follow the header's Repair paragraph for the lockfile parity test (re-resolve the lagging workspace with `pnpm update <package>`) rather than adding a pin.
+3. Run `pnpm -C .gaia/cli bundle`, then `bash .gaia/scripts/verify-cli-bundle-fresh.sh` from the repository root. Phase 8's `git add -A` commits any bundle that moved.
+4. Add a `.gaia/cli pin sync` row to the report's Quality gate table naming each raised pin (`<name>: <old> → <new>`) and the step 2 and 3 results. On a failure, keep the raised pins, since reverting them guarantees the red check this phase exists to prevent, and let the row carry the failure for the maintainer.
+
+The raised pins put `.gaia/cli/package.json` and its lockfile in the diff, which dispatches `code-audit-maintainer-node`. On a run that started on `main`/`master`, Phase 8's merge step covers that dispatch; on any other run, the branch owner does.
+<!-- gaia:maintainer-only:end -->
+
 ## Phase 7: Final report
 
 Build the report **only** from the agent reports returned to you, plus the snooze decision from Phase 1. Do not add rows from your own memory of the run.
@@ -418,6 +431,9 @@ Build the report **only** from the agent reports returned to you, plus the snooz
 - **Skipped packages**: _only_ packages that were attempted and reverted mid-run (peer-dep conflict, quality-gate failure, manual revert by an agent). **Never** include packages filtered out before installation by a policy rule (e.g. the ESLint 9.x cap or the release-age cooldown). Those are silent by design, surfacing them is noise that adopters see every run. When you cannot tell whether a package was policy-filtered before installation or attempted and reverted mid-run, include it in Skipped, a spurious row is recoverable but a silently dropped real failure is not. If nothing was actually skipped during the run, write "None" or omit the table.
 - **Snoozed (deferred this run)**: the companion groups the human chose to skip in the preview, with the version each was snoozed at. These quiet the statusline for 14 days (or until a newer version ships); they are not failures. Omit the section if the human chose "Update all".
 - **Quality gate**: the gate result reported by the agents, verbatim.
+<!-- gaia:maintainer-only:start -->
+- **Phase 6b**: runs inline rather than as an agent, so its `.gaia/cli pin sync` row is the one exception to building the report only from agent reports. Include it whenever Phase 6b ran past step 1, including a failed step it kept in the diff.
+<!-- gaia:maintainer-only:end -->
 
 If a section would be empty, write "None" rather than leaving it blank or fabricating filler.
 
@@ -465,7 +481,10 @@ git add -A
 git commit -F <commit-message-file>
 ```
 
-The commit **subject** must be `chore(deps): <concise summary of what moved>` (use `chore(deps-dev):` when every bump is a devDependency). That subject is load-bearing: it triggers the dep-bump bypass in the merge gate (`wiki/concepts/PR Merge Workflow.md`), so the PR is turnkey-mergeable without a code-audit-frontend marker. Routing the message through a file rather than `-m` keeps package-manager keywords from tripping shell-hook false positives. The Wave agents already ran the full quality gate over their changes, and Phase 6 kept only the override changes that passed it, so nothing else is owed before committing. A Phase 6 gate failure with nothing to restore is already in the report's Quality gate section for the maintainer.
+The commit **subject** must be `chore(deps): <concise summary of what moved>` (use `chore(deps-dev):` when every bump is a devDependency). That subject is load-bearing: it triggers the dep-bump bypass in the merge gate (`wiki/concepts/PR Merge Workflow.md`), so the PR needs no code-audit-frontend marker. The bypass waives that member only; any other member the diff dispatches still earns its own marker. Routing the message through a file rather than `-m` keeps package-manager keywords from tripping shell-hook false positives. The Wave agents already ran the full quality gate over their changes, and Phase 6 kept only the override changes that passed it, so nothing else is owed before committing. A Phase 6 gate failure with nothing to restore is already in the report's Quality gate section for the maintainer.
+<!-- gaia:maintainer-only:start -->
+A Phase 6b failure is the exception: it keeps its raised pins and reports through its `.gaia/cli pin sync` row, so the required `Vitest (.gaia/cli)` check stays red and step 3's queued merge waits on the maintainer rather than landing.
+<!-- gaia:maintainer-only:end -->
 
 Then branch on where the run started.
 
@@ -477,6 +496,9 @@ Then branch on where the run started.
    ```
 2. Open a PR against `main`. Title: the commit subject. Body: the migration report rendered as markdown, via `--body-file` on a temp file (same false-positive reason). Capture the PR number `<N>` and its URL.
 3. **Merge when green, then clean up locally.** This step runs only on a `main`/`master` run, it is what "completes the flow." Merge per `wiki/concepts/PR Merge Workflow.md` (the `chore(deps)` title clears its audit-marker gate via the dep-bump bypass):
+<!-- gaia:maintainer-only:start -->
+   First, run `bash .gaia/scripts/resolve-audit-spawn.sh` and spawn each member it names other than `code-audit-frontend`, per that workflow page's "Spawn the dispatched Code Audit Team members" section. Whenever Phase 6b raised a pin, `code-audit-maintainer-node` is among them. The `chore(deps)` title waives only `code-audit-frontend` (see the bypass paragraph in `wiki/concepts/PR Merge Workflow.md`), so each other member's earned marker is what completes the handshake. Skip this and `GAIA-Audit` stays at `members pending` and the queued merge waits on it indefinitely.
+<!-- gaia:maintainer-only:end -->
    ```bash
    gh pr merge <N> --squash --delete-branch --auto
    ```

@@ -47,7 +47,8 @@
 #   hasn't cleared yet, the POST is skipped (the button stays blocked) but the
 #   clearance the caller already wrote is untouched. A SUCCESS status is never
 #   posted without every dispatched member's marker present and none of them
-#   holding a live refusal, and an absent status never inverts into a cleared
+#   holding a live refusal, save a code-audit-frontend marker the chore(deps)
+#   title waiver excuses (a frontend refusal is never excused), and an absent status never inverts into a cleared
 #   gate. Order-independent: each member calls this script after writing its
 #   own marker, so whichever member finishes last is the one whose call
 #   actually posts.
@@ -304,7 +305,16 @@ fi
 # repoint the hook at a different tree, because the root it anchors on is
 # derived from the cwd it already had. Choosing which tree this hook answers
 # for is the caller's job, done by invoking the hook from that tree.
-head_sha="$( cd "$repo_root" && gh pr view --json headRefOid --jq .headRefOid 2>/dev/null || true )"
+#
+# The same read carries the pull request's title, on a second line, for the
+# chore(deps) waiver in the member-aware gate below. GitHub titles are single
+# line, so the first newline is an unambiguous split.
+pr_view="$( cd "$repo_root" && gh pr view --json headRefOid,title --jq '.headRefOid + "\n" + .title' 2>/dev/null || true )"
+head_sha="${pr_view%%$'\n'*}"
+pr_title=""
+case "$pr_view" in
+  *$'\n'*) pr_title="${pr_view#*$'\n'}" ;;
+esac
 if [ -z "$head_sha" ]; then
   # No PR resolvable: fall back to the upstream tracking tip, then local HEAD.
   head_sha="$(git -C "$repo_root" rev-parse '@{u}' 2>/dev/null || true)"
@@ -391,6 +401,20 @@ if [ "$post_state" = "success" ] \
   exit 0
 fi
 
+# The chore(deps) waiver, mirroring audit-stamp-trailer.sh's: a dep-bump pull
+# request waives code-audit-frontend on its title, through the same predicate
+# the merge hook and CI already read, so a co-dispatched member's earned marker
+# completes the handshake. It waives the missing frontend marker only and sits
+# after the loop's refusal read, so a frontend refusal stays pending under a
+# dep-bump title. Fail-closed: no pull request, an unreadable title, or an
+# absent predicate leave frontend pending.
+frontend_waived="false"
+chore_deps_predicate="${repo_root}/.gaia/scripts/chore-deps-skip.sh"
+if [ -n "$pr_title" ] && [ -f "$chore_deps_predicate" ] \
+   && [ "$(bash "$chore_deps_predicate" "$pr_title" 2>/dev/null || true)" = "true" ]; then
+  frontend_waived="true"
+fi
+
 resolver="${repo_root}/.gaia/scripts/resolve-audit-members.sh"
 if [ "$post_state" = "success" ] && [ -x "$resolver" ]; then
   resolver_rc=0
@@ -418,8 +442,10 @@ if [ "$post_state" = "success" ] && [ -x "$resolver" ]; then
     # gate would still deny, which is the divergence: the two readers must agree
     # about one state, and the gate's answer is the one that governs.
     if [ -z "$member_digest" ] \
-       || clearance_member_refused "$store_root" "$member_digest" "$m" \
-       || ! clearance_member_cleared "$store_root" "$member_digest" "$m"; then
+       || clearance_member_refused "$store_root" "$member_digest" "$m"; then
+      pending="${pending}${pending:+ }${m}"
+    elif ! clearance_member_cleared "$store_root" "$member_digest" "$m" \
+         && { [ "$m" != "code-audit-frontend" ] || [ "$frontend_waived" != "true" ]; }; then
       pending="${pending}${pending:+ }${m}"
     fi
   done <<< "$members"

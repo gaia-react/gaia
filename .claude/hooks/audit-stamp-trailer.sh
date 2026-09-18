@@ -13,7 +13,10 @@
 # Invocation
 #   .claude/hooks/audit-stamp-trailer.sh
 #
-#   Argument-less. Reads its inputs from the environment + git state.
+#   Argument-less. Reads its inputs from the environment + git state, plus the
+#   pull request's title through `gh`, read only when the member resolver
+#   dispatches code-audit-frontend and it has no marker (the chore(deps) waiver
+#   below).
 #
 # Required env input
 #   AUDIT_TREE_SHA      The tree-sha the audit reviewed (captured at audit
@@ -207,6 +210,63 @@ if [ -z "$frontend_digest" ]; then
   exit 0
 fi
 
+# The chore(deps) waiver: a dep-bump pull request waives code-audit-frontend on
+# its title, through the same predicate the merge hook and CI already read, so
+# a member co-dispatched on a dep-bump diff can complete the handshake with its
+# own earned marker. It waives the missing frontend marker only; a frontend
+# refusal still declines, at the frontend-refusal check and at the member
+# loop's refusal-first read, both below. Fail-closed: no gh, no pull request, an unreadable title, or an
+# absent predicate all leave frontend pending.
+#
+# The title is read at most once, and only when the resolver dispatches frontend
+# and its marker is missing, so a run with a frontend marker, or one frontend
+# does not audit at all, makes no network call. It is read HERE, ahead
+# of the stamp lock, not inside the member loop: the lock is reclaimed as stale
+# after 15 seconds with no heartbeat, so a `gh` call stalling inside it would let
+# a racing member take the lock and stamp a second trailer.
+#
+# Honest limit: the trailer this waiver lets stamp still carries the frontend
+# digest in field 2, and the readers that honor a trailer check version and
+# digest, never the title, so it stays valid if the pull request is later
+# retitled away from chore(deps). CI's own chore(deps) success status has the
+# same shape, and any content change rotates the digest and retires it for the
+# digest-checking readers. It does not retire it as an incremental-review anchor:
+# .github/audit/resolve-audit-base.sh reads a trailer as a whole-team anchor on
+# version alone, so after such a retitle and a later app/ change, frontend
+# reviews only the delta past the trailer. CI's chore(deps) status anchors the
+# same way.
+frontend_waiver=""
+chore_deps_waives_frontend() {
+  if [ -z "$frontend_waiver" ]; then
+    frontend_waiver="false"
+    local predicate="${repo_root}/.gaia/scripts/chore-deps-skip.sh" title=""
+    if [ -f "$predicate" ] && command -v gh >/dev/null 2>&1; then
+      title="$( cd "$repo_root" && gh pr view --json title --jq .title 2>/dev/null || true )"
+      if [ -n "$title" ] && [ "$(bash "$predicate" "$title" 2>/dev/null || true)" = "true" ]; then
+        frontend_waiver="true"
+      fi
+    fi
+  fi
+  [ "$frontend_waiver" = "true" ]
+}
+
+# The member set, resolved ahead of the stamp lock for the waiver's title read
+# above and consumed by the member-aware gate below, which also owns the
+# decisions on an absent or failing resolver. It depends only on the tree, which
+# nothing between here and the gate changes.
+resolver="${repo_root}/.gaia/scripts/resolve-audit-members.sh"
+resolver_rc=0
+members=""
+if [ -x "$resolver" ]; then
+  members="$( cd "$repo_root" && bash "$resolver" 2>/dev/null )" || resolver_rc=$?
+fi
+if [ -x "$resolver" ] && [ "$resolver_rc" -eq 0 ] \
+   && grep -qx 'code-audit-frontend' <<< "$members" \
+   && command -v clearance_member_cleared >/dev/null 2>&1 \
+   && ! clearance_member_cleared "$repo_root" "$frontend_digest" code-audit-frontend; then
+  chore_deps_waives_frontend || true
+fi
+
 # A multi-member diff has every dispatched Code Audit Team member invoke this
 # hook after writing their markers, and the member-aware gate below only passes
 # once the last member clears. Two members can pass the already-stamped
@@ -239,7 +299,8 @@ fi
 
 # -----------------------------------------------------------------------------
 # Member-aware gate: the trailer certifies that EVERY dispatched Code Audit Team
-# member cleared this CONTENT, not just the caller. Mirrors the member-aware
+# member cleared this CONTENT, not just the caller, save a code-audit-frontend
+# the chore(deps) waiver above excuses. Mirrors the member-aware
 # gate in .claude/hooks/post-audit-status.sh. Each member is keyed to its OWN
 # digest (owned files + machinery), not the frontend digest or the tree.
 # An ABSENT or non-executable resolver falls back to the caller's own clean
@@ -297,10 +358,7 @@ if clearance_member_refused "$repo_root" "$frontend_digest" code-audit-frontend;
   exit 0
 fi
 
-resolver="${repo_root}/.gaia/scripts/resolve-audit-members.sh"
 if [ -x "$resolver" ]; then
-  resolver_rc=0
-  members="$( cd "$repo_root" && bash "$resolver" 2>/dev/null )" || resolver_rc=$?
   if [ "$resolver_rc" -ne 0 ]; then
     emit_decline "member resolver could not answer"
     exit 0
@@ -320,9 +378,14 @@ if [ -x "$resolver" ]; then
     # it. Read cleared alone and that member counts as cleared, nothing lands in
     # $pending, and the trailer stamps a clean pass over a live refusal.
     if [ -z "$member_digest" ] \
-       || clearance_member_refused "$repo_root" "$member_digest" "$m" \
-       || ! clearance_member_cleared "$repo_root" "$member_digest" "$m"; then
+       || clearance_member_refused "$repo_root" "$member_digest" "$m"; then
       pending="${pending}${pending:+ }${m}"
+    elif ! clearance_member_cleared "$repo_root" "$member_digest" "$m"; then
+      # The cached answer only: the title read belongs ahead of the lock, so a
+      # frontend the pre-lock read never resolved stays pending here.
+      if [ "$m" != "code-audit-frontend" ] || [ "$frontend_waiver" != "true" ]; then
+        pending="${pending}${pending:+ }${m}"
+      fi
     fi
   done <<< "$members"
   if [ -n "$pending" ]; then
