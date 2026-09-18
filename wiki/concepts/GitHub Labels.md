@@ -37,9 +37,10 @@ The `audience` axis answers two questions at two layers, under one name. A regis
 | Label | Color | Description | Created by |
 | --- | --- | --- | --- |
 | `tech-debt` | `ededed` | Out-of-scope review finding, tracked for a later drain | tech-debt |
-| `bug` | `d73a4a` | Something GAIA ships is not working | always |
+| `bug` | `d73a4a` | Existing behavior is broken or wrong | always |
 | `enhancement` | `a2eeef` | New feature or request | always |
-| `security` | `a1121b` | Dependency CVE or security defect, opened by GAIA CI | gaia-ci |
+| `documentation` | `0075ca` | Improvements or additions to documentation | always |
+| `security` | `a1121b` | Security defect or dependency CVE | gaia-ci |
 
 ### Urgency
 
@@ -61,9 +62,9 @@ The `audience` axis answers two questions at two layers, under one name. A regis
 
 | Label | Color | Description | Created by |
 | --- | --- | --- | --- |
-| `footprint:narrow` | `d4c5f9` | Fix is one logical unit in one file, no contract change; drains inline | tech-debt |
-| `footprint:wide` | `8957e5` | Fix is larger or structural; drains inline | tech-debt |
-| `footprint:spec` | `4c2889` | Design-first; drains via a /gaia-spec handoff | tech-debt |
+| `footprint:narrow` | `d4c5f9` | Fix is one logical unit in one file, no contract change | tech-debt |
+| `footprint:wide` | `8957e5` | Fix spans files, changes a contract, or is structural | tech-debt |
+| `footprint:spec` | `4c2889` | Fix must start with a design SPEC; drains via /gaia-spec | tech-debt |
 
 ### Lifecycle
 
@@ -83,7 +84,7 @@ The `audience` axis answers two questions at two layers, under one name. A regis
 
 | Label | Color | Description | Created by |
 | --- | --- | --- | --- |
-| `wontfix` | `e5e5e5` | Deliberately declined; never re-file this finding | always |
+| `wontfix` | `e5e5e5` | Deliberately declined; do not re-file | always |
 
 ### Origin and trigger
 
