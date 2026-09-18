@@ -105,7 +105,10 @@ push_branch() {
 #   auth   → exit 0 (ok) or 1 (fail) per $1
 #   repo   → print the fixed slug for `gh repo view --json nameWithOwner --jq`
 #   pr     → print the pushed head sha (from PUSHED_HEAD_FILE, written by
-#            push_branch) for `gh pr view --json headRefOid --jq .headRefOid`
+#            push_branch) for `gh pr view --json headRefOid,title`, then the
+#            title on a second line when PR_TITLE_FILE holds one (the shape
+#            the script's `--jq` joins the two fields into); no title file
+#            prints the sha alone, which reads as an unreadable title
 #   api    → verify the `statuses/<sha>` target exists on the bare REMOTE
 #            before accepting: append the full argv to POST_LOG and exit 0
 #            only when the sha is a fetchable commit there, else exit 1 and
@@ -121,6 +124,7 @@ auth_ok="$auth_ok"
 record="$POST_LOG"
 remote="$REMOTE"
 pushed_head_file="$PUSHED_HEAD_FILE"
+pr_title_file="$BATS_TEST_TMPDIR/pr-title"
 EOF
   cat >> "$GH_BIN/gh" <<'EOF'
 case "$1" in
@@ -131,7 +135,10 @@ case "$1" in
     printf 'gaia-react/gaia\n'
     ;;
   pr)
-    [ -f "$pushed_head_file" ] && cat "$pushed_head_file" || exit 1
+    [ -f "$pushed_head_file" ] || exit 1
+    cat "$pushed_head_file"
+    [ -s "$pr_title_file" ] && { printf '\n'; cat "$pr_title_file"; }
+    printf '\n'
     ;;
   api)
     sha="${2##*statuses/}"
@@ -363,6 +370,88 @@ commit_mixed_diff() {
 
   # Nothing is posted, so a failure status already standing for this head is
   # never overwritten by a success this member never earned.
+  [ ! -f "$POST_LOG" ]
+}
+
+# The chore(deps) waiver. A dep-bump pull request waives code-audit-frontend on
+# its title, the predicate the merge hook and CI already read, so a member
+# co-dispatched on a dep-bump diff completes the handshake with its own earned
+# marker. Fail-closed on a non-matching or unreadable title, and refusal-first:
+# a frontend refusal still keeps frontend pending under a dep-bump title.
+install_chore_deps_predicate() {
+  mkdir -p "$SANDBOX/.gaia/scripts"
+  cp "$THIS_DIR/../../../.gaia/scripts/chore-deps-skip.sh" "$SANDBOX/.gaia/scripts/chore-deps-skip.sh"
+}
+
+# Run the shell member's handshake with frontend unmarked, the title (if any)
+# already written to the mock's title file.
+run_shell_member_handshake() {
+  shell_digest=$(digest_of "$SANDBOX" code-audit-maintainer-shell)
+  mkdir -p "$SANDBOX/.gaia/local/audit"
+  marker=".gaia/local/audit/${shell_digest}.code-audit-maintainer-shell.ok"
+  write_body "$SANDBOX/$marker" code-audit-maintainer-shell
+  run run_helper "$marker"
+}
+
+@test "chore(deps) waiver: a dep-bump title waives frontend, so the co-dispatched member's marker posts success" {
+  install_gh_mock ok
+  install_resolver
+  install_chore_deps_predicate
+  commit_mixed_diff
+  printf '%s' "chore(deps): bump vite to 8.3.0" > "$BATS_TEST_TMPDIR/pr-title"
+  head_sha=$(git -C "$SANDBOX" rev-parse HEAD)
+  tree=$(current_tree)
+  frontend_digest=$(digest_of "$SANDBOX" code-audit-frontend)
+
+  run_shell_member_handshake
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "status: posted GAIA-Audit success $(git -C "$SANDBOX" rev-parse --short HEAD)" ]
+  grep -qF -- "statuses/${head_sha}" "$POST_LOG"
+  grep -qF -- "state=success" "$POST_LOG"
+  grep -qF -- "description=1.2.3 ${frontend_digest} ${tree}" "$POST_LOG"
+}
+
+@test "chore(deps) waiver: a non-dep-bump title leaves frontend pending" {
+  install_gh_mock ok
+  install_resolver
+  install_chore_deps_predicate
+  commit_mixed_diff
+  printf '%s' "fix(cli): raise shared pins" > "$BATS_TEST_TMPDIR/pr-title"
+
+  run_shell_member_handshake
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "status: declined: members pending code-audit-frontend" ]
+  [ ! -f "$POST_LOG" ]
+}
+
+@test "chore(deps) waiver: an unreadable PR title fails closed and leaves frontend pending" {
+  install_gh_mock ok
+  install_resolver
+  install_chore_deps_predicate
+  commit_mixed_diff
+
+  run_shell_member_handshake
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "status: declined: members pending code-audit-frontend" ]
+  [ ! -f "$POST_LOG" ]
+}
+
+@test "chore(deps) waiver: a frontend refusal keeps frontend pending under a dep-bump title" {
+  install_gh_mock ok
+  install_resolver
+  install_chore_deps_predicate
+  commit_mixed_diff
+  printf '%s' "chore(deps): bump vite to 8.3.0" > "$BATS_TEST_TMPDIR/pr-title"
+  frontend_digest=$(digest_of "$SANDBOX" code-audit-frontend)
+  write_refusal_body "$SANDBOX/.gaia/local/audit/${frontend_digest}.refused" code-audit-frontend
+
+  run_shell_member_handshake
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "status: declined: members pending code-audit-frontend" ]
   [ ! -f "$POST_LOG" ]
 }
 

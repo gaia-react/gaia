@@ -13,7 +13,9 @@
 # Invocation
 #   .claude/hooks/audit-stamp-trailer.sh
 #
-#   Argument-less. Reads its inputs from the environment + git state.
+#   Argument-less. Reads its inputs from the environment + git state, plus the
+#   pull request's title through `gh`, and only when code-audit-frontend is
+#   dispatched and has no marker (the chore(deps) waiver below).
 #
 # Required env input
 #   AUDIT_TREE_SHA      The tree-sha the audit reviewed (captured at audit
@@ -297,6 +299,29 @@ if clearance_member_refused "$repo_root" "$frontend_digest" code-audit-frontend;
   exit 0
 fi
 
+# The chore(deps) waiver: a dep-bump pull request waives code-audit-frontend on
+# its title, through the same predicate the merge hook and CI already read, so
+# a member co-dispatched on a dep-bump diff can complete the handshake with its
+# own earned marker. It waives the missing frontend marker only; a frontend
+# refusal still declines, at the check above and at the loop's refusal-first
+# read below. Fail-closed: no gh, no pull request, an unreadable title, or an
+# absent predicate all leave frontend pending. The title is read lazily, at
+# most once, so a run with a frontend marker makes no network call.
+frontend_waiver=""
+chore_deps_waives_frontend() {
+  if [ -z "$frontend_waiver" ]; then
+    frontend_waiver="false"
+    local predicate="${repo_root}/.gaia/scripts/chore-deps-skip.sh" title=""
+    if [ -f "$predicate" ] && command -v gh >/dev/null 2>&1; then
+      title="$( cd "$repo_root" && gh pr view --json title --jq .title 2>/dev/null || true )"
+      if [ -n "$title" ] && [ "$(bash "$predicate" "$title" 2>/dev/null || true)" = "true" ]; then
+        frontend_waiver="true"
+      fi
+    fi
+  fi
+  [ "$frontend_waiver" = "true" ]
+}
+
 resolver="${repo_root}/.gaia/scripts/resolve-audit-members.sh"
 if [ -x "$resolver" ]; then
   resolver_rc=0
@@ -320,9 +345,12 @@ if [ -x "$resolver" ]; then
     # it. Read cleared alone and that member counts as cleared, nothing lands in
     # $pending, and the trailer stamps a clean pass over a live refusal.
     if [ -z "$member_digest" ] \
-       || clearance_member_refused "$repo_root" "$member_digest" "$m" \
-       || ! clearance_member_cleared "$repo_root" "$member_digest" "$m"; then
+       || clearance_member_refused "$repo_root" "$member_digest" "$m"; then
       pending="${pending}${pending:+ }${m}"
+    elif ! clearance_member_cleared "$repo_root" "$member_digest" "$m"; then
+      if [ "$m" != "code-audit-frontend" ] || ! chore_deps_waives_frontend; then
+        pending="${pending}${pending:+ }${m}"
+      fi
     fi
   done <<< "$members"
   if [ -n "$pending" ]; then

@@ -26,6 +26,10 @@
 #                                               lib without the refusal reader declines
 #   11. UAT-008: stamped trailer's field 2 is the frontend content digest
 #       (64-hex) and field 3 is the real HEAD tree (40-hex), distinctly
+#   12. chore(deps) waiver                   -> a dep-bump PR title waives an unmarked
+#                                               code-audit-frontend; a non-matching or
+#                                               unreadable title, or an absent predicate,
+#                                               leaves it pending
 #
 # The helper never pushes; the agent caller pushes after writing the
 # audit marker (see .claude/agents/code-review-audit.md "Audit marker
@@ -693,6 +697,115 @@ EOF
 
   trailer=$(trailer_on_head)
   [ "$trailer" = "GAIA-Audit: 1.2.3 ${expected_digest} ${before_tree}" ]
+}
+
+# -----------------------------------------------------------------------------
+# chore(deps) waiver: a dep-bump PR waives code-audit-frontend on its title, the
+# same predicate the merge hook and CI read, so a co-dispatched member's earned
+# marker is enough to stamp. The waiver is fail-closed: an unreadable title, a
+# non-matching title, or an absent predicate leaves frontend pending exactly as
+# before. Every case writes the shell member's marker and leaves frontend
+# unmarked, the shape a /update-deps PR that also touches .gaia/cli presents.
+# -----------------------------------------------------------------------------
+
+# Copy the real chore(deps) predicate into the sandbox and commit it, ahead of
+# any feature branch so it neither dirties the tree nor joins the test's diff.
+install_chore_deps_predicate() {
+  local src
+  src="$(cd "$BATS_TEST_DIRNAME/../../../.gaia/scripts" && pwd)/chore-deps-skip.sh"
+  mkdir -p "$REPO/.gaia/scripts"
+  cp "$src" "$REPO/.gaia/scripts/chore-deps-skip.sh"
+  git -C "$REPO" add .gaia/scripts/chore-deps-skip.sh
+  git -C "$REPO" commit --quiet -m "install chore(deps) predicate"
+}
+
+# A fake `gh` whose `pr view` prints $1 as the PR title, or exits non-zero when
+# $1 is empty (gh off a PR branch, or unauthenticated).
+install_title_stub() {
+  FAKEBIN=$(mktemp -d -t audit-stamp-fakebin-XXXXXX)
+  printf '%s' "${1:-}" > "$FAKEBIN/pr-title"
+  cat > "$FAKEBIN/gh" <<EOF
+#!/usr/bin/env bash
+title_file="$FAKEBIN/pr-title"
+EOF
+  cat >> "$FAKEBIN/gh" <<'EOF'
+case "$1" in
+  pr)
+    [ -s "$title_file" ] || exit 1
+    cat "$title_file"; printf '\n'
+    ;;
+  *) exit 0 ;;
+esac
+EOF
+  chmod +x "$FAKEBIN/gh"
+}
+
+# Run the hook with the shell member cleared and frontend unmarked, the title
+# stub on PATH. Leaves the pre-run HEAD in $before_sha and tree in $before_tree.
+run_waiver_case() {
+  git -C "$REPO" remote add origin "$REMOTE"
+  git -C "$REPO" push --quiet --set-upstream origin feature
+  before_sha=$(git -C "$REPO" rev-parse HEAD)
+  before_tree=$(git -C "$REPO" rev-parse "HEAD^{tree}")
+  write_marker code-audit-maintainer-shell
+  cd "$REPO" || return 1
+  PATH="$FAKEBIN:$PATH" AUDIT_TREE_SHA="$before_tree" AUDIT_SELF_HEALED="false" run "$HOOK_ABS"
+}
+
+@test "chore(deps) waiver: a dep-bump title waives frontend, so the co-dispatched member's marker stamps" {
+  install_resolver
+  install_chore_deps_predicate
+  commit_mixed_diff
+  install_title_stub "chore(deps): bump vite to 8.3.0"
+  expected_digest=$(digest_of "$REPO" code-audit-frontend)
+
+  run_waiver_case
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "stamp: empty commit (created locally)" ]
+  [ "$before_sha" != "$(git -C "$REPO" rev-parse HEAD)" ]
+  [ "$(trailer_on_head)" = "GAIA-Audit: 1.2.3 ${expected_digest} ${before_tree}" ]
+}
+
+@test "chore(deps) waiver: a non-dep-bump title leaves frontend pending" {
+  install_resolver
+  install_chore_deps_predicate
+  commit_mixed_diff
+  install_title_stub "fix(cli): raise shared pins"
+
+  run_waiver_case
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "stamp: declined: members pending code-audit-frontend" ]
+  [ "$before_sha" = "$(git -C "$REPO" rev-parse HEAD)" ]
+  [ -z "$(trailer_on_head)" ]
+}
+
+@test "chore(deps) waiver: an unreadable PR title fails closed and leaves frontend pending" {
+  install_resolver
+  install_chore_deps_predicate
+  commit_mixed_diff
+  install_title_stub ""
+
+  run_waiver_case
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "stamp: declined: members pending code-audit-frontend" ]
+  [ "$before_sha" = "$(git -C "$REPO" rev-parse HEAD)" ]
+  [ -z "$(trailer_on_head)" ]
+}
+
+@test "chore(deps) waiver: an absent predicate fails closed even on a dep-bump title" {
+  install_resolver
+  commit_mixed_diff
+  install_title_stub "chore(deps): bump vite to 8.3.0"
+
+  run_waiver_case
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "stamp: declined: members pending code-audit-frontend" ]
+  [ "$before_sha" = "$(git -C "$REPO" rev-parse HEAD)" ]
+  [ -z "$(trailer_on_head)" ]
 }
 
 # -----------------------------------------------------------------------------
