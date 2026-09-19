@@ -520,6 +520,11 @@ Verification is identical under both isolation modes: poll the PR until it repor
 
 ```bash
 gh pr merge <N> --squash --delete-branch [--auto]
+```
+
+Then poll. The loop is the reusable part: a caller that already issued its own `gh pr merge` runs only this block.
+
+```bash
 for i in 1 2 3 4 5; do
   verdict=$(gh pr view <N> --json state,mergeable \
     --jq 'if .state == "MERGED" then "MERGED" elif .mergeable == "CONFLICTING" then "CONFLICTING" else "WAITING" end')

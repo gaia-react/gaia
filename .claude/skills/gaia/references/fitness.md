@@ -326,7 +326,7 @@ Heal already cut and switched to `chore/gaia-fitness-<timestamp>` (the `$BRANCH`
      Relay the tally's `Cost:` line as the last line of the reply, after the merged PR URL.
 
    - **conflict** → repair it per that page's `### Conflict found mid-wait` and resume the poll.
-   - **failed required check** → name the check and say the merge will not land until it is fixed, then record cost and leave the branch in place exactly as the still-queued arm below does.
+   - **failed required check** → name the check and say the merge will not land until it is fixed, then run the still-queued arm's tally command below, print the PR URL, and keep the local branch, without that arm's lands-when-checks-pass note.
    - **still queued** → record cost (pass-through: `gh pr create` above already printed the URL), print the PR URL, note auto-merge is queued and lands when checks pass, and do **not** delete the local branch or switch off it.
 
      ```bash

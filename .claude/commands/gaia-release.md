@@ -166,7 +166,7 @@ gh pr merge <N> --merge --auto --delete-branch
 # merge; GitHub completes it once checks pass.
 ```
 
-Then run the bounded poll in `wiki/concepts/PR Merge Workflow.md` (`## Post-merge verification before cleanup`) with a 20-iteration bound in place of its 5, since the release checks run longer. Do not run any local cleanup or tagging until it confirms `MERGED`. On `CONFLICTING`, repair per that page's `### Conflict found mid-wait` and resume; on `CHECK_FAILED`, inspect the failing check; on a timeout, inspect `gh pr view <N>` for a stuck merge queue.
+Then run the poll loop in `wiki/concepts/PR Merge Workflow.md` (`## Post-merge verification before cleanup`), without that section's own `gh pr merge` line, since the merge above is already queued with `--merge`, and with a 20-iteration bound in place of its 5, since the release checks run longer. Do not run any local cleanup or tagging until it confirms `MERGED`. On `CONFLICTING`, repair per that page's `### Conflict found mid-wait` and resume; on `CHECK_FAILED`, inspect the failing check; on a timeout, inspect `gh pr view <N>` for a stuck merge queue.
 
 ### 12. Tag the merge commit
 
