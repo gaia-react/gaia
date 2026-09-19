@@ -3,6 +3,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
@@ -50,6 +51,32 @@ describe('attribution cache', () => {
     );
 
     expect(() => readAttributionCache(root)).not.toThrow();
+    expect(readAttributionCache(root)).toEqual(emptyAttributionCache());
+  });
+
+  // v2 attributions carry a failure_mode cut at the bullet's first line, so a
+  // v2 cache must re-attribute rather than serve that text forever.
+  test('a cache stamped v2 reads as empty', () => {
+    const root = makeRoot();
+
+    writeAttributionCache(root, {
+      ...emptyAttributionCache(),
+      high_water_merged_at: '2026-01-01T00:00:00Z',
+    });
+
+    const cachePath = path.join(
+      root,
+      '.gaia',
+      'local',
+      'cache',
+      'residual-attribution.json'
+    );
+
+    writeFileSync(
+      cachePath,
+      readFileSync(cachePath, 'utf8').replace('"schema":"v3"', '"schema":"v2"')
+    );
+
     expect(readAttributionCache(root)).toEqual(emptyAttributionCache());
   });
 
