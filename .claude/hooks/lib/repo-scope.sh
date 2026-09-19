@@ -28,10 +28,12 @@
 # where git's last-wins semantics defeat a single capture) returns 1 so the
 # caller still enforces.
 #
-# Honest limit: a command is recognised as git or gh by its literal name, as
+# Honest limits: a command is recognised as git or gh by its literal name, as
 # the consumers' own arming matches are. A name the shell assembles by
 # expansion (`g$'i't`, a glob such as `/usr/bin/gi?`) is not read as either
-# program, so after a foreign command it can read foreign.
+# program, so after a foreign command it can read foreign. The word scan
+# models neither heredocs nor ANSI-C quoting; the quote desync either can cause
+# is caught only where the commands it hides name git or gh.
 
 # The repository name a git remote URL or a gh [HOST/]OWNER/REPO value ends
 # in, lowercased because GitHub resolves names case-insensitively, with a
@@ -189,6 +191,7 @@ _gaia_repo_scope_verdict() {
       fi
       kind=0
       _gaia_repo_scope_segment || kind=$?
+      [ "$kind" = 1 ] && _gaia_repo_scope_swallowed && kind=2
       [ "$kind" = 2 ] && return 1
       [ "$kind" = 1 ] && foreign=1
       _gaia_repo_scope_opens_group && opaque=1
@@ -204,10 +207,11 @@ _gaia_repo_scope_verdict() {
     [ "$GAIA_FIRST_COMMAND_CLOSED" = 1 ] || break
     pos="$GAIA_FIRST_COMMAND_END"
     # A comment runs to the end of its line, and the next line is a command.
+    # A comment that closed a command already ended its list above. One on a
+    # line of its own, after a trailing `&&`, `||` or `|`, does not: bash
+    # carries that list or pipeline onto the next line, so the separator the
+    # walk last read still stands.
     if [ "${cmd:$((pos - 1)):1}" = "#" ]; then
-      sep_before=seq
-      [ "$cond_move" = 1 ] && dir_known=0
-      list_moved=0; cond_move=0
       rest="${cmd:$pos}"
       case "$rest" in *"$NL"*) ;; *) break ;; esac
       rest="${rest%%"$NL"*}"
@@ -240,6 +244,28 @@ _gaia_repo_scope_tool_end() {
   done
 }
 
+# 0 when a word after the first of the command the scan just read names git
+# or gh beside a command separator or a newline. The scan models neither a
+# heredoc nor ANSI-C quoting, so an apostrophe in a heredoc body, or a `$'\''`,
+# can open a quoted span the shell never opened and carry the commands after
+# it into one word of this command. A foreign command holding one would hide
+# them, so it enforces instead. A `--body` that only mentions git stays
+# foreign; one that also holds a `;` enforces.
+_gaia_repo_scope_swallowed() {
+  local i n=${#GAIA_FIRST_COMMAND_WORDS[@]} tok NL=$'\n'
+  i=1
+  while [ "$i" -lt "$n" ]; do
+    tok="${GAIA_FIRST_COMMAND_WORDS[$i]}"
+    i=$((i + 1))
+    case "$tok" in
+      *';'* | *'&'* | *'|'* | *"$NL"*)
+        [[ "$tok" =~ $_GAIA_REPO_SCOPE_TOOL_RE ]] && return 0
+        ;;
+    esac
+  done
+  return 1
+}
+
 # 0 when the command the scan just read opens or closes a construct that scopes
 # a `cd` away from the commands after it: a subshell, a group, a function body
 # or definition, a command or process substitution, a heredoc, or a compound
@@ -267,8 +293,10 @@ _gaia_repo_scope_opens_group() {
 # Any other command that names either program anywhere in its words (a
 # subshell, `env` or `VAR=` prefix, `$( )`, backticks, `bash -c`, `xargs`) is
 # a shape this walk does not model, so it is home. A heredoc body's lines reach
-# here as commands: one naming git or gh enforces, and one starting `cd` moves
-# nothing, because the heredoc left the walk opaque.
+# here as commands and are classified like any other: a body line reading as a
+# foreign `gh -R` counts as foreign, one naming git or gh any other way
+# enforces, and one starting `cd` moves nothing, because the heredoc left the
+# walk opaque.
 _gaia_repo_scope_segment() {
   local n=${#GAIA_FIRST_COMMAND_WORDS[@]}
   local i tok target cdir="" ccount=0 ghrepo="" name r

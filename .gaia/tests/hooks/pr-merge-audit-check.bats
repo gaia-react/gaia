@@ -1425,6 +1425,22 @@ gh pr merge 30 --squash"
   grep -qF -- '"permissionDecision": "deny"' <<<"$output"
 }
 
+# A comment line after `&&` does not end the list, so the `cd` after it may
+# never run and the merge after that is this repository's.
+@test "a cd continued past a comment line after && does not exempt a later home merge" {
+  commit_files "app/x.ts" "export const x = 1"
+  local other
+  other=$(mktemp -d -t merge-other-XXXXXX)
+  git -C "$other" init --quiet --initial-branch=main
+
+  run_merge_hook "false && # c
+cd $other
+gh pr merge 30 --squash"
+  rm -rf "$other"
+  [ "$status" -eq 0 ]
+  grep -qF -- '"permissionDecision": "deny"' <<<"$output"
+}
+
 @test "a call whose every command is foreign exits before the gate" {
   commit_files "app/x.ts" "export const x = 1"
   git -C "$REPO" remote add origin https://github.com/gaia-react/gaia.git

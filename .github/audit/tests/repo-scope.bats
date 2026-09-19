@@ -374,6 +374,7 @@ git commit -m y"
   [ "$status" -ne 0 ]
   run in_home "gh pr merge 5 -R other/x && env git commit -m y"
   [ "$status" -ne 0 ]
+  # shellcheck disable=SC2016 # the unexpanded substitution is the case
   run in_home 'gh pr merge 5 -R other/x && echo $(git commit -m y)'
   [ "$status" -ne 0 ]
   run in_home "gh pr merge 5 -R other/x && bash -c 'git commit -m y'"
@@ -449,6 +450,44 @@ git commit -m y"
   run in_home "$f; false && cd $SIBLING_REPO # note
 git commit -m y"
   [ "$status" -ne 0 ]
+}
+
+# A comment on a line of its own does not end the list or pipeline a
+# trailing `&&`, `||` or `|` carries onto the next line.
+@test "a cd continued past a comment line after &&, || or | does not move a later home command: home (enforce)" {
+  add_widget_remote "$HOME_REPO"
+  local f="gh pr view 5 -R other/x"
+  run in_home "$f; false && # c
+cd $SIBLING_REPO
+git commit -m y"
+  [ "$status" -ne 0 ]
+  run in_home "$f; true || # c
+cd $SIBLING_REPO
+git commit -m y"
+  [ "$status" -ne 0 ]
+  run in_home "$f; echo | # c
+cd $SIBLING_REPO
+git commit -m y"
+  [ "$status" -ne 0 ]
+}
+
+# The scan models neither heredocs nor ANSI-C quoting, so a stray apostrophe
+# can open a span the shell never opened and fold the home commands after it
+# into one word of a foreign command.
+@test "home commands folded into a foreign command by a quote the shell never opened: home (enforce)" {
+  add_widget_remote "$HOME_REPO"
+  run in_home "cat <<EOF
+gh pr view 5 -R other/x --title don't
+EOF
+git commit -m y
+echo \"it's\""
+  [ "$status" -ne 0 ]
+  local ansi
+  ansi="gh pr view 5 -R other/x \$'\\''; git commit --no-verify -m 'x'"
+  run in_home "$ansi"
+  [ "$status" -ne 0 ]
+  run in_home "gh pr create -R other/x --title t --body 'mentions git only'"
+  [ "$status" -eq 0 ]
 }
 
 @test "a cd the shell certainly runs still moves the commands after it: foreign (allow)" {
