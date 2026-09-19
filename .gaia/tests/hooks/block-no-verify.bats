@@ -138,6 +138,28 @@ git commit --no-verify -m y"
   assert_denied_by_json
 }
 
+# An assignment prefix whose name ends in `e` reads like a qualifier opener
+# with `=` as its delimiter; the rewrite must leave it alone.
+@test "a subshell commit behind an assignment ending in e is still read as git" {
+  run_hook '(name=v git commit -n -m x)'
+  assert_denied_by_json
+  run_hook '(name=v HUSKY=0 git commit -m x)'
+  assert_denied_by_json
+  run_hook '(date=1 git push --no-verify)'
+  assert_denied_by_json
+  # shellcheck disable=SC2016
+  run_hook 'echo $(one=1 git commit -n -m x)'
+  assert_denied_by_json
+}
+
+@test "both commit guards carry the same segment rewrite" {
+  local a b
+  a=$(sed -n '/^cut_hidden_openers() {$/,/^}$/p' "$HOOKS_SRC/block-no-verify.sh")
+  b=$(sed -n '/^cut_hidden_openers() {$/,/^}$/p' "$HOOKS_SRC/block-main-destructive-git.sh")
+  [ -n "$a" ]
+  [ "$a" = "$b" ]
+}
+
 @test "a commit subject carrying a parenthesised scope is not read as a qualifier" {
   run_hook 'git commit -m "feat(core): x"'
   assert_allowed_by_json

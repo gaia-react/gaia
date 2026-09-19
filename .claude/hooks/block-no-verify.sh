@@ -119,12 +119,15 @@ floor_msg() {
 # onto the qualifier's last word. Every rewrite is additive, never hiding a
 # segment the plain split would act on: the funsub copy removes nothing; a
 # qualifier rewrite only reaches the first word of a segment that already
-# begins after a `(`, never one carrying an `=`, so an env-var prefix and a
-# real `git` command word are untouched; the closer rewrite only reaches text a
-# `)` already cuts. block-main-destructive-git.sh carries the same rewrite.
+# begins after a `(`, and neither the text before its `e` nor the delimiter
+# after it may be an `=`, so an env-var prefix (`name=v`, whose name ends in
+# `e`) and a real `git` command word are untouched; the closer rewrite only
+# reaches text a `)` already cuts. Only the outermost of nested funsubs is
+# copied out. block-main-destructive-git.sh carries the same rewrite, and
+# block-no-verify.bats pins the two copies identical.
 cut_hidden_openers() {
   sed -E -e 's/\$\{[[:space:]]+([^;|&()]*)/&;\1/g' \
-    -e 's/\((#q)?[^()[:space:]=]*(e[^[:alnum:][:space:]]["'"'"']?|\+)/;/g' \
+    -e 's/\([^()[:space:]=]*(e[^[:alnum:][:space:]=]["'"'"']?|\+)/;/g' \
     -e 's/(["'"'"'][^[:alnum:][:space:]()]?|[]}>])\)/;/g'
 }
 

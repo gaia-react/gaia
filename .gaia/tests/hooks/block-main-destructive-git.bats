@@ -395,6 +395,19 @@ git commit -m y"
   assert_denied_by_json
 }
 
+# An assignment prefix whose name ends in `e` reads like a qualifier opener
+# with `=` as its delimiter; the rewrite must leave it alone.
+@test "a subshell commit or push behind an assignment ending in e is still read as git" {
+  on_main
+  run_hook '(name=v git commit -m x)'
+  assert_denied_by_json
+  on_feature
+  run_hook '(name=v git push origin main)'
+  assert_denied_by_json
+  run_hook '(mode=1 git push --force origin HEAD)'
+  assert_denied_by_json
+}
+
 @test "a call whose every command is foreign still passes a commit to main" {
   on_main
   git -C "$REPO" remote add origin https://github.com/acme/widget.git
