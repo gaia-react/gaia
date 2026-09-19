@@ -231,7 +231,10 @@ default_branch=$(git -C "$tree_root" symbolic-ref --quiet refs/remotes/origin/HE
   | sed 's@^refs/remotes/origin/@@')
 [ -n "$default_branch" ] || default_branch="main"
 
-base=$(git -C "$tree_root" merge-base HEAD "origin/${default_branch}" 2>/dev/null \
+# Fully qualified: the short `origin/<default>` resolves a local branch or tag
+# of that name first, which would scope the diff from a base the audit gate
+# does not use.
+base=$(git -C "$tree_root" merge-base HEAD "refs/remotes/origin/${default_branch}" 2>/dev/null \
   || git -C "$tree_root" merge-base HEAD "${default_branch}" 2>/dev/null \
   || true)
 [ -n "$base" ] || exit 0
