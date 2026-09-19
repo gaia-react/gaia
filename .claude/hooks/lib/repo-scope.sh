@@ -269,7 +269,10 @@ _gaia_repo_scope_swallowed() {
 
 # 0 when a word after the first of the command the scan just read opens a
 # command substitution, a backtick, or a process substitution, and a word after
-# the first names git or gh. The shell runs that payload in its own directory
+# the first names git or gh. The openers include zsh's `=( )` and bash 5.3's
+# `${ cmd; }`, whose unquoted opener the scan hands back as a word ending in
+# `${`. A `${| cmd; }` needs no arm: the scan splits it at the pipe, so its
+# payload is a command of its own. The shell runs that payload in its own directory
 # before the command itself, so the command's `git -C` or `gh -R` never
 # reaches it, and a foreign command holding one enforces
 # (gaia-react/gaia#2148). The scan keeps a quoted substitution as one word and
@@ -285,7 +288,9 @@ _gaia_repo_scope_substitutes() {
     tok="${GAIA_FIRST_COMMAND_WORDS[$i]}"
     i=$((i + 1))
     # shellcheck disable=SC2016 # literal openers matched in the word, not expansions
-    case "$tok" in *'$('* | *'`'* | *'<('* | *'>('*) opener=1 ;; esac
+    case "$tok" in
+      *'$('* | *'`'* | *'<('* | *'>('* | *'=('* | *'${') opener=1 ;;
+    esac
     [[ "$tok" =~ $_GAIA_REPO_SCOPE_TOOL_RE ]] && tool=1
   done
   [ "$opener" = 1 ] && [ "$tool" = 1 ]

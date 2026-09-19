@@ -99,6 +99,7 @@ git commit --no-verify -m y"
 # before the foreign command does (gaia-react/gaia#2148).
 @test "a --no-verify commit inside a substitution in a foreign command's arguments is denied" {
   git -C "$REPO" remote add origin https://github.com/acme/widget.git
+  # shellcheck disable=SC2016 # the hook must receive the unexpanded opener
   run_hook 'gh pr view 5 -R other/x --jq "$(git commit --no-verify -m y)"'
   assert_denied_by_json
   run_hook "git -C $FOREIGN log --format \"\$(git commit --no-verify -m y)\""
