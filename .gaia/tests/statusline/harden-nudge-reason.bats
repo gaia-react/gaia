@@ -473,7 +473,7 @@ render_statusline_against_refresher_cache() {
   search='gsub("[^A-Za-z0-9._-]"'
   # shellcheck disable=SC2016 # single-quoted on purpose: this is the literal
   # replacement line to write, not an expression to expand here.
-  unsanitized_line='              ($triggers[] | select(.type=="rising_class") | (.finding_class | split("/") | last) + " rising"),'
+  unsanitized_line='          | ([$triggers[] | select(.type=="rising_class") | .finding_class | split("/") | last] | reduce .[] as $l ([]; if index([$l]) then . else . + [$l] end)) as $rising'
   count=$(grep -cF -- "$search" "$REFRESH_ROOT/.gaia/scripts/check-updates.sh")
   [ "$count" -eq 1 ]
   broken="$REFRESH_ROOT/.gaia/scripts/check-updates-broken.sh"
@@ -531,4 +531,22 @@ render_statusline_against_refresher_cache() {
   run env HOME="$TMP_HOME" bash -c "printf '%s' '$json' | bash '$broken'"
   [ "$status" -eq 0 ]
   grep -qF -- "$injected_seq" <<<"$output"
+}
+
+# 16. Rising labels dedupe and cap, the rest collapsed into "+N more" ---------
+
+@test "rising labels dedupe, render the first two in triggers order, and collapse the rest" {
+  local snap='{"reviewed_at":"T"}'
+  local head='{"candidate_count":0,"unclassified":null,"gh_ok":true,"window_days":90,"snapshot_present":true,"snapshot_reviewed_at":"T","triggers":'
+
+  [ "$(harden_reason_for "${head}"'[{"type":"rising_class","finding_class":"holistic/a"},{"type":"rising_class","finding_class":"holistic/b"}]}' "$snap")" = "a rising, b rising" ]
+  [ "$(harden_reason_for "${head}"'[{"type":"rising_class","finding_class":"holistic/a"},{"type":"rising_class","finding_class":"holistic/b"},{"type":"rising_class","finding_class":"holistic/c"}]}' "$snap")" = "a rising, b rising, +1 more" ]
+  # Distinct oracle ids whose sanitized last segment collides render once.
+  [ "$(harden_reason_for "${head}"'[{"type":"rising_class","finding_class":"axe/x"},{"type":"rising_class","finding_class":"knip/x"}]}' "$snap")" = "x rising" ]
+
+  [ "$(harden_reason_for "${head}"'[{"type":"schema_change"},{"type":"rising_class","finding_class":"axe/x"},{"type":"rising_class","finding_class":"knip/x"},{"type":"rising_class","finding_class":"holistic/y"},{"type":"rising_class","finding_class":"holistic/z"},{"type":"rising_class","finding_class":"holistic/w"},{"type":"rising_unclassified"}]}' "$snap")" = "tally changed, x rising, y rising, +2 more, unclassified rising" ]
+
+  render_statusline_against_refresher_cache
+  [ "$status" -eq 0 ]
+  grep -qF -- "Run /gaia-harden (tally changed, x rising, y rising, +2 more, unclassified rising)" <<<"$output"
 }

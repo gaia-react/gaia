@@ -285,10 +285,14 @@ esac
 # no snapshot yet, or a pre-SPEC/mock binary), the reason is today's count
 # text via harden_count_reason. With one, it names the trigger events
 # harden-tally reports: schema_change, the new_class count, one
-# "<last path segment of finding_class> rising" per rising_class in
+# "<last path segment of finding_class> rising" per distinct segment in
 # triggers[] order (the segment stripped to [A-Za-z0-9._-], since class
 # names come from PR comments any author can write), then "unclassified
-# rising"; empty when triggers is empty.
+# rising"; empty when triggers is empty. Only the first two rising labels
+# render and the rest collapse into "+N more": a clone that goes long
+# between reviews can accumulate several at once, and one segment that long
+# crowds out the rest of the status line. The dedupe is on the sanitized
+# label, since two oracle ids (axe/x, knip/x) can share a last segment.
 # gh_ok false (or no reading at all) keeps prev_harden_reason.
 #
 # snapshot_present and snapshot_reviewed_at are read from the tally JSON
@@ -323,10 +327,12 @@ if [ -x "$GAIA_BIN" ] && command -v jq >/dev/null 2>&1; then
         harden_reason=$(printf '%s' "$tally_json" | jq -r '
           [.triggers[]?] as $triggers
           | ($triggers | map(select(.type=="new_class")) | length) as $newk
+          | ([$triggers[] | select(.type=="rising_class") | .finding_class | split("/") | last | gsub("[^A-Za-z0-9._-]"; "") | if . == "" then "a pattern" else . end] | reduce .[] as $l ([]; if index([$l]) then . else . + [$l] end)) as $rising
           | [
               (if ($triggers | any(.type=="schema_change")) then "tally changed" else empty end),
               (if $newk > 0 then (if $newk == 1 then "1 new pattern" else "\($newk) new patterns" end) else empty end),
-              ($triggers[] | select(.type=="rising_class") | (.finding_class | split("/") | last | gsub("[^A-Za-z0-9._-]"; "") | if . == "" then "a pattern" else . end) + " rising"),
+              ($rising[:2][] + " rising"),
+              (if ($rising | length) > 2 then "+\(($rising | length) - 2) more" else empty end),
               (if ($triggers | any(.type=="rising_unclassified")) then "unclassified rising" else empty end)
             ]
           | join(", ")
