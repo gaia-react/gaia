@@ -5,7 +5,7 @@ bats_require_minimum_version 1.5.0
 #
 # Executable oracle for `.gaia/scripts/token-tally.sh --action command` (SPEC-040
 # plan FC-4/FC-5/FC-6/FC-7): the one `kind: "command"` cost record each of the
-# six maintenance commands appends per run, its optional GitHub-artifact
+# maintenance commands appends per run, its optional GitHub-artifact
 # pass-through, and the same `github` field arriving on `kind: "execute"` via
 # the breadcrumb `.claude/hooks/capture-gh-artifact.sh` writes.
 #
@@ -184,9 +184,9 @@ assert_github_absent_and_not_partial() {
 }
 
 # ---------- 8 ----------
-@test "8: every one of the six recognized --command values yields partial:false (closed set, looped)" {
-  for cmd in gaia-audit gaia-debt gaia-fitness gaia-forensics gaia-harden gaia-wiki; do
-    L="$BATS_TEST_TMPDIR/six-$cmd.jsonl"
+@test "8: every recognized --command value yields partial:false (closed set, looped)" {
+  for cmd in gaia-audit gaia-debt gaia-fitness gaia-forensics gaia-harden gaia-residue gaia-wiki; do
+    L="$BATS_TEST_TMPDIR/recognized-$cmd.jsonl"
     run bash "$SCRIPT" --action command --command "$cmd" \
       --session-id "$ANCHOR_SESSION" --projects-root "$ANCHOR" --ledger "$L"
     [ "$status" -eq 0 ]

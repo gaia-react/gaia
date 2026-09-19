@@ -44,7 +44,7 @@ export type AttributionCache = {
   // Bumped independently of the dedup key's own v1 token: this cache's
   // keying is blind to a change in the grammar its stored attributions were
   // produced under, so a reader change that alters attribution bumps this.
-  schema: 'v2';
+  schema: 'v3';
 };
 
 export type CachedPrAttribution = {
@@ -69,7 +69,7 @@ export const emptyAttributionCache = (): AttributionCache => ({
   high_water_merged_at: null,
   prs: {},
   resolutions: {},
-  schema: 'v2',
+  schema: 'v3',
 });
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -126,7 +126,7 @@ const isValidPrEntry = (value: unknown): value is CachedPrAttribution =>
 
 const isValidCache = (value: unknown): value is AttributionCache =>
   isRecord(value) &&
-  value.schema === 'v2' &&
+  value.schema === 'v3' &&
   (value.high_water_merged_at === null ||
     typeof value.high_water_merged_at === 'string') &&
   isRecord(value.prs) &&

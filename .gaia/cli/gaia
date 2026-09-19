@@ -21224,14 +21224,14 @@ var emptyAttributionCache = () => ({
   high_water_merged_at: null,
   prs: {},
   resolutions: {},
-  schema: "v2"
+  schema: "v3"
 });
 var isRecord = (value) => typeof value === "object" && value !== null && !Array.isArray(value);
 var isValidResidueKey = (value) => isRecord(value) && typeof value.class === "string" && typeof value.line === "number" && typeof value.path === "string";
 var isValidAttributedEntry = (value) => isRecord(value) && typeof value.disposition === "string" && typeof value.failure_mode === "string" && typeof value.raw_key === "string" && isValidResidueKey(value.key);
 var isValidResolution = (value) => isRecord(value) && typeof value.resolution === "string" && typeof value.resolved_line_text === "string";
 var isValidPrEntry = (value) => isRecord(value) && typeof value.headRefOid === "string" && typeof value.mergedAt === "string" && isRecord(value.attribution) && Array.isArray(value.attribution.entries) && value.attribution.entries.every(isValidAttributedEntry) && Array.isArray(value.attribution.keyless) && Array.isArray(value.attribution.malformed) && value.attribution.malformed.every(isRecord);
-var isValidCache = (value) => isRecord(value) && value.schema === "v2" && (value.high_water_merged_at === null || typeof value.high_water_merged_at === "string") && isRecord(value.prs) && isRecord(value.resolutions) && Object.values(value.prs).every(isValidPrEntry) && Object.values(value.resolutions).every(isValidResolution);
+var isValidCache = (value) => isRecord(value) && value.schema === "v3" && (value.high_water_merged_at === null || typeof value.high_water_merged_at === "string") && isRecord(value.prs) && isRecord(value.resolutions) && Object.values(value.prs).every(isValidPrEntry) && Object.values(value.resolutions).every(isValidResolution);
 var attributionCachePath = (repoRoot) => path28.join(repoRoot, ...CACHE_DIR_SEGMENTS, ATTRIBUTION_CACHE_FILE);
 var readAttributionCache = (repoRoot) => {
   try {
@@ -22044,7 +22044,9 @@ var DEFAULT_PREDICATES = {
 };
 var HEADING_PATTERN = /^#{1,6}[\t\n\v\f\r ]/;
 var TOP_BULLET_PATTERN = /^([-*+]|\d{1,9}[.)])[\t\n\v\f\r ]/;
-var HTML_COMMENT_PATTERN = /<!--[\s\S]*?-->/g;
+var HTML_COMMENT_PATTERN = /(`?)<!--(?:(?!<!--)[\s\S])*?-->\1/g;
+var BLANK_LINE_PATTERN = /^[\t\v\f\r ]*$/;
+var INDENTED_LINE_PATTERN = /^[\t ]/;
 var TRAILING_SPACE_CHARACTERS = /* @__PURE__ */ new Set(["	", "\n", "\v", "\f", "\r", " "]);
 var trimTrailingSpace = (line) => {
   let end = line.length;
@@ -22053,7 +22055,20 @@ var trimTrailingSpace = (line) => {
   }
   return line.slice(0, end);
 };
-var deriveFailureMode = (bulletLine) => bulletLine.replace(TOP_BULLET_PATTERN, "").replaceAll(HTML_COMMENT_PATTERN, " ").replaceAll(/[\t\n\v\f\r ]+/g, " ").trim();
+var deriveFailureMode = (textLines) => textLines.join("\n").replace(TOP_BULLET_PATTERN, "").replaceAll(HTML_COMMENT_PATTERN, " ").replaceAll(/[\t\n\v\f\r ]+/g, " ").trim();
+var collectTextLine = (unit, line) => {
+  if (unit.text_state === "closed") return;
+  if (BLANK_LINE_PATTERN.test(line)) {
+    unit.text_state = "after_blank";
+    return;
+  }
+  if (unit.text_state === "after_blank" && !INDENTED_LINE_PATTERN.test(line)) {
+    unit.text_state = "closed";
+    return;
+  }
+  unit.text_state = "collecting";
+  unit.text_lines.push(line);
+};
 var closeUnit = (unit, result) => {
   if (unit.raw_key === null) {
     result.keyless.push({
@@ -22074,7 +22089,7 @@ var closeUnit = (unit, result) => {
   }
   result.entries.push({
     disposition: unit.disposition,
-    failure_mode: deriveFailureMode(unit.bullet_line),
+    failure_mode: deriveFailureMode(unit.text_lines),
     key: parsed.value,
     raw_key: unit.raw_key,
     unit_start_line: unit.start_line
@@ -22117,13 +22132,15 @@ var attributeBodyWith = (body, predicates) => {
       if (TOP_BULLET_PATTERN.test(line)) {
         close();
         open = {
-          bullet_line: line,
           disposition: inCanonical,
           raw_key: matchInnerKey(line, predicates.keyPattern),
-          start_line: lineNumber
+          start_line: lineNumber,
+          text_lines: [line],
+          text_state: "collecting"
         };
-      } else if (open !== null && open.raw_key === null) {
-        open.raw_key = matchInnerKey(line, predicates.keyPattern);
+      } else if (open !== null) {
+        collectTextLine(open, line);
+        open.raw_key ??= matchInnerKey(line, predicates.keyPattern);
       }
     }
   }

@@ -821,7 +821,7 @@ describe('UAT-014: the attribution cache schema bump is the discriminator, not t
         },
       },
       resolutions: {},
-      schema: 'v2',
+      schema: 'v3',
     };
     const cacheDir = path.join(root, '.gaia', 'local', 'cache');
 
