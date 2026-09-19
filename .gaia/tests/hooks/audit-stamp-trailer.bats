@@ -5,7 +5,14 @@
 # Covers all 4 stamp paths plus every refusal case from the frozen stamp
 # invariant (.gaia/local/plans/code-review-audit-ci/trailer-format.md):
 #   1. clean tree, un-pushed HEAD          -> amend
-#   2. clean tree, pushed HEAD             -> empty commit (no auto-push)
+#   2. clean tree, pushed attached HEAD    -> status only, no commit, no push
+#   2b. attached HEAD behind upstream       -> decline "HEAD behind upstream",
+#                                               no commit (a behind branch has
+#                                               an empty `@{u}..HEAD` too, but
+#                                               HEAD != @{u})
+#   2c. behind HEAD + AUDIT_SELF_HEALED=true -> amend anyway (the self-heal
+#                                               amend runs ahead of the behind
+#                                               decline, so it never reaches it)
 #   3. AUDIT_SELF_HEALED=true               -> amend regardless of push status
 #   4. detached HEAD (CI checkout)         -> empty commit (no auto-push)
 #   5. tree dirty                           -> decline "tree dirty"
@@ -45,8 +52,8 @@
 #     (parsed via `git interpret-trailers --parse`), three positional fields
 #     "<version> <frontend-digest> <tree>" (UAT-008: digest at field 2, tree
 #     at field 3, distinctly)
-#   - HEAD sha movement (amend or empty commit moves it; decline does not)
-#   - bare upstream is NOT advanced for empty-commit cases (helper never pushes)
+#   - HEAD sha movement (amend or empty commit moves it; decline and status-only do not)
+#   - bare upstream is NOT advanced for empty-commit or status-only cases (helper never pushes)
 
 setup() {
   HOOK_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)/audit-stamp-trailer.sh
@@ -207,40 +214,97 @@ commit_mixed_diff() {
   [ "$trailer" = "GAIA-Audit: 1.2.3 ${expected_digest} ${before_tree}" ]
 }
 
-@test "clean tree + pushed HEAD: writes empty commit locally (no auto-push)" {
+@test "clean tree + pushed attached HEAD: status only, no commit, no push" {
   push_head_to_upstream
 
   before_sha=$(git -C "$REPO" rev-parse HEAD)
   before_tree=$(git -C "$REPO" rev-parse "HEAD^{tree}")
   before_count=$(git -C "$REPO" rev-list --count HEAD)
   before_remote_sha=$(git -C "$REMOTE" rev-parse main)
-  expected_digest=$(digest_of "$REPO" code-audit-frontend)
 
   cd "$REPO"
   AUDIT_TREE_SHA="$before_tree" AUDIT_SELF_HEALED="false" run "$HOOK_ABS"
 
   [ "$status" -eq 0 ]
-  [ "$output" = "stamp: empty commit (created locally)" ]
+  [ "$output" = "stamp: status only (HEAD already pushed)" ]
 
   after_sha=$(git -C "$REPO" rev-parse HEAD)
-  after_tree=$(git -C "$REPO" rev-parse "HEAD^{tree}")
   after_count=$(git -C "$REPO" rev-list --count HEAD)
 
-  [ "$before_sha" != "$after_sha" ]
-  # Empty commit -> tree unchanged, history grows by one.
-  [ "$before_tree" = "$after_tree" ]
-  [ $((after_count - before_count)) -eq 1 ]
+  # No commit at all: HEAD sha and commit count are unchanged.
+  [ "$before_sha" = "$after_sha" ]
+  [ "$before_count" -eq "$after_count" ]
 
-  subject=$(git -C "$REPO" log -1 --format='%s')
-  [ "$subject" = "chore: code review audit passed" ]
+  # No trailer lands on HEAD; the caller's next step posts a status instead.
+  trailer=$(trailer_on_head)
+  [ -z "$trailer" ]
+
+  # No network call either; upstream must NOT have advanced.
+  after_remote_sha=$(git -C "$REMOTE" rev-parse main)
+  [ "$before_remote_sha" = "$after_remote_sha" ]
+}
+
+@test "attached HEAD behind upstream: declines, no commit, no trailer" {
+  push_head_to_upstream
+
+  before_sha=$(git -C "$REPO" rev-parse HEAD)
+  before_tree=$(git -C "$REPO" rev-parse "HEAD^{tree}")
+  before_count=$(git -C "$REPO" rev-list --count HEAD)
+
+  # Simulate a remote that gained a commit this clone never pulled: push an
+  # empty (tree-preserving) commit, then roll the local branch back to what
+  # it pushed. The push already advanced the local origin/main
+  # remote-tracking ref, and `reset --hard` touches only the local branch
+  # ref, so HEAD ends a strict ancestor of `@{u}` with an identical tree.
+  git -C "$REPO" commit --quiet --allow-empty -m "remote-only commit"
+  git -C "$REPO" push --quiet
+  git -C "$REPO" reset --hard --quiet "$before_sha"
+
+  cd "$REPO"
+  AUDIT_TREE_SHA="$before_tree" AUDIT_SELF_HEALED="false" run "$HOOK_ABS"
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "stamp: declined: HEAD behind upstream" ]
+
+  after_sha=$(git -C "$REPO" rev-parse HEAD)
+  after_count=$(git -C "$REPO" rev-list --count HEAD)
+  [ "$before_sha" = "$after_sha" ]
+  [ "$before_count" -eq "$after_count" ]
+
+  trailer=$(trailer_on_head)
+  [ -z "$trailer" ]
+}
+
+@test "AUDIT_SELF_HEALED=true on behind HEAD: amends anyway (self-heal owns the commit)" {
+  push_head_to_upstream
+
+  before_sha=$(git -C "$REPO" rev-parse HEAD)
+  before_tree=$(git -C "$REPO" rev-parse "HEAD^{tree}")
+  before_count=$(git -C "$REPO" rev-list --count HEAD)
+  expected_digest=$(digest_of "$REPO" code-audit-frontend)
+
+  # Same behind fixture as the decline test above: push an empty (tree-
+  # preserving) commit, then roll the local branch back to what it pushed, so
+  # HEAD ends a strict ancestor of `@{u}` with an identical tree.
+  git -C "$REPO" commit --quiet --allow-empty -m "remote-only commit"
+  git -C "$REPO" push --quiet
+  git -C "$REPO" reset --hard --quiet "$before_sha"
+
+  cd "$REPO"
+  AUDIT_TREE_SHA="$before_tree" AUDIT_SELF_HEALED="true" run "$HOOK_ABS"
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "stamp: amended onto audit-self-heal HEAD" ]
+
+  after_sha=$(git -C "$REPO" rev-parse HEAD)
+  after_count=$(git -C "$REPO" rev-list --count HEAD)
+
+  # Amend, not a new commit.
+  [ "$before_sha" != "$after_sha" ]
+  [ "$before_count" = "$after_count" ]
 
   trailer=$(trailer_on_head)
   [ "$trailer" = "GAIA-Audit: 1.2.3 ${expected_digest} ${before_tree}" ]
-
-  # Helper never pushes; upstream must NOT have advanced. The caller
-  # pushes after writing the audit marker.
-  after_remote_sha=$(git -C "$REMOTE" rev-parse main)
-  [ "$before_remote_sha" = "$after_remote_sha" ]
 }
 
 @test "AUDIT_SELF_HEALED=true on un-pushed HEAD: amends" {
@@ -534,7 +598,7 @@ EOF
   [ -z "$(trailer_on_head)" ]
 }
 
-@test "member-aware gate: stamps once every dispatched member has cleared" {
+@test "member-aware gate: stamps (status only) once every dispatched member has cleared" {
   install_resolver
   commit_mixed_diff
 
@@ -544,7 +608,6 @@ EOF
   before_sha=$(git -C "$REPO" rev-parse HEAD)
   before_tree=$(git -C "$REPO" rev-parse "HEAD^{tree}")
   before_count=$(git -C "$REPO" rev-list --count HEAD)
-  expected_digest=$(digest_of "$REPO" code-audit-frontend)
 
   write_marker code-audit-frontend
   write_marker code-audit-maintainer-shell
@@ -553,18 +616,17 @@ EOF
   AUDIT_TREE_SHA="$before_tree" AUDIT_SELF_HEALED="false" run "$HOOK_ABS"
 
   [ "$status" -eq 0 ]
-  [ "$output" = "stamp: empty commit (created locally)" ]
+  [ "$output" = "stamp: status only (HEAD already pushed)" ]
 
   after_sha=$(git -C "$REPO" rev-parse HEAD)
-  after_tree=$(git -C "$REPO" rev-parse "HEAD^{tree}")
   after_count=$(git -C "$REPO" rev-list --count HEAD)
 
-  [ "$before_sha" != "$after_sha" ]
-  [ "$before_tree" = "$after_tree" ]
-  [ $((after_count - before_count)) -eq 1 ]
+  # No commit at all: HEAD sha and commit count are unchanged.
+  [ "$before_sha" = "$after_sha" ]
+  [ "$before_count" -eq "$after_count" ]
 
   trailer=$(trailer_on_head)
-  [ "$trailer" = "GAIA-Audit: 1.2.3 ${expected_digest} ${before_tree}" ]
+  [ -z "$trailer" ]
 }
 
 @test "member-aware gate: single-required-member diff stamps (no deadlock)" {
@@ -754,19 +816,20 @@ run_waiver_case() {
   PATH="$FAKEBIN:$PATH" AUDIT_TREE_SHA="$before_tree" AUDIT_SELF_HEALED="false" run "$HOOK_ABS"
 }
 
-@test "chore(deps) waiver: a dep-bump title waives frontend, so the co-dispatched member's marker stamps" {
+@test "chore(deps) waiver: a dep-bump title waives frontend, so the co-dispatched member's marker stamps (status only)" {
   install_resolver
   install_chore_deps_predicate
   commit_mixed_diff
   install_title_stub "chore(deps): bump vite to 8.3.0"
-  expected_digest=$(digest_of "$REPO" code-audit-frontend)
+  before_count=$(git -C "$REPO" rev-list --count HEAD)
 
   run_waiver_case
 
   [ "$status" -eq 0 ]
-  [ "$output" = "stamp: empty commit (created locally)" ]
-  [ "$before_sha" != "$(git -C "$REPO" rev-parse HEAD)" ]
-  [ "$(trailer_on_head)" = "GAIA-Audit: 1.2.3 ${expected_digest} ${before_tree}" ]
+  [ "$output" = "stamp: status only (HEAD already pushed)" ]
+  [ "$before_sha" = "$(git -C "$REPO" rev-parse HEAD)" ]
+  [ "$before_count" -eq "$(git -C "$REPO" rev-list --count HEAD)" ]
+  [ -z "$(trailer_on_head)" ]
 }
 
 @test "chore(deps) waiver: a non-dep-bump title leaves frontend pending" {

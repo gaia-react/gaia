@@ -2,26 +2,32 @@
 # post-audit-status.sh, post the GAIA-Audit commit status on HEAD.
 #
 # Purpose
-#   Called by a Code Audit Team member's agent (code-audit-frontend at
-#   .claude/agents/code-audit-frontend.md, or a specialized member) on the
-#   local (Claude-driven merge) path, AFTER that member's marker has been
-#   written. Posts a GAIA-Audit commit status of state=success on HEAD, but
+#   Two callers, on the local (Claude-driven merge) path, neither of them a
+#   Code Audit Team member's own agent: a clean pass no longer posts its own
+#   success here (see wiki/concepts/PR Merge Workflow.md, "Posting the status
+#   last"). The orchestrating session calls this, once, after every dispatched
+#   member holds an earned marker for the current tree and every finding from
+#   every round is fixed or recorded, passing any one current member's own
+#   marker path. Posts a GAIA-Audit commit status of state=success on HEAD, but
 #   only once EVERY member dispatched against HEAD's diff has cleared, so the
 #   same server-side gate the CI path satisfies is satisfied here too, letting
 #   the github.com button and the per-author resolver's required-check
-#   verification clear. The caller's own marker file is a literal precondition
-#   for its own call; the member-aware gate below is the precondition for the
+#   verification clear. The passed marker file is a literal precondition
+#   for the call; the member-aware gate below is the precondition for the
 #   POST itself.
 #
-#   Handed a REFUSAL instead, it posts state=failure and skips the member-aware
-#   gate. That arm is what gives refusal precedence a server-side signal: the
-#   local merge hook honors a refusal over any same-digest earned marker, but
+#   The second caller is the shared clearance writer itself
+#   (.gaia/scripts/audit-write-clearance.sh), which makes this call the moment
+#   it records a REFUSAL, on the local path, with no orchestrator step needed.
+#   Handed a REFUSAL it posts state=failure and skips the member-aware gate.
+#   That arm is what gives refusal precedence a server-side signal: the local
+#   merge hook honors a refusal over any same-digest earned marker, but
 #   GitHub's auto-merge merges on the required status alone and never runs that
-#   hook, so without a compensating post a refusal written after a sibling
-#   member's clean pass already posted success leaves the success standing.
-#   The refusal writer (.gaia/scripts/audit-write-clearance.sh) makes this call
-#   itself on the local path, so the signal is a mechanism rather than a step an
-#   agent has to remember.
+#   hook, so without a compensating post a refusal written after a success
+#   status already landed for this head (the orchestrator's own earlier post,
+#   or CI's) leaves that success standing. The writer making this call itself
+#   is what makes the signal a mechanism rather than a step anyone has to
+#   remember.
 #
 #   Honest limit: the pushed-head guards below apply to both states, so a
 #   refusal written against work that is not what the pull request head carries
@@ -33,13 +39,16 @@
 # Invocation
 #   .claude/hooks/post-audit-status.sh <marker-path>
 #
-#   <marker-path>  The clearance artifact the calling member's agent just wrote
+#   <marker-path>  A clearance artifact on disk for the current tree
 #                  (.gaia/local/audit/<digest>.ok for code-audit-frontend,
 #                  .gaia/local/audit/<digest>.<member>.ok for a specialized
 #                  member, <digest> the member's own 64-hex content digest;
 #                  the same two names with a .refused extension for a refusal).
-#                  Its existence gates this call; the agent passes the path
-#                  it wrote in the marker step.
+#                  Its existence gates this call. On the success path the
+#                  orchestrator passes any one current member's own marker
+#                  path, since the member-aware gate below resolves the rest
+#                  of the roster itself; on the refusal path the clearance
+#                  writer passes the refusal it just wrote.
 #
 # Behavior
 #   Best-effort and fail-safe-asymmetric: when gh is absent or unauthenticated,
@@ -49,9 +58,11 @@
 #   posted without every dispatched member's marker present and none of them
 #   holding a live refusal, save a code-audit-frontend marker the chore(deps)
 #   title waiver excuses (a frontend refusal is never excused), and an absent status never inverts into a cleared
-#   gate. Order-independent: each member calls this script after writing its
-#   own marker, so whichever member finishes last is the one whose call
-#   actually posts.
+#   gate. The caller may hand in any one current member's own marker path;
+#   the member-aware gate below evaluates the whole roster regardless of
+#   which member's marker was passed, so the call is order-independent with
+#   respect to the roster even though there is now exactly one caller (the
+#   orchestrator) rather than one call per member.
 #
 #   The REFUSAL arm skips the member-aware gate by design (see Purpose above),
 #   so none of the roster conditions above bound it. Re-arming that gate here
@@ -61,13 +72,14 @@
 #
 #   Order-independence rests on the DIGEST key. Markers are named for the
 #   member's own content digest, not its commit sha, so code-audit-frontend's
-#   GAIA-Audit trailer stamp -- an empty commit, which advances HEAD while
-#   leaving every blob byte-identical -- rotates no member's digest and does
-#   not orphan a sibling member's marker. Keyed to the commit, the stamp would
-#   invalidate every marker written before it, and the member that finished
-#   last would find the others' markers gone and decline forever. The POST
-#   itself still targets the commit sha: a GitHub commit status has nowhere
-#   else to land.
+#   GAIA-Audit trailer stamp -- an empty commit on a detached HEAD, which
+#   advances HEAD while leaving every blob byte-identical, or no commit at
+#   all on an already-pushed attached HEAD -- rotates no member's digest and
+#   does not orphan a sibling member's marker. Keyed to the commit, a stamp
+#   commit would invalidate every marker written before it, and the member
+#   that finished last would find the others' markers gone and decline
+#   forever. The POST itself still targets the commit sha: a GitHub commit
+#   status has nowhere else to land.
 #
 # Exit codes
 #   0 , Posted successfully OR declined (precondition failed). One stdout
@@ -190,20 +202,21 @@ if [ -z "$marker_member_part" ]; then
 else
   marker_member="${marker_member_part#.}"
 fi
-# Two modes, decided by the artifact the caller wrote, and nothing else is a
-# clearance. An EARNED marker posts success, gated below on every dispatched
-# member having cleared. A REFUSAL posts failure, and skips that gate: the
-# refusal IS the member's answer, so waiting for a roster to clear before
-# reporting it would be waiting for the condition it contradicts.
+# Two modes, decided by the artifact named at the marker path, and nothing
+# else is a clearance. An EARNED marker posts success, gated below on every
+# dispatched member having cleared. A REFUSAL posts failure, and skips that
+# gate: the refusal IS the member's answer, so waiting for a roster to clear
+# before reporting it would be waiting for the condition it contradicts.
 #
 # The failure post exists because the local merge hook is not the only merge
 # path. GitHub's auto-merge consults the required GAIA-Audit status alone and
 # never reaches the hook that honors refusal precedence, so a refusal written
-# after a sibling member's clean pass already posted success would leave that
-# success standing and the pull request merging over a live refusal. Posting
-# failure for the same head retracts it; the latest status for a context wins,
-# and a later success post from a genuine clean pass overwrites this in turn,
-# so a refusal can never strand a pull request it no longer applies to.
+# after a success status already landed for this head (the orchestrator's own
+# earlier post, or CI's) would leave that success standing and the pull
+# request merging over a live refusal. Posting failure for the same head
+# retracts it; the latest status for a context wins, and a later success post
+# once the orchestrator's own preconditions are met again overwrites this in
+# turn, so a refusal can never strand a pull request it no longer applies to.
 post_state=""
 if clearance_acceptable "$marker" "$marker_member" "$marker_digest"; then
   post_state="success"
@@ -340,15 +353,27 @@ if [ -z "$target_tree" ] || [ "$target_tree" != "$tree_sha" ]; then
 fi
 
 # The tree guard above cannot see an un-pushed GAIA-Audit trailer stamp, by
-# construction: the stamp is content-preserving (an empty commit on the pushed
-# path, an amend on the un-pushed one), so every blob stays byte-identical and
-# local HEAD's tree equals the target sha's tree even while the stamp commit
-# exists only locally. Require the COMMIT sha to match too. Without this the
-# status posts on the PRE-STAMP head, the stamp is pushed afterwards, the PR
-# head advances, and the success status is stranded on a sha no reader checks,
-# so a required GAIA-Audit check waits forever. Push the stamp, then post.
-# When no PR and no upstream resolve, head_sha IS local HEAD, so this guard
-# does not fire on that path.
+# construction: the stamp is content-preserving (an empty commit on a
+# detached HEAD, an amend on an un-pushed one), so every blob stays
+# byte-identical and local HEAD's tree equals the target sha's tree even
+# while the stamp commit exists only locally. Require the COMMIT sha to match
+# too. Without this the status posts on the PRE-STAMP head, the stamp is
+# pushed afterwards, the PR head advances, and the success status is
+# stranded on a sha no reader checks, so a required GAIA-Audit check waits
+# forever. This only bites when a stamp commit was made and still needs
+# pushing (detached HEAD, or an amend-path stamp not yet pushed); an
+# attached HEAD equal to its upstream, as of the last fetch, makes no stamp
+# commit, so local HEAD already equals head_sha and this guard passes
+# through. That "equal" reading is audit-stamp-trailer.sh's own local
+# remote-tracking comparison, made with no network call of its own, so it is
+# only as current as the last fetch; this guard is the backstop for a
+# tracking ref that call left stale, since head_sha here is the live PR head
+# read fresh from `gh`. A local branch
+# BEHIND its upstream is a different case: audit-stamp-trailer.sh declines
+# it at the stamp step rather than treating it as already pushed, because
+# there is no push that would resolve it there, the fix is a pull. When no
+# PR and no upstream resolve, head_sha IS local HEAD, so this guard does not
+# fire on that path.
 head_local="$(git -C "$repo_root" rev-parse HEAD 2>/dev/null || true)"
 if [ "$head_local" != "$head_sha" ]; then
   emit_decline "stamp not pushed"

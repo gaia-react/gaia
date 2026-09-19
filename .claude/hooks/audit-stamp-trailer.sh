@@ -5,10 +5,14 @@
 #   Implements the stamp invariant + stamp placement rule described in
 #   .gaia/local/plans/code-review-audit-ci/trailer-format.md. Called by the
 #   code-audit-frontend agent (.claude/agents/code-audit-frontend.md) after the
-#   audit has decided that an "Audit marker" is warranted. The trailer travels
-#   with the commit through the network so CI can skip its own audit run when
-#   the trailer's <agent-version> + <frontend-digest> match a CI-recomputed
-#   digest of the PR head.
+#   audit has decided that an "Audit marker" is warranted. On an un-pushed or
+#   detached HEAD the trailer travels with the commit through the network so
+#   CI can skip its own audit run when the trailer's <agent-version> +
+#   <frontend-digest> match a CI-recomputed digest of the PR head. On an
+#   attached HEAD that is already pushed, no commit is needed: the GAIA-Audit status the
+#   orchestrator posts once it has dispositioned every finding lands directly
+#   on that already-pushed sha, so this hook makes no commit and no network
+#   call.
 #
 # Invocation
 #   .claude/hooks/audit-stamp-trailer.sh
@@ -34,6 +38,7 @@
 #          stamp: amended onto HEAD (un-pushed)
 #          stamp: amended onto audit-self-heal HEAD
 #          stamp: empty commit (created locally)
+#          stamp: status only (HEAD already pushed)
 #        Decline lines (prefix "stamp: declined: "):
 #          tree dirty
 #          version file missing
@@ -46,6 +51,7 @@
 #          frontend holds a live refusal
 #          members pending <list>
 #          stamp lock contended
+#          HEAD behind upstream
 #   2 , Usage / unexpected error. Stderr.
 #
 # References
@@ -225,9 +231,10 @@ fi
 # after 15 seconds with no heartbeat, so a `gh` call stalling inside it would let
 # a racing member take the lock and stamp a second trailer.
 #
-# Honest limit: the trailer this waiver lets stamp still carries the frontend
-# digest in field 2, and the readers that honor a trailer check version and
-# digest, never the title, so it stays valid if the pull request is later
+# Honest limit: whatever this waiver lets through, a trailer commit or (on an
+# already-pushed attached HEAD) the GAIA-Audit status posted next, still
+# carries the frontend digest, and the readers that check version and digest
+# never read the title, so it stays valid if the pull request is later
 # retitled away from chore(deps). CI's own chore(deps) success status has the
 # same shape, and any content change rotates the digest and retires it for the
 # digest-checking readers. It does not retire it as an incremental-review anchor:
@@ -288,9 +295,11 @@ fi
 
 # If HEAD already carries a GAIA-Audit trailer, do not re-stamp. Re-stamping
 # an un-pushed HEAD would amend again and orphan the existing marker file
-# (the marker is keyed to the pre-amend SHA). Re-stamping a pushed HEAD
+# (the marker is keyed to the pre-amend SHA). Re-stamping a detached HEAD
 # creates a spurious empty commit on every audit re-run. Both produce the
-# same bad outcome: the PR accrues unnecessary commits.
+# same bad outcome: unnecessary commits. An already-pushed attached HEAD makes
+# no commit in the first place, so this guard never has anything to catch on
+# that path; a re-run there just emits the same status-only line again.
 head_message="$(git -C "$repo_root" log -1 --format='%B' 2>/dev/null || true)"
 if grep -q "^GAIA-Audit:" <<<"$head_message"; then
   emit_decline "already stamped"
@@ -395,28 +404,48 @@ if [ -x "$resolver" ]; then
 fi
 
 # -----------------------------------------------------------------------------
-# Placement decision (amend vs empty commit)
+# Placement decision (amend vs empty commit vs status-only)
 # -----------------------------------------------------------------------------
 
 self_healed="${AUDIT_SELF_HEALED:-false}"
 
-# Pushed-vs-un-pushed detection.
-#   Detached HEAD (CI checkout of pull_request.head.sha; rebase/cherry-pick
-#   in flight; explicit `git checkout <sha>`), treat as pushed. The
-#   stamp must never amend a commit the runner cannot guarantee is local.
-#   The empty-commit path is the safe choice for any "HEAD is published"
-#   semantics, which a detached HEAD always carries (CI), or for which
-#   amending is meaningless (a transient checkout the user is not on).
-#   Attached HEAD with an upstream + empty `@{u}..HEAD`, pushed.
-#   Anything else (no upstream; ahead of upstream), un-pushed.
-push_status="un-pushed"
+# Head-state detection. Four states, tracked separately because a detached
+# HEAD, an already-pushed attached HEAD, and a behind attached HEAD all count
+# as "cannot amend" but take different placements. This script makes no
+# network call, so attached-pushed and behind are judged against `@{u}`, the
+# local remote-tracking ref, which is only as current as the last fetch; a
+# remote move since then is invisible here.
+#   detached (CI checkout of pull_request.head.sha; rebase/cherry-pick in
+#     flight; explicit `git checkout <sha>`): the stamp must never amend a
+#     commit the runner cannot guarantee is local, and CI's workflow contract
+#     expects an empty marker commit here (see the empty-commit block below),
+#     so this state keeps that placement.
+#   attached-pushed (a branch with an upstream, an empty `@{u}..HEAD`, AND
+#     HEAD == @{u}, as of the last fetch): HEAD is already on the remote by
+#     that reading, so the audit needs no commit at all; the orchestrator
+#     later posts the GAIA-Audit status directly on it.
+#   behind (a branch with an upstream and an empty `@{u}..HEAD`, but
+#     HEAD != @{u}, as of the last fetch): `@{u}..HEAD` is also empty when
+#     HEAD is a strict ancestor of its upstream, not only when the two are
+#     equal, so this state needs its own equality check to tell them apart.
+#     The local branch has nothing to push and no stamp can land on the sha
+#     the remote actually holds, so a non-self-healed run declines rather
+#     than reusing attached-pushed's status-only placement; the operator's
+#     fix is a pull, not a push. A self-healed run amends anyway (see the
+#     self-heal check below, which runs ahead of this state's decline):
+#     the audit made HEAD its own commit, still local, regardless of the
+#     upstream comparison.
+#   un-pushed (no upstream, or ahead of upstream): safe to amend.
+head_state="un-pushed"
 head_branch=$(git -C "$repo_root" symbolic-ref --short -q HEAD 2>/dev/null || true)
 if [ -z "$head_branch" ]; then
-  push_status="pushed"
+  head_state="detached"
 elif upstream=$(git -C "$repo_root" rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null); then
-  if [ -n "$upstream" ]; then
-    if [ -z "$(git -C "$repo_root" rev-list '@{u}..HEAD' 2>/dev/null)" ]; then
-      push_status="pushed"
+  if [ -n "$upstream" ] && [ -z "$(git -C "$repo_root" rev-list '@{u}..HEAD' 2>/dev/null)" ]; then
+    if [ "$(git -C "$repo_root" rev-parse HEAD 2>/dev/null || true)" = "$(git -C "$repo_root" rev-parse '@{u}' 2>/dev/null || true)" ]; then
+      head_state="attached-pushed"
+    else
+      head_state="behind"
     fi
   fi
 fi
@@ -428,27 +457,48 @@ trailer="GAIA-Audit: ${agent_version} ${frontend_digest} ${current_tree}"
 # -----------------------------------------------------------------------------
 
 if [ "$self_healed" = "true" ]; then
-  # Audit owns the final commit, amend it regardless of push status.
+  # Audit owns the final commit, amend it regardless of head state or push
+  # status: self-heal ran, so HEAD is the audit's own commit to finish, even
+  # when it is also behind its upstream.
   git -C "$repo_root" commit --amend --no-edit --no-verify \
     --trailer "$trailer" >/dev/null
   emit_stamp "amended onto audit-self-heal HEAD"
   exit 0
 fi
 
-if [ "$push_status" = "un-pushed" ]; then
+if [ "$head_state" = "behind" ]; then
+  emit_decline "HEAD behind upstream"
+  exit 0
+fi
+
+if [ "$head_state" = "un-pushed" ]; then
   git -C "$repo_root" commit --amend --no-edit --no-verify \
     --trailer "$trailer" >/dev/null
   emit_stamp "amended onto HEAD (un-pushed)"
   exit 0
 fi
 
-# Pushed: never amend a published commit. Carry the trailer on an empty
-# commit created locally only, the caller pushes after writing the audit
-# marker (see .claude/agents/code-audit-frontend.md "Audit marker (gate
-# handshake)"). Marker-before-push ensures a "chore: code review audit
-# passed" commit never reaches remote history without a corresponding
-# marker: if the marker write is interrupted, the un-pushed commit is
-# recoverable via `git reset --hard HEAD~1`.
+if [ "$head_state" = "attached-pushed" ]; then
+  # HEAD is already on the remote: no commit and no network call needed here.
+  # The orchestrator later posts the GAIA-Audit status (post-audit-status.sh)
+  # directly on this sha, which the merge gate and branch protection read in
+  # place of a trailer. A later local round anchors its scope on each
+  # member's earned clearance instead, since the resolver's status lookup
+  # runs only in CI.
+  emit_stamp "status only (HEAD already pushed)"
+  exit 0
+fi
+
+# Detached: never amend a commit the runner cannot guarantee is local. Carry
+# the trailer on an empty commit created locally only, the caller pushes
+# after writing the audit marker (see .claude/agents/code-audit-frontend.md
+# "Audit marker (gate handshake)"). Marker-before-push ensures a "chore: code
+# review audit passed" commit never reaches remote history without a
+# corresponding marker: if the marker write is interrupted, the un-pushed
+# commit is recoverable via `git reset --hard HEAD~1`. This is CI's own
+# checkout shape (pull_request.head.sha), and its workflow contract expects
+# this empty commit, so it stays even though the attached-pushed case above
+# no longer needs one.
 git -C "$repo_root" commit --allow-empty --no-verify \
   -m "chore: code review audit passed" \
   --trailer "$trailer" >/dev/null

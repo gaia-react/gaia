@@ -792,7 +792,7 @@ run_audit_root_block() {
     _ "$WT" "$before_wt_tree" "$HOOK_STAMP"
   [ "$status" -eq 0 ]
   case "$output" in
-    "stamp: amended"*|"stamp: empty commit"*|"stamp: declined:"*) ;;
+    "stamp: amended"*|"stamp: empty commit"*|"stamp: status only"*|"stamp: declined:"*) ;;
     *) echo "unexpected stamp output: $output" >&2; return 1 ;;
   esac
 

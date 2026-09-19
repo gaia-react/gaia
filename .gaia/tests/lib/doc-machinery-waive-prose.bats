@@ -645,7 +645,7 @@ setup() {
 @test "Group A: the three-round-session-cap section carries the accept-and-note heading, with its article, at its 'does not stop a round' bullet" {
   local section
   section="$(extract_section_or_fail "$WIKI" '^#### The three-round session cap' '^#{3,4} ')" || return 1
-  printf '%s\n' "$section" | grep -qF -- 'is accept-and-note under the heading `## Accepted residuals (recorded, not fixed)` in the PR body and merges.' || return 1
+  printf '%s\n' "$section" | grep -qF -- 'is accept-and-note under the heading `## Accepted residuals (recorded, not fixed)` in the PR body, then the same post-and-merge.' || return 1
 }
 
 @test "Group A: the three-round-session-cap section carries the accept-and-note heading, with its article, at its continuation-prompt paragraph" {
