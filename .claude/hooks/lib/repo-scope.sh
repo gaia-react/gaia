@@ -26,8 +26,12 @@
 # parse failure, an identity it cannot resolve, OR a deliberately
 # under-specified form it cannot model exactly (e.g. multiple `git -C` flags,
 # where git's last-wins semantics defeat a single capture) returns 1 so the
-# caller still enforces, protection never weakens silently, even for crafted
-# command strings.
+# caller still enforces.
+#
+# Honest limit: a command is recognised as git or gh by its literal name, as
+# the consumers' own arming matches are. A name the shell assembles by
+# expansion (`g$'i't`, a glob such as `/usr/bin/gi?`) is not read as either
+# program, so after a foreign command it can read foreign.
 
 # The repository name a git remote URL or a gh [HOST/]OWNER/REPO value ends
 # in, lowercased because GitHub resolves names case-insensitively, with a
@@ -134,34 +138,76 @@ cmd_targets_foreign_repo() {
 # Walks every command in the tool call with the scan below, carrying the
 # directory each `cd` moves the rest of the call into. Returns 0 (foreign) only
 # when at least one command is foreign and none is home.
+#
+# A `cd` moves that directory only where the shell is certain to run it in the
+# calling shell and every later command is certain to run after it. The scan
+# splits at newlines, `&` and `|` without modelling what groups them, so a `cd`
+# inside a subshell, a `$( )`, a function body, a heredoc body, a loop or an
+# `if`, a pipeline, or a backgrounded command would otherwise move it for
+# commands the shell runs in the original directory, and read a home command
+# after it as foreign. So once any command opens one of those constructs the
+# walk goes opaque and every later `cd` makes the directory unknown, which is
+# home. A `cd` reached through `&&` runs only if everything before it
+# succeeded, so its move ends with its and-or list, and a `||` after a move
+# makes the directory unknown.
 _gaia_repo_scope_verdict() {
   local cmd="$1"
   local NL=$'\n'
-  local pos=0 n_cmd=${#cmd} rest foreign=0 kind
+  local pos=0 n_cmd=${#cmd} rest foreign=0 kind c1 c2 walked=0 tool_end
   # Read by the helpers below through bash's dynamic scope.
   local dir="" dir_known=1 remotes="" remotes_read=0 home_common="" home_common_read=0
-  local flat
+  local flat opaque=0 sep_before=start sep_after list_moved=0 cond_move=0
 
   # The walk is a character loop in bash, so a large call costs real time on a
-  # blocking hook's path; these two checks skip it wherever it cannot change
-  # the answer.
+  # blocking hook's path; these checks skip it wherever it cannot change the
+  # answer.
   _gaia_repo_scope_flatten "$cmd"
   [[ "$flat" =~ $_GAIA_REPO_SCOPE_MOVE_RE ]] || return 1
+  _gaia_repo_scope_tool_end "$cmd"
 
   while [ "$pos" -lt "$n_cmd" ]; do
     # Nothing left names either program, so nothing left can be home or
     # foreign.
-    [[ "${cmd:$pos}" =~ $_GAIA_REPO_SCOPE_TOOL_RAW_RE ]] || break
+    [ "$pos" -lt "$tool_end" ] || break
+    # Each scan slices the whole call, so the walk costs its length once per
+    # command. Past this many commands it stops and enforces rather than stall
+    # the hook: an over-enforcement, never a guess of foreign.
+    walked=$((walked + 1))
+    [ "$walked" -le "$_GAIA_REPO_SCOPE_WALK_MAX" ] || return 1
     if gaia_scan_first_command "$cmd" "$pos"; then
+      sep_after=end
+      if [ "$GAIA_FIRST_COMMAND_CLOSED" = 1 ]; then
+        c1="${cmd:$((GAIA_FIRST_COMMAND_END - 1)):1}"
+        c2="${cmd:$GAIA_FIRST_COMMAND_END:1}"
+        case "$c1$c2" in
+          '&&') sep_after=and ;;
+          '||') sep_after=or ;;
+          '&'*) sep_after='bg' ;;
+          '|'*) sep_after=pipe ;;
+          *) sep_after=seq ;;
+        esac
+      fi
       kind=0
       _gaia_repo_scope_segment || kind=$?
       [ "$kind" = 2 ] && return 1
       [ "$kind" = 1 ] && foreign=1
+      _gaia_repo_scope_opens_group && opaque=1
+      case "$sep_after" in
+        or) [ "$list_moved" = 1 ] && dir_known=0 ;;
+        seq|bg)
+          [ "$cond_move" = 1 ] && dir_known=0
+          list_moved=0; cond_move=0
+          ;;
+      esac
+      sep_before="$sep_after"
     fi
     [ "$GAIA_FIRST_COMMAND_CLOSED" = 1 ] || break
     pos="$GAIA_FIRST_COMMAND_END"
     # A comment runs to the end of its line, and the next line is a command.
     if [ "${cmd:$((pos - 1)):1}" = "#" ]; then
+      sep_before=seq
+      [ "$cond_move" = 1 ] && dir_known=0
+      list_moved=0; cond_move=0
       rest="${cmd:$pos}"
       case "$rest" in *"$NL"*) ;; *) break ;; esac
       rest="${rest%%"$NL"*}"
@@ -171,6 +217,49 @@ _gaia_repo_scope_verdict() {
   [ "$foreign" = 1 ]
 }
 
+# Commands the walk reads before it stops and enforces. Measured on bash 3.2
+# and 5, a call of 140KB costs under a second at this depth, where an unbounded
+# walk over 4,000 commands took ten.
+_GAIA_REPO_SCOPE_WALK_MAX=128
+
+# Sets the caller's `tool_end` to the byte offset just past the last stretch of
+# the call the raw tool pattern matches, 0 when there is none. Past it no
+# command names git or gh. Counting stops after as many matches as the walk
+# would read commands, and the whole call is kept, since a walk that long stops
+# on its own.
+_gaia_repo_scope_tool_end() {
+  local s="$1" m pre n=0
+  tool_end=0
+  while [[ "$s" =~ $_GAIA_REPO_SCOPE_TOOL_RAW_RE ]]; do
+    n=$((n + 1))
+    if [ "$n" -gt "$_GAIA_REPO_SCOPE_WALK_MAX" ]; then tool_end=${#1}; return 0; fi
+    m="${BASH_REMATCH[0]}"
+    pre="${s%%"$m"*}"
+    tool_end=$((tool_end + ${#pre} + ${#m}))
+    s="${s:$((${#pre} + ${#m}))}"
+  done
+}
+
+# 0 when the command the scan just read opens or closes a construct that scopes
+# a `cd` away from the commands after it: a subshell, a group, a function body
+# or definition, a command or process substitution, a heredoc, or a compound
+# command's keyword. The scan drops quotes, so a parenthesis inside a quoted
+# commit subject counts too: that only makes later `cd`s unknown, which
+# enforces.
+_gaia_repo_scope_opens_group() {
+  local tok
+  case "${GAIA_FIRST_COMMAND_WORDS[0]}" in
+    if|then|else|elif|fi|for|while|until|do|done|case|'esac'|select|function|'!')
+      return 0 ;;
+  esac
+  for tok in "${GAIA_FIRST_COMMAND_WORDS[@]}"; do
+    case "$tok" in
+      *'('* | *')'* | *'{'* | *'}'* | *'`'* | *'<<'*) return 0 ;;
+    esac
+  done
+  return 1
+}
+
 # Classifies the command the scan just read: 0 touches no repository, 1 acts
 # on another repository, 2 acts on this one or cannot be read (enforce).
 #
@@ -178,14 +267,23 @@ _gaia_repo_scope_verdict() {
 # Any other command that names either program anywhere in its words (a
 # subshell, `env` or `VAR=` prefix, `$( )`, backticks, `bash -c`, `xargs`) is
 # a shape this walk does not model, so it is home. A heredoc body's lines reach
-# here as commands, which enforces on a body that only mentions git: an
-# over-enforcement, never a guess of foreign.
+# here as commands: one naming git or gh enforces, and one starting `cd` moves
+# nothing, because the heredoc left the walk opaque.
 _gaia_repo_scope_segment() {
   local n=${#GAIA_FIRST_COMMAND_WORDS[@]}
   local i tok target cdir="" ccount=0 ghrepo="" name r
 
   case "${GAIA_FIRST_COMMAND_WORDS[0]}" in
     cd)
+      # Only a `cd` the calling shell certainly runs, ahead of every command
+      # after it, moves the directory (see the walk above). Any other leaves it
+      # unknown, and so does one that is opaque itself (`cd x)` closes a
+      # subshell).
+      if [ "$opaque" = 1 ] || _gaia_repo_scope_opens_group; then dir_known=0; return 0; fi
+      case "$sep_before:$sep_after" in
+        start:seq|start:and|start:end|seq:seq|seq:and|seq:end|and:seq|and:and|and:end) ;;
+        *) dir_known=0; return 0 ;;
+      esac
       if [ "$n" -ne 2 ]; then dir_known=0; return 0; fi
       target="${GAIA_FIRST_COMMAND_WORDS[1]}"
       # A bare `cd`, `cd -`, and a target the shell rewrites before cd sees it
@@ -196,6 +294,8 @@ _gaia_repo_scope_segment() {
         /*) dir="$target"; dir_known=1 ;;
         *) [ "$dir_known" = 1 ] && dir="${dir:+$dir/}$target" ;;
       esac
+      list_moved=1
+      [ "$sep_before" = and ] && cond_move=1
       return 0
       ;;
     pushd|popd)

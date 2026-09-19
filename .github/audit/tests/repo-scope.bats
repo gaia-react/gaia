@@ -399,6 +399,98 @@ t commit -m y"
   [ "$status" -ne 0 ]
 }
 
+# A `cd` the shell keeps away from the commands after it must not move the
+# directory those commands are read against, or a home command after it reads
+# foreign and the whole call is exempted.
+@test "a cd the shell scopes away does not move a later home command: home (enforce)" {
+  add_widget_remote "$HOME_REPO"
+  local f="gh pr view 5 -R other/x"
+  run in_home "$f
+(
+cd $SIBLING_REPO
+)
+git commit -m y"
+  [ "$status" -ne 0 ]
+  run in_home "$f
+x=\$(
+cd $SIBLING_REPO
+)
+git commit -m y"
+  [ "$status" -ne 0 ]
+  run in_home "$f
+f() {
+cd $SIBLING_REPO
+}
+git commit -m y"
+  [ "$status" -ne 0 ]
+  run in_home "$f
+cat <<EOF
+cd $SIBLING_REPO
+EOF
+git commit -m y"
+  [ "$status" -ne 0 ]
+  run in_home "$f; if false; then cd $SIBLING_REPO; fi; git commit -m y"
+  [ "$status" -ne 0 ]
+  run in_home "$f; cd $SIBLING_REPO & git commit -m y"
+  [ "$status" -ne 0 ]
+  run in_home "$f; cd $SIBLING_REPO | cat; git commit -m y"
+  [ "$status" -ne 0 ]
+  run in_home "$f; echo | cd $SIBLING_REPO; git commit -m y"
+  [ "$status" -ne 0 ]
+}
+
+@test "a cd that may not run does not move a later home command: home (enforce)" {
+  add_widget_remote "$HOME_REPO"
+  local f="gh pr view 5 -R other/x"
+  run in_home "$f; false && cd $SIBLING_REPO; git commit -m y"
+  [ "$status" -ne 0 ]
+  run in_home "$f; cd $SIBLING_REPO || git commit -m y"
+  [ "$status" -ne 0 ]
+  run in_home "$f; false && cd $SIBLING_REPO # note
+git commit -m y"
+  [ "$status" -ne 0 ]
+}
+
+@test "a cd the shell certainly runs still moves the commands after it: foreign (allow)" {
+  run in_home "cd $SIBLING_REPO && git pull; git push"
+  [ "$status" -eq 0 ]
+  run in_home "cd $SIBLING_REPO
+git pull
+git push"
+  [ "$status" -eq 0 ]
+  run in_home "git -C $SIBLING_REPO fetch && cd $SIBLING_REPO && git pull"
+  [ "$status" -eq 0 ]
+}
+
+# The walk costs the call's length once per command, so it is bounded.
+@test "a long call ending in a home command is read home, inside the ceiling" {
+  add_widget_remote "$HOME_REPO"
+  local big i t0 t1
+  big="gh pr view 5 -R other/x"
+  for i in $(seq 1 4000); do big="$big
+echo line $i with some ordinary prose"; done
+  big="$big
+git commit -m y"
+  t0=$(date +%s)
+  run in_home "$big"
+  t1=$(date +%s)
+  [ "$status" -ne 0 ]
+  echo "walk 4000 lines: $((t1 - t0))s (ceiling 3s)" >&2
+  [ "$((t1 - t0))" -le 3 ]
+}
+
+@test "a foreign call longer than the walk reads is enforced: home (fail closed)" {
+  local big i
+  big="cd $SIBLING_REPO"
+  for i in $(seq 1 200); do big="$big
+git status"; done
+  run in_home "$big"
+  [ "$status" -ne 0 ]
+  run in_home "cd $SIBLING_REPO
+git status"
+  [ "$status" -eq 0 ]
+}
+
 # The line the rule must not cross: "nothing may follow a foreign command"
 # would over-enforce every legitimate sibling merge paired with a trailer.
 @test "a call whose every command is foreign or touches no repository stays foreign (allow)" {
