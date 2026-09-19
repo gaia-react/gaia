@@ -360,6 +360,69 @@ git commit -m y"
   assert_denied_by_json
 }
 
+# Two spellings run a command in the current shell without leaving a `| & ; ( )`
+# cut in front of it: bash 5.3's `${ cmd; }` function substitution, and zsh's
+# `e` glob qualifier, whose code follows a delimiter rather than a separator
+# (gaia-react/gaia#2155).
+@test "a commit or push inside a bash funsub is denied on main" {
+  on_main
+  # shellcheck disable=SC2016 # the hook must receive the unexpanded opener
+  run_hook 'echo ${ git commit -m y; }'
+  assert_denied_by_json
+  # shellcheck disable=SC2016
+  run_hook 'echo "${ git push; }"'
+  assert_denied_by_json
+}
+
+# The funsub's body also stays part of the git command around it, whose words
+# it expands into.
+@test "a refspec a funsub expands into a push is still read as naming main" {
+  on_feature
+  # shellcheck disable=SC2016
+  run_hook 'git push ${ echo origin main; }'
+  assert_denied_by_json
+}
+
+@test "a commit or push inside a zsh e glob qualifier is denied on main" {
+  on_main
+  run_hook 'echo *(e:"git commit -m y":)'
+  assert_denied_by_json
+  run_hook "echo *(e:'git commit -m y':)"
+  assert_denied_by_json
+  run_hook "echo *(.e:' git push':)"
+  assert_denied_by_json
+  run_hook "echo *(#qe{git commit -m y})"
+  assert_denied_by_json
+}
+
+# An assignment prefix whose name ends in `e` reads like a qualifier opener
+# with `=` as its delimiter; the rewrite must leave it alone.
+@test "a subshell commit or push behind an assignment ending in e is still read as git" {
+  on_main
+  run_hook '(name=v git commit -m x)'
+  assert_denied_by_json
+  on_feature
+  run_hook '(name=v git push origin main)'
+  assert_denied_by_json
+  run_hook '(mode=1 git push --force origin HEAD)'
+  assert_denied_by_json
+  run_hook '(name_=v git push origin main)'
+  assert_denied_by_json
+  # shellcheck disable=SC2016
+  run_hook 'echo $(page_2=x git push --force origin HEAD)'
+  assert_denied_by_json
+  on_main
+  run_hook '(file_1=a git commit -m x)'
+  assert_denied_by_json
+}
+
+@test "a commit inside a nested bash funsub is denied on main" {
+  on_main
+  # shellcheck disable=SC2016
+  run_hook 'echo ${ echo ${ git commit -m y; }; }'
+  assert_denied_by_json
+}
+
 @test "a call whose every command is foreign still passes a commit to main" {
   on_main
   git -C "$REPO" remote add origin https://github.com/acme/widget.git

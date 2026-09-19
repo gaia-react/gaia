@@ -55,8 +55,10 @@ gaia_require_jq 'the commit-floor bypass guard' "$payload" tool_input 'git'
 cmd=$(echo "$payload" | jq -r '.tool_input.command // empty')
 
 # Only act on git commands, short-circuit everything else. (Fast path only;
-# correctness comes from the command-position scan below.)
-[[ "$cmd" =~ (^|[[:space:]&;|()])git([[:space:]]|$) ]] || exit 0
+# correctness comes from the command-position scan below.) Any non-word
+# character may stand before `git`, since a zsh glob qualifier puts a quote or
+# its own delimiter there.
+[[ "$cmd" =~ (^|[^[:alnum:]_])git([[:space:]]|$) ]] || exit 0
 
 # Repo-scope: this repo's commit-floor policy governs this repo only. A git
 # command aimed at a different repo (e.g. `git -C ../other commit --no-verify`)
@@ -104,6 +106,36 @@ floor_msg() {
     msg="$msg If this token appears only inside your commit message text, not as a real flag, that is this hook's documented over-block: rephrase the message, the gate was not bypassed."
   fi
   echo "$msg"
+}
+
+# hidden_bodies <text>: print, one per line, the body of every construct that
+# runs a command in the current shell with no `| & ; ( )` cut in front of it:
+# bash 5.3's `${ cmd; }` function substitution, and a zsh glob qualifier's
+# `e<delim>code<delim>` or `+cmd` (optionally behind `#q` or other qualifier
+# flags). The walk below reads these lines AFTER the command's own lines,
+# which it reads byte for byte as before, so this can only add segments and
+# never hides one: a spurious match (an `e_` inside `(file_1=a git …)`) adds a
+# harmless extra line while the real segment stays intact. A spurious body
+# that happens to begin with `git commit` inside quoted text over-blocks, the
+# safe direction. Each pass re-reads the bodies the last one found, so nested
+# funsubs surface; bodies only shrink, and the pass bound is a backstop.
+# block-main-destructive-git.sh carries the same function, and
+# block-no-verify.bats pins the two copies identical.
+hidden_bodies() {
+  local text="$1" pass=0
+  # shellcheck disable=SC2016 # a literal opener matched in the text, not an expansion
+  case "$text" in *'${'* | *'('*) ;; *) return 0 ;; esac
+  while [ -n "$text" ] && [ "$pass" -lt 8 ]; do
+    text=$(printf '%s\n' "$text" \
+      | { grep -oE '\$\{[[:space:]]+[^;|&()]*|\([^()[:space:]]*(e[^[:alnum:][:space:]]|\+)[^;|&()]*' || true; } \
+      | sed -E -e 's/^\$\{[[:space:]]+//' \
+          -e 's/^\([^()[:space:]]*(e[^[:alnum:][:space:]]|\+)//' \
+          -e 's/^["'"'"']//' \
+          -e 's/["'"'"']?[^[:alnum:][:space:]]?$//')
+    [ -n "$text" ] && printf '%s\n' "$text"
+    pass=$((pass + 1))
+  done
+  return 0
 }
 
 # Walk each command-position segment. Separators (`| & ; ( )`, newlines) become
@@ -159,7 +191,7 @@ while IFS= read -r seg; do
      && [[ "$seg" =~ (^|[[:space:]])-[a-zA-Z]*n[a-zA-Z]*([[:space:]]|$) ]]; then
     deny "$(floor_msg '-n (= --no-verify)')"
   fi
-done < <(printf '%s\n' "$cmd" | tr '|&;()' '\n')
+done < <({ printf '%s\n' "$cmd"; hidden_bodies "$cmd"; } | tr '|&;()' '\n')
 
 # Fail-closed safety net for the UNAMBIGUOUS tokens. Segment-splitting on a
 # `| & ; ( )` that is actually inside a quoted commit message could orphan a
