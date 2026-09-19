@@ -31,11 +31,9 @@
 # collide.
 #
 # Two kinds are minted outside bash and are therefore not arms of
-# gaia_branch_name: `wiki-sync` by the CLI (`.gaia/cli/src/wiki/sync-land.ts`)
-# and `gaia-ci` by the rendered CI workflows
-# (`.gaia/cli/src/automation/templates/workflows/`). Their prefixes are pinned
-# to this table by .gaia/scripts/tests/branch-name-lib.bats, so neither can
-# drift without a red suite.
+# gaia_branch_name: `wiki-sync` by the GAIA CLI's wiki chain, and `gaia-ci` by
+# the CI workflows the CLI renders. GAIA's own test suite pins both prefixes to
+# this table, so neither can drift without a red suite.
 #
 # THE WORKTREE SPELLING. A worktree created with `EnterWorktree({name: <n>})`
 # sits on a branch the harness names `worktree-<n>`, with every `/` in <n>
