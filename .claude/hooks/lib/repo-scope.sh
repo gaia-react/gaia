@@ -192,6 +192,7 @@ _gaia_repo_scope_verdict() {
       kind=0
       _gaia_repo_scope_segment || kind=$?
       [ "$kind" = 1 ] && _gaia_repo_scope_swallowed && kind=2
+      [ "$kind" = 1 ] && _gaia_repo_scope_substitutes && kind=2
       [ "$kind" = 2 ] && return 1
       [ "$kind" = 1 ] && foreign=1
       _gaia_repo_scope_opens_group && opaque=1
@@ -264,6 +265,30 @@ _gaia_repo_scope_swallowed() {
     esac
   done
   return 1
+}
+
+# 0 when a word after the first of the command the scan just read opens a
+# command substitution, a backtick, or a process substitution, and a word after
+# the first names git or gh. The shell runs that payload in its own directory
+# before the command itself, so the command's `git -C` or `gh -R` never
+# reaches it, and a foreign command holding one enforces
+# (gaia-react/gaia#2148). The scan keeps a quoted substitution as one word and
+# splits an unquoted one at its spaces, so the opener and the name are looked
+# for across the words rather than within one. That over-enforces a foreign
+# command whose substitution runs something else while another word only
+# mentions git, and a single-quoted one the shell leaves literal: the safe
+# direction.
+_gaia_repo_scope_substitutes() {
+  local i n=${#GAIA_FIRST_COMMAND_WORDS[@]} tok opener=0 tool=0
+  i=1
+  while [ "$i" -lt "$n" ]; do
+    tok="${GAIA_FIRST_COMMAND_WORDS[$i]}"
+    i=$((i + 1))
+    # shellcheck disable=SC2016 # literal openers matched in the word, not expansions
+    case "$tok" in *'$('* | *'`'* | *'<('* | *'>('*) opener=1 ;; esac
+    [[ "$tok" =~ $_GAIA_REPO_SCOPE_TOOL_RE ]] && tool=1
+  done
+  [ "$opener" = 1 ] && [ "$tool" = 1 ]
 }
 
 # 0 when the command the scan just read opens or closes a construct that scopes

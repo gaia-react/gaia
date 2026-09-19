@@ -346,6 +346,17 @@ git commit -m y"
   assert_denied_by_json
 }
 
+# A substitution in a foreign command's own arguments runs in this repository
+# before the foreign command does (gaia-react/gaia#2148).
+@test "a commit inside a substitution in a foreign command's arguments is denied on main" {
+  on_main
+  git -C "$REPO" remote add origin https://github.com/acme/widget.git
+  run_hook 'gh pr view 5 -R other/x --jq "$(git commit -m y)"'
+  assert_denied_by_json
+  run_hook "git -C $FOREIGN log --format \"\$(git commit -m y)\""
+  assert_denied_by_json
+}
+
 @test "a call whose every command is foreign still passes a commit to main" {
   on_main
   git -C "$REPO" remote add origin https://github.com/acme/widget.git
