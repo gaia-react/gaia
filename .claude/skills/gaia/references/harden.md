@@ -8,7 +8,7 @@ v1 owns prose-rule create/edit end to end. Skills and deterministic checks are r
 
 Execute the playbook yourself in the current conversation. This is an interactive, human-gated flow. The invariant is **no disposition without an explicit human answer**: every candidate's approve / decline / defer / redirect outcome comes from the human, never the agent. Accepting the presented plan as a whole is one explicit answer and counts for every item it covers. Do not dispatch a subagent to make these calls, and do not apply any disposition before the human has answered.
 
-The agent never runs `git add`, `git commit`, or `git push` *while dispositions are collected and applied*: each approve / decline / defer lands in the working tree or the ledger (or persists nothing), and the human owns every call. After the last candidate is dispositioned, one end-of-run publish step (`## Publish approved changes (end of run)`) runs on a **main-branch run only**: if at least one approval produced a working-tree change, it branches, commits, pushes, and opens a PR so the human does not have to ask for it. It then merges only when the human approved *every* candidate this run and answers a merge prompt (never automatically); on any selective run it leaves the PR open for review. It does nothing on a non-default branch (the changes ride that branch's own PR). A decline writes one bounded entry to the machine-local, gitignored ledger and nowhere else. A defer persists nothing of its own. Besides the decline ledger, a completed review writes one more machine-local file, the review snapshot, and clears the cached statusline nudge; see `## Record the review (end of run)`.
+The agent never runs `git add`, `git commit`, or `git push` *while dispositions are collected and applied*: each approve / decline / defer lands in the working tree or the ledger (or persists nothing), and the human owns every call. After the last candidate is dispositioned, one end-of-run publish step (`## Publish approved changes (end of run)`) carries any approved working-tree change through a PR, and merges only on the human's answer. A decline writes one bounded entry to the machine-local, gitignored ledger and nowhere else. A defer persists nothing of its own. Besides the decline ledger, a completed review writes one more machine-local file, the review snapshot, and clears the cached statusline nudge; see `## Record the review (end of run)`.
 
 ## Argument parsing
 
@@ -258,6 +258,10 @@ Rules for filling it in:
 - **`paths:` is mandatory.** Derive the glob from the candidate's `area_tags` (e.g. an `area_tags` of `["app/components"]` becomes `app/components/**/*`). When `area_tags` is empty or holds non-path strings, fall back: derive the glob from the finding's bucket/surface (e.g. a `rule/*` React class scopes to `app/**/*`) or ask the human for the intended scope. One or more single-quoted globs, one per line. A rule with no `paths:` frontmatter is never produced, and an unscoped `**/*` glob is never emitted; path-scoping is what bounds per-task context weight regardless of how many promoted rules accumulate.
 - **The provenance marker is verbatim and single-line**, placed immediately after the closing `---` of the frontmatter, with `<class>` replaced by the actual finding_class. It references the `finding_class`, never a SPEC or UAT id.
 - **Body prose is present tense** and follows `.claude/rules/wiki-style.md`, which carries the authoritative ban list. Use repo-relative paths only (`.claude/rules/instruction-files.md`).
+- **Verify every path, script, and owner the rule cites before writing it.** Open each file and confirm it holds what the sentence says it holds. A rule that names the wrong owner teaches the wrong thing, and fixing it after the audit costs a whole extra round.
+<!-- gaia:maintainer-only:start -->
+- **Keep release-excluded citations inside a maintainer-only block** in any rule that ships (`.gaia/release-exclude` lists them, for example `.gaia/cli/src/**` and `.gaia/tests/**`). Visible, they dangle on an adopter clone and the release scrub's leak check flags them.
+<!-- gaia:maintainer-only:end -->
 
 ### Frozen provenance marker (PROVENANCE-MARKER CONTRACT)
 
@@ -321,8 +325,6 @@ Runs once, in `review` mode only, after `## Record the review (end of run)`. `li
 
 **Precondition.** While applying the dispositions, track whether any candidate was approved through a handler that writes to the working tree: **new prose rule**, **edit existing prose rule**, or **enforcement edit**. The scaffold-only handlers (deterministic-check sketch, skill scaffold) write no file and never count, and decline / defer produce no change. If no approval produced a working-tree change, there is nothing to publish: say so briefly and stop. (Run ends here; see `## Cost record (run end)`.)
 
-**Also track an `all-approved` flag:** true when **every candidate this run was approved** (approve or redirect; a single decline or defer breaks it). It does not affect whether to publish, it gates only the merge prompt below.
-
 **Confirm there are real changes.** Before branching, verify the working tree actually carries the edits:
 
 ```bash
@@ -333,44 +335,56 @@ If it is empty, no-op (a redirect or an unapplied too-invasive edit can leave th
 
 **Repo-state safety.** Branching needs a safe state. If HEAD is detached or a rebase / merge / cherry-pick / bisect is in progress, do not branch: leave the approved changes in the working tree, tell the engineer they ship through normal PR review, and stop. (Run ends here; see `## Cost record (run end)`.)
 
-**On the default branch (main/master):** create the branch (the uncommitted approved edits follow the checkout), commit, push, and open a PR.
+**On the default branch (main/master):** publish runs to a terminal state, the way `/update-deps` does on a main-branch run: merged and cleaned up, left open because the human chose to, or stopped on a named failure. It never ends at "PR opened, audit pending", because nothing else ever dispatches the audit a harden PR owes.
+
+**Create the branch, as its own Bash call.** The uncommitted approved edits follow the checkout. Pick the name first and carry it as a literal into every later call, since shell variables do not persist between calls:
 
 ```bash
-TIMESTAMP=$(date +%Y-%m-%d-%H%M)
-BRANCH="chore/gaia-harden-$TIMESTAMP"
-git checkout -b "$BRANCH"
-git add -A
-git commit -F <commit-message-file>
-git push -u origin "$BRANCH"
+git checkout -b chore/gaia-harden-<YYYY-MM-DD-HHMM>
+```
+
+Never fold this into the commit call. The main-branch guard reads a whole command before any of it runs, so a `git checkout -b … && git commit …` call still looks like a commit on `main` and is refused.
+
+<!-- gaia:maintainer-only:start -->
+**Clear the obligations a rule file carries**, before `gh pr create`. Each is invisible in the diff and each refuses or reds later if skipped. The first two apply only to a new rule file:
+- **Tier it in the audit partition** per `.claude/rules/maintainers/hook-registration.md` (nearly always merely-shared), then `git add` the rule and run `bash .gaia/scripts/audit-rules-changed-complete.sh`.
+- **Answer distribution** through `/distribution-audit`, which regenerates `.gaia/manifest.json`. The distribution pre-flight refuses `gh pr create` for a newly-shipping file with no ship-or-withhold answer.
+- **Keep release-excluded citations out of a shipped rule's visible body** (see `## The prose-rule template (fill in, then write)`, its filling rules).
+<!-- gaia:maintainer-only:end -->
+
+**Commit and push, then open the PR, as two calls.** Route the commit message through a file, never `-m`. Subject: `chore(harden): <the approved forms, e.g. "promote use-effect-derived-state rule">`.
+
+```bash
+git add -A && git commit -F <commit-message-file> && git push -u origin <branch>
+```
+
+```bash
 gh pr create --title "<commit subject>" --body-file <pr-body-file>
 ```
 
-Route the commit message through a file, never `-m`. Subject: `chore(harden): <the approved forms, e.g. "promote use-effect-derived-state rule">`.
-
-The diff is expected to touch only `.claude/rules/**` and enforcement wiring, in which case the PR clears the merge gate through the PR Merge Workflow's out-of-scope bypass with no marker. Do not assume it: the approved "deterministic check" form can edit enforcement wiring including the CI workflow, an audited surface. Before `gh pr merge`, run
-
-```bash
-bash .gaia/scripts/resolve-audit-spawn.sh
-```
-
-Empty output confirms the bypass applies and no marker is owed. If it names any member, this run's diff reached an audited surface: spawn each member it names and complete the marker handshake in `wiki/concepts/PR Merge Workflow.md` like any in-scope PR.
-
 <!-- gaia:maintainer-only:start -->
-Clear the **CHANGELOG gate** per `wiki/concepts/PR Merge Workflow.md` before `gh pr create`, so the PR carries it whether it merges now or after review: a promoted policy rule that changes how the agent works usually warrants a `## [Unreleased]` entry. Scrubbed from adopter bundles.
+**Clear the CHANGELOG gate** per `wiki/concepts/PR Merge Workflow.md` in a follow-up commit, now that the PR number exists for its `(#<PR>)` reference, and push it before any audit dispatch anchors on HEAD. A promoted policy rule that changes how the agent works usually warrants a `## [Unreleased]` entry.
 <!-- gaia:maintainer-only:end -->
 
-**Merge decision.** Only when the `all-approved` flag from the precondition is true (every candidate this run was approved, no decline or defer), ask once via `AskUserQuestion` whether to merge:
+**Run the audit, on every path.** Read `wiki/concepts/PR Merge Workflow.md` and run its `#### Before the first dispatch: verify your own work` checks, then resolve the spawn set its Roster-first step prescribes, including its fallback when the oracle is absent. Do not assume a harden diff is out of audit scope: a rule file or enforcement wiring can sit in a member's remit. When members are named, complete the workflow's marker handshake (spawn, fix, re-audit, under its `#### The three-round session cap`) until `GAIA-Audit` is green. When none are named, the out-of-scope bypass clears the merge with no marker. Reaching the round cap is a stop: emit the continuation prompt the workflow prescribes.
+
+A fix to a drafted rule is a commit to a file in a member's remit, so it rotates that member's digest and buys a whole extra round. The citation check in the prose-rule template's filling rules is what keeps round one clean.
+
+**Watch the checks.** Bounded-poll `gh pr checks <N>` until no required check is pending. A failing check is a named-failure stop: read its log, report which check failed and why, and stop with the PR open. A window that closes with checks still pending is not a failure: go on to the merge question, and `--auto` queues the merge behind them.
+
+**Ask the merge question**, once, via `AskUserQuestion`, after the audit has cleared and the check watch ended without a failing check. A candidate the human declined or deferred is no reason to withhold the merge: the PR carries only what they approved.
 
 - **header:** `"Merge harden PR?"`
-- **question:** `"You approved every candidate. Merge PR #<N> now, or leave it open for review?"`
+- **question:** `"PR #<N> has cleared its audit. Merge it now, or leave it open for review?"`
 - **options (this exact order):**
-  1. `{ label: "Merge", description: "Squash-merge PR #<N> now; the earlier oracle check confirmed whether the bypass applies." }`
+  1. `{ label: "Merge", description: "Squash-merge PR #<N> now and clean up the branch." }`
   2. `{ label: "Leave open", description: "Keep the PR open; you merge it after review." }`
 
-- **Merge** → drive it to merge through `wiki/concepts/PR Merge Workflow.md` (read it, don't merge from memory): `gh pr merge <N> --squash --delete-branch --auto` (`--auto` queues behind required checks; the oracle check before `gh pr create` already confirmed whether a marker is owed for this diff), run the bounded poll (~2-3 minutes) in `wiki/concepts/PR Merge Workflow.md` (`## Post-merge verification before cleanup`), which also stops early on a base-branch conflict or a failed required check (on a conflict, repair it per that page's `### Conflict found mid-wait` and resume), and on `MERGED` capture the branch (the literal `$BRANCH` value) for the cost record's `--branch-name` (`## Cost record (run end)`) and then clean up (`git checkout main && git pull origin main`, `git branch -D "$BRANCH"`, `git fetch --prune origin`); if it is still queued when the poll window closes, print the PR URL, note the merge is queued, and leave the branch in place; on a failed required check, do the same but name the failing check. Either way, the run ends here; see `## Cost record (run end)`.
-- **Leave open** → report the PR URL and stop. (Run ends here; see `## Cost record (run end)`.)
+**Leave open** → report the PR URL and stop.
 
-**If the `all-approved` flag is false** (any candidate was declined or deferred), do not prompt: report the PR URL, note it is open for review, and stop. Never run `gh pr merge` on this path. (Run ends here; see `## Cost record (run end)`.)
+**Merge, verify, clean up.** Run `gh pr merge <N> --squash --delete-branch --auto` directly, so a merge reached after the watch window closed with checks pending queues behind them rather than being refused by branch policy. Then run the poll loop in `wiki/concepts/PR Merge Workflow.md` (`## Post-merge verification before cleanup`), with a bound sized to a full CI run rather than its default 5 ticks; it also stops early on a base-branch conflict (repair it per that page's `### Conflict found mid-wait` and resume) or a failed required check (print the PR URL and the failing check, and leave the branch in place). On `MERGED`, keep the branch name for the cost record's `--branch-name` (`## Cost record (run end)`), then clean up per the workflow's `## Post-merge verification before cleanup` (`git checkout main && git pull origin main`, `git branch -D <branch>`, `git fetch --prune origin`). If it is still queued when the window closes, print the PR URL, note the merge is queued, and leave the branch in place.
+
+Every stop above ends the run; see `## Cost record (run end)`, which is written once, as the last thing printed.
 
 **On any other branch:** do not branch, commit, or PR. Leave the approved changes in the working tree and tell the engineer they ride the current branch's own PR (today's behavior). The end-of-run automation targets only the main-branch case, where a branch has to be made. (Run ends here; see `## Cost record (run end)`.)
 
@@ -393,15 +407,17 @@ Every path that ends a `/gaia-harden` run appends exactly one cost record, the r
 - **Stop without changes** at the plan question.
 - Publish's no-change stop (no approval touched the working tree, or `git status --porcelain` came back empty).
 - Publish's unsafe-repo-state stop.
-- Publish's merge outcomes: `MERGED`, still queued, "Leave open", `all-approved` false, or any other-branch no-op.
-- Publish's non-zero-exit STOP on a `git` or `gh` command.
+- Publish's other-branch no-op.
+- Publish's terminal outcomes on the default branch: `MERGED` after cleanup, a merge still queued when the poll window closes, a "Leave open" the human chose, a stop at the audit's three-round session cap, a failing check, or a non-zero-exit STOP on a `git` or `gh` command.
+
+On the default-branch publish path the record is written once, at one of those outcomes, and its `Cost:` line is the last thing the run prints. Opening the PR is not a run end: the audit, the checks, and the merge question still follow it.
 
 Apply the shared tally machinery in `.claude/skills/gaia/references/cost-record.md` with `{{COMMAND}}` = `gaia-harden`.
 
 ## Guardrails
 
 - `/gaia-harden` is the only writer in this loop, and only under explicit human invocation. The background refresher and the audit emit never author.
-- Never `git add`, `git commit`, or `git push` while dispositions are collected and applied. The single end-of-run publish step is the only writer to git, and only on a main-branch run with at least one approved working-tree change: it branches, commits, pushes, and opens a PR. It merges only when every candidate this run was approved and the human answers the merge prompt (never automatically); on a selective run it leaves the PR open. On a non-default branch it does nothing (the changes ride that branch's PR).
+- Never `git add`, `git commit`, or `git push` while dispositions are collected and applied. The single end-of-run publish step (`## Publish approved changes (end of run)`) is the only writer to git, and it merges only on the human's answer to its merge prompt, never automatically.
 - Never auto-activate a skill or a deterministic check. v1 owns only prose-rule create/edit end to end; the other two forms are scaffold-only.
 - Every drafted prose rule is mandatorily path-scoped (`paths:` frontmatter), and carries the verbatim provenance marker.
 - No disposition without an explicit human answer. Accepting the whole plan is one answer and covers every row it accepts; per-row questions are asked only for rows the human chose to change.
