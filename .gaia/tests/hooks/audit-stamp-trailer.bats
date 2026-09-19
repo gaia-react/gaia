@@ -6,6 +6,10 @@
 # invariant (.gaia/local/plans/code-review-audit-ci/trailer-format.md):
 #   1. clean tree, un-pushed HEAD          -> amend
 #   2. clean tree, pushed attached HEAD    -> status only, no commit, no push
+#   2b. attached HEAD behind upstream       -> decline "HEAD behind upstream",
+#                                               no commit (a behind branch has
+#                                               an empty `@{u}..HEAD` too, but
+#                                               HEAD != @{u})
 #   3. AUDIT_SELF_HEALED=true               -> amend regardless of push status
 #   4. detached HEAD (CI checkout)         -> empty commit (no auto-push)
 #   5. tree dirty                           -> decline "tree dirty"
@@ -235,6 +239,37 @@ commit_mixed_diff() {
   # No network call either; upstream must NOT have advanced.
   after_remote_sha=$(git -C "$REMOTE" rev-parse main)
   [ "$before_remote_sha" = "$after_remote_sha" ]
+}
+
+@test "attached HEAD behind upstream: declines, no commit, no trailer" {
+  push_head_to_upstream
+
+  before_sha=$(git -C "$REPO" rev-parse HEAD)
+  before_tree=$(git -C "$REPO" rev-parse "HEAD^{tree}")
+  before_count=$(git -C "$REPO" rev-list --count HEAD)
+
+  # Simulate a remote that gained a commit this clone never pulled: push an
+  # empty (tree-preserving) commit, then roll the local branch back to what
+  # it pushed. The push already advanced the local origin/main
+  # remote-tracking ref, and `reset --hard` touches only the local branch
+  # ref, so HEAD ends a strict ancestor of `@{u}` with an identical tree.
+  git -C "$REPO" commit --quiet --allow-empty -m "remote-only commit"
+  git -C "$REPO" push --quiet
+  git -C "$REPO" reset --hard --quiet "$before_sha"
+
+  cd "$REPO"
+  AUDIT_TREE_SHA="$before_tree" AUDIT_SELF_HEALED="false" run "$HOOK_ABS"
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "stamp: declined: HEAD behind upstream" ]
+
+  after_sha=$(git -C "$REPO" rev-parse HEAD)
+  after_count=$(git -C "$REPO" rev-list --count HEAD)
+  [ "$before_sha" = "$after_sha" ]
+  [ "$before_count" -eq "$after_count" ]
+
+  trailer=$(trailer_on_head)
+  [ -z "$trailer" ]
 }
 
 @test "AUDIT_SELF_HEALED=true on un-pushed HEAD: amends" {

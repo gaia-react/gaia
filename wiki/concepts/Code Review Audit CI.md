@@ -39,7 +39,7 @@ The workflow's first agent-invocation step is preceded by a `Check audit trailer
 
 Version mismatch (a newer GAIA release shipped) and tree mismatch (HEAD amended after the trailer was written) both invalidate the stamp automatically. Only the PR-HEAD commit's trailers are inspected; stale trailers in earlier commits on the branch do not satisfy the gate.
 
-The trailer is written by `.claude/hooks/audit-stamp-trailer.sh` at the end of a clean local run of the audit agent. Stamp placement is automatic: amend on un-pushed HEADs, an empty `chore: code review audit passed` commit on a detached HEAD (never silently rewriting published history), amend on the audit's own self-heal commits regardless of push state, and no commit at all on an already-pushed attached HEAD, where the `GAIA-Audit` status posts directly on the current head instead. The frozen trailer format and skip decision live in `.github/audit/check-trailer.sh`; the stamp placement rule lives in `.claude/hooks/audit-stamp-trailer.sh`.
+The trailer is written by `.claude/hooks/audit-stamp-trailer.sh` at the end of a clean local run of the audit agent. Stamp placement is automatic: amend on un-pushed HEADs, an empty `chore: code review audit passed` commit on a detached HEAD (never silently rewriting published history), amend on the audit's own self-heal commits regardless of push state, and no commit at all on an already-pushed attached HEAD, where the `GAIA-Audit` status the orchestrator posts later carries the same signal on the current head instead (see [[PR Merge Workflow#Posting the status last]]). The frozen trailer format and skip decision live in `.github/audit/check-trailer.sh`; the stamp placement rule lives in `.claude/hooks/audit-stamp-trailer.sh`.
 
 ## Skip rule (chore-deps PRs)
 
@@ -196,9 +196,10 @@ After the workflow lands on `main`, the maintainer (or an adopter applying the s
 The trailer handshake below is a way to make CI's own `code-review-audit` check report green quickly after a clean local run, without CI re-running the audit itself. A clean local run of the [[Code Review Audit Agent]] stamps the trailer automatically; the next push carries it, and CI's skip logic short-circuits, so `code-review-audit` reports green in seconds without spending CI audit tokens. The end-to-end recipe:
 
 1. Spawn the audit agent on the PR branch (per [[PR Merge Workflow]]).
-2. Address every Critical and Important finding; re-run until the agent reports `Audit marker written for HEAD ... GAIA-Audit trailer ...; gh pr merge is unblocked.` (or, on an already-pushed HEAD, `... GAIA-Audit status posted on pushed HEAD (no stamp commit) ...`).
-3. Push the branch. On an already-pushed HEAD there is no trailer commit to push: the `GAIA-Audit` status posted in step 2 already carries the signal.
-4. Run `gh pr merge`. CI sees the matching trailer, or the matching status when no trailer is on HEAD, and reports `code-review-audit` as a green skipped check.
+2. Address every Critical and Important finding; re-run until the agent reports `Audit marker written for HEAD ... GAIA-Audit trailer ...; status: deferred to orchestrator; gh pr merge is unblocked.` (or, on an already-pushed HEAD, `... no stamp commit (HEAD already pushed); status: deferred to orchestrator ...`). The agent never posts the `GAIA-Audit` status itself.
+3. Push the branch if the report calls for it. On an already-pushed HEAD there is no trailer commit to push.
+4. Post the `GAIA-Audit` status once every dispatched member holds a marker: `bash .claude/hooks/post-audit-status.sh <a current member marker>` (see [[PR Merge Workflow#Posting the status last]]).
+5. Run `gh pr merge`. CI sees the matching trailer, or the matching status when no trailer is on HEAD, and reports `code-review-audit` as a green skipped check.
 
 Editing HEAD between the local stamp and `gh pr merge` invalidates a trailer (tree mismatch) or rotates the digest a posted status carries; CI then runs a fresh audit.
 

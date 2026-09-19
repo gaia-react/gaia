@@ -38,8 +38,11 @@
 #   advances by roughly one stamp per cleared round that makes one (a rebase
 #   onto main and a machinery-reset move it too). One branch therefore writes
 #   its sidecars under SEVERAL bases, one per round that stamps, and that
-#   partitioning is deliberate: it is the durable per-round record of what each
-#   round found, so this script widens the read rather than stabilizing the key.
+#   partitioning is deliberate: it is the durable record of what each
+#   trailer-stamping round found, so this script widens the read rather than
+#   stabilizing the key. A round that clears without stamping (an
+#   already-pushed attached HEAD) advances no base, so it overwrites the
+#   prior round's sidecar for the same member rather than adding a new one.
 #
 #   Keying this glob to one base is what starved the block before: the base a
 #   caller could resolve at merge time is the newest one, whose round is clean

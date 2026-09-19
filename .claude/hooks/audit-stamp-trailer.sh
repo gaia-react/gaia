@@ -9,9 +9,10 @@
 #   detached HEAD the trailer travels with the commit through the network so
 #   CI can skip its own audit run when the trailer's <agent-version> +
 #   <frontend-digest> match a CI-recomputed digest of the PR head. On an
-#   attached HEAD that is already pushed, no commit is needed: the caller's
-#   next step (post-audit-status.sh) posts the GAIA-Audit status directly on
-#   that already-pushed sha, so this hook makes no commit and no network call.
+#   attached HEAD that is already pushed, no commit is needed: the GAIA-Audit status the
+#   orchestrator posts once it has dispositioned every finding lands directly
+#   on that already-pushed sha, so this hook makes no commit and no network
+#   call.
 #
 # Invocation
 #   .claude/hooks/audit-stamp-trailer.sh
@@ -50,6 +51,7 @@
 #          frontend holds a live refusal
 #          members pending <list>
 #          stamp lock contended
+#          HEAD behind upstream
 #   2 , Usage / unexpected error. Stderr.
 #
 # References
@@ -407,28 +409,44 @@ fi
 
 self_healed="${AUDIT_SELF_HEALED:-false}"
 
-# Head-state detection. Three states, tracked separately because a detached
-# HEAD and an already-pushed attached HEAD both count as "cannot amend" but
-# now take different placements:
+# Head-state detection. Four states, tracked separately because a detached
+# HEAD, an already-pushed attached HEAD, and a behind attached HEAD all count
+# as "cannot amend" but take different placements:
 #   detached (CI checkout of pull_request.head.sha; rebase/cherry-pick in
 #     flight; explicit `git checkout <sha>`): the stamp must never amend a
 #     commit the runner cannot guarantee is local, and CI's workflow contract
 #     expects an empty marker commit here (see the empty-commit block below),
 #     so this state keeps that placement.
-#   attached-pushed (a branch with an upstream and an empty `@{u}..HEAD`):
-#     HEAD is already on the remote, so the audit needs no commit at all; the
-#     caller's next step posts the GAIA-Audit status directly on it.
+#   attached-pushed (a branch with an upstream, an empty `@{u}..HEAD`, AND
+#     HEAD == @{u}): HEAD is already on the remote, so the audit needs no
+#     commit at all; the orchestrator later posts the GAIA-Audit
+#     status directly on it.
+#   behind (a branch with an upstream and an empty `@{u}..HEAD`, but
+#     HEAD != @{u}): `@{u}..HEAD` is also empty when HEAD is a strict
+#     ancestor of its upstream, not only when the two are equal, so this
+#     state needs its own equality check to tell them apart. The local
+#     branch has nothing to push and no stamp can land on the sha the
+#     remote actually holds, so this declines rather than reusing
+#     attached-pushed's status-only placement; the operator's fix is a
+#     pull, not a push.
 #   un-pushed (no upstream, or ahead of upstream): safe to amend.
 head_state="un-pushed"
 head_branch=$(git -C "$repo_root" symbolic-ref --short -q HEAD 2>/dev/null || true)
 if [ -z "$head_branch" ]; then
   head_state="detached"
 elif upstream=$(git -C "$repo_root" rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null); then
-  if [ -n "$upstream" ]; then
-    if [ -z "$(git -C "$repo_root" rev-list '@{u}..HEAD' 2>/dev/null)" ]; then
+  if [ -n "$upstream" ] && [ -z "$(git -C "$repo_root" rev-list '@{u}..HEAD' 2>/dev/null)" ]; then
+    if [ "$(git -C "$repo_root" rev-parse HEAD 2>/dev/null || true)" = "$(git -C "$repo_root" rev-parse '@{u}' 2>/dev/null || true)" ]; then
       head_state="attached-pushed"
+    else
+      head_state="behind"
     fi
   fi
+fi
+
+if [ "$head_state" = "behind" ]; then
+  emit_decline "HEAD behind upstream"
+  exit 0
 fi
 
 trailer="GAIA-Audit: ${agent_version} ${frontend_digest} ${current_tree}"
@@ -454,7 +472,7 @@ fi
 
 if [ "$head_state" = "attached-pushed" ]; then
   # HEAD is already on the remote: no commit and no network call needed here.
-  # The caller's next step, post-audit-status.sh, posts the GAIA-Audit status
+  # The orchestrator later posts the GAIA-Audit status (post-audit-status.sh)
   # directly on this sha, which the merge gate and branch protection read in
   # place of a trailer. A later local round anchors its scope on each
   # member's earned clearance instead, since the resolver's status lookup

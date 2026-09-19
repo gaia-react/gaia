@@ -1068,7 +1068,7 @@ EOF
   grep -qF -- "${digest}.refused" "$STATUS_CALLS" || return 1
 }
 
-@test "an earned write never invokes the status hook: the agent still owns that call" {
+@test "an earned write never invokes the status hook: only the orchestrator posts success" {
   install_status_hook_stub
   digest="$(member_digest "$ROOT" code-audit-frontend)"
 
