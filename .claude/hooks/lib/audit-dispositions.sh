@@ -120,23 +120,18 @@
 # moment, and the residual gap below is a property of that, not of the
 # sources.
 #
-# The two sides once also disagreed on the SAME head, a second, separate gap:
-# the write side (the default member's out-of-scope base fence, now the
-# eligibility ladder in .gaia/scripts/audit-resolve-scope.sh) spelled its
-# default-branch arm as the short `origin/<name>` revspec, while the verify
-# side (this function, through the shared resolver) takes the fully-qualified
-# `refs/remotes/origin/<name>`. A checkout carrying a local branch or tag
-# literally named `origin/<default>` therefore made the two sides resolve
-# DIFFERENT bases. This header recorded that as a known, bounded residue a
-# re-audit clears; measured, it was neither (gaia-react/gaia#2096): with the
-# shadowing branch behind the remote-tracking ref and no readable pull-request
-# record, the write side came out wide and the same deny recurred on
-# consecutive rounds. The write side now spells the fully-qualified ref too,
-# so a shadowing ref moves neither side, and
-# .gaia/scripts/tests/audit-base-agreement.bats pins that agreement in both
-# directions (DP-002).
+# On the SAME head the two sides agree on the default-branch ref too: the
+# write side (the eligibility ladder in .gaia/scripts/audit-resolve-scope.sh)
+# spells it `refs/remotes/origin/<name>`, the fully-qualified ref this
+# function takes through the shared resolver. The short `origin/<name>`
+# revspec is not a safe substitute on either side. A local branch or tag
+# literally named `origin/<default>` wins it, and one sitting behind the
+# remote-tracking ref widens the write side, the false-DENY direction below,
+# with no re-audit clearing it while the pull-request record stays unreadable
+# (gaia-react/gaia#2096). .gaia/scripts/tests/audit-base-agreement.bats pins
+# the agreement in both directions (DP-002).
 #
-# What remains is the timing gap above. Its two directions:
+# The residual timing gap has two directions:
 #
 #   - verify wide, write narrow -> safe. The agent files what it could not
 #     waive, and a wider verify side never denies a filed finding.
