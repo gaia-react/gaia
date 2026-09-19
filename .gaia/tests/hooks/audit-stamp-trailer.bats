@@ -10,6 +10,9 @@
 #                                               no commit (a behind branch has
 #                                               an empty `@{u}..HEAD` too, but
 #                                               HEAD != @{u})
+#   2c. behind HEAD + AUDIT_SELF_HEALED=true -> amend anyway (the self-heal
+#                                               amend runs ahead of the behind
+#                                               decline, so it never reaches it)
 #   3. AUDIT_SELF_HEALED=true               -> amend regardless of push status
 #   4. detached HEAD (CI checkout)         -> empty commit (no auto-push)
 #   5. tree dirty                           -> decline "tree dirty"
@@ -270,6 +273,38 @@ commit_mixed_diff() {
 
   trailer=$(trailer_on_head)
   [ -z "$trailer" ]
+}
+
+@test "AUDIT_SELF_HEALED=true on behind HEAD: amends anyway (self-heal owns the commit)" {
+  push_head_to_upstream
+
+  before_sha=$(git -C "$REPO" rev-parse HEAD)
+  before_tree=$(git -C "$REPO" rev-parse "HEAD^{tree}")
+  before_count=$(git -C "$REPO" rev-list --count HEAD)
+  expected_digest=$(digest_of "$REPO" code-audit-frontend)
+
+  # Same behind fixture as the decline test above: push an empty (tree-
+  # preserving) commit, then roll the local branch back to what it pushed, so
+  # HEAD ends a strict ancestor of `@{u}` with an identical tree.
+  git -C "$REPO" commit --quiet --allow-empty -m "remote-only commit"
+  git -C "$REPO" push --quiet
+  git -C "$REPO" reset --hard --quiet "$before_sha"
+
+  cd "$REPO"
+  AUDIT_TREE_SHA="$before_tree" AUDIT_SELF_HEALED="true" run "$HOOK_ABS"
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "stamp: amended onto audit-self-heal HEAD" ]
+
+  after_sha=$(git -C "$REPO" rev-parse HEAD)
+  after_count=$(git -C "$REPO" rev-list --count HEAD)
+
+  # Amend, not a new commit.
+  [ "$before_sha" != "$after_sha" ]
+  [ "$before_count" = "$after_count" ]
+
+  trailer=$(trailer_on_head)
+  [ "$trailer" = "GAIA-Audit: 1.2.3 ${expected_digest} ${before_tree}" ]
 }
 
 @test "AUDIT_SELF_HEALED=true on un-pushed HEAD: amends" {

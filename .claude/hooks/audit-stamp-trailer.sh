@@ -429,9 +429,12 @@ self_healed="${AUDIT_SELF_HEALED:-false}"
 #     HEAD is a strict ancestor of its upstream, not only when the two are
 #     equal, so this state needs its own equality check to tell them apart.
 #     The local branch has nothing to push and no stamp can land on the sha
-#     the remote actually holds, so this declines rather than reusing
-#     attached-pushed's status-only placement; the operator's fix is a
-#     pull, not a push.
+#     the remote actually holds, so a non-self-healed run declines rather
+#     than reusing attached-pushed's status-only placement; the operator's
+#     fix is a pull, not a push. A self-healed run amends anyway (see the
+#     self-heal check below, which runs ahead of this state's decline):
+#     the audit made HEAD its own commit, still local, regardless of the
+#     upstream comparison.
 #   un-pushed (no upstream, or ahead of upstream): safe to amend.
 head_state="un-pushed"
 head_branch=$(git -C "$repo_root" symbolic-ref --short -q HEAD 2>/dev/null || true)
@@ -447,11 +450,6 @@ elif upstream=$(git -C "$repo_root" rev-parse --abbrev-ref --symbolic-full-name 
   fi
 fi
 
-if [ "$head_state" = "behind" ]; then
-  emit_decline "HEAD behind upstream"
-  exit 0
-fi
-
 trailer="GAIA-Audit: ${agent_version} ${frontend_digest} ${current_tree}"
 
 # -----------------------------------------------------------------------------
@@ -459,10 +457,17 @@ trailer="GAIA-Audit: ${agent_version} ${frontend_digest} ${current_tree}"
 # -----------------------------------------------------------------------------
 
 if [ "$self_healed" = "true" ]; then
-  # Audit owns the final commit, amend it regardless of push status.
+  # Audit owns the final commit, amend it regardless of head state or push
+  # status: self-heal ran, so HEAD is the audit's own commit to finish, even
+  # when it is also behind its upstream.
   git -C "$repo_root" commit --amend --no-edit --no-verify \
     --trailer "$trailer" >/dev/null
   emit_stamp "amended onto audit-self-heal HEAD"
+  exit 0
+fi
+
+if [ "$head_state" = "behind" ]; then
+  emit_decline "HEAD behind upstream"
   exit 0
 fi
 
