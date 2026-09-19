@@ -2661,6 +2661,9 @@ run_merge_hook_lib_absent() {
 
   run_merge_hook $'cat > f.txt <<EOF\n$(gh pr merge 30 --squash)\nEOF\n'
   assert_denied_by_json || return 1
+  # bash 5.3 runs its in-shell command substitution there too.
+  run_merge_hook $'cat > f.txt <<EOF\n${ gh pr merge 30 --squash; }\nEOF\n'
+  assert_denied_by_json || return 1
   # Quoting the delimiter turns substitution off, so the body is data again.
   run_merge_hook $'cat > f.txt <<\'EOF\'\n$(gh pr merge 30 --squash)\nEOF\n'
   assert_allowed_by_json || return 1

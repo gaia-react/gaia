@@ -37,7 +37,8 @@
 #      command is `cat > f` lends its proof to a second command's heredoc after
 #      a separator, and the shell runs what that second command is handed;
 #   7. the body runs nothing: either the delimiter is quoted or escaped, which
-#      turns substitution off, or the body carries no `$(` and no backtick.
+#      turns substitution off, or the body carries no command-substitution
+#      opener: no `$(`, no backtick, and none of bash 5.3's `${ ` or `${|`.
 #      With an unquoted delimiter the shell runs a command substitution inside
 #      the body before `cat` ever sees it, so that body is not data.
 #
@@ -515,11 +516,13 @@ gaia_verb_arm_view() {
           p="$_gaia_va_p"
           # Condition 7, decided here because only now is the body's extent
           # known. Only the first heredoc can carry the proof, so only it is
-          # asked.
+          # asked. The needles are the command-substitution openers of
+          # `sep_re` in verb-arming.sh; an opener added there and missed here
+          # is masked as data, which fails open.
           if [ "$first" = 1 ] && [ "$data" = 1 ] && [ "${hd_quoted[$bi]}" = 0 ]; then
             # shellcheck disable=SC2016 # the literal opener is the needle
             case "${s:0:$p}" in
-              *'$('*|*'`'*) data=0 ;;
+              *'$('*|*'`'*|*'${|'*|*'${'[[:space:]]*) data=0 ;;
             esac
           fi
           if [ "$first" = 1 ] && [ "$data" = 1 ] && [ "$p" -gt 0 ]; then

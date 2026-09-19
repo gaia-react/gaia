@@ -320,7 +320,8 @@ opener_pair() {
   # quoted or escaped delimiter turns substitution off, which is what makes
   # the twin data.
   local sub
-  for sub in "\$($V --squash)" "\`$V --squash\`" "x \$( $V --squash)"; do
+  for sub in "\$($V --squash)" "\`$V --squash\`" "x \$( $V --squash)" \
+             "\${ $V --squash; }" "\${| $V --squash; }"; do
     arm "$MERGE_FRAG" "$MERGE_WORDS" "cat > /tmp/f <<EOF$NL$sub${NL}EOF"
     assert_armed || return 1
     arm "$MERGE_FRAG" "$MERGE_WORDS" "cat > /tmp/f <<-EOF$NL$sub$NL${TAB}EOF"

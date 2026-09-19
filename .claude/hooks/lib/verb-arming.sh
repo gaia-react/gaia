@@ -18,10 +18,10 @@
 # substitution opener a verb after which the shell runs: `$(` and a backtick,
 # `<(` and `>(`, zsh's `=(` (the Bash tool runs the user's own shell, which is
 # often zsh), and bash 5.3's `${ `, whose `${|` sibling already arms on its
-# own trailing `|`. `$(` and a backtick also run inside double quotes; the
-# others do not, and the group arms on every opener in either position, the
-# fail-closed direction, as it does on a zsh `=(` that is really an array
-# assignment.
+# own trailing `|`. `$(`, a backtick, `${ ` and `${|` also run inside double
+# quotes; `<(`, `>(` and `=(` do not, and the group arms on every opener in
+# either position, the fail-closed direction, as it does on a zsh `=(` that is
+# really an array assignment.
 #
 # Composition is literal concatenation in that order, which is what preserves
 # capture-group numbering: under `start` the fragment's own groups begin at 1,
@@ -87,11 +87,11 @@
 # pull-request or issue body is passed, arms the merge gates on a command that
 # merges nothing (gaia-react/gaia#2158). A verb whose characters are quoted
 # still under-arms outside the first command, because pass 3 reads the first
-# command only. Dollar-quoted words are unmodelled and the walk abstains on one rather
-# than approximating it. Pass 3's bounded prefix can create an arm no data
-# proof removes, because truncation at the bound can leave a word reading as
-# the verb; that direction costs a decision nobody asked for rather than a
-# merge nobody audited.
+# command only. Dollar-quoted words are unmodelled and the walk abstains on
+# one rather than approximating it. Pass 3's bounded prefix can create an arm
+# no data proof removes, because truncation at the bound can leave a word
+# reading as the verb; that direction costs a decision nobody asked for rather
+# than a merge nobody audited.
 
 # Inputs longer than this get the identity view and the raw match stands. It
 # covers the observed population: in a corpus of 33,498 real Bash tool calls no
@@ -288,6 +288,8 @@ gaia_verb_armed() {
   # their own: the shell runs what follows each one, and group 1 stays the one
   # group this pattern adds, which is what keeps the fragment's own numbering.
   # The backtick is an octal escape for the reason the walker gives for its own.
+  # The walker's condition 7 carries the command-substitution openers as glob
+  # needles; an opener added here needs its needle there too.
   sep_re=$'(\\&\\&|;|\\|\\||\\||\n|\\$\\(|\140|<\\(|>\\(|=\\(|\\$\\{[[:space:]])[[:space:]]*'"$frag"
 
   raw=0
