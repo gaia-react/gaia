@@ -178,6 +178,16 @@ else
   exit 0
 fi
 
+# Appended to every deny below. Only a start or first-command arm is the call's
+# own invocation; a separator or opener arm is also what a merge cited inside a
+# body or a commit message produces, so the deny must not claim one was run.
+gate_arm_note=""
+if [ "$GAIA_VERB_ARM_KIND" = sep ]; then
+  gate_arm_note="
+
+This gate armed on a \`gh pr merge\` that follows a separator or a substitution opener inside the command, not on the command's own first word, and it cannot tell a merge the shell runs from one only cited in text the command carries (a pull-request or issue body, a commit message). If this call runs no merge, pass that text from a file instead (\`--body-file\`, \`git commit -F\`), which the gate does not read; if it does run one, the steps above apply."
+fi
+
 # Repo-scope: this gate enforces the home repo's audit contract only. A
 # `gh pr merge` aimed at a different repo (e.g. a sibling project merged via
 # `cd ../other && gh pr merge` or `gh pr merge -R owner/other`) has no bearing
@@ -238,7 +248,7 @@ _version_lib="$_lib_dir/gaia-version.sh"
 _provenance_lib="$_lib_dir/audit-base-provenance.sh"
 _repo_scope_lib="$_lib_dir/repo-scope.sh"
 if [ -z "$_lib_dir" ] || [ ! -f "$_scope_lib" ] || [ ! -f "$_machinery_lib" ] || [ ! -f "$_digest_lib" ] || [ ! -f "$_version_lib" ] || [ ! -f "$_provenance_lib" ] || [ ! -f "$_repo_scope_lib" ]; then
-  jq -n --arg r "PR merge gate: cannot load the ownership classifier, the digest engine, the version normalizer, the base provenance resolver, or the command scanner (.claude/hooks/lib/audit-scope.sh, .claude/hooks/lib/audit-machinery.sh, .claude/hooks/lib/audit-digest.sh, .claude/hooks/lib/gaia-version.sh, .claude/hooks/lib/audit-base-provenance.sh, and .claude/hooks/lib/repo-scope.sh must all exist and be readable). Every marker check below is keyed to a member's content digest and to a version literal this gate compares for equality against the stamped one; this gate's out-of-scope and self-mod-only bypasses depend on the classifier to know what a changed path is, and on the provenance resolver to know what base their change set is read against; and every permit this gate issues is bound to the pull request the merge names, which it reads through the command scanner. So it denies rather than guess. Restore all six files (they ship with the framework; a missing or corrupted checkout is the usual cause) and retry." '{
+  jq -n --arg r "PR merge gate: cannot load the ownership classifier, the digest engine, the version normalizer, the base provenance resolver, or the command scanner (.claude/hooks/lib/audit-scope.sh, .claude/hooks/lib/audit-machinery.sh, .claude/hooks/lib/audit-digest.sh, .claude/hooks/lib/gaia-version.sh, .claude/hooks/lib/audit-base-provenance.sh, and .claude/hooks/lib/repo-scope.sh must all exist and be readable). Every marker check below is keyed to a member's content digest and to a version literal this gate compares for equality against the stamped one; this gate's out-of-scope and self-mod-only bypasses depend on the classifier to know what a changed path is, and on the provenance resolver to know what base their change set is read against; and every permit this gate issues is bound to the pull request the merge names, which it reads through the command scanner. So it denies rather than guess. Restore all six files (they ship with the framework; a missing or corrupted checkout is the usual cause) and retry.${gate_arm_note}" '{
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
       permissionDecision: "deny",
@@ -336,7 +346,7 @@ audit_scope_init "$tree_root"
 # digest set.
 _digest_batch="$(audit_digests_all "$tree_root" 2>/dev/null)" || _digest_batch=""
 if [ -z "$_digest_batch" ]; then
-  jq -n --arg r "PR merge gate: cannot derive per-member content digests for HEAD ${sha:0:12} (audit_digests_all failed or returned nothing). This usually means a missing sha256 tool (sha256sum / shasum -a 256), a git failure, or a corrupted checkout. Every Code Audit Team marker is keyed to a member's content digest, so this gate denies rather than match against an empty or partial digest. Restore the missing tool/checkout and retry." '{
+  jq -n --arg r "PR merge gate: cannot derive per-member content digests for HEAD ${sha:0:12} (audit_digests_all failed or returned nothing). This usually means a missing sha256 tool (sha256sum / shasum -a 256), a git failure, or a corrupted checkout. Every Code Audit Team marker is keyed to a member's content digest, so this gate denies rather than match against an empty or partial digest. Restore the missing tool/checkout and retry.${gate_arm_note}" '{
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
       permissionDecision: "deny",
@@ -925,7 +935,7 @@ another clearance.
 
 See wiki/concepts/PR Merge Workflow.md for the full contract."
 
-  jq -n --arg r "$reason" '{
+  jq -n --arg r "$reason$gate_arm_note" '{
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
       permissionDecision: "deny",
@@ -1175,7 +1185,7 @@ Re-spawn the code-audit-frontend agent on this HEAD so it re-files its
 disposition sidecar, then retry gh pr merge.
 
 See wiki/concepts/PR Merge Workflow.md for the full contract."
-    jq -n --arg r "$reason" '{
+    jq -n --arg r "$reason$gate_arm_note" '{
       hookSpecificOutput: {
         hookEventName: "PreToolUse",
         permissionDecision: "deny",
@@ -1237,7 +1247,7 @@ See wiki/concepts/PR Merge Workflow.md for the full contract."
 ${note_block}"
   fi
 
-  jq -n --arg r "$reason" '{
+  jq -n --arg r "$reason$gate_arm_note" '{
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
       permissionDecision: "deny",
@@ -1287,7 +1297,7 @@ To unblock:
 
 See wiki/concepts/PR Merge Workflow.md for the full contract."
 
-  jq -n --arg r "$reason" '{
+  jq -n --arg r "$reason$gate_arm_note" '{
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
       permissionDecision: "deny",
@@ -1362,7 +1372,7 @@ See wiki/concepts/PR Merge Workflow.md for the full contract."
 
   # --arg safely escapes $reason; never interpolate dynamic values directly into
   # the JSON template string.
-  jq -n --arg r "$reason" '{
+  jq -n --arg r "$reason$gate_arm_note" '{
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
       permissionDecision: "deny",
@@ -1494,7 +1504,7 @@ the merge.
 
 See wiki/concepts/PR Merge Workflow.md for the full contract."
 
-jq -n --arg r "$reason" '{
+jq -n --arg r "$reason$gate_arm_note" '{
   hookSpecificOutput: {
     hookEventName: "PreToolUse",
     permissionDecision: "deny",

@@ -2670,6 +2670,38 @@ run_merge_hook_lib_absent() {
   [ -z "$output" ]
 }
 
+@test "arming: a merge cited in a pull-request body passed through a quoted-delimiter heredoc is allowed" {
+  install_gh_stub
+  commit_files "app/x.ts" "export const x = 1"
+
+  run_merge_hook $'gh pr create --title t --body "$(cat <<\'EOF\'\nSee `gh pr merge 30 --squash`.\nEOF\n)"'
+  assert_allowed_by_json || return 1
+  [ -z "$output" ] || return 1
+  run_merge_hook $'gh pr comment 5 --body \'see `gh pr merge 30 --squash`\''
+  assert_allowed_by_json || return 1
+  [ -z "$output" ] || return 1
+  # The unquoted-delimiter twin runs the backticked merge inside its body.
+  run_merge_hook $'gh pr create --title t --body "$(cat <<EOF\nSee `gh pr merge 30 --squash`.\nEOF\n)"'
+  assert_denied_by_json
+}
+
+@test "deny text: a separator or opener arm says the merge may only be cited, and a first-word arm does not" {
+  install_gh_stub
+  commit_files "app/x.ts" "export const x = 1"
+
+  run_merge_hook 'echo "$(gh pr merge 30 --squash)"'
+  assert_denied_by_json || return 1
+  grep -qF 'cannot tell a merge the shell runs from one only cited' <<<"$output" || return 1
+  run_merge_hook 'echo x; gh pr merge 30 --squash'
+  assert_denied_by_json || return 1
+  grep -qF 'cannot tell a merge the shell runs from one only cited' <<<"$output" || return 1
+
+  run_merge_hook 'gh pr merge 30 --squash'
+  assert_denied_by_json || return 1
+  grep -qF 'cannot tell a merge the shell runs from one only cited' <<<"$output" && return 1
+  true
+}
+
 @test "data-proof: an unterminated quote after the heredoc denies (walker abstains, raw match stands)" {
   install_gh_stub
   commit_files "app/x.ts" "export const x = 1"

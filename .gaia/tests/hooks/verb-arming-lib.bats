@@ -204,6 +204,153 @@ opener_pair() {
 }
 
 # ---------------------------------------------------------------------------
+# Dead openers: an opener the parsing shell never runs arms nothing. Each
+# fixture's twin is the same text with the opener made live, which arms.
+# ---------------------------------------------------------------------------
+
+@test "an opener inside single quotes arms nothing, and its double-quoted twin arms" {
+  local bt='`'
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "gh pr comment 5 --body 'see ${bt}gh pr merge 30 --squash${bt}'"
+  assert_not_armed || return 1
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "gh pr comment 5 --body \"see ${bt}gh pr merge 30 --squash${bt}\""
+  assert_armed || return 1
+  assert_kind sep || return 1
+
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "echo 'x \$(gh pr merge 12)'"
+  assert_not_armed || return 1
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "echo \"x \$(gh pr merge 12)\""
+  assert_armed || return 1
+
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "echo 'x <(gh pr merge 12)'"
+  assert_not_armed || return 1
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "echo x <(gh pr merge 12)"
+  assert_armed
+}
+
+@test "an apostrophe inside double quotes opens no span, so the opener after it arms" {
+  local bt='`'
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "echo \"it's ${bt}gh pr merge 12${bt}\""
+  assert_armed || return 1
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "echo 'it is ${bt}gh pr merge 12${bt}'"
+  assert_not_armed
+}
+
+@test "single quotes inside a substitution inside double quotes are real quotes again" {
+  local bt='`'
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "echo \"\$(printf '%s' '${bt}gh pr merge 12${bt}')\""
+  assert_not_armed || return 1
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "echo \"\$(printf '%s' ${bt}gh pr merge 12${bt})\""
+  assert_armed
+}
+
+@test "a backslash-escaped opener arms nothing, and its unescaped twin arms" {
+  local bt='`'
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "echo \\${bt}gh pr merge 12\\${bt}"
+  assert_not_armed || return 1
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "echo ${bt}gh pr merge 12${bt}"
+  assert_armed || return 1
+
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "echo \"\\\$(gh pr merge 12)\""
+  assert_not_armed || return 1
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "echo \"\$(gh pr merge 12)\""
+  assert_armed
+}
+
+@test "a quoted-delimiter heredoc read by cat inside a substitution arms nothing, for each body-carrying command" {
+  local bt='`' body cmd
+  body="See ${bt}gh pr merge 30 --squash${bt} for the merge.${NL}And a \$(gh pr merge 31) too.${NL}EOF${NL})\""
+  for cmd in 'gh pr create --title t --body' 'gh issue create --title t --body' 'git commit -m'; do
+    arm "$MERGE_FRAG" "$MERGE_WORDS" "$cmd \"\$(cat <<'EOF'${NL}${body}"
+    assert_not_armed || return 1
+    arm "$MERGE_FRAG" "$MERGE_WORDS" "$cmd \"\$(cat <<\"EOF\"${NL}${body}"
+    assert_not_armed || return 1
+    arm "$MERGE_FRAG" "$MERGE_WORDS" "$cmd \"\$(cat <<\\EOF${NL}${body}"
+    assert_not_armed || return 1
+    # The unquoted-delimiter twin runs the substitutions in its body.
+    arm "$MERGE_FRAG" "$MERGE_WORDS" "$cmd \"\$(cat <<EOF${NL}${body}"
+    assert_armed || return 1
+  done
+  true
+}
+
+@test "a quoted-delimiter heredoc read by anything but a bare cat or tee keeps its openers live" {
+  local bt='`' body
+  body="${bt}gh pr merge 30${bt}${NL}EOF${NL})\""
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "x=\"\$(cat <<'EOF'${NL}${body}"
+  assert_not_armed || return 1
+  # An interpreter reads the body as a script.
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "x=\"\$(bash <<'EOF'${NL}${body}"
+  assert_armed || return 1
+  # cat's output piped into an interpreter on the opener line.
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "x=\"\$(cat <<'EOF' | sh${NL}${body}"
+  assert_armed || return 1
+  # A process substitution hands the body to whatever reads it as a file.
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "bash <(cat <<'EOF'${NL}${bt}gh pr merge 30${bt}${NL}EOF${NL})"
+  assert_armed || return 1
+  # Two heredocs on one line are not modelled.
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "x=\"\$(cat <<'EOF' <<'EOG'${NL}a${NL}EOF${NL}${bt}gh pr merge 30${bt}${NL}EOG${NL})\""
+  assert_armed
+}
+
+@test "a dead opener ahead of a live one still arms on the live one" {
+  local bt='`'
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "echo '${bt}gh pr merge 1${bt}'; x=${bt}gh pr merge 2${bt}"
+  assert_armed || return 1
+  assert_kind sep || return 1
+  match_of "$MERGE_FRAG" "$MERGE_WORDS" "echo '\$(gh pr merge 1)'; x=\"\$(gh pr merge 2 --squash)\""
+  grep -qF 'kind=sep' <<<"$output" || return 1
+  grep -qF 'count=3' <<<"$output" || return 1
+  grep -qF 'm[1]=[$(]' <<<"$output" || return 1
+  grep -qF 'm[2]=[ ]' <<<"$output" || return 1
+  true
+}
+
+@test "a text the liveness scan cannot model keeps every opener live" {
+  local bt='`'
+  # Unterminated single quote.
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "echo 'x ${bt}gh pr merge 12${bt}"
+  assert_armed || return 1
+  # A case arm's bare `)` inside a substitution.
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "x=\$(case a in a) echo '${bt}gh pr merge 12${bt}';; esac)"
+  assert_armed || return 1
+  # A dollar-quoted word.
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "echo \$'a' '${bt}gh pr merge 12${bt}'"
+  assert_armed || return 1
+  # The terminated, case-free, plainly quoted twin is modelled.
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "echo 'x ${bt}gh pr merge 12${bt}'"
+  assert_not_armed
+}
+
+@test "an apostrophe in a comment opens no span that could hide a later live opener" {
+  local bt='`'
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "# don't${NL}echo ${bt}gh pr merge 12${bt}"
+  assert_armed || return 1
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "echo don't ${bt}gh pr merge 12${bt}'"
+  assert_not_armed
+}
+
+@test "the tail-capturing fragment recovers its real tail by length when a dead opener sits in it" {
+  # The consumer's own recovery: slice the text by the suffix and tail lengths
+  # the view's match reports. The view masks the dead opener, so the captured
+  # group differs from the real bytes and only the slice returns them.
+  run bash -c '
+    . "$1" || exit 9
+    cmd=$2
+    gaia_verb_armed "$3" "gh pr create" "$cmd" || { echo not-armed; exit 0; }
+    t="${GAIA_VERB_ARM_MATCH[3]-}"
+    s="${GAIA_VERB_ARM_MATCH[4]-}"
+    start=$(( ${#cmd} - ${#s} - ${#t} ))
+    printf "kind=%s\n" "$GAIA_VERB_ARM_KIND"
+    printf "captured=[%s]\n" "$t"
+    printf "real=[%s]\n" "${cmd:start:${#t}}"
+  ' _ "$LIB" "x=\"\$(gh pr create --title 'x \$(y)' --fill)\"" "$CREATE_TAIL_FRAG"
+  grep -qF 'kind=sep' <<<"$output" || return 1
+  grep -qF "real=[--title 'x \$(y)' --fill)\"]" <<<"$output" || return 1
+  grep -qF "captured=[--title 'x \$(y)' --fill)\"]" <<<"$output" && return 1
+  true
+}
+
+# ---------------------------------------------------------------------------
 # The data proof
 # ---------------------------------------------------------------------------
 
