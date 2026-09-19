@@ -3,7 +3,7 @@ paths:
   - '.gaia/scripts/**/*.sh'
   - '.claude/hooks/**/*.sh'
   - '.github/workflows/**/*.yml'
-  - '.gaia/cli/src/**/*.ts'
+  - '.gaia/**/*.ts'
   - '**/*.bats'
 ---
 <!-- gaia-harden: promoted from recurring finding_class holistic/ambient-context-resolution; pruned by /gaia-audit on obsolescence/redundancy/supersession/duplication only, never for non-recurrence -->
@@ -25,7 +25,9 @@ Before writing the first `git` call, name the subject and where it comes from. T
 
 For the two subjects GAIA already centralizes, call the owner instead of deriving it:
 
-- The main checkout's root: `gaia_resolve_main_root` in `.gaia/scripts/main-root-lib.sh`, or `resolveMainWorktreeRoot` in `.gaia/cli/src/util/main-root.ts`.
+- The main checkout's root: `gaia_resolve_main_root` in `.gaia/scripts/main-root-lib.sh`.
 - An audit review base: `.claude/hooks/lib/audit-base-provenance.sh`.
 
-The deterministic checks beside those resolvers catch a second definition and the derivation spellings their own headers name, and those headers are the authority on what they reach. Any other spelling, and any subject other than those two, falls to this rule.
+<!-- gaia:maintainer-only:start -->
+GAIA maintainers: the CLI's TypeScript counterpart is `resolveMainWorktreeRoot` in `.gaia/cli/src/util/main-root.ts`; call it rather than deriving the main root inside CLI source. `.gaia/scripts/check-resolver-singleton.sh`, `.gaia/scripts/check-main-root-derivation.sh`, and `.gaia/scripts/check-base-provenance-adoption.sh` catch a second definition and the derivation spellings their own headers name, and those headers are the authority on what they reach. Any other spelling, and any subject other than those two, falls to this rule.
+<!-- gaia:maintainer-only:end -->

@@ -138,6 +138,7 @@ AUDIT_MERELY_SHARED_PATHS="$(cat <<'EOF'
 # it here reds by name in assertion 3, which is the intended discovery path;
 # the maintainer-only hook-and-rule registration rule states the obligation.
 .claude/rules/accessibility.md
+.claude/rules/ambient-context-resolution.md
 .claude/rules/api-service.md
 .claude/rules/bats-assertions.md
 .claude/rules/code-comments.md

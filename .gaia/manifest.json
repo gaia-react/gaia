@@ -86,6 +86,7 @@
     ".claude/instructions/add-locale.md": "owned",
     ".claude/instructions/remove-i18n.md": "owned",
     ".claude/rules/accessibility.md": "owned",
+    ".claude/rules/ambient-context-resolution.md": "owned",
     ".claude/rules/api-service.md": "owned",
     ".claude/rules/bats-assertions.md": "owned",
     ".claude/rules/code-comments.md": "owned",
@@ -683,7 +684,7 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-09-17T16:47:57.690Z",
+  "generated": "2026-09-19T02:43:48.116Z",
   "regions": [
     {
       "endMarker": "<!-- gaia:audit-remit:end -->",
