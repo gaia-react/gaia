@@ -624,8 +624,9 @@ gaia_verb_arm_view() {
 # there, zsh does not), a `#` straight after a subshell's `)` (a comment there,
 # where after a substitution's `)` it continues the word), a `<<` inside
 # parentheses (an arithmetic shift, or a heredoc feeding a subshell's
-# output), a body inside `$( )` that bash 3.2's heredoc-blind paren matcher
-# could close the substitution in (_gaia_va_b32_body_safe), a heredoc the
+# output), a body inside `$( )` whose substitution bash 3.2's heredoc-blind
+# paren matcher could close before the body ends (_gaia_va_b32_body_safe,
+# read from each enclosing `$(`), a heredoc the
 # text never closes, and running out of the
 # re-reading budget all leave every opener live. Abstaining over-arms, which
 # is today's answer; a wrong mask under-arms, which lets a merge past a gate.
@@ -684,12 +685,13 @@ _gaia_va_mask_openers() {
 # backslash and both parentheses.
 _GAIA_VA_B32_SET=$'["\047\140\\\\()]'
 
-# _gaia_va_b32_body_safe <body> <after>: 0 when bash 3.2 would read <body>
-# as part of the `$( )` holding its heredoc, 1 when it may close the
-# substitution inside it. bash 3.2 finds that `)` with a paren-and-quote
-# matcher that knows nothing of heredocs, so an unmatched `)` in the body,
-# counted outside quotes, ends the substitution there and everything after
-# it runs as live text. A quote the body leaves open is safe only when
+# _gaia_va_b32_body_safe <region> <after>: <region> runs from just past a
+# `$(` through the end of a heredoc body inside it. 0 when bash 3.2 would
+# read all of it as part of that substitution, 1 when it may close the
+# substitution first. bash 3.2 finds that `)` with a paren-and-quote matcher
+# that knows nothing of heredocs or comments, so an unmatched `)` anywhere in
+# the region, counted outside quotes, ends the substitution there and
+# everything after it runs as live text. A quote the region leaves open is safe only when
 # nothing in <after> can close it: the matcher then reaches the end of the
 # text, which is a syntax error, so nothing runs. A double-quoted or
 # backticked span that nests anything is not modelled. Charges the shared
@@ -741,9 +743,11 @@ gaia_verb_arm_live_view() {
   local chunk strip blanks dl dbad dq hd_n hd_sp hd_own hd_end bi p body dline
   # The context stack. kind: T top level, S `$( )`, P `<( )` `>( )` `=( )`,
   # B backticks, D double quotes. dep counts bare parentheses, cas records the
-  # word `case`, cmd is the offset in `out` where the current command began.
-  local k dep cas cmd hd_dl hd_strip hd_q
-  k=(T); dep=(0); cas=(0); cmd=(0)
+  # word `case`, cmd is the offset in `out` where the current command began,
+  # and sopen, for an S frame, the offset just past its `$(`. Offsets in `out`
+  # are offsets in <text>: the scan runs on bytes and masks one for one.
+  local k dep cas cmd sopen hd_dl hd_strip hd_q f
+  k=(T); dep=(0); cas=(0); cmd=(0); sopen=(0)
   hd_dl=(); hd_strip=(); hd_q=()
 
   _gaia_va_lc_bytes
@@ -862,6 +866,7 @@ gaia_verb_arm_live_view() {
             out+='$('
             s="${s:2}"
             sp=$(( sp + 1 )); k[sp]=S; dep[sp]=0; cas[sp]=0; cmd[sp]=${#out}
+            sopen[sp]=${#out}
             wstart=1
             ;;
           "'")
@@ -1055,8 +1060,18 @@ gaia_verb_arm_live_view() {
           if [ "$bdepth" -gt 0 ]; then
             case "$body" in *'`'*) ok=0; break ;; esac
           fi
-          if [ "$dead" = 1 ] && [ "${k[$hd_sp]}" = S ]; then
-            _gaia_va_b32_body_safe "$body" "$s" || { ok=0; break; }
+          # bash 3.2's matcher starts at each enclosing `$(`, not at the body,
+          # so it reads everything from there on: earlier bodies, comments and
+          # delimiter lines included.
+          if [ "$dead" = 1 ]; then
+            f=0
+            while [ "$f" -le "$hd_sp" ]; do
+              if [ "${k[$f]}" = S ]; then
+                _gaia_va_b32_body_safe "${text:${sopen[$f]}:$(( ${#out} - ${sopen[$f]} ))}$body" "$s" || { ok=0; break; }
+              fi
+              f=$(( f + 1 ))
+            done
+            [ "$ok" = 1 ] || break
           fi
           if [ "$dead" = 1 ]; then
             _gaia_va_mask_openers "$body" || { ok=0; break; }

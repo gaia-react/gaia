@@ -381,6 +381,22 @@ opener_pair() {
   assert_armed
 }
 
+@test "bash 3.2's matcher starts at the substitution's opener, so a paren before the body can close it first" {
+  local tail="cat <<'B'${NL}\$(gh pr merge 1)${NL}B${NL})\""
+  # An unmatched paren in an earlier, live heredoc body.
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "echo \"\$(tr a b <<'A'${NL})${NL}A${NL}${tail}"
+  assert_armed || return 1
+  # One in a comment, which the matcher reads as text.
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "echo \"\$(# a )${NL}${tail}"
+  assert_armed || return 1
+  # One in a delimiter line, unquoted to the matcher.
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "echo \"\$(cat <<'E)'${NL}x${NL}E)${NL}${tail}"
+  assert_armed || return 1
+  # Nothing ahead of the body in the substitution: still data.
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "echo \"\$(${tail}"
+  assert_not_armed
+}
+
 @test "a hash after a subshell's closing parenthesis opens a comment the scan honours" {
   arm "$MERGE_FRAG" "$MERGE_WORDS" "(true)#it's${NL}x=\$(gh pr merge 1) # it's"
   assert_armed || return 1
