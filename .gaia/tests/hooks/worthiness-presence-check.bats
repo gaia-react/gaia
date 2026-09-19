@@ -255,6 +255,20 @@ test("adds two numbers", () => {
   refute_denied
 }
 
+@test "a local branch named origin/main does not shadow the remote-tracking base" {
+  # The short revspec `origin/main` resolves refs/heads/origin/main ahead of
+  # refs/remotes/origin/main. A shadowing branch sitting at the feature head
+  # collapses the merge base onto HEAD, empties the changed set, and clears a
+  # merge whose emergent test has no verdict.
+  commit_file "app/components/Foo/tests/index.test.tsx" "$EMERGENT_TEST"
+  git -C "$REPO" update-ref refs/remotes/origin/main main
+  git -C "$REPO" branch origin/main HEAD
+  run_merge_hook
+  [ "$status" -eq 0 ]
+  denied
+  grep -qF -- "renders a label" <<<"$output"
+}
+
 @test "denies an emergent test when the ledger has only an unrelated line" {
   commit_file "app/components/Foo/tests/index.test.tsx" "$EMERGENT_TEST"
   seed_ledger "app/components/Other/tests/index.test.tsx" "something else" "sha256:deadbeef" "keep"
