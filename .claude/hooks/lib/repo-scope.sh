@@ -96,7 +96,7 @@ _GAIA_REPO_SCOPE_MOVE_RE='(^|[^[:alnum:]_.])(cd|pushd|popd|-C|-R|--repo)([^[:aln
 # line continuations, so any of them may sit inside or around a name the scan
 # hands back (`g\it`, `"gh"`); each is also a boundary character. So a stretch
 # of raw text this does not match yields no word the tool pattern matches.
-_GAIA_REPO_SCOPE_DROPPED="[\"'\\"$'\n'"]*"
+_GAIA_REPO_SCOPE_DROPPED="[\""$'\047'"\\"$'\n'"]*"
 _GAIA_REPO_SCOPE_TOOL_RAW_RE='(^|[^[:alnum:]_.])g'"$_GAIA_REPO_SCOPE_DROPPED"'(h|i'"$_GAIA_REPO_SCOPE_DROPPED"'t)([^[:alnum:]_.]|$)'
 
 # Sets the caller's `flat` to `$1` with every quote character, backslash, and
@@ -104,9 +104,9 @@ _GAIA_REPO_SCOPE_TOOL_RAW_RE='(^|[^[:alnum:]_.])g'"$_GAIA_REPO_SCOPE_DROPPED"'(h
 # whitespace and separators, less what quoting keeps literal, so a pattern
 # absent from `flat` is absent from every word the scan hands back.
 _gaia_repo_scope_flatten() {
-  local bs=\\ nl=$'\n'
+  local bs=\\ nl=$'\n' sq=$'\047'
   flat="${1//"$bs$nl"/}"
-  flat="${flat//[\"\'\\]/}"
+  flat="${flat//[\"$sq\\]/}"
 }
 
 # The verdict covers the whole tool call, and it is HOME when ANY command in
@@ -280,7 +280,7 @@ _gaia_repo_scope_opens_group() {
   esac
   for tok in "${GAIA_FIRST_COMMAND_WORDS[@]}"; do
     case "$tok" in
-      *'('* | *')'* | *'{'* | *'}'* | *'`'* | *'<<'*) return 0 ;;
+      *'('* | *')'* | *'{'* | *'}'* | *'`'* | *\<\<*) return 0 ;;
     esac
   done
   return 1
