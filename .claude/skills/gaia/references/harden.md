@@ -8,7 +8,7 @@ v1 owns prose-rule create/edit end to end. Skills and deterministic checks are r
 
 Execute the playbook yourself in the current conversation. This is an interactive, human-gated flow: each candidate's approve / decline / defer / redirect choice is the human's, never the agent's. Do not dispatch a subagent to make those calls and do not auto-advance past a candidate without a human answer.
 
-The agent never runs `git add`, `git commit`, or `git push` *during* the per-candidate flow: each approve / decline / defer lands in the working tree or the ledger (or persists nothing), and the human owns every call. After the last candidate is dispositioned, one end-of-run publish step (`## Publish approved changes (end of run)`) runs on a **main-branch run only**: if at least one approval produced a working-tree change, it branches, commits, pushes, and opens a PR so the human does not have to ask for it, then runs the audit the PR owes and watches its checks. It merges only when the human answers a merge prompt (never automatically), and it ends merged, left open because the human chose to, or stopped on a named failure, never at an open PR with the audit pending. It does nothing on a non-default branch (the changes ride that branch's own PR). A decline writes one bounded entry to the machine-local, gitignored ledger and nowhere else. A defer persists nothing of its own. Besides the decline ledger, a completed review writes one more machine-local file, the review snapshot, and clears the cached statusline nudge; see `## Record the review (end of run)`.
+The agent never runs `git add`, `git commit`, or `git push` *during* the per-candidate flow: each approve / decline / defer lands in the working tree or the ledger (or persists nothing), and the human owns every call. After the last candidate is dispositioned, one end-of-run publish step (`## Publish approved changes (end of run)`) carries any approved working-tree change through a PR, and merges only on the human's answer. A decline writes one bounded entry to the machine-local, gitignored ledger and nowhere else. A defer persists nothing of its own. Besides the decline ledger, a completed review writes one more machine-local file, the review snapshot, and clears the cached statusline nudge; see `## Record the review (end of run)`.
 
 ## Argument parsing
 
@@ -310,7 +310,7 @@ Never fold this into the commit call. The main-branch guard reads a whole comman
 **Clear the obligations a rule file carries**, before `gh pr create`. Each is invisible in the diff and each refuses or reds later if skipped. The first two apply only to a new rule file:
 - **Tier it in the audit partition** per `.claude/rules/maintainers/hook-registration.md` (nearly always merely-shared), then `git add` the rule and run `bash .gaia/scripts/audit-rules-changed-complete.sh`.
 - **Answer distribution** through `/distribution-audit`, which regenerates `.gaia/manifest.json`. The distribution pre-flight refuses `gh pr create` for a newly-shipping file with no ship-or-withhold answer.
-- **Keep release-excluded citations out of a shipped rule's visible body** (see the template's filling rules below).
+- **Keep release-excluded citations out of a shipped rule's visible body** (see `## The prose-rule template (fill in, then write)`, its filling rules).
 <!-- gaia:maintainer-only:end -->
 
 **Commit and push, then open the PR, as two calls.** Route the commit message through a file, never `-m`. Subject: `chore(harden): <the approved forms, e.g. "promote use-effect-derived-state rule">`.
@@ -329,7 +329,7 @@ gh pr create --title "<commit subject>" --body-file <pr-body-file>
 
 **Run the audit, on every path.** Read `wiki/concepts/PR Merge Workflow.md` and run its `#### Before the first dispatch: verify your own work` checks, then resolve the spawn set its Roster-first step prescribes, including its fallback when the oracle is absent. Do not assume a harden diff is out of audit scope: a rule file or enforcement wiring can sit in a member's remit. When members are named, complete the workflow's marker handshake (spawn, fix, re-audit, under its `#### The three-round session cap`) until `GAIA-Audit` is green. When none are named, the out-of-scope bypass clears the merge with no marker. Reaching the round cap is a stop: emit the continuation prompt the workflow prescribes.
 
-A fix to a drafted rule is a commit to a file in a member's remit, so it rotates that member's digest and buys a whole extra round. The template's citation check below is what keeps round one clean.
+A fix to a drafted rule is a commit to a file in a member's remit, so it rotates that member's digest and buys a whole extra round. The citation check in the prose-rule template's filling rules is what keeps round one clean.
 
 **Watch the checks.** Bounded-poll `gh pr checks <N>` until no required check is pending. A failing check is a named-failure stop: read its log, report which check failed and why, and stop with the PR open. A window that closes with checks still pending is not a failure: go on to the merge question, and `--auto` queues the merge behind them.
 
@@ -377,7 +377,7 @@ Apply the shared tally machinery in `.claude/skills/gaia/references/cost-record.
 ## Guardrails
 
 - `/gaia-harden` is the only writer in this loop, and only under explicit human invocation. The background refresher and the audit emit never author.
-- Never `git add`, `git commit`, or `git push` during the per-candidate flow. The single end-of-run publish step is the only writer to git, and only on a main-branch run with at least one approved working-tree change: it branches, commits, pushes, opens a PR, runs the audit the PR owes, and watches its checks. It merges only when the human answers the merge prompt (never automatically), whatever mix of approve, decline, and defer the run held. On a non-default branch it does nothing (the changes ride that branch's PR).
+- Never `git add`, `git commit`, or `git push` during the per-candidate flow. The single end-of-run publish step (`## Publish approved changes (end of run)`) is the only writer to git, and it merges only on the human's answer to its merge prompt, never automatically.
 - Never auto-activate a skill or a deterministic check. v1 owns only prose-rule create/edit end to end; the other two forms are scaffold-only.
 - Every drafted prose rule is mandatorily path-scoped (`paths:` frontmatter), and carries the verbatim provenance marker.
 - A decline is machine-local only (gitignored ledger); it never vetoes the candidate for a teammate.
