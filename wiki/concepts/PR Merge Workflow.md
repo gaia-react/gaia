@@ -323,14 +323,14 @@ Either way the finding is **recorded rather than lost**.
 
 When the out-of-scope arm files a tech-debt issue, the filing carries a `gaia-debt-origin` provenance line beside its dedup key, from the shared helper, so a later reader recovers the branch the finding was surfaced from after that branch is squash-merged and deleted. The orchestrator is on the pull request's own branch with a shell, so it resolves `changed` rather than recording `unknown`. The field vocabulary and the convention table live in `.claude/skills/file-tech-debt/SKILL.md`, referenced rather than restated here. A filing is never blocked, failed, retried, or deferred because provenance is partial or absent.
 
-For `changed`, the orchestrator reuses the whole-PR fork point in the same spelling the audit machinery already computes, adding no derivation of a new shape:
+For `changed`, the orchestrator reuses the whole-PR fork point in the same spelling the audit machinery already computes, adding no derivation of a new shape. The primary arm names the remote-tracking ref in full because a local branch or tag literally named `origin/<default>` wins the short revspec, with only an ambiguity warning that the `2>/dev/null` discards:
 
 ```bash
 AUDIT_ROOT="$(cd "${AUDIT_ROOT:-$PWD}" 2>/dev/null && pwd -P)"
 default_branch=$(git -C "$AUDIT_ROOT" symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null \
   | sed 's@^refs/remotes/origin/@@')
 [ -n "$default_branch" ] || default_branch="main"
-FULL_BASE=$(git -C "$AUDIT_ROOT" merge-base HEAD "origin/${default_branch}" 2>/dev/null \
+FULL_BASE=$(git -C "$AUDIT_ROOT" merge-base HEAD "refs/remotes/origin/${default_branch}" 2>/dev/null \
   || git -C "$AUDIT_ROOT" merge-base HEAD "${default_branch}" 2>/dev/null || true)
 pr_changed=$(git -C "$AUDIT_ROOT" diff --name-only -z "${FULL_BASE}...HEAD" 2>/dev/null | tr '\0' '\n' || true)
 origin="$(cd "${AUDIT_ROOT:-/dev/null/unset}" 2>/dev/null && bash .gaia/scripts/debt-origin-lib.sh \
