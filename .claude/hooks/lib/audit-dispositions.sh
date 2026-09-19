@@ -128,8 +128,7 @@
 # literally named `origin/<default>` wins it, and one sitting behind the
 # remote-tracking ref widens the write side, the false-DENY direction below,
 # with no re-audit clearing it while the pull-request record stays unreadable
-# (gaia-react/gaia#2096). .gaia/scripts/tests/audit-base-agreement.bats pins
-# the agreement in both directions (DP-002).
+# (gaia-react/gaia#2096).
 #
 # The residual timing gap has two directions:
 #
