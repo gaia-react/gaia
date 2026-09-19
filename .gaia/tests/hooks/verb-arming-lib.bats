@@ -135,8 +135,9 @@ parity() {
 }
 
 # ---------------------------------------------------------------------------
-# Substitution openers: a verb inside `$( )`, a backtick, `<( )` or `>( )` is
-# run by the shell, so it arms exactly as a verb after a separator does.
+# Substitution openers: a verb inside `$( )`, a backtick, `<( )`, `>( )`, zsh's
+# `=( )`, or bash 5.3's `${ ...; }` and `${| ...; }` is run by the shell, so it
+# arms exactly as a verb after a separator does.
 # ---------------------------------------------------------------------------
 
 # opener_pair <frag> <words> <invocation>: the invocation arms after each
@@ -145,7 +146,7 @@ parity() {
 # discriminate: without it, a text that armed for some other reason would pass.
 opener_pair() {
   local frag="$1" words="$2" inv="$3" op
-  for op in '$(' '`' '<(' '>('; do
+  for op in '$(' '`' '<(' '>(' '=(' '${ ' '${|'; do
     arm "$frag" "$words" "echo x ${op}${inv}"
     assert_armed || return 1
     assert_kind sep || return 1
@@ -154,9 +155,11 @@ opener_pair() {
     arm "$frag" "$words" "echo x ${op} ${inv}"
     assert_armed || return 1
   done
-  # The twins: `(` alone opens no substitution here, and a bare word ahead of
-  # the verb is an argument.
+  # The twins: `(` or `{` alone opens no substitution here, and a bare word
+  # ahead of the verb is an argument.
   arm "$frag" "$words" "echo x (${inv}"
+  assert_not_armed || return 1
+  arm "$frag" "$words" "echo x {${inv}"
   assert_not_armed || return 1
   arm "$frag" "$words" "echo x ${inv}"
   assert_not_armed || return 1

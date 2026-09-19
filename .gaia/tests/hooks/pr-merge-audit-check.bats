@@ -2637,6 +2637,12 @@ run_merge_hook_lib_absent() {
   run_merge_hook 'cat <(gh pr merge 30 --squash)'
   assert_denied_by_json || return 1
   run_merge_hook 'tee >(gh pr merge 30 --squash) </dev/null'
+  assert_denied_by_json || return 1
+  # zsh's process substitution: the Bash tool runs the user's own shell.
+  run_merge_hook 'cat =(gh pr merge 30 --squash)'
+  assert_denied_by_json || return 1
+  # bash 5.3's in-shell command substitution.
+  run_merge_hook 'echo "${ gh pr merge 30 --squash; }"'
   assert_denied_by_json
 }
 
