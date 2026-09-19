@@ -142,11 +142,11 @@ The human gate is only worth its cost if the human can judge what they are appro
 Per item, lead with:
 
 - **What keeps going wrong.** One sentence, no class slug, no reference vocabulary. For example: "Docs and comments describe how a script behaves, and the description no longer matches what the script does."
-- **One concrete example**, from a PR the item recurred on: the file and what was wrong there. The findings block carries no prose, so find the example in this order and stop at the first hit:
-  1. A tech-debt issue filed from the class: `gh issue list --label tech-debt --state all --search '"class=<finding_class>" in:body' --limit 1 --json number,title,body`. Its title and body state the defect.
-  2. A PR in `pr_numbers` whose body carries a `gaia-debt-key` comment for the class: `gh pr list --state merged --search '"class=<finding_class>" in:body' --limit 1 --json number,body`. The bullet the key comment sits under states the defect.
+- **One concrete example**: the file and what was wrong there. The findings block carries no prose, so the example comes from a `gaia-debt-key` comment (`<!-- gaia-debt-key: v1 class=<finding_class> path=<path> line=<int> -->`, `.claude/skills/file-tech-debt/SKILL.md` step 1) whose `class=` equals the item's class exactly. Do not use `gh`'s full-text search for this: it tokenizes on `/`, which every class contains (`file-tech-debt/SKILL.md` step 2). Parse the keys locally instead, and stop at the first exact match:
+  1. The tech-debt issues, read once per run and reused for every item: `gh issue list --label tech-debt --state all --limit 1000 --json number,title,body`. A matching issue's title and body state the defect.
+  2. The item's own PRs: `gh pr view <n> --json body` for up to the five most recent numbers in its `pr_numbers`. On a match, the bullet the key comment sits under states the defect.
 
-  Search matches loosely, so confirm the hit's key comment names this exact class before using it. For the unclassified signal, search on `class=holistic/unclassified`. When neither step finds one, write "no recorded example" rather than guessing one from a PR title.
+  For the unclassified signal, match `class=holistic/unclassified`. When neither step finds a match, write "no recorded example" rather than guessing one from a PR title.
 - **How often, as a share**: `distinct_pr_count` of `audited_pr_count` over the `window_days` window, with a rounded ratio, e.g. "on 106 of the last 394 audited PRs, about 1 in 4". Never a bare count.
 - **What the recommendation would actually do**, in plain words:
   - new prose rule: "add a rule file that loads when editing `<paths>`"
@@ -170,7 +170,7 @@ Then ask one question through an explicit user-question step (`AskUserQuestion`,
 2. **Change some**: pick which rows to change, then choose their actions; every other row takes its recommendation.
 3. **Stop without changes**: disposition nothing, author nothing, record nothing.
 
-On **Change some**, ask which rows to change. With four or fewer candidates, use one multi-select `AskUserQuestion` naming each row; with more, ask the human to reply with the row numbers. Then, for each chosen row only, ask one single-select question with the action set **approve / decline / defer / redirect**, the recommended action first and marked `(Recommended)`. `AskUserQuestion` takes up to four questions per call, so group them in fours. Any row the human did not choose takes its recommendation.
+On **Change some**, ask which rows to change. Only candidate rows are selectable: the unclassified row carries no disposition, so it keeps its suppression unless the human chooses **Stop without changes**. With four or fewer candidates, use one multi-select `AskUserQuestion` naming each row; with more, ask the human to reply with the row numbers. Then, for each chosen row only, ask one single-select question with the action set **approve / decline / defer / redirect**, the recommended action first and marked `(Recommended)`. `AskUserQuestion` takes up to four questions per call, so group them in fours. Any row the human did not choose takes its recommendation.
 
 On **Stop without changes**, apply nothing, write no ledger entry, skip the unclassified suppression, and do not reach `## Record the review (end of run)` or `## Publish approved changes (end of run)`. (Run ends here; see `## Cost record (run end)`.)
 
