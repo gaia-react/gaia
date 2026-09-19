@@ -197,13 +197,24 @@ case "$1" in
         # A test that sets GH_COMBINED_STATUS_JSON gets the caller's own --jq
         # filter applied to that document with real jq, so a filter that
         # selects the wrong context is exercised rather than bypassed.
+        #
+        # The document is paged the way GitHub pages it: 30 contexts unless the
+        # query string asks for more, 100 at most. A read that omits per_page
+        # then misses a context past the first page, as it would live.
         if [ -n "${GH_COMBINED_STATUS_JSON:-}" ]; then
+          per_page=30
+          case "$2" in
+            *per_page=*) per_page="${2##*per_page=}"; per_page="${per_page%%&*}" ;;
+          esac
+          [ "$per_page" -gt 100 ] && per_page=100
           filter="."
           while [ "$#" -gt 0 ]; do
             [ "$1" = "--jq" ] && { filter="$2"; break; }
             shift
           done
-          printf '%s' "$GH_COMBINED_STATUS_JSON" | jq -r "$filter"
+          printf '%s' "$GH_COMBINED_STATUS_JSON" \
+            | jq --argjson n "$per_page" '.statuses |= .[:$n]' \
+            | jq -r "$filter"
           exit $?
         fi
         if [ -n "${GH_CANNED_SUCCESS_DESC:-}" ]; then
@@ -1602,6 +1613,22 @@ run_audit_complete_step() {
   status_read_fails
   run env GITHUB_REPOSITORY="gaia-react/gaia" PATH="$GH_BIN:$PATH" bash "$PRESENT" "deadbeef" "cafe"
   [ "$status" -eq 2 ]
+}
+
+@test "guard: a live success past the first page of contexts still reads as live (exit 0)" {
+  # The combined status lists 30 contexts per page by default. A head carrying
+  # more than that, with GAIA-Audit's success past the first page, must not read
+  # as "definitively not live": that 1 is the caller's signal to POST pending
+  # over the very success this guard exists to protect.
+  local i list=""
+  for i in $(seq 1 35); do
+    list="${list}{\"context\":\"check-${i}\",\"state\":\"success\",\"description\":\"\"},"
+  done
+  list="${list}{\"context\":\"GAIA-Audit\",\"state\":\"success\",\"description\":\"1.2.3 cafe deadbeef\"}"
+  export GH_COMBINED_STATUS_JSON="{\"state\":\"success\",\"statuses\":[${list}]}"
+
+  run env GITHUB_REPOSITORY="gaia-react/gaia" PATH="$GH_BIN:$PATH" bash "$PRESENT" "deadbeef" "cafe"
+  [ "$status" -eq 0 ]
 }
 
 @test "one pending writer exists, it consults the guard, and all five status steps route through it" {

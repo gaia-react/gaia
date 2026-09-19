@@ -107,8 +107,9 @@ if [ -z "$repo" ]; then
 fi
 
 # A failed read is exit 2, NOT "no success live". This is the whole point of the
-# three-state contract.
-if ! descriptions="$(gh api "repos/${repo}/commits/${sha}/status" \
+# three-state contract. per_page=100: the combined status lists 30 contexts by
+# default, and a GAIA-Audit success past the first page would read as absent.
+if ! descriptions="$(gh api "repos/${repo}/commits/${sha}/status?per_page=100" \
   --jq '.statuses[] | select(.context == "GAIA-Audit" and .state == "success") | .description' \
   2>/dev/null)"; then
   echo "audit-success-present: could not read the GAIA-Audit status on ${sha}." >&2
