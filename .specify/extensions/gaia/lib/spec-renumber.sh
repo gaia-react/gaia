@@ -117,8 +117,11 @@ if [ -x "$allocator" ] || [ -f "$allocator" ]; then
       # Inline the same scan the allocator uses, minus the ledger row we are about to rewrite.
       jq -r --arg drop "$old_id" '.specs[] | select(.id != $drop) | .id' "$ledger_path" 2>/dev/null \
         | sed -nE 's|^SPEC-0*([0-9]+)$|\1|p' || true
+      # The test is a builtin prefilter so a branch that cannot name a
+      # SPEC skips the subshells of the library; this scan runs under the ledger
+      # lock, and a repository carries hundreds of refs.
       gaia_branch_list "$repo_root" | while IFS= read -r branch; do
-        gaia_branch_spec_number "$branch"
+        if [[ "$branch" == *spec-* ]]; then gaia_branch_spec_number "$branch"; fi
       done
       find "$specs_dir" -mindepth 2 -maxdepth 2 -type f -name 'SPEC.md' -print 2>/dev/null \
         | sed -nE 's|.*/SPEC-0*([0-9]+)/SPEC\.md$|\1|p' || true

@@ -255,32 +255,50 @@ worktree_spelling() {
 
 # ========== 10. creation sites mint through the library ==========
 
-@test "no instruction surface spells a GAIA branch literal for git to create" {
-  # Every flow that cuts a branch takes its name from gaia_branch_name, so a
-  # literal `checkout -b chore/...` (or `switch -c`, or a hand-assembled
-  # BRANCH= value) is a second copy of the convention waiting to drift.
-  local hits
-  hits="$(git -C "$REPO_ROOT" grep -nE \
-    -e '(checkout -b|switch -c|branch -[mM]) +"?(debt|plan|chore|release|spec|harden|audit)[-/]' \
+# literal_hits <repo>: every tracked line under .claude and .specify that
+# hands git or the harness a hand-spelled GAIA branch name. One definition, so
+# the guard and its can-fail twin below read exactly the same patterns.
+literal_hits() {
+  local kinds='(debt|plan|chore|release|spec|harden|audit)[-/]'
+  git -C "$1" grep -nE \
+    -e "(checkout -b|switch -c|branch -[mM]|worktree add( [^ ]+)* -[bB]) +\"?${kinds}" \
     -e 'BRANCH="(debt|plan|chore|release)/' \
-    -- .claude .specify ':!**/*.bats' || true)"
+    -e "EnterWorktree\\(\\{ *name: *\"${kinds}" \
+    -- .claude .specify ':!**/*.bats' || true
+}
+
+@test "no instruction surface spells a GAIA branch literal for git to create" {
+  # Every flow that cuts a branch or a worktree takes its name from
+  # gaia_branch_name, so a literal name handed to git or to EnterWorktree is a
+  # second copy of the convention waiting to drift.
+  local hits
+  hits="$(literal_hits "$REPO_ROOT")"
   [ -z "$hits" ] || {
     printf 'branch literals outside the library:\n%s\n' "$hits" >&2
     return 1
   }
 }
 
-@test "the no-literal guard can fail: a planted literal is reported" {
-  local repo="$BATS_TEST_TMPDIR/planted"
+@test "the no-literal guard can fail: every spelling it names is reported" {
+  local repo="$BATS_TEST_TMPDIR/planted" hits line
   mkdir -p "$repo/.claude"
   git init -q "$repo"
-  printf 'git checkout -b chore/update-deps-now\n' >"$repo/.claude/x.md"
+  printf '%s\n' \
+    'git checkout -b chore/update-deps-now' \
+    'git switch -c "debt/1-x"' \
+    'git worktree add -b plan/spec-001-x ../wt' \
+    'BRANCH="release/v1"' \
+    'EnterWorktree({name: "debt/2-y"})' \
+    'git checkout -b "$BRANCH"' \
+    'EnterWorktree({name: "<branch-name>"})' >"$repo/.claude/x.md"
   git -C "$repo" add .claude/x.md
-  run git -C "$repo" grep -nE \
-    -e '(checkout -b|switch -c|branch -[mM]) +"?(debt|plan|chore|release|spec|harden|audit)[-/]' \
-    -- .claude
-  [ "$status" -eq 0 ]
-  grep -qF '.claude/x.md:1:' <<<"$output"
+  hits="$(literal_hits "$repo")"
+  for line in 1 2 3 4 5; do
+    grep -qF ".claude/x.md:$line:" <<<"$hits" || { echo "line $line not reported" >&2; return 1; }
+  done
+  # The minted and placeholder forms are the correct spellings, never hits.
+  grep -qE '\.claude/x\.md:(6|7):' <<<"$hits" && return 1
+  true
 }
 
 # ========== structural hygiene ==========

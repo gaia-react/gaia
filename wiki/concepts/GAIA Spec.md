@@ -3,7 +3,7 @@ type: concept
 title: GAIA Spec
 status: active
 created: 2026-05-06
-updated: 2026-07-19
+updated: 2026-09-20
 tags: [concept, claude, skill, orchestration, spec-kit]
 ---
 
@@ -61,7 +61,7 @@ Auto-generated Playwright specs (written by the `before_implement` hook via `lib
 
 ## SPEC number allocation
 
-SPEC numbers are reserved as immutable `spec/NNN` git tags pushed to the remote, pointed at git's empty-tree object so they pin no history and carry no commit alive; each is annotated once, at reservation, with the spec's one-line subject, readable via `git tag -n`. The registry survives a fresh clone; an existing clone syncs new reservations with `git fetch --tags`. The next number is max+1 over the union of those tags and the machine's local signals (the ledger, `spec-NNN-*` branches, `.gaia/local/specs/` folders). Cross-team collision-avoidance reads the remote `spec/*` tag namespace live, not locally-fetched tags, so it never depends on a stale local mirror. The ledger is one union input, holding draft status, intent, and timestamps per machine: load-bearing local state, not scratch.
+SPEC numbers are reserved as immutable `spec/NNN` git tags pushed to the remote, pointed at git's empty-tree object so they pin no history and carry no commit alive; each is annotated once, at reservation, with the spec's one-line subject, readable via `git tag -n`. The registry survives a fresh clone; an existing clone syncs new reservations with `git fetch --tags`. The next number is max+1 over the union of those tags and the machine's local signals (the ledger, plan branches naming a SPEC as read by `.gaia/scripts/branch-name-lib.sh`, `.gaia/local/specs/` folders). Cross-team collision-avoidance reads the remote `spec/*` tag namespace live, not locally-fetched tags, so it never depends on a stale local mirror. The ledger is one union input, holding draft status, intent, and timestamps per machine: load-bearing local state, not scratch.
 
 ## Ledger status vocabulary
 

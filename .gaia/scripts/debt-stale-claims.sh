@@ -11,8 +11,11 @@
 #           worktree spelling (`worktree-debt+<n>-<slug>`) counts exactly as
 #           `debt/<n>-<slug>` does, and every member of a batch branch counts
 #   pr      an open pull request's head branch names it the same way, or its
-#           body carries a GitHub closing keyword against it (`Closes #<n>`
-#           and the close/fix/resolve family, any case). The head-branch arm
+#           body carries a GitHub closing keyword against it (the
+#           close/fix/resolve family, any case, naming `#<n>`,
+#           `owner/repo#<n>`, or an issue URL). A cross-repository reference
+#           counts too: it can only keep a claim, never strip one, so reading
+#           it as live is the safe direction. The head-branch arm
 #           covers a drain on another machine that has pushed but not yet
 #           written its closing line.
 #   fresh   the issue was updated within the grace window, default 1800
@@ -131,7 +134,7 @@ live="$(
   done
   printf '%s' "$prs" | jq -r '
     .[].body // ""
-    | [scan("(?i)\\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?):?\\s+#([0-9]+)\\b")[0]]
+    | [scan("(?i)\\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?):?\\s+(?:[\\w.-]+/[\\w.-]+#|https?://[^\\s/]+/[^\\s/]+/[^\\s/]+/issues/|#)([0-9]+)\\b")[0]]
     | .[]'
 )" || die_input "the pull-request bodies could not be scanned"
 

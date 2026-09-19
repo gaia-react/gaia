@@ -93,6 +93,14 @@ verdict() {
   [ "$output" = "$(printf '6\n7')" ]
 }
 
+@test "pr arm: the owner/repo# and issue-URL forms GitHub accepts keep their issues" {
+  claims 11 12 13
+  printf '%s' '[{"headRefName":"fix/x","body":"Closes https://github.com/o/r/issues/11\nFixes o/r#12"}]' >"$D/prs.json"
+  verdict
+  [ "$status" -eq 0 ]
+  [ "$output" = "13" ]
+}
+
 @test "pr arm: a keyword against a longer number does not keep a prefix of it" {
   claims 21
   printf '%s' '[{"headRefName":"feat/x","body":"Closes #210"}]' >"$D/prs.json"

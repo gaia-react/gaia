@@ -149,8 +149,11 @@ known_spec_numbers() {
       | sed -nE 's|^SPEC-0*([0-9]+)$|\1|p' || true
   fi
 
+  # The test is a builtin prefilter so a branch that cannot name a
+  # SPEC skips the subshells of the library; this scan runs under the ledger
+  # lock, and a repository carries hundreds of refs.
   gaia_branch_list "$repo_root" | while IFS= read -r branch; do
-    gaia_branch_spec_number "$branch"
+    if [[ "$branch" == *spec-* ]]; then gaia_branch_spec_number "$branch"; fi
   done
 
   if [ -d "$specs_dir" ]; then

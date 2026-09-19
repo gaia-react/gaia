@@ -42,7 +42,8 @@
 # written as `+`: `debt/42-fix` becomes `worktree-debt+42-fix`. Every reader
 # below normalizes that spelling first (gaia_branch_normalize), so a worktree
 # branch reads exactly as the branch it was requested as. Minted names are
-# capped at 64 bytes and restricted to [a-z0-9./-] so they are always valid
+# capped at 64 bytes and restricted to [A-Za-z0-9./-] (slugs and tasks are
+# lowercased; a release version keeps its own case) so they are always valid
 # EnterWorktree names as well as valid git refs.
 #
 # Functions (all defined at source time; sourcing has no side effects and runs

@@ -253,7 +253,7 @@ Format, taxonomy, and grading rubric source of truth: `wiki/decisions/Claude Int
 
 ## Step 7, Publish gate (reached only when Step 4 applied ≥1 fix)
 
-Skipped entirely on the triage-only and zero-findings paths, they printed their line and stopped in Step 6. Reached only when heal applied at least one fix, so a branch exists (`chore/gaia-fitness-<timestamp>`, main-branch run) or the changes sit in place on `CURRENT_BRANCH` (non-default branch).
+Skipped entirely on the triage-only and zero-findings paths, they printed their line and stopped in Step 6. Reached only when heal applied at least one fix, so a branch exists (`<BRANCH>`, the name Step 4 minted, main-branch run) or the changes sit in place on `CURRENT_BRANCH` (non-default branch).
 
 Ask once, via `AskUserQuestion`, after the card (the card is the information the user needs to decide):
 
