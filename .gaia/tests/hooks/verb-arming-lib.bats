@@ -321,6 +321,54 @@ opener_pair() {
   assert_not_armed
 }
 
+@test "inside backticks a backslash-escaped opener is live, and the same escape at top level is not" {
+  local bt='`'
+  # The shell strips the backslash from \$ inside backticks before parsing the
+  # inner command, so each of these runs the merge.
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "x=${bt}echo \\\$(gh pr merge 1)${bt}"
+  assert_armed || return 1
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "x=${bt}echo \"\\\$(gh pr merge 1)\"${bt}"
+  assert_armed || return 1
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "echo \"${bt}echo \\\$(gh pr merge 1)${bt}\""
+  assert_armed || return 1
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "echo \\\$(gh pr merge 1)"
+  assert_not_armed
+}
+
+@test "under backticks a backtick inside quotes ends the substitution for bash, so the scan stops" {
+  local bt='`'
+  # bash closes the outer backquote at the quoted backtick, leaving the
+  # substitution after it live.
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "echo ${bt}echo 'a${bt} \$(gh pr merge 1) ${bt}'${bt}"
+  assert_armed || return 1
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "echo ${bt}echo \"a${bt} \$(gh pr merge 1) ${bt}\"${bt}"
+  assert_armed || return 1
+  # The same quoted text outside backticks is one quoted span.
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "echo 'a${bt} \$(gh pr merge 1) ${bt}'"
+  assert_not_armed
+}
+
+@test "a hash after a subshell's closing parenthesis opens a comment the scan honours" {
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "(true)#it's${NL}x=\$(gh pr merge 1) # it's"
+  assert_armed || return 1
+  # After a substitution's closing parenthesis the hash continues the word.
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "echo \$(true)#x '\$(gh pr merge 1)'"
+  assert_not_armed
+}
+
+@test "a heredoc operator inside parentheses is not modelled, so its openers stay live" {
+  local bt='`'
+  # Arithmetic reads 1<<EOF as a shift, not a heredoc.
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "(( y = 1<<EOF ))${NL}echo 'a${NL}EOF${NL}' ; z=\$(gh pr merge 1) # '"
+  assert_armed || return 1
+  # A subshell's output can feed an interpreter.
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "(cat <<'EOF'${NL}${bt}gh pr merge 1${bt}${NL}EOF${NL}) | bash"
+  assert_armed || return 1
+  # The same body directly in a command substitution is still modelled.
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "x=\"\$(cat <<'EOF'${NL}${bt}gh pr merge 1${bt}${NL}EOF${NL})\""
+  assert_not_armed
+}
+
 @test "an apostrophe in a comment opens no span that could hide a later live opener" {
   local bt='`'
   arm "$MERGE_FRAG" "$MERGE_WORDS" "# don't${NL}echo ${bt}gh pr merge 12${bt}"

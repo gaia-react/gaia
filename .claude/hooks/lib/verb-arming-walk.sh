@@ -617,16 +617,22 @@ gaia_verb_arm_view() {
 # dollar-quoted word, a `${` carrying anything but a plain name, bash 5.3's
 # `${ ` and `${|`, a `)` in a context that holds the word `case` (a case arm's
 # bare `)` would close the substitution early and desync every quote after
-# it), a backslash-escaped backtick inside backticks (a nested substitution),
-# a heredoc the text never closes, and running out of the re-reading budget
-# all leave every opener live. Abstaining over-arms, which is today's answer;
-# a wrong mask under-arms, which lets a merge past a gate.
+# it), a backslash before `$`, a backtick, or a backslash anywhere under
+# backticks (the shell strips it before parsing the inner command, so the
+# escape is gone), a backtick under backticks inside quotes, a comment, a
+# heredoc body, or a nested substitution (bash closes the outer backquote
+# there, zsh does not), a `#` straight after a subshell's `)` (a comment there,
+# where after a substitution's `)` it continues the word), a `<<` inside
+# parentheses (an arithmetic shift, or a heredoc feeding a subshell's
+# output), a heredoc the text never closes, and running out of the
+# re-reading budget all leave every opener live. Abstaining over-arms, which
+# is today's answer; a wrong mask under-arms, which lets a merge past a gate.
 #
 # WHAT THIS DOES NOT CLOSE. The body of a quoted-delimiter heredoc read by
-# `cat` is data to `cat`, not to whatever consumes cat's output: under
-# `eval "$(cat <<'EOF' ...)"` or `bash -c "$(cat <<'EOF' ...)"` an opener in
-# the body runs and this scan masks it, the same nested-interpreter
-# under-arm a quoted verb already has. Openers the shell never runs inside
+# `cat` is data to `cat`, not to whatever later executes the text cat
+# produced: `eval`, `bash -c`, a pipe or here-string into an interpreter, or
+# a file later sourced all run an opener in the body that this scan masks,
+# the same nested-interpreter under-arm a quoted verb already has. Openers the shell never runs inside
 # double quotes (`<(`, `>(`, `=(`) stay live, as do openers in comments.
 
 # Top level and inside a substitution: both quotes, a backslash, a backtick, a
@@ -676,7 +682,7 @@ gaia_verb_arm_live_view() {
   [ "${#text}" -le "${GAIA_VERB_ARM_MAX_CHARS:-16384}" ] || return 0
 
   local nl=$'\n'
-  local s out ok wstart sp kind pre np ch nx inner seg rest dead
+  local s out ok wstart sp bdepth kind pre np ch nx inner seg rest dead
   local chunk strip blanks dl dbad dq hd_n hd_sp hd_own hd_end bi p body dline
   # The context stack. kind: T top level, S `$( )`, P `<( )` `>( )` `=( )`,
   # B backticks, D double quotes. dep counts bare parentheses, cas records the
@@ -691,6 +697,7 @@ gaia_verb_arm_live_view() {
   ok=1
   wstart=1
   sp=0
+  bdepth=0
   hd_n=0
   hd_sp=0
   hd_own=0
@@ -748,6 +755,10 @@ gaia_verb_arm_live_view() {
           *) ok=0; break ;;
         esac
         inner="${s%%\'*}"
+        # bash ends a backquote at its first unescaped backtick, quoted or not.
+        if [ "$bdepth" -gt 0 ]; then
+          case "$inner" in *'`'*) ok=0; break ;; esac
+        fi
         _gaia_va_mask_openers "$inner" || { ok=0; break; }
         out+="'$_gaia_va_masked'"
         s="${s:$(( ${#inner} + 1 ))}"
@@ -756,8 +767,14 @@ gaia_verb_arm_live_view() {
       "$_GAIA_VA_BS")
         out+="$ch"
         if [ -z "$nx" ]; then ok=0; break; fi
-        # Inside backticks an escaped backtick opens a nested substitution.
-        if [ "$kind" = B ] && [ "$nx" = '`' ]; then ok=0; break; fi
+        # Under backticks, in any context down to the innermost, the shell
+        # strips the backslash from `\$`, `` \` `` and `\\` before parsing the
+        # inner command, so the escape it seems to make is gone by then.
+        if [ "$bdepth" -gt 0 ]; then
+          case "$nx" in
+            '$'|'`'|"$_GAIA_VA_BS") ok=0; break ;;
+          esac
+        fi
         # A line continuation moves the newline that ends a heredoc opener.
         if [ "$nx" = "$nl" ] && [ "$hd_n" -gt 0 ]; then ok=0; break; fi
         case "$nx" in
@@ -768,13 +785,18 @@ gaia_verb_arm_live_view() {
         wstart=0
         ;;
       '`')
+        # Under backticks, bash closes the outer backquote here even from
+        # inside double quotes or a nested `$( )`, where zsh opens a new one.
+        if [ "$bdepth" -gt 0 ] && [ "$kind" != B ]; then ok=0; break; fi
         out+="$ch"
         s="${s:1}"
         if [ "$kind" = B ]; then
           sp=$(( sp - 1 ))
+          bdepth=$(( bdepth - 1 ))
           wstart=0
         else
           sp=$(( sp + 1 )); k[sp]=B; dep[sp]=0; cas[sp]=0; cmd[sp]=${#out}
+          bdepth=$(( bdepth + 1 ))
           wstart=1
         fi
         ;;
@@ -831,6 +853,10 @@ gaia_verb_arm_live_view() {
         if [ "${cas[$sp]}" = 1 ]; then ok=0; break; fi
         if [ "${dep[$sp]}" -gt 0 ]; then
           dep[sp]=$(( ${dep[$sp]} - 1 ))
+          # A subshell's `)` is an operator, so a `#` right after it opens a
+          # comment, where after a substitution's `)` it continues the word.
+          # Rather than model which `(` this closes, stop.
+          case "$s" in '#'*) ok=0; break ;; esac
         elif [ "$kind" = S ] || [ "$kind" = P ]; then
           sp=$(( sp - 1 ))
         else
@@ -849,6 +875,9 @@ gaia_verb_arm_live_view() {
           s="${s:3}"
           wstart=0
         elif [ "$ch" = '<' ] && [ "$nx" = '<' ]; then
+          # Inside parentheses `<<` may be an arithmetic shift, and a heredoc
+          # in a subshell can feed whatever reads the subshell's output.
+          if [ "${dep[$sp]}" -gt 0 ]; then ok=0; break; fi
           # The delimiter is read exactly as the walk above reads it.
           seg="${out:${cmd[$sp]}}"
           chunk='<<'
@@ -923,6 +952,9 @@ gaia_verb_arm_live_view() {
             *"$nl"*) pre="${s%%"$nl"*}" ;;
             *) pre="$s" ;;
           esac
+          if [ "$bdepth" -gt 0 ]; then
+            case "$pre" in *'`'*) ok=0; break ;; esac
+          fi
           out+="$pre"
           s="${s:${#pre}}"
         else
@@ -959,6 +991,9 @@ gaia_verb_arm_live_view() {
           p="$_gaia_va_p"
           body="${s:0:$p}"
           s="${s:$p}"
+          if [ "$bdepth" -gt 0 ]; then
+            case "$body" in *'`'*) ok=0; break ;; esac
+          fi
           if [ "$dead" = 1 ]; then
             _gaia_va_mask_openers "$body" || { ok=0; break; }
             out+="$_gaia_va_masked"
