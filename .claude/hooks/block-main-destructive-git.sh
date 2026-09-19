@@ -612,27 +612,36 @@ hop_guard() {
 # stepped into a worktree and back read the worktree's branch for a commit that
 # landed on main.
 #
-# Two spellings run a command in the current shell with no `| & ; ( )` cut in
-# front of it: bash 5.3's `${ cmd; }` function substitution, and a zsh glob
-# qualifier's `e<delim>code<delim>` or `+cmd`, optionally behind `#q` or other
-# qualifier flags. A funsub's body is copied out as a segment of its own and
-# also left in place, since the words it prints belong to the command around
-# it (`git push ${ echo origin main; }` names main). A qualifier opener is
-# rewritten to a `;` so the split cuts there, and a quote or closing delimiter
-# standing just before a `)` is dropped so it does not glue itself onto the
-# qualifier's last word. Every rewrite is additive, never hiding a segment the
-# plain split would act on: the funsub copy removes nothing; a qualifier
-# rewrite only reaches the first word of a segment that already begins after a
-# `(`, and neither the text before its `e` nor the delimiter after it may be an
-# `=`, so an env-var prefix (`name=v`, whose name ends in `e`) and a real `git`
-# command word are untouched; the closer rewrite only reaches text a `)`
-# already cuts. Only the outermost of nested funsubs is copied out.
-# block-no-verify.sh carries the same rewrite, and block-no-verify.bats pins
+# hidden_bodies <text>: print, one per line, the body of every construct that
+# runs a command in the current shell with no `| & ; ( )` cut in front of it:
+# bash 5.3's `${ cmd; }` function substitution, and a zsh glob qualifier's
+# `e<delim>code<delim>` or `+cmd` (optionally behind `#q` or other qualifier
+# flags). The walk below reads these lines AFTER the command's own lines,
+# which it reads byte for byte as before, so this can only add segments and
+# never hides one: a spurious match (an `e_` inside `(file_1=a git …)`) adds a
+# harmless extra line while the real segment stays intact. A spurious body
+# that happens to begin with `git commit` inside quoted text over-blocks, the
+# safe direction. Each pass re-reads the bodies the last one found, so nested
+# funsubs surface; bodies only shrink, and the pass bound is a backstop.
+# Because the bodies are read last, a `cd` anywhere in the command governs
+# them rather than only one ahead of the construct; a body the tracked `cd`
+# misplaces was invisible to this hook before it existed.
+# block-no-verify.sh carries the same function, and block-no-verify.bats pins
 # the two copies identical.
-cut_hidden_openers() {
-  sed -E -e 's/\$\{[[:space:]]+([^;|&()]*)/&;\1/g' \
-    -e 's/\([^()[:space:]=]*(e[^[:alnum:][:space:]=]["'"'"']?|\+)/;/g' \
-    -e 's/(["'"'"'][^[:alnum:][:space:]()]?|[]}>])\)/;/g'
+hidden_bodies() {
+  local text="$1" pass=0
+  case "$text" in *'${'* | *'('*) ;; *) return 0 ;; esac
+  while [ -n "$text" ] && [ "$pass" -lt 8 ]; do
+    text=$(printf '%s\n' "$text" \
+      | { grep -oE '\$\{[[:space:]]+[^;|&()]*|\([^()[:space:]]*(e[^[:alnum:][:space:]]|\+)[^;|&()]*' || true; } \
+      | sed -E -e 's/^\$\{[[:space:]]+//' \
+          -e 's/^\([^()[:space:]]*(e[^[:alnum:][:space:]]|\+)//' \
+          -e 's/^["'"'"']//' \
+          -e 's/["'"'"']?[^[:alnum:][:space:]]?$//')
+    [ -n "$text" ] && printf '%s\n' "$text"
+    pass=$((pass + 1))
+  done
+  return 0
 }
 
 lead_cd=""
@@ -724,6 +733,6 @@ while IFS= read -r seg; do
       deny "This push's refspec names main, master or HEAD, which is forbidden from any branch (wiki/concepts/Git Workflow.md). Name the branch you are pushing explicitly and open a PR."
     fi
   fi
-done < <(printf '%s\n' "$cmd" | cut_hidden_openers | tr '|&;()' '\n')
+done < <({ printf '%s\n' "$cmd"; hidden_bodies "$cmd"; } | tr '|&;()' '\n')
 
 exit 0

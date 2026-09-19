@@ -150,12 +150,25 @@ git commit --no-verify -m y"
   # shellcheck disable=SC2016
   run_hook 'echo $(one=1 git commit -n -m x)'
   assert_denied_by_json
+  run_hook '(file_1=a git commit -n -m x)'
+  assert_denied_by_json
+  run_hook '(name_=v git commit --no-verify -m x)'
+  assert_denied_by_json
+  # shellcheck disable=SC2016
+  run_hook 'echo "$(page_2=x git push --no-verify)"'
+  assert_denied_by_json
 }
 
-@test "both commit guards carry the same segment rewrite" {
+@test "a --no-verify commit inside a nested bash funsub is denied" {
+  # shellcheck disable=SC2016
+  run_hook 'echo ${ echo ${ git commit --no-verify -m y; }; }'
+  assert_denied_by_json
+}
+
+@test "both commit guards extract hidden bodies the same way" {
   local a b
-  a=$(sed -n '/^cut_hidden_openers() {$/,/^}$/p' "$HOOKS_SRC/block-no-verify.sh")
-  b=$(sed -n '/^cut_hidden_openers() {$/,/^}$/p' "$HOOKS_SRC/block-main-destructive-git.sh")
+  a=$(sed -n '/^hidden_bodies() {$/,/^}$/p' "$HOOKS_SRC/block-no-verify.sh")
+  b=$(sed -n '/^hidden_bodies() {$/,/^}$/p' "$HOOKS_SRC/block-main-destructive-git.sh")
   [ -n "$a" ]
   [ "$a" = "$b" ]
 }

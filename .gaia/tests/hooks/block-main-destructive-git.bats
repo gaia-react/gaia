@@ -406,6 +406,21 @@ git commit -m y"
   assert_denied_by_json
   run_hook '(mode=1 git push --force origin HEAD)'
   assert_denied_by_json
+  run_hook '(name_=v git push origin main)'
+  assert_denied_by_json
+  # shellcheck disable=SC2016
+  run_hook 'echo $(page_2=x git push --force origin HEAD)'
+  assert_denied_by_json
+  on_main
+  run_hook '(file_1=a git commit -m x)'
+  assert_denied_by_json
+}
+
+@test "a commit inside a nested bash funsub is denied on main" {
+  on_main
+  # shellcheck disable=SC2016
+  run_hook 'echo ${ echo ${ git commit -m y; }; }'
+  assert_denied_by_json
 }
 
 @test "a call whose every command is foreign still passes a commit to main" {

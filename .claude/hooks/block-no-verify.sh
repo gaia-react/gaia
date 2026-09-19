@@ -108,27 +108,33 @@ floor_msg() {
   echo "$msg"
 }
 
-# Two spellings run a command in the current shell with no `| & ; ( )` cut in
-# front of it: bash 5.3's `${ cmd; }` function substitution, and a zsh glob
-# qualifier's `e<delim>code<delim>` or `+cmd`, optionally behind `#q` or other
-# qualifier flags. A funsub's body is copied out as a segment of its own and
-# also left in place, since the words it prints belong to the command around
-# it (`git commit ${ echo -n; }` is `git commit -n`). A qualifier opener is
-# rewritten to a `;` so the split below cuts there, and a quote or closing
-# delimiter standing just before a `)` is dropped so it does not glue itself
-# onto the qualifier's last word. Every rewrite is additive, never hiding a
-# segment the plain split would act on: the funsub copy removes nothing; a
-# qualifier rewrite only reaches the first word of a segment that already
-# begins after a `(`, and neither the text before its `e` nor the delimiter
-# after it may be an `=`, so an env-var prefix (`name=v`, whose name ends in
-# `e`) and a real `git` command word are untouched; the closer rewrite only
-# reaches text a `)` already cuts. Only the outermost of nested funsubs is
-# copied out. block-main-destructive-git.sh carries the same rewrite, and
+# hidden_bodies <text>: print, one per line, the body of every construct that
+# runs a command in the current shell with no `| & ; ( )` cut in front of it:
+# bash 5.3's `${ cmd; }` function substitution, and a zsh glob qualifier's
+# `e<delim>code<delim>` or `+cmd` (optionally behind `#q` or other qualifier
+# flags). The walk below reads these lines AFTER the command's own lines,
+# which it reads byte for byte as before, so this can only add segments and
+# never hides one: a spurious match (an `e_` inside `(file_1=a git …)`) adds a
+# harmless extra line while the real segment stays intact. A spurious body
+# that happens to begin with `git commit` inside quoted text over-blocks, the
+# safe direction. Each pass re-reads the bodies the last one found, so nested
+# funsubs surface; bodies only shrink, and the pass bound is a backstop.
+# block-main-destructive-git.sh carries the same function, and
 # block-no-verify.bats pins the two copies identical.
-cut_hidden_openers() {
-  sed -E -e 's/\$\{[[:space:]]+([^;|&()]*)/&;\1/g' \
-    -e 's/\([^()[:space:]=]*(e[^[:alnum:][:space:]=]["'"'"']?|\+)/;/g' \
-    -e 's/(["'"'"'][^[:alnum:][:space:]()]?|[]}>])\)/;/g'
+hidden_bodies() {
+  local text="$1" pass=0
+  case "$text" in *'${'* | *'('*) ;; *) return 0 ;; esac
+  while [ -n "$text" ] && [ "$pass" -lt 8 ]; do
+    text=$(printf '%s\n' "$text" \
+      | { grep -oE '\$\{[[:space:]]+[^;|&()]*|\([^()[:space:]]*(e[^[:alnum:][:space:]]|\+)[^;|&()]*' || true; } \
+      | sed -E -e 's/^\$\{[[:space:]]+//' \
+          -e 's/^\([^()[:space:]]*(e[^[:alnum:][:space:]]|\+)//' \
+          -e 's/^["'"'"']//' \
+          -e 's/["'"'"']?[^[:alnum:][:space:]]?$//')
+    [ -n "$text" ] && printf '%s\n' "$text"
+    pass=$((pass + 1))
+  done
+  return 0
 }
 
 # Walk each command-position segment. Separators (`| & ; ( )`, newlines) become
@@ -184,7 +190,7 @@ while IFS= read -r seg; do
      && [[ "$seg" =~ (^|[[:space:]])-[a-zA-Z]*n[a-zA-Z]*([[:space:]]|$) ]]; then
     deny "$(floor_msg '-n (= --no-verify)')"
   fi
-done < <(printf '%s\n' "$cmd" | cut_hidden_openers | tr '|&;()' '\n')
+done < <({ printf '%s\n' "$cmd"; hidden_bodies "$cmd"; } | tr '|&;()' '\n')
 
 # Fail-closed safety net for the UNAMBIGUOUS tokens. Segment-splitting on a
 # `| & ; ( )` that is actually inside a quoted commit message could orphan a
