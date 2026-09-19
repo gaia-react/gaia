@@ -61,13 +61,14 @@
 #
 #   Order-independence rests on the DIGEST key. Markers are named for the
 #   member's own content digest, not its commit sha, so code-audit-frontend's
-#   GAIA-Audit trailer stamp -- an empty commit, which advances HEAD while
-#   leaving every blob byte-identical -- rotates no member's digest and does
-#   not orphan a sibling member's marker. Keyed to the commit, the stamp would
-#   invalidate every marker written before it, and the member that finished
-#   last would find the others' markers gone and decline forever. The POST
-#   itself still targets the commit sha: a GitHub commit status has nowhere
-#   else to land.
+#   GAIA-Audit trailer stamp -- an empty commit on a detached HEAD, which
+#   advances HEAD while leaving every blob byte-identical, or no commit at
+#   all on an already-pushed attached HEAD -- rotates no member's digest and
+#   does not orphan a sibling member's marker. Keyed to the commit, a stamp
+#   commit would invalidate every marker written before it, and the member
+#   that finished last would find the others' markers gone and decline
+#   forever. The POST itself still targets the commit sha: a GitHub commit
+#   status has nowhere else to land.
 #
 # Exit codes
 #   0 , Posted successfully OR declined (precondition failed). One stdout
@@ -340,15 +341,18 @@ if [ -z "$target_tree" ] || [ "$target_tree" != "$tree_sha" ]; then
 fi
 
 # The tree guard above cannot see an un-pushed GAIA-Audit trailer stamp, by
-# construction: the stamp is content-preserving (an empty commit on the pushed
-# path, an amend on the un-pushed one), so every blob stays byte-identical and
-# local HEAD's tree equals the target sha's tree even while the stamp commit
-# exists only locally. Require the COMMIT sha to match too. Without this the
-# status posts on the PRE-STAMP head, the stamp is pushed afterwards, the PR
-# head advances, and the success status is stranded on a sha no reader checks,
-# so a required GAIA-Audit check waits forever. Push the stamp, then post.
-# When no PR and no upstream resolve, head_sha IS local HEAD, so this guard
-# does not fire on that path.
+# construction: the stamp is content-preserving (an empty commit on a
+# detached HEAD, an amend on an un-pushed one), so every blob stays
+# byte-identical and local HEAD's tree equals the target sha's tree even
+# while the stamp commit exists only locally. Require the COMMIT sha to match
+# too. Without this the status posts on the PRE-STAMP head, the stamp is
+# pushed afterwards, the PR head advances, and the success status is
+# stranded on a sha no reader checks, so a required GAIA-Audit check waits
+# forever. This only bites when a stamp commit was made and still needs
+# pushing (detached HEAD, or an amend-path stamp not yet pushed); an
+# already-pushed attached HEAD makes no stamp commit, so local HEAD already
+# equals head_sha and this guard passes through. When no PR and no upstream
+# resolve, head_sha IS local HEAD, so this guard does not fire on that path.
 head_local="$(git -C "$repo_root" rev-parse HEAD 2>/dev/null || true)"
 if [ "$head_local" != "$head_sha" ]; then
   emit_decline "stamp not pushed"

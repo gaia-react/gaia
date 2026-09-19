@@ -31,11 +31,13 @@
 #   The sidecar key is `<base-sha>.<branch-slug>` (gaia_audit_key,
 #   audit-key-lib.sh) and only the branch half is stable across a fix loop.
 #   The gate stamps a `GAIA-Audit:` trailer on a `chore: code review audit
-#   passed` commit at the end of every cleared round, and
-#   .github/audit/resolve-audit-base.sh walks to the newest trailer-bearing
-#   ancestor of HEAD, so the shared base advances by one stamp per cleared
-#   round (a rebase onto main and a machinery-reset move it too). One branch
-#   therefore writes its sidecars under SEVERAL bases, one per round, and that
+#   passed` commit at the end of a cleared round on an un-pushed or detached
+#   HEAD (a round that clears on an already-pushed attached HEAD posts a
+#   status instead and makes no commit), and .github/audit/resolve-audit-base.sh
+#   walks to the newest trailer-bearing ancestor of HEAD, so the shared base
+#   advances by roughly one stamp per cleared round that makes one (a rebase
+#   onto main and a machinery-reset move it too). One branch therefore writes
+#   its sidecars under SEVERAL bases, one per round that stamps, and that
 #   partitioning is deliberate: it is the durable per-round record of what each
 #   round found, so this script widens the read rather than stabilizing the key.
 #
