@@ -348,6 +348,39 @@ opener_pair() {
   assert_not_armed
 }
 
+@test "an ampersand or pipe completing a redirection does not start a new command for the heredoc owner" {
+  local body="echo \$(gh pr merge 1)${NL}EOF"
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "bash -s >& cat <<'EOF'${NL}${body}"
+  assert_armed || return 1
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "x=\$(bash -s >&cat <<'EOF'${NL}${body}${NL})"
+  assert_armed || return 1
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "x=\$(sh >| cat <<'EOF'${NL}${body}${NL})"
+  assert_armed || return 1
+  # A bare cat owning the same body is still data.
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "x=\$(cat <<'EOF'${NL}${body}${NL})"
+  assert_not_armed
+}
+
+@test "a body inside a substitution stays live when bash 3.2's paren matcher would close the substitution in it" {
+  local bt='`'
+  # bash 3.2 ends the substitution at the body's first unmatched `)`.
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "echo \"\$(cat <<'EOF'${NL})\$(gh pr merge 1)${NL}EOF${NL})\""
+  assert_armed || return 1
+  # Its matcher honours quotes, so a quoted paren does not balance one.
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "echo \"\$(cat <<'EOF'${NL}a '(' b ) \$(gh pr merge 1)${NL}EOF${NL})\""
+  assert_armed || return 1
+  # Balanced parentheses and a backticked citation stay data.
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "echo \"\$(cat <<'EOF'${NL}See (below) ${bt}gh pr merge 1${bt}.${NL}EOF${NL})\""
+  assert_not_armed || return 1
+  # An apostrophe nothing later can close is a 3.2 syntax error, so nothing
+  # runs, and the body stays data.
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "gh pr create --body \"\$(cat <<'EOF'${NL}It's ${bt}gh pr merge 1${bt}.${NL}EOF${NL})\""
+  assert_not_armed || return 1
+  # The same apostrophe with a later one to pair with is not.
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "x=\"\$(cat <<'EOF'${NL}It's ${bt}gh pr merge 1${bt}.${NL}EOF${NL})\"; echo 'y'"
+  assert_armed
+}
+
 @test "a hash after a subshell's closing parenthesis opens a comment the scan honours" {
   arm "$MERGE_FRAG" "$MERGE_WORDS" "(true)#it's${NL}x=\$(gh pr merge 1) # it's"
   assert_armed || return 1

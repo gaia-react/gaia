@@ -624,7 +624,9 @@ gaia_verb_arm_view() {
 # there, zsh does not), a `#` straight after a subshell's `)` (a comment there,
 # where after a substitution's `)` it continues the word), a `<<` inside
 # parentheses (an arithmetic shift, or a heredoc feeding a subshell's
-# output), a heredoc the text never closes, and running out of the
+# output), a body inside `$( )` that bash 3.2's heredoc-blind paren matcher
+# could close the substitution in (_gaia_va_b32_body_safe), a heredoc the
+# text never closes, and running out of the
 # re-reading budget all leave every opener live. Abstaining over-arms, which
 # is today's answer; a wrong mask under-arms, which lets a merge past a gate.
 #
@@ -632,7 +634,9 @@ gaia_verb_arm_view() {
 # `cat` is data to `cat`, not to whatever later executes the text cat
 # produced: `eval`, `bash -c`, a pipe or here-string into an interpreter, or
 # a file later sourced all run an opener in the body that this scan masks,
-# the same nested-interpreter under-arm a quoted verb already has. Openers the shell never runs inside
+# the same nested-interpreter under-arm a quoted verb already has, and so
+# does a `cat` or `tee` redefined earlier in the call (a function, an alias,
+# a PATH entry), since the scan reads the name, not what it resolves to. Openers the shell never runs inside
 # double quotes (`<(`, `>(`, `=(`) stay live, as do openers in comments.
 
 # Top level and inside a substitution: both quotes, a backslash, a backtick, a
@@ -674,6 +678,57 @@ _gaia_va_mask_openers() {
     rest="${rest:$(( np + 1 ))}"
   done
   return 0
+}
+
+# What bash 3.2's matcher stops on inside `$( )`: both quotes, a backtick, a
+# backslash and both parentheses.
+_GAIA_VA_B32_SET=$'["\047\140\\\\()]'
+
+# _gaia_va_b32_body_safe <body> <after>: 0 when bash 3.2 would read <body>
+# as part of the `$( )` holding its heredoc, 1 when it may close the
+# substitution inside it. bash 3.2 finds that `)` with a paren-and-quote
+# matcher that knows nothing of heredocs, so an unmatched `)` in the body,
+# counted outside quotes, ends the substitution there and everything after
+# it runs as live text. A quote the body leaves open is safe only when
+# nothing in <after> can close it: the matcher then reaches the end of the
+# text, which is a syntax error, so nothing runs. A double-quoted or
+# backticked span that nests anything is not modelled. Charges the shared
+# budget.
+_gaia_va_b32_body_safe() {
+  local rest="$1" after="$2" pre np ch span depth=0
+  while [ -n "$rest" ]; do
+    _gaia_va_lwork=$(( _gaia_va_lwork + ${#rest} ))
+    [ "$_gaia_va_lwork" -le "$_GAIA_VA_MAX_WORK" ] || return 1
+    # shellcheck disable=SC2295 # a bracket expression, matched as a pattern
+    pre="${rest%%$_GAIA_VA_B32_SET*}"
+    np=${#pre}
+    ch="${rest:$np:1}"
+    [ -n "$ch" ] || break
+    rest="${rest:$(( np + 1 ))}"
+    case "$ch" in
+      '(') depth=$(( depth + 1 )) ;;
+      ')')
+        depth=$(( depth - 1 ))
+        [ "$depth" -ge 0 ] || return 1
+        ;;
+      "$_GAIA_VA_BS") rest="${rest:1}" ;;
+      *)
+        case "$rest" in
+          *"$ch"*) ;;
+          *)
+            case "$after" in *"$ch"*) return 1 ;; esac
+            return 0
+            ;;
+        esac
+        span="${rest%%"$ch"*}"
+        if [ "$ch" != "'" ]; then
+          case "$span" in *'$'*|*'`'*|*"$_GAIA_VA_BS"*) return 1 ;; esac
+        fi
+        rest="${rest:$(( ${#span} + 1 ))}"
+        ;;
+    esac
+  done
+  [ "$depth" -eq 0 ]
 }
 
 gaia_verb_arm_live_view() {
@@ -963,9 +1018,15 @@ gaia_verb_arm_live_view() {
         fi
         ;;
       ';'|'&'|'|')
+        # After `>` or `<` this completes a redirection operator (`>&`, `<&`,
+        # `>|`) rather than ending the command, and the word after it is a
+        # file, never the command a heredoc belongs to.
+        case "$out" in
+          *'>'|*'<') ;;
+          *) cmd[sp]=$(( ${#out} + 1 )) ;;
+        esac
         out+="$ch"
         s="${s:1}"
-        cmd[sp]=${#out}
         wstart=1
         ;;
       "$nl")
@@ -993,6 +1054,9 @@ gaia_verb_arm_live_view() {
           s="${s:$p}"
           if [ "$bdepth" -gt 0 ]; then
             case "$body" in *'`'*) ok=0; break ;; esac
+          fi
+          if [ "$dead" = 1 ] && [ "${k[$hd_sp]}" = S ]; then
+            _gaia_va_b32_body_safe "$body" "$s" || { ok=0; break; }
           fi
           if [ "$dead" = 1 ]; then
             _gaia_va_mask_openers "$body" || { ok=0; break; }
