@@ -17336,6 +17336,9 @@ var ORACLE_PREFIXES = [
   "knip",
   "cve"
 ];
+var ORACLE_SLUG_PATTERN = /^[A-Za-z0-9][\w.-]*(?:\/[A-Za-z0-9][\w.-]*)*$/;
+var ORACLE_SLUG_MAX_LENGTH = 128;
+var isOracleSlug = (slug) => slug.length <= ORACLE_SLUG_MAX_LENGTH && ORACLE_SLUG_PATTERN.test(slug);
 var HOLISTIC_FINDING_CLASSES = [
   "holistic/missing-auth-check",
   "holistic/secret-exposure",
@@ -17409,7 +17412,7 @@ var isOracleFindingClass = (findingClass) => {
 var isValidFindingClass = (value) => {
   const parts = splitPrefix(value);
   if (parts === void 0) return false;
-  if (isOraclePrefix(parts.prefix)) return parts.slug.length > 0;
+  if (isOraclePrefix(parts.prefix)) return isOracleSlug(parts.slug);
   return CLOSED_VOCABULARY.has(value);
 };
 var FindingClassSchema = external_exports.string().refine(isValidFindingClass, {
