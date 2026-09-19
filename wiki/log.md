@@ -11,6 +11,21 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-09-19 1e16ef03 SKIP - eligibility ladder default-branch revspec correctness fix; wiki/concepts/Audit Disposition and Debt Fix.md already describes the intended remote-tracking-ref behavior generically
+- 2026-09-19 c99f0b62 SKIP - pagination bug fix (30→100 status contexts) in undocumented helper audit-success-present.sh; no existing wiki page, not new architecture
+- 2026-09-19 423907bd WORTHY - audit step timeout now clamped to 45-minute ceiling under the job's 60-minute cap → wiki/concepts/Code Review Audit CI.md
+- 2026-09-19 fba7650e SKIP - chore(deps) frontend waiver in stamp/status hooks already documented in wiki/concepts/PR Merge Workflow.md by the same PR
+- 2026-09-19 6a4797cb SKIP - harden nudge-on-material-rise mechanism already documented in wiki/concepts/Policy-Memory Loop.md, Local Working State.md by the same PR
+- 2026-09-19 74b7d238 SKIP - generalized label descriptions + documentation label already reflected in wiki/concepts/GitHub Labels.md by the same PR
+- 2026-09-19 5b8d3926 SKIP - handler/surface label rename to footprint/audience already reflected in wiki/concepts/GitHub Labels.md, Audit Disposition and Debt Fix.md, decisions/Code Audit Team.md by the same PR
+- 2026-09-19 42600a57 WORTHY - new failed-run GAIA-Audit status backstop → wiki/concepts/Code Review Audit CI.md (new Failed-run status backstop section)
+- 2026-09-19 a98c9597 SKIP - single-flight lock for update-check refresher already documented in wiki/modules/Claude Integration.md by the same PR
+- 2026-09-19 b0ce3df9 SKIP - harden-tally correctness fix (200-PR truncation, gh maxBuffer, GitHub search 1000-cap paging); wiki/concepts/Policy-Memory Loop.md already documents the intended 90-day window behavior
+- 2026-09-19 07d5ca3a SKIP - fix(deps): js-yaml CVE bump in .gaia/cli, no new architecture; CLI-Binary-Split.md already documents esbuild inlining of bundled deps
+- 2026-09-19 bee053c7 SKIP - chore(deps): version bump only
+- 2026-09-19 eee077c6 SKIP - chore(deps-dev): CVE floor bump, no behavior/architecture change
+- 2026-09-19 39240dae SKIP - chore(deps): version bump only
+- 2026-09-19 c156535d SKIP - prior wiki-sync commit (through b95068f), already applied
 - 2026-09-18 b95068f6 SKIP - run-interpolation scan-surface header wording names composite-action dir; internal script header detail, no wiki page covers it
 - 2026-09-18 9a969852 SKIP - cost tally --branch-name capture-before-cleanup rule; wiki/concepts/Cost Data Contract.md already updated by the same PR
 - 2026-09-18 0ad7572d SKIP - tests-only change

@@ -147,7 +147,7 @@ When the audit's self-heal step pushes a new commit, GitHub does not fire `push`
 
 Polling is parallel: one background process per dispatched workflow, so total wait time tracks the slowest dispatched run rather than the sum. Each poller resolves a run id within 90 s, polls for completion for up to 25 min, and tolerates internal failures by logging a warning rather than failing the step. A dispatch failure (workflow not present, missing `workflow_dispatch:` trigger) is also logged and tolerated; the audit does not fail the PR over an adopter-listed workflow that doesn't exist in their repo.
 
-The audit step's `budget_seconds` plus the slowest dispatched run plus a small overhead must fit within the job-level `timeout-minutes: 60` cap. Adopters who raise `budget_seconds` above ~1800 should make sure their dispatched-workflow runtimes stay under the remaining headroom.
+The audit step's own timeout is derived from `budget_seconds` (rounded up to whole minutes) but clamped to a 45-minute ceiling under the job-level `timeout-minutes: 60` cap, leaving headroom for setup and for the push/status/comment steps that follow. A `budget_seconds` that would exceed the ceiling is capped with a workflow warning rather than left to run out the job's own timeout, which cancels the job instead of failing it and leaves the [[#Failed-run status backstop]] with nothing to catch.
 
 This mechanism is invisible when `push_fixes: false`; the audit posts comments and never advances HEAD.
 
@@ -174,6 +174,12 @@ On `gaia-react/gaia` the knob carries three maintainer-only entries beyond the s
 
 The assertion lives in `.gaia/scripts/tests/retrigger-reachability.bats`, covering every context in `.gaia/scripts/verify-required-checks.sh`'s declared-required list, including the step-level trap above.
 <!-- gaia:maintainer-only:end -->
+
+## Failed-run status backstop
+
+Every `GAIA-Audit` status writer in the job carries GitHub's implicit `success()`, so a step that fails skips every writer after it and the job ends with no `GAIA-Audit` status at all: a required context the pull request then waits on forever, with nothing saying why. A last job step, gated on `failure()`, closes that gap: it posts a `failure` state linked to the run whenever the head still carries no `GAIA-Audit` status, and never overwrites one a writer already posted (success or pending alike), including a pending status the local-mode stand-down posted. Being last in the job means it also covers a failure in the re-trigger step, in a terminal comment step, and the audit-aborted step's deliberate `exit 1`.
+
+A job that reaches its own `timeout-minutes` is cancelled rather than failed, so this step does not run and the check stays absent; see the audit step's own 45-minute ceiling above, which exists so the audit's own timeout fires as a failure this backstop can catch, ahead of the job-level cancellation.
 
 ## How to enable as a required check
 
