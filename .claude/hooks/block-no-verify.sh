@@ -123,6 +123,7 @@ floor_msg() {
 # block-no-verify.bats pins the two copies identical.
 hidden_bodies() {
   local text="$1" pass=0
+  # shellcheck disable=SC2016 # a literal opener matched in the text, not an expansion
   case "$text" in *'${'* | *'('*) ;; *) return 0 ;; esac
   while [ -n "$text" ] && [ "$pass" -lt 8 ]; do
     text=$(printf '%s\n' "$text" \
