@@ -32,8 +32,10 @@ gaia_require_jq 'the main-branch destructive-git guard' "$payload" tool_input 'g
 cmd=$(echo "$payload" | jq -r '.tool_input.command // empty')
 
 # Only act on git commands, short-circuit everything else. (Fast path only;
-# correctness comes from the command-position scan below.)
-[[ "$cmd" =~ (^|[[:space:]&;|()])git([[:space:]]|$) ]] || exit 0
+# correctness comes from the command-position scan below.) Any non-word
+# character may stand before `git`, since a zsh glob qualifier puts a quote or
+# its own delimiter there.
+[[ "$cmd" =~ (^|[^[:alnum:]_])git([[:space:]]|$) ]] || exit 0
 
 # Repo-scope: this repo's main-branch policy governs this repo only. A git
 # command aimed at a different repo (e.g. `git -C ../other push origin main`
@@ -609,6 +611,40 @@ hop_guard() {
 # command-wide value could not be replaced by a later `cd`, so a command that
 # stepped into a worktree and back read the worktree's branch for a commit that
 # landed on main.
+#
+# hidden_bodies <text>: print, one per line, the body of every construct that
+# runs a command in the current shell with no `| & ; ( )` cut in front of it:
+# bash 5.3's `${ cmd; }` function substitution, and a zsh glob qualifier's
+# `e<delim>code<delim>` or `+cmd` (optionally behind `#q` or other qualifier
+# flags). The walk below reads these lines AFTER the command's own lines,
+# which it reads byte for byte as before, so this can only add segments and
+# never hides one: a spurious match (an `e_` inside `(file_1=a git …)`) adds a
+# harmless extra line while the real segment stays intact. A spurious body
+# that happens to begin with `git commit` inside quoted text over-blocks, the
+# safe direction. Each pass re-reads the bodies the last one found, so nested
+# funsubs surface; bodies only shrink, and the pass bound is a backstop.
+# Because the bodies are read last, a `cd` anywhere in the command governs
+# them rather than only one ahead of the construct; a body the tracked `cd`
+# misplaces was invisible to this hook before it existed.
+# block-no-verify.sh carries the same function, and block-no-verify.bats pins
+# the two copies identical.
+hidden_bodies() {
+  local text="$1" pass=0
+  # shellcheck disable=SC2016 # a literal opener matched in the text, not an expansion
+  case "$text" in *'${'* | *'('*) ;; *) return 0 ;; esac
+  while [ -n "$text" ] && [ "$pass" -lt 8 ]; do
+    text=$(printf '%s\n' "$text" \
+      | { grep -oE '\$\{[[:space:]]+[^;|&()]*|\([^()[:space:]]*(e[^[:alnum:][:space:]]|\+)[^;|&()]*' || true; } \
+      | sed -E -e 's/^\$\{[[:space:]]+//' \
+          -e 's/^\([^()[:space:]]*(e[^[:alnum:][:space:]]|\+)//' \
+          -e 's/^["'"'"']//' \
+          -e 's/["'"'"']?[^[:alnum:][:space:]]?$//')
+    [ -n "$text" ] && printf '%s\n' "$text"
+    pass=$((pass + 1))
+  done
+  return 0
+}
+
 lead_cd=""
 cd_tracking=1
 if cmd_has_unquoted_group "$cmd"; then cd_tracking=0; fi
@@ -698,6 +734,6 @@ while IFS= read -r seg; do
       deny "This push's refspec names main, master or HEAD, which is forbidden from any branch (wiki/concepts/Git Workflow.md). Name the branch you are pushing explicitly and open a PR."
     fi
   fi
-done < <(printf '%s\n' "$cmd" | tr '|&;()' '\n')
+done < <({ printf '%s\n' "$cmd"; hidden_bodies "$cmd"; } | tr '|&;()' '\n')
 
 exit 0
