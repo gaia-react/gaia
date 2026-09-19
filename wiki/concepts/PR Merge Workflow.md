@@ -59,7 +59,7 @@ Read the whole output before narrowing to that row: the rows this grep discards 
 | `gh pr checks` result            | Meaning                             | Action                                                    |
 | -------------------------------- | ----------------------------------- | --------------------------------------------------------- |
 | `GAIA-Audit … pass`              | marker present for HEAD             | skip to **step 4 (merge)**                                |
-| `GAIA-Audit … pending`           | CI is enabled and running the audit | wait for it to finish, then merge                         |
+| `GAIA-Audit … pending`           | CI is enabled and running the audit | wait for it to finish, then merge; a conflict ends the wait, see [[#Conflict found mid-wait]] |
 | no `GAIA-Audit` row, or it fails | CI is not auditing this PR          | run the local agent (**step 1**), mandatory, not optional |
 
 The third row covers cases where the workflow file is present but CI is not stamping: Actions disabled, the workflow inactive, or a `gate_label` in `.gaia/audit-ci.yml` this PR lacks. To tell "CI is off" apart from "CI just hasn't registered the check yet," confirm the workflow is live before deciding to wait:
@@ -516,19 +516,37 @@ When worthy:
 
 `gh pr merge` can fail without aborting the rest of a script: branch protection ("base branch policy prohibits the merge"), pending CI checks, missing `--auto` for queued merges, or auth issues. Proceeding to local cleanup (`git checkout main`, `git branch -D <pr-branch>`, `git fetch --prune`) before confirming the merge actually succeeded leaves the local branch deleted while the PR is still OPEN. Recoverable via `git checkout -b <branch> origin/<branch>` while the remote ref still exists, but it's avoidable churn.
 
-Verification is identical under both isolation modes: poll the PR's state until it reports `MERGED`.
+Verification is identical under both isolation modes: poll the PR until it reports `MERGED`, and stop early on either state that means it never will.
 
 ```bash
 gh pr merge <N> --squash --delete-branch [--auto]
+```
+
+Then poll. The loop is the reusable part: a caller that already issued its own `gh pr merge` runs only this block.
+
+```bash
 for i in 1 2 3 4 5; do
-  state=$(gh pr view <N> --json state -q .state)
-  [ "$state" = "MERGED" ] && break
+  verdict=$(gh pr view <N> --json state,mergeable \
+    --jq 'if .state == "MERGED" then "MERGED" elif .mergeable == "CONFLICTING" then "CONFLICTING" else "WAITING" end')
+  if [ "$verdict" = "WAITING" ]; then
+    failed=$(gh pr checks <N> --required --json bucket \
+      --jq 'map(select(.bucket == "fail" or .bucket == "cancel")) | length' 2>/dev/null)
+    [ "${failed:-0}" -gt 0 ] && verdict="CHECK_FAILED"
+  fi
+  [ "$verdict" = "WAITING" ] || break
   sleep 30
 done
-[ "$state" = "MERGED" ] || { echo "merge did not complete"; exit 1; }
+case "$verdict" in
+  MERGED) ;;
+  CONFLICTING) echo "base branch conflicts with the PR; see Conflict found mid-wait"; exit 1 ;;
+  CHECK_FAILED) echo "a required check failed; the queued merge cannot land"; exit 1 ;;
+  *) echo "merge did not complete"; exit 1 ;;
+esac
 ```
 
 That poll is the whole verification. A local error printed by `gh pr merge` after the state reads `MERGED` does not revise the answer; see [[#Local-sync failure mode]] below.
+
+`mergeable` reads `UNKNOWN` for a short while after any push, while GitHub recomputes it, so the poll treats it as still waiting rather than as clean. Only required checks count: a failed optional check does not block a queued merge, so exiting on one would abandon a merge that is about to land. `gh pr checks` prints nothing and exits non-zero while no check has registered yet, which the poll also reads as still waiting.
 
 **`--auto` vs `--admin`:** when `gh pr merge` rejects with "base branch policy prohibits the merge", the right escape is `--auto`; it queues the merge and GitHub completes it once checks pass. Never reach for `--admin` to bypass branch protection without explicit permission; it removes the safety the policy exists to provide.
 
@@ -568,6 +586,18 @@ git fetch --prune origin
 `--force` is required because the worktree holds a branch whose commits the squash merge absorbed without making them ancestors of `main`, so git otherwise refuses to remove it. On a `gh` below 2.99.0 the `git branch -D` step is what actually drops the local branch on this path. `--delete-branch` deletes the local branch first and the remote branch second, and its local half checks out the default branch before deleting, which is precisely the step that fails here; because that step fails, `gh` returns before reaching its own remote delete. The remote branch still disappears on a repository configured to delete head branches on merge, so that setting rather than `gh` is what removes it here. From `gh` 2.99.0 on, the local delete is skipped with a warning naming this cleanup, and `gh` does delete the remote branch itself. If the branch is already gone, the command reports `branch not found` and nothing is wrong.
 
 An agent driving the merge in-session removes its own worktree with the runtime's `ExitWorktree({action: "remove", discard_changes: true})`, gated on the confirmed `MERGED` state; `discard_changes` is safe there for the same reason `--force` is here. From a context that cannot call it, a fresh session or a sub-agent with a pinned working directory, the shell sequence above is the session-independent equivalent. See [[Audit Disposition and Debt Fix]] and [[Worktrees]].
+
+### Conflict found mid-wait
+
+A queued `--auto` merge, and any wait on CI or on a `GAIA-Audit` status between audit rounds, can go dead while it runs: the default branch lands a change that conflicts with the PR, `mergeable` turns `CONFLICTING` within minutes, and GitHub never completes the merge. A file most branches edit makes this common, and running several worktree branches at once makes it more so. Every wait in this workflow exits on `CONFLICTING` for that reason, the same way the poll above does, instead of running out its full bound; the check run in flight is spent either way, because the repair moves HEAD and starts a fresh one.
+
+The repair is the catch-up merge from [[#Before the first dispatch: verify your own work]]:
+
+1. `git fetch origin main` and `git merge --no-edit origin/main`, resolve the conflict, re-run the deterministic checks, and push.
+2. Re-run `bash .gaia/scripts/resolve-audit-spawn.sh`. The merged content can rotate a member's digest; any member it names again is re-spawned as a normal round.
+3. When it names no one, the existing markers still cover the tree, but the `GAIA-Audit` status is keyed to the head sha, which the merge commit moved. Re-post it on the new head with `.claude/hooks/post-audit-status.sh <existing-marker>`, then resume the poll, re-running `gh pr merge` first if `gh pr view <N> --json autoMergeRequest` shows the merge is no longer queued.
+
+A conflict found this way is not a merge failure, and it costs no audit round unless step 2 names a member.
 
 ## Local-sync failure mode
 

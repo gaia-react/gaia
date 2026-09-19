@@ -169,7 +169,7 @@ Empty output confirms no marker is owed. If it names any member, spawn each memb
   1. `{ label: "Merge", description: "Squash-merge PR #<N> now." }`
   2. `{ label: "Leave open", description: "Keep the PR open; you merge it after review." }`
 
-**Merge** → drive it to merge through `wiki/concepts/PR Merge Workflow.md` (read it, don't merge from memory): `gh pr merge <N> --squash --delete-branch --auto`, bounded-poll `gh pr view <N> --json state` for `MERGED`, and on `MERGED` capture the branch (the literal `$BRANCH` value) for the cost record's `--branch-name` (`## Cost record (run end)`) and then clean up (`git checkout main && git pull origin main`, `git branch -D "$BRANCH"`, `git fetch --prune origin`); if still queued when the poll window closes, print the PR URL and note the merge is queued.
+**Merge** → drive it to merge through `wiki/concepts/PR Merge Workflow.md` (read it, don't merge from memory): `gh pr merge <N> --squash --delete-branch --auto`, run the bounded poll in `wiki/concepts/PR Merge Workflow.md` (`## Post-merge verification before cleanup`), which also stops early on a base-branch conflict or a failed required check (on a conflict, repair it per that page's `### Conflict found mid-wait` and resume), and on `MERGED` capture the branch (the literal `$BRANCH` value) for the cost record's `--branch-name` (`## Cost record (run end)`) and then clean up (`git checkout main && git pull origin main`, `git branch -D "$BRANCH"`, `git fetch --prune origin`); if still queued when the poll window closes, print the PR URL and note the merge is queued; on a failed required check, print the PR URL and the failing check instead.
 
 **Leave open** → report the PR URL and stop.
 

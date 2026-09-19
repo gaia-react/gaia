@@ -504,14 +504,7 @@ Then branch on where the run started.
    ```
    `--auto` queues the merge so GitHub lands it once the required checks pass (or immediately if they are already green). If the repo has auto-merge disabled and `gh` rejects `--auto`, wait for the required checks to pass (`gh pr checks <N>`), then re-run the merge without `--auto`.
 
-   `gh pr merge` can exit success while the merge is still queued, so verify the terminal state before touching the local checkout:
-   ```bash
-   for i in 1 2 3 4 5; do
-     state=$(gh pr view <N> --json state -q .state)
-     [ "$state" = "MERGED" ] && break
-     sleep 30
-   done
-   ```
+   `gh pr merge` can exit success while the merge is still queued, so verify the terminal state before touching the local checkout with the bounded poll in `wiki/concepts/PR Merge Workflow.md` (`## Post-merge verification before cleanup`), which also stops early on a base-branch conflict or a failed required check.
    - **`state == MERGED`** → clean up locally, then print the merged PR URL:
      ```bash
      git checkout main && git pull origin main
@@ -519,6 +512,7 @@ Then branch on where the run started.
      git fetch --prune origin
      ```
    - **still not `MERGED`** (auto-merge queued, checks not yet green) → print the PR URL and note that auto-merge is queued and will land when the checks pass. **Do not** delete the local branch or switch off it, the PR is still open.
+   - **conflict or failed required check** → on a conflict, repair it per that page's `### Conflict found mid-wait` and resume the poll; on a failed required check, print the PR URL and the failing check, and leave the branch in place as for a queued merge.
 
 **If you were already on a non-main branch** at pre-flight, or running in CI (no new branch was created):
 

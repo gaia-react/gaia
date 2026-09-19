@@ -636,15 +636,7 @@ Otherwise the working tree carries the applied `wiki/` / `.claude/` / `CLAUDE.md
    gh pr merge <N> --squash --delete-branch --auto
    ```
 
-   `--auto` queues the merge behind required checks (the oracle check before `gh pr create` already confirmed whether a marker is owed). Verify the terminal state before any local cleanup:
-
-   ```bash
-   for i in 1 2 3 4 5; do
-     state=$(gh pr view <N> --json state -q .state)
-     [ "$state" = "MERGED" ] && break
-     sleep 30
-   done
-   ```
+   `--auto` queues the merge behind required checks (the oracle check before `gh pr create` already confirmed whether a marker is owed). Verify the terminal state before any local cleanup with the bounded poll in `wiki/concepts/PR Merge Workflow.md` (`## Post-merge verification before cleanup`), which also stops early on a base-branch conflict or a failed required check.
 
    - **`MERGED`** → capture the branch first (`git branch --show-current`, keep the literal for the tally's `--branch-name`; see `## Cost record (run end)`), then clean up locally and print the merged PR URL:
 
@@ -657,6 +649,7 @@ Otherwise the working tree carries the applied `wiki/` / `.claude/` / `CLAUDE.md
      (Run ends here; see `## Cost record (run end)`.)
 
    - **still queued** → print the PR URL, note auto-merge is queued and lands when checks pass, and **do not** delete the local branch or switch off it. (Run ends here; see `## Cost record (run end)`.)
+   - **conflict or failed required check** → on a conflict, repair it per that page's `### Conflict found mid-wait` and resume the poll; on a failed required check, print the PR URL and the failing check, and leave the branch in place as for a queued merge.
 
 ### On any other branch, or in CI (no new branch)
 

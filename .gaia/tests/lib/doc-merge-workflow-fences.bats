@@ -90,7 +90,7 @@ fence_table() {
   cat <<'TABLE'
 resolve-mode|read-audit-ci-config.sh --resolve-author|exec|runs the shared per-author resolver with the two gh sub-shells replaced by fixture values
 workflow-present|test -f .github/workflows/code-review-audit.yml|exec|pure filesystem and git plumbing, runs verbatim
-audit-check-state|gh pr checks|static|reaches github.com for a live PR's check rows
+audit-check-state|grep GAIA-Audit|static|reaches github.com for a live PR's check rows
 workflow-live|gh api repos/{owner}/{repo}/actions/workflows|static|reaches github.com for the repository's Actions configuration
 catchup-merge|git merge --no-edit origin/main|static|merges `origin/main` into this checkout
 spawn-roster|resolve-audit-spawn.sh|exec|runs verbatim against this checkout
@@ -101,6 +101,7 @@ debt-origin|debt-origin-lib.sh|exec|runs verbatim with the changed-value placeho
 disposition-sidecar|audit-member-digest.sh|exec|runs verbatim against this checkout
 findings-block|post-findings-block.sh --pr|static|posts a comment to a live PR
 merge-and-poll|gh pr merge <N> --squash|static|merges a live PR
+merge-poll|gh pr view <N> --json state,mergeable|static|polls a live PR's merge state and required checks
 main-checkout-head|rev-parse --abbrev-ref HEAD|exec|read-only git plumbing, runs against a fixture checkout substituted for the placeholder
 cleanup-branch|git checkout main && git pull origin main|static|checks out main and deletes a branch in this checkout
 cleanup-worktree|git worktree remove --force|static|removes a worktree in this checkout

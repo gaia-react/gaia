@@ -164,15 +164,9 @@ gh pr merge <N> --merge --auto --delete-branch
 # --auto is mandatory: base-branch protection rejects a plain --merge, and the
 # Vitest/Playwright + Chromatic checks take a few minutes. --auto queues the
 # merge; GitHub completes it once checks pass.
-for i in $(seq 1 20); do
-  state=$(gh pr view <N> --json state -q .state)
-  [ "$state" = "MERGED" ] && break
-  sleep 30
-done
-[ "$state" = "MERGED" ] || { echo "release PR did not merge, investigate before tagging"; exit 1; }
 ```
 
-Do not run any local cleanup or tagging until the poll confirms `MERGED`. If it times out, inspect `gh pr view <N>` for a failing check or a stuck merge queue. This mirrors the safe pattern in `wiki/concepts/PR Merge Workflow.md`, with `--merge` instead of `--squash`.
+Then run the poll loop in `wiki/concepts/PR Merge Workflow.md` (`## Post-merge verification before cleanup`), without that section's own `gh pr merge` line, since the merge above is already queued with `--merge`, and with a 20-iteration bound in place of its 5, since the release checks run longer. Do not run any local cleanup or tagging until it confirms `MERGED`. On `CONFLICTING`, repair per that page's `### Conflict found mid-wait` and resume; on `CHECK_FAILED`, inspect the failing check; on a timeout, inspect `gh pr view <N>` for a stuck merge queue.
 
 ### 12. Tag the merge commit
 
