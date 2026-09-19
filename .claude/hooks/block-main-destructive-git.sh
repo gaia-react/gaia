@@ -32,8 +32,10 @@ gaia_require_jq 'the main-branch destructive-git guard' "$payload" tool_input 'g
 cmd=$(echo "$payload" | jq -r '.tool_input.command // empty')
 
 # Only act on git commands, short-circuit everything else. (Fast path only;
-# correctness comes from the command-position scan below.)
-[[ "$cmd" =~ (^|[[:space:]&;|()])git([[:space:]]|$) ]] || exit 0
+# correctness comes from the command-position scan below.) Any non-word
+# character may stand before `git`, since a zsh glob qualifier puts a quote or
+# its own delimiter there.
+[[ "$cmd" =~ (^|[^[:alnum:]_])git([[:space:]]|$) ]] || exit 0
 
 # Repo-scope: this repo's main-branch policy governs this repo only. A git
 # command aimed at a different repo (e.g. `git -C ../other push origin main`
@@ -609,6 +611,22 @@ hop_guard() {
 # command-wide value could not be replaced by a later `cd`, so a command that
 # stepped into a worktree and back read the worktree's branch for a commit that
 # landed on main.
+#
+# Two spellings run a command in the current shell with no `| & ; ( )` cut in
+# front of it: bash 5.3's `${ cmd; }` function substitution, and a zsh glob
+# qualifier's `e<delim>code<delim>` or `+cmd`, optionally behind `#q` or other
+# qualifier flags. Each opener is rewritten to a `;` so the split cuts there,
+# and a quote or closing delimiter standing just before a `)` is dropped so it
+# does not glue itself onto the qualifier's last word. Both rewrites are
+# additive: an opener rewrite only reaches the first word of a segment that
+# already begins after a `(`, and never one carrying an `=`, so an env-var
+# prefix and a real `git` command word are untouched; the closer rewrite only
+# reaches text a `)` already cuts. block-no-verify.sh carries the same rewrite.
+cut_hidden_openers() {
+  sed -E -e 's/\$\{[[:space:]]|\((#q)?[^()[:space:]=]*(e[^[:alnum:][:space:]]["'"'"']?|\+)/;/g' \
+    -e 's/(["'"'"'][^[:alnum:][:space:]()]?|[]}>])\)/;/g'
+}
+
 lead_cd=""
 cd_tracking=1
 if cmd_has_unquoted_group "$cmd"; then cd_tracking=0; fi
@@ -698,6 +716,6 @@ while IFS= read -r seg; do
       deny "This push's refspec names main, master or HEAD, which is forbidden from any branch (wiki/concepts/Git Workflow.md). Name the branch you are pushing explicitly and open a PR."
     fi
   fi
-done < <(printf '%s\n' "$cmd" | tr '|&;()' '\n')
+done < <(printf '%s\n' "$cmd" | cut_hidden_openers | tr '|&;()' '\n')
 
 exit 0

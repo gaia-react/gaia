@@ -106,6 +106,37 @@ git commit --no-verify -m y"
   assert_denied_by_json
 }
 
+# Two spellings run a command in the current shell without leaving a `| & ; ( )`
+# cut in front of it: bash 5.3's `${ cmd; }` function substitution, and zsh's
+# `e` glob qualifier, whose code follows a delimiter rather than a separator
+# (gaia-react/gaia#2155).
+@test "a --no-verify commit inside a bash funsub is denied" {
+  # shellcheck disable=SC2016 # the hook must receive the unexpanded opener
+  run_hook 'echo ${ git commit --no-verify -m y; }'
+  assert_denied_by_json
+  # shellcheck disable=SC2016
+  run_hook 'echo "${ git push --no-verify; }"'
+  assert_denied_by_json
+}
+
+@test "a --no-verify commit inside a zsh e glob qualifier is denied" {
+  run_hook 'echo *(e:"git commit --no-verify -m y":)'
+  assert_denied_by_json
+  run_hook "echo *(e:'git commit --no-verify -m y':)"
+  assert_denied_by_json
+  run_hook "echo *(.e:' git push --no-verify':)"
+  assert_denied_by_json
+  run_hook "echo *(#qe{git commit --no-verify -m y})"
+  assert_denied_by_json
+}
+
+@test "a commit subject carrying a parenthesised scope is not read as a qualifier" {
+  run_hook 'git commit -m "feat(core): x"'
+  assert_allowed_by_json
+  run_hook 'git commit -m "fix(e2e): x"'
+  assert_allowed_by_json
+}
+
 @test "a call whose every command is foreign still passes a --no-verify commit" {
   git -C "$REPO" remote add origin https://github.com/acme/widget.git
   run_hook "gh pr merge 5 -R other/x && git -C $FOREIGN commit --no-verify -m y"

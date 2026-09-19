@@ -360,6 +360,32 @@ git commit -m y"
   assert_denied_by_json
 }
 
+# Two spellings run a command in the current shell without leaving a `| & ; ( )`
+# cut in front of it: bash 5.3's `${ cmd; }` function substitution, and zsh's
+# `e` glob qualifier, whose code follows a delimiter rather than a separator
+# (gaia-react/gaia#2155).
+@test "a commit or push inside a bash funsub is denied on main" {
+  on_main
+  # shellcheck disable=SC2016 # the hook must receive the unexpanded opener
+  run_hook 'echo ${ git commit -m y; }'
+  assert_denied_by_json
+  # shellcheck disable=SC2016
+  run_hook 'echo "${ git push; }"'
+  assert_denied_by_json
+}
+
+@test "a commit or push inside a zsh e glob qualifier is denied on main" {
+  on_main
+  run_hook 'echo *(e:"git commit -m y":)'
+  assert_denied_by_json
+  run_hook "echo *(e:'git commit -m y':)"
+  assert_denied_by_json
+  run_hook "echo *(.e:' git push':)"
+  assert_denied_by_json
+  run_hook "echo *(#qe{git commit -m y})"
+  assert_denied_by_json
+}
+
 @test "a call whose every command is foreign still passes a commit to main" {
   on_main
   git -C "$REPO" remote add origin https://github.com/acme/widget.git

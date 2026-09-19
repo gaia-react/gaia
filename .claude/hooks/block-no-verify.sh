@@ -55,8 +55,10 @@ gaia_require_jq 'the commit-floor bypass guard' "$payload" tool_input 'git'
 cmd=$(echo "$payload" | jq -r '.tool_input.command // empty')
 
 # Only act on git commands, short-circuit everything else. (Fast path only;
-# correctness comes from the command-position scan below.)
-[[ "$cmd" =~ (^|[[:space:]&;|()])git([[:space:]]|$) ]] || exit 0
+# correctness comes from the command-position scan below.) Any non-word
+# character may stand before `git`, since a zsh glob qualifier puts a quote or
+# its own delimiter there.
+[[ "$cmd" =~ (^|[^[:alnum:]_])git([[:space:]]|$) ]] || exit 0
 
 # Repo-scope: this repo's commit-floor policy governs this repo only. A git
 # command aimed at a different repo (e.g. `git -C ../other commit --no-verify`)
@@ -104,6 +106,22 @@ floor_msg() {
     msg="$msg If this token appears only inside your commit message text, not as a real flag, that is this hook's documented over-block: rephrase the message, the gate was not bypassed."
   fi
   echo "$msg"
+}
+
+# Two spellings run a command in the current shell with no `| & ; ( )` cut in
+# front of it: bash 5.3's `${ cmd; }` function substitution, and a zsh glob
+# qualifier's `e<delim>code<delim>` or `+cmd`, optionally behind `#q` or other
+# qualifier flags. Each opener is rewritten to a `;` so the split below cuts
+# there, and a quote or closing delimiter standing just before a `)` is dropped
+# so it does not glue itself onto the qualifier's last word. Both rewrites are
+# additive: an opener rewrite only reaches the first word of a segment that
+# already begins after a `(`, and never one carrying an `=`, so an env-var
+# prefix and a real `git` command word are untouched; the closer rewrite only
+# reaches text a `)` already cuts. block-main-destructive-git.sh carries the
+# same rewrite.
+cut_hidden_openers() {
+  sed -E -e 's/\$\{[[:space:]]|\((#q)?[^()[:space:]=]*(e[^[:alnum:][:space:]]["'"'"']?|\+)/;/g' \
+    -e 's/(["'"'"'][^[:alnum:][:space:]()]?|[]}>])\)/;/g'
 }
 
 # Walk each command-position segment. Separators (`| & ; ( )`, newlines) become
@@ -159,7 +177,7 @@ while IFS= read -r seg; do
      && [[ "$seg" =~ (^|[[:space:]])-[a-zA-Z]*n[a-zA-Z]*([[:space:]]|$) ]]; then
     deny "$(floor_msg '-n (= --no-verify)')"
   fi
-done < <(printf '%s\n' "$cmd" | tr '|&;()' '\n')
+done < <(printf '%s\n' "$cmd" | cut_hidden_openers | tr '|&;()' '\n')
 
 # Fail-closed safety net for the UNAMBIGUOUS tokens. Segment-splitting on a
 # `| & ; ( )` that is actually inside a quoted commit message could orphan a
