@@ -104,7 +104,22 @@ export const DEFAULT_PREDICATES: AttributionPredicates = {
 // under every flag.
 const HEADING_PATTERN = /^#{1,6}[\t\n\v\f\r ]/;
 const TOP_BULLET_PATTERN = /^([-*+]|\d{1,9}[.)])[\t\n\v\f\r ]/;
-const HTML_COMMENT_PATTERN = /<!--[\s\S]*?-->/g;
+// A comment body may not contain another opener, so a code span quoting a
+// bare `<!--` ahead of a real comment cannot start a match that runs on to the
+// real comment's closer and deletes the prose between them. A comment wrapped
+// whole in a code span takes its backticks with it: the backreference demands
+// a closing backtick only when an opening one was consumed. A backtick opens
+// the wrapping span only after whitespace or opening punctuation; after any
+// other character it is read as closing a neighbouring span, so two spans
+// around a bare comment are not merged. Honest limits, both display-only
+// since key attribution reads each line separately: prose quoting a bare
+// `<!--` and later a bare `-->` reads as one comment and loses the text
+// between, and a neighbouring span that itself ends in opening punctuation
+// loses its closing backtick.
+const HTML_COMMENT_PATTERN =
+  /(?:(?<![^\s"'([{])(`))?<!--(?:(?!<!--)[\s\S])*?-->\1/g;
+const BLANK_LINE_PATTERN = /^[\t\v\f\r ]*$/;
+const INDENTED_LINE_PATTERN = /^[\t ]/;
 const TRAILING_SPACE_CHARACTERS = new Set(['\t', '\n', '\v', '\f', '\r', ' ']);
 
 // A backward walk rather than a `[…]+$` regex, which backtracks quadratically
@@ -122,23 +137,48 @@ const trimTrailingSpace = (line: string): string => {
 };
 
 /**
- * The unit's human-readable one-liner, derived from its opening bullet line.
+ * The unit's human-readable one-liner, derived from its list item's lines.
  *
  * Carries no newline or carriage return by construction: the store serializer
  * refuses those, and this normalization is what that refusal rests on.
  */
-const deriveFailureMode = (bulletLine: string): string =>
-  bulletLine
+const deriveFailureMode = (textLines: readonly string[]): string =>
+  textLines
+    .join('\n')
     .replace(TOP_BULLET_PATTERN, '')
     .replaceAll(HTML_COMMENT_PATTERN, ' ')
     .replaceAll(/[\t\n\v\f\r ]+/g, ' ')
     .trim();
 
 type OpenUnit = {
-  bullet_line: string;
   disposition: ResidueDisposition;
   raw_key: null | string;
   start_line: number;
+  text_lines: string[];
+  text_state: 'after_blank' | 'closed' | 'collecting';
+};
+
+// The text follows the markdown list item, which can end before the unit
+// does: a unit runs to the next bullet or heading, so it takes in any prose
+// written after the list. Past a blank line, only an indented line continues
+// the item.
+const collectTextLine = (unit: OpenUnit, line: string): void => {
+  if (unit.text_state === 'closed') return;
+
+  if (BLANK_LINE_PATTERN.test(line)) {
+    unit.text_state = 'after_blank';
+
+    return;
+  }
+
+  if (unit.text_state === 'after_blank' && !INDENTED_LINE_PATTERN.test(line)) {
+    unit.text_state = 'closed';
+
+    return;
+  }
+
+  unit.text_state = 'collecting';
+  unit.text_lines.push(line);
 };
 
 const closeUnit = (unit: OpenUnit, result: AttributionResult): void => {
@@ -166,7 +206,7 @@ const closeUnit = (unit: OpenUnit, result: AttributionResult): void => {
 
   result.entries.push({
     disposition: unit.disposition,
-    failure_mode: deriveFailureMode(unit.bullet_line),
+    failure_mode: deriveFailureMode(unit.text_lines),
     key: parsed.value,
     raw_key: unit.raw_key,
     unit_start_line: unit.start_line,
@@ -243,14 +283,17 @@ export const attributeBodyWith = (
       if (TOP_BULLET_PATTERN.test(line)) {
         close();
         open = {
-          bullet_line: line,
           disposition: inCanonical,
           raw_key: matchInnerKey(line, predicates.keyPattern),
           start_line: lineNumber,
+          text_lines: [line],
+          text_state: 'collecting',
         };
-      } else if (open !== null && open.raw_key === null) {
+      } else if (open !== null) {
+        collectTextLine(open, line);
+
         // First match wins: a later key in the same unit is never latched.
-        open.raw_key = matchInnerKey(line, predicates.keyPattern);
+        open.raw_key ??= matchInnerKey(line, predicates.keyPattern);
       }
     }
   }
