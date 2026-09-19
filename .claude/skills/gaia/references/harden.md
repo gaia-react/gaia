@@ -372,7 +372,7 @@ A fix to a drafted rule is a commit to a file in a member's remit, so it rotates
 
 **Watch the checks.** Bounded-poll `gh pr checks <N>` until no required check is pending. A failing check is a named-failure stop: read its log, report which check failed and why, and stop with the PR open. A window that closes with checks still pending is not a failure: go on to the merge question, and `--auto` queues the merge behind them.
 
-**Ask the merge question**, once, via `AskUserQuestion`, whenever the run produced a PR. A candidate the human declined or deferred is no reason to withhold the merge: the PR carries only what they approved.
+**Ask the merge question**, once, via `AskUserQuestion`, after the audit has cleared and the check watch ended without a failing check. A candidate the human declined or deferred is no reason to withhold the merge: the PR carries only what they approved.
 
 - **header:** `"Merge harden PR?"`
 - **question:** `"PR #<N> has cleared its audit. Merge it now, or leave it open for review?"`
@@ -382,7 +382,7 @@ A fix to a drafted rule is a commit to a file in a member's remit, so it rotates
 
 **Leave open** → report the PR URL and stop.
 
-**Merge, verify, clean up.** Run `gh pr merge <N> --squash --delete-branch --auto` directly: the audit's stamp commit re-runs CI, so on this path required checks are usually still running and a plain merge is refused by branch policy. Bounded-poll `gh pr view <N> --json state` for `MERGED`, with a window sized to a full CI run rather than a couple of minutes. On `MERGED`, keep the branch name for the cost record's `--branch-name` (`## Cost record (run end)`), then clean up per the workflow's `## Post-merge verification before cleanup` (`git checkout main && git pull origin main`, `git branch -D <branch>`, `git fetch --prune origin`). If it is still queued when the window closes, print the PR URL, note the merge is queued, and leave the branch in place.
+**Merge, verify, clean up.** Run `gh pr merge <N> --squash --delete-branch --auto` directly, so a merge reached after the watch window closed with checks pending queues behind them rather than being refused by branch policy. Bounded-poll `gh pr view <N> --json state` for `MERGED`, with a window sized to a full CI run rather than a couple of minutes. On `MERGED`, keep the branch name for the cost record's `--branch-name` (`## Cost record (run end)`), then clean up per the workflow's `## Post-merge verification before cleanup` (`git checkout main && git pull origin main`, `git branch -D <branch>`, `git fetch --prune origin`). If it is still queued when the window closes, print the PR URL, note the merge is queued, and leave the branch in place.
 
 Every stop above ends the run; see `## Cost record (run end)`, which is written once, as the last thing printed.
 
