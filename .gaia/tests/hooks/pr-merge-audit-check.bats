@@ -1390,6 +1390,34 @@ teardown_linked_worktree() {
   true
 }
 
+# The repo-scope verdict covers the whole tool call, so a foreign `gh` ahead of
+# a home merge, even a read-only one, does not carry the merge past the gate
+# (gaia-react/gaia#2081).
+@test "a foreign gh in the same call does not exempt a home merge" {
+  commit_files "app/x.ts" "export const x = 1"
+  git -C "$REPO" remote add origin https://github.com/gaia-react/gaia.git
+
+  run_merge_hook "gh pr merge 5 -R other-org/other-repo && gh pr merge 30 --squash"
+  [ "$status" -eq 0 ]
+  grep -qF -- '"permissionDecision": "deny"' <<<"$output"
+  run_merge_hook "gh pr merge 5 -R other-org/other-repo; gh pr merge 30 --squash"
+  [ "$status" -eq 0 ]
+  grep -qF -- '"permissionDecision": "deny"' <<<"$output"
+  run_merge_hook "gh pr view 5 -R other-org/other-repo && gh pr merge 30 --squash"
+  [ "$status" -eq 0 ]
+  grep -qF -- '"permissionDecision": "deny"' <<<"$output"
+}
+
+@test "a call whose every command is foreign exits before the gate" {
+  commit_files "app/x.ts" "export const x = 1"
+  git -C "$REPO" remote add origin https://github.com/gaia-react/gaia.git
+
+  run_merge_hook "gh pr merge 5 -R other-org/other-repo && gh pr checks 5 -R other-org/other-repo"
+  [ "$status" -eq 0 ]
+  grep -qF -- '"permissionDecision": "deny"' <<<"$output" && return 1
+  true
+}
+
 @test "checkout not named for the repository: --repo naming this repository is still gated" {
   commit_files "app/x.ts" "export const x = 1"
   git -C "$REPO" remote add origin https://github.com/gaia-react/gaia.git

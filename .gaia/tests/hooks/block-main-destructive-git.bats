@@ -330,6 +330,29 @@ run_hook_from() {
   assert_allowed_by_json
 }
 
+# The repo-scope verdict covers the whole tool call, so any home command in it
+# keeps the guard armed (gaia-react/gaia#2081).
+@test "a foreign command in the same call does not exempt a commit on main" {
+  on_main
+  git -C "$REPO" remote add origin https://github.com/acme/widget.git
+  run_hook 'gh pr merge 5 -R other/x && git commit -m y'
+  assert_denied_by_json
+  run_hook 'gh pr merge 5 -R other/x; git commit -m y'
+  assert_denied_by_json
+  run_hook "gh pr merge 5 -R other/x
+git commit -m y"
+  assert_denied_by_json
+  run_hook "git commit -m y && git -C $FOREIGN status"
+  assert_denied_by_json
+}
+
+@test "a call whose every command is foreign still passes a commit to main" {
+  on_main
+  git -C "$REPO" remote add origin https://github.com/acme/widget.git
+  run_hook "gh pr merge 5 -R other/x && git -C $FOREIGN commit -m y"
+  assert_allowed_by_json
+}
+
 # A linked worktree is this repository, so a `cd` into one is enforced, and
 # enforced against the branch the command runs on rather than the session's.
 @test "cd into a linked worktree on its own branch, from a main checkout on main: commit and push are allowed" {

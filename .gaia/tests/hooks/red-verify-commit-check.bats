@@ -368,6 +368,26 @@ test("brand new test", () => {
   rm -rf "$OTHER"
 }
 
+# The repo-scope verdict covers the whole tool call, so a foreign command
+# beside a home commit does not exempt the commit (gaia-react/gaia#2081).
+@test "denies a home commit sharing its call with a foreign command" {
+  OTHER=$(mktemp -d -t red-verify-other-XXXXXX)
+  git -C "$OTHER" init --quiet --initial-branch=main
+  git -C "$REPO" remote add origin https://github.com/acme/widget.git
+
+  stage_file "app/utils/x/index.test.ts" "$PASSING_TEST"
+  run_commit_hook "gh pr merge 5 -R other/x && git commit -m change"
+  [ "$status" -eq 0 ]
+  denied
+  run_commit_hook "gh pr merge 5 -R other/x; git commit -m change"
+  [ "$status" -eq 0 ]
+  denied
+  run_commit_hook "git commit -m change && git -C '$OTHER' status"
+  [ "$status" -eq 0 ]
+  denied
+  rm -rf "$OTHER"
+}
+
 # --- Unparseable staged test -> fail-open (not denied on that file) ---
 
 @test "does not deny an unparseable staged test file" {
