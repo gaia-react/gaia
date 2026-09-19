@@ -66,9 +66,22 @@ The cap means the candidate list is a batch, not the whole population. Report `r
 
 ## Present each candidate
 
-For each candidate present: its canonical disposition (accept or waive), its failure mode, its cited path and line, its resolved line text, and its resolution class.
+For each candidate present: its canonical disposition (accept or waive), its failure mode, its cited path and line, its resolved line text, its resolution class, and the verdict the verification step below produces for it, with its evidence.
 
-A candidate whose resolution is `gone` is labelled a likely-already-fixed dismiss candidate and still requires a human disposition; content vanishing is evidence of a fix, not proof of one, so it is never applied unattended. A candidate carrying a `previously_promoted_issue` is labelled as previously promoted to that issue, which closed as completed, and dismiss is presented as the default disposition for it.
+### Verify each candidate before presenting it
+
+`resolution` is a line-text signal, not a fix signal. It records whether the cited line's text still matches, and it fails in both directions: a reworded sentence resolves `gone` while the defect it carried is still present, and a fix that leaves the cited line untouched resolves `still` or `moved`. So no candidate is labelled fixed or unfixed from its resolution class. Before the first question, verify every candidate in the batch:
+
+1. **Read the residual's full entry from its source pull request**, not the tally's `failure_mode`, which can be a truncated projection of it: `gh pr view <pr_number> --json body --jq .body`, with `pr_number` taken from the candidate's emit. It is an integer the tally types, so it is safe in a command; find the entry carrying the candidate's `raw_key` by reading the body, never by passing the key to a command.
+2. **Read the cited code at its current location** with the Read tool, starting from `path` and `line`. `resolution` and `resolved_line_text` are the hint for where to look, not the answer: on `moved`, start at the resolved line; on `gone` or `unresolvable`, read the surrounding region and search the file for the defect the entry describes.
+3. **Give the candidate one verdict**, backed by a before quote (the entry's description of the defect) and a now quote (the current code):
+   - **Fixed**: the current code no longer has the defect the entry describes.
+   - **Still present**: the defect is in the current code, wherever it now sits.
+   - **Can't tell**: the evidence does not settle it. This is a real answer. Never soften it into "likely" either way.
+
+This costs about one read per candidate, and the reads are independent, so issue them in parallel.
+
+The verdict, not the resolution class, keys the default disposition: **Fixed** presents dismiss as the default; **Still present** and **Can't tell** present keep as the default, with promotion still the exception that needs a reason. Every verdict still requires a human disposition, never an unattended one. A candidate carrying a `previously_promoted_issue` is labelled as previously promoted to that issue, which closed as completed, and dismiss is presented as the default disposition for it unless its verdict is **Still present**, in which case say that the closed issue did not remove the defect.
 
 ## The three arms
 
@@ -170,7 +183,7 @@ Run `residue-tally`, then print every candidate, one line each. Author nothing, 
 
 ## why subcommand
 
-Run `residue-tally`, then find the candidate whose cited coordinate matches the `<path>:<line>` argument. Explain it: its failure mode, its canonical disposition, its source pull request, its resolved line, and its resolution class. When the coordinate matches no candidate, say so and point at `list`. Author nothing, prompt for nothing. Match the coordinate against the tally's already-emitted JSON; do not pass it to a command.
+Run `residue-tally`, then find the candidate whose cited coordinate matches the `<path>:<line>` argument. Explain it: its failure mode, its canonical disposition, its source pull request, its resolved line, and its resolution class, which says whether the cited line's text still matches and nothing about whether the defect is fixed. When the coordinate matches no candidate, say so and point at `list`. Author nothing, prompt for nothing. Match the coordinate against the tally's already-emitted JSON; do not pass it to a command.
 
 ## Cost record (run end)
 
