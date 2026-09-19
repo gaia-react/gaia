@@ -1470,7 +1470,7 @@ EOF
   }
 }
 
-@test "the write side and the verify side diverge under a shadowing local branch named origin/main (DP-002)" {
+@test "the write side and the verify side agree under a shadowing local branch named origin/main that sits AHEAD of the remote-tracking ref (DP-002, ahead)" {
   local repo write verify outfile
 
   # Both sides must take their non-Actions arm here, or this pins nothing.
@@ -1483,10 +1483,10 @@ EOF
 
   repo="$(make_repo dp002-divergence)"
 
-  # A local branch literally named origin/main shadows the remote-tracking
-  # ref: the write side's bare `origin/<name>` revspec resolves to it (the
-  # ADVANCED commit below), while the verify side's fully-qualified
-  # `refs/remotes/origin/<name>` resolves to the commit BEFORE the advance.
+  # A local branch literally named origin/main sits on the ADVANCED commit
+  # below, while the remote-tracking ref stays on the commit BEFORE it. A
+  # short `origin/<name>` revspec would resolve to the local branch; both sides
+  # spell the fully-qualified `refs/remotes/origin/<name>` and see the advance.
   commit_file "$repo" "docs/advance.md" "advance local main past origin/main"
   git -C "$repo" update-ref refs/remotes/origin/main "$(git -C "$repo" rev-parse HEAD~1)"
   git -C "$repo" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main
@@ -1503,17 +1503,60 @@ EOF
   }
   verify="$(tr '\0' '\n' < "$outfile")"
 
-  # Pin the divergence rather than assert agreement: the write side (the
-  # default member's eligibility derivation, whose ladder deliberately keeps
-  # its own spelling) takes the shadowing local branch and sees no difference, while the
-  # verify side (the shared resolver, on the fully-qualified spelling) takes
-  # the real remote-tracking ref and sees the advance.
-  [ -z "$write" ] || {
-    printf 'write side unexpectedly non-empty: %s\n' "$write" >&2
+  # Both sides take the real remote-tracking ref, so both see the advance and
+  # neither reads the shadowing local branch.
+  grep -qxF "docs/advance.md" <<<"$write" || {
+    printf 'write side did not see the advance past the shadowed ref: %s\n' "$write" >&2
     return 1
   }
-  grep -qxF "docs/advance.md" <<<"$verify" || {
-    printf 'verify side did not see the advance past the shadowed ref: %s\n' "$verify" >&2
+  [ "$write" = "$verify" ] || {
+    printf 'write side %s disagrees with verify side %s\n' "$write" "$verify" >&2
+    return 1
+  }
+}
+
+@test "the write side and the verify side agree under a shadowing local branch named origin/main that sits BEHIND the remote-tracking ref (DP-002, behind)" {
+  local repo write verify outfile
+
+  # The non-Actions, no-record arm is the only one that consults the
+  # default-branch rung, so clear both ambient variables and stand in a `gh`
+  # whose `pr view` answers nothing: the audit-before-`gh pr create` shape.
+  unset GITHUB_ACTIONS GITHUB_BASE_REF
+  install_pr_view_mock ""
+
+  repo="$(make_repo dp002-behind)"
+
+  # The remote-tracking ref advances past a local branch literally named
+  # origin/main, which is where a plain `git fetch` leaves one created by
+  # `git checkout -b origin/main`. The pull request branches from the advanced
+  # tip, so `docs/ahead.md` is the default branch's change, never this one's.
+  commit_file "$repo" "docs/ahead.md" "advance the remote-tracking ref"
+  git -C "$repo" update-ref refs/remotes/origin/main "$(git -C "$repo" rev-parse HEAD)"
+  git -C "$repo" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main
+  git -C "$repo" branch origin/main HEAD~1
+  git -C "$repo" checkout -q -b feat
+  commit_file "$repo" "app/feat.ts" "the pull request's own change"
+
+  write="$(elig_eval code-audit-frontend "$repo" ELIG_CHANGED)" || {
+    echo "the default member's resolver command failed to resolve an eligibility set" >&2
+    return 1
+  }
+  outfile="$BATS_TEST_TMPDIR/dp002-behind-verify"
+  ( . "$REPO_ROOT/.claude/hooks/lib/audit-dispositions.sh" && _disposition_changed_set "$repo" "$outfile" ) || {
+    echo "_disposition_changed_set failed to resolve a base" >&2
+    return 1
+  }
+  verify="$(tr '\0' '\n' < "$outfile")"
+
+  # A write side wider than the verify side is the un-clearable direction: a
+  # waive on `docs/ahead.md` passes the write side and the disposition check
+  # denies it on every round while the shadowing branch stands.
+  [ "$write" = "app/feat.ts" ] || {
+    printf 'write side is not the pull request own change alone: %s\n' "$write" >&2
+    return 1
+  }
+  [ "$write" = "$verify" ] || {
+    printf 'write side %s disagrees with verify side %s\n' "$write" "$verify" >&2
     return 1
   }
 }

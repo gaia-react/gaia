@@ -120,23 +120,27 @@
 # moment, and the residual gap below is a property of that, not of the
 # sources.
 #
-# The two sides can also disagree on the SAME head, and this is a second,
-# separate gap: the write side (the default member's own out-of-scope base
-# fence) still spells its remote-minting ref as the bare `origin/<name>`,
-# while the verify side (this function, through the shared resolver) now
-# takes the fully-qualified `refs/remotes/origin/<name>`. A checkout carrying
-# a local branch literally named `origin/<default>` therefore makes the two
-# sides resolve DIFFERENT bases here, a known, bounded residue rather than an
-# unconditional "by construction" agreement.
+# On the SAME head the two sides agree on the default-branch ref too: the
+# write side (the eligibility ladder in .gaia/scripts/audit-resolve-scope.sh)
+# spells it `refs/remotes/origin/<name>`, the fully-qualified ref this
+# function takes through the shared resolver. The short `origin/<name>`
+# revspec is not a safe substitute on either side. A local branch or tag
+# literally named `origin/<default>` wins it, and one sitting behind the
+# remote-tracking ref widens the write side, the false-DENY direction below,
+# with no re-audit clearing it while the pull-request record stays unreadable
+# (gaia-react/gaia#2096).
+#
+# The residual timing gap has two directions:
 #
 #   - verify wide, write narrow -> safe. The agent files what it could not
 #     waive, and a wider verify side never denies a filed finding.
 #   - verify narrow, write wide -> a false DENY, `machinery-waived-not-eligible`
 #     on a waive that was honest when it was written. Its reachable shape is an
-#     audit run before `gh pr create`, where neither source answers for the
-#     write side while the merge gate later resolves the record. It is
-#     fail-closed and a re-audit on the now-existing pull request clears it, at
-#     the cost of one round.
+#     audit run before `gh pr create` on a pull request stacked on a branch
+#     other than the default, where neither source answers for the write side
+#     while the merge gate later resolves the record. It is fail-closed and a
+#     re-audit on the now-existing pull request clears it, at the cost of one
+#     round.
 #
 # Closing that gap by recording the write side's resolved base in the sidecar
 # and reading it back here is deliberately NOT done. The sidecar is the

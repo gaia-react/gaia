@@ -247,9 +247,11 @@ printf 'AUDIT_KEY=%s\n' "$AUDIT_KEY"
 # request's own commits and empty the set.
 #
 # The ladder is deliberately not the verify side's
-# (.claude/hooks/lib/audit-base-provenance.sh): its `origin/<default>` arm is a
-# short revspec a local branch of that name shadows, where the verify side
-# reads the fully-qualified ref.
+# (.claude/hooks/lib/audit-base-provenance.sh), but its default-branch arm
+# spells the same fully-qualified ref the verify side reads: a short
+# `origin/<default>` revspec resolves to a local branch or tag of that name
+# first, and a stale one behind the remote-tracking ref widens this set past
+# the verify side's, a waive the disposition check denies on every round.
 #
 # Unlike FULL_BASE, an unresolvable ELIG_BASE does not stop the script. The
 # default member's self-skip is oracle-based, so an empty base costs the waive
@@ -271,7 +273,7 @@ if [ "$eligibility" -eq 1 ]; then
   fi
   default_branch="$(git -C "$root" symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null | sed 's@^refs/remotes/origin/@@')"
   [ -n "$default_branch" ] || default_branch="main"
-  primary_ref="${elig_ref:-origin/${default_branch}}"
+  primary_ref="${elig_ref:-refs/remotes/origin/${default_branch}}"
   fallback_ref="${elig_ref:-${default_branch}}"
   ELIG_BASE="$(git -C "$root" merge-base HEAD "$primary_ref" 2>/dev/null || git -C "$root" merge-base HEAD "$fallback_ref" 2>/dev/null || true)"
   if [ -z "$ELIG_BASE" ]; then

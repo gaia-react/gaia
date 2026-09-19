@@ -17,11 +17,13 @@
 # of scope, and the disposition sidecar's changed-set helper, whose body IS
 # the resolver -- lifted, not copied, so there is nothing left there to
 # exempt. The scope resolver's eligibility base is a third carrier, exempt
-# rather than converted: its ladder deliberately keeps its own spelling of
-# the default-branch arm, which a local branch named `origin/<default>` can
-# shadow where this resolver's fully-qualified ref cannot, and
-# .gaia/scripts/tests/audit-base-agreement.bats pins that divergence. Adopting
-# the resolver there would change the waive-eligibility set, not tidy it.
+# rather than converted: its ladder keeps its own arms and order (the pull
+# request's declared base, then the default branch, then the bare local
+# default), though its default-branch arm spells the same fully-qualified ref
+# this resolver reads, so a local branch named `origin/<default>` shadows
+# neither, and .gaia/scripts/tests/audit-base-agreement.bats pins that
+# agreement in both directions (DP-002). Adopting the resolver there would
+# change the waive-eligibility set, not tidy it.
 #
 # check-audit-base-derivation.sh is a different check over a different
 # concern: it governs the Code Audit Team member agents' REVIEW base, not
