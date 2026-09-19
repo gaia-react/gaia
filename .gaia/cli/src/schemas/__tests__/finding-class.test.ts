@@ -98,7 +98,13 @@ describe('schemas/finding-class', () => {
       'knip/exports',
       'knip/types',
       'knip/dependencies',
+      'knip/enumMembers',
+      'axe/landmark-one-main',
       'cve/1098765',
+      'cve/GHSA-9wv6-86v2-598j',
+      'cve/CVE-2024-12345',
+      'react-doctor/jsx-a11y/alt-text',
+      'react-doctor/react.no-danger_v2',
     ])('accepts a well-formed oracle id: %s', (value) => {
       expect(FindingClassSchema.safeParse(value).success).toBe(true);
       expect(isValidFindingClass(value)).toBe(true);
@@ -107,6 +113,27 @@ describe('schemas/finding-class', () => {
     test('rejects an oracle prefix with an empty slug', () => {
       expect(FindingClassSchema.safeParse('react-doctor/').success).toBe(false);
       expect(isValidFindingClass('axe/')).toBe(false);
+    });
+
+    test.each([
+      'cve/GHSA[31m-red',
+      'axe/color-contrast\nforged line',
+      'knip/exports\r',
+      'axe/color contrast',
+      'cve/<script>',
+      'knip/`exports`',
+      'axe/-leading-dash',
+      'react-doctor/trailing/',
+      'react-doctor//double-slash',
+      `axe/${'a'.repeat(129)}`,
+    ])('rejects an oracle slug outside the safe id shape: %j', (value) => {
+      expect(FindingClassSchema.safeParse(value).success).toBe(false);
+      expect(isValidFindingClass(value)).toBe(false);
+      expect(isOracleFindingClass(value)).toBe(true);
+    });
+
+    test('accepts an oracle slug at the length bound', () => {
+      expect(isValidFindingClass(`axe/${'a'.repeat(128)}`)).toBe(true);
     });
   });
 

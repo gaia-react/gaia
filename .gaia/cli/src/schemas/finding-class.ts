@@ -6,8 +6,8 @@
  * Per-bucket convention:
  *
  * - Oracle buckets (deterministic tools) carry the tool's own id verbatim
- *   after the prefix; the tool owns that id space, so any well-formed slug is
- *   accepted: `react-doctor/<rule-id>`, `axe/<rule-id>`, `knip/<issue-type>`,
+ *   after the prefix; the tool owns that id space, so any slug of the safe id
+ *   shape is accepted: `react-doctor/<rule-id>`, `axe/<rule-id>`, `knip/<issue-type>`,
  *   `cve/<advisory-id>`.
  * - Holistic / rule / workflow subagent buckets carry a CLOSED controlled
  *   vocabulary (the `as const` unions below). A holistic, rule, or workflow
@@ -30,13 +30,25 @@ export const FINDING_CLASS_PREFIXES = [
 export type FindingClassPrefix = (typeof FINDING_CLASS_PREFIXES)[number];
 
 // Open oracle buckets: the deterministic tool owns the id space after the
-// prefix, so any non-empty slug is valid.
+// prefix, so any slug of the safe id shape below is valid.
 const ORACLE_PREFIXES: readonly FindingClassPrefix[] = [
   'react-doctor',
   'axe',
   'knip',
   'cve',
 ];
+
+// The tally reads classes from pull-request comments anyone can post, and the
+// class is displayed verbatim downstream, so an oracle slug is held to an id
+// shape: one or more `/`-joined segments of letters, digits, `.`, `_`, and
+// `-`, each starting with a letter or digit. That admits every id the oracles
+// emit (axe rule ids, knip issue types, numeric, GHSA, and CVE advisory ids,
+// plugin-namespaced rule ids) and rejects whitespace, control bytes, and markup.
+const ORACLE_SLUG_PATTERN = /^[A-Za-z0-9][\w.-]*(?:\/[A-Za-z0-9][\w.-]*)*$/;
+const ORACLE_SLUG_MAX_LENGTH = 128;
+
+const isOracleSlug = (slug: string): boolean =>
+  slug.length <= ORACLE_SLUG_MAX_LENGTH && ORACLE_SLUG_PATTERN.test(slug);
 
 /**
  * Closed-vocabulary members for the holistic bucket: one closed set of
@@ -180,16 +192,17 @@ export const isOracleFindingClass = (findingClass: string): boolean => {
 
 /**
  * True when `value` matches the per-bucket convention: a well-formed oracle id
- * (open id space after a known oracle prefix) or a seeded closed-vocabulary
- * member (holistic, rule, workflow, or prose). Everything else (free text,
- * unknown prefix, empty slug, unseeded closed-vocabulary member) is invalid.
+ * (open id space after a known oracle prefix, bounded to the safe id shape) or
+ * a seeded closed-vocabulary member (holistic, rule, workflow, or prose).
+ * Everything else (free text, unknown prefix, empty or malformed slug, unseeded
+ * closed-vocabulary member) is invalid.
  */
 export const isValidFindingClass = (value: string): boolean => {
   const parts = splitPrefix(value);
 
   if (parts === undefined) return false;
 
-  if (isOraclePrefix(parts.prefix)) return parts.slug.length > 0;
+  if (isOraclePrefix(parts.prefix)) return isOracleSlug(parts.slug);
 
   return CLOSED_VOCABULARY.has(value);
 };
