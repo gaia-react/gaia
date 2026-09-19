@@ -120,8 +120,7 @@ Classify each surviving finding as fixable or unfixable. A finding is fixable wh
 Before applying the first fix, create and switch to a new branch:
 
 ```bash
-TIMESTAMP=$(date +%Y-%m-%d-%H%M)
-BRANCH="chore/gaia-fitness-$TIMESTAMP"
+BRANCH="$(bash .gaia/scripts/branch-name-lib.sh name chore gaia-fitness)"
 git -C "$PROJECT_ROOT" checkout -b "$BRANCH"
 ```
 
@@ -254,12 +253,12 @@ Format, taxonomy, and grading rubric source of truth: `wiki/decisions/Claude Int
 
 ## Step 7, Publish gate (reached only when Step 4 applied ≥1 fix)
 
-Skipped entirely on the triage-only and zero-findings paths, they printed their line and stopped in Step 6. Reached only when heal applied at least one fix, so a branch exists (`chore/gaia-fitness-<timestamp>`, main-branch run) or the changes sit in place on `CURRENT_BRANCH` (non-default branch).
+Skipped entirely on the triage-only and zero-findings paths, they printed their line and stopped in Step 6. Reached only when heal applied at least one fix, so a branch exists (`<BRANCH>`, the name Step 4 minted, main-branch run) or the changes sit in place on `CURRENT_BRANCH` (non-default branch).
 
 Ask once, via `AskUserQuestion`, after the card (the card is the information the user needs to decide):
 
 - **header:** `"Publish fixes?"`
-- **question (main-branch run):** `"Fitness healed {N} finding(s) on branch chore/gaia-fitness-<timestamp>. Commit, open a PR, and merge them?"`
+- **question (main-branch run):** `"Fitness healed {N} finding(s) on branch <BRANCH>. Commit, open a PR, and merge them?"`
 - **question (non-default branch):** `"Fitness healed {N} finding(s) on <CURRENT_BRANCH>. Commit and push them?"`
 - **options (this exact order):**
   1. `{ label: "Publish", description (main-branch run): "Commit the healed changes, open a PR, and merge it.", description (non-default branch): "Commit and push the healed changes to <CURRENT_BRANCH>." }`
@@ -267,7 +266,7 @@ Ask once, via `AskUserQuestion`, after the card (the card is the information the
 
 - **Publish** → run Step 8.
 - **Keep for review** → record cost (see **Cost record (run end)**, no pass-through), then print the working-tree review line and STOP:
-  - Branch created: `Changes applied on branch chore/gaia-fitness-<timestamp>. Review with git diff main; discard with git checkout main && git branch -D chore/gaia-fitness-<timestamp>.`
+  - Branch created: `Changes applied on branch <BRANCH>. Review with git diff main; discard with git checkout main && git branch -D <BRANCH>.`
   - In place: `Changes applied on <CURRENT_BRANCH>. Review with git diff; discard with git checkout -- .`
 
 **Non-interactive fallback.** In a context with no user to answer the gate (a headless or composed run), do not publish: leave the healed changes in the working tree, record cost (see **Cost record (run end)**, no pass-through), print the matching review line above, and stop. Publishing is the standalone, interactive `/gaia-fitness` harness; a composing audit harness owns its own publish (the branch / heal / publish harness layer is `/gaia-fitness`-specific, per the protocol page).
@@ -288,7 +287,7 @@ Run the Quality Gate (`.claude/rules/quality-gate.md`) first **only** if the app
 
 ### Main-branch run (branch already created in Step 4)
 
-Heal already cut and switched to `chore/gaia-fitness-<timestamp>` (the `$BRANCH` from Step 4), so the changes are on it. Do not create a second branch.
+Heal already cut and switched to `<BRANCH>` (the `$BRANCH` from Step 4), so the changes are on it. Do not create a second branch.
 
 1. **Commit.** `.gaia/local/` is gitignored. Route the message through a file, never `-m`:
 

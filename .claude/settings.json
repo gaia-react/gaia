@@ -4,8 +4,10 @@
   },
   "permissions": {
     "allow": [
+      "Bash(bash .gaia/scripts/branch-name-lib.sh:*)",
       "Bash(bash .gaia/scripts/check-debt-issue-metadata.sh:*)",
       "Bash(bash .gaia/scripts/debt-origin-lib.sh:*)",
+      "Bash(bash .gaia/scripts/debt-stale-claims.sh:*)",
       "Bash(bash .gaia/scripts/plan-archive.sh:*)",
       "Bash(bash .gaia/scripts/plan-resume-point.sh:*)",
       "Bash(bash .gaia/scripts/resolve-audit-spawn.sh:*)",

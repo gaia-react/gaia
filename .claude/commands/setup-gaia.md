@@ -1024,13 +1024,14 @@ When `RECONFIGURE` is set, the short-circuit above is skipped and the CI flow re
 Reached when the drift probe found drift and the adopter picked "Re-render workflows". Lightweight branch + commit + PR that regenerates the workflow YAML without re-prompting for tool selection or rotating the bot token.
 
 ```bash
-git checkout -b chore/gaia-ci-rerender
+BRANCH="$(bash .gaia/scripts/branch-name-lib.sh name chore gaia-ci-rerender)"
+git checkout -b "$BRANCH"
 .gaia/cli/gaia automation render-workflows --out-dir .github/workflows
 .gaia/cli/gaia automation install-audit-workflow --out-dir .github/workflows
 git add .github/workflows/gaia-ci*.yml .github/workflows/code-review-audit.yml
 git commit -m "chore(gaia-ci): re-render workflows from updated templates"
-git push -u origin chore/gaia-ci-rerender
-gh pr create --base <default-branch> --head chore/gaia-ci-rerender \
+git push -u origin "$BRANCH"
+gh pr create --base <default-branch> --head "$BRANCH" \
   --title "chore(gaia-ci): re-render workflows from updated templates" \
   --body "GAIA CI templates drifted from the rendered workflows on disk. Regenerated cron workflows and re-installed the code-review-audit.yml PR gate via /setup-gaia. No tool selection or token changes."
 ```
@@ -1108,10 +1109,11 @@ Then tell the developer **explicitly** (do not paraphrase away these obligations
 Do NOT auto-commit or auto-open the PR. Guide the developer to review the diff, then commit and open the one-line PR themselves:
 
 ```bash
-git checkout -b chore/audit-mode-<your-login>
+BRANCH="$(bash .gaia/scripts/branch-name-lib.sh name chore "audit-mode-<your-login>")"
+git checkout -b "$BRANCH"
 git add .gaia/audit-ci.yml
 git commit -m "chore(audit): set <your-login> audit mode to <ci|local>"
-git push -u origin chore/audit-mode-<your-login>
+git push -u origin "$BRANCH"
 gh pr create --fill
 ```
 

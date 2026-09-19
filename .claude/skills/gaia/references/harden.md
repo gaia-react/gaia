@@ -337,10 +337,14 @@ If it is empty, no-op (a redirect or an unapplied too-invasive edit can leave th
 
 **On the default branch (main/master):** publish runs to a terminal state, the way `/update-deps` does on a main-branch run: merged and cleaned up, left open because the human chose to, or stopped on a named failure. It never ends at "PR opened, audit pending", because nothing else ever dispatches the audit a harden PR owes.
 
-**Create the branch, as its own Bash call.** The uncommitted approved edits follow the checkout. Pick the name first and carry it as a literal into every later call, since shell variables do not persist between calls:
+**Create the branch, as its own Bash call.** The uncommitted approved edits follow the checkout. Mint the name first and carry its output as a literal, `<HARDEN_BRANCH>`, into every later call, since shell variables do not persist between calls:
 
 ```bash
-git checkout -b chore/gaia-harden-<YYYY-MM-DD-HHMM>
+bash .gaia/scripts/branch-name-lib.sh name chore gaia-harden
+```
+
+```bash
+git checkout -b "<HARDEN_BRANCH>"
 ```
 
 Never fold this into the commit call. The main-branch guard reads a whole command before any of it runs, so a `git checkout -b … && git commit …` call still looks like a commit on `main` and is refused.

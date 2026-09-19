@@ -327,7 +327,7 @@ Haiku agent returns:
 - If `SHOULD_CREATE_BRANCH=true`, create the branch now and **remember that you created it** (this determines publish behavior in Phase 8):
 
 ```bash
-git checkout -b chore/update-deps-$(date +%Y-%m-%d-%H-%M)
+git checkout -b "$(bash .gaia/scripts/branch-name-lib.sh name chore update-deps)"
 # CREATED_NEW_BRANCH=true, used in Phase 8
 ```
 

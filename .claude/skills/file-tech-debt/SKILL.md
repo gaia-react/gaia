@@ -129,7 +129,7 @@ The field table:
 | `head` | the reviewed HEAD sha, or `unknown` | no |
 | `session` | the filing session's id, or `unknown` | yes |
 
-**`mode` and `unit` describe the branch, not the filer.** Both are derived from the branch name alone, by the convention table below, so they record the branch the filing resolved against, an explicit branch a caller supplies, the pull request head ref in continuous integration, or otherwise the checkout's own branch, rather than the work the session was doing. Concurrent work in one checkout inherits that branch's stamp: a session filing a finding from a checkout parked on someone else's `debt/*` branch is stamped with that branch's unit. Do not read either field as authorship. Read `session` to tell one filing from another.
+**`mode` and `unit` describe the branch, not the filer.** Both are derived from the branch name alone, by the convention table named below, so they record the branch the filing resolved against, an explicit branch a caller supplies, the pull request head ref in continuous integration, or otherwise the checkout's own branch, rather than the work the session was doing. Concurrent work in one checkout inherits that branch's stamp: a session filing a finding from a checkout parked on someone else's `debt/*` branch is stamped with that branch's unit. Do not read either field as authorship. Read `session` to tell one filing from another.
 
 **`session` describes the filer, not the branch.** It is the one field on this line read off the process rather than the checkout, from the `CLAUDE_CODE_SESSION_ID` the harness exports into a session's shell and every child of it inherits. Because no branch move reaches it, it is exactly the fact the branch-derived fields cannot carry: two sessions sharing one checkout agree on `branch`, `mode`, and `unit` and differ here, and one session filing from two checkouts differs there and agrees here. The failure it answers is not hypothetical, and not symmetrical: an inherited `unit` naming a *different live drain* is worse than an absent one, because a line of real-looking values is indistinguishable from a correct one to every reader, human or machine.
 
@@ -141,25 +141,11 @@ It is not a flag, and deliberately so. `--branch` exists because a caller can le
 
 **Why `head` is carried despite rotting.** While the commit is reachable it makes a cited `path:line` resolvable with `git show <sha>:<path>`, a partial mitigation for the line drift that makes older keys stale. Everything else on the line is a stored conclusion rather than a coordinate, so it stays readable after the branch is gone.
 
-**The convention table.** `branch` is normalized for matching only, the stored `branch` field always keeps the raw name: strip a single leading `worktree-`, then replace every `+` with `/` in what remains, both steps unconditional, in that order. The normalized name is matched against this table, first matching row wins:
-
-| # | normalized branch | `mode` | `unit` |
-|---|---|---|---|
-| 1 | `debt/<members>-batch`, `<members>` matching `^[0-9]+(-[0-9]+)*$` | `drain` | `<members>` |
-| 2 | `debt/<rest>` | `drain` | the leading `[0-9]+` of `<rest>`, else `unknown` |
-| 3 | `spec-<nnn>` or `spec-<nnn>-<rest>`, `<nnn>` matching `^[0-9]+$` | `plan` | `SPEC-<nnn>` |
-| 4 | `plan-<nnn>` or `plan-<nnn>-<rest>`, `<nnn>` matching `^[0-9]+$` | `plan` | `plan-<nnn>` |
-| 5 | `chore/<rest>` or `chore-<rest>` | `maintenance` | `<rest>` |
-| 6 | `harden/<rest>` or `harden-<rest>` | `maintenance` | `<rest>` |
-| 7 | `wiki-sync/<rest>` | `maintenance` | `<rest>` |
-| 8 | `audit-<rest>` | `maintenance` | `<rest>` |
-| 9 | anything else, including `main`, `fix/<rest>`, `docs/<rest>`, `feat/<rest>` | `adhoc` | `unknown` |
-
-Any derived `unit` that comes out empty becomes `unknown`. Row 9 routes `fix/`, `docs/`, and `feat/` to `adhoc` deliberately: those are hand-named human work with no unit encoded in the branch name. The table is keyed on prefix families rather than exact per-command branch names because a table of exact names matches almost no real branch: roughly twenty real `chore/*` and `harden/*` branches would fall through to `adhoc` otherwise. A new branch family that later deserves its own mode is a change to this file, not a new field and not a version bump.
+**The convention table.** `mode` and `unit` come from GAIA's branch-naming convention, which `.gaia/scripts/branch-name-lib.sh` owns for every flow that creates a branch: its header carries the table, and `gaia_branch_classify` applies it after normalizing a worktree branch (`worktree-<name>` with `/` written as `+`) back to the name it was requested as. The stored `branch` field always keeps the raw name; normalization reaches the record only through `mode` and `unit`. This file does not restate the table: a new branch kind, or a new mode for an existing one, is a change to that library and its suite, not a new field and not a version bump. Any branch the table does not name, including `main` and hand-named `fix/`, `docs/`, and `feat/` work, is `adhoc`, because it encodes no unit in its name.
 
 When `branch` resolves to `unknown` (no explicit branch argument, no head-ref environment variable, and no current branch from git), `mode` and `unit` are also `unknown`, never `adhoc`. `adhoc` means a branch resolved and matched no row, a different fact from no branch resolving at all.
 
-**The derivation.** One shared helper, `.gaia/scripts/debt-origin-lib.sh`, owns the encoding, the classification, and the line assembly. Each route calls it once per finding, in the spelling its own surface gives. Bare:
+**The derivation.** One shared helper, `.gaia/scripts/debt-origin-lib.sh`, owns the encoding and the line assembly, and classifies through `.gaia/scripts/branch-name-lib.sh`. Each route calls it once per finding, in the spelling its own surface gives. Bare:
 
 ```bash
 origin="$(bash .gaia/scripts/debt-origin-lib.sh --changed "<0|1|unknown>" 2>/dev/null || true)"
@@ -192,7 +178,7 @@ Known limitation: the routes with a reviewed diff run on the branch under review
 
 **Waived findings.** A finding recorded as waived rather than filed carries the same line, from the same helper, on its pull-request-body entry beside the dedup key already listed there. That entry is the waived finding's only durable surface: the disposition sidecar is gitignored, janitor-reaped, and dropped on the next digest rotation. The line is an HTML comment, so review-time visibility is unchanged. Note what this does not buy: `changed` does not separate the machinery waive from the touched-file waive, because a pull request fixing gate machinery is normally touching the machinery path it waives, so both arms usually read `changed=1`.
 
-**Ownership.** This file is the contract's sole owner. Every other route references it and restates neither the vocabulary nor the table. `.gaia/scripts/debt-origin-lib.sh` is the implementation of the contract rather than a second statement of it.
+**Ownership.** This file is the contract's sole owner. Every other route references it and restates neither the vocabulary nor the table; the table itself lives in `.gaia/scripts/branch-name-lib.sh`, not here. `.gaia/scripts/debt-origin-lib.sh` is the implementation of the contract rather than a second statement of it.
 
 ## 5. Issue body schema
 

@@ -48,12 +48,6 @@
 #   and a reader recovers the exact branch name. Encoding `%` before `>` is
 #   what makes the inverse (`%3E` back to `>`, then `%25` back to `%`) exact.
 #
-# gaia_debt_origin_classify <normalized-branch>
-#   Prints "<mode> <unit>", one space between them. Always returns 0. The
-#   argument is a branch already put through this file's normalization; the
-#   ladder in gaia_debt_origin_line owns the "no branch resolved" case, so
-#   this function is never handed one.
-#
 # gaia_debt_origin_line [--changed <v>] [--branch <name>] [--dir <path>]
 #   Prints exactly one newline-terminated line. Returns 0 unconditionally,
 #   including outside a git repository and on an unrecognized argument.
@@ -105,163 +99,21 @@ gaia_debt_origin_encode() {
   return 0
 }
 
-# _gaia_debt_origin_is_digits <text>
-# Returns 0 when <text> is one or more ASCII digits and nothing else.
-_gaia_debt_origin_is_digits() {
-  local text="${1-}"
-  [ -n "$text" ] || return 1
-  case "$text" in
-    *[!0-9]*) return 1 ;;
-  esac
-  return 0
-}
-
-# _gaia_debt_origin_is_members <text>
-# Returns 0 when <text> matches ^[0-9]+(-[0-9]+)*$: one or more digit groups
-# joined by single hyphens. Expressed as four glob rejections in one `case`
-# (leading hyphen, trailing hyphen, doubled hyphen, any byte outside digits
-# and hyphen) rather than a regex, so the whole file stays plain bash 3.2.
-_gaia_debt_origin_is_members() {
-  local text="${1-}"
-  [ -n "$text" ] || return 1
-  case "$text" in
-    -* | *- | *--* | *[!0-9-]*) return 1 ;;
-  esac
-  return 0
-}
-
-# _gaia_debt_origin_leading_digits <text>
-# Prints the leading run of ASCII digits in <text>; prints nothing when <text>
-# does not start with a digit.
-_gaia_debt_origin_leading_digits() {
-  local LC_ALL=C
-  local text="${1-}" out="" i len c
-  len="${#text}"
-  for ((i = 0; i < len; i++)); do
-    # `${text:$i:1}`, not bash's bare `${text:i:1}`: zsh reads a bare
-    # identifier after the colon as a history modifier and aborts the function
-    # mid-walk. Both forms are identical in bash, so the `$` costs nothing.
-    # Same reasoning as audit-key-lib.sh's walk.
-    c="${text:$i:1}"
-    case "$c" in
-      [0-9]) out="${out}${c}" ;;
-      *) break ;;
-    esac
-  done
-  printf '%s' "$out"
-}
-
-# _gaia_debt_origin_normalize <raw-branch>
-# Prints the branch normalized FOR MATCHING ONLY: a single leading `worktree-`
-# stripped, then every `+` replaced by `/`. Both steps run unconditionally, in
-# that order. The emitted `branch` field keeps the raw name; the normalization
-# reaches the record only through `unit`, which gaia_debt_origin_classify
-# derives from the normalized string, so `chore-a+b` records `branch=chore-a+b`
-# with `unit=a/b`. That is diagnostic-only and the raw name is never lost.
-# It exists because a worktree branch
-# is the requested name wrapped as `worktree-<name>` with `/` written as `+`,
-# and a wrapped branch has to classify as the work it actually is.
-_gaia_debt_origin_normalize() {
-  local text="${1-}"
-  text="${text#worktree-}"
-  # `\+` for the same reason gaia_debt_origin_encode escapes its patterns:
-  # a bare replacement pattern is the one construct in this file whose meaning
-  # can differ between bash and zsh, and an escaped literal is identical in
-  # both.
-  text="${text//\+//}"
-  printf '%s' "$text"
-}
-
-# gaia_debt_origin_classify <normalized-branch>
-# The branch-naming convention table, FIRST MATCHING ROW WINS. `mode` is drawn
-# from a closed vocabulary: drain, plan, maintenance, adhoc, unknown. `unknown`
-# is not reachable from here; it is what gaia_debt_origin_line records when no
-# branch resolved at all, which is a different fact from a branch that matched
-# no row.
-#
-#   1  debt/<members>-batch      drain        <members>
-#   2  debt/<rest>               drain        the leading digits of <rest>
-#   3  spec-<nnn>[-<rest>]       plan         SPEC-<nnn>
-#   4  plan-<nnn>[-<rest>]       plan         plan-<nnn>
-#   5  chore/<rest>, chore-<rest>    maintenance  <rest>
-#   6  harden/<rest>, harden-<rest> maintenance  <rest>
-#   7  wiki-sync/<rest>          maintenance  <rest>
-#   8  audit-<rest>              maintenance  <rest>
-#   9  anything else             adhoc        unknown
-#
-# Row 9 covers `main` and the hand-named human branches (`fix/`, `docs/`,
-# `feat/`). They encode no unit in the name, so `adhoc` is the honest answer
-# rather than a gap. Any derived unit that comes out empty becomes `unknown`.
-gaia_debt_origin_classify() {
-  local nb="${1-}" mode="adhoc" unit="" rest="" lead=""
-
-  case "$nb" in
-    debt/*)
-      mode="drain"
-      rest="${nb#debt/}"
-      # Row 1 is tested before row 2: a batch branch's unit is every member,
-      # and falling through to row 2 would record only the first.
-      case "$rest" in
-        *-batch)
-          if _gaia_debt_origin_is_members "${rest%-batch}"; then
-            unit="${rest%-batch}"
-          fi
-          ;;
-      esac
-      # Row 2: any other debt branch keys off its leading issue number.
-      if [ -z "$unit" ]; then
-        unit="$(_gaia_debt_origin_leading_digits "$rest")"
-      fi
-      ;;
-    spec-*)
-      # Row 3. A `spec-` branch whose next segment is not numeric is not a
-      # spec branch at all and falls through to row 9.
-      rest="${nb#spec-}"
-      lead="${rest%%-*}"
-      if _gaia_debt_origin_is_digits "$lead"; then
-        mode="plan"
-        unit="SPEC-${lead}"
-      fi
-      ;;
-    plan-*)
-      # Row 4, the same shape as row 3.
-      rest="${nb#plan-}"
-      lead="${rest%%-*}"
-      if _gaia_debt_origin_is_digits "$lead"; then
-        mode="plan"
-        unit="plan-${lead}"
-      fi
-      ;;
-    chore/*)
-      mode="maintenance"
-      unit="${nb#chore/}"
-      ;;
-    chore-*)
-      mode="maintenance"
-      unit="${nb#chore-}"
-      ;;
-    harden/*)
-      mode="maintenance"
-      unit="${nb#harden/}"
-      ;;
-    harden-*)
-      mode="maintenance"
-      unit="${nb#harden-}"
-      ;;
-    wiki-sync/*)
-      mode="maintenance"
-      unit="${nb#wiki-sync/}"
-      ;;
-    audit-*)
-      mode="maintenance"
-      unit="${nb#audit-}"
-      ;;
-  esac
-
-  [ -n "$unit" ] || unit="unknown"
-  printf '%s %s\n' "$mode" "$unit"
-  return 0
-}
+# The branch-naming convention, its worktree normalization, and the table that
+# turns a branch into `mode` and `unit` are all owned by branch-name-lib.sh.
+# Located by parameter expansion rather than `dirname` because this file is
+# sourced with PATH empty and under zsh, where BASH_SOURCE is unset and `$0`
+# names the sourced file. A missing sibling leaves gaia_branch_classify
+# undefined, which the line below records as `unknown`, keeping this file
+# fail-open.
+_gaia_debt_origin_src="${BASH_SOURCE[0]:-$0}"
+case "$_gaia_debt_origin_src" in
+  */*) _gaia_debt_origin_dir="${_gaia_debt_origin_src%/*}" ;;
+  *) _gaia_debt_origin_dir="." ;;
+esac
+# shellcheck source=/dev/null
+. "${_gaia_debt_origin_dir}/branch-name-lib.sh" 2>/dev/null || true
+unset _gaia_debt_origin_src _gaia_debt_origin_dir
 
 # gaia_debt_origin_line [--changed <v>] [--branch <name>] [--dir <path>]
 # See the contract at the top of this file. Every resolution below degrades to
@@ -317,7 +169,7 @@ gaia_debt_origin_line() {
 
   local mode="unknown" unit="unknown" classified=""
   if [ -n "$branch" ]; then
-    classified="$(gaia_debt_origin_classify "$(_gaia_debt_origin_normalize "$branch")")" || classified=""
+    classified="$(gaia_branch_classify "$branch")" || classified=""
     mode="${classified%% *}"
     unit="${classified#* }"
     [ -n "$mode" ] || mode="unknown"
