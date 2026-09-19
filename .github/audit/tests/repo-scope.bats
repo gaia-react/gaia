@@ -322,3 +322,247 @@ in_dir() {
   run bash -c 'cd "$1" && . "$2" && cmd_targets_foreign_repo "cd '"'"'$3'"'"' && git commit -m x && grep -R TODO app"; printf "%s" "$GAIA_REPO_SCOPE_LEAD_CD"' _ "$HOME_REPO" "$LIB" "$WT"
   [ "$output" = "$WT" ]
 }
+
+# -----------------------------------------------------------------------------
+# One verdict covers the whole tool call, so it has to be HOME whenever any
+# command in the call acts on the home repository. Judging the call by one
+# command let a foreign first `gh` exempt a home commit after it, a trailing
+# foreign `git -C` exempt a home commit before it, and a leading `cd` into a
+# sibling exempt a commit made after stepping back out (gaia-react/gaia#2081).
+# A call is foreign only when every command in it is foreign-acting or touches
+# no repository at all.
+# -----------------------------------------------------------------------------
+
+@test "a foreign first gh does not exempt a home command after it: home (enforce)" {
+  add_widget_remote "$HOME_REPO"
+  run in_home "gh pr merge 5 -R other/x && git commit -m y"
+  [ "$status" -ne 0 ]
+  run in_home "gh pr merge 5 -R other/x; git commit -m y"
+  [ "$status" -ne 0 ]
+  run in_home "gh pr merge 5 -R other/x
+git commit -m y"
+  [ "$status" -ne 0 ]
+  run in_home "gh pr merge 5 --repo=other/x && git commit -m y"
+  [ "$status" -ne 0 ]
+  run in_home "gh pr view 5 -R other/x && gh pr merge 7 --squash"
+  [ "$status" -ne 0 ]
+  run in_home "gh pr merge 5 -R other/x && gh pr merge 7 -R acme/widget"
+  [ "$status" -ne 0 ]
+}
+
+@test "a trailing foreign git -C does not exempt a home command before it: home (enforce)" {
+  run in_home "git commit -m y && git -C $SIBLING_REPO status"
+  [ "$status" -ne 0 ]
+  run in_home "git commit --no-verify -m y && git -C '$SIBLING_REPO' status"
+  [ "$status" -ne 0 ]
+}
+
+@test "a cd into a sibling does not exempt a command after stepping back out: home (enforce)" {
+  run in_home "cd $SIBLING_REPO && git status && cd - && git commit --no-verify -m y"
+  [ "$status" -ne 0 ]
+  run in_home "cd $SIBLING_REPO; git status; cd $HOME_REPO; git commit -m y"
+  [ "$status" -ne 0 ]
+  run in_home "cd $SIBLING_REPO && git status && cd && git commit -m y"
+  [ "$status" -ne 0 ]
+}
+
+@test "a command after a foreign one that cannot be read stays home (enforce, fail closed)" {
+  add_widget_remote "$HOME_REPO"
+  run in_home "gh pr merge 5 -R other/x && (git commit -m y)"
+  [ "$status" -ne 0 ]
+  run in_home "gh pr merge 5 -R other/x && FOO=1 git commit -m y"
+  [ "$status" -ne 0 ]
+  run in_home "gh pr merge 5 -R other/x && env git commit -m y"
+  [ "$status" -ne 0 ]
+  # shellcheck disable=SC2016 # the unexpanded substitution is the case
+  run in_home 'gh pr merge 5 -R other/x && echo $(git commit -m y)'
+  [ "$status" -ne 0 ]
+  run in_home "gh pr merge 5 -R other/x && bash -c 'git commit -m y'"
+  [ "$status" -ne 0 ]
+  run in_home "gh pr merge 5 -R other/x # note
+git commit -m y"
+  [ "$status" -ne 0 ]
+  run in_home "gh pr merge 5 -R other/x && cd $SIBLING_REPO && gh pr merge 7 -Racme/widget"
+  [ "$status" -ne 0 ]
+}
+
+# The walk stops once nothing left in the call names git or gh, so that check
+# has to see a name the shell assembles from quotes, escapes and a line
+# continuation exactly as the scan does.
+@test "a home git spelled with quotes, escapes or a continuation after a foreign one: home (enforce)" {
+  add_widget_remote "$HOME_REPO"
+  run in_home 'gh pr merge 5 -R other/x && g\it commit -m y'
+  [ "$status" -ne 0 ]
+  run in_home 'gh pr merge 5 -R other/x && "g"it commit -m y'
+  [ "$status" -ne 0 ]
+  run in_home "gh pr merge 5 -R other/x && gi\\
+t commit -m y"
+  [ "$status" -ne 0 ]
+}
+
+# A `cd` the shell keeps away from the commands after it must not move the
+# directory those commands are read against, or a home command after it reads
+# foreign and the whole call is exempted.
+@test "a cd the shell scopes away does not move a later home command: home (enforce)" {
+  add_widget_remote "$HOME_REPO"
+  local f="gh pr view 5 -R other/x"
+  run in_home "$f
+(
+cd $SIBLING_REPO
+)
+git commit -m y"
+  [ "$status" -ne 0 ]
+  run in_home "$f
+x=\$(
+cd $SIBLING_REPO
+)
+git commit -m y"
+  [ "$status" -ne 0 ]
+  run in_home "$f
+f() {
+cd $SIBLING_REPO
+}
+git commit -m y"
+  [ "$status" -ne 0 ]
+  run in_home "$f
+cat <<EOF
+cd $SIBLING_REPO
+EOF
+git commit -m y"
+  [ "$status" -ne 0 ]
+  run in_home "$f; if false; then cd $SIBLING_REPO; fi; git commit -m y"
+  [ "$status" -ne 0 ]
+  run in_home "$f; cd $SIBLING_REPO & git commit -m y"
+  [ "$status" -ne 0 ]
+  run in_home "$f; cd $SIBLING_REPO | cat; git commit -m y"
+  [ "$status" -ne 0 ]
+  run in_home "$f; echo | cd $SIBLING_REPO; git commit -m y"
+  [ "$status" -ne 0 ]
+}
+
+@test "a cd that may not run does not move a later home command: home (enforce)" {
+  add_widget_remote "$HOME_REPO"
+  local f="gh pr view 5 -R other/x"
+  run in_home "$f; false && cd $SIBLING_REPO; git commit -m y"
+  [ "$status" -ne 0 ]
+  run in_home "$f; cd $SIBLING_REPO || git commit -m y"
+  [ "$status" -ne 0 ]
+  run in_home "$f; false && cd $SIBLING_REPO # note
+git commit -m y"
+  [ "$status" -ne 0 ]
+}
+
+# A comment on a line of its own does not end the list or pipeline a
+# trailing `&&`, `||` or `|` carries onto the next line.
+@test "a cd continued past a comment line after &&, || or | does not move a later home command: home (enforce)" {
+  add_widget_remote "$HOME_REPO"
+  local f="gh pr view 5 -R other/x"
+  run in_home "$f; false && # c
+cd $SIBLING_REPO
+git commit -m y"
+  [ "$status" -ne 0 ]
+  run in_home "$f; true || # c
+cd $SIBLING_REPO
+git commit -m y"
+  [ "$status" -ne 0 ]
+  run in_home "$f; echo | # c
+cd $SIBLING_REPO
+git commit -m y"
+  [ "$status" -ne 0 ]
+}
+
+# The scan models neither heredocs nor ANSI-C quoting, so a stray apostrophe
+# can open a span the shell never opened and fold the home commands after it
+# into one word of a foreign command.
+@test "home commands folded into a foreign command by a quote the shell never opened: home (enforce)" {
+  add_widget_remote "$HOME_REPO"
+  run in_home "cat <<EOF
+gh pr view 5 -R other/x --title don't
+EOF
+git commit -m y
+echo \"it's\""
+  [ "$status" -ne 0 ]
+  local ansi
+  ansi="gh pr view 5 -R other/x \$'\\''; git commit --no-verify -m 'x'"
+  run in_home "$ansi"
+  [ "$status" -ne 0 ]
+  run in_home "gh pr create -R other/x --title t --body 'mentions git only'"
+  [ "$status" -eq 0 ]
+}
+
+@test "a cd the shell certainly runs still moves the commands after it: foreign (allow)" {
+  run in_home "cd $SIBLING_REPO && git pull; git push"
+  [ "$status" -eq 0 ]
+  run in_home "cd $SIBLING_REPO
+git pull
+git push"
+  [ "$status" -eq 0 ]
+  run in_home "git -C $SIBLING_REPO fetch && cd $SIBLING_REPO && git pull"
+  [ "$status" -eq 0 ]
+}
+
+# The walk costs the call's length once per command, so it is bounded.
+@test "a long call ending in a home command is read home, inside the ceiling" {
+  add_widget_remote "$HOME_REPO"
+  local big i t0 t1
+  big="gh pr view 5 -R other/x"
+  for i in $(seq 1 4000); do big="$big
+echo line $i with some ordinary prose"; done
+  big="$big
+git commit -m y"
+  t0=$(date +%s)
+  run in_home "$big"
+  t1=$(date +%s)
+  [ "$status" -ne 0 ]
+  echo "walk 4000 lines: $((t1 - t0))s (ceiling 3s)" >&2
+  [ "$((t1 - t0))" -le 3 ]
+}
+
+@test "a foreign call longer than the walk reads is enforced: home (fail closed)" {
+  local big i
+  big="cd $SIBLING_REPO"
+  for i in $(seq 1 200); do big="$big
+git status"; done
+  run in_home "$big"
+  [ "$status" -ne 0 ]
+  run in_home "cd $SIBLING_REPO
+git status"
+  [ "$status" -eq 0 ]
+}
+
+# The line the rule must not cross: "nothing may follow a foreign command"
+# would over-enforce every legitimate sibling merge paired with a trailer.
+@test "a call whose every command is foreign or touches no repository stays foreign (allow)" {
+  add_widget_remote "$HOME_REPO"
+  run in_home "gh pr merge 5 -R other/x && gh pr checks 5 -R other/x"
+  [ "$status" -eq 0 ]
+  run in_home "gh pr merge 5 -R other/x && git -C $SIBLING_REPO pull"
+  [ "$status" -eq 0 ]
+  run in_home "gh pr merge 5 -R other/x && echo done"
+  [ "$status" -eq 0 ]
+  run in_home "gh pr merge 5 -R other/x # git commit -m y"
+  [ "$status" -eq 0 ]
+  run in_home "cd $SIBLING_REPO && git pull && gh pr merge 5 --squash"
+  [ "$status" -eq 0 ]
+  run in_home "git -C $SIBLING_REPO status && git -C $SIBLING_REPO log"
+  [ "$status" -eq 0 ]
+}
+
+# The scan reports byte offsets and the walk skips a comment by slicing at
+# one, so a walk slicing in characters under a UTF-8 locale would miss the `#`
+# after multibyte text and read the comment's words as a command.
+@test "a comment after multibyte text is skipped, not read as a command: foreign (allow)" {
+  local utf8
+  utf8=$(locale -a 2>/dev/null | grep -i -m1 -E '^(C|en_US)\.utf-?8$') || skip "no UTF-8 locale"
+  add_widget_remote "$HOME_REPO"
+  run bash -c 'export LC_ALL="$4"; cd "$1" && . "$2" && cmd_targets_foreign_repo "$3"' _ \
+    "$HOME_REPO" "$LIB" "gh pr merge 5 -R other/x --body 'éééééééééé' # see git log" "$utf8"
+  [ "$status" -eq 0 ]
+}
+
+@test "a call that names no repository at all stays home (enforce)" {
+  run in_home "echo done"
+  [ "$status" -ne 0 ]
+  run in_home "cd $SIBLING_REPO"
+  [ "$status" -ne 0 ]
+}

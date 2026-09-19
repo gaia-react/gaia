@@ -10,7 +10,7 @@ tags: [concept, ci, review]
 
 Mandatory before any `gh pr merge`. Machine-enforced by `.claude/hooks/pr-merge-audit-check.sh`, which denies `gh pr merge` calls until every Code Audit Team member this diff dispatches has its own clearance marker for that member's own current content digest (see [[#Marker key]]).
 
-The gate is **repo-scoped** via `.claude/hooks/lib/repo-scope.sh`: it enforces this repo's audit contract only. A `gh pr merge` positively aimed at a different repo (`-R owner/other`, or `cd <other> &&`) is allowed; this repo's audit markers have no bearing on a sibling repo's merge. Scoping is fail-closed: any ambiguity still enforces.
+The gate is **repo-scoped** via `.claude/hooks/lib/repo-scope.sh`: it enforces this repo's audit contract only. A `gh pr merge` positively aimed at a different repo (`-R owner/other`, or `cd <other> &&`) is allowed; this repo's audit markers have no bearing on a sibling repo's merge. The verdict covers the whole tool call, so a call that also holds a command acting on this repository, even a read-only one, is enforced: run the sibling command as its own call. Scoping is fail-closed: any ambiguity still enforces.
 
 ## Who audits: the dispatched member set
 

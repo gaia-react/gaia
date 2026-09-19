@@ -77,6 +77,30 @@ run_hook() {
   assert_denied_by_json
 }
 
+# The repo-scope verdict covers the whole tool call, so any home command in it
+# keeps the guard armed: a foreign command before or after a --no-verify commit
+# does not exempt it (gaia-react/gaia#2081).
+@test "a foreign command in the same call does not exempt a --no-verify commit" {
+  git -C "$REPO" remote add origin https://github.com/acme/widget.git
+  run_hook 'gh pr merge 5 -R other/x && git commit --no-verify -m y'
+  assert_denied_by_json
+  run_hook 'gh pr merge 5 -R other/x; git commit --no-verify -m y'
+  assert_denied_by_json
+  run_hook "gh pr merge 5 -R other/x
+git commit --no-verify -m y"
+  assert_denied_by_json
+  run_hook "git commit --no-verify -m y && git -C $FOREIGN status"
+  assert_denied_by_json
+  run_hook "cd $FOREIGN && git status && cd - && git commit --no-verify -m y"
+  assert_denied_by_json
+}
+
+@test "a call whose every command is foreign still passes a --no-verify commit" {
+  git -C "$REPO" remote add origin https://github.com/acme/widget.git
+  run_hook "gh pr merge 5 -R other/x && git -C $FOREIGN commit --no-verify -m y"
+  assert_allowed_by_json
+}
+
 @test "git commit -n is denied" {
   run_hook 'git commit -n -m "x"'
   assert_denied_by_json

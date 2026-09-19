@@ -308,6 +308,49 @@ CEILING_SCAN_UNQUOTED_64K_MS=5000
 }
 
 # ---------------------------------------------------------------------------
+# Contract: start and end offsets
+#
+# cmd_targets_foreign_repo walks every command in a tool call by scanning
+# again from where the last command ended, so the end offset has to land just
+# past the closing character, in bytes, and a scan from it has to read the next
+# command whole.
+# ---------------------------------------------------------------------------
+
+# scan_from <cmd> <start>: prints `<rc> <closed> <end> <words joined by RS>`.
+scan_from() {
+  bash -c '
+    . "$1"
+    if gaia_scan_first_command "$2" "$3"; then rc=0; else rc=1; fi
+    words=""; sep=""
+    for w in ${GAIA_FIRST_COMMAND_WORDS[@]+"${GAIA_FIRST_COMMAND_WORDS[@]}"}; do
+      words="$words$sep$w"; sep="$4"
+    done
+    printf "%s %s %s %s" "$rc" "$GAIA_FIRST_COMMAND_CLOSED" "$GAIA_FIRST_COMMAND_END" "$words"
+  ' _ "$LIB" "$1" "$2" "$RS"
+}
+
+@test "scan: the end offset lands just past the separator, and a scan from it reads the next command" {
+  run scan_from "git status && git commit -m y" 0
+  [ "$output" = "0 1 12 git${RS}status" ]
+  run scan_from "git status && git commit -m y" 12
+  [ "$output" = "0 0 29 git${RS}commit${RS}-m${RS}y" ]
+}
+
+@test "scan: a comment closes with the end offset just past the hash" {
+  run scan_from "echo a # note" 0
+  [ "$output" = "0 1 8 echo${RS}a" ]
+}
+
+@test "scan: the end offset counts bytes, across a block edge" {
+  local word
+  word=$(head -c 300 < /dev/zero | tr '\0' 'z')
+  run scan_from "echo é$word; git commit" 0
+  [ "$output" = "0 1 308 echo${RS}é$word" ]
+  run scan_from "echo é$word; git commit" 308
+  [ "$output" = "0 0 319 git${RS}commit" ]
+}
+
+# ---------------------------------------------------------------------------
 # Cost
 # ---------------------------------------------------------------------------
 
