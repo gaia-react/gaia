@@ -310,7 +310,7 @@ Heal already cut and switched to `chore/gaia-fitness-<timestamp>` (the `$BRANCH`
    gh pr merge <N> --squash --delete-branch --auto
    ```
 
-   `--auto` queues the merge behind required checks (the oracle check above already confirmed whether a marker is owed for this diff). Bounded-poll `gh pr view <N> --json state` for `MERGED` (~2-3 minutes):
+   `--auto` queues the merge behind required checks (the oracle check above already confirmed whether a marker is owed for this diff). Run the bounded poll (~2-3 minutes) in `wiki/concepts/PR Merge Workflow.md` (`## Post-merge verification before cleanup`), which also stops early on a base-branch conflict or a failed required check:
 
    - **`MERGED`** → clean up, record cost (pass-through: `gh pr create` above already printed the URL, and `--branch-name` carries the literal `$BRANCH` value, since the checkout below leaves the session on `main`; see `.claude/skills/gaia/references/cost-record.md`), then print the merged PR URL:
 
@@ -325,7 +325,8 @@ Heal already cut and switched to `chore/gaia-fitness-<timestamp>` (the `$BRANCH`
 
      Relay the tally's `Cost:` line as the last line of the reply, after the merged PR URL.
 
-   - **still queued** → record cost (pass-through: `gh pr create` above already printed the URL), print the PR URL, note auto-merge is queued and lands when checks pass, and do **not** delete the local branch or switch off it.
+   - **conflict** → repair it per that page's `### Conflict found mid-wait` and resume the poll.
+   - **still queued, or a failed required check** (name the check) → record cost (pass-through: `gh pr create` above already printed the URL), print the PR URL, note auto-merge is queued and lands when checks pass, and do **not** delete the local branch or switch off it.
 
      ```bash
      bash .gaia/scripts/token-tally.sh --action command --command gaia-fitness \
