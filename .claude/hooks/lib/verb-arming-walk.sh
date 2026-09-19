@@ -694,7 +694,8 @@ _GAIA_VA_B32_SET=$'["\047\140\\\\()]'
 # everything after it runs as live text. A quote the region leaves open is safe only when
 # nothing in <after> can close it: the matcher then reaches the end of the
 # text, which is a syntax error, so nothing runs. A double-quoted or
-# backticked span that nests anything is not modelled. Charges the shared
+# backticked span that nests anything, and a dollar-quoted span, are not
+# modelled. Charges the shared
 # budget.
 _gaia_va_b32_body_safe() {
   local rest="$1" after="$2" pre np ch span depth=0
@@ -722,6 +723,10 @@ _gaia_va_b32_body_safe() {
             return 0
             ;;
         esac
+        # A `$'` span honours backslash escapes, so its end is not the next
+        # apostrophe. An escaped `$` was consumed above and never reaches
+        # here.
+        case "$ch$pre" in "'"*'$') return 1 ;; esac
         span="${rest%%"$ch"*}"
         if [ "$ch" != "'" ]; then
           case "$span" in *'$'*|*'`'*|*"$_GAIA_VA_BS"*) return 1 ;; esac
