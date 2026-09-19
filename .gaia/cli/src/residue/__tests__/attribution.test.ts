@@ -268,6 +268,61 @@ describe('attributeBody, entry attribution', () => {
       'Accepted one'
     );
   });
+
+  // PR #1160's shape: the entry wraps, its key sits on a continuation line,
+  // and unrelated prose follows a blank line while still inside the unit.
+  test('keeps a wrapped entry whole and stops at the end of its list item', () => {
+    const lines = [
+      CANON_WAIVE,
+      '',
+      '- **`changelog.ts:4`**: the docblock opens `Step 7 of the',
+      '  runbook`, but `release changelog` is `### 5. Graduate`.',
+      '',
+      '  An indented paragraph still belongs to the item.',
+      `  ${key('holistic/unclassified', '.gaia/cli/src/release/changelog.ts', 4)}`,
+      '',
+      'Unindented prose after a blank line is not part of the entry.',
+    ];
+
+    expect(attributeBody(bodyOf(lines)).entries[0]?.failure_mode).toBe(
+      '**`changelog.ts:4`**: the docblock opens `Step 7 of the runbook`, but `release changelog` is `### 5. Graduate`. An indented paragraph still belongs to the item.'
+    );
+  });
+
+  // PR #1145's shape: a code span quotes a bare `<!--` opener before the real
+  // key comment, which is itself wrapped in a code span.
+  test('does not let a quoted comment opener swallow the text before the real key', () => {
+    const lines = [
+      CANON_WAIVE,
+      `- quotes the \`<!-- gaia-debt-key: v1 \` prefix, never parse behavior. \`${key('holistic/unclassified', '.gaia/tests/lib/doc-debt-query.bats', 101)}\``,
+    ];
+
+    expect(attributeBody(bodyOf(lines)).entries[0]?.failure_mode).toBe(
+      'quotes the `<!-- gaia-debt-key: v1 ` prefix, never parse behavior.'
+    );
+  });
+
+  test('leaves the code spans on either side of a bare comment intact', () => {
+    const lines = [
+      CANON_WAIVE,
+      `- spans \`a\`${key('holistic/unclassified', 'app/a.ts', 1)}\`b\` stay apart`,
+    ];
+
+    expect(attributeBody(bodyOf(lines)).entries[0]?.failure_mode).toBe(
+      'spans `a` `b` stay apart'
+    );
+  });
+
+  test('strips a code-span-wrapped comment behind opening punctuation', () => {
+    const lines = [
+      CANON_WAIVE,
+      `- wrapped (\`${key('holistic/unclassified', 'app/a.ts', 1)}\`) and "\`${key('holistic/unclassified', 'app/b.ts', 2)}\`"`,
+    ];
+
+    expect(attributeBody(bodyOf(lines)).entries[0]?.failure_mode).toBe(
+      'wrapped ( ) and " "'
+    );
+  });
 });
 
 describe('attributeBody, malformed keys', () => {

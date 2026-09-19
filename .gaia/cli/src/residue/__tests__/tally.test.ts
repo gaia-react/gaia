@@ -813,7 +813,7 @@ describe('gaia residue-tally', () => {
           high_water_merged_at: '2026-02-01T00:00:00Z',
           prs: {1: {}, abc: {}},
           resolutions: {},
-          schema: 'v2',
+          schema: 'v3',
         })
       );
 
@@ -862,7 +862,7 @@ describe('gaia residue-tally', () => {
             },
           },
           resolutions: {},
-          schema: 'v2',
+          schema: 'v3',
         })
       );
 
@@ -911,7 +911,7 @@ describe('gaia residue-tally', () => {
             },
           },
           resolutions: {},
-          schema: 'v2',
+          schema: 'v3',
         })
       );
 
@@ -959,7 +959,7 @@ describe('gaia residue-tally', () => {
           high_water_merged_at: null,
           prs: {},
           resolutions: {'sha1:app/a.ts:2': null},
-          schema: 'v2',
+          schema: 'v3',
         })
       );
 

@@ -311,7 +311,7 @@ COMMAND_OUT=""
 RUN_ID_OUT=""
 if [[ "$ACTION" == "command" ]]; then
   case "$COMMAND_ARG" in
-    gaia-audit|gaia-debt|gaia-fitness|gaia-forensics|gaia-harden|gaia-wiki)
+    gaia-audit|gaia-debt|gaia-fitness|gaia-forensics|gaia-harden|gaia-residue|gaia-wiki)
       COMMAND_OUT="$COMMAND_ARG"
       ;;
     "")
