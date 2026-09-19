@@ -43,6 +43,15 @@ _lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # absent, which is the degrade this load owes.
 # shellcheck source=../../../../.gaia/scripts/ledger-path-lib.sh
 set +e; [ -f "${_lib_dir}/../../../../.gaia/scripts/ledger-path-lib.sh" ] && . "${_lib_dir}/../../../../.gaia/scripts/ledger-path-lib.sh" 2>/dev/null; set -e
+# The branch-naming library reads a SPEC number back out of a plan branch in
+# every spelling GAIA mints, the worktree one included. Loaded the same
+# bracketed way as the ledger-path lib above, for the same reason.
+# shellcheck source=../../../../.gaia/scripts/branch-name-lib.sh
+set +e; [ -f "${_lib_dir}/../../../../.gaia/scripts/branch-name-lib.sh" ] && . "${_lib_dir}/../../../../.gaia/scripts/branch-name-lib.sh" 2>/dev/null; set -e
+type gaia_branch_spec_number >/dev/null 2>&1 || {
+  echo "spec-renumber: the branch-naming library is unusable, so SPEC numbers held only on a branch cannot be read; refuse to renumber" >&2
+  exit 4
+}
 
 if ! git -C "$repo_root" rev-parse --git-dir >/dev/null 2>&1; then
   echo "spec-renumber: $repo_root is not a git repository" >&2
@@ -108,9 +117,9 @@ if [ -x "$allocator" ] || [ -f "$allocator" ]; then
       # Inline the same scan the allocator uses, minus the ledger row we are about to rewrite.
       jq -r --arg drop "$old_id" '.specs[] | select(.id != $drop) | .id' "$ledger_path" 2>/dev/null \
         | sed -nE 's|^SPEC-0*([0-9]+)$|\1|p' || true
-      git -C "$repo_root" for-each-ref --format='%(refname:short)' \
-        'refs/heads/spec-*' 'refs/remotes/*/spec-*' 2>/dev/null \
-        | sed -nE 's|^.*/?spec-0*([0-9]+)(-.*)?$|\1|p' || true
+      gaia_branch_list "$repo_root" | while IFS= read -r branch; do
+        gaia_branch_spec_number "$branch"
+      done
       find "$specs_dir" -mindepth 2 -maxdepth 2 -type f -name 'SPEC.md' -print 2>/dev/null \
         | sed -nE 's|.*/SPEC-0*([0-9]+)/SPEC\.md$|\1|p' || true
     )
@@ -236,7 +245,7 @@ echo "Next steps (external state, not auto-updated):"
 
 # Branch name, flag if the current branch references the old id.
 current_branch="$(git -C "$repo_root" symbolic-ref --short -q HEAD || true)"
-if [ -n "$current_branch" ] && [[ "$current_branch" =~ spec-0*${old_num}(-|$) ]]; then
+if [ -n "$current_branch" ] && [ "$(gaia_branch_spec_number "$current_branch")" = "$old_num" ]; then
   new_branch="${current_branch//spec-$(printf '%03d' "$old_num")/spec-$(printf '%03d' "$new_num")}"
   echo "  - Current branch '$current_branch' references $old_id."
   echo "    Rename:   git -C $repo_root branch -m '$new_branch'"

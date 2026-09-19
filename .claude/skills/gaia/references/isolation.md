@@ -17,8 +17,9 @@ The caller's pointer binds four slots. There is no fifth.
 
 Substitute every slot before any of this text reaches the user.
 
-The **branch name** is the caller's, not this reference's. Each caller has its own naming convention and
-this file never restates it: take the name the caller resolved.
+The **branch name** is the caller's, not this reference's. Every caller mints it from
+`.gaia/scripts/branch-name-lib.sh`, which owns GAIA's branch-naming convention, and this file never
+restates it: take the name the caller resolved.
 
 ## Decide, in this order
 
@@ -153,11 +154,10 @@ runtime's own `worktree.baseRef: fresh` default. The branch is already cut, so t
 `git checkout -b`. Everything the caller does after this point runs from inside the worktree.
 
 **The branch is named `worktree-<name>`, not `<name>`, and every `/` in `<name>` is written as `+`.** A worktree requested
-as `debt/123-slug` gets a branch called `worktree-debt+123-slug`. The provenance classifier depends on this exact
-spelling to recover the requested name before matching the branch-convention table
-(`.gaia/scripts/debt-origin-lib.sh`, contract in `.claude/skills/file-tech-debt/SKILL.md`). Both the prefix
-and the `+` separator are therefore load-bearing and change only in lockstep with it. That branch name is
-what appears in `git branch` and on the PR.
+as `debt/123-slug` gets a branch called `worktree-debt+123-slug`, and that is what appears in `git branch` and on the PR.
+Every GAIA reader of a branch name normalizes this spelling back to the requested name through
+`.gaia/scripts/branch-name-lib.sh`, so both the prefix and the `+` separator are load-bearing and change only in
+lockstep with that library.
 
 Provisioning the worktree — the shared-state symlinks and the generated typed routes — is a separate
 concern from creating it, and it runs on entry rather than at creation: `.claude/hooks/provision-worktree.sh`

@@ -11,7 +11,7 @@
 #   3. continuous-integration parity, one implementation for both callers
 #   4. the empty case, an unresolved branch is `unknown` and never `adhoc`
 #   5. worktree normalization, and that the raw branch stays recoverable
-#   6. the convention table, every row, with a closed `mode` vocabulary
+#   6. the convention table reaches the line through branch-name-lib.sh
 #   7. the two-character encoding, invertible and comment-safe
 #   8. the `changed` vocabulary, reported and never computed
 #   9. fail-open, every invocation exits 0
@@ -94,13 +94,13 @@ field() {
   [ -z "$(ls -A "$scratch")" ]
 }
 
-@test "structural: sourcing the lib defines the three public functions" {
+@test "structural: sourcing the lib defines its public functions and the shared classifier" {
   run bash -c '
     # shellcheck disable=SC1090
     source "$1"
     type gaia_debt_origin_encode >/dev/null
-    type gaia_debt_origin_classify >/dev/null
     type gaia_debt_origin_line >/dev/null
+    type gaia_branch_classify >/dev/null
     echo OK
   ' _ "$LIB"
   [ "$status" -eq 0 ]
@@ -161,8 +161,8 @@ field() {
 @test "CI parity: --branch outranks GITHUB_HEAD_REF" {
   make_repo "debt/1121-marker-sep"
   local out
-  out="$(env GITHUB_HEAD_REF=chore/from-the-runner bash "$LIB" --branch "spec-065" --dir "$REPO")"
-  [ "$(field branch "$out")" = "spec-065" ]
+  out="$(env GITHUB_HEAD_REF=chore/from-the-runner bash "$LIB" --branch "plan/spec-065" --dir "$REPO")"
+  [ "$(field branch "$out")" = "plan/spec-065" ]
   [ "$(field mode "$out")" = "plan" ]
   [ "$(field unit "$out")" = "SPEC-065" ]
 }
@@ -225,29 +225,17 @@ field() {
 
 # ========== 6. the convention table ==========
 
-@test "table: every row yields its own mode and unit, and mode never leaves the closed vocabulary" {
+@test "table: each mode reaches the line through the shared classifier, inside the closed vocabulary" {
   make_repo "main"
   local row branch want_mode want_unit out got_mode got_unit
   for row in \
     "debt/1041-1055-1098-batch|drain|1041-1055-1098" \
     "debt/1121-marker-sep|drain|1121" \
-    "debt/no-number-here|drain|unknown" \
-    "debt/123-foo-batch|drain|123" \
-    "spec-065|plan|SPEC-065" \
-    "spec-065-provenance-on-debt|plan|SPEC-065" \
-    "plan-012|plan|plan-012" \
-    "plan-012-execution|plan|plan-012" \
-    "chore/deps-bump|maintenance|deps-bump" \
-    "chore-deps-bump|maintenance|deps-bump" \
-    "harden/marker-block|maintenance|marker-block" \
-    "harden-marker-block|maintenance|marker-block" \
-    "wiki-sync/2026-08|maintenance|2026-08" \
-    "audit-roster-pin|maintenance|roster-pin" \
+    "plan/spec-065-provenance-on-debt|plan|SPEC-065" \
+    "plan/plan-012-execution|plan|plan-012" \
+    "chore/update-deps-2026-09-20-1200|maintenance|update-deps-2026-09-20-1200" \
     "main|adhoc|unknown" \
-    "fix/some-thing|adhoc|unknown" \
-    "docs/readme-tidy|adhoc|unknown" \
-    "feat/new-thing|adhoc|unknown" \
-    "totally-unconventional|adhoc|unknown"; do
+    "fix/some-thing|adhoc|unknown"; do
     IFS='|' read -r branch want_mode want_unit <<<"$row"
     out="$(bash "$LIB" --branch "$branch" --dir "$REPO")"
     got_mode="$(field mode "$out")"
@@ -270,21 +258,16 @@ field() {
   done
 }
 
-@test "table: a spec- or plan- branch with a non-numeric unit falls through to adhoc" {
-  make_repo "main"
-  local spec_out plan_out
-  spec_out="$(bash "$LIB" --branch "spec-provenance" --dir "$REPO")"
-  plan_out="$(bash "$LIB" --branch "plan-the-work" --dir "$REPO")"
-  [ "$(field mode "$spec_out")" = "adhoc" ]
-  [ "$(field unit "$spec_out")" = "unknown" ]
-  [ "$(field mode "$plan_out")" = "adhoc" ]
-  [ "$(field unit "$plan_out")" = "unknown" ]
-}
-
-@test "table: gaia_debt_origin_classify prints mode and unit separated by one space" {
-  run gaia_debt_origin_classify "debt/1041-1055-1098-batch"
+@test "table: a missing branch-name-lib.sh degrades mode and unit to unknown and still exits 0" {
+  make_repo "debt/1121-marker-sep"
+  local lonely="$BATS_TEST_TMPDIR/lonely"
+  mkdir -p "$lonely"
+  cp "$LIB" "$lonely/debt-origin-lib.sh"
+  run bash "$lonely/debt-origin-lib.sh" --changed 1 --dir "$REPO"
   [ "$status" -eq 0 ]
-  [ "$output" = "drain 1041-1055-1098" ]
+  [ "$(field branch "$output")" = "debt/1121-marker-sep" ]
+  [ "$(field mode "$output")" = "unknown" ]
+  [ "$(field unit "$output")" = "unknown" ]
 }
 
 # ========== 7. the encoding ==========
@@ -407,10 +390,8 @@ field() {
   [ "${#lines[@]}" -eq 1 ]
 }
 
-@test "fail-open: the three public functions each return 0 on degenerate input" {
+@test "fail-open: the public functions each return 0 on degenerate input" {
   run gaia_debt_origin_encode ""
-  [ "$status" -eq 0 ]
-  run gaia_debt_origin_classify ""
   [ "$status" -eq 0 ]
   run gaia_debt_origin_line --changed
   [ "$status" -eq 0 ]
@@ -513,8 +494,8 @@ field() {
   make_repo "main"
   local out
   out="$(env CLAUDE_CODE_SESSION_ID=real-filer GITHUB_HEAD_REF=chore/from-the-runner \
-    bash "$LIB" --branch "spec-065" --dir "$REPO")"
-  [ "$(field branch "$out")" = "spec-065" ]
+    bash "$LIB" --branch "plan/spec-065" --dir "$REPO")"
+  [ "$(field branch "$out")" = "plan/spec-065" ]
   [ "$(field session "$out")" = "real-filer" ]
 }
 

@@ -105,14 +105,12 @@ extract_fenced_bash_after_heading() {
 
 # ========== 1. exactly one file states the contract ==========
 
-@test "1a. the closed mode vocabulary is stated only by the owner and the exempt helper" {
+@test "1a. the provenance line's closed mode vocabulary is stated only by the owner" {
   # The owner (.claude/skills/file-tech-debt/SKILL.md) backtick-wraps each
-  # value individually ("`drain`, `plan`, ..."); the exempt implementation
-  # (.gaia/scripts/debt-origin-lib.sh) states the same five-value list as
-  # plain comma-joined prose in a comment. No single fixed string spans both
-  # phrasings byte-for-byte (verified by hand before writing this test), so
-  # this needle is the OR of the two exact statements: either phrasing
-  # drifting, or a third file adopting either one verbatim, reds this test.
+  # value individually. The plain comma-joined phrasing is matched too, so a
+  # second file adopting either spelling verbatim reds this test. The branch
+  # library states its own four-value list without `unknown`, which the
+  # provenance line adds for "no branch resolved", so it is not a match.
   local got expected
   # -z, and `sort -z` with it, so a carrier whose path holds a non-ASCII byte
   # arrives verbatim instead of C-quoted; the `tr` back to newlines is the
@@ -121,24 +119,25 @@ extract_fenced_bash_after_heading() {
     -e '`drain`, `plan`, `maintenance`, `adhoc`, `unknown`' \
     -e 'drain, plan, maintenance, adhoc, unknown' \
     -- "${EXCLUDE_PATHSPEC[@]}" | LC_ALL=C sort -z | tr '\0' '\n')"
-  expected="$(printf '%s\n%s\n' ".gaia/scripts/debt-origin-lib.sh" ".claude/skills/file-tech-debt/SKILL.md" | LC_ALL=C sort)"
+  expected=".claude/skills/file-tech-debt/SKILL.md"
   [ "$got" = "$expected" ] || {
     printf 'mode-vocabulary needle matched:\n%s\nexpected exactly:\n%s\n' "$got" "$expected" >&2
     return 1
   }
 }
 
-@test "1b. the convention table's rows are stated only by the owner and the exempt helper" {
-  # Row 1's full text is the needle: distinctive enough that a paraphrase
-  # would have to reproduce it verbatim, and it appears nowhere else on the
-  # tree once .gaia/scripts/tests/ is excluded (verified: a bare
-  # `wiki-sync/` needle returns 19 tracked files under this exclusion, and a
-  # bare `-batch` needle returns more than the owner+helper pair; this row's
-  # full text returns exactly two).
+@test "1b. the branch-naming table's rows are stated only by branch-name-lib.sh" {
+  # The batch row's full text is the needle: distinctive enough that a
+  # paraphrase would have to reproduce it verbatim. Both the current row and
+  # the spelling SKILL.md carried before the table moved are matched, so a
+  # restated copy in either form reds.
   local got expected
   # -z plus `sort -z`, for the reason given on the same shape in 1a above.
-  got="$(git -C "$REPO_ROOT" grep -lF -z -- 'debt/<members>-batch' -- "${EXCLUDE_PATHSPEC[@]}" | LC_ALL=C sort -z | tr '\0' '\n')"
-  expected="$(printf '%s\n%s\n' ".gaia/scripts/debt-origin-lib.sh" ".claude/skills/file-tech-debt/SKILL.md" | LC_ALL=C sort)"
+  got="$(git -C "$REPO_ROOT" grep -lF -z \
+    -e 'debt/<a>-<b>[-<c>...]-batch' \
+    -e 'debt/<members>-batch' \
+    -- "${EXCLUDE_PATHSPEC[@]}" | LC_ALL=C sort -z | tr '\0' '\n')"
+  expected=".gaia/scripts/branch-name-lib.sh"
   [ "$got" = "$expected" ] || {
     printf 'convention-table-row needle matched:\n%s\nexpected exactly:\n%s\n' "$got" "$expected" >&2
     return 1

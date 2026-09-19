@@ -76,10 +76,10 @@ _no_gh_path() {
 }
 
 # --- 6: matching merged PR flips SPEC-006 to merged with merged_at from the PR ---
-@test "6: gh returns a merged PR matching spec-006-*; SPEC-006 flips to merged" {
+@test "6: gh returns a merged PR on plan/spec-006-*; SPEC-006 flips to merged" {
   REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-inprogress SPEC-006)"
   _promote_to_ready SPEC-006
-  _stub_gh_echoing '[{"number":42,"headRefName":"spec-006-x","mergedAt":"2026-05-01T00:00:00Z"}]'
+  _stub_gh_echoing '[{"number":42,"headRefName":"plan/spec-006-x","mergedAt":"2026-05-01T00:00:00Z"}]'
 
   run bash -c "PATH='$STUB_DIR:$PATH' bash '$REPO/$RECONCILE' '$REPO'"
   [ "$status" -eq 0 ]
@@ -88,11 +88,23 @@ _no_gh_path() {
   [ "$(jq -r '.specs[] | select(.id=="SPEC-006") | .merged_at' "$REPO/.gaia/local/specs/ledger.json")" = "2026-05-01T00:00:00Z" ]
 }
 
+@test "6b: a worktree-spelled head branch matches, and the latest of two merges wins" {
+  REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-inprogress SPEC-006)"
+  _promote_to_ready SPEC-006
+  _stub_gh_echoing '[{"number":40,"headRefName":"plan/spec-006-first","mergedAt":"2026-04-01T00:00:00Z"},{"number":43,"headRefName":"worktree-plan+spec-006-x","mergedAt":"2026-05-02T00:00:00Z"}]'
+
+  run bash -c "PATH='$STUB_DIR:$PATH' bash '$REPO/$RECONCILE' '$REPO'"
+  [ "$status" -eq 0 ]
+  grep -qF "reconciled SPEC-006 -> merged (PR #43, 2026-05-02T00:00:00Z)" <<<"$output"
+  [ "$(_status_of SPEC-006)" = "merged" ]
+}
+
 @test "7: no matching merged PR; SPEC-006 stays ready, no-op, exit 0" {
   REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-inprogress SPEC-006)"
   _promote_to_ready SPEC-006
-  # A merged PR exists, but its head branch does not match spec-006-*.
-  _stub_gh_echoing '[{"number":7,"headRefName":"spec-999-other","mergedAt":"2026-05-01T00:00:00Z"}]'
+  # Merged PRs exist, but none names SPEC-006 in a spelling GAIA mints: one
+  # names another SPEC, one carries the retired unprefixed spelling.
+  _stub_gh_echoing '[{"number":7,"headRefName":"plan/spec-999-other","mergedAt":"2026-05-01T00:00:00Z"},{"number":8,"headRefName":"spec-006-legacy","mergedAt":"2026-05-01T00:00:00Z"}]'
 
   run bash -c "PATH='$STUB_DIR:$PATH' bash '$REPO/$RECONCILE' '$REPO'"
   [ "$status" -eq 0 ]
@@ -134,7 +146,7 @@ _no_gh_path() {
   # A matching merged PR exists, but a "specified" row is off-vocabulary now
   # (the finalize state migrated to "ready"), so it is never reached as a
   # candidate; the off-vocab normalizer logs it as unrecognized instead.
-  _stub_gh_echoing '[{"number":42,"headRefName":"spec-006-x","mergedAt":"2026-05-01T00:00:00Z"}]'
+  _stub_gh_echoing '[{"number":42,"headRefName":"plan/spec-006-x","mergedAt":"2026-05-01T00:00:00Z"}]'
 
   run bash -c "PATH='$STUB_DIR:$PATH' bash '$REPO/$RECONCILE' '$REPO'"
   [ "$status" -eq 0 ]

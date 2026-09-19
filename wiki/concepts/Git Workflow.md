@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-04-21
-updated: 2026-06-24
+updated: 2026-09-20
 tags: [concept, git, workflow]
 ---
 
@@ -21,6 +21,8 @@ git switch -c <type>/<short-description>
 ```
 
 Conventional prefixes in this repo: `feat/`, `fix/`, `chore/`, `refactor/`, `test/`, `wiki/`
+
+Branches GAIA's own commands create are not hand-named: every one takes its name from `.gaia/scripts/branch-name-lib.sh`, whose header holds that convention.
 
 ## 2. Never force-push to `main` or `master`
 

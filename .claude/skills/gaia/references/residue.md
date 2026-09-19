@@ -144,8 +144,7 @@ If it is empty, nothing landed; say so and stop.
 **On the default branch (main/master):** branch, commit through a message file (never `-m`), push, and open a PR.
 
 ```bash
-TIMESTAMP=$(date +%Y-%m-%d-%H%M)
-BRANCH="chore/gaia-residue-$TIMESTAMP"
+BRANCH="$(bash .gaia/scripts/branch-name-lib.sh name chore gaia-residue)"
 git checkout -b "$BRANCH"
 git add -A
 git commit -F <commit-message-file>

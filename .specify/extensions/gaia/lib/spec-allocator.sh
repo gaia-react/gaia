@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # spec-allocator.sh: Allocate SPEC-NNN ids using the .gaia/local/specs/ledger.json
-# ledger, self-healed against deterministic markers in git (spec-NNN-* branches) and
+# ledger, self-healed against deterministic markers in git (plan branches naming a SPEC) and
 # the working-tree SPEC files. The repo must be a git working tree.
 #
 # Usage:
@@ -106,6 +106,15 @@ type with_ledger_lock >/dev/null 2>&1 || {
 # when the function is absent, which is the degrade this load owes.
 # shellcheck source=../../../../.gaia/scripts/ledger-path-lib.sh
 set +e; [ -f "${_lib_dir}/../../../../.gaia/scripts/ledger-path-lib.sh" ] && . "${_lib_dir}/../../../../.gaia/scripts/ledger-path-lib.sh" 2>/dev/null; set -e
+# The branch-naming library reads a SPEC number back out of a plan branch in
+# every spelling GAIA mints, the worktree one included. Loaded the same
+# bracketed way as the ledger-path lib above, for the same reason.
+# shellcheck source=../../../../.gaia/scripts/branch-name-lib.sh
+set +e; [ -f "${_lib_dir}/../../../../.gaia/scripts/branch-name-lib.sh" ] && . "${_lib_dir}/../../../../.gaia/scripts/branch-name-lib.sh" 2>/dev/null; set -e
+type gaia_branch_spec_number >/dev/null 2>&1 || {
+  echo "spec-allocator: the branch-naming library is unusable, so SPEC numbers held only on a branch cannot be read; refuse to allocate (would risk duplicate SPEC ids)" >&2
+  exit 4
+}
 
 require_git() {
   if ! git -C "$repo_root" rev-parse --git-dir >/dev/null 2>&1; then
@@ -132,7 +141,7 @@ ledger_path="${specs_dir}/ledger.json"
 # Emit one bare integer per known SPEC number, one per line, unsorted.
 # Sources (all deterministic LOCAL markers; no free-text scanning, no network):
 #   1. .gaia/local/specs/ledger.json ledger
-#   2. Local + remote branches matching ^spec-NNN-
+#   2. Local + remote-tracking plan branches naming a SPEC
 #   3. Working-tree folders .gaia/local/specs/<spec_id>/SPEC.md
 known_spec_numbers() {
   if [ -f "$ledger_path" ]; then
@@ -140,9 +149,9 @@ known_spec_numbers() {
       | sed -nE 's|^SPEC-0*([0-9]+)$|\1|p' || true
   fi
 
-  git -C "$repo_root" for-each-ref --format='%(refname:short)' \
-    'refs/heads/spec-*' 'refs/remotes/*/spec-*' 2>/dev/null \
-    | sed -nE 's|^.*/?spec-0*([0-9]+)(-.*)?$|\1|p' || true
+  gaia_branch_list "$repo_root" | while IFS= read -r branch; do
+    gaia_branch_spec_number "$branch"
+  done
 
   if [ -d "$specs_dir" ]; then
     find "$specs_dir" -mindepth 2 -maxdepth 2 -type f -name 'SPEC.md' -print 2>/dev/null \

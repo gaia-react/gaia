@@ -2,6 +2,12 @@
   "$schema": "./script-capabilities.schema.json",
   "scripts": [
     {
+      "script": ".gaia/scripts/branch-name-lib.sh",
+      "capabilities": [],
+      "why": "Mints and reads GAIA branch names. Minting is pure string work plus a read-only git check-ref-format and the clock; reading lists branches through read-only git for-each-ref. No file writes, no network, no invocation of another script.",
+      "maintainer_only": false
+    },
+    {
       "script": ".gaia/scripts/check-debt-issue-metadata.sh",
       "capabilities": ["network"],
       "why": "Reads tech-debt issue metadata through read-only gh issue calls (list and view) to check labels and staleness; it never creates, edits, or closes an issue, so its reach is network only, not github-write.",
@@ -9,8 +15,14 @@
     },
     {
       "script": ".gaia/scripts/debt-origin-lib.sh",
-      "capabilities": [],
-      "why": "Emits the HTML-comment provenance line for a tech-debt finding, deriving branch, mode and unit from the branch name; changed is supplied by the caller. Reads the current branch and HEAD through read-only git -C calls, and reads CLAUDE_CODE_SESSION_ID from the process environment for the session field, which is emitted into the issue body and confers no capability; no file writes and no network access.",
+      "capabilities": ["invokes:.gaia/scripts/branch-name-lib.sh"],
+      "why": "Emits the HTML-comment provenance line for a tech-debt finding, deriving branch, mode and unit from the branch name through the branch-naming library it sources; changed is supplied by the caller. Reads the current branch and HEAD through read-only git -C calls, and reads CLAUDE_CODE_SESSION_ID from the process environment for the session field, which is emitted into the issue body and confers no capability; no file writes and no network access.",
+      "maintainer_only": false
+    },
+    {
+      "script": ".gaia/scripts/debt-stale-claims.sh",
+      "capabilities": ["invokes:.gaia/scripts/branch-name-lib.sh", "network"],
+      "why": "Prints which in-progress tech-debt claims are stale. Reads the claims and the open pull requests through read-only gh issue list and gh pr list calls, and the repository's branches through read-only git calls in the branch-naming library it sources; it never edits a label, so its reach is network only, not github-write.",
       "maintainer_only": false
     },
     {
