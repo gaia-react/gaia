@@ -79,7 +79,7 @@ For each candidate present: its canonical disposition (accept or waive), its fai
    - **Still present**: the defect is in the current code, wherever it now sits.
    - **Can't tell**: the evidence does not settle it. This is a real answer. Never soften it into "likely" either way.
 
-This costs about one read per candidate, and the reads are independent, so issue them in parallel.
+Each candidate is verified independently of the others, so issue the reads in parallel, and fetch a source body once when several candidates share a pull request.
 
 The verdict, not the resolution class, keys the default disposition: **Fixed** presents dismiss as the default; **Still present** and **Can't tell** present keep as the default, with promotion still the exception that needs a reason. Every verdict still requires a human disposition, never an unattended one. A candidate carrying a `previously_promoted_issue` is labelled as previously promoted to that issue, which closed as completed, and dismiss is presented as the default disposition for it unless its verdict is **Still present**, in which case say that the closed issue did not remove the defect.
 
@@ -104,7 +104,7 @@ When the recipe refuses to file because the key matches one of its own dedup arm
 
 ### Dismiss
 
-The safe arm, and the default for a candidate whose verdict is **Fixed**. It may be offered in a batch, bounded by the same per-run cap, and the batch takes an explicit confirmation that lists every entry it will dismiss before anything is appended. Each dismissal appends one `dismissed` record.
+The safe arm, and the default wherever the verification step above makes it one. It may be offered in a batch, bounded by the same per-run cap, and the batch takes an explicit confirmation that lists every entry it will dismiss before anything is appended. Each dismissal appends one `dismissed` record.
 
 ### Keep
 
