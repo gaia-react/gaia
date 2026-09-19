@@ -108,12 +108,16 @@ const TOP_BULLET_PATTERN = /^([-*+]|\d{1,9}[.)])[\t\n\v\f\r ]/;
 // bare `<!--` ahead of a real comment cannot start a match that runs on to the
 // real comment's closer and deletes the prose between them. A comment wrapped
 // whole in a code span takes its backticks with it: the backreference demands
-// a closing backtick only when an opening one was consumed, and a backtick
-// glued to the text before it closes a neighbouring span rather than opening
-// this one. Honest limit: prose quoting a bare `<!--` and later a bare `-->`
-// reads as one comment and loses the text between. The loss is display-only,
-// since key attribution reads each line separately.
-const HTML_COMMENT_PATTERN = /(?:(?<!\S)(`))?<!--(?:(?!<!--)[\s\S])*?-->\1/g;
+// a closing backtick only when an opening one was consumed. A backtick opens
+// the wrapping span only after whitespace or opening punctuation; after any
+// other character it is read as closing a neighbouring span, so two spans
+// around a bare comment are not merged. Honest limits, both display-only
+// since key attribution reads each line separately: prose quoting a bare
+// `<!--` and later a bare `-->` reads as one comment and loses the text
+// between, and a neighbouring span that itself ends in opening punctuation
+// loses its closing backtick.
+const HTML_COMMENT_PATTERN =
+  /(?:(?<![^\s"'([{])(`))?<!--(?:(?!<!--)[\s\S])*?-->\1/g;
 const BLANK_LINE_PATTERN = /^[\t\v\f\r ]*$/;
 const INDENTED_LINE_PATTERN = /^[\t ]/;
 const TRAILING_SPACE_CHARACTERS = new Set(['\t', '\n', '\v', '\f', '\r', ' ']);

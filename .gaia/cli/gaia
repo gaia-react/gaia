@@ -22044,7 +22044,7 @@ var DEFAULT_PREDICATES = {
 };
 var HEADING_PATTERN = /^#{1,6}[\t\n\v\f\r ]/;
 var TOP_BULLET_PATTERN = /^([-*+]|\d{1,9}[.)])[\t\n\v\f\r ]/;
-var HTML_COMMENT_PATTERN = /(?:(?<!\S)(`))?<!--(?:(?!<!--)[\s\S])*?-->\1/g;
+var HTML_COMMENT_PATTERN = /(?:(?<![^\s"'([{])(`))?<!--(?:(?!<!--)[\s\S])*?-->\1/g;
 var BLANK_LINE_PATTERN = /^[\t\v\f\r ]*$/;
 var INDENTED_LINE_PATTERN = /^[\t ]/;
 var TRAILING_SPACE_CHARACTERS = /* @__PURE__ */ new Set(["	", "\n", "\v", "\f", "\r", " "]);

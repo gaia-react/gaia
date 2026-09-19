@@ -312,6 +312,17 @@ describe('attributeBody, entry attribution', () => {
       'spans `a` `b` stay apart'
     );
   });
+
+  test('strips a code-span-wrapped comment behind opening punctuation', () => {
+    const lines = [
+      CANON_WAIVE,
+      `- wrapped (\`${key('holistic/unclassified', 'app/a.ts', 1)}\`) and "\`${key('holistic/unclassified', 'app/b.ts', 2)}\`"`,
+    ];
+
+    expect(attributeBody(bodyOf(lines)).entries[0]?.failure_mode).toBe(
+      'wrapped ( ) and " "'
+    );
+  });
 });
 
 describe('attributeBody, malformed keys', () => {
