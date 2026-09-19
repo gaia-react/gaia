@@ -490,6 +490,59 @@ echo \"it's\""
   [ "$status" -eq 0 ]
 }
 
+# The shell runs a substitution in its own directory before the command that
+# holds it, so a foreign command's `-R` or `git -C` never reaches the payload
+# (gaia-react/gaia#2148). The scan keeps a quoted substitution as one word and
+# splits an unquoted one at its spaces, so both spellings are pinned.
+@test "a substitution naming git or gh in a foreign command's arguments: home (enforce)" {
+  add_widget_remote "$HOME_REPO"
+  # shellcheck disable=SC2016 # the hook must receive the unexpanded opener
+  run in_home 'gh pr view 5 -R other/x --jq "$(gh pr merge 30 --squash)"'
+  [ "$status" -ne 0 ]
+  # shellcheck disable=SC2016 # the hook must receive the unexpanded opener
+  run in_home 'gh pr view 5 -R other/x --jq $( gh pr merge 30 --squash )'
+  [ "$status" -ne 0 ]
+  # shellcheck disable=SC2016 # the hook must receive the unexpanded opener
+  run in_home 'gh pr view 5 -R other/x --jq `gh pr merge 30`'
+  [ "$status" -ne 0 ]
+  run in_home "gh pr create -R other/x --body-file <(git commit -m y)"
+  [ "$status" -ne 0 ]
+  run in_home "gh pr diff 5 -R other/x --patch >(git apply)"
+  [ "$status" -ne 0 ]
+  run in_home "git -C $SIBLING_REPO log --format \"\$(git commit -m y)\""
+  [ "$status" -ne 0 ]
+}
+
+# zsh runs `=( )` as a process substitution, and bash 5.3 runs `${ cmd; }` in
+# the current shell; the scan hands back the unquoted funsub opener as `${`.
+@test "a zsh =( ) or a bash funsub naming git in a foreign command's arguments: home (enforce)" {
+  add_widget_remote "$HOME_REPO"
+  run in_home "gh pr create -R other/x --body-file =(git commit -m y)"
+  [ "$status" -ne 0 ]
+  run in_home "git -C $SIBLING_REPO log --format =(git commit -m y)"
+  [ "$status" -ne 0 ]
+  # shellcheck disable=SC2016 # the hook must receive the unexpanded opener
+  run in_home 'gh pr view 5 -R other/x --jq ${ git commit -m y; }'
+  [ "$status" -ne 0 ]
+  # shellcheck disable=SC2016 # the hook must receive the unexpanded opener
+  run in_home 'gh pr view 5 -R other/x --jq ${| git commit -m y; }'
+  [ "$status" -ne 0 ]
+}
+
+@test "a foreign command with no substitution naming git or gh stays foreign (allow)" {
+  add_widget_remote "$HOME_REPO"
+  run in_home "gh pr view 5 -R other/x --jq '.number'"
+  [ "$status" -eq 0 ]
+  # shellcheck disable=SC2016 # the hook must receive the unexpanded opener
+  run in_home 'gh pr view 5 -R other/x --jq "$(cat filter.jq)"'
+  [ "$status" -eq 0 ]
+  # shellcheck disable=SC2016 # a parameter expansion, not a funsub opener
+  run in_home 'gh pr view 5 -R other/x --jq ${HOME}/git'
+  [ "$status" -eq 0 ]
+  run in_home "git -C $SIBLING_REPO log --format '%H'"
+  [ "$status" -eq 0 ]
+}
+
 @test "a cd the shell certainly runs still moves the commands after it: foreign (allow)" {
   run in_home "cd $SIBLING_REPO && git pull; git push"
   [ "$status" -eq 0 ]
