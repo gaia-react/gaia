@@ -47,7 +47,10 @@
 #   2. The data proof, only on a raw hit. The walker builds a same-length view
 #      with every heredoc body it can prove is data masked out, and the same
 #      two patterns run again against that. A hit there arms; a miss falls
-#      through.
+#      through. A hit whose separator is a substitution opener arms only if a
+#      second view, the walker file's liveness scan, which masks every opener
+#      the shell never runs, still carries a live one; otherwise a list
+#      operator later in the data view can still arm.
 #   3. The first-command tokenizer, behind a cheap leading-character
 #      pre-filter. Never subject to the data proof: it reads the invocation
 #      itself, so there is no data span for it to be confused by.
@@ -80,12 +83,11 @@
 # consumer denies, naming the missing file, unless its own published contract
 # is fail-open, in which case it exits 0.
 #
-# WHAT THIS DOES NOT CLOSE. Quoted prose still over-arms, fail-closed, and
-# there is no safe narrowing. That includes a substitution opener the shell
-# never runs: a backticked command cited in a single-quoted body, or in a
-# quoted-delimiter heredoc read by `cat` inside `"$(...)"`, the usual way a
-# pull-request or issue body is passed, arms the merge gates on a command that
-# merges nothing (gaia-react/gaia#2158). A verb whose characters are quoted
+# WHAT THIS DOES NOT CLOSE. Quoted prose carrying a list operator or a newline
+# before the verb still over-arms, fail-closed, and there is no safe
+# narrowing. So does an opener the liveness scan abstains on or does not
+# model; its own header names both, and the nested-interpreter case it
+# under-arms. A verb whose characters are quoted
 # still under-arms outside the first command, because pass 3 reads the first
 # command only. Dollar-quoted words are unmodelled and the walk abstains on
 # one rather than approximating it. Pass 3's bounded prefix can create an arm
@@ -114,6 +116,8 @@ GAIA_VERB_ARM_MATCH=()
 GAIA_VERB_ARM_VIEW=""
 # shellcheck disable=SC2034
 GAIA_VERB_ARM_SUPPRESSED=0
+# The liveness view, internal: written by the walker file's scan.
+GAIA_VERB_ARM_LIVE=""
 
 # 0 not tried, 1 loaded, 2 unavailable.
 _gaia_va_walk=0
@@ -245,9 +249,9 @@ _gaia_va_first_command() {
   _gaia_va_words_match "$words_spec"
 }
 
-# Pass 2's front door. Loads the walker at most once per process, from this
-# library's own directory, and falls back to the identity when it cannot.
-_gaia_va_view() {
+# Loads the walker at most once per process, from this library's own
+# directory. Both views below fall back to the identity when it cannot.
+_gaia_va_load_walk() {
   local dir errexit_was
   if [ "$_gaia_va_walk" = 0 ]; then
     _gaia_va_walk=2
@@ -267,6 +271,11 @@ _gaia_va_view() {
       if type gaia_verb_arm_view >/dev/null 2>&1; then _gaia_va_walk=1; fi
     fi
   fi
+}
+
+# Pass 2's front door.
+_gaia_va_view() {
+  _gaia_va_load_walk
   if [ "$_gaia_va_walk" = 1 ]; then
     gaia_verb_arm_view "$1"
   else
@@ -274,9 +283,20 @@ _gaia_va_view() {
   fi
 }
 
+# The liveness view, identity when the walker file or its scan is unavailable,
+# which leaves every opener live: the answer this library gave before the scan
+# existed.
+_gaia_va_live() {
+  _gaia_va_load_walk
+  GAIA_VERB_ARM_LIVE="$1"
+  if [ "$_gaia_va_walk" = 1 ] && type gaia_verb_arm_live_view >/dev/null 2>&1; then
+    gaia_verb_arm_live_view "$1"
+  fi
+}
+
 gaia_verb_armed() {
   local frag="$1" words_spec="$2" text="$3"
-  local start_re sep_re raw
+  local start_re sep_re list_re opener_re raw nl=$'\n'
 
   GAIA_VERB_ARM_KIND=""
   GAIA_VERB_ARM_MATCH=()
@@ -289,8 +309,14 @@ gaia_verb_armed() {
   # group this pattern adds, which is what keeps the fragment's own numbering.
   # The backtick is an octal escape for the reason the walker gives for its own.
   # The walker's condition 7 carries the command-substitution openers as glob
-  # needles; an opener added here needs its needle there too.
+  # needles, and its liveness scan carries every opener's first character; an
+  # opener added here needs both there too.
   sep_re=$'(\\&\\&|;|\\|\\||\\||\n|\\$\\(|\140|<\\(|>\\(|=\\(|\\$\\{[[:space:]])[[:space:]]*'"$frag"
+  # The same group split in two, for the view stage: a list operator arms as
+  # it stands, an opener only where the liveness view leaves it live. Each
+  # keeps group 1 as its separator, so numbering is the same whichever decides.
+  list_re=$'(\\&\\&|;|\\|\\||\\||\n)[[:space:]]*'"$frag"
+  opener_re=$'(\\$\\(|\140|<\\(|>\\(|=\\(|\\$\\{[[:space:]])[[:space:]]*'"$frag"
 
   raw=0
   if [[ "$text" =~ $start_re ]]; then
@@ -309,9 +335,31 @@ gaia_verb_armed() {
       return 0
     fi
     if [[ "$GAIA_VERB_ARM_VIEW" =~ $sep_re ]]; then
-      GAIA_VERB_ARM_KIND=sep
-      GAIA_VERB_ARM_MATCH=(${BASH_REMATCH[@]+"${BASH_REMATCH[@]}"})
-      return 0
+      case "${BASH_REMATCH[1]}" in
+        '&&'|';'|'||'|'|'|"$nl")
+          GAIA_VERB_ARM_KIND=sep
+          GAIA_VERB_ARM_MATCH=(${BASH_REMATCH[@]+"${BASH_REMATCH[@]}"})
+          return 0
+          ;;
+      esac
+      # The leftmost separator is an opener, which arms only where the
+      # liveness view still carries a live one. The two views are asked
+      # separately rather than composed, so an opener live in each but at
+      # different places arms: that direction over-arms and never under-arms.
+      _gaia_va_live "$text"
+      if [[ "$GAIA_VERB_ARM_LIVE" =~ $opener_re ]]; then
+        GAIA_VERB_ARM_KIND=sep
+        GAIA_VERB_ARM_MATCH=(${BASH_REMATCH[@]+"${BASH_REMATCH[@]}"})
+        GAIA_VERB_ARM_VIEW="$GAIA_VERB_ARM_LIVE"
+        # shellcheck disable=SC2034
+        [ "$GAIA_VERB_ARM_VIEW" = "$text" ] || GAIA_VERB_ARM_SUPPRESSED=1
+        return 0
+      fi
+      if [[ "$GAIA_VERB_ARM_VIEW" =~ $list_re ]]; then
+        GAIA_VERB_ARM_KIND=sep
+        GAIA_VERB_ARM_MATCH=(${BASH_REMATCH[@]+"${BASH_REMATCH[@]}"})
+        return 0
+      fi
     fi
   fi
 

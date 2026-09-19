@@ -151,6 +151,15 @@ else
   exit 0
 fi
 
+# Appended to every deny below, on the terms pr-merge-audit-check.sh gives for
+# its copy: a separator or opener arm is also what a cited merge produces.
+gate_arm_note=""
+if [ "$GAIA_VERB_ARM_KIND" = sep ]; then
+  gate_arm_note="
+
+This gate armed on a \`gh pr merge\` that follows a separator or a substitution opener inside the command, not on the command's own first word, and it cannot tell a merge the shell runs from one only cited in text the command carries (a pull-request or issue body, a commit message). If this call runs no merge, pass that text from a file instead (\`--body-file\`, \`git commit -F\`), which the gate does not read; if it does run one, the steps above apply."
+fi
+
 # Repo-scope: a `gh pr merge` aimed at a different repo has no bearing on this
 # repo's disposition ledger, so allow it. Mirrors the sibling merge gates.
 #
@@ -249,7 +258,7 @@ if [ -n "$_lib_dir" ] && [ -f "$_lib_dir/audit-machinery.sh" ]; then
 fi
 
 deny() {
-  jq -n --arg r "$1" '{
+  jq -n --arg r "$1$gate_arm_note" '{
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
       permissionDecision: "deny",

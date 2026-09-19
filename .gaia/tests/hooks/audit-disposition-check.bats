@@ -884,6 +884,27 @@ merged_and_deleted_head() {
   grep -qF -- "filed-but-missing: v1 class=y path=b line=2" <<<"$output" || return 1
 }
 
+@test "hook: a deny armed by an opener says the merge may only be cited, and one armed by the first word does not" {
+  ROOT="$BATS_TEST_TMPDIR/armnote"
+  mkdir -p "$ROOT"
+  seed_repo "$ROOT"
+  digest="$(frontend_digest_of "$ROOT")"
+  [ -n "$digest" ] || skip "could not derive digest"
+  mkdir -p "$ROOT/.gaia/local/audit"
+  printf '{"schema":1,"backend":"github","findings":[{"key":"v1 class=y path=b line=2","disposition":"filed"}]}\n' \
+    > "$ROOT/.gaia/local/audit/${digest}.dispositions.json"
+  install_gh_mock ok '[]'
+
+  run_disposition_hook "$ROOT" 'echo "$(gh pr merge 30 --squash)"'
+  assert_denied_by_json || return 1
+  grep -qF -- 'cannot tell a merge the shell runs from one only cited' <<<"$output" || return 1
+
+  run_disposition_hook "$ROOT" 'gh pr merge 30 --squash'
+  assert_denied_by_json || return 1
+  grep -qF -- 'cannot tell a merge the shell runs from one only cited' <<<"$output" && return 1
+  true
+}
+
 @test "hook: a machinery_waived entry whose path IS machinery -> allow (no offender)" {
   ROOT="$BATS_TEST_TMPDIR/mwmachinery"
   mkdir -p "$ROOT"
