@@ -23,11 +23,12 @@ Every mechanism acts on a subject: a repository root, a working tree, a base com
 
 Before writing the first `git` call, name the subject and where it comes from. Take it from the argument, the hook payload, or the event payload that identifies it, and pass it down explicitly (`git -C "$target"`, an explicit `--base`, a `cwd` parameter). Fall back to the ambient state only when the input genuinely names nothing, and say so where it happens.
 
-For the two subjects GAIA already centralizes, call the owner instead of deriving it:
+For the subjects GAIA already centralizes, call the owner instead of deriving it:
 
 - The main checkout's root: `gaia_resolve_main_root` in `.gaia/scripts/main-root-lib.sh`.
-- An audit review base: `.claude/hooks/lib/audit-base-provenance.sh`.
+- A pull request's diff base, with its provenance: `.claude/hooks/lib/audit-base-provenance.sh`.
+- A Code Audit Team member's incremental review base: `.github/audit/resolve-audit-base.sh --member <name>`.
 
 <!-- gaia:maintainer-only:start -->
-GAIA maintainers: the CLI's TypeScript counterpart is `resolveMainWorktreeRoot` in `.gaia/cli/src/util/main-root.ts`; call it rather than deriving the main root inside CLI source. `.gaia/scripts/check-resolver-singleton.sh`, `.gaia/scripts/check-main-root-derivation.sh`, and `.gaia/scripts/check-base-provenance-adoption.sh` catch a second definition and the derivation spellings their own headers name, and those headers are the authority on what they reach. Any other spelling, and any subject other than those two, falls to this rule.
+GAIA maintainers: the CLI's TypeScript counterpart is `resolveMainWorktreeRoot` in `.gaia/cli/src/util/main-root.ts`; call it rather than deriving the main root inside CLI source. `.gaia/scripts/check-resolver-singleton.sh`, `.gaia/scripts/check-main-root-derivation.sh`, and `.gaia/scripts/check-base-provenance-adoption.sh` catch a second definition and the derivation spellings their own headers name, and those headers are the authority on what they reach. Any other spelling, and any subject those checks do not name, falls to this rule.
 <!-- gaia:maintainer-only:end -->
