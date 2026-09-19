@@ -4,19 +4,21 @@
 # Adoption check for the shared base-provenance resolver
 # (.claude/hooks/lib/audit-base-provenance.sh).
 #
-# Nothing keeps the spawn oracle, the pull-request merge gate, and the Code
-# Audit Team member resolver from drifting apart except that none of them
-# owns a private copy of the base-derivation rule. This check makes that
-# property machine-checked: the resolver stays a singleton, the three named
-# consumers call it, and no file regrows the origin-then-local fallback
-# chain the resolver replaces, in a spelling the scan recognizes.
+# Nothing keeps the spawn oracle, the pull-request merge gate, the Code
+# Audit Team member resolver, and the worthiness presence gate from drifting
+# apart except that none of them owns a private copy of the base-derivation
+# rule. This check makes that property machine-checked: the resolver stays a
+# singleton, the named consumers call it, and no file regrows the
+# origin-then-local fallback chain the resolver replaces, in a spelling the
+# scan recognizes.
 #
-# The claim is bounded, not tree-wide. Five shell sites carried the
-# origin-then-local chain before the resolver existed. Two are not
-# converted: the worthiness presence check, fail-open and deliberately out
-# of scope, and the disposition sidecar's changed-set helper, whose body IS
-# the resolver -- lifted, not copied, so there is nothing left there to
-# exempt. The scope resolver's eligibility base is a third carrier, exempt
+# The claim is bounded, not tree-wide. The disposition sidecar's changed-set
+# helper carries no chain because its body IS the resolver -- lifted, not
+# copied, so there is nothing left there to exempt. The worthiness presence
+# gate is a consumer even though it is fail-open: two merge gates scoping
+# different changed sets on one head is the drift this check exists to stop,
+# whichever direction each gate fails in. The scope resolver's eligibility
+# base is the one carrier exempt
 # rather than converted: its ladder keeps its own arms and order (the pull
 # request's declared base, then the default branch, then the bare local
 # default), though its default-branch arm spells the same fully-qualified ref
@@ -69,6 +71,7 @@ GAIA_PROVENANCE_CONSUMERS=(
   '.gaia/scripts/resolve-audit-spawn.sh'
   '.claude/hooks/pr-merge-audit-check.sh'
   '.gaia/scripts/resolve-audit-members.sh'
+  '.claude/hooks/worthiness-presence-check.sh'
 )
 
 # The chain's written exemptions plus the resolver's own file. No entry
@@ -78,7 +81,6 @@ GAIA_PROVENANCE_CONSUMERS=(
 # copy of it, so there is nothing to exempt.
 GAIA_PROVENANCE_ALLOWED_CHAIN_FILES=(
   '.claude/hooks/lib/audit-base-provenance.sh'
-  '.claude/hooks/worthiness-presence-check.sh'
   '.gaia/scripts/audit-resolve-scope.sh'
 )
 
