@@ -301,6 +301,17 @@ describe('attributeBody, entry attribution', () => {
       'quotes the `<!-- gaia-debt-key: v1 ` prefix, never parse behavior.'
     );
   });
+
+  test('leaves the code spans on either side of a bare comment intact', () => {
+    const lines = [
+      CANON_WAIVE,
+      `- spans \`a\`${key('holistic/unclassified', 'app/a.ts', 1)}\`b\` stay apart`,
+    ];
+
+    expect(attributeBody(bodyOf(lines)).entries[0]?.failure_mode).toBe(
+      'spans `a` `b` stay apart'
+    );
+  });
 });
 
 describe('attributeBody, malformed keys', () => {
