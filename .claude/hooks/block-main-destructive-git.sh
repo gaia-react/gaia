@@ -615,15 +615,20 @@ hop_guard() {
 # Two spellings run a command in the current shell with no `| & ; ( )` cut in
 # front of it: bash 5.3's `${ cmd; }` function substitution, and a zsh glob
 # qualifier's `e<delim>code<delim>` or `+cmd`, optionally behind `#q` or other
-# qualifier flags. Each opener is rewritten to a `;` so the split cuts there,
-# and a quote or closing delimiter standing just before a `)` is dropped so it
-# does not glue itself onto the qualifier's last word. Both rewrites are
-# additive: an opener rewrite only reaches the first word of a segment that
-# already begins after a `(`, and never one carrying an `=`, so an env-var
-# prefix and a real `git` command word are untouched; the closer rewrite only
-# reaches text a `)` already cuts. block-no-verify.sh carries the same rewrite.
+# qualifier flags. A funsub's body is copied out as a segment of its own and
+# also left in place, since the words it prints belong to the command around
+# it (`git push ${ echo origin main; }` names main). A qualifier opener is
+# rewritten to a `;` so the split cuts there, and a quote or closing delimiter
+# standing just before a `)` is dropped so it does not glue itself onto the
+# qualifier's last word. Every rewrite is additive, never hiding a segment the
+# plain split would act on: the funsub copy removes nothing; a qualifier
+# rewrite only reaches the first word of a segment that already begins after a
+# `(`, never one carrying an `=`, so an env-var prefix and a real `git` command
+# word are untouched; the closer rewrite only reaches text a `)` already cuts.
+# block-no-verify.sh carries the same rewrite.
 cut_hidden_openers() {
-  sed -E -e 's/\$\{[[:space:]]|\((#q)?[^()[:space:]=]*(e[^[:alnum:][:space:]]["'"'"']?|\+)/;/g' \
+  sed -E -e 's/\$\{[[:space:]]+([^;|&()]*)/&;\1/g' \
+    -e 's/\((#q)?[^()[:space:]=]*(e[^[:alnum:][:space:]]["'"'"']?|\+)/;/g' \
     -e 's/(["'"'"'][^[:alnum:][:space:]()]?|[]}>])\)/;/g'
 }
 

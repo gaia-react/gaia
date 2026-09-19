@@ -374,6 +374,15 @@ git commit -m y"
   assert_denied_by_json
 }
 
+# The funsub's body also stays part of the git command around it, whose words
+# it expands into.
+@test "a refspec a funsub expands into a push is still read as naming main" {
+  on_feature
+  # shellcheck disable=SC2016
+  run_hook 'git push ${ echo origin main; }'
+  assert_denied_by_json
+}
+
 @test "a commit or push inside a zsh e glob qualifier is denied on main" {
   on_main
   run_hook 'echo *(e:"git commit -m y":)'

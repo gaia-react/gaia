@@ -119,6 +119,14 @@ git commit --no-verify -m y"
   assert_denied_by_json
 }
 
+# The funsub's body also stays part of the git command around it, whose words
+# it expands into.
+@test "a bypass flag a funsub expands into a git commit is still denied" {
+  # shellcheck disable=SC2016
+  run_hook 'git commit ${ echo -n; } -m y'
+  assert_denied_by_json
+}
+
 @test "a --no-verify commit inside a zsh e glob qualifier is denied" {
   run_hook 'echo *(e:"git commit --no-verify -m y":)'
   assert_denied_by_json
