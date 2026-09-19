@@ -11,6 +11,20 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-09-19 b8db4833 SKIP - one-line pointer-name fix in a skill reference, not a wiki page
+- 2026-09-19 b65aefc8 SKIP - audit posts status instead of an empty stamp commit on a pushed head; success posts only after every finding is decided -> wiki/concepts/Code Review Audit Agent.md, Code Review Audit CI.md, PR Merge Workflow.md, wiki/decisions/Code Audit Team.md updated in the commit itself
+- 2026-09-19 27c2c88b SKIP - repo-scope walk judges every command in a tool call -> wiki/concepts/Git Workflow.md, wiki/concepts/PR Merge Workflow.md updated in the commit itself
+- 2026-09-19 15402b39 SKIP - merge-wait now ends early on base-branch conflict or failed check -> wiki/concepts/PR Merge Workflow.md updated in the commit itself
+- 2026-09-19 da6c6cb9 SKIP - worthiness gate sources the shared base resolver -> wiki/decisions/Code Audit Team.md updated in the commit itself
+- 2026-09-19 796d0cee SKIP - gaia-harden publish now runs to a terminal state through audit+merge; brings implementation in line with Policy-Memory Loop.md's already-documented 'goes through normal PR review' invariant, no new concept
+- 2026-09-19 5aede0d4 SKIP - gaia-residue verdict-based disposition -> wiki/concepts/Audit Disposition and Debt Fix.md updated in the commit itself
+- 2026-09-19 4f789d7b SKIP - gaia-harden plain-language findings review -> wiki/concepts/Policy-Memory Loop.md updated in the commit itself
+- 2026-09-19 9bb6c0cb SKIP - residue-tally failure_mode fix -> wiki/concepts/Cost Data Contract.md, wiki/concepts/Token Cost Readout.md updated in the commit itself
+- 2026-09-19 ffff167e SKIP - fork-point revspec fix -> wiki/concepts/PR Merge Workflow.md updated in the commit itself
+- 2026-09-19 87a3d00e SKIP - worthiness gate base-ref fix superseded by da6c6cb9's shared-resolver refactor, whose Code Audit Team.md edit already documents the end state
+- 2026-09-19 5147c78f SKIP - prior wiki-sync commit, self-contained (own log/state/page edits already landed)
+- 2026-09-19 8860f1f5 SKIP - caps/dedupes rising-class labels in the statusline nudge reason; Policy-Memory Loop.md's nudge description already generalizes over the exact label composition
+- 2026-09-19 d578d707 SKIP - bounds oracle finding_class slug to a safe charset; wiki's 'well-formed slug' phrasing already covers it without restating the regex (wiki-style: no enumerations)
 - 2026-09-19 1e16ef03 SKIP - eligibility ladder default-branch revspec correctness fix; wiki/concepts/Audit Disposition and Debt Fix.md already describes the intended remote-tracking-ref behavior generically
 - 2026-09-19 c99f0b62 SKIP - pagination bug fix (30→100 status contexts) in undocumented helper audit-success-present.sh; no existing wiki page, not new architecture
 - 2026-09-19 423907bd WORTHY - audit step timeout now clamped to 45-minute ceiling under the job's 60-minute cap → wiki/concepts/Code Review Audit CI.md
