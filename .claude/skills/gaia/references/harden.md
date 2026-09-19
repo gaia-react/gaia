@@ -1,14 +1,14 @@
 # /gaia-harden
 
-Human-gated hardening for the policy-memory loop. `/gaia-harden` is the ONLY code path that authors or activates anything in this loop, and it runs only under explicit human invocation. For each recurring finding it judges the lowest-context-weight form that fits, checks edit-vs-new first, recommends exactly one form with rationale, and presents an approve / decline / defer / redirect choice. Nothing is authored or activated unattended.
+Human-gated hardening for the policy-memory loop. `/gaia-harden` is the ONLY code path that authors or activates anything in this loop, and it runs only under explicit human invocation. For each recurring finding it judges the lowest-context-weight form that fits, checks edit-vs-new first, and recommends exactly one action with rationale. It explains every item in plain language, presents the whole recommended plan once, and asks the human to accept it, change some items, or stop. Nothing is authored or activated unattended.
 
 v1 owns prose-rule create/edit end to end. Skills and deterministic checks are recommended and scaffolded only (a skill-creator handoff; a hook+script sketch), never auto-authored or auto-activated.
 
 ## Execution model, READ FIRST
 
-Execute the playbook yourself in the current conversation. This is an interactive, human-gated flow: each candidate's approve / decline / defer / redirect choice is the human's, never the agent's. Do not dispatch a subagent to make those calls and do not auto-advance past a candidate without a human answer.
+Execute the playbook yourself in the current conversation. This is an interactive, human-gated flow. The invariant is **no disposition without an explicit human answer**: every candidate's approve / decline / defer / redirect outcome comes from the human, never the agent. Accepting the presented plan as a whole is one explicit answer and counts for every item it covers. Do not dispatch a subagent to make these calls, and do not apply any disposition before the human has answered.
 
-The agent never runs `git add`, `git commit`, or `git push` *during* the per-candidate flow: each approve / decline / defer lands in the working tree or the ledger (or persists nothing), and the human owns every call. After the last candidate is dispositioned, one end-of-run publish step (`## Publish approved changes (end of run)`) runs on a **main-branch run only**: if at least one approval produced a working-tree change, it branches, commits, pushes, and opens a PR so the human does not have to ask for it. It then merges only when the human approved *every* candidate this run and answers a merge prompt (never automatically); on any selective run it leaves the PR open for review. It does nothing on a non-default branch (the changes ride that branch's own PR). A decline writes one bounded entry to the machine-local, gitignored ledger and nowhere else. A defer persists nothing of its own. Besides the decline ledger, a completed review writes one more machine-local file, the review snapshot, and clears the cached statusline nudge; see `## Record the review (end of run)`.
+The agent never runs `git add`, `git commit`, or `git push` *while dispositions are collected and applied*: each approve / decline / defer lands in the working tree or the ledger (or persists nothing), and the human owns every call. After the last candidate is dispositioned, one end-of-run publish step (`## Publish approved changes (end of run)`) runs on a **main-branch run only**: if at least one approval produced a working-tree change, it branches, commits, pushes, and opens a PR so the human does not have to ask for it. It then merges only when the human approved *every* candidate this run and answers a merge prompt (never automatically); on any selective run it leaves the PR open for review. It does nothing on a non-default branch (the changes ride that branch's own PR). A decline writes one bounded entry to the machine-local, gitignored ledger and nowhere else. A defer persists nothing of its own. Besides the decline ledger, a completed review writes one more machine-local file, the review snapshot, and clears the cached statusline nudge; see `## Record the review (end of run)`.
 
 ## Argument parsing
 
@@ -90,8 +90,8 @@ Bind to these fields per candidate: `finding_class`, `distinct_pr_count`, `pr_nu
 - **`gh_ok` is `false` and stderr carries a `window_truncated` error**: the window holds more merged PRs than the tally's paged read covers. Report "the merged-PR window is too large for the tally to read; this is not an all-clear, report it as a GAIA bug" and stop. Re-running does not help. (Run ends here; see `## Cost record (run end)`.)
 - **`gh_ok` is `false` otherwise**: a `gh`/network outage. Report "could not read the merged-PR window; this is not an all-clear, re-run when `gh` is available" and stop, never claiming no findings. (Run ends here; see `## Cost record (run end)`.)
 - **`gh_ok` is `true`, `candidate_count` is `0`, `unclassified` is `null`**: report "no recurring findings crossed the threshold in the last 90 days". In `review` mode, before stopping, run the combined record-and-clear block from `## Record the review (end of run)` as one Bash call: shell variables do not persist across separate calls, so the record and the clear must run together. On a non-zero `record_status`, report it the way that section says (quote the structured error code); either way this stop does not proceed to Publish. `list`/`why` stop as today, writing nothing. (Run ends here; see `## Cost record (run end)`.)
-- **`gh_ok` is `true`, `candidate_count` is `0`, `unclassified` is non-null**: do NOT stop. Skip the per-candidate loop (there is nothing to judge) and go straight to `## Unclassified recurrence signal (seed-a-class-or-investigate)` below, which in `review` mode flows on to `## Record the review (end of run)`.
-- **Otherwise**: run the per-candidate loop below.
+- **`gh_ok` is `true`, `candidate_count` is `0`, `unclassified` is non-null**: do NOT stop. Skip judging and the plan question (there is no candidate to disposition) and go straight to `## Unclassified recurrence signal (seed-a-class-or-investigate)` below, which in `review` mode flows on to `## Record the review (end of run)`.
+- **Otherwise**: judge every candidate (below), then present the plan and ask once (`### Present the plan, then ask once`).
 
 ## Judge-the-form logic (the heart of the command)
 
@@ -133,11 +133,50 @@ A recurring finding proves the problem is real, the cost of NOT acting. It does 
 
 Prose is the weakest form on this axis: it advises rather than enforces, a capable agent may already honor it or may rationalize past it, and it costs context on every matching task. A deterministic check enforces. So the efficacy lens reinforces Axis 2: when the pattern is mechanizable, prefer the check.
 
-The evidence bar is deliberately low, a couple of before/after task replays or a single reproduction of the agent ignoring vs following the guidance, never a benchmark. If the recommended form is prose and you cannot name even that cheap evidence (because it restates a principle a strong agent already honors, or the anti-pattern is judgment-laden and easy to talk past), say so in the rationale and surface **weak efficacy evidence, consider defer as a snooze until the class rises materially or the tally changes, or decline** in the action framing. Never auto-decline, the human owns the call; the lens sharpens the recommendation and the rationale, nothing more.
+The evidence bar is deliberately low, a couple of before/after task replays or a single reproduction of the agent ignoring vs following the guidance, never a benchmark. If the recommended form is prose and you cannot name even that cheap evidence (because it restates a principle a strong agent already honors, or the anti-pattern is judgment-laden and easy to talk past), say so in the rationale and make the recommended action **defer** (a snooze until the class rises materially or the tally changes) or **decline**, whichever the evidence supports. It stays a recommendation: nothing is declined or deferred until the human answers, and accepting the plan is that answer. The lens sharpens the recommendation and the rationale, nothing more.
 
-### Present and act
+### Explain each item in plain language
 
-For each candidate, present: the finding_class, its distinct-PR count and the PRs it recurred on, the recommended form, and the one-line rationale. Then offer the action set: **approve / decline / defer / redirect**. Collect that choice through an explicit user-question step, one question per candidate, and never auto-advance past a candidate without a human answer, the same way `/gaia-spec` gates each of its questions. This reinforces the "Execution model, READ FIRST" note: the call is the human's, not the agent's. The two persisting actions differ: `decline` writes a machine-local, evidence-gated ledger entry; `defer` persists nothing of its own, but the review snapshot a completed review writes still snoozes it until the class rises materially or the tally's counting changes, the same trigger rule that governs every other candidate; it still appears in `list` and in the next review.
+The human gate is only worth its cost if the human can judge what they are approving. A class slug, a PR list, and a rationale in this reference's own vocabulary (axis, oracle, efficacy lens, form, marker) are not judgeable by someone who did not write them. So every candidate, and the unclassified signal, is explained in plain terms first, and the taxonomy comes second. `review`, `list`, and `why` all use this rendering.
+
+Per item, lead with:
+
+- **What keeps going wrong.** One sentence, no class slug, no reference vocabulary. For example: "Docs and comments describe how a script behaves, and the description no longer matches what the script does."
+- **One concrete example**, from a PR the item recurred on: the file and what was wrong there. The findings block carries no prose, so find the example in this order and stop at the first hit:
+  1. A tech-debt issue filed from the class: `gh issue list --label tech-debt --state all --search '"class=<finding_class>" in:body' --limit 1 --json number,title,body`. Its title and body state the defect.
+  2. A PR in `pr_numbers` whose body carries a `gaia-debt-key` comment for the class: `gh pr list --state merged --search '"class=<finding_class>" in:body' --limit 1 --json number,body`. The bullet the key comment sits under states the defect.
+
+  Search matches loosely, so confirm the hit's key comment names this exact class before using it. For the unclassified signal, search on `class=holistic/unclassified`. When neither step finds one, write "no recorded example" rather than guessing one from a PR title.
+- **How often, as a share**: `distinct_pr_count` of `audited_pr_count` over the `window_days` window, with a rounded ratio, e.g. "on 106 of the last 394 audited PRs, about 1 in 4". Never a bare count.
+- **What the recommendation would actually do**, in plain words:
+  - new prose rule: "add a rule file that loads when editing `<paths>`"
+  - edit existing prose rule: "add this guidance to `<file>`"
+  - enforcement edit: "make the existing `<tool>` check block the merge"
+  - deterministic check: "write an outline of an automated check for you to finish; nothing is switched on"
+  - skill: "write an outline of a skill for you to finish; nothing is switched on"
+  - decline: "record, on this machine only, that we are not acting on this; it comes back if it gets noticeably worse"
+  - defer: "do nothing now; it comes back if it gets worse or the counting changes"
+- **Why this recommendation**, in one sentence a non-author can check against the example and the frequency.
+
+Then, as secondary detail: the `finding_class`, the `pr_numbers`, and `severity_max`.
+
+### Present the plan, then ask once
+
+Present the whole plan before asking anything. Print one summary table, one row per candidate in tally order, with columns: row number, what keeps going wrong, how often, recommended action (plain words), and why. When `unclassified` is non-null, add it as a final row marked **not a candidate**, with "record a suppression; the signal returns if it rises materially" as its action (`## Unclassified recurrence signal (seed-a-class-or-investigate)` below owns what that means). Print each row's example and secondary detail below the table, keyed by row number.
+
+Then ask one question through an explicit user-question step (`AskUserQuestion`, header `Harden plan`, single-select), options in this order:
+
+1. **Accept all recommendations (Recommended)**: every candidate takes its recommended action.
+2. **Change some**: pick which rows to change, then choose their actions; every other row takes its recommendation.
+3. **Stop without changes**: disposition nothing, author nothing, record nothing.
+
+On **Change some**, ask which rows to change. With four or fewer candidates, use one multi-select `AskUserQuestion` naming each row; with more, ask the human to reply with the row numbers. Then, for each chosen row only, ask one single-select question with the action set **approve / decline / defer / redirect**, the recommended action first and marked `(Recommended)`. `AskUserQuestion` takes up to four questions per call, so group them in fours. Any row the human did not choose takes its recommendation.
+
+On **Stop without changes**, apply nothing, write no ledger entry, skip the unclassified suppression, and do not reach `## Record the review (end of run)` or `## Publish approved changes (end of run)`. (Run ends here; see `## Cost record (run end)`.)
+
+Once every candidate has a disposition, from the plan answer or a per-row answer, apply each one through `## Per-form action handling` below, in table order.
+
+Accepting a recommended decline or defer is a decision, the same as choosing it row by row. The two persisting actions differ: `decline` writes a machine-local, evidence-gated ledger entry; `defer` persists nothing of its own, but the review snapshot a completed review writes still snoozes it until the class rises materially or the tally's counting changes, the same trigger rule that governs every other candidate; it still appears in `list` and in the next review.
 
 `redirect` means the engineer overrides the form choice (e.g. "make it a prose rule even though you recommended a skill"). Honor the override and run that form's action handling. Axis-2 guardrails win over a redirect, though: a redirect cannot force a prose rule for an oracle class, and a redirect toward an enforcement-edit cannot manufacture one where no existing check or quality-gate step exists.
 
@@ -236,11 +275,11 @@ The `marker.test.ts` guard asserts every doc copy reproduces `markerComment(...)
 
 ## Unclassified recurrence signal (seed-a-class-or-investigate)
 
-Runs once in `review` mode, after the last candidate is dispositioned (or immediately, skipping straight here, when `candidate_count` was `0`). This section sits outside the per-candidate approve/decline/defer/redirect loop above.
+Runs once in `review` mode, after the last candidate is dispositioned (or immediately, skipping straight here, when `candidate_count` was `0`). This section sits outside the approve/decline/defer/redirect dispositions above.
 
 When `unclassified` is `null`, skip this section silently and proceed to `## Record the review (end of run)`.
 
-When `unclassified` is non-null, present it to the engineer as a distinct signal, separate from any candidate: the closed finding_class vocabulary may be missing something, or the cluster warrants investigation on its own. Show its `distinct_pr_count`, `pr_numbers`, and `severity_max`. State explicitly:
+When `unclassified` is non-null, present it to the engineer as a distinct signal, separate from any candidate: the closed finding_class vocabulary may be missing something, or the cluster warrants investigation on its own. Render it the way `### Explain each item in plain language` above renders an item; when there were candidates, the plan table already carried it as its final row, so refer back to that row rather than repeating it. State explicitly:
 
 - It is NEVER placed in the draftable candidate set. `/gaia-harden` NEVER drafts a path-scoped rule, a deterministic-check sketch, a skill scaffold, or any other artifact for it.
 - It carries no approve / decline / defer / redirect action; there is nothing to ask the engineer to disposition here.
@@ -253,7 +292,7 @@ Then proceed to `## Record the review (end of run)`.
 
 ## Record the review (end of run)
 
-Runs once, in `review` mode only, after the last candidate is dispositioned and `## Unclassified recurrence signal (seed-a-class-or-investigate)` has run. An abandoned run, one where a candidate was left without an answer, never reaches this section and writes nothing. `list`, `why`, and a `gh_ok` false fetch never reach it either.
+Runs once, in `review` mode only, after the last candidate is dispositioned and `## Unclassified recurrence signal (seed-a-class-or-investigate)` has run. An abandoned run, one where a candidate was left without an answer or the human chose **Stop without changes**, never reaches this section and writes nothing. `list`, `why`, and a `gh_ok` false fetch never reach it either.
 
 Record the snapshot from this run's own start-of-run tally (the file `## Fetch the live candidate list` saved), then, only on exit `0`, clear the cached nudge so the next statusline render stops showing it (model on `.claude/skills/gaia/references/audit.md`'s cache-bust, main-root-resolved, jq with an `rm -f` fallback). Run both as one Bash call: shell variables do not persist across separate calls.
 
@@ -280,7 +319,7 @@ On a non-zero `record_status`, the snapshot did NOT record: report that the revi
 
 Runs once, in `review` mode only, after `## Record the review (end of run)`. `list` and `why` never reach it (they author nothing). It exists so an engineer who approved at least one change does not then have to ask for a branch and PR by hand.
 
-**Precondition.** During the per-candidate loop, track whether any candidate was approved through a handler that writes to the working tree: **new prose rule**, **edit existing prose rule**, or **enforcement edit**. The scaffold-only handlers (deterministic-check sketch, skill scaffold) write no file and never count, and decline / defer produce no change. If no approval produced a working-tree change, there is nothing to publish: say so briefly and stop. (Run ends here; see `## Cost record (run end)`.)
+**Precondition.** While applying the dispositions, track whether any candidate was approved through a handler that writes to the working tree: **new prose rule**, **edit existing prose rule**, or **enforcement edit**. The scaffold-only handlers (deterministic-check sketch, skill scaffold) write no file and never count, and decline / defer produce no change. If no approval produced a working-tree change, there is nothing to publish: say so briefly and stop. (Run ends here; see `## Cost record (run end)`.)
 
 **Also track an `all-approved` flag:** true when **every candidate this run was approved** (approve or redirect; a single decline or defer breaks it). It does not affect whether to publish, it gates only the merge prompt below.
 
@@ -339,11 +378,11 @@ If any `git` or `gh` command above exits non-zero, print the error and STOP. Do 
 
 ## list subcommand
 
-Run `harden-tally`, then for each candidate print one line: `finding_class`, distinct-PR count, the PRs, and the recommended form (from judge-the-form, edit-vs-new + which-form). When `unclassified` is non-null, also print it as a distinct line, clearly not a candidate: its `distinct_pr_count`, `pr_numbers`, and `severity_max`, noting it awaits a seeded class or investigation. Author nothing and prompt for nothing. (Run ends here; see `## Cost record (run end)`.)
+Run `harden-tally`, judge every candidate, and print the same summary table and per-row detail `### Present the plan, then ask once` prints, rendered per `### Explain each item in plain language`, including the unclassified row when `unclassified` is non-null, noting it awaits a seeded class or investigation. Author nothing and prompt for nothing. (Run ends here; see `## Cost record (run end)`.)
 
 ## why subcommand
 
-Run `harden-tally`, find the candidate whose `finding_class` matches the argument. Explain it: what the finding is, the distinct PRs it recurred on (`pr_numbers`), its max severity, the recommended form, and the rationale (including whether an existing artifact should be edited instead). If no candidate matches, say so and list the open candidates. `unclassified` is never `why`-addressable: it carries no `finding_class`, so treat a `why` argument of `unclassified` (or similar) the same as no match, say so, and point at `list` to see it. Author nothing and prompt for nothing. (Run ends here; see `## Cost record (run end)`.)
+Run `harden-tally`, find the candidate whose `finding_class` matches the argument. Explain it with the rendering `### Explain each item in plain language` defines, then add the fuller rationale (including whether an existing artifact should be edited instead). If no candidate matches, say so and list the open candidates. `unclassified` is never `why`-addressable: it carries no `finding_class`, so treat a `why` argument of `unclassified` (or similar) the same as no match, say so, and point at `list` to see it. Author nothing and prompt for nothing. (Run ends here; see `## Cost record (run end)`.)
 
 ## Cost record (run end)
 
@@ -351,6 +390,7 @@ Every path that ends a `/gaia-harden` run appends exactly one cost record, the r
 
 - `list` and `why` printing their result.
 - The `gh_ok: false` and zero-candidate stops from the live candidate fetch.
+- **Stop without changes** at the plan question.
 - Publish's no-change stop (no approval touched the working tree, or `git status --porcelain` came back empty).
 - Publish's unsafe-repo-state stop.
 - Publish's merge outcomes: `MERGED`, still queued, "Leave open", `all-approved` false, or any other-branch no-op.
@@ -361,9 +401,11 @@ Apply the shared tally machinery in `.claude/skills/gaia/references/cost-record.
 ## Guardrails
 
 - `/gaia-harden` is the only writer in this loop, and only under explicit human invocation. The background refresher and the audit emit never author.
-- Never `git add`, `git commit`, or `git push` during the per-candidate flow. The single end-of-run publish step is the only writer to git, and only on a main-branch run with at least one approved working-tree change: it branches, commits, pushes, and opens a PR. It merges only when every candidate this run was approved and the human answers the merge prompt (never automatically); on a selective run it leaves the PR open. On a non-default branch it does nothing (the changes ride that branch's PR).
+- Never `git add`, `git commit`, or `git push` while dispositions are collected and applied. The single end-of-run publish step is the only writer to git, and only on a main-branch run with at least one approved working-tree change: it branches, commits, pushes, and opens a PR. It merges only when every candidate this run was approved and the human answers the merge prompt (never automatically); on a selective run it leaves the PR open. On a non-default branch it does nothing (the changes ride that branch's PR).
 - Never auto-activate a skill or a deterministic check. v1 owns only prose-rule create/edit end to end; the other two forms are scaffold-only.
 - Every drafted prose rule is mandatorily path-scoped (`paths:` frontmatter), and carries the verbatim provenance marker.
+- No disposition without an explicit human answer. Accepting the whole plan is one answer and covers every row it accepts; per-row questions are asked only for rows the human chose to change.
+- Every item is explained in plain language (what goes wrong, a concrete example or "no recorded example", a share-based frequency, what the action does, why) before any taxonomy.
 - A decline is machine-local only (gitignored ledger); it never vetoes the candidate for a teammate.
 - A defer persists nothing of its own; the review snapshot snoozes it on the same trigger rule as any other candidate.
 - Recommend exactly one form per candidate, with rationale; check edit-vs-new first; bias to the lowest-context-weight form. Never reflexively author a prose rule.

@@ -76,7 +76,7 @@ State the default posture explicitly before offering them: dismiss or keep is th
 
 ### Promote
 
-One human answer per residual, never batched, collected through an explicit user-question step, the same way `/gaia-harden` gates each candidate. It calls the existing recipe in `.claude/skills/file-tech-debt/SKILL.md` rather than reimplementing filing, and hands it:
+One human answer per residual, never batched, collected through an explicit user-question step. It calls the existing recipe in `.claude/skills/file-tech-debt/SKILL.md` rather than reimplementing filing, and hands it:
 
 - **The finding class is the residual's own.** Pass the `class` carried in the candidate's `raw_key` verbatim as the recipe's `<finding_class>`, so the filed issue's dedup key is byte-identical to the residual's own key. Never mint a fresh class.
 - **`footprint:<class>`** comes from the recipe's own step 6 rubric, applied to the cited line the command has already read. It is a reach grade (`narrow`, `wide`, or `spec`), never the finding class above.
