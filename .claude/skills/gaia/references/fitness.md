@@ -282,7 +282,7 @@ Reached only on **Publish** from Step 7. It does for fitness's heal diff what `/
 bash .gaia/scripts/resolve-audit-spawn.sh
 ```
 
-Empty output confirms the bypass applies and no marker is owed. If it names any member, this run's heal diff reached an audited surface: spawn each member it names and complete the marker handshake in `wiki/concepts/PR Merge Workflow.md` like any in-scope PR. Once every marker is in hand and every finding is fixed or recorded under `## Accepted residuals (recorded, not fixed)` in the PR body, post the `GAIA-Audit` success status yourself, `bash .claude/hooks/post-audit-status.sh <path to a current member marker>` (that page's step 3), before `gh pr merge`; nothing else posts it in local mode.
+Empty output confirms the bypass applies and no marker is owed. If it names any member, this run's heal diff reached an audited surface: spawn each member it names and complete the marker handshake in `wiki/concepts/PR Merge Workflow.md` like any in-scope PR; once that page's `#### Posting the status last` conditions hold, post the status yourself, `bash .claude/hooks/post-audit-status.sh <path to a current member marker>`, before `gh pr merge`.
 
 Run the Quality Gate (`.claude/rules/quality-gate.md`) first **only** if the applied diff touched a gate-affecting file (`.ts|tsx|js|jsx|mjs|cjs|css` or gate config); a config/docs-only heal has nothing for it to check.
 

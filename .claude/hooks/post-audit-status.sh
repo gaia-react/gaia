@@ -362,8 +362,13 @@ fi
 # stranded on a sha no reader checks, so a required GAIA-Audit check waits
 # forever. This only bites when a stamp commit was made and still needs
 # pushing (detached HEAD, or an amend-path stamp not yet pushed); an
-# attached HEAD equal to its upstream makes no stamp commit, so local HEAD
-# already equals head_sha and this guard passes through. A local branch
+# attached HEAD equal to its upstream, as of the last fetch, makes no stamp
+# commit, so local HEAD already equals head_sha and this guard passes
+# through. That "equal" reading is audit-stamp-trailer.sh's own local
+# remote-tracking comparison, made with no network call of its own, so it is
+# only as current as the last fetch; this guard is the backstop for a
+# tracking ref that call left stale, since head_sha here is the live PR head
+# read fresh from `gh`. A local branch
 # BEHIND its upstream is a different case: audit-stamp-trailer.sh declines
 # it at the stamp step rather than treating it as already pushed, because
 # there is no push that would resolve it there, the fix is a pull. When no

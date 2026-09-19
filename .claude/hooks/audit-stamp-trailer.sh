@@ -411,22 +411,25 @@ self_healed="${AUDIT_SELF_HEALED:-false}"
 
 # Head-state detection. Four states, tracked separately because a detached
 # HEAD, an already-pushed attached HEAD, and a behind attached HEAD all count
-# as "cannot amend" but take different placements:
+# as "cannot amend" but take different placements. This script makes no
+# network call, so attached-pushed and behind are judged against `@{u}`, the
+# local remote-tracking ref, which is only as current as the last fetch; a
+# remote move since then is invisible here.
 #   detached (CI checkout of pull_request.head.sha; rebase/cherry-pick in
 #     flight; explicit `git checkout <sha>`): the stamp must never amend a
 #     commit the runner cannot guarantee is local, and CI's workflow contract
 #     expects an empty marker commit here (see the empty-commit block below),
 #     so this state keeps that placement.
 #   attached-pushed (a branch with an upstream, an empty `@{u}..HEAD`, AND
-#     HEAD == @{u}): HEAD is already on the remote, so the audit needs no
-#     commit at all; the orchestrator later posts the GAIA-Audit
-#     status directly on it.
+#     HEAD == @{u}, as of the last fetch): HEAD is already on the remote by
+#     that reading, so the audit needs no commit at all; the orchestrator
+#     later posts the GAIA-Audit status directly on it.
 #   behind (a branch with an upstream and an empty `@{u}..HEAD`, but
-#     HEAD != @{u}): `@{u}..HEAD` is also empty when HEAD is a strict
-#     ancestor of its upstream, not only when the two are equal, so this
-#     state needs its own equality check to tell them apart. The local
-#     branch has nothing to push and no stamp can land on the sha the
-#     remote actually holds, so this declines rather than reusing
+#     HEAD != @{u}, as of the last fetch): `@{u}..HEAD` is also empty when
+#     HEAD is a strict ancestor of its upstream, not only when the two are
+#     equal, so this state needs its own equality check to tell them apart.
+#     The local branch has nothing to push and no stamp can land on the sha
+#     the remote actually holds, so this declines rather than reusing
 #     attached-pushed's status-only placement; the operator's fix is a
 #     pull, not a push.
 #   un-pushed (no upstream, or ahead of upstream): safe to amend.
