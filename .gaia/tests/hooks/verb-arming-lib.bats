@@ -204,6 +204,259 @@ opener_pair() {
 }
 
 # ---------------------------------------------------------------------------
+# Dead openers: an opener the parsing shell never runs arms nothing. Each
+# fixture's twin is the same text with the opener made live, which arms.
+# ---------------------------------------------------------------------------
+
+@test "an opener inside single quotes arms nothing, and its double-quoted twin arms" {
+  local bt='`'
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "gh pr comment 5 --body 'see ${bt}gh pr merge 30 --squash${bt}'"
+  assert_not_armed || return 1
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "gh pr comment 5 --body \"see ${bt}gh pr merge 30 --squash${bt}\""
+  assert_armed || return 1
+  assert_kind sep || return 1
+
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "echo 'x \$(gh pr merge 12)'"
+  assert_not_armed || return 1
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "echo \"x \$(gh pr merge 12)\""
+  assert_armed || return 1
+
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "echo 'x <(gh pr merge 12)'"
+  assert_not_armed || return 1
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "echo x <(gh pr merge 12)"
+  assert_armed
+}
+
+@test "an apostrophe inside double quotes opens no span, so the opener after it arms" {
+  local bt='`'
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "echo \"it's ${bt}gh pr merge 12${bt}\""
+  assert_armed || return 1
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "echo 'it is ${bt}gh pr merge 12${bt}'"
+  assert_not_armed
+}
+
+@test "single quotes inside a substitution inside double quotes are real quotes again" {
+  local bt='`'
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "echo \"\$(printf '%s' '${bt}gh pr merge 12${bt}')\""
+  assert_not_armed || return 1
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "echo \"\$(printf '%s' ${bt}gh pr merge 12${bt})\""
+  assert_armed
+}
+
+@test "a backslash-escaped opener arms nothing, and its unescaped twin arms" {
+  local bt='`'
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "echo \\${bt}gh pr merge 12\\${bt}"
+  assert_not_armed || return 1
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "echo ${bt}gh pr merge 12${bt}"
+  assert_armed || return 1
+
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "echo \"\\\$(gh pr merge 12)\""
+  assert_not_armed || return 1
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "echo \"\$(gh pr merge 12)\""
+  assert_armed
+}
+
+@test "a quoted-delimiter heredoc read by cat inside a substitution arms nothing, for each body-carrying command" {
+  local bt='`' body cmd
+  body="See ${bt}gh pr merge 30 --squash${bt} for the merge.${NL}And a \$(gh pr merge 31) too.${NL}EOF${NL})\""
+  for cmd in 'gh pr create --title t --body' 'gh issue create --title t --body' 'git commit -m'; do
+    arm "$MERGE_FRAG" "$MERGE_WORDS" "$cmd \"\$(cat <<'EOF'${NL}${body}"
+    assert_not_armed || return 1
+    arm "$MERGE_FRAG" "$MERGE_WORDS" "$cmd \"\$(cat <<\"EOF\"${NL}${body}"
+    assert_not_armed || return 1
+    arm "$MERGE_FRAG" "$MERGE_WORDS" "$cmd \"\$(cat <<\\EOF${NL}${body}"
+    assert_not_armed || return 1
+    # The unquoted-delimiter twin runs the substitutions in its body.
+    arm "$MERGE_FRAG" "$MERGE_WORDS" "$cmd \"\$(cat <<EOF${NL}${body}"
+    assert_armed || return 1
+  done
+  true
+}
+
+@test "a quoted-delimiter heredoc read by anything but a bare cat or tee keeps its openers live" {
+  local bt='`' body
+  body="${bt}gh pr merge 30${bt}${NL}EOF${NL})\""
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "x=\"\$(cat <<'EOF'${NL}${body}"
+  assert_not_armed || return 1
+  # An interpreter reads the body as a script.
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "x=\"\$(bash <<'EOF'${NL}${body}"
+  assert_armed || return 1
+  # cat's output piped into an interpreter on the opener line.
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "x=\"\$(cat <<'EOF' | sh${NL}${body}"
+  assert_armed || return 1
+  # A process substitution hands the body to whatever reads it as a file.
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "bash <(cat <<'EOF'${NL}${bt}gh pr merge 30${bt}${NL}EOF${NL})"
+  assert_armed || return 1
+  # Two heredocs on one line are not modelled.
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "x=\"\$(cat <<'EOF' <<'EOG'${NL}a${NL}EOF${NL}${bt}gh pr merge 30${bt}${NL}EOG${NL})\""
+  assert_armed
+}
+
+@test "a dead opener ahead of a live one still arms on the live one" {
+  local bt='`'
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "echo '${bt}gh pr merge 1${bt}'; x=${bt}gh pr merge 2${bt}"
+  assert_armed || return 1
+  assert_kind sep || return 1
+  match_of "$MERGE_FRAG" "$MERGE_WORDS" "echo '\$(gh pr merge 1)'; x=\"\$(gh pr merge 2 --squash)\""
+  grep -qF 'kind=sep' <<<"$output" || return 1
+  grep -qF 'count=3' <<<"$output" || return 1
+  grep -qF 'm[1]=[$(]' <<<"$output" || return 1
+  grep -qF 'm[2]=[ ]' <<<"$output" || return 1
+  true
+}
+
+@test "a text the liveness scan cannot model keeps every opener live" {
+  local bt='`'
+  # Unterminated single quote.
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "echo 'x ${bt}gh pr merge 12${bt}"
+  assert_armed || return 1
+  # A case arm's bare `)` inside a substitution.
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "x=\$(case a in a) echo '${bt}gh pr merge 12${bt}';; esac)"
+  assert_armed || return 1
+  # A dollar-quoted word.
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "echo \$'a' '${bt}gh pr merge 12${bt}'"
+  assert_armed || return 1
+  # The terminated, case-free, plainly quoted twin is modelled.
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "echo 'x ${bt}gh pr merge 12${bt}'"
+  assert_not_armed
+}
+
+@test "inside backticks a backslash-escaped opener is live, and the same escape at top level is not" {
+  local bt='`'
+  # The shell strips the backslash from \$ inside backticks before parsing the
+  # inner command, so each of these runs the merge.
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "x=${bt}echo \\\$(gh pr merge 1)${bt}"
+  assert_armed || return 1
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "x=${bt}echo \"\\\$(gh pr merge 1)\"${bt}"
+  assert_armed || return 1
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "echo \"${bt}echo \\\$(gh pr merge 1)${bt}\""
+  assert_armed || return 1
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "echo \\\$(gh pr merge 1)"
+  assert_not_armed
+}
+
+@test "under backticks a backtick inside quotes ends the substitution for bash, so the scan stops" {
+  local bt='`'
+  # bash closes the outer backquote at the quoted backtick, leaving the
+  # substitution after it live.
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "echo ${bt}echo 'a${bt} \$(gh pr merge 1) ${bt}'${bt}"
+  assert_armed || return 1
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "echo ${bt}echo \"a${bt} \$(gh pr merge 1) ${bt}\"${bt}"
+  assert_armed || return 1
+  # The same quoted text outside backticks is one quoted span.
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "echo 'a${bt} \$(gh pr merge 1) ${bt}'"
+  assert_not_armed
+}
+
+@test "an ampersand or pipe completing a redirection does not start a new command for the heredoc owner" {
+  local body="echo \$(gh pr merge 1)${NL}EOF"
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "bash -s >& cat <<'EOF'${NL}${body}"
+  assert_armed || return 1
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "x=\$(bash -s >&cat <<'EOF'${NL}${body}${NL})"
+  assert_armed || return 1
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "x=\$(sh >| cat <<'EOF'${NL}${body}${NL})"
+  assert_armed || return 1
+  # A bare cat owning the same body is still data.
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "x=\$(cat <<'EOF'${NL}${body}${NL})"
+  assert_not_armed
+}
+
+@test "a body inside a substitution stays live when bash 3.2's paren matcher would close the substitution in it" {
+  local bt='`'
+  # bash 3.2 ends the substitution at the body's first unmatched `)`.
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "echo \"\$(cat <<'EOF'${NL})\$(gh pr merge 1)${NL}EOF${NL})\""
+  assert_armed || return 1
+  # Its matcher honours quotes, so a quoted paren does not balance one.
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "echo \"\$(cat <<'EOF'${NL}a '(' b ) \$(gh pr merge 1)${NL}EOF${NL})\""
+  assert_armed || return 1
+  # Balanced parentheses and a backticked citation stay data.
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "echo \"\$(cat <<'EOF'${NL}See (below) ${bt}gh pr merge 1${bt}.${NL}EOF${NL})\""
+  assert_not_armed || return 1
+  # An apostrophe nothing later can close is a 3.2 syntax error, so nothing
+  # runs, and the body stays data.
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "gh pr create --body \"\$(cat <<'EOF'${NL}It's ${bt}gh pr merge 1${bt}.${NL}EOF${NL})\""
+  assert_not_armed || return 1
+  # A dollar-quoted span honours backslash escapes, so its escaped apostrophe
+  # does not end it and the paren after it closes the substitution.
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "echo \"A\$(cat <<'EOF'${NL}\$'\\'x' ) \$(gh pr merge 1) '${NL}EOF${NL})B\""
+  assert_armed || return 1
+  # Without the dollar, or with it escaped, the same span is plain quoting.
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "echo \"A\$(cat <<'EOF'${NL}'\\'x' ) \$(gh pr merge 1) '${NL}EOF${NL})B\""
+  assert_not_armed || return 1
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "echo \"A\$(cat <<'EOF'${NL}\\\$'\\'x' ) \$(gh pr merge 1) '${NL}EOF${NL})B\""
+  assert_not_armed || return 1
+  # The same apostrophe with a later one to pair with is not.
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "x=\"\$(cat <<'EOF'${NL}It's ${bt}gh pr merge 1${bt}.${NL}EOF${NL})\"; echo 'y'"
+  assert_armed
+}
+
+@test "bash 3.2's matcher starts at the substitution's opener, so a paren before the body can close it first" {
+  local tail="cat <<'B'${NL}\$(gh pr merge 1)${NL}B${NL})\""
+  # An unmatched paren in an earlier, live heredoc body.
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "echo \"\$(tr a b <<'A'${NL})${NL}A${NL}${tail}"
+  assert_armed || return 1
+  # One in a comment, which the matcher reads as text.
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "echo \"\$(# a )${NL}${tail}"
+  assert_armed || return 1
+  # One in a delimiter line, unquoted to the matcher.
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "echo \"\$(cat <<'E)'${NL}x${NL}E)${NL}${tail}"
+  assert_armed || return 1
+  # Nothing ahead of the body in the substitution: still data.
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "echo \"\$(${tail}"
+  assert_not_armed
+}
+
+@test "a hash after a subshell's closing parenthesis opens a comment the scan honours" {
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "(true)#it's${NL}x=\$(gh pr merge 1) # it's"
+  assert_armed || return 1
+  # After a substitution's closing parenthesis the hash continues the word.
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "echo \$(true)#x '\$(gh pr merge 1)'"
+  assert_not_armed
+}
+
+@test "a heredoc operator inside parentheses is not modelled, so its openers stay live" {
+  local bt='`'
+  # Arithmetic reads 1<<EOF as a shift, not a heredoc.
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "(( y = 1<<EOF ))${NL}echo 'a${NL}EOF${NL}' ; z=\$(gh pr merge 1) # '"
+  assert_armed || return 1
+  # A subshell's output can feed an interpreter.
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "(cat <<'EOF'${NL}${bt}gh pr merge 1${bt}${NL}EOF${NL}) | bash"
+  assert_armed || return 1
+  # The same body directly in a command substitution is still modelled.
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "x=\"\$(cat <<'EOF'${NL}${bt}gh pr merge 1${bt}${NL}EOF${NL})\""
+  assert_not_armed
+}
+
+@test "an apostrophe in a comment opens no span that could hide a later live opener" {
+  local bt='`'
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "# don't${NL}echo ${bt}gh pr merge 12${bt}"
+  assert_armed || return 1
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "echo don't ${bt}gh pr merge 12${bt}'"
+  assert_not_armed
+}
+
+@test "the tail-capturing fragment recovers its real tail by length when a dead opener sits in it" {
+  # The consumer's own recovery: slice the text by the suffix and tail lengths
+  # the view's match reports. The view masks the dead opener, so the captured
+  # group differs from the real bytes and only the slice returns them.
+  run bash -c '
+    . "$1" || exit 9
+    cmd=$2
+    gaia_verb_armed "$3" "gh pr create" "$cmd" || { echo not-armed; exit 0; }
+    t="${GAIA_VERB_ARM_MATCH[3]-}"
+    s="${GAIA_VERB_ARM_MATCH[4]-}"
+    start=$(( ${#cmd} - ${#s} - ${#t} ))
+    printf "kind=%s\n" "$GAIA_VERB_ARM_KIND"
+    printf "captured=[%s]\n" "$t"
+    printf "real=[%s]\n" "${cmd:start:${#t}}"
+  ' _ "$LIB" "x=\"\$(gh pr create --title 'x \$(y)' --fill)\"" "$CREATE_TAIL_FRAG"
+  grep -qF 'kind=sep' <<<"$output" || return 1
+  grep -qF "real=[--title 'x \$(y)' --fill)\"]" <<<"$output" || return 1
+  grep -qF "captured=[--title 'x \$(y)' --fill)\"]" <<<"$output" && return 1
+  true
+}
+
+# ---------------------------------------------------------------------------
 # The data proof
 # ---------------------------------------------------------------------------
 

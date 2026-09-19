@@ -271,11 +271,11 @@ if gaia_verb_armed "$verb_frag" 'gh pr create' "$cmd_joined"; then
     # real ones out of `cmd_joined` by offset: the view is the same CHARACTER
     # length as the text it was built from, `(.*)$` runs every match to the end
     # of the string, and that puts the tail's own end exactly one suffix-length
-    # short of it. A matched tail can never overlap a masked span in the first
-    # place, since a masked span is a heredoc body beginning after a newline and
-    # this tail group cannot cross one, but slicing the original is what makes
-    # that a property rather than a premise. `boundary` needs no such care: it
-    # is one character from a fixed set, and a mask byte is not in that set.
+    # short of it. A masked heredoc body begins after a newline this tail group
+    # cannot cross, but a dead substitution opener quoted inside the tail is
+    # masked where it stands, so the captured group really can differ from the
+    # command. `boundary` needs no such care: it is one character from a fixed
+    # set, and a mask byte is not in that set.
     tail_len=${#tail_group}
     tail_start=$(( ${#cmd_joined} - ${#suffix_group} - tail_len ))
     cmd_tail="${cmd_joined:tail_start:tail_len}"
