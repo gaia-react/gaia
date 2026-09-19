@@ -124,6 +124,8 @@ BRANCH="$(bash .gaia/scripts/branch-name-lib.sh name chore gaia-fitness)"
 git -C "$PROJECT_ROOT" checkout -b "$BRANCH"
 ```
 
+Remember `BRANCH`, the way Step 2 remembers `CURRENT_BRANCH`: Steps 7 and 8 need the minted name in later Bash calls and in a question put to the human, and the shell variable set here is gone by then. Carry the value itself as `<BRANCH>`.
+
 Apply fixes on this new branch. Never commit.
 
 **If ≥1 fixable finding AND `ON_DEFAULT_BRANCH` is false:**
@@ -319,7 +321,7 @@ Heal already cut and switched to `<BRANCH>` (the `$BRANCH` from Step 4), so the 
      git -C "$PROJECT_ROOT" fetch --prune origin
      bash .gaia/scripts/token-tally.sh --action command --command gaia-fitness \
        --github-type pr --github-number <N> --github-repo '<owner>/<name>' \
-       --branch-name '<branch>'
+       --branch-name '<BRANCH>'
      ```
 
      Relay the tally's `Cost:` line as the last line of the reply, after the merged PR URL.

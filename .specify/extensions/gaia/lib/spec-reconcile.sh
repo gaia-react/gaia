@@ -107,6 +107,12 @@ prs_json="$(gh pr list --state merged --limit 200 \
   --json number,headRefName,mergedAt 2>/dev/null || true)"
 [ -n "$prs_json" ] || exit 0
 
+# Projected once, outside the candidate loop: the list is the same for every
+# candidate, and re-parsing 200 pull requests per `ready` row is the whole of
+# what made this scan cost seconds.
+prs_rows="$(printf '%s' "$prs_json" \
+  | jq -r '.[] | "\(.mergedAt)\t\(.number)\t\(.headRefName)"' 2>/dev/null || true)"
+
 while IFS= read -r spec_id; do
   [ -n "$spec_id" ] || continue
   n="$(printf '%s' "$spec_id" | sed -nE 's|^SPEC-0*([0-9]+)$|\1|p')"
@@ -116,10 +122,18 @@ while IFS= read -r spec_id; do
   # library the allocator uses, so every spelling GAIA mints (the worktree one
   # included) matches. Latest merge wins, so merged_at reflects when the work
   # fully landed; ISO-8601 timestamps sort chronologically as strings.
-  match="$(printf '%s' "$prs_json" \
-    | jq -r '.[] | "\(.mergedAt)\t\(.number)\t\(.headRefName)"' 2>/dev/null \
+  # The test is a builtin prefilter so a head branch that cannot name a SPEC
+  # skips the subshells of the library; almost none of a repository's merged
+  # pull requests are plan branches. The sibling call sites in spec-allocator.sh
+  # and spec-renumber.sh guard the same loop the same way.
+  # `%s\n`, not `%s`: the command substitution above stripped jq's trailing
+  # newline, and `read` drops a final line that has none, which would silently
+  # lose the newest merge.
+  match="$(printf '%s\n' "$prs_rows" \
     | while IFS='	' read -r at num head; do
-      [ "$(gaia_branch_spec_number "$head")" = "$n" ] && printf '%s\t%s\n' "$at" "$num"
+      if [[ "$head" == *spec-* ]]; then
+        [ "$(gaia_branch_spec_number "$head")" = "$n" ] && printf '%s\t%s\n' "$at" "$num"
+      fi
     done | LC_ALL=C sort | tail -n 1 || true)"
   [ -n "$match" ] || continue
 

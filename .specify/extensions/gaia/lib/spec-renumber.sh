@@ -58,6 +58,23 @@ if ! git -C "$repo_root" rev-parse --git-dir >/dev/null 2>&1; then
   exit 3
 fi
 
+# The branch source of the known-id scan below reads gaia_branch_list, which
+# returns 0 whatever the ref read does, so an unreadable ref store would report
+# no branch holding the target number and the rename would land on a burned id.
+# Probing here rather than leaning on the allocator is what makes that fail
+# closed: the scan is guarded by `bash "$allocator" highest`, so an allocator
+# that refuses would skip the whole check instead of stopping the renumber.
+# Read the whole set rather than the first ref: a packed-refs file is parsed as
+# a unit, so a short read can succeed over a file a full read rejects. Which of
+# a corrupt packed-refs, an unreadable ref file, or a permission denial caused
+# it is not distinguishable here.
+for _ns in refs/heads refs/remotes; do
+  if ! git -C "$repo_root" for-each-ref --format=x "$_ns" >/dev/null 2>&1; then
+    echo "spec-renumber: $repo_root $_ns cannot be read (corrupt, unreadable, or permission-denied), so SPEC numbers held only on a branch cannot be read; refuse to renumber (would risk duplicate SPEC ids)" >&2
+    exit 4
+  fi
+done
+
 # repo_root names the tree this renumber runs in; the ledger and folder it
 # rewrites are main's, because the state registry declares specs/ main-only.
 # Resolve rather than trust: using repo_root directly could rename a folder

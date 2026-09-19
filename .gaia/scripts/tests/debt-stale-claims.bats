@@ -199,6 +199,25 @@ verdict() {
   grep -qF 'branch library' <<<"$stderr"
 }
 
+@test "fail-closed: a ref store that cannot be read prints nothing and exits 3" {
+  local repo="$D/badrefs"
+  git init -q --initial-branch=main "$repo"
+  git -C "$repo" -c user.email=t@example.com -c user.name=T commit -q --allow-empty -m init
+  # This branch is issue 11's only liveness signal, so a swallowed ref read
+  # reports 11 as stale and the caller strips a live claim. Packing the refs
+  # and then corrupting the file is what separates the two reads: `rev-parse
+  # --git-dir` keeps succeeding while every ref read fails.
+  git -C "$repo" branch "debt/11-x"
+  git -C "$repo" pack-refs --all
+  printf 'this is not a ref line\n' >>"$repo/.git/packed-refs"
+  claims 11
+  run --separate-stderr bash "$SCRIPT" --dir "$repo" --claims-json "$D/claims.json" \
+    --prs-json "$D/prs.json" --now "$NOW"
+  [ "$status" -eq 3 ]
+  [ -z "$output" ]
+  grep -qF 'refs cannot be read' <<<"$stderr"
+}
+
 @test "usage: an unknown flag or a non-numeric window exits 2" {
   run --separate-stderr bash "$SCRIPT" --bogus
   [ "$status" -eq 2 ]

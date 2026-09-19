@@ -27,9 +27,9 @@
 #
 # FAIL-CLOSED on every input: stripping a live claim hands one issue to two
 # sessions, while leaving a stale claim costs one reconcile cycle. So if the
-# claims query, the pull-request query, the branch library, jq, or the clock
-# cannot be read, this prints nothing on stdout, names what failed on stderr,
-# and exits 3. The caller strips nothing on a non-zero exit.
+# claims query, the pull-request query, the ref store, the branch library, jq,
+# or the clock cannot be read, this prints nothing on stdout, names what failed
+# on stderr, and exits 3. The caller strips nothing on a non-zero exit.
 #
 # Usage:
 #   bash .gaia/scripts/debt-stale-claims.sh [--dir <repo>] [--grace <seconds>]
@@ -117,6 +117,18 @@ if [ -n "$branches_file" ]; then
 else
   git -C "$dir" rev-parse --git-dir >/dev/null 2>&1 \
     || die_input "$dir is not a git repository, so no branch can be read"
+  # gaia_branch_list returns 0 whatever the ref read does, so a ref store that
+  # cannot be read reaches here as an empty branch list, which is the same
+  # value a repository with no branches produces and reads as "every claim is
+  # stale". Probe both namespaces here, where the contract is fail-closed, and
+  # read the whole set rather than the first ref: a packed-refs file is parsed
+  # as a unit, so a short read can succeed over a file a full read rejects.
+  # Which of a corrupt packed-refs, an unreadable ref file, or a permission
+  # denial produced the failure is not distinguishable at this point.
+  git -C "$dir" for-each-ref --format=x refs/heads >/dev/null 2>&1 \
+    || die_input "$dir local refs cannot be read (corrupt, unreadable, or permission-denied), so no branch can keep a claim alive"
+  git -C "$dir" for-each-ref --format=x refs/remotes >/dev/null 2>&1 \
+    || die_input "$dir remote-tracking refs cannot be read (corrupt, unreadable, or permission-denied), so no branch can keep a claim alive"
   branches="$(gaia_branch_list "$dir")"
 fi
 

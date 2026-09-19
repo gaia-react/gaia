@@ -121,6 +121,22 @@ require_git() {
     echo "spec-allocator: $repo_root is not a git repository; refuse to allocate (would risk duplicate SPEC ids)" >&2
     exit 3
   fi
+  # A branch is one of the three sources of a burned SPEC number, and
+  # gaia_branch_list returns 0 whatever the ref read does, so an unreadable ref
+  # store would contribute zero burned numbers and `next` would mint one a
+  # branch already holds. That is the same duplicate-id hazard the missing
+  # library refuses on above, so it takes the same exit. Read the whole set
+  # rather than the first ref: a packed-refs file is parsed as a unit, so a
+  # short read can succeed over a file a full read rejects. Which of a corrupt
+  # packed-refs, an unreadable ref file, or a permission denial produced the
+  # failure is not distinguishable here.
+  local ns
+  for ns in refs/heads refs/remotes; do
+    if ! git -C "$repo_root" for-each-ref --format=x "$ns" >/dev/null 2>&1; then
+      echo "spec-allocator: $repo_root $ns cannot be read (corrupt, unreadable, or permission-denied), so SPEC numbers held only on a branch cannot be read; refuse to allocate (would risk duplicate SPEC ids)" >&2
+      exit 4
+    fi
+  done
 }
 
 # repo_root names the tree this allocation runs in; the ledger it feeds is

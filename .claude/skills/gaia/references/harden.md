@@ -359,7 +359,7 @@ Never fold this into the commit call. The main-branch guard reads a whole comman
 **Commit and push, then open the PR, as two calls.** Route the commit message through a file, never `-m`. Subject: `chore(harden): <the approved forms, e.g. "promote use-effect-derived-state rule">`.
 
 ```bash
-git add -A && git commit -F <commit-message-file> && git push -u origin <branch>
+git add -A && git commit -F <commit-message-file> && git push -u origin <HARDEN_BRANCH>
 ```
 
 ```bash
@@ -386,7 +386,7 @@ A fix to a drafted rule is a commit to a file in a member's remit, so it rotates
 
 **Leave open** → report the PR URL and stop.
 
-**Merge, verify, clean up.** Run `gh pr merge <N> --squash --delete-branch --auto` directly, so a merge reached after the watch window closed with checks pending queues behind them rather than being refused by branch policy. Then run the poll loop in `wiki/concepts/PR Merge Workflow.md` (`## Post-merge verification before cleanup`), with a 20-iteration bound in place of its 5, since a full CI run outlasts the default; it also stops early on a base-branch conflict (repair it per that page's `### Conflict found mid-wait` and resume) or a failed required check (print the PR URL and the failing check, and leave the branch in place). On `MERGED`, keep the branch name for the cost record's `--branch-name` (`## Cost record (run end)`), then clean up per the workflow's `## Post-merge verification before cleanup` (`git checkout main && git pull origin main`, `git branch -D <branch>`, `git fetch --prune origin`). If it is still queued when the window closes, print the PR URL, note the merge is queued, and leave the branch in place.
+**Merge, verify, clean up.** Run `gh pr merge <N> --squash --delete-branch --auto` directly, so a merge reached after the watch window closed with checks pending queues behind them rather than being refused by branch policy. Then run the poll loop in `wiki/concepts/PR Merge Workflow.md` (`## Post-merge verification before cleanup`), with a 20-iteration bound in place of its 5, since a full CI run outlasts the default; it also stops early on a base-branch conflict (repair it per that page's `### Conflict found mid-wait` and resume) or a failed required check (print the PR URL and the failing check, and leave the branch in place). On `MERGED`, keep the branch name for the cost record's `--branch-name` (`## Cost record (run end)`), then clean up per the workflow's `## Post-merge verification before cleanup` (`git checkout main && git pull origin main`, `git branch -D <HARDEN_BRANCH>`, `git fetch --prune origin`). If it is still queued when the window closes, print the PR URL, note the merge is queued, and leave the branch in place.
 
 Every stop above ends the run; see `## Cost record (run end)`, which is written once, as the last thing printed.
 
