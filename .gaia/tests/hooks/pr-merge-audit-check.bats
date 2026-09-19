@@ -2608,6 +2608,68 @@ run_merge_hook_lib_absent() {
   assert_denied_by_json
 }
 
+# The shell runs a command substitution wherever it sits, so a merge inside
+# one reaches the gate like any other merge. Each deny is paired with the same
+# text minus the substitution character, which runs no merge and is allowed.
+@test "arming: a merge inside a command substitution reaches the gate" {
+  install_gh_stub
+  commit_files "app/x.ts" "export const x = 1"
+
+  run_merge_hook 'echo "$(gh pr merge 30 --squash)"'
+  assert_denied_by_json || return 1
+  run_merge_hook 'echo "(gh pr merge 30 --squash)"'
+  assert_allowed_by_json || return 1
+  [ -z "$output" ] || return 1
+
+  run_merge_hook 'echo "`gh pr merge 30 --squash`"'
+  assert_denied_by_json || return 1
+  run_merge_hook 'echo `gh pr merge 30 --squash`'
+  assert_denied_by_json || return 1
+  run_merge_hook 'echo x gh pr merge 30 --squash'
+  assert_allowed_by_json || return 1
+  [ -z "$output" ]
+}
+
+@test "arming: a merge inside a process substitution reaches the gate" {
+  install_gh_stub
+  commit_files "app/x.ts" "export const x = 1"
+
+  run_merge_hook 'cat <(gh pr merge 30 --squash)'
+  assert_denied_by_json || return 1
+  run_merge_hook 'tee >(gh pr merge 30 --squash) </dev/null'
+  assert_denied_by_json || return 1
+  # zsh's process substitution: the Bash tool runs the user's own shell.
+  run_merge_hook 'cat =(gh pr merge 30 --squash)'
+  assert_denied_by_json || return 1
+  # bash 5.3's in-shell command substitution.
+  run_merge_hook 'echo "${ gh pr merge 30 --squash; }"'
+  assert_denied_by_json
+}
+
+@test "arming: a substitution naming a home merge inside a foreign command's argument reaches the gate" {
+  install_gh_stub
+  commit_files "app/x.ts" "export const x = 1"
+  git -C "$REPO" remote add origin https://github.com/gaia-react/gaia.git
+
+  run_merge_hook 'gh pr view 5 -R other/x --jq "$(gh pr merge 30 --squash)"'
+  assert_denied_by_json
+}
+
+@test "data-proof: a substitution in an unquoted-delimiter heredoc body still arms" {
+  install_gh_stub
+  commit_files "app/x.ts" "export const x = 1"
+
+  run_merge_hook $'cat > f.txt <<EOF\n$(gh pr merge 30 --squash)\nEOF\n'
+  assert_denied_by_json || return 1
+  # bash 5.3 runs its in-shell command substitution there too.
+  run_merge_hook $'cat > f.txt <<EOF\n${ gh pr merge 30 --squash; }\nEOF\n'
+  assert_denied_by_json || return 1
+  # Quoting the delimiter turns substitution off, so the body is data again.
+  run_merge_hook $'cat > f.txt <<\'EOF\'\n$(gh pr merge 30 --squash)\nEOF\n'
+  assert_allowed_by_json || return 1
+  [ -z "$output" ]
+}
+
 @test "data-proof: an unterminated quote after the heredoc denies (walker abstains, raw match stands)" {
   install_gh_stub
   commit_files "app/x.ts" "export const x = 1"

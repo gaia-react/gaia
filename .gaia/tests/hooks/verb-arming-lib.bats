@@ -135,6 +135,75 @@ parity() {
 }
 
 # ---------------------------------------------------------------------------
+# Substitution openers: a verb inside `$( )`, a backtick, `<( )`, `>( )`, zsh's
+# `=( )`, or bash 5.3's `${ ...; }` and `${| ...; }` is run by the shell, so it
+# arms exactly as a verb after a separator does.
+# ---------------------------------------------------------------------------
+
+# opener_pair <frag> <words> <invocation>: the invocation arms after each
+# opener, bare and inside double quotes, and the same text with the opener's
+# substitution character removed does not. The twin is what makes each case
+# discriminate: without it, a text that armed for some other reason would pass.
+opener_pair() {
+  local frag="$1" words="$2" inv="$3" op
+  for op in '$(' '`' '<(' '>(' '=(' '${ ' '${|'; do
+    arm "$frag" "$words" "echo x ${op}${inv}"
+    assert_armed || return 1
+    assert_kind sep || return 1
+    arm "$frag" "$words" "echo \"${op}${inv}\""
+    assert_armed || return 1
+    arm "$frag" "$words" "echo x ${op} ${inv}"
+    assert_armed || return 1
+  done
+  # The twins: `(` or `{` alone opens no substitution here, and a bare word
+  # ahead of the verb is an argument.
+  arm "$frag" "$words" "echo x (${inv}"
+  assert_not_armed || return 1
+  arm "$frag" "$words" "echo x {${inv}"
+  assert_not_armed || return 1
+  arm "$frag" "$words" "echo x ${inv}"
+  assert_not_armed || return 1
+  true
+}
+
+@test "the merge fragment arms after every substitution opener" {
+  opener_pair "$MERGE_FRAG" "$MERGE_WORDS" 'gh pr merge 12 --squash)'
+}
+
+@test "the pull-request-creation fragment arms after every substitution opener" {
+  opener_pair "$CREATE_FRAG" "$CREATE_WORDS" 'gh pr create --fill)'
+}
+
+@test "the tail-capturing creation fragment arms after every substitution opener" {
+  opener_pair "$CREATE_TAIL_FRAG" "$CREATE_WORDS" 'gh pr create --fill)'
+}
+
+@test "the git-operation fragment arms after every substitution opener" {
+  opener_pair "$GIT_FRAG" "$GIT_WORDS" 'git commit -m subject)'
+  opener_pair "$GIT_FRAG" "$GIT_WORDS" 'git -C /some/path push origin main)'
+}
+
+@test "the debt-sentinel fragment arms after every substitution opener" {
+  opener_pair "$DEBT_FRAG" "$DEBT_WORDS" 'gh issue create --title subject)'
+  opener_pair "$DEBT_FRAG" "$DEBT_WORDS" 'gh pr merge 12 --squash)'
+}
+
+@test "a substitution opener is the separator group, so the fragment's groups still start at 2" {
+  match_of "$MERGE_FRAG" "$MERGE_WORDS" 'echo "$(gh pr merge 12 --squash)"'
+  grep -qF "kind=sep" <<<"$output" || return 1
+  grep -qF "count=3" <<<"$output" || return 1
+  grep -qF 'm[1]=[$(]' <<<"$output" || return 1
+  grep -qF "m[2]=[ ]" <<<"$output" || return 1
+
+  match_of "$CREATE_TAIL_FRAG" "$CREATE_WORDS" 'echo `gh pr create --fill`'
+  grep -qF "kind=sep" <<<"$output" || return 1
+  grep -qF 'm[1]=[`]' <<<"$output" || return 1
+  grep -qF "m[2]=[ ]" <<<"$output" || return 1
+  grep -qF 'm[3]=[--fill`]' <<<"$output" || return 1
+  true
+}
+
+# ---------------------------------------------------------------------------
 # The data proof
 # ---------------------------------------------------------------------------
 
@@ -242,6 +311,30 @@ parity() {
   arm "$MERGE_FRAG" "$MERGE_WORDS" "cat > /tmp/f <<\"EOF\"$NL$V${NL}EOF"
   assert_not_armed || return 1
   arm "$MERGE_FRAG" "$MERGE_WORDS" "cat > /tmp/f <<\\EOF$NL$V${NL}EOF"
+  assert_not_armed
+}
+
+@test "a substitution in an unquoted-delimiter body arms, and the quoted-delimiter twin is data" {
+  # The shell runs `$( )` and backticks inside a heredoc body whose delimiter
+  # is unquoted, so that body is not data however the opener line reads. A
+  # quoted or escaped delimiter turns substitution off, which is what makes
+  # the twin data.
+  local sub
+  for sub in "\$($V --squash)" "\`$V --squash\`" "x \$( $V --squash)" \
+             "\${ $V --squash; }" "\${| $V --squash; }"; do
+    arm "$MERGE_FRAG" "$MERGE_WORDS" "cat > /tmp/f <<EOF$NL$sub${NL}EOF"
+    assert_armed || return 1
+    arm "$MERGE_FRAG" "$MERGE_WORDS" "cat > /tmp/f <<-EOF$NL$sub$NL${TAB}EOF"
+    assert_armed || return 1
+    arm "$MERGE_FRAG" "$MERGE_WORDS" "cat > /tmp/f <<'EOF'$NL$sub${NL}EOF"
+    assert_not_armed || return 1
+    arm "$MERGE_FRAG" "$MERGE_WORDS" "cat > /tmp/f <<\"EOF\"$NL$sub${NL}EOF"
+    assert_not_armed || return 1
+    arm "$MERGE_FRAG" "$MERGE_WORDS" "cat > /tmp/f <<\\EOF$NL$sub${NL}EOF"
+    assert_not_armed || return 1
+  done
+  # A plain parameter expansion runs nothing, so it leaves the body data.
+  arm "$MERGE_FRAG" "$MERGE_WORDS" "cat > /tmp/f <<EOF$NL\$HOME$NL$V${NL}EOF"
   assert_not_armed
 }
 

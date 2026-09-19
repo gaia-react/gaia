@@ -8,11 +8,20 @@
 #
 # <verb_fragment> is an ERE fragment matching the verb AND its trailing
 # boundary group, plus any further capture groups the caller wants. It is
-# composed, byte for byte, into the pattern pair the consumers used to spell
-# out one at a time:
+# composed, byte for byte, into this pattern pair:
 #
 #   start_re = '^[[:space:]]*'                       + <verb_fragment>
-#   sep_re   = $'(\\&\\&|;|\\|\\||\\||\n)[[:space:]]*' + <verb_fragment>
+#   sep_re   = $'(\\&\\&|;|\\|\\||\\||\n|\\$\\(|\140|<\\(|>\\(|=\\(|\\$\\{[[:space:]])'
+#              + '[[:space:]]*' + <verb_fragment>
+#
+# The separator group holds the list operators, a newline, and every
+# substitution opener a verb after which the shell runs: `$(` and a backtick,
+# `<(` and `>(`, zsh's `=(` (the Bash tool runs the user's own shell, which is
+# often zsh), and bash 5.3's `${ `, whose `${|` sibling already arms on its
+# own trailing `|`. `$(`, a backtick, `${ ` and `${|` also run inside double
+# quotes; `<(`, `>(` and `=(` do not, and the group arms on every opener in
+# either position, the fail-closed direction, as it does on a zsh `=(` that is
+# really an array assignment.
 #
 # Composition is literal concatenation in that order, which is what preserves
 # capture-group numbering: under `start` the fragment's own groups begin at 1,
@@ -72,13 +81,17 @@
 # is fail-open, in which case it exits 0.
 #
 # WHAT THIS DOES NOT CLOSE. Quoted prose still over-arms, fail-closed, and
-# there is no safe narrowing. A verb whose characters are quoted still
-# under-arms outside the first command, because pass 3 reads the first command
-# only. Dollar-quoted words are unmodelled and the walk abstains on one rather
-# than approximating it. Pass 3's bounded prefix can create an arm no data
-# proof removes, because truncation at the bound can leave a word reading as
-# the verb; that direction costs a decision nobody asked for rather than a
-# merge nobody audited.
+# there is no safe narrowing. That includes a substitution opener the shell
+# never runs: a backticked command cited in a single-quoted body, or in a
+# quoted-delimiter heredoc read by `cat` inside `"$(...)"`, the usual way a
+# pull-request or issue body is passed, arms the merge gates on a command that
+# merges nothing (gaia-react/gaia#2158). A verb whose characters are quoted
+# still under-arms outside the first command, because pass 3 reads the first
+# command only. Dollar-quoted words are unmodelled and the walk abstains on
+# one rather than approximating it. Pass 3's bounded prefix can create an arm
+# no data proof removes, because truncation at the bound can leave a word
+# reading as the verb; that direction costs a decision nobody asked for rather
+# than a merge nobody audited.
 
 # Inputs longer than this get the identity view and the raw match stands. It
 # covers the observed population: in a corpus of 33,498 real Bash tool calls no
@@ -271,7 +284,13 @@ gaia_verb_armed() {
   GAIA_VERB_ARM_SUPPRESSED=0
 
   start_re='^[[:space:]]*'"$frag"
-  sep_re=$'(\\&\\&|;|\\|\\||\\||\n)[[:space:]]*'"$frag"
+  # The substitution openers ride the separator group rather than a pass of
+  # their own: the shell runs what follows each one, and group 1 stays the one
+  # group this pattern adds, which is what keeps the fragment's own numbering.
+  # The backtick is an octal escape for the reason the walker gives for its own.
+  # The walker's condition 7 carries the command-substitution openers as glob
+  # needles; an opener added here needs its needle there too.
+  sep_re=$'(\\&\\&|;|\\|\\||\\||\n|\\$\\(|\140|<\\(|>\\(|=\\(|\\$\\{[[:space:]])[[:space:]]*'"$frag"
 
   raw=0
   if [[ "$text" =~ $start_re ]]; then
