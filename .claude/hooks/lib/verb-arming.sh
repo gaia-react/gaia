@@ -8,11 +8,15 @@
 #
 # <verb_fragment> is an ERE fragment matching the verb AND its trailing
 # boundary group, plus any further capture groups the caller wants. It is
-# composed, byte for byte, into the pattern pair the consumers used to spell
-# out one at a time:
+# composed, byte for byte, into this pattern pair:
 #
 #   start_re = '^[[:space:]]*'                       + <verb_fragment>
-#   sep_re   = $'(\\&\\&|;|\\|\\||\\||\n)[[:space:]]*' + <verb_fragment>
+#   sep_re   = $'(\\&\\&|;|\\|\\||\\||\n|\\$\\(|\140|<\\(|>\\()[[:space:]]*'
+#              + <verb_fragment>
+#
+# The separator group holds the list operators, a newline, and the four
+# substitution openers (`$(`, a backtick, `<(`, `>(`): a verb after any of them
+# is run by the shell, inside double quotes included.
 #
 # Composition is literal concatenation in that order, which is what preserves
 # capture-group numbering: under `start` the fragment's own groups begin at 1,
@@ -72,7 +76,8 @@
 # is fail-open, in which case it exits 0.
 #
 # WHAT THIS DOES NOT CLOSE. Quoted prose still over-arms, fail-closed, and
-# there is no safe narrowing. A verb whose characters are quoted still
+# there is no safe narrowing; a substitution opener in single-quoted prose is
+# that same residual. A verb whose characters are quoted still
 # under-arms outside the first command, because pass 3 reads the first command
 # only. Dollar-quoted words are unmodelled and the walk abstains on one rather
 # than approximating it. Pass 3's bounded prefix can create an arm no data
@@ -271,7 +276,11 @@ gaia_verb_armed() {
   GAIA_VERB_ARM_SUPPRESSED=0
 
   start_re='^[[:space:]]*'"$frag"
-  sep_re=$'(\\&\\&|;|\\|\\||\\||\n)[[:space:]]*'"$frag"
+  # The substitution openers ride the separator group rather than a pass of
+  # their own: the shell runs what follows each one, and group 1 stays the one
+  # group this pattern adds, which is what keeps the fragment's own numbering.
+  # The backtick is an octal escape for the reason the walker gives for its own.
+  sep_re=$'(\\&\\&|;|\\|\\||\\||\n|\\$\\(|\140|<\\(|>\\()[[:space:]]*'"$frag"
 
   raw=0
   if [[ "$text" =~ $start_re ]]; then

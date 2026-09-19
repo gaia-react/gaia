@@ -19,7 +19,8 @@
 # which is why the mask run is sized outside the byte-locale the scan runs in.
 #
 # WHAT COUNTS AS DATA. Exactly one shape, and deliberately small. A heredoc
-# body is data when all of the following hold on its opener line:
+# body is data when all of the following hold, the first six on its opener
+# line and the seventh on the body itself:
 #
 #   1. the command word is the literal `cat` or `tee`, written out, never
 #      reached through an expansion;
@@ -34,7 +35,11 @@
 #      between the command word and the heredoc operator. Conditions 1 and 2
 #      each read the line as a whole, so without this one a line whose first
 #      command is `cat > f` lends its proof to a second command's heredoc after
-#      a separator, and the shell runs what that second command is handed.
+#      a separator, and the shell runs what that second command is handed;
+#   7. the body runs nothing: either the delimiter is quoted or escaped, which
+#      turns substitution off, or the body carries no `$(` and no backtick.
+#      With an unquoted delimiter the shell runs a command substitution inside
+#      the body before `cat` ever sees it, so that body is not data.
 #
 # The body runs from the newline ENDING the opener line, not from the heredoc
 # operator, so anything still on the opener line after the operator is ordinary
@@ -290,10 +295,11 @@ gaia_verb_arm_view() {
 
   local nl=$'\n'
   local s out cur q ch pre np chunk blanks ok wstart work line_start
-  local hd_n strip dl dbad data first p body dline bi hd_pre
-  local hd_delim hd_strip
+  local hd_n strip dl dbad dq data first p body dline bi hd_pre
+  local hd_delim hd_strip hd_quoted
   hd_delim=()
   hd_strip=()
+  hd_quoted=()
 
   _gaia_va_lc_bytes
   s="$text"
@@ -427,6 +433,7 @@ gaia_verb_arm_view() {
             if [ -n "$blanks" ]; then chunk="$chunk$blanks"; s="${s:${#blanks}}"; fi
             dl=""
             dbad=0
+            dq=1
             case "$s" in
               "'"*)
                 s="${s:1}"
@@ -448,6 +455,7 @@ gaia_verb_arm_view() {
                 if [ -n "$dl" ]; then s="${s:${#dl}}"; chunk="$chunk$_GAIA_VA_BS$dl"; else dbad=1; fi
                 ;;
               *)
+                dq=0
                 dl="${s%%[!A-Za-z0-9_.-]*}"
                 if [ -n "$dl" ]; then s="${s:${#dl}}"; chunk="$chunk$dl"; else dbad=1; fi
                 ;;
@@ -469,6 +477,7 @@ gaia_verb_arm_view() {
             out+="$chunk"
             hd_delim[hd_n]="$dl"
             hd_strip[hd_n]="$strip"
+            hd_quoted[hd_n]="$dq"
             hd_n=$(( hd_n + 1 ))
             wstart=0
             ;;
@@ -504,6 +513,15 @@ gaia_verb_arm_view() {
         while [ "$bi" -lt "$hd_n" ]; do
           _gaia_va_find_delim "$s" "${hd_delim[$bi]}" "${hd_strip[$bi]}" || { ok=0; break; }
           p="$_gaia_va_p"
+          # Condition 7, decided here because only now is the body's extent
+          # known. Only the first heredoc can carry the proof, so only it is
+          # asked.
+          if [ "$first" = 1 ] && [ "$data" = 1 ] && [ "${hd_quoted[$bi]}" = 0 ]; then
+            # shellcheck disable=SC2016 # the literal opener is the needle
+            case "${s:0:$p}" in
+              *'$('*|*'`'*) data=0 ;;
+            esac
+          fi
           if [ "$first" = 1 ] && [ "$data" = 1 ] && [ "$p" -gt 0 ]; then
             out+=x
           else
@@ -540,6 +558,7 @@ gaia_verb_arm_view() {
         hd_n=0
         hd_delim=()
         hd_strip=()
+        hd_quoted=()
         line_start=${#out}
         wstart=1
         ;;
