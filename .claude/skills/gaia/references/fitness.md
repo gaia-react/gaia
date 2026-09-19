@@ -326,7 +326,8 @@ Heal already cut and switched to `chore/gaia-fitness-<timestamp>` (the `$BRANCH`
      Relay the tally's `Cost:` line as the last line of the reply, after the merged PR URL.
 
    - **conflict** → repair it per that page's `### Conflict found mid-wait` and resume the poll.
-   - **still queued, or a failed required check** (name the check) → record cost (pass-through: `gh pr create` above already printed the URL), print the PR URL, note auto-merge is queued and lands when checks pass, and do **not** delete the local branch or switch off it.
+   - **failed required check** → name the check and say the merge will not land until it is fixed, then record cost and leave the branch in place exactly as the still-queued arm below does.
+   - **still queued** → record cost (pass-through: `gh pr create` above already printed the URL), print the PR URL, note auto-merge is queued and lands when checks pass, and do **not** delete the local branch or switch off it.
 
      ```bash
      bash .gaia/scripts/token-tally.sh --action command --command gaia-fitness \

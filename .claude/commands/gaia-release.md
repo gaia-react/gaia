@@ -164,19 +164,9 @@ gh pr merge <N> --merge --auto --delete-branch
 # --auto is mandatory: base-branch protection rejects a plain --merge, and the
 # Vitest/Playwright + Chromatic checks take a few minutes. --auto queues the
 # merge; GitHub completes it once checks pass.
-for i in $(seq 1 20); do
-  verdict=$(gh pr view <N> --json state,mergeable \
-    --jq 'if .state == "MERGED" then "MERGED" elif .mergeable == "CONFLICTING" then "CONFLICTING" else "WAITING" end')
-  [ "$verdict" = "WAITING" ] \
-    && [ "$(gh pr checks <N> --required --json bucket --jq 'map(select(.bucket == "fail" or .bucket == "cancel")) | length')" != "0" ] \
-    && verdict="CHECK_FAILED"
-  [ "$verdict" = "WAITING" ] || break
-  sleep 30
-done
-[ "$verdict" = "MERGED" ] || { echo "release PR did not merge ($verdict), investigate before tagging"; exit 1; }
 ```
 
-Do not run any local cleanup or tagging until the poll confirms `MERGED`. The poll stops early on `CONFLICTING` (repair per `### Conflict found mid-wait` in `wiki/concepts/PR Merge Workflow.md`, then resume) and on `CHECK_FAILED` (inspect the failing check). If it times out, inspect `gh pr view <N>` for a stuck merge queue. This mirrors the safe pattern in `wiki/concepts/PR Merge Workflow.md`, with `--merge` instead of `--squash`.
+Then run the bounded poll in `wiki/concepts/PR Merge Workflow.md` (`## Post-merge verification before cleanup`) with a 20-iteration bound in place of its 5, since the release checks run longer. Do not run any local cleanup or tagging until it confirms `MERGED`. On `CONFLICTING`, repair per that page's `### Conflict found mid-wait` and resume; on `CHECK_FAILED`, inspect the failing check; on a timeout, inspect `gh pr view <N>` for a stuck merge queue.
 
 ### 12. Tag the merge commit
 

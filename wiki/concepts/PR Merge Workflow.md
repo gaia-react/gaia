@@ -523,9 +523,11 @@ gh pr merge <N> --squash --delete-branch [--auto]
 for i in 1 2 3 4 5; do
   verdict=$(gh pr view <N> --json state,mergeable \
     --jq 'if .state == "MERGED" then "MERGED" elif .mergeable == "CONFLICTING" then "CONFLICTING" else "WAITING" end')
-  [ "$verdict" = "WAITING" ] \
-    && [ "$(gh pr checks <N> --required --json bucket --jq 'map(select(.bucket == "fail" or .bucket == "cancel")) | length')" != "0" ] \
-    && verdict="CHECK_FAILED"
+  if [ "$verdict" = "WAITING" ]; then
+    failed=$(gh pr checks <N> --required --json bucket \
+      --jq 'map(select(.bucket == "fail" or .bucket == "cancel")) | length' 2>/dev/null)
+    [ "${failed:-0}" -gt 0 ] && verdict="CHECK_FAILED"
+  fi
   [ "$verdict" = "WAITING" ] || break
   sleep 30
 done
@@ -539,7 +541,7 @@ esac
 
 That poll is the whole verification. A local error printed by `gh pr merge` after the state reads `MERGED` does not revise the answer; see [[#Local-sync failure mode]] below.
 
-`mergeable` reads `UNKNOWN` for a short while after any push, while GitHub recomputes it, so the poll treats it as still waiting rather than as clean. Only required checks count: a failed optional check does not block a queued merge, so exiting on one would abandon a merge that is about to land.
+`mergeable` reads `UNKNOWN` for a short while after any push, while GitHub recomputes it, so the poll treats it as still waiting rather than as clean. Only required checks count: a failed optional check does not block a queued merge, so exiting on one would abandon a merge that is about to land. `gh pr checks` prints nothing and exits non-zero while no check has registered yet, which the poll also reads as still waiting.
 
 **`--auto` vs `--admin`:** when `gh pr merge` rejects with "base branch policy prohibits the merge", the right escape is `--auto`; it queues the merge and GitHub completes it once checks pass. Never reach for `--admin` to bypass branch protection without explicit permission; it removes the safety the policy exists to provide.
 
