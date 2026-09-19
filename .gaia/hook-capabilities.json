@@ -554,6 +554,7 @@
       "hook": ".claude/hooks/worthiness-presence-check.sh",
       "capabilities": [
         "network",
+        "invokes:.claude/hooks/lib/audit-base-provenance.sh",
         "invokes:.claude/hooks/lib/jq-availability.sh",
         "invokes:.claude/hooks/lib/red-ledger.sh",
         "invokes:.claude/hooks/lib/repo-scope.sh",
@@ -562,7 +563,7 @@
         "invokes:.claude/hooks/lib/worthiness-ledger.sh",
         "invokes:.gaia/scripts/main-root-lib.sh"
       ],
-      "why": "Denies `gh pr merge` when an emergent test the pull request changed has no worthiness-ledger line matching its current content, once armed through the shared arming decision (`.claude/hooks/lib/verb-arming.sh`, which lazily loads `.claude/hooks/lib/verb-arming-walk.sh` for its data-proving view). Sources `.claude/hooks/lib/red-ledger.sh` and `.claude/hooks/lib/worthiness-ledger.sh` for the ledger lookups, the shared repo-scope helper to exempt a foreign-repo command, the shared jq-availability arm, and main-root-lib.sh for the checkout root; `network` is the repo-scope helper's own `gh repo view` call. It is a ledger lookup and signal recompute only: it never writes a file or re-runs the worthiness evaluator.",
+      "why": "Denies `gh pr merge` when an emergent test the pull request changed has no worthiness-ledger line matching its current content, once armed through the shared arming decision (`.claude/hooks/lib/verb-arming.sh`, which lazily loads `.claude/hooks/lib/verb-arming-walk.sh` for its data-proving view). Sources `.claude/hooks/lib/red-ledger.sh` and `.claude/hooks/lib/worthiness-ledger.sh` for the ledger lookups, `.claude/hooks/lib/audit-base-provenance.sh` for the diff base, the shared repo-scope helper to exempt a foreign-repo command, the shared jq-availability arm, and main-root-lib.sh for the checkout root; `network` is the repo-scope helper's own `gh repo view` call. It is a ledger lookup and signal recompute only: it never writes a file or re-runs the worthiness evaluator.",
       "maintainer_only": false
     }
   ]

@@ -219,24 +219,18 @@ tree_root="$(gaia_resolve_tree_root "$source_cwd" 2>/dev/null)" || exit 0
 ledger="$(worthiness_ledger_path "$tree_root")" || exit 0
 
 # ---------------------------------------------------------------------------
-# Resolve the PR base, the default branch this work forks from, in the ACTING
-# tree: the branch being merged is that checkout's HEAD, so a base resolved
-# anywhere else scopes the diff to another branch's changes. Prefer the
-# remote's advertised default; fall back to main. The merge base scopes the diff
-# to THIS PR's changes, not unrelated drift already on the base branch. Mirrors
-# pr-merge-audit-check.sh's check_out_of_scope_pr. Fail-open: an unresolved base
-# or an empty diff means nothing in scope for this gate.
+# Resolve the PR base in the ACTING tree: the branch being merged is that
+# checkout's HEAD, so a base resolved anywhere else scopes the diff to another
+# branch's changes. The shared resolver owns the default-branch ladder, so this
+# gate and the audit merge gate scope the same changed set on the same head; a
+# private copy here would agree only until the next edit to the resolver.
+# Every trust level is taken as is: this gate's posture is fail-open, and an
+# unresolvable base or an empty diff means nothing in scope for it.
 # ---------------------------------------------------------------------------
-default_branch=$(git -C "$tree_root" symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null \
-  | sed 's@^refs/remotes/origin/@@')
-[ -n "$default_branch" ] || default_branch="main"
-
-# Fully qualified: the short `origin/<default>` resolves a local branch or tag
-# of that name first, which would scope the diff from a base the audit gate
-# does not use.
-base=$(git -C "$tree_root" merge-base HEAD "refs/remotes/origin/${default_branch}" 2>/dev/null \
-  || git -C "$tree_root" merge-base HEAD "${default_branch}" 2>/dev/null \
-  || true)
+[ -n "$_va_lib_dir" ] && [ -f "$_va_lib_dir/audit-base-provenance.sh" ] && . "$_va_lib_dir/audit-base-provenance.sh"
+type audit_resolve_base_provenance >/dev/null 2>&1 || exit 0
+prov="$(audit_resolve_base_provenance "$tree_root" default-branch)" || prov=""
+IFS=$'\t' read -r _ _ base <<< "$prov" || true
 [ -n "$base" ] || exit 0
 
 # `-z` because the emergent-surface case patterns below match a repo-relative

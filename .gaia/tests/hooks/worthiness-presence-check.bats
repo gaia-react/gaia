@@ -502,6 +502,33 @@ run_merge_hook_lib_absent() {
   grep -qF 'verb-arming.sh' <<<"$output" || return 1
 }
 
+# Stage a whole checkout-shaped root, not just .claude/hooks: past arming the
+# hook resolves .gaia/scripts from its own location and exits 0 without it, so
+# a hooks-only stage fails open on every merge and proves nothing about a lib
+# the hook reaches later. An empty LIBNAME stages the intact set, the control.
+run_merge_hook_staged_root() {
+  local libname="$1" json stage
+  stage="$BATS_TEST_TMPDIR/staged-root-${libname:-intact}"
+  if [ ! -d "$stage" ]; then
+    mkdir -p "$stage/.claude" "$stage/.gaia"
+    cp -r "$(dirname "$HOOK_ABS")" "$stage/.claude/hooks"
+    ln -sfn "$HOME_ROOT/.gaia/scripts" "$stage/.gaia/scripts"
+    [ -z "$libname" ] || rm -f "$stage/.claude/hooks/lib/$libname"
+  fi
+  json=$(jq -nc --arg c "gh pr merge 30 --squash" '{tool_name:"Bash", tool_input:{command:$c}}')
+  invoke_hook_in "$REPO" "$json" "$stage/.claude/hooks/worthiness-presence-check.sh"
+}
+
+@test "library-absent: audit-base-provenance.sh missing fails open on a merge the intact stage denies" {
+  commit_file "app/components/Foo/tests/index.test.tsx" "$EMERGENT_TEST"
+  run_merge_hook_staged_root ""
+  [ "$status" -eq 0 ]
+  denied
+  run_merge_hook_staged_root "audit-base-provenance.sh"
+  [ "$status" -eq 0 ]
+  refute_denied
+}
+
 # ---------------------------------------------------------------------------
 # The tree the merge acts on, not the tree the session sits in.
 #

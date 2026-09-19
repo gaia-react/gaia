@@ -35,7 +35,7 @@ teardown() {
 }
 
 # write_baseline <dir>: a healthy tree -- the resolver's definition plus the
-# three named consumers, each already adopting it, and no fallback chain
+# named consumers, each already adopting it, and no fallback chain
 # anywhere. Every "must fail" fixture starts here and mutates one thing.
 write_baseline() {
   local dir="$1"
@@ -57,6 +57,10 @@ EOF
   cat >"$dir/.gaia/scripts/resolve-audit-members.sh" <<'EOF'
 #!/usr/bin/env bash
 prov="$(audit_resolve_base_provenance "$repo_root" default-branch "$BASE_OVERRIDE")" || prov=""
+EOF
+  cat >"$dir/.claude/hooks/worthiness-presence-check.sh" <<'EOF'
+#!/usr/bin/env bash
+prov="$(audit_resolve_base_provenance "$tree_root" default-branch)" || prov=""
 EOF
   printf 'fixture\n' >"$dir/README.md"
 }
@@ -105,6 +109,7 @@ commit_all() {
   grep -qF ".gaia/scripts/resolve-audit-spawn.sh: adopted" <<<"$output" || return 1
   grep -qF ".claude/hooks/pr-merge-audit-check.sh: adopted" <<<"$output" || return 1
   grep -qF ".gaia/scripts/resolve-audit-members.sh: adopted" <<<"$output" || return 1
+  grep -qF ".claude/hooks/worthiness-presence-check.sh: adopted" <<<"$output" || return 1
 }
 
 @test "fixture: healthy baseline passes" {
@@ -254,20 +259,21 @@ EOF
   [ "$status" -eq 0 ]
 }
 
-@test "fixture: the written exemption (worthiness-presence-check.sh) passes and is named as allowed" {
+@test "fixture: a private chain regrown in worthiness-presence-check.sh fails, as a consumer rather than a carrier" {
   local repo
-  repo="$(make_fixture_repo exemption)"
+  repo="$(make_fixture_repo worthiness-regrown)"
   cat >"$repo/.claude/hooks/worthiness-presence-check.sh" <<'EOF'
 #!/usr/bin/env bash
-base=$(git merge-base HEAD "origin/$d" 2>/dev/null \
+base=$(git merge-base HEAD "refs/remotes/origin/$d" 2>/dev/null \
   || git merge-base HEAD "$d" 2>/dev/null \
   || true)
 EOF
   commit_all "$repo"
   run gaia_check_base_provenance_adoption "$repo"
-  [ "$status" -eq 0 ]
+  [ "$status" -eq 1 ]
+  grep -qF ".claude/hooks/worthiness-presence-check.sh: NOT adopted" <<<"$output" || return 1
   grep -qF ".claude/hooks/worthiness-presence-check.sh:2:" <<<"$output" || return 1
-  grep -qF "(allowed carrier)" <<<"$output" || return 1
+  grep -qF "(private chain, not allowed)" <<<"$output" || return 1
 }
 
 @test "fixture: the scope resolver's eligibility ladder passes and is named as allowed" {
