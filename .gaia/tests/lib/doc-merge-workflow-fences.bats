@@ -100,6 +100,7 @@ residual-enumerate|gh pr list --state merged|exec|the --jq PROGRAM TEXT is extra
 debt-origin|debt-origin-lib.sh|exec|runs verbatim with the changed-value placeholder filled in
 disposition-sidecar|audit-member-digest.sh|exec|runs verbatim against this checkout
 findings-block|post-findings-block.sh --pr|static|posts a comment to a live PR
+post-status|post-audit-status.sh <current-member-marker>|static|posts a commit status to a live PR head
 merge-and-poll|gh pr merge <N> --squash|static|merges a live PR
 merge-poll|gh pr view <N> --json state,mergeable|static|polls a live PR's merge state and required checks
 main-checkout-head|rev-parse --abbrev-ref HEAD|exec|read-only git plumbing, runs against a fixture checkout substituted for the placeholder

@@ -503,7 +503,7 @@ The orchestrator posts the success status itself, last, once every one of these 
 - The last push has landed on the pull request's remote head.
 
 ```bash
-bash .claude/hooks/post-audit-status.sh <a current member marker>
+bash .claude/hooks/post-audit-status.sh <current-member-marker>
 ```
 
 Any one dispatched member's own current marker path is sufficient; `post-audit-status.sh` already refuses while any dispatched member is pending and posts on the pushed PR head, so it resolves the rest itself (see [[#Signals]]). Run `gh pr merge` only after this call reports a posted status.
