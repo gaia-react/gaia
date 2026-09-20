@@ -43,11 +43,37 @@ _lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # absent, which is the degrade this load owes.
 # shellcheck source=../../../../.gaia/scripts/ledger-path-lib.sh
 set +e; [ -f "${_lib_dir}/../../../../.gaia/scripts/ledger-path-lib.sh" ] && . "${_lib_dir}/../../../../.gaia/scripts/ledger-path-lib.sh" 2>/dev/null; set -e
+# The branch-naming library reads a SPEC number back out of a plan branch in
+# every spelling GAIA mints, the worktree one included. Loaded the same
+# bracketed way as the ledger-path lib above, for the same reason.
+# shellcheck source=../../../../.gaia/scripts/branch-name-lib.sh
+set +e; [ -f "${_lib_dir}/../../../../.gaia/scripts/branch-name-lib.sh" ] && . "${_lib_dir}/../../../../.gaia/scripts/branch-name-lib.sh" 2>/dev/null; set -e
+type gaia_branch_spec_number >/dev/null 2>&1 || {
+  echo "spec-renumber: the branch-naming library is unusable, so SPEC numbers held only on a branch cannot be read; refuse to renumber" >&2
+  exit 4
+}
 
 if ! git -C "$repo_root" rev-parse --git-dir >/dev/null 2>&1; then
   echo "spec-renumber: $repo_root is not a git repository" >&2
   exit 3
 fi
+
+# The branch source of the known-id scan below reads gaia_branch_list, which
+# returns 0 whatever the ref read does, so an unreadable ref store would report
+# no branch holding the target number and the rename would land on a burned id.
+# Probing here rather than leaning on the allocator is what makes that fail
+# closed: the scan is guarded by `bash "$allocator" highest`, so an allocator
+# that refuses would skip the whole check instead of stopping the renumber.
+# Read the whole set rather than the first ref: a packed-refs file is parsed as
+# a unit, so a short read can succeed over a file a full read rejects. Which of
+# a corrupt packed-refs, an unreadable ref file, or a permission denial caused
+# it is not distinguishable here.
+for _ns in refs/heads refs/remotes; do
+  if ! git -C "$repo_root" for-each-ref --format=x "$_ns" >/dev/null 2>&1; then
+    echo "spec-renumber: $repo_root $_ns cannot be read (corrupt, unreadable, or permission-denied), so SPEC numbers held only on a branch cannot be read; refuse to renumber (would risk duplicate SPEC ids)" >&2
+    exit 4
+  fi
+done
 
 # repo_root names the tree this renumber runs in; the ledger and folder it
 # rewrites are main's, because the state registry declares specs/ main-only.
@@ -108,9 +134,12 @@ if [ -x "$allocator" ] || [ -f "$allocator" ]; then
       # Inline the same scan the allocator uses, minus the ledger row we are about to rewrite.
       jq -r --arg drop "$old_id" '.specs[] | select(.id != $drop) | .id' "$ledger_path" 2>/dev/null \
         | sed -nE 's|^SPEC-0*([0-9]+)$|\1|p' || true
-      git -C "$repo_root" for-each-ref --format='%(refname:short)' \
-        'refs/heads/spec-*' 'refs/remotes/*/spec-*' 2>/dev/null \
-        | sed -nE 's|^.*/?spec-0*([0-9]+)(-.*)?$|\1|p' || true
+      # The test is a builtin prefilter so a branch that cannot name a
+      # SPEC skips the subshells of the library; this scan runs under the ledger
+      # lock, and a repository carries hundreds of refs.
+      gaia_branch_list "$repo_root" | while IFS= read -r branch; do
+        if [[ "$branch" == *spec-* ]]; then gaia_branch_spec_number "$branch"; fi
+      done
       find "$specs_dir" -mindepth 2 -maxdepth 2 -type f -name 'SPEC.md' -print 2>/dev/null \
         | sed -nE 's|.*/SPEC-0*([0-9]+)/SPEC\.md$|\1|p' || true
     )
@@ -236,10 +265,22 @@ echo "Next steps (external state, not auto-updated):"
 
 # Branch name, flag if the current branch references the old id.
 current_branch="$(git -C "$repo_root" symbolic-ref --short -q HEAD || true)"
-if [ -n "$current_branch" ] && [[ "$current_branch" =~ spec-0*${old_num}(-|$) ]]; then
-  new_branch="${current_branch//spec-$(printf '%03d' "$old_num")/spec-$(printf '%03d' "$new_num")}"
+if [ -n "$current_branch" ] && [ "$(gaia_branch_spec_number "$current_branch")" = "$old_num" ]; then
+  # The match above reads the number through the library, which strips leading
+  # zeros, so the branch can carry the number in any padding the minter was
+  # given. Rewriting only the three-digit spelling left every other one
+  # untouched and printed a rename of the branch to itself. `0*` accepts any
+  # padding and the trailing `(-|$)` keeps spec-9 from matching spec-99; the
+  # replacement carries the new id's own padding, the way the minter would.
+  new_token="spec-${new_id#SPEC-}"
+  new_branch="$(printf '%s' "$current_branch" \
+    | sed -E 's/spec-0*'"$old_num"'(-|$)/'"$new_token"'\1/')"
   echo "  - Current branch '$current_branch' references $old_id."
-  echo "    Rename:   git -C $repo_root branch -m '$new_branch'"
+  if [ "$new_branch" = "$current_branch" ]; then
+    echo "    Rename it by hand: the branch names $old_id in a spelling this step does not rewrite."
+  else
+    echo "    Rename:   git -C $repo_root branch -m '$new_branch'"
+  fi
 fi
 
 echo "  - Commit-message history is immutable; past commits keep $old_id refs."

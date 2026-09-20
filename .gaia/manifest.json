@@ -237,6 +237,7 @@
     ".gaia/scripts/audit-write-clearance.sh": "owned",
     ".gaia/scripts/audit-write-findings.sh": "owned",
     ".gaia/scripts/bats5.sh": "owned",
+    ".gaia/scripts/branch-name-lib.sh": "owned",
     ".gaia/scripts/check-audit-base-derivation.sh": "owned",
     ".gaia/scripts/check-audit-key-callers.sh": "owned",
     ".gaia/scripts/check-debt-issue-metadata.sh": "owned",
@@ -253,6 +254,7 @@
     ".gaia/scripts/cost-unpriced-scan.sh": "owned",
     ".gaia/scripts/debt-count-refresh.sh": "owned",
     ".gaia/scripts/debt-origin-lib.sh": "owned",
+    ".gaia/scripts/debt-stale-claims.sh": "owned",
     ".gaia/scripts/gh-artifact-lib.sh": "owned",
     ".gaia/scripts/ledger-path-lib.sh": "owned",
     ".gaia/scripts/ledger-status-migrate.sh": "owned",
@@ -684,7 +686,7 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-09-19T02:43:48.116Z",
+  "generated": "2026-09-19T18:48:36.325Z",
   "regions": [
     {
       "endMarker": "<!-- gaia:audit-remit:end -->",

@@ -120,10 +120,11 @@ Classify each surviving finding as fixable or unfixable. A finding is fixable wh
 Before applying the first fix, create and switch to a new branch:
 
 ```bash
-TIMESTAMP=$(date +%Y-%m-%d-%H%M)
-BRANCH="chore/gaia-fitness-$TIMESTAMP"
+BRANCH="$(bash .gaia/scripts/branch-name-lib.sh name chore gaia-fitness)"
 git -C "$PROJECT_ROOT" checkout -b "$BRANCH"
 ```
+
+Remember `BRANCH`, the way Step 2 remembers `CURRENT_BRANCH`: Steps 7 and 8 need the minted name in later Bash calls and in a question put to the human, and the shell variable set here is gone by then. Carry the value itself as `<BRANCH>`.
 
 Apply fixes on this new branch. Never commit.
 
@@ -254,12 +255,12 @@ Format, taxonomy, and grading rubric source of truth: `wiki/decisions/Claude Int
 
 ## Step 7, Publish gate (reached only when Step 4 applied ≥1 fix)
 
-Skipped entirely on the triage-only and zero-findings paths, they printed their line and stopped in Step 6. Reached only when heal applied at least one fix, so a branch exists (`chore/gaia-fitness-<timestamp>`, main-branch run) or the changes sit in place on `CURRENT_BRANCH` (non-default branch).
+Skipped entirely on the triage-only and zero-findings paths, they printed their line and stopped in Step 6. Reached only when heal applied at least one fix, so a branch exists (`<BRANCH>`, the name Step 4 minted, main-branch run) or the changes sit in place on `CURRENT_BRANCH` (non-default branch).
 
 Ask once, via `AskUserQuestion`, after the card (the card is the information the user needs to decide):
 
 - **header:** `"Publish fixes?"`
-- **question (main-branch run):** `"Fitness healed {N} finding(s) on branch chore/gaia-fitness-<timestamp>. Commit, open a PR, and merge them?"`
+- **question (main-branch run):** `"Fitness healed {N} finding(s) on branch <BRANCH>. Commit, open a PR, and merge them?"`
 - **question (non-default branch):** `"Fitness healed {N} finding(s) on <CURRENT_BRANCH>. Commit and push them?"`
 - **options (this exact order):**
   1. `{ label: "Publish", description (main-branch run): "Commit the healed changes, open a PR, and merge it.", description (non-default branch): "Commit and push the healed changes to <CURRENT_BRANCH>." }`
@@ -267,7 +268,7 @@ Ask once, via `AskUserQuestion`, after the card (the card is the information the
 
 - **Publish** → run Step 8.
 - **Keep for review** → record cost (see **Cost record (run end)**, no pass-through), then print the working-tree review line and STOP:
-  - Branch created: `Changes applied on branch chore/gaia-fitness-<timestamp>. Review with git diff main; discard with git checkout main && git branch -D chore/gaia-fitness-<timestamp>.`
+  - Branch created: `Changes applied on branch <BRANCH>. Review with git diff main; discard with git checkout main && git branch -D <BRANCH>.`
   - In place: `Changes applied on <CURRENT_BRANCH>. Review with git diff; discard with git checkout -- .`
 
 **Non-interactive fallback.** In a context with no user to answer the gate (a headless or composed run), do not publish: leave the healed changes in the working tree, record cost (see **Cost record (run end)**, no pass-through), print the matching review line above, and stop. Publishing is the standalone, interactive `/gaia-fitness` harness; a composing audit harness owns its own publish (the branch / heal / publish harness layer is `/gaia-fitness`-specific, per the protocol page).
@@ -288,7 +289,7 @@ Run the Quality Gate (`.claude/rules/quality-gate.md`) first **only** if the app
 
 ### Main-branch run (branch already created in Step 4)
 
-Heal already cut and switched to `chore/gaia-fitness-<timestamp>` (the `$BRANCH` from Step 4), so the changes are on it. Do not create a second branch.
+Heal already cut and switched to `<BRANCH>`, the name Step 4 minted, so the changes are on it. Do not create a second branch.
 
 1. **Commit.** `.gaia/local/` is gitignored. Route the message through a file, never `-m`:
 
@@ -305,22 +306,22 @@ Heal already cut and switched to `chore/gaia-fitness-<timestamp>` (the `$BRANCH`
 2. **Open the PR and drive it to merge** through `wiki/concepts/PR Merge Workflow.md` (read it, don't merge from memory):
 
    ```bash
-   git -C "$PROJECT_ROOT" push -u origin "$BRANCH"
+   git -C "$PROJECT_ROOT" push -u origin "<BRANCH>"
    gh pr create --title "<commit subject>" --body-file <pr-body-file>
    gh pr merge <N> --squash --delete-branch --auto
    ```
 
    `--auto` queues the merge behind required checks (the oracle check above already confirmed whether a marker is owed for this diff). Run the bounded poll (~2-3 minutes) in `wiki/concepts/PR Merge Workflow.md` (`## Post-merge verification before cleanup`), which also stops early on a base-branch conflict or a failed required check:
 
-   - **`MERGED`** → clean up, record cost (pass-through: `gh pr create` above already printed the URL, and `--branch-name` carries the literal `$BRANCH` value, since the checkout below leaves the session on `main`; see `.claude/skills/gaia/references/cost-record.md`), then print the merged PR URL:
+   - **`MERGED`** → clean up, record cost (pass-through: `gh pr create` above already printed the URL, and `--branch-name` carries the literal `<BRANCH>` value, since the checkout below leaves the session on `main`; see `.claude/skills/gaia/references/cost-record.md`), then print the merged PR URL:
 
      ```bash
      git -C "$PROJECT_ROOT" checkout main && git -C "$PROJECT_ROOT" pull origin main
-     git -C "$PROJECT_ROOT" branch -D "$BRANCH"
+     git -C "$PROJECT_ROOT" branch -D "<BRANCH>"
      git -C "$PROJECT_ROOT" fetch --prune origin
      bash .gaia/scripts/token-tally.sh --action command --command gaia-fitness \
        --github-type pr --github-number <N> --github-repo '<owner>/<name>' \
-       --branch-name '<branch>'
+       --branch-name '<BRANCH>'
      ```
 
      Relay the tally's `Cost:` line as the last line of the reply, after the merged PR URL.

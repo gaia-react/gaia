@@ -2,7 +2,8 @@
 # spec-reconcile.sh: Reconcile finalized-but-open SPEC ledger rows against git
 # ground truth. For every .gaia/local/specs/ledger.json row whose status is
 # "ready" (the finalize state), check whether a merged PR exists whose head
-# branch matches spec-NNN-* ; if so, flip the row to status "merged" and stamp
+# branch is a plan branch naming that SPEC (.gaia/scripts/branch-name-lib.sh);
+# if so, flip the row to status "merged" and stamp
 # merged_at with that PR's mergedAt.
 #
 # Why this exists: the allocator's in_progress signal is draft-only and is set
@@ -33,6 +34,10 @@ repo_root="$1"
 _lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../../../../.gaia/scripts/ledger-path-lib.sh
 . "${_lib_dir}/../../../../.gaia/scripts/ledger-path-lib.sh" 2>/dev/null || true
+# shellcheck source=../../../../.gaia/scripts/branch-name-lib.sh
+. "${_lib_dir}/../../../../.gaia/scripts/branch-name-lib.sh" 2>/dev/null || true
+# Without the branch-naming library no merged PR can be matched to a SPEC.
+type gaia_branch_spec_number >/dev/null 2>&1 || exit 0
 
 # No jq, or not a git tree → nothing to do (checked before resolving main,
 # since resolving main needs a git tree too).
@@ -102,23 +107,38 @@ prs_json="$(gh pr list --state merged --limit 200 \
   --json number,headRefName,mergedAt 2>/dev/null || true)"
 [ -n "$prs_json" ] || exit 0
 
+# Projected once, outside the candidate loop: the list is the same for every
+# candidate, and re-parsing 200 pull requests per `ready` row is the whole of
+# what made this scan cost seconds.
+prs_rows="$(printf '%s' "$prs_json" \
+  | jq -r '.[] | "\(.mergedAt)\t\(.number)\t\(.headRefName)"' 2>/dev/null || true)"
+
 while IFS= read -r spec_id; do
   [ -n "$spec_id" ] || continue
   n="$(printf '%s' "$spec_id" | sed -nE 's|^SPEC-0*([0-9]+)$|\1|p')"
   [ -n "$n" ] || continue
 
-  # Match a merged PR whose head branch is spec-<n>-... (any leading path, zero
-  # padding tolerated), mirroring the allocator's branch-marker regex. Latest
-  # merge wins, so merged_at reflects when the work fully landed.
-  match="$(printf '%s' "$prs_json" | jq -r --arg n "$n" '
-    [ .[] | select(.headRefName | test("(^|/)spec-0*" + $n + "(-|$)")) ]
-    | sort_by(.mergedAt) | last
-    | if . == null then empty else "\(.number)\t\(.mergedAt)" end
-  ' 2>/dev/null || true)"
+  # Match a merged PR whose head branch names SPEC <n>, read through the same
+  # library the allocator uses, so every spelling GAIA mints (the worktree one
+  # included) matches. Latest merge wins, so merged_at reflects when the work
+  # fully landed; ISO-8601 timestamps sort chronologically as strings.
+  # The test is a builtin prefilter so a head branch that cannot name a SPEC
+  # skips the subshells of the library; almost none of a repository's merged
+  # pull requests are plan branches. The sibling call sites in spec-allocator.sh
+  # and spec-renumber.sh guard the same loop the same way.
+  # `%s\n`, not `%s`: the command substitution above stripped jq's trailing
+  # newline, and `read` drops a final line that has none, which would silently
+  # lose the newest merge.
+  match="$(printf '%s\n' "$prs_rows" \
+    | while IFS='	' read -r at num head; do
+      if [[ "$head" == *spec-* ]]; then
+        [ "$(gaia_branch_spec_number "$head")" = "$n" ] && printf '%s\t%s\n' "$at" "$num"
+      fi
+    done | LC_ALL=C sort | tail -n 1 || true)"
   [ -n "$match" ] || continue
 
-  pr_num="${match%%	*}"
-  merged_at="${match##*	}"
+  merged_at="${match%%	*}"
+  pr_num="${match##*	}"
   patch="$(jq -nc --arg ts "$merged_at" '{status: "merged", merged_at: $ts}')"
   if bash "${_lib_dir}/ledger-update.sh" "$repo_root" "$spec_id" "$patch" >/dev/null 2>&1; then
     printf 'reconciled %s -> merged (PR #%s, %s)\n' "$spec_id" "$pr_num" "$merged_at"

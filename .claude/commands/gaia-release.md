@@ -9,7 +9,7 @@ Cut a new GAIA release. Thin orchestrator over the `.gaia/cli/gaia-maintainer re
 This command is **maintainer-only**, both this slash command and the `gaia-maintainer` binary are stripped from distributed tarballs by `.gaia/release-exclude` so adopters never see them. The adopter `gaia` binary has no `release` namespace at all; only `gaia-maintainer` does. Unlike `/gaia-init`, this command does not self-delete; it runs every release.
 
 > [!important] `main` is protected
-> Direct pushes to `main` are blocked. The release commit lands on a `release/v<NEW_VERSION>` branch, goes through a PR, and the tag is created on the merge commit _after_ it lands on `main`. The release PR is subject to the same CI gate and the same Code Audit Team merge handshake as any other PR. Expect `Vitest and Playwright`, `Run Chromatic`, and `Vitest (.gaia/cli)`: a release PR bumps the version and rebundles both CLI binaries, so it always touches `.gaia/cli/**` and always runs that job's full typecheck, lint, vitest, and bundle-freshness path rather than its filter-miss fast pass. `gh pr merge --merge --auto` is the normal path: base-branch protection rejects a plain `--merge`, so `--auto` is required to queue the merge until checks pass. See `wiki/concepts/PR Merge Workflow.md`.
+> Direct pushes to `main` are blocked. The release commit lands on a release branch, goes through a PR, and the tag is created on the merge commit _after_ it lands on `main`. The release PR is subject to the same CI gate and the same Code Audit Team merge handshake as any other PR. Expect `Vitest and Playwright`, `Run Chromatic`, and `Vitest (.gaia/cli)`: a release PR bumps the version and rebundles both CLI binaries, so it always touches `.gaia/cli/**` and always runs that job's full typecheck, lint, vitest, and bundle-freshness path rather than its filter-miss fast pass. `gh pr merge --merge --auto` is the normal path: base-branch protection rejects a plain `--merge`, so `--auto` is required to queue the merge until checks pass. See `wiki/concepts/PR Merge Workflow.md`.
 
 ## Required argument
 
@@ -80,8 +80,14 @@ Run the quality gate per `wiki/decisions/Quality Gate.md`. Stop on failure, fix,
 
 ### 4. Switch to the release branch
 
+Mint the branch name from GAIA's naming convention, which `.gaia/scripts/branch-name-lib.sh` owns; its output is `<RELEASE_BRANCH>` in every later step, including the create-gaia lockstep below:
+
 ```bash
-git checkout -b "release/v<NEW_VERSION>"
+bash .gaia/scripts/branch-name-lib.sh name release "<NEW_VERSION>"
+```
+
+```bash
+git checkout -b "<RELEASE_BRANCH>"
 ```
 
 If the branch already exists (a previous attempt aborted), STOP and ask the maintainer whether to delete it and retry, or resume from the next pending step.
@@ -145,8 +151,8 @@ If the pre-commit hook fails, STOP and report, fix the issue and create a **new*
 ### 9. Push the release branch and open the PR
 
 ```bash
-git push -u origin "release/v<NEW_VERSION>"
-gh pr create --base main --head "release/v<NEW_VERSION>" \
+git push -u origin "<RELEASE_BRANCH>"
+gh pr create --base main --head "<RELEASE_BRANCH>" \
   --title "chore: release v<NEW_VERSION>" \
   --body "<release summary, link CHANGELOG entry, list highlights>"
 ```
@@ -211,7 +217,7 @@ Commit on a branch, open + merge a PR, then tag. The PR-merge and main-push guar
 > Non-push `-C` chains (add, commit, fetch, checkout, pull, tag without push) keep the `$CG`/`$WEB` variable and combine freely, only pushes (and force-pushes) need the literal-path, one-`-C` treatment.
 
 ```bash
-git -C "$CG" checkout -b "release/v<NEW_VERSION>"
+git -C "$CG" checkout -b "<RELEASE_BRANCH>"
 # (edit package.json + bin/index.js as above)
 node --check "$CG/bin/index.js"   # smoke: no syntax error
 git -C "$CG" add package.json bin/index.js
@@ -221,11 +227,11 @@ git -C "$CG" commit -m "chore: release v<NEW_VERSION>"
 Branch push, own Bash invocation, **literal path inlined** (substitute the path printed by the discovery step for the placeholder; do not pass `$CG`):
 
 ```bash
-git -C /abs/path/to/create-gaia push -u origin "release/v<NEW_VERSION>"
+git -C /abs/path/to/create-gaia push -u origin "<RELEASE_BRANCH>"
 ```
 
 ```bash
-gh pr create -R gaia-react/create-gaia --base main --head "release/v<NEW_VERSION>" \
+gh pr create -R gaia-react/create-gaia --base main --head "<RELEASE_BRANCH>" \
   --title "chore: release v<NEW_VERSION>" --body "Lockstep with GAIA v<NEW_VERSION>."
 gh pr merge -R gaia-react/create-gaia <N> --merge --delete-branch
 for i in $(seq 1 10); do

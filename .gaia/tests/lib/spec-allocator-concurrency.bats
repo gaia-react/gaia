@@ -254,3 +254,64 @@ EOF
   dupes="$(jq -r '.specs[].id' "$REPO/.gaia/local/specs/ledger.json" | sort | uniq -d | wc -l | tr -d ' ')"
   [ "$dupes" -eq 0 ]
 }
+
+# --- Test 16: a SPEC number held only on a branch still counts ---------------
+#
+# Remote-tracking branches are the one cross-machine signal the allocator has,
+# since the ledger is machine-local. Each spelling below is one GAIA mints or
+# the harness derives from it; the worktree one is invisible to a glob over
+# `refs/heads/spec-*`.
+
+@test "16: highest counts SPEC numbers held only on plan branches, in every minted spelling" {
+  REPO="$("$HELPERS/tmp-spec-repo.sh")"
+  cd "$REPO"
+  git -C "$REPO" branch "plan/spec-004-local"
+  run bash "$REPO/$ALLOC" highest "$REPO"
+  [ "$status" -eq 0 ]
+  [ "$output" = "SPEC-004" ]
+
+  git -C "$REPO" branch "worktree-plan+spec-007-wt"
+  run bash "$REPO/$ALLOC" highest "$REPO"
+  [ "$status" -eq 0 ]
+  [ "$output" = "SPEC-007" ]
+
+  git -C "$REPO" update-ref refs/remotes/origin/plan/spec-011-peer HEAD
+  run bash "$REPO/$ALLOC" highest "$REPO"
+  [ "$status" -eq 0 ]
+  [ "$output" = "SPEC-011" ]
+}
+
+@test "16b: a missing branch-naming library refuses to allocate rather than under-count" {
+  REPO="$("$HELPERS/tmp-spec-repo.sh")"
+  cd "$REPO"
+  rm "$REPO/.gaia/scripts/branch-name-lib.sh"
+  run bash "$REPO/$ALLOC" highest "$REPO"
+  [ "$status" -eq 4 ]
+  grep -qF "branch-naming library is unusable" <<<"$output"
+}
+
+# The library reads refs through gaia_branch_list, which returns 0 whatever the
+# ref read does, so an unreadable ref store under-counts burned numbers exactly
+# as a missing library would. Packing the refs and then corrupting the file is
+# what splits the two reads apart: `rev-parse --git-dir` keeps succeeding.
+@test "16c: an unreadable ref store refuses to allocate rather than under-count" {
+  REPO="$("$HELPERS/tmp-spec-repo.sh")"
+  cd "$REPO"
+  git -C "$REPO" branch "plan/spec-004-local"
+  git -C "$REPO" pack-refs --all
+  printf 'this is not a ref line\n' >>"$REPO/.git/packed-refs"
+  run bash "$REPO/$ALLOC" highest "$REPO"
+  [ "$status" -eq 4 ]
+  grep -qF "cannot be read" <<<"$output"
+}
+
+@test "16d: spec-renumber refuses on an unreadable ref store rather than renaming onto a burned id" {
+  REPO="$("$HELPERS/tmp-spec-repo.sh")"
+  cd "$REPO"
+  git -C "$REPO" branch "plan/spec-004-local"
+  git -C "$REPO" pack-refs --all
+  printf 'this is not a ref line\n' >>"$REPO/.git/packed-refs"
+  run bash "$REPO/.specify/extensions/gaia/lib/spec-renumber.sh" "$REPO" SPEC-001 SPEC-004
+  [ "$status" -eq 4 ]
+  grep -qF "cannot be read" <<<"$output"
+}

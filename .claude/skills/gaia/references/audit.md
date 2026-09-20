@@ -542,7 +542,7 @@ Four audit-specific rules override the agent's defaults; do NOT "fix" them back 
   Maintainer repository only: also map the block's `audience` field → the `audience:<side>` label.
 <!-- gaia:maintainer-only:end -->
 - **Do NOT write a `<HEAD>.dispositions.json` sidecar.** That sidecar gates the code-audit-frontend marker; the audit's own PR clears the merge gate through the out-of-scope bypass whenever the oracle finds nothing owed for its diff (see `## Publish`). Writing one would make `audit-disposition-check.sh` gate the audit's own merge on a filing it never needed. File the issues; write no sidecar.
-- **Emit provenance on every filing.** Run `origin="$(bash .gaia/scripts/debt-origin-lib.sh --changed unknown 2>/dev/null || true)"` once per finding; the file-tech-debt skill owns where `$origin` goes in the body. The bare form is correct here and must not be "fixed" into the `cd "$AUDIT_ROOT" && ...` shape the frontend audit agent's local disposition pipeline uses (`.claude/agents/code-audit-frontend.md`): this route carries no `AUDIT_ROOT`, and the knowledge audit's own session cwd is the tree the filing describes. `changed` is the literal `unknown`, per this file's row in the emitting-routes table in `.claude/skills/file-tech-debt/SKILL.md`, which owns the field vocabulary, the convention table, and this route's known limitation; reference it, restate none of them here. Fail open: if the helper prints nothing, omit the `gaia-debt-origin` line and continue, matching this section's existing posture that a backend-absent or transient `gh` failure is never fatal.
+- **Emit provenance on every filing.** Run `origin="$(bash .gaia/scripts/debt-origin-lib.sh --changed unknown 2>/dev/null || true)"` once per finding; the file-tech-debt skill owns where `$origin` goes in the body. The bare form is correct here and must not be "fixed" into the `cd "$AUDIT_ROOT" && ...` shape the frontend audit agent's local disposition pipeline uses (`.claude/agents/code-audit-frontend.md`): this route carries no `AUDIT_ROOT`, and the knowledge audit's own session cwd is the tree the filing describes. `changed` is the literal `unknown`, per this file's row in the emitting-routes table in `.claude/skills/file-tech-debt/SKILL.md`, which owns the field vocabulary and this route's known limitation; the branch-naming convention `mode` and `unit` come from is `.gaia/scripts/branch-name-lib.sh`'s. Reference them, restate neither here. Fail open: if the helper prints nothing, omit the `gaia-debt-origin` line and continue, matching this section's existing posture that a backend-absent or transient `gh` failure is never fatal.
 
 Record the filed / diverted / deduped counts for the final summary. A backend-absent or transient `gh` failure is never fatal: file what you can, note the rest, and let the main conversation publish regardless.
 
@@ -606,7 +606,7 @@ Otherwise the working tree carries the applied `wiki/` / `.claude/` / `CLAUDE.md
 1. **Cut a branch** (the uncommitted applied changes carry over):
 
    ```bash
-   git checkout -b chore/knowledge-audit-$(date +%Y-%m-%d-%H-%M)
+   git checkout -b "$(bash .gaia/scripts/branch-name-lib.sh name chore knowledge-audit)"
    ```
 
 2. **Commit.** `.gaia/local/` is gitignored, so `git add -A` never sweeps in the report; memory edits are outside the repo. Route the message through a file, never `-m`, so package/keyword text can't trip a shell hook:
