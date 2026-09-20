@@ -718,11 +718,17 @@ stub_gh_failing() {
 
   # The argv pin stays as the cheaper backstop, and all three filters must sit
   # on ONE logged query: file-wide greps would pass on a split into two calls.
-  local line
-  line="$(grep -F -- "--label severity:investigate" "$TMP/argv.log" | head -1)"
-  [ -n "$line" ] || return 1
-  grep -qF -- "--label tech-debt" <<<"$line" || return 1
-  grep -qF -- "--state open" <<<"$line" || return 1
+  # EVERY grade-bearing query is checked, not the first: pinning only the first
+  # let a refactor keep the correct query for the refusal numbers and count a
+  # second grade-bearing one that had lost --state open, which reads the closed
+  # investigate issues into the cap while both halves of this test stay green.
+  local line found=0
+  while IFS= read -r line; do
+    found=1
+    grep -qF -- "--label tech-debt" <<<"$line" || return 1
+    grep -qF -- "--state open" <<<"$line" || return 1
+  done < <(grep -F -- "--label severity:investigate" "$TMP/argv.log")
+  [ "$found" -eq 1 ] || return 1
 }
 
 @test "--investigate-cap on a gh failure exits 2, never the findings status" {
