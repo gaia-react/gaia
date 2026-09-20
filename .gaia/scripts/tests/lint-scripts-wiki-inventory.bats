@@ -1,4 +1,9 @@
 #!/usr/bin/env bats
+# SC2016 is intentional file-wide: the fixture writers below are single-quoted
+# precisely so that the backticks in the fixture markdown reach the page as
+# literal text, which is what makes them fixtures of the real row shape rather
+# than of what this shell would expand them to.
+# shellcheck disable=SC2016
 #
 # Conformance suite for .gaia/scripts/lint-scripts-wiki-inventory.sh -- the
 # gate that keeps wiki/concepts/GAIA Scripts.md's index from going stale as
@@ -28,6 +33,10 @@ setup() {
   REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
   INVENTORY_REL="wiki/concepts/GAIA Scripts.md"
   SCRIPTS_REL=".gaia/scripts"
+  # Absolute, because the two no-argument tests below run the check under a
+  # PATH that deliberately resolves nothing: `env` would have no interpreter
+  # left to find by name.
+  BASH_BIN="$(command -v bash)"
 }
 
 # make_fixture <name>: a fresh git repo under BATS_TEST_TMPDIR carrying an
@@ -46,7 +55,11 @@ make_fixture() {
   printf '%s' "$dir"
 }
 
-# write_script <dir> <relpath-under-.gaia/scripts> [content]
+# write_script <dir> <relpath-under-.gaia/scripts>
+#
+# The body is always the same shebang line. Every subject in this suite is
+# discovered by name, from the index or from the glob, so no assertion reads a
+# script's contents and a content parameter would be a knob nothing turns.
 write_script() {
   local dir="$1" rel="$2"
   mkdir -p "$dir/$SCRIPTS_REL/$(dirname "$rel")"
@@ -321,6 +334,37 @@ write_inventory() {
   run bash "$CHECK" "$dir"
   [ "$status" -eq 2 ]
   grep -qF -- 'scripts directory not found' <<<"$output"
+}
+
+# The no-argument path, where the root is resolved rather than given. Every
+# test above passes <repo_root>, so nothing there reaches this arm at all, and
+# the two causes it can refuse for are exactly the pair that is easy to fold
+# into one message.
+
+@test "with no argument and git off PATH, the refusal names git and not the repository" {
+  run env PATH=/nonexistent "$BASH_BIN" "$CHECK"
+  [ "$status" -eq 2 ]
+  grep -qF -- 'git is required to read the tracked set and is not on PATH' <<<"$output"
+  # The no-argument fallback folds an absent git into an empty root, so ordered
+  # after it this case reports a repository problem on a repository that is
+  # fine. That message must not be the one that fired.
+  grep -qF -- 'not inside a git repository' <<<"$output" && return 1
+  true
+}
+
+@test "with no argument outside any repository, the refusal names the repository and not git" {
+  local dir="$BATS_TEST_TMPDIR/outside"
+  mkdir -p "$dir"
+  # The ceiling stops git walking up into whatever repository the temporary
+  # directory may sit beneath, so the fixture's own answer is the one read.
+  # The `cd` is test-local: bats runs each test in its own subshell, and
+  # `--chdir` would tie this to GNU coreutils' env.
+  cd "$dir" || return 1
+  run env GIT_CEILING_DIRECTORIES="$dir" "$BASH_BIN" "$CHECK"
+  [ "$status" -eq 2 ]
+  grep -qF -- 'not inside a git repository and no <repo_root> given' <<<"$output"
+  grep -qF -- 'git is required to read the tracked set' <<<"$output" && return 1
+  true
 }
 
 @test "a <repo_root> that is not a directory exits 2" {

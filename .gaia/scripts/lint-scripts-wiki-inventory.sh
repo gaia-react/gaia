@@ -147,6 +147,21 @@ main() {
     printf 'usage: bash .gaia/scripts/%s.sh [<repo_root>]\n' "$PROG" >&2
     return 2
   fi
+
+  # Ahead of the no-argument fallback below, not after it. That fallback folds
+  # every failure of `git rev-parse` into an empty root, and an absent git is
+  # one of them, so ordered the other way round a machine with no git on PATH
+  # is told it is not inside a repository -- a false statement about a
+  # repository that is fine, and one that sends the operator to look at the
+  # wrong thing while the message naming the real cause sits below, unreachable
+  # on that path. Both exit 2, so the gate is fail-closed either way and only
+  # the diagnostic was wrong; `.claude/rules/partial-cause-reporting.md` is the
+  # rule that makes that worth an ordering rather than a shrug.
+  if ! command -v git >/dev/null 2>&1; then
+    printf '%s: git is required to read the tracked set and is not on PATH\n' "$PROG" >&2
+    return 2
+  fi
+
   if [ "$#" -eq 1 ]; then
     root="$1"
     if [ ! -d "$root" ]; then
@@ -159,11 +174,6 @@ main() {
       printf '%s: not inside a git repository and no <repo_root> given\n' "$PROG" >&2
       return 2
     fi
-  fi
-
-  if ! command -v git >/dev/null 2>&1; then
-    printf '%s: git is required to read the tracked set and is not on PATH\n' "$PROG" >&2
-    return 2
   fi
 
   # Arming. Both page conditions exit 2 rather than 1, and they are separated
