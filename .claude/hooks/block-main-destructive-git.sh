@@ -697,9 +697,19 @@ if cmd_has_unquoted_group "$cmd"; then cd_tracking=0; fi
 # collapsed line carries the same `cd` segments the command's own line does, so
 # it hands them the same directory either way.
 #
-# The sentinel is spelled with none of `| & ; ( )`, so the `tr` below leaves it
+# The boundary travels in band, on the same line stream the command text
+# travels on, so its spelling is DERIVED per run rather than fixed. A fixed
+# word would be one the guarded command can write for itself, and the arm below
+# clears the tracked directory on any segment that matches: a command spelling
+# it between two separators takes its own `cd` off the walk, and the commit
+# after it is read against the checkout the command never lands in. That is a
+# disarm rather than an over-block, which is the direction this guard must
+# never fail in. The hook's pid and `$RANDOM` are both readable on bash 3.2 and
+# neither is reachable from the command text.
+#
+# The spelling carries none of `| & ; ( )`, so the `tr` below leaves it
 # standing on a line of its own, and it is not a command word any rule arms on.
-walk_reset=__gaia_walk_reset__
+walk_reset="__gaia_walk_reset_${$}_${RANDOM}__"
 collapsed=$(collapsed_substitutions "$cmd")
 
 while IFS= read -r seg; do

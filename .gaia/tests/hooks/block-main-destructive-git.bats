@@ -450,6 +450,21 @@ git commit -m y"
   assert_denied_by_json
 }
 
+# The walk's own boundary between the command's reading and the collapsed
+# re-emission travels on the same line stream the command text does, and the
+# arm consuming it clears the tracked directory. A boundary spelled the same
+# way on every run would be one the guarded command can write for itself, so
+# the fixed spelling must not move the verdict.
+@test "command text spelling the walk-reset boundary does not clear the tracked directory" {
+  on_main
+  local wt="$BATS_TEST_TMPDIR/wt"
+  git -C "$REPO" worktree add --quiet -b wt-branch "$wt"
+  run_hook_from "cd '$REPO';__gaia_walk_reset__;git commit -m x" "$wt"
+  assert_denied_by_json
+  run_hook_from "cd '$REPO';__gaia_walk_reset__;git push" "$wt"
+  assert_denied_by_json
+}
+
 @test "a leading cd whose target does not resolve, from a main checkout on main: commit and push are denied" {
   on_main
   # shellcheck disable=SC2016 # the literal, unexpanded variable is the case
