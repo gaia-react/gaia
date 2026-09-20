@@ -572,6 +572,73 @@ git commit -m y"
   assert_allowed_by_json
 }
 
+# A directory word the scan CAN read settles which checkout the segment acts
+# in, whatever repository that word turns out to name. The ambiguity arm is
+# for a word that resolves to NOTHING, and reading a readable sibling
+# repository as ambiguous denied a commit landing in that sibling against THIS
+# checkout's branch: the foreign stand-down is a whole-call verdict, so a home
+# command sharing the call keeps the guard armed and the sibling segment
+# reaches the directory read.
+#
+# These drive it from a linked worktree with the main checkout on main, which
+# is the shape that separates the two readings: the worktree's own branch
+# allows, and only a candidate found through the ambiguity arm denies.
+foreign_on_sidebranch() {
+  git -C "$FOREIGN" commit --quiet --allow-empty -m init
+  git -C "$FOREIGN" checkout --quiet -B sidebranch
+}
+
+@test "a readable foreign -C beside a home command is not ambiguous" {
+  on_main
+  foreign_on_sidebranch
+  local wt="$BATS_TEST_TMPDIR/wt"
+  git -C "$REPO" worktree add --quiet -b wt-branch "$wt"
+  run_hook_from "git status && git -C $FOREIGN commit -m x" "$wt"
+  assert_allowed_by_json
+  run_hook_from "git status && git -C $FOREIGN push" "$wt"
+  assert_allowed_by_json
+}
+
+@test "a readable foreign cd beside a home command is not ambiguous" {
+  on_main
+  foreign_on_sidebranch
+  local wt="$BATS_TEST_TMPDIR/wt"
+  git -C "$REPO" worktree add --quiet -b wt-branch "$wt"
+  run_hook_from "git status && cd $FOREIGN && git commit -m x" "$wt"
+  assert_allowed_by_json
+  run_hook_from "git status && cd $FOREIGN && git push" "$wt"
+  assert_allowed_by_json
+}
+
+# The control that keeps the two arms above from reading as a blanket allow:
+# with the sibling checkout itself on main, the `-C` read denies, and it
+# denies naming the branch the commit actually lands on rather than reporting
+# the checkout as unreadable.
+@test "a readable foreign -C on main beside a home command denies on its own branch" {
+  on_main
+  local wt="$BATS_TEST_TMPDIR/wt"
+  git -C "$REPO" worktree add --quiet -b wt-branch "$wt"
+  run_hook_from "git status && git -C $FOREIGN commit -m x" "$wt"
+  assert_denied_by_json
+  grep -qF -- 'cannot read' <<<"$output" && return 1
+  grep -qF -- "Commits to 'main' are forbidden" <<<"$output"
+}
+
+# Rule 3's ambiguity arm answered ahead of its refspec arm, so an operator
+# already on a feature branch was told the pushing checkout was unknown and
+# offered a repair they had applied: spelling the directory literally only
+# surfaces the refspec deny on the next attempt. The refspec verdict does not
+# depend on which checkout the push runs from, so it is answered first.
+@test "a refspec naming main is reported ahead of an unreadable directory" {
+  on_main
+  local wt="$BATS_TEST_TMPDIR/wt"
+  git -C "$REPO" worktree add --quiet -b wt-branch "$wt"
+  # shellcheck disable=SC2016 # the hook must receive the unexpanded variable
+  run_hook_from 'cd "$MAIN" && git push origin main' "$wt"
+  assert_denied_by_json
+  grep -qF -- 'refspec names main' <<<"$output"
+}
+
 # The two arms this branch adds to the directory read, each isolated from the
 # ambiguity arm that would otherwise answer for them.
 #

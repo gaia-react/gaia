@@ -10,6 +10,13 @@
 # a path, an argument to another program such as `grep -n -e git commit file`)
 # is not an invocation and never fires.
 #
+# One shape of text is an exception, because the walk splits on separators
+# without modelling quoting: text whose own segment begins with a `cd` this
+# guard cannot read, carrying a `git commit` or `git push` word after it. That
+# reads as an invocation, and the ambiguity arm makes it deny from any
+# checkout. The branch-dir block below records what that costs and what to do
+# about it.
+#
 # Policy: wiki/concepts/Git Workflow.md; the hop guard enforces the main-checkout
 # precondition in wiki/concepts/PR Merge Workflow.md.
 set -euo pipefail
@@ -148,14 +155,32 @@ current_branch() {
   fi
 }
 
-# resolve_same_repo_dir <dir>: print <dir> when it names THIS repository, and
-# print nothing otherwise. Always succeeds, so a caller assigning its output
-# under errexit is not abandoned by a directory that does not resolve; an empty
-# answer leaves the caller reading its own working directory, which is the
-# fail-closed direction this guard takes everywhere else.
-resolve_same_repo_dir() {
+# resolve_dir_kind <dir>: classify a directory WORD the command scan produced,
+# and print the classification. One of:
+#
+#   same <dir>   the word names THIS repository; <dir> is its tilde-expanded
+#                form, which is what a caller reads a branch out of
+#   foreign      the word names a readable directory inside ANOTHER repository
+#   unknown      the word names no readable repository at all: it carries a
+#                variable or a substitution the scan cannot expand, it points
+#                nowhere, or there is no resolver to ask
+#
+# Always succeeds, so a caller assigning its output under errexit is not
+# abandoned by a directory that does not resolve.
+#
+# Three answers rather than two, because the two non-`same` cases are
+# different questions and only one of them is unanswerable. `unknown` is what
+# this guard fails closed on: the checkout the segment acts in is genuinely
+# undecided, so the rules below test every candidate it could be. `foreign` is
+# decided, the word expanded and simply named another repository, and
+# collapsing it into `unknown` denied a sibling-repository commit against THIS
+# checkout's branch whenever a home command shared the tool call, since the
+# foreign stand-down below is a WHOLE-CALL verdict and answers home there.
+# What each caller then does with a `foreign` word is what it did before the
+# ambiguity arm existed; the classification is the only thing restored here.
+resolve_dir_kind() {
   local dir="$1" a b
-  [ -n "$dir" ] || return 0
+  [ -n "$dir" ] || { printf 'unknown'; return 0; }
   # The tilde arrives as a literal character, never expanded, because it reached
   # this hook as text inside the tool call rather than through a shell. SC2088
   # fires on the quoted tilde, but these are case PATTERNS matching that literal
@@ -165,10 +190,15 @@ resolve_same_repo_dir() {
     '~') dir="$HOME" ;;
     '~/'*) dir="$HOME/${dir:2}" ;;
   esac
-  command -v gaia_resolve_common_dir >/dev/null 2>&1 || return 0
-  a=$(gaia_resolve_common_dir "$dir" 2>/dev/null) || return 0
-  b=$(gaia_resolve_common_dir 2>/dev/null) || return 0
-  [ -n "$a" ] && [ -n "$b" ] && [ "$a" = "$b" ] && printf '%s' "$dir"
+  command -v gaia_resolve_common_dir >/dev/null 2>&1 || { printf 'unknown'; return 0; }
+  a=$(gaia_resolve_common_dir "$dir" 2>/dev/null) || { printf 'unknown'; return 0; }
+  [ -n "$a" ] || { printf 'unknown'; return 0; }
+  b=$(gaia_resolve_common_dir 2>/dev/null) || { printf 'unknown'; return 0; }
+  if [ -n "$b" ] && [ "$a" = "$b" ]; then
+    printf 'same %s' "$dir"
+  else
+    printf 'foreign'
+  fi
   return 0
 }
 
@@ -789,25 +819,38 @@ while IFS= read -r seg; do
   # to one and not the rest leaves the gap open in whichever copy was missed.
   seg_cmd=$(printf '%s' "$seg" | sed -E 's/^[[:space:]]*(([A-Za-z_][A-Za-z0-9_]*\+?=([^[:space:]"'"'"']+|"[^"]*"|'"'"'[^'"'"']*'"'"')*|[0-9]*[<>][^[:space:]]*|[{!]|coproc|elif|else|while|until|then|time([[:space:]]+(-p|--))?|do|if)[[:space:]]+)*//')
 
-  # A target that does not resolve as this repository leaves the previously
-  # tracked directory STANDING and marks the checkout ambiguous; it does not
-  # clear the target, and it does not trust it either. Both readings are live
-  # and the scan cannot separate them: a `cd` the shell FAILED to make leaves
-  # the shell in the directory the preceding one moved into, while `cd -` or
+  # A target the scan cannot READ leaves the previously tracked directory
+  # STANDING and marks the checkout ambiguous; it does not clear the target,
+  # and it does not trust it either. Both readings are live and the scan
+  # cannot separate them: a `cd` the shell FAILED to make leaves the shell in
+  # the directory the preceding one moved into, while `cd -` or
   # `cd "$SOMEWHERE"` is a `cd` that most likely SUCCEEDED somewhere the scan
   # cannot name, the main checkout included. Clearing disarms the first
   # reading, trusting the kept target disarms the second, so the kept target
   # answers the ordinary case and the ambiguity flag makes the rules below
   # test every checkout the command could be standing in.
+  #
+  # A target that reads as ANOTHER repository is not that case. The word
+  # expanded, so nothing about where the shell is standing is unknown; it is
+  # simply somewhere this repository's policy does not govern. Such a target
+  # drops the tracked directory and leaves the segments after it reading this
+  # hook's own, which is what they did before the ambiguity arm existed.
   if [ "$cd_tracking" -eq 1 ] && [[ "$seg_cmd" =~ ^cd([[:space:]]|$) ]]; then
     split_git_words "$seg_cmd"
-    resolved_cd=$(resolve_same_repo_dir "${w[1]:-}")
-    if [ -n "$resolved_cd" ]; then
-      lead_cd="$resolved_cd"
-      cd_ambiguous=0
-    else
-      cd_ambiguous=1
-    fi
+    cd_kind=$(resolve_dir_kind "${w[1]:-}")
+    case "$cd_kind" in
+      'same '*)
+        lead_cd="${cd_kind#same }"
+        cd_ambiguous=0
+        ;;
+      foreign)
+        lead_cd=""
+        cd_ambiguous=0
+        ;;
+      *)
+        cd_ambiguous=1
+        ;;
+    esac
     continue
   fi
 
@@ -857,10 +900,17 @@ while IFS= read -r seg; do
   # quoting but never expands, so a value carrying a variable or a
   # substitution is text naming no readable directory; read raw it makes the
   # branch read answer nothing, and every rule armed on the branch allows. An
-  # unresolvable value therefore falls back to the tracked `cd`, else to this
+  # UNREADABLE value therefore falls back to the tracked `cd`, else to this
   # hook's own directory, and marks the segment ambiguous so the rules below
-  # test the other checkouts it could name too. A foreign repository the scan
-  # CAN read never reaches this line.
+  # test the other checkouts it could name too.
+  #
+  # A value naming a repository the scan CAN read does reach this line, in a
+  # call that also carries a home command: the foreign stand-down above is a
+  # whole-call verdict and answers home for such a call. That value names the
+  # checkout outright, so it is read there, on the branch the command acts
+  # on, exactly as it was before the ambiguity arm existed. Reading it as
+  # ambiguous instead denied a sibling-repository commit against THIS
+  # checkout's branch.
   #
   # Two populations pay for that, and the second is the larger one.
   #
@@ -888,13 +938,21 @@ while IFS= read -r seg; do
   # A `-C` that DOES resolve names the checkout outright, so it settles the
   # question whatever a preceding `cd` left behind.
   if [ -n "$git_cwd" ]; then
-    resolved_git_cwd=$(resolve_same_repo_dir "$git_cwd")
-    branch_dir="${resolved_git_cwd:-$lead_cd}"
-    if [ -n "$resolved_git_cwd" ]; then
-      seg_ambiguous=0
-    else
-      seg_ambiguous=1
-    fi
+    cwd_kind=$(resolve_dir_kind "$git_cwd")
+    case "$cwd_kind" in
+      'same '*)
+        branch_dir="${cwd_kind#same }"
+        seg_ambiguous=0
+        ;;
+      foreign)
+        branch_dir="$git_cwd"
+        seg_ambiguous=0
+        ;;
+      *)
+        branch_dir="$lead_cd"
+        seg_ambiguous=1
+        ;;
+    esac
   else
     branch_dir="$lead_cd"
     seg_ambiguous="$cd_ambiguous"
@@ -964,16 +1022,26 @@ while IFS= read -r seg; do
     fi
 
     # Each condition denies with its own message because the repairs differ:
-    # switching branches clears the first and does nothing for the second,
-    # which needs the refspec itself respelled. On-main is answered first, so an
-    # operator who is both standing on main and naming it reads the branch
-    # repair, which settles the refspec too.
+    # switching branches clears the first and does nothing for the refspec,
+    # which needs the refspec itself respelled. Order is by how much of the
+    # verdict the message can stand behind.
+    #
+    # On-main is answered first: an operator both standing on main and naming
+    # it reads the branch repair, which settles the refspec too.
+    #
+    # The refspec is answered ahead of the ambiguity, because it holds whatever
+    # checkout the push turns out to run from, and the ambiguity message's own
+    # repairs do not hold for it. Told the checkout is unknown, an operator
+    # already on a feature branch is offered a repair they have applied, and
+    # spelling the directory literally only surfaces the refspec deny on the
+    # next attempt. The ambiguity arm is last because it is the one that
+    # reports an unanswered question rather than a settled cause.
     if [ "$on_main" -eq 1 ]; then
       deny "Plain 'git push' from main/master is forbidden (wiki/concepts/Git Workflow.md). Create a feature branch and open a PR."
-    elif [ "$amb_main" -eq 1 ]; then
-      deny "This command names a directory this guard cannot read, so which checkout the push runs from is unknown, and one it could reach is on '$amb_branch'. Plain 'git push' from main/master is forbidden (wiki/concepts/Git Workflow.md). Spell the directory literally so the guard can read it, or create a feature branch and open a PR. If this text only QUOTES a command rather than running one, the guard cannot tell the two apart: pass it through a file (--body-file, git commit -F) instead of an inline argument."
     elif [ "$refspec_main" -eq 1 ]; then
       deny "This push's refspec names main, master or HEAD, which is forbidden from any branch (wiki/concepts/Git Workflow.md). Name the branch you are pushing explicitly and open a PR."
+    elif [ "$amb_main" -eq 1 ]; then
+      deny "This command names a directory this guard cannot read, so which checkout the push runs from is unknown, and one it could reach is on '$amb_branch'. Plain 'git push' from main/master is forbidden (wiki/concepts/Git Workflow.md). Spell the directory literally so the guard can read it, or create a feature branch and open a PR. If this text only QUOTES a command rather than running one, the guard cannot tell the two apart: pass it through a file (--body-file, git commit -F) instead of an inline argument."
     fi
   fi
 done < <({
