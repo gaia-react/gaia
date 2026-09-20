@@ -27,7 +27,7 @@ Maintainer-only. Thin orchestrator over `.gaia/cli/gaia-maintainer`, which owns 
 jq -r '.missing[].file'
 ```
 
-Treating `missing`'s entries as if they were bare strings prints JSON blobs instead of paths and silently breaks the per-file question in Step 3.
+Treating `missing`'s entries as if they were bare strings prints JSON blobs instead of paths and silently breaks Step 3's classification.
 
 `missing` is not "everything that ships." Four paths, `.gaia/manifest.json`, `.gaia/VERSION`, `wiki/hot.md`, and `wiki/log.md`, are permanent adopter-owned fixtures that ship with baseline content but are never classified, so they never enter `missing` and this command never asks about them. That is correct, not a gap.
 
@@ -55,7 +55,13 @@ Then record three things for each path in `missing`:
 
 Match on the rationale a category states, never on the shape of a path's neighbours. "Its siblings are excluded" is a guess that looks like a match.
 
-**A path no category matches cleanly is recorded as a withhold**, and surfaced in 3b. It is never shipped on a silent default. The asymmetry is the whole reason:
+The categories are **exclusion** categories, so a match is a withhold and a ship has to come from somewhere else. Three arms, and every path takes exactly one:
+
+- A category's rationale **covers** the path: **withhold**, citing that category.
+- A category's rationale **exempts** the path: **ship**, citing that category and the clause that exempts it. Category 1's "Other `/gaia-*` commands (plan, handoff, pickup, audit) are adopter-useful and must NOT be added here" is the worked case; category 3 exempts `.playwright/react-perf/`, category 5 exempts `.gaia/scripts/`, and category 11 exempts the README template the same way.
+- **No rationale reaches the path in either direction**: record `none`, and send it to 3b's first class, the genuinely novel one.
+
+**A path in that third arm is recorded as a withhold**, and surfaced in 3b. It is never shipped on a silent default. The asymmetry is the whole reason:
 
 - A wrong **ship** is corrected by an upstream deletion, and the Update Workflow's deletion table prompts the adopter rather than auto-deleting. One prompt on every adopter's next update, forever after it is noticed.
 - A wrong **withhold** costs nothing. Ship it next release; it lands as an ordinary addition.
@@ -65,8 +71,8 @@ That default settles the **classification**, not the answer. It never becomes an
 Rules for this step, replacing the three the old per-file question carried:
 
 - **Supply the classification, never the answer.** Every file gets a citation and a reason from this command; every question this command asks gets its answer from the maintainer. State no answer the maintainer has not actually given.
-- **Batch ship confirmations only**, and only by shared rationale. The two question classes that carry real uncertainty are one file each, always.
-- **Silence is still not an answer**, exactly as before.
+
+The other two old rules moved rather than went away, and each is now stated once, where it belongs. "Never batch" is 3b's, which says which questions group and which are one file each. "There is no default direction" is the paragraph directly above, which gives the classification a default and denies it the power to answer.
 
 ### 3b. Ask about three classes only
 
@@ -122,7 +128,7 @@ A ship has nowhere to go. `--ship <path>` carries no category and no reason, a m
 ship <path> | considered category <N>, or none | <one-line reason it ships>
 ```
 
-That commit already exists and already lands before the audit handshake, so both halves of the decision set land together and one `git show` prints every ship line beside the `.gaia/release-exclude` diff holding every withhold's category and reason.
+Step 4 makes that commit, out of the writes the CLI has just produced, so both halves of the decision set land together and one `git show` prints every ship line beside the `.gaia/release-exclude` diff holding every withhold's category and reason.
 
 ## Step 4. Apply every answer in one call
 
@@ -141,7 +147,7 @@ The CLI snapshots the unanswered set once, validates the whole answer set agains
 
 The CLI is the sole writer of `.gaia/release-exclude`. This command never edits that file itself: no direct file write, no in-place edit, no shell redirect into it. Every withheld entry is written by the CLI's own answer machinery, which is the only place the literal-path rule is enforced and under test. If this command hand-edited the boundary instead, that rule would be enforced by nothing at all, no code would own the write, and it would be exactly the kind of unenforced promise this feature exists to eliminate.
 
-Land the manifest-answer commit before starting a PR's Code Audit Team pre-merge audit handshake, not after; see `wiki/concepts/PR Merge Workflow.md` for why the ordering matters.
+Commit what the CLI wrote, `.gaia/manifest.json` plus any `.gaia/release-exclude` change, as the **manifest-answer commit**, carrying one ship line per shipped path in its body in the format 3d gives. Land it before starting a PR's Code Audit Team pre-merge audit handshake, not after; see `wiki/concepts/PR Merge Workflow.md` for why the ordering matters.
 
 ## What this command never does
 
@@ -156,7 +162,7 @@ Step 3 still has no automated test: its actor is a conversation, and nothing can
 
 Every decision now carries a citation, so a wrong decision is a **wrong citation** rather than an unexaminable verdict, and checking one is bounded: read the named category's rationale in `.gaia/release-exclude` and compare it to the file. Nobody re-derives the decision from scratch. That is what the old gate asked for and never got, which is how months of first-option answers accumulated without anyone able to spot a bad one.
 
-Both halves of the record land in the same commit (3d), so a single `git show` on the manifest-answer commit prints every ship line beside the `.gaia/release-exclude` diff carrying every withhold's category and reason. A later pass over the accumulated ledger reads that record rather than the files alone.
+Both halves of the record land in the same commit (3d), and a later pass over the accumulated ledger reads that record rather than the files alone.
 
 Prose remains the only enforcement for two things: that the questions in 3b get asked at all, and that they are written the way 3c requires. Follow it as written rather than treating it as a suggestion.
 
