@@ -37,7 +37,6 @@ if ! type gaia_require_jq >/dev/null 2>&1; then
 fi
 gaia_require_jq 'the main-branch destructive-git guard' "$payload" tool_input 'git'
 
-
 cmd=$(echo "$payload" | jq -r '.tool_input.command // empty')
 
 # Only act on git commands, short-circuit everything else. (Fast path only;
@@ -829,10 +828,9 @@ while IFS= read -r seg; do
   # not populate BASH_REMATCH reliably, so strip with sed rather than a capture
   # loop.
   #
-  # A command WRAPPER (`env`, `command`, `exec`, `nohup`, `timeout`, `xargs`)
-  # stands in that same slot but is NOT a prefix: each carries its own option
-  # grammar, so a blind alternation here would misread `env -i git …` and
-  # `timeout 5 git …`. It is stripped separately, by the per-wrapper table in
+  # A command WRAPPER (`env` and `timeout` among them) stands in that same slot
+  # but is NOT a prefix: each carries its own option grammar, so a blind
+  # alternation here would misread `env -i git …` and `timeout 5 git …`. It is stripped separately, by the per-wrapper table in
   # lib/command-wrappers.sh, into seg_prog below.
   #
   # Honest limit: a redirection whose target is

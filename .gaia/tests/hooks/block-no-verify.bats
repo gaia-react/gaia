@@ -707,6 +707,36 @@ wrapper_prefix() {
   [ "$read_n" -eq "$rows" ]
 }
 
+# What the test above cannot prove, and why this one exists. It builds each
+# invocation from the same row it checks, so it establishes that the stripper
+# implements the TABLE and never that the table matches the WRAPPER. A row
+# whose operand count or option list is wrong writes a spelling nobody runs and
+# then passes on it, which is self-certification: the row is both the claim and
+# the evidence.
+#
+# The grammar of an external program is not derivable from this repository, so
+# the check that a row is RIGHT has to be hand-written against the real
+# spelling, and the only thing that can be derived is whether every row has
+# one. That is this guard: it pins the coverage, not the grammar. A new row
+# added without a hand-written case reds here, which is the moment the library
+# header sends a maintainer to add one.
+@test "every wrapper row has a hand-written real-grammar case" {
+  local name operands read_n=0 rows body
+  rows=$(wrapper_table_rows)
+  [ "$rows" -gt 0 ]
+  body=$(sed -n "/^@test \"a wrapper's own options and operands/,/^}/p" "$BATS_TEST_FILENAME")
+  [ -n "$body" ]
+  while read -r name operands; do
+    [ -n "$name" ] || continue
+    read_n=$((read_n + 1))
+    grep -qE "(^|[[:space:]'])$name[[:space:]]" <<<"$body" || {
+      echo "wrapper row '$name' has no hand-written grammar case" >&2
+      return 1
+    }
+  done <<<"$(wrapper_table)"
+  [ "$read_n" -eq "$rows" ]
+}
+
 # The two shapes a blind word-strip gets wrong, and the reason the table states
 # an option grammar rather than an alternation: in the first the next word is
 # the wrapper's own flag, in the second it is the wrapper's operand.
@@ -719,6 +749,18 @@ wrapper_prefix() {
   assert_denied_by_json
   run_hook 'env -i FOO=bar git commit --no-verify -m x'
   assert_denied_by_json
+  run_hook 'command -p git commit -n -m x'
+  assert_denied_by_json
+  run_hook 'exec -a mygit git commit -n -m x'
+  assert_denied_by_json
+  run_hook 'nice -n 5 git commit -n -m x'
+  assert_denied_by_json
+  run_hook 'nohup git commit -n -m x'
+  assert_denied_by_json
+  run_hook 'setsid git commit -n -m x'
+  assert_denied_by_json
+  run_hook 'stdbuf -o L git commit -n -m x'
+  assert_denied_by_json
   run_hook 'timeout -s KILL 5 git commit -n -m x'
   assert_denied_by_json
   run_hook 'timeout -k 1 5 git commit -n -m x'
@@ -726,6 +768,47 @@ wrapper_prefix() {
   run_hook 'xargs -I {} git commit -n -m x'
   assert_denied_by_json
   run_hook 'nohup timeout 5 env git commit -n -m x'
+  assert_denied_by_json
+}
+
+# The long spellings of the same options. A long option belongs in a row only
+# when its argument is REQUIRED, because an optional-argument long form can
+# only ever be `=`-joined and listing one would make the parser eat the command
+# word. These are the required ones; the `=`-joined form needs no row at all,
+# and the control below is the optional-argument case that must stay unlisted.
+@test "a wrapper's separated long-form option does not hide the git behind it" {
+  run_hook 'env --unset FOO git commit -n -m x'
+  assert_denied_by_json
+  run_hook 'env --chdir /tmp git commit -n -m x'
+  assert_denied_by_json
+  run_hook 'env --unset=FOO git commit -n -m x'
+  assert_denied_by_json
+  run_hook 'nice --adjustment 5 git commit -n -m x'
+  assert_denied_by_json
+  run_hook 'stdbuf --output L git commit -n -m x'
+  assert_denied_by_json
+  run_hook 'timeout --signal KILL 5 git commit -n -m x'
+  assert_denied_by_json
+  run_hook 'timeout --kill-after 1 5 git commit -n -m x'
+  assert_denied_by_json
+  run_hook 'xargs --max-args 1 git commit -n -m x'
+  assert_denied_by_json
+  run_hook 'xargs --delimiter , git commit -n -m x'
+  assert_denied_by_json
+}
+
+# `xargs --replace`, `--eof` and `--max-lines` take OPTIONAL arguments, so the
+# real wrapper consumes no separated value for them and the word after one is
+# the command. Listing them would make the parser eat that word and hide the
+# invocation, which is the one direction this table must never fail in, so they
+# are deliberately absent and this is the control that keeps them absent: each
+# denies precisely because the strip stops before `git`.
+@test "an optional-argument long form is not treated as taking a separated value" {
+  run_hook 'xargs --replace git commit -n -m x'
+  assert_denied_by_json
+  run_hook 'xargs --eof git commit -n -m x'
+  assert_denied_by_json
+  run_hook 'xargs --max-lines git commit -n -m x'
   assert_denied_by_json
 }
 

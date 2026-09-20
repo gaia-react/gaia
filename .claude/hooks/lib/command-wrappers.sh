@@ -28,6 +28,18 @@
 #     with its option instead of being read as the command word. The
 #     `=`-joined and attached spellings (`--unset=FOO`, `-I{}`, `-k5`) need no
 #     entry: they are one word, so the command word still lands next.
+#
+#     A long option belongs here only when its argument is REQUIRED, and that
+#     condition carries the whole safety of the row. GNU spells an optional
+#     argument `--eof[=EOF]`, and an optional argument can only ever be
+#     `=`-joined: `xargs --eof git commit` passes no value at all. Listing such
+#     an option makes this parser consume `git` as its value, which hides the
+#     invocation that was standing in plain sight, so a wrong entry here fails
+#     OPEN where the rest of this file's errors fail closed. `xargs`'s
+#     `--eof`, `--replace` and `--max-lines` are the live examples, all three
+#     deliberately absent while their required-argument short forms `-E`, `-I`
+#     and `-L` are present. Read the wrapper's own manual for the brackets
+#     before adding a long option.
 #   - how many OPERANDS of its own it consumes before the command word.
 #     `timeout` is the only one here that takes any, its DURATION.
 #   - whether it accepts `NAME=value` ASSIGNMENTS between its options and the
@@ -55,9 +67,9 @@
 #   - a wrapper, an option or an operand produced by an expansion (`$VAR`,
 #     `$(...)`, a backtick, `~`), which is ordinary word text to a scan that
 #     does not expand.
-#   - a wrapper outside the table. The set below is the one the sourcing
-#     guards' honest-limit comments have always named. Adding a row is how it
-#     grows.
+#   - a wrapper outside the table below, which is the authority on the set.
+#     Adding a row is how it grows, and a guard's own comment naming a few
+#     wrappers is illustrating the class rather than enumerating it.
 #
 # ADDING A ROW: state all three properties. An option that takes a separated
 # value and is left out of the row hands its own value to the command-word
@@ -88,15 +100,15 @@ _gaia_strip_one_wrapper() {
   _w_first="${_w[0]}"
   case "$_w_first" in
     # GAIA_WRAPPER_TABLE_BEGIN
-    env) _w_valued=' -u -C -S '; _w_operands=0; _w_assign=1 ;;
+    env) _w_valued=' -u -C -S --unset --chdir --split-string '; _w_operands=0; _w_assign=1 ;;
     command) _w_valued=' '; _w_operands=0; _w_assign=0 ;;
     exec) _w_valued=' -a '; _w_operands=0; _w_assign=0 ;;
-    nice) _w_valued=' -n '; _w_operands=0; _w_assign=0 ;;
+    nice) _w_valued=' -n --adjustment '; _w_operands=0; _w_assign=0 ;;
     nohup) _w_valued=' '; _w_operands=0; _w_assign=0 ;;
     setsid) _w_valued=' '; _w_operands=0; _w_assign=0 ;;
-    stdbuf) _w_valued=' -i -o -e '; _w_operands=0; _w_assign=0 ;;
-    timeout) _w_valued=' -k -s '; _w_operands=1; _w_assign=0 ;;
-    xargs) _w_valued=' -a -E -I -L -P -d -n -s '; _w_operands=0; _w_assign=0 ;;
+    stdbuf) _w_valued=' -i -o -e --input --output --error '; _w_operands=0; _w_assign=0 ;;
+    timeout) _w_valued=' -k -s --kill-after --signal '; _w_operands=1; _w_assign=0 ;;
+    xargs) _w_valued=' -a -E -I -L -P -d -n -s --arg-file --delimiter --max-args --max-procs --max-chars '; _w_operands=0; _w_assign=0 ;;
     # GAIA_WRAPPER_TABLE_END
     *) return 1 ;;
   esac
