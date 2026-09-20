@@ -280,10 +280,15 @@ while IFS= read -r seg; do
   # is a false deny whose message names the commit-message over-block, which is
   # a repair that cannot clear it.
   #
-  # Only this arm moves. The HUSKY arm above must keep reading the raw segment,
-  # because `env` consumes `NAME=value` assignments, so `env HUSKY=0 git commit`
-  # has no HUSKY left in seg_prog at all; scanning the stripped word there would
-  # turn a false deny into a silent fail-OPEN on a real bypass.
+  # Only this arm moves, and the HUSKY arm above is the one that must not. `env`
+  # consumes `NAME=value` assignments, so `env HUSKY=0 git commit` has no HUSKY
+  # left in seg_prog at all and that arm would stop firing. What it would NOT do
+  # is let the bypass through: the whole-command safety net below re-asserts
+  # HUSKY over the entire command, and that net covers this exact case. So the
+  # arm stays on the raw segment to keep the decision segment-scoped rather than
+  # leaning on the backstop, which is a defence-in-depth argument and not a
+  # correctness one. Stated precisely because the difference is testable and the
+  # suite cannot pin it: moving that arm leaves every test green.
   if [[ "$is_commit" -eq 1 ]] \
      && [[ "$seg_prog" =~ (^|[[:space:]])-[a-zA-Z]*n[a-zA-Z]*([[:space:]]|$) ]]; then
     deny "$(floor_msg '-n (= --no-verify)')"

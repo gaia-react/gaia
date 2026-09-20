@@ -896,10 +896,16 @@ wrapper_prefix() {
   assert_denied_by_json
 }
 
-# The HUSKY arm deliberately keeps reading the raw segment. `env` consumes
-# `NAME=value` assignments, so the stripped word carries no HUSKY at all and an
-# arm reading it would fail OPEN on a real bypass. This is the control that
-# keeps that arm where it is.
+# `env` consumes `NAME=value` assignments, so a falsy HUSKY prefix is gone from
+# the wrapper-stripped word entirely. These pin the OUTCOME: such a commit is
+# denied.
+#
+# What they deliberately do not claim is which arm denies it. Moving the HUSKY
+# arm onto the stripped word leaves every one of them green, because the
+# whole-command safety net re-asserts HUSKY over the entire command and absorbs
+# the change; verified by mutation rather than assumed. The segment-scoped arm
+# is kept for defence in depth, and no test here pins that choice, so this name
+# says "denied" rather than implying it guards the arm.
 @test "a falsy HUSKY assignment consumed by env is still denied" {
   run_hook 'env HUSKY=0 git commit -m x'
   assert_denied_by_json
