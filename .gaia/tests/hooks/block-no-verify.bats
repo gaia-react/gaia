@@ -544,21 +544,29 @@ run_staged() {
 }
 
 # The route that matters is an instruction surface an agent reads and then
-# types into the Bash tool, so the search covers those surfaces and matches an
-# INVOCATION rather than a mention: `wiki/` and the rules already describe the
-# script in prose, and a descriptive mention routes nothing. `.claude/hooks`
-# and `.gaia/scripts` are deliberately absent. A script that runs the hook
-# internally is not a route either, because the guard reads the command the
-# agent typed, not what that command's script does once it is running.
+# types into the Bash tool. `.claude/hooks` and `.gaia/scripts` are
+# deliberately absent: a script that runs the hook internally is not a route,
+# because the guard reads the command the agent typed rather than what that
+# command's script does once it is running.
+#
+# Two searches, because the two surfaces mention the script for different
+# reasons. On the instruction surfaces any mention at all is a candidate route,
+# so the search is the plain filename. `wiki/` pages are read and acted on too,
+# but they also describe the hook by name in prose, so the search there is the
+# repo-relative PATH: a page that writes the runnable path is handing an agent
+# something to type, where a page naming the file is not. `wiki/meta/` holds
+# audit reports, which quote paths by construction and are never executed.
 @test "the wiki squash script is reached only through its hook registration" {
-  local root hits invocation
+  local root hits
   root=$(cd "$HOOKS_SRC/../.." && pwd)
-  invocation='(bash|sh|source)[[:space:]]+[^[:space:]`"]*\.claude/hooks/wiki-squash-autocommits\.sh|(\./)?\.claude/hooks/wiki-squash-autocommits\.sh[[:space:]]*$|\./\.claude/hooks/wiki-squash-autocommits\.sh'
   grep -qF 'wiki-squash-autocommits.sh' "$root/.claude/settings.json"
-  hits=$(grep -rlE "$invocation" \
+  hits=$(grep -rlF 'wiki-squash-autocommits.sh' \
            "$root/.claude/skills" "$root/.claude/commands" "$root/.claude/rules" \
-           "$root/.claude/agents" "$root/.claude/instructions" "$root/wiki" \
+           "$root/.claude/agents" "$root/.claude/instructions" \
            2>/dev/null || true)
+  [ -z "$hits" ]
+  hits=$(grep -rlF --exclude-dir=meta '.claude/hooks/wiki-squash-autocommits.sh' \
+           "$root/wiki" 2>/dev/null || true)
   [ -z "$hits" ]
 }
 
