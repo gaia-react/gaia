@@ -33,5 +33,12 @@
     "labels": [{ "name": "tech-debt" }, { "name": "severity:suggestion" }],
     "createdAt": "2026-01-05T00:00:00Z",
     "body": "A residual cited on a spaced wiki path, added so the ordering query's spaced-path handling is exercised.\n\n<!-- gaia-debt-key: v1 class=holistic/unclassified path=wiki/concepts/PR Merge Workflow.md line=175 -->"
+  },
+  {
+    "number": 106,
+    "title": "Investigate-graded issue whose severity is not yet determined",
+    "labels": [{ "name": "tech-debt" }, { "name": "severity:investigate" }, { "name": "footprint:narrow" }],
+    "createdAt": "2026-01-06T00:00:00Z",
+    "body": "The fail-open branch may or may not be reachable with a non-empty allowlist, which decides whether this is a defect at all.\n\n<!-- gaia-debt-key: v1 class=holistic/unclassified path=app/baz.ts line=7 -->\n\n<!-- gaia-investigate: v1 -->\n**Question:** does the fail-open branch ever run with a non-empty allowlist?\n**Settled by:** a test that drives the branch with an allowlist of one entry."
   }
 ]

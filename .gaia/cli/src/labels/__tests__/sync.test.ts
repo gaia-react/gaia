@@ -176,6 +176,7 @@ describe('labels/sync planSync create sets', () => {
       'security',
       'severity:critical',
       'severity:important',
+      'severity:investigate',
       'severity:suggestion',
       'tech-debt',
       'wontfix',
@@ -187,7 +188,7 @@ describe('labels/sync planSync create sets', () => {
 
     expect(names).not.toContain('gaia-ci');
     expect(names).not.toContain('security');
-    expect(names).toHaveLength(20);
+    expect(names).toHaveLength(21);
   });
 
   test('tech-debt off leaves the always-on set plus the GAIA CI set', () => {
@@ -233,6 +234,7 @@ describe('labels/sync planSync create sets', () => {
       'security',
       'severity:critical',
       'severity:important',
+      'severity:investigate',
       'severity:suggestion',
       'tech-debt',
       'wontfix',

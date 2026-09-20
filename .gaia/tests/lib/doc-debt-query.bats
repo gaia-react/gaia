@@ -195,6 +195,37 @@ render_backlog() {
   true
 }
 
+@test "Arm 1: severity:investigate has its own rank arm, and the unlabelled else stays in the suggestion band" {
+  block="$(extract_query_fence)"
+  # Two halves of one decision, and they are asserted together because the
+  # tempting edit collapses them: mapping the unlabelled `else` onto the
+  # investigate rank would make `investigate` the fallback, which is the shape
+  # that turned the dedup key's `class=` axis into a graveyard, and it would
+  # also drop every human-filed fieldless issue out of the fix pool, since
+  # investigate is excluded from candidacy.
+  printf '%s\n' "$block" | grep -qE 'elif index\("severity:investigate"\) +then 0' || return 1
+  printf '%s\n' "$block" | grep -qF -- 'else 1 end' || return 1
+}
+
+@test "Arm 2: an investigate-graded issue ranks 0 and sorts below the suggestion band" {
+  bin="$(jq_bin)"
+  [ -n "$bin" ] || skip "neither jq nor gojq on PATH"
+  output="$(render_backlog)"
+  investigate="$(jq --arg n 106 '.[] | select(.number == ($n | tonumber))' <<<"$output")"
+  [ "$(jq '.sev' <<<"$investigate")" = "0" ]
+  # Last in the whole ordering, below every suggestion and below the
+  # unlabelled issue, which is what "not an ordinal severity" costs it.
+  [ "$(jq '.[-1].number' <<<"$output")" = "106" ]
+}
+
+@test "Arm 2: an unlabelled issue still ranks 1, not the investigate rank" {
+  bin="$(jq_bin)"
+  [ -n "$bin" ] || skip "neither jq nor gojq on PATH"
+  output="$(render_backlog)"
+  unlabelled="$(jq --arg n 104 '.[] | select(.number == ($n | tonumber))' <<<"$output")"
+  [ "$(jq '.sev' <<<"$unlabelled")" = "1" ]
+}
+
 @test "Arm 2: the top-severity issue sorts first" {
   bin="$(jq_bin)"
   [ -n "$bin" ] || skip "neither jq nor gojq on PATH"

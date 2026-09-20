@@ -263,6 +263,18 @@ setup() {
   grep -qF -- "for label in audience:adopter audience:maintainer; do" "$VOCAB" || return 1
 }
 
+@test "SKILL.md's step 4 runs the investigate cap check, and step 6 states both obligations that ride with the grade" {
+  # The cap is the grade's forcing function, and a forcing function the recipe
+  # can forget to call is prose. Pinned here as the literal invocation, because
+  # step 4 is the only place a filing passes through before `gh issue create`.
+  grep -qF -- "bash .gaia/scripts/check-debt-issue-metadata.sh --investigate-cap" "$VOCAB" || return 1
+  # Both obligations, because either alone fails in a way the other cannot
+  # cover: the block without the cap bounds nothing, and the cap without the
+  # block rations contentless filings.
+  grep -qF -- "<!-- gaia-investigate: v1 -->" "$VOCAB" || return 1
+  grep -qF -- "three open \`severity:investigate\` issues" "$VOCAB" || return 1
+}
+
 @test "neither label loop states a count of its own" {
   # The count in the prose and the number of entries in the loop are two
   # statements of one fact, and only the loop is executable, so the prose is

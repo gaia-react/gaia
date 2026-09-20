@@ -49,6 +49,7 @@ The `audience` axis answers two questions at two layers, under one name. A regis
 | `severity:critical` | `b60205` | Breaks a documented promise or loses work; drain first | tech-debt, gaia-ci |
 | `severity:important` | `fbca04` | Degrades a documented behavior; drain before suggestions | tech-debt, gaia-ci |
 | `severity:suggestion` | `c5def5` | Improvement with no broken behavior behind it | tech-debt |
+| `severity:investigate` | `1d76db` | Severity not yet determined; research required before it can be graded | tech-debt |
 
 ### Effort
 
