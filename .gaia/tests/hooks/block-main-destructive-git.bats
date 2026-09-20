@@ -477,11 +477,74 @@ git commit -m y"
   assert_denied_by_json
 }
 
+# A failed `cd` leaves the real shell standing in the directory the previous
+# one moved into, so a target that does not resolve must keep the tracked
+# directory rather than clear it. The single-`cd` shape above pins the
+# clear-to-nothing case from the main checkout, where the fallback happens to
+# be main either way; only a two-hop shape read from another checkout tells
+# the two apart.
+@test "a second cd whose target does not resolve keeps the checkout the first one moved into" {
+  on_main
+  local wt="$BATS_TEST_TMPDIR/wt"
+  git -C "$REPO" worktree add --quiet -b wt-branch "$wt"
+  run_hook_from "cd '$REPO'; cd /nonexistent; git commit -m x" "$wt"
+  assert_denied_by_json
+  run_hook_from "cd '$REPO'; cd /nonexistent; git push" "$wt"
+  assert_denied_by_json
+  # shellcheck disable=SC2016 # the hook must receive the unexpanded variable
+  run_hook_from "cd '$REPO'; cd \"\$UNSET_VAR\"; git commit -m x" "$wt"
+  assert_denied_by_json
+}
+
+# A resolvable second hop still replaces the first, so keeping the previous
+# target on a failed resolve does not pin the walk to the leading `cd`.
+@test "a second cd that does resolve still replaces the checkout the first one moved into" {
+  on_main
+  local wt="$BATS_TEST_TMPDIR/wt"
+  git -C "$REPO" worktree add --quiet -b wt-branch "$wt"
+  run_hook_from "cd '$REPO'; cd '$wt'; git commit -m x" "$wt"
+  assert_allowed_by_json
+}
+
 @test "a -C into a linked worktree does not lend its branch to a later bare commit on main" {
   on_main
   local wt="$BATS_TEST_TMPDIR/wt"
   git -C "$REPO" worktree add --quiet -b wt-branch "$wt"
   run_hook_from "git -C $wt status && git commit -m x" "$REPO"
+  assert_denied_by_json
+}
+
+# The `-C` word is read by a scan that models quoting but never expands, so a
+# value it cannot resolve names no readable checkout. Reading a branch from it
+# answers nothing and every branch-armed rule allows, which is why an
+# unresolvable value falls back to the directory the command actually runs in.
+@test "an unresolvable -C value does not disarm the branch-armed rules on main" {
+  on_main
+  # shellcheck disable=SC2016 # the hook must receive the unexpanded variable
+  run_hook_from 'git -C "$UNSET_VAR" commit -m x' "$REPO"
+  assert_denied_by_json
+  # shellcheck disable=SC2016
+  run_hook_from 'git -C "$UNSET_VAR" push' "$REPO"
+  assert_denied_by_json
+  # shellcheck disable=SC2016 # a substitution is text to the scan, not a path
+  run_hook_from 'git -C "$(pwd)" commit -m x' "$REPO"
+  assert_denied_by_json
+  run_hook_from 'git -C /nonexistent commit -m x' "$REPO"
+  assert_denied_by_json
+}
+
+# The fallback is the checkout the command runs in, not this hook's own: a
+# `cd` ahead of the segment already named one, and an unresolvable `-C` must
+# not discard it.
+@test "an unresolvable -C value falls back to the checkout a preceding cd named" {
+  on_main
+  local wt="$BATS_TEST_TMPDIR/wt"
+  git -C "$REPO" worktree add --quiet -b wt-branch "$wt"
+  # shellcheck disable=SC2016 # the hook must receive the unexpanded variable
+  run_hook_from "cd '$wt'; git -C \"\$UNSET_VAR\" commit -m x" "$REPO"
+  assert_allowed_by_json
+  # shellcheck disable=SC2016
+  run_hook_from "cd '$REPO'; git -C \"\$UNSET_VAR\" commit -m x" "$wt"
   assert_denied_by_json
 }
 
@@ -1115,6 +1178,7 @@ run_hop() {
 @test "hop guard: a target beside a substitution is answered once, not twice" {
   hold_feature_with_pr 42
   export GH_STUB=fail
+  # shellcheck disable=SC2016 # the hook must receive the unexpanded opener
   run_hop 'git checkout main && echo "$(date)"' sid-peer
   assert_allowed_by_json
   [ "$(grep -cF -- 'could not check' <<<"$output")" -eq 1 ]
@@ -1252,18 +1316,21 @@ run_hop() {
 # segment carries both the command word and the subcommand the rules arm on.
 #
 # A substitution standing in a GLOBAL `-C`'s value is a separate limit and is
-# deliberately not asserted here: the segment is read now, but `parse_git_globals`
-# hands the branch read an unexpandable directory word, which resolves to no
-# branch and denies nothing. That limit is the one `parse_git_globals` already
-# states, and closing it means making the branch read fail closed on a `-C`
-# value it cannot resolve, not widening this walk.
+# A `-C` whose value is a substitution is asserted by the branch read's own
+# fail-closed case rather than here: an unresolvable directory word falls back
+# to the checkout the command runs in, so the rules stay armed. This test pins
+# the narrower claim that the walk reads the subcommand past a substitution
+# standing in git's other arguments.
 @test "a command substitution inside git's arguments does not hide the subcommand" {
   on_main
+  # shellcheck disable=SC2016 # the hook must receive the unexpanded opener
   run_hook 'git -c user.name="$(whoami)" commit -m y'
   assert_denied_by_json
+  # shellcheck disable=SC2016
   run_hook 'git commit -m "$(date)"'
   assert_denied_by_json
   on_feature
+  # shellcheck disable=SC2016
   run_hook 'git push "$(echo origin)" main'
   assert_denied_by_json
 }
@@ -1273,8 +1340,10 @@ run_hop() {
 # inside one is read.
 @test "text inside a collapsed substitution does not arm the outer segment" {
   on_feature
+  # shellcheck disable=SC2016 # the hook must receive the unexpanded opener
   run_hook 'echo "$(git log)" main'
   assert_allowed_by_json
+  # shellcheck disable=SC2016
   run_hook 'grep -R "$(echo commit)" .'
   assert_allowed_by_json
 }

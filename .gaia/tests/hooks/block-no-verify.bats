@@ -534,14 +534,19 @@ run_staged() {
 # A `$( )` inside git's OWN arguments cuts the segment at its parens, so no one
 # segment carries both the command word and the bypass flag.
 @test "a command substitution inside git's arguments does not orphan the flag" {
+  # shellcheck disable=SC2016 # the hook must receive the unexpanded opener
   run_hook 'git commit -m "$(cat f)" -n'
   assert_denied_by_json
+  # shellcheck disable=SC2016
   run_hook 'git commit -m "$(cat f)" --no-verify'
   assert_denied_by_json
+  # shellcheck disable=SC2016
   run_hook 'git -C "$(pwd)" commit -n -m y'
   assert_denied_by_json
+  # shellcheck disable=SC2016
   run_hook 'git -C "$(pwd)" commit -m "$(cat f)" --no-verify'
   assert_denied_by_json
+  # shellcheck disable=SC2016
   run_hook 'git commit -m "$(echo "$(date)")" -n'
   assert_denied_by_json
 }
@@ -550,8 +555,10 @@ run_staged() {
 # reader's way: a word produced INSIDE one is not the outer segment's
 # subcommand, and the body still reaches the walk as its own segment.
 @test "text inside a collapsed substitution does not arm the outer segment" {
+  # shellcheck disable=SC2016 # the hook must receive the unexpanded opener
   run_hook 'git log $(echo commit) -n 1'
   assert_allowed_by_json
+  # shellcheck disable=SC2016
   run_hook 'echo "$(git log)" --no-verify'
   assert_allowed_by_json
 }
@@ -563,8 +570,10 @@ run_staged() {
 @test "every commit guard derives the segment command word the same way" {
   local expected="" f line n
   for f in block-no-verify.sh block-main-destructive-git.sh red-verify-commit-check.sh; do
+    # shellcheck disable=SC2016 # the needle is the hooks' literal source text
     n=$(grep -cF 'seg_cmd=$(printf' "$HOOKS_SRC/$f")
     [ "$n" -eq 1 ]
+    # shellcheck disable=SC2016
     line=$(grep -F 'seg_cmd=$(printf' "$HOOKS_SRC/$f" | sed -E 's/^[[:space:]]*//')
     if [ -z "$expected" ]; then expected="$line"; fi
     [ "$line" = "$expected" ]
@@ -588,6 +597,7 @@ run_staged() {
   line=$(grep -F -- '--no-verify' "$HOOKS_SRC/wiki-squash-autocommits.sh" \
          | grep -F 'commit -m' | sed -E 's/^[[:space:]]*//; s/[[:space:]]*>.*$//')
   [ -n "$line" ]
+  # shellcheck disable=SC2016 # the needle is the substitution opener itself
   grep -qF '$(' <<<"$line"
   run_hook "$line"
   assert_denied_by_json

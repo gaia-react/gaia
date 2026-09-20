@@ -751,13 +751,21 @@ while IFS= read -r seg; do
   # to one and not the rest leaves the gap open in whichever copy was missed.
   seg_cmd=$(printf '%s' "$seg" | sed -E 's/^[[:space:]]*(([A-Za-z_][A-Za-z0-9_]*\+?=([^[:space:]"'"'"']+|"[^"]*"|'"'"'[^'"'"']*'"'"')*|[0-9]*[<>][^[:space:]]*|[{!]|coproc|elif|else|while|until|then|time([[:space:]]+(-p|--))?|do|if)[[:space:]]+)*//')
 
-  # A target that does not resolve as this repository CLEARS the tracked
-  # directory rather than leaving the previous one standing: the command has
-  # moved somewhere this guard cannot read a branch from, and keeping the
-  # previous target would read a branch the command had already left.
+  # A target that does not resolve as this repository leaves the previously
+  # tracked directory STANDING rather than clearing it. A `cd` the shell fails
+  # to make leaves the real shell in the directory the preceding one moved
+  # into, so clearing here reads a branch from a checkout the command never
+  # reached: from a linked worktree, `cd <main-checkout>; cd /nonexistent`
+  # would fall back to this hook's own branch and let a commit land on main.
+  # Keeping the previous target over-blocks only the step-out-of-the-repo
+  # case, where the real command fails anyway, and that is the direction this
+  # guard fails in everywhere else.
   if [ "$cd_tracking" -eq 1 ] && [[ "$seg_cmd" =~ ^cd([[:space:]]|$) ]]; then
     split_git_words "$seg_cmd"
-    lead_cd=$(resolve_same_repo_dir "${w[1]:-}")
+    resolved_cd=$(resolve_same_repo_dir "${w[1]:-}")
+    if [ -n "$resolved_cd" ]; then
+      lead_cd="$resolved_cd"
+    fi
     continue
   fi
 
@@ -801,7 +809,23 @@ while IFS= read -r seg; do
   # recent preceding `cd` moved into, else this hook's working directory. A `cd`
   # into a linked worktree is this repository but another checkout, with its
   # own branch.
-  branch_dir="${git_cwd:-$lead_cd}"
+  #
+  # The `-C` word goes through the same resolution the `cd` arm above uses
+  # rather than reaching the branch read raw. The scan that produced it models
+  # quoting but never expands, so a value carrying a variable or a
+  # substitution is text naming no readable directory; read raw it makes the
+  # branch read answer nothing, and every rule armed on the branch allows. An
+  # unresolvable value therefore falls back to the tracked `cd`, else to this
+  # hook's own directory. What that costs is a `-C` naming a real sibling
+  # checkout the scan could not expand, which is read against the wrong tree
+  # and denied: a false deny carrying the `!`-prefix escape rather than a
+  # miss. A foreign repository the scan CAN read never reaches this line.
+  if [ -n "$git_cwd" ]; then
+    resolved_git_cwd=$(resolve_same_repo_dir "$git_cwd")
+    branch_dir="${resolved_git_cwd:-$lead_cd}"
+  else
+    branch_dir="$lead_cd"
+  fi
 
   # The words after the subcommand, where a push's own refspec lives. The
   # main/master tests below read these rather than the whole segment: arming the
