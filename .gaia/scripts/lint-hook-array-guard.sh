@@ -111,8 +111,16 @@ scan_file() {
   # Full-line comments are skipped. Cross-line guards (a count check on an
   # earlier line) are NOT understood and read as false positives; so does a
   # provably-non-empty array (e.g. one filled right after a `[ -n "$x" ]`
-  # guard). Verify each hit before "fixing" it. Unquoted ${arr[@]} has the
-  # same hazard but is not matched here; add it if your hooks use it.
+  # guard). Verify each hit before "fixing" it.
+  #
+  # Two expansions carry the same hazard and are not matched here, so a clean
+  # run is not a clean file. Unquoted ${arr[@]} aborts identically; so does an
+  # indexed read of an empty array, "${arr[0]}", which dies with
+  # `arr[0]: unbound variable` on stock /bin/bash 3.2.57. The indexed form is
+  # the easier one to miss, because it does not look like the class: it reads
+  # as one element rather than an expansion, and it sits beside guarded
+  # neighbours in this tree already. Add either pattern if your hooks rely on
+  # the check to find it.
   awk -v file="$f" '
     /^[[:space:]]*#/ { next }
     {

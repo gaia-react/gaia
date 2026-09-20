@@ -633,11 +633,13 @@ fi
 # The bundled-hooks inventory in wiki/concepts/Claude Hooks.md is hand-kept, and
 # it drifted silently until four registered hooks were missing from it at once
 # (gaia-react/gaia#1786). This gate is what makes the next omission red on the
-# pull request that registers the hook. Its subjects are .claude/settings.json
-# and that page, neither of them shell, so it rides here rather than earning a
-# workflow of its own: this harness is already the folded home for every guard
-# that shellcheck cannot model, and the arming line for settings.json lives in
-# .github/workflows/shell-lint.yml's paths filter alongside the others. It takes
+# pull request that registers the hook. Its subjects are .claude/settings.json,
+# the .claude/hooks/ listing, and that page; only the listing is shell, and only
+# as filenames. So it rides here rather than earning a workflow of its own:
+# this harness is already the folded home for every guard that shellcheck
+# cannot model, and the arming line for settings.json lives in
+# .github/workflows/shell-lint.yml's paths filter alongside the others, as does
+# the one for the hooks listing. It takes
 # the root explicitly rather than resolving one ambiently: it reads two fixed
 # paths and needs neither a working checkout nor git on PATH to compare them,
 # and this harness already holds the value its argument-free arm would re-derive.

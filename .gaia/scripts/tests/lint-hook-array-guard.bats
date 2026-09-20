@@ -2,8 +2,9 @@
 # Tests for .gaia/scripts/lint-hook-array-guard.sh: the static gate that flags
 # unguarded bare "${arr[@]}" / "${arr[*]}" expansions under `set -u`, the bash
 # 3.2.57 empty-array abort class the bash-5 bats suites are blind to. The gate
-# scans the .claude/hooks bodies, every shipped .gaia/scripts/**/*.sh, and the
-# framework test bash under .gaia/tests/**/*.sh.
+# walks .claude/hooks/**/*.sh recursively, the sourced libraries under lib/
+# included, every shipped .gaia/scripts/**/*.sh, and the framework test bash
+# under .gaia/tests/**/*.sh.
 #
 # Two jobs: prove the detector fires on a known-bad fixture in each scanned tree
 # (including a subdirectory of each recursive tree, so the walk is covered) and
@@ -12,8 +13,14 @@
 #
 # Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 # The linter is invoked as `bash "$LINTER"` from a fixture cwd, matching
-# how CI runs it from the repo root; it scans `.claude/hooks/*.sh`,
+# how CI runs it from the repo root; it scans `.claude/hooks/**/*.sh`,
 # `.gaia/scripts/**/*.sh` and `.gaia/tests/**/*.sh` relative to cwd.
+#
+# One asymmetry the fixtures below cover on both sides: whether a file runs
+# under `set -u` is read from the file's own text everywhere except
+# `.claude/hooks/lib/`, whose modules are sourced into callers that already set
+# it. A lib fixture setting nothing is still scanned; a root hook setting
+# nothing is still skipped.
 
 setup() {
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"

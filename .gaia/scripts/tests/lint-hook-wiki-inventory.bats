@@ -278,8 +278,11 @@ write_inventory() {
   [ "$status" -eq 2 ]
   grep -qF -- 'no hook name could be read' <<<"$output"
   # The empty-set arm's message would be false here, so it must not be the one
-  # that fired.
-  grep -qF -- 'No command under the hooks key names that directory' <<<"$output" && return 1
+  # that fired. The needle is the empty-set arm's own opening line, which is
+  # the part of that message no other arm prints; pinning a fragment of its
+  # body instead is what lets a rewording leave this assertion matching
+  # nothing, unreachable, and indistinguishable from one that passed.
+  grep -qF -- 'discovery found no hook, from either source' <<<"$output" && return 1
   true
 }
 

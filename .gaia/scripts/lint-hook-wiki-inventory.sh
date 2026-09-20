@@ -162,7 +162,12 @@ registered_hooks() {
 # from the set is indistinguishable from a page that covers them.
 root_hooks() {
   local root="$1" f
-  for f in "$root/.claude/hooks/"*.sh; do
+  # Through HOOKS_DIR, not a second literal spelling of the same path. The
+  # arming arm in main tests that directory and this enumerates it, so a
+  # literal here would let the two name different directories: the check would
+  # arm on one and read the other, and report clean over a tree it never
+  # listed.
+  for f in "$root/$HOOKS_DIR/"*.sh; do
     [ -f "$f" ] || continue
     printf '%s\n' "${f##*/}"
   done | LC_ALL=C sort -u
@@ -302,6 +307,14 @@ main() {
   # repairs do differ -- an unreadable spelling, unparseable settings, an
   # absent settings file, an absent hooks directory -- so none of them can be
   # what the operator is reading this message about.
+  #
+  # What the union retires, said plainly because nothing else records it: a
+  # settings file registering no hook at all no longer refuses on its own. A
+  # tree whose hooks are all on disk and none registered now passes here. That
+  # is the honest consequence of the set being a union rather than an
+  # intersection -- either source alone is enough to make the comparison
+  # meaningful -- and it is backstopped by the suites that assert specific
+  # registrations rather than by this arm.
   if [ ! -s "$LIST_FILE" ]; then
     printf '%s: discovery found no hook, from either source.\n' "$PROG" >&2
     printf 'No command under the hooks key of %s names .claude/hooks/, AND %s/ holds no\n' "$SETTINGS" "$HOOKS_DIR" >&2
