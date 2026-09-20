@@ -58,7 +58,7 @@ Match on the rationale a category states, never on the shape of a path's neighbo
 The categories are **exclusion** categories, so a match is a withhold and a ship has to come from somewhere else. Three arms, and every path takes exactly one:
 
 - A category's rationale **covers** the path: **withhold**, citing that category.
-- A category's rationale **exempts** the path: **ship**, citing that category and the clause that exempts it. Category 1's "Other `/gaia-*` commands (plan, handoff, pickup, audit) are adopter-useful and must NOT be added here" is the worked case; category 3 exempts `.playwright/react-perf/`, category 5 exempts `.gaia/scripts/`, and category 11 exempts the README template the same way.
+- A category's rationale **exempts** the path: **ship**, citing that category and the clause that exempts it. Several categories carry such a clause, and it is written inside the rationale rather than beside the paths: a `DOES ship` note, or an "adopters receive only" sentence that names what the exclusion spares. Category 1's "Other `/gaia-*` commands (plan, handoff, pickup, audit) are adopter-useful and must NOT be added here" is the worked case. Read a category's whole rationale for such a clause before taking the first arm; a category that excludes a directory often ships something inside it.
 - **No rationale reaches the path in either direction**: record `none`, and send it to 3b's first class, the genuinely novel one.
 
 **A path in that third arm is recorded as a withhold**, and surfaced in 3b. It is never shipped on a silent default. The asymmetry is the whole reason:
@@ -68,11 +68,9 @@ The categories are **exclusion** categories, so a match is a withhold and a ship
 
 That default settles the **classification**, not the answer. It never becomes an answer on its own: a file whose question goes unanswered stays unanswered, and Step 4 cannot proceed for it.
 
-Rules for this step, replacing the three the old per-file question carried:
+Rule for this step:
 
 - **Supply the classification, never the answer.** Every file gets a citation and a reason from this command; every question this command asks gets its answer from the maintainer. State no answer the maintainer has not actually given.
-
-The other two old rules moved rather than went away, and each is now stated once, where it belongs. "Never batch" is 3b's, which says which questions group and which are one file each. "There is no default direction" is the paragraph directly above, which gives the classification a default and denies it the power to answer.
 
 ### 3b. Ask about three classes only
 
