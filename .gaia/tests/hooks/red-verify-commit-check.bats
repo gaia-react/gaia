@@ -914,12 +914,16 @@ run_commit_hook_in() {
 
 # The extraction must not invent a commit where none is invoked: a subject
 # carrying a parenthesised scope looks like a qualifier span and is not one.
+# Each command carries a `git commit` token inside the quoted prose on purpose,
+# so the fast path is passed and the extraction actually runs; without it the
+# hook exits before `hidden_bodies` is called and this control asserts nothing
+# about the extraction it is named for.
 @test "a parenthesised scope in quoted prose is not read as a qualifier" {
   stage_file "app/utils/x/index.test.ts" "$PASSING_TEST"
-  run_commit_hook 'echo "feat(core): x"'
+  run_commit_hook 'echo "feat(core): see git commit docs"'
   [ "$status" -eq 0 ]
   refute_denied
-  run_commit_hook 'echo "fix(e2e): ship it"'
+  run_commit_hook 'echo "fix(e2e): ship it via git commit later"'
   [ "$status" -eq 0 ]
   refute_denied
 }
