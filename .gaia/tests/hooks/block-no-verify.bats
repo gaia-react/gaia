@@ -729,7 +729,7 @@ wrapper_prefix() {
   while read -r name operands; do
     [ -n "$name" ] || continue
     read_n=$((read_n + 1))
-    grep -qE "(^|[[:space:]'])$name[[:space:]]" <<<"$body" || {
+    grep -qE "(^|[[:space:]'])${name}[[:space:]]" <<<"$body" || {
       echo "wrapper row '$name' has no hand-written grammar case" >&2
       return 1
     }
