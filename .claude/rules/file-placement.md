@@ -19,12 +19,11 @@ So the conventions here are opposite by tree, and each is correct for its own re
 
 **Add a new hook at the root of `.claude/hooks/`. Do not create a subdirectory.**
 
-Two reasons, and either one alone settles it:
-
-- **Nothing checks a hook's path.** A hook is named as a string everywhere it is registered, filtered, or described, and a move leaves every one of those spellings pointing at nothing, silently. There is no build step that fails and no test that necessarily covers the reference that broke.
-- **Single-level `*.sh` globs scan this directory and do not descend.** Several checks walk the hooks directory with a plain glob, so a hook in a subdirectory is not scanned, not checked, and reports green having examined nothing. That is worse than a loud break, because the scan still passes.
+**Nothing checks a hook's path.** A hook is named as a string everywhere it is registered, filtered, or described: manifests, JSON registries, CI path filters, rule globs, agent prose, wiki pages. A move leaves every one of those spellings pointing at nothing, and no build step fails and no test necessarily covers the reference that broke. The cost is paid per reference, which is what keeps the directory flat rather than grouped into subfolders.
 
 Filename prefixes already group the directory, and they cost nothing to adopt: a new hook named for what it does sorts next to its family without moving anything.
+
+A second obligation rides on the first, and it binds whoever writes a check rather than whoever adds a hook: **every discovery over this directory has to descend.** A single-level glob does not, so a check written that way reports clean over shell it never opened, which is the discovery-stage fail-open `.claude/rules/guards-must-fail.md` names first. Walk the tree, and state the size of the set you expected to find.
 
 ## Register the hook in `.gaia/hook-scopes.json`
 
@@ -49,7 +48,7 @@ The check walks the directory rather than a second hand-kept list, so an unregis
 
 Those additional checkers are release-excluded, so an adopter cannot run them. That is why the shipped half above states the scope-manifest obligation and no other: an instruction to satisfy something nothing in the reader's tree can verify is an instruction they cannot act on and we cannot enforce.
 
-**`.gaia/scripts/**` is flat for the same reason `.claude/hooks/**` is, and more so.** Its scripts are referenced across far more files each, so a move is a rename across CI workflows, rules, wiki prose and bats suites for no functional gain; and the single-level glob is not merely a hazard here but a contract the bats suites assert in so many words, so a subdirectory quietly falsifies a passing test. This directory has already been burned once by a location change that un-excluded a tree without adding it as a scan target.
+**Keep `.gaia/scripts/**` flat too, for a stronger version of the same reason.** Its scripts carry far more referencing files each, so a move is a rename across CI workflows, rules, wiki prose and bats suites for no functional gain. The subdirectories it already holds are established exceptions, not a precedent for filing a new script into one. An under-reaching `paths:` glob is caught loudly rather than silently here: `lint-guard-rule-shell-coverage.sh` reds and names the file the glob missed. This directory has already been burned once by a location change that un-excluded a tree without adding it as a scan target.
 
 **The manifest keys by path, so a move is a delete plus an add.** The Update Workflow asks an adopter before removing a file they still have, so reorganizing a shipped tree manufactures a prompt per moved file on every adopter's next update, plus a merge conflict for anyone who customized one.
 
