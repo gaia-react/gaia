@@ -27,9 +27,14 @@
 #   - which of its options take a SEPARATED value, so the value is consumed
 #     with its option instead of being read as the command word. The
 #     `=`-joined and attached spellings (`--unset=FOO`, `-I{}`, `-k5`) need no
-#     entry: they are one word, so the command word still lands next.
+#     entry: each is a single option token carrying its own value, so the
+#     command word still lands next. Being one WORD is not the property that
+#     buys that, and a CLUSTERED short-option group is the word that proves it:
+#     its last letter takes its value from the FOLLOWING word, so `xargs -0I {}`
+#     leaves `{}` where the command word is read. HONEST LIMITS carries that
+#     one.
 #
-#     A long option belongs here only when its argument is REQUIRED, and that
+#     An option belongs here only when its argument is REQUIRED, and that
 #     condition carries the whole safety of the row. GNU spells an optional
 #     argument `--eof[=EOF]`, and an optional argument can only ever be
 #     `=`-joined: `xargs --eof git commit` passes no value at all. Listing such
@@ -40,6 +45,21 @@
 #     deliberately absent while their required-argument short forms `-E`, `-I`
 #     and `-L` are present. Read the wrapper's own manual for the brackets
 #     before adding a long option.
+#
+#     REQUIRED has to hold on EVERY platform whose manual names the option,
+#     because a row is the union of the GNU and the BSD spellings and one
+#     parser reads it everywhere. An option a platform simply LACKS is inert
+#     there, since that platform rejects the spelling before the wrapper runs
+#     anything, and that is what makes a union safe to list at all: the
+#     BSD-only `env -P` and `xargs -J`/`-R`/`-S` sit in their rows beside GNU's
+#     own `env --argv0` and `xargs --process-slot-var` for exactly that reason.
+#     An option both platforms accept and disagree about the ARITY of would
+#     not be inert, and would take the same answer the optional-argument case
+#     takes above: stay out of the row, because the word after it is a value on
+#     one platform and the command word on the other. No option in these rows
+#     is in that state; read for it anyway when adding one, because getopt's
+#     `val` field carries a letter for a long-only option too, so a `longopts`
+#     row alone never establishes that a short spelling exists.
 #   - how many OPERANDS of its own it consumes before the command word.
 #     `timeout` is the only one here that takes any, its DURATION.
 #   - whether it accepts `NAME=value` ASSIGNMENTS between its options and the
@@ -66,6 +86,13 @@
 #   - a value-taking wrapper option absent from its row, whose value is a bare
 #     word. The value reaches the command-word slot, exactly as it does in
 #     `parse_git_globals` for git's own globals.
+#   - a CLUSTERED short-option group whose LAST letter takes a separated value
+#     (`xargs -0I {} git commit`, `env -iu FOO git commit`). A cluster is
+#     composed at the call site rather than enumerated in a manual, so no row
+#     can list it; the whole-token match misses, the scan advances one word,
+#     and the group's value lands in the command-word slot. Reading it needs
+#     the loop to walk a cluster letter by letter, which is
+#     gaia-react/gaia#2207.
 #   - a wrapper, an option or an operand produced by an expansion (`$VAR`,
 #     `$(...)`, a backtick, `~`), which is ordinary word text to a scan that
 #     does not expand.
@@ -88,10 +115,14 @@
 #     the spacing would mean carrying byte offsets through a scan that works in
 #     words, which is a larger change than this residual justifies.
 #
-# ADDING A ROW: state all three properties. An option that takes a separated
-# value and is left out of the row hands its own value to the command-word
-# slot, which is a silent skip rather than a visible misread, so check the
-# wrapper's own manual rather than copying a neighbouring row.
+# ADDING A ROW: state all three properties, and read BOTH the GNU and the BSD
+# manual for the wrapper rather than copying a neighbouring row. The two
+# omissions fail in OPPOSITE directions, which is why one manual is not enough.
+# An option that takes a separated value and is left out of the row hands its
+# own value to the command-word slot, a silent skip rather than a visible
+# misread. An option listed that does not take a separated value on every
+# platform naming it consumes the command word instead, which is the fail-OPEN
+# direction and the worse of the two.
 #
 # `sudo` and `doas` are deliberately absent rather than overlooked. Each takes
 # options this table cannot model safely (`sudo -u <user> -g <group>` alongside
@@ -117,7 +148,7 @@ _gaia_strip_one_wrapper() {
   _w_first="${_w[0]}"
   case "$_w_first" in
     # GAIA_WRAPPER_TABLE_BEGIN
-    env) _w_valued=' -u -C -S --unset --chdir --split-string '; _w_operands=0; _w_assign=1 ;;
+    env) _w_valued=' -u -C -S -P -a --unset --chdir --split-string --argv0 --env0-from --quoting-style '; _w_operands=0; _w_assign=1 ;;
     command) _w_valued=' '; _w_operands=0; _w_assign=0 ;;
     exec) _w_valued=' -a '; _w_operands=0; _w_assign=0 ;;
     nice) _w_valued=' -n --adjustment '; _w_operands=0; _w_assign=0 ;;
@@ -125,7 +156,7 @@ _gaia_strip_one_wrapper() {
     setsid) _w_valued=' '; _w_operands=0; _w_assign=0 ;;
     stdbuf) _w_valued=' -i -o -e --input --output --error '; _w_operands=0; _w_assign=0 ;;
     timeout) _w_valued=' -k -s --kill-after --signal '; _w_operands=1; _w_assign=0 ;;
-    xargs) _w_valued=' -a -E -I -L -P -d -n -s --arg-file --delimiter --max-args --max-procs --max-chars '; _w_operands=0; _w_assign=0 ;;
+    xargs) _w_valued=' -a -E -I -L -P -d -n -s -J -R -S --arg-file --delimiter --max-args --max-procs --max-chars --process-slot-var '; _w_operands=0; _w_assign=0 ;;
     # GAIA_WRAPPER_TABLE_END
     *) return 1 ;;
   esac

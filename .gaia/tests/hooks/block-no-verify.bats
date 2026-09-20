@@ -770,6 +770,77 @@ wrapper_prefix() {
   [ "$read_n" -eq "$rows" ]
 }
 
+# One level down from the row guard above. A row's OPTION list is as derivable
+# as the row set is, and it is the list that grew, so the same rule applies to
+# it: derive the set, assert per element. Like its sibling it pins the
+# COVERAGE and not the grammar, and the direction it catches is the omission
+# one: an option listed with no case run against the real wrapper.
+#
+# It does NOT catch the fail-OPEN direction the library header names, and the
+# distinction is worth stating because the shape this guard demands looks like
+# it should. A `wrapper opt value git commit` case is arity-blind: with the row
+# right the parser eats the value and reads the command word, and with the row
+# wrong it eats the value and reads the command word just the same, so it
+# denies either way. Only a no-value shape discriminates, which is what the
+# no-argument control further down writes. Reading this guard as covering the
+# fail-open direction is what would stop someone writing that control.
+#
+# Both hand-written bodies are searched, since the short and long spellings
+# live in separate tests.
+#
+# Print `<row> <option>` for every option in every row of the shared table.
+wrapper_table_options() {
+  sed -n '/GAIA_WRAPPER_TABLE_BEGIN/,/GAIA_WRAPPER_TABLE_END/p' \
+      "$HOOKS_SRC/lib/command-wrappers.sh" \
+    | sed -nE "s/^[[:space:]]*([a-z]+)\)[[:space:]]*_w_valued='([^']*)'.*/\1 \2/p" \
+    | while read -r _row _opts; do
+        for _o in $_opts; do printf '%s %s\n' "$_row" "$_o"; done
+      done
+}
+
+# How many options that table holds, counted independently of the parse above
+# so a row the parse cannot read is a short read rather than an invisible one.
+wrapper_table_option_count() {
+  sed -n '/GAIA_WRAPPER_TABLE_BEGIN/,/GAIA_WRAPPER_TABLE_END/p' \
+      "$HOOKS_SRC/lib/command-wrappers.sh" \
+    | grep -oE "_w_valued='[^']*'" \
+    | sed -E "s/_w_valued='//; s/'$//" \
+    | tr ' ' '\n' \
+    | grep -c '^-'
+}
+
+@test "every option listed in a wrapper row has a hand-written real-grammar case" {
+  local row opt read_n=0 total bodies
+  total=$(wrapper_table_option_count)
+  [ "$total" -gt 0 ]
+  # Truncate each line at the command word. Every case ends in the same fixed
+  # `git commit -n -m x` tail, so a match region allowed to reach it would let
+  # that boilerplate vouch for the options it happens to spell: `-n` and `-m`
+  # would match on any line of their row and the guard could never red for
+  # them, which is the state it exists to catch. Cutting here leaves only the
+  # text standing between the wrapper word and the command word, which is the
+  # only text an option can legitimately own.
+  # Both bodies are grouped before the cut: piping only the second would leave
+  # the first untruncated, which is the half that carries most of the cases.
+  bodies=$({ sed -n "/^@test \"a wrapper's own options and operands/,/^}/p" "$BATS_TEST_FILENAME"
+             sed -n "/^@test \"a wrapper's separated long-form option/,/^}/p" "$BATS_TEST_FILENAME"
+           } | sed -E 's/[[:space:]]git[[:space:]].*//')
+  [ -n "$bodies" ]
+  while read -r row opt; do
+    [ -n "$row" ] || continue
+    read_n=$((read_n + 1))
+    # `[^']*` keeps the match inside one quoted `run_hook` command, so a row
+    # named on one line never vouches for an option written on another. The
+    # trailing boundary is what stops `-a` matching inside `--argv0`, and it
+    # admits end-of-line because the cut above can leave an option last.
+    grep -qE "(^|[[:space:]'])${row}[[:space:]]([^']*[[:space:]])?${opt}([[:space:]]|$)" <<<"$bodies" || {
+      echo "wrapper row '$row' lists '$opt' with no hand-written grammar case" >&2
+      return 1
+    }
+  done <<<"$(wrapper_table_options)"
+  [ "$read_n" -eq "$total" ]
+}
+
 # The two shapes a blind word-strip gets wrong, and the reason the table states
 # an option grammar rather than an alternation: in the first the next word is
 # the wrapper's own flag, in the second it is the wrapper's operand.
@@ -777,6 +848,10 @@ wrapper_prefix() {
   run_hook 'env -i git commit -n -m x'
   assert_denied_by_json
   run_hook 'env -u FOO git commit -n -m x'
+  assert_denied_by_json
+  run_hook 'env -C /tmp git commit -n -m x'
+  assert_denied_by_json
+  run_hook 'env -S xyz git commit -n -m x'
   assert_denied_by_json
   run_hook 'env FOO=bar git commit -n -m x'
   assert_denied_by_json
@@ -798,11 +873,43 @@ wrapper_prefix() {
   assert_denied_by_json
   run_hook 'stdbuf -o L git commit -n -m x'
   assert_denied_by_json
+  run_hook 'stdbuf -i L git commit -n -m x'
+  assert_denied_by_json
+  run_hook 'stdbuf -e L git commit -n -m x'
+  assert_denied_by_json
   run_hook 'timeout -s KILL 5 git commit -n -m x'
   assert_denied_by_json
   run_hook 'timeout -k 1 5 git commit -n -m x'
   assert_denied_by_json
   run_hook 'xargs -I {} git commit -n -m x'
+  assert_denied_by_json
+  run_hook 'xargs -a /dev/null git commit -n -m x'
+  assert_denied_by_json
+  run_hook 'xargs -E EOF git commit -n -m x'
+  assert_denied_by_json
+  run_hook 'xargs -L 1 git commit -n -m x'
+  assert_denied_by_json
+  run_hook 'xargs -P 4 git commit -n -m x'
+  assert_denied_by_json
+  run_hook 'xargs -d , git commit -n -m x'
+  assert_denied_by_json
+  run_hook 'xargs -n 1 git commit -n -m x'
+  assert_denied_by_json
+  run_hook 'xargs -s 1024 git commit -n -m x'
+  assert_denied_by_json
+  # The BSD spellings, which the GNU manuals do not name at all. Each takes a
+  # required separated value on the version macOS ships, so an unlisted one
+  # leaves that value standing where the command word is read.
+  run_hook 'env -P /usr/bin git commit -n -m x'
+  assert_denied_by_json
+  run_hook 'xargs -J {} git commit -n -m x'
+  assert_denied_by_json
+  run_hook 'xargs -R 5 git commit -n -m x'
+  assert_denied_by_json
+  run_hook 'xargs -S 255 git commit -n -m x'
+  assert_denied_by_json
+  # The GNU short form BSD has no counterpart for.
+  run_hook 'env -a mygit git commit -n -m x'
   assert_denied_by_json
   run_hook 'nohup timeout 5 env git commit -n -m x'
   assert_denied_by_json
@@ -846,6 +953,26 @@ wrapper_prefix() {
   assert_denied_by_json
   run_hook 'xargs --delimiter , git commit -n -m x'
   assert_denied_by_json
+  run_hook 'env --argv0 mygit git commit -n -m x'
+  assert_denied_by_json
+  run_hook 'env --env0-from /tmp/envfile git commit -n -m x'
+  assert_denied_by_json
+  run_hook 'env --quoting-style shell git commit -n -m x'
+  assert_denied_by_json
+  run_hook 'xargs --process-slot-var SLOT git commit -n -m x'
+  assert_denied_by_json
+  run_hook 'env --split-string xyz git commit -n -m x'
+  assert_denied_by_json
+  run_hook 'stdbuf --input L git commit -n -m x'
+  assert_denied_by_json
+  run_hook 'stdbuf --error L git commit -n -m x'
+  assert_denied_by_json
+  run_hook 'xargs --arg-file /dev/null git commit -n -m x'
+  assert_denied_by_json
+  run_hook 'xargs --max-procs 4 git commit -n -m x'
+  assert_denied_by_json
+  run_hook 'xargs --max-chars 1024 git commit -n -m x'
+  assert_denied_by_json
 }
 
 # `xargs --replace`, `--eof` and `--max-lines` take OPTIONAL arguments, so the
@@ -860,6 +987,17 @@ wrapper_prefix() {
   run_hook 'xargs --eof git commit -n -m x'
   assert_denied_by_json
   run_hook 'xargs --max-lines git commit -n -m x'
+  assert_denied_by_json
+}
+
+# A no-argument long form takes the same answer an optional-argument one does,
+# and GNU's `--show-limits` is the live example: it shares the letter `S` with
+# BSD's value-taking `-S` through getopt's `val` field, which names the case
+# label a long option returns and never declares a short spelling. Only the BSD
+# short form belongs in the row, so the long one must stay out, and this is the
+# control that keeps it out.
+@test "a no-argument long form sharing a letter with a valued short one is not listed" {
+  run_hook 'xargs --show-limits git commit -n -m x'
   assert_denied_by_json
 }
 
