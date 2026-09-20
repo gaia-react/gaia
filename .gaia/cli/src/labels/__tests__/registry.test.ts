@@ -28,7 +28,7 @@ const names = (
 describe('labels/registry readRegistry', () => {
   test('parses the committed .gaia/labels.json', () => {
     expect(registry.version).toBe(1);
-    expect(registry.labels).toHaveLength(32);
+    expect(registry.labels).toHaveLength(33);
   });
 
   test('labelsRegistryPath joins onto the given root', () => {
@@ -70,7 +70,7 @@ describe('labels/registry readRegistry', () => {
 });
 
 describe('labels/registry creatableEntries', () => {
-  test('every feature on yields the twenty-two adopter-role entries', () => {
+  test('every feature on yields the twenty-three adopter-role entries', () => {
     expect(names('adopter', ['tech-debt', 'gaia-ci', 'forensics'])).toEqual([
       'bug',
       'debt:spec-active',
@@ -91,6 +91,7 @@ describe('labels/registry creatableEntries', () => {
       'security',
       'severity:critical',
       'severity:important',
+      'severity:investigate',
       'severity:suggestion',
       'tech-debt',
       'wontfix',
@@ -116,6 +117,7 @@ describe('labels/registry creatableEntries', () => {
       'run-audit',
       'severity:critical',
       'severity:important',
+      'severity:investigate',
       'severity:suggestion',
       'tech-debt',
       'wontfix',
@@ -182,6 +184,7 @@ describe('labels/registry creatableEntries', () => {
       'security',
       'severity:critical',
       'severity:important',
+      'severity:investigate',
       'severity:suggestion',
       'tech-debt',
       'wontfix',

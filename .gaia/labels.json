@@ -108,6 +108,19 @@
       "reason": null
     },
     {
+      "name": "severity:investigate",
+      "color": "1d76db",
+      "description": "Severity not yet determined; research required before it can be graded",
+      "axis": "urgency",
+      "audience": "adopter",
+      "features": ["tech-debt"],
+      "managed": true,
+      "deprecated": false,
+      "blocked": false,
+      "renamedFrom": [],
+      "reason": null
+    },
+    {
       "name": "difficulty:easy",
       "color": "bfe3df",
       "description": "Fix is determined by the issue text and the cited code",

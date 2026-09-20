@@ -4,13 +4,21 @@
 # states. Exit 0 when clean, 1 on any finding, 2 on a usage or environment
 # error. Run it from the repository root.
 #
-# Three modes, two of them offline:
+# Modes, only the first of them unconditionally offline:
 #
 #   --pre-file --labels <csv> --body-file <path>
 #       The blocking mode. Validates a filing that has NOT happened yet, from
 #       the label set about to reach `gh issue create` argv and the body file
 #       step 4 of the recipe already builds. Reads no network and needs no
 #       `gh`, so the gate in front of every filing is hermetic.
+#
+#   --investigate-cap --labels <csv>
+#       Blocking, and the one mode that reads the network on the filing path.
+#       No-ops clean unless the label set carries `severity:investigate`, so
+#       the ordinary filing never pays for it. When it does, it counts the open
+#       investigate queue and reports a finding once the cap is reached. A `gh`
+#       that cannot answer exits 2, not 1: the caller files anyway rather than
+#       losing a finding to an unreachable tracker.
 #
 #   --issue <N>
 #       Advisory. Validates one already-filed issue, read through `gh`.
@@ -43,7 +51,23 @@ readonly PROG="check-debt-issue-metadata"
 # variant. The recipe's lockstep note lists this script as a consumer for
 # exactly that reason: a spelling changed there and not here fails a filing
 # immediately, which is the loud direction to fail in.
-readonly SEVERITY_VALUES="critical important suggestion"
+#
+# `investigate` is not a fourth rung on the critical/important/suggestion ramp.
+# It is the admission that no rung was chosen, and it is the one value in this
+# set that carries an obligation of its own: `check_investigate_block` below
+# demands the body name the open question, and `--investigate-cap` bounds how
+# many may be open at once. Both exist because the dedup key's `class=` field
+# already ran the experiment of a free "I do not know" value and lost it: the
+# `holistic/unclassified` fallback absorbed 91.4% of that axis at its worst.
+readonly SEVERITY_VALUES="critical important suggestion investigate"
+
+# How many `severity:investigate` issues may be open at once. Three, because
+# the grade is a budget rather than a band: a backlog that holds more than
+# three simultaneous "not yet determined" findings has stopped distinguishing
+# uncertainty from neglect, which is the failure the grade exists to prevent.
+# The bound is what makes the share of the axis a structural fact rather than a
+# matter of discipline.
+readonly INVESTIGATE_CAP=3
 # gaia:maintainer-only:start
 readonly AUDIENCE_VALUES="adopter maintainer"
 # gaia:maintainer-only:end
@@ -59,6 +83,7 @@ usage() {
   cat >&2 <<'EOF'
 usage:
   check-debt-issue-metadata.sh --pre-file --labels <csv> --body-file <path>
+  check-debt-issue-metadata.sh --investigate-cap --labels <csv>
   check-debt-issue-metadata.sh --issue <N>
   check-debt-issue-metadata.sh --sweep
 EOF
@@ -100,6 +125,37 @@ count_ns() {
 # the count of lines out always equals the count of labels in.
 values_ns() {
   printf '%s\n' "$1" | sed -n "s/^$2//p"
+}
+
+# parse_labels_csv <csv>: the labels one per line, blanks dropped and each entry
+# trimmed. Accepts the comma-separated form a caller assembling `--label a
+# --label b` argv most naturally hands over; an empty entry is dropped rather
+# than counted as a label named "".
+parse_labels_csv() {
+  printf '%s' "$1" | tr ',' '\n' | sed '/^[[:space:]]*$/d' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//'
+}
+
+# normalize_body <body-text>: the body with carriage returns stripped.
+#
+# GitHub returns a body with the line endings the client submitted, and a
+# browser textarea submits CRLF, so an issue created or edited in the web UI
+# carries a trailing `\r` on every line. Every end-anchored pattern below would
+# reject those bodies, and the drain's own capture (an unanchored substring
+# match) accepts them, so without this the gate and the drain would disagree on
+# exactly the bodies a human touched last.
+#
+# A `\r?` inside each pattern is not the alternative: that escape is BSD-only,
+# so GNU grep reads it as an optional literal `r` and the gate's verdict would
+# invert by platform. GNU sed accepts it where GNU grep does not, which would
+# leave two patterns reading the same body differently. Normalizing once removes
+# the divergence instead of relocating it.
+#
+# Each checking function calls this on the body it was handed rather than
+# trusting a caller to have done it. That costs one `tr` per body per function,
+# against the existing several greps per body, and it buys an invariant no
+# future call site can forget.
+normalize_body() {
+  printf '%s\n' "$1" | tr -d '\r'
 }
 
 # check_ns_values <subject> <labels> <prefix> <permitted set> <namespace name>
@@ -264,19 +320,9 @@ readonly KEY_CANDIDATE_RE='^<!-- gaia-debt-key:'
 check_body() {
   local subject="$1" body="$2" wellformed candidates path
 
-  # Strip carriage returns before anything reads the body. GitHub returns a body
-  # with the line endings the client submitted, and a browser textarea submits
-  # CRLF, so an issue created or edited in the web UI carries a trailing `\r` on
-  # every line. The drain's own capture is an unanchored substring match and
-  # accepts that; the end-anchored patterns below would not, so without this the
-  # gate and the drain would disagree on exactly the bodies a human touched
-  # last, and `--sweep` would report an exact key as malformed.
-  #
-  # Done here with `tr` rather than as a `\r?` in each pattern because that
-  # escape is BSD-only and would make the gate's verdict depend on which platform
-  # ran it. One normalization also keeps the shape test and the path extraction
-  # reading the same bytes, which per-pattern escapes did not.
-  body="$(printf '%s\n' "$body" | tr -d '\r')"
+  # `--sweep` would otherwise report an exact key as malformed on every body a
+  # human last edited in the web UI. `normalize_body` owns the reasoning.
+  body="$(normalize_body "$body")"
 
   wellformed="$(printf '%s\n' "$body" | grep -cE "$KEY_RE" || true)"
   candidates="$(printf '%s\n' "$body" | grep -cE "$KEY_CANDIDATE_RE" || true)"
@@ -323,6 +369,79 @@ EOF
 }
 
 # ---------------------------------------------------------------------------
+# The research block, required by `severity:investigate` and forbidden without
+# it.
+# ---------------------------------------------------------------------------
+
+# The block's three lines, each anchored whole. The marker is the presence
+# sentinel and carries the namespace, so no ordinary body line can be mistaken
+# for one; the two labelled lines are what stop an empty block from satisfying
+# the marker. Each demands a non-space character after its label, because the
+# defect this guards against is not a missing line but a line left as its own
+# placeholder.
+# Each is matched against the whole body rather than scoped to the region after
+# the marker, which is why the diagnostics below say "the body" and not "the
+# block". The tolerance that falls out is the same one the dedup-key checker
+# takes and for the same reason: a marker quoted inside running prose, which a
+# correction comment legitimately does, is indented or inline and so matches
+# none of these, while a flush-left quote of the whole fence does. Scoping the
+# content patterns to the marker would buy a sharper diagnostic and would not
+# change that, since the stray arm keys on the marker either way.
+readonly INVESTIGATE_MARKER_RE='^<!-- gaia-investigate: v1 -->$'
+readonly INVESTIGATE_QUESTION_RE='^\*\*Question:\*\*[[:space:]]+[^[:space:]]'
+readonly INVESTIGATE_SETTLED_RE='^\*\*Settled by:\*\*[[:space:]]+[^[:space:]]'
+
+# check_investigate_block <subject> <labels-newline-list> <body-text>
+#
+# Takes the labels as well as the body, which is why it sits beside
+# `check_body` rather than inside it: the obligation is conditional on a label,
+# and `check_body` deliberately knows nothing about the label set.
+#
+# Both directions are checked, and the second is not symmetry for its own sake.
+# A block left behind by a re-grade asserts an open question that has since
+# been answered, and a reader believes it, so a stale block is worse than no
+# block. Resolving an investigate finding therefore means removing the block in
+# the same edit that replaces the grade.
+check_investigate_block() {
+  local subject="$1" labels="$2" body="$3" markers
+
+  # Every pattern above is end-anchored, or followed by a `[[:space:]]` class a
+  # carriage return satisfies in the wrong place, so an unnormalized CRLF body
+  # reads as having no block at all.
+  body="$(normalize_body "$body")"
+
+  markers="$(printf '%s\n' "$body" | grep -cE "$INVESTIGATE_MARKER_RE" || true)"
+
+  if ! grep -qx 'severity:investigate' <<<"$labels"; then
+    if [ "$markers" -gt 0 ]; then
+      finding "$subject" "stray-investigate-block" "the body carries a \`gaia-investigate\` block but the filing is not graded \`severity:investigate\`"
+    fi
+    return 0
+  fi
+
+  # Graded `investigate` from here down. The presence check and the content
+  # checks are independent verdicts rather than a ladder: a present-but-empty
+  # block must report which line is empty, not "missing", or the filer repairs
+  # the wrong thing.
+  if [ "$markers" -eq 0 ]; then
+    finding "$subject" "missing-investigate-block" "\`severity:investigate\` requires a \`<!-- gaia-investigate: v1 -->\` block naming the open question"
+    return 0
+  fi
+  if [ "$markers" -gt 1 ]; then
+    finding "$subject" "duplicate-investigate-block" "expected exactly one \`gaia-investigate\` block, found $markers"
+  fi
+
+  if ! grep -qE "$INVESTIGATE_QUESTION_RE" <<<"$body"; then
+    finding "$subject" "investigate-question" "\`severity:investigate\` requires a non-empty \`**Question:**\` line in the body"
+  fi
+  if ! grep -qE "$INVESTIGATE_SETTLED_RE" <<<"$body"; then
+    finding "$subject" "investigate-settled-by" "\`severity:investigate\` requires a non-empty \`**Settled by:**\` line in the body"
+  fi
+
+  return 0
+}
+
+# ---------------------------------------------------------------------------
 # Mode: --pre-file
 # ---------------------------------------------------------------------------
 
@@ -333,10 +452,7 @@ run_pre_file() {
   [ -n "$body_file" ] || fatal "--pre-file requires --body-file"
   [ -f "$body_file" ] || fatal "body file not found: $body_file"
 
-  # Accept the labels comma-separated, which is how a caller assembling
-  # `--label a --label b` argv most naturally hands them over. Empty entries
-  # are dropped rather than counted as a label named "".
-  labels="$(printf '%s' "$labels_csv" | tr ',' '\n' | sed '/^[[:space:]]*$/d' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+  labels="$(parse_labels_csv "$labels_csv")"
   # `|| fatal` for the same reason the two gh reads below carry one: a bare
   # assignment under `set -e` propagates `cat`'s exit 1, which this script
   # documents as "findings were reported", so an unreadable file that passed the
@@ -345,6 +461,7 @@ run_pre_file() {
 
   check_labels "pre-file" "$labels"
   check_body "pre-file" "$body"
+  check_investigate_block "pre-file" "$labels" "$body"
 
   # The claim and park labels belong to work that has started, not to the act
   # of filing. The recipe says so; nothing checked it.
@@ -361,12 +478,65 @@ run_pre_file() {
 }
 
 # ---------------------------------------------------------------------------
+# Mode: --investigate-cap
+# ---------------------------------------------------------------------------
+
+# run_investigate_cap <labels-csv>
+#
+# The forcing function. `severity:investigate` is the one grade a filer can
+# reach without reading the cited code, so left unrationed it becomes the path
+# of least resistance and the axis stops carrying information. Rationing it is
+# what a required re-grade on age could not do: an aging rule defers the cost
+# away from the filer to nobody in particular, which is the shape that failed,
+# and it cannot refuse anything in the meantime.
+#
+# Over the cap the filing is refused, and both ways out are the outcome the
+# axis wants: resolve one of the open investigations, or grade this finding
+# yourself because the budget for not deciding is spent. So the refusal names
+# the open numbers rather than only the count.
+run_investigate_cap() {
+  local labels_csv="$1" labels corpus count numbers
+
+  [ -n "$labels_csv" ] || fatal "--investigate-cap requires --labels"
+
+  labels="$(parse_labels_csv "$labels_csv")"
+
+  # Every other grade is unbounded, so a filing that is not investigate-graded
+  # costs nothing here and never reaches `gh`. That short-circuit is why the
+  # recipe can call this unconditionally after the hermetic gate.
+  grep -qx 'severity:investigate' <<<"$labels" || return 0
+
+  require_gh
+
+  # `--limit` well above the cap rather than at it: a truncated list cannot
+  # hide a violation (any count at or above the cap trips), and reading past
+  # the cap is what lets the refusal name the whole queue instead of an
+  # arbitrary prefix of it.
+  corpus="$(gh issue list --label tech-debt --label severity:investigate \
+    --state open --limit 100 --json number,title)" ||
+    fatal "could not read the open severity:investigate queue through gh"
+
+  count="$(printf '%s' "$corpus" | jq 'length')"
+
+  if [ "$count" -lt "$INVESTIGATE_CAP" ]; then
+    echo "$PROG: $count of $INVESTIGATE_CAP investigate slot(s) in use" >&2
+    return 0
+  fi
+
+  numbers="$(printf '%s' "$corpus" | jq -r '[.[] | "#\(.number)"] | join(" ")')"
+  finding "pre-file" "investigate-cap-reached" \
+    "$count open \`severity:investigate\` issue(s) against a cap of $INVESTIGATE_CAP ($numbers); resolve one of those, or grade this finding yourself"
+
+  return 0
+}
+
+# ---------------------------------------------------------------------------
 # Modes: --issue and --sweep. Both read through `gh`.
 # ---------------------------------------------------------------------------
 
 require_gh() {
-  command -v gh >/dev/null 2>&1 || fatal "gh not found on PATH; --issue and --sweep need it (--pre-file does not)"
-  command -v jq >/dev/null 2>&1 || fatal "jq not found on PATH; --issue and --sweep need it (--pre-file does not)"
+  command -v gh >/dev/null 2>&1 || fatal "gh not found on PATH; the tracker-reading modes need it (--pre-file does not)"
+  command -v jq >/dev/null 2>&1 || fatal "jq not found on PATH; the tracker-reading modes need it (--pre-file does not)"
 }
 
 # check_one_issue <json-object>: one issue's worth of checks, from the JSON
@@ -379,6 +549,7 @@ check_one_issue() {
 
   check_labels "#$number" "$labels"
   check_body "#$number" "$body"
+  check_investigate_block "#$number" "$labels" "$body"
 }
 
 fetch_corpus() {
@@ -442,6 +613,7 @@ main() {
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --pre-file) mode="pre-file" ;;
+      --investigate-cap) mode="investigate-cap" ;;
       --sweep) mode="sweep" ;;
       --issue)
         mode="issue"
@@ -464,6 +636,7 @@ main() {
 
   case "$mode" in
     pre-file) run_pre_file "$labels" "$body_file" ;;
+    investigate-cap) run_investigate_cap "$labels" ;;
     issue) run_issue "$issue" ;;
     sweep) run_sweep ;;
     *) usage ;;

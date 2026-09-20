@@ -71,6 +71,15 @@ If no match exists:
 
    Exit `0` is clean, `1` names one finding per line, `2` is a usage or environment error. On `1`, fix the label set or the body and re-run; do not file. On `2`, the check itself could not run: report that and do not treat it as a pass.
 
+   Then run the investigate-cap check, with the same label set and no body file:
+
+   ```bash
+   bash .gaia/scripts/check-debt-issue-metadata.sh --investigate-cap \
+     --labels "<the same comma-separated set passed above>"
+   ```
+
+   Run it on **every** filing, not only an investigate-graded one: it exits `0` without reading the network unless the set carries `severity:investigate`, so the ordinary filing pays nothing and no filer has to remember which case needs it. When the set does carry the grade, exit `1` means the open investigate queue is at its cap and this filing is refused. Take one of the two ways out rather than filing anyway: resolve one of the issues it names (answer its question, re-grade it, remove its research block), or grade this finding yourself from the code. Exit `2` means `gh` could not answer; that is advisory, so report it and file anyway. Refusing every filing while the tracker is unreachable loses findings, and a bound that leaks by one on a network failure is still a bound.
+
    **Why this blocks rather than advises.** Every rule the check enforces was already written in the prose above before the check existed, and every one of them was violated anyway. The label set is the one part of a filing that no later step re-reads, so a mistake there is silent until a drainer trips over it weeks later, by which time the code that would have justified the right grade has moved. The check reads no network and needs no `gh`, so this gate costs one local call and cannot fail for a reason outside the filing.
 
    **What it does not check.** It verifies the label vocabulary, the counts, and the key's shape. It cannot verify that the grade you chose is the grade the rubric gives: whether a fix carries a design decision is a judgment about code, and a passing check is not evidence that step 7 was applied honestly. The mechanical half is enforced here; the rubric half stays yours.
@@ -189,6 +198,17 @@ Build a self-contained issue body with these parts, in order:
 - The `file:line` location. The cited line must resolve to a real line in the named file, don't cite a location you haven't confirmed.
 - A concrete, non-empty description of the failure mode: what input or state triggers it, and what the bad outcome is. "Could be cleaner" is not a failure mode; "a null `userId` reaches this branch and throws" is.
 - A suggested fix.
+- **The research block, on a `severity:investigate` filing only** (step 6). Three lines, byte-for-byte in this shape, appearing exactly once, anywhere in the body:
+
+  ```
+  <!-- gaia-investigate: v1 -->
+  **Question:** <what specifically must be determined>
+  **Settled by:** <what evidence, test, or measurement would answer it>
+  ```
+
+  Both lines carry real content. "Needs more thought" is not a question and "investigation" is not evidence; the question names the fact whose value decides the grade, and `**Settled by:**` names the thing that would establish it. This is what the grade costs, and the cost is the point: the value is only worth having if saying "I do not know" requires saying what is not known. A filing that cannot fill these two lines was not uncertain about the severity, it just did not look.
+
+  On a filing graded anything else the block is **forbidden**, not merely unnecessary. Re-grading an issue removes the block in the same edit that replaces the label, because a block left behind asserts an open question that has since been answered, and a reader believes it.
 
 The body carries no classification fields of its own. Every classification axis steps 6 and 7 define rides as a label, so a body line restating one of them is a second representation of a value the labels already hold, and the two drift.
 
@@ -201,6 +221,15 @@ Every out-of-scope non-security issue this recipe files carries `tech-debt` plus
 | Critical | `severity:critical` |
 | Important | `severity:important` |
 | Suggestion | `severity:suggestion` |
+
+`severity:investigate` is the fourth value and it does not map from a report tier, because it is not a tier. It records that the severity is **not yet determined** and that research is needed before it can be. Choose it when the finding's consequence turns on a fact about the code that the filing has not established: whether a branch is reachable, whether a guard ever fails open in practice, whether a caller depends on the behavior. Do not choose it when the answer is merely inconvenient to look up, and never choose it as a way of not choosing. The other three grades are judgments; this one is the admission that no judgment was made, and it is checked accordingly.
+
+Two obligations ride with it, and both exist because this repository has already run the experiment of a free "I do not know" value and lost it: the dedup key's `class=` field grew a `holistic/unclassified` fallback that absorbed 91.4% of that axis at its worst. An uncertainty grade nothing rations stops carrying information.
+
+- **The research block**, required in the body and forbidden without the grade. Step 5 states it.
+- **The queue is capped**, at whatever `INVESTIGATE_CAP` in `.gaia/scripts/check-debt-issue-metadata.sh` holds. Over the cap a filing is refused. Step 4 runs the check and states the two ways out.
+
+`/gaia-debt` never fixes an investigate-graded issue: it is excluded from fix candidacy, shown in `list` annotated `[investigate]`, and resolved by answering its question and re-grading it. `.claude/skills/gaia/references/debt.md` owns that behavior.
 <!-- gaia:maintainer-only:start -->
 
 **Maintainer repository only.** Every filing on the GAIA maintainer repository carries **exactly one** `audience:` label as well. It records **who can observe the defect**, which is a different question from how bad it is and from how hard it is to fix:
@@ -250,7 +279,7 @@ The registry is reconciled before the first filing in a run, then anything still
 ```bash
 .gaia/cli/gaia labels sync 2>/dev/null || true
 present="$(gh label list --limit 200 --json name --jq '.[].name' 2>/dev/null)"
-for label in tech-debt severity:critical severity:important severity:suggestion \
+for label in tech-debt severity:critical severity:important severity:suggestion severity:investigate \
              footprint:narrow footprint:wide footprint:spec \
              fold:required \
              difficulty:easy difficulty:medium difficulty:hard wontfix; do
@@ -357,6 +386,8 @@ One carve-out, so the per-namespace paragraphs below do not each have to restate
 `.gaia/labels.json` is the registry where every spelling this section governs is defined, rather than a consumer of them. Rename there by changing the entry's `name` and appending the old spelling to its `renamedFrom`, then regenerate the wiki page with `.gaia/cli/gaia labels docs`. `labels sync` takes its label definitions from that file and nowhere else, so a rename that works every consumer in the list above and skips the registry leaves sync creating the old label forever and the new one never.
 
 `check-debt-issue-metadata.sh` is the only consumer that gates on a label spelling rather than merely tolerating one. It hardcodes the permitted value set for every namespace steps 6 and 7 define, and the key's line shape, so it is the consumer a spelling change breaks first and loudest, which is the intended direction: a rename that forgets this file fails a filing immediately instead of degrading a count silently.
+
+`severity:investigate` is the one value in the `severity:` namespace with a consumer outside the vocabulary set. `.gaia/scripts/check-debt-issue-metadata.sh` matches the bare spelling outside its vocabulary set, to decide whether the research block is required and whether the cap check reads the network at all, and `.claude/skills/gaia/references/debt.md` matches it wherever it ranks, excludes, or annotates an investigate issue. Every one of those matches fails **open** on a forgotten rename, the same direction the claim label does: the block stops being demanded, the cap stops being counted, and such an issue re-enters `/gaia-debt`'s fix candidate pool, by direct number and in the recommendation offer alike, all on a grade that still files. So the rename moves every occurrence in both files, not the ones a reader happens to recall; grep each file for the value rather than working from a list here. The body marker `<!-- gaia-investigate: v1 -->` is a second contract of its own, shared between the gate's patterns and step 5's schema, and it moves under the key-format rules above rather than these.
 
 The governed set also includes the `in-progress` claim label, which has more consumers than any other spelling here because it is not tech-debt-specific. `.claude/skills/gaia/references/debt.md` creates and applies it as the `/gaia-debt` claim and `.claude/rules/issue-claim.md` applies it to every other issue type; `.claude/hooks/issue-claim-release.sh` removes it on a confirmed merge; `.gaia/scripts/debt-count-refresh.sh` consumes it, excluding any issue that carries it from the open count; and `.gaia/scripts/check-debt-issue-metadata.sh` hardcodes the bare spelling in its pre-file guard, outside the namespace vocabulary sets, so for this one spelling a forgotten rename fails **open**: the guard matches a label nothing applies any more, and a filing carrying the renamed claim stops being rejected. The release hook's own removal is best-effort and silent, so a rename that forgets it degrades quietly rather than failing: every claim it was meant to release stays set. The same holds for the two park labels, `debt:spec-pending` and `debt:spec-active`: `debt.md` creates and applies `debt:spec-pending` as the `/gaia-debt` design-first handoff park label and directs the pasted spec session to swap it for `debt:spec-active` once the pipeline starts, `.gaia/scripts/debt-count-refresh.sh` consumes both, excluding any issue that carries either from the open count too, and that same pre-file guard names both in the same regex, so each carries the same fail-open direction on a forgotten rename. Rename them together: they are one axis with two values, and a rename that reaches only the spelling it was looking for leaves the other consumer set half-migrated. This recipe creates or applies none of these labels itself.
 

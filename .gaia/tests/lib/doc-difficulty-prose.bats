@@ -263,6 +263,31 @@ setup() {
   grep -qF -- "for label in audience:adopter audience:maintainer; do" "$VOCAB" || return 1
 }
 
+@test "SKILL.md's step 4 runs the investigate cap check, and step 6 states both obligations that ride with the grade" {
+  # The cap is the grade's forcing function, and a forcing function the recipe
+  # can forget to call is prose. Pinned here as the literal invocation, because
+  # step 4 is the only place a filing passes through before `gh issue create`.
+  grep -qF -- "bash .gaia/scripts/check-debt-issue-metadata.sh --investigate-cap" "$VOCAB" || return 1
+  # Both obligations, because either alone fails in a way the other cannot
+  # cover: the block without the cap bounds nothing, and the cap without the
+  # block rations contentless filings.
+  grep -qF -- "<!-- gaia-investigate: v1 -->" "$VOCAB" || return 1
+  # The pointer, never the value. `INVESTIGATE_CAP` and a number spelled into
+  # this prose are two copies of one fact, and only the constant is executable,
+  # so pinning the word would green this suite while the recipe told every filer
+  # a cap the gate does not enforce. Same convention as the label loops below.
+  grep -qF -- "\`INVESTIGATE_CAP\` in \`.gaia/scripts/check-debt-issue-metadata.sh\`" "$VOCAB" || return 1
+  # Three spellings of one defect: the cap's value re-copied into shipped
+  # prose, where it drifts from the constant on the next change. The patterns
+  # cover a number qualifying the grade, a number after cap/capped, and the
+  # bounding quantifiers; a wording outside all three still escapes, so this
+  # pins those shapes rather than the whole construct, and a new wording is
+  # worth a fourth alternation rather than trust in the three.
+  assert_absent_across "(three|[0-9]+) (open|simultaneous) .?severity:investigate" "$VOCAB"
+  assert_absent_across "cap(ped)? (of|at|to) (three|[0-9]+)" "$VOCAB"
+  assert_absent_across "(no more than|at most|a maximum of|up to) (three|[0-9]+)" "$VOCAB"
+}
+
 @test "neither label loop states a count of its own" {
   # The count in the prose and the number of entries in the loop are two
   # statements of one fact, and only the loop is executable, so the prose is

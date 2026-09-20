@@ -61,8 +61,25 @@ Guard the branch.
 EOF
 }
 
+# A body that additionally satisfies the `severity:investigate` research block:
+# the marker line plus both of its labelled lines, each carrying text.
+good_investigate_body() {
+  good_body
+  cat <<'EOF'
+
+<!-- gaia-investigate: v1 -->
+**Question:** does the fail-open branch ever run with a non-empty allowlist?
+**Settled by:** a test that drives the branch with an allowlist of one entry.
+EOF
+}
+
 # The label set a correct graded filing carries.
 GOOD_LABELS='tech-debt,severity:important,audience:adopter,footprint:narrow,difficulty:easy'
+
+# The label set an investigate filing carries. No difficulty grade: a filing
+# that cannot grade the severity has not read the code closely enough to grade
+# the fix either, so the two absences travel together.
+INVESTIGATE_LABELS='tech-debt,severity:investigate,audience:adopter,footprint:narrow'
 
 # assert_code <finding-code>: the run's output names this finding code.
 assert_code() {
@@ -147,6 +164,106 @@ refute_code() {
   run bash "$CHECK" --pre-file --labels 'tech-debt,severity:important,audience:adopter,difficulty:trivial' --body-file "$BODY"
   [ "$status" -eq 1 ]
   assert_code "difficulty-value"
+}
+
+# ---------------------------------------------------------------------------
+# severity:investigate and its research block
+#
+# `investigate` is the one severity value that costs something to pick. Every
+# other grade is a judgment the filer already made; this one is the admission
+# that they did not, so the gate demands the admission be specific. The failure
+# this guards against is the one the dedup key's `class=` field already ran and
+# lost: a free "I don't know" value absorbed 91.4% of that axis. A value that
+# cannot be picked without writing down WHAT is unknown is not free.
+#
+# Both directions are checked. The block is required when the grade is present,
+# and forbidden when it is not: a block left behind by a re-grade asserts an
+# open question that has since been answered, which is worse than no block at
+# all because a reader believes it.
+# ---------------------------------------------------------------------------
+
+@test "severity:investigate is inside the permitted set" {
+  good_investigate_body >"$BODY"
+  run bash "$CHECK" --pre-file --labels "$INVESTIGATE_LABELS" --body-file "$BODY"
+  [ "$status" -eq 0 ]
+  refute_code "severity-value"
+}
+
+@test "RED: an investigate filing with no research block is rejected" {
+  run bash "$CHECK" --pre-file --labels "$INVESTIGATE_LABELS" --body-file "$BODY"
+  [ "$status" -eq 1 ]
+  assert_code "missing-investigate-block"
+}
+
+@test "RED: an investigate block with an empty Question line is rejected" {
+  {
+    good_body
+    printf '\n<!-- gaia-investigate: v1 -->\n**Question:**\n**Settled by:** a test that drives the branch.\n'
+  } >"$BODY"
+  run bash "$CHECK" --pre-file --labels "$INVESTIGATE_LABELS" --body-file "$BODY"
+  [ "$status" -eq 1 ]
+  assert_code "investigate-question"
+  # The block itself is present, so the presence check must NOT also fire:
+  # two findings for one defect sends the filer to fix the wrong thing.
+  refute_code "missing-investigate-block"
+}
+
+@test "RED: an investigate block with no Settled by line is rejected" {
+  {
+    good_body
+    printf '\n<!-- gaia-investigate: v1 -->\n**Question:** does the branch ever run?\n'
+  } >"$BODY"
+  run bash "$CHECK" --pre-file --labels "$INVESTIGATE_LABELS" --body-file "$BODY"
+  [ "$status" -eq 1 ]
+  assert_code "investigate-settled-by"
+}
+
+@test "RED: a second investigate block is rejected" {
+  {
+    good_investigate_body
+    printf '\n<!-- gaia-investigate: v1 -->\n**Question:** a second, contradicting question.\n**Settled by:** something else.\n'
+  } >"$BODY"
+  run bash "$CHECK" --pre-file --labels "$INVESTIGATE_LABELS" --body-file "$BODY"
+  [ "$status" -eq 1 ]
+  assert_code "duplicate-investigate-block"
+}
+
+@test "RED: a research block on a graded filing is rejected as stray" {
+  good_investigate_body >"$BODY"
+  run bash "$CHECK" --pre-file --labels "$GOOD_LABELS" --body-file "$BODY"
+  [ "$status" -eq 1 ]
+  assert_code "stray-investigate-block"
+}
+
+@test "a prose mention of the investigate marker beside a graded filing stays clean" {
+  # The mirror of the dedup-key checker's own prose-mention test. A correction
+  # comment quoting the block's format indents or inlines the marker, so it
+  # matches none of the anchored patterns and is not read as a stray block. A
+  # flush-left quote of the whole fence is a different case and does trip it,
+  # which is the same line the sibling checker draws.
+  {
+    good_body
+    printf '\nThe schema is `<!-- gaia-investigate: v1 -->` followed by two lines.\n'
+    printf '\n  <!-- gaia-investigate: v1 -->\n'
+  } >"$BODY"
+  run bash "$CHECK" --pre-file --labels "$GOOD_LABELS" --body-file "$BODY"
+  [ "$status" -eq 0 ]
+  refute_code "stray-investigate-block"
+}
+
+@test "a graded filing with no research block stays clean" {
+  run bash "$CHECK" --pre-file --labels "$GOOD_LABELS" --body-file "$BODY"
+  [ "$status" -eq 0 ]
+  refute_code "investigate"
+}
+
+@test "a CRLF investigate block is not reported as missing" {
+  # Same contract as the CRLF dedup-key test below: a body last edited in the
+  # web UI arrives with a trailing carriage return on every line, and the
+  # end-anchored patterns would reject it without the shared normalization.
+  good_investigate_body | sed 's/$/\r/' >"$BODY"
+  run bash "$CHECK" --pre-file --labels "$INVESTIGATE_LABELS" --body-file "$BODY"
+  [ "$status" -eq 0 ]
 }
 
 # ---------------------------------------------------------------------------
@@ -424,15 +541,43 @@ refute_code() {
 # the environment-error arm is reached without breaking anyone's auth.
 # ---------------------------------------------------------------------------
 
+# stub_gh <corpus-json> [view-json] [unfiltered-corpus-json]
+#
+# With a third argument the stub answers BY ARGV rather than by subcommand: a
+# list carrying `--label severity:investigate` gets <corpus-json>, any other
+# list gets <unfiltered-corpus-json>. That is what lets a test assert the cap's
+# BEHAVIOUR instead of its argv shape. An argv assertion cannot tell the query
+# whose length becomes the count from any other logged query, so a refactor
+# that keeps the filtered query for the refusal numbers and counts a second,
+# unfiltered one passes every argv check while refusing every investigate
+# filing permanently. Answering per-argv makes that refactor read the larger
+# corpus and trip the cap, which no rewording can evade.
+#
+# Omitting the third argument keeps the subcommand-only behaviour the --issue
+# and --sweep tests were written against.
 stub_gh() {
   mkdir -p "$TMP/bin"
   printf '%s\n' "$1" >"$TMP/corpus.json"
   printf '%s\n' "${2:-[]}" >"$TMP/view.json"
+  if [ "$#" -ge 3 ]; then
+    printf '%s\n' "$3" >"$TMP/unfiltered.json"
+  else
+    rm -f "$TMP/unfiltered.json"
+  fi
   cat >"$TMP/bin/gh" <<'EOF'
 #!/usr/bin/env bash
-# $1 is `issue`, $2 is the subcommand.
+# $1 is `issue`, $2 is the subcommand. argv is also logged one call per line, as
+# a cheaper backstop to the per-argv corpus selection above.
+printf '%s\n' "$*" >>"$STUB_DIR/argv.log"
 case "$2" in
-  list) cat "$STUB_DIR/corpus.json" ;;
+  list)
+    if [ -f "$STUB_DIR/unfiltered.json" ] &&
+      ! printf '%s\n' "$*" | grep -qF -- '--label severity:investigate'; then
+      cat "$STUB_DIR/unfiltered.json"
+    else
+      cat "$STUB_DIR/corpus.json"
+    fi
+    ;;
   view) cat "$STUB_DIR/view.json" ;;
   *) exit 1 ;;
 esac
@@ -511,6 +656,94 @@ stub_gh_failing() {
   run bash "$CHECK" --pre-file --labels "$GOOD_LABELS" --body-file "$BODY"
   [ "$status" -eq 1 ]
   assert_code "malformed-dedup-key"
+}
+
+# ---------------------------------------------------------------------------
+# --investigate-cap: the bounded queue
+#
+# The cap is the forcing function. The research block above makes one
+# investigate filing honest; the cap is what keeps the grade from becoming a
+# graveyard, by rationing it. Over the cap a filing is refused with two exits,
+# and both are the outcome the axis wants: drain one of the open ones, or grade
+# this finding yourself because the "I do not know" budget is spent.
+#
+# It reports as an ordinary finding (exit 1) rather than a new exit code, so the
+# script keeps its three-way contract: 0 clean, 1 fix something and retry, 2 the
+# check did not run.
+# ---------------------------------------------------------------------------
+
+@test "--investigate-cap no-ops on a filing that is not investigate-graded, without reading the network" {
+  # `stub_gh_failing` is the assertion: a mode that consulted gh here would
+  # exit 2, so a clean exit proves the short-circuit happened before the read.
+  stub_gh_failing
+  run bash "$CHECK" --investigate-cap --labels "$GOOD_LABELS"
+  [ "$status" -eq 0 ]
+}
+
+@test "--investigate-cap passes an investigate filing while the queue is under the cap" {
+  stub_gh '[{"number":11,"title":"one"},{"number":12,"title":"two"}]'
+  run bash "$CHECK" --investigate-cap --labels "$INVESTIGATE_LABELS"
+  [ "$status" -eq 0 ]
+}
+
+@test "RED: --investigate-cap refuses the filing that would exceed the cap, and names the queue" {
+  stub_gh '[{"number":11,"title":"one"},{"number":12,"title":"two"},{"number":13,"title":"three"}]'
+  run bash "$CHECK" --investigate-cap --labels "$INVESTIGATE_LABELS"
+  [ "$status" -eq 1 ]
+  assert_code "investigate-cap-reached"
+  # The open numbers are the whole point of the refusal: a filer told only
+  # "full" has nothing to act on, and the two exits out of the refusal both
+  # need the list.
+  grep -qF -- "#11" <<<"$output" || return 1
+  grep -qF -- "#13" <<<"$output" || return 1
+}
+
+@test "RED: --investigate-cap refuses a queue already over the cap" {
+  stub_gh '[{"number":11,"title":"one"},{"number":12,"title":"two"},{"number":13,"title":"three"},{"number":14,"title":"four"}]'
+  run bash "$CHECK" --investigate-cap --labels "$INVESTIGATE_LABELS"
+  [ "$status" -eq 1 ]
+  assert_code "investigate-cap-reached"
+}
+
+@test "RED: the cap counts the investigate queue, not the whole open backlog" {
+  # One investigate issue against a five-issue open backlog. Whichever corpus
+  # the cap actually counts decides the exit status, so this asserts the
+  # behaviour: a query that lost the grade filter reads five, trips the cap of
+  # three, and reds here. The arithmetic tests above cannot catch that, because
+  # they let one corpus answer every list.
+  stub_gh '[{"number":11,"title":"one"}]' '[]' \
+    '[{"number":21},{"number":22},{"number":23},{"number":24},{"number":25}]'
+  run bash "$CHECK" --investigate-cap --labels "$INVESTIGATE_LABELS"
+  [ "$status" -eq 0 ]
+
+  # The argv pin stays as the cheaper backstop, and all three filters must sit
+  # on ONE logged query: file-wide greps would pass on a split into two calls.
+  # EVERY grade-bearing query is checked, not the first: pinning only the first
+  # let a refactor keep the correct query for the refusal numbers and count a
+  # second grade-bearing one that had lost --state open, which reads the closed
+  # investigate issues into the cap while both halves of this test stay green.
+  local line found=0
+  while IFS= read -r line; do
+    found=1
+    grep -qF -- "--label tech-debt" <<<"$line" || return 1
+    grep -qF -- "--state open" <<<"$line" || return 1
+  done < <(grep -F -- "--label severity:investigate" "$TMP/argv.log")
+  [ "$found" -eq 1 ] || return 1
+}
+
+@test "--investigate-cap on a gh failure exits 2, never the findings status" {
+  # The caller treats 2 as advisory and files anyway: refusing every filing
+  # while GitHub is unreachable loses findings, and a bound that leaks by one
+  # on a network blip is still a bound. Exit 2 is what makes that distinction
+  # available to the caller at all.
+  stub_gh_failing
+  run bash "$CHECK" --investigate-cap --labels "$INVESTIGATE_LABELS"
+  [ "$status" -eq 2 ]
+}
+
+@test "--investigate-cap with no --labels exits 2 rather than reading an empty label set as clean" {
+  run bash "$CHECK" --investigate-cap
+  [ "$status" -eq 2 ]
 }
 
 # --- the marker-stripped (adopter) shape of this script ---------------------
