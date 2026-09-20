@@ -111,10 +111,11 @@ set +e; [ -f "${_lib_dir}/../../../../.gaia/scripts/ledger-path-lib.sh" ] && . "
 # bracketed way as the ledger-path lib above, for the same reason.
 # shellcheck source=../../../../.gaia/scripts/branch-name-lib.sh
 set +e; [ -f "${_lib_dir}/../../../../.gaia/scripts/branch-name-lib.sh" ] && . "${_lib_dir}/../../../../.gaia/scripts/branch-name-lib.sh" 2>/dev/null; set -e
-type gaia_branch_spec_number >/dev/null 2>&1 || {
+if ! type gaia_branch_spec_number >/dev/null 2>&1 \
+  || ! type gaia_branch_refs_readable >/dev/null 2>&1; then
   echo "spec-allocator: the branch-naming library is unusable, so SPEC numbers held only on a branch cannot be read; refuse to allocate (would risk duplicate SPEC ids)" >&2
   exit 4
-}
+fi
 
 require_git() {
   if ! git -C "$repo_root" rev-parse --git-dir >/dev/null 2>&1; then
@@ -125,18 +126,15 @@ require_git() {
   # gaia_branch_list returns 0 whatever the ref read does, so an unreadable ref
   # store would contribute zero burned numbers and `next` would mint one a
   # branch already holds. That is the same duplicate-id hazard the missing
-  # library refuses on above, so it takes the same exit. Read the whole set
-  # rather than the first ref: a packed-refs file is parsed as a unit, so a
-  # short read can succeed over a file a full read rejects. Which of a corrupt
-  # packed-refs, an unreadable ref file, or a permission denial produced the
-  # failure is not distinguishable here.
+  # library refuses on above, so it takes the same exit. The library owns the
+  # probe itself (gaia_branch_refs_readable, its fail-closed companion); this
+  # caller keeps only what is its own, the namespace it names, the message, and
+  # the exit code.
   local ns
-  for ns in refs/heads refs/remotes; do
-    if ! git -C "$repo_root" for-each-ref --format=x "$ns" >/dev/null 2>&1; then
-      echo "spec-allocator: $repo_root $ns cannot be read (corrupt, unreadable, or permission-denied), so SPEC numbers held only on a branch cannot be read; refuse to allocate (would risk duplicate SPEC ids)" >&2
-      exit 4
-    fi
-  done
+  if ! ns="$(gaia_branch_refs_readable "$repo_root")"; then
+    echo "spec-allocator: $repo_root $ns cannot be read (corrupt, unreadable, or permission-denied), so SPEC numbers held only on a branch cannot be read; refuse to allocate (would risk duplicate SPEC ids)" >&2
+    exit 4
+  fi
 }
 
 # repo_root names the tree this allocation runs in; the ledger it feeds is
