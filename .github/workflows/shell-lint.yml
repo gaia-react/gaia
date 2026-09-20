@@ -163,6 +163,17 @@ jobs:
               # against the page. The other half of that guard's surface, the
               # page itself, is already reached by the `**/*.md` line above.
               - '.claude/settings.json'
+              # That same guard's third subject is the .claude/hooks/ listing:
+              # a hook there is a subject whether or not anything registers it,
+              # which is what reaches the hooks invoked by path rather than on
+              # an event. `**/*.sh` above matches an added or deleted hook
+              # today, so this entry is redundant, and it is listed anyway for
+              # the reason the `.claude/settings.json` entry above is: an
+              # incidental match is not a recorded dependency, and narrowing
+              # that glob later would unarm a subject with nothing here to say
+              # it had been armed. A deleted hook needs no page edit, so
+              # `**/*.md` does not stand in for it either.
+              - '.claude/hooks/**'
       # Install a pinned release binary rather than `apt-get install shellcheck`:
       # Ubuntu ships 0.9.0 while a maintainer's Homebrew ships newer, and their
       # directive parsers disagree, so an unpinned gate returns a different verdict
