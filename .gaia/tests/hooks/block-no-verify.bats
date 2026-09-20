@@ -419,3 +419,228 @@ run_staged() {
   run_staged 'git commit --no-verify -m x'
   assert_denied_by_json
 }
+
+# --- command-word derivation: prefixes that hid `git` from the segment walk ---
+
+# `NAME+=value` is a command prefix the shell accepts exactly as `NAME=value`
+# (`bash -c 'zz+=1 env'` prints `zz=1`), so a strip reading only the `=`
+# spelling leaves the command word unexposed and the whole segment unread.
+@test "a NAME+=value prefix does not hide the git command word" {
+  run_hook 'zz+=1 git commit -n -m x'
+  assert_denied_by_json
+  run_hook '(name+=v git commit -n -m x)'
+  assert_denied_by_json
+  run_hook 'zz+=1 git push --no-verify'
+  assert_denied_by_json
+  run_hook 'a=1 b+=2 git commit --no-verify -m x'
+  assert_denied_by_json
+}
+
+# `HUSKY+=0` disables Husky whenever HUSKY is unset, which is the ordinary
+# case, so the bypass-token test reads both spellings the command-word strip
+# above does rather than closing one half of the same shape.
+@test "a falsy HUSKY+= prefix is denied" {
+  run_hook 'HUSKY+=0 git commit -m x'
+  assert_denied_by_json
+  run_hook 'HUSKY+= git push'
+  assert_denied_by_json
+}
+
+# A reserved word or grouping token stands in command position with no
+# `| & ; ( )` between it and the command word, so the segment reaches the walk
+# with the reserved word read as its command.
+#
+# The set is hand-written, because bash's reserved words are not derivable from
+# anything in this repository, so it carries its non-members with reasons
+# (`.claude/rules/bats-assertions.md`). Every reserved word that can stand
+# immediately before a command is driven below. Deliberately not members, each
+# because it precedes something other than a command, so the command word is
+# not the next token and no segment of theirs reaches the walk unread:
+# `function` and `for` and `select` precede a NAME, `case` precedes a WORD,
+# `[[` precedes a conditional expression, and `in`, `esac`, `fi`, `done`, `}`
+# and `]]` close a construct rather than opening one.
+# A command WRAPPER (`env`, `command`, `timeout`) is not a reserved word and is
+# not a member either; the derivation's own comment states that limit.
+@test "a reserved word or grouping token does not hide the git command word" {
+  run_hook 'if true; then git commit -n -m y; fi'
+  assert_denied_by_json
+  run_hook '{ git commit -n -m y; }'
+  assert_denied_by_json
+  run_hook '! git commit -n -m y'
+  assert_denied_by_json
+  run_hook 'time git commit -n -m y'
+  assert_denied_by_json
+  run_hook 'time -p git commit -n -m y'
+  assert_denied_by_json
+  run_hook 'time -- git commit -n -m y'
+  assert_denied_by_json
+  run_hook 'coproc git commit -n -m y'
+  assert_denied_by_json
+  run_hook 'for f in x; do git commit -n -m y; done'
+  assert_denied_by_json
+  run_hook 'while :; do git push --no-verify; done'
+  assert_denied_by_json
+  run_hook 'if git commit -n -m y; then echo ok; fi'
+  assert_denied_by_json
+  run_hook 'until git push --no-verify; do echo retry; done'
+  assert_denied_by_json
+  run_hook 'if false; then echo no; else git commit -n -m y; fi'
+  assert_denied_by_json
+  run_hook 'if false; then echo no; elif git commit -n -m y; then echo ok; fi'
+  assert_denied_by_json
+}
+
+# An assignment's value may be quoted and carry whitespace, which the shell
+# accepts as an ordinary command prefix. A value read as an unquoted run stops
+# at the opening quote, leaving the rest of the value standing where the
+# command word is read.
+@test "a quoted env-assignment value does not hide the git command word" {
+  run_hook 'GIT_EDITOR="code --wait" git commit --no-verify -m x'
+  assert_denied_by_json
+  run_hook 'GIT_AUTHOR_DATE="2024-01-01 12:00" git commit -n -m x'
+  assert_denied_by_json
+  run_hook "GIT_AUTHOR_DATE='2024-01-01 12:00' git commit -n -m x"
+  assert_denied_by_json
+  run_hook 'GIT_EDITOR="code --wait" git push --no-verify'
+  assert_denied_by_json
+}
+
+# A redirection may lead a simple command, so one written ahead of the
+# invocation occupies the slot the command word is read from and the segment
+# goes unread.
+#
+# Deliberately not a member: a redirection whose target is another descriptor
+# (`2>&1`, `>&2`). The walk cuts segments at `&` before the strip sees them, so
+# that form never reaches the expression under test; the hook's own second
+# honest limit states it.
+@test "a leading redirection does not hide the git command word" {
+  run_hook '>/tmp/gaia-probe git commit --no-verify -m x'
+  assert_denied_by_json
+  run_hook '2>/dev/null git commit -n -m x'
+  assert_denied_by_json
+  run_hook '>>/tmp/gaia-probe git push --no-verify'
+  assert_denied_by_json
+}
+
+# A word merely beginning with a reserved word is an ordinary command name, so
+# the strip requires the whitespace that makes the reserved word a word.
+@test "a command name beginning with a reserved word is left alone" {
+  run_hook 'iffy git commit -n -m y'
+  assert_allowed_by_json
+  run_hook 'dotimes git commit -n -m y'
+  assert_allowed_by_json
+}
+
+# A `$( )` inside git's OWN arguments cuts the segment at its parens, so no one
+# segment carries both the command word and the bypass flag.
+@test "a command substitution inside git's arguments does not orphan the flag" {
+  run_hook 'git commit -m "$(cat f)" -n'
+  assert_denied_by_json
+  run_hook 'git commit -m "$(cat f)" --no-verify'
+  assert_denied_by_json
+  run_hook 'git -C "$(pwd)" commit -n -m y'
+  assert_denied_by_json
+  run_hook 'git -C "$(pwd)" commit -m "$(cat f)" --no-verify'
+  assert_denied_by_json
+  run_hook 'git commit -m "$(echo "$(date)")" -n'
+  assert_denied_by_json
+}
+
+# Collapsing the span must not put the substitution's own text back in the
+# reader's way: a word produced INSIDE one is not the outer segment's
+# subcommand, and the body still reaches the walk as its own segment.
+@test "text inside a collapsed substitution does not arm the outer segment" {
+  run_hook 'git log $(echo commit) -n 1'
+  assert_allowed_by_json
+  run_hook 'echo "$(git log)" --no-verify'
+  assert_allowed_by_json
+}
+
+# The commit guards each derive a segment's command word with their own copy of
+# one expression, so a widening applied to one and not the rest reopens the gap
+# in whichever copy was missed. Pinned on the construct, not only on sameness:
+# a copy that agrees with the others at the narrow spelling fails here too.
+@test "every commit guard derives the segment command word the same way" {
+  local expected="" f line n
+  for f in block-no-verify.sh block-main-destructive-git.sh red-verify-commit-check.sh; do
+    n=$(grep -cF 'seg_cmd=$(printf' "$HOOKS_SRC/$f")
+    [ "$n" -eq 1 ]
+    line=$(grep -F 'seg_cmd=$(printf' "$HOOKS_SRC/$f" | sed -E 's/^[[:space:]]*//')
+    if [ -z "$expected" ]; then expected="$line"; fi
+    [ "$line" = "$expected" ]
+  done
+  grep -qF '+?=' <<<"$expected"
+  grep -qE '\bthen\b' <<<"$expected"
+  true
+}
+
+# GAIA's own wiki squash writes a `--no-verify` commit whose message carries a
+# `$( )`, the exact shape the collapse above rejoins, so it is the one in-repo
+# case where widening the walk could have denied GAIA's own automation. It does
+# not: the whole-command safety net already denies this line on the `--no-verify`
+# alone, with or without the collapse, so the widening changes nothing for it.
+# What makes that harmless is the second pin below: the script reaches the shell
+# through the hook runner, where no PreToolUse Bash guard reads it. Both halves
+# are pinned so that routing it through a Bash tool call reds here rather than
+# silently denying the auto-commit chain.
+@test "the wiki squash's own no-verify commit is denied through the Bash tool" {
+  local line
+  line=$(grep -F -- '--no-verify' "$HOOKS_SRC/wiki-squash-autocommits.sh" \
+         | grep -F 'commit -m' | sed -E 's/^[[:space:]]*//; s/[[:space:]]*>.*$//')
+  [ -n "$line" ]
+  grep -qF '$(' <<<"$line"
+  run_hook "$line"
+  assert_denied_by_json
+}
+
+# The route that matters is an instruction surface an agent reads and then
+# types into the Bash tool. `.claude/hooks` and `.gaia/scripts` are
+# deliberately absent: a script that runs the hook internally is not a route,
+# because the guard reads the command the agent typed rather than what that
+# command's script does once it is running.
+#
+# Two searches, because the two surfaces mention the script for different
+# reasons. On the instruction surfaces any mention at all is a candidate route,
+# so the search is the plain filename. `wiki/` pages are read and acted on too,
+# but they also describe the hook by name in prose, so the search there is the
+# repo-relative PATH: a page that writes the runnable path is handing an agent
+# something to type, where a page naming the file is not. `wiki/meta/` holds
+# audit reports, which quote paths by construction and are never executed.
+#
+# The directory list is hand-written, so each entry is asserted to exist before
+# it is searched: a renamed or removed directory would otherwise drop out of
+# the scanned set while the search still reported clean.
+@test "the wiki squash script is reached only through its hook registration" {
+  local root hits d
+  root=$(cd "$HOOKS_SRC/../.." && pwd)
+  grep -qF 'wiki-squash-autocommits.sh' "$root/.claude/settings.json"
+
+  set -- "$root/.claude/skills" "$root/.claude/commands" "$root/.claude/rules" \
+         "$root/.claude/agents" "$root/.claude/instructions" \
+         "$root/.specify/extensions/gaia/commands" "$root/.specify/extensions/gaia/rules"
+  for d in "$@"; do [ -d "$d" ]; done
+  hits=$(grep -rlF 'wiki-squash-autocommits.sh' "$@" 2>/dev/null || true)
+  [ -z "$hits" ]
+
+  [ -d "$root/wiki" ]
+  hits=$(grep -rlF --exclude-dir=meta '.claude/hooks/wiki-squash-autocommits.sh' \
+           "$root/wiki" 2>/dev/null || true)
+  [ -z "$hits" ]
+}
+
+# The substitution collapse is the second derivation those copies share. This
+# pin holds SAMENESS only, unlike the command-word pin above: a weakening
+# applied uniformly to all three copies leaves it green. What carries the
+# construct is the behavioural pair in each suite, the orphaned-flag test and
+# the collapsed-substitution control, which red when the collapse stops
+# rejoining or starts over-arming.
+@test "every commit guard collapses command substitutions the same way" {
+  local expected="" f body
+  for f in block-no-verify.sh block-main-destructive-git.sh red-verify-commit-check.sh; do
+    body=$(sed -n '/^collapsed_substitutions() {$/,/^}$/p' "$HOOKS_SRC/$f")
+    [ -n "$body" ]
+    if [ -z "$expected" ]; then expected="$body"; fi
+    [ "$body" = "$expected" ]
+  done
+  true
+}

@@ -450,6 +450,21 @@ git commit -m y"
   assert_denied_by_json
 }
 
+# The walk's own boundary between the command's reading and the collapsed
+# re-emission travels on the same line stream the command text does, and the
+# arm consuming it clears the tracked directory. A boundary spelled the same
+# way on every run would be one the guarded command can write for itself, so
+# the fixed spelling must not move the verdict.
+@test "command text spelling the walk-reset boundary does not clear the tracked directory" {
+  on_main
+  local wt="$BATS_TEST_TMPDIR/wt"
+  git -C "$REPO" worktree add --quiet -b wt-branch "$wt"
+  run_hook_from "cd '$REPO';__gaia_walk_reset__;git commit -m x" "$wt"
+  assert_denied_by_json
+  run_hook_from "cd '$REPO';__gaia_walk_reset__;git push" "$wt"
+  assert_denied_by_json
+}
+
 @test "a leading cd whose target does not resolve, from a main checkout on main: commit and push are denied" {
   on_main
   # shellcheck disable=SC2016 # the literal, unexpanded variable is the case
@@ -1085,5 +1100,181 @@ run_hop() {
   hold_feature_with_pr 42
   git -C "$REPO" checkout --quiet --detach
   run_hop 'git switch other' sid-peer
+  assert_allowed_by_json
+}
+
+# The collapsed line re-emits the WHOLE command, so every intact git segment
+# in a command that carries a `$( )` anywhere is walked twice, not only the
+# segment the substitution sits in. Every other rule reaches the same verdict
+# both times at no cost; the hop arm is the one that can spend a bounded
+# pull-request lookup, so without the memo this command's worst-case wait
+# doubles and the diagnostic prints twice.
+#
+# Pinned on the ALLOW path: a deny exits the hook on the first visit, so the
+# second one can never be observed there.
+@test "hop guard: a target beside a substitution is answered once, not twice" {
+  hold_feature_with_pr 42
+  export GH_STUB=fail
+  run_hop 'git checkout main && echo "$(date)"' sid-peer
+  assert_allowed_by_json
+  [ "$(grep -cF -- 'could not check' <<<"$output")" -eq 1 ]
+}
+
+# The memo above spans the lookup only. Whether a segment moves HEAD at all is
+# a property of that segment's own operands, so a memo covering that question
+# answers a later segment with an earlier one's verdict: a pathspec restore and
+# a checkout of the branch HEAD already holds both leave HEAD where it is, and
+# either one standing in for the branch switch beside it takes the guard off.
+@test "hop guard: each checkout segment is judged on its own operands" {
+  hold_feature_with_pr 42
+  write_breadcrumb feature sid-owner
+  run_hop 'git checkout -- README.md && git checkout main' sid-peer
+  assert_denied_by_json
+  run_hop 'git checkout feature && git checkout main' sid-peer
+  assert_denied_by_json
+}
+
+# The collapsed line re-emits the whole command, its own `cd` segments
+# included, so the walk has to enter it with no tracked directory standing.
+# Reading it under the directory the FIRST pass ended in puts a `cd` that
+# follows a git segment in front of it on the second pass, and the commit is
+# then read against a checkout the command reaches only afterwards.
+@test "the collapsed re-emission is not governed by a cd that follows the segment it re-reads" {
+  on_feature
+  local wt="$BATS_TEST_TMPDIR/wt"
+  git -C "$REPO" worktree add --quiet "$wt" main
+  run_hook_from "git commit -m \"\$(date)\" && cd '$wt'" "$REPO"
+  assert_allowed_by_json
+}
+
+# The boundary reset above is the collapsed line's alone. A hidden body is read
+# last so that a `cd` ANYWHERE in the command governs it, which over-blocks in
+# the direction that reads a body against a checkout the command reaches only
+# afterwards; before the bodies were read at all such a body was invisible here.
+@test "a cd later in the command governs a hidden body read after it" {
+  on_feature
+  local wt="$BATS_TEST_TMPDIR/wt"
+  git -C "$REPO" worktree add --quiet "$wt" main
+  # shellcheck disable=SC2016 # the hook must receive the unexpanded opener
+  run_hook_from "echo \${ git commit -m y; } && cd '$wt'" "$REPO"
+  assert_denied_by_json
+}
+
+# --- command-word derivation: prefixes that hid `git` from the segment walk ---
+
+# `NAME+=value` is a command prefix the shell accepts exactly as `NAME=value`
+# (`bash -c 'zz+=1 env'` prints `zz=1`), so a strip reading only the `=`
+# spelling leaves the command word unexposed and the whole segment unread.
+@test "a NAME+=value prefix does not hide the git command word" {
+  on_main
+  run_hook 'zz+=1 git commit -m x'
+  assert_denied_by_json
+  run_hook '(name+=v git commit -m x)'
+  assert_denied_by_json
+  run_hook 'zz+=1 git push'
+  assert_denied_by_json
+  run_hook 'a=1 b+=2 git commit -m x'
+  assert_denied_by_json
+}
+
+# A reserved word or grouping token stands in command position with no
+# `| & ; ( )` between it and the command word, so the segment reaches the walk
+# with the reserved word read as its command.
+@test "a reserved word or grouping token does not hide the git command word" {
+  on_main
+  run_hook 'if true; then git commit -m y; fi'
+  assert_denied_by_json
+  run_hook '{ git commit -m y; }'
+  assert_denied_by_json
+  run_hook '! git commit -m y'
+  assert_denied_by_json
+  run_hook 'time git commit -m y'
+  assert_denied_by_json
+  run_hook 'time -p git commit -m y'
+  assert_denied_by_json
+  run_hook 'coproc git commit -m y'
+  assert_denied_by_json
+  run_hook 'for f in x; do git commit -m y; done'
+  assert_denied_by_json
+  run_hook 'while :; do git push; done'
+  assert_denied_by_json
+  run_hook 'until git push; do echo retry; done'
+  assert_denied_by_json
+  run_hook 'if false; then echo no; else git commit -m y; fi'
+  assert_denied_by_json
+}
+
+# A word merely beginning with a reserved word is an ordinary command name, so
+# the strip requires the whitespace that makes the reserved word a word.
+@test "a command name beginning with a reserved word is left alone" {
+  on_main
+  run_hook 'iffy git commit -m y'
+  assert_allowed_by_json
+  run_hook 'dotimes git commit -m y'
+  assert_allowed_by_json
+  run_hook 'coprocess git commit -m y'
+  assert_allowed_by_json
+}
+
+# An assignment's value may be quoted and carry whitespace, which the shell
+# accepts as an ordinary command prefix. A value read as an unquoted run stops
+# at the opening quote, leaving the rest of the value standing where the
+# command word is read.
+@test "a quoted env-assignment value does not hide the git command word" {
+  on_main
+  run_hook 'GIT_EDITOR="code --wait" git commit -m x'
+  assert_denied_by_json
+  run_hook 'GIT_AUTHOR_DATE="2024-01-01 12:00" git commit --amend'
+  assert_denied_by_json
+  run_hook "GIT_AUTHOR_DATE='2024-01-01 12:00' git push"
+  assert_denied_by_json
+}
+
+# A redirection may lead a simple command, so one written ahead of the
+# invocation occupies the slot the command word is read from and the segment
+# goes unread.
+#
+# Deliberately not a member: a redirection whose target is another descriptor
+# (`2>&1`, `>&2`). The walk cuts segments at `&` before the strip sees them, so
+# that form never reaches the expression under test; the hook's own second
+# honest limit states it.
+@test "a leading redirection does not hide the git command word" {
+  on_main
+  run_hook '>/tmp/gaia-probe git commit -m x'
+  assert_denied_by_json
+  run_hook '2>/dev/null git commit -m x'
+  assert_denied_by_json
+  run_hook '>>/tmp/gaia-probe git push'
+  assert_denied_by_json
+}
+
+# A `$( )` inside git's OWN arguments cuts the segment at its parens, so no one
+# segment carries both the command word and the subcommand the rules arm on.
+#
+# A substitution standing in a GLOBAL `-C`'s value is a separate limit and is
+# deliberately not asserted here: the segment is read now, but `parse_git_globals`
+# hands the branch read an unexpandable directory word, which resolves to no
+# branch and denies nothing. That limit is the one `parse_git_globals` already
+# states, and closing it means making the branch read fail closed on a `-C`
+# value it cannot resolve, not widening this walk.
+@test "a command substitution inside git's arguments does not hide the subcommand" {
+  on_main
+  run_hook 'git -c user.name="$(whoami)" commit -m y'
+  assert_denied_by_json
+  run_hook 'git commit -m "$(date)"'
+  assert_denied_by_json
+  on_feature
+  run_hook 'git push "$(echo origin)" main'
+  assert_denied_by_json
+}
+
+# The collapse must not hand a non-git segment the substitution's own text: the
+# body still reaches the walk as its own segment, which is where a command
+# inside one is read.
+@test "text inside a collapsed substitution does not arm the outer segment" {
+  on_feature
+  run_hook 'echo "$(git log)" main'
+  assert_allowed_by_json
+  run_hook 'grep -R "$(echo commit)" .'
   assert_allowed_by_json
 }

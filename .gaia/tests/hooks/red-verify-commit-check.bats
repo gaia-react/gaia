@@ -731,3 +731,109 @@ run_commit_hook_in() {
   denied
   grep -qF -- "adds two numbers" <<<"$output"
 }
+
+# --- command-word derivation: prefixes that hid `git` from the segment walk ---
+
+# `NAME+=value` is a command prefix the shell accepts exactly as `NAME=value`
+# (`bash -c 'zz+=1 env'` prints `zz=1`), so a strip reading only the `=`
+# spelling leaves the command word unexposed and the commit unread.
+@test "a NAME+=value prefix does not hide the git command word" {
+  stage_file "app/utils/x/index.test.ts" "$PASSING_TEST"
+  run_commit_hook 'zz+=1 git commit -m change'
+  [ "$status" -eq 0 ]
+  denied
+  run_commit_hook 'a=1 b+=2 git commit -m change'
+  [ "$status" -eq 0 ]
+  denied
+}
+
+# A reserved word or grouping token stands in command position with no
+# `| & ; ( )` between it and the command word, so the segment reaches the walk
+# with the reserved word read as its command.
+@test "a reserved word or grouping token does not hide the git command word" {
+  stage_file "app/utils/x/index.test.ts" "$PASSING_TEST"
+  run_commit_hook 'if true; then git commit -m change; fi'
+  [ "$status" -eq 0 ]
+  denied
+  run_commit_hook '{ git commit -m change; }'
+  [ "$status" -eq 0 ]
+  denied
+  run_commit_hook '! git commit -m change'
+  [ "$status" -eq 0 ]
+  denied
+  run_commit_hook 'time git commit -m change'
+  [ "$status" -eq 0 ]
+  denied
+  run_commit_hook 'time -p git commit -m change'
+  [ "$status" -eq 0 ]
+  denied
+  run_commit_hook 'coproc git commit -m change'
+  [ "$status" -eq 0 ]
+  denied
+  run_commit_hook 'for f in x; do git commit -m change; done'
+  [ "$status" -eq 0 ]
+  denied
+}
+
+# An assignment's value may be quoted and carry whitespace, which the shell
+# accepts as an ordinary command prefix. A value read as an unquoted run stops
+# at the opening quote, leaving the rest of the value standing where the
+# command word is read.
+@test "a quoted env-assignment value does not hide the git command word" {
+  stage_file "app/utils/x/index.test.ts" "$PASSING_TEST"
+  run_commit_hook 'GIT_EDITOR="code --wait" git commit -m change'
+  [ "$status" -eq 0 ]
+  denied
+  run_commit_hook "GIT_AUTHOR_DATE='2024-01-01 12:00' git commit -m change"
+  [ "$status" -eq 0 ]
+  denied
+}
+
+# A redirection may lead a simple command, so one written ahead of the
+# invocation occupies the slot the command word is read from and the segment
+# goes unread.
+#
+# Deliberately not a member: a redirection whose target is another descriptor
+# (`2>&1`, `>&2`). The walk cuts segments at `&` before the strip sees them, so
+# that form never reaches the expression under test; the hook's own second
+# honest limit states it.
+@test "a leading redirection does not hide the git command word" {
+  stage_file "app/utils/x/index.test.ts" "$PASSING_TEST"
+  run_commit_hook '>/tmp/gaia-probe git commit -m change'
+  [ "$status" -eq 0 ]
+  denied
+  run_commit_hook '2>/dev/null git commit -m change'
+  [ "$status" -eq 0 ]
+  denied
+}
+
+# A word merely beginning with a reserved word is an ordinary command name, so
+# the strip requires the whitespace that makes the reserved word a word.
+@test "a command name beginning with a reserved word is left alone" {
+  stage_file "app/utils/x/index.test.ts" "$PASSING_TEST"
+  run_commit_hook 'iffy git commit -m change'
+  [ "$status" -eq 0 ]
+  refute_denied
+}
+
+# A `$( )` inside git's OWN arguments cuts the segment at its parens, so no one
+# segment carries both the command word and the `commit` subcommand.
+@test "a command substitution inside git's arguments does not hide the commit" {
+  stage_file "app/utils/x/index.test.ts" "$PASSING_TEST"
+  run_commit_hook 'git -C "$(pwd)" commit -m change'
+  [ "$status" -eq 0 ]
+  denied
+  run_commit_hook 'git commit -m "$(date)"'
+  [ "$status" -eq 0 ]
+  denied
+}
+
+# The collapse must not hand a non-git segment the substitution's own text: the
+# body still reaches the walk as its own segment, which is where a command
+# inside one is read.
+@test "text inside a collapsed substitution does not arm the outer segment" {
+  stage_file "app/utils/x/index.test.ts" "$PASSING_TEST"
+  run_commit_hook 'echo "remember to $(echo git) commit later"'
+  [ "$status" -eq 0 ]
+  refute_denied
+}

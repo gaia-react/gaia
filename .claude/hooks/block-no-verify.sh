@@ -103,7 +103,7 @@ floor_msg() {
   # The over-block workaround applies to commit only: push carries no -m text
   # a bypass token could be merely mentioned inside.
   if [ "$sub" = "commit" ]; then
-    msg="$msg If this token appears only inside your commit message text, not as a real flag, that is this hook's documented over-block: rephrase the message, the gate was not bypassed."
+    msg="$msg If this token appears only inside your commit message text, not as a real flag, that is this hook's documented over-block: rephrase the message, the gate was not bypassed. A shell reserved word inside that quoted text ('then', 'do', 'if', an open brace) can put the words after it in command position for this check, so quoted prose describing a bypass reaches the over-block more readily than the flag alone would."
   fi
   echo "$msg"
 }
@@ -138,19 +138,81 @@ hidden_bodies() {
   return 0
 }
 
+# collapsed_substitutions <text>: print the command once more with every
+# `$( … )` span replaced by a single placeholder word, and print nothing when
+# the text carries none or the collapse changes nothing. Cutting at every `(`
+# and `)` is what lets the walk read a command INSIDE a substitution, and is
+# also what splits a substitution standing in git's OWN arguments away from the
+# command word: `git -C "$(pwd)" commit --no-verify` leaves no segment carrying
+# both `git` and `commit`, and `git commit -m "$(cat f)" -n` orphans the `-n`.
+# This line is read IN ADDITION to the command's own, so the body still reaches
+# the walk as its own segment and only the outer invocation is rejoined. The
+# placeholder is a bare `_` so a `commit`, a `push`, or a flag written inside
+# the span cannot arm the rejoined segment with something it never spelled.
+#
+# Innermost first, so a nested span collapses over successive passes; the bound
+# is a backstop. A span crossing a newline is left alone, since sed reads a
+# line at a time: that leaves the segment cut where it already was, which is
+# the direction that hides nothing the walk reads today.
+# block-main-destructive-git.sh and red-verify-commit-check.sh carry the same
+# function, and block-no-verify.bats pins the copies identical.
+collapsed_substitutions() {
+  local text="$1" prev pass=0
+  # shellcheck disable=SC2016 # a literal opener matched in the text, not an expansion
+  case "$text" in *'$('*) ;; *) return 0 ;; esac
+  while [ "$pass" -lt 8 ]; do
+    prev="$text"
+    text=$(printf '%s' "$text" | sed -E 's/\$\([^()]*\)/_/g')
+    [ "$text" = "$prev" ] && break
+    pass=$((pass + 1))
+  done
+  [ "$text" = "$1" ] || printf '%s\n' "$text"
+  return 0
+}
+
 # Walk each command-position segment. Separators (`| & ; ( )`, newlines) become
 # line breaks so every line begins at a command word; leading env-var
-# assignments are stripped to expose it. A segment acts only when its command
-# word is `git` and it carries a `commit` / `push` subcommand token, so a
-# `-n` that belongs to a different program on the same command line (the
-# `git commit && grep -n …` case) never trips the commit branch.
+# assignments and shell reserved words are stripped to expose it. A segment
+# acts only when its command word is `git` and it carries a `commit` / `push`
+# subcommand token, so a `-n` that belongs to a different program on the same
+# command line (the `git commit && grep -n …` case) never trips the commit
+# branch.
 saw_commit=0
 saw_push=0
 while IFS= read -r seg; do
-  # Command word = the first token after any leading whitespace + env-var
-  # assignments (`WORD=value `). bash 3.2 does not populate BASH_REMATCH
-  # reliably, so strip with sed rather than a capture loop.
-  seg_cmd=$(printf '%s' "$seg" | sed -E 's/^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)*//')
+  # Command word = the first token past any leading whitespace, env-var
+  # assignment prefix, shell reserved word, or redirection. What the shell
+  # accepts in that run, each of which hid the whole invocation from a narrower
+  # reading: `NAME+=value` is a command prefix exactly as `NAME=value` is
+  # (`bash -c 'zz+=1 env'` prints `zz=1`); an assignment's value may be quoted
+  # and carry whitespace (`GIT_AUTHOR_DATE="2024-01-01 12:00" git commit`), so
+  # a value read as an unquoted run stops at the opening quote; a reserved
+  # word or grouping token stands in command position with no `| & ; ( )` ahead
+  # of the command word for the walk to cut at, with `time` taking an optional
+  # `-p` or `--` of its own; and a redirection may lead a simple command
+  # (`bash -c '>/tmp/x echo hi'` writes the file), so one standing ahead of the
+  # invocation occupies the slot the command word is read from. bash 3.2 does
+  # not populate BASH_REMATCH reliably, so strip with sed rather than a capture
+  # loop.
+  #
+  # Honest limit: a command WRAPPER (`env`, `command`, `exec`, `nohup`,
+  # `timeout`, `xargs`) also stands where the command word is read and is NOT
+  # stripped, so it still hides the invocation. Each carries its own option
+  # grammar, and a blind strip would misread `env -i git …` and `timeout 5 git
+  # …`, so closing them needs a per-wrapper option table rather than this list.
+  #
+  # Second honest limit, of a different kind: a redirection whose target is
+  # another descriptor (`2>&1`, `>&2`) never reaches this strip at all, because
+  # the walk cuts segments at `&` and the invocation lands in a segment
+  # beginning with the descriptor number. Closing it means not cutting at an
+  # `&` that belongs to a redirection, which a separator split cannot tell from
+  # `&&` without reading the command the way the shell does.
+  #
+  # block-main-destructive-git.sh and red-verify-commit-check.sh carry this
+  # expression too, and block-no-verify.bats pins the copies identical: a
+  # widening applied to one and not the rest leaves the gap open in whichever
+  # copy was missed.
+  seg_cmd=$(printf '%s' "$seg" | sed -E 's/^[[:space:]]*(([A-Za-z_][A-Za-z0-9_]*\+?=([^[:space:]"'"'"']+|"[^"]*"|'"'"'[^'"'"']*'"'"')*|[0-9]*[<>][^[:space:]]*|[{!]|coproc|elif|else|while|until|then|time([[:space:]]+(-p|--))?|do|if)[[:space:]]+)*//')
   [[ "$seg_cmd" =~ ^git([[:space:]]|$) ]] || continue
 
   is_commit=0
@@ -172,8 +234,10 @@ while IFS= read -r seg; do
     deny "$(floor_msg '--no-verify')"
   fi
 
-  # Falsy HUSKY= prefix (HUSKY=0, HUSKY=false, HUSKY=no, or empty), both.
-  if [[ "$seg" =~ (^|[[:space:]])HUSKY=(0|false|no)?([[:space:]]|$) ]]; then
+  # Falsy HUSKY= prefix (HUSKY=0, HUSKY=false, HUSKY=no, or empty), both. The
+  # `+=` spelling is read too: it appends, so on the unset HUSKY that is the
+  # ordinary case it assigns the same falsy value the `=` spelling does.
+  if [[ "$seg" =~ (^|[[:space:]])HUSKY\+?=(0|false|no)?([[:space:]]|$) ]]; then
     deny "$(floor_msg 'HUSKY disabled')"
   fi
 
@@ -191,7 +255,7 @@ while IFS= read -r seg; do
      && [[ "$seg" =~ (^|[[:space:]])-[a-zA-Z]*n[a-zA-Z]*([[:space:]]|$) ]]; then
     deny "$(floor_msg '-n (= --no-verify)')"
   fi
-done < <({ printf '%s\n' "$cmd"; hidden_bodies "$cmd"; } | tr '|&;()' '\n')
+done < <({ printf '%s\n' "$cmd"; collapsed_substitutions "$cmd"; hidden_bodies "$cmd"; } | tr '|&;()' '\n')
 
 # Fail-closed safety net for the UNAMBIGUOUS tokens. Segment-splitting on a
 # `| & ; ( )` that is actually inside a quoted commit message could orphan a
@@ -206,7 +270,7 @@ if [[ "$saw_commit" -eq 1 || "$saw_push" -eq 1 ]]; then
   if [[ "$cmd" =~ (^|[[:space:]])--no-verify([[:space:]]|=|$) ]]; then
     deny "$(floor_msg '--no-verify')"
   fi
-  if [[ "$cmd" =~ (^|[[:space:]])HUSKY=(0|false|no)?([[:space:]]|$) ]]; then
+  if [[ "$cmd" =~ (^|[[:space:]])HUSKY\+?=(0|false|no)?([[:space:]]|$) ]]; then
     deny "$(floor_msg 'HUSKY disabled')"
   fi
   if grep -iqE -- '-c[[:space:]]+core\.hookspath=' <<<"$cmd"; then
