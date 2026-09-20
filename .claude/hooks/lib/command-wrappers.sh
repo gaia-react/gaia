@@ -54,8 +54,10 @@
 # `command -v git commit`, a command nobody runs, and closing it would need the
 # shell's own evaluation.
 #
-# HONEST LIMITS, all of them the under-strip direction, which leaves the gap
-# exactly where it is today rather than opening a new one:
+# HONEST LIMITS. Every one below but the last is the under-strip direction,
+# which leaves the gap exactly where it is today rather than opening a new one;
+# the last alters the text that survives a strip, so it is called out as its own
+# kind:
 #
 #   - a wrapper option whose separated value carries whitespace inside quotes
 #     (`env -S "a b" git commit`). The scan splits on whitespace, so it
@@ -76,6 +78,15 @@
 #     boundary the `^git` test the callers apply already has, which leaves
 #     `/usr/bin/git commit` equally unread, so it is an accepted tree-wide
 #     contract rather than something this table narrowed.
+#   - the one limit that is NOT under-strip: the surviving words are rejoined
+#     on a single space, so a run of internal whitespace inside a quoted
+#     operand collapses whenever a strip actually fires. A wrapped
+#     `git -C "<path carrying two spaces>"` reaches the callers' own global
+#     parse with a value naming a directory the command never did. The callers
+#     that read an unresolvable `-C` fail closed on it; the one that reads it
+#     as a checkout to look a ledger up in reads the wrong checkout. Keeping
+#     the spacing would mean carrying byte offsets through a scan that works in
+#     words, which is a larger change than this residual justifies.
 #
 # ADDING A ROW: state all three properties. An option that takes a separated
 # value and is left out of the row hands its own value to the command-word

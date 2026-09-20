@@ -880,6 +880,14 @@ wrapper_prefix() {
 # expression the pin above holds identical across the guards it names. Pinned on
 # the load and the use together: a guard that sources the library and then
 # tests the unstripped word is green on the source alone.
+#
+# The fail-loud arm is pinned here too, and only the arm in THIS guard is
+# driven behaviourally, by the degrade cases at the end of this file. Deleting
+# the arm from either sibling fails that sibling OPEN on a missing library, in
+# two different ways: under errexit the undefined function exits non-zero,
+# which a PreToolUse hook's caller treats as a non-blocking error and proceeds
+# past, and without errexit the command word comes back empty and never arms.
+# Neither shows up in a suite that only checks the source line.
 @test "every commit guard reads its command word past the shared wrapper table" {
   local f n
   [ -f "$HOOKS_SRC/lib/command-wrappers.sh" ]
@@ -890,6 +898,9 @@ wrapper_prefix() {
     n=$(grep -cE 'seg_prog" =~ \^git' "$HOOKS_SRC/$f")
     [ "$n" -eq 1 ]
     grep -qE 'seg_cmd" =~ \^git' "$HOOKS_SRC/$f" && return 1
+    # The refusal names the guard it fires from, so each copy carries its own
+    # literal rather than a shared one.
+    grep -qF "BLOCKED: ${f} cannot load lib/command-wrappers.sh" "$HOOKS_SRC/$f"
   done
   true
 }
