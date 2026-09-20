@@ -477,12 +477,311 @@ git commit -m y"
   assert_denied_by_json
 }
 
+# A failed `cd` leaves the real shell standing in the directory the previous
+# one moved into, so a target that does not resolve must keep the tracked
+# directory rather than clear it. The single-`cd` shape above pins the
+# clear-to-nothing case from the main checkout, where the fallback happens to
+# be main either way.
+#
+# This case reads the two-hop shape from another checkout. It does not isolate
+# the keep on its own: the main checkout is also an ambiguity candidate here,
+# so the deny it asserts has two possible sources. The pair further down,
+# driving a fixture where no ambiguity candidate stands on main, is what pins
+# the keep by itself.
+@test "a second cd whose target does not resolve keeps the checkout the first one moved into" {
+  on_main
+  local wt="$BATS_TEST_TMPDIR/wt"
+  git -C "$REPO" worktree add --quiet -b wt-branch "$wt"
+  run_hook_from "cd '$REPO'; cd /nonexistent; git commit -m x" "$wt"
+  assert_denied_by_json
+  run_hook_from "cd '$REPO'; cd /nonexistent; git push" "$wt"
+  assert_denied_by_json
+  # shellcheck disable=SC2016 # the hook must receive the unexpanded variable
+  run_hook_from "cd '$REPO'; cd \"\$UNSET_VAR\"; git commit -m x" "$wt"
+  assert_denied_by_json
+}
+
+# A resolvable second hop still replaces the first, so keeping the previous
+# target on a failed resolve does not pin the walk to the leading `cd`.
+@test "a second cd that does resolve still replaces the checkout the first one moved into" {
+  on_main
+  local wt="$BATS_TEST_TMPDIR/wt"
+  git -C "$REPO" worktree add --quiet -b wt-branch "$wt"
+  run_hook_from "cd '$REPO'; cd '$wt'; git commit -m x" "$wt"
+  assert_allowed_by_json
+}
+
+# The other half of an unresolvable `cd`, and the one keeping the previous
+# target cannot answer on its own: the hop may have SUCCEEDED into a checkout
+# the scan cannot name. `cd -` is the common spelling and it lands back where
+# the shell started, so a command that steps into a worktree and back reads
+# the worktree's branch while the commit lands in the main checkout. Neither
+# reading is knowable here, so a candidate standing on main arms the rule.
+@test "a second cd that may have stepped back into the main checkout is denied" {
+  on_main
+  local wt="$BATS_TEST_TMPDIR/wt"
+  git -C "$REPO" worktree add --quiet -b wt-branch "$wt"
+  run_hook_from "cd '$wt' && cd - && git commit -m x" "$REPO"
+  assert_denied_by_json
+  run_hook_from "cd '$wt' && cd - && git push" "$REPO"
+  assert_denied_by_json
+  # shellcheck disable=SC2016 # the hook must receive the unexpanded variable
+  run_hook_from "cd '$wt'; cd \"\$BACK\"; git commit -m x" "$REPO"
+  assert_denied_by_json
+}
+
+# The ambiguity arm reads candidates, not the session: from a checkout that is
+# not on main, an unresolvable hop off a worktree has nothing on main to find
+# and stays allowed, so the arm above is not a blanket deny on `cd -`.
+@test "an unresolvable second cd is allowed when no candidate checkout is on main" {
+  on_feature
+  local wt="$BATS_TEST_TMPDIR/wt"
+  git -C "$REPO" worktree add --quiet -b wt-branch "$wt"
+  run_hook_from "cd '$wt' && cd - && git commit -m x" "$REPO"
+  assert_allowed_by_json
+}
+
+# The mirror of the two arms above, and the shape a worktree session actually
+# spells: from a linked worktree neither the tracked directory nor this hook's
+# own is the main checkout, so an unreadable word pointing at it has to be
+# tested against that checkout directly or the commit it lands there is read
+# against the worktree's own branch and allowed.
+@test "an unreadable cd target is read against the main checkout from a worktree" {
+  on_main
+  local wt="$BATS_TEST_TMPDIR/wt"
+  git -C "$REPO" worktree add --quiet -b wt-branch "$wt"
+  # shellcheck disable=SC2016 # the hook must receive the unexpanded variable
+  run_hook_from 'cd "$MAIN" && git commit -m x' "$wt"
+  assert_denied_by_json
+  # shellcheck disable=SC2016
+  run_hook_from 'cd "$MAIN" && git push' "$wt"
+  assert_denied_by_json
+  run_hook_from 'cd - && git commit -m x' "$wt"
+  assert_denied_by_json
+}
+
+# And the control that keeps it from being a blanket deny on a worktree
+# session: with the main checkout off main, the same unreadable hop has no
+# candidate on main and is allowed.
+@test "an unreadable cd target from a worktree is allowed when the main checkout is off main" {
+  on_feature
+  local wt="$BATS_TEST_TMPDIR/wt"
+  git -C "$REPO" worktree add --quiet -b wt-branch "$wt"
+  # shellcheck disable=SC2016 # the hook must receive the unexpanded variable
+  run_hook_from 'cd "$MAIN" && git commit -m x' "$wt"
+  assert_allowed_by_json
+}
+
+# A directory word the scan CAN read settles which checkout the segment acts
+# in, whatever repository that word turns out to name. The ambiguity arm is
+# for a word that resolves to NOTHING, and reading a readable sibling
+# repository as ambiguous denied a commit landing in that sibling against THIS
+# checkout's branch: the foreign stand-down is a whole-call verdict, so a home
+# command sharing the call keeps the guard armed and the sibling segment
+# reaches the directory read.
+#
+# These drive it from a linked worktree with the main checkout on main, which
+# is the shape that separates the two readings: the worktree's own branch
+# allows, and only a candidate found through the ambiguity arm denies.
+foreign_on_sidebranch() {
+  git -C "$FOREIGN" commit --quiet --allow-empty -m init
+  git -C "$FOREIGN" checkout --quiet -B sidebranch
+}
+
+@test "a readable foreign -C beside a home command is not ambiguous" {
+  on_main
+  foreign_on_sidebranch
+  local wt="$BATS_TEST_TMPDIR/wt"
+  git -C "$REPO" worktree add --quiet -b wt-branch "$wt"
+  run_hook_from "git status && git -C $FOREIGN commit -m x" "$wt"
+  assert_allowed_by_json
+  run_hook_from "git status && git -C $FOREIGN push" "$wt"
+  assert_allowed_by_json
+}
+
+@test "a readable foreign cd beside a home command is not ambiguous" {
+  on_main
+  foreign_on_sidebranch
+  local wt="$BATS_TEST_TMPDIR/wt"
+  git -C "$REPO" worktree add --quiet -b wt-branch "$wt"
+  run_hook_from "git status && cd $FOREIGN && git commit -m x" "$wt"
+  assert_allowed_by_json
+  run_hook_from "git status && cd $FOREIGN && git push" "$wt"
+  assert_allowed_by_json
+}
+
+# The control that keeps the two arms above from reading as a blanket allow:
+# with the sibling checkout itself on main, the `-C` read denies, and it
+# denies naming the branch the commit actually lands on rather than reporting
+# the checkout as unreadable.
+@test "a readable foreign -C on main beside a home command denies on its own branch" {
+  on_main
+  local wt="$BATS_TEST_TMPDIR/wt"
+  git -C "$REPO" worktree add --quiet -b wt-branch "$wt"
+  run_hook_from "git status && git -C $FOREIGN commit -m x" "$wt"
+  assert_denied_by_json
+  grep -qF -- 'cannot read' <<<"$output" && return 1
+  grep -qF -- "Commits to 'main' are forbidden" <<<"$output"
+}
+
+# Rule 3's ambiguity arm answered ahead of its refspec arm, so an operator
+# already on a feature branch was told the pushing checkout was unknown and
+# offered a repair they had applied: spelling the directory literally only
+# surfaces the refspec deny on the next attempt. The refspec verdict does not
+# depend on which checkout the push runs from, so it is answered first.
+@test "a refspec naming main is reported ahead of an unreadable directory" {
+  on_main
+  local wt="$BATS_TEST_TMPDIR/wt"
+  git -C "$REPO" worktree add --quiet -b wt-branch "$wt"
+  # shellcheck disable=SC2016 # the hook must receive the unexpanded variable
+  run_hook_from 'cd "$MAIN" && git push origin main' "$wt"
+  assert_denied_by_json
+  grep -qF -- 'refspec names main' <<<"$output"
+}
+# The two arms this branch adds to the directory read, each isolated from the
+# ambiguity arm that would otherwise answer for them.
+#
+# Every other case here is driven from a checkout that is itself on main, or
+# alongside a main checkout that is, so the ambiguity arm finds a candidate on
+# main and denies whatever the two arms do: revert either one and the suite
+# stays green. These drive three checkouts instead, with the session's own and
+# the main checkout BOTH off main, which leaves the tracked `cd` target and
+# the `-C` fallback as the only things that can produce the deny.
+three_checkouts() {
+  on_feature
+  git -C "$REPO" worktree add --quiet -b feature-a "$BATS_TEST_TMPDIR/wt-a"
+  git -C "$REPO" worktree add --quiet -b master "$BATS_TEST_TMPDIR/wt-b"
+}
+
+@test "the kept cd target is what denies when no ambiguity candidate is on main" {
+  three_checkouts
+  run_hook_from "cd '$BATS_TEST_TMPDIR/wt-b'; cd /nonexistent; git commit -m x" "$BATS_TEST_TMPDIR/wt-a"
+  assert_denied_by_json
+  run_hook_from "cd '$BATS_TEST_TMPDIR/wt-b'; cd /nonexistent; git push" "$BATS_TEST_TMPDIR/wt-a"
+  assert_denied_by_json
+}
+
+@test "the -C fallback is what denies when no ambiguity candidate is on main" {
+  three_checkouts
+  # shellcheck disable=SC2016 # the hook must receive the unexpanded variable
+  run_hook_from "cd '$BATS_TEST_TMPDIR/wt-b'; git -C \"\$UNSET_VAR\" commit -m x" "$BATS_TEST_TMPDIR/wt-a"
+  assert_denied_by_json
+}
+
+# Same as run_hook_from, with HOME pointed at a named checkout. The directory
+# read expands a literal tilde against it, and nothing else in the hook reads
+# HOME, so this isolates that one arm.
+run_hook_from_home() {
+  local json
+  json=$(jq -n --arg c "$1" --arg d "$2" '{tool_name: "Bash", cwd: $d, tool_input: {command: $c}}')
+  run bash -c 'cd "$1" && printf %s "$2" | HOME="$4" bash "$3"' _ "$2" "$json" "$HOOK_ABS" "$3"
+}
+
+# A tilde reaches the directory read as a literal character: it arrived as text
+# inside the tool call rather than through a shell. Both callers route their
+# word through the expansion, and with no case driving one the arm can be
+# removed with nothing going red, leaving a `-C ~` or a `cd ~` into a checkout
+# on main reading nothing and allowing.
+#
+# Driven from a worktree with every other candidate off main, so the deny can
+# only come from the expansion resolving.
+# Both spellings the expansion admits are driven, the bare `~` and the `~/`
+# prefix, since each is its own case arm and one says nothing about the other.
+@test "a literal tilde in a -C is expanded before the branch is read" {
+  three_checkouts
+  run_hook_from_home 'git -C ~ commit -m x' "$BATS_TEST_TMPDIR/wt-a" "$BATS_TEST_TMPDIR/wt-b"
+  assert_denied_by_json
+  run_hook_from_home 'git -C ~ push' "$BATS_TEST_TMPDIR/wt-a" "$BATS_TEST_TMPDIR/wt-b"
+  assert_denied_by_json
+  run_hook_from_home 'git -C ~/. commit -m x' "$BATS_TEST_TMPDIR/wt-a" "$BATS_TEST_TMPDIR/wt-b"
+  assert_denied_by_json
+}
+
+@test "a literal tilde in a cd is expanded before the branch is read" {
+  three_checkouts
+  run_hook_from_home 'cd ~ && git commit -m x' "$BATS_TEST_TMPDIR/wt-a" "$BATS_TEST_TMPDIR/wt-b"
+  assert_denied_by_json
+  run_hook_from_home 'cd ~/. && git commit -m x' "$BATS_TEST_TMPDIR/wt-a" "$BATS_TEST_TMPDIR/wt-b"
+  assert_denied_by_json
+}
+
+# The expansion has to reach the branch read for a FOREIGN word too, not only
+# a same-repository one: classifying on the expanded path and then reading a
+# branch out of the literal `~` spelling answers nothing and allows.
+@test "a literal tilde in a foreign -C is expanded before the branch is read" {
+  three_checkouts
+  run_hook_from_home 'git status && git -C ~ commit -m x' "$BATS_TEST_TMPDIR/wt-a" "$FOREIGN"
+  assert_denied_by_json
+}
+
+# `ambiguous_main_branch` probes this hook's own working directory as well as
+# the main checkout, and every other fixture here places the session where the
+# main checkout already answers for it. This one separates them: the session's
+# own worktree is the only candidate on main/master, and the tracked `cd` names
+# a feature checkout, so the deny can only come from the working-directory
+# probe.
+@test "the working-directory candidate is what denies when the main checkout is off main" {
+  three_checkouts
+  run_hook_from "cd '$BATS_TEST_TMPDIR/wt-a'; cd /nonexistent; git commit -m x" "$BATS_TEST_TMPDIR/wt-b"
+  assert_denied_by_json
+  run_hook_from "cd '$BATS_TEST_TMPDIR/wt-a'; cd /nonexistent; git push" "$BATS_TEST_TMPDIR/wt-b"
+  assert_denied_by_json
+}
+
 @test "a -C into a linked worktree does not lend its branch to a later bare commit on main" {
   on_main
   local wt="$BATS_TEST_TMPDIR/wt"
   git -C "$REPO" worktree add --quiet -b wt-branch "$wt"
   run_hook_from "git -C $wt status && git commit -m x" "$REPO"
   assert_denied_by_json
+}
+
+# The `-C` word is read by a scan that models quoting but never expands, so a
+# value it cannot resolve names no readable checkout. Reading a branch from it
+# answers nothing and every branch-armed rule allows, which is why an
+# unresolvable value falls back to the directory the command actually runs in.
+@test "an unresolvable -C value does not disarm the branch-armed rules on main" {
+  on_main
+  # shellcheck disable=SC2016 # the hook must receive the unexpanded variable
+  run_hook_from 'git -C "$UNSET_VAR" commit -m x' "$REPO"
+  assert_denied_by_json
+  # shellcheck disable=SC2016
+  run_hook_from 'git -C "$UNSET_VAR" push' "$REPO"
+  assert_denied_by_json
+  # shellcheck disable=SC2016 # a substitution is text to the scan, not a path
+  run_hook_from 'git -C "$(pwd)" commit -m x' "$REPO"
+  assert_denied_by_json
+  run_hook_from 'git -C /nonexistent commit -m x' "$REPO"
+  assert_denied_by_json
+}
+
+# An unresolvable `-C` falls back to the checkout a preceding `cd` named, and
+# is ambiguous on the same terms an unresolvable `cd` is: the value the scan
+# could not expand may name any checkout, the main one included. So the
+# tracked `cd` answers the ordinary case, and a candidate on main still arms
+# the rule even when that tracked `cd` is a worktree on its own branch.
+@test "an unresolvable -C value is read against every checkout it could name" {
+  on_main
+  local wt="$BATS_TEST_TMPDIR/wt"
+  git -C "$REPO" worktree add --quiet -b wt-branch "$wt"
+  # shellcheck disable=SC2016 # the hook must receive the unexpanded variable
+  run_hook_from "cd '$wt'; git -C \"\$UNSET_VAR\" commit -m x" "$REPO"
+  assert_denied_by_json
+  # shellcheck disable=SC2016
+  run_hook_from "cd '$REPO'; git -C \"\$UNSET_VAR\" commit -m x" "$wt"
+  assert_denied_by_json
+}
+
+# The tracked `cd` still decides a resolvable case: with nothing on main among
+# the candidates, an unresolvable `-C` is allowed, so the arm above is driven
+# by a candidate on main rather than by unresolvability alone.
+@test "an unresolvable -C value is allowed when no candidate checkout is on main" {
+  on_feature
+  local wt="$BATS_TEST_TMPDIR/wt"
+  git -C "$REPO" worktree add --quiet -b wt-branch "$wt"
+  # shellcheck disable=SC2016 # the hook must receive the unexpanded variable
+  run_hook_from "cd '$wt'; git -C \"\$UNSET_VAR\" commit -m x" "$REPO"
+  assert_allowed_by_json
 }
 
 # The leading `cd` target stood for every segment and a later `cd` did not
@@ -1115,6 +1414,7 @@ run_hop() {
 @test "hop guard: a target beside a substitution is answered once, not twice" {
   hold_feature_with_pr 42
   export GH_STUB=fail
+  # shellcheck disable=SC2016 # the hook must receive the unexpanded opener
   run_hop 'git checkout main && echo "$(date)"' sid-peer
   assert_allowed_by_json
   [ "$(grep -cF -- 'could not check' <<<"$output")" -eq 1 ]
@@ -1251,19 +1551,21 @@ run_hop() {
 # A `$( )` inside git's OWN arguments cuts the segment at its parens, so no one
 # segment carries both the command word and the subcommand the rules arm on.
 #
-# A substitution standing in a GLOBAL `-C`'s value is a separate limit and is
-# deliberately not asserted here: the segment is read now, but `parse_git_globals`
-# hands the branch read an unexpandable directory word, which resolves to no
-# branch and denies nothing. That limit is the one `parse_git_globals` already
-# states, and closing it means making the branch read fail closed on a `-C`
-# value it cannot resolve, not widening this walk.
+# A `-C` whose value is a substitution is asserted by the branch read's own
+# fail-closed case rather than here: an unresolvable directory word falls back
+# to the checkout the command runs in, so the rules stay armed. This test pins
+# the narrower claim that the walk reads the subcommand past a substitution
+# standing in git's other arguments.
 @test "a command substitution inside git's arguments does not hide the subcommand" {
   on_main
+  # shellcheck disable=SC2016 # the hook must receive the unexpanded opener
   run_hook 'git -c user.name="$(whoami)" commit -m y'
   assert_denied_by_json
+  # shellcheck disable=SC2016
   run_hook 'git commit -m "$(date)"'
   assert_denied_by_json
   on_feature
+  # shellcheck disable=SC2016
   run_hook 'git push "$(echo origin)" main'
   assert_denied_by_json
 }
@@ -1273,8 +1575,10 @@ run_hop() {
 # inside one is read.
 @test "text inside a collapsed substitution does not arm the outer segment" {
   on_feature
+  # shellcheck disable=SC2016 # the hook must receive the unexpanded opener
   run_hook 'echo "$(git log)" main'
   assert_allowed_by_json
+  # shellcheck disable=SC2016
   run_hook 'grep -R "$(echo commit)" .'
   assert_allowed_by_json
 }

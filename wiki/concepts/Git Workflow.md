@@ -30,7 +30,9 @@ No `--force`, `--force-with-lease`, or `-f` to `main`/`master`; upstream history
 
 ## 3. Never push directly to `main` or `master`
 
-The hook denies two independent conditions on `git push`, each with its own message and its own repair: a plain push while HEAD sits on `main`/`master` (switch to a feature branch and open a PR), and a push whose refspec names `main`, `master`, or `HEAD` as the destination from any branch (name the branch being pushed explicitly and open a PR instead). Standing on main while also naming it in the refspec answers as the first cause, since its repair, switching branches, settles the second too.
+The hook denies several independent conditions on `git push`, each with its own message and its own repair: a plain push while HEAD sits on `main`/`master` (switch to a feature branch and open a PR); a push whose refspec names `main`, `master`, or `HEAD` as the destination from any branch (name the branch being pushed explicitly and open a PR instead); and a push the hook cannot place, because the command names a directory it cannot read and one of the checkouts that directory could name is on `main`/`master` (spell the directory literally, or create a feature branch).
+
+They answer in that order, and the order is by how much of the verdict each message can stand behind. Standing on `main` answers first, since its repair settles the refspec too. The refspec answers ahead of the unreadable directory because it holds whatever checkout the push turns out to run from, where the unreadable-directory message reports an unanswered question and offers repairs that do nothing for a refspec.
 
 ## Setup standdown
 

@@ -408,6 +408,7 @@ test("never closes", () => {
   # test never enters the current-test set and is exempt by construction,
   # matching the SPEC's fail-open posture for uncomputable identity. A new
   # dynamic-title test passing first must not trigger a deny.
+  # shellcheck disable=SC2016 # the staged file must carry the literal template
   stage_file "app/utils/x/index.test.ts" 'import {expect, test} from "vitest";
 const n = 7;
 test(`dynamic ${n}`, () => {
@@ -820,9 +821,11 @@ run_commit_hook_in() {
 # segment carries both the command word and the `commit` subcommand.
 @test "a command substitution inside git's arguments does not hide the commit" {
   stage_file "app/utils/x/index.test.ts" "$PASSING_TEST"
+  # shellcheck disable=SC2016 # the hook must receive the unexpanded opener
   run_commit_hook 'git -C "$(pwd)" commit -m change'
   [ "$status" -eq 0 ]
   denied
+  # shellcheck disable=SC2016
   run_commit_hook 'git commit -m "$(date)"'
   [ "$status" -eq 0 ]
   denied
@@ -833,6 +836,7 @@ run_commit_hook_in() {
 # inside one is read.
 @test "text inside a collapsed substitution does not arm the outer segment" {
   stage_file "app/utils/x/index.test.ts" "$PASSING_TEST"
+  # shellcheck disable=SC2016 # the hook must receive the unexpanded opener
   run_commit_hook 'echo "remember to $(echo git) commit later"'
   [ "$status" -eq 0 ]
   refute_denied
