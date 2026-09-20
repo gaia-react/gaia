@@ -691,9 +691,15 @@ stub_gh_failing() {
   stub_gh '[{"number":11,"title":"one"}]'
   run bash "$CHECK" --investigate-cap --labels "$INVESTIGATE_LABELS"
   [ "$status" -eq 0 ]
-  grep -qF -- "--label severity:investigate" "$TMP/argv.log" || return 1
-  grep -qF -- "--label tech-debt" "$TMP/argv.log" || return 1
-  grep -qF -- "--state open" "$TMP/argv.log" || return 1
+  # All three filters on ONE logged query, not merely somewhere in the log.
+  # Three independent file-wide greps would stay green on a split into two
+  # calls, one narrowing to the grade and one counting the whole open backlog,
+  # which is the same permanent refusal this test exists to catch.
+  local line
+  line="$(grep -F -- "--label severity:investigate" "$TMP/argv.log" | head -1)"
+  [ -n "$line" ] || return 1
+  grep -qF -- "--label tech-debt" <<<"$line" || return 1
+  grep -qF -- "--state open" <<<"$line" || return 1
 }
 
 @test "--investigate-cap on a gh failure exits 2, never the findings status" {
