@@ -169,7 +169,11 @@ gaia_debt_origin_line() {
 
   local mode="unknown" unit="unknown" classified=""
   if [ -n "$branch" ]; then
-    classified="$(gaia_branch_classify "$branch")" || classified=""
+    # stderr is suppressed because the degrade this arm exists for is the
+    # branch library being absent beside this file, where the call is an
+    # undefined command: the shell's own `command not found` would otherwise
+    # land in a caller that copies this helper's output into an issue body.
+    classified="$(gaia_branch_classify "$branch" 2>/dev/null)" || classified=""
     mode="${classified%% *}"
     unit="${classified#* }"
     [ -n "$mode" ] || mode="unknown"

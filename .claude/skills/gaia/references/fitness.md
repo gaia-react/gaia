@@ -289,7 +289,7 @@ Run the Quality Gate (`.claude/rules/quality-gate.md`) first **only** if the app
 
 ### Main-branch run (branch already created in Step 4)
 
-Heal already cut and switched to `<BRANCH>` (the `$BRANCH` from Step 4), so the changes are on it. Do not create a second branch.
+Heal already cut and switched to `<BRANCH>`, the name Step 4 minted, so the changes are on it. Do not create a second branch.
 
 1. **Commit.** `.gaia/local/` is gitignored. Route the message through a file, never `-m`:
 
@@ -306,18 +306,18 @@ Heal already cut and switched to `<BRANCH>` (the `$BRANCH` from Step 4), so the 
 2. **Open the PR and drive it to merge** through `wiki/concepts/PR Merge Workflow.md` (read it, don't merge from memory):
 
    ```bash
-   git -C "$PROJECT_ROOT" push -u origin "$BRANCH"
+   git -C "$PROJECT_ROOT" push -u origin "<BRANCH>"
    gh pr create --title "<commit subject>" --body-file <pr-body-file>
    gh pr merge <N> --squash --delete-branch --auto
    ```
 
    `--auto` queues the merge behind required checks (the oracle check above already confirmed whether a marker is owed for this diff). Run the bounded poll (~2-3 minutes) in `wiki/concepts/PR Merge Workflow.md` (`## Post-merge verification before cleanup`), which also stops early on a base-branch conflict or a failed required check:
 
-   - **`MERGED`** → clean up, record cost (pass-through: `gh pr create` above already printed the URL, and `--branch-name` carries the literal `$BRANCH` value, since the checkout below leaves the session on `main`; see `.claude/skills/gaia/references/cost-record.md`), then print the merged PR URL:
+   - **`MERGED`** → clean up, record cost (pass-through: `gh pr create` above already printed the URL, and `--branch-name` carries the literal `<BRANCH>` value, since the checkout below leaves the session on `main`; see `.claude/skills/gaia/references/cost-record.md`), then print the merged PR URL:
 
      ```bash
      git -C "$PROJECT_ROOT" checkout main && git -C "$PROJECT_ROOT" pull origin main
-     git -C "$PROJECT_ROOT" branch -D "$BRANCH"
+     git -C "$PROJECT_ROOT" branch -D "<BRANCH>"
      git -C "$PROJECT_ROOT" fetch --prune origin
      bash .gaia/scripts/token-tally.sh --action command --command gaia-fitness \
        --github-type pr --github-number <N> --github-repo '<owner>/<name>' \

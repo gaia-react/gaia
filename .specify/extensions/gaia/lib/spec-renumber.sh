@@ -266,9 +266,21 @@ echo "Next steps (external state, not auto-updated):"
 # Branch name, flag if the current branch references the old id.
 current_branch="$(git -C "$repo_root" symbolic-ref --short -q HEAD || true)"
 if [ -n "$current_branch" ] && [ "$(gaia_branch_spec_number "$current_branch")" = "$old_num" ]; then
-  new_branch="${current_branch//spec-$(printf '%03d' "$old_num")/spec-$(printf '%03d' "$new_num")}"
+  # The match above reads the number through the library, which strips leading
+  # zeros, so the branch can carry the number in any padding the minter was
+  # given. Rewriting only the three-digit spelling left every other one
+  # untouched and printed a rename of the branch to itself. `0*` accepts any
+  # padding and the trailing `(-|$)` keeps spec-9 from matching spec-99; the
+  # replacement carries the new id's own padding, the way the minter would.
+  new_token="spec-${new_id#SPEC-}"
+  new_branch="$(printf '%s' "$current_branch" \
+    | sed -E 's/spec-0*'"$old_num"'(-|$)/'"$new_token"'\1/')"
   echo "  - Current branch '$current_branch' references $old_id."
-  echo "    Rename:   git -C $repo_root branch -m '$new_branch'"
+  if [ "$new_branch" = "$current_branch" ]; then
+    echo "    Rename it by hand: the branch names $old_id in a spelling this step does not rewrite."
+  else
+    echo "    Rename:   git -C $repo_root branch -m '$new_branch'"
+  fi
 fi
 
 echo "  - Commit-message history is immutable; past commits keep $old_id refs."

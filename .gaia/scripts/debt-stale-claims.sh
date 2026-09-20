@@ -99,8 +99,14 @@ fi
 
 # No claims at all is a complete answer, and the only one that needs no other
 # input, so a peer's missing gh scope for pull requests cannot block it.
-count="$(printf '%s' "$claims" | jq 'length' 2>/dev/null)" \
+# Array-ness is asserted before length, the same way the pull-request check
+# below does it: `jq length` is also defined on an object and on a string, so
+# it would pass a payload that is not a list of claims at all and leave the
+# failure to surface further down, under a message about one claim's fields.
+printf '%s' "$claims" | jq -e 'type == "array"' >/dev/null 2>&1 \
   || die_input "the claims list is not a JSON array"
+count="$(printf '%s' "$claims" | jq 'length' 2>/dev/null)" \
+  || die_input "the claims list could not be counted"
 [ "$count" = "0" ] && exit 0
 
 if [ -n "$prs_file" ]; then
@@ -136,19 +142,28 @@ if [ -z "$now" ]; then
   now="$(date -u +%s)" || die_input "the clock could not be read"
 fi
 
+# The two pull-request reads run here, each with its own refusal, rather than
+# inside the group below: a group's exit status is its last command's, so a
+# failing head-branch projection would be reported as a failing body scan and
+# send the operator to repair the half that worked.
+pr_heads="$(printf '%s' "$prs" | jq -r '.[].headRefName // empty')" \
+  || die_input "the pull-request head branches could not be read"
+pr_closed="$(printf '%s' "$prs" | jq -r '
+    .[].body // ""
+    | [scan("(?i)\\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?):?\\s+(?:[\\w.-]+/[\\w.-]+#|https?://[^\\s/]+/[^\\s/]+/[^\\s/]+/issues/|#)([0-9]+)\\b")[0]]
+    | .[]')" \
+  || die_input "the pull-request bodies could not be scanned"
+
 # Every issue a branch or an open pull request keeps alive, one per line.
 live="$(
   {
     printf '%s\n' "$branches"
-    printf '%s' "$prs" | jq -r '.[].headRefName // empty'
+    printf '%s\n' "$pr_heads"
   } | while IFS= read -r b; do
     [ -n "$b" ] && gaia_branch_members "$b"
   done
-  printf '%s' "$prs" | jq -r '
-    .[].body // ""
-    | [scan("(?i)\\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?):?\\s+(?:[\\w.-]+/[\\w.-]+#|https?://[^\\s/]+/[^\\s/]+/[^\\s/]+/issues/|#)([0-9]+)\\b")[0]]
-    | .[]'
-)" || die_input "the pull-request bodies could not be scanned"
+  printf '%s\n' "$pr_closed"
+)" || die_input "the liveness set could not be assembled"
 
 # Captured whole before printing: a jq failure partway through the claims
 # would otherwise have already printed the numbers before it, and a caller
