@@ -153,29 +153,6 @@ current_branch() {
 # under errexit is not abandoned by a directory that does not resolve; an empty
 # answer leaves the caller reading its own working directory, which is the
 # fail-closed direction this guard takes everywhere else.
-# ambiguous_main_branch: print main or master when a checkout this segment
-# could be acting on, but whose identity a directory word left unresolved,
-# stands on one of them; print nothing otherwise. Always succeeds, so a caller
-# assigning its output under errexit is never abandoned.
-#
-# The candidates are the directory the last resolvable `cd` tracked and this
-# hook's own working directory, which is where the shell stands when no `cd`
-# moved it or when one moved it back. The segment's own resolved directory is
-# tested by the caller and is deliberately not repeated here.
-ambiguous_main_branch() {
-  local b
-  b=$(current_branch "$lead_cd")
-  if [ "$b" = main ] || [ "$b" = master ]; then
-    printf '%s' "$b"
-    return 0
-  fi
-  b=$(current_branch "")
-  if [ "$b" = main ] || [ "$b" = master ]; then
-    printf '%s' "$b"
-  fi
-  return 0
-}
-
 resolve_same_repo_dir() {
   local dir="$1" a b
   [ -n "$dir" ] || return 0
@@ -192,6 +169,36 @@ resolve_same_repo_dir() {
   a=$(gaia_resolve_common_dir "$dir" 2>/dev/null) || return 0
   b=$(gaia_resolve_common_dir 2>/dev/null) || return 0
   [ -n "$a" ] && [ -n "$b" ] && [ "$a" = "$b" ] && printf '%s' "$dir"
+  return 0
+}
+
+# ambiguous_main_branch: print main or master when a checkout the acting
+# segment could be standing in, but which a directory word left unresolved,
+# is on one of them; print nothing otherwise. Always succeeds, so a caller
+# assigning its output under errexit is never abandoned.
+#
+# Two candidates. This hook's own working directory is where the shell stands
+# when no `cd` moved it, or when one moved it back. The main checkout is where
+# an unreadable word most often points FROM a linked worktree, which is the
+# ordinary session shape here: neither the tracked directory nor this hook's
+# own is that checkout from inside a worktree, so without it every
+# `cd "$SOMEWHERE" && git commit` spelled there reads a branch that is not the
+# one the commit lands on, which is the whole failure this flag exists for.
+#
+# The segment's own directory is not retested here: the caller tests it, and
+# whenever this function is consulted it holds the same value the tracked `cd`
+# does, so a third probe would spend a subprocess to ask a settled question.
+ambiguous_main_branch() {
+  local b
+  b=$(current_branch "")
+  if [ "$b" = main ] || [ "$b" = master ]; then
+    printf '%s' "$b"
+    return 0
+  fi
+  b=$(current_branch "$main_root")
+  if [ "$b" = main ] || [ "$b" = master ]; then
+    printf '%s' "$b"
+  fi
   return 0
 }
 

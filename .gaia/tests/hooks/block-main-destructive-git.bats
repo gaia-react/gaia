@@ -536,6 +536,37 @@ git commit -m y"
   assert_allowed_by_json
 }
 
+# The mirror of the two arms above, and the shape a worktree session actually
+# spells: from a linked worktree neither the tracked directory nor this hook's
+# own is the main checkout, so an unreadable word pointing at it has to be
+# tested against that checkout directly or the commit it lands there is read
+# against the worktree's own branch and allowed.
+@test "an unreadable cd target is read against the main checkout from a worktree" {
+  on_main
+  local wt="$BATS_TEST_TMPDIR/wt"
+  git -C "$REPO" worktree add --quiet -b wt-branch "$wt"
+  # shellcheck disable=SC2016 # the hook must receive the unexpanded variable
+  run_hook_from 'cd "$MAIN" && git commit -m x' "$wt"
+  assert_denied_by_json
+  # shellcheck disable=SC2016
+  run_hook_from 'cd "$MAIN" && git push' "$wt"
+  assert_denied_by_json
+  run_hook_from 'cd - && git commit -m x' "$wt"
+  assert_denied_by_json
+}
+
+# And the control that keeps it from being a blanket deny on a worktree
+# session: with the main checkout off main, the same unreadable hop has no
+# candidate on main and is allowed.
+@test "an unreadable cd target from a worktree is allowed when the main checkout is off main" {
+  on_feature
+  local wt="$BATS_TEST_TMPDIR/wt"
+  git -C "$REPO" worktree add --quiet -b wt-branch "$wt"
+  # shellcheck disable=SC2016 # the hook must receive the unexpanded variable
+  run_hook_from 'cd "$MAIN" && git commit -m x' "$wt"
+  assert_allowed_by_json
+}
+
 @test "a -C into a linked worktree does not lend its branch to a later bare commit on main" {
   on_main
   local wt="$BATS_TEST_TMPDIR/wt"
