@@ -11,7 +11,9 @@
 #   5. members and spec-number, the two readers built on the table
 #   6. minting: every kind, its argument errors, and the 64-byte cap
 #   7. round trip: every minted name reads back as its own kind
-#   8. branch listing across local and remote-tracking refs
+#   8. branch listing across local and remote-tracking refs, and the
+#      fail-closed readability probe that tells an unreadable ref store
+#      from a repository with no branches
 #   9. lockstep: the kinds minted outside bash still carry the table's prefix
 #  10. no creation site spells a GAIA branch literal instead of minting it
 #
@@ -216,7 +218,7 @@ worktree_spelling() {
   [ "$(gaia_branch_classify "$(worktree_spelling "$name")" | cut -d' ' -f1)" = "maintenance" ]
 }
 
-# ========== 8. listing ==========
+# ========== 8. listing and ref readability ==========
 
 @test "list: local and remote-tracking branches, remote prefix dropped, symbolic HEAD skipped" {
   local repo="$BATS_TEST_TMPDIR/repo"
@@ -235,6 +237,129 @@ worktree_spelling() {
   run gaia_branch_list "$BATS_TEST_TMPDIR"
   [ "$status" -eq 0 ]
   [ -z "$output" ]
+}
+
+# corrupt_packed_refs <repo>: a repository whose every ref read fails while
+# `rev-parse --git-dir` keeps succeeding. Packing the refs and then appending a
+# junk line is what splits those two apart. It is the recipe the three
+# fail-closed callers' own suites already use, reused rather than reinvented so
+# one corruption shape is all any of them has to stay true to.
+corrupt_packed_refs() {
+  local repo="$1"
+  git init -q --initial-branch=main "$repo"
+  git -C "$repo" -c user.email=t@example.com -c user.name=T commit -q --allow-empty -m init
+  git -C "$repo" branch "debt/11-x"
+  git -C "$repo" pack-refs --all
+  printf 'this is not a ref line\n' >>"$repo/.git/packed-refs"
+}
+
+# fn_body <name>: the lines of function <name> in the library, from its opening
+# line to the first bare `}`.
+fn_body() {
+  awk -v fn="$1" '
+    $0 ~ "^"fn"\\(\\) \\{" { inside = 1; next }
+    inside && /^\}$/        { inside = 0 }
+    inside                  { print }
+  ' "$LIB"
+}
+
+# ref_namespaces <fn>: every refs/<x> namespace <fn> names, deduped and sorted.
+# Derived from the library rather than restated here, so a namespace added to
+# or dropped from either function changes what the tests below drive.
+ref_namespaces() {
+  fn_body "$1" | grep -oE 'refs/[a-z]+' | LC_ALL=C sort -u
+}
+
+# failing_namespace_shim DIR NS: a git that fails only `for-each-ref` over NS,
+# so the other namespace still reads for real. Real corruption cannot separate
+# the two: a broken or unreadable loose ref is a warning git exits 0 on, and a
+# corrupt packed-refs file fails both namespaces at once. The shim is the only
+# way to drive each probed namespace on its own.
+failing_namespace_shim() {
+  local shim="$1" ns="$2"
+  mkdir -p "$shim"
+  cat > "$shim/git" <<EOF
+#!/usr/bin/env bash
+fer= ; want=
+for a in "\$@"; do
+  case "\$a" in for-each-ref) fer=1 ;; "$ns") want=1 ;; esac
+done
+[ -n "\$fer" ] && [ -n "\$want" ] && exit 128
+exec $(command -v git) "\$@"
+EOF
+  chmod +x "$shim/git"
+}
+
+@test "refs-readable: a readable ref store returns 0 and prints nothing" {
+  local repo="$BATS_TEST_TMPDIR/readable"
+  git init -q --initial-branch=main "$repo"
+  git -C "$repo" -c user.email=t@example.com -c user.name=T commit -q --allow-empty -m init
+  git -C "$repo" branch "debt/11-x"
+  run gaia_branch_refs_readable "$repo"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+}
+
+@test "refs-readable: an unreadable ref store returns 1 and names the failing namespace" {
+  local repo="$BATS_TEST_TMPDIR/badrefs"
+  corrupt_packed_refs "$repo"
+  run gaia_branch_refs_readable "$repo"
+  [ "$status" -eq 1 ]
+  [ "$output" = "refs/heads" ]
+}
+
+@test "refs-readable: outside a repository returns 1, the fail-closed direction" {
+  run gaia_branch_refs_readable "$BATS_TEST_TMPDIR"
+  [ "$status" -eq 1 ]
+  [ "$output" = "refs/heads" ]
+}
+
+@test "refs-readable: probes exactly the namespaces gaia_branch_list reads" {
+  local probed listed
+  probed="$(ref_namespaces gaia_branch_refs_readable | tr '\n' ' ')"
+  listed="$(ref_namespaces gaia_branch_list | tr '\n' ' ')"
+  [ -n "$probed" ] || return 1
+  [ "$probed" = "$listed" ] || {
+    printf 'probed {%s} != listed {%s}\n' "$probed" "$listed" >&2
+    return 1
+  }
+  # A literal, so a derivation that goes short on both sides at once still
+  # reds here rather than agreeing with itself.
+  [ "$probed" = "refs/heads refs/remotes " ]
+}
+
+@test "refs-readable: each probed namespace fails on its own, refs/remotes included" {
+  local repo="$BATS_TEST_TMPDIR/shimmed" shim="$BATS_TEST_TMPDIR/shim" saved ns seen=0
+  git init -q --initial-branch=main "$repo"
+  git -C "$repo" -c user.email=t@example.com -c user.name=T commit -q --allow-empty -m init
+  saved="$PATH"
+  for ns in $(ref_namespaces gaia_branch_refs_readable); do
+    failing_namespace_shim "$shim" "$ns"
+    PATH="$shim:$saved"
+    run gaia_branch_refs_readable "$repo"
+    PATH="$saved"
+    [ "$status" -eq 1 ] || return 1
+    [ "$output" = "$ns" ] || {
+      printf 'namespace %s: got %s\n' "$ns" "$output" >&2
+      return 1
+    }
+    seen=$((seen + 1))
+  done
+  # A derivation that came back short would leave this loop satisfied over a
+  # subset while the test's name still says every namespace.
+  [ "$seen" -eq 2 ]
+}
+
+@test "list: stays fail-open on an unreadable ref store, which is why the predicate exists" {
+  local repo="$BATS_TEST_TMPDIR/badrefs-list"
+  corrupt_packed_refs "$repo"
+  run gaia_branch_list "$repo"
+  [ "$status" -eq 0 ]
+  [ -z "$output" ]
+  # Byte-for-byte what a repository with no branches produces: that is the
+  # hazard, and telling the two apart is what the predicate above is for.
+  run gaia_branch_refs_readable "$repo"
+  [ "$status" -eq 1 ]
 }
 
 # ========== 9. lockstep with the kinds minted outside bash ==========
@@ -305,9 +430,9 @@ literal_hits() {
 
 @test "portability: the readers agree under zsh, where zsh exists" {
   command -v zsh >/dev/null 2>&1 || skip "zsh not available"
-  run zsh -c "source '$LIB'; gaia_branch_classify worktree-debt+41-42-batch; gaia_branch_members worktree-debt+41-42-batch; gaia_branch_spec_number plan/spec-007-x"
+  run zsh -c "source '$LIB'; gaia_branch_classify worktree-debt+41-42-batch; gaia_branch_members worktree-debt+41-42-batch; gaia_branch_spec_number plan/spec-007-x; gaia_branch_refs_readable '$REPO_ROOT' && echo readable"
   [ "$status" -eq 0 ]
-  [ "$(printf '%s\n' "$output" | tr '\n' ' ')" = "drain 41-42 41 42 7 " ]
+  [ "$(printf '%s\n' "$output" | tr '\n' ' ')" = "drain 41-42 41 42 7 readable " ]
 }
 
 @test "structural: shellcheck is clean" {
