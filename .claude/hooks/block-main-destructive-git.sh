@@ -10,12 +10,13 @@
 # a path, an argument to another program such as `grep -n -e git commit file`)
 # is not an invocation and never fires.
 #
-# One shape of text is an exception, because the walk splits on separators
-# without modelling quoting: text whose own segment begins with a `cd` this
-# guard cannot read, carrying a `git commit` or `git push` word after it. That
-# reads as an invocation, and the ambiguity arm makes it deny from any
-# checkout. The branch-dir block below records what that costs and what to do
-# about it.
+# Two shapes of text are an exception, because the walk splits on separators
+# without modelling quoting. Text whose own segment begins with a `cd` this
+# guard cannot read, carrying a `git commit` or `git push` word after it; and
+# text whose own segment begins with the `git` word itself carrying a `-C`
+# this guard cannot read. Either reads as an invocation, and the ambiguity arm
+# makes it deny from any checkout. The branch-dir block below records what that
+# costs and what to do about it.
 #
 # Policy: wiki/concepts/Git Workflow.md; the hop guard enforces the main-checkout
 # precondition in wiki/concepts/PR Merge Workflow.md.
@@ -158,12 +159,17 @@ current_branch() {
 # resolve_dir_kind <dir>: classify a directory WORD the command scan produced,
 # and print the classification. One of:
 #
-#   same <dir>   the word names THIS repository; <dir> is its tilde-expanded
-#                form, which is what a caller reads a branch out of
-#   foreign      the word names a readable directory inside ANOTHER repository
-#   unknown      the word names no readable repository at all: it carries a
-#                variable or a substitution the scan cannot expand, it points
-#                nowhere, or there is no resolver to ask
+#   same <dir>      the word names THIS repository
+#   foreign <dir>   the word names a readable directory inside ANOTHER
+#                   repository
+#   unknown         the word names no readable repository at all: it carries a
+#                   variable or a substitution the scan cannot expand, it
+#                   points nowhere, or there is no resolver to ask
+#
+# Both readable answers carry <dir> in its tilde-expanded form, which is what a
+# caller reads a branch out of. A caller that read the raw word instead would
+# resolve a tilde path here and then read a branch out of the literal `~`
+# spelling, which answers nothing and allows.
 #
 # Always succeeds, so a caller assigning its output under errexit is not
 # abandoned by a directory that does not resolve.
@@ -197,7 +203,7 @@ resolve_dir_kind() {
   if [ -n "$b" ] && [ "$a" = "$b" ]; then
     printf 'same %s' "$dir"
   else
-    printf 'foreign'
+    printf 'foreign %s' "$dir"
   fi
   return 0
 }
@@ -843,7 +849,7 @@ while IFS= read -r seg; do
         lead_cd="${cd_kind#same }"
         cd_ambiguous=0
         ;;
-      foreign)
+      'foreign '*)
         lead_cd=""
         cd_ambiguous=0
         ;;
@@ -921,11 +927,14 @@ while IFS= read -r seg; do
   # shell negation, so a command spelled that way is still read and still
   # denied.
   #
-  # The larger one is command TEXT that merely quotes this shape. The segment
-  # walk splits on separators without modelling quoting, so a line beginning
-  # `cd <something-unreadable>` inside a quoted string, with a `git commit` or
-  # `git push` word after it, reads as an invocation. That population is not
-  # new, but the ambiguity arm makes it deny far more often: it consults the
+  # The larger one is command TEXT that merely quotes an unreadable directory
+  # word. The segment walk splits on separators without modelling quoting, so
+  # inside a quoted string either a segment beginning `cd <something-
+  # unreadable>` with a `git commit` or `git push` word after it, or a segment
+  # beginning `git -C <something-unreadable>` with one of those words in it,
+  # reads as an invocation. Writing about a command of either shape is enough;
+  # neither needs a `cd` and neither needs to run. That population is not new,
+  # but the ambiguity arm makes it deny far more often: it consults the
   # main checkout, whose resting branch is normally `main`, where the reading
   # before it landed on the session's own checkout and a feature branch
   # allowed. Writing about these commands in a shell argument is therefore
@@ -944,8 +953,8 @@ while IFS= read -r seg; do
         branch_dir="${cwd_kind#same }"
         seg_ambiguous=0
         ;;
-      foreign)
-        branch_dir="$git_cwd"
+      'foreign '*)
+        branch_dir="${cwd_kind#foreign }"
         seg_ambiguous=0
         ;;
       *)
@@ -1001,17 +1010,6 @@ while IFS= read -r seg; do
     on_main=0
     [[ "$branch" == "main" || "$branch" == "master" ]] && on_main=1
 
-    # A directory word the guard could not read leaves the pushing checkout
-    # unknown, so a candidate standing on main arms this rule the same way
-    # reading main out of a known checkout does.
-    amb_main=0
-    if [ "$seg_ambiguous" -eq 1 ] && [ "$on_main" -eq 0 ]; then
-      amb_branch=$(ambiguous_main_branch)
-      if [ -n "$amb_branch" ]; then
-        amb_main=1
-      fi
-    fi
-
     # Refspec-targeted push from main/master/HEAD: e.g. `git push origin main`,
     # `git push origin HEAD:main`, `git push origin main:main`. Read from the
     # operands after the subcommand, so neither a global option ahead of `push`
@@ -1019,6 +1017,22 @@ while IFS= read -r seg; do
     refspec_main=0
     if push_refspec_names_main; then
       refspec_main=1
+    fi
+
+    # A directory word the guard could not read leaves the pushing checkout
+    # unknown, so a candidate standing on main arms this rule the same way
+    # reading main out of a known checkout does.
+    #
+    # Computed last, and only where the two arms above have not already
+    # answered, because it is the only one that costs subprocesses: up to two
+    # `symbolic-ref` reads whose answer the deny chain below would discard
+    # whenever a cause it consults earlier holds.
+    amb_main=0
+    if [ "$seg_ambiguous" -eq 1 ] && [ "$on_main" -eq 0 ] && [ "$refspec_main" -eq 0 ]; then
+      amb_branch=$(ambiguous_main_branch)
+      if [ -n "$amb_branch" ]; then
+        amb_main=1
+      fi
     fi
 
     # Each condition denies with its own message because the repairs differ:

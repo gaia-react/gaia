@@ -638,7 +638,6 @@ foreign_on_sidebranch() {
   assert_denied_by_json
   grep -qF -- 'refspec names main' <<<"$output"
 }
-
 # The two arms this branch adds to the directory read, each isolated from the
 # ambiguity arm that would otherwise answer for them.
 #
@@ -666,6 +665,66 @@ three_checkouts() {
   three_checkouts
   # shellcheck disable=SC2016 # the hook must receive the unexpanded variable
   run_hook_from "cd '$BATS_TEST_TMPDIR/wt-b'; git -C \"\$UNSET_VAR\" commit -m x" "$BATS_TEST_TMPDIR/wt-a"
+  assert_denied_by_json
+}
+
+# Same as run_hook_from, with HOME pointed at a named checkout. The directory
+# read expands a literal tilde against it, and nothing else in the hook reads
+# HOME, so this isolates that one arm.
+run_hook_from_home() {
+  local json
+  json=$(jq -n --arg c "$1" --arg d "$2" '{tool_name: "Bash", cwd: $d, tool_input: {command: $c}}')
+  run bash -c 'cd "$1" && printf %s "$2" | HOME="$4" bash "$3"' _ "$2" "$json" "$HOOK_ABS" "$3"
+}
+
+# A tilde reaches the directory read as a literal character: it arrived as text
+# inside the tool call rather than through a shell. Both callers route their
+# word through the expansion, and with no case driving one the arm can be
+# removed with nothing going red, leaving a `-C ~` or a `cd ~` into a checkout
+# on main reading nothing and allowing.
+#
+# Driven from a worktree with every other candidate off main, so the deny can
+# only come from the expansion resolving.
+# Both spellings the expansion admits are driven, the bare `~` and the `~/`
+# prefix, since each is its own case arm and one says nothing about the other.
+@test "a literal tilde in a -C is expanded before the branch is read" {
+  three_checkouts
+  run_hook_from_home 'git -C ~ commit -m x' "$BATS_TEST_TMPDIR/wt-a" "$BATS_TEST_TMPDIR/wt-b"
+  assert_denied_by_json
+  run_hook_from_home 'git -C ~ push' "$BATS_TEST_TMPDIR/wt-a" "$BATS_TEST_TMPDIR/wt-b"
+  assert_denied_by_json
+  run_hook_from_home 'git -C ~/. commit -m x' "$BATS_TEST_TMPDIR/wt-a" "$BATS_TEST_TMPDIR/wt-b"
+  assert_denied_by_json
+}
+
+@test "a literal tilde in a cd is expanded before the branch is read" {
+  three_checkouts
+  run_hook_from_home 'cd ~ && git commit -m x' "$BATS_TEST_TMPDIR/wt-a" "$BATS_TEST_TMPDIR/wt-b"
+  assert_denied_by_json
+  run_hook_from_home 'cd ~/. && git commit -m x' "$BATS_TEST_TMPDIR/wt-a" "$BATS_TEST_TMPDIR/wt-b"
+  assert_denied_by_json
+}
+
+# The expansion has to reach the branch read for a FOREIGN word too, not only
+# a same-repository one: classifying on the expanded path and then reading a
+# branch out of the literal `~` spelling answers nothing and allows.
+@test "a literal tilde in a foreign -C is expanded before the branch is read" {
+  three_checkouts
+  run_hook_from_home 'git status && git -C ~ commit -m x' "$BATS_TEST_TMPDIR/wt-a" "$FOREIGN"
+  assert_denied_by_json
+}
+
+# `ambiguous_main_branch` probes this hook's own working directory as well as
+# the main checkout, and every other fixture here places the session where the
+# main checkout already answers for it. This one separates them: the session's
+# own worktree is the only candidate on main/master, and the tracked `cd` names
+# a feature checkout, so the deny can only come from the working-directory
+# probe.
+@test "the working-directory candidate is what denies when the main checkout is off main" {
+  three_checkouts
+  run_hook_from "cd '$BATS_TEST_TMPDIR/wt-a'; cd /nonexistent; git commit -m x" "$BATS_TEST_TMPDIR/wt-b"
+  assert_denied_by_json
+  run_hook_from "cd '$BATS_TEST_TMPDIR/wt-a'; cd /nonexistent; git push" "$BATS_TEST_TMPDIR/wt-b"
   assert_denied_by_json
 }
 
