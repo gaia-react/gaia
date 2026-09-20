@@ -70,6 +70,12 @@
 #   - a wrapper outside the table below, which is the authority on the set.
 #     Adding a row is how it grows, and a guard's own comment naming a few
 #     wrappers is illustrating the class rather than enumerating it.
+#   - a path-qualified spelling of a wrapper that IS in the table
+#     (`/usr/bin/env git commit`). The match keys on the bare word, so the
+#     strip does not fire and the segment is skipped. This is the same
+#     boundary the `^git` test the callers apply already has, which leaves
+#     `/usr/bin/git commit` equally unread, so it is an accepted tree-wide
+#     contract rather than something this table narrowed.
 #
 # ADDING A ROW: state all three properties. An option that takes a separated
 # value and is left out of the row hands its own value to the command-word
@@ -132,7 +138,11 @@ _gaia_strip_one_wrapper() {
   if [ "$_w_assign" -eq 1 ]; then
     while [ "$_i" -lt "$_n" ]; do
       case "${_w[$_i]}" in
-        [A-Za-z_]*=* | [A-Za-z_]*+=*) _i=$((_i + 1)) ;;
+        # The appending spelling `NAME+=value` needs no alternative of its own:
+        # the middle `*` absorbs the `+`, and a second pattern naming it
+        # explicitly would be unreachable text a later reader would preserve as
+        # load-bearing.
+        [A-Za-z_]*=*) _i=$((_i + 1)) ;;
         *) break ;;
       esac
     done
@@ -144,15 +154,26 @@ _gaia_strip_one_wrapper() {
 
 # gaia_strip_command_wrappers <command-word-text>: print the text with every
 # leading wrapper removed. Nesting is real (`nohup timeout 5 env git commit`),
-# so this loops; the bound is a backstop, not a grammar, exactly as the
-# substitution collapse's pass bound is.
+# so this loops. The segment's own word count bounds it: a pass succeeds only
+# when it drops at least one word and leaves one behind, so the text is
+# strictly shorter each time and the loop cannot run longer than the words it
+# was handed.
+#
+# Deliberately NOT the substitution collapse's fixed pass bound, whose parity
+# this once claimed. The two differ on exhaustion. A collapse that gives up
+# loses only the rejoined outer line, and the walk still cuts at every paren,
+# so the inner command reaches it as its own segment. A wrapper strip that
+# gives up hands back a word that is still a wrapper: the `^git` test fails,
+# the segment never arms, and the whole-command safety net is itself gated on a
+# segment having armed, so nothing behind it catches the invocation. A ceiling
+# here is a bypass at one wrapper past it, in the one direction this table must
+# never fail in.
 gaia_strip_command_wrappers() {
-  local _text="${1:-}" _next _pass=0
-  while [ "$_pass" -lt 8 ]; do
+  local _text="${1:-}" _next
+  while :; do
     _next=$(_gaia_strip_one_wrapper "$_text") || break
     [ -n "$_next" ] || break
     _text="$_next"
-    _pass=$((_pass + 1))
   done
   printf '%s' "$_text"
 }

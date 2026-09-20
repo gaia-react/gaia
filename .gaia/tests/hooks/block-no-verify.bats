@@ -780,6 +780,10 @@ wrapper_prefix() {
   assert_denied_by_json
   run_hook 'env FOO=bar git commit -n -m x'
   assert_denied_by_json
+  # The appending spelling too, which the table's assignment pattern covers
+  # through its own wildcard rather than through an alternative of its own.
+  run_hook 'env zz+=1 git commit -n -m x'
+  assert_denied_by_json
   run_hook 'env -i FOO=bar git commit --no-verify -m x'
   assert_denied_by_json
   run_hook 'command -p git commit -n -m x'
@@ -801,6 +805,20 @@ wrapper_prefix() {
   run_hook 'xargs -I {} git commit -n -m x'
   assert_denied_by_json
   run_hook 'nohup timeout 5 env git commit -n -m x'
+  assert_denied_by_json
+}
+
+# Nesting is bounded by the segment's own word count, never by a pass ceiling.
+# A loop that gave up early would hand the guard a word that is still a
+# wrapper, the `^git` test would fail, the segment would never arm, and the
+# whole-command safety net is gated on a segment having armed, so nothing
+# behind it would catch the invocation either. That is the under-strip
+# direction the table must never fail in, so the depth driven here is well past
+# any ceiling a reader would think to write.
+@test "a deeply stacked wrapper chain does not hide the git command word" {
+  run_hook 'nohup nohup nohup nohup nohup nohup nohup nohup nohup git commit -n -m x'
+  assert_denied_by_json
+  run_hook 'nohup setsid nohup setsid nohup setsid nohup setsid nohup timeout 5 env git commit -n -m x'
   assert_denied_by_json
 }
 
@@ -955,8 +973,7 @@ wrapper_prefix() {
 # this suite already drives repo-scope.sh both ways.
 @test "command-wrappers.sh holding conflict markers: a non-git command is still allowed" {
   stage_hook_tree
-  printf '<<<<<<< HEAD\nfoo\n=======\nbar\n>>>>>>> other\n' \
-    > "$STAGED_ROOT/.claude/hooks/lib/command-wrappers.sh"
+  write_conflicted_lib "$STAGED_ROOT/.claude/hooks/lib/command-wrappers.sh"
   run_staged 'ls -la /tmp'
   [ "$status" -eq 0 ]
   assert_allowed_by_json
@@ -964,8 +981,7 @@ wrapper_prefix() {
 
 @test "command-wrappers.sh holding conflict markers: a git commit refuses" {
   stage_hook_tree
-  printf '<<<<<<< HEAD\nfoo\n=======\nbar\n>>>>>>> other\n' \
-    > "$STAGED_ROOT/.claude/hooks/lib/command-wrappers.sh"
+  write_conflicted_lib "$STAGED_ROOT/.claude/hooks/lib/command-wrappers.sh"
   run_staged 'git commit -m x'
   [ "$status" -eq 2 ]
   grep -qF -- 'cannot load lib/command-wrappers.sh' <<<"$output"
