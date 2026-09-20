@@ -133,7 +133,7 @@ set_origin_ref() {
   export GITHUB_ACTIONS=true GITHUB_BASE_REF=release
   run run_in_sandbox
   [ "$status" -eq 0 ]
-  [ "$output" = "origin/release" ]
+  [ "$output" = "refs/remotes/origin/release" ]
 }
 
 @test "no base ref declared → the repository default" {
@@ -144,7 +144,7 @@ set_origin_ref() {
   unset GITHUB_BASE_REF
   run run_in_sandbox
   [ "$status" -eq 0 ]
-  [ "$output" = "origin/main" ]
+  [ "$output" = "refs/remotes/origin/main" ]
 }
 
 @test "a base ref naming no remote branch → the repository default" {
@@ -154,7 +154,7 @@ set_origin_ref() {
   export GITHUB_ACTIONS=true GITHUB_BASE_REF=deleted-branch
   run run_in_sandbox
   [ "$status" -eq 0 ]
-  [ "$output" = "origin/main" ]
+  [ "$output" = "refs/remotes/origin/main" ]
 }
 
 # Read only where the event sets it, the same gate and the same reason as the
@@ -169,7 +169,46 @@ set_origin_ref() {
   export GITHUB_BASE_REF=release
   run run_in_sandbox
   [ "$status" -eq 0 ]
-  [ "$output" = "origin/main" ]
+  [ "$output" = "refs/remotes/origin/main" ]
+}
+
+# A shadowing ref, the same exposure as the sibling resolver's and for the same
+# reason: git resolves `refs/tags/<x>` ahead of `refs/remotes/<x>`, and
+# `rev-parse --verify --quiet` reports no ambiguity. The harm differs, because
+# this resolver scopes what a CHECK re-runs over rather than what a member
+# reviews: a shadow at HEAD empties that scope and the check skips work nothing
+# proved green.
+#
+# Both tests assert what the emitted name RESOLVES to rather than how it is
+# spelled, so any unambiguous spelling satisfies them.
+
+shadow_with_tag() {
+  git -C "$SANDBOX" tag "origin/$1" "$(git -C "$SANDBOX" rev-parse "$2")"
+}
+
+@test "a tag shadowing the declared base ref does not become the check base" {
+  add_commit a
+  add_commit b
+  set_origin_ref main main
+  set_origin_ref release main
+  shadow_with_tag release HEAD
+  export GITHUB_ACTIONS=true GITHUB_BASE_REF=release
+  run run_in_sandbox
+  [ "$status" -eq 0 ]
+  [ -n "$output" ]
+  [ "$(sha_of "$output")" = "$(sha_of refs/remotes/origin/release)" ]
+}
+
+@test "a tag shadowing a deleted base ref does not satisfy the base-ref probe" {
+  add_commit a
+  add_commit b
+  set_origin_ref main main
+  shadow_with_tag deleted-branch HEAD
+  export GITHUB_ACTIONS=true GITHUB_BASE_REF=deleted-branch
+  run run_in_sandbox
+  [ "$status" -eq 0 ]
+  [ -n "$output" ]
+  [ "$(sha_of "$output")" = "$(sha_of refs/remotes/origin/main)" ]
 }
 
 # -----------------------------------------------------------------------------
