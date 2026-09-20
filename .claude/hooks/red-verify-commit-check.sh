@@ -264,11 +264,12 @@ while IFS= read -r seg; do
   #
   # A command WRAPPER (`env` and `timeout` among them) stands in that same slot
   # but is NOT a prefix: each carries its own option grammar, so a blind
-  # alternation here would misread `env -i git …` and `timeout 5 git …`. It is stripped separately, by the per-wrapper table in
+  # alternation here would misread `env -i git …` and `timeout 5 git …`. It
+  # is stripped separately, by the per-wrapper table in
   # lib/command-wrappers.sh, on the line after this one.
   #
-  # Honest limit: a redirection whose target is
-  # another descriptor (`2>&1`, `>&2`) never reaches this strip at all, because
+  # Honest limit: a redirection whose target is another descriptor
+  # (`2>&1`, `>&2`) never reaches this strip at all, because
   # the walk cuts segments at `&` and the invocation lands in a segment
   # beginning with the descriptor number. Closing it means not cutting at an
   # `&` that belongs to a redirection, which a separator split cannot tell from

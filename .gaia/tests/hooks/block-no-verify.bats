@@ -864,3 +864,70 @@ wrapper_prefix() {
   [ "$status" -eq 2 ]
   grep -qF -- 'cannot load lib/command-wrappers.sh' <<<"$output"
 }
+
+# A wrapper is another program, so its own `-n` is in the same inert class as a
+# `grep -n` on the same line. The segment now ARMS on the git behind the
+# wrapper, though, so an arm reading the raw segment reaches the wrapper's
+# options and denies a commit carrying no bypass at all. Every command here is
+# clean: no `-n` on git, no `--no-verify`, nothing falsy.
+#
+# These cases carry no real bypass on purpose, which is what the case above
+# cannot do: one driving `nice -n 5 git commit -n -m x` denies for two reasons
+# at once and cannot tell them apart.
+@test "a wrapper's own -n option does not deny a clean commit" {
+  run_hook 'nice -n 5 git commit -m x'
+  assert_allowed_by_json
+  run_hook 'xargs -n 1 git commit -m x'
+  assert_allowed_by_json
+  run_hook 'xargs --max-args 1 git commit -m x'
+  assert_allowed_by_json
+  run_hook 'env -u NAME git commit -m x'
+  assert_allowed_by_json
+  run_hook 'timeout -s KILL 5 git commit -m x'
+  assert_allowed_by_json
+}
+
+# The other half of the same split: the wrapper's `-n` is inert, but git's own
+# `-n` behind that wrapper is still a bypass.
+@test "a real -n behind a wrapper carrying its own -n is still denied" {
+  run_hook 'nice -n 5 git commit -n -m x'
+  assert_denied_by_json
+  run_hook 'xargs -n 1 git commit -n -m x'
+  assert_denied_by_json
+}
+
+# The HUSKY arm deliberately keeps reading the raw segment. `env` consumes
+# `NAME=value` assignments, so the stripped word carries no HUSKY at all and an
+# arm reading it would fail OPEN on a real bypass. This is the control that
+# keeps that arm where it is.
+@test "a falsy HUSKY assignment consumed by env is still denied" {
+  run_hook 'env HUSKY=0 git commit -m x'
+  assert_denied_by_json
+  run_hook 'env HUSKY= git commit -m x'
+  assert_denied_by_json
+  run_hook 'nohup env HUSKY=false git commit -m x'
+  assert_denied_by_json
+}
+
+# The degrade pair above drives the library absent. A partially-sourced library
+# is a different state, and the two agree today only because the entry point is
+# defined last in the file, so any mid-file abort leaves the `type` check
+# failing. Nothing asserts that order, so drive the corrupted copy too, the way
+# this suite already drives repo-scope.sh both ways.
+@test "command-wrappers.sh holding conflict markers: a non-git command is still allowed" {
+  stage_hook_tree
+  printf '<<<<<<< HEAD\nfoo\n=======\nbar\n>>>>>>> other\n' \
+    > "$STAGED_ROOT/.claude/hooks/lib/command-wrappers.sh"
+  run_staged 'ls -la /tmp'
+  [ "$status" -eq 0 ]
+  assert_allowed_by_json
+}
+
+@test "command-wrappers.sh holding conflict markers: a git commit refuses" {
+  stage_hook_tree
+  printf '<<<<<<< HEAD\nfoo\n=======\nbar\n>>>>>>> other\n' \
+    > "$STAGED_ROOT/.claude/hooks/lib/command-wrappers.sh"
+  run_staged 'git commit -m x'
+  [ "$status" -eq 2 ]
+  grep -qF -- 'cannot load lib/command-wrappers.sh' <<<"$output"
+}

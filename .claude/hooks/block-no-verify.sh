@@ -271,8 +271,21 @@ while IFS= read -r seg; do
   # must pass. Matches a single-dash short-flag bundle containing n (-n, -nm,
   # -anm), never the long --no-verify (handled above) or --dry-run. Scoped to
   # the git segment so a `-n` on another program (grep/head/sort/tail) is inert.
+  #
+  # Read from seg_prog, the WRAPPER-STRIPPED word, and not from the raw segment
+  # the three arms above read. A wrapper is another program, so its own options
+  # are in that inert class, but the segment now ARMS on the git behind it, so a
+  # raw-segment scan reaches them: `nice -n 5 git commit -m x` and `xargs -n 1
+  # git commit -m x` carry no bypass and would deny on the wrapper's `-n`. That
+  # is a false deny whose message names the commit-message over-block, which is
+  # a repair that cannot clear it.
+  #
+  # Only this arm moves. The HUSKY arm above must keep reading the raw segment,
+  # because `env` consumes `NAME=value` assignments, so `env HUSKY=0 git commit`
+  # has no HUSKY left in seg_prog at all; scanning the stripped word there would
+  # turn a false deny into a silent fail-OPEN on a real bypass.
   if [[ "$is_commit" -eq 1 ]] \
-     && [[ "$seg" =~ (^|[[:space:]])-[a-zA-Z]*n[a-zA-Z]*([[:space:]]|$) ]]; then
+     && [[ "$seg_prog" =~ (^|[[:space:]])-[a-zA-Z]*n[a-zA-Z]*([[:space:]]|$) ]]; then
     deny "$(floor_msg '-n (= --no-verify)')"
   fi
 done < <({ printf '%s\n' "$cmd"; collapsed_substitutions "$cmd"; hidden_bodies "$cmd"; } | tr '|&;()' '\n')

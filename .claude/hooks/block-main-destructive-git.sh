@@ -830,11 +830,12 @@ while IFS= read -r seg; do
   #
   # A command WRAPPER (`env` and `timeout` among them) stands in that same slot
   # but is NOT a prefix: each carries its own option grammar, so a blind
-  # alternation here would misread `env -i git …` and `timeout 5 git …`. It is stripped separately, by the per-wrapper table in
+  # alternation here would misread `env -i git …` and `timeout 5 git …`. It
+  # is stripped separately, by the per-wrapper table in
   # lib/command-wrappers.sh, into seg_prog below.
   #
-  # Honest limit: a redirection whose target is
-  # another descriptor (`2>&1`, `>&2`) never reaches this strip at all, because
+  # Honest limit: a redirection whose target is another descriptor
+  # (`2>&1`, `>&2`) never reaches this strip at all, because
   # the walk cuts segments at `&` and the invocation lands in a segment
   # beginning with the descriptor number. Closing it means not cutting at an
   # `&` that belongs to a redirection, which a separator split cannot tell from
@@ -844,15 +845,6 @@ while IFS= read -r seg; do
   # too, and block-no-verify.bats pins the copies identical: a widening applied
   # to one and not the rest leaves the gap open in whichever copy was missed.
   seg_cmd=$(printf '%s' "$seg" | sed -E 's/^[[:space:]]*(([A-Za-z_][A-Za-z0-9_]*\+?=([^[:space:]"'"'"']+|"[^"]*"|'"'"'[^'"'"']*'"'"')*|[0-9]*[<>][^[:space:]]*|[{!]|coproc|elif|else|while|until|then|time([[:space:]]+(-p|--))?|do|if)[[:space:]]+)*//')
-
-  # The same slot again, past any command WRAPPER (`env`, `timeout`, `xargs`
-  # and the rest of lib/command-wrappers.sh's table). Kept as its own value
-  # rather than folded into seg_cmd because the `cd` arm below must keep reading
-  # the word with its wrapper still in front: `timeout 5 cd /x` does not move
-  # the shell, so a `cd` arm reading past the wrapper would track `/x` and read
-  # a later commit against a checkout the command never entered. Only the `git`
-  # arms read the wrapper-stripped word.
-  seg_prog=$(gaia_strip_command_wrappers "$seg_cmd")
 
   # A target the scan cannot READ leaves the previously tracked directory
   # STANDING and marks the checkout ambiguous; it does not clear the target,
@@ -888,6 +880,20 @@ while IFS= read -r seg; do
     esac
     continue
   fi
+
+  # The same slot again, past any command WRAPPER (`env`, `timeout`, `xargs`
+  # and the rest of lib/command-wrappers.sh's table). Kept as its own value
+  # rather than folded into seg_cmd because the `cd` arm above must keep reading
+  # the word with its wrapper still in front: `timeout 5 cd /x` does not move
+  # the shell, so a `cd` arm reading past the wrapper would track `/x` and read
+  # a later commit against a checkout the command never entered. Only the `git`
+  # arms read the wrapper-stripped word.
+  #
+  # Computed HERE rather than at the top of the loop body, below the `cd` arm's
+  # own `continue`, so the fork it costs is paid only by a segment that reaches
+  # the `git` arms. This hook is PreToolUse on the `Bash` matcher, so the top of
+  # this loop is the hot path of every Bash call whose text names `git`.
+  seg_prog=$(gaia_strip_command_wrappers "$seg_cmd")
 
   [[ "$seg_prog" =~ ^git([[:space:]]|$) ]] || continue
 
