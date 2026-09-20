@@ -139,8 +139,8 @@ floor_msg() {
 # that happens to begin with `git commit` inside quoted text over-blocks, the
 # safe direction. Each pass re-reads the bodies the last one found, so nested
 # funsubs surface; bodies only shrink, and the pass bound is a backstop.
-# block-main-destructive-git.sh carries the same function, and
-# block-no-verify.bats pins the two copies identical.
+# block-main-destructive-git.sh and red-verify-commit-check.sh carry the same
+# function, and block-no-verify.bats pins the copies identical.
 hidden_bodies() {
   local text="$1" pass=0
   # shellcheck disable=SC2016 # a literal opener matched in the text, not an expansion

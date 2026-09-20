@@ -713,8 +713,8 @@ hop_guard() {
 # Because the bodies are read last, a `cd` anywhere in the command governs
 # them rather than only one ahead of the construct; a body the tracked `cd`
 # misplaces was invisible to this hook before it existed.
-# block-no-verify.sh carries the same function, and block-no-verify.bats pins
-# the two copies identical.
+# block-no-verify.sh and red-verify-commit-check.sh carry the same function,
+# and block-no-verify.bats pins the copies identical.
 hidden_bodies() {
   local text="$1" pass=0
   # shellcheck disable=SC2016 # a literal opener matched in the text, not an expansion

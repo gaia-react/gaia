@@ -102,7 +102,10 @@ cmd=$(echo "$input" | jq -r '.tool_input.command // ""' 2>/dev/null)
 # ---------------------------------------------------------------------------
 
 # Fast path: short-circuit when `git` is not an invoked command word anywhere.
-[[ "$cmd" =~ (^|[[:space:]&;|()])git([[:space:]]|$) ]] || exit 0
+# (Fast path only; correctness comes from the command-position scan below.) Any
+# non-word character may stand before `git`, since a zsh glob qualifier puts a
+# quote or its own delimiter there.
+[[ "$cmd" =~ (^|[^[:alnum:]_])git([[:space:]]|$) ]] || exit 0
 
 # command-wrappers arm: without the table the walk reads a wrapper as the
 # command word and skips the invocation behind it, which is a silent fail-OPEN
@@ -212,6 +215,37 @@ split_git_words() {
   return 0
 }
 
+# hidden_bodies <text>: print, one per line, the body of every construct that
+# runs a command in the current shell with no `| & ; ( )` cut in front of it:
+# bash 5.3's `${ cmd; }` function substitution, and a zsh glob qualifier's
+# `e<delim>code<delim>` or `+cmd` (optionally behind `#q` or other qualifier
+# flags). The walk below reads these lines AFTER the command's own lines,
+# which it reads byte for byte as before, so this can only add segments and
+# never hides one: a spurious match (an `e_` inside `(file_1=a git …)`) adds a
+# harmless extra line while the real segment stays intact. A spurious body
+# that happens to begin with `git commit` inside quoted text over-demands a
+# RED, the safe direction. Each pass re-reads the bodies the last one found,
+# so nested funsubs surface; bodies only shrink, and the pass bound is a
+# backstop.
+# block-no-verify.sh and block-main-destructive-git.sh carry the same function,
+# and block-no-verify.bats pins the copies identical.
+hidden_bodies() {
+  local text="$1" pass=0
+  # shellcheck disable=SC2016 # a literal opener matched in the text, not an expansion
+  case "$text" in *'${'* | *'('*) ;; *) return 0 ;; esac
+  while [ -n "$text" ] && [ "$pass" -lt 8 ]; do
+    text=$(printf '%s\n' "$text" \
+      | { grep -oE '\$\{[[:space:]]+[^;|&()]*|\([^()[:space:]]*(e[^[:alnum:][:space:]]|\+)[^;|&()]*' || true; } \
+      | sed -E -e 's/^\$\{[[:space:]]+//' \
+          -e 's/^\([^()[:space:]]*(e[^[:alnum:][:space:]]|\+)//' \
+          -e 's/^["'"'"']//' \
+          -e 's/["'"'"']?[^[:alnum:][:space:]]?$//')
+    [ -n "$text" ] && printf '%s\n' "$text"
+    pass=$((pass + 1))
+  done
+  return 0
+}
+
 # collapsed_substitutions <text>: print the command once more with every
 # `$( … )` span replaced by a single placeholder word, and print nothing when
 # the text carries none or the collapse changes nothing. Cutting at every `(`
@@ -287,7 +321,7 @@ while IFS= read -r seg; do
     # repo-scope read git's own `-C` rather than the wrapper's first word.
     commit_c=$(git_segment_c "$seg_prog")
   fi
-done < <({ printf '%s\n' "$cmd"; collapsed_substitutions "$cmd"; } | tr '|&;()' '\n')
+done < <({ printf '%s\n' "$cmd"; collapsed_substitutions "$cmd"; hidden_bodies "$cmd"; } | tr '|&;()' '\n')
 
 [ "$saw_commit" -eq 1 ] || exit 0
 

@@ -866,3 +866,89 @@ run_commit_hook_in() {
   [ "$status" -eq 0 ]
   denied
 }
+
+# --- command-word derivation: constructs that run a command with no cut ---
+
+# Two spellings run a command in the current shell without leaving a
+# `| & ; ( )` cut in front of it: bash 5.3's `${ cmd; }` function substitution,
+# and zsh's `e` glob qualifier, whose code follows a delimiter rather than a
+# separator. Neither leaves a segment whose command word is `git`, so the gate
+# read no commit at all and the RED demand never ran (gaia-react/gaia#2163).
+@test "a commit inside a bash funsub does not hide it from the gate" {
+  stage_file "app/utils/x/index.test.ts" "$PASSING_TEST"
+  # shellcheck disable=SC2016 # the hook must receive the unexpanded opener
+  run_commit_hook 'echo ${ git commit -m change; }'
+  [ "$status" -eq 0 ]
+  denied
+  # shellcheck disable=SC2016
+  run_commit_hook 'echo "${ git commit -m change; }"'
+  [ "$status" -eq 0 ]
+  denied
+}
+
+# Each pass re-reads the bodies the last one found, so a funsub written inside
+# a funsub still surfaces its innermost command.
+@test "a commit inside a nested bash funsub does not hide it from the gate" {
+  stage_file "app/utils/x/index.test.ts" "$PASSING_TEST"
+  # shellcheck disable=SC2016
+  run_commit_hook 'echo ${ echo ${ git commit -m change; }; }'
+  [ "$status" -eq 0 ]
+  denied
+}
+
+# The qualifier's own delimiter is a quote, and it stands between the segment
+# start and `git`: the fast path has to survive any non-word character there,
+# not only the separators the walk cuts on.
+@test "a commit inside a zsh e glob qualifier does not hide it from the gate" {
+  stage_file "app/utils/x/index.test.ts" "$PASSING_TEST"
+  run_commit_hook 'echo *(e:"git commit -m change":)'
+  [ "$status" -eq 0 ]
+  denied
+  run_commit_hook "echo *(e:'git commit -m change':)"
+  [ "$status" -eq 0 ]
+  denied
+  run_commit_hook "echo *(.e:' git commit -m change':)"
+  [ "$status" -eq 0 ]
+  denied
+  run_commit_hook "echo *(#qe{git commit -m change})"
+  [ "$status" -eq 0 ]
+  denied
+}
+
+# The funsub's body also stays part of the git command around it, whose words
+# it expands into, so the outer invocation is still read as a commit.
+@test "a funsub standing in the commit's own arguments does not hide the commit" {
+  stage_file "app/utils/x/index.test.ts" "$PASSING_TEST"
+  # shellcheck disable=SC2016
+  run_commit_hook 'git commit ${ echo -n; } -m change'
+  [ "$status" -eq 0 ]
+  denied
+}
+
+# An assignment prefix whose name ends in `e` reads like a qualifier opener
+# with `=` as its delimiter; the extraction must leave the real segment intact.
+@test "a commit behind an assignment ending in e is still read as git" {
+  stage_file "app/utils/x/index.test.ts" "$PASSING_TEST"
+  run_commit_hook '(name=v git commit -m change)'
+  [ "$status" -eq 0 ]
+  denied
+  run_commit_hook '(file_1=a git commit -m change)'
+  [ "$status" -eq 0 ]
+  denied
+}
+
+# The extraction must not invent a commit where none is invoked: a subject
+# carrying a parenthesised scope looks like a qualifier span and is not one.
+# Each command carries a `git commit` token inside the quoted prose on purpose,
+# so the fast path is passed and the extraction actually runs; without it the
+# hook exits before `hidden_bodies` is called and this control asserts nothing
+# about the extraction it is named for.
+@test "a parenthesised scope in quoted prose is not read as a qualifier" {
+  stage_file "app/utils/x/index.test.ts" "$PASSING_TEST"
+  run_commit_hook 'echo "feat(core): see git commit docs"'
+  [ "$status" -eq 0 ]
+  refute_denied
+  run_commit_hook 'echo "fix(e2e): ship it via git commit later"'
+  [ "$status" -eq 0 ]
+  refute_denied
+}

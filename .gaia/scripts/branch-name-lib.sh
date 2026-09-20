@@ -73,6 +73,21 @@
 #   `<remote>/` prefix removed, one per line. A symbolic `<remote>/HEAD` is
 #   skipped. Prints nothing outside a repository. Returns 0.
 #
+# gaia_branch_refs_readable [dir]
+#   The fail-closed companion to gaia_branch_list, for a caller that must tell
+#   an unreadable ref store from a repository with no branches. Probes both of
+#   the namespaces gaia_branch_list reads, over the repository at [dir]
+#   (default `.`). Prints nothing and returns 0 when both enumerate; prints the
+#   first namespace that fails (`refs/heads` or `refs/remotes`) and returns 1
+#   otherwise, so the caller names it in its own refusal and picks its own exit
+#   code. gaia_branch_list itself stays fail-open by contract, so a ref store
+#   that cannot be read reaches a caller as an empty branch list, byte for byte
+#   the value a repository with no branches produces; a caller that must fail
+#   closed calls this first rather than deriving the probe again. Outside a
+#   repository every read fails, so this returns 1 where gaia_branch_list
+#   returns 0; a caller that distinguishes "not a repository" from "refs
+#   unreadable" tests for the repository itself first.
+#
 # gaia_branch_name <kind> <args...>
 #   Prints the canonical name for a new branch, newline terminated, and
 #   returns 0; on a bad argument prints a diagnostic to stderr, prints nothing
@@ -242,6 +257,23 @@ gaia_branch_list() {
   # the remote. `<remote>/HEAD` is a symbolic pointer, not a branch.
   git -C "$dir" for-each-ref --format='%(refname:lstrip=3)' refs/remotes 2>/dev/null \
     | grep -vx 'HEAD' || true
+  return 0
+}
+
+# The fail-closed companion to gaia_branch_list above, which returns 0 whatever
+# the ref read does. Read the whole namespace rather than the first ref: a
+# packed-refs file is parsed as a unit, so a short read can succeed over a file
+# a full read rejects. Which of a corrupt packed-refs, an unreadable ref file,
+# or a permission denial produced the failure is not distinguishable here, so
+# the namespace is all this prints and the caller's message names all three.
+gaia_branch_refs_readable() {
+  local dir="${1:-.}" ns
+  for ns in refs/heads refs/remotes; do
+    if ! git -C "$dir" for-each-ref --format=x "$ns" >/dev/null 2>&1; then
+      printf '%s\n' "$ns"
+      return 1
+    fi
+  done
   return 0
 }
 

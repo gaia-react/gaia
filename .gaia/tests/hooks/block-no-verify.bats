@@ -165,12 +165,45 @@ git commit --no-verify -m y"
   assert_denied_by_json
 }
 
-@test "both commit guards extract hidden bodies the same way" {
-  local a b
-  a=$(sed -n '/^hidden_bodies() {$/,/^}$/p' "$HOOKS_SRC/block-no-verify.sh")
-  b=$(sed -n '/^hidden_bodies() {$/,/^}$/p' "$HOOKS_SRC/block-main-destructive-git.sh")
-  [ -n "$a" ]
-  [ "$a" = "$b" ]
+# The hidden-body extraction is the derivation those copies share with the
+# RED-verification commit gate. Like the substitution-collapse pin below, this
+# holds SAMENESS only: a weakening applied uniformly to every copy leaves it
+# green. What carries the construct is each suite's behavioural cases: the
+# funsub and glob-qualifier cases red when the extraction stops surfacing a
+# hidden command, and the parenthesised-scope control in this suite and in
+# red-verify-commit-check.bats reds when it starts inventing one. The
+# destructive-git suite carries no such control, so the inventing half is
+# unguarded there.
+@test "every commit guard extracts hidden bodies the same way" {
+  local expected="" f body
+  for f in block-no-verify.sh block-main-destructive-git.sh red-verify-commit-check.sh; do
+    body=$(sed -n '/^hidden_bodies() {$/,/^}$/p' "$HOOKS_SRC/$f")
+    [ -n "$body" ]
+    if [ -z "$expected" ]; then expected="$body"; fi
+    [ "$body" = "$expected" ]
+  done
+  true
+}
+
+# The fast path is the fourth predicate these copies share, and it is the one
+# that decides whether the extraction above runs at all: a command the
+# short-circuit rejects never reaches the walk, so a narrowing here reopens the
+# gap with every derivation below it still correct. Pinned on the construct,
+# not only on sameness: a copy narrowed back to the separator-only class fails
+# here even when every copy is narrowed together.
+@test "every commit guard short-circuits on the same widened fast path" {
+  local expected="" f line n
+  for f in block-no-verify.sh block-main-destructive-git.sh red-verify-commit-check.sh; do
+    # shellcheck disable=SC2016 # the needle is the hooks' literal source text
+    n=$(grep -cF 'git([[:space:]]|$) ]] || exit 0' "$HOOKS_SRC/$f")
+    [ "$n" -eq 1 ]
+    # shellcheck disable=SC2016
+    line=$(grep -F 'git([[:space:]]|$) ]] || exit 0' "$HOOKS_SRC/$f" | sed -E 's/^[[:space:]]*//')
+    if [ -z "$expected" ]; then expected="$line"; fi
+    [ "$line" = "$expected" ]
+  done
+  grep -qF '[^[:alnum:]_]' <<<"$expected"
+  true
 }
 
 @test "a commit subject carrying a parenthesised scope is not read as a qualifier" {
