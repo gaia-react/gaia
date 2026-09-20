@@ -506,6 +506,36 @@ git commit -m y"
   assert_allowed_by_json
 }
 
+# The other half of an unresolvable `cd`, and the one keeping the previous
+# target cannot answer on its own: the hop may have SUCCEEDED into a checkout
+# the scan cannot name. `cd -` is the common spelling and it lands back where
+# the shell started, so a command that steps into a worktree and back reads
+# the worktree's branch while the commit lands in the main checkout. Neither
+# reading is knowable here, so a candidate standing on main arms the rule.
+@test "a second cd that may have stepped back into the main checkout is denied" {
+  on_main
+  local wt="$BATS_TEST_TMPDIR/wt"
+  git -C "$REPO" worktree add --quiet -b wt-branch "$wt"
+  run_hook_from "cd '$wt' && cd - && git commit -m x" "$REPO"
+  assert_denied_by_json
+  run_hook_from "cd '$wt' && cd - && git push" "$REPO"
+  assert_denied_by_json
+  # shellcheck disable=SC2016 # the hook must receive the unexpanded variable
+  run_hook_from "cd '$wt'; cd \"\$BACK\"; git commit -m x" "$REPO"
+  assert_denied_by_json
+}
+
+# The ambiguity arm reads candidates, not the session: from a checkout that is
+# not on main, an unresolvable hop off a worktree has nothing on main to find
+# and stays allowed, so the arm above is not a blanket deny on `cd -`.
+@test "an unresolvable second cd is allowed when no candidate checkout is on main" {
+  on_feature
+  local wt="$BATS_TEST_TMPDIR/wt"
+  git -C "$REPO" worktree add --quiet -b wt-branch "$wt"
+  run_hook_from "cd '$wt' && cd - && git commit -m x" "$REPO"
+  assert_allowed_by_json
+}
+
 @test "a -C into a linked worktree does not lend its branch to a later bare commit on main" {
   on_main
   local wt="$BATS_TEST_TMPDIR/wt"
@@ -533,19 +563,33 @@ git commit -m y"
   assert_denied_by_json
 }
 
-# The fallback is the checkout the command runs in, not this hook's own: a
-# `cd` ahead of the segment already named one, and an unresolvable `-C` must
-# not discard it.
-@test "an unresolvable -C value falls back to the checkout a preceding cd named" {
+# An unresolvable `-C` falls back to the checkout a preceding `cd` named, and
+# is ambiguous on the same terms an unresolvable `cd` is: the value the scan
+# could not expand may name any checkout, the main one included. So the
+# tracked `cd` answers the ordinary case, and a candidate on main still arms
+# the rule even when that tracked `cd` is a worktree on its own branch.
+@test "an unresolvable -C value is read against every checkout it could name" {
   on_main
   local wt="$BATS_TEST_TMPDIR/wt"
   git -C "$REPO" worktree add --quiet -b wt-branch "$wt"
   # shellcheck disable=SC2016 # the hook must receive the unexpanded variable
   run_hook_from "cd '$wt'; git -C \"\$UNSET_VAR\" commit -m x" "$REPO"
-  assert_allowed_by_json
+  assert_denied_by_json
   # shellcheck disable=SC2016
   run_hook_from "cd '$REPO'; git -C \"\$UNSET_VAR\" commit -m x" "$wt"
   assert_denied_by_json
+}
+
+# The tracked `cd` still decides a resolvable case: with nothing on main among
+# the candidates, an unresolvable `-C` is allowed, so the arm above is driven
+# by a candidate on main rather than by unresolvability alone.
+@test "an unresolvable -C value is allowed when no candidate checkout is on main" {
+  on_feature
+  local wt="$BATS_TEST_TMPDIR/wt"
+  git -C "$REPO" worktree add --quiet -b wt-branch "$wt"
+  # shellcheck disable=SC2016 # the hook must receive the unexpanded variable
+  run_hook_from "cd '$wt'; git -C \"\$UNSET_VAR\" commit -m x" "$REPO"
+  assert_allowed_by_json
 }
 
 # The leading `cd` target stood for every segment and a later `cd` did not
@@ -1315,7 +1359,6 @@ run_hop() {
 # A `$( )` inside git's OWN arguments cuts the segment at its parens, so no one
 # segment carries both the command word and the subcommand the rules arm on.
 #
-# A substitution standing in a GLOBAL `-C`'s value is a separate limit and is
 # A `-C` whose value is a substitution is asserted by the branch read's own
 # fail-closed case rather than here: an unresolvable directory word falls back
 # to the checkout the command runs in, so the rules stay armed. This test pins

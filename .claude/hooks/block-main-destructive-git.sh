@@ -153,6 +153,29 @@ current_branch() {
 # under errexit is not abandoned by a directory that does not resolve; an empty
 # answer leaves the caller reading its own working directory, which is the
 # fail-closed direction this guard takes everywhere else.
+# ambiguous_main_branch: print main or master when a checkout this segment
+# could be acting on, but whose identity a directory word left unresolved,
+# stands on one of them; print nothing otherwise. Always succeeds, so a caller
+# assigning its output under errexit is never abandoned.
+#
+# The candidates are the directory the last resolvable `cd` tracked and this
+# hook's own working directory, which is where the shell stands when no `cd`
+# moved it or when one moved it back. The segment's own resolved directory is
+# tested by the caller and is deliberately not repeated here.
+ambiguous_main_branch() {
+  local b
+  b=$(current_branch "$lead_cd")
+  if [ "$b" = main ] || [ "$b" = master ]; then
+    printf '%s' "$b"
+    return 0
+  fi
+  b=$(current_branch "")
+  if [ "$b" = main ] || [ "$b" = master ]; then
+    printf '%s' "$b"
+  fi
+  return 0
+}
+
 resolve_same_repo_dir() {
   local dir="$1" a b
   [ -n "$dir" ] || return 0
@@ -680,6 +703,13 @@ collapsed_substitutions() {
 }
 
 lead_cd=""
+# Set when a `cd` target did not resolve, which leaves the acting checkout
+# genuinely unknown rather than merely untracked: the walk cannot tell a `cd`
+# the shell FAILED to make (still in the previous checkout) from one it MADE
+# into a checkout the scan could not expand (`cd -`, `cd "$SOMEWHERE"`), and
+# those two land the command in different trees. A later `cd` that does
+# resolve settles the question and clears it.
+cd_ambiguous=0
 cd_tracking=1
 hop_checked=0
 checked_hop_dir=""
@@ -715,6 +745,7 @@ collapsed=$(collapsed_substitutions "$cmd")
 while IFS= read -r seg; do
   if [ "$seg" = "$walk_reset" ]; then
     lead_cd=""
+    cd_ambiguous=0
     continue
   fi
 
@@ -752,19 +783,23 @@ while IFS= read -r seg; do
   seg_cmd=$(printf '%s' "$seg" | sed -E 's/^[[:space:]]*(([A-Za-z_][A-Za-z0-9_]*\+?=([^[:space:]"'"'"']+|"[^"]*"|'"'"'[^'"'"']*'"'"')*|[0-9]*[<>][^[:space:]]*|[{!]|coproc|elif|else|while|until|then|time([[:space:]]+(-p|--))?|do|if)[[:space:]]+)*//')
 
   # A target that does not resolve as this repository leaves the previously
-  # tracked directory STANDING rather than clearing it. A `cd` the shell fails
-  # to make leaves the real shell in the directory the preceding one moved
-  # into, so clearing here reads a branch from a checkout the command never
-  # reached: from a linked worktree, `cd <main-checkout>; cd /nonexistent`
-  # would fall back to this hook's own branch and let a commit land on main.
-  # Keeping the previous target over-blocks only the step-out-of-the-repo
-  # case, where the real command fails anyway, and that is the direction this
-  # guard fails in everywhere else.
+  # tracked directory STANDING and marks the checkout ambiguous; it does not
+  # clear the target, and it does not trust it either. Both readings are live
+  # and the scan cannot separate them: a `cd` the shell FAILED to make leaves
+  # the shell in the directory the preceding one moved into, while `cd -` or
+  # `cd "$SOMEWHERE"` is a `cd` that most likely SUCCEEDED somewhere the scan
+  # cannot name, the main checkout included. Clearing disarms the first
+  # reading, trusting the kept target disarms the second, so the kept target
+  # answers the ordinary case and the ambiguity flag makes the rules below
+  # test every checkout the command could be standing in.
   if [ "$cd_tracking" -eq 1 ] && [[ "$seg_cmd" =~ ^cd([[:space:]]|$) ]]; then
     split_git_words "$seg_cmd"
     resolved_cd=$(resolve_same_repo_dir "${w[1]:-}")
     if [ -n "$resolved_cd" ]; then
       lead_cd="$resolved_cd"
+      cd_ambiguous=0
+    else
+      cd_ambiguous=1
     fi
     continue
   fi
@@ -816,15 +851,26 @@ while IFS= read -r seg; do
   # substitution is text naming no readable directory; read raw it makes the
   # branch read answer nothing, and every rule armed on the branch allows. An
   # unresolvable value therefore falls back to the tracked `cd`, else to this
-  # hook's own directory. What that costs is a `-C` naming a real sibling
-  # checkout the scan could not expand, which is read against the wrong tree
-  # and denied: a false deny carrying the `!`-prefix escape rather than a
-  # miss. A foreign repository the scan CAN read never reaches this line.
+  # hook's own directory, and marks the segment ambiguous so the rules below
+  # test the other checkouts it could name too. What that costs is a `-C`
+  # naming a real sibling checkout the scan could not expand, which is read
+  # against the wrong tree and denied: a false deny carrying the `!`-prefix
+  # escape rather than a miss. A foreign repository the scan CAN read never
+  # reaches this line.
+  #
+  # A `-C` that DOES resolve names the checkout outright, so it settles the
+  # question whatever a preceding `cd` left behind.
   if [ -n "$git_cwd" ]; then
     resolved_git_cwd=$(resolve_same_repo_dir "$git_cwd")
     branch_dir="${resolved_git_cwd:-$lead_cd}"
+    if [ -n "$resolved_git_cwd" ]; then
+      seg_ambiguous=0
+    else
+      seg_ambiguous=1
+    fi
   else
     branch_dir="$lead_cd"
+    seg_ambiguous="$cd_ambiguous"
   fi
 
   # The words after the subcommand, where a push's own refspec lives. The
@@ -835,10 +881,22 @@ while IFS= read -r seg; do
   push_args="${git_args[*]+${git_args[*]}}"
 
   # 1. Block commits while HEAD is on main or master.
+  #
+  # The two arms deny for different reasons and name different repairs, so
+  # they are written separately: the first knows which checkout the commit
+  # lands in, the second does not and denies because one it could reach is on
+  # main. Answering the known case first keeps the ordinary deny's message
+  # unchanged for the operator who is simply standing on main.
   if [ "$git_sub" = commit ]; then
     branch=$(current_branch "$branch_dir")
     if [[ "$branch" == "main" || "$branch" == "master" ]]; then
       deny "Commits to '$branch' are forbidden (wiki/concepts/Git Workflow.md). Create a feature branch first."
+    fi
+    if [ "$seg_ambiguous" -eq 1 ]; then
+      amb_branch=$(ambiguous_main_branch)
+      if [ -n "$amb_branch" ]; then
+        deny "This command names a directory this guard cannot read, so which checkout the commit lands in is unknown, and one it could reach is on '$amb_branch'. Commits to '$amb_branch' are forbidden (wiki/concepts/Git Workflow.md). Spell the directory literally so the guard can read it, or create a feature branch first."
+      fi
     fi
   fi
 
@@ -858,6 +916,17 @@ while IFS= read -r seg; do
     on_main=0
     [[ "$branch" == "main" || "$branch" == "master" ]] && on_main=1
 
+    # A directory word the guard could not read leaves the pushing checkout
+    # unknown, so a candidate standing on main arms this rule the same way
+    # reading main out of a known checkout does.
+    amb_main=0
+    if [ "$seg_ambiguous" -eq 1 ] && [ "$on_main" -eq 0 ]; then
+      amb_branch=$(ambiguous_main_branch)
+      if [ -n "$amb_branch" ]; then
+        amb_main=1
+      fi
+    fi
+
     # Refspec-targeted push from main/master/HEAD: e.g. `git push origin main`,
     # `git push origin HEAD:main`, `git push origin main:main`. Read from the
     # operands after the subcommand, so neither a global option ahead of `push`
@@ -874,6 +943,8 @@ while IFS= read -r seg; do
     # repair, which settles the refspec too.
     if [ "$on_main" -eq 1 ]; then
       deny "Plain 'git push' from main/master is forbidden (wiki/concepts/Git Workflow.md). Create a feature branch and open a PR."
+    elif [ "$amb_main" -eq 1 ]; then
+      deny "This command names a directory this guard cannot read, so which checkout the push runs from is unknown, and one it could reach is on '$amb_branch'. Plain 'git push' from main/master is forbidden (wiki/concepts/Git Workflow.md). Spell the directory literally so the guard can read it, or create a feature branch and open a PR."
     elif [ "$refspec_main" -eq 1 ]; then
       deny "This push's refspec names main, master or HEAD, which is forbidden from any branch (wiki/concepts/Git Workflow.md). Name the branch you are pushing explicitly and open a PR."
     fi
