@@ -685,18 +685,43 @@ hop_checked=0
 checked_hop_dir=""
 if cmd_has_unquoted_group "$cmd"; then cd_tracking=0; fi
 
+# The collapsed line is a second reading of the WHOLE command, its own `cd`
+# segments included, so the walk enters it with no tracked directory standing
+# and lets that reading re-derive one. Carrying the first reading's final `cd`
+# across would put a `cd` that FOLLOWS a git segment in FRONT of that segment
+# on the second reading, and a commit made before the command steps into
+# another checkout would be read against the checkout it steps into.
+#
+# Only the collapsed line gets the reset. The hidden bodies after it are read
+# last on purpose, so that a `cd` anywhere in the command governs them; the
+# collapsed line carries the same `cd` segments the command's own line does, so
+# it hands them the same directory either way.
+#
+# The sentinel is spelled with none of `| & ; ( )`, so the `tr` below leaves it
+# standing on a line of its own, and it is not a command word any rule arms on.
+walk_reset=__gaia_walk_reset__
+collapsed=$(collapsed_substitutions "$cmd")
+
 while IFS= read -r seg; do
+  if [ "$seg" = "$walk_reset" ]; then
+    lead_cd=""
+    continue
+  fi
+
   # Command word = the first token past any leading whitespace, env-var
-  # assignment prefix, or shell reserved word. Three things the shell accepts
-  # in that run, each of which hid the whole invocation from a narrower
+  # assignment prefix, shell reserved word, or redirection. What the shell
+  # accepts in that run, each of which hid the whole invocation from a narrower
   # reading: `NAME+=value` is a command prefix exactly as `NAME=value` is
   # (`bash -c 'zz+=1 env'` prints `zz=1`); an assignment's value may be quoted
   # and carry whitespace (`GIT_AUTHOR_DATE="2024-01-01 12:00" git commit`), so
-  # a value read as an unquoted run stops at the opening quote; and a reserved
+  # a value read as an unquoted run stops at the opening quote; a reserved
   # word or grouping token stands in command position with no `| & ; ( )` ahead
   # of the command word for the walk to cut at, with `time` taking an optional
-  # `-p` or `--` of its own. bash 3.2 does not populate BASH_REMATCH reliably,
-  # so strip with sed rather than a capture loop.
+  # `-p` or `--` of its own; and a redirection may lead a simple command
+  # (`bash -c '>/tmp/x echo hi'` writes the file), so one standing ahead of the
+  # invocation occupies the slot the command word is read from. bash 3.2 does
+  # not populate BASH_REMATCH reliably, so strip with sed rather than a capture
+  # loop.
   #
   # Honest limit: a command WRAPPER (`env`, `command`, `exec`, `nohup`,
   # `timeout`, `xargs`) also stands where the command word is read and is NOT
@@ -704,10 +729,17 @@ while IFS= read -r seg; do
   # grammar, and a blind strip would misread `env -i git …` and `timeout 5 git
   # …`, so closing them needs a per-wrapper option table rather than this list.
   #
+  # Second honest limit, of a different kind: a redirection whose target is
+  # another descriptor (`2>&1`, `>&2`) never reaches this strip at all, because
+  # the walk cuts segments at `&` and the invocation lands in a segment
+  # beginning with the descriptor number. Closing it means not cutting at an
+  # `&` that belongs to a redirection, which a separator split cannot tell from
+  # `&&` without reading the command the way the shell does.
+  #
   # block-no-verify.sh and red-verify-commit-check.sh carry this expression
   # too, and block-no-verify.bats pins the copies identical: a widening applied
   # to one and not the rest leaves the gap open in whichever copy was missed.
-  seg_cmd=$(printf '%s' "$seg" | sed -E 's/^[[:space:]]*(([A-Za-z_][A-Za-z0-9_]*\+?=([^[:space:]"'"'"']+|"[^"]*"|'"'"'[^'"'"']*'"'"')*|[{!]|coproc|elif|else|while|until|then|time([[:space:]]+(-p|--))?|do|if)[[:space:]]+)*//')
+  seg_cmd=$(printf '%s' "$seg" | sed -E 's/^[[:space:]]*(([A-Za-z_][A-Za-z0-9_]*\+?=([^[:space:]"'"'"']+|"[^"]*"|'"'"'[^'"'"']*'"'"')*|[0-9]*[<>][^[:space:]]*|[{!]|coproc|elif|else|while|until|then|time([[:space:]]+(-p|--))?|do|if)[[:space:]]+)*//')
 
   # A target that does not resolve as this repository CLEARS the tracked
   # directory rather than leaving the previous one standing: the command has
@@ -731,13 +763,25 @@ while IFS= read -r seg; do
   # the unchecked diagnostic twice for a single command. The memo keys on the
   # resolved target, so a command hopping in two different directories is still
   # checked in each.
+  #
+  # It spans `hop_guard` alone, and the split is what keeps the memo from
+  # taking the guard off. `hop_guard`'s verdict is a function of the target,
+  # the main checkout and the payload's session id, all invariant across the
+  # segments of one command, so answering it once per target is sound.
+  # `hop_moves_head` reads the operands `parse_git_globals` just set for THIS
+  # segment, so it has to be asked per segment: a pathspec restore and a
+  # checkout of the branch HEAD already holds both move nothing, and either one
+  # memoised as the answer for its target would stand in for the branch switch
+  # beside it in the same command.
   case "$git_sub" in
     checkout | switch)
       hop_dir=$(hop_target "$git_cwd")
-      if [ "$hop_checked" -eq 0 ] || [ "$hop_dir" != "$checked_hop_dir" ]; then
-        hop_checked=1
-        checked_hop_dir="$hop_dir"
-        if hop_moves_head "$hop_dir"; then hop_guard "$hop_dir"; fi
+      if hop_moves_head "$hop_dir"; then
+        if [ "$hop_checked" -eq 0 ] || [ "$hop_dir" != "$checked_hop_dir" ]; then
+          hop_checked=1
+          checked_hop_dir="$hop_dir"
+          hop_guard "$hop_dir"
+        fi
       fi
       ;;
   esac
@@ -800,6 +844,10 @@ while IFS= read -r seg; do
       deny "This push's refspec names main, master or HEAD, which is forbidden from any branch (wiki/concepts/Git Workflow.md). Name the branch you are pushing explicitly and open a PR."
     fi
   fi
-done < <({ printf '%s\n' "$cmd"; collapsed_substitutions "$cmd"; hidden_bodies "$cmd"; } | tr '|&;()' '\n')
+done < <({
+  printf '%s\n' "$cmd"
+  if [ -n "$collapsed" ]; then printf '%s\n%s\n' "$walk_reset" "$collapsed"; fi
+  hidden_bodies "$cmd"
+} | tr '|&;()' '\n')
 
 exit 0

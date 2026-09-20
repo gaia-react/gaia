@@ -1105,6 +1105,46 @@ run_hop() {
   [ "$(grep -cF -- 'could not check' <<<"$output")" -eq 1 ]
 }
 
+# The memo above spans the lookup only. Whether a segment moves HEAD at all is
+# a property of that segment's own operands, so a memo covering that question
+# answers a later segment with an earlier one's verdict: a pathspec restore and
+# a checkout of the branch HEAD already holds both leave HEAD where it is, and
+# either one standing in for the branch switch beside it takes the guard off.
+@test "hop guard: each checkout segment is judged on its own operands" {
+  hold_feature_with_pr 42
+  write_breadcrumb feature sid-owner
+  run_hop 'git checkout -- README.md && git checkout main' sid-peer
+  assert_denied_by_json
+  run_hop 'git checkout feature && git checkout main' sid-peer
+  assert_denied_by_json
+}
+
+# The collapsed line re-emits the whole command, its own `cd` segments
+# included, so the walk has to enter it with no tracked directory standing.
+# Reading it under the directory the FIRST pass ended in puts a `cd` that
+# follows a git segment in front of it on the second pass, and the commit is
+# then read against a checkout the command reaches only afterwards.
+@test "the collapsed re-emission is not governed by a cd that follows the segment it re-reads" {
+  on_feature
+  local wt="$BATS_TEST_TMPDIR/wt"
+  git -C "$REPO" worktree add --quiet "$wt" main
+  run_hook_from "git commit -m \"\$(date)\" && cd '$wt'" "$REPO"
+  assert_allowed_by_json
+}
+
+# The boundary reset above is the collapsed line's alone. A hidden body is read
+# last so that a `cd` ANYWHERE in the command governs it, which over-blocks in
+# the direction that reads a body against a checkout the command reaches only
+# afterwards; before the bodies were read at all such a body was invisible here.
+@test "a cd later in the command governs a hidden body read after it" {
+  on_feature
+  local wt="$BATS_TEST_TMPDIR/wt"
+  git -C "$REPO" worktree add --quiet "$wt" main
+  # shellcheck disable=SC2016 # the hook must receive the unexpanded opener
+  run_hook_from "echo \${ git commit -m y; } && cd '$wt'" "$REPO"
+  assert_denied_by_json
+}
+
 # --- command-word derivation: prefixes that hid `git` from the segment walk ---
 
 # `NAME+=value` is a command prefix the shell accepts exactly as `NAME=value`
@@ -1172,6 +1212,24 @@ run_hop() {
   run_hook 'GIT_AUTHOR_DATE="2024-01-01 12:00" git commit --amend'
   assert_denied_by_json
   run_hook "GIT_AUTHOR_DATE='2024-01-01 12:00' git push"
+  assert_denied_by_json
+}
+
+# A redirection may lead a simple command, so one written ahead of the
+# invocation occupies the slot the command word is read from and the segment
+# goes unread.
+#
+# Deliberately not a member: a redirection whose target is another descriptor
+# (`2>&1`, `>&2`). The walk cuts segments at `&` before the strip sees them, so
+# that form never reaches the expression under test; the hook's own second
+# honest limit states it.
+@test "a leading redirection does not hide the git command word" {
+  on_main
+  run_hook '>/tmp/gaia-probe git commit -m x'
+  assert_denied_by_json
+  run_hook '2>/dev/null git commit -m x'
+  assert_denied_by_json
+  run_hook '>>/tmp/gaia-probe git push'
   assert_denied_by_json
 }
 

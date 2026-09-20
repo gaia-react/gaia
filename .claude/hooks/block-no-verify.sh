@@ -181,16 +181,19 @@ saw_commit=0
 saw_push=0
 while IFS= read -r seg; do
   # Command word = the first token past any leading whitespace, env-var
-  # assignment prefix, or shell reserved word. Three things the shell accepts
-  # in that run, each of which hid the whole invocation from a narrower
+  # assignment prefix, shell reserved word, or redirection. What the shell
+  # accepts in that run, each of which hid the whole invocation from a narrower
   # reading: `NAME+=value` is a command prefix exactly as `NAME=value` is
   # (`bash -c 'zz+=1 env'` prints `zz=1`); an assignment's value may be quoted
   # and carry whitespace (`GIT_AUTHOR_DATE="2024-01-01 12:00" git commit`), so
-  # a value read as an unquoted run stops at the opening quote; and a reserved
+  # a value read as an unquoted run stops at the opening quote; a reserved
   # word or grouping token stands in command position with no `| & ; ( )` ahead
   # of the command word for the walk to cut at, with `time` taking an optional
-  # `-p` or `--` of its own. bash 3.2 does not populate BASH_REMATCH reliably,
-  # so strip with sed rather than a capture loop.
+  # `-p` or `--` of its own; and a redirection may lead a simple command
+  # (`bash -c '>/tmp/x echo hi'` writes the file), so one standing ahead of the
+  # invocation occupies the slot the command word is read from. bash 3.2 does
+  # not populate BASH_REMATCH reliably, so strip with sed rather than a capture
+  # loop.
   #
   # Honest limit: a command WRAPPER (`env`, `command`, `exec`, `nohup`,
   # `timeout`, `xargs`) also stands where the command word is read and is NOT
@@ -198,11 +201,18 @@ while IFS= read -r seg; do
   # grammar, and a blind strip would misread `env -i git …` and `timeout 5 git
   # …`, so closing them needs a per-wrapper option table rather than this list.
   #
+  # Second honest limit, of a different kind: a redirection whose target is
+  # another descriptor (`2>&1`, `>&2`) never reaches this strip at all, because
+  # the walk cuts segments at `&` and the invocation lands in a segment
+  # beginning with the descriptor number. Closing it means not cutting at an
+  # `&` that belongs to a redirection, which a separator split cannot tell from
+  # `&&` without reading the command the way the shell does.
+  #
   # block-main-destructive-git.sh and red-verify-commit-check.sh carry this
   # expression too, and block-no-verify.bats pins the copies identical: a
   # widening applied to one and not the rest leaves the gap open in whichever
   # copy was missed.
-  seg_cmd=$(printf '%s' "$seg" | sed -E 's/^[[:space:]]*(([A-Za-z_][A-Za-z0-9_]*\+?=([^[:space:]"'"'"']+|"[^"]*"|'"'"'[^'"'"']*'"'"')*|[{!]|coproc|elif|else|while|until|then|time([[:space:]]+(-p|--))?|do|if)[[:space:]]+)*//')
+  seg_cmd=$(printf '%s' "$seg" | sed -E 's/^[[:space:]]*(([A-Za-z_][A-Za-z0-9_]*\+?=([^[:space:]"'"'"']+|"[^"]*"|'"'"'[^'"'"']*'"'"')*|[0-9]*[<>][^[:space:]]*|[{!]|coproc|elif|else|while|until|then|time([[:space:]]+(-p|--))?|do|if)[[:space:]]+)*//')
   [[ "$seg_cmd" =~ ^git([[:space:]]|$) ]] || continue
 
   is_commit=0

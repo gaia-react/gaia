@@ -789,6 +789,24 @@ run_commit_hook_in() {
   denied
 }
 
+# A redirection may lead a simple command, so one written ahead of the
+# invocation occupies the slot the command word is read from and the segment
+# goes unread.
+#
+# Deliberately not a member: a redirection whose target is another descriptor
+# (`2>&1`, `>&2`). The walk cuts segments at `&` before the strip sees them, so
+# that form never reaches the expression under test; the hook's own second
+# honest limit states it.
+@test "a leading redirection does not hide the git command word" {
+  stage_file "app/utils/x/index.test.ts" "$PASSING_TEST"
+  run_commit_hook '>/tmp/gaia-probe git commit -m change'
+  [ "$status" -eq 0 ]
+  denied
+  run_commit_hook '2>/dev/null git commit -m change'
+  [ "$status" -eq 0 ]
+  denied
+}
+
 # A word merely beginning with a reserved word is an ordinary command name, so
 # the strip requires the whitespace that makes the reserved word a word.
 @test "a command name beginning with a reserved word is left alone" {

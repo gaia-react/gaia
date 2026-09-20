@@ -456,8 +456,9 @@ run_staged() {
 # immediately before a command is driven below. Deliberately not members, each
 # because it precedes something other than a command, so the command word is
 # not the next token and no segment of theirs reaches the walk unread:
-# `function` and `for` and `select` precede a NAME, `case` precedes a WORD, and
-# `in`, `esac`, `fi`, `done` and `}` close a construct rather than opening one.
+# `function` and `for` and `select` precede a NAME, `case` precedes a WORD,
+# `[[` precedes a conditional expression, and `in`, `esac`, `fi`, `done`, `}`
+# and `]]` close a construct rather than opening one.
 # A command WRAPPER (`env`, `command`, `timeout`) is not a reserved word and is
 # not a member either; the derivation's own comment states that limit.
 @test "a reserved word or grouping token does not hide the git command word" {
@@ -501,6 +502,23 @@ run_staged() {
   run_hook "GIT_AUTHOR_DATE='2024-01-01 12:00' git commit -n -m x"
   assert_denied_by_json
   run_hook 'GIT_EDITOR="code --wait" git push --no-verify'
+  assert_denied_by_json
+}
+
+# A redirection may lead a simple command, so one written ahead of the
+# invocation occupies the slot the command word is read from and the segment
+# goes unread.
+#
+# Deliberately not a member: a redirection whose target is another descriptor
+# (`2>&1`, `>&2`). The walk cuts segments at `&` before the strip sees them, so
+# that form never reaches the expression under test; the hook's own second
+# honest limit states it.
+@test "a leading redirection does not hide the git command word" {
+  run_hook '>/tmp/gaia-probe git commit --no-verify -m x'
+  assert_denied_by_json
+  run_hook '2>/dev/null git commit -n -m x'
+  assert_denied_by_json
+  run_hook '>>/tmp/gaia-probe git push --no-verify'
   assert_denied_by_json
 }
 
