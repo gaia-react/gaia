@@ -88,6 +88,11 @@ lib="$(dirname "${BASH_SOURCE[0]}")/branch-name-lib.sh"
 [ -r "$lib" ] || die_input "branch library $lib is missing or unreadable"
 # shellcheck source=/dev/null
 . "$lib" || die_input "branch library $lib failed to load"
+# Loading is not enough: the ref-readability probe below is a second symbol, and
+# a library that predates it would fail the probe's own call and report a
+# healthy ref store as unreadable. Name the missing symbol instead.
+type gaia_branch_refs_readable >/dev/null 2>&1 \
+  || die_input "branch library $lib does not provide gaia_branch_refs_readable"
 
 if [ -n "$claims_file" ]; then
   claims="$(cat "$claims_file")" || die_input "cannot read $claims_file"
@@ -126,15 +131,20 @@ else
   # gaia_branch_list returns 0 whatever the ref read does, so a ref store that
   # cannot be read reaches here as an empty branch list, which is the same
   # value a repository with no branches produces and reads as "every claim is
-  # stale". Probe both namespaces here, where the contract is fail-closed, and
-  # read the whole set rather than the first ref: a packed-refs file is parsed
-  # as a unit, so a short read can succeed over a file a full read rejects.
-  # Which of a corrupt packed-refs, an unreadable ref file, or a permission
-  # denial produced the failure is not distinguishable at this point.
-  git -C "$dir" for-each-ref --format=x refs/heads >/dev/null 2>&1 \
-    || die_input "$dir local refs cannot be read (corrupt, unreadable, or permission-denied), so no branch can keep a claim alive"
-  git -C "$dir" for-each-ref --format=x refs/remotes >/dev/null 2>&1 \
-    || die_input "$dir remote-tracking refs cannot be read (corrupt, unreadable, or permission-denied), so no branch can keep a claim alive"
+  # stale". The library owns the probe itself (gaia_branch_refs_readable, its
+  # fail-closed companion), which names the namespace that failed; rendering
+  # that namespace in this script's own vocabulary stays here, because the
+  # message is this caller's contract and its suite pins it. Which of a corrupt
+  # packed-refs, an unreadable ref file, or a permission denial produced the
+  # failure is not distinguishable at this point.
+  if ! unreadable_ns="$(gaia_branch_refs_readable "$dir")"; then
+    case "$unreadable_ns" in
+      refs/heads) ns_label="local refs" ;;
+      refs/remotes) ns_label="remote-tracking refs" ;;
+      *) ns_label="refs" ;;
+    esac
+    die_input "$dir $ns_label cannot be read (corrupt, unreadable, or permission-denied), so no branch can keep a claim alive"
+  fi
   branches="$(gaia_branch_list "$dir")"
 fi
 
