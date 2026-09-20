@@ -55,6 +55,7 @@
     ".claude/hooks/lib/audit-rules-changed.sh": "owned",
     ".claude/hooks/lib/audit-scope.sh": "owned",
     ".claude/hooks/lib/audit-selfheal-paths.sh": "owned",
+    ".claude/hooks/lib/command-wrappers.sh": "owned",
     ".claude/hooks/lib/gaia-active-plan.sh": "owned",
     ".claude/hooks/lib/gaia-ci-defer.sh": "owned",
     ".claude/hooks/lib/gaia-version.sh": "owned",
@@ -687,7 +688,7 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-09-20T08:53:16.453Z",
+  "generated": "2026-09-20T14:53:11.988Z",
   "regions": [
     {
       "endMarker": "<!-- gaia:audit-remit:end -->",
