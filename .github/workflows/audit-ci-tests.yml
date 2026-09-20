@@ -374,6 +374,17 @@ jobs:
               # exists to catch -- would report `code=false`, skip every bats
               # step, and green the job having run that comparison zero times.
               - 'wiki/concepts/Claude Hooks.md'
+              # lint-scripts-wiki-inventory.bats (.gaia/scripts/tests/) is the
+              # blocking runner for the check that fails when a file at the root
+              # of .gaia/scripts/ is absent from this page, and the page is one
+              # of that check's two subjects: its real-tree test reds when a row
+              # is dropped from it. The directory, the other subject, is already
+              # covered by the `.gaia/scripts/**` line above. This page matches
+              # no other pattern here, so without this line a wiki-only edit
+              # removing an index row -- one of the two edits the check exists
+              # to catch -- would report `code=false`, skip every bats step, and
+              # green the job having run that comparison zero times.
+              - 'wiki/concepts/GAIA Scripts.md'
               # doc-countability-prose.bats (.gaia/tests/lib/) greps this page
               # for the superseded classless-finding claims (a classless finding
               # is "not a countable finding", "omitted from findings[]",
