@@ -52,6 +52,19 @@ if ! type gaia_require_jq >/dev/null 2>&1; then
 fi
 gaia_require_jq 'the commit-floor bypass guard' "$payload" tool_input 'git'
 
+# command-wrappers arm, the same fail-loud shape and the same lib dir as the jq
+# arm above: without it the walk reads a wrapper as the command word and skips
+# the invocation behind it, which is a silent fail-OPEN on exactly the bypasses
+# this hook exists to deny.
+set +e
+# shellcheck source=lib/command-wrappers.sh
+[ -n "$_jq_lib_dir" ] && [ -f "$_jq_lib_dir/command-wrappers.sh" ] && . "$_jq_lib_dir/command-wrappers.sh" 2>/dev/null
+set -e
+if ! type gaia_strip_command_wrappers >/dev/null 2>&1; then
+  printf 'BLOCKED: block-no-verify.sh cannot load lib/command-wrappers.sh, so this call cannot be checked. Fail-loud, not fail-open -- restore the library.\n' >&2
+  exit 2
+fi
+
 cmd=$(echo "$payload" | jq -r '.tool_input.command // empty')
 
 # Only act on git commands, short-circuit everything else. (Fast path only;
@@ -195,13 +208,13 @@ while IFS= read -r seg; do
   # not populate BASH_REMATCH reliably, so strip with sed rather than a capture
   # loop.
   #
-  # Honest limit: a command WRAPPER (`env`, `command`, `exec`, `nohup`,
-  # `timeout`, `xargs`) also stands where the command word is read and is NOT
-  # stripped, so it still hides the invocation. Each carries its own option
-  # grammar, and a blind strip would misread `env -i git …` and `timeout 5 git
-  # …`, so closing them needs a per-wrapper option table rather than this list.
+  # A command WRAPPER (`env`, `command`, `exec`, `nohup`, `timeout`, `xargs`)
+  # stands in that same slot but is NOT a prefix: each carries its own option
+  # grammar, so a blind alternation here would misread `env -i git …` and
+  # `timeout 5 git …`. It is stripped separately, by the per-wrapper table in
+  # lib/command-wrappers.sh, on the line after this one.
   #
-  # Second honest limit, of a different kind: a redirection whose target is
+  # Honest limit: a redirection whose target is
   # another descriptor (`2>&1`, `>&2`) never reaches this strip at all, because
   # the walk cuts segments at `&` and the invocation lands in a segment
   # beginning with the descriptor number. Closing it means not cutting at an
@@ -213,7 +226,8 @@ while IFS= read -r seg; do
   # widening applied to one and not the rest leaves the gap open in whichever
   # copy was missed.
   seg_cmd=$(printf '%s' "$seg" | sed -E 's/^[[:space:]]*(([A-Za-z_][A-Za-z0-9_]*\+?=([^[:space:]"'"'"']+|"[^"]*"|'"'"'[^'"'"']*'"'"')*|[0-9]*[<>][^[:space:]]*|[{!]|coproc|elif|else|while|until|then|time([[:space:]]+(-p|--))?|do|if)[[:space:]]+)*//')
-  [[ "$seg_cmd" =~ ^git([[:space:]]|$) ]] || continue
+  seg_prog=$(gaia_strip_command_wrappers "$seg_cmd")
+  [[ "$seg_prog" =~ ^git([[:space:]]|$) ]] || continue
 
   is_commit=0
   is_push=0

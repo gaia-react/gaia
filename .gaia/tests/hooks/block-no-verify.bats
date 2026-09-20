@@ -654,3 +654,108 @@ run_staged() {
   done
   true
 }
+
+# --- command wrappers -------------------------------------------------------
+#
+# A wrapper stands where the command word is read, so an unstripped one hides
+# the whole invocation from the walk and the bypass behind it is allowed. The
+# wrapper set is DERIVED from the table in lib/command-wrappers.sh rather than
+# restated here: a row added there is driven by these tests the moment it
+# lands, and a row this reader fails to parse shortens the set, which the count
+# check below turns into a failure instead of a quieter suite.
+
+# Print `<name> <operand-count>` for every row of the shared wrapper table.
+wrapper_table() {
+  sed -n '/GAIA_WRAPPER_TABLE_BEGIN/,/GAIA_WRAPPER_TABLE_END/p' \
+      "$HOOKS_SRC/lib/command-wrappers.sh" \
+    | sed -nE 's/^[[:space:]]*([a-z]+)\)[[:space:]]*_w_valued=.*_w_operands=([0-9]+).*/\1 \2/p'
+}
+
+# How many rows that table holds, counted independently of the parse above so a
+# row the parse cannot read is a short read rather than an invisible one.
+wrapper_table_rows() {
+  sed -n '/GAIA_WRAPPER_TABLE_BEGIN/,/GAIA_WRAPPER_TABLE_END/p' \
+      "$HOOKS_SRC/lib/command-wrappers.sh" \
+    | grep -cE '^[[:space:]]*[a-z]+\)[[:space:]]*_w_valued='
+}
+
+# The wrapper written the way its own grammar requires: its name, then as many
+# operands of its own as the table says it consumes.
+wrapper_prefix() {
+  local name="$1" operands="$2" out="$1" i=0
+  while [ "$i" -lt "$operands" ]; do
+    out="$out 5"
+    i=$((i + 1))
+  done
+  printf '%s' "$out"
+}
+
+@test "every wrapper in the shared table exposes a bypassing commit to the walk" {
+  local name operands read_n=0 rows
+  rows=$(wrapper_table_rows)
+  [ "$rows" -gt 0 ]
+  while read -r name operands; do
+    [ -n "$name" ] || continue
+    read_n=$((read_n + 1))
+    run_hook "$(wrapper_prefix "$name" "$operands") git commit -n -m x"
+    assert_denied_by_json
+    run_hook "$(wrapper_prefix "$name" "$operands") git commit --no-verify -m x"
+    assert_denied_by_json
+    run_hook "$(wrapper_prefix "$name" "$operands") git push --no-verify"
+    assert_denied_by_json
+  done <<<"$(wrapper_table)"
+  [ "$read_n" -eq "$rows" ]
+}
+
+# The two shapes a blind word-strip gets wrong, and the reason the table states
+# an option grammar rather than an alternation: in the first the next word is
+# the wrapper's own flag, in the second it is the wrapper's operand.
+@test "a wrapper's own options and operands do not hide the git behind them" {
+  run_hook 'env -i git commit -n -m x'
+  assert_denied_by_json
+  run_hook 'env -u FOO git commit -n -m x'
+  assert_denied_by_json
+  run_hook 'env FOO=bar git commit -n -m x'
+  assert_denied_by_json
+  run_hook 'env -i FOO=bar git commit --no-verify -m x'
+  assert_denied_by_json
+  run_hook 'timeout -s KILL 5 git commit -n -m x'
+  assert_denied_by_json
+  run_hook 'timeout -k 1 5 git commit -n -m x'
+  assert_denied_by_json
+  run_hook 'xargs -I {} git commit -n -m x'
+  assert_denied_by_json
+  run_hook 'nohup timeout 5 env git commit -n -m x'
+  assert_denied_by_json
+}
+
+# The control for the widening: reading past a wrapper must not start arming on
+# the wrapper's own arguments. Each of these runs a program that is not git,
+# with git's name only in its argument text, which is the shape the walk has
+# always allowed.
+@test "reading past a wrapper does not arm on a non-git program behind it" {
+  run_hook 'timeout 5 echo hello'
+  assert_allowed_by_json
+  run_hook 'env FOO=bar grep -n commit README.md'
+  assert_allowed_by_json
+  run_hook 'xargs -I {} echo hello'
+  assert_allowed_by_json
+}
+
+# The wrapper strip is shared rather than copied, unlike the command-word
+# expression the pin above holds identical across the guards it names. Pinned on
+# the load and the use together: a guard that sources the library and then
+# tests the unstripped word is green on the source alone.
+@test "every commit guard reads its command word past the shared wrapper table" {
+  local f n
+  [ -f "$HOOKS_SRC/lib/command-wrappers.sh" ]
+  for f in block-no-verify.sh block-main-destructive-git.sh red-verify-commit-check.sh; do
+    grep -qF 'lib/command-wrappers.sh' "$HOOKS_SRC/$f"
+    grep -qF 'gaia_strip_command_wrappers' "$HOOKS_SRC/$f"
+    # The `^git` test reads the stripped word, and no copy still reads seg_cmd.
+    n=$(grep -cE 'seg_prog" =~ \^git' "$HOOKS_SRC/$f")
+    [ "$n" -eq 1 ]
+    grep -qE 'seg_cmd" =~ \^git' "$HOOKS_SRC/$f" && return 1
+  done
+  true
+}

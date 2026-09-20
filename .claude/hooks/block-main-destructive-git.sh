@@ -37,6 +37,19 @@ if ! type gaia_require_jq >/dev/null 2>&1; then
 fi
 gaia_require_jq 'the main-branch destructive-git guard' "$payload" tool_input 'git'
 
+# command-wrappers arm, the same fail-loud shape and the same lib dir as the jq
+# arm above: without it the walk reads a wrapper as the command word and skips
+# the invocation behind it, which is a silent fail-OPEN on exactly the commits
+# and pushes this hook exists to deny.
+set +e
+# shellcheck source=lib/command-wrappers.sh
+[ -n "$_jq_lib_dir" ] && [ -f "$_jq_lib_dir/command-wrappers.sh" ] && . "$_jq_lib_dir/command-wrappers.sh" 2>/dev/null
+set -e
+if ! type gaia_strip_command_wrappers >/dev/null 2>&1; then
+  printf 'BLOCKED: block-main-destructive-git.sh cannot load lib/command-wrappers.sh, so this call cannot be checked. Fail-loud, not fail-open -- restore the library.\n' >&2
+  exit 2
+fi
+
 cmd=$(echo "$payload" | jq -r '.tool_input.command // empty')
 
 # Only act on git commands, short-circuit everything else. (Fast path only;
@@ -807,13 +820,13 @@ while IFS= read -r seg; do
   # not populate BASH_REMATCH reliably, so strip with sed rather than a capture
   # loop.
   #
-  # Honest limit: a command WRAPPER (`env`, `command`, `exec`, `nohup`,
-  # `timeout`, `xargs`) also stands where the command word is read and is NOT
-  # stripped, so it still hides the invocation. Each carries its own option
-  # grammar, and a blind strip would misread `env -i git …` and `timeout 5 git
-  # …`, so closing them needs a per-wrapper option table rather than this list.
+  # A command WRAPPER (`env`, `command`, `exec`, `nohup`, `timeout`, `xargs`)
+  # stands in that same slot but is NOT a prefix: each carries its own option
+  # grammar, so a blind alternation here would misread `env -i git …` and
+  # `timeout 5 git …`. It is stripped separately, by the per-wrapper table in
+  # lib/command-wrappers.sh, into seg_prog below.
   #
-  # Second honest limit, of a different kind: a redirection whose target is
+  # Honest limit: a redirection whose target is
   # another descriptor (`2>&1`, `>&2`) never reaches this strip at all, because
   # the walk cuts segments at `&` and the invocation lands in a segment
   # beginning with the descriptor number. Closing it means not cutting at an
@@ -824,6 +837,14 @@ while IFS= read -r seg; do
   # too, and block-no-verify.bats pins the copies identical: a widening applied
   # to one and not the rest leaves the gap open in whichever copy was missed.
   seg_cmd=$(printf '%s' "$seg" | sed -E 's/^[[:space:]]*(([A-Za-z_][A-Za-z0-9_]*\+?=([^[:space:]"'"'"']+|"[^"]*"|'"'"'[^'"'"']*'"'"')*|[0-9]*[<>][^[:space:]]*|[{!]|coproc|elif|else|while|until|then|time([[:space:]]+(-p|--))?|do|if)[[:space:]]+)*//')
+
+  # The same slot again, past any command WRAPPER (`env`, `timeout`, `xargs`
+  # and the rest of lib/command-wrappers.sh's table). Kept as its own value
+  # rather than folded into seg_cmd because the `cd` arm below must read the
+  # UNWRAPPED word: `timeout 5 cd /x` does not move the shell, so tracking `/x`
+  # off it would read a later commit against a checkout the command never
+  # entered. Only the `git` arms read the wrapper-stripped word.
+  seg_prog=$(gaia_strip_command_wrappers "$seg_cmd")
 
   # A target the scan cannot READ leaves the previously tracked directory
   # STANDING and marks the checkout ambiguous; it does not clear the target,
@@ -860,7 +881,7 @@ while IFS= read -r seg; do
     continue
   fi
 
-  [[ "$seg_cmd" =~ ^git([[:space:]]|$) ]] || continue
+  [[ "$seg_prog" =~ ^git([[:space:]]|$) ]] || continue
 
   parse_git_globals "$seg"
 

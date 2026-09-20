@@ -332,6 +332,12 @@
       "why": "Exports one ERE constant; no filesystem access, no root derivation."
     },
     {
+      "hook": ".claude/hooks/lib/command-wrappers.sh",
+      "scope": "any",
+      "state": [],
+      "why": "A pure text function: it takes one already-split command segment as a parameter and prints it with any leading command wrapper removed, reading no file and writing none, so there is no root to resolve and no .gaia/local state to belong to."
+    },
+    {
       "hook": ".claude/hooks/lib/gaia-active-plan.sh",
       "scope": "main-only",
       "state": ["plans-main", "specs-main"],

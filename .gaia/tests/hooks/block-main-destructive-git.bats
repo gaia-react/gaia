@@ -1582,3 +1582,34 @@ run_hop() {
   run_hook 'grep -R "$(echo commit)" .'
   assert_allowed_by_json
 }
+
+# A command wrapper stands where the command word is read, so an unstripped one
+# hides the whole invocation and the commit lands on main unguarded. The
+# wrapper set and its per-wrapper grammar live in lib/command-wrappers.sh; this
+# suite drives the consequence for this guard, on the shapes a blind word-strip
+# gets wrong, where the next word is the wrapper's own flag or its operand.
+@test "a command wrapper does not hide a main-branch commit from the walk" {
+  on_main
+  run_hook 'env git commit -m x'
+  assert_denied_by_json
+  run_hook 'timeout 5 git commit -m x'
+  assert_denied_by_json
+  run_hook 'env -i git commit -m x'
+  assert_denied_by_json
+  run_hook 'nohup git push --force'
+  assert_denied_by_json
+  run_hook 'xargs -I {} git commit -m x'
+  assert_denied_by_json
+}
+
+# The control: reading past a wrapper must not arm on the wrapper's own
+# arguments, and a wrapper standing in front of a `cd` must not be read as one.
+# `timeout 5 cd /x` does not move the shell, so the tracked directory it would
+# set is a checkout the command never enters.
+@test "reading past a wrapper does not arm on a non-git program behind it" {
+  on_main
+  run_hook 'timeout 5 echo hello'
+  assert_allowed_by_json
+  run_hook 'env FOO=bar ls'
+  assert_allowed_by_json
+}
