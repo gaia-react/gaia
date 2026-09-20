@@ -155,7 +155,7 @@ _gaia_ro_emit_select() {
   # read -a rather than an unquoted IFS split, which would also pathname-expand
   # a glob element against the working directory.
   IFS=',' read -r -a parts <<<"$v"
-  for el in "${parts[@]}"; do
+  for el in ${parts[@]+"${parts[@]}"}; do
     case "$el" in
       '!'* | '^'*) ;;
       *) _gaia_ro_emit "$el" ;;
@@ -342,7 +342,7 @@ gaia_reader_operands() {
   read -r -a toks <<<"$seg_cmd"
 
   if [ "${#toks[@]}" -gt 0 ]; then
-    _gaia_ro_dispatch "${toks[@]}"
+    _gaia_ro_dispatch ${toks[@]+"${toks[@]}"}
   fi
 
   _gaia_ro_redirect_operand "$seg"

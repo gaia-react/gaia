@@ -643,7 +643,7 @@ fi
 # and this harness already holds the value its argument-free arm would re-derive.
 # Hence no `cd` and no subshell either, unlike the siblings above, whose
 # tracked-file discovery genuinely needs the working directory.
-echo "--> lint-hook-wiki-inventory (a registered hook absent from the bundled-hooks inventory)"
+echo "--> lint-hook-wiki-inventory (a hook absent from the bundled-hooks inventory)"
 if ! bash "$REPO_ROOT/.gaia/scripts/lint-hook-wiki-inventory.sh" "$REPO_ROOT"; then
   status=1
 fi

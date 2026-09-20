@@ -151,3 +151,71 @@ fixture_test_script() {
   run bash -c "cd '$TMP' && bash '$LINTER'"
   [ "$status" -eq 0 ]
 }
+
+# 6. The sourced libraries under .claude/hooks/lib/ are scanned too, recursively.
+#
+# They are function modules sourced into hooks running `set -euo pipefail`, so
+# `set -u` is in effect for their code at runtime whether or not the file sets
+# it itself. scan_file's precondition asks whether the FILE sets `set -u`, the
+# right question for a standalone script and the wrong one for a sourced
+# module, so lib/ is exempt from it. Two of the cases below carry that split:
+# one lib that sets `set -u` and one that does not, because only the second
+# distinguishes the exemption from the walk, and the last case pins the
+# exemption's boundary by asserting a root hook is still held to the
+# precondition.
+
+# fixture_lib <relpath> <body>: a tmp repo with one .claude/hooks/lib/<relpath>
+# holding <body>. Sets $TMP. <relpath> may name a subdirectory so the recursive
+# walk is exercised. Run the linter from $TMP so its cwd-relative scan resolves.
+fixture_lib() {
+  TMP="$(mktemp -d -t array-guard-lint-XXXXXX)"
+  mkdir -p "$TMP/.claude/hooks/lib/$(dirname "$1")"
+  printf '%s\n' "$2" > "$TMP/.claude/hooks/lib/$1"
+}
+
+@test "flags an unguarded bare \${arr[@]} in a .claude/hooks/lib file that sets set -u" {
+  fixture_lib probe.sh $'#!/usr/bin/env bash\nset -euo pipefail\narr=()\nprintf "%s\\n" "${arr[@]}"'
+  run bash -c "cd '$TMP' && bash '$LINTER'"
+  [ "$status" -eq 1 ]
+  grep -qF -- ".claude/hooks/lib/probe.sh:4" <<<"$output"
+  grep -qF -- "unguarded" <<<"$output"
+}
+
+@test "flags an unguarded bare \${arr[@]} in a .claude/hooks/lib file that sets no set -u of its own" {
+  fixture_lib inherits.sh $'#!/usr/bin/env bash\n# shellcheck shell=bash\narr=()\nprintf "%s\\n" "${arr[@]}"'
+  run bash -c "cd '$TMP' && bash '$LINTER'"
+  [ "$status" -eq 1 ]
+  grep -qF -- ".claude/hooks/lib/inherits.sh:4" <<<"$output"
+  grep -qF -- "unguarded" <<<"$output"
+}
+
+@test "recurses into .claude/hooks subdirectories" {
+  fixture_lib sub/deep.sh $'#!/usr/bin/env bash\nset -u\narr=()\nprintf "%s\\n" "${arr[@]}"'
+  run bash -c "cd '$TMP' && bash '$LINTER'"
+  [ "$status" -eq 1 ]
+  grep -qF -- ".claude/hooks/lib/sub/deep.sh:4" <<<"$output"
+}
+
+@test "an offset-guarded expansion in a .claude/hooks/lib file passes" {
+  fixture_lib probe.sh $'#!/usr/bin/env bash\narr=()\nprintf "%s\\n" ${arr[@]+"${arr[@]}"}'
+  run bash -c "cd '$TMP' && bash '$LINTER'"
+  [ "$status" -eq 0 ]
+}
+
+@test "a count-guarded expansion in a .claude/hooks/lib file passes" {
+  fixture_lib probe.sh $'#!/usr/bin/env bash\narr=()\n[ "${#arr[@]}" -eq 0 ] || printf "%s\\n" "${arr[@]}"'
+  run bash -c "cd '$TMP' && bash '$LINTER'"
+  [ "$status" -eq 0 ]
+}
+
+@test "a bare expansion in a full-line comment in a .claude/hooks/lib file is skipped" {
+  fixture_lib probe.sh $'#!/usr/bin/env bash\n# printf "%s\\n" "${arr[@]}"'
+  run bash -c "cd '$TMP' && bash '$LINTER'"
+  [ "$status" -eq 0 ]
+}
+
+@test "a root .claude/hooks script with no set -u of its own is still not scanned" {
+  fixture_hook $'#!/usr/bin/env bash\narr=()\nprintf "%s\\n" "${arr[@]}"'
+  run bash -c "cd '$TMP' && bash '$LINTER'"
+  [ "$status" -eq 0 ]
+}

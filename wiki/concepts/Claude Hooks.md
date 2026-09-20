@@ -2,7 +2,7 @@
 type: concept
 status: active
 created: 2026-04-20
-updated: 2026-09-08
+updated: 2026-09-20
 tags: [concept, claude, hooks]
 ---
 
@@ -23,7 +23,63 @@ The consequence is a rule about how commands are composed, not just about hooks:
 
 ## Bundled hooks
 
-Hooks are grouped by the safeguard they enforce, not by event type.
+Hooks are grouped by the safeguard they enforce, not by event type. The index below is the scannable view of the same set: one row per hook script at the root of `.claude/hooks/`, answering what fires it and what it is for. The subsections after it carry the reasoning, the payload shapes, and the failure modes, which is what a reader needs once the index has pointed them at a name.
+
+The index is held to the tree by `.gaia/scripts/lint-hook-wiki-inventory.sh`, which reds when a hook exists that this page never mentions. That check is what makes an enumeration safe to keep on a page at all: an unenforced list caches a fact and drifts from it silently, and the hook layer is the surface where that already happened once.
+
+**Event or invoker.** Most rows name the event and matcher the hook is registered on in `.claude/settings.json`. A few name an invoker instead: they are not registered on any event, and are called by path from an agent definition or another hook, so the page has no event section for them to live in. They are otherwise ordinary hooks.
+
+The sourced libraries under `.claude/hooks/lib/` are deliberately absent. They are function modules with no event and no invoker of their own, loaded into the hooks above; the two shared-decision subsections below are where one gets documented when it is worth documenting.
+
+| Hook | Event or invoker | Purpose |
+|---|---|---|
+| `audit-disposition-check.sh` | PreToolUse (Bash) | Denies `gh pr merge` until every recorded audit finding carries a disposition. |
+| `audit-residual-shape-check.sh` | PreToolUse (Bash) | Denies `gh pr merge` when the audit residuals in the pull-request body are malformed. |
+| `audit-stamp-trailer.sh` | Invoked by path from the `code-audit-*` agent definitions | Writes the `GAIA-Audit` commit trailer on HEAD for a member that earned its clearance marker. |
+| `block-bare-test.sh` | PreToolUse (Bash) | Denies a bare `pnpm test` / `npm test` that would start the watcher instead of exiting. |
+| `block-env-read.sh` | PreToolUse (Bash, Read, Grep) | Read-side guard for dotenv paths, across all three tool tiers that can reach one. |
+| `block-env-write.sh` | PreToolUse (Edit\|Write\|MultiEdit) | Refuses a write targeting a `.env` file. |
+| `block-eslint-config-edit.sh` | PreToolUse (Edit\|Write\|MultiEdit) | Puts every edit to an ESLint flat config to the operator, on the filename alone. |
+| `block-fourth-audit-round.sh` | PreToolUse (Agent\|Task), SessionStart (clear) | Denies a fourth Code Audit Team dispatch wave in one session on one branch. |
+| `block-invalid-yaml-write.sh` | PreToolUse (Edit\|Write\|MultiEdit) | Denies a write that would turn a valid YAML file or frontmatter block invalid. |
+| `block-lockfile-edit.sh` | PreToolUse (Edit\|Write\|MultiEdit) | Refuses a direct edit to the package lockfile. |
+| `block-main-destructive-git.sh` | PreToolUse (Bash) | Denies a commit on `main`/`master`, a force-push to it, and a push destined for it. |
+| `block-manifest-write.sh` | PreToolUse (Bash, Edit\|Write\|MultiEdit) | Refuses a write to the release-generated manifest, through the edit tools and the common Bash vectors alike. |
+| `block-no-verify.sh` | PreToolUse (Bash) | Denies a `git commit` or `git push` carrying a hook-bypass token. |
+| `block-rm-rf.sh` | PreToolUse (Bash) | Denies a catastrophic `rm -rf` target, honoring the state registry's whitelist. |
+| `block-secrets-read.sh` | PreToolUse (Bash, Read, Grep) | Read-side guard for key and certificate paths, across all three tool tiers. |
+| `block-secrets-write.sh` | PreToolUse (Edit\|Write\|MultiEdit) | Denies a write whose content carries an obvious secret. |
+| `block-selfheal-paths.sh` | PreToolUse (Bash, Edit\|Write\|MultiEdit) | Denies a Code Audit Team member editing outside its own self-heal remit. |
+| `block-serena-cross-tree-activation.sh` | PreToolUse (`mcp__serena__activate_project`) | Denies a Serena activation naming a tree other than the acting one. |
+| `block-spec-plan-chain.sh` | PreToolUse (Bash, Read, Skill), SessionStart (clear) | Stops a session that authored a SPEC from going straight on to plan it. |
+| `block-vitest-globals-tsconfig.sh` | PreToolUse (Edit\|Write\|MultiEdit) | Refuses adding `vitest/globals` to a tsconfig. |
+| `block-worktree-path-mismatch.sh` | PreToolUse (Edit\|Write\|MultiEdit) | Inside a linked worktree, denies an edit whose `file_path` resolves to the main checkout. |
+| `capture-gh-artifact.sh` | PostToolUse (Bash) | Records the pull request a `gh pr create` produced, so plan execution can name it in its cost rows. |
+| `capture-red-observations.sh` | PostToolUse (Bash) | Records a genuinely-failing test run in the RED ledger, the observing half of the RED-verification gate. |
+| `check-i18n-strings.sh` | PreToolUse (Edit\|Write\|MultiEdit) | Advisory: warns on a hardcoded user-facing string in JSX. |
+| `check-story-exists.sh` | PreToolUse (Edit\|Write\|MultiEdit) | Advisory: reminds to add a Storybook story for a new component. |
+| `debt-sentinel-touch.sh` | PostToolUse (Bash) | Arms the debt-count staleness sentinel after a `gh` command that mutates the backlog. |
+| `debt-session-reconcile.sh` | SessionStart (startup\|resume) | Reconciles a shown `Run /gaia-debt` nudge against the live backlog. |
+| `distribution-preflight-check.sh` | PreToolUse (Bash) | Denies `gh pr create` when a file the branch newly ships has no ship-or-withhold answer. |
+| `issue-claim-release.sh` | PostToolUse (Bash) | Strips the `in-progress` claim from every issue a merged pull request closes. |
+| `local-janitor.sh` | Invoked by path from `wiki-session-start.sh`; also runnable on its own | Bounded garbage collection and reconciliation over GAIA's local working state. |
+| `post-audit-status.sh` | Invoked by path by the orchestrating session, after every member is dispositioned | Posts the `GAIA-Audit` commit status on HEAD. |
+| `post-findings-block-on-merge.sh` | PreToolUse (Bash) | Posts the machine-readable findings block on a local-mode merge, so it counts toward the recurrence tally. Never blocks. |
+| `pr-merge-audit-check.sh` | PreToolUse (Bash) | Blocks `gh pr merge` until every dispatched Code Audit Team member has written its clearance marker. |
+| `provision-worktree.sh` | PostToolUse (EnterWorktree), SessionStart (startup\|resume) | Re-links a linked worktree's shared state and regenerates what it needs generated. |
+| `red-verify-commit-check.sh` | PreToolUse (Bash) | Denies `git commit` when a new-at-HEAD passing test has no matching failing run on record. |
+| `serena-code-search-guard.sh` | PreToolUse (Bash, Grep) | Routes a symbol-level search to Serena's symbol tools rather than ripgrep, with a block-once escape. |
+| `token-rollup-merge.sh` | PostToolUse (Bash) | Renders the full-cycle token-cost rollup once a pull request merges. |
+| `token-tally-git-op.sh` | PreToolUse (Bash) | Records the session's ground-truth token counts ahead of a git operation. |
+| `token-tally-review.sh` | PostToolUse (Bash), Stop | Captures a code-review-audit run as its own cost record, on either end-of-context trigger. |
+| `wiki-commit-nudge.sh` | PostToolUse (Bash) | Nudges a wiki refresh after a commit that outpaces the wiki's recorded state. |
+| `wiki-drift-check.sh` | UserPromptSubmit | Detects drift between the wiki's recorded state and HEAD. |
+| `wiki-recompact-inject.sh` | UserPromptSubmit | Re-injects the hot cache on the first turn after a compaction, then clears the sentinel. |
+| `wiki-recompact-sentinel.sh` | PostCompact | Drops the sentinel a compaction happened, which the inject hook acts on next turn. |
+| `wiki-session-start.sh` | SessionStart (startup\|resume) | Records HEAD for the acting tree and delegates to `local-janitor.sh`. |
+| `wiki-session-stop.sh` | Stop | Prompts to refresh the hot cache, and nags when the session's commits outran the wiki's state. |
+| `wiki-squash-autocommits.sh` | Stop | Squashes the session's trailing run of wiki auto-commits into one. |
+| `worthiness-presence-check.sh` | PreToolUse (Bash) | Denies `gh pr merge` when an emergent test the pull request changed carries no worthiness verdict. |
 
 ### Source-edit safeguards (Edit|Write|MultiEdit)
 

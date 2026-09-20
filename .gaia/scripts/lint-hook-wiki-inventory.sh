@@ -1,12 +1,23 @@
 #!/usr/bin/env bash
 # shellcheck shell=bash
 #
-# lint-hook-wiki-inventory.sh: flag every hook registered in
-# .claude/settings.json that wiki/concepts/Claude Hooks.md does not mention.
-# Exit 0 when every registered hook appears on the page, 1 with a per-hook
-# report on any gap, 2 on the check's own failure, and 130 or 143 when a SIGINT
-# or SIGTERM interrupts it (see the trap arms in main). Run it from anywhere:
+# lint-hook-wiki-inventory.sh: flag every hook that
+# wiki/concepts/Claude Hooks.md does not mention. Exit 0 when every hook
+# appears on the page, 1 with a per-hook report on any gap, 2 on the check's
+# own failure, and 130 or 143 when a SIGINT or SIGTERM interrupts it (see the
+# trap arms in main). Run it from anywhere:
 # `bash .gaia/scripts/lint-hook-wiki-inventory.sh [<repo_root>]`.
+#
+# TWO SOURCES, UNIONED. A hook is a subject when .claude/settings.json
+# registers it, or when it is an `.sh` at the root of .claude/hooks/. Neither
+# source is complete alone: a registration can name a path below a
+# subdirectory, which the glob does not reach, and a hook invoked by path from
+# an agent definition or another hook is registered on no event at all, which
+# the settings read does not reach. The second gap is the dangerous one,
+# because a hook with no event is a hook the page's event-organized structure
+# has no section for, so it is both the likeliest to be left off and the one
+# whose absence a registrations-only subject set cannot see. See root_hooks
+# below for why that glob deliberately does not descend into lib/.
 #
 # The page's `## Bundled hooks` section presents itself as the inventory of the
 # hooks GAIA registers, and every reader treats it as complete: an agent or a
@@ -26,18 +37,18 @@
 # the pull request that registers the hook instead of on an audit round some
 # months later.
 #
-# ONE DIRECTION, deliberately. This asks only whether every REGISTERED hook is
-# mentioned; it does not ask whether every hook the page names is still
-# registered. The reverse question needs a parse of the page rather than a
+# ONE DIRECTION, deliberately. This asks only whether every hook in the subject
+# set is mentioned; it does not ask whether every hook the page names still
+# exists. The reverse question needs a parse of the page rather than a
 # membership test against it, because the page legitimately names shell that is
-# not a registered hook -- the sourced libraries under .claude/hooks/lib/, and
-# the .gaia/scripts/ guards its "Adding hooks" section points at -- so a naive
-# reverse sweep would report each of those as a stale entry. A de-registered
-# hook left on the page is real drift and is not covered here; it is worth its
-# own check when it happens, written against a parse that can tell an inventory
+# not a subject -- the sourced libraries under .claude/hooks/lib/, and the
+# .gaia/scripts/ guards its "Adding hooks" section points at -- so a naive
+# reverse sweep would report each of those as a stale entry. A deleted hook
+# left on the page is real drift and is not covered here; it is worth its own
+# check when it happens, written against a parse that can tell an inventory
 # entry from a mention.
 #
-# MENTION, not entry shape. A registered hook counts as inventoried when its
+# MENTION, not entry shape. A hook counts as inventoried when its
 # basename appears anywhere in the page, which is weaker than "has an entry in
 # the shape the other entries use" and is chosen for having no false-positive
 # class at all: a hook named in the section prose, or under a path prefix, is
@@ -47,8 +58,9 @@
 # would red on prose it has no business grading.
 #
 # Fail-closed by construction, at each stage guards-must-fail.md names:
-#   discovery -- settings.json missing, unparseable, or yielding no registered
-#                hook at all exits 2, never 0
+#   discovery -- settings.json missing or unparseable, the hooks directory
+#                missing, or the two sources together yielding no hook at all,
+#                each exits 2, never 0
 #   arming    -- a missing or empty inventory page exits 2
 #   match     -- the membership test is a fixed-string search for the basename,
 #                so it neither depends on the entry's surrounding markup nor
@@ -67,8 +79,10 @@ readonly PROG="lint-hook-wiki-inventory"
 # would leave the file behind on every clean run.
 LIST_FILE=''
 
-# The two subjects, each named once.
+# The subjects, each named once: the two the subject set is read from, and the
+# page it is compared against.
 readonly SETTINGS=".claude/settings.json"
+readonly HOOKS_DIR=".claude/hooks"
 readonly INVENTORY="wiki/concepts/Claude Hooks.md"
 
 # The one spelling of a hook name inside a registration command, named once and
@@ -129,6 +143,31 @@ registered_hooks() {
     sort -u
 }
 
+# root_hooks <repo_root>
+#
+# Print every hook script at the root of .claude/hooks/ as its basename, one
+# per line, sorted. Prints nothing when the directory holds no `.sh`.
+#
+# THE ROOT ONLY, and the non-descending glob is the point rather than an
+# oversight. lib/ holds sourced function modules with no event and no invoker,
+# which are not entries in an inventory of hooks; a descending walk would
+# demand a page entry for each of them and red on a tree that is correct.
+#
+# This is the second of the two sources the subject set unions, and the one
+# that makes the set complete. A registration is not the only way a hook comes
+# to exist: one invoked by path from an agent definition or another hook is
+# registered on no event at all. A subject set read from settings.json alone
+# therefore omits precisely the hooks the page has no event section to file
+# under, which are the ones most likely to be left off it, and their omission
+# from the set is indistinguishable from a page that covers them.
+root_hooks() {
+  local root="$1" f
+  for f in "$root/.claude/hooks/"*.sh; do
+    [ -f "$f" ] || continue
+    printf '%s\n' "${f##*/}"
+  done | LC_ALL=C sort -u
+}
+
 main() {
   local root
   if [ "$#" -gt 1 ]; then
@@ -170,6 +209,15 @@ main() {
   fi
   if [ ! -f "$root/$SETTINGS" ]; then
     printf '%s: settings file not found: %s\n' "$PROG" "$SETTINGS" >&2
+    return 2
+  fi
+  # The second subject-set source has to be armed too. An absent hooks
+  # directory yields no on-disk name, which is silently the same as a tree
+  # whose hooks are all registered, so without this arm the check would quietly
+  # fall back to the registrations alone -- the exact discovery-stage fail-open
+  # this source exists to close.
+  if [ ! -d "$root/$HOOKS_DIR" ]; then
+    printf '%s: hooks directory not found: %s\n' "$PROG" "$HOOKS_DIR" >&2
     return 2
   fi
 
@@ -238,18 +286,28 @@ main() {
     return 2
   fi
 
-  registered_hooks "$root" >"$LIST_FILE"
+  { registered_hooks "$root"; root_hooks "$root"; } | LC_ALL=C sort -u >"$LIST_FILE"
 
-  # An empty set is never a clean tree here: this repository registers dozens of
-  # hooks, and a discovery that finds none of them would report the inventory
-  # complete having compared nothing. By the time this runs the arm above has
-  # ruled out an unreadable spelling, so the remaining cause is a settings file
-  # whose `hooks` key registers nothing naming `.claude/hooks/` at all.
+  # An empty set is never a clean tree here: this repository both registers
+  # hooks and carries them on disk, and a discovery that finds neither would
+  # report the inventory complete having compared nothing.
+  #
+  # TWO conditions reach this branch now, and the message names both rather
+  # than the one that prompted it, per .claude/rules/partial-cause-reporting.md:
+  # a settings file registering nothing under .claude/hooks/, and a hooks
+  # directory holding no `.sh` at its root. They are not distinguished because
+  # the set is a union, so an empty union means BOTH sources came back empty
+  # and the operator's next step is the same either way: find out why the tree
+  # has no hooks. The arms above have already ruled out the causes whose
+  # repairs do differ -- an unreadable spelling, unparseable settings, an
+  # absent settings file, an absent hooks directory -- so none of them can be
+  # what the operator is reading this message about.
   if [ ! -s "$LIST_FILE" ]; then
-    printf '%s: discovery found no hook registered under .claude/hooks/ in %s.\n' "$PROG" "$SETTINGS" >&2
-    printf 'No command under the hooks key names that directory; %s parses as JSON, and every\n' "$SETTINGS" >&2
-    printf 'command that does name it was readable, so this is a registration set, not a\n' >&2
-    printf 'spelling this check failed to parse.\n' >&2
+    printf '%s: discovery found no hook, from either source.\n' "$PROG" >&2
+    printf 'No command under the hooks key of %s names .claude/hooks/, AND %s/ holds no\n' "$SETTINGS" "$HOOKS_DIR" >&2
+    printf '.sh at its root. %s parses as JSON, every command that does name the directory\n' "$SETTINGS" >&2
+    printf 'was readable, and the directory exists, so this is a tree with no hooks in it\n' >&2
+    printf 'rather than a spelling or a path this check failed to read.\n' >&2
     return 2
   fi
 
@@ -258,18 +316,18 @@ main() {
     [ -n "$hook" ] || continue
     grep -qF -- "$hook" "$root/$INVENTORY" && continue
     if [ "$findings" -eq 0 ]; then
-      printf '%s: hooks registered in %s that %s never mentions:\n' \
-        "$PROG" "$SETTINGS" "$INVENTORY" >&2
+      printf '%s: hooks that %s never mentions:\n' "$PROG" "$INVENTORY" >&2
     fi
     printf '  %s\n' "$hook" >&2
     findings=$((findings + 1))
   done <"$LIST_FILE"
 
   if [ "$findings" -gt 0 ]; then
-    printf '\n%s: %d registered hook(s) above are absent from the bundled-hooks inventory.\n' \
+    printf '\n%s: %d hook(s) above are absent from the bundled-hooks inventory.\n' \
       "$PROG" "$findings" >&2
-    printf 'Add one entry per hook to %s, in the shape the existing entries use,\n' "$INVENTORY" >&2
-    printf 'describing what it guards and on which event it fires.\n' >&2
+    printf 'Add one row per hook to the index table in %s, in the shape the existing\n' "$INVENTORY" >&2
+    printf 'rows use, naming what fires it and what it is for. A hook registered on no\n' >&2
+    printf 'event names its invoker in place of an event.\n' >&2
     return 1
   fi
   printf '%s: clean\n' "$PROG"
