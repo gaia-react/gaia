@@ -534,8 +534,7 @@ run_staged() {
 # are pinned so that routing it through a Bash tool call reds here rather than
 # silently denying the auto-commit chain.
 @test "the wiki squash's own no-verify commit is denied through the Bash tool" {
-  local root line
-  root=$(cd "$HOOKS_SRC/../.." && pwd)
+  local line
   line=$(grep -F -- '--no-verify' "$HOOKS_SRC/wiki-squash-autocommits.sh" \
          | grep -F 'commit -m' | sed -E 's/^[[:space:]]*//; s/[[:space:]]*>.*$//')
   [ -n "$line" ]
@@ -544,15 +543,21 @@ run_staged() {
   assert_denied_by_json
 }
 
+# The route that matters is an instruction surface an agent reads and then
+# types into the Bash tool, so the search covers those surfaces and matches an
+# INVOCATION rather than a mention: `wiki/` and the rules already describe the
+# script in prose, and a descriptive mention routes nothing. `.claude/hooks`
+# and `.gaia/scripts` are deliberately absent. A script that runs the hook
+# internally is not a route either, because the guard reads the command the
+# agent typed, not what that command's script does once it is running.
 @test "the wiki squash script is reached only through its hook registration" {
-  local root hits
+  local root hits invocation
   root=$(cd "$HOOKS_SRC/../.." && pwd)
+  invocation='(bash|sh|source)[[:space:]]+[^[:space:]`"]*\.claude/hooks/wiki-squash-autocommits\.sh|(\./)?\.claude/hooks/wiki-squash-autocommits\.sh[[:space:]]*$|\./\.claude/hooks/wiki-squash-autocommits\.sh'
   grep -qF 'wiki-squash-autocommits.sh' "$root/.claude/settings.json"
-  # Any instruction surface or script naming it is a candidate route to the
-  # Bash tool; the manifests that merely declare it are not.
-  hits=$(grep -rlF 'wiki-squash-autocommits.sh' \
+  hits=$(grep -rlE "$invocation" \
            "$root/.claude/skills" "$root/.claude/commands" "$root/.claude/rules" \
-           "$root/.claude/agents" "$root/.claude/hooks" "$root/.gaia/scripts" \
+           "$root/.claude/agents" "$root/.claude/instructions" "$root/wiki" \
            2>/dev/null || true)
   [ -z "$hits" ]
 }
