@@ -1087,3 +1087,84 @@ run_hop() {
   run_hop 'git switch other' sid-peer
   assert_allowed_by_json
 }
+
+# --- command-word derivation: prefixes that hid `git` from the segment walk ---
+
+# `NAME+=value` is a command prefix the shell accepts exactly as `NAME=value`
+# (`bash -c 'zz+=1 env'` prints `zz=1`), so a strip reading only the `=`
+# spelling leaves the command word unexposed and the whole segment unread.
+@test "a NAME+=value prefix does not hide the git command word" {
+  on_main
+  run_hook 'zz+=1 git commit -m x'
+  assert_denied_by_json
+  run_hook '(name+=v git commit -m x)'
+  assert_denied_by_json
+  run_hook 'zz+=1 git push'
+  assert_denied_by_json
+  run_hook 'a=1 b+=2 git commit -m x'
+  assert_denied_by_json
+}
+
+# A reserved word or grouping token stands in command position with no
+# `| & ; ( )` between it and the command word, so the segment reaches the walk
+# with the reserved word read as its command.
+@test "a reserved word or grouping token does not hide the git command word" {
+  on_main
+  run_hook 'if true; then git commit -m y; fi'
+  assert_denied_by_json
+  run_hook '{ git commit -m y; }'
+  assert_denied_by_json
+  run_hook '! git commit -m y'
+  assert_denied_by_json
+  run_hook 'time git commit -m y'
+  assert_denied_by_json
+  run_hook 'for f in x; do git commit -m y; done'
+  assert_denied_by_json
+  run_hook 'while :; do git push; done'
+  assert_denied_by_json
+  run_hook 'until git push; do echo retry; done'
+  assert_denied_by_json
+  run_hook 'if false; then echo no; else git commit -m y; fi'
+  assert_denied_by_json
+}
+
+# A word merely beginning with a reserved word is an ordinary command name, so
+# the strip requires the whitespace that makes the reserved word a word.
+@test "a command name beginning with a reserved word is left alone" {
+  on_main
+  run_hook 'iffy git commit -m y'
+  assert_allowed_by_json
+  run_hook 'dotimes git commit -m y'
+  assert_allowed_by_json
+}
+
+# A `$( )` inside git's OWN arguments cuts the segment at its parens, so no one
+# segment carries both the command word and the subcommand the rules arm on.
+#
+# A substitution standing in a GLOBAL `-C`'s value is a separate limit and is
+# deliberately not asserted here: the segment is read now, but `parse_git_globals`
+# hands the branch read an unexpandable directory word, which resolves to no
+# branch and denies nothing. That limit is the one `parse_git_globals` already
+# states, and closing it means making the branch read fail closed on a `-C`
+# value it cannot resolve, not widening this walk.
+@test "a command substitution inside git's arguments does not hide the subcommand" {
+  on_main
+  run_hook 'git -c user.name="$(whoami)" commit -m y'
+  assert_denied_by_json
+  run_hook 'git commit -m "$(date)"'
+  assert_denied_by_json
+  on_feature
+  run_hook 'git push "$(echo origin)" main'
+  assert_denied_by_json
+}
+
+# The collapse must not hand a non-git segment the substitution's own text: the
+# body still reaches the walk as its own segment, which is where a command
+# inside one is read.
+@test "text inside a collapsed substitution does not arm the outer segment" {
+  on_feature
+  run_hook 'echo "$(git log)" main'
+  assert_allowed_by_json
+  run_hook 'grep -R "$(echo commit)" .'
+  assert_allowed_by_json
+}

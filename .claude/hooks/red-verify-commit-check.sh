@@ -194,17 +194,66 @@ split_git_words() {
   return 0
 }
 
+# collapsed_substitutions <text>: print the command once more with every
+# `$( … )` span replaced by a single placeholder word, and print nothing when
+# the text carries none or the collapse changes nothing. Cutting at every `(`
+# and `)` is what lets the walk read a commit INSIDE a substitution, and is
+# also what splits a substitution standing in git's OWN arguments away from the
+# command word: `git -C "$(pwd)" commit -m x` leaves no segment carrying both
+# `git` and `commit`, so the gate saw no commit at all. This line is read IN
+# ADDITION to the command's own, so the body still reaches the walk as its own
+# segment and only the outer invocation is rejoined. The placeholder is a bare
+# `_` so a `commit` written inside the span cannot arm the rejoined segment
+# with a subcommand it never spelled.
+#
+# Innermost first, so a nested span collapses over successive passes; the bound
+# is a backstop. A span crossing a newline is left alone, since sed reads a
+# line at a time: that leaves the segment cut where it already was, which is
+# the direction that hides nothing the walk reads today.
+# block-no-verify.sh and block-main-destructive-git.sh carry the same function,
+# and block-no-verify.bats pins the copies identical.
+collapsed_substitutions() {
+  local text="$1" prev pass=0
+  # shellcheck disable=SC2016 # a literal opener matched in the text, not an expansion
+  case "$text" in *'$('*) ;; *) return 0 ;; esac
+  while [ "$pass" -lt 8 ]; do
+    prev="$text"
+    text=$(printf '%s' "$text" | sed -E 's/\$\([^()]*\)/_/g')
+    [ "$text" = "$prev" ] && break
+    pass=$((pass + 1))
+  done
+  [ "$text" = "$1" ] || printf '%s\n' "$text"
+  return 0
+}
+
 saw_commit=0
 commit_c=""
 while IFS= read -r seg; do
-  # Command word = first token after leading whitespace + env-var assignments.
-  seg_cmd=$(printf '%s' "$seg" | sed -E 's/^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)*//')
+  # Command word = the first token past any leading whitespace, env-var
+  # assignment prefix, or shell reserved word. bash accepts `NAME+=value` as a
+  # command prefix exactly as it accepts `NAME=value` (`bash -c 'zz+=1 env'`
+  # prints `zz=1`), and a reserved word or grouping token stands in command
+  # position with no `| & ; ( )` ahead of the command word for the walk to cut
+  # at, so either one hid the whole invocation from a derivation reading only
+  # `NAME=value`. bash 3.2 does not populate BASH_REMATCH reliably, so strip
+  # with sed rather than a capture loop.
+  #
+  # Honest limit: a command WRAPPER (`env`, `command`, `exec`, `nohup`,
+  # `timeout`, `xargs`) also stands where the command word is read and is NOT
+  # stripped, so it still hides the invocation. Each carries its own option
+  # grammar, and a blind strip would misread `env -i git …` and `timeout 5 git
+  # …`, so closing them needs a per-wrapper option table rather than this list.
+  #
+  # block-no-verify.sh and block-main-destructive-git.sh carry this expression
+  # too, and block-no-verify.bats pins the copies identical: a widening applied
+  # to one and not the rest leaves the gap open in whichever copy was missed.
+  seg_cmd=$(printf '%s' "$seg" | sed -E 's/^[[:space:]]*(([A-Za-z_][A-Za-z0-9_]*\+?=[^[:space:]]*|[{!]|elif|else|while|until|then|time|do|if)[[:space:]]+)*//')
   [[ "$seg_cmd" =~ ^git([[:space:]]|$) ]] || continue
   if [[ "$seg" =~ (^|[[:space:]])commit([[:space:]]|$) ]]; then
     saw_commit=1
     commit_c=$(git_segment_c "$seg_cmd")
   fi
-done < <(printf '%s\n' "$cmd" | tr '|&;()' '\n')
+done < <({ printf '%s\n' "$cmd"; collapsed_substitutions "$cmd"; } | tr '|&;()' '\n')
 
 [ "$saw_commit" -eq 1 ] || exit 0
 

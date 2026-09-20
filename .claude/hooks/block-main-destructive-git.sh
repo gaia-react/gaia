@@ -645,15 +645,64 @@ hidden_bodies() {
   return 0
 }
 
+# collapsed_substitutions <text>: print the command once more with every
+# `$( … )` span replaced by a single placeholder word, and print nothing when
+# the text carries none or the collapse changes nothing. Cutting at every `(`
+# and `)` is what lets the walk read a command INSIDE a substitution, and is
+# also what splits a substitution standing in git's OWN arguments away from the
+# command word: `git -C "$(pwd)" commit` leaves no segment carrying both `git`
+# and `commit`, so every rule armed on the subcommand went unarmed. This line
+# is read IN ADDITION to the command's own, so the body still reaches the walk
+# as its own segment and only the outer invocation is rejoined. The placeholder
+# is a bare `_` so a subcommand or a refspec written inside the span cannot arm
+# the rejoined segment with something it never spelled. It is emitted ahead of
+# the hidden bodies so those stay the last lines read, which is what keeps a
+# `cd` anywhere in the command governing them.
+#
+# Innermost first, so a nested span collapses over successive passes; the bound
+# is a backstop. A span crossing a newline is left alone, since sed reads a
+# line at a time: that leaves the segment cut where it already was, which is
+# the direction that hides nothing the walk reads today.
+# block-no-verify.sh and red-verify-commit-check.sh carry the same function,
+# and block-no-verify.bats pins the copies identical.
+collapsed_substitutions() {
+  local text="$1" prev pass=0
+  # shellcheck disable=SC2016 # a literal opener matched in the text, not an expansion
+  case "$text" in *'$('*) ;; *) return 0 ;; esac
+  while [ "$pass" -lt 8 ]; do
+    prev="$text"
+    text=$(printf '%s' "$text" | sed -E 's/\$\([^()]*\)/_/g')
+    [ "$text" = "$prev" ] && break
+    pass=$((pass + 1))
+  done
+  [ "$text" = "$1" ] || printf '%s\n' "$text"
+  return 0
+}
+
 lead_cd=""
 cd_tracking=1
 if cmd_has_unquoted_group "$cmd"; then cd_tracking=0; fi
 
 while IFS= read -r seg; do
-  # Command word = the first token after any leading whitespace + env-var
-  # assignments (`WORD=value `). bash 3.2 does not populate BASH_REMATCH
-  # reliably, so strip with sed rather than a capture loop.
-  seg_cmd=$(printf '%s' "$seg" | sed -E 's/^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)*//')
+  # Command word = the first token past any leading whitespace, env-var
+  # assignment prefix, or shell reserved word. bash accepts `NAME+=value` as a
+  # command prefix exactly as it accepts `NAME=value` (`bash -c 'zz+=1 env'`
+  # prints `zz=1`), and a reserved word or grouping token stands in command
+  # position with no `| & ; ( )` ahead of the command word for the walk to cut
+  # at, so either one hid the whole invocation from a derivation reading only
+  # `NAME=value`. bash 3.2 does not populate BASH_REMATCH reliably, so strip
+  # with sed rather than a capture loop.
+  #
+  # Honest limit: a command WRAPPER (`env`, `command`, `exec`, `nohup`,
+  # `timeout`, `xargs`) also stands where the command word is read and is NOT
+  # stripped, so it still hides the invocation. Each carries its own option
+  # grammar, and a blind strip would misread `env -i git …` and `timeout 5 git
+  # …`, so closing them needs a per-wrapper option table rather than this list.
+  #
+  # block-no-verify.sh and red-verify-commit-check.sh carry this expression
+  # too, and block-no-verify.bats pins the copies identical: a widening applied
+  # to one and not the rest leaves the gap open in whichever copy was missed.
+  seg_cmd=$(printf '%s' "$seg" | sed -E 's/^[[:space:]]*(([A-Za-z_][A-Za-z0-9_]*\+?=[^[:space:]]*|[{!]|elif|else|while|until|then|time|do|if)[[:space:]]+)*//')
 
   # A target that does not resolve as this repository CLEARS the tracked
   # directory rather than leaving the previous one standing: the command has
@@ -734,6 +783,6 @@ while IFS= read -r seg; do
       deny "This push's refspec names main, master or HEAD, which is forbidden from any branch (wiki/concepts/Git Workflow.md). Name the branch you are pushing explicitly and open a PR."
     fi
   fi
-done < <({ printf '%s\n' "$cmd"; hidden_bodies "$cmd"; } | tr '|&;()' '\n')
+done < <({ printf '%s\n' "$cmd"; collapsed_substitutions "$cmd"; hidden_bodies "$cmd"; } | tr '|&;()' '\n')
 
 exit 0
