@@ -481,8 +481,13 @@ git commit -m y"
 # one moved into, so a target that does not resolve must keep the tracked
 # directory rather than clear it. The single-`cd` shape above pins the
 # clear-to-nothing case from the main checkout, where the fallback happens to
-# be main either way; only a two-hop shape read from another checkout tells
-# the two apart.
+# be main either way.
+#
+# This case reads the two-hop shape from another checkout. It does not isolate
+# the keep on its own: the main checkout is also an ambiguity candidate here,
+# so the deny it asserts has two possible sources. The pair further down,
+# driving a fixture where no ambiguity candidate stands on main, is what pins
+# the keep by itself.
 @test "a second cd whose target does not resolve keeps the checkout the first one moved into" {
   on_main
   local wt="$BATS_TEST_TMPDIR/wt"
@@ -565,6 +570,36 @@ git commit -m y"
   # shellcheck disable=SC2016 # the hook must receive the unexpanded variable
   run_hook_from 'cd "$MAIN" && git commit -m x' "$wt"
   assert_allowed_by_json
+}
+
+# The two arms this branch adds to the directory read, each isolated from the
+# ambiguity arm that would otherwise answer for them.
+#
+# Every other case here is driven from a checkout that is itself on main, or
+# alongside a main checkout that is, so the ambiguity arm finds a candidate on
+# main and denies whatever the two arms do: revert either one and the suite
+# stays green. These drive three checkouts instead, with the session's own and
+# the main checkout BOTH off main, which leaves the tracked `cd` target and
+# the `-C` fallback as the only things that can produce the deny.
+three_checkouts() {
+  on_feature
+  git -C "$REPO" worktree add --quiet -b feature-a "$BATS_TEST_TMPDIR/wt-a"
+  git -C "$REPO" worktree add --quiet -b master "$BATS_TEST_TMPDIR/wt-b"
+}
+
+@test "the kept cd target is what denies when no ambiguity candidate is on main" {
+  three_checkouts
+  run_hook_from "cd '$BATS_TEST_TMPDIR/wt-b'; cd /nonexistent; git commit -m x" "$BATS_TEST_TMPDIR/wt-a"
+  assert_denied_by_json
+  run_hook_from "cd '$BATS_TEST_TMPDIR/wt-b'; cd /nonexistent; git push" "$BATS_TEST_TMPDIR/wt-a"
+  assert_denied_by_json
+}
+
+@test "the -C fallback is what denies when no ambiguity candidate is on main" {
+  three_checkouts
+  # shellcheck disable=SC2016 # the hook must receive the unexpanded variable
+  run_hook_from "cd '$BATS_TEST_TMPDIR/wt-b'; git -C \"\$UNSET_VAR\" commit -m x" "$BATS_TEST_TMPDIR/wt-a"
+  assert_denied_by_json
 }
 
 @test "a -C into a linked worktree does not lend its branch to a later bare commit on main" {

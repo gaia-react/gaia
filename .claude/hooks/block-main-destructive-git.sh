@@ -859,11 +859,31 @@ while IFS= read -r seg; do
   # branch read answer nothing, and every rule armed on the branch allows. An
   # unresolvable value therefore falls back to the tracked `cd`, else to this
   # hook's own directory, and marks the segment ambiguous so the rules below
-  # test the other checkouts it could name too. What that costs is a `-C`
-  # naming a real sibling checkout the scan could not expand, which is read
-  # against the wrong tree and denied: a false deny carrying the `!`-prefix
-  # escape rather than a miss. A foreign repository the scan CAN read never
-  # reaches this line.
+  # test the other checkouts it could name too. A foreign repository the scan
+  # CAN read never reaches this line.
+  #
+  # Two populations pay for that, and the second is the larger one.
+  #
+  # A `-C` naming a real sibling checkout the scan could not expand is read
+  # against the wrong tree and denied. That is a false deny rather than a
+  # miss, and the escape is prompt-level bang mode, not a `!` written into the
+  # command: this file's own command-word strip consumes a leading `!` as the
+  # shell negation, so a command spelled that way is still read and still
+  # denied.
+  #
+  # The larger one is command TEXT that merely quotes this shape. The segment
+  # walk splits on separators without modelling quoting, so a line beginning
+  # `cd <something-unreadable>` inside a quoted string, with a `git commit` or
+  # `git push` word after it, reads as an invocation. That population is not
+  # new, but the ambiguity arm makes it deny far more often: it consults the
+  # main checkout, whose resting branch is normally `main`, where the reading
+  # before it landed on the session's own checkout and a feature branch
+  # allowed. Writing about these commands in a shell argument is therefore
+  # denied where it used to pass, and the repair is a body FILE rather than an
+  # inline argument, which is what the surrounding workflows prescribe anyway.
+  # Narrowing this to a segment the walk knows is unquoted needs the shell's
+  # own reading of the command, which is the same thing the honest limits on
+  # `parse_git_globals` name.
   #
   # A `-C` that DOES resolve names the checkout outright, so it settles the
   # question whatever a preceding `cd` left behind.
@@ -902,7 +922,7 @@ while IFS= read -r seg; do
     if [ "$seg_ambiguous" -eq 1 ]; then
       amb_branch=$(ambiguous_main_branch)
       if [ -n "$amb_branch" ]; then
-        deny "This command names a directory this guard cannot read, so which checkout the commit lands in is unknown, and one it could reach is on '$amb_branch'. Commits to '$amb_branch' are forbidden (wiki/concepts/Git Workflow.md). Spell the directory literally so the guard can read it, or create a feature branch first."
+        deny "This command names a directory this guard cannot read, so which checkout the commit lands in is unknown, and one it could reach is on '$amb_branch'. Commits to '$amb_branch' are forbidden (wiki/concepts/Git Workflow.md). Spell the directory literally so the guard can read it, or create a feature branch first. If this text only QUOTES a command rather than running one, the guard cannot tell the two apart: pass it through a file (--body-file, git commit -F) instead of an inline argument."
       fi
     fi
   fi
@@ -951,7 +971,7 @@ while IFS= read -r seg; do
     if [ "$on_main" -eq 1 ]; then
       deny "Plain 'git push' from main/master is forbidden (wiki/concepts/Git Workflow.md). Create a feature branch and open a PR."
     elif [ "$amb_main" -eq 1 ]; then
-      deny "This command names a directory this guard cannot read, so which checkout the push runs from is unknown, and one it could reach is on '$amb_branch'. Plain 'git push' from main/master is forbidden (wiki/concepts/Git Workflow.md). Spell the directory literally so the guard can read it, or create a feature branch and open a PR."
+      deny "This command names a directory this guard cannot read, so which checkout the push runs from is unknown, and one it could reach is on '$amb_branch'. Plain 'git push' from main/master is forbidden (wiki/concepts/Git Workflow.md). Spell the directory literally so the guard can read it, or create a feature branch and open a PR. If this text only QUOTES a command rather than running one, the guard cannot tell the two apart: pass it through a file (--body-file, git commit -F) instead of an inline argument."
     elif [ "$refspec_main" -eq 1 ]; then
       deny "This push's refspec names main, master or HEAD, which is forbidden from any branch (wiki/concepts/Git Workflow.md). Name the branch you are pushing explicitly and open a PR."
     fi
