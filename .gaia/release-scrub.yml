@@ -296,6 +296,15 @@ transforms:
           # Anchored to a bare JSON array-element string so an ordinary
           # reference anywhere else in package.json still trips the check.
           - "^\\s*\"\\.gaia/(cli/src|tests|scripts/tests)/\",?$"
+          # A rule's `paths:` frontmatter entry is the same kind of
+          # load-bearing config glob: it decides when the rule auto-loads, and
+          # on an adopter clone a glob over a release-excluded tree matches
+          # nothing and never fires. The alternative is dropping the glob,
+          # which would silently stop the rule activating in the one tree
+          # whose convention is the opposite of its neighbours'. Anchored to a
+          # bare quoted YAML sequence entry, so a prose mention of the same
+          # tree anywhere else in the file still trips the check.
+          - "^\\s*-\\s*'\\.gaia/cli/src/\\*\\*'$"
 
       # ---- Code Audit Team maintainer-only member names ----
       # A mis-wrapped roster entry or resolver block would leave a

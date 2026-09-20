@@ -146,6 +146,7 @@ AUDIT_MERELY_SHARED_PATHS="$(cat <<'EOF'
 .claude/rules/coding-guidelines.md
 .claude/rules/dep-audit.md
 .claude/rules/design-baseline.md
+.claude/rules/file-placement.md
 .claude/rules/gaia-folder.md
 .claude/rules/guards-must-fail.md
 .claude/rules/i18n.md

@@ -94,6 +94,7 @@
     ".claude/rules/coding-guidelines.md": "owned",
     ".claude/rules/dep-audit.md": "owned",
     ".claude/rules/design-baseline.md": "owned",
+    ".claude/rules/file-placement.md": "owned",
     ".claude/rules/gaia-folder.md": "owned",
     ".claude/rules/guards-must-fail.md": "owned",
     ".claude/rules/i18n.md": "owned",
@@ -686,7 +687,7 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-09-19T18:48:36.325Z",
+  "generated": "2026-09-20T08:53:16.453Z",
   "regions": [
     {
       "endMarker": "<!-- gaia:audit-remit:end -->",
