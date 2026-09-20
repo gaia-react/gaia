@@ -1,11 +1,11 @@
 ---
 name: distribution-audit
-description: Maintainer-only. Find every file that would newly ship to adopters and decide, one file at a time, whether to ship it or withhold it. Drives the release CLI, which refuses to produce a manifest until every shipping file has an answer.
+description: Maintainer-only. Find every file that would newly ship to adopters, classify each one against the written distribution-boundary categories, default to withhold on no clean match, and ask the maintainer only where the taxonomy does not settle it. Drives the release CLI, which refuses to produce a manifest until every shipping file has an answer.
 ---
 
 # /distribution-audit
 
-Maintainer-only. Thin orchestrator over `.gaia/cli/gaia-maintainer`, which owns every deterministic step. This command supplies the one thing the CLI cannot: a human answering, file by file, whether a newly-shipping file should ship or be withheld.
+Maintainer-only. Thin orchestrator over `.gaia/cli/gaia-maintainer`, which owns every deterministic step. This command supplies the one thing the CLI cannot: a classification of each newly-shipping file against the written distribution boundary, and a maintainer's answer on the few the taxonomy does not settle.
 
 `.gaia/release-exclude` is the distribution boundary: a file ships to adopters if and only if git tracks it and no line in that file masks it. `.gaia/manifest.json` is the update policy `/update-gaia` consumes, and incidentally the ledger of which shipping files a maintainer has acknowledged. A file that git tracks, that no exclude line masks, and that the manifest does not yet list is "unanswered": it would ship, but nobody has said so on purpose.
 
@@ -37,17 +37,92 @@ Treating `missing`'s entries as if they were bare strings prints JSON blobs inst
 - **Bookkeeping only.** `missing` is empty but at least one of the other five conditions is not: this is accounting drift, not a boundary question, nobody needs to decide whether a file ships. Name the condition(s) that fired and list their entries, then ask the maintainer via `AskUserQuestion` whether to regenerate now to absorb them. Do not regenerate unprompted.
 - **Files await an answer.** `missing` is non-empty: continue to Step 3.
 
-## Step 3. Ask, one file at a time
+## Step 3. Classify against the categories, then ask only what needs asking
 
-For each path in `missing`, ask a separate `AskUserQuestion`: ship it to adopters, or withhold it? Give the maintainer enough to answer without guessing: what the file is, which directory it sits in, and whether its neighbors already ship (check whether sibling paths appear in `.gaia/manifest.json` or fall under an existing line in `.gaia/release-exclude`).
+`.gaia/release-exclude` carries twelve numbered categories, each with a rationale paragraph, and `wiki/concepts/Release Workflow.md` (Distribution Boundary) opens by calling them authoritative. Most of `missing` is already answered there: category 3 settles a shipped script's verification rig in one line, category 4 settles everything under `.gaia/cli/src/`, category 1 settles the `/gaia-*` command split and names the adopter-useful exceptions.
 
-Rules for this step, because nothing downstream enforces them:
+So classify first and ask second. This is not "use judgment": it is matching each file against a written taxonomy and saying which entry it matched and why. A wrong decision then surfaces as a wrong **citation**, which a reader can check against the category's own text, instead of as a verdict they would have to re-derive from scratch.
 
-- Never supply the answer, never recommend one, never batch multiple files into a single question.
-- There is no default direction. Silence is not an answer; if the maintainer doesn't respond, the file stays unanswered and Step 4 cannot proceed for it.
-- State no answer the maintainer has not actually given.
+### 3a. Classify every path
 
-A withhold answer additionally needs two things from the maintainer: a **category** (read `.gaia/release-exclude` and offer its numbered categories by number and title as the choices) and a **reason** (one line; the CLI rejects a reason containing a newline or carriage return).
+Read the categories out of `.gaia/release-exclude`: the number, the title, and the rationale paragraph under each header. The rationale is what a path is matched against; the title alone is not enough to match on.
+
+Then record three things for each path in `missing`:
+
+- the **decision**, ship or withhold;
+- the **category** it matched, by number, or `none`;
+- a **one-line reason** naming what in that category's rationale the path satisfies.
+
+Match on the rationale a category states, never on the shape of a path's neighbours. "Its siblings are excluded" is a guess that looks like a match.
+
+**A path no category matches cleanly is recorded as a withhold**, and surfaced in 3b. It is never shipped on a silent default. The asymmetry is the whole reason:
+
+- A wrong **ship** is corrected by an upstream deletion, and the Update Workflow's deletion table prompts the adopter rather than auto-deleting. One prompt on every adopter's next update, forever after it is noticed.
+- A wrong **withhold** costs nothing. Ship it next release; it lands as an ordinary addition.
+
+That default settles the **classification**, not the answer. It never becomes an answer on its own: a file whose question goes unanswered stays unanswered, and Step 4 cannot proceed for it.
+
+Rules for this step, replacing the three the old per-file question carried:
+
+- **Supply the classification, never the answer.** Every file gets a citation and a reason from this command; every question this command asks gets its answer from the maintainer. State no answer the maintainer has not actually given.
+- **Batch ship confirmations only**, and only by shared rationale. The two question classes that carry real uncertainty are one file each, always.
+- **Silence is still not an answer**, exactly as before.
+
+### 3b. Ask about three classes only
+
+Ask the maintainer about these, and about nothing else:
+
+1. **No category matched.** One question per file. This is the genuinely novel case, and the human gate belongs here.
+2. **Two categories were close.** One question per file, naming both. Ask only when they point in different directions or rest on different rationales; two categories that withhold the same file for the same reason is not a question.
+3. **Every ship.** Ships are the irreversible direction, so each is confirmed. Group them by shared rationale, one question per group, every file in the group named in the body.
+
+A withhold that matched a category cleanly is not asked about. Its category and reason are recorded, and Step 4 lands them in `.gaia/release-exclude` where the diff carries them. This is what turns a forty-question pass into a handful of real ones, which is a thing a human can actually review.
+
+When a maintainer answers "keep internal" for a file that matched **no** category, the CLI still needs a category number and rejects one that names no numbered category, so ask a follow-up offering the numbered list. If none of the twelve fits, the file stays unanswered: extending the taxonomy is a separate, deliberate edit to `.gaia/release-exclude` and this command does not make it.
+
+### 3c. How every question is written
+
+**Option order is fixed here, once, rather than chosen per question.** `AskUserQuestion`'s own contract assigns meaning to the first position: a recommended option goes first and carries `(Recommended)`. A prohibition on recommending that says nothing about order leaks through order, and a consistently-first "ship" reads as advice to any reasonable person. So:
+
+- `Keep internal` is always the first option.
+- `Ship to adopters` is always the second.
+
+It leads because it is the reversible direction, which is a standing property of the two answers and not a judgment about any one file. Never append `(Recommended)` to either label, and state in the body of every question: *Neither option is recommended; the order is the same in every question this command asks.*
+
+**Write the question in plain language.** The questions that survive 3b are the ones where the maintainer's judgment is actually needed, so they have to be answerable by someone who does not hold the repo's internals in their head. State the consequence for a real adopter, not the file's classification metadata.
+
+Stop writing this:
+
+> `.gaia/scripts/check-hook-scope-manifest.sh`: Check D, hook tree-scope manifest conformance (INV-5). Siblings under `.gaia/scripts/` are mixed: 53 of 93 appear in `.gaia/manifest.json`. Ship (manifest entry, class `owned`) or withhold (category N)?
+
+Write this:
+
+> **`check-hook-scope-manifest.sh`** checks that every hook in `.claude/hooks/` is listed in the hook registry.
+>
+> **Keep it internal:** adopters never see it, and nothing in their project checks this.
+> **Ship it:** adopters who add their own hook get a script that catches a missing registry entry.
+
+The rules:
+
+- Lead with what the file does, in one sentence, carrying no internal identifiers: no check letters, no invariant numbers, no classifier class names, no category numbers.
+- Say what an adopter gains or loses each way. That is the thing being decided.
+- Name files by basename in the prose; keep the full path available, out of the sentence.
+- Option labels are plain: `Keep internal` and `Ship to adopters`, never `withhold` and `ship`.
+- Mention a category only when the maintainer needs it to answer, and then say what it means rather than citing its number alone.
+
+This is the ordering leak one level up: a question that is hard to parse gets answered by position rather than on its merits. Plain language is part of what lets the gate go red.
+
+### 3d. Record every decision, ship as well as withhold
+
+A withhold's citation is durable already: Step 4's CLI writes its `--category` and `--reason` into `.gaia/release-exclude` as the comment above the path.
+
+A ship has nowhere to go. `--ship <path>` carries no category and no reason, a manifest entry holds neither, and Step 4's CLI contract does not change. So record the ship side in the **body of the manifest-answer commit**, one line per shipped path:
+
+```
+ship <path> | considered category <N>, or none | <one-line reason it ships>
+```
+
+That commit already exists and already lands before the audit handshake, so both halves of the decision set land together and one `git show` prints every ship line beside the `.gaia/release-exclude` diff holding every withhold's category and reason.
 
 ## Step 4. Apply every answer in one call
 
@@ -77,4 +152,12 @@ Land the manifest-answer commit before starting a PR's Code Audit Team pre-merge
 
 ## Coverage note
 
-The per-file ship-or-withhold question, the clean-tree stop, and the bookkeeping-only confirmation have no automated test behind them: their actor is a conversation, and nothing can run a conversation as a unit test. The prose above is the enforcement. Follow it as written rather than treating it as a suggestion.
+Step 3 still has no automated test: its actor is a conversation, and nothing can run a conversation as a unit test. What changed is that the prose is no longer the only thing standing behind it.
+
+Every decision now carries a citation, so a wrong decision is a **wrong citation** rather than an unexaminable verdict, and checking one is bounded: read the named category's rationale in `.gaia/release-exclude` and compare it to the file. Nobody re-derives the decision from scratch. That is what the old gate asked for and never got, which is how months of first-option answers accumulated without anyone able to spot a bad one.
+
+Both halves of the record land in the same commit (3d), so a single `git show` on the manifest-answer commit prints every ship line beside the `.gaia/release-exclude` diff carrying every withhold's category and reason. A later pass over the accumulated ledger reads that record rather than the files alone.
+
+Prose remains the only enforcement for two things: that the questions in 3b get asked at all, and that they are written the way 3c requires. Follow it as written rather than treating it as a suggestion.
+
+The clean-tree stop and the bookkeeping-only confirmation in Step 2 are unchanged, and have no automated test for the same reason.
