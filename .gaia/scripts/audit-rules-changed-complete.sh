@@ -119,6 +119,7 @@ AUDIT_MERELY_SHARED_PATHS="$(cat <<'EOF'
 .claude/hooks/block-selfheal-paths.sh
 .claude/hooks/lib/audit-dispositions.sh
 .claude/hooks/lib/audit-selfheal-paths.sh
+.claude/hooks/lib/command-wrappers.sh
 .claude/hooks/lib/gaia-active-plan.sh
 .claude/hooks/lib/gaia-ci-defer.sh
 .claude/hooks/lib/jq-availability.sh

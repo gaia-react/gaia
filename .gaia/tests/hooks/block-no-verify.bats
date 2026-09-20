@@ -687,3 +687,313 @@ run_staged() {
   done
   true
 }
+
+# --- command wrappers -------------------------------------------------------
+#
+# A wrapper stands where the command word is read, so an unstripped one hides
+# the whole invocation from the walk and the bypass behind it is allowed. The
+# wrapper set is DERIVED from the table in lib/command-wrappers.sh rather than
+# restated here: a row added there is driven by these tests the moment it
+# lands, and a row this reader fails to parse shortens the set, which the count
+# check below turns into a failure instead of a quieter suite.
+
+# Print `<name> <operand-count>` for every row of the shared wrapper table.
+wrapper_table() {
+  sed -n '/GAIA_WRAPPER_TABLE_BEGIN/,/GAIA_WRAPPER_TABLE_END/p' \
+      "$HOOKS_SRC/lib/command-wrappers.sh" \
+    | sed -nE 's/^[[:space:]]*([a-z]+)\)[[:space:]]*_w_valued=.*_w_operands=([0-9]+).*/\1 \2/p'
+}
+
+# How many rows that table holds, counted independently of the parse above so a
+# row the parse cannot read is a short read rather than an invisible one.
+wrapper_table_rows() {
+  sed -n '/GAIA_WRAPPER_TABLE_BEGIN/,/GAIA_WRAPPER_TABLE_END/p' \
+      "$HOOKS_SRC/lib/command-wrappers.sh" \
+    | grep -cE '^[[:space:]]*[a-z]+\)[[:space:]]*_w_valued='
+}
+
+# The wrapper written the way its own grammar requires: its name, then as many
+# operands of its own as the table says it consumes.
+wrapper_prefix() {
+  local name="$1" operands="$2" out="$1" i=0
+  while [ "$i" -lt "$operands" ]; do
+    out="$out 5"
+    i=$((i + 1))
+  done
+  printf '%s' "$out"
+}
+
+@test "every wrapper in the shared table exposes a bypassing commit to the walk" {
+  local name operands read_n=0 rows
+  rows=$(wrapper_table_rows)
+  [ "$rows" -gt 0 ]
+  while read -r name operands; do
+    [ -n "$name" ] || continue
+    read_n=$((read_n + 1))
+    run_hook "$(wrapper_prefix "$name" "$operands") git commit -n -m x"
+    assert_denied_by_json
+    run_hook "$(wrapper_prefix "$name" "$operands") git commit --no-verify -m x"
+    assert_denied_by_json
+    run_hook "$(wrapper_prefix "$name" "$operands") git push --no-verify"
+    assert_denied_by_json
+  done <<<"$(wrapper_table)"
+  [ "$read_n" -eq "$rows" ]
+}
+
+# What the test above cannot prove, and why this one exists. It builds each
+# invocation from the same row it checks, so it establishes that the stripper
+# implements the TABLE and never that the table matches the WRAPPER. A row
+# whose operand count or option list is wrong writes a spelling nobody runs and
+# then passes on it, which is self-certification: the row is both the claim and
+# the evidence.
+#
+# The grammar of an external program is not derivable from this repository, so
+# the check that a row is RIGHT has to be hand-written against the real
+# spelling, and the only thing that can be derived is whether every row has
+# one. That is this guard: it pins the coverage, not the grammar. A new row
+# added without a hand-written case reds here, which is the moment the library
+# header sends a maintainer to add one.
+@test "every wrapper row has a hand-written real-grammar case" {
+  local name operands read_n=0 rows body
+  rows=$(wrapper_table_rows)
+  [ "$rows" -gt 0 ]
+  body=$(sed -n "/^@test \"a wrapper's own options and operands/,/^}/p" "$BATS_TEST_FILENAME")
+  [ -n "$body" ]
+  while read -r name operands; do
+    [ -n "$name" ] || continue
+    read_n=$((read_n + 1))
+    grep -qE "(^|[[:space:]'])${name}[[:space:]]" <<<"$body" || {
+      echo "wrapper row '$name' has no hand-written grammar case" >&2
+      return 1
+    }
+  done <<<"$(wrapper_table)"
+  [ "$read_n" -eq "$rows" ]
+}
+
+# The two shapes a blind word-strip gets wrong, and the reason the table states
+# an option grammar rather than an alternation: in the first the next word is
+# the wrapper's own flag, in the second it is the wrapper's operand.
+@test "a wrapper's own options and operands do not hide the git behind them" {
+  run_hook 'env -i git commit -n -m x'
+  assert_denied_by_json
+  run_hook 'env -u FOO git commit -n -m x'
+  assert_denied_by_json
+  run_hook 'env FOO=bar git commit -n -m x'
+  assert_denied_by_json
+  # The appending spelling too, which the table's assignment pattern covers
+  # through its own wildcard rather than through an alternative of its own.
+  run_hook 'env zz+=1 git commit -n -m x'
+  assert_denied_by_json
+  run_hook 'env -i FOO=bar git commit --no-verify -m x'
+  assert_denied_by_json
+  run_hook 'command -p git commit -n -m x'
+  assert_denied_by_json
+  run_hook 'exec -a mygit git commit -n -m x'
+  assert_denied_by_json
+  run_hook 'nice -n 5 git commit -n -m x'
+  assert_denied_by_json
+  run_hook 'nohup git commit -n -m x'
+  assert_denied_by_json
+  run_hook 'setsid git commit -n -m x'
+  assert_denied_by_json
+  run_hook 'stdbuf -o L git commit -n -m x'
+  assert_denied_by_json
+  run_hook 'timeout -s KILL 5 git commit -n -m x'
+  assert_denied_by_json
+  run_hook 'timeout -k 1 5 git commit -n -m x'
+  assert_denied_by_json
+  run_hook 'xargs -I {} git commit -n -m x'
+  assert_denied_by_json
+  run_hook 'nohup timeout 5 env git commit -n -m x'
+  assert_denied_by_json
+}
+
+# Nesting is bounded by the segment's own word count, never by a pass ceiling.
+# A loop that gave up early would hand the guard a word that is still a
+# wrapper, the `^git` test would fail, the segment would never arm, and the
+# whole-command safety net is gated on a segment having armed, so nothing
+# behind it would catch the invocation either. That is the under-strip
+# direction the table must never fail in, so the depth driven here is well past
+# any ceiling a reader would think to write.
+@test "a deeply stacked wrapper chain does not hide the git command word" {
+  run_hook 'nohup nohup nohup nohup nohup nohup nohup nohup nohup git commit -n -m x'
+  assert_denied_by_json
+  run_hook 'nohup setsid nohup setsid nohup setsid nohup setsid nohup timeout 5 env git commit -n -m x'
+  assert_denied_by_json
+}
+
+# The long spellings of the same options. A long option belongs in a row only
+# when its argument is REQUIRED, because an optional-argument long form can
+# only ever be `=`-joined and listing one would make the parser eat the command
+# word. These are the required ones; the `=`-joined form needs no row at all,
+# and the control below is the optional-argument case that must stay unlisted.
+@test "a wrapper's separated long-form option does not hide the git behind it" {
+  run_hook 'env --unset FOO git commit -n -m x'
+  assert_denied_by_json
+  run_hook 'env --chdir /tmp git commit -n -m x'
+  assert_denied_by_json
+  run_hook 'env --unset=FOO git commit -n -m x'
+  assert_denied_by_json
+  run_hook 'nice --adjustment 5 git commit -n -m x'
+  assert_denied_by_json
+  run_hook 'stdbuf --output L git commit -n -m x'
+  assert_denied_by_json
+  run_hook 'timeout --signal KILL 5 git commit -n -m x'
+  assert_denied_by_json
+  run_hook 'timeout --kill-after 1 5 git commit -n -m x'
+  assert_denied_by_json
+  run_hook 'xargs --max-args 1 git commit -n -m x'
+  assert_denied_by_json
+  run_hook 'xargs --delimiter , git commit -n -m x'
+  assert_denied_by_json
+}
+
+# `xargs --replace`, `--eof` and `--max-lines` take OPTIONAL arguments, so the
+# real wrapper consumes no separated value for them and the word after one is
+# the command. Listing them would make the parser eat that word and hide the
+# invocation, which is the one direction this table must never fail in, so they
+# are deliberately absent and this is the control that keeps them absent: each
+# denies precisely because the strip stops before `git`.
+@test "an optional-argument long form is not treated as taking a separated value" {
+  run_hook 'xargs --replace git commit -n -m x'
+  assert_denied_by_json
+  run_hook 'xargs --eof git commit -n -m x'
+  assert_denied_by_json
+  run_hook 'xargs --max-lines git commit -n -m x'
+  assert_denied_by_json
+}
+
+# The control for the widening: reading past a wrapper must not start arming on
+# the wrapper's own arguments. Each of these runs a program that is not git,
+# with git's name only in its argument text, which is the shape the walk has
+# always allowed.
+@test "reading past a wrapper does not arm on a non-git program behind it" {
+  run_hook 'timeout 5 echo hello'
+  assert_allowed_by_json
+  run_hook 'env FOO=bar grep -n commit README.md'
+  assert_allowed_by_json
+  run_hook 'xargs -I {} echo hello'
+  assert_allowed_by_json
+}
+
+# The wrapper strip is shared rather than copied, unlike the command-word
+# expression the pin above holds identical across the guards it names. Pinned on
+# the load and the use together: a guard that sources the library and then
+# tests the unstripped word is green on the source alone.
+#
+# The fail-loud arm is pinned here too, and only the arm in THIS guard is
+# driven behaviourally, by the degrade cases at the end of this file. Deleting
+# the arm from either sibling fails that sibling OPEN on a missing library, in
+# two different ways: under errexit the undefined function exits non-zero,
+# which a PreToolUse hook's caller treats as a non-blocking error and proceeds
+# past, and without errexit the command word comes back empty and never arms.
+# Neither shows up in a suite that only checks the source line.
+@test "every commit guard reads its command word past the shared wrapper table" {
+  local f n
+  [ -f "$HOOKS_SRC/lib/command-wrappers.sh" ]
+  for f in block-no-verify.sh block-main-destructive-git.sh red-verify-commit-check.sh; do
+    grep -qF 'lib/command-wrappers.sh' "$HOOKS_SRC/$f"
+    grep -qF 'gaia_strip_command_wrappers' "$HOOKS_SRC/$f"
+    # The `^git` test reads the stripped word, and no copy still reads seg_cmd.
+    n=$(grep -cE 'seg_prog" =~ \^git' "$HOOKS_SRC/$f")
+    [ "$n" -eq 1 ]
+    grep -qE 'seg_cmd" =~ \^git' "$HOOKS_SRC/$f" && return 1
+    # The refusal names the guard it fires from, so each copy carries its own
+    # literal rather than a shared one.
+    grep -qF "BLOCKED: ${f} cannot load lib/command-wrappers.sh" "$HOOKS_SRC/$f"
+  done
+  true
+}
+
+# The wrapper table's fail-loud arm is narrowed the way the jq arm narrows on
+# its own needle. This hook is registered on the `Bash` matcher, so an arm
+# standing ahead of the git fast-path would answer EVERY Bash call with a deny
+# when the library is missing, taking out the shell repair that restores it.
+# The pair is the assertion: the non-git call still runs, the git call refuses.
+@test "command-wrappers.sh absent: a non-git command is still allowed" {
+  stage_hook_tree
+  rm -f "$STAGED_ROOT/.claude/hooks/lib/command-wrappers.sh"
+  run_staged 'ls -la /tmp'
+  [ "$status" -eq 0 ]
+  grep -qF -- 'cannot load lib/command-wrappers.sh' <<<"$output" && return 1
+  assert_allowed_by_json
+}
+
+@test "command-wrappers.sh absent: a git commit refuses rather than running unguarded" {
+  stage_hook_tree
+  rm -f "$STAGED_ROOT/.claude/hooks/lib/command-wrappers.sh"
+  run_staged 'git commit -m x'
+  [ "$status" -eq 2 ]
+  grep -qF -- 'cannot load lib/command-wrappers.sh' <<<"$output"
+}
+
+# A wrapper is another program, so its own `-n` is in the same inert class as a
+# `grep -n` on the same line. The segment now ARMS on the git behind the
+# wrapper, though, so an arm reading the raw segment reaches the wrapper's
+# options and denies a commit carrying no bypass at all. Every command here is
+# clean: no `-n` on git, no `--no-verify`, nothing falsy.
+#
+# These cases carry no real bypass on purpose, which is what the case above
+# cannot do: one driving `nice -n 5 git commit -n -m x` denies for two reasons
+# at once and cannot tell them apart.
+@test "a wrapper's own -n option does not deny a clean commit" {
+  run_hook 'nice -n 5 git commit -m x'
+  assert_allowed_by_json
+  run_hook 'xargs -n 1 git commit -m x'
+  assert_allowed_by_json
+  run_hook 'xargs --max-args 1 git commit -m x'
+  assert_allowed_by_json
+  run_hook 'env -u NAME git commit -m x'
+  assert_allowed_by_json
+  run_hook 'timeout -s KILL 5 git commit -m x'
+  assert_allowed_by_json
+}
+
+# The other half of the same split: the wrapper's `-n` is inert, but git's own
+# `-n` behind that wrapper is still a bypass.
+@test "a real -n behind a wrapper carrying its own -n is still denied" {
+  run_hook 'nice -n 5 git commit -n -m x'
+  assert_denied_by_json
+  run_hook 'xargs -n 1 git commit -n -m x'
+  assert_denied_by_json
+}
+
+# `env` consumes `NAME=value` assignments, so a falsy HUSKY prefix is gone from
+# the wrapper-stripped word entirely. These pin the OUTCOME: such a commit is
+# denied.
+#
+# What they deliberately do not claim is which arm denies it. Moving the HUSKY
+# arm onto the stripped word leaves every one of them green, because the
+# whole-command safety net re-asserts HUSKY over the entire command and absorbs
+# the change; verified by mutation rather than assumed. The segment-scoped arm
+# is kept for defence in depth, and no test here pins that choice, so this name
+# says "denied" rather than implying it guards the arm.
+@test "a falsy HUSKY assignment consumed by env is still denied" {
+  run_hook 'env HUSKY=0 git commit -m x'
+  assert_denied_by_json
+  run_hook 'env HUSKY= git commit -m x'
+  assert_denied_by_json
+  run_hook 'nohup env HUSKY=false git commit -m x'
+  assert_denied_by_json
+}
+
+# The degrade pair above drives the library absent. A partially-sourced library
+# is a different state, and the two agree today only because the entry point is
+# defined last in the file, so any mid-file abort leaves the `type` check
+# failing. Nothing asserts that order, so drive the corrupted copy too, the way
+# this suite already drives repo-scope.sh both ways.
+@test "command-wrappers.sh holding conflict markers: a non-git command is still allowed" {
+  stage_hook_tree
+  write_conflicted_lib "$STAGED_ROOT/.claude/hooks/lib/command-wrappers.sh"
+  run_staged 'ls -la /tmp'
+  [ "$status" -eq 0 ]
+  assert_allowed_by_json
+}
+
+@test "command-wrappers.sh holding conflict markers: a git commit refuses" {
+  stage_hook_tree
+  write_conflicted_lib "$STAGED_ROOT/.claude/hooks/lib/command-wrappers.sh"
+  run_staged 'git commit -m x'
+  [ "$status" -eq 2 ]
+  grep -qF -- 'cannot load lib/command-wrappers.sh' <<<"$output"
+}

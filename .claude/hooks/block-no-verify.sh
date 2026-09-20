@@ -60,6 +60,26 @@ cmd=$(echo "$payload" | jq -r '.tool_input.command // empty')
 # its own delimiter there.
 [[ "$cmd" =~ (^|[^[:alnum:]_])git([[:space:]]|$) ]] || exit 0
 
+# command-wrappers arm: without the table the walk reads a wrapper as the
+# command word and skips the invocation behind it, which is a silent fail-OPEN
+# on exactly the bypasses this hook exists to deny, so a failed load refuses.
+#
+# BELOW the fast path, not above it, and that placement is the whole of the
+# arm's blast radius. This hook is registered on the `Bash` matcher, so an arm
+# standing above the short-circuit would deny EVERY Bash call on a missing
+# library, `ls` and the editor and the package manager along with it, closing
+# off the very repair that restores the file. Past the short-circuit the refusal
+# reaches only a command that names `git`, which is the same narrowing
+# `gaia_require_jq` applies with its own needle.
+set +e
+# shellcheck source=lib/command-wrappers.sh
+[ -n "$_jq_lib_dir" ] && [ -f "$_jq_lib_dir/command-wrappers.sh" ] && . "$_jq_lib_dir/command-wrappers.sh" 2>/dev/null
+set -e
+if ! type gaia_strip_command_wrappers >/dev/null 2>&1; then
+  printf 'BLOCKED: block-no-verify.sh cannot load lib/command-wrappers.sh, so this git call cannot be checked. Fail-loud, not fail-open -- restore the library.\n' >&2
+  exit 2
+fi
+
 # Repo-scope: this repo's commit-floor policy governs this repo only. A git
 # command aimed at a different repo (e.g. `git -C ../other commit --no-verify`)
 # is out of scope, allow it. Fail-closed: any ambiguity falls through and the
@@ -195,13 +215,12 @@ while IFS= read -r seg; do
   # not populate BASH_REMATCH reliably, so strip with sed rather than a capture
   # loop.
   #
-  # Honest limit: a command WRAPPER (`env`, `command`, `exec`, `nohup`,
-  # `timeout`, `xargs`) also stands where the command word is read and is NOT
-  # stripped, so it still hides the invocation. Each carries its own option
-  # grammar, and a blind strip would misread `env -i git …` and `timeout 5 git
-  # …`, so closing them needs a per-wrapper option table rather than this list.
+  # A command WRAPPER (`env` and `timeout` among them) stands in that same slot
+  # but is NOT a prefix: each carries its own option grammar, so a blind
+  # alternation here would misread `env -i git …` and `timeout 5 git …`. It is stripped separately, by the per-wrapper table in
+  # lib/command-wrappers.sh, on the line after this one.
   #
-  # Second honest limit, of a different kind: a redirection whose target is
+  # Honest limit: a redirection whose target is
   # another descriptor (`2>&1`, `>&2`) never reaches this strip at all, because
   # the walk cuts segments at `&` and the invocation lands in a segment
   # beginning with the descriptor number. Closing it means not cutting at an
@@ -213,7 +232,8 @@ while IFS= read -r seg; do
   # widening applied to one and not the rest leaves the gap open in whichever
   # copy was missed.
   seg_cmd=$(printf '%s' "$seg" | sed -E 's/^[[:space:]]*(([A-Za-z_][A-Za-z0-9_]*\+?=([^[:space:]"'"'"']+|"[^"]*"|'"'"'[^'"'"']*'"'"')*|[0-9]*[<>][^[:space:]]*|[{!]|coproc|elif|else|while|until|then|time([[:space:]]+(-p|--))?|do|if)[[:space:]]+)*//')
-  [[ "$seg_cmd" =~ ^git([[:space:]]|$) ]] || continue
+  seg_prog=$(gaia_strip_command_wrappers "$seg_cmd")
+  [[ "$seg_prog" =~ ^git([[:space:]]|$) ]] || continue
 
   is_commit=0
   is_push=0
@@ -251,8 +271,26 @@ while IFS= read -r seg; do
   # must pass. Matches a single-dash short-flag bundle containing n (-n, -nm,
   # -anm), never the long --no-verify (handled above) or --dry-run. Scoped to
   # the git segment so a `-n` on another program (grep/head/sort/tail) is inert.
+  #
+  # Read from seg_prog, the WRAPPER-STRIPPED word, and not from the raw segment
+  # the three arms above read. A wrapper is another program, so its own options
+  # are in that inert class, but the segment now ARMS on the git behind it, so a
+  # raw-segment scan reaches them: `nice -n 5 git commit -m x` and `xargs -n 1
+  # git commit -m x` carry no bypass and would deny on the wrapper's `-n`. That
+  # is a false deny whose message names the commit-message over-block, which is
+  # a repair that cannot clear it.
+  #
+  # Only this arm moves, and the HUSKY arm above is the one that must not. `env`
+  # consumes `NAME=value` assignments, so `env HUSKY=0 git commit` has no HUSKY
+  # left in seg_prog at all and that arm would stop firing. What it would NOT do
+  # is let the bypass through: the whole-command safety net below re-asserts
+  # HUSKY over the entire command, and that net covers this exact case. So the
+  # arm stays on the raw segment to keep the decision segment-scoped rather than
+  # leaning on the backstop, which is a defence-in-depth argument and not a
+  # correctness one. Stated precisely because the difference is testable and the
+  # suite cannot pin it: moving that arm leaves every test green.
   if [[ "$is_commit" -eq 1 ]] \
-     && [[ "$seg" =~ (^|[[:space:]])-[a-zA-Z]*n[a-zA-Z]*([[:space:]]|$) ]]; then
+     && [[ "$seg_prog" =~ (^|[[:space:]])-[a-zA-Z]*n[a-zA-Z]*([[:space:]]|$) ]]; then
     deny "$(floor_msg '-n (= --no-verify)')"
   fi
 done < <({ printf '%s\n' "$cmd"; collapsed_substitutions "$cmd"; hidden_bodies "$cmd"; } | tr '|&;()' '\n')

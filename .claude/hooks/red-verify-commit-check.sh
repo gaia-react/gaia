@@ -107,6 +107,24 @@ cmd=$(echo "$input" | jq -r '.tool_input.command // ""' 2>/dev/null)
 # quote or its own delimiter there.
 [[ "$cmd" =~ (^|[^[:alnum:]_])git([[:space:]]|$) ]] || exit 0
 
+# command-wrappers arm: without the table the walk reads a wrapper as the
+# command word and skips the invocation behind it, which is a silent fail-OPEN
+# on exactly the commits this gate exists to hold, so a failed load refuses.
+#
+# BELOW the fast path and below the `tool_name` check, not above them, and that
+# placement is the whole of the arm's blast radius. This hook is registered on
+# the `Bash` matcher, so an arm standing above the short-circuit would deny
+# EVERY Bash call on a missing library, `ls` and the editor and the package
+# manager along with it, closing off the very repair that restores the file.
+# Past the short-circuit the refusal reaches only a command that names `git`,
+# which is the same narrowing `gaia_require_jq` applies with its own needle.
+# shellcheck source=lib/command-wrappers.sh
+[ -n "$_jq_lib_dir" ] && [ -f "$_jq_lib_dir/command-wrappers.sh" ] && . "$_jq_lib_dir/command-wrappers.sh" 2>/dev/null
+if ! type gaia_strip_command_wrappers >/dev/null 2>&1; then
+  printf 'BLOCKED: red-verify-commit-check.sh cannot load lib/command-wrappers.sh, so this git call cannot be checked. Fail-loud, not fail-open -- restore the library.\n' >&2
+  exit 2
+fi
+
 # The directory a segment's `git -C <dir>` names, read only from BETWEEN `git`
 # and the subcommand word. Past the subcommand the flag belongs to the
 # subcommand and names no directory: `git commit -C <commit>` reuses that
@@ -278,14 +296,14 @@ while IFS= read -r seg; do
   # not populate BASH_REMATCH reliably, so strip with sed rather than a capture
   # loop.
   #
-  # Honest limit: a command WRAPPER (`env`, `command`, `exec`, `nohup`,
-  # `timeout`, `xargs`) also stands where the command word is read and is NOT
-  # stripped, so it still hides the invocation. Each carries its own option
-  # grammar, and a blind strip would misread `env -i git …` and `timeout 5 git
-  # …`, so closing them needs a per-wrapper option table rather than this list.
+  # A command WRAPPER (`env` and `timeout` among them) stands in that same slot
+  # but is NOT a prefix: each carries its own option grammar, so a blind
+  # alternation here would misread `env -i git …` and `timeout 5 git …`. It
+  # is stripped separately, by the per-wrapper table in
+  # lib/command-wrappers.sh, on the line after this one.
   #
-  # Second honest limit, of a different kind: a redirection whose target is
-  # another descriptor (`2>&1`, `>&2`) never reaches this strip at all, because
+  # Honest limit: a redirection whose target is another descriptor
+  # (`2>&1`, `>&2`) never reaches this strip at all, because
   # the walk cuts segments at `&` and the invocation lands in a segment
   # beginning with the descriptor number. Closing it means not cutting at an
   # `&` that belongs to a redirection, which a separator split cannot tell from
@@ -295,10 +313,13 @@ while IFS= read -r seg; do
   # too, and block-no-verify.bats pins the copies identical: a widening applied
   # to one and not the rest leaves the gap open in whichever copy was missed.
   seg_cmd=$(printf '%s' "$seg" | sed -E 's/^[[:space:]]*(([A-Za-z_][A-Za-z0-9_]*\+?=([^[:space:]"'"'"']+|"[^"]*"|'"'"'[^'"'"']*'"'"')*|[0-9]*[<>][^[:space:]]*|[{!]|coproc|elif|else|while|until|then|time([[:space:]]+(-p|--))?|do|if)[[:space:]]+)*//')
-  [[ "$seg_cmd" =~ ^git([[:space:]]|$) ]] || continue
+  seg_prog=$(gaia_strip_command_wrappers "$seg_cmd")
+  [[ "$seg_prog" =~ ^git([[:space:]]|$) ]] || continue
   if [[ "$seg" =~ (^|[[:space:]])commit([[:space:]]|$) ]]; then
     saw_commit=1
-    commit_c=$(git_segment_c "$seg_cmd")
+    # The wrapper-stripped word, so `env git -C ../other commit` hands the
+    # repo-scope read git's own `-C` rather than the wrapper's first word.
+    commit_c=$(git_segment_c "$seg_prog")
   fi
 done < <({ printf '%s\n' "$cmd"; collapsed_substitutions "$cmd"; hidden_bodies "$cmd"; } | tr '|&;()' '\n')
 

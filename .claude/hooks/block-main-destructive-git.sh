@@ -45,6 +45,27 @@ cmd=$(echo "$payload" | jq -r '.tool_input.command // empty')
 # its own delimiter there.
 [[ "$cmd" =~ (^|[^[:alnum:]_])git([[:space:]]|$) ]] || exit 0
 
+# command-wrappers arm: without the table the walk reads a wrapper as the
+# command word and skips the invocation behind it, which is a silent fail-OPEN
+# on exactly the commits and pushes this hook exists to deny, so a failed load
+# refuses.
+#
+# BELOW the fast path, not above it, and that placement is the whole of the
+# arm's blast radius. This hook is registered on the `Bash` matcher, so an arm
+# standing above the short-circuit would deny EVERY Bash call on a missing
+# library, `ls` and the editor and the package manager along with it, closing
+# off the very repair that restores the file. Past the short-circuit the refusal
+# reaches only a command that names `git`, which is the same narrowing
+# `gaia_require_jq` applies with its own needle.
+set +e
+# shellcheck source=lib/command-wrappers.sh
+[ -n "$_jq_lib_dir" ] && [ -f "$_jq_lib_dir/command-wrappers.sh" ] && . "$_jq_lib_dir/command-wrappers.sh" 2>/dev/null
+set -e
+if ! type gaia_strip_command_wrappers >/dev/null 2>&1; then
+  printf 'BLOCKED: block-main-destructive-git.sh cannot load lib/command-wrappers.sh, so this git call cannot be checked. Fail-loud, not fail-open -- restore the library.\n' >&2
+  exit 2
+fi
+
 # Repo-scope: this repo's main-branch policy governs this repo only. A git
 # command aimed at a different repo (e.g. `git -C ../other push origin main`
 # or `cd ../other && git push`) is out of scope, allow it. Fail-closed: any
@@ -807,14 +828,14 @@ while IFS= read -r seg; do
   # not populate BASH_REMATCH reliably, so strip with sed rather than a capture
   # loop.
   #
-  # Honest limit: a command WRAPPER (`env`, `command`, `exec`, `nohup`,
-  # `timeout`, `xargs`) also stands where the command word is read and is NOT
-  # stripped, so it still hides the invocation. Each carries its own option
-  # grammar, and a blind strip would misread `env -i git …` and `timeout 5 git
-  # …`, so closing them needs a per-wrapper option table rather than this list.
+  # A command WRAPPER (`env` and `timeout` among them) stands in that same slot
+  # but is NOT a prefix: each carries its own option grammar, so a blind
+  # alternation here would misread `env -i git …` and `timeout 5 git …`. It
+  # is stripped separately, by the per-wrapper table in
+  # lib/command-wrappers.sh, into seg_prog below.
   #
-  # Second honest limit, of a different kind: a redirection whose target is
-  # another descriptor (`2>&1`, `>&2`) never reaches this strip at all, because
+  # Honest limit: a redirection whose target is another descriptor
+  # (`2>&1`, `>&2`) never reaches this strip at all, because
   # the walk cuts segments at `&` and the invocation lands in a segment
   # beginning with the descriptor number. Closing it means not cutting at an
   # `&` that belongs to a redirection, which a separator split cannot tell from
@@ -860,9 +881,32 @@ while IFS= read -r seg; do
     continue
   fi
 
-  [[ "$seg_cmd" =~ ^git([[:space:]]|$) ]] || continue
+  # The same slot again, past any command WRAPPER (`env`, `timeout`, `xargs`
+  # and the rest of lib/command-wrappers.sh's table). Kept as its own value
+  # rather than folded into seg_cmd because the `cd` arm above must keep reading
+  # the word with its wrapper still in front: `timeout 5 cd /x` does not move
+  # the shell, so a `cd` arm reading past the wrapper would track `/x` and read
+  # a later commit against a checkout the command never entered. Only the `git`
+  # arms read the wrapper-stripped word.
+  #
+  # Computed HERE rather than at the top of the loop body, below the `cd` arm's
+  # own `continue`, so the fork it costs is paid only by a segment that reaches
+  # the `git` arms. This hook is PreToolUse on the `Bash` matcher, so the top of
+  # this loop is the hot path of every Bash call whose text names `git`.
+  seg_prog=$(gaia_strip_command_wrappers "$seg_cmd")
 
-  parse_git_globals "$seg"
+  [[ "$seg_prog" =~ ^git([[:space:]]|$) ]] || continue
+
+  # The word this guard already resolved, not the raw segment. The parser finds
+  # the invocation with its own scan for the first word equal to `git`, so on a
+  # wrapper whose option value, assignment value or operand IS the word `git`
+  # (`exec -a git git commit`, `env -u git git commit`, `xargs -I git git
+  # commit`) that scan latches onto the wrapper's argument and reads the real
+  # `git` as the SUBCOMMAND, leaving git_sub=git so no commit or push rule arms.
+  # The arming above reads past the wrapper, so what the parser is handed has to
+  # as well. `norm` keeps its meaning: the strip removes only leading words, so
+  # the force flags rule 2 matches on still stand.
+  parse_git_globals "$seg_prog"
 
   # The hop check is the one arm here that can spend a bounded network lookup,
   # and the collapsed line re-emits the whole command, so a checkout whose

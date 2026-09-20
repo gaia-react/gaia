@@ -842,6 +842,31 @@ run_commit_hook_in() {
   refute_denied
 }
 
+# A command wrapper stands where the command word is read, so an unstripped one
+# hides the whole invocation and a commit carrying an un-RED'd new test passes
+# the gate. The wrapper set and its per-wrapper grammar live in
+# lib/command-wrappers.sh; this suite drives the consequence for this gate, on
+# the shapes a blind word-strip gets wrong, where the next word is the
+# wrapper's own flag or its operand.
+@test "a command wrapper does not hide the git command word" {
+  stage_file "app/utils/x/index.test.ts" "$PASSING_TEST"
+  run_commit_hook 'env git commit -m change'
+  [ "$status" -eq 0 ]
+  denied
+  run_commit_hook 'timeout 5 git commit -m change'
+  [ "$status" -eq 0 ]
+  denied
+  run_commit_hook 'env -i git commit -m change'
+  [ "$status" -eq 0 ]
+  denied
+  run_commit_hook 'nohup git commit -m change'
+  [ "$status" -eq 0 ]
+  denied
+  run_commit_hook 'xargs -I {} git commit -m change'
+  [ "$status" -eq 0 ]
+  denied
+}
+
 # --- command-word derivation: constructs that run a command with no cut ---
 
 # Two spellings run a command in the current shell without leaving a
