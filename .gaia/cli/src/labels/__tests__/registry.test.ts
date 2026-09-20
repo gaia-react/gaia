@@ -70,7 +70,7 @@ describe('labels/registry readRegistry', () => {
 });
 
 describe('labels/registry creatableEntries', () => {
-  test('every feature on yields the twenty-two adopter-role entries', () => {
+  test('every feature on yields the twenty-three adopter-role entries', () => {
     expect(names('adopter', ['tech-debt', 'gaia-ci', 'forensics'])).toEqual([
       'bug',
       'debt:spec-active',

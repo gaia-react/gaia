@@ -153,7 +153,7 @@ readonly WTI_BATS='.gaia/tests/lib/audit-ci-shards.bats'
 # Deliberately NOT members, `<path>|<reason>`. Each answers no to the
 # membership question above, and each is here so the answer is written down
 # rather than left as an omission the sibling suite cannot tell from one.
-readonly WTI_EXCLUDED='.gaia/scripts/check-debt-issue-metadata.sh|argument-driven per-filing validator; its --issue and --sweep modes read the tracker over the network
+readonly WTI_EXCLUDED='.gaia/scripts/check-debt-issue-metadata.sh|argument-driven per-filing validator; every mode but --pre-file reads the tracker over the network, --investigate-cap on the blocking filing path
 .gaia/scripts/check-registry-runtime.sh|reads the gitignored .gaia/local/ runtime tree, reports and never blocks, and is meaningless on a fresh checkout
 .gaia/scripts/check-updates.sh|SessionStart update probe that writes a cache; network-dependent and asserts no invariant
 .gaia/scripts/lint-git-path-quoting.sh|runs transitively, shell-lint.sh invokes it and shell-lint.sh is itself a member

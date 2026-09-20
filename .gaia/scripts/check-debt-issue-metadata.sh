@@ -4,7 +4,7 @@
 # states. Exit 0 when clean, 1 on any finding, 2 on a usage or environment
 # error. Run it from the repository root.
 #
-# Three modes, two of them offline:
+# Modes, only the first of them unconditionally offline:
 #
 #   --pre-file --labels <csv> --body-file <path>
 #       The blocking mode. Validates a filing that has NOT happened yet, from
@@ -379,6 +379,14 @@ EOF
 # the marker. Each demands a non-space character after its label, because the
 # defect this guards against is not a missing line but a line left as its own
 # placeholder.
+# Each is matched against the whole body rather than scoped to the region after
+# the marker, which is why the diagnostics below say "the body" and not "the
+# block". The tolerance that falls out is the same one the dedup-key checker
+# takes and for the same reason: a marker quoted inside running prose, which a
+# correction comment legitimately does, is indented or inline and so matches
+# none of these, while a flush-left quote of the whole fence does. Scoping the
+# content patterns to the marker would buy a sharper diagnostic and would not
+# change that, since the stray arm keys on the marker either way.
 readonly INVESTIGATE_MARKER_RE='^<!-- gaia-investigate: v1 -->$'
 readonly INVESTIGATE_QUESTION_RE='^\*\*Question:\*\*[[:space:]]+[^[:space:]]'
 readonly INVESTIGATE_SETTLED_RE='^\*\*Settled by:\*\*[[:space:]]+[^[:space:]]'
@@ -424,10 +432,10 @@ check_investigate_block() {
   fi
 
   if ! grep -qE "$INVESTIGATE_QUESTION_RE" <<<"$body"; then
-    finding "$subject" "investigate-question" "the \`gaia-investigate\` block carries no non-empty \`**Question:**\` line"
+    finding "$subject" "investigate-question" "\`severity:investigate\` requires a non-empty \`**Question:**\` line in the body"
   fi
   if ! grep -qE "$INVESTIGATE_SETTLED_RE" <<<"$body"; then
-    finding "$subject" "investigate-settled-by" "the \`gaia-investigate\` block carries no non-empty \`**Settled by:**\` line"
+    finding "$subject" "investigate-settled-by" "\`severity:investigate\` requires a non-empty \`**Settled by:**\` line in the body"
   fi
 
   return 0
@@ -527,8 +535,8 @@ run_investigate_cap() {
 # ---------------------------------------------------------------------------
 
 require_gh() {
-  command -v gh >/dev/null 2>&1 || fatal "gh not found on PATH; --issue and --sweep need it (--pre-file does not)"
-  command -v jq >/dev/null 2>&1 || fatal "jq not found on PATH; --issue and --sweep need it (--pre-file does not)"
+  command -v gh >/dev/null 2>&1 || fatal "gh not found on PATH; the tracker-reading modes need it (--pre-file does not)"
+  command -v jq >/dev/null 2>&1 || fatal "jq not found on PATH; the tracker-reading modes need it (--pre-file does not)"
 }
 
 # check_one_issue <json-object>: one issue's worth of checks, from the JSON

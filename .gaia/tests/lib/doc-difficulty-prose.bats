@@ -272,7 +272,12 @@ setup() {
   # cover: the block without the cap bounds nothing, and the cap without the
   # block rations contentless filings.
   grep -qF -- "<!-- gaia-investigate: v1 -->" "$VOCAB" || return 1
-  grep -qF -- "three open \`severity:investigate\` issues" "$VOCAB" || return 1
+  # The pointer, never the value. `INVESTIGATE_CAP` and a number spelled into
+  # this prose are two copies of one fact, and only the constant is executable,
+  # so pinning the word would green this suite while the recipe told every filer
+  # a cap the gate does not enforce. Same convention as the label loops below.
+  grep -qF -- "\`INVESTIGATE_CAP\` in \`.gaia/scripts/check-debt-issue-metadata.sh\`" "$VOCAB" || return 1
+  assert_absent_across "at (three|[0-9]+) open .severity:investigate" "$VOCAB"
 }
 
 @test "neither label loop states a count of its own" {

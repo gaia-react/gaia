@@ -235,6 +235,22 @@ refute_code() {
   assert_code "stray-investigate-block"
 }
 
+@test "a prose mention of the investigate marker beside a graded filing stays clean" {
+  # The mirror of the dedup-key checker's own prose-mention test. A correction
+  # comment quoting the block's format indents or inlines the marker, so it
+  # matches none of the anchored patterns and is not read as a stray block. A
+  # flush-left quote of the whole fence is a different case and does trip it,
+  # which is the same line the sibling checker draws.
+  {
+    good_body
+    printf '\nThe schema is `<!-- gaia-investigate: v1 -->` followed by two lines.\n'
+    printf '\n  <!-- gaia-investigate: v1 -->\n'
+  } >"$BODY"
+  run bash "$CHECK" --pre-file --labels "$GOOD_LABELS" --body-file "$BODY"
+  [ "$status" -eq 0 ]
+  refute_code "stray-investigate-block"
+}
+
 @test "a graded filing with no research block stays clean" {
   run bash "$CHECK" --pre-file --labels "$GOOD_LABELS" --body-file "$BODY"
   [ "$status" -eq 0 ]
@@ -531,7 +547,12 @@ stub_gh() {
   printf '%s\n' "${2:-[]}" >"$TMP/view.json"
   cat >"$TMP/bin/gh" <<'EOF'
 #!/usr/bin/env bash
-# $1 is `issue`, $2 is the subcommand.
+# $1 is `issue`, $2 is the subcommand. argv is logged one call per line so a
+# test can assert WHICH issues a mode asked for, not only what it did with the
+# answer: this stub dispatches on $2 alone, so without the log a query that
+# lost its own label or state filter returns the same corpus and every
+# assertion downstream of it stays green.
+printf '%s\n' "$*" >>"$STUB_DIR/argv.log"
 case "$2" in
   list) cat "$STUB_DIR/corpus.json" ;;
   view) cat "$STUB_DIR/view.json" ;;
@@ -659,6 +680,20 @@ stub_gh_failing() {
   run bash "$CHECK" --investigate-cap --labels "$INVESTIGATE_LABELS"
   [ "$status" -eq 1 ]
   assert_code "investigate-cap-reached"
+}
+
+@test "RED: the cap counts the investigate queue, not the whole open backlog" {
+  # The arithmetic tests above cannot fail on a query that lost its own
+  # filters, because the stub answers any `issue list` with the same corpus.
+  # Dropping `--label severity:investigate` would make the cap count every open
+  # tech-debt issue and refuse every investigate filing permanently, with this
+  # suite still green, so the scope is asserted from the logged argv instead.
+  stub_gh '[{"number":11,"title":"one"}]'
+  run bash "$CHECK" --investigate-cap --labels "$INVESTIGATE_LABELS"
+  [ "$status" -eq 0 ]
+  grep -qF -- "--label severity:investigate" "$TMP/argv.log" || return 1
+  grep -qF -- "--label tech-debt" "$TMP/argv.log" || return 1
+  grep -qF -- "--state open" "$TMP/argv.log" || return 1
 }
 
 @test "--investigate-cap on a gh failure exits 2, never the findings status" {
