@@ -266,13 +266,16 @@ fn_body() {
 # ref_namespaces <fn>: every refs/<x> namespace <fn>'s CODE names, deduped and
 # sorted. Derived from the library rather than restated here, so a namespace
 # added to or dropped from either function changes what the tests below drive.
-# Comments are stripped first: gaia_branch_list names refs/remotes in one of
-# its own, so without the strip a deleted ref read would still be vouched for
-# by the prose beside it, which is the divergence the coupling test is named
-# after.
+# Comment TEXT is cut first, from a whole-line comment and from a trailing one
+# alike: gaia_branch_list names refs/remotes in a comment of its own, so a
+# namespace read that prose can stand in for is one a deleted ref read still
+# passes, which is the divergence the coupling test is named after. Cutting
+# whole comment lines only would leave the trailing spelling open. Neither
+# function body carries a `#` inside a quoted string, so cutting from the
+# first one on a line takes no code with it.
 ref_namespaces() {
-  fn_body "$1" | grep -vE '^[[:space:]]*#' | grep -oE 'refs/[a-z]+' \
-    | LC_ALL=C sort -u
+  fn_body "$1" | LC_ALL=C sed -E 's/(^|[[:space:]])#.*//' \
+    | grep -oE 'refs/[a-z]+' | LC_ALL=C sort -u
 }
 
 # failing_namespace_shim DIR NS: a git that fails only `for-each-ref` over NS,
