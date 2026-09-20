@@ -286,7 +286,12 @@ write_inventory() {
   true
 }
 
-@test "settings registering no hook under .claude/hooks/ exits 2 rather than reporting the page complete" {
+# The fixture leaves BOTH sources empty: settings registers nothing, and
+# make_fixture creates the hooks directory without writing a file into it.
+# Naming only the settings half would overclaim, because either source alone is
+# enough to make the comparison meaningful: settings registering nothing while
+# a hook sits on disk exits 0 and reports clean.
+@test "neither source yielding a hook exits 2 rather than reporting the page complete" {
   local dir
   dir="$(make_fixture no_hooks)"
   printf '{\n  "hooks": {}\n}\n' >"$dir/$SETTINGS_REL"
@@ -434,6 +439,18 @@ write_hook_file() {
 
   run bash "$CHECK" "$dir"
   [ "$status" -eq 0 ]
+}
+
+@test "settings registering no hook passes when the on-disk source alone covers the page" {
+  local dir
+  dir="$(make_fixture registrationless)"
+  printf '{\n  "hooks": {}\n}\n' >"$dir/$SETTINGS_REL"
+  write_hook_file "$dir" alpha.sh
+  write_inventory "$dir" alpha.sh
+
+  run bash "$CHECK" "$dir"
+  [ "$status" -eq 0 ]
+  grep -qF -- 'clean' <<<"$output"
 }
 
 @test "a missing .claude/hooks directory exits 2 rather than falling back to the registrations alone" {
