@@ -165,12 +165,21 @@ git commit --no-verify -m y"
   assert_denied_by_json
 }
 
-@test "both commit guards extract hidden bodies the same way" {
-  local a b
-  a=$(sed -n '/^hidden_bodies() {$/,/^}$/p' "$HOOKS_SRC/block-no-verify.sh")
-  b=$(sed -n '/^hidden_bodies() {$/,/^}$/p' "$HOOKS_SRC/block-main-destructive-git.sh")
-  [ -n "$a" ]
-  [ "$a" = "$b" ]
+# The hidden-body extraction is the derivation those copies share with the
+# RED-verification commit gate. Like the substitution-collapse pin below, this
+# holds SAMENESS only: a weakening applied uniformly to every copy leaves it
+# green. What carries the construct is the behavioural pair in each suite, the
+# funsub and glob-qualifier cases, which red when the extraction stops
+# surfacing a hidden command or starts inventing one.
+@test "every commit guard extracts hidden bodies the same way" {
+  local expected="" f body
+  for f in block-no-verify.sh block-main-destructive-git.sh red-verify-commit-check.sh; do
+    body=$(sed -n '/^hidden_bodies() {$/,/^}$/p' "$HOOKS_SRC/$f")
+    [ -n "$body" ]
+    if [ -z "$expected" ]; then expected="$body"; fi
+    [ "$body" = "$expected" ]
+  done
+  true
 }
 
 @test "a commit subject carrying a parenthesised scope is not read as a qualifier" {
