@@ -11,6 +11,15 @@ tags: [meta, log]
 
 ## [Unreleased]
 
+- 2026-09-20 7098f0fb SKIP - severity:investigate label already reflected in wiki/concepts/Audit Disposition and Debt Fix.md, GitHub Labels.md by the same PR
+- 2026-09-20 b3f62549 SKIP - +=/reserved-word/coproc/quoted-value command-word hardening; implementation detail of already-documented command-position segment walk in Claude Hooks.md, no new behavior claim
+- 2026-09-20 5b3dfbcf SKIP - branch-name-lib.sh single-source + worktree claim reconcile fix already reflected in wiki/concepts/Audit Disposition and Debt Fix.md, GAIA Spec.md, Git Workflow.md, PR Merge Workflow.md, Task Orchestration.md, decisions/Claude Integration Fitness.md by the same PR
+- 2026-09-20 4dac2c91 SKIP - substitution-opener liveness fix already documented in wiki/concepts/Claude Hooks.md by the same commit
+- 2026-09-20 70a92c17 SKIP - funsub/zsh glob qualifier segment-cut hardening; implementation detail of already-documented command-position segment walk in Claude Hooks.md (block-no-verify.sh, block-main-destructive-git.sh)
+- 2026-09-20 e95819a6 SKIP - verb-in-substitution arming already documented in wiki/concepts/Claude Hooks.md by the same commit
+- 2026-09-20 e186a336 SKIP - prior wiki-sync commit, self-contained
+- 2026-09-20 04d5d179 SKIP - repo-scope walker hardening (foreign command whose own substitution runs git/gh); implementation detail of already-documented foreign-repo exemption in Git Workflow.md/PR Merge Workflow.md
+- 2026-09-20 66da2837 SKIP - rule prose fix naming resolve-audit-members.sh fallback; wiki/concepts/PR Merge Workflow.md already documents it (line ~154)
 - 2026-09-19 b8db4833 SKIP - one-line pointer-name fix in a skill reference, not a wiki page
 - 2026-09-19 b65aefc8 SKIP - audit posts status instead of an empty stamp commit on a pushed head; success posts only after every finding is decided -> wiki/concepts/Code Review Audit Agent.md, Code Review Audit CI.md, PR Merge Workflow.md, wiki/decisions/Code Audit Team.md updated in the commit itself
 - 2026-09-19 27c2c88b SKIP - repo-scope walk judges every command in a tool call -> wiki/concepts/Git Workflow.md, wiki/concepts/PR Merge Workflow.md updated in the commit itself
