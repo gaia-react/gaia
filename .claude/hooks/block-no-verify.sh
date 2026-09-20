@@ -52,19 +52,6 @@ if ! type gaia_require_jq >/dev/null 2>&1; then
 fi
 gaia_require_jq 'the commit-floor bypass guard' "$payload" tool_input 'git'
 
-# command-wrappers arm, the same fail-loud shape and the same lib dir as the jq
-# arm above: without it the walk reads a wrapper as the command word and skips
-# the invocation behind it, which is a silent fail-OPEN on exactly the bypasses
-# this hook exists to deny.
-set +e
-# shellcheck source=lib/command-wrappers.sh
-[ -n "$_jq_lib_dir" ] && [ -f "$_jq_lib_dir/command-wrappers.sh" ] && . "$_jq_lib_dir/command-wrappers.sh" 2>/dev/null
-set -e
-if ! type gaia_strip_command_wrappers >/dev/null 2>&1; then
-  printf 'BLOCKED: block-no-verify.sh cannot load lib/command-wrappers.sh, so this call cannot be checked. Fail-loud, not fail-open -- restore the library.\n' >&2
-  exit 2
-fi
-
 cmd=$(echo "$payload" | jq -r '.tool_input.command // empty')
 
 # Only act on git commands, short-circuit everything else. (Fast path only;
@@ -72,6 +59,26 @@ cmd=$(echo "$payload" | jq -r '.tool_input.command // empty')
 # character may stand before `git`, since a zsh glob qualifier puts a quote or
 # its own delimiter there.
 [[ "$cmd" =~ (^|[^[:alnum:]_])git([[:space:]]|$) ]] || exit 0
+
+# command-wrappers arm: without the table the walk reads a wrapper as the
+# command word and skips the invocation behind it, which is a silent fail-OPEN
+# on exactly the bypasses this hook exists to deny, so a failed load refuses.
+#
+# BELOW the fast path, not above it, and that placement is the whole of the
+# arm's blast radius. This hook is registered on the `Bash` matcher, so an arm
+# standing above the short-circuit would deny EVERY Bash call on a missing
+# library, `ls` and the editor and the package manager along with it, closing
+# off the very repair that restores the file. Past the short-circuit the refusal
+# reaches only a command that names `git`, which is the same narrowing
+# `gaia_require_jq` applies with its own needle.
+set +e
+# shellcheck source=lib/command-wrappers.sh
+[ -n "$_jq_lib_dir" ] && [ -f "$_jq_lib_dir/command-wrappers.sh" ] && . "$_jq_lib_dir/command-wrappers.sh" 2>/dev/null
+set -e
+if ! type gaia_strip_command_wrappers >/dev/null 2>&1; then
+  printf 'BLOCKED: block-no-verify.sh cannot load lib/command-wrappers.sh, so this git call cannot be checked. Fail-loud, not fail-open -- restore the library.\n' >&2
+  exit 2
+fi
 
 # Repo-scope: this repo's commit-floor policy governs this repo only. A git
 # command aimed at a different repo (e.g. `git -C ../other commit --no-verify`)

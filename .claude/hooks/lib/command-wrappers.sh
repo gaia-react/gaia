@@ -63,6 +63,12 @@
 # value and is left out of the row hands its own value to the command-word
 # slot, which is a silent skip rather than a visible misread, so check the
 # wrapper's own manual rather than copying a neighbouring row.
+#
+# `sudo` and `doas` are deliberately absent rather than overlooked. Each takes
+# options this table cannot model safely (`sudo -u <user> -g <group>` alongside
+# bare flags that a wrong row would misread in either direction), and a wrong
+# row for a privilege wrapper is the one place the over-read this file otherwise
+# welcomes stops being cheap. Adding them is a separate decision, not a row.
 
 # Strip one leading wrapper from <text>. Prints the remainder and returns 0
 # when the first word is a wrapper and a word survives it; returns 1
@@ -85,7 +91,10 @@ _gaia_strip_one_wrapper() {
     env) _w_valued=' -u -C -S '; _w_operands=0; _w_assign=1 ;;
     command) _w_valued=' '; _w_operands=0; _w_assign=0 ;;
     exec) _w_valued=' -a '; _w_operands=0; _w_assign=0 ;;
+    nice) _w_valued=' -n '; _w_operands=0; _w_assign=0 ;;
     nohup) _w_valued=' '; _w_operands=0; _w_assign=0 ;;
+    setsid) _w_valued=' '; _w_operands=0; _w_assign=0 ;;
+    stdbuf) _w_valued=' -i -o -e '; _w_operands=0; _w_assign=0 ;;
     timeout) _w_valued=' -k -s '; _w_operands=1; _w_assign=0 ;;
     xargs) _w_valued=' -a -E -I -L -P -d -n -s '; _w_operands=0; _w_assign=0 ;;
     # GAIA_WRAPPER_TABLE_END

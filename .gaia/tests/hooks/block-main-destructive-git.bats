@@ -1603,13 +1603,50 @@ run_hop() {
 }
 
 # The control: reading past a wrapper must not arm on the wrapper's own
-# arguments, and a wrapper standing in front of a `cd` must not be read as one.
-# `timeout 5 cd /x` does not move the shell, so the tracked directory it would
-# set is a checkout the command never enters.
+# arguments. Each of these runs a program that is not git, with git's name only
+# in its argument text.
 @test "reading past a wrapper does not arm on a non-git program behind it" {
   on_main
   run_hook 'timeout 5 echo hello'
   assert_allowed_by_json
   run_hook 'env FOO=bar ls'
   assert_allowed_by_json
+}
+
+# The `cd` arm reads the word with its wrapper still in front, which is why the
+# guard keeps seg_cmd and seg_prog as two values. `timeout 5 cd <dir>` does not
+# move the shell, so a `cd` arm reading past the wrapper would track <dir> and
+# judge the commit after it against a checkout the command never enters. The
+# pair is the assertion: the plain `cd` is tracked and denies, the wrapped one
+# is not tracked and allows, so folding the two values together reds here.
+@test "a wrapper in front of cd does not move the tracked checkout" {
+  on_main
+  local wt="$BATS_TEST_TMPDIR/wt"
+  git -C "$REPO" worktree add --quiet -b wt-branch "$wt"
+
+  run_hook_from "cd '$REPO'; git commit -m x" "$wt"
+  assert_denied_by_json
+
+  run_hook_from "timeout 5 cd '$REPO'; git commit -m x" "$wt"
+  assert_allowed_by_json
+}
+
+# parse_git_globals finds the invocation with its own scan for the first word
+# equal to `git`, so a wrapper whose option value, assignment value or operand
+# IS the word `git` makes that scan latch onto the wrapper's argument and read
+# the real `git` as the SUBCOMMAND. git_sub is then `git`, no commit or push
+# rule arms, and the guard allows. Arming past the wrapper without handing the
+# parser the same word is what makes the shape reachable.
+@test "a wrapper argument spelled git does not become the subcommand" {
+  on_main
+  run_hook 'exec -a git git commit -m x'
+  assert_denied_by_json
+  run_hook 'env -u git git commit -m x'
+  assert_denied_by_json
+  run_hook 'env -C git git commit -m x'
+  assert_denied_by_json
+  run_hook 'xargs -I git git commit -m x'
+  assert_denied_by_json
+  run_hook 'exec -a git git push --force origin main'
+  assert_denied_by_json
 }

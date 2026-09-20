@@ -759,3 +759,25 @@ wrapper_prefix() {
   done
   true
 }
+
+# The wrapper table's fail-loud arm is narrowed the way the jq arm narrows on
+# its own needle. This hook is registered on the `Bash` matcher, so an arm
+# standing ahead of the git fast-path would answer EVERY Bash call with a deny
+# when the library is missing, taking out the shell repair that restores it.
+# The pair is the assertion: the non-git call still runs, the git call refuses.
+@test "command-wrappers.sh absent: a non-git command is still allowed" {
+  stage_hook_tree
+  rm -f "$STAGED_ROOT/.claude/hooks/lib/command-wrappers.sh"
+  run_staged 'ls -la /tmp'
+  [ "$status" -eq 0 ]
+  grep -qF -- 'cannot load lib/command-wrappers.sh' <<<"$output" && return 1
+  assert_allowed_by_json
+}
+
+@test "command-wrappers.sh absent: a git commit refuses rather than running unguarded" {
+  stage_hook_tree
+  rm -f "$STAGED_ROOT/.claude/hooks/lib/command-wrappers.sh"
+  run_staged 'git commit -m x'
+  [ "$status" -eq 2 ]
+  grep -qF -- 'cannot load lib/command-wrappers.sh' <<<"$output"
+}
