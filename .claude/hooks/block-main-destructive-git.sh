@@ -645,15 +645,111 @@ hidden_bodies() {
   return 0
 }
 
+# collapsed_substitutions <text>: print the command once more with every
+# `$( … )` span replaced by a single placeholder word, and print nothing when
+# the text carries none or the collapse changes nothing. Cutting at every `(`
+# and `)` is what lets the walk read a command INSIDE a substitution, and is
+# also what splits a substitution standing in git's OWN arguments away from the
+# command word: `git -C "$(pwd)" commit` leaves no segment carrying both `git`
+# and `commit`, so every rule armed on the subcommand went unarmed. This line
+# is read IN ADDITION to the command's own, so the body still reaches the walk
+# as its own segment and only the outer invocation is rejoined. The placeholder
+# is a bare `_` so a subcommand or a refspec written inside the span cannot arm
+# the rejoined segment with something it never spelled. It is emitted ahead of
+# the hidden bodies so those stay the last lines read, which is what keeps a
+# `cd` anywhere in the command governing them.
+#
+# Innermost first, so a nested span collapses over successive passes; the bound
+# is a backstop. A span crossing a newline is left alone, since sed reads a
+# line at a time: that leaves the segment cut where it already was, which is
+# the direction that hides nothing the walk reads today.
+# block-no-verify.sh and red-verify-commit-check.sh carry the same function,
+# and block-no-verify.bats pins the copies identical.
+collapsed_substitutions() {
+  local text="$1" prev pass=0
+  # shellcheck disable=SC2016 # a literal opener matched in the text, not an expansion
+  case "$text" in *'$('*) ;; *) return 0 ;; esac
+  while [ "$pass" -lt 8 ]; do
+    prev="$text"
+    text=$(printf '%s' "$text" | sed -E 's/\$\([^()]*\)/_/g')
+    [ "$text" = "$prev" ] && break
+    pass=$((pass + 1))
+  done
+  [ "$text" = "$1" ] || printf '%s\n' "$text"
+  return 0
+}
+
 lead_cd=""
 cd_tracking=1
+hop_checked=0
+checked_hop_dir=""
 if cmd_has_unquoted_group "$cmd"; then cd_tracking=0; fi
 
+# The collapsed line is a second reading of the WHOLE command, its own `cd`
+# segments included, so the walk enters it with no tracked directory standing
+# and lets that reading re-derive one. Carrying the first reading's final `cd`
+# across would put a `cd` that FOLLOWS a git segment in FRONT of that segment
+# on the second reading, and a commit made before the command steps into
+# another checkout would be read against the checkout it steps into.
+#
+# Only the collapsed line gets the reset. The hidden bodies after it are read
+# last on purpose, so that a `cd` anywhere in the command governs them; the
+# collapsed line carries the same `cd` segments the command's own line does, so
+# it hands them the same directory either way.
+#
+# The boundary travels in band, on the same line stream the command text
+# travels on, so its spelling is DERIVED per run rather than fixed. A fixed
+# word would be one the guarded command can write for itself, and the arm below
+# clears the tracked directory on any segment that matches: a command spelling
+# it between two separators takes its own `cd` off the walk, and the commit
+# after it is read against the checkout the command never lands in. That is a
+# disarm rather than an over-block, which is the direction this guard must
+# never fail in. The hook's pid and `$RANDOM` are both readable on bash 3.2 and
+# neither is reachable from the command text.
+#
+# The spelling carries none of `| & ; ( )`, so the `tr` below leaves it
+# standing on a line of its own, and it is not a command word any rule arms on.
+walk_reset="__gaia_walk_reset_${$}_${RANDOM}__"
+collapsed=$(collapsed_substitutions "$cmd")
+
 while IFS= read -r seg; do
-  # Command word = the first token after any leading whitespace + env-var
-  # assignments (`WORD=value `). bash 3.2 does not populate BASH_REMATCH
-  # reliably, so strip with sed rather than a capture loop.
-  seg_cmd=$(printf '%s' "$seg" | sed -E 's/^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)*//')
+  if [ "$seg" = "$walk_reset" ]; then
+    lead_cd=""
+    continue
+  fi
+
+  # Command word = the first token past any leading whitespace, env-var
+  # assignment prefix, shell reserved word, or redirection. What the shell
+  # accepts in that run, each of which hid the whole invocation from a narrower
+  # reading: `NAME+=value` is a command prefix exactly as `NAME=value` is
+  # (`bash -c 'zz+=1 env'` prints `zz=1`); an assignment's value may be quoted
+  # and carry whitespace (`GIT_AUTHOR_DATE="2024-01-01 12:00" git commit`), so
+  # a value read as an unquoted run stops at the opening quote; a reserved
+  # word or grouping token stands in command position with no `| & ; ( )` ahead
+  # of the command word for the walk to cut at, with `time` taking an optional
+  # `-p` or `--` of its own; and a redirection may lead a simple command
+  # (`bash -c '>/tmp/x echo hi'` writes the file), so one standing ahead of the
+  # invocation occupies the slot the command word is read from. bash 3.2 does
+  # not populate BASH_REMATCH reliably, so strip with sed rather than a capture
+  # loop.
+  #
+  # Honest limit: a command WRAPPER (`env`, `command`, `exec`, `nohup`,
+  # `timeout`, `xargs`) also stands where the command word is read and is NOT
+  # stripped, so it still hides the invocation. Each carries its own option
+  # grammar, and a blind strip would misread `env -i git …` and `timeout 5 git
+  # …`, so closing them needs a per-wrapper option table rather than this list.
+  #
+  # Second honest limit, of a different kind: a redirection whose target is
+  # another descriptor (`2>&1`, `>&2`) never reaches this strip at all, because
+  # the walk cuts segments at `&` and the invocation lands in a segment
+  # beginning with the descriptor number. Closing it means not cutting at an
+  # `&` that belongs to a redirection, which a separator split cannot tell from
+  # `&&` without reading the command the way the shell does.
+  #
+  # block-no-verify.sh and red-verify-commit-check.sh carry this expression
+  # too, and block-no-verify.bats pins the copies identical: a widening applied
+  # to one and not the rest leaves the gap open in whichever copy was missed.
+  seg_cmd=$(printf '%s' "$seg" | sed -E 's/^[[:space:]]*(([A-Za-z_][A-Za-z0-9_]*\+?=([^[:space:]"'"'"']+|"[^"]*"|'"'"'[^'"'"']*'"'"')*|[0-9]*[<>][^[:space:]]*|[{!]|coproc|elif|else|while|until|then|time([[:space:]]+(-p|--))?|do|if)[[:space:]]+)*//')
 
   # A target that does not resolve as this repository CLEARS the tracked
   # directory rather than leaving the previous one standing: the command has
@@ -669,10 +765,34 @@ while IFS= read -r seg; do
 
   parse_git_globals "$seg"
 
+  # The hop check is the one arm here that can spend a bounded network lookup,
+  # and the collapsed line re-emits the whole command, so a checkout whose
+  # operand carries a `$( )` reaches this arm twice for one target: once
+  # truncated at the paren, once rejoined. Answering a target only the first
+  # time keeps that from doubling the hook's worst-case wait and from printing
+  # the unchecked diagnostic twice for a single command. The memo keys on the
+  # resolved target, so a command hopping in two different directories is still
+  # checked in each.
+  #
+  # It spans `hop_guard` alone, and the split is what keeps the memo from
+  # taking the guard off. `hop_guard`'s verdict is a function of the target,
+  # the main checkout and the payload's session id, all invariant across the
+  # segments of one command, so answering it once per target is sound.
+  # `hop_moves_head` reads the operands `parse_git_globals` just set for THIS
+  # segment, so it has to be asked per segment: a pathspec restore and a
+  # checkout of the branch HEAD already holds both move nothing, and either one
+  # memoised as the answer for its target would stand in for the branch switch
+  # beside it in the same command.
   case "$git_sub" in
     checkout | switch)
       hop_dir=$(hop_target "$git_cwd")
-      if hop_moves_head "$hop_dir"; then hop_guard "$hop_dir"; fi
+      if hop_moves_head "$hop_dir"; then
+        if [ "$hop_checked" -eq 0 ] || [ "$hop_dir" != "$checked_hop_dir" ]; then
+          hop_checked=1
+          checked_hop_dir="$hop_dir"
+          hop_guard "$hop_dir"
+        fi
+      fi
       ;;
   esac
   [ "$foreign_repo" -eq 1 ] && continue
@@ -734,6 +854,10 @@ while IFS= read -r seg; do
       deny "This push's refspec names main, master or HEAD, which is forbidden from any branch (wiki/concepts/Git Workflow.md). Name the branch you are pushing explicitly and open a PR."
     fi
   fi
-done < <({ printf '%s\n' "$cmd"; hidden_bodies "$cmd"; } | tr '|&;()' '\n')
+done < <({
+  printf '%s\n' "$cmd"
+  if [ -n "$collapsed" ]; then printf '%s\n%s\n' "$walk_reset" "$collapsed"; fi
+  hidden_bodies "$cmd"
+} | tr '|&;()' '\n')
 
 exit 0
