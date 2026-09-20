@@ -88,6 +88,11 @@ lib="$(dirname "${BASH_SOURCE[0]}")/branch-name-lib.sh"
 [ -r "$lib" ] || die_input "branch library $lib is missing or unreadable"
 # shellcheck source=/dev/null
 . "$lib" || die_input "branch library $lib failed to load"
+# Loading is not enough: the ref-readability probe below is a second symbol, and
+# a library that predates it would fail the probe's own call and report a
+# healthy ref store as unreadable. Name the missing symbol instead.
+type gaia_branch_refs_readable >/dev/null 2>&1 \
+  || die_input "branch library $lib does not provide gaia_branch_refs_readable"
 
 if [ -n "$claims_file" ]; then
   claims="$(cat "$claims_file")" || die_input "cannot read $claims_file"

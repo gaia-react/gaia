@@ -263,11 +263,16 @@ fn_body() {
   ' "$LIB"
 }
 
-# ref_namespaces <fn>: every refs/<x> namespace <fn> names, deduped and sorted.
-# Derived from the library rather than restated here, so a namespace added to
-# or dropped from either function changes what the tests below drive.
+# ref_namespaces <fn>: every refs/<x> namespace <fn>'s CODE names, deduped and
+# sorted. Derived from the library rather than restated here, so a namespace
+# added to or dropped from either function changes what the tests below drive.
+# Comments are stripped first: gaia_branch_list names refs/remotes in one of
+# its own, so without the strip a deleted ref read would still be vouched for
+# by the prose beside it, which is the divergence the coupling test is named
+# after.
 ref_namespaces() {
-  fn_body "$1" | grep -oE 'refs/[a-z]+' | LC_ALL=C sort -u
+  fn_body "$1" | grep -vE '^[[:space:]]*#' | grep -oE 'refs/[a-z]+' \
+    | LC_ALL=C sort -u
 }
 
 # failing_namespace_shim DIR NS: a git that fails only `for-each-ref` over NS,
