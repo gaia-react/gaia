@@ -3884,6 +3884,7 @@ wiki/concepts/Audit Disposition and Debt Fix.md|hooks-1 hooks-2 hooks-3 hooks-4 
 wiki/concepts/Claude Hooks.md|hooks-1 hooks-2 hooks-3 hooks-4 lib scripts-1 scripts-2 scripts-3
 wiki/concepts/Code Review Audit Agent.md|hooks-1 hooks-2 hooks-3 hooks-4 lib
 wiki/concepts/GAIA Audit.md|hooks-1 hooks-2 hooks-3 hooks-4 lib
+wiki/concepts/GAIA Scripts.md|lib scripts-1 scripts-2 scripts-3
 wiki/concepts/Issue Claim.md|lib
 wiki/concepts/Local Working State.md|hooks-1 hooks-2 hooks-3 hooks-4 lib
 wiki/concepts/PR Merge Workflow.md|hooks-1 hooks-2 hooks-3 hooks-4 lib misc scripts-1 scripts-2 scripts-3

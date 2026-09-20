@@ -204,6 +204,8 @@
 .gaia/scripts/lint-hook-jq-availability.sh
 # The PreToolUse registration read and blocking oracle the two hook-layer gates share. Both consumers are withheld above, so an adopter clone would carry a library nothing sources.
 .gaia/scripts/hook-registration-lib.sh
+# The scripts inventory guard fails when a file at the root of .gaia/scripts/ is absent from wiki/concepts/GAIA Scripts.md, where a root file is anything git tracks there or any .sh sitting there on disk, the two sources unioned. Withheld on the same reasoning as the lints above: every one of its runners is release-excluded, so shipping this file would ship a check nothing on an adopter clone invokes. Those runners are shell-lint.sh, excluded by the .gaia/tests entry below, and the sibling bats suite .gaia/scripts/tests/lint-scripts-wiki-inventory.bats via the separate .gaia/scripts/tests entry beside it. An adopter clone does carry both subjects -- it has a .gaia/scripts/ and it receives the page -- so the withhold rests on the absent runner rather than on an empty surface. It carries the same second ground its two siblings above do, and here that ground is the strongest of the three: the page indexes GAIA's own scripts, an adopter's copy of it is the scrubbed subset GAIA ships them, and an adopter who drops a script of their own into .gaia/scripts/ owes no row in a page they did not write. The on-disk half of the subject set makes that concrete rather than hypothetical, because it reds on an untracked file the moment it appears.
+.gaia/scripts/lint-scripts-wiki-inventory.sh
 
 # --- 2. Maintainer-only wiki content ---
 # Internal vault administration files and team-specific knowledge that

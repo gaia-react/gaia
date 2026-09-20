@@ -18,9 +18,10 @@
 # the wiki cached-version guard (.gaia/scripts/lint-wiki-cached-version.sh),
 # the hook advisory-classification guard
 # (.gaia/scripts/lint-hook-advisory-classification.sh), the hook
-# cwd-relative-load guard (.gaia/scripts/lint-hook-cwd-relative-loads.sh), and
-# the hook jq-availability guard
-# (.gaia/scripts/lint-hook-jq-availability.sh).
+# cwd-relative-load guard (.gaia/scripts/lint-hook-cwd-relative-loads.sh), the
+# hook jq-availability guard
+# (.gaia/scripts/lint-hook-jq-availability.sh), and the scripts inventory guard
+# (.gaia/scripts/lint-scripts-wiki-inventory.sh).
 # Exit 0 when clean, 1 on any finding at or above the severity floor, and 1 on
 # a pass that cannot run at all (no shellcheck binary, an empty *.sh discovery
 # set, an unusable bash-3.2 interpreter). A red gate is therefore not always a
@@ -668,6 +669,23 @@ fi
 
 echo "--> lint-hook-advisory-classification (a blocking hook filed under an Advisory heading)"
 if ! bash "$REPO_ROOT/.gaia/scripts/lint-hook-advisory-classification.sh" "$REPO_ROOT"; then
+  status=1
+fi
+
+# The scripts inventory guard, folded here for the reason the bundled-hooks
+# guard above is: its subjects are a directory listing and a wiki page, and
+# only the listing is shell, and only as filenames. Its arming lines are on the
+# `Shell Lint` paths filter alongside the others -- `**/*.md` for the page, and
+# a `.gaia/scripts/**` entry for the listing, which `**/*.sh` covers only for
+# the root files that happen to be scripts.
+#
+# It takes the root explicitly rather than resolving one ambiently, so it needs
+# neither a subshell nor a `cd`; this harness already holds the value its
+# argument-free arm would re-derive. One half of its subject set is the git
+# index, which it reads with `git -C "$root"` rather than from the working
+# directory, so the explicit root is what scopes it here too.
+echo "--> lint-scripts-wiki-inventory (a .gaia/scripts root file absent from the scripts index)"
+if ! bash "$REPO_ROOT/.gaia/scripts/lint-scripts-wiki-inventory.sh" "$REPO_ROOT"; then
   status=1
 fi
 
