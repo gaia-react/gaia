@@ -541,20 +541,43 @@ refute_code() {
 # the environment-error arm is reached without breaking anyone's auth.
 # ---------------------------------------------------------------------------
 
+# stub_gh <corpus-json> [view-json] [unfiltered-corpus-json]
+#
+# With a third argument the stub answers BY ARGV rather than by subcommand: a
+# list carrying `--label severity:investigate` gets <corpus-json>, any other
+# list gets <unfiltered-corpus-json>. That is what lets a test assert the cap's
+# BEHAVIOUR instead of its argv shape. An argv assertion cannot tell the query
+# whose length becomes the count from any other logged query, so a refactor
+# that keeps the filtered query for the refusal numbers and counts a second,
+# unfiltered one passes every argv check while refusing every investigate
+# filing permanently. Answering per-argv makes that refactor read the larger
+# corpus and trip the cap, which no rewording can evade.
+#
+# Omitting the third argument keeps the subcommand-only behaviour the --issue
+# and --sweep tests were written against.
 stub_gh() {
   mkdir -p "$TMP/bin"
   printf '%s\n' "$1" >"$TMP/corpus.json"
   printf '%s\n' "${2:-[]}" >"$TMP/view.json"
+  if [ "$#" -ge 3 ]; then
+    printf '%s\n' "$3" >"$TMP/unfiltered.json"
+  else
+    rm -f "$TMP/unfiltered.json"
+  fi
   cat >"$TMP/bin/gh" <<'EOF'
 #!/usr/bin/env bash
-# $1 is `issue`, $2 is the subcommand. argv is logged one call per line so a
-# test can assert WHICH issues a mode asked for, not only what it did with the
-# answer: this stub dispatches on $2 alone, so without the log a query that
-# lost its own label or state filter returns the same corpus and every
-# assertion downstream of it stays green.
+# $1 is `issue`, $2 is the subcommand. argv is also logged one call per line, as
+# a cheaper backstop to the per-argv corpus selection above.
 printf '%s\n' "$*" >>"$STUB_DIR/argv.log"
 case "$2" in
-  list) cat "$STUB_DIR/corpus.json" ;;
+  list)
+    if [ -f "$STUB_DIR/unfiltered.json" ] &&
+      ! printf '%s\n' "$*" | grep -qF -- '--label severity:investigate'; then
+      cat "$STUB_DIR/unfiltered.json"
+    else
+      cat "$STUB_DIR/corpus.json"
+    fi
+    ;;
   view) cat "$STUB_DIR/view.json" ;;
   *) exit 1 ;;
 esac
@@ -683,18 +706,18 @@ stub_gh_failing() {
 }
 
 @test "RED: the cap counts the investigate queue, not the whole open backlog" {
-  # The arithmetic tests above cannot fail on a query that lost its own
-  # filters, because the stub answers any `issue list` with the same corpus.
-  # Dropping `--label severity:investigate` would make the cap count every open
-  # tech-debt issue and refuse every investigate filing permanently, with this
-  # suite still green, so the scope is asserted from the logged argv instead.
-  stub_gh '[{"number":11,"title":"one"}]'
+  # One investigate issue against a five-issue open backlog. Whichever corpus
+  # the cap actually counts decides the exit status, so this asserts the
+  # behaviour: a query that lost the grade filter reads five, trips the cap of
+  # three, and reds here. The arithmetic tests above cannot catch that, because
+  # they let one corpus answer every list.
+  stub_gh '[{"number":11,"title":"one"}]' '[]' \
+    '[{"number":21},{"number":22},{"number":23},{"number":24},{"number":25}]'
   run bash "$CHECK" --investigate-cap --labels "$INVESTIGATE_LABELS"
   [ "$status" -eq 0 ]
-  # All three filters on ONE logged query, not merely somewhere in the log.
-  # Three independent file-wide greps would stay green on a split into two
-  # calls, one narrowing to the grade and one counting the whole open backlog,
-  # which is the same permanent refusal this test exists to catch.
+
+  # The argv pin stays as the cheaper backstop, and all three filters must sit
+  # on ONE logged query: file-wide greps would pass on a split into two calls.
   local line
   line="$(grep -F -- "--label severity:investigate" "$TMP/argv.log" | head -1)"
   [ -n "$line" ] || return 1

@@ -277,13 +277,15 @@ setup() {
   # so pinning the word would green this suite while the recipe told every filer
   # a cap the gate does not enforce. Same convention as the label loops below.
   grep -qF -- "\`INVESTIGATE_CAP\` in \`.gaia/scripts/check-debt-issue-metadata.sh\`" "$VOCAB" || return 1
-  # The construct, not one sentence shape: any spelled cap number in this
-  # prose is the defect, however it is worded. An anchored "at <n> open"
-  # pattern let "capped, to three ...", "a maximum of three ...", and "no more
-  # than three ..." all through, each re-copying the constant into shipped
-  # prose beside a pointer that still satisfies the grep above.
+  # Three spellings of one defect: the cap's value re-copied into shipped
+  # prose, where it drifts from the constant on the next change. The patterns
+  # cover a number qualifying the grade, a number after cap/capped, and the
+  # bounding quantifiers; a wording outside all three still escapes, so this
+  # pins those shapes rather than the whole construct, and a new wording is
+  # worth a fourth alternation rather than trust in the three.
   assert_absent_across "(three|[0-9]+) (open|simultaneous) .?severity:investigate" "$VOCAB"
   assert_absent_across "cap(ped)? (of|at|to) (three|[0-9]+)" "$VOCAB"
+  assert_absent_across "(no more than|at most|a maximum of|up to) (three|[0-9]+)" "$VOCAB"
 }
 
 @test "neither label loop states a count of its own" {
