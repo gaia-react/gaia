@@ -449,6 +449,17 @@ run_staged() {
 # A reserved word or grouping token stands in command position with no
 # `| & ; ( )` between it and the command word, so the segment reaches the walk
 # with the reserved word read as its command.
+#
+# The set is hand-written, because bash's reserved words are not derivable from
+# anything in this repository, so it carries its non-members with reasons
+# (`.claude/rules/bats-assertions.md`). Every reserved word that can stand
+# immediately before a command is driven below. Deliberately not members, each
+# because it precedes something other than a command, so the command word is
+# not the next token and no segment of theirs reaches the walk unread:
+# `function` and `for` and `select` precede a NAME, `case` precedes a WORD, and
+# `in`, `esac`, `fi`, `done` and `}` close a construct rather than opening one.
+# A command WRAPPER (`env`, `command`, `timeout`) is not a reserved word and is
+# not a member either; the derivation's own comment states that limit.
 @test "a reserved word or grouping token does not hide the git command word" {
   run_hook 'if true; then git commit -n -m y; fi'
   assert_denied_by_json
@@ -457,6 +468,12 @@ run_staged() {
   run_hook '! git commit -n -m y'
   assert_denied_by_json
   run_hook 'time git commit -n -m y'
+  assert_denied_by_json
+  run_hook 'time -p git commit -n -m y'
+  assert_denied_by_json
+  run_hook 'time -- git commit -n -m y'
+  assert_denied_by_json
+  run_hook 'coproc git commit -n -m y'
   assert_denied_by_json
   run_hook 'for f in x; do git commit -n -m y; done'
   assert_denied_by_json
@@ -469,6 +486,21 @@ run_staged() {
   run_hook 'if false; then echo no; else git commit -n -m y; fi'
   assert_denied_by_json
   run_hook 'if false; then echo no; elif git commit -n -m y; then echo ok; fi'
+  assert_denied_by_json
+}
+
+# An assignment's value may be quoted and carry whitespace, which the shell
+# accepts as an ordinary command prefix. A value read as an unquoted run stops
+# at the opening quote, leaving the rest of the value standing where the
+# command word is read.
+@test "a quoted env-assignment value does not hide the git command word" {
+  run_hook 'GIT_EDITOR="code --wait" git commit --no-verify -m x'
+  assert_denied_by_json
+  run_hook 'GIT_AUTHOR_DATE="2024-01-01 12:00" git commit -n -m x'
+  assert_denied_by_json
+  run_hook "GIT_AUTHOR_DATE='2024-01-01 12:00' git commit -n -m x"
+  assert_denied_by_json
+  run_hook 'GIT_EDITOR="code --wait" git push --no-verify'
   assert_denied_by_json
 }
 
@@ -556,22 +588,34 @@ run_staged() {
 # repo-relative PATH: a page that writes the runnable path is handing an agent
 # something to type, where a page naming the file is not. `wiki/meta/` holds
 # audit reports, which quote paths by construction and are never executed.
+#
+# The directory list is hand-written, so each entry is asserted to exist before
+# it is searched: a renamed or removed directory would otherwise drop out of
+# the scanned set while the search still reported clean.
 @test "the wiki squash script is reached only through its hook registration" {
-  local root hits
+  local root hits d
   root=$(cd "$HOOKS_SRC/../.." && pwd)
   grep -qF 'wiki-squash-autocommits.sh' "$root/.claude/settings.json"
-  hits=$(grep -rlF 'wiki-squash-autocommits.sh' \
-           "$root/.claude/skills" "$root/.claude/commands" "$root/.claude/rules" \
-           "$root/.claude/agents" "$root/.claude/instructions" \
-           2>/dev/null || true)
+
+  set -- "$root/.claude/skills" "$root/.claude/commands" "$root/.claude/rules" \
+         "$root/.claude/agents" "$root/.claude/instructions" \
+         "$root/.specify/extensions/gaia/commands" "$root/.specify/extensions/gaia/rules"
+  for d in "$@"; do [ -d "$d" ]; done
+  hits=$(grep -rlF 'wiki-squash-autocommits.sh' "$@" 2>/dev/null || true)
   [ -z "$hits" ]
+
+  [ -d "$root/wiki" ]
   hits=$(grep -rlF --exclude-dir=meta '.claude/hooks/wiki-squash-autocommits.sh' \
            "$root/wiki" 2>/dev/null || true)
   [ -z "$hits" ]
 }
 
-# The substitution collapse is the second derivation those copies share, pinned
-# for the same reason.
+# The substitution collapse is the second derivation those copies share. This
+# pin holds SAMENESS only, unlike the command-word pin above: a weakening
+# applied uniformly to all three copies leaves it green. What carries the
+# construct is the behavioural pair in each suite, the orphaned-flag test and
+# the collapsed-substitution control, which red when the collapse stops
+# rejoining or starts over-arming.
 @test "every commit guard collapses command substitutions the same way" {
   local expected="" f body
   for f in block-no-verify.sh block-main-destructive-git.sh red-verify-commit-check.sh; do

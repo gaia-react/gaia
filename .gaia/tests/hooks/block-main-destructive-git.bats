@@ -1088,6 +1088,23 @@ run_hop() {
   assert_allowed_by_json
 }
 
+# The collapsed line re-emits the WHOLE command, so every intact git segment
+# in a command that carries a `$( )` anywhere is walked twice, not only the
+# segment the substitution sits in. Every other rule reaches the same verdict
+# both times at no cost; the hop arm is the one that can spend a bounded
+# pull-request lookup, so without the memo this command's worst-case wait
+# doubles and the diagnostic prints twice.
+#
+# Pinned on the ALLOW path: a deny exits the hook on the first visit, so the
+# second one can never be observed there.
+@test "hop guard: a target beside a substitution is answered once, not twice" {
+  hold_feature_with_pr 42
+  export GH_STUB=fail
+  run_hop 'git checkout main && echo "$(date)"' sid-peer
+  assert_allowed_by_json
+  [ "$(grep -cF -- 'could not check' <<<"$output")" -eq 1 ]
+}
+
 # --- command-word derivation: prefixes that hid `git` from the segment walk ---
 
 # `NAME+=value` is a command prefix the shell accepts exactly as `NAME=value`
@@ -1118,6 +1135,10 @@ run_hop() {
   assert_denied_by_json
   run_hook 'time git commit -m y'
   assert_denied_by_json
+  run_hook 'time -p git commit -m y'
+  assert_denied_by_json
+  run_hook 'coproc git commit -m y'
+  assert_denied_by_json
   run_hook 'for f in x; do git commit -m y; done'
   assert_denied_by_json
   run_hook 'while :; do git push; done'
@@ -1136,6 +1157,22 @@ run_hop() {
   assert_allowed_by_json
   run_hook 'dotimes git commit -m y'
   assert_allowed_by_json
+  run_hook 'coprocess git commit -m y'
+  assert_allowed_by_json
+}
+
+# An assignment's value may be quoted and carry whitespace, which the shell
+# accepts as an ordinary command prefix. A value read as an unquoted run stops
+# at the opening quote, leaving the rest of the value standing where the
+# command word is read.
+@test "a quoted env-assignment value does not hide the git command word" {
+  on_main
+  run_hook 'GIT_EDITOR="code --wait" git commit -m x'
+  assert_denied_by_json
+  run_hook 'GIT_AUTHOR_DATE="2024-01-01 12:00" git commit --amend'
+  assert_denied_by_json
+  run_hook "GIT_AUTHOR_DATE='2024-01-01 12:00' git push"
+  assert_denied_by_json
 }
 
 # A `$( )` inside git's OWN arguments cuts the segment at its parens, so no one

@@ -764,7 +764,27 @@ run_commit_hook_in() {
   run_commit_hook 'time git commit -m change'
   [ "$status" -eq 0 ]
   denied
+  run_commit_hook 'time -p git commit -m change'
+  [ "$status" -eq 0 ]
+  denied
+  run_commit_hook 'coproc git commit -m change'
+  [ "$status" -eq 0 ]
+  denied
   run_commit_hook 'for f in x; do git commit -m change; done'
+  [ "$status" -eq 0 ]
+  denied
+}
+
+# An assignment's value may be quoted and carry whitespace, which the shell
+# accepts as an ordinary command prefix. A value read as an unquoted run stops
+# at the opening quote, leaving the rest of the value standing where the
+# command word is read.
+@test "a quoted env-assignment value does not hide the git command word" {
+  stage_file "app/utils/x/index.test.ts" "$PASSING_TEST"
+  run_commit_hook 'GIT_EDITOR="code --wait" git commit -m change'
+  [ "$status" -eq 0 ]
+  denied
+  run_commit_hook "GIT_AUTHOR_DATE='2024-01-01 12:00' git commit -m change"
   [ "$status" -eq 0 ]
   denied
 }
