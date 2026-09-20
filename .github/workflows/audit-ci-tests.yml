@@ -381,19 +381,23 @@ jobs:
               # is dropped from it. The directory, the other subject, is already
               # covered by the `.gaia/scripts/**` line above.
               #
-              # What this line buys is LEG arming, not job arming, and the
+              # What this line decides is LEG arming, not job arming, and the
               # distinction is the whole reason to write it down. The `wiki/**`
               # entry below already arms the job for this page, and a changed
               # path outside the narrowable class arms every leg unconditionally
               # (.gaia/tests/leg-arming.sh, the out-of-class arm), so the
-              # comparison runs either way. Naming the page here adds it to that
-              # class, which is matched by exact string equality, and a class
-              # page is then decided per leg: a leg arms when a file naming the
-              # page is attributed to its exchange group. The suite above names
-              # it, so the legs holding that suite arm and the rest are declined
-              # for an edit to this page alone. The coverage that narrowing
-              # gives up, a whole-tree suite that never names the page, is the
-              # accepted gap recorded at that same narrowing rule.
+              # comparison runs either way and this entry NARROWS rather than
+              # adds. Naming the page here puts it in that class, which is
+              # matched by exact string equality, and a class page is then
+              # decided per leg: a leg arms when a file naming the page is
+              # attributed to its exchange group. The suite above names it, so
+              # the legs holding that suite arm; the `lib` leg arms too, for a
+              # reason of its own that has nothing to do with this page (its
+              # exchange group holds the derived both-ways check, which always
+              # runs); and the rest are declined for an edit to this page alone.
+              # The coverage that narrowing gives up, a whole-tree suite that
+              # never names the page, is the accepted gap recorded at that same
+              # narrowing rule.
               - 'wiki/concepts/GAIA Scripts.md'
               # doc-countability-prose.bats (.gaia/tests/lib/) greps this page
               # for the superseded classless-finding claims (a classless finding

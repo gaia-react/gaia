@@ -33,9 +33,10 @@ setup() {
   REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
   INVENTORY_REL="wiki/concepts/GAIA Scripts.md"
   SCRIPTS_REL=".gaia/scripts"
-  # Absolute, because the two no-argument tests below run the check under a
-  # PATH that deliberately resolves nothing: `env` would have no interpreter
-  # left to find by name.
+  # Absolute, because the git-off-PATH test below runs the check under a PATH
+  # that deliberately resolves nothing: `env` would have no interpreter left to
+  # find by name. Its sibling runs under an ordinary PATH and uses this only
+  # for consistency, so relaxing that one is not licensed by this sentence.
   BASH_BIN="$(command -v bash)"
 }
 
@@ -286,7 +287,15 @@ write_inventory() {
   write_script "$dir" alpha.sh
   write_inventory "$dir" alpha.sh
 
-  run bash "$CHECK" "$dir"
+  # Same fence, and for the same reason, as the no-repository test below. An
+  # empty `.git` does not stop git's upward walk, it only fails to satisfy it
+  # ("not a git repository (or any of the parent directories)"), so without a
+  # ceiling git ascends out of the fixture and can resolve whatever repository
+  # BATS_TEST_TMPDIR sits beneath. It then answers about that repository, finds
+  # no `.gaia/scripts` in it, exits 0 with an empty listing, and this test reds
+  # on the empty-set arm instead of the unreadable-index one it pins. The
+  # ceiling names the parent, because git never excludes the cwd.
+  run env GIT_CEILING_DIRECTORIES="$BATS_TEST_TMPDIR" bash "$CHECK" "$dir"
   [ "$status" -eq 2 ]
   grep -qF -- 'could not read the git index' <<<"$output"
   # The empty-set arm's message would be false here -- the directory holds a
@@ -355,12 +364,19 @@ write_inventory() {
 @test "with no argument outside any repository, the refusal names the repository and not git" {
   local dir="$BATS_TEST_TMPDIR/outside"
   mkdir -p "$dir"
-  # The ceiling stops git walking up into whatever repository the temporary
-  # directory may sit beneath, so the fixture's own answer is the one read.
+  # The ceiling names the PARENT, not the directory the test sits in. git
+  # never excludes the current working directory from the ceiling list, so a
+  # ceiling naming the cwd stops nothing: git finds no `.git` there, ascends
+  # into the parent, and keeps going. Without a real fence this test resolves
+  # whatever repository BATS_TEST_TMPDIR happens to sit beneath -- a
+  # contributor's TMPDIR inside a checkout, or `bats --tmpdir` pointed at one
+  # -- and reds on a message about a missing page rather than on the arm it
+  # exists to pin.
+  #
   # The `cd` is test-local: bats runs each test in its own subshell, and
   # `--chdir` would tie this to GNU coreutils' env.
   cd "$dir" || return 1
-  run env GIT_CEILING_DIRECTORIES="$dir" "$BASH_BIN" "$CHECK"
+  run env GIT_CEILING_DIRECTORIES="$BATS_TEST_TMPDIR" "$BASH_BIN" "$CHECK"
   [ "$status" -eq 2 ]
   grep -qF -- 'not inside a git repository and no <repo_root> given' <<<"$output"
   grep -qF -- 'git is required to read the tracked set' <<<"$output" && return 1
