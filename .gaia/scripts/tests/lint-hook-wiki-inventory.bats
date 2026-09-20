@@ -43,7 +43,7 @@ setup() {
 make_fixture() {
   local name="$1"
   local dir="$BATS_TEST_TMPDIR/$name"
-  mkdir -p "$dir/.claude" "$dir/wiki/concepts"
+  mkdir -p "$dir/.claude/hooks" "$dir/wiki/concepts"
   printf '%s' "$dir"
 }
 
@@ -52,10 +52,20 @@ make_fixture() {
 # Register each named hook under a PreToolUse entry, in the command spelling
 # .claude/settings.json actually uses: a quoted absolute path built from a root
 # expansion, which is why the check recovers the basename from the path text.
+#
+# Each registered hook is also written to disk, because the real tree is that
+# shape and the check now reads both sources. A fixture registering a hook that
+# does not exist would exercise a tree nobody ships, and the tests that mean to
+# drive one source alone do so by writing only that source: the ones below with
+# an on-disk hook and no registration, and the ones registering nothing at all.
 write_settings() {
   local dir="$1"
   shift
   local hook first=1
+  for hook in "$@"; do
+    mkdir -p "$dir/.claude/hooks/$(dirname "$hook")"
+    printf '#!/usr/bin/env bash\n' >"$dir/.claude/hooks/$hook"
+  done
   {
     printf '{\n  "hooks": {\n    "PreToolUse": [\n'
     for hook in "$@"; do
@@ -268,12 +278,20 @@ write_inventory() {
   [ "$status" -eq 2 ]
   grep -qF -- 'no hook name could be read' <<<"$output"
   # The empty-set arm's message would be false here, so it must not be the one
-  # that fired.
-  grep -qF -- 'No command under the hooks key names that directory' <<<"$output" && return 1
+  # that fired. The needle is the empty-set arm's own opening line, which is
+  # the part of that message no other arm prints; pinning a fragment of its
+  # body instead is what lets a rewording leave this assertion matching
+  # nothing, unreachable, and indistinguishable from one that passed.
+  grep -qF -- 'discovery found no hook, from either source' <<<"$output" && return 1
   true
 }
 
-@test "settings registering no hook under .claude/hooks/ exits 2 rather than reporting the page complete" {
+# The fixture leaves BOTH sources empty: settings registers nothing, and
+# make_fixture creates the hooks directory without writing a file into it.
+# Naming only the settings half would overclaim, because either source alone is
+# enough to make the comparison meaningful: settings registering nothing while
+# a hook sits on disk exits 0 and reports clean.
+@test "neither source yielding a hook exits 2 rather than reporting the page complete" {
   local dir
   dir="$(make_fixture no_hooks)"
   printf '{\n  "hooks": {}\n}\n' >"$dir/$SETTINGS_REL"
@@ -282,11 +300,12 @@ write_inventory() {
   run bash "$CHECK" "$dir"
   [ "$status" -eq 2 ]
   grep -qF -- 'discovery found no hook' <<<"$output"
-  # The unreadable-spelling arm above has already ruled out the other condition
-  # that used to share this branch, so the message names the one cause that can
-  # still reach it rather than hedging across two, per
-  # .claude/rules/partial-cause-reporting.md.
-  grep -qF -- 'No command under the hooks key names that directory' <<<"$output"
+  # The set is a union, so reaching this branch means BOTH sources came back
+  # empty, and the message says both rather than naming whichever one the
+  # reader happened to break, per .claude/rules/partial-cause-reporting.md.
+  # The arms above have already ruled out every cause whose repair differs.
+  grep -qF -- 'names .claude/hooks/, AND' <<<"$output"
+  grep -qF -- 'holds no' <<<"$output"
 }
 
 @test "a registration naming a directory other than .claude/hooks/ is not counted, and exits 2 when it is the only one" {
@@ -365,7 +384,83 @@ write_inventory() {
   grep -qF -- 'too many arguments' <<<"$output"
 }
 
-@test "the real tree passes: every hook registered in settings.json is on the page" {
+@test "the real tree passes: every hook at the root of .claude/hooks/ is on the page" {
   run bash "$CHECK" "$REPO_ROOT"
   [ "$status" -eq 0 ]
+}
+
+# The on-disk half of the subject set.
+#
+# A registration is one of two ways a hook enters the set and it is not the
+# complete one: a hook invoked by path from an agent definition or another hook
+# is registered on no event, so a subject set read from settings.json alone
+# omits exactly the hooks with no event section on the page to live in. Those
+# are the ones an inventory gate is least able to notice going missing, because
+# their absence is what the gate's own discovery produces. The set is therefore
+# the union of the registrations and every `.sh` at the root of
+# `.claude/hooks/`, and the tests below drive the second source on its own.
+
+# write_hook_file <dir> <relpath>: an on-disk hook under .claude/hooks/ that
+# nothing registers.
+write_hook_file() {
+  mkdir -p "$1/.claude/hooks/$(dirname "$2")"
+  printf '#!/usr/bin/env bash\n' >"$1/.claude/hooks/$2"
+}
+
+@test "an unregistered hook at the root of .claude/hooks/ that the page never mentions fails, naming it" {
+  local dir
+  dir="$(make_fixture path_invoked_omitted)"
+  write_settings "$dir" alpha.sh
+  write_hook_file "$dir" path-invoked.sh
+  write_inventory "$dir" alpha.sh
+
+  run bash "$CHECK" "$dir"
+  [ "$status" -eq 1 ]
+  grep -qF -- 'path-invoked.sh' <<<"$output"
+}
+
+@test "an unregistered hook at the root of .claude/hooks/ counts as inventoried when the page names it" {
+  local dir
+  dir="$(make_fixture path_invoked_ok)"
+  write_settings "$dir" alpha.sh
+  write_hook_file "$dir" path-invoked.sh
+  write_inventory "$dir" alpha.sh path-invoked.sh
+
+  run bash "$CHECK" "$dir"
+  [ "$status" -eq 0 ]
+}
+
+@test "a sourced library under .claude/hooks/lib/ is not a subject, so the page need not mention it" {
+  local dir
+  dir="$(make_fixture lib_not_a_subject)"
+  write_settings "$dir" alpha.sh
+  write_hook_file "$dir" lib/shared.sh
+  write_inventory "$dir" alpha.sh
+
+  run bash "$CHECK" "$dir"
+  [ "$status" -eq 0 ]
+}
+
+@test "settings registering no hook passes when the on-disk source alone covers the page" {
+  local dir
+  dir="$(make_fixture registrationless)"
+  printf '{\n  "hooks": {}\n}\n' >"$dir/$SETTINGS_REL"
+  write_hook_file "$dir" alpha.sh
+  write_inventory "$dir" alpha.sh
+
+  run bash "$CHECK" "$dir"
+  [ "$status" -eq 0 ]
+  grep -qF -- 'clean' <<<"$output"
+}
+
+@test "a missing .claude/hooks directory exits 2 rather than falling back to the registrations alone" {
+  local dir
+  dir="$(make_fixture no_hooks_dir)"
+  write_settings "$dir" alpha.sh
+  rm -rf "$dir/.claude/hooks"
+  write_inventory "$dir" alpha.sh
+
+  run bash "$CHECK" "$dir"
+  [ "$status" -eq 2 ]
+  grep -qF -- 'hooks directory not found' <<<"$output"
 }

@@ -308,7 +308,7 @@ _gaia_repo_scope_opens_group() {
     if|then|else|elif|fi|for|while|until|do|done|case|'esac'|select|function|'!')
       return 0 ;;
   esac
-  for tok in "${GAIA_FIRST_COMMAND_WORDS[@]}"; do
+  for tok in ${GAIA_FIRST_COMMAND_WORDS[@]+"${GAIA_FIRST_COMMAND_WORDS[@]}"}; do
     case "$tok" in
       *'('* | *')'* | *'{'* | *'}'* | *'`'* | *\<\<*) return 0 ;;
     esac
@@ -467,7 +467,7 @@ _gaia_repo_scope_segment() {
       ;;
   esac
 
-  for tok in "${GAIA_FIRST_COMMAND_WORDS[@]}"; do
+  for tok in ${GAIA_FIRST_COMMAND_WORDS[@]+"${GAIA_FIRST_COMMAND_WORDS[@]}"}; do
     if [[ "$tok" =~ $_GAIA_REPO_SCOPE_TOOL_RE ]]; then
       _gaia_repo_scope_tracked || true
       return 2
