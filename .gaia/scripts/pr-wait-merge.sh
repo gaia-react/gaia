@@ -315,7 +315,13 @@ while [ "$attempt" -lt "$ATTEMPTS" ]; do
     break
   fi
 
-  if required_check_failed; then
+  # Gated on a state having been read, so an attempt that learned nothing
+  # spends one `gh` call rather than two. Against a `gh` that cannot answer at
+  # all the whole bound is such attempts, and the conditions that produce it,
+  # a rate limit above all, are the ones where doubling the call rate makes
+  # the recovery slower. No verdict changes: with no state read there is
+  # nothing for this arm to resolve against anyway.
+  if [ -n "$state" ] && required_check_failed; then
     verdict="CHECK_FAILED"
     break
   fi

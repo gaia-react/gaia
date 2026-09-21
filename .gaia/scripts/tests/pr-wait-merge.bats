@@ -89,6 +89,13 @@ view_calls() {
   grep -c 'pr view' "$TMP/argv.log" 2>/dev/null || true
 }
 
+# The number of `gh pr checks` calls the stub logged. Same `|| true` reasoning
+# as view_calls above.
+checks_calls() {
+  [ -f "$TMP/argv.log" ] || { printf '0\n'; return 0; }
+  grep -c 'pr checks' "$TMP/argv.log" 2>/dev/null || true
+}
+
 # stub_sleep
 #
 # Puts a `sleep` on PATH that logs each call and returns at once, so a test can
@@ -381,6 +388,18 @@ tsv() {
   [ "$status" -eq 2 ]
   grep -qE -- '^(TIMEOUT|MERGED|CONFLICTING|CHECK_FAILED|CLOSED)$' <<<"$output" && return 1
   true
+}
+
+@test "an attempt that read no state spends no checks call" {
+  # The condition this matters under is a rate limit, so the bound must not
+  # double its own call rate while waiting one out. Pinned by counting calls
+  # rather than by timing: an unreadable state produces one `gh pr view` per
+  # attempt and no `gh pr checks` at all.
+  stub_gh '' 0
+  run bash "$WAIT" --pr 7 --attempts 3 --interval 0
+  [ "$status" -eq 2 ]
+  [ "$(view_calls)" -eq 3 ]
+  [ "$(checks_calls)" -eq 0 ]
 }
 
 @test "the no-read refusal names what to check" {

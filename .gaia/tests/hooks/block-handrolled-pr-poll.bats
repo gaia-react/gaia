@@ -172,6 +172,10 @@ done'
   n_verdicts=$(printf '%s\n' "$verdicts" | grep -c .)
   n_arms=$(printf '%s\n' "$arms" | grep -c .)
   [ "$n_arms" -ge 2 ] || return 1
+  # +1 for TIMEOUT, which is the `*)` default arm and so carries no uppercase
+  # case label for the derivation above to count. Giving it an explicit arm
+  # keeps both sides honest and reds this line, which is the moment to drop
+  # the offset rather than to widen it.
   [ "$n_verdicts" -eq "$((n_arms + 1))" ] || return 1
 
   run_hook 'until [ "$(gh pr view 5 --json state --jq .state)" != "OPEN" ]; do sleep 30; done'
