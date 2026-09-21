@@ -537,7 +537,7 @@ When worthy:
 
 `gh pr merge` can fail without aborting the rest of a script: branch protection ("base branch policy prohibits the merge"), pending CI checks, missing `--auto` for queued merges, or auth issues. Proceeding to local cleanup (`git checkout main`, `git branch -D <pr-branch>`, `git fetch --prune`) before confirming the merge actually succeeded leaves the local branch deleted while the PR is still OPEN. Recoverable via `git checkout -b <branch> origin/<branch>` while the remote ref still exists, but it's avoidable churn.
 
-Verification is identical under both isolation modes: poll the PR until it reports `MERGED`, and stop early on either state that means it never will.
+Verification is identical under both isolation modes: poll the PR until it reports `MERGED`, and stop early on any state that means it never will.
 
 ```bash
 gh pr merge <N> --squash --delete-branch [--auto]

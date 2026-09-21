@@ -209,6 +209,16 @@ done'
   assert_allowed_by_exit
 }
 
+@test "a loop exiting on CONFLICTING without naming mergeable is allowed" {
+  # Pins the second alternative in HAS_MERGEABLE_RE. Every other test naming
+  # CONFLICTING also carries the word `mergeable`, so the field spelling alone
+  # would satisfy them and the value spelling would decide nothing. A wait that
+  # greps the value off `mergeStateStatus` never names the field, and denying
+  # it is the over-deny direction the escape exists to prevent.
+  run_hook 'until gh pr view 9 --json state,mergeStateStatus --jq .mergeStateStatus | grep -q CONFLICTING; do sleep 5; done'
+  assert_allowed_by_exit
+}
+
 @test "a multi-line loop reading mergeable is allowed" {
   run_hook 'for i in 1 2; do
   gh pr view 42 --json state,mergeable
@@ -232,6 +242,17 @@ done'
   # The regression guard for the false positive the matcher was narrowed
   # against: this carries `for`, `do`, and `gh pr checks`, and is not a loop.
   run_hook 'gh pr create --body "we used to do a for loop on gh pr checks here"'
+  assert_allowed_by_exit
+}
+
+@test "prose reaching the loop keyword but carrying no done is allowed" {
+  # Pins the `done` conjunct, which the fixture above cannot reach: its text
+  # has no whitespace-preceded then/do/else before the loop keyword, so
+  # LOOP_KEYWORD_RE fails first and the hook returns before the conjunct is
+  # consulted. This text does reach it -- ` do while ` matches the keyword
+  # class and the state read sits in the loop's own tail -- so the bare `done`
+  # requirement is the only thing allowing it.
+  run_hook 'gh pr comment 5 --body "we do while gh pr view 5 --json state says OPEN, then stop"'
   assert_allowed_by_exit
 }
 

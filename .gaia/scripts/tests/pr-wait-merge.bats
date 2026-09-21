@@ -89,6 +89,32 @@ view_calls() {
   grep -c 'pr view' "$TMP/argv.log" 2>/dev/null || true
 }
 
+# stub_sleep
+#
+# Puts a `sleep` on PATH that logs each call and returns at once, so a test can
+# assert HOW MANY waits the bound owed without spending any of them. Counting
+# is what the rule needs pinned -- N attempts owe N-1 waits -- and an elapsed
+# -time assertion would buy the same claim as a flake.
+stub_sleep() {
+  mkdir -p "$TMP/bin"
+  cat >"$TMP/bin/sleep" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >>"$STUB_DIR/sleep.log"
+EOF
+  chmod +x "$TMP/bin/sleep"
+  STUB_DIR="$TMP"
+  export STUB_DIR
+  PATH="$TMP/bin:$PATH"
+  export PATH
+}
+
+# The number of `sleep` calls the stub logged. Same `|| true` reasoning as
+# view_calls above: grep prints 0 and exits 1 on a file with no match.
+sleep_calls() {
+  [ -f "$TMP/sleep.log" ] || { printf '0\n'; return 0; }
+  grep -c . "$TMP/sleep.log" 2>/dev/null || true
+}
+
 # stub_gh_flaky <fail-first-n> <view-tsv> [checks-answer]
 #
 # Like stub_gh, but the first <fail-first-n> `gh pr view` calls print nothing
@@ -211,6 +237,20 @@ tsv() {
   [ "$(view_calls)" -eq 4 ]
 }
 
+@test "the bound waits between reads and never after the last one" {
+  # The one test that reaches the sleep at all: every other passes
+  # --interval 0, which short-circuits it, so the "N attempts owe N-1 waits"
+  # half of the guard goes unobserved. A regression there returns every
+  # TIMEOUT one whole interval late, and the callers that pass a long bound
+  # are the ones that would wear it.
+  stub_gh "$(tsv OPEN MERGEABLE)" 0
+  stub_sleep
+  run bash "$WAIT" --pr 7 --attempts 3 --interval 1
+  [ "$status" -eq 5 ]
+  [ "$(view_calls)" -eq 3 ]
+  [ "$(sleep_calls)" -eq 2 ]
+}
+
 # --- the keep-waiting rules ---------------------------------------------
 
 @test "mergeable UNKNOWN keeps waiting, it is neither clean nor conflicting" {
@@ -282,6 +322,14 @@ tsv() {
 @test "a non-numeric checks answer keeps waiting rather than ending the wait" {
   stub_gh "$(tsv OPEN MERGEABLE)" 'some gh error text'
   run bash "$WAIT" --pr 7 --attempts 1 --interval 0
+  # The shape guard this is named for cannot be caught by the status alone: an
+  # unreadable answer fails the numeric comparison on its own, so the wait
+  # times out either way. What the guard actually prevents is bash's own
+  # `integer expected` diagnostic reaching the caller, on a script whose stderr
+  # contract is that nothing there may mislead the operator about what was
+  # read. Asserted as a positive match on the bad case, per
+  # .claude/rules/bats-assertions.md.
+  grep -qF -- 'integer expected' <<<"$output" && return 1
   [ "$status" -eq 5 ]
 }
 
