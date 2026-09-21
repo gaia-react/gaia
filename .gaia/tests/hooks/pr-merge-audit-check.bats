@@ -2882,3 +2882,49 @@ run_merge_hook_lib_absent() {
   grep -qF 'follows a separator or a substitution opener' <<<"$output" && return 1
   true
 }
+
+# The cleared-branch half of the wrapper story, which the four cases above
+# cannot reach: they deny on the missing marker, so a wrapper changes nothing
+# about their verdict.
+#
+# Arming a wrapped merge makes a wrapper a NEW cause of the cleared-but-
+# unreadable deny. `gaia_scan_gh_merge` requires the first scanned word to be
+# `gh` and a wrapper occupies that slot, so it abstains and the gate denies
+# where an unwrapped merge on the same clearance permits. That abstention is
+# deliberate rather than a gap: this reader decides whether to PERMIT, and a
+# permit that guessed past a wrapper could bind to a pull request the command
+# does not name, which is the one direction the shared strip's own header says
+# it must not fail in.
+#
+# So the pair below pins the behaviour, and the third case pins the DIAGNOSTIC,
+# which is the part an operator acts on: a deny naming four causes a wrapper is
+# none of would send them to rule out everything except what happened
+# (.claude/rules/partial-cause-reporting.md).
+
+@test "a cleared branch permits an unwrapped merge and denies the same merge wrapped" {
+  install_gh_stub
+  commit_files "app/x.ts" "export const x = 1"
+  write_markers_for_spawn_set "$(spawn_set)"
+
+  run_merge_hook "gh pr merge 30 --squash"
+  [ "$status" -eq 0 ]
+  grep -qF '"permissionDecision": "deny"' <<<"$output" && return 1
+
+  run_merge_hook "timeout 5 gh pr merge 30 --squash"
+  [ "$status" -eq 0 ]
+  grep -qF '"permissionDecision": "deny"' <<<"$output"
+}
+
+@test "the cleared wrapped merge's deny names the wrapper as a cause" {
+  install_gh_stub
+  commit_files "app/x.ts" "export const x = 1"
+  write_markers_for_spawn_set "$(spawn_set)"
+
+  run_merge_hook "timeout 5 gh pr merge 30 --squash"
+  [ "$status" -eq 0 ]
+  grep -qF '"permissionDecision": "deny"' <<<"$output" || return 1
+  # The headline is the unreadable arm, not the wrong-target one: the command
+  # named no target the gate could read, so nothing established a wrong one.
+  grep -qF 'cannot read the merge command' <<<"$output" || return 1
+  grep -qF 'command wrapper standing in front of the merge' <<<"$output"
+}

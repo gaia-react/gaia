@@ -1,9 +1,15 @@
 #!/usr/bin/env bash
 # Shared command-WRAPPER stripping for the commit guards.
 #
-# Sourced by .claude/hooks/block-no-verify.sh,
+# Sourced by the commit guards, .claude/hooks/block-no-verify.sh,
 # .claude/hooks/block-main-destructive-git.sh and
-# .claude/hooks/red-verify-commit-check.sh. Does no work at source time.
+# .claude/hooks/red-verify-commit-check.sh, each of which refuses its own git
+# call when this file will not load. Sourced separately by
+# .claude/hooks/lib/verb-arming.sh, which calls the strip from its
+# first-command pass and degrades rather than refusing; through that shared
+# arming decision this table reaches every verb-armed hook, so its consumers
+# run well past the guards listed above, and a change to the strip's contract
+# has to answer to both kinds of caller. Does no work at source time.
 #
 #   gaia_strip_command_wrappers <command-word-text>
 #
