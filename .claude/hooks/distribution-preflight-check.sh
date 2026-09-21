@@ -384,13 +384,20 @@ if [ -n "$base_ref" ]; then
   base_ref="${base_ref#\'}"
 fi
 if [ -z "$base_ref" ]; then
-  base_ref=$( cd "$audited_root" && git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null \
-    | sed 's#^origin/##' || true)
+  # The FULL refname, not `--short`: `--short` answers with the shortest
+  # UNAMBIGUOUS spelling, so a tag named `origin/main` makes it answer
+  # `remotes/origin/main` and the `origin/` strip below no longer matches,
+  # handing every consumer a base that names nothing.
+  base_ref=$( cd "$audited_root" && git symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null \
+    | sed 's#^refs/remotes/origin/##' || true)
 fi
 [ -n "$base_ref" ] || base_ref="main"
 
 base_rev=""
-for candidate in "origin/${base_ref}" "$base_ref"; do
+# The remote-tracking ref is spelled in full: git resolves a bare
+# `origin/<name>` through refs/tags/ before refs/remotes/, so a tag of that
+# name would decide this branch's changed set. The local fallback stays second.
+for candidate in "refs/remotes/origin/${base_ref}" "$base_ref"; do
   if ( cd "$audited_root" && git rev-parse --verify --quiet "$candidate" >/dev/null 2>&1 ); then
     base_rev="$candidate"
     break

@@ -737,7 +737,11 @@ jobs:
           set -euo pipefail
           branch="gaia-ci/update-deps/wave-b/\${GROUP}-$(date -u +%Y%m%d-%H%M%S)"
           git fetch origin "$DEFAULT_BRANCH"
-          git checkout -B "$branch" "origin/$DEFAULT_BRANCH"
+          # Fully qualified: the checkout step fetches tags into refs/tags/,
+          # and git resolves a bare \`origin/<name>\` through refs/tags/ before
+          # refs/remotes/, so a tag named \`origin/<default>\` would decide what
+          # this branch is cut from.
+          git checkout -B "$branch" "refs/remotes/origin/$DEFAULT_BRANCH"
           git config user.name 'github-actions[bot]'
           git config user.email 'github-actions[bot]@users.noreply.github.com'
           echo "name=$branch" >> "$GITHUB_OUTPUT"

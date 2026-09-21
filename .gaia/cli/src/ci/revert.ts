@@ -324,7 +324,11 @@ const createRevertBranch = (
     priorBranchResult.exitCode === 0 ? priorBranchResult.stdout.trim() : '';
 
   const checkoutResult = runGit(
-    ['checkout', '-b', revertBranch, `origin/${baseRefName}`],
+    // `refs/remotes/origin/...` rather than `origin/...`: git resolves a bare
+    // `origin/<name>` through refs/tags/ before refs/remotes/, so a tag of
+    // that name would decide which commit the revert branch is cut from.
+    // Tracking is set up identically either way.
+    ['checkout', '-b', revertBranch, `refs/remotes/origin/${baseRefName}`],
     {cwd: repoRoot}
   );
 
@@ -337,7 +341,9 @@ const createRevertBranch = (
   // surfaced failure is the one that matters.
   const rollbackRevertBranch = (): void => {
     if (priorBranch === '') {
-      runGit(['checkout', '--force', `origin/${baseRefName}`], {cwd: repoRoot});
+      runGit(['checkout', '--force', `refs/remotes/origin/${baseRefName}`], {
+        cwd: repoRoot,
+      });
     } else {
       runGit(['checkout', '--force', priorBranch], {cwd: repoRoot});
     }

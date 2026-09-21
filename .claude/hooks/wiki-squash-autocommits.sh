@@ -84,7 +84,10 @@ if [ "$current_branch" = "main" ]; then
     # --mixed preserves any non-wiki working-tree changes (e.g. README edits);
     # we then discard only wiki/ and .raw/ so they don't linger as unstaged files.
     git fetch origin main >/dev/null 2>&1
-    git reset --mixed origin/main >/dev/null 2>&1 || true
+    # Fully qualified: a tag named `origin/main` outranks the remote-tracking
+    # ref in a bare revspec, and this reset moves local main to whatever it
+    # names.
+    git reset --mixed refs/remotes/origin/main >/dev/null 2>&1 || true
     git checkout -- wiki/ .raw/ 2>/dev/null || true
     git clean -fd wiki/ .raw/ >/dev/null 2>&1 || true
   fi
