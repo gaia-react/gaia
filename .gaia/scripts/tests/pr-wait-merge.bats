@@ -229,6 +229,40 @@ tsv() {
   [ "$status" -eq 5 ]
 }
 
+# --- the jq filters themselves ------------------------------------------------
+#
+# The `gh` stub answers `view` from a canned file and never consumes the `--jq`
+# argument, so no test above evaluates either filter: every fixture supplies
+# post-filter text. That makes the mapping the test above is named for
+# unfalsifiable from the stub side, and a typo in either filter (`.mergable`, a
+# bucket compared against `failed` rather than `fail`) passes the whole suite
+# and breaks every real invocation.
+#
+# These run the filters through real jq against the shapes gh actually
+# returns, so the defect the stub cannot see reds here instead.
+
+@test "VIEW_JQ maps a null mergeable to UNKNOWN and keeps the state" {
+  local filter out
+  filter=$(sed -n "s/^VIEW_JQ='\(.*\)'$/\1/p" "$WAIT")
+  [ -n "$filter" ] || return 1
+  out=$(jq -r "$filter" <<<'{"state":"OPEN","mergeable":null}')
+  [ "$out" = "$(printf 'OPEN\tUNKNOWN')" ] || return 1
+  out=$(jq -r "$filter" <<<'{"state":"OPEN","mergeable":"CONFLICTING"}')
+  [ "$out" = "$(printf 'OPEN\tCONFLICTING')" ]
+}
+
+@test "CHECKS_JQ counts the failed and cancelled buckets and nothing else" {
+  local filter
+  filter=$(sed -n "s/^CHECKS_JQ='\(.*\)'$/\1/p" "$WAIT")
+  [ -n "$filter" ] || return 1
+  # A pending or passing required check must not read as a failure, or the
+  # wait would abandon a merge whose checks are still running.
+  [ "$(jq -r "$filter" <<<'[{"bucket":"pending"},{"bucket":"pass"}]')" = 0 ] || return 1
+  [ "$(jq -r "$filter" <<<'[{"bucket":"fail"}]')" = 1 ] || return 1
+  [ "$(jq -r "$filter" <<<'[{"bucket":"cancel"}]')" = 1 ] || return 1
+  [ "$(jq -r "$filter" <<<'[{"bucket":"fail"},{"bucket":"cancel"},{"bucket":"pass"}]')" = 2 ]
+}
+
 @test "gh pr checks exiting non-zero with no output keeps waiting" {
   # No second argument: the stub's `checks` arm exits 1 with nothing on stdout,
   # which is what gh does before any check registers. Reading that as a failure
