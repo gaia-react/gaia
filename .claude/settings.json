@@ -10,6 +10,7 @@
       "Bash(bash .gaia/scripts/debt-stale-claims.sh:*)",
       "Bash(bash .gaia/scripts/plan-archive.sh:*)",
       "Bash(bash .gaia/scripts/plan-resume-point.sh:*)",
+      "Bash(bash .gaia/scripts/pr-wait-merge.sh:*)",
       "Bash(bash .gaia/scripts/resolve-audit-spawn.sh:*)",
       "Bash(bash .specify/extensions/gaia/lib/plan-allocator.sh:*)",
       "Bash(corepack enable pnpm)",
@@ -222,6 +223,10 @@
           {
             "type": "command",
             "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/block-bare-test.sh\""
+          },
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/block-handrolled-pr-poll.sh\""
           },
           {
             "type": "command",

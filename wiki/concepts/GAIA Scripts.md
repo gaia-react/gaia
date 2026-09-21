@@ -155,6 +155,7 @@ The index is held to the tree by `.gaia/scripts/lint-scripts-wiki-inventory.sh`,
 | `plan-archive.sh` | yes | `local-janitor.sh` hook, the plan-close flows | Reduces or deletes a merged plan folder. |
 | `plan-resume-point.sh` | yes | `/gaia-plan` | Deterministic phase-level resume point for a plan picked up mid-flight. |
 | `post-findings-block.sh` | yes | agent definitions, `post-findings-block-on-merge.sh` hook | Merges every dispatched member's findings sidecar into one machine-readable block and posts it on the pull request. |
+| `pr-wait-merge.sh` | yes | the merge workflow, `/gaia-release`, every flow that merges | The merge wait: polls a pull request to `MERGED` and exits early on the two states that mean it never will. |
 | `read-audit-ci-config.sh` | yes | `code-review-audit.yml`, the merge workflow, audit hooks | Reader and per-author resolver for the audit CI config, so a flow obeys the project's own settings. |
 | `resolve-audit-members.sh` | yes | the merge workflow, audit hooks, CI | Resolves which Code Audit Team members a diff dispatches. |
 | `resolve-audit-spawn.sh` | no | the merge workflow, audit hooks | The spawn oracle: which members this run actually spawns, re-spawns included. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->

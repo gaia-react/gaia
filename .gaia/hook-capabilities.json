@@ -82,6 +82,14 @@
       "maintainer_only": false
     },
     {
+      "hook": ".claude/hooks/block-handrolled-pr-poll.sh",
+      "capabilities": [
+        "invokes:.claude/hooks/lib/jq-availability.sh"
+      ],
+      "why": "Reads a Bash tool call's command text to deny a hand-rolled pull-request merge wait that never reads `mergeable`, pointing the caller at `.gaia/scripts/pr-wait-merge.sh` instead. Beyond the shared jq-availability arm it sources, pure text inspection of the payload already on stdin: it runs no gh call of its own, so no network, and no file write.",
+      "maintainer_only": false
+    },
+    {
       "hook": ".claude/hooks/block-invalid-yaml-write.sh",
       "capabilities": [
         "invokes:.claude/hooks/lib/jq-availability.sh"

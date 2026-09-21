@@ -543,31 +543,19 @@ Verification is identical under both isolation modes: poll the PR until it repor
 gh pr merge <N> --squash --delete-branch [--auto]
 ```
 
-Then poll. The loop is the reusable part: a caller that already issued its own `gh pr merge` runs only this block.
+Then wait. The wait is the reusable part, and it ships as a script: a caller that already issued its own `gh pr merge` runs only this line.
 
 ```bash
-for i in 1 2 3 4 5; do
-  verdict=$(gh pr view <N> --json state,mergeable \
-    --jq 'if .state == "MERGED" then "MERGED" elif .mergeable == "CONFLICTING" then "CONFLICTING" else "WAITING" end')
-  if [ "$verdict" = "WAITING" ]; then
-    failed=$(gh pr checks <N> --required --json bucket \
-      --jq 'map(select(.bucket == "fail" or .bucket == "cancel")) | length' 2>/dev/null)
-    [ "${failed:-0}" -gt 0 ] && verdict="CHECK_FAILED"
-  fi
-  [ "$verdict" = "WAITING" ] || break
-  sleep 30
-done
-case "$verdict" in
-  MERGED) ;;
-  CONFLICTING) echo "base branch conflicts with the PR; see Conflict found mid-wait"; exit 1 ;;
-  CHECK_FAILED) echo "a required check failed; the queued merge cannot land"; exit 1 ;;
-  *) echo "merge did not complete"; exit 1 ;;
-esac
+bash .gaia/scripts/pr-wait-merge.sh --pr <N>
 ```
 
-That poll is the whole verification. A local error printed by `gh pr merge` after the state reads `MERGED` does not revise the answer; see [[#Local-sync failure mode]] below.
+It prints one verdict token on stdout and exits on it: `MERGED` (0), `CONFLICTING` (3), `CHECK_FAILED` (4), `TIMEOUT` (5). A usage error, or a `gh` that is not on PATH, exits 2 and is a refusal rather than a verdict. `--attempts` changes the default bound of five and `--interval` the default thirty-second spacing, which together are the ~2-3 minutes every caller here cites; a release or a full CI run passes `--attempts 20`. The script issues no `gh pr merge` of its own, which is what lets the same invocation serve a caller that queued its merge with `--squash`, one that queued it with `--merge --auto`, and one resuming the wait after a conflict repair, where re-merging would be wrong.
 
-`mergeable` reads `UNKNOWN` for a short while after any push, while GitHub recomputes it, so the poll treats it as still waiting rather than as clean. Only required checks count: a failed optional check does not block a queued merge, so exiting on one would abandon a merge that is about to land. `gh pr checks` prints nothing and exits non-zero while no check has registered yet, which the poll also reads as still waiting.
+That wait is the whole verification. A local error printed by `gh pr merge` after the state reads `MERGED` does not revise the answer; see [[#Local-sync failure mode]] below.
+
+Rules the script preserves, each of which exists to stop the wait abandoning a merge that is about to land. `mergeable` reads `UNKNOWN` for a short while after any push, while GitHub recomputes it, so that counts as still waiting rather than as clean. Only required checks count: a failed optional check does not block a queued merge, so exiting on one would give up on a live merge. `gh pr checks` prints nothing and exits non-zero while no check has registered yet, which is also still waiting.
+
+**Do not hand-roll this loop, and `.claude/hooks/block-handrolled-pr-poll.sh` denies it when you do.** A loop that waits only for `MERGED` cannot end once the base branch lands a conflicting change: `mergeable` turns `CONFLICTING`, the queued `--auto` merge never lands, and nothing left in the loop can fire, so it spins until a human notices while the in-flight required checks are spent either way. The pressure to hand-roll one is specific rather than hypothetical. A compound `gh pr view --jq 'if .state == "MERGED" …'` is refused outright by the worktree-isolation guard, which cannot verify that a `gh` call wrapped in a construct that complex stays inside the worktree, and whoever holds that refusal is one keystroke from `until [ "$(gh pr view <N> --json state --jq .state)" != "OPEN" ]`. A single `bash .gaia/scripts/pr-wait-merge.sh --pr <N>` is plain enough for that guard to read, so the blessed path is not the one the guard refuses. The hook stands down for a command that reads `mergeable`, and for one naming the script, and its own header carries what it does not catch.
 
 **`--auto` vs `--admin`:** when `gh pr merge` rejects with "base branch policy prohibits the merge", the right escape is `--auto`; it queues the merge and GitHub completes it once checks pass. Never reach for `--admin` to bypass branch protection without explicit permission; it removes the safety the policy exists to provide.
 

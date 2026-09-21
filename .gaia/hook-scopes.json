@@ -50,6 +50,12 @@
       "why": "Reads and writes the session-keyed audit round counter under cache/, anchored on gaia_resolve_main_root so one session's count follows it from the main checkout into a worktree and back."
     },
     {
+      "hook": ".claude/hooks/block-handrolled-pr-poll.sh",
+      "scope": "any",
+      "state": [],
+      "why": "Pattern-matches a Bash command string only; touches no tree-scoped state."
+    },
+    {
       "hook": ".claude/hooks/block-invalid-yaml-write.sh",
       "scope": "any",
       "state": [],

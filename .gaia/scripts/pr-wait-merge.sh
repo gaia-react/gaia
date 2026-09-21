@@ -1,0 +1,252 @@
+#!/usr/bin/env bash
+# shellcheck shell=bash
+#
+# pr-wait-merge.sh: wait for a pull request to reach a terminal merge state,
+# and stop early on either state that means it never will. Run it from
+# anywhere inside the checkout:
+#   bash .gaia/scripts/pr-wait-merge.sh --pr <N> [--attempts <N>] [--interval <seconds>]
+#
+# Exit codes, one per verdict, so a caller branches on the status rather than
+# parsing prose. The verdict token is also printed to stdout on its own line.
+#   0   MERGED        the merge landed
+#   3   CONFLICTING   the base branch conflicts with the pull request
+#   4   CHECK_FAILED  a REQUIRED check failed or was cancelled
+#   5   TIMEOUT       the attempt bound was spent with the merge still pending
+#   2   a usage error, or this script's own failure (no gh on PATH)
+#   130 / 143         a SIGINT or SIGTERM interrupted the wait
+#
+# WHY THIS IS A SCRIPT AND NOT A SNIPPET. It was a snippet, in
+# `wiki/concepts/PR Merge Workflow.md`, and a snippet is retyped by whoever
+# needs it. A retyped safety property decays the moment retyping it gets hard,
+# and there is a specific, reproducible thing that makes it hard here: the
+# compound `gh pr view --jq 'if .state == "MERGED" then ...'` form is refused
+# outright by the worktree-isolation guard, which cannot verify that a `gh`
+# call wrapped in a construct that complex stays inside the worktree. The
+# caller is then one keystroke from a loop that waits only for `MERGED`.
+#
+# That is gaia-react/gaia#2209, and it is a recurrence rather than a
+# hypothetical. On PR gaia-react/gaia#2203 the refusal landed, an ad-hoc
+# `until [ "$(gh pr view 2203 --json state --jq .state)" != "OPEN" ]` was
+# substituted, `origin/main` then landed a conflicting `CHANGELOG.md` entry,
+# the pull request went CONFLICTING with auto-merge still queued, and the loop
+# had no exit condition that could ever fire. It spun until a human noticed.
+# A single `bash .gaia/scripts/pr-wait-merge.sh --pr <N>` invocation is plain
+# enough for that guard to read, so the documented path stops being the one
+# the guard refuses.
+#
+# Issue gaia-react/gaia#2144 fixed the TEXT of the polls; this file is the
+# other half, making the text the only reachable way to wait.
+# `.claude/hooks/block-handrolled-pr-poll.sh` is the enforcement half, and it
+# names this script in its denial: a denial with no blessed alternative is
+# what produces the next improvisation.
+#
+# THE WAITING RULES, preserved from the prose this replaces, because each one
+# exists to stop the poll abandoning a merge that is about to land:
+#
+#   1. `mergeable` reads UNKNOWN for a short while after any push, while
+#      GitHub recomputes it. UNKNOWN is still waiting, never clean and never
+#      conflicting.
+#   2. Only REQUIRED checks count. A failed optional check does not block a
+#      queued merge, so exiting on one would abandon a live merge.
+#   3. `gh pr checks` prints nothing and exits non-zero while no check has
+#      registered yet. That is still waiting, not a failure.
+#
+# NO `gh pr merge` OF ITS OWN, deliberately. The merge and the wait are
+# separate acts with separate callers: `/gaia-release` queues its merge with
+# `--merge --auto` and `/gaia-debt` with `--squash`, and a caller resuming a
+# wait after a conflict repair must not re-merge at all. Folding a merge in
+# here would make the wait unusable for the third case and would hide which
+# spelling the second ran.
+#
+# Bash 3.2 compatible. Never `cd`.
+
+set -uo pipefail
+
+PROG="pr-wait-merge.sh"
+
+# Defaults match the prose this replaces: five attempts, thirty seconds apart,
+# which is the ~2-3 minute bound its callers cite. `/gaia-release` and
+# `/gaia-harden` pass a longer bound because a full CI run outlasts it.
+DEFAULT_ATTEMPTS=5
+DEFAULT_INTERVAL=30
+
+usage() {
+  cat <<EOF
+Usage: bash .gaia/scripts/$PROG --pr <number> [--attempts <n>] [--interval <seconds>]
+
+  --pr        the pull request number to wait on. Required.
+  --attempts  how many times to read the state before giving up.
+              Default $DEFAULT_ATTEMPTS.
+  --interval  seconds to sleep between reads. Default $DEFAULT_INTERVAL.
+              Zero is allowed, which polls without sleeping.
+
+Prints one verdict token on stdout and exits:
+  MERGED (0), CONFLICTING (3), CHECK_FAILED (4), TIMEOUT (5).
+A usage error or a missing gh exits 2.
+EOF
+}
+
+PR=""
+ATTEMPTS="$DEFAULT_ATTEMPTS"
+INTERVAL="$DEFAULT_INTERVAL"
+
+# A non-negative integer, and nothing else. Rejecting a bad value loudly
+# matters more here than in most argument parsing: a bound that silently
+# defaulted would turn a caller's deliberate 20-attempt release wait into a
+# 5-attempt one, and the only symptom is a TIMEOUT on a merge that was going
+# to land.
+is_uint() {
+  case "$1" in
+    '' | *[!0-9]*) return 1 ;;
+    *) return 0 ;;
+  esac
+}
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --pr)
+      [ "$#" -ge 2 ] || { printf '%s: --pr needs a value\n' "$PROG" >&2; exit 2; }
+      PR="$2"
+      shift 2
+      ;;
+    --attempts)
+      [ "$#" -ge 2 ] || { printf '%s: --attempts needs a value\n' "$PROG" >&2; exit 2; }
+      ATTEMPTS="$2"
+      shift 2
+      ;;
+    --interval)
+      [ "$#" -ge 2 ] || { printf '%s: --interval needs a value\n' "$PROG" >&2; exit 2; }
+      INTERVAL="$2"
+      shift 2
+      ;;
+    -h | --help)
+      usage
+      exit 0
+      ;;
+    *)
+      printf '%s: unrecognized argument: %s\n' "$PROG" "$1" >&2
+      usage >&2
+      exit 2
+      ;;
+  esac
+done
+
+if [ -z "$PR" ]; then
+  printf '%s: --pr is required\n' "$PROG" >&2
+  usage >&2
+  exit 2
+fi
+if ! is_uint "$PR"; then
+  printf '%s: --pr must be a pull request number, got: %s\n' "$PROG" "$PR" >&2
+  exit 2
+fi
+if ! is_uint "$ATTEMPTS" || [ "$ATTEMPTS" -lt 1 ]; then
+  printf '%s: --attempts must be a positive integer, got: %s\n' "$PROG" "$ATTEMPTS" >&2
+  exit 2
+fi
+if ! is_uint "$INTERVAL"; then
+  printf '%s: --interval must be a non-negative integer, got: %s\n' "$PROG" "$INTERVAL" >&2
+  exit 2
+fi
+
+if ! command -v gh >/dev/null 2>&1; then
+  printf '%s: gh is not on PATH, so the merge state cannot be read. This is a\n' "$PROG" >&2
+  printf 'refusal, not a verdict: nothing here reports the wait succeeded or failed.\n' >&2
+  exit 2
+fi
+
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+# Reads the pull request's state and mergeability as one tab-separated line.
+# The `// "UNKNOWN"` is what keeps rule 1 above true when GitHub answers with
+# a null `mergeable` rather than the literal string, which it does on a pull
+# request it has not computed yet. Only the two field reads live in the jq
+# filter; the decision is made in shell below, where it is readable and where
+# the bats suite can drive it.
+read_state() {
+  gh pr view "$PR" --json state,mergeable \
+    --jq '[.state, (.mergeable // "UNKNOWN")] | @tsv' 2>/dev/null
+}
+
+# 0 when a required check has failed or been cancelled, 1 otherwise.
+#
+# Both "not yet registered" cases resolve to 1 (keep waiting), and they are
+# different cases: `gh pr checks` exits non-zero with no output before any
+# check registers, and answers `0` once checks exist and none has failed.
+# Neither is a failure, so neither ends the wait. A non-numeric answer is
+# treated the same way for the same reason: this predicate's job is to end a
+# wait on proof of failure, and anything it cannot read is not proof.
+required_check_failed() {
+  local failed
+  failed=$(gh pr checks "$PR" --required --json bucket \
+    --jq 'map(select(.bucket == "fail" or .bucket == "cancel")) | length' 2>/dev/null) || return 1
+  is_uint "$failed" || return 1
+  [ "$failed" -gt 0 ]
+}
+
+verdict="TIMEOUT"
+attempt=0
+
+while [ "$attempt" -lt "$ATTEMPTS" ]; do
+  attempt=$((attempt + 1))
+
+  line=$(read_state)
+  state="${line%%$'\t'*}"
+  mergeable="${line#*$'\t'}"
+  # An unreadable answer leaves both halves equal to the whole line (no tab to
+  # split on), including the empty string. Blank them rather than letting a gh
+  # error message flow into the comparisons below as if it were a state.
+  if [ "$state" = "$line" ]; then
+    state=""
+    mergeable=""
+  fi
+
+  if [ "$state" = "MERGED" ]; then
+    verdict="MERGED"
+    break
+  fi
+
+  if [ "$mergeable" = "CONFLICTING" ]; then
+    verdict="CONFLICTING"
+    break
+  fi
+
+  if required_check_failed; then
+    verdict="CHECK_FAILED"
+    break
+  fi
+
+  # Sleep between reads, never after the last one: a bound of N attempts owes
+  # N-1 waits, and sleeping after the final read would add the interval to
+  # every timeout for nothing.
+  if [ "$attempt" -lt "$ATTEMPTS" ] && [ "$INTERVAL" -gt 0 ]; then
+    sleep "$INTERVAL"
+  fi
+done
+
+printf '%s\n' "$verdict"
+
+case "$verdict" in
+  MERGED)
+    exit 0
+    ;;
+  CONFLICTING)
+    printf '%s: the base branch conflicts with PR #%s, so the queued merge cannot land.\n' "$PROG" "$PR" >&2
+    printf 'Repair it per wiki/concepts/PR Merge Workflow.md, "### Conflict found mid-wait",\n' >&2
+    printf 'then run this wait again.\n' >&2
+    exit 3
+    ;;
+  CHECK_FAILED)
+    printf '%s: a required check on PR #%s failed or was cancelled, so the queued\n' "$PROG" "$PR" >&2
+    printf 'merge cannot land. Inspect it with: gh pr checks %s --required\n' "$PR" >&2
+    exit 4
+    ;;
+  *)
+    printf '%s: PR #%s had not merged after %s attempt(s) %s second(s) apart.\n' \
+      "$PROG" "$PR" "$ATTEMPTS" "$INTERVAL" >&2
+    printf 'This is not a failure: a merge queued with --auto completes when its checks\n' >&2
+    printf 'pass. Do no local cleanup until gh pr view %s --json state reads MERGED.\n' "$PR" >&2
+    exit 5
+    ;;
+esac
