@@ -133,6 +133,23 @@ HAS_MERGEABLE_RE='mergeable|CONFLICTING'
 # this, and the escapes above are the way out of that case.
 LOOP_KEYWORD_RE=$'(^|[;&|({\n]|[[:space:]](then|do|else))[[:space:]]*(until|while|for)[[:space:]]'
 [[ "$command" =~ $LOOP_KEYWORD_RE ]] || exit 0
+
+# Everything after the loop introducer, captured HERE because the next `[[ =~ ]]`
+# overwrites BASH_REMATCH. The state read is matched against this rather than
+# against the whole command, which is what ties the loop the guard finds to the
+# loop that polls. Without it the loop-keyword test, the `done` test and the
+# state read are each independent over the whole command: a one-shot
+# `gh pr view` standing beside an unrelated `for` over log files satisfies
+# every one of them and is denied, and the denial's two remedies (read
+# `mergeable`, take the script) fit neither half of such a command. That is the over-deny direction this
+# guard cannot afford, and admitting the block-opening keywords above widens
+# the set it reaches.
+#
+# The expansion is a prefix removal with the match quoted, so it is taken as a
+# literal rather than as a pattern. This scopes to the FIRST introducer, so a
+# poll in a second loop is still reached, its text being inside that tail too.
+tail_after_loop="${command#*"${BASH_REMATCH[0]}"}"
+
 DONE_RE='(^|[[:space:];&(])done([[:space:]]|[;)]|$)'
 [[ "$command" =~ $DONE_RE ]] || exit 0
 
@@ -147,9 +164,15 @@ DONE_RE='(^|[[:space:];&(])done([[:space:]]|[;)]|$)'
 # `--json` field or through a `.state` filter expression. A loop over
 # `gh pr view <N> --json title` is enumerating pull requests, not waiting on
 # one, and denying it would be noise.
+#
+# Both run against the loop's own tail, never the whole command, so a state
+# read that sits AHEAD of an unrelated loop is not attributed to it. A read
+# after the loop's `done` is still inside the tail and still denied; that
+# residual is tracked rather than widened away, since narrowing it further
+# needs the matching `done`, which no regex locates.
 CHECKS_RE='gh[[:space:]]+pr[[:space:]]+checks'
 VIEW_STATE_RE='gh[[:space:]]+pr[[:space:]]+view[^|;&]*(--json[^|;&]*state|\.state)'
-if [[ "$command" =~ $CHECKS_RE ]] || [[ "$command" =~ $VIEW_STATE_RE ]]; then
+if [[ "$tail_after_loop" =~ $CHECKS_RE ]] || [[ "$tail_after_loop" =~ $VIEW_STATE_RE ]]; then
   cat >&2 <<'EOF'
 BLOCKED: this looks like a hand-rolled pull-request merge wait that never reads `mergeable`.
 

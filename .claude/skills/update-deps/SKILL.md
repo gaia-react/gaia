@@ -511,8 +511,10 @@ Then branch on where the run started.
      git branch -D <branch-name>
      git fetch --prune origin
      ```
-   - **still not `MERGED`** (auto-merge queued, checks not yet green) → print the PR URL and note that auto-merge is queued and will land when the checks pass. **Do not** delete the local branch or switch off it, the PR is still open.
-   - **conflict or failed required check** → on a conflict, repair it per that page's `### Conflict found mid-wait` and resume the poll; on a failed required check, print the PR URL and the failing check, and leave the branch in place as for a queued merge.
+   - **`TIMEOUT`** (the bound was spent with the pull request still open) → print the PR URL and note that the merge queued above has not landed yet. **Do not** delete the local branch or switch off it, the PR is still open.
+   - **conflict or failed required check** → on a conflict, repair it per that page's `### Conflict found mid-wait` and resume the wait; on a failed required check, print the PR URL and the failing check, and leave the branch in place as for a queued merge.
+   - **`CLOSED`** → the pull request was closed without merging, so no wait can clear it: report that, leave the branch in place, and stop.
+   - **the wait refused rather than answered** (exit 2) → report what it could not read, leave the branch in place, and assert no state for the pull request.
 
 **If you were already on a non-main branch** at pre-flight, or running in CI (no new branch was created):
 

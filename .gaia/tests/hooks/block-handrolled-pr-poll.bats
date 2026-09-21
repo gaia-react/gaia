@@ -235,6 +235,36 @@ done'
   assert_allowed_by_exit
 }
 
+# --- allowed: a state read that is not the loop's ------------------------------
+#
+# The three conjuncts (a loop keyword, a `done`, a state read) would otherwise
+# be independent tests over the whole command, so a one-shot `gh pr` read
+# standing beside an unrelated loop satisfies all three. Denying those is the
+# over-deny direction this guard cannot afford, and the denial's two remedies
+# fit neither half of such a command: the repair is to split the call, which
+# the denial does not say. Scoping the read to the loop's own tail is what
+# these pin.
+
+@test "a one-shot state read before an unrelated loop is allowed" {
+  run_hook 'gh pr checks 2209 --watch; for f in .gaia/local/audit/*; do echo "$f"; done'
+  assert_allowed_by_exit
+}
+
+@test "a state read in an if condition with an unrelated loop in its body is allowed" {
+  run_hook 'if gh pr checks 2209; then for f in *.log; do cat "$f"; done; fi'
+  assert_allowed_by_exit
+}
+
+@test "a state read before an unrelated loop in a brace group is allowed" {
+  run_hook 'gh pr view 42 --json state -q .state; { for f in *.sh; do shellcheck "$f"; done; }'
+  assert_allowed_by_exit
+}
+
+@test "a state read in an if condition with an unrelated loop in the else arm is allowed" {
+  run_hook 'if gh pr view 5 --json state --jq .state | grep -q MERGED; then echo merged; else for f in a b; do echo "$f"; done; fi'
+  assert_allowed_by_exit
+}
+
 @test "a loop touching no gh pr command is allowed" {
   run_hook 'for f in *.sh; do shellcheck "$f"; done'
   assert_allowed_by_exit

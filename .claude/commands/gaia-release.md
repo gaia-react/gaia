@@ -239,8 +239,8 @@ git -C /abs/path/to/create-gaia push -u origin "<RELEASE_BRANCH>"
 ```bash
 gh pr create -R gaia-react/create-gaia --base main --head "<RELEASE_BRANCH>" \
   --title "chore: release v<NEW_VERSION>" --body "Lockstep with GAIA v<NEW_VERSION>."
-gh pr merge -R gaia-react/create-gaia <N> --merge --delete-branch
-bash .gaia/scripts/pr-wait-merge.sh --pr <N> --repo gaia-react/create-gaia \
+gh pr merge -R gaia-react/create-gaia <CG_N> --merge --delete-branch
+bash .gaia/scripts/pr-wait-merge.sh --pr <CG_N> --repo gaia-react/create-gaia \
   --attempts 10 --interval 15 \
   || { echo "create-gaia PR did not confirm as MERGED (read the wait's own message above, which names the verdict or the refusal), investigate before tagging"; exit 1; }
 git -C "$CG" fetch origin --quiet && git -C "$CG" checkout main --quiet && git -C "$CG" pull --ff-only origin main --quiet

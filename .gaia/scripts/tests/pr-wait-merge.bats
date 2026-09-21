@@ -258,8 +258,9 @@ tsv() {
   # go red when the guard is deleted. A non-empty line with no tab can: without
   # the guard, `state` holds the whole line, which matches no verdict arm but
   # DOES count as a successful read, so the bound ends in a printed TIMEOUT
-  # asserting a queued merge will land. That is precisely the false
-  # reassurance this script's refusal arm exists to prevent.
+  # reporting the pull request as still open, having established no state of it
+  # at all. That is precisely the false reassurance this script's refusal arm
+  # exists to prevent.
   stub_gh 'stray warning line from gh' 0
   run bash "$WAIT" --pr 7 --attempts 2 --interval 0
   [ "$status" -eq 2 ]
