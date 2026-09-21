@@ -712,6 +712,23 @@ merged_and_deleted_head() {
   grep -qF -- "machinery-waived-not-eligible: v1 class=x path=app/not-changed.ts line=1" <<<"$output" || return 1
 }
 
+@test "offenders: a tag sharing the branch's name never sets the sidecar aside, so the machinery-waive abuse check still runs" {
+  local repo orphaned_sha
+  repo="$(make_pr_repo case-branch-shadowing-tag app/in-diff.ts)" || return 1
+  orphaned_sha="$(orphan_commit_on_current_branch "$repo" app/will-be-orphaned.ts)"
+  # The shadowing tag is the whole point: with it planted, a reader spelling
+  # the acting branch `symbolic-ref --short` derives `heads/feature` while the
+  # writer records the plain `feature`, the branch term reads the mismatch as
+  # a different pull request, and every machinery_waived key is skipped
+  # unevaluated -- the merge is allowed with the abuse check never run.
+  git -C "$repo" tag feature
+
+  write_sidecar "$(printf '{"schema":1,"backend":"github","branch":"feature","sha":"%s","findings":[{"key":"v1 class=x path=app/not-changed.ts line=1","disposition":"machinery_waived"}]}' "$orphaned_sha")"
+  run disposition_offenders "$SIDECAR" "$repo"
+  [ "$status" -eq 0 ]
+  grep -qF -- "machinery-waived-not-eligible: v1 class=x path=app/not-changed.ts line=1" <<<"$output" || return 1
+}
+
 @test "offenders/notes: a MATCHING branch decides nothing, so the sha chain's live-ref arm still sets the sidecar aside" {
   local repo other_sha
   repo="$(make_pr_repo case-branch-match-liveref app/in-diff.ts)" || return 1

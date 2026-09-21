@@ -168,13 +168,21 @@ deny() {
   exit 0
 }
 
+# The FULL refname, stripped here, never `--short`. `--short` answers with the
+# shortest UNAMBIGUOUS spelling, so a repository carrying a tag named `main`
+# makes it answer `heads/main`; every caller below compares the result against
+# the bare literals `main` and `master`, so all of those comparisons miss and
+# the commit-to-main and push-from-main denials stop firing, silently and with
+# no diagnostic. A fetch from any remote carrying such a tag reaches that state.
+# A detached HEAD still exits non-zero and still yields empty, unchanged.
 current_branch() {
-  local cwd="$1"
+  local cwd="$1" ref
   if [[ -n "$cwd" ]]; then
-    git -C "$cwd" symbolic-ref --short HEAD 2>/dev/null || echo ""
+    ref=$(git -C "$cwd" symbolic-ref -q HEAD 2>/dev/null) || ref=""
   else
-    git symbolic-ref --short HEAD 2>/dev/null || echo ""
+    ref=$(git symbolic-ref -q HEAD 2>/dev/null) || ref=""
   fi
+  printf '%s' "${ref#refs/heads/}"
 }
 
 # resolve_dir_kind <dir>: classify a directory WORD the command scan produced,
@@ -606,10 +614,24 @@ hop_guard() {
   gaia_is_linked_worktree "$target" && return 0
   [ "$(gaia_resolve_main_root "$target" 2>/dev/null)" = "$main_root" ] || return 0
 
-  branch=$(git -C "$target" symbolic-ref --short -q HEAD 2>/dev/null) || return 0
+  # Full refname and strip, for the same reason as the origin/HEAD read below
+  # and as current_branch above: a tag named for the held branch makes
+  # `--short` answer `heads/<branch>`, and every arm past this point then
+  # misses. The main/master case misses, no breadcrumb exists for the
+  # shortened name so this session is not recognised as the owner, and
+  # `gh pr list --head heads/<branch>` answers empty, which the emptiness arm
+  # below turns into an allow -- the one fail-open in this function that emits
+  # no `hop_unchecked` diagnostic.
+  branch=$(git -C "$target" symbolic-ref -q HEAD 2>/dev/null) || return 0
+  branch=${branch#refs/heads/}
   case "$branch" in main | master) return 0 ;; esac
-  default=$(git -C "$target" symbolic-ref --short -q refs/remotes/origin/HEAD 2>/dev/null) || default=""
-  [ -n "$default" ] && [ "$branch" = "${default#origin/}" ] && return 0
+  # The FULL refname, not `--short`: `--short` answers with the shortest
+  # UNAMBIGUOUS spelling, so a tag named `origin/<default>` makes it answer
+  # `remotes/origin/<default>`, the strip misses, and the branch-equals-default
+  # allow below never fires for a session legitimately on a non-main default
+  # branch.
+  default=$(git -C "$target" symbolic-ref -q refs/remotes/origin/HEAD 2>/dev/null) || default=""
+  [ -n "$default" ] && [ "$branch" = "${default#refs/remotes/origin/}" ] && return 0
 
   # The owner match is local and decides the verdict whatever the pull request's
   # state, so it runs before the network call rather than after it.

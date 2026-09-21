@@ -66,8 +66,26 @@ run_hook_from() {
   assert_denied_by_json
 }
 
+@test "git commit on main is denied with a tag named main present" {
+  # `symbolic-ref --short HEAD` answers the shortest UNAMBIGUOUS spelling, so a
+  # tag named `main` makes it answer `heads/main`, every comparison against the
+  # bare literal misses, and this deny silently stops firing. A fetch from any
+  # remote carrying such a tag is enough to reach the state.
+  on_main
+  git -C "$REPO" tag main HEAD
+  run_hook 'git commit -m "x"'
+  assert_denied_by_json
+}
+
 @test "plain git push from main is denied" {
   on_main
+  run_hook 'git push'
+  assert_denied_by_json
+}
+
+@test "plain git push from main is denied with a tag named main present" {
+  on_main
+  git -C "$REPO" tag main HEAD
   run_hook 'git push'
   assert_denied_by_json
 }
@@ -1391,6 +1409,43 @@ run_hop() {
   git -C "$REPO" checkout --quiet -B trunk
   git -C "$REPO" update-ref refs/remotes/origin/trunk HEAD
   git -C "$REPO" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/trunk
+  run_hop 'git switch other' sid-peer
+  assert_allowed_by_json
+}
+
+@test "hop guard: a tag named for the held branch does not defeat the owner match" {
+  # Same shortening on the HEAD read: with a tag named `feature`, the branch
+  # reads `heads/feature`, and the breadcrumb is keyed on the branch name, so
+  # the owner lookup misses and the session falls through to the gh call it
+  # should never have reached.
+  #
+  # Asserted through the hanging stub rather than through allow-vs-deny,
+  # because the stub answers `pr list` the same whatever `--head` it is passed:
+  # a deny would fire under both spellings and prove nothing. Reaching gh at
+  # all is the observable, and `hang` makes that reach cost the timeout and
+  # stamp `timed out` on the output.
+  hold_feature_with_pr 42
+  write_breadcrumb feature sid-owner
+  git -C "$REPO" tag feature HEAD
+  export GH_STUB=hang
+  local start=$SECONDS
+  run_hop 'git switch other' sid-owner
+  assert_allowed_by_json
+  grep -qF -- 'timed out' <<<"$output" && return 1
+  [ $((SECONDS - start)) -lt 4 ]
+}
+
+@test "hop guard: a tag named origin/<default> does not defeat the default-branch allow" {
+  # The allow compares the current branch against origin/HEAD's target. Read
+  # with `--short`, that target comes back as the shortest UNAMBIGUOUS spelling,
+  # so a tag literally named origin/trunk makes it `remotes/origin/trunk`, the
+  # `origin/` strip misses, the comparison fails, and a session sitting on its
+  # own default branch is denied a hop it should have been allowed.
+  hold_feature_with_pr 42
+  git -C "$REPO" checkout --quiet -B trunk
+  git -C "$REPO" update-ref refs/remotes/origin/trunk HEAD
+  git -C "$REPO" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/trunk
+  git -C "$REPO" tag "origin/trunk" HEAD
   run_hop 'git switch other' sid-peer
   assert_allowed_by_json
 }

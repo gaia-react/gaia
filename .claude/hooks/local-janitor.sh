@@ -351,7 +351,11 @@ wiki_catchup_state_unset() {
 # candidate, an empty/[ahead]/[behind] track is skipped (remote head still
 # present), an unanswerable cherry read keeps the branch, and any git failure
 # leaves the branch untouched.
-current=$(git -C "$root" symbolic-ref --quiet --short HEAD 2>/dev/null || true)
+# Full refname, stripped, never `--short`: a tag sharing the branch's name
+# makes `--short` answer `heads/<branch>`, and the `[ "$current" = "$base" ]`
+# gate below then misses, skipping the base fast-forward silently.
+current=$(git -C "$root" symbolic-ref --quiet HEAD 2>/dev/null || true)
+current=${current#refs/heads/}
 branch_tracks=$(git -C "$root" for-each-ref \
   --format='%(refname:short) %(upstream:track)' refs/heads/ 2>/dev/null || true)
 
@@ -362,8 +366,15 @@ branch_tracks=$(git -C "$root" for-each-ref \
 # SEC-011: shape-validated immediately, before any git call interpolates it.
 # An unresolvable or unsafely-shaped base clears $base to empty; every
 # consumer below treats an empty $base as "unanswerable, skip".
-base=$(git -C "$root" symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null || true)
-base=${base#origin/}
+# Read the FULL refname and strip the full prefix, rather than asking for
+# `--short` and stripping `origin/`. `--short` answers with the shortest
+# UNAMBIGUOUS spelling, so a tag named `origin/main` makes it answer
+# `remotes/origin/main`; the `origin/` strip then no longer matches and every
+# consumer below is handed a base naming nothing. This is the same spelling
+# .claude/hooks/lib/audit-base-provenance.sh already requires for the same
+# reason.
+base=$(git -C "$root" symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null || true)
+base=${base#refs/remotes/origin/}
 [ -n "$base" ] || base=main
 case "$base" in
   -* | *' '* | '') base="" ;;
@@ -576,7 +587,7 @@ if [ "$wiki_sync_present" -eq 1 ]; then
         # which is indistinguishable from a genuine zero-commits-ahead result
         # once piped through `grep -c` alone. Only a clean cherry run answers
         # the question; anything else keeps the branch, per the comment above.
-        cherry_out=$(git -C "$root" cherry --end-of-options "origin/$base" "$ref" 2>/dev/null)
+        cherry_out=$(git -C "$root" cherry --end-of-options "refs/remotes/origin/$base" "$ref" 2>/dev/null)
         cherry_status=$?
         [ "$cherry_status" -eq 0 ] || continue
         unpushed=$(printf '%s\n' "$cherry_out" | grep -c '^+')
@@ -614,9 +625,9 @@ fi
 owed=$(wiki_catchup_state_get catchup_owed)
 if [ "$owed" = "1" ] && [ -n "$base" ] \
   && git -C "$root" rev-parse --verify --quiet "refs/heads/$base" >/dev/null 2>&1 \
-  && git -C "$root" rev-parse --verify --quiet "origin/$base" >/dev/null 2>&1 \
+  && git -C "$root" rev-parse --verify --quiet "refs/remotes/origin/$base" >/dev/null 2>&1 \
   && git -C "$root" merge-base --is-ancestor --end-of-options \
-       "origin/$base" "refs/heads/$base" 2>/dev/null; then
+       "refs/remotes/origin/$base" "refs/heads/$base" 2>/dev/null; then
   wiki_catchup_state_unset catchup_owed
   rm -f "$main_root/.gaia/local/cache/shared/wiki-base-catchup.report" 2>/dev/null || true
   owed=""
@@ -639,7 +650,7 @@ if [ "$attempt_ff" -eq 1 ] && [ -n "$base" ]; then
 
   base_upstream=""
   if [ "$ff_ready" -eq 1 ]; then
-    if git -C "$root" rev-parse --verify --quiet "origin/$base" >/dev/null 2>&1; then
+    if git -C "$root" rev-parse --verify --quiet "refs/remotes/origin/$base" >/dev/null 2>&1; then
       base_upstream=$(git -C "$root" for-each-ref \
         --format='%(upstream)' "refs/heads/$base" 2>/dev/null)
     fi
@@ -657,7 +668,7 @@ if [ "$attempt_ff" -eq 1 ] && [ -n "$base" ]; then
     # `2>&1 >/dev/null` order): stdout is discarded, stderr lands in $ff_stderr
     # for the report below, and NOTHING reaches this hook's own stdout/stderr
     # either way.
-    ff_stderr=$(git -C "$root" merge --ff-only --end-of-options "origin/$base" 2>&1 >/dev/null)
+    ff_stderr=$(git -C "$root" merge --ff-only --end-of-options "refs/remotes/origin/$base" 2>&1 >/dev/null)
     ff_status=$?
     if [ "$ff_status" -eq 0 ]; then
       wiki_catchup_state_unset catchup_owed
@@ -1483,7 +1494,7 @@ if [ -n "$wt_main" ] && [ -d "$wt_base" ]; then
     [ -n "$base" ] || continue
     # The fork point the branch is measured from.
     wt_mb=$(git -C "$wt_main" merge-base --end-of-options \
-      "origin/$base" "refs/heads/$wt_branch" 2>/dev/null)
+      "refs/remotes/origin/$base" "refs/heads/$wt_branch" 2>/dev/null)
     wt_mb_rc=$?
     [ "$wt_mb_rc" -eq 0 ] || continue
     [ -n "$wt_mb" ] || continue
@@ -1573,7 +1584,7 @@ if [ -n "$wt_main" ] && [ -d "$wt_base" ]; then
       # would mean materializing up to 1000 commits' patches into a shell
       # variable. This is the one status here derived from a pipeline.
       wt_up_ids=$(git -C "$wt_main" log -p --no-merges --no-ext-diff --no-textconv \
-        --format='commit %H' -n 1000 --end-of-options "$wt_mb..origin/$base" 2>/dev/null \
+        --format='commit %H' -n 1000 --end-of-options "$wt_mb..refs/remotes/origin/$base" 2>/dev/null \
         | git -C "$wt_main" patch-id --verbatim 2>/dev/null)
       wt_up_rc=$?
       [ "$wt_up_rc" -eq 0 ] || continue

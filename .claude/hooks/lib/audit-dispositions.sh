@@ -307,7 +307,11 @@ _disposition_attributable() {
   if [ -n "$sidecar_branch" ]; then
     # Empty on a detached HEAD, which is a real state in a CI checkout: with no
     # branch to compare against, the recorded one proves nothing either way.
-    acting_branch=$(git -C "$root" symbolic-ref --quiet --short HEAD 2>/dev/null || true)
+    # Full refname, stripped: a tag sharing the branch's name makes `--short`
+    # answer `heads/<branch>`, and the comparison below then fails against a
+    # sidecar that recorded the plain name.
+    acting_branch=$(git -C "$root" symbolic-ref --quiet HEAD 2>/dev/null || true)
+    acting_branch=${acting_branch#refs/heads/}
     if [ -n "$acting_branch" ] && [ "$sidecar_branch" != "$acting_branch" ]; then
       return 1
     fi
