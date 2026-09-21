@@ -44,12 +44,23 @@
 # Output (stdout), argument-less form
 #   Exactly ONE line, suitable for a `base...HEAD` diff:
 #     <40-hex-sha>: resolved incremental base (an audited PR ancestor)
-#     origin/<base-ref>: fallback: review the full PR diff, scoped to the
-#       branch the PR merges into (GITHUB_BASE_REF, read under Actions only,
-#       which sets it on every pull_request event)
-#     origin/main: the same fallback outside Actions, or when no base ref is
-#       declared
+#     refs/remotes/origin/<base-ref>: fallback: review the full PR diff,
+#       scoped to the branch the PR merges into (GITHUB_BASE_REF, read under
+#       Actions only, which sets it on every pull_request event)
+#     refs/remotes/origin/main: the same fallback outside Actions, or when no
+#       base ref is declared
 #     (or main when neither remote-tracking ref resolves)
+#
+#   Every remote-tracking name is emitted FULLY QUALIFIED, and every probe
+#   below reads the same spelling. git resolves refs/tags/<x> ahead of
+#   refs/remotes/<x>, so a short `origin/<x>` can be answered by a tag
+#   literally named `origin/<x>` -- both here and again in the consumer that
+#   re-resolves the emitted name. It is silent either way, because
+#   `rev-parse --verify --quiet` suppresses git's ambiguity warning. Such a
+#   tag reaches an Actions runner whatever `fetch-tags` says: the checkout's
+#   fetch refspec carries `+refs/tags/*:refs/tags/*` explicitly, which
+#   overrides both that input and `--no-tags`. A shadow at HEAD empties the
+#   reviewed delta and a member then earns a clearance having read nothing.
 #
 # Output (stdout), --member form
 #   Exactly FOUR newline-terminated lines:
@@ -277,7 +288,7 @@ if [ -z "$repo_root" ]; then
   # Defensive: not in a git repo, so nothing can be sourced out of the
   # checkout either. Full scope; the caller's git will error loudly on the
   # broken environment.
-  main_ref="origin/main"
+  main_ref="refs/remotes/origin/main"
   shared_base="$main_ref"
   echo "resolve-audit-base: not inside a git checkout; resetting to full scope (${main_ref})." >&2
   emit "$main_ref" degraded ""
@@ -313,21 +324,27 @@ resolve_main_ref() {
   # repository default, which is what a local run keeps.
   if [ "${GITHUB_ACTIONS:-}" = "true" ] \
     && [ -n "${GITHUB_BASE_REF:-}" ] \
-    && git -C "$repo_root" rev-parse --verify --quiet "origin/${GITHUB_BASE_REF}" >/dev/null 2>&1; then
-    printf 'origin/%s' "$GITHUB_BASE_REF"
+    && git -C "$repo_root" rev-parse --verify --quiet "refs/remotes/origin/${GITHUB_BASE_REF}" >/dev/null 2>&1; then
+    printf 'refs/remotes/origin/%s' "$GITHUB_BASE_REF"
     return 0
   fi
-  if git -C "$repo_root" rev-parse --verify --quiet origin/main >/dev/null 2>&1; then
-    printf 'origin/main'
+  if git -C "$repo_root" rev-parse --verify --quiet refs/remotes/origin/main >/dev/null 2>&1; then
+    printf 'refs/remotes/origin/main'
     return 0
   fi
   if git -C "$repo_root" rev-parse --verify --quiet main >/dev/null 2>&1; then
     printf 'main'
     return 0
   fi
-  # Last resort: emit origin/main anyway (matches the existing workflow's
+  # Last resort: emit the main ref anyway (matches the existing workflow's
   # assumption; the caller's diff errors loudly if it truly can't resolve).
-  printf 'origin/main'
+  # Qualified like the two remote-tracking arms above, so an unresolvable last
+  # resort stays unresolvable rather than becoming satisfiable by a shadowing
+  # tag. The local-branch arm just above is NOT qualified: a tag named `main`
+  # still answers for it, on the same terms and just as silently. Qualifying it
+  # changes an emitted contract several suites pin, so it is recorded rather
+  # than closed here.
+  printf 'refs/remotes/origin/main'
 }
 main_ref="$(resolve_main_ref)"
 shared_base="$main_ref"

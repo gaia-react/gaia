@@ -91,10 +91,18 @@ jobs:
       # "Vitest and Playwright" already passed, then gate the suite on whether
       # the delta SINCE that green run touches a test-relevant file. A code
       # commit that passes followed by a prose-only commit reviews an empty
-      # relevant delta and skips. Falls back to origin/main (full scope) when
-      # no green ancestor exists, first run, prior runs failed/cancelled, or
-      # the API is unreachable (e.g. fork PRs without a token). Skipped jobs do
-      # not satisfy required checks under branch protection, so we gate steps.
+      # relevant delta and skips. Falls back to `refs/remotes/origin/main` (full
+      # scope) when no green ancestor exists, first run, prior runs
+      # failed/cancelled, or the API is unreachable (e.g. fork PRs without a
+      # token); the helper hardcodes that literal rather than deriving a default
+      # branch. Skipped jobs do not satisfy required checks under branch
+      # protection, so we gate steps.
+      #
+      # Spelled refs/remotes/origin/... rather than origin/...: git resolves
+      # refs/tags/<x> first, so a tag literally named `origin/<x>` answers for
+      # the remote-tracking ref, and this checkout's fetch refspec carries
+      # `+refs/tags/*:refs/tags/*` explicitly. At HEAD such a tag empties the
+      # relevant delta and the suite skips on a pull request it never ran.
       - name: Resolve last-green base
         id: base
         if: steps.chore-deps.outputs.skip == 'false'
@@ -102,7 +110,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -eu
-          base="$(bash .github/audit/resolve-check-base.sh 'Vitest and Playwright' || echo origin/main)"
+          base="$(bash .github/audit/resolve-check-base.sh 'Vitest and Playwright' || echo refs/remotes/origin/main)"
           echo "base=${base}" >> "$GITHUB_OUTPUT"
           echo "tests: incremental base = ${base}" >&2
       # Allowlist of paths that affect the test suite (ERE, matched against
