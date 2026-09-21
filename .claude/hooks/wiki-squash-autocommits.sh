@@ -31,7 +31,9 @@ fi
 # tag named `main` makes it answer `heads/main`, the compare below misses, and
 # the whole on-main arm is skipped: no wiki branch pushed, no PR, no reset, and
 # the squashed commit left sitting on local main, which is the state this hook
-# exists to prevent. A detached HEAD still yields empty, unchanged.
+# exists to prevent. A detached HEAD now yields empty where the replaced read
+# printed the literal `HEAD`; neither equals `main`, so that arm is skipped as
+# before.
 current_branch=$(git symbolic-ref -q HEAD 2>/dev/null) || current_branch=""
 current_branch=${current_branch#refs/heads/}
 

@@ -315,7 +315,8 @@ const createRevertBranch = (
 
   // Capture the branch the repo was on before we create the revert
   // branch, so a later failure can restore it. An empty result (detached
-  // HEAD) is fine; the rollback simply skips the checkout-back step.
+  // HEAD) is fine; the rollback checks the base ref out by name instead of
+  // returning to a branch.
   const priorBranchResult = runGit(
     ['symbolic-ref', '--quiet', '--short', 'HEAD'],
     {cwd: repoRoot}

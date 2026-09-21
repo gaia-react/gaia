@@ -262,7 +262,11 @@ echo
 echo "Next steps (external state, not auto-updated):"
 
 # Branch name, flag if the current branch references the old id.
-current_branch="$(git -C "$repo_root" symbolic-ref --short -q HEAD || true)"
+# Full refname, stripped, never `--short`: a tag sharing the branch's name
+# makes `--short` answer `heads/<branch>`, and the number read below would
+# then miss, printing a rename of the branch to itself.
+current_branch="$(git -C "$repo_root" symbolic-ref -q HEAD || true)"
+current_branch="${current_branch#refs/heads/}"
 if [ -n "$current_branch" ] && [ "$(gaia_branch_spec_number "$current_branch")" = "$old_num" ]; then
   # The match above reads the number through the library, which strips leading
   # zeros, so the branch can carry the number in any padding the minter was
