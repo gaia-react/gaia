@@ -2,9 +2,10 @@
 # shellcheck shell=bash
 #
 # pr-wait-merge.sh: wait for a pull request to reach a terminal merge state,
-# and stop early on any state that means it never will. Run it from anywhere
-# inside the checkout:
-#   bash .gaia/scripts/pr-wait-merge.sh --pr <N> [--repo <owner/name>]
+# and stop early on any state that means it never will. The script itself reads
+# nothing from the working directory, so run it by any path that resolves; the
+# spelling below assumes a shell at the checkout root:
+#   bash .gaia/scripts/pr-wait-merge.sh --pr <N> [--repo <[HOST/]OWNER/REPO>]
 #                                       [--attempts <N>] [--interval <seconds>]
 #
 # Exit codes, one per verdict, so a caller branches on the status rather than
@@ -80,13 +81,14 @@ DEFAULT_INTERVAL=30
 
 usage() {
   cat <<EOF
-Usage: bash .gaia/scripts/$PROG --pr <number> [--repo <owner/name>]
+Usage: bash .gaia/scripts/$PROG --pr <number> [--repo <[HOST/]OWNER/REPO>]
                                 [--attempts <n>] [--interval <seconds>]
 
   --pr        the pull request number to wait on. Required.
-  --repo      the repository holding it, as owner/name. Defaults to whatever
-              gh resolves from the working directory, which is what a wait on
-              this checkout's own pull request wants.
+  --repo      the repository holding it, in gh's own [HOST/]OWNER/REPO
+              spelling. Defaults to whatever gh resolves from the working
+              directory, which is what a wait on this checkout's own pull
+              request wants.
   --attempts  how many times to read the state before giving up.
               Default $DEFAULT_ATTEMPTS.
   --interval  seconds to sleep between reads. Default $DEFAULT_INTERVAL.

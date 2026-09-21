@@ -100,9 +100,18 @@ done'
   # The header's exit table lines, e.g. "#   6   CLOSED        the pull ...".
   verdicts=$(sed -n 's/^#   [0-9]\{1,3\}   \([A-Z_]\{3,\}\).*/\1/p' "$wait_script")
   [ -n "$verdicts" ] || return 1
-  # Guard the derivation itself: a sed that silently stopped matching would
-  # leave this test asserting nothing at all.
-  [ "$(printf '%s\n' "$verdicts" | grep -c .)" -ge 4 ] || return 1
+
+  # Guard the derivation against a header line that stops matching. A floor
+  # would not: reformatting one verdict's line drops it from the set while a
+  # `-ge <n>` still passes, and the test then greens over a denial that no
+  # longer names it. Count the script's own verdict arms instead and require
+  # equality, so losing one line from either side reds.
+  local arms n_verdicts n_arms
+  arms=$(sed -n 's/^  \([A-Z_]\{3,\}\))$/\1/p' "$wait_script")
+  n_verdicts=$(printf '%s\n' "$verdicts" | grep -c .)
+  n_arms=$(printf '%s\n' "$arms" | grep -c .)
+  [ "$n_arms" -ge 2 ] || return 1
+  [ "$n_verdicts" -eq "$((n_arms + 1))" ] || return 1
 
   run_hook 'until [ "$(gh pr view 5 --json state --jq .state)" != "OPEN" ]; do sleep 30; done'
   [ "$status" -eq 2 ]

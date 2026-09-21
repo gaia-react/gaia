@@ -355,14 +355,14 @@ tsv() {
   true
 }
 
-@test "a --repo that is not owner/name is a usage error" {
+@test "a --repo that is not OWNER/REPO is a usage error" {
   # It would otherwise reach gh as an unresolvable repo, fail every read, and
   # land in the no-read refusal, whose message blames auth or the PR number
   # rather than the argument actually at fault.
   stub_gh "$(tsv MERGED CLEAN)"
   run bash "$WAIT" --pr 7 --repo gaia-react --interval 0
   [ "$status" -eq 2 ]
-  grep -qF -- 'owner/name' <<<"$output"
+  grep -qF -- 'OWNER/REPO' <<<"$output"
 }
 
 @test "a --repo carrying an undotted third segment is a usage error" {
