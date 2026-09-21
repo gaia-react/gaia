@@ -13,13 +13,14 @@
         "invokes:.claude/hooks/lib/audit-dispositions.sh",
         "invokes:.claude/hooks/lib/audit-machinery.sh",
         "invokes:.claude/hooks/lib/audit-scope.sh",
+        "invokes:.claude/hooks/lib/command-wrappers.sh",
         "invokes:.claude/hooks/lib/jq-availability.sh",
         "invokes:.claude/hooks/lib/repo-scope.sh",
         "invokes:.claude/hooks/lib/verb-arming-walk.sh",
         "invokes:.claude/hooks/lib/verb-arming.sh",
         "invokes:.gaia/scripts/main-root-lib.sh"
       ],
-      "why": "Denies `gh pr merge` when the disposition-ledger sidecar for HEAD's frontend content digest disagrees with what a merge marker claims, or is missing where one is expected, once armed through the shared arming decision (`.claude/hooks/lib/verb-arming.sh`, which lazily loads `.claude/hooks/lib/verb-arming-walk.sh` for its data-proving view). Sources the audit clearance/digest/machinery/scope helpers, the shared repo-scope and main-root libraries, and the shared jq-availability arm, to compute the digest and read the sidecar; `network` and its own repo-scope check come from the repo-scope helper's `gh repo view` call, which confirms the intercepted command targets this repository before the gate applies. `fs-write:**` and `tmp` are the audit-clearance/digest helpers' own scratch and ledger writes, at a path their caller supplies rather than one this hook names.",
+      "why": "Denies `gh pr merge` when the disposition-ledger sidecar for HEAD's frontend content digest disagrees with what a merge marker claims, or is missing where one is expected, once armed through the shared arming decision (`.claude/hooks/lib/verb-arming.sh`, which lazily loads `.claude/hooks/lib/verb-arming-walk.sh` for its data-proving view). Sources the audit clearance/digest/machinery/scope helpers, the shared repo-scope and main-root libraries, and the shared jq-availability arm, to compute the digest and read the sidecar; `network` and its own repo-scope check come from the repo-scope helper's `gh repo view` call, which confirms the intercepted command targets this repository before the gate applies. `fs-write:**` and `tmp` are the audit-clearance/digest helpers' own scratch and ledger writes, at a path their caller supplies rather than one this hook names. The arming decision lazily loads `.claude/hooks/lib/command-wrappers.sh`, the shared command-wrapper table, so a wrapper standing in the command-word slot does not hide the verb from this hook.",
       "maintainer_only": false
     },
     {
@@ -27,13 +28,14 @@
       "capabilities": [
         "fs-write:**",
         "network",
+        "invokes:.claude/hooks/lib/command-wrappers.sh",
         "invokes:.claude/hooks/lib/jq-availability.sh",
         "invokes:.claude/hooks/lib/repo-scope.sh",
         "invokes:.claude/hooks/lib/verb-arming-walk.sh",
         "invokes:.claude/hooks/lib/verb-arming.sh",
         "invokes:.gaia/scripts/main-root-lib.sh"
       ],
-      "why": "Denies `gh pr merge` when the pull-request body records an audit residual disposition under a non-canonical heading or an unkeyed entry, once armed through the shared arming decision (`.claude/hooks/lib/verb-arming.sh`, which lazily loads `.claude/hooks/lib/verb-arming-walk.sh` for its data-proving view). Sources the shared repo-scope helper (which transitively loads the main-root library) to decline a foreign-repo merge and to resolve which pull request the merge names, and the shared jq-availability arm. `network` is this hook's own `gh pr view` call, made to read the pull-request body it judges; it transmits nothing, so `github-write` is not declared. `fs-write:**` is the opt-in attribution emit: when `GAIA_AUDIT_RESIDUAL_DEBUG_EMIT` carries a non-empty path the gate appends one line per attributed entry unit to it, and the destination is whatever the operator names rather than a path this hook picks, which is what the caller-designates-it term stands for. The append is best-effort and can never change a verdict; with the variable empty or absent the gate writes nothing at all.",
+      "why": "Denies `gh pr merge` when the pull-request body records an audit residual disposition under a non-canonical heading or an unkeyed entry, once armed through the shared arming decision (`.claude/hooks/lib/verb-arming.sh`, which lazily loads `.claude/hooks/lib/verb-arming-walk.sh` for its data-proving view). Sources the shared repo-scope helper (which transitively loads the main-root library) to decline a foreign-repo merge and to resolve which pull request the merge names, and the shared jq-availability arm. `network` is this hook's own `gh pr view` call, made to read the pull-request body it judges; it transmits nothing, so `github-write` is not declared. `fs-write:**` is the opt-in attribution emit: when `GAIA_AUDIT_RESIDUAL_DEBUG_EMIT` carries a non-empty path the gate appends one line per attributed entry unit to it, and the destination is whatever the operator names rather than a path this hook picks, which is what the caller-designates-it term stands for. The append is best-effort and can never change a verdict; with the variable empty or absent the gate writes nothing at all. The arming decision lazily loads `.claude/hooks/lib/command-wrappers.sh`, the shared command-wrapper table, so a wrapper standing in the command-word slot does not hide the verb from this hook.",
       "maintainer_only": false
     },
     {
@@ -209,6 +211,7 @@
       "capabilities": [
         "network",
         "fs-write:**",
+        "invokes:.claude/hooks/lib/command-wrappers.sh",
         "invokes:.claude/hooks/lib/repo-scope.sh",
         "invokes:.claude/hooks/lib/verb-arming-walk.sh",
         "invokes:.claude/hooks/lib/verb-arming.sh",
@@ -216,7 +219,7 @@
         "invokes:.gaia/scripts/gh-artifact-lib.sh",
         "invokes:.gaia/scripts/main-root-lib.sh"
       ],
-      "why": "Fires on every Bash tool call; when the command is a real `gh pr create` invocation, armed through the shared arming decision (`.claude/hooks/lib/verb-arming.sh`, which lazily loads `.claude/hooks/lib/verb-arming-walk.sh` for its data-proving view), records the created pull request's number, repo, branch, and session id so a later cost-recording pass can associate a commit-triggered ledger row with the pull request it belongs to. Sources the audit-key, gh-artifact, and main-root libraries; the breadcrumb write lands at a path the gh-artifact library resolves internally rather than one this hook names, which `fs-write:**` stands for. `network` is not this hook's own network call: it arrives transitively because the shared arming decision's tokenizer arm sources `.claude/hooks/lib/repo-scope.sh`, which calls `gh repo view`. This hook itself never calls the network; it records metadata the already-completed `gh pr create` returned, it does not repeat or extend that call.",
+      "why": "Fires on every Bash tool call; when the command is a real `gh pr create` invocation, armed through the shared arming decision (`.claude/hooks/lib/verb-arming.sh`, which lazily loads `.claude/hooks/lib/verb-arming-walk.sh` for its data-proving view), records the created pull request's number, repo, branch, and session id so a later cost-recording pass can associate a commit-triggered ledger row with the pull request it belongs to. Sources the audit-key, gh-artifact, and main-root libraries; the breadcrumb write lands at a path the gh-artifact library resolves internally rather than one this hook names, which `fs-write:**` stands for. `network` is not this hook's own network call: it arrives transitively because the shared arming decision's tokenizer arm sources `.claude/hooks/lib/repo-scope.sh`, which calls `gh repo view`. This hook itself never calls the network; it records metadata the already-completed `gh pr create` returned, it does not repeat or extend that call. The arming decision lazily loads `.claude/hooks/lib/command-wrappers.sh`, the shared command-wrapper table, so a wrapper standing in the command-word slot does not hide the verb from this hook.",
       "maintainer_only": false
     },
     {
@@ -251,12 +254,13 @@
         "network",
         "fs-write:.gaia/local/debt",
         "fs-write:.gaia/local/debt/refresh-requested",
+        "invokes:.claude/hooks/lib/command-wrappers.sh",
         "invokes:.claude/hooks/lib/repo-scope.sh",
         "invokes:.claude/hooks/lib/verb-arming-walk.sh",
         "invokes:.claude/hooks/lib/verb-arming.sh",
         "invokes:.gaia/scripts/main-root-lib.sh"
       ],
-      "why": "After a debt-count-mutating `gh` command for this repository (`gh issue create`/`close`/`reopen`/`edit`, `gh pr merge`), armed through the shared arming decision (`.claude/hooks/lib/verb-arming.sh`, which lazily loads `.claude/hooks/lib/verb-arming-walk.sh` for its data-proving view), sets the debt-count staleness sentinel under `.gaia/local/debt/` so the next statusline tick recomputes the open tech-debt count. Sources the shared repo-scope helper to exempt a command aimed at a different repository and main-root-lib.sh to resolve the checkout root; `network` is the repo-scope helper's own `gh repo view` call, made to confirm which repository the intercepted command targets. Never itself calls `gh`.",
+      "why": "After a debt-count-mutating `gh` command for this repository (`gh issue create`/`close`/`reopen`/`edit`, `gh pr merge`), armed through the shared arming decision (`.claude/hooks/lib/verb-arming.sh`, which lazily loads `.claude/hooks/lib/verb-arming-walk.sh` for its data-proving view), sets the debt-count staleness sentinel under `.gaia/local/debt/` so the next statusline tick recomputes the open tech-debt count. Sources the shared repo-scope helper to exempt a command aimed at a different repository and main-root-lib.sh to resolve the checkout root; `network` is the repo-scope helper's own `gh repo view` call, made to confirm which repository the intercepted command targets. Never itself calls `gh`. The arming decision lazily loads `.claude/hooks/lib/command-wrappers.sh`, the shared command-wrapper table, so a wrapper standing in the command-word slot does not hide the verb from this hook.",
       "maintainer_only": false
     },
     {
@@ -273,13 +277,14 @@
       "hook": ".claude/hooks/distribution-preflight-check.sh",
       "capabilities": [
         "network",
+        "invokes:.claude/hooks/lib/command-wrappers.sh",
         "invokes:.claude/hooks/lib/jq-availability.sh",
         "invokes:.claude/hooks/lib/repo-scope.sh",
         "invokes:.gaia/scripts/main-root-lib.sh",
         "invokes:.claude/hooks/lib/verb-arming-walk.sh",
         "invokes:.claude/hooks/lib/verb-arming.sh"
       ],
-      "why": "Denies `gh pr create` when a file this branch newly ships has no ship-or-withhold answer in the committed `.gaia/manifest.json`, so a maintainer learns it locally before the equivalent CI job goes red, once armed through the shared arming decision (`.claude/hooks/lib/verb-arming.sh`, which lazily loads `.claude/hooks/lib/verb-arming-walk.sh` for its data-proving view). Sources the shared repo-scope helper to exempt a command aimed at a different repository, which loads the main-root resolver to compare a `-C` or `cd` target's repository, and the shared jq-availability arm; `network` is static reach: the repo-scope library carries a `gh repo view` call on its act-on-home path, which this hook does not take. Never itself writes a file or calls `gh` to create or modify anything: it only inspects the manifest already on disk and denies the pending call.",
+      "why": "Denies `gh pr create` when a file this branch newly ships has no ship-or-withhold answer in the committed `.gaia/manifest.json`, so a maintainer learns it locally before the equivalent CI job goes red, once armed through the shared arming decision (`.claude/hooks/lib/verb-arming.sh`, which lazily loads `.claude/hooks/lib/verb-arming-walk.sh` for its data-proving view). Sources the shared repo-scope helper to exempt a command aimed at a different repository, which loads the main-root resolver to compare a `-C` or `cd` target's repository, and the shared jq-availability arm; `network` is static reach: the repo-scope library carries a `gh repo view` call on its act-on-home path, which this hook does not take. Never itself writes a file or calls `gh` to create or modify anything: it only inspects the manifest already on disk and denies the pending call. The arming decision lazily loads `.claude/hooks/lib/command-wrappers.sh`, the shared command-wrapper table, so a wrapper standing in the command-word slot does not hide the verb from this hook.",
       "maintainer_only": true
     },
     {
@@ -287,12 +292,13 @@
       "capabilities": [
         "network",
         "github-write",
+        "invokes:.claude/hooks/lib/command-wrappers.sh",
         "invokes:.claude/hooks/lib/repo-scope.sh",
         "invokes:.gaia/scripts/main-root-lib.sh",
         "invokes:.claude/hooks/lib/verb-arming-walk.sh",
         "invokes:.claude/hooks/lib/verb-arming.sh"
       ],
-      "why": "After a `gh pr merge` for this repository that GitHub confirms landed (`gh pr view --json state`), armed through the shared arming decision (`.claude/hooks/lib/verb-arming.sh`, which lazily loads `.claude/hooks/lib/verb-arming-walk.sh` for its data-proving view), strips the `in-progress` claim label from every issue the merged pull request closes by keyword (`gh issue edit --remove-label`). Sources the shared repo-scope helper to exempt a command aimed at a different repository, which loads the main-root resolver to compare a `-C` or `cd` target's repository; both the confirmation read and the label edit are the source of its `network` and `github-write` reach. Touches no local file: releasing a claim is a GitHub-side label write only.",
+      "why": "After a `gh pr merge` for this repository that GitHub confirms landed (`gh pr view --json state`), armed through the shared arming decision (`.claude/hooks/lib/verb-arming.sh`, which lazily loads `.claude/hooks/lib/verb-arming-walk.sh` for its data-proving view), strips the `in-progress` claim label from every issue the merged pull request closes by keyword (`gh issue edit --remove-label`). Sources the shared repo-scope helper to exempt a command aimed at a different repository, which loads the main-root resolver to compare a `-C` or `cd` target's repository; both the confirmation read and the label edit are the source of its `network` and `github-write` reach. Touches no local file: releasing a claim is a GitHub-side label write only. The arming decision lazily loads `.claude/hooks/lib/command-wrappers.sh`, the shared command-wrapper table, so a wrapper standing in the command-word slot does not hide the verb from this hook.",
       "maintainer_only": false
     },
     {
@@ -301,6 +307,7 @@
         "network",
         "github-write",
         "tmp",
+        "invokes:.claude/hooks/lib/command-wrappers.sh",
         "invokes:.claude/hooks/lib/repo-scope.sh",
         "invokes:.gaia/scripts/main-root-lib.sh",
         "invokes:.claude/hooks/lib/verb-arming-walk.sh",
@@ -309,7 +316,7 @@
         "invokes:.gaia/scripts/post-findings-block.sh",
         "invokes:.gaia/scripts/read-audit-ci-config.sh"
       ],
-      "why": "On a real `gh pr merge` invocation running under local audit mode, armed through the shared arming decision (`.claude/hooks/lib/verb-arming.sh`, which lazily loads `.claude/hooks/lib/verb-arming-walk.sh` for its data-proving view), resolves the pull request (`gh pr view`) and calls the post-findings-block producer so a local merge still contributes to the finding-recurrence tally, the same record CI mode already posts. Sources the shared repo-scope helper to exempt a foreign-repo command (which loads the main-root resolver to compare a `-C` or `cd` target's repository), the audit-key library, the post-findings-block producer itself, and the audit-CI config reader; `github-write` and the rest of its `network` reach are the producer's own posting call, made with the tally data this hook resolves from the merge, not with any other tool-call content. Resolves no audit base, and reaches no resolver: the producer selects its sidecars on the branch half of the key alone, across every base, so the incremental base this hook used to resolve is exactly the value that narrowed the block to one round (gaia-react/gaia#1573). That removal is what takes the resolver, the version normalizer it sourced, and the four audit predicate libraries it loaded by loop variable (scope, machinery, rules-changed, clearance) out of this hook's reach. Never denies the merge or emits a permission decision; a scratch file backs the producer's own working state.",
+      "why": "On a real `gh pr merge` invocation running under local audit mode, armed through the shared arming decision (`.claude/hooks/lib/verb-arming.sh`, which lazily loads `.claude/hooks/lib/verb-arming-walk.sh` for its data-proving view), resolves the pull request (`gh pr view`) and calls the post-findings-block producer so a local merge still contributes to the finding-recurrence tally, the same record CI mode already posts. Sources the shared repo-scope helper to exempt a foreign-repo command (which loads the main-root resolver to compare a `-C` or `cd` target's repository), the audit-key library, the post-findings-block producer itself, and the audit-CI config reader; `github-write` and the rest of its `network` reach are the producer's own posting call, made with the tally data this hook resolves from the merge, not with any other tool-call content. Resolves no audit base, and reaches no resolver: the producer selects its sidecars on the branch half of the key alone, across every base, so the incremental base this hook used to resolve is exactly the value that narrowed the block to one round (gaia-react/gaia#1573). That removal is what takes the resolver, the version normalizer it sourced, and the four audit predicate libraries it loaded by loop variable (scope, machinery, rules-changed, clearance) out of this hook's reach. Never denies the merge or emits a permission decision; a scratch file backs the producer's own working state. The arming decision lazily loads `.claude/hooks/lib/command-wrappers.sh`, the shared command-wrapper table, so a wrapper standing in the command-word slot does not hide the verb from this hook.",
       "maintainer_only": false
     },
     {
@@ -324,6 +331,7 @@
         "invokes:.claude/hooks/lib/audit-dispositions.sh",
         "invokes:.claude/hooks/lib/audit-machinery.sh",
         "invokes:.claude/hooks/lib/audit-scope.sh",
+        "invokes:.claude/hooks/lib/command-wrappers.sh",
         "invokes:.claude/hooks/lib/gaia-version.sh",
         "invokes:.claude/hooks/lib/jq-availability.sh",
         "invokes:.claude/hooks/lib/repo-scope.sh",
@@ -333,7 +341,7 @@
         "invokes:.gaia/scripts/main-root-lib.sh",
         "invokes:.gaia/scripts/resolve-audit-members.sh"
       ],
-      "why": "Denies `gh pr merge` until every Code Audit Team member the diff dispatches has cleared HEAD, resolved by content-digest markers under `.gaia/local/audit/`, once armed through the shared arming decision (`.claude/hooks/lib/verb-arming.sh`, which lazily loads `.claude/hooks/lib/verb-arming-walk.sh` for its data-proving view). Sources the audit clearance/digest/dispositions/machinery/scope and gaia-version helpers, the shared repo-scope helper, the shared jq-availability arm, the chore-deps-skip and main-root libraries, and `resolve-audit-members.sh` to compute the dispatched set. `network` covers both the repo-scope helper's `gh repo view` call and this hook's own read-only `gh api .../commits/.../status` and `gh pr view` calls, made to read merge-gate state, never to transmit the pull request's own diff or description; `github-write` is not declared because every `gh api` call here carries only `--jq`, no mutating method or field flag. `fs-write:**` and `tmp` are the audit-clearance/digest helpers' own scratch and marker writes, at a path their caller supplies.",
+      "why": "Denies `gh pr merge` until every Code Audit Team member the diff dispatches has cleared HEAD, resolved by content-digest markers under `.gaia/local/audit/`, once armed through the shared arming decision (`.claude/hooks/lib/verb-arming.sh`, which lazily loads `.claude/hooks/lib/verb-arming-walk.sh` for its data-proving view). Sources the audit clearance/digest/dispositions/machinery/scope and gaia-version helpers, the shared repo-scope helper, the shared jq-availability arm, the chore-deps-skip and main-root libraries, and `resolve-audit-members.sh` to compute the dispatched set. `network` covers both the repo-scope helper's `gh repo view` call and this hook's own read-only `gh api .../commits/.../status` and `gh pr view` calls, made to read merge-gate state, never to transmit the pull request's own diff or description; `github-write` is not declared because every `gh api` call here carries only `--jq`, no mutating method or field flag. `fs-write:**` and `tmp` are the audit-clearance/digest helpers' own scratch and marker writes, at a path their caller supplies. The arming decision lazily loads `.claude/hooks/lib/command-wrappers.sh`, the shared command-wrapper table, so a wrapper standing in the command-word slot does not hide the verb from this hook.",
       "maintainer_only": false
     },
     {
@@ -377,6 +385,7 @@
       "hook": ".claude/hooks/token-rollup-merge.sh",
       "capabilities": [
         "network",
+        "invokes:.claude/hooks/lib/command-wrappers.sh",
         "invokes:.claude/hooks/lib/gaia-active-plan.sh",
         "invokes:.claude/hooks/lib/repo-scope.sh",
         "invokes:.claude/hooks/lib/verb-arming-walk.sh",
@@ -386,7 +395,7 @@
         "invokes:.gaia/scripts/token-pricing-lib.sh",
         "invokes:.gaia/scripts/token-rollup.sh"
       ],
-      "why": "On `gh pr merge`, armed through the shared arming decision (`.claude/hooks/lib/verb-arming.sh`, which lazily loads `.claude/hooks/lib/verb-arming-walk.sh` for its data-proving view), renders the merging feature's full-cycle token-cost roll-up into the session's context by reading the active plan folder or the ledger's most recent execute record. Sources the gaia-active-plan, ledger-path, main-root, token-pricing, and token-rollup libraries to resolve and read that on-disk state; it only reads, it never writes a file or mutates anything. `network` is not this hook's own network call: it arrives transitively because the shared arming decision's tokenizer arm sources `.claude/hooks/lib/repo-scope.sh`, which calls `gh repo view`.",
+      "why": "On `gh pr merge`, armed through the shared arming decision (`.claude/hooks/lib/verb-arming.sh`, which lazily loads `.claude/hooks/lib/verb-arming-walk.sh` for its data-proving view), renders the merging feature's full-cycle token-cost roll-up into the session's context by reading the active plan folder or the ledger's most recent execute record. Sources the gaia-active-plan, ledger-path, main-root, token-pricing, and token-rollup libraries to resolve and read that on-disk state; it only reads, it never writes a file or mutates anything. `network` is not this hook's own network call: it arrives transitively because the shared arming decision's tokenizer arm sources `.claude/hooks/lib/repo-scope.sh`, which calls `gh repo view`. The arming decision lazily loads `.claude/hooks/lib/command-wrappers.sh`, the shared command-wrapper table, so a wrapper standing in the command-word slot does not hide the verb from this hook.",
       "maintainer_only": false
     },
     {
@@ -400,6 +409,7 @@
         "fs-write:.gaia/local/telemetry/**",
         "fs-write:.gaia/local/telemetry/cost.jsonl",
         "fs-write:.gaia/local/telemetry/tokens.jsonl.bak",
+        "invokes:.claude/hooks/lib/command-wrappers.sh",
         "invokes:.claude/hooks/lib/gaia-active-plan.sh",
         "invokes:.claude/hooks/lib/repo-scope.sh",
         "invokes:.claude/hooks/lib/verb-arming-walk.sh",
@@ -413,7 +423,7 @@
         "invokes:.gaia/scripts/token-tally.sh",
         "invokes:.specify/extensions/gaia/lib/with-ledger-lock.sh"
       ],
-      "why": "On `git commit`/`git push` inside an active plan's working tree, armed through the shared arming decision (`.claude/hooks/lib/verb-arming.sh`, which lazily loads `.claude/hooks/lib/verb-arming-walk.sh` for its data-proving view), records this execution session's token tally as a ground-truth ledger row under `.gaia/local/telemetry/`. Sources the gaia-active-plan, audit-key, audit-window, gh-artifact, ledger-path, main-root, token-pricing, and token-tally libraries, plus the shared ledger-lock helper, to resolve association and write the row under mutual exclusion; a scratch file backs the ledger write before its atomic move into place. Never emits a permission decision; it only performs the recording side effect. `network` is not this hook's own network call: it arrives transitively because the shared arming decision's tokenizer arm sources `.claude/hooks/lib/repo-scope.sh`, which calls `gh repo view`.",
+      "why": "On `git commit`/`git push` inside an active plan's working tree, armed through the shared arming decision (`.claude/hooks/lib/verb-arming.sh`, which lazily loads `.claude/hooks/lib/verb-arming-walk.sh` for its data-proving view), records this execution session's token tally as a ground-truth ledger row under `.gaia/local/telemetry/`. Sources the gaia-active-plan, audit-key, audit-window, gh-artifact, ledger-path, main-root, token-pricing, and token-tally libraries, plus the shared ledger-lock helper, to resolve association and write the row under mutual exclusion; a scratch file backs the ledger write before its atomic move into place. Never emits a permission decision; it only performs the recording side effect. `network` is not this hook's own network call: it arrives transitively because the shared arming decision's tokenizer arm sources `.claude/hooks/lib/repo-scope.sh`, which calls `gh repo view`. The arming decision lazily loads `.claude/hooks/lib/command-wrappers.sh`, the shared command-wrapper table, so a wrapper standing in the command-word slot does not hide the verb from this hook.",
       "maintainer_only": false
     },
     {
@@ -427,6 +437,7 @@
         "fs-write:.gaia/local/telemetry/**",
         "fs-write:.gaia/local/telemetry/cost.jsonl",
         "fs-write:.gaia/local/telemetry/tokens.jsonl.bak",
+        "invokes:.claude/hooks/lib/command-wrappers.sh",
         "invokes:.claude/hooks/lib/gaia-active-plan.sh",
         "invokes:.claude/hooks/lib/repo-scope.sh",
         "invokes:.claude/hooks/lib/verb-arming-walk.sh",
@@ -440,7 +451,7 @@
         "invokes:.gaia/scripts/token-tally.sh",
         "invokes:.specify/extensions/gaia/lib/with-ledger-lock.sh"
       ],
-      "why": "On `gh pr merge` under local audit mode, and again as a Stop-hook backstop for a review that ends without a merge, armed through the shared arming decision (`.claude/hooks/lib/verb-arming.sh`, which lazily loads `.claude/hooks/lib/verb-arming-walk.sh` for its data-proving view), records a completed code-review-audit run as a standalone `kind:\"review\"` ledger row under `.gaia/local/telemetry/`, deduplicated by review id so both triggers firing in one session write at most one row. Sources the same eight libraries as `token-tally-git-op.sh` to resolve association and perform the write under the shared ledger lock; a scratch file backs the write. Never emits a permission decision. `network` is not this hook's own network call: it arrives transitively because the shared arming decision's tokenizer arm sources `.claude/hooks/lib/repo-scope.sh`, which calls `gh repo view`.",
+      "why": "On `gh pr merge` under local audit mode, and again as a Stop-hook backstop for a review that ends without a merge, armed through the shared arming decision (`.claude/hooks/lib/verb-arming.sh`, which lazily loads `.claude/hooks/lib/verb-arming-walk.sh` for its data-proving view), records a completed code-review-audit run as a standalone `kind:\"review\"` ledger row under `.gaia/local/telemetry/`, deduplicated by review id so both triggers firing in one session write at most one row. Sources the same eight libraries as `token-tally-git-op.sh` to resolve association and perform the write under the shared ledger lock; a scratch file backs the write. Never emits a permission decision. `network` is not this hook's own network call: it arrives transitively because the shared arming decision's tokenizer arm sources `.claude/hooks/lib/repo-scope.sh`, which calls `gh repo view`. The arming decision lazily loads `.claude/hooks/lib/command-wrappers.sh`, the shared command-wrapper table, so a wrapper standing in the command-word slot does not hide the verb from this hook.",
       "maintainer_only": false
     },
     {
@@ -558,6 +569,7 @@
       "capabilities": [
         "network",
         "invokes:.claude/hooks/lib/audit-base-provenance.sh",
+        "invokes:.claude/hooks/lib/command-wrappers.sh",
         "invokes:.claude/hooks/lib/jq-availability.sh",
         "invokes:.claude/hooks/lib/red-ledger.sh",
         "invokes:.claude/hooks/lib/repo-scope.sh",
@@ -566,7 +578,7 @@
         "invokes:.claude/hooks/lib/worthiness-ledger.sh",
         "invokes:.gaia/scripts/main-root-lib.sh"
       ],
-      "why": "Denies `gh pr merge` when an emergent test the pull request changed has no worthiness-ledger line matching its current content, once armed through the shared arming decision (`.claude/hooks/lib/verb-arming.sh`, which lazily loads `.claude/hooks/lib/verb-arming-walk.sh` for its data-proving view). Sources `.claude/hooks/lib/red-ledger.sh` and `.claude/hooks/lib/worthiness-ledger.sh` for the ledger lookups, `.claude/hooks/lib/audit-base-provenance.sh` for the diff base, the shared repo-scope helper to exempt a foreign-repo command, the shared jq-availability arm, and main-root-lib.sh for the checkout root; `network` is the repo-scope helper's own `gh repo view` call. It is a ledger lookup and signal recompute only: it never writes a file or re-runs the worthiness evaluator.",
+      "why": "Denies `gh pr merge` when an emergent test the pull request changed has no worthiness-ledger line matching its current content, once armed through the shared arming decision (`.claude/hooks/lib/verb-arming.sh`, which lazily loads `.claude/hooks/lib/verb-arming-walk.sh` for its data-proving view). Sources `.claude/hooks/lib/red-ledger.sh` and `.claude/hooks/lib/worthiness-ledger.sh` for the ledger lookups, `.claude/hooks/lib/audit-base-provenance.sh` for the diff base, the shared repo-scope helper to exempt a foreign-repo command, the shared jq-availability arm, and main-root-lib.sh for the checkout root; `network` is the repo-scope helper's own `gh repo view` call. It is a ledger lookup and signal recompute only: it never writes a file or re-runs the worthiness evaluator. The arming decision lazily loads `.claude/hooks/lib/command-wrappers.sh`, the shared command-wrapper table, so a wrapper standing in the command-word slot does not hide the verb from this hook.",
       "maintainer_only": false
     }
   ]

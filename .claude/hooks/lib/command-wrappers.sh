@@ -1,9 +1,15 @@
 #!/usr/bin/env bash
 # Shared command-WRAPPER stripping for the commit guards.
 #
-# Sourced by .claude/hooks/block-no-verify.sh,
+# Sourced by the commit guards, .claude/hooks/block-no-verify.sh,
 # .claude/hooks/block-main-destructive-git.sh and
-# .claude/hooks/red-verify-commit-check.sh. Does no work at source time.
+# .claude/hooks/red-verify-commit-check.sh, each of which refuses its own git
+# call when this file will not load. Sourced separately by
+# .claude/hooks/lib/verb-arming.sh, which calls the strip from its
+# first-command pass and degrades rather than refusing; through that shared
+# arming decision this table reaches every verb-armed hook, so its consumers
+# run well past the guards listed above, and a change to the strip's contract
+# has to answer to both kinds of caller. Does no work at source time.
 #
 #   gaia_strip_command_wrappers <command-word-text>
 #
@@ -80,9 +86,12 @@
 # kind:
 #
 #   - a wrapper option whose separated value carries whitespace inside quotes
-#     (`env -S "a b" git commit`). The scan splits on whitespace, so it
+#     (`env -S "a b" git commit`), and an ASSIGNMENT whose value does the same
+#     (`env FOO="a b" git commit`). The scan splits on whitespace, so it
 #     consumes `"a` and reads `b"` as the command word, finds no `git`, and
-#     skips the segment.
+#     skips the segment. The assignment spelling is the one a reader is likelier
+#     to write, since carrying a value with a space in it is what an assignment
+#     is usually for.
 #   - a value-taking wrapper option absent from its row, whose value is a bare
 #     word. The value reaches the command-word slot, exactly as it does in
 #     `parse_git_globals` for git's own globals.
@@ -129,6 +138,28 @@
 # bare flags that a wrong row would misread in either direction), and a wrong
 # row for a privilege wrapper is the one place the over-read this file otherwise
 # welcomes stops being cheap. Adding them is a separate decision, not a row.
+
+# The bare names of the table's rows, for a reader that needs the SET rather
+# than the grammar. lib/verb-arming.sh builds its pass-3 pre-filter from the
+# leading characters of every word that could stand in the command-word slot,
+# and a wrapper's name is one of those, so it needs the names before it has a
+# word to strip. A `case` statement cannot be asked what it matches, which is
+# why this is a second spelling of the same set rather than a derivation of it.
+# Adding a row below means adding its name here in the same edit.
+#
+# A name here that the table does not carry costs a wider pre-filter, which is
+# cost and not correctness. A name the table carries and this omits is the
+# direction that matters: the pre-filter turns the text away before the strip
+# ever runs, so the wrapper hides the command word exactly as it did before the
+# strip existed, silently.
+# gaia:maintainer-only:start
+# What keeps the two from drifting is the pin in
+# .gaia/tests/hooks/verb-arming-lib.bats, which parses the rows out of the table
+# below and fails on any difference in either direction, so the silent half
+# above is a red suite rather than a silence.
+# gaia:maintainer-only:end
+# shellcheck disable=SC2034 # read by lib/verb-arming.sh, which sources this file
+GAIA_COMMAND_WRAPPER_NAMES='env command exec nice nohup setsid stdbuf timeout xargs'
 
 # Strip one leading wrapper from <text>. Prints the remainder and returns 0
 # when the first word is a wrapper and a word survives it; returns 1
