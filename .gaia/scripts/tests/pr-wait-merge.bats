@@ -238,11 +238,25 @@ tsv() {
   [ "$status" -eq 5 ]
 }
 
-@test "an unreadable answer is blanked, not read as a state" {
-  # The view arm prints an empty line, so the script's split finds no tab. It
-  # must blank both halves rather than let the whole line stand in for `state`;
-  # a `state` holding the whole line would match no arm but would also count as
-  # a successful read, which is what the refusal test below pins.
+@test "a NON-EMPTY untabbed answer is blanked, not counted as a read" {
+  # This is the only input the blanking guard actually acts on, and the case
+  # that makes it testable at all. On an EMPTY line the guard is a no-op --
+  # `state` is already empty before it runs -- so an empty-line fixture cannot
+  # go red when the guard is deleted. A non-empty line with no tab can: without
+  # the guard, `state` holds the whole line, which matches no verdict arm but
+  # DOES count as a successful read, so the bound ends in a printed TIMEOUT
+  # asserting a queued merge will land. That is precisely the false
+  # reassurance this script's refusal arm exists to prevent.
+  stub_gh 'stray warning line from gh' 0
+  run bash "$WAIT" --pr 7 --attempts 2 --interval 0
+  [ "$status" -eq 2 ]
+  grep -qF -- 'refusal, not a verdict' <<<"$output"
+}
+
+@test "an empty answer is blanked too" {
+  # Kept beside the fixture above because it pins a different input, not
+  # because it exercises the guard: see that test's comment for why an empty
+  # line cannot.
   stub_gh '' 0
   run bash "$WAIT" --pr 7 --attempts 1 --interval 0
   grep -qF -- 'TIMEOUT' <<<"$output" && return 1
@@ -351,9 +365,33 @@ tsv() {
   grep -qF -- 'owner/name' <<<"$output"
 }
 
-@test "a --repo carrying a third segment is a usage error" {
+@test "a --repo carrying an undotted third segment is a usage error" {
+  # `a/b/c` is a three-segment path, not a host qualifier: a GitHub owner name
+  # cannot contain a dot, which is what tells the two apart.
   stub_gh "$(tsv MERGED CLEAN)"
   run bash "$WAIT" --pr 7 --repo a/b/c --interval 0
+  [ "$status" -eq 2 ]
+}
+
+@test "gh's documented HOST/OWNER/REPO form is accepted" {
+  # gh itself documents `-R, --repo [HOST/]OWNER/REPO`, so rejecting it would
+  # make this wrapper stricter than the tool it wraps, on a spelling agents
+  # do write.
+  stub_gh "$(tsv MERGED CLEAN)"
+  run bash "$WAIT" --pr 7 --repo github.com/gaia-react/create-gaia --interval 0
+  [ "$status" -eq 0 ]
+  grep -qF -- '--repo github.com/gaia-react/create-gaia' <<<"$(first_view_argv)"
+}
+
+@test "a four-segment --repo is a usage error" {
+  stub_gh "$(tsv MERGED CLEAN)"
+  run bash "$WAIT" --pr 7 --repo github.com/a/b/c --interval 0
+  [ "$status" -eq 2 ]
+}
+
+@test "a --repo with a trailing slash is a usage error" {
+  stub_gh "$(tsv MERGED CLEAN)"
+  run bash "$WAIT" --pr 7 --repo gaia-react/ --interval 0
   [ "$status" -eq 2 ]
 }
 

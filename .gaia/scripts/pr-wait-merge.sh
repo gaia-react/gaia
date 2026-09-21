@@ -167,22 +167,35 @@ if ! is_uint "$INTERVAL"; then
   printf '%s: --interval must be a non-negative integer, got: %s\n' "$PROG" "$INTERVAL" >&2
   exit 2
 fi
-# `owner/name`, and nothing else. A bare owner or a URL reaches gh as a repo it
-# cannot resolve, which prints nothing and exits non-zero on every read: that
-# lands in the no-read refusal below, where the message would blame auth or the
-# pull-request number rather than the argument actually at fault.
-case "$REPO" in
-  '') ;;
-  */*/* | /* | */)
-    printf '%s: --repo must be owner/name, got: %s\n' "$PROG" "$REPO" >&2
-    exit 2
-    ;;
-  */*) ;;
-  *)
-    printf '%s: --repo must be owner/name, got: %s\n' "$PROG" "$REPO" >&2
-    exit 2
-    ;;
-esac
+# gh's own spelling, `[HOST/]OWNER/REPO`. Validated rather than passed through
+# because a value gh cannot resolve prints nothing and exits non-zero on every
+# read, which lands in the no-read refusal below, where the message would blame
+# auth or the pull-request number rather than the argument actually at fault.
+#
+# The host-qualified form is accepted because gh documents it and agents write
+# it; `.claude/rules/issue-claim.md` names it as a spelling that turns up in
+# practice. It is told apart from a plain three-segment path by the dot in its
+# first segment, which a host has and a GitHub owner name cannot.
+repo_ok() {
+  case "$1" in
+    /* | */) return 1 ;;
+    */*/*/*) return 1 ;;
+    */*/*)
+      # [HOST/]OWNER/REPO: the first segment must look like a host.
+      case "${1%%/*}" in
+        *.*) return 0 ;;
+        *) return 1 ;;
+      esac
+      ;;
+    */*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+if [ -n "$REPO" ] && ! repo_ok "$REPO"; then
+  printf '%s: --repo must be OWNER/REPO, or HOST/OWNER/REPO, got: %s\n' "$PROG" "$REPO" >&2
+  exit 2
+fi
 
 if ! command -v gh >/dev/null 2>&1; then
   printf '%s: gh is not on PATH, so the merge state cannot be read. This is a\n' "$PROG" >&2
@@ -209,18 +222,25 @@ trap 'exit 143' TERM
 # bound and report TIMEOUT, whose message asserts a merge is queued and will
 # land. Nothing would have established that there is a merge, a queue, or even
 # that pull request. `$reads_ok` below is what separates the two.
-# Two explicit branches rather than an accumulated argument list. `--repo` is
-# optional, and every way of carrying an optional argument through in bash 3.2
-# (an array under `set -u`, an unquoted expansion, `${x:+...}`) trades this
-# duplication for a quoting or emptiness hazard on a command that has to be
-# exactly right. The same shape repeats in `required_check_failed` below.
+# Each filter is named once and expanded at both call sites below. The two
+# explicit branches are deliberate, because `--repo` is optional and every way
+# of carrying an optional argument through in bash 3.2 (an array under
+# `set -u`, an unquoted expansion, `${x:+...}`) trades the duplication for a
+# quoting or emptiness hazard on a command that has to be exactly right. What
+# must NOT be duplicated along with the branch is the filter: two copies drift,
+# and the suite asserts only that `--repo` reaches each call, never what the
+# filter says, so a repair landing in one branch alone would leave a wait that
+# passes `--repo` reading a different shape than one that does not.
+# shellcheck disable=SC2016
+VIEW_JQ='[.state, (.mergeable // "UNKNOWN")] | @tsv'
+# shellcheck disable=SC2016
+CHECKS_JQ='map(select(.bucket == "fail" or .bucket == "cancel")) | length'
+
 read_state() {
   if [ -n "$REPO" ]; then
-    gh pr view "$PR" --repo "$REPO" --json state,mergeable \
-      --jq '[.state, (.mergeable // "UNKNOWN")] | @tsv' 2>/dev/null
+    gh pr view "$PR" --repo "$REPO" --json state,mergeable --jq "$VIEW_JQ" 2>/dev/null
   else
-    gh pr view "$PR" --json state,mergeable \
-      --jq '[.state, (.mergeable // "UNKNOWN")] | @tsv' 2>/dev/null
+    gh pr view "$PR" --json state,mergeable --jq "$VIEW_JQ" 2>/dev/null
   fi
 }
 
@@ -236,10 +256,10 @@ required_check_failed() {
   local failed
   if [ -n "$REPO" ]; then
     failed=$(gh pr checks "$PR" --repo "$REPO" --required --json bucket \
-      --jq 'map(select(.bucket == "fail" or .bucket == "cancel")) | length' 2>/dev/null) || return 1
+      --jq "$CHECKS_JQ" 2>/dev/null) || return 1
   else
     failed=$(gh pr checks "$PR" --required --json bucket \
-      --jq 'map(select(.bucket == "fail" or .bucket == "cancel")) | length' 2>/dev/null) || return 1
+      --jq "$CHECKS_JQ" 2>/dev/null) || return 1
   fi
   is_uint "$failed" || return 1
   [ "$failed" -gt 0 ]

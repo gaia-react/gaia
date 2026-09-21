@@ -89,6 +89,29 @@ done'
   grep -qF -- 'CONFLICTING' <<<"$output"
 }
 
+@test "the denial's verdict list carries every verdict the script can print" {
+  # Derived from the script's own header rather than restated here, so adding a
+  # verdict without amending the denial goes red. The denial is the only
+  # contract an agent reads before taking the blessed path, so a caller
+  # branching on a stale list falls through silently on the missing state.
+  local wait_script verdicts v
+  wait_script="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)/.gaia/scripts/pr-wait-merge.sh"
+  [ -f "$wait_script" ] || return 1
+  # The header's exit table lines, e.g. "#   6   CLOSED        the pull ...".
+  verdicts=$(sed -n 's/^#   [0-9]\{1,3\}   \([A-Z_]\{3,\}\).*/\1/p' "$wait_script")
+  [ -n "$verdicts" ] || return 1
+  # Guard the derivation itself: a sed that silently stopped matching would
+  # leave this test asserting nothing at all.
+  [ "$(printf '%s\n' "$verdicts" | grep -c .)" -ge 4 ] || return 1
+
+  run_hook 'until [ "$(gh pr view 5 --json state --jq .state)" != "OPEN" ]; do sleep 30; done'
+  [ "$status" -eq 2 ]
+  while IFS= read -r v; do
+    [ -n "$v" ] || continue
+    grep -qF -- "$v" <<<"$output" || return 1
+  done <<<"$verdicts"
+}
+
 @test "the denial names the stand-down, so a genuine custom loop has a way out" {
   run_hook 'until [ "$(gh pr view 5 --json state --jq .state)" != "OPEN" ]; do sleep 30; done'
   [ "$status" -eq 2 ]

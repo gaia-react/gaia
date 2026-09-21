@@ -180,7 +180,7 @@ Then run the merge wait, with a 20-attempt bound in place of its default 5, sinc
 bash .gaia/scripts/pr-wait-merge.sh --pr <N> --attempts 20
 ```
 
-The merge above is already queued, and this script issues no `gh pr merge` of its own, so nothing here re-merges. Do not run any local cleanup or tagging until it prints `MERGED` (exit 0). On `CONFLICTING` (exit 3), repair per `wiki/concepts/PR Merge Workflow.md`'s `### Conflict found mid-wait` and run the wait again; on `CHECK_FAILED` (exit 4), inspect the failing check; on `TIMEOUT` (exit 5), inspect `gh pr view <N>` for a stuck merge queue.
+The merge above is already queued, and this script issues no `gh pr merge` of its own, so nothing here re-merges. Do not run any local cleanup or tagging until it prints `MERGED` (exit 0). On `CONFLICTING` (exit 3), repair per `wiki/concepts/PR Merge Workflow.md`'s `### Conflict found mid-wait` and run the wait again; on `CHECK_FAILED` (exit 4), inspect the failing check; on `TIMEOUT` (exit 5), inspect `gh pr view <N>` for a stuck merge queue; on `CLOSED` (exit 6), the release pull request was closed without merging, so stop and do not tag. Exit 2 is a refusal rather than a verdict and says nothing about the pull request: read the message, which names what could not be read. The script's `--help` is the authority on that set.
 
 ### 12. Tag the merge commit
 
@@ -242,7 +242,7 @@ gh pr create -R gaia-react/create-gaia --base main --head "<RELEASE_BRANCH>" \
 gh pr merge -R gaia-react/create-gaia <N> --merge --delete-branch
 bash .gaia/scripts/pr-wait-merge.sh --pr <N> --repo gaia-react/create-gaia \
   --attempts 10 --interval 15 \
-  || { echo "create-gaia PR did not merge, investigate before tagging"; exit 1; }
+  || { echo "create-gaia PR did not confirm as MERGED (read the wait's own message above, which names the verdict or the refusal), investigate before tagging"; exit 1; }
 git -C "$CG" fetch origin --quiet && git -C "$CG" checkout main --quiet && git -C "$CG" pull --ff-only origin main --quiet
 git -C "$CG" tag "v<NEW_VERSION>"
 ```
