@@ -2823,3 +2823,62 @@ run_merge_hook_lib_absent() {
   run_merge_hook_lib_absent "verb-arming-walk.sh" $'cat > f.txt <<EOF\ngh pr merge 30 --squash\nEOF\n'
   assert_denied_by_json
 }
+
+# ---------------------------------------------------------------------------
+# Command wrappers in the command-word slot.
+#
+# A wrapper stands where the gate reads the command word, so before the shared
+# arming decision learned to read past one, every spelling below reached this
+# hook, armed nothing, and exited 0 with no output: the merge landed with no
+# GAIA-Audit marker on a PR carrying in-scope source. These drive the whole
+# hook rather than the library, so they pin the outcome that matters (a deny)
+# rather than the arming answer verb-arming-lib.bats already covers.
+#
+# `timeout <n> gh pr merge` is the spelling an agent plausibly writes to bound
+# a slow merge, which is why it leads.
+# ---------------------------------------------------------------------------
+
+@test "denies an in-scope merge behind a timeout wrapper" {
+  commit_files "app/y.ts" "export const y = 1"
+  run_merge_hook "timeout 5 gh pr merge 30 --squash"
+  [ "$status" -eq 0 ]
+  grep -qF '"permissionDecision": "deny"' <<<"$output"
+}
+
+@test "denies an in-scope merge behind an env wrapper carrying an assignment" {
+  commit_files "app/y.ts" "export const y = 1"
+  run_merge_hook "env GH_PAGER=cat gh pr merge 30 --squash"
+  [ "$status" -eq 0 ]
+  grep -qF '"permissionDecision": "deny"' <<<"$output"
+}
+
+@test "denies an in-scope merge behind a stacked wrapper chain" {
+  commit_files "app/y.ts" "export const y = 1"
+  run_merge_hook "nohup timeout 5 gh pr merge 30 --squash"
+  [ "$status" -eq 0 ]
+  grep -qF '"permissionDecision": "deny"' <<<"$output"
+}
+
+# The wrapper read must not manufacture a merge where there is none: a wrapper
+# running some other program still exits with no verdict, on the same PR the
+# cases above are denied for.
+@test "a wrapper running a non-merge command is still ignored" {
+  commit_files "app/y.ts" "export const y = 1"
+  run_merge_hook "timeout 5 git status"
+  [ "$status" -eq 0 ]
+  grep -qF '"permissionDecision": "deny"' <<<"$output" && return 1
+  true
+}
+
+# A wrapped merge arms through the first-command tokenizer, which publishes no
+# separator, so the deny must not carry the note reserved for an arm that could
+# have come from text the command merely quotes. Getting this wrong tells the
+# operator their own merge might not be a merge.
+@test "a wrapped merge's deny does not claim it armed on a separator" {
+  commit_files "app/y.ts" "export const y = 1"
+  run_merge_hook "timeout 5 gh pr merge 30 --squash"
+  [ "$status" -eq 0 ]
+  grep -qF '"permissionDecision": "deny"' <<<"$output" || return 1
+  grep -qF 'follows a separator or a substitution opener' <<<"$output" && return 1
+  true
+}

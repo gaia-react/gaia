@@ -99,6 +99,24 @@
 # row for a privilege wrapper is the one place the over-read this file otherwise
 # welcomes stops being cheap. Adding them is a separate decision, not a row.
 
+# The bare names of the table's rows, for a reader that needs the SET rather
+# than the grammar. lib/verb-arming.sh builds its pass-3 pre-filter from the
+# leading characters of every word that could stand in the command-word slot,
+# and a wrapper's name is one of those, so it needs the names before it has a
+# word to strip. A `case` statement cannot be asked what it matches, which is
+# why this is a second spelling of the same set rather than a derivation of it;
+# what keeps the two from drifting is the pin in
+# .gaia/tests/hooks/verb-arming-lib.bats, which parses the rows out of the
+# table below and fails on any difference in either direction.
+#
+# A name here that the table does not carry costs a wider pre-filter, which is
+# cost and not correctness. A name the table carries and this omits is the
+# direction that matters: the pre-filter turns the text away before the strip
+# ever runs, so the wrapper hides the command word exactly as it did before the
+# strip existed. The pin is what makes that a red suite rather than a silence.
+# shellcheck disable=SC2034 # read by lib/verb-arming.sh, which sources this file
+GAIA_COMMAND_WRAPPER_NAMES='env command exec nice nohup setsid stdbuf timeout xargs'
+
 # Strip one leading wrapper from <text>. Prints the remainder and returns 0
 # when the first word is a wrapper and a word survives it; returns 1
 # otherwise, which is what ends the caller's loop.

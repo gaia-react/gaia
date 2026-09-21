@@ -53,7 +53,13 @@
 #      operator later in the data view can still arm.
 #   3. The first-command tokenizer, behind a cheap leading-character
 #      pre-filter. Never subject to the data proof: it reads the invocation
-#      itself, so there is no data span for it to be confused by.
+#      itself, so there is no data span for it to be confused by. It compares
+#      the scanned words twice: as they stand, and, only if that misses, with
+#      any leading command WRAPPERS stripped by lib/command-wrappers.sh, which
+#      is what stops `env`, `timeout` and their table-mates standing in the
+#      command-word slot from hiding the verb behind them. The strip is
+#      confined to this pass because this pass publishes no view and no capture
+#      group; the function's own comment gives the argument in full.
 #
 # WHAT EVERY CALL SETS, armed or not:
 #
@@ -78,10 +84,20 @@
 # FAIL DIRECTIONS. If the walker cannot be sourced, the raw match stands and
 # the view is the identity, which is precisely the answer every consumer gave
 # before this decision was shared: a missing walker degrades to the old
-# behaviour rather than to silence. If THIS file cannot be sourced, the answer
-# is the consumer's to give, and it differs by consumer: a deny-capable
-# consumer denies, naming the missing file, unless its own published contract
-# is fail-open, in which case it exits 0.
+# behaviour rather than to silence. If command-wrappers.sh cannot be sourced,
+# pass 3 compares the scanned words as they stand and the pre-filter admits no
+# wrapper lead, which is the same shape of degrade: the wrapper residual sits
+# back where it was before the strip existed rather than anywhere new, so
+# nothing this file guards loses ground it held a moment ago. That is
+# deliberately NOT the fail-loud refusal the commit guards listed in
+# command-wrappers.sh's own header raise on the same missing table. Theirs is a
+# regression against a hole they had already closed; here the table is a
+# widening, several consumers publish a fail-open contract that a refusal would
+# contradict outright, and a library with no deny of its own cannot raise one on
+# their behalf. If THIS file cannot be sourced,
+# the answer is the consumer's to give, and it differs by consumer: a
+# deny-capable consumer denies, naming the missing file, unless its own
+# published contract is fail-open, in which case it exits 0.
 #
 # WHAT THIS DOES NOT CLOSE. Quoted prose carrying a list operator or a newline
 # before the verb still over-arms, fail-closed, and there is no safe
@@ -89,7 +105,12 @@
 # model; its own header names both, and the nested-interpreter case it
 # under-arms. A verb whose characters are quoted
 # still under-arms outside the first command, because pass 3 reads the first
-# command only. Dollar-quoted words are unmodelled and the walk abstains on
+# command only, and a command WRAPPER standing after a separator under-arms for
+# the same reason: pass 3 is where the strip lives, and reaching a wrapper from
+# `sep_re` would need a capture group this file may not add, so a merge spelled
+# `… && timeout 5 gh pr merge` still reaches no gate (gaia-react/gaia#2205).
+# Dollar-quoted
+# words are unmodelled and the walk abstains on
 # one rather than approximating it. Pass 3's bounded prefix can create an arm
 # no data proof removes, because truncation at the bound can leave a word
 # reading as the verb; that direction costs a decision nobody asked for rather
@@ -121,9 +142,40 @@ GAIA_VERB_ARM_LIVE=""
 
 # 0 not tried, 1 loaded, 2 unavailable.
 _gaia_va_walk=0
+# The wrapper table's own load state, same three values as the walker's.
+_gaia_va_wrap=0
 # Pre-filter cache, keyed on the words spec it was derived from.
 _gaia_va_lead_key=""
 _gaia_va_lead_re=""
+# Accumulators for the pre-filter build below, written by _gaia_va_lead_alt.
+_gaia_va_alts=""
+_gaia_va_seen=""
+
+# Loads the wrapper table at most once per process, from this library's own
+# directory, with the same state-preserving bracket and the same own-location
+# rooting the walker load below uses, and for the same reasons.
+#
+# Several consumers source command-wrappers.sh themselves before reaching this
+# library, so the type check comes first and a second source is skipped.
+_gaia_va_load_wrappers() {
+  local dir errexit_was
+  [ "$_gaia_va_wrap" = 0 ] || return 0
+  _gaia_va_wrap=2
+  if type gaia_strip_command_wrappers >/dev/null 2>&1; then
+    _gaia_va_wrap=1
+    return 0
+  fi
+  dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)"
+  [ -n "$dir" ] && [ -f "$dir/command-wrappers.sh" ] || return 0
+  errexit_was=0
+  case $- in *e*) errexit_was=1 ;; esac
+  set +e
+  # shellcheck source=command-wrappers.sh
+  . "$dir/command-wrappers.sh" 2>/dev/null
+  if [ "$errexit_was" = 1 ]; then set -e; fi
+  if type gaia_strip_command_wrappers >/dev/null 2>&1; then _gaia_va_wrap=1; fi
+  return 0
+}
 
 # Derive pass 3's pre-filter from the distinct first words of <words_spec>.
 #
@@ -144,14 +196,23 @@ _gaia_va_lead_re=""
 # A leading character that is not alphanumeric is left to the scan: a filter
 # built around one would have to know how the character behaves inside a
 # bracket expression, and getting that wrong drops an arm silently.
+#
+# A command WRAPPER stands in the command-word slot, so a wrapped invocation's
+# first word is the WRAPPER's and not the verb's, and a filter built from the
+# verb alone turns away exactly the texts the wrapper retry below exists to
+# read. Every wrapper's own lead is admitted too, taken from the table that
+# owns the set rather than from a list restated here. What that costs is the
+# scan on a text whose first word merely begins like a wrapper; what it buys is
+# the only route by which a wrapped verb reaches this pass at all.
 _gaia_va_build_lead_re() {
   local spec="$1"
-  local rest tuple w c0 c1 alts seen
+  local rest tuple w
+  local -a wnames=()
   [ "$_gaia_va_lead_key" = "$spec" ] && return 0
   _gaia_va_lead_key="$spec"
   _gaia_va_lead_re=""
-  alts=""
-  seen=" "
+  _gaia_va_alts=""
+  _gaia_va_seen=" "
   rest="$spec"
   while [ -n "$rest" ]; do
     case "$rest" in
@@ -162,21 +223,42 @@ _gaia_va_build_lead_re() {
       *' '*) w="${tuple%% *}" ;;
       *) w="$tuple" ;;
     esac
-    [ -n "$w" ] || continue
-    case "$seen" in *" $w "*) continue ;; esac
-    seen="$seen$w "
-    c0="${w:0:1}"
-    c1="${w:1:1}"
-    case "$c0" in [A-Za-z0-9]) ;; *) return 0 ;; esac
-    if [ -n "$c1" ]; then
-      case "$c1" in [A-Za-z0-9]) ;; *) return 0 ;; esac
-      alts="${alts}[$c0][\"'\\$c1]|"
-    else
-      alts="${alts}[$c0]|"
-    fi
+    _gaia_va_lead_alt "$w" || return 0
   done
-  [ -n "$alts" ] || return 0
-  _gaia_va_lead_re="^[[:space:]]*(${alts}[\"'\\])"
+  _gaia_va_load_wrappers
+  if [ "$_gaia_va_wrap" = 1 ] && [ -n "${GAIA_COMMAND_WRAPPER_NAMES:-}" ]; then
+    # `read -r -a` and not an unquoted expansion, for the reason
+    # command-wrappers.sh gives of its own segment read: the latter runs
+    # pathname expansion over the names, so a hook whose working directory
+    # happens to hold a matching file would get a different set.
+    IFS=' ' read -r -a wnames <<<"$GAIA_COMMAND_WRAPPER_NAMES" || true
+    for w in ${wnames[@]+"${wnames[@]}"}; do
+      _gaia_va_lead_alt "$w" || return 0
+    done
+  fi
+  [ -n "$_gaia_va_alts" ] || return 0
+  _gaia_va_lead_re="^[[:space:]]*(${_gaia_va_alts}[\"'\\])"
+  return 0
+}
+
+# One word's contribution to the pre-filter, appended to the accumulators
+# above. Returns 1 when the word's first two characters are not both
+# alphanumeric, which the caller turns into NO filter at all rather than into a
+# narrower one, for the reason the paragraph above the builder gives.
+_gaia_va_lead_alt() {
+  local w="$1" c0 c1
+  [ -n "$w" ] || return 0
+  case "$_gaia_va_seen" in *" $w "*) return 0 ;; esac
+  _gaia_va_seen="$_gaia_va_seen$w "
+  c0="${w:0:1}"
+  c1="${w:1:1}"
+  case "$c0" in [A-Za-z0-9]) ;; *) return 1 ;; esac
+  if [ -n "$c1" ]; then
+    case "$c1" in [A-Za-z0-9]) ;; *) return 1 ;; esac
+    _gaia_va_alts="${_gaia_va_alts}[$c0][\"'\\$c1]|"
+  else
+    _gaia_va_alts="${_gaia_va_alts}[$c0]|"
+  fi
   return 0
 }
 
@@ -246,7 +328,57 @@ _gaia_va_first_command() {
     type gaia_scan_first_command >/dev/null 2>&1 || return 1
   fi
   gaia_scan_first_command "${text:0:$GAIA_VERB_ARM_SCAN_PREFIX}" || return 1
-  _gaia_va_words_match "$words_spec"
+  if _gaia_va_words_match "$words_spec"; then return 0; fi
+  _gaia_va_wrapped_words_match "$words_spec"
+}
+
+# The wrapper retry, run only once the unwrapped compare above has missed.
+#
+# A command WRAPPER occupies the command-word slot, so the scanned words begin
+# with the wrapper and the prefix compare reads its name where it expects the
+# verb's. Strip the leading wrappers and compare again.
+#
+# WHY THE STRIP LIVES HERE AND NOT IN THE TWO TEXT PATTERNS. `start_re` and
+# `sep_re` decide against a same-length view of the command text, and the one
+# consumer that reads a captured group back out recovers the real bytes by
+# OFFSET into its own copy of that text, which holds only while every view is
+# the same length as the text it was built from. A strip changes the length, so
+# a stripped text reaching either pattern would desynchronize that arithmetic
+# and hand that consumer bytes from the wrong place. This pass has no such
+# exposure: it decides on WORDS, sets no view, and publishes an empty match
+# array, so nothing downstream can read an offset off it. That is what makes
+# the retry a local change rather than a renegotiation of the published
+# contract, and it is why a wrapper is closed here for every consumer at once.
+#
+# The residual it leaves is a wrapper standing after a SEPARATOR
+# (`… && timeout 5 <verb> …`). Admitting one into `sep_re` needs an alternation,
+# an alternation needs a group, and the header above forbids this file from
+# introducing a group because the fragment's own numbering is published. Pass 3
+# reads the first command only, which is the boundary the quoted-verb residual
+# in the header already sits behind.
+_gaia_va_wrapped_words_match() {
+  local words_spec="$1"
+  local joined stripped rc
+  local IFS=' '
+  local -a saved=()
+  _gaia_va_load_wrappers
+  [ "$_gaia_va_wrap" = 1 ] || return 1
+  [ "${#GAIA_FIRST_COMMAND_WORDS[@]}" -gt 1 ] || return 1
+  joined=${GAIA_FIRST_COMMAND_WORDS[*]+"${GAIA_FIRST_COMMAND_WORDS[*]}"}
+  stripped=$(gaia_strip_command_wrappers "$joined")
+  # Nothing stripped means the first word was no wrapper, so the compare above
+  # already had the whole answer and repeating it would only cost a pass.
+  [ -n "$stripped" ] && [ "$stripped" != "$joined" ] || return 1
+  saved=(${GAIA_FIRST_COMMAND_WORDS[@]+"${GAIA_FIRST_COMMAND_WORDS[@]}"})
+  GAIA_FIRST_COMMAND_WORDS=()
+  read -r -a GAIA_FIRST_COMMAND_WORDS <<<"$stripped" || true
+  if _gaia_va_words_match "$words_spec"; then rc=0; else rc=1; fi
+  # Put the scan's own answer back. Nothing in this library reads it again, but
+  # the scanner's array is shared with every other caller in the process, and a
+  # consumer that asks it a second question after arming must not be handed a
+  # word list this pass shortened.
+  GAIA_FIRST_COMMAND_WORDS=(${saved[@]+"${saved[@]}"})
+  return "$rc"
 }
 
 # Loads the walker at most once per process, from this library's own
