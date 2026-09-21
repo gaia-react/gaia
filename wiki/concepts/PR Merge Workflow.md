@@ -616,7 +616,7 @@ A conflict found this way is not a merge failure, and it costs no audit round un
 
 This failure mode belongs to `gh` below 2.99.0. When `gh pr merge` exits non-zero with `fatal: 'main' is already used by worktree at '<path>'`, **the GitHub-side merge has already succeeded**. The local checkout step is what failed, not the merge itself. Under worktree isolation this is the expected outcome rather than an anomaly, and it appears even in runs that perform no manual cleanup at all: `--delete-branch` runs its own local branch delete, which begins by checking out the default branch that the main checkout already holds. Driving the same merge from the main checkout fails one step later instead, at the delete itself, with `error: cannot delete branch '<branch>' used by worktree at '<path>'`; the merge has equally already succeeded. From `gh` 2.99.0 on, `gh` skips the local delete with a warning, deletes the remote branch, and exits 0, so the merge reports success under both isolation modes and this section describes nothing a reader on that version will see. Confirm with:
 
-```
+```bash
 gh pr view <N> --json state
 ```
 
