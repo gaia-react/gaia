@@ -437,7 +437,11 @@ self_healed="${AUDIT_SELF_HEALED:-false}"
 #     upstream comparison.
 #   un-pushed (no upstream, or ahead of upstream): safe to amend.
 head_state="un-pushed"
-head_branch=$(git -C "$repo_root" symbolic-ref --short -q HEAD 2>/dev/null || true)
+# Full refname, matching every other branch read in this sweep. No behavioural
+# delta here, because the value is only emptiness-tested below and a shortened
+# `heads/<branch>` is just as non-empty: this is the last instance of the
+# spelling in the swept surface, kept consistent so the next sweep reads clean.
+head_branch=$(git -C "$repo_root" symbolic-ref -q HEAD 2>/dev/null || true)
 if [ -z "$head_branch" ]; then
   head_state="detached"
 elif upstream=$(git -C "$repo_root" rev-parse --abbrev-ref --symbolic-full-name '@{u}' 2>/dev/null); then
