@@ -156,15 +156,17 @@ jobs:
           # (proven by a GAIA-Audit commit trailer or commit status). Resolved
           # here, before the source-change check, so that check and the audit
           # share one base: everything before <base> was already cleared. Falls
-          # back to the branch this PR merges into (the default branch when
-          # none is declared), full PR scope, when no audited ancestor exists
-          # (first audit, prior runs cancelled/failed, or a .gaia/VERSION bump
-          # invalidated them). A helper failure falls back to full scope rather
-          # than failing the audit. That last-resort literal stays the default
-          # branch rather than this PR's own base: it fires only when the helper
-          # itself could not run, and repeating the ref the rest of this workflow
-          # already assumes is a safer answer there than one this step would
-          # have to re-derive. Where it does not resolve, because the
+          # back to the branch this PR merges into (`refs/remotes/origin/main`
+          # when none is declared), full PR scope, when no audited ancestor
+          # exists (first audit, prior runs cancelled/failed, or a .gaia/VERSION
+          # bump invalidated them). A helper failure falls back to full scope
+          # rather than failing the audit. That last-resort literal stays
+          # `refs/remotes/origin/main` rather than this PR's own base: it fires
+          # only when the helper itself could not run, and repeating the ref the
+          # rest of this workflow already assumes is a safer answer there than
+          # one this step would have to re-derive. The helper hardcodes that
+          # literal rather than deriving a default branch, so where
+          # `refs/remotes/origin/main` does not resolve, because the
           # repository's default branch is named something else, the base_sha
           # resolution below exits non-zero: this path fails loudly rather than
           # reviewing a wrong scope.
@@ -222,9 +224,9 @@ jobs:
           # that would meaningfully apply. The base is the last clean-audited
           # ancestor, so once a code commit is audited clean a later prose-only
           # commit reviews an empty auditable delta and skips. With no audited
-          # ancestor the base is the branch this PR merges into (the default
-          # branch when none is declared) → full PR diff, preserving first-audit
-          # behavior.
+          # ancestor the base is the branch this PR merges into
+          # (`refs/remotes/origin/main` when none is declared) → full PR diff,
+          # preserving first-audit behavior.
           # -z, so a non-ASCII path is not C-quoted past the patterns below:
           # unquoted, an in-scope change can read as has_source=false and skip
           # the audit entirely. The `tr` stays inside the substitution because
