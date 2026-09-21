@@ -767,30 +767,13 @@ run_staged() {
 # no-argument control further down writes. Reading this guard as covering the
 # fail-open direction is what would stop someone writing that control.
 #
-# Both hand-written bodies are searched, since the short and long spellings
-# live in separate tests.
+# Every hand-written grammar body is searched, since the short and long
+# spellings live in separate tests.
 #
-# Print `<row> <option>` for every option in every row of the shared table.
-wrapper_table_options() {
-  sed -n '/GAIA_WRAPPER_TABLE_BEGIN/,/GAIA_WRAPPER_TABLE_END/p' \
-      "$HOOKS_SRC/lib/command-wrappers.sh" \
-    | sed -nE "s/^[[:space:]]*([a-z]+)\)[[:space:]]*_w_valued='([^']*)'.*/\1 \2/p" \
-    | while read -r _row _opts; do
-        for _o in $_opts; do printf '%s %s\n' "$_row" "$_o"; done
-      done
-}
-
-# How many options that table holds, counted independently of the parse above
-# so a row the parse cannot read is a short read rather than an invisible one.
-wrapper_table_option_count() {
-  sed -n '/GAIA_WRAPPER_TABLE_BEGIN/,/GAIA_WRAPPER_TABLE_END/p' \
-      "$HOOKS_SRC/lib/command-wrappers.sh" \
-    | grep -oE "_w_valued='[^']*'" \
-    | sed -E "s/_w_valued='//; s/'$//" \
-    | tr ' ' '\n' \
-    | grep -c '^-'
-}
-
+# The readers it drives (`wrapper_table_options`, `wrapper_table_option_count`)
+# live beside the row readers in `helpers/wrapper-table.sh`, so a rename of the
+# fences or of the row spelling lands in one place rather than in a copy sitting
+# far enough from the header above to be the one that goes stale.
 @test "every option listed in a wrapper row has a hand-written real-grammar case" {
   local row opt read_n=0 total bodies
   total=$(wrapper_table_option_count)
@@ -802,8 +785,9 @@ wrapper_table_option_count() {
   # them, which is the state it exists to catch. Cutting here leaves only the
   # text standing between the wrapper word and the command word, which is the
   # only text an option can legitimately own.
-  # Both bodies are grouped before the cut: piping only the second would leave
-  # the first untruncated, which is the half that carries most of the cases.
+  # The bodies are grouped before the cut: piping only the last would leave the
+  # ones ahead of it untruncated, and the short-form body is the half that
+  # carries most of the cases.
   bodies=$({ sed -n "/^@test \"a wrapper's own options and operands/,/^}/p" "$BATS_TEST_FILENAME"
              sed -n "/^@test \"a wrapper's separated long-form option/,/^}/p" "$BATS_TEST_FILENAME"
            } | sed -E 's/[[:space:]]git[[:space:]].*//')
