@@ -94,7 +94,13 @@ run_hook_monitor() {
   # The stand-down has to survive the widened keyword close: admitting the
   # arithmetic spelling must not cost a caller who already asked for the
   # property this guard exists to require.
-  run_hook 'for((i=0;i<20;i++)); do [ "$(gh pr view 42 --json mergeable --jq .mergeable)" = CONFLICTING ] && break; sleep 30; done'
+  #
+  # The view call names `state` alongside `mergeable` so that the stand-down is
+  # the only thing allowing this. A fixture reading `mergeable` alone is
+  # allowed for a second, independent reason -- it satisfies no state read
+  # either -- which leaves it green when the stand-down is deleted, pinning
+  # nothing it is named for.
+  run_hook 'for((i=0;i<20;i++)); do gh pr view 42 --json state,mergeable --jq .mergeable; sleep 30; done'
   assert_allowed_by_exit
 }
 
