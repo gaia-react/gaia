@@ -2,9 +2,10 @@
 # shellcheck shell=bash
 #
 # pr-wait-merge.sh: wait for a pull request to reach a terminal merge state,
-# and stop early on either state that means it never will. Run it from
-# anywhere inside the checkout:
-#   bash .gaia/scripts/pr-wait-merge.sh --pr <N> [--attempts <N>] [--interval <seconds>]
+# and stop early on any state that means it never will. Run it from anywhere
+# inside the checkout:
+#   bash .gaia/scripts/pr-wait-merge.sh --pr <N> [--repo <owner/name>]
+#                                       [--attempts <N>] [--interval <seconds>]
 #
 # Exit codes, one per verdict, so a caller branches on the status rather than
 # parsing prose. The verdict token is also printed to stdout on its own line.
@@ -12,8 +13,15 @@
 #   3   CONFLICTING   the base branch conflicts with the pull request
 #   4   CHECK_FAILED  a REQUIRED check failed or was cancelled
 #   5   TIMEOUT       the attempt bound was spent with the merge still pending
-#   2   a usage error, or this script's own failure (no gh on PATH)
+#   6   CLOSED        the pull request was closed without merging
+#   2   a refusal rather than a verdict: a usage error, no gh on PATH, or a gh
+#       that never answered across the whole bound (see $reads_ok below)
 #   130 / 143         a SIGINT or SIGTERM interrupted the wait
+#
+# EXIT 2 IS A REFUSAL, NEVER A VERDICT, and the distinction is the reason the
+# arm exists. Every other code above reports something read from GitHub. Exit 2
+# reports that nothing was read, so a caller must not treat it as "still
+# pending" and proceed to cleanup or to a second wait.
 #
 # WHY THIS IS A SCRIPT AND NOT A SNIPPET. It was a snippet, in
 # `wiki/concepts/PR Merge Workflow.md`, and a snippet is retyped by whoever
@@ -72,21 +80,27 @@ DEFAULT_INTERVAL=30
 
 usage() {
   cat <<EOF
-Usage: bash .gaia/scripts/$PROG --pr <number> [--attempts <n>] [--interval <seconds>]
+Usage: bash .gaia/scripts/$PROG --pr <number> [--repo <owner/name>]
+                                [--attempts <n>] [--interval <seconds>]
 
   --pr        the pull request number to wait on. Required.
+  --repo      the repository holding it, as owner/name. Defaults to whatever
+              gh resolves from the working directory, which is what a wait on
+              this checkout's own pull request wants.
   --attempts  how many times to read the state before giving up.
               Default $DEFAULT_ATTEMPTS.
   --interval  seconds to sleep between reads. Default $DEFAULT_INTERVAL.
               Zero is allowed, which polls without sleeping.
 
 Prints one verdict token on stdout and exits:
-  MERGED (0), CONFLICTING (3), CHECK_FAILED (4), TIMEOUT (5).
-A usage error or a missing gh exits 2.
+  MERGED (0), CONFLICTING (3), CHECK_FAILED (4), TIMEOUT (5), CLOSED (6).
+Exit 2 is a refusal rather than a verdict: a usage error, no gh, or a gh that
+never answered.
 EOF
 }
 
 PR=""
+REPO=""
 ATTEMPTS="$DEFAULT_ATTEMPTS"
 INTERVAL="$DEFAULT_INTERVAL"
 
@@ -107,6 +121,11 @@ while [ "$#" -gt 0 ]; do
     --pr)
       [ "$#" -ge 2 ] || { printf '%s: --pr needs a value\n' "$PROG" >&2; exit 2; }
       PR="$2"
+      shift 2
+      ;;
+    --repo)
+      [ "$#" -ge 2 ] || { printf '%s: --repo needs a value\n' "$PROG" >&2; exit 2; }
+      REPO="$2"
       shift 2
       ;;
     --attempts)
@@ -148,6 +167,22 @@ if ! is_uint "$INTERVAL"; then
   printf '%s: --interval must be a non-negative integer, got: %s\n' "$PROG" "$INTERVAL" >&2
   exit 2
 fi
+# `owner/name`, and nothing else. A bare owner or a URL reaches gh as a repo it
+# cannot resolve, which prints nothing and exits non-zero on every read: that
+# lands in the no-read refusal below, where the message would blame auth or the
+# pull-request number rather than the argument actually at fault.
+case "$REPO" in
+  '') ;;
+  */*/* | /* | */)
+    printf '%s: --repo must be owner/name, got: %s\n' "$PROG" "$REPO" >&2
+    exit 2
+    ;;
+  */*) ;;
+  *)
+    printf '%s: --repo must be owner/name, got: %s\n' "$PROG" "$REPO" >&2
+    exit 2
+    ;;
+esac
 
 if ! command -v gh >/dev/null 2>&1; then
   printf '%s: gh is not on PATH, so the merge state cannot be read. This is a\n' "$PROG" >&2
@@ -158,15 +193,35 @@ fi
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-# Reads the pull request's state and mergeability as one tab-separated line.
+# Reads the pull request's state and mergeability as one tab-separated line,
+# and returns gh's own exit status.
+#
 # The `// "UNKNOWN"` is what keeps rule 1 above true when GitHub answers with
 # a null `mergeable` rather than the literal string, which it does on a pull
 # request it has not computed yet. Only the two field reads live in the jq
 # filter; the decision is made in shell below, where it is readable and where
 # the bats suite can drive it.
+#
+# The status matters as much as the output. A `gh` that is present but cannot
+# answer at all (expired auth, a rate limit, a network outage, a pull-request
+# number that does not exist) prints nothing, and a blank state is otherwise
+# indistinguishable from a live pending merge: the loop would spend its whole
+# bound and report TIMEOUT, whose message asserts a merge is queued and will
+# land. Nothing would have established that there is a merge, a queue, or even
+# that pull request. `$reads_ok` below is what separates the two.
+# Two explicit branches rather than an accumulated argument list. `--repo` is
+# optional, and every way of carrying an optional argument through in bash 3.2
+# (an array under `set -u`, an unquoted expansion, `${x:+...}`) trades this
+# duplication for a quoting or emptiness hazard on a command that has to be
+# exactly right. The same shape repeats in `required_check_failed` below.
 read_state() {
-  gh pr view "$PR" --json state,mergeable \
-    --jq '[.state, (.mergeable // "UNKNOWN")] | @tsv' 2>/dev/null
+  if [ -n "$REPO" ]; then
+    gh pr view "$PR" --repo "$REPO" --json state,mergeable \
+      --jq '[.state, (.mergeable // "UNKNOWN")] | @tsv' 2>/dev/null
+  else
+    gh pr view "$PR" --json state,mergeable \
+      --jq '[.state, (.mergeable // "UNKNOWN")] | @tsv' 2>/dev/null
+  fi
 }
 
 # 0 when a required check has failed or been cancelled, 1 otherwise.
@@ -179,14 +234,24 @@ read_state() {
 # wait on proof of failure, and anything it cannot read is not proof.
 required_check_failed() {
   local failed
-  failed=$(gh pr checks "$PR" --required --json bucket \
-    --jq 'map(select(.bucket == "fail" or .bucket == "cancel")) | length' 2>/dev/null) || return 1
+  if [ -n "$REPO" ]; then
+    failed=$(gh pr checks "$PR" --repo "$REPO" --required --json bucket \
+      --jq 'map(select(.bucket == "fail" or .bucket == "cancel")) | length' 2>/dev/null) || return 1
+  else
+    failed=$(gh pr checks "$PR" --required --json bucket \
+      --jq 'map(select(.bucket == "fail" or .bucket == "cancel")) | length' 2>/dev/null) || return 1
+  fi
   is_uint "$failed" || return 1
   [ "$failed" -gt 0 ]
 }
 
 verdict="TIMEOUT"
 attempt=0
+# Whether ANY read across the whole bound came back with a state. Zero is what
+# separates "nothing answered" from "the merge is still pending", which are
+# otherwise the same blank line. Gated on the whole bound rather than on a
+# single failure, so one transient error still keeps waiting.
+reads_ok=0
 
 while [ "$attempt" -lt "$ATTEMPTS" ]; do
   attempt=$((attempt + 1))
@@ -201,9 +266,23 @@ while [ "$attempt" -lt "$ATTEMPTS" ]; do
     state=""
     mergeable=""
   fi
+  [ -n "$state" ] && reads_ok=$((reads_ok + 1))
 
+  # MERGED is tested before every other arm, and that order is load-bearing.
+  # GitHub can leave a stale `mergeable` on a pull request that has already
+  # merged, so reading the conflict first would report a failure on a landed
+  # merge and the caller would skip its cleanup.
   if [ "$state" = "MERGED" ]; then
     verdict="MERGED"
+    break
+  fi
+
+  # Closed without merging. A third state that means the merge will never
+  # land, and without an arm of its own it spends the whole bound and reports
+  # TIMEOUT, which on a release wait is ten minutes on a pull request somebody
+  # closed. The snippet this script replaces had the same gap.
+  if [ "$state" = "CLOSED" ]; then
+    verdict="CLOSED"
     break
   fi
 
@@ -225,11 +304,33 @@ while [ "$attempt" -lt "$ATTEMPTS" ]; do
   fi
 done
 
+# A bound spent without a single readable answer is a refusal, not a verdict.
+# It reaches here from a gh that is present but can never answer: expired auth,
+# a rate limit, a network outage, or a pull-request number that does not exist,
+# which `is_uint` accepts because it checks shape rather than existence. The
+# TIMEOUT arm below would otherwise print "a merge queued with --auto completes
+# when its checks pass", having established neither a merge nor a queue nor
+# that pull request. Print no verdict token at all: a caller reading stdout
+# must not receive a word that looks like an answer.
+if [ "$verdict" = "TIMEOUT" ] && [ "$reads_ok" -eq 0 ]; then
+  printf '%s: the merge state of PR #%s could not be read on any of %s attempt(s).\n' \
+    "$PROG" "$PR" "$ATTEMPTS" >&2
+  printf 'This is a refusal, not a verdict: nothing here reports the merge is pending,\n' >&2
+  printf 'and no local cleanup should follow it. gh is on PATH but never answered, so\n' >&2
+  printf 'check gh auth status, the pull-request number, and any --repo value.\n' >&2
+  exit 2
+fi
+
 printf '%s\n' "$verdict"
 
 case "$verdict" in
   MERGED)
     exit 0
+    ;;
+  CLOSED)
+    printf '%s: PR #%s is closed without having merged, so no wait can succeed.\n' "$PROG" "$PR" >&2
+    printf 'Reopen it, or take the change forward on a new pull request.\n' >&2
+    exit 6
     ;;
   CONFLICTING)
     printf '%s: the base branch conflicts with PR #%s, so the queued merge cannot land.\n' "$PROG" "$PR" >&2

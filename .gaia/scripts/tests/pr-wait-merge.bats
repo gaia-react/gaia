@@ -77,8 +77,56 @@ EOF
 }
 
 # The number of `gh pr view` calls the stub logged.
+#
+# `|| true`, not `|| printf '0\n'`: on a file that exists with no match, grep
+# prints `0` AND exits 1, so a printf fallback fires on top of grep's own
+# output and this emits two lines. The `[ "$(view_calls)" -eq N ]` sites would
+# then hand `[` a two-line operand and error with "integer expression
+# expected" instead of failing on the count. The `2>/dev/null || true` pair
+# still covers the file being absent, which is the case the fallback was for.
 view_calls() {
-  grep -c 'pr view' "$TMP/argv.log" 2>/dev/null || printf '0\n'
+  [ -f "$TMP/argv.log" ] || { printf '0\n'; return 0; }
+  grep -c 'pr view' "$TMP/argv.log" 2>/dev/null || true
+}
+
+# stub_gh_flaky <fail-first-n> <view-tsv> [checks-answer]
+#
+# Like stub_gh, but the first <fail-first-n> `gh pr view` calls print nothing
+# and exit 1, and every later one answers normally. That is the transient
+# shape: a rate limit or a network blip that clears. It has to stay
+# distinguishable from a gh that never answers, because only the second is a
+# refusal.
+stub_gh_flaky() {
+  local fail_n="$1"
+  shift
+  stub_gh "$@"
+  printf '%s\n' "$fail_n" >"$TMP/fail_first"
+  cat >"$TMP/bin/gh" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >>"$STUB_DIR/argv.log"
+case "$2" in
+  view)
+    n=$(cat "$STUB_DIR/fail_first")
+    if [ "$n" -gt 0 ]; then
+      printf '%s\n' "$((n - 1))" >"$STUB_DIR/fail_first"
+      exit 1
+    fi
+    cat "$STUB_DIR/view.tsv"
+    printf '\n'
+    ;;
+  checks)
+    [ -f "$STUB_DIR/checks.txt" ] || exit 1
+    cat "$STUB_DIR/checks.txt"
+    ;;
+  *) exit 1 ;;
+esac
+EOF
+  chmod +x "$TMP/bin/gh"
+}
+
+# The argv line of the first logged `gh pr view` call.
+first_view_argv() {
+  grep -m 1 'pr view' "$TMP/argv.log" 2>/dev/null || true
 }
 
 tsv() {
@@ -190,12 +238,129 @@ tsv() {
   [ "$status" -eq 5 ]
 }
 
-@test "an unreadable gh answer keeps waiting rather than reading as a state" {
+@test "an unreadable answer is blanked, not read as a state" {
   # The view arm prints an empty line, so the script's split finds no tab. It
-  # must blank both halves rather than let the whole line stand in for `state`.
+  # must blank both halves rather than let the whole line stand in for `state`;
+  # a `state` holding the whole line would match no arm but would also count as
+  # a successful read, which is what the refusal test below pins.
   stub_gh '' 0
   run bash "$WAIT" --pr 7 --attempts 1 --interval 0
+  grep -qF -- 'TIMEOUT' <<<"$output" && return 1
+  true
+}
+
+# --- a gh that never answers is a refusal, not a verdict ----------------------
+#
+# The failure this pins: a gh that is present but can never answer (expired
+# auth, a rate limit, a typo'd PR number) leaves the state blank on every
+# attempt, which is the same blank line a live pending merge would produce.
+# Reporting TIMEOUT there asserts a merge is queued and will land, having
+# established neither a merge nor a queue nor that PR.
+
+@test "a gh that never answers refuses with exit 2 rather than reporting TIMEOUT" {
+  stub_gh '' 0
+  run bash "$WAIT" --pr 7 --attempts 3 --interval 0
+  [ "$status" -eq 2 ]
+  grep -qF -- 'refusal, not a verdict' <<<"$output"
+}
+
+@test "the no-read refusal prints no verdict token at all" {
+  # A caller reading stdout must not receive a word that looks like an answer.
+  stub_gh '' 0
+  run bash "$WAIT" --pr 7 --attempts 2 --interval 0
+  [ "$status" -eq 2 ]
+  grep -qE -- '^(TIMEOUT|MERGED|CONFLICTING|CHECK_FAILED|CLOSED)$' <<<"$output" && return 1
+  true
+}
+
+@test "the no-read refusal names what to check" {
+  stub_gh '' 0
+  run bash "$WAIT" --pr 7 --attempts 1 --interval 0
+  [ "$status" -eq 2 ]
+  grep -qF -- 'gh auth status' <<<"$output"
+}
+
+@test "a transient read failure still keeps waiting, it is not a refusal" {
+  # The refusal is gated on zero successful reads across the WHOLE bound. One
+  # failed read followed by real answers is an ordinary pending merge, and
+  # refusing there would abandon a live wait on a blip.
+  stub_gh_flaky 1 "$(tsv OPEN MERGEABLE)" 0
+  run bash "$WAIT" --pr 7 --attempts 3 --interval 0
   [ "$status" -eq 5 ]
+  grep -qF -- 'TIMEOUT' <<<"$output"
+}
+
+@test "a transient read failure before a merge still reports MERGED" {
+  stub_gh_flaky 1 "$(tsv MERGED CLEAN)"
+  run bash "$WAIT" --pr 7 --attempts 3 --interval 0
+  [ "$status" -eq 0 ]
+  grep -qF -- 'MERGED' <<<"$output"
+}
+
+# --- closed without merging ---------------------------------------------------
+
+@test "a PR closed without merging exits 6 rather than spending the bound" {
+  stub_gh "$(tsv CLOSED UNKNOWN)"
+  run bash "$WAIT" --pr 7 --attempts 5 --interval 0
+  [ "$status" -eq 6 ]
+  grep -qF -- 'CLOSED' <<<"$output"
+  [ "$(view_calls)" -eq 1 ]
+}
+
+@test "a merged PR is never read as closed" {
+  stub_gh "$(tsv MERGED CLEAN)"
+  run bash "$WAIT" --pr 7 --interval 0
+  [ "$status" -eq 0 ]
+}
+
+# --- --repo reaches both gh calls ---------------------------------------------
+#
+# Without it the script can only ever wait on a PR in the checkout it runs
+# from, so the merge workflow's own cross-repo waits have no blessed form and
+# the guard that denies hand-rolled polls denies them with nothing to offer.
+
+@test "--repo is passed through to gh pr view" {
+  stub_gh "$(tsv OPEN MERGEABLE)" 0
+  run bash "$WAIT" --pr 7 --repo gaia-react/create-gaia --attempts 1 --interval 0
+  grep -qF -- '--repo gaia-react/create-gaia' <<<"$(first_view_argv)"
+}
+
+@test "--repo is passed through to gh pr checks too" {
+  # The checks read decides CHECK_FAILED, so a --repo that reached only the
+  # view call would consult the wrong repository's checks and could end the
+  # wait on a failure that belongs to another PR.
+  stub_gh "$(tsv OPEN MERGEABLE)" 0
+  run bash "$WAIT" --pr 7 --repo gaia-react/create-gaia --attempts 1 --interval 0
+  grep -F -- 'pr checks' "$TMP/argv.log" | grep -qF -- '--repo gaia-react/create-gaia'
+}
+
+@test "omitting --repo passes no repo flag, so gh resolves from the cwd" {
+  stub_gh "$(tsv OPEN MERGEABLE)" 0
+  run bash "$WAIT" --pr 7 --attempts 1 --interval 0
+  grep -qF -- '--repo' <<<"$(first_view_argv)" && return 1
+  true
+}
+
+@test "a --repo that is not owner/name is a usage error" {
+  # It would otherwise reach gh as an unresolvable repo, fail every read, and
+  # land in the no-read refusal, whose message blames auth or the PR number
+  # rather than the argument actually at fault.
+  stub_gh "$(tsv MERGED CLEAN)"
+  run bash "$WAIT" --pr 7 --repo gaia-react --interval 0
+  [ "$status" -eq 2 ]
+  grep -qF -- 'owner/name' <<<"$output"
+}
+
+@test "a --repo carrying a third segment is a usage error" {
+  stub_gh "$(tsv MERGED CLEAN)"
+  run bash "$WAIT" --pr 7 --repo a/b/c --interval 0
+  [ "$status" -eq 2 ]
+}
+
+@test "--repo with no value is a usage error" {
+  stub_gh "$(tsv MERGED CLEAN)"
+  run bash "$WAIT" --pr 7 --repo
+  [ "$status" -eq 2 ]
 }
 
 # --- MERGED wins over a conflict on the same read -----------------------------

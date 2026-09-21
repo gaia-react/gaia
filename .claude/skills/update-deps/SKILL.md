@@ -502,7 +502,7 @@ Then branch on where the run started.
    ```bash
    gh pr merge <N> --squash --delete-branch --auto
    ```
-   `--auto` queues the merge so GitHub lands it once the required checks pass (or immediately if they are already green). If the repo has auto-merge disabled and `gh` rejects `--auto`, wait for the required checks to pass (`gh pr checks <N>`), then re-run the merge without `--auto`.
+   `--auto` queues the merge so GitHub lands it once the required checks pass (or immediately if they are already green). If the repo has auto-merge disabled and `gh` rejects `--auto`, wait for the required checks to pass by reading `gh pr checks <N>` as a bounded series of single calls, not a shell loop (`.claude/hooks/block-handrolled-pr-poll.sh` denies a loop naming `gh pr checks` that reads no `mergeable`), then re-run the merge without `--auto`.
 
    `gh pr merge` can exit success while the merge is still queued, so verify the terminal state before touching the local checkout with the bounded poll in `wiki/concepts/PR Merge Workflow.md` (`## Post-merge verification before cleanup`), which also stops early on a base-branch conflict or a failed required check.
    - **`state == MERGED`** → clean up locally, then print the merged PR URL:

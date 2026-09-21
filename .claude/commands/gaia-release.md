@@ -240,11 +240,9 @@ git -C /abs/path/to/create-gaia push -u origin "<RELEASE_BRANCH>"
 gh pr create -R gaia-react/create-gaia --base main --head "<RELEASE_BRANCH>" \
   --title "chore: release v<NEW_VERSION>" --body "Lockstep with GAIA v<NEW_VERSION>."
 gh pr merge -R gaia-react/create-gaia <N> --merge --delete-branch
-for i in $(seq 1 10); do
-  st=$(gh pr view -R gaia-react/create-gaia <N> --json state -q .state)
-  [ "$st" = "MERGED" ] && break; sleep 15
-done
-[ "$st" = "MERGED" ] || { echo "create-gaia PR did not merge, investigate before tagging"; exit 1; }
+bash .gaia/scripts/pr-wait-merge.sh --pr <N> --repo gaia-react/create-gaia \
+  --attempts 10 --interval 15 \
+  || { echo "create-gaia PR did not merge, investigate before tagging"; exit 1; }
 git -C "$CG" fetch origin --quiet && git -C "$CG" checkout main --quiet && git -C "$CG" pull --ff-only origin main --quiet
 git -C "$CG" tag "v<NEW_VERSION>"
 ```
