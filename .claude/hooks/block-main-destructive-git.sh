@@ -608,8 +608,13 @@ hop_guard() {
 
   branch=$(git -C "$target" symbolic-ref --short -q HEAD 2>/dev/null) || return 0
   case "$branch" in main | master) return 0 ;; esac
-  default=$(git -C "$target" symbolic-ref --short -q refs/remotes/origin/HEAD 2>/dev/null) || default=""
-  [ -n "$default" ] && [ "$branch" = "${default#origin/}" ] && return 0
+  # The FULL refname, not `--short`: `--short` answers with the shortest
+  # UNAMBIGUOUS spelling, so a tag named `origin/<default>` makes it answer
+  # `remotes/origin/<default>`, the strip misses, and the branch-equals-default
+  # allow below never fires for a session legitimately on a non-main default
+  # branch.
+  default=$(git -C "$target" symbolic-ref -q refs/remotes/origin/HEAD 2>/dev/null) || default=""
+  [ -n "$default" ] && [ "$branch" = "${default#refs/remotes/origin/}" ] && return 0
 
   # The owner match is local and decides the verdict whatever the pull request's
   # state, so it runs before the network call rather than after it.

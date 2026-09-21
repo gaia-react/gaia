@@ -12,6 +12,22 @@ setup() {
 
 teardown() {
   [ -n "${REPO:-}" ] && rm -rf "$REPO"
+  [ -n "${ORIGIN:-}" ] && rm -rf "$ORIGIN"
+  [ -n "${SHIM_DIR:-}" ] && rm -rf "$SHIM_DIR"
+  return 0
+}
+
+# make_gh_shim: a PATH-shimmed `gh` that reports success for the pr create and
+# pr merge calls the on-main arm makes. That arm sets should_reset only on a
+# positive merge confirmation, so without this the reset the test exists to
+# exercise never runs and the test passes vacuously.
+make_gh_shim() {
+  SHIM_DIR=$(mktemp -d -t gaia-squash-shim-XXXXXX)
+  cat > "$SHIM_DIR/gh" <<'SHIM'
+#!/bin/bash
+exit 0
+SHIM
+  chmod +x "$SHIM_DIR/gh"
 }
 
 @test "no wiki auto-commits at HEAD: silent no-op" {
@@ -52,6 +68,42 @@ teardown() {
   after_count=$(git rev-list --count HEAD)
   # One commit should have been squashed away
   [ $((before_count - after_count)) -eq 1 ]
+}
+
+@test "on main: a tag named origin/main never decides the reset target" {
+  # The on-main reset moves local main to the remote-tracking ref. git resolves
+  # a bare `origin/main` through refs/tags/ first, so a tag of that name would
+  # be what local main is reset onto, and `--mixed` would stage the difference
+  # as working-tree changes rather than returning main to the remote.
+  REPO=$("$HELPERS/tmp-git-repo.sh")
+  ORIGIN=$(mktemp -d -t gaia-squash-origin-XXXXXX)
+  git init -q --bare --initial-branch=main "$ORIGIN"
+  git -C "$REPO" remote add origin "$ORIGIN"
+  git -C "$REPO" push -q -u origin main
+  remote_tip=$(git -C "$REPO" rev-parse refs/remotes/origin/main)
+
+  # Two auto-commits so the squash arm runs, then a tag named origin/main on
+  # the resulting local tip, which is strictly ahead of the remote.
+  echo "a" > "$REPO/wiki/a.md"
+  git -C "$REPO" add wiki/a.md
+  git -C "$REPO" commit --quiet -m "wiki: auto-commit 2026-05-03 12:00"
+  echo "b" > "$REPO/wiki/b.md"
+  git -C "$REPO" add wiki/b.md
+  git -C "$REPO" commit --quiet -m "wiki: auto-commit 2026-05-03 12:01"
+  git -C "$REPO" tag "origin/main" HEAD
+
+  make_gh_shim
+  cd "$REPO"
+  PATH="$SHIM_DIR:$PATH" run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+
+  # Local main is back on the remote-tracking ref, not on the tag. Both sides
+  # spelled fully qualified so the assertion itself cannot be shadowed.
+  [ "$(git -C "$REPO" rev-parse refs/heads/main)" = "$remote_tip" ] || return 1
+  # And the tag is still ahead of it, so a green above means the hook read past
+  # the tag rather than the fixture having failed to plant a distinguishing one.
+  [ "$(git -C "$REPO" rev-parse refs/tags/origin/main)" != "$remote_tip" ] || return 1
+  return 0
 }
 
 @test "non-main branch: never resets working tree (regression for silent-loss bug)" {
