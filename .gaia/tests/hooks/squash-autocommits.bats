@@ -106,6 +106,37 @@ SHIM
   true
 }
 
+@test "on main: a tag named main does not skip the on-main arm entirely" {
+  # Distinct from the tag named `origin/main` above, and the distinction is the
+  # point: `origin/main` does not make the bare spelling `main` ambiguous, so
+  # that fixture cannot observe this. A tag named `main` does, and it shortens
+  # the branch read to `heads/main`, which misses the compare and skips the
+  # whole arm -- no wiki branch pushed, no PR, no reset, and the squashed
+  # commit left on local main.
+  REPO=$("$HELPERS/tmp-git-repo.sh")
+  ORIGIN=$(mktemp -d -t gaia-squash-origin-XXXXXX)
+  git init -q --bare --initial-branch=main "$ORIGIN"
+  git -C "$REPO" remote add origin "$ORIGIN"
+  git -C "$REPO" push -q -u origin main
+
+  echo "a" > "$REPO/wiki/a.md"
+  git -C "$REPO" add wiki/a.md
+  git -C "$REPO" commit --quiet -m "wiki: auto-commit 2026-05-03 12:00"
+  echo "b" > "$REPO/wiki/b.md"
+  git -C "$REPO" add wiki/b.md
+  git -C "$REPO" commit --quiet -m "wiki: auto-commit 2026-05-03 12:01"
+  git -C "$REPO" tag main HEAD
+
+  make_gh_shim
+  cd "$REPO"
+  PATH="$SHIM_DIR:$PATH" run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+
+  # The arm ran: a wiki/* branch reached the remote. That is the observable the
+  # skip destroys, and it does not depend on the reset having happened.
+  [ "$(git -C "$ORIGIN" for-each-ref --format='%(refname)' 'refs/heads/wiki/*' | wc -l | tr -d ' ')" -ge 1 ]
+}
+
 @test "non-main branch: never resets working tree (regression for silent-loss bug)" {
   REPO=$("$HELPERS/tmp-git-repo.sh")
   cd "$REPO"

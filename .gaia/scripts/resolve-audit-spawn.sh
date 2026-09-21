@@ -433,7 +433,11 @@ digest_marker_filter() {
   # below is called with `|| true` for exactly that reason.
   ledger="$(gaia_respawn_ledger_path "$repo_root" 2>/dev/null || true)"
   ts="$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || true)"
-  branch="$(git -C "$repo_root" symbolic-ref --quiet --short HEAD 2>/dev/null || true)"
+  # Full refname, stripped, matching every other branch read in the sweep: a
+  # tag sharing the branch's name makes `--short` answer `heads/<branch>`, and
+  # this value keys the respawn breadcrumb ledger.
+  branch="$(git -C "$repo_root" symbolic-ref --quiet HEAD 2>/dev/null || true)"
+  branch="${branch#refs/heads/}"
   head="$(git -C "$repo_root" rev-parse HEAD 2>/dev/null || true)"
   merge_base="$(git -C "$repo_root" merge-base HEAD refs/remotes/origin/main 2>/dev/null || true)"
 

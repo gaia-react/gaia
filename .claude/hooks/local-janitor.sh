@@ -351,7 +351,11 @@ wiki_catchup_state_unset() {
 # candidate, an empty/[ahead]/[behind] track is skipped (remote head still
 # present), an unanswerable cherry read keeps the branch, and any git failure
 # leaves the branch untouched.
-current=$(git -C "$root" symbolic-ref --quiet --short HEAD 2>/dev/null || true)
+# Full refname, stripped, never `--short`: a tag sharing the branch's name
+# makes `--short` answer `heads/<branch>`, and the `[ "$current" = "$base" ]`
+# gate below then misses, skipping the base fast-forward silently.
+current=$(git -C "$root" symbolic-ref --quiet HEAD 2>/dev/null || true)
+current=${current#refs/heads/}
 branch_tracks=$(git -C "$root" for-each-ref \
   --format='%(refname:short) %(upstream:track)' refs/heads/ 2>/dev/null || true)
 

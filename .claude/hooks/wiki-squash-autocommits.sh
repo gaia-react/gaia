@@ -26,7 +26,14 @@ if [ "$n" -ge 2 ]; then
   git commit -m "wiki: auto-commit $(date '+%Y-%m-%d %H:%M')" --no-verify >/dev/null 2>&1 || exit 0
 fi
 
-current_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
+# The full refname, stripped here. `rev-parse --abbrev-ref` shortens to the
+# shortest UNAMBIGUOUS spelling exactly as `symbolic-ref --short` does, so a
+# tag named `main` makes it answer `heads/main`, the compare below misses, and
+# the whole on-main arm is skipped: no wiki branch pushed, no PR, no reset, and
+# the squashed commit left sitting on local main, which is the state this hook
+# exists to prevent. A detached HEAD still yields empty, unchanged.
+current_branch=$(git symbolic-ref -q HEAD 2>/dev/null) || current_branch=""
+current_branch=${current_branch#refs/heads/}
 
 if [ "$current_branch" = "main" ]; then
   wiki_branch="wiki/$(date '+%Y-%m-%d-%H-%M')"
