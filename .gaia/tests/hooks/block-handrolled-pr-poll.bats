@@ -42,6 +42,14 @@ run_hook() {
   invoke_hook "$payload" "$HOOK"
 }
 
+# The same, for a Monitor payload. Monitor carries its shell command in the
+# same `tool_input.command` field, so the two differ only in `tool_name`.
+run_hook_monitor() {
+  local cmd="$1" payload
+  payload=$(jq -nc --arg c "$cmd" '{tool_name: "Monitor", tool_input: {command: $c}}')
+  invoke_hook "$payload" "$HOOK"
+}
+
 # --- blocked: the shape that spins forever ------------------------------------
 
 @test "the observed recurrence is blocked" {
@@ -74,6 +82,34 @@ done'
 @test "a loop keyword after && is blocked" {
   run_hook 'gh pr merge 9 --auto && until gh pr view 9 --json state | grep -q MERGED; do sleep 5; done'
   assert_blocked_by_exit
+}
+
+@test "the same poll armed through Monitor is blocked" {
+  # Monitor takes a raw shell command in the same field Bash does, so the loop
+  # this hook exists to deny is armable through it verbatim. Binding only Bash
+  # would leave the guard inert in the tool beside the one it watches.
+  run_hook_monitor 'until [ "$(gh pr view 2203 --json state --jq .state)" != "OPEN" ]; do sleep 30; done'
+  assert_blocked_by_exit
+}
+
+@test "a Monitor poll on gh pr checks is blocked" {
+  run_hook_monitor 'while true; do gh pr checks 42; sleep 30; done'
+  assert_blocked_by_exit
+}
+
+@test "a Monitor loop that reads mergeable is allowed" {
+  # The stand-down has to reach Monitor too, or the tool the guard newly binds
+  # is one where satisfying the rule still denies.
+  run_hook_monitor 'while true; do gh pr view 9 --json state,mergeable; sleep 30; done'
+  assert_allowed_by_exit
+}
+
+@test "a Monitor call carrying ws rather than a command is allowed" {
+  # A WebSocket subscription is not a poll, and it carries no `command` field
+  # at all, so the hook resolves the empty string and allows.
+  payload=$(jq -nc '{tool_name: "Monitor", tool_input: {ws: {url: "wss://example.test/stream"}}}')
+  invoke_hook "$payload" "$HOOK"
+  assert_allowed_by_exit
 }
 
 @test "the denial names the shipped script, so there is an alternative to take" {
@@ -184,8 +220,13 @@ done'
   assert_allowed_by_exit
 }
 
-@test "a non-Bash tool call is allowed" {
-  payload=$(jq -nc '{tool_name: "Read", tool_input: {file_path: "for i; do gh pr view 1 --json state; done"}}')
+@test "a tool call that is neither Bash nor Monitor is allowed" {
+  # The fixture carries a `command` holding the denied shape verbatim, and that
+  # is what makes the tool check the only thing allowing it. A payload whose
+  # tool_input has no `command` at all is allowed by the empty-command arm
+  # several lines further down, so it greens whatever the tool check accepts
+  # and pins nothing.
+  payload=$(jq -nc '{tool_name: "Read", tool_input: {command: "until [ \"$(gh pr view 1 --json state --jq .state)\" != \"OPEN\" ]; do sleep 30; done"}}')
   invoke_hook "$payload" "$HOOK"
   assert_allowed_by_exit
 }
@@ -198,4 +239,11 @@ done'
 
 @test "the hook is registered in settings.json" {
   hook_registered "$SETTINGS_ABS" '.hooks.PreToolUse[] | select(.matcher == "Bash")' block-handrolled-pr-poll.sh
+}
+
+@test "the hook is registered for Monitor too" {
+  # The tool check inside the hook reaches nothing the matchers do not deliver,
+  # so the Monitor deny tests above stay green on a dropped Monitor
+  # registration with the guard inert for that tool in every real session.
+  hook_registered "$SETTINGS_ABS" '.hooks.PreToolUse[] | select(.matcher == "Monitor")' block-handrolled-pr-poll.sh
 }

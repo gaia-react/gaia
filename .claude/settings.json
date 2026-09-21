@@ -359,6 +359,15 @@
         ]
       },
       {
+        "matcher": "Monitor",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/block-handrolled-pr-poll.sh\""
+          }
+        ]
+      },
+      {
         "matcher": "mcp__serena__activate_project",
         "hooks": [
           {

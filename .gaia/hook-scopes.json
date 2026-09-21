@@ -53,7 +53,7 @@
       "hook": ".claude/hooks/block-handrolled-pr-poll.sh",
       "scope": "any",
       "state": [],
-      "why": "Pattern-matches a Bash command string only; touches no tree-scoped state."
+      "why": "Pattern-matches the command string a Bash or Monitor call carries; touches no tree-scoped state."
     },
     {
       "hook": ".claude/hooks/block-invalid-yaml-write.sh",

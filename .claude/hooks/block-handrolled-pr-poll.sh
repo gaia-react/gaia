@@ -31,6 +31,19 @@
 # worktree-isolation guard to read, so taking the blessed path removes the
 # refusal that caused the improvisation in the first place.
 #
+# WHICH TOOLS IT BINDS: `Bash` and `Monitor`, registered under a matcher each.
+# Both take a raw shell command in the same `tool_input.command` field, so
+# either can arm the loop this denies, and a guard binding only the first one
+# denies the shape in the tool an agent reaches for first while leaving it
+# armable from the tool beside it. That second tool is not a hypothetical
+# spelling: the session that shipped this hook armed a `gh pr view` poll
+# through `Monitor`. A monitor expires on its own deadline where the Bash shape
+# has no equivalent bound, but a re-armed monitor spends the same wait against
+# the same dead merge, so the deadline decides how long one arming spins rather
+# than whether the wait can ever end. A `Monitor` call carrying `ws` instead of
+# `command` resolves to the empty string and is allowed, which is correct: a
+# WebSocket subscription is not a poll.
+#
 # WHAT IT CATCHES, honestly: the common spelling, not the class. This is a text
 # heuristic over an unbounded surface, the same posture
 # `block-selfheal-paths.sh` already takes. A poll written in Python, or inside
@@ -73,7 +86,10 @@ fi
 gaia_require_jq 'the hand-rolled merge-wait guard' "$payload" tool_input 'gh pr'
 
 tool=$(jq -r '.tool_name // ""' <<<"$payload" 2>/dev/null) || exit 0
-[ "$tool" = "Bash" ] || exit 0
+case "$tool" in
+  Bash | Monitor) ;;
+  *) exit 0 ;;
+esac
 
 command=$(jq -r '.tool_input.command // ""' <<<"$payload" 2>/dev/null) || exit 0
 [ -n "$command" ] || exit 0
