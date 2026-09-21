@@ -20,6 +20,11 @@ setup() {
   [ -f "$LIB" ] || skip "verb-arming.sh not present"
   [ -f "$WALK" ] || skip "verb-arming-walk.sh not present"
 
+  # The wrapper-table readers block-no-verify.bats reads the same table with.
+  # shellcheck disable=SC2034 # read by helpers/wrapper-table.sh
+  WRAPPER_TABLE_FILE="$REPO_ROOT/.claude/hooks/lib/command-wrappers.sh"
+  . "$BATS_TEST_DIRNAME/helpers/wrapper-table.sh"
+
   NL=$'\n'
   TAB=$'\t'
 
@@ -83,6 +88,24 @@ assert_not_armed() { grep -qF "verdict=not-armed " <<<"$output" || return 1; }
 assert_kind()      { grep -qF "kind=$1 " <<<"$output" || return 1; }
 assert_sup()       { grep -qF "sup=$1 " <<<"$output" || return 1; }
 assert_len_ok()    { grep -qF "lenmatch=yes " <<<"$output" || return 1; }
+
+# lead_re_admits <words-spec> <text>: build pass 3's pre-filter for
+# <words-spec> and print whether it admits <text>, one of `admits`, `rejects`,
+# or `no-filter` for the arm that declines to build one at all.
+#
+# It reads the FILTER rather than the arming verdict, and that is the whole
+# reason it exists. Arming for a text whose first word is not the verb's is
+# decided by the word compare whatever the filter does, so a test that asserts
+# only `not-armed` observes nothing about the filter and stays green on one
+# widened to a single character per word.
+lead_re_admits() {
+  run bash -c '
+    . "$1" || exit 9
+    _gaia_va_build_lead_re "$2"
+    if [ -z "$_gaia_va_lead_re" ]; then printf "no-filter\n"; exit 0; fi
+    if [[ "$3" =~ $_gaia_va_lead_re ]]; then printf "admits\n"; else printf "rejects\n"; fi
+  ' _ "$LIB" "$1" "$2"
+}
 
 # mk_run <n> <char>: a run of exactly <n> copies of <char>, from a doubling
 # cache so a 16KB fixture costs a handful of concatenations.
@@ -1019,4 +1042,189 @@ write_conflicted_lib() {
   grep -qF "errexit=OFF" <<<"$output" || return 1
   grep -qF "SURVIVED" <<<"$output" || return 1
   true
+}
+
+# ---------------------------------------------------------------------------
+# Command wrappers
+# ---------------------------------------------------------------------------
+#
+# A command WRAPPER occupies the command-word slot, so the verb behind it is
+# neither at the start of the text nor after a separator, and the scanned
+# first-command words begin with the wrapper rather than with the verb. Before
+# this was closed, every case below armed nothing, which on the apex merge gate
+# meant a merge landing with no GAIA-Audit marker.
+#
+# The wrapper set is DERIVED from the table in lib/command-wrappers.sh through
+# helpers/wrapper-table.sh, the same reader block-no-verify.bats uses, rather
+# than restated here: a row added to the table is driven by both suites the
+# moment it lands.
+
+@test "every wrapper in the shared table exposes the verb to the arming decision" {
+  local name operands read_n=0 rows
+  rows=$(wrapper_table_rows)
+  [ "$rows" -gt 0 ] || return 1
+  while read -r name operands; do
+    [ -n "$name" ] || continue
+    read_n=$((read_n + 1))
+    arm "$MERGE_FRAG" "$MERGE_WORDS" "$(wrapper_prefix "$name" "$operands") gh pr merge 12"
+    assert_armed || return 1
+    assert_kind first-command || return 1
+  done <<<"$(wrapper_table)"
+  [ "$read_n" -eq "$rows" ]
+}
+
+# The test above builds each invocation from the row it checks, so it proves
+# the arming reads the TABLE and never that the table matches the WRAPPER.
+# These are the hand-written real spellings: the two the issue named, plus the
+# option and assignment forms a row would have to get right.
+@test "a wrapper's own options and operands do not hide the verb from the arming decision" {
+  arm "$MERGE_FRAG" "$MERGE_WORDS" 'timeout 5 gh pr merge 1 --squash'
+  assert_armed || return 1
+  assert_kind first-command || return 1
+
+  arm "$MERGE_FRAG" "$MERGE_WORDS" 'timeout -k 30 5 gh pr merge 1 --squash'
+  assert_armed || return 1
+
+  arm "$MERGE_FRAG" "$MERGE_WORDS" 'nice -n 5 gh pr merge 1'
+  assert_armed || return 1
+
+  arm "$MERGE_FRAG" "$MERGE_WORDS" 'xargs -n 1 gh pr merge 1'
+  assert_armed
+}
+
+@test "an assignment a wrapper carries does not hide the verb behind it" {
+  arm "$MERGE_FRAG" "$MERGE_WORDS" 'env GH_PAGER=cat gh pr merge 1 --squash'
+  assert_armed || return 1
+  assert_kind first-command
+}
+
+@test "a stacked wrapper chain does not hide the verb from the arming decision" {
+  arm "$MERGE_FRAG" "$MERGE_WORDS" 'nohup timeout 5 env GH_PAGER=cat gh pr merge 12'
+  assert_armed || return 1
+  assert_kind first-command
+}
+
+# The strip must not invent an arm. A wrapper running some other program is
+# exactly the case a blind word-drop would misread.
+@test "reading past a wrapper does not arm on a non-verb program behind it" {
+  arm "$MERGE_FRAG" "$MERGE_WORDS" 'env GH_PAGER=cat git status'
+  assert_not_armed || return 1
+  arm "$MERGE_FRAG" "$MERGE_WORDS" 'timeout 5 ls -la'
+  assert_not_armed
+}
+
+# The wrapper arm rides pass 3, which carries no view and no capture groups, so
+# it must leave both result variables exactly where an unwrapped tokenizer arm
+# leaves them. This is what keeps the one consumer that recovers real bytes by
+# OFFSET (distribution-preflight-check.sh) safe: it reads a groupless arm as
+# "no tail" and falls back to the default base, rather than slicing its own
+# command text at an offset computed against a shorter, stripped one.
+@test "a wrapper arm reports no groups and an unsuppressed identity view" {
+  arm "$MERGE_FRAG" "$MERGE_WORDS" 'timeout 5 gh pr merge 1 --squash'
+  assert_armed || return 1
+  assert_sup 0 || return 1
+  assert_len_ok || return 1
+  match_of "$MERGE_FRAG" "$MERGE_WORDS" 'timeout 5 gh pr merge 1 --squash'
+  grep -qF "count=0 kind=first-command" <<<"$output"
+}
+
+# The pre-filter is widened to admit each wrapper's own lead, and this is the
+# case that proves the widening did not swallow the filter whole. `echo` shares
+# its first character with two wrappers and must still be turned away;
+# verb-arming-cost.bats's non-matching payload is built on exactly that word,
+# so a filter that admitted it would move that suite's budget rather than red.
+#
+# It asserts the FILTER, through `lead_re_admits`, because the arming verdict
+# cannot see it: `echo` fails the word compare whatever the filter admits, so
+# an `assert_not_armed`-only version of this test greens on the one-character
+# alternation its own name forbids. The end-to-end verdict rides along at the
+# end as a companion rather than as the claim.
+@test "the pre-filter still turns away a word that only shares a wrapper's first character" {
+  lead_re_admits "$MERGE_WORDS" 'echo gh pr merge 12'
+  grep -qF "rejects" <<<"$output" || return 1
+
+  # The second character is the discriminator, so both a wrapper's own lead and
+  # the verb's must still get through. Without these, a filter narrowed to
+  # nothing would satisfy the assertion above.
+  lead_re_admits "$MERGE_WORDS" 'env gh pr merge 12'
+  grep -qF "admits" <<<"$output" || return 1
+  lead_re_admits "$MERGE_WORDS" 'timeout 5 gh pr merge 12'
+  grep -qF "admits" <<<"$output" || return 1
+  lead_re_admits "$MERGE_WORDS" 'gh pr merge 12'
+  grep -qF "admits" <<<"$output" || return 1
+
+  arm "$MERGE_FRAG" "$MERGE_WORDS" 'echo gh pr merge 12'
+  assert_not_armed
+}
+
+# A wrapper AFTER a separator is the residual this change leaves open, and it
+# is pinned rather than left to be rediscovered: closing it needs the wrapper
+# alternation inside sep_re, which cannot be written without adding a capture
+# group, and the group numbering is a published contract the tail-reading
+# consumer depends on. Pass 3 reads the first command only, which is the same
+# boundary the quoted-verb case already documents. Tracked as
+# gaia-react/gaia#2205; this test is what flips when it closes.
+@test "a wrapper after a separator is a known residual and arms nothing" {
+  arm "$MERGE_FRAG" "$MERGE_WORDS" 'git push && timeout 5 gh pr merge 1'
+  assert_not_armed || return 1
+  # The unwrapped spelling after the same separator still arms, so the case
+  # above is the wrapper's doing and not the separator's.
+  arm "$MERGE_FRAG" "$MERGE_WORDS" 'git push && gh pr merge 1'
+  assert_armed
+}
+
+# Fail DIRECTION for a missing table. The library's stated convention is that a
+# component it cannot load degrades to the answer it gave before that component
+# existed, never to silence and never to a new refusal: an absent walker leaves
+# the raw match standing. An absent wrapper table is the same shape -- it leaves
+# the wrapper hole exactly where it was rather than opening a new one -- and it
+# must not disturb the arms that never needed the table.
+@test "an absent command-wrappers.sh degrades to the unwrapped answer" {
+  local lib; lib="$(stage_lib nowrap)"
+  rm -f "$(dirname "$lib")/command-wrappers.sh"
+  arm_with "$lib" "$MERGE_FRAG" "$MERGE_WORDS" 'timeout 5 gh pr merge 1'
+  assert_not_armed || return 1
+  # Everything that never needed the table is untouched.
+  arm_with "$lib" "$MERGE_FRAG" "$MERGE_WORDS" 'gh pr merge 1'
+  assert_armed || return 1
+  arm_with "$lib" "$MERGE_FRAG" "$MERGE_WORDS" 'gh pr "merge" 12'
+  assert_armed || return 1
+  assert_kind first-command
+}
+
+@test "an unparseable command-wrappers.sh degrades rather than denying" {
+  local lib; lib="$(stage_lib wrapbad)"
+  write_conflicted_lib "$(dirname "$lib")/command-wrappers.sh"
+  arm_with "$lib" "$MERGE_FRAG" "$MERGE_WORDS" 'gh pr merge 1'
+  [ "$status" -eq 0 ] || return 1
+  assert_armed
+}
+
+# GAIA_COMMAND_WRAPPER_NAMES is a second spelling of the table's row set, kept
+# because a `case` statement cannot be asked what it matches. This is what
+# stops the two drifting. It compares the whole set both ways rather than
+# checking containment in one direction, because each direction fails
+# differently: a name the table lost leaves the pre-filter wider than it needs
+# to be, and a row the list never gained leaves that wrapper turned away before
+# the strip can run, which is the hole the strip exists to close.
+@test "the wrapper name list and the wrapper table name the same set" {
+  local from_table from_list rows read_n=0 name operands
+  rows=$(wrapper_table_rows)
+  [ "$rows" -gt 0 ] || return 1
+  from_table=""
+  while read -r name operands; do
+    [ -n "$name" ] || continue
+    read_n=$((read_n + 1))
+    from_table="$from_table$name$NL"
+  done <<<"$(wrapper_table)"
+  # A parse that reads fewer rows than the table holds would otherwise compare
+  # a short set against a short list and agree with itself.
+  [ "$read_n" -eq "$rows" ] || return 1
+
+  from_list=$(
+    . "$WRAPPER_TABLE_FILE"
+    for name in $GAIA_COMMAND_WRAPPER_NAMES; do printf '%s\n' "$name"; done
+  )
+  [ -n "$from_list" ] || return 1
+  [ "$(printf '%s' "$from_table" | sort)" = "$(printf '%s\n' "$from_list" | sort)" ]
 }

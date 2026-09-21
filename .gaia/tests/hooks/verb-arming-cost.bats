@@ -216,8 +216,11 @@ build_armed_payload() {
 
 # A payload that raw-matches nothing: the raw match never hits, so the walk
 # is never paid regardless of size. 'echo ' is turned away by every one of
-# the adopting hooks' tokenizer pre-filters too (no verb fragment's first word
-# starts with 'e').
+# the adopting hooks' tokenizer pre-filters too. The pre-filter reads the first
+# TWO characters of each word that could stand in the command-word slot, and
+# that now includes the command wrappers as well as the verbs, so 'e' alone no
+# longer settles it: what turns 'echo' away is that no admitted word begins
+# 'ec'. `env` and `exec` share only its first character.
 build_nonmatch_payload() {
   local total="$1" prefix='echo '
   local n=$(( total - ${#prefix} ))

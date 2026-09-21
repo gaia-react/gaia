@@ -24,6 +24,9 @@
 setup() {
   . "$BATS_TEST_DIRNAME/helpers/run-hook.sh"
   HOOKS_SRC=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)
+  # shellcheck disable=SC2034 # read by helpers/wrapper-table.sh
+  WRAPPER_TABLE_FILE="$HOOKS_SRC/lib/command-wrappers.sh"
+  . "$BATS_TEST_DIRNAME/helpers/wrapper-table.sh"
   HOOK_ABS="$HOOKS_SRC/block-no-verify.sh"
 
   REPO=$(mktemp -d -t no-verify-test-XXXXXX)
@@ -696,32 +699,11 @@ run_staged() {
 # restated here: a row added there is driven by these tests the moment it
 # lands, and a row this reader fails to parse shortens the set, which the count
 # check below turns into a failure instead of a quieter suite.
-
-# Print `<name> <operand-count>` for every row of the shared wrapper table.
-wrapper_table() {
-  sed -n '/GAIA_WRAPPER_TABLE_BEGIN/,/GAIA_WRAPPER_TABLE_END/p' \
-      "$HOOKS_SRC/lib/command-wrappers.sh" \
-    | sed -nE 's/^[[:space:]]*([a-z]+)\)[[:space:]]*_w_valued=.*_w_operands=([0-9]+).*/\1 \2/p'
-}
-
-# How many rows that table holds, counted independently of the parse above so a
-# row the parse cannot read is a short read rather than an invisible one.
-wrapper_table_rows() {
-  sed -n '/GAIA_WRAPPER_TABLE_BEGIN/,/GAIA_WRAPPER_TABLE_END/p' \
-      "$HOOKS_SRC/lib/command-wrappers.sh" \
-    | grep -cE '^[[:space:]]*[a-z]+\)[[:space:]]*_w_valued='
-}
-
-# The wrapper written the way its own grammar requires: its name, then as many
-# operands of its own as the table says it consumes.
-wrapper_prefix() {
-  local name="$1" operands="$2" out="$1" i=0
-  while [ "$i" -lt "$operands" ]; do
-    out="$out 5"
-    i=$((i + 1))
-  done
-  printf '%s' "$out"
-}
+#
+# `wrapper_table`, `wrapper_table_rows` and `wrapper_prefix` come from
+# helpers/wrapper-table.sh, sourced in setup(). verb-arming-lib.bats reads the
+# same table through the same three readers, so a row lands in both suites at
+# once; a copy of the parse here would be the one that goes stale.
 
 @test "every wrapper in the shared table exposes a bypassing commit to the walk" {
   local name operands read_n=0 rows
