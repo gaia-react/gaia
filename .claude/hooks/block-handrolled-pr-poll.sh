@@ -98,10 +98,12 @@ HAS_MERGEABLE_RE='mergeable|CONFLICTING'
 # from `^` and the separator punctuation alone misses every one of them, which
 # is the whole failure mode wearing different whitespace.
 #
-# `done` has to be present as its own word. Every `for`/`while`/`until` loop
-# closes with one, and no prose mentioning a loop inside a `--body` or a commit
-# message carries it, so this is what keeps the keyword test off text that
-# merely talks about polling.
+# `done` has to be present as its own word. Shell grammar closes every
+# `for`/`while`/`until` loop with one, so requiring it costs no real loop, and
+# it is what keeps the keyword test off text that merely talks about polling:
+# prose naming a loop inside a `--body` or a commit message usually does not
+# also carry the closing word. Prose that happens to carry both still trips
+# this, and the escapes above are the way out of that case.
 LOOP_KEYWORD_RE=$'(^|[;&|(\n])[[:space:]]*(until|while|for)[[:space:]]'
 [[ "$command" =~ $LOOP_KEYWORD_RE ]] || exit 0
 DONE_RE='(^|[[:space:];&])done([[:space:]]|;|$)'
