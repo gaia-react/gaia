@@ -93,28 +93,31 @@
 # command-wrappers.sh's own header raise on the same missing table. Theirs is a
 # regression against a hole they had already closed; here the table is a
 # widening, several consumers publish a fail-open contract that a refusal would
-# contradict outright, and a library with no deny of its own cannot raise one on
-# their behalf. If THIS file cannot be sourced,
-# the answer is the consumer's to give, and it differs by consumer: a
-# deny-capable consumer denies, naming the missing file, unless its own
-# published contract is fail-open, in which case it exits 0.
+# contradict outright, and a library with no deny of its own cannot raise one
+# on their behalf. If THIS file cannot be sourced, the answer is the consumer's
+# to give, and it differs by consumer: a deny-capable consumer denies, naming
+# the missing file, unless its own published contract is fail-open, in which
+# case it exits 0.
 #
 # WHAT THIS DOES NOT CLOSE. Quoted prose carrying a list operator or a newline
-# before the verb still over-arms, fail-closed, and there is no safe
-# narrowing. So does an opener the liveness scan abstains on or does not
-# model; its own header names both, and the nested-interpreter case it
-# under-arms. A verb whose characters are quoted
-# still under-arms outside the first command, because pass 3 reads the first
-# command only, and a command WRAPPER standing after a separator under-arms for
-# the same reason: pass 3 is where the strip lives, and reaching a wrapper from
-# `sep_re` would need a capture group this file may not add, so a merge spelled
-# `… && timeout 5 gh pr merge` still reaches no gate (gaia-react/gaia#2205).
-# Dollar-quoted
-# words are unmodelled and the walk abstains on
-# one rather than approximating it. Pass 3's bounded prefix can create an arm
-# no data proof removes, because truncation at the bound can leave a word
-# reading as the verb; that direction costs a decision nobody asked for rather
-# than a merge nobody audited.
+# before the verb still over-arms, fail-closed, and there is no safe narrowing.
+# So does an opener the liveness scan abstains on or does not model; its own
+# header names both, and the nested-interpreter case it under-arms. A verb
+# whose characters are quoted still under-arms outside the first command,
+# because pass 3 reads the first command only, and a command WRAPPER standing
+# after a separator under-arms for the same reason: pass 3 is where the strip
+# lives, and reaching a wrapper from `sep_re` would need a capture group this
+# file may not add, so a merge spelled `… && timeout 5 gh pr merge` still
+# reaches no gate (gaia-react/gaia#2205). A wrapper IN the first command
+# under-arms too where its assignment or its option value carries quoted
+# whitespace (`env FOO="a b" gh pr merge 1`), because the strip works in words
+# and splits inside the quotes; command-wrappers.sh's own HONEST LIMITS owns
+# that one, so the first-command case is narrowed rather than closed.
+# Dollar-quoted words are unmodelled and the walk abstains on one rather than
+# approximating it. Pass 3's bounded prefix can create an arm no data proof
+# removes, because truncation at the bound can leave a word reading as the
+# verb; that direction costs a decision nobody asked for rather than a merge
+# nobody audited.
 
 # Inputs longer than this get the identity view and the raw match stands. It
 # covers the observed population: in a corpus of 33,498 real Bash tool calls no

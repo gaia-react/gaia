@@ -60,9 +60,12 @@
 # kind:
 #
 #   - a wrapper option whose separated value carries whitespace inside quotes
-#     (`env -S "a b" git commit`). The scan splits on whitespace, so it
+#     (`env -S "a b" git commit`), and an ASSIGNMENT whose value does the same
+#     (`env FOO="a b" git commit`). The scan splits on whitespace, so it
 #     consumes `"a` and reads `b"` as the command word, finds no `git`, and
-#     skips the segment.
+#     skips the segment. The assignment spelling is the one a reader is likelier
+#     to write, since carrying a value with a space in it is what an assignment
+#     is usually for.
 #   - a value-taking wrapper option absent from its row, whose value is a bare
 #     word. The value reaches the command-word slot, exactly as it does in
 #     `parse_git_globals` for git's own globals.

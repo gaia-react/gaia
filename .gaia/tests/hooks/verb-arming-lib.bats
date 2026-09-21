@@ -89,6 +89,24 @@ assert_kind()      { grep -qF "kind=$1 " <<<"$output" || return 1; }
 assert_sup()       { grep -qF "sup=$1 " <<<"$output" || return 1; }
 assert_len_ok()    { grep -qF "lenmatch=yes " <<<"$output" || return 1; }
 
+# lead_re_admits <words-spec> <text>: build pass 3's pre-filter for
+# <words-spec> and print whether it admits <text>, one of `admits`, `rejects`,
+# or `no-filter` for the arm that declines to build one at all.
+#
+# It reads the FILTER rather than the arming verdict, and that is the whole
+# reason it exists. Arming for a text whose first word is not the verb's is
+# decided by the word compare whatever the filter does, so a test that asserts
+# only `not-armed` observes nothing about the filter and stays green on one
+# widened to a single character per word.
+lead_re_admits() {
+  run bash -c '
+    . "$1" || exit 9
+    _gaia_va_build_lead_re "$2"
+    if [ -z "$_gaia_va_lead_re" ]; then printf "no-filter\n"; exit 0; fi
+    if [[ "$3" =~ $_gaia_va_lead_re ]]; then printf "admits\n"; else printf "rejects\n"; fi
+  ' _ "$LIB" "$1" "$2"
+}
+
 # mk_run <n> <char>: a run of exactly <n> copies of <char>, from a doubling
 # cache so a 16KB fixture costs a handful of concatenations.
 mk_run() {
@@ -1115,7 +1133,26 @@ write_conflicted_lib() {
 # its first character with two wrappers and must still be turned away;
 # verb-arming-cost.bats's non-matching payload is built on exactly that word,
 # so a filter that admitted it would move that suite's budget rather than red.
+#
+# It asserts the FILTER, through `lead_re_admits`, because the arming verdict
+# cannot see it: `echo` fails the word compare whatever the filter admits, so
+# an `assert_not_armed`-only version of this test greens on the one-character
+# alternation its own name forbids. The end-to-end verdict rides along at the
+# end as a companion rather than as the claim.
 @test "the pre-filter still turns away a word that only shares a wrapper's first character" {
+  lead_re_admits "$MERGE_WORDS" 'echo gh pr merge 12'
+  grep -qF "rejects" <<<"$output" || return 1
+
+  # The second character is the discriminator, so both a wrapper's own lead and
+  # the verb's must still get through. Without these, a filter narrowed to
+  # nothing would satisfy the assertion above.
+  lead_re_admits "$MERGE_WORDS" 'env gh pr merge 12'
+  grep -qF "admits" <<<"$output" || return 1
+  lead_re_admits "$MERGE_WORDS" 'timeout 5 gh pr merge 12'
+  grep -qF "admits" <<<"$output" || return 1
+  lead_re_admits "$MERGE_WORDS" 'gh pr merge 12'
+  grep -qF "admits" <<<"$output" || return 1
+
   arm "$MERGE_FRAG" "$MERGE_WORDS" 'echo gh pr merge 12'
   assert_not_armed
 }
