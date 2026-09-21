@@ -156,25 +156,39 @@ jobs:
           # (proven by a GAIA-Audit commit trailer or commit status). Resolved
           # here, before the source-change check, so that check and the audit
           # share one base: everything before <base> was already cleared. Falls
-          # back to the branch this PR merges into (origin/main when none is
-          # declared), full PR scope, when no audited ancestor exists
-          # (first audit, prior runs cancelled/failed, or a .gaia/VERSION bump
-          # invalidated them). A helper failure falls back to full scope rather
-          # than failing the audit. That last-resort literal stays origin/main
-          # rather than this PR's own base: it fires only when the helper itself
-          # could not run, and repeating the ref the rest of this workflow
-          # already assumes is a safer answer there than one this step would
-          # have to re-derive. Where origin/main does not resolve, because the
+          # back to the branch this PR merges into (`refs/remotes/origin/main`
+          # when none is declared), full PR scope, when no audited ancestor
+          # exists (first audit, prior runs cancelled/failed, or a .gaia/VERSION
+          # bump invalidated them). A helper failure falls back to full scope
+          # rather than failing the audit. That last-resort literal stays
+          # `refs/remotes/origin/main` rather than this PR's own base: it fires
+          # only when the helper itself could not run, and repeating the ref the
+          # rest of this workflow already assumes is a safer answer there than
+          # one this step would have to re-derive. The helper hardcodes that
+          # literal rather than deriving a default branch, so where
+          # `refs/remotes/origin/main` does not resolve, because the
           # repository's default branch is named something else, the base_sha
           # resolution below exits non-zero: this path fails loudly rather than
           # reviewing a wrong scope.
-          base="$(bash .github/audit/resolve-audit-base.sh || echo origin/main)"
+          #
+          # Spelled refs/remotes/origin/... rather than origin/..., here and at
+          # every other remote-tracking revspec in this workflow. git resolves
+          # refs/tags/<x> ahead of refs/remotes/<x>, so a tag literally named
+          # `origin/<x>` answers for the remote-tracking ref, and the fetch
+          # refspec this workflow's checkout runs carries
+          # `+refs/tags/*:refs/tags/*` explicitly, so tags land on the runner
+          # whatever `fetch-tags` says. At HEAD such a tag empties the reviewed
+          # delta below, which sets has_source=false and greens GAIA-Audit on a
+          # pull request nothing read.
+          base="$(bash .github/audit/resolve-audit-base.sh || echo refs/remotes/origin/main)"
           echo "base=${base}" >> "$GITHUB_OUTPUT"
           # The audit key's first half must be a SHA. `base` above is a ref name
           # on the two commonest paths -- the no-anchor answer (the first audit
-          # of any PR) and the helper-failure fallback are both the literal
-          # `origin/main` -- and audit-scope-digest.sh builds its scope-file path
-          # from it, so a slash there escapes into the path and the write fails.
+          # of any PR, `refs/remotes/origin/<the branch this PR merges into>`)
+          # and the helper-failure fallback (the literal
+          # `refs/remotes/origin/main`) -- and audit-scope-digest.sh builds its
+          # scope-file path from it, so a slash there escapes into the path and
+          # the write fails.
           # Resolve it once here and let the digest calls key on this, while the
           # diff prose keeps the readable ref above.
           # `--verify --quiet` on the fallback is load-bearing, not decoration.
@@ -210,9 +224,9 @@ jobs:
           # that would meaningfully apply. The base is the last clean-audited
           # ancestor, so once a code commit is audited clean a later prose-only
           # commit reviews an empty auditable delta and skips. With no audited
-          # ancestor the base is the branch this PR merges into (origin/main
-          # when none is declared) → full PR diff, preserving first-audit
-          # behavior.
+          # ancestor the base is the branch this PR merges into
+          # (`refs/remotes/origin/main` when none is declared) → full PR diff,
+          # preserving first-audit behavior.
           # -z, so a non-ASCII path is not C-quoted past the patterns below:
           # unquoted, an in-scope change can read as has_source=false and skip
           # the audit entirely. The `tr` stays inside the substitution because
@@ -266,7 +280,7 @@ jobs:
           # matches is pure ASCII and git would never quote it, so this is
           # uniformity rather than a live defect; the class is cheaper to hold
           # everywhere than to re-argue per call site.
-          default_ref="origin/${DEFAULT_BRANCH}"
+          default_ref="refs/remotes/origin/${DEFAULT_BRANCH}"
           if ! git rev-parse --verify --quiet "${default_ref}^{commit}" >/dev/null 2>&1; then
             # Fail loudly rather than guess. Either answer would be a lie: a
             # false here runs an audit the action may refuse and reports it as
@@ -810,9 +824,10 @@ jobs:
           # refused_reason=governance-surface arm and stood the whole self-heal
           # down for human review. The committed case is unaffected (the reset
           # is a no-op once HEAD carries the edit, and the gate's second half
-          # reads origin/$PR_BRANCH..HEAD), but this step's own comment names
-          # leftover uncommitted edits as routine, and the local backstop does
-          # not cover CI -- .claude/hooks/block-selfheal-paths.sh no-ops
+          # reads the branch's remote-tracking ref against HEAD), but this
+          # step's own comment names leftover uncommitted edits as routine, and
+          # the local backstop does not cover CI --
+          # .claude/hooks/block-selfheal-paths.sh no-ops
           # whenever the payload carries no code-audit-* agent_type, and CI runs
           # the auditor as the main session.
           #
@@ -846,7 +861,7 @@ jobs:
             git diff --name-only -z HEAD -- .claude
             git diff --cached --name-only -z -- .claude
           } > "$claude_dirty_z"
-          base_ref="origin/${PR_BASE_REF}"
+          base_ref="refs/remotes/origin/${PR_BASE_REF}"
           if ! git rev-parse --verify --quiet "${base_ref}^{commit}" >/dev/null 2>&1; then
             # No base to compare against, so every dirty .claude/ path reads as
             # an agent edit and the self-heal refuses. That is the safe
@@ -1018,13 +1033,13 @@ jobs:
           # already COMMITTED, so its status is load-bearing in exactly the case
           # the other two are blind to. What is legitimately absent here is the
           # REF, not the answer: before the branch's first push there is no
-          # origin/$PR_BRANCH to diff against. So gate on the ref existing, the
-          # same shape the base_ref check above uses, instead of swallowing every
-          # status with `|| true`, and leave git's own diagnostic on stderr where
-          # the run log keeps it.
-          if git rev-parse --verify --quiet "origin/${PR_BRANCH}^{commit}" >/dev/null 2>&1; then
-            git diff --name-only -z "origin/${PR_BRANCH}..HEAD" >> "$enum_z" \
-              || note_enum_failure $? "git diff origin/${PR_BRANCH}..HEAD"
+          # remote-tracking ref for the branch to diff against. So gate on the
+          # ref existing, the same shape the base_ref check above uses, instead
+          # of swallowing every status with `|| true`, and leave git's own
+          # diagnostic on stderr where the run log keeps it.
+          if git rev-parse --verify --quiet "refs/remotes/origin/${PR_BRANCH}^{commit}" >/dev/null 2>&1; then
+            git diff --name-only -z "refs/remotes/origin/${PR_BRANCH}..HEAD" >> "$enum_z" \
+              || note_enum_failure $? "git diff refs/remotes/origin/${PR_BRANCH}..HEAD"
           fi
           tr '\0' '\n' < "$enum_z" >> "$enum_paths" || note_enum_failure $? "tr"
           cat "$preserved_governance_edits" >> "$enum_paths" || note_enum_failure $? "cat"
@@ -1100,7 +1115,7 @@ jobs:
             return 0
           }
 
-          ahead=$(git rev-list --count "origin/${PR_BRANCH}..HEAD" 2>/dev/null || echo 0)
+          ahead=$(git rev-list --count "refs/remotes/origin/${PR_BRANCH}..HEAD" 2>/dev/null || echo 0)
           if [ "$ahead" -eq 0 ]; then
             {
               echo "pushed=false"

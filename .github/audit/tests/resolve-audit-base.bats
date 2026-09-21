@@ -383,7 +383,7 @@ set_origin_ref() {
   export GITHUB_ACTIONS=true GITHUB_BASE_REF=release
   run --separate-stderr run_in_sandbox
   [ "$status" -eq 0 ]
-  [ "$output" = "origin/release" ]
+  [ "$output" = "refs/remotes/origin/release" ]
 }
 
 @test "no base ref declared → the repository default" {
@@ -394,7 +394,7 @@ set_origin_ref() {
   unset GITHUB_BASE_REF
   run --separate-stderr run_in_sandbox
   [ "$status" -eq 0 ]
-  [ "$output" = "origin/main" ]
+  [ "$output" = "refs/remotes/origin/main" ]
 }
 
 @test "a base ref naming no remote branch → the repository default" {
@@ -404,7 +404,7 @@ set_origin_ref() {
   export GITHUB_ACTIONS=true GITHUB_BASE_REF=deleted-branch
   run --separate-stderr run_in_sandbox
   [ "$status" -eq 0 ]
-  [ "$output" = "origin/main" ]
+  [ "$output" = "refs/remotes/origin/main" ]
 }
 
 # The base ref is read only where the event sets it. Outside Actions the
@@ -421,7 +421,57 @@ set_origin_ref() {
   export GITHUB_BASE_REF=release
   run --separate-stderr run_in_sandbox
   [ "$status" -eq 0 ]
-  [ "$output" = "origin/main" ]
+  [ "$output" = "refs/remotes/origin/main" ]
+}
+
+# -----------------------------------------------------------------------------
+# A shadowing ref. git resolves `refs/tags/<x>` ahead of `refs/remotes/<x>`, so
+# a tag literally named `origin/<ref>` answers for the remote-tracking ref at
+# every site spelling it short. Both halves of the resolver are exposed: the
+# probe arm, which decides WHICH ref is named, and the emitted string, which
+# the consumer re-resolves (code-review-audit.yml runs its own
+# `git diff "${AUDIT_BASE}...HEAD"` on it). A shadow at HEAD empties the
+# reviewed delta and a member then earns a clearance having read nothing; one
+# behind the real base widens it to already-merged history.
+#
+# `rev-parse --verify --quiet` suppresses git's ambiguity warning, so the probe
+# accepts the tag with no diagnostic anywhere.
+#
+# Tags reach an Actions runner whatever `fetch-tags` says: the checkout's fetch
+# refspec carries `+refs/tags/*:refs/tags/*` explicitly, which overrides both
+# that input and `--no-tags`.
+#
+# Both tests assert what the emitted name RESOLVES to rather than how it is
+# spelled, so any unambiguous spelling satisfies them.
+# -----------------------------------------------------------------------------
+
+shadow_with_tag() {
+  git -C "$SANDBOX" tag "origin/$1" "$(git -C "$SANDBOX" rev-parse "$2")"
+}
+
+@test "a tag shadowing the declared base ref does not become the review base" {
+  add_commit a
+  add_commit b
+  set_origin_ref main main
+  set_origin_ref release main
+  shadow_with_tag release HEAD
+  export GITHUB_ACTIONS=true GITHUB_BASE_REF=release
+  run --separate-stderr run_in_sandbox
+  [ "$status" -eq 0 ]
+  [ -n "$output" ]
+  [ "$(sha_of "$output")" = "$(sha_of refs/remotes/origin/release)" ]
+}
+
+@test "a tag shadowing a deleted base ref does not satisfy the base-ref probe" {
+  add_commit a
+  add_commit b
+  set_origin_ref main main
+  shadow_with_tag deleted-branch HEAD
+  export GITHUB_ACTIONS=true GITHUB_BASE_REF=deleted-branch
+  run --separate-stderr run_in_sandbox
+  [ "$status" -eq 0 ]
+  [ -n "$output" ]
+  [ "$(sha_of "$output")" = "$(sha_of refs/remotes/origin/main)" ]
 }
 
 @test "trailer on parent with matching version → parent SHA" {

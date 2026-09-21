@@ -465,7 +465,7 @@ output_has() { grep -qF -- "$1" "$STEP_OUTPUT"; }
 
   run run_push_fixes_step "$body" "no-such-base-branch"
   [ "$status" -eq 0 ]
-  grep -qF 'cannot resolve origin/no-such-base-branch' <<<"$output"
+  grep -qF 'cannot resolve refs/remotes/origin/no-such-base-branch' <<<"$output"
   output_has "refused=true"
   output_has "refused_reason=governance-surface"
 }
@@ -742,7 +742,7 @@ EOF
   # nothing, and the commit is pushed with the gate silent.
   local body
   body="$(extract_step_body 'Commit and push self-heal')"
-  break_enumeration_call "diff --name-only -z origin/pr-branch..HEAD"
+  break_enumeration_call "diff --name-only -z refs/remotes/origin/pr-branch..HEAD"
   echo "test('x', () => { /* agent edit */ });" > "$SANDBOX/test/x.test.ts"
   git -C "$SANDBOX" commit --quiet -am "agent commits a refused-surface edit"
 
