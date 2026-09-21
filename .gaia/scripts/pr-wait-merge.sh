@@ -13,7 +13,7 @@
 #   0   MERGED        the merge landed
 #   3   CONFLICTING   the base branch conflicts with the pull request
 #   4   CHECK_FAILED  a REQUIRED check failed or was cancelled
-#   5   TIMEOUT       the attempt bound was spent with the merge still pending
+#   5   TIMEOUT       the attempt bound was spent with the pull request still open
 #   6   CLOSED        the pull request was closed without merging
 #   2   a refusal rather than a verdict: a usage error, no gh on PATH, or a gh
 #       that never answered across the whole bound (see $reads_ok below)
@@ -221,9 +221,9 @@ trap 'exit 143' TERM
 # answer at all (expired auth, a rate limit, a network outage, a pull-request
 # number that does not exist) prints nothing, and a blank state is otherwise
 # indistinguishable from a live pending merge: the loop would spend its whole
-# bound and report TIMEOUT, whose message asserts a merge is queued and will
-# land. Nothing would have established that there is a merge, a queue, or even
-# that pull request. `$reads_ok` below is what separates the two.
+# bound and report TIMEOUT, whose message reports the pull request as still
+# open. Nothing would have established that pull request, let alone any state
+# of it. `$reads_ok` below is what separates the two.
 # Each filter is named once and expanded at both call sites below. The two
 # explicit branches are deliberate, because `--repo` is optional and every way
 # of carrying an optional argument through in bash 3.2 (an array under
@@ -330,10 +330,10 @@ done
 # It reaches here from a gh that is present but can never answer: expired auth,
 # a rate limit, a network outage, or a pull-request number that does not exist,
 # which `is_uint` accepts because it checks shape rather than existence. The
-# TIMEOUT arm below would otherwise print "a merge queued with --auto completes
-# when its checks pass", having established neither a merge nor a queue nor
-# that pull request. Print no verdict token at all: a caller reading stdout
-# must not receive a word that looks like an answer.
+# TIMEOUT arm below would otherwise report the pull request as still open,
+# having established neither that pull request nor any state of it. Print no
+# verdict token at all: a caller reading stdout must not receive a word that
+# looks like an answer.
 if [ "$verdict" = "TIMEOUT" ] && [ "$reads_ok" -eq 0 ]; then
   printf '%s: the merge state of PR #%s could not be read on any of %s attempt(s).\n' \
     "$PROG" "$PR" "$ATTEMPTS" >&2
@@ -366,10 +366,13 @@ case "$verdict" in
     exit 4
     ;;
   *)
-    printf '%s: PR #%s had not merged after %s attempt(s) %s second(s) apart.\n' \
+    printf '%s: PR #%s was still open after %s attempt(s) %s second(s) apart.\n' \
       "$PROG" "$PR" "$ATTEMPTS" "$INTERVAL" >&2
-    printf 'This is not a failure: a merge queued with --auto completes when its checks\n' >&2
-    printf 'pass. Do no local cleanup until gh pr view %s --json state reads MERGED.\n' "$PR" >&2
+    printf 'This is not a failure, and it is not a report that a merge is pending: this\n' >&2
+    printf 'script queues no merge and reads none, so both states arrive here alike. A\n' >&2
+    printf 'merge queued with --auto completes when its checks pass; with none queued,\n' >&2
+    printf 'nothing is merging this pull request yet and the wait alone will not change\n' >&2
+    printf 'that. Do no local cleanup until gh pr view %s --json state reads MERGED.\n' "$PR" >&2
     exit 5
     ;;
 esac

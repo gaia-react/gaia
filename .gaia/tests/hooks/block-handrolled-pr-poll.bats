@@ -84,6 +84,31 @@ done'
   assert_blocked_by_exit
 }
 
+@test "a poll nested inside an if is blocked" {
+  # `then` opens a command position that no punctuation precedes, and a poll
+  # one level inside a conditional is an ordinary spelling rather than an
+  # evasive one.
+  run_hook 'if true; then until gh pr view 5 --json state; do sleep 1; done; fi'
+  assert_blocked_by_exit
+}
+
+@test "a poll inside a brace group is blocked" {
+  run_hook '{ while gh pr view 5 --json state; do sleep 1; done; }'
+  assert_blocked_by_exit
+}
+
+@test "a poll inside a command substitution is blocked" {
+  # `done` closes on the substitution's `)` here rather than on a space or a
+  # semicolon, which is what the `done` half of the pair has to admit.
+  run_hook 'x=$(for i in 1 2; do gh pr view 5 --json state; done)'
+  assert_blocked_by_exit
+}
+
+@test "a poll nested in another loop body is blocked" {
+  run_hook 'for n in 1 2; do until gh pr view $n --json state; do sleep 1; done; done'
+  assert_blocked_by_exit
+}
+
 @test "the same poll armed through Monitor is blocked" {
   # Monitor takes a raw shell command in the same field Bash does, so the loop
   # this hook exists to deny is armable through it verbatim. Binding only Bash

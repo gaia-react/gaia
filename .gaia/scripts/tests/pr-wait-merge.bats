@@ -171,6 +171,19 @@ tsv() {
   grep -qF -- 'This is not a failure' <<<"$output"
 }
 
+@test "TIMEOUT does not assert a queued merge it never established" {
+  # This script issues no `gh pr merge`, so the arm is reached identically by a
+  # merge queued behind its checks and by a pull request with nothing merging
+  # it. A message naming only the first tells the operator a merge is pending
+  # on a pull request where none is, which is the same over-assertion the
+  # zero-read refusal above exists to avoid making.
+  stub_gh "$(tsv OPEN MERGEABLE)" 0
+  run bash "$WAIT" --pr 7 --attempts 1 --interval 0
+  [ "$status" -eq 5 ]
+  grep -qF -- 'nothing is merging this pull request yet' <<<"$output"
+  grep -qE 'reads none|queues no merge' <<<"$output"
+}
+
 # --- a terminal verdict stops the loop, it does not merely report -------------
 #
 # Without this the MERGED test above passes on a script that reads the state
@@ -268,8 +281,8 @@ tsv() {
 # The failure this pins: a gh that is present but can never answer (expired
 # auth, a rate limit, a typo'd PR number) leaves the state blank on every
 # attempt, which is the same blank line a live pending merge would produce.
-# Reporting TIMEOUT there asserts a merge is queued and will land, having
-# established neither a merge nor a queue nor that PR.
+# Reporting TIMEOUT there asserts the pull request is still open, having
+# established neither that PR nor any state of it.
 
 @test "a gh that never answers refuses with exit 2 rather than reporting TIMEOUT" {
   stub_gh '' 0

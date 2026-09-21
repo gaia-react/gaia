@@ -109,10 +109,21 @@ HAS_MERGEABLE_RE='mergeable|CONFLICTING'
 # positive this hook must not have.
 #
 # The keyword has to sit at a command position: the start of the command, or
-# just after a separator or a NEWLINE. The newline is not decoration -- a
-# multi-line Bash command is the ordinary shape for a poll, and a class built
-# from `^` and the separator punctuation alone misses every one of them, which
-# is the whole failure mode wearing different whitespace.
+# just after a separator, a NEWLINE, a group opener, or one of the keywords
+# that open a block. The newline is not decoration -- a multi-line Bash command
+# is the ordinary shape for a poll, and a class built from `^` and the
+# separator punctuation alone misses every one of them, which is the whole
+# failure mode wearing different whitespace. `then`, `do`, `else` and `{` are
+# there for the same reason one level in: a poll nested inside an `if`, inside
+# another loop's body, or inside a brace group sits at a command position that
+# no punctuation precedes, and each of those is an ordinary spelling rather
+# than an evasive one. `done` accordingly closes before a `)` as well, which is
+# what a loop inside a command substitution ends on.
+#
+# This is an enumeration of command-position introducers, not a parser, so an
+# introducer outside the list walks past. That is the accepted direction: a
+# missed poll costs what the header's WHAT IT CATCHES paragraph describes,
+# while a wrong guess at shell grammar denies a legitimate command.
 #
 # `done` has to be present as its own word. Shell grammar closes every
 # `for`/`while`/`until` loop with one, so requiring it costs no real loop, and
@@ -120,9 +131,9 @@ HAS_MERGEABLE_RE='mergeable|CONFLICTING'
 # prose naming a loop inside a `--body` or a commit message usually does not
 # also carry the closing word. Prose that happens to carry both still trips
 # this, and the escapes above are the way out of that case.
-LOOP_KEYWORD_RE=$'(^|[;&|(\n])[[:space:]]*(until|while|for)[[:space:]]'
+LOOP_KEYWORD_RE=$'(^|[;&|({\n]|[[:space:]](then|do|else))[[:space:]]*(until|while|for)[[:space:]]'
 [[ "$command" =~ $LOOP_KEYWORD_RE ]] || exit 0
-DONE_RE='(^|[[:space:];&])done([[:space:]]|;|$)'
+DONE_RE='(^|[[:space:];&(])done([[:space:]]|[;)]|$)'
 [[ "$command" =~ $DONE_RE ]] || exit 0
 
 # --- does the loop read pull-request state? -----------------------------------
