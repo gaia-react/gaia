@@ -507,8 +507,10 @@ Then branch on where the run started.
    `gh pr merge` can exit success while the merge is still queued, so verify the terminal state before touching the local checkout with the bounded poll in `wiki/concepts/PR Merge Workflow.md` (`## Post-merge verification before cleanup`), which also stops early on every state that means the merge will never land.
 
    ```bash
-   bash .gaia/scripts/pr-wait-merge.sh --pr <N>
+   bash .gaia/scripts/pr-wait-merge.sh --pr <N> --attempts 20
    ```
+
+   The 20-attempt bound replaces the default 5, for the reason the sibling callers give: the merge queued above lands only after a fresh full CI run, which outlasts the ~2.5 minutes the default spends, so a default-bound wait would report `TIMEOUT` on essentially every run and the cleanup below would never be reached.
 
    - **`MERGED`** (exit 0) → clean up locally, then print the merged PR URL:
      ```bash

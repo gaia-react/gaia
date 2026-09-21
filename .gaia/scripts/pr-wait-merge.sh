@@ -74,8 +74,10 @@ set -uo pipefail
 PROG="pr-wait-merge.sh"
 
 # Defaults match the prose this replaces: five attempts, thirty seconds apart,
-# which is the ~2-3 minute bound its callers cite. `/gaia-release` and
-# `/gaia-harden` pass a longer bound because a full CI run outlasts it.
+# which is the ~2-3 minute bound its callers cite. A caller whose merge waits
+# on a full CI run passes a longer bound, because that outlasts this one; grep
+# the tree for `--attempts` to see which do rather than trusting a list here,
+# since a list is what goes stale when the next caller is added.
 DEFAULT_ATTEMPTS=5
 DEFAULT_INTERVAL=30
 
