@@ -26,7 +26,16 @@ if [ "$n" -ge 2 ]; then
   git commit -m "wiki: auto-commit $(date '+%Y-%m-%d %H:%M')" --no-verify >/dev/null 2>&1 || exit 0
 fi
 
-current_branch=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
+# The full refname, stripped here. `rev-parse --abbrev-ref` shortens to the
+# shortest UNAMBIGUOUS spelling exactly as `symbolic-ref --short` does, so a
+# tag named `main` makes it answer `heads/main`, the compare below misses, and
+# the whole on-main arm is skipped: no wiki branch pushed, no PR, no reset, and
+# the squashed commit left sitting on local main, which is the state this hook
+# exists to prevent. A detached HEAD now yields empty where the replaced read
+# printed the literal `HEAD`; neither equals `main`, so that arm is skipped as
+# before.
+current_branch=$(git symbolic-ref -q HEAD 2>/dev/null) || current_branch=""
+current_branch=${current_branch#refs/heads/}
 
 if [ "$current_branch" = "main" ]; then
   wiki_branch="wiki/$(date '+%Y-%m-%d-%H-%M')"
@@ -84,7 +93,10 @@ if [ "$current_branch" = "main" ]; then
     # --mixed preserves any non-wiki working-tree changes (e.g. README edits);
     # we then discard only wiki/ and .raw/ so they don't linger as unstaged files.
     git fetch origin main >/dev/null 2>&1
-    git reset --mixed origin/main >/dev/null 2>&1 || true
+    # Fully qualified: a tag named `origin/main` outranks the remote-tracking
+    # ref in a bare revspec, and this reset moves local main to whatever it
+    # names.
+    git reset --mixed refs/remotes/origin/main >/dev/null 2>&1 || true
     git checkout -- wiki/ .raw/ 2>/dev/null || true
     git clean -fd wiki/ .raw/ >/dev/null 2>&1 || true
   fi

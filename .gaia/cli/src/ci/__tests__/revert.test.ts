@@ -268,7 +268,16 @@ describe('ci-revert', () => {
       expect(ghArgsList[0]?.slice(0, 3)).toEqual(['pr', 'view', '99']);
       expect(gitArgsList[0]).toEqual(['fetch', 'origin', 'main']);
       expect(gitArgsList[1]?.[0]).toBe('symbolic-ref');
-      expect(gitArgsList[2]?.[0]).toBe('checkout');
+      // Pin the whole argv, not just the verb: the start point is what decides
+      // which commit the revert branch is cut from. git resolves a bare
+      // `origin/main` through refs/tags/ before refs/remotes/, so a tag of that
+      // name would silently supply it.
+      expect(gitArgsList[2]).toEqual([
+        'checkout',
+        '-b',
+        'gaia-ci/revert/gaia-ci/wiki/2026-05-09-0123456',
+        'refs/remotes/origin/main',
+      ]);
       expect(gitArgsList[3]?.slice(0, 3)).toEqual([
         'revert',
         '--no-edit',
@@ -428,6 +437,42 @@ describe('ci-revert', () => {
 
       // The ledger must not be written on a failed push.
       expect(() => readFileSync(sandbox.ledgerPath, 'utf8')).toThrow(/ENOENT/);
+    });
+
+    test('rolls back from detached HEAD onto the fully-qualified base ref', () => {
+      // priorBranch is empty only when the repo started on a detached HEAD, so
+      // the rollback checks the base ref out by name rather than a branch.
+      // That arm is the one that can force the working tree onto a shadowing
+      // tag's commit, and nothing else in this suite drives it.
+      gitSpy.mockImplementation((args) => {
+        if (args[0] === 'symbolic-ref') {
+          return {exitCode: 1, stderr: 'not a symbolic ref', stdout: ''};
+        }
+
+        if (args[0] === 'push') {
+          return {exitCode: 1, stderr: 'remote rejected', stdout: ''};
+        }
+
+        return {exitCode: 0, stderr: '', stdout: ''};
+      });
+
+      const exit = run(['open', '--pr', '99', '--label', 'gaia-ci', '--json'], {
+        cwd: sandbox.root,
+      });
+      expect(exit).not.toBe(0);
+
+      const gitArgsList = gitSpy.mock.calls.map(
+        (call: [readonly string[], unknown?]) => call[0]
+      );
+      const rollback = gitArgsList.find(
+        (a: readonly string[]) => a[0] === 'checkout' && a[1] === '--force'
+      );
+
+      expect(rollback).toEqual([
+        'checkout',
+        '--force',
+        'refs/remotes/origin/main',
+      ]);
     });
 
     test('refuses when the per-PR ledger lock is already held', () => {

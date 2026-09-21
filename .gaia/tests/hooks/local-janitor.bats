@@ -604,6 +604,56 @@ SHIM
   return 0
 }
 
+# plant_shadowing_tag: a tag literally named `origin/<base>`, pointed at the
+# CURRENT local base tip. git resolves a short `origin/<base>` revspec through
+# refs/tags/ before refs/remotes/, so every short spelling in the hook reads
+# this tag instead of the remote-tracking ref. Pointing it at the un-advanced
+# tip is what makes the difference observable: a fast-forward that reads the
+# tag is already there and moves nothing, while one that reads
+# refs/remotes/origin/<base> advances. `--verify --quiet` suppresses git's own
+# "refname is ambiguous" warning, so nothing diagnoses this anywhere.
+plant_shadowing_tag() {
+  local base="${1:-main}"
+  git -C "$REPO" tag "origin/$base" "refs/heads/$base"
+}
+
+@test "sweep 1: a tag named origin/<base> never decides the fast-forward target" {
+  make_repo
+  make_gone_branch "wiki-sync/2026-08-11-4444442"
+  advance_origin_main main
+  plant_shadowing_tag main
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  # The remote-tracking ref decides, not the tag. Spelled fully qualified on
+  # both sides here so the assertion itself cannot be shadowed by the fixture.
+  [ "$(git -C "$REPO" rev-parse refs/heads/main)" \
+    = "$(git -C "$REPO" rev-parse refs/remotes/origin/main)" ] || return 1
+  # And the tag is still where the fixture put it, so a green above means the
+  # hook read past it rather than the fixture having failed to plant it.
+  [ "$(git -C "$REPO" rev-parse refs/tags/origin/main)" \
+    != "$(git -C "$REPO" rev-parse refs/remotes/origin/main)" ] || return 1
+  return 0
+}
+
+@test "sweep 1: a tag named origin/<base> never decides base resolution" {
+  make_repo
+  # A merged-and-gone branch the reap SHOULD delete, so the assertion reds on
+  # a base that failed to resolve rather than on one that happened to be safe.
+  # The tag makes the short name `origin/main` ambiguous, which is what
+  # `symbolic-ref --short` resolves origin/HEAD against: it answers with the
+  # longer `remotes/origin/main`, the `origin/` strip below it no longer
+  # matches, and every consumer is handed a base that names nothing. The reap
+  # then fails closed and keeps a branch it should have taken.
+  make_gone_branch "wiki-sync/2026-08-13-6666666"
+  plant_shadowing_tag main
+  cd "$REPO"
+  run bash "$HOOK_ABS"
+  [ "$status" -eq 0 ]
+  branch_exists "wiki-sync/2026-08-13-6666666" && return 1
+  return 0
+}
+
 @test "sweep 1: base resolution honors a non-main default branch" {
   make_repo_default_branch trunk
   make_gone_branch "wiki-sync/2026-08-07-ffff007"

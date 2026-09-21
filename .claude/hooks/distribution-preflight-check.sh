@@ -384,13 +384,27 @@ if [ -n "$base_ref" ]; then
   base_ref="${base_ref#\'}"
 fi
 if [ -z "$base_ref" ]; then
-  base_ref=$( cd "$audited_root" && git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null \
-    | sed 's#^origin/##' || true)
+  # The FULL refname, not `--short`: `--short` answers with the shortest
+  # UNAMBIGUOUS spelling, so a tag named `origin/main` makes it answer
+  # `remotes/origin/main` and the `origin/` strip below no longer matches.
+  # In this file that leaves `base_ref` holding `remotes/origin/<name>`, which
+  # still resolves (gitrevisions tries `refs/<name>` first), so the ladder
+  # below fell through to its second candidate rather than breaking outright.
+  # Reading the full refname keeps the first candidate the one that hits.
+  base_ref=$( cd "$audited_root" && git symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null \
+    | sed 's#^refs/remotes/origin/##' || true)
 fi
 [ -n "$base_ref" ] || base_ref="main"
 
 base_rev=""
-for candidate in "origin/${base_ref}" "$base_ref"; do
+# Both ref candidates are spelled in full, for one reason applied twice: git's
+# revspec ladder tries `refs/tags/<name>` ahead of both `refs/heads/<name>` and
+# `refs/remotes/origin/<name>`, so a tag named `origin/<base>` would answer for
+# the first candidate and a tag named `<base>` for the second, and either one
+# decides this branch's changed set. The bare `$base_ref` stays last rather
+# than being dropped: an explicit `--base` may already arrive fully qualified,
+# and that spelling matches neither of the two forms above.
+for candidate in "refs/remotes/origin/${base_ref}" "refs/heads/${base_ref}" "$base_ref"; do
   if ( cd "$audited_root" && git rev-parse --verify --quiet "$candidate" >/dev/null 2>&1 ); then
     base_rev="$candidate"
     break

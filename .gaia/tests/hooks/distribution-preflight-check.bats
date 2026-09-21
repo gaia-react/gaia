@@ -524,6 +524,30 @@ assert_allow() {
   assert_deny
 }
 
+@test "a tag named <base> does not displace the local branch in the base ladder" {
+  # git's revspec ladder tries refs/tags/<name> ahead of refs/heads/<name>, so
+  # a bare `develop` candidate answers with a tag of that name. Planted on
+  # main's tip, that widens the three-dot changed set back to {shipped.txt,
+  # feature.txt} and the hook denies a branch it should allow.
+  install_maintainer_mock
+  git -C "$FIXTURE" tag develop main
+  run_hook "gh pr create --base develop --title x"
+  assert_allow
+}
+
+@test "a tag named origin/<base> does not displace the remote-tracking ref in the base ladder" {
+  # Same precedence rule one rung up: refs/tags/origin/develop outranks
+  # refs/remotes/origin/develop in a bare `origin/develop` candidate. The
+  # remote-tracking ref is built directly rather than fetched, because the
+  # fixture has no remote and only the ref's existence matters here.
+  install_maintainer_mock
+  git -C "$FIXTURE" update-ref refs/remotes/origin/develop \
+    "$(git -C "$FIXTURE" rev-parse refs/heads/develop)"
+  git -C "$FIXTURE" tag "origin/develop" main
+  run_hook "gh pr create --base develop --title x"
+  assert_allow
+}
+
 @test "does not treat --base-ref as the base flag" {
   # --base-ref must not resolve as --base: the value never reaches git, so the
   # hook falls back to main and denies on shipped.txt.
