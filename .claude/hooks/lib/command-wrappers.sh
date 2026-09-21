@@ -104,16 +104,20 @@
 # leading characters of every word that could stand in the command-word slot,
 # and a wrapper's name is one of those, so it needs the names before it has a
 # word to strip. A `case` statement cannot be asked what it matches, which is
-# why this is a second spelling of the same set rather than a derivation of it;
-# what keeps the two from drifting is the pin in
-# .gaia/tests/hooks/verb-arming-lib.bats, which parses the rows out of the
-# table below and fails on any difference in either direction.
+# why this is a second spelling of the same set rather than a derivation of it.
+# Adding a row below means adding its name here in the same edit.
 #
 # A name here that the table does not carry costs a wider pre-filter, which is
 # cost and not correctness. A name the table carries and this omits is the
 # direction that matters: the pre-filter turns the text away before the strip
 # ever runs, so the wrapper hides the command word exactly as it did before the
-# strip existed. The pin is what makes that a red suite rather than a silence.
+# strip existed, silently.
+# gaia:maintainer-only:start
+# What keeps the two from drifting is the pin in
+# .gaia/tests/hooks/verb-arming-lib.bats, which parses the rows out of the table
+# below and fails on any difference in either direction, so the silent half
+# above is a red suite rather than a silence.
+# gaia:maintainer-only:end
 # shellcheck disable=SC2034 # read by lib/verb-arming.sh, which sources this file
 GAIA_COMMAND_WRAPPER_NAMES='env command exec nice nohup setsid stdbuf timeout xargs'
 
