@@ -103,7 +103,7 @@ SHIM
   # And the tag is still ahead of it, so a green above means the hook read past
   # the tag rather than the fixture having failed to plant a distinguishing one.
   [ "$(git -C "$REPO" rev-parse refs/tags/origin/main)" != "$remote_tip" ] || return 1
-  return 0
+  true
 }
 
 @test "non-main branch: never resets working tree (regression for silent-loss bug)" {
