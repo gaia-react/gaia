@@ -70,6 +70,34 @@ run_hook_monitor() {
   assert_blocked_by_exit
 }
 
+@test "an arithmetic for loop reading .state is blocked" {
+  # The arithmetic spellings close the keyword on `(` rather than on
+  # whitespace. They are the same keyword the space-separated tests above
+  # drive, one keystroke from the poll in the recurrence test, and they poll
+  # the same way: exiting only on MERGED, so a CONFLICTING base never ends
+  # them.
+  run_hook 'for((i=0;i<20;i++)); do gh pr view 42 --json state --jq .state; sleep 30; done'
+  assert_blocked_by_exit
+}
+
+@test "an arithmetic while loop reading .state is blocked" {
+  run_hook 'while((n<20)); do gh pr view 42 --json state --jq .state; sleep 30; done'
+  assert_blocked_by_exit
+}
+
+@test "an arithmetic loop on gh pr checks is blocked" {
+  run_hook 'for((i=0;i<20;i++)); do gh pr checks 42 --required; sleep 30; done'
+  assert_blocked_by_exit
+}
+
+@test "an arithmetic loop that reads mergeable is allowed" {
+  # The stand-down has to survive the widened keyword close: admitting the
+  # arithmetic spelling must not cost a caller who already asked for the
+  # property this guard exists to require.
+  run_hook 'for((i=0;i<20;i++)); do [ "$(gh pr view 42 --json mergeable --jq .mergeable)" = CONFLICTING ] && break; sleep 30; done'
+  assert_allowed_by_exit
+}
+
 @test "a multi-line poll is blocked (the loop keyword follows a newline)" {
   run_hook 'gh pr merge 42 --auto
 for i in 1 2 3; do

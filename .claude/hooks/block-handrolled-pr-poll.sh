@@ -131,7 +131,15 @@ HAS_MERGEABLE_RE='mergeable|CONFLICTING'
 # prose naming a loop inside a `--body` or a commit message usually does not
 # also carry the closing word. Prose that happens to carry both still trips
 # this, and the escapes above are the way out of that case.
-LOOP_KEYWORD_RE=$'(^|[;&|({\n]|[[:space:]](then|do|else))[[:space:]]*(until|while|for)[[:space:]]'
+# The keyword closes on an opening parenthesis as well as on whitespace,
+# because the arithmetic spellings `for((i=0;i<20;i++))` and `while((n<20))`
+# put one there instead. Those are the same keyword from the list above, not
+# an introducer outside it, so admitting them is not a guess at grammar: a
+# whitespace-only close denies `for i in 1 2 3; do <poll>; done` while allowing
+# the identical poll one keystroke away, which is the shape this guard exists
+# to catch. The `done` conjunct and the tail-scoped state read below still gate
+# the match, so nothing here widens what the guard reaches on prose.
+LOOP_KEYWORD_RE=$'(^|[;&|({\n]|[[:space:]](then|do|else))[[:space:]]*(until|while|for)[[:space:](]'
 [[ "$command" =~ $LOOP_KEYWORD_RE ]] || exit 0
 
 # Everything after the loop introducer, captured HERE because the next `[[ =~ ]]`

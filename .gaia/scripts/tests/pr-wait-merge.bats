@@ -336,7 +336,13 @@ tsv() {
   # contract is that nothing there may mislead the operator about what was
   # read. Asserted as a positive match on the bad case, per
   # .claude/rules/bats-assertions.md.
-  grep -qF -- 'integer expected' <<<"$output" && return 1
+  #
+  # The pattern carries both interpreters' wording because the two differ and
+  # the suite runs under either: bash 5 prints `integer expected`, while the
+  # bash 3.2 that bats resolves to on a stock Mac prints `integer expression
+  # expected`. Matching the bash 5 literal alone leaves this test unable to
+  # fail on the interpreter it most often runs under locally.
+  grep -qE -- 'integer (expression )?expected' <<<"$output" && return 1
   [ "$status" -eq 5 ]
 }
 
