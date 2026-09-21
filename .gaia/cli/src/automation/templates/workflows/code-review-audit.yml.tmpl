@@ -182,8 +182,9 @@ jobs:
           echo "base=${base}" >> "$GITHUB_OUTPUT"
           # The audit key's first half must be a SHA. `base` above is a ref name
           # on the two commonest paths -- the no-anchor answer (the first audit
-          # of any PR) and the helper-failure fallback are both the literal
-          # `refs/remotes/origin/main` -- and audit-scope-digest.sh builds its
+          # of any PR, `refs/remotes/origin/<the branch this PR merges into>`)
+          # and the helper-failure fallback (the literal
+          # `refs/remotes/origin/main`) -- and audit-scope-digest.sh builds its
           # scope-file path from it, so a slash there escapes into the path and
           # the write fails.
           # Resolve it once here and let the digest calls key on this, while the

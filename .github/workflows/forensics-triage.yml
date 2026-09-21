@@ -475,7 +475,14 @@ jobs:
         run: |
           set -eu
           git fetch origin main
-          git checkout -B "$FIX_BRANCH" origin/main
+          # Qualified for the reason code-review-audit.yml's own base resolution
+          # states: a tag named `origin/main` resolves ahead of the
+          # remote-tracking ref, and this job's fetch-depth: 0 checkout pulls
+          # tags whatever `fetch-tags` says. A checkout fails loudly on the
+          # ambiguity rather than branching from the tag, but it dies under
+          # `set -eu` after the job already holds contents: write and has marked
+          # the issue triaged, leaving the auto-fix half-done.
+          git checkout -B "$FIX_BRANCH" refs/remotes/origin/main
           git config user.name 'gaia-forensics-triage[bot]'
           git config user.email 'gaia-forensics-triage[bot]@users.noreply.github.com'
 

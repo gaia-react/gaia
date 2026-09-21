@@ -338,8 +338,14 @@ resolve_main_ref() {
   fi
   # Last resort: emit the main ref anyway (matches the existing workflow's
   # assumption; the caller's diff errors loudly if it truly can't resolve).
-  # Qualified like every arm above, so an unresolvable last resort stays
-  # unresolvable rather than becoming satisfiable by a shadowing tag.
+  # Qualified like the two remote-tracking arms above, so an unresolvable last
+  # resort stays unresolvable rather than becoming satisfiable by a shadowing
+  # tag. The local-branch arm just above is NOT qualified: a tag named `main`
+  # still answers for it, on the same terms and just as silently. That arm is
+  # reached only when no remote-tracking ref resolves at all, which neither a
+  # clone nor the Actions checkout produces, and qualifying it changes the
+  # emitted contract that several suites pin; it is recorded rather than
+  # closed here.
   printf 'refs/remotes/origin/main'
 }
 main_ref="$(resolve_main_ref)"
