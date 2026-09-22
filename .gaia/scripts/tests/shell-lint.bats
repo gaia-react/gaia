@@ -429,6 +429,14 @@ STUB
   [ "$status" -eq 1 ]
   grep -qF -- "shell-lint FAILED" <<<"$output"
   grep -qF -- "stub failure: first dispatch slot" <<<"$output"
+  # Every guard here is running from an override, and the gate owes a notice
+  # naming each one. Without this, deleting that notice leaves the whole suite
+  # green while a substituted guard becomes invisible again: the run reports
+  # the same banners, the same exit status and the same verdict as a real one,
+  # and the only residue is one `: clean` line missing among nineteen, which
+  # nothing looks for. The sibling SHELL_LINT_BASH32 seam is pinned the same
+  # way, by asserting the substituted interpreter it names.
+  grep -qF -- "$first: GUARD OVERRIDE" <<<"$output"
   local p
   while IFS= read -r p; do
     case "$p" in lint-*) ;; *) continue ;; esac

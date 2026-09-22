@@ -222,14 +222,15 @@ jobs:
           sudo install -m 0755 "shellcheck-v${SHELLCHECK_VERSION}/shellcheck" /usr/local/bin/shellcheck
           rm -rf "shellcheck-v${SHELLCHECK_VERSION}" shellcheck.tar.xz
           shellcheck --version
-      # Ubuntu's default `awk` is already mawk, so this changes no behavior
-      # today; it is worth pinning anyway so the gate's verdict does not
-      # depend on which image the runner happened to pick. The guards
+      # Ubuntu's default `awk` is already mawk, so this asserts no behavior
+      # change today; it is worth asserting anyway so the gate's verdict does
+      # not depend on which image the runner happened to pick. The guards
       # under .gaia/scripts/guard-awk-lib.sh resolve GAIA_AWK to mawk first,
       # and this asserts that resolution finds what it expects to find rather
-      # than trusting the image. Distro package, not a digest-pinned tarball:
-      # mawk carries none of shellcheck's supply-chain exposure above, so the
-      # weight of that precedent does not transfer.
+      # than trusting the image. Nothing is installed here and nothing needs a
+      # digest, so the shellcheck step's supply-chain reasoning above does not
+      # transfer: mawk ships with the image, and the body below says why
+      # asserting its presence is the whole of the job.
       - if: steps.filter.outputs.shell == 'true'
         name: Assert mawk is present and identifies as mawk
         run: |
