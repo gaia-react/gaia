@@ -411,14 +411,14 @@ mkdir -p .gaia/local/debt && : > .gaia/local/debt/refresh-requested
 
 ## Drive the PR to merge
 
-Once the PR is up, drive it straight to merge with no confirmation prompt: the fix unit (single issue or confirmed batch) was chosen up front, so this back half runs autonomously, exactly like `/update-deps` merging a dep-bump PR on a `main` run. The only things that stop the flow here are genuine blockers, a rejected push, a marker that never goes green, the audit gate's three-round session cap, a `--auto` merge still queued when the poll window closes, a pull request closed without merging, or a merge wait that refused because it read nothing; those are reported, not worked around. On a controlled stop before merge, gate never green, rejected push, or another blocker/observable abort, strip `in-progress` from every claimed member (`gh issue edit <n> --remove-label in-progress`) and touch the sentinel, so the freed issue re-enters the offer and the count. (Run ends here; see `## Cost record (run end)`, passing `--github-*` only if the PR was already opened before the stop.)
+Once the PR is up, drive it straight to merge with no confirmation prompt: the fix unit (single issue or confirmed batch) was chosen up front, so this back half runs autonomously, exactly like `/update-deps` merging a dep-bump PR on a `main` run. The only things that stop the flow here are genuine blockers, a rejected push, a marker that never goes green, the audit gate's three-round session cap, or any non-`MERGED` verdict the merge wait returns (the arm list below states what each one does); those are reported, not worked around. On a controlled stop before merge, gate never green, rejected push, or another blocker/observable abort, strip `in-progress` from every claimed member (`gh issue edit <n> --remove-label in-progress`) and touch the sentinel, so the freed issue re-enters the offer and the count. (Run ends here; see `## Cost record (run end)`, passing `--github-*` only if the PR was already opened before the stop.)
 
-Four endings look like that controlled stop and are not it. Each keeps its claim, because the work may still be going somewhere:
+Four endings look like that controlled stop and are not it. Each keeps its claim, because the work may still be going somewhere; the arm list below states what each one reports, and `## Cost record (run end)` covers when its record is written:
 
-- **A `--auto` merge still queued when the poll window closes.** It is still progressing toward merge, so the claim stays in place until it resolves (below). Record the cost as at any run end, passing the `--github-*` flags, since the PR is open.
-- **A stop at the three-round session cap** (`wiki/concepts/PR Merge Workflow.md`, `#### The three-round session cap`). The third round's fixes are pushed, the PR stays open, and the work resumes in the session a human starts from the continuation prompt this run emits, so the claim stays in place. Record the cost as at any run end, passing the `--github-*` flags, since the PR is open.
-- **A merge wait that refused (exit 2) rather than returning a verdict.** It read nothing, so it establishes neither that the merge landed nor that it did not, and the queued merge may land moments later. Assert no state for the pull request and leave the claim in place. Record the cost as at any run end, passing the `--github-*` flags, since the PR is open.
-- **A `CHECK_FAILED` verdict.** The merge stays queued and lands once the failing check is fixed, so the claim stays in place. Record the cost as at any run end, passing the `--github-*` flags, since the PR is open.
+- **A `--auto` merge still queued when the poll window closes.** It is still progressing toward merge, so the claim stays in place until it resolves.
+- **A stop at the three-round session cap** (`wiki/concepts/PR Merge Workflow.md`, `#### The three-round session cap`). The third round's fixes are pushed, the PR stays open, and the work resumes in the session a human starts from the continuation prompt this run emits, so the claim stays in place.
+- **A merge wait that refused (exit 2) rather than returning a verdict.** It read nothing, so it establishes neither that the merge landed nor that it did not, and the queued merge may land moments later. Assert no state for the pull request and leave the claim in place.
+- **A `CHECK_FAILED` verdict.** The merge stays queued and lands once the failing check is fixed, so the claim stays in place.
 
 A `CLOSED` verdict is not one of them: it is read from GitHub and it is terminal, so it releases the unit exactly as the controlled stop above does.
 
@@ -449,7 +449,7 @@ Resolve the PR to completion through `wiki/concepts/PR Merge Workflow.md`, read 
   - **Feature-branch isolation:** `git checkout main && git pull`, `git branch -D <branch>`, `git fetch --prune`. (Run ends here; see `## Cost record (run end)`.)
   - **Worktree mode:** run Post-merge worktree cleanup below instead. Do not `git branch -D` a worktree-held branch.
 
-  If it is still queued when the poll window closes, if the pull request read `CLOSED`, or if the wait refused, the run also ends there (the report above and the return without cleanup); see `## Cost record (run end)`.
+  Every arm above but `MERGED` and `CONFLICTING` ends the run there (the report above and the return without cleanup); see `## Cost record (run end)`.
 
 Each `Closes #N` line in the PR body auto-closes its issue on merge, so on a batch, the single merge closes every member issue and no separate close call is needed for any of them.
 
