@@ -389,9 +389,9 @@ function classifyKind(testNode) {
 const lines = [];
 
 // unmatchable: true once an enclosing describe's own title is uncomputable,
-// whether because it is a `.each` (a per-row runtime expansion) or because
-// titleOf otherwise returned null (a template substitution, an identifier, or
-// any other non-literal title argument). Either way the block's runtime name
+// whether because it carries a title-expanding modifier (a per-row runtime
+// expansion) or because titleOf otherwise returned null (a template
+// substitution, an identifier, or any other non-literal title argument). Either way the block's runtime name
 // is not the declared source text, so every descendant's fullName would be
 // built on a prefix that does not exist anywhere but at runtime; an
 // otherwise-static title further down cannot repair that, so the state

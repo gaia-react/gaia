@@ -124,8 +124,13 @@ else
         #
         # The `|&;()` split above severs a `&`-carrying redirection (2>&1)
         # mid-token: it splits at the `&`, so only the operator head (2>)
-        # reaches this segment and the rest becomes an orphan segment. That
-        # head still lands here as a token, covered by the same filter.
+        # reaches this segment and the rest becomes an orphan segment on its
+        # own line, never matched into $test_seg. That head still lands here
+        # as a token, but it is caught by the bare-operator arm just below
+        # (which arms `redir`), not by the `[<>]` filter. Arming `redir` on
+        # it is harmless: the split guarantees the head is the last token on
+        # this line, so there is no following token for the armed lookahead
+        # to wrongly consume.
         if (redir) { redir = 0; continue }
         if (tok ~ /^[0-9]*[<>]+$/) { redir = 1; continue }
         if (tok ~ /^-/) continue                 # flags: --run, --reporter, -t, …
@@ -150,7 +155,14 @@ else
   [ -n "$(printf '%s' "$scope" | tr -d '[:space:]')" ] || exit 0
 
   mkdir -p "$tmp_dir" 2>/dev/null || true
-  json_file=$(mktemp "${tmp_dir}/vitest-XXXXXX.json" 2>/dev/null || echo "")
+  # BSD mktemp (macOS) only substitutes a TRAILING run of X's; an embedded
+  # "-XXXXXX.json" template is read as the literal filename, so a second
+  # concurrent call collides with the first and fails outright (mkstemp
+  # failed … File exists), which would silently disable capture until the
+  # leftover file is removed by hand. The trailing-X form randomizes on both
+  # BSD and GNU mktemp. vitest's own reporter is selected by --reporter=json,
+  # not by the outputFile extension, so dropping .json here is safe.
+  json_file=$(mktemp "${tmp_dir}/vitest-json-XXXXXX" 2>/dev/null || echo "")
   [ -n "$json_file" ] || exit 0
   cleanup_json=1
 

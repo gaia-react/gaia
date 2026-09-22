@@ -147,6 +147,26 @@ assert_scope_survives_redirect() {
   return 0
 }
 
+# Runs a real scope arg with a SPACED redirection (operator and target as two
+# whitespace-separated tokens, e.g. "2> err.log") appended, via the stub pnpm,
+# and asserts the scope arg reaches vitest's argv while the target's exact
+# line does not. Unlike assert_scope_survives_redirect above, a spaced
+# redirection's target carries no angle bracket, so "no `<`/`>` in the args"
+# cannot see it leaking as a bogus extra scope token; asserting the target's
+# exact line is absent is the check that can.
+assert_spaced_redirect_target_absent() {
+  local redir="$1" target="$2"
+  stub_pnpm
+  STUB_PNPM_JSON_SRC="$REPO_ROOT/$JSON_REL/assertion-fail.json"
+  export STUB_PNPM_JSON_SRC
+  run_capture "Bash" "pnpm test --run $FIX_REL/mixed-pass-fail.test.ts $redir"
+  [ "$status" -eq 0 ]
+  [ "$(ledger_lines)" -eq 1 ]
+  grep -qF -- "$FIX_REL/mixed-pass-fail.test.ts" "$STUB_PNPM_ARGS_FILE"
+  grep -qxF "$target" "$STUB_PNPM_ARGS_FILE" && return 1
+  return 0
+}
+
 # --- failing run records one RED per genuinely-failing test -------------------
 
 @test "assertion-fail run appends exactly one RED for the failing test" {
@@ -330,6 +350,28 @@ assert_scope_survives_redirect() {
   [ "$(ledger_lines)" -eq 2 ]
 }
 
+@test "a leftover tempfile at the historical mktemp name does not disable capture" {
+  # Regression guard: BSD mktemp only substitutes a TRAILING run of X's, so
+  # the hook's old "vitest-XXXXXX.json" template resolved to that literal
+  # name and a leftover file there made every later mktemp call fail, which
+  # silently disabled capture until the leftover was removed by hand. Uses
+  # stub_pnpm (not RED_CAPTURE_JSON_OVERRIDE) so this drives the hook's real
+  # mktemp call rather than the override seam that bypasses it.
+  local tmp_dir
+  tmp_dir="$(dirname "$LEDGER_ABS")/.tmp"
+  mkdir -p "$tmp_dir"
+  touch "$tmp_dir/vitest-XXXXXX.json"
+
+  stub_pnpm
+  STUB_PNPM_JSON_SRC="$REPO_ROOT/$JSON_REL/assertion-fail.json"
+  export STUB_PNPM_JSON_SRC
+  run_capture "Bash" "pnpm test --run $FIX_REL/mixed-pass-fail.test.ts"
+  [ "$status" -eq 0 ]
+  [ "$(ledger_lines)" -eq 1 ]
+
+  rm -f "$tmp_dir/vitest-XXXXXX.json"
+}
+
 # --- redirection tokens do not leak into the scope arg (gaia-react/gaia#2225) -
 #
 # These drive the REAL (non-override) scope-parsing code: the override seam
@@ -395,39 +437,15 @@ assert_scope_survives_redirect() {
 # exact line is absent from the stub's recorded argv.
 
 @test "a narrow scope survives a trailing spaced stdout-redirect (> out.log)" {
-  stub_pnpm
-  STUB_PNPM_JSON_SRC="$REPO_ROOT/$JSON_REL/assertion-fail.json"
-  export STUB_PNPM_JSON_SRC
-  run_capture "Bash" "pnpm test --run $FIX_REL/mixed-pass-fail.test.ts > out.log"
-  [ "$status" -eq 0 ]
-  [ "$(ledger_lines)" -eq 1 ]
-  grep -qF -- "$FIX_REL/mixed-pass-fail.test.ts" "$STUB_PNPM_ARGS_FILE"
-  grep -qxF "out.log" "$STUB_PNPM_ARGS_FILE" && return 1
-  return 0
+  assert_spaced_redirect_target_absent '> out.log' 'out.log'
 }
 
 @test "a narrow scope survives a trailing spaced stderr-redirect (2> err.log)" {
-  stub_pnpm
-  STUB_PNPM_JSON_SRC="$REPO_ROOT/$JSON_REL/assertion-fail.json"
-  export STUB_PNPM_JSON_SRC
-  run_capture "Bash" "pnpm test --run $FIX_REL/mixed-pass-fail.test.ts 2> err.log"
-  [ "$status" -eq 0 ]
-  [ "$(ledger_lines)" -eq 1 ]
-  grep -qF -- "$FIX_REL/mixed-pass-fail.test.ts" "$STUB_PNPM_ARGS_FILE"
-  grep -qxF "err.log" "$STUB_PNPM_ARGS_FILE" && return 1
-  return 0
+  assert_spaced_redirect_target_absent '2> err.log' 'err.log'
 }
 
 @test "a narrow scope survives a leading spaced input-redirect (< input)" {
-  stub_pnpm
-  STUB_PNPM_JSON_SRC="$REPO_ROOT/$JSON_REL/assertion-fail.json"
-  export STUB_PNPM_JSON_SRC
-  run_capture "Bash" "pnpm test --run $FIX_REL/mixed-pass-fail.test.ts < input"
-  [ "$status" -eq 0 ]
-  [ "$(ledger_lines)" -eq 1 ]
-  grep -qF -- "$FIX_REL/mixed-pass-fail.test.ts" "$STUB_PNPM_ARGS_FILE"
-  grep -qxF "input" "$STUB_PNPM_ARGS_FILE" && return 1
-  return 0
+  assert_spaced_redirect_target_absent '< input' 'input'
 }
 
 @test "an unscoped run with only a spaced stdout-redirect hits the no-scope skip (> out)" {
