@@ -401,8 +401,14 @@ awk "{print}" file' > "$TMP/.gaia/scripts/untracked.sh"
 @test "removing the whole-tree roster row reds the candidate sweep" {
   TMP="$( new_tmp )"
   local mirror="$TMP/mirror" f
-  mkdir -p "$mirror/.gaia/tests/lib" "$mirror/.gaia/scripts"
+  mkdir -p "$mirror/.gaia/tests/lib" "$mirror/.gaia/tests/helpers" "$mirror/.gaia/scripts"
   cp "$REPO_ROOT/.gaia/tests/lib/whole-tree-invariants.bats" "$mirror/.gaia/tests/lib/"
+  # That suite's setup() sources helpers beside it, resolved from its own
+  # BATS_TEST_DIRNAME, so a mirror holding only the suite aborts in setup and
+  # the control below reds for the mirror rather than for the missing row.
+  # Mirror the whole helpers directory rather than the one file setup happens
+  # to source today, so a helper added there does not silently break this.
+  cp "$REPO_ROOT"/.gaia/tests/helpers/*.sh "$mirror/.gaia/tests/helpers/"
   for f in "$REPO_ROOT"/.gaia/scripts/lint-*.sh; do
     printf '#!/usr/bin/env bash\nexit 0\n' > "$mirror/.gaia/scripts/${f##*/}"
   done
