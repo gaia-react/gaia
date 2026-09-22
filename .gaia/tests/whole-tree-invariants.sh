@@ -45,26 +45,31 @@
 # between two honest samples, so re-measure the WHOLE paragraph rather than
 # reconcile a disagreement or patch one number. Sampled on an otherwise idle
 # Apple M2 Pro (12 cores, macOS 27) in 2026-09, tree green (every member
-# passing): the serial sum across WTI_SCRIPTS and WTI_BATS is ~445s, dominated
-# by two of them -- the WTI_BATS member at ~242s and shell-lint.sh at ~122s as
-# a member of this runner -- while the other 21 WTI_SCRIPTS members total
-# roughly 31s between them, the heaviest being check-script-capabilities.sh at
-# ~14s (it walks the invocation closure of every allowlisted script) and
-# check-registry-source-literals.sh at ~6s.
+# passing), with mawk and a bats --jobs backend (GNU parallel) resolvable on
+# PATH and WTI_JOBS/WTI_BATS_JOBS at their defaults (8 each): the forked
+# aggregate this script reports is ~145s. Two members account for nearly all
+# of it even under the fork: the WTI_BATS member (the shard-partition suite),
+# run under bats --jobs 8, costs ~87s standalone (~242s forced serial, so the
+# backend buys it roughly 2.8x); and shell-lint.sh as a member costs ~43s. The
+# other 21 WTI_SCRIPTS members total roughly 32s between them, the heaviest
+# being check-script-capabilities.sh at ~14s (it walks the invocation closure
+# of every allowlisted script) and check-registry-source-literals.sh at ~6s.
 #
-# Forking WTI_SCRIPTS and WTI_BATS under a WTI_JOBS-bounded pool collapses
-# that serial sum toward its slowest member rather than the total, because
-# the two long members above now run alongside the rest instead of after
-# them. The post-fork parallel aggregate, sampled the same way immediately
-# after this runner's dispatch wave landed, on the same idle M2 Pro: ~333s,
-# against the ~445s serial sum above. It does not reach the ~242s the
-# WTI_BATS member alone costs, and that gap is the point: a bounded pool
-# collapses toward its slowest member only when the rest fit beside it, and
-# here they do not, because they contend for the same cores. Total CPU is
-# unchanged across the two samples (~7m20 user, ~5m35 sys either way), so
-# what the fork buys is overlap, not less work, and 12 cores do not absorb
-# the peak -- shell-lint.sh alone spends ~170s of CPU inside its own ~57s,
-# and it runs alongside the bats member rather than after it.
+# The aggregate does not collapse toward the ~87s slowest member, because
+# total CPU is close to fixed rather than shrinking under the fork: this
+# run's user+sys time (~7m user, ~6m19 sys) sits within a few percent of the
+# same total on an unforked serial run of every member. The pool buys
+# overlap on 12 cores, not less work, so the two heavy members still contend
+# with each other and with the lighter 21 for the same cores.
+#
+# Both figures the aggregate leans on are conditional, and the runner
+# degrades rather than refusing when either input is absent (see
+# "Concurrency" below and this plan's README.md FC-7). Absent a bats --jobs
+# backend, the WTI_BATS member runs serially and becomes the pool's long
+# pole at its own standalone cost, roughly the ~242s above rather than ~87s.
+# Absent mawk, the awk-tokenizer guards shell-lint.sh folds in resolve a
+# slower interpreter; the per-guard breakdown lives in shell-lint.sh's own
+# header rather than repeated here.
 #
 # A second host type is on record for one member only. shell-lint.sh is its
 # own CI gate, and that job's shellcheck step measures roughly 85-160s on
@@ -83,14 +88,12 @@
 # There is one tier rather than a fast default plus a named slower tier. A
 # split is worth its second name only once the honest set is slow enough that
 # people skip it, and an aggregate slow enough to skip is worse than none; the
-# parallel aggregate stated in the Runtime paragraph above, against the price
-# of an audit round, is still not that. The margin is narrower than it reads,
-# though, and two things are worth weighing the next time these figures are
-# taken rather than re-argued here: nearly the whole aggregate is still two
-# members even under the fork, because the pool overlaps them with the rest
-# rather than shortening either one, and the cost exclusion recorded in
-# WTI_EXCLUDED below was granted at a standalone figure smaller than what
-# shell-lint.sh now costs inline.
+# ~145s aggregate stated in the Runtime paragraph above, against the price of
+# an audit round, is not that, and the margin is comfortable rather than
+# narrow: shell-lint.sh's own inline cost (~43s) now sits below the 66-70s
+# standalone figure that earned check-hook-capabilities.sh its own cost
+# exclusion in WTI_EXCLUDED below, so that exclusion's threshold and this
+# runner's own heaviest inline member no longer sit in tension.
 #
 # Re-measure the WHOLE paragraph, not the figure being edited. Only the member
 # COUNT below is machine-checked, so every number here decays independently:
@@ -108,12 +111,28 @@
 # to be re-visited rather than drifting unnoticed again.
 #
 # What the lever does not catch, stated so it is not mistaken for more than it
-# is: only WTI_SCRIPTS_COUNT_ASOF is machine-checked. The runtime paragraph
-# above therefore names the member set rather than restating its cardinality in
-# prose, so there is no second, unchecked copy of the count left to drift
-# against the checked one; and a member swapped for another, or simply
-# grown, holds the count, so the runtime figures can go stale with the lever
-# satisfied.
+# is: only WTI_SCRIPTS_COUNT_ASOF is machine-checked, and a member swapped for
+# another, or simply grown, holds the count, so the runtime figures above can
+# go stale with the lever fully satisfied. Nothing cheap correlates with cost
+# across every configuration this runner supports (a bats --jobs backend
+# present or absent, mawk present or absent, WTI_JOBS/WTI_BATS_JOBS at their
+# defaults or overridden), so the figures above are maintained by convention
+# rather than by a machine check, and this header can be wrong while every
+# gate stays green.
+#
+# What closes part of that gap: every full run prints its own measured
+# aggregate and the configuration that produced it (the worker cap, whether a
+# bats --jobs backend was found, the resolved awk), unconditionally, with no
+# threshold and no comparison against the figures above. That makes a
+# discrepancy visible to whoever is already looking at the run, which this
+# comment cannot be. Two narrower designs were considered and rejected. A
+# thresholded warning against the figures above fires on every
+# guaranteed-working degraded configuration this runner supports (no backend,
+# no mawk, a non-default WTI_JOBS or WTI_BATS_JOBS; see FC-7 in this plan's
+# README.md), which makes it an always-firing notice on a working state,
+# noise rather than signal. A baseline kept per configuration is a matrix of
+# hand-kept figures where the problem was one hand-kept figure, and it decays
+# faster than the thing it protects.
 #
 # No member is ever skipped. A missing member path, and a bats member with no
 # `bats` on PATH, both count as failures rather than passing quietly, because a
@@ -504,7 +523,13 @@ main() {
     return 2
   fi
 
-  local have_bats path
+  # SECONDS resets and starts counting here, so the self-report below times
+  # the run itself rather than the interpreter's own startup. bash's built-in
+  # $SECONDS is whole seconds and process-local, so it needs nothing torn
+  # down and cannot leak into a forked member's own environment.
+  SECONDS=0
+
+  local have_bats path wti_backend_found
   local pool_paths pool_pids done_paths done_status wti_bats_extra_args
   pool_paths=()
   pool_pids=()
@@ -538,6 +563,10 @@ main() {
   have_bats=1
   command -v bats >/dev/null 2>&1 || have_bats=0
 
+  # wti_backend_found feeds only the self-report at the end of this
+  # function; it plays no role in what wti_bats_extra_args ends up holding.
+  wti_backend_found=no
+
   # WTI_BATS_JOBS only ever reaches the shard-partition member when a
   # backend is actually there to answer it; a missing bats has already been
   # handled above and never reaches this branch. No backend degrades: the
@@ -547,6 +576,7 @@ main() {
   # release-excluded, so no adopter runs this suite or needs either backend.
   if [ "$have_bats" -eq 1 ]; then
     if wti_bats_backend_probe; then
+      wti_backend_found=yes
       wti_bats_extra_args=(--jobs "$(detect_wti_bats_jobs)")
     else
       printf '%s\n' "############################################################" >&2
@@ -606,6 +636,30 @@ $WTI_BATS
 EOF
 
   printf '\n===== %s\n' "$PROG"
+
+  # Self-report: printed unconditionally on every full run, pass or fail,
+  # with no threshold and no comparison against the Runtime paragraph above
+  # (see "What the lever does not catch" there for why a threshold is
+  # rejected). This is what makes a stale paragraph visible to whoever is
+  # already looking at the run, rather than only to someone who goes back to
+  # re-measure it. Sources awk-interp-lib.sh directly rather than through the
+  # guard-awk-lib.sh closure it is normally reached through: this is a read of
+  # GAIA_AWK_STATUS/GAIA_AWK_IDENT for display, never a gate, and it runs
+  # after every member has already been dispatched and collected, so it
+  # cannot change what any forked member saw.
+  local wti_awk_ident
+  wti_awk_ident=unresolved
+  if [ -f .gaia/scripts/awk-interp-lib.sh ]; then
+    . .gaia/scripts/awk-interp-lib.sh
+    case "${GAIA_AWK_STATUS:-}" in
+      0) wti_awk_ident="${GAIA_AWK_IDENT:-unresolved}" ;;
+      5) wti_awk_ident=none ;;
+      6) wti_awk_ident=unsanctioned ;;
+    esac
+  fi
+  printf 'config: WTI_JOBS=%s bats-parallel-backend=%s resolved-awk=%s aggregate=%ss\n' \
+    "$WTI_JOBS" "$wti_backend_found" "$wti_awk_ident" "$SECONDS"
+
   if [ "$wti_fail_count" -eq 0 ]; then
     printf 'all whole-tree invariants pass\n'
     return 0

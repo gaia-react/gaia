@@ -229,6 +229,8 @@ wiki/decisions/Forensics Triage Workflow.md
 wiki/decisions/Sharded CI Test Matrix.md
 # Documents the fixture-discrimination convention for the maintainer-only shell guards and their shared library, none of which an adopter clone has.
 wiki/decisions/Shell Guard Fixture Discrimination.md
+# Documents the local runtime of whole-tree-invariants.sh and shell-lint.sh (both release-excluded via the wholesale .gaia/tests entry below), the mawk/GNU-parallel maintainer tool prerequisites those two runners use, and the awk-interpreter-pin guard and resolver (.gaia/scripts/lint-awk-interpreter-pin.sh, .gaia/scripts/awk-interp-lib.sh), which govern only the guard-awk-lib.sh closure and are withheld individually elsewhere in this file. Every subject this page describes is maintainer-only; an adopter clone has none of them to run.
+wiki/decisions/Local Test Runtime.md
 
 # --- 3. Test harnesses and audit reports ---
 # Smoke / observability harnesses run by maintainers in CI; never invoked

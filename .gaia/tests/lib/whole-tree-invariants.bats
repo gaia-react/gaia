@@ -540,3 +540,46 @@ fake_bats_argv_logger() {
   grep -Fq -- 'rush' "$errfile"
   grep -Fq -- 'brew install parallel' "$errfile"
 }
+
+# The tests below drive the self-report line main() prints unconditionally at
+# the end of every full run (PLAN-021's task-remeasure-and-record.md). It is
+# read-only and reports what the run actually resolved, so the way to prove it
+# is live rather than a fixed string is to change what the run resolves and
+# watch the line change with it, the same shape the backend tests above use
+# for the degradation notice.
+
+@test "the self-report names whether a bats parallel backend was found, and differs when it is not" {
+  command -v parallel >/dev/null 2>&1 || command -v rush >/dev/null 2>&1 || skip "no bats --jobs backend on PATH"
+  fixture_tree
+
+  run bash -c "cd '$TMP' && bash '$RUNNER'"
+  [ "$status" -eq 0 ]
+  with_backend="$output"
+
+  # Chained per the comment above the sibling drive: the second call has to
+  # build its shim over the PATH the first call already produced.
+  PATH="$(path_shim_without parallel)"
+  no_backend_path="$(path_shim_without rush)"
+
+  run bash -c "cd '$TMP' && PATH='$no_backend_path' bash '$RUNNER'"
+  [ "$status" -eq 0 ]
+  without_backend="$output"
+
+  printf '%s\n' "$with_backend" | grep -Fq -- 'bats-parallel-backend=yes'
+  printf '%s\n' "$without_backend" | grep -Fq -- 'bats-parallel-backend=no'
+  # The bad case this guards is a self-report that prints one fixed string
+  # regardless of what the probe actually found.
+  [ "$with_backend" != "$without_backend" ] || return 1
+}
+
+@test "the self-report does not disturb the pinned PASS/FAIL count or the exit-0 contract" {
+  fixture_tree
+  total="$( bash "$RUNNER" --list | grep -c . )"
+
+  run bash -c "cd '$TMP' && bash '$RUNNER'"
+  [ "$status" -eq 0 ]
+  reported="$( printf '%s\n' "$output" | grep -cE '^(PASS|FAIL)  ' )"
+  [ "$reported" -eq "$total" ]
+  printf '%s\n' "$output" | grep -Fq -- 'all whole-tree invariants pass'
+  printf '%s\n' "$output" | grep -Fq -- 'config: WTI_JOBS='
+}
