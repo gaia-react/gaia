@@ -1062,20 +1062,27 @@ curl -sS https://example.com/x'
   # a frame nothing closed, and every line below it left the file as carried
   # body with no diagnostic anywhere.
   #
-  # Both readings live in one awk program now, so the duplication is gone and
-  # the comparison has nothing to compare. This pins the property that replaced
-  # it: the frame letters the predicate admits are written exactly once in the
-  # library. Counted rather than matched by shape, because the two writings
-  # differed only in the flag they assigned and a shape match found both.
-  local hits
-  hits="$(grep -cF -- 'QSTATE == "D" || QSTATE == "S" || QSTATE == "A" || QSTATE == "E"' \
-    "$SCRIPT_DIR/capability-oracle-lib.sh")"
-  [ "$hits" -eq 1 ]
-  # And the walk's own reading, which names the same four letters through its
-  # local alias, is the only other one.
-  hits="$(grep -cF -- 'st == "D" || st == "S" || st == "A" || st == "E"' \
-    "$SCRIPT_DIR/capability-oracle-lib.sh")"
-  [ "$hits" -eq 1 ]
+  # It is one awk FUNCTION now, `isbody`, and both readings call it. So this
+  # does not compare two texts: it pins that there is one text to read. Two
+  # halves, and both are needed. The frame-letter set appears exactly once, so a
+  # letter added anywhere else is a second writing; and each of the two callers
+  # reaches it through a call rather than by restating it, so a caller that
+  # inlines its own copy fails even while the function still stands beside it.
+  local lib="$SCRIPT_DIR/capability-oracle-lib.sh" hits
+  hits="$(grep -cF -- 's == "D" || s == "S" || s == "A" || s == "E"' "$lib")"
+  [ "$hits" -eq 1 ] || { echo "frame-letter set written $hits times, expected 1"; return 1; }
+  # The definition, plus exactly one call from each of the two readers.
+  hits="$(grep -cE -- '^function isbody\(s\) \{' "$lib")"
+  [ "$hits" -eq 1 ] || { echo "isbody defined $hits times, expected 1"; return 1; }
+  hits="$(grep -cF -- 'if (isbody(st)) carry = 1' "$lib")"
+  [ "$hits" -eq 1 ] || { echo "the walk's reading is not the single isbody call"; return 1; }
+  hits="$(grep -cF -- 'inbody = isbody(QSTATE) ? 1 : 0' "$lib")"
+  [ "$hits" -eq 1 ] || { echo "the record rule's reading is not the single isbody call"; return 1; }
+  # And no reader restates the predicate's own terms outside the function: a
+  # QSHADOW test paired with a length-1 test anywhere else is a second writing
+  # wearing different variable names, which is exactly how the bash form drifted.
+  hits="$(grep -cE -- 'QSHADOW == 0 && length\(' "$lib")"
+  [ "$hits" -eq 1 ] || { echo "the predicate's terms appear at $hits sites, expected 1"; return 1; }
 }
 
 @test "a bare path behind a separator inside a double-quoted span is prose, not a call" {
@@ -1812,6 +1819,15 @@ base_checker() {
   for f in check-script-capabilities.sh capability-oracle-lib.sh; do
     git -C "$repo" show "$base:.gaia/scripts/$f" >"$dir/$f" 2>/dev/null || return 2
   done
+  # The oracle resolves the awk interpreter its splitter runs under from
+  # awk-interp-lib.sh beside itself, so a before side built without that sibling
+  # refuses at startup and reports no reach at all. Best-effort rather than part
+  # of the loop above, and deliberately NOT a `return 2`: a fork point predating
+  # the sibling holds a pre-awk oracle that needs none, and failing there would
+  # turn every such comparison into a skip. Remove the empty file on a miss, so
+  # a stale zero-byte copy cannot shadow a real one.
+  git -C "$repo" show "$base:.gaia/scripts/awk-interp-lib.sh" >"$dir/awk-interp-lib.sh" 2>/dev/null \
+    || rm -f "$dir/awk-interp-lib.sh"
 }
 
 @test "real repo: the byte-identity pin really swaps the oracle, so it can fail" {
@@ -1880,7 +1896,13 @@ EOF
     cmp -s "$dir/check-script-capabilities.sh" "$CHECK"; then
     skip "this branch changes neither file, so both sides would be one program"
   fi
-  before="$(bash "$dir/check-script-capabilities.sh" "$REPO_ROOT" --print-reach 2>/dev/null)"
+  # The before side's stderr is KEPT, unlike the after side's. When it comes
+  # back empty the bare `[ -n "$before" ]` below says only that, and the cause
+  # is on a stream nothing captured: a vendored checker can refuse at startup
+  # for reasons that have nothing to do with the comparison, an interpreter it
+  # cannot resolve among them. Surfacing it costs a line of noise on a passing
+  # run and saves the reader from diagnosing an empty string.
+  before="$(bash "$dir/check-script-capabilities.sh" "$REPO_ROOT" --print-reach)"
   after="$(bash "$CHECK" "$REPO_ROOT" --print-reach 2>/dev/null)"
   [ -n "$before" ]
   [ -n "$after" ]
@@ -2093,4 +2115,74 @@ curl -fsS https://example.com/'
   grep -qF -- 'UNDECLARED a/s.sh invokes:b/run-thing.sh' <<<"$output" || return 1
   grep -qF -- 'UNDECLARED a/s.sh network' <<<"$output" || return 1
   true
+}
+
+# oracle_consumers: every script beside the library that SOURCES it, derived
+# from the tree rather than listed here. A fourth consumer therefore joins the
+# arm below the moment it lands, which is the whole point: the defect this pins
+# was one consumer of three silently missing the refusal, and a hand-kept list
+# would have been written from the same two the author remembered.
+oracle_consumers() {
+  grep -ln '^[[:space:]]*\.[[:space:]].*capability-oracle-lib\.sh' "$SCRIPT_DIR"/*.sh
+}
+
+@test "every oracle consumer refuses at startup when no awk interpreter resolves" {
+  # The oracle's logical-line splitter runs in awk, and every consumer reads
+  # that walk over a process substitution, whose status no shell reports. So an
+  # unresolved interpreter does not surface as an error: it surfaces as a file
+  # with no records, which is reach UNDER-reported, the one direction that
+  # cannot become a finding. Each consumer therefore refuses before it scans,
+  # and this drives each one into that refusal rather than trusting that the
+  # block was copied everywhere.
+  #
+  # The interpreter seams are the library's own (GAIA_AWK_MAWK_PATH and
+  # GAIA_AWK_BWK_PATH), pointed at paths that do not exist, which is status 5.
+  #
+  # `env -u GAIA_AWK` is load-bearing, not tidiness. The resolver EXPORTS
+  # GAIA_AWK, and an explicit one already in the environment wins over both
+  # seams by design. This suite's own setup sources the checker, which resolves
+  # and exports a real interpreter into the bats shell, so without the unset
+  # every child inherits a working awk, no consumer refuses, and this arm
+  # reports green over exactly the defect it exists to catch.
+  local c n=0
+  while IFS= read -r c; do
+    [ -n "$c" ] || continue
+    n=$((n + 1))
+    run env -u GAIA_AWK GAIA_AWK_MAWK_PATH=/nonexistent/mawk GAIA_AWK_BWK_PATH=/nonexistent/awk \
+      bash "$c" "$REPO_ROOT"
+    # Status first: 5 is "no awk interpreter found", and a consumer that scanned
+    # anyway comes back 0 or 1 having read a tree it could not lex.
+    [ "$status" -eq 5 ] || { echo "consumer=$c expected exit 5, got $status: $output"; return 1; }
+    # Then the message, because the status alone is also what a wholly unrelated
+    # early refusal would produce. It carries the consumer's own prefix and the
+    # library's reason.
+    grep -qF -- "$(basename "$c" .sh):" <<<"$output" \
+      || { echo "consumer=$c refusal does not name itself: $output"; return 1; }
+    grep -qF -- "no awk interpreter found" <<<"$output" \
+      || { echo "consumer=$c refusal does not name the cause: $output"; return 1; }
+    # And nothing resembling a scan result, which is the outcome the refusal
+    # exists to prevent rather than merely a second way to spell the status.
+    grep -qE -- '^(UNDECLARED|SURPLUS)' <<<"$output" \
+      && { echo "consumer=$c scanned despite an unresolved interpreter: $output"; return 1; }
+  done < <(oracle_consumers)
+  # A derivation that came back empty would make every per-element claim above
+  # vacuously true, and a short read would pass while covering a subset.
+  [ "$n" -ge 3 ] || { echo "oracle_consumers derived $n consumers, expected at least 3"; return 1; }
+}
+
+@test "an oracle consumer refuses on an unsanctioned interpreter too, not only a missing one" {
+  # The other reachable status, and it is the one a resolver that trusted a
+  # basename would get wrong: something named awk resolves, answers, and is
+  # neither sanctioned implementation. Driven on one consumer rather than all
+  # three, deliberately: the arm above already establishes that every consumer
+  # carries the block, and what this adds is that the block forwards a SECOND
+  # status rather than collapsing every failure onto 5.
+  local fake="$BATS_TEST_TMPDIR/fakeawk"
+  printf '#!/bin/sh\necho "GNU Awk 5.1.0"\n' >"$fake"
+  chmod +x "$fake"
+  run env -u GAIA_AWK GAIA_AWK_MAWK_PATH="$fake" GAIA_AWK_BWK_PATH="$fake" \
+    bash "$SCRIPT_DIR/check-script-capabilities.sh" "$REPO_ROOT"
+  [ "$status" -eq 6 ]
+  grep -qF -- "check-script-capabilities:" <<<"$output"
+  grep -qF -- "unsanctioned interpreter" <<<"$output"
 }

@@ -174,22 +174,42 @@ _GAIA_CAPCHECK_QSHADOW=0
 # retired a test that existed only to hold the bash form together. There are no
 # skip sets, because awk reads every character and a skipped run cannot drift
 # out of step with the arm it was shortcutting. And the carried-body predicate
-# is written ONCE, read by `qcarry` as `carry` and by the record rule as
-# `inbody`, so the two cannot disagree.
+# is a FUNCTION, `isbody`, called by `qcarry` to set `carry` and by the record
+# rule to set `inbody`, so the two readings are the same bytes and cannot
+# disagree. In bash they were two matching expressions held in step by a test
+# that compared their source text.
 #
 # Quoting: the program is single-quoted so every `$` reaches awk as program
 # text, and a literal single quote is spelled `\047` so the string never has to
 # be broken to hold one.
 #
 # Two modes. With no `-v mode`, awk reads the named file and emits the records
-# `_gaia_capcheck_logical_lines` returns. With `-v mode=line` it walks ONE line,
-# taken with its entry state from the environment, and prints the four values
-# `_gaia_capcheck_quote_carry` hands back; that mode exists for the callers that
-# drive the walk a line at a time and never runs in the per-file hot path.
+# `_gaia_capcheck_logical_lines` returns; that is the only mode production uses.
+# With `-v mode=line` it walks ONE line, taken with its entry state from the
+# environment, and prints the four values `_gaia_capcheck_quote_carry` hands
+# back; that mode is a test-only seam, reached by nothing in the per-file scan,
+# and the header on that function says what keeps it.
 _GAIA_CAPCHECK_AWK='
 function chop(s) { return substr(s, 1, length(s) - 1) }
 
 function ltrim(s) { sub(/^[ \t\r\v\f]+/, "", s); return s }
+
+# The carried-body predicate: is <s> a state in which the line about to be read
+# is the body of a string or array literal an earlier line opened, rather than
+# code? Two callers read it, `qcarry` to decide whether to drop the carried
+# prefix and the record rule to decide whether its comment and blank-line arms
+# apply, and they MUST agree. Drift between them is silent and worst in one
+# direction: a record rule that says code while the walk says body takes its
+# comment arm on a line inside a string body, so a `#`-leading prose line
+# carrying an apostrophe never reaches the walk, opens a frame nothing closes,
+# and every line below it leaves the file as carried body with no diagnostic.
+#
+# One function rather than two matching expressions, so agreement is structural
+# rather than maintained. A frame letter added here reaches both callers.
+function isbody(s) {
+  return (QSHADOW == 0 && length(s) == 1 \
+          && (s == "D" || s == "S" || s == "A" || s == "E"))
+}
 
 # The here-document delimiter a logical line opens, or empty. Bodies are
 # skipped by the scan: a usage block that prints `gh api ...` or a path is
@@ -216,7 +236,7 @@ function qcarry(t,   st, n, i, c, top, top2, cut, carry, entry_depth, depth_befo
   entry_depth = length(st)
   sub_start = -1; sub_depth = 0; subs = ""
   QSUBS = ""
-  if (QSHADOW == 0 && length(st) == 1 && (st == "D" || st == "S" || st == "A" || st == "E")) carry = 1
+  if (isbody(st)) carry = 1
   if (st == "") {
     # Nothing open and nothing that can open a frame: the state is unchanged and
     # the whole line is code. This is the overwhelming majority of lines. The
@@ -379,15 +399,13 @@ BEGIN {
     if (trimmed == hd || line == hd) hd = ""
     next
   }
-  # The carried-body predicate, the only writing of it. The comment and
-  # blank-line arms below are skipped while a STRING or array frame is open:
-  # inside one a leading `#` is prose, not a comment, and an empty line is
-  # content, and consuming either without scanning it would leave the carried
+  # The carried-body predicate, through the one function that owns it. The
+  # comment and blank-line arms below are skipped while a STRING or array frame
+  # is open: inside one a leading `#` is prose, not a comment, and an empty line
+  # is content, and consuming either without scanning it would leave the carried
   # state describing a line the scan never saw. An open `$( )` is not such a
   # frame: its body is code, where a leading `#` really does start a comment.
-  inbody = 0
-  if (QSHADOW == 0 && length(QSTATE) == 1 \
-      && (QSTATE == "D" || QSTATE == "S" || QSTATE == "A" || QSTATE == "E")) inbody = 1
+  inbody = isbody(QSTATE) ? 1 : 0
   if (cont == 0 && inbody == 0) {
     trimmed = ltrim(line)
     if (trimmed == "") { pending_sc = "-"; next }
@@ -992,11 +1010,15 @@ _gaia_capcheck_dirname_rel() {
 # one cannot desynchronize the stack. And a string or array body opened inside a
 # substitution is not recognized at all, per the shadow gate above.
 #
-# The walk itself runs in awk, in `_GAIA_CAPCHECK_AWK` above; this is the seam
-# that drives it one line at a time, for the callers that hold their own state
-# across calls. The per-file scan does NOT come through here: it runs the same
-# walk inside one interpreter for the whole file, so the fork this spends is
-# paid once per call rather than once per line.
+# The walk itself runs in awk, in `_GAIA_CAPCHECK_AWK` above; this is a
+# TEST-ONLY seam that drives it one line at a time, with an explicit entry
+# state. Nothing in production calls it: `_gaia_capcheck_logical_lines` runs the
+# whole file inside one interpreter and never comes through here, so the fork
+# spent below is paid once per test case rather than once per scanned line. It
+# is kept because the suite's per-line cases pin the walk's cross-line state
+# transitions directly, which a per-file scan can only exercise indirectly; a
+# suite rewritten against the per-file mode would retire this and the awk
+# program's `mode=line` arm together.
 #
 # The entry values go through the environment rather than `-v`, because awk
 # processes backslash escapes in a `-v` assignment and a line of shell is

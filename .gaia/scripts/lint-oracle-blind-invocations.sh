@@ -3,8 +3,11 @@
 #
 # lint-oracle-blind-invocations.sh: flag a script invocation the capability
 # oracle's anchors cannot see. Exit 1 with a file:line report on any hit, exit 0
-# when clean, exit 2 on the check's own failure. Run it directly from the repo
-# root: `bash .gaia/scripts/lint-oracle-blind-invocations.sh`.
+# when clean, exit 2 on the check's own failure, and exit 5 or 6 when the awk
+# interpreter the oracle's splitter runs under cannot be resolved (5 none found,
+# 6 unsanctioned), passed through from the library's own refusal. Run it
+# directly from the repo root:
+# `bash .gaia/scripts/lint-oracle-blind-invocations.sh`.
 # gaia:maintainer-only:start
 #
 # Enforced twice, the same way every lint beside it is, and only one of the two

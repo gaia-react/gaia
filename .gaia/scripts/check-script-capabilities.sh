@@ -47,7 +47,10 @@
 # never the positional. `--print-reach` is a diagnostic, not a gate: it needs no
 # manifest on disk and always exits 0.
 #
-# Exit 0 clean, 1 on at least one finding, 2 on the check's own failure.
+# Exit 0 clean, 1 on at least one finding, 2 on the check's own failure, and 5
+# or 6 when the awk interpreter the oracle's splitter runs under cannot be
+# resolved (5 none found, 6 unsanctioned), passed through from the library's own
+# refusal.
 
 # Needs bash 5, for the reason capability-oracle-lib.sh's own guard states: on
 # bash 3.2 the oracle crashes partway through a file's walk and the records past
@@ -634,7 +637,9 @@ Reconciles every allowlisted script's declared capabilities against its actual
 reach. <repo_root> defaults to the current git toplevel. --print-reach is a
 diagnostic that needs no manifest and always exits 0.
 
-Exit 0 clean, 1 on a finding, 2 on the check's own failure.
+Exit 0 clean, 1 on a finding, 2 on the check's own failure. Exit 5 or 6 when the
+awk interpreter the capability oracle's splitter runs under cannot be resolved:
+5 when neither mawk nor /usr/bin/awk is present, 6 when what resolved is neither.
 EOF
 }
 
