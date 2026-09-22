@@ -125,13 +125,21 @@ if (diagnostics.length > 0) {
 }
 
 // Resolve a call-expression callee to its bare identifier name, ignoring
-// chained modifiers (test.each(...)(...), it.concurrent(...), describe.skip).
-// Returns the base name: 'test', 'it', 'describe', or null.
+// chained modifiers (test.each(...)(...), test.each`...`(...),
+// it.concurrent(...), describe.skip). Returns the base name: 'test', 'it',
+// 'describe', or null.
 function baseCalleeName(node) {
   let expr = node.expression;
-  // Unwrap a call-of-a-call (test.each(table)('name', fn)).
-  while (ts.isCallExpression(expr)) {
-    expr = expr.expression;
+  // Unwrap a call-of-a-call (test.each(table)('name', fn)) and a
+  // tagged-template modifier call (test.each`...`('name', fn)).
+  for (;;) {
+    if (ts.isCallExpression(expr)) {
+      expr = expr.expression;
+    } else if (ts.isTaggedTemplateExpression(expr)) {
+      expr = expr.tag;
+    } else {
+      break;
+    }
   }
   // Walk down a property-access chain to its leftmost identifier.
   while (ts.isPropertyAccessExpression(expr)) {
@@ -143,12 +151,18 @@ function baseCalleeName(node) {
   return null;
 }
 
-// True when the call's callee chain carries an `.each` modifier:
-// test.each(table)(...), it.each(table)(...), describe.each(table)(...), and
-// the tagged-template spelling (test.each`...`(...)) wherever baseCalleeName
-// can see it. Mirrors baseCalleeName's own call-of-a-call / property-access
+// vitest chainable modifiers that interpolate the row into the title at
+// runtime ($prop / printf tokens): `.each` and `.for`. Both make the declared
+// title argument a template rather than the recorded fullName.
+const TITLE_EXPANDING_MODIFIERS = new Set(['each', 'for']);
+
+// True when the call's callee chain carries a title-expanding modifier:
+// test.each(table)(...), test.for(table)(...), it.each(table)(...),
+// describe.each(table)(...), and the tagged-template spelling
+// (test.each`...`(...)) wherever baseCalleeName can see it. Mirrors
+// baseCalleeName's own call-of-a-call / tagged-template / property-access
 // walk, checking each property name along the way instead of only the root.
-function calleeHasEachModifier(node) {
+function calleeHasTitleExpandingModifier(node) {
   let expr = node.expression;
   for (;;) {
     if (ts.isCallExpression(expr)) {
@@ -160,7 +174,7 @@ function calleeHasEachModifier(node) {
     }
   }
   while (ts.isPropertyAccessExpression(expr)) {
-    if (expr.name.text === 'each') {
+    if (TITLE_EXPANDING_MODIFIERS.has(expr.name.text)) {
       return true;
     }
     expr = expr.expression;
@@ -170,14 +184,16 @@ function calleeHasEachModifier(node) {
 
 // The first string-literal/template title argument of a test/describe call.
 // Returns the literal text, or null when the title is dynamic (template with
-// substitutions, an identifier, etc.) or the call is an `.each` invocation; a
-// dynamic title cannot be matched to a recorded fullName, so we skip it. An
-// `.each` title is unmatchable for the same reason regardless of what kind of
-// literal it is: vitest expands the row into the title at runtime ($prop or
-// printf %s substitution), so the declared argument here is never what gets
-// recorded.
+// substitutions, an identifier, etc.) or the call carries a title-expanding
+// modifier (`.each`/`.for`); a dynamic title cannot be matched to a recorded
+// fullName, so we skip it. The modifier check is unconditional even though a
+// substitution-free `.each`/`.for` title (no $prop, no printf token) is
+// recorded verbatim once per row: distinguishing that case would mean
+// hand-rolling a parser for vitest's substitution grammar, so the
+// suppression stays deliberately wider than strictly necessary and trades
+// away that narrow slice of coverage.
 function titleOf(node) {
-  if (calleeHasEachModifier(node)) {
+  if (calleeHasTitleExpandingModifier(node)) {
     return null;
   }
   const arg = node.arguments[0];

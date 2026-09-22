@@ -55,6 +55,7 @@ teardown() {
     rm -f "$STASH"
   fi
   [ -n "${STUB_BIN:-}" ] && rm -rf "$STUB_BIN"
+  [ -n "${STUB_PNPM_ARGS_FILE:-}" ] && rm -f "$STUB_PNPM_ARGS_FILE"
   return 0
 }
 
@@ -127,7 +128,7 @@ SH
   chmod +x "$STUB_BIN/pnpm"
   PATH="$STUB_BIN:$PATH"
   export PATH
-  STUB_PNPM_ARGS_FILE=$(mktemp)
+  STUB_PNPM_ARGS_FILE=$(mktemp -t red-capture-stub-args-XXXXXX)
   export STUB_PNPM_ARGS_FILE
 }
 
@@ -380,6 +381,58 @@ assert_scope_survives_redirect() {
 @test "an unscoped run with only a stdout-redirect token hits the no-scope skip (>out)" {
   stub_pnpm
   run_capture "Bash" "pnpm test --run >out"
+  [ "$status" -eq 0 ]
+  [ "$(ledger_lines)" -eq 0 ]
+  [ ! -s "$STUB_PNPM_ARGS_FILE" ]
+}
+
+# --- spaced redirections: operator and target are TWO whitespace-separated
+# tokens (gaia-react/gaia#2225 residual). awk word-splits $test_seg, so a
+# spaced redirection's operator and target never travel together the way the
+# attached forms above (1>out.log, <<EOF, …) do. Asserting only "no `<`/`>`
+# in the args" (as assert_scope_survives_redirect does) cannot see the
+# target leaking as a bogus extra scope token, so these assert the target's
+# exact line is absent from the stub's recorded argv.
+
+@test "a narrow scope survives a trailing spaced stdout-redirect (> out.log)" {
+  stub_pnpm
+  STUB_PNPM_JSON_SRC="$REPO_ROOT/$JSON_REL/assertion-fail.json"
+  export STUB_PNPM_JSON_SRC
+  run_capture "Bash" "pnpm test --run $FIX_REL/mixed-pass-fail.test.ts > out.log"
+  [ "$status" -eq 0 ]
+  [ "$(ledger_lines)" -eq 1 ]
+  grep -qF -- "$FIX_REL/mixed-pass-fail.test.ts" "$STUB_PNPM_ARGS_FILE"
+  grep -qxF "out.log" "$STUB_PNPM_ARGS_FILE" && return 1
+  return 0
+}
+
+@test "a narrow scope survives a trailing spaced stderr-redirect (2> err.log)" {
+  stub_pnpm
+  STUB_PNPM_JSON_SRC="$REPO_ROOT/$JSON_REL/assertion-fail.json"
+  export STUB_PNPM_JSON_SRC
+  run_capture "Bash" "pnpm test --run $FIX_REL/mixed-pass-fail.test.ts 2> err.log"
+  [ "$status" -eq 0 ]
+  [ "$(ledger_lines)" -eq 1 ]
+  grep -qF -- "$FIX_REL/mixed-pass-fail.test.ts" "$STUB_PNPM_ARGS_FILE"
+  grep -qxF "err.log" "$STUB_PNPM_ARGS_FILE" && return 1
+  return 0
+}
+
+@test "a narrow scope survives a leading spaced input-redirect (< input)" {
+  stub_pnpm
+  STUB_PNPM_JSON_SRC="$REPO_ROOT/$JSON_REL/assertion-fail.json"
+  export STUB_PNPM_JSON_SRC
+  run_capture "Bash" "pnpm test --run $FIX_REL/mixed-pass-fail.test.ts < input"
+  [ "$status" -eq 0 ]
+  [ "$(ledger_lines)" -eq 1 ]
+  grep -qF -- "$FIX_REL/mixed-pass-fail.test.ts" "$STUB_PNPM_ARGS_FILE"
+  grep -qxF "input" "$STUB_PNPM_ARGS_FILE" && return 1
+  return 0
+}
+
+@test "an unscoped run with only a spaced stdout-redirect hits the no-scope skip (> out)" {
+  stub_pnpm
+  run_capture "Bash" "pnpm test --run > out"
   [ "$status" -eq 0 ]
   [ "$(ledger_lines)" -eq 0 ]
   [ ! -s "$STUB_PNPM_ARGS_FILE" ]

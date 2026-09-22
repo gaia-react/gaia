@@ -187,6 +187,22 @@ describe('extract-test-signals .each title handling', () => {
     expect(lines).toEqual([]);
   });
 
+  test('tagged-template describe.each emits no signal for a nested static-titled test', () => {
+    const lines = runOnSource(`
+      describe.each\`
+        group
+        \${'a'}
+        \${'b'}
+      \`('group $group', ({group}) => {
+        test('does the static thing', () => {
+          expect(group).toBeTruthy();
+        });
+      });
+    `);
+
+    expect(lines).toEqual([]);
+  });
+
   test('a plain static test still emits a signal (regression guard)', () => {
     const lines = runOnSource(`
       test('adds numbers', () => {
@@ -270,5 +286,36 @@ describe('extract-test-signals dynamic-title describe handling', () => {
 
     expect(lines).toHaveLength(1);
     expect(lines[0]?.fullName).toBe('outer static sibling');
+  });
+});
+
+/**
+ * Pins the `.for` carve-out (gaia-react/gaia#2224's `.each` fix, widened):
+ * vitest 5.0.0 declares `for` alongside `each` on both the test and suite
+ * chainable APIs, and interpolates the same `$prop` / printf tokens into a
+ * `.for` title. It is the same unsatisfiable-identity hazard `.each` has, so
+ * it gets the same treatment: emit nothing for a `.for` call.
+ */
+describe('extract-test-signals .for title handling', () => {
+  test('test.for with a $prop title emits no signal', () => {
+    const lines = runOnSource(`
+      test.for([{from: '/en', to: '/'}])('301s $from to $to', ({from, to}) => {
+        expect(from).not.toBe(to);
+      });
+    `);
+
+    expect(lines).toEqual([]);
+  });
+
+  test('describe.for with a $prop title emits no signal for a nested static-titled test', () => {
+    const lines = runOnSource(`
+      describe.for([{group: 'a'}])('group $group', ({group}) => {
+        test('does the static thing', () => {
+          expect(group).toBeTruthy();
+        });
+      });
+    `);
+
+    expect(lines).toEqual([]);
   });
 });

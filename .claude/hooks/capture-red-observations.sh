@@ -108,19 +108,32 @@ else
   scope=$(printf '%s\n' "$test_seg" | awk '
     {
       seen = 0
+      redir = 0
       for (i = 1; i <= NF; i++) {
         if (!seen) { if ($i == "test") seen = 1; continue }
         tok = $i
+        # A shell redirection reaches the walk in two shapes: attached to its
+        # target in one token (1>out.log, 2>/dev/null, <input, <<EOF, …), or
+        # split by whitespace into the bare operator and a separate target
+        # token (`2>` then `err.log`). The attached shape is caught below by
+        # the `[<>]` filter; the spaced shape needs the operator recognized
+        # on its own so the target that follows it (which carries no angle
+        # bracket) is skipped too, rather than read as a scope path. `redir`
+        # tracks that: set when the current token is bare-operator-shaped,
+        # consumed on the very next token.
+        #
+        # The `|&;()` split above severs a `&`-carrying redirection (2>&1)
+        # mid-token: it splits at the `&`, so only the operator head (2>)
+        # reaches this segment and the rest becomes an orphan segment. That
+        # head still lands here as a token, covered by the same filter.
+        if (redir) { redir = 0; continue }
+        if (tok ~ /^[0-9]*[<>]+$/) { redir = 1; continue }
         if (tok ~ /^-/) continue                 # flags: --run, --reporter, -t, …
         if (tok == "run" || tok == "exec") continue
         if (tok ~ /=/) continue                  # --opt=value already caught by ^-, but be safe
-        # A shell redirection (2>&1, 1>out.log, 2>/dev/null, <input, <<EOF, …)
-        # starts with neither `-` nor a digit-then-`-`, so it reaches here
-        # looking like a positional scope path. The earlier `|&;()` split
-        # only separates pipeline/background/sequencing operators from this
-        # segment; a redirection stays attached to it. A test-scope path or
-        # glob never legitimately contains `<` or `>`, so excluding any token
-        # that does is a safe, shape-based filter.
+        # A test-scope path or glob never legitimately contains `<` or `>`,
+        # so excluding any attached-form token that does is a safe,
+        # shape-based filter.
         if (tok ~ /[<>]/) continue
         print tok
       }
