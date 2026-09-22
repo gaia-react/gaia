@@ -171,6 +171,33 @@ test("adds two numbers", () => {
 }
 
 # ---------------------------------------------------------------------------
+# .each carve-out (gaia-react/gaia#2224): a test.each title carries its
+# per-row substitutions inside a plain string literal ($prop or printf %s),
+# which the signal helper cannot tell apart from an ordinary static title by
+# AST kind alone. vitest expands the row into the fullName it records, so the
+# declared title here never matches what the ledger would hold; the helper
+# must emit no signal for it, the same "uncomputable identity" carve-out a
+# template-literal title gets, so a never-captured .each test still commits.
+# ---------------------------------------------------------------------------
+TEST_EACH_TEST='import {expect, test} from "vitest";
+test.each([
+  {from: "/en", to: "/"},
+  {from: "/en/blog", to: "/blog"},
+])("301s $from to $to", ({from, to}) => {
+  expect(from).not.toBe(to);
+});
+'
+
+@test "a new test.each test with a \$prop title commits with no RED demand" {
+  write_file "app/utils/x/index.test.ts" "$TEST_EACH_TEST"
+  stage "app/utils/x/index.test.ts"
+  [ "$(ledger_lines)" -eq 0 ]
+  run_check
+  [ "$status" -eq 0 ]
+  ! denied
+}
+
+# ---------------------------------------------------------------------------
 # Edited-after-RED denied: capture a RED, then change the staged test body so
 # its current signal no longer matches the recorded one -> deny. Proves the
 # content binding invalidates a stale RED.

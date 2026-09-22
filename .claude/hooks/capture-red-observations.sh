@@ -114,6 +114,14 @@ else
         if (tok ~ /^-/) continue                 # flags: --run, --reporter, -t, …
         if (tok == "run" || tok == "exec") continue
         if (tok ~ /=/) continue                  # --opt=value already caught by ^-, but be safe
+        # A shell redirection (2>&1, 1>out.log, 2>/dev/null, <input, <<EOF, …)
+        # starts with neither `-` nor a digit-then-`-`, so it reaches here
+        # looking like a positional scope path. The earlier `|&;()` split
+        # only separates pipeline/background/sequencing operators from this
+        # segment; a redirection stays attached to it. A test-scope path or
+        # glob never legitimately contains `<` or `>`, so excluding any token
+        # that does is a safe, shape-based filter.
+        if (tok ~ /[<>]/) continue
         print tok
       }
     }')

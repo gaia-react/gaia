@@ -4,7 +4,7 @@ status: active
 priority: 1
 date: 2026-06-04
 created: 2026-06-04
-updated: 2026-08-12
+updated: 2026-09-22
 tags: [decision, tdd, hooks, quality]
 ---
 
@@ -20,9 +20,11 @@ Writing a test that starts green (either mirroring existing behavior or triviall
 
 A RED-observation ledger at `.gaia/local/red-ledger/` (machine-local, gitignored) stores per-test evidence from the last one-shot vitest run. Two hooks enforce the lifecycle:
 
-- **`capture-red-observations.sh`** (PostToolUse, Bash): after any one-shot vitest run, re-invokes vitest with `--reporter=json` scoped to the same target and records each genuinely-failing test. Each record stores `file`, `fullName`, a normalized content signal (deterministic hash of the test's comment-free content), and `failureKind`. Collection and compile errors are excluded to avoid coarse false-REDs. Observe-only; always exits 0.
+- **`capture-red-observations.sh`** (PostToolUse, Bash): after any one-shot vitest run, re-invokes vitest with `--reporter=json` scoped to the same target and records each genuinely-failing test. It derives that scope by walking the original command's tokens, skipping flags and shell redirections (`2>&1`, `>out.log`, `<input`, …) so a redirection token is never mistaken for a positional test path. Each record stores `file`, `fullName`, a normalized content signal (deterministic hash of the test's comment-free content), and `failureKind`. Collection and compile errors are excluded to avoid coarse false-REDs. Observe-only; always exits 0.
 
 - **`red-verify-commit-check.sh`** (PreToolUse, Bash deny): before `git commit`, walks every test file that is new at HEAD. For each new test, the hook computes the current content signal and looks it up in the ledger. A missing entry or a signal mismatch (the test's comment-free content changed since the RED was observed, which a comment reword does not trigger) denies the commit, naming the offending test. Fail-open on missing tooling or unparseable test files; fail-closed only for the clean case.
+
+An unscoped run (`pnpm test --run` with no path or glob argument) records nothing at all: when no scope token parses from the command, the hook skips the re-run rather than paying full-suite wall-clock cost on every invocation. The skip is silent, so a developer who genuinely observed a test fail gets no diagnostic here, only a later commit denial that reads as a broken gate rather than a run that needed a scope argument. Separate, not-yet-fixed limitation: issue #2228.
 
 The content signal is a normalized hash of the test's comment-free content, so that a cosmetic rename does not reuse a stale RED entry from a substantively different test. Rewording a comment is likewise not a substantive change and does not expire the RED.
 
@@ -32,6 +34,7 @@ The content signal is a normalized hash of the test's comment-free content, so t
 - New tests only: tests that already exist at the merge base are not checked.
 - Fail-open: the hook does not block when the ledger tooling (Node, the signal extractor) is unavailable or when a test file cannot be parsed by the TS compiler API.
 - Type-only tests are exempt. A test whose assertions are all type-level and which carries no runtime expectation has no runtime failure mode, so the gate has nothing to demand; `tsc` enforces it instead. See [[#Type-only tests]].
+- A test whose title cannot be computed at extraction time is exempt: no signal is emitted, so it never enters the checked set. See [[#Dynamic-title carve-out]].
 - The RED demand is scoped to the deterministic surface. A test whose subject is emergent (clock-, entropy-, or I/O-bound, or dependent on the rendered tree) commits without a RED. See [[#Determinism carve-out]].
 
 ## Infrastructure
@@ -45,9 +48,20 @@ A type-level assertion is invisible to the test runner: vitest runs without `--t
 
 The helper tags each test `kind: "type-only"` or `kind: "runtime"`. A test is `type-only` when it has at least one type-level proof (`expectTypeOf`/`assertType`, or a `@ts-expect-error` directive) **and** no runtime assertion (`expect`/`assert`); otherwise it is `runtime`. The predicate requires a positive type-level signal, so a test with no assertions at all stays `runtime` and is never silently exempted, and a test mixing a runtime assertion with a type-level proof stays `runtime` and still owes a RED.
 
-This exemption is keyed to the correct predicate (no runtime assertion), distinct from the dynamic-title carve-out, which is keyed to uncomputable identity (a computed test title emits no signal, so it never enters the checked set).
+This exemption is keyed to the correct predicate (no runtime assertion), distinct from the [[#Dynamic-title carve-out]], which is keyed to uncomputable identity rather than assertion kind.
 
 Recommended idiom: prefer `expectTypeOf`/`assertType` for an honest per-assertion proof. A pure type-test file can also use the `*.test-d.ts` convention, which `tsc` checks while both vitest and this gate skip it by glob. Reserve `@ts-expect-error` for proving a specific misuse is rejected; its signal is whole-statement and inverted, holding while the error is present and breaking when the code becomes permissive enough to remove it.
+
+## Dynamic-title carve-out
+
+A test whose title cannot be computed at extraction time emits no signal, so it never enters the checked set and commits with no RED. Two independent triggers put a title out of reach:
+
+- **A template literal with substitutions, or an identifier/expression in the title position.** The literal text is not knowable until runtime, so the extractor returns no title.
+- **Any `.each` invocation** (`test.each`, `it.each`, `describe.each`, and chained forms like `test.concurrent.each`), regardless of whether the declared title argument is itself a plain string literal. Vitest expands the row into the title at runtime (`$prop` or `%s` substitution), so the declared argument is never what gets recorded as the test's `fullName`; the extractor treats every `.each` title as uncomputable rather than trying to predict the expansion.
+
+An uncomputable describe title reaches further than its own title segment, because each nested test's `fullName` is built by prefixing the enclosing describe's. The extractor therefore suppresses signal emission for the whole subtree under any describe whose title it cannot compute, whichever trigger put it out of reach: a plainly-static `test('does the thing')` nested inside a `describe.each`, or inside a `` describe(`group ${x}`) ``, emits no signal and commits with no RED. Suppressing only the title segment would be worse than emitting nothing, since the descendant would then be recorded under a silently shortened name that matches no runtime `fullName` either. A static sibling under a static parent is untouched. That is the carve-out relaxing rather than tightening, consistent with [[#Determinism carve-out]]'s posture; the extractor has no way to compute the expanded name from inside the subtree, so exempting it wholesale is the only behavior available.
+
+`@gaia-react/lint`'s `sonarjs/parameterized-tests` rule pushes authors toward `test.each` for repeated assertions, so this carve-out keeps that lint rule and this gate from pulling in opposite directions.
 
 ## Determinism carve-out
 

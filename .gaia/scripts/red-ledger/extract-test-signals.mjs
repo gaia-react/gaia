@@ -143,11 +143,43 @@ function baseCalleeName(node) {
   return null;
 }
 
+// True when the call's callee chain carries an `.each` modifier:
+// test.each(table)(...), it.each(table)(...), describe.each(table)(...), and
+// the tagged-template spelling (test.each`...`(...)) wherever baseCalleeName
+// can see it. Mirrors baseCalleeName's own call-of-a-call / property-access
+// walk, checking each property name along the way instead of only the root.
+function calleeHasEachModifier(node) {
+  let expr = node.expression;
+  for (;;) {
+    if (ts.isCallExpression(expr)) {
+      expr = expr.expression;
+    } else if (ts.isTaggedTemplateExpression(expr)) {
+      expr = expr.tag;
+    } else {
+      break;
+    }
+  }
+  while (ts.isPropertyAccessExpression(expr)) {
+    if (expr.name.text === 'each') {
+      return true;
+    }
+    expr = expr.expression;
+  }
+  return false;
+}
+
 // The first string-literal/template title argument of a test/describe call.
 // Returns the literal text, or null when the title is dynamic (template with
-// substitutions, an identifier, etc.); a dynamic title cannot be matched to
-// a recorded fullName, so we skip it.
+// substitutions, an identifier, etc.) or the call is an `.each` invocation; a
+// dynamic title cannot be matched to a recorded fullName, so we skip it. An
+// `.each` title is unmatchable for the same reason regardless of what kind of
+// literal it is: vitest expands the row into the title at runtime ($prop or
+// printf %s substitution), so the declared argument here is never what gets
+// recorded.
 function titleOf(node) {
+  if (calleeHasEachModifier(node)) {
+    return null;
+  }
   const arg = node.arguments[0];
   if (!arg) {
     return null;
@@ -340,11 +372,19 @@ function classifyKind(testNode) {
 
 const lines = [];
 
-function visit(node, ancestors) {
+// unmatchable: true once an enclosing describe's own title is uncomputable,
+// whether because it is a `.each` (a per-row runtime expansion) or because
+// titleOf otherwise returned null (a template substitution, an identifier, or
+// any other non-literal title argument). Either way the block's runtime name
+// is not the declared source text, so every descendant's fullName would be
+// built on a prefix that does not exist anywhere but at runtime; an
+// otherwise-static title further down cannot repair that, so the state
+// propagates to the whole subtree rather than resetting at the next describe.
+function visit(node, ancestors, unmatchable) {
   if (ts.isCallExpression(node)) {
     const name = baseCalleeName(node);
     if (name && TEST_NAMES.has(name)) {
-      const title = titleOf(node);
+      const title = unmatchable ? null : titleOf(node);
       if (title !== null) {
         const fullName = [...ancestors, title].join(' ');
         lines.push(
@@ -357,21 +397,24 @@ function visit(node, ancestors) {
       }
       // A test call never nests further test/describe blocks worth tracking;
       // still descend in case of unusual nesting, but without pushing a title.
-      ts.forEachChild(node, (child) => visit(child, ancestors));
+      ts.forEachChild(node, (child) => visit(child, ancestors, unmatchable));
       return;
     }
     if (name && DESCRIBE_NAMES.has(name)) {
-      const title = titleOf(node);
+      const title = unmatchable ? null : titleOf(node);
       const nextAncestors =
         title !== null ? [...ancestors, title] : ancestors;
-      ts.forEachChild(node, (child) => visit(child, nextAncestors));
+      const nextUnmatchable = unmatchable || title === null;
+      ts.forEachChild(node, (child) =>
+        visit(child, nextAncestors, nextUnmatchable),
+      );
       return;
     }
   }
-  ts.forEachChild(node, (child) => visit(child, ancestors));
+  ts.forEachChild(node, (child) => visit(child, ancestors, unmatchable));
 }
 
-visit(sourceFile, []);
+visit(sourceFile, [], false);
 
 // The stdout-exit idiom every .gaia/scripts Node helper follows: install this
 // guard, write, then set process.exitCode. Never process.exit() after a stdout
