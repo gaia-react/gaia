@@ -27,6 +27,7 @@
     ".claude/hooks/block-env-write.sh": "owned",
     ".claude/hooks/block-eslint-config-edit.sh": "owned",
     ".claude/hooks/block-fourth-audit-round.sh": "owned",
+    ".claude/hooks/block-handrolled-pr-poll.sh": "owned",
     ".claude/hooks/block-invalid-yaml-write.sh": "owned",
     ".claude/hooks/block-lockfile-edit.sh": "owned",
     ".claude/hooks/block-main-destructive-git.sh": "owned",
@@ -269,6 +270,7 @@
     ".gaia/scripts/plan-archive.sh": "owned",
     ".gaia/scripts/plan-resume-point.sh": "owned",
     ".gaia/scripts/post-findings-block.sh": "owned",
+    ".gaia/scripts/pr-wait-merge.sh": "owned",
     ".gaia/scripts/read-audit-ci-config.sh": "owned",
     ".gaia/scripts/red-ledger/extract-test-signals.mjs": "owned",
     ".gaia/scripts/red-ledger/README.md": "owned",
@@ -689,7 +691,7 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-09-20T20:16:47.600Z",
+  "generated": "2026-09-21T04:25:16.337Z",
   "regions": [
     {
       "endMarker": "<!-- gaia:audit-remit:end -->",

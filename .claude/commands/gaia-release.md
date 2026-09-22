@@ -174,7 +174,13 @@ gh pr merge <N> --merge --auto --delete-branch
 # merge; GitHub completes it once checks pass.
 ```
 
-Then run the poll loop in `wiki/concepts/PR Merge Workflow.md` (`## Post-merge verification before cleanup`), without that section's own `gh pr merge` line, since the merge above is already queued with `--merge`, and with a 20-iteration bound in place of its 5, since the release checks run longer. Do not run any local cleanup or tagging until it confirms `MERGED`. On `CONFLICTING`, repair per that page's `### Conflict found mid-wait` and resume; on `CHECK_FAILED`, inspect the failing check; on a timeout, inspect `gh pr view <N>` for a stuck merge queue.
+Then run the merge wait, with a 20-attempt bound in place of its default 5, since the release checks run longer:
+
+```bash
+bash .gaia/scripts/pr-wait-merge.sh --pr <N> --attempts 20
+```
+
+The merge above is already queued, and this script issues no `gh pr merge` of its own, so nothing here re-merges. Do not run any local cleanup or tagging until it prints `MERGED` (exit 0). On `CONFLICTING` (exit 3), repair per `wiki/concepts/PR Merge Workflow.md`'s `### Conflict found mid-wait` and run the wait again; on `CHECK_FAILED` (exit 4), inspect the failing check; on `TIMEOUT` (exit 5), inspect `gh pr view <N>` for a stuck merge queue; on `CLOSED` (exit 6), the release pull request was closed without merging, so stop and do not tag. Exit 2 is a refusal rather than a verdict and says nothing about the pull request: read the message, which names what could not be read. The script's `--help` is the authority on that set.
 
 ### 12. Tag the merge commit
 
@@ -233,12 +239,10 @@ git -C /abs/path/to/create-gaia push -u origin "<RELEASE_BRANCH>"
 ```bash
 gh pr create -R gaia-react/create-gaia --base main --head "<RELEASE_BRANCH>" \
   --title "chore: release v<NEW_VERSION>" --body "Lockstep with GAIA v<NEW_VERSION>."
-gh pr merge -R gaia-react/create-gaia <N> --merge --delete-branch
-for i in $(seq 1 10); do
-  st=$(gh pr view -R gaia-react/create-gaia <N> --json state -q .state)
-  [ "$st" = "MERGED" ] && break; sleep 15
-done
-[ "$st" = "MERGED" ] || { echo "create-gaia PR did not merge, investigate before tagging"; exit 1; }
+gh pr merge -R gaia-react/create-gaia <CG_N> --merge --delete-branch
+bash .gaia/scripts/pr-wait-merge.sh --pr <CG_N> --repo gaia-react/create-gaia \
+  --attempts 10 --interval 15 \
+  || { echo "create-gaia PR did not confirm as MERGED (read the wait's own message above, which names the verdict or the refusal), investigate before tagging"; exit 1; }
 git -C "$CG" fetch origin --quiet && git -C "$CG" checkout main --quiet && git -C "$CG" pull --ff-only origin main --quiet
 git -C "$CG" tag "v<NEW_VERSION>"
 ```

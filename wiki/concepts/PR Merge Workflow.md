@@ -537,37 +537,29 @@ When worthy:
 
 `gh pr merge` can fail without aborting the rest of a script: branch protection ("base branch policy prohibits the merge"), pending CI checks, missing `--auto` for queued merges, or auth issues. Proceeding to local cleanup (`git checkout main`, `git branch -D <pr-branch>`, `git fetch --prune`) before confirming the merge actually succeeded leaves the local branch deleted while the PR is still OPEN. Recoverable via `git checkout -b <branch> origin/<branch>` while the remote ref still exists, but it's avoidable churn.
 
-Verification is identical under both isolation modes: poll the PR until it reports `MERGED`, and stop early on either state that means it never will.
+Verification is identical under both isolation modes: poll the PR until it reports `MERGED`, and stop early on any state that means it never will.
 
 ```bash
 gh pr merge <N> --squash --delete-branch [--auto]
 ```
 
-Then poll. The loop is the reusable part: a caller that already issued its own `gh pr merge` runs only this block.
+Then wait. The wait is the reusable part, and it ships as a script: a caller that already issued its own `gh pr merge` runs only this line.
 
 ```bash
-for i in 1 2 3 4 5; do
-  verdict=$(gh pr view <N> --json state,mergeable \
-    --jq 'if .state == "MERGED" then "MERGED" elif .mergeable == "CONFLICTING" then "CONFLICTING" else "WAITING" end')
-  if [ "$verdict" = "WAITING" ]; then
-    failed=$(gh pr checks <N> --required --json bucket \
-      --jq 'map(select(.bucket == "fail" or .bucket == "cancel")) | length' 2>/dev/null)
-    [ "${failed:-0}" -gt 0 ] && verdict="CHECK_FAILED"
-  fi
-  [ "$verdict" = "WAITING" ] || break
-  sleep 30
-done
-case "$verdict" in
-  MERGED) ;;
-  CONFLICTING) echo "base branch conflicts with the PR; see Conflict found mid-wait"; exit 1 ;;
-  CHECK_FAILED) echo "a required check failed; the queued merge cannot land"; exit 1 ;;
-  *) echo "merge did not complete"; exit 1 ;;
-esac
+bash .gaia/scripts/pr-wait-merge.sh --pr <N>
 ```
 
-That poll is the whole verification. A local error printed by `gh pr merge` after the state reads `MERGED` does not revise the answer; see [[#Local-sync failure mode]] below.
+It prints one verdict token on stdout and exits on it: `MERGED` (0), `CONFLICTING` (3), `CHECK_FAILED` (4), `TIMEOUT` (5), `CLOSED` (6). `--attempts` changes the default bound of five and `--interval` the default thirty-second spacing, which together are the ~2-3 minutes every caller here cites; a release or a full CI run passes `--attempts 20`. `--repo owner/name` waits on another repository's pull request, which is what the `create-gaia` lockstep wait in `/gaia-release` needs; omitted, `gh` resolves the repository from the working directory.
 
-`mergeable` reads `UNKNOWN` for a short while after any push, while GitHub recomputes it, so the poll treats it as still waiting rather than as clean. Only required checks count: a failed optional check does not block a queued merge, so exiting on one would abandon a merge that is about to land. `gh pr checks` prints nothing and exits non-zero while no check has registered yet, which the poll also reads as still waiting.
+**Exit 2 is a refusal rather than a verdict, and a caller must not read it as "still pending".** It covers a usage error, a `gh` that is not on PATH, and a `gh` that is present but never answered across the whole bound: expired auth, a rate limit, a network outage, or a pull-request number that does not exist. That last case is the one worth naming, because a `gh` that cannot answer returns the same blank state a live pending merge does; without the distinction the wait would report `TIMEOUT` and assert the pull request is still open, having established neither that pull request nor any state of it. A refusal prints no verdict token at all, so nothing on stdout reads as an answer. One transient failure still keeps waiting; the refusal needs every read in the bound to have failed.
+
+The script issues no `gh pr merge` of its own, which is what lets the same invocation serve a caller that queued its merge with `--squash`, one that queued it with `--merge --auto`, and one resuming the wait after a conflict repair, where re-merging would be wrong.
+
+That wait is the whole verification. A local error printed by `gh pr merge` after the state reads `MERGED` does not revise the answer; see [[#Local-sync failure mode]] below.
+
+Rules the script preserves, each of which exists to stop the wait abandoning a merge that is about to land. `mergeable` reads `UNKNOWN` for a short while after any push, while GitHub recomputes it, so that counts as still waiting rather than as clean. Only required checks count: a failed optional check does not block a queued merge, so exiting on one would give up on a live merge. `gh pr checks` prints nothing and exits non-zero while no check has registered yet, which is also still waiting.
+
+**Do not hand-roll this loop, and `.claude/hooks/block-handrolled-pr-poll.sh` denies it when you do.** A loop that waits only for `MERGED` cannot end once the base branch lands a conflicting change: `mergeable` turns `CONFLICTING`, the queued `--auto` merge never lands, and nothing left in the loop can fire, so it spins until a human notices while the in-flight required checks are spent either way. The pressure to hand-roll one is specific rather than hypothetical. A compound `gh pr view --jq 'if .state == "MERGED" …'` is refused outright by the worktree-isolation guard, which cannot verify that a `gh` call wrapped in a construct that complex stays inside the worktree, and whoever holds that refusal is one keystroke from `until [ "$(gh pr view <N> --json state --jq .state)" != "OPEN" ]`. A single `bash .gaia/scripts/pr-wait-merge.sh --pr <N>` is plain enough for that guard to read, so the blessed path is not the one the guard refuses. The hook stands down for a command that reads `mergeable`, and for one naming the script, and its own header carries what it does not catch.
 
 **`--auto` vs `--admin`:** when `gh pr merge` rejects with "base branch policy prohibits the merge", the right escape is `--auto`; it queues the merge and GitHub completes it once checks pass. Never reach for `--admin` to bypass branch protection without explicit permission; it removes the safety the policy exists to provide.
 
@@ -624,7 +616,7 @@ A conflict found this way is not a merge failure, and it costs no audit round un
 
 This failure mode belongs to `gh` below 2.99.0. When `gh pr merge` exits non-zero with `fatal: 'main' is already used by worktree at '<path>'`, **the GitHub-side merge has already succeeded**. The local checkout step is what failed, not the merge itself. Under worktree isolation this is the expected outcome rather than an anomaly, and it appears even in runs that perform no manual cleanup at all: `--delete-branch` runs its own local branch delete, which begins by checking out the default branch that the main checkout already holds. Driving the same merge from the main checkout fails one step later instead, at the delete itself, with `error: cannot delete branch '<branch>' used by worktree at '<path>'`; the merge has equally already succeeded. From `gh` 2.99.0 on, `gh` skips the local delete with a warning, deletes the remote branch, and exits 0, so the merge reports success under both isolation modes and this section describes nothing a reader on that version will see. Confirm with:
 
-```
+```bash
 gh pr view <N> --json state
 ```
 

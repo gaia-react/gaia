@@ -48,6 +48,12 @@
       "maintainer_only": false
     },
     {
+      "script": ".gaia/scripts/pr-wait-merge.sh",
+      "capabilities": ["network"],
+      "why": "Waits for a pull request to reach a terminal merge state, reading it through read-only `gh pr view` and `gh pr checks` calls; it never merges, never edits the pull request, and runs no mutating gh verb, so its reach is network only and not github-write. No file writes, and it invokes no other script.",
+      "maintainer_only": false
+    },
+    {
       "script": ".gaia/scripts/resolve-audit-spawn.sh",
       "capabilities": [
         "fs-write:**",

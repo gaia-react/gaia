@@ -502,17 +502,27 @@ Then branch on where the run started.
    ```bash
    gh pr merge <N> --squash --delete-branch --auto
    ```
-   `--auto` queues the merge so GitHub lands it once the required checks pass (or immediately if they are already green). If the repo has auto-merge disabled and `gh` rejects `--auto`, wait for the required checks to pass (`gh pr checks <N>`), then re-run the merge without `--auto`.
+   `--auto` queues the merge so GitHub lands it once the required checks pass (or immediately if they are already green). If the repo has auto-merge disabled and `gh` rejects `--auto`, wait for the required checks to pass by reading `gh pr checks <N>` as a bounded series of single calls, not a shell loop (`.claude/hooks/block-handrolled-pr-poll.sh` denies a loop naming `gh pr checks` that reads no `mergeable`), then re-run the merge without `--auto`.
 
-   `gh pr merge` can exit success while the merge is still queued, so verify the terminal state before touching the local checkout with the bounded poll in `wiki/concepts/PR Merge Workflow.md` (`## Post-merge verification before cleanup`), which also stops early on a base-branch conflict or a failed required check.
-   - **`state == MERGED`** → clean up locally, then print the merged PR URL:
+   `gh pr merge` can exit success while the merge is still queued, so verify the terminal state before touching the local checkout with the bounded poll in `wiki/concepts/PR Merge Workflow.md` (`## Post-merge verification before cleanup`), which also stops early on every state that means the merge will never land.
+
+   ```bash
+   bash .gaia/scripts/pr-wait-merge.sh --pr <N> --attempts 20
+   ```
+
+   The 20-attempt bound replaces the default 5, for the reason the sibling callers give: the merge queued above lands only after a fresh full CI run, which outlasts the ~2.5 minutes the default spends, so a default-bound wait would report `TIMEOUT` on essentially every run and the cleanup below would never be reached.
+
+   - **`MERGED`** (exit 0) → clean up locally, then print the merged PR URL:
      ```bash
      git checkout main && git pull origin main
      git branch -D <branch-name>
      git fetch --prune origin
      ```
-   - **still not `MERGED`** (auto-merge queued, checks not yet green) → print the PR URL and note that auto-merge is queued and will land when the checks pass. **Do not** delete the local branch or switch off it, the PR is still open.
-   - **conflict or failed required check** → on a conflict, repair it per that page's `### Conflict found mid-wait` and resume the poll; on a failed required check, print the PR URL and the failing check, and leave the branch in place as for a queued merge.
+   - **`TIMEOUT`** (exit 5, the bound was spent with the pull request still open) → print the PR URL and note that the merge queued above has not landed yet. **Do not** delete the local branch or switch off it, the PR is still open.
+   - **`CONFLICTING`** (exit 3) → repair it per that page's `### Conflict found mid-wait` and run the wait again.
+   - **`CHECK_FAILED`** (exit 4) → print the PR URL and the failing check, and leave the branch in place as for a queued merge.
+   - **`CLOSED`** (exit 6) → the pull request was closed without merging, so no wait can clear it: report that, leave the branch in place, and stop.
+   - **the wait refused rather than answered** (exit 2) → report what it could not read, leave the branch in place, and assert no state for the pull request.
 
 **If you were already on a non-main branch** at pre-flight, or running in CI (no new branch was created):
 

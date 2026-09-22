@@ -374,7 +374,7 @@ gh pr create --title "<commit subject>" --body-file <pr-body-file>
 
 A fix to a drafted rule is a commit to a file in a member's remit, so it rotates that member's digest and buys a whole extra round. The citation check in the prose-rule template's filling rules is what keeps round one clean.
 
-**Watch the checks.** Bounded-poll `gh pr checks <N>` until no required check is pending. A failing check is a named-failure stop: read its log, report which check failed and why, and stop with the PR open. A window that closes with checks still pending is not a failure: go on to the merge question, and `--auto` queues the merge behind them.
+**Watch the checks.** Read the whole `gh pr checks <N>` output once per look, as a bounded series of single calls, until no required check is pending. Single reads rather than a shell loop: `.claude/hooks/block-handrolled-pr-poll.sh` denies a loop naming `gh pr checks` that reads no `mergeable`, and the merge wait it offers instead is the wrong instrument here: it has no arm that fires on the required checks merely going green, so on that path it can only spend its bound. A failing check is a named-failure stop: read its log, report which check failed and why, and stop with the PR open. A window that closes with checks still pending is not a failure: go on to the merge question, and `--auto` queues the merge behind them.
 
 **Ask the merge question**, once, via `AskUserQuestion`, after the audit has cleared and the check watch ended without a failing check. A candidate the human declined or deferred is no reason to withhold the merge: the PR carries only what they approved.
 
@@ -386,7 +386,14 @@ A fix to a drafted rule is a commit to a file in a member's remit, so it rotates
 
 **Leave open** → report the PR URL and stop.
 
-**Merge, verify, clean up.** Run `gh pr merge <N> --squash --delete-branch --auto` directly, so a merge reached after the watch window closed with checks pending queues behind them rather than being refused by branch policy. Then run the poll loop in `wiki/concepts/PR Merge Workflow.md` (`## Post-merge verification before cleanup`), with a 20-iteration bound in place of its 5, since a full CI run outlasts the default; it also stops early on a base-branch conflict (repair it per that page's `### Conflict found mid-wait` and resume) or a failed required check (print the PR URL and the failing check, and leave the branch in place). On `MERGED`, keep the branch name for the cost record's `--branch-name` (`## Cost record (run end)`), then clean up per the workflow's `## Post-merge verification before cleanup` (`git checkout main && git pull origin main`, `git branch -D <HARDEN_BRANCH>`, `git fetch --prune origin`). If it is still queued when the window closes, print the PR URL, note the merge is queued, and leave the branch in place.
+**Merge, verify, clean up.** Run `gh pr merge <N> --squash --delete-branch --auto` directly, so a merge reached after the watch window closed with checks pending queues behind them rather than being refused by branch policy. Then run the merge wait, `bash .gaia/scripts/pr-wait-merge.sh --pr <N> --attempts 20`, with a 20-attempt bound in place of its default 5, since a full CI run outlasts the default. The merge above is already queued and the script issues no `gh pr merge` of its own, so nothing here re-merges. One arm per verdict, and the script's `--help` is the authority on the set:
+
+- On `MERGED` (exit 0), keep the branch name for the cost record's `--branch-name` (`## Cost record (run end)`), then clean up per the workflow's `## Post-merge verification before cleanup` (`git checkout main && git pull origin main`, `git branch -D <HARDEN_BRANCH>`, `git fetch --prune origin`).
+- On `CONFLICTING` (exit 3), repair per `wiki/concepts/PR Merge Workflow.md`'s `### Conflict found mid-wait` and run the wait again.
+- On `CHECK_FAILED` (exit 4), print the PR URL and the failing check, and leave the branch in place.
+- On `TIMEOUT` (exit 5), the window closed with the pull request still open: print the PR URL, say the merge queued above has not landed yet, and leave the branch in place.
+- On `CLOSED` (exit 6), the pull request was closed without merging: report that and leave the branch in place, since no wait can clear it.
+- On exit 2 the wait refused rather than answered: report the refusal and the PR URL, leave the branch in place, and assert no state for the pull request itself, since nothing about it was read. The merge queued above may still land.
 
 Every stop above ends the run; see `## Cost record (run end)`, which is written once, as the last thing printed.
 
@@ -412,7 +419,7 @@ Every path that ends a `/gaia-harden` run appends exactly one cost record, the r
 - Publish's no-change stop (no approval touched the working tree, or `git status --porcelain` came back empty).
 - Publish's unsafe-repo-state stop.
 - Publish's other-branch no-op.
-- Publish's terminal outcomes on the default branch: `MERGED` after cleanup, a merge still queued when the poll window closes, a "Leave open" the human chose, a stop at the audit's three-round session cap, a failing check, or a non-zero-exit STOP on a `git` or `gh` command.
+- Publish's terminal outcomes on the default branch: `MERGED` after cleanup, a merge still queued when the wait's window closes, a "Leave open" the human chose, a stop at the audit's three-round session cap, a failing check, a pull request closed without merging, a merge wait that refused because it read nothing, or a non-zero-exit STOP on a `git` or `gh` command.
 
 On the default-branch publish path the record is written once, at one of those outcomes, and its `Cost:` line is the last thing the run prints. Opening the PR is not a run end: the audit, the checks, and the merge question still follow it.
 

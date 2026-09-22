@@ -102,7 +102,8 @@ disposition-sidecar|audit-member-digest.sh|exec|runs verbatim against this check
 findings-block|post-findings-block.sh --pr|static|posts a comment to a live PR
 post-status|post-audit-status.sh <current-member-marker>|static|posts a commit status to a live PR head
 merge-and-poll|gh pr merge <N> --squash|static|merges a live PR
-merge-poll|gh pr view <N> --json state,mergeable|static|polls a live PR's merge state and required checks
+merge-poll|pr-wait-merge.sh --pr <N>|static|waits on a live PR's merge state and required checks
+local-sync-confirm|gh pr view <N> --json state|static|reads a live PR's state to tell a failed local sync from a failed merge
 main-checkout-head|rev-parse --abbrev-ref HEAD|exec|read-only git plumbing, runs against a fixture checkout substituted for the placeholder
 cleanup-branch|git checkout main && git pull origin main|static|checks out main and deletes a branch in this checkout
 cleanup-worktree|git worktree remove --force|static|removes a worktree in this checkout
