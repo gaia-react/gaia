@@ -434,8 +434,8 @@ Resolve the PR to completion through `wiki/concepts/PR Merge Workflow.md`, read 
 
   - On `MERGED` (exit 0), proceed to the confirmed-`MERGED` steps below.
   - On `CONFLICTING` (exit 3), repair it per that page's `### Conflict found mid-wait` and run the wait again; it is not a controlled stop and costs no audit round unless the merged content names a member again.
-  - On `CHECK_FAILED` (exit 4), report the failing check and return **without** cleanup, the same way as a queued merge.
-  - On `TIMEOUT` (exit 5), the window closed with the pull request still open: report "merge queued via --auto; completes when checks pass" and return **without** cleanup, since deleting the local branch, or discarding the worktree, before `MERGED` strands it against an open PR.
+  - On `CHECK_FAILED` (exit 4), report the failing check and return **without** cleanup, the same way as a queued merge, and keep every member's claim.
+  - On `TIMEOUT` (exit 5), the window closed with the pull request still open: report "merge queued via --auto; completes when checks pass" and return **without** cleanup, since deleting the local branch, or discarding the worktree, before `MERGED` strands it against an open PR, and keep every member's claim.
   - On `CLOSED` (exit 6), the pull request was closed without merging, so no wait can clear it and no `Closes #N` line will ever fire: report the closure, return without cleanup, and release the unit the way any controlled stop does, stripping `in-progress` from every claimed member and touching the sentinel.
   - On exit 2 the wait refused rather than answered: report what it could not read, return without cleanup, and assert **no** state for the pull request, since nothing about it was read. Keep every member's claim, because a claim stripped over an unread pull request hands a peer session an issue whose merge may be seconds from landing.
 
