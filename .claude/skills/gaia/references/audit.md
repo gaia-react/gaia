@@ -636,7 +636,7 @@ Otherwise the working tree carries the applied `wiki/` / `.claude/` / `CLAUDE.md
    gh pr merge <N> --squash --delete-branch --auto
    ```
 
-   `--auto` queues the merge behind required checks (the oracle check before `gh pr create` already confirmed whether a marker is owed). Verify the terminal state before any local cleanup with the merge wait, `bash .gaia/scripts/pr-wait-merge.sh --pr <N>`, the bounded poll `wiki/concepts/PR Merge Workflow.md` (`## Post-merge verification before cleanup`) prescribes. The merge above is already queued and the script issues no `gh pr merge` of its own, so nothing here re-merges. One arm per verdict, and the script's `--help` is the authority on the set:
+   `--auto` queues the merge behind required checks (the oracle check before `gh pr create` already confirmed whether a marker is owed). Verify the terminal state before any local cleanup with the merge wait, `bash .gaia/scripts/pr-wait-merge.sh --pr <N>`, the bounded poll `wiki/concepts/PR Merge Workflow.md` (`## Post-merge verification before cleanup`) prescribes. The merge above is already queued and the script issues no `gh pr merge` of its own, so nothing here re-merges. One arm per verdict plus one for the exit-2 refusal, and the script's `--help` is the authority on both:
 
    - **`MERGED`** (exit 0) → capture the branch first (`git branch --show-current`, keep the literal for the tally's `--branch-name`; see `## Cost record (run end)`), then clean up locally and print the merged PR URL:
 
