@@ -41,16 +41,23 @@
 # <repo_root> defaults to `git rev-parse --show-toplevel` and is the injection
 # point every test drives the check through; an argument beginning with `-` is
 # never the positional. `--print-reach` is a diagnostic, not a gate: it needs
-# no manifest on disk and always exits 0.
+# no manifest on disk and never exits non-zero for a finding. The startup
+# refusals above (2, 5, 6) still apply to it: they run before the flag is read.
 #
-# Exit 0 clean, 1 on at least one finding, 2 on the check's own failure.
+# Exit 0 clean, 1 on at least one finding, 2 on the check's own failure, and 5
+# or 6 when the awk interpreter the oracle's splitter runs under cannot be
+# resolved (5 none found, 6 unsanctioned), passed through from the library's own
+# refusal.
 
-# Needs bash 5. On stock macOS /bin/bash (3.2) the closure walk loses whole
-# files' records, so a clean tree reports fabricated SURPLUS and, in the
-# direction that matters, reach the walk drops can never surface as
-# UNDECLARED. CI runs bash 5, so an unguarded local run disagrees with the
-# gate silently. Prefer a Homebrew bash 5 the way .gaia/scripts/bats5.sh
-# does, and refuse rather than answer wrongly when there is none.
+# Needs bash 5. On stock macOS /bin/bash (3.2) the PRE-AWK closure walk lost
+# whole files' records, so a clean tree reported fabricated SURPLUS and, in the
+# direction that matters, reach the walk dropped could never surface as
+# UNDECLARED. That walk runs in awk now; the requirement is retained
+# deliberately, for the reason capability-oracle-lib.sh's own guard states,
+# rather than re-measured away. CI runs bash 5, so an unguarded local run
+# disagrees with the gate silently. Prefer a Homebrew bash 5 the way
+# .gaia/scripts/bats5.sh does, and refuse rather than answer wrongly when
+# there is none.
 if [ "${BASH_VERSINFO[0]}" -lt 5 ]; then
   # Recorded only once the version probe passes, never read off the loop
   # variable: that keeps whatever path was tried last, so a candidate that
@@ -65,8 +72,10 @@ if [ "${BASH_VERSINFO[0]}" -lt 5 ]; then
     break
   done
   printf 'check-hook-capabilities: requires bash >= 5, found %s\n' "${BASH_VERSION}" >&2
-  printf '  bash 3.2 drops closure records: it reports a clean tree as SURPLUS\n' >&2
-  printf '  and can never report the reach it lost.\n' >&2
+  printf '  bash 3.2 dropped closure records on the pre-awk walk: it reports a\n' >&2
+  printf '  clean tree as SURPLUS and can never report the reach it lost. The\n' >&2
+  printf '  walk runs in awk now; the requirement is kept because the rest of\n' >&2
+  printf '  the oracle is still bash string work.\n' >&2
   if [ -n "$_gaia_hookcap_bash5_found" ]; then
     printf '  %s is a bash 5. The re-exec is only available when this file is\n' "$_gaia_hookcap_bash5_found" >&2
     printf '  run, not sourced, so run it through that bash instead.\n' >&2
@@ -98,6 +107,18 @@ if [ -f "$_gaia_hookcap_lib_dir/capability-oracle-lib.sh" ]; then
 else
   printf 'check-hook-capabilities: capability-oracle-lib.sh is missing beside this script\n' >&2
   exit 2
+fi
+
+# The oracle's logical-line splitter runs in awk. Refuse here, before any scan,
+# rather than letting an unresolved interpreter return a file with no records:
+# the walk is read over a process substitution whose status no shell reports, so
+# that failure arrives as reach under-reported. For this checker that is the
+# same direction its bash-5 refusal above already names as the one that matters,
+# and it also fabricates SURPLUS for every declaration whose use the walk never
+# saw. The library records the reason; this carries it through unchanged.
+if [ "${_GAIA_CAPCHECK_AWK_STATUS:-0}" -ne 0 ]; then
+  printf 'check-hook-capabilities: %s\n' "$_GAIA_CAPCHECK_AWK_REASON" >&2
+  exit "$_GAIA_CAPCHECK_AWK_STATUS"
 fi
 
 # ---------------------------------------------------------------------------
@@ -673,7 +694,7 @@ gaia_check_hook_capabilities() {
 #   for nothing still gets its own line, carrying a `-` sentinel, so "pure"
 #   and "not enumerated" are distinguishable there. Unresolvable sites are
 #   stderr diagnostics here rather than a fatal condition, and the mode
-#   always exits 0.
+#   exits 0 for any finding; only the startup refusals (2, 5, 6) reach it.
 gaia_hookcap_print_reach() {
   local repo_root="$1" only="${2:-}"
   local hook terms unres n
@@ -706,9 +727,13 @@ usage: check-hook-capabilities.sh [<repo_root>]
 
 Reconciles every registered hook's declared capabilities against its actual
 reach. <repo_root> defaults to the current git toplevel. --print-reach is a
-diagnostic that needs no manifest and always exits 0.
+diagnostic that needs no manifest and never exits non-zero for a finding; the
+startup refusals below (2, 5, 6) still apply, since they run before the flag is
+read.
 
-Exit 0 clean, 1 on a finding, 2 on the check's own failure.
+Exit 0 clean, 1 on a finding, 2 on the check's own failure. Exit 5 or 6 when the
+capability oracle's splitter cannot resolve an awk interpreter: 5 when neither
+mawk nor /usr/bin/awk is present, 6 when what resolved is neither.
 EOF
 }
 

@@ -606,11 +606,17 @@ assert_doctored() {
   # that library from its own on-disk location -- and it must NOT land in
   # .gaia/scripts to get it. That directory is a scan root of this very lint,
   # discovery is `find` rather than `git ls-files` so an untracked dotfile is
-  # visible there, and the shards run concurrently in one workspace. Both files
-  # go to a directory of their own, which $TMP's teardown already removes.
+  # visible there, and the shards run concurrently in one workspace. Every file
+  # goes to a directory of its own, which $TMP's teardown already removes.
+  #
+  # The oracle library resolves the awk interpreter its logical-line splitter
+  # runs under from awk-interp-lib.sh, beside its own on-disk location, so a
+  # copy carries that sibling too or the lint refuses at startup with an
+  # unresolved interpreter.
   local mdir="$TMP/mutant"
   mkdir -p "$mdir"
   cp "$REPO_ROOT/.gaia/scripts/capability-oracle-lib.sh" "$mdir/capability-oracle-lib.sh"
+  cp "$REPO_ROOT/.gaia/scripts/awk-interp-lib.sh" "$mdir/awk-interp-lib.sh"
   sed '/shopt -s expand_aliases/d' "$LINTER" > "$mdir/lint.sh"
   grep -qF -- "expand_aliases" "$mdir/lint.sh" && return 1
   run bash -c "cd '$TMP' && bash '$mdir/lint.sh'"
@@ -676,6 +682,7 @@ assert_doctored() {
   local mdir="$TMP/mutant"
   mkdir -p "$mdir"
   cp "$REPO_ROOT/.gaia/scripts/capability-oracle-lib.sh" "$mdir/capability-oracle-lib.sh"
+  cp "$REPO_ROOT/.gaia/scripts/awk-interp-lib.sh" "$mdir/awk-interp-lib.sh"
   sed 's|_gaia_capcheck_logical_lines "$file"|true|' "$LINTER" > "$mdir/lint.sh"
   grep -qF -- '_gaia_capcheck_logical_lines "$file"' "$mdir/lint.sh" && return 1
   run bash -c "cd '$TMP' && bash '$mdir/lint.sh'"

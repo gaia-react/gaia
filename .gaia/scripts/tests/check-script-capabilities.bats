@@ -1027,124 +1027,62 @@ curl -sS https://example.com/x'
   grep -qF -- "UNDECLARED a/s.sh invokes:.github/audit/base.sh" <<<"$output"
 }
 
-@test "the run-skip changes no answer the walk reaches without it" {
-  # The guard over the skip sets AS A SET, which the fixtures above cannot be.
-  # Each set restates the characters its own arm of the walk reads, so the two
-  # can drift apart, and a hand-written fixture only catches the drift somebody
-  # already thought of: a `"` and a backtick pop and push each other
-  # symmetrically, so the shapes separating a sound set from an unsound one are
-  # the ones nobody writes down.
+@test "the walk reads every character, so no skip set can drift out of step with its arm" {
+  # What this replaces, and why the replacement is a different shape. The walk
+  # used to shortcut the runs between the characters that can change the stack,
+  # one bracket expression per top frame, and each of those sets restated the
+  # characters its own arm reads. A character added to an arm and not to the set
+  # was silent drift, and the guard over it was a differential: run the corpus
+  # once with the sets and once with them neutered, and diff.
   #
-  # So it is a differential rather than a fixture. `?` matches at every
-  # position, which leaves the skip with nothing to remove and reproduces the
-  # character-at-a-time walk the sets exist to shortcut; the two must agree
-  # line for line. The corpus is every shell file the repo tracks, discovered
-  # rather than listed, so a file added later is compared without an edit here.
+  # The walk is awk now and reads every character, so there is no skip set to
+  # drift and no neutered side to run. The class is gone by construction rather
+  # than guarded, and a differential over a mechanism that no longer exists is
+  # the vacuous arm this suite would otherwise keep green forever.
   #
-  # The neutered set is DERIVED from the library, not listed here. A list is the
-  # one thing this differential cannot afford to hand-write: the diff that adds
-  # a fourth set is exactly the diff that owes the check, and a list left at
-  # three arms neither side of the comparison, so both walks run the same skip
-  # and the drift the test exists for is invisible while it reports clean.
-  #
-  # The corpus is listed the way the gate discovers its own: NUL-delimited with
-  # `core.quotepath` off. Under git's default quoting a tracked path carrying a
-  # non-ASCII byte comes back C-quoted, `_gaia_capcheck_logical_lines` takes its
-  # `[ -f ]` arm on it, and the file leaves BOTH sides silently, so the diff
-  # still agrees over a file neither walk read.
-  local walk out_skip="$BATS_TEST_TMPDIR/skip.txt" out_plain="$BATS_TEST_TMPDIR/plain.txt"
-  walk='cd "$1" || exit 2
+  # So this asserts the construction instead: the library carries no skip-set
+  # constant, and the walk it does carry is the awk one. Both halves matter --
+  # the absence alone would pass against a library that had lost the walk too.
+  local n
+  n="$(bash -c 'cd "$1" || exit 2
     . .gaia/scripts/capability-oracle-lib.sh
-    if [ -n "$2" ]; then
-      seen=0
-      got=0
-      for v in $(compgen -A variable _GAIA_CAPCHECK_QSKIP_); do
-        # Discovered and neutered are counted SEPARATELY, and every set found
-        # has to have taken. A `readonly` on something the library calls a
-        # constant is a plausible hardening edit; `eval` then writes to stderr
-        # and returns 1, and a count of successes alone still clears any floor
-        # below the number of sets while one set stays REAL. The no-skip side
-        # then runs that real set, both walks skip identically for its frame,
-        # and the comparison goes vacuous for exactly the arm whose drift it
-        # was built to catch.
-        seen=$((seen + 1))
-        eval "$v=\"?\"" 2>/dev/null || true
-        if [ "$(eval printf %s "\"\$$v\"")" = "?" ]; then got=$((got + 1)); fi
-      done
-      # A derivation that came back empty, or found only one set, would neuter
-      # nothing or nearly nothing and leave the two walks agreeing trivially.
-      if [ "$seen" -le 2 ] || [ "$got" -ne "$seen" ]; then
-        echo "skip-set derivation saw $seen neutered $got" >&2
-        exit 3
-      fi
-    fi
-    git -c core.quotepath=false ls-files -z "*.sh" "*.bats" | while IFS= read -r -d "" f; do
-      printf "== %s\n" "$f"
-      _gaia_capcheck_logical_lines "$f"
-    done'
-  bash -c "$walk" _ "$REPO_ROOT" "" >"$out_skip"
-  bash -c "$walk" _ "$REPO_ROOT" no-skip >"$out_plain"
-  # Short-read guard: a corpus that resolved no file, or a walk that emitted
-  # nothing, agrees with itself and would report this clean having compared
-  # nothing at all.
-  [ -s "$out_skip" ]
-  [ "$(grep -c '^== ' "$out_skip")" -gt 100 ]
-  diff "$out_skip" "$out_plain"
+    compgen -A variable _GAIA_CAPCHECK_QSKIP_ | wc -l' _ "$REPO_ROOT")"
+  [ "$(printf '%s' "$n" | tr -d ' ')" = "0" ]
+  grep -qF -- '_GAIA_CAPCHECK_AWK=' "$SCRIPT_DIR/capability-oracle-lib.sh"
 }
 
-# The carried-body predicate is written twice, once in each function that acts
-# on it. `_gaia_capcheck_quote_carry` reads it as `carry`, to decide whether the
-# line it was handed is body rather than code; `_gaia_capcheck_logical_lines`
-# reads it as `inbody`, to decide whether its comment and blank-line arms apply
-# to that same line. Neither is extracted into a shared helper, on purpose: the
-# walk runs per line over every tracked shell file, and .gaia/scripts/tests/
-# shell-lint-bash32.bats exists because that per-line cost is already the
-# binding one. So nothing but this keeps the two writings in step.
-#
-# Drift between them is silent, and worst in one direction. `inbody=0` while
-# `carry=1` lets logical_lines take its comment arm on a line inside a string
-# body, so a `#`-leading prose line carrying an apostrophe never reaches
-# quote_carry at all: the apostrophe opens a frame nothing closes, and every
-# line below it leaves the file as carried body with no diagnostic anywhere.
-
-predicate_block() {
-  # $1 = the flag the site assigns, `carry` or `inbody`. Anchored on the shadow
-  # guard rather than on a line range, so either function may move or grow
-  # around it, and normalized for the two spellings that differ by construction:
-  # quote_carry reads the state through its own local alias, and each site names
-  # its own flag. Nothing else is normalized, so the frame letters, the depth
-  # bound and the shadow term are all compared as written.
-  awk -v flag="$1" '
-    /if \[ "\$_GAIA_CAPCHECK_QSHADOW" -eq 0 \]/ { inb = 1; buf = ""; hit = 0 }
-    inb {
-      sub(/^[[:space:]]+/, ""); sub(/[[:space:]]+$/, "")
-      gsub(/[$][{]#st[}]/, "${#S}"); gsub(/[$][{]#_GAIA_CAPCHECK_QSTATE[}]/, "${#S}")
-      gsub(/[$]st/, "$S"); gsub(/[$]_GAIA_CAPCHECK_QSTATE/, "$S")
-      gsub(flag "=1", "F=1")
-      buf = buf $0 "\n"
-      if ($0 ~ /F=1/) { hit = 1 }
-      if ($0 == "fi") { if (hit) { printf "%s", buf } ; inb = 0 }
-    }
-  ' "$SCRIPT_DIR/capability-oracle-lib.sh"
-}
-
-@test "both writings of the carried-body predicate say the same thing" {
-  local carry inbody
-  carry="$(predicate_block carry)"
-  inbody="$(predicate_block inbody)"
-  # Each site has to be FOUND, or a rename on either one turns this into a
-  # comparison of two empty strings that agrees with itself.
-  [ -n "$carry" ]
-  [ -n "$inbody" ]
-  # And the normalization has to have left the three terms that carry the
-  # meaning standing: the depth bound, the state the case reads, and a frame
-  # letter reaching the flag. A substitution that over-matched, or an anchor
-  # that grabbed some other `if`, would otherwise compare two texts that agree
-  # about nothing.
-  grep -qF -- '[ "${#S}" -eq 1 ]' <<<"$carry"
-  grep -qF -- 'case "$S" in' <<<"$carry"
-  grep -qF -- ') F=1 ;;' <<<"$carry"
-  [ "$carry" = "$inbody" ]
+@test "the carried-body predicate is written once, so the two readings cannot disagree" {
+  # The predicate decides whether a line is string body rather than code. It
+  # used to be written twice, once in each bash function that acts on it --
+  # `carry` in the quote walk, `inbody` in the line reader -- and nothing but a
+  # source-text comparison kept the two in step. Drift was silent and worst in
+  # one direction: `inbody=0` while `carry=1` let the line reader take its
+  # comment arm on a line inside a string body, so a `#`-leading prose line
+  # carrying an apostrophe never reached the walk at all, the apostrophe opened
+  # a frame nothing closed, and every line below it left the file as carried
+  # body with no diagnostic anywhere.
+  #
+  # It is one awk FUNCTION now, `isbody`, and both readings call it. So this
+  # does not compare two texts: it pins that there is one text to read. Two
+  # halves, and both are needed. The frame-letter set appears exactly once, so a
+  # letter added anywhere else is a second writing; and each of the two callers
+  # reaches it through a call rather than by restating it, so a caller that
+  # inlines its own copy fails even while the function still stands beside it.
+  local lib="$SCRIPT_DIR/capability-oracle-lib.sh" hits
+  hits="$(grep -cF -- 's == "D" || s == "S" || s == "A" || s == "E"' "$lib")"
+  [ "$hits" -eq 1 ] || { echo "frame-letter set written $hits times, expected 1"; return 1; }
+  # The definition, plus exactly one call from each of the two readers.
+  hits="$(grep -cE -- '^function isbody\(s\) \{' "$lib")"
+  [ "$hits" -eq 1 ] || { echo "isbody defined $hits times, expected 1"; return 1; }
+  hits="$(grep -cF -- 'if (isbody(st)) carry = 1' "$lib")"
+  [ "$hits" -eq 1 ] || { echo "the walk's reading is not the single isbody call"; return 1; }
+  hits="$(grep -cF -- 'inbody = isbody(QSTATE) ? 1 : 0' "$lib")"
+  [ "$hits" -eq 1 ] || { echo "the record rule's reading is not the single isbody call"; return 1; }
+  # And no reader restates the predicate's own terms outside the function: a
+  # QSHADOW test paired with a length-1 test anywhere else is a second writing
+  # wearing different variable names, which is exactly how the bash form drifted.
+  hits="$(grep -cE -- 'QSHADOW == 0 && length\(' "$lib")"
+  [ "$hits" -eq 1 ] || { echo "the predicate's terms appear at $hits sites, expected 1"; return 1; }
 }
 
 @test "a bare path behind a separator inside a double-quoted span is prose, not a call" {
@@ -1881,6 +1819,15 @@ base_checker() {
   for f in check-script-capabilities.sh capability-oracle-lib.sh; do
     git -C "$repo" show "$base:.gaia/scripts/$f" >"$dir/$f" 2>/dev/null || return 2
   done
+  # The oracle resolves the awk interpreter its splitter runs under from
+  # awk-interp-lib.sh beside itself, so a before side built without that sibling
+  # refuses at startup and reports no reach at all. Best-effort rather than part
+  # of the loop above, and deliberately NOT a `return 2`: a fork point predating
+  # the sibling holds a pre-awk oracle that needs none, and failing there would
+  # turn every such comparison into a skip. Remove the empty file on a miss, so
+  # a stale zero-byte copy cannot shadow a real one.
+  git -C "$repo" show "$base:.gaia/scripts/awk-interp-lib.sh" >"$dir/awk-interp-lib.sh" 2>/dev/null \
+    || rm -f "$dir/awk-interp-lib.sh"
 }
 
 @test "real repo: the byte-identity pin really swaps the oracle, so it can fail" {
@@ -1949,7 +1896,13 @@ EOF
     cmp -s "$dir/check-script-capabilities.sh" "$CHECK"; then
     skip "this branch changes neither file, so both sides would be one program"
   fi
-  before="$(bash "$dir/check-script-capabilities.sh" "$REPO_ROOT" --print-reach 2>/dev/null)"
+  # The before side's stderr is KEPT, unlike the after side's. When it comes
+  # back empty the bare `[ -n "$before" ]` below says only that, and the cause
+  # is on a stream nothing captured: a vendored checker can refuse at startup
+  # for reasons that have nothing to do with the comparison, an interpreter it
+  # cannot resolve among them. Surfacing it costs a line of noise on a passing
+  # run and saves the reader from diagnosing an empty string.
+  before="$(bash "$dir/check-script-capabilities.sh" "$REPO_ROOT" --print-reach)"
   after="$(bash "$CHECK" "$REPO_ROOT" --print-reach 2>/dev/null)"
   [ -n "$before" ]
   [ -n "$after" ]
@@ -2026,6 +1979,12 @@ EOF
   mkdir -p "$dir"
   cp "$CHECK" "$dir/check-script-capabilities.sh"
   cp "$SCRIPT_DIR/capability-oracle-lib.sh" "$dir/capability-oracle-lib.sh"
+  # The oracle library resolves the awk interpreter its logical-line splitter
+  # runs under from awk-interp-lib.sh, beside its own on-disk location. A copy
+  # carries that sibling or the checker refuses at startup with an unresolved
+  # interpreter, and the before side then fails to run rather than seeing less
+  # reach -- the one outcome the non-empty assertions below exist to tell apart.
+  cp "$SCRIPT_DIR/awk-interp-lib.sh" "$dir/awk-interp-lib.sh"
   printf '\n_gaia_capcheck_detect_tmp() { return 1; }\n' >>"$dir/capability-oracle-lib.sh"
   repo="$(make_fixture_repo reachdelta)"
   add_script "$repo" .gaia/scripts/t.sh '#!/usr/bin/env bash
@@ -2156,4 +2115,74 @@ curl -fsS https://example.com/'
   grep -qF -- 'UNDECLARED a/s.sh invokes:b/run-thing.sh' <<<"$output" || return 1
   grep -qF -- 'UNDECLARED a/s.sh network' <<<"$output" || return 1
   true
+}
+
+# oracle_consumers: every script beside the library that SOURCES it, derived
+# from the tree rather than listed here. A fourth consumer therefore joins the
+# arm below the moment it lands, which is the whole point: the defect this pins
+# was one consumer of three silently missing the refusal, and a hand-kept list
+# would have been written from the same two the author remembered.
+oracle_consumers() {
+  grep -ln '^[[:space:]]*\.[[:space:]].*capability-oracle-lib\.sh' "$SCRIPT_DIR"/*.sh
+}
+
+@test "every oracle consumer refuses at startup when no awk interpreter resolves" {
+  # The oracle's logical-line splitter runs in awk, and every consumer reads
+  # that walk over a process substitution, whose status no shell reports. So an
+  # unresolved interpreter does not surface as an error: it surfaces as a file
+  # with no records, which is reach UNDER-reported, the one direction that
+  # cannot become a finding. Each consumer therefore refuses before it scans,
+  # and this drives each one into that refusal rather than trusting that the
+  # block was copied everywhere.
+  #
+  # The interpreter seams are the library's own (GAIA_AWK_MAWK_PATH and
+  # GAIA_AWK_BWK_PATH), pointed at paths that do not exist, which is status 5.
+  #
+  # `env -u GAIA_AWK` is load-bearing, not tidiness. The resolver EXPORTS
+  # GAIA_AWK, and an explicit one already in the environment wins over both
+  # seams by design. This suite's own setup sources the checker, which resolves
+  # and exports a real interpreter into the bats shell, so without the unset
+  # every child inherits a working awk, no consumer refuses, and this arm
+  # reports green over exactly the defect it exists to catch.
+  local c n=0
+  while IFS= read -r c; do
+    [ -n "$c" ] || continue
+    n=$((n + 1))
+    run env -u GAIA_AWK GAIA_AWK_MAWK_PATH=/nonexistent/mawk GAIA_AWK_BWK_PATH=/nonexistent/awk \
+      bash "$c" "$REPO_ROOT"
+    # Status first: 5 is "no awk interpreter found", and a consumer that scanned
+    # anyway comes back 0 or 1 having read a tree it could not lex.
+    [ "$status" -eq 5 ] || { echo "consumer=$c expected exit 5, got $status: $output"; return 1; }
+    # Then the message, because the status alone is also what a wholly unrelated
+    # early refusal would produce. It carries the consumer's own prefix and the
+    # library's reason.
+    grep -qF -- "$(basename "$c" .sh):" <<<"$output" \
+      || { echo "consumer=$c refusal does not name itself: $output"; return 1; }
+    grep -qF -- "no awk interpreter found" <<<"$output" \
+      || { echo "consumer=$c refusal does not name the cause: $output"; return 1; }
+    # And nothing resembling a scan result, which is the outcome the refusal
+    # exists to prevent rather than merely a second way to spell the status.
+    grep -qE -- '^(UNDECLARED|SURPLUS)' <<<"$output" \
+      && { echo "consumer=$c scanned despite an unresolved interpreter: $output"; return 1; }
+  done < <(oracle_consumers)
+  # A derivation that came back empty would make every per-element claim above
+  # vacuously true, and a short read would pass while covering a subset.
+  [ "$n" -ge 3 ] || { echo "oracle_consumers derived $n consumers, expected at least 3"; return 1; }
+}
+
+@test "an oracle consumer refuses on an unsanctioned interpreter too, not only a missing one" {
+  # The other reachable status, and it is the one a resolver that trusted a
+  # basename would get wrong: something named awk resolves, answers, and is
+  # neither sanctioned implementation. Driven on one consumer rather than all
+  # three, deliberately: the arm above already establishes that every consumer
+  # carries the block, and what this adds is that the block forwards a SECOND
+  # status rather than collapsing every failure onto 5.
+  local fake="$BATS_TEST_TMPDIR/fakeawk"
+  printf '#!/bin/sh\necho "GNU Awk 5.1.0"\n' >"$fake"
+  chmod +x "$fake"
+  run env -u GAIA_AWK GAIA_AWK_MAWK_PATH="$fake" GAIA_AWK_BWK_PATH="$fake" \
+    bash "$SCRIPT_DIR/check-script-capabilities.sh" "$REPO_ROOT"
+  [ "$status" -eq 6 ]
+  grep -qF -- "check-script-capabilities:" <<<"$output"
+  grep -qF -- "unsanctioned interpreter" <<<"$output"
 }

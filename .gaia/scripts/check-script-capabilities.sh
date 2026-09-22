@@ -45,16 +45,22 @@
 # <repo_root> defaults to `git rev-parse --show-toplevel` and is the injection
 # point every test drives the check through; an argument beginning with `-` is
 # never the positional. `--print-reach` is a diagnostic, not a gate: it needs no
-# manifest on disk and always exits 0.
+# manifest on disk and never exits non-zero for a finding. The startup refusals
+# below (2, 5, 6) still apply to it: they run before the flag is read.
 #
-# Exit 0 clean, 1 on at least one finding, 2 on the check's own failure.
+# Exit 0 clean, 1 on at least one finding, 2 on the check's own failure, and 5
+# or 6 when the awk interpreter the oracle's splitter runs under cannot be
+# resolved (5 none found, 6 unsanctioned), passed through from the library's own
+# refusal.
 
 # Needs bash 5, for the reason capability-oracle-lib.sh's own guard states: on
-# bash 3.2 the oracle crashes partway through a file's walk and the records past
-# that point are lost, which under-reports reach. The lib's header carries the
-# crash's shape and why no restructuring there removes the dependency. Re-exec
-# under a Homebrew bash 5 when there is one, the way .gaia/scripts/bats5.sh
-# discovers it, and refuse rather than answer wrongly when there is not. This
+# bash 3.2 the oracle crashed partway through the pre-awk walk of a file and the
+# records past that point were lost, which under-reports reach. That walk runs
+# in awk now and the requirement is retained deliberately; the lib's header
+# carries the crash's shape and why a clean 3.2 run after the port does not
+# retire the dependency. Re-exec under a Homebrew bash 5 when there is one, the
+# way .gaia/scripts/bats5.sh discovers it, and refuse rather than answer wrongly
+# when there is not. This
 # runs BEFORE the lib is sourced, so the entry point gets its re-exec instead of
 # the lib's bare refusal; only a consumer with no guard of its own falls
 # through to that.
@@ -72,8 +78,9 @@ if [ "${BASH_VERSINFO[0]}" -lt 5 ]; then
     break
   done
   printf 'check-script-capabilities: requires bash >= 5, found %s\n' "${BASH_VERSION}" >&2
-  printf '  bash 3.2 crashes partway through the walk of a file, so reach\n' >&2
-  printf '  past that point is lost.\n' >&2
+  printf '  bash 3.2 crashed partway through the pre-awk walk of a file, losing\n' >&2
+  printf '  reach past that point. The walk runs in awk now; the requirement is\n' >&2
+  printf '  kept because the rest of the oracle is still bash string work.\n' >&2
   if [ -n "$_gaia_capcheck_bash5_found" ]; then
     printf '  %s is a bash 5. The re-exec is only available when this file is\n' "$_gaia_capcheck_bash5_found" >&2
     printf '  run, not sourced, so run it through that bash instead.\n' >&2
@@ -103,6 +110,17 @@ if [ -f "$_gaia_capcheck_lib_dir/capability-oracle-lib.sh" ]; then
 else
   printf 'check-script-capabilities: capability-oracle-lib.sh is missing beside this script\n' >&2
   exit 2
+fi
+
+# The oracle's logical-line splitter runs in awk. Refuse here, before any scan,
+# rather than letting an unresolved interpreter return a file with no records:
+# the walk is read over a process substitution whose status no shell reports, so
+# that failure would arrive as reach under-reported, which cannot surface as a
+# finding. The library records the reason; this carries it through unchanged so
+# the operator is not pointed at a repair that does not fit the cause.
+if [ "${_GAIA_CAPCHECK_AWK_STATUS:-0}" -ne 0 ]; then
+  printf 'check-script-capabilities: %s\n' "$_GAIA_CAPCHECK_AWK_REASON" >&2
+  exit "$_GAIA_CAPCHECK_AWK_STATUS"
 fi
 
 # ---------------------------------------------------------------------------
@@ -588,7 +606,8 @@ gaia_check_script_capabilities() {
 #   arm prints only terms, so a pure script and a name that is not obligated at
 #   all both come back empty; the listing is what answers "is it enumerated".
 #   Unresolvable sites are stderr diagnostics here rather than a fatal
-#   condition, and the mode always exits 0.
+#   condition, and the mode exits 0 for any finding; only the startup refusals
+#   (2, 5, 6) reach it.
 gaia_capcheck_print_reach() {
   local repo_root="$1" only="${2:-}"
   local script terms unres n
@@ -621,9 +640,13 @@ usage: check-script-capabilities.sh [<repo_root>]
 
 Reconciles every allowlisted script's declared capabilities against its actual
 reach. <repo_root> defaults to the current git toplevel. --print-reach is a
-diagnostic that needs no manifest and always exits 0.
+diagnostic that needs no manifest and never exits non-zero for a finding; the
+startup refusals below (2, 5, 6) still apply, since they run before the flag is
+read.
 
-Exit 0 clean, 1 on a finding, 2 on the check's own failure.
+Exit 0 clean, 1 on a finding, 2 on the check's own failure. Exit 5 or 6 when the
+awk interpreter the capability oracle's splitter runs under cannot be resolved:
+5 when neither mawk nor /usr/bin/awk is present, 6 when what resolved is neither.
 EOF
 }
 

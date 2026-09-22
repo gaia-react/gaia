@@ -3,8 +3,11 @@
 #
 # lint-oracle-blind-invocations.sh: flag a script invocation the capability
 # oracle's anchors cannot see. Exit 1 with a file:line report on any hit, exit 0
-# when clean, exit 2 on the check's own failure. Run it directly from the repo
-# root: `bash .gaia/scripts/lint-oracle-blind-invocations.sh`.
+# when clean, exit 2 on the check's own failure, and exit 5 or 6 when the awk
+# interpreter the oracle's splitter runs under cannot be resolved (5 none found,
+# 6 unsanctioned), passed through from the library's own refusal. Run it
+# directly from the repo root:
+# `bash .gaia/scripts/lint-oracle-blind-invocations.sh`.
 # gaia:maintainer-only:start
 #
 # Enforced twice, the same way every lint beside it is, and only one of the two
@@ -198,6 +201,17 @@ if [ -f "$_gaia_obi_lib_dir/capability-oracle-lib.sh" ]; then
 else
   printf 'lint-oracle-blind-invocations: capability-oracle-lib.sh is missing beside this script\n' >&2
   exit 2
+fi
+
+# The oracle's logical-line splitter runs in awk, and this gate subtracts what
+# the oracle records from what bash reads as command position. An unresolved
+# interpreter empties the subtrahend rather than failing, which makes the oracle
+# look blinder than it is: a report of findings that are not there. Refuse here
+# instead, on the same reasoning the bash-5 re-exec above refuses on. The
+# library records the reason; this carries it through unchanged.
+if [ "${_GAIA_CAPCHECK_AWK_STATUS:-0}" -ne 0 ]; then
+  printf 'lint-oracle-blind-invocations: %s\n' "$_GAIA_CAPCHECK_AWK_REASON" >&2
+  exit "$_GAIA_CAPCHECK_AWK_STATUS"
 fi
 
 # The scan roots, relative to the invoking directory. `tests/` is excluded under
