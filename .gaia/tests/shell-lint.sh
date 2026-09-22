@@ -20,7 +20,8 @@
 # (.gaia/scripts/lint-hook-advisory-classification.sh), the hook
 # cwd-relative-load guard (.gaia/scripts/lint-hook-cwd-relative-loads.sh), the
 # hook jq-availability guard
-# (.gaia/scripts/lint-hook-jq-availability.sh), and the scripts inventory guard
+# (.gaia/scripts/lint-hook-jq-availability.sh), the hook Monitor-arming guard
+# (.gaia/scripts/lint-hook-monitor-arming.sh), and the scripts inventory guard
 # (.gaia/scripts/lint-scripts-wiki-inventory.sh).
 # Exit 0 when clean, 1 on any finding at or above the severity floor, and 1 on
 # a pass that cannot run at all (no shellcheck binary, an empty *.sh discovery
@@ -713,6 +714,17 @@ fi
 # across the whole fail-closed layer at once.
 echo "--> lint-hook-jq-availability (a blocking hook standing down on a missing jq)"
 if ! (cd "$REPO_ROOT" && bash "$REPO_ROOT/.gaia/scripts/lint-hook-jq-availability.sh"); then
+  status=1
+fi
+
+# Fold in the Monitor-arming guard, for the reason its siblings ride here: a
+# `"matcher": "Bash"` registration is well-formed to every static checker, and
+# it is well-formed, right up to the point where the same command arrives
+# through `Monitor` in the same `tool_input.command` field and the guard is
+# never invoked. The bypass is silent in both directions, and it reaches the
+# whole command-reading layer at once.
+echo "--> lint-hook-monitor-arming (a blocking guard a Monitor-armed command walks past)"
+if ! (cd "$REPO_ROOT" && bash "$REPO_ROOT/.gaia/scripts/lint-hook-monitor-arming.sh"); then
   status=1
 fi
 

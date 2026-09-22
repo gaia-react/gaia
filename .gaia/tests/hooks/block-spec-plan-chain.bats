@@ -339,7 +339,7 @@ assert_allowed() {
   hook_registered "$settings" \
     '.hooks.PreToolUse[] | select(.matcher == "Skill")' block-spec-plan-chain.sh
   hook_registered "$settings" \
-    '.hooks.PreToolUse[] | select(.matcher == "Bash")' block-spec-plan-chain.sh
+    '.hooks.PreToolUse[] | select(.matcher == "Bash|Monitor")' block-spec-plan-chain.sh
   hook_registered "$settings" \
     '.hooks.PreToolUse[] | select(.matcher == "Read")' block-spec-plan-chain.sh
   hook_registered "$settings" '.hooks.SessionStart[]' block-spec-plan-chain.sh

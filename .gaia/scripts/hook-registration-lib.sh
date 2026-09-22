@@ -44,12 +44,13 @@ GAIA_HOOK_REGISTRATION_LIB=1
 # continue a path, or requiring there to be no next character, is what closes
 # that.
 #
-# Both consumers drop that trailing group from the value they compare:
-# `gaia_pretooluse_hooks` below strips it with `sed`, and
-# `.gaia/tests/helpers/hook-registration.sh` reads the first capture rather than
-# the whole match. A consumer comparing the raw match instead compares a name
-# with the quote or space that terminated it still attached, and matches
-# nothing.
+# Every consumer drops that trailing group from the value they compare:
+# `gaia_pretooluse_hooks` and `gaia_hook_name_from_command` below both strip
+# it with the same `sed` pattern, one against a whole registration set and one
+# against a single command string, and `.gaia/tests/helpers/hook-registration.sh`
+# reads the first capture rather than the whole match. A consumer comparing
+# the raw match instead compares a name with the quote or space that
+# terminated it still attached, and matches nothing.
 readonly GAIA_HOOK_NAME_RE='(\.claude/hooks/[A-Za-z0-9_./-]+\.sh)([^A-Za-z0-9_./-]|$)'
 
 # gaia_pretooluse_hooks <repo_root>
@@ -76,6 +77,20 @@ gaia_pretooluse_hooks() {
     grep -oE "$GAIA_HOOK_NAME_RE" |
     sed -e 's#^\.claude/hooks/##' -e 's#\(\.sh\).$#\1#' |
     sort -u
+}
+
+# gaia_hook_name_from_command <command>
+#
+# Print the hook's path relative to .claude/hooks/, extracted from ONE
+# registration command string, or nothing if the command names no hook under
+# .claude/hooks/. The single-command counterpart to gaia_pretooluse_hooks
+# above: that one reads a whole registration set from settings.json and
+# returns it sorted and deduplicated, which a caller judging one row at a
+# time, keeping its own row index, cannot use.
+gaia_hook_name_from_command() {
+  local command="$1"
+  printf '%s' "$command" | grep -oE "$GAIA_HOOK_NAME_RE" |
+    sed -e 's#^.*\.claude/hooks/##' -e 's#\(\.sh\).$#\1#'
 }
 
 # gaia_hook_blocks <hook_script_path>

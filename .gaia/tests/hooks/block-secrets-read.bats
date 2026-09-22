@@ -34,6 +34,13 @@ run_hook_bash() {
   invoke_hook "$json" "$HOOK_ABS"
 }
 
+run_hook_monitor() {
+  local cmd="$1"
+  local json
+  json=$(jq -n --arg c "$cmd" '{tool_name: "Monitor", tool_input: {command: $c}}')
+  invoke_hook "$json" "$HOOK_ABS"
+}
+
 run_hook_grep() {
   local path="$1" glob="$2"
   local json
@@ -156,6 +163,24 @@ run_hook_without_library() {
 @test "grep -f certs/server.key foo.txt is denied (the pattern FILE is the secret)" {
   run_hook_bash "grep -f certs/server.key foo.txt"
   assert_denied_by_json
+}
+
+# --- Monitor denies the same reader, since it carries the same command ---
+
+@test "the same reader armed through Monitor is denied" {
+  # `Monitor` hands the hook a raw shell command in the same
+  # `tool_input.command` field and runs it in the same shell environment. A
+  # guard admitting `Bash` alone in its own tool_name arm stands down here,
+  # with no denial and no diagnostic, while its registration reads as armed.
+  run_hook_monitor "cat certs/server.key"
+  assert_denied_by_json
+}
+
+@test "Monitor carrying an allowed reader is still allowed" {
+  # The widened arm must not turn into an unconditional deny on the second
+  # tool: the content predicate is what decides, exactly as on the first.
+  run_hook_monitor "cat app/components/Button/index.tsx"
+  assert_allowed_by_json
 }
 
 # The rest of reader-operands.sh's plain-file flags, whose value IS a file the
@@ -468,8 +493,8 @@ run_hook_without_library() {
   hook_registered "$SETTINGS_ABS" '.hooks.PreToolUse[] | select(.matcher == "Read")' block-secrets-read.sh
 }
 
-@test "settings.json registers block-secrets-read.sh under the Bash matcher" {
-  hook_registered "$SETTINGS_ABS" '.hooks.PreToolUse[] | select(.matcher == "Bash")' block-secrets-read.sh
+@test "settings.json registers block-secrets-read.sh for both tools it binds" {
+  hook_registered "$SETTINGS_ABS" '.hooks.PreToolUse[] | select(.matcher == "Bash|Monitor")' block-secrets-read.sh
 }
 
 @test "permissions.deny carries none of the four replaced Read() globs" {

@@ -150,7 +150,9 @@ case "$tool_name" in
     key=$(printf '%s\037%s\037%s\037%s\037%s' "$pattern" "$gpath" "$glob" "$gtype" "$sid" | cksum | cut -d' ' -f1)
     ;;
 
-  Bash)
+  # `Monitor` carries the same raw shell command in the same field and runs it
+  # in the same shell environment, so this arm binds it too.
+  Bash | Monitor)
     IFS=$'\037' read -r cmd sid <<<"$(
       jq -r '[.tool_input.command // "",
               .session_id // ""] | join("\u001f")' <<<"$input" 2>/dev/null

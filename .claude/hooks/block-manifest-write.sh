@@ -86,7 +86,9 @@ case "$tool_name" in
     exit 0
     ;;
 
-  Bash)
+  # `Monitor` carries the same raw shell command in the same field and runs it
+  # in the same shell environment, so this arm binds it too.
+  Bash | Monitor)
     cmd=$(jq -r '.tool_input.command // empty' <<<"$payload")
     [[ -n "$cmd" ]] || exit 0
 
