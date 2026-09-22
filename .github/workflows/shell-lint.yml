@@ -222,6 +222,35 @@ jobs:
           sudo install -m 0755 "shellcheck-v${SHELLCHECK_VERSION}/shellcheck" /usr/local/bin/shellcheck
           rm -rf "shellcheck-v${SHELLCHECK_VERSION}" shellcheck.tar.xz
           shellcheck --version
+      # Ubuntu's default `awk` is already mawk, so this asserts no behavior
+      # change today; it is worth asserting anyway so the gate's verdict does
+      # not depend on which image the runner happened to pick. The guards
+      # under .gaia/scripts/guard-awk-lib.sh resolve GAIA_AWK to mawk first,
+      # and this asserts that resolution finds what it expects to find rather
+      # than trusting the image. Nothing is installed here and nothing needs a
+      # digest, so the shellcheck step's supply-chain reasoning above does not
+      # transfer: mawk ships with the image, and the body below says why
+      # asserting its presence is the whole of the job.
+      - if: steps.filter.outputs.shell == 'true'
+        name: Assert mawk is present and identifies as mawk
+        run: |
+          set -euo pipefail
+          # Assert presence, never install. mawk is preinstalled on the runner
+          # image, so an install is a no-op that resolves from the dpkg status
+          # file; if an image ever dropped it, `apt-get install` without an
+          # `apt-get update` ahead of it fails with `Unable to locate package`
+          # and the operator gets an apt error in place of the ::error:: this
+          # step exists to produce. Failing here on absence is the intended
+          # outcome either way, so assert it directly and keep the diagnostic.
+          banner="$(mawk --version 2>&1 | head -n1 || true)"
+          echo "mawk reports: $banner"
+          case "$banner" in
+            "mawk "*) ;;
+            *)
+              echo "::error::mawk --version did not report a mawk banner (${banner}); the awk-tokenizer guards resolve GAIA_AWK to mawk first, and an unsanctioned resolve here would mean CI is no longer testing what it pins" >&2
+              exit 1
+              ;;
+          esac
       # The gate lints every tracked *.sh and *.bats, not just the changed ones:
       # shellcheck is fast enough at this repo's size (~280 scripts + suites, low
       # seconds) that a whole-tree run is simpler than a diff-scoped one and

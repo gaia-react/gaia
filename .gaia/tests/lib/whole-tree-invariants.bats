@@ -42,6 +42,8 @@ setup() {
   REPO_ROOT="$( cd "$THIS_DIR/../../.." && pwd )"
   RUNNER="$REPO_ROOT/.gaia/tests/whole-tree-invariants.sh"
   TMP=""
+  # path_shim_without, for the bats --jobs backend-absence drives below.
+  . "$BATS_TEST_DIRNAME/../helpers/path.sh"
 }
 
 teardown() {
@@ -224,6 +226,181 @@ stub_exits() {
   printf '%s\n' "$output" | grep -Fq -- 'FAIL  .gaia/scripts/check-audit-key-callers.sh'
 }
 
+@test "a member failing in the first dispatch slot reds the run and every other member still reports" {
+  fixture_tree
+  # Dispatch order and replay order are independent (README.md FC-2 in this
+  # plan): the runner forks the WTI_BATS member FIRST because it is the
+  # pool's long pole, ahead of every WTI_SCRIPTS member. That is a different
+  # slot from the REPLAY-order "first" the earlier test above already covers,
+  # so a regression that loses the pool's own first fork needs its own drive.
+  first_dispatched="$( bash "$RUNNER" --list | tail -1 )"
+  total="$( bash "$RUNNER" --list | grep -c . )"
+  stub_exits "$first_dispatched" 1
+
+  run bash -c "cd '$TMP' && bash '$RUNNER'"
+  [ "$status" -eq 1 ]
+  printf '%s\n' "$output" | grep -Fq -- "FAIL  $first_dispatched"
+  reported="$( printf '%s\n' "$output" | grep -cE '^(PASS|FAIL)  ' )"
+  [ "$reported" -eq "$total" ]
+}
+
+@test "a member failing in the last dispatch slot reds the run and every other member still reports" {
+  fixture_tree
+  # The last WTI_SCRIPTS entry, not WTI_BATS: WTI_BATS dispatches first (see
+  # the test above), so the last member the pool forks is the last line of
+  # the WTI_SCRIPTS block. `sed '$d'` drops --list's trailing WTI_BATS line
+  # portably (macOS `head` has no `-n -1`).
+  last_dispatched="$( bash "$RUNNER" --list | sed '$d' | tail -1 )"
+  total="$( bash "$RUNNER" --list | grep -c . )"
+  stub_exits "$last_dispatched" 1
+
+  run bash -c "cd '$TMP' && bash '$RUNNER'"
+  [ "$status" -eq 1 ]
+  printf '%s\n' "$output" | grep -Fq -- "FAIL  $last_dispatched"
+  reported="$( printf '%s\n' "$output" | grep -cE '^(PASS|FAIL)  ' )"
+  [ "$reported" -eq "$total" ]
+}
+
+@test "two members failing at once are both named" {
+  fixture_tree
+  # A bare `wait` regression collects only the last job's status and would
+  # green one of these two; two failures at once is what that leaves no room
+  # to hide behind a single-failure test.
+  first="$( bash "$RUNNER" --list | head -1 )"
+  last="$( bash "$RUNNER" --list | tail -1 )"
+  stub_exits "$first" 1
+  stub_exits "$last" 1
+
+  errfile="$TMP/stderr.txt"
+  outfile="$TMP/stdout.txt"
+  bash -c "cd '$TMP' && bash '$RUNNER'" > "$outfile" 2> "$errfile" || true
+
+  grep -Fq -- '2 member(s) failed:' "$errfile"
+  grep -Fq -- "$first" "$errfile"
+  grep -Fq -- "$last" "$errfile"
+}
+
+@test "stdout and stderr stay on separate streams per member" {
+  fixture_tree
+  # Captured through real redirection into two files, never through bats
+  # `run`, which merges both streams into $output and so cannot see a `2>&1`
+  # regression at all -- the same reason the existing failure-summary test
+  # above avoids `run` for its own stream-split assertion.
+  first="$( bash "$RUNNER" --list | head -1 )"
+  printf '#!/usr/bin/env bash\nprintf "STDOUT-SENTINEL\\n"\nprintf "STDERR-SENTINEL\\n" >&2\nexit 0\n' > "$TMP/$first"
+
+  outfile="$TMP/stdout.txt"
+  errfile="$TMP/stderr.txt"
+  bash -c "cd '$TMP' && bash '$RUNNER'" > "$outfile" 2> "$errfile" || true
+
+  grep -Fq -- 'STDOUT-SENTINEL' "$outfile"
+  grep -Fq -- 'STDOUT-SENTINEL' "$errfile" && return 1
+  grep -Fq -- 'STDERR-SENTINEL' "$errfile"
+  grep -Fq -- 'STDERR-SENTINEL' "$outfile" && return 1
+  true
+}
+
+@test "a missing per-member log reds the member rather than passing it" {
+  fixture_tree
+  # The member deletes its own stdout log via WTI_LOG_DIR, the directory the
+  # runner exports to every forked member for exactly this drive, even though
+  # the member itself exits 0. The slug derivation mirrors slug_for() in the
+  # runner (replace '/' with '_'); the test cannot source the runner to reuse
+  # it directly, because sourcing it invokes main() unconditionally.
+  first="$( bash "$RUNNER" --list | head -1 )"
+  first_slug="$( printf '%s' "$first" | tr '/' '_' )"
+  printf '#!/usr/bin/env bash\nrm -f "$WTI_LOG_DIR/%s.out"\nexit 0\n' "$first_slug" > "$TMP/$first"
+
+  run bash -c "cd '$TMP' && bash '$RUNNER'"
+  [ "$status" -eq 1 ]
+  printf '%s\n' "$output" | grep -Fq -- "FAIL  $first"
+  printf '%s\n' "$output" | grep -Fq -- 'missing log'
+}
+
+@test "a mismatched member count refuses to run rather than running stale" {
+  # Drives the staleness lever from a scratch copy per README.md FC-2 in this
+  # plan's task doc: never edit the live tree to prove a refusal.
+  copy="$BATS_TEST_TMPDIR/whole-tree-invariants.sh"
+  sed 's/^readonly WTI_SCRIPTS_COUNT_ASOF=.*/readonly WTI_SCRIPTS_COUNT_ASOF=999/' "$RUNNER" > "$copy"
+
+  run bash "$copy"
+  [ "$status" -eq 2 ]
+  printf '%s\n' "$output" | grep -Fq -- 're-measure the runtime paragraph'
+  # `|| true`: grep -c exits 1 on a zero count despite printing "0", and this
+  # assertion's whole point is a zero count, so the bare assignment would abort
+  # the test under bats' own set -e before the assertion below ever runs
+  # (.claude/rules/bats-assertions.md).
+  reported="$( printf '%s\n' "$output" | grep -cE '^(PASS|FAIL)  ' || true )"
+  [ "$reported" -eq 0 ]
+}
+
+@test "the per-member log directory is removed when the run ends" {
+  fixture_tree
+  # RUNNER_TEMP is the runner's own knob for where it mints that directory, so
+  # pointing it at a scratch dir makes the leftovers countable without going
+  # near the shared /tmp. The failure this pins is not a wrong verdict: the
+  # cleanup runs from an EXIT trap, the trap body expands its variable after
+  # main() has returned, and a variable that is out of scope there aborts the
+  # trap under the runner's `set -u`. The run still reports PASS for every
+  # member, so nothing but this test distinguishes a cleaned run from one that
+  # leaves its whole log directory behind on every invocation.
+  scratch="$BATS_TEST_TMPDIR/runner-temp"
+  mkdir -p "$scratch"
+
+  run bash -c "cd '$TMP' && RUNNER_TEMP='$scratch' bash '$RUNNER'"
+  [ "$status" -eq 0 ]
+  printf '%s\n' "$output" | grep -Fq -- 'unbound variable' && return 1
+
+  # `|| true`: grep -c exits 1 on the zero count this asserts
+  # (.claude/rules/bats-assertions.md).
+  leftover="$( find "$scratch" -maxdepth 1 -name 'whole-tree-invariants.*' | grep -c . || true )"
+  [ "$leftover" -eq 0 ]
+}
+
+@test "WTI_JOBS=1 still runs every member and still reds a failure" {
+  fixture_tree
+  # The degenerate bound someone reaches for while debugging a fork/wait bug
+  # has to be the same bounded-pool code as everyone else, not a silently
+  # different serial path.
+  first="$( bash "$RUNNER" --list | head -1 )"
+  total="$( bash "$RUNNER" --list | grep -c . )"
+  stub_exits "$first" 1
+
+  run bash -c "cd '$TMP' && WTI_JOBS=1 bash '$RUNNER'"
+  [ "$status" -eq 1 ]
+  printf '%s\n' "$output" | grep -Fq -- "FAIL  $first"
+  reported="$( printf '%s\n' "$output" | grep -cE '^(PASS|FAIL)  ' )"
+  [ "$reported" -eq "$total" ]
+}
+
+@test "the fixture tree runs measurably faster forked than under WTI_JOBS=1" {
+  # An instant stub finishes before fork/wait machinery could show a
+  # difference either way, so every member gets a fixed delay here to make
+  # overlap observable. This does not stand in for the real aggregate
+  # (README.md FC-2b: the orchestrator takes that figure once, on the real
+  # tree); it only proves the pool actually overlaps members rather than
+  # serializing them under a new name.
+  fixture_tree
+  path=''
+  while IFS= read -r path; do
+    [ -n "$path" ] || continue
+    case "$path" in
+      *.bats) printf '#!/usr/bin/env bats\n\n@test "stub" {\n  sleep 0.2\n}\n' > "$TMP/$path" ;;
+      *) printf '#!/usr/bin/env bash\nsleep 0.2\nexit 0\n' > "$TMP/$path" ;;
+    esac
+  done < <( bash "$RUNNER" --list )
+
+  serial_start=$(date +%s)
+  bash -c "cd '$TMP' && WTI_JOBS=1 bash '$RUNNER'" >/dev/null 2>&1
+  serial_secs=$(( $(date +%s) - serial_start ))
+
+  parallel_start=$(date +%s)
+  bash -c "cd '$TMP' && bash '$RUNNER'" >/dev/null 2>&1
+  parallel_secs=$(( $(date +%s) - parallel_start ))
+
+  [ "$parallel_secs" -lt "$serial_secs" ]
+}
+
 @test "a second argument is refused rather than discarded" {
   run bash -c "cd '$REPO_ROOT' && bash '$RUNNER' --list extra-arg"
   [ "$status" -eq 2 ]
@@ -263,4 +440,146 @@ stub_exits() {
   run bash -c "cd '$REPO_ROOT' && bash '$RUNNER' --help"
   [ "$status" -eq 0 ]
   printf '%s\n' "$output" | grep -Fq -- 'usage: bash .gaia/tests/whole-tree-invariants.sh'
+}
+
+# The tests below drive the WTI_BATS member's own --jobs invocation (this
+# plan's task-bats-jobs-shards.md). A fake `bats` prepended onto PATH ahead
+# of the real one, logging its own argv via BATS_ARGV_LOG (a fork/exec
+# boundary, so it has to be exported, the same reason WTI_LOG_DIR above is),
+# proves what this RUNNER decided to invoke without depending on a real
+# `bats --jobs` run actually succeeding. A fake `parallel` alongside it
+# only needs to exist for `command -v` to find, since nothing here asks it
+# to run anything.
+fake_bats_argv_logger() {
+  local fakebin="$TMP/fakebin"
+  mkdir -p "$fakebin"
+  printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$@" >"$BATS_ARGV_LOG"\nexit 0\n' >"$fakebin/bats"
+  chmod +x "$fakebin/bats"
+  printf '#!/usr/bin/env bash\nexit 0\n' >"$fakebin/parallel"
+  chmod +x "$fakebin/parallel"
+  printf '%s\n' "$fakebin"
+}
+
+@test "the shard-partition member is invoked under --jobs 8 when a backend is present, with no degradation notice" {
+  fixture_tree
+  fakebin="$(fake_bats_argv_logger)"
+  argvlog="$TMP/argv.log"
+
+  run bash -c "cd '$TMP' && PATH='$fakebin:$PATH' BATS_ARGV_LOG='$argvlog' bash '$RUNNER'"
+  [ "$status" -eq 0 ]
+  joined="$(tr '\n' ' ' <"$argvlog")"
+  printf '%s\n' "$joined" | grep -Fq -- '--jobs 8 .gaia/tests/lib/audit-ci-shards.bats'
+  # The paired half (this plan's task doc, criterion 6): a notice that
+  # always fires is noise nobody learns to trust.
+  printf '%s\n' "$output" | grep -Fq -- 'no GNU parallel or rush' && return 1
+  true
+}
+
+@test "WTI_BATS_JOBS overrides the default job count passed to bats" {
+  fixture_tree
+  fakebin="$(fake_bats_argv_logger)"
+  argvlog="$TMP/argv.log"
+
+  run bash -c "cd '$TMP' && PATH='$fakebin:$PATH' BATS_ARGV_LOG='$argvlog' WTI_BATS_JOBS=3 bash '$RUNNER'"
+  [ "$status" -eq 0 ]
+  joined="$(tr '\n' ' ' <"$argvlog")"
+  printf '%s\n' "$joined" | grep -Fq -- '--jobs 3 .gaia/tests/lib/audit-ci-shards.bats'
+}
+
+@test "a non-numeric WTI_BATS_JOBS falls back to the default rather than refusing" {
+  fixture_tree
+  fakebin="$(fake_bats_argv_logger)"
+  argvlog="$TMP/argv.log"
+
+  run bash -c "cd '$TMP' && PATH='$fakebin:$PATH' BATS_ARGV_LOG='$argvlog' WTI_BATS_JOBS=nope bash '$RUNNER'"
+  [ "$status" -eq 0 ]
+  joined="$(tr '\n' ' ' <"$argvlog")"
+  printf '%s\n' "$joined" | grep -Fq -- '--jobs 8 .gaia/tests/lib/audit-ci-shards.bats'
+}
+
+@test "WTI_BATS_JOBS=1 still runs the shard-partition member and still reds a failure" {
+  # The degenerate bound people reach for while debugging. Driven against
+  # the real bats binary and a real backend, unlike the argv-capture tests
+  # above, because this one is proving --jobs 1 actually still propagates a
+  # failure through bats itself, not just that this runner asked for it.
+  command -v parallel >/dev/null 2>&1 || command -v rush >/dev/null 2>&1 || skip "no bats --jobs backend on PATH"
+  fixture_tree
+  stub_exits '.gaia/tests/lib/audit-ci-shards.bats' 1
+
+  run bash -c "cd '$TMP' && WTI_BATS_JOBS=1 bash '$RUNNER'"
+  [ "$status" -eq 1 ]
+  printf '%s\n' "$output" | grep -Fq -- 'FAIL  .gaia/tests/lib/audit-ci-shards.bats'
+}
+
+@test "no bats on PATH still fails the member, distinct from a merely-missing backend" {
+  fixture_tree
+  no_bats_path="$(path_shim_without bats)"
+
+  run bash -c "cd '$TMP' && PATH='$no_bats_path' bash '$RUNNER'"
+  [ "$status" -eq 1 ]
+  printf '%s\n' "$output" | grep -Fq -- 'FAIL  .gaia/tests/lib/audit-ci-shards.bats'
+  printf '%s\n' "$output" | grep -Fq -- 'bats not found on PATH'
+}
+
+@test "no parallel or rush on PATH: the member still runs serially, with a loud stderr notice naming both backends" {
+  fixture_tree
+  # Chained rather than a single call: path_shim_without takes one name, and
+  # the second call has to build its shim over the PATH the first call
+  # already produced, or the first tool it stripped would reappear.
+  PATH="$(path_shim_without parallel)"
+  no_backend_path="$(path_shim_without rush)"
+
+  errfile="$TMP/stderr.txt"
+  outfile="$TMP/stdout.txt"
+  bash -c "cd '$TMP' && PATH='$no_backend_path' bash '$RUNNER'" >"$outfile" 2>"$errfile"
+  status=$?
+
+  [ "$status" -eq 0 ]
+  grep -Fq -- 'PASS  .gaia/tests/lib/audit-ci-shards.bats' "$outfile"
+  grep -Fq -- 'parallel' "$errfile"
+  grep -Fq -- 'rush' "$errfile"
+  grep -Fq -- 'brew install parallel' "$errfile"
+}
+
+# The tests below drive the self-report line main() prints unconditionally at
+# the end of every full run (PLAN-021's task-remeasure-and-record.md). It is
+# read-only and reports what the run actually resolved, so the way to prove it
+# is live rather than a fixed string is to change what the run resolves and
+# watch the line change with it, the same shape the backend tests above use
+# for the degradation notice.
+
+@test "the self-report names whether a bats parallel backend was found, and differs when it is not" {
+  command -v parallel >/dev/null 2>&1 || command -v rush >/dev/null 2>&1 || skip "no bats --jobs backend on PATH"
+  fixture_tree
+
+  run bash -c "cd '$TMP' && bash '$RUNNER'"
+  [ "$status" -eq 0 ]
+  with_backend="$output"
+
+  # Chained per the comment above the sibling drive: the second call has to
+  # build its shim over the PATH the first call already produced.
+  PATH="$(path_shim_without parallel)"
+  no_backend_path="$(path_shim_without rush)"
+
+  run bash -c "cd '$TMP' && PATH='$no_backend_path' bash '$RUNNER'"
+  [ "$status" -eq 0 ]
+  without_backend="$output"
+
+  printf '%s\n' "$with_backend" | grep -Fq -- 'bats-parallel-backend=yes'
+  printf '%s\n' "$without_backend" | grep -Fq -- 'bats-parallel-backend=no'
+  # The bad case this guards is a self-report that prints one fixed string
+  # regardless of what the probe actually found.
+  [ "$with_backend" != "$without_backend" ] || return 1
+}
+
+@test "the self-report does not disturb the pinned PASS/FAIL count or the exit-0 contract" {
+  fixture_tree
+  total="$( bash "$RUNNER" --list | grep -c . )"
+
+  run bash -c "cd '$TMP' && bash '$RUNNER'"
+  [ "$status" -eq 0 ]
+  reported="$( printf '%s\n' "$output" | grep -cE '^(PASS|FAIL)  ' )"
+  [ "$reported" -eq "$total" ]
+  printf '%s\n' "$output" | grep -Fq -- 'all whole-tree invariants pass'
+  printf '%s\n' "$output" | grep -Fq -- 'config: WTI_JOBS='
 }

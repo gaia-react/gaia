@@ -1,12 +1,22 @@
 #!/usr/bin/env bash
+# SC2016 is intentional file-wide: the awk program below is single-quoted
+# precisely so every `$` and awk field reference reaches awk as literal
+# program text. shellcheck's built-in awk heuristic, which exempts a literal
+# single-quoted program handed to a bare `awk` command word, does not extend
+# to one handed to a variable command word ("$GAIA_AWK"), so this file needs
+# the directive that a bare-`awk` invocation would not have.
+# shellcheck disable=SC2016
+#
 # lint-workflow-run-interpolation.sh: flag every `${{ ... }}` expression that
 # sits inside a workflow `run:` block body. Run it directly from the repo root:
 # `bash .gaia/scripts/lint-workflow-run-interpolation.sh`.
 #
 # Exit 0 when clean, and 1 either with a file:line report on any hit or on a
-# scan surface that came back empty. Two statuses say the gate never ran at
-# all: 2 when guard-awk-lib.sh is missing beside this script, and 3 when the
-# scan-surface discovery failed.
+# scan surface that came back empty. Four statuses say the gate never ran at
+# all: 2 when guard-awk-lib.sh is missing beside this script, 3 when the
+# scan-surface discovery failed, 5 when no awk interpreter is present at all,
+# and 6 when GAIA_AWK resolves to an interpreter that identifies as neither
+# mawk nor BWK one-true-awk.
 # gaia:maintainer-only:start
 #
 # Enforced by the sibling bats suite
@@ -115,6 +125,16 @@ type gaia_guard_scan_files >/dev/null 2>&1 || {
   printf 'lint-workflow-run-interpolation: guard-awk-lib.sh is missing beside this script\n' >&2
   exit 2
 }
+case "$GAIA_AWK_STATUS" in
+  5)
+    printf 'lint-workflow-run-interpolation: no awk interpreter found; install mawk (macOS: brew install mawk; Debian/Ubuntu: apt-get install mawk) or ensure /usr/bin/awk is present\n' >&2
+    exit 5
+    ;;
+  6)
+    printf 'lint-workflow-run-interpolation: GAIA_AWK resolved to an unsanctioned interpreter (%s); the sanctioned set is mawk and BWK one-true-awk\n' "$GAIA_AWK_IDENT" >&2
+    exit 6
+    ;;
+esac
 
 # The scan surface comes from the shared library rather than from a read loop
 # here, so every gate consuming it discovers the same set the same way and a
@@ -161,7 +181,7 @@ gaia_guard_scan_files lint-workflow-run-interpolation workflows || exit $?
 # cover the authoring of new steps; the block form is what every step here uses.
 scan_file() {
   local f="$1"
-  awk -v file="$f" '
+  "$GAIA_AWK" -v file="$f" '
     function report(n) {
       printf "%s:%d: ${{ }} expression inside a run: body; bind it through an env: block and reference \"$VAR\" instead\n", file, n
     }

@@ -13,12 +13,14 @@
 # scan set that came back empty, which this gate reads as a broken discovery
 # rather than a clean tree. The husky hooks are the one surface where an empty
 # set is a legitimate tree, and they never reach this status: that status is
-# tolerated where the hooks are read, for the reason stated there. Two statuses
-# say the gate never ran at all: 2 when guard-awk-lib.sh is missing beside this
-# script or refuses one of this gate's calls to it, and 3 when a scan-set
-# discovery failed. Every
-# runner folds any non-zero into its own failure today, so the split serves a
-# person reading the output rather than a caller branching on it.
+# tolerated where the hooks are read, for the reason stated there. Four
+# statuses say the gate never ran at all: 2 when guard-awk-lib.sh is missing
+# beside this script or refuses one of this gate's calls to it, 3 when a
+# scan-set discovery failed, 5 when no awk interpreter is present at all, and 6
+# when GAIA_AWK resolves to an interpreter that identifies as neither mawk nor
+# BWK one-true-awk. Every runner folds any non-zero into its own failure today,
+# so the split serves a person reading the output rather than a caller
+# branching on it.
 # gaia:maintainer-only:start
 #
 # Enforced by the sibling bats suite
@@ -316,6 +318,16 @@ type gaia_guard_bats_files >/dev/null 2>&1 || {
   printf 'lint-errexit-status-read: guard-awk-lib.sh is missing beside this script\n' >&2
   exit 2
 }
+case "$GAIA_AWK_STATUS" in
+  5)
+    printf 'lint-errexit-status-read: no awk interpreter found; install mawk (macOS: brew install mawk; Debian/Ubuntu: apt-get install mawk) or ensure /usr/bin/awk is present\n' >&2
+    exit 5
+    ;;
+  6)
+    printf 'lint-errexit-status-read: GAIA_AWK resolved to an unsanctioned interpreter (%s); the sanctioned set is mawk and BWK one-true-awk\n' "$GAIA_AWK_IDENT" >&2
+    exit 6
+    ;;
+esac
 
 # Shared detector, concatenated into both scan programs below so the matcher is
 # written once and the two surfaces cannot drift apart. Single-quoted, and every
@@ -1090,7 +1102,7 @@ gaia_guard_bats_files lint-errexit-status-read || exit $?
 report=""
 for f in ${sh_files[@]+"${sh_files[@]}"}; do
   [ -f "$f" ] || continue
-  hits="$(awk -v file="$f" -v armed_init=0 -v is_bats=0 -v scripts_dir="$_gaia_guard_lib_dir" \
+  hits="$("$GAIA_AWK" -v file="$f" -v armed_init=0 -v is_bats=0 -v scripts_dir="$_gaia_guard_lib_dir" \
     "$GAIA_GUARD_AWK$CORE_AWK$SHELL_AWK" "$f")"
   [ -z "$hits" ] || report+="$hits"$'\n'
 done
@@ -1100,13 +1112,13 @@ done
 # is why only that set and the workflows are hard preconditions above.
 for f in ${husky_files[@]+"${husky_files[@]}"}; do
   [ -f "$f" ] || continue
-  hits="$(awk -v file="$f" -v armed_init=1 -v is_bats=0 -v scripts_dir="$_gaia_guard_lib_dir" \
+  hits="$("$GAIA_AWK" -v file="$f" -v armed_init=1 -v is_bats=0 -v scripts_dir="$_gaia_guard_lib_dir" \
     "$GAIA_GUARD_AWK$CORE_AWK$SHELL_AWK" "$f")"
   [ -z "$hits" ] || report+="$hits"$'\n'
 done
 for f in ${yaml_files[@]+"${yaml_files[@]}"}; do
   [ -f "$f" ] || continue
-  hits="$(awk -v file="$f" -v armed_init=1 -v is_bats=0 -v scripts_dir="$_gaia_guard_lib_dir" \
+  hits="$("$GAIA_AWK" -v file="$f" -v armed_init=1 -v is_bats=0 -v scripts_dir="$_gaia_guard_lib_dir" \
     "$GAIA_GUARD_AWK$CORE_AWK$YAML_AWK" "$f")"
   [ -z "$hits" ] || report+="$hits"$'\n'
 done
@@ -1115,7 +1127,7 @@ done
 # constants a forward-only scan cannot classify, the second one classifies.
 for f in ${GAIA_GUARD_BATS_FILES[@]+"${GAIA_GUARD_BATS_FILES[@]}"}; do
   [ -f "$f" ] || continue
-  hits="$(awk -v file="$f" -v armed_init=1 -v is_bats=1 -v scripts_dir="$_gaia_guard_lib_dir" \
+  hits="$("$GAIA_AWK" -v file="$f" -v armed_init=1 -v is_bats=1 -v scripts_dir="$_gaia_guard_lib_dir" \
     "$GAIA_GUARD_AWK$CORE_AWK$BATS_AWK" "$f" "$f")"
   [ -z "$hits" ] || report+="$hits"$'\n'
 done
@@ -1137,7 +1149,7 @@ if [ -n "$report" ]; then
   # an inverted match would count as a non-matching line and succeed on
   # unconditionally. Only a zero-length line is dropped: a whitespace-only line
   # counted as non-matching before and still does.
-  if awk '
+  if "$GAIA_AWK" '
       length($0) > 0 && $0 !~ /: ERROR: the scan lost track of shell state/ { found = 1 }
       END { exit(found ? 0 : 1) }
     ' <<<"$report"; then

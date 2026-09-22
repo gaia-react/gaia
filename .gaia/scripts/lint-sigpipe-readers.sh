@@ -12,11 +12,13 @@
 # `bash .gaia/scripts/lint-sigpipe-readers.sh`.
 #
 # Exit 0 when clean, and 1 either with a file:line report on any hit or on a
-# scan surface that came back empty. Three statuses say the gate never produced
+# scan surface that came back empty. Five statuses say the gate never produced
 # a verdict at all: 2 when it could not start (guard-awk-lib.sh missing beside
 # this script, or no scratch directory), 3 when the scan-surface discovery
-# failed, and 4 when a workflow carries a `defaults:` key, the one construct the
-# shell oracle below refuses to resolve rather than answer wrongly about.
+# failed, 4 when a workflow carries a `defaults:` key, the one construct the
+# shell oracle below refuses to resolve rather than answer wrongly about, 5
+# when no awk interpreter is present at all, and 6 when GAIA_AWK resolves to
+# an interpreter that identifies as neither mawk nor BWK one-true-awk.
 # gaia:maintainer-only:start
 #
 # Enforced by the sibling bats suite
@@ -301,6 +303,16 @@ type gaia_guard_scan_files >/dev/null 2>&1 || {
   printf '%s: guard-awk-lib.sh is missing beside this script\n' "$PROG" >&2
   exit 2
 }
+case "$GAIA_AWK_STATUS" in
+  5)
+    printf '%s: no awk interpreter found; install mawk (macOS: brew install mawk; Debian/Ubuntu: apt-get install mawk) or ensure /usr/bin/awk is present\n' "$PROG" >&2
+    exit 5
+    ;;
+  6)
+    printf '%s: GAIA_AWK resolved to an unsanctioned interpreter (%s); the sanctioned set is mawk and BWK one-true-awk\n' "$PROG" "$GAIA_AWK_IDENT" >&2
+    exit 6
+    ;;
+esac
 
 # The scan surface comes from the shared library rather than from a read loop
 # here, so every gate consuming it discovers the same set the same way and a
@@ -773,7 +785,7 @@ trap 'exit 143' TERM
 for f in ${sh_files[@]+"${sh_files[@]}"}; do
   [ -f "$f" ] || continue
   printf '#file\t%s\t%s\n' "${f##*/}" "$f"
-  LC_ALL=C awk -v file="$f" "$READER_AWK$SHELL_AWK" "$f"
+  LC_ALL=C "$GAIA_AWK" -v file="$f" "$READER_AWK$SHELL_AWK" "$f"
 done > "$WORK_DIR/records"
 
 # The YAML arm, into its own record stream: its hits arrive already graded, so
@@ -789,7 +801,7 @@ done > "$WORK_DIR/records"
 # `run:`, `shell:`, the pipe, the reader flags -- is ASCII.
 for f in ${yaml_files[@]+"${yaml_files[@]}"}; do
   [ -f "$f" ] || continue
-  LC_ALL=C awk -v file="$f" "$READER_AWK$YAML_AWK" "$f" "$f"
+  LC_ALL=C "$GAIA_AWK" -v file="$f" "$READER_AWK$YAML_AWK" "$f" "$f"
 done > "$WORK_DIR/yaml-records"
 
 # The refusal, ahead of any verdict. A `defaults:` key moves the resolved shell
@@ -798,7 +810,7 @@ done > "$WORK_DIR/yaml-records"
 # the wrong default. Read with a single awk pass rather than a quiet grep
 # downstream of a pipe: this file arms pipefail, and that is the class it
 # exists to catch.
-defaults_seen="$(awk -F'\t' '$1 == "#defaults" { printf "%s:%s\n", $2, $3 }' "$WORK_DIR/yaml-records")"
+defaults_seen="$("$GAIA_AWK" -F'\t' '$1 == "#defaults" { printf "%s:%s\n", $2, $3 }' "$WORK_DIR/yaml-records")"
 if [ -n "$defaults_seen" ]; then
   printf '%s\n' "$defaults_seen" >&2
   cat >&2 <<REFUSAL
@@ -815,19 +827,19 @@ fi
 # guard is owed on any of them: awk exits 0 over a file holding no matching
 # record, so a record kind the tree never produced yields an empty file rather
 # than a failure under this script's own errexit.
-awk -F'\t' '$1 == "#armed"  { print $2 }' "$WORK_DIR/records" | LC_ALL=C sort -u > "$WORK_DIR/closure"
-awk -F'\t' '$1 == "#source" { printf "%s\t%s\n", $2, $3 }' "$WORK_DIR/records" > "$WORK_DIR/edges"
-awk -F'\t' '$1 == "#hit"    { print }' "$WORK_DIR/records" > "$WORK_DIR/hits"
-awk -F'\t' '$1 == "#file"   { printf "%s\t%s\n", $2, $3 }' "$WORK_DIR/records" | LC_ALL=C sort -u > "$WORK_DIR/index"
+"$GAIA_AWK" -F'\t' '$1 == "#armed"  { print $2 }' "$WORK_DIR/records" | LC_ALL=C sort -u > "$WORK_DIR/closure"
+"$GAIA_AWK" -F'\t' '$1 == "#source" { printf "%s\t%s\n", $2, $3 }' "$WORK_DIR/records" > "$WORK_DIR/edges"
+"$GAIA_AWK" -F'\t' '$1 == "#hit"    { print }' "$WORK_DIR/records" > "$WORK_DIR/hits"
+"$GAIA_AWK" -F'\t' '$1 == "#file"   { printf "%s\t%s\n", $2, $3 }' "$WORK_DIR/records" | LC_ALL=C sort -u > "$WORK_DIR/index"
 
 # Transitive closure over the source edges. A fixed-point loop rather than a
 # recursive walk, because bash 3.2 has no associative array to memoize with and
 # the tracked set is small enough that re-resolving the whole frontier each
 # round is cheaper than the bookkeeping that would avoid it.
 while : ; do
-  awk -F'\t' 'NR == FNR { seed[$0] = 1; next } ($1 in seed) { print $2 }' \
+  "$GAIA_AWK" -F'\t' 'NR == FNR { seed[$0] = 1; next } ($1 in seed) { print $2 }' \
     "$WORK_DIR/closure" "$WORK_DIR/edges" | LC_ALL=C sort -u > "$WORK_DIR/bases"
-  awk -F'\t' 'NR == FNR { want[$0] = 1; next } ($1 in want) { print $2 }' \
+  "$GAIA_AWK" -F'\t' 'NR == FNR { want[$0] = 1; next } ($1 in want) { print $2 }' \
     "$WORK_DIR/bases" "$WORK_DIR/index" | LC_ALL=C sort -u > "$WORK_DIR/reached"
   LC_ALL=C comm -13 "$WORK_DIR/closure" "$WORK_DIR/reached" > "$WORK_DIR/added"
   [ -s "$WORK_DIR/added" ] || break
@@ -838,14 +850,14 @@ done
 report=""
 for f in ${sh_files[@]+"${sh_files[@]}"}; do
   grep -qxF -- "$f" "$WORK_DIR/closure" || continue
-  hits="$(awk -F'\t' -v f="$f" '$2 == f { printf "%s:%s: %s\n", $2, $3, $4 }' "$WORK_DIR/hits")"
+  hits="$("$GAIA_AWK" -F'\t' -v f="$f" '$2 == f { printf "%s:%s: %s\n", $2, $3, $4 }' "$WORK_DIR/hits")"
   [ -z "$hits" ] || report+="$hits"$'\n'
 done
 
 # No closure test on this arm: a `run:` body is its own script, so it is graded
 # by its own step and inherits nothing from the file around it.
 for f in ${yaml_files[@]+"${yaml_files[@]}"}; do
-  hits="$(awk -F'\t' -v f="$f" '$1 == "#hit" && $2 == f { printf "%s:%s: %s\n", $2, $3, $4 }' "$WORK_DIR/yaml-records")"
+  hits="$("$GAIA_AWK" -F'\t' -v f="$f" '$1 == "#hit" && $2 == f { printf "%s:%s: %s\n", $2, $3, $4 }' "$WORK_DIR/yaml-records")"
   [ -z "$hits" ] || report+="$hits"$'\n'
 done
 

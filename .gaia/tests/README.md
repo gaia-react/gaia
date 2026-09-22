@@ -11,7 +11,7 @@ defect this repository has actually shipped.
 
 | Tree | Gate | What it is |
 |---|---|---|
-| `whole-tree-invariants.sh` | by hand, pre-dispatch; its guard suite `lib/whole-tree-invariants.bats` is CI-gated in `audit-ci-tests.yml` via the `lib` shard | the pre-dispatch entry point: runs every check whose input is the whole tree as one set, `shell-lint.sh` and the shard partition among them, in about a minute. Path-scoped selection cannot reach a whole-tree check, so this is the named set that replaces running whichever of them a loaded rule happens to mention. Its header owns the membership rule and every deliberate non-member's reason. Read the Gate cell literally: no workflow runs this script, and the CI-gated suite exercises the aggregation against fixture stubs rather than the real tree, so skipping the hand run on the belief that CI covers the set reopens the exact gap the script closes. What CI does cover is a member joining neither list. |
+| `whole-tree-invariants.sh` | by hand, pre-dispatch; its guard suite `lib/whole-tree-invariants.bats` is CI-gated in `audit-ci-tests.yml` via the `lib` shard | the pre-dispatch entry point: runs every check whose input is the whole tree as one set, `shell-lint.sh` and the shard partition among them. Path-scoped selection cannot reach a whole-tree check, so this is the named set that replaces running whichever of them a loaded rule happens to mention. Its header owns the membership rule, every deliberate non-member's reason, and the runtime figures, and every run reports its own measured aggregate and the configuration it ran under. Read the Gate cell literally: no workflow runs this script, and the CI-gated suite exercises the aggregation against fixture stubs rather than the real tree, so skipping the hand run on the belief that CI covers the set reopens the exact gap the script closes. What CI does cover is a member joining neither list. |
 | `shell-lint.sh` | CI, `shell-lint.yml` (two legs) | shellcheck gate over every tracked `*.sh` and `*.bats`, plus a bash-3.2 parse pass and the custom lints folded in beneath it, each announcing itself with its own `-->` banner as it runs. Free, deterministic. Its paths filter is wider than its name suggests and each entry there carries the reason it was added: a shell script or bats suite arms it, and so do the husky hooks, the workflow and composite-action trees, the adopter workflow templates, every tracked markdown file, and the C-family globs `.claude/rules/code-comments.md` binds, because a folded guard scans each of those. The ubuntu leg runs the whole harness; a `macos-latest` leg runs `--only bash32-parse`, the one pass a bash-5 runner can only skip. Also a member of `whole-tree-invariants.sh` above, which is what to run pre-merge. |
 | `hooks/` | CI, `audit-ci-tests.yml` | bats tests for the shell hooks. Free, deterministic, the largest tree here. |
 | `lib/` | CI, `audit-ci-tests.yml` | bats suite for the SPEC-ledger machinery under `.specify/extensions/gaia/lib/`. See `lib/README.md`. |
@@ -32,7 +32,7 @@ workflow's filter, and say why in a comment beside it.
 
 ## Running
 
-### Whole-tree invariants (pre-dispatch, ~40s)
+### Whole-tree invariants (pre-dispatch)
 
 ```bash
 bash .gaia/tests/whole-tree-invariants.sh
@@ -41,7 +41,15 @@ bash .gaia/tests/whole-tree-invariants.sh
 Run this before the first Code Audit Team dispatch, alongside the bats suites
 for the paths the change touches. It supersedes running `shell-lint.sh` alone,
 which it already includes. `--list` prints its members and `--list-excluded`
-prints every deliberate non-member with the reason it is out.
+prints every deliberate non-member with the reason it is out. Its own header
+carries the runtime figures, and every run prints its own measured aggregate
+and the configuration it ran under, which is the form that cannot go stale.
+
+Optionally faster with GNU parallel (`brew install parallel`) or
+[`rush`](https://github.com/shenwei356/rush) on PATH: the shard-partition bats
+member runs under `--jobs` instead of serially. Its absence costs speed, not
+correctness, with a notice on stderr saying so, and adopters never need
+either, since this runner never ships.
 
 ### Shell lint (free, fast)
 
@@ -52,6 +60,8 @@ bash .gaia/tests/shell-lint.sh
 Requires `shellcheck` (`brew install shellcheck`). Lints at a per-type severity floor and exits non-zero on any finding: tracked `*.sh` at `style` (the strictest tier) and tracked `*.bats` at `warning`. On `*.sh`, the intentional single-quoted `jq`/`awk` programs (SC2016) carry file-level disable directives and the unresolvable dynamic `source` paths (SC1091/SC1090) are excluded as tooling artifacts, so a genuine style-tier bug still gates. On `*.bats`, the `warning` floor sits above the structural false positives of the bats execution model (SC2030/SC2031 subshell state from `run`, SC2016 assertion strings) while still catching live failure modes (SC2314 masked `!` assertions, SC2155, SC2164). SC2317 sits below the floor too, but it is not structural: it marks a bare `return` inside a `@test` body, and the `shell-lint.sh` header carries the full account. See the sub-floor tiers with `shellcheck -S style <file>`.
 
 This is the deterministic backstop for the `code-audit-maintainer-shell` agent, which already treats shellcheck as an authoritative oracle but is model-dispatched and advisory-only. The agent keeps the lenses shellcheck cannot model (hook fail-open, stdin-JSON shape, `jq -n` injection safety).
+
+Optionally faster with `mawk` (`brew install mawk`) on PATH: the guards that source `guard-awk-lib.sh` resolve `GAIA_AWK` to `mawk` first and run their tokenizer roughly twice as fast under it. Its absence costs speed, not correctness: the resolver falls back to `/usr/bin/awk`, and adopters never need either, since none of these guards ship.
 
 ### Hooks tests (free, slow)
 
