@@ -276,5 +276,5 @@ run_hook_bash() {
 }
 
 @test "settings.json registers the hook under the Bash matcher" {
-  hook_registered "$SETTINGS_ABS" '.hooks.PreToolUse[] | select(.matcher == "Bash")' block-manifest-write.sh
+  hook_registered "$SETTINGS_ABS" '.hooks.PreToolUse[] | select(.matcher == "Bash|Monitor")' block-manifest-write.sh
 }

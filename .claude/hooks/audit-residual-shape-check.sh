@@ -6,7 +6,7 @@
 # never judges whether a finding should have been recorded, and it detects
 # nothing that was never written down.
 #
-# ARMED only when the tool call is `Bash`, the command carries a `gh pr
+# ARMED only when the tool call is `Bash` or `Monitor`, the command carries a `gh pr
 # merge` invocation (shared verb-arming decision, .claude/hooks/lib/verb-
 # arming.sh), the merge is not aimed at a foreign repository
 # (.claude/hooks/lib/repo-scope.sh), and the resolved pull-request body
@@ -68,7 +68,13 @@ fi
 gaia_require_jq 'the accepted-residual shape gate' "$input" tool_input 'gh'
 
 tool_name=$(echo "$input" | jq -r '.tool_name // ""' 2>/dev/null)
-[ "$tool_name" = "Bash" ] || exit 0
+# `Monitor` hands this hook the same raw shell command in the same
+# `tool_input.command` field and runs it in the same shell environment, so a
+# guard bound to `Bash` alone refuses nothing a caller arms through it.
+case "$tool_name" in
+  Bash | Monitor) ;;
+  *) exit 0 ;;
+esac
 
 # Avoid the name `command`: it would shadow bash's builtin and break later
 # `command -v` guards.

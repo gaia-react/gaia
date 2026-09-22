@@ -1365,7 +1365,7 @@ assert_position_preserving() {
 }
 
 @test "settings.json registers the hook under the Bash matcher" {
-  hook_registered "$SETTINGS_ABS" '.hooks.PreToolUse[] | select(.matcher == "Bash")' block-rm-rf.sh
+  hook_registered "$SETTINGS_ABS" '.hooks.PreToolUse[] | select(.matcher == "Bash|Monitor")' block-rm-rf.sh
 }
 
 # --- an unparseable registry lib degrades, it does not deny everything ---

@@ -31,7 +31,8 @@
 # worktree-isolation guard to read, so taking the blessed path removes the
 # refusal that caused the improvisation in the first place.
 #
-# WHICH TOOLS IT BINDS: `Bash` and `Monitor`, registered under a matcher each.
+# WHICH TOOLS IT BINDS: `Bash` and `Monitor`, named by one matcher rather than
+# registered twice, so the hook runs once per tool call whichever tool it was.
 # Both take a raw shell command in the same `tool_input.command` field, so
 # either can arm the loop this denies, and a guard binding only the first one
 # denies the shape in the tool an agent reaches for first while leaving it

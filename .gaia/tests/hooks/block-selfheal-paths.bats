@@ -773,5 +773,5 @@ scrub_jq_from_path() {
 }
 
 @test "settings.json registers the hook under the Bash matcher" {
-  hook_registered "$SETTINGS_ABS" '.hooks.PreToolUse[] | select(.matcher == "Bash")' block-selfheal-paths.sh
+  hook_registered "$SETTINGS_ABS" '.hooks.PreToolUse[] | select(.matcher == "Bash|Monitor")' block-selfheal-paths.sh
 }

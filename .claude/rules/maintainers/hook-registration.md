@@ -42,6 +42,18 @@ bash .gaia/scripts/lint-hook-jq-availability.sh
 
 Like the manifests above, the obligated set is derived from the registration rather than from a second list, so a newly registered hook carries it the moment it is registered. It folds into `.gaia/tests/shell-lint.sh`, so a missing arm reds on the pull request that registers the hook.
 
+## Monitor-arming obligation
+
+**Every `PreToolUse` registration whose matcher reaches `Bash` and whose hook can stop a tool call on the command it is handed must name `Monitor` in the same matcher, and the hook's own `tool_name` test must admit it.** A matcher is an unanchored regex over the tool name, so `"Bash"` selects one tool, while more than one hands the hook a raw shell command in the same `tool_input.command` field and runs it in the same shell environment. Which tool takes which posture, and why a recorder is left alone rather than widened with the rest, live in [[Claude Hooks]]; this rule states only that the obligation exists and what enforces it:
+
+```bash
+bash .gaia/scripts/lint-hook-monitor-arming.sh
+```
+
+Like the manifests above, the obligated set is derived from the registration rather than from a second list, and the blocking-versus-advisory split comes from the same shared oracle the two gates around it read. It folds into `.gaia/tests/shell-lint.sh`, so a guard bound to one tool reds on the pull request that registers it.
+
+Both halves are checked, because each is inert without the other: a widened matcher over a hook that still pins `tool_name` to `Bash` reads as armed in the settings diff while nothing reaches its payload, and that half is the one no reviewer of the registration can see.
+
 ## Capability obligation
 
 **Every hook the `hooks` block of `.claude/settings.json` registers needs an entry in `.gaia/hook-capabilities.json`.** The entry declares every capability the hook reaches for beyond itself and a `why`. The obligated set is derived from the registration at run time, so a newly registered hook carries a new obligation the moment it is registered, with no second list to remember to edit. A registration with no entry, an entry no registration names, and two entries naming one hook are each a finding:

@@ -53,6 +53,7 @@ setup() {
   . "$BATS_TEST_DIRNAME/helpers/run-hook.sh"
   . "$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)/.gaia/tests/helpers/path.sh"
   HOOK_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)/pr-merge-audit-check.sh
+  SETTINGS_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.claude" && pwd)/settings.json
   RESOLVER_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.gaia/scripts" && pwd)/resolve-audit-members.sh
   SPAWN_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.gaia/scripts" && pwd)/resolve-audit-spawn.sh
   LIB_DIR=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks/lib" && pwd)
@@ -151,6 +152,16 @@ run_merge_hook_at() {
 # Run the hook with a `gh pr merge` command, from inside the repo.
 run_merge_hook() {
   run_merge_hook_at "$REPO" "${1:-gh pr merge 30 --squash --delete-branch}"
+}
+
+# The same merge, armed through the other tool that carries a raw shell command
+# in `tool_input.command`.
+run_merge_hook_monitor() {
+  local cmd="${1:-gh pr merge 30 --squash --delete-branch}"
+  local json
+  json=$(jq -n --arg c "$cmd" \
+    '{tool_name: "Monitor", tool_input: {command: $c}}')
+  invoke_hook_in "$REPO" "$json" "$HOOK_ABS"
 }
 
 # Run the hook with a command too large to pass through argv. Linux caps a
@@ -473,6 +484,18 @@ assert_not_in_set() {
   run_merge_hook
   [ "$status" -eq 0 ]
   [[ "$output" == *'"permissionDecision": "deny"'* ]]
+}
+
+@test "denies the same merge armed through Monitor" {
+  # The apex merge gate is the one this class costs most: a `gh pr merge` armed
+  # through `Monitor` merges with the audit-clearance check never invoked, and
+  # the merge lands with no denial and no diagnostic anywhere. The tool arm
+  # inside the hook is half the repair; the matcher in settings.json is the
+  # other half, and the registration assertion at the foot of this file pins it.
+  commit_files "app/components/Foo/index.tsx" "export const Foo = () => null"
+  run_merge_hook_monitor
+  [ "$status" -eq 0 ]
+  [[ "$output" == *'"permissionDecision": "deny"'* ]] || return 1
 }
 
 @test "denies a PR that changes a root config (package.json)" {
@@ -2927,4 +2950,13 @@ run_merge_hook_lib_absent() {
   # named no target the gate could read, so nothing established a wrong one.
   grep -qF 'cannot read the merge command' <<<"$output" || return 1
   grep -qF 'command wrapper standing in front of the merge' <<<"$output"
+}
+
+# Every test above invokes the hook by path, so all of them stay green on a
+# registration narrowed back to one tool, with the gate inert for the other in
+# every real session. This is the only assertion that reads the file deciding
+# which tool calls reach the hook at all.
+
+@test "the hook is registered in settings.json for both tools it binds" {
+  hook_registered "$SETTINGS_ABS" '.hooks.PreToolUse[] | select(.matcher == "Bash|Monitor")' pr-merge-audit-check.sh
 }
