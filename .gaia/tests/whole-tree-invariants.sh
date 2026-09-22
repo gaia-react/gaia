@@ -218,6 +218,7 @@ readonly WTI_EXCLUDED='.gaia/scripts/check-debt-issue-metadata.sh|argument-drive
 .gaia/scripts/lint-sigpipe-readers.sh|runs transitively, shell-lint.sh invokes it and shell-lint.sh is itself a member
 .gaia/scripts/lint-hook-cwd-relative-loads.sh|runs transitively, shell-lint.sh invokes it and shell-lint.sh is itself a member
 .gaia/scripts/lint-hook-jq-availability.sh|runs transitively, shell-lint.sh invokes it and shell-lint.sh is itself a member
+.gaia/scripts/lint-hook-monitor-arming.sh|runs transitively, shell-lint.sh invokes it and shell-lint.sh is itself a member
 .gaia/scripts/lint-scripts-wiki-inventory.sh|runs transitively, shell-lint.sh invokes it and shell-lint.sh is itself a member
 .gaia/scripts/lint-awk-interpreter-pin.sh|runs transitively, shell-lint.sh invokes it and shell-lint.sh is itself a member
 .gaia/scripts/hook-registration-lib.sh|a sourced library defining functions and running nothing; every gate that sources it is a member by the lines above and by shell-lint.sh, and its other consumer is a bats helper covered by the hooks suites in Audit CI Tests

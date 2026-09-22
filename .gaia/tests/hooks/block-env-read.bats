@@ -377,8 +377,8 @@ run_write_hook_edit() {
   hook_registered "$SETTINGS_ABS" '.hooks.PreToolUse[] | select(.matcher == "Read")' block-env-read.sh
 }
 
-@test "settings.json registers block-env-read.sh under the Bash matcher (UAT-008)" {
-  hook_registered "$SETTINGS_ABS" '.hooks.PreToolUse[] | select(.matcher == "Bash")' block-env-read.sh
+@test "settings.json registers block-env-read.sh for both tools it binds (UAT-008)" {
+  hook_registered "$SETTINGS_ABS" '.hooks.PreToolUse[] | select(.matcher == "Bash|Monitor")' block-env-read.sh
 }
 
 @test "permissions.deny carries no Read() rule at all" {

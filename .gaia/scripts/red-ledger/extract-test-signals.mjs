@@ -125,13 +125,21 @@ if (diagnostics.length > 0) {
 }
 
 // Resolve a call-expression callee to its bare identifier name, ignoring
-// chained modifiers (test.each(...)(...), it.concurrent(...), describe.skip).
-// Returns the base name: 'test', 'it', 'describe', or null.
+// chained modifiers (test.each(...)(...), test.each`...`(...),
+// it.concurrent(...), describe.skip). Returns the base name: 'test', 'it',
+// 'describe', or null.
 function baseCalleeName(node) {
   let expr = node.expression;
-  // Unwrap a call-of-a-call (test.each(table)('name', fn)).
-  while (ts.isCallExpression(expr)) {
-    expr = expr.expression;
+  // Unwrap a call-of-a-call (test.each(table)('name', fn)) and a
+  // tagged-template modifier call (test.each`...`('name', fn)).
+  for (;;) {
+    if (ts.isCallExpression(expr)) {
+      expr = expr.expression;
+    } else if (ts.isTaggedTemplateExpression(expr)) {
+      expr = expr.tag;
+    } else {
+      break;
+    }
   }
   // Walk down a property-access chain to its leftmost identifier.
   while (ts.isPropertyAccessExpression(expr)) {
@@ -143,11 +151,51 @@ function baseCalleeName(node) {
   return null;
 }
 
+// vitest chainable modifiers that interpolate the row into the title at
+// runtime ($prop / printf tokens): `.each` and `.for`. Both make the declared
+// title argument a template rather than the recorded fullName.
+const TITLE_EXPANDING_MODIFIERS = new Set(['each', 'for']);
+
+// True when the call's callee chain carries a title-expanding modifier:
+// test.each(table)(...), test.for(table)(...), it.each(table)(...),
+// describe.each(table)(...), and the tagged-template spelling
+// (test.each`...`(...)) wherever baseCalleeName can see it. Mirrors
+// baseCalleeName's own call-of-a-call / tagged-template / property-access
+// walk, checking each property name along the way instead of only the root.
+function calleeHasTitleExpandingModifier(node) {
+  let expr = node.expression;
+  for (;;) {
+    if (ts.isCallExpression(expr)) {
+      expr = expr.expression;
+    } else if (ts.isTaggedTemplateExpression(expr)) {
+      expr = expr.tag;
+    } else {
+      break;
+    }
+  }
+  while (ts.isPropertyAccessExpression(expr)) {
+    if (TITLE_EXPANDING_MODIFIERS.has(expr.name.text)) {
+      return true;
+    }
+    expr = expr.expression;
+  }
+  return false;
+}
+
 // The first string-literal/template title argument of a test/describe call.
 // Returns the literal text, or null when the title is dynamic (template with
-// substitutions, an identifier, etc.); a dynamic title cannot be matched to
-// a recorded fullName, so we skip it.
+// substitutions, an identifier, etc.) or the call carries a title-expanding
+// modifier (`.each`/`.for`); a dynamic title cannot be matched to a recorded
+// fullName, so we skip it. The modifier check is unconditional even though a
+// substitution-free `.each`/`.for` title (no $prop, no printf token) is
+// recorded verbatim once per row: distinguishing that case would mean
+// hand-rolling a parser for vitest's substitution grammar, so the
+// suppression stays deliberately wider than strictly necessary and trades
+// away that narrow slice of coverage.
 function titleOf(node) {
+  if (calleeHasTitleExpandingModifier(node)) {
+    return null;
+  }
   const arg = node.arguments[0];
   if (!arg) {
     return null;
@@ -340,11 +388,19 @@ function classifyKind(testNode) {
 
 const lines = [];
 
-function visit(node, ancestors) {
+// unmatchable: true once an enclosing describe's own title is uncomputable,
+// whether because it carries a title-expanding modifier (a per-row runtime
+// expansion) or because titleOf otherwise returned null (a template
+// substitution, an identifier, or any other non-literal title argument). Either way the block's runtime name
+// is not the declared source text, so every descendant's fullName would be
+// built on a prefix that does not exist anywhere but at runtime; an
+// otherwise-static title further down cannot repair that, so the state
+// propagates to the whole subtree rather than resetting at the next describe.
+function visit(node, ancestors, unmatchable) {
   if (ts.isCallExpression(node)) {
     const name = baseCalleeName(node);
     if (name && TEST_NAMES.has(name)) {
-      const title = titleOf(node);
+      const title = unmatchable ? null : titleOf(node);
       if (title !== null) {
         const fullName = [...ancestors, title].join(' ');
         lines.push(
@@ -357,21 +413,24 @@ function visit(node, ancestors) {
       }
       // A test call never nests further test/describe blocks worth tracking;
       // still descend in case of unusual nesting, but without pushing a title.
-      ts.forEachChild(node, (child) => visit(child, ancestors));
+      ts.forEachChild(node, (child) => visit(child, ancestors, unmatchable));
       return;
     }
     if (name && DESCRIBE_NAMES.has(name)) {
-      const title = titleOf(node);
+      const title = unmatchable ? null : titleOf(node);
       const nextAncestors =
         title !== null ? [...ancestors, title] : ancestors;
-      ts.forEachChild(node, (child) => visit(child, nextAncestors));
+      const nextUnmatchable = unmatchable || title === null;
+      ts.forEachChild(node, (child) =>
+        visit(child, nextAncestors, nextUnmatchable),
+      );
       return;
     }
   }
-  ts.forEachChild(node, (child) => visit(child, ancestors));
+  ts.forEachChild(node, (child) => visit(child, ancestors, unmatchable));
 }
 
-visit(sourceFile, []);
+visit(sourceFile, [], false);
 
 // The stdout-exit idiom every .gaia/scripts Node helper follows: install this
 // guard, write, then set process.exitCode. Never process.exit() after a stdout

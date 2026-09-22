@@ -54,6 +54,8 @@ teardown() {
     cp "$STASH" "$LEDGER_ABS"
     rm -f "$STASH"
   fi
+  [ -n "${STUB_BIN:-}" ] && rm -rf "$STUB_BIN"
+  [ -n "${STUB_PNPM_ARGS_FILE:-}" ] && rm -f "$STUB_PNPM_ARGS_FILE"
   return 0
 }
 
@@ -96,6 +98,73 @@ run_capture_from() {
 # Count ledger lines (0 when the file is absent).
 ledger_lines() {
   [ -f "$LEDGER_ABS" ] && wc -l < "$LEDGER_ABS" | tr -d ' ' || echo 0
+}
+
+# A fake `pnpm` ahead of the real one on PATH. It records every argv word it
+# receives to STUB_PNPM_ARGS_FILE (one per line) and, when STUB_PNPM_JSON_SRC
+# is set, copies that canned json to whatever path `--outputFile=` names. This
+# drives the hook's real (non-override) scope-parsing code and lets a test
+# assert the exact tokens that reached `vitest --run` -- in particular, that a
+# redirection token never reaches that argv -- without a real vitest
+# invocation and without touching this checkout's own node_modules, which a
+# concurrently-running agent in this worktree also depends on.
+stub_pnpm() {
+  STUB_BIN=$(mktemp -d)
+  cat > "$STUB_BIN/pnpm" <<'SH'
+#!/bin/sh
+: > "$STUB_PNPM_ARGS_FILE"
+out_file=""
+for a in "$@"; do
+  printf '%s\n' "$a" >> "$STUB_PNPM_ARGS_FILE"
+  case "$a" in
+    --outputFile=*) out_file="${a#--outputFile=}" ;;
+  esac
+done
+if [ -n "$out_file" ] && [ -n "${STUB_PNPM_JSON_SRC:-}" ]; then
+  cp "$STUB_PNPM_JSON_SRC" "$out_file"
+fi
+exit 0
+SH
+  chmod +x "$STUB_BIN/pnpm"
+  PATH="$STUB_BIN:$PATH"
+  export PATH
+  STUB_PNPM_ARGS_FILE=$(mktemp -t red-capture-stub-args-XXXXXX)
+  export STUB_PNPM_ARGS_FILE
+}
+
+# Runs a real scope arg with REDIRECTION_TOKEN appended, via the stub pnpm, and
+# asserts the token never reaches vitest's argv while the real scope arg does.
+assert_scope_survives_redirect() {
+  local redir="$1"
+  stub_pnpm
+  STUB_PNPM_JSON_SRC="$REPO_ROOT/$JSON_REL/assertion-fail.json"
+  export STUB_PNPM_JSON_SRC
+  run_capture "Bash" "pnpm test --run $FIX_REL/mixed-pass-fail.test.ts $redir"
+  [ "$status" -eq 0 ]
+  [ "$(ledger_lines)" -eq 1 ]
+  grep -qF -- "$FIX_REL/mixed-pass-fail.test.ts" "$STUB_PNPM_ARGS_FILE"
+  grep -E '[<>]' "$STUB_PNPM_ARGS_FILE" && return 1
+  return 0
+}
+
+# Runs a real scope arg with a SPACED redirection (operator and target as two
+# whitespace-separated tokens, e.g. "2> err.log") appended, via the stub pnpm,
+# and asserts the scope arg reaches vitest's argv while the target's exact
+# line does not. Unlike assert_scope_survives_redirect above, a spaced
+# redirection's target carries no angle bracket, so "no `<`/`>` in the args"
+# cannot see it leaking as a bogus extra scope token; asserting the target's
+# exact line is absent is the check that can.
+assert_spaced_redirect_target_absent() {
+  local redir="$1" target="$2"
+  stub_pnpm
+  STUB_PNPM_JSON_SRC="$REPO_ROOT/$JSON_REL/assertion-fail.json"
+  export STUB_PNPM_JSON_SRC
+  run_capture "Bash" "pnpm test --run $FIX_REL/mixed-pass-fail.test.ts $redir"
+  [ "$status" -eq 0 ]
+  [ "$(ledger_lines)" -eq 1 ]
+  grep -qF -- "$FIX_REL/mixed-pass-fail.test.ts" "$STUB_PNPM_ARGS_FILE"
+  grep -qxF "$target" "$STUB_PNPM_ARGS_FILE" && return 1
+  return 0
 }
 
 # --- failing run records one RED per genuinely-failing test -------------------
@@ -279,4 +348,110 @@ ledger_lines() {
     "$JSON_REL/runtime-fail.json"
   [ "$status" -eq 0 ]
   [ "$(ledger_lines)" -eq 2 ]
+}
+
+@test "a leftover tempfile at the historical mktemp name does not disable capture" {
+  # Regression guard: BSD mktemp only substitutes a TRAILING run of X's, so
+  # the hook's old "vitest-XXXXXX.json" template resolved to that literal
+  # name and a leftover file there made every later mktemp call fail, which
+  # silently disabled capture until the leftover was removed by hand. Uses
+  # stub_pnpm (not RED_CAPTURE_JSON_OVERRIDE) so this drives the hook's real
+  # mktemp call rather than the override seam that bypasses it.
+  local tmp_dir
+  tmp_dir="$(dirname "$LEDGER_ABS")/.tmp"
+  mkdir -p "$tmp_dir"
+  touch "$tmp_dir/vitest-XXXXXX.json"
+
+  stub_pnpm
+  STUB_PNPM_JSON_SRC="$REPO_ROOT/$JSON_REL/assertion-fail.json"
+  export STUB_PNPM_JSON_SRC
+  run_capture "Bash" "pnpm test --run $FIX_REL/mixed-pass-fail.test.ts"
+  [ "$status" -eq 0 ]
+  [ "$(ledger_lines)" -eq 1 ]
+
+  rm -f "$tmp_dir/vitest-XXXXXX.json"
+}
+
+# --- redirection tokens do not leak into the scope arg (gaia-react/gaia#2225) -
+#
+# These drive the REAL (non-override) scope-parsing code: the override seam
+# short-circuits scope computation entirely, so a redirection-filtering
+# regression would be invisible to a test built on it.
+
+@test "a narrow scope survives a trailing stderr-redirect token (2>&1)" {
+  assert_scope_survives_redirect '2>&1'
+}
+
+@test "a narrow scope survives a trailing stdout-redirect token (1>out.log)" {
+  assert_scope_survives_redirect '1>out.log'
+}
+
+@test "a narrow scope survives a trailing append-redirect token (>>append.log)" {
+  assert_scope_survives_redirect '>>append.log'
+}
+
+@test "a narrow scope survives a trailing stderr-to-devnull token (2>/dev/null)" {
+  assert_scope_survives_redirect '2>/dev/null'
+}
+
+@test "a narrow scope survives a trailing input-redirect token (<input)" {
+  assert_scope_survives_redirect '<input'
+}
+
+@test "a narrow scope survives a trailing heredoc-marker token (<<EOF)" {
+  assert_scope_survives_redirect '<<EOF'
+}
+
+@test "an unscoped run with only a stderr-redirect token hits the no-scope skip (2>&1)" {
+  # No real scope token, only a redirection: after the fix the scope walk
+  # yields nothing (the redirection is filtered rather than read as a bogus
+  # scope path), so this falls into the SAME designed "no scope parsed" skip
+  # as a bare `--run`, rather than a scoped re-run against a nonexistent file.
+  # `stub_pnpm` here (rather than the ledger-only checks used elsewhere in
+  # this file) is load-bearing: the real vitest binary resolves a bogus
+  # pattern to zero matches just as fast as the skip exits, so a ledger-only
+  # assertion cannot tell the skip from a real re-run that happened to match
+  # nothing -- it stays green on both sides of this fix. Asserting the stub
+  # was never invoked is the one check that distinguishes them.
+  stub_pnpm
+  run_capture "Bash" "pnpm test --run 2>&1"
+  [ "$status" -eq 0 ]
+  [ "$(ledger_lines)" -eq 0 ]
+  [ ! -s "$STUB_PNPM_ARGS_FILE" ]
+}
+
+@test "an unscoped run with only a stdout-redirect token hits the no-scope skip (>out)" {
+  stub_pnpm
+  run_capture "Bash" "pnpm test --run >out"
+  [ "$status" -eq 0 ]
+  [ "$(ledger_lines)" -eq 0 ]
+  [ ! -s "$STUB_PNPM_ARGS_FILE" ]
+}
+
+# --- spaced redirections: operator and target are TWO whitespace-separated
+# tokens (gaia-react/gaia#2225 residual). awk word-splits $test_seg, so a
+# spaced redirection's operator and target never travel together the way the
+# attached forms above (1>out.log, <<EOF, …) do. Asserting only "no `<`/`>`
+# in the args" (as assert_scope_survives_redirect does) cannot see the
+# target leaking as a bogus extra scope token, so these assert the target's
+# exact line is absent from the stub's recorded argv.
+
+@test "a narrow scope survives a trailing spaced stdout-redirect (> out.log)" {
+  assert_spaced_redirect_target_absent '> out.log' 'out.log'
+}
+
+@test "a narrow scope survives a trailing spaced stderr-redirect (2> err.log)" {
+  assert_spaced_redirect_target_absent '2> err.log' 'err.log'
+}
+
+@test "a narrow scope survives a leading spaced input-redirect (< input)" {
+  assert_spaced_redirect_target_absent '< input' 'input'
+}
+
+@test "an unscoped run with only a spaced stdout-redirect hits the no-scope skip (> out)" {
+  stub_pnpm
+  run_capture "Bash" "pnpm test --run > out"
+  [ "$status" -eq 0 ]
+  [ "$(ledger_lines)" -eq 0 ]
+  [ ! -s "$STUB_PNPM_ARGS_FILE" ]
 }

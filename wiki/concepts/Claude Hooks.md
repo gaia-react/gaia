@@ -33,26 +33,26 @@ The sourced libraries under `.claude/hooks/lib/` are deliberately absent. They a
 
 | Hook | Event or invoker | Purpose |
 |---|---|---|
-| `audit-disposition-check.sh` | PreToolUse (Bash) | Denies `gh pr merge` until every recorded audit finding carries a disposition. |
-| `audit-residual-shape-check.sh` | PreToolUse (Bash) | Denies `gh pr merge` when the audit residuals in the pull-request body are malformed. |
+| `audit-disposition-check.sh` | PreToolUse (Bash, Monitor) | Denies `gh pr merge` until every recorded audit finding carries a disposition. |
+| `audit-residual-shape-check.sh` | PreToolUse (Bash, Monitor) | Denies `gh pr merge` when the audit residuals in the pull-request body are malformed. |
 | `audit-stamp-trailer.sh` | Invoked by path from the `code-audit-*` agent definitions | Writes the `GAIA-Audit` commit trailer on HEAD for a member that earned its clearance marker. |
-| `block-bare-test.sh` | PreToolUse (Bash) | Denies a bare `pnpm test` / `npm test` that would start the watcher instead of exiting. |
-| `block-env-read.sh` | PreToolUse (Bash, Read, Grep) | Read-side guard for dotenv paths, across all three tool tiers that can reach one. |
+| `block-bare-test.sh` | PreToolUse (Bash, Monitor) | Denies a bare `pnpm test` / `npm test` that would start the watcher instead of exiting. |
+| `block-env-read.sh` | PreToolUse (Bash, Monitor, Read, Grep) | Read-side guard for dotenv paths, across all three tool tiers that can reach one. |
 | `block-env-write.sh` | PreToolUse (Edit\|Write\|MultiEdit) | Refuses a write targeting a `.env` file. |
 | `block-eslint-config-edit.sh` | PreToolUse (Edit\|Write\|MultiEdit) | Puts every edit to an ESLint flat config to the operator, on the filename alone. |
 | `block-fourth-audit-round.sh` | PreToolUse (Agent\|Task), SessionStart (clear) | Denies a fourth Code Audit Team dispatch wave in one session on one branch. |
 | `block-handrolled-pr-poll.sh` | PreToolUse (Bash, Monitor) | Denies a hand-rolled merge wait that never reads `mergeable`, and names the shipped one. |
 | `block-invalid-yaml-write.sh` | PreToolUse (Edit\|Write\|MultiEdit) | Denies a write that would turn a valid YAML file or frontmatter block invalid. |
 | `block-lockfile-edit.sh` | PreToolUse (Edit\|Write\|MultiEdit) | Refuses a direct edit to the package lockfile. |
-| `block-main-destructive-git.sh` | PreToolUse (Bash) | Denies a commit on `main`/`master`, a force-push to it, and a push destined for it. |
-| `block-manifest-write.sh` | PreToolUse (Bash, Edit\|Write\|MultiEdit) | Refuses a write to the release-generated manifest, through the edit tools and the common Bash vectors alike. |
-| `block-no-verify.sh` | PreToolUse (Bash) | Denies a `git commit` or `git push` carrying a hook-bypass token. |
-| `block-rm-rf.sh` | PreToolUse (Bash) | Denies a catastrophic `rm -rf` target, honoring the state registry's whitelist. |
-| `block-secrets-read.sh` | PreToolUse (Bash, Read, Grep) | Read-side guard for key and certificate paths, across all three tool tiers. |
+| `block-main-destructive-git.sh` | PreToolUse (Bash, Monitor) | Denies a commit on `main`/`master`, a force-push to it, and a push destined for it. |
+| `block-manifest-write.sh` | PreToolUse (Bash, Monitor, Edit\|Write\|MultiEdit) | Refuses a write to the release-generated manifest, through the edit tools and the common Bash vectors alike. |
+| `block-no-verify.sh` | PreToolUse (Bash, Monitor) | Denies a `git commit` or `git push` carrying a hook-bypass token. |
+| `block-rm-rf.sh` | PreToolUse (Bash, Monitor) | Denies a catastrophic `rm -rf` target, honoring the state registry's whitelist. |
+| `block-secrets-read.sh` | PreToolUse (Bash, Monitor, Read, Grep) | Read-side guard for key and certificate paths, across all three tool tiers. |
 | `block-secrets-write.sh` | PreToolUse (Edit\|Write\|MultiEdit) | Denies a write whose content carries an obvious secret. |
-| `block-selfheal-paths.sh` | PreToolUse (Bash, Edit\|Write\|MultiEdit) | Denies a Code Audit Team member editing outside its own self-heal remit. |
+| `block-selfheal-paths.sh` | PreToolUse (Bash, Monitor, Edit\|Write\|MultiEdit) | Denies a Code Audit Team member editing outside its own self-heal remit. |
 | `block-serena-cross-tree-activation.sh` | PreToolUse (`mcp__serena__activate_project`) | Denies a Serena activation naming a tree other than the acting one. |
-| `block-spec-plan-chain.sh` | PreToolUse (Bash, Read, Skill), SessionStart (clear) | Stops a session that authored a SPEC from going straight on to plan it. |
+| `block-spec-plan-chain.sh` | PreToolUse (Bash, Monitor, Read, Skill), SessionStart (clear) | Stops a session that authored a SPEC from going straight on to plan it. |
 | `block-vitest-globals-tsconfig.sh` | PreToolUse (Edit\|Write\|MultiEdit) | Refuses adding `vitest/globals` to a tsconfig. |
 | `block-worktree-path-mismatch.sh` | PreToolUse (Edit\|Write\|MultiEdit) | Inside a linked worktree, denies an edit whose `file_path` resolves to the main checkout. |
 | `capture-gh-artifact.sh` | PostToolUse (Bash) | Records the pull request a `gh pr create` produced, so plan execution can name it in its cost rows. |
@@ -61,15 +61,15 @@ The sourced libraries under `.claude/hooks/lib/` are deliberately absent. They a
 | `check-story-exists.sh` | PreToolUse (Edit\|Write\|MultiEdit) | Advisory: reminds to add a Storybook story for a new component. |
 | `debt-sentinel-touch.sh` | PostToolUse (Bash) | Arms the debt-count staleness sentinel after a `gh` command that mutates the backlog. |
 | `debt-session-reconcile.sh` | SessionStart (startup\|resume) | Reconciles a shown `Run /gaia-debt` nudge against the live backlog. |
-| `distribution-preflight-check.sh` | PreToolUse (Bash) | Denies `gh pr create` when a file the branch newly ships has no ship-or-withhold answer. |
+| `distribution-preflight-check.sh` | PreToolUse (Bash, Monitor) | Denies `gh pr create` when a file the branch newly ships has no ship-or-withhold answer. |
 | `issue-claim-release.sh` | PostToolUse (Bash) | Strips the `in-progress` claim from every issue a merged pull request closes. |
 | `local-janitor.sh` | Invoked by path from `wiki-session-start.sh`; also runnable on its own | Bounded garbage collection and reconciliation over GAIA's local working state. |
 | `post-audit-status.sh` | Invoked by path by the orchestrating session, after every member is dispositioned | Posts the `GAIA-Audit` commit status on HEAD. |
 | `post-findings-block-on-merge.sh` | PreToolUse (Bash) | Posts the machine-readable findings block on a local-mode merge, so it counts toward the recurrence tally. Never blocks. |
-| `pr-merge-audit-check.sh` | PreToolUse (Bash) | Blocks `gh pr merge` until every dispatched Code Audit Team member has written its clearance marker. |
+| `pr-merge-audit-check.sh` | PreToolUse (Bash, Monitor) | Blocks `gh pr merge` until every dispatched Code Audit Team member has written its clearance marker. |
 | `provision-worktree.sh` | PostToolUse (EnterWorktree), SessionStart (startup\|resume) | Re-links a linked worktree's shared state and regenerates what it needs generated. |
-| `red-verify-commit-check.sh` | PreToolUse (Bash) | Denies `git commit` when a new-at-HEAD passing test has no matching failing run on record. |
-| `serena-code-search-guard.sh` | PreToolUse (Bash, Grep) | Routes a symbol-level search to Serena's symbol tools rather than ripgrep, with a block-once escape. |
+| `red-verify-commit-check.sh` | PreToolUse (Bash, Monitor) | Denies `git commit` when a new-at-HEAD passing test has no matching failing run on record. |
+| `serena-code-search-guard.sh` | PreToolUse (Bash, Monitor, Grep) | Routes a symbol-level search to Serena's symbol tools rather than ripgrep, with a block-once escape. |
 | `token-rollup-merge.sh` | PostToolUse (Bash) | Renders the full-cycle token-cost rollup once a pull request merges. |
 | `token-tally-git-op.sh` | PreToolUse (Bash) | Records the session's ground-truth token counts ahead of a git operation. |
 | `token-tally-review.sh` | PostToolUse (Bash), Stop | Captures a code-review-audit run as its own cost record, on either end-of-context trigger. |
@@ -80,7 +80,7 @@ The sourced libraries under `.claude/hooks/lib/` are deliberately absent. They a
 | `wiki-session-start.sh` | SessionStart (startup\|resume) | Records HEAD for the acting tree and delegates to `local-janitor.sh`. |
 | `wiki-session-stop.sh` | Stop | Prompts to refresh the hot cache, and nags when the session's commits outran the wiki's state. |
 | `wiki-squash-autocommits.sh` | Stop | Squashes the session's trailing run of wiki auto-commits into one. |
-| `worthiness-presence-check.sh` | PreToolUse (Bash) | Denies `gh pr merge` when an emergent test the pull request changed carries no worthiness verdict. |
+| `worthiness-presence-check.sh` | PreToolUse (Bash, Monitor) | Denies `gh pr merge` when an emergent test the pull request changed carries no worthiness verdict. |
 
 ### Source-edit safeguards (Edit|Write|MultiEdit)
 
@@ -132,9 +132,9 @@ The hooks reference documents payload `cwd` only as "current working directory w
 - **`check-i18n-strings.sh`**: on edits to `app/pages/**/*.tsx` or `app/components/**/*.tsx`, prints a reminder to use `t()` from `useTranslation()`.
 - **`check-story-exists.sh`**: on edits to `app/components/{Name}/index.tsx`, checks for `tests/index.stories.tsx` and reminds to add one if missing.
 
-### Bash safeguards (Bash)
+### Bash safeguards (Bash, Monitor)
 
-Each script reads `tool_input.command` from stdin and filters by content; there is no `if:` annotation on the hook entry.
+Each script reads `tool_input.command` from stdin and filters by content; there is no `if:` annotation on the hook entry. The matcher names both tools that carry a shell command in that field, for the reason "Which tools a command-reading hook binds" below states.
 
 - **`block-bare-test.sh`**: denies bare `pnpm test` / `npm test` (and `run test` variants); they start vitest watch mode. Requires `--run` for a one-shot pass. Command-position anchored: walks pipeline segments and acts only when `pnpm`/`npm` is the segment's command word, so the phrase inside a commit message or `--body` string is not an invocation and passes; the `--run` opt-out is scoped to the matched segment. `test:ci` / `test:lint-staged` keep their own carve-out. See [[Test Runner]].
 - **`block-no-verify.sh`**: denies `git commit` or `git push` carrying a hook-bypass token: `--no-verify`, a falsy `HUSKY=` env prefix, or a `core.hooksPath` redirect. Also denies `git commit -n` (short form of `--no-verify`); `git push -n` (dry-run) stays allowed. Foreign-repo commands pass via the shared repo-scope helper. The hook walks command-position segments so a `-n` on another program (`grep`, `head`, `sort`, `tail`) is inert. Keeps an unambiguous whole-command fail-closed net for the tokens that cannot appear anywhere else (`--no-verify`, `HUSKY=`, `core.hooksPath=`).
@@ -216,6 +216,14 @@ The arm refuses **narrowly** where the hook's matcher can reach the `jq` install
 An **advisory** hook takes the opposite arm and stands down, because a lost reminder costs less than a blocked session.
 
 `.claude/hooks/lib/jq-availability.sh` owns the arm and the literal contract; each hook states beside its own call which spellings its literals cannot reach. `.gaia/scripts/lint-hook-jq-availability.sh` holds the layer to it, deriving its subject set from the PreToolUse registrations so a newly registered hook carries the obligation the moment it is registered, and carrying the blocking-versus-advisory question in the same shared oracle the advisory-classification gate reads.
+
+### Which tools a command-reading hook binds
+
+A matcher is an unanchored regex over the **tool name**, so `"Bash"` selects the `Bash` tool and nothing else. More than one tool hands a hook a raw shell command in the same `tool_input.command` field and runs it in the same shell environment, and `Monitor` is the second one: whatever a guard refuses on `Bash` is armable through `Monitor` with the guard never invoked, and the bypass is silent in both directions, no denial and no diagnostic.
+
+So a **blocking** command-reading hook binds both, by one matcher naming both rather than a row per tool: two rows registering one hook run it twice wherever both matchers select the same tool. Over-arming a denial costs a refusal on a watch loop, which is loud and cheap; under-arming costs the silent bypass. An **advisory** one is left on `Bash` alone, and that is a different question rather than the same one answered timidly: a recorder's value is the fidelity of its ledger for a specific workflow action, and arming it on a second tool changes what it counts, since a watch naming the verb, or one re-armed after its deadline, adds rows for a single real action. A missing row is recoverable; a wrong one is not distinguishable from a real one.
+
+Widening the matcher is half the repair and the inert half on its own: a hook admitting `Bash` alone in its own `tool_name` test still stands down while its registration reads as armed. `.gaia/scripts/lint-hook-monitor-arming.sh` holds both halves, deriving its rows from the PreToolUse registrations and its posture split from the same shared oracle the two gates above read, so a newly registered hook carries the obligation the moment it is registered.
 
 ### Wiki coherence (multiple events)
 

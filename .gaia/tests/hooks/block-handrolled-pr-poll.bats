@@ -351,13 +351,11 @@ done'
 # dropped registration, with the guard inert in every real session. This is the
 # only assertion that reads the file deciding whether the hook runs.
 
-@test "the hook is registered in settings.json" {
-  hook_registered "$SETTINGS_ABS" '.hooks.PreToolUse[] | select(.matcher == "Bash")' block-handrolled-pr-poll.sh
-}
-
-@test "the hook is registered for Monitor too" {
-  # The tool check inside the hook reaches nothing the matchers do not deliver,
-  # so the Monitor deny tests above stay green on a dropped Monitor
-  # registration with the guard inert for that tool in every real session.
-  hook_registered "$SETTINGS_ABS" '.hooks.PreToolUse[] | select(.matcher == "Monitor")' block-handrolled-pr-poll.sh
+@test "the hook is registered in settings.json for both tools it binds" {
+  # The tool check inside the hook reaches nothing the matcher does not
+  # deliver, so the Monitor deny tests above stay green on a matcher narrowed
+  # back to one tool, with the guard inert for the other in every real session.
+  # One matcher names both rather than a row per tool: two rows registering one
+  # hook run it twice wherever both matchers select the same tool.
+  hook_registered "$SETTINGS_ABS" '.hooks.PreToolUse[] | select(.matcher == "Bash|Monitor")' block-handrolled-pr-poll.sh
 }
