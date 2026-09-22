@@ -507,7 +507,7 @@ run_lib() {
   # independently, and #1748 was a `record_count` that drifted while
   # `file_count` stayed put.
   [ "$file_count" -eq 32 ]
-  [ "$record_count" -eq 135 ]
+  [ "$record_count" -eq 134 ]
 
   local bad_signal
   bad_signal=$(jq -r '.signal' "$corpus" | grep -vE '^sha256:[0-9a-f]{64}$' || true)

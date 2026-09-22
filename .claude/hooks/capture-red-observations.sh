@@ -108,12 +108,38 @@ else
   scope=$(printf '%s\n' "$test_seg" | awk '
     {
       seen = 0
+      redir = 0
       for (i = 1; i <= NF; i++) {
         if (!seen) { if ($i == "test") seen = 1; continue }
         tok = $i
+        # A shell redirection reaches the walk in two shapes: attached to its
+        # target in one token (1>out.log, 2>/dev/null, <input, <<EOF, …), or
+        # split by whitespace into the bare operator and a separate target
+        # token (`2>` then `err.log`). The attached shape is caught below by
+        # the `[<>]` filter; the spaced shape needs the operator recognized
+        # on its own so the target that follows it (which carries no angle
+        # bracket) is skipped too, rather than read as a scope path. `redir`
+        # tracks that: set when the current token is bare-operator-shaped,
+        # consumed on the very next token.
+        #
+        # The `|&;()` split above severs a `&`-carrying redirection (2>&1)
+        # mid-token: it splits at the `&`, so only the operator head (2>)
+        # reaches this segment and the rest becomes an orphan segment on its
+        # own line, never matched into $test_seg. That head still lands here
+        # as a token, but it is caught by the bare-operator arm just below
+        # (which arms `redir`), not by the `[<>]` filter. Arming `redir` on
+        # it is harmless: the split guarantees the head is the last token on
+        # this line, so there is no following token for the armed lookahead
+        # to wrongly consume.
+        if (redir) { redir = 0; continue }
+        if (tok ~ /^[0-9]*[<>]+$/) { redir = 1; continue }
         if (tok ~ /^-/) continue                 # flags: --run, --reporter, -t, …
         if (tok == "run" || tok == "exec") continue
         if (tok ~ /=/) continue                  # --opt=value already caught by ^-, but be safe
+        # A test-scope path or glob never legitimately contains `<` or `>`,
+        # so excluding any attached-form token that does is a safe,
+        # shape-based filter.
+        if (tok ~ /[<>]/) continue
         print tok
       }
     }')
@@ -129,7 +155,14 @@ else
   [ -n "$(printf '%s' "$scope" | tr -d '[:space:]')" ] || exit 0
 
   mkdir -p "$tmp_dir" 2>/dev/null || true
-  json_file=$(mktemp "${tmp_dir}/vitest-XXXXXX.json" 2>/dev/null || echo "")
+  # BSD mktemp (macOS) only substitutes a TRAILING run of X's; an embedded
+  # "-XXXXXX.json" template is read as the literal filename, so a second
+  # concurrent call collides with the first and fails outright (mkstemp
+  # failed … File exists), which would silently disable capture until the
+  # leftover file is removed by hand. The trailing-X form randomizes on both
+  # BSD and GNU mktemp. vitest's own reporter is selected by --reporter=json,
+  # not by the outputFile extension, so dropping .json here is safe.
+  json_file=$(mktemp "${tmp_dir}/vitest-json-XXXXXX" 2>/dev/null || echo "")
   [ -n "$json_file" ] || exit 0
   cleanup_json=1
 
