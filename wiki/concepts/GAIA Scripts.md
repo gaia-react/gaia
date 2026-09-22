@@ -94,6 +94,7 @@ The index is held to the tree by `.gaia/scripts/lint-scripts-wiki-inventory.sh`,
 
 | Script | Ships | Invoker | What it is |
 |---|---|---|---|
+| `lint-awk-interpreter-pin.sh` | no | GAIA's own shell-lint harness | Flags a bare `awk`, `gawk`, `mawk` or `nawk` in command position inside the `guard-awk-lib.sh` closure, where the resolved `GAIA_AWK` is the required form. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
 | `lint-collapsed-signal-trap.sh` | no | `shell-lint.yml` | Flags one `trap` arm binding EXIT together with INT or TERM, the shape that leaves a script uninterruptible. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
 | `lint-errexit-source-guard.sh` | no | `shell-lint.yml` | Flags a `source` that can run with errexit armed and is not bracketed against an unparseable target. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
 | `lint-errexit-status-read.sh` | no | `shell-lint.yml` | Flags `$?` read after a command-substitution assignment under `set -e`, where it reports the wrong command. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->

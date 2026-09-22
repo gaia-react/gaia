@@ -532,6 +532,7 @@ GUARD_SLUGS=(
   lint-scripts-wiki-inventory
   lint-hook-cwd-relative-loads
   lint-hook-jq-availability
+  lint-awk-interpreter-pin
 )
 GUARD_MODES=(
   subshell
@@ -549,6 +550,7 @@ GUARD_MODES=(
   root
   root
   root
+  subshell
   subshell
   subshell
 )
@@ -990,6 +992,24 @@ fi
 # across the whole fail-closed layer at once.
 echo "--> lint-hook-jq-availability (a blocking hook standing down on a missing jq)"
 if ! replay_guard 16; then
+  status=1
+fi
+
+# Fold in the awk interpreter pin, one layer under the grep gate above it: that
+# gate closes a BSD-versus-GNU divergence in the patterns, and this one closes
+# an implementation divergence in the interpreter those patterns' sibling
+# tokenizers run under. POSIX leaves a great deal of awk implementation-defined,
+# CI runs mawk and a macOS maintainer runs BWK one-true-awk, and a guard whose
+# detector means something different on the two still reports green on both.
+# .gaia/scripts/awk-interp-lib.sh resolves one sanctioned interpreter into
+# GAIA_AWK for the guard-awk-lib.sh closure; this gate is what binds the next
+# guard added to that closure to use it. Its surface is that closure alone,
+# which .gaia/scripts/*.sh already arms on the paths filter in
+# .github/workflows/shell-lint.yml, so it needed no entry of its own. Run from
+# the repo root so its `git ls-files` discovery resolves and the file:line it
+# prints is repo-relative.
+echo "--> lint-awk-interpreter-pin (a bare awk where the closure must use the resolved GAIA_AWK)"
+if ! replay_guard 17; then
   status=1
 fi
 
