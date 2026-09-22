@@ -168,7 +168,16 @@ Empty output confirms no marker is owed. If it names any member, spawn each memb
   1. `{ label: "Merge", description: "Squash-merge PR #<N> now." }`
   2. `{ label: "Leave open", description: "Keep the PR open; you merge it after review." }`
 
-**Merge** → drive it to merge through `wiki/concepts/PR Merge Workflow.md` (read it, don't merge from memory): `gh pr merge <N> --squash --delete-branch --auto`, run the bounded poll in `wiki/concepts/PR Merge Workflow.md` (`## Post-merge verification before cleanup`), which also stops early on a base-branch conflict or a failed required check (on a conflict, repair it per that page's `### Conflict found mid-wait` and resume), and on `MERGED` capture the branch (the literal `$BRANCH` value) for the cost record's `--branch-name` (`## Cost record (run end)`) and then clean up (`git checkout main && git pull origin main`, `git branch -D "$BRANCH"`, `git fetch --prune origin`); if still queued when the poll window closes, print the PR URL and note the merge is queued; on a failed required check, print the PR URL and the failing check instead.
+**Merge** → drive it to merge through `wiki/concepts/PR Merge Workflow.md` (read it, don't merge from memory): `gh pr merge <N> --squash --delete-branch --auto`, then run the merge wait, `bash .gaia/scripts/pr-wait-merge.sh --pr <N>`, the bounded poll that page's `## Post-merge verification before cleanup` prescribes. The merge above is already queued and the script issues no `gh pr merge` of its own, so nothing here re-merges. One arm per verdict, and the script's `--help` is the authority on the set. Every arm below ends the run and writes its cost record (`## Cost record (run end)`):
+
+- On `MERGED` (exit 0), capture the branch (the literal `$BRANCH` value) for the cost record's `--branch-name`, then clean up (`git checkout main && git pull origin main`, `git branch -D "$BRANCH"`, `git fetch --prune origin`) and print the merged PR URL.
+- On `CONFLICTING` (exit 3), repair it per that page's `### Conflict found mid-wait` and run the wait again. This one resumes rather than ending the run.
+- On `CHECK_FAILED` (exit 4), print the PR URL and the failing check, and leave the branch in place.
+- On `TIMEOUT` (exit 5), the window closed with the pull request still open: print the PR URL, note the merge is queued, and leave the branch in place.
+- On `CLOSED` (exit 6), the pull request was closed without merging, so no wait can clear it: report the closure, print the PR URL, and leave the branch in place.
+- On exit 2 the wait refused rather than answered: report what it could not read, print the PR URL, leave the branch in place, and assert no state for the pull request, since nothing about it was read. The merge queued above may still land.
+
+Only the `MERGED` arm leaves the session on `main`, which is why it alone owes the cost record a `--branch-name`; every other arm is still standing on the branch it names.
 
 **Leave open** → report the PR URL and stop.
 
@@ -192,7 +201,7 @@ Every path that ends a `/gaia-residue` run appends exactly one cost record, the 
 - The `gh_ok: false` and zero-candidate stops from the live candidate fetch.
 - Publish's no-change stop (nothing landed in the working tree).
 - Publish's unsafe-repo-state stop.
-- Publish's merge outcomes: `MERGED`, still queued, or "Leave open".
+- Publish's merge outcomes: `MERGED`, still queued, a failed required check, a pull request closed without merging, a merge wait that refused because it read nothing, or "Leave open".
 - Publish's non-zero-exit STOP on a `git` or `gh` command.
 - Any other-branch no-op.
 

@@ -182,7 +182,7 @@ Every path that ends the run appends exactly one cost record immediately before 
 bash .gaia/scripts/token-tally.sh --action command --command gaia-fitness
 ```
 
-**Pass-through.** When this run opened a pull request and the agent read the URL `gh pr create` printed in its own Bash tool result, append the artifact:
+**Pass-through.** When this run opened a pull request and the agent read the URL `gh pr create` printed in its own Bash tool result, append the artifact. Every terminal merge arm above reaches this record, including the ones that leave the branch in place:
 
 ```bash
 bash .gaia/scripts/token-tally.sh --action command --command gaia-fitness \
@@ -311,9 +311,9 @@ Heal already cut and switched to `<BRANCH>`, the name Step 4 minted, so the chan
    gh pr merge <N> --squash --delete-branch --auto
    ```
 
-   `--auto` queues the merge behind required checks (the oracle check above already confirmed whether a marker is owed for this diff). Run the bounded poll (~2-3 minutes) in `wiki/concepts/PR Merge Workflow.md` (`## Post-merge verification before cleanup`), which also stops early on a base-branch conflict or a failed required check:
+   `--auto` queues the merge behind required checks (the oracle check above already confirmed whether a marker is owed for this diff). Then run the merge wait, `bash .gaia/scripts/pr-wait-merge.sh --pr <N>`, the bounded poll (~2-3 minutes) `wiki/concepts/PR Merge Workflow.md` (`## Post-merge verification before cleanup`) prescribes. The merge above is already queued and the script issues no `gh pr merge` of its own, so nothing here re-merges. One arm per verdict, and the script's `--help` is the authority on the set:
 
-   - **`MERGED`** → clean up, record cost (pass-through: `gh pr create` above already printed the URL, and `--branch-name` carries the literal `<BRANCH>` value, since the checkout below leaves the session on `main`; see `.claude/skills/gaia/references/cost-record.md`), then print the merged PR URL:
+   - **`MERGED`** (exit 0) → clean up, record cost (pass-through: `gh pr create` above already printed the URL, and `--branch-name` carries the literal `<BRANCH>` value, since the checkout below leaves the session on `main`; see `.claude/skills/gaia/references/cost-record.md`), then print the merged PR URL:
 
      ```bash
      git -C "$PROJECT_ROOT" checkout main && git -C "$PROJECT_ROOT" pull origin main
@@ -326,14 +326,17 @@ Heal already cut and switched to `<BRANCH>`, the name Step 4 minted, so the chan
 
      Relay the tally's `Cost:` line as the last line of the reply, after the merged PR URL.
 
-   - **conflict** → repair it per that page's `### Conflict found mid-wait` and resume the poll.
-   - **failed required check** → name the check and say the merge will not land until it is fixed, then run the still-queued arm's tally command below, print the PR URL, and keep the local branch, without that arm's lands-when-checks-pass note.
-   - **still queued** → record cost (pass-through: `gh pr create` above already printed the URL), print the PR URL, note auto-merge is queued and lands when checks pass, and do **not** delete the local branch or switch off it.
+   - **`CONFLICTING`** (exit 3) → repair it per that page's `### Conflict found mid-wait` and run the wait again.
+   - **`CHECK_FAILED`** (exit 4) → name the check and say the merge will not land until it is fixed, then run the `TIMEOUT` arm's tally command below, print the PR URL, and keep the local branch, without that arm's lands-when-checks-pass note.
+   - **`TIMEOUT`** (exit 5) → the window closed with the pull request still open: record cost (pass-through: `gh pr create` above already printed the URL), print the PR URL, note auto-merge is queued and lands when checks pass, and do **not** delete the local branch or switch off it.
 
      ```bash
      bash .gaia/scripts/token-tally.sh --action command --command gaia-fitness \
        --github-type pr --github-number <N> --github-repo '<owner>/<name>'
      ```
+
+   - **`CLOSED`** (exit 6) → the pull request was closed without merging, so no wait can clear it: report the closure, run the `TIMEOUT` arm's tally command above, print the PR URL, and keep the local branch, without that arm's lands-when-checks-pass note.
+   - **exit 2** → the wait refused rather than answered: report what it could not read, run the `TIMEOUT` arm's tally command above, print the PR URL, and keep the local branch. Assert no state for the pull request, since nothing about it was read, so print neither the lands-when-checks-pass note nor any claim that the merge did or did not land; the merge queued above may still land.
 
    Caveat: the oracle check above already covers this. A heal edit to a nested `CLAUDE.md` under an in-scope path such as `app/` is exactly the kind of reached-an-audited-surface diff the oracle detects; if it named a member, the marker handshake ran before this PR was even opened.
 

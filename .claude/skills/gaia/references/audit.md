@@ -636,9 +636,9 @@ Otherwise the working tree carries the applied `wiki/` / `.claude/` / `CLAUDE.md
    gh pr merge <N> --squash --delete-branch --auto
    ```
 
-   `--auto` queues the merge behind required checks (the oracle check before `gh pr create` already confirmed whether a marker is owed). Verify the terminal state before any local cleanup with the bounded poll in `wiki/concepts/PR Merge Workflow.md` (`## Post-merge verification before cleanup`), which also stops early on a base-branch conflict or a failed required check.
+   `--auto` queues the merge behind required checks (the oracle check before `gh pr create` already confirmed whether a marker is owed). Verify the terminal state before any local cleanup with the merge wait, `bash .gaia/scripts/pr-wait-merge.sh --pr <N>`, the bounded poll `wiki/concepts/PR Merge Workflow.md` (`## Post-merge verification before cleanup`) prescribes. The merge above is already queued and the script issues no `gh pr merge` of its own, so nothing here re-merges. One arm per verdict, and the script's `--help` is the authority on the set:
 
-   - **`MERGED`** → capture the branch first (`git branch --show-current`, keep the literal for the tally's `--branch-name`; see `## Cost record (run end)`), then clean up locally and print the merged PR URL:
+   - **`MERGED`** (exit 0) → capture the branch first (`git branch --show-current`, keep the literal for the tally's `--branch-name`; see `## Cost record (run end)`), then clean up locally and print the merged PR URL:
 
      ```bash
      git checkout main && git pull origin main
@@ -648,8 +648,11 @@ Otherwise the working tree carries the applied `wiki/` / `.claude/` / `CLAUDE.md
 
      (Run ends here; see `## Cost record (run end)`.)
 
-   - **still queued** → print the PR URL, note auto-merge is queued and lands when checks pass, and **do not** delete the local branch or switch off it. (Run ends here; see `## Cost record (run end)`.)
-   - **conflict or failed required check** → on a conflict, repair it per that page's `### Conflict found mid-wait` and resume the poll; on a failed required check, print the PR URL and the failing check, and leave the branch in place as for a queued merge.
+   - **`CONFLICTING`** (exit 3) → repair it per that page's `### Conflict found mid-wait` and run the wait again.
+   - **`CHECK_FAILED`** (exit 4) → print the PR URL and the failing check, and leave the branch in place as for a queued merge. (Run ends here; see `## Cost record (run end)`.)
+   - **`TIMEOUT`** (exit 5) → the window closed with the pull request still open: print the PR URL, note auto-merge is queued and lands when checks pass, and **do not** delete the local branch or switch off it. (Run ends here; see `## Cost record (run end)`.)
+   - **`CLOSED`** (exit 6) → the pull request was closed without merging, so no wait can clear it: report the closure, print the PR URL, and leave the branch in place. (Run ends here; see `## Cost record (run end)`.)
+   - **exit 2** → the wait refused rather than answered: report what it could not read, print the PR URL, leave the branch in place, and assert no state for the pull request, since nothing about it was read. The merge queued above may still land. (Run ends here; see `## Cost record (run end)`.)
 
 ### On any other branch, or in CI (no new branch)
 
@@ -670,7 +673,7 @@ Every path that ends a `/gaia-audit` run appends exactly one cost record, the ru
 - Stage 1 failure (no report path).
 - The decision gate's Decline.
 - Publish's empty-diff-footprint no-op.
-- Publish's merge outcomes on a main-branch run, `MERGED` or still-queued.
+- Publish's merge outcomes on a main-branch run: `MERGED`, still-queued, a failed required check, a pull request closed without merging, or a merge wait that refused because it read nothing.
 - Publish's no-PR path on any other branch or in CI.
 - Publish's non-zero-exit STOP on `git push` / `gh pr create` / `gh pr merge`.
 
