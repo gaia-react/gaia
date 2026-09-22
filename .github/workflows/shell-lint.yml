@@ -222,6 +222,28 @@ jobs:
           sudo install -m 0755 "shellcheck-v${SHELLCHECK_VERSION}/shellcheck" /usr/local/bin/shellcheck
           rm -rf "shellcheck-v${SHELLCHECK_VERSION}" shellcheck.tar.xz
           shellcheck --version
+      # Ubuntu's default `awk` is already mawk, so this changes no behavior
+      # today; it is worth pinning anyway so the gate's verdict does not
+      # depend on which image the runner happened to pick. The eight guards
+      # under .gaia/scripts/guard-awk-lib.sh resolve GAIA_AWK to mawk first,
+      # and this asserts that resolution finds what it expects to find rather
+      # than trusting the image. Distro package, not a digest-pinned tarball:
+      # mawk carries none of shellcheck's supply-chain exposure above, so the
+      # weight of that precedent does not transfer.
+      - if: steps.filter.outputs.shell == 'true'
+        name: Assert mawk is present and identifies as mawk
+        run: |
+          set -euo pipefail
+          sudo apt-get install -y mawk
+          banner="$(mawk --version 2>&1 | head -n1 || true)"
+          echo "mawk reports: $banner"
+          case "$banner" in
+            "mawk "*) ;;
+            *)
+              echo "::error::mawk --version did not report a mawk banner (${banner}); the awk-tokenizer guards resolve GAIA_AWK to mawk first, and an unsanctioned resolve here would mean CI is no longer testing what it pins" >&2
+              exit 1
+              ;;
+          esac
       # The gate lints every tracked *.sh and *.bats, not just the changed ones:
       # shellcheck is fast enough at this repo's size (~280 scripts + suites, low
       # seconds) that a whole-tree run is simpler than a diff-scoped one and

@@ -557,19 +557,23 @@ GUARD_COUNT="${#GUARD_SLUGS[@]}"
 # A scheduling hint only, named rather than derived from a stored cost table:
 # a cost table goes stale the moment a guard's own runtime shifts, and a
 # stale entry here costs the pool a few seconds of head-of-line blocking,
-# never a wrong verdict. Measured heaviest to lightest on an idle host at
-# plan time: lint-oracle-blind-invocations (~21s), lint-errexit-status-read
-# (~19s), lint-git-path-quoting (~18s), lint-stale-cardinals (~17s),
-# lint-grep-ere-escapes (~13s), lint-collapsed-signal-trap (~13s). Every
-# other guard totals a few seconds combined and dispatches after these in
-# GUARD_SLUGS' own declared order.
+# never a wrong verdict. Re-measured after mawk adoption (PLAN-021 Phase 2)
+# reordered the tail: mawk halves the awk-tokenizer guards' cost but does
+# nothing for lint-oracle-blind-invocations, whose cost is a hand-rolled bash
+# tokenizer with zero awk call sites, so it stays the floor and is now the
+# clear heaviest rather than merely the first among close peers. Measured
+# heaviest to lightest on an idle host: lint-oracle-blind-invocations (~20s),
+# lint-stale-cardinals (~7s), lint-git-path-quoting (~7s),
+# lint-errexit-status-read (~6s), lint-collapsed-signal-trap (~5s),
+# lint-grep-ere-escapes (~5s). Every other guard totals a few seconds combined
+# and dispatches after these in GUARD_SLUGS' own declared order.
 GUARD_HEAVY_HINT=(
   lint-oracle-blind-invocations
-  lint-errexit-status-read
-  lint-git-path-quoting
   lint-stale-cardinals
-  lint-grep-ere-escapes
+  lint-git-path-quoting
+  lint-errexit-status-read
   lint-collapsed-signal-trap
+  lint-grep-ere-escapes
 )
 
 # Test-only seams, both unset in every real invocation and both named after

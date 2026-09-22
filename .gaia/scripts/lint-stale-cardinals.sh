@@ -8,7 +8,11 @@
 # of repository artifacts in a comment or a bats `@test` name, where nothing
 # recounts the set. Exit 1 with a file:line report on any hit, exit 0 when
 # clean. Run it directly from the repo root:
-# `bash .gaia/scripts/lint-stale-cardinals.sh`.
+# `bash .gaia/scripts/lint-stale-cardinals.sh`.#
+# Four statuses say the gate never ran at all: 2 when guard-awk-lib.sh is
+# missing beside this script, 3 when the scan-surface discovery failed, 5 when
+# no awk interpreter is present at all, and 6 when GAIA_AWK resolves to an
+# interpreter that identifies as neither mawk nor BWK one-true-awk.
 # gaia:maintainer-only:start
 #
 # Enforced by the sibling bats suite
@@ -235,6 +239,16 @@ type gaia_guard_bats_files >/dev/null 2>&1 || {
   printf 'lint-stale-cardinals: guard-awk-lib.sh is missing beside this script\n' >&2
   exit 2
 }
+case "$GAIA_AWK_STATUS" in
+  5)
+    printf 'lint-stale-cardinals: no awk interpreter found; install mawk (macOS: brew install mawk; Debian/Ubuntu: apt-get install mawk) or ensure /usr/bin/awk is present\n' >&2
+    exit 5
+    ;;
+  6)
+    printf 'lint-stale-cardinals: GAIA_AWK resolved to an unsanctioned interpreter (%s); the sanctioned set is mawk and BWK one-true-awk\n' "$GAIA_AWK_IDENT" >&2
+    exit 6
+    ;;
+esac
 
 # A separate set from scan_files below, never a widened pathspec: a tree carrying
 # .sh and no .bats must not pass clean carried by the rest of the surface.
@@ -581,17 +595,17 @@ scan_file() {
   local f="$1"
   local is_bats="$2"
   if [ "$is_bats" -eq 1 ]; then
-    awk -v file="$f" -v is_bats=1 -v scripts_dir="$_gaia_guard_lib_dir" \
+    "$GAIA_AWK" -v file="$f" -v is_bats=1 -v scripts_dir="$_gaia_guard_lib_dir" \
       "$GAIA_GUARD_AWK$PRED_AWK$OWN_AWK" "$f" "$f"
   else
-    awk -v file="$f" -v is_bats=0 -v scripts_dir="$_gaia_guard_lib_dir" \
+    "$GAIA_AWK" -v file="$f" -v is_bats=0 -v scripts_dir="$_gaia_guard_lib_dir" \
       "$GAIA_GUARD_AWK$PRED_AWK$OWN_AWK" "$f"
   fi
 }
 
 # scan_cfam_file <path>: the C-family program over one source file.
 scan_cfam_file() {
-  awk -v file="$1" "$PRED_AWK$CFAM_AWK" "$1"
+  "$GAIA_AWK" -v file="$1" "$PRED_AWK$CFAM_AWK" "$1"
 }
 
 report=""
@@ -623,7 +637,7 @@ if [ -n "$report" ]; then
   # the test would answer FALSE on a report that does carry a class hit. A
   # single process cannot lose that race, and
   # .gaia/scripts/lint-sigpipe-readers.sh is the gate that keeps the shape out.
-  if awk '
+  if "$GAIA_AWK" '
       /gaia-lint-ignore/ { next }
       /: ERROR: /        { next }
       /[^[:space:]]/     { found = 1 }

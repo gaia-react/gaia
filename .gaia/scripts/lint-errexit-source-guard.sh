@@ -1,8 +1,20 @@
 #!/usr/bin/env bash
+# SC2016 is intentional file-wide: the awk programs below are single-quoted
+# precisely so every `$`, `$(`, and awk field reference reaches awk as literal
+# program text. shellcheck's built-in awk heuristic, which exempts a literal
+# single-quoted program handed to a bare `awk` command word, does not extend
+# to one handed to a variable command word ("$GAIA_AWK"), so this file needs
+# the directive that a bare-`awk` invocation would not have.
+# shellcheck disable=SC2016
+#
 # lint-errexit-source-guard.sh: flag every `source` / `.` that can run with
 # errexit armed and is not bracketed against an unparseable target. Exit 1 with
 # a file:line report on any hit, exit 0 when clean. Run it directly from the
-# repo root: `bash .gaia/scripts/lint-errexit-source-guard.sh`.
+# repo root: `bash .gaia/scripts/lint-errexit-source-guard.sh`.#
+# Four statuses say the gate never ran at all: 2 when guard-awk-lib.sh is
+# missing beside this script, 3 when the scan-surface discovery failed, 5 when
+# no awk interpreter is present at all, and 6 when GAIA_AWK resolves to an
+# interpreter that identifies as neither mawk nor BWK one-true-awk.
 # gaia:maintainer-only:start
 #
 # Enforced twice, and only one of the two blocks a merge. The sibling bats suite
@@ -210,6 +222,16 @@ type gaia_guard_scan_files >/dev/null 2>&1 || {
   echo "lint-errexit-source-guard: guard-awk-lib.sh is missing beside this script" >&2
   exit 2
 }
+case "$GAIA_AWK_STATUS" in
+  5)
+    echo "lint-errexit-source-guard: no awk interpreter found; install mawk (macOS: brew install mawk; Debian/Ubuntu: apt-get install mawk) or ensure /usr/bin/awk is present" >&2
+    exit 5
+    ;;
+  6)
+    printf 'lint-errexit-source-guard: GAIA_AWK resolved to an unsanctioned interpreter (%s); the sanctioned set is mawk and BWK one-true-awk\n' "$GAIA_AWK_IDENT" >&2
+    exit 6
+    ;;
+esac
 
 # `git ls-files` resolves against the working directory, not the repository, so
 # from a subdirectory the surface silently narrows to that subtree and the scan
@@ -257,7 +279,7 @@ fi
 # `shape` is decided from the file alone: parsecheck, cond, flat, leak, none.
 # Reachability is global and is decided in pass 2; a site in a file that never
 # runs under errexit is reported by pass 1 and dropped there.
-records="$(awk '
+records="$("$GAIA_AWK" '
   function trim(s) { sub(/^[[:space:]]+/, "", s); sub(/[[:space:]]+$/, "", s); return s }
 
   # Strip a trailing comment. Only ever removes text, so it can hide a site,
@@ -970,7 +992,7 @@ records="$(awk '
 # in a reachable file. A library that never arms errexit is still reachable when
 # an errexit file sources it, because errexit is inherited by the sourced file;
 # that closure is the whole reason this check ends the depth chase.
-{ printf 'FILE|%s\n' ${scan_files[@]+"${scan_files[@]}"}; printf '%s\n' "$records"; } | awk '
+{ printf 'FILE|%s\n' ${scan_files[@]+"${scan_files[@]}"}; printf '%s\n' "$records"; } | "$GAIA_AWK" '
   BEGIN { FS = "|" }
   # The scan set arrives ahead of the records so a load target can be resolved
   # to a path. A basename that names more than one file resolves to none of

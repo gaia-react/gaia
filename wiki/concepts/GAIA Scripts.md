@@ -138,6 +138,7 @@ The index is held to the tree by `.gaia/scripts/lint-scripts-wiki-inventory.sh`,
 | `append-audit-author.sh` | yes | `/setup-gaia` | Writes one `login=mode` pair into the audit config's author knob without clobbering other entries. |
 | `archived-backlog-migrate.sh` | yes | by hand, once | One-time, human-gated removal of the pre-existing archived spec and plan backlog. |
 | `assert-no-release-leak.sh` | no | `release.yml` | Proves no release-excluded path survived into the tree that becomes the tarball. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
+| `awk-interp-lib.sh` | no | sourced | Resolves `GAIA_AWK`, the sanctioned awk interpreter (mawk or BWK one-true-awk) the awk-tokenizer guards run under. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
 | `bats5.sh` | yes | the bats runners | Runs bats under a bash 5 when one is available, so local matches CI. |
 | `branch-name-lib.sh` | yes | sourced, and run as a command by the skills | GAIA's branch-naming convention: the one place a branch or worktree name is minted and read back. |
 | `capability-oracle-lib.sh` | no | sourced | The static-analysis half of the capability checks: how a line of shell becomes a capability term, and how one script's reach becomes a closure. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->

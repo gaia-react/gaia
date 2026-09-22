@@ -53,6 +53,8 @@ Requires `shellcheck` (`brew install shellcheck`). Lints at a per-type severity 
 
 This is the deterministic backstop for the `code-audit-maintainer-shell` agent, which already treats shellcheck as an authoritative oracle but is model-dispatched and advisory-only. The agent keeps the lenses shellcheck cannot model (hook fail-open, stdin-JSON shape, `jq -n` injection safety).
 
+Optionally faster with `mawk` (`brew install mawk`) on PATH: the eight guards that source `guard-awk-lib.sh` resolve `GAIA_AWK` to `mawk` first and run their tokenizer roughly twice as fast under it. Its absence costs speed, not correctness: the resolver falls back to `/usr/bin/awk`, and adopters never need either, since none of these guards ship.
+
 ### Hooks tests (free, slow)
 
 ```bash

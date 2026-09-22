@@ -4,7 +4,11 @@
 # which omits `-z`, across the scan surface the `scan_files` pathspec below
 # declares and the comment above it explains. Exit
 # 1 with a file:line report on any hit, exit 0 when clean. Run it directly from
-# the repo root: `bash .gaia/scripts/lint-git-path-quoting.sh`.
+# the repo root: `bash .gaia/scripts/lint-git-path-quoting.sh`.#
+# Four statuses say the gate never ran at all: 2 when guard-awk-lib.sh is
+# missing beside this script, 3 when the scan-surface discovery failed, 5 when
+# no awk interpreter is present at all, and 6 when GAIA_AWK resolves to an
+# interpreter that identifies as neither mawk nor BWK one-true-awk.
 #
 # TypeScript is not this script's surface. The CLI's git listing calls are
 # argv arrays rather than shell words, and .gaia/cli/src/git-z-chokepoint.test.ts
@@ -244,6 +248,16 @@ type gaia_guard_bats_files >/dev/null 2>&1 || {
   printf 'lint-git-path-quoting: guard-awk-lib.sh is missing beside this script\n' >&2
   exit 2
 }
+case "$GAIA_AWK_STATUS" in
+  5)
+    printf 'lint-git-path-quoting: no awk interpreter found; install mawk (macOS: brew install mawk; Debian/Ubuntu: apt-get install mawk) or ensure /usr/bin/awk is present\n' >&2
+    exit 5
+    ;;
+  6)
+    printf 'lint-git-path-quoting: GAIA_AWK resolved to an unsanctioned interpreter (%s); the sanctioned set is mawk and BWK one-true-awk\n' "$GAIA_AWK_IDENT" >&2
+    exit 6
+    ;;
+esac
 
 # The `*.bats` surface, discovered and hard-errored on separately by the shared
 # library, for the same reason the scan surface below is: a widened pathspec that
@@ -649,7 +663,7 @@ scan_file() {
   # YAML halves scan exactly the lines they always did.
   local is_md=0
   case "$f" in *.md) is_md=1 ;; esac
-  awk -v file="$f" -v is_md="$is_md" -v is_bats=0 -v scripts_dir="$_gaia_guard_lib_dir" \
+  "$GAIA_AWK" -v file="$f" -v is_md="$is_md" -v is_bats=0 -v scripts_dir="$_gaia_guard_lib_dir" \
       "$GAIA_GUARD_AWK$OWN_AWK" "$f"
 }
 
@@ -659,7 +673,7 @@ scan_file() {
 # fence state to track.
 scan_bats_file() {
   local f="$1"
-  awk -v file="$f" -v is_md=0 -v is_bats=1 -v scripts_dir="$_gaia_guard_lib_dir" \
+  "$GAIA_AWK" -v file="$f" -v is_md=0 -v is_bats=1 -v scripts_dir="$_gaia_guard_lib_dir" \
       "$GAIA_GUARD_AWK$OWN_AWK" "$f" "$f"
 }
 
@@ -689,7 +703,7 @@ if [ -n "$report" ]; then
   # the test would answer FALSE on a report that does carry a class hit. A
   # single process cannot lose that race, and
   # .gaia/scripts/lint-sigpipe-readers.sh is the gate that keeps the shape out.
-  if awk '
+  if "$GAIA_AWK" '
       /gaia-lint-ignore/ { next }
       /: ERROR: /        { next }
       /[^[:space:]]/     { found = 1 }

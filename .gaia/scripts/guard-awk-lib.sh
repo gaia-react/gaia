@@ -228,6 +228,28 @@
 if [ -n "${GAIA_GUARD_AWK_LIB_SOURCED:-}" ]; then return 0; fi
 GAIA_GUARD_AWK_LIB_SOURCED=1
 
+# Sourced here, ahead of the `readonly` below, so a load that somehow died
+# would take no definitions with it: awk-interp-lib.sh's own contract is to
+# never die (it signals through the GAIA_AWK_STATUS sentinel, never through
+# its own return status), which makes this placement belt-and-braces rather
+# than load-bearing. Script-relative via BASH_SOURCE, matching the sibling
+# idiom every consumer of this file already uses to find this one.
+#
+# Bracketed against an unparseable target the way a LIBRARY has to be: this
+# file has no errexit of its own, it inherits whatever its caller armed, so
+# the bracket saves and restores that inherited state instead of
+# unconditionally turning errexit back on. .gaia/scripts/lint-errexit-source-guard.sh
+# is the gate that demands this shape for exactly this file.
+_gaia_guard_awk_lib_dir="${BASH_SOURCE[0]%/*}"
+if [ "$_gaia_guard_awk_lib_dir" = "${BASH_SOURCE[0]}" ]; then _gaia_guard_awk_lib_dir="."; fi
+_gaia_guard_awk_errexit_was=0
+case $- in *e*) _gaia_guard_awk_errexit_was=1 ;; esac
+set +e
+# shellcheck disable=SC1091
+[ -f "$_gaia_guard_awk_lib_dir/awk-interp-lib.sh" ] && . "$_gaia_guard_awk_lib_dir/awk-interp-lib.sh" 2>/dev/null
+if [ "$_gaia_guard_awk_errexit_was" = 1 ]; then set -e; fi
+unset _gaia_guard_awk_lib_dir _gaia_guard_awk_errexit_was
+
 # The awk source. Single-quoted, so every literal single quote inside is spelled
 # `\047` and no comment in it may carry an apostrophe.
 # shellcheck disable=SC2034

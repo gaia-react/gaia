@@ -11,9 +11,11 @@
 # `bash .gaia/scripts/lint-collapsed-signal-trap.sh`.
 #
 # Exit 0 when clean, and 1 either with a file:line report on any hit or on a
-# scan surface that came back empty. Two statuses say the gate never ran at
-# all: 2 when guard-awk-lib.sh is missing beside this script, and 3 when the
-# scan-surface discovery failed.
+# scan surface that came back empty. Four statuses say the gate never ran at
+# all: 2 when guard-awk-lib.sh is missing beside this script, 3 when the
+# scan-surface discovery failed, 5 when no awk interpreter is present at all,
+# and 6 when GAIA_AWK resolves to an interpreter that identifies as neither
+# mawk nor BWK one-true-awk.
 # gaia:maintainer-only:start
 #
 # Enforced by the sibling bats suite
@@ -105,6 +107,16 @@ type gaia_guard_bats_files >/dev/null 2>&1 || {
   printf 'lint-collapsed-signal-trap: guard-awk-lib.sh is missing beside this script\n' >&2
   exit 2
 }
+case "$GAIA_AWK_STATUS" in
+  5)
+    printf 'lint-collapsed-signal-trap: no awk interpreter found; install mawk (macOS: brew install mawk; Debian/Ubuntu: apt-get install mawk) or ensure /usr/bin/awk is present\n' >&2
+    exit 5
+    ;;
+  6)
+    printf 'lint-collapsed-signal-trap: GAIA_AWK resolved to an unsanctioned interpreter (%s); the sanctioned set is mawk and BWK one-true-awk\n' "$GAIA_AWK_IDENT" >&2
+    exit 6
+    ;;
+esac
 
 # The scan surface comes from the shared library rather than from a read loop
 # here, so every gate consuming it discovers the same set the same way and a
@@ -321,10 +333,10 @@ scan_file() {
   local f="$1"
   local is_bats="$2"
   if [ "$is_bats" -eq 1 ]; then
-    awk -v file="$f" -v is_bats=1 -v scripts_dir="$_gaia_guard_lib_dir" \
+    "$GAIA_AWK" -v file="$f" -v is_bats=1 -v scripts_dir="$_gaia_guard_lib_dir" \
       "$GAIA_GUARD_AWK$OWN_AWK" "$f" "$f"
   else
-    awk -v file="$f" -v is_bats=0 -v scripts_dir="$_gaia_guard_lib_dir" \
+    "$GAIA_AWK" -v file="$f" -v is_bats=0 -v scripts_dir="$_gaia_guard_lib_dir" \
       "$GAIA_GUARD_AWK$OWN_AWK" "$f"
   fi
 }
@@ -353,7 +365,7 @@ if [ -n "$report" ]; then
   # the test would answer FALSE on a report that does carry a class hit. A
   # single process cannot lose that race, and
   # .gaia/scripts/lint-sigpipe-readers.sh is the gate that keeps the shape out.
-  if awk '
+  if "$GAIA_AWK" '
       /gaia-lint-ignore/ { next }
       /: ERROR: /        { next }
       /[^[:space:]]/     { found = 1 }

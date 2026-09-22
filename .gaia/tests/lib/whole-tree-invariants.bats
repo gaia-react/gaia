@@ -332,6 +332,29 @@ stub_exits() {
   [ "$reported" -eq 0 ]
 }
 
+@test "the per-member log directory is removed when the run ends" {
+  fixture_tree
+  # RUNNER_TEMP is the runner's own knob for where it mints that directory, so
+  # pointing it at a scratch dir makes the leftovers countable without going
+  # near the shared /tmp. The failure this pins is not a wrong verdict: the
+  # cleanup runs from an EXIT trap, the trap body expands its variable after
+  # main() has returned, and a variable that is out of scope there aborts the
+  # trap under the runner's `set -u`. The run still reports PASS for every
+  # member, so nothing but this test distinguishes a cleaned run from one that
+  # leaves its whole log directory behind on every invocation.
+  scratch="$BATS_TEST_TMPDIR/runner-temp"
+  mkdir -p "$scratch"
+
+  run bash -c "cd '$TMP' && RUNNER_TEMP='$scratch' bash '$RUNNER'"
+  [ "$status" -eq 0 ]
+  printf '%s\n' "$output" | grep -Fq -- 'unbound variable' && return 1
+
+  # `|| true`: grep -c exits 1 on the zero count this asserts
+  # (.claude/rules/bats-assertions.md).
+  leftover="$( find "$scratch" -maxdepth 1 -name 'whole-tree-invariants.*' | grep -c . || true )"
+  [ "$leftover" -eq 0 ]
+}
+
 @test "WTI_JOBS=1 still runs every member and still reds a failure" {
   fixture_tree
   # The degenerate bound someone reaches for while debugging a fork/wait bug

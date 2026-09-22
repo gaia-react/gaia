@@ -456,7 +456,7 @@ main() {
     return 2
   fi
 
-  local wti_tmp have_bats path
+  local have_bats path
   local pool_paths pool_pids done_paths done_status
   pool_paths=()
   pool_pids=()
@@ -470,6 +470,11 @@ main() {
   # caller's `WTI_JOBS=1 bash whole-tree-invariants.sh` invisible to it.
   WTI_JOBS="$(detect_wti_jobs)"
 
+  # NOT `local`, for the same class of reason as WTI_JOBS above and a
+  # different mechanism: the EXIT trap below runs after main() returns, so a
+  # local is out of scope by the time the trap body expands it. Under this
+  # file's `set -u` that aborts the trap, and the temp directory survives
+  # every run rather than being cleaned up once.
   wti_tmp="$(mktemp -d "${RUNNER_TEMP:-/tmp}/whole-tree-invariants.XXXXXX")"
   trap 'rm -rf "$wti_tmp"' EXIT
 
