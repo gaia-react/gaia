@@ -534,6 +534,7 @@ GUARD_SLUGS=(
   lint-hook-cwd-relative-loads
   lint-hook-jq-availability
   lint-awk-interpreter-pin
+  lint-hook-monitor-arming
 )
 GUARD_MODES=(
   subshell
@@ -551,6 +552,7 @@ GUARD_MODES=(
   root
   root
   root
+  subshell
   subshell
   subshell
   subshell
@@ -1021,7 +1023,7 @@ fi
 # never invoked. The bypass is silent in both directions, and it reaches the
 # whole command-reading layer at once.
 echo "--> lint-hook-monitor-arming (a blocking guard a Monitor-armed command walks past)"
-if ! (cd "$REPO_ROOT" && bash "$REPO_ROOT/.gaia/scripts/lint-hook-monitor-arming.sh"); then
+if ! replay_guard 18; then
   status=1
 fi
 
