@@ -413,11 +413,12 @@ mkdir -p .gaia/local/debt && : > .gaia/local/debt/refresh-requested
 
 Once the PR is up, drive it straight to merge with no confirmation prompt: the fix unit (single issue or confirmed batch) was chosen up front, so this back half runs autonomously, exactly like `/update-deps` merging a dep-bump PR on a `main` run. The only things that stop the flow here are genuine blockers, a rejected push, a marker that never goes green, the audit gate's three-round session cap, a `--auto` merge still queued when the poll window closes, a pull request closed without merging, or a merge wait that refused because it read nothing; those are reported, not worked around. On a controlled stop before merge, gate never green, rejected push, or another blocker/observable abort, strip `in-progress` from every claimed member (`gh issue edit <n> --remove-label in-progress`) and touch the sentinel, so the freed issue re-enters the offer and the count. (Run ends here; see `## Cost record (run end)`, passing `--github-*` only if the PR was already opened before the stop.)
 
-Three endings look like that controlled stop and are not it. Each keeps its claim, because the work may still be going somewhere:
+Four endings look like that controlled stop and are not it. Each keeps its claim, because the work may still be going somewhere:
 
 - **A `--auto` merge still queued when the poll window closes.** It is still progressing toward merge, so the claim stays in place until it resolves (below). Record the cost as at any run end, passing the `--github-*` flags, since the PR is open.
 - **A stop at the three-round session cap** (`wiki/concepts/PR Merge Workflow.md`, `#### The three-round session cap`). The third round's fixes are pushed, the PR stays open, and the work resumes in the session a human starts from the continuation prompt this run emits, so the claim stays in place. Record the cost as at any run end, passing the `--github-*` flags, since the PR is open.
 - **A merge wait that refused (exit 2) rather than returning a verdict.** It read nothing, so it establishes neither that the merge landed nor that it did not, and the queued merge may land moments later. Assert no state for the pull request and leave the claim in place. Record the cost as at any run end, passing the `--github-*` flags, since the PR is open.
+- **A `CHECK_FAILED` verdict.** The merge stays queued and lands once the failing check is fixed, so the claim stays in place. Record the cost as at any run end, passing the `--github-*` flags, since the PR is open.
 
 A `CLOSED` verdict is not one of them: it is read from GitHub and it is terminal, so it releases the unit exactly as the controlled stop above does.
 
@@ -500,7 +501,7 @@ Every path that ends a `/gaia-debt` run appends exactly one cost record, the run
 - The security screen diverting every member.
 - The staleness screen releasing every member, whether on a body assertion that no longer holds or on a comment recording the fix as already implemented, reverted, or unsafe. This path opened no PR, so it passes no `--github-*` flags.
 - The spec screen handing off: the whole-unit-spec-class case stops the run here (a per-member handoff within a surviving batch also records via this same run-end tally). This path opened no PR, so it passes no `--github-*` flags; the record correctly carries no artifact.
-- Driving the PR to merge: `MERGED` cleanup, a still-queued `--auto` merge, a pull request closed without merging, a merge wait that refused because it read nothing, a stop at the audit gate's three-round session cap, or a controlled stop before merge.
+- Driving the PR to merge: `MERGED` cleanup, a still-queued `--auto` merge, a failed required check, a pull request closed without merging, a merge wait that refused because it read nothing, a stop at the audit gate's three-round session cap, or a controlled stop before merge.
 - Worktree mode's isolation-context continuation prompt.
 
 Apply the shared tally machinery in `.claude/skills/gaia/references/cost-record.md` with `{{COMMAND}}` = `gaia-debt`. Pass-through is mode-agnostic: worktree mode reads the same URL from the same tool result, nothing about the worktree changes the call.

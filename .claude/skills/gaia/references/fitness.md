@@ -182,7 +182,7 @@ Every path that ends the run appends exactly one cost record immediately before 
 bash .gaia/scripts/token-tally.sh --action command --command gaia-fitness
 ```
 
-**Pass-through.** When this run opened a pull request and the agent read the URL `gh pr create` printed in its own Bash tool result, append the artifact. Every terminal merge arm above reaches this record, including the ones that leave the branch in place:
+**Pass-through.** When this run opened a pull request and the agent read the URL `gh pr create` printed in its own Bash tool result, append the artifact. Every terminal merge arm in Step 8 below reaches this record, including the ones that leave the branch in place:
 
 ```bash
 bash .gaia/scripts/token-tally.sh --action command --command gaia-fitness \
@@ -200,8 +200,7 @@ Every run-ending path records here:
 - Step 7, publish gate, Keep for review STOP.
 - Step 7, publish gate, non-interactive fallback stop.
 - Step 8, in-place heal (any other branch): no pass-through, no PR.
-- Step 8, main-branch run, `MERGED`: pass-through.
-- Step 8, main-branch run, still queued: pass-through.
+- Step 8, main-branch run: `MERGED`, `TIMEOUT` (still queued), `CHECK_FAILED`, `CLOSED`, or a merge wait that refused because it read nothing: pass-through.
 - Step 8, publish failure STOP: pass-through only if `gh pr create` had already succeeded and printed its URL before the later command failed.
 
 ---

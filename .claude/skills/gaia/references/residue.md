@@ -168,10 +168,10 @@ Empty output confirms no marker is owed. If it names any member, spawn each memb
   1. `{ label: "Merge", description: "Squash-merge PR #<N> now." }`
   2. `{ label: "Leave open", description: "Keep the PR open; you merge it after review." }`
 
-**Merge** → drive it to merge through `wiki/concepts/PR Merge Workflow.md` (read it, don't merge from memory): `gh pr merge <N> --squash --delete-branch --auto`, then run the merge wait, `bash .gaia/scripts/pr-wait-merge.sh --pr <N>`, the bounded poll that page's `## Post-merge verification before cleanup` prescribes. The merge above is already queued and the script issues no `gh pr merge` of its own, so nothing here re-merges. One arm per verdict, and the script's `--help` is the authority on the set. Every arm below ends the run and writes its cost record (`## Cost record (run end)`):
+**Merge** → drive it to merge through `wiki/concepts/PR Merge Workflow.md` (read it, don't merge from memory): `gh pr merge <N> --squash --delete-branch --auto`, then run the merge wait, `bash .gaia/scripts/pr-wait-merge.sh --pr <N>`, the bounded poll that page's `## Post-merge verification before cleanup` prescribes. The merge above is already queued and the script issues no `gh pr merge` of its own, so nothing here re-merges. One arm per verdict, and the script's `--help` is the authority on the set. Every arm below but `CONFLICTING` ends the run and writes its cost record (`## Cost record (run end)`):
 
 - On `MERGED` (exit 0), capture the branch (the literal `$BRANCH` value) for the cost record's `--branch-name`, then clean up (`git checkout main && git pull origin main`, `git branch -D "$BRANCH"`, `git fetch --prune origin`) and print the merged PR URL.
-- On `CONFLICTING` (exit 3), repair it per that page's `### Conflict found mid-wait` and run the wait again. This one resumes rather than ending the run.
+- On `CONFLICTING` (exit 3), repair it per that page's `### Conflict found mid-wait` and run the wait again.
 - On `CHECK_FAILED` (exit 4), print the PR URL and the failing check, and leave the branch in place.
 - On `TIMEOUT` (exit 5), the window closed with the pull request still open: print the PR URL, note the merge is queued, and leave the branch in place.
 - On `CLOSED` (exit 6), the pull request was closed without merging, so no wait can clear it: report the closure, print the PR URL, and leave the branch in place.
