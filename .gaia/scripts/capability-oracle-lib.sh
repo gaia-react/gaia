@@ -12,8 +12,17 @@
 # declaration agree". Sourcing this file defines its functions and does nothing
 # else, beyond the bash-version refusal below.
 #
-# Needs bash 5. On bash 3.2 the scan over a file's logical lines does not end
-# early, it dies, and takes every record past that point with it. The process
+# Needs bash 5. The crash was measured on the PRE-AWK bash walk, where the scan
+# over a file's logical lines did not end early, it died, taking every record
+# past that point with it. That walk is `_GAIA_CAPCHECK_AWK` now, so the code
+# the next paragraph describes no longer runs here and a clean 3.2 measurement
+# is expected. The requirement is retained deliberately rather than re-measured
+# away: the rest of this library is still bash string work over the same inputs,
+# and a clean run after the port establishes only that the allocation pattern
+# moved, not that the allocator is safe. What that walk did, and why its failure
+# is the one direction that cannot surface as a finding:
+#
+# The process
 # takes SIGTRAP on the child side of a fork before exec, exiting 133, and the
 # allocator names the cause itself: `BUG IN CLIENT OF LIBMALLOC: memory
 # corruption of free block`, raised out of realloc. It prints nothing on stderr,
