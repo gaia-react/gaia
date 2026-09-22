@@ -42,6 +42,8 @@ setup() {
   REPO_ROOT="$( cd "$THIS_DIR/../../.." && pwd )"
   RUNNER="$REPO_ROOT/.gaia/tests/whole-tree-invariants.sh"
   TMP=""
+  # path_shim_without, for the bats --jobs backend-absence drives below.
+  . "$BATS_TEST_DIRNAME/../helpers/path.sh"
 }
 
 teardown() {
@@ -438,4 +440,103 @@ stub_exits() {
   run bash -c "cd '$REPO_ROOT' && bash '$RUNNER' --help"
   [ "$status" -eq 0 ]
   printf '%s\n' "$output" | grep -Fq -- 'usage: bash .gaia/tests/whole-tree-invariants.sh'
+}
+
+# The tests below drive the WTI_BATS member's own --jobs invocation (this
+# plan's task-bats-jobs-shards.md). A fake `bats` prepended onto PATH ahead
+# of the real one, logging its own argv via BATS_ARGV_LOG (a fork/exec
+# boundary, so it has to be exported, the same reason WTI_LOG_DIR above is),
+# proves what this RUNNER decided to invoke without depending on a real
+# `bats --jobs` run actually succeeding. A fake `parallel` alongside it
+# only needs to exist for `command -v` to find, since nothing here asks it
+# to run anything.
+fake_bats_argv_logger() {
+  local fakebin="$TMP/fakebin"
+  mkdir -p "$fakebin"
+  printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$@" >"$BATS_ARGV_LOG"\nexit 0\n' >"$fakebin/bats"
+  chmod +x "$fakebin/bats"
+  printf '#!/usr/bin/env bash\nexit 0\n' >"$fakebin/parallel"
+  chmod +x "$fakebin/parallel"
+  printf '%s\n' "$fakebin"
+}
+
+@test "the shard-partition member is invoked under --jobs 8 when a backend is present, with no degradation notice" {
+  fixture_tree
+  fakebin="$(fake_bats_argv_logger)"
+  argvlog="$TMP/argv.log"
+
+  run bash -c "cd '$TMP' && PATH='$fakebin:$PATH' BATS_ARGV_LOG='$argvlog' bash '$RUNNER'"
+  [ "$status" -eq 0 ]
+  joined="$(tr '\n' ' ' <"$argvlog")"
+  printf '%s\n' "$joined" | grep -Fq -- '--jobs 8 .gaia/tests/lib/audit-ci-shards.bats'
+  # The paired half (this plan's task doc, criterion 6): a notice that
+  # always fires is noise nobody learns to trust.
+  printf '%s\n' "$output" | grep -Fq -- 'no GNU parallel or rush' && return 1
+  true
+}
+
+@test "WTI_BATS_JOBS overrides the default job count passed to bats" {
+  fixture_tree
+  fakebin="$(fake_bats_argv_logger)"
+  argvlog="$TMP/argv.log"
+
+  run bash -c "cd '$TMP' && PATH='$fakebin:$PATH' BATS_ARGV_LOG='$argvlog' WTI_BATS_JOBS=3 bash '$RUNNER'"
+  [ "$status" -eq 0 ]
+  joined="$(tr '\n' ' ' <"$argvlog")"
+  printf '%s\n' "$joined" | grep -Fq -- '--jobs 3 .gaia/tests/lib/audit-ci-shards.bats'
+}
+
+@test "a non-numeric WTI_BATS_JOBS falls back to the default rather than refusing" {
+  fixture_tree
+  fakebin="$(fake_bats_argv_logger)"
+  argvlog="$TMP/argv.log"
+
+  run bash -c "cd '$TMP' && PATH='$fakebin:$PATH' BATS_ARGV_LOG='$argvlog' WTI_BATS_JOBS=nope bash '$RUNNER'"
+  [ "$status" -eq 0 ]
+  joined="$(tr '\n' ' ' <"$argvlog")"
+  printf '%s\n' "$joined" | grep -Fq -- '--jobs 8 .gaia/tests/lib/audit-ci-shards.bats'
+}
+
+@test "WTI_BATS_JOBS=1 still runs the shard-partition member and still reds a failure" {
+  # The degenerate bound people reach for while debugging. Driven against
+  # the real bats binary and a real backend, unlike the argv-capture tests
+  # above, because this one is proving --jobs 1 actually still propagates a
+  # failure through bats itself, not just that this runner asked for it.
+  command -v parallel >/dev/null 2>&1 || command -v rush >/dev/null 2>&1 || skip "no bats --jobs backend on PATH"
+  fixture_tree
+  stub_exits '.gaia/tests/lib/audit-ci-shards.bats' 1
+
+  run bash -c "cd '$TMP' && WTI_BATS_JOBS=1 bash '$RUNNER'"
+  [ "$status" -eq 1 ]
+  printf '%s\n' "$output" | grep -Fq -- 'FAIL  .gaia/tests/lib/audit-ci-shards.bats'
+}
+
+@test "no bats on PATH still fails the member, distinct from a merely-missing backend" {
+  fixture_tree
+  no_bats_path="$(path_shim_without bats)"
+
+  run bash -c "cd '$TMP' && PATH='$no_bats_path' bash '$RUNNER'"
+  [ "$status" -eq 1 ]
+  printf '%s\n' "$output" | grep -Fq -- 'FAIL  .gaia/tests/lib/audit-ci-shards.bats'
+  printf '%s\n' "$output" | grep -Fq -- 'bats not found on PATH'
+}
+
+@test "no parallel or rush on PATH: the member still runs serially, with a loud stderr notice naming both backends" {
+  fixture_tree
+  # Chained rather than a single call: path_shim_without takes one name, and
+  # the second call has to build its shim over the PATH the first call
+  # already produced, or the first tool it stripped would reappear.
+  PATH="$(path_shim_without parallel)"
+  no_backend_path="$(path_shim_without rush)"
+
+  errfile="$TMP/stderr.txt"
+  outfile="$TMP/stdout.txt"
+  bash -c "cd '$TMP' && PATH='$no_backend_path' bash '$RUNNER'" >"$outfile" 2>"$errfile"
+  status=$?
+
+  [ "$status" -eq 0 ]
+  grep -Fq -- 'PASS  .gaia/tests/lib/audit-ci-shards.bats' "$outfile"
+  grep -Fq -- 'parallel' "$errfile"
+  grep -Fq -- 'rush' "$errfile"
+  grep -Fq -- 'brew install parallel' "$errfile"
 }

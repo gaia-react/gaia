@@ -287,6 +287,40 @@ detect_wti_jobs() {
   printf '%s\n' "$n"
 }
 
+# WTI_BATS_JOBS: the WTI_BATS member's own --jobs bound, honored the same
+# way WTI_JOBS above honors its override -- as-is, including a degenerate
+# WTI_BATS_JOBS=1, which is the value someone reaches for while debugging.
+# Unlike WTI_JOBS the fallback is a static default rather than a core count:
+# a bats worker here runs one test file's cases, not a whole member, so the
+# right default is the measured shard-suite shape (this plan's README.md
+# FC-4), not the host's core count.
+WTI_BATS_JOBS_DEFAULT=8
+detect_wti_bats_jobs() {
+  local n
+  if [ -n "${WTI_BATS_JOBS-}" ]; then
+    n="$WTI_BATS_JOBS"
+    case "$n" in
+      '' | *[!0-9]*) ;;
+      *)
+        if [ "$n" -ge 1 ]; then
+          printf '%s\n' "$n"
+          return
+        fi
+        ;;
+    esac
+  fi
+  printf '%s\n' "$WTI_BATS_JOBS_DEFAULT"
+}
+
+# wti_bats_backend_probe: whether bats' own --jobs flag has a backend to run
+# under. bats 1.13.0 accepts either GNU parallel or shenwei356/rush, so this
+# checks for either rather than assuming the one this repository installs.
+# Probed once from main(), not once per member: there is exactly one
+# WTI_BATS member.
+wti_bats_backend_probe() {
+  command -v parallel >/dev/null 2>&1 || command -v rush >/dev/null 2>&1
+}
+
 # slug_for <path>: a filesystem-safe log-file stem. Every WTI_SCRIPTS and
 # WTI_BATS path is repo-relative and drawn from [A-Za-z0-9._/-], so collapsing
 # '/' to '_' cannot collide between two distinct members.
@@ -352,7 +386,20 @@ wti_dispatch() {
     return
   fi
 
-  "$interp" "$path" >"$wti_tmp/$slug.out" 2>"$wti_tmp/$slug.err" </dev/null &
+  # wti_bats_extra_args holds --jobs <n> when main() found a backend, and it
+  # is only ever spent on the bats interp: a WTI_SCRIPTS member takes no
+  # such argument, so the branch below keeps it off the bash interp's
+  # command line entirely rather than expanding an always-empty array
+  # there. `${arr[@]+"${arr[@]}"}` is the offset-guarded expansion
+  # `.gaia/scripts/lint-hook-array-guard.sh` requires in place of a bare
+  # "${arr[@]}", which aborts under this file's `set -u` on bash 3.2 when
+  # the array is genuinely empty (a missing backend, or the WTI_SCRIPTS
+  # loop this same function serves).
+  if [ "$interp" = bats ]; then
+    "$interp" ${wti_bats_extra_args[@]+"${wti_bats_extra_args[@]}"} "$path" >"$wti_tmp/$slug.out" 2>"$wti_tmp/$slug.err" </dev/null &
+  else
+    "$interp" "$path" >"$wti_tmp/$slug.out" 2>"$wti_tmp/$slug.err" </dev/null &
+  fi
   pool_paths+=("$path")
   pool_pids+=("$!")
   if [ "${#pool_pids[@]}" -ge "$WTI_JOBS" ]; then
@@ -458,11 +505,12 @@ main() {
   fi
 
   local have_bats path
-  local pool_paths pool_pids done_paths done_status
+  local pool_paths pool_pids done_paths done_status wti_bats_extra_args
   pool_paths=()
   pool_pids=()
   done_paths=()
   done_status=()
+  wti_bats_extra_args=()
 
   # NOT `local`: detect_wti_jobs() reads an explicit override through
   # "${WTI_JOBS-}" at the moment it runs, which is before this assignment
@@ -489,6 +537,29 @@ main() {
 
   have_bats=1
   command -v bats >/dev/null 2>&1 || have_bats=0
+
+  # WTI_BATS_JOBS only ever reaches the shard-partition member when a
+  # backend is actually there to answer it; a missing bats has already been
+  # handled above and never reaches this branch. No backend degrades: the
+  # member still runs, serially, with the same test count and verdict, and
+  # this notice says so on stderr rather than failing the run (this plan's
+  # README.md FC-7). Maintainer-only: .gaia/tests/ is wholesale
+  # release-excluded, so no adopter runs this suite or needs either backend.
+  if [ "$have_bats" -eq 1 ]; then
+    if wti_bats_backend_probe; then
+      wti_bats_extra_args=(--jobs "$(detect_wti_bats_jobs)")
+    else
+      printf '%s\n' "############################################################" >&2
+      printf '%s\n' "# NOTE: no GNU parallel or rush on PATH." >&2
+      printf '%s\n' "# Running $WTI_BATS serially instead of under --jobs." >&2
+      printf '%s\n' "# Costs time, not correctness -- the test count and verdict" >&2
+      printf '%s\n' "# are unchanged. Install a backend to parallelize it:" >&2
+      printf '%s\n' "#   brew install parallel        (or) cargo install rush" >&2
+      printf '%s\n' "# Maintainer-only: adopters never run this suite and never" >&2
+      printf '%s\n' "# need either backend." >&2
+      printf '%s\n' "############################################################" >&2
+    fi
+  fi
 
   # Dispatch order and replay order are independent (see "Concurrency" in the
   # header above). Dispatch the WTI_BATS member FIRST: it is this set's long

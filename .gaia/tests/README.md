@@ -43,6 +43,12 @@ for the paths the change touches. It supersedes running `shell-lint.sh` alone,
 which it already includes. `--list` prints its members and `--list-excluded`
 prints every deliberate non-member with the reason it is out.
 
+Optionally faster with GNU parallel (`brew install parallel`) or
+[`rush`](https://github.com/shenwei356/rush) on PATH: the shard-partition bats
+member runs under `--jobs` instead of serially. Its absence costs speed, not
+correctness, with a notice on stderr saying so, and adopters never need
+either, since this runner never ships.
+
 ### Shell lint (free, fast)
 
 ```bash
