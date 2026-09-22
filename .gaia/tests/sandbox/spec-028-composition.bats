@@ -116,7 +116,7 @@ setup() {
   # command's spelling. The spelling has its own owner
   # (.gaia/scripts/check-hook-command-rooting.sh); a copy here would be a second
   # form of one predicate, green against itself while the sanctioned form moves.
-  for matcher in Read Grep Bash; do
+  for matcher in Read Grep "Bash|Monitor"; do
     event=".hooks.PreToolUse[] | select(.matcher == \"$matcher\")"
     hook_registered "$SETTINGS" "$event" block-env-read.sh
     hook_registered "$SETTINGS" "$event" block-secrets-read.sh

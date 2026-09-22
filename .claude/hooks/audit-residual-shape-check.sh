@@ -6,7 +6,7 @@
 # never judges whether a finding should have been recorded, and it detects
 # nothing that was never written down.
 #
-# ARMED only when the tool call is `Bash`, the command carries a `gh pr
+# ARMED only when the tool call is `Bash` or `Monitor`, the command carries a `gh pr
 # merge` invocation (shared verb-arming decision, .claude/hooks/lib/verb-
 # arming.sh), the merge is not aimed at a foreign repository
 # (.claude/hooks/lib/repo-scope.sh), and the resolved pull-request body
@@ -68,7 +68,13 @@ fi
 gaia_require_jq 'the accepted-residual shape gate' "$input" tool_input 'gh'
 
 tool_name=$(echo "$input" | jq -r '.tool_name // ""' 2>/dev/null)
-[ "$tool_name" = "Bash" ] || exit 0
+# `Monitor` hands this hook the same raw shell command in the same
+# `tool_input.command` field and runs it in the same shell environment, so a
+# guard bound to `Bash` alone refuses nothing a caller arms through it.
+case "$tool_name" in
+  Bash | Monitor) ;;
+  *) exit 0 ;;
+esac
 
 # Avoid the name `command`: it would shadow bash's builtin and break later
 # `command -v` guards.
@@ -77,8 +83,8 @@ cmd=$(echo "$input" | jq -r '.tool_input.command // ""' 2>/dev/null)
 # Arm through the shared verb-arming decision, loaded from this hook's own
 # on-disk location, never cwd. This runs BEFORE arming and before deny() is
 # defined, so an unloadable library writes its own deny JSON inline, denying
-# every Bash tool call rather than merge attempts alone: it runs before the
-# gate knows whether the call is a `gh pr merge` at all.
+# every Bash and Monitor tool call rather than merge attempts alone: it runs
+# before the gate knows whether the call is a `gh pr merge` at all.
 _va_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)"
 _va_ok=0
 if [ -n "$_va_lib_dir" ] && [ -f "$_va_lib_dir/verb-arming.sh" ]; then
@@ -88,7 +94,7 @@ if [ -n "$_va_lib_dir" ] && [ -f "$_va_lib_dir/verb-arming.sh" ]; then
   fi
 fi
 if [ "$_va_ok" -ne 1 ]; then
-  jq -n --arg r "Accepted-residual shape gate: cannot load the shared verb-arming decision (.claude/hooks/lib/verb-arming.sh must exist, be readable, and define gaia_verb_armed). This check runs before the gate knows whether the tool call is a gh pr merge at all, so it denies every Bash tool call rather than merge attempts alone. Restore .claude/hooks/lib/verb-arming.sh (it ships with the framework; a missing or corrupted checkout is the usual cause) and retry." '{
+  jq -n --arg r "Accepted-residual shape gate: cannot load the shared verb-arming decision (.claude/hooks/lib/verb-arming.sh must exist, be readable, and define gaia_verb_armed). This check runs before the gate knows whether the tool call is a gh pr merge at all, so it denies every Bash and Monitor tool call rather than merge attempts alone. Restore .claude/hooks/lib/verb-arming.sh (it ships with the framework; a missing or corrupted checkout is the usual cause) and retry." '{
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
       permissionDecision: "deny",

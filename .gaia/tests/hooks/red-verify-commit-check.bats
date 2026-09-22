@@ -943,12 +943,24 @@ run_commit_hook_in() {
 # so the fast path is passed and the extraction actually runs; without it the
 # hook exits before `hidden_bodies` is called and this control asserts nothing
 # about the extraction it is named for.
+#
+# Where that token sits decides which half the fixture pins. An invented body
+# begins wherever the opener-strip stops, so a fixture reading past a word
+# leaves the body beginning on that word, whose command word is not `git`: it
+# reaches no arm, and stays allowed however far the strip over-reaches. The
+# fixture carrying the token immediately after the scope is the one that pins
+# the inventing direction, because there a strip reaching past the qualifier
+# promotes the prose into command position and the gate arms on a staged test
+# with no matching RED. Keep at least one fixture of that shape.
 @test "a parenthesised scope in quoted prose is not read as a qualifier" {
   stage_file "app/utils/x/index.test.ts" "$PASSING_TEST"
   run_commit_hook 'echo "feat(core): see git commit docs"'
   [ "$status" -eq 0 ]
   refute_denied
   run_commit_hook 'echo "fix(e2e): ship it via git commit later"'
+  [ "$status" -eq 0 ]
+  refute_denied
+  run_commit_hook 'echo "feat(core): git commit docs"'
   [ "$status" -eq 0 ]
   refute_denied
 }

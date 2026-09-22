@@ -166,7 +166,9 @@ case "$tool" in
     is_skill gaia-spec "$name" && stamp
     is_skill gaia-plan "$name" && [ -f "$sentinel" ] && deny "$(deny_msg)"
     ;;
-  Bash)
+  # `Monitor` carries the same raw shell command in the same field and runs it
+  # in the same shell environment, so this arm binds it too.
+  Bash | Monitor)
     cmd=$(jq -r '.tool_input.command // empty' <<<"$payload" 2>/dev/null) || exit 0
     # Anchor on an INVOCATION, never a mention. A bare substring match stamps on
     # `grep -rn spec-allocator.sh`, `shellcheck <it>`, `git log -- <it>`, and this
