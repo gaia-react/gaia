@@ -33,7 +33,8 @@
 #
 # Resolution order: an explicit GAIA_AWK already in the environment wins;
 # otherwise the first of `mawk`, then `/usr/bin/awk`, that `command -v`
-# resolves. Identity is decided by ASKING THE BINARY, on every path into
+# resolves. Both ends of that order are overridable by a test-only seam, for
+# the reason stated beside them. Identity is decided by ASKING THE BINARY, on every path into
 # GAIA_AWK including an explicit override, never by trusting a basename: a
 # binary named `awk` is exactly the case that must not pass on its name
 # alone. `--version` is the probe because it is the one flag both sanctioned
@@ -100,17 +101,26 @@ _gaia_awk_identify() {
   return 1
 }
 
-# Test-only seam, unset in every real invocation, matching the shape
+# Two test-only seams, unset in every real invocation, matching the shape
 # .gaia/scripts/tests/guard-awk-lib.bats already uses (GAIA_GUARD_LIB,
-# GAIA_GUARD_STUB) for the same reason: the resolution-order fallback names a
-# fixed system path, /usr/bin/awk, that a bats fixture has no write access to
-# and must never be given one. Overriding this lets a fixture point the
-# fallback at a stub without touching the real file.
+# GAIA_GUARD_STUB) for the same reason: each end of the resolution order names
+# something a bats fixture cannot move out of its own way.
+#
+# The fallback names a fixed system path, /usr/bin/awk, that a fixture has no
+# write access to and must never be given one. The preferred end names a
+# command looked up on PATH, and a fixture cannot simulate its ABSENCE by
+# curating PATH, because where mawk lives is a property of the host: on macOS
+# it sits in the Homebrew prefix, which a fixture can leave out, and on the
+# ubuntu runner it sits in /usr/bin beside the very tools the guards under
+# test need on PATH to run at all. A fixture that curated PATH would therefore
+# prove absence on one host and silently prove nothing on the other, which is
+# what these two seams exist to stop.
 GAIA_AWK_BWK_PATH="${GAIA_AWK_BWK_PATH:-/usr/bin/awk}"
+GAIA_AWK_MAWK_PATH="${GAIA_AWK_MAWK_PATH:-mawk}"
 
 if [ -z "${GAIA_AWK:-}" ]; then
-  if command -v mawk >/dev/null 2>&1; then
-    GAIA_AWK="$(command -v mawk)"
+  if command -v "$GAIA_AWK_MAWK_PATH" >/dev/null 2>&1; then
+    GAIA_AWK="$(command -v "$GAIA_AWK_MAWK_PATH")"
   elif command -v "$GAIA_AWK_BWK_PATH" >/dev/null 2>&1; then
     GAIA_AWK="$GAIA_AWK_BWK_PATH"
   fi

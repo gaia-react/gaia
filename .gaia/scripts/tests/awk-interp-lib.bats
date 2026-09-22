@@ -63,14 +63,28 @@ STUB
   mkdir "$TMP/named-awk-bin"
   cp "$TMP/busybox-awk" "$TMP/named-awk-bin/awk"
 
-  # A curated PATH that cannot resolve `mawk` (nor the real /usr/bin/awk,
-  # once GAIA_AWK_BWK_PATH is overridden away from it) while still resolving
-  # every external tool the guards under test actually shell out to. `git`
-  # lives beside `mawk` in this host's Homebrew prefix, so excluding that
-  # whole prefix would also hide git; a symlink recovers git alone.
-  mkdir "$TMP/no-mawk-bin"
-  ln -s "$(command -v git)" "$TMP/no-mawk-bin/git"
-  NO_MAWK_PATH="$TMP/no-mawk-bin:/usr/bin:/bin:/usr/sbin:/sbin"
+  # Absence of mawk is simulated through the library's own seam, never by
+  # curating PATH. Where mawk lives is a property of the host: on macOS it is
+  # in the Homebrew prefix, which a fixture can leave off PATH, and on the
+  # ubuntu runner it is in /usr/bin, beside the tools the guards under test
+  # need on PATH to run at all. A PATH-curating fixture therefore proves
+  # absence on macOS and silently proves nothing on the runner, where the
+  # resolver keeps finding /usr/bin/mawk and every "no mawk" assertion below
+  # passes vacuously or fails for the wrong reason.
+  NO_MAWK="$TMP/no-such-mawk-binary"
+
+  # A real, SANCTIONED BWK awk, identified by its banner rather than assumed
+  # from its path. /usr/bin/awk is BWK one-true-awk on macOS but is gawk on
+  # the ubuntu runner, where the resolver refuses it at status 6 -- correctly,
+  # since gawk is the interpreter this plan measured and rejected. The two
+  # tests below that need a second REAL interpreter skip where none exists,
+  # rather than asserting against whatever /usr/bin/awk happens to be.
+  REAL_BWK=""
+  if [ -x /usr/bin/awk ]; then
+    case "$( /usr/bin/awk --version 2>&1 | head -n1 )" in
+      "awk version "*) REAL_BWK=/usr/bin/awk ;;
+    esac
+  fi
 }
 
 teardown() {
@@ -95,12 +109,13 @@ consumers() {
 # guard makes a second source in the same process a no-op -- exercised on
 # purpose by its own dedicated test below, not by accident here.
 resolve() {
-  local path_val="$1" gaia_awk_val="${2:-}" bwk_val="${3:-}"
+  local path_val="$1" gaia_awk_val="${2:-}" bwk_val="${3:-}" mawk_val="${4:-}"
   (
-    unset -v GAIA_AWK GAIA_AWK_BWK_PATH GAIA_AWK_STATUS GAIA_AWK_IDENT GAIA_AWK_INTERP_LIB_SOURCED
+    unset -v GAIA_AWK GAIA_AWK_BWK_PATH GAIA_AWK_MAWK_PATH GAIA_AWK_STATUS GAIA_AWK_IDENT GAIA_AWK_INTERP_LIB_SOURCED
     PATH="$path_val"
     [ -n "$gaia_awk_val" ] && GAIA_AWK="$gaia_awk_val"
     [ -n "$bwk_val" ] && GAIA_AWK_BWK_PATH="$bwk_val"
+    [ -n "$mawk_val" ] && GAIA_AWK_MAWK_PATH="$mawk_val"
     # shellcheck disable=SC1090
     . "$LIB"
     printf 'GAIA_AWK=%s\nGAIA_AWK_STATUS=%s\nGAIA_AWK_IDENT=%s\n' \
@@ -114,10 +129,10 @@ resolve() {
 # repository root before they ever reach the awk resolution this suite is
 # testing, so every drive below runs from $REPO_ROOT.
 drive_consumer() {
-  local g="$1" path_val="$2" gaia_awk_val="${3:-}" bwk_val="${4:-}"
+  local g="$1" path_val="$2" gaia_awk_val="${3:-}" bwk_val="${4:-}" mawk_val="${5:-}"
   (
     cd "$REPO_ROOT" || exit 90
-    unset -v GAIA_AWK GAIA_AWK_BWK_PATH
+    unset -v GAIA_AWK GAIA_AWK_BWK_PATH GAIA_AWK_MAWK_PATH
     export PATH="$path_val"
     # export, not a plain assignment: this spawns a CHILD process below, and
     # an un-exported GAIA_AWK/GAIA_AWK_BWK_PATH is invisible to it, silently
@@ -125,6 +140,7 @@ drive_consumer() {
     # this drive intends.
     [ -n "$gaia_awk_val" ] && export GAIA_AWK="$gaia_awk_val"
     [ -n "$bwk_val" ] && export GAIA_AWK_BWK_PATH="$bwk_val"
+    [ -n "$mawk_val" ] && export GAIA_AWK_MAWK_PATH="$mawk_val"
     "$BASH_BIN" ".gaia/scripts/$g.sh"
   )
 }
@@ -142,7 +158,7 @@ drive_consumer() {
 }
 
 @test "resolver: no mawk on PATH falls back to the BWK path and identifies as bwk" {
-  run resolve "/usr/bin:/bin" "" "$TMP/bwk-awk"
+  run resolve "/usr/bin:/bin" "" "$TMP/bwk-awk" "$NO_MAWK"
   [ "$status" -eq 0 ]
   grep -qF "GAIA_AWK=$TMP/bwk-awk" <<<"$output"
   grep -qF 'GAIA_AWK_STATUS=0' <<<"$output"
@@ -150,7 +166,7 @@ drive_consumer() {
 }
 
 @test "resolver: neither mawk nor a reachable BWK path yields status 5 and an empty GAIA_AWK" {
-  run resolve "/usr/bin:/bin" "" "$TMP/does-not-exist"
+  run resolve "/usr/bin:/bin" "" "$TMP/does-not-exist" "$NO_MAWK"
   [ "$status" -eq 0 ]
   grep -qxF 'GAIA_AWK=' <<<"$output"
   grep -qF 'GAIA_AWK_STATUS=5' <<<"$output"
@@ -220,7 +236,7 @@ drive_consumer() {
 @test "consumers: every guard-awk-lib.sh consumer refuses at status 5 with no awk at all, distinct from both the status-6 and exit-2 messages" {
   local g
   while IFS= read -r g; do
-    run drive_consumer "$g" "$NO_MAWK_PATH" "" "$TMP/does-not-exist"
+    run drive_consumer "$g" "/usr/bin:/bin" "" "$TMP/does-not-exist" "$NO_MAWK"
     [ "$status" -eq 5 ] || { echo "guard=$g expected status 5, got $status: $output"; return 1; }
     grep -qF 'no awk interpreter found' <<<"$output" || { echo "guard=$g missing the no-awk message: $output"; return 1; }
     grep -qF 'guard-awk-lib.sh is missing' <<<"$output" && { echo "guard=$g misreported status 5 as the exit-2 missing-library case: $output"; return 1; }
@@ -247,6 +263,7 @@ drive_consumer() {
 
 @test "consumers: with mawk absent from PATH, every guard-awk-lib.sh consumer degrades to the BWK fallback rather than refusing" {
   local g out rc
+  [ -n "$REAL_BWK" ] || skip "this host carries no sanctioned BWK awk to degrade to"
   while IFS= read -r g; do
     # `|| rc=$?`, never a bare `rc=$?` on the next line: under errexit, a
     # failing command-substitution assignment aborts THIS line, so a
@@ -254,7 +271,7 @@ drive_consumer() {
     # observe the failure (.gaia/scripts/lint-errexit-status-read.sh's own
     # class, and this suite is not exempt from it).
     rc=0
-    out="$(drive_consumer "$g" "$NO_MAWK_PATH" "" "" 2>&1)" || rc=$?
+    out="$(drive_consumer "$g" "/usr/bin:/bin" "" "$REAL_BWK" "$NO_MAWK" 2>&1)" || rc=$?
     [ "$rc" -eq 0 ] || { echo "guard=$g expected exit 0 under the BWK fallback, got $rc: $out"; return 1; }
     printf '%s' "$out" | grep -qF 'no awk interpreter found' && { echo "guard=$g refused instead of degrading: $out"; return 1; }
   done < <(consumers)
@@ -265,9 +282,13 @@ drive_consumer() {
   local g out_mawk out_bwk rc_mawk rc_bwk
   local real_mawk real_bwk
   real_mawk="$(command -v mawk || true)"
-  real_bwk="/usr/bin/awk"
-  if [ -z "$real_mawk" ] || [ ! -x "$real_bwk" ]; then
-    skip "this host carries neither a real mawk nor a real /usr/bin/awk to compare"
+  real_bwk="$REAL_BWK"
+  if [ -z "$real_mawk" ] || [ -z "$real_bwk" ]; then
+    # Not merely "is /usr/bin/awk executable": on the ubuntu runner it is
+    # executable and it is gawk, which the resolver refuses at status 6. The
+    # old spelling compared a mawk run against a REFUSAL and read the
+    # difference as a parity failure.
+    skip "this host carries no sanctioned mawk/BWK pair to compare"
   fi
   while IFS= read -r g; do
     # Same `|| rc=$?` shape as the degradation test above, for the same
