@@ -114,6 +114,16 @@ write_hook() {
         printf '[ "$tool_name" = "Bash" ] || exit 0\n'
         printf "cmd=\$(jq -r '.tool_input.command' <<<\"\$payload\")\nexit 2\n"
         ;;
+      prose_mention)
+        # A non-comment line NAMES Monitor -- a deny-reason string, the shape a
+        # repair prose naturally reaches for -- without the tool_name test ever
+        # admitting it. A bare substring search over non-comment lines reads
+        # this as armed; only a search for an actual gating construct catches
+        # it.
+        printf '[ "$tool_name" = "Bash" ] || exit 0\n'
+        printf 'reason="this shape is denied however it is armed, Bash or Monitor"\n'
+        printf "cmd=\$(jq -r '.tool_input.command' <<<\"\$payload\")\nexit 2\n"
+        ;;
     esac
   } >"$dir/.claude/hooks/$name"
   chmod +x "$dir/.claude/hooks/$name"
@@ -264,6 +274,24 @@ write_hook() {
   run bash "$CHECK" "$dir"
   [ "$status" -eq 1 ]
   grep -qF -- 'talker.sh' <<<"$output"
+}
+
+@test "red: a non-comment mention of Monitor does not satisfy admits_monitor" {
+  # The regression fixture for the finding a code-audit-maintainer-shell round
+  # raised against this gate's own arm B: a hook whose deny-reason string
+  # SAYS Monitor, on a code line rather than a comment, while its own
+  # tool_name test still admits Bash alone. names_outside_comments('Monitor')
+  # read that as armed; admits_monitor requires an actual gating construct
+  # (a case-arm pattern list or an equality comparison) and correctly does not.
+  local dir
+  dir="$(make_fixture red-prose-mention)"
+  write_hook "$dir" guard.sh dualgated
+  write_hook "$dir" mentioner.sh prose_mention
+  write_settings "$dir" 'Bash|Monitor:guard.sh,mentioner.sh'
+
+  run bash "$CHECK" "$dir"
+  [ "$status" -eq 1 ]
+  grep -qF -- 'mentioner.sh' <<<"$output"
 }
 
 # --- fail-closed discovery ---------------------------------------------------

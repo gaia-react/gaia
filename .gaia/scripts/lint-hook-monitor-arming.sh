@@ -47,20 +47,28 @@
 #      not `Monitor`, registering a blocking hook that reads
 #      `tool_input.command`.
 #   B. INERT INTERNAL GATE. A hook registered in a row whose matcher DOES reach
-#      `Monitor`, whose body names `Bash` outside a comment and never names
-#      `Monitor` outside one. Widening the matcher alone leaves such a hook
-#      standing down on its own `[ "$tool_name" = "Bash" ] || exit 0`, and the
-#      registration then reads as armed while nothing reaches the payload. This
-#      arm is the one a reader of the settings diff cannot see.
+#      `Monitor`, whose body names `Bash` outside a comment and never GATES ON
+#      `Monitor`. Widening the matcher alone leaves such a hook standing down
+#      on its own `[ "$tool_name" = "Bash" ] || exit 0`, and the registration
+#      then reads as armed while nothing reaches the payload. This arm is the
+#      one a reader of the settings diff cannot see.
 #
-#      The question it asks is whether the BODY admits the tool, not whether a
-#      particular gate spelling is present: the equality test, the `case` arm,
-#      and whatever a later hook writes instead all name the tool they admit,
-#      and a hook that tests no tool name at all names neither and is correctly
-#      silent here. It over-reports on a body that spells `Bash` for some other
-#      reason while admitting `Monitor` implicitly, which is the safe direction:
-#      the report sends a human to read one hook, where the miss it replaces is
-#      a guard that refuses nothing and says so to no one.
+#      The two sides of this test are asymmetric on purpose. The Bash side is
+#      a bare mention outside a comment: it over-reports on a body that spells
+#      `Bash` for some other reason while admitting `Monitor` implicitly,
+#      which is the safe direction, the report sends a human to read one hook
+#      where the answer was already fine. The Monitor side cannot take that
+#      shortcut, because a bare mention there is exactly the failure this arm
+#      exists to catch: a deny-reason string or a comment that SAYS `Monitor`
+#      while the hook's own `tool_name` test still admits `Bash` alone. So
+#      Monitor admission is judged by a gating construct instead, a case-arm
+#      pattern list ending in `)` (`Bash | Monitor)`) or an equality
+#      comparison (`= "Monitor"`, `== "Monitor"`), and a hook that gates on
+#      `tool_name` through neither shape reads as not admitting `Monitor` even
+#      where the word appears elsewhere in its body. Honest limit: a gating
+#      shape this check does not recognize, a `case` arm split across lines,
+#      a lookup table keyed by tool name, reads as not-admitted too, which is
+#      the over-report direction on this side as well and the safe one.
 #
 # SCOPE is the PreToolUse registrations in .claude/settings.json, derived rather
 # than listed, so a newly registered hook carries the obligation the moment it
@@ -82,9 +90,14 @@
 #                rather than reporting clean over it
 #   arming    -- the posture split comes from the shared oracle and the row set
 #                from the registrations, so a hook cannot escape either by being
-#                absent from a list this gate keeps
-#   match     -- arm B tests for `Monitor` outside full-line comments, so a
-#                header paragraph explaining the tool does not satisfy it
+#                absent from a list this gate keeps. Honest limit: the subject
+#                filter needs the literal `tool_input.command` in the hook's
+#                OWN body (see `subjects` below), so a command read delegated
+#                to a sourced helper carries no obligation this gate can see.
+#   match     -- arm B judges `Monitor` admission by a gating construct (a
+#                case-arm pattern list or an equality comparison), not by a
+#                bare mention, so a deny-reason string or a header paragraph
+#                naming `Monitor` does not satisfy it
 #
 # Bash 3.2 compatible. Never `cd` (beyond resolving this script's own location).
 
@@ -111,6 +124,35 @@ names_outside_comments() {
     }
     END { exit(found ? 0 : 1) }
   ' "$2"
+}
+
+# admits_monitor <hook_script_path>
+#
+# Succeed when the hook body GATES ON `Monitor` as a tool_name value, rather
+# than merely naming it: a case-arm pattern list ending in `)` that carries
+# `Monitor` as one of its bar-separated words (`Bash | Monitor)`), or an
+# equality comparison against it (`= "Monitor"`, `== "Monitor"`). A bare
+# mention -- a deny-reason string describing the widening, a comment, a
+# variable name -- satisfies neither shape.
+#
+# This is deliberately not names_outside_comments('Monitor', ...), which the
+# Bash side of arm B still uses: over-reporting on the Bash side sends a human
+# to read one hook where the answer was already fine, which is cheap and
+# recoverable. Under-reporting on the Monitor side is the failure this arm
+# exists to catch in the first place, a hook whose deny-reason string SAYS
+# Monitor while its own tool_name test still admits Bash alone, so a bare
+# substring match cannot back this side.
+admits_monitor() {
+  awk '
+    {
+      line = $0
+      sub(/^[[:space:]]+/, "", line)
+      if (line ~ /^#/) next
+      if (line ~ /(^|[^A-Za-z0-9_])Monitor[[:space:]]*(\|[[:space:]]*[A-Za-z_][A-Za-z_0-9]*[[:space:]]*)*\)/) { found = 1; exit }
+      if (line ~ /==?[[:space:]]*"?Monitor"?([^A-Za-z0-9_]|$)/) { found = 1; exit }
+    }
+    END { exit(found ? 0 : 1) }
+  ' "$1"
 }
 
 # matcher_reaches <matcher> <tool_name>
@@ -191,7 +233,7 @@ main() {
     return 2
   fi
 
-  local bash_rows=0 subjects=0 monitor_rows=0
+  local bash_rows=0 subjects=0
   local unarmed='' inert=''
   local line row matcher command hook path
   while IFS= read -r line; do
@@ -239,11 +281,10 @@ main() {
     esac
 
     if [ "$reaches_monitor" -eq 1 ]; then
-      monitor_rows=$((monitor_rows + 1))
       # Arm B. A hook that names neither tool has nothing to stand it down, so
       # the widened matcher reaches its payload read on its own.
       if names_outside_comments 'Bash' "$path" &&
-        ! names_outside_comments 'Monitor' "$path"; then
+        ! admits_monitor "$path"; then
         inert="$inert$hook	row $row arms Monitor, but the hook body admits Bash alone
 "
       fi

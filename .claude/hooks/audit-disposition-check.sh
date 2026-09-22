@@ -130,7 +130,8 @@ cmd=$(echo "$input" | jq -r '.tool_input.command // ""' 2>/dev/null)
 # other lib-load below. This runs BEFORE arming and before deny() is defined
 # (deny() is a convenience for the offender-reporting paths further down), so
 # an unloadable library writes its own deny JSON inline rather than through
-# it, denying every Bash tool call rather than merge attempts alone.
+# it, denying every Bash and Monitor tool call rather than merge attempts
+# alone.
 _va_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)"
 _va_ok=0
 if [ -n "$_va_lib_dir" ] && [ -f "$_va_lib_dir/verb-arming.sh" ]; then
@@ -140,7 +141,7 @@ if [ -n "$_va_lib_dir" ] && [ -f "$_va_lib_dir/verb-arming.sh" ]; then
   fi
 fi
 if [ "$_va_ok" -ne 1 ]; then
-  jq -n --arg r "Audit disposition gate: cannot load the shared verb-arming decision (.claude/hooks/lib/verb-arming.sh must exist, be readable, and define gaia_verb_armed). This check runs before the gate knows whether the tool call is a gh pr merge at all, so it denies every Bash tool call rather than merge attempts alone. Restore .claude/hooks/lib/verb-arming.sh (it ships with the framework; a missing or corrupted checkout is the usual cause) and retry." '{
+  jq -n --arg r "Audit disposition gate: cannot load the shared verb-arming decision (.claude/hooks/lib/verb-arming.sh must exist, be readable, and define gaia_verb_armed). This check runs before the gate knows whether the tool call is a gh pr merge at all, so it denies every Bash and Monitor tool call rather than merge attempts alone. Restore .claude/hooks/lib/verb-arming.sh (it ships with the framework; a missing or corrupted checkout is the usual cause) and retry." '{
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
       permissionDecision: "deny",

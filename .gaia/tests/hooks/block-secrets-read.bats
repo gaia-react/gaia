@@ -493,7 +493,7 @@ run_hook_without_library() {
   hook_registered "$SETTINGS_ABS" '.hooks.PreToolUse[] | select(.matcher == "Read")' block-secrets-read.sh
 }
 
-@test "settings.json registers block-secrets-read.sh under the Bash matcher" {
+@test "settings.json registers block-secrets-read.sh for both tools it binds" {
   hook_registered "$SETTINGS_ABS" '.hooks.PreToolUse[] | select(.matcher == "Bash|Monitor")' block-secrets-read.sh
 }
 

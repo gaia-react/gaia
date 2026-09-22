@@ -1364,7 +1364,7 @@ assert_position_preserving() {
   [ -x "$HOOK_ABS" ]
 }
 
-@test "settings.json registers the hook under the Bash matcher" {
+@test "settings.json registers the hook for both tools it binds" {
   hook_registered "$SETTINGS_ABS" '.hooks.PreToolUse[] | select(.matcher == "Bash|Monitor")' block-rm-rf.sh
 }
 
