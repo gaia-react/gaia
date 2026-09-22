@@ -224,7 +224,7 @@ jobs:
           shellcheck --version
       # Ubuntu's default `awk` is already mawk, so this changes no behavior
       # today; it is worth pinning anyway so the gate's verdict does not
-      # depend on which image the runner happened to pick. The eight guards
+      # depend on which image the runner happened to pick. The guards
       # under .gaia/scripts/guard-awk-lib.sh resolve GAIA_AWK to mawk first,
       # and this asserts that resolution finds what it expects to find rather
       # than trusting the image. Distro package, not a digest-pinned tarball:
@@ -234,7 +234,13 @@ jobs:
         name: Assert mawk is present and identifies as mawk
         run: |
           set -euo pipefail
-          sudo apt-get install -y mawk
+          # Assert presence, never install. mawk is preinstalled on the runner
+          # image, so an install is a no-op that resolves from the dpkg status
+          # file; if an image ever dropped it, `apt-get install` without an
+          # `apt-get update` ahead of it fails with `Unable to locate package`
+          # and the operator gets an apt error in place of the ::error:: this
+          # step exists to produce. Failing here on absence is the intended
+          # outcome either way, so assert it directly and keep the diagnostic.
           banner="$(mawk --version 2>&1 | head -n1 || true)"
           echo "mawk reports: $banner"
           case "$banner" in

@@ -20,9 +20,12 @@
 # installs none, so CI runs ubuntu's default `awk`, which is mawk, while a
 # maintainer on macOS runs BWK one-true-awk (`/usr/bin/awk`, version
 # 20200816). The awk-heavy guards ran under two different interpreters with
-# nothing saying so. This closes that divergence rather than opening one, the
-# same way .gaia/scripts/lint-grep-ere-escapes.sh closes the sibling
-# divergence between BSD and GNU grep.
+# nothing saying so. This narrows that divergence rather than opening one: it
+# closes it across the guard-awk-lib.sh closure, which is the surface the
+# divergence was measured on, and leaves the awk sites outside that closure
+# where they were. Same shape as .gaia/scripts/lint-grep-ere-escapes.sh
+# against the sibling BSD-versus-GNU grep divergence, and the region left
+# unclaimed is named in that guard's own header rather than left silent.
 #
 # Speed is the secondary argument, and it is measured: mawk 1.3.4 runs the
 # awk-tokenizer guards roughly 1.7x to 2.1x faster than BWK one-true-awk on

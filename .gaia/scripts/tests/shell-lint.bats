@@ -371,10 +371,14 @@ dispatch_first_last() {
 # this.
 #
 # The stdout/stderr split below is fixture data reproduced from the real
-# guard scripts (this file's own header explains the split; the six named
-# here are the ones printing their clean line via a bare `printf`, no `>&2`)
+# guard scripts (this file's own header explains the split; the ones named
+# here are those printing their clean line via a bare `printf`, no `>&2`)
 # rather than derived live -- a stub rig is allowed to assume the shape it
-# stands in for.
+# stands in for. No count here: the list goes stale by gaining a member, and
+# a cardinal beside it would only go stale twice. Re-derive it with
+# `grep -n ': clean' .gaia/scripts/lint-*.sh` when a guard is folded in; a
+# stub whose stream disagrees with its real guard makes the stream-split
+# assertions test the rig rather than the gate.
 #
 # Prints one `SHELL_LINT_GUARD_OVERRIDE_<slug>=<path>` line per folded guard,
 # meant to be read into an array and passed to `env`; a caller needing a
@@ -384,7 +388,7 @@ dispatch_first_last() {
 # Args: <dir to write stub scripts into>
 stub_all_guards() {
   local dir="$1" stdout_guards p script stream_redirect var
-  stdout_guards="lint-guard-rule-shell-coverage lint-hook-wiki-inventory lint-wiki-cached-version lint-hook-advisory-classification lint-scripts-wiki-inventory lint-hook-jq-availability"
+  stdout_guards="lint-guard-rule-shell-coverage lint-hook-wiki-inventory lint-wiki-cached-version lint-hook-advisory-classification lint-scripts-wiki-inventory lint-hook-jq-availability lint-hook-monitor-arming"
   while IFS= read -r p; do
     case "$p" in lint-*) ;; *) continue ;; esac
     script="$dir/$p.stub.sh"

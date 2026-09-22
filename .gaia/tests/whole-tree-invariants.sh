@@ -341,9 +341,14 @@ wti_bats_backend_probe() {
   command -v parallel >/dev/null 2>&1 || command -v rush >/dev/null 2>&1
 }
 
-# slug_for <path>: a filesystem-safe log-file stem. Every WTI_SCRIPTS and
-# WTI_BATS path is repo-relative and drawn from [A-Za-z0-9._/-], so collapsing
-# '/' to '_' cannot collide between two distinct members.
+# slug_for <path>: a filesystem-safe log-file stem. Collapsing '/' to '_' is
+# not injective on its own -- `a/b` and `a_b` both slug to `a_b`, since '_' is
+# itself a legal path character -- so what rules a collision out here is the
+# member set rather than the transform: the paths are a fixed list two tables
+# above, and no two of them differ only by that substitution. A member added
+# whose path collides with an existing one under this transform would have the
+# two share a log, so keep that in view when editing those tables rather than
+# trusting the transform to be safe by construction.
 slug_for() {
   printf '%s\n' "$1" | tr '/' '_'
 }

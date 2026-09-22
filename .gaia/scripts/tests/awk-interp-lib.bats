@@ -1,17 +1,18 @@
 #!/usr/bin/env bats
 #
 # Conformance suite for .gaia/scripts/awk-interp-lib.sh, the GAIA_AWK
-# resolver, and for its wiring into the eight guard-awk-lib.sh consumers that
-# source it.
+# resolver, and for its wiring into the guard-awk-lib.sh consumers that source
+# it.
 #
 # Two halves. The first drives the resolver directly: which interpreter it
 # picks, and how it identifies one (by asking the binary, never by trusting a
 # basename). The second drives the sentinel wiring from a REAL CONSUMER rather
-# than from the library alone: a library-level assertion would pass even with
-# a consumer's own case block missing, which is the exact failure FC-5 of
-# PLAN-021's README exists to prevent. The consumer roster is derived from the
-# literal source line every consumer carries, never hand-listed, so a ninth
-# consumer added later is covered without an edit here.
+# than from the library alone, because a library-level assertion would pass
+# even with a consumer's own case block missing, which is the failure that
+# wiring exists to prevent. The consumer roster is derived from the literal
+# source line every consumer carries, never hand-listed and never counted
+# here, so a consumer added to that closure later is covered without an edit
+# here and no cardinal is left behind to go stale.
 #
 # Run under bash 5 (.claude/rules/bats-assertions.md): `source
 # .gaia/scripts/bats5.sh && bats5 .gaia/scripts/tests/awk-interp-lib.bats`.

@@ -21,7 +21,8 @@
 # cwd-relative-load guard (.gaia/scripts/lint-hook-cwd-relative-loads.sh), the
 # hook jq-availability guard
 # (.gaia/scripts/lint-hook-jq-availability.sh), the hook Monitor-arming guard
-# (.gaia/scripts/lint-hook-monitor-arming.sh), and the scripts inventory guard
+# (.gaia/scripts/lint-hook-monitor-arming.sh), the awk interpreter pin
+# (.gaia/scripts/lint-awk-interpreter-pin.sh), and the scripts inventory guard
 # (.gaia/scripts/lint-scripts-wiki-inventory.sh).
 # Exit 0 when clean, 1 on any finding at or above the severity floor, and 1 on
 # a pass that cannot run at all (no shellcheck binary, an empty *.sh discovery
@@ -500,9 +501,12 @@ fi
 # instead and need neither a `cd` nor a subshell.
 #
 # Streams split, they never merge. Most of these guards print their own
-# `<name>: clean` line to stderr; a minority (named in GUARD_MODES as `root`,
-# plus lint-hook-jq-availability) print it to stdout via a bare
-# `printf '%s: clean\n' "$PROG"`. `2>&1`, the merge run_shellcheck_pass above
+# `<name>: clean` line to stderr and a minority print it to stdout via a bare
+# `printf '%s: clean\n' "$PROG"`. Which guards fall on which side is a fact
+# about the guards rather than about this file, so derive it
+# (`grep -n ': clean' .gaia/scripts/lint-*.sh`) rather than reading a list
+# here: naming the set inline is what leaves a count behind to go stale as
+# guards are folded in. `2>&1`, the merge run_shellcheck_pass above
 # uses, is wrong here: it would relocate the stderr majority's clean lines
 # and findings onto stdout, and .gaia/scripts/tests/shell-lint.bats:245 could
 # not catch the regression, because bats `run` merges both streams into
@@ -597,6 +601,16 @@ guard_script_path() {
   override_var="SHELL_LINT_GUARD_OVERRIDE_$(printf '%s' "$slug" | tr '-' '_')"
   value="${!override_var:-}"
   if [ -n "$value" ]; then
+    # A seam that swaps what the gate EXECUTES has to announce itself, or a
+    # run with it set is byte-identical to a real one: same banner, same exit
+    # 0, same `shell-lint passed`, with the substituted guard's own `: clean`
+    # line merely absent among nineteen and nothing looking for it. The
+    # SHELL_LINT_BASH32 seam this family is modelled on already has the
+    # property, printing its interpreter into its own banner; this restores it
+    # here. On stderr, which the caller's command substitution does not
+    # capture, so it reaches the run output without corrupting the path.
+    printf '%s: GUARD OVERRIDE, running %s instead of the real guard\n' \
+      "$slug" "$value" >&2
     printf '%s\n' "$value"
   else
     printf '%s\n' "$REPO_ROOT/.gaia/scripts/$slug.sh"
