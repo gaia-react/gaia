@@ -326,3 +326,211 @@ rig_piece() {
   grep -qF -- "shell-lint FAILED" <<<"$output"
   grep -qF -- "In $last_sh line 1:" <<<"$output"
 }
+
+# The folded guards named in GUARD_SLUGS fork through a bounded pool: dispatch
+# order is a scheduling hint (GUARD_HEAVY_HINT, dispatched first) with
+# everything else following in GUARD_SLUGS' own declared order, but a
+# fork/collect loop can still lose exactly one end of that pool the way a bare
+# `wait` loses exactly one end of a worker list. The tests below drive both
+# ends.
+#
+# dispatch_first_last derives the guard occupying each end from the gate's own
+# tables rather than naming one here, so a reorder of either table is followed
+# instead of silently mistested. The first dispatch slot is always
+# GUARD_HEAVY_HINT's own first entry, by construction: the gate dispatches
+# that whole list before anything else. The last slot is GUARD_SLUGS' own last
+# entry, PROVIDED that entry is not itself a member of GUARD_HEAVY_HINT -- the
+# gate appends everything else in declared order after every hint, so
+# GUARD_SLUGS' last entry lands last overall only when the hint list has not
+# already claimed it. Refuses (rather than guess) if that stops holding, so a
+# false read of this helper reds the test that calls it instead of pointing
+# the fixture at the wrong guard.
+dispatch_first_last() {
+  local heavy_block slugs_block heavy_first slugs_last
+  heavy_block="$(sed -n '/^GUARD_HEAVY_HINT=(/,/^)/p' "$GATE" | sed '1d;$d' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+  slugs_block="$(sed -n '/^GUARD_SLUGS=(/,/^)/p' "$GATE" | sed '1d;$d' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+  heavy_first="$(printf '%s\n' "$heavy_block" | sed -n '1p')"
+  slugs_last="$(printf '%s\n' "$slugs_block" | sed -n '$p')"
+  [ -n "$heavy_first" ] || return 1
+  [ -n "$slugs_last" ] || return 1
+  if printf '%s\n' "$heavy_block" | grep -qxF -- "$slugs_last"; then
+    return 1
+  fi
+  printf '%s\n%s\n' "$heavy_first" "$slugs_last"
+}
+
+@test "a guard failing in the FIRST dispatch slot fails the gate and every other guard still runs" {
+  local pair first override_var stub
+  pair="$(dispatch_first_last)"
+  [ -n "$pair" ]
+  first="$(printf '%s\n' "$pair" | sed -n '1p')"
+  override_var="SHELL_LINT_GUARD_OVERRIDE_$(printf '%s' "$first" | tr '-' '_')"
+  stub="$STUB_DIR/dispatch-first-fail.sh"
+  cat > "$stub" <<'STUB'
+#!/usr/bin/env bash
+echo "stub failure: first dispatch slot" >&2
+exit 1
+STUB
+  chmod +x "$stub"
+  run env PATH="$STUB_DIR:$PATH" "$override_var=$stub" bash "$GATE"
+  [ "$status" -eq 1 ]
+  grep -qF -- "shell-lint FAILED" <<<"$output"
+  grep -qF -- "stub failure: first dispatch slot" <<<"$output"
+  local p
+  while IFS= read -r p; do
+    case "$p" in lint-*) ;; *) continue ;; esac
+    [ "$p" = "$first" ] && continue
+    grep -qF -- "--> $p" <<<"$output"
+  done < <(gate_pass_headers)
+}
+
+@test "a guard failing in the LAST dispatch slot fails the gate and every other guard still runs" {
+  local pair last override_var stub
+  pair="$(dispatch_first_last)"
+  [ -n "$pair" ]
+  last="$(printf '%s\n' "$pair" | sed -n '2p')"
+  override_var="SHELL_LINT_GUARD_OVERRIDE_$(printf '%s' "$last" | tr '-' '_')"
+  stub="$STUB_DIR/dispatch-last-fail.sh"
+  cat > "$stub" <<'STUB'
+#!/usr/bin/env bash
+echo "stub failure: last dispatch slot" >&2
+exit 1
+STUB
+  chmod +x "$stub"
+  run env PATH="$STUB_DIR:$PATH" "$override_var=$stub" bash "$GATE"
+  [ "$status" -eq 1 ]
+  grep -qF -- "shell-lint FAILED" <<<"$output"
+  grep -qF -- "stub failure: last dispatch slot" <<<"$output"
+  local p
+  while IFS= read -r p; do
+    case "$p" in lint-*) ;; *) continue ;; esac
+    [ "$p" = "$last" ] && continue
+    grep -qF -- "--> $p" <<<"$output"
+  done < <(gate_pass_headers)
+}
+
+@test "two guards failing at once both report their own output, each under its own banner, in declared order" {
+  local pair first last first_var last_var first_stub last_stub
+  pair="$(dispatch_first_last)"
+  [ -n "$pair" ]
+  first="$(printf '%s\n' "$pair" | sed -n '1p')"
+  last="$(printf '%s\n' "$pair" | sed -n '2p')"
+  first_var="SHELL_LINT_GUARD_OVERRIDE_$(printf '%s' "$first" | tr '-' '_')"
+  last_var="SHELL_LINT_GUARD_OVERRIDE_$(printf '%s' "$last" | tr '-' '_')"
+  first_stub="$STUB_DIR/two-fail-a.sh"
+  last_stub="$STUB_DIR/two-fail-b.sh"
+  cat > "$first_stub" <<'STUB'
+#!/usr/bin/env bash
+echo "stub failure: A" >&2
+exit 1
+STUB
+  cat > "$last_stub" <<'STUB'
+#!/usr/bin/env bash
+echo "stub failure: B" >&2
+exit 1
+STUB
+  chmod +x "$first_stub" "$last_stub"
+  run env PATH="$STUB_DIR:$PATH" "$first_var=$first_stub" "$last_var=$last_stub" bash "$GATE"
+  [ "$status" -eq 1 ]
+  grep -qF -- "shell-lint FAILED" <<<"$output"
+  grep -qF -- "stub failure: A" <<<"$output"
+  grep -qF -- "stub failure: B" <<<"$output"
+  # Both under their own banner, in declared order: a bare `wait` collecting
+  # only one end, or a replay reading a log under the wrong index, would put
+  # one finding under the other guard's banner or drop it entirely.
+  local banner_a_ln banner_b_ln a_ln b_ln
+  banner_a_ln="$(printf '%s\n' "$output" | grep -n -F -- "--> $first" | head -n 1 | cut -d: -f1)"
+  banner_b_ln="$(printf '%s\n' "$output" | grep -n -F -- "--> $last" | head -n 1 | cut -d: -f1)"
+  a_ln="$(printf '%s\n' "$output" | grep -n -F -- "stub failure: A" | head -n 1 | cut -d: -f1)"
+  b_ln="$(printf '%s\n' "$output" | grep -n -F -- "stub failure: B" | head -n 1 | cut -d: -f1)"
+  [ -n "$banner_a_ln" ]
+  [ -n "$banner_b_ln" ]
+  [ -n "$a_ln" ]
+  [ -n "$b_ln" ]
+  [ "$a_ln" -gt "$banner_a_ln" ] || return 1
+  [ "$a_ln" -lt "$banner_b_ln" ] || return 1
+  [ "$b_ln" -gt "$banner_b_ln" ] || return 1
+}
+
+# Replay order is GUARD_SLUGS' declared order, unconditionally, regardless of
+# dispatch order (this file's own header, FC-2). The banner/clean-line PAIRING
+# is already covered above (the "invokes every folded guard pass" test); what
+# is not is the ORDER of the pairs relative to EACH OTHER, which is exactly
+# what a completion-order replay would scramble. This does not assert the
+# whole run is clean (a tree carrying an unrelated genuine finding in one
+# guard must not fail this test over the other sixteen), only that whichever
+# guards come back clean have their clean line between their own banner and
+# the next one.
+@test "each guard's banner appears in declared order, and its own clean line -- when present -- stays between its own banner and the next" {
+  run env PATH="$STUB_DIR:$PATH" bash "$GATE"
+  local expected names_in_output
+  expected="$(gate_pass_headers)"
+  [ -n "$expected" ]
+  names_in_output="$(printf '%s\n' "$output" | sed -n 's/^--> \([^(:]*\).*/\1/p' | sed 's/[[:space:]]*$//')"
+  [ "$names_in_output" = "$expected" ] || return 1
+
+  local total i p
+  total="$(printf '%s\n' "$expected" | grep -c .)"
+  i=1
+  while [ "$i" -le "$total" ]; do
+    p="$(printf '%s\n' "$expected" | sed -n "${i}p")"
+    case "$p" in
+      lint-*) ;;
+      *)
+        i=$((i + 1))
+        continue
+        ;;
+    esac
+    if grep -qF -- "$p: clean" <<<"$output"; then
+      local banner_ln clean_ln
+      banner_ln="$(printf '%s\n' "$output" | grep -n -F -- "--> $p" | head -n 1 | cut -d: -f1)"
+      clean_ln="$(printf '%s\n' "$output" | grep -n -F -- "$p: clean" | head -n 1 | cut -d: -f1)"
+      [ -n "$banner_ln" ]
+      [ -n "$clean_ln" ]
+      [ "$clean_ln" -gt "$banner_ln" ] || return 1
+      if [ "$i" -lt "$total" ]; then
+        local next_p next_ln
+        next_p="$(printf '%s\n' "$expected" | sed -n "$((i + 1))p")"
+        next_ln="$(printf '%s\n' "$output" | grep -n -F -- "--> $next_p" | head -n 1 | cut -d: -f1)"
+        [ -n "$next_ln" ]
+        [ "$clean_ln" -lt "$next_ln" ] || return 1
+      fi
+    fi
+    i=$((i + 1))
+  done
+}
+
+# Streams split, they never merge (this file's own header). No suite driving
+# the gate through bats `run` can catch a `2>&1` regression here, because
+# `run` merges both streams into $output before any assertion sees them --
+# hence the direct redirect to two files below instead.
+@test "each guard's clean line lands on the stream its own guard actually writes to, never both" {
+  local out_file err_file
+  out_file="$STUB_DIR/gate-stdout.log"
+  err_file="$STUB_DIR/gate-stderr.log"
+  PATH="$STUB_DIR:$PATH" bash "$GATE" >"$out_file" 2>"$err_file" || true
+  # lint-collapsed-signal-trap prints its clean line to stderr;
+  # lint-hook-jq-availability prints its to stdout via a bare printf -- one
+  # from each side of the split this file's header records.
+  grep -qF -- "lint-collapsed-signal-trap: clean" "$err_file"
+  grep -qF -- "lint-hook-jq-availability: clean" "$out_file"
+  grep -qF -- "lint-collapsed-signal-trap: clean" "$out_file" && return 1
+  grep -qF -- "lint-hook-jq-availability: clean" "$err_file" && return 1
+  true
+}
+
+@test "a missing per-guard log fails the gate rather than passing it" {
+  local guard_tmp
+  guard_tmp="$(mktemp -d -t shell-lint-guardtmp-XXXXXX)"
+  # Guard index 0 is always lint-hook-array-guard: GUARD_SLUGS' own first
+  # declared entry, a position that does not move with the dispatch-order
+  # hint. Pre-seeding a DIRECTORY at the path its own stdout log would occupy
+  # makes the gate's own `>` redirect fail before that guard's process can
+  # write anything there -- the same missing-log state a worker that crashed
+  # before writing one would also leave behind.
+  mkdir -p "$guard_tmp/guard.0.out"
+  run env PATH="$STUB_DIR:$PATH" SHELL_LINT_GUARD_TMP="$guard_tmp" bash "$GATE"
+  [ "$status" -eq 1 ]
+  grep -qF -- "shell-lint FAILED" <<<"$output"
+  grep -qF -- "ERROR: missing guard log $guard_tmp/guard.0.out" <<<"$output"
+}

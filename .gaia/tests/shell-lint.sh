@@ -464,6 +464,279 @@ if [ -n "$ONLY_PASS" ]; then
   report_verdict
 fi
 
+# Every guard named in GUARD_SLUGS below walks the whole tracked tree on its
+# own, so running them one after another pays for the slowest ones (12-21s
+# apiece) once per guard queued behind them. Forked concurrently they cost
+# roughly the single slowest guard instead of their sum. Every guard already
+# writes to a unique `mktemp` path or is read-only, so nothing here adds a new
+# shared-write hazard; that was re-derived, not assumed, by sweeping every
+# `lint-*.sh` for `mktemp`.
+#
+# FC-2 (this plan's README): dispatch order and replay order are different
+# contracts. Dispatch order below is a scheduling choice, applied only to
+# shrink wall-clock time; GUARD_HEAVY_HINT starts the pool on the guards
+# measured heaviest so a late straggler does not sit behind five short ones,
+# but a stale hint only costs seconds, never correctness. Replay order is
+# fixed at GUARD_SLUGS' declared order, below, and is a contract:
+# .gaia/scripts/tests/shell-lint.bats derives its own roster from this file's
+# own literal `echo` banner lines, in the order they appear, so the banner
+# sequence has to match GUARD_SLUGS every time.
+#
+# The banner stays a literal `echo` line per guard: `--> <name>
+# (<parenthetical>)`, same indentation, same position, one per guard. The
+# table below may carry a script path and an invocation mode, never the
+# banner text itself.
+# .gaia/scripts/tests/shell-lint.bats:123-129 greps the source for the
+# banner marker and cross-checks the count against a `sed` extraction of the
+# same pattern, so a table-driven banner, or a comment naming the marker in
+# its quoted form, both make that helper refuse.
+#
+# Two invocation shapes survive from before this change, for the reason each
+# carried before: every guard named `subshell` in GUARD_MODES resolves its own
+# scan surface against the working directory, so it runs as
+# `(cd "$REPO_ROOT" && bash "$REPO_ROOT/.gaia/scripts/<slug>.sh")`. The guards
+# named `root` in GUARD_MODES take the repo root as an explicit argument
+# instead and need neither a `cd` nor a subshell.
+#
+# Streams split, they never merge. Most of these guards print their own
+# `<name>: clean` line to stderr; a minority (named in GUARD_MODES as `root`,
+# plus lint-hook-jq-availability) print it to stdout via a bare
+# `printf '%s: clean\n' "$PROG"`. `2>&1`, the merge run_shellcheck_pass above
+# uses, is wrong here: it would relocate the stderr majority's clean lines
+# and findings onto stdout, and .gaia/scripts/tests/shell-lint.bats:245 could
+# not catch the regression, because bats `run` merges both streams into
+# `$output` before any assertion sees them. So every guard's stdout and
+# stderr are captured to two separate logs and replayed to stdout and stderr
+# respectively; the cost is that a single guard's own stdout and stderr no
+# longer interleave with each other, only with themselves.
+#
+# GUARD_MODES: `subshell` runs `(cd "$REPO_ROOT" && bash ".../<slug>.sh")`;
+# `root` runs `bash ".../<slug>.sh" "$REPO_ROOT"` with no `cd` and no
+# subshell, for the guards whose own discovery takes the root as an argument
+# instead of resolving it from the working directory.
+GUARD_SLUGS=(
+  lint-hook-array-guard
+  lint-errexit-source-guard
+  lint-git-path-quoting
+  lint-workflow-run-interpolation
+  lint-grep-ere-escapes
+  lint-errexit-status-read
+  lint-oracle-blind-invocations
+  lint-stale-cardinals
+  lint-guard-rule-shell-coverage
+  lint-collapsed-signal-trap
+  lint-sigpipe-readers
+  lint-hook-wiki-inventory
+  lint-wiki-cached-version
+  lint-hook-advisory-classification
+  lint-scripts-wiki-inventory
+  lint-hook-cwd-relative-loads
+  lint-hook-jq-availability
+)
+GUARD_MODES=(
+  subshell
+  subshell
+  subshell
+  subshell
+  subshell
+  subshell
+  subshell
+  subshell
+  subshell
+  subshell
+  subshell
+  root
+  root
+  root
+  root
+  subshell
+  subshell
+)
+GUARD_COUNT="${#GUARD_SLUGS[@]}"
+
+# A scheduling hint only, named rather than derived from a stored cost table:
+# a cost table goes stale the moment a guard's own runtime shifts, and a
+# stale entry here costs the pool a few seconds of head-of-line blocking,
+# never a wrong verdict. Measured heaviest to lightest on an idle host at
+# plan time: lint-oracle-blind-invocations (~21s), lint-errexit-status-read
+# (~19s), lint-git-path-quoting (~18s), lint-stale-cardinals (~17s),
+# lint-grep-ere-escapes (~13s), lint-collapsed-signal-trap (~13s). Every
+# other guard totals a few seconds combined and dispatches after these in
+# GUARD_SLUGS' own declared order.
+GUARD_HEAVY_HINT=(
+  lint-oracle-blind-invocations
+  lint-errexit-status-read
+  lint-git-path-quoting
+  lint-stale-cardinals
+  lint-grep-ere-escapes
+  lint-collapsed-signal-trap
+)
+
+# Test-only seams, both unset in every real invocation and both named after
+# the SHELL_LINT_BASH32 seam above, which establishes the same shape for the
+# bash-3.2 pass: an env var a bats fixture sets to drive a branch no ordinary
+# run reaches. SHELL_LINT_GUARD_OVERRIDE_<slug, hyphens as underscores> swaps
+# one guard's script for a stub, so a suite can fail a chosen guard without
+# editing the guard itself or the tree it scans. SHELL_LINT_GUARD_TMP swaps
+# the per-guard log directory for one the suite pre-seeds, which is how a
+# fixture drives the missing-log arm below: a path that is already a
+# directory refuses the `>` redirect a guard's log needs, so that guard's
+# logs are never created and replay treats it exactly as it would a worker
+# that crashed before writing one.
+guard_script_path() {
+  local slug="$1" override_var value
+  override_var="SHELL_LINT_GUARD_OVERRIDE_$(printf '%s' "$slug" | tr '-' '_')"
+  value="${!override_var:-}"
+  if [ -n "$value" ]; then
+    printf '%s\n' "$value"
+  else
+    printf '%s\n' "$REPO_ROOT/.gaia/scripts/$slug.sh"
+  fi
+}
+
+guard_index_of() {
+  local name="$1" i=0
+  while [ "$i" -lt "$GUARD_COUNT" ]; do
+    if [ "${GUARD_SLUGS[$i]}" = "$name" ]; then
+      printf '%s\n' "$i"
+      return 0
+    fi
+    i=$((i + 1))
+  done
+  return 1
+}
+
+GUARD_DISPATCH_ORDER=()
+GUARD_DISPATCHED=()
+gd_i=0
+while [ "$gd_i" -lt "$GUARD_COUNT" ]; do
+  GUARD_DISPATCHED[gd_i]=""
+  gd_i=$((gd_i + 1))
+done
+for guard_name in ${GUARD_HEAVY_HINT[@]+"${GUARD_HEAVY_HINT[@]}"}; do
+  guard_idx="$(guard_index_of "$guard_name")"
+  GUARD_DISPATCH_ORDER+=("$guard_idx")
+  GUARD_DISPATCHED[guard_idx]=1
+done
+gd_i=0
+while [ "$gd_i" -lt "$GUARD_COUNT" ]; do
+  if [ -z "${GUARD_DISPATCHED[$gd_i]}" ]; then
+    GUARD_DISPATCH_ORDER+=("$gd_i")
+  fi
+  gd_i=$((gd_i + 1))
+done
+
+GUARD_TMP="${SHELL_LINT_GUARD_TMP:-$LINT_TMP}"
+if [ "$GUARD_TMP" != "$LINT_TMP" ]; then
+  mkdir -p "$GUARD_TMP"
+fi
+
+# Forks one guard by table index and records its pid in the global LAST_PID.
+# Called directly, never through a command substitution: a `$(...)` around a
+# call that backgrounds a job runs the whole call in a throwaway subshell, so
+# the backgrounded child would be reparented away the instant that subshell
+# exits and `wait` on its pid would fail in the caller. `</dev/null` on the
+# fork: none of these guards read stdin, and a forked job inheriting the
+# parent's stdin is the same class the WTI runner's `</dev/null` exists for.
+LAST_PID=""
+dispatch_guard() {
+  local idx="$1" slug mode script out err
+  slug="${GUARD_SLUGS[$idx]}"
+  mode="${GUARD_MODES[$idx]}"
+  script="$(guard_script_path "$slug")"
+  out="$GUARD_TMP/guard.$idx.out"
+  err="$GUARD_TMP/guard.$idx.err"
+  if [ "$mode" = root ]; then
+    bash "$script" "$REPO_ROOT" </dev/null >"$out" 2>"$err" &
+  else
+    (cd "$REPO_ROOT" && bash "$script") </dev/null >"$out" 2>"$err" &
+  fi
+  LAST_PID="$!"
+}
+
+# A pool of $JOBS round-robin slots, reusing the same JOBS the shellcheck
+# passes above computed (FC-4 in this plan's README forbids a second bound at
+# this level). Slot N's previous occupant is always the job dispatched JOBS
+# turns earlier, so waiting on a slot before reusing it bounds concurrency at
+# JOBS without a separate FIFO queue to shift elements out of: bash 3.2 array
+# slicing at the front of a growing/shrinking array is exactly the kind of
+# edge a round-robin index sidesteps entirely.
+GUARD_RC=()
+SLOT_PID=()
+SLOT_IDX=()
+slot=0
+while [ "$slot" -lt "$JOBS" ]; do
+  SLOT_PID[slot]=""
+  SLOT_IDX[slot]=""
+  slot=$((slot + 1))
+done
+
+# `|| rc=$?` rather than `if ! wait ...`, same reason run_shellcheck_pass
+# above gives: inside an `if !` body `$?` is the negated status, not the
+# command's.
+collect_slot() {
+  local slot="$1" pid idx rc
+  pid="${SLOT_PID[$slot]}"
+  if [ -z "$pid" ]; then
+    return 0
+  fi
+  idx="${SLOT_IDX[$slot]}"
+  rc=0
+  wait "$pid" || rc=$?
+  GUARD_RC[idx]="$rc"
+  SLOT_PID[slot]=""
+  SLOT_IDX[slot]=""
+}
+
+slot=0
+for guard_idx in ${GUARD_DISPATCH_ORDER[@]+"${GUARD_DISPATCH_ORDER[@]}"}; do
+  collect_slot "$slot"
+  dispatch_guard "$guard_idx"
+  SLOT_PID[slot]="$LAST_PID"
+  SLOT_IDX[slot]="$guard_idx"
+  slot=$(( (slot + 1) % JOBS ))
+done
+slot=0
+while [ "$slot" -lt "$JOBS" ]; do
+  collect_slot "$slot"
+  slot=$((slot + 1))
+done
+
+# Replays one guard's two logs to their real streams and reports whether it
+# passed. A missing log means that guard ran no check -- the same failure
+# mode the shellcheck pass above guards against with an identical check --
+# and is reported and treated as a failure rather than skipped.
+replay_guard() {
+  local idx="$1" out err rc rc_ok=0 log_ok=1
+  out="$GUARD_TMP/guard.$idx.out"
+  err="$GUARD_TMP/guard.$idx.err"
+  if [ -f "$out" ]; then
+    cat "$out"
+  else
+    echo "ERROR: missing guard log $out" >&2
+    log_ok=0
+  fi
+  if [ -f "$err" ]; then
+    cat "$err" >&2
+  else
+    echo "ERROR: missing guard log $err" >&2
+    log_ok=0
+  fi
+  rc="${GUARD_RC[$idx]:-}"
+  if [ -n "$rc" ] && [ "$rc" -eq 0 ]; then
+    rc_ok=1
+  fi
+  if [ "$log_ok" -eq 1 ] && [ "$rc_ok" -eq 1 ]; then
+    return 0
+  fi
+  return 1
+}
+
+# Every guard below has already run by this point; what follows only
+# replays. The banner order is GUARD_SLUGS' declared order, unconditionally,
+# so it is the contract .gaia/scripts/tests/shell-lint.bats reads it as
+# regardless of the dispatch order above.
+
 # Fold in the hook array-guard: shellcheck cannot model the bash-3.2.57
 # empty-array abort -- a bare "${arr[@]}" over an EMPTY array aborts under
 # `set -u`, exiting a hook before it can emit its deny JSON. Running it here
@@ -472,7 +745,7 @@ fi
 # enforces the class locally, not only the Audit CI Tests job. Run from
 # the repo root so its cwd-relative .claude/hooks/*.sh scan resolves.
 echo "--> lint-hook-array-guard (bash-3.2 empty-array class under set -u)"
-if ! (cd "$REPO_ROOT" && bash "$REPO_ROOT/.gaia/scripts/lint-hook-array-guard.sh"); then
+if ! replay_guard 0; then
   status=1
 fi
 
@@ -487,7 +760,7 @@ fi
 # guard refuses outright on a non-empty `--show-prefix` rather than scanning the
 # subtree, so a run from anywhere else fails here instead of reporting clean.
 echo "--> lint-errexit-source-guard (unbracketed source under errexit)"
-if ! (cd "$REPO_ROOT" && bash "$REPO_ROOT/.gaia/scripts/lint-errexit-source-guard.sh"); then
+if ! replay_guard 1; then
   status=1
 fi
 
@@ -500,7 +773,7 @@ fi
 # the repo root so its own discovery resolves and the file:line it prints is
 # repo-relative.
 echo "--> lint-git-path-quoting (C-quoted paths from an unquoted diff or ls-files)"
-if ! (cd "$REPO_ROOT" && bash "$REPO_ROOT/.gaia/scripts/lint-git-path-quoting.sh"); then
+if ! replay_guard 2; then
   status=1
 fi
 
@@ -512,7 +785,7 @@ fi
 # root so its `git ls-files` resolves and the file:line it prints is
 # repo-relative.
 echo "--> lint-workflow-run-interpolation (\${{ }} substituted into run: script text)"
-if ! (cd "$REPO_ROOT" && bash "$REPO_ROOT/.gaia/scripts/lint-workflow-run-interpolation.sh"); then
+if ! replay_guard 3; then
   status=1
 fi
 
@@ -527,7 +800,7 @@ fi
 # `git ls-files` discovery resolves and the file:line it prints is
 # repo-relative.
 echo "--> lint-grep-ere-escapes (BSD-vs-GNU regex escapes in a grep -E pattern)"
-if ! (cd "$REPO_ROOT" && bash "$REPO_ROOT/.gaia/scripts/lint-grep-ere-escapes.sh"); then
+if ! replay_guard 4; then
   status=1
 fi
 
@@ -543,7 +816,7 @@ fi
 # class lived. Run from the repo root so its `git ls-files` discovery resolves
 # and the file:line it prints is repo-relative.
 echo "--> lint-errexit-status-read (\$? read after a command-substitution assignment under set -e)"
-if ! (cd "$REPO_ROOT" && bash "$REPO_ROOT/.gaia/scripts/lint-errexit-status-read.sh"); then
+if ! replay_guard 5; then
   status=1
 fi
 
@@ -556,7 +829,7 @@ fi
 # changing. Run from the repo root so its cwd-relative scan roots resolve and
 # the file:line it prints is repo-relative.
 echo "--> lint-oracle-blind-invocations (an invocation the capability oracle's anchors cannot see)"
-if ! (cd "$REPO_ROOT" && bash "$REPO_ROOT/.gaia/scripts/lint-oracle-blind-invocations.sh"); then
+if ! replay_guard 6; then
   status=1
 fi
 
@@ -575,7 +848,7 @@ fi
 # nothing. Run from the repo root so its `git ls-files` discovery resolves and
 # the file:line it prints is repo-relative.
 echo "--> lint-stale-cardinals (a definite cardinal naming a set nothing recounts)"
-if ! (cd "$REPO_ROOT" && bash "$REPO_ROOT/.gaia/scripts/lint-stale-cardinals.sh"); then
+if ! replay_guard 7; then
   status=1
 fi
 
@@ -597,7 +870,7 @@ fi
 # silently unarm this check for husky-only diffs.
 # Run from the repo root so its `git ls-files` discovery resolves.
 echo "--> lint-guard-rule-shell-coverage (tracked shell the guard/diagnostic rules do not reach)"
-if ! (cd "$REPO_ROOT" && bash "$REPO_ROOT/.gaia/scripts/lint-guard-rule-shell-coverage.sh"); then
+if ! replay_guard 8; then
   status=1
 fi
 
@@ -613,7 +886,7 @@ fi
 # replaced those pins. Run from the repo root so its `git ls-files` discovery
 # resolves and the file:line it prints is repo-relative.
 echo "--> lint-collapsed-signal-trap (one trap arm binding EXIT with INT or TERM)"
-if ! (cd "$REPO_ROOT" && bash "$REPO_ROOT/.gaia/scripts/lint-collapsed-signal-trap.sh"); then
+if ! replay_guard 9; then
   status=1
 fi
 
@@ -627,7 +900,7 @@ fi
 # Run from the repo root so its `git ls-files` discovery resolves and the
 # file:line it prints is repo-relative.
 echo "--> lint-sigpipe-readers (a short-circuiting reader inverting a pipeline under pipefail)"
-if ! (cd "$REPO_ROOT" && bash "$REPO_ROOT/.gaia/scripts/lint-sigpipe-readers.sh"); then
+if ! replay_guard 10; then
   status=1
 fi
 
@@ -648,7 +921,7 @@ fi
 # Hence no `cd` and no subshell either, unlike the siblings above, whose
 # tracked-file discovery genuinely needs the working directory.
 echo "--> lint-hook-wiki-inventory (a hook absent from the bundled-hooks inventory)"
-if ! bash "$REPO_ROOT/.gaia/scripts/lint-hook-wiki-inventory.sh" "$REPO_ROOT"; then
+if ! replay_guard 11; then
   status=1
 fi
 
@@ -663,12 +936,12 @@ fi
 # Both take the root explicitly rather than resolving one ambiently, so neither
 # needs a subshell or a `cd`.
 echo "--> lint-wiki-cached-version (a hand-kept version in wiki frontmatter)"
-if ! bash "$REPO_ROOT/.gaia/scripts/lint-wiki-cached-version.sh" "$REPO_ROOT"; then
+if ! replay_guard 12; then
   status=1
 fi
 
 echo "--> lint-hook-advisory-classification (a blocking hook filed under an Advisory heading)"
-if ! bash "$REPO_ROOT/.gaia/scripts/lint-hook-advisory-classification.sh" "$REPO_ROOT"; then
+if ! replay_guard 13; then
   status=1
 fi
 
@@ -685,7 +958,7 @@ fi
 # index, which it reads with `git -C "$root"` rather than from the working
 # directory, so the explicit root is what scopes it here too.
 echo "--> lint-scripts-wiki-inventory (a .gaia/scripts root file absent from the scripts index)"
-if ! bash "$REPO_ROOT/.gaia/scripts/lint-scripts-wiki-inventory.sh" "$REPO_ROOT"; then
+if ! replay_guard 14; then
   status=1
 fi
 
@@ -701,7 +974,7 @@ fi
 # `${BASH_SOURCE[0]}` and never consults the working directory, which is the
 # same property it exists to enforce, and its own suite pins that.
 echo "--> lint-hook-cwd-relative-loads (a hook locating framework code from the working directory)"
-if ! (cd "$REPO_ROOT" && bash "$REPO_ROOT/.gaia/scripts/lint-hook-cwd-relative-loads.sh"); then
+if ! replay_guard 15; then
   status=1
 fi
 
@@ -712,7 +985,7 @@ fi
 # non-blocking error. The refused call proceeds with no denial and no diagnostic,
 # across the whole fail-closed layer at once.
 echo "--> lint-hook-jq-availability (a blocking hook standing down on a missing jq)"
-if ! (cd "$REPO_ROOT" && bash "$REPO_ROOT/.gaia/scripts/lint-hook-jq-availability.sh"); then
+if ! replay_guard 16; then
   status=1
 fi
 

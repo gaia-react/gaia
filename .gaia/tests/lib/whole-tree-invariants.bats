@@ -224,6 +224,158 @@ stub_exits() {
   printf '%s\n' "$output" | grep -Fq -- 'FAIL  .gaia/scripts/check-audit-key-callers.sh'
 }
 
+@test "a member failing in the first dispatch slot reds the run and every other member still reports" {
+  fixture_tree
+  # Dispatch order and replay order are independent (README.md FC-2 in this
+  # plan): the runner forks the WTI_BATS member FIRST because it is the
+  # pool's long pole, ahead of every WTI_SCRIPTS member. That is a different
+  # slot from the REPLAY-order "first" the earlier test above already covers,
+  # so a regression that loses the pool's own first fork needs its own drive.
+  first_dispatched="$( bash "$RUNNER" --list | tail -1 )"
+  total="$( bash "$RUNNER" --list | grep -c . )"
+  stub_exits "$first_dispatched" 1
+
+  run bash -c "cd '$TMP' && bash '$RUNNER'"
+  [ "$status" -eq 1 ]
+  printf '%s\n' "$output" | grep -Fq -- "FAIL  $first_dispatched"
+  reported="$( printf '%s\n' "$output" | grep -cE '^(PASS|FAIL)  ' )"
+  [ "$reported" -eq "$total" ]
+}
+
+@test "a member failing in the last dispatch slot reds the run and every other member still reports" {
+  fixture_tree
+  # The last WTI_SCRIPTS entry, not WTI_BATS: WTI_BATS dispatches first (see
+  # the test above), so the last member the pool forks is the last line of
+  # the WTI_SCRIPTS block. `sed '$d'` drops --list's trailing WTI_BATS line
+  # portably (macOS `head` has no `-n -1`).
+  last_dispatched="$( bash "$RUNNER" --list | sed '$d' | tail -1 )"
+  total="$( bash "$RUNNER" --list | grep -c . )"
+  stub_exits "$last_dispatched" 1
+
+  run bash -c "cd '$TMP' && bash '$RUNNER'"
+  [ "$status" -eq 1 ]
+  printf '%s\n' "$output" | grep -Fq -- "FAIL  $last_dispatched"
+  reported="$( printf '%s\n' "$output" | grep -cE '^(PASS|FAIL)  ' )"
+  [ "$reported" -eq "$total" ]
+}
+
+@test "two members failing at once are both named" {
+  fixture_tree
+  # A bare `wait` regression collects only the last job's status and would
+  # green one of these two; two failures at once is what that leaves no room
+  # to hide behind a single-failure test.
+  first="$( bash "$RUNNER" --list | head -1 )"
+  last="$( bash "$RUNNER" --list | tail -1 )"
+  stub_exits "$first" 1
+  stub_exits "$last" 1
+
+  errfile="$TMP/stderr.txt"
+  outfile="$TMP/stdout.txt"
+  bash -c "cd '$TMP' && bash '$RUNNER'" > "$outfile" 2> "$errfile" || true
+
+  grep -Fq -- '2 member(s) failed:' "$errfile"
+  grep -Fq -- "$first" "$errfile"
+  grep -Fq -- "$last" "$errfile"
+}
+
+@test "stdout and stderr stay on separate streams per member" {
+  fixture_tree
+  # Captured through real redirection into two files, never through bats
+  # `run`, which merges both streams into $output and so cannot see a `2>&1`
+  # regression at all -- the same reason the existing failure-summary test
+  # above avoids `run` for its own stream-split assertion.
+  first="$( bash "$RUNNER" --list | head -1 )"
+  printf '#!/usr/bin/env bash\nprintf "STDOUT-SENTINEL\\n"\nprintf "STDERR-SENTINEL\\n" >&2\nexit 0\n' > "$TMP/$first"
+
+  outfile="$TMP/stdout.txt"
+  errfile="$TMP/stderr.txt"
+  bash -c "cd '$TMP' && bash '$RUNNER'" > "$outfile" 2> "$errfile" || true
+
+  grep -Fq -- 'STDOUT-SENTINEL' "$outfile"
+  grep -Fq -- 'STDOUT-SENTINEL' "$errfile" && return 1
+  grep -Fq -- 'STDERR-SENTINEL' "$errfile"
+  grep -Fq -- 'STDERR-SENTINEL' "$outfile" && return 1
+  true
+}
+
+@test "a missing per-member log reds the member rather than passing it" {
+  fixture_tree
+  # The member deletes its own stdout log via WTI_LOG_DIR, the directory the
+  # runner exports to every forked member for exactly this drive, even though
+  # the member itself exits 0. The slug derivation mirrors slug_for() in the
+  # runner (replace '/' with '_'); the test cannot source the runner to reuse
+  # it directly, because sourcing it invokes main() unconditionally.
+  first="$( bash "$RUNNER" --list | head -1 )"
+  first_slug="$( printf '%s' "$first" | tr '/' '_' )"
+  printf '#!/usr/bin/env bash\nrm -f "$WTI_LOG_DIR/%s.out"\nexit 0\n' "$first_slug" > "$TMP/$first"
+
+  run bash -c "cd '$TMP' && bash '$RUNNER'"
+  [ "$status" -eq 1 ]
+  printf '%s\n' "$output" | grep -Fq -- "FAIL  $first"
+  printf '%s\n' "$output" | grep -Fq -- 'missing log'
+}
+
+@test "a mismatched member count refuses to run rather than running stale" {
+  # Drives the staleness lever from a scratch copy per README.md FC-2 in this
+  # plan's task doc: never edit the live tree to prove a refusal.
+  copy="$BATS_TEST_TMPDIR/whole-tree-invariants.sh"
+  sed 's/^readonly WTI_SCRIPTS_COUNT_ASOF=.*/readonly WTI_SCRIPTS_COUNT_ASOF=999/' "$RUNNER" > "$copy"
+
+  run bash "$copy"
+  [ "$status" -eq 2 ]
+  printf '%s\n' "$output" | grep -Fq -- 're-measure the runtime paragraph'
+  # `|| true`: grep -c exits 1 on a zero count despite printing "0", and this
+  # assertion's whole point is a zero count, so the bare assignment would abort
+  # the test under bats' own set -e before the assertion below ever runs
+  # (.claude/rules/bats-assertions.md).
+  reported="$( printf '%s\n' "$output" | grep -cE '^(PASS|FAIL)  ' || true )"
+  [ "$reported" -eq 0 ]
+}
+
+@test "WTI_JOBS=1 still runs every member and still reds a failure" {
+  fixture_tree
+  # The degenerate bound someone reaches for while debugging a fork/wait bug
+  # has to be the same bounded-pool code as everyone else, not a silently
+  # different serial path.
+  first="$( bash "$RUNNER" --list | head -1 )"
+  total="$( bash "$RUNNER" --list | grep -c . )"
+  stub_exits "$first" 1
+
+  run bash -c "cd '$TMP' && WTI_JOBS=1 bash '$RUNNER'"
+  [ "$status" -eq 1 ]
+  printf '%s\n' "$output" | grep -Fq -- "FAIL  $first"
+  reported="$( printf '%s\n' "$output" | grep -cE '^(PASS|FAIL)  ' )"
+  [ "$reported" -eq "$total" ]
+}
+
+@test "the fixture tree runs measurably faster forked than under WTI_JOBS=1" {
+  # An instant stub finishes before fork/wait machinery could show a
+  # difference either way, so every member gets a fixed delay here to make
+  # overlap observable. This does not stand in for the real aggregate
+  # (README.md FC-2b: the orchestrator takes that figure once, on the real
+  # tree); it only proves the pool actually overlaps members rather than
+  # serializing them under a new name.
+  fixture_tree
+  path=''
+  while IFS= read -r path; do
+    [ -n "$path" ] || continue
+    case "$path" in
+      *.bats) printf '#!/usr/bin/env bats\n\n@test "stub" {\n  sleep 0.2\n}\n' > "$TMP/$path" ;;
+      *) printf '#!/usr/bin/env bash\nsleep 0.2\nexit 0\n' > "$TMP/$path" ;;
+    esac
+  done < <( bash "$RUNNER" --list )
+
+  serial_start=$(date +%s)
+  bash -c "cd '$TMP' && WTI_JOBS=1 bash '$RUNNER'" >/dev/null 2>&1
+  serial_secs=$(( $(date +%s) - serial_start ))
+
+  parallel_start=$(date +%s)
+  bash -c "cd '$TMP' && bash '$RUNNER'" >/dev/null 2>&1
+  parallel_secs=$(( $(date +%s) - parallel_start ))
+
+  [ "$parallel_secs" -lt "$serial_secs" ]
+}
+
 @test "a second argument is refused rather than discarded" {
   run bash -c "cd '$REPO_ROOT' && bash '$RUNNER' --list extra-arg"
   [ "$status" -eq 2 ]

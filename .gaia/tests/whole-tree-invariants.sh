@@ -42,15 +42,29 @@
 #
 # Runtime. Every figure below is one sample, indicative and host-dependent
 # rather than a contract: a loaded host moves them by several times the spread
-# between two honest samples, so re-measure rather than reconcile a
-# disagreement. Sampled on an otherwise idle Apple M2 Pro (12 cores, macOS 27)
-# in 2026-09: the WTI_SCRIPTS members total ~144s, of which shell-lint.sh is
-# ~112s and check-script-capabilities.sh ~10s (it walks the invocation closure
-# of every allowlisted script), and the shard suite ~232s; the whole set
-# measures ~375s end to end, a little over six minutes. Two aggregate samples
-# agreed within three seconds of each other and the members sum to the
-# aggregate, so the parts and the whole here are one measurement rather than
-# two that have drifted apart.
+# between two honest samples, so re-measure the WHOLE paragraph rather than
+# reconcile a disagreement or patch one number. Sampled on an otherwise idle
+# Apple M2 Pro (12 cores, macOS 27) in 2026-09, tree green (every member
+# passing): the serial sum across WTI_SCRIPTS and WTI_BATS is ~445s, dominated
+# by two of them -- the WTI_BATS member at ~242s and shell-lint.sh at ~122s as
+# a member of this runner -- while the other 21 WTI_SCRIPTS members total
+# roughly 31s between them, the heaviest being check-script-capabilities.sh at
+# ~14s (it walks the invocation closure of every allowlisted script) and
+# check-registry-source-literals.sh at ~6s.
+#
+# Forking WTI_SCRIPTS and WTI_BATS under a WTI_JOBS-bounded pool collapses
+# that serial sum toward its slowest member rather than the total, because
+# the two long members above now run alongside the rest instead of after
+# them. The post-fork parallel aggregate, sampled the same way immediately
+# after this runner's dispatch wave landed, on the same idle M2 Pro: ~333s,
+# against the ~445s serial sum above. It does not reach the ~242s the
+# WTI_BATS member alone costs, and that gap is the point: a bounded pool
+# collapses toward its slowest member only when the rest fit beside it, and
+# here they do not, because they contend for the same cores. Total CPU is
+# unchanged across the two samples (~7m20 user, ~5m35 sys either way), so
+# what the fork buys is overlap, not less work, and 12 cores do not absorb
+# the peak -- shell-lint.sh alone spends ~170s of CPU inside its own ~57s,
+# and it runs alongside the bats member rather than after it.
 #
 # A second host type is on record for one member only. shell-lint.sh is its
 # own CI gate, and that job's shellcheck step measures roughly 85-160s on
@@ -68,13 +82,15 @@
 #
 # There is one tier rather than a fast default plus a named slower tier. A
 # split is worth its second name only once the honest set is slow enough that
-# people skip it, and an aggregate slow enough to skip is worse than none; six
-# minutes against the price of an audit round is still not that. The margin is
-# narrower than it reads, though, and two things are worth weighing the next
-# time these figures are taken rather than re-argued here: nearly the whole
-# aggregate is two members, and the cost exclusion recorded in WTI_EXCLUDED
-# below was granted at a standalone figure smaller than what shell-lint.sh now
-# costs inline.
+# people skip it, and an aggregate slow enough to skip is worse than none; the
+# parallel aggregate stated in the Runtime paragraph above, against the price
+# of an audit round, is still not that. The margin is narrower than it reads,
+# though, and two things are worth weighing the next time these figures are
+# taken rather than re-argued here: nearly the whole aggregate is still two
+# members even under the fork, because the pool overlaps them with the rest
+# rather than shortening either one, and the cost exclusion recorded in
+# WTI_EXCLUDED below was granted at a standalone figure smaller than what
+# shell-lint.sh now costs inline.
 #
 # Re-measure the WHOLE paragraph, not the figure being edited. Only the member
 # COUNT below is machine-checked, so every number here decays independently:
@@ -103,6 +119,18 @@
 # `bats` on PATH, both count as failures rather than passing quietly, because a
 # member that silently drops out reproduces the defect this script exists to
 # end.
+#
+# Concurrency. Every member below forks into a bounded pool sized by WTI_JOBS
+# (see the resolver beside it) instead of running as two serial loops. Fork
+# order and replay order are independent: the pool dispatches the WTI_BATS
+# member first, because it is this set's long pole, then WTI_SCRIPTS in
+# declared order, but replay always walks WTI_SCRIPTS then WTI_BATS in that
+# same declared order regardless of which member actually finished first,
+# because the pinned PASS/FAIL sequence below is what
+# .gaia/tests/lib/whole-tree-invariants.bats asserts against. Each member's
+# stdout and stderr land in two separate per-member logs rather than one
+# merged log, so a caller reading only this script's stdout keeps seeing
+# exactly what it saw before this runner forked anything.
 #
 # Members are invoked from the current directory, so run it from the repository
 # root. That is also what lets the sibling bats suite exercise the aggregation
@@ -217,24 +245,173 @@ record_result() {
   fi
 }
 
-# run_member <path> <interpreter...>
-run_member() {
-  local path="$1"
-  shift
-  printf '\n===== %s\n' "$path"
+# WTI_JOBS: the outer fork's worker-pool bound. An explicit override is
+# honored as-is, INCLUDING a degenerate WTI_JOBS=1 -- that is the value
+# someone reaches for while debugging a fork/wait bug, and it has to run the
+# same bounded-pool code as everyone else rather than a silently different
+# serial path. Absent a valid override, detect_jobs()-shaped:
+# getconf _NPROCESSORS_ONLN, clamped to 2..8 and floored at 2 on a non-numeric
+# or absent answer, the same fallback reasoning shell-lint.sh's own
+# detect_jobs() uses. The cap is 8 rather than the raw core count because this
+# pool nests inside others: shell-lint.sh forks its own shellcheck and guard
+# workers when it is the member running, and a later runtime phase forks
+# bats' own --jobs inside the WTI_BATS member; the peak process count is
+# computed under this cap, not over the whole member set.
+WTI_JOBS_CAP=8
+WTI_JOBS_FLOOR=2
+detect_wti_jobs() {
+  local n
+  if [ -n "${WTI_JOBS-}" ]; then
+    n="$WTI_JOBS"
+    case "$n" in
+      '' | *[!0-9]*) ;;
+      *)
+        if [ "$n" -ge 1 ]; then
+          printf '%s\n' "$n"
+          return
+        fi
+        ;;
+    esac
+  fi
+  n="$(getconf _NPROCESSORS_ONLN 2>/dev/null || true)"
+  case "$n" in
+    '' | *[!0-9]*) n="$WTI_JOBS_FLOOR" ;;
+  esac
+  if [ "$n" -lt "$WTI_JOBS_FLOOR" ]; then
+    n="$WTI_JOBS_FLOOR"
+  fi
+  if [ "$n" -gt "$WTI_JOBS_CAP" ]; then
+    n="$WTI_JOBS_CAP"
+  fi
+  printf '%s\n' "$n"
+}
+
+# slug_for <path>: a filesystem-safe log-file stem. Every WTI_SCRIPTS and
+# WTI_BATS path is repo-relative and drawn from [A-Za-z0-9._/-], so collapsing
+# '/' to '_' cannot collide between two distinct members.
+slug_for() {
+  printf '%s\n' "$1" | tr '/' '_'
+}
+
+# wti_collect_oldest: wait on the pool's oldest live pid, record its status,
+# and pop it off the queue. bash 3.2 has no `wait -n`, so there is no way to
+# ask "which of these pids finished" -- only "wait for this one specific
+# pid" -- and freeing a pool slot therefore means waiting on the OLDEST
+# outstanding pid, never a newer one, or a fast member could sit collected
+# while the pool blocks on a slow one dispatched after it for no reason.
+# `|| rc=$?`, never `if ! wait ...`: inside an `if !` body `$?` is the negated
+# status, not the command's.
+wti_collect_oldest() {
+  local rc
+  rc=0
+  wait "${pool_pids[0]}" || rc=$?
+  done_paths+=("${pool_paths[0]}")
+  done_status+=("$rc")
+  pool_paths=("${pool_paths[@]:1}")
+  pool_pids=("${pool_pids[@]:1}")
+}
+
+# wti_dispatch <path> <interp>: fork one member into the pool, or, for a
+# member that cannot run at all (a missing path, or the bats interpreter with
+# no bats on PATH), record its failure straight into
+# done_paths/done_status with no process forked and no pool slot spent.
+# Either way the member gets a synthetic log pair, so replay_member's log
+# reading never has to special-case "this member was never actually run".
+#
+# `</dev/null` on the fork replaces the header's older "shared heredoc"
+# hazard note: there is no longer a shared heredoc for an unredirected member
+# to drain, since each member is now its own fork, but a member that reads
+# its own stdin unredirected would otherwise inherit whatever this script's
+# own stdin happens to be, so the redirect stays for the same reason.
+#
+# Stdout and stderr land in two SEPARATE logs, never merged with `2>&1`. A
+# caller reading only this script's stdout does not see a member's
+# diagnostics today, and merging would silently change that for 23 members at
+# once; the cost is that a single member's own stdout and stderr no longer
+# interleave in the replayed output, which is worth stating because
+# run_shellcheck_pass (.gaia/tests/shell-lint.sh) and run-bats-parallel.sh,
+# the two forked patterns this one copies the shape of, both merge instead.
+wti_dispatch() {
+  local path="$1" interp="$2" slug
+  slug="$(slug_for "$path")"
+
+  if [ "$interp" = bats ] && [ "$have_bats" -eq 0 ]; then
+    printf 'bats not found on PATH; run bash .gaia/tests/install-bats.sh\n' >"$wti_tmp/$slug.err"
+    : >"$wti_tmp/$slug.out"
+    done_paths+=("$path")
+    done_status+=(1)
+    return
+  fi
+
   if [ ! -f "$path" ]; then
-    printf 'missing: %s (expected relative to the repository root)\n' "$path" >&2
+    printf 'missing: %s (expected relative to the repository root)\n' "$path" >"$wti_tmp/$slug.err"
+    : >"$wti_tmp/$slug.out"
+    done_paths+=("$path")
+    done_status+=(1)
+    return
+  fi
+
+  "$interp" "$path" >"$wti_tmp/$slug.out" 2>"$wti_tmp/$slug.err" </dev/null &
+  pool_paths+=("$path")
+  pool_pids+=("$!")
+  if [ "${#pool_pids[@]}" -ge "$WTI_JOBS" ]; then
+    wti_collect_oldest
+  fi
+}
+
+# wti_status_for <path>: look up a collected member's exit status by path.
+# Linear scan rather than an associative array: bash 3.2 has none, and 23
+# members make the O(n^2) worst case trivial. Unreachable in practice --
+# main() drains the pool fully before any replay_member call -- and the
+# fallback is a hard failure rather than a silent pass, so a bug here cannot
+# read as a clean run.
+wti_status_for() {
+  local path="$1" i
+  i=0
+  while [ "$i" -lt "${#done_paths[@]}" ]; do
+    if [ "${done_paths[$i]}" = "$path" ]; then
+      printf '%s\n' "${done_status[$i]}"
+      return
+    fi
+    i=$((i + 1))
+  done
+  printf '%s\n' 1
+}
+
+# replay_member <path>: print the group header and this member's two logs, in
+# that order, then record PASS/FAIL. A log this member should have produced
+# but did not -- the log directory was unwritable, or something removed it
+# after the member ran -- means that member ran no check as far as this
+# replay can tell, so it is recorded FAIL regardless of whatever status
+# wti_status_for would otherwise report: the same "missing log means failure,
+# never a skip" rule run_shellcheck_pass and run-bats-parallel.sh apply to
+# their own worker logs.
+replay_member() {
+  local path="$1" slug status out_ok err_ok
+  slug="$(slug_for "$path")"
+  printf '\n===== %s\n' "$path"
+
+  out_ok=1
+  err_ok=1
+  if [ -f "$wti_tmp/$slug.out" ]; then
+    cat "$wti_tmp/$slug.out"
+  else
+    out_ok=0
+  fi
+  if [ -f "$wti_tmp/$slug.err" ]; then
+    cat "$wti_tmp/$slug.err" >&2
+  else
+    err_ok=0
+  fi
+
+  if [ "$out_ok" -eq 0 ] || [ "$err_ok" -eq 0 ]; then
+    printf 'missing log for %s; this member ran no check\n' "$path" >&2
     record_result "$path" 1
     return
   fi
-  # `</dev/null` is load-bearing rather than tidy. Both member loops below read
-  # their list from a heredoc, so an unredirected member inherits that heredoc
-  # as its stdin: one `read`, or an `xargs`/`jq` with no input argument, and the
-  # member eats the remaining member paths, the loop ends early, and the runner
-  # reports every-member-passed having run one. That is the silent drop-out the
-  # header promises cannot happen, and it leaves no FAIL line and no skip notice.
-  "$@" "$path" </dev/null
-  record_result "$path" "$?"
+
+  status="$(wti_status_for "$path")"
+  record_result "$path" "$status"
 }
 
 main() {
@@ -270,7 +447,7 @@ main() {
 
   # The staleness lever (see the comment above WTI_SCRIPTS_COUNT_ASOF): a
   # member added or removed without re-measuring the runtime paragraph above
-  # stops the run here instead of drifting unnoticed.
+  # stops the run here instead of drifting unnoticed. Runs before any fork.
   local live_count
   live_count="$( printf '%s\n' "$WTI_SCRIPTS" | grep -c . )"
   if [ "$live_count" -ne "$WTI_SCRIPTS_COUNT_ASOF" ]; then
@@ -279,25 +456,74 @@ main() {
     return 2
   fi
 
-  local path
+  local wti_tmp have_bats path
+  local pool_paths pool_pids done_paths done_status
+  pool_paths=()
+  pool_pids=()
+  done_paths=()
+  done_status=()
+
+  # NOT `local`: detect_wti_jobs() reads an explicit override through
+  # "${WTI_JOBS-}" at the moment it runs, which is before this assignment
+  # takes effect (the command substitution on the right runs first). A `local
+  # WTI_JOBS` declared here, even unset, would shadow that read and make a
+  # caller's `WTI_JOBS=1 bash whole-tree-invariants.sh` invisible to it.
+  WTI_JOBS="$(detect_wti_jobs)"
+
+  wti_tmp="$(mktemp -d "${RUNNER_TEMP:-/tmp}/whole-tree-invariants.XXXXXX")"
+  trap 'rm -rf "$wti_tmp"' EXIT
+
+  # Exported, not merely assigned: a forked member is a separate process, and
+  # only the environment crosses a fork/exec, not this shell's own variables.
+  # No real member reads this. It exists so a fixture member can reach into
+  # its own log directory and delete its own log, the adversarial drive
+  # .gaia/tests/lib/whole-tree-invariants.bats uses to prove the missing-log
+  # path actually reds rather than merely being read as passing.
+  export WTI_LOG_DIR="$wti_tmp"
+
+  have_bats=1
+  command -v bats >/dev/null 2>&1 || have_bats=0
+
+  # Dispatch order and replay order are independent (see "Concurrency" in the
+  # header above). Dispatch the WTI_BATS member FIRST: it is this set's long
+  # pole, and a bounded pool that forked it last would start it several
+  # members late for nothing. WTI_SCRIPTS follows in declared order.
   while IFS= read -r path; do
     [ -n "$path" ] || continue
-    run_member "$path" bash
+    wti_dispatch "$path" bats
+  done <<EOF
+$WTI_BATS
+EOF
+
+  while IFS= read -r path; do
+    [ -n "$path" ] || continue
+    wti_dispatch "$path" bash
   done <<EOF
 $WTI_SCRIPTS
 EOF
 
-  local have_bats=1
-  command -v bats >/dev/null 2>&1 || have_bats=0
+  # Drain whatever the pool still holds once every member has been
+  # dispatched. wti_dispatch already drains down to WTI_JOBS-1 live members
+  # as it fills the pool; this collects the tail that never triggered another
+  # dequeue.
+  while [ "${#pool_pids[@]}" -gt 0 ]; do
+    wti_collect_oldest
+  done
+
+  # Replay in declared order -- WTI_SCRIPTS then WTI_BATS -- never completion
+  # order. That sequence is the pinned output contract
+  # .gaia/tests/lib/whole-tree-invariants.bats asserts against, independent of
+  # which member actually finished first above.
   while IFS= read -r path; do
     [ -n "$path" ] || continue
-    if [ "$have_bats" -eq 0 ]; then
-      printf '\n===== %s\n' "$path"
-      printf 'bats not found on PATH; run bash .gaia/tests/install-bats.sh\n' >&2
-      record_result "$path" 1
-      continue
-    fi
-    run_member "$path" bats
+    replay_member "$path"
+  done <<EOF
+$WTI_SCRIPTS
+EOF
+
+  while IFS= read -r path; do
+    [ -n "$path" ] || continue
+    replay_member "$path"
   done <<EOF
 $WTI_BATS
 EOF
