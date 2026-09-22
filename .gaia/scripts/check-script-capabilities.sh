@@ -105,6 +105,17 @@ else
   exit 2
 fi
 
+# The oracle's logical-line splitter runs in awk. Refuse here, before any scan,
+# rather than letting an unresolved interpreter return a file with no records:
+# the walk is read over a process substitution whose status no shell reports, so
+# that failure would arrive as reach under-reported, which cannot surface as a
+# finding. The library records the reason; this carries it through unchanged so
+# the operator is not pointed at a repair that does not fit the cause.
+if [ "${_GAIA_CAPCHECK_AWK_STATUS:-0}" -ne 0 ]; then
+  printf 'check-script-capabilities: %s\n' "$_GAIA_CAPCHECK_AWK_REASON" >&2
+  exit "$_GAIA_CAPCHECK_AWK_STATUS"
+fi
+
 # ---------------------------------------------------------------------------
 # Manifest readers
 # ---------------------------------------------------------------------------

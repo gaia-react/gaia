@@ -60,6 +60,69 @@ if [ "${BASH_VERSINFO[0]}" -lt 5 ]; then
   exit 2
 fi
 
+# The logical-line splitter runs in awk, and the interpreter it runs under comes
+# from the shared resolver rather than from a bare `awk`, so this library cannot
+# run one implementation locally and another in CI.
+#
+# The resolver is sourced DIRECTLY, rather than through the shared guard library
+# that every other consumer reaches it through, and the reason is this file's own
+# subject. That library is the anchor lint-awk-interpreter-pin.sh derives its
+# governed closure from, and that gate classifies a file by walking it with a
+# shell lexer carrying quote, command-substitution and heredoc state across
+# lines. This file IS a shell lexer: its constants and case patterns are built
+# out of the `$(`, backtick and quote shapes such a walk reads as structure, and
+# the gate cannot balance them. Joining that closure therefore earns a refusal to
+# classify rather than coverage, which is a gate that certifies nothing and reds
+# on every run. A bare interpreter name here is left to review instead.
+#
+# Nothing about this is a second resolver: it is the same one that library loads,
+# reached one hop shorter.
+#
+# What the resolver reports is RECORDED rather than acted on here; the paragraph
+# below the source says who acts on it and why it is not an exit.
+_gaia_capcheck_awk_lib_dir="${BASH_SOURCE[0]%/*}"
+if [ "$_gaia_capcheck_awk_lib_dir" = "${BASH_SOURCE[0]}" ]; then _gaia_capcheck_awk_lib_dir="."; fi
+# errexit is SAVED and RESTORED here rather than switched off and back on. The
+# `set +e; ...; set -e` spelling the guards in this closure use is correct in a
+# guard, which already runs under `set -e`; in a library it is not, because it
+# hands errexit to every consumer that had it off. The oracle has callers that
+# deliberately run without it and tolerate a non-zero command mid-walk, and for
+# those the bare spelling turns the first such command into an abort with a
+# partial answer -- reach under-reported, silently.
+_gaia_capcheck_awk_saved_e=0
+case "$-" in *e*) _gaia_capcheck_awk_saved_e=1 ;; esac
+set +e
+# shellcheck source=.gaia/scripts/awk-interp-lib.sh
+[ -f "$_gaia_capcheck_awk_lib_dir/awk-interp-lib.sh" ] && . "$_gaia_capcheck_awk_lib_dir/awk-interp-lib.sh" 2>/dev/null
+if [ "$_gaia_capcheck_awk_saved_e" -eq 1 ]; then set -e; fi
+# Recorded rather than taken here, unlike the bash-version refusal above, and
+# the difference is who is in a position to act on it. An executable consumer
+# must refuse before it scans anything, and does, by reading this status
+# immediately after sourcing. But the suites that introspect this library copy
+# it to a scratch directory and source the copy to read its constants back, and
+# no sibling library exists beside a copy; exiting there would take down a
+# process that never intended to scan. So the refusal is recorded and taken at
+# both places that can act on it: a consumer at startup, and the splitter itself
+# if a scan is reached anyway. Both carry the reason, so neither names a repair
+# that does not fit the cause.
+_GAIA_CAPCHECK_AWK_STATUS=0
+_GAIA_CAPCHECK_AWK_REASON=""
+if [ -z "${GAIA_AWK_INTERP_LIB_SOURCED:-}" ]; then
+  _GAIA_CAPCHECK_AWK_STATUS=2
+  _GAIA_CAPCHECK_AWK_REASON="awk-interp-lib.sh is missing beside capability-oracle-lib.sh, so the awk interpreter the logical-line splitter runs under is unresolved"
+else
+  case "${GAIA_AWK_STATUS:-}" in
+    5)
+      _GAIA_CAPCHECK_AWK_STATUS=5
+      _GAIA_CAPCHECK_AWK_REASON="no awk interpreter found; install mawk (macOS: brew install mawk; Debian/Ubuntu: apt-get install mawk) or ensure /usr/bin/awk is present"
+      ;;
+    6)
+      _GAIA_CAPCHECK_AWK_STATUS=6
+      _GAIA_CAPCHECK_AWK_REASON="GAIA_AWK resolved to an unsanctioned interpreter (${GAIA_AWK_IDENT:-unknown}); the sanctioned set is mawk and BWK one-true-awk"
+      ;;
+  esac
+fi
+
 # Hot paths return through this rather than through `$(...)`: the oracle runs
 # every detector over every non-comment line of every file in every obligated
 # script's closure, and a subshell per call turns that into minutes.
@@ -101,24 +164,280 @@ _GAIA_CAPCHECK_QSUBS=""
 # leaves a `)` this scan cannot attribute.
 _GAIA_CAPCHECK_QSHADOW=0
 
-# The characters that can change the stack, one bracket expression per top
-# frame, used to skip the runs between them. Without the skip the walk below
-# steps one character at a time over every line carrying a quote, and bash
-# extracts a substring in time proportional to the whole line, so such a line
-# costs its length squared. Every shell file in the tree is scanned once per
-# obligated script's closure, which made that the oracle's dominant cost.
+# The splitter itself, as awk source. A character-at-a-time scan is awk's native
+# operation and a bash-expansion loop's worst one, and the whole of that scan is
+# here rather than split across the two languages: `qcarry` carries the quoting
+# state, the record rule joins continuations and drops comments and here-doc
+# bodies, and both run inside one interpreter per file.
 #
-# Each set is exactly the characters its own arm of the walk reads, so a
-# character added to an arm must be added here too or the walk jumps past it.
-# The `S` set is one character because a single-quoted span ends only at the
-# next `'`; nothing else, backslash included, means anything inside one.
-_GAIA_CAPCHECK_QSKIP_S="[']"
-# The `E` set is the `S` set plus a backslash: `$'...'` is the one single-quoted
-# form where a backslash escapes, which is why it needs a frame of its own
-# rather than sharing `S`.
-_GAIA_CAPCHECK_QSKIP_E="['\\\\]"
-_GAIA_CAPCHECK_QSKIP_D='[\\"$`]'
-_GAIA_CAPCHECK_QSKIP_N='['"'"'"$()`\\#]'
+# Two properties fall out of writing it here rather than in bash, and both
+# retired a test that existed only to hold the bash form together. There are no
+# skip sets, because awk reads every character and a skipped run cannot drift
+# out of step with the arm it was shortcutting. And the carried-body predicate
+# is written ONCE, read by `qcarry` as `carry` and by the record rule as
+# `inbody`, so the two cannot disagree.
+#
+# Quoting: the program is single-quoted so every `$` reaches awk as program
+# text, and a literal single quote is spelled `\047` so the string never has to
+# be broken to hold one.
+#
+# Two modes. With no `-v mode`, awk reads the named file and emits the records
+# `_gaia_capcheck_logical_lines` returns. With `-v mode=line` it walks ONE line,
+# taken with its entry state from the environment, and prints the four values
+# `_gaia_capcheck_quote_carry` hands back; that mode exists for the callers that
+# drive the walk a line at a time and never runs in the per-file hot path.
+_GAIA_CAPCHECK_AWK='
+function chop(s) { return substr(s, 1, length(s) - 1) }
+
+function ltrim(s) { sub(/^[ \t\r\v\f]+/, "", s); return s }
+
+# The here-document delimiter a logical line opens, or empty. Bodies are
+# skipped by the scan: a usage block that prints `gh api ...` or a path is
+# documentation, not reach.
+function hdelim(t,   d, p) {
+  gsub(/<<</, " ", t)
+  p = index(t, "<<")
+  if (p == 0) return ""
+  d = substr(t, p + 2)
+  if (substr(d, 1, 1) == "-") d = substr(d, 2)
+  sub(/^[ \t\r\v\f]+/, "", d)
+  sub(/[ \t\r\v\f;)|&].*$/, "", d)
+  gsub("\047", "", d)
+  gsub("\"", "", d)
+  return d
+}
+
+# The cross-line quoting walk. Reads QSTATE and QSHADOW, writes QSTATE, QSHADOW,
+# QSUBS (the substitutions kept out of a carried body) and RET (the code half).
+function qcarry(t,   st, n, i, c, top, top2, cut, carry, entry_depth, depth_before, pos, sub_start, sub_depth, subs, two, prev) {
+  st = QSTATE
+  n = length(t)
+  i = 0; cut = -1; carry = 0
+  entry_depth = length(st)
+  sub_start = -1; sub_depth = 0; subs = ""
+  QSUBS = ""
+  if (QSHADOW == 0 && length(st) == 1 && (st == "D" || st == "S" || st == "A" || st == "E")) carry = 1
+  if (st == "") {
+    # Nothing open and nothing that can open a frame: the state is unchanged and
+    # the whole line is code. This is the overwhelming majority of lines. The
+    # test is on an EMPTY stack rather than on `carry`, because a line entered
+    # under `P` closes it with a `)` that carries no quoting character at all.
+    if (index(t, "\"") == 0 && index(t, "\047") == 0 && index(t, "`") == 0 \
+        && index(t, "\\") == 0 && index(t, "$(") == 0 && index(t, "=(") == 0) {
+      RET = t
+      return
+    }
+  }
+  while (i < n) {
+    top = (length(st) > 0) ? substr(st, length(st), 1) : ""
+    c = substr(t, i + 1, 1)
+    depth_before = length(st)
+    pos = i
+    if (top == "S") {
+      if (c == "\047") st = chop(st)
+    } else if (top == "E") {
+      # `$\047...\047`, where a backslash escapes the character after it.
+      # Reading this as an ordinary `S` span closes it at the escaped quote and
+      # reopens it at the real terminator, leaving a frame open that swallows
+      # the rest of the file.
+      if (c == "\\") i = i + 1
+      else if (c == "\047") st = chop(st)
+    } else if (top == "D") {
+      if (c == "\\") i = i + 1
+      else if (c == "\"") st = chop(st)
+      else if (c == "$") {
+        two = substr(t, i + 2, 2)
+        if (two == "((") { st = st "M"; i = i + 2 }
+        else if (substr(two, 1, 1) == "(") { st = st "P"; i = i + 1 }
+      }
+      else if (c == "`") st = st "B"
+    } else if (top == "M") {
+      # An arithmetic expansion. It needs a frame of its own because its opener
+      # spends TWO parens and its closer spends two more: read as the `$(` of a
+      # substitution, the `))` pops twice, and every P or A frame carried across
+      # a line boundary is one paren short from there on. That desync is silent
+      # in the worst way -- the stack empties early, the real `)"` closing the
+      # substitution leaves its `"` to open a string frame instead of closing
+      # one, and the rest of the file is suppressed as carried body.
+      #
+      # Nothing inside is a quoting context: arithmetic has no string body, so
+      # only the parens and a nested substitution are read.
+      if (c == "(") st = st "G"
+      else if (c == ")") { if (substr(t, i + 2, 1) == ")") { st = chop(st); i = i + 1 } }
+      else if (c == "$") {
+        two = substr(t, i + 2, 2)
+        if (two == "((") { st = st "M"; i = i + 2 }
+        else if (substr(two, 1, 1) == "(") { st = st "P"; i = i + 1 }
+      }
+    } else if (top == "G") {
+      # A parenthesised group inside arithmetic, `$(( (a + b) * c ))`. It exists
+      # so the M arm above can require `))` for its own close without a groups
+      # single `)` being read as half of one: `$(( (a) ))` ends in `) ))` and
+      # `$(( (a)))` ends in `)))`, and only a frame that counts the group reads
+      # both the same way.
+      if (c == "(") st = st "G"
+      else if (c == ")") st = chop(st)
+      else if (c == "$") {
+        two = substr(t, i + 2, 2)
+        if (two == "((") { st = st "M"; i = i + 2 }
+        else if (substr(two, 1, 1) == "(") { st = st "P"; i = i + 1 }
+      }
+    } else {
+      if (c == "\\") i = i + 1
+      else if (c == "\047") st = st "S"
+      else if (c == "\"") st = st "D"
+      else if (c == "$") {
+        two = substr(t, i + 2, 2)
+        if (two == "((") { st = st "M"; i = i + 2 }
+        else if (substr(two, 1, 1) == "(") { st = st "P"; i = i + 1 }
+        else if (substr(two, 1, 1) == "\047") { st = st "E"; i = i + 1 }
+      }
+      else if (c == "(") { if (i > 0 && substr(t, i, 1) == "=") st = st "A" }
+      else if (c == ")") {
+        if (top == "P" || top == "A") {
+          if (top == "P" && length(st) <= entry_depth) QSHADOW = 1
+          st = chop(st)
+        }
+      }
+      else if (c == "`") {
+        if (top == "B") {
+          if (length(st) <= entry_depth) QSHADOW = 1
+          st = chop(st)
+        } else st = st "B"
+      }
+      else if (c == "#") {
+        # A `#` opens a comment where it is WORD-INITIAL, which is at the start
+        # of the line or after any character that ends a word, not only after
+        # whitespace. `true;# note` is a comment to the shell, and reading it as
+        # code lets an apostrophe inside it push a frame that never closes,
+        # dropping every line after it. The set is the verb-arming walks word
+        # separators plus `)`, which ends a word when it closes a subshell or a
+        # `case` arm. Do not narrow it: that puts the apostrophe in such a
+        # comment back on the stack and drops every line below it.
+        if (i == 0) break
+        prev = substr(t, i, 1)
+        if (index(" \t\r\v\f;&|()", prev) > 0) break
+      }
+    }
+    # A `$( )` or a backtick opening anywhere inside the carried body starts a
+    # span worth keeping, and the close that returns the stack to the depth it
+    # opened at ends it. Only P and B open one, because only their bodies are
+    # code; the depth is remembered rather than assumed to be one deeper,
+    # because an array element wraps its substitution in a string frame and a
+    # substitution nested inside a string still runs. Only the OUTERMOST such
+    # span is tracked: anything deeper is already inside the text being kept.
+    #
+    # `cut` bounds it on the other side. Once the carried body has closed, the
+    # rest of the line is ordinary code that `RET` already returns whole, so a
+    # substitution there needs no keeping and recording one would emit it twice.
+    # `cut` is set at the loops foot, below, so on the iteration that closes the
+    # body it is still -1 here and the span that body held is kept.
+    if (carry > 0 && cut < 0) {
+      if (sub_start < 0 && length(st) == depth_before + 1) {
+        top2 = substr(st, length(st), 1)
+        if (top2 == "P" || top2 == "B") { sub_start = pos; sub_depth = depth_before }
+      } else if (sub_start >= 0 && length(st) == sub_depth && depth_before == sub_depth + 1) {
+        subs = (subs == "" ? "" : subs " ") substr(t, sub_start + 1, i - sub_start + 1)
+        sub_start = -1
+      }
+    }
+    i = i + 1
+    if (st == "") QSHADOW = 0
+    if (cut < 0 && carry > 0 && length(st) < carry) cut = i
+  }
+  QSTATE = st
+  # A span still open at the lines end is the first line of a multi-line
+  # substitution nested in the carried body. Its remainder is code the next
+  # lines carry on as code, so keep what this line held of it too.
+  if (carry > 0 && sub_start >= 0) subs = (subs == "" ? "" : subs " ") substr(t, sub_start + 1)
+  QSUBS = subs
+  if (carry == 0) RET = t
+  else if (cut < 0) RET = ""
+  else RET = substr(t, cut + 1)
+}
+
+BEGIN {
+  QSTATE = ""; QSHADOW = 0
+  lineno = 0; start = 0; acc = ""; cur_sc = "-"; pending_sc = "-"; cont = 0; hd = ""
+  if (mode == "line") {
+    linemode = 1
+    QSTATE = ENVIRON["GAIA_QC_ST"]
+    QSHADOW = ENVIRON["GAIA_QC_SHADOW"] + 0
+    qcarry(ENVIRON["GAIA_QC_TEXT"])
+    # Tagged, one value per line, so a trailing empty value survives the command
+    # substitution that reads this back.
+    printf "S\t%s\nH\t%s\nU\t%s\nC\t%s\n", QSTATE, QSHADOW, QSUBS, RET
+    exit 0
+  }
+}
+
+{
+  line = $0
+  lineno++
+  if (hd != "") {
+    trimmed = ltrim(line)
+    if (trimmed == hd || line == hd) hd = ""
+    next
+  }
+  # The carried-body predicate, the only writing of it. The comment and
+  # blank-line arms below are skipped while a STRING or array frame is open:
+  # inside one a leading `#` is prose, not a comment, and an empty line is
+  # content, and consuming either without scanning it would leave the carried
+  # state describing a line the scan never saw. An open `$( )` is not such a
+  # frame: its body is code, where a leading `#` really does start a comment.
+  inbody = 0
+  if (QSHADOW == 0 && length(QSTATE) == 1 \
+      && (QSTATE == "D" || QSTATE == "S" || QSTATE == "A" || QSTATE == "E")) inbody = 1
+  if (cont == 0 && inbody == 0) {
+    trimmed = ltrim(line)
+    if (trimmed == "") { pending_sc = "-"; next }
+    if (substr(trimmed, 1, 1) == "#") {
+      if (substr(trimmed, 1, 20) == "# shellcheck source=") {
+        pending_sc = substr(trimmed, index(trimmed, "source=") + 7)
+        sub(/[ \t\r\v\f].*$/, "", pending_sc)
+      } else pending_sc = "-"
+      next
+    }
+    start = lineno; acc = line; cur_sc = pending_sc; pending_sc = "-"
+  } else if (cont == 0) {
+    start = lineno; acc = line; cur_sc = pending_sc; pending_sc = "-"
+  } else {
+    acc = acc " " line
+  }
+  if (substr(acc, length(acc), 1) == "\\") { acc = chop(acc); cont = 1; next }
+  cont = 0
+  qcarry(acc)
+  acc = RET
+  subs = QSUBS
+  # A substitution kept out of a carried body is its OWN record, sharing this
+  # lines number with the code beside it. Two records rather than one
+  # concatenated string, so that each half is judged under its own quoting: the
+  # span carries a `$(` and the anchor blanker must leave it alone, the code
+  # after the body closed carries none and must be blanked.
+  #
+  # Only the code record decides a here-document. A `<<WORD` inside a kept span
+  # opens one the splitter does not follow: the lines below it stay inside the
+  # string frame and are suppressed either way, so nothing is read as code that
+  # is not.
+  if (subs != "") printf "%s\t%s\t%s\n", start, cur_sc, subs
+  if (acc != "") {
+    printf "%s\t%s\t%s\n", start, cur_sc, acc
+    hd = hdelim(acc)
+  }
+  acc = ""
+}
+
+END {
+  if (linemode) exit 0
+  if (cont == 1) {
+    qcarry(acc)
+    acc = RET
+    subs = QSUBS
+    if (subs != "") printf "%s\t%s\t%s\n", start, cur_sc, subs
+    if (acc != "") printf "%s\t%s\t%s\n", start, cur_sc, acc
+  }
+}
+'
 
 # ---------------------------------------------------------------------------
 # Lexical helpers
@@ -593,24 +912,6 @@ _gaia_capcheck_dirname_rel() {
   esac
 }
 
-# _gaia_capcheck_heredoc_delim <logical-line>: the here-document delimiter the
-# line opens, or empty. Here-doc BODIES are skipped by the scanner: a usage
-# block that prints `gh api ...` or a path is documentation, not reach.
-_gaia_capcheck_heredoc_delim() {
-  local t="${1//<<</ }" d
-  case "$t" in
-    *'<<'*) ;;
-    *) _GAIA_CAPCHECK_RET=""; return 0 ;;
-  esac
-  d="${t#*<<}"
-  d="${d#-}"
-  d="${d#"${d%%[![:space:]]*}"}"
-  d="${d%%[[:space:];)|&]*}"
-  d="${d//\'/}"
-  d="${d//\"/}"
-  _GAIA_CAPCHECK_RET="$d"
-}
-
 # _gaia_capcheck_quote_carry <text>: the cross-line quoting state the splitter
 # below needs, and the only place in this file that reads a line character by
 # character.
@@ -690,239 +991,36 @@ _gaia_capcheck_heredoc_delim() {
 # the splitter consumes it before this is called, so an unbalanced quote inside
 # one cannot desynchronize the stack. And a string or array body opened inside a
 # substitution is not recognized at all, per the shadow gate above.
+#
+# The walk itself runs in awk, in `_GAIA_CAPCHECK_AWK` above; this is the seam
+# that drives it one line at a time, for the callers that hold their own state
+# across calls. The per-file scan does NOT come through here: it runs the same
+# walk inside one interpreter for the whole file, so the fork this spends is
+# paid once per call rather than once per line.
+#
+# The entry values go through the environment rather than `-v`, because awk
+# processes backslash escapes in a `-v` assignment and a line of shell is
+# exactly the text that carries them.
 _gaia_capcheck_quote_carry() {
-  local t="${1-}"
-  local st="$_GAIA_CAPCHECK_QSTATE"
-  local n=${#t}
-  local i=0 c top cut=-1 carry=0 rest skipped
-  local entry_depth=${#st}
-  # A substitution that opens INSIDE the carried body is executed shell, so its
-  # text has to survive even though the body around it does not. `sub_start` is
-  # where the current such span began, `subs` collects the ones that closed.
-  local depth_before pos sub_start=-1 sub_depth=0 subs=""
+  local out line tag val
+  out="$(
+    GAIA_QC_TEXT="${1-}" \
+    GAIA_QC_ST="$_GAIA_CAPCHECK_QSTATE" \
+    GAIA_QC_SHADOW="$_GAIA_CAPCHECK_QSHADOW" \
+    "$GAIA_AWK" -v mode=line "$_GAIA_CAPCHECK_AWK" </dev/null
+  )" || return 1
   _GAIA_CAPCHECK_QSUBS=""
-  if [ "$_GAIA_CAPCHECK_QSHADOW" -eq 0 ] && [ "${#st}" -eq 1 ]; then
-    case "$st" in
-      D|S|A|E) carry=1 ;;
+  _GAIA_CAPCHECK_RET=""
+  while IFS= read -r line; do
+    tag="${line%%$'\t'*}"
+    val="${line#*$'\t'}"
+    case "$tag" in
+      S) _GAIA_CAPCHECK_QSTATE="$val" ;;
+      H) _GAIA_CAPCHECK_QSHADOW="$val" ;;
+      U) _GAIA_CAPCHECK_QSUBS="$val" ;;
+      C) _GAIA_CAPCHECK_RET="$val" ;;
     esac
-  fi
-  if [ -z "$st" ]; then
-    # Nothing open and nothing that can open a frame: the state is unchanged and
-    # the whole line is code. This is the overwhelming majority of lines, and the
-    # walk cannot afford a per-character pass over all of them. The test is on an
-    # EMPTY stack rather than on `carry`, because a line entered under `P` closes
-    # it with a `)` that carries no quoting character at all.
-    case "$t" in
-      *\"*|*\'*|*\`*|*\\*|*'$('*|*'=('*) ;;
-      *) _GAIA_CAPCHECK_RET="$t"; return 0 ;;
-    esac
-  fi
-  while [ "$i" -lt "$n" ]; do
-    top="${st: -1}"
-    # Jump to the next character this frame's arm can act on. The run being
-    # skipped changes neither the stack nor `cut`, which only moves when the
-    # stack pops, so the two updates at the loop's foot have nothing to do
-    # across it.
-    rest="${t:i}"
-    # Unquoted on purpose: each holds a bracket expression, and quoting it
-    # would strip the whole point of it back to a literal match.
-    # shellcheck disable=SC2295
-    case "$top" in
-      S) skipped="${rest%%$_GAIA_CAPCHECK_QSKIP_S*}" ;;
-      E) skipped="${rest%%$_GAIA_CAPCHECK_QSKIP_E*}" ;;
-      D) skipped="${rest%%$_GAIA_CAPCHECK_QSKIP_D*}" ;;
-      *) skipped="${rest%%$_GAIA_CAPCHECK_QSKIP_N*}" ;;
-    esac
-    if [ -n "$skipped" ]; then
-      i=$((i + ${#skipped}))
-      if [ "$i" -ge "$n" ]; then break; fi
-    fi
-    c="${t:i:1}"
-    depth_before=${#st}
-    pos=$i
-    case "$top" in
-      S)
-        if [ "$c" = "'" ]; then st="${st%?}"; fi
-        ;;
-      E)
-        # `$'...'`, where a backslash escapes the character after it. Reading
-        # this as an ordinary `S` span closes it at the escaped `'` and reopens
-        # it at the real terminator, leaving a frame open that swallows the rest
-        # of the file.
-        case "$c" in
-          \\) i=$((i + 1)) ;;
-          "'") st="${st%?}" ;;
-        esac
-        ;;
-      D)
-        case "$c" in
-          \\) i=$((i + 1)) ;;
-          '"') st="${st%?}" ;;
-          '$')
-            case "${t:i+1:2}" in
-              '((') st="${st}M"; i=$((i + 2)) ;;
-              '('*) st="${st}P"; i=$((i + 1)) ;;
-            esac
-            ;;
-          '`') st="${st}B" ;;
-        esac
-        ;;
-      M)
-        # An arithmetic expansion. It needs a frame of its own because its
-        # opener spends TWO parens and its closer spends two more: read as the
-        # `$(` of a substitution, the `))` pops twice, and every P or A frame
-        # carried across a line boundary is one paren short from there on. That
-        # desync is silent in the worst way. The stack empties early, the real
-        # `)"` closing the substitution leaves its `"` to open a string frame
-        # instead of closing one, and the whole rest of the file is suppressed
-        # as carried body, so the closure walk reports a caller reaching
-        # nothing and a true declaration reads as SURPLUS.
-        #
-        # Nothing inside is a quoting context: arithmetic has no string body,
-        # so only the parens and a nested substitution are read. `$(` and `$((`
-        # both nest legally (`$(( $(id -u) + 1 ))`).
-        case "$c" in
-          '(') st="${st}G" ;;
-          ')') if [ "${t:i+1:1}" = ')' ]; then st="${st%?}"; i=$((i + 1)); fi ;;
-          '$')
-            case "${t:i+1:2}" in
-              '((') st="${st}M"; i=$((i + 2)) ;;
-              '('*) st="${st}P"; i=$((i + 1)) ;;
-            esac
-            ;;
-        esac
-        ;;
-      G)
-        # A parenthesised group inside arithmetic, `$(( (a + b) * c ))`. It
-        # exists so the M arm above can require `))` for its own close without
-        # a group's single `)` being read as half of one: `$(( (a) ))` ends in
-        # `) ))` and `$(( (a)))` ends in `)))`, and only a frame that counts
-        # the group reads both the same way.
-        case "$c" in
-          '(') st="${st}G" ;;
-          ')') st="${st%?}" ;;
-          '$')
-            case "${t:i+1:2}" in
-              '((') st="${st}M"; i=$((i + 2)) ;;
-              '('*) st="${st}P"; i=$((i + 1)) ;;
-            esac
-            ;;
-        esac
-        ;;
-      *)
-        case "$c" in
-          \\) i=$((i + 1)) ;;
-          "'") st="${st}S" ;;
-          '"') st="${st}D" ;;
-          '$')
-            case "${t:i+1:2}" in
-              '((') st="${st}M"; i=$((i + 2)) ;;
-              '('*) st="${st}P"; i=$((i + 1)) ;;
-              "'"*) st="${st}E"; i=$((i + 1)) ;;
-            esac
-            ;;
-          '(') if [ "$i" -gt 0 ] && [ "${t:i-1:1}" = '=' ]; then st="${st}A"; fi ;;
-          ')')
-            case "$top" in
-              P|A)
-                if [ "$top" = P ] && [ "${#st}" -le "$entry_depth" ]; then
-                  _GAIA_CAPCHECK_QSHADOW=1
-                fi
-                st="${st%?}"
-                ;;
-            esac
-            ;;
-          '`')
-            if [ "$top" = B ]; then
-              if [ "${#st}" -le "$entry_depth" ]; then _GAIA_CAPCHECK_QSHADOW=1; fi
-              st="${st%?}"
-            else
-              st="${st}B"
-            fi
-            ;;
-          '#')
-            # A `#` opens a comment where it is WORD-INITIAL, which is at the
-            # start of the line or after any character that ends a word, not
-            # only after whitespace. `true;# note` is a comment to the shell,
-            # and reading it as code lets an apostrophe inside it push a frame
-            # that never closes, dropping every line after it.
-            #
-            # The set is _GAIA_VA_WORD_SET's separators
-            # (.claude/hooks/lib/verb-arming-walk.sh) plus `)`, with
-            # `[[:space:]]` standing in for that constant's ` \t` half, so this
-            # one also admits `\r`, `\v` and `\f`. Its newline cannot occur
-            # here because this walk is handed a line at a time. The `)` is
-            # a deliberate widening rather than a copy that drifted: a `)`
-            # closing a subshell or a `case` arm ends a word, so `(true)# don't`
-            # really is a comment, and that walk has no need to model it. Do not
-            # sync the two by narrowing this one, which puts the apostrophe in
-            # such a comment back on the stack and drops every line below it.
-            if [ "$i" -eq 0 ]; then break; fi
-            case "${t:i-1:1}" in
-              [[:space:]]|';'|'&'|'|'|'('|')') break ;;
-            esac
-            ;;
-        esac
-        ;;
-    esac
-    # A `$( )` or a backtick opening anywhere inside the carried body starts a
-    # span worth keeping, and the close that returns the stack to the depth it
-    # opened at ends it. Only P and B open one, because only their bodies are
-    # code; the depth is remembered rather than assumed to be one deeper,
-    # because an array element wraps its substitution in a string frame
-    # (`args=(` then `"$( ... )"`) and a substitution nested inside a string
-    # still runs. Only the OUTERMOST such span is tracked: anything deeper is
-    # already inside the text being kept.
-    #
-    # `cut` bounds it on the other side. Once the carried body has closed, the
-    # rest of the line is ordinary code that `${t:cut}` already returns whole,
-    # so a substitution there needs no keeping and recording one would emit it
-    # twice. `cut` is set at the loop's foot, below, so on the iteration that
-    # closes the body it is still -1 here and the span that body held is kept.
-    if [ "$carry" -gt 0 ] && [ "$cut" -lt 0 ]; then
-      if [ "$sub_start" -lt 0 ] && [ "${#st}" -eq $((depth_before + 1)) ]; then
-        case "${st: -1}" in
-          P|B) sub_start=$pos; sub_depth=$depth_before ;;
-        esac
-      elif [ "$sub_start" -ge 0 ] && [ "${#st}" -eq "$sub_depth" ] \
-        && [ "$depth_before" -eq $((sub_depth + 1)) ]; then
-        subs="${subs:+$subs }${t:sub_start:i-sub_start+1}"
-        sub_start=-1
-      fi
-    fi
-    i=$((i + 1))
-    if [ -z "$st" ]; then
-      _GAIA_CAPCHECK_QSHADOW=0
-    fi
-    if [ "$cut" -lt 0 ] && [ "$carry" -gt 0 ] && [ "${#st}" -lt "$carry" ]; then
-      cut="$i"
-    fi
-  done
-  _GAIA_CAPCHECK_QSTATE="$st"
-  # A span still open at the line's end is the first line of a multi-line
-  # substitution nested in the carried body. Its remainder is code the next
-  # lines carry on as code, so keep what this line held of it too. A span
-  # cannot be open here and `cut` set as well: the guard above stops recording
-  # once the body closes, and a substitution frame still on the stack is what
-  # keeps the body from closing in the first place.
-  if [ "$carry" -gt 0 ] && [ "$sub_start" -ge 0 ]; then
-    subs="${subs:+$subs }${t:sub_start}"
-  fi
-  # The spans come back on their own channel rather than concatenated onto the
-  # code. The two halves have different quoting provenance, and
-  # _gaia_capcheck_blank_quoted_anchors bails on a WHOLE line carrying `$(`,
-  # because a separator inside a substitution body is real. Concatenating puts
-  # a `$(` in front of a tail whose own quoting is fully known, so the bail
-  # covers the tail too and a `;` inside a span there reads as command
-  # position: the fabricated edge this file exists to stop fabricating.
-  _GAIA_CAPCHECK_QSUBS="$subs"
-  if [ "$carry" -eq 0 ]; then
-    _GAIA_CAPCHECK_RET="$t"
-  elif [ "$cut" -lt 0 ]; then
-    _GAIA_CAPCHECK_RET=""
-  else
-    _GAIA_CAPCHECK_RET="${t:cut}"
-  fi
+  done <<<"$out"
   return 0
 }
 
@@ -952,76 +1050,22 @@ _gaia_capcheck_quote_carry() {
 _gaia_capcheck_logical_lines() {
   local file="$1"
   [ -f "$file" ] || return 0
-  local line trimmed lineno=0 start=0 acc="" cur_sc="-" pending_sc="-" cont=0 hd="" inbody=0 subs=""
+  # The consumers refuse on this at startup, before any scan. This second read
+  # is what stands between an unresolved interpreter and a SILENT empty scan:
+  # every caller here reads the walk over a process substitution, whose status
+  # no shell reports, so a refusal that only returned non-zero would read as a
+  # file with no records -- reach under-reported, the one direction that cannot
+  # surface as a finding.
+  if [ "${_GAIA_CAPCHECK_AWK_STATUS:-0}" -ne 0 ]; then
+    printf 'capability-oracle-lib: %s\n' "$_GAIA_CAPCHECK_AWK_REASON" >&2
+    return "$_GAIA_CAPCHECK_AWK_STATUS"
+  fi
+  # Reset the carried state for the callers that read it back after a scan. The
+  # scan itself carries its own state inside awk, so this resets what a caller
+  # observes, not what the walk uses.
   _GAIA_CAPCHECK_QSTATE=""
   _GAIA_CAPCHECK_QSHADOW=0
-  while IFS= read -r line || [ -n "$line" ]; do
-    lineno=$((lineno + 1))
-    if [ -n "$hd" ]; then
-      trimmed="${line#"${line%%[![:space:]]*}"}"
-      if [ "$trimmed" = "$hd" ] || [ "$line" = "$hd" ]; then hd=""; fi
-      continue
-    fi
-    inbody=0
-    if [ "$_GAIA_CAPCHECK_QSHADOW" -eq 0 ] && [ "${#_GAIA_CAPCHECK_QSTATE}" -eq 1 ]; then
-      case "$_GAIA_CAPCHECK_QSTATE" in
-        D|S|A|E) inbody=1 ;;
-      esac
-    fi
-    if [ "$cont" -eq 0 ] && [ "$inbody" -eq 0 ]; then
-      trimmed="${line#"${line%%[![:space:]]*}"}"
-      if [ -z "$trimmed" ]; then pending_sc="-"; continue; fi
-      case "$trimmed" in
-        \#*)
-          case "$trimmed" in
-            '# shellcheck source='*)
-              pending_sc="${trimmed#*source=}"
-              pending_sc="${pending_sc%%[[:space:]]*}"
-              ;;
-            *) pending_sc="-" ;;
-          esac
-          continue
-          ;;
-      esac
-      start="$lineno"; acc="$line"; cur_sc="$pending_sc"; pending_sc="-"
-    elif [ "$cont" -eq 0 ]; then
-      start="$lineno"; acc="$line"; cur_sc="$pending_sc"; pending_sc="-"
-    else
-      acc="$acc $line"
-    fi
-    case "$acc" in
-      *\\) acc="${acc%\\}"; cont=1; continue ;;
-    esac
-    cont=0
-    _gaia_capcheck_quote_carry "$acc"
-    acc="$_GAIA_CAPCHECK_RET"
-    subs="$_GAIA_CAPCHECK_QSUBS"
-    # A substitution kept out of a carried body is its OWN record, sharing this
-    # line's number with the code beside it. Two records rather than one
-    # concatenated string, so that each half is judged under its own quoting:
-    # the span carries a `$(` and the anchor blanker must leave it alone, the
-    # code after the body closed carries none and must be blanked.
-    #
-    # Only the code record decides a here-document. A `<<WORD` inside a kept
-    # span opens one the splitter does not follow, which is what it did before
-    # the span was kept at all: the lines below it stay inside the string frame
-    # and are suppressed either way, so nothing is read as code that is not.
-    [ -n "$subs" ] && printf '%s\t%s\t%s\n' "$start" "$cur_sc" "$subs"
-    if [ -n "$acc" ]; then
-      printf '%s\t%s\t%s\n' "$start" "$cur_sc" "$acc"
-      _gaia_capcheck_heredoc_delim "$acc"
-      hd="$_GAIA_CAPCHECK_RET"
-    fi
-    acc=""
-  done < "$file"
-  if [ "$cont" -eq 1 ]; then
-    _gaia_capcheck_quote_carry "$acc"
-    acc="$_GAIA_CAPCHECK_RET"
-    subs="$_GAIA_CAPCHECK_QSUBS"
-    [ -n "$subs" ] && printf '%s\t%s\t%s\n' "$start" "$cur_sc" "$subs"
-    [ -n "$acc" ] && printf '%s\t%s\t%s\n' "$start" "$cur_sc" "$acc"
-  fi
-  return 0
+  "$GAIA_AWK" "$_GAIA_CAPCHECK_AWK" "$file"
 }
 
 # _gaia_capcheck_tokens <text>: one whitespace-separated token per line, with

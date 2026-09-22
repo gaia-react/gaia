@@ -200,6 +200,17 @@ else
   exit 2
 fi
 
+# The oracle's logical-line splitter runs in awk, and this gate subtracts what
+# the oracle records from what bash reads as command position. An unresolved
+# interpreter empties the subtrahend rather than failing, which makes the oracle
+# look blinder than it is: a report of findings that are not there. Refuse here
+# instead, on the same reasoning the bash-5 re-exec above refuses on. The
+# library records the reason; this carries it through unchanged.
+if [ "${_GAIA_CAPCHECK_AWK_STATUS:-0}" -ne 0 ]; then
+  printf 'lint-oracle-blind-invocations: %s\n' "$_GAIA_CAPCHECK_AWK_REASON" >&2
+  exit "$_GAIA_CAPCHECK_AWK_STATUS"
+fi
+
 # The scan roots, relative to the invoking directory. `tests/` is excluded under
 # all of them: a suite's own fixtures are written to be read wrongly, and the
 # oracle's closure never reaches them.

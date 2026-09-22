@@ -1027,124 +1027,55 @@ curl -sS https://example.com/x'
   grep -qF -- "UNDECLARED a/s.sh invokes:.github/audit/base.sh" <<<"$output"
 }
 
-@test "the run-skip changes no answer the walk reaches without it" {
-  # The guard over the skip sets AS A SET, which the fixtures above cannot be.
-  # Each set restates the characters its own arm of the walk reads, so the two
-  # can drift apart, and a hand-written fixture only catches the drift somebody
-  # already thought of: a `"` and a backtick pop and push each other
-  # symmetrically, so the shapes separating a sound set from an unsound one are
-  # the ones nobody writes down.
+@test "the walk reads every character, so no skip set can drift out of step with its arm" {
+  # What this replaces, and why the replacement is a different shape. The walk
+  # used to shortcut the runs between the characters that can change the stack,
+  # one bracket expression per top frame, and each of those sets restated the
+  # characters its own arm reads. A character added to an arm and not to the set
+  # was silent drift, and the guard over it was a differential: run the corpus
+  # once with the sets and once with them neutered, and diff.
   #
-  # So it is a differential rather than a fixture. `?` matches at every
-  # position, which leaves the skip with nothing to remove and reproduces the
-  # character-at-a-time walk the sets exist to shortcut; the two must agree
-  # line for line. The corpus is every shell file the repo tracks, discovered
-  # rather than listed, so a file added later is compared without an edit here.
+  # The walk is awk now and reads every character, so there is no skip set to
+  # drift and no neutered side to run. The class is gone by construction rather
+  # than guarded, and a differential over a mechanism that no longer exists is
+  # the vacuous arm this suite would otherwise keep green forever.
   #
-  # The neutered set is DERIVED from the library, not listed here. A list is the
-  # one thing this differential cannot afford to hand-write: the diff that adds
-  # a fourth set is exactly the diff that owes the check, and a list left at
-  # three arms neither side of the comparison, so both walks run the same skip
-  # and the drift the test exists for is invisible while it reports clean.
-  #
-  # The corpus is listed the way the gate discovers its own: NUL-delimited with
-  # `core.quotepath` off. Under git's default quoting a tracked path carrying a
-  # non-ASCII byte comes back C-quoted, `_gaia_capcheck_logical_lines` takes its
-  # `[ -f ]` arm on it, and the file leaves BOTH sides silently, so the diff
-  # still agrees over a file neither walk read.
-  local walk out_skip="$BATS_TEST_TMPDIR/skip.txt" out_plain="$BATS_TEST_TMPDIR/plain.txt"
-  walk='cd "$1" || exit 2
+  # So this asserts the construction instead: the library carries no skip-set
+  # constant, and the walk it does carry is the awk one. Both halves matter --
+  # the absence alone would pass against a library that had lost the walk too.
+  local n
+  n="$(bash -c 'cd "$1" || exit 2
     . .gaia/scripts/capability-oracle-lib.sh
-    if [ -n "$2" ]; then
-      seen=0
-      got=0
-      for v in $(compgen -A variable _GAIA_CAPCHECK_QSKIP_); do
-        # Discovered and neutered are counted SEPARATELY, and every set found
-        # has to have taken. A `readonly` on something the library calls a
-        # constant is a plausible hardening edit; `eval` then writes to stderr
-        # and returns 1, and a count of successes alone still clears any floor
-        # below the number of sets while one set stays REAL. The no-skip side
-        # then runs that real set, both walks skip identically for its frame,
-        # and the comparison goes vacuous for exactly the arm whose drift it
-        # was built to catch.
-        seen=$((seen + 1))
-        eval "$v=\"?\"" 2>/dev/null || true
-        if [ "$(eval printf %s "\"\$$v\"")" = "?" ]; then got=$((got + 1)); fi
-      done
-      # A derivation that came back empty, or found only one set, would neuter
-      # nothing or nearly nothing and leave the two walks agreeing trivially.
-      if [ "$seen" -le 2 ] || [ "$got" -ne "$seen" ]; then
-        echo "skip-set derivation saw $seen neutered $got" >&2
-        exit 3
-      fi
-    fi
-    git -c core.quotepath=false ls-files -z "*.sh" "*.bats" | while IFS= read -r -d "" f; do
-      printf "== %s\n" "$f"
-      _gaia_capcheck_logical_lines "$f"
-    done'
-  bash -c "$walk" _ "$REPO_ROOT" "" >"$out_skip"
-  bash -c "$walk" _ "$REPO_ROOT" no-skip >"$out_plain"
-  # Short-read guard: a corpus that resolved no file, or a walk that emitted
-  # nothing, agrees with itself and would report this clean having compared
-  # nothing at all.
-  [ -s "$out_skip" ]
-  [ "$(grep -c '^== ' "$out_skip")" -gt 100 ]
-  diff "$out_skip" "$out_plain"
+    compgen -A variable _GAIA_CAPCHECK_QSKIP_ | wc -l' _ "$REPO_ROOT")"
+  [ "$(printf '%s' "$n" | tr -d ' ')" = "0" ]
+  grep -qF -- '_GAIA_CAPCHECK_AWK=' "$SCRIPT_DIR/capability-oracle-lib.sh"
 }
 
-# The carried-body predicate is written twice, once in each function that acts
-# on it. `_gaia_capcheck_quote_carry` reads it as `carry`, to decide whether the
-# line it was handed is body rather than code; `_gaia_capcheck_logical_lines`
-# reads it as `inbody`, to decide whether its comment and blank-line arms apply
-# to that same line. Neither is extracted into a shared helper, on purpose: the
-# walk runs per line over every tracked shell file, and .gaia/scripts/tests/
-# shell-lint-bash32.bats exists because that per-line cost is already the
-# binding one. So nothing but this keeps the two writings in step.
-#
-# Drift between them is silent, and worst in one direction. `inbody=0` while
-# `carry=1` lets logical_lines take its comment arm on a line inside a string
-# body, so a `#`-leading prose line carrying an apostrophe never reaches
-# quote_carry at all: the apostrophe opens a frame nothing closes, and every
-# line below it leaves the file as carried body with no diagnostic anywhere.
-
-predicate_block() {
-  # $1 = the flag the site assigns, `carry` or `inbody`. Anchored on the shadow
-  # guard rather than on a line range, so either function may move or grow
-  # around it, and normalized for the two spellings that differ by construction:
-  # quote_carry reads the state through its own local alias, and each site names
-  # its own flag. Nothing else is normalized, so the frame letters, the depth
-  # bound and the shadow term are all compared as written.
-  awk -v flag="$1" '
-    /if \[ "\$_GAIA_CAPCHECK_QSHADOW" -eq 0 \]/ { inb = 1; buf = ""; hit = 0 }
-    inb {
-      sub(/^[[:space:]]+/, ""); sub(/[[:space:]]+$/, "")
-      gsub(/[$][{]#st[}]/, "${#S}"); gsub(/[$][{]#_GAIA_CAPCHECK_QSTATE[}]/, "${#S}")
-      gsub(/[$]st/, "$S"); gsub(/[$]_GAIA_CAPCHECK_QSTATE/, "$S")
-      gsub(flag "=1", "F=1")
-      buf = buf $0 "\n"
-      if ($0 ~ /F=1/) { hit = 1 }
-      if ($0 == "fi") { if (hit) { printf "%s", buf } ; inb = 0 }
-    }
-  ' "$SCRIPT_DIR/capability-oracle-lib.sh"
-}
-
-@test "both writings of the carried-body predicate say the same thing" {
-  local carry inbody
-  carry="$(predicate_block carry)"
-  inbody="$(predicate_block inbody)"
-  # Each site has to be FOUND, or a rename on either one turns this into a
-  # comparison of two empty strings that agrees with itself.
-  [ -n "$carry" ]
-  [ -n "$inbody" ]
-  # And the normalization has to have left the three terms that carry the
-  # meaning standing: the depth bound, the state the case reads, and a frame
-  # letter reaching the flag. A substitution that over-matched, or an anchor
-  # that grabbed some other `if`, would otherwise compare two texts that agree
-  # about nothing.
-  grep -qF -- '[ "${#S}" -eq 1 ]' <<<"$carry"
-  grep -qF -- 'case "$S" in' <<<"$carry"
-  grep -qF -- ') F=1 ;;' <<<"$carry"
-  [ "$carry" = "$inbody" ]
+@test "the carried-body predicate is written once, so the two readings cannot disagree" {
+  # The predicate decides whether a line is string body rather than code. It
+  # used to be written twice, once in each bash function that acts on it --
+  # `carry` in the quote walk, `inbody` in the line reader -- and nothing but a
+  # source-text comparison kept the two in step. Drift was silent and worst in
+  # one direction: `inbody=0` while `carry=1` let the line reader take its
+  # comment arm on a line inside a string body, so a `#`-leading prose line
+  # carrying an apostrophe never reached the walk at all, the apostrophe opened
+  # a frame nothing closed, and every line below it left the file as carried
+  # body with no diagnostic anywhere.
+  #
+  # Both readings live in one awk program now, so the duplication is gone and
+  # the comparison has nothing to compare. This pins the property that replaced
+  # it: the frame letters the predicate admits are written exactly once in the
+  # library. Counted rather than matched by shape, because the two writings
+  # differed only in the flag they assigned and a shape match found both.
+  local hits
+  hits="$(grep -cF -- 'QSTATE == "D" || QSTATE == "S" || QSTATE == "A" || QSTATE == "E"' \
+    "$SCRIPT_DIR/capability-oracle-lib.sh")"
+  [ "$hits" -eq 1 ]
+  # And the walk's own reading, which names the same four letters through its
+  # local alias, is the only other one.
+  hits="$(grep -cF -- 'st == "D" || st == "S" || st == "A" || st == "E"' \
+    "$SCRIPT_DIR/capability-oracle-lib.sh")"
+  [ "$hits" -eq 1 ]
 }
 
 @test "a bare path behind a separator inside a double-quoted span is prose, not a call" {
@@ -2026,6 +1957,12 @@ EOF
   mkdir -p "$dir"
   cp "$CHECK" "$dir/check-script-capabilities.sh"
   cp "$SCRIPT_DIR/capability-oracle-lib.sh" "$dir/capability-oracle-lib.sh"
+  # The oracle library resolves the awk interpreter its logical-line splitter
+  # runs under from awk-interp-lib.sh, beside its own on-disk location. A copy
+  # carries that sibling or the checker refuses at startup with an unresolved
+  # interpreter, and the before side then fails to run rather than seeing less
+  # reach -- the one outcome the non-empty assertions below exist to tell apart.
+  cp "$SCRIPT_DIR/awk-interp-lib.sh" "$dir/awk-interp-lib.sh"
   printf '\n_gaia_capcheck_detect_tmp() { return 1; }\n' >>"$dir/capability-oracle-lib.sh"
   repo="$(make_fixture_repo reachdelta)"
   add_script "$repo" .gaia/scripts/t.sh '#!/usr/bin/env bash
