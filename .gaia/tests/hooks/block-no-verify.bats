@@ -209,10 +209,30 @@ git commit --no-verify -m y"
   true
 }
 
+# The extraction must not invent a command where none is invoked: a subject
+# carrying a parenthesised scope looks like a qualifier span and is not one.
+#
+# The fixtures whose prose carries a `git commit -n` token are what arm that
+# direction. An opener-strip reaching past the qualifier promotes the prose into
+# command position, where the bundle meets the `-n` deny arm and this test reds.
+# A subject whose prose is inert extracts a body no deny arm can fire on, so it
+# stays allowed under an inventing extraction too and pins nothing about it.
+#
+# The token's placement and its spelling are both load-bearing. It sits
+# immediately after the scope because an invented body begins wherever the strip
+# stops, so a word in between leaves the body beginning on that word, which is
+# not command position. And it is `-n` rather than a longer bypass spelling
+# because the whole-command fail-closed net denies --no-verify, a falsy HUSKY=,
+# and -c core.hooksPath= wherever they appear, quoted prose included, which
+# would deny these fixtures outright and invert what they assert.
 @test "a commit subject carrying a parenthesised scope is not read as a qualifier" {
   run_hook 'git commit -m "feat(core): x"'
   assert_allowed_by_json
   run_hook 'git commit -m "fix(e2e): x"'
+  assert_allowed_by_json
+  run_hook 'git commit -m "feat(core): git commit -n later"'
+  assert_allowed_by_json
+  run_hook 'git commit -m "fix(e2e): git commit -n now"'
   assert_allowed_by_json
 }
 
