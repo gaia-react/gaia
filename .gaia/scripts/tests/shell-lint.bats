@@ -359,6 +359,50 @@ dispatch_first_last() {
   printf '%s\n%s\n' "$heavy_first" "$slugs_last"
 }
 
+# Overrides EVERY folded guard with a trivial stub that emits only its own
+# "<name>: clean" line, on the stream the real guard would have used, so a
+# test exercising pool mechanics (fork/collect/replay ordering, dispatch
+# ends, stream separation, the missing-log arm) does not pay for seventeen
+# real tree scans to prove it -- the guards under test here run this gate's
+# OWN dispatch/collect/replay code, not the guards' own detection logic,
+# which each has its own suite for. Built from the SAME
+# SHELL_LINT_GUARD_OVERRIDE_* seam the single-guard-failure tests below
+# already use, one override per guard, so the gate gains no new seam for
+# this.
+#
+# The stdout/stderr split below is fixture data reproduced from the real
+# guard scripts (this file's own header explains the split; the six named
+# here are the ones printing their clean line via a bare `printf`, no `>&2`)
+# rather than derived live -- a stub rig is allowed to assume the shape it
+# stands in for.
+#
+# Prints one `SHELL_LINT_GUARD_OVERRIDE_<slug>=<path>` line per folded guard,
+# meant to be read into an array and passed to `env`; a caller needing a
+# guard's real detection logic overrides that one slug again afterward, and
+# the later assignment for the same name wins.
+#
+# Args: <dir to write stub scripts into>
+stub_all_guards() {
+  local dir="$1" stdout_guards p script stream_redirect var
+  stdout_guards="lint-guard-rule-shell-coverage lint-hook-wiki-inventory lint-wiki-cached-version lint-hook-advisory-classification lint-scripts-wiki-inventory lint-hook-jq-availability"
+  while IFS= read -r p; do
+    case "$p" in lint-*) ;; *) continue ;; esac
+    script="$dir/$p.stub.sh"
+    case " $stdout_guards " in
+      *" $p "*) stream_redirect="" ;;
+      *) stream_redirect=" >&2" ;;
+    esac
+    cat > "$script" <<EOF
+#!/usr/bin/env bash
+printf '%s: clean\n' "$p"$stream_redirect
+exit 0
+EOF
+    chmod +x "$script"
+    var="SHELL_LINT_GUARD_OVERRIDE_$(printf '%s' "$p" | tr '-' '_')"
+    printf '%s=%s\n' "$var" "$script"
+  done < <(gate_pass_headers)
+}
+
 @test "a guard failing in the FIRST dispatch slot fails the gate and every other guard still runs" {
   local pair first override_var stub
   pair="$(dispatch_first_last)"
@@ -372,7 +416,12 @@ echo "stub failure: first dispatch slot" >&2
 exit 1
 STUB
   chmod +x "$stub"
-  run env PATH="$STUB_DIR:$PATH" "$override_var=$stub" bash "$GATE"
+  local overrides=() line
+  while IFS= read -r line; do
+    overrides+=("$line")
+  done < <(stub_all_guards "$STUB_DIR")
+  overrides+=("$override_var=$stub")
+  run env PATH="$STUB_DIR:$PATH" ${overrides[@]+"${overrides[@]}"} bash "$GATE"
   [ "$status" -eq 1 ]
   grep -qF -- "shell-lint FAILED" <<<"$output"
   grep -qF -- "stub failure: first dispatch slot" <<<"$output"
@@ -397,7 +446,12 @@ echo "stub failure: last dispatch slot" >&2
 exit 1
 STUB
   chmod +x "$stub"
-  run env PATH="$STUB_DIR:$PATH" "$override_var=$stub" bash "$GATE"
+  local overrides=() line
+  while IFS= read -r line; do
+    overrides+=("$line")
+  done < <(stub_all_guards "$STUB_DIR")
+  overrides+=("$override_var=$stub")
+  run env PATH="$STUB_DIR:$PATH" ${overrides[@]+"${overrides[@]}"} bash "$GATE"
   [ "$status" -eq 1 ]
   grep -qF -- "shell-lint FAILED" <<<"$output"
   grep -qF -- "stub failure: last dispatch slot" <<<"$output"
@@ -430,7 +484,12 @@ echo "stub failure: B" >&2
 exit 1
 STUB
   chmod +x "$first_stub" "$last_stub"
-  run env PATH="$STUB_DIR:$PATH" "$first_var=$first_stub" "$last_var=$last_stub" bash "$GATE"
+  local overrides=() line
+  while IFS= read -r line; do
+    overrides+=("$line")
+  done < <(stub_all_guards "$STUB_DIR")
+  overrides+=("$first_var=$first_stub" "$last_var=$last_stub")
+  run env PATH="$STUB_DIR:$PATH" ${overrides[@]+"${overrides[@]}"} bash "$GATE"
   [ "$status" -eq 1 ]
   grep -qF -- "shell-lint FAILED" <<<"$output"
   grep -qF -- "stub failure: A" <<<"$output"
@@ -456,13 +515,17 @@ STUB
 # dispatch order (this file's own header, FC-2). The banner/clean-line PAIRING
 # is already covered above (the "invokes every folded guard pass" test); what
 # is not is the ORDER of the pairs relative to EACH OTHER, which is exactly
-# what a completion-order replay would scramble. This does not assert the
-# whole run is clean (a tree carrying an unrelated genuine finding in one
-# guard must not fail this test over the other sixteen), only that whichever
-# guards come back clean have their clean line between their own banner and
-# the next one.
+# what a completion-order replay would scramble. Driven through the all-stub
+# fixture: every guard comes back clean deterministically, so the loop below
+# checks every pair rather than only whichever guards a real tree scan
+# happens to leave clean, and does so without paying for seventeen real
+# scans.
 @test "each guard's banner appears in declared order, and its own clean line -- when present -- stays between its own banner and the next" {
-  run env PATH="$STUB_DIR:$PATH" bash "$GATE"
+  local overrides=() line
+  while IFS= read -r line; do
+    overrides+=("$line")
+  done < <(stub_all_guards "$STUB_DIR")
+  run env PATH="$STUB_DIR:$PATH" ${overrides[@]+"${overrides[@]}"} bash "$GATE"
   local expected names_in_output
   expected="$(gate_pass_headers)"
   [ -n "$expected" ]
@@ -503,12 +566,17 @@ STUB
 # Streams split, they never merge (this file's own header). No suite driving
 # the gate through bats `run` can catch a `2>&1` regression here, because
 # `run` merges both streams into $output before any assertion sees them --
-# hence the direct redirect to two files below instead.
+# hence the direct redirect to two files below instead. Driven through the
+# all-stub fixture so this proves the GATE's own stream handling rather than
+# depending on the two named real guards' own scan of the tree.
 @test "each guard's clean line lands on the stream its own guard actually writes to, never both" {
-  local out_file err_file
+  local out_file err_file overrides=() line
   out_file="$STUB_DIR/gate-stdout.log"
   err_file="$STUB_DIR/gate-stderr.log"
-  PATH="$STUB_DIR:$PATH" bash "$GATE" >"$out_file" 2>"$err_file" || true
+  while IFS= read -r line; do
+    overrides+=("$line")
+  done < <(stub_all_guards "$STUB_DIR")
+  env PATH="$STUB_DIR:$PATH" ${overrides[@]+"${overrides[@]}"} bash "$GATE" >"$out_file" 2>"$err_file" || true
   # lint-collapsed-signal-trap prints its clean line to stderr;
   # lint-hook-jq-availability prints its to stdout via a bare printf -- one
   # from each side of the split this file's header records.
@@ -520,16 +588,21 @@ STUB
 }
 
 @test "a missing per-guard log fails the gate rather than passing it" {
-  local guard_tmp
+  local guard_tmp overrides=() line
   guard_tmp="$(mktemp -d -t shell-lint-guardtmp-XXXXXX)"
   # Guard index 0 is always lint-hook-array-guard: GUARD_SLUGS' own first
   # declared entry, a position that does not move with the dispatch-order
   # hint. Pre-seeding a DIRECTORY at the path its own stdout log would occupy
   # makes the gate's own `>` redirect fail before that guard's process can
   # write anything there -- the same missing-log state a worker that crashed
-  # before writing one would also leave behind.
+  # before writing one would also leave behind. The redirect target is what
+  # fails, independent of which script the gate was about to invoke there, so
+  # the all-stub fixture reaches the same failure without a real scan.
   mkdir -p "$guard_tmp/guard.0.out"
-  run env PATH="$STUB_DIR:$PATH" SHELL_LINT_GUARD_TMP="$guard_tmp" bash "$GATE"
+  while IFS= read -r line; do
+    overrides+=("$line")
+  done < <(stub_all_guards "$STUB_DIR")
+  run env PATH="$STUB_DIR:$PATH" SHELL_LINT_GUARD_TMP="$guard_tmp" ${overrides[@]+"${overrides[@]}"} bash "$GATE"
   [ "$status" -eq 1 ]
   grep -qF -- "shell-lint FAILED" <<<"$output"
   grep -qF -- "ERROR: missing guard log $guard_tmp/guard.0.out" <<<"$output"
