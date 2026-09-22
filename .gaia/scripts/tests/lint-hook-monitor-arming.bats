@@ -124,6 +124,37 @@ write_hook() {
         printf 'reason="this shape is denied however it is armed, Bash or Monitor"\n'
         printf "cmd=\$(jq -r '.tool_input.command' <<<\"\$payload\")\nexit 2\n"
         ;;
+      paren_mention)
+        # A near miss for the case-arm pattern: Monitor immediately precedes a
+        # `)` on a prose line, `(Bash or Monitor)`, without the line being a
+        # case-arm pattern list at all. An unanchored case-arm probe (Monitor
+        # bounded by a non-alnum character and followed by `)`) matches this;
+        # anchoring the probe at the start of the (already stripped) line does
+        # not, because the line does not begin with a bar-separated identifier
+        # list.
+        printf '[ "$tool_name" = "Bash" ] || exit 0\n'
+        printf 'reason="this shape is denied on either tool (Bash or Monitor)"\n'
+        printf "cmd=\$(jq -r '.tool_input.command' <<<\"\$payload\")\nexit 2\n"
+        ;;
+      assign_mention)
+        # A near miss for the equality probe: a plain bash assignment whose
+        # VALUE starts with the literal word Monitor, `reason="Monitor and
+        # Bash..."`. An equality probe with no leading-whitespace requirement
+        # matches the `=` this assignment carries; requiring a whitespace
+        # character before the operator does not, because a bash assignment
+        # carries none.
+        printf '[ "$tool_name" = "Bash" ] || exit 0\n'
+        printf 'reason="Monitor and Bash both hand this hook the same command"\n'
+        printf "cmd=\$(jq -r '.tool_input.command' <<<\"\$payload\")\nexit 2\n"
+        ;;
+      equality_dualgated)
+        # The equality-comparison shape of admits_monitor's positive arm,
+        # exercised on its own: every other "clean" fixture in this suite
+        # gates through the case-arm shape, which leaves the equality branch
+        # untested by any passing fixture.
+        printf 'if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "Monitor" ]; then\n  :\nelse\n  exit 0\nfi\n'
+        printf "cmd=\$(jq -r '.tool_input.command' <<<\"\$payload\")\nexit 2\n"
+        ;;
     esac
   } >"$dir/.claude/hooks/$name"
   chmod +x "$dir/.claude/hooks/$name"
@@ -292,6 +323,54 @@ write_hook() {
   run bash "$CHECK" "$dir"
   [ "$status" -eq 1 ]
   grep -qF -- 'mentioner.sh' <<<"$output"
+}
+
+@test "red: Monitor immediately preceding a prose ) does not satisfy the case-arm probe" {
+  # The regression fixture for a second code-audit-maintainer-shell round's
+  # finding against the FIRST repair: an unanchored case-arm probe (Monitor
+  # bounded by a non-alnum character, followed by `)`) matched a prose line
+  # that is not a case-arm pattern list at all, `(Bash or Monitor)`. Anchoring
+  # the probe at the start of the stripped line closes it.
+  local dir
+  dir="$(make_fixture red-paren-mention)"
+  write_hook "$dir" guard.sh dualgated
+  write_hook "$dir" mentioner.sh paren_mention
+  write_settings "$dir" 'Bash|Monitor:guard.sh,mentioner.sh'
+
+  run bash "$CHECK" "$dir"
+  [ "$status" -eq 1 ]
+  grep -qF -- 'mentioner.sh' <<<"$output"
+}
+
+@test "red: a bash assignment whose value starts with Monitor does not satisfy the equality probe" {
+  # The regression fixture for the same round's second finding: an equality
+  # probe with no leading-whitespace requirement matched a plain assignment,
+  # `reason="Monitor and Bash..."`, that carries no space before its `=`.
+  # Requiring a whitespace character before the operator closes it, because a
+  # bash assignment carries none while a `[ ]`/`[[ ]]` comparison always does.
+  local dir
+  dir="$(make_fixture red-assign-mention)"
+  write_hook "$dir" guard.sh dualgated
+  write_hook "$dir" mentioner.sh assign_mention
+  write_settings "$dir" 'Bash|Monitor:guard.sh,mentioner.sh'
+
+  run bash "$CHECK" "$dir"
+  [ "$status" -eq 1 ]
+  grep -qF -- 'mentioner.sh' <<<"$output"
+}
+
+@test "clean: an equality comparison against Monitor satisfies admits_monitor" {
+  # Every other clean fixture in this suite gates through the case-arm shape;
+  # this one exercises admits_monitor's equality branch on its own, so a
+  # regression in that branch alone has a passing fixture to break.
+  local dir
+  dir="$(make_fixture clean-equality)"
+  write_hook "$dir" guard.sh equality_dualgated
+  write_settings "$dir" 'Bash|Monitor:guard.sh'
+
+  run bash "$CHECK" "$dir"
+  [ "$status" -eq 0 ]
+  grep -qF -- 'clean' <<<"$output"
 }
 
 # --- fail-closed discovery ---------------------------------------------------

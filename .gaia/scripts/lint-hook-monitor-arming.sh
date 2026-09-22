@@ -38,9 +38,13 @@
 #                WHAT IT COUNTS rather than what it protects: a watch that
 #                names the verb, or one re-armed after its deadline, adds rows
 #                for a single real action. A missing row is recoverable and a
-#                wrong one is not distinguishable from a real one, so this gate
+#                wrong one is not distinguishable from a real one, so ARM A
 #                leaves the decision to whoever owns the ledger and says
-#                nothing about an advisory hook either way.
+#                nothing about an advisory hook's matcher either way. Arm B
+#                carries no such filter: an advisory hook on a Monitor-reaching
+#                row whose body still pins `tool_name` to `Bash` is reported
+#                the same as a blocking one, because a reader of the settings
+#                diff cannot tell the posture apart from the row alone.
 #
 # TWO ARMS, because the repair has two halves and half of it is inert:
 #   A. UNDER-ARMED MATCHER. A PreToolUse row whose matcher reaches `Bash` but
@@ -135,6 +139,20 @@ names_outside_comments() {
 # mention -- a deny-reason string describing the widening, a comment, a
 # variable name -- satisfies neither shape.
 #
+# Both patterns are anchored on shell grammar rather than on the word alone,
+# because a prose mention can stand anywhere in a code line and an unanchored
+# search over the same line reads it as a gate. The case-arm pattern is
+# anchored at the (already comment-stripped and leading-whitespace-stripped)
+# START of the line: a real case arm's pattern list IS the line up to its
+# `)`, so requiring the match to start at position 0 excludes `Monitor`
+# appearing after other prose on the same line, `(Bash or Monitor)` inside a
+# deny-reason string included. The equality pattern requires a whitespace
+# character immediately before the `=`/`==`: valid bash assignment
+# (`reason="...Monitor..."`) carries no space before its `=`, while a `[ ]` or
+# `[[ ]]` comparison (`[ "$tool_name" = "Monitor" ]`) requires one, so the
+# space is the discriminator between the two shapes rather than an assumption
+# about spacing style.
+#
 # This is deliberately not names_outside_comments('Monitor', ...), which the
 # Bash side of arm B still uses: over-reporting on the Bash side sends a human
 # to read one hook where the answer was already fine, which is cheap and
@@ -148,8 +166,8 @@ admits_monitor() {
       line = $0
       sub(/^[[:space:]]+/, "", line)
       if (line ~ /^#/) next
-      if (line ~ /(^|[^A-Za-z0-9_])Monitor[[:space:]]*(\|[[:space:]]*[A-Za-z_][A-Za-z_0-9]*[[:space:]]*)*\)/) { found = 1; exit }
-      if (line ~ /==?[[:space:]]*"?Monitor"?([^A-Za-z0-9_]|$)/) { found = 1; exit }
+      if (line ~ /^([A-Za-z_][A-Za-z_0-9]*[[:space:]]*\|[[:space:]]*)*Monitor[[:space:]]*(\|[[:space:]]*[A-Za-z_][A-Za-z_0-9]*[[:space:]]*)*\)/) { found = 1; exit }
+      if (line ~ /[[:space:]]==?[[:space:]]*"?Monitor"?([^A-Za-z0-9_]|$)/) { found = 1; exit }
     }
     END { exit(found ? 0 : 1) }
   ' "$1"
@@ -233,7 +251,7 @@ main() {
     return 2
   fi
 
-  local bash_rows=0 subjects=0
+  local bash_registrations=0 subjects=0
   local unarmed='' inert=''
   local line row matcher command hook path
   while IFS= read -r line; do
@@ -247,8 +265,7 @@ main() {
       *.claude/hooks/*) ;;
       *) continue ;;
     esac
-    hook="$(printf '%s' "$command" | grep -oE "$GAIA_HOOK_NAME_RE" |
-      sed -e 's#^.*\.claude/hooks/##' -e 's#\(\.sh\).$#\1#')"
+    hook="$(gaia_hook_name_from_command "$command")"
     [ -n "$hook" ] || continue
     path="$root/.claude/hooks/$hook"
     # A registration naming a script that is not present is a separate defect
@@ -291,7 +308,7 @@ main() {
     fi
 
     [ "$reaches_bash" -eq 1 ] || continue
-    bash_rows=$((bash_rows + 1))
+    bash_registrations=$((bash_registrations + 1))
 
     names_outside_comments 'tool_input.command' "$path" || continue
     gaia_hook_blocks "$path" || continue
@@ -304,7 +321,7 @@ main() {
 $rows
 EOF
 
-  if [ "$bash_rows" -eq 0 ]; then
+  if [ "$bash_registrations" -eq 0 ]; then
     printf '%s: discovery found no PreToolUse registration whose matcher reaches Bash.\n' "$PROG" >&2
     printf 'This tree registers many; an empty set is the matcher evaluation failing rather\n' >&2
     printf 'than a layer that binds no shell command, and every row would grade as correct\n' >&2
