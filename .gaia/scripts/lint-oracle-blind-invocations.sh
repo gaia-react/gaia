@@ -434,8 +434,12 @@ _obi_rewrite_line() {
 # yielding no candidates is indistinguishable from a clean one.
 _obi_scan_file() {
   local rel="$1" file="$REPO_ROOT/$1"
-  local line lineno=0 body="" out i w
-  local -a starts=() logicals=()
+  local line lineno=0 out i w
+  # The probe body is collected as one element per physical line and joined
+  # once at the use site below. Appending to a string instead reallocates and
+  # copies the whole accumulated body on every line, which is quadratic in file
+  # length and was the single largest cost in this guard (gaia-react/gaia#2230).
+  local -a starts=() logicals=() bodyv=()
   if [ ! -r "$file" ]; then
     printf '%s: unreadable: the scan cannot open this file, so the oracle'"'"'s blindness here is unmeasured\n' "$rel"
     return 0
@@ -454,9 +458,9 @@ _obi_scan_file() {
     case "$line" in
       *.sh*|*.[[:space:]]*|*source[[:space:]]*)
         _obi_rewrite_line "$line" "$lineno"
-        body="$body$_OBI_OUT"$'\n'
+        bodyv[${#bodyv[@]}]="$_OBI_OUT"
         ;;
-      *) body="$body$line"$'\n' ;;
+      *) bodyv[${#bodyv[@]}]="$line" ;;
     esac
   done < "$file"
   [ "$_OBI_N" -gt 0 ] || return 0
@@ -466,7 +470,9 @@ _obi_scan_file() {
       printf 'shopt -s expand_aliases\n'
       for w in ${PREFIX_WORDS[@]+"${PREFIX_WORDS[@]}"}; do printf "alias %s='%s ';\n" "$w" "$w"; done
       printf '%s\n' "$_OBI_ALIASES"
-      printf '__gaia_obi_probe() {\n%s\n}\ndeclare -f __gaia_obi_probe\n' "$body"
+      printf '__gaia_obi_probe() {\n'
+      printf '%s\n' ${bodyv[@]+"${bodyv[@]}"}
+      printf '\n}\ndeclare -f __gaia_obi_probe\n'
     } | "$BASH" 2>&1
   )"
   case "$out" in
