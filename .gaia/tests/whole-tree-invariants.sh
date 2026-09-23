@@ -45,16 +45,16 @@
 # Apple M2 Pro (12 cores, macOS 27) in 2026-09, tree green (every member
 # passing), with mawk and a bats --jobs backend (GNU parallel) resolvable on
 # PATH and WTI_JOBS/WTI_BATS_JOBS at their defaults (8 each): the forked
-# aggregate this script reports is ~145s. Two members account for nearly all
+# aggregate this script reports is ~119s. Two members account for nearly all
 # of it even under the fork: the WTI_BATS member (the shard-partition suite),
-# run under bats --jobs 8, costs ~87s standalone (~242s forced serial, so the
-# backend buys it roughly 2.8x); and shell-lint.sh as a member costs ~43s. The
+# run under bats --jobs 8, costs ~86s standalone (~233s forced serial, so the
+# backend buys it roughly 2.7x); and shell-lint.sh as a member costs ~26s. The
 # other 18 WTI_SCRIPTS members total roughly 17s between them, including
 # check-registry-source-literals.sh at ~6s.
 #
-# The aggregate does not collapse toward the ~87s slowest member, because
+# The aggregate does not collapse toward the ~86s slowest member, because
 # total CPU is close to fixed rather than shrinking under the fork: this
-# run's user+sys time (~7m user, ~6m19 sys) sits within a few percent of the
+# run's user+sys time (~6m25 user, ~5m49 sys) sits within a few percent of the
 # same total on an unforked serial run of every member. The pool buys
 # overlap on 12 cores, not less work, so the two heavy members still contend
 # with each other and with the lighter 18 for the same cores.
@@ -63,7 +63,7 @@
 # degrades rather than refusing when either input is absent (see
 # "Concurrency" below and this plan's README.md FC-7). Absent a bats --jobs
 # backend, the WTI_BATS member runs serially and becomes the pool's long
-# pole at its own standalone cost, roughly the ~242s above rather than ~87s.
+# pole at its own standalone cost, roughly the ~233s above rather than ~86s.
 # Absent mawk, the awk-tokenizer guards shell-lint.sh folds in resolve a
 # slower interpreter; the per-guard breakdown lives in shell-lint.sh's own
 # header rather than repeated here.
@@ -85,7 +85,7 @@
 # There is one tier rather than a fast default plus a named slower tier. A
 # split is worth its second name only once the honest set is slow enough that
 # people skip it, and an aggregate slow enough to skip is worse than none; the
-# ~145s aggregate stated in the Runtime paragraph above, against the price of
+# ~119s aggregate stated in the Runtime paragraph above, against the price of
 # an audit round, is not that, and the margin is comfortable rather than
 # narrow.
 #
