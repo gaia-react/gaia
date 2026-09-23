@@ -30,6 +30,7 @@ For cycle in 1..3:
   if clean (no open findings, Bucket D verdict A+ readiness, effective shared-fitness grade = A+; see §Termination):
     if the challenger has not run yet this run (at-most-once flag, see §False-clean challenger):
       Orchestrator spawns the false-clean challenger lenses as parallel leaf subagents; mark the challenger as run
+      Orchestrator classifies each lens's challenger-<LENS>.json before reading it (see §Leaf completion check)
       if any lens returns a substantiated finding (clean verdict REVOKED):
         Orchestrator injects it into c<N>/findings.json (action: real-fix, bucket: challenger, lane, fingerprint)
         if cycle == 3: escalate with reason false-clean-refuted (preserve RUN_DIR, surface its path), exit   # no next cycle to fix-and-reverify
@@ -52,7 +53,7 @@ A leaf that ends its turn on a progress report hands back what reads as a finish
 
 > How your run ends: a reply with no tool call ends it, and the orchestrator reads whatever you returned as your finished result. Do not end on a summary that announces a next step, an offer to continue, a list of questions none of which blocks the work, or a progress report because a milestone is done; take the next step instead. Stop only when the task is complete, or when something you cannot resolve blocks it, and then say which.
 
-**The Orchestrator classifies each leaf's artifact before the next step reads it**, under `.claude/rules/subagent-dispatch.md`; the full contract is `wiki/concepts/Code Review Audit Agent.md`, "No-op guard against silent subagents". `RUN_DIR/c<N>/` is created fresh each cycle, so an artifact's presence is a fresh-write signal. Only the Adjudicator writes JSON; the bucket artifacts are text and Markdown, so they take an existence-and-content check instead.
+**The Orchestrator classifies each leaf's artifact before the next step reads it**, under `.claude/rules/subagent-dispatch.md`; the full contract is `wiki/concepts/Code Review Audit Agent.md`, "No-op guard against silent subagents". `RUN_DIR/c<N>/` is created fresh each cycle, so an artifact's presence is a fresh-write signal. Only the Adjudicator and the challenger lenses write JSON; the bucket artifacts are text and Markdown, so they take an existence-and-content check instead.
 
 | Leaf | Real when |
 | --- | --- |
@@ -62,6 +63,7 @@ A leaf that ends its turn on a progress report hands back what reads as a finish
 | Bucket D | `bucket-d.md` is non-empty |
 | Bucket E | `bucket-e/shared_fitness_grade.txt` is non-empty and `bucket-e/category-grades.json` parses (`jq -e .`) |
 | Adjudicator | `bash .gaia/scripts/audit-noop-detect.sh --shape agent-report-file --path RUN_DIR/c<N>/findings.json --report-key findings` exits 0 |
+| Challenger lens `<LENS>` | `bash .gaia/scripts/audit-noop-detect.sh --shape agent-report-file --path RUN_DIR/c<N>/challenger-<LENS>.json --report-key findings` exits 0. A lens that substantiates nothing writes an empty array, so a missing file is a lens that never finished, never a lens that cleared the verdict |
 
 Fixers write no artifact, since their output is the edited tree; the next cycle's fresh buckets and the fix-verification lens are their check, and an unfinished fix resurfaces there as an open finding or as oscillation.
 
@@ -374,7 +376,7 @@ Announce the fan-out once, naming each dispatched lens in full with its id in pa
 
 > Spawning the false-clean challenger against the terminal clean verdict: blind-spot (BS), misclassification (MC), grade-honesty (GH), fix-verification (FV).
 
-Each lens is a parallel `general-purpose` leaf the Orchestrator spawns, handed: the terminal cycle's bucket artifacts (`RUN_DIR/c<N>/bucket-a.txt`, `bucket-b/`, `bucket-c.txt`, `bucket-d.md`, `bucket-e/`), `RUN_DIR/c<N>/findings.json`, and BOTH "Decided / not findings" lists (`.gaia/cli/health/taxonomy.md` § Decided / not findings and `wiki/decisions/Claude Integration Fitness.md` § Decided / not findings) so it does not re-surface settled items. Each returns only the findings JSON (the canonical schema, see §Audit artifacts), no narrative.
+Each lens is a parallel `general-purpose` leaf the Orchestrator spawns, handed: the terminal cycle's bucket artifacts (`RUN_DIR/c<N>/bucket-a.txt`, `bucket-b/`, `bucket-c.txt`, `bucket-d.md`, `bucket-e/`), `RUN_DIR/c<N>/findings.json`, and BOTH "Decided / not findings" lists (`.gaia/cli/health/taxonomy.md` § Decided / not findings and `wiki/decisions/Claude Integration Fitness.md` § Decided / not findings) so it does not re-surface settled items. Each writes `{"findings": [...]}` in the canonical finding schema (see §Audit artifacts) to `RUN_DIR/c<N>/challenger-<LENS>.json`, with an empty array when it substantiates nothing, and returns no narrative.
 
 - **Blind-spot (id prefix `BS`).** Always runs. Assume a real defect exists that EVERY bucket missed. Attack the UNION of the five bucket scopes (static checks, source greps, bundle simulation, cross-class enforcement walk, the fitness categories) and produce the concrete file + pattern that no bucket grep covers. A concrete uncovered file + pattern is a finding.
 - **Misclassification (id prefix `MC`).** Always runs. For each `decided-not-finding` and `false-positive` in `findings.json`, verify it TRULY matches a taxonomy or fitness "Decided" entry, not a stretched near-match; cite the matched entry's line. A `decided-not-finding` that does not actually match its claimed Decided entry (a real finding dismissed as settled) is a finding.

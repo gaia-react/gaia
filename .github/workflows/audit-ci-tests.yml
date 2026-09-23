@@ -320,6 +320,13 @@ jobs:
               - '.claude/skills/gaia/references/spec.md'
               - '.claude/skills/gaia/references/plan.md'
               - '.claude/agents/code-audit-frontend.md'
+              # doc-noop-terminal-contract.bats and doc-early-stop-paragraph.bats
+              # (.gaia/tests/lib/) read the health runbook's leaf completion
+              # check and the fitness page's auditor dispatch text; neither path
+              # matches any glob here, so an edit to either alone would skip
+              # the suites that guard it.
+              - '.gaia/cli/health/runbook.md'
+              - 'wiki/decisions/Claude Integration Fitness.md'
               # The doc-isolation suite (.gaia/tests/lib/) renders the prompt out
               # of the shared isolation reference and greps both callers' pointer
               # wiring, so the fragment and debt.md are sources it guards too.
