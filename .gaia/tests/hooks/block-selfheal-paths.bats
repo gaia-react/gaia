@@ -1131,6 +1131,26 @@ redirect_ops() {
   done
 }
 
+# --- cost on a large command ---
+#
+# The hook runs before every Bash call a member makes, and a member's own
+# findings-staging command is tens of kilobytes of tokens. A fork per token, or
+# a function call per token under bash 3.2 (which copies the positional list on
+# every call), took tens of seconds on that payload. The bound is generous
+# against the linear scan and far below the per-token regression.
+
+@test "an ~80 KB findings-staging command is checked well inside the time bound" {
+  local body start elapsed
+  # shellcheck disable=SC2046
+  body=$(printf 'word%d is one token in a findings payload body, ' $(seq 1 1800))
+  [ "${#body}" -gt 80000 ]
+  start=$SECONDS
+  run_hook_bash "code-audit-maintainer-shell" "printf %s '${body}' > /tmp/f.json"
+  elapsed=$((SECONDS - start))
+  assert_allowed_by_json
+  [ "$elapsed" -le 5 ] || { echo "hook took ${elapsed}s on ${#body} bytes"; return 1; }
+}
+
 # --- jq absent from PATH (the interpreter the payload read needs) ---
 #
 # The hook reads the payload with jq under errexit, so with no jq on PATH it
