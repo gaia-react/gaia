@@ -241,6 +241,61 @@ setup() {
   [ "$output" = "real" ]
 }
 
+# cra-specialist under --expect-count: the `Files reviewed: <n>` coverage line.
+# A specialist that stops partway returns a real finding block with files left
+# unread, which the token predicate alone classifies REAL. The count is the
+# number of files the dispatcher handed it, so a short or missing coverage line
+# is that partial return.
+
+@test "cra-specialist: --expect-count with a matching coverage line after the clean sentinel is REAL" {
+  run "$SCRIPT" --shape cra-specialist --path "$FIX/cra-specialist/clean-with-coverage.txt" \
+    --expect-count 3
+  [ "$status" -eq 0 ]
+  [ "$output" = "real" ]
+}
+
+@test "cra-specialist: --expect-count with a matching coverage line after a finding block is REAL" {
+  run "$SCRIPT" --shape cra-specialist --path "$FIX/cra-specialist/finding-block-with-coverage.txt" \
+    --expect-count 3
+  [ "$status" -eq 0 ]
+  [ "$output" = "real" ]
+}
+
+@test "cra-specialist: --expect-count with a finding block that ends on a next-step note is NO-OP (partial return)" {
+  run "$SCRIPT" --shape cra-specialist --path "$FIX/cra-specialist/partial-next-step.txt" \
+    --expect-count 3
+  [ "$status" -eq 1 ]
+  [ "$output" = "noop" ]
+}
+
+@test "cra-specialist: --expect-count with a SHORT coverage line is NO-OP" {
+  run "$SCRIPT" --shape cra-specialist --path "$FIX/cra-specialist/finding-block-short-coverage.txt" \
+    --expect-count 3
+  [ "$status" -eq 1 ]
+  [ "$output" = "noop" ]
+}
+
+@test "cra-specialist: --expect-count with a bare clean sentinel and no coverage line is NO-OP" {
+  run "$SCRIPT" --shape cra-specialist --path "$FIX/cra-specialist/clean.txt" \
+    --expect-count 3
+  [ "$status" -eq 1 ]
+  [ "$output" = "noop" ]
+}
+
+@test "cra-specialist: --expect-count does not rescue a reminder echo that happens to carry a coverage line" {
+  echo_cov="$BATS_TEST_TMPDIR/echo-with-coverage.txt"
+  { cat "$FIX/shared/reminder-echo.txt"; printf 'Files reviewed: 3\n'; } > "$echo_cov"
+  run "$SCRIPT" --shape cra-specialist --path "$echo_cov" --expect-count 3
+  [ "$status" -eq 1 ]
+  [ "$output" = "noop" ]
+}
+
+@test "cra-specialist: without a count, a coverage line does not change the classification" {
+  run "$SCRIPT" --shape cra-specialist --path "$FIX/cra-specialist/finding-block-short-coverage.txt"
+  [ "$status" -eq 0 ]
+  [ "$output" = "real" ]
+}
+
 # cra-refuter (return-conformance)
 
 @test "cra-refuter: STANDS is REAL" {

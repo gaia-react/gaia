@@ -199,7 +199,8 @@ def main():
     ap.add_argument("--runs", type=int, default=1)
     ap.add_argument("--workers", type=int, default=6)
     ap.add_argument("--timeout", type=int, default=120)
-    ap.add_argument("--model", default="claude-opus-4-8")
+    ap.add_argument("--model", default="opus",
+                    help="model passed to `claude --model`; the alias tracks the current Opus")
     ap.add_argument("--only", default=None,
                     help="substring filter: only run queries containing this")
     ap.add_argument("--out",

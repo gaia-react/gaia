@@ -1,0 +1,5 @@
+- **Category**: correctness
+- **Location**: `path/to/file.tsx:42`
+- **Issue**: a real finding, not a no-op.
+
+That covers the first file. Next I will review the remaining two files for the same rules.
