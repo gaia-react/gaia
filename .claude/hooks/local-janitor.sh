@@ -1396,10 +1396,9 @@ if [ -n "$wt_main" ] && [ -d "$wt_base" ]; then
   # and the entry is registry main-only (worktree-reap-miss-memo in
   # .gaia/state-registry.json).
   #
-  # Both spelled out rather than one derived from the other: the capability
-  # oracle reads a literal assignment but not a `${var%/*}` trim, and the
-  # registry's source-literal check looks for the entry's whole path as one
-  # contiguous literal.
+  # Both spelled out rather than one derived from the other: the registry's
+  # source-literal check looks for the entry's whole path as one contiguous
+  # literal, which a `${var%/*}` trim would not satisfy.
   wt_memo_dir="$wt_main/.gaia/local/cache"
   wt_memo_file="$wt_main/.gaia/local/cache/worktree-reap-misses.txt"
   wt_memo_prev=""

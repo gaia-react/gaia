@@ -151,7 +151,7 @@ PINNED_HOOKS=(local-janitor.bats)
 # which bucket each named suite anchors, so keep the list shorter than
 # SCRIPTS_IDS. `wiki/decisions/Sharded CI Test Matrix.md` carries the
 # measurements.
-SCRIPTS_COST_OUTLIERS=(shell-lint.bats check-script-capabilities.bats)
+SCRIPTS_COST_OUTLIERS=(shell-lint.bats)
 
 # The two weighted groups, each listed once and in matrix order. Adding a shard
 # to a group is a one-word edit here: SHARD_IDS is built from these rather than

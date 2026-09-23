@@ -20,16 +20,14 @@
 # step exists to front-load exactly that.
 #
 # Membership is decided by two questions, read from each candidate's own header
-# rather than inferred from its name. The first accounts for every exclusion
-# but one: is the input the whole tracked tree, with no path-scoped trigger
-# that could select it? The second exists for exactly one member so far: a
-# candidate that answers yes to the first question can still be excluded on
-# cost, when its standalone wall clock is long enough that no per-PR aggregate
-# should absorb it inline. `.gaia/scripts/check-hook-capabilities.sh` is that
-# member; its own dedicated gated CI job runs it against the live tree instead,
-# and its WTI_EXCLUDED reason line carries the measured figure that earned it
-# the exclusion. The candidates that answer no to either question are listed in
-# WTI_EXCLUDED below with their reason, so a reader can see they were
+# rather than inferred from its name. The first accounts for every current
+# exclusion: is the input the whole tracked tree, with no path-scoped trigger
+# that could select it? The second is a cost escape hatch: a candidate that
+# answers yes to the first question can still be excluded on cost, when its
+# standalone wall clock is long enough that no per-PR aggregate should absorb
+# it inline. No current candidate meets that bar. The candidates that answer
+# no to either question are listed in WTI_EXCLUDED below with their reason,
+# so a reader can see they were
 # considered rather than missed, and .gaia/tests/lib/whole-tree-invariants.bats
 # fails if a candidate appears in neither table. That suite sweeps the four
 # `.sh` naming families that have produced a member (`check-*`, `lint-*` and
@@ -51,16 +49,15 @@
 # of it even under the fork: the WTI_BATS member (the shard-partition suite),
 # run under bats --jobs 8, costs ~87s standalone (~242s forced serial, so the
 # backend buys it roughly 2.8x); and shell-lint.sh as a member costs ~43s. The
-# other 19 WTI_SCRIPTS members total roughly 31s between them, the heaviest
-# being check-script-capabilities.sh at ~14s (it walks the invocation closure
-# of every allowlisted script) and check-registry-source-literals.sh at ~6s.
+# other 18 WTI_SCRIPTS members total roughly 17s between them, including
+# check-registry-source-literals.sh at ~6s.
 #
 # The aggregate does not collapse toward the ~87s slowest member, because
 # total CPU is close to fixed rather than shrinking under the fork: this
 # run's user+sys time (~7m user, ~6m19 sys) sits within a few percent of the
 # same total on an unforked serial run of every member. The pool buys
 # overlap on 12 cores, not less work, so the two heavy members still contend
-# with each other and with the lighter 19 for the same cores.
+# with each other and with the lighter 18 for the same cores.
 #
 # Both figures the aggregate leans on are conditional, and the runner
 # degrades rather than refusing when either input is absent (see
@@ -90,10 +87,7 @@
 # people skip it, and an aggregate slow enough to skip is worse than none; the
 # ~145s aggregate stated in the Runtime paragraph above, against the price of
 # an audit round, is not that, and the margin is comfortable rather than
-# narrow: shell-lint.sh's own inline cost (~43s) now sits below the 66-70s
-# standalone figure that earned check-hook-capabilities.sh its own cost
-# exclusion in WTI_EXCLUDED below, so that exclusion's threshold and this
-# runner's own heaviest inline member no longer sit in tension.
+# narrow.
 #
 # Re-measure the WHOLE paragraph, not the figure being edited. Only the member
 # COUNT below is machine-checked, so every number here decays independently:
@@ -174,7 +168,6 @@ readonly WTI_SCRIPTS='.gaia/scripts/check-audit-base-derivation.sh
 .gaia/scripts/check-registry-source-literals.sh
 .gaia/scripts/check-resolver-singleton.sh
 .gaia/scripts/check-scope-digest-adoption.sh
-.gaia/scripts/check-script-capabilities.sh
 .gaia/scripts/check-step-body-extractor-roster.sh
 .gaia/scripts/check-verb-arming-adoption.sh
 .gaia/scripts/check-wiki-state-collision.sh
@@ -187,7 +180,7 @@ readonly WTI_SCRIPTS='.gaia/scripts/check-audit-base-derivation.sh
 # The staleness lever's baseline: WTI_SCRIPTS's own member count at the time
 # the runtime paragraph above was last measured. main() compares the live
 # count against this and refuses to run on a mismatch, per that paragraph.
-readonly WTI_SCRIPTS_COUNT_ASOF=20
+readonly WTI_SCRIPTS_COUNT_ASOF=19
 
 # Members invoked as `bats <path>`. The shard partition is a whole-tree
 # invariant in the same sense as the scripts above: its input is every .bats
@@ -206,7 +199,6 @@ readonly WTI_EXCLUDED='.gaia/scripts/check-debt-issue-metadata.sh|argument-drive
 .gaia/scripts/lint-errexit-status-read.sh|runs transitively, shell-lint.sh invokes it and shell-lint.sh is itself a member
 .gaia/scripts/lint-hook-array-guard.sh|runs transitively, shell-lint.sh invokes it and shell-lint.sh is itself a member
 .gaia/scripts/lint-workflow-run-interpolation.sh|runs transitively, shell-lint.sh invokes it and shell-lint.sh is itself a member
-.gaia/scripts/lint-oracle-blind-invocations.sh|runs transitively, shell-lint.sh invokes it and shell-lint.sh is itself a member
 .gaia/scripts/lint-stale-cardinals.sh|runs transitively, shell-lint.sh invokes it and shell-lint.sh is itself a member
 .gaia/scripts/lint-guard-rule-shell-coverage.sh|runs transitively, shell-lint.sh invokes it and shell-lint.sh is itself a member
 .gaia/scripts/lint-collapsed-signal-trap.sh|runs transitively, shell-lint.sh invokes it and shell-lint.sh is itself a member
@@ -227,8 +219,7 @@ readonly WTI_EXCLUDED='.gaia/scripts/check-debt-issue-metadata.sh|argument-drive
 .gaia/scripts/verify-cli-bundle-fresh.sh|rebuilds the CLI via pnpm bundle; a build step needing installed dependencies, not a read of the tree
 .gaia/scripts/verify-required-checks.sh|reads the live GitHub ruleset over the network, so its subject is repository configuration rather than the tree
 .gaia/tests/whole-tree-invariants.sh|this runner; a member of itself would recurse
-.gaia/scripts/check-cli-workspace-floors.sh|path-scoped and separately gated; its parity subjects are the two files under .gaia/cli/ that arm the code filter in cli-tests.yml, where it runs offline as its own step, and the network-reading advisory arm it also carries runs on no pull request at all, only on the scheduled non-required lane in .github/workflows/cli-advisory-scan.yml
-.gaia/scripts/check-hook-capabilities.sh|excluded on cost: 66-70s median standalone gate-mode cost, measured on the manifest-complete tree over two independent n=3 samples on the same host (medians 66.4s and 70.3s; the gap is host load), and 83s measured on an ubuntu-latest runner, which is the slower host; it runs instead in its own dedicated gated job in .github/workflows/audit-ci-tests.yml'
+.gaia/scripts/check-cli-workspace-floors.sh|path-scoped and separately gated; its parity subjects are the two files under .gaia/cli/ that arm the code filter in cli-tests.yml, where it runs offline as its own step, and the network-reading advisory arm it also carries runs on no pull request at all, only on the scheduled non-required lane in .github/workflows/cli-advisory-scan.yml'
 
 usage() {
   cat <<EOF

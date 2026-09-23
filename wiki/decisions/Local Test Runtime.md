@@ -90,18 +90,6 @@ the divergence closed here was measured on the tokenizer guards specifically.
 Both files' own headers carry the fuller argument and derive their surface
 from the tree rather than from a count kept here.
 
-## The oracle-blind tokenizer is the named floor
-
-One guard, `lint-oracle-blind-invocations.sh`, does not benefit from either
-lever above: its cost is a hand-rolled character tokenizer written in pure
-bash rather than in awk, so an alternate awk interpreter changes nothing
-about it, and it remains the single most expensive unit in the folded guard
-phase. Rewriting that tokenizer in awk is a plausible win, tracked as its own
-piece of work in [gaia-react/gaia#2230](https://github.com/gaia-react/gaia/issues/2230)
-rather than folded into the levers above, because it is a rewrite of a guard
-whose correctness matters and carries its own adversarial-fixture burden
-independent of anything here.
-
 ## The full bats corpus: no scheduling win exists
 
 Running every `.bats` suite in the repository, sharded across the available

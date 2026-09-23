@@ -111,19 +111,6 @@ transforms:
       - path: "hooks.PreToolUse[].hooks[]"
         match: {command: '"$(git rev-parse --show-toplevel 2>/dev/null || printf %s "${CLAUDE_PROJECT_DIR:-.}")/.claude/hooks/distribution-preflight-check.sh"'}
 
-  # The maintainer-only preflight row in the hook-capabilities manifest,
-  # alongside the settings.json strip above. distribution-preflight-check.sh is
-  # release-excluded, so leaving its entry in place would ship an ORPHAN by
-  # the manifest's own coverage rule on every adopter clone.
-  # .gaia/hook-capabilities.json's checker is release-excluded too, so there
-  # the orphan would ship undetectably; this strip is what prevents it.
-  - type: json-strip-array-element
-    paths:
-      - ".gaia/hook-capabilities.json"
-    selectors:
-      - path: "hooks[]"
-        match: {hook: ".claude/hooks/distribution-preflight-check.sh"}
-
   # Maintainer-audience entries in the label registry. `audience:adopter` and
   # `audience:maintainer` classify a defect against GAIA's own distribution
   # boundary, and the forensics-audience entries name a workflow an adopter
@@ -229,15 +216,13 @@ transforms:
           - "e\\.g\\.\\s*`?SPEC-[0-9]{3,}"
 
       # ---- Release-excluded paths leaked into shipped surfaces ----
-      # This check's `scope: ["**"]` already reaches .gaia/hook-capabilities.json
-      # and .gaia/hook-capabilities.schema.json, the whole staging tree being
-      # the scope (see the comment on the six token-leak checks above), so a
-      # maintainer-only path referenced inside either shipped file's own prose
-      # is already caught with no scope edit owed here. What this pattern does
-      # NOT catch is prose that names a maintainer-only concept with no path in
-      # it (e.g. ".gaia/script-capabilities.json"'s own "never ships to an
-      # adopter checkout" wording): that class is the shipped-`why` authoring
-      # rules' job, not this check's.
+      # This check's `scope: ["**"]` already reaches every shipped file, the
+      # whole staging tree being the scope (see the comment on the six
+      # token-leak checks above), so a maintainer-only path referenced inside
+      # any shipped file's own prose is already caught with no scope edit
+      # owed here. What this pattern does NOT catch is prose that names a
+      # maintainer-only concept with no path in it: that class is the
+      # shipped-`why` authoring rules' job, not this check's.
       # Every directory alternative ends `\b`, never a trailing `/`. A trailing
       # slash matches only a reference that continues past the directory name,
       # so a bare-directory mention of the same release-excluded tree passes

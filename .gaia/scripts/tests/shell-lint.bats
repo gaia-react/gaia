@@ -31,10 +31,9 @@
 # PATH so the suite runs on the audit-ci-tests box (bats installed, no linter
 # binary). The rig below is duplicated in the sibling rather than shared:
 # this repo has no bats helper-loading precedent, and a helper file would land
-# under .gaia/scripts/tests/ carrying an extension that either escapes
-# shell-lint's own *.sh discovery or joins the capability oracle's obligated
-# surface. The two copies are held in step by a test below rather than by this
-# sentence, since nothing reds when prose is disobeyed.
+# under .gaia/scripts/tests/ carrying an extension that escapes shell-lint's
+# own *.sh discovery. The two copies are held in step by a test below rather
+# than by this sentence, since nothing reds when prose is disobeyed.
 #
 # Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 
@@ -179,12 +178,9 @@ rig_piece() {
   # heredoc body the setup writes.
   case "$2" in
     shellcheck-stub)
-      # Anchored on the redirect TARGET rather than on the heredoc operator.
-      # A literal `<<'STUB'` in this pattern is one the splitter in
-      # .gaia/scripts/capability-oracle-lib.sh reads as a real heredoc open, so
-      # it would wait for a terminator this file never supplies again and blind
-      # the oracle to every line below -- the class the sibling fixture
-      # "a comment inside a nested quoted body opens no heredoc" exists for.
+      # Anchored on the redirect TARGET rather than on the heredoc operator,
+      # so this file's own source never contains a literal `<<'STUB'` that a
+      # heredoc-tracking scanner could misread as a real heredoc open.
       # `q` on the range's end, because the target matches again on the
       # `chmod` line below the heredoc and sed would open a SECOND range there,
       # running to the next terminator or to EOF. The two files differ in what
@@ -224,7 +220,7 @@ rig_piece() {
 # ONE gate run covers the whole set, not one run per guard. A clean-tree run is the
 # same execution whichever proof line is grepped afterwards, and it is the
 # suite's most expensive single operation -- the folded guards each walk every
-# tracked script, and lint-oracle-blind-invocations alone costs ~20s of it. The
+# tracked script, and together they cost most of it. The
 # seven separate tests this replaced paid that seven times over for seven greps
 # against byte-identical output, which is most of why this file could hold a
 # scripts-N shard at the 13-minute cap in .github/workflows/audit-ci-tests.yml

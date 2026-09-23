@@ -593,19 +593,6 @@ jobs:
               - '.gaia/release-scrub.yml'
               # The harness itself: a scenario, lib, or runner edit must re-run.
               - '.gaia/tests/distribution/**'
-              # 01-files-present.sh's shipped-manifest scenario reads
-              # $STAGING/.gaia/script-capabilities.json directly; a
-              # manifest-only or schema-only edit touches no other pattern
-              # here, so without these two lines the scenario that guards it
-              # would skip on the very change that breaks it.
-              - '.gaia/script-capabilities.json'
-              - '.gaia/script-capabilities.schema.json'
-              # Same reasoning, for the sibling hook-capabilities scenario:
-              # 01-files-present.sh reads $STAGING/.gaia/hook-capabilities.json
-              # directly, and a manifest-only or schema-only edit touches no
-              # other pattern here.
-              - '.gaia/hook-capabilities.json'
-              - '.gaia/hook-capabilities.schema.json'
               # The release manifest, read by two scenarios: 01-files-present.sh
               # walks its files{} keys to assert every listed path is present in
               # the staged tree, and 16-audit-remit-parity.sh reads the roster
@@ -616,9 +603,9 @@ jobs:
               # reassignment, a plain re-run), and it matches no other pattern
               # here, so without this line it would resolve `code=false` and green
               # the job having run the scenarios that read the manifest zero
-              # times. Same reasoning as the two entries above; the sibling job's
-              # filter needs no counterpart, because its Vitest suites build every
-              # manifest they read in a sandbox and none reads this one.
+              # times. The sibling job's filter needs no counterpart, because
+              # its Vitest suites build every manifest they read in a sandbox
+              # and none reads this one.
               - '.gaia/manifest.json'
               - '.github/workflows/cli-tests.yml'
               # The composite action this job's Node setup step `uses:`. Nothing

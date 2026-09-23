@@ -279,22 +279,15 @@ _debug_emit_path="${GAIA_AUDIT_RESIDUAL_DEBUG_EMIT:-}"
 # `_debug_emit_path` binding. The destination is whatever the operator names
 # in GAIA_AUDIT_RESIDUAL_DEBUG_EMIT -- the harness points it at a scratch
 # directory and, in one case, at a deliberately non-writable one -- so there
-# is no literal this file could name instead, and the honest capability term
-# for such a write is the caller-designates-it one (`fs-write:**`, the same
-# term the audit-clearance callers declare). Taking it as a parameter is what
-# states that in the grammar `.gaia/scripts/check-hook-capabilities.sh` reads:
-# a positional IS the caller's answer, where a variable read from the
-# environment resolves to no path the oracle can name.
+# is no literal this file could name instead, and taking it as a parameter
+# makes the write's real destination the caller's answer rather than
+# something resolved from the environment inside this function.
 #
-# Two honest limits of that. The guard below spells `${1:-}` rather than `$1`
+# One honest limit of that. The guard below spells `${1:-}` rather than `$1`
 # because this file runs under `set -u`: an arm added later that closes a unit
 # without passing the path would abort the whole hook before it writes its
 # deny JSON, and a non-zero PreToolUse exit other than 2 does not block, so a
-# fail-closed gate would silently permit. And because the resolved term is
-# read off the positional rather than off the real destination, narrowing that
-# destination to a path this file picks would leave the term at `**` and the
-# declaration unreported as too wide; re-derive the declaration by hand if
-# that ever happens rather than trusting the check to notice.
+# fail-closed gate would silently permit.
 close_unit() {
   if [ "$unit_open" = 1 ]; then
     if [ "$unit_keyed" != 1 ]; then

@@ -8,8 +8,7 @@
 # run-interpolation guard (.gaia/scripts/lint-workflow-run-interpolation.sh),
 # the grep ERE-escape guard (.gaia/scripts/lint-grep-ere-escapes.sh), the
 # errexit status-read guard (.gaia/scripts/lint-errexit-status-read.sh), the
-# oracle-blind invocation guard
-# (.gaia/scripts/lint-oracle-blind-invocations.sh), the stale-cardinal guard
+# stale-cardinal guard
 # (.gaia/scripts/lint-stale-cardinals.sh), the guard-rule shell-coverage
 # guard (.gaia/scripts/lint-guard-rule-shell-coverage.sh), the collapsed
 # signal-trap guard (.gaia/scripts/lint-collapsed-signal-trap.sh), the
@@ -526,7 +525,6 @@ GUARD_SLUGS=(
   lint-workflow-run-interpolation
   lint-grep-ere-escapes
   lint-errexit-status-read
-  lint-oracle-blind-invocations
   lint-stale-cardinals
   lint-guard-rule-shell-coverage
   lint-collapsed-signal-trap
@@ -551,7 +549,6 @@ GUARD_MODES=(
   subshell
   subshell
   subshell
-  subshell
   root
   root
   root
@@ -566,18 +563,12 @@ GUARD_COUNT="${#GUARD_SLUGS[@]}"
 # A scheduling hint only, named rather than derived from a stored cost table:
 # a cost table goes stale the moment a guard's own runtime shifts, and a
 # stale entry here costs the pool a few seconds of head-of-line blocking,
-# never a wrong verdict. Re-measured after mawk adoption (PLAN-021 Phase 2)
-# reordered the tail: mawk halves the awk-tokenizer guards' cost but does
-# nothing for lint-oracle-blind-invocations, whose cost is a hand-rolled bash
-# tokenizer with zero awk call sites, so it stays the floor and is now the
-# clear heaviest rather than merely the first among close peers. Measured
-# heaviest to lightest on an idle host: lint-oracle-blind-invocations (~20s),
+# never a wrong verdict. Measured heaviest to lightest on an idle host:
 # lint-stale-cardinals (~7s), lint-git-path-quoting (~7s),
 # lint-errexit-status-read (~6s), lint-collapsed-signal-trap (~5s),
 # lint-grep-ere-escapes (~5s). Every other guard totals a few seconds combined
 # and dispatches after these in GUARD_SLUGS' own declared order.
 GUARD_HEAVY_HINT=(
-  lint-oracle-blind-invocations
   lint-stale-cardinals
   lint-git-path-quoting
   lint-errexit-status-read
@@ -843,19 +834,6 @@ if ! replay_guard 5; then
   status=1
 fi
 
-# Fold in the oracle-blind invocation guard, for a reason the guards above do
-# not share: the class it reads is not a defect in the shell at all. The file it
-# flags runs correctly; what breaks is the capability oracle's record of what
-# that file reaches for, and the manifests shipped off that record. No rule the
-# linter above models touches it, and no suite over the oracle sees it either,
-# because the trigger is the TREE growing an idiom rather than the oracle
-# changing. Run from the repo root so its cwd-relative scan roots resolve and
-# the file:line it prints is repo-relative.
-echo "--> lint-oracle-blind-invocations (an invocation the capability oracle's anchors cannot see)"
-if ! replay_guard 6; then
-  status=1
-fi
-
 # Fold in the stale-cardinal guard, for a reason none of the guards above share:
 # what it reads is not shell at all, it is the PROSE the shell carries. A
 # comment or a bats test name asserting how many of something the tree holds is
@@ -871,7 +849,7 @@ fi
 # nothing. Run from the repo root so its `git ls-files` discovery resolves and
 # the file:line it prints is repo-relative.
 echo "--> lint-stale-cardinals (a definite cardinal naming a set nothing recounts)"
-if ! replay_guard 7; then
+if ! replay_guard 6; then
   status=1
 fi
 
@@ -893,7 +871,7 @@ fi
 # silently unarm this check for husky-only diffs.
 # Run from the repo root so its `git ls-files` discovery resolves.
 echo "--> lint-guard-rule-shell-coverage (tracked shell the guard/diagnostic rules do not reach)"
-if ! replay_guard 8; then
+if ! replay_guard 7; then
   status=1
 fi
 
@@ -909,7 +887,7 @@ fi
 # replaced those pins. Run from the repo root so its `git ls-files` discovery
 # resolves and the file:line it prints is repo-relative.
 echo "--> lint-collapsed-signal-trap (one trap arm binding EXIT with INT or TERM)"
-if ! replay_guard 9; then
+if ! replay_guard 8; then
   status=1
 fi
 
@@ -923,7 +901,7 @@ fi
 # Run from the repo root so its `git ls-files` discovery resolves and the
 # file:line it prints is repo-relative.
 echo "--> lint-sigpipe-readers (a short-circuiting reader inverting a pipeline under pipefail)"
-if ! replay_guard 10; then
+if ! replay_guard 9; then
   status=1
 fi
 
@@ -944,7 +922,7 @@ fi
 # Hence no `cd` and no subshell either, unlike the siblings above, whose
 # tracked-file discovery genuinely needs the working directory.
 echo "--> lint-hook-wiki-inventory (a hook absent from the bundled-hooks inventory)"
-if ! replay_guard 11; then
+if ! replay_guard 10; then
   status=1
 fi
 
@@ -959,12 +937,12 @@ fi
 # Both take the root explicitly rather than resolving one ambiently, so neither
 # needs a subshell or a `cd`.
 echo "--> lint-wiki-cached-version (a hand-kept version in wiki frontmatter)"
-if ! replay_guard 12; then
+if ! replay_guard 11; then
   status=1
 fi
 
 echo "--> lint-hook-advisory-classification (a blocking hook filed under an Advisory heading)"
-if ! replay_guard 13; then
+if ! replay_guard 12; then
   status=1
 fi
 
@@ -981,7 +959,7 @@ fi
 # index, which it reads with `git -C "$root"` rather than from the working
 # directory, so the explicit root is what scopes it here too.
 echo "--> lint-scripts-wiki-inventory (a .gaia/scripts root file absent from the scripts index)"
-if ! replay_guard 14; then
+if ! replay_guard 13; then
   status=1
 fi
 
@@ -997,7 +975,7 @@ fi
 # `${BASH_SOURCE[0]}` and never consults the working directory, which is the
 # same property it exists to enforce, and its own suite pins that.
 echo "--> lint-hook-cwd-relative-loads (a hook locating framework code from the working directory)"
-if ! replay_guard 15; then
+if ! replay_guard 14; then
   status=1
 fi
 
@@ -1008,7 +986,7 @@ fi
 # non-blocking error. The refused call proceeds with no denial and no diagnostic,
 # across the whole fail-closed layer at once.
 echo "--> lint-hook-jq-availability (a blocking hook standing down on a missing jq)"
-if ! replay_guard 16; then
+if ! replay_guard 15; then
   status=1
 fi
 
@@ -1026,7 +1004,7 @@ fi
 # the repo root so its `git ls-files` discovery resolves and the file:line it
 # prints is repo-relative.
 echo "--> lint-awk-interpreter-pin (a bare awk where the closure must use the resolved GAIA_AWK)"
-if ! replay_guard 17; then
+if ! replay_guard 16; then
   status=1
 fi
 
@@ -1037,7 +1015,7 @@ fi
 # never invoked. The bypass is silent in both directions, and it reaches the
 # whole command-reading layer at once.
 echo "--> lint-hook-monitor-arming (a blocking guard a Monitor-armed command walks past)"
-if ! replay_guard 18; then
+if ! replay_guard 17; then
   status=1
 fi
 

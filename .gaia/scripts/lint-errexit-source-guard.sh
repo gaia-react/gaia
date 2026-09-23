@@ -490,8 +490,7 @@ records="$("$GAIA_AWK" '
   # Is this segment a LOAD? Command position, not text proximity: `jq -e . "$f"`
   # and `git grep -- .` put the dot in an argument slot and are not loads.
   # Leading keywords are stripped so `if . "$p"; then` reads as a load, which is
-  # the spelling that stayed invisible to the capability oracle for a full
-  # release (gaia-react/gaia#1549).
+  # the spelling that went undetected for a full release (gaia-react/gaia#1549).
   #
   # The operand test is what keeps English out. A deny message carrying
   # `(wiki/concepts/Git Workflow.md). Create a feature branch` splits at the

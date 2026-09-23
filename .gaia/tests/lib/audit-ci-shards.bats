@@ -2251,11 +2251,10 @@ concurrency_tree_needs_packages() {
 
 # W11. workflow-filter-coverage.bats only reaches a repo-relative path a gated
 # step names literally in its run: body, and none of the literal tokens in
-# shards' gated steps is or implies these three (each names a runner, an
-# installer, or a composite action, never the files those read), so the
-# script-capabilities manifest, its schema, and .gaia/release-exclude are
-# transitive inputs that guard never reaches. These two tests are the
-# regression guard for the lines SPEC-072 added to close that hole.
+# shards' gated steps is or implies .gaia/release-exclude (each names a
+# runner, an installer, or a composite action, never the files those read),
+# so it is a transitive input that guard never reaches. These two tests are
+# the regression guard for the lines SPEC-072 added to close that hole.
 #
 # .gaia/manifest.json is the same shape on the cli-tests side, and it is
 # asserted here for the same reason. None of the literal tokens in
@@ -2268,28 +2267,24 @@ concurrency_tree_needs_packages() {
 # #1473 it resolved code=false and greened the job having run the scenarios
 # that would have caught a bad manifest zero times.
 
-@test "W11: audit-ci-tests.yml's code filter lists the script-capabilities manifest, its schema, and release-exclude" {
+@test "W11: audit-ci-tests.yml's code filter lists release-exclude" {
   require_yaml_parser
   local list
   list="$(read_wf codefilter "$WORKFLOW" shards)"
-  for path in '.gaia/script-capabilities.json' '.gaia/script-capabilities.schema.json' '.gaia/release-exclude'; do
-    printf '%s\n' "$list" | grep -qxF -- "$path" || {
-      echo "audit-ci-tests.yml's code: filter is missing $path" >&2
-      return 1
-    }
-  done
+  printf '%s\n' "$list" | grep -qxF -- '.gaia/release-exclude' || {
+    echo "audit-ci-tests.yml's code: filter is missing .gaia/release-exclude" >&2
+    return 1
+  }
 }
 
-@test "W11: cli-tests.yml's distribution-harness code filter lists the script-capabilities manifest, its schema, and the release manifest" {
+@test "W11: cli-tests.yml's distribution-harness code filter lists the release manifest" {
   require_yaml_parser
   local list
   list="$(read_wf codefilter "$CLI_WORKFLOW" distribution-harness)"
-  for path in '.gaia/script-capabilities.json' '.gaia/script-capabilities.schema.json' '.gaia/manifest.json'; do
-    printf '%s\n' "$list" | grep -qxF -- "$path" || {
-      echo "cli-tests.yml's distribution-harness code: filter is missing $path" >&2
-      return 1
-    }
-  done
+  printf '%s\n' "$list" | grep -qxF -- '.gaia/manifest.json' || {
+    echo "cli-tests.yml's distribution-harness code: filter is missing .gaia/manifest.json" >&2
+    return 1
+  }
 }
 
 @test "W11 adversarial: dropping a line from audit-ci-tests.yml's code filter is caught" {
@@ -2310,13 +2305,13 @@ concurrency_tree_needs_packages() {
 @test "W11 adversarial: dropping a line from cli-tests.yml's distribution-harness code filter is caught" {
   require_yaml_parser
   local doctored="$BATS_TEST_TMPDIR/w11b.yml" line
-  line="$(sole_line_matching "$CLI_WORKFLOW" "^ *- '\\.gaia/script-capabilities\\.schema\\.json'\$")" || return 1
+  line="$(sole_line_matching "$CLI_WORKFLOW" "^ *- '\\.gaia/manifest\\.json'\$")" || return 1
   delete_line "$CLI_WORKFLOW" "$line" "$doctored"
 
   local list
   list="$(read_wf codefilter "$doctored" distribution-harness)"
-  printf '%s\n' "$list" | grep -qxF -- '.gaia/script-capabilities.schema.json' && {
-    echo "deleting the schema filter line did not drop it from the parsed code: list" >&2
+  printf '%s\n' "$list" | grep -qxF -- '.gaia/manifest.json' && {
+    echo "deleting the manifest filter line did not drop it from the parsed code: list" >&2
     return 1
   }
   true
@@ -2608,8 +2603,7 @@ concurrency_tree_needs_packages() {
 # is W5's own fixture style and it is sufficient here: the check reports the
 # whole set and reds on any member, so breaking the set proves the same branch
 # a single member would. The eight-space indent is what keeps the pattern off
-# the four-space job-level `timeout-minutes: 5`, which belongs to
-# `hook-capabilities-live-tree` rather than to any step.
+# a job-level `timeout-minutes:` declaration, which sits at four spaces.
 #
 # The rest of the fixtures pin other literals, because the arms they drive are
 # not about a step's own cap: the owning-job fixture deletes the four-space
@@ -5321,10 +5315,10 @@ assert_no_dynamic_wiki_paths() {
 # already carry, never a replacement.
 #
 # Every derivation below is scoped to the shards job on purpose, not as an
-# optimization: the two standalone hop-1 jobs (hook-capabilities-live-tree,
-# verb-arming-adoption) each carry their own hand-rolled `id: filter` gate and
-# must never carry the arming conjunct, so an unscoped comparison would red on
-# the merged tree for a reason that is not a real one.
+# optimization: the standalone hop-1 job (verb-arming-adoption) carries its
+# own hand-rolled `id: filter` gate and must never carry the arming conjunct,
+# so an unscoped comparison would red on the merged tree for a reason that is
+# not a real one.
 ARMING_STEP_NAME='Resolve whether this leg holds a suite naming the changed wiki pages'
 
 # w19_armed_names / w19_filtered_names <workflow>: names of every shards-job
@@ -5409,9 +5403,9 @@ assert_conjunct_sets_equal() {
 
 # assert_arming_conjunct_scoped_to_shards <workflow>: no job other than
 # shards carries the arming conjunct. Proves the job scoping above is a real
-# boundary rather than a silent exclusion: hook-capabilities-live-tree and
-# verb-arming-adoption each gate a step on their OWN hand-rolled id: filter
-# step and must never carry steps.leg-arming.outputs. at all.
+# boundary rather than a silent exclusion: verb-arming-adoption gates a step
+# on its OWN hand-rolled id: filter step and must never carry
+# steps.leg-arming.outputs. at all.
 assert_arming_conjunct_scoped_to_shards() {
   local workflow="$1" rows
   rows="$(read_wf armingifs "$workflow" | awk -F'\t' '$1 != "shards"')"
@@ -5422,10 +5416,10 @@ assert_arming_conjunct_scoped_to_shards() {
 }
 
 # assert_arming_step_id_is_leg_arming <workflow>: the arming step's id is
-# leg-arming, never filter -- the workflow already carries three id: filter
-# steps (the shards job's real paths-filter step and the two standalone
-# jobs' hand-rolled gates), and workflow-filter-coverage.bats's hand-rolled
-# pin over the latter two must not widen to a fourth.
+# leg-arming, never filter -- the workflow already carries two id: filter
+# steps (the shards job's real paths-filter step and the standalone job's
+# hand-rolled gate), and workflow-filter-coverage.bats's hand-rolled pin
+# over the latter must not widen to a third.
 assert_arming_step_id_is_leg_arming() {
   local workflow="$1" id
   id="$(read_wf stepfield "$workflow" shards "$ARMING_STEP_NAME" id)"
@@ -5531,10 +5525,6 @@ assert_arming_body_no_changed_files_leak() {
     echo "shards' id: filter step is no longer the real paths-filter step" >&2
     return 1
   }
-  printf '%s\n' "$rows" | grep -qF -- 'hook-capabilities-live-tree' || {
-    echo "hook-capabilities-live-tree's hand-rolled id: filter gate is missing" >&2
-    return 1
-  }
   printf '%s\n' "$rows" | grep -qF -- 'verb-arming-adoption' || {
     echo "verb-arming-adoption's hand-rolled id: filter gate is missing" >&2
     return 1
@@ -5636,20 +5626,20 @@ assert_arming_body_no_changed_files_leak() {
   }
 }
 
-@test "W19 adversarial: the arming conjunct added to hook-capabilities-live-tree's gated step is caught" {
+@test "W19 adversarial: the arming conjunct added to verb-arming-adoption's gated step is caught" {
   require_yaml_parser
   local doctored="$BATS_TEST_TMPDIR/w19-cross-job.yml" line mutated
-  line="$(gate_line_for_step "$WORKFLOW" 'Run the hook-capabilities checker against the live tree')" || return 1
+  line="$(gate_line_for_step "$WORKFLOW" 'Run the verb-arming adoption checker')" || return 1
   mutated="${line} && steps.leg-arming.outputs.arm == 'true'"
   assert_doctored "$line" "$mutated" "adding the arming conjunct to a step outside shards" || return 1
   replace_line "$WORKFLOW" "$line" "$mutated" "$doctored"
 
   run assert_arming_conjunct_scoped_to_shards "$doctored"
   [ "$status" -ne 0 ] || {
-    echo "adding the arming conjunct to hook-capabilities-live-tree's gated step did not red" >&2
+    echo "adding the arming conjunct to verb-arming-adoption's gated step did not red" >&2
     return 1
   }
-  printf '%s\n' "$output" | grep -qF -- 'hook-capabilities-live-tree' || {
+  printf '%s\n' "$output" | grep -qF -- 'verb-arming-adoption' || {
     echo "the refusal did not name the job" >&2
     return 1
   }
