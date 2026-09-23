@@ -215,12 +215,8 @@
     ".gaia/cli/templates/workflows/partials/node-setup.yml.tmpl": "owned",
     ".gaia/cli/templates/workflows/partials/pre-run-skip.yml.tmpl": "owned",
     ".gaia/cli/templates/workflows/partials/quality-gate.yml.tmpl": "owned",
-    ".gaia/hook-capabilities.json": "owned",
-    ".gaia/hook-capabilities.schema.json": "owned",
     ".gaia/labels.json": "owned",
     ".gaia/labels.schema.json": "owned",
-    ".gaia/script-capabilities.json": "owned",
-    ".gaia/script-capabilities.schema.json": "owned",
     ".gaia/scripts/a11y-structural/check-a11y-triviality.mjs": "owned",
     ".gaia/scripts/append-audit-author.sh": "owned",
     ".gaia/scripts/archived-backlog-migrate.sh": "owned",
@@ -688,7 +684,7 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-09-23T16:16:15.047Z",
+  "generated": "2026-09-23T22:21:27.110Z",
   "regions": [
     {
       "endMarker": "<!-- gaia:audit-remit:end -->",
