@@ -855,6 +855,90 @@ run_hook_bash() {
   assert_allowed_by_json
 }
 
+@test "cp onto a refused path with a detached here-string '<<< x' is denied" {
+  run_hook_bash "code-audit-maintainer-shell" "cp /tmp/a .gaia/scripts/bats5.sh <<< x"
+  assert_denied_by_json
+}
+
+@test "cp onto a refused path with a detached heredoc '<< EOF' is denied" {
+  run_hook_bash "code-audit-maintainer-shell" "cp /tmp/a .gaia/scripts/bats5.sh << EOF"
+  assert_denied_by_json
+}
+
+@test "cp onto a refused path with a detached clobber '>| log' is denied" {
+  run_hook_bash "code-audit-maintainer-shell" "cp /tmp/a .gaia/scripts/bats5.sh >| /tmp/log"
+  assert_denied_by_json
+}
+
+@test "a genuine pipe after a cp scratch write is still a boundary" {
+  run_hook_bash "code-audit-maintainer-shell" "cp /tmp/a /tmp/b | cat .gaia/scripts/bats5.sh"
+  assert_allowed_by_json
+}
+
+# --- ANSI-C quoting in a sed script ---
+#
+# Inside `$'...'` a backslash escapes the next character, so `\'` does not
+# close the string; read as plain single quoting, the separator later in the
+# script became a boundary before the target.
+
+@test "an escaped apostrophe and ';' inside an ANSI-C sed script do not end the scan" {
+  run_hook_bash "code-audit-maintainer-shell" "sed -i \$'s/it\\'s/x/;s/a/b/' .gaia/scripts/bats5.sh"
+  assert_denied_by_json
+}
+
+@test "an escaped apostrophe and '&' inside an ANSI-C sed script do not end the scan" {
+  run_hook_bash "code-audit-maintainer-shell" "sed -i \$'s/it\\'s/x/&s/a/b/' .gaia/scripts/bats5.sh"
+  assert_denied_by_json
+}
+
+@test "a glued ';' after an ANSI-C sed scratch write is a boundary" {
+  run_hook_bash "code-audit-maintainer-shell" "sed -i \$'s/it\\'s/x/' /tmp/copy.sh;bash .gaia/scripts/bats5.sh x.bats"
+  assert_allowed_by_json
+}
+
+# --- output redirection attached to its target ---
+
+@test "an attached '>' onto a refused path is denied" {
+  run_hook_bash "code-audit-maintainer-shell" "echo x >.gaia/scripts/bats5.sh"
+  assert_denied_by_json
+  grep -qF -- '.gaia/scripts/bats5.sh' <<<"$output"
+}
+
+@test "an attached '>>' onto a refused path is denied" {
+  run_hook_bash "code-audit-maintainer-shell" "echo x >>.gaia/scripts/bats5.sh"
+  assert_denied_by_json
+}
+
+@test "an attached '2>' onto a refused path is denied" {
+  run_hook_bash "code-audit-maintainer-shell" "echo x 2>.gaia/scripts/bats5.sh"
+  assert_denied_by_json
+}
+
+@test "an attached '>|' onto a refused path is denied" {
+  run_hook_bash "code-audit-maintainer-shell" "echo x >|.gaia/scripts/bats5.sh"
+  assert_denied_by_json
+}
+
+@test "an attached '&>' onto a refused path is denied" {
+  run_hook_bash "code-audit-maintainer-shell" "echo x &>.gaia/scripts/bats5.sh"
+  assert_denied_by_json
+}
+
+@test "a detached '>|' onto a refused path is denied" {
+  run_hook_bash "code-audit-maintainer-shell" "echo x >| .gaia/scripts/bats5.sh"
+  assert_denied_by_json
+}
+
+@test "an attached '2>/dev/null' is allowed" {
+  run_hook_bash "code-audit-maintainer-shell" "cat .gaia/scripts/bats5.sh 2>/dev/null"
+  assert_allowed_by_json
+}
+
+@test "an attached '>' onto a scratch path is allowed" {
+  run_hook_bash "code-audit-maintainer-shell" "cat .gaia/scripts/bats5.sh >/tmp/x"
+  assert_allowed_by_json
+}
+
 # --- jq absent from PATH (the interpreter the payload read needs) ---
 #
 # The hook reads the payload with jq under errexit, so with no jq on PATH it

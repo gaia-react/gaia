@@ -1194,6 +1194,23 @@ _noop_resolve_marker() {
   [ "$output" = "noop" ]
 }
 
+@test "#2243 jq absent: a sidecar with no --marker binds no member, so it is no witness" {
+  # With jq absent the sidecar predicate degrades to file existence and never
+  # reads `.member`, so the empty-member guard alone keeps a present sidecar
+  # from vouching for a return nobody bound it to.
+  findings="$BATS_TEST_TMPDIR/unbound.code-audit-frontend.findings.json"
+  _noop_write_findings "$findings"
+  shim="$(path_allowlist bash basename cat grep dirname)"
+  if PATH="$shim" command -v jq >/dev/null 2>&1; then
+    skip "jq still resolvable through the shim PATH"
+  fi
+
+  run env PATH="$shim" "$SCRIPT" --shape audit-team-member \
+    --path "$FIX/audit-team-member/finding-block.txt" --findings "$findings"
+  [ "$status" -eq 1 ]
+  [ "$output" = "noop" ]
+}
+
 @test "audit-team-member: --path is optional, and --path or --marker is required" {
   # An orchestrator that polls artifacts holds no captured return to pass. It
   # must not have to fabricate an empty file, which classifies NO-OP and burns

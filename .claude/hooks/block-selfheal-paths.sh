@@ -287,7 +287,11 @@ case "$tool_name" in
     # keeps the false deny these arms must drop. So pad `;` `|` `&` only
     # outside single and double quotes, keep a backslash-escaped character
     # literal (`s/a/b/\;s/c/d/` stays one word), and leave an `&` inside a
-    # redirection (`>&`, `<&`, `&>`) unpadded so `2>&1` stays one word. A
+    # redirection (`>&`, `<&`, `&>`) unpadded so `2>&1` stays one word, and a
+    # `|` after `>` unpadded so the clobber operator `>|` stays one word.
+    # ANSI-C quoting (`$'...'`) is its own state: a backslash there escapes
+    # the next character, so `$'it\'s;x'` stays quoted past the `\'`, where
+    # plain single-quote rules would close it early and pad the `;`. A
     # standalone `\;` is the terminator of a `find -exec` command, so the arms
     # treat it as a boundary too; otherwise `find -exec cp {} <refused> \;`
     # reads `\;` as the cp destination and allows the write.
@@ -299,15 +303,16 @@ case "$tool_name" in
     # under-deny inside the best-effort posture this hook already states.
     wsrc=$(printf '%s\n' "$cmd" | awk '
       {
-        out = ""; q = ""; len = length($0)
+        out = ""; q = ""; lit = 0; len = length($0)
         for (k = 1; k <= len; k++) {
           c = substr($0, k, 1)
           if (q == "") {
-            if (c == "\\") { out = out c substr($0, k + 1, 1); k++; continue }
-            if (c == "\047" || c == "\"") { q = c }
-            else if (c == ";" || c == "|" || (c == "&" && substr($0, k - 1, 1) != ">" && substr($0, k - 1, 1) != "<" && substr($0, k + 1, 1) != ">")) { out = out " " c " "; continue }
-          } else if (q == "\"" && c == "\\") { out = out c substr($0, k + 1, 1); k++; continue }
-          else if (c == q) { q = "" }
+            if (c == "\\") { out = out c substr($0, k + 1, 1); k++; lit = k; continue }
+            if (c == "\047" && k > 1 && substr($0, k - 1, 1) == "$" && lit != k - 1) { q = "$" }
+            else if (c == "\047" || c == "\"") { q = c }
+            else if (c == ";" || (c == "|" && substr($0, k - 1, 1) != ">") || (c == "&" && substr($0, k - 1, 1) != ">" && substr($0, k - 1, 1) != "<" && substr($0, k + 1, 1) != ">")) { out = out " " c " "; continue }
+          } else if ((q == "\"" || q == "$") && c == "\\") { out = out c substr($0, k + 1, 1); k++; continue }
+          else if ((q != "$" && c == q) || (q == "$" && c == "\047")) { q = "" }
           out = out c
         }
         print out
@@ -403,22 +408,27 @@ case "$tool_name" in
     scan_exec_positions ${stoks[@]+"${stoks[@]}"}
     scan_exec_positions ${etoks[@]+"${etoks[@]}"}
 
+    # An output redirection word: an optional fd or `&`, then `>` or `>>`,
+    # then an optional clobber `|`, then the target when it is attached
+    # (`>RP`, `2>RP`, `>|RP`, `&>>RP`). A bare operator (`>`, `2>`, `>|`)
+    # takes the next token as its target. Held in a variable because bash
+    # 3.2 and 5 disagree on a regex quoted inline on the right of `=~`.
+    out_re='^([0-9]+|&)?>>?[|]?(.*)$'
     i=0
     while [ "$i" -lt "$n" ]; do
-      case "${toks[$i]}" in
-        '>' | '>>')
-          next="${toks[$((i + 1))]:-}"
-          is_refused_path "$next" && deny "$(deny_reason "$MATCHED_PATH")"
-          ;;
-      esac
+      if [[ "${toks[$i]}" =~ $out_re ]]; then
+        target="${BASH_REMATCH[2]}"
+        [ -n "$target" ] || target="${toks[$((i + 1))]:-}"
+        is_refused_path "$target" && deny "$(deny_reason "$MATCHED_PATH")"
+      fi
       i=$((i + 1))
     done
 
     sn=${#wtoks[@]}
-    # A redirection word: an optional fd or `&`, then `>`, `>>`, `<`, `>&`
-    # or `<&`. Held in a variable because bash 3.2 and 5 disagree on a
-    # regex quoted inline on the right of `=~`.
-    redir_re='^([0-9]+|&)?(>>?|<|>&|<&)'
+    # A redirection word: an optional fd or `&`, then an operator, longest
+    # alternative first so a bare `>|`, `<<<` or `<<` equals its whole match
+    # and has its operand skipped.
+    redir_re='^([0-9]+|&)?(>>|>[|]|>&|>|<<<|<<|<&|<)'
     i=0
     while [ "$i" -lt "$sn" ]; do
       tok="${wtoks[$i]}"

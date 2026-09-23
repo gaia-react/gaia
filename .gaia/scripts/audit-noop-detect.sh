@@ -745,13 +745,17 @@ case "$SHAPE" in
     #
     # Computed once, outside the marker block, because the text arm reads the
     # same sidecar as a witness. A request with no --marker names no member to
-    # bind a sidecar to, so the witness stays absent (fail-closed).
+    # bind a sidecar to, so the witness stays absent (fail-closed). The empty
+    # member is refused here, not left to `_acd_sidecar_ok`: with jq present
+    # that predicate would reject the `.member` mismatch on its own, but with
+    # jq absent it degrades to file existence and never reads `.member`, so
+    # only this guard keeps an unbound sidecar from counting as a witness.
     _acd_findings_requested=""
     if [ -n "$FINDINGS_ROOT_SEEN" ] || [ -n "$FINDINGS_PATH" ]; then
       _acd_findings_requested=1
     fi
     _acd_sidecar_present=0
-    if [ -n "$_acd_findings_requested" ]; then
+    if [ -n "$_acd_findings_requested" ] && [ -n "$_acd_member" ]; then
       if [ -n "$FINDINGS_ROOT_SEEN" ]; then
         _acd_resolved="$(_acd_resolve_sidecar "$FINDINGS_ROOT" "$_acd_member")"
         if [ -n "$_acd_resolved" ] && _acd_sidecar_ok "$_acd_resolved" "$_acd_member"; then

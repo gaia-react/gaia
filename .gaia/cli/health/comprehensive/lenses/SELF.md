@@ -66,10 +66,10 @@ the surface is genuinely clean:
 
 ## Reads first
 
-1. `.claude/commands/health-audit.md` (full, 108 lines).
-2. `.gaia/cli/health/runbook.md` (full, 425 lines): cycle loop, model
+1. `.claude/commands/health-audit.md` (full).
+2. `.gaia/cli/health/runbook.md` (full): cycle loop, model
    selection table, termination, escalation.
-3. `.gaia/cli/health/taxonomy.md` (full, 208 lines).
+3. `.gaia/cli/health/taxonomy.md` (full).
 4. `.gaia/cli/health/comprehensive/runbook.md` and
    `.gaia/cli/health/comprehensive/gauge.sh` (this phase's own machinery;
    in-scope as part of `.gaia/cli/health/**`).
