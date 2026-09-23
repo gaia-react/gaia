@@ -960,7 +960,7 @@ For each violation found, report:
 
 Classify each finding as Critical (will cause bugs/errors), Important (convention violation with real impact), or Suggestion (minor style/consistency). Classify and tag confidence; do not drop a violation for being low-severity or low-confidence.
 
-If a candidate truly does not violate any listed rule, don't report it. If no violations are found anywhere across all files, reply with exactly "No violations found.", no preamble, no caveats.
+If a candidate truly does not violate any listed rule, don't report it. If no violations are found anywhere across all files, reply with "No violations found." followed only by the coverage line below, no preamble, no caveats.
 
 End every reply, clean or not, with one final line `Files reviewed: <n>`, where `<n>` is how many files from the list above you read in full. Write it only once every listed file is reviewed.
 

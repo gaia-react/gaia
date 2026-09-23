@@ -323,10 +323,13 @@ jobs:
               # doc-noop-terminal-contract.bats and doc-early-stop-paragraph.bats
               # (.gaia/tests/lib/) derive their carriers by searching the whole
               # tree, so a statement or paragraph added to a new dispatch prompt
-              # reds them. Each glob below is a root that holds dispatch prompts
-              # and matches no other entry here: the health runbooks, the .claude
-              # skills, commands and agents, and the spec-kit templates. Without
-              # them, adding a carrier there skips every bats step and greens the
+              # reds them. Each glob below is a root that holds dispatch prompts:
+              # the health runbooks, the .claude skills, commands and agents, and
+              # the spec-kit templates. The three .claude roots are supersets of
+              # the narrower file entries around them, which stay listed so each
+              # suite's own sources remain armed if a root is ever narrowed; the
+              # health and spec-kit roots match no other entry. Without these
+              # roots, adding a carrier there skips every bats step and greens the
               # required check with the carrier test unrun. These are the roots
               # that hold prompts today, not a proof that no other can; a carrier
               # added anywhere else still reds the suite on the next pull request
@@ -350,12 +353,14 @@ jobs:
               # code-audit-frontend.md and debt.md are already listed above,
               # add the other two. The suite also asserts that `difficulty`
               # appears in NONE of the sibling audit members, so those four are
-              # sources it guards too: without the glob, a PR adding grading
-              # prose to one of them matches no pattern here, every bats step
-              # skips, and the job greens having run the very assertion written
-              # to catch that edit zero times. The glob is a superset of the
-              # code-audit-frontend.md entry above (patterns OR together) and
-              # self-maintains when a new member joins the roster.
+              # sources it guards too: if nothing armed them, a PR adding grading
+              # prose to one of them would skip every bats step, and the job
+              # would green having run the very assertion written to catch that
+              # edit zero times. The `.claude/agents/*.md` root above already
+              # covers them; this glob names the suite's own sources so that
+              # narrowing that root cannot silently drop them. It is a superset
+              # of the code-audit-frontend.md entry above (patterns OR together)
+              # and self-maintains when a new member joins the roster.
               - '.claude/skills/file-tech-debt/SKILL.md'
               - '.claude/skills/gaia/references/audit.md'
               - '.claude/agents/code-audit-*.md'
