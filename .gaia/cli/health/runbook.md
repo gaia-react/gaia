@@ -383,12 +383,13 @@ Each lens is a parallel `general-purpose` leaf the Orchestrator spawns, handed: 
 - **Grade-honesty (id prefix `GH`).** Always runs. Re-verify Bucket D's "A+ readiness" against each enforcing primitive (scrub check id, runtime-deps, manifest `--check`), and verify the effective-shared-fitness-A+ promotion legitimately applies the residual carve-out (a Bucket E category below A+ SOLELY because of non-blocking residual `info` on a Decided list) rather than masking a `warning`/`error` or an `info` NOT on a Decided list. A grade promoted on a false premise is a finding.
 - **Fix-verification (id prefix `FV`, deep/optional).** Independently re-run the prior cycles' fixed-finding detection against the working tree instead of trusting Fixer self-reports. A prior finding a Fixer reported fixed but that still reproduces is a finding. **Deterministic gate:** include FV in the fan-out only when any prior cycle in this run dispatched a Fixer (there are applied fixes to verify); skip it on a run that reached clean with zero fixes applied (nothing to verify). FV is the lens that covers a failed fix, including a failed fix of an earlier challenger-injected finding.
 
-**Shared preamble** (mirrors the canonical adversarial preamble; interpolate `<C_DIR>` = `RUN_DIR/c<N>` and `<repo_root>` = `$PWD`):
+**Shared preamble** (mirrors the canonical adversarial preamble; interpolate `<C_DIR>` = `RUN_DIR/c<N>`, `<repo_root>` = `$PWD`, and `<LENS>` = the lens's id code, `BS`, `MC`, `GH`, or `FV`):
 
 > You are an ADVERSARIAL challenger of a GAIA health-audit's TERMINAL CLEAN verdict. The cycle artifacts are in `<C_DIR>`; repo root is `<repo_root>`. Read the bucket artifacts and `findings.json` first, and read the two "Decided / not findings" lists so you do not re-surface settled items. The loop is about to report A+ and delete the evidence. Your job is to find the reason that verdict is FALSE, not to confirm it. Cite evidence as `file:line`. Be concrete and falsifiable: a defect a fixer can act on by reading one file is a good finding, a vague "could be cleaner" is not.
 >
 > - Severity: `blocker` = the clean verdict is factually wrong (a real defect ships); `high` = a real finding the buckets or Adjudicator missed or misclassified; `medium` = should fix; `low` = nit.
 > - Give each finding a stable id prefixed with your lens code (`BS`, `MC`, `GH`, or `FV`).
+> - Write `{"findings": [...]}` to `<C_DIR>/challenger-<LENS>.json`, with an empty array when you substantiate nothing, and return no narrative. The Orchestrator reads a missing file as a lens that never finished.
 
 ### Routing: a substantiated finding revokes the clean exit
 
@@ -430,6 +431,7 @@ RUN_DIR/c<N>/
     shared_fitness_grade.txt # floor of the category grades (F-to-A+)
     findings/               # per-category findings JSON
   findings.json             # canonical findings list (includes shared_fitness_grade, overall_grade)
+  challenger-<LENS>.json    # terminal clean cycle only: one per dispatched challenger lens
 ```
 
 `findings.json` schema:

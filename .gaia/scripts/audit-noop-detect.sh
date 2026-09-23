@@ -517,10 +517,14 @@ case "$SHAPE" in
     # with n equal to the count, and that line is then stripped so the clean
     # sentinel still compares exactly. A missing or short line is a specialist
     # that stopped with files unread, which the token predicate alone reads
-    # as REAL.
+    # as REAL. Backtick or bold wrapping is tolerated because the template
+    # shows the line in backticks and a model copies what it is shown; the
+    # count itself stays exact.
     if [ -n "$EXPECT_COUNT_SEEN" ]; then
-      grep -Eq "^[[:space:]]*Files reviewed: ${EXPECT_COUNT}[[:space:]]*\$" <<<"$content" || noop
-      content="$(grep -Ev '^[[:space:]]*Files reviewed: [0-9]+[[:space:]]*$' <<<"$content")"
+      # shellcheck disable=SC2016  # the backtick is a literal in the class.
+      grep -Eq "^[[:space:]]*[\`*]*Files reviewed: ${EXPECT_COUNT}[\`*]*[[:space:]]*\$" <<<"$content" || noop
+      # shellcheck disable=SC2016
+      content="$(grep -Ev '^[[:space:]]*[`*]*Files reviewed: [0-9]+[`*]*[[:space:]]*$' <<<"$content")"
     fi
     trimmed="$(printf '%s' "$content" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
     # The grep pattern below is a literal backtick-delimited path:line

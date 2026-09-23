@@ -282,6 +282,20 @@ setup() {
   [ "$output" = "noop" ]
 }
 
+@test "cra-specialist: --expect-count accepts a coverage line wrapped in backticks, as the template shows it" {
+  run "$SCRIPT" --shape cra-specialist --path "$FIX/cra-specialist/finding-block-backticked-coverage.txt" \
+    --expect-count 3
+  [ "$status" -eq 0 ]
+  [ "$output" = "real" ]
+}
+
+@test "cra-specialist: --expect-count accepts a bolded coverage line after the clean sentinel" {
+  run "$SCRIPT" --shape cra-specialist --path "$FIX/cra-specialist/clean-bold-coverage.txt" \
+    --expect-count 3
+  [ "$status" -eq 0 ]
+  [ "$output" = "real" ]
+}
+
 @test "cra-specialist: --expect-count does not rescue a reminder echo that happens to carry a coverage line" {
   echo_cov="$BATS_TEST_TMPDIR/echo-with-coverage.txt"
   { cat "$FIX/shared/reminder-echo.txt"; printf 'Files reviewed: 3\n'; } > "$echo_cov"

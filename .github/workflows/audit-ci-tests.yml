@@ -321,12 +321,20 @@ jobs:
               - '.claude/skills/gaia/references/plan.md'
               - '.claude/agents/code-audit-frontend.md'
               # doc-noop-terminal-contract.bats and doc-early-stop-paragraph.bats
-              # (.gaia/tests/lib/) read the health runbook's leaf completion
-              # check and the fitness page's auditor dispatch text; neither path
-              # matches any glob here, so an edit to either alone would skip
-              # the suites that guard it.
+              # (.gaia/tests/lib/) derive their carriers by searching the whole
+              # tree, so a statement or paragraph added to a new dispatch prompt
+              # reds them. The runbook matches no other glob here, so it is
+              # listed; the fitness page already matches the wiki catch-all and
+              # is listed so a page-only edit arms the legs whose suites name it
+              # (W16's declared table). The three .claude globs are where new
+              # dispatch prompts live: without them, adding a carrier to a skill,
+              # command, or non-audit agent skips every bats step and greens the
+              # required check with the carrier test unrun.
               - '.gaia/cli/health/runbook.md'
               - 'wiki/decisions/Claude Integration Fitness.md'
+              - '.claude/skills/**/*.md'
+              - '.claude/commands/**/*.md'
+              - '.claude/agents/*.md'
               # The doc-isolation suite (.gaia/tests/lib/) renders the prompt out
               # of the shared isolation reference and greps both callers' pointer
               # wiring, so the fragment and debt.md are sources it guards too.
