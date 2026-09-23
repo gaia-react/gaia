@@ -251,6 +251,10 @@ How your run ends: a reply with no tool call ends it, and the orchestrator reads
 
 Every finding that survives the Finding Proof Gate (and any adversarial verification) gets a forced **disposition** before the marker can clear. The split is by scope, bounded to the review radius. In-scope findings keep their existing handling and gate the marker; out-of-scope findings are routed out of the gating sections into the disposition pipeline below.
 
+<!-- gaia:maintainer-only:start -->
+GAIA maintainers: before you file or report any finding on a harness path, Read `.claude/rules/maintainers/harness-triage-threshold.md` by path; do not rely on it auto-loading. A harness finding that meets none of its criteria is not an identified out-of-scope finding: it gets no dispositions-sidecar entry (neither `machinery_waived` nor `pending`), no tech-debt issue, and no entry under either canonical PR-body heading. List it one line under "Waived" in your report instead.
+<!-- gaia:maintainer-only:end -->
+
 ### A. Scope classification
 
 Tag each surviving finding against the audit base's changed line ranges (the diff against the resolved audit base):

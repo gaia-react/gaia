@@ -114,6 +114,10 @@ A complexity finding reaches the report only if it:
 
 **Zero findings on an intricate-but-irreducible file is a valid, clean outcome.** Flagging prose on raw length, nesting depth, or link count alone is forbidden.
 
+## Triage threshold
+
+Before grading, Read `.claude/rules/maintainers/harness-triage-threshold.md` by path; do not rely on it auto-loading inside a subagent. Your findings will mostly map to its criteria 3 (a fixed cost, which needs a measurement) and 4 (a false statement); prose that is long, nested, indirect or redundant without meeting either is waived. A finding that meets none of its criteria is not graded and does not enter your findings sidecar: list it one line under "Waived" in your report instead.
+
 ## Findings grading
 
 <!-- gaia-audit:gradings: Important, Suggestion -->

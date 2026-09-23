@@ -157,6 +157,7 @@ AUDIT_MERELY_SHARED_PATHS="$(cat <<'EOF'
 # gaia:maintainer-only:start
 .claude/rules/maintainers/github-workflow-distribution.md
 .claude/rules/maintainers/guard-and-diagnostic-surfaces.md
+.claude/rules/maintainers/harness-triage-threshold.md
 .claude/rules/maintainers/hook-registration.md
 .claude/rules/maintainers/smoke.md
 # gaia:maintainer-only:end

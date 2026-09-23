@@ -281,6 +281,10 @@ An accepted in-scope residual adds no disposition-sidecar value, no sidecar entr
 
 The fix loop above says to re-spawn until the audit reports clean, and the digest economics beside it license accept-and-note instead. Choosing between them *after* a finding is on the table is the failure, because at that point the question is no longer what the rule was, it is whether this particular finding is worth one more round, and asked that way it answers yes almost every time. Write the rule down before the round runs.
 
+<!-- gaia:maintainer-only:start -->
+GAIA maintainers: before disposing any harness-path finding, read `.claude/rules/maintainers/harness-triage-threshold.md`. On harness paths it decides which findings are fixed or filed and which are waived, and it overrides this page's fix-every-Suggestion and file-every-out-of-scope-finding terms.
+<!-- gaia:maintainer-only:end -->
+
 A usable rule names a disposition for **every** way the round can come back, including carrying on. A rule that says only "stop and reconsider" has decided nothing: the same question returns one round later with no rule left standing. Three branches, and the third is the one commonly left open:
 
 - **Clean** → post the `GAIA-Audit` status (see [[#Posting the status last]]), then merge.

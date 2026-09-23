@@ -486,6 +486,12 @@ unmatched confirmed findings as tech-debt issues through the existing
 the label set, and the debt-count sentinel, invoked once per unmatched
 finding.
 
+**Triage threshold first.** Before building the offer, Read
+`.claude/rules/maintainers/harness-triage-threshold.md` by path and drop
+every harness-path finding that meets none of its criteria. A dropped
+finding is never offered for filing; list it one line under "Waived" in
+the hand-back.
+
 **Consequence quota (`COMPREHENSIVE_FILE_CAP = 10`).** The offer surfaces
 only the top findings by consequence and discards the tail, rather than
 offering every confirmed finding. Rank the unmatched confirmed findings by
