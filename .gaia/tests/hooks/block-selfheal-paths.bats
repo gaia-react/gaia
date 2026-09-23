@@ -939,6 +939,198 @@ run_hook_bash() {
   assert_allowed_by_json
 }
 
+# --- output redirection wherever bash ends a word at the operator ---
+#
+# Bash ends a word at `>` whatever precedes it, so the operator need not start
+# a whitespace-separated word. The operator list is bash's own output grammar
+# and is not derivable from any file here; each entry is a spelling bash
+# accepts as a write into its target (`>&RP` and `1>&RP` write the file, `<>`
+# opens it read-write and creates it, `{fd}>` allocates a descriptor on it).
+# Every entry is driven glued to a preceding word and after each separator.
+
+redirect_ops() {
+  printf '%s\n' '>' '>>' '>|' '2>' '2>>' '&>' '&>>' '>&' '1>&' '<>' '0<>' '{fd}>'
+}
+
+@test "every output-redirection operator glued to the preceding word onto a refused path is denied" {
+  local op n=0
+  while IFS= read -r op; do
+    n=$((n + 1))
+    run_hook_bash "code-audit-maintainer-shell" "echo x${op}.gaia/scripts/bats5.sh"
+    assert_denied_by_json || return 1
+  done < <(redirect_ops)
+  [ "$n" -gt 0 ]
+}
+
+@test "every output-redirection operator glued to each separator onto a refused path is denied" {
+  local op sep n=0
+  while IFS= read -r op; do
+    for sep in ';' '&&' '||' '|' $'\n' '&'; do
+      n=$((n + 1))
+      run_hook_bash "code-audit-maintainer-shell" "true${sep}${op}.gaia/scripts/bats5.sh"
+      assert_denied_by_json || return 1
+      run_hook_bash "code-audit-maintainer-shell" "true${sep}echo y${op}.gaia/scripts/bats5.sh"
+      assert_denied_by_json || return 1
+    done
+  done < <(redirect_ops)
+  [ "$n" -gt 0 ]
+}
+
+@test "a second redirect after a '2>/dev/null' on the same word is denied" {
+  run_hook_bash "code-audit-maintainer-shell" "echo x 2>/dev/null>.gaia/scripts/bats5.sh"
+  assert_denied_by_json
+}
+
+@test "the refused redirect is found when a scratch redirect precedes it" {
+  run_hook_bash "code-audit-maintainer-shell" "echo x >/tmp/a >.gaia/scripts/bats5.sh"
+  assert_denied_by_json
+}
+
+@test "a double-quoted redirect target naming a refused path is denied" {
+  run_hook_bash "code-audit-maintainer-shell" 'echo x >".gaia/scripts/bats5.sh"'
+  assert_denied_by_json
+}
+
+@test "a single-quoted redirect target naming a refused path is denied" {
+  run_hook_bash "code-audit-maintainer-shell" "echo x>'.gaia/scripts/bats5.sh'"
+  assert_denied_by_json
+}
+
+@test "a redirect onto a refused path inside a command substitution is denied" {
+  # shellcheck disable=SC2016
+  run_hook_bash "code-audit-maintainer-shell" 'v=$(echo x>.gaia/scripts/bats5.sh)'
+  assert_denied_by_json
+}
+
+@test "a redirect inside a command substitution inside double quotes is denied" {
+  # shellcheck disable=SC2016
+  run_hook_bash "code-audit-maintainer-shell" 'echo "$(echo x>.gaia/scripts/bats5.sh)"'
+  assert_denied_by_json
+}
+
+@test "a redirect onto a refused path inside backticks is denied" {
+  # shellcheck disable=SC2016
+  run_hook_bash "code-audit-maintainer-shell" 'echo `echo x>.gaia/scripts/bats5.sh`'
+  assert_denied_by_json
+}
+
+@test "a redirect onto a refused path inside a subshell is denied" {
+  run_hook_bash "code-audit-maintainer-shell" "(echo x>.gaia/scripts/bats5.sh)"
+  assert_denied_by_json
+}
+
+@test "a redirect onto a refused path inside a brace group is denied" {
+  run_hook_bash "code-audit-maintainer-shell" "{ echo x>.gaia/scripts/bats5.sh; }"
+  assert_denied_by_json
+}
+
+@test "a redirect inside a process substitution's body is denied" {
+  run_hook_bash "code-audit-maintainer-shell" "tee >(cat >.gaia/scripts/bats5.sh) </dev/null"
+  assert_denied_by_json
+}
+
+@test "an apostrophe in a heredoc body does not hide a redirect after the heredoc" {
+  run_hook_bash "code-audit-maintainer-shell" $'cat <<EOF >/tmp/x\nit\'s\nEOF\necho x >.gaia/scripts/bats5.sh'
+  assert_denied_by_json
+}
+
+@test "a heredoc body apostrophe paired with one after the heredoc does not hide a redirect between them" {
+  # The quotes balance, so the quote-blind fallback never runs; only tracking
+  # the heredoc body as data keeps the redirect in command context.
+  run_hook_bash "code-audit-maintainer-shell" $'cat <<\'EOF\'\ndon\'t\nEOF\necho x>.gaia/scripts/bats5.sh # won\'t'
+  assert_denied_by_json
+}
+
+@test "a lone apostrophe in a heredoc body beside a quoted redirect is data, not a deny" {
+  run_hook_bash "code-audit-maintainer-shell" $'cat <<\'EOF\' >/tmp/f.json\nit\'s >.gaia/scripts/bats5.sh\nEOF'
+  assert_allowed_by_json
+}
+
+@test "a redirect inside a command substitution in an unquoted heredoc body is denied" {
+  run_hook_bash "code-audit-maintainer-shell" $'cat <<EOF\n$(echo x>.gaia/scripts/bats5.sh)\nEOF'
+  assert_denied_by_json
+}
+
+@test "an unterminated quote falls back to reading every '>' as an operator" {
+  run_hook_bash "code-audit-maintainer-shell" "echo 'x >.gaia/scripts/bats5.sh"
+  assert_denied_by_json
+}
+
+@test "a glued redirect onto a scratch path is allowed" {
+  run_hook_bash "code-audit-maintainer-shell" "cat .gaia/scripts/bats5.sh>/tmp/x"
+  assert_allowed_by_json
+}
+
+@test "fd duplications and closes are not file targets" {
+  local r
+  for r in '2>&1' '>&2' '1>&2' '>&-' '2>&1 >/tmp/x'; do
+    run_hook_bash "code-audit-maintainer-shell" "cat .gaia/scripts/bats5.sh ${r}"
+    assert_allowed_by_json || return 1
+  done
+}
+
+@test "an escaped '>' is a literal, not a redirect" {
+  run_hook_bash "code-audit-maintainer-shell" 'echo \>.gaia/scripts/bats5.sh'
+  assert_allowed_by_json
+}
+
+# --- quoted text is data, not a redirect ---
+#
+# A member stages its findings through a quoted payload that routinely quotes
+# the very redirect it is reporting, so a `>` inside quotes, a heredoc body or
+# a comment must not read as an operator.
+
+@test "a single-quoted findings payload quoting a redirect into a refused path is allowed" {
+  run_hook_bash "code-audit-maintainer-shell" \
+    "printf '%s' '{\"title\":\"echo x>.gaia/scripts/bats5.sh is allowed\"}' > .gaia/local/audit/f.json"
+  assert_allowed_by_json
+}
+
+@test "a double-quoted argument quoting a redirect into a refused path is allowed" {
+  run_hook_bash "code-audit-maintainer-shell" 'gh pr comment 1 --body "the x>.gaia/scripts/bats5.sh case"'
+  assert_allowed_by_json
+}
+
+@test "a quoted-delimiter heredoc body quoting a redirect into a refused path is allowed" {
+  run_hook_bash "code-audit-maintainer-shell" \
+    $'cat <<\'EOF\' >/tmp/f.json\n{"d":"echo x>.gaia/scripts/bats5.sh, it\'s"}\nEOF'
+  assert_allowed_by_json
+}
+
+@test "a comment quoting a redirect into a refused path is allowed" {
+  run_hook_bash "code-audit-maintainer-shell" "echo x # >.gaia/scripts/bats5.sh"
+  assert_allowed_by_json
+}
+
+# --- GNU cp/mv -t: the destination named ahead of the sources ---
+
+@test "cp and mv with a target-directory option naming a refused directory are denied" {
+  local c
+  for c in \
+    'cp -t .gaia/scripts /tmp/a' \
+    'cp -t.gaia/scripts /tmp/a' \
+    'cp -vt .gaia/scripts /tmp/a /tmp/b' \
+    'cp --target-directory=.gaia/scripts /tmp/a' \
+    'cp --target-directory .gaia/scripts /tmp/a' \
+    'cp --target=.gaia/scripts /tmp/a' \
+    'mv -t .gaia/scripts /tmp/a' \
+    'mv --target-directory=.gaia/scripts /tmp/a'; do
+    run_hook_bash "code-audit-maintainer-shell" "$c"
+    assert_denied_by_json || return 1
+  done
+}
+
+@test "cp and mv with a scratch target directory and a refused SOURCE are allowed" {
+  local c
+  for c in \
+    'cp -t /tmp/out .gaia/scripts/bats5.sh' \
+    'cp --target-directory=/tmp/out .gaia/scripts/bats5.sh' \
+    'mv -t /tmp/out .gaia/scripts/bats5.sh'; do
+    run_hook_bash "code-audit-maintainer-shell" "$c"
+    assert_allowed_by_json || return 1
+  done
+}
+
 # --- jq absent from PATH (the interpreter the payload read needs) ---
 #
 # The hook reads the payload with jq under errexit, so with no jq on PATH it

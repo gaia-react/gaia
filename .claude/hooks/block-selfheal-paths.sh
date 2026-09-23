@@ -34,11 +34,14 @@
 # HONEST ABOUT THE BASH VECTOR: this is a best-effort, defense-in-depth
 # guard, not an airtight one, mirroring block-manifest-write.sh's own stated
 # posture. Bash vectors are unbounded; this covers the well-known write
-# shapes (output redirect, tee, sed -i with or without a macOS '' backup
-# suffix, sponge, cp/mv as destination) and no more. CI's gate reads the
-# whole diff at push time and cannot be evaded by the shape of the write;
-# this hook reads one attempted edit at a time and can be. That asymmetry is
-# real and accepted: under local mode a human watches every turn.
+# shapes (output redirect in any of bash's spellings, tee, sed -i with or
+# without a macOS '' backup suffix, sponge, cp/mv as destination including
+# GNU -t) and no more; the redirect scan states its own limits where it is
+# built. Anything else that writes (an interpreter's own file API, `dd of=`,
+# `install`, `rsync`, `ln`, a `bash -c` or `eval` string) passes. CI's gate
+# reads the whole diff at push time and cannot be evaded by the shape of the
+# write; this hook reads one attempted edit at a time and can be. That
+# asymmetry is real and accepted: under local mode a human watches every turn.
 #
 # The Bash branch also carries one EXECUTION-shape refusal, not a write
 # shape: a dispatched member may not invoke
@@ -320,10 +323,152 @@ case "$tool_name" in
     wsrc="${wsrc//$'\n'/ ; }"
     read -r -a wtoks <<<"$wsrc"
 
-    cmd="${cmd//$'\n'/ ; }"
+    # Output-redirection targets, one per line, read by a character scanner
+    # rather than by matching whitespace-split words. Word matching is what
+    # kept missing spellings: bash ends a word at `>` whatever precedes it,
+    # so `echo x>RP`, `true;>RP`, `a&&b>RP` and `2>/dev/null>RP` all redirect
+    # into RP while presenting no word that starts with the operator. The
+    # scanner treats every `>` outside quotes as an operator, which covers
+    # each prefix bash allows before one (`N`, `&`, `{fd}`, `<` for the
+    # read-write `<>`, which creates its file) and each suffix (`>>`, `>|`,
+    # `>&`). It then reads the target word with bash's quote removal, so
+    # `>"RP"` and `>'RP'` name RP. `>&WORD` is an fd duplication only when
+    # WORD is digits or `-`; any other word is a file bash writes (`>&RP`,
+    # `1>&RP`) or refuses as ambiguous, so it is a target either way.
+    #
+    # Quote-aware because a `>` inside single or double quotes is data: a
+    # member's findings payload that quotes a redirect into a refused path
+    # (`printf '... >RP ...'`) is not a write. Command substitution
+    # (`$(...)`, backticks) re-enters command context even inside double
+    # quotes, and a `>(...)` process substitution is not a redirect, only its
+    # body is scanned. A comment and a heredoc body are data too, except that
+    # an unquoted-delimiter body still expands `$(...)`, so that body is
+    # scanned the way a double-quoted string is. Tracking heredocs is not
+    # optional here: an apostrophe in body prose would otherwise open a
+    # quote that swallows the commands after the heredoc.
+    #
+    # Honest limits, all in the safe direction or rarer than the shapes above:
+    # a quoted string handed to `bash -c`, `sh -c` or `eval` is a script to
+    # the shell but data to this scan, so a redirect inside it passes, the
+    # same gap the execution-position scan below states for `-c`; telling it
+    # apart from a quoted `printf` payload would mean knowing which commands
+    # execute their arguments. A `>` inside `[[ ]]`, `(( ))` or `$(( ))`
+    # reads as a redirect, an over-deny only when the next word is a refused
+    # path; a target reached
+    # through an expansion (`>"$R/x"`) cannot be resolved here, as in every
+    # other arm; a `case` pattern's unbalanced `)` inside a double-quoted
+    # `$(...)` ends the substitution early and can hide a redirect after it.
+    # When the scan ends inside an unterminated quote, substitution or
+    # heredoc, its scoping cannot be trusted, so a quote-blind pass that reads
+    # every `>` as an operator runs as well and the two are unioned: a
+    # mis-scope can then only add denies, never lose one.
+    rtargets=$(printf '%s\n' "$cmd" | awk '
+      function readword(p,   w, c, e, d) {
+        w = ""; WQ = 0
+        while (p <= L) {
+          c = substr(S, p, 1)
+          if (index(META, c)) break
+          if (c == "\\") { w = w substr(S, p + 1, 1); p += 2; WQ = 1; continue }
+          if (c == "$" && substr(S, p + 1, 1) == "\047") { p++; continue }
+          if (c == "\047") {
+            e = index(substr(S, p + 1), "\047")
+            if (e == 0) { w = w substr(S, p + 1); p = L + 1; break }
+            w = w substr(S, p + 1, e - 1); p += e + 1; WQ = 1; continue
+          }
+          if (c == "\"") {
+            p++; WQ = 1
+            while (p <= L) {
+              d = substr(S, p, 1)
+              if (d == "\\") { w = w substr(S, p + 1, 1); p += 2; continue }
+              if (d == "\"") { p++; break }
+              w = w d; p++
+            }
+            continue
+          }
+          w = w c; p++
+        }
+        WEND = p
+        return w
+      }
+      # Reads the target after the `>` at k, prints it, and returns where the
+      # main loop resumes: the target word itself, so a quote or substitution
+      # inside it is scoped like any other.
+      function redirect(k,   p, d, dup, w) {
+        p = k + 1; dup = 0; d = substr(S, p, 1)
+        if (d == "(") return p
+        if (d == ">" || d == "|") p++
+        else if (d == "&") { p++; dup = 1 }
+        while (substr(S, p, 1) == " " || substr(S, p, 1) == "\t") p++
+        w = readword(p)
+        if (w != "" && !(dup && w ~ /^[0-9]*-?$/)) print w
+        return p
+      }
+      function push(t) { SP++; ST[SP] = t; DEP[SP] = 0 }
+      # Enters the body of the next pending heredoc, which starts at b.
+      function body(b) {
+        HP++; push(PQ[HP] ? "Q" : "H")
+        HD[SP] = PD[HP]; HS[SP] = PS[HP]; HB[SP] = b
+      }
+      function scan(   k, c, t, pv, e, line, strip, w) {
+        SP = 0; ST[0] = "N"; NP = 0; HP = 0; k = 1
+        while (k <= L) {
+          c = substr(S, k, 1); t = ST[SP]
+          if (t == "H" || t == "Q") {
+            if (k == HB[SP] || substr(S, k - 1, 1) == "\n") {
+              e = index(substr(S, k), "\n"); e = e ? k + e - 1 : L + 1
+              line = substr(S, k, e - k)
+              if (HS[SP]) sub(/^\t+/, "", line)
+              if (line == HD[SP]) {
+                SP--
+                if (HP < NP) { body(e + 1); k = e + 1 }
+                else { NP = 0; HP = 0; k = e }
+                continue
+              }
+              if (t == "Q") { k = e + 1; continue }
+            }
+            if (t == "Q") { k++; continue }
+          }
+          if (t == "S") { if (c == "\047") SP--; k++; continue }
+          if (t == "A") { if (c == "\\") k++; else if (c == "\047") SP--; k++; continue }
+          if (c == "\\") { k += 2; continue }
+          if (c == "$" && substr(S, k + 1, 1) == "(") { push("C"); k += 2; continue }
+          if (c == "`") { if (t == "B") SP--; else push("B"); k++; continue }
+          if (t == "D" || t == "H") { if (c == "\"" && t == "D") SP--; k++; continue }
+          # Command context from here on: N (top level), C, B.
+          if (c == "\047") { if (substr(S, k - 1, 1) == "$") push("A"); else push("S"); k++; continue }
+          if (c == "\"") { push("D"); k++; continue }
+          if (c == "(" && t == "C") { DEP[SP]++; k++; continue }
+          if (c == ")" && t == "C") { if (DEP[SP] > 0) DEP[SP]--; else SP--; k++; continue }
+          pv = substr(S, k - 1, 1)
+          if (c == "#" && (k == 1 || index(" \t\n;&|()", pv))) {
+            e = index(substr(S, k), "\n"); k = e ? k + e - 1 : L + 1; continue
+          }
+          if (c == "\n" && HP < NP) { body(k + 1); k++; continue }
+          if (c == ">") { k = redirect(k); continue }
+          if (c == "<") {
+            if (substr(S, k + 1, 2) == "<<") { k += 3; continue }
+            if (substr(S, k + 1, 1) == "<") {
+              k += 2; strip = 0
+              if (substr(S, k, 1) == "-") { strip = 1; k++ }
+              while (substr(S, k, 1) == " " || substr(S, k, 1) == "\t") k++
+              w = readword(k)
+              if (w != "") { NP++; PD[NP] = w; PQ[NP] = WQ; PS[NP] = strip }
+              k = WEND; continue
+            }
+          }
+          k++
+        }
+        return SP != 0
+      }
+      { S = (NR == 1 ? $0 : S "\n" $0) }
+      END {
+        META = " \t\n;&|()<>"; L = length(S)
+        if (scan()) {
+          for (k = 1; k <= L; k++) if (substr(S, k, 1) == ">") k = redirect(k) - 1
+        }
+      }')
 
-    read -r -a toks <<<"$cmd"
-    n=${#toks[@]}
+    cmd="${cmd//$'\n'/ ; }"
 
     # A dispatched member may not repair its own declared remit. This is an
     # EXECUTION shape, not a write shape: `bash .gaia/scripts/write-audit-remits.sh`
@@ -357,12 +502,12 @@ case "$tool_name" in
     # onto the check that printed it is the natural next keystroke. Pad every
     # separator character into a standalone token for THIS scan only, in its
     # own array: the write-shape arms read their own quote-aware `wtoks`
-    # (built above), and the `>` / `>>` arm reads the unpadded `toks`, where
-    # `>` and `2>&1` are load-bearing. `&&` and `||`
-    # degrade to two adjacent single-character tokens, which is harmless
-    # because this scan only asks whether a boundary occurred, never which
-    # operator produced it. Padding can also split a quoted argument, which
-    # only ever widens the deny surface, the safe direction here.
+    # and the redirect arm reads its own character scan, both built above,
+    # where `>` and `2>&1` are load-bearing. `&&` and `||` degrade to two
+    # adjacent single-character tokens, which is harmless because this scan
+    # only asks whether a boundary occurred, never which operator produced it.
+    # Padding can also split a quoted argument, which only ever widens the
+    # deny surface, the safe direction here.
     #
     # A subshell opener needs the same padding for a second reason: unpadded it
     # GLUES to the command it opens, so `(bash <writer>` tokenizes as `(bash`,
@@ -408,27 +553,19 @@ case "$tool_name" in
     scan_exec_positions ${stoks[@]+"${stoks[@]}"}
     scan_exec_positions ${etoks[@]+"${etoks[@]}"}
 
-    # An output redirection word: an optional fd or `&`, then `>` or `>>`,
-    # then an optional clobber `|`, then the target when it is attached
-    # (`>RP`, `2>RP`, `>|RP`, `&>>RP`). A bare operator (`>`, `2>`, `>|`)
-    # takes the next token as its target. Held in a variable because bash
-    # 3.2 and 5 disagree on a regex quoted inline on the right of `=~`.
-    out_re='^([0-9]+|&)?>>?[|]?(.*)$'
-    i=0
-    while [ "$i" -lt "$n" ]; do
-      if [[ "${toks[$i]}" =~ $out_re ]]; then
-        target="${BASH_REMATCH[2]}"
-        [ -n "$target" ] || target="${toks[$((i + 1))]:-}"
-        is_refused_path "$target" && deny "$(deny_reason "$MATCHED_PATH")"
-      fi
-      i=$((i + 1))
-    done
+    while IFS= read -r target; do
+      is_refused_path "$target" && deny "$(deny_reason "$MATCHED_PATH")"
+    done <<<"$rtargets"
 
     sn=${#wtoks[@]}
     # A redirection word: an optional fd or `&`, then an operator, longest
     # alternative first so a bare `>|`, `<<<` or `<<` equals its whole match
     # and has its operand skipped.
     redir_re='^([0-9]+|&)?(>>|>[|]|>&|>|<<<|<<|<&|<)'
+    # The target-directory option, short and long; group 1 is an attached
+    # argument, empty when it is the next word.
+    tshort_re='^-[A-RT-Za-su-z0-9]*t(.*)$'
+    tlong_re='^--t[a-z-]*=?(.*)$'
     i=0
     while [ "$i" -lt "$sn" ]; do
       tok="${wtoks[$i]}"
@@ -461,19 +598,37 @@ case "$tool_name" in
           ;;
         cp | mv)
           dest=""
+          tdir=0
           j=$((i + 1))
           while [ "$j" -lt "$sn" ]; do
             t2="${wtoks[$j]}"
             case "$t2" in
               ';' | '&' | '|' | '\;') break ;;
             esac
+            # GNU `-t DIR` / `--target-directory=DIR` names the destination
+            # up front and every positional after it is a source, so the
+            # last-positional rule would read a source as dest and allow the
+            # write. getopt accepts the option clustered (`-vt DIR`), with its
+            # argument attached (`-tDIR`), and the long name abbreviated to
+            # any prefix (`--target=DIR`); no other cp or mv long option
+            # starts with `--t`. BSD cp and mv have no `-t` and reject it.
+            # `-S` takes an argument too, so a `t` after it is suffix text.
+            if [ "$tdir" -eq 0 ] && [[ "$t2" =~ $tshort_re || "$t2" =~ $tlong_re ]]; then
+              if [ "${t2:0:2}" != "--" ] || [[ "--target-directory" == "${t2%%=*}"* ]]; then
+                tdir=1
+                dest="${BASH_REMATCH[1]}"
+                if [ -z "$dest" ]; then
+                  j=$((j + 1))
+                  dest="${wtoks[$j]:-}"
+                fi
+              fi
             # A trailing redirection is not the destination: read as one,
             # `cp a <refused> 2>/dev/null` names `2>/dev/null` as dest and
             # allows the write. A bare operator (`2>`, `>`) also takes the
             # next word as its operand, so that word is skipped too.
-            if [[ "$t2" =~ $redir_re ]]; then
+            elif [[ "$t2" =~ $redir_re ]]; then
               [ "$t2" = "${BASH_REMATCH[0]}" ] && j=$((j + 1))
-            elif [[ "$t2" != -* ]]; then
+            elif [ "$tdir" -eq 0 ] && [[ "$t2" != -* ]]; then
               dest="$t2"
             fi
             j=$((j + 1))

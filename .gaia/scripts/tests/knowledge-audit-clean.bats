@@ -223,13 +223,30 @@ derived_stores() {
   grep -qF -- "Actions proposed is '2', not 0" <<<"$output"
 }
 
-@test "an action block under a zero Summary line routes to the gate" {
+# Action kinds as the template's `<kind>-{nnn}` checkbox lines spell them, so
+# a kind added to the playbook, or one dropped from the script's block regex,
+# reds here instead of the suite exercising only the kind it names.
+template_action_kinds() {
   # shellcheck disable=SC2016
-  EXTRA='- [ ] `shrink-001`'
-  write_report
-  run_check "$REPORT"
-  [ "$status" -eq 1 ]
-  grep -qF -- "report carries 1 action block(s)" <<<"$output"
+  sed -n 's/^- \[ \] `\([a-z-]*\)-{nnn}`.*/\1/p' "$AUDIT_MD"
+}
+
+@test "each template action kind under a zero Summary line routes to the gate" {
+  n=0
+  while read -r kind; do
+    n=$((n + 1))
+    EXTRA="- [ ] \`${kind}-001\`"
+    write_report
+    run_check "$REPORT"
+    [ "$status" -eq 1 ] || return 1
+    grep -qF -- "report carries 1 action block(s)" <<<"$output" || return 1
+  done < <(template_action_kinds)
+  # Every checkbox action line the template carries, counted by a looser
+  # pattern than the derivation, so a kind the derivation cannot spell reds
+  # as a short read instead of dropping out of the loop.
+  [ "$n" -gt 0 ]
+  # shellcheck disable=SC2016
+  [ "$n" -eq "$(grep -c '^- \[ \] `.*-{nnn}`' "$AUDIT_MD")" ]
 }
 
 @test "a scope-narrowed run routes to the gate" {
