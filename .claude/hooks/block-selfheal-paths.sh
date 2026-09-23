@@ -140,14 +140,17 @@ REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || true)"
 
 MATCHED_PATH=""
 
-# Strip one matching pair of surrounding quotes from a token.
+# Strip one matching pair of surrounding quotes from a token, into SQ_OUT.
+# Sets a variable rather than printing because a `$(...)` per call is a fork,
+# and the write-shape arms call it once per argument word. The trailing-newline
+# strip keeps the result identical to that `$(...)` form, which dropped them.
 strip_quotes() {
-  local s="$1"
-  case "$s" in
-    \"*\") s=${s#\"}; s=${s%\"} ;;
-    \'*\') s=${s#\'}; s=${s%\'} ;;
+  SQ_OUT=$1
+  case "$SQ_OUT" in
+    \"*\") SQ_OUT=${SQ_OUT#\"}; SQ_OUT=${SQ_OUT%\"} ;;
+    \'*\') SQ_OUT=${SQ_OUT#\'}; SQ_OUT=${SQ_OUT%\'} ;;
   esac
-  printf '%s' "$s"
+  while [ "${SQ_OUT%$'\n'}" != "$SQ_OUT" ]; do SQ_OUT=${SQ_OUT%$'\n'}; done
 }
 
 # is_refused_path <token>: strip quotes and a leading ./, relativize an
@@ -159,8 +162,8 @@ strip_quotes() {
 # resolved) and is left alone -- the safe direction is to allow.
 is_refused_path() {
   local p rel
-  p=$(strip_quotes "$1")
-  p=${p#./}
+  strip_quotes "$1"
+  p=${SQ_OUT#./}
   [ -n "$p" ] || return 1
   case "$p" in
     /*)
@@ -192,7 +195,14 @@ scan_exec_positions() {
   local prev_sep=1 after_interp=0 after_interp_env=0 cand exec_pos skip
 
   for cand in "$@"; do
-    cand=$(strip_quotes "$cand")
+    # strip_quotes, inlined: bash 3.2 copies the caller's positional list on
+    # every function call, and this function holds one per token, so a call
+    # here makes the scan quadratic in the token count. A token from
+    # `read -a` holds no newline, so the newline strip is not needed.
+    case "$cand" in
+      \"*\") cand=${cand#\"}; cand=${cand%\"} ;;
+      \'*\') cand=${cand#\'}; cand=${cand%\'} ;;
+    esac
 
     exec_pos=0
     [ "$prev_sep" -eq 1 ] && exec_pos=1
