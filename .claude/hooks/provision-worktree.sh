@@ -175,13 +175,13 @@ migrate_keyed_subtrees_to_main() {
     [ -d "$src" ] || continue
     dest="$main_root/.gaia/local/$dir/$tree_key"
     if [ -e "$dest" ]; then
-      log "CUTOVER MIGRATION SKIPPED: $dir/$tree_key exists in both this worktree and the main checkout -- merge them by hand; the worktree's copy is about to be moved aside to .gaia/local.bak.* and nothing reads it there"
+      log "CUTOVER MIGRATION SKIPPED: $dir/$tree_key exists in both this worktree and the main checkout -- merge them by hand; the worktree's copy is about to be moved aside to $tree/.gaia/local.bak.* and nothing reads it there"
       continue
     fi
     if mkdir -p "$main_root/.gaia/local/$dir" 2>/dev/null && mv "$src" "$dest" 2>/dev/null; then
-      log "migrated $dir/$tree_key into the main checkout's .gaia/local"
+      log "migrated $dir/$tree_key into $main_root/.gaia/local"
     else
-      log "CUTOVER MIGRATION FAILED: $dir/$tree_key -- move it into the main checkout's .gaia/local/$dir/ by hand, or a stranded ledger will silently block the next commit gate"
+      log "CUTOVER MIGRATION FAILED: $dir/$tree_key -- move it into $main_root/.gaia/local/$dir/ by hand, or a stranded ledger will silently block the next commit gate"
     fi
   done
 }

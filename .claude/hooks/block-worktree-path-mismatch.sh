@@ -252,8 +252,8 @@ case "$resolved_target_dir" in
         "$container/$acting_key" | "$container/$acting_key"/*) exit 0 ;;
       esac
       # Both messages name the local-state root through $gaia_local rather than
-      # spelling it out. That is the derive rule this hook is held to (the
-      # manifest's derive arm, check-hook-scope-manifest.sh) applied to prose as
+      # spelling it out. That is the same resolved-root rule check-hook-scope-
+      # manifest.sh's bare-literal scan holds every hook to, applied to prose as
       # well as to logic, and it makes the advice better: the caller is told the
       # absolute path to use, not a repo-relative fragment they have to rebuild
       # from a root the symlink has already moved out from under them.

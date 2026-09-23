@@ -84,10 +84,11 @@
 #   - A per-tree STATE path (`marker=".claude/wiki-drift-checked"`,
 #     `config=".gaia/automation.json"`). Those name mutable state rather than
 #     code, and `${BASH_SOURCE[0]}` is the WRONG root for them: which tree a
-#     hook's state belongs to is declared per hook in .gaia/hook-scopes.json,
-#     so rooting one at the script's directory would make a `main-only` marker
+#     hook's state belongs to comes from a resolved root (main-root-lib.sh, or
+#     a caller-supplied root in a lib), never from the script's own directory,
+#     so rooting one at `${BASH_SOURCE[0]}` would make a `main-only` marker
 #     follow a linked worktree. They are cwd-sensitive too, and the repair
-#     needs each site read against its declared scope; the file-test and
+#     needs each site read against its own resolved root; the file-test and
 #     assignment arms are both pinned to a code extension for exactly that
 #     reason, so neither one hands a state path the wrong root. What that pin
 #     costs each arm is under KNOWN BLIND SPOTS below.

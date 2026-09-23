@@ -97,14 +97,14 @@ It leads because it is the reversible direction, which is a standing property of
 
 Stop writing this:
 
-> `.gaia/scripts/check-hook-scope-manifest.sh`: Check D, hook tree-scope manifest conformance (INV-5). Siblings under `.gaia/scripts/` are mixed: 53 of 93 appear in `.gaia/manifest.json`. Ship (manifest entry, class `owned`) or withhold (category N)?
+> `.gaia/scripts/check-hook-scope-manifest.sh`: Check D, hook state-root conformance (INV-5). Siblings under `.gaia/scripts/` are mixed: 53 of 93 appear in `.gaia/manifest.json`. Ship (manifest entry, class `owned`) or withhold (category N)?
 
 Write this:
 
-> **`check-hook-scope-manifest.sh`** checks that every hook in `.claude/hooks/` is listed in the hook registry.
+> **`check-hook-scope-manifest.sh`** checks that every hook in `.claude/hooks/` reaches `.gaia/local` only through a resolved root, never a bare literal.
 >
 > **Keep it internal:** adopters never see it, and nothing in their project checks this.
-> **Ship it:** adopters who add their own hook get a script that catches a missing registry entry.
+> **Ship it:** adopters who add their own hook get a script that catches a hook building a `.gaia/local` path from a bare literal.
 
 The rules:
 

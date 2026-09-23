@@ -19,7 +19,7 @@ So the conventions here are opposite by tree, and each is correct for its own re
 
 **Add a new hook at the root of `.claude/hooks/`. Do not create a subdirectory.**
 
-**Most of what names a hook is an unchecked string.** A hook is spelled out by hand in CI path filters, rule globs, agent prose, and wiki pages, and a move leaves those pointing at nothing: no build step fails, and no test necessarily covers the reference that broke. One registry is the loud exception, and the next section is about it. The rest are not, and the cost is paid per reference, which is what keeps the directory flat rather than grouped into subfolders.
+**Most of what names a hook is an unchecked string.** A hook is spelled out by hand in CI path filters, rule globs, agent prose, and wiki pages, and a move leaves those pointing at nothing: no build step fails, and no test necessarily covers the reference that broke. The cost is paid per reference, which is what keeps the directory flat rather than grouped into subfolders.
 
 Filename prefixes already group the directory, and they cost nothing to adopt: a new hook named for what it does sorts next to its family without moving anything.
 
@@ -27,17 +27,7 @@ A second obligation rides on the first, and it binds whoever writes a check rath
 
 ## Register the hook
 
-Two obligations, each with both its registry and its check in your own tree, so you can verify either one locally. That is why these are the two stated here.
-
-### An entry in `.gaia/hook-scopes.json`
-
-**Every `.sh` under `.claude/hooks/**` needs exactly one entry.** It declares which tree the hook's state belongs to, the state it touches, and why. The registry's own schema is the authority on the fields; read a neighbouring entry and follow it.
-
-```bash
-bash .gaia/scripts/check-hook-scope-manifest.sh
-```
-
-It walks the directory rather than a second hand-kept list, so an unregistered hook is a finding the moment it exists, and a moved one reds twice over: once for the entry it lacks, once for the orphan it left behind.
+One obligation, with its check in your own tree so you can verify it locally.
 
 ### A cwd-independent command, when you register it in `.claude/settings.json`
 
