@@ -148,6 +148,7 @@ The index is held to the tree by `.gaia/scripts/lint-scripts-wiki-inventory.sh`,
 | `gh-artifact-lib.sh` | yes | sourced | Shared breadcrumb for the GitHub pull request a run produced. |
 | `guard-awk-lib.sh` | no | sourced | Shared awk scaffolding the guard lints build their detectors on. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
 | `hook-registration-lib.sh` | no | sourced | The shared read of `.claude/settings.json`'s registrations, and the oracle for whether a registered hook can stop a tool call. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
+| `knowledge-audit-clean.sh` | yes | `/gaia-audit` | Confirms a zero-action knowledge-audit report covered every store before it may skip the decision gate. |
 | `ledger-path-lib.sh` | yes | sourced | The one definition of every main-checkout ledger path, so renaming one changes one place. |
 | `ledger-status-migrate.sh` | yes | `local-janitor.sh` hook | One-time, idempotent migration of spec and plan ledger rows onto the unified status vocabulary. |
 | `link-worktree.sh` | yes | `provision-worktree.sh` hook, `/setup-gaia` | Lays the shared-state symlinks a linked worktree needs. |

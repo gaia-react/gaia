@@ -1,0 +1,1 @@
+Checked `app/x.ts:12` and `app/hooks/useFoo.ts:30` so far. Next I will review the hooks directory.

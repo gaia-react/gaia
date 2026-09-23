@@ -260,9 +260,8 @@ case "$tool_name" in
     [[ -n "$cmd" ]] || exit 0
 
     # `read` stops at the first newline, so a multi-line payload would leave
-    # everything past line 1 untokenized and invisible to BOTH scans below.
-    # Fold the payload onto one line once, here, ahead of both `read -r -a`
-    # calls. The two newline kinds are not interchangeable: a
+    # everything past line 1 untokenized and invisible to every scan below.
+    # Fold the payload onto one line ahead of every `read -r -a` call. The two newline kinds are not interchangeable: a
     # backslash-newline is a line CONTINUATION and folds to a plain space,
     # while a bare newline is a command separator and folds to `;`. Folding a
     # continuation to a separator instead would break a continued
@@ -273,6 +272,49 @@ case "$tool_name" in
     # accepted over-deny, the safe direction here; narrowing it would mean
     # tracking heredoc regions, not relaxing the fold.
     cmd="${cmd//\\$'\n'/ }"
+
+    # The tee/sponge, sed and cp/mv arms stop their argument scan at a
+    # separator, and a separator glued to a neighbour (`x.sh;`, `a&&b`) is
+    # not its own token in the unpadded `toks`, so a scan over `toks` runs on
+    # into the NEXT command and reads its paths as this command's write
+    # target: a false deny on `sed -i ... /tmp/x.sh; bash <refused>`, and an
+    # under-deny on `cp /tmp/a <refused>;echo`, where the destination is `echo`.
+    # These arms get a third tokenization, `wtoks`, rather than the blindly
+    # padded `stoks` below: a quoted sed script routinely carries `;`, `&`
+    # and `|` (`s/foo/&bar/`, `s/a/b/;s/c/d/`), and padding those ends the
+    # scan inside the script, before the target, which ALLOWS the write. The
+    # union trick the execution scan uses is unavailable, because the union
+    # keeps the false deny these arms must drop. So pad `;` `|` `&` only
+    # outside single and double quotes, keep a backslash-escaped character
+    # literal (`s/a/b/\;s/c/d/` stays one word), and leave an `&` inside a
+    # redirection (`>&`, `<&`, `&>`) unpadded so `2>&1` stays one word. A
+    # standalone `\;` is the terminator of a `find -exec` command, so the arms
+    # treat it as a boundary too; otherwise `find -exec cp {} <refused> \;`
+    # reads `\;` as the cp destination and allows the write.
+    #
+    # awk runs per ORIGINAL line, before the newline fold, so an unbalanced
+    # quote on a heredoc-body line mis-scopes only that line. The honest
+    # limit: a quote opened on one line and closed on a later one is not
+    # tracked across the boundary, so such a line can mis-scope, an
+    # under-deny inside the best-effort posture this hook already states.
+    wsrc=$(printf '%s\n' "$cmd" | awk '
+      {
+        out = ""; q = ""; len = length($0)
+        for (k = 1; k <= len; k++) {
+          c = substr($0, k, 1)
+          if (q == "") {
+            if (c == "\\") { out = out c substr($0, k + 1, 1); k++; continue }
+            if (c == "\047" || c == "\"") { q = c }
+            else if (c == ";" || c == "|" || (c == "&" && substr($0, k - 1, 1) != ">" && substr($0, k - 1, 1) != "<" && substr($0, k + 1, 1) != ">")) { out = out " " c " "; continue }
+          } else if (q == "\"" && c == "\\") { out = out c substr($0, k + 1, 1); k++; continue }
+          else if (c == q) { q = "" }
+          out = out c
+        }
+        print out
+      }')
+    wsrc="${wsrc//$'\n'/ ; }"
+    read -r -a wtoks <<<"$wsrc"
+
     cmd="${cmd//$'\n'/ ; }"
 
     read -r -a toks <<<"$cmd"
@@ -309,8 +351,9 @@ case "$tool_name" in
     # audit-remits.sh` under every finding, so chaining the printed repair
     # onto the check that printed it is the natural next keystroke. Pad every
     # separator character into a standalone token for THIS scan only, in its
-    # own array: the write-shape loop below reads the unpadded `toks`, where
-    # `>` / `>>` and exact `;`/`&&` shapes are load-bearing. `&&` and `||`
+    # own array: the write-shape arms read their own quote-aware `wtoks`
+    # (built above), and the `>` / `>>` arm reads the unpadded `toks`, where
+    # `>` and `2>&1` are load-bearing. `&&` and `||`
     # degrade to two adjacent single-character tokens, which is harmless
     # because this scan only asks whether a boundary occurred, never which
     # operator produced it. Padding can also split a quoted argument, which
@@ -362,18 +405,30 @@ case "$tool_name" in
 
     i=0
     while [ "$i" -lt "$n" ]; do
-      tok="${toks[$i]}"
-      case "$tok" in
+      case "${toks[$i]}" in
         '>' | '>>')
           next="${toks[$((i + 1))]:-}"
           is_refused_path "$next" && deny "$(deny_reason "$MATCHED_PATH")"
           ;;
+      esac
+      i=$((i + 1))
+    done
+
+    sn=${#wtoks[@]}
+    # A redirection word: an optional fd or `&`, then `>`, `>>`, `<`, `>&`
+    # or `<&`. Held in a variable because bash 3.2 and 5 disagree on a
+    # regex quoted inline on the right of `=~`.
+    redir_re='^([0-9]+|&)?(>>?|<|>&|<&)'
+    i=0
+    while [ "$i" -lt "$sn" ]; do
+      tok="${wtoks[$i]}"
+      case "$tok" in
         tee | sponge)
           j=$((i + 1))
-          while [ "$j" -lt "$n" ]; do
-            t2="${toks[$j]}"
+          while [ "$j" -lt "$sn" ]; do
+            t2="${wtoks[$j]}"
             case "$t2" in
-              ';' | '&&' | '||' | '|') break ;;
+              ';' | '&' | '|' | '\;') break ;;
             esac
             is_refused_path "$t2" && deny "$(deny_reason "$MATCHED_PATH")"
             j=$((j + 1))
@@ -383,10 +438,10 @@ case "$tool_name" in
           has_i=0
           sed_match=""
           j=$((i + 1))
-          while [ "$j" -lt "$n" ]; do
-            t2="${toks[$j]}"
+          while [ "$j" -lt "$sn" ]; do
+            t2="${wtoks[$j]}"
             case "$t2" in
-              ';' | '&&' | '||' | '|') break ;;
+              ';' | '&' | '|' | '\;') break ;;
             esac
             [[ "$t2" == "-i" || "$t2" == -i* ]] && has_i=1
             if is_refused_path "$t2"; then sed_match="$MATCHED_PATH"; fi
@@ -397,12 +452,20 @@ case "$tool_name" in
         cp | mv)
           dest=""
           j=$((i + 1))
-          while [ "$j" -lt "$n" ]; do
-            t2="${toks[$j]}"
+          while [ "$j" -lt "$sn" ]; do
+            t2="${wtoks[$j]}"
             case "$t2" in
-              ';' | '&&' | '||' | '|') break ;;
+              ';' | '&' | '|' | '\;') break ;;
             esac
-            [[ "$t2" == -* ]] || dest="$t2"
+            # A trailing redirection is not the destination: read as one,
+            # `cp a <refused> 2>/dev/null` names `2>/dev/null` as dest and
+            # allows the write. A bare operator (`2>`, `>`) also takes the
+            # next word as its operand, so that word is skipped too.
+            if [[ "$t2" =~ $redir_re ]]; then
+              [ "$t2" = "${BASH_REMATCH[0]}" ] && j=$((j + 1))
+            elif [[ "$t2" != -* ]]; then
+              dest="$t2"
+            fi
             j=$((j + 1))
           done
           is_refused_path "$dest" && deny "$(deny_reason "$MATCHED_PATH")"

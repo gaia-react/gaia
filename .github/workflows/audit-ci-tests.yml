@@ -334,13 +334,16 @@ jobs:
               # that hold prompts today, not a proof that no other can; a carrier
               # added anywhere else still reds the suite on the next pull request
               # that arms the lib leg. The fitness page already matches the wiki
-              # catch-all and is listed so a page-only edit arms the legs whose
-              # suites name it (W16's declared table).
+              # catch-all, so listing it NARROWS rather than adds: it puts the
+              # page in the leg-arming class, and an edit to this page alone then
+              # arms only the legs whose suites name it, plus the lib leg, instead
+              # of every leg (W16's declared table). The GAIA Scripts.md entry
+              # below spells out the mechanism.
               - '.gaia/cli/health/**/*.md'
               - 'wiki/decisions/Claude Integration Fitness.md'
               - '.claude/skills/**/*.md'
               - '.claude/commands/**/*.md'
-              - '.claude/agents/*.md'
+              - '.claude/agents/**/*.md'
               - '.specify/extensions/gaia/templates/**'
               # The doc-isolation suite (.gaia/tests/lib/) renders the prompt out
               # of the shared isolation reference and greps both callers' pointer
@@ -356,7 +359,7 @@ jobs:
               # sources it guards too: if nothing armed them, a PR adding grading
               # prose to one of them would skip every bats step, and the job
               # would green having run the very assertion written to catch that
-              # edit zero times. The `.claude/agents/*.md` root above already
+              # edit zero times. The `.claude/agents/**/*.md` root above already
               # covers them; this glob names the suite's own sources so that
               # narrowing that root cannot silently drop them. It is a superset
               # of the code-audit-frontend.md entry above (patterns OR together)

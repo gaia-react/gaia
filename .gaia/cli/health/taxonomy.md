@@ -12,9 +12,9 @@ Without a shared baseline, fresh audit agents re-discover settled questions and 
 
 ## Composition
 
-The shared Claude-integration check classes (hook integrity; skill/command/agent frontmatter; rule hygiene; `CLAUDE.md` hygiene; settings hygiene; GAIA-install fitness; wiki fitness) and the triage/heal orchestration protocol live in `wiki/decisions/Claude Integration Fitness.md`. This taxonomy retains only the maintainer distribution-boundary / CLI-surface / forensics / tests classes.
+The shared Claude-integration check categories and the triage/heal orchestration protocol live in `wiki/decisions/Claude Integration Fitness.md`. This taxonomy retains only the maintainer distribution-boundary / CLI-surface / forensics / tests classes.
 
-`/health-audit` runs the shared protocol over the seven fitness categories as its shared-fitness bucket (see runbook §Bucket E: Shared Claude-integration fitness). Cross-references are one-directional: this file and the runbook reference the wiki page; the wiki page never references `.gaia/cli/health/` paths.
+`/health-audit` runs the shared protocol over every fitness category that page defines as its shared-fitness bucket (see runbook §Bucket E: Shared Claude-integration fitness). Cross-references are one-directional: this file and the runbook reference the wiki page; the wiki page never references `.gaia/cli/health/` paths.
 
 ## How to prime an audit
 

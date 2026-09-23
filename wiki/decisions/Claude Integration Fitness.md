@@ -189,6 +189,7 @@ The Orchestrator dispatches the eight category checks as **parallel subagents** 
 | Settings hygiene                    | **Haiku**  | `jq` parse of `settings.json`; glob-subset detection; secret-pattern grep on `env` values; `.gitignore` check for `settings.local.json`             |
 | GAIA-install fitness                | **Haiku**  | Hash-diff of manifest-tracked files against installed-version checksums; version string comparison                                                  |
 | Wiki fitness                        | **Haiku**  | `gaia wiki state` for staleness; `gaia wiki dead-paths`; `gaia wiki orphans`                                                                        |
+| Cost-rate fitness                   | **Haiku**  | `bash .gaia/scripts/cost-unpriced-scan.sh`; one `warning` per unpriced model with its row count; overlay-priced models are not findings             |
 | Skill / command / agent frontmatter | **Sonnet** | Frontmatter completeness + placeholder detection (requires judgment); name-collision check                                                          |
 | Rule hygiene                        | **Sonnet** | Content-vs-glob coherence (requires judgment about whether advice is universal or path-specific); `@`-import detection; `CLAUDE.md` cross-reference |
 | `CLAUDE.md` hygiene                 | **Sonnet** | Size evaluation vs. project guidance (requires judgment); dead-path + absolute-path grep; `@`-import resolution; folder-map cross-reference         |
