@@ -3,7 +3,7 @@ type: concept
 title: GAIA Audit
 status: active
 created: 2026-04-20
-updated: 2026-07-07
+updated: 2026-09-23
 tags: [concept, claude, skill, knowledge, hygiene]
 ---
 
@@ -28,6 +28,8 @@ A clean audit (Stage 1 finds 0 actions) skips the gate and auto-applies: there i
 - **Discuss / refine**: talk it through, edit the report in place, then re-ask.
 - **Decline**: delete the report; nothing is applied, filed, or published.
 
+Stage 1's own "0 actions" is not enough for a clean audit to skip the gate, because a research pass that stopped before walking every store writes a report that reads exactly like a clean one. The report carries a per-store coverage record (files inventoried, files classified) and an `Actions proposed` Summary line, and before auto-applying the main conversation runs `.gaia/scripts/knowledge-audit-clean.sh`, which re-runs the inventory itself and holds the record to it. A missing record, a short count, a scope-narrowed run, or any other failure of the check routes the report to the Apply / Discuss / Decline gate instead, with the check's reasons in the summary. The skill reference owns the record's schema and the script's header owns the exact conditions.
+
 ### Full flow: apply, file, publish
 
 Apply is the single up-front decision; from there the run drives to merge autonomously, the same shape `/update-deps` and `/gaia-debt` use (see [[Audit Disposition and Debt Fix]]). Two mechanical steps ride every finalizing path (gated Apply, 0-action auto-apply, `--apply`) and never the Decline path:
@@ -39,12 +41,12 @@ Apply is the single up-front decision; from there the run drives to merge autono
 
 When Stage 1 proposes at least one action, a recommended-but-optional **classification-verification round** runs in the main conversation between the report and the decision gate. Low-overlap lenses verify Stage 1's single-pass classifications against ground truth: the cited fact actually lives in the wiki page it names, a STALE entry is genuinely gone rather than renamed, a CONFLICT is a real contradiction rather than a sanctioned path-scoped rule, and a memory delete's reason citation resolves. The round is biased toward dropping a delete it cannot confirm, because memory deletes are machine-local and have no git undo, so a wrongly-kept entry is cheap clutter while a wrongly-executed delete is permanent. A mis-classified action is dropped or corrected in the report directly; a whole miscalibrated lens re-spawns Stage 1 once with the findings as a correction directive.
 
-The hardened report carries an `audit_hardened` stamp that the decision gate and `--apply` inherit: `--apply` against a stamped report trusts the hardening, while an unstamped draft has the round run non-interactively before applying. The round is recommended by default, and skipping it is a legitimate recommendation only when every proposed action is a git-reversible, non-CONFLICT-driven shrink on an in-repo, non-memory file; anything irreversible or contradiction-driven is recommended for verification. It never blocks, and is skipped entirely on a clean 0-action report.
+The hardened report carries an `audit_hardened` stamp that the decision gate and `--apply` inherit: `--apply` against a stamped report trusts the hardening, while an unstamped draft has the round run non-interactively before applying. The round is recommended by default, and skipping it is a legitimate recommendation only when every proposed action is a git-reversible, non-CONFLICT-driven shrink on an in-repo, non-memory file; anything irreversible or contradiction-driven is recommended for verification. It never blocks, and is skipped entirely on a report with no actions.
 
 | Invocation             | Path                              | When to use                                                                                                       |
 | ---------------------- | --------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
 | `/gaia-audit`          | Stage 1 → gate → Stage 2 on Apply | Default. Research, review at the gate, then apply                                                                 |
-| `/gaia-audit "<hint>"` | Same, scoped to the hint          | Narrow Stage 1 to named stores or files; a scoped run still applies by default                                   |
+| `/gaia-audit "<hint>"` | Same, scoped to the hint          | Narrow Stage 1 to named stores or files; a scoped run still applies by default, but a scoped 0-action run goes through the gate |
 | `/gaia-audit --apply`  | Stage 2 only                      | Retry against the most recent draft or partial report (after drift fix or interrupted apply), within a 72h grace |
 
 Stage 1 (Sonnet) proposes actions (`delete`, `delete-entry`, `promote`, `shrink`), each carrying the drift signals its own schema names, written to `.gaia/local/audit/KNOWLEDGE-{timestamp}.md`. Stage 2 (Sonnet) reads the report, verifies drift signals still match, and applies changes verbatim; on mismatch it skips and reports rather than improvising. Drift checks (sha256 + verbatim before/after) carry the safety, so the research stage doesn't need a heavier model. Contradiction findings (CONFLICT research category) emit `replace` or `delete` action types in the report, not a separate action type.

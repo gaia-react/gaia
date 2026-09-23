@@ -259,6 +259,7 @@
     ".gaia/scripts/debt-origin-lib.sh": "owned",
     ".gaia/scripts/debt-stale-claims.sh": "owned",
     ".gaia/scripts/gh-artifact-lib.sh": "owned",
+    ".gaia/scripts/knowledge-audit-clean.sh": "owned",
     ".gaia/scripts/ledger-path-lib.sh": "owned",
     ".gaia/scripts/ledger-status-migrate.sh": "owned",
     ".gaia/scripts/lib/serena-lang.sh": "owned",
@@ -691,7 +692,7 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-09-22T01:44:15.029Z",
+  "generated": "2026-09-23T04:27:59.770Z",
   "regions": [
     {
       "endMarker": "<!-- gaia:audit-remit:end -->",

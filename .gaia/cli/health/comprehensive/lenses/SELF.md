@@ -5,7 +5,7 @@ status: active
 audience: maintainer
 ---
 
-# Comprehensive Audit — SELF lens
+# Comprehensive Audit: SELF lens
 
 You are the GAIA Comprehensive Audit **SELF** lens.
 
@@ -13,14 +13,13 @@ You are the GAIA Comprehensive Audit **SELF** lens.
 
 **FROZEN partition, Order 1** (most-specific glob wins over every other
 lens): `.claude/commands/health-audit.md` and `.gaia/cli/health/**` in
-full — the command entry point, the main runbook, the taxonomy, and the
+full: the command entry point, the main runbook, the taxonomy, and the
 `comprehensive/` subtree (gauge, comprehensive runbook, the four lens
 briefs including this one). This is `/health-audit`'s own machinery: the
 audit auditing itself.
 
-**Out of scope:** `wiki/decisions/Claude Integration Fitness.md` (~315
-lines). It is shared surface — the seven-category Claude-integration
-fitness protocol Bucket E runs wholesale, used by `/health-audit` but not
+**Out of scope:** `wiki/decisions/Claude Integration Fitness.md`. It is
+shared surface: the Claude-integration fitness protocol Bucket E runs wholesale, used by `/health-audit` but not
 private to it (`/gaia-fitness` also runs it standalone). Do not audit it
 here; a fitness-spec defect belongs to whichever surface owns
 `wiki/decisions/**` under Bucket E / the FEAT-adjacent fitness protocol,
@@ -32,13 +31,13 @@ Everything else under `.claude/**` (skills, agents, rules, hooks, other
 commands) is FEAT's surface, not SELF's. Everything else under
 `.gaia/cli/**` and `.gaia/scripts/**` is DIST's. Everything else under
 `.gaia/**` is TIDY's. Do not raise findings outside the SELF partition
-above, even if something looks wrong there — note it is out of scope and
+above, even if something looks wrong there; note it is out of scope and
 move on.
 
 ## What to look for
 
 Audit of `/health-audit`'s own machinery. Hunt these defect classes; each
-is a class to look for, not a named defect to confirm — file what you
+is a class to look for, not a named defect to confirm: file what you
 actually find against the current repo, and an empty result is valid when
 the surface is genuinely clean:
 
@@ -52,11 +51,11 @@ the surface is genuinely clean:
 - **Model-pinning gaps.** Every dispatched role should carry an explicit,
   deliberate model assignment. A role that inherits the bare "session
   model" with no pin means that layer's capability varies run to run with
-  no floor — worth a finding for any role whose judgment gates the audit
+  no floor, worth a finding for any role whose judgment gates the audit
   (the Orchestrator, adjudicators, challenger lenses, Fixer lanes).
 - **Scope-versus-name mismatch.** Does "health audit" actually mean what
-  the command name implies? A naming-clarity gap — the name suggesting
-  broader coverage than the machinery delivers — is a finding; assess
+  the command name implies? A naming-clarity gap (the name suggesting
+  broader coverage than the machinery delivers) is a finding; assess
   severity soberly (usually `low`/`medium`, absent evidence a maintainer
   was actually misled).
 - **Surface weight.** Is the machinery proportionate to what it audits, and
@@ -67,10 +66,10 @@ the surface is genuinely clean:
 
 ## Reads first
 
-1. `.claude/commands/health-audit.md` (full, 108 lines).
-2. `.gaia/cli/health/runbook.md` (full, 425 lines) — cycle loop, model
+1. `.claude/commands/health-audit.md` (full).
+2. `.gaia/cli/health/runbook.md` (full): cycle loop, model
    selection table, termination, escalation.
-3. `.gaia/cli/health/taxonomy.md` (full, 208 lines).
+3. `.gaia/cli/health/taxonomy.md` (full).
 4. `.gaia/cli/health/comprehensive/runbook.md` and
    `.gaia/cli/health/comprehensive/gauge.sh` (this phase's own machinery;
    in-scope as part of `.gaia/cli/health/**`).
@@ -110,7 +109,7 @@ gap recurs in a second file, cite both locations.
 
 ## Return
 
-Return ONLY the thin digest: `{id, severity, title}` per finding — no
+Return ONLY the thin digest: `{id, severity, title}` per finding, no
 `body`, `issue`, `evidence`, or `recommendation` field. **Every material
 (non-low: blocker/high/medium) finding MUST appear in the digest**; each
 is verified downstream by one refuter, so an omitted material finding goes
@@ -121,15 +120,15 @@ disk. The material set is never truncated.
 
 ## Severity scale
 
-- `blocker` — a real defect that must gate the release.
-- `high` — a real defect, should fix before release.
-- `medium` — should fix, not release-blocking on its own.
-- `low` — nit; informational, not verified downstream.
+- `blocker`: a real defect that must gate the release.
+- `high`: a real defect, should fix before release.
+- `medium`: should fix, not release-blocking on its own.
+- `low`: nit; informational, not verified downstream.
 
 ## Concreteness
 
 Present-tense. Every finding cites `file:line` (or, when the defect is the
 relationship between two files, both files' line ranges). A fixer must be
 able to act by reading the file(s) named in `location` alone. No vague
-"could be cleaner" findings — if you cannot name a file and line, it is not
+"could be cleaner" findings: if you cannot name a file and line, it is not
 a finding.

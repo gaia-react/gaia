@@ -317,13 +317,7 @@ RUN_DIR/c<N>/bucket-e/
   category-grades.json        # per-category grade + finding count
   shared_fitness_grade.txt    # single letter grade (floor of the category grades)
   findings/
-    hook-integrity.json
-    frontmatter.json
-    rule-hygiene.json
-    claude-md-hygiene.json
-    settings-hygiene.json
-    gaia-install-fitness.json
-    wiki-fitness.json
+    <category-slug>.json      # one per category the wiki page defines, e.g. hook-integrity.json
 ```
 
 Crash-safety: Bucket E writes incrementally per category; a crash mid-run leaves partial output. The Adjudicator treats a missing `shared_fitness_grade.txt` as Bucket E incomplete; the Orchestrator re-spawns Bucket E on the next cycle (the outer loop handles this).
