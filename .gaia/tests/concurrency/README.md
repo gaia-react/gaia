@@ -539,9 +539,8 @@ that any of it had stopped. Three now ask git the question directly, with
 The fourth already had the answer: `wiki-session-stop.sh` resolves `git rev-parse --git-dir`
 on the very next line, so its guard was deleted rather than converted, because two probes for
 one question is the duplication this program removes. **Nothing was made to refuse**, and the
-scope manifest is why: `.gaia/hook-scopes.json` declares all four `any` or `per-tree`, so
-firing from a worktree is what they are for, and a refusal would have been a second defect
-wearing the first one's fix.
+reason is that all four hooks are meant to fire from a worktree in the first place, so a
+refusal would have been a second defect wearing the first one's fix.
 
 **The frozen row still identifies them by the guard they carried at freeze**, and that is left
 alone on purpose. Rewriting a frozen assertion so it tracks the fix that satisfied it is how an

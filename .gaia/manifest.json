@@ -217,8 +217,6 @@
     ".gaia/cli/templates/workflows/partials/quality-gate.yml.tmpl": "owned",
     ".gaia/hook-capabilities.json": "owned",
     ".gaia/hook-capabilities.schema.json": "owned",
-    ".gaia/hook-scopes.json": "owned",
-    ".gaia/hook-scopes.schema.json": "owned",
     ".gaia/labels.json": "owned",
     ".gaia/labels.schema.json": "owned",
     ".gaia/script-capabilities.json": "owned",
@@ -692,7 +690,7 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-09-23T04:27:59.770Z",
+  "generated": "2026-09-23T15:01:32.068Z",
   "regions": [
     {
       "endMarker": "<!-- gaia:audit-remit:end -->",

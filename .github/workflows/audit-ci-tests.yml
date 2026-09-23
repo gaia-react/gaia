@@ -608,13 +608,6 @@ jobs:
               # matcher runs with dot-matching on (see the note at those globs).
               - '.github/**'
               - '.gaia/audit-ci.yml'
-              # check-hook-scope-manifest.bats (.gaia/scripts/tests/) asserts
-              # coverage + conformance of the hook tree-scope manifest; a
-              # manifest-only edit touches neither .claude/hooks/** nor
-              # .gaia/scripts/** above, so without these two lines it would
-              # match no pattern here and skip the very suite that guards it.
-              - '.gaia/hook-scopes.json'
-              - '.gaia/hook-scopes.schema.json'
               # check-script-capabilities.bats (.gaia/scripts/tests/) asserts
               # coverage + conformance of the script-capabilities manifest
               # against the checker; a manifest-only edit touches neither

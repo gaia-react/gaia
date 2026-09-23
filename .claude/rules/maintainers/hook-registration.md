@@ -7,91 +7,12 @@ paths:
 
 # Hook and Rule Registration
 
-Adding a `.sh` file under `.claude/hooks/**`, adding a `.md` file under `.claude/rules/**`, or registering a hook in `.claude/settings.json` carries registration obligations that no line of the diff shows. Whole-set checkers enforce them in CI, and none of them belongs to the Quality Gate or any agent's stated oracle set, so a change can pass every local check and every audit round and red afterward on a file nobody was told to touch.
+Adding a `.sh` under `.claude/hooks/**`, a `.md` under `.claude/rules/**`, or a hook registration in `.claude/settings.json` carries obligations no diff line shows. Whole-set checkers enforce them in CI, outside the Quality Gate, so run each one that applies before opening the pull request. Rationale: `.claude/rules/file-placement.md` for hook state paths, [[Code Audit Team]] for tiers, [[Claude Hooks]] for jq, Monitor and rooting.
 
-## Rule
-
-**Every `.sh` under `.claude/hooks/**` needs an entry in `.gaia/hook-scopes.json`.** The entry declares the tree the hook's state belongs to (`scope`: `main-only`, `per-tree`, or `any`), its `state` tokens, and a `why`. A missing entry fails the manifest's coverage assertion:
-
-```bash
-bash .gaia/scripts/check-hook-scope-manifest.sh
-```
-
-**A file under `.claude/hooks/lib/**` additionally needs a tier.** That prefix is gate machinery, and every machinery file must land in exactly one tier of the reset-predicate partition. Two of the three tiers are reachable for a hook library:
-
-- **merely-shared**, the ordinary answer: add the path to `AUDIT_MERELY_SHARED_PATHS` in `.gaia/scripts/audit-rules-changed-complete.sh`.
-- **global**, only for a library whose every change must reset every member's incremental review anchor: add it to `AUDIT_GLOBAL_RULES_PATHS` in `.claude/hooks/lib/audit-rules-changed.sh` **and** to the lockstep `GLOBAL_RULES_FILES` copy in `.gaia/scripts/audit-rules-changed-complete.sh`. Edit both by hand rather than leaning on the check to catch a half-edit: the lockstep assertion reds when the list names a path the predicate does not match, but not the reverse, so adding to the predicate alone reports green and leaves the copy silently drifted. Choose this tier deliberately: a merely-shared library mis-tiered as global discards every member's anchor on every later change to it.
-
-**A file under `.claude/rules/**` needs a tier for the same reason.** That prefix is machinery too, so a new rule file lands in the same partition, and the same two tiers are reachable. Answer it the way the tier's generating rule reads: global is for scope and belief, never for criteria. A rule that decides what the gate does with a clearance is global (`quality-gate.md` and `pr-merge.md` are the two, and they are the whole list); a rule that decides how code should be written is a coding convention and is merely-shared, which is the answer for nearly every rule file. Getting this wrong toward global is what makes a one-word convention edit re-scope every dispatched member.
-
-The third tier, `member`, matches only `.claude/agents/<member>.md` and never applies to a hook or a rule. A file in no tier fails the partition assertion:
-
-```bash
-bash .gaia/scripts/audit-rules-changed-complete.sh
-```
-
-Run both before opening the pull request. The second walks tracked files, so `git add` the new file first or it reports green on one it cannot see. The first walks the directory itself and catches an untracked hook either way.
-
-## jq-availability obligation
-
-**Every hook registered on `PreToolUse` that parses its payload with `jq` needs a jq-availability arm.** A blocking hook reaches the shared arm and refuses; an advisory one stands down. Which of the two a hook is, why the refusal is narrowed on a `Bash`-matcher hook, and what the shared arm's literal contract is, live in `.claude/hooks/lib/jq-availability.sh` and [[Claude Hooks]]; this rule states only that the obligation exists and what enforces it:
-
-```bash
-bash .gaia/scripts/lint-hook-jq-availability.sh
-```
-
-Like the manifests above, the obligated set is derived from the registration rather than from a second list, so a newly registered hook carries it the moment it is registered. It folds into `.gaia/tests/shell-lint.sh`, so a missing arm reds on the pull request that registers the hook.
-
-## Monitor-arming obligation
-
-**Every `PreToolUse` registration whose matcher reaches `Bash` and whose hook can stop a tool call on the command it is handed must name `Monitor` in the same matcher, and the hook's own `tool_name` test must admit it.** A matcher is an unanchored regex over the tool name, so `"Bash"` selects one tool, while more than one hands the hook a raw shell command in the same `tool_input.command` field and runs it in the same shell environment. Which tool takes which posture, and why a recorder is left alone rather than widened with the rest, live in [[Claude Hooks]]; this rule states only that the obligation exists and what enforces it:
-
-```bash
-bash .gaia/scripts/lint-hook-monitor-arming.sh
-```
-
-Like the manifests above, the obligated set is derived from the registration rather than from a second list, and the blocking-versus-advisory split comes from the same shared oracle the two gates around it read. It folds into `.gaia/tests/shell-lint.sh`, so a guard bound to one tool reds on the pull request that registers it.
-
-Both halves are checked, because each is inert without the other: a widened matcher over a hook that still pins `tool_name` to `Bash` reads as armed in the settings diff while nothing reaches its payload, and that half is the one no reviewer of the registration can see.
-
-## Capability obligation
-
-**Every hook the `hooks` block of `.claude/settings.json` registers needs an entry in `.gaia/hook-capabilities.json`.** The entry declares every capability the hook reaches for beyond itself and a `why`. The obligated set is derived from the registration at run time, so a newly registered hook carries a new obligation the moment it is registered, with no second list to remember to edit. A registration with no entry, an entry no registration names, and two entries naming one hook are each a finding:
-
-```bash
-bash .gaia/scripts/check-hook-capabilities.sh
-```
-
-The same check also finds a registration whose command names a `.sh` path in a form it cannot reduce to a repo-relative path, or names no shell script at all; the fix is rewriting the registration to name a script file in the rooted form below.
-
-It needs bash 5. On stock macOS `/bin/bash`, which is 3.2, the closure walk loses whole files' records and reports a clean tree as `SURPLUS`, and the reach it drops can never surface as `UNDECLARED`. The check re-execs itself under a Homebrew bash 5 when it finds one and refuses with a message when it does not, so this command cannot quietly disagree with CI; if it refuses, install a bash 5 rather than reading the run that got that far.
-
-`.gaia/hook-scopes.json` and `.gaia/hook-capabilities.json` cover different sets and declare different things. `.gaia/hook-scopes.json` covers every `.sh` under `.claude/hooks/**` and declares which tree the hook's state belongs to. `.gaia/hook-capabilities.json` covers only the registered hooks and declares what the hook reaches for beyond itself. Neither manifest derives its coverage from the other.
-
-The check catches these at review time; nothing mediates a registered hook at run time.
-
-## Rooting obligation
-
-**Every command in `.claude/settings.json` must name its script by a path that resolves independently of the shell's working directory.** `/bin/sh` runs the command string against the Bash tool's working directory, which persists for the whole session, so a bare relative registration is unfindable after a single `cd`: the script exits 127, 127 neither blocks nor is reported, and the guard layer fails open silently (#1740). Naming a script file is therefore necessary but **not** sufficient, and this is the half a reader of the previous section would otherwise get wrong.
-
-The sanctioned form, which resolves to the current tree at any depth inside the repository:
-
-```
-"$(git rev-parse --show-toplevel 2>/dev/null || printf %s "${CLAUDE_PROJECT_DIR:-.}")/.claude/hooks/<name>.sh"
-```
-
-No interpreter word. `check-hook-capabilities.sh` reduces a registration with an anchored pattern that a leading `bash ` defeats, so a command spelled that way falls through to `BAD-REGISTRATION` and reds the very check the previous section sends you here to repair. Every committed hook command is spelled without it, which is what that check enforces rather than something this page counts; `statusLine`, which is outside that derivation, is the one command that carries it.
-
-`$CLAUDE_PROJECT_DIR` is deliberately the fallback and not the root: it holds the session's original project directory and does not follow entry into a linked worktree, so using it alone would make a worktree session run the main checkout's hooks.
-
-```bash
-bash .gaia/scripts/check-hook-command-rooting.sh .
-```
-
-It runs inside `.gaia/tests/whole-tree-invariants.sh`, so an unrooted registration reds there too. It reads `.claude/settings.json` only, so no tracked check holds `.claude/settings.local.json` **to the rooting form**; hold your own local registrations to the same form by hand. That file is not unheld in general: `check-hook-capabilities.sh` flags any local `hooks` command the committed `settings.json` does not carry verbatim as `LOCAL-REGISTRATION` and exits non-zero, which is the arm a bare local spelling trips.
-
-## Why
-
-The defect is an *absence* rather than a diff line. No reviewer reading the change can see a manifest entry that was never written, and only a checker enumerating the whole directory can. Nothing in the change under review hints that any of these obligations exists, so the miss survives per-phase gates and pre-merge audit rounds alike and surfaces only in CI, costing a full round plus a re-audit of every dispatched member once the repair commit moves HEAD.
-
-Guards of that shape need an instruction surface pointing at them, which is what this rule is.
+- **Hook state paths.** A hook reaches `.gaia/local` only by joining a root from `main-root-lib.sh` (or a caller-supplied root, in a lib under `.claude/hooks/lib/`), never by a bare literal: `bash .gaia/scripts/check-hook-scope-manifest.sh`.
+- **Hook library tier.** A file under `.claude/hooks/lib/**` goes in exactly one tier. The usual answer is merely-shared: add it to `AUDIT_MERELY_SHARED_PATHS` in `.gaia/scripts/audit-rules-changed-complete.sh`. Global is only for a library whose every change must reset every member's review anchor: add it to `AUDIT_GLOBAL_RULES_PATHS` in `.claude/hooks/lib/audit-rules-changed.sh` **and** to `GLOBAL_RULES_FILES` in `.gaia/scripts/audit-rules-changed-complete.sh` by hand, because the lockstep check misses a predicate-only edit.
+- **Rule tier.** A file under `.claude/rules/**` needs a tier the same way. Global is for rules that decide what the gate does with a clearance (`quality-gate.md` and `pr-merge.md`, the whole list); every other rule is merely-shared. The `member` tier matches only `.claude/agents/<member>.md`. Check both tiers with `bash .gaia/scripts/audit-rules-changed-complete.sh`, after `git add`, since it walks tracked files only.
+- **jq availability.** A `PreToolUse` hook that parses its payload with `jq` needs the jq-availability arm from `.claude/hooks/lib/jq-availability.sh`: `bash .gaia/scripts/lint-hook-jq-availability.sh`.
+- **Monitor arming.** A `PreToolUse` registration whose matcher reaches `Bash` and whose hook can stop the call must also name `Monitor` in the matcher, and the hook's own `tool_name` test must admit it: `bash .gaia/scripts/lint-hook-monitor-arming.sh`.
+- **Capabilities.** Every hook the `hooks` block registers needs an entry in `.gaia/hook-capabilities.json` declaring each capability it reaches for beyond itself, plus a `why`: `bash .gaia/scripts/check-hook-capabilities.sh`. It needs bash 5 and refuses without one; install one rather than reading a partial run.
+- **Rooting.** Every `.claude/settings.json` command names its script as `"$(git rev-parse --show-toplevel 2>/dev/null || printf %s "${CLAUDE_PROJECT_DIR:-.}")/.claude/hooks/<name>.sh"`, with no leading interpreter word, since `bash ` reds the capability check as `BAD-REGISTRATION`: `bash .gaia/scripts/check-hook-command-rooting.sh .`. It does not read `.claude/settings.local.json`; hold local registrations to the same form by hand.

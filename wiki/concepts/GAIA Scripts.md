@@ -59,7 +59,7 @@ The index is held to the tree by `.gaia/scripts/lint-scripts-wiki-inventory.sh`,
 | `check-debt-issue-metadata.sh` | yes | `code-review-audit.yml`, the audit agent, `/gaia-debt` | Validates the label set and dedup key a tech-debt filing carries against the filing rules. |
 | `check-hook-capabilities.sh` | no | `audit-ci-tests.yml` | Reconciles what every registered hook is declared to do against what the tree actually lets it do. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
 | `check-hook-command-rooting.sh` | yes | GAIA's own invariant harness (maintainer-side) | Asserts every hook command in `.claude/settings.json` is rooted at the repository top level rather than at the working directory. |
-| `check-hook-scope-manifest.sh` | yes | GAIA's own invariant harness (maintainer-side) | Checks the hook tree-scope manifest's own conformance. |
+| `check-hook-scope-manifest.sh` | yes | GAIA's own invariant harness (maintainer-side) | Scans every hook for a `.gaia/local` path built without a resolved root. |
 | `check-main-root-derivation.sh` | no | GAIA's own invariant harness | Catches a hand-rolled main-checkout derivation inlined into a consumer that declares no resolver at all. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
 | `check-registry-completeness.sh` | no | GAIA's own invariant harness | Reconciles the state registry against the frozen inventory denominator. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
 | `check-registry-runtime.sh` | yes | GAIA's own invariant harness (maintainer-side) | Reconciles the state registry against the runtime directory it describes. |

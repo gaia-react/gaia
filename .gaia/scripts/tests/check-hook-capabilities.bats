@@ -24,7 +24,6 @@
 setup() {
   SCRIPT_DIR="$(cd "$(dirname "$BATS_TEST_FILENAME")/.." && pwd)"
   CHECK="$SCRIPT_DIR/check-hook-capabilities.sh"
-  SCOPE_CHECK="$SCRIPT_DIR/check-hook-scope-manifest.sh"
   REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
   # shellcheck source=.gaia/scripts/check-hook-capabilities.sh
   source "$CHECK"
@@ -335,57 +334,6 @@ true'
 
 @test "UAT-010: the audit-ci-tests.yml code filter names the hook-capabilities schema" {
   grep -qF -- "'.gaia/hook-capabilities.schema.json'" "$REPO_ROOT/.github/workflows/audit-ci-tests.yml"
-}
-
-# ========== UAT-013, two-manifest independence ==========
-
-@test "UAT-013: an unregistered .claude/hooks/** file scoped by hook-scopes but absent from hook-capabilities leaves both checks unmoved" {
-  repo="$(make_fixture_repo two-manifest)"
-  add_hook "$repo" .claude/hooks/registered.sh '#!/usr/bin/env bash
-true'
-  add_hook "$repo" .claude/hooks/lib/audit-digest.sh '#!/usr/bin/env bash
-true'
-  write_registrations "$repo" PreToolUse .claude/hooks/registered.sh
-  write_manifest "$repo" '[{"hook":".claude/hooks/registered.sh","capabilities":[],
-    "why":"pure","maintainer_only":false}]'
-  printf '{"entries":[]}\n' >"$repo/.gaia/state-registry.json"
-  printf '{"$schema":"https://json-schema.org/draft/2020-12/schema"}\n' \
-    >"$repo/.gaia/hook-scopes.schema.json"
-
-  # Baseline: hook-scopes covers both files, hook-capabilities covers only
-  # the registered one. Both checks exit 0.
-  cat >"$repo/.gaia/hook-scopes.json" <<'JSON'
-{"$schema":"./hook-scopes.schema.json","hooks":[
-  {"hook":".claude/hooks/registered.sh","scope":"any","state":[],"why":"x"},
-  {"hook":".claude/hooks/lib/audit-digest.sh","scope":"any","state":[],"why":"y"}
-]}
-JSON
-  run bash "$CHECK" "$repo"
-  [ "$status" -eq 0 ]
-  run bash "$SCOPE_CHECK" "$repo"
-  [ "$status" -eq 0 ]
-
-  # Variant: hook-scopes.json absent. The capability check's verdict does
-  # not move.
-  mv "$repo/.gaia/hook-scopes.json" "$repo/.gaia/hook-scopes.json.bak"
-  run bash "$CHECK" "$repo"
-  [ "$status" -eq 0 ]
-  mv "$repo/.gaia/hook-scopes.json.bak" "$repo/.gaia/hook-scopes.json"
-
-  # Variant: hook-scopes.json declares a scope for audit-digest.sh that
-  # contradicts nothing in hook-capabilities (there is no entry to
-  # contradict). The scope check's verdict does not move when the
-  # capability manifest is absent.
-  mv "$repo/.gaia/hook-capabilities.json" "$repo/.gaia/hook-capabilities.json.bak"
-  run bash "$SCOPE_CHECK" "$repo"
-  [ "$status" -eq 0 ]
-  mv "$repo/.gaia/hook-capabilities.json.bak" "$repo/.gaia/hook-capabilities.json"
-}
-
-@test "UAT-013: neither checker's source names the other manifest's path" {
-  grep -qF -- ".gaia/hook-scopes.json" "$CHECK" && return 1
-  grep -qF -- ".gaia/hook-capabilities.json" "$SCOPE_CHECK" && return 1
-  true
 }
 
 # ========== UAT-014, UNRESOLVED on both shapes ==========

@@ -603,7 +603,7 @@ SH
   # what the first run already moved.
   run bash "$HOOK_ABS" "$WT"
   [ "$status" -eq 0 ]
-  grep -qF -- "migrated red-ledger/$key into the main checkout" <<<"$output" && return 1
+  grep -qF -- "migrated red-ledger/$key into" <<<"$output" && return 1
   [ "$(cat "$MAIN/.gaia/local/red-ledger/$key/observations.jsonl")" = "line-one" ]
   [ "$(cat "$WT/.gaia/local/red-ledger/$key/observations.jsonl")" = "line-one" ]
 }
