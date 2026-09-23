@@ -82,6 +82,10 @@ For every in-remit changed file, the workflow-security core:
 
 Grade every finding Critical / Important / Suggestion, matching the sibling Code Audit Team members: Critical breaks the merge gate, exposes a secret, or is exploitable with adversary-controlled input; Important is a real defect with a narrower blast radius; Suggestion is style or robustness with no live failure mode.
 
+<!-- gaia:maintainer-only:start -->
+GAIA maintainers: before grading, Read `.claude/rules/maintainers/harness-triage-threshold.md` by path; do not rely on it auto-loading inside a subagent. When its Pre-adjudicated removals clause applies, read the PR body as it prescribes before grading a removal as a regression.
+<!-- gaia:maintainer-only:end -->
+
 ## Advisory-only: no self-heal
 
 No auditor may rewrite the workflow that runs auditors. A bad repair to the pipeline can disable the thing that would catch it, which is exactly why the domains governing the pipeline, the gate, the roster, and the tests are advisory by construction. **The working tree you return is byte-identical to the tree you read.** Report the finding; the orchestrator owns the repair.

@@ -168,7 +168,7 @@ A candidate that fails a check is dropped or demoted, not silently discarded fro
 
 ## Triage threshold
 
-Before grading, Read `.claude/rules/maintainers/harness-triage-threshold.md` by path; do not rely on it auto-loading inside a subagent. It governs every finding you grade, including those on rules and agent files. A finding that meets none of its criteria is not graded and does not enter your findings sidecar: list it one line under "Waived" in your report instead.
+Before grading, Read `.claude/rules/maintainers/harness-triage-threshold.md` by path; do not rely on it auto-loading inside a subagent. When its Pre-adjudicated removals clause applies, read the PR body as it prescribes before grading a removal as a regression. It governs every finding you grade, including those on rules and agent files. A finding that meets none of its criteria is not graded and does not enter your findings sidecar: list it one line under "Waived" in your report instead.
 
 ## Output Format
 
