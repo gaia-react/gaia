@@ -350,8 +350,8 @@ git checkout -b "<HARDEN_BRANCH>"
 Never fold this into the commit call. The main-branch guard reads a whole command before any of it runs, so a `git checkout -b … && git commit …` call still looks like a commit on `main` and is refused.
 
 <!-- gaia:maintainer-only:start -->
-**Clear the obligations a rule file carries**, before `gh pr create`. Each is invisible in the diff and each refuses or reds later if skipped. The first two apply only to a new rule file:
-- **Tier it in the audit partition** per `.claude/rules/maintainers/hook-registration.md` (nearly always merely-shared, which needs no entry).
+**Clear the obligations a rule file carries**, before `gh pr create`. Each is invisible in the diff. The first two apply only to a new rule file:
+- **Tier it in the audit partition** per `.claude/rules/maintainers/hook-registration.md`. Nearly always merely-shared, which needs no entry; this is a judgment call no check enforces.
 - **Answer distribution** through `/distribution-audit`, which regenerates `.gaia/manifest.json`. The distribution pre-flight refuses `gh pr create` for a newly-shipping file with no ship-or-withhold answer.
 - **Keep release-excluded citations out of a shipped rule's visible body** (see `## The prose-rule template (fill in, then write)`, its filling rules).
 <!-- gaia:maintainer-only:end -->
