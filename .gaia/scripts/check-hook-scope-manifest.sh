@@ -5,9 +5,9 @@
 #
 # A hook that builds a .gaia/local path from a bare literal resolves it
 # against whatever tree the hook happens to run in, so from inside a linked
-# worktree a write meant for one tree lands in another with no error (PR
-# #1060). Scans every .sh under .claude/hooks/** directly. Two assertions,
-# both in gaia_check_hook_scope_manifest:
+# worktree a write meant for one tree lands in another with no error. Scans
+# every .sh under .claude/hooks/** directly. Two assertions, both in
+# gaia_check_hook_scope_manifest:
 #
 #   1. No bare literal   no hook holds a live `.gaia/local` reference that is
 #                        not immediately preceded by a path-join character,
