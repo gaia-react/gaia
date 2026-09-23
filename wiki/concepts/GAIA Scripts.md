@@ -55,7 +55,6 @@ The index is held to the tree by `.gaia/scripts/lint-scripts-wiki-inventory.sh`,
 | `check-base-provenance-adoption.sh` | no | GAIA's own invariant harness | Adoption check for the shared base-provenance resolver: flags a consumer that resolves provenance its own way. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
 | `check-cli-workspace-floors.sh` | no | `cli-advisory-scan.yml`, `cli-tests.yml` | Reports security floors that have stopped being applied in a pnpm workspace root outside the repository root. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
 | `check-debt-issue-metadata.sh` | yes | `code-review-audit.yml`, the audit agent, `/gaia-debt` | Validates the label set and dedup key a tech-debt filing carries against the filing rules. |
-| `check-hook-capabilities.sh` | no | `audit-ci-tests.yml` | Reconciles what every registered hook is declared to do against what the tree actually lets it do. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
 | `check-hook-command-rooting.sh` | yes | GAIA's own invariant harness (maintainer-side) | Asserts every hook command in `.claude/settings.json` is rooted at the repository top level rather than at the working directory. |
 | `check-hook-scope-manifest.sh` | yes | GAIA's own invariant harness (maintainer-side) | Scans every hook for a `.gaia/local` path built without a resolved root. |
 | `check-main-root-derivation.sh` | no | GAIA's own invariant harness | Catches a hand-rolled main-checkout derivation inlined into a consumer that declares no resolver at all. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
@@ -65,7 +64,6 @@ The index is held to the tree by `.gaia/scripts/lint-scripts-wiki-inventory.sh`,
 | `check-registry-source-literals.sh` | no | GAIA's own invariant harness | Reconciles the state registry against the path literals tracked source actually spells. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
 | `check-resolver-singleton.sh` | no | GAIA's own invariant harness | Asserts one canonical main-checkout resolver per language, never a second definition. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
 | `check-scope-digest-adoption.sh` | no | GAIA's own invariant harness | Adoption check for the scope-digest staleness gate across the agent definitions. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
-| `check-script-capabilities.sh` | no | `audit-ci-tests.yml` | Reconciles what every allowlisted GAIA script is declared to do against what the tree actually lets it do. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
 | `check-step-body-extractor-roster.sh` | no | GAIA's own invariant harness | Asserts the bats suites agree about how they extract a step out of the audit workflow, as a declared roster rather than a grep recipe. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
 | `check-updates.sh` | yes | `SessionStart`, the statusline | Background check for a newer GAIA release, feeding the statusline update nudge. |
 | `check-verb-arming-adoption.sh` | no | `audit-ci-tests.yml` | Adoption check for the shared verb-arming decision across the hooks that gate on a command verb. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
@@ -105,7 +103,6 @@ The index is held to the tree by `.gaia/scripts/lint-scripts-wiki-inventory.sh`,
 | `lint-hook-jq-availability.sh` | no | GAIA's own shell-lint harness | Flags a blocking hook that parses its payload with jq and fails open when jq is absent. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
 | `lint-hook-monitor-arming.sh` | no | GAIA's own shell-lint harness | Flags a blocking command-reading guard bound to `Bash` alone, which a `Monitor`-armed command walks past. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
 | `lint-hook-wiki-inventory.sh` | no | GAIA's own shell-lint harness | Flags a hook absent from the bundled-hooks inventory page. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
-| `lint-oracle-blind-invocations.sh` | no | GAIA's own shell-lint harness | Flags a script invocation the capability oracle's anchors cannot see. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
 | `lint-retired-label-spellings.sh` | no | GAIA's own invariant harness | Fails when a label spelling the registry records as retired still occurs in tracked source. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
 | `lint-scripts-wiki-inventory.sh` | no | GAIA's own shell-lint harness | Flags a root script of this directory absent from the index on this page. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
 | `lint-shipped-issue-refs.sh` | no | `distribution-audit-pr.yml` | Flags an unqualified issue or pull-request reference on a shipped non-Markdown file. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
@@ -141,7 +138,6 @@ The index is held to the tree by `.gaia/scripts/lint-scripts-wiki-inventory.sh`,
 | `awk-interp-lib.sh` | no | sourced | Resolves `GAIA_AWK`, the sanctioned awk interpreter (mawk or BWK one-true-awk) the awk-tokenizer guards run under. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
 | `bats5.sh` | yes | the bats runners | Runs bats under a bash 5 when one is available, so local matches CI. |
 | `branch-name-lib.sh` | yes | sourced, and run as a command by the skills | GAIA's branch-naming convention: the one place a branch or worktree name is minted and read back. |
-| `capability-oracle-lib.sh` | no | sourced | The static-analysis half of the capability checks: how a line of shell becomes a capability term, and how one script's reach becomes a closure. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
 | `chore-deps-skip.sh` | yes | `tests.yml`, `chromatic.yml`, `code-review-audit.yml`, `pr-merge-audit-check.sh` | The single source for the `chore(deps)` skip predicate every CI gate shares. |
 | `gh-artifact-lib.sh` | yes | sourced | Shared breadcrumb for the GitHub pull request a run produced. |
 | `guard-awk-lib.sh` | no | sourced | Shared awk scaffolding the guard lints build their detectors on. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->

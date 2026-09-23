@@ -304,7 +304,7 @@ plant() {
   [ "$status" -eq 0 ]
 }
 
-# 4. The `if . "$p"; then` spelling, which the capability oracle stayed blind to
+# 4. The `if . "$p"; then` spelling, which the detector once stayed blind to
 
 @test "reads a load written as an if condition" {
   new_fixture

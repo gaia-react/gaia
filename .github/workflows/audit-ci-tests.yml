@@ -605,28 +605,12 @@ jobs:
               # matcher runs with dot-matching on (see the note at those globs).
               - '.github/**'
               - '.gaia/audit-ci.yml'
-              # check-script-capabilities.bats (.gaia/scripts/tests/) asserts
-              # coverage + conformance of the script-capabilities manifest
-              # against the checker; a manifest-only edit touches neither
-              # .gaia/scripts/** nor .claude/settings.json above, so without
-              # these two lines it would match no pattern here and skip the
-              # very suite that guards it.
-              - '.gaia/script-capabilities.json'
-              - '.gaia/script-capabilities.schema.json'
-              # check-hook-capabilities.bats (.gaia/scripts/tests/) asserts
-              # coverage + conformance of the hook-capabilities manifest
-              # against the checker; a manifest-only edit touches neither
-              # .gaia/scripts/** nor .claude/settings.json above, so without
-              # these two lines it would match no pattern here and skip the
-              # very suite that guards it.
-              - '.gaia/hook-capabilities.json'
-              - '.gaia/hook-capabilities.schema.json'
-              # .gaia/release-exclude is the authority check-script-capabilities.sh
-              # reconciles maintainer_only against (C-10): a change to the
-              # release boundary is exactly what makes that marking wrong, and
-              # it touches no other pattern here, so without this line the
-              # suite that guards it would skip on the very change that breaks
-              # it.
+              # .gaia/release-exclude is read directly by several suites under
+              # .gaia/scripts/tests/ and .gaia/tests/ (assert-no-release-leak.bats
+              # among them) that assert release-boundary properties against it;
+              # a change to it alone touches no other pattern here, so without
+              # this line those suites would skip on the very change that could
+              # break them.
               - '.gaia/release-exclude'
               # lint-shipped-issue-refs.bats (.gaia/scripts/tests/) derives its
               # scan set from the release manifest, and its release-boundary
@@ -1261,107 +1245,22 @@ jobs:
         name: Run the INV-7 concurrency meter (gated on its expected-status manifest)
         run: bash .gaia/tests/concurrency/meter-gate.sh
 
-  # A standalone job, not a matrix leg: `.gaia/scripts/check-hook-capabilities.sh`
-  # walks the live-tree closure of every registered hook, and its 66-70s median
-  # standalone gate-mode cost on the maintainer machine (83s on this runner;
-  # see the WTI_EXCLUDED entry this checker carries in
-  # .gaia/tests/whole-tree-invariants.sh) is long
-  # enough that no size-weighted shard should absorb it as a step -- bats-shards.sh
-  # weights a suite by file size as a runtime proxy, which a short suite shelling
-  # out to a minute-long checker would break. It runs here instead, at hop 1
-  # alongside `shards`, so the `needs:` chain into the aggregator below stays 2
-  # hops; see the `shards` job's own comment for the 15-minute total that
-  # arithmetic is sized to. This is the one named home success criterion 6
-  # requires for a live-tree run of this checker.
-  hook-capabilities-live-tree:
-    name: Hook Capabilities (live tree)
-    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
-    # Sized to the measured runner cost, not to the 13-minute `shards` cap:
-    # this job's own contribution to the aggregator's needs-chain must stay
-    # under that same cap for the arithmetic above to hold. The checker itself
-    # measures 83s on ubuntu-latest (91s for the whole job including the
-    # full-history checkout), against a 66-70s median on the maintainer
-    # machine -- the runner is the slower host, so size against 83s, not the
-    # laptop figure. 5 minutes leaves better than 3x headroom for a noisy
-    # runner without approaching the cap.
-    timeout-minutes: 5
-    # Checks out and runs a shell checker; no write scope needed. No
-    # `pull-requests: read`: unlike `shards`, this job's filter is hand-rolled
-    # (see the comment on the filter step below) rather than dorny/paths-filter,
-    # so it never calls the API that scope exists for.
-    permissions:
-      contents: read
-    steps:
-      # `fetch-depth: 0` (full history), not the default shallow clone: the
-      # hand-rolled filter step below diffs against the PR's base commit, which
-      # a depth-1 checkout never fetches.
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-      # Hand-rolled rather than a second dorny/paths-filter step. W7 in
-      # .gaia/tests/lib/audit-ci-shards.bats pins exactly one paths-filter step
-      # for the whole workflow, and this job runs in parallel with `shards`
-      # rather than depending on it, so it cannot read that one step's output
-      # without adding a `needs:` hop the arithmetic above has no room for.
-      # `tests.yml`'s own hand-rolled gate is the precedent this mirrors; both
-      # are named in workflow-filter-coverage.bats's HANDROLLED_EXEMPT set for
-      # the same reason. The alternation below is maintained by hand: a step
-      # reading a new path means adding that path here in the same edit.
-      #
-      # `.claude/settings.local.json` is also read by the checker (the
-      # LOCAL-REGISTRATION arm) but is gitignored, so it cannot appear in the
-      # pattern below; it is also absent on every CI runner, so the arm is
-      # silent here by its own contract. A recorded limit, not a gap.
-      - name: Detect hook-capabilities-relevant changes
-        id: filter
-        if: github.event_name == 'pull_request'
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-        run: |
-          set -eu
-          # `-z` plus `tr`, not a bare `--name-only`: an unquoted diff C-quotes
-          # a non-ASCII path (e.g. `"caf\303\251.sh"`), and the ERE below would
-          # stop matching it. `$(...)` discards NUL bytes on its own, so `tr`
-          # must stay inside the substitution for `set -o pipefail` to still
-          # abort the step on a git failure.
-          changed=$(set -o pipefail; git diff --name-only -z "$BASE_SHA" HEAD | tr '\0' '\n')
-          # `^\.github/audit/` earns its place the moment the oracle learned to
-          # walk a script executed by its own path: `.github/audit/` is inside a
-          # registered hook's closure now, so a change there moves a declared
-          # reach and has to run this job.
-          pattern='^\.claude/settings\.json$|^\.claude/hooks/|^\.gaia/scripts/|^\.github/audit/|^\.specify/extensions/gaia/lib/|^\.gaia/hook-capabilities\.(json|schema\.json)$|^\.gaia/release-exclude$|^\.github/workflows/audit-ci-tests\.yml$'
-          if printf '%s\n' "$changed" | grep -qE "$pattern"; then
-            echo "code=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "code=false" >> "$GITHUB_OUTPUT"
-          fi
-      - if: steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch'
-        name: Run the hook-capabilities checker against the live tree
-        run: |
-          start="$SECONDS"
-          bash .gaia/scripts/check-hook-capabilities.sh
-          echo "hook-capabilities-live-tree elapsed: $(( SECONDS - start ))s"
-
   # A standalone job, not a matrix leg. .gaia/scripts/check-verb-arming-adoption.sh
   # pins the shared verb-arming decision as a singleton and the eleven adopting
   # hooks against drift (SPEC-075's Constitution requires the check run in CI
   # rather than by hand; see that check's own header). It runs here rather than
   # inside a bats shard because bats-shards.sh weights a shard by its suites'
   # file size, and this checker has no .bats file of its own to weigh it in --
-  # a short suite shelling out to it would misprice that shard the same way
-  # hook-capabilities-live-tree's comment describes for its own checker. It
-  # runs at hop 1 alongside `shards` and `hook-capabilities-live-tree`, so the
-  # `needs:` chain into the aggregator below stays 2 hops; see the `shards`
-  # job's own comment for the 15-minute total that arithmetic is sized to.
+  # a short suite shelling out to it would misprice that shard. It runs at hop
+  # 1 alongside `shards`, so the `needs:` chain into the aggregator below stays
+  # 2 hops; see the `shards` job's own comment for the 15-minute total that
+  # arithmetic is sized to.
   verb-arming-adoption:
     name: Verb Arming Adoption
     if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
-    # The check itself is a handful of git grep calls (~1s standalone,
-    # nowhere near hook-capabilities-live-tree's closure-walk cost), so 2
-    # minutes sizes to the measurement rather than borrowing the neighbour's
-    # 5-minute cap.
+    # The check itself is a handful of git grep calls (~1s standalone), so 2
+    # minutes sizes to the measurement rather than a borrowed cap.
     timeout-minutes: 2
     # Checks out and runs a shell checker; no write scope needed. No
     # `pull-requests: read`: this job's filter is hand-rolled (see the
@@ -1381,10 +1280,9 @@ jobs:
       # step for the whole workflow, and this job runs in parallel with
       # `shards` rather than depending on it, so it cannot read that one
       # step's output without adding a `needs:` hop the arithmetic above has
-      # no room for. hook-capabilities-live-tree's own hand-rolled gate is
-      # the precedent this mirrors; both are named in
-      # workflow-filter-coverage.bats's HANDROLLED_EXEMPT set (by workflow
-      # file, not by job id) for the same reason. The alternation below is
+      # no room for. `tests.yml`'s own hand-rolled gate is the precedent this
+      # mirrors; both files are named in workflow-filter-coverage.bats's
+      # HANDROLLED_EXEMPT set for the same reason. The alternation below is
       # maintained by hand: a step reading a new path means adding that path
       # here in the same edit.
       - name: Detect verb-arming-adoption-relevant changes
@@ -1394,9 +1292,9 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           set -eu
-          # `-z` plus `tr`, not a bare `--name-only`: see
-          # hook-capabilities-live-tree's identical filter step for why an
-          # unquoted diff over a non-ASCII path breaks the pattern below.
+          # `-z` plus `tr`, not a bare `--name-only`: see `tests.yml`'s
+          # identical filter step for why an unquoted diff over a non-ASCII
+          # path breaks the pattern below.
           changed=$(set -o pipefail; git diff --name-only -z "$BASE_SHA" HEAD | tr '\0' '\n')
           # `\.sh$` rather than a list of directories, because the checker's
           # own scan is the whole tracked tree: its private-pattern and
@@ -1418,15 +1316,14 @@ jobs:
         name: Run the verb-arming adoption checker
         run: bash .gaia/scripts/check-verb-arming-adoption.sh
 
-  # The declared-required check. `needs: [shards, hook-capabilities-live-tree,
-  # verb-arming-adoption]` makes it the second hop of a 2-hop chain the
-  # arithmetic above is sized to, and `always()` is what stops a plain
-  # skip-on-dependency-failure from satisfying nothing: a `needs:` with no
-  # `if:` SKIPS when a dependency fails, and a skipped stamp satisfies no
-  # required check.
+  # The declared-required check. `needs: [shards, verb-arming-adoption]` makes
+  # it the second hop of a 2-hop chain the arithmetic above is sized to, and
+  # `always()` is what stops a plain skip-on-dependency-failure from
+  # satisfying nothing: a `needs:` with no `if:` SKIPS when a dependency
+  # fails, and a skipped stamp satisfies no required check.
   audit-ci-tests:
     name: Audit CI Tests
-    needs: [shards, hook-capabilities-live-tree, verb-arming-adoption]
+    needs: [shards, verb-arming-adoption]
     if: always() && (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     timeout-minutes: 2
@@ -1449,15 +1346,10 @@ jobs:
       - name: Require every dependency in needs to have concluded success
         env:
           SHARDS_RESULT: ${{ needs.shards.result }}
-          HOOK_CAPABILITIES_RESULT: ${{ needs.hook-capabilities-live-tree.result }}
           VERB_ARMING_RESULT: ${{ needs.verb-arming-adoption.result }}
         run: |
           if [ "$SHARDS_RESULT" != "success" ]; then
             echo "::error::at least one shard did not conclude success: $SHARDS_RESULT" >&2
-            exit 1
-          fi
-          if [ "$HOOK_CAPABILITIES_RESULT" != "success" ]; then
-            echo "::error::hook-capabilities-live-tree did not conclude success: $HOOK_CAPABILITIES_RESULT" >&2
             exit 1
           fi
           if [ "$VERB_ARMING_RESULT" != "success" ]; then

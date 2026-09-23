@@ -17,8 +17,8 @@ tags: [decision, ci, performance, github-actions, bats]
 `.github/workflows/audit-ci-tests.yml` declares these jobs:
 
 - `shards`, a matrix of twelve legs: ten bats shards (`hooks-1` to `hooks-4`, `scripts-1` to `scripts-3`, `audit`, `lib`, `misc`), the `.gaia/tests/sandbox` conformance tree, and the INV-7 concurrency meter.
-- `hook-capabilities-live-tree` and `verb-arming-adoption`, standalone jobs that run alongside `shards` rather than depending on it. Each checks out full history (`fetch-depth: 0`) on every pull request and gates its own checker step on a hand-rolled `code` filter, neither of which matches a `wiki/` path. Their checkers already skip a wiki-only pull request; the checkout itself does not, and stays a fixed cost neither lever below removes. That is the honest bound on what narrowing this workflow saves.
-- `audit-ci-tests`, the aggregator, which reads `shards`, `hook-capabilities-live-tree` and `verb-arming-adoption`'s results and exits non-zero for anything other than `success`.
+- `verb-arming-adoption`, a standalone job that runs alongside `shards` rather than depending on it. It checks out full history (`fetch-depth: 0`) on every pull request and gates its checker step on a hand-rolled `code` filter, neither of which matches a `wiki/` path. Its checker already skips a wiki-only pull request; the checkout itself does not, and stays a fixed cost neither lever below removes. That is the honest bound on what narrowing this workflow saves.
+- `audit-ci-tests`, the aggregator, which reads `shards` and `verb-arming-adoption`'s results and exits non-zero for anything other than `success`.
 
 Splitting the required check name off the work is what lets `fail-fast: false` stop one failing shard from cancelling its siblings without also cancelling the check. The aggregator compares against `success` rather than enumerating failure states, so a conclusion GitHub adds later fails closed, and `always()` on its `if:` stops a skip-on-dependency-failure from satisfying a required context that ran nothing.
 
