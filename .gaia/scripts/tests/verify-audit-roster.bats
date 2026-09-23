@@ -20,8 +20,8 @@
 #
 # Every invariant is exercised against FIXTURES injected through --config (the
 # roster) and --root (everything the check reads about that roster: the agent
-# files and both machinery lists). No test mutates the repo's real roster or its
-# real machinery lists; UAT-024 is the one test that reads them, and it only
+# files and the machinery list). No test mutates the repo's real roster or its
+# real machinery list; UAT-024 is the one test that reads them, and it only
 # reads.
 #
 # Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
@@ -82,7 +82,7 @@ strip_maintainer_only() {
 }
 
 # Scaffolds a fixture root: the roster arrives on stdin, and the agent files and
-# both machinery lists are derived from the member names it declares, so a
+# the machinery list are derived from the member names it declares, so a
 # fixture is clean unless a test deliberately breaks one of them.
 #
 # Every stub carries a `## Remit and self-skip` heading, and the remit regions
@@ -102,11 +102,6 @@ scaffold_root() {
     for n in $names; do printf '.claude/agents/%s.md\n' "$n"; done
     printf 'EOF\n)"\n'
   } > "$r/.claude/hooks/lib/audit-machinery.sh"
-  {
-    printf 'GATE_MACHINERY_FILES="$(cat <<%s\n' "'EOF'"
-    for n in $names; do printf '.claude/agents/%s.md\n' "$n"; done
-    printf 'EOF\n)"\n'
-  } > "$r/.gaia/scripts/audit-machinery-complete.sh"
   for n in $names; do
     cat > "$r/.claude/agents/$n.md" <<MD
 ---
@@ -411,49 +406,8 @@ YAML
   assert_contains "AUDIT_MACHINERY_PATHS"
 }
 
-@test "UAT-022: a member missing from GATE_MACHINERY_FILES fails, naming the file and the list" {
-  local r="$BATS_TEST_TMPDIR/unreg-gate"
-  scaffold_root "$r" <<'YAML'
-auditors:
-  - name: code-audit-default
-    globs:
-      - "app/**"
-    default: true
-  - name: code-audit-a
-    globs:
-      - "a/**"
-YAML
-  grep -v 'code-audit-a.md' "$r/.gaia/scripts/audit-machinery-complete.sh" > "$r/tmp-list"
-  mv "$r/tmp-list" "$r/.gaia/scripts/audit-machinery-complete.sh"
-  run_root "$r"
-  [ "$status" -eq 1 ]
-  assert_contains "unregistered-agent-file"
-  assert_contains ".claude/agents/code-audit-a.md"
-  assert_contains "GATE_MACHINERY_FILES"
-}
-
-@test "UAT-022: a member missing from AUDIT_MACHINERY_PATHS does not name the other list" {
-  local r="$BATS_TEST_TMPDIR/unreg-machinery-only"
-  scaffold_root "$r" <<'YAML'
-auditors:
-  - name: code-audit-default
-    globs:
-      - "app/**"
-    default: true
-  - name: code-audit-a
-    globs:
-      - "a/**"
-YAML
-  grep -v 'code-audit-a.md' "$r/.claude/hooks/lib/audit-machinery.sh" > "$r/tmp-list"
-  mv "$r/tmp-list" "$r/.claude/hooks/lib/audit-machinery.sh"
-  run_root "$r"
-  # The finding must be attributable to ONE list, or it cannot be acted on.
-  grep -qF "missing from: GATE_MACHINERY_FILES" <<<"$output" && return 1
-  grep -qF "missing from: AUDIT_MACHINERY_PATHS" <<<"$output"
-}
-
-@test "UAT-022: extra entries in either list are fine" {
-  # An adopter's lists still name the agents the roster scrub removed. The check
+@test "UAT-022: extra entries in the list are fine" {
+  # An adopter's list still names the agents the roster scrub removed. The check
   # walks the roster and asks whether each member is registered, never the
   # reverse.
   local r="$BATS_TEST_TMPDIR/extra-entries"
@@ -465,7 +419,6 @@ auditors:
     default: true
 YAML
   printf '.claude/agents/code-audit-not-in-this-roster.md\n' >> "$r/.claude/hooks/lib/audit-machinery.sh"
-  printf '.claude/agents/code-audit-not-in-this-roster.md\n' >> "$r/.gaia/scripts/audit-machinery-complete.sh"
   run_root "$r"
   [ "$status" -eq 0 ]
 }
@@ -1291,7 +1244,7 @@ scaffold_tracked_root() {
 
 # The roster every test in this section starts from: two claimants plus the
 # default, and an `unowned:` list covering the scaffolding itself (the roster,
-# the agent files and both machinery lists) so a fixture is clean unless the
+# the agent files and the machinery list) so a fixture is clean unless the
 # test deliberately adds an unowned path.
 tracked_roster() {
   cat <<'YAML'

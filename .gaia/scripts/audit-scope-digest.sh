@@ -76,10 +76,9 @@
 #
 # This script SHIPS to adopters (the default member needs it), unlike the
 # telemetry lib it optionally sources. It is deliberately NOT a member of
-# AUDIT_MACHINERY_PATHS (.claude/hooks/lib/audit-machinery.sh) or
-# GATE_MACHINERY_FILES (.gaia/scripts/audit-machinery-complete.sh): this
+# AUDIT_MACHINERY_PATHS (.claude/hooks/lib/audit-machinery.sh): this
 # script decides the value a clearance attests, which is the kind of file
-# those lists exist to cover, but changing either list is out of scope here.
+# that list exists to cover, but changing it is out of scope here.
 # The known consequence is narrower than "no member's digest": this file sits
 # under `.gaia/`, which is inside the remit globs of the member that owns the
 # framework shell, so an edit here DOES rotate that member's digest and does

@@ -117,3 +117,23 @@ EOF
   run audit_path_is_global_rule "# gaia:maintainer-only:end"
   [ "$status" -ne 0 ]
 }
+
+# A GLOBAL path that is not machinery resets every member's anchor while
+# rotating no digest, so a change to it demands no fresh clearance for the very
+# file that resets everyone. Walks the real literal, so a new entry is covered
+# the moment it lands.
+@test "every path in AUDIT_GLOBAL_RULES_PATHS is also matched by audit_path_is_machinery" {
+  # shellcheck source=/dev/null
+  . "$REPO_ROOT/.claude/hooks/lib/audit-machinery.sh"
+  checked=0
+  unmatched=""
+  while IFS= read -r entry; do
+    [ -n "$entry" ] || continue
+    case "$entry" in "#"*) continue ;; esac
+    checked=$((checked + 1))
+    audit_path_is_machinery "$entry" || unmatched="$unmatched $entry"
+  done <<<"$AUDIT_GLOBAL_RULES_PATHS"
+
+  [ "$checked" -gt 0 ]
+  [ -z "$unmatched" ] || { printf 'global rule not machinery:%s\n' "$unmatched" >&2; return 1; }
+}

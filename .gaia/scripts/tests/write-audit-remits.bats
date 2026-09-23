@@ -44,11 +44,6 @@ fixture_root() {
     for n in $names; do printf '.claude/agents/%s.md\n' "$n"; done
     printf 'EOF\n)"\n'
   } > "$r/.claude/hooks/lib/audit-machinery.sh"
-  {
-    printf 'GATE_MACHINERY_FILES="$(cat <<%s\n' "'EOF'"
-    for n in $names; do printf '.claude/agents/%s.md\n' "$n"; done
-    printf 'EOF\n)"\n'
-  } > "$r/.gaia/scripts/audit-machinery-complete.sh"
   for n in $names; do
     case "$shape" in
       frontmatter)

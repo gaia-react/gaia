@@ -33,14 +33,12 @@ The index is held to the tree by `.gaia/scripts/lint-scripts-wiki-inventory.sh`,
 | Script | Ships | Invoker | What it is |
 |---|---|---|---|
 | `audit-key-lib.sh` | yes | sourced | Mints the worktree-partitioned key every audit artifact path is built from, and the general slug rule those keys share. |
-| `audit-machinery-complete.sh` | yes | `audit-machinery.sh` hook | Asserts every piece of gate machinery the audit needs is present before a round starts. |
 | `audit-member-digest.sh` | yes | CI, audit hooks, agent definitions | Prints one Code Audit Team member's content digest, and exits non-zero printing nothing on any condition it cannot resolve. |
 | `audit-noop-detect.sh` | yes | `.claude/rules/subagent-dispatch.md`, the audit fan-out surfaces | Decides whether a dispatched agent's report artifact is a real result or a silent no-op. |
 | `audit-resolve-scope.sh` | yes | every Code Audit Team agent definition | Resolves a member's review scope in one command: diff bases, changed-file lists, the dirty-in-scope check, and the scope digest. |
 | `audit-respawn-lib.sh` | no | sourced | Shared reader and writer for the audit re-spawn ledger. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
 | `audit-respawn-prune.sh` | no | `wiki-session-start.sh` hook | Prunes aged rows out of the re-spawn ledger. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
 | `audit-respawn-report.sh` | no | by hand | Attribution query over the re-spawn ledger: which member was re-spawned, and against what. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
-| `audit-rules-changed-complete.sh` | yes | `audit-rules-changed.sh` hook | Asserts the two-tier reset predicate's machinery is complete before it is relied on. |
 | `audit-scope-digest.sh` | yes | agent definitions, `local-janitor.sh` hook, CI | Carries a member's own content digest between scope resolution and clearance write, the two Bash calls that must agree. |
 | `audit-scratch-dir.sh` | yes | agent definitions | Hands a member a per-run scratch directory when it needs real bytes on disk. |
 | `audit-seed-dispositions.sh` | yes | agent definition, audit hooks | Seeds the default member's disposition ledger forward from the prior digest's sidecar. |

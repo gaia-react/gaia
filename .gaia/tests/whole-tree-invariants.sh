@@ -31,9 +31,9 @@
 # the exclusion. The candidates that answer no to either question are listed in
 # WTI_EXCLUDED below with their reason, so a reader can see they were
 # considered rather than missed, and .gaia/tests/lib/whole-tree-invariants.bats
-# fails if a candidate appears in neither table. That suite sweeps the five
-# `.sh` naming families that have produced a member (`check-*`, `audit-*-
-# complete`, `lint-*` and `verify-*` under .gaia/scripts/, plus .gaia/tests/*.sh),
+# fails if a candidate appears in neither table. That suite sweeps the four
+# `.sh` naming families that have produced a member (`check-*`, `lint-*` and
+# `verify-*` under .gaia/scripts/, plus .gaia/tests/*.sh),
 # rather than `check-*` alone: WTI_SCRIPTS holds members outside that glob. The
 # `.bats` family is deliberately not swept even though WTI_BATS names a member
 # from it, because the only glob that would reach it, .gaia/tests/lib/*.bats,
@@ -51,7 +51,7 @@
 # of it even under the fork: the WTI_BATS member (the shard-partition suite),
 # run under bats --jobs 8, costs ~87s standalone (~242s forced serial, so the
 # backend buys it roughly 2.8x); and shell-lint.sh as a member costs ~43s. The
-# other 21 WTI_SCRIPTS members total roughly 32s between them, the heaviest
+# other 19 WTI_SCRIPTS members total roughly 31s between them, the heaviest
 # being check-script-capabilities.sh at ~14s (it walks the invocation closure
 # of every allowlisted script) and check-registry-source-literals.sh at ~6s.
 #
@@ -60,7 +60,7 @@
 # run's user+sys time (~7m user, ~6m19 sys) sits within a few percent of the
 # same total on an unforked serial run of every member. The pool buys
 # overlap on 12 cores, not less work, so the two heavy members still contend
-# with each other and with the lighter 21 for the same cores.
+# with each other and with the lighter 19 for the same cores.
 #
 # Both figures the aggregate leans on are conditional, and the runner
 # degrades rather than refusing when either input is absent (see
@@ -178,8 +178,6 @@ readonly WTI_SCRIPTS='.gaia/scripts/check-audit-base-derivation.sh
 .gaia/scripts/check-step-body-extractor-roster.sh
 .gaia/scripts/check-verb-arming-adoption.sh
 .gaia/scripts/check-wiki-state-collision.sh
-.gaia/scripts/audit-rules-changed-complete.sh
-.gaia/scripts/audit-machinery-complete.sh
 .gaia/scripts/lint-errexit-source-guard.sh
 .gaia/scripts/lint-retired-label-spellings.sh
 .gaia/scripts/lint-shipped-issue-refs.sh
@@ -189,7 +187,7 @@ readonly WTI_SCRIPTS='.gaia/scripts/check-audit-base-derivation.sh
 # The staleness lever's baseline: WTI_SCRIPTS's own member count at the time
 # the runtime paragraph above was last measured. main() compares the live
 # count against this and refuses to run on a mismatch, per that paragraph.
-readonly WTI_SCRIPTS_COUNT_ASOF=22
+readonly WTI_SCRIPTS_COUNT_ASOF=20
 
 # Members invoked as `bats <path>`. The shard partition is a whole-tree
 # invariant in the same sense as the scripts above: its input is every .bats
@@ -386,7 +384,7 @@ wti_collect_oldest() {
 #
 # Stdout and stderr land in two SEPARATE logs, never merged with `2>&1`. A
 # caller reading only this script's stdout does not see a member's
-# diagnostics today, and merging would silently change that for 23 members at
+# diagnostics today, and merging would silently change that for 21 members at
 # once; the cost is that a single member's own stdout and stderr no longer
 # interleave in the replayed output, which is worth stating because
 # run_shellcheck_pass (.gaia/tests/shell-lint.sh) and run-bats-parallel.sh,
@@ -433,7 +431,7 @@ wti_dispatch() {
 }
 
 # wti_status_for <path>: look up a collected member's exit status by path.
-# Linear scan rather than an associative array: bash 3.2 has none, and 23
+# Linear scan rather than an associative array: bash 3.2 has none, and 21
 # members make the O(n^2) worst case trivial. Unreachable in practice --
 # main() drains the pool fully before any replay_member call -- and the
 # fallback is a hard failure rather than a silent pass, so a bug here cannot

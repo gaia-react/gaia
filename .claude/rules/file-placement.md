@@ -56,7 +56,7 @@ Copy the form from a registration already in the file rather than inventing one;
 <!-- gaia:maintainer-only:start -->
 ## Maintainer: the rest of the obligations and the other trees
 
-**A new file under `.claude/hooks/lib/**` or `.claude/rules/**` needs a tier**, and a registered hook owes two further obligations the shipped half above leaves out: a jq-availability arm, and an entry in `.gaia/hook-capabilities.json`. `.claude/rules/maintainers/hook-registration.md` owns the whole set and the checks that enforce it. The tier for a convention rule like this one is merely-shared; global is reserved for rules that decide what the gate does with a clearance.
+**A new file under `.claude/hooks/lib/**` or `.claude/rules/**` needs a tier**, and a registered hook owes two further obligations the shipped half above leaves out: a jq-availability arm, and an entry in `.gaia/hook-capabilities.json`. `.claude/rules/maintainers/hook-registration.md` owns the whole set and names the checks that enforce the checkable ones. The tier for a convention rule like this one is merely-shared; global is reserved for rules that decide what the gate does with a clearance.
 
 Those two are omitted from the shipped half because their checkers are the release-excluded ones: an instruction to satisfy something nothing in the reader's tree can verify is an instruction they cannot act on and we cannot enforce. The split is per checker rather than per obligation, so check which side a new one falls on rather than assuming the whole maintainer set is withheld. The tier and rooting checks both ship and both run standalone on an adopter clone, which is why the rooting obligation is stated up there rather than here.
 

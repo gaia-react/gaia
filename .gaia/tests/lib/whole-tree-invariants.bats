@@ -7,7 +7,7 @@
 # 1. Membership completeness. The runner carries a hardcoded member list, which
 #    is the same fail-open shape it was written to close: a whole-tree checker
 #    added later has no path that selects it, so nothing would notice it never
-#    joined the set. This suite sweeps the five `.sh` naming families that have
+#    joined the set. This suite sweeps the four `.sh` naming families that have
 #    produced a member and fails when a candidate appears in neither the member
 #    table nor the excluded table, which makes every exclusion an answer someone
 #    wrote down rather than an omission. The test body says why the `.bats`
@@ -95,7 +95,6 @@ stub_exits() {
   # a worse one. The single bats member is named directly in WTI_BATS instead.
   unaccounted=""
   for path in "$REPO_ROOT"/.gaia/scripts/check-*.sh \
-              "$REPO_ROOT"/.gaia/scripts/audit-*-complete.sh \
               "$REPO_ROOT"/.gaia/scripts/lint-*.sh \
               "$REPO_ROOT"/.gaia/scripts/verify-*.sh \
               "$REPO_ROOT"/.gaia/tests/*.sh; do

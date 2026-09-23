@@ -226,11 +226,9 @@
     ".gaia/scripts/archived-backlog-migrate.sh": "owned",
     ".gaia/scripts/audit-key-lib.sh": "owned",
     ".gaia/scripts/audit-ledger/append-worthiness.mjs": "owned",
-    ".gaia/scripts/audit-machinery-complete.sh": "owned",
     ".gaia/scripts/audit-member-digest.sh": "owned",
     ".gaia/scripts/audit-noop-detect.sh": "owned",
     ".gaia/scripts/audit-resolve-scope.sh": "owned",
-    ".gaia/scripts/audit-rules-changed-complete.sh": "owned",
     ".gaia/scripts/audit-scope-digest.sh": "owned",
     ".gaia/scripts/audit-scratch-dir.sh": "owned",
     ".gaia/scripts/audit-seed-dispositions.sh": "owned",
@@ -690,7 +688,7 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-09-23T15:01:32.068Z",
+  "generated": "2026-09-23T16:16:15.047Z",
   "regions": [
     {
       "endMarker": "<!-- gaia:audit-remit:end -->",

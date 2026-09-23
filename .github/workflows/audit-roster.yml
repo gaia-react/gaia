@@ -5,7 +5,7 @@ name: Audit Roster Drift
 # the live .gaia/audit-ci.yml -- pairwise claimant glob disjointness, the
 # default-member's exclusion from that comparison, a hard fail on any glob
 # pair the bounded dialect cannot decide, that every roster member has an
-# agent file on disk registered in both machinery lists, that every
+# agent file on disk registered in the machinery list, that every
 # member's name carries the `code-audit-` prefix the self-heal repair
 # boundary keys off of, remit region parity (region vs roster entry,
 # ordered; the region-shape rules; the region-glob dialect rule), and
