@@ -323,18 +323,22 @@ jobs:
               # doc-noop-terminal-contract.bats and doc-early-stop-paragraph.bats
               # (.gaia/tests/lib/) derive their carriers by searching the whole
               # tree, so a statement or paragraph added to a new dispatch prompt
-              # reds them. The runbook matches no other glob here, so it is
-              # listed; the fitness page already matches the wiki catch-all and
-              # is listed so a page-only edit arms the legs whose suites name it
-              # (W16's declared table). The three .claude globs are where new
-              # dispatch prompts live: without them, adding a carrier to a skill,
-              # command, or non-audit agent skips every bats step and greens the
-              # required check with the carrier test unrun.
-              - '.gaia/cli/health/runbook.md'
+              # reds them. Each glob below is a root that holds dispatch prompts
+              # and matches no other entry here: the health runbooks, the .claude
+              # skills, commands and agents, and the spec-kit templates. Without
+              # them, adding a carrier there skips every bats step and greens the
+              # required check with the carrier test unrun. These are the roots
+              # that hold prompts today, not a proof that no other can; a carrier
+              # added anywhere else still reds the suite on the next pull request
+              # that arms the lib leg. The fitness page already matches the wiki
+              # catch-all and is listed so a page-only edit arms the legs whose
+              # suites name it (W16's declared table).
+              - '.gaia/cli/health/**/*.md'
               - 'wiki/decisions/Claude Integration Fitness.md'
               - '.claude/skills/**/*.md'
               - '.claude/commands/**/*.md'
               - '.claude/agents/*.md'
+              - '.specify/extensions/gaia/templates/**'
               # The doc-isolation suite (.gaia/tests/lib/) renders the prompt out
               # of the shared isolation reference and greps both callers' pointer
               # wiring, so the fragment and debt.md are sources it guards too.

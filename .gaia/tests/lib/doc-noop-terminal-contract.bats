@@ -5,9 +5,11 @@
 # the ending is what drifted.
 #
 # The shape of the defect this guards: the terminal action is restated on
-# several prose surfaces, and one of them, the pre-merge audit gate, states a
-# DIFFERENT ending on purpose (stop and surface, never inline fallback, because
-# a Code Audit Team member's clearance marker is that member's own attestation).
+# several prose surfaces, and two of them state a DIFFERENT ending on purpose:
+# the pre-merge audit gate (stop and surface, never inline fallback, because a
+# Code Audit Team member's clearance marker is that member's own attestation)
+# and the maintainer-only health-audit runbook (escalate `leaf-no-op`, because
+# its Orchestrator never audits in its own context).
 # An undeclared deliberate exception is worse than drift: the safe-looking
 # reading of an unexplained difference is that the agreeing sites are right and
 # the odd one is stale, and acting on that turns a fail-closed merge gate into
@@ -18,8 +20,8 @@
 # a further surface added with a third ending stops the suite instead of being
 # silently uncovered, and a surface that drops the statement stops it too. The
 # declaration half pins that the owner page states the general ending once, that
-# it admits the exception rather than asserting uniformity, and that the merge
-# gate declares its own departure and names the reason.
+# it admits the exceptions rather than asserting uniformity, and that each
+# departing surface declares its own departure and names the reason.
 #
 # Derivation, and why by phrase. No machine-readable artifact enumerates these
 # surfaces; the coupling is prose-to-prose. The marker is the terminal-statement
