@@ -7,7 +7,7 @@ paths:
 
 # Hook and Rule Registration
 
-Adding a `.sh` under `.claude/hooks/**`, a `.md` under `.claude/rules/**`, or a hook registration in `.claude/settings.json` carries obligations no diff line shows. Whole-set checkers enforce them in CI, outside the Quality Gate, so run each one that applies before opening the pull request. Rationale for each: [[Claude Hooks]].
+Adding a `.sh` under `.claude/hooks/**`, a `.md` under `.claude/rules/**`, or a hook registration in `.claude/settings.json` carries obligations no diff line shows. Whole-set checkers enforce them in CI, outside the Quality Gate, so run each one that applies before opening the pull request. Rationale: `.claude/rules/file-placement.md` for hook state paths, [[Code Audit Team]] for tiers, [[Claude Hooks]] for jq, Monitor and rooting.
 
 - **Hook state paths.** A hook reaches `.gaia/local` only by joining a root from `main-root-lib.sh` (or a caller-supplied root, in a lib under `.claude/hooks/lib/`), never by a bare literal: `bash .gaia/scripts/check-hook-scope-manifest.sh`.
 - **Hook library tier.** A file under `.claude/hooks/lib/**` goes in exactly one tier. The usual answer is merely-shared: add it to `AUDIT_MERELY_SHARED_PATHS` in `.gaia/scripts/audit-rules-changed-complete.sh`. Global is only for a library whose every change must reset every member's review anchor: add it to `AUDIT_GLOBAL_RULES_PATHS` in `.claude/hooks/lib/audit-rules-changed.sh` **and** to `GLOBAL_RULES_FILES` in `.gaia/scripts/audit-rules-changed-complete.sh` by hand, because the lockstep check misses a predicate-only edit.

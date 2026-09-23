@@ -27,7 +27,17 @@ A second obligation rides on the first, and it binds whoever writes a check rath
 
 ## Register the hook
 
-One obligation, with its check in your own tree so you can verify it locally.
+Two obligations, each with its check in your own tree, so you can verify either one locally.
+
+### No bare `.gaia/local` literal
+
+**A hook reaches `.gaia/local` only by joining a root from `main-root-lib.sh`** (or a caller-supplied root, in a lib under `.claude/hooks/lib/`). A bare literal resolves against whatever tree the hook runs in, so from a linked worktree the write lands in the wrong tree with no error.
+
+```bash
+bash .gaia/scripts/check-hook-scope-manifest.sh
+```
+
+It walks the whole directory, so a new hook is checked the moment it exists.
 
 ### A cwd-independent command, when you register it in `.claude/settings.json`
 
