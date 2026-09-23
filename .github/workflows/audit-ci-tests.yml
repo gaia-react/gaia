@@ -152,13 +152,10 @@ jobs:
               # post-audit-status.sh); it now also covers every hook exercised
               # by the .gaia/tests/hooks/ suites below.
               - '.claude/hooks/**'
-              # Every file under .claude/rules/ is gate machinery, so each one
-              # must land in exactly one tier of the reset-predicate partition,
-              # and audit-rules-changed-complete.bats (.gaia/scripts/tests/) is
-              # the only thing that runs that partition check. A pull request
-              # adding a rule file and nothing else matches no other pattern
-              # here, so without this line it reports `code=false`, skips every
-              # bats step, and greens the job on an already-broken partition --
+              # Many suites here read rule files under .claude/rules/. A pull
+              # request editing a rule file and nothing else matches no other
+              # pattern here, so without this line it reports `code=false`,
+              # skips every bats step, and greens the job on a broken suite --
               # the red then lands on the next unrelated pull request that
               # happens to touch .claude/hooks/** or .gaia/scripts/**.
               - '.claude/rules/**'

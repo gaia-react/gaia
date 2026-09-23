@@ -49,8 +49,6 @@ AUDIT_MACHINERY_PATHS="$(cat <<'EOF'
 # audit-seed-dispositions.sh carries a still-open disposition receipt across a
 # frontend digest rotation, which both merge gates re-verify.
 .gaia/scripts/audit-seed-dispositions.sh
-.gaia/scripts/audit-machinery-complete.sh
-.gaia/scripts/audit-rules-changed-complete.sh
 .claude/hooks/lib/audit-dispositions.sh
 .gaia/scripts/resolve-audit-members.sh
 # gaia:maintainer-only:start

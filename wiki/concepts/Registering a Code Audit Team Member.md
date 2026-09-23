@@ -28,7 +28,7 @@ Run `bash .gaia/scripts/write-audit-remits.sh`. It reads `.gaia/audit-ci.yml` an
 
 ### 4. Wire into the machinery set
 
-Add the new agent file's path to `AUDIT_MACHINERY_PATHS` in `.claude/hooks/lib/audit-machinery.sh`, and to the mirrored `GATE_MACHINERY_FILES` list in `.gaia/scripts/audit-machinery-complete.sh`. Every member's clearance marker keys to a content digest computed over the files it owns plus this machinery set; an agent file missing from either list rotates no digest when it changes, so a rewrite of the member's own instructions would merge unaudited by that member. `.gaia/scripts/audit-machinery-complete.sh` asserts the two lists agree.
+Add the new agent file's path to `AUDIT_MACHINERY_PATHS` in `.claude/hooks/lib/audit-machinery.sh`. Every member's clearance marker keys to a content digest computed over the files it owns plus this machinery set; an agent file missing from the list rotates no digest when it changes, so a rewrite of the member's own instructions would merge unaudited by that member. `.gaia/scripts/verify-audit-roster.sh` asserts every roster member's agent file is listed.
 
 ### 5. Declare a scope-resolution anchor, only if the fence is not where the checker looks
 

@@ -140,10 +140,10 @@ classify_writer() {
 
 # Probe 3 (check): executes the real verify-audit-roster.sh against the
 # sandbox and reads off the region-shape finding it emitted for the member,
-# never a count computed here. $1 = sandbox dir. The two `unreadable-
-# machinery-list` findings are sandbox noise (no .claude/hooks/lib/
-# audit-machinery.sh or .gaia/scripts/audit-machinery-complete.sh in a bare
-# fixture root) and are not asserted on; only the region-shape label is.
+# never a count computed here. $1 = sandbox dir. The `unreadable-
+# machinery-list` finding is sandbox noise (no .claude/hooks/lib/
+# audit-machinery.sh in a bare fixture root) and is not asserted on; only the
+# region-shape label is.
 classify_check() {
   local dir="$1" out
   out="$(bash "$CHECKER" --root "$dir" --config "$dir/.gaia/audit-ci.yml" 2>&1)" || true

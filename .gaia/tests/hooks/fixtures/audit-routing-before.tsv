@@ -506,7 +506,6 @@
 .gaia/scripts/append-audit-author.sh	code-audit-maintainer-shell
 .gaia/scripts/archived-backlog-migrate.sh	code-audit-maintainer-shell
 .gaia/scripts/audit-ledger/append-worthiness.mjs	-
-.gaia/scripts/audit-machinery-complete.sh	code-audit-maintainer-shell
 .gaia/scripts/audit-member-digest.sh	code-audit-maintainer-shell
 .gaia/scripts/audit-noop-detect.sh	code-audit-maintainer-shell
 .gaia/scripts/audit-window-lib.sh	code-audit-maintainer-shell
@@ -536,7 +535,6 @@
 .gaia/scripts/tests/archived-backlog-migrate.bats	code-audit-maintainer-shell
 .gaia/scripts/tests/audit-ci-nudge-snapshot.bats	code-audit-maintainer-shell
 .gaia/scripts/tests/audit-guard-structural.bats	code-audit-maintainer-shell
-.gaia/scripts/tests/audit-machinery-complete.bats	code-audit-maintainer-shell
 .gaia/scripts/tests/audit-noop-detect.bats	code-audit-maintainer-shell
 .gaia/scripts/tests/audit-window-lib.bats	code-audit-maintainer-shell
 .gaia/scripts/tests/audit-write-clearance.bats	code-audit-maintainer-shell

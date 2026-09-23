@@ -40,7 +40,7 @@
 # explicit `#`-comment skipping. audit_path_is_machinery has no comment
 # skipping (a `#` line there falls through to its exact-match arm and can
 # never equal a real path); that accident is not good enough here, because
-# this file's literal is also walked as DATA by the completeness check.
+# this file's literal is also walked as DATA by its own bats suite.
 #
 # No entry below ends in `/**`, so the prefix arm and the `*.bats` early
 # return decide nothing today. Both are retained deliberately: they keep this
@@ -89,8 +89,7 @@ AUDIT_GLOBAL_RULES_PATHS="$(cat <<'EOF'
 # code. quality-gate.md decides the deterministic checks a clearance
 # stands on, and pr-merge.md decides the marker handshake: where the gate
 # looks for a clearance and when one is believed. Every other rule in that
-# directory is coding convention, is merely shared, and is enumerated in
-# AUDIT_MERELY_SHARED_PATHS in .gaia/scripts/audit-rules-changed-complete.sh.
+# directory is coding convention and is merely shared.
 .claude/rules/quality-gate.md
 .claude/rules/pr-merge.md
 EOF

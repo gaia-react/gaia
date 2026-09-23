@@ -7,7 +7,7 @@
 # The roster is meant to grow, by adopters and by the maintainer, as a project
 # adds languages and surfaces. Its silent failure modes, each made loud here:
 #
-#   * A forgotten machinery registration. Only files the machinery lists carry
+#   * A forgotten machinery registration. Only files the machinery list carries
 #     land in every member's content digest, so an unlisted agent file rotates
 #     no member's key and a change to it merges unaudited by the members it
 #     should force.
@@ -39,8 +39,8 @@
 #   3. A glob pair the bounded dialect cannot decide FAILS, naming the pair,
 #      rather than passing. The check never fails open on the assertion it
 #      exists to make.
-#   4. Every roster member has an agent file on disk, registered in BOTH
-#      machinery lists; exactly one member carries `default: true`.
+#   4. Every roster member has an agent file on disk, registered in
+#      AUDIT_MACHINERY_PATHS; exactly one member carries `default: true`.
 #   5. Every roster member's name carries the `code-audit-` prefix. The local
 #      self-heal hook (block-selfheal-paths.sh) binds a dispatched member to its
 #      repair boundary by that prefix, not a roster lookup, so a member named
@@ -120,7 +120,7 @@ usage() {
   cat <<'USAGE'
 Usage: verify-audit-roster.sh [--root <dir>] [--config <file>] [--emit-roster]
   --root <dir>     repo root. Default: the repo holding this script.
-                   Injection point for the machinery lists and the agent files.
+                   Injection point for the machinery list and the agent files.
   --config <file>  roster to verify. Default: <root>/.gaia/audit-ci.yml.
                    Injection point for the roster.
   --emit-roster    print the roster's raw member/glob/default records and
@@ -184,7 +184,7 @@ fi
 # Source the roster-parsing module from THIS script's own on-disk location,
 # never cwd and never $root: it is code, and there is one copy of it.
 # .gaia/scripts -> ../../.claude/hooks/lib. Note the asymmetry with the
-# machinery lists below, which resolve under --root because they are data a
+# machinery list below, which resolves under --root because it is data a
 # fixture must be able to inject.
 _self_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.claude/hooks/lib" 2>/dev/null && pwd)" || true
 if [ -n "${_self_lib_dir:-}" ] && [ -f "$_self_lib_dir/audit-scope.sh" ]; then
@@ -362,22 +362,21 @@ if [ "$default_count" -ne 1 ]; then
   printf '\n'
 fi
 
-# --- Invariant: agent file present and registered in BOTH machinery lists ----
+# --- Invariant: agent file present and registered in AUDIT_MACHINERY_PATHS ----
 #
-# Read both lists as TEXT under --root: that is what makes the invariant
+# Read the list as TEXT under --root: that is what makes the invariant
 # testable at all, since a fixture can then inject a missing entry without
-# mutating the repo's real lists. This is LITERAL LIST MEMBERSHIP, deliberately
+# mutating the repo's real list. This is LITERAL LIST MEMBERSHIP, deliberately
 # not audit_path_is_machinery: the matcher answers "is this path machinery"
 # (including via a `/**` prefix), while the invariant is "is this member's agent
 # file registered". An unregistered agent file is the silent fail-open, and a
 # prefix match would hide it.
 #
-# Extra entries in either list are fine. This walks the roster and asks whether
-# each member is registered, never the reverse: an adopter's lists still name
+# Extra entries in the list are fine. This walks the roster and asks whether
+# each member is registered, never the reverse: an adopter's list still names
 # the agents the roster scrub removed, and that must not fail.
 
 machinery_lib="${root}/.claude/hooks/lib/audit-machinery.sh"
-gate_script="${root}/.gaia/scripts/audit-machinery-complete.sh"
 
 _roster_list_lines() {
   # <file> <shell-variable-name>: the heredoc list assigned to that variable.
@@ -390,7 +389,6 @@ _roster_list_lines() {
 }
 
 machinery_list="$(_roster_list_lines "$machinery_lib" AUDIT_MACHINERY_PATHS)"
-gate_list="$(_roster_list_lines "$gate_script" GATE_MACHINERY_FILES)"
 
 _report_unreadable_list() {
   # <file> <variable-name>
@@ -404,7 +402,6 @@ _report_unreadable_list() {
 }
 
 [ -n "$machinery_list" ] || _report_unreadable_list "$machinery_lib" AUDIT_MACHINERY_PATHS
-[ -n "$gate_list" ] || _report_unreadable_list "$gate_script" GATE_MACHINERY_FILES
 
 _report_unregistered() {
   # <member> <agent-rel-path> <list-name> <list-file>
@@ -450,9 +447,6 @@ while IFS=$'\t' read -r kind name; do
   fi
   if [ -n "$machinery_list" ] && ! grep -qxF -- "$agent_rel" <<<"$machinery_list"; then
     _report_unregistered "$name" "$agent_rel" AUDIT_MACHINERY_PATHS "$machinery_lib"
-  fi
-  if [ -n "$gate_list" ] && ! grep -qxF -- "$agent_rel" <<<"$gate_list"; then
-    _report_unregistered "$name" "$agent_rel" GATE_MACHINERY_FILES "$gate_script"
   fi
 done < <(printf '%s\n' "$raw_records")
 

@@ -96,7 +96,7 @@ deny() {
 }
 
 # Source the refusal-set lib from THIS hook's own on-disk location, never
-# cwd, mirroring .gaia/scripts/audit-machinery-complete.sh. A missing lib
+# cwd. A missing lib
 # means the refusal set cannot be determined for a member that IS bound, so
 # fail loudly and deny rather than silently allowing the edit through.
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
