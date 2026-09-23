@@ -63,7 +63,8 @@
 #                 every other shape.
 #   --expect-count / --min-count
 #                 optional and mutually exclusive; honored ONLY for --shape
-#                 agent-report-file. The caller's own denominator, asserted as
+#                 agent-report-file, plus --expect-count alone for --shape
+#                 cra-specialist. The caller's own denominator, asserted as
 #                 an exact length or a floor. A non-integer, a negative value,
 #                 or both flags together is a usage error rather than a silent
 #                 permanent no-op. Ignored for every other shape.
@@ -105,7 +106,10 @@
 #                         "- **Location**: `path:line`" (code-review-audit.md),
 #                         so a bare "Location:" substring never appears and
 #                         keying on it would misclassify a real finding as a
-#                         no-op.
+#                         no-op. Under --expect-count <n> the return must ALSO
+#                         carry a `Files reviewed: <n>` line, stripped before
+#                         the sentinel comparison: a specialist that stops with
+#                         files unread still returns a real finding token.
 #   cra-refuter           content contains a standalone verdict token
 #                         REFUTED, DOWNGRADE, or STANDS
 #   audit-team-member     the --marker path's REFUSAL sibling
@@ -190,8 +194,9 @@ usage: audit-noop-detect.sh --shape <SHAPE> --path <PATH> [--audit-md <AUDIT_MD_
   --report-key   optional; honored only for --shape agent-report-file. The
                  top-level key holding the report array. Omit for a bare
                  top-level array.
-  --expect-count optional; honored only for --shape agent-report-file. Exact
-                 report length. Mutually exclusive with --min-count.
+  --expect-count optional; honored only for --shape agent-report-file (exact
+                 report length) and cra-specialist (exact `Files reviewed:`
+                 count). Mutually exclusive with --min-count.
   --min-count    optional; honored only for --shape agent-report-file. Minimum
                  report length. Mutually exclusive with --expect-count.
 
@@ -508,6 +513,19 @@ case "$SHAPE" in
   cra-specialist)
     [ -f "$TARGET_PATH" ] || noop
     content="$(cat "$TARGET_PATH" 2>/dev/null)"
+    # Under --expect-count the return must also carry `Files reviewed: <n>`
+    # with n equal to the count, and that line is then stripped so the clean
+    # sentinel still compares exactly. A missing or short line is a specialist
+    # that stopped with files unread, which the token predicate alone reads
+    # as REAL. Backtick or bold wrapping is tolerated because the template
+    # shows the line in backticks and a model copies what it is shown; the
+    # count itself stays exact.
+    if [ -n "$EXPECT_COUNT_SEEN" ]; then
+      # shellcheck disable=SC2016  # the backtick is a literal in the class.
+      grep -Eq "^[[:space:]]*[\`*]*Files reviewed: ${EXPECT_COUNT}[\`*]*[[:space:]]*\$" <<<"$content" || noop
+      # shellcheck disable=SC2016
+      content="$(grep -Ev '^[[:space:]]*[`*]*Files reviewed: [0-9]+[`*]*[[:space:]]*$' <<<"$content")"
+    fi
     trimmed="$(printf '%s' "$content" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
     # The grep pattern below is a literal backtick-delimited path:line
     # regex, not a command sub.

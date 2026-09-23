@@ -5,9 +5,11 @@
 # the ending is what drifted.
 #
 # The shape of the defect this guards: the terminal action is restated on
-# several prose surfaces, and one of them, the pre-merge audit gate, states a
-# DIFFERENT ending on purpose (stop and surface, never inline fallback, because
-# a Code Audit Team member's clearance marker is that member's own attestation).
+# several prose surfaces, and two of them state a DIFFERENT ending on purpose:
+# the pre-merge audit gate (stop and surface, never inline fallback, because a
+# Code Audit Team member's clearance marker is that member's own attestation)
+# and the maintainer-only health-audit runbook (escalate `leaf-no-op`, because
+# its Orchestrator never audits in its own context).
 # An undeclared deliberate exception is worse than drift: the safe-looking
 # reading of an unexplained difference is that the agreeing sites are right and
 # the odd one is stale, and acting on that turns a fail-closed merge gate into
@@ -18,8 +20,8 @@
 # a further surface added with a third ending stops the suite instead of being
 # silently uncovered, and a surface that drops the statement stops it too. The
 # declaration half pins that the owner page states the general ending once, that
-# it admits the exception rather than asserting uniformity, and that the merge
-# gate declares its own departure and names the reason.
+# it admits the exceptions rather than asserting uniformity, and that each
+# departing surface declares its own departure and names the reason.
 #
 # Derivation, and why by phrase. No machine-readable artifact enumerates these
 # surfaces; the coupling is prose-to-prose. The marker is the terminal-statement
@@ -56,17 +58,22 @@ setup() {
   OWNER_REL='wiki/concepts/Code Review Audit Agent.md'
   # The one surface that departs from it, deliberately.
   GATE_REL='wiki/concepts/PR Merge Workflow.md'
+  # The maintainer-only health audit departs too, escalating rather than
+  # stopping at a merge gate, for its own reason: its Orchestrator never audits.
+  HEALTH_REL='.gaia/cli/health/runbook.md'
   # The ad-hoc dispatch rule, whose pointer has to resolve to the owner.
   RULE_REL='.claude/rules/subagent-dispatch.md'
 
   OWNER="$ROOT/$OWNER_REL"
   GATE="$ROOT/$GATE_REL"
+  HEALTH="$ROOT/$HEALTH_REL"
   RULE="$ROOT/$RULE_REL"
 
   # Every surface expected to state a terminal action. The roster test
   # reconciles this against the tree in both directions.
   ROSTER=(
     '.claude/agents/code-audit-frontend.md'
+    '.gaia/cli/health/runbook.md'
     '.claude/rules/subagent-dispatch.md'
     '.claude/skills/gaia/references/plan.md'
     '.claude/skills/gaia/references/spec.md'
@@ -192,10 +199,11 @@ terminal_segments() {
   }
 }
 
-@test "every roster surface but the merge gate ends inline, in the terminal statement itself" {
+@test "every roster surface but the two declared departures ends inline, in the terminal statement itself" {
   local rel lines
   for rel in "${ROSTER[@]}"; do
     [ "$rel" = "$GATE_REL" ] && continue
+    [ "$rel" = "$HEALTH_REL" ] && continue
     lines="$(terminal_segments "$ROOT/$rel")"
     [ -n "$lines" ] || { echo "no terminal statement read in ${rel}" >&2; return 1; }
     # Per statement, not per file: a file whose ending drifted at one of
@@ -231,7 +239,25 @@ terminal_segments() {
   grep -qF -- 'stop and surface to the operator' "$GATE"
 }
 
-# --- The declaration: one owner, one admitted exception ---------------------
+@test "the health-audit runbook's terminal statement escalates and does not fall back inline" {
+  local lines
+  lines="$(terminal_segments "$HEALTH")"
+  [ -n "$lines" ] || { echo "no terminal statement read in ${HEALTH_REL}" >&2; return 1; }
+  printf '%s\n' "$lines" | grep -qi -- 'inline' && {
+    echo "${HEALTH_REL}'s terminal statement names an inline ending, which puts the Orchestrator's own context into the grade:" >&2
+    printf '%s\n' "$lines" | grep -i -- 'inline' >&2
+    return 1
+  }
+  printf '%s\n' "$lines" | grep -qF -- 'leaf-no-op'
+}
+
+@test "the health-audit runbook declares its departure as deliberate and names the reason" {
+  grep -qF -- 'departs from the general inline ending deliberately' "$HEALTH"
+  grep -qF -- 'never audits, adjudicates, or fixes in its own context' "$HEALTH"
+  grep -qF -- "$OWNER_REL" "$HEALTH"
+}
+
+# --- The declaration: one owner, admitted exceptions ------------------------
 
 @test "the owner page states the general terminal action and claims ownership of it" {
   grep -qF -- 'The terminal action, stated once' "$OWNER"
@@ -245,6 +271,11 @@ terminal_segments() {
   # The reason, not merely the fact. Without it a reader cannot tell a
   # deliberate exception from an unmaintained one, which is the whole defect.
   grep -qF -- "own attestation" "$OWNER"
+}
+
+@test "the owner page admits the health audit's departure and states its reason" {
+  grep -qF -- "$HEALTH_REL" "$OWNER"
+  grep -qF -- 'never audits in its own context' "$OWNER"
 }
 
 @test "the owner page no longer asserts a uniform ending across every surface" {

@@ -37,6 +37,10 @@ If the adopter directs Claude to make styling changes that represent real brand 
 
 Do this regardless of how the design was arrived at: Figma handoff, verbal direction, a style guide, a design token file. The wiki update is part of completing the task, not a separate follow-up.
 
+### When the adopter defers the choice
+
+If the adopter hands the choice to Claude ("you decide", "pick something") rather than directing it, avoid these default styles: a cream or off-white background, italic accent words in headings, numbered "01 / 02 / 03" section labels, monospace text used as decorative labels, pill-shaped buttons as the default shape, and purple or violet gradients. A general instruction to avoid a generic look only swaps one default for another, while naming the patterns steers away from them. Whatever gets picked instead is still a design decision, so the wiki update above still applies.
+
 If design decisions are being implemented without Claude's involvement (a designer editing files directly, a skill running autonomously, etc.), Claude cannot act. In that case `wiki/concepts/Design System.md` carries instructions for the adopter to perform the update manually.
 
 ## Why this rule exists

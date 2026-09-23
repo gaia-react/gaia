@@ -13,6 +13,7 @@ Trigger: user asks to add a new page/route.
 1. Confirm with the user: name (kebab-case), group (`_public+` or `_session+`), and which of `--loader`, `--action`, `--i18n` they want.
 2. Run from the repo root: `.gaia/cli/gaia scaffold route <name> --group <group> [flags]` (output paths resolve from the working directory).
 3. Verify: `pnpm typecheck` clean; `pnpm dev` reaches the new route.
+4. Before filling in the page, loader, or action by hand, read one or two existing routes with a similar shape and follow their pattern.
 
 ## Flags
 

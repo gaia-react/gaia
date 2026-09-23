@@ -24,10 +24,13 @@ Orchestrator initializes .gaia/local/audit/ and creates this run's RUN_DIR (.gai
 For cycle in 1..3:
   Orchestrator creates RUN_DIR/c<N>/ and bucket sub-dirs
   Orchestrator spawns the Audit buckets (A–E) as parallel leaf subagents → each writes artifacts, returns summary + path
+  Orchestrator classifies each bucket's artifact before anything reads it (see §Leaf completion check)
   Orchestrator spawns a fresh Adjudicator leaf → it reads the c<N> bucket artifacts, classifies, writes c<N>/findings.json → reports
+  Orchestrator classifies c<N>/findings.json before acting on it (see §Leaf completion check)
   if clean (no open findings, Bucket D verdict A+ readiness, effective shared-fitness grade = A+; see §Termination):
     if the challenger has not run yet this run (at-most-once flag, see §False-clean challenger):
       Orchestrator spawns the false-clean challenger lenses as parallel leaf subagents; mark the challenger as run
+      Orchestrator classifies each lens's challenger-<LENS>.json before reading it (see §Leaf completion check)
       if any lens returns a substantiated finding (clean verdict REVOKED):
         Orchestrator injects it into c<N>/findings.json (action: real-fix, bucket: challenger, lane, fingerprint)
         if cycle == 3: escalate with reason false-clean-refuted (preserve RUN_DIR, surface its path), exit   # no next cycle to fix-and-reverify
@@ -41,6 +44,30 @@ For cycle in 1..3:
   Orchestrator starts the next cycle
 After cycle 3 without clean: escalate (max loops hit; Orchestrator preserves RUN_DIR, surfaces its path in escalation report)
 ```
+
+## Leaf completion check
+
+A leaf that ends its turn on a progress report hands back what reads as a finished result, and a bucket that wrote nothing reads to the Adjudicator as a bucket that found nothing. Two guards cover it.
+
+**Every leaf prompt carries this paragraph verbatim**, the buckets, the Adjudicator, the Fixers, and the challenger lenses alike:
+
+> How your run ends: a reply with no tool call ends it, and the orchestrator reads whatever you returned as your finished result. Do not end on a summary that announces a next step, an offer to continue, a list of questions none of which blocks the work, or a progress report because a milestone is done; take the next step instead. Stop only when the task is complete, or when something you cannot resolve blocks it, and then say which.
+
+**The Orchestrator classifies each leaf's artifact before the next step reads it**, under `.claude/rules/subagent-dispatch.md`; the full contract is `wiki/concepts/Code Review Audit Agent.md`, "No-op guard against silent subagents". `RUN_DIR/c<N>/` is created fresh each cycle, so an artifact's presence is a fresh-write signal. Only the Adjudicator and the challenger lenses write JSON; the bucket artifacts are text and Markdown, so they take an existence-and-content check instead.
+
+| Leaf | Real when |
+| --- | --- |
+| Bucket A | `bucket-a.txt` is non-empty (`[ -s ]`) |
+| Bucket B | `bucket-b/triage.md` is non-empty. A `grep-N.txt` is legitimately empty when its grep matched nothing, so it is not the signal |
+| Bucket C | `bucket-c.txt` is non-empty |
+| Bucket D | `bucket-d.md` is non-empty |
+| Bucket E | `bucket-e/shared_fitness_grade.txt` is non-empty and `bucket-e/category-grades.json` parses (`jq -e .`) |
+| Adjudicator | `bash .gaia/scripts/audit-noop-detect.sh --shape agent-report-file --path RUN_DIR/c<N>/findings.json --report-key findings` exits 0 |
+| Challenger lens `<LENS>` | `bash .gaia/scripts/audit-noop-detect.sh --shape agent-report-file --path RUN_DIR/c<N>/challenger-<LENS>.json --report-key findings` exits 0. A lens that substantiates nothing writes an empty array, so a missing file is a lens that never finished, never a lens that cleared the verdict |
+
+Fixers write no artifact, since their output is the edited tree; the next cycle's fresh buckets and the fix-verification lens are their check, and an unfinished fix resurfaces there as an open finding or as oscillation.
+
+On a no-op, `rm -f` that leaf's artifact and re-dispatch it exactly once with the hardened retry prefix (`.claude/agents/code-audit-frontend.md`, "No-op detection and retry for each refuter"), naming the artifact path as the target. A second consecutive no-op escalates with reason `leaf-no-op`, naming the leaf and preserving RUN_DIR. This departs from the general inline ending deliberately: the Orchestrator never audits, adjudicates, or fixes in its own context (§Roles), so doing the leaf's work itself would put exactly the session state this design keeps out of the grade into it.
 
 ## Termination
 
@@ -349,19 +376,20 @@ Announce the fan-out once, naming each dispatched lens in full with its id in pa
 
 > Spawning the false-clean challenger against the terminal clean verdict: blind-spot (BS), misclassification (MC), grade-honesty (GH), fix-verification (FV).
 
-Each lens is a parallel `general-purpose` leaf the Orchestrator spawns, handed: the terminal cycle's bucket artifacts (`RUN_DIR/c<N>/bucket-a.txt`, `bucket-b/`, `bucket-c.txt`, `bucket-d.md`, `bucket-e/`), `RUN_DIR/c<N>/findings.json`, and BOTH "Decided / not findings" lists (`.gaia/cli/health/taxonomy.md` § Decided / not findings and `wiki/decisions/Claude Integration Fitness.md` § Decided / not findings) so it does not re-surface settled items. Each returns only the findings JSON (the canonical schema, see §Audit artifacts), no narrative.
+Each lens is a parallel `general-purpose` leaf the Orchestrator spawns, handed: the terminal cycle's bucket artifacts (`RUN_DIR/c<N>/bucket-a.txt`, `bucket-b/`, `bucket-c.txt`, `bucket-d.md`, `bucket-e/`), `RUN_DIR/c<N>/findings.json`, and BOTH "Decided / not findings" lists (`.gaia/cli/health/taxonomy.md` § Decided / not findings and `wiki/decisions/Claude Integration Fitness.md` § Decided / not findings) so it does not re-surface settled items. Each writes `{"findings": [...]}` in the canonical finding schema (see §Audit artifacts) to `RUN_DIR/c<N>/challenger-<LENS>.json`, with an empty array when it substantiates nothing, and returns no narrative.
 
 - **Blind-spot (id prefix `BS`).** Always runs. Assume a real defect exists that EVERY bucket missed. Attack the UNION of the five bucket scopes (static checks, source greps, bundle simulation, cross-class enforcement walk, the fitness categories) and produce the concrete file + pattern that no bucket grep covers. A concrete uncovered file + pattern is a finding.
 - **Misclassification (id prefix `MC`).** Always runs. For each `decided-not-finding` and `false-positive` in `findings.json`, verify it TRULY matches a taxonomy or fitness "Decided" entry, not a stretched near-match; cite the matched entry's line. A `decided-not-finding` that does not actually match its claimed Decided entry (a real finding dismissed as settled) is a finding.
 - **Grade-honesty (id prefix `GH`).** Always runs. Re-verify Bucket D's "A+ readiness" against each enforcing primitive (scrub check id, runtime-deps, manifest `--check`), and verify the effective-shared-fitness-A+ promotion legitimately applies the residual carve-out (a Bucket E category below A+ SOLELY because of non-blocking residual `info` on a Decided list) rather than masking a `warning`/`error` or an `info` NOT on a Decided list. A grade promoted on a false premise is a finding.
 - **Fix-verification (id prefix `FV`, deep/optional).** Independently re-run the prior cycles' fixed-finding detection against the working tree instead of trusting Fixer self-reports. A prior finding a Fixer reported fixed but that still reproduces is a finding. **Deterministic gate:** include FV in the fan-out only when any prior cycle in this run dispatched a Fixer (there are applied fixes to verify); skip it on a run that reached clean with zero fixes applied (nothing to verify). FV is the lens that covers a failed fix, including a failed fix of an earlier challenger-injected finding.
 
-**Shared preamble** (mirrors the canonical adversarial preamble; interpolate `<C_DIR>` = `RUN_DIR/c<N>` and `<repo_root>` = `$PWD`):
+**Shared preamble** (mirrors the canonical adversarial preamble; interpolate `<C_DIR>` = `RUN_DIR/c<N>`, `<repo_root>` = `$PWD`, and `<LENS>` = the lens's id code, `BS`, `MC`, `GH`, or `FV`):
 
 > You are an ADVERSARIAL challenger of a GAIA health-audit's TERMINAL CLEAN verdict. The cycle artifacts are in `<C_DIR>`; repo root is `<repo_root>`. Read the bucket artifacts and `findings.json` first, and read the two "Decided / not findings" lists so you do not re-surface settled items. The loop is about to report A+ and delete the evidence. Your job is to find the reason that verdict is FALSE, not to confirm it. Cite evidence as `file:line`. Be concrete and falsifiable: a defect a fixer can act on by reading one file is a good finding, a vague "could be cleaner" is not.
 >
 > - Severity: `blocker` = the clean verdict is factually wrong (a real defect ships); `high` = a real finding the buckets or Adjudicator missed or misclassified; `medium` = should fix; `low` = nit.
 > - Give each finding a stable id prefixed with your lens code (`BS`, `MC`, `GH`, or `FV`).
+> - Write `{"findings": [...]}` to `<C_DIR>/challenger-<LENS>.json`, with an empty array when you substantiate nothing, and return no narrative. The Orchestrator reads a missing file as a lens that never finished.
 
 ### Routing: a substantiated finding revokes the clean exit
 
@@ -383,6 +411,7 @@ Orchestrator escalates to human (returns control with structured report) on:
 - Any circuit-breaker trip the human declines.
 - Adjudicator can't classify a finding (not in taxonomy, not allowlist, not structural).
 - Fixer reports unable to fix (e.g. test failure that requires a product decision).
+- A leaf no-ops on its retry too (reason `leaf-no-op`; see §Leaf completion check).
 - False-clean challenger substantiates a finding on the cycle-3 clean cycle (reason `false-clean-refuted`; see §False-clean challenger). On a non-cycle-3 clean cycle the same finding is injected as `real-fix` and the loop continues instead of escalating.
 
 ## Audit artifacts
@@ -402,6 +431,7 @@ RUN_DIR/c<N>/
     shared_fitness_grade.txt # floor of the category grades (F-to-A+)
     findings/               # per-category findings JSON
   findings.json             # canonical findings list (includes shared_fitness_grade, overall_grade)
+  challenger-<LENS>.json    # terminal clean cycle only: one per dispatched challenger lens
 ```
 
 `findings.json` schema:
@@ -434,7 +464,7 @@ Lifecycle:
 - **Auditors**: write raw outputs to their per-cycle paths; return summary + file path in their report (not the full content).
 - **Adjudicator**: reads bucket files, classifies, writes `c<N>/findings.json`.
 - **Orchestrator (oscillation detection)**: mechanical diff via `jq -r '.findings[].fingerprint' RUN_DIR/c<N>/findings.json | sort` against the prior cycle's same. Non-empty intersection → oscillation, escalate.
-- **Clean exit**: Orchestrator computes `overall_grade` = floor of (Bucket D verdict, open-findings-count signal, Bucket E `shared_fitness_grade`). A clean exit requires no open findings and an _effective_ shared-fitness A+ (non-blocking residuals exempt); the reported grade may be A. On a clean exit: Orchestrator runs `rm -rf RUN_DIR` (whitelisted via the `.gaia/local/audit/*` glob; safe — RUN_DIR already lives under `archived/`, nothing to relocate). This removal runs only AFTER the false-clean challenger clears the terminal clean cycle (see §False-clean challenger); a challenger that revokes the exit either continues the loop (non-cycle-3) or escalates `false-clean-refuted` and preserves RUN_DIR (cycle 3).
+- **Clean exit**: Orchestrator computes `overall_grade` = floor of (Bucket D verdict, open-findings-count signal, Bucket E `shared_fitness_grade`). A clean exit requires no open findings and an _effective_ shared-fitness A+ (non-blocking residuals exempt); the reported grade may be A. On a clean exit: Orchestrator runs `rm -rf RUN_DIR` (whitelisted via the `.gaia/local/audit/*` glob; safe, since RUN_DIR already lives under `archived/`, nothing to relocate). This removal runs only AFTER the false-clean challenger clears the terminal clean cycle (see §False-clean challenger); a challenger that revokes the exit either continues the loop (non-cycle-3) or escalates `false-clean-refuted` and preserves RUN_DIR (cycle 3).
 - **Escalation**: Orchestrator leaves RUN_DIR in place (it already lives under `archived/`; nothing to move) and surfaces its path in the escalation report for human review.
 
 ## State
