@@ -35,9 +35,8 @@
 #      the roster does not grant, and the same set in a different order, because
 #      ownership is first-match-wins over roster order and a reordered region is
 #      a different reading order. Every glob inside a region is classified by
-#      the bounded dialect below, which is why the default member's globs and a
-#      lone claimant's are dialect-checked too: neither carries a claimant pair
-#      to compare against. The region's SENTENCE text is deliberately not
+#      the bounded dialect below, the default member's and a lone claimant's
+#      included. The region's SENTENCE text is deliberately not
 #      compared here; the writer (write-audit-remits.sh) owns the region's exact
 #      form, and re-running it is the repair for every finding in this group.
 #   2. Coverage: every tracked path resolves an owner, or is declared in the
@@ -474,7 +473,7 @@ pair_records="$(
     }
 
     # Only the count is read (the reader-drift comparison below); the compiled
-    # regex itself is never needed once the pairwise walk it fed is gone.
+    # regex itself is never needed.
     $1 == "GLOB" || $1 == "DEFAULTGLOB" { nrx[$2]++; next }
     $1 == "MEMBER" { nm++; mem[nm] = $2; next }
     $1 == "RAW" { nraw[$2]++; raw[$2, nraw[$2]] = $3; next }
@@ -645,8 +644,7 @@ while IFS=$'\t' read -r kind f1 f2 f3 f4; do
       printf '  fails an undecidable glob rather than passing it, because a glob\n'
       printf '  silently called harmless is the fail-open it exists to catch.\n'
       printf '  Every glob inside a region is classified, the default member and\n'
-      printf '  a lone claimant included, and neither is a position the pairwise\n'
-      printf '  comparison ever reaches. Express the glob in the dialect, or\n'
+      printf '  a lone claimant included. Express the glob in the dialect, or\n'
       printf '  teach the classifier and this check the new construct together.\n'
       printf '  repair:  bash .gaia/scripts/write-audit-remits.sh\n'
       printf '\n'

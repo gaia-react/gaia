@@ -186,9 +186,9 @@ auditors:
       # NOT collapsed to a single `.gaia/cli/*.config.*`. That one-glob form is
       # unavailable rather than unwanted: `*` matches any run within a segment,
       # so it also spells `.gaia/cli/x.config.sh`, which the shell member's
-      # `.gaia/**/*.sh` already claims, and the roster's disjointness invariant
-      # decides claimant overlap as GLOB LANGUAGES rather than over the files
-      # that happen to exist. The dialect has no way to subtract an extension.
+      # `.gaia/**/*.sh` already claims, and claimant overlap is judged as GLOB
+      # LANGUAGES rather than over the files that happen to exist. The dialect
+      # has no way to subtract an extension.
       # What retires the hand-enumeration defect is the coverage invariant
       # below, not this line: a sixth config extension added here without a
       # roster entry is now reported ownerless instead of merging unreviewed.

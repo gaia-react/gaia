@@ -667,8 +667,8 @@ jobs:
       # here rather than resting on whatever the runner image happens to
       # preinstall.
       #
-      # zsh backs three suites under .gaia/scripts/tests/ (audit-key-lib,
-      # main-only-lib, audit-window-lib), and those `skip`
+      # zsh backs four suites under .gaia/scripts/tests/ (audit-key-lib,
+      # main-only-lib, audit-window-lib, branch-name-lib), and those `skip`
       # SILENTLY when it is absent, so its absence looks identical to a clean
       # tree rather than reporting red. That silent-skip hazard is the whole
       # reason the apt step below names the legs it runs on rather than being
