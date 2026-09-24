@@ -1,8 +1,8 @@
 name: Audit CI Tests
 
-# Runs the bats suites for the .github/audit/ helpers that
-# code-review-audit.yml consumes, resolve-audit-base.sh (incremental review
-# base) and resolve-check-base.sh, plus the
+# Runs the bats suites for the .github/audit/ helpers,
+# resolve-audit-base.sh (code-review-audit.yml's incremental review base) and
+# resolve-check-base.sh (tests.yml's check base), plus the
 # pr-merge-audit-check.sh PreToolUse merge hook (GAIA-Audit status reader).
 # Maintainer-only:
 # adopters receive these as GAIA-controlled (`owned`) code they never

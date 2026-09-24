@@ -8,8 +8,9 @@ name: Code Review Audit
 # differs from the copy on the repository's default branch
 # (claude-code-action's workflow-validation guardrail would refuse to
 # run, so the audit cannot complete regardless). (b) is reached both by a PR
-# that edits this file and by one on a stale base that never touched it, which
-# is why its skip status names the mismatch rather than blaming the author.
+# that edits this file and by one on a stale base that never touched it.
+# Either skip posts no `GAIA-Audit` status, so a local audit run supplies it;
+# for the stale-base case a rebase onto the default branch also clears (b).
 # Adopter-tunable knobs live at .gaia/audit-ci.yml.
 #
 # Per-author mode (local vs ci): the "Resolve audit decision" step calls the
@@ -27,8 +28,8 @@ name: Code Review Audit
 # Required-check semantics under classic branch protection: the job is
 # green-by-design on every code path (including a local-mode stand-down where
 # no audit ran); the GATE is the `GAIA-Audit` commit STATUS, not the job name.
-# Each path still reaches a terminal status step so the job concludes
-# cleanly. A `pending` GAIA-Audit status (the stand-down) blocks
+# Every path except the gate-label and self-modification skips reaches a
+# terminal status step so the job concludes cleanly; those two post no status. A `pending` GAIA-Audit status (the stand-down) blocks
 # the merge button; a `success` status with HEAD's version+tree clears it. All
 # gating is expressed at the step level (mirrors `.github/workflows/tests.yml`).
 #
@@ -245,8 +246,8 @@ jobs:
           # rejection carrying error_code
           # workflow_not_found_on_default_branch. When this PR's copy of the
           # workflow differs from that one, the audit cannot run, so skip
-          # cleanly and surface a truthful comment instead of letting the
-          # abort path post a misleading message.
+          # cleanly instead of letting the abort path red the job for an
+          # audit the action refused.
           #
           # The comparison is against the DEFAULT branch, not this PR's own
           # base ref, because that is the ref the guardrail validates. The
@@ -724,7 +725,7 @@ jobs:
           # clean-no-push stamp step, which requires a marker keyed to the
           # PUSHED head's digest. Whatever this step built before dying is
           # unattested, so nothing is stamped and the merge gate stays shut; the
-          # refusal buys a truthful status and comment, never clearance.
+          # refusal buys a truthful status, never clearance.
           #
           # `pushed=false` is what the trap knows, not always what happened: an
           # abort between `git push` returning and the push arm writing its
@@ -1538,10 +1539,11 @@ jobs:
       # ----------------------------------------------------------------
       # Terminal step. Fires only when the audit ran but did not complete
       # cleanly, so the job reds instead of silently succeeding with no
-      # signal. Every other code path already reached its terminal
+      # signal. Every other code path either reached its terminal
       # `GAIA-Audit` commit status write above (the stamp / stand-down
-      # steps) and needs nothing further here: the required-check gate is
-      # that commit STATUS, not the job name.
+      # steps) or is a gate-label or self-modification skip, which posts no
+      # status; none needs anything further here: the required-check gate
+      # is that commit STATUS, not the job name.
       # ----------------------------------------------------------------
 
       - name: Status - audit aborted
@@ -1560,7 +1562,7 @@ jobs:
           steps.decision.outputs.should_run == 'true' &&
           steps.audit.outcome != 'success'
         run: |
-          echo "::error::code-review-audit aborted: audit step timeout, max-turns, SDK error, or transient API failure (see workflow run logs)"
+          echo "::error::code-review-audit aborted: audit step timeout, max-turns, SDK error, transient API failure, or workflow-validation refusal (see workflow run logs)"
           exit 1
 
       # ----------------------------------------------------------------

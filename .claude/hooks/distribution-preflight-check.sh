@@ -25,9 +25,10 @@
 #   gate; it only denies earlier than a manual audit would have caught it.
 #
 # WHAT THIS DOES NOT COVER: the underlying classifier (`gaia-maintainer
-# release manifest --check`) has two further independent failure conditions,
-# region-declaration drift and the shipped-issue-reference lint, and this hook
-# evaluates neither. Both omissions are deliberate, and for the same reason.
+# release manifest --check`) also reports region-declaration drift, and the
+# shipped-issue-reference lint (`.gaia/scripts/lint-shipped-issue-refs.sh`)
+# enforces a related rule; this hook evaluates neither. Both omissions are
+# deliberate, and for the same reason.
 # The claim above is that this hook is only ever a cheaper way to find out
 # what a full `/distribution-audit` run would tell you, and that holds only
 # while every arm here answers from the same state that full check reads:
@@ -59,8 +60,9 @@
 #   drift is. Evaluated here it would deny on a working tree the PR never
 #   contains, which is exactly what the guarantee below forbids.
 #
-# So both stay uncovered here and surface only at a manual `/distribution-audit`
-# run or at release time. That gap in local coverage is the accepted price of
+# So both stay uncovered here: region drift surfaces at a manual
+# `/distribution-audit` run or at release time, and the lint runs in
+# `.gaia/tests/whole-tree-invariants.sh`. That gap in local coverage is the accepted price of
 # the guarantee that a deny here always means `/distribution-audit` would flag
 # the same file.
 #
