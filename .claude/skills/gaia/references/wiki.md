@@ -198,7 +198,7 @@ The whole chain lands on **one branch and one PR**, not one PR per stage. The pa
 
 2. **Sync.** Run the "Sync" section above. Capture the final summary. The chain branch is already checked out, so sync's Step 7 (`gaia wiki sync land --branch-aware`) commits in place on the chain branch rather than opening its own PR.
 
-3. **Inspect last line of summary.** Step 9 of sync emits `CONSOLIDATE_TRIGGERED: <true|false>` as the summary's last line on normal sync paths (including drift=0). The line is **absent** on the re-anchor path (Step 1 rebase recovery) and on partial-sync interruptions (Step 7 failure mode), both leave the wiki in a known-incomplete state. Branch on its presence:
+3. **Inspect last line of summary.** Step 9 of sync emits `CONSOLIDATE_TRIGGERED: <true|false>` as the summary's last line on normal sync paths (including drift=0). The line is **absent** on the re-anchor path (Step 1 rebase recovery) and on every interruption and abort `references/wiki/sync.md`'s Failure modes section lists, all of which leave the wiki in a known-incomplete state. Branch on its presence:
    - **Line absent**: skip consolidate and lint, then go straight to step 6 (finish) and surface the exceptional state. `chain finish` lands a lone re-anchor commit, removes the branch if sync committed nothing, or leaves an aborted (uncommitted) tree in place for the maintainer.
    - **`CONSOLIDATE_TRIGGERED: true`**: run consolidate (step 4), then lint (step 5), then finish (step 6).
    - **`CONSOLIDATE_TRIGGERED: false`**: skip consolidate, run lint (step 5), then finish (step 6).

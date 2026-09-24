@@ -106,5 +106,4 @@ The rule the two scripts split between them: **never block the hook** is kept on
 ## Pairs with
 
 - [[Token Cost Readout]]: the `by_model` pricing surfaces (rate card, shared pricing lib, the machine-local overlay, tally-time vs roll-up-time dollar figures) built on top of this ledger.
-- [[Claude Integration Fitness]]: the cost-rate category that scans this ledger for models nothing can price, and the human-gated `rate-overlay` lane that remedies them.
 - [[Task Orchestration]]: the merge-time reconcile and retention lifecycle that eventually removes the folder this ledger's rows outlive.
