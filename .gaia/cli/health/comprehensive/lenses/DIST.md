@@ -70,9 +70,8 @@ In this order:
    `bundle:maintainer` scripts (lines 7-9).
 5. `.github/workflows/release.yml` — full tag-triggered pipeline: manifest
    check, stage, scrub, runtime-deps, distribution gate, tarball.
-6. `.github/workflows/distribution.yml` and `.github/workflows/cli-tests.yml`
-   — compare their `on:` triggers against `release.yml`'s to confirm which
-   PRs actually exercise which gate.
+6. `.github/workflows/cli-tests.yml` — compare its `on:` triggers against
+   `release.yml`'s to confirm which PRs actually exercise which gate.
 7. `.gaia/tests/distribution/` layout — `README.md` plus the 8 numbered
    scenarios and `lib/`.
 

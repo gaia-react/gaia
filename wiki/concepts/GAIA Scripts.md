@@ -105,7 +105,7 @@ The index is held to the tree by `.gaia/scripts/lint-scripts-wiki-inventory.sh`,
 | `lint-hook-wiki-inventory.sh` | no | GAIA's own shell-lint harness | Flags a hook absent from the bundled-hooks inventory page. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
 | `lint-retired-label-spellings.sh` | no | GAIA's own invariant harness | Fails when a label spelling the registry records as retired still occurs in tracked source. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
 | `lint-scripts-wiki-inventory.sh` | no | GAIA's own shell-lint harness | Flags a root script of this directory absent from the index on this page. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
-| `lint-shipped-issue-refs.sh` | no | `distribution-audit-pr.yml` | Flags an unqualified issue or pull-request reference on a shipped non-Markdown file. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
+| `lint-shipped-issue-refs.sh` | no | `audit-ci-tests.yml`, `.gaia/tests/whole-tree-invariants.sh` | Flags an unqualified issue or pull-request reference on a shipped non-Markdown file. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
 | `lint-sigpipe-readers.sh` | no | `shell-lint.yml`, `audit-ci-tests.yml` | Flags a short-circuiting reader downstream of a pipe under `pipefail`, where the pipeline status inverts on a match. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
 | `lint-stale-cardinals.sh` | no | GAIA's own shell-lint harness | Flags a definite cardinal in a comment or a bats test name that states how many of something the tree holds, where nothing recounts the set. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
 | `lint-wiki-cached-version.sh` | no | GAIA's own shell-lint harness | Flags a `version:` field in wiki frontmatter, a hand-kept copy of a number `package.json` already holds. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
@@ -124,9 +124,9 @@ The index is held to the tree by `.gaia/scripts/lint-scripts-wiki-inventory.sh`,
 
 | Script | Ships | Invoker | What it is |
 |---|---|---|---|
-| `verify-audit-roster.sh` | yes | GAIA's own CI (maintainer-side) | Deterministic check of the Code Audit Team roster against the member definitions it generates. |
+| `verify-audit-roster.sh` | yes | run by hand (maintainer-side) | Deterministic check of the Code Audit Team roster against the member definitions it generates. |
 | `verify-cli-bundle-fresh.sh` | no | `cli-tests.yml`, `release.yml` | Asserts the committed CLI bundles and templates are exactly what rebuilding from source produces. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
-| `verify-required-checks.sh` | no | `verify-required-checks.yml`, `audit-ci-tests.yml` | Detects drift between the checks this repo requires to merge and the live GitHub ruleset. It never writes to the ruleset. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
+| `verify-required-checks.sh` | no | `/gaia-release` preflight | Detects drift between the checks this repo requires to merge and the live GitHub ruleset. It never writes to the ruleset. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
 
 ### Unprefixed
 

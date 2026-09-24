@@ -123,11 +123,6 @@ setup() {
   [ "$output" = '{"ok":false,"allowed":[],"denied":[{"path":"eslint.config.ts","reason":"default-deny-unenumerated"}]}' ]
 }
 
-@test "denylist: .github/CODEOWNERS (explicit .github/ tree deny, RT-06)" {
-  run "$SCRIPT" .github/CODEOWNERS
-  [ "$output" = '{"ok":false,"allowed":[],"denied":[{"path":".github/CODEOWNERS","reason":"denylist"}]}' ]
-}
-
 @test "default-deny: sibling of an allowlist prefix does not match" {
   # `.gaia/cliques/` is NOT `.gaia/cli/`; trailing-slash discipline prevents
   # bleed.
@@ -307,27 +302,4 @@ setup() {
     *'"reason":"path-traversal:contains-..-segment"'*) ;;
     *) printf 'unexpected output: %s\n' "$output" >&2; return 1 ;;
   esac
-}
-
-# --- explicit .github denylist (RT-06) -------------------------------------
-#
-# The workflow header and wiki claim `.github/forensics/` is denylisted, but
-# the RULES set previously only enumerated `.github/workflows/`. Explicit
-# `.github/forensics/` and `.github/` deny rules make the CODE match the
-# claim: these paths report `reason:"denylist"`, not
-# `default-deny-unenumerated`.
-
-@test "denylist: .github/forensics/ (explicit, not default-deny)" {
-  run "$SCRIPT" .github/forensics/check-scope.sh
-  [ "$output" = '{"ok":false,"allowed":[],"denied":[{"path":".github/forensics/check-scope.sh","reason":"denylist"}]}' ]
-}
-
-@test "denylist: .github/ tree, e.g. dependabot.yml" {
-  run "$SCRIPT" .github/dependabot.yml
-  [ "$output" = '{"ok":false,"allowed":[],"denied":[{"path":".github/dependabot.yml","reason":"denylist"}]}' ]
-}
-
-@test "denylist: .github/workflows/ still denied after explicit .github/ rules" {
-  run "$SCRIPT" .github/workflows/forensics-triage.yml
-  [ "$output" = '{"ok":false,"allowed":[],"denied":[{"path":".github/workflows/forensics-triage.yml","reason":"denylist"}]}' ]
 }

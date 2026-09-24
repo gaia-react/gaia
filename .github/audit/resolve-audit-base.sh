@@ -44,23 +44,12 @@
 # Output (stdout), argument-less form
 #   Exactly ONE line, suitable for a `base...HEAD` diff:
 #     <40-hex-sha>: resolved incremental base (an audited PR ancestor)
-#     refs/remotes/origin/<base-ref>: fallback: review the full PR diff,
-#       scoped to the branch the PR merges into (GITHUB_BASE_REF, read under
-#       Actions only, which sets it on every pull_request event)
-#     refs/remotes/origin/main: the same fallback outside Actions, or when no
-#       base ref is declared
+#     origin/<base-ref>: fallback: review the full PR diff, scoped to the
+#       branch the PR merges into (GITHUB_BASE_REF, read under Actions only,
+#       which sets it on every pull_request event)
+#     origin/main: the same fallback outside Actions, or when no base ref is
+#       declared
 #     (or main when neither remote-tracking ref resolves)
-#
-#   Every remote-tracking name is emitted FULLY QUALIFIED, and every probe
-#   below reads the same spelling. git resolves refs/tags/<x> ahead of
-#   refs/remotes/<x>, so a short `origin/<x>` can be answered by a tag
-#   literally named `origin/<x>` -- both here and again in the consumer that
-#   re-resolves the emitted name. It is silent either way, because
-#   `rev-parse --verify --quiet` suppresses git's ambiguity warning. Such a
-#   tag reaches an Actions runner whatever `fetch-tags` says: the checkout's
-#   fetch refspec carries `+refs/tags/*:refs/tags/*` explicitly, which
-#   overrides both that input and `--no-tags`. A shadow at HEAD empties the
-#   reviewed delta and a member then earns a clearance having read nothing.
 #
 # Output (stdout), --member form
 #   Exactly FOUR newline-terminated lines:
@@ -220,8 +209,6 @@
 # Conventions
 #   - Bash 3.2 compatible (macOS default). No associative arrays / mapfile.
 #   - Never `cd`s (per .claude/rules/shell-cwd.md). Uses git -C "$repo_root".
-#   - Mirrors the frozen trailer regex + status-parse logic in
-#     .github/audit/check-trailer.sh.
 
 set -euo pipefail
 
@@ -288,7 +275,7 @@ if [ -z "$repo_root" ]; then
   # Defensive: not in a git repo, so nothing can be sourced out of the
   # checkout either. Full scope; the caller's git will error loudly on the
   # broken environment.
-  main_ref="refs/remotes/origin/main"
+  main_ref="origin/main"
   shared_base="$main_ref"
   echo "resolve-audit-base: not inside a git checkout; resetting to full scope (${main_ref})." >&2
   emit "$main_ref" degraded ""
@@ -324,27 +311,21 @@ resolve_main_ref() {
   # repository default, which is what a local run keeps.
   if [ "${GITHUB_ACTIONS:-}" = "true" ] \
     && [ -n "${GITHUB_BASE_REF:-}" ] \
-    && git -C "$repo_root" rev-parse --verify --quiet "refs/remotes/origin/${GITHUB_BASE_REF}" >/dev/null 2>&1; then
-    printf 'refs/remotes/origin/%s' "$GITHUB_BASE_REF"
+    && git -C "$repo_root" rev-parse --verify --quiet "origin/${GITHUB_BASE_REF}" >/dev/null 2>&1; then
+    printf 'origin/%s' "$GITHUB_BASE_REF"
     return 0
   fi
-  if git -C "$repo_root" rev-parse --verify --quiet refs/remotes/origin/main >/dev/null 2>&1; then
-    printf 'refs/remotes/origin/main'
+  if git -C "$repo_root" rev-parse --verify --quiet origin/main >/dev/null 2>&1; then
+    printf 'origin/main'
     return 0
   fi
   if git -C "$repo_root" rev-parse --verify --quiet main >/dev/null 2>&1; then
     printf 'main'
     return 0
   fi
-  # Last resort: emit the main ref anyway (matches the existing workflow's
+  # Last resort: emit origin/main anyway (matches the existing workflow's
   # assumption; the caller's diff errors loudly if it truly can't resolve).
-  # Qualified like the two remote-tracking arms above, so an unresolvable last
-  # resort stays unresolvable rather than becoming satisfiable by a shadowing
-  # tag. The local-branch arm just above is NOT qualified: a tag named `main`
-  # still answers for it, on the same terms and just as silently. Qualifying it
-  # changes an emitted contract several suites pin, so it is recorded rather
-  # than closed here.
-  printf 'refs/remotes/origin/main'
+  printf 'origin/main'
 }
 main_ref="$(resolve_main_ref)"
 shared_base="$main_ref"
@@ -406,7 +387,7 @@ else
 fi
 
 # -----------------------------------------------------------------------------
-# Signal extractors (frozen regex + status shape mirror check-trailer.sh).
+# Signal extractors (frozen regex + status shape for the GAIA-Audit trailer).
 # -----------------------------------------------------------------------------
 
 # C3: version, frontend-digest (64-hex), tree (40-hex).
@@ -483,7 +464,6 @@ for lib_file in audit-scope.sh audit-machinery.sh audit-rules-changed.sh audit-c
   # existence test admits an unparseable lib, and under errexit bash 3.2.57
   # dies at the load rather than at the `||`. Same shape, same reason.
   set +e
-  # shellcheck source=/dev/null
   [ -f "${lib_dir}/${lib_file}" ] && . "${lib_dir}/${lib_file}" 2>/dev/null
   set -e
 done
@@ -655,37 +635,6 @@ if [ -n "$reset_hit" ]; then
   reset_tier=""
   reset_path=""
   IFS="$TAB" read -r reset_tier reset_path <<<"$reset_hit"
-  # The member tier's trigger is the whole file: any change to
-  # .claude/agents/<member>.md re-arms this reset, a reworded sentence as
-  # readily as a rewritten remit, and the member then re-reviews the whole
-  # pull request's diff against its remit instead of the delta since its
-  # anchor. That breadth is chosen, and it is the expensive choice: a round of
-  # prose repairs spanning several definitions pays that widened re-review for
-  # every member it touches.
-  #
-  # It is chosen because a member definition is an instruction file, where the
-  # prose IS the logic and no syntactic split separates a comment-only edit
-  # from a behavior-changing one. "Prefer" becoming "always" inside a remit
-  # rewrites what the member looks for, and only the surrounding sentence says
-  # so. The narrowings that look attractive fail on their own terms. Resetting
-  # only outside regions marked non-normative has no region to key on: the
-  # gaia:maintainer-only markers mark AUDIENCE, a maintainer-only paragraph
-  # still instructs, and most member definitions carry no marker at all, so a
-  # new convention would rest the reset on whoever remembered to mark a
-  # region. Exempting a member's own round-trip repair is backwards, because
-  # the member reviewed under the OLD definition and its correction is what
-  # changes the instructions it runs under next.
-  #
-  # The direction of the miss settles it. Resetting too often costs tokens and
-  # wall-clock, and both are visible in the run that pays them. Resetting too
-  # rarely lets a member earn a clearance marker over a surface narrower than
-  # its changed instructions warrant, and the merge gate believes the marker
-  # rather than re-deriving the scope behind it, so nothing downstream catches
-  # that one.
-  #
-  # What stays open is the number of resets rather than the trigger: batching
-  # a round's definition repairs into one commit pays one reset, not one per
-  # commit.
   if [ "$reset_tier" = "member" ]; then
     echo "resolve-audit-base: ${member}'s own agent definition changed between ${winner} and HEAD (${reset_path}); resetting to full scope (${main_ref})." >&2
     emit "$main_ref" rules-reset-member ""

@@ -55,51 +55,7 @@ inputs:
 runs:
   using: 'composite'
   steps:
-    # This step reaches the npm registry twice on every call on every leg:
-    # `npm ci` pulls the action's own committed bootstrap pnpm, then
-    # `pnpm self-update` pulls the version the root `package.json`
-    # `packageManager` field pins. A fast failure in either -- a registry 5xx,
-    # a connection reset, an `npm ci` error -- used to fail the whole composite
-    # with nothing retrying it, so the second attempt below covers that.
-    #
-    # A second attempt is safe because the action's `runSelfInstaller` opens
-    # with an unconditional recursive-and-forced remove of its destination
-    # directory before it installs anything, so a half-written install from the
-    # first attempt is wiped rather than reused. That property is the whole
-    # reason this repair is a handful of lines instead of a provisioning
-    # rewrite; a release that dropped it, adding a short-circuit on an existing install,
-    # would make a retry over a partial tree unsafe, so re-read it when the pin
-    # moves.
-    #
-    # It does NOT cover a stall. The caller's step-level `timeout-minutes`
-    # kills the outer `uses:` step, which is this whole composite, so no inner
-    # step survives to retry. Bounding an attempt below the caller's cap needs
-    # `timeout -k` around a `run:` install, which is a provisioning rewrite
-    # reaching every call site; gaia-react/gaia#1783 tracks that half on its
-    # own terms.
-    #
-    # Running the action twice also registers its `post:` step twice. Harmless
-    # as this composite stands, but on two gates rather than one: that step
-    # runs a store prune gated on the action's `run_install` input and a cache
-    # save gated on its `cache` input. This composite passes the action no
-    # `with:` at all, so both sit at their defaults and both arms no-op. A
-    # `with:` added here has to be checked against the gate that governs the
-    # input being added, not against `cache` alone.
-    - id: install-pnpm
-      continue-on-error: true
-      uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
-    # Long enough for a transient registry fault to clear, short enough to stay
-    # well inside the three-minute cap the leanest call site declares, which
-    # has to hold the pause and both attempts.
-    - name: Pause before retrying the pnpm install
-      if: steps.install-pnpm.outcome == 'failure'
-      shell: bash
-      run: sleep 15
-    # Deliberately no `continue-on-error` here: the retry is the last word, so
-    # its failure fails the composite exactly as the single attempt used to.
-    - name: Retry the pnpm install
-      if: steps.install-pnpm.outcome == 'failure'
-      uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+    - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
     - name: Setup Node
       uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
       with:

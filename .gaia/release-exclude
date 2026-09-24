@@ -140,7 +140,7 @@
 # is not pointed at their own tracker. Withheld because that obligation is
 # GAIA's, not the adopter's -- on an adopter clone a `#NNN` in a file they edited
 # means their tracker, and this gate would demand they mislabel it as GAIA's. Its
-# runners (the Distribution Audit workflow and its bats suite) are both
+# runners (its bats suite and `.gaia/tests/whole-tree-invariants.sh`) are both
 # release-excluded, so shipping it would ship a check nothing on an adopter clone
 # invokes and whose verdict would be wrong there anyway.
 .gaia/scripts/lint-shipped-issue-refs.sh
@@ -334,13 +334,11 @@ wiki/decisions/Local Test Runtime.md
 # `v*.*.*` tags); adopters never release GAIA. `cli-tests.yml` runs the
 # .gaia/cli/ vitest suite; adopters receive only the bundled binary, so
 # the test workflow has nothing to test on their side.
-# `audit-ci-tests.yml` runs the bats suite for
-# `.github/audit/check-trailer.sh`; adopters receive that script as
+# `audit-ci-tests.yml` runs the bats suites for the `.github/audit/`
+# helpers (resolve-audit-base.sh, resolve-check-base.sh) that
+# code-review-audit.yml consumes; adopters receive those scripts as
 # GAIA-controlled code they never edit, so the suite guards only
-# maintainer changes. `distribution.yml`
-# runs the maintainer-only `.gaia/tests/distribution/` harness against a
-# staged release tree using a Claude OAuth org secret; adopters never
-# distribute GAIA. `forensics-triage.yml` runs autonomous Claude Code
+# maintainer changes. `forensics-triage.yml` runs autonomous Claude Code
 # triage against `gaia-forensics`-labeled issues on the upstream
 # `gaia-react/gaia` repo; the workflow's helpers under `.github/forensics/`
 # include scope checks, classifier prompts, fixtures, and bats tests that
@@ -351,44 +349,14 @@ wiki/decisions/Local Test Runtime.md
 # shellcheck over GAIA's framework bash via the `.gaia/tests/shell-lint.sh`
 # harness (already excluded by the `.gaia/tests` entry in category 3); adopters
 # run that bash but never author it, so the linter guarding it has no adopter
-# surface. `distribution-audit-pr.yml` fails a PR that introduces a
-# newly-shipping file the committed manifest does not answer, by running the
-# maintainer-only `gaia-maintainer release manifest --check`; the binary and the
-# manifest exist only on the GAIA team's clone, so the gate has no adopter
-# surface. `verify-required-checks.yml` (#807) runs the maintainer-only
-# .gaia/scripts/verify-required-checks.sh advisory drift check against the
-# GAIA team's own branch ruleset; an adopter clone has neither that ruleset
-# nor the script it depends on (already excluded, category 1). All would be
-# silent passengers at best and confusing CI failures at worst on adopter
-# clones.
+# surface. All would be silent passengers at best and confusing CI failures
+# at worst on adopter clones.
 .github/workflows/release.yml
 .github/workflows/cli-tests.yml
 .github/workflows/audit-ci-tests.yml
-.github/workflows/distribution.yml
 .github/workflows/forensics-triage.yml
 .github/workflows/code-review-audit.yml
 .github/workflows/shell-lint.yml
-.github/workflows/distribution-audit-pr.yml
-.github/workflows/verify-required-checks.yml
-# `audit-roster.yml` runs .gaia/scripts/verify-audit-roster.sh's advisory
-# drift check against the GAIA team's own Code Audit Team roster
-# (.gaia/audit-ci.yml) and CI on this repo's pull requests. The workflow is
-# excluded, not the check: an adopter clone's own roster is adopter-owned,
-# so this workflow would be a silent passenger there. The check itself, and
-# its repair writer (.gaia/scripts/write-audit-remits.sh), ship to every
-# clone and are run by hand on an adopter clone.
-.github/workflows/audit-roster.yml
-# `pr-title.yml` enforces THIS repo's declared commit-type vocabulary on PR
-# titles. An adopter's vocabulary is their own, and the check would fail their
-# PRs against a list they never agreed to; the `gaia ci-check-subject`
-# subcommand it calls does ship, so an adopter who wants the gate can wire it.
-.github/workflows/pr-title.yml
-# `label-registry.yml` runs `gaia labels docs --check` and `gaia labels check`
-# against GAIA's own tree and its own `.gaia/labels.json` registry. An
-# adopter's labels are the adopter's business; their clone gets the registry,
-# the schema, the generated page, and the `gaia labels` CLI, but not this CI
-# job asserting parity against GAIA's own tree.
-.github/workflows/label-registry.yml
 # `cli-advisory-scan.yml` runs the advisory arm of
 # .gaia/scripts/check-cli-workspace-floors.sh on a schedule, against .gaia/cli's
 # dependency closure. Excluded on the same reasoning as the check itself
@@ -396,14 +364,6 @@ wiki/decisions/Local Test Runtime.md
 # on this clone, so on an adopter's the job would red daily over a directory they
 # do not have.
 .github/workflows/cli-advisory-scan.yml
-# `dependabot.yml` schedules weekly bumps of the full-SHA action pins in
-# `.github/workflows/`, a directory that on this clone is the maintainer-only
-# workflows plus the two shipped ones. An adopter clone has neither those
-# workflows nor a reason to inherit a bot that opens pull requests against them
-# on a schedule; GAIA's adopter-facing CI installs on demand via `/setup-gaia`
-# for exactly that reason, and the pins inside `tests.yml` and `chromatic.yml`
-# reach adopters as an `/update-gaia` merge once they are bumped here.
-.github/dependabot.yml
 .github/forensics
 
 # --- 10. Maintainer-only health-audit infrastructure ---

@@ -1,8 +1,8 @@
 name: Audit CI Tests
 
 # Runs the bats suites for the .github/audit/ helpers that
-# code-review-audit.yml consumes, check-trailer.sh (skip-logic gate) and
-# resolve-audit-base.sh (incremental review base), plus the
+# code-review-audit.yml consumes, resolve-audit-base.sh (incremental review
+# base) and resolve-check-base.sh, plus the
 # pr-merge-audit-check.sh PreToolUse merge hook (GAIA-Audit status reader).
 # Maintainer-only:
 # adopters receive these as GAIA-controlled (`owned`) code they never
@@ -136,17 +136,6 @@ jobs:
               # source-dir pairing, the same pairing as the three instruction
               # files below, not the thing arming it.
               - '.github/workflows/code-review-audit.yml'
-              # distribution-audit-pr-gate.bats (.gaia/scripts/tests/) EXECUTES
-              # the `run:` body extracted from distribution-audit-pr.yml, so that
-              # workflow is a source this suite guards rather than a file it
-              # merely mentions. Redundant today: the `.github/workflows/**`
-              # catch-all below already matches it, and `.gaia/scripts/**` arms
-              # the suite a second way. Listed deliberately anyway, the same
-              # convention the `sandbox:` filter uses for its own redundant
-              # entries, so that narrowing either glob later cannot silently drop
-              # this source. It is documentation of the pairing, not the thing
-              # arming it.
-              - '.github/workflows/distribution-audit-pr.yml'
               # '.claude/hooks/**' is the superset of the specific hooks this
               # suite used to filter on (repo-scope.sh, pr-merge-audit-check.sh,
               # post-audit-status.sh); it now also covers every hook exercised
@@ -573,14 +562,14 @@ jobs:
               # entries at the top of this filter use, so that narrowing
               # `**/*.sh` later cannot silently unarm this directory. The
               # widening it costs is small and worth naming: the only files
-              # this newly matches are the seven under
+              # this newly matches are the six under
               # .github/ that no glob above reaches -- CODEOWNERS, FUNDING.yml,
-              # dependabot.yml, the pull request template and the three issue
+              # the pull request template and the three issue
               # templates -- so a PR touching one of those, and nothing else, now
               # runs the full bats matrix. Only CODEOWNERS used to run no step at
               # all: it carries no extension, so it matches none of the four
               # broad type globs at the end of the filter below, while the other
-              # six already armed that filter's leg alone through its '**/*.yml'
+              # five already armed that filter's leg alone through its '**/*.yml'
               # and '**/*.md' entries, which reach into .github/ because the
               # matcher runs with dot-matching on (see the note at those globs).
               - '.github/**'

@@ -92,8 +92,8 @@ transforms:
 
   # Maintainer-only hook registrations inside a shipped settings file.
   # distribution-preflight-check.sh is release-excluded (it names
-  # .gaia/cli/gaia-maintainer and .github/workflows/distribution-audit-pr.yml,
-  # both release-excluded), so its committed registration in .claude/settings.json
+  # .gaia/cli/gaia-maintainer, also release-excluded), so its committed
+  # registration in .claude/settings.json
   # (manifest class `shared`, reaches adopters) would leave every adopter's
   # PreToolUse/Bash chain pointing at a file absent from their clone. The
   # selector empties the matching element from each PreToolUse entry's hooks

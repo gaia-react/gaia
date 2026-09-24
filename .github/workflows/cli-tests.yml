@@ -49,7 +49,7 @@ jobs:
     #
     # `pull-requests: read` is load-bearing for paths-filter, which resolves a
     # PR's changed files through the API (the same reasoning spelled out in
-    # verify-required-checks.yml). Omitting it works only while this repo is
+    # audit-ci-tests.yml). Omitting it works only while this repo is
     # public; the day it went private every run would 403 with "Resource not
     # accessible by integration", and since this is a required context that
     # would block every merge rather than redden one advisory check.
@@ -75,32 +75,13 @@ jobs:
               - '.gaia/cli/**'
               - '.github/workflows/cli-tests.yml'
               # The lint-pin parity guard (src/lint-pin-parity.test.ts) asserts
-              # .gaia/cli/package.json declares the same version as the root
-              # workspace for every pin the two share: the @gaia-react/lint
-              # preset, and the tools whose own version reaches lint output.
-              # A root-only bump to any of them is what causes that drift, and
+              # .gaia/cli/package.json pins the same @gaia-react/lint as the
+              # root workspace. A root-only bump is what causes that drift, and
               # tests.yml skips its whole suite for the `chore(deps):` title
               # /update-deps opens, so without this entry nothing evaluates the
               # guard on the PR that breaks it -- it would first fire on some
               # later, unrelated .gaia/cli/** change instead (#1051).
               - 'package.json'
-              # Same guard, second subject. Its resolution half asserts both
-              # workspaces RESOLVE the same version of every shared rule-bearing
-              # package, which no manifest states: they are direct dependencies
-              # of neither workspace and arrive transitively through a caret, so
-              # the only record of them is each lockfile. A root-only re-resolve
-              # is what floats that caret, and it moves no manifest, so without
-              # this entry the root-lockfile side of the guard is unreachable on
-              # the pull request that breaks it. The .gaia/cli side already lands
-              # under '.gaia/cli/**'.
-              - 'pnpm-lock.yaml'
-              # Third subject of the same guard: both workspaces must harden on
-              # the same terms (minimumReleaseAge, its strict flag, and
-              # trustPolicy). .gaia/cli is a separate pnpm root, so the settings
-              # exist twice by hand with nothing holding them together, and
-              # relaxing root's copy alone is the drift worth catching at the
-              # moment it is proposed.
-              - 'pnpm-workspace.yaml'
               # The audit-template dogfood drift-guard compares this in-tree
               # workflow against the bundled .tmpl. Editing the .tmpl already
               # lands under .gaia/cli/**; the live workflow is the other side
@@ -143,24 +124,6 @@ jobs:
               # entries whenever the action's inputs change.
               - '.node-version'
               - '.npmrc'
-              # The two Node-pin subjects the parity guard
-              # (src/node-pin-parity.test.ts) reads that nothing else in this
-              # list reaches. It holds `.node-version`, `.nvmrc`, and every
-              # `FROM node:<tag>` in `Dockerfile` to the `engines.node` floor in
-              # the root `package.json`; all four are edited independently, since
-              # a floor raise touches `package.json` alone and the repair that
-              # forgets a copy touches one of the other three alone.
-              # `package.json` and `.node-version` are already listed above for
-              # other guards, so only these two are added, and dropping either
-              # leaves a pull request that moves only it resolving `code=false`,
-              # skipping the Vitest step, and greening this required check having
-              # never compared the pin it changed. `Dockerfile` has no other
-              # cover at all: no workflow here builds it
-              # (`.gaia/tests/distribution/` builds a heredoc Dockerfile of its
-              # own), so this entry is the only thing that runs any assertion
-              # against the Node version an adopter's image would deploy.
-              - 'Dockerfile'
-              - '.nvmrc'
               # The second subject of the format-ignore-scope guard
               # (src/format-ignore-scope.test.ts). It holds the root `format`
               # script to a prettier ignore set that still consults
@@ -208,22 +171,6 @@ jobs:
               # .gaia/scripts/tests suites, and this job asserts the check
               # against the real workspace rather than against fixtures.
               - '.gaia/scripts/check-cli-workspace-floors.sh'
-              # src/red-ledger/extract-test-signals.test.ts spawns this helper
-              # to pin its stdout-exit contract: a reader that stops before EOF
-              # must leave it exiting 0 silently. Removing that helper's EPIPE
-              # listener is a change to this file and nothing else, so without
-              # this line such a pull request resolves `code=false`, skips the
-              # Vitest step, and reports this required check green having run
-              # the assertion zero times. The bats copy of the same assertion
-              # is no fallback, though not for the reason once written here: it
-              # sits in red-ledger-lib.bats, which is in the hooks exchange
-              # group, and audit-ci-tests.yml DOES install the root workspace on
-              # every leg of that group. Under CI that suite runs, and where its Node
-              # precondition is unmet it REDS rather than skipping, which is the
-              # whole point of gaia-react/gaia#1748. It is no fallback because
-              # the Vitest assertion is the one this job runs, not because the
-              # bats copy is inert.
-              - '.gaia/scripts/red-ledger/extract-test-signals.mjs'
               # The label registry and the JSON Schema beside it, both read from
               # the repo root by suites that live under `.gaia/cli/**`:
               # `src/labels/__tests__/registry.test.ts` pins the registry's entry
@@ -235,9 +182,7 @@ jobs:
               # `code=false`, the Vitest step skips, and the pins never run
               # against the change that invalidates them -- the stale pin first
               # fires on some later, unrelated `.gaia/cli/**` change, reddening a
-              # diff that did not cause it (#1510). `label-registry.yml` is no
-              # fallback: it runs the committed bundle's `labels docs --check`
-              # and `labels check`, and neither evaluates a Vitest assertion.
+              # diff that did not cause it (#1510).
               # Both files are listed because they change independently -- a
               # label edit moves the registry alone, a new enum value moves the
               # schema alone -- and either alone must re-run the job.
@@ -255,7 +200,7 @@ jobs:
               # green having run the divergence check zero times (#1513).
               # `audit-ci-tests.yml` is no fallback: it arms on the same glob but
               # runs bats shards only, and no bats suite reimplements this
-              # divergence check rather than approximate it.
+              # divergence check or even approximates it.
               # A glob rather than an itemized list, the same reasoning as the
               # workflows and actions globs above: the guard reads whatever
               # matches this name pattern, so a member added or removed later is
@@ -535,17 +480,17 @@ jobs:
         run: bash .gaia/scripts/check-cli-workspace-floors.sh --no-audit
 
   # PR-gated distribution harness. Before this job, the harness (run-all.sh,
-  # its scenarios, lib/) ran only at tag-push (release.yml) and manual
-  # workflow_dispatch (distribution.yml), so a change to the CLI bundle, the
-  # release-exclude set, or the scrub config that breaks the adopter tarball (a
-  # leak, a marker-strip regression, manifest drift) shipped through PR review
-  # and was caught only at release, when the fix is far more expensive.
+  # its scenarios, lib/) ran only at tag-push (release.yml), so a change to the
+  # CLI bundle, the release-exclude set, or the scrub config that breaks the
+  # adopter tarball (a leak, a marker-strip regression, manifest drift) shipped
+  # through PR review and was caught only at release, when the fix is far more
+  # expensive.
   #
   # This runs Layers 0+1 plus the adopter-flow regressions (07+) and the
   # deterministic marker-strip survival check. It passes NO
   # CLAUDE_CODE_OAUTH_TOKEN, so the Docker/secret-dependent scenarios (06, and
   # 15's advisory model probe) soft-pass-skip via their own guards; the full
-  # Layers 0+1+2 run stays with release.yml and distribution.yml, which have the
+  # Layers 0+1+2 run stays with release.yml, which has the
   # org secret. Not a declared-required context (see verify-required-checks.sh),
   # unlike the sibling cli-tests job. It shares that job's always-runs shape --
   # reporting green when the filter does not match -- so it is
@@ -773,7 +718,7 @@ jobs:
       #
       # It builds its own staging tree rather than reusing the step above,
       # which is what keeps it runnable standalone and inside run-all.sh for
-      # release.yml and distribution.yml. That second build is the entire cost:
+      # release.yml. That second build is the entire cost:
       # 3.3s measured end-to-end against a job that is otherwise 12s, versus
       # ~170s for the alternative of widening the harness filter to reach the
       # same files -- longer than the whole pull-request critical path, on

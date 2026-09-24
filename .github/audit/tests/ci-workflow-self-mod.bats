@@ -218,7 +218,7 @@ cut_stacked_base() {
 
   run run_self_mod_step "$body" "$head" "no-such-default-branch"
   [ "$status" -ne 0 ]
-  grep -qF 'refs/remotes/origin/no-such-default-branch' <<<"$output"
+  grep -qF 'origin/no-such-default-branch' <<<"$output"
   [ ! -s "$STEP_OUTPUT" ]
 }
 
@@ -229,23 +229,8 @@ cut_stacked_base() {
   local block
   block="$(extract_step_block 'Check workflow self-modification')"
   grep -qF 'DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}' <<<"$block"
-  # Fully qualified, so a tag named `origin/<default branch>` cannot answer for
-  # the remote-tracking ref. The short spelling is a substring of this one, so
-  # asserting it would stay green on a revert to it.
-  grep -qF 'default_ref="refs/remotes/origin/${DEFAULT_BRANCH}"' <<<"$block"
+  grep -qF 'origin/${DEFAULT_BRANCH}' <<<"$block"
   grep -qF 'github.event.pull_request.base.sha' <<<"$block" && return 1
   grep -qF 'BASE_SHA' <<<"$block" && return 1
-  true
-}
-
-@test "the skipped status names the default-branch mismatch and points at a rebase" {
-  # A PR on a stale base trips this step without touching the workflow, so the
-  # operator-facing reason has to name the real condition rather than assert an
-  # edit the author never made.
-  local block
-  block="$(extract_step_block 'Status - skipped (workflow self-modification)')"
-  grep -qF 'DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}' <<<"$block"
-  grep -qF 'rebase onto ${DEFAULT_BRANCH}' <<<"$block"
-  grep -qF 'PR modifies the audit workflow itself' <<<"$block" && return 1
   true
 }

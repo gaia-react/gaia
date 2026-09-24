@@ -1242,9 +1242,9 @@ The detail stays local. `post-findings-block.sh` projects each entry down to `fi
 
 Best-effort: a write failure here never blocks or alters the marker / stamp / status / dispositions-sidecar / ledger sequence above. Best-effort is not optional, though: fix the rejected entry and call the writer again, do not proceed with an unwritten report.
 
-## GAIA-Audit trailer (CI handshake)
+## GAIA-Audit trailer
 
-The `GAIA-Audit:` commit trailer written by `.claude/hooks/audit-stamp-trailer.sh` is the cross-machine companion to the local marker file. The marker file gates `gh pr merge` locally; the trailer travels with the commit through the network so CI can recognize an already-audited tree and skip its own audit run.
+The `GAIA-Audit:` commit trailer written by `.claude/hooks/audit-stamp-trailer.sh` is the cross-machine companion to the local marker file, stamped on both a local run and a CI run. The marker file gates `gh pr merge` locally; the trailer travels with the commit so a later local run (via the local merge hook) can recognize an already-audited tree. CI does not read this trailer to decide whether to run: it always runs the frontend audit when a PR is in scope. The trailer's other consumer is `.github/audit/resolve-audit-base.sh`, which reads it to resolve the next audit's incremental review base.
 
 Trailer shape, three positional fields:
 
@@ -1256,7 +1256,7 @@ GAIA-Audit: <agent-version> <frontend-digest> <tree>
 - `<frontend-digest>` is your own 64-hex content digest (owned files + machinery + in-scope-but-ownerless), the validity key CI recomputes and compares.
 - `<tree>` is the full 40-char `git rev-parse HEAD^{tree}` of the audited tree, a plain data field used only by the janitor's live-tree keep-arm, never for validity.
 
-The helper writes the trailer only when the working tree is clean, `.gaia/VERSION` exists and is non-empty, and the tree the audit reviewed (`AUDIT_TREE_SHA`) matches HEAD's current tree. Placement is automatic: amend on un-pushed HEADs, an empty commit on a detached HEAD (CI's own checkout shape; never silently rewriting published history), amend on the audit's own self-heal commits regardless of push state, and no commit at all on an attached HEAD that is already pushed, since the `GAIA-Audit` status the orchestrator posts later carries the same signal without moving the PR head. CI's "Check audit trailer" step parses the PR-HEAD commit message via `git interpret-trailers --parse`, recomputes the frontend digest through the classifier libs in its own checkout, and skips the agent invocation when both the version and the digest match the PR head's trailer; absent a trailer it falls back to reading the newest `GAIA-Audit` commit status.
+The helper writes the trailer only when the working tree is clean, `.gaia/VERSION` exists and is non-empty, and the tree the audit reviewed (`AUDIT_TREE_SHA`) matches HEAD's current tree. Placement is automatic: amend on un-pushed HEADs, an empty commit on a detached HEAD (CI's own checkout shape; never silently rewriting published history), amend on the audit's own self-heal commits regardless of push state, and no commit at all on an attached HEAD that is already pushed, since the `GAIA-Audit` status the orchestrator posts later carries the same signal without moving the PR head.
 
 ## Durable knowledge
 

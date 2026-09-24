@@ -66,8 +66,8 @@ Default-deny. Any path in neither list below is denylisted by default; allowlist
 | `.gaia/local/specs/`                  | GAIA spec artifacts.                                                    |
 | `.specify/extensions/gaia/templates/` | Template literals; mutating these affects every adopter.                |
 | `.github/workflows/`                  | Workflow files; covers self-modification of the triage workflow itself. |
-| `.github/forensics/`                  | Triage workflow scripts; runs cannot rewrite their own harness.         |
-| `.github/`                            | All other CI/automation config; catch-all deny.                         |
+
+Everything else, including `.github/forensics/` (the triage harness itself) and the rest of `.github/`, is denied by the path policy's own default: a candidate matching neither list resolves to `default-deny-unenumerated` rather than needing its own explicit denylist row.
 
 ## Label vocabulary
 

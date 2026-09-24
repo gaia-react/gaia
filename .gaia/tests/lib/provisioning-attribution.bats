@@ -15,18 +15,6 @@
 # suite built to prevent exactly that -- this is a sibling, not an extension,
 # and it does not touch W12 or its fixtures.
 #
-# THE COMPOSITE'S OWN RETRY CONSTRUCT. Nothing in the tree pinned it: before
-# this suite, a tree-wide search for its internal step names matched only the
-# composite file itself. That is a real match-region failure
-# (.claude/rules/guards-must-fail.md): `.github/actions/gaia-setup-node/
-# action.yml` carries the literal text "timeout -k" in a DOCBLOCK COMMENT
-# describing work this repo has deliberately deferred (gaia-react/gaia#1783),
-# so a naive substring search for that text is satisfied by prose over a
-# composite with no bounded install at all, structural or otherwise. This
-# suite's construct check reads `runs.steps` as parsed YAML instead, and
-# ships the substring search as its own companion assertion, proving the
-# oracle it replaces was the wrong one.
-#
 # Discovery walks these roots (.github/workflows, .github/actions,
 # .gaia/cli/src/automation/templates/workflows,
 # .gaia/cli/templates/workflows) from the tracked tree via `git ls-files`,
@@ -196,17 +184,6 @@ teardown() {
 #                       still will not parse, or that parses to neither a
 #                       `jobs:` mapping, a `runs.steps` mapping, nor a bare
 #                       step sequence.
-#   construct <file>    Asserts the composite's own two-step retry over
-#                       `runs.steps`: a first-attempt step carrying
-#                       `continue-on-error: true`, an `id`, and a
-#                       `pnpm/action-setup` `uses:`; then, later in the same
-#                       list, a step whose `uses:` is also
-#                       `pnpm/action-setup`, gated
-#                       `if: steps.<that id>.outcome == 'failure'`, carrying
-#                       NO `continue-on-error`. Exits 0 silently on success;
-#                       exits 2 naming the missing half of the construct on
-#                       failure, and naming unreadable YAML separately when
-#                       that is why it could not check at all.
 read_pv() {
   python3 - "$@" <<'PY'
 import re
@@ -344,40 +321,6 @@ if mode == 'steps':
     # it simply names nothing this check tracks.
     for row in rows:
         print('\t'.join(row))
-elif mode == 'construct':
-    try:
-        doc = yaml.safe_load(raw)
-    except yaml.YAMLError as exc:
-        die('unreadable YAML (%s)' % exc.__class__.__name__)
-    if not (isinstance(doc, dict) and isinstance(doc.get('runs'), dict)):
-        die('not a composite action (no runs: mapping)')
-    steps = doc['runs'].get('steps')
-    if not isinstance(steps, list) or not steps:
-        die('composite declares no runs.steps')
-    first_idx = None
-    first_id = None
-    for i, step in enumerate(steps):
-        if not isinstance(step, dict):
-            continue
-        if (classify_uses(step.get('uses', '')) == 'pnpm'
-                and step.get('continue-on-error') is True
-                and step.get('id')):
-            first_idx, first_id = i, str(step['id'])
-            break
-    if first_idx is None:
-        die('no first-attempt pnpm/action-setup step carries continue-on-error: true with an id')
-    retry_ok = False
-    for step in steps[first_idx + 1:]:
-        if not isinstance(step, dict):
-            continue
-        if classify_uses(step.get('uses', '')) != 'pnpm':
-            continue
-        gate = normalize(step.get('if', ''))
-        if gate == "steps.%s.outcome == 'failure'" % first_id and 'continue-on-error' not in step:
-            retry_ok = True
-            break
-    if not retry_ok:
-        die("no retry pnpm/action-setup step gated on steps.%s.outcome == 'failure' carries zero continue-on-error" % first_id)
 else:
     die('unknown mode %r' % mode)
 PY
@@ -595,28 +538,6 @@ assert_doctored() {
   }
 }
 
-insert_after() {
-  local src="$1" anchor="$2" insertion="$3" out="$4"
-  ANCHOR_LINE="$anchor" INSERTION="$insertion" python3 - "$src" "$out" <<'PY'
-import os
-import sys
-
-src, out = sys.argv[1], sys.argv[2]
-anchor = os.environ['ANCHOR_LINE']
-insertion = os.environ['INSERTION']
-with open(src, encoding='utf-8') as handle:
-    lines = handle.read().split('\n')
-try:
-    i = lines.index(anchor)
-except ValueError:
-    sys.stderr.write('insert_after: anchor line not found: %r\n' % anchor)
-    sys.exit(2)
-lines[i + 1:i + 1] = insertion.split('\n')
-with open(out, 'w', encoding='utf-8') as handle:
-    handle.write('\n'.join(lines))
-PY
-}
-
 # ---------------------------------------------------------------------------
 
 @test "every provisioning step across the discovery roots is capped, attributed, and complete" {
@@ -627,28 +548,6 @@ PY
     return 1
   }
   [ -z "$gaps" ] || { echo "$gaps" >&2; return 1; }
-}
-
-@test "the composite pins a continue-on-error first attempt and a no-continue-on-error outcome-gated retry" {
-  require_yaml_parser
-  run read_pv construct "$ACTION_FILE"
-  [ "$status" -eq 0 ] || { echo "$output" >&2; return 1; }
-}
-
-# The companion assertion the header describes: a bare substring search for
-# the composite's bounded-install literal is satisfied by the docblock
-# comment alone, on the file exactly as it stands, which is what makes the
-# structural check above load-bearing rather than decorative.
-@test "a bare substring search for the composite's bounded-install literal is satisfied by prose alone" {
-  # Anchored to a comment line deliberately. Unanchored, this matches a real
-  # bounded `run:` step just as readily, so adding one to the composite would
-  # break the construct this test's name claims while leaving it green: the
-  # same match-region failure the header argues the structural check replaces.
-  run grep -nE '^[[:space:]]*#.*timeout -k' "$ACTION_FILE"
-  [ "$status" -eq 0 ] || {
-    echo "expected 'timeout -k' to appear in a COMMENT line of $ACTION_FILE; its absence there would mean this companion assertion no longer demonstrates that a bare substring oracle is satisfied by prose" >&2
-    return 1
-  }
 }
 
 @test "gap: a provisioning step with no cap is reported as missing, not as a clean read" {
@@ -772,45 +671,6 @@ PY
   }
   printf '%s' "$gaps" | grep -qF "$(basename "$doctored")" || {
     echo "the unparseable-file gap did not name the file: ${gaps}" >&2
-    return 1
-  }
-}
-
-@test "construct gap: removing continue-on-error from the first attempt names that construct" {
-  require_yaml_parser
-  local line doctored="$BATS_TEST_TMPDIR/no-continue-on-error.yml"
-  line="$(sole_line_matching "$ACTION_FILE" '^      continue-on-error: true$')" || return 1
-  delete_line "$ACTION_FILE" "$line" "$doctored"
-
-  run read_pv construct "$doctored"
-  [ "$status" -ne 0 ] || {
-    echo "removing continue-on-error from the first attempt left the construct check passing" >&2
-    return 1
-  }
-  printf '%s' "$output" | grep -qF 'no first-attempt pnpm/action-setup step carries continue-on-error: true with an id' || {
-    echo "the missing continue-on-error was not named: ${output}" >&2
-    return 1
-  }
-}
-
-@test "construct gap: the retry step carrying continue-on-error is no longer the last word, and is named" {
-  require_yaml_parser
-  local doctored="$BATS_TEST_TMPDIR/retry-continue-on-error.yml"
-  sole_line_matching "$ACTION_FILE" '^    - name: Retry the pnpm install$' >/dev/null || return 1
-  insert_after "$ACTION_FILE" "    - name: Retry the pnpm install" \
-    "      continue-on-error: true" "$doctored"
-  cmp -s "$ACTION_FILE" "$doctored" && {
-    echo "the retry step name is stale, so doctoring changed nothing and this fixture proves nothing" >&2
-    return 1
-  }
-
-  run read_pv construct "$doctored"
-  [ "$status" -ne 0 ] || {
-    echo "giving the retry step its own continue-on-error left the construct check passing" >&2
-    return 1
-  }
-  printf '%s' "$output" | grep -qF "no retry pnpm/action-setup step gated on steps.install-pnpm.outcome == 'failure' carries zero continue-on-error" || {
-    echo "the retry step's construct violation was not named: ${output}" >&2
     return 1
   }
 }

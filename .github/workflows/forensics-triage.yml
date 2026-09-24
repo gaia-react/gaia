@@ -280,21 +280,10 @@ jobs:
           # text file for parse-verdict.
           verdict_text="${RUNNER_TEMP}/forensics/verdict-text.md"
           if [ -z "${EXEC_FILE:-}" ] || [ ! -f "$EXEC_FILE" ]; then
-            # CMP-1: the `Classify` step is `continue-on-error: true`, so an
-            # SDK / API / max-turns failure leaves execution_file empty. Do
-            # NOT hard-exit here: exiting would run no verdict handler, yet
-            # the always-run fail-forward step still stamps `gaia-triaged`,
-            # stranding the issue as triaged-but-unhandled (and idempotency
-            # blocks any retry). Instead write an empty verdict so
-            # parse-verdict.sh yields `ambiguous`, routing to the
-            # `Handle ambiguous verdict` step → handle-needs-human.sh with
-            # reason-code `ambiguous-verdict`. `gaia-triaged` is then applied
-            # BY that handler, and the issue is genuinely handled.
-            echo "::warning::classifier execution_file missing or unreadable (${EXEC_FILE:-<empty>}); treating as ambiguous -> needs-human"
-            : > "$verdict_text"
-          else
-            jq -r '[.[] | select(.type == "result")] | .[-1].result // empty' "$EXEC_FILE" > "$verdict_text"
+            echo "::error::classifier execution_file missing or unreadable: ${EXEC_FILE:-<empty>}"
+            exit 1
           fi
+          jq -r '[.[] | select(.type == "result")] | .[-1].result // empty' "$EXEC_FILE" > "$verdict_text"
           if [ ! -s "$verdict_text" ]; then
             echo "::warning::classifier produced no result text, treating as ambiguous"
           fi
@@ -475,14 +464,6 @@ jobs:
         run: |
           set -eu
           git fetch origin main
-          # Qualified for the reason code-review-audit.yml's own base resolution
-          # states: a tag named `origin/main` resolves ahead of the
-          # remote-tracking ref, and this job's fetch-depth: 0 checkout pulls
-          # tags whatever `fetch-tags` says. A checkout fails loudly on the
-          # ambiguity rather than branching from the tag, but it dies under
-          # `set -eu` after the job already holds contents: write, and the
-          # always-run fail-forward step then marks the issue triaged, leaving
-          # the auto-fix half-done.
           git checkout -B "$FIX_BRANCH" refs/remotes/origin/main
           git config user.name 'gaia-forensics-triage[bot]'
           git config user.email 'gaia-forensics-triage[bot]@users.noreply.github.com'
@@ -696,22 +677,14 @@ jobs:
           # pushed, but resetting keeps the runner's working tree clean
           # in case any always-run step inspects it.
           git reset --hard HEAD
-          # CMP-3: map each `abort_reason` (set in `Verify diff`) to the
-          # reason-code whose handle-needs-human.sh summary actually
-          # describes it. Previously `fix-abort` and `empty-diff` both
-          # collapsed to `out-of-scope`, printing a false "touches paths
-          # outside the allowlist" summary for a self-abort or a no-op.
-          #   fix-abort            -> fix-abort    (model emitted GAIA-FIX-ABORT)
-          #   empty-diff           -> no-change    (model produced no diff)
-          #   diff-out-of-scope    -> out-of-scope (genuine scope violation)
-          #   diff-not-in-proposed -> deviation    (in-allowlist, undeclared)
-          case "$ABORT_REASON" in
-            fix-abort)            reason_code="fix-abort" ;;
-            empty-diff)           reason_code="no-change" ;;
-            diff-out-of-scope)    reason_code="out-of-scope" ;;
-            diff-not-in-proposed) reason_code="deviation" ;;
-            *)                    reason_code="out-of-scope" ;;
-          esac
+          # UAT-010: `diff-not-in-proposed` is a deviation (the model
+          # touched in-allowlist paths it did not declare upfront), not a
+          # scope violation. Other abort reasons remain `out-of-scope`.
+          if [ "$ABORT_REASON" = "diff-not-in-proposed" ]; then
+            reason_code="deviation"
+          else
+            reason_code="out-of-scope"
+          fi
           "$FORENSICS_DIR/handlers/handle-needs-human.sh" \
             "$ISSUE_NUMBER" \
             "$reason_file" \

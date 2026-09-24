@@ -854,8 +854,8 @@ carries the requirement.
 **One thing is still the maintainer's, and it is a confirmation, not a cutover:** that the
 live GitHub ruleset really lists `Audit CI Tests`. `REQUIRED_CONTEXTS` is *intent*; the
 live ruleset is a separate thing that can drift from it, which is why
-`verify-required-checks.yml` exists as a drift detector. Reading the live ruleset leaves
-the machine, so nothing local can confirm it.
+`.gaia/scripts/verify-required-checks.sh` exists as a drift detector, run at `/gaia-release`
+preflight. Reading the live ruleset leaves the machine, so nothing local can confirm it.
 
 **How the red-by-design scenarios avoid wedging `main`.** `expected-status.txt` records
 what every scenario is expected to do today, and the gate fails on any deviation from it in

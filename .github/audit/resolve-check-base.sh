@@ -25,20 +25,12 @@
 #
 # Output (stdout, single line; suitable for `base...HEAD` diffs)
 #   <40-hex-sha>: resolved incremental base (a green ancestor of HEAD)
-#   refs/remotes/origin/<base-ref>: fallback: diff the full PR/branch scope,
-#     scoped to the branch the PR merges into (GITHUB_BASE_REF, read under
-#     Actions only, which sets it on every pull_request event)
-#   refs/remotes/origin/main: the same fallback outside Actions, or when no
-#     base ref is declared
+#   origin/<base-ref>: fallback: diff the full PR/branch scope, scoped to the
+#     branch the PR merges into (GITHUB_BASE_REF, read under Actions only,
+#     which sets it on every pull_request event)
+#   origin/main: the same fallback outside Actions, or when no base ref is
+#     declared
 #   (or main when neither remote-tracking ref resolves)
-#
-#   Every remote-tracking name is emitted FULLY QUALIFIED, and every probe
-#   below reads the same spelling, for the reason the sibling resolver's
-#   header states in full: git resolves refs/tags/<x> ahead of
-#   refs/remotes/<x>, `rev-parse --verify --quiet` reports no ambiguity, and
-#   a tag named `origin/<x>` reaches an Actions runner whatever `fetch-tags`
-#   says. Here a shadow at HEAD empties what the check re-runs over, so the
-#   check skips work nothing proved green.
 #
 # Exit code
 #   0 always. Callers consume the single stdout line.
@@ -78,7 +70,7 @@ repo_root=$(git rev-parse --show-toplevel 2>/dev/null || true)
 if [ -z "$repo_root" ]; then
   # Defensive: not in a git repo. Full scope; the caller's git will error
   # loudly on the broken environment.
-  printf 'refs/remotes/origin/main\n'
+  printf 'origin/main\n'
   exit 0
 fi
 
@@ -99,19 +91,19 @@ resolve_main_ref() {
   # and the same gate, and states the full reasoning.
   if [ "${GITHUB_ACTIONS:-}" = "true" ] \
     && [ -n "${GITHUB_BASE_REF:-}" ] \
-    && git -C "$repo_root" rev-parse --verify --quiet "refs/remotes/origin/${GITHUB_BASE_REF}" >/dev/null 2>&1; then
-    printf 'refs/remotes/origin/%s' "$GITHUB_BASE_REF"
+    && git -C "$repo_root" rev-parse --verify --quiet "origin/${GITHUB_BASE_REF}" >/dev/null 2>&1; then
+    printf 'origin/%s' "$GITHUB_BASE_REF"
     return 0
   fi
-  if git -C "$repo_root" rev-parse --verify --quiet refs/remotes/origin/main >/dev/null 2>&1; then
-    printf 'refs/remotes/origin/main'
+  if git -C "$repo_root" rev-parse --verify --quiet origin/main >/dev/null 2>&1; then
+    printf 'origin/main'
     return 0
   fi
   if git -C "$repo_root" rev-parse --verify --quiet main >/dev/null 2>&1; then
     printf 'main'
     return 0
   fi
-  printf 'refs/remotes/origin/main'
+  printf 'origin/main'
 }
 main_ref="$(resolve_main_ref)"
 

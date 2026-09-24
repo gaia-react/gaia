@@ -25,8 +25,7 @@ jobs:
     # the 6-hour default while holding `contents: write`, the widest token any
     # workflow in this directory carries. Thirty minutes is a wide margin over a
     # real cut: the gate is 3-4 minutes against its own 15-minute cap and
-    # everything around it is checkout, install, and staging. Same reasoning
-    # audit-roster.yml spells out for itself.
+    # everything around it is checkout, install, and staging.
     timeout-minutes: 30
     steps:
       - name: Checkout at tag
