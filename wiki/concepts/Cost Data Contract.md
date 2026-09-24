@@ -37,7 +37,7 @@ The ledger lives at `.gaia/local/telemetry/cost.jsonl`, resolved to the main che
 | `ended_at` | `iso \| null` | Latest usage-bearing transcript timestamp, raw UTC. Same null condition as `started_at`. |
 | `duration_seconds` | `int \| null` | `ended_at` minus `started_at`. `null` when unavailable. |
 | `duration_available` | `bool` | Independent of `partial`: tokens can be complete while duration is unavailable (an unparseable extremal timestamp), and the reverse. |
-| `git_branch` | `string \| null` | The branch the run was done on: the caller-supplied `--branch-name` when passed (the merge paths clean up before the tally, so they capture it first), else the current branch at tally time, or `null` when neither resolves. Absent (not present) on `source: "backfill"` rows. |
+| `git_branch` | `string \| null` | The branch the run was done on: the caller-supplied `--branch-name` when passed, else the current branch at tally time, or `null` when neither resolves. Absent (not present) on `source: "backfill"` rows. |
 | `project` | `"sha256:<16-hex>" \| "path:<16-hex>" \| null` | Repo identity: a hash of the normalized `origin` remote URL when one exists (so an `https` and `ssh` clone of the same repo collide), else a hash of the main checkout's absolute path, else `null`. Absent (not present) on `source: "backfill"` rows. |
 | `seq` | `int` | `0` for `spec`/`plan` rows (one row per session). For `execute`, the count of prior same-`(feature, session_id)` execute rows already on the ledger; monotonic per feature per session. |
 | `final` | `bool` | `true` on every newly appended row. For `execute`, a best-effort rewrite flips every prior same-`(feature, session_id)` row's `final` to `false` after append, so at most one row per feature per session stays `true`. |
@@ -106,5 +106,4 @@ The rule the two scripts split between them: **never block the hook** is kept on
 ## Pairs with
 
 - [[Token Cost Readout]]: the `by_model` pricing surfaces (rate card, shared pricing lib, the machine-local overlay, tally-time vs roll-up-time dollar figures) built on top of this ledger.
-- [[Claude Integration Fitness]]: the cost-rate category that scans this ledger for models nothing can price, and the human-gated `rate-overlay` lane that remedies them.
 - [[Task Orchestration]]: the merge-time reconcile and retention lifecycle that eventually removes the folder this ledger's rows outlive.

@@ -97,11 +97,8 @@ Dispatch the category checks in the table below, one per row, per its model assi
 | Skill / command / agent frontmatter | Sonnet |
 | Rule hygiene                        | Sonnet |
 | `CLAUDE.md` hygiene                 | Sonnet |
-| Cost-rate fitness                   | Haiku  |
 
 Each Auditor returns an array of `{severity, file, remediation, fingerprint}` objects. Raw command output stays in subagent context; only the structured findings array flows back.
-
-The cost-rate Auditor's whole job is one command, `bash .gaia/scripts/cost-unpriced-scan.sh`, whose stdout is a JSON object carrying `unpriced`, `rows_affected`, `overlay_path`, and `overlay_active`. One `warning` finding per name in `unpriced`, filed against `.gaia/scripts/token-rates.json` and naming the row count. An empty `unpriced` is A+ for the category, including when `overlay_active` is non-empty: a model the operator has already remedied locally is priced, not missing. A non-zero exit means the scan could not run and is itself one `warning`; it is never an all-clear.
 
 **Dispatch each Sonnet auditor with an explicit coverage directive** in its prompt: surface every candidate, including uncertain or low-severity ones, and do not filter for importance or confidence; the adjudication step below is the filter. A literal-minded auditor left to self-filter under-reports the borderline judgment calls (frontmatter substantiveness, content-vs-glob coherence, size-vs-guidance) this triage depends on. The canonical directive text lives in the fitness page's Triage phase (`wiki/decisions/Claude Integration Fitness.md`).
 
@@ -142,17 +139,6 @@ Dispatch lane-aware Fixer subagents (Sonnet) in parallel per the wiki page's lan
 | `settings`       | `.claude/settings.json`                                                                                              |
 | `gitignore`      | `.gitignore`                                                                                                         |
 | `manifest`       | `.gaia/manifest.json` (serialize, one Fixer at a time)                                                               |
-| `rate-overlay`   | `.gaia/local/token-rates.local.json` (**not a subagent**, see below)                                                 |
-
-The `manifest` Fixer preserves every top-level key it does not own (for example `regions`) and never rewrites `.gaia/manifest.json` wholesale from the `files` map alone.
-
-**The `rate-overlay` lane is not dispatched as a subagent and never writes unasked.** Run it yourself, in the main thread, after the other lanes. Its full rationale is the wiki page's **Rate remedies are human-gated**; the two reasons are that a rate cannot be derived (the Models API carries no pricing field, and a tier heuristic would be confidently wrong), and that `.gaia/local/` is gitignored, so unlike every other lane its edit never reaches the Step 7 publish gate and the consent has to be at the write. Per unpriced model:
-
-1. Load the `claude-api` skill and resolve the model's current input and output rates from it. Its own trigger forbids answering pricing from memory, which is exactly the property this step needs.
-2. If no rate resolves from a real source, **stop for that model**. Report the finding unresolved. Do not guess, do not interpolate from a sibling model, and do not fall back to a tier.
-3. Otherwise put the exact entry to the operator with one `AskUserQuestion`, showing the model, the resolved rates, and the file. On consent, merge it into `.gaia/local/token-rates.local.json` (create the file if absent, preserve every model already there). On a decline, report the finding unresolved with the proposed entry so it can be pasted by hand.
-
-Never register `.gaia/local/token-rates.local.json` in `.gaia/manifest.json`. Being outside the manifest is the entire reason the overlay survives `/update-gaia`.
 
 If a finding's fix straddles multiple lanes, dispatch one Fixer with multi-lane scope.
 
@@ -312,15 +298,14 @@ Heal already cut and switched to `<BRANCH>`, the name Step 4 minted, so the chan
 
    `--auto` queues the merge behind required checks (the oracle check above already confirmed whether a marker is owed for this diff). Then run the merge wait, `bash .gaia/scripts/pr-wait-merge.sh --pr <N>`, the bounded poll (~2-3 minutes) `wiki/concepts/PR Merge Workflow.md` (`## Post-merge verification before cleanup`) prescribes. The merge above is already queued and the script issues no `gh pr merge` of its own, so nothing here re-merges. One arm per verdict plus one for the exit-2 refusal, and the script's `--help` is the authority on both:
 
-   - **`MERGED`** (exit 0) → clean up, record cost (pass-through: `gh pr create` above already printed the URL, and `--branch-name` carries the literal `<BRANCH>` value, since the checkout below leaves the session on `main`; see `.claude/skills/gaia/references/cost-record.md`), then print the merged PR URL:
+   - **`MERGED`** (exit 0) → clean up, record cost (pass-through: `gh pr create` above already printed the URL), then print the merged PR URL:
 
      ```bash
      git -C "$PROJECT_ROOT" checkout main && git -C "$PROJECT_ROOT" pull origin main
      git -C "$PROJECT_ROOT" branch -D "<BRANCH>"
      git -C "$PROJECT_ROOT" fetch --prune origin
      bash .gaia/scripts/token-tally.sh --action command --command gaia-fitness \
-       --github-type pr --github-number <N> --github-repo '<owner>/<name>' \
-       --branch-name '<BRANCH>'
+       --github-type pr --github-number <N> --github-repo '<owner>/<name>'
      ```
 
      Relay the tally's `Cost:` line as the last line of the reply, after the merged PR URL.

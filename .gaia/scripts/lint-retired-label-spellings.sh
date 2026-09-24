@@ -9,7 +9,7 @@
 #
 # # What this replaces, and why a roster could not do it
 #
-# `.claude/skills/file-tech-debt/SKILL.md` ("Contract-preserve note") carries a
+# `wiki/concepts/GitHub Labels.md` ("## Label and key rename contract") carries a
 # bullet list of the files that read a GAIA label spelling, to be worked in
 # lockstep with any rename. A list is the wrong shape for that job: the next
 # consumer written against a label spelling is added to the tree, not to the
@@ -357,7 +357,7 @@ done <"$PREFIXES_FILE"
 
 if [ -s "$REPORT_FILE" ]; then
   cat "$REPORT_FILE"
-  echo "A rename is only complete once every carrier moves. See .claude/skills/file-tech-debt/SKILL.md (## Contract-preserve note) for which consumer breaks first." >&2
+  echo "A rename is only complete once every carrier moves. See wiki/concepts/GitHub Labels.md (## Label and key rename contract) for which consumer breaks first." >&2
   exit 1
 fi
 

@@ -317,10 +317,10 @@ jobs:
               - '.claude/skills/gaia/references/spec.md'
               - '.claude/skills/gaia/references/plan.md'
               - '.claude/agents/code-audit-frontend.md'
-              # doc-noop-terminal-contract.bats and doc-early-stop-paragraph.bats
-              # (.gaia/tests/lib/) derive their carriers by searching the whole
-              # tree, so a statement or paragraph added to a new dispatch prompt
-              # reds them. Each glob below is a root that holds dispatch prompts:
+              # doc-noop-terminal-contract.bats (.gaia/tests/lib/) derives its
+              # carriers by searching the whole tree, so a statement or
+              # paragraph added to a new dispatch prompt reds it. Each glob
+              # below is a root that holds dispatch prompts:
               # the health runbooks, the .claude skills, commands and agents, and
               # the spec-kit templates. The three .claude roots are supersets of
               # the narrower file entries around them, which stay listed so each
@@ -348,19 +348,17 @@ jobs:
               # plan.md is already listed above.
               - '.claude/skills/gaia/references/isolation.md'
               - '.claude/skills/gaia/references/debt.md'
-              # The doc-difficulty-prose suite (.gaia/tests/lib/) greps the
-              # difficulty-grading rubric and both machine filing routes;
-              # code-audit-frontend.md and debt.md are already listed above,
-              # add the other two. The suite also asserts that `difficulty`
-              # appears in NONE of the sibling audit members, so those four are
-              # sources it guards too: if nothing armed them, a PR adding grading
-              # prose to one of them would skip every bats step, and the job
-              # would green having run the very assertion written to catch that
-              # edit zero times. The `.claude/agents/**/*.md` root above already
-              # covers them; this glob names the suite's own sources so that
-              # narrowing that root cannot silently drop them. It is a superset
-              # of the code-audit-frontend.md entry above (patterns OR together)
-              # and self-maintains when a new member joins the roster.
+              # `.claude/skills/file-tech-debt/SKILL.md` carries the
+              # difficulty-grading rubric and `.claude/skills/gaia/references/audit.md`
+              # is one of its filing routes; code-audit-frontend.md and debt.md
+              # are already listed above, add the other two. The
+              # `.claude/agents/**/*.md` root above already covers
+              # `.claude/agents/code-audit-*.md`, the roster several
+              # `.gaia/tests/lib/` doc-conformance suites derive from; this
+              # glob names it explicitly so that narrowing that root cannot
+              # silently drop it. It is a superset of the code-audit-frontend.md
+              # entry above (patterns OR together) and self-maintains when a
+              # new member joins the roster.
               - '.claude/skills/file-tech-debt/SKILL.md'
               - '.claude/skills/gaia/references/audit.md'
               - '.claude/agents/code-audit-*.md'
@@ -376,16 +374,9 @@ jobs:
               # `code=false`, skip every bats step, and green the job having
               # run those assertions zero times.
               - 'wiki/concepts/Audit Disposition and Debt Fix.md'
-              # doc-audit-verification-gate.bats (.gaia/tests/lib/) greps this
-              # page's description of the classification-verification round.
-              # It is the THIRD surface stating the Run-vs-Skip criterion, and
-              # the one that drifted: a fix landed on the two audit.md surfaces
-              # and left this page asserting the criterion that fix rejected.
-              # Same test-dir/source-dir pairing as the line above, and it
-              # matches no other pattern here, so without it a wiki-only edit
-              # reintroducing the superseded phrasing would report `code=false`,
-              # skip every bats step, and green the job having run the very
-              # assertion written to catch that edit zero times.
+              # This page describes the classification-verification round the
+              # audit.md surfaces above implement; it matches no other pattern
+              # here, so it is kept armed alongside them.
               - 'wiki/concepts/GAIA Audit.md'
               # lint-hook-wiki-inventory.bats (.gaia/scripts/tests/) is the
               # blocking runner for the check that fails when a hook registered
@@ -443,16 +434,6 @@ jobs:
               # would report `code=false`, skip every bats step, and green
               # the job having run that assertion zero times.
               - 'wiki/concepts/Code Review Audit Agent.md'
-              # plan-phase-ci-read.bats (.gaia/scripts/tests/) greps this
-              # page's phase-loop step as the SECOND surface describing the
-              # per-phase post-push CI read, and compares it against the
-              # plan.md template the generated orchestrator inherits, so an
-              # edit here alone is exactly the drift it exists to catch. It
-              # matches no other pattern here, so without this line that edit
-              # would report `code=false`, skip every bats step, and green the
-              # job having run that comparison zero times. Same
-              # test-dir/source-dir pairing as the entries above.
-              - 'wiki/concepts/Task Orchestration.md'
               # Each page from here through wiki/index.md is opened and asserted
               # on by the suite named beside it, and matches no other pattern
               # here, so without its line a wiki-only edit to that page would
@@ -471,8 +452,8 @@ jobs:
               # doc-scope-digest-obligation.bats (.gaia/tests/lib/) requires the
               # scope-digest obligation literal under this page's step-1 heading.
               - 'wiki/concepts/Registering a Code Audit Team Member.md'
-              # doc-audit-rekey-record-prose.bats (.gaia/tests/lib/) greps this
-              # page's re-spawn breadcrumbs section for the settled re-key record.
+              # This page carries the Code Audit Team roster decisions; it
+              # matches no other pattern here, so it is kept armed.
               - 'wiki/decisions/Code Audit Team.md'
               # guard-awk-lib.bats (.gaia/scripts/tests/) reads this page's
               # pinned headings and runs the wiki-style audit greps over it.
@@ -480,11 +461,10 @@ jobs:
               # The same suite reads this page's Decisions (ADRs) section for the
               # page above's registration inside the maintainer-only block.
               - 'wiki/index.md'
-              # The doc-setup-gaia-isolation and doc-gaia-init-isolation suites
-              # (.gaia/tests/lib/) grep the /setup-gaia Phase 3.5 clause and the
-              # /gaia-init Step 9 question block; trigger on the two command
-              # files that carry that prose so an edit to either re-runs its
-              # suite.
+              # The doc-setup-gaia-isolation suite (.gaia/tests/lib/) greps the
+              # /setup-gaia Phase 3.5 clause and, per its own coverage-row
+              # test, requires both command files below listed here so an
+              # edit to either re-runs it.
               - '.claude/commands/setup-gaia.md'
               - '.claude/commands/gaia-init.md'
               - '.gaia/tests/forensics/**'

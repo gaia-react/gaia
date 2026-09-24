@@ -233,19 +233,7 @@ Targets (flag anything over):
 | Any nested `CLAUDE.md` discovered in Step 1 (monorepo package, subapp, docs, etc.) | ≤400 words | Scoped routing                             |
 | Any single `.claude/rules/*.md`                                                    | ≤200 lines | Focused rule                               |
 
-**Root `CLAUDE.md` gets 500 where a nested one gets 400 because the two carry different jobs.** A nested `CLAUDE.md` is scoped routing. The root file GAIA ships is routing and principles *plus* the standing conduct rules that govern every response, and those cannot move: they are load-bearing precisely because they auto-load every session, so promoting them to a lazily-fetched wiki page preserves the bytes and switches the rules off. The 500 is the measured floor of that content stated once each, plus headroom; it is not licence for the file to grow, and `.gaia/scripts/check-updates.sh` still raises the over-budget nudge for this file. `wiki/concepts/GAIA Audit.md` (`## When to use`) owns when that nudge is suppressed instead.
-
-**Every budget above is per file, and no aggregate budget exists over `.claude/rules/*.md`.** The `project_drift` signal in `.gaia/scripts/check-updates.sh` that raises the `over budget` nudge this step answers compares each rule file against its own line budget and carries no total. So splitting one over-budget rule into two rules that are each under budget satisfies the budget outright, and the sibling is charged to no separate aggregate.
-
-### Remedies, evaluated independently
-
-There are three remedies for an over-budget file. **Evaluate all three, in this order**, and propose the first that both applies to the file and is expressible as an action. They are independent: one being unavailable says nothing about the next, and a single blocked remedy never makes a file unfixable.
-
-1. **Inline facts → wiki.** One action: a `promote` whose `source_path` is the over-budget file, carrying `source_action: replace`, `source_before` the section being lifted, and `source_after` the wikilink left in its place. **Do not pair it with a `shrink` on that same file.** `## Ordering` runs every `shrink` before every `promote`, so a paired shrink would move the file out from under the recorded `source_expect_sha256` and the promote would skip on `sha drift`, leaving a wikilink to a page that was never written. The promote's own `source_action` exists so that pair is never needed.
-2. **Consolidate duplicated sections.** A single `shrink` on one path, which nothing in `## Ordering` blocks.
-3. **Split into narrower files.** Not expressible as an action: no action type creates a new non-wiki file, and `promote` is not one, its target is a wiki page and it also writes `wiki/log.md` and `wiki/index.md`. Record it in `## Out-of-scope findings` instead, naming the section to lift, the sibling file to create, and the line or word counts both sides land at, so Stage 2 files it as tracked work. A split is a remedy only when the extracted section is a self-contained topic that can carry its own `paths:` scope; halving a file into two siblings that always load together satisfies the count while reducing nothing a session loads.
-
-**Never report an over-budget file as unfixable, or propose nothing for it, on the strength of one blocked remedy.** State each remedy's outcome, so the ones that were never blocked are visible as work rather than absent.
+For each over-budget file, propose one of: inline facts → wiki, consolidate duplicated sections, or split into narrower files.
 
 ## Step 4, Report
 
@@ -286,8 +274,8 @@ Resolved paths (Stage 2 must match these):
 - Stores scanned: {N files, M words total}
 - Actions proposed: {count of action blocks under ## Actions}
 - Cross-store duplicates: {X}
-- Auto-load total: {Z words, wiki/hot.md + root CLAUDE.md only} (budget: {the sum of Step 3's budgets for wiki/hot.md and root CLAUDE.md; the rules aggregate has none})
-- Over-budget files: {list; per file, the remedy proposed or the oos-{nnn} recorded, plus the outcome of every remedy not taken}
+- Auto-load total: {Z words} (budget: {total budget})
+- Over-budget files: {list}
 - Stale entries: {count}
 - Conflicts: {count}
 - Out-of-scope findings: {count} (filed as tech-debt issues by Stage 2)
@@ -336,7 +324,7 @@ Set `depends_on` when this delete-entry removes an index/pointer line for a file
 
 ### Promote (source → wiki)
 
-Within a promote, `source_action` is the only field that touches `source_path`, and it decides what happens to it once the wiki write lands: `delete` removes the whole file (a machine-local memory file lifted onto a wiki page), `replace` swaps one block for another (a section lifted out of a file that stays, leaving a wikilink behind), `keep` leaves it untouched. **A same-file extraction is this one action, never a promote plus a `shrink` on `source_path`**; Step 3's remedy 1 carries the reason.
+Within a promote, `source_action` is the only field that touches `source_path`, and it decides what happens to it once the wiki write lands: `delete` removes the whole file (a machine-local memory file lifted onto a wiki page), `replace` swaps one block for another (a section lifted out of a file that stays, leaving a wikilink behind), `keep` leaves it untouched. **A same-file extraction is this one action, never a promote plus a `shrink` on `source_path`.**
 
 - [ ] `promote-{nnn}`
   ```yaml
@@ -661,7 +649,7 @@ Otherwise the working tree carries the applied `wiki/` / `.claude/` / `CLAUDE.md
 
    `--auto` queues the merge behind required checks (the oracle check before `gh pr create` already confirmed whether a marker is owed). Verify the terminal state before any local cleanup with the merge wait, `bash .gaia/scripts/pr-wait-merge.sh --pr <N>`, the bounded poll `wiki/concepts/PR Merge Workflow.md` (`## Post-merge verification before cleanup`) prescribes. The merge above is already queued and the script issues no `gh pr merge` of its own, so nothing here re-merges. One arm per verdict plus one for the exit-2 refusal, and the script's `--help` is the authority on both:
 
-   - **`MERGED`** (exit 0) → capture the branch first (`git branch --show-current`, keep the literal for the tally's `--branch-name`; see `## Cost record (run end)`), then clean up locally and print the merged PR URL:
+   - **`MERGED`** (exit 0) → clean up locally, then print the merged PR URL:
 
      ```bash
      git checkout main && git pull origin main
@@ -705,8 +693,6 @@ Standalone final step, one call:
 ```bash
 bash .gaia/scripts/token-tally.sh --action command --command gaia-audit
 ```
-
-**Branch pass-through.** On the `MERGED` path the cleanup has already checked out `main`, so append `--branch-name '<branch>'` with the literal captured before it. The capture-before-cleanup rule and why it exists live in `.claude/skills/gaia/references/cost-record.md`.
 
 **Artifact pass-through.** When this run opened a pull request and the URL `gh pr create` printed appeared in this run's own Bash tool result, append:
 

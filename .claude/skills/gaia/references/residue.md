@@ -66,26 +66,13 @@ The cap means the candidate list is a batch, not the whole population. Report `r
 
 ## Present each candidate
 
-For each candidate present: its canonical disposition (accept or waive), its failure mode, its cited path and line, its resolved line text, its resolution class, and the verdict the verification step below produces for it, with its evidence.
+For each candidate present: its canonical disposition (accept or waive), its failure mode, its cited path and line, its resolved line text, and its resolution class.
 
-### Verify each candidate before presenting it
-
-`resolution` is a line-text signal, not a fix signal. It records whether the cited line's text still matches, and it fails in both directions: a reworded sentence resolves `gone` while the defect it carried is still present, and a fix that leaves the cited line untouched resolves `still` or `moved`. So no candidate is labelled fixed or unfixed from its resolution class. Before the first question, verify every candidate in the batch:
-
-1. **Read the residual's full entry from its source pull request**, not the tally's `failure_mode`, which can be a truncated projection of it: `gh pr view <pr_number> --json body --jq .body`, with `pr_number` taken from the candidate's emit. It is an integer the tally types, so it is safe in a command; find the entry carrying the candidate's `raw_key` by reading the body, never by passing the key to a command.
-2. **Read the cited code at its current location** with the Read and Grep tools, never by passing the residual's path or text to a shell command. `resolved_line_text` is the cited line as it stood when the pull request merged, and together with `resolution` it is the hint for where to look, not the answer: on `still`, read around `line`; on `moved`, that text sits verbatim elsewhere in the current file, so find it there and read around the match; on `gone` or `unresolvable`, read around `line` and search the file for the defect the entry describes. `gone` also covers a cited file that no longer exists, so when it is absent, search the repository for the defect before settling on a verdict.
-3. **Give the candidate one verdict**, backed by a before quote (the entry's description of the defect) and a now quote (the current code):
-   - **Fixed**: the current code no longer has the defect the entry describes.
-   - **Still present**: the defect is in the current code, wherever it now sits.
-   - **Can't tell**: the evidence does not settle it. This is a real answer. Never soften it into "likely" either way.
-
-Each candidate is verified independently of the others, so issue the reads in parallel, and fetch a source body once when several candidates share a pull request.
-
-The verdict, not the resolution class, keys the default disposition: **Fixed** presents dismiss as the default; **Still present** and **Can't tell** present keep as the default, with promotion still the exception that needs a reason. Every verdict still requires a human disposition, never an unattended one. A candidate carrying a `previously_promoted_issue` is labelled as previously promoted to that issue, which closed as completed, and dismiss is presented as the default disposition for it unless its verdict is **Still present**, in which case say that the closed issue did not remove the defect.
+A candidate whose resolution is `gone` is labelled a likely-already-fixed dismiss candidate and still requires a human disposition; content vanishing is evidence of a fix, not proof of one, so it is never applied unattended. A candidate carrying a `previously_promoted_issue` is labelled as previously promoted to that issue, which closed as completed, and dismiss is presented as the default disposition for it.
 
 ## The three arms
 
-State the default posture explicitly before offering them: the candidate's verdict picks between dismiss and keep as the default (see the verification step above), and promotion is the exception that needs a reason. A drainer whose happy path files issues is a migration wearing a drain's clothes, and promoting freely would grow the backlog rather than drain it.
+State the default posture explicitly before offering them: dismiss or keep is the default, and promotion is the exception that needs a reason. A drainer whose happy path files issues is a migration wearing a drain's clothes, and promoting freely would grow the backlog rather than drain it.
 
 ### Promote
 
@@ -104,7 +91,7 @@ When the recipe refuses to file because the key matches one of its own dedup arm
 
 ### Dismiss
 
-The safe arm, and the default wherever the verification step above makes it one. It may be offered in a batch, bounded by the same per-run cap, and the batch takes an explicit confirmation that lists every entry it will dismiss before anything is appended. Each dismissal appends one `dismissed` record.
+The safe arm, and the default. It may be offered in a batch, bounded by the same per-run cap, and the batch takes an explicit confirmation that lists every entry it will dismiss before anything is appended. Each dismissal appends one `dismissed` record.
 
 ### Keep
 
@@ -170,14 +157,12 @@ Empty output confirms no marker is owed. If it names any member, spawn each memb
 
 **Merge** → drive it to merge through `wiki/concepts/PR Merge Workflow.md` (read it, don't merge from memory): `gh pr merge <N> --squash --delete-branch --auto`, then run the merge wait, `bash .gaia/scripts/pr-wait-merge.sh --pr <N>`, the bounded poll that page's `## Post-merge verification before cleanup` prescribes. The merge above is already queued and the script issues no `gh pr merge` of its own, so nothing here re-merges. One arm per verdict plus one for the exit-2 refusal, and the script's `--help` is the authority on both. Every arm below but `CONFLICTING` ends the run and writes its cost record (`## Cost record (run end)`):
 
-- On `MERGED` (exit 0), capture the branch (the literal `$BRANCH` value) for the cost record's `--branch-name`, then clean up (`git checkout main && git pull origin main`, `git branch -D "$BRANCH"`, `git fetch --prune origin`) and print the merged PR URL.
+- On `MERGED` (exit 0), clean up (`git checkout main && git pull origin main`, `git branch -D "$BRANCH"`, `git fetch --prune origin`) and print the merged PR URL.
 - On `CONFLICTING` (exit 3), repair it per that page's `### Conflict found mid-wait` and run the wait again.
 - On `CHECK_FAILED` (exit 4), print the PR URL and the failing check, and leave the branch in place.
 - On `TIMEOUT` (exit 5), the window closed with the pull request still open: print the PR URL, note the merge is queued, and leave the branch in place.
 - On `CLOSED` (exit 6), the pull request was closed without merging, so no wait can clear it: report the closure, print the PR URL, and leave the branch in place.
 - On exit 2 the wait refused rather than answered: report what it could not read, print the PR URL, leave the branch in place, and assert no state for the pull request, since nothing about it was read. The merge queued above may still land.
-
-Only the `MERGED` arm leaves the session on `main`, which is why it alone owes the cost record a `--branch-name`; every other arm is still standing on the branch it names.
 
 **Leave open** → report the PR URL and stop.
 
@@ -191,7 +176,7 @@ Run `residue-tally`, then print every candidate, one line each. Author nothing, 
 
 ## why subcommand
 
-Run `residue-tally`, then find the candidate whose cited coordinate matches the `<path>:<line>` argument. Explain it: its failure mode, its canonical disposition, its source pull request, its resolved line, and its resolution class, which says whether the cited line's text still matches and nothing about whether the defect is fixed. When the coordinate matches no candidate, say so and point at `list`. Author nothing, prompt for nothing. Match the coordinate against the tally's already-emitted JSON; do not pass it to a command.
+Run `residue-tally`, then find the candidate whose cited coordinate matches the `<path>:<line>` argument. Explain it: its failure mode, its canonical disposition, its source pull request, its resolved line, and its resolution class. When the coordinate matches no candidate, say so and point at `list`. Author nothing, prompt for nothing. Match the coordinate against the tally's already-emitted JSON; do not pass it to a command.
 
 ## Cost record (run end)
 
