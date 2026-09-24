@@ -33,7 +33,7 @@ Wiki prose follows `.claude/rules/wiki-style.md` and code comments follow `.clau
 ## Universal Principles
 
 - No hardcoded secrets or tokens in source; use environment variables.
-- No hardcoded machine-specific absolute paths; keep paths repo-relative (`.claude/rules/repo-relative-paths.md`).
+- No hardcoded machine-specific absolute paths; keep paths repo-relative.
 - Prefer structured logs and errors over ad hoc console text.
 - Keep files focused; split past ~400 lines.
 - The visual styling is a deliberate neutral baseline, not a chosen design system; before designing or restyling read `.claude/rules/design-baseline.md` and `wiki/concepts/Design System.md`.

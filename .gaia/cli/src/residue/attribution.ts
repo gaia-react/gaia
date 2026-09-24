@@ -91,11 +91,10 @@ export const DEFAULT_PREDICATES: AttributionPredicates = {
   keyPattern: KEY_PATTERN,
 };
 
-// The gate's `heading_re` and `top_bullet_re`, with POSIX `[[:space:]]` spelled
+// A Markdown heading and a top-level bullet, with POSIX `[[:space:]]` spelled
 // out member by member. A line never carries its own newline, but the class is
-// reproduced whole so each regex reads against the gate's source. `\d` and the
-// gate's `[0-9]` denote the same set here: JavaScript's `\d` is ASCII digits
-// under every flag.
+// reproduced whole. `\d` is ASCII digits under every flag, the same set as
+// `[0-9]`.
 const HEADING_PATTERN = /^#{1,6}[\t\n\v\f\r ]/;
 const TOP_BULLET_PATTERN = /^([-*+]|\d{1,9}[.)])[\t\n\v\f\r ]/;
 // A comment body may not contain another opener, so a code span quoting a
@@ -118,8 +117,7 @@ const TRAILING_SPACE_CHARACTERS = new Set(['\t', '\n', '\v', '\f', '\r', ' ']);
 
 // A backward walk rather than a `[…]+$` regex, which backtracks quadratically
 // on a long run, and rather than `trimEnd`, which strips the whole Unicode
-// whitespace set and would trim a heading the gate's `[[:space:]]` leaves
-// alone.
+// whitespace set and would trim a heading POSIX `[[:space:]]` leaves alone.
 const trimTrailingSpace = (line: string): string => {
   let end = line.length;
 

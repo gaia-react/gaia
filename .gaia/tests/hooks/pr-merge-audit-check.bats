@@ -445,13 +445,10 @@ assert_not_in_set() {
 
 @test "allows a docs/metadata-only PR (wiki + .claude + .gaia)" {
   install_gh_stub
-  # The .claude/ witness must be a path no roster member owns. Executable prose
-  # under .claude/ is audited by the prose member -- the skill files, and the
-  # slash commands, instruction runbooks and agent lenses beside them -- so none
-  # of those belongs here among the no-audit-needed docs; they are the
-  # owned-surface cases below. The release-notes eval directory is declared in
-  # `unowned:` (it is Python and eval config, and the roster carries no Python
-  # member), which is what makes it the right witness for the unaudited kind.
+  # The .claude/ witness must be a path no roster member owns. The
+  # release-notes eval directory is declared in `unowned:` (it is Python and
+  # eval config, and the roster carries no Python member), which is what
+  # makes it the right witness for the unaudited kind.
   # The .gaia/ file is a README for the same reason: the roster grants
   # .gaia/*.json to the shell member, so the manifest is audited metadata.
   commit_files \
@@ -1118,12 +1115,13 @@ assert_not_in_set() {
   assert_allowed_by_json
 }
 
-@test "FC-4 no-deadlock: skills prose spawns the prose member only (not the default), and its marker allows" {
+@test "FC-4 no-deadlock: skills prose spawns nobody (not the default), and no markers still allows" {
+  # The prose-legibility member that used to own `.claude/skills/**/*.md` is
+  # deleted (harness triage P3-09); nothing replaces its lens, so skills
+  # prose is ownerless like the rest of GAIA's former prose-member territory.
   commit_files ".claude/skills/foo/SKILL.md" "# Foo skill"
   set=$(spawn_set)
-  [ "$set" = "code-audit-maintainer-prose" ]
-  assert_not_in_set "code-audit-frontend" "$set"
-  write_markers_for_spawn_set "$set"
+  [ -z "$set" ]
   run_merge_hook
   assert_allowed_by_json
 }
@@ -1141,11 +1139,10 @@ assert_not_in_set() {
 @test "FC-4 no-deadlock: wiki + .claude + root markdown spawns nobody, and no markers still allows" {
   install_gh_stub
   # The .claude/ witness has to keep the spawn set EMPTY, which is what this
-  # case is about, so it must be a path no roster member owns. Most of .claude/
-  # is owned: .claude/rules/** and .claude/agents/code-audit-*.md by the shell
-  # member, and the executable prose (skills, commands, instructions, agent
-  # lenses) by the prose member. The release-notes eval directory is declared in
-  # `unowned:`, so it is the surviving genuinely-ownerless .claude path.
+  # case is about, so it must be a path no roster member owns. `.claude/rules/**`
+  # and `.claude/agents/code-audit-*.md` are owned by the shell member; the
+  # release-notes eval directory is declared in `unowned:` regardless, so it
+  # stays the witness even though the rest of `.claude/skills/**` is ownerless too.
   commit_files \
     "wiki/x.md" "doc" \
     ".claude/skills/release-notes/eval/trigger-eval.json" "{}" \

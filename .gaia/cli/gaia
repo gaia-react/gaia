@@ -21286,7 +21286,7 @@ var clearCursor = (repoRoot) => {
 
 // src/residue/key.ts
 var KEY_PATTERN = (
-  // eslint-disable-next-line sonarjs/concise-regex -- byte parity with the gate's ERE
+  // eslint-disable-next-line sonarjs/concise-regex -- same spelling as the POSIX ERE key grammar
   /<!-- gaia-debt-key: (v1 class=[^ ]+ path=[^>]+ line=[0-9]+) -->/
 );
 var LENIENT_KEY_PATTERN = /<!-- gaia-debt-key:[^>]*?path=([^>\n]+) line=/;

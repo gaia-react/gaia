@@ -70,13 +70,12 @@ setup() {
 
 # --- Group 1: the roster the rest of the suite walks -----------------------
 
-@test "the glob resolves to at least the five known Code Audit Team specs" {
-  [ "${#SPECS[@]}" -ge 5 ]
+@test "the glob resolves to at least the known Code Audit Team specs" {
+  [ "${#SPECS[@]}" -ge 4 ]
   for member in \
     code-audit-frontend \
     code-audit-github-workflows \
     code-audit-maintainer-node \
-    code-audit-maintainer-prose \
     code-audit-maintainer-shell; do
     [ -s "$ROOT/.claude/agents/${member}.md" ] || {
       echo "roster member ${member}.md is missing or empty; every per-spec loop here would skip it silently" >&2

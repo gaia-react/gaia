@@ -187,4 +187,18 @@ Three further decisions ride with a new root script in the maintainer repository
 - **Whether it folds into `.gaia/tests/shell-lint.sh`** alongside the other guards shellcheck cannot model, and whether it is advisory or blocking there.
 <!-- gaia:maintainer-only:end -->
 
+## Why a guard must be able to fail
+
+A guard (a test assertion, a lint script, a CI condition, a hook precondition) is only evidence of anything when red is reachable. A guard that cannot go red says nothing, in the exact voice of one that checked and approved. The failure is silent by construction: it surfaces as a construct nobody defends, discovered when the construct breaks in a place the guard was believed to cover. Three independent stages can lose a guard its power to fail; sound at two of three still proves nothing.
+
+- **Discovery, the input set.** The step that builds the guard's own input set can drop an element and say nothing: a glob that misses an extension, an over-reaching `find` prune, a manifest-derived list that does not enumerate every member, a tracked-file listing that cannot see a file not yet tracked. An empty or short input set reads exactly like a clean pass. The untracked variant is the sharpest case: a new guard and its sibling suite are both untracked at the moment the author first runs the guard to check the tree is clean, and those two files are the ones most likely to carry the class deliberately (a guard's header quotes its own class as worked counter-examples, its suite spells the class out in fixtures), so the very first run reports clean over the set most likely to red.
+- **Arming, which inputs reach the check.** The check is correct wherever it runs, but its arming condition covers less than the surface the rule governs: a path filter narrower than the files the rule binds, a changed-files list omitting a directory, a refinement keyed to an optional field's presence. The diff that creates the obligation is the one that skips the check.
+- **Match region, what the check accepts.** The assertion runs on the right input but admits a region wider than the construct its own name pins: a needle satisfied by surrounding boilerplate or unrelated prose, a snapshot standing in for the behavioral claim beside it, an exit-code check where the message content is the actual claim. Corrupt the construct and the check stays green.
+
+Correct pattern: prove the guard can fail before relying on it (break the construct, run the guard, confirm red; restore, confirm green; commit an awkward-to-hand-break fixture instead), assert the input set is non-empty and the expected size (derived from the same source the rule binds to, never a hand-maintained parallel list), derive the arming condition from the surface the rule governs, and pin the match region to the construct (anchor the pattern, match the full value, assert on the field carrying the behavioral claim).
+
+Where discovery reads tracked files, the new guard and its suite must be visible to it before the run that validates them: `git add` them first for an index-reading discovery (`git ls-files`, `git grep`); a committed-ref discovery (`git ls-tree HEAD`) needs the commit itself. Run the discovery command on its own and confirm the two new paths appear in its output, which is the only thing distinguishing a clean pass from a pass over a set that never held them.
+
+Mechanism-level cases on the `.bats` surface, where an assertion's status never reaches the test result at all, are `.claude/rules/bats-assertions.md`.
+
 See [[Claude Hooks]], [[Code Review Audit Agent]], [[PR Merge Workflow]], [[Quality Gate]].

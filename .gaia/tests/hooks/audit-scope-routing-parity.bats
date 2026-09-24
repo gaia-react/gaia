@@ -18,7 +18,6 @@
 #   .gaia/cli/templates/workflows/code-review-audit.yml.tmpl -> ownerless
 #   .gaia/cli/{package.json,pnpm-lock.yaml,pnpm-workspace.yaml,tsconfig*.json,
 #              *.config.ts,*.config.mjs}          -> code-audit-maintainer-node
-#   .claude/skills/**/*.md                        -> code-audit-maintainer-prose
 #   .husky/**                                     -> code-audit-maintainer-shell
 #
 # The remaining sets are the ownerless-path triage, and their direction is the
@@ -38,15 +37,16 @@
 #   the distribution and governance surface        -> code-audit-maintainer-shell
 #     (.gaia/*.yml, .gaia/*.json, .gaia/scripts/token-rates.json,
 #      .gaia/release-exclude, .claude/settings.json, .github/CODEOWNERS)
-#   .claude/agents/*/**                            -> code-audit-maintainer-prose
-#     (the Code Audit Team's own review lenses, which dispatched nobody)
-#   GAIA's executable prose                        -> code-audit-maintainer-prose
-#     (.claude/commands/**, .claude/instructions/**,
-#      .claude/agents/worthiness-evaluator.md, .gaia/cli/health/**/*.md,
-#      the two .github/forensics/ prompts, .specify/presets/**/*.md, and the
-#      commands/ rules/ templates/ directories under
-#      .specify/extensions/gaia/ -- instructions a language model runs,
-#      as against the inert prose and fixture corpora beside them)
+#
+# The prose-legibility member's own reassignment (`.claude/skills/**/*.md`,
+# `.claude/agents/*/**`, `.claude/commands/**`, `.claude/instructions/**`,
+# `.claude/agents/worthiness-evaluator.md`, `.gaia/cli/health/**/*.md`, the
+# two `.github/forensics/` prompts, `.specify/presets/**/*.md`, and the
+# `commands/`/`rules/`/`templates/` directories under
+# `.specify/extensions/gaia/`) is gone with the member (harness triage
+# P3-09): it carries no arm above because `before` was already `-` for all
+# of it, and deleting the member returns `after` to `-` too, so the trailing
+# `else` covers it without a special case.
 #
 # This is stable and does not rot: the test iterates FIXTURE ROWS, so a file
 # added to the repo later neither breaks it nor silently escapes it. It is a
@@ -92,8 +92,6 @@ setup() {
       expected="-"
     elif [[ "$path" =~ ^\.gaia/cli/(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|tsconfig[^/]*\.json|[^/]*\.config\.ts|[^/]*\.config\.mjs)$ ]]; then
       expected="code-audit-maintainer-node"
-    elif [[ "$path" =~ ^\.claude/skills/.*\.md$ ]]; then
-      expected="code-audit-maintainer-prose"
     elif [[ "$path" =~ ^\.husky/ ]]; then
       expected="code-audit-maintainer-shell"
     # The four ownerless-triage arms below are guarded on `before = -` rather
@@ -113,10 +111,6 @@ setup() {
       expected="code-audit-maintainer-node"
     elif [ "$before" = "-" ] && [[ "$path" =~ ^(\.gaia/[^/]*\.(yml|json)|\.gaia/scripts/token-rates\.json|\.gaia/release-exclude|\.claude/settings\.json|\.github/CODEOWNERS)$ ]]; then
       expected="code-audit-maintainer-shell"
-    elif [ "$before" = "-" ] && [[ "$path" =~ ^\.claude/agents/[^/]+/ ]]; then
-      expected="code-audit-maintainer-prose"
-    elif [ "$before" = "-" ] && [[ "$path" =~ ^(\.claude/(commands|instructions)/|\.claude/agents/worthiness-evaluator\.md$|\.gaia/cli/health/.*\.md$|\.github/forensics/(prompt|apply-fix-prompt)\.md$|\.specify/extensions/gaia/(commands|rules|templates)/[^/]*\.md$|\.specify/presets/.*\.md$) ]]; then
-      expected="code-audit-maintainer-prose"
     else
       expected="$before"
     fi

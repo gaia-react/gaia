@@ -178,7 +178,7 @@ value_of() {
 @test "an unresolvable membership base exits 1 before resolving anything else" {
   local repo
   repo="$(make_repo no-base master)"
-  run --separate-stderr "$repo/.gaia/scripts/audit-resolve-scope.sh" --member code-audit-maintainer-prose --root "$repo"
+  run --separate-stderr "$repo/.gaia/scripts/audit-resolve-scope.sh" --member code-audit-maintainer-shell --root "$repo"
   [ "$status" -eq 1 ]
   [[ "$stderr" == *"do NOT self-skip"* ]] || return 1
   [ "$(value_of "$output" FULL_BASE)" = "" ]

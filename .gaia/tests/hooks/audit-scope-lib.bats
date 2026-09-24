@@ -817,13 +817,14 @@ EOF
   [ "$(audit_owner_for_path '.gaia/cli/prettier.config.mjs')" = "code-audit-maintainer-node" ]
 }
 
-@test "UAT-002: skills-md is owned by the prose member; non-md under skills stays ownerless" {
+@test "UAT-002: skills-md and non-md under skills both stay ownerless" {
+  # The prose-legibility member that used to own `.claude/skills/**/*.md`
+  # is deleted (harness triage P3-09); nothing replaces its lens, so both
+  # a skills .md file and a non-.md helper under skills are ownerless.
   # shellcheck source=/dev/null
   . "$SCOPE_LIB"
   audit_scope_init "$REPO_ROOT"
-  [ "$(audit_owner_for_path '.claude/skills/gaia/references/debt.md')" = "code-audit-maintainer-prose" ]
-  # A non-.md helper under skills is ownerless (empty), not owned by the prose
-  # member and not the default frontend member.
+  [ -z "$(audit_owner_for_path '.claude/skills/gaia/references/debt.md')" ]
   [ -z "$(audit_owner_for_path '.claude/skills/release-notes/eval/probe.py')" ]
 }
 

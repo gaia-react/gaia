@@ -47,27 +47,13 @@ setup() {
   MEMBERS="code-audit-frontend
 code-audit-github-workflows
 code-audit-maintainer-node
-code-audit-maintainer-prose
 code-audit-maintainer-shell"
 
-  # The members whose clearance actually gates a merge. They carry the
-  # withhold contract. The prose member is deliberately NOT among them: it is
-  # advisory-only and its own file states that it always writes an earned
-  # marker and never deadlocks a merge. A clearance that always clears attests
-  # nothing about content, so withholding there would buy no guarantee while
-  # breaking the contract the member exists to keep. It records the divergence
-  # instead. Splitting the pins this way is what stops the two contracts from
-  # silently contradicting each other.
-  GATING="code-audit-frontend
-code-audit-github-workflows
-code-audit-maintainer-node
-code-audit-maintainer-shell"
-  ADVISORY="code-audit-maintainer-prose"
-
-  # The advisory member's counterpart pins.
-  EXEMPTION='**A `DIRTY=` line does NOT withhold your pass, and the exemption is deliberate.**'
-  ADVISORY_ANCHOR='record any `DIRTY=` line'
-  ADVISORY_ARTIFACT='**Do not reach for a `.refused` artifact here under any reading:**'
+  # The members whose clearance actually gates a merge. Currently every
+  # roster member, so GATING equals MEMBERS; kept as a separate name because
+  # the split (and the withhold contract it names) is a roster property, not
+  # an accident of how many members exist today.
+  GATING="$MEMBERS"
 
   # The detection line, pinned in the one place it now lives. One line on
   # purpose: a wrapped command cannot be asserted with a fixed-string grep. The
@@ -98,30 +84,6 @@ code-audit-maintainer-shell"
   # the sidecar write is the load-bearing half.
   SIDECAR_CLAUSE='write the findings sidecar naming each dirty path'
 
-  # Withhold-shaped clauses, as an ERE alternation, for the advisory member's
-  # drift guard below. This matches an instruction that the member withholds
-  # ITS OWN pass, which is the meaning the advisory member must never acquire,
-  # rather than the one bolded sentence a byte-identical pin could see.
-  #
-  # Two spellings are deliberately NOT in it, both because the advisory member
-  # carries them legitimately. `write no marker` is its self-skip arm, and an
-  # unqualified `withhold` covers its own exemption prose ("why the gating
-  # members withhold on it"). Matching the verb plus the thing withheld is what
-  # separates an instruction to this member from a description of a sibling.
-  #
-  # `the` belongs in the determiner class as much as `this` and `your` do:
-  # `Withhold the marker on any unresolved Critical…` is a VERBATIM handshake
-  # sentence gating members carry, so copy-pasting a sibling's real paragraph is
-  # the most probable way this member acquires the contract.
-  WITHHOLD_SHAPED='withhold(s|ing)? (this|your|the) (pass|clearance|marker)'
-
-  # The one legitimate form the alternation above still reaches: the exemption
-  # sentence's own negation, `does NOT withhold your pass`. The negator is
-  # ANCHORED TO THE VERB rather than merely required somewhere nearby, because
-  # `never` and `cannot` saturate this prose and an unanchored exclusion
-  # discards real withhold clauses beside them (fixtures below).
-  WITHHOLD_NEGATED='(does not|never|cannot) +withhold'
-
   # The run-order anchor, so the refusal is reachable from the member's own
   # order of operations rather than stated only beside the resolver command. The
   # specialists carry it in Methodology step 1; the default member's scope run
@@ -139,18 +101,6 @@ member_path() {
 # stand in for the command the member actually runs.
 resolver_invocation() {
   awk '/^```bash$/ { f = 1; next } /^```$/ { f = 0 } f && /^<root>\/\.gaia\/scripts\/audit-resolve-scope\.sh --member / { print }' "$1"
-}
-
-# withhold_drift FILE: print every withhold-shaped clause in FILE that is not
-# the exemption's own negation, one per line with up to 30 characters of
-# preceding context. Case insensitive on purpose. Newlines are folded to spaces
-# first, because `grep` is line-scoped and a clause split across a line break
-# would otherwise be invisible.
-withhold_drift() {
-  tr '\n' ' ' < "$1" | grep -oiE ".{0,30}$WITHHOLD_SHAPED" | grep -viE "$WITHHOLD_NEGATED"
-  # Both greps exit 1 on no match, which is the passing case here, so the
-  # function's own status must not carry it into a `set -e` test body.
-  return 0
 }
 
 # --- Behavioural fixture -----------------------------------------------------
@@ -269,7 +219,6 @@ EOF
   for m in $MEMBERS; do
     f="$(member_path "$m")"
     needle="$REFUSAL"
-    [ "$m" = "$ADVISORY" ] && needle="$EXEMPTION"
     invocation_line="$(grep -nF -- "<root>/.gaia/scripts/audit-resolve-scope.sh --member $m" "$f" | head -1 | cut -d: -f1)"
     contract_line="$(grep -nF -- "$needle" "$f" | head -1 | cut -d: -f1)"
     [ -n "$invocation_line" ] || { echo "no resolver invocation found: $m" >&2; return 1; }
@@ -329,32 +278,6 @@ EOF
       return 1
     }
   done
-}
-
-@test "the advisory member is exempted, explicitly and not by omission" {
-  f="$(member_path "$ADVISORY")"
-  assert_carries "$f" "$EXEMPTION" || { echo "advisory member carries no explicit exemption" >&2; return 1; }
-  assert_carries "$f" "$ADVISORY_ANCHOR" || { echo "advisory run order does not name the record step" >&2; return 1; }
-  assert_carries "$f" "$ADVISORY_ARTIFACT" || { echo "advisory member does not forbid the refusal artifact" >&2; return 1; }
-}
-
-@test "the advisory member never acquires the withhold contract" {
-  # Written as a positive match on the bad case per the bats-assertions rule.
-  # Scanned by meaning rather than by the one bolded sentence: an exact-string
-  # absence check only ever caught the byte-identical copy-paste, while ADDING a
-  # reworded withhold clause restored the same contradiction.
-  f="$(member_path "$ADVISORY")"
-  drift="$(withhold_drift "$f")"
-  [ -z "$drift" ] || {
-    echo "advisory member has acquired a withhold clause it is exempt from:" >&2
-    echo "$drift" >&2
-    return 1
-  }
-  assert_carries "$f" "$NO_REFUSAL_ARTIFACT" && {
-    echo "advisory member has acquired the gating withhold-artifact clause" >&2
-    return 1
-  }
-  true
 }
 
 # --- Behavioural: each member's own invocation --------------------------------
@@ -500,91 +423,6 @@ assert_pin_breaks() {
     return 1
   }
   true
-}
-
-# assert_drift_caught TAG CLAUSE: the advisory member with CLAUSE inserted ahead
-# of the handshake's "There is no withhold path here", exemption paragraph left
-# exactly where it is, must trip the drift guard.
-assert_drift_caught() {
-  local tag="$1" clause="$2" src tmp anchor
-  src="$(member_path "$ADVISORY")"
-  tmp="$BATS_TEST_TMPDIR/mutant-advisory-$tag.md"
-  anchor='There is no withhold path here;'
-
-  grep -qF -- "$anchor" "$src" || {
-    echo "fixture broken: advisory member no longer carries the insertion anchor ($tag)" >&2
-    return 1
-  }
-  [ -z "$(withhold_drift "$src")" ] || {
-    echo "fixture broken: advisory member already carries a withhold clause ($tag)" >&2
-    return 1
-  }
-
-  awk -v anchor="$anchor" -v clause="$clause" \
-    'index($0, anchor) && !done { print clause; print ""; done = 1 } { print }' \
-    "$src" > "$tmp"
-
-  grep -qF -- "$REFUSAL" "$tmp" && {
-    echo "fixture is not the reworded case: it carries the byte-identical contract ($tag)" >&2
-    return 1
-  }
-  [ -n "$(withhold_drift "$tmp")" ] || {
-    echo "drift guard misses a withhold clause it must catch ($tag)" >&2
-    return 1
-  }
-  return 0
-}
-
-@test "the advisory drift guard catches a reworded withhold clause (non-vacuity)" {
-  assert_drift_caught reworded 'When a `DIRTY=` line comes back, you withhold this pass and report that you must be re-dispatched once the operator commits or reverts.'
-}
-
-@test "the advisory drift guard is not evaded by a nearby 'cannot' (non-vacuity)" {
-  assert_drift_caught nearby_cannot 'A pass over a dirty tree cannot be trusted, so withhold your marker until it is clean.'
-}
-
-@test "the advisory drift guard is not evaded by a nearby 'never' (non-vacuity)" {
-  assert_drift_caught nearby_never 'This member never self-heals, and it will withhold this pass on dirt.'
-}
-
-# gating_withhold_phrases: every withhold-bearing phrase the GATING members
-# actually carry, deduped, one per line. Extraction is deliberately BROADER than
-# WITHHOLD_SHAPED, because its job is to describe what the siblings really say
-# rather than to judge it; a phrasing the scan cannot see reds here as soon as a
-# gating member adopts it.
-gating_withhold_phrases() {
-  local m
-  for m in $GATING; do
-    tr '\n' ' ' < "$(member_path "$m")" \
-      | grep -oiE 'withhold[a-z]* [a-z]+ (pass|clearance|marker)'
-  done | sort -u
-  return 0
-}
-
-@test "the drift guard catches every withhold phrasing the gating members really use" {
-  local phrase n=0
-  while IFS= read -r phrase; do
-    [ -n "$phrase" ] || continue
-    n=$((n + 1))
-    assert_drift_caught "real-$n" \
-      "When the check comes back non-empty you $phrase until the operator commits or reverts." || return 1
-  done <<PHRASES
-$(gating_withhold_phrases)
-PHRASES
-
-  # A floor, so a broken extraction cannot quietly turn this into a test that
-  # asserts nothing. It sits below the number of distinct phrasings the gating
-  # members carry today.
-  [ "$n" -ge 4 ] || {
-    echo "extraction yielded only $n phrases; the derived fixture set has gone vacuous" >&2
-    return 1
-  }
-}
-
-@test "the advisory drift guard sees a clause split across a line break (non-vacuity)" {
-  # awk processes escape sequences in a `-v` assignment, so `\n` reaches the
-  # mutant as a real line break, while a literal one is a hard error on BSD awk.
-  assert_drift_caught line_split 'When the check comes back non-empty you\nwithhold this pass until the operator commits or reverts.'
 }
 
 @test "the sentinel pin breaks when the carve-out is softened (non-vacuity)" {

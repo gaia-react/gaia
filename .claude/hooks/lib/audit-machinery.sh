@@ -76,9 +76,6 @@ AUDIT_MACHINERY_PATHS="$(cat <<'EOF'
 .claude/agents/code-audit-maintainer-node.md
 # gaia:maintainer-only:end
 .claude/agents/code-audit-github-workflows.md
-# gaia:maintainer-only:start
-.claude/agents/code-audit-maintainer-prose.md
-# gaia:maintainer-only:end
 .claude/rules/**
 .gaia/VERSION
 EOF

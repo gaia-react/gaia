@@ -716,8 +716,7 @@ stage_with_plan() {
 # is lost with no diagnostic. This repository's own settings register the hook
 # by a relative path, so a shifted cwd stops it running at all rather than
 # running it from a subdirectory; the shape is reachable for an adopter that
-# registers an absolute command, and `.claude/rules/repo-relative-paths.md`
-# requires the anchor either way.
+# registers an absolute command, which needs the anchor either way.
 @test "staged hook run from a repo subdirectory: records (tally path is cwd-independent)" {
   stage_with_plan
   mkdir -p "$REPO/app/components"

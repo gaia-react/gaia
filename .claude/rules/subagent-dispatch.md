@@ -1,28 +1,16 @@
 # Subagent Dispatch
 
-When a dispatched agent's output is something you will act on, do not ask for it in the reply. An absent report is indistinguishable from a clean result, and the likeliest reading of a missing one is "it found nothing", the conclusion you must not draw.
+When a dispatched agent's output is something you will act on, do not ask for it in the reply: an absent report reads as "it found nothing", the conclusion you must not draw.
 
-**Give it a file, and say in the dispatch prompt that the file is JSON.** Pre-clear an output path (`rm -f`), have the agent write its result there and return only a thin digest, then classify the file. The artifact has to be JSON whose report is an **array**, either the top-level value or the value at the one top-level key `--report-key` names; a Markdown or plain-text report classifies NO-OP however complete it is, which is the exact inversion this guard exists to prevent. Ask for one of these two shapes:
-
-```json
-{"findings": [{"path": "app/foo/index.ts", "line": 12, "detail": "..."}]}
-```
-
-classified with `--report-key findings`, or a bare top-level `[...]` array with the key omitted. Then:
+**Give it a file, and say in the dispatch prompt that the file is JSON.** Pre-clear the output path (`rm -f`), have the agent write its result there and return only a thin digest, then classify the file. The artifact must be a JSON **array**, either the top-level value or the value at the one top-level key `--report-key` names; a Markdown or plain-text report classifies NO-OP however complete it is.
 
 ```bash
 bash .gaia/scripts/audit-noop-detect.sh --shape agent-report-file --path <path> \
   [--report-key <key>] [--expect-count <n> | --min-count <n>]
 ```
 
-Exit 0 real, 1 no-op, 2 usage error. On a no-op, re-dispatch **exactly once** against the re-cleared path. A second consecutive no-op takes the general terminal action: do the work inline yourself and apply the result as if the agent had returned it.
+Exit 0 real, 1 no-op, 2 usage error. **Pass a count when you know one**: a truncated write parses fine and reads as real otherwise. On a no-op, re-dispatch **exactly once** against the re-cleared path; a second consecutive no-op means doing the work inline yourself and applying the result as if the agent had returned it.
 
-**Pass a count when you know one.** A truncated write parses fine and reads as a real result, so existence-plus-parses alone reproduces the same collapse inside a file that exists.
+**Poll the file, not the notification**, and **never classify at the moment the dispatch call returns**: the `Agent` call returns dispatch metadata immediately, before the agent has done anything, so classifying there reads a no-op on a dispatch still running correctly and spends the one hardened re-dispatch on it.
 
-**Poll the file, not the notification.** The artifact is on disk, so never block on a completion signal that may not arrive. Tear down each watch you arm the moment you hold its artifact: a report you end up reading somewhere else leaves the loop with no exit condition left to satisfy.
-
-**Never classify at the moment the dispatch call returns.** An `Agent` call returns dispatch metadata immediately, before the agent has done anything, and the tool exposes no parameter that holds it open until the agent finishes. Classifying there hands the guard an empty path, reads a no-op on a dispatch that is still running correctly, and spends the one hardened re-dispatch on it. This is why the rule above is *poll the artifact*: the artifact's appearance is the completion signal, and it is the only one that cannot arrive early.
-
-**Where a caller cannot name the path in advance, have the classifier resolve it.** A path a caller writes down before dispatch is a prediction, and a prediction about a key that moves is wrong from the round it moves onward. The pre-merge audit gate is the worked example: its findings sidecar keys on a base that advances every cleared round, so it passes `--findings-root` plus a wave stamp and lets `audit-noop-detect.sh` find the newest matching artifact (`wiki/concepts/PR Merge Workflow.md`, "No-op detection and retry for each dispatched member"). Pre-clearing a path is still right where the path is genuinely fixed, which is the `agent-report-file` case above.
-
-Full contract for this shape, including what the count flags assert and what the terminal action is: the `No-op guard against silent subagents` section of `wiki/concepts/Code Review Audit Agent.md`. The hardened retry prefix is written out verbatim in `.claude/agents/code-audit-frontend.md` ("No-op detection and retry for each refuter"). Path-scoping this rule would break it: the decision happens while composing a dispatch, which no file edit announces.
+Full contract for this shape, including the moving-path (--findings-root) case and what the terminal action is: the `No-op guard against silent subagents` section of `wiki/concepts/Code Review Audit Agent.md`.

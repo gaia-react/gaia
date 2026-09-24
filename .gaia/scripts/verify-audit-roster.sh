@@ -47,6 +47,9 @@
 #      section's own docblock below carries the reasoning, including why the
 #      universe is the tracked files of the repository ROOTED AT --root and
 #      nothing wider.
+#   3. Roster-reader drift, checked before 1 and 2: this check's raw-glob scrape
+#      and the classifier's compiled globs must agree per member on the count,
+#      or no other verdict is produced.
 #
 # THE BOUNDED DIALECT a glob must fit to be classified. The classifier compiles
 # three constructs (glob_to_regex, in the roster module sourced below):
@@ -437,7 +440,7 @@ done < <(printf '%s\n' "$region_records")
 # of glob_items(), and the dialect gate must not become a second one. Its
 # entries are only classified, never compared against a claimant's.
 
-pair_records="$(
+violation_records="$(
   {
     printf '%s\n' "$class_records" |
       awk '{ k = $1; m = $2; r = $0; sub(/^[^ ]+[ ]+[^ ]+[ ]*/, "", r); printf "%s\t%s\t%s\n", k, m, r }'
@@ -669,7 +672,7 @@ while IFS=$'\t' read -r kind f1 f2 f3 f4; do
       printf '\n'
       ;;
   esac
-done < <(printf '%s\n' "$pair_records")
+done < <(printf '%s\n' "$violation_records")
 
 # --- Invariant: every tracked path resolves an owner -------------------------
 #

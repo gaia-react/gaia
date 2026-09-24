@@ -16,42 +16,10 @@ paths:
 
 # Guards Must Be Able to Fail
 
-A guard is a test assertion, a lint script, a CI condition, a hook precondition: anything whose green result is read as evidence that a construct holds. Green is only evidence when red is reachable. A guard that cannot go red says nothing, and it says it in the exact voice of a guard that checked and approved.
+A guard (test assertion, lint script, CI condition, hook precondition) is only evidence a construct holds when red is reachable. Before relying on one:
 
-The failure is silent by construction, so it does not surface as a broken guard. It surfaces as a construct nobody defends, discovered when the construct breaks in a place the guard was believed to cover.
+- **Prove it can fail.** Break the construct, run the guard, confirm red; restore, confirm green. Commit an awkward-to-hand-break case as a fixture instead.
+- **Assert the input set is non-empty and the expected size**, derived from the same source the rule binds to.
+- **Stage a new guard and its sibling suite before the run that validates them** (or confirm their paths appear in the discovery output): both are untracked at the moment they are first run, which is exactly when a discovery over tracked files cannot see them, and that first-run "clean" is indistinguishable from a real one.
 
-Three stages sit between an input and a verdict, and a guard can lose its power to fail at any one of them independently. A guard that is sound at two of the three still proves nothing.
-
-## Anti-pattern
-
-**Discovery, the input set.** The step that builds the guard's own input set drops an element and says nothing: a glob that misses an extension, a `find` whose prune reaches further than intended, a list derived from a manifest that does not enumerate every member, a `git ls-files` (or any tracked-file listing) that cannot see a file which is not yet tracked. The guard then reports clean over input it never opened. An empty or short input set reads exactly like a clean pass.
-
-The untracked variant is the one that does not present as a discovery problem while it is happening, and it fires on a guard's very first validation run. A new guard and its sibling suite are both untracked at the moment the author runs the guard to see whether the tree is clean, and those two files are reliably the ones most likely to carry the class deliberately: a guard's header quotes its own class as worked counter-examples, and its suite spells the class out in fixtures. So the first run reports clean over a set that excludes exactly the files most likely to red, and that output is indistinguishable from a real clean pass.
-
-**Arming, which inputs reach the check.** The check is correct wherever it runs, but its arming condition covers less than the surface the rule governs: a path filter narrower than the files the rule binds, a `changed-files` list that omits a directory, a refinement keyed to an optional field being present. The diff that creates the obligation is the one that skips the check.
-
-**Match region, what the check accepts.** The assertion runs on the right input and admits a region wider than the construct its own name pins: an expectation whose needle is satisfied by surrounding boilerplate, a substring match that the file's unrelated prose also satisfies, a snapshot standing in for the behavioral claim beside it, an exit-code check where the message content is the actual claim. Corrupt the construct and the check stays green.
-
-## Correct pattern
-
-**Prove the guard can fail before relying on it.** This is the one obligation that catches all three stages at once, and it is cheap: break the construct the guard names, run the guard, and confirm it goes red. Restore, confirm green. A guard whose red state has never been observed is an unverified claim, whatever its logic reads like. Where the break is awkward to perform by hand, commit the broken form as a fixture the suite drives deliberately.
-
-**Assert the input set is non-empty and the expected size.** A discovery step states how many elements it expects to find, or at minimum that it found any, and fails loudly when the set is short. Deriving the set from the same source the rule binds to, rather than from a hand-maintained parallel list, removes the drift that makes the two disagree.
-
-**Where the discovery reads tracked files, make the new guard and its suite visible to it before the run that validates them.** Which step suffices depends on what the listing reads. An index-reading discovery (`git ls-files`, `git grep`) sees both files once they are staged, so `git add` them first. A discovery that reads a committed ref (`git ls-tree HEAD`) is reached only by the commit, so a stage leaves it reading a set that still does not hold the two new files. The bullet above reaches that case only in its stronger form: the set is short rather than empty, so a non-empty check is satisfied and only an expected-size check reds. The step that answers for either is to run the discovery command on its own and confirm the two new paths appear in its output, which is the only thing that distinguishes a clean pass from a pass over a set that never held them.
-
-**Derive the arming condition from the surface the rule governs.** When a rule binds a set of paths, the check's trigger reads that same set rather than a hand-copied subset of it. Where the two must be written separately, a check that they still agree is itself a guard, and it is subject to this whole page.
-
-**Pin the match region to the construct.** The assertion names the thing it claims: anchor the pattern, match the full value rather than a substring of it, and assert on the field carrying the behavioral claim rather than on a status code that many distinct outcomes share. When an assertion's needle would be satisfied by text the construct does not own, it is matching the wrong region.
-
-Mechanism-level cases of a guard losing the ability to go red, on the `.bats` surface, where an assertion's status never reaches the test result at all, are `.claude/rules/bats-assertions.md`.
-
-## When the guard is the deliverable
-
-Everything above binds whoever writes a guard, and it keeps binding here. The obligation is easiest to lose when the guard is not a test written beside a feature but the feature itself: a refusal, a gate, a staleness check shipped as a change's whole deliverable.
-
-A verification pass enumerates what the change produced and confirms each artifact exists and behaves. For a guard it confirms only that it passes, and passing is the state an inert guard is permanently in, so the pass answers the wrong question and answers it green.
-
-**Verifying a guard-shaped deliverable means driving it into its failing state once, deliberately.** Stage the precondition it refuses on, run it, and assert the refusal, its exit status and the message carrying the claim rather than the status alone. That adversarial fixture is the step in a verification pass that separates a working guard from an inert one, and a change shipping several guards owes one per guard: a fixture for one says nothing about the rest.
-
-It replaces nothing above it. A fixture driven against a tracked construct reds normally while the same guard stays inert over the new files its discovery cannot see, so the input-set obligations still apply to a guard shipped as a deliverable, alongside its own fixture.
+Full anti-pattern (the three independent stages a guard can lose its power to fail at: discovery, arming, match region) and worked correct-pattern detail: `wiki/concepts/GAIA Scripts.md` ("Why a guard must be able to fail"). Mechanism-level `.bats` cases: `.claude/rules/bats-assertions.md`.

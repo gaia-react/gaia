@@ -51,10 +51,6 @@ Quick check:
 git diff --cached --name-only -z | tr '\0' '\n' | grep -E '\.(ts|tsx|js|jsx|mjs|cjs|css)$|^(package\.json|pnpm-lock\.yaml|tsconfig.*\.json|vite\.config\.|vitest\.config\.|playwright\.config\.|eslint\.config\.)'
 ```
 
-`-z` and the `tr` back to newlines are both load-bearing. Under git's default `core.quotePath`, a path-listing command C-quotes any path carrying a non-ASCII byte, so a staged `app/components/café.test.ts` prints as `"app/components/caf\303\251.test.ts"`, whose last character is a double quote. The `$`-anchored extension alternation no longer meets a bare path, the grep returns empty, and the gate is skipped on a real source change. `-z` turns the quoting off; the `tr` is what gives the anchor a bare path to match again. <!-- gaia:hypothetical app/components/café.test.ts: a worked example of C-quoting an accented path, not a file this repo has -->
-
-**Skip only on a positive answer.** If the grep returns nothing and the check itself ran, skip the gate. If the check cannot answer, the `git` call fails or nothing runs it, run the gate: an unanswered check is not an empty staged set.
-
 ## Behavior when the gate runs
 
 - **Fix issues as you encounter them** rather than just reporting them.
@@ -70,5 +66,5 @@ This page is the source of truth for quality gate steps. The always-loaded `.cla
 See [[Pre-commit Hooks]], [[PR Merge Workflow]], [[Task Orchestration]], [[Claude Hooks]] (the source-edit and Bash safeguards keep `.env`, lockfile, secrets, and destructive-git footguns out of the staged surface before the gate ever runs).
 
 <!-- gaia:maintainer-only:start -->
-The Forensics Triage Workflow runs its own CI gate (`.github/forensics/run-quality-gate.sh`: install → typecheck → lint → test → knip) on every auto-fix branch; gate failure abandons the branch and demotes the issue to `needs-human` instead of opening a partial PR. That gate is distinct from the developer Quality Gate above: it adds `pnpm knip` because it runs post-task against a complete tree, whereas the dev gate omits knip (see `.claude/rules/knip.md`).
+The Forensics Triage Workflow runs its own CI gate (`.github/forensics/run-quality-gate.sh`: install → typecheck → lint → test → knip) on every auto-fix branch; gate failure abandons the branch and demotes the issue to `needs-human` instead of opening a partial PR. That gate is distinct from the developer Quality Gate above: it adds `pnpm knip` because it runs post-task against a complete tree, whereas the dev gate omits knip (see `wiki/dependencies/knip.md`).
 <!-- gaia:maintainer-only:end -->

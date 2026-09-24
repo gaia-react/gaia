@@ -157,7 +157,7 @@ member_digest() {
 
 @test "every member records sidecar true; only the default member records dispositions_sidecar true" {
   for m in code-audit-frontend code-audit-maintainer-shell code-audit-maintainer-node \
-           code-audit-github-workflows code-audit-maintainer-prose; do
+           code-audit-github-workflows; do
     d="$(member_digest "$ROOT" "$m")"
     out="$(bash "$WRITER" --root "$ROOT" --member "$m" --provenance earned --scope-digest "$d")"
     [ "$(jq -r .sidecar "$out")" = "true" ]
@@ -1308,31 +1308,6 @@ key library"
   return 0
 }
 
-@test "UAT-011: the prose member is advisory on a rotated digest: publishes, exits 0, advisory token, both digests" {
-  m="code-audit-maintainer-prose"
-  digest="$(member_digest "$ROOT" "$m")"
-  printf '1.6.2\n' > "$ROOT/.gaia/VERSION"
-  git -C "$ROOT" add .gaia/VERSION
-  git -C "$ROOT" commit --quiet -m "rotate"
-  new_digest="$(member_digest "$ROOT" "$m")"
-
-  run bash "$WRITER" --root "$ROOT" --member "$m" --provenance earned --scope-digest "$digest"
-  [ "$status" -eq 0 ]
-  [ -f "$AUDIT_DIR/${new_digest}.${m}.ok" ]
-  grep -qF "review scope superseded (advisory)" <<<"$output" || return 1
-  grep -qF "$digest" <<<"$output" || return 1
-  grep -qF "$new_digest" <<<"$output" || return 1
-}
-
-@test "UAT-011: the prose member is advisory when --scope-digest is absent entirely: publishes, exits 0, advisory token" {
-  m="code-audit-maintainer-prose"
-  run bash "$WRITER" --root "$ROOT" --member "$m" --provenance earned
-  [ "$status" -eq 0 ]
-  digest="$(member_digest "$ROOT" "$m")"
-  [ -f "$AUDIT_DIR/${digest}.${m}.ok" ]
-  grep -qF "review scope superseded (advisory)" <<<"$output" || return 1
-}
-
 @test "UAT-012: --provenance refused ignores a stale --scope-digest and behaves exactly as before" {
   m="code-audit-maintainer-shell"
   d="$(member_digest "$ROOT" "$m")"
@@ -1378,60 +1353,6 @@ key library"
   run bash "$WRITER" --root "$ROOT" --member code-audit-frontend --provenance earned --scope-digest ""
   [ "$status" -eq 2 ]
   grep -qF -- "--scope-digest must be a 64-hex digest" <<<"$output" || return 1
-}
-
-# ========== the never-blocking member cannot be made to block ==========
-#
-# The 64-hex format validation runs ahead of the staleness arms, so before this
-# was fixed an empty --scope-digest exited 2 for EVERY member, the contractually
-# never-blocking one included. That member's definition always passes
-# --scope-digest "$D_SCOPE", and --read prints nothing whenever the capture
-# never ran, the audit key moved between two of its Bash calls, or the janitor
-# reaped the scope file. The result was that the one member that can never block
-# a merge became the one that blocked it permanently, with no marker for the
-# AND-aggregator to wait on. These pin the exemption at the format check, not
-# only at the staleness comparison.
-
-@test "advisory member: an empty --scope-digest degrades to advisory and still writes its marker" {
-  run bash "$WRITER" --root "$ROOT" --member code-audit-maintainer-prose \
-    --provenance earned --scope-digest ""
-  [ "$status" -eq 0 ]
-  grep -qF -- "advisory" <<<"$output" || return 1
-  written="$(find "$AUDIT_DIR" -name '*code-audit-maintainer-prose.ok' 2>/dev/null || true)"
-  [ -n "$written" ]
-}
-
-@test "advisory member: a malformed --scope-digest degrades to advisory and still writes its marker" {
-  run bash "$WRITER" --root "$ROOT" --member code-audit-maintainer-prose \
-    --provenance earned --scope-digest "not-a-digest"
-  [ "$status" -eq 0 ]
-  written="$(find "$AUDIT_DIR" -name '*code-audit-maintainer-prose.ok' 2>/dev/null || true)"
-  [ -n "$written" ]
-}
-
-# Widening the supersede operand back to the flag-only form also reds this
-# one: with the gate skipped, the never-blocking member emits no advisory text
-# on this path at all, so the presence assertion below fails. That red is what
-# shows the operand is what arms the advisory warning, not evidence of a
-# broken test.
-
-@test "advisory member: the never-blocking member warns on the narrowed gate and still publishes" {
-  # The advisory arms live INSIDE the staleness gate, so requiring a sibling
-  # refusal is also what makes this member speak on this path: a gate it skips
-  # emits nothing at all, a gate it enters warns before publishing. What the
-  # contract protects, that this member never refuses, holds either way.
-  m="code-audit-maintainer-prose"
-  digest="$(member_digest "$ROOT" "$m")"
-  printf '1.6.2\n' > "$ROOT/.gaia/VERSION"
-  git -C "$ROOT" add .gaia/VERSION
-  git -C "$ROOT" commit --quiet -m "rotate"
-  new_digest="$(member_digest "$ROOT" "$m")"
-
-  run bash "$WRITER" --root "$ROOT" --member "$m" --provenance earned \
-    --supersede-refusal "nothing on disk to supersede" --scope-digest "$digest"
-  [ "$status" -eq 0 ]
-  grep -qF -- "review scope superseded (advisory)" <<<"$output" || return 1
-  [ -f "$AUDIT_DIR/${new_digest}.${m}.ok" ]
 }
 
 @test "control: an ordinary member is still hard-refused on the same empty value" {

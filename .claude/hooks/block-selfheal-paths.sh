@@ -536,7 +536,7 @@ case "$tool_name" in
     # that embeds it mid-word: `(` shreds `$(pwd)/<writer>` into `"$` `(`
     # `pwd` `)` `/<writer>`, stranding the basename away from an execution
     # position. Padding `{` would do the identical thing to `${ROOT}/<writer>`,
-    # the path form .claude/rules/repo-relative-paths.md teaches, which is why
+    # the repo-relative path form GAIA scripts write, which is why
     # braces are NOT padded (and do not need to be: `{bash foo; }` is a syntax
     # error, so a real brace group already presents `{` as its own word, and
     # `}` is already detached by the `;` padding).

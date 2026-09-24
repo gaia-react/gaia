@@ -72,7 +72,6 @@ setup() {
     "$ROOT/.claude/agents/code-audit-github-workflows.md"
     "$ROOT/.claude/agents/code-audit-maintainer-node.md"
     "$ROOT/.claude/agents/code-audit-maintainer-shell.md"
-    "$ROOT/.claude/agents/code-audit-maintainer-prose.md"
   )
   WIKI_PAGE="$ROOT/wiki/concepts/Policy-Memory Loop.md"
   AUDIT_AGENT_PAGE="$ROOT/wiki/concepts/Code Review Audit Agent.md"
@@ -104,10 +103,6 @@ setup() {
 @test "UAT-010: wiki page deletes 'is ineligible' and 'warning-floor'" {
   assert_absent_fixed_across "is ineligible" "$WIKI_PAGE"
   assert_absent_fixed_across "warning-floor" "$WIKI_PAGE"
-}
-
-@test "UAT-010: code-audit-maintainer-prose.md deletes the Suggestion '(not counted)' fragment" {
-  assert_absent_fixed_across "(not counted)" "$ROOT/.claude/agents/code-audit-maintainer-prose.md"
 }
 
 @test "UAT-010: compute-tally.ts and tally.ts drop the severity-gating comment phrasing" {

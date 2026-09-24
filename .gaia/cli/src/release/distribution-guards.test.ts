@@ -39,12 +39,6 @@ const taxonomyPath = path.join(
   'taxonomy.md'
 );
 const releaseExcludePath = path.join(repoRoot, '.gaia', 'release-exclude');
-const gaiaFolderRulePath = path.join(
-  repoRoot,
-  '.claude',
-  'rules',
-  'gaia-folder.md'
-);
 
 const hasCommandFile = existsSync(commandPath);
 const commandText = hasCommandFile ? readFileSync(commandPath, 'utf8') : '';
@@ -148,41 +142,5 @@ describe('boundary and allowlist wiring', () => {
     const lines = readFileSync(releaseExcludePath, 'utf8').split('\n');
 
     expect(lines).toContain('.claude/commands/distribution-audit.md');
-  });
-
-  test('every mention in gaia-folder.md sits inside a balanced maintainer-only marker block', () => {
-    const START = '<!-- gaia:maintainer-only:start -->';
-    const END = '<!-- gaia:maintainer-only:end -->';
-    const lines = readFileSync(gaiaFolderRulePath, 'utf8').split('\n');
-
-    let depth = 0;
-    let startCount = 0;
-    let endCount = 0;
-    let mentionCount = 0;
-    const outsideMarkers: string[] = [];
-
-    for (const line of lines) {
-      if (line.includes(START)) {
-        depth += 1;
-        startCount += 1;
-      }
-
-      if (line.includes('/distribution-audit')) {
-        mentionCount += 1;
-        if (depth < 1) outsideMarkers.push(line);
-      }
-
-      if (line.includes(END)) {
-        depth -= 1;
-        endCount += 1;
-      }
-    }
-
-    expect(mentionCount).toBeGreaterThan(0);
-    expect(outsideMarkers).toEqual([]);
-    expect(startCount).toBe(endCount);
-    // The pre-existing pair at the top wraps an unrelated note and is not
-    // reused, so the command's own mention needs a second, dedicated pair.
-    expect(startCount).toBeGreaterThanOrEqual(2);
   });
 });

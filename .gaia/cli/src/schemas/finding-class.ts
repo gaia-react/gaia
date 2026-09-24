@@ -139,11 +139,10 @@ export const WORKFLOW_FINDING_CLASSES = [
 export type WorkflowFindingClass = (typeof WORKFLOW_FINDING_CLASSES)[number];
 
 /**
- * Closed-vocabulary members for the prose bucket. Seeded from the
- * prose-complexity dimensions the `code-audit-maintainer-prose` member owns
- * (excessive reducible length, deep nesting, high cross-reference indirection,
- * redundant instruction duplicated across files). Each is a prose-level root
- * cause, never a subsystem tag.
+ * Closed-vocabulary members for the prose bucket: the prose-complexity
+ * dimensions (excessive reducible length, deep nesting, high cross-reference
+ * indirection, redundant instruction duplicated across files). Each is a
+ * prose-level root cause, never a subsystem tag.
  */
 export const PROSE_FINDING_CLASSES = [
   'prose/excessive-length',

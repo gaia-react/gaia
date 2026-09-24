@@ -643,35 +643,6 @@ rotate_machinery() {
   [ -f "$(scope_file_for "$ROOT" "$BASE" "$MEMBER")" ]
 }
 
-@test "the advisory member's capture is released too, so its warning cannot stick on" {
-  # The never-blocking member warns and falls through to publish, and it
-  # publishes at the WRITE-TIME digest, so nothing is ever keyed to the capture
-  # it took. Without a release the capture outlives every round on this audit
-  # key and the warning re-fires forever, which that member records as a finding.
-  writer="$THIS_DIR/../audit-write-clearance.sh"
-  [ -x "$writer" ] || skip "audit-write-clearance.sh not executable"
-  local m="code-audit-maintainer-prose"
-
-  captured="$("$SCRIPT" --capture --root "$ROOT" --member "$m" --base "$BASE")"
-  rotate_machinery
-
-  run "$writer" --root "$ROOT" --member "$m" --provenance earned \
-    --base "$BASE" --scope-digest "$captured"
-  [ "$status" -eq 0 ]
-  grep -qF -- "advisory" <<<"$output" || return 1
-  [ ! -f "$(scope_file_for "$ROOT" "$BASE" "$m")" ]
-
-  # The next round captures fresh, so it agrees with its own content and warns
-  # about nothing.
-  fresh="$("$SCRIPT" --capture --root "$ROOT" --member "$m" --base "$BASE")"
-  [ "$fresh" != "$captured" ]
-  run "$writer" --root "$ROOT" --member "$m" --provenance earned \
-    --base "$BASE" --scope-digest "$fresh"
-  [ "$status" -eq 0 ]
-  grep -qF -- "advisory" <<<"$output" && return 1
-  return 0
-}
-
 @test "the forfeiture diagnostic reports what actually happened, not what it hoped" {
   # `.claude/rules/partial-cause-reporting.md`: three conditions reach this
   # refusal and they need different operator actions, so one message asserting

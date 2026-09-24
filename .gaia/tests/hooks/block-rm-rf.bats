@@ -817,8 +817,8 @@ t'
 # The match is a SUFFIX on the scratch segment, never a resolved root. Computing
 # the repo root would need a live `git rev-parse`, which this guard deliberately
 # does without, and baking a literal absolute prefix into a `.claude/`-distributed
-# file would violate .claude/rules/instruction-files.md. A suffix match needs
-# neither.
+# file would violate the no-hardcoded-absolute-paths principle (root CLAUDE.md).
+# A suffix match needs neither.
 
 @test "rm -f of an absolute .gaia/local/audit path is allowed" {
   run_hook_bash 'rm -f /Users/you/projects/my-app/.gaia/local/audit/issue-body-x.md'
