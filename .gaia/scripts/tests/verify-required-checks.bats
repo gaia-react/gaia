@@ -6,8 +6,7 @@ bats_require_minimum_version 1.5.0
 # Tests for `.gaia/scripts/verify-required-checks.sh`.
 #
 # The script never talks to `gh` in these tests: `--ruleset-contexts` injects
-# the live-required set and `--workflows-dir` points at a fixture directory,
-# so the suite is fully offline and deterministic.
+# the live-required set, so the suite is fully offline and deterministic.
 #
 # Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 
@@ -19,7 +18,6 @@ setup() {
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
   SCRIPT="$THIS_DIR/../verify-required-checks.sh"
   [ -x "$SCRIPT" ] || skip "verify-required-checks.sh not executable"
-  FIX="$THIS_DIR/fixtures/verify-required-checks"
   FULL_RULESET="GAIA-Audit
 Audit CI Tests
 Run Chromatic
@@ -59,55 +57,20 @@ Vitest (.gaia/cli)"
 
 @test "clean pass: exits 0 when every required context is present" {
   run "$SCRIPT" --repo gaia-react/gaia --branch main \
-    --ruleset-contexts <(printf '%s\n' "$FULL_RULESET") \
-    --workflows-dir "$FIX/workflows-clean"
+    --ruleset-contexts <(printf '%s\n' "$FULL_RULESET")
   [ "$status" -eq 0 ]
   assert_contains "all declared-required contexts confirmed"
 }
 
 @test "clean pass: does not print a MISSING section" {
   run "$SCRIPT" --repo gaia-react/gaia --branch main \
-    --ruleset-contexts <(printf '%s\n' "$FULL_RULESET") \
-    --workflows-dir "$FIX/workflows-clean"
+    --ruleset-contexts <(printf '%s\n' "$FULL_RULESET")
   local prior_output="$output"
   run ! grep -qF "MISSING" <<<"$prior_output"
 }
 
-@test "clean pass: advisory section lists a non-required job by name" {
-  run "$SCRIPT" --repo gaia-react/gaia --branch main \
-    --ruleset-contexts <(printf '%s\n' "$FULL_RULESET") \
-    --workflows-dir "$FIX/workflows-clean"
-  assert_contains "shellcheck (tracked *.sh)"
-}
-
-@test "clean pass: advisory section omits a required job" {
-  run "$SCRIPT" --repo gaia-react/gaia --branch main \
-    --ruleset-contexts <(printf '%s\n' "$FULL_RULESET") \
-    --workflows-dir "$FIX/workflows-clean"
-  # "Vitest and Playwright" is declared-required, so it must not appear as
-  # an advisory bullet even though it's a real job in the fixture.
-  local prior_output="$output"
-  run ! grep -qF -- "- Vitest and Playwright" <<<"$prior_output"
-}
-
-@test "clean pass: advisory section omits a required job whose name carries punctuation" {
-  run "$SCRIPT" --repo gaia-react/gaia --branch main \
-    --ruleset-contexts <(printf '%s\n' "$FULL_RULESET") \
-    --workflows-dir "$FIX/workflows-clean"
-  # "Vitest (.gaia/cli)" is the only declared-required context containing `(`,
-  # `)`, and `/`. It must survive the awk job-name extractor intact and then be
-  # recognized as required, so it appears as no advisory bullet.
-  grep -qF -- "- Vitest (.gaia/cli)" <<<"$output" && return 1
-  # That absence alone is satisfied two ways: the name was extracted and matched
-  # as required (intended), or the extractor dropped it (silent regression). Its
-  # non-required sibling in the same fixture carries the same `(`, `)`, and `/`,
-  # so it must be PRESENT. An extractor regex that stops accepting `/` fails
-  # here, which the absence assertion above can never do on its own.
-  assert_contains "- Distribution harness (.gaia/tests)"
-}
-
 @test "--ruleset-contexts - reads the live-required set from stdin" {
-  run bash -c "printf '%s\n' \"$FULL_RULESET\" | \"$SCRIPT\" --repo gaia-react/gaia --branch main --ruleset-contexts - --workflows-dir \"$FIX/workflows-clean\""
+  run bash -c "printf '%s\n' \"$FULL_RULESET\" | \"$SCRIPT\" --repo gaia-react/gaia --branch main --ruleset-contexts -"
   [ "$status" -eq 0 ]
 }
 
@@ -119,8 +82,7 @@ Run Chromatic
 Vitest and Playwright
 Vitest (.gaia/cli)"
   run "$SCRIPT" --repo gaia-react/gaia --branch main \
-    --ruleset-contexts <(printf '%s\n' "$partial") \
-    --workflows-dir "$FIX/workflows-clean"
+    --ruleset-contexts <(printf '%s\n' "$partial")
   [ "$status" -eq 1 ]
 }
 
@@ -130,18 +92,16 @@ Run Chromatic
 Vitest and Playwright
 Vitest (.gaia/cli)"
   run "$SCRIPT" --repo gaia-react/gaia --branch main \
-    --ruleset-contexts <(printf '%s\n' "$partial") \
-    --workflows-dir "$FIX/workflows-clean"
+    --ruleset-contexts <(printf '%s\n' "$partial")
   assert_contains "MISSING"
   assert_contains "GAIA-Audit"
   # "exactly" is only true while `partial` above stays in sync with
   # REQUIRED_CONTEXTS: a context added to the script but not to `partial` would
   # leave both drift tests green while they silently degrade to "at least one
   # missing", retiring the specific-context reporting they exist to guard.
-  # Pin the count so that desync fails loudly instead. Scope the count to the
-  # MISSING section: the Advisory section below it bullets identically.
+  # Pin the count so that desync fails loudly instead.
   local missing_bullets
-  missing_bullets=$(awk '/^MISSING/{f=1;next} /^Advisory/{f=0} f && /^  - /{c++} END{print c+0}' <<<"$output")
+  missing_bullets=$(awk '/^MISSING/{f=1;next} f && /^  - /{c++} END{print c+0}' <<<"$output")
   [ "$missing_bullets" -eq 1 ]
 }
 
@@ -150,8 +110,7 @@ Vitest (.gaia/cli)"
   # empty answer. Distinct from the gh-api-failure path below, which must NOT
   # be treated as a legitimate empty answer.
   run "$SCRIPT" --repo gaia-react/gaia --branch main \
-    --ruleset-contexts <(printf '') \
-    --workflows-dir "$FIX/workflows-clean"
+    --ruleset-contexts <(printf '')
   [ "$status" -eq 1 ]
   assert_contains "GAIA-Audit"
   assert_contains "Audit CI Tests"
@@ -172,22 +131,4 @@ EOF
   run env PATH="$BATS_TEST_TMPDIR/bin:$PATH" "$SCRIPT" --repo gaia-react/gaia --branch main
   [ "$status" -eq 2 ]
   assert_contains "could not read the live ruleset"
-}
-
-# Workflows dir edge cases
-
-@test "no advisory section when the workflows dir has no job files" {
-  run "$SCRIPT" --repo gaia-react/gaia --branch main \
-    --ruleset-contexts <(printf '%s\n' "$FULL_RULESET") \
-    --workflows-dir "$FIX/workflows-empty"
-  [ "$status" -eq 0 ]
-  local prior_output="$output"
-  run ! grep -qF "Advisory" <<<"$prior_output"
-}
-
-@test "a missing workflows dir does not error, only skips the advisory scan" {
-  run "$SCRIPT" --repo gaia-react/gaia --branch main \
-    --ruleset-contexts <(printf '%s\n' "$FULL_RULESET") \
-    --workflows-dir "$FIX/does-not-exist"
-  [ "$status" -eq 0 ]
 }

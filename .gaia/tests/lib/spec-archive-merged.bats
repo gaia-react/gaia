@@ -9,12 +9,12 @@
 #
 # Deletion is gated on cost representation (cost_folder_represented, sourced
 # from .gaia/scripts/cost-represented.sh): a folder is only deleted once every
-# cost.md phase section under it is value-represented by a matching cost.jsonl
+# cost.json sidecar under it is value-represented by a matching cost.jsonl
 # row. tmp-spec-repo.sh seeds an empty .gaia/local/telemetry/cost.jsonl and
 # copies of cost-represented.sh / ledger-path-lib.sh into every tmp repo so the
 # gate resolves in isolation; individual tests append rows to exercise it. A
-# folder with no cost.md at all is automatically represented (nothing to
-# lose), so most fixtures below need no ledger row.
+# folder with no cost.json sidecar at all is automatically represented
+# (nothing to lose), so most fixtures below need no ledger row.
 #
 # Sweep criteria: a ledger row with status "merged" AND an active folder AND
 # no pending wiki-promote drain cache AND a passing representation gate. A
@@ -94,8 +94,8 @@ EOF
 }
 
 # _seed_cost_row <spec_id> <session> <fresh> <cwrite> <cread> <output>: appends
-# a cost.jsonl row matching the schema token-tally.sh / cost-backfill.sh write,
-# so the representation gate finds it for <spec_id>.
+# a cost.jsonl row matching the schema token-tally.sh writes, so the
+# representation gate finds it for <spec_id>.
 _seed_cost_row() {
   local id="$1" session="$2" fresh="$3" cwrite="$4" cread="$5" output="$6"
   local total=$((fresh + cwrite + cread + output))
@@ -199,22 +199,6 @@ _clear_merged_at() {
   grep -qF '"$SPEC_ID"' <<<"$sweep_call"
 }
 
-# --- 5: representation gate blocks an unrepresented cost.md ------------------
-
-@test "5: an unrepresented cost.md section blocks deletion; folder survives" {
-  REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-merged-folder SPEC-001)"
-  _plant_cost_md SPEC-001 100 10 5 20 sess-1
-  # No matching cost.jsonl row: the SPEC section is unrepresented.
-
-  run _archive "$REPO"
-  [ "$status" -eq 0 ]
-  refute_contains "Deleted"
-  assert_contains "cost not fully represented in cost.jsonl; left SPEC-001 folder for review"
-
-  [ -f "$REPO/$SPECS/SPEC-001/SPEC.md" ]
-  [ ! -e "$REPO/$SPECS/archived" ]
-}
-
 # --- 6: skip when a drain cache is pending -----------------------------------
 
 @test "6: a merged spec with a pending wiki-promote drain cache is left active" {
@@ -287,18 +271,15 @@ _clear_merged_at() {
 }
 
 
-@test "11: no specs/archived/ tree appears across delete, block, and skip paths" {
+@test "11: no specs/archived/ tree appears across delete and skip paths" {
   REPO="$("$HELPERS/tmp-spec-repo.sh" \
-    --seed-merged-folder SPEC-001 --seed-merged-folder SPEC-002 --seed-merged SPEC-003)"
-  _plant_cost_md SPEC-002 100 10 5 20 sess-1
-  # SPEC-001: no cost.md, deletes. SPEC-002: unrepresented cost.md, blocked.
-  # SPEC-003: merged row with no folder, skipped.
+    --seed-merged-folder SPEC-001 --seed-merged SPEC-003)"
+  # SPEC-001: no cost.md, deletes. SPEC-003: merged row with no folder, skipped.
 
   run _archive "$REPO"
   [ "$status" -eq 0 ]
 
   [ ! -e "$REPO/$SPECS/SPEC-001" ]
-  [ -d "$REPO/$SPECS/SPEC-002" ]
   [ ! -e "$REPO/$SPECS/archived" ]
 }
 
@@ -341,21 +322,6 @@ _clear_merged_at() {
   [ "$(jq -r '.specs[0].status' "$REPO/$SPECS/ledger.json")" = "merged" ]
 }
 
-
-@test "15: a folder past the retention window but unrepresented is kept" {
-  REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-merged-folder SPEC-001)"
-  _set_merged_at "$REPO" SPEC-001 "$(_days_ago 45)"
-  _plant_cost_md SPEC-001 100 10 5 20 sess-1
-  # No matching cost.jsonl row: the SPEC section is unrepresented.
-  export GAIA_SPEC_RETENTION_DAYS=30
-
-  run _archive "$REPO"
-  [ "$status" -eq 0 ]
-  refute_contains "Deleted"
-  assert_contains "cost not fully represented in cost.jsonl; left SPEC-001 folder for review"
-
-  [ -f "$REPO/$SPECS/SPEC-001/SPEC.md" ]
-}
 
 # --- 16/17: missing or unparseable merged_at -> kept regardless of age/rep ---
 
@@ -449,18 +415,11 @@ _clear_merged_at() {
   [ ! -e "$REPO/$SPECS/SPEC-001" ]
 }
 
-# --- 22: --close never bypasses the cost or consolidation gates --------------
+# --- 22: --close never bypasses the consolidation gate -----------------------
 
-@test "22: --close does not bypass the cost gate or the consolidation gate" {
-  REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-merged-folder SPEC-001 --seed-merged-folder SPEC-002)"
-  _plant_cost_md SPEC-001 100 10 5 20 sess-1
-  # No matching cost.jsonl row for SPEC-001: unrepresented.
+@test "22: --close does not bypass the consolidation gate" {
+  REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-merged-folder SPEC-002)"
   rm -f "$REPO/$SPECS/SPEC-002/SUMMARY.md"
-
-  run bash "$REPO/$ARCHIVE" "$REPO" SPEC-001 --close
-  [ "$status" -eq 0 ]
-  refute_contains "Deleted"
-  [ -d "$REPO/$SPECS/SPEC-001" ]
 
   run bash "$REPO/$ARCHIVE" "$REPO" SPEC-002 --close
   [ "$status" -eq 0 ]

@@ -43,12 +43,11 @@ teardown() {
   return 0
 }
 
-# A body that satisfies every body-side check: one well-formed dedup key, a
-# provenance line beside it, and the schema's prose parts.
+# A body that satisfies every body-side check: one well-formed dedup key and
+# the schema's prose parts.
 good_body() {
   cat <<'EOF'
 <!-- gaia-debt-key: v1 class=holistic/unclassified path=app/services/foo.ts line=42 -->
-<!-- gaia-debt-origin: branch=main mode=adhoc unit=unknown changed=unknown head=unknown session=unknown -->
 `app/services/foo.ts:42`
 
 ## Failure mode

@@ -85,7 +85,6 @@ One human answer per residual, never batched, collected through an explicit user
 - **`audience:<side>`** comes from the cited path, per the recipe's own adopter/maintainer split. Maintainer repository only; scrubbed from adopter bundles.
   <!-- gaia:maintainer-only:end -->
 - **`difficulty:<grade>`** is supplied: the command has already read the cited line to resolve it, so a promoted residual is graded using the recipe's own rubric.
-- The provenance line's `changed` field is `unknown`: this run holds no fork-point changed-file set, and `unknown` is the honest value there, not `0`.
 
 When the recipe refuses to file because the key matches one of its own dedup arms, append a `suppressed` record (see Record below), so no refusal is silent and no residual is offered forever.
 

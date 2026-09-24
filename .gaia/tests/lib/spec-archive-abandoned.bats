@@ -149,22 +149,6 @@ _clear_abandoned_at() {
   [ -d "$REPO/$SPECS/SPEC-002" ]
 }
 
-# --- 3: representation gate blocks an unrepresented cost.md -------------------
-
-@test "3: an unrepresented cost.md section blocks deletion; folder survives" {
-  REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-abandoned-folder SPEC-001)"
-  _plant_cost_md SPEC-001 100 10 5 20 sess-1
-  # No matching cost.jsonl row: the SPEC section is unrepresented.
-
-  run _archive "$REPO"
-  [ "$status" -eq 0 ]
-  refute_contains "Deleted"
-  assert_contains "cost not fully represented in cost.jsonl; left SPEC-001 folder for review"
-
-  [ -f "$REPO/$SPECS/SPEC-001/AUDIT.md" ]
-}
-
-
 @test "4: an abandoned row with no active folder is a no-op" {
   REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-abandoned SPEC-005)"
 
@@ -268,20 +252,6 @@ _clear_abandoned_at() {
   [ "$(jq -r '.specs[0].status' "$REPO/$SPECS/ledger.json")" = "abandoned" ]
 }
 
-
-@test "12: a folder past the retention window but unrepresented is kept" {
-  REPO="$("$HELPERS/tmp-spec-repo.sh" --seed-abandoned-folder SPEC-001)"
-  _set_abandoned_at "$REPO" SPEC-001 "$(_days_ago 45)"
-  _plant_cost_md SPEC-001 100 10 5 20 sess-1
-  export GAIA_SPEC_RETENTION_DAYS=30
-
-  run _archive "$REPO"
-  [ "$status" -eq 0 ]
-  refute_contains "Deleted"
-  assert_contains "cost not fully represented in cost.jsonl; left SPEC-001 folder for review"
-
-  [ -f "$REPO/$SPECS/SPEC-001/AUDIT.md" ]
-}
 
 # --- 13/14: missing or unparseable abandoned_at -> kept regardless of age --------
 

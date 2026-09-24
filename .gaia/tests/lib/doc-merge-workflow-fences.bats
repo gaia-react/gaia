@@ -97,7 +97,6 @@ spawn-roster|resolve-audit-spawn.sh|exec|runs verbatim against this checkout
 noop-classify|audit-noop-detect.sh --shape audit-team-member|exec|runs against a fixture root, marker and sidecar
 wave-stamp|WAVE_STAMP="$(mktemp)"|exec|runs verbatim, and the claim under test is where mktemp puts the file
 residual-enumerate|gh pr list --state merged|exec|the --jq PROGRAM TEXT is extracted and run against the committed residue-corpus fixture, standing in for the network call
-debt-origin|debt-origin-lib.sh|exec|runs verbatim with the changed-value placeholder filled in
 disposition-sidecar|audit-member-digest.sh|exec|runs verbatim against this checkout
 findings-block|post-findings-block.sh --pr|static|posts a comment to a live PR
 post-status|post-audit-status.sh <current-member-marker>|static|posts a commit status to a live PR head
@@ -786,35 +785,6 @@ FAKE
       ;;
   esac
   rm -f "$stamp"
-}
-
-@test "fence debt-origin: it resolves a provenance line, three-dot and unguarded" {
-  script="$(materialize 'debt-origin-lib.sh')"
-  # The page states these three properties of this fence in the paragraph
-  # under it, and all three are claims about the fence's own text, so they are
-  # checked against the extracted body rather than against a transcription.
-  grep -qF -- '"${FULL_BASE}...HEAD"' "$script"
-  grep -qE 'diff --name-only -z "\$\{FULL_BASE\}\.\.\.HEAD"[[:space:]]*2' "$script"
-  grep -qF -- 'if [ -z "$FULL_BASE" ]; then' "$script" && return 1
-  sub_literal "$script" '<0|1|unknown>' 'unknown'
-  printf 'printf "%%s\\n" "$origin"\n' >>"$script"
-  run bash -c "cd '$REPO_ROOT' && bash '$script'"
-  [ "$status" -eq 0 ]
-  grep -qF -- 'changed=unknown' <<<"$output"
-}
-
-@test "fence debt-origin: an unresolvable base leaves the block running" {
-  # The page's stated reason for the missing stop-guard: an unresolvable
-  # FULL_BASE must not stop the filing. Driving AUDIT_ROOT at a directory that
-  # is not a git repository is what makes every git call in the fence fail.
-  script="$(materialize 'debt-origin-lib.sh')"
-  sub_literal "$script" '<0|1|unknown>' 'unknown'
-  printf 'printf "base=[%%s]\\n" "$FULL_BASE"\n' >>"$script"
-  outside="${BATS_TEST_TMPDIR}/not-a-repo"
-  mkdir -p "$outside"
-  run bash -c "cd '$REPO_ROOT' && AUDIT_ROOT='$outside' bash '$script'"
-  [ "$status" -eq 0 ]
-  grep -qF -- 'base=[]' <<<"$output"
 }
 
 @test "fence main-checkout-head: it names the branch the main checkout is holding" {

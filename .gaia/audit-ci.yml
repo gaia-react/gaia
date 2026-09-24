@@ -141,11 +141,11 @@ auditors:
       # tsconfig and lockfile stay with the node member below.
       - ".gaia/*.yml"
       - ".gaia/*.json"
-      # The model-pricing table the bash cost tooling reads at runtime
-      # (cost-reprice.sh, cost-unpriced-scan.sh, the token-tally chain). It
-      # carries dated per-model rates, so it is actively edited and a wrong
-      # entry silently misprices every tally. Named as a literal because
-      # `.gaia/scripts/**/*.json` is otherwise all test fixtures; see the
+      # The model-pricing table the bash cost tooling reads at runtime (the
+      # token-tally chain). It carries dated per-model rates, so it is
+      # actively edited and a wrong entry silently misprices every tally.
+      # Named as a literal because `.gaia/scripts/**/*.json` is otherwise
+      # all test fixtures; see the
       # `unowned:` note on that exemption below.
       - ".gaia/scripts/token-rates.json"
       - ".gaia/release-exclude"
@@ -229,7 +229,7 @@ auditors:
       # entries are not uniformly exemptible. `lib/` is the binding one: it holds
       # shell the shell member already claims through
       # `.specify/extensions/gaia/lib/*.sh`, so a whole-subtree glob here would
-      # fail pairwise claimant disjointness rather than merely reach something
+      # overlap that claim as glob languages rather than merely reach something
       # inert. The rest of the root -- `README.md`, the `test/` evidence notes,
       # and `extension.yml` -- is inert and stays declared in `unowned:` below.
       # A new directory under `.github/forensics/` is therefore reported

@@ -242,8 +242,7 @@ plant() {
 }
 
 # The sentence whose next word IS a variable, which the bare-variable operand
-# arm would otherwise accept. Verbatim from .gaia/scripts/cost-reprice.sh, where
-# it is inert today only because that file does not arm errexit.
+# arm would otherwise accept.
 @test "ignores a sentence that continues past a variable" {
   new_fixture
   plant .claude/hooks/probe.sh $'#!/usr/bin/env bash\nset -euo pipefail\nlog "cost-reprice: refusing to rewrite, which would drop $((expected_lines - total_count)) row(s). $ledger is untouched."\n'

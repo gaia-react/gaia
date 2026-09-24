@@ -138,9 +138,9 @@ YAML
   run_check "$sb"
   # A floor, before the finding check below. The check's process-wide exit
   # status cannot be read as a verdict on THIS member: it answers several
-  # invariants at once (default-member-count, machinery registration, glob
-  # disjointness, remit parity for every OTHER member too) and is insensitive
-  # to any one region's content. But having declined it as a verdict, this
+  # invariants at once (remit parity for every OTHER member too, ownerless-path
+  # coverage) and is insensitive to any one region's content. But having
+  # declined it as a verdict, this
   # test still needs it as a LIVENESS signal, and without one the assertion
   # below passes on any output that fails to match the parity pattern --
   # including an early abort that never reached a single invariant. The

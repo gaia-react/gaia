@@ -258,7 +258,7 @@ Both arms assume the Suggestion is correct. A Suggestion is a finding, not a spe
 
 This is operator guidance about **in-scope Suggestions and accepted findings**, distinct from **in-flight-fix promotion** (the audit's own automatic same-run repair of a qualifying **out-of-scope** finding through the self-heal path; see [[Audit Disposition and Debt Fix]]). In-flight-fix promotion is the audit repairing out-of-scope debt itself as it reviews; this is the operator deciding whether an in-scope Suggestion is worth folding into an already-marked PR. They do not overlap.
 
-Record accept-and-note under the heading `## Accepted residuals (recorded, not fixed)` in the pull request body, one entry per residual: its `file:line`, a one-line failure mode, its dedup key, and, on its own line immediately after the dedup key, the provenance line. The dedup key is the wrapped `<!-- gaia-debt-key: … -->` HTML-comment form (`.claude/skills/file-tech-debt/SKILL.md`); a bare inline "Dedup key: …" line with no wrapper is refused at merge. The heading stays distinct from the machinery-waive heading beside it because the two mean different things: a waive is an out-of-scope finding on an eligible path, an accepted residual is in the member's own remit.
+Record accept-and-note under the heading `## Accepted residuals (recorded, not fixed)` in the pull request body, one entry per residual: its `file:line`, a one-line failure mode, and its dedup key. The dedup key is the wrapped `<!-- gaia-debt-key: … -->` HTML-comment form (`.claude/skills/file-tech-debt/SKILL.md`); a bare inline "Dedup key: …" line with no wrapper is refused at merge. The heading stays distinct from the machinery-waive heading beside it because the two mean different things: a waive is an out-of-scope finding on an eligible path, an accepted residual is in the member's own remit.
 
 Every recorded residual is machine-enumerable by one query over merged pull request bodies:
 
@@ -329,24 +329,6 @@ A member can find a genuine defect in a file outside its own declared domain, a 
 - **Out of scope** → a non-security finding is recorded as **waived** (listed in the pull request body, not filed) when its path is either a gate-machinery path or a file this pull request already changes and the finding itself clears both disqualifiers; a finding satisfying neither term, or any security-class finding, is filed as a tech-debt issue exactly as it is today, through `/gaia-debt` and the `file-tech-debt` skill.
 
 Either way the finding is **recorded rather than lost**.
-
-When the out-of-scope arm files a tech-debt issue, the filing carries a `gaia-debt-origin` provenance line beside its dedup key, from the shared helper, so a later reader recovers the branch the finding was surfaced from after that branch is squash-merged and deleted. The orchestrator is on the pull request's own branch with a shell, so it resolves `changed` rather than recording `unknown`. The field vocabulary lives in `.claude/skills/file-tech-debt/SKILL.md` and the branch-naming convention behind `mode` and `unit` lives in `.gaia/scripts/branch-name-lib.sh`, both referenced rather than restated here. A filing is never blocked, failed, retried, or deferred because provenance is partial or absent.
-
-For `changed`, the orchestrator reuses the whole-PR fork point in the same spelling the audit machinery already computes, adding no derivation of a new shape. The primary arm names the remote-tracking ref in full because a local branch or tag literally named `origin/<default>` wins the short revspec, with only an ambiguity warning that the `2>/dev/null` discards:
-
-```bash
-AUDIT_ROOT="$(cd "${AUDIT_ROOT:-$PWD}" 2>/dev/null && pwd -P)"
-default_branch=$(git -C "$AUDIT_ROOT" symbolic-ref --quiet refs/remotes/origin/HEAD 2>/dev/null \
-  | sed 's@^refs/remotes/origin/@@')
-[ -n "$default_branch" ] || default_branch="main"
-FULL_BASE=$(git -C "$AUDIT_ROOT" merge-base HEAD "refs/remotes/origin/${default_branch}" 2>/dev/null \
-  || git -C "$AUDIT_ROOT" merge-base HEAD "${default_branch}" 2>/dev/null || true)
-pr_changed=$(git -C "$AUDIT_ROOT" diff --name-only -z "${FULL_BASE}...HEAD" 2>/dev/null | tr '\0' '\n' || true)
-origin="$(cd "${AUDIT_ROOT:-/dev/null/unset}" 2>/dev/null && bash .gaia/scripts/debt-origin-lib.sh \
-  --changed "<0|1|unknown>" --dir . 2>/dev/null || true)"
-```
-
-Three-dot, no pathspec, and no `if [ -z "$FULL_BASE" ]; then` stop-guard: a finding on any file the pull request touches reads `changed=1`, and an unresolvable `FULL_BASE` makes `changed` the literal `unknown` for every finding in the run rather than stopping the filing, because `0` would assert the work did not touch the file while an unresolvable base asserts nothing.
 
 The waive rule applies to every out-of-scope finding the orchestrator disposes, whichever member surfaced it: every specialist surface belongs to a member that files nothing itself, so the orchestrator disposes what they hand it.
 

@@ -7,18 +7,18 @@
 # The roster is meant to grow, by adopters and by the maintainer, as a project
 # adds languages and surfaces. Its silent failure modes, each made loud here:
 #
-#   * A forgotten machinery registration. Only files the machinery list carries
-#     land in every member's content digest, so an unlisted agent file rotates
-#     no member's key and a change to it merges unaudited by the members it
-#     should force.
-#   * A glob overlap between two claimant members. Ownership is first-match-wins
-#     over roster order, so an overlap hands a path to whichever member the
-#     roster happens to list first, and stays invisible until someone adds a
-#     file that lands in it.
 #   * A member's own definition disagreeing with the roster about what it owns.
 #     Claiming less makes a dispatched member self-skip work it was sent to do;
 #     claiming more makes a file read as covered while dispatching nobody, so
 #     the diff clears the merge gate having been reviewed by no one.
+#   * A tracked path no member's globs match and no `unowned:` entry declares.
+#     It resolves an empty dispatched set, which the merge gate reads as
+#     nothing owed, so the diff merges reviewed by no one.
+#
+# Per-member registration in AUDIT_MACHINERY_PATHS and the `code-audit-` name
+# convention are real-tree assertions in this script's own bats suite rather
+# than a runtime check here, because both hold over the committed roster
+# whether or not a fixture roster is under test.
 #
 # Reads live state, never writes: no API write, no file write, no git mutation.
 # One finding block per violation on stdout; exit 1 if any fired. `--emit-roster`
@@ -27,52 +27,30 @@
 #
 # The invariants:
 #
-#   1. Pairwise claimant disjointness, as GLOB LANGUAGES, whether or not any
-#      such file is tracked. An overlap names the pair and cites a witness path
-#      that matches both globs, synthesized by construction from the two
-#      patterns rather than searched for in a file list: the file need not
-#      exist, which is the whole point of the invariant.
-#   2. The default member is excluded from that comparison entirely. Its tier is
-#      reached only after every claimant has failed to match, so an overlap
-#      between the default and a claimant is what the precedence tier means, not
-#      a defect.
-#   3. A glob pair the bounded dialect cannot decide FAILS, naming the pair,
-#      rather than passing. The check never fails open on the assertion it
-#      exists to make.
-#   4. Every roster member has an agent file on disk, registered in
-#      AUDIT_MACHINERY_PATHS; exactly one member carries `default: true`.
-#   5. Every roster member's name carries the `code-audit-` prefix. The local
-#      self-heal hook (block-selfheal-paths.sh) binds a dispatched member to its
-#      repair boundary by that prefix, not a roster lookup, so a member named
-#      off-convention escapes the boundary silently. The prefix is already
-#      load-bearing in the roster glob, the machinery lists, and the release
-#      scrub's leak-check; this asserts it rather than assuming it.
-#   6. Remit region parity. Every member's agent definition carries exactly one
+#   1. Remit region parity. Every member's agent definition carries exactly one
 #      balanced remit region, and the globs inside it are that member's roster
 #      globs, complete and in roster order. A region that is absent, duplicated,
 #      unbalanced, or reversed (its end marker appearing before its start
 #      marker) fails; so does a roster glob the region omits, a region glob
 #      the roster does not grant, and the same set in a different order, because
 #      ownership is first-match-wins over roster order and a reordered region is
-#      a different reading order. Every glob inside a region is classified by the
-#      same bounded dialect as (3), which is why the default member's globs and a
-#      lone claimant's are dialect-checked at all: the pairwise comparison in (1)
-#      reaches neither position. The region's SENTENCE text is deliberately not
+#      a different reading order. Every glob inside a region is classified by
+#      the bounded dialect below, which is why the default member's globs and a
+#      lone claimant's are dialect-checked too: neither carries a claimant pair
+#      to compare against. The region's SENTENCE text is deliberately not
 #      compared here; the writer (write-audit-remits.sh) owns the region's exact
 #      form, and re-running it is the repair for every finding in this group.
-#   7. Coverage: every tracked path resolves an owner, or is declared in the
-#      roster's `unowned:` list. The inverse of (1) through (6), which all ask
-#      whether the roster's entries are well-formed and none of which asks
-#      whether they reach the repository at all. An `unowned:` entry reaching an
-#      owned path fails as overbroad, and one no ownerless path needs fails as
-#      redundant; together those are what stop the list being a free opt-out. A
-#      dead entry fails too, on the maintainer repo only. The section's own
-#      docblock below carries the reasoning, including why the universe is the
-#      tracked files of the repository ROOTED AT --root and nothing wider.
+#   2. Coverage: every tracked path resolves an owner, or is declared in the
+#      roster's `unowned:` list. The inverse of (1), which asks whether the
+#      roster's entries are well-formed and never asks whether they reach the
+#      repository at all. An `unowned:` entry reaching an owned path fails as
+#      overbroad, which is what stops the list being a free opt-out. The
+#      section's own docblock below carries the reasoning, including why the
+#      universe is the tracked files of the repository ROOTED AT --root and
+#      nothing wider.
 #
-# THE BOUNDED DIALECT, and why intersection is decidable over it at all. The
-# classifier compiles three constructs (glob_to_regex, in the roster module
-# sourced below):
+# THE BOUNDED DIALECT a glob must fit to be classified. The classifier compiles
+# three constructs (glob_to_regex, in the roster module sourced below):
 #
 #   literal  -> escaped literal   itself
 #   *        -> [^/]*             any run within one segment, never crossing /
@@ -82,17 +60,13 @@
 # Over that dialect a glob is a sequence of path segments, where each segment
 # either matches exactly one path segment (a pattern of literals and single
 # `*`s) or is a whole-segment `**` matching a run of segments: zero or more when
-# a segment follows it, one or more when it ends the glob. Two such sequences
-# intersect iff a product-automaton walk over segment positions reaches both
-# ends, and the walk's own trace spells the witness. That is a bounded
-# structural comparison, not general regex intersection.
+# a segment follows it, one or more when it ends the glob.
 #
 # THE FRAGMENT THIS CHECK DECIDES, stated exactly, because a maintainer who
 # teaches the classifier a new construct must teach it here too:
 #
 #   ACCEPTED: a glob whose `/`-separated segments are each either the whole
 #   segment `**`, or a non-empty pattern of literal characters and single `*`s.
-#   Every accepted pair is decided; there is no accepted-but-undecided case.
 #
 #   REJECTED as undecidable, never passed: an empty glob or an empty segment
 #   (`a//b`, a leading or trailing `/`); any of ? [ ] { } or \, which a reader may
@@ -102,8 +76,8 @@
 #   `*`; whitespace, which the classifier's record contract cannot carry.
 #
 # Do not extend the dialect here, and do not make this checker cleverer than the
-# classifier. The undecidable-pair failure is what makes a dialect drift loud
-# instead of silent.
+# classifier. The undecidable-glob failure, in whichever position reads it, is
+# what makes a dialect drift loud instead of silent.
 #
 # DO NOT add `set -e` (matches verify-required-checks.sh): the loops below rely
 # on grep and comparison exit status without aborting the script.
@@ -136,8 +110,6 @@ USAGE
 
 root=""
 config=""
-root_given=0
-config_given=0
 emit_roster=0
 
 while [ $# -gt 0 ]; do
@@ -156,8 +128,8 @@ while [ $# -gt 0 ]; do
         exit 2
       fi
       case "$1" in
-        --root)   root="$2"; root_given=1 ;;
-        --config) config="$2"; config_given=1 ;;
+        --root)   root="$2" ;;
+        --config) config="$2" ;;
       esac
       shift 2
       ;;
@@ -201,15 +173,15 @@ findings=0
 
 # --- The raw-glob reader -----------------------------------------------------
 #
-# The classifier emits COMPILED regexes; the disjointness decision and the
-# witness both need the RAW globs, and a raw-glob record would be a field no
-# router reads, carried by every consumer, to serve this one caller. So this
-# reads the glob strings itself. It is a YAML list-item scrape, not a second
-# classifier: it never compiles, never matches a path, and never decides an
-# owner. The one question with a real answer, which member is the default,
-# still comes from the module. The two readers are held in lockstep by the
-# per-member glob-count comparison below, and drift between them fails loudly
-# rather than producing a verdict neither reader stands behind.
+# The classifier emits COMPILED regexes; the remit-region parity comparison
+# needs the RAW globs, and a raw-glob record would be a field no router reads,
+# carried by every consumer, to serve this one caller. So this reads the glob
+# strings itself. It is a YAML list-item scrape, not a second classifier: it
+# never compiles, never matches a path, and never decides an owner. The one
+# question with a real answer, which member is the default, still comes from
+# the module. The two readers are held in lockstep by the per-member
+# glob-count comparison below, and drift between them fails loudly rather than
+# producing a verdict neither reader stands behind.
 #
 # Emits, tab-separated so a glob may legally contain a space:
 #   MEMBER <name>
@@ -286,9 +258,9 @@ _verify_roster_read_regions() {
     [ -n "$name" ] || continue
     agent_rel=".claude/agents/${name}.md"
     agent="${rr}/${agent_rel}"
-    # A member with no definition at all is already reported by the
-    # missing-agent-file invariant above; a region finding piled on top of that
-    # is noise, and every fixture that deletes an agent file depends on this.
+    # A member with no definition at all fails loud at dispatch time, so a
+    # region finding piled on top of that is noise; every fixture that deletes
+    # an agent file depends on this.
     [ -f "$agent" ] || continue
     # grep -c prints 0 and exits 1 on no match, and this script carries no
     # `set -e`; the `|| true` says so rather than leaving it to be inferred.
@@ -343,38 +315,19 @@ fi
 region_records="$(_verify_roster_read_regions "$root" "$raw_records")"
 
 # The `unowned:` list, read ONCE for the two readers that need it: the dialect
-# gate in the pairwise awk below, and the coverage invariant at the bottom. Not
-# an optimization -- both must see the same entries, and a second call is a
+# gate in the awk pass below, and the coverage invariant at the bottom. Not an
+# optimization -- both must see the same entries, and a second call is a
 # second chance for the two to disagree about which lines the block holds.
 unowned_records="$(_audit_scope_parse_unowned < "$config")"
 
-# --- Invariant: exactly one default member -----------------------------------
-
-default_count="$(printf '%s\n' "$class_records" | awk '$1 == "DEFAULT" { n++ } END { print n + 0 }')"
-if [ "$default_count" -ne 1 ]; then
-  findings=$((findings + 1))
-  printf 'verify-audit-roster: FAIL default-member-count\n'
-  printf '  roster: %s\n' "$config"
-  printf '  members carrying `default: true`: %s (expected exactly 1)\n' "$default_count"
-  printf '  Ownership resolves in two tiers: every claimant first, then the one\n'
-  printf '  default member. Zero defaults leaves every unclaimed path ownerless;\n'
-  printf '  more than one makes the second tier ambiguous.\n'
-  printf '\n'
-fi
-
-# --- Invariant: agent file present and registered in AUDIT_MACHINERY_PATHS ----
+# --- Invariant: the shared machinery list is readable ------------------------
 #
 # Read the list as TEXT under --root: that is what makes the invariant
-# testable at all, since a fixture can then inject a missing entry without
-# mutating the repo's real list. This is LITERAL LIST MEMBERSHIP, deliberately
-# not audit_path_is_machinery: the matcher answers "is this path machinery"
-# (including via a `/**` prefix), while the invariant is "is this member's agent
-# file registered". An unregistered agent file is the silent fail-open, and a
-# prefix match would hide it.
-#
-# Extra entries in the list are fine. This walks the roster and asks whether
-# each member is registered, never the reverse: an adopter's list still names
-# the agents the roster scrub removed, and that must not fail.
+# testable at all, since a fixture can then inject a missing or empty list
+# without mutating the repo's real one. Per-member registration in this list
+# (and the member-name convention) is a real-tree assertion in this script's
+# own bats suite rather than a runtime check here, because both hold over the
+# committed roster whether or not a fixture roster is under test.
 
 machinery_lib="${root}/.claude/hooks/lib/audit-machinery.sh"
 
@@ -402,53 +355,6 @@ _report_unreadable_list() {
 }
 
 [ -n "$machinery_list" ] || _report_unreadable_list "$machinery_lib" AUDIT_MACHINERY_PATHS
-
-_report_unregistered() {
-  # <member> <agent-rel-path> <list-name> <list-file>
-  findings=$((findings + 1))
-  printf 'verify-audit-roster: FAIL unregistered-agent-file\n'
-  printf '  member:       %s\n' "$1"
-  printf '  agent file:   %s\n' "$2"
-  printf '  missing from: %s (%s)\n' "$3" "$4"
-  printf '  A member whose agent file is absent from a machinery list is a\n'
-  printf '  fail-open: a change to that file rotates no digest, so it merges\n'
-  printf '  unaudited by the members it should force. Add the path to the list.\n'
-  printf '\n'
-}
-
-while IFS=$'\t' read -r kind name; do
-  [ "$kind" = "MEMBER" ] || continue
-  [ -n "$name" ] || continue
-  case "$name" in
-    code-audit-*) ;;
-    *)
-      findings=$((findings + 1))
-      printf 'verify-audit-roster: FAIL member-name-convention\n'
-      printf '  member:   %s\n' "$name"
-      printf '  expected: a name beginning `code-audit-`\n'
-      printf '  The local self-heal hook (.claude/hooks/block-selfheal-paths.sh)\n'
-      printf '  binds a dispatched member to its repair boundary by the\n'
-      printf '  `code-audit-` name prefix, not a roster lookup, so a member named\n'
-      printf '  off-convention escapes the boundary silently. The prefix is\n'
-      printf '  load-bearing here and in the machinery lists and the release\n'
-      printf '  scrub; this makes it checked rather than assumed.\n'
-      printf '\n'
-      ;;
-  esac
-  agent_rel=".claude/agents/${name}.md"
-  if [ ! -f "${root}/${agent_rel}" ]; then
-    findings=$((findings + 1))
-    printf 'verify-audit-roster: FAIL missing-agent-file\n'
-    printf '  member:   %s\n' "$name"
-    printf '  expected: %s\n' "${root}/${agent_rel}"
-    printf '  The roster dispatches this member and the gate demands its\n'
-    printf '  clearance, but its definition does not exist.\n'
-    printf '\n'
-  fi
-  if [ -n "$machinery_list" ] && ! grep -qxF -- "$agent_rel" <<<"$machinery_list"; then
-    _report_unregistered "$name" "$agent_rel" AUDIT_MACHINERY_PATHS "$machinery_lib"
-  fi
-done < <(printf '%s\n' "$raw_records")
 
 # --- Invariant: the remit region's SHAPE -------------------------------------
 #
@@ -522,17 +428,15 @@ while IFS=$'\t' read -r kind name agent_rel nstart nend; do
   esac
 done < <(printf '%s\n' "$region_records")
 
-# --- Invariants: pairwise claimant disjointness, and undecidable pairs -------
+# --- Invariant: the remit-region and unowned-glob dialect --------------------
 #
-# The decision and the witness synthesis live in one awk pass, which is where
-# the classifier's own glob compiler lives too. It reads the record streams,
-# tab-normalized, and emits one machine-readable line per violation for the
-# shell to verify and render.
+# One awk pass, which is where the classifier's own glob compiler lives too.
+# It reads the record streams, tab-normalized, and emits one machine-readable
+# line per violation for the shell to verify and render.
 #
 # The `unowned:` stream is here for one reason: this pass holds the single copy
-# of glob_items(), and the dialect gate must not become a second one. Its entries
-# take no part in the pairwise walk -- they name regions that dispatch NOBODY, so
-# there is no claimant to compare them against -- they are only classified.
+# of glob_items(), and the dialect gate must not become a second one. Its
+# entries are only classified, never compared against a claimant's.
 
 pair_records="$(
   {
@@ -542,82 +446,6 @@ pair_records="$(
     printf '%s\n' "$region_records"
     printf '%s\n' "$unowned_records"
   } | awk -F'\t' '
-    # --- The segment-pattern layer -------------------------------------------
-    #
-    # A segment pattern is literals and single `*`s, and matches exactly one
-    # path segment. pat_matches is the classic two-pointer wildcard match.
-
-    function pat_matches(p, s,   i, j, star, mark, lp, ls, c) {
-      lp = length(p); ls = length(s)
-      i = 1; j = 1; star = 0; mark = 0
-      while (j <= ls) {
-        c = (i <= lp) ? substr(p, i, 1) : ""
-        if (c != "" && c != "*" && c == substr(s, j, 1)) { i++; j++ }
-        else if (c == "*") { star = i; mark = j; i++ }
-        else if (star) { i = star + 1; mark++; j = mark }
-        else return 0
-      }
-      while (i <= lp && substr(p, i, 1) == "*") i++
-      return (i > lp)
-    }
-
-    function cpush(ni, nj, pi, pj, c) {
-      if ((ni, nj) in CR) return
-      CR[ni, nj] = 1; CPI[ni, nj] = pi; CPJ[ni, nj] = pj; CPC[ni, nj] = c
-    }
-
-    # Decides two segment patterns and returns a NON-EMPTY string both match, or
-    # "" for none. A path segment is never empty, so "" is an unambiguous
-    # sentinel. Product-automaton reachability over character positions: `*`
-    # contributes an epsilon (it may match zero chars) plus a self-loop on any
-    # char; a literal contributes one edge. The (any, any) combination is
-    # skipped because it returns to the same state, so dropping it loses no
-    # reachable state, only witness padding. Every remaining edge advances
-    # i + j, so one forward pass suffices and the walk cannot cycle.
-    function seg_witness(p, q,   key, kp, kq, i, j, pc, qc, k, np, w, cand) {
-      key = p SUBSEP q
-      if (key in SWC) return SWC[key]
-      kp = length(p); kq = length(q)
-      split("", CR); split("", CPI); split("", CPJ); split("", CPC)
-      CR[0, 0] = 1
-      for (i = 0; i <= kp; i++) {
-        for (j = 0; j <= kq; j++) {
-          if (!((i, j) in CR)) continue
-          pc = (i < kp) ? substr(p, i + 1, 1) : ""
-          qc = (j < kq) ? substr(q, j + 1, 1) : ""
-          if (pc == "*") cpush(i + 1, j, i, j, "")
-          if (qc == "*") cpush(i, j + 1, i, j, "")
-          if (pc == "" || qc == "") continue
-          if (pc != "*" && qc != "*") { if (pc == qc) cpush(i + 1, j + 1, i, j, pc) }
-          else if (pc == "*" && qc != "*") cpush(i, j + 1, i, j, qc)
-          else if (qc == "*" && pc != "*") cpush(i + 1, j, i, j, pc)
-        }
-      }
-      if (!((kp, kq) in CR)) { SWC[key] = ""; return "" }
-      split("", CWP)
-      i = kp; j = kq; np = 0
-      while (i != 0 || j != 0) {
-        if (CPC[i, j] != "") { np++; CWP[np] = CPC[i, j] }
-        k = CPI[i, j]; j = CPJ[i, j]; i = k
-      }
-      w = ""
-      for (k = np; k >= 1; k--) w = w CWP[k]
-      # Reaching the end on epsilons alone means both patterns match "", which
-      # only the all-star pattern `*` does. A path segment is never empty, so
-      # take the one-character witness instead.
-      if (w == "") w = "x"
-      # Cosmetic, and verified rather than assumed: a leading `*` that collapsed
-      # to nothing reads as a dotfile ("witness: .sh"), sending a human looking
-      # for a file that was never the point. Pad it when both patterns still
-      # match the padded form.
-      if (substr(w, 1, 1) == "." && (substr(p, 1, 1) == "*" || substr(q, 1, 1) == "*")) {
-        cand = "x" w
-        if (pat_matches(p, cand) && pat_matches(q, cand)) w = cand
-      }
-      SWC[key] = w
-      return w
-    }
-
     # --- The glob layer ------------------------------------------------------
     #
     # Splits a glob into items: "**" (a whole-segment globstar) or a segment
@@ -645,81 +473,9 @@ pair_records="$(
       return n
     }
 
-    function spush(ni, nj, pi, pj, w) {
-      if ((ni, nj) in R) return
-      R[ni, nj] = 1; PI[ni, nj] = pi; PJ[ni, nj] = pj; PW[ni, nj] = w
-    }
-
-    # One state of the segment-level product walk. A non-terminal globstar is
-    # zero-or-more segments (an epsilon plus a self-loop); a terminal one is
-    # one-or-more (a self-loop plus an exit edge), because `**/` compiles to
-    # (.*/)? while a trailing `**` compiles to `.*` behind a literal `/`. A
-    # plain segment is exactly one segment. As one level down, the two-globstar
-    # self-loop is the only combination that returns to (i, j) and is skipped.
-    function relax(i, j, na, nb,   ka, kb, ni, nj, w, nao, nbo) {
-      if (i < na && IA[i + 1] == "**" && (i + 1) < na) spush(i + 1, j, i, j, "")
-      if (j < nb && IB[j + 1] == "**" && (j + 1) < nb) spush(i, j + 1, i, j, "")
-      nao = 0
-      if (i < na) {
-        if (IA[i + 1] == "**") {
-          nao++; AOT[nao] = i; AOP[nao] = "*"
-          if ((i + 1) == na) { nao++; AOT[nao] = i + 1; AOP[nao] = "*" }
-        } else { nao++; AOT[nao] = i + 1; AOP[nao] = IA[i + 1] }
-      }
-      nbo = 0
-      if (j < nb) {
-        if (IB[j + 1] == "**") {
-          nbo++; BOT[nbo] = j; BOP[nbo] = "*"
-          if ((j + 1) == nb) { nbo++; BOT[nbo] = j + 1; BOP[nbo] = "*" }
-        } else { nbo++; BOT[nbo] = j + 1; BOP[nbo] = IB[j + 1] }
-      }
-      for (ka = 1; ka <= nao; ka++) {
-        for (kb = 1; kb <= nbo; kb++) {
-          ni = AOT[ka]; nj = BOT[kb]
-          if (ni == i && nj == j) continue
-          w = seg_witness(AOP[ka], BOP[kb])
-          if (w != "") spush(ni, nj, i, j, w)
-        }
-      }
-    }
-
-    # 1 iff the two item sequences share a path, with WITNESS spelling one.
-    function seg_dp(na, nb,   i, j, k, np) {
-      split("", R); split("", PI); split("", PJ); split("", PW)
-      R[0, 0] = 1
-      for (i = 0; i <= na; i++) {
-        for (j = 0; j <= nb; j++) {
-          if ((i, j) in R) relax(i, j, na, nb)
-        }
-      }
-      if (!((na, nb) in R)) return 0
-      split("", WP)
-      i = na; j = nb; np = 0
-      while (i != 0 || j != 0) {
-        if (PW[i, j] != "") { np++; WP[np] = PW[i, j] }
-        k = PI[i, j]; j = PJ[i, j]; i = k
-      }
-      WITNESS = ""
-      for (k = np; k >= 1; k--) {
-        if (WITNESS == "") WITNESS = WP[k]
-        else WITNESS = WITNESS "/" WP[k]
-      }
-      return 1
-    }
-
-    # Sets DEC to OVERLAP / DISJOINT / UNDECIDABLE; WITNESS on OVERLAP, DREASON
-    # on UNDECIDABLE.
-    function decide(g, h,   na, nb) {
-      DEC = ""; WITNESS = ""; DREASON = ""
-      na = glob_items(g, IA)
-      if (na < 0) { DEC = "UNDECIDABLE"; DREASON = REJ " (glob: " g ")"; return }
-      nb = glob_items(h, IB)
-      if (nb < 0) { DEC = "UNDECIDABLE"; DREASON = REJ " (glob: " h ")"; return }
-      DEC = seg_dp(na, nb) ? "OVERLAP" : "DISJOINT"
-    }
-
-    $1 == "DEFAULT" { isdef[$2] = 1; next }
-    $1 == "GLOB" || $1 == "DEFAULTGLOB" { nrx[$2]++; rx[$2, nrx[$2]] = $3; next }
+    # Only the count is read (the reader-drift comparison below); the compiled
+    # regex itself is never needed once the pairwise walk it fed is gone.
+    $1 == "GLOB" || $1 == "DEFAULTGLOB" { nrx[$2]++; next }
     $1 == "MEMBER" { nm++; mem[nm] = $2; next }
     $1 == "RAW" { nraw[$2]++; raw[$2, nraw[$2]] = $3; next }
     # An exact field compare, so REGIONOK / REGIONMISSING / REGIONDUP /
@@ -749,42 +505,15 @@ pair_records="$(
         }
       }
       if (drift) exit 0
-      nc = 0
-      for (i = 1; i <= nm; i++) {
-        m = mem[i]
-        if (m in isdef) continue
-        if (m in seencl) continue
-        seencl[m] = 1
-        nc++; cl[nc] = m
-      }
-      for (a = 1; a <= nc; a++) {
-        for (b = a + 1; b <= nc; b++) {
-          pa = cl[a]; pb = cl[b]
-          repov = 0; repun = 0
-          for (x = 1; x <= (nraw[pa] + 0) && !(repov && repun); x++) {
-            for (y = 1; y <= (nraw[pb] + 0) && !(repov && repun); y++) {
-              decide(raw[pa, x], raw[pb, y])
-              if (DEC == "UNDECIDABLE" && !repun) {
-                printf "UNDECIDABLE\t%s\t%s\t%s\t%s\t%s\n", pa, raw[pa, x], pb, raw[pb, y], DREASON
-                repun = 1
-              } else if (DEC == "OVERLAP" && !repov) {
-                printf "OVERLAP\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", pa, raw[pa, x], rx[pa, x], pb, raw[pb, y], rx[pb, y], WITNESS
-                repov = 1
-              }
-            }
-          }
-        }
-      }
 
       # --- Remit region parity, and the region-glob dialect -------------------
       #
       # Parity is an ORDERED string comparison between a member remit region and
-      # its roster entry; it needs no glob-language decision and never touches
-      # the pairwise walk above. The dialect classification does need one, and it
-      # reuses glob_items() rather than a second copy of it. That reuse is also
-      # why every region glob of the DEFAULT member and of a lone claimant is
-      # classified here: both are positions the pairwise invariant never reaches,
-      # and a lone claimant plus a default is the whole adopter roster shape.
+      # its roster entry; it needs no glob-language decision. The dialect
+      # classification does, and it reuses glob_items() rather than a second
+      # copy of it. That reuse is also why every region glob of the DEFAULT
+      # member and of a lone claimant is classified here: a lone claimant plus
+      # a default is the whole adopter roster shape.
       #
       # Membership is a nested string comparison over lists of at most a dozen
       # globs. A hash keyed on the glob string would have to handle SUBSEP
@@ -825,14 +554,14 @@ pair_records="$(
 
       # --- The `unowned:` dialect ---------------------------------------------
       #
-      # The one glob position that had no bounded-dialect gate. Every sibling has
-      # one -- a claimant pair fails undecidable-glob-pair, a region glob fails
-      # undecidable-remit-glob -- and this position needs it MORE than either,
-      # because an exemption that compiles wider than its author read it does not
-      # merely misdescribe a remit, it SUPPRESSES the ownerless finding for every
-      # extra path it reaches. `docs**` is the concrete shape: `**` inside a
-      # segment rather than as a whole one, which the classifier escapes into
-      # `^docs.*$`, crossing `/` and quietly exempting `docsextra/` too.
+      # The one glob position that had no bounded-dialect gate. Its sibling, a
+      # region glob, fails undecidable-remit-glob -- and this position needs it
+      # MORE, because an exemption that compiles wider than its author read it
+      # does not merely misdescribe a remit, it SUPPRESSES the ownerless
+      # finding for every extra path it reaches. `docs**` is the concrete
+      # shape: `**` inside a segment rather than as a whole one, which the
+      # classifier escapes into `^docs.*$`, crossing `/` and quietly exempting
+      # `docsextra/` too.
       #
       # Reached only past the reader-drift exit above, like every other verdict
       # here: two readers that disagree about the roster are the finding to fix
@@ -845,7 +574,7 @@ pair_records="$(
   '
 )"
 
-while IFS=$'\t' read -r kind f1 f2 f3 f4 f5 f6 f7; do
+while IFS=$'\t' read -r kind f1 f2 f3 f4; do
   case "$kind" in
     MISMATCH)
       findings=$((findings + 1))
@@ -853,51 +582,10 @@ while IFS=$'\t' read -r kind f1 f2 f3 f4 f5 f6 f7; do
       printf '  member: %s\n' "$f1"
       printf '  globs scraped by this check: %s; globs compiled by the classifier: %s\n' "$f2" "$f3"
       printf '  This check scrapes the raw globs while the classifier compiles\n'
-      printf '  them, and the two disagree, so no disjointness verdict was\n'
+      printf '  them, and the two disagree, so no remit-parity verdict was\n'
       printf '  produced: one of the two readers has drifted from the roster\n'
       printf '  format. Fix that before trusting this check.\n'
       printf '\n'
-      ;;
-    UNDECIDABLE)
-      findings=$((findings + 1))
-      printf 'verify-audit-roster: FAIL undecidable-glob-pair\n'
-      printf '  members: %s, %s\n' "$f1" "$f3"
-      printf '  globs:   "%s" (%s)  vs  "%s" (%s)\n' "$f2" "$f1" "$f4" "$f3"
-      printf '  reason:  %s\n' "$f5"
-      printf '  This check decides the classifier three-construct dialect only:\n'
-      printf '  literals, `*` within one segment, and a whole-segment `**`. It\n'
-      printf '  fails an undecidable pair rather than passing it, because a pair\n'
-      printf '  silently called disjoint is the fail-open it exists to catch.\n'
-      printf '  Express the glob in the dialect, or teach the classifier and this\n'
-      printf '  check the new construct together.\n'
-      printf '\n'
-      ;;
-    OVERLAP)
-      if [ -n "$f3" ] && [ -n "$f6" ] && [[ "$f7" =~ $f3 ]] && [[ "$f7" =~ $f6 ]]; then
-        findings=$((findings + 1))
-        printf 'verify-audit-roster: FAIL claimant-glob-overlap\n'
-        printf '  members: %s, %s\n' "$f1" "$f4"
-        printf '  globs:   "%s" (%s)  vs  "%s" (%s)\n' "$f2" "$f1" "$f5" "$f4"
-        printf '  witness: %s\n' "$f7"
-        printf '  Two claimant members must not claim the same path. The witness\n'
-        printf '  is synthesized from the two globs and matches both; no such file\n'
-        printf '  need exist, which is exactly why the overlap stays invisible\n'
-        printf '  until one does. Ownership is first-match-wins over roster order,\n'
-        printf '  so the witness silently belongs to whichever member is listed\n'
-        printf '  first. Narrow one of the two globs.\n'
-        printf '\n'
-      else
-        findings=$((findings + 1))
-        printf 'verify-audit-roster: FAIL unverifiable-witness\n'
-        printf '  members: %s, %s\n' "$f1" "$f4"
-        printf '  globs:   "%s" (%s)  vs  "%s" (%s)\n' "$f2" "$f1" "$f5" "$f4"
-        printf '  synthesized witness: %s\n' "$f7"
-        printf '  The pair decides as overlapping, but the witness does not match\n'
-        printf '  both compiled globs, so the decision procedure and the compiler\n'
-        printf '  disagree. That is a defect in this check; the pair is cleared by\n'
-        printf '  neither verdict.\n'
-        printf '\n'
-      fi
       ;;
     REMITMISSING)
       findings=$((findings + 1))
@@ -1013,9 +701,6 @@ done < <(printf '%s\n' "$pair_records")
 #     already owns is broader than the ownerless region it exists to describe,
 #     and fails as overbroad -- which `**`, the one move that would neuter this
 #     invariant in a single line, necessarily does.
-#   * The list cannot rot into scenery. An entry no ownerless path needs (every
-#     path it covers is covered by another entry too) fails as redundant, so the
-#     list cannot grow by accretion.
 #
 # THE UNIVERSE is the tracked file list of the repository ROOTED AT $root:
 # `git ls-files`, so untracked scratch files and ignored build output are not
@@ -1060,27 +745,13 @@ fi
 # roster nobody asked about. audit_scope_init falls back to the BUILTIN roster
 # whenever the config yields no records, so a --config naming an `auditors:`-less
 # file would classify every path against the builtin while the findings above
-# print the injected config's name. No wrong green is reachable -- such a roster
-# fails default-member-count first, so the exit status is already 1 -- but the
-# coverage findings would misattribute, naming a roster that did not produce
-# them. Not-run is not a violation, so this is stderr and the exit status stays
-# untouched.
+# print the injected config's name, misattributing them to a roster that did
+# not produce them. Not-run is not a violation, so this is stderr and the exit
+# status stays untouched.
 if [ -n "$coverage_universe" ] && [ -z "$class_records" ]; then
   coverage_universe=""
   printf 'verify-audit-roster: coverage invariant SKIPPED, %s carries no auditors\n' "$config" >&2
 fi
-
-# A dead entry -- one matching no tracked path at all -- is a maintainer-only
-# assertion, and the flag rather than the finding is what carries the marker so
-# the scrubbed script stays syntactically whole. The shipped `unowned:` list
-# names paths from GAIA's own tree, and an adopter clone legitimately lacks some
-# of them (or deletes a directory the template shipped), so on an adopter this
-# would be a red check reporting nothing they did wrong. In this repo it is the
-# anti-rot half of the design and it runs.
-coverage_check_dead=0
-# gaia:maintainer-only:start
-coverage_check_dead=1
-# gaia:maintainer-only:end
 
 if [ -n "$coverage_universe" ]; then
   # The classifier decides ownership, exactly as dispatch does: this invariant
@@ -1123,31 +794,26 @@ if [ -n "$coverage_universe" ]; then
       printf '%s\n' "$unowned_records"
       printf '%s\n' "$coverage_universe" | audit_owners_for_paths |
         awk -F'\t' '{ printf "P\t%s\t%s\n", $1, $2 }'
-    } | awk -F'\t' -v cap=25 -v checkdead="$coverage_check_dead" '
+    } | awk -F'\t' -v cap=25 '
       $1 == "UNOWNED" {
         n++; G[n] = $2; R[n] = $3
-        TOTAL[n] = 0; OWNHIT[n] = 0; SOLE[n] = 0
+        OWNHIT[n] = 0
         next
       }
       $1 == "P" {
         p = $2; o = $3
-        # cnt counts only the OWNERLESS matches, because that is the tier the
-        # list exists to describe; TOTAL counts every match, which is what makes
-        # an overbroad entry and a dead one distinguishable.
-        cnt = 0; last = 0
+        # cnt counts the OWNERLESS matches, which is the tier the list exists
+        # to describe.
+        cnt = 0
         for (i = 1; i <= n; i++) {
           if (p ~ R[i]) {
-            TOTAL[i]++
             if (o != "-") {
               if (OWNHIT[i] == 0) { OWNW[i] = p; OWNO[i] = o }
               OWNHIT[i]++
-            } else { cnt++; last = i }
+            } else { cnt++ }
           }
         }
-        if (o == "-") {
-          if (cnt == 0) { orphans++; if (orphans <= cap) ORPH[orphans] = p }
-          else if (cnt == 1) SOLE[last]++
-        }
+        if (o == "-" && cnt == 0) { orphans++; if (orphans <= cap) ORPH[orphans] = p }
         next
       }
       END {
@@ -1155,15 +821,8 @@ if [ -n "$coverage_universe" ]; then
           printf "ORPHANCOUNT\t%d\t%d\n", orphans, cap
           for (k = 1; k <= orphans && k <= cap; k++) printf "ORPHAN\t%s\n", ORPH[k]
         }
-        # One finding per entry, in this order: a dead entry is also trivially
-        # non-sole, and reporting it twice would describe one defect as two.
         for (i = 1; i <= n; i++) {
-          if (TOTAL[i] == 0) {
-            if (checkdead == 1) printf "DEADUNOWNED\t%s\n", G[i]
-            continue
-          }
-          if (OWNHIT[i] > 0) { printf "OVERBROAD\t%s\t%s\t%s\n", G[i], OWNW[i], OWNO[i]; continue }
-          if (SOLE[i] == 0) { printf "REDUNDANT\t%s\n", G[i]; continue }
+          if (OWNHIT[i] > 0) printf "OVERBROAD\t%s\t%s\t%s\n", G[i], OWNW[i], OWNO[i]
         }
       }
     '
@@ -1195,17 +854,6 @@ if [ -n "$coverage_universe" ]; then
 
   while IFS=$'\t' read -r kind f1 f2 f3; do
     case "$kind" in
-      DEADUNOWNED)
-        findings=$((findings + 1))
-        printf 'verify-audit-roster: FAIL dead-unowned-glob\n'
-        printf '  glob:   %s\n' "$f1"
-        printf '  roster: %s\n' "$config"
-        printf '  This entry matches no tracked path, so it exempts nothing and\n'
-        printf '  documents nothing. An exemption list that keeps entries after\n'
-        printf '  the paths they described are gone is how it stops being read.\n'
-        printf '  Remove it.\n'
-        printf '\n'
-        ;;
       OVERBROAD)
         findings=$((findings + 1))
         printf 'verify-audit-roster: FAIL overbroad-unowned-glob\n'
@@ -1219,54 +867,9 @@ if [ -n "$coverage_universe" ]; then
         printf '  region.\n'
         printf '\n'
         ;;
-      REDUNDANT)
-        findings=$((findings + 1))
-        printf 'verify-audit-roster: FAIL redundant-unowned-glob\n'
-        printf '  glob:   %s\n' "$f1"
-        printf '  roster: %s\n' "$config"
-        printf '  No ownerless path needs this entry: every path it covers is\n'
-        printf '  covered by another entry too. Two entries covering the same set\n'
-        printf '  both report, because either one may be the one to remove.\n'
-        printf '\n'
-        ;;
     esac
   done < <(printf '%s\n' "$coverage_records")
 fi
-
-# gaia:maintainer-only:start
-# --- The built-in fallback lockstep ------------------------------------------
-#
-# Structurally separate from the invariants above -- pairwise disjointness, the
-# default member's exclusion from it, the undecidable-pair failure, machinery
-# registration and the single default, the member-name convention, and remit
-# region parity -- and maintainer-only: the classifier's built-in roster is
-# consulted only when the config yields no records, which on an adopter machine
-# does not happen, so the assertion is dead code there.
-#
-# It compares the fallback to THE SHIPPED ROSTER, so it runs only on a run that
-# resolves both inputs by default. Every fixture roster differs from the
-# fallback by construction, which is what makes it a fixture; without this gate
-# the lockstep would fire on every injected run and every other invariant's test
-# would fail for a reason that has nothing to do with the invariant under test.
-if [ "$config_given" -eq 0 ] && [ "$root_given" -eq 0 ]; then
-  builtin_records="$(_audit_scope_builtin_roster | _audit_scope_parse_auditors)"
-  if [ "$builtin_records" != "$class_records" ]; then
-    findings=$((findings + 1))
-    printf 'verify-audit-roster: FAIL builtin-fallback-lockstep\n'
-    printf '  roster:   %s\n' "$config"
-    printf '  fallback: _audit_scope_builtin_roster in %s\n' "${_self_lib_dir:-<unresolved>}/audit-scope.sh"
-    printf '  The fallback roster does not compile to the same records as the\n'
-    printf '  shipped one. A glob the config carries and the fallback misses\n'
-    printf '  leaves that path ownerless whenever the config cannot be read, so\n'
-    printf '  the gate dispatches nobody for a change to it. Records only the\n'
-    printf '  fallback carries are prefixed `<`, records only the roster carries\n'
-    printf '  are prefixed `>`:\n'
-    diff <(printf '%s\n' "$builtin_records") <(printf '%s\n' "$class_records") |
-      grep -E '^[<>]' | sed 's/^/    /'
-    printf '\n'
-  fi
-fi
-# gaia:maintainer-only:end
 
 if [ "$findings" -gt 0 ]; then
   printf 'verify-audit-roster: %d invariant violation(s).\n' "$findings"

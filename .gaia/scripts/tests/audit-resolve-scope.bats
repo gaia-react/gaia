@@ -534,44 +534,8 @@ SHIM
   chmod +x "$shim/git"
   run --separate-stderr env -u GITHUB_ACTIONS -u GITHUB_BASE_REF PATH="$shim:$BATS_TEST_TMPDIR/no-gh:$PATH" \
     "$repo/.gaia/scripts/audit-resolve-scope.sh" --member code-audit-frontend --root "$repo" --skip-full-base \
-    --eligibility --finding-path app/a.ts
+    --eligibility
   [ "$status" -eq 0 ]
   printf '%s\n' "$output" | grep -qxF 'ELIG_BASE='
-  printf '%s\n' "$output" | grep -qxF 'DEBT_ORIGIN_CHANGED=unknown app/a.ts'
   grep -qF -- 'could not list the eligibility set' <<<"$stderr"
-}
-
-@test "--finding-path prints 1 for a path the pull request changed and 0 for one it did not" {
-  local repo
-  repo="$(make_repo elig-verdict)"
-  git -C "$repo" checkout -q -b feat
-  commit_file "$repo" "docs/has space.md"
-  commit_file "$repo" app/a.ts
-  run --separate-stderr env -u GITHUB_ACTIONS -u GITHUB_BASE_REF PATH="$BATS_TEST_TMPDIR/no-gh:$PATH" \
-    "$repo/.gaia/scripts/audit-resolve-scope.sh" --member code-audit-frontend --root "$repo" --skip-full-base \
-    --eligibility --finding-path "docs/has space.md" --finding-path app --finding-path untouched.sh
-  [ "$status" -eq 0 ]
-  printf '%s\n' "$output" | grep -qxF 'DEBT_ORIGIN_CHANGED=1 docs/has space.md'
-  # Whole-string equality: a directory prefix of a changed path is not changed.
-  printf '%s\n' "$output" | grep -qxF 'DEBT_ORIGIN_CHANGED=0 app'
-  printf '%s\n' "$output" | grep -qxF 'DEBT_ORIGIN_CHANGED=0 untouched.sh'
-}
-
-@test "--finding-path on an unresolvable base prints unknown, never 0" {
-  local repo
-  repo="$(make_repo elig-unknown master)"
-  run --separate-stderr env -u GITHUB_ACTIONS -u GITHUB_BASE_REF PATH="$BATS_TEST_TMPDIR/no-gh:$PATH" \
-    "$repo/.gaia/scripts/audit-resolve-scope.sh" --member code-audit-frontend --root "$repo" --skip-full-base \
-    --eligibility --finding-path app/a.ts
-  [ "$status" -eq 0 ]
-  printf '%s\n' "$output" | grep -qxF 'DEBT_ORIGIN_CHANGED=unknown app/a.ts'
-  grep -qF -- 'DEBT_ORIGIN_CHANGED=0' <<<"$output" && return 1
-  true
-}
-
-@test "--finding-path without --eligibility is a usage error" {
-  local repo
-  repo="$(make_repo elig-usage)"
-  run "$repo/.gaia/scripts/audit-resolve-scope.sh" --member code-audit-frontend --root "$repo" --skip-full-base --finding-path app/a.ts
-  [ "$status" -eq 2 ]
 }

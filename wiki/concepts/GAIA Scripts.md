@@ -73,17 +73,13 @@ The index is held to the tree by `.gaia/scripts/lint-scripts-wiki-inventory.sh`,
 
 | Script | Ships | Invoker | What it is |
 |---|---|---|---|
-| `cost-backfill.sh` | yes | by hand, once | One-off backfill of archived cost history into the cost ledger. |
 | `cost-represented.sh` | yes | the archive scripts | Value-aware, fail-closed gate that a run is represented in the cost ledger before its folder is reduced. |
-| `cost-reprice.sh` | yes | by hand, once | One-off re-price of already-written ledger rows under the current rate table. |
-| `cost-unpriced-scan.sh` | yes | `/gaia-release` | Names every model the cost ledger cannot price under the card in force, and whether the local overlay already covers it. |
 
 ### `debt-`
 
 | Script | Ships | Invoker | What it is |
 |---|---|---|---|
 | `debt-count-refresh.sh` | yes | the statusline | Recomputes the open tech-debt count the statusline nudge shows. |
-| `debt-origin-lib.sh` | yes | sourced | Shared provenance helper for a tech-debt filing: where the finding came from. |
 | `debt-stale-claims.sh` | yes | `/gaia-debt` | Prints the number of every open tech-debt issue whose `in-progress` claim is stale. It never strips a label; the caller does. |
 
 ### `lint-`

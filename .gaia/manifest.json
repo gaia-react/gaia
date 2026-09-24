@@ -241,12 +241,8 @@
     ".gaia/scripts/check-updates.sh": "owned",
     ".gaia/scripts/chore-deps-skip.sh": "owned",
     ".gaia/scripts/classifier/classify-determinism.mjs": "owned",
-    ".gaia/scripts/cost-backfill.sh": "owned",
     ".gaia/scripts/cost-represented.sh": "owned",
-    ".gaia/scripts/cost-reprice.sh": "owned",
-    ".gaia/scripts/cost-unpriced-scan.sh": "owned",
     ".gaia/scripts/debt-count-refresh.sh": "owned",
-    ".gaia/scripts/debt-origin-lib.sh": "owned",
     ".gaia/scripts/debt-stale-claims.sh": "owned",
     ".gaia/scripts/gh-artifact-lib.sh": "owned",
     ".gaia/scripts/knowledge-audit-clean.sh": "owned",
@@ -678,7 +674,7 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-09-24T10:42:12.159Z",
+  "generated": "2026-09-24T12:58:30.842Z",
   "regions": [
     {
       "endMarker": "<!-- gaia:audit-remit:end -->",

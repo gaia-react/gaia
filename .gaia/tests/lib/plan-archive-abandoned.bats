@@ -224,22 +224,6 @@ _seed_cost_row() {
   [ -d "$PLANS/PLAN-002" ]
 }
 
-# --- 3: representation gate blocks an unrepresented cost.md ------------------
-
-@test "3: an unrepresented cost.md section blocks deletion; folder survives" {
-  _seed_abandoned_plan PLAN-001
-  _plant_cost_md PLAN-001 100 10 5 20 sess-1
-  # No matching cost.jsonl row: unrepresented.
-
-  run _archive "$SANDBOX"
-  [ "$status" -eq 0 ]
-  refute_contains "Deleted"
-  assert_contains "cost not fully represented in cost.jsonl; left PLAN-001 folder for review"
-
-  [ -f "$PLANS/PLAN-001/PLAN.md" ]
-}
-
-
 @test "4: an abandoned row with no active folder is a no-op" {
   _seed_abandoned_row_only PLAN-005
 
@@ -361,21 +345,6 @@ _seed_cost_row() {
   [ "$(jq -r '.plans[0].status' "$LEDGER")" = "abandoned" ]
 }
 
-
-@test "13: a folder past the retention window but unrepresented is kept" {
-  _seed_abandoned_plan PLAN-001
-  _set_abandoned_at PLAN-001 "$(_days_ago 45)"
-  _plant_cost_md PLAN-001 100 10 5 20 sess-1
-  # No matching cost.jsonl row: unrepresented.
-  export GAIA_SPEC_RETENTION_DAYS=30
-
-  run _archive "$SANDBOX"
-  [ "$status" -eq 0 ]
-  refute_contains "Deleted"
-  assert_contains "cost not fully represented in cost.jsonl; left PLAN-001 folder for review"
-
-  [ -f "$PLANS/PLAN-001/PLAN.md" ]
-}
 
 # --- 14/15: missing or unparseable abandoned_at -> kept regardless ----------
 

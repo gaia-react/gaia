@@ -17,7 +17,7 @@
 # Usage:
 #   <root>/.gaia/scripts/audit-resolve-scope.sh --member <name> --root <root>
 #       [--review-path <pathspec>]... [--skip-full-base] [--base-override <ref>]
-#       [--eligibility [--finding-path <path>]...]
+#       [--eligibility]
 #
 #   --member          The member resolving its scope. Passed to
 #                     resolve-audit-base.sh --member and to the capture.
@@ -42,16 +42,12 @@
 #                     GITHUB_REPOSITORY are both set, which is what the
 #                     suite's "gh is never called" probe depends on being
 #                     unset.
-#   --finding-path    A finding's repo-relative path to answer "did this pull
-#                     request change it" for, against the eligibility set.
-#                     Repeatable. Requires --eligibility.
 #
 # Output (stdout), one KEY=value per line, in this order:
 #   AUDIT_ROOT FULL_BASE BASE_REF BASE_REASON KEY_REF ANCHOR_TREE BASE_SHA
 #   KEY_BASE AUDIT_KEY ELIG_BASE D_SCOPE, then one FULL_CHANGED=<path> per
 #   whole-PR path, one CHANGED=<path> per review-scope path, one
 #   ELIG_CHANGED=<path> per eligibility path, one
-#   DEBT_ORIGIN_CHANGED=<1|0|unknown> <path> per --finding-path, one
 #   DIRTY=<status line> per dirty in-scope entry, its path raw rather than
 #   quoted. An unresolved scalar prints with an empty value: AUDIT_KEY is empty
 #   whenever KEY_BASE or the branch is undeterminable, a detached HEAD among
@@ -64,16 +60,15 @@
 #      and do not change the status, because each consumer downstream already
 #      refuses on the empty value it would receive. An eligibility base that
 #      does not resolve, or whose diff fails, is one of these: ELIG_BASE prints
-#      empty and every verdict is `unknown`, which disengages the waive rather
-#      than stopping the audit that reads it.
+#      empty, which disengages the waive rather than stopping the audit that
+#      reads it.
 #   1  the membership base is unresolvable, the base-provenance resolver it
 #      comes from is missing, or a diff listing either changed-path list fails.
 #      Nothing after it runs: an empty FULL_BASE or a failed diff makes the
 #      list empty at status 0, which reads exactly like a pull request that
 #      touched nothing in the member's remit, and a self-skip there writes no
 #      marker at all. The stderr line names which of the causes it hit.
-#   2  usage error (a --finding-path without --eligibility among them), or a
-#      --root this script refuses.
+#   2  usage error, or a --root this script refuses.
 #
 # Confinement: the script derives its own tree from its on-disk location and
 # refuses a --root that does not resolve to that same tree. A member can
@@ -84,7 +79,7 @@
 # of the right tree passes.
 
 _ars_usage() {
-  printf 'usage: audit-resolve-scope.sh --member <name> --root <root> [--review-path <pathspec>]... [--skip-full-base] [--base-override <ref>] [--eligibility [--finding-path <path>]...]\n' >&2
+  printf 'usage: audit-resolve-scope.sh --member <name> --root <root> [--review-path <pathspec>]... [--skip-full-base] [--base-override <ref>] [--eligibility]\n' >&2
 }
 
 member=""
@@ -94,7 +89,6 @@ skip_full_base=0
 base_override=""
 eligibility=0
 review_paths=()
-finding_paths=()
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --member)
@@ -113,9 +107,6 @@ while [ "$#" -gt 0 ]; do
       base_override="$2"; shift 2 ;;
     --eligibility)
       eligibility=1; shift ;;
-    --finding-path)
-      [ "$#" -ge 2 ] || { _ars_usage; exit 2; }
-      finding_paths+=("$2"); shift 2 ;;
     -h|--help)
       _ars_usage; exit 0 ;;
     *)
@@ -125,11 +116,6 @@ while [ "$#" -gt 0 ]; do
 done
 
 if [ -z "$member" ] || [ "$root_given" -eq 0 ]; then
-  _ars_usage
-  exit 2
-fi
-if [ "${#finding_paths[@]}" -gt 0 ] && [ "$eligibility" -eq 0 ]; then
-  printf 'audit-resolve-scope: --finding-path requires --eligibility\n' >&2
   _ars_usage
   exit 2
 fi
@@ -277,10 +263,10 @@ if [ "$eligibility" -eq 1 ]; then
   fallback_ref="${elig_ref:-${default_branch}}"
   ELIG_BASE="$(git -C "$root" merge-base HEAD "$primary_ref" 2>/dev/null || git -C "$root" merge-base HEAD "$fallback_ref" 2>/dev/null || true)"
   if [ -z "$ELIG_BASE" ]; then
-    printf 'no eligibility base against %s or %s: the machinery waive disengages and every provenance verdict is unknown\n' \
+    printf 'no eligibility base against %s or %s: the machinery waive disengages\n' \
       "$primary_ref" "$fallback_ref" >&2
   elif ! git -C "$root" diff --name-only -z "${ELIG_BASE}...HEAD" > "$ars_tmp/elig" 2>"$ars_tmp/elig.err"; then
-    printf 'could not list the eligibility set (%s...HEAD): %s; the machinery waive disengages and every provenance verdict is unknown\n' \
+    printf 'could not list the eligibility set (%s...HEAD): %s; the machinery waive disengages\n' \
       "$ELIG_BASE" "$(head -1 "$ars_tmp/elig.err")" >&2
     ELIG_BASE=""
   else
@@ -343,22 +329,6 @@ for path in ${changed[@]+"${changed[@]}"}; do
 done
 for path in ${elig_changed[@]+"${elig_changed[@]}"}; do
   printf 'ELIG_CHANGED=%s\n' "$path"
-done
-# Whole-string equality against the set, never a prefix or substring test. An
-# unresolved base answers `unknown`, never `0`: `0` asserts the pull request did
-# not touch the path, which an unresolved base cannot assert.
-for finding in ${finding_paths[@]+"${finding_paths[@]}"}; do
-  verdict="unknown"
-  if [ -n "$ELIG_BASE" ]; then
-    verdict="0"
-    for path in ${elig_changed[@]+"${elig_changed[@]}"}; do
-      if [ "$path" = "$finding" ]; then
-        verdict="1"
-        break
-      fi
-    done
-  fi
-  printf 'DEBT_ORIGIN_CHANGED=%s %s\n' "$verdict" "$finding"
 done
 if [ "${#dirty[@]}" -gt 0 ]; then
   printf 'DIRTY IN REVIEW SCOPE:\n' >&2

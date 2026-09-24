@@ -2,8 +2,7 @@
 #
 # UAT-007: cost-consolidate.sh is retired. This suite asserts the file is
 # gone and that no tracked file still references it (a whole-tree git grep
-# carrying named exclusions), plus SC5's archived-absent half: cost-backfill.sh
-# still no-ops safely when neither archived/ tree exists.
+# carrying named exclusions).
 #
 # DP-001: `.gaia/manifest.json` is release-generated and FC-7 forbids editing
 # it here, so it is excluded whatever it currently holds; `/gaia-release`
@@ -54,8 +53,6 @@
 setup() {
   THIS_DIR="$( cd "$( dirname "$BATS_TEST_FILENAME" )" && pwd )"
   REPO_ROOT="$( cd "$THIS_DIR/../../.." && pwd )"
-  # snapshot_file + assert_files_identical: byte identity without `$(cat …)`.
-  . "$REPO_ROOT/.gaia/tests/helpers/files.sh"
 }
 
 @test "UAT-007: cost-consolidate.sh no longer exists" {
@@ -77,27 +74,4 @@ setup() {
   # git grep exits 1 (not 0) when it finds no match; the assertion that
   # matters is emptiness of $output, not the exit code.
   [ -z "$output" ]
-}
-
-@test "SC5: cost-backfill.sh no-ops when both archived/ dirs are absent (no rows, no dirs created)" {
-  SANDBOX="$(mktemp -d "${BATS_TEST_TMPDIR}/sandbox.XXXXXX")"
-  mkdir -p "$SANDBOX/.gaia/local/telemetry"
-  ledger="$SANDBOX/.gaia/local/telemetry/cost.jsonl"
-  printf '%s\n' '{"schema_version":1,"kind":"execute","spec_id":"SPEC-PRE","session_id":"pre","buckets":{"fresh_input":1,"cache_write":0,"cache_read":0,"output":0},"total":1}' > "$ledger"
-  before="$(snapshot_file "$ledger")"
-
-  # Neither archived/ tree exists in this sandbox at all.
-  [ ! -d "$SANDBOX/.gaia/local/specs/archived" ]
-  [ ! -d "$SANDBOX/.gaia/local/plans/archived" ]
-
-  run bash "$REPO_ROOT/.gaia/scripts/cost-backfill.sh" "$SANDBOX" --ledger "$ledger"
-  [ "$status" -eq 0 ]
-
-  # Still absent afterward: cost-backfill.sh never creates an archived/ tree.
-  [ ! -d "$SANDBOX/.gaia/local/specs/archived" ]
-  [ ! -d "$SANDBOX/.gaia/local/plans/archived" ]
-
-  # The ledger is byte-identical: no row was appended.
-  after="$(snapshot_file "$ledger")"
-  assert_files_identical "$before" "$after"
 }

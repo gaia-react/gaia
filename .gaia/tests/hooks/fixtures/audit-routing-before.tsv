@@ -512,7 +512,6 @@
 .gaia/scripts/audit-write-clearance.sh	code-audit-maintainer-shell
 .gaia/scripts/check-updates.sh	code-audit-maintainer-shell
 .gaia/scripts/classifier/classify-determinism.mjs	-
-.gaia/scripts/cost-backfill.sh	code-audit-maintainer-shell
 .gaia/scripts/cost-represented.sh	code-audit-maintainer-shell
 .gaia/scripts/create-worktree.sh	code-audit-maintainer-shell
 .gaia/scripts/debt-count-refresh.sh	code-audit-maintainer-shell
@@ -539,7 +538,6 @@
 .gaia/scripts/tests/audit-window-lib.bats	code-audit-maintainer-shell
 .gaia/scripts/tests/audit-write-clearance.bats	code-audit-maintainer-shell
 .gaia/scripts/tests/comprehensive-gauge.bats	code-audit-maintainer-shell
-.gaia/scripts/tests/cost-backfill.bats	code-audit-maintainer-shell
 .gaia/scripts/tests/cost-consolidate-absence.bats	code-audit-maintainer-shell
 .gaia/scripts/tests/cost-lock-concurrency.bats	code-audit-maintainer-shell
 .gaia/scripts/tests/cost-represented.bats	code-audit-maintainer-shell

@@ -208,7 +208,6 @@ The `difficulty:` namespace (step 7 of `.claude/skills/file-tech-debt/SKILL.md`)
 
 Nothing catches that omission, which is why it is called out. No test couples the script's prefix to the skill's spelling, and the check's own suite, `.gaia/scripts/tests/check-debt-issue-metadata.bats`, reds only once a prefix has been edited, so it catches a half-done rename rather than a skipped one. The script edit is unguarded and has to be made by hand.
 
-Provenance (the `gaia-debt-origin` line, see "Provenance line" in `.claude/skills/file-tech-debt/SKILL.md`) is a separate line and joins none of that lockstep set. Adding, removing, or renaming a provenance field requires no change to any deterministic consumer of the dedup key. No consumer reads the issue body positionally, so a second HTML comment beside the dedup key is safe: `.claude/hooks/lib/audit-dispositions.sh` reconstructs the wrapped dedup key and tests it as a substring, and `.claude/skills/gaia/references/debt.md` captures on the literal `<!-- gaia-debt-key: ` prefix; neither reads past it. The keyless `<path>:<line>` fallback cannot false-match a provenance field either, since no provenance field yields a colon followed by digits. The helper deliberately inverts `audit-key-lib.sh`'s fail-closed rule, printing `unknown` in a slot it cannot resolve rather than refusing to print a partial line; that inversion is deliberate, not a bug to "fix" into agreement.
 <!-- gaia:maintainer-only:end -->
 
 ## Project labels
