@@ -244,8 +244,8 @@ jobs:
               - '.gaia/tests/bats-shards.sh'
               # install-bats.sh is what the two install steps below call.
               # Listed here for the `code` output; it is ALSO required in
-              # `sandbox:` below, because that output reaches no `.sh` outside
-              # `.gaia/tests/sandbox/` and the sandbox leg's own install step
+              # `sandbox:` below, because that output names only the files the
+              # sandbox suite reads and the sandbox leg's own install step
               # calls this script too. Without this line here, an edit to the
               # pinned bats version or digest would report `code=false` and
               # skip every non-sandbox leg's install.

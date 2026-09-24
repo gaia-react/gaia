@@ -61,8 +61,8 @@
 #   contains, which is exactly what the guarantee below forbids.
 #
 # So both stay uncovered here: region drift surfaces at a manual
-# `/distribution-audit` run or at release time, and the lint runs only when a
-# maintainer invokes it by hand. That gap in local coverage is the accepted
+# `/distribution-audit` run or at release time, and the lint runs on the real
+# tree in CI, through its bats suite in Audit CI Tests. That gap in local coverage is the accepted
 # price of the guarantee that a deny here always means `/distribution-audit`
 # would flag the same file.
 #
