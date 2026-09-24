@@ -81,8 +81,8 @@
 #   returns at its own settings arm, so its WORKFLOW half does not run
 #   either, even though that half needs no `jq`. A grant-versus-call-site
 #   drift inside a workflow file is therefore neither found nor named on a
-#   `jq`-less machine. Nothing merges on it -- exit 2 is non-zero and
-#   `.gaia/tests/whole-tree-invariants.sh` fails on any non-zero -- so this
+#   `jq`-less machine. Nothing merges on it -- exit 2 is non-zero and the
+#   sibling bats suite's live-repo case fails on any non-zero -- so this
 #   is a coverage gap behind a blocking status, not a fail-open.
 #
 #   <repo_root> is a required parameter -- this check never derives it

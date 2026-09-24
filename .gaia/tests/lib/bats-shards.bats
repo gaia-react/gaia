@@ -11,9 +11,8 @@
 #
 # S1/S2/S3 independently re-discover the six directories rather than asking
 # the script to grade its own homework, and the adversarial fixtures (A1-A3)
-# mutate a scratch copy of the script to prove those checks can actually fail,
-# following the discipline .gaia/tests/lib/run-bats-parallel.bats sets for its
-# own F1/F2 fixtures. S9 and A4 cover the second invariant the partition has to
+# mutate a scratch copy of the script to prove those checks can actually fail.
+# S9 and A4 cover the second invariant the partition has to
 # hold: the weighted groups are split by weight, not by file count, and the
 # partition checks are blind to that on their own. S16, with A6, A7 and A8,
 # covers the third: no two suites the sharder declares cost outliers share a
@@ -1097,9 +1096,8 @@ EOF
   #
   # Staged into a COPY of the index, never the repository's own. Writing the
   # real index would make this the one test here that mutates shared repo
-  # state, and two documented invariants forbid it: run-bats-parallel.sh forks
-  # every shard concurrently in one workspace, and a sibling
-  # suite derives its whole input population from `git ls-files`. It would also
+  # state, and a documented invariant forbids it: a sibling suite derives its
+  # whole input population from `git ls-files`. It would also
   # need an undo, whose own failure path (a contended index.lock) strands a
   # staged-deleted path in the real index, which is exactly the dirty-tree
   # state that makes every audit member withhold its marker. GIT_INDEX_FILE

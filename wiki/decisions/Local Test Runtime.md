@@ -10,64 +10,33 @@ tags: [decision, testing, performance, shell, bats]
 
 # Decision: Local Test Runtime
 
-The two local pre-merge gates, `.gaia/tests/whole-tree-invariants.sh` and the
-`shell-lint.sh` member it includes, run their own units concurrently rather
-than in a loop, and each concurrent stage nests inside the one above it. This
-page records why, what bounds each level, the negative result on the full bats
-corpus, and the two related non-claims a reader is likely to reach for next.
+The local pre-merge gate, `.gaia/tests/shell-lint.sh`, runs its own units
+concurrently rather than in a loop. This page records why, what bounds that
+concurrency, the negative result on the full bats corpus, and the two related
+non-claims a reader is likely to reach for next.
 
-## Why the gates are parallel
+## Why the gate is parallel
 
-Neither gate can shrink the work it does: `whole-tree-invariants.sh` runs
-every check whose input is the whole tracked tree, and `shell-lint.sh` runs
-shellcheck plus a folded set of custom lints over every tracked shell and
-bats file. What both can do is stop paying for that work serially. Forking
-each gate's units into a bounded pool overlaps them on the host's cores
-instead of running one after another, which is a real win only when the
-units genuinely vary in cost: a handful of expensive units account for most
-of the wall clock in both gates, and a large remainder costs very little
-between them.
+`shell-lint.sh` cannot shrink the work it does: it runs shellcheck plus a
+folded set of custom lints over every tracked shell and bats file. What it
+can do is stop paying for that work serially. Forking its units into a
+bounded pool overlaps them on the host's cores instead of running one after
+another, which is a real win only when the units genuinely vary in cost: a
+handful of expensive units account for most of the wall clock, and a large
+remainder costs very little between them.
 
 ## The concurrency budget
 
-Three levels nest by the time a full `whole-tree-invariants.sh` run is
-underway:
+`shell-lint.sh` forks its own shellcheck passes and its folded guards,
+bounded by its own `JOBS`. The bound is a resolver with a documented default
+and floor, not a literal kept here: the script's own header carries the
+reasoning for its cap, and running `--list` reports the live unit set. This
+page does not restate either, because a second copy is a second thing to
+keep current and the runner's own header is what cannot go stale.
 
-- The outer level forks `whole-tree-invariants.sh`'s own members, bounded by
-  `WTI_JOBS`.
-- One of those members is `shell-lint.sh`, which forks its own shellcheck
-  passes and its folded guards, bounded by its own `JOBS`.
-- Another of those members is the shard-partition bats suite, which bats
-  itself forks under `--jobs`, bounded by `WTI_BATS_JOBS`.
-
-Each bound is a resolver with a documented default and floor, not a literal
-kept here: `whole-tree-invariants.sh`'s own header carries the reasoning for
-its cap and for why it nests the way it does, and running `--list` on either
-gate reports the live unit set. This page does not restate either, because a
-second copy is a second thing to keep current and the runner's own header is
-what cannot go stale.
-
-`shell-lint.sh`'s guards and the shard-partition suite are two different
-things that both happen to source a bats parallel backend or an alternate
-awk interpreter when one is available. Neither backend is required:
-`.gaia/tests/README.md` documents what each buys and states plainly that
-adopters never need either, since none of the files that use them ship.
-
-## `whole-tree-invariants.sh` reports its own cost
-
-The runner's own runtime paragraph is a hand-kept sample, and nothing
-machine-checks it against actual cost: the one machine-checked lever is a
-member-count comparison, which catches a member added or removed without the
-paragraph being revisited, and says nothing about a member that changed cost
-while holding its place. So every full run also prints its own measured
-aggregate alongside the configuration that produced it, unconditionally, with
-no threshold and no comparison against the paragraph. That is what makes a
-stale figure visible to whoever is already looking at a run, rather than only
-to someone who goes back to re-measure it by hand. The runner's own header
-gives the fuller reasoning, including why a thresholded warning was
-considered and rejected: it would fire on every configuration this runner is
-built to support running correctly under, which turns a signal into a notice
-nobody reads.
+`shell-lint.sh`'s guards source a bats parallel backend or an alternate awk
+interpreter when one is available. Neither backend is required: adopters
+never need either, since none of the files that use them ship.
 
 ## The awk interpreter pin's stated non-claim
 
@@ -111,10 +80,9 @@ schedules the full corpus differently, and re-deriving this as an
 infrastructure task from the raw wall-clock figure alone is the mistake this
 section exists to prevent.
 
-One consequence worth carrying forward: because the shard-partition suite
-that `whole-tree-invariants.sh` includes now also forks under `--jobs`, running
-that gate and a full corpus run at the same time contends for cores more than
-it used to. Don't run them concurrently.
+One consequence worth carrying forward: the shard-partition suite itself
+forks under `--jobs`, so running it and a full corpus run at the same time
+contends for cores. Don't run them concurrently.
 
 ## Related
 

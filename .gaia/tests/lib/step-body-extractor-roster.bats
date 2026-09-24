@@ -26,10 +26,9 @@
 #    wearing a member's clothes.
 #
 # The fixture repos stand in for the real tree, so the mutation tests can prove
-# the red without editing tracked source. There is deliberately no "the real
-# tree is clean" test: the check is a member of
-# .gaia/tests/whole-tree-invariants.sh, which runs it against the real tree in
-# CI, so asserting it a second time here would only duplicate that run.
+# the red without editing tracked source. There is no "the real tree is
+# clean" test here; nothing currently runs this check against the live tree
+# automatically.
 #
 # This suite writes its fixtures from the check's own GAIA_SBX_* variables
 # rather than retyping the two criterion literals. That keeps it out of the

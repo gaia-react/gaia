@@ -86,29 +86,13 @@ For the full design, see `wiki/concepts/Wiki Sync.md`.
 
 ```bash
 bats .gaia/tests/hooks/                 # one suite directory
-bash .gaia/tests/run-bats-parallel.sh   # every shard, in parallel
 ```
 
 Requires `bats-core` (`brew install bats-core`). Tests are deterministic, run in tmp git repos, take a few seconds total. Add to your local commit hook if you want them on every commit.
 
 The hooks directory covers the bulk of the wiki system: drift math, marker file behavior, hook input parsing, edge cases (missing state, unreachable SHA, malformed JSON). The other five directories cover the audit helpers, the shipped `.gaia/scripts`, the SPEC-ledger libs, forensics, and the statusline.
 
-CI reaches the same partition through a different entry point. The `Audit CI Tests` workflow's `shards` matrix runs `bash .gaia/tests/bats-shards.sh run <shard-id>` once per leg, each shard on its own runner, so the slowest leg sets the wall clock rather than the sum; the hand run forks every shard on one box instead. The sharder discovers `.bats` files at run time, so a new suite file joins a shard with no matrix edit. See `wiki/decisions/Sharded CI Test Matrix.md`.
-
-#### Smoke tests (manual, billable)
-
-```bash
-bash .gaia/tests/smoke/run-all.sh
-```
-
-Requires `claude` CLI on PATH and a working subscription / `ANTHROPIC_API_KEY`. Costs ~$0.10 per full run on Sonnet. Tests Claude's judgment in real scenarios:
-
-- 01: meaningful change → wiki updated
-- 02: typo-only commit → SKIP, no wiki edits
-- 03: multi-commit catch-up
-- 04: non-Claude merge detected at next session
-
-Run before every release. See `.gaia/tests/smoke/README.md` for individual scenario commands and cost discipline.
+CI reaches the same partition through a different entry point. The `Audit CI Tests` workflow's `shards` matrix runs `bash .gaia/tests/bats-shards.sh run <shard-id>` once per leg, each shard on its own runner, so the slowest leg sets the wall clock rather than the sum. The sharder discovers `.bats` files at run time, so a new suite file joins a shard with no matrix edit. See `.github/workflows/audit-ci-tests.yml` and `wiki/decisions/Sharded CI Test Matrix.md`.
 
 ### Pre-release checklist
 
@@ -117,9 +101,7 @@ Before running `/gaia-release`, you should have:
 - [ ] `pnpm typecheck` clean
 - [ ] `pnpm lint` clean
 - [ ] `pnpm test:ci` clean
-- [ ] `bash .gaia/tests/run-bats-parallel.sh` clean (the shards CI runs)
 - [ ] `/gaia-wiki sync` run, with all returned WORTHY commits resulting in defensible wiki edits
-- [ ] (Recommended) `bash .gaia/tests/smoke/run-all.sh` clean
 - [ ] Working tree clean
 
 If `/gaia-wiki sync` reports drift but you decide a commit doesn't warrant a wiki update, it logs that as a SKIP entry in `wiki/log.md`. State still advances. That's the convergence: wiki is "in sync" once every commit has been classified as either WORTHY (and the page updated) or SKIP (and the reason logged).
@@ -139,7 +121,6 @@ If `/gaia-wiki sync` reports drift but you decide a commit doesn't warrant a wik
 
 - **Drift check is too noisy.** It only fires on the first prompt of each session. If you're seeing it more often, check `.claude/wiki-drift-checked`; the marker file should match your current `session_id`. If a hook is failing to write the marker, that's the bug.
 - **`/gaia-wiki sync` reports zero drift but you know there were commits.** Check `wiki/.state.json`'s `last_evaluated_sha`; it may already match HEAD if a prior sync ran. Or the SHA may be unreachable (rebase) and the hook silently skipped.
-- **Smoke tests are failing in CI.** They shouldn't be; smoke tests are MANUAL and billable. CI's bats legs run only the shard ids `.gaia/tests/bats-shards.sh` defines, and `.gaia/tests/smoke/` belongs to none of them. If a CI workflow is invoking smoke, that's a misconfiguration; remove it.
 
 ## Code of conduct
 

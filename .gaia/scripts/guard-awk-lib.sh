@@ -23,12 +23,9 @@
 # program. The sibling errexit guard already demonstrates the shape in-file,
 # joining its shared detector to a per-surface program at call time.
 #
-# Why the name does not begin with `lint-`: the whole-tree-invariant sweep reads
-# `check-*.sh`, `audit-*-complete.sh`, `lint-*.sh` and `verify-*.sh` under
-# .gaia/scripts as whole-tree-check candidates and demands a roster row for each.
-# This file is not a check, so it takes the `*-lib.sh` naming its siblings in
-# this directory use and is swept by nothing. No count is given deliberately: the
-# set grows, and a number here names a set nothing recounts.
+# Why the name does not begin with `lint-`: this file is not a check, so it
+# takes the `*-lib.sh` naming its siblings in this directory use, rather than
+# a check-naming convention that would misclassify it as one.
 #
 # ---------------------------------------------------------------------------
 # The contract a consuming guard is written against

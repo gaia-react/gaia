@@ -45,8 +45,7 @@
 #
 # Enforced by the sibling bats suite
 # .gaia/scripts/tests/lint-retired-label-spellings.bats, which the `Audit CI
-# Tests` job runs, and run on every pull request as a member of
-# .gaia/tests/whole-tree-invariants.sh. Also runnable directly:
+# Tests` job runs when a harness path changes. Also runnable directly:
 # `bash .gaia/scripts/bats5.sh .gaia/scripts/tests/lint-retired-label-spellings.bats`.
 # gaia:maintainer-only:end
 

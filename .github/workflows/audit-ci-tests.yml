@@ -10,14 +10,9 @@ name: Audit CI Tests
 # Mirrors cli-tests.yml's narrow-surface, paths-filtered, step-gated shape.
 #
 # The last step is the odd one and is deliberate: the INV-7 concurrency meter
-# (.gaia/tests/concurrency/) admits scenarios that are red by design, belonging
-# to phases that have not run yet, so it is gated through meter-gate.sh against
-# a checked-in expected-status manifest rather than on its own exit status. A
-# green here means every scenario did exactly what the manifest says it does --
-# an expected-pass going red AND an expected-red going green both fail the
-# build. The manifest, not this comment, is the authority on which scenarios
-# are which, and how many of each there are at any moment.
-# See .gaia/tests/concurrency/README.md.
+# (.gaia/tests/concurrency/) is gated through meter-gate.sh, which runs the
+# whole suite and fails on any scenario that does not report an unconditional
+# `ok` (a `skip` counts as a failure). See .gaia/tests/concurrency/README.md.
 #
 # Pinned action SHAs match .github/workflows/cli-tests.yml:
 #   actions/checkout    @ 3d3c42e5aac5ba805825da76410c181273ba90b1 (v7.0.1)
@@ -118,11 +113,9 @@ jobs:
               # to this file changes what every suite in this job runs, and
               # retrigger-reachability.bats reads it as one of the workflows it
               # scans. Redundant today: the `.github/workflows/**` catch-all below
-              # already matches it. Listed deliberately anyway, the same
-              # convention the `sandbox:` filter uses for its own redundant
-              # entries, so that narrowing that glob later cannot silently drop
-              # this file. It is documentation of the self-coverage, not the thing
-              # arming it.
+              # already matches it. Listed deliberately anyway, so that
+              # narrowing that glob later cannot silently drop this file. It is
+              # documentation of the self-coverage, not the thing arming it.
               - '.github/workflows/audit-ci-tests.yml'
               # ci-status-member-gate.bats EXECUTES `run:` bodies extracted from
               # code-review-audit.yml, so that workflow is a source this suite
@@ -130,11 +123,10 @@ jobs:
               # set of steps that POST a `pending` GAIA-Audit status and fails on
               # an unguarded new one. Redundant today: the `.github/workflows/**`
               # catch-all below already matches it. Listed deliberately anyway,
-              # the same convention the `sandbox:` filter uses for its own
-              # redundant entries, so that narrowing that glob later cannot
-              # silently drop this source. It is documentation of the test-dir/
-              # source-dir pairing, the same pairing as the three instruction
-              # files below, not the thing arming it.
+              # so that narrowing that glob later cannot silently drop this
+              # source. It is documentation of the test-dir/source-dir
+              # pairing, the same pairing as the three instruction files
+              # below, not the thing arming it.
               - '.github/workflows/code-review-audit.yml'
               # '.claude/hooks/**' is the superset of the specific hooks this
               # suite used to filter on (repo-scope.sh, pr-merge-audit-check.sh,
@@ -252,24 +244,6 @@ jobs:
               # looks identical to a clean tree. Same test-dir/source-dir pairing
               # as the entries above.
               - '.gaia/tests/shell-lint.sh'
-              # run-bats-parallel.sh drives the same partition
-              # the shard steps below invoke via .gaia/tests/bats-shards.sh,
-              # but it is not itself a bats step. It remains the hand-run
-              # entry point for that partition, and its own adversarial suite
-              # (.gaia/tests/lib/run-bats-parallel.bats, already listed
-              # below) sources it directly to read builtin_table() back out.
-              # It sits at the top of .gaia/tests/, matching none of the four
-              # .gaia/tests/*/ globs below. Redundant today: the
-              # `.gaia/tests/**` catch-all below already matches it, the same
-              # as the vendored-archive entry further down. Listed
-              # deliberately anyway, because that catch-all carries a standing
-              # motive to be narrowed -- its own comment records that it arms
-              # the full matrix, two pnpm installs included, on any
-              # `.gaia/tests` change. A narrowing that dropped this path would
-              # leave a runner-only edit reporting `code=false`, skipping every
-              # bats step, and greening the job having run that suite's
-              # assertions against a stale copy.
-              - '.gaia/tests/run-bats-parallel.sh'
               # bats-shards.sh is what every non-sandbox, non-concurrency
               # shard's bats step below invokes, and it sits at the top of
               # .gaia/tests/ too, matching none of the four .gaia/tests/*/
@@ -319,12 +293,10 @@ jobs:
               # required check with the carrier test unrun. These are the roots
               # that hold prompts today, not a proof that no other can; a carrier
               # added anywhere else still reds the suite on the next pull request
-              # that arms the lib leg. The fitness page already matches the wiki
-              # catch-all, so listing it NARROWS rather than adds: it puts the
-              # page in the leg-arming class, and an edit to this page alone then
-              # arms only the legs whose suites name it, plus the lib leg, instead
-              # of every leg (W16's declared table). The GAIA Scripts.md entry
-              # below spells out the mechanism.
+              # that arms the `lib` leg. The fitness page already matches the wiki
+              # catch-all, so listing it here is redundant with that entry, kept
+              # so this suite's own source stays named if the catch-all is ever
+              # narrowed.
               - '.gaia/cli/health/**/*.md'
               - 'wiki/decisions/Claude Integration Fitness.md'
               - '.claude/skills/**/*.md'
@@ -385,23 +357,9 @@ jobs:
               # is dropped from it. The directory, the other subject, is already
               # covered by the `.gaia/scripts/**` line above.
               #
-              # What this line decides is LEG arming, not job arming, and the
-              # distinction is the whole reason to write it down. The `wiki/**`
-              # entry below already arms the job for this page, and a changed
-              # path outside the narrowable class arms every leg unconditionally
-              # (.gaia/tests/leg-arming.sh, the out-of-class arm), so the
-              # comparison runs either way and this entry NARROWS rather than
-              # adds. Naming the page here puts it in that class, which is
-              # matched by exact string equality, and a class page is then
-              # decided per leg: a leg arms when a file naming the page is
-              # attributed to its exchange group. The suite above names it, so
-              # the legs holding that suite arm; the `lib` leg arms too, for a
-              # reason of its own that has nothing to do with this page (its
-              # exchange group holds the derived both-ways check, which always
-              # runs); and the rest are declined for an edit to this page alone.
-              # The coverage that narrowing gives up, a whole-tree suite that
-              # never names the page, is the accepted gap recorded at that same
-              # narrowing rule.
+              # The `wiki/**` entry below already arms the job for this page,
+              # so this line is redundant with it, kept so the suite's own
+              # source stays named if the catch-all is ever narrowed.
               - 'wiki/concepts/GAIA Scripts.md'
               # doc-countability-prose.bats (.gaia/tests/lib/) greps this page
               # for the superseded classless-finding claims (a classless finding
@@ -597,7 +555,7 @@ jobs:
               # .specify/extensions/gaia/lib/** into its fixtures at their real
               # repo-relative paths -- but these five are not, and each is a
               # source the meter reads:
-              #   state-registry.json + schema  copied into every fixture, so a
+              #   state-registry.json  copied into every fixture, so a
               #     registry edit changes what the meter observes.
               #   .gaia/cli/src/**  C3-05 runs the real TypeScript storage
               #     functions through the CLI's tsx; C5-03's call-site check
@@ -620,7 +578,6 @@ jobs:
               #     behavior here, not a hypothetical.
               - '.gaia/tests/concurrency/**'
               - '.gaia/state-registry.json'
-              - '.gaia/state-registry.schema.json'
               - '.gaia/cli/src/**'
               # The build artifact copy of the adopter workflow templates.
               # provisioning-attribution.bats reads this directory as one of
@@ -659,14 +616,6 @@ jobs:
               # this is the routine case rather than a corner. The glob
               # self-maintains where the per-page entries cannot: a page added
               # later arms through it without anyone editing this list.
-              #
-              # It arms the JOB and decides no LEG. A page named by one of the
-              # per-page entries above stays a member of the narrowable class
-              # leg-arming.sh derives, and that class matches by exact string
-              # equality, so this glob can only add a member and never remove
-              # one. The gap that leaves, and why it is accepted rather than
-              # overlooked, is recorded at the narrowing rule in
-              # .gaia/tests/leg-arming.sh.
               - 'wiki/**'
             # The .gaia/tests/sandbox/ conformance tree gets its OWN filter
             # output instead of joining `code:` above, and the reason is cost,
@@ -694,20 +643,13 @@ jobs:
             # still runs nothing. The broad read set is the honest one and
             # narrowing it would trade a visible cost for a silent gap; the
             # exposure is bounded to an apt install.
-            # Read the four broad globs at the end of this list first: they
-            # cover every committed .json/.md/.yml/.yaml, which is most of what
-            # these suites read. The entries above them that are load-bearing on
-            # their own are the ones whose file type those globs do not reach,
-            # and each says so at its own entry rather than being counted or
-            # listed here, because a tally in this sentence goes stale the next
-            # time one is added and reads as completeness while it does. The
-            # file types that need such an entry are the ones no broad glob
-            # names: .bats, .ts, .sh, .tar.gz. The rest are redundant
-            # today and kept deliberately, so that narrowing the broad globs
-            # later cannot silently drop a suite's source; a reader auditing
-            # completeness should know which is which rather than assume every
-            # line is the only thing arming its suite.
             sandbox:
+              # This job's own definition, including the `sandbox:` filter
+              # itself and the step conditions it gates. LOAD-BEARING: with no
+              # broad glob left in this list, an edit weakening this filter or
+              # its gated steps would otherwise not re-run the filter that
+              # gates it.
+              - '.github/workflows/audit-ci-tests.yml'
               # LOAD-BEARING: .bats, reached by no broad glob.
               - '.gaia/tests/sandbox/**'
               # install-bats.sh is what the sandbox leg's own install step
@@ -724,27 +666,14 @@ jobs:
               # them -- would report `sandbox=false` and skip the leg whose
               # install is what would have caught it at the digest check.
               - '.gaia/tests/vendor/**'
-              # doc-setup-gaia.bats greps the sandbox-decision block of the
-              # /setup-gaia command doc, and pins its `.sandbox_recommended`
-              # reader literal byte-identical against the schema writer key, so
-              # the schema is a source it guards as much as the doc is. The doc
-              # is already covered by '**/*.md'; the schema is LOAD-BEARING,
-              # being .ts.
-              - '.claude/commands/setup-gaia.md'
-              - '.gaia/cli/src/schemas/automation-config.ts'
-              # wiki-page.bats greps the shipped OS Sandbox wiki page. Already
-              # covered by '**/*.md'; listed so the suite's source stays armed
-              # if that glob is ever narrowed.
-              - 'wiki/concepts/OS Sandbox.md'
               # spec-028-composition.bats asserts the .env deny entries the
               # settings file carries, the hooks that back them, the shared
               # operand grammar those hooks load, and the shared registration
-              # assertion it makes them through. The settings file is already
-              # covered by '**/*.json'; every one of the rest is LOAD-BEARING,
-              # being .sh, and each is named rather than reached by a directory
-              # glob, matching how this list names its other `.sh` entries. Note
-              # that a filter output is evaluated independently of its siblings,
-              # so `code:` listing any of these does nothing for this output.
+              # assertion it makes them through. Every one of these is
+              # LOAD-BEARING, named rather than reached by a directory glob,
+              # matching how this list names its other entries. Note that a
+              # filter output is evaluated independently of its siblings, so
+              # `code:` listing any of these does nothing for this output.
               #
               # The last entry is a transitive one and is here for the same
               # reason as the rest: hook-registration.sh unconditionally sources
@@ -760,81 +689,6 @@ jobs:
               - '.claude/hooks/lib/reader-operands.sh'
               - '.gaia/tests/helpers/hook-registration.sh'
               - '.gaia/scripts/hook-registration-lib.sh'
-              # manifest-and-enable.bats git-greps EVERY committed file of these
-              # four types for a raw top-level sandbox enable, in both the flat
-              # key form and the nested object form, so its read set is
-              # literally all of them and any narrower glob would be a filter
-              # that omits a path the suite reads. Neither forbidden spelling is
-              # written out here on purpose: this file is a *.yml, so the suite
-              # greps this very comment, and quoting them reds the suite. One
-              # glob per type is the whole set at every depth: dorny/paths-filter
-              # matches with picomatch `{dot: true}` (MatchOptions in its
-              # src/filter.ts, at the SHA pinned above), so `**/` both descends
-              # into .claude/, .gaia/ and .github/ and matches zero segments,
-              # covering root-level package.json and CHANGELOG.md too.
-              - '**/*.json'
-              - '**/*.md'
-              - '**/*.yml'
-              - '**/*.yaml'
-          # json, not the action's default line-oriented formats: several of
-          # the narrowable class pages leg-arming.sh reads carry a space in
-          # their path, and every other list-files format the action offers is
-          # space-joined or comma-joined, so a word-splitting read of one of
-          # those would silently shred a path mid-name. That would ship the
-          # per-leg narrowing inert while every criterion here still read
-          # green. json is parsed as a real array by the script, never
-          # word-split.
-          list-files: json
-      # leg-arming.sh owns the whole per-leg narrowing decision; this step's
-      # job is only to hand the script its inputs and translate its stdout
-      # into a step output the steps below can read. The class of narrowable
-      # wiki pages, the scan mapping a changed page to the shards holding a
-      # suite naming it, and the pagination-cap and fail-open rules the
-      # decision falls back to on any unresolved input are all read out of the
-      # live tree at run time inside the script, not restated here.
-      #
-      # Its answer is an ADDITIONAL conjunct on every narrowed step below,
-      # never a replacement for the existing
-      # steps.filter.outputs.code == 'true' conjunct those steps already
-      # carry: that conjunct is what keeps every narrowed step inside
-      # workflow-filter-coverage.bats's gated set and inside this job's own
-      # self-coverage assertions, and dropping it would silently retire both.
-      #
-      # The case arm below is a second fail-open layer above the script's
-      # own: a step whose output came back empty would skip every narrowed
-      # step, which is the one dangerous direction, so anything but the two
-      # literals reads as true here as well as inside the script.
-      - if: matrix.shard != 'sandbox' && (steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch')
-        id: leg-arming
-        name: Resolve whether this leg holds a suite naming the changed wiki pages
-        env:
-          LEG_ID: ${{ matrix.shard }}
-          # A changed-file COUNT stands in for the kernel's per-string
-          # MAX_ARG_STRLEN, a BYTE limit, because a workflow expression cannot
-          # measure the rendered list's length directly. GitHub counts a
-          # rename as one changed file, but the filter's pull-request lane
-          # lists it as two entries, the added new path and the deleted
-          # previous one, so at the bound the list can hold twice the count
-          # and each entry averages about 65 bytes before the limit is
-          # reached. That is still above a typical path, but the count is a
-          # proxy rather than the real measure: a list of unusually long paths under the count
-          # bound could still exceed the byte limit, which fails this step's
-          # execve and reds the leg rather than silently passing (fail-closed,
-          # never a false green). Above the bound, the expression withholds
-          # the list and the resulting empty string arms every leg through
-          # the script's empty-list rule instead.
-          CHANGED_FILES_JSON: ${{ github.event.pull_request.changed_files <= 1000 && steps.filter.outputs.code_files || '' }}
-          PR_CHANGED_FILES: ${{ github.event.pull_request.changed_files }}
-        run: |
-          set -euo pipefail
-          arm="$(bash .gaia/tests/leg-arming.sh || printf 'true\n')"
-          case "$arm" in
-            true | false) ;;
-            *) arm=true ;;
-          esac
-          printf 'arm=%s\n' "$arm" >> "$GITHUB_OUTPUT"
-          printf 'arming: leg=%s event=%s arm=%s\n' \
-            "$LEG_ID" "$GITHUB_EVENT_NAME" "$arm" >> "$GITHUB_STEP_SUMMARY"
       # python3-yaml pins the parser (python3+pyyaml) that every
       # `require_yaml_parser` gate on this runner needs. How many suites carry
       # one is deliberately not written down here: a hand-kept count drifts as
@@ -876,7 +730,7 @@ jobs:
       # on `code || sandbox` would need install-bats.sh listed in both filter
       # bodies for the SAME step, and this way each step's script is covered by
       # exactly the filter that gates it.
-      - if: matrix.shard != 'sandbox' && (steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch') && steps.leg-arming.outputs.arm == 'true'
+      - if: matrix.shard != 'sandbox' && (steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch')
         name: Install pinned bats
         run: bash .gaia/tests/install-bats.sh
       # python3-yaml pins the parser (python3+pyyaml) rather than resting on
@@ -918,7 +772,7 @@ jobs:
       # suite's dependency changed or a group's membership did, and the repair
       # is to copy the set W10 names, which it derives from the suites and the
       # sharder's own groups rather than from here.
-      - if: contains(fromJSON('["hooks-2", "hooks-3", "hooks-4", "lib", "scripts-1", "scripts-2", "scripts-3"]'), matrix.shard) && (steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch') && steps.leg-arming.outputs.arm == 'true'
+      - if: contains(fromJSON('["hooks-2", "hooks-3", "hooks-4", "lib", "scripts-1", "scripts-2", "scripts-3"]'), matrix.shard) && (steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch')
         name: Install the YAML parser and zsh
         # Sized for fast failure and honest attribution, NOT to the leg. When
         # this cap fires is the budget paragraph's subject, not this one's,
@@ -1034,7 +888,7 @@ jobs:
       # gaia-react/gaia#1748. The step below this one is what they need; keep
       # the two separate rather than widening this one's `if:`, because they
       # install different things for different reasons.
-      - if: matrix.shard == 'concurrency' && (steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch') && steps.leg-arming.outputs.arm == 'true'
+      - if: matrix.shard == 'concurrency' && (steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch')
         name: Setup Node and install both workspaces
         # Sized for fast failure and honest attribution, the same reasoning the
         # apt step above states at length, and NOT sized to the leg. Every
@@ -1101,7 +955,7 @@ jobs:
       # unblocks does not approach it. The leg that is genuinely close to the
       # cap is scripts-1, and it draws neither this step nor any of these
       # suites.
-      - if: contains(fromJSON('["hooks-2", "hooks-3", "hooks-4"]'), matrix.shard) && (steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch') && steps.leg-arming.outputs.arm == 'true'
+      - if: contains(fromJSON('["hooks-2", "hooks-3", "hooks-4"]'), matrix.shard) && (steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch')
         name: Setup Node for the node-dependent RED suites
         # Same cap, same reasoning as the concurrency leg's step above; W12
         # holds every gaia-setup-node step in every workflow to it.
@@ -1138,7 +992,7 @@ jobs:
       # question matters on a given day, `bats-shards.sh files <shard>` answers
       # which leg pays, and the region-marker docblock in cli-tests.yml records
       # what to check on that leg and when the check is actually owed.
-      - if: matrix.shard != 'sandbox' && matrix.shard != 'concurrency' && (steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch') && steps.leg-arming.outputs.arm == 'true'
+      - if: matrix.shard != 'sandbox' && matrix.shard != 'concurrency' && (steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch')
         id: needs-cli-workspace
         name: Ask the sharder whether this shard holds the js-yaml-dependent suite
         env:
@@ -1185,7 +1039,7 @@ jobs:
       # interpolated into the run: body text itself -- the shape this repo's
       # workflows auditor checks, and what keeps it true when a future edit
       # drives the matrix from an expression rather than a literal list.
-      - if: matrix.shard != 'sandbox' && matrix.shard != 'concurrency' && (steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch') && steps.leg-arming.outputs.arm == 'true'
+      - if: matrix.shard != 'sandbox' && matrix.shard != 'concurrency' && (steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch')
         name: Run a bats shard
         env:
           SHARD: ${{ matrix.shard }}
@@ -1195,23 +1049,13 @@ jobs:
       # only a file this tree reads runs it without arming the Node install or
       # the concurrency meter's leg. Invoked through run-all.sh, matching the
       # contract that script documents in its own header.
-      #
-      # Two of its 20 tests self-skip here and both are green outcomes, not
-      # gaps: UAT-016 needs a sandbox-capable runner (bubblewrap/socat, which
-      # ubuntu-latest does not have and its header says so), and the docs-link
-      # reachability check skips under CI so a third-party outage cannot red a
-      # declared-required context. The other 18 run.
       - if: matrix.shard == 'sandbox' && (steps.filter.outputs.sandbox == 'true' || github.event_name == 'workflow_dispatch')
         name: Run .gaia/tests/sandbox bats suites
         run: bash .gaia/tests/sandbox/run-all.sh
-      # Runs the WHOLE suite and adjudicates every scenario against
-      # .gaia/tests/concurrency/expected-status.txt, so any scenario the
-      # manifest marks red by design does not wedge this required check while
-      # still counting in the reading. A `bats --filter` over the armed
-      # tranches was the alternative and is worse: it hides the reds and makes
-      # a newly added scenario invisible by default.
-      - if: matrix.shard == 'concurrency' && (steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch') && steps.leg-arming.outputs.arm == 'true'
-        name: Run the INV-7 concurrency meter (gated on its expected-status manifest)
+      # Runs the WHOLE suite and fails on any scenario that does not report
+      # an unconditional `ok` (a `skip` counts as a failure).
+      - if: matrix.shard == 'concurrency' && (steps.filter.outputs.code == 'true' || github.event_name == 'workflow_dispatch')
+        name: Run the INV-7 concurrency meter
         run: bash .gaia/tests/concurrency/meter-gate.sh
 
   # A standalone job, not a matrix leg. .gaia/scripts/check-verb-arming-adoption.sh

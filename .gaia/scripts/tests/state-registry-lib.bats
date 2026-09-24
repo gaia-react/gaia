@@ -7,7 +7,7 @@
 # tracked machinery, not per-run test data), and structural/schema tests that
 # assert the registry's own invariants directly with jq (no JSON Schema
 # validator is a repo dependency, so schema conformance is checked by hand
-# against the same invariants .gaia/state-registry.schema.json encodes).
+# against those invariants directly).
 #
 # Run under bash 5 (bash 3.2's `[[ ]]` skip-under-set-e gap is real; see
 # .claude/rules/bats-assertions.md): `source .gaia/scripts/bats5.sh && bats5
@@ -20,7 +20,6 @@ setup() {
   LIB="$SCRIPT_DIR/state-registry-lib.sh"
   REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
   REGISTRY="$REPO_ROOT/.gaia/state-registry.json"
-  SCHEMA="$REPO_ROOT/.gaia/state-registry.schema.json"
   # shellcheck source=.gaia/scripts/state-registry-lib.sh
   source "$LIB"
 }
@@ -62,9 +61,8 @@ run_in_repo() {
   [ "$output" = "OK" ]
 }
 
-@test "structural: the registry and schema are valid JSON" {
+@test "structural: the registry is valid JSON" {
   jq empty "$REGISTRY"
-  jq empty "$SCHEMA"
 }
 
 # ========== gaia_registry_path ==========
@@ -96,7 +94,7 @@ run_in_repo() {
   git -C "$main" config user.email t@example.com
   git -C "$main" config user.name "T"
   git -C "$main" config commit.gpgsign false
-  echo '{"$schema":"./state-registry.schema.json","version":1,"description":"fixture","entries":[],"residue":[]}' \
+  echo '{"version":1,"description":"fixture","entries":[],"residue":[]}' \
     >"$main/.gaia/state-registry.json"
   git -C "$main" add -A
   git -C "$main" commit -q -m init

@@ -64,8 +64,9 @@ setup() {
   ROOT="$(cd "$BATS_TEST_DIRNAME/../../.." && pwd)"
   AUDIT="$ROOT/.claude/skills/gaia/references/audit.md"
 
-  # `-s`, not `-f`: an empty file would satisfy `-f` and then green every
-  # whole-file absence check below on nothing.
+  # `-s`, not `-f`: an empty file would satisfy `-f` and only then fail
+  # obliquely, inside `extract_section_or_fail`'s own vacuous-match guard,
+  # rather than with a clear message naming the missing source here.
   [ -s "$AUDIT" ] || {
     echo "missing or empty $AUDIT" >&2
     return 1

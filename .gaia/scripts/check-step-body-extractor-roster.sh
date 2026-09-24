@@ -40,8 +40,7 @@
 # an undecidable text match, which is the defect. So the judgment is made once,
 # by a human, and written down: a candidate is either a MEMBER or a NOT_MEMBER
 # carrying its reason. A reader sees that each was considered rather than
-# missed, which is the same shape `.gaia/tests/whole-tree-invariants.sh` uses
-# for its own membership question.
+# missed.
 #
 # STALE ENTRIES FAIL TOO, in both tables. A roster that keeps naming a file that
 # no longer extracts anything is the hand-maintained list this check replaced,
@@ -121,7 +120,7 @@ _gaia_sbx_registered() {
 # The three verdict strings below are a pinned output contract, not free-form
 # logging: .gaia/tests/lib/step-body-extractor-roster.bats matches each of them
 # literally, so rewording one reds a file the editing diff does not touch. Same
-# convention as check-audit-key-callers.sh and whole-tree-invariants.sh.
+# convention as check-audit-key-callers.sh.
 gaia_check_step_body_extractor_roster() {
   local repo_root="${1:?gaia_check_step_body_extractor_roster requires a repo_root argument}"
   local candidates registered unregistered stale failed=0

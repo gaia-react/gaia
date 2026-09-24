@@ -3,11 +3,10 @@
 # `gaia_deliver_hook` and the `run_with` runner it composes with.
 #
 # Why these are pinned here rather than in the concurrency meter itself: the
-# meter's scenario list and its `target` denominator are frozen
-# (.gaia/tests/concurrency/README.md, expected-status.txt), so a primitive's own
-# unit coverage cannot be added there without moving a number that moves only by
-# the maintainer's word. This sits beside bats-files-helper.bats, which pins the
-# other cross-suite bats primitive for the same reason.
+# meter's scenario list is one real cross-tree defect per scenario
+# (.gaia/tests/concurrency/README.md), so a primitive's own unit coverage does
+# not belong mixed into that list. This sits beside bats-files-helper.bats,
+# which pins the other cross-suite bats primitive for the same reason.
 #
 # The failure mode being pinned is specific and it is NOT "the meter goes red".
 # The meter cannot see this class at all. Under bats' `run` errexit is off, so a

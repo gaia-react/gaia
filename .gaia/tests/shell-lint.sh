@@ -251,8 +251,7 @@ LINT_TMP="$(mktemp -d "${RUNNER_TEMP:-/tmp}/shell-lint.XXXXXX")"
 trap 'rm -rf "$LINT_TMP"' EXIT
 
 # Run one shellcheck pass over a file list, split across $JOBS concurrent
-# workers. Same fork/log/replay shape as .gaia/tests/run-bats-parallel.sh, and
-# for the same reason: concurrent workers cannot write to a shared stdout, or
+# workers: concurrent workers cannot write to a shared stdout, or
 # findings from different chunks interleave differently on every run. Each
 # worker buffers to its own log; the logs replay after every worker is waited
 # on. The split is contiguous rather than round-robin so findings replay in the
@@ -595,7 +594,7 @@ guard_script_path() {
     # A seam that swaps what the gate EXECUTES has to announce itself, or a
     # run with it set is byte-identical to a real one: same banner, same exit
     # 0, same `shell-lint passed`, with the substituted guard's own `: clean`
-    # line merely absent among nineteen and nothing looking for it. The
+    # line merely absent and nothing looking for it. The
     # SHELL_LINT_BASH32 seam this family is modelled on already has the
     # property, printing its interpreter into its own banner; this restores it
     # here. On stderr, which the caller's command substitution does not
@@ -651,7 +650,8 @@ fi
 # the backgrounded child would be reparented away the instant that subshell
 # exits and `wait` on its pid would fail in the caller. `</dev/null` on the
 # fork: none of these guards read stdin, and a forked job inheriting the
-# parent's stdin is the same class the WTI runner's `</dev/null` exists for.
+# parent's stdin could otherwise block waiting on a terminal that never
+# supplies one.
 LAST_PID=""
 dispatch_guard() {
   local idx="$1" slug mode script out err

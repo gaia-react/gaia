@@ -1,6 +1,6 @@
 # Distribution tests
 
-Maintainer-only validation of the post-scrub GAIA tarball. Excluded from the release bundle via category 3 (`.gaia/tests/`). Audience is the machine; every scenario reports PASS/FAIL with a deterministic exit code. Convention: `.claude/rules/maintainers/smoke.md`.
+Maintainer-only validation of the post-scrub GAIA tarball. Excluded from the release bundle via category 3 (`.gaia/tests/`). Audience is the machine; every scenario reports PASS/FAIL with a deterministic exit code.
 
 ## When to run
 
@@ -21,20 +21,17 @@ Maintainer-only validation of the post-scrub GAIA tarball. Excluded from the rel
 │   ├── build-staging.sh         # builds staging tarball into $1 (mktemp dir)
 │   └── docker.sh                # Layer 2 image build + container run helpers
 ├── 01-files-present.sh          # manifest/exclude/sentinel presence
-├── 02-leak-replay.sh            # re-runs scrub regexes against staged tree
 ├── 03-marker-strip.sh           # asserts maintainer-only markers gone
 ├── 04-scaffold-runs.sh          # extract + pnpm install + typecheck/lint/test/build
 ├── 05-clean-env.sh              # PATH-stripped subshell (Layer 1)
 ├── 06-claude-runs-staged.sh     # Claude-in-Docker auth + cwd smoke (Layer 2)
 ├── 07-gaia-init-strip-branding.sh  # Adopter-flow regression: gaia init strip-branding
 ├── 08-gaia-init-cli-sequence.sh    # Adopter-flow regression: full gaia init CLI sequence
-├── 09-exclude-parser-parity.sh     # release-exclude parser parity with the CI filter
 ├── 10-gaia-scaffold-templates.sh   # Adopter-flow regression: gaia scaffold component/hook/route/service
 ├── 11-gaia-setup-cli-flow.sh       # Adopter-flow regression: gaia setup mark-step/status/finalize/link-worktree
 ├── 12-gaia-ping-events.sh          # Adopter-flow regression: gaia ping init/setup/update (suppressed; no network)
 ├── 13-gaia-update-merge-workspace.sh  # Adopter-flow regression: gaia update merge-workspace verdict oracle
 ├── 14-gaia-update-deps.sh          # Adopter-flow regression: gaia update-deps decline (deterministic) + run/dispatch
-├── 15-file-tech-debt-scrubbed.sh   # Marker-strip SEMANTIC: file-tech-debt survives the scrub (Layer 2, advisory probe)
 ├── 16-audit-remit-parity.sh        # Roster-derived remit regions and writer repair hold on the scrubbed adopter shape
 ├── 17-gaia-update-merge-region.sh  # Adopter-flow regression: gaia update merge-region region-aware verdict oracle
 └── diagnostic/
@@ -80,14 +77,6 @@ What it covers: image build, claude binary on PATH inside the container, OAuth a
 
 Skips automatically if Docker is unavailable OR `CLAUDE_CODE_OAUTH_TOKEN` is unset, so contributors without auth can still run Layers 0 + 1 via `run-all.sh`. Both skips report as soft PASS.
 
-### Marker-strip semantic coverage (`15-file-tech-debt-scrubbed.sh`)
-
-`03-marker-strip.sh` proves the `gaia:maintainer-only` blocks are gone **structurally** (no fragments survive, every marker-bearing file shrank, none to zero bytes, and no staged `#`-marker file carries a doubled bare `#` separator). It does not prove a load-bearing *step* did not sit inside a stripped block. `15-file-tech-debt-scrubbed.sh` closes that **semantic** gap for the sharpest case: `file-tech-debt` is an adopter-facing recipe an agent follows literally and it carries a marker block. (`/gaia-wiki lint` is not a candidate: its staged skill files carry zero markers, so scrubbed == unscrubbed there.)
-
-It has two parts. Part 1 is deterministic, side-effect-free, and **gating**, and runs in every lane including the PR gate: on the scrubbed skill it asserts the maintainer-only block is gone AND that the load-bearing adopter steps (dedup-key format, the dedup check, the skip-if-match decision, the file path) survived. A future scrub that over-strips fails here at PR time. Part 2 is an **advisory** model probe gated behind the same Docker + `CLAUDE_CODE_OAUTH_TOKEN` guards as `06`: it drives `claude --print` against the scrubbed tree to reproduce the dedup key from the scrubbed prose and logs whether it succeeded. Like the `wiki-sync` scenarios it depends on free-form model output, so it never sets the exit code; only part 1 gates.
-
-No external side effects are possible: the probe prompt answers from the skill text and stops before any `gh` call, the Layer-2 image has no `gh` binary and no GitHub auth, and the staged tree is bind-mounted read-only.
-
 ### Adopter-flow regressions (`07-`+)
 
 `06-claude-runs-staged.sh` proves the harness wiring (Docker, OAuth auth, claude binary on PATH), but does NOT prove any GAIA-specific flow works in the shipped tarball. Adopter-flow scenarios fill that gap by running the bundled `.gaia/cli/gaia` binary directly against a writable copy of the staged tree.
@@ -105,8 +94,6 @@ No external side effects are possible: the probe prompt answers from the skill t
 `13-gaia-update-merge-workspace.sh` runs `gaia update merge-workspace`, the field-aware `pnpm-workspace.yaml` verdict oracle `/update-gaia` invokes, against a deterministic three-file fixture and asserts the JSON verdict (`applied`/`conflicts`/`suggestions`). `update` is on every adopter's upgrade path, so a bundling defect there (e.g. a tree-shaken `js-yaml`) is maximally load-bearing; the oracle is read-only, so no scaffold copy is needed.
 
 `14-gaia-update-deps.sh` covers `gaia update-deps`. The deterministic post-condition is `decline` (reads a synthetic emitted-updates payload, writes only the gitignored `.gaia/local/declined-updates.json` in a throwaway scaffold, no network); `run --emit-updates` is exercised only at the arg-parse/dispatch level, because its success path shells out to `pnpm outdated` / `pnpm view` against the registry and is network-dependent.
-
-`15-file-tech-debt-scrubbed.sh` is the marker-strip **semantic** scenario (see Layer 2 below).
 
 Future adopter-flow scenarios cover the `--strip true` removal path, `gaia setup-ci`, `gaia sandbox`, and `gaia wiki`.
 
@@ -142,8 +129,8 @@ CI runners are ephemeral, so no cleanup is required there.
 
 CI entry points:
 
-- **PR gate inside `cli-tests.yml` (`Distribution harness (no-Docker)` job).** Runs `bash .gaia/tests/distribution/run-all.sh` on every `pull_request`, path-filtered to `.gaia/cli/**`, `.gaia/release-exclude`, `.gaia/release-scrub.yml`, and the harness itself. That filter stays narrow because the scenario suite is the expensive part of the job, and the narrowness is backstopped rather than merely tolerated: the two checks it can skip whose real input is the whole shipped surface, the leak check and the marker-strip scenario, both run unfiltered in the sibling job below. It passes NO `CLAUDE_CODE_OAUTH_TOKEN`, so the Docker/secret-dependent scenarios (`06` and `15`'s advisory probe) soft-pass-skip: the required lane is Layers 0+1 plus the adopter-flow regressions (`07`+) and the deterministic marker-strip survival check. This catches a bundle-breaking change (a leak, a marker-strip regression, manifest drift) at PR review instead of only at release. The job always runs and reports green when the filter does not match, so it is branch-protection-safe; it is deliberately NOT a declared-required context (see `.gaia/scripts/verify-required-checks.sh`). Its sibling `Vitest (.gaia/cli)` job shares the always-reports shape but IS declared-required, because its reproducibility step is the only gate on the committed CLI bundles.
-- **PR gate inside `cli-tests.yml` (`Shipped-surface leak check` job).** Runs `bash .gaia/tests/distribution/lib/build-staging.sh` (the stage, wiki-sentinel reset, scrub leak check, and runtime-dependency phases), then `03-marker-strip.sh`, which builds its own staging tree and asserts the strip left no surviving fragment and no doubled bare `#` separator. About fifteen seconds of work. The marker-strip scenario runs here as well as in the harness job above, and this is the copy that gates: every file its assertions read (`.claude/hooks/lib/*.sh`, `.gaia/scripts/*.sh`, `.gaia/statusline/gaia-statusline.sh`, `.gaia/audit-ci.yml`, `.prettierignore`) sits outside the harness job's filter, so a PR adding a `# gaia:maintainer-only:` block to one of them skipped the harness entirely and first met the assertion at `release.yml`. It carries no paths-filter at all, deliberately. `build-staging.sh` reads every tracked file `.gaia/release-exclude` does not withhold, so the only allowlist that describes its inputs honestly is `'**'`, which gates nothing while still costing a filter step and a `pull-requests: read` round trip, and the complement is a denylist shape both `.gaia/release-scrub.yml`'s `workflow-denylist` check and `.gaia/scripts/tests/workflow-filter-coverage.bats` reject. Running unfiltered is what makes a leak in any shipped file fail at PR review rather than at tag push in `release.yml`. Advisory and deliberately NOT a declared-required context, with `contents: read` as its whole permission set; it admits `workflow_dispatch` so an audit self-heal re-dispatch stamps a real conclusion instead of a bare `skipped`.
+- **PR gate inside `cli-tests.yml` (`Distribution harness (no-Docker)` job).** Runs `bash .gaia/tests/distribution/run-all.sh` on every `pull_request`, path-filtered to `.gaia/cli/**`, `.gaia/release-exclude`, `.gaia/release-scrub.yml`, and the harness itself. That filter stays narrow because the scenario suite is the expensive part of the job, and the narrowness is backstopped rather than merely tolerated: the two checks it can skip whose real input is the whole shipped surface, the leak check and the marker-strip scenario, both run unfiltered in the sibling job below. It passes NO `CLAUDE_CODE_OAUTH_TOKEN`, so the Docker/secret-dependent scenario (`06`) soft-pass-skips: the required lane is Layers 0+1 plus the adopter-flow regressions (`07`+) and the deterministic marker-strip survival check. This catches a bundle-breaking change (a leak, a marker-strip regression, manifest drift) at PR review instead of only at release. The job always runs and reports green when the filter does not match, so it is branch-protection-safe; it is deliberately NOT a declared-required context (see `.gaia/scripts/verify-required-checks.sh`). Its sibling `Vitest (.gaia/cli)` job shares the always-reports shape but IS declared-required, because its reproducibility step is the only gate on the committed CLI bundles.
+- **PR gate inside `cli-tests.yml` (`Shipped-surface leak check` job).** Runs `bash .gaia/tests/distribution/lib/build-staging.sh` (the stage, wiki-sentinel reset, scrub leak check, and runtime-dependency phases), then `03-marker-strip.sh`, which builds its own staging tree and asserts the strip left no surviving fragment. About fifteen seconds of work. The marker-strip scenario runs here as well as in the harness job above, and this is the copy that gates: every file its assertions read (`.claude/hooks/lib/*.sh`, `.gaia/scripts/*.sh`, `.gaia/statusline/gaia-statusline.sh`, `.gaia/audit-ci.yml`, `.prettierignore`) sits outside the harness job's filter, so a PR adding a `# gaia:maintainer-only:` block to one of them skipped the harness entirely and first met the assertion at `release.yml`. It carries no paths-filter at all, deliberately. `build-staging.sh` reads every tracked file `.gaia/release-exclude` does not withhold, so the only allowlist that describes its inputs honestly is `'**'`, which gates nothing while still costing a filter step and a `pull-requests: read` round trip, and the complement is a denylist shape both `.gaia/release-scrub.yml`'s `workflow-denylist` check and `.gaia/scripts/tests/workflow-filter-coverage.bats` reject. Running unfiltered is what makes a leak in any shipped file fail at PR review rather than at tag push in `release.yml`. Advisory and deliberately NOT a declared-required context, with `contents: read` as its whole permission set; it admits `workflow_dispatch` so an audit self-heal re-dispatch stamps a real conclusion instead of a bare `skipped`.
 - **Pre-publish gate inside `release.yml`.** The tag-triggered release workflow runs `bash .gaia/tests/distribution/run-all.sh` after the staging + scrub + runtime-deps phases and before the tarball is built, with the org `CLAUDE_CODE_OAUTH_TOKEN` so the Layer-2 scenarios run for real. If any scenario fails the release halts; the tarball never builds and `gh release create` never runs, so a broken release cannot publish. This is the production gate.
 
 Ad-hoc verification of harness changes on a feature branch (no tag) runs `bash .gaia/tests/distribution/run-all.sh` locally with the org secret; there is no dedicated CI entry point for it.
@@ -154,5 +141,4 @@ Ad-hoc verification of harness changes on a feature branch (no tag) runs `bash .
 
 ## See also
 
-- `.gaia/tests/smoke/README.md`; sibling smoke kit, same shape.
 - `wiki/concepts/Release Workflow.md`; what the staged tarball is and how it's built.

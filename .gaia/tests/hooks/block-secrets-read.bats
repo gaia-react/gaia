@@ -59,11 +59,9 @@ run_hook_grep() {
 # The hook is COPIED into this test's own temporary directory and driven from
 # there, with no library beside it. It must never be exercised by hiding the
 # real one: both read-guard suites would target the identical absolute path,
-# .gaia/tests/bats-shards.sh weighs by file size and may put them in one shard
-# or in two, and .gaia/tests/run-bats-parallel.sh forks every shard into ONE
-# shared workspace. One shard is if anything the stronger reason rather than a
-# reprieve: the pair then runs sequentially inside a single bats invocation over
-# that same one workspace.
+# and .gaia/tests/bats-shards.sh weighs by file size and may put them in the
+# same shard, where the pair then runs sequentially inside a single bats
+# invocation over that one shared workspace.
 # While one suite held the library hidden, every allow-assertion in its sibling
 # would see the fail-closed deny, so the pair would flake against each other and
 # the concurrency-safety claim that runner makes would be false. The live

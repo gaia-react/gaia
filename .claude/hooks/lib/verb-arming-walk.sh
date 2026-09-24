@@ -616,19 +616,19 @@ gaia_verb_arm_view() {
 # ABSTENTION IS WHOLE-INPUT, as in the walk above: an unterminated span, a
 # dollar-quoted word, a `${` carrying anything but a plain name, a `)` in a
 # context that holds the word `case` (a case arm's bare `)` would close the
-# substitution early and desync every quote after it), a backslash before `$`, a backtick, or a backslash anywhere under
-# backticks (the shell strips it before parsing the inner command, so the
-# escape is gone), a backtick under backticks inside quotes, a comment, a
-# heredoc body, or a nested substitution (bash closes the outer backquote
-# there, zsh does not), a `#` straight after a subshell's `)` (a comment there,
-# where after a substitution's `)` it continues the word), a `<<` inside
-# parentheses (an arithmetic shift, or a heredoc feeding a subshell's
-# output), a body inside `$( )` whose substitution bash 3.2's heredoc-blind
-# paren matcher could close before the body ends (_gaia_va_b32_body_safe,
-# read from each enclosing `$(`), a heredoc the
-# text never closes, and running out of the
-# re-reading budget all leave every opener live. Abstaining over-arms, which
-# is today's answer; a wrong mask under-arms, which lets a merge past a gate.
+# substitution early and desync every quote after it), a backslash before `$`,
+# a backtick, or a backslash anywhere under backticks (the shell strips it
+# before parsing the inner command, so the escape is gone), a backtick under
+# backticks inside quotes, a comment, a heredoc body, or a nested substitution
+# (bash closes the outer backquote there, zsh does not), a `#` straight after
+# a subshell's `)` (a comment there, where after a substitution's `)` it
+# continues the word), a `<<` inside parentheses (an arithmetic shift, or a
+# heredoc feeding a subshell's output), a body inside `$( )` whose
+# substitution bash 3.2's heredoc-blind paren matcher could close before the
+# body ends (_gaia_va_b32_body_safe, read from each enclosing `$(`), a heredoc
+# the text never closes, and running out of the re-reading budget all leave
+# every opener live. Abstaining over-arms, which is today's answer; a wrong
+# mask under-arms, which lets a merge past a gate.
 #
 # WHAT THIS DOES NOT CLOSE. The body of a quoted-delimiter heredoc read by
 # `cat` is data to `cat`, not to whatever later executes the text cat

@@ -66,7 +66,6 @@ write_registry() {
   mkdir -p "$REPO/.gaia"
   cat >"$REPO/.gaia/state-registry.json" <<'JSON'
 {
-  "$schema": "./state-registry.schema.json",
   "version": 1,
   "description": "block-worktree-path-mismatch test fixture",
   "entries": [

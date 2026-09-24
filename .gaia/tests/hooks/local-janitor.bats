@@ -2058,7 +2058,6 @@ write_registry() {
   mkdir -p "$1"
   cat > "$1/state-registry.json" <<'JSON'
 {
-  "$schema": "./state-registry.schema.json",
   "version": 1,
   "description": "fixture registry for the sweep-4 empty-dir suite",
   "entries": [],

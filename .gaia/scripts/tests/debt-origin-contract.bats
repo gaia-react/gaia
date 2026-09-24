@@ -692,11 +692,10 @@ frontend_changed_verdicts() {
   # closes the opened `:start`, the next block's `:start` is swallowed inside
   # it, and stripMarkerBlocks reports unbalanced=[] having silently stripped
   # everything between them, which takes a whole section such as
-  # `## Brake self-check` out of the adopter copy. The scrub only fails a
-  # wrap still open at EOF or an
-  # end-without-start, so it passes that mutant, and
-  # .gaia/tests/distribution/03-marker-strip.sh only asserts the output shrank
-  # and left no fragments, which an over-strip satisfies too.
+  # `## 5. Issue body schema` out of the adopter copy. The scrub only fails a
+  # wrap still open at EOF or an end-without-start, so it passes that mutant,
+  # and .gaia/tests/distribution/03-marker-strip.sh only asserts the output
+  # shrank and left no fragments, which an over-strip satisfies too.
   local skill="$REPO_ROOT/.claude/skills/file-tech-debt/SKILL.md"
   # awk exits 2 without running END when it cannot open its input. That status
   # is NOT lost today: `local out` below is declared on its own line and the

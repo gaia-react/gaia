@@ -73,7 +73,6 @@ run_in_repo() {
   mkdir -p "$dir/.gaia"
   cat >"$dir/.gaia/state-registry.json" <<'JSON'
 {
-  "$schema": "./state-registry.schema.json",
   "version": 1,
   "description": "fixture",
   "entries": [

@@ -1,5 +1,4 @@
 {
-  "$schema": "./state-registry.schema.json",
   "version": 1,
   "description": "The one classification of every .gaia/local entry, transcribed by hand from the frozen state-model classification (never generated from code, which is what is under correction). Consumers read this instead of hand-maintaining their own lists. `path` is relative to .gaia/local/. A `path` may join more than one concrete on-disk shape with '|' when a single logical entry covers several filenames (e.g. a clearance marker's .ok/.refused/.dispositions.json siblings); each '|'-joined alternative is matched independently under the entry's own `match` rule. A `path` may also carry a '<placeholder>' token for a variable path segment (a spec id, a digest, a worktree name); for `match: glob` a placeholder behaves as a shell '*' wildcard, and for `match: prefix` only the literal text before the first '<' is significant. `residue` lists known dead-feature/legacy paths that are real on some machines but are not live state: reported if found, never treated as drift and never a live entry.",
   "entries": [
