@@ -119,31 +119,11 @@ Run the dead-paths primitive and append a `## #12: Dead repo-relative paths` sec
 .gaia/cli/gaia wiki dead-paths --json
 ```
 
-Returns `{ "dead": [{ "filePath": "...", "line": N, "path": "..." }, ...], "staleMarkers": [{ "filePath": "...", "line": N, "marker": "...", "problem": "unused" | "missing-reason" | "missing-path" }, ...] }`. Both arrays empty means clean.
-
-### 3a-i. Exempting an illustration: the `gaia:hypothetical` marker
-
-Some wiki sentences name a path precisely because no such file exists: an example of how a *future* file would be routed, or a worked example of a filename the repo would never really carry. Rewording the path into a `<name>` placeholder is the right move when the sentence is about a shape, and the scan already skips those. It is not available when the sentence turns on the concrete path, and neither is the removed-or-renamed bullet form, which would assert something untrue.
-
-Mark that line instead. The marker sits on the citation's own line and names the same path, unbackticked, with a reason:
-
-```markdown
-… an unqualified glob would route a future `.claude/commands/tool.sh` here … <!-- gaia:hypothetical .claude/commands/tool.sh: the sentence is about how a future file would route, so the file must not exist -->
-```
-
-Three properties are deliberate:
-
-- **Both halves are mandatory.** A marker missing either its path or its reason exempts nothing: the citation still reports, and the marker itself is reported as malformed. The two are reported apart, because telling an author to supply the half they already wrote sends them to re-read the part they got right. The first colon is the separator, and which side of that split came back empty tells the two apart. With no colon at all the payload's shape decides instead: one containing a `/` reads as a bare path and is reported as missing its reason, and one without a `/` reads as a reason and is reported as missing its path, since every path the scan can exempt contains one. So a colonless reason that quotes a path is still reported as missing its reason: write the colon and the report names the half that is genuinely absent. The reason is what a later reader checks the exemption against.
-- **The marker is reported once it stops exempting anything.** If the sentence goes, or the path becomes a real file, the scan reports the marker as unused. An exemption nothing recounts decays into a blind spot for a genuinely dead future citation of the same path.
-- **It is scoped to its one line and to that exact path.** A real citation sitting beside a hypothetical one still reports.
-
-Every such report appears under `staleMarkers`, and on the text output alongside the dead paths. The `problem` field carries which of the three it is. Treat one the way you treat a dead path: fix the line or drop the marker.
-
-The marker travels with the page rather than with the scanner, which is why it works where a list inside the CLI cannot: an adopter can write one, and a marker on a line that never reaches an adopter clone does not reach it either.
+Returns `{ "dead": [{ "filePath": "...", "line": N, "path": "..." }, ...] }`. Empty array means clean.
 
 ### 3b. Append the section
 
-If both arrays are empty:
+If `dead.length === 0`:
 
 ```markdown
 ## #12: Dead repo-relative paths
@@ -160,17 +140,9 @@ Otherwise:
 
 - `wiki/concepts/Foo.md:23` → `.claude/hooks/old-hook.sh`
 - `wiki/concepts/Bar.md:45` → `.claude/hooks/missing-helper.sh`
-
-⚠ {staleMarkers.length} `gaia:hypothetical` marker(s) exempting nothing:
-
-- `wiki/decisions/Baz.md:88` → unused, the line carries no matching dead path
-- `wiki/decisions/Qux.md:12` → malformed, no reason given
-- `wiki/decisions/Quux.md:5` → malformed, no path given
 ```
 
-One line form per `problem` value; render each entry from the value the scan reported rather than from the nearest form on offer.
-
-List every dead reference and every stale marker (one per line), and drop whichever heading has no entries. Do not truncate: the counts are small enough to be actionable.
+List every dead reference (one per line). Do not truncate: the count is small enough to be actionable.
 
 ## Step 4: GAIA check #13: UAT/SPEC narrative-ref drift
 
@@ -340,10 +312,10 @@ List every empty section (one per line) as `` - `wiki/path.md:42` → `## Headin
 Print to the user:
 
 1. The report path (e.g. `wiki/meta/lint-report-2026-05-03.md`).
-2. A one-line summary that includes the drift severity and count, plus dead-path count, stale-marker count, orphan count, frontmatter-gap count, and empty-section count when any of those is non-zero, plus narrative-ref count if non-zero.
+2. A one-line summary that includes the drift severity and count, plus dead-path count, orphan count, frontmatter-gap count, and empty-section count when any of those is non-zero, plus narrative-ref count if non-zero.
 
 If `drift_severity` is **`high`**, surface it prominently (separate line, prefixed with `WIKI DRIFT:`).
-If `dead.length + staleMarkers.length > 0`, surface as a separate line prefixed with `WIKI DEAD-PATHS:` followed by both counts. A run whose only finding is a stale marker still has to reach the user: gating this line on `dead.length` alone leaves it in the report file and out of the summary, which is the one channel this step has.
+If `dead.length > 0`, surface as a separate line prefixed with `WIKI DEAD-PATHS:` followed by the count.
 If narrative-ref findings > 0, surface as a separate line prefixed with `UAT-SPEC DRIFT:` followed by the count.
 If `orphans.length > 0`, surface as a separate line prefixed with `WIKI ORPHANS:` followed by the count.
 If `gaps.length > 0`, surface as a separate line prefixed with `WIKI FRONTMATTER:` followed by the count.

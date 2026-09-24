@@ -10,7 +10,7 @@
 # waive` section, plus the routing sentence every Code Audit Team member
 # carries identically. A prose requirement survives exactly as long as the
 # next person editing those files remembers it, which is not a mechanism;
-# this suite is the mechanism, the same pattern `doc-difficulty-prose.bats`
+# this suite is the mechanism, the same pattern `doc-debt-query.bats`
 # in this directory uses: grep for the frozen literals, ground-truthed
 # against the actual source text (verified against the merge-base-with-main
 # commit, the tree as it stood before this SPEC's own Phase 1/2 changes
@@ -33,7 +33,8 @@
 #
 # Section extraction: `extract_section` takes its terminator as an argument
 # so a shallow scan never swallows a sibling section whole (see
-# doc-difficulty-prose.bats's header for the concrete swallow hazard). The
+# doc-audit-promote-source.bats's `extract_section_or_fail` header for the
+# concrete swallow hazard). The
 # cross-remit section starts at `#### ` (H4) and its own doc names the
 # terminator `^#{3,4} `; the B-mw section starts at `### ` (H3) and its doc
 # names `^#{2,3} `. Both are used verbatim below, never a bare `^## `.

@@ -4,7 +4,7 @@
 #
 # Why this suite exists, and how it differs from every other prose suite in
 # this directory. The existing prose suites (doc-machinery-waive-prose.bats,
-# doc-countability-prose.bats, doc-difficulty-prose.bats, ...) assert phrase
+# doc-countability-prose.bats, doc-debt-query.bats, ...) assert phrase
 # presence, phrase absence, or cross-file byte-identity. All of them enforce
 # prose-to-prose consistency, and none of them can tell whether a sentence is
 # TRUE. A claim can be identical across five files, pinned by four tests, and

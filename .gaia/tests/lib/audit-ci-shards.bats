@@ -3884,7 +3884,6 @@ wiki/concepts/Local Working State.md|hooks-1 hooks-2 hooks-3 hooks-4 lib
 wiki/concepts/PR Merge Workflow.md|hooks-1 hooks-2 hooks-3 hooks-4 lib misc scripts-1 scripts-2 scripts-3
 wiki/concepts/Policy-Memory Loop.md|hooks-1 hooks-2 hooks-3 hooks-4 lib
 wiki/concepts/Registering a Code Audit Team Member.md|lib
-wiki/concepts/Task Orchestration.md|hooks-1 hooks-2 hooks-3 hooks-4 lib scripts-1 scripts-2 scripts-3
 wiki/decisions/Claude Integration Fitness.md|hooks-1 hooks-2 hooks-3 hooks-4 lib
 wiki/decisions/Code Audit Team.md|hooks-1 hooks-2 hooks-3 hooks-4 lib
 wiki/decisions/Shell Guard Fixture Discrimination.md|lib scripts-1 scripts-2 scripts-3

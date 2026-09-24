@@ -49,18 +49,6 @@ On the recovery path, classify from `suggested_base`, NOT the orphaned `last_eva
 
 The CLI emits a deterministic `suggestion` field per commit (`WORTHY` or `SKIP`) along with `subject`, `body`, file stats, and `suggestion_reason`. Treat the `WORTHY` subset as candidates for deep-read. Trust the CLI's classification, do not re-derive WORTHY/SKIP rules in prose. Log the `suggestion_reason` verbatim alongside the decision in Step 5.
 
-### Step 3b: Check the classifier health block
-
-The same JSON carries a `health` object: `evaluated`, `deferred` (commits that reached a fail-open default rather than a discriminating rule), `deferral_rate`, `worthy_rate`, and `inert`.
-
-When `health.inert` is `true`, the rule table has stopped matching the subjects this repo writes. Every commit still gets a plausible per-commit reason, so nothing else in this playbook will notice; the failure mode is that the first pass silently stops filtering and Step 4 deep-reads the whole range at full cost. The CLI also writes a warning to stderr.
-
-**`inert` is not sufficient on its own.** It only trips once the sample is large enough for a rate to mean anything, and a routine sync evaluates far fewer commits than that, so on most runs it is structurally `false` and reading it tells you nothing. Read `deferral_rate` directly whenever `inert` is `false`: a high share on a small window is the same defect caught earlier, and it is worth investigating rather than waiting for a backlog big enough to trip the flag. (Do not restate the CLI's threshold or sample floor here. They live in the classifier, and a copy in prose is the drift this check exists to catch.)
-
-Do not treat either signal as a reason to skip the sync. Keep going, and **carry the CLI's stderr warning verbatim into Step 8's `Classifier health:` field** (or, when the rate is high but `inert` is `false`, a one-line note naming `deferred`/`evaluated` and the rate). Step 8 owns why the delivery has to ride inside the block rather than beside it, and this step does not restate the reasoning. The fix itself is in the classifier's rule table or its `gaia.wikiClassify` path vocabulary (`package.json`), never in this playbook.
-
-A high `worthy_rate` with a low `deferral_rate` is not a fault. It means the rules are discriminating and this repo's commits genuinely are wiki-relevant, which is the expected shape for a repo whose own source is the thing the wiki documents.
-
 ## Step 4: Second-pass, read diffs for WORTHY commits only
 
 For each WORTHY commit:
@@ -161,78 +149,6 @@ model is narrating edits without performing them, escalate the model.
 
 Because the run aborts before Step 8/9, no `CONSOLIDATE_TRIGGERED` line is emitted. The router (`references/wiki.md` → "Full chain") already treats an absent trigger line as a known-incomplete state and skips consolidate and lint, so an abort fails the whole chain safely without further wiring.
 
-<!-- gaia:maintainer-only:start -->
-## Step 5c: Shipped-surface boundary check
-
-`wiki/` ships, so a page this run authored is a shipped file and carries two boundary obligations no other step in this playbook checks. Both are properties of authoring a page at all rather than of what a given page says, so they recur on every sync that writes one. Both are also maintainer-repo concerns: an adopter clone produces no release tarball and answers no distribution manifest, which is why this whole step is maintainer-only and an adopter sync goes from Step 5b straight to Step 6.
-
-Skip the step entirely when Step 5b's `CONTENT_CHANGES` is empty. An all-SKIP run authored no page and owes neither obligation.
-
-Skip it too when the tree does not carry the oracle. The check needs `.gaia/tests/distribution/lib/build-staging.sh` and the `.gaia/cli/gaia-maintainer` binary it calls, both maintainer-only, and a tree holding this playbook without them cannot run it at all; the reachable case is a smoke-test scaffold that copies this file verbatim into a fixture repo. Record `oracle absent, boundary check skipped` in Step 8's `Leaks not repaired:` field and go on to Step 6. 5c.4's obligation stands down with it, though 5c.4 needs no oracle of its own: the fixture repo that reaches this case opens no pull request, so an obligation recorded there would name a check that never runs. This is not 5c.2's environment fault, which is a maintainer's own stale binary and is fixable where it stands.
-
-It sits here, ahead of Step 6 and Step 7, so an abort has the same shape as Step 5b's, state not advanced, nothing committed, nothing pushed, and so it runs ahead of the pull request whichever caller opens one. Step 7 owns that split.
-
-### 5c.1 Stage the authored pages first
-
-```bash
-git add -- wiki/
-```
-
-This is load-bearing, not tidiness. The staging build discovers its input with `git ls-files` (through `.gaia/scripts/list-tracked-paths.sh`), which reads the index, so a page this run just created is invisible to it while the page is untracked. Run the check against an unstaged page and it reports clean over an input set that never held the page, which is indistinguishable from a real pass and is the exact failure `.claude/rules/guards-must-fail.md` names for an index-reading discovery. Step 7 runs the same `git add wiki` itself, so staging here changes nothing about what lands.
-
-### 5c.2 Run the staging build
-
-```bash
-staging="$(mktemp -d -t gaia-wiki-staging-XXXXXX)"
-bash .gaia/tests/distribution/lib/build-staging.sh "$staging"
-```
-
-This is the same oracle CI's `Shipped-surface leak check` runs, moved ahead of the pull request. That job is advisory by its own design and never gates a merge, so what this step buys is not a gate but the report arriving while the run that wrote the prose is still holding it. The output directory has to exist and be empty, hence a fresh `mktemp -d` per attempt rather than a reused path.
-
-**Branch on the section header the output carries, never on the exit status.** Exit 1 is not a synonym for "leak": the script spends it on three different report sections and on several environment faults alike, so the status alone cannot tell a prose defect from a missing binary.
-
-- **Exit 0** is clean. Proceed to 5c.4.
-- **Exit 1 carrying either repair section** routes to 5c.3, which owns both the repair and its three-attempt bound:
-  - `leaks (N):`, lines shaped `[<check-id>] <path>:<line>  <match>`, a release-scrub check. Split the reported lines by who wrote the file. The ones naming a page this run wrote are the repair case and spend attempts against the bound. The rest are pre-existing, because the scrub reads the whole staged tree and no page this run could edit will clear a leak it did not cause: carry those into Step 8's `Leaks not repaired:` field and spend no attempt on them, so a report holding nothing else, including a re-run still red on nothing else, leaves 5c for 5c.4 rather than for the bound.
-  - `unbalanced markers (N):`, lines shaped `<path>:<line>  <reason>`, a maintainer-only marker pair that does not close. **This section prints alongside the literal line `leaks: none`**, so a run keyed on the word "leak" reads it as clean-but-failing and finds no branch. 5c.3's own first repair is what produces it, since adding a marker pair is how a block gets unbalanced.
-- **Exit 1 carrying `runtime-dependency leaks (N):`** is a shipped script reaching for something the bundle does not carry, and no wiki page can be the cause or the cure. That section comes from a separate verb whose scan set is `.sh` files under the shipped script directories, and `wiki/` is not one of them, so a sync that authored only pages cannot have produced it and no page edit will clear it. It is a pre-existing defect in a shipped script and belongs to whoever owns that script, so carry the section into Step 8's `Leaks not repaired:` field, spend no attempt against 5c.3's bound, and proceed to 5c.4.
-- **Everything else** is an environment fault, not prose: exit 1 with none of those sections, and any other exit at all. Stated as a complement deliberately, because the script runs under `set -e` and a failing tool's own status propagates rather than being normalized, so an rsync or version-control failure surfaces as that tool's number and an enumeration would leave a reader holding an unlisted one. The commonest fault is a missing or non-executable maintainer binary, which the script names along with the `pnpm -C .gaia/cli bundle` that produces it, and which it deliberately does not rebuild for you. Fix the environment once, re-run, and do not count the attempt against 5c.3's bound: no edit to a wiki page can change the outcome. **A second consecutive fault ends the arm.** Record the failing invocation's status and its output in Step 8's `Leaks not repaired:` field and go on to 5c.4, the same record-and-continue the oracle-absent stand-down above takes. This arm needs an ending of its own because neither bound beside it reaches it: 5c.3's counts repair attempts and this arm spends none, and the script retries nothing and normalizes nothing, so a fault that survived one fix re-propagates identically for as long as a reader is willing to re-run it.
-
-Getting the repair/environment split wrong in either direction costs a run. Reading a repair case as an environment fault loops without bound on something a page edit would fix, because this arm is the one that says editing cannot help; reading an environment fault as a repair case spends three attempts editing prose and then aborts a sync over a build artifact.
-
-Leave the staging tree where `mktemp` put it, exactly as the CI step does.
-
-### 5c.3 Repair, then re-run
-
-A leak is anything one of `.gaia/release-scrub.yml`'s checks flags in the staged tree, and each reported line names the check id that flagged it, so read that id rather than inferring the kind from the match. This step owns the lines naming a page this run wrote; 5c.2's `leaks (N):` bullet has already said where the rest go. Do not work from a remembered list of checks: the file holds more of them than the common cases below. The kinds a generated wiki page trips most often are a pointer at something the adopter never receives, a release-excluded path, a wikilink or a bare Title-Case mention of a release-excluded page, or a sibling-monorepo prefix.
-
-The run that wrote the prose is the one positioned to repair it, so repair rather than abort. Which repair depends on what the check id says is wrong:
-
-- **A real fact that is maintainer-only**: wrap the citation in the `gaia:maintainer-only` HTML-comment marker pair. The bundle-time scrub strips the block, so the page keeps the fact and the adopter copy loses the dangling pointer. `.claude/rules/wiki-style.md` spells the pair; this playbook names it instead, because the scrub matches those two comments as literal strings, and a copy of the **end** marker written inside a maintainer-only block closes that block early. That fails loudly rather than quietly, as an `end_without_start` unbalanced marker when the real end marker is reached, but it fails the whole scrub, so keep the literal end marker out of wrapped prose. A literal start marker inside a block is inert.
-- **A pointer an adopter clone cannot follow**: rewrite the sentence to name something their clone has, or drop the pointer. Follow `.claude/rules/wiki-style.md`, which prefers naming what owns a fact over restating it, and a pointer that survives the scrub is usually the shorter sentence anyway.
-- **Neither of those**: some checks flag something a marker would hide rather than fix, and wrapping them is the wrong repair even though it clears the check. An absolute filesystem literal is the worked case: wrapping it leaves a machine-specific path in a shipped page, which `.claude/rules/repo-relative-paths.md` bans outright, so make the path repo-relative instead. Read what the check id is actually asserting before reaching for the markers.
-
-Re-stage and re-run 5c.1 and 5c.2 after each repair. **Bound this at three attempts.** On a third red, abort exactly as Step 5b aborts: do not run Step 6, do not run Step 7, leave the tree as it stands, and print the leak list in place of the Step 8 summary. Prose that survives three repairs is a judgment call about what the page should say, and that belongs to the maintainer.
-
-### 5c.4 Record the distribution answer a new page owes
-
-A page this run **created** is a newly-shipping file, and `Distribution Audit` is a declared-required check: it reds when a pull request carries a newly-shipping file `.gaia/manifest.json` does not answer. Ship-or-withhold is a human decision by design, so this step records the obligation and never discharges it. List the created pages:
-
-```bash
-git diff --cached --name-only --diff-filter=A -z -- wiki/ | tr '\0' '\n'
-```
-
-`-z` with the `tr` back to newlines for the same reason Step 9b needs it: under git's default `core.quotePath` a path carrying a non-ASCII byte prints C-quoted, and here that would misname the page in the field below.
-
-When the listing is non-empty, it fills Step 8's `Distribution answers owed:` field:
-
-```
-  Distribution answers owed: <path>[, <path>…]  (run /distribution-audit on this branch before the PR merges)
-```
-
-Step 8 owns why the delivery has to ride inside the block rather than beside it, and this step does not restate the reasoning.
-<!-- gaia:maintainer-only:end -->
-
 ## Step 6: Advance state file
 
 Run:
@@ -275,23 +191,10 @@ Wiki sync complete.
   Skipped:  {N_skipped}
   Pages edited: {list}
   ADRs created: {list, if any}
-  Classifier health: {Step 3b's warning, if any}
-<!-- gaia:maintainer-only:start -->
-  Leaks not repaired: {Step 5c's unrepairable lines and its stand-downs, if any}
-  Distribution answers owed: {Step 5c.4's list, if any}
-<!-- gaia:maintainer-only:end -->
   State advanced to {head_sha}.
 ```
 
 `{baseline}` is `state_sha` on the normal path and `suggested_base` on the recovery path, the ref the range was actually evaluated from.
-
-Every field between `Pages edited:` and the state line is conditional: print it only when the step that owns it produced a value, and omit the whole line otherwise. `ADRs created:` already works this way, and `Classifier health:` is the same shape, owned by Step 3b.
-
-<!-- gaia:maintainer-only:start -->
-The two `gaia:maintainer-only` comment lines are not fields and are never printed: they bound the maintainer-only fields for the bundle scrub, here and in the 9d example alike.
-<!-- gaia:maintainer-only:end -->
-
-**Those fields exist because this block is the only channel out.** The router dispatches this playbook as a subagent and asks it, literally, for the Step 8 summary block and the `CONSOLIDATE_TRIGGERED` line, and for nothing else. A line printed above or below the block is preamble or narration under that prompt, so a run that obeys its dispatch drops it and the signal reaches nobody. Anything a step needs to deliver to a human therefore rides inside this block, which is what these slots are for. A step that needs a new one adds a field here rather than printing beside the block.
 
 (On the no-op path from Step 1's drift=0 branch: print `Wiki already in sync at {short_sha}.` instead of the block above.)
 
@@ -341,15 +244,10 @@ Wiki sync complete.
   Skipped:  2
   Pages edited: wiki/decisions/auth-strategy.md, wiki/modules/Sessions.md
   ADRs created: wiki/decisions/auth-strategy.md
-<!-- gaia:maintainer-only:start -->
-  Distribution answers owed: wiki/decisions/auth-strategy.md  (run /distribution-audit on this branch before the PR merges)
-<!-- gaia:maintainer-only:end -->
   State advanced to def456.
 
 CONSOLIDATE_TRIGGERED: true
 ```
-
-This example carries the conditional fields that happened to apply on that run. A run that created no page, or whose classifier reported nothing, omits the corresponding lines.
 
 The router reads the last line and decides whether to invoke consolidate. The gate itself never invokes consolidate directly, it stays a read-only check.
 
@@ -364,8 +262,5 @@ The router reads the last line and decides whether to invoke consolidate. The ga
 
 - **Mid-sync interruption.** If you've edited some pages but not all, do NOT advance state. Commit only the partial wiki edits with subject `wiki: partial sync (interrupted at {short_sha})` and stop. The next sync resumes from the original `last_evaluated_sha`, not the partial one.
 - **Fabrication guard abort (Step 5b).** WORTHY commits were classified but the decided edits are absent from the working tree. State is not advanced and nothing is committed, so the next sync re-evaluates the same range from the unchanged `last_evaluated_sha`. Distinct from a mid-sync interruption: here the gap is between decided and written, not started and finished.
-  <!-- gaia:maintainer-only:start -->
-- **Boundary-check abort (Step 5c).** Generated prose points at a surface the adopter bundle does not carry, and three repair attempts did not clear it. State is not advanced and nothing is committed, so the next sync re-evaluates the same range. The authored pages stay in the working tree, staged, for the maintainer to repair by hand; the leak list names each file and line.
-  <!-- gaia:maintainer-only:end -->
 - **Merge conflict on `wiki/log.md`.** Two sync runs on different branches will both prepend to the log. Resolve by keeping both lines, sorted newest-first.
 - **`wiki/.state.json` is corrupted or invalid JSON.** Stop and surface to the user. Do not auto-rewrite, they may have made manual edits worth preserving.

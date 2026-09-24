@@ -171,7 +171,7 @@ extract_fenced_bash_after_heading() {
 
 @test "2b. the token's presence across the tree is exhaustively accounted for" {
   # The other direction of 2a: every tracked file naming the token is either
-  # one of the five routes above, the owner, the exempt helper, the wiki
+  # one of the five routes above, the owner, the exempt helper, a wiki
   # concept page, or a consumer fixture reproducing an emitted body verbatim.
   # A new emitter appearing with no decision made about it is exactly what
   # this half catches.
@@ -214,7 +214,8 @@ extract_fenced_bash_after_heading() {
         ".claude/skills/file-tech-debt/SKILL.md" | \
         ".gaia/scripts/debt-origin-lib.sh" | \
         ".gaia/cli/src/residue/__tests__/tally.test.ts" | \
-        "wiki/concepts/Audit Disposition and Debt Fix.md") ;;
+        "wiki/concepts/Audit Disposition and Debt Fix.md" | \
+        "wiki/concepts/GitHub Labels.md") ;;
       *)
         printf 'unaccounted-for file names gaia-debt-origin: %s\n' "$f" >&2
         return 1
@@ -690,9 +691,9 @@ frontend_changed_verdicts() {
   # `:end` does not leave a wrap open at end of file: the next block's `:end`
   # closes the opened `:start`, the next block's `:start` is swallowed inside
   # it, and stripMarkerBlocks reports unbalanced=[] having silently stripped
-  # everything between them, which takes whole sections such as
-  # `## Brake self-check` and `## Contract-preserve note` out of the adopter
-  # copy. The scrub only fails a wrap still open at EOF or an
+  # everything between them, which takes a whole section such as
+  # `## Brake self-check` out of the adopter copy. The scrub only fails a
+  # wrap still open at EOF or an
   # end-without-start, so it passes that mutant, and
   # .gaia/tests/distribution/03-marker-strip.sh only asserts the output shrank
   # and left no fragments, which an over-strip satisfies too.

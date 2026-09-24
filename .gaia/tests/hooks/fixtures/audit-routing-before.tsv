@@ -767,11 +767,7 @@
 .gaia/tests/hooks/token-tally-review.bats	code-audit-maintainer-shell
 .gaia/tests/hooks/worthiness-presence-check.bats	code-audit-maintainer-shell
 .gaia/tests/lib/README.md	-
-.gaia/tests/lib/doc-gaia-init-isolation.bats	code-audit-maintainer-shell
-.gaia/tests/lib/doc-isolation.bats	code-audit-maintainer-shell
 .gaia/tests/lib/doc-setup-gaia-isolation.bats	code-audit-maintainer-shell
-.gaia/tests/lib/fixtures/isolation/prompt-debt.txt	-
-.gaia/tests/lib/fixtures/isolation/prompt-plan.txt	-
 .gaia/tests/lib/helpers/clone-spec-repo.sh	code-audit-maintainer-shell
 .gaia/tests/lib/helpers/tmp-spec-repo.sh	code-audit-maintainer-shell
 .gaia/tests/lib/ledger-title-repair.bats	code-audit-maintainer-shell

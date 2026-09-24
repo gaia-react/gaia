@@ -172,9 +172,8 @@ phase35_block() {
   grep -qF "'.claude/commands/gaia-init.md'" "$yml"
 }
 
-@test "both Phase 4 suites have a coverage row in the README" {
+@test "this suite has a coverage row in the README" {
   local readme="$REPO_ROOT/.gaia/tests/lib/README.md"
   [ -f "$readme" ]
   grep -qF 'doc-setup-gaia-isolation.bats' "$readme"
-  grep -qF 'doc-gaia-init-isolation.bats' "$readme"
 }

@@ -25,11 +25,12 @@
 # already main-anchored.
 #
 # EXECUTE THE ARTIFACT, DO NOT PARAPHRASE IT. The precedent is
-# doc-isolation.bats's "the policy read literal defaults to prefer-branch"
-# test: it writes the fragment's OWN literal to a script and runs it, rather
-# than re-typing an approximation, so the test executes the artifact instead
-# of a paraphrase of it. A plain `grep` for `main-root-lib.sh` would pass on
-# prose that merely NAMES the resolver while still joining a relative path.
+# doc-merge-workflow-fences.bats's "fence resolve-mode: eval-ing it puts a
+# resolved_mode and a should_run in scope" test: it writes the fragment's OWN
+# literal to a script and runs it, rather than re-typing an approximation, so
+# the test executes the artifact instead of a paraphrase of it. A plain
+# `grep` for `main-root-lib.sh` would pass on prose that merely NAMES the
+# resolver while still joining a relative path.
 # Tests 1 and 2 below extract the real literal/block from the live source
 # files and run it; only test 3 (the weakest, deliberately third) is a plain
 # grep, and it is scoped tightly to the converted sites, not repo-wide.

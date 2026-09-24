@@ -254,9 +254,8 @@ jobs:
               # the Vitest step below skips, and this required check reports
               # green having run the divergence check zero times (#1513).
               # `audit-ci-tests.yml` is no fallback: it arms on the same glob but
-              # runs bats shards only, and the one bats file naming the marker
-              # (`.gaia/tests/lib/doc-difficulty-prose.bats`) explicitly declines
-              # to reimplement the parity mechanism rather than approximate it.
+              # runs bats shards only, and no bats suite reimplements this
+              # divergence check rather than approximate it.
               # A glob rather than an itemized list, the same reasoning as the
               # workflows and actions globs above: the guard reads whatever
               # matches this name pattern, so a member added or removed later is

@@ -65,15 +65,10 @@ SOURCE="$PROJECT_ROOT/$SKILL_REL"
 
 # --- Part 1: deterministic semantic-survival (GATING) --------------------
 
-# The maintainer-only block must be gone. Its sole content is a
-# contract-note test-path line naming release-excluded .gaia/tests/ paths;
-# leaving it would also trip the scrub's own maintainer-paths leak-check.
+# Every maintainer-only block must be gone; leaving one would also trip
+# the scrub's own maintainer-paths leak-check.
 if grep -qF 'gaia:maintainer-only' "$SCRUBBED"; then
   fail "scrubbed $SKILL_REL still contains a gaia:maintainer-only marker"
-  exit 1
-fi
-if grep -qF 'debt-sentinel-touch.bats' "$SCRUBBED"; then
-  fail "scrubbed $SKILL_REL still contains the stripped maintainer-only test-path line"
   exit 1
 fi
 
