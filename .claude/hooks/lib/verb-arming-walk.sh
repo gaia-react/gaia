@@ -39,7 +39,7 @@
 #      a separator, and the shell runs what that second command is handed;
 #   7. the body runs nothing: either the delimiter is quoted or escaped, which
 #      turns substitution off, or the body carries no command-substitution
-#      opener: no `$(`, no backtick, and none of bash 5.3's `${ ` or `${|`.
+#      opener: no `$(` and no backtick.
 #      With an unquoted delimiter the shell runs a command substitution inside
 #      the body before `cat` ever sees it, so that body is not data.
 #
@@ -524,7 +524,7 @@ gaia_verb_arm_view() {
           if [ "$first" = 1 ] && [ "$data" = 1 ] && [ "${hd_quoted[$bi]}" = 0 ]; then
             # shellcheck disable=SC2016 # the literal opener is the needle
             case "${s:0:$p}" in
-              *'$('*|*'`'*|*'${|'*|*'${'[[:space:]]*) data=0 ;;
+              *'$('*|*'`'*) data=0 ;;
             esac
           fi
           if [ "$first" = 1 ] && [ "$data" = 1 ] && [ "$p" -gt 0 ]; then
@@ -614,10 +614,9 @@ gaia_verb_arm_view() {
 # over-arms.
 #
 # ABSTENTION IS WHOLE-INPUT, as in the walk above: an unterminated span, a
-# dollar-quoted word, a `${` carrying anything but a plain name, bash 5.3's
-# `${ ` and `${|`, a `)` in a context that holds the word `case` (a case arm's
-# bare `)` would close the substitution early and desync every quote after
-# it), a backslash before `$`, a backtick, or a backslash anywhere under
+# dollar-quoted word, a `${` carrying anything but a plain name, a `)` in a
+# context that holds the word `case` (a case arm's bare `)` would close the
+# substitution early and desync every quote after it), a backslash before `$`, a backtick, or a backslash anywhere under
 # backticks (the shell strips it before parsing the inner command, so the
 # escape is gone), a backtick under backticks inside quotes, a comment, a
 # heredoc body, or a nested substitution (bash closes the outer backquote
@@ -638,7 +637,7 @@ gaia_verb_arm_view() {
 # the same nested-interpreter under-arm a quoted verb already has, and so
 # does a `cat` or `tee` redefined earlier in the call (a function, an alias,
 # a PATH entry), since the scan reads the name, not what it resolves to. Openers the shell never runs inside
-# double quotes (`<(`, `>(`, `=(`) stay live, as do openers in comments.
+# double quotes (`<(`, `>(`) stay live, as do openers in comments.
 
 # Top level and inside a substitution: both quotes, a backslash, a backtick, a
 # `$`, both parentheses, the first characters of the process-substitution
@@ -673,7 +672,7 @@ _gaia_va_mask_openers() {
     _gaia_va_masked+="$pre"
     # shellcheck disable=SC2016 # the literal openers are the patterns
     case "$ch$nx" in
-      '`'*|'$('|'${'|'<('|'>('|'=(') _gaia_va_masked+=x ;;
+      '`'*|'$('|'<('|'>(') _gaia_va_masked+=x ;;
       *) _gaia_va_masked+="$ch" ;;
     esac
     rest="${rest:$(( np + 1 ))}"

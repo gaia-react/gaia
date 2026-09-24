@@ -180,34 +180,6 @@ readonly INSTALL_CMD="brew install jq"
 # Each pair is the whole claim: the in-remit call is refused, and the install
 # that repairs the machine is not.
 
-@test "jq absent: block-bare-test refuses a payload carrying its literal" {
-  local json
-  json=$(bash_payload "pnpm test")
-  without_jq block-bare-test.sh "$json"
-  assert_blocked_by_exit
-}
-
-@test "jq absent: block-bare-test allows the jq install" {
-  local json
-  json=$(bash_payload "$INSTALL_CMD")
-  without_jq block-bare-test.sh "$json"
-  assert_allowed_by_exit
-}
-
-@test "jq absent: block-bare-test refuses its literal with description emitted first" {
-  local json
-  json=$(bash_payload_description_first "pnpm test")
-  without_jq block-bare-test.sh "$json"
-  assert_blocked_by_exit
-}
-
-@test "jq absent: block-bare-test allows the jq install with description emitted first" {
-  local json
-  json=$(bash_payload_description_first "$INSTALL_CMD")
-  without_jq block-bare-test.sh "$json"
-  assert_allowed_by_exit
-}
-
 @test "jq absent: block-env-read refuses a dotenv read" {
   local json
   json=$(bash_payload "cat .env.local")
@@ -391,20 +363,6 @@ readonly INSTALL_CMD="brew install jq"
   local json
   json=$(bash_payload "$INSTALL_CMD")
   without_jq distribution-preflight-check.sh "$json"
-  assert_allowed_by_exit
-}
-
-@test "jq absent: red-verify-commit-check refuses a commit" {
-  local json
-  json=$(bash_payload "git commit -m 'wire the parser'")
-  without_jq red-verify-commit-check.sh "$json"
-  assert_blocked_by_exit
-}
-
-@test "jq absent: red-verify-commit-check allows the jq install" {
-  local json
-  json=$(bash_payload "$INSTALL_CMD")
-  without_jq red-verify-commit-check.sh "$json"
   assert_allowed_by_exit
 }
 

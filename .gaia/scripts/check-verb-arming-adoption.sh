@@ -60,7 +60,6 @@ GAIA_VERB_ADOPTING_HOOKS=(
   pr-merge-audit-check.sh
   worthiness-presence-check.sh
   audit-disposition-check.sh
-  audit-residual-shape-check.sh
   distribution-preflight-check.sh
   post-findings-block-on-merge.sh
   token-tally-git-op.sh
@@ -115,7 +114,6 @@ GAIA_VERB_DENY_CAPABLE_HOOKS=(
   pr-merge-audit-check.sh
   worthiness-presence-check.sh
   audit-disposition-check.sh
-  audit-residual-shape-check.sh
   distribution-preflight-check.sh
 )
 GAIA_VERB_FAIL_CLOSED_ANCHOR='cannot load the shared verb-arming decision'

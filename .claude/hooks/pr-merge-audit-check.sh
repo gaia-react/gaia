@@ -850,8 +850,7 @@ gate_permit_binds_to_named_pr() {
     # permits outright, so reaching here without one means the command itself
     # was unreadable: not the first command in its tool call, carrying a flag
     # shape the scanner declines to model, a separator or comment putting a
-    # second command beside it, a command WRAPPER standing in the command-word
-    # slot, or a byte outside the small set a merge needs.
+    # second command beside it, or a byte outside the small set a merge needs.
     unreadable=1
     named="<unreadable>"
   fi
@@ -871,14 +870,10 @@ gate_permit_binds_to_named_pr() {
   # one alone.
   local spelling_shared
   spelling_shared="The merge must be the first command in its tool call with nothing beside it,
-and a separator, a comment, a command wrapper standing in front of the merge
-(\`env\`, \`timeout\`, \`nohup\` and the rest of the shared wrapper table), a flag
-shape the command scanner declines to model, a branch name or URL in place of a
-number, or any byte outside the small set a merge invocation needs each deny on
-their own. A quoted flag value is the common case: drop it, or set it on the
-pull request before merging. A wrapper is read when deciding whether this gate
-arms, and deliberately not read here: arming may over-read a command, a permit
-may not, so re-run the merge with no wrapper in front of it."
+and a separator, a comment, a flag shape the command scanner declines to model,
+a branch name or URL in place of a number, or any byte outside the small set a
+merge invocation needs each deny on their own. A quoted flag value is the common
+case: drop it, or set it on the pull request before merging."
 
   # Which arm, and the sentinel belongs on the SPELLING side. An unreadable
   # command named no target the gate could read, so it never established a

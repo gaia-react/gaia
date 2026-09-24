@@ -1,38 +1,33 @@
 /**
- * Pure attribution core for audit residue recorded in a pull-request body.
- *
- * Re-implements, in TypeScript, the rule the merge gate
- * (`.claude/hooks/audit-residual-shape-check.sh`) already implements in bash:
+ * Pure attribution core for audit residue recorded in a pull-request body:
  * which headings are canonical, where one entry unit ends and the next
- * begins, and which dedup keys count. The gate is the reference and this side
- * agrees with it or it is wrong; a conformance comparison drives both over one
- * fixture corpus to hold the two together.
+ * begins, and which dedup keys count.
  *
  * No I/O lives here: the caller supplies a body string and gets back the
  * attribution. The recognizer literals and the key grammar are injectable
- * values rather than inlined constants, so a conformance test can mutate one
- * predicate and watch the comparison red without editing this module.
+ * values rather than inlined constants, so a test can mutate one predicate
+ * without editing this module.
  *
  * # The three populations, and why they partition the units
  *
  * Every entry unit beneath a canonical heading lands in exactly one of
  * `entries`, `malformed`, or `keyless`, so a consumer can rebuild one tuple
- * per unit and compare it against the gate's own per-unit emit.
+ * per unit.
  *
- * - `keyless` is a unit carrying no match of the gate's grammar anywhere
- *   within it. The gate calls this keyless and denies the merge over it.
- * - `malformed` is a unit whose key MATCHES the gate's grammar but whose
- *   fields fail validation (an absolute or traversal path, a line outside the
- *   bounds). The gate counts the unit as keyed, so this side does too; the
- *   entry is withheld and the reason is reported rather than the key dropped.
+ * - `keyless` is a unit carrying no match of the key grammar anywhere within
+ *   it.
+ * - `malformed` is a unit whose key MATCHES the key grammar but whose fields
+ *   fail validation (an absolute or traversal path, a line outside the
+ *   bounds). Such a unit counts as keyed; the entry is withheld and the
+ *   reason is reported rather than the key dropped.
  * - `entries` is everything else.
  *
- * A near-miss key that fails the gate's own grammar (no `v1` token) is
- * therefore NOT malformed here: the gate does not see it as a key at all, so
- * its unit is keyless on both sides. `parseKey` still refuses such a key with
- * its own reason for a caller holding one from elsewhere.
+ * A near-miss key that fails the grammar (no `v1` token) is therefore NOT
+ * malformed: it is not a key at all, so its unit is keyless. `parseKey` still
+ * refuses such a key with its own reason for a caller holding one from
+ * elsewhere.
  *
- * # Inherited behavior this module reproduces deliberately
+ * # Deliberate heading-matching behavior
  *
  * A canonical heading is matched by its TEXT, not by its whole line: the
  * leading `#` run and the one whitespace character after it are stripped from
@@ -43,8 +38,7 @@
  * class rather than the literal space the canonical literals carry, so a
  * tab-separated spelling is canonical too. What does not widen is how many
  * separator characters are stripped, so `###  <canonical text>`, two spaces,
- * is still not canonical. That is the gate's behavior and diverging from it
- * here in either direction would break the agreement that is the point.
+ * is still not canonical.
  */
 import {KEY_PATTERN, parseKey} from './key.js';
 import type {ResidueKey} from './key.js';

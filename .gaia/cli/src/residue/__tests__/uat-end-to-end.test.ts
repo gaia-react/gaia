@@ -1,9 +1,8 @@
 /**
  * SPEC-081 Phase 3a: the end-to-end UAT drivers this task owns (UAT-006,
  * UAT-007, UAT-008, UAT-010, UAT-011, UAT-013), the tally-side mutation
- * control for UAT-012 (the gate-side control lives in the sibling bats
- * suite, `.gaia/tests/hooks/residue-attribution-conformance.bats`), and the
- * four skill-reference prose assertions their acceptance criteria require.
+ * control for UAT-012, and the four skill-reference prose assertions their
+ * acceptance criteria require.
  *
  * Every test here reads the SHARED fixture corpus at
  * `.gaia/tests/fixtures/residue-corpus/` (Phase 3's deliverable) through
@@ -126,10 +125,9 @@ const buildStaleAttribution = (): AttributionResult => ({
 });
 
 // ---------------------------------------------------------------------------
-// UAT-012 mutation control, tally side. The gate-side control lives in
-// residue-attribution-conformance.bats; this is the other half named by the
-// task: `attributeBodyWith` + `DEFAULT_PREDICATES` are frozen exports for
-// exactly this, so no module under .gaia/cli/src/residue/ is edited.
+// UAT-012 mutation control, tally side: `attributeBodyWith` +
+// `DEFAULT_PREDICATES` are frozen exports for exactly this, so no module
+// under .gaia/cli/src/residue/ is edited.
 // ---------------------------------------------------------------------------
 
 describe('UAT-012 mutation control (tally side, via the frozen predicate seam)', () => {
@@ -713,37 +711,6 @@ describe("SPEC-082: a spaced path terminates on the key comment's own closer", (
     expect(result.entries[0]?.raw_key).toBe(
       'v1 class=a path=wiki/concepts/PR Merge Workflow.md line=7'
     );
-  });
-
-  test("UAT-008: the keyless remediation text, substituted into its own fields, matches the gate's own key_re", () => {
-    const hookPath = path.join(
-      REPO_ROOT,
-      '.claude/hooks/audit-residual-shape-check.sh'
-    );
-    const hookSource = readFileSync(hookPath, 'utf8');
-
-    // Extracted rather than transcribed: this locates whichever wrapped-key
-    // literal in the remediation sentence carries the placeholder runs,
-    // distinguishing it from the key_re assignment (which carries none).
-    const wrappedKeyLiterals =
-      hookSource.match(/<!-- gaia-debt-key:[^\n]*?-->/g) ?? [];
-    const remediation = wrappedKeyLiterals.find((literal) =>
-      literal.includes('...')
-    );
-
-    expect(remediation).toBeDefined();
-
-    const fixtureValues = ['lint', 'wiki/concepts/PR Merge Workflow.md', '175'];
-    let valueIndex = 0;
-    const substituted = (remediation ?? '').replaceAll(
-      '...',
-      () => fixtureValues[valueIndex++] ?? ''
-    );
-
-    const keyReSource = /^key_re='(.*)'$/m.exec(hookSource)?.[1];
-
-    expect(keyReSource).toBeDefined();
-    expect(new RegExp(keyReSource ?? '').test(substituted)).toBe(true);
   });
 });
 

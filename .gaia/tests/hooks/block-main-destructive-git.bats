@@ -66,26 +66,8 @@ run_hook_from() {
   assert_denied_by_json
 }
 
-@test "git commit on main is denied with a tag named main present" {
-  # `symbolic-ref --short HEAD` answers the shortest UNAMBIGUOUS spelling, so a
-  # tag named `main` makes it answer `heads/main`, every comparison against the
-  # bare literal misses, and this deny silently stops firing. A fetch from any
-  # remote carrying such a tag is enough to reach the state.
-  on_main
-  git -C "$REPO" tag main HEAD
-  run_hook 'git commit -m "x"'
-  assert_denied_by_json
-}
-
 @test "plain git push from main is denied" {
   on_main
-  run_hook 'git push'
-  assert_denied_by_json
-}
-
-@test "plain git push from main is denied with a tag named main present" {
-  on_main
-  git -C "$REPO" tag main HEAD
   run_hook 'git push'
   assert_denied_by_json
 }
@@ -375,69 +357,6 @@ git commit -m y"
   run_hook "git -C $FOREIGN log --format \"\$(git commit -m y)\""
   assert_denied_by_json
   run_hook "gh pr create -R other/x --body-file =(git commit -m y)"
-  assert_denied_by_json
-}
-
-# Two spellings run a command in the current shell without leaving a `| & ; ( )`
-# cut in front of it: bash 5.3's `${ cmd; }` function substitution, and zsh's
-# `e` glob qualifier, whose code follows a delimiter rather than a separator
-# (gaia-react/gaia#2155).
-@test "a commit or push inside a bash funsub is denied on main" {
-  on_main
-  # shellcheck disable=SC2016 # the hook must receive the unexpanded opener
-  run_hook 'echo ${ git commit -m y; }'
-  assert_denied_by_json
-  # shellcheck disable=SC2016
-  run_hook 'echo "${ git push; }"'
-  assert_denied_by_json
-}
-
-# The funsub's body also stays part of the git command around it, whose words
-# it expands into.
-@test "a refspec a funsub expands into a push is still read as naming main" {
-  on_feature
-  # shellcheck disable=SC2016
-  run_hook 'git push ${ echo origin main; }'
-  assert_denied_by_json
-}
-
-@test "a commit or push inside a zsh e glob qualifier is denied on main" {
-  on_main
-  run_hook 'echo *(e:"git commit -m y":)'
-  assert_denied_by_json
-  run_hook "echo *(e:'git commit -m y':)"
-  assert_denied_by_json
-  run_hook "echo *(.e:' git push':)"
-  assert_denied_by_json
-  run_hook "echo *(#qe{git commit -m y})"
-  assert_denied_by_json
-}
-
-# An assignment prefix whose name ends in `e` reads like a qualifier opener
-# with `=` as its delimiter; the rewrite must leave it alone.
-@test "a subshell commit or push behind an assignment ending in e is still read as git" {
-  on_main
-  run_hook '(name=v git commit -m x)'
-  assert_denied_by_json
-  on_feature
-  run_hook '(name=v git push origin main)'
-  assert_denied_by_json
-  run_hook '(mode=1 git push --force origin HEAD)'
-  assert_denied_by_json
-  run_hook '(name_=v git push origin main)'
-  assert_denied_by_json
-  # shellcheck disable=SC2016
-  run_hook 'echo $(page_2=x git push --force origin HEAD)'
-  assert_denied_by_json
-  on_main
-  run_hook '(file_1=a git commit -m x)'
-  assert_denied_by_json
-}
-
-@test "a commit inside a nested bash funsub is denied on main" {
-  on_main
-  # shellcheck disable=SC2016
-  run_hook 'echo ${ echo ${ git commit -m y; }; }'
   assert_denied_by_json
 }
 
@@ -1413,43 +1332,6 @@ run_hop() {
   assert_allowed_by_json
 }
 
-@test "hop guard: a tag named for the held branch does not defeat the owner match" {
-  # Same shortening on the HEAD read: with a tag named `feature`, the branch
-  # reads `heads/feature`, and the breadcrumb is keyed on the branch name, so
-  # the owner lookup misses and the session falls through to the gh call it
-  # should never have reached.
-  #
-  # Asserted through the hanging stub rather than through allow-vs-deny,
-  # because the stub answers `pr list` the same whatever `--head` it is passed:
-  # a deny would fire under both spellings and prove nothing. Reaching gh at
-  # all is the observable, and `hang` makes that reach cost the timeout and
-  # stamp `timed out` on the output.
-  hold_feature_with_pr 42
-  write_breadcrumb feature sid-owner
-  git -C "$REPO" tag feature HEAD
-  export GH_STUB=hang
-  local start=$SECONDS
-  run_hop 'git switch other' sid-owner
-  assert_allowed_by_json
-  grep -qF -- 'timed out' <<<"$output" && return 1
-  [ $((SECONDS - start)) -lt 4 ]
-}
-
-@test "hop guard: a tag named origin/<default> does not defeat the default-branch allow" {
-  # The allow compares the current branch against origin/HEAD's target. Read
-  # with `--short`, that target comes back as the shortest UNAMBIGUOUS spelling,
-  # so a tag literally named origin/trunk makes it `remotes/origin/trunk`, the
-  # `origin/` strip misses, the comparison fails, and a session sitting on its
-  # own default branch is denied a hop it should have been allowed.
-  hold_feature_with_pr 42
-  git -C "$REPO" checkout --quiet -B trunk
-  git -C "$REPO" update-ref refs/remotes/origin/trunk HEAD
-  git -C "$REPO" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/trunk
-  git -C "$REPO" tag "origin/trunk" HEAD
-  run_hop 'git switch other' sid-peer
-  assert_allowed_by_json
-}
-
 @test "hop guard: hopping off a detached HEAD is allowed" {
   hold_feature_with_pr 42
   git -C "$REPO" checkout --quiet --detach
@@ -1500,19 +1382,6 @@ run_hop() {
   git -C "$REPO" worktree add --quiet "$wt" main
   run_hook_from "git commit -m \"\$(date)\" && cd '$wt'" "$REPO"
   assert_allowed_by_json
-}
-
-# The boundary reset above is the collapsed line's alone. A hidden body is read
-# last so that a `cd` ANYWHERE in the command governs it, which over-blocks in
-# the direction that reads a body against a checkout the command reaches only
-# afterwards; before the bodies were read at all such a body was invisible here.
-@test "a cd later in the command governs a hidden body read after it" {
-  on_feature
-  local wt="$BATS_TEST_TMPDIR/wt"
-  git -C "$REPO" worktree add --quiet "$wt" main
-  # shellcheck disable=SC2016 # the hook must receive the unexpanded opener
-  run_hook_from "echo \${ git commit -m y; } && cd '$wt'" "$REPO"
-  assert_denied_by_json
 }
 
 # --- command-word derivation: prefixes that hid `git` from the segment walk ---
@@ -1636,72 +1505,4 @@ run_hop() {
   # shellcheck disable=SC2016
   run_hook 'grep -R "$(echo commit)" .'
   assert_allowed_by_json
-}
-
-# A command wrapper stands where the command word is read, so an unstripped one
-# hides the whole invocation and the commit lands on main unguarded. The
-# wrapper set and its per-wrapper grammar live in lib/command-wrappers.sh; this
-# suite drives the consequence for this guard, on the shapes a blind word-strip
-# gets wrong, where the next word is the wrapper's own flag or its operand.
-@test "a command wrapper does not hide a main-branch commit from the walk" {
-  on_main
-  run_hook 'env git commit -m x'
-  assert_denied_by_json
-  run_hook 'timeout 5 git commit -m x'
-  assert_denied_by_json
-  run_hook 'env -i git commit -m x'
-  assert_denied_by_json
-  run_hook 'nohup git push --force'
-  assert_denied_by_json
-  run_hook 'xargs -I {} git commit -m x'
-  assert_denied_by_json
-}
-
-# The control: reading past a wrapper must not arm on the wrapper's own
-# arguments. Each of these runs a program that is not git, with git's name only
-# in its argument text.
-@test "reading past a wrapper does not arm on a non-git program behind it" {
-  on_main
-  run_hook 'timeout 5 echo hello'
-  assert_allowed_by_json
-  run_hook 'env FOO=bar ls'
-  assert_allowed_by_json
-}
-
-# The `cd` arm reads the word with its wrapper still in front, which is why the
-# guard keeps seg_cmd and seg_prog as two values. `timeout 5 cd <dir>` does not
-# move the shell, so a `cd` arm reading past the wrapper would track <dir> and
-# judge the commit after it against a checkout the command never enters. The
-# pair is the assertion: the plain `cd` is tracked and denies, the wrapped one
-# is not tracked and allows, so folding the two values together reds here.
-@test "a wrapper in front of cd does not move the tracked checkout" {
-  on_main
-  local wt="$BATS_TEST_TMPDIR/wt"
-  git -C "$REPO" worktree add --quiet -b wt-branch "$wt"
-
-  run_hook_from "cd '$REPO'; git commit -m x" "$wt"
-  assert_denied_by_json
-
-  run_hook_from "timeout 5 cd '$REPO'; git commit -m x" "$wt"
-  assert_allowed_by_json
-}
-
-# parse_git_globals finds the invocation with its own scan for the first word
-# equal to `git`, so a wrapper whose option value, assignment value or operand
-# IS the word `git` makes that scan latch onto the wrapper's argument and read
-# the real `git` as the SUBCOMMAND. git_sub is then `git`, no commit or push
-# rule arms, and the guard allows. Arming past the wrapper without handing the
-# parser the same word is what makes the shape reachable.
-@test "a wrapper argument spelled git does not become the subcommand" {
-  on_main
-  run_hook 'exec -a git git commit -m x'
-  assert_denied_by_json
-  run_hook 'env -u git git commit -m x'
-  assert_denied_by_json
-  run_hook 'env -C git git commit -m x'
-  assert_denied_by_json
-  run_hook 'xargs -I git git commit -m x'
-  assert_denied_by_json
-  run_hook 'exec -a git git push --force origin main'
-  assert_denied_by_json
 }

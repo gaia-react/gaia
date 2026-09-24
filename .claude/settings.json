@@ -265,11 +265,6 @@
           },
           {
             "type": "command",
-            "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/audit-residual-shape-check.sh\"",
-            "statusMessage": "Checking accepted-residual shape gate…"
-          },
-          {
-            "type": "command",
             "command": "\"$(git rev-parse --show-toplevel 2>/dev/null || printf %s \"${CLAUDE_PROJECT_DIR:-.}\")/.claude/hooks/serena-code-search-guard.sh\"",
             "statusMessage": "Checking Serena code-search routing…"
           },

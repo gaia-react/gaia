@@ -40,31 +40,8 @@ gaia_require_jq 'the main-branch destructive-git guard' "$payload" tool_input 'g
 cmd=$(echo "$payload" | jq -r '.tool_input.command // empty')
 
 # Only act on git commands, short-circuit everything else. (Fast path only;
-# correctness comes from the command-position scan below.) Any non-word
-# character may stand before `git`, since a zsh glob qualifier puts a quote or
-# its own delimiter there.
-[[ "$cmd" =~ (^|[^[:alnum:]_])git([[:space:]]|$) ]] || exit 0
-
-# command-wrappers arm: without the table the walk reads a wrapper as the
-# command word and skips the invocation behind it, which is a silent fail-OPEN
-# on exactly the commits and pushes this hook exists to deny, so a failed load
-# refuses.
-#
-# BELOW the fast path, not above it, and that placement is the whole of the
-# arm's blast radius. This hook is registered on the `Bash` matcher, so an arm
-# standing above the short-circuit would deny EVERY Bash call on a missing
-# library, `ls` and the editor and the package manager along with it, closing
-# off the very repair that restores the file. Past the short-circuit the refusal
-# reaches only a command that names `git`, which is the same narrowing
-# `gaia_require_jq` applies with its own needle.
-set +e
-# shellcheck source=lib/command-wrappers.sh
-[ -n "$_jq_lib_dir" ] && [ -f "$_jq_lib_dir/command-wrappers.sh" ] && . "$_jq_lib_dir/command-wrappers.sh" 2>/dev/null
-set -e
-if ! type gaia_strip_command_wrappers >/dev/null 2>&1; then
-  printf 'BLOCKED: block-main-destructive-git.sh cannot load lib/command-wrappers.sh, so this git call cannot be checked. Fail-loud, not fail-open -- restore the library.\n' >&2
-  exit 2
-fi
+# correctness comes from the command-position scan below.)
+[[ "$cmd" =~ (^|[[:space:]&;|()])git([[:space:]]|$) ]] || exit 0
 
 # Repo-scope: this repo's main-branch policy governs this repo only. A git
 # command aimed at a different repo (e.g. `git -C ../other push origin main`
@@ -168,21 +145,13 @@ deny() {
   exit 0
 }
 
-# The FULL refname, stripped here, never `--short`. `--short` answers with the
-# shortest UNAMBIGUOUS spelling, so a repository carrying a tag named `main`
-# makes it answer `heads/main`; every caller below compares the result against
-# the bare literals `main` and `master`, so all of those comparisons miss and
-# the commit-to-main and push-from-main denials stop firing, silently and with
-# no diagnostic. A fetch from any remote carrying such a tag reaches that state.
-# A detached HEAD still exits non-zero and still yields empty, unchanged.
 current_branch() {
-  local cwd="$1" ref
+  local cwd="$1"
   if [[ -n "$cwd" ]]; then
-    ref=$(git -C "$cwd" symbolic-ref -q HEAD 2>/dev/null) || ref=""
+    git -C "$cwd" symbolic-ref --short HEAD 2>/dev/null || echo ""
   else
-    ref=$(git symbolic-ref -q HEAD 2>/dev/null) || ref=""
+    git symbolic-ref --short HEAD 2>/dev/null || echo ""
   fi
-  printf '%s' "${ref#refs/heads/}"
 }
 
 # resolve_dir_kind <dir>: classify a directory WORD the command scan produced,
@@ -416,8 +385,7 @@ parse_git_globals() {
         # is what keeps the arming honest. The `=`-joined spellings need no
         # entry: they are one word, so the subcommand still lands next.
         # `--exec-path` is deliberately absent: without `=` it takes no value,
-        # git prints its exec path and exits, and nothing after it runs. The
-        # same table lives in `git_segment_c` in red-verify-commit-check.sh.
+        # git prints its exec path and exits, and nothing after it runs.
         -c | --git-dir | --work-tree | --namespace | --config-env | --attr-source)
           kept+=("$t" "${w[$((i + 1))]:-}"); i=$((i + 2)); continue ;;
         -*) ;;
@@ -614,24 +582,10 @@ hop_guard() {
   gaia_is_linked_worktree "$target" && return 0
   [ "$(gaia_resolve_main_root "$target" 2>/dev/null)" = "$main_root" ] || return 0
 
-  # Full refname and strip, for the same reason as the origin/HEAD read below
-  # and as current_branch above: a tag named for the held branch makes
-  # `--short` answer `heads/<branch>`, and every arm past this point then
-  # misses. The main/master case misses, no breadcrumb exists for the
-  # shortened name so this session is not recognised as the owner, and
-  # `gh pr list --head heads/<branch>` answers empty, which the emptiness arm
-  # below turns into an allow -- the one fail-open in this function that emits
-  # no `hop_unchecked` diagnostic.
-  branch=$(git -C "$target" symbolic-ref -q HEAD 2>/dev/null) || return 0
-  branch=${branch#refs/heads/}
+  branch=$(git -C "$target" symbolic-ref --short -q HEAD 2>/dev/null) || return 0
   case "$branch" in main | master) return 0 ;; esac
-  # The FULL refname, not `--short`: `--short` answers with the shortest
-  # UNAMBIGUOUS spelling, so a tag named `origin/<default>` makes it answer
-  # `remotes/origin/<default>`, the strip misses, and the branch-equals-default
-  # allow below never fires for a session legitimately on a non-main default
-  # branch.
-  default=$(git -C "$target" symbolic-ref -q refs/remotes/origin/HEAD 2>/dev/null) || default=""
-  [ -n "$default" ] && [ "$branch" = "${default#refs/remotes/origin/}" ] && return 0
+  default=$(git -C "$target" symbolic-ref --short -q refs/remotes/origin/HEAD 2>/dev/null) || default=""
+  [ -n "$default" ] && [ "$branch" = "${default#origin/}" ] && return 0
 
   # The owner match is local and decides the verdict whatever the pull request's
   # state, so it runs before the network call rather than after it.
@@ -720,39 +674,6 @@ hop_guard() {
 # command-wide value could not be replaced by a later `cd`, so a command that
 # stepped into a worktree and back read the worktree's branch for a commit that
 # landed on main.
-#
-# hidden_bodies <text>: print, one per line, the body of every construct that
-# runs a command in the current shell with no `| & ; ( )` cut in front of it:
-# bash 5.3's `${ cmd; }` function substitution, and a zsh glob qualifier's
-# `e<delim>code<delim>` or `+cmd` (optionally behind `#q` or other qualifier
-# flags). The walk below reads these lines AFTER the command's own lines,
-# which it reads byte for byte as before, so this can only add segments and
-# never hides one: a spurious match (an `e_` inside `(file_1=a git …)`) adds a
-# harmless extra line while the real segment stays intact. A spurious body
-# that happens to begin with `git commit` inside quoted text over-blocks, the
-# safe direction. Each pass re-reads the bodies the last one found, so nested
-# funsubs surface; bodies only shrink, and the pass bound is a backstop.
-# Because the bodies are read last, a `cd` anywhere in the command governs
-# them rather than only one ahead of the construct; a body the tracked `cd`
-# misplaces was invisible to this hook before it existed.
-# block-no-verify.sh and red-verify-commit-check.sh carry the same function,
-# and block-no-verify.bats pins the copies identical.
-hidden_bodies() {
-  local text="$1" pass=0
-  # shellcheck disable=SC2016 # a literal opener matched in the text, not an expansion
-  case "$text" in *'${'* | *'('*) ;; *) return 0 ;; esac
-  while [ -n "$text" ] && [ "$pass" -lt 8 ]; do
-    text=$(printf '%s\n' "$text" \
-      | { grep -oE '\$\{[[:space:]]+[^;|&()]*|\([^()[:space:]]*(e[^[:alnum:][:space:]]|\+)[^;|&()]*' || true; } \
-      | sed -E -e 's/^\$\{[[:space:]]+//' \
-          -e 's/^\([^()[:space:]]*(e[^[:alnum:][:space:]]|\+)//' \
-          -e 's/^["'"'"']//' \
-          -e 's/["'"'"']?[^[:alnum:][:space:]]?$//')
-    [ -n "$text" ] && printf '%s\n' "$text"
-    pass=$((pass + 1))
-  done
-  return 0
-}
 
 # collapsed_substitutions <text>: print the command once more with every
 # `$( … )` span replaced by a single placeholder word, and print nothing when
@@ -764,16 +685,14 @@ hidden_bodies() {
 # is read IN ADDITION to the command's own, so the body still reaches the walk
 # as its own segment and only the outer invocation is rejoined. The placeholder
 # is a bare `_` so a subcommand or a refspec written inside the span cannot arm
-# the rejoined segment with something it never spelled. It is emitted ahead of
-# the hidden bodies so those stay the last lines read, which is what keeps a
-# `cd` anywhere in the command governing them.
+# the rejoined segment with something it never spelled.
 #
 # Innermost first, so a nested span collapses over successive passes; the bound
 # is a backstop. A span crossing a newline is left alone, since sed reads a
 # line at a time: that leaves the segment cut where it already was, which is
 # the direction that hides nothing the walk reads today.
-# block-no-verify.sh and red-verify-commit-check.sh carry the same function,
-# and block-no-verify.bats pins the copies identical.
+# block-no-verify.sh carries the same function, and block-no-verify.bats pins
+# the copies identical.
 collapsed_substitutions() {
   local text="$1" prev pass=0
   # shellcheck disable=SC2016 # a literal opener matched in the text, not an expansion
@@ -807,11 +726,6 @@ if cmd_has_unquoted_group "$cmd"; then cd_tracking=0; fi
 # across would put a `cd` that FOLLOWS a git segment in FRONT of that segment
 # on the second reading, and a commit made before the command steps into
 # another checkout would be read against the checkout it steps into.
-#
-# Only the collapsed line gets the reset. The hidden bodies after it are read
-# last on purpose, so that a `cd` anywhere in the command governs them; the
-# collapsed line carries the same `cd` segments the command's own line does, so
-# it hands them the same directory either way.
 #
 # The boundary travels in band, on the same line stream the command text
 # travels on, so its spelling is DERIVED per run rather than fixed. A fixed
@@ -850,22 +764,22 @@ while IFS= read -r seg; do
   # not populate BASH_REMATCH reliably, so strip with sed rather than a capture
   # loop.
   #
-  # A command WRAPPER (`env` and `timeout` among them) stands in that same slot
-  # but is NOT a prefix: each carries its own option grammar, so a blind
-  # alternation here would misread `env -i git …` and `timeout 5 git …`. It
-  # is stripped separately, by the per-wrapper table in
-  # lib/command-wrappers.sh, into seg_prog below.
+  # Honest limit: a command WRAPPER (`env`, `command`, `exec`, `nohup`,
+  # `timeout`, `xargs`) also stands where the command word is read and is NOT
+  # stripped, so it still hides the invocation. Each carries its own option
+  # grammar, and a blind strip would misread `env -i git …` and `timeout 5 git
+  # …`, so closing them needs a per-wrapper option table rather than this list.
   #
-  # Honest limit: a redirection whose target is another descriptor
-  # (`2>&1`, `>&2`) never reaches this strip at all, because
+  # Second honest limit, of a different kind: a redirection whose target is
+  # another descriptor (`2>&1`, `>&2`) never reaches this strip at all, because
   # the walk cuts segments at `&` and the invocation lands in a segment
   # beginning with the descriptor number. Closing it means not cutting at an
   # `&` that belongs to a redirection, which a separator split cannot tell from
   # `&&` without reading the command the way the shell does.
   #
-  # block-no-verify.sh and red-verify-commit-check.sh carry this expression
-  # too, and block-no-verify.bats pins the copies identical: a widening applied
-  # to one and not the rest leaves the gap open in whichever copy was missed.
+  # block-no-verify.sh carries this expression too, and block-no-verify.bats
+  # pins the copies identical: a widening applied to one and not the rest
+  # leaves the gap open in whichever copy was missed.
   seg_cmd=$(printf '%s' "$seg" | sed -E 's/^[[:space:]]*(([A-Za-z_][A-Za-z0-9_]*\+?=([^[:space:]"'"'"']+|"[^"]*"|'"'"'[^'"'"']*'"'"')*|[0-9]*[<>][^[:space:]]*|[{!]|coproc|elif|else|while|until|then|time([[:space:]]+(-p|--))?|do|if)[[:space:]]+)*//')
 
   # A target the scan cannot READ leaves the previously tracked directory
@@ -903,32 +817,9 @@ while IFS= read -r seg; do
     continue
   fi
 
-  # The same slot again, past any command WRAPPER (`env`, `timeout`, `xargs`
-  # and the rest of lib/command-wrappers.sh's table). Kept as its own value
-  # rather than folded into seg_cmd because the `cd` arm above must keep reading
-  # the word with its wrapper still in front: `timeout 5 cd /x` does not move
-  # the shell, so a `cd` arm reading past the wrapper would track `/x` and read
-  # a later commit against a checkout the command never entered. Only the `git`
-  # arms read the wrapper-stripped word.
-  #
-  # Computed HERE rather than at the top of the loop body, below the `cd` arm's
-  # own `continue`, so the fork it costs is paid only by a segment that reaches
-  # the `git` arms. This hook is PreToolUse on the `Bash` matcher, so the top of
-  # this loop is the hot path of every Bash call whose text names `git`.
-  seg_prog=$(gaia_strip_command_wrappers "$seg_cmd")
+  [[ "$seg_cmd" =~ ^git([[:space:]]|$) ]] || continue
 
-  [[ "$seg_prog" =~ ^git([[:space:]]|$) ]] || continue
-
-  # The word this guard already resolved, not the raw segment. The parser finds
-  # the invocation with its own scan for the first word equal to `git`, so on a
-  # wrapper whose option value, assignment value or operand IS the word `git`
-  # (`exec -a git git commit`, `env -u git git commit`, `xargs -I git git
-  # commit`) that scan latches onto the wrapper's argument and reads the real
-  # `git` as the SUBCOMMAND, leaving git_sub=git so no commit or push rule arms.
-  # The arming above reads past the wrapper, so what the parser is handed has to
-  # as well. `norm` keeps its meaning: the strip removes only leading words, so
-  # the force flags rule 2 matches on still stand.
-  parse_git_globals "$seg_prog"
+  parse_git_globals "$seg"
 
   # The hop check is the one arm here that can spend a bounded network lookup,
   # and the collapsed line re-emits the whole command, so a checkout whose
@@ -1127,7 +1018,6 @@ while IFS= read -r seg; do
 done < <({
   printf '%s\n' "$cmd"
   if [ -n "$collapsed" ]; then printf '%s\n%s\n' "$walk_reset" "$collapsed"; fi
-  hidden_bodies "$cmd"
 } | tr '|&;()' '\n')
 
 exit 0

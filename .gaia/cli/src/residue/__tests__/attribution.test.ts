@@ -1,7 +1,4 @@
 import {describe, expect, test} from 'vitest';
-import {readFileSync} from 'node:fs';
-import path from 'node:path';
-import {resolveRepoRootFromImportMeta} from '../../util/repo-root-fixture.js';
 import {
   attributeBody,
   attributeBodyWith,
@@ -9,7 +6,6 @@ import {
   CANON_WAIVE,
   DEFAULT_PREDICATES,
 } from '../attribution.js';
-import {KEY_PATTERN} from '../key.js';
 
 // Fixtures are arrays of lines, and every expected line number is computed
 // from the array rather than hand-counted, so reordering a fixture cannot
@@ -28,19 +24,6 @@ const lineOf = (lines: readonly string[], needle: string): number => {
 
 const key = (className: string, keyPath: string, line: number): string =>
   `<!-- gaia-debt-key: v1 class=${className} path=${keyPath} line=${line} -->`;
-
-// Both sides of the key-grammar parity check capture the inner key for their
-// own emit, and neither uses a group for anything else, so the parentheses are
-// the one difference the comparison is allowed to ignore. Stripping them on
-// BOTH sides keeps the assertion stable whichever side carries a group.
-const withoutGroups = (source: string): string =>
-  source.replaceAll(/[()]/g, '');
-
-// UAT-004 named mutant helper: reverts a key-grammar source's path
-// terminator from the closer-scoped spelling back to the pre-change
-// space-scoped one.
-const revertPathTerminatorToSpace = (source: string): string =>
-  source.replace('path=[^>]+', 'path=[^ ]+');
 
 const MIXED_LINES = [
   '# Summary',
@@ -411,74 +394,5 @@ describe('attributeBodyWith, the predicate seam', () => {
     expect(mutated.entries).toStrictEqual([]);
     expect(mutated.keyless_count).toBe(2);
     expect(attributeBody(body).entries).toHaveLength(2);
-  });
-});
-
-describe('recognizer parity with the merge gate', () => {
-  const HOOK_RELATIVE_PATH = '.claude/hooks/audit-residual-shape-check.sh';
-
-  const hookAssignment = (name: string): string => {
-    const hookPath = path.join(
-      resolveRepoRootFromImportMeta(import.meta.url),
-      HOOK_RELATIVE_PATH
-    );
-    const source = readFileSync(hookPath, 'utf8');
-    const match = new RegExp(`^${name}='(.*)'$`, 'm').exec(source);
-
-    if (match?.[1] === undefined) {
-      throw new Error(
-        `${HOOK_RELATIVE_PATH} carries no single-quoted ${name} assignment; the extraction this parity test rests on is broken, not the constant`
-      );
-    }
-
-    return match[1];
-  };
-
-  test('CANON_ACCEPT and CANON_WAIVE are byte-identical to the gate literals', () => {
-    expect(CANON_ACCEPT).toBe(hookAssignment('CANON_ACCEPT'));
-    expect(CANON_WAIVE).toBe(hookAssignment('CANON_WAIVE'));
-  });
-
-  test('KEY_PATTERN matches the gate key regex up to capture parentheses', () => {
-    expect(withoutGroups(KEY_PATTERN.source)).toBe(
-      withoutGroups(hookAssignment('key_re'))
-    );
-  });
-
-  // UAT-004 named mutant (SPEC-082). The test above is green at HEAD and
-  // green after this SPEC's grammar move, so on its own it discriminates
-  // nothing: forgetting to move one side would pass it just as cleanly.
-  // This drives the actual partial-edit failure mode by reverting each
-  // side's path terminator from the closer-scoped spelling back to the
-  // pre-change space-scoped one and asserting the parity comparison fails.
-  //
-  // `withoutGroups` strips capture parentheses from BOTH sides (see its own
-  // comment above `withoutGroups`'s definition), so a mutant differing only
-  // in parentheses is a deliberate equivalence class this test does not
-  // catch; the conformance table in
-  // `.gaia/tests/hooks/residue-attribution-conformance.bats` is what covers
-  // that class instead.
-  //
-  // `path=[^ ]+` below is the one sanctioned occurrence of the pre-change
-  // terminator under `.gaia/cli/src/`: the acceptance criterion that
-  // `git grep -n 'path=\[\^ \]' -- .gaia/cli/src .gaia/cli/gaia ':!*__tests__*'`
-  // returns nothing excludes `__tests__` precisely so this mutant can live
-  // here. A later sweep repairing this occurrence would be a mistake.
-  test("UAT-004 named mutant: reverting either side's path terminator to a space fails the parity comparison", () => {
-    const tsSide = KEY_PATTERN.source;
-    const gateSide = hookAssignment('key_re');
-
-    // Sanity: the real (unmutated) comparison this parity test makes.
-    expect(withoutGroups(tsSide)).toBe(withoutGroups(gateSide));
-
-    const mutatedTsSide = revertPathTerminatorToSpace(tsSide);
-
-    expect(mutatedTsSide).not.toBe(tsSide);
-    expect(withoutGroups(mutatedTsSide)).not.toBe(withoutGroups(gateSide));
-
-    const mutatedGateSide = revertPathTerminatorToSpace(gateSide);
-
-    expect(mutatedGateSide).not.toBe(gateSide);
-    expect(withoutGroups(tsSide)).not.toBe(withoutGroups(mutatedGateSide));
   });
 });

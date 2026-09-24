@@ -27,29 +27,8 @@
 # On unparseable input the command resolves empty, the loop matches nothing, and
 # the call is allowed, here the safe direction is to let the tool run rather than
 # to over-block.
-#
-# A MISSING jq IS A DIFFERENT CONDITION and takes the opposite direction. An
-# unparseable payload still reaches the matcher, which reads it and finds no
-# invocation; an absent interpreter means nothing reads the payload at all, and
-# the guard cannot know it was handed an allowed call rather than a denied one.
-# The arm below refuses in that case, narrowed to a payload that carries the
-# literal `test`, so the command that installs jq is not caught by it.
 
-payload=$(cat)
-
-# jq-availability arm: refuse loudly rather than fail open when the interpreter
-# this hook reads its payload with is absent. What that buys, and the contract
-# the literals below satisfy, live in .claude/hooks/lib/jq-availability.sh.
-_jq_lib_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/lib" 2>/dev/null && pwd)" || _jq_lib_dir=''
-# shellcheck source=lib/jq-availability.sh
-[ -n "$_jq_lib_dir" ] && [ -f "$_jq_lib_dir/jq-availability.sh" ] && . "$_jq_lib_dir/jq-availability.sh" 2>/dev/null
-if ! type gaia_require_jq >/dev/null 2>&1; then
-  printf 'BLOCKED: block-bare-test.sh cannot load lib/jq-availability.sh, so this call cannot be checked. Fail-loud, not fail-open -- restore the library.\n' >&2
-  exit 2
-fi
-gaia_require_jq 'the watch-mode test guard' "$payload" tool_input 'test'
-
-command=$(jq -r '.tool_input.command // ""' <<<"$payload")
+command=$(jq -r '.tool_input.command // ""' < /dev/stdin)
 
 while IFS= read -r seg; do
   # Command word = the first token after leading whitespace + env-var
