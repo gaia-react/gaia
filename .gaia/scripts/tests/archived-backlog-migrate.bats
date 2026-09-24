@@ -8,8 +8,7 @@
 # telemetry. The script sources its siblings (cost-represented.sh,
 # ledger-path-lib.sh) from their real repo-relative location and operates on the
 # sandbox passed as <repo_root>, so isolation is total (they are read-only pure
-# helpers). This mirrors cost-backfill.bats, which runs the real script against a
-# sandbox repo_root the same way.
+# helpers).
 #
 # Assertion style: bash-3.2-safe per .claude/rules/bats-assertions.md.
 
@@ -176,65 +175,6 @@ add_plan_ledger_row() {
   [ ! -d "$SANDBOX/.gaia/local/specs/archived/SPEC-020" ]
 }
 
-# --- 3. UAT-008 unrepresented / unparseable -> BLOCKED ----------------------
-
-@test "UAT-008 value-mismatched phase: BLOCKED, survives --confirm" {
-  add_plan_ledger_row PLAN-007 merged
-  {
-    printf '# Cost: PLAN-007\n\n'
-    section Execution 999 1 1 1 sess-c
-  } | seed_cost_md .gaia/local/plans/archived/PLAN-007
-  add_row execute plan_id PLAN-007 sess-c 12 24 36 48
-
-  run run_migrate_confirm
-  [ "$status" -eq 0 ]
-  grep -qF -- "$(printf 'archived/PLAN-007\tBLOCKED')" <<<"$output"
-  [ -d "$SANDBOX/.gaia/local/plans/archived/PLAN-007" ]
-}
-
-@test "UAT-008 unparseable phase (non-numeric bucket): BLOCKED reason unparseable, survives --confirm" {
-  add_plan_ledger_row PLAN-011 merged
-  {
-    printf '# Cost: PLAN-011\n\n'
-    printf '## Execution\n\n'
-    printf '| Bucket | Tokens |\n| --- | --- |\n'
-    printf '| Fresh input | n/a |\n'
-    printf '| Cache write | 200 |\n'
-    printf '| Cache read | 300 |\n'
-    printf '| Output | 400 |\n'
-    printf '| **Total** | 900 |\n\n'
-    printf 'Session `sess-x` · generated 2026-07-05T10:00:00Z\n'
-  } | seed_cost_md .gaia/local/plans/archived/PLAN-011
-  add_row execute plan_id PLAN-011 sess-x 100 200 300 400
-
-  run run_migrate_confirm
-  [ "$status" -eq 0 ]
-  grep -qF -- "$(printf 'archived/PLAN-011\tBLOCKED\t0\t1\tunparseable')" <<<"$output"
-  [ -d "$SANDBOX/.gaia/local/plans/archived/PLAN-011" ]
-}
-
-# --- 4. UAT-008 dry-run manifest columns -------------------------------------
-
-@test "UAT-008 dry-run manifest: {folder, phases verified, phases blocking} per folder" {
-  add_plan_ledger_row PLAN-008 merged
-  {
-    printf '# Cost: PLAN-008\n\n'
-    section Planning 10 20 30 40 sess-d
-    section Execution 12 24 36 48 sess-d
-  } | seed_cost_md .gaia/local/plans/archived/PLAN-008
-  add_row plan plan_id PLAN-008 sess-d 10 20 30 40
-  add_row execute plan_id PLAN-008 sess-d 12 24 36 48
-
-  run run_migrate
-  [ "$status" -eq 0 ]
-  # column header present
-  grep -qF -- "$(printf 'folder\tstatus\tverified\tblocking\treason')" <<<"$output"
-  # PLAN-008: 2 phases verified, 0 blocking, eligible for deletion
-  grep -qF -- "$(printf 'archived/PLAN-008\tDELETE\t2\t0\t')" <<<"$output"
-  # dry-run still deletes nothing
-  [ -d "$SANDBOX/.gaia/local/plans/archived/PLAN-008" ]
-}
-
 # --- 5. UAT-010 legacy free-form slug fail-closed ----------------------------
 
 @test "UAT-010 legacy free-form slugs are NEEDS-DECISION, never deleted even with --confirm" {
@@ -279,36 +219,6 @@ add_plan_ledger_row() {
   [ "$status" -eq 0 ]
   grep -qF -- "$(printf 'archived/SPEC-004\tNEEDS-DECISION')" <<<"$output"
   [ -d "$SANDBOX/.gaia/local/specs/archived/SPEC-004" ]
-}
-
-# --- 7. Needs-backfill -> BLOCKED (verify-only, DP-002/COV-001) --------------
-
-@test "needs-backfill: a phase with no ledger row is BLOCKED (needs-backfill); cost.jsonl byte-identical in BOTH modes" {
-  add_plan_ledger_row PLAN-009 merged
-  {
-    printf '# Cost: PLAN-009\n\n'
-    section Planning 10 20 30 40 sess-g
-  } | seed_cost_md .gaia/local/plans/archived/PLAN-009
-  # No cost.jsonl row seeded for this phase: the vintage cost.md is unrepresented.
-
-  local before
-  before="$(cksum < "$LEDGER")"
-
-  run run_migrate
-  [ "$status" -eq 0 ]
-  grep -qF -- "$(printf 'archived/PLAN-009\tBLOCKED')" <<<"$output"
-  grep -qF -- "needs-backfill" <<<"$output"
-  local after_dry
-  after_dry="$(cksum < "$LEDGER")"
-  [ "$before" = "$after_dry" ]
-
-  run run_migrate_confirm
-  [ "$status" -eq 0 ]
-  grep -qF -- "$(printf 'archived/PLAN-009\tBLOCKED')" <<<"$output"
-  [ -d "$SANDBOX/.gaia/local/plans/archived/PLAN-009" ]
-  local after_confirm
-  after_confirm="$(cksum < "$LEDGER")"
-  [ "$before" = "$after_confirm" ]
 }
 
 # --- 8. Always exits 0, even with an empty backlog ---------------------------

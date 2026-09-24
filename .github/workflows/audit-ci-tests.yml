@@ -221,17 +221,6 @@ jobs:
               - deleted: 'wiki/.state.json'
               - '.gitattributes'
               - '**/.gitattributes'
-              # debt-origin-contract.bats (.gaia/scripts/tests/) asserts the
-              # tech-debt rollout command is byte-identical between its two
-              # homes, one of which is CHANGELOG.md, so that file's CONTENT is a
-              # source this suite guards rather than a file it merely mentions.
-              # It matches nothing else here, so without this line a
-              # CHANGELOG-only edit to that fence -- trimming the entry, dropping
-              # the --limit that keeps the sweep off a default page size -- would
-              # report `code=false`, skip every bats step, and green the job
-              # having run that comparison zero times. Same test-source pairing
-              # as code-review-audit.yml above.
-              - 'CHANGELOG.md'
               # shell-lint.bats (.gaia/scripts/tests/) asserts the wiring of the
               # local shell gate .gaia/tests/shell-lint.sh -- its .husky/*
               # discovery pass and its lint-hook-array-guard.sh invocation. The
@@ -255,8 +244,8 @@ jobs:
               - '.gaia/tests/bats-shards.sh'
               # install-bats.sh is what the two install steps below call.
               # Listed here for the `code` output; it is ALSO required in
-              # `sandbox:` below, because that output reaches no `.sh` outside
-              # `.gaia/tests/sandbox/` and the sandbox leg's own install step
+              # `sandbox:` below, because that output names only the files the
+              # sandbox suite reads and the sandbox leg's own install step
               # calls this script too. Without this line here, an edit to the
               # pinned bats version or digest would report `code=false` and
               # skip every non-sandbox leg's install.
@@ -679,7 +668,7 @@ jobs:
       # preinstall.
       #
       # zsh backs four suites under .gaia/scripts/tests/ (audit-key-lib,
-      # main-only-lib, debt-origin-lib, audit-window-lib), and those `skip`
+      # main-only-lib, audit-window-lib, branch-name-lib), and those `skip`
       # SILENTLY when it is absent, so its absence looks identical to a clean
       # tree rather than reporting red. That silent-skip hazard is the whole
       # reason the apt step below names the legs it runs on rather than being

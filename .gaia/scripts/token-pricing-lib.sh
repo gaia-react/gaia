@@ -68,140 +68,6 @@ gaia_load_rate_table() {
   return 1
 }
 
-# The machine-local rate overlay. The shipped table is manifest class `owned`,
-# so a local write into it is either overwritten by the next /update-gaia or
-# becomes a conflict patch on every release thereafter. .gaia/local/ is
-# gitignored and holds no manifest paths, so an overlay there survives a release
-# untouched. It must never be registered in .gaia/manifest.json.
-#
-# Resolved against the MAIN checkout, never the ambient one. Being gitignored is
-# exactly what makes the overlay a main-checkout file: a linked worktree reaches
-# it only through the provisioned .gaia/local symlink, so an ambient toplevel
-# prices a worktree run off the shipped table alone whenever that link is absent
-# (a plain `git worktree add`, or a failed link), silently and with no unpriced
-# marker. gaia_resolve_main_root answers for the tree owning git's common
-# directory from anywhere, so the answer holds whether or not provisioning ran.
-gaia_resolve_rate_overlay() {
-  local script_dir main_root errexit_was
-  script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-  # Suspend errexit across the load, then RESTORE WHAT WAS THERE. A copy that is
-  # present but unparseable abandons the shell AT the source, and this library is
-  # sourced by callers that deliberately run without errexit, so arming it
-  # unconditionally would kill them at their next non-zero command. Same idiom,
-  # and the same reasoning, as gaia_gh_artifact_cache_dir.
-  errexit_was=0
-  case $- in *e*) errexit_was=1 ;; esac
-  set +e
-  # shellcheck source=.gaia/scripts/main-root-lib.sh
-  source "$script_dir/main-root-lib.sh" 2>/dev/null
-  if [ "$errexit_was" = 1 ]; then set -e; fi
-
-  # The resolver's own stderr stays suppressed, and an unavailable copy leaves
-  # gaia_resolve_main_root undefined, which lands on the same non-zero return. No
-  # git repository at all is the ordinary case here, and every caller already
-  # degrades to the shipped table on a non-zero return without a word.
-  main_root="$(gaia_resolve_main_root 2>/dev/null)" || return 1
-  printf '%s' "$main_root/.gaia/local/token-rates.local.json"
-}
-
-# gaia_apply_rate_overlay <shipped_table_json> <rate_table_override>
-#
-# ASSIGNS TO GLOBALS, it does not print. A command substitution would run it in
-# a subshell and the overlay metadata below would not survive the return, so
-# every caller invokes it bare:
-#
-#   GAIA_EFFECTIVE_RATES      the table to price with; the shipped one verbatim
-#                             whenever the overlay does not apply
-#   GAIA_RATE_OVERLAY_PATH    the overlay file, only when it contributed
-#   GAIA_RATE_OVERLAY_MODELS  space-separated model keys it supplied, else empty.
-#                             Non-empty is the single "an overlay is active" test
-#                             every other surface reads.
-#
-# Never fails the caller and never yields an empty table: every degrade lands on
-# the shipped table, which is the one property gaia-react/gaia#1089 Layer 2 states outright.
-gaia_apply_rate_overlay() {
-  local shipped="$1" override="${2:-}"
-  local overlay_path overlay keys merged
-
-  GAIA_EFFECTIVE_RATES="$shipped"
-  GAIA_RATE_OVERLAY_PATH=""
-  GAIA_RATE_OVERLAY_MODELS=""
-
-  # An explicit --rate-table is a deliberate run against a named table, and both
-  # consumers document it as a test seam. A fixture table that silently absorbs
-  # whatever sits in the developer's .gaia/local is machine-dependent, so the
-  # flag takes that table and nothing else.
-  [[ -n "$override" ]] && return 0
-
-  overlay_path="$(gaia_resolve_rate_overlay)" || return 0
-  # Absent is the ordinary case and says nothing on stderr. Present-but-broken is
-  # not: the operator hand-wrote that file expecting it to take effect, so a
-  # silent ignore would strand them re-editing a file that is already being
-  # skipped.
-  [[ -f "$overlay_path" ]] || return 0
-
-  if ! overlay="$(gaia_load_rate_table "$overlay_path")"; then
-    printf 'token-rates: local overlay unreadable or malformed; pricing from the shipped table alone: %s\n' \
-      "$overlay_path" >&2
-    return 0
-  fi
-
-  # `gaia_load_rate_table` only asserts `has("models")`, so an overlay whose
-  # `models` is a string, or whose model value is not a usable window array, gets
-  # past it. Every such shape has to be REFUSED here rather than merged:
-  #   - a non-object `models` raises inside jq, and swallowing that with
-  #     `|| true` would drop the overlay down the same silent path an empty one
-  #     takes, contradicting what this function promises two comments up.
-  #   - a model whose value is not an array merges cleanly and is then announced
-  #     as active while pricing nothing, which is a confidently-wrong figure
-  #     wearing an "overlay is working" label.
-  #   - a model whose array is EMPTY wears the same label: a model key replaces
-  #     that model's whole window array, so `[]` leaves rate_window nothing to
-  #     select and the model prices at zero on a readout announcing the overlay
-  #     as active.
-  #   - a model whose array holds non-objects (`[7,35]`, the bare rate pair an
-  #     operator reaches for) merges and then raises inside rate_window at
-  #     pricing time, where the consumer reports a failure whose stated reason
-  #     never names the overlay.
-  # Checking the array's CONTENTS rather than only its type covers all four, and
-  # it runs before the merge so a refusal costs nothing.
-  #
-  # Do not tighten further to require numeric `input`/`output`. token-tally.sh's
-  # `print_unpriced_remedy` emits those as strings on purpose, so an unedited
-  # paste degrades `dollars` to null instead of pricing the model at zero;
-  # refusing the entry outright would take that degrade with it.
-  if ! jq -e '(.models | type) == "object"
-              and ([.models[]] | all((type == "array")
-                                     and (length > 0)
-                                     and (all(.[]; type == "object"))))' >/dev/null 2>&1 <<<"$overlay"; then
-    printf 'token-rates: local overlay is malformed (models must be an object whose every value is a non-empty array of window objects); pricing from the shipped table alone: %s\n' \
-      "$overlay_path" >&2
-    return 0
-  fi
-
-  keys="$(jq -r '.models | keys_unsorted | join(" ")' <<<"$overlay" 2>/dev/null || true)"
-  [[ -z "$keys" ]] && return 0
-
-  # A model key replaces that model's WHOLE window array. rate_window takes
-  # `first` of an array filtered on effective_through, so the array's order is
-  # load-bearing (an intro window ahead of its open-ended successor) and merging
-  # windows within a model would have to re-derive it. cache_multipliers is
-  # deliberately not merged: it is a global property of the pricing model that a
-  # model launch does not move, and a partial override would null out siblings
-  # priced_row multiplies by.
-  merged="$(jq -c --argjson o "$overlay" '.models = ((.models // {}) + $o.models)' <<<"$shipped" 2>/dev/null || true)"
-  if [[ -z "$merged" ]]; then
-    printf 'token-rates: could not merge the local overlay; pricing from the shipped table alone: %s\n' \
-      "$overlay_path" >&2
-    return 0
-  fi
-
-  GAIA_EFFECTIVE_RATES="$merged"
-  GAIA_RATE_OVERLAY_PATH="$overlay_path"
-  GAIA_RATE_OVERLAY_MODELS="$keys"
-  return 0
-}
-
 gaia_hash16() {
   local out
   if out="$(shasum -a 256 2>/dev/null)"; then :;
@@ -212,23 +78,12 @@ gaia_hash16() {
   printf '%s' "${out:0:16}"
 }
 
-# The identity of the card a row was priced under, as `sha256:<16-hex>`.
-#
-# With no overlay active this is byte-for-byte the historical recipe, sha256 over
-# the shipped file's raw bytes, so an id minted today still compares against one
-# minted before the overlay existed. When the overlay DID contribute a model, its
-# bytes fold in: without that, a row priced under shipped+overlay would claim the
-# identity of the shipped table alone, and two rows priced under materially
-# different cards would be indistinguishable. That is the same class of silent
-# lie the overlay exists to remove, so the id has to move with the card.
+# The identity of the card a row was priced under, as `sha256:<16-hex>`: sha256
+# over the shipped file's raw bytes, truncated to 16 hex characters.
 gaia_rate_table_id() {
   local path="$1" h
   [[ -f "$path" ]] || return 1
-  if [[ -n "${GAIA_RATE_OVERLAY_MODELS:-}" && -n "${GAIA_RATE_OVERLAY_PATH:-}" && -f "${GAIA_RATE_OVERLAY_PATH}" ]]; then
-    h="$(cat "$path" "$GAIA_RATE_OVERLAY_PATH" | gaia_hash16)" || return 1
-  else
-    h="$(gaia_hash16 <"$path")" || return 1
-  fi
+  h="$(gaia_hash16 <"$path")" || return 1
   [[ -z "$h" ]] && return 1
   printf 'sha256:%s' "$h"
 }

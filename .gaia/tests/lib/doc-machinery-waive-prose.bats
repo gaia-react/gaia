@@ -668,26 +668,25 @@ setup() {
   printf '%s\n' "$section" | grep -qF -- 'under the heading `## Accepted residuals (recorded, not fixed)`' || return 1
 }
 
-# --- Group B: the four entry fields, at every carrying surface -------------
+# --- Group B: the three entry fields, at every carrying surface ------------
 # Mirrors Group 3. The digest-economics section states its accept-and-note
 # fields once, so a section-scoped grep is safe there. code-audit-
-# frontend.md states the same four field literals a second time, in the
+# frontend.md states the same three field literals a second time, in the
 # pre-existing waive instruction that shares section B-mw's span with the
 # new accept-and-note paragraph; a section-scoped grep there would pass on
 # the waive text alone and miss a mutation of the new paragraph, so that
 # assertion is scoped to the accept-and-note paragraph by its own lead
 # sentence instead.
 
-@test "Group B: the digest-economics section states all four accept-and-note entry fields" {
+@test "Group B: the digest-economics section states all three accept-and-note entry fields" {
   local section
   section="$(extract_section_or_fail "$WIKI" "^#### Applying the audit's own Suggestions: digest economics" '^#{3,4} ')" || return 1
   printf '%s\n' "$section" | grep -qF -- "file:line" || return 1
   printf '%s\n' "$section" | grep -qF -- "failure mode" || return 1
   printf '%s\n' "$section" | grep -qF -- "dedup key" || return 1
-  printf '%s\n' "$section" | grep -qF -- "provenance line" || return 1
 }
 
-@test "Group B: the B-mw accept-and-note paragraph states all four entry fields" {
+@test "Group B: the B-mw accept-and-note paragraph states all three entry fields" {
   local para
   para="$(extract_paragraph_from_lead "$FRONTEND" 'A sibling disposition, recorded the same way.')"
   [ -n "$para" ] || {
@@ -697,7 +696,6 @@ setup() {
   printf '%s\n' "$para" | grep -qF -- "file:line" || return 1
   printf '%s\n' "$para" | grep -qF -- "failure mode" || return 1
   printf '%s\n' "$para" | grep -qF -- "dedup key" || return 1
-  printf '%s\n' "$para" | grep -qF -- "provenance line" || return 1
 }
 
 # --- Group C: the two headings stay distinct --------------------------------
@@ -801,5 +799,5 @@ setup() {
 @test "Group H: section B-mw's waive instruction states the wrapped dedup-key grammar, at its own occurrence" {
   local section
   section="$(extract_section_or_fail "$FRONTEND" '^### B-mw\. Machinery-path waive' '^#{2,3} ')" || return 1
-  printf '%s\n' "$section" | grep -qF -- 'its dedup key in the wrapped `<!-- gaia-debt-key: … -->` form (`.claude/skills/file-tech-debt/SKILL.md`), and, on its own line immediately after the dedup key, the provenance line emitted the same way section E emits one' || return 1
+  printf '%s\n' "$section" | grep -qF -- 'and its dedup key in the wrapped `<!-- gaia-debt-key: … -->` form (`.claude/skills/file-tech-debt/SKILL.md`)' || return 1
 }

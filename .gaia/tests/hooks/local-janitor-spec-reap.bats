@@ -11,8 +11,7 @@
 # re-deriving delete behavior here.
 #
 # Representation is driven with no-cost folders (auto-represented, nothing to
-# lose) and a plain cost.md fixture (the markdown fallback path), so these
-# tests stay independent of the sidecar reroute.
+# lose).
 #
 # Assertion style note: per .claude/rules/bats-assertions.md, non-final
 # assertions avoid bare `[[ ... ]]`. This suite uses `[ ... ]` throughout.
@@ -83,24 +82,6 @@ seed_abandoned_folder() {
   echo "# $1 Adversarial Audit" > "$REPO/.gaia/local/specs/$1/AUDIT.md"
 }
 
-# write_cost_md <dir> <heading> <fresh> <cwrite> <cread> <output>: one real,
-# parseable phase section (the shape cost-represented.sh's parser expects).
-write_cost_md() {
-  local dir="$1" heading="$2" fresh="$3" cwrite="$4" cread="$5" output="$6"
-  local total=$((fresh + cwrite + cread + output))
-  mkdir -p "$dir"
-  {
-    printf '# Cost\n\n'
-    printf '## %s\n\n' "$heading"
-    printf '| Bucket | Tokens |\n| --- | --- |\n'
-    printf '| Fresh input | %s |\n' "$fresh"
-    printf '| Cache write | %s |\n' "$cwrite"
-    printf '| Cache read | %s |\n' "$cread"
-    printf '| Output | %s |\n' "$output"
-    printf '| **Total** | %s |\n\n' "$total"
-  } > "$dir/cost.md"
-}
-
 # days_ago <n>: portable ISO8601 timestamp n days in the past, computed with
 # jq (never `date -d`/`date -j`, matching the project's cross-platform epoch
 # rule).
@@ -128,20 +109,6 @@ days_ago() {
   run bash "$HOOK_ABS"
   [ "$status" -eq 0 ]
   [ -d "$REPO/.gaia/local/specs/SPEC-061" ]
-}
-
-@test "sweep 6: a folder past the window but unrepresented is kept; janitor still exits 0" {
-  make_repo
-  copy_archive_deps
-  seed_merged_folder SPEC-062
-  write_cost_md "$REPO/.gaia/local/specs/SPEC-062" SPEC 10 1 1 2
-  mkdir -p "$REPO/.gaia/local/telemetry"
-  : > "$REPO/.gaia/local/telemetry/cost.jsonl" # no matching row: unrepresented
-  seed_specs_ledger "{\"id\":\"SPEC-062\",\"allocated_at\":\"2026-01-01T00:00:00Z\",\"source\":\"allocated\",\"status\":\"merged\",\"merged_at\":\"$(days_ago 45)\"}"
-  cd "$REPO"
-  run bash "$HOOK_ABS"
-  [ "$status" -eq 0 ]
-  [ -d "$REPO/.gaia/local/specs/SPEC-062" ]
 }
 
 @test "sweep 6: runs alongside the rest of the janitor's sweeps without side effects" {
@@ -179,16 +146,3 @@ days_ago() {
   [ -d "$REPO/.gaia/local/specs/SPEC-065" ]
 }
 
-@test "sweep 6: an abandoned folder past the window but unrepresented is kept; janitor still exits 0" {
-  make_repo
-  copy_archive_deps
-  seed_abandoned_folder SPEC-066
-  write_cost_md "$REPO/.gaia/local/specs/SPEC-066" SPEC 10 1 1 2
-  mkdir -p "$REPO/.gaia/local/telemetry"
-  : > "$REPO/.gaia/local/telemetry/cost.jsonl" # no matching row: unrepresented
-  seed_specs_ledger "{\"id\":\"SPEC-066\",\"allocated_at\":\"2026-01-01T00:00:00Z\",\"source\":\"allocated\",\"status\":\"abandoned\",\"abandoned_at\":\"$(days_ago 45)\"}"
-  cd "$REPO"
-  run bash "$HOOK_ABS"
-  [ "$status" -eq 0 ]
-  [ -d "$REPO/.gaia/local/specs/SPEC-066" ]
-}

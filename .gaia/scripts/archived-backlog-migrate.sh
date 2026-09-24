@@ -25,7 +25,7 @@
 # The migration is verify-only. It reads cost.jsonl but never writes it and never
 # runs a backfill. A folder whose vintage cost.md phase has no matching ledger row
 # classifies BLOCKED with reason needs-backfill; recovering it is a separate human
-# step (run cost-backfill.sh whole-tree once, then re-run this migration).
+# step.
 #
 # Usage: archived-backlog-migrate.sh [<repo_root>] [--confirm] [--ledger <path>]
 #

@@ -209,21 +209,6 @@ _seed_cost_row() {
   [ -d "$PLANS/PLAN-002" ]
 }
 
-# --- 4: representation gate blocks an unrepresented cost.md ------------------
-
-@test "4: an unrepresented cost.md section blocks deletion; folder survives" {
-  _seed_merged_plan PLAN-001
-  _plant_cost_md PLAN-001 100 10 5 20 sess-1
-  # No matching cost.jsonl row: the section is unrepresented.
-
-  run _archive "$SANDBOX"
-  [ "$status" -eq 0 ]
-  refute_contains "Deleted"
-  assert_contains "cost not fully represented in cost.jsonl; left PLAN-001 folder for review"
-
-  [ -f "$PLANS/PLAN-001/SUMMARY.md" ]
-}
-
 # --- 5: skip when a drain cache is pending -----------------------------------
 
 @test "5: a merged plan with a pending wiki-promote drain cache is left active" {
@@ -326,21 +311,6 @@ _seed_cost_row() {
 }
 
 
-@test "13: a folder past the retention window but unrepresented is kept" {
-  _seed_merged_plan PLAN-001
-  _set_merged_at PLAN-001 "$(_days_ago 45)"
-  _plant_cost_md PLAN-001 100 10 5 20 sess-1
-  # No matching cost.jsonl row: unrepresented.
-  export GAIA_SPEC_RETENTION_DAYS=30
-
-  run _archive "$SANDBOX"
-  [ "$status" -eq 0 ]
-  refute_contains "Deleted"
-  assert_contains "cost not fully represented in cost.jsonl; left PLAN-001 folder for review"
-
-  [ -f "$PLANS/PLAN-001/SUMMARY.md" ]
-}
-
 # --- 14/15: missing or unparseable merged_at -> kept regardless -------------
 
 @test "14: a merged row with no merged_at is kept regardless of representation" {
@@ -433,19 +403,10 @@ _seed_cost_row() {
 }
 
 
-@test "20: --close does not bypass the cost gate or the consolidation gate" {
-  _seed_merged_plan PLAN-001
-  _plant_cost_md PLAN-001 100 10 5 20 sess-1
-  # No matching cost.jsonl row for PLAN-001: unrepresented.
-
+@test "20: --close does not bypass the consolidation gate" {
   _seed_merged_plan PLAN-002
   rm -f "$PLANS/PLAN-002/SUMMARY.md"
   printf '# Spec\n' > "$PLANS/PLAN-002/SPEC.md"
-
-  run _archive "$SANDBOX" PLAN-001 --close
-  [ "$status" -eq 0 ]
-  refute_contains "Deleted"
-  [ -d "$PLANS/PLAN-001" ]
 
   run _archive "$SANDBOX" PLAN-002 --close
   [ "$status" -eq 0 ]

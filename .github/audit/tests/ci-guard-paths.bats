@@ -584,7 +584,6 @@ Setup pnpm
 Setup Node
 Install dependencies
 Compute audit step timeout
-Resolve debt provenance
 Run code-review-audit (claude-code-action)
 Print audit progress breadcrumbs
 Status - audit aborted
@@ -614,7 +613,6 @@ Setup pnpm
 Setup Node
 Install dependencies
 Compute audit step timeout
-Resolve debt provenance
 Run code-review-audit (claude-code-action)
 Print audit progress breadcrumbs
 Commit and push self-heal
@@ -632,7 +630,6 @@ Setup pnpm
 Setup Node
 Install dependencies
 Compute audit step timeout
-Resolve debt provenance
 Run code-review-audit (claude-code-action)
 Print audit progress breadcrumbs
 Commit and push self-heal

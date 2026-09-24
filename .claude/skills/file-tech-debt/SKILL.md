@@ -114,87 +114,11 @@ The body-file is scratch, and this recipe is its only owner: nothing else reaps 
 
 **Two tool calls, not one.** A `PreToolUse` hook returns a single allow/deny decision for an entire Bash invocation before any of it reaches the shell, so a hook that denies the cleanup drops the create standing beside it too: no issue filed, and no output naming the cause. Splitting them keeps a denied cleanup from costing you the filing. One consequence for how the second call is written: shell variables do not survive between tool calls, so spell the path literally rather than reusing `$body_file`. Either spelling of it works, relative or absolute, and the destructive-command guard whitelists this directory both ways.
 
-## Provenance line
-
-Beside the dedup-key line, the issue body (or a waived finding's pull-request-body entry) carries a second HTML comment recording the branch the finding was surfaced from and the session that filed it, byte-for-byte in this form:
-
-```
-<!-- gaia-debt-key: v1 class=holistic/unclassified path=app/services/foo.ts line=42 -->
-<!-- gaia-debt-origin: branch=debt/1121-marker-sep mode=drain unit=1121 changed=1 head=a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2 session=00000000-0000-4000-8000-000000000000 -->
-```
-
-Both are HTML comments, so neither appears in the rendered issue. Fields are `key=value` pairs separated by single spaces, in the order above. The order is canonical for readability only: the pairs are self-describing, so a reader must not depend on position, and adding or removing a field breaks no reader.
-
-There is no version prefix, ever. The dedup key carries one because it is an identity that must match across time. Provenance matches nothing, so a version would imply a versioned contract and invite the lockstep discipline this design exists to avoid.
-
-The field table:
-
-| field | value | survives branch deletion |
-|---|---|---|
-| `branch` | the raw branch verbatim, or `unknown` | yes |
-| `mode` | one of `drain`, `plan`, `maintenance`, `adhoc`, `unknown` | yes |
-| `unit` | the issue numbers or plan/spec id encoded in the branch name, or `unknown` | yes |
-| `changed` | `0`, `1`, or `unknown` | yes |
-| `head` | the reviewed HEAD sha, or `unknown` | no |
-| `session` | the filing session's id, or `unknown` | yes |
-
-**`mode` and `unit` describe the branch, not the filer.** Both are derived from the branch name alone, by the convention table named below, so they record the branch the filing resolved against, an explicit branch a caller supplies, the pull request head ref in continuous integration, or otherwise the checkout's own branch, rather than the work the session was doing. Concurrent work in one checkout inherits that branch's stamp: a session filing a finding from a checkout parked on someone else's `debt/*` branch is stamped with that branch's unit. Do not read either field as authorship. Read `session` to tell one filing from another.
-
-**`session` describes the filer, not the branch.** It is the one field on this line read off the process rather than the checkout, from the `CLAUDE_CODE_SESSION_ID` the harness exports into a session's shell and every child of it inherits. Because no branch move reaches it, it is exactly the fact the branch-derived fields cannot carry: two sessions sharing one checkout agree on `branch`, `mode`, and `unit` and differ here, and one session filing from two checkouts differs there and agrees here. The failure it answers is not hypothetical, and not symmetrical: an inherited `unit` naming a *different live drain* is worse than an absent one, because a line of real-looking values is indistinguishable from a correct one to every reader, human or machine.
-
-It is not a flag, and deliberately so. `--branch` exists because a caller can legitimately know a better branch than the checkout does; there is no counterpart for the filer, and an override would let a caller restamp authorship. A route whose filing process carries no session id records `unknown` on the same terms as any other unresolved field. A value carrying whitespace is `unknown` too: these are space-delimited pairs, so a space inside a value would present as two fields, and the reserved set is `>` and `%` alone.
-
-**What `session` is not.** It identifies a session, not a person, and it does not survive as a lookup key: a session id is meaningful while its transcript is on the machine that produced it and is an opaque token afterwards. Its durable value is *discrimination*, telling two filings apart or grouping two as one filer's, which needs no lookup and works on any clone. Do not build a consumer that resolves an id to a session's contents and treat the failure to resolve as a data problem.
-
-**Reserved characters.** Two are percent-encoded in a value: `>`, because a git branch name may legally contain it and an unencoded one would terminate the HTML comment early and leak the remainder as visible text, and `%` itself, so the encoding is invertible and a reader can recover the exact branch name. `%` is encoded first, then `>`; that order is what makes the round trip exact. "Verbatim" above means the raw name after that reversible encoding, not a normalized or truncated one. This is the same reasoning `gaia_key_slug` applies in `.gaia/scripts/audit-key-lib.sh`, with a far smaller reserved set because this value is read by humans rather than used as a filename.
-
-**Why `head` is carried despite rotting.** While the commit is reachable it makes a cited `path:line` resolvable with `git show <sha>:<path>`, a partial mitigation for the line drift that makes older keys stale. Everything else on the line is a stored conclusion rather than a coordinate, so it stays readable after the branch is gone.
-
-**The convention table.** `mode` and `unit` come from GAIA's branch-naming convention, which `.gaia/scripts/branch-name-lib.sh` owns for every flow that creates a branch: its header carries the table, and `gaia_branch_classify` applies it after normalizing a worktree branch (`worktree-<name>` with `/` written as `+`) back to the name it was requested as. The stored `branch` field always keeps the raw name; normalization reaches the record only through `mode` and `unit`. This file does not restate the table: a new branch kind, or a new mode for an existing one, is a change to that library and its suite, not a new field and not a version bump. Any branch the table does not name, including `main` and hand-named `fix/`, `docs/`, and `feat/` work, is `adhoc`, because it encodes no unit in its name.
-
-When `branch` resolves to `unknown` (no explicit branch argument, no head-ref environment variable, and no current branch from git), `mode` and `unit` are also `unknown`, never `adhoc`. `adhoc` means a branch resolved and matched no row, a different fact from no branch resolving at all.
-
-**The derivation.** One shared helper, `.gaia/scripts/debt-origin-lib.sh`, owns the encoding and the line assembly, and classifies through `.gaia/scripts/branch-name-lib.sh`. Each route calls it once per finding, in the spelling its own surface gives. Bare:
-
-```bash
-origin="$(bash .gaia/scripts/debt-origin-lib.sh --changed "<0|1|unknown>" 2>/dev/null || true)"
-```
-
-It fails open throughout: each field it cannot resolve becomes the literal `unknown`, it exits zero regardless, and a caller never treats its output as a precondition.
-
-**The fail-open rule, stated as a rule.** Never block, fail, retry, or defer a filing or a waive because provenance is partial, absent, or malformed. If the helper prints nothing, omit the line and continue. Omitting the line is reserved for a route that predates provenance or for a helper that could not run: a working route must never omit the line as a way of expressing that nothing resolved, because a line of unknowns and no line at all must stay distinguishable.
-
-**One route cannot call it.** In continuous integration the audit agent's tool policy grants no shell for this helper, so the audit workflow resolves provenance in a step of its own, ahead of the agent, and writes the finished lines to disk for the agent to read. The agent never re-derives them and carries no prose copy of the rules. One implementation, not two.
-
-**The `changed` field, precisely.** It reports whether the cited path is in the pull request's fork-point changed-file set. Two nearer sets are explicitly wrong: not the filtered review scope (the frontend audit agent's own `changed` variable is pathspec-limited to TypeScript sources, so a finding on a non-TypeScript file the pull request touched would read `0`), and not the incremental audit base (the last cleared ancestor, which on a re-audit covers only the delta since the previous round, while the touched-file waive rule anchors on the whole-PR fork point). A route that does not already hold a fork-point set records `changed=unknown` and derives nothing. When the fork point does not resolve, `changed` is `unknown` and never `0`, because `0` asserts that the work did not touch the file and an unresolvable base asserts nothing.
-
-**The emitting routes:**
-
-| route | instruction surface | `changed` | `session` |
-|---|---|---|---|
-| audit agent disposition pipeline, local | `.claude/agents/code-audit-frontend.md` | resolved | resolved |
-| audit agent disposition pipeline, continuous integration | `.github/workflows/code-review-audit.yml` | resolved, by the workflow | `unknown` |
-| pre-merge orchestrator cross-remit disposition | `wiki/concepts/PR Merge Workflow.md` | resolved | resolved |
-| knowledge-audit filing block | `.claude/skills/gaia/references/audit.md` | `unknown` | resolved |
-| comprehensive-audit filing offer and direct human invocation | this file | `unknown` | resolved |
-| residue triage promote arm | `.claude/skills/gaia/references/residue.md` | `unknown` | resolved |
-
-The continuous-integration row is `unknown` by construction rather than by omission, and the construction is the step ordering **One route cannot call it** above already describes: a workflow step inherits no session id, so the pre-rendering step has nothing to read. Note what this does *not* rest on: the job itself does host a Claude Code session further down, so a step reordered to render provenance from inside the agent would start resolving one. Nothing is owed there today, and the two columns are unrelated, a route can resolve either one without the other.
-
-Known limitation: the routes with a reviewed diff run on the branch under review, so their `branch`, `mode`, and `unit` track that work. The routes with no reviewed diff run wherever the session happened to sit, so on those rows the branch-derived fields are the disposing agent's checkout and nothing more. `session` is the exception on every row that resolves it, because it is derived from the process rather than the checkout and so is unaffected by where the session happened to sit.
-
-**What the record does not answer.** It supports attribution, not causation. It says which branch a finding was surfaced from and which session filed it; it does not say either one caused the defect, and for a pre-existing defect found during a visit neither did. `session` sharpens the attribution half and adds nothing to the causal half. Overreading it is the failure mode to avoid.
-
-**Waived findings.** A finding recorded as waived rather than filed carries the same line, from the same helper, on its pull-request-body entry beside the dedup key already listed there. That entry is the waived finding's only durable surface: the disposition sidecar is gitignored, janitor-reaped, and dropped on the next digest rotation. The line is an HTML comment, so review-time visibility is unchanged. Note what this does not buy: `changed` does not separate the machinery waive from the touched-file waive, because a pull request fixing gate machinery is normally touching the machinery path it waives, so both arms usually read `changed=1`.
-
-**Ownership.** This file is the contract's sole owner. Every other route references it and restates neither the vocabulary nor the table; the table itself lives in `.gaia/scripts/branch-name-lib.sh`, not here. `.gaia/scripts/debt-origin-lib.sh` is the implementation of the contract rather than a second statement of it.
-
 ## 5. Issue body schema
 
 Build a self-contained issue body with these parts, in order:
 
 - The dedup-key comment line from step 1, present verbatim.
-- The provenance line (see "Provenance line" above), present verbatim, on its own line immediately after the dedup-key line and never merged into it.
 - The `file:line` location. The cited line must resolve to a real line in the named file, don't cite a location you haven't confirmed.
 - A concrete, non-empty description of the failure mode: what input or state triggers it, and what the bad outcome is. "Could be cleaner" is not a failure mode; "a null `userId` reaches this branch and throws" is.
 - A suggested fix.
@@ -335,17 +259,3 @@ mkdir -p "$debt_root/.gaia/local/debt" && : > "$debt_root/.gaia/local/debt/refre
 
 Create the parent directory first. On a fresh clone, or in CI, no statusline tick has run yet, so `.gaia/local/debt/` may not exist, a bare `touch` against a missing directory fails silently and leaves the sentinel unset. The write is anchored on the main checkout because the sentinel is shared state, one copy for the clone: `debt/count.json|debt/refresh-requested` is registry scope `shared`, so every tree reads the same physical copy through the resolver. This step is best-effort: never let a failure here block or fail the caller's flow, which is why the fallback is `.` rather than an exit.
 
-## Brake self-check
-
-```bash
-gh issue list --label tech-debt --state open --limit 1000 --json number,body \
-  --jq '[.[]
-         | select((.body // "") | test("<!-- gaia-debt-origin:"))
-         | select((.body // "") | test("(^|[[:space:]])mode=drain([[:space:]]|$)"))
-         | select((.body // "") | test("(^|[[:space:]])changed=1([[:space:]]|$)"))]
-        | map(.number)'
-```
-
-Each field is matched independently rather than as one ordered pattern, because the line's field order is canonical for readability only and no reader may depend on it. The `.body // ""` guard matters: an issue with an empty body would otherwise abort the whole query.
-
-This query is a triage aid, not a gate. Legitimate members of the result set exist, a security-class finding that is never waive-eligible among them, so a non-empty result is a prompt to look rather than proof of a bug. It promises no rate: no baseline exists, and producing one is what this query is for.

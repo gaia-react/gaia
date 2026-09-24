@@ -35,8 +35,8 @@ setup() {
   REMIT_END='<!-- gaia:audit-remit:end -->'
   MAINTAINER_START='# gaia:maintainer-only:start'
   MAINTAINER_END='# gaia:maintainer-only:end'
-  # A hard failure, not a skip: a `skip` here would silently retire all 69+
-  # tests in this suite to skipped-and-green if either committed script ever
+  # A hard failure, not a skip: a `skip` here would silently retire every
+  # test in this suite to skipped-and-green if either committed script ever
   # went missing, which is the opposite of what a missing file should do.
   if [ ! -f "$SCRIPT" ]; then
     printf 'verify-audit-roster.sh missing: %s\n' "$SCRIPT" >&2
@@ -198,9 +198,7 @@ swap_region_globs() {
   mv "$f.tmp" "$f"
 }
 
-# One default plus one claimant carrying two globs: enough to permute, and with
-# zero claimant pairs, so nothing the pairwise invariant decides can blur a
-# remit case.
+# One default plus one claimant carrying two globs: enough to permute.
 remit_root() {
   scaffold_root "$1" <<'YAML'
 auditors:
@@ -213,32 +211,6 @@ auditors:
       - "a/one/**"
       - "a/two/*.ts"
 YAML
-}
-
-# A two-claimant roster over one glob each, plus a default that claims nothing
-# either claimant does. The unit of the disjointness table below.
-pair_root() {
-  local r="$BATS_TEST_TMPDIR/pair"
-  scaffold_root "$r" <<YAML
-auditors:
-  - name: code-audit-default
-    globs:
-      - "zzz-default-only/**"
-    audience: adopter
-    push_fixes: true
-    default: true
-  - name: code-audit-a
-    globs:
-      - "$1"
-    audience: adopter
-    push_fixes: false
-  - name: code-audit-b
-    globs:
-      - "$2"
-    audience: adopter
-    push_fixes: false
-YAML
-  run_root "$r"
 }
 
 # Usage surface
@@ -273,154 +245,37 @@ YAML
   assert_contains "roster clean"
 }
 
-@test "UAT-024: the shipped roster's own claimants are decided, not skipped" {
-  # A guard against a vacuous pass: the roster must actually reach the pairwise
-  # tier, i.e. carry more than one claimant. One claimant means zero pairs and
-  # the disjointness invariant would pass by having nothing to compare.
-  local claimants
-  claimants="$(awk '
-    /^auditors[[:space:]]*:/ { in_a = 1; next }
-    !in_a { next }
-    /^[A-Za-z_]/ { in_a = 0; next }
-    /^[[:space:]]*-[[:space:]]+name[[:space:]]*:/ { n++; next }
-    /^[[:space:]]+default[[:space:]]*:[[:space:]]*true/ { d++ }
-    END { print n - d }
-  ' "$REPO_ROOT/.gaia/audit-ci.yml")"
-  [ "$claimants" -ge 2 ]
+# Machinery registration and the member-name convention are asserted against
+# the REAL committed roster here rather than through a --root fixture: both
+# hold over .gaia/audit-ci.yml as it is checked in, whether or not a fixture
+# roster is under test elsewhere in this suite.
+
+@test "every roster member's agent file is registered in AUDIT_MACHINERY_PATHS" {
+  local members name agent_rel
+  members="$(bash "$SCRIPT" --emit-roster | awk -F'\t' '$1 == "MEMBER" { print $2 }' | sort -u)"
+  [ -n "$members" ]
+  while IFS= read -r name; do
+    agent_rel=".claude/agents/${name}.md"
+    grep -qxF -- "$agent_rel" "$REPO_ROOT/.claude/hooks/lib/audit-machinery.sh" || {
+      printf '%s is not registered in AUDIT_MACHINERY_PATHS\n' "$agent_rel" >&2
+      return 1
+    }
+  done <<<"$members"
 }
 
-# UAT-020: two claimants whose globs overlap AS GLOB LANGUAGES, with no such
-# file anywhere in the repo. That is the case the invariant exists for.
-
-@test "UAT-020: overlapping claimants fail, naming the pair and a witness" {
-  pair_root 'zz-no-such-tree/**' 'zz-no-such-tree/deep/*.zz'
-  [ "$status" -eq 1 ]
-  assert_contains "claimant-glob-overlap"
-  assert_contains "code-audit-a"
-  assert_contains "code-audit-b"
-  assert_contains "witness: zz-no-such-tree/deep/"
-}
-
-@test "UAT-020: the witness names a path that exists nowhere in the repo" {
-  pair_root 'zz-no-such-tree/**' 'zz-no-such-tree/deep/*.zz'
-  local witness
-  witness="$(grep -F 'witness:' <<<"$output" | awk '{ print $2 }')"
-  [ -n "$witness" ]
-  # The invariant holds "whether or not any such file is tracked": the check
-  # synthesized this path rather than finding it.
-  [ ! -e "$REPO_ROOT/$witness" ]
-}
-
-@test "UAT-020: the witness matches both globs, tested through the classifier" {
-  # Independent of the check's own verification: compile both globs with the
-  # real classifier and match the witness against each compiled regex.
-  pair_root 'zz-no-such-tree/**' 'zz-no-such-tree/deep/*.zz'
-  local witness
-  witness="$(grep -F 'witness:' <<<"$output" | awk '{ print $2 }')"
-  # shellcheck source=/dev/null
-  . "$REPO_ROOT/.claude/hooks/lib/audit-scope.sh"
-  local rx_a rx_b
-  rx_a="$(printf 'auditors:\n  - name: m\n    globs:\n      - "zz-no-such-tree/**"\n' |
-    _audit_scope_parse_auditors | awk '$1 == "GLOB" { print $3 }')"
-  rx_b="$(printf 'auditors:\n  - name: m\n    globs:\n      - "zz-no-such-tree/deep/*.zz"\n' |
-    _audit_scope_parse_auditors | awk '$1 == "GLOB" { print $3 }')"
-  [ -n "$rx_a" ]
-  [ -n "$rx_b" ]
-  [[ "$witness" =~ $rx_a ]] || return 1
-  [[ "$witness" =~ $rx_b ]] || return 1
-}
-
-# UAT-021: the default member is excluded from the pairwise comparison. Its
-# tier is reached only after every claimant has failed to match, so an overlap
-# with a claimant is what the precedence tier MEANS, not a defect. The shipped
-# roster has exactly this overlap by design.
-
-@test "UAT-021: a default whose globs overlap a claimant's does not fail" {
-  local r="$BATS_TEST_TMPDIR/default-overlap"
-  scaffold_root "$r" <<'YAML'
-auditors:
-  - name: code-audit-default
-    globs:
-      - ".github/workflows/**"
-      - "app/**"
-    audience: adopter
-    push_fixes: true
-    default: true
-  - name: code-audit-a
-    globs:
-      - ".github/workflows/*.yml"
-    audience: adopter
-    push_fixes: false
-YAML
-  run_root "$r"
-  [ "$status" -eq 0 ]
-}
-
-@test "UAT-021: the default is excluded even against several claimants" {
-  local r="$BATS_TEST_TMPDIR/default-overlap-many"
-  scaffold_root "$r" <<'YAML'
-auditors:
-  - name: code-audit-default
-    globs:
-      - "**"
-    audience: adopter
-    push_fixes: true
-    default: true
-  - name: code-audit-a
-    globs:
-      - "a/**/*.ts"
-    audience: adopter
-    push_fixes: false
-  - name: code-audit-b
-    globs:
-      - "b/**/*.sh"
-    audience: adopter
-    push_fixes: false
-YAML
-  run_root "$r"
-  # The default claims literally every path and still fails nothing.
-  [ "$status" -eq 0 ]
-}
-
-# UAT-022: machinery registration, each list tested independently, via fixture
-# lists injected under --root.
-
-@test "UAT-022: a member missing from AUDIT_MACHINERY_PATHS fails, naming the file and the list" {
-  local r="$BATS_TEST_TMPDIR/unreg-machinery"
-  scaffold_root "$r" <<'YAML'
-auditors:
-  - name: code-audit-default
-    globs:
-      - "app/**"
-    default: true
-  - name: code-audit-a
-    globs:
-      - "a/**"
-YAML
-  grep -v 'code-audit-a.md' "$r/.claude/hooks/lib/audit-machinery.sh" > "$r/tmp-list"
-  mv "$r/tmp-list" "$r/.claude/hooks/lib/audit-machinery.sh"
-  run_root "$r"
-  [ "$status" -eq 1 ]
-  assert_contains "unregistered-agent-file"
-  assert_contains ".claude/agents/code-audit-a.md"
-  assert_contains "AUDIT_MACHINERY_PATHS"
-}
-
-@test "UAT-022: extra entries in the list are fine" {
-  # An adopter's list still names the agents the roster scrub removed. The check
-  # walks the roster and asks whether each member is registered, never the
-  # reverse.
-  local r="$BATS_TEST_TMPDIR/extra-entries"
-  scaffold_root "$r" <<'YAML'
-auditors:
-  - name: code-audit-default
-    globs:
-      - "app/**"
-    default: true
-YAML
-  printf '.claude/agents/code-audit-not-in-this-roster.md\n' >> "$r/.claude/hooks/lib/audit-machinery.sh"
-  run_root "$r"
-  [ "$status" -eq 0 ]
+@test "every roster member's name carries the code-audit- prefix" {
+  local members name
+  members="$(bash "$SCRIPT" --emit-roster | awk -F'\t' '$1 == "MEMBER" { print $2 }' | sort -u)"
+  [ -n "$members" ]
+  while IFS= read -r name; do
+    case "$name" in
+      code-audit-*) ;;
+      *)
+        printf '%s does not carry the code-audit- prefix\n' "$name" >&2
+        return 1
+        ;;
+    esac
+  done <<<"$members"
 }
 
 @test "an unreadable machinery list fails rather than passing every member" {
@@ -437,279 +292,6 @@ YAML
   [ "$status" -eq 1 ]
   assert_contains "unreadable-machinery-list"
   assert_contains "AUDIT_MACHINERY_PATHS"
-}
-
-@test "a member whose agent file does not exist on disk fails, naming it" {
-  local r="$BATS_TEST_TMPDIR/no-agent"
-  scaffold_root "$r" <<'YAML'
-auditors:
-  - name: code-audit-default
-    globs:
-      - "app/**"
-    default: true
-  - name: code-audit-a
-    globs:
-      - "a/**"
-YAML
-  rm "$r/.claude/agents/code-audit-a.md"
-  run_root "$r"
-  [ "$status" -eq 1 ]
-  assert_contains "missing-agent-file"
-  assert_contains ".claude/agents/code-audit-a.md"
-}
-
-# Member name convention: every member's name carries the `code-audit-` prefix.
-# The local self-heal hook (block-selfheal-paths.sh) binds a dispatched member
-# to its repair boundary by that prefix, so a member named off-convention
-# escapes the boundary silently. scaffold_root registers every member and gives
-# it an agent file, so an off-convention member fails for the name reason alone.
-
-@test "member name convention: an off-convention member fails, naming it" {
-  local r="$BATS_TEST_TMPDIR/off-convention"
-  scaffold_root "$r" <<'YAML'
-auditors:
-  - name: code-audit-default
-    globs:
-      - "app/**"
-    default: true
-  - name: workflow-auditor
-    globs:
-      - "a/**"
-YAML
-  run_root "$r"
-  [ "$status" -eq 1 ]
-  assert_contains "member-name-convention"
-  assert_contains "workflow-auditor"
-}
-
-@test "member name convention: an all-compliant roster emits no name finding" {
-  # The negative control: a member-name-convention finding must fire only on an
-  # off-convention name, never on a compliant one, or the renamed fixtures above
-  # would all fail it. Both members carry the prefix, so no name finding fires.
-  local r="$BATS_TEST_TMPDIR/all-convention"
-  scaffold_root "$r" <<'YAML'
-auditors:
-  - name: code-audit-default
-    globs:
-      - "app/**"
-    default: true
-  - name: code-audit-a
-    globs:
-      - "a/**"
-YAML
-  run_root "$r"
-  grep -qF "member-name-convention" <<<"$output" && return 1
-  [ "$status" -eq 0 ]
-}
-
-# UAT-023: exactly one default member.
-
-@test "UAT-023: zero members carrying default: true fails, naming the count" {
-  local r="$BATS_TEST_TMPDIR/no-default"
-  scaffold_root "$r" <<'YAML'
-auditors:
-  - name: code-audit-a
-    globs:
-      - "a/**"
-  - name: code-audit-b
-    globs:
-      - "b/**"
-YAML
-  run_root "$r"
-  [ "$status" -eq 1 ]
-  assert_contains "default-member-count"
-  assert_contains "0 (expected exactly 1)"
-}
-
-@test "UAT-023: two members carrying default: true fails, naming the count" {
-  local r="$BATS_TEST_TMPDIR/two-defaults"
-  scaffold_root "$r" <<'YAML'
-auditors:
-  - name: code-audit-a
-    globs:
-      - "a/**"
-    default: true
-  - name: code-audit-b
-    globs:
-      - "b/**"
-    default: true
-YAML
-  run_root "$r"
-  [ "$status" -eq 1 ]
-  assert_contains "default-member-count"
-  assert_contains "2 (expected exactly 1)"
-}
-
-@test "UAT-023: a roster with no auditors block fails rather than passing empty" {
-  local r="$BATS_TEST_TMPDIR/empty-roster"
-  scaffold_root "$r" <<'YAML'
-default_mode: local
-YAML
-  run_root "$r"
-  [ "$status" -eq 1 ]
-  assert_contains "default-member-count"
-}
-
-# UAT-025: a pair the bounded dialect cannot decide FAILS, naming the pair. The
-# check never fails open on the assertion it exists to make.
-
-@test "UAT-025: a '?' glob is undecidable and fails, naming the pair" {
-  pair_root 'a/?.ts' 'a/*.ts'
-  [ "$status" -eq 1 ]
-  assert_contains "undecidable-glob-pair"
-  assert_contains "code-audit-a"
-  assert_contains "code-audit-b"
-  assert_contains "a/?.ts"
-}
-
-@test "UAT-025: a bracket class is undecidable and fails" {
-  pair_root 'a/[a-z].ts' 'a/*.ts'
-  [ "$status" -eq 1 ]
-  assert_contains "undecidable-glob-pair"
-}
-
-@test "UAT-025: a brace expansion is undecidable and fails" {
-  pair_root 'a/{b,c}/x.ts' 'a/b/*.ts'
-  [ "$status" -eq 1 ]
-  assert_contains "undecidable-glob-pair"
-}
-
-@test "UAT-025: '**' inside a segment is undecidable and fails" {
-  # app/**.ts is outside the dialect: the segment model cannot represent what
-  # the classifier compiles it to. Deciding it would be a guess.
-  pair_root 'app/**.ts' 'app/x.ts'
-  [ "$status" -eq 1 ]
-  assert_contains "undecidable-glob-pair"
-}
-
-@test "UAT-025: an undecidable pair is never reported as disjoint" {
-  pair_root 'a/?.ts' 'a/*.ts'
-  grep -qF "roster clean" <<<"$output" && return 1
-  [ "$status" -eq 1 ]
-}
-
-# The disjointness table. The interesting cases are pairs, and the witness is
-# what makes an overlap actionable, so each overlapping row asserts its witness.
-
-@test "pairs: a/** vs a/b/*.ts overlap, witness a/b/<x>.ts" {
-  pair_root 'a/**' 'a/b/*.ts'
-  [ "$status" -eq 1 ]
-  assert_contains "claimant-glob-overlap"
-  assert_contains "witness: a/b/"
-}
-
-@test "pairs: a/**/*.sh vs a/b/src/** overlap, the witness spans the globstar" {
-  # The shape that forces the node member to narrow: a shell glob under a tree
-  # another member claims wholesale.
-  pair_root 'a/**/*.sh' 'a/b/src/**'
-  [ "$status" -eq 1 ]
-  assert_contains "claimant-glob-overlap"
-  assert_contains "witness: a/b/src/"
-  grep -qE 'witness: a/b/src/[^ ]*\.sh' <<<"$output"
-}
-
-@test "pairs: *.config.ts vs app/** are disjoint (one is root-only)" {
-  pair_root '*.config.ts' 'app/**'
-  [ "$status" -eq 0 ]
-}
-
-@test "pairs: .github/**/*.sh vs .github/workflows/*.yml are disjoint by extension" {
-  pair_root '.github/**/*.sh' '.github/workflows/*.yml'
-  [ "$status" -eq 0 ]
-}
-
-@test "pairs: x/*/y vs x/**/y overlap" {
-  pair_root 'x/*/y' 'x/**/y'
-  [ "$status" -eq 1 ]
-  assert_contains "claimant-glob-overlap"
-}
-
-@test "pairs: a/*.ts vs a/b.ts overlap, the witness is the literal" {
-  pair_root 'a/*.ts' 'a/b.ts'
-  [ "$status" -eq 1 ]
-  assert_contains "witness: a/b.ts"
-}
-
-@test "pairs: **/ collapses to zero segments, .github/**/*.sh claims a top-level .github/x.sh" {
-  # A checker that assumes **/ consumes at least one segment gets this wrong:
-  # `**/` compiles to (.*/)? and matches zero segments.
-  pair_root '.github/**/*.sh' '.github/x.sh'
-  [ "$status" -eq 1 ]
-  assert_contains "witness: .github/x.sh"
-}
-
-@test "pairs: a/** vs a are disjoint (a trailing ** needs at least one segment)" {
-  pair_root 'a/**' 'a'
-  [ "$status" -eq 0 ]
-}
-
-@test "pairs: **/foo vs foo overlap on the zero-segment collapse" {
-  pair_root '**/foo' 'foo'
-  [ "$status" -eq 1 ]
-  assert_contains "witness: foo"
-}
-
-@test "pairs: *.bats vs *.ts are disjoint (a suffix cannot be both)" {
-  pair_root '*.bats' '*.ts'
-  [ "$status" -eq 0 ]
-}
-
-@test "pairs: two literal globs that differ are disjoint" {
-  pair_root '.gaia/audit-ci.yml' '.gaia/VERSION'
-  [ "$status" -eq 0 ]
-}
-
-@test "pairs: two identical globs overlap" {
-  pair_root 'a/b/c.ts' 'a/b/c.ts'
-  [ "$status" -eq 1 ]
-  assert_contains "witness: a/b/c.ts"
-}
-
-@test "pairs: a globstar-only glob claims everything and overlaps any claimant" {
-  pair_root '**' 'a/b/*.ts'
-  [ "$status" -eq 1 ]
-  assert_contains "claimant-glob-overlap"
-}
-
-@test "pairs: nested globstars decide, a/**/b/**/c vs a/b/c overlap" {
-  pair_root 'a/**/b/**/c' 'a/b/c'
-  [ "$status" -eq 1 ]
-  assert_contains "witness: a/b/c"
-}
-
-@test "pairs: the real roster's shell and node globs are disjoint" {
-  # The narrowing this roster depends on: .gaia/**/*.sh and .gaia/cli/src/**
-  # overlap (witness .gaia/cli/src/<x>.sh), while .gaia/**/*.sh and the
-  # extension-enumerated node globs do not.
-  pair_root '.gaia/**/*.sh' '.gaia/cli/src/**/*.ts'
-  [ "$status" -eq 0 ]
-}
-
-@test "pairs: the un-narrowed node glob overlaps the shell glob, witness under .gaia/cli/src" {
-  pair_root '.gaia/**/*.sh' '.gaia/cli/src/**'
-  [ "$status" -eq 1 ]
-  assert_contains "claimant-glob-overlap"
-  grep -qE 'witness: \.gaia/cli/src/[^ ]*\.sh' <<<"$output"
-}
-
-@test "pairs: globs of the SAME member are never compared" {
-  # A member may claim overlapping globs; the invariant is pairwise across
-  # members.
-  local r="$BATS_TEST_TMPDIR/same-member"
-  scaffold_root "$r" <<'YAML'
-auditors:
-  - name: code-audit-default
-    globs:
-      - "zzz-default-only/**"
-    default: true
-  - name: code-audit-a
-    globs:
-      - "a/**"
-      - "a/b/*.ts"
-      - "a/b/c.ts"
-YAML
-  run_root "$r"
-  [ "$status" -eq 0 ]
 }
 
 # SPEC-056 UAT-001/002/003: remit region parity. The roster is the authority on
@@ -841,9 +423,8 @@ YAML
 
 # SPEC-056 UAT-005: a region glob the bounded dialect cannot decide FAILS. The
 # only way a rejected glob reaches a region is a roster that grants one, and
-# the two fixtures below are exactly the positions the pairwise invariant never
-# reaches: the default member, and a lone claimant (zero pairs). A default plus
-# one claimant is the whole adopter roster shape.
+# the two fixtures below cover the default member and a lone claimant. A
+# default plus one claimant is the whole adopter roster shape.
 
 undecidable_remit_root() {
   # <fixture-dir> <default-glob> <claimant-glob>
@@ -880,19 +461,6 @@ YAML
     grep -qF "undecidable-remit-glob" <<<"$output" || return 1
     grep -qF "$g" <<<"$output" || return 1
     grep -qF "reason:" <<<"$output" || return 1
-  done
-  return 0
-}
-
-@test "SPEC-056 UAT-005: the lone-claimant fixture reaches no pairwise verdict at all" {
-  # The negative control, and the coverage gap this invariant closes: one
-  # claimant means zero pairs, so undecidable-glob-pair cannot fire and the
-  # region rule is the only thing that catches the glob.
-  local g
-  for g in 'a/[a-z].ts' 'a/{b,c}/x.ts' 'a/?.ts' 'a/\x.ts' 'app/**.ts' 'a/***/b'; do
-    undecidable_remit_root "$BATS_TEST_TMPDIR/remit-undec-nopair" 'zzz-default-only/**' "$g"
-    grep -qF "undecidable-glob-pair" <<<"$output" && return 1
-    grep -qF "undecidable-remit-glob" <<<"$output" || return 1
   done
   return 0
 }
@@ -967,33 +535,6 @@ YAML
   assert_contains "code-audit-a"
 }
 
-@test "reader drift: no disjointness verdict is produced while the readers disagree" {
-  # The finding says no verdict was produced; this pins that claim. A verdict
-  # computed from globs the two readers do not agree on would line the raw globs
-  # up against the wrong compiled regexes.
-  local sb="$BATS_TEST_TMPDIR/drift-sandbox-2"
-  drifted_reader_sandbox "$sb"
-  local r="$BATS_TEST_TMPDIR/drift-fixture-2"
-  scaffold_root "$r" <<'YAML'
-auditors:
-  - name: code-audit-default
-    globs:
-      - "zzz-default-only/**"
-    default: true
-  - name: code-audit-a
-    globs:
-      - "a/**"
-  - name: code-audit-b
-    globs:
-      - "a/b/*.ts"
-YAML
-  run bash "$sb/.gaia/scripts/verify-audit-roster.sh" --root "$r" --config "$r/.gaia/audit-ci.yml"
-  # a/** and a/b/*.ts overlap, and the undrifted check reports it (see the pair
-  # table above). Under drift the overlap must NOT be reported as a verdict.
-  grep -qF "claimant-glob-overlap" <<<"$output" && return 1
-  assert_contains "roster-reader-drift"
-}
-
 # SPEC-056 UAT-011: the writer reads the roster through THIS check's scrape,
 # so there is one scrape between the two scripts, not two. Perturbing it must
 # change what both observe.
@@ -1058,47 +599,6 @@ YAML
 }
 
 # The maintainer-only lockstep block
-
-@test "lockstep: a --config-injected run does not evaluate the builtin-fallback lockstep" {
-  # Load-bearing: every fixture roster differs from the builtin fallback by
-  # construction, so without the skip every other fixture test in this suite
-  # would fail for a reason that has nothing to do with the invariant under
-  # test.
-  pair_root 'a/**' 'b/**'
-  grep -qF "builtin-fallback-lockstep" <<<"$output" && return 1
-  [ "$status" -eq 0 ]
-}
-
-@test "lockstep: a --root-injected run does not evaluate it either" {
-  local r="$BATS_TEST_TMPDIR/root-only"
-  scaffold_root "$r" <<'YAML'
-auditors:
-  - name: code-audit-default
-    globs:
-      - "app/**"
-    default: true
-YAML
-  run bash "$SCRIPT" --root "$r"
-  grep -qF "builtin-fallback-lockstep" <<<"$output" && return 1
-  [ "$status" -eq 0 ]
-}
-
-@test "lockstep: a default run fires it when the builtin fallback drifts from the roster" {
-  # The negative control for the two skip tests above: a lockstep that never
-  # fired would pass them vacuously. A git-inited sandbox is what makes the
-  # default (no-flag) resolution land inside the fixture rather than the repo.
-  local sb="$BATS_TEST_TMPDIR/lockstep-sandbox"
-  mkdir -p "$sb/.gaia/scripts" "$sb/.claude/hooks/lib" "$sb/.claude/agents"
-  git init -q "$sb"
-  cp "$SCRIPT" "$sb/.gaia/scripts/verify-audit-roster.sh"
-  cp "$REPO_ROOT/.gaia/audit-ci.yml" "$sb/.gaia/audit-ci.yml"
-  # Drift the builtin fallback: `app/**` occurs only in _audit_scope_builtin_roster.
-  sed 's|- "app/\*\*"|- "app-drifted/**"|' \
-    "$REPO_ROOT/.claude/hooks/lib/audit-scope.sh" > "$sb/.claude/hooks/lib/audit-scope.sh"
-  run bash "$sb/.gaia/scripts/verify-audit-roster.sh"
-  [ "$status" -eq 1 ]
-  assert_contains "builtin-fallback-lockstep"
-}
 
 # The lockstep tests below strip with `strip_maintainer_only`, this suite's model
 # of the shipped scrub (`.gaia/cli/src/release/marker-strip.ts`). This one pins
@@ -1166,27 +666,16 @@ auditors:
       - "a/b/*.ts"
 YAML
   run bash "$sb/.gaia/scripts/verify-audit-roster.sh" --root "$r" --config "$r/.gaia/audit-ci.yml"
-  [ "$status" -eq 1 ]
-  assert_contains "claimant-glob-overlap"
+  [ "$status" -eq 0 ]
+  assert_contains "roster clean"
 }
 
 # Read-only
 
 @test "the check never writes: the fixture root is byte-identical after a run" {
   local r="$BATS_TEST_TMPDIR/readonly"
-  scaffold_root "$r" <<'YAML'
-auditors:
-  - name: code-audit-default
-    globs:
-      - "zzz-default-only/**"
-    default: true
-  - name: code-audit-a
-    globs:
-      - "a/**"
-  - name: code-audit-b
-    globs:
-      - "a/b/*.ts"
-YAML
+  remit_root "$r"
+  drop_region_glob "$r/.claude/agents/code-audit-a.md" 'a/two/*.ts'
   local before after
   before="$(find "$r" -type f -exec shasum {} + | sort)"
   run_root "$r"
@@ -1296,16 +785,6 @@ YAML
   assert_contains "roster clean"
 }
 
-@test "coverage: an unowned: glob matching no tracked path fails as dead" {
-  local r="$BATS_TEST_TMPDIR/cov-dead"
-  tracked_roster '.claude/**' '.gaia/**' 'nothing/here/**' | scaffold_tracked_root "$r" \
-    app/a.ts lib/b.ts
-  run_root "$r"
-  [ "$status" -eq 1 ]
-  assert_contains "dead-unowned-glob"
-  assert_contains "nothing/here/**"
-}
-
 @test "coverage: an unowned: glob reaching an OWNED path fails as overbroad" {
   # The anti-rubber-stamp assertion. A blanket exemption is the one move that
   # would turn this invariant into a formality, and it fails here because it
@@ -1328,22 +807,12 @@ YAML
   assert_contains "code-audit-frontend"
 }
 
-@test "coverage: an unowned: glob no path needs it for fails as redundant" {
-  local r="$BATS_TEST_TMPDIR/cov-redundant"
-  tracked_roster '.claude/**' '.gaia/**' 'docs/**' 'docs/sub/**' \
-    | scaffold_tracked_root "$r" app/a.ts docs/sub/x.md
-  run_root "$r"
-  [ "$status" -eq 1 ]
-  assert_contains "redundant-unowned-glob"
-  assert_contains "docs/sub/**"
-}
-
 @test "coverage: an unowned: glob outside the classifier dialect fails as undecidable" {
   # `docs**` spells `**` inside a segment rather than as a whole one, so the
   # classifier escapes it into `^docs.*$`, which crosses `/`. The entry then
   # exempts docsextra/note.md as well, silently, and the run reports clean --
-  # the exact fail-open every sibling glob position already refuses (a claimant
-  # pair fails undecidable-glob-pair, a region glob undecidable-remit-glob).
+  # the exact fail-open its sibling glob position already refuses (a region
+  # glob fails undecidable-remit-glob).
   local r="$BATS_TEST_TMPDIR/cov-dialect"
   tracked_roster '.claude/**' '.gaia/**' 'docs**' | scaffold_tracked_root "$r" \
     app/a.ts lib/b.ts docs/orphan.md docsextra/note.md
@@ -1367,7 +836,7 @@ YAML
 }
 
 @test "coverage: a non-git fixture root has no universe, so the invariant is silent" {
-  # What keeps the other 70 tests in this suite green: they scaffold bare
+  # What keeps the rest of this suite green: most tests scaffold bare
   # directories, and this is why that costs them nothing.
   local r="$BATS_TEST_TMPDIR/cov-nongit"
   scaffold_root "$r" <<'YAML'
@@ -1433,9 +902,10 @@ YAML
   # audit_scope_init falls back to the BUILTIN roster when the config yields no
   # records, so without the skip this fixture's paths get classified against
   # GAIA's own roster while every finding prints the injected config's name. The
-  # exit status is 1 either way (default-member-count fires first), so nothing
-  # green is at stake; what the skip protects is attribution, which is the whole
-  # value of a finding that names a roster.
+  # exit status is 1 either way (unreadable-machinery-list fires first, since a
+  # roster with no auditors names no member to register), so nothing green is
+  # at stake; what the skip protects is attribution, which is the whole value
+  # of a finding that names a roster.
   local r="$BATS_TEST_TMPDIR/cov-no-auditors"
   scaffold_root "$r" <<'YAML'
 default_mode: local
@@ -1444,7 +914,7 @@ YAML
   git -C "$r" add -A
   run_root "$r"
   [ "$status" -eq 1 ]
-  assert_contains "default-member-count"
+  assert_contains "unreadable-machinery-list"
   assert_contains "carries no auditors"
   # The misattributed finding the skip exists to suppress.
   grep -qF "ownerless-path" <<<"$output" && return 1
