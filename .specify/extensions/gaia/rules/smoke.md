@@ -1,4 +1,4 @@
-# Smoke harness convention
+# UAT runbook convention
 
 GAIA's verification artifacts include **UAT runbooks** under `.specify/extensions/gaia/test/`: maintainer-reading, walk-through narrative, judgment-allowed steps, tied to a specific SPEC's UAT(s) and retired when that SPEC closes.
 
@@ -13,4 +13,4 @@ GAIA's verification artifacts include **UAT runbooks** under `.specify/extension
 
 ## Enforcement
 
-Maintainer rule + good-faith review. No CI lint, no `/speckit-gaia-spec-close` audit hook. When authoring a new verification artifact, classify it by shape against this convention and place it accordingly; when reviewing, flag misclassification and migrate. If repeated violations surface post-launch, escalate to a `/speckit-gaia-spec-close` audit step, never CI lint.
+Maintainer rule + good-faith review. No CI lint, no `/speckit-gaia-spec-close` audit hook. Name a new UAT runbook per this convention. A fully deterministic artifact that reports by exit code is not a runbook and does not belong in `.specify/extensions/gaia/test/`; when reviewing, flag one that lands there. If repeated violations surface post-launch, escalate to a `/speckit-gaia-spec-close` audit step, never CI lint.

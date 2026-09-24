@@ -13,7 +13,8 @@ bash .gaia/tests/concurrency/meter-gate.sh
 
 Runs the whole suite and fails on any scenario that does not report an
 unconditional `ok` (a `skip` counts as a failure here: it reports green,
-which is the opposite of what this meter means).
+which is the opposite of what this meter means), and when bats itself exits
+non-zero, since a run killed partway reports only the scenarios it reached.
 
 Or read the raw suite by hand, without the gate:
 

@@ -304,7 +304,7 @@ plant() {
   [ "$status" -eq 0 ]
 }
 
-# 4. The `if . "$p"; then` spelling, previously undetected
+# 4. The `if . "$p"; then` spelling
 
 @test "reads a load written as an if condition" {
   new_fixture

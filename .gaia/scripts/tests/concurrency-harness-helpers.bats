@@ -3,7 +3,7 @@
 # `gaia_deliver_hook` and the `run_with` runner it composes with.
 #
 # Why these are pinned here rather than in the concurrency meter itself: the
-# meter's scenario list is one real cross-tree defect per scenario
+# meter's scenario list is one `@test` per scenario
 # (.gaia/tests/concurrency/README.md), so a primitive's own unit coverage does
 # not belong mixed into that list. This sits beside bats-files-helper.bats,
 # which pins the other cross-suite bats primitive for the same reason.

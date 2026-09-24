@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # meter-gate.sh - run the whole INV-7 concurrency meter and fail on any
-# scenario that is not an unconditional `ok`. This is the form in which the
-# meter gates CI (see README.md, "Armed as a required CI check").
+# scenario that is not an unconditional `ok`, or when bats itself exits
+# non-zero (a run killed partway reports only the scenarios it reached). This
+# is the form in which the meter gates CI (see README.md, "CI").
 #
 # NOT the same contract as .gaia/tests/forensics/run-all.sh, despite the
 # sibling shape: that script exits non-zero when any test fails. This one
@@ -36,6 +37,7 @@ tap="$work/observed.tap"
 # silent and calls bats directly.
 set +e
 bash "$ROOT/.gaia/scripts/bats5.sh" --tap "$SUITE" > "$tap" 2>&1
+bats_rc=$?
 set -e
 
 # Echo the run so a CI log carries the failure diagnostics, not just the verdict.
@@ -75,8 +77,8 @@ while IFS=' ' read -r id status; do
     pass) continue ;;
     skip)
       echo "FAIL: $id reported \`skip\`. skip is banned in this suite: it reports" >&2
-      echo "      green, which is the opposite of what a red-by-design meter" >&2
-      echo "      means. Install the dependency or assert the real property." >&2
+      echo "      green, which is the opposite of what this meter means." >&2
+      echo "      Install the dependency or assert the real property." >&2
       ;;
     *)
       echo "FAIL: $id reported \`$status\`." >&2
@@ -86,6 +88,12 @@ while IFS=' ' read -r id status; do
 done < "$observed"
 
 echo "==> the meter ran $total scenario(s)"
+
+if [ "$bats_rc" -ne 0 ] && [ "$failures" -eq 0 ]; then
+  echo "==> FAILED: bats exited $bats_rc with no failing scenario; the run did" >&2
+  echo "    not complete, so scenarios after the break never reported" >&2
+  exit 1
+fi
 
 if [ "$failures" -ne 0 ]; then
   echo "==> FAILED: $failures scenario(s) did not report ok" >&2
