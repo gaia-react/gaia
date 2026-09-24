@@ -6,16 +6,12 @@
 # plus the mid-flight rotation count that pairs a scope-resolution record
 # against the next spawn breadcrumb.
 #
-# Criteria 1-23 (from the task plan) run on hand-written fixture ledgers,
-# built via the `rec` helper below (schema-2, kind "spawn"), which is the
-# right way to pin the query's arithmetic precisely. `legacy_rec` writes the
-# pre-addition schema-1 shape (no `kind` at all), kept separate so the
-# unknown-not-false reader behaviour stays testable. `scope_rec` writes a
-# schema-2 kind "scope" record. The final test is deliberately different: it
-# rebuilds a real peer-merge fixture through the actual oracle
-# (resolve-audit-spawn.sh) in an isolated sandbox and runs this script
-# against the ledger those oracle runs actually produced, proving the writer
-# and this query agree on what "peer-merge" means.
+# Every case runs on hand-written fixture ledgers, built via the `rec`
+# helper below (schema-2, kind "spawn"), which is the right way to pin the
+# query's arithmetic precisely. `legacy_rec` writes the pre-addition
+# schema-1 shape (no `kind` at all), kept separate so the unknown-not-false
+# reader behaviour stays testable. `scope_rec` writes a schema-2 kind
+# "scope" record.
 #
 # Run under bash 5 (bash 3.2's `[[ ]]` skip-under-set-e gap is real; see
 # .claude/rules/bats-assertions.md): `source .gaia/scripts/bats5.sh && bats5
@@ -393,7 +389,7 @@ path_without_jq() {
   grep -qF "so within its class this is an upper bound" <<<"$output" || return 1
   grep -qF "is a lower bound on total incidence" <<<"$output" || return 1
   grep -qF "attribution is a query over recorded facts" <<<"$output" || return 1
-  grep -qF "the next oracle observation" <<<"$output" || return 1
+  grep -qF "the next spawn observation" <<<"$output" || return 1
 }
 
 # 20. exposed_pairs and lost_clearances on a hand-worked fixture
@@ -497,167 +493,3 @@ path_without_jq() {
   [ "$(jq -r '.peer_merge_rotations_upper' <<<"$output")" = "2" ]
 }
 
-# 24. The one end-to-end join: a real oracle ledger, not a fixture.
-#
-# Every criterion above runs on a hand-written fixture. This rebuilds
-# task-breadcrumb-writer's UAT-002 peer-merge fixture against the REAL
-# oracle (resolve-audit-spawn.sh) in its own isolated sandbox -- mirroring
-# resolve-audit-spawn.bats's own setup -- then runs THIS script against the
-# ledger those oracle runs actually produced. No hand-written line appears
-# in that ledger.
-
-e2e_write_full_roster() {
-  local sb="$1"
-  cat >"$sb/.gaia/audit-ci.yml" <<'YAML'
-auditors:
-  - name: code-audit-frontend
-    globs:
-      - "app/**"
-      - "test/**"
-      - ".storybook/**"
-    audience: adopter
-    push_fixes: true
-    default: true
-  - name: code-audit-maintainer-shell
-    globs:
-      - ".gaia/**/*.sh"
-      - ".gaia/**/*.bats"
-      - ".claude/hooks/**/*.sh"
-      - ".specify/extensions/gaia/lib/*.sh"
-      - ".github/**/*.sh"
-      - ".github/**/*.bats"
-    audience: maintainer
-    push_fixes: false
-  - name: code-audit-maintainer-node
-    globs:
-      - ".gaia/cli/src/**"
-    audience: maintainer
-    push_fixes: false
-YAML
-}
-
-e2e_stage() {
-  local sb="$1" p
-  shift
-  for p in "$@"; do
-    mkdir -p "$sb/$(dirname "$p")"
-    printf 'x\n' >"$sb/$p"
-    git -C "$sb" add "$p"
-  done
-}
-
-e2e_commit() {
-  git -C "$1" commit --quiet -m "$2"
-}
-
-e2e_member_digest_for() {
-  local sb="$1" member="$2"
-  bash -c '. "$1"; audit_member_digest "$2" "$3"' _ \
-    "$THIS_DIR/../../../.claude/hooks/lib/audit-digest.sh" "$sb" "$member"
-}
-
-e2e_write_marker() {
-  local sb="$1" member="$2" digest sha tree infix sidecar
-  digest="$(e2e_member_digest_for "$sb" "$member")"
-  sha="$(git -C "$sb" rev-parse HEAD)"
-  tree="$(git -C "$sb" rev-parse 'HEAD^{tree}')"
-  if [ "$member" = "code-audit-frontend" ]; then
-    infix=""
-    sidecar="true"
-  else
-    infix=".$member"
-    sidecar="false"
-  fi
-  mkdir -p "$sb/.gaia/local/audit"
-  printf '{"version":"1.6.1","schema":3,"member":"%s","provenance":"earned","digest":"%s","tree":"%s","sha":"%s","audited_at":"2026-07-14T10:00:00Z","sidecar":%s}\n' \
-    "$member" "$digest" "$tree" "$sha" "$sidecar" \
-    >"$sb/.gaia/local/audit/${digest}${infix}.ok"
-}
-
-e2e_sync_origin_main() {
-  local sb="$1" sha
-  sha="$(git -C "$sb" rev-parse main)"
-  git -C "$sb" update-ref refs/remotes/origin/main "$sha"
-}
-
-# Advances origin/main by one commit that actually changes PATH's content to
-# CONTENT: a real content diff, so absorbing it genuinely rotates the
-# member's digest. Built via a throwaway GIT_INDEX_FILE so the sandbox's
-# real index and checked-out working tree are untouched; only the
-# remote-tracking ref moves.
-e2e_advance_origin_main_with_change() {
-  local sb="$1" path="$2" content="$3" parent idx blob new_tree new_commit
-  parent="$(git -C "$sb" rev-parse main)"
-  idx="$BATS_TEST_TMPDIR/e2e-idx-$RANDOM"
-  GIT_INDEX_FILE="$idx" git -C "$sb" read-tree main
-  blob="$(printf '%s\n' "$content" | git -C "$sb" hash-object -w --stdin)"
-  GIT_INDEX_FILE="$idx" git -C "$sb" update-index --add --cacheinfo "100644,${blob},${path}"
-  new_tree="$(GIT_INDEX_FILE="$idx" git -C "$sb" write-tree)"
-  rm -f "$idx"
-  new_commit="$(git -C "$sb" commit-tree "$new_tree" -p "$parent" -m "origin change to $path")"
-  git -C "$sb" update-ref refs/remotes/origin/main "$new_commit"
-}
-
-e2e_run_oracle() {
-  (cd "$1" && ./.gaia/scripts/resolve-audit-spawn.sh 2>/dev/null)
-}
-
-@test "criterion 24: end-to-end join - a real oracle ledger reports peer_merge_respawns >= 1" {
-  local sb resolver_src oracle_src lib_dir
-  sb="$BATS_TEST_TMPDIR/e2e-sandbox"
-  resolver_src="$THIS_DIR/../resolve-audit-members.sh"
-  oracle_src="$THIS_DIR/../resolve-audit-spawn.sh"
-  lib_dir="$THIS_DIR/../../../.claude/hooks/lib"
-  [ -x "$resolver_src" ] || skip "resolve-audit-members.sh not executable"
-  [ -x "$oracle_src" ] || skip "resolve-audit-spawn.sh not executable"
-
-  mkdir -p "$sb/.gaia/scripts" "$sb/.claude/hooks/lib"
-  printf '1.6.1\n' >"$sb/.gaia/VERSION"
-
-  git -C "$sb" init --quiet --initial-branch=main
-  git -C "$sb" config user.email "test@example.com"
-  git -C "$sb" config user.name "Test"
-  git -C "$sb" config commit.gpgsign false
-
-  echo "# readme" >"$sb/README.md"
-  git -C "$sb" add README.md
-  git -C "$sb" commit --quiet -m "init"
-  git -C "$sb" checkout --quiet -b feature
-
-  cp "$resolver_src" "$sb/.gaia/scripts/resolve-audit-members.sh"
-  chmod +x "$sb/.gaia/scripts/resolve-audit-members.sh"
-  cp "$oracle_src" "$sb/.gaia/scripts/resolve-audit-spawn.sh"
-  chmod +x "$sb/.gaia/scripts/resolve-audit-spawn.sh"
-  cp "$LIB" "$sb/.gaia/scripts/audit-respawn-lib.sh"
-  cp "$lib_dir/audit-scope.sh" "$sb/.claude/hooks/lib/audit-scope.sh"
-  cp "$lib_dir/audit-machinery.sh" "$sb/.claude/hooks/lib/audit-machinery.sh"
-  cp "$lib_dir/audit-clearance.sh" "$sb/.claude/hooks/lib/audit-clearance.sh"
-  cp "$lib_dir/audit-digest.sh" "$sb/.claude/hooks/lib/audit-digest.sh"
-  cp "$lib_dir/audit-base-provenance.sh" "$sb/.claude/hooks/lib/audit-base-provenance.sh"
-
-  e2e_write_full_roster "$sb"
-  e2e_stage "$sb" .gaia/scripts/y.sh
-  e2e_commit "$sb" "chore"
-  e2e_write_marker "$sb" code-audit-maintainer-shell
-  e2e_sync_origin_main "$sb"
-
-  e2e_run_oracle "$sb" >/dev/null
-
-  # origin/main gains a REAL content change to a file the shell member owns.
-  e2e_advance_origin_main_with_change "$sb" .gaia/scripts/peer-owned.sh "peer change"
-  git -C "$sb" merge --quiet --no-edit refs/remotes/origin/main
-
-  e2e_run_oracle "$sb" >/dev/null
-
-  run "$SCRIPT" --root "$sb" --json
-  [ "$status" -eq 0 ]
-  local peer_json
-  peer_json="$(jq -r '.peer_merge_respawns' <<<"$output")"
-  [ "$peer_json" -ge 1 ] || return 1
-
-  run "$SCRIPT" --root "$sb"
-  [ "$status" -eq 0 ]
-  local peer_text
-  peer_text="$(extract_num 'peer-merge re-spawns:')"
-  [ "$peer_text" -ge 1 ] || return 1
-}

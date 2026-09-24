@@ -93,7 +93,7 @@ workflow-present|test -f .github/workflows/code-review-audit.yml|exec|pure files
 audit-check-state|grep GAIA-Audit|static|reaches github.com for a live PR's check rows
 workflow-live|gh api repos/{owner}/{repo}/actions/workflows|static|reaches github.com for the repository's Actions configuration
 catchup-merge|git merge --no-edit origin/main|static|merges `origin/main` into this checkout
-spawn-roster|resolve-audit-spawn.sh|exec|runs verbatim against this checkout
+spawn-roster|resolve-audit-members.sh|exec|runs verbatim against this checkout
 noop-classify|audit-noop-detect.sh --shape audit-team-member|exec|runs against a fixture root, marker and sidecar
 wave-stamp|WAVE_STAMP="$(mktemp)"|exec|runs verbatim, and the claim under test is where mktemp puts the file
 residual-enumerate|gh pr list --state merged|exec|the --jq PROGRAM TEXT is extracted and run against the committed residue-corpus fixture, standing in for the network call
@@ -709,32 +709,11 @@ FAKE
 }
 
 @test "fence spawn-roster: it exits 0 and prints deduped, sorted member names" {
-  script="$(materialize 'resolve-audit-spawn.sh')"
+  script="$(materialize 'resolve-audit-members.sh')"
   run bash -c "cd '$REPO_ROOT' && bash '$script' 2>/dev/null"
   [ "$status" -eq 0 ]
   sorted="$(printf '%s\n' "$output" | LC_ALL=C sort -u)"
   [ "$(printf '%s\n' "$output")" = "$sorted" ]
-}
-
-@test "fence spawn-roster: a non-empty answer names real Code Audit Team members" {
-  # Non-vacuity control for the test above. On a tree whose diff dispatches
-  # nobody, the spawn set is legitimately empty and the sorted/deduped claim
-  # holds without exercising anything. The empty-tree object is present in
-  # every git repository and needs no history, so this control survives the
-  # shallow checkout CI's bats shards run under.
-  script="$(materialize 'resolve-audit-spawn.sh')"
-  sub_literal "$script" 'resolve-audit-spawn.sh' \
-    'resolve-audit-spawn.sh --base 4b825dc642cb6eb9a060e54bf8d69288fbee4904'
-  run bash -c "cd '$REPO_ROOT' && bash '$script' 2>/dev/null"
-  [ "$status" -eq 0 ]
-  [ -n "$output" ]
-  printf '%s\n' "$output" | while read -r member; do
-    [ -n "$member" ] || continue
-    if [ ! -f "${REPO_ROOT}/.claude/agents/${member}.md" ]; then
-      echo "the spawn oracle named ${member}, which has no agent definition" >&2
-      exit 1
-    fi
-  done
 }
 
 @test "fence noop-classify: a marker with its sidecar is real, and without it is a no-op" {

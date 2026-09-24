@@ -80,7 +80,7 @@ EOF
 }
 
 # write_frontend_def <dir>: the one structurally different member. Its
-# "Remit and self-skip" only decides whether it runs at all; the actual
+# "Remit and self-skip" section states the remit only; the actual
 # scope-resolution command (which captures) sits under "### How to run"
 # inside "## Rules-Based Audit" instead, matching the real file.
 write_frontend_def() {
@@ -88,8 +88,7 @@ write_frontend_def() {
   cat >"$dir/.claude/agents/code-audit-frontend.md" <<EOF
 ## Remit and self-skip
 
-Some remit text for code-audit-frontend. Ask the dispatch oracle here; no
-capture happens in this section.
+Some remit text for code-audit-frontend. No capture happens in this section.
 
 ## Rules-Based Audit
 

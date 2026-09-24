@@ -152,7 +152,6 @@ The index is held to the tree by `.gaia/scripts/lint-scripts-wiki-inventory.sh`,
 | `pr-wait-merge.sh` | yes | the merge workflow, `/gaia-release`, every flow that merges | The merge wait: polls a pull request to `MERGED` and exits early on every state that means it never will. |
 | `read-audit-ci-config.sh` | yes | `code-review-audit.yml`, the merge workflow, audit hooks | Reader and per-author resolver for the audit CI config, so a flow obeys the project's own settings. |
 | `resolve-audit-members.sh` | yes | the merge workflow, audit hooks, CI | Resolves which Code Audit Team members a diff dispatches. |
-| `resolve-audit-spawn.sh` | no | the merge workflow, audit hooks | The spawn oracle: which members this run actually spawns, re-spawns included. |<!-- gaia:maintainer-only:start --><!-- gaia:maintainer-only:end -->
 | `state-registry-lib.sh` | yes | sourced | Reader for the state registry, the record of every runtime path GAIA writes. |
 | `summary-verify.sh` | yes | the spec and plan close flows | Fail-closed verify gate for the consolidated summary artifact, run before the irreversible removal of the layers it replaces. |
 | `write-audit-remits.sh` | yes | GAIA's own CI (maintainer-side) | Generates each Code Audit Team member's remit region from the roster. |

@@ -540,7 +540,7 @@ owners_of() {
 # Both directions are wrong under two-dot, and each is probed below. A change
 # committed and then reverted in the working tree VANISHES from the list while
 # the marker still covers the committed version; an uncommitted edit ENTERS the
-# list while no marker covers it and the dispatch oracle never saw it.
+# list while no marker covers it and the dispatch resolver never saw it.
 #
 # The frontend is the member probed because it is the one whose scope is a
 # TS/TSX pathspec; the specialists' identical form is already covered by
@@ -909,7 +909,7 @@ probe_deadlock() {
 # quotes as literal characters, and a quoted token matches no remit glob. The
 # member then self-skips as if nothing it owned had changed, and the
 # membership resolver reading the same list names no owner at all, which sends
-# resolve-audit-spawn.sh to its ownerless fallback and the default member.
+# the dispatch to its ownerless fallback and the default member.
 # Either way the specialist whose remit the file is in never reviews it, the
 # outcome is indistinguishable from a genuine no-match, and nothing in the run
 # records that it happened.

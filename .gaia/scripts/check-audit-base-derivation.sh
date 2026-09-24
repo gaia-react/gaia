@@ -201,8 +201,8 @@
 #      The same derivation decides MEMBERSHIP one step earlier, in
 #      .gaia/scripts/resolve-audit-members.sh, and that is the more dangerous
 #      of the two because it is silent rather than stuck. A quoted token has no
-#      owner, the resolver answers with an empty set, and resolve-audit-spawn.sh
-#      falls through to its ownerless probe, which spawns the default member.
+#      owner, the resolver answers with an empty set, and the merge gate's own
+#      digest fold requires the default member instead.
 #      So the file does get an auditor -- just never the specialist whose remit
 #      it is in, and the merge completes looking audited. (The specialist's own
 #      self-skip is the less quiet failure: when membership DID name it, a

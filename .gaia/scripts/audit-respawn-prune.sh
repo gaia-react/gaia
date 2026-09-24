@@ -10,9 +10,9 @@
 #
 #   audit re-spawn ledger prune sweep
 #
-# Bounds .gaia/local/telemetry/audit-respawn.jsonl, the Code Audit Team spawn
-# oracle's re-spawn breadcrumb ledger (.gaia/scripts/audit-respawn-lib.sh),
-# which nothing else bounds. Two trim arms, and they are not peers:
+# Bounds .gaia/local/telemetry/audit-respawn.jsonl, the Code Audit Team
+# re-spawn breadcrumb ledger (.gaia/scripts/audit-respawn-lib.sh), which
+# nothing else bounds. Two trim arms, and they are not peers:
 #
 #   Age arm  drops every record whose `ts` parses and is older than the
 #            retention window (gaia_respawn_retention_days, floor-clamped).
@@ -23,7 +23,7 @@
 #            has ALREADY decided are out-of-window; it never removes a record
 #            still inside the window, even when the in-window set alone
 #            exceeds the cap (gaia_respawn_max_records, floor-clamped). A
-#            repository whose oracle runs hot enough to exceed the cap inside
+#            repository whose writers run hot enough to exceed the cap inside
 #            the window grows its ledger past the cap rather than losing the
 #            measurement -- the SPEC's reopen condition needs the full
 #            observation window, and a cap that dropped in-window records

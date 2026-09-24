@@ -265,7 +265,7 @@ Ask once, via `AskUserQuestion`, after the card (the card is the information the
 Reached only on **Publish** from Step 7. It does for fitness's heal diff what `/gaia-audit`'s Publish and `/update-deps` Phase 8 do: commit the working-tree changes and drive the PR to merge on a main-branch run, or commit and push on any other branch. The diff is expected to touch only out-of-audit-scope surfaces (`.claude/**`, `CLAUDE.md`, `.gitignore`, `.gaia/manifest.json`, `.claude/settings.json`), in which case the PR clears the merge gate through the PR Merge Workflow's out-of-scope bypass with no `code-audit-frontend` marker. Do not assume it: a heal fix can restore a framework surface the roster claims, and `.gitignore` itself is treated as in scope by the gate. Before `gh pr merge`, run
 
 ```bash
-bash .gaia/scripts/resolve-audit-spawn.sh
+bash .gaia/scripts/resolve-audit-members.sh
 ```
 
 Empty output confirms the bypass applies and no marker is owed. If it names any member, this run's heal diff reached an audited surface: spawn each member it names and complete the marker handshake in `wiki/concepts/PR Merge Workflow.md` like any in-scope PR; once that page's `#### Posting the status last` conditions hold, post the status yourself, `bash .claude/hooks/post-audit-status.sh <path to a current member marker>`, before `gh pr merge`.

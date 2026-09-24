@@ -49,10 +49,6 @@
 # here inherits the exclusion instead of silently losing it. Deleting either
 # arm as dead code is what would introduce the defect.
 #
-# The `# gaia:maintainer-only` markers around resolve-audit-spawn.sh mark it
-# release-excluded; an adopter bundle must not carry a bare reference to a
-# file the adopter does not have.
-#
 # Bash 3.2 compatible (macOS default). Never `cd`.
 
 AUDIT_GLOBAL_RULES_PATHS="$(cat <<'EOF'
@@ -78,9 +74,6 @@ AUDIT_GLOBAL_RULES_PATHS="$(cat <<'EOF'
 .gaia/scripts/audit-seed-dispositions.sh
 .gaia/scripts/main-root-lib.sh
 .gaia/scripts/resolve-audit-members.sh
-# gaia:maintainer-only:start
-.gaia/scripts/resolve-audit-spawn.sh
-# gaia:maintainer-only:end
 .claude/hooks/audit-stamp-trailer.sh
 .claude/hooks/post-audit-status.sh
 .claude/hooks/pr-merge-audit-check.sh

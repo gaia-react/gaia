@@ -314,7 +314,7 @@ tree=$(git rev-parse "HEAD^{tree}" 2>/dev/null || true)
 #              being merged is this tree's HEAD, not main's. Every writer
 #              agrees -- the agent definitions pass
 #              `--root "$(git rev-parse --show-toplevel)"` to
-#              audit-write-clearance.sh, and resolve-audit-spawn.sh and
+#              audit-write-clearance.sh, and resolve-audit-members.sh and
 #              audit-stamp-trailer.sh derive the same way -- so digesting
 #              main's HEAD here would compare a marker against content
 #              nobody is merging. From a linked worktree the two trees
@@ -621,7 +621,8 @@ check_chore_deps_pr() {
 # gate-side consumer accepts a base override and none may gain one: a
 # caller-chosen base is a caller-chosen diff, and a fail-closed check whose diff
 # the caller picks is not fail-closed. Do not add one here for symmetry with the
-# spawn oracle, which is a dispatch-side consumer answering a different question.
+# dispatch resolver, which is a dispatch-side consumer answering a different
+# question.
 #
 # The answer comes from the pull request record, never from the environment. An
 # exported base-ref variable would let a caller shrink a fail-closed check's

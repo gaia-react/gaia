@@ -112,7 +112,6 @@ EOF
 .gaia/scripts/audit-resolve-scope.sh
 .gaia/scripts/audit-seed-dispositions.sh
 .gaia/scripts/resolve-audit-members.sh
-.gaia/scripts/resolve-audit-spawn.sh
 .gaia/scripts/audit-noop-detect.sh
 .claude/hooks/pr-merge-audit-check.sh
 .claude/hooks/audit-disposition-check.sh

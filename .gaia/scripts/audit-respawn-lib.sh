@@ -2,20 +2,17 @@
 #
 # GAIA shared audit re-spawn ledger helper (single-sourced).
 #
-# The Code Audit Team's spawn oracle (.gaia/scripts/resolve-audit-spawn.sh)
-# re-dispatches a member whenever its valid current-digest earned marker is
-# missing, and one cause of a missing marker is not a content change at all:
-# absorbing main rotates a member's content digest without touching the
-# three-dot diff the member actually reviews. This file is the one
-# definition of the ledger path, the record shapes, and the retention knobs
-# that instrument how often that happens, shared by four consumers: the
-# writer inside the oracle, the scope-digest capture script, the retention
-# sweep, and the attribution query. It records what its callers saw; it
-# classifies nothing.
+# A Code Audit Team member re-dispatch can be caused by something other than
+# a content change: absorbing main rotates a member's content digest without
+# touching the three-dot diff the member actually reviews. This file is the
+# one definition of the ledger path, the record shapes, and the retention
+# knobs that instrument how often that happens, shared by three consumers:
+# the scope-digest capture script, the retention sweep, and the attribution
+# query. It records what its callers saw; it classifies nothing.
 #
 # Two record KINDS share one ledger, discriminated by a `kind` field:
-#   "spawn"  one per member the oracle considers on every run (unchanged
-#            shape from schema 1, `kind` inserted after `schema`).
+#   "spawn"  one per member considered for re-dispatch (unchanged shape
+#            from schema 1, `kind` inserted after `schema`).
 #   "scope"  one per member that resolves a review scope
 #            (.gaia/scripts/audit-scope-digest.sh --capture), recording the
 #            digest that member's clearance will attest to. This is the
@@ -60,9 +57,9 @@
 #      "merge_base":"...","member":"...","digest":"...","cleared":true}
 #   `kind` is a constant of this function, not a parameter: every other key
 #   keeps its name, value, and position from schema 1. ALWAYS returns 0, on
-#   every path, and ALWAYS writes nothing to stdout or stderr: the oracle's
-#   stdout is its contract, and its stderr carries advisories only, so a
-#   breadcrumb diagnostic on either would be a behavior change the oracle
+#   every path, and ALWAYS writes nothing to stdout or stderr: a caller's
+#   stdout can be its contract, and its stderr can carry advisories only, so
+#   a breadcrumb diagnostic on either would be a behavior change the caller
 #   must not make. Its callers run under `set -euo pipefail` and must not be
 #   disturbed.
 #
@@ -85,8 +82,8 @@
 #   pass just introduced. Do not add a second pass over either field: they are
 #   already fully escaped where the record is built, and escaping twice would
 #   double every backslash. Both use bash parameter substitution, so no `jq` is
-#   required to build a line, and none may be assumed: the oracle's
-#   digest-marker filter can run on a machine with no `jq`.
+#   required to build a line, and none may be assumed: this file must run on
+#   a machine with no `jq`.
 #
 #   One `printf` produces the whole line, appended with `>>`: a single small
 #   write() under O_APPEND is what keeps concurrent appends from different
@@ -121,7 +118,7 @@
 #   reports a number, the prune sweep that consumes it may apply the cap
 #   ONLY to records already outside the age window. A cap that dropped
 #   in-window records would silently shorten retention below the observation
-#   window the reaper exists to guarantee; on a repository whose oracle runs
+#   window the reaper exists to guarantee; on a repository whose writers run
 #   hot enough to exceed the cap inside the window, the ledger grows past the
 #   cap rather than losing the measurement. Do not read this function as a
 #   hard file-size bound; it is not one.

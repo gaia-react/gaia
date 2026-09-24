@@ -55,7 +55,6 @@ setup() {
   HOOK_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks" && pwd)/pr-merge-audit-check.sh
   SETTINGS_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.claude" && pwd)/settings.json
   RESOLVER_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.gaia/scripts" && pwd)/resolve-audit-members.sh
-  SPAWN_ABS=$(cd "$BATS_TEST_DIRNAME/../../../.gaia/scripts" && pwd)/resolve-audit-spawn.sh
   LIB_DIR=$(cd "$BATS_TEST_DIRNAME/../../../.claude/hooks/lib" && pwd)
   REPO=$(mktemp -d -t pr-merge-test-XXXXXX)
 
@@ -75,13 +74,11 @@ setup() {
   mkdir -p "$REPO/.gaia/scripts"
   cp "$RESOLVER_ABS" "$REPO/.gaia/scripts/resolve-audit-members.sh"
   chmod +x "$REPO/.gaia/scripts/resolve-audit-members.sh"
-  cp "$SPAWN_ABS" "$REPO/.gaia/scripts/resolve-audit-spawn.sh"
-  chmod +x "$REPO/.gaia/scripts/resolve-audit-spawn.sh"
 
-  # The two copies above resolve their libs relative to THEMSELVES
+  # The copy above resolves its libs relative to ITSELF
   # ($REPO/.claude/hooks/lib/), not the real repo, so the sandbox needs its
   # own copy of the shared ownership classifier + digest engine + clearance
-  # reader + base provenance resolver alongside them. The real hook (run by
+  # reader + base provenance resolver alongside it. The real hook (run by
   # absolute path via $HOOK_ABS, never copied) resolves its own libs to the
   # real repo regardless.
   mkdir -p "$REPO/.claude/hooks/lib"
@@ -289,9 +286,9 @@ make_no_base_repo_pr() {
   printf '%s' "$dir"
 }
 
-# Print the spawn set the oracle resolves for REPO's current diff.
+# Print the dispatched member set the resolver resolves for REPO's current diff.
 spawn_set() {
-  ( cd "$REPO" && bash .gaia/scripts/resolve-audit-spawn.sh 2>/dev/null )
+  ( cd "$REPO" && bash .gaia/scripts/resolve-audit-members.sh 2>/dev/null )
 }
 
 # Write an earned clearance marker for every name in a spawn-set
@@ -719,11 +716,11 @@ assert_not_in_set() {
 
 # ---------------------------------------------------------------------------
 # UAT-001 (flagship): an out-of-glob-only commit rotates no member's digest,
-# so every existing marker keeps validating with ZERO re-dispatch and ZERO
-# new marker minting, at both the spawn oracle and the merge gate.
+# so every existing marker keeps validating with ZERO new marker minting at
+# the merge gate.
 # ---------------------------------------------------------------------------
 
-@test "UAT-001: an out-of-glob commit (CHANGELOG.md) leaves every digest unchanged; zero re-dispatch, zero new marker" {
+@test "UAT-001: an out-of-glob commit (CHANGELOG.md) leaves every digest unchanged; zero new marker" {
   commit_files "app/x.ts" "export const x = 1" ".gaia/scripts/y.sh" "#!/bin/bash"
   write_marker "code-audit-frontend"
   write_marker "code-audit-maintainer-shell"
@@ -734,9 +731,6 @@ assert_not_in_set() {
 
   [ "$(member_digest_for code-audit-frontend)" = "$frontend_before" ]
   [ "$(member_digest_for code-audit-maintainer-shell)" = "$shell_before" ]
-
-  set=$(spawn_set)
-  [ -z "$set" ]
 
   before_pool="$(pool_snapshot)"
   run_merge_hook
@@ -1049,12 +1043,12 @@ assert_not_in_set() {
 }
 
 # ---------------------------------------------------------------------------
-# FC-4 deadlock-freedom invariant: the spawn oracle's output and the merge
+# FC-4 deadlock-freedom invariant: the dispatch resolver's output and the merge
 # gate's clearance requirements derive from the same source of truth.
 #
-#   No deadlock:     write a marker for every name the oracle prints for a
+#   No deadlock:     write a marker for every name the resolver prints for a
 #                     diff -> the hook must ALLOW. If it denies, the gate
-#                     wants a marker the spawn procedure never produces.
+#                     wants a marker the dispatch procedure never produces.
 #   No useless spawn: withhold one spawned member's marker (all others
 #                     present) -> the hook must DENY. If it allows, that
 #                     member was spawned for nothing.
@@ -1064,7 +1058,8 @@ assert_not_in_set() {
 # member's clearance unless every changed path is on its allowlist. An
 # in-scope-but-ownerless diff (root Makefile, public/**, ...) therefore
 # resolves to an EMPTY dispatched set yet still DENIES without that
-# clearance; the oracle's ownerless probe is what covers it.
+# clearance; the default member's own digest fold is what covers it, so its
+# marker is written directly rather than through the dispatched set.
 # ---------------------------------------------------------------------------
 
 @test "FC-4 no-deadlock: app/x.tsx spawns the default member alone, and its marker allows" {
@@ -1153,10 +1148,10 @@ assert_not_in_set() {
   assert_allowed_by_json
 }
 
-@test "FC-4 no-deadlock: a root in-scope ownerless file denies unmarked and allows once spawned" {
+@test "FC-4 no-deadlock: a root in-scope ownerless file denies unmarked and allows once its marker is written" {
   commit_files "Makefile" "all:"
   set=$(spawn_set)
-  [ "$set" = "code-audit-frontend" ]
+  [ -z "$set" ]
 
   # The hazard, made concrete: the dispatched set is empty (nothing OWNS a root
   # Makefile), but the legacy out-of-scope gate still denies, because a root
@@ -1171,22 +1166,23 @@ assert_not_in_set() {
   run_merge_hook
   assert_denied_by_json
 
-  # The oracle's ownerless probe names the default member for exactly this
-  # case, so spawning it and writing its marker clears the gate.
-  write_markers_for_spawn_set "$set"
+  # An in-scope-but-ownerless path folds into the default member's own digest
+  # input set, so its marker clears the gate even though the resolver never
+  # named it.
+  write_marker "code-audit-frontend"
   run_merge_hook
   assert_allowed_by_json
 }
 
-@test "FC-4 no-deadlock: nested public/** (in-scope, ownerless) denies unmarked and allows once spawned" {
+@test "FC-4 no-deadlock: nested public/** (in-scope, ownerless) denies unmarked and allows once its marker is written" {
   commit_files "public/logo.svg" "<svg></svg>"
   set=$(spawn_set)
-  [ "$set" = "code-audit-frontend" ]
+  [ -z "$set" ]
 
   run_merge_hook
   assert_denied_by_json
 
-  write_markers_for_spawn_set "$set"
+  write_marker "code-audit-frontend"
   run_merge_hook
   assert_allowed_by_json
 }
@@ -1194,10 +1190,11 @@ assert_not_in_set() {
 @test "FC-4 no-deadlock: allowlisted ownerless paths spawn nobody, and no markers still allows" {
   install_gh_stub
   # The other half of FC-4's agreement invariant. These paths hold no lens for
-  # any member, so the oracle names nobody AND the gate demands nothing: the
-  # two sides move together because both read the same allowlist. A widening
-  # applied to only one of them is what would deadlock a merge -- the gate
-  # waiting on a marker the oracle never names anyone to write.
+  # any member, so the resolver names nobody AND the gate demands nothing: the
+  # gate's own allowlist is what it demands nothing against, and a widening
+  # applied to the allowlist without a matching glob change is what would
+  # deadlock a merge -- the gate waiting on a marker nothing was ever spawned
+  # to write.
   commit_files ".gitignore" "node_modules" "LICENSE" "MIT" \
     ".editorconfig" "root = true"
   set=$(spawn_set)
@@ -1211,10 +1208,10 @@ assert_not_in_set() {
   # The dispatched set here is non-empty (the shell member owns y.sh), so the
   # hook takes the member-aware path and never reaches its legacy out-of-scope
   # gate: the Makefile is audited by nobody. This is the gate's own
-  # documented behavior (FC-4's ownerless-plus-specialized row), not a defect,
-  # and the oracle mirrors it exactly. Do NOT "fix" the oracle to add the
-  # default member here: that would spawn a member the gate does not require,
-  # breaking the no-useless-spawn half of the invariant.
+  # documented behavior (FC-4's ownerless-plus-specialized row), not a defect.
+  # Do not add the default member to the resolved set here: that would spawn
+  # a member the gate does not require, breaking the no-useless-spawn half of
+  # the invariant.
   #
   # The witness must be BOTH ownerless and in-scope, which is a narrow set: the
   # legacy gate allowlists wiki/, .claude/, .specify/, .gaia/, docs/,
@@ -1269,7 +1266,7 @@ assert_not_in_set() {
 #               content being merged is the worktree's HEAD, not main's.
 #
 # Every clearance writer keys on the acting tree (the agent definitions pass
-# `--root "$(git rev-parse --show-toplevel)"`, and resolve-audit-spawn.sh and
+# `--root "$(git rev-parse --show-toplevel)"`, and resolve-audit-members.sh and
 # audit-stamp-trailer.sh derive the same way). Digesting main's HEAD in the
 # gate would compare a marker against content nobody is merging: no marker
 # could ever match, and the deny message's own remedy ("re-spawn the agents")

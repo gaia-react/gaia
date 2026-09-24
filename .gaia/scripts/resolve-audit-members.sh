@@ -93,10 +93,9 @@ while [ "$#" -gt 0 ]; do
       # `[ -z "$2" ]` is not redundant with the arity check, and the asymmetry
       # with `--base` below is deliberate. `--root "$R"` with R unset (QUOTED,
       # so the word survives) arrives as $#=2 with an empty $2; read as "no
-      # override" it would answer from a root the caller never named, which is
-      # the mangled-query shape resolve-audit-spawn.sh:147-166 also fails
-      # closed on. The root decides WHICH TREE the answer describes, so a
-      # mangled one is unanswerable, not a fallback.
+      # override" it would answer from a root the caller never named. The root
+      # decides WHICH TREE the answer describes, so a mangled one is
+      # unanswerable, not a fallback.
       if [ "$#" -lt 2 ] || [ -z "$2" ]; then
         echo "resolve-audit-members: --root requires a <path> argument" >&2
         exit 2
@@ -221,11 +220,10 @@ base="$(resolve_base)"
 # "\303\251t\303\251.ts". That token matches no member's remit glob, the
 # classifier below names no owner for it, and a pull request whose only
 # in-remit change is such a file resolves an EMPTY member set. That is quiet
-# rather than loud: resolve-audit-spawn.sh treats an empty set as "nobody owns
-# anything here" and falls through to its ownerless probe, which spawns the
-# default member. So the file is reviewed by a member whose remit excludes it
-# while the specialist that owns it is never named, and the merge completes
-# looking audited. `-z` disables
+# rather than loud: the fail-closed convention around an empty result reads it
+# as "spawn the default member", so the file is reviewed by a member whose
+# remit excludes it while the specialist that owns it is never named, and the
+# merge completes looking audited. `-z` disables
 # quoting outright rather than narrowing it -- `core.quotePath=false` still
 # quotes a path containing a quote, a backslash, or a control byte -- and the
 # `tr` is what turns the NUL-terminated output back into the newline-delimited

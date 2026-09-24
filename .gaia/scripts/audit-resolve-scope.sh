@@ -28,8 +28,8 @@
 #                     narrowed.
 #   --skip-full-base  Do not resolve the membership base. For a member whose
 #                     self-skip is not membership-based (the default member
-#                     asks the dispatch oracle instead), an unresolvable
-#                     membership base is not a reason to stop.
+#                     runs a full review with no self-skip at all), an
+#                     unresolvable membership base is not a reason to stop.
 #   --base-override   Use <ref> as the review base in place of the resolver's
 #                     first line. KEY_REF, BASE_REASON and ANCHOR_TREE still
 #                     come from the resolver, which made that decision.
@@ -240,8 +240,8 @@ printf 'AUDIT_KEY=%s\n' "$AUDIT_KEY"
 # the verify side's, a waive the disposition check denies on every round.
 #
 # Unlike FULL_BASE, an unresolvable ELIG_BASE does not stop the script. The
-# default member's self-skip is oracle-based, so an empty base costs the waive
-# brake and nothing else. The base is tested, never the diff's emptiness: git
+# default member carries no self-skip to protect, so an empty base costs the
+# waive brake and nothing else. The base is tested, never the diff's emptiness: git
 # resolves an empty left side to HEAD, so an unresolved base and a resolved
 # base with no differences both yield an empty diff, and only one of them
 # means "unknown".

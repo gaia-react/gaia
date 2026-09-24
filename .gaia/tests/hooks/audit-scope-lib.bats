@@ -18,7 +18,6 @@ setup() {
   MACHINERY_LIB="$REPO_ROOT/.claude/hooks/lib/audit-machinery.sh"
   PROVENANCE_LIB="$REPO_ROOT/.claude/hooks/lib/audit-base-provenance.sh"
   RESOLVER="$REPO_ROOT/.gaia/scripts/resolve-audit-members.sh"
-  SPAWN="$REPO_ROOT/.gaia/scripts/resolve-audit-spawn.sh"
   HOOK="$REPO_ROOT/.claude/hooks/pr-merge-audit-check.sh"
   # The delimiters of the marker-strip transform in .gaia/release-scrub.yml that
   # governs shell files, the surface the strip test below is pointed at.
@@ -119,7 +118,6 @@ EOF
   [ -f "$SCOPE_LIB" ]
   [ -f "$MACHINERY_LIB" ]
   [ -f "$RESOLVER" ]
-  [ -f "$SPAWN" ]
   [ -f "$HOOK" ]
 }
 
@@ -243,10 +241,6 @@ last_definition() {
   [ "$probed_prov" = "$last_prov" ]
 }
 
-@test "resolve-audit-spawn.sh sources audit-scope.sh" {
-  grep -qF -- "audit-scope.sh" "$SPAWN" || return 1
-}
-
 @test "pr-merge-audit-check.sh sources audit-scope.sh and audit-machinery.sh, and calls audit_scope_init once" {
   grep -qF -- "audit-scope.sh" "$HOOK" || return 1
   grep -qF -- "audit-machinery.sh" "$HOOK" || return 1
@@ -261,7 +255,7 @@ last_definition() {
   # re-source or re-init. Grep each consumer's post-init body for a second
   # audit_scope_init call is already covered above (count -eq 1); this test
   # additionally proves the dispatch loop itself never calls it.
-  for f in "$RESOLVER" "$SPAWN" "$HOOK"; do
+  for f in "$RESOLVER" "$HOOK"; do
     dispatch_loop="$(awk '/while IFS= read -r path; do/,/^done/' "$f")"
     [ -z "$dispatch_loop" ] && continue
     grep -qF "audit_scope_init" <<<"$dispatch_loop" && return 1

@@ -1,9 +1,9 @@
 #!/usr/bin/env bats
 #
 # Conformance suite for .gaia/scripts/check-base-provenance-adoption.sh: the
-# spawn oracle, the pull-request merge gate, and the Code Audit Team member
-# resolver stay a single-source-of-truth over base provenance only because
-# nothing lets that fact drift silently. This suite is what actually fails a
+# pull-request merge gate and the Code Audit Team member resolver stay a
+# single-source-of-truth over base provenance only because nothing lets
+# that fact drift silently. This suite is what actually fails a
 # build when a second definition, a stopped-adopting consumer, or a
 # regrown origin-then-local chain lands.
 #
@@ -45,10 +45,6 @@ write_baseline() {
 audit_resolve_base_provenance() {
   printf 'unresolvable\tdefault-branch\t\n'
 }
-EOF
-  cat >"$dir/.gaia/scripts/resolve-audit-spawn.sh" <<'EOF'
-#!/usr/bin/env bash
-prov="$(audit_resolve_base_provenance "$repo_root" default-branch)" || prov=""
 EOF
   cat >"$dir/.claude/hooks/pr-merge-audit-check.sh" <<'EOF'
 #!/usr/bin/env bash
@@ -106,7 +102,6 @@ commit_all() {
   run gaia_check_base_provenance_adoption "$REPO_ROOT"
   [ "$status" -eq 0 ]
   grep -qF "audit_resolve_base_provenance definitions found: 1" <<<"$output" || return 1
-  grep -qF ".gaia/scripts/resolve-audit-spawn.sh: adopted" <<<"$output" || return 1
   grep -qF ".claude/hooks/pr-merge-audit-check.sh: adopted" <<<"$output" || return 1
   grep -qF ".gaia/scripts/resolve-audit-members.sh: adopted" <<<"$output" || return 1
   grep -qF ".claude/hooks/worthiness-presence-check.sh: adopted" <<<"$output" || return 1

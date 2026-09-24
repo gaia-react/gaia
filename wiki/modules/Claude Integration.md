@@ -86,7 +86,7 @@ A linked worktree's `.gaia/local` is one symlink to the main checkout's (see [[W
 
 ## Agents
 
-[[Code Review Audit Agent]] runs automatically before every PR merge (per [[PR Merge Workflow]]). The pre-merge gate is a multi-member Code Audit Team, not one agent: resolve the dispatched members with `bash .gaia/scripts/resolve-audit-spawn.sh` and spawn each one it names. See [[PR Merge Workflow]] for the dispatch and clearance mechanics.
+[[Code Review Audit Agent]] runs automatically before every PR merge (per [[PR Merge Workflow]]). The pre-merge gate is a multi-member Code Audit Team, not one agent: resolve the dispatched members with `bash .gaia/scripts/resolve-audit-members.sh` and spawn each one it names. See [[PR Merge Workflow]] for the dispatch and clearance mechanics.
 
 Pre-seeded with GAIA's architecture knowledge. Durable findings belong in the wiki (`wiki/concepts/Code Review Audit Agent.md` and adjacent pages). The `.claude/agent-memory/` path is a gitignored scratch path (created on demand under a per-agent subdir such as `code-review-audit/`), not a source of truth.
 
