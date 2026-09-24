@@ -365,11 +365,6 @@ unowned:
   - ".gaia/tests/**/*.json"
   - ".gaia/tests/**/*.tsv"
   - ".gaia/tests/**/*.yml"
-  # Pinned to the one file rather than the extension: this is an executable
-  # scanner, not fixture data, and it is exempt only because no Python auditor
-  # exists to give it to. An extension glob would hand that exemption to a
-  # second Python tool silently; a literal makes the next one report ownerless.
-  - ".gaia/tests/observability/serena/usage_scan.py"
   # Scoped to `tests/` rather than the whole subtree: the two prompts the
   # forensics run executes are named individually in the prose member's globs
   # above. What this entry covers is the fixture corpus -- malformed and

@@ -276,9 +276,7 @@ awk "{print}" file'
 }
 
 # The property that makes the surface derived rather than listed: a consumer
-# added beside the anchor joins with no edit to the gate. This is the sibling
-# of the reason shell-lint.bats derives its roster from
-# whole-tree-invariants.sh instead of restating it.
+# added beside the anchor joins with no edit to the gate.
 @test "the closure derivation reaches a consumer added beside the anchor" {
   fixture_repo
   fixture_file .gaia/scripts/lint-newcomer.sh \
@@ -368,11 +366,9 @@ awk "{print}" file' > "$TMP/.gaia/scripts/untracked.sh"
 
 # --- the two output lines the roster row demands ---------------------------
 
-# .gaia/scripts/tests/shell-lint.bats derives, from whole-tree-invariants.sh
-# itself, every guard excluded from the WTI roster on the ground that
-# shell-lint runs it, and asserts this gate's own clean line in the gate's
-# output. bats `run` merges both streams, so no assertion over `$output` can
-# see which one it landed on; this test splits them.
+# .gaia/scripts/tests/shell-lint.bats asserts this gate's own clean line in
+# the gate's output. bats `run` merges both streams, so no assertion over
+# `$output` can see which one it landed on; this test splits them.
 @test "the clean line is printed on stderr, not on stdout" {
   fixture_repo
   fixture_consumer 'true'
@@ -392,41 +388,6 @@ awk "{print}" file' > "$TMP/.gaia/scripts/untracked.sh"
 }
 
 # --- the registrations a folded guard owes ---------------------------------
-
-# The roster obligation, proven against a staged mirror rather than by reading
-# the row. The candidate sweep resolves its runner and its scan root from its
-# own filename with no environment override, so a copied runner alone is never
-# consulted: the whole tree has to be mirrored. The live runner is never
-# edited.
-@test "removing the whole-tree roster row reds the candidate sweep" {
-  TMP="$( new_tmp )"
-  local mirror="$TMP/mirror" f
-  mkdir -p "$mirror/.gaia/tests/lib" "$mirror/.gaia/tests/helpers" "$mirror/.gaia/scripts"
-  cp "$REPO_ROOT/.gaia/tests/lib/whole-tree-invariants.bats" "$mirror/.gaia/tests/lib/"
-  # That suite's setup() sources helpers beside it, resolved from its own
-  # BATS_TEST_DIRNAME, so a mirror holding only the suite aborts in setup and
-  # the control below reds for the mirror rather than for the missing row.
-  # Mirror the whole helpers directory rather than the one file setup happens
-  # to source today, so a helper added there does not silently break this.
-  cp "$REPO_ROOT"/.gaia/tests/helpers/*.sh "$mirror/.gaia/tests/helpers/"
-  for f in "$REPO_ROOT"/.gaia/scripts/lint-*.sh; do
-    printf '#!/usr/bin/env bash\nexit 0\n' > "$mirror/.gaia/scripts/${f##*/}"
-  done
-
-  # Control first: the mirror with the row intact must be GREEN, or the red
-  # below is attributable to the mirror rather than to the missing row.
-  cp "$REPO_ROOT/.gaia/tests/whole-tree-invariants.sh" "$mirror/.gaia/tests/"
-  run bats --filter 'every candidate checker is either a member or a documented exclusion' \
-    "$mirror/.gaia/tests/lib/whole-tree-invariants.bats"
-  [ "$status" -eq 0 ]
-
-  grep -v -- 'lint-awk-interpreter-pin.sh|runs transitively' \
-    "$REPO_ROOT/.gaia/tests/whole-tree-invariants.sh" > "$mirror/.gaia/tests/whole-tree-invariants.sh"
-  run bats --filter 'every candidate checker is either a member or a documented exclusion' \
-    "$mirror/.gaia/tests/lib/whole-tree-invariants.bats"
-  [ "$status" -ne 0 ]
-  grep -qF -- "lint-awk-interpreter-pin.sh" <<<"$output"
-}
 
 # The inventory obligation, driven the same way: red against a copy of the page
 # with the row removed, green against the real one.

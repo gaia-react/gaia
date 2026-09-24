@@ -131,17 +131,13 @@ transforms:
         match: {audience: "maintainer"}
 
   # Maintainer SPEC ids inside `.gaia/state-registry.json`'s per-entry
-  # `source` provenance. The field cannot simply be deleted: the shipped
-  # `.gaia/state-registry.schema.json` declares `source` in `/$defs/entry`'s
-  # `required` array AND gives it `minLength: 1`, so a bundle that dropped the
-  # key, or kept it as "", would fail its own validator. The transform refuses
-  # to empty a field for exactly that reason, which turns a future entry whose
-  # source is a bare id with no trailing section into a loud build failure
-  # rather than a silently invalid registry.
-  # Rewriting keeps the field schema-valid and still meaningful
-  # ("SPEC-061 §shared" → "§shared") while the identifier, which resolves only
-  # inside the maintainer's release-excluded `.specify/specs/` tree, leaves the
-  # bundle. Maintainer-side provenance in the repo is untouched.
+  # `source` provenance. The field cannot simply be deleted: every entry
+  # carries a non-empty `source`, so a bundle that dropped the key, or kept
+  # it as "", would ship a silently invalid registry. Rewriting keeps the
+  # field non-empty and still meaningful ("SPEC-061 §shared" → "§shared")
+  # while the identifier, which resolves only inside the maintainer's
+  # release-excluded `.specify/specs/` tree, leaves the bundle.
+  # Maintainer-side provenance in the repo is untouched.
   - type: json-field-rewrite
     paths:
       - ".gaia/state-registry.json"
@@ -244,10 +240,9 @@ transforms:
           # markers, so the strip removes it and the leak-check now actively
           # guards them against an unwrapped re-add.)
           - ".claude/rules/repo-relative-paths.md"
-          # Documents the smoke-harness convention split between
-          # `.specify/extensions/gaia/test/` (UAT runbooks) and
-          # `.gaia/tests/smoke/` (release-gate harnesses); literal paths
-          # are the rule's classification table, not stray references.
+          # Documents the UAT-runbook naming convention under
+          # `.specify/extensions/gaia/test/`; the literal path is the rule's
+          # own classification example, not a stray reference.
           - ".specify/extensions/gaia/rules/smoke.md"
           # Adopter-owned sentinels that ship in the tarball but contain
           # release-baseline content after `gaia-maintainer release scrub-wiki`

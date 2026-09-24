@@ -140,13 +140,6 @@ setup() {
   # dorny/paths-filter step (that step lives in a job it must not `needs:`,
   # since a needs hop is exactly what the job exists to avoid) and a glob list
   # section 2 could read is not on offer.
-  #
-  # The shards job's own steps stay outside this exemption. That job also runs
-  # a derived per-leg gate (id: leg-arming), but its output is an ADDITIONAL
-  # conjunct on each narrowed step's `if:`, never a replacement for
-  # steps.filter.outputs.code == 'true', so the gate contributes nothing to
-  # this exempt set; the entry above covers the standalone job that
-  # hand-rolls its own gate, verb-arming-adoption.
   HANDROLLED_EXEMPT=$'tests.yml\naudit-ci-tests.yml'
 
   require_repo_path -d "$WORKFLOWS_DIR" ".github/workflows" || return 1

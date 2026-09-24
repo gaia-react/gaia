@@ -7,9 +7,8 @@
 #
 # Enforced by the sibling bats suite
 # .gaia/scripts/tests/lint-shipped-issue-refs.bats, which the `Audit CI Tests`
-# job runs when a harness path changes, and by `.gaia/tests/whole-tree-invariants.sh`
-# as a maintainer-run local step before the first audit dispatch. Also runnable
-# directly: `bats .gaia/scripts/tests/lint-shipped-issue-refs.bats`.
+# job runs when a harness path changes. Also runnable directly:
+# `bats .gaia/scripts/tests/lint-shipped-issue-refs.bats`.
 #
 # The file set below comes from the COMMITTED manifest, so a brand-new shipped
 # file this pull request adds but the manifest does not yet acknowledge is

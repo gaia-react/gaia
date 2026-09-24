@@ -32,9 +32,10 @@
 # already say.
 #
 # Section extraction: `extract_section` takes its terminator as an argument
-# so a shallow scan never swallows a sibling section whole (see
-# doc-audit-promote-source.bats's `extract_section_or_fail` header for the
-# concrete swallow hazard). The
+# so a shallow scan never swallows a sibling section whole (a different
+# hazard than doc-audit-promote-source.bats's `extract_section_or_fail`
+# guards: a terminator matching nothing after the start runs to EOF and
+# swallows the rest of the file). The
 # cross-remit section starts at `#### ` (H4) and its own doc names the
 # terminator `^#{3,4} `; the B-mw section starts at `### ` (H3) and its doc
 # names `^#{2,3} `. Both are used verbatim below, never a bare `^## `.

@@ -79,10 +79,9 @@
 # This check asserts an invariant true of GAIA's own source: that the shared
 # verb-arming decision stays a singleton and that GAIA's own hooks all adopt
 # it. An adopter does not write GAIA's hooks or its shared library. Its
-# only runners (the .gaia/scripts/tests/ bats suite and
-# .gaia/tests/whole-tree-invariants.sh, run from audit-ci-tests.yml) are
-# already release-excluded, so shipping it would ship a check nothing on an
-# adopter clone invokes.
+# only runner (the .gaia/scripts/tests/ bats suite, run from
+# audit-ci-tests.yml) is already release-excluded, so shipping it would ship
+# a check nothing on an adopter clone invokes.
 .gaia/scripts/check-verb-arming-adoption.sh
 # Task 7.3's check asserts this repository still qualifies for git's merge refusal on the tracked wiki state file; its only runner (audit-ci-tests.yml and its bats suite) is already maintainer-only, and an adopter cannot act on the failure.
 .gaia/scripts/check-wiki-state-collision.sh
@@ -140,13 +139,13 @@
 # is not pointed at their own tracker. Withheld because that obligation is
 # GAIA's, not the adopter's -- on an adopter clone a `#NNN` in a file they edited
 # means their tracker, and this gate would demand they mislabel it as GAIA's. Its
-# runners (its bats suite and `.gaia/tests/whole-tree-invariants.sh`) are both
-# release-excluded, so shipping it would ship a check nothing on an adopter clone
-# invokes and whose verdict would be wrong there anyway.
+# only runner, its bats suite, is release-excluded, so shipping it would ship a
+# check nothing on an adopter clone invokes and whose verdict would be wrong
+# there anyway.
 .gaia/scripts/lint-shipped-issue-refs.sh
-# The retired-label-spelling lint fails when a spelling .gaia/labels.json records in `renamedFrom` still occurs in tracked source, which is what makes a label rename complete rather than merely intended. Withheld on the same reasoning as the lints above, and on that reasoning ALONE: every one of its runners is release-excluded, so shipping this file would ship a check nothing on an adopter clone invokes. Those runners are whole-tree-invariants.sh, excluded by the .gaia/tests entry below, and the sibling bats suite .gaia/scripts/tests/lint-retired-label-spellings.bats, excluded by the separate .gaia/scripts/tests entry beside it. The bats suite is named explicitly because it is the BLOCKING runner, the one whose absence decides that an adopter clone gates on nothing here. An adopter clone does carry both subjects, since .gaia/labels.json ships and the scan surface is the whole tree, so the withhold rests on the absent runner rather than on an empty surface.
+# The retired-label-spelling lint fails when a spelling .gaia/labels.json records in `renamedFrom` still occurs in tracked source, which is what makes a label rename complete rather than merely intended. Withheld on the same reasoning as the lints above, and on that reasoning ALONE: its only runner, the sibling bats suite .gaia/scripts/tests/lint-retired-label-spellings.bats, is release-excluded by the separate .gaia/scripts/tests entry beside it, so shipping this file would ship a check nothing on an adopter clone invokes. An adopter clone does carry both subjects, since .gaia/labels.json ships and the scan surface is the whole tree, so the withhold rests on the absent runner rather than on an empty surface.
 .gaia/scripts/lint-retired-label-spellings.sh
-# The errexit source guard lints GAIA's own framework shell for a source that runs with errexit armed and is not bracketed against an unparseable target. Withheld on the same reasoning as the four lints above, and on that reasoning ALONE: every one of its runners is release-excluded, so shipping this file would ship a check nothing on an adopter clone invokes. Those runners are shell-lint.sh and whole-tree-invariants.sh, excluded by the .gaia/tests entry below, and the sibling bats suite .gaia/scripts/tests/lint-errexit-source-guard.bats, excluded by the separate .gaia/scripts/tests entry beside it. The bats suite is named explicitly because it is the BLOCKING runner, the one whose absence decides that an adopter clone gates on nothing here, and it is excluded by a different entry than the other two. An adopter clone does have a populated scan surface (it carries .claude/hooks and .gaia/scripts), so the withhold rests on the absent runner rather than on an empty surface.
+# The errexit source guard lints GAIA's own framework shell for a source that runs with errexit armed and is not bracketed against an unparseable target. Withheld on the same reasoning as the four lints above, and on that reasoning ALONE: every one of its runners is release-excluded, so shipping this file would ship a check nothing on an adopter clone invokes. Those runners are shell-lint.sh, excluded by the .gaia/tests entry below, and the sibling bats suite .gaia/scripts/tests/lint-errexit-source-guard.bats, excluded by the separate .gaia/scripts/tests entry beside it. The bats suite is named explicitly because it is the BLOCKING runner, the one whose absence decides that an adopter clone gates on nothing here, and it is excluded by a different entry than the other one. An adopter clone does have a populated scan surface (it carries .claude/hooks and .gaia/scripts), so the withhold rests on the absent runner rather than on an empty surface.
 .gaia/scripts/lint-errexit-source-guard.sh
 # The stale-cardinal lint flags a definite cardinal in a comment or a bats test name that states how many of something the tree holds, where nothing recounts the set. Withheld on the same reasoning as the lints above: every one of its runners is release-excluded, so shipping this file would ship a check nothing on an adopter clone invokes. Those runners are shell-lint.sh, excluded by the .gaia/tests entry below, and the sibling bats suite .gaia/scripts/tests/lint-stale-cardinals.bats, excluded by the separate .gaia/scripts/tests entry beside it. It also sources guard-awk-lib.sh, withheld just below, so the absent dependency would decide the withhold on its own. An adopter clone does carry a populated scan surface, so neither withhold rests on an empty one.
 .gaia/scripts/lint-stale-cardinals.sh
@@ -223,7 +222,7 @@ wiki/decisions/Forensics Triage Workflow.md
 wiki/decisions/Sharded CI Test Matrix.md
 # Documents the fixture-discrimination convention for the maintainer-only shell guards and their shared library, none of which an adopter clone has.
 wiki/decisions/Shell Guard Fixture Discrimination.md
-# Documents the local runtime of whole-tree-invariants.sh and shell-lint.sh (both release-excluded via the wholesale .gaia/tests entry below), the mawk/GNU-parallel maintainer tool prerequisites those two runners use, and the awk-interpreter-pin guard and resolver (.gaia/scripts/lint-awk-interpreter-pin.sh, .gaia/scripts/awk-interp-lib.sh), which govern only the guard-awk-lib.sh closure and are withheld individually elsewhere in this file. Every subject this page describes is maintainer-only; an adopter clone has none of them to run.
+# Documents the local runtime of shell-lint.sh (release-excluded via the wholesale .gaia/tests entry below), the mawk/GNU-parallel maintainer tool prerequisites it uses, and the awk-interpreter-pin guard and resolver (.gaia/scripts/lint-awk-interpreter-pin.sh, .gaia/scripts/awk-interp-lib.sh), which govern only the guard-awk-lib.sh closure and are withheld individually elsewhere in this file. Every subject this page describes is maintainer-only; an adopter clone has none of them to run.
 wiki/decisions/Local Test Runtime.md
 
 # --- 3. Test harnesses and audit reports ---
@@ -250,7 +249,7 @@ wiki/decisions/Local Test Runtime.md
 .playwright/e2e/react-perf-smoke.spec.ts
 # Asserts that GAIA's own bats suites agree about how they extract a step out of .github/workflows/code-review-audit.yml. Both ends are already release-excluded: the audit workflow (category 9) and the .gaia/scripts/tests and .github/audit/tests suites it enumerates (this category). Its roster is two hardcoded tables, not a derived set, so on an adopter clone carrying none of those suites every entry is stale and the check fails outright rather than sitting inert. Withholding it also keeps its roster from naming .github/audit/tests/ and .gaia/scripts/tests/ paths inside an adopter bundle.
 .gaia/scripts/check-step-body-extractor-roster.sh
-# This check asserts an invariant true of GAIA's own source: that every Code Audit Team member definition carries the scope-digest obligation literal and captures inside its own scope-resolution region. Three of the five definitions it scans are maintainer-only, and its only runners (the .gaia/scripts/tests/ bats suite and .gaia/tests/whole-tree-invariants.sh) are already release-excluded, so shipping it would ship a check nothing on an adopter clone invokes.
+# This check asserts an invariant true of GAIA's own source: that every Code Audit Team member definition carries the scope-digest obligation literal and captures inside its own scope-resolution region. Three of the five definitions it scans are maintainer-only, and its only runner, the .gaia/scripts/tests/ bats suite, is already release-excluded, so shipping it would ship a check nothing on an adopter clone invokes.
 .gaia/scripts/check-scope-digest-adoption.sh
 # The audit-residual dismissal store records this repository's own triage
 # decisions: assertions about this repository's code that are false about

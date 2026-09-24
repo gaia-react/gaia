@@ -1,10 +1,9 @@
 #!/usr/bin/env bats
 #
-# The INV-7 concurrency meter suite (see README.md, frozen). One @test per
-# scenario id; each drives the real GAIA code for its named defect and
-# asserts the TARGET (post-fix) isolation property, so it fails today because
-# the fix is absent -- not because it is stubbed. `skip` is banned in this
-# suite (it reports green, the opposite of red-by-design).
+# The INV-7 concurrency meter suite (see README.md). One @test per scenario
+# id; each drives the real GAIA code for its named defect and asserts the
+# isolation property, not a stub of it. `skip` is banned in this suite: it
+# reports green without asserting anything.
 #
 # Run: .gaia/scripts/bats5.sh .gaia/tests/concurrency/
 #

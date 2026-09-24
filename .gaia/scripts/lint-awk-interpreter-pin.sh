@@ -89,9 +89,7 @@
 # library, the libraries it itself sources, and every tracked shell file IN THE
 # ANCHOR'S OWN DIRECTORY whose source statement names it. The set is DERIVED
 # below rather than listed here, so a consumer added later joins the surface
-# with no edit to this file, the same reason
-# .gaia/scripts/tests/shell-lint.bats derives its roster from
-# whole-tree-invariants.sh rather than restating it.
+# with no edit to this file.
 #
 # The surface is the closure and not the tree because the closure is where
 # GAIA_AWK can be obeyed. Deliberately NOT claimed, in the form the grep sibling

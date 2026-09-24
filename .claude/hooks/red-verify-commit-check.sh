@@ -270,8 +270,9 @@ while IFS= read -r path; do
   head_src=$(git show "HEAD:$rel" 2>/dev/null || true)
   head_fullnames=""
   if [ -n "$head_src" ]; then
-    # From the acting tree, like the two reads above: $signal_script is the bare
-    # repo-relative literal red_ledger_signal_script returns, so from a
+    # From the acting tree, unlike head_src just above (a bare `git show`, which
+    # resolves against the hook's own cwd rather than $tree_root): $signal_script
+    # is the bare repo-relative literal red_ledger_signal_script returns, so from a
     # subdirectory node cannot find it, `|| true` swallows the failure, and
     # head_fullnames stays empty. Empty means "nothing pre-existed at HEAD", so
     # every current test reads as new-at-HEAD and an ordinary edit to a test

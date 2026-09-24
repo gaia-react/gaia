@@ -19,7 +19,7 @@ A checked-in raw enable would be worse than no recommendation at all. Sandbox ca
 What that bans is the **enable**, not the **boundary**. `sandbox.filesystem.denyRead` is committed to `.claude/settings.json` deliberately, and carries none of the harm above: it grants no capability, cannot degrade a machine, and does nothing at all until something else turns the sandbox on. A boundary is also the half that must not be per-machine, since a deny every clone resolves for itself is a deny some clones will not have. So the two halves split on which one is a preference: whether to sandbox is the machine's call, what a sandbox must never read is the project's. The line between them is the `enabled` key, not the presence of a `sandbox` block.
 
 <!-- gaia:maintainer-only:start -->
-GAIA maintainers: `.gaia/tests/sandbox/manifest-and-enable.bats` enforces that line. It reads the `enabled` key rather than banning a `sandbox` block outright, which is what lets the committed boundary stand. The JSON spelling of an enable spans two lines, so a line-oriented grep cannot see it and the check walks the flattened sandbox object with a brace counter instead.
+GAIA maintainers: `.gaia/tests/sandbox/spec-028-composition.bats` enforces that line, asserting `.claude/settings.json`'s committed `sandbox` object carries no `enabled` key, which is what lets the committed boundary stand without also being the enable.
 <!-- gaia:maintainer-only:end -->
 
 ### Why the committed boundary survives the per-machine enable

@@ -57,28 +57,7 @@ A useful reconciliation is the sum of per-shard TAP plans against the pre-existi
 
 ## Entry-point equivalence
 
-`.gaia/tests/run-bats-parallel.sh` (the hand runner) and `.gaia/tests/bats-shards.sh` (the CI matrix) consume the same partition, so one entry-point set covers both: the hand runner's `builtin_table()` derives its rows from the sharder rather than carrying an independent copy, and expanding each side's own rows to a sorted list of `.bats` entry points resolves to the same set. `.gaia/tests/forensics/unit.bats`'s delegation to `.github/forensics/tests/` is identical on both sides of that comparison, so it cancels and the check is over entry points, not transitive coverage.
-
-The workflow's own `shards` matrix is pinned to the sharder's shard list by `audit-ci-shards.bats` W6, so the sharder stands in for the CI side below.
-
-Reproduce the check on any tree, comparing the two live expansions rather than two points in history:
-
-```bash
-bash -c '
-set -euo pipefail
-cd "$(git rev-parse --show-toplevel)"
-hand="$(mktemp)"; ci="$(mktemp)"
-( . .gaia/tests/run-bats-parallel.sh; builtin_table ) | cut -f3 |
-  while read -r _bash _sharder _run id; do bash .gaia/tests/bats-shards.sh files "$id"; done |
-  LC_ALL=C sort > "$hand"
-bash .gaia/tests/bats-shards.sh shards |
-  while read -r id; do bash .gaia/tests/bats-shards.sh files "$id"; done |
-  LC_ALL=C sort > "$ci"
-diff "$hand" "$ci" && echo IDENTICAL
-'
-```
-
-The hand side expands the rows `builtin_table()` actually emits rather than asking the sharder for its id list twice, which is what keeps the check live: a runner that emitted eight rows, or the wrong ids, reds it.
+`.gaia/tests/bats-shards.sh` is the one entry point: it derives the shard list and, per shard, the `.bats` files that belong to it, and the workflow's own `shards` matrix is pinned to that shard list by `audit-ci-shards.bats` W6. A hand run drives the same script (`bash .gaia/tests/bats-shards.sh run <shard-id>`, once per shard) rather than a separate runner carrying its own copy of the partition, so there is nothing for a second entry point to drift out of step with.
 
 ## Where the time goes
 
@@ -107,26 +86,6 @@ The hooks group stops at three shards even though a fourth would lower its own h
 - **A checked-in table of per-file runtimes.** A better weight than file size, and the same silent-stale hazard as the manifest above wearing different clothes: a newly added suite weighs nothing, the shard holding it is under-counted, and nothing says so. Size is read from the tree at discovery time, so it is never stale and never absent. The anchor list the sharder does carry is not this table in miniature: it holds no runtimes and changes no file's weight, an unlisted file weighs its bytes rather than nothing, and a listed file discovery cannot find is an error instead of a quiet no-op.
 - **A hand-maintained per-shard package list.** Also a silent-green hazard, because the suites that need `python3-yaml` fail rather than skip when it is absent while the ones needing `zsh` skip quietly. The step's list is derived from the suites instead, rounded up to whole exchange groups and pinned by W10; W9 pins the sandbox leg's reduced set.
 - **`bats --jobs`.** A live lever rather than a closed question. The reasoning that excludes it, that the runner is already CPU-saturated, describes every shard sharing one box; a shard now runs one suite serially on its own four-core box, leaving cores idle.
-
-## Per-leg narrowing for wiki-only changes
-
-Per-leg narrowing faces two objections. Every leg shares one `steps:` block, so the `code:` filter is defined once and its output is identical on every leg; per-shard narrowing therefore needs a per-leg GATE, not a second filter step. And it must not break `.gaia/scripts/tests/workflow-filter-coverage.bats`, which requires every gate on a step to reach every literal path that step names. Both are answered on their merits, not routed around.
-
-The per-leg gate is a step output computed by one script, not a second `dorny/paths-filter` step, so the single filter step stays single, and the single-filter property `.gaia/tests/lib/audit-ci-shards.bats` pins stays untouched. `steps.filter.outputs.code == 'true'` stays a conjunct of every narrowed step's `if:`, and the script's output is an ADDITIONAL conjunct, never a replacement: `workflow-filter-coverage.bats`'s extractor only credits a gate whose producing step is a paths-filter step in the same job, so a gate-output-only `if:` would silently drop every narrowed step out of its literal-input and self-coverage assertions.
-
-The narrowing is derived from the suites at run time, through the sharder's exchange groups, and defaults to arming the full matrix on anything it cannot resolve.
-
-A file that names every page the narrowing can distinguish between contributes nothing to any single page's arming decision, and is excluded from the namer set of all of them. This is a real, accepted under-arming risk rather than a footnote: a suite that genuinely read every one of those pages would be excluded too, and would not arm on a change to any of them. No such suite exists today, the leg holding the suite that checks this narrowing arms unconditionally regardless, and every other rule in the decision order fails open, but the risk stands as stated.
-
-The same rule carries an accepted cost in the safe direction. A path inventory that is written once and never regenerated is a namer of all only until the narrowing gains a page it does not name. From then on it arms its directory's legs for every page it does name, though it reads none of them. Every rule that would drop it tells one namer from another by a guess that under-arms when wrong, so the over-arming stands, bounded by what the frozen inventory names: a page added later reaches it only when its path or bare file name already occurs in the inventory.
-
-Measured against the tree, the saving is runner-minutes before it is wall clock. Some pages are named only by `lib`'s own suites and arm that single leg, which moves both wall clock and runner-minutes; others also reach the scripts group, whose legs sit on the critical path, so narrowing to them moves runner-minutes only. `wiki/.state.json`, the file every wiki sync rewrites, would arm nearly the whole matrix through this lever alone.
-
-A `code:` filter entry may be qualified by change type, and the `wiki/.state.json` entry is: a content-only rewrite of that file, which is what every wiki sync does to it, does not match that entry. That narrows the entry rather than the filter's output, because a separate `wiki/**` entry matches every path under `wiki/` on any change type, so a wiki sync still resolves `code=true` and runs the full matrix. What the change-type keying buys is that the `wiki/.state.json` entry specifically is not what arms it. What makes the keying safe is the checker that entry narrows against being blind to the file's content, not the entry being cheap; the invariant pinning that lives beside the per-leg gate's own invariants.
-
-The `wiki/**` entry exists because the per-page entries above it name one page each: a wiki-only pull request touching a page none of them names matched nothing before it was added, resolved `code=false`, and skipped every bats step, including suites that assert a property of every tracked file rather than of a page they name. It arms the job and decides no leg: a page the per-page entries already name stays a member of the narrowable class `.gaia/tests/leg-arming.sh` derives (matched by exact string equality), so the glob can only add a member to that class, never remove one.
-
-See `.gaia/tests/leg-arming.sh` for the decision, `.gaia/tests/bats-shards.sh` for the exchange groups it is derived through, and `.gaia/tests/lib/audit-ci-shards.bats` for what pins it, including the per-page armed-leg table.
 
 ## Fan-out has its own costs
 

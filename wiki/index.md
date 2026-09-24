@@ -112,7 +112,7 @@ Master catalog of every page in the wiki. Newly created pages must be added here
 - [[Forensics Triage Workflow]]
 - [[Sharded CI Test Matrix]]: `Audit CI Tests` as an 11-leg fan-out plus a thin aggregator; the zero-headroom 2-hop cap arithmetic any restructuring hits first, how to measure this workflow without the two traps, and the levers already weighed.
 - [[Shell Guard Fixture Discrimination]]: fixture-region discrimination plus a suppression pragma so the shell guards can read `*.bats` without flagging their own suites' deliberately broken fixtures.
-- [[Local Test Runtime]]: the concurrency budget nesting `whole-tree-invariants.sh`, `shell-lint.sh`, and the shard-partition bats suite; the full bats corpus as a decided non-goal; the awk interpreter pin's stated non-claim.
+- [[Local Test Runtime]]: `shell-lint.sh`'s own concurrency budget; the full bats corpus as a decided non-goal; the awk interpreter pin's stated non-claim.
 <!-- gaia:maintainer-only:end -->
 - [[Quality Gate]]
 - [[pnpm]]

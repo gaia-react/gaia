@@ -193,8 +193,9 @@ audit_authors: \"stevensacks=local\""
 # UAT-026 subordination: the decision step and the stand-down step are BOTH
 # gated on the audit phase having been reached, so out-of-scope
 # (has_source==false) and self-mod (self_modified==true) PRs never reach the
-# decision/stand-down at all; they take the existing success-stamp paths and
-# never double-stamp. This test documents that trace and proves it executably:
+# decision/stand-down at all: out-of-scope PRs take the out-of-scope stamp
+# path, self-mod PRs post no status, and neither double-stamps. This test
+# documents that trace and proves it executably:
 # the decision step does not even run when out-of-scope, so `should_run` is
 # never produced and the stand-down's `should_run == 'false'` is unsatisfiable.
 #

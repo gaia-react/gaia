@@ -254,8 +254,6 @@ assert_site_calls_boundary() {
 #                             one member carrying no `rsync --files-from`, so
 #                             C2 declines it by design and C1 is the only
 #                             assertion standing between it and a silent revert
-#   09-exclude-parser-parity  builds the same list over a fixture tree, and the
-#                             parity it asserts is against build-staging.sh
 #   runbook.md                a live call site, not illustration: an
 #                             always-loaded rule has the agent run that page's
 #                             steps as written, and the fenced block ends in the
@@ -271,7 +269,6 @@ assert_site_calls_boundary() {
     '.github/workflows/release.yml' \
     '.gaia/tests/distribution/lib/build-staging.sh' \
     '.gaia/tests/distribution/03-marker-strip.sh' \
-    '.gaia/tests/distribution/09-exclude-parser-parity.sh' \
     '.gaia/cli/health/runbook.md'; do
     assert_site_calls_boundary "$REPO_ROOT" "$site" || return 1
   done

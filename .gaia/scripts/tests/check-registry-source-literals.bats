@@ -73,7 +73,6 @@ run_in_repo() {
     "$dir/.gaia/cli/src"
   cat >"$dir/.gaia/state-registry.json" <<'JSON'
 {
-  "$schema": "./state-registry.schema.json",
   "version": 1,
   "description": "fixture",
   "entries": [
@@ -137,7 +136,6 @@ JSON
     "$dir/.specify/extensions/gaia/commands" "$dir/.gaia/cli/src"
   cat >"$dir/.gaia/state-registry.json" <<'JSON'
 {
-  "$schema": "./state-registry.schema.json",
   "version": 1,
   "description": "fixture",
   "entries": [

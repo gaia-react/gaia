@@ -74,11 +74,11 @@
 # names its script in a form that resolves independently of the shell's working
 # directory is a different question, and it already has an owner:
 # .gaia/scripts/check-hook-command-rooting.sh tests it as a property over every
-# registered command, under .gaia/tests/whole-tree-invariants.sh, and
-# .claude/rules/maintainers/hook-registration.md states the sanctioned form in
-# prose. A suite that pinned the spelling here instead would hold a second,
-# weaker copy of that claim, one that goes green against itself while the form
-# it encodes moves, which is exactly what having the form named once prevents.
+# registered command, and .claude/rules/maintainers/hook-registration.md
+# states the sanctioned form in prose. A suite that pinned the spelling here
+# instead would hold a second, weaker copy of that claim, one that goes green
+# against itself while the form it encodes moves, which is exactly what
+# having the form named once prevents.
 #
 # hook_registered SETTINGS EVENT_FILTER HOOK_NAME
 # Asserts that the entries EVENT_FILTER selects in the settings file SETTINGS

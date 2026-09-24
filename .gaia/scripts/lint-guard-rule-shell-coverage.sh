@@ -68,8 +68,7 @@
 # file is governed and an empty exclusion list is an escape hatch nobody needed
 # yet. A future shell file that genuinely should not be governed by either rule
 # is a decision worth writing down when it exists: add the exclusion here then,
-# with its reason, the way .gaia/tests/whole-tree-invariants.sh records its own
-# deliberate non-members.
+# with its reason.
 #
 # Fail-closed by construction, at each stage guards-must-fail.md names:
 #   discovery -- an empty tracked shell set exits 2, never 0

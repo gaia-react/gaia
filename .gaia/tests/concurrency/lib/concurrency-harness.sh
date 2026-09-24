@@ -50,15 +50,12 @@ gaia_new_main() {
   printf '%s\n' "$main"
 }
 
-# gaia_copy_registry <main>: copies the real .gaia/state-registry.json (and its
-# schema, when present) into the fixture at the same repo-relative path.
+# gaia_copy_registry <main>: copies the real .gaia/state-registry.json into
+# the fixture at the same repo-relative path.
 gaia_copy_registry() {
   local main="$1"
   mkdir -p "$main/.gaia"
   cp "$GAIA_REPO_ROOT_REAL/.gaia/state-registry.json" "$main/.gaia/state-registry.json"
-  if [ -f "$GAIA_REPO_ROOT_REAL/.gaia/state-registry.schema.json" ]; then
-    cp "$GAIA_REPO_ROOT_REAL/.gaia/state-registry.schema.json" "$main/.gaia/state-registry.schema.json"
-  fi
 }
 
 # gaia_copy_real <main> <relpath> [<relpath> ...]: copies one or more real

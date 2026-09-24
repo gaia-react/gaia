@@ -68,10 +68,10 @@
 # ADOPTERS: that hand run is how you invoke this. It ships because
 # .claude/settings.json is manifest `shared`, so you inherit GAIA's
 # registrations and add your own, and a bare relative registration on your side
-# reintroduces the same fail-open. But every automated runner of this check is
-# maintainer-only and release-excluded (whole-tree-invariants.sh and the
-# sibling bats suite), so on your clone NOTHING invokes it
-# for you. Run it yourself after editing your hook registrations. It is stated
+# reintroduces the same fail-open. But the only automated runner of this check,
+# the sibling bats suite's live-repo case, is maintainer-only and
+# release-excluded, so on your clone NOTHING invokes it for you. Run it
+# yourself after editing your hook registrations. It is stated
 # here rather than left implied because the alternative is a check an adopter
 # has, believes is armed, and is never told anything by.
 #

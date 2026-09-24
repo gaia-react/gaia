@@ -134,11 +134,9 @@
 # `[ -n "$m" ]` then drops: the short-but-non-empty roster above, arrived at
 # through the check meant to forbid it.
 #
-# The count is what guards it, not CI. `.gaia/scripts/verify-audit-roster.sh`
-# does red on every one of those spellings, but it runs as one of
-# `.gaia/tests/whole-tree-invariants.sh`'s WTI_SCRIPTS, a maintainer-run local
-# step before the first audit dispatch rather than a CI-blocking one, so it
-# cannot be leaned on here.
+# The count is what guards it here. `.gaia/scripts/verify-audit-roster.sh`
+# does red on every one of those spellings, but it runs in its own suite, so
+# it cannot be leaned on inside this one.
 #
 # `.claude/hooks/lib/audit-scope.sh`'s _audit_scope_parse_auditors parses the
 # same block canonically and is deliberately NOT reused here: it emits a record

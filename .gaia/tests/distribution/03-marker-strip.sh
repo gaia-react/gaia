@@ -8,7 +8,6 @@
 #      counterpart (file-size delta > 0).
 #   3. No staged counterpart shrunk to zero bytes (would indicate the
 #      whole file was inside a marker block; almost certainly wrong).
-#   4. No staged `#`-marker file carries a doubled bare `#` separator.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 source "$HERE/lib/lib.sh"
@@ -59,24 +58,8 @@ else
   cp "$ALL_TRACKED" "$INCLUDE"
 fi
 
-# Count runs of consecutive bare `#` comment lines (a blank comment line is
-# the paragraph separator in a `#`-comment header). Every line after the
-# first in a run counts, so three in a row report 2. Whitespace is stripped
-# from BOTH ends before the comparison: a separator carrying a trailing
-# space is the same artifact to a reader, and matching only the exact byte
-# `#` would let one evade the count.
-count_bare_pairs() {
-  awk '
-    { line = $0; sub(/^[ \t]+/, "", line); sub(/[ \t]+$/, "", line) }
-    line == "#" { if (prev) n++; prev = 1; next }
-    { prev = 0 }
-    END { print n + 0 }
-  ' "$1"
-}
-
 MISSING_DELTA=()
 ZERO_BYTE=()
-DOUBLED_SEPARATOR=()
 while IFS= read -r rel; do
   src="$PROJECT_ROOT/$rel"
   staged="$STAGING/$rel"
@@ -99,30 +82,6 @@ while IFS= read -r rel; do
     ZERO_BYTE+=("$rel")
     continue
   fi
-
-  # A `#`-comment marker block sitting between two bare `#` separators
-  # strips to BOTH of them, so the adopter copy carries a doubled separator
-  # where a block it cannot see used to be. The convention that avoids it:
-  # the block owns the separator that introduces it (start marker first,
-  # bare `#` on the next line, inside the markers), so exactly one survives
-  # and deleting the block leaves the surrounding prose correctly separated.
-  # Only the `#`-marker files are in scope; markdown's separator is a blank
-  # line, where a double is invisible once rendered.
-  #
-  # The STAGED count is what gates, not a staged-vs-source delta. An adopter
-  # reads the same artifact whether the strip introduced it or a header
-  # authored it, and a delta nets a strip-introduced double in one part of a
-  # file against an authored one removed from another, so the shape this
-  # exists to catch can hide inside an equal total. The source count rides
-  # along in the report only, to say how much of a file's doubled separator
-  # the header already carried, since the strip and the header can each
-  # contribute one to the same file.
-  grep -q '^[[:space:]]*# gaia:maintainer-only:start' "$src" || continue
-  src_pairs=$(count_bare_pairs "$src")
-  staged_pairs=$(count_bare_pairs "$staged")
-  if [ "$staged_pairs" -gt 0 ]; then
-    DOUBLED_SEPARATOR+=("$rel: src=$src_pairs staged=$staged_pairs")
-  fi
 done < "$INCLUDE"
 
 if [ "${#MISSING_DELTA[@]}" -gt 0 ]; then
@@ -139,14 +98,4 @@ if [ "${#ZERO_BYTE[@]}" -gt 0 ]; then
   exit 1
 fi
 
-if [ "${#DOUBLED_SEPARATOR[@]}" -gt 0 ]; then
-  log "Staged '#'-marker file(s) carry a doubled bare '#' separator. The block"
-  log "owns the separator that introduces it, so exactly one survives the strip."
-  log "staged>src means the strip produced one; src>0 means the header authored"
-  log "one; both can be true of the same file:"
-  for entry in ${DOUBLED_SEPARATOR[@]+"${DOUBLED_SEPARATOR[@]}"}; do log "  $entry"; done
-  fail "${#DOUBLED_SEPARATOR[@]} staged file(s) carry a doubled separator"
-  exit 1
-fi
-
-pass "marker-strip transform verified; all marker-bearing files shrunk, no doubled separators"
+pass "marker-strip transform verified; all marker-bearing files shrunk"

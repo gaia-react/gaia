@@ -4,11 +4,10 @@
 # gate that keeps a label spelling the registry has retired out of tracked
 # source.
 #
-# This suite IS the blocking runner for the predicate. The check is also a
-# member of .gaia/tests/whole-tree-invariants.sh, but it runs there against a
-# tree that carries no retired spelling and so reports clean whether its
-# predicate works or not: a broken predicate is indistinguishable from a clean
-# surface. Every test below therefore drives the check through its <repo_root>
+# This suite IS the blocking runner for the predicate. A run against the live
+# tree carries no retired spelling and so reports clean whether its predicate
+# works or not: a broken predicate is indistinguishable from a clean surface.
+# Every test below therefore drives the check through its <repo_root>
 # parameter against a fixture tree shaped one way at a time.
 #
 # One real-tree test is kept, and it asserts the thing a fixture cannot: that

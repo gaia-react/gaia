@@ -83,8 +83,8 @@ setup() {
   ' "$SETTINGS"
   [ "$status" -eq 0 ]
 
-  # A boundary is not an enable. sandbox.enabled belongs only in the gitignored
-  # per-machine settings, which manifest-and-enable.bats pins.
+  # A boundary is not an enable. sandbox.enabled belongs only in the
+  # gitignored per-machine settings, never here.
   run jq -e '.sandbox | has("enabled") | not' "$SETTINGS"
   [ "$status" -eq 0 ]
 }

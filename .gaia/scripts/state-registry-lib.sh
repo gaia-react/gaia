@@ -4,8 +4,7 @@
 # GAIA state-registry reader (single-sourced).
 #
 # Reads .gaia/state-registry.json, the one classification of every
-# .gaia/local entry, transcribed by hand into the tracked
-# .gaia/state-registry.json + .gaia/state-registry.schema.json pair. This
+# .gaia/local entry, transcribed by hand into the tracked file. This
 # library is the ONLY place that parses the registry; every consumer (link
 # twins, the janitor, conformance checks) calls these functions instead of
 # re-reading or hand-restating the registry's shape. Dual-mode, mirroring
@@ -24,10 +23,10 @@
 # function guards jq's absence with `command -v jq` before using it.
 #
 # `path` matching convention (see the registry's own top-level
-# "description" and .gaia/state-registry.schema.json for the authoritative
-# statement): a `path` may join multiple concrete on-disk shapes with '|'
-# (each alternative matched independently under the entry's own `match`);
-# and may carry a '<placeholder>' token for a variable path segment. For
+# "description" for the authoritative statement): a `path` may join
+# multiple concrete on-disk shapes with '|' (each alternative matched
+# independently under the entry's own `match`); and may carry a
+# '<placeholder>' token for a variable path segment. For
 # `match: glob` a placeholder is a stand-in for a shell '*' wildcard
 # ('audit/<digest>.ok' names the same shape as 'audit/*.ok' -- most entries
 # just write the resolved glob directly). For `match: prefix` only the
