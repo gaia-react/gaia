@@ -81,6 +81,10 @@ import {collectTreeFiles} from './util/tree-walk.js';
 // here makes the "no stale entries" test fail until the entry is removed.
 const INTERNAL_COMMANDS: ReadonlyMap<string, string> = new Map([
   [
+    'ci-check-subject',
+    "Validates a commit subject against this repo's conventional-commit vocabulary. Its sole invoker, `.github/workflows/pr-title.yml`, enforced GAIA's own PR-title vocabulary and was maintainer-only and release-excluded; it is retired. The subcommand itself still ships so an adopter who wants the same gate can wire it into their own PR-title workflow.",
+  ],
+  [
     'sandbox seed',
     'Inspection/debug verb: prints the seed settings fragment as JSON. The setup flow calls `gaia sandbox apply`, which computes and writes the seed internally, so `seed` has no external invoker by design.',
   ],

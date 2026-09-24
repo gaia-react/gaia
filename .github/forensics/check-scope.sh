@@ -46,8 +46,6 @@ dir|deny|.specify/memory/
 dir|deny|.gaia/local/specs/
 dir|deny|.specify/extensions/gaia/templates/
 dir|deny|.github/workflows/
-dir|deny|.github/forensics/
-dir|deny|.github/
 "
 
 # classify_path <path>

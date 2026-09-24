@@ -96,19 +96,4 @@ describe('chore(deps) GAIA-Audit stamp', () => {
     // feeding the base through is the member-awareness claim itself.
     expect(writer).toMatch(/bash "?[^"]*gate-pending-members\.sh"? --base /);
   });
-
-  test('the chore(deps) terminal comment reports the actual stamp outcome', () => {
-    const comment = steps.find(
-      (step) => step.name === 'Status - skipped (chore-deps PR)'
-    );
-
-    // It must read the stamp step's outputs rather than post a bare "skipped"
-    // line that reads green on the pending / not-stamped paths.
-    expect(comment?.env?.SUCCESS_STAMPED).toContain(
-      'steps.chore-deps-status.outputs.success_stamped'
-    );
-    expect(comment?.env?.MEMBERS_PENDING).toContain(
-      'steps.chore-deps-status.outputs.members_pending'
-    );
-  });
 });

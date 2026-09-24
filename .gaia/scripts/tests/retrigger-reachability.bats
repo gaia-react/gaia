@@ -50,9 +50,9 @@
 # misconfigured. So the CI branch FAILS instead of skipping, for the same reason
 # `require_yaml_parser` below does: a skip reports `ok ... # skip` and greens the
 # job, which would retire every test in this file including the section-0 gate
-# that exists to stop exactly that. Only one of the three has a backstop that
-# reds loudly on its own (verify-required-checks.yml invokes
-# verify-required-checks.sh by path); this arm is what covers the other two.
+# that exists to stop exactly that. None of the three has a CI-loud backstop of
+# its own: verify-required-checks.sh is invoked by the /gaia-release preflight
+# now, not by a per-PR workflow, so this arm is what covers all three.
 # Off CI the skip stands: a checkout that legitimately lacks these paths is not
 # the environment the guard is making a claim about. Section 0 proves the CI
 # branch fires.
@@ -1042,14 +1042,14 @@ YAML
   # Same reason as the collapse test above: without this, renaming the entry
   # makes the sed a no-op and the failure blames the scrape instead of naming the
   # fixture target that moved.
-  declared_contexts | grep -qxF -- "Distribution Audit" || {
-    echo "fixture target 'Distribution Audit' is no longer a declared context; pick another entry" >&2
+  declared_contexts | grep -qxF -- "Vitest and Playwright" || {
+    echo "fixture target 'Vitest and Playwright' is no longer a declared context; pick another entry" >&2
     return 1
   }
 
   # Same entries, one of them stripped of its quotes.
   VERIFY="$BATS_TEST_TMPDIR/verify-unquoted.sh"
-  sed 's/^  "Distribution Audit"/  Distribution-Audit/' "$original" > "$VERIFY"
+  sed 's/^  "Vitest and Playwright"/  Vitest-and-Playwright/' "$original" > "$VERIFY"
 
   # The entry still counts, and the scrape no longer sees it.
   [ "$(declared_entry_count)" -eq "$want" ] || {

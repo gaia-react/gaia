@@ -52,7 +52,7 @@ jobs:
     # Ten minutes is a wide margin for an ordinary run, wider than it looks
     # because the one step that can hang is a network fetch from github.com,
     # not the linter. Without a cap a stalled download burns the 6-hour
-    # default; the same reasoning audit-roster.yml spells out for itself.
+    # default.
     timeout-minutes: 10
     # Read-only token: this job lints and reports, it never writes to the repo.
     # Bounds the blast radius of the third-party binary it installs below.

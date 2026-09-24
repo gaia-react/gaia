@@ -2,15 +2,15 @@ name: Code Review Audit
 
 # Pre-merge gate that runs the `code-review-audit` agent
 # (.claude/agents/code-audit-frontend.md) against the PR diff. Skipped when
-# (a) the PR HEAD already carries a matching `GAIA-Audit:` commit trailer
-# (locally-stamped audit), (b) the un-audited delta (since the last clean
-# audit) contains no audit-relevant files (wiki, instruction files, and
-# other prose-only surfaces are out of scope), or (c) this workflow file on
-# the PR head differs from the copy on the repository's default branch
+# (a) the un-audited delta (since the last clean audit) contains no
+# audit-relevant files (wiki, instruction files, and other prose-only
+# surfaces are out of scope), or (b) this workflow file on the PR head
+# differs from the copy on the repository's default branch
 # (claude-code-action's workflow-validation guardrail would refuse to
-# run, so the audit cannot complete regardless). (c) is reached both by a PR
-# that edits this file and by one on a stale base that never touched it, which
-# is why its skip status names the mismatch rather than blaming the author.
+# run, so the audit cannot complete regardless). (b) is reached both by a PR
+# that edits this file and by one on a stale base that never touched it.
+# The (b) skip posts no `GAIA-Audit` status, so a local audit run supplies it;
+# for the stale-base case a rebase onto the default branch also clears it.
 # Adopter-tunable knobs live at .gaia/audit-ci.yml.
 #
 # Per-author mode (local vs ci): the "Resolve audit decision" step calls the
@@ -22,16 +22,17 @@ name: Code Review Audit
 # merge path runs the audit and clears it. Every expensive step and the
 # audit-downstream stamps gain `&& should_run == 'true'`; the resolution is
 # subordinate to the scope gates (it only runs in-scope and not self-modifying),
-# so out-of-scope / self-mod PRs take the existing success-stamp paths unchanged
-# and never also post a stand-down.
+# so out-of-scope PRs take the out-of-scope stamp path, self-mod PRs post no
+# status, and neither posts a stand-down.
 #
 # Required-check semantics under classic branch protection: the job is
 # green-by-design on every code path (including a local-mode stand-down where
 # no audit ran); the GATE is the `GAIA-Audit` commit STATUS, not the job name.
-# Each path still reaches a terminal "set check status / comment" step so the
-# job concludes cleanly. A `pending` GAIA-Audit status (the stand-down) blocks
-# the merge button; a `success` status with HEAD's version+tree clears it. All
-# gating is expressed at the step level (mirrors `.github/workflows/tests.yml`).
+# Every path except the gate-label and self-modification skips reaches a
+# terminal status step so the job concludes cleanly; those two post no status.
+# A `pending` GAIA-Audit status (the stand-down) blocks the merge button; a
+# `success` status with HEAD's version+tree clears it. All gating is expressed
+# at the step level (mirrors `.github/workflows/tests.yml`).
 #
 # Third-party actions are pinned to full-length commit SHAs (resolved tag in parens):
 #   actions/checkout              @ 3d3c42e5aac5ba805825da76410c181273ba90b1 (v7.0.1)
@@ -139,8 +140,8 @@ jobs:
           # echoed: a substitution inside echo's argument is a status `set -e`
           # cannot see, so a predicate that failed to run would write an empty
           # `skip` that satisfies neither the skip=='true' nor the skip=='false'
-          # arms below, firing no terminal status writer and no terminal
-          # comment step, and leaving the merge gate unsatisfiable in silence.
+          # arms below, firing no terminal status writer and leaving the merge
+          # gate unsatisfiable in silence.
           skip="$(bash .gaia/scripts/chore-deps-skip.sh "$PR_TITLE")"
           echo "skip=${skip}" >> "$GITHUB_OUTPUT"
 
@@ -156,39 +157,26 @@ jobs:
           # (proven by a GAIA-Audit commit trailer or commit status). Resolved
           # here, before the source-change check, so that check and the audit
           # share one base: everything before <base> was already cleared. Falls
-          # back to the branch this PR merges into (`refs/remotes/origin/main`
-          # when none is declared), full PR scope, when no audited ancestor
-          # exists (first audit, prior runs cancelled/failed, or a .gaia/VERSION
-          # bump invalidated them). A helper failure falls back to full scope
-          # rather than failing the audit. That last-resort literal stays
-          # `refs/remotes/origin/main` rather than this PR's own base: it fires
-          # only when the helper itself could not run, and repeating the ref the
-          # rest of this workflow already assumes is a safer answer there than
-          # one this step would have to re-derive. The helper hardcodes that
-          # literal rather than deriving a default branch, so where
-          # `refs/remotes/origin/main` does not resolve, because the
+          # back to the branch this PR merges into (origin/main when none is
+          # declared), full PR scope, when no audited ancestor exists
+          # (first audit, prior runs cancelled/failed, or a .gaia/VERSION bump
+          # invalidated them). A helper failure falls back to full scope rather
+          # than failing the audit. That last-resort literal stays origin/main
+          # rather than this PR's own base: it fires only when the helper itself
+          # could not run, and repeating the ref the rest of this workflow
+          # already assumes is a safer answer there than one this step would
+          # have to re-derive. Where origin/main does not resolve, because the
           # repository's default branch is named something else, the base_sha
           # resolution below exits non-zero: this path fails loudly rather than
           # reviewing a wrong scope.
-          #
-          # Spelled refs/remotes/origin/... rather than origin/..., here and at
-          # every other remote-tracking revspec in this workflow. git resolves
-          # refs/tags/<x> ahead of refs/remotes/<x>, so a tag literally named
-          # `origin/<x>` answers for the remote-tracking ref, and the fetch
-          # refspec this workflow's checkout runs carries
-          # `+refs/tags/*:refs/tags/*` explicitly, so tags land on the runner
-          # whatever `fetch-tags` says. At HEAD such a tag empties the reviewed
-          # delta below, which sets has_source=false and greens GAIA-Audit on a
-          # pull request nothing read.
-          base="$(bash .github/audit/resolve-audit-base.sh || echo refs/remotes/origin/main)"
+          base="$(bash .github/audit/resolve-audit-base.sh || echo origin/main)"
           echo "base=${base}" >> "$GITHUB_OUTPUT"
           # The audit key's first half must be a SHA. `base` above is a ref name
           # on the two commonest paths -- the no-anchor answer (the first audit
-          # of any PR, `refs/remotes/origin/<the branch this PR merges into>`)
-          # and the helper-failure fallback (the literal
-          # `refs/remotes/origin/main`) -- and audit-scope-digest.sh builds its
-          # scope-file path from it, so a slash there escapes into the path and
-          # the write fails.
+          # of any PR, `origin/<the branch this PR merges into>`) and the
+          # helper-failure fallback (the literal `origin/main`) -- and
+          # audit-scope-digest.sh builds its scope-file path from it, so a
+          # slash there escapes into the path and the write fails.
           # Resolve it once here and let the digest calls key on this, while the
           # diff prose keeps the readable ref above.
           # `--verify --quiet` on the fallback is load-bearing, not decoration.
@@ -224,9 +212,9 @@ jobs:
           # that would meaningfully apply. The base is the last clean-audited
           # ancestor, so once a code commit is audited clean a later prose-only
           # commit reviews an empty auditable delta and skips. With no audited
-          # ancestor the base is the branch this PR merges into
-          # (`refs/remotes/origin/main` when none is declared) → full PR diff,
-          # preserving first-audit behavior.
+          # ancestor the base is the branch this PR merges into (origin/main
+          # when none is declared) → full PR diff, preserving first-audit
+          # behavior.
           # -z, so a non-ASCII path is not C-quoted past the patterns below:
           # unquoted, an in-scope change can read as has_source=false and skip
           # the audit entirely. The `tr` stays inside the substitution because
@@ -259,8 +247,8 @@ jobs:
           # rejection carrying error_code
           # workflow_not_found_on_default_branch. When this PR's copy of the
           # workflow differs from that one, the audit cannot run, so skip
-          # cleanly and surface a truthful comment instead of letting the
-          # abort path post a misleading message.
+          # cleanly instead of letting the abort path red the job for an
+          # audit the action refused.
           #
           # The comparison is against the DEFAULT branch, not this PR's own
           # base ref, because that is the ref the guardrail validates. The
@@ -280,7 +268,7 @@ jobs:
           # matches is pure ASCII and git would never quote it, so this is
           # uniformity rather than a live defect; the class is cheaper to hold
           # everywhere than to re-argue per call site.
-          default_ref="refs/remotes/origin/${DEFAULT_BRANCH}"
+          default_ref="origin/${DEFAULT_BRANCH}"
           if ! git rev-parse --verify --quiet "${default_ref}^{commit}" >/dev/null 2>&1; then
             # Fail loudly rather than guess. Either answer would be a lie: a
             # false here runs an audit the action may refuse and reports it as
@@ -373,18 +361,10 @@ jobs:
             bash .gaia/scripts/read-audit-ci-config.sh \
               --resolve-author "$PR_AUTHOR" >> "$GITHUB_OUTPUT"
 
-      - name: Check audit trailer
-        id: trailer
-        if: |
-          steps.phase.outputs.reached_audit == 'true' &&
-          steps.decision.outputs.should_run == 'true'
-        run: bash .github/audit/check-trailer.sh >> "$GITHUB_OUTPUT"
-
       - name: Setup pnpm
         if: |
           steps.phase.outputs.reached_audit == 'true' &&
-          steps.decision.outputs.should_run == 'true' &&
-          steps.trailer.outputs.skip == 'false'
+          steps.decision.outputs.should_run == 'true'
         # Bounds a stalled fetch, not a budget for the work; strictly under the
         # job's 60-minute cap so this step fires first and names the install.
         timeout-minutes: 5
@@ -393,8 +373,7 @@ jobs:
       - name: Setup Node
         if: |
           steps.phase.outputs.reached_audit == 'true' &&
-          steps.decision.outputs.should_run == 'true' &&
-          steps.trailer.outputs.skip == 'false'
+          steps.decision.outputs.should_run == 'true'
         # Bounds a stalled Node tarball fetch, not a budget for the work;
         # strictly under the job's 60-minute cap so this step fires first and
         # names the Node install rather than redding as a generic job timeout.
@@ -407,8 +386,7 @@ jobs:
       - name: Install dependencies
         if: |
           steps.phase.outputs.reached_audit == 'true' &&
-          steps.decision.outputs.should_run == 'true' &&
-          steps.trailer.outputs.skip == 'false'
+          steps.decision.outputs.should_run == 'true'
         # Bounds a stalled registry fetch, not a budget for the work: a stall
         # fails here, where the failed-run status backstop sees it, instead of
         # eating the audit step's headroom until the job is cancelled.
@@ -419,17 +397,9 @@ jobs:
         id: timeout
         if: |
           steps.phase.outputs.reached_audit == 'true' &&
-          steps.decision.outputs.should_run == 'true' &&
-          steps.trailer.outputs.skip == 'false'
+          steps.decision.outputs.should_run == 'true'
         env:
           BUDGET_SECONDS: ${{ steps.config.outputs.budget_seconds }}
-          # Ceiling for the audit step, under the job's `timeout-minutes: 60`
-          # with room for setup at ordinary durations before the audit and the
-          # push, status, and comment steps after it. A job that reaches its
-          # own limit is cancelled rather than failed, so the failed-run status
-          # backstop never runs; the audit step's own timeout counts as a
-          # failure, so it has to fire first.
-          AUDIT_STEP_MAX_MINUTES: 45
         run: |
           set -eu
           # Convert budget_seconds → minutes (rounded up). Floor of 1 so
@@ -441,10 +411,6 @@ jobs:
           else
             minutes=$(( (BUDGET_SECONDS + 59) / 60 ))
             [ "$minutes" -lt 1 ] && minutes=1
-          fi
-          if [ "$minutes" -gt "$AUDIT_STEP_MAX_MINUTES" ]; then
-            echo "::warning::budget_seconds=${BUDGET_SECONDS} exceeds the audit step's ${AUDIT_STEP_MAX_MINUTES}-minute ceiling under the job's time limit; capping at ${AUDIT_STEP_MAX_MINUTES} minutes."
-            minutes=$AUDIT_STEP_MAX_MINUTES
           fi
           echo "minutes=$minutes" >> "$GITHUB_OUTPUT"
 
@@ -461,8 +427,7 @@ jobs:
         continue-on-error: true
         if: |
           steps.phase.outputs.reached_audit == 'true' &&
-          steps.decision.outputs.should_run == 'true' &&
-          steps.trailer.outputs.skip == 'false'
+          steps.decision.outputs.should_run == 'true'
         env:
           # The FULL-PR base, not steps.base.outputs.base (the incremental
           # audit base). The provenance `changed` field answers "did this pull
@@ -503,11 +468,10 @@ jobs:
         id: audit
         if: |
           steps.phase.outputs.reached_audit == 'true' &&
-          steps.decision.outputs.should_run == 'true' &&
-          steps.trailer.outputs.skip == 'false'
+          steps.decision.outputs.should_run == 'true'
         # Continue on failure: max-turns / SDK / API errors must not strand
-        # the PR check in a half-state. The status-summary terminal steps
-        # below comment the outcome regardless.
+        # the PR check in a half-state. The terminal status steps below
+        # record the outcome regardless.
         continue-on-error: true
         timeout-minutes: ${{ fromJSON(steps.timeout.outputs.minutes) }}
         uses: anthropics/claude-code-action@63322d7b2bc79e7b621b89f41b53ceb8e5a5d314 # v1.0
@@ -689,8 +653,7 @@ jobs:
         # check.
         if: |
           steps.phase.outputs.reached_audit == 'true' &&
-          steps.decision.outputs.should_run == 'true' &&
-          steps.trailer.outputs.skip == 'false'
+          steps.decision.outputs.should_run == 'true'
         env:
           # The PUSHED PR head sha, not `git rev-parse HEAD`. On a self-heal run
           # the agent commits its fix during its own turn, before this step and
@@ -729,7 +692,6 @@ jobs:
         if: |
           steps.phase.outputs.reached_audit == 'true' &&
           steps.decision.outputs.should_run == 'true' &&
-          steps.trailer.outputs.skip == 'false' &&
           steps.config.outputs.push_fixes == 'true' &&
           steps.audit.outcome == 'success'
         env:
@@ -764,7 +726,7 @@ jobs:
           # clean-no-push stamp step, which requires a marker keyed to the
           # PUSHED head's digest. Whatever this step built before dying is
           # unattested, so nothing is stamped and the merge gate stays shut; the
-          # refusal buys a truthful status and comment, never clearance.
+          # refusal buys a truthful status, never clearance.
           #
           # `pushed=false` is what the trap knows, not always what happened: an
           # abort between `git push` returning and the push arm writing its
@@ -824,10 +786,9 @@ jobs:
           # refused_reason=governance-surface arm and stood the whole self-heal
           # down for human review. The committed case is unaffected (the reset
           # is a no-op once HEAD carries the edit, and the gate's second half
-          # reads the branch's remote-tracking ref against HEAD), but this
-          # step's own comment names leftover uncommitted edits as routine, and
-          # the local backstop does not cover CI --
-          # .claude/hooks/block-selfheal-paths.sh no-ops
+          # reads origin/$PR_BRANCH..HEAD), but this step's own comment names
+          # leftover uncommitted edits as routine, and the local backstop does
+          # not cover CI -- .claude/hooks/block-selfheal-paths.sh no-ops
           # whenever the payload carries no code-audit-* agent_type, and CI runs
           # the auditor as the main session.
           #
@@ -861,7 +822,7 @@ jobs:
             git diff --name-only -z HEAD -- .claude
             git diff --cached --name-only -z -- .claude
           } > "$claude_dirty_z"
-          base_ref="refs/remotes/origin/${PR_BASE_REF}"
+          base_ref="origin/${PR_BASE_REF}"
           if ! git rev-parse --verify --quiet "${base_ref}^{commit}" >/dev/null 2>&1; then
             # No base to compare against, so every dirty .claude/ path reads as
             # an agent edit and the self-heal refuses. That is the safe
@@ -1033,13 +994,13 @@ jobs:
           # already COMMITTED, so its status is load-bearing in exactly the case
           # the other two are blind to. What is legitimately absent here is the
           # REF, not the answer: before the branch's first push there is no
-          # remote-tracking ref for the branch to diff against. So gate on the
-          # ref existing, the same shape the base_ref check above uses, instead
-          # of swallowing every status with `|| true`, and leave git's own
-          # diagnostic on stderr where the run log keeps it.
-          if git rev-parse --verify --quiet "refs/remotes/origin/${PR_BRANCH}^{commit}" >/dev/null 2>&1; then
-            git diff --name-only -z "refs/remotes/origin/${PR_BRANCH}..HEAD" >> "$enum_z" \
-              || note_enum_failure $? "git diff refs/remotes/origin/${PR_BRANCH}..HEAD"
+          # origin/$PR_BRANCH to diff against. So gate on the ref existing, the
+          # same shape the base_ref check above uses, instead of swallowing every
+          # status with `|| true`, and leave git's own diagnostic on stderr where
+          # the run log keeps it.
+          if git rev-parse --verify --quiet "origin/${PR_BRANCH}^{commit}" >/dev/null 2>&1; then
+            git diff --name-only -z "origin/${PR_BRANCH}..HEAD" >> "$enum_z" \
+              || note_enum_failure $? "git diff origin/${PR_BRANCH}..HEAD"
           fi
           tr '\0' '\n' < "$enum_z" >> "$enum_paths" || note_enum_failure $? "tr"
           cat "$preserved_governance_edits" >> "$enum_paths" || note_enum_failure $? "cat"
@@ -1053,7 +1014,7 @@ jobs:
           rm -f "$enum_sorted"
           if printf '%s\n' "$self_heal_paths" \
               | grep -qE "$AUDIT_SELFHEAL_REFUSE_ERE"; then
-            echo "code-review-audit: self-heal touched a refused surface (tests, the CI pipeline and the rest of .github/, .gaia/ gate & roster machinery, instruction/convention surfaces, or root build config; the set is AUDIT_SELFHEAL_REFUSE_ERE in .claude/hooks/lib/audit-selfheal-paths.sh) -- refusing." >&2
+            echo "code-review-audit: self-heal touched a refused surface (tests, the CI pipeline, .gaia/ gate machinery, instruction/convention surfaces, or root build config) -- refusing." >&2
             printf '%s\n' "$self_heal_paths" \
               | grep -E "$AUDIT_SELFHEAL_REFUSE_ERE" >&2 || true
             {
@@ -1115,7 +1076,7 @@ jobs:
             return 0
           }
 
-          ahead=$(git rev-list --count "refs/remotes/origin/${PR_BRANCH}..HEAD" 2>/dev/null || echo 0)
+          ahead=$(git rev-list --count "origin/${PR_BRANCH}..HEAD" 2>/dev/null || echo 0)
           if [ "$ahead" -eq 0 ]; then
             {
               echo "pushed=false"
@@ -1167,7 +1128,6 @@ jobs:
         if: |
           steps.phase.outputs.reached_audit == 'true' &&
           steps.decision.outputs.should_run == 'true' &&
-          steps.trailer.outputs.skip == 'false' &&
           steps.audit.outcome == 'success' &&
           (steps.push-fixes.outputs.marker_only == 'true' ||
            steps.push-fixes.outputs.pushed == 'true')
@@ -1192,10 +1152,9 @@ jobs:
           # five terminal paths share -- never stamp on an unrecomputable digest,
           # never clobber a live success -- as one copy rather than five (gaia-react/gaia#1286).
           #
-          # This step carries an `id:` so its post_failed output reaches the
-          # terminal "Status - audit complete" comment. A rejected status POST no
-          # longer reds this step, so that comment is the only place an author is
-          # told the gate is shut (gaia-react/gaia#1296).
+          # A rejected status POST no longer reds this step; the author-facing
+          # signal is write-audit-status.sh's own stderr echo in the run log
+          # (gaia-react/gaia#1296).
           #
           # --require-marker, for the same reason the no-push writer passes it.
           # An earned clearance write refuses, writing no marker, whenever the
@@ -1222,7 +1181,6 @@ jobs:
         if: |
           steps.phase.outputs.reached_audit == 'true' &&
           steps.decision.outputs.should_run == 'true' &&
-          steps.trailer.outputs.skip == 'false' &&
           steps.config.outputs.push_fixes == 'true' &&
           steps.audit.outcome == 'success' &&
           steps.push-fixes.outputs.pushed != 'true' &&
@@ -1277,9 +1235,7 @@ jobs:
           # this one asks for nothing special: gaia-react/gaia#726 was an HTTP
           # 422 on an unpushed sha turning an otherwise-clean audit RED under
           # `set -eu`, and .github/audit/write-audit-status.sh now settles that
-          # for every writer rather than for this one alone. This step carries an
-          # `id:` so its post_failed output reaches the terminal "Status - audit
-          # complete" comment.
+          # for every writer rather than for this one alone.
           bash .github/audit/write-audit-status.sh \
             --sha "${HEAD_SHA}" \
             --base "${PR_BASE_SHA}" \
@@ -1313,8 +1269,9 @@ jobs:
           # readers, which reject any non-success state).
           #
           # Subordinate to the scope gates (has_source == true && self_modified
-          # == false): out-of-scope / self-mod PRs take the stamp paths and never
-          # reach here, so exactly one terminal status lands per run.
+          # == false): out-of-scope PRs take the out-of-scope stamp path and
+          # self-mod PRs post no status; neither reaches here, so at most one
+          # terminal status lands per run.
           #
           # This is the writer where the non-clobber read bites HARDEST, not
           # least. Local mode is the common maintainer path; this step's `if:`
@@ -1350,9 +1307,8 @@ jobs:
           # scope. Stamp a GAIA-Audit status on HEAD anyway so the merge hook
           # (.claude/hooks/pr-merge-audit-check.sh) is satisfied without a
           # ceremonial local run. has_source == 'false' structurally excludes the
-          # already-audited path (has_source && trailer.skip) and the
-          # self-modification path (has_source && self_modified), since both
-          # require has_source == 'true', so neither auto-stamps.
+          # self-modification path (has_source && self_modified), since it
+          # requires has_source == 'true', so it does not auto-stamp.
           #
           # "Out of scope" here means out of scope for the FRONTEND member:
           # has_source mirrors that member's auditable-base set exactly. A
@@ -1364,10 +1320,10 @@ jobs:
           # read. --base is what stops that: any dispatched member downgrades this
           # to `pending` and lets the local, member-aware producer clear it.
           #
-          # This step carries an `id:`, so the writer's members_pending /
-          # success_stamped / post_failed / success_live / read_failed outputs are
-          # read by the terminal comment step. They exist so the author is never
-          # told the gate is satisfied while the status says otherwise.
+          # write-audit-status.sh's own non-clobber read and stderr echo are
+          # what keep the author from being told the gate is satisfied while
+          # the status says otherwise; nothing downstream in this workflow
+          # reads this step's outputs today.
           bash .github/audit/write-audit-status.sh \
             --sha "${HEAD_SHA}" \
             --base "${PR_BASE_SHA}"
@@ -1418,7 +1374,6 @@ jobs:
       - name: Re-trigger and stamp required checks on new HEAD
         if: |
           steps.phase.outputs.reached_audit == 'true' &&
-          steps.trailer.outputs.skip == 'false' &&
           steps.audit.outcome == 'success' &&
           steps.push-fixes.outputs.pushed == 'true'
         env:
@@ -1467,7 +1422,7 @@ jobs:
           # status POST no longer fails the stamp step above, so this one now
           # runs on a HEAD that may carry no status at all; a summary claiming
           # the binding was recorded would be a durable artifact contradicting
-          # the terminal comment the same run writes (gaia-react/gaia#1296).
+          # what actually landed (gaia-react/gaia#1296).
           gh api "repos/${GITHUB_REPOSITORY}/check-runs" \
             --method POST \
             --field name=code-review-audit \
@@ -1584,368 +1539,33 @@ jobs:
           done
 
       # ----------------------------------------------------------------
-      # Terminal status steps. Exactly one fires per run; together they
-      # guarantee the job reaches a clean conclusion on every code path
-      # (the job is green-by-design). The required-check gate is the
-      # `GAIA-Audit` commit STATUS posted by the stamp / stand-down steps
-      # above, not the job name: a `pending` stand-down blocks the merge
-      # while the job is still green. These comments are advisory.
+      # Terminal step. Fires only when the audit ran but did not complete
+      # cleanly, so the job reds instead of silently succeeding with no
+      # signal. Every other code path either reached its terminal
+      # `GAIA-Audit` commit status write above (the stamp / stand-down
+      # steps) or is a gate-label or self-modification skip, which posts no
+      # status; none needs anything further here: the required-check gate
+      # is that commit STATUS, not the job name.
       # ----------------------------------------------------------------
-
-      - name: Status - skipped (gate label missing)
-        if: steps.gate.outputs.gated == 'true'
-        env:
-          GATE_LABEL: ${{ steps.config.outputs.gate_label }}
-        run: |
-          set -eu
-          bash .github/audit/cra-status-upsert.sh "$PR_NUMBER" \
-            "code-review-audit skipped: gate_label '$GATE_LABEL' not present on PR"
-
-      - name: Status - skipped (chore-deps PR)
-        if: |
-          steps.gate.outputs.gated == 'false' &&
-          steps.chore-deps.outputs.skip == 'true'
-        env:
-          MEMBERS_PENDING: ${{ steps.chore-deps-status.outputs.members_pending }}
-          SUCCESS_STAMPED: ${{ steps.chore-deps-status.outputs.success_stamped }}
-          SUCCESS_LIVE: ${{ steps.chore-deps-status.outputs.success_live }}
-          READ_FAILED: ${{ steps.chore-deps-status.outputs.read_failed }}
-          POST_FAILED: ${{ steps.chore-deps-status.outputs.post_failed }}
-        run: |
-          set -eu
-          # chore(deps) / chore(deps-dev) PRs skip the expensive frontend audit
-          # (pre-verified by the /update-deps wrapper's local quality gate), but
-          # the "Write GAIA-Audit commit status (chore-deps skip)" step still
-          # stamps the required GAIA-Audit status so the merge gate is
-          # satisfiable. This comment reports WHICH outcome that step reached,
-          # mirroring the "no source changes" comment: a bare "skipped" line would
-          # read as green even on the pending / not-stamped paths.
-
-          # A GAIA-Audit success for this commit's tree is already live (every
-          # dispatched member cleared locally); CI declined to clobber it. Checked
-          # first: members_pending stays non-empty here because CI cannot see a
-          # local marker, so the pending branch below would otherwise tell the
-          # author to clear an already-green gate.
-          if [ "${SUCCESS_LIVE:-}" = "true" ]; then
-            bash .github/audit/cra-status-upsert.sh "$PR_NUMBER" \
-              "code-review-audit skipped: chore(deps) PRs are pre-verified by the /update-deps local quality gate. GAIA-Audit is already green for this commit's tree, every dispatched member has cleared. No action needed"
-            exit 0
-          fi
-          # The non-clobber guard could not read the current GAIA-Audit status, so
-          # the stamp step stood down having posted nothing; the gate's true state
-          # is unknown.
-          if [ "${READ_FAILED:-}" = "true" ]; then
-            bash .github/audit/cra-status-upsert.sh "$PR_NUMBER" \
-              "code-review-audit skipped: chore(deps) PR, but this diff dispatches ${MEMBERS_PENDING}, and the current GAIA-Audit status could not be read, so its state is unknown. Run the dispatched member(s) locally to be sure the merge gate is clear"
-            exit 0
-          fi
-          # A co-dispatched specialized member CI cannot run is present; the
-          # pre-verified rationale covers only the frontend member, so the stamp
-          # step posted `pending`, not `success`, and a local audit of that member
-          # is required.
-          #
-          # The nested post_failed check is the COMBINED state, and it is the
-          # reason this arm still precedes the standalone post_failed arm below.
-          # A rejected PENDING POST always lands here, never there: that POST
-          # fires only when members_pending is non-empty, so hoisting the arm
-          # below would replace "run the dispatched members locally" -- the only
-          # action that clears this gate -- with "re-run this workflow", which
-          # does not. Combining beats choosing.
-          if [ -n "${MEMBERS_PENDING:-}" ]; then
-            if [ "${POST_FAILED:-}" = "true" ]; then
-              bash .github/audit/cra-status-upsert.sh "$PR_NUMBER" \
-                "code-review-audit skipped: chore(deps) PR, but this diff dispatches ${MEMBERS_PENDING}, which CI cannot run, and the pending GAIA-Audit status POST was rejected by GitHub (rate limit, 5xx, or auth blip), so NO status was posted on HEAD at all. The merge gate is NOT satisfied either way: run the dispatched member(s) locally to clear it"
-              exit 0
-            fi
-            bash .github/audit/cra-status-upsert.sh "$PR_NUMBER" \
-              "code-review-audit skipped: chore(deps) PR, but this diff dispatches ${MEMBERS_PENDING}, which CI cannot run. GAIA-Audit is pending, not green: run the dispatched member(s) locally to clear the merge gate"
-            exit 0
-          fi
-          # The stamp step reached the POST and GitHub rejected it. Checked
-          # before the generic no-stamp branch below, whose stated cause is a
-          # missing .gaia/VERSION: that would send the author to repair a file
-          # that is fine. A rejected POST no longer reds the stamp step, so this
-          # comment is the whole signal.
-          if [ "${POST_FAILED:-}" = "true" ]; then
-            bash .github/audit/cra-status-upsert.sh "$PR_NUMBER" \
-              "code-review-audit skipped: chore(deps) PR, but the GAIA-Audit status POST was rejected by GitHub (rate limit, 5xx, or auth blip), so NO status was stamped on HEAD and the merge gate is NOT satisfied. Re-run this workflow, or run a local audit, to stamp it"
-            exit 0
-          fi
-          # The stamp step bowed out having posted NOTHING (unrecomputable frontend
-          # digest, or .gaia/VERSION missing/empty). The gate fails closed, so a
-          # bare "skipped" line would claim the opposite of what happened.
-          if [ "${SUCCESS_STAMPED:-}" != "true" ]; then
-            bash .github/audit/cra-status-upsert.sh "$PR_NUMBER" \
-              "code-review-audit skipped: chore(deps) PR, but NO GAIA-Audit commit status was stamped on HEAD, so the merge gate is NOT satisfied. Most likely .gaia/VERSION is missing/empty or the frontend digest could not be recomputed; see the 'Write GAIA-Audit commit status (chore-deps skip)' step log. Restore .gaia/VERSION, or run a local audit, to clear the gate"
-            exit 0
-          fi
-          bash .github/audit/cra-status-upsert.sh "$PR_NUMBER" \
-            "code-review-audit skipped: chore(deps) / chore(deps-dev) PRs are pre-verified by the /update-deps local quality gate; GAIA-Audit commit status stamped on HEAD so the merge gate is satisfied"
-
-      - name: Status - skipped (no source changes)
-        if: |
-          steps.gate.outputs.gated == 'false' &&
-          steps.source-changes.outputs.has_source == 'false'
-        env:
-          MEMBERS_PENDING: ${{ steps.oos-status.outputs.members_pending }}
-          SUCCESS_STAMPED: ${{ steps.oos-status.outputs.success_stamped }}
-          SUCCESS_LIVE: ${{ steps.oos-status.outputs.success_live }}
-          READ_FAILED: ${{ steps.oos-status.outputs.read_failed }}
-          POST_FAILED: ${{ steps.oos-status.outputs.post_failed }}
-        run: |
-          set -eu
-          # Checked BEFORE members_pending, which is still non-empty on this
-          # path: the status step stood down because a GAIA-Audit success for
-          # this commit's tree is already live, meaning every dispatched member
-          # cleared locally and CI deliberately declined to overwrite it with
-          # `pending`. CI cannot see a local marker, so it still names those
-          # members as pending -- and the members_pending branch below would
-          # therefore tell the author to clear a gate that is already green.
-          # Under-claiming is as much a lie as over-claiming here.
-          if [ "${SUCCESS_LIVE:-}" = "true" ]; then
-            bash .github/audit/cra-status-upsert.sh "$PR_NUMBER" \
-              "code-review-audit skipped: no files in the frontend auditor's scope. GAIA-Audit is already green for this commit's tree, every dispatched member has cleared. No action needed"
-            exit 0
-          fi
-          # Also checked BEFORE members_pending: the status step could not tell
-          # whether a GAIA-Audit success for this tree is already live (the
-          # non-clobber guard's read failed), so it stood down having stamped
-          # nothing. The members_pending branch below asserts "pending, not
-          # green", a claim this step never verified on this exit; the gate's
-          # true state is exactly what the guard could not read.
-          if [ "${READ_FAILED:-}" = "true" ]; then
-            bash .github/audit/cra-status-upsert.sh "$PR_NUMBER" \
-              "code-review-audit skipped: no files in the frontend auditor's scope, but this diff dispatches ${MEMBERS_PENDING}, and the current GAIA-Audit status could not be read, so its state is unknown. Run the dispatched member(s) locally to be sure the merge gate is clear"
-            exit 0
-          fi
-          # "No source changes" is frontend-relative: has_source mirrors that
-          # member's auditable-base set. When a SPECIALIZED member still owns a
-          # changed file, the status step above posted `pending`, not `success`,
-          # so the merge gate is NOT satisfied and a local audit IS required.
-          # Report that instead of the free-skip message, which would otherwise
-          # tell the author the button is open while it is shut.
-          #
-          # The nested post_failed check is the COMBINED state; see the
-          # chore-deps ladder for why it lives here rather than in the arm
-          # below. Same order, same reason, same sentence.
-          if [ -n "${MEMBERS_PENDING:-}" ]; then
-            if [ "${POST_FAILED:-}" = "true" ]; then
-              bash .github/audit/cra-status-upsert.sh "$PR_NUMBER" \
-                "code-review-audit skipped: no files in the frontend auditor's scope, but this diff dispatches ${MEMBERS_PENDING}, which CI cannot run, and the pending GAIA-Audit status POST was rejected by GitHub (rate limit, 5xx, or auth blip), so NO status was posted on HEAD at all. The merge gate is NOT satisfied either way: run the dispatched member(s) locally to clear it"
-              exit 0
-            fi
-            bash .github/audit/cra-status-upsert.sh "$PR_NUMBER" \
-              "code-review-audit skipped: no files in the frontend auditor's scope, but this diff dispatches ${MEMBERS_PENDING}, which CI cannot run. GAIA-Audit is pending, not green: run the dispatched member(s) locally to clear the merge gate"
-            exit 0
-          fi
-          # The status step reached the POST and GitHub rejected it. Checked
-          # before the branch below, whose stated cause is a missing
-          # .gaia/VERSION: that would send the author to repair a file that is
-          # fine. A rejected POST no longer reds the status step, so this comment
-          # is the whole signal.
-          if [ "${POST_FAILED:-}" = "true" ]; then
-            bash .github/audit/cra-status-upsert.sh "$PR_NUMBER" \
-              "code-review-audit skipped: no files in the frontend auditor's scope, but the GAIA-Audit status POST was rejected by GitHub (rate limit, 5xx, or auth blip), so NO status was stamped on HEAD and the merge gate is NOT satisfied. Re-run this workflow, or run a local audit, to stamp it"
-            exit 0
-          fi
-          # The status step can also bow out having posted NOTHING (.gaia/VERSION
-          # missing or empty). The gate fails closed there -- an absent required
-          # check shuts the button -- so the free-skip message below would tell the
-          # author the exact opposite of what happened, with the only truthful
-          # signal buried in that step's log. Anything other than a confirmed
-          # `true` is read as no-stamp, so a future reshape that drops the output
-          # degrades to the cautious message rather than a false green.
-          if [ "${SUCCESS_STAMPED:-}" != "true" ]; then
-            bash .github/audit/cra-status-upsert.sh "$PR_NUMBER" \
-              "code-review-audit skipped: no audit-relevant files changed in the un-audited delta (since the last clean audit), but NO GAIA-Audit commit status was stamped on HEAD, so the merge gate is NOT satisfied. Most likely .gaia/VERSION is missing or empty; see the 'Write GAIA-Audit commit status (out-of-scope skip)' step log. Restore .gaia/VERSION, or run a local audit, to clear the gate"
-            exit 0
-          fi
-          bash .github/audit/cra-status-upsert.sh "$PR_NUMBER" \
-            "code-review-audit skipped: no audit-relevant files changed in the un-audited delta (since the last clean audit); GAIA-Audit commit status stamped on HEAD so the merge gate is satisfied with no local audit run"
-
-      - name: Status - skipped (trailer matches)
-        if: |
-          steps.phase.outputs.reached_audit == 'true' &&
-          steps.trailer.outputs.skip == 'true'
-        env:
-          MATCHED_VERSION: ${{ steps.trailer.outputs.matched_version }}
-          MATCHED_TREE: ${{ steps.trailer.outputs.matched_tree }}
-        run: |
-          set -eu
-          short_tree="$(printf '%s' "$MATCHED_TREE" | cut -c1-7)"
-          bash .github/audit/cra-status-upsert.sh "$PR_NUMBER" \
-            "code-review-audit skipped: GAIA-Audit trailer matches version $MATCHED_VERSION tree $short_tree"
-
-      - name: Status - skipped (workflow self-modification)
-        if: |
-          steps.gate.outputs.gated == 'false' &&
-          steps.source-changes.outputs.has_source == 'true' &&
-          steps.workflow-self-mod.outputs.self_modified == 'true'
-        env:
-          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-        run: |
-          set -eu
-          # Names the condition the check actually tests -- this PR's copy of
-          # the workflow differs from the default branch's -- rather than
-          # asserting the PR modified it. A PR on a stale base trips this
-          # without touching the workflow, and "you modified it" points such an
-          # author at an edit they never made instead of at a rebase.
-          bash .github/audit/cra-status-upsert.sh "$PR_NUMBER" \
-            "code-review-audit skipped: this PR's copy of the audit workflow differs from ${DEFAULT_BRANCH}; claude-code-action's workflow-validation guardrail would refuse to run. If this PR does not change the workflow, rebase onto ${DEFAULT_BRANCH}."
-
-      - name: Status - local-mode stand-down
-        # Green terminal step for the local-mode stand-down path. The JOB
-        # stays green-by-design; the GATE is the `GAIA-Audit` STATUS. The
-        # stand-down step posts that status as `pending` ONLY when it reads
-        # back a definitive "no success live" for HEAD's tree. When a success
-        # IS live it leaves it alone (the local producer already cleared every
-        # dispatched member, so the gate is legitimately green); when the read
-        # is unanswerable it posts nothing, which fails closed: an absent
-        # required check blocks the merge just as a `pending` one does; and
-        # when it reaches the POST and GitHub REJECTS it, it likewise posts
-        # nothing and fails closed the same way, publishing `post_failed`.
-        # The message below holds on all four, because it points the author at
-        # the local merge path, which clears the gate on each of them and is a
-        # no-op when the gate is already green.
-        #
-        # THIS STEP DELIBERATELY CONSUMES NO WRITER OUTPUTS, which is why the
-        # stand-down step above carries no `id:`. Its message makes no claim
-        # about what was posted, so there is no wrong-explanation failure here
-        # for a `post_failed` arm to correct -- unlike the three ladders, whose
-        # members-pending arm asserted a `pending` status by name. The
-        # stand-down writer emits `post_failed` all the same; nothing reads it,
-        # and that is the intended shape rather than an oversight.
-        # Gated identically to the stand-down step so exactly one terminal
-        # status step fires per run.
-        if: |
-          steps.phase.outputs.reached_audit == 'true' &&
-          steps.chore-deps.outputs.skip == 'false' &&
-          steps.decision.outputs.should_run == 'false'
-        env:
-          OVERRIDE_LABEL: ${{ steps.config.outputs.override_label }}
-        run: |
-          set -eu
-          bash .github/audit/cra-status-upsert.sh "$PR_NUMBER" \
-            "code-review-audit standing down for this author (local mode). Merge via Claude (which runs the audit locally) or add the '${OVERRIDE_LABEL}' label to force a CI audit."
 
       - name: Status - audit aborted
         # `continue-on-error: true` on the audit step keeps the workflow
-        # alive after the audit fails so this terminal step can post the
-        # truthful comment. `outcome != 'success'` is the only reliable
-        # signal that the audit did not run cleanly (the audit step's
-        # `conclusion` is forced to success by `continue-on-error`).
-        # Common causes: the audit step's own timeout, max-turns hit,
-        # SDK error, transient API failure, or a workflow-validation
-        # refusal that slipped past the self-modification skip. After
-        # commenting, `exit 1`
-        # surfaces the abort as a red check on the PR; without it, the
-        # green-check-plus-aborted-comment combo silently hides real
-        # audit failures from PR authors.
+        # alive after the audit fails so this terminal step can still run.
+        # `outcome != 'success'` is the only reliable signal that the audit
+        # did not run cleanly (the audit step's `conclusion` is forced to
+        # success by `continue-on-error`). Common causes: the audit step's
+        # own timeout, max-turns hit, SDK error, transient API failure, or a
+        # workflow-validation refusal that slipped past the self-modification
+        # skip. `exit 1` surfaces the abort as a red check on the PR; without
+        # it, a green check silently hides real audit failures from PR
+        # authors even though no GAIA-Audit status was stamped for this run.
         if: |
           steps.phase.outputs.reached_audit == 'true' &&
           steps.decision.outputs.should_run == 'true' &&
-          steps.trailer.outputs.skip == 'false' &&
           steps.audit.outcome != 'success'
         run: |
-          set -eu
-          bash .github/audit/cra-status-upsert.sh "$PR_NUMBER" \
-            "code-review-audit aborted: audit step timeout (budget_seconds, or its ceiling under the job limit), workflow validation refusal, max-turns, SDK error, or transient API failure (see workflow run logs)"
+          echo "::error::code-review-audit aborted: audit step timeout, max-turns, SDK error, transient API failure, or workflow-validation refusal (see workflow run logs)"
           exit 1
-
-      - name: Status - audit complete
-        if: |
-          steps.phase.outputs.reached_audit == 'true' &&
-          steps.decision.outputs.should_run == 'true' &&
-          steps.trailer.outputs.skip == 'false' &&
-          steps.audit.outcome == 'success'
-        env:
-          PUSHED: ${{ steps.push-fixes.outputs.pushed }}
-          REFUSED: ${{ steps.push-fixes.outputs.refused }}
-          REFUSED_COUNT: ${{ steps.push-fixes.outputs.refused_count }}
-          REFUSED_REASON: ${{ steps.push-fixes.outputs.refused_reason }}
-          PUSH_FIXES: ${{ steps.config.outputs.push_fixes }}
-          # Whichever of the two stamp steps this run reached; they are mutually
-          # exclusive, and a step that did not run contributes an empty string.
-          # This comment is the only one covering either path, so without these a
-          # shut gate would leave "complete: no fixes needed" standing beside it.
-          #
-          # The full set the two skip comments read, not just post_failed: a
-          # rejected POST is one of five ways those stamp steps end with nothing
-          # stamped, and reporting one of the five would make the silence on the
-          # other four read as a clean finish.
-          #
-          # `||` is safe on every one of them. The two steps cannot both run, a
-          # skipped step contributes '', and the only non-empty falsy-looking
-          # value any of them takes is the literal `false` on success_stamped,
-          # which GitHub expressions treat as a truthy non-empty string, so it is
-          # never silently replaced by the other step's empty output.
-          MEMBERS_PENDING: ${{ steps.push-status.outputs.members_pending || steps.clean-status.outputs.members_pending }}
-          SUCCESS_STAMPED: ${{ steps.push-status.outputs.success_stamped || steps.clean-status.outputs.success_stamped }}
-          SUCCESS_LIVE: ${{ steps.push-status.outputs.success_live || steps.clean-status.outputs.success_live }}
-          READ_FAILED: ${{ steps.push-status.outputs.read_failed || steps.clean-status.outputs.read_failed }}
-          POST_FAILED: ${{ steps.push-status.outputs.post_failed || steps.clean-status.outputs.post_failed }}
-        run: |
-          set -eu
-          if [ "$PUSH_FIXES" = "false" ]; then
-            mode="advisory (push_fixes=false)"
-          elif [ "$REFUSED" = "true" ]; then
-            if [ "$REFUSED_REASON" = "governance-surface" ]; then
-              mode="self-heal REFUSED: edited a surface off-limits to self-heal (tests, the CI pipeline and the rest of .github/, .gaia/ gate & roster machinery, instruction/convention surfaces under .claude/**, .specify/**, wiki/**, or root build config; the set is AUDIT_SELFHEAL_REFUSE_ERE in .claude/hooks/lib/audit-selfheal-paths.sh); see workflow logs and review manually"
-            elif [ "$REFUSED_REASON" = "path-enumeration-failed" ]; then
-              mode="self-heal REFUSED: the changed-path enumeration failed, so the off-limits-surface check had only a partial list to judge; see workflow logs and review manually"
-            elif [ "$REFUSED_REASON" = "step-aborted" ]; then
-              mode="self-heal REFUSED: the self-heal step aborted before it reported, so what it completed is unknown and the off-limits-surface check may never have run; see workflow logs and review manually"
-            else
-              mode="self-heal REFUSED: diff exceeded the 10-file safety threshold (touched $REFUSED_COUNT files); see workflow logs and review manually"
-            fi
-          elif [ "$PUSHED" = "true" ]; then
-            mode="self-heal pushed"
-          else
-            mode="no fixes needed"
-          fi
-          # Appended rather than substituted: what the audit DID is still true
-          # and still worth reporting, and the stamp is a separate fact about
-          # whether the gate opened.
-          #
-          # Same arms in the same literal order as the two skip comments, with
-          # ONE deliberate difference: the final arm tests for the literal
-          # `false` where they test `!= "true"`. That is not a style choice. An
-          # EMPTY success_stamped here means neither stamp step ran at all, the
-          # ordinary shape of advisory mode (push_fixes=false posts no status by
-          # design), so `!= "true"` would attach a merge-gate warning to every
-          # advisory run. The skip comments have no such state -- their stamp
-          # step always runs -- which is why the same predicate is right there
-          # and wrong here.
-          #
-          # KEEP THE ORDER IN SYNC RATHER THAN REASONING ABOUT IT. That day has
-          # arrived: the pending POST now emits post_failed rather than swallowing
-          # its rejection, so hoisting the post_failed arm is no longer inert. It
-          # would tell an author here to re-run the workflow while the skip
-          # comments tell them to run the dispatched members locally -- the
-          # divergence-between-copies shape gaia-react/gaia#1286 exists to remove.
-          # The combined state is handled by nesting inside the members-pending
-          # arm instead, identically in all three ladders.
-          stamp=""
-          if [ "${SUCCESS_LIVE:-}" != "true" ]; then
-            if [ "${READ_FAILED:-}" = "true" ]; then
-              stamp=". But this diff dispatches ${MEMBERS_PENDING}, and the current GAIA-Audit status could not be read, so the stamp step stood down having posted nothing and the gate's state is unknown. Run the dispatched member(s) locally to be sure the merge gate is clear"
-            elif [ -n "${MEMBERS_PENDING:-}" ]; then
-              # The COMBINED state, nested for the same reason the two skip
-              # ladders nest it: a rejected PENDING POST always arrives with a
-              # non-empty members_pending, so the arm below can never see one.
-              if [ "${POST_FAILED:-}" = "true" ]; then
-                stamp=". But this diff dispatches ${MEMBERS_PENDING}, which CI cannot run, and the pending GAIA-Audit status POST was rejected by GitHub (rate limit, 5xx, or auth blip), so NO status was posted on HEAD at all. The merge gate is NOT satisfied either way: run the dispatched member(s) locally to clear it"
-              else
-                stamp=". But this diff dispatches ${MEMBERS_PENDING}, which CI cannot run, so GAIA-Audit is pending, not green: run the dispatched member(s) locally to clear the merge gate"
-              fi
-            elif [ "${POST_FAILED:-}" = "true" ]; then
-              stamp=". But the GAIA-Audit status POST was rejected by GitHub (rate limit, 5xx, or auth blip), so NO status was stamped on HEAD and the merge gate is NOT satisfied. Re-run this workflow, or run a local audit, to stamp it"
-            elif [ "${SUCCESS_STAMPED:-}" = "false" ]; then
-              stamp=". But NO GAIA-Audit commit status was stamped on HEAD, so the merge gate is NOT satisfied. Most likely .gaia/VERSION is missing/empty, the frontend digest could not be recomputed, or the audit was not proven clean; see the stamp step's log. Restore .gaia/VERSION, or run a local audit, to clear the gate"
-            fi
-          fi
-          bash .github/audit/cra-status-upsert.sh "$PR_NUMBER" \
-            "code-review-audit complete: ${mode}${stamp}"
 
       # ----------------------------------------------------------------
       # Failed-run backstop. Every step above carries GitHub's implicit
@@ -1956,9 +1576,9 @@ jobs:
       # close that: the checkout and setup steps are `uses:` steps no shell
       # trap reaches.
       #
-      # Last in the job so it also covers a failure in the re-trigger step,
-      # in a terminal comment step, and the audit-aborted step's deliberate
-      # `exit 1`. That position is safe because it posts only when the head
+      # Last in the job so it also covers a failure in the re-trigger step
+      # and the audit-aborted step's deliberate `exit 1`. That position is
+      # safe because it posts only when the head
       # carries no `GAIA-Audit` status at all: a writer that already posted
       # success or pending before the failure keeps it.
       #

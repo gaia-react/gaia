@@ -236,9 +236,8 @@ Rotation procedure:
    to issue a fresh token.
 2. Update GAIA's GitHub organization secret `CLAUDE_CODE_OAUTH_TOKEN`
    (Settings → Secrets and variables → Actions → Organization secrets).
-3. Optionally run `gh workflow run distribution.yml --ref main` to
-   confirm the new token authenticates from a runner before the next
-   release.
+3. Optionally run `bash .gaia/tests/distribution/run-all.sh` locally with
+   the new token to confirm it authenticates before the next release.
 
 Refresh-without-replay (renewing an existing token in place) is not
 supported; `setup-token` always issues a new token; rotation means

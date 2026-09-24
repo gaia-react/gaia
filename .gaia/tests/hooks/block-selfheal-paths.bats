@@ -269,8 +269,8 @@ run_hook_bash() {
   assert_denied_by_json
 }
 
-@test "code-audit-frontend editing .github/audit/cra-status-upsert.sh is denied" {
-  run_hook_edit "code-audit-frontend" "Edit" ".github/audit/cra-status-upsert.sh"
+@test "code-audit-frontend editing .github/audit/resolve-check-base.sh is denied" {
+  run_hook_edit "code-audit-frontend" "Edit" ".github/audit/resolve-check-base.sh"
   assert_denied_by_json
 }
 

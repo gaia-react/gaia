@@ -4,19 +4,10 @@
 # post-merge CI poller whose one-line JSON `conclusion` is the composite
 # action's own contract with its caller.
 #
-# The class under test is a deadline branch reachable from two conditions
-# reporting only one of them. `gh run list` failing and `gh run list` returning
-# an empty list both leave the poll loop with nothing terminal to report, and
-# the script used to answer `timeout` for both. The repairs are opposites, a
-# longer deadline against a working token, so the two states are split and the
-# script is pinned here on which one it emits.
-#
 # The poller talks to the network through `gh` and nothing else, so every test
 # drives it against a `gh` stub earlier on PATH. The stub answers the branch
 # protection probe with a failure, which is the unconfigured-protection shape
-# the script already tolerates, and answers `run list` per GH_RUN_MODE. Modes
-# that change answer between polls count their invocations in a state file, so
-# a test can pin which poll decides the verdict.
+# the script already tolerates, and answers `run list` per GH_RUN_MODE.
 #
 # TIMEOUT_SECONDS and SLEEP_SECONDS are the script's own documented overrides.
 # They are set to seconds here rather than the production 5400/30 so a suite
@@ -49,8 +40,9 @@ setup() {
 }
 
 # The stub's `run list` arm writes to stdout what the real `gh --json` call
-# would, and its failure arm writes to stderr and exits non-zero, because the
-# split the script has to make is exactly between those two.
+# would return, and its failure arm exits non-zero, which the script's own
+# `2>/dev/null || echo '[]'` collapses into the same empty-list shape as no
+# runs yet.
 write_gh_stub() {
   cat >"$STUB_DIR/gh" <<'STUB'
 #!/usr/bin/env bash
@@ -74,42 +66,13 @@ fi
 polls=$(( polls + 1 ))
 printf '%s' "$polls" >"$STUB_STATE/polls"
 
-emit_fail() {
-  echo "gh: To get started with GitHub CLI, please run: gh auth login." >&2
-  echo "gh: error connecting to api.github.com" >&2
-  exit 1
-}
-
 case "${GH_RUN_MODE:-empty}" in
-  fail) emit_fail ;;
-  bloat)
-    # One unbroken line, no newline: a line-based tail carries it whole.
-    # Deliberately no default for the size. The size is the whole point of this
-    # mode, and a default is the one value nobody revisits when the reasoning
-    # moves, so a stale one would quietly drive a later bloat test below the
-    # ceiling it exists to clear. Unset fails loudly here under `set -u`.
-    head -c "$BLOAT_BYTES" /dev/zero | tr '\0' 'H' >&2
-    exit 1
-    ;;
   empty) echo '[]' ;;
   green)
     echo '[{"conclusion":"success","status":"completed","name":"Tests","url":"https://example.invalid/run/1"}]'
     ;;
   red)
     echo '[{"conclusion":"failure","status":"completed","name":"Tests","url":"https://example.invalid/run/2"}]'
-    ;;
-  fail-then-empty)
-    if [ "$polls" -eq 1 ]; then
-      emit_fail
-    fi
-    echo '[]'
-    ;;
-  empty-then-fail)
-    if [ "$polls" -eq 1 ]; then
-      echo '[]'
-    else
-      emit_fail
-    fi
     ;;
   *)
     echo "gh stub: unknown GH_RUN_MODE: ${GH_RUN_MODE:-}" >&2
@@ -131,74 +94,12 @@ polls_made() {
   fi
 }
 
-@test "a query that never succeeds concludes query-failed, not timeout" {
-  GH_RUN_MODE=fail run bash "$SCRIPT" deadbeef
-  [ "$status" -eq 1 ]
-  [ "$(polls_made)" -ge 1 ]
-  [ "$(jq -r '.conclusion' <<<"$output")" = "query-failed" ]
-  grep -qF -- 'timeout' <<<"$output" && return 1
-  true
-}
-
-@test "query-failed carries the failing query's own stderr as evidence" {
-  GH_RUN_MODE=fail run bash "$SCRIPT" deadbeef
-  [ "$status" -eq 1 ]
-  [ "$(polls_made)" -ge 1 ]
-  # The operator's repair is chosen from this text, so the assertion is on the
-  # message the script carried out of gh rather than on the field's presence.
-  grep -qF -- 'gh auth login' <<<"$(jq -r '.error' <<<"$output")"
-}
-
 @test "an empty run list still concludes timeout" {
   GH_RUN_MODE=empty run bash "$SCRIPT" deadbeef
   [ "$status" -eq 1 ]
   [ "$(polls_made)" -ge 1 ]
   [ "$(jq -r '.conclusion' <<<"$output")" = "timeout" ]
   [ "$(jq -r '.run_url' <<<"$output")" = "" ]
-}
-
-@test "timeout carries no error field, so evidence marks the query failure alone" {
-  GH_RUN_MODE=empty run bash "$SCRIPT" deadbeef
-  [ "$(polls_made)" -ge 1 ]
-  [ "$(jq -r 'has("error")' <<<"$output")" = "false" ]
-}
-
-@test "the last poll decides: a query that recovers concludes timeout" {
-  # Two polls inside the deadline, the first failing and the second answering.
-  # The script left off holding a readable answer, so the deadline it then hit
-  # is a real timeout and reporting one is not the class this suite pins.
-  GH_RUN_MODE=fail-then-empty run bash "$SCRIPT" deadbeef
-  [ "$status" -eq 1 ]
-  [ "$(jq -r '.conclusion' <<<"$output")" = "timeout" ]
-  [ "$(polls_made)" -ge 2 ]
-}
-
-@test "the last poll decides: a query that breaks mid-watch concludes query-failed" {
-  GH_RUN_MODE=empty-then-fail run bash "$SCRIPT" deadbeef
-  [ "$status" -eq 1 ]
-  [ "$(jq -r '.conclusion' <<<"$output")" = "query-failed" ]
-  [ "$(polls_made)" -ge 2 ]
-}
-
-@test "a single huge stderr line still yields a readable query-failed verdict" {
-  # The value reaches jq through argv, so an unbounded capture fails the exec
-  # itself and the script dies emitting nothing: the operator loses the diagnosis
-  # at exactly the moment the response body is the evidence. The fixture has to
-  # clear BOTH ceilings or it proves nothing on one of the two platforms this
-  # suite runs on -- Linux caps a single argument at 128 KiB (MAX_ARG_STRLEN)
-  # while macOS caps the whole list at about 1 MiB -- and at 200 KiB the mutant
-  # with the bound removed survives on macOS.
-  BLOAT_BYTES=2000000 GH_RUN_MODE=bloat run bash "$SCRIPT" deadbeef
-  [ "$status" -eq 1 ]
-  [ "$(polls_made)" -ge 1 ]
-  [ "$(jq -r '.conclusion' <<<"$output")" = "query-failed" ]
-  # This pins the emission slice exactly and the capture bound only loosely: 500
-  # is the codepoint slice applied where the JSON is built, while the capture
-  # bound upstream of it is pinned by nothing finer than this test reaching a
-  # verdict at all rather than a dead script. Pinned to the exact length rather
-  # than to "smaller than the input", because a slice that drifted upward would
-  # still be smaller and would still pass a comparison.
-  [ "$(jq -r '.error | length' <<<"$output")" -eq 500 ]
 }
 
 @test "a green terminal run still concludes success" {
@@ -223,5 +124,5 @@ polls_made() {
   # conclusion added with no header line is left to review rather than caught
   # here.
   documented="$(sed -n 's/^#[[:space:]]*{"conclusion":"\([a-z-]*\)".*/\1/p' "$SCRIPT" | LC_ALL=C sort)"
-  [ "$documented" = "$(printf '%s\n' failure query-failed success timeout | LC_ALL=C sort)" ]
+  [ "$documented" = "$(printf '%s\n' failure success timeout | LC_ALL=C sort)" ]
 }

@@ -16,7 +16,7 @@ The maintainer repo keeps it in-tree as the live gate.
 
 The workflow authenticates via whichever secret `/setup-gaia` wires: it always wires both `claude_code_oauth_token` and `anthropic_api_key`, so a repo using `ANTHROPIC_API_KEY` instead of `CLAUDE_CODE_OAUTH_TOKEN` (or vice versa) authenticates without any extra configuration. Before asking which token type to provision, `/setup-gaia` checks whether a `CLAUDE_CODE_OAUTH_TOKEN` or `ANTHROPIC_API_KEY` secret is already reachable by the repo, at repo scope or via an org-wide secret, and reuses it instead of provisioning a new one, so a repo inside an org that sets the token org-wide never needs a repo-level copy.
 
-The gate has two complementary signals: the existing local marker file at `.gaia/local/audit/<tree-sha>.ok` (gates `gh pr merge` on the contributor's machine, see [[PR Merge Workflow]]) and the `GAIA-Audit:` commit trailer (travels with the commit so CI can recognize an already-audited tree and skip its own run). Both key on the tree, not the commit sha, so an empty commit never invalidates either. On an already-pushed local HEAD there is no trailer commit at all, and the `GAIA-Audit` commit status carries the same signal instead.
+The local merge gate has two complementary signals: the local marker file at `.gaia/local/audit/<tree-sha>.ok` (gates `gh pr merge` on the contributor's machine, see [[PR Merge Workflow]]) and the `GAIA-Audit:` commit trailer (travels with the commit so the local merge hook can recognize an already-audited tree). Both key on the tree, not the commit sha, so an empty commit never invalidates either. On an already-pushed local HEAD there is no trailer commit at all, and the `GAIA-Audit` commit status carries the same signal instead. This trailer is a local-side signal only: CI does not read it, and always runs the frontend audit itself when a PR is in scope (see below).
 
 ## Trigger
 
@@ -28,22 +28,13 @@ on:
 
 The `labeled` / `unlabeled` events are present so flipping the `gate_label` knob on an existing PR re-evaluates the gate.
 
-## Skip rule (GAIA-Audit trailer)
+## The GAIA-Audit trailer (local signal, not a CI skip)
 
-The workflow's first agent-invocation step is preceded by a `Check audit trailer` step that runs `.github/audit/check-trailer.sh`. The helper:
-
-1. Reads `cur_version` from `.gaia/VERSION` and `cur_tree` from `git rev-parse HEAD^{tree}`.
-2. Parses trailers on the PR HEAD via `git interpret-trailers --parse`.
-3. Matches each trailer line against `^GAIA-Audit:[[:space:]]+([^[:space:]]+)[[:space:]]+([0-9a-f]{40})[[:space:]]*$`.
-4. If any line's version equals `cur_version` AND tree-sha equals `cur_tree`, emits `skip=true` and the workflow short-circuits the agent invocation while still reporting `code-review-audit` as a green check.
-
-Version mismatch (a newer GAIA release shipped) and tree mismatch (HEAD amended after the trailer was written) both invalidate the stamp automatically. Only the PR-HEAD commit's trailers are inspected; stale trailers in earlier commits on the branch do not satisfy the gate.
-
-The trailer is written by `.claude/hooks/audit-stamp-trailer.sh` at the end of a clean local run of the audit agent. Stamp placement is automatic: amend on un-pushed HEADs, an empty `chore: code review audit passed` commit on a detached HEAD (never silently rewriting published history), amend on the audit's own self-heal commits regardless of push state, and no commit at all on an already-pushed attached HEAD, where the `GAIA-Audit` status the orchestrator posts later carries the same signal on the current head instead (see [[PR Merge Workflow#Posting the status last]]). The frozen trailer format and skip decision live in `.github/audit/check-trailer.sh`; the stamp placement rule lives in `.claude/hooks/audit-stamp-trailer.sh`.
+The trailer is written by `.claude/hooks/audit-stamp-trailer.sh` at the end of a clean local run of the audit agent, and by the CI agent step itself at the end of a clean CI run. Stamp placement is automatic: amend on un-pushed HEADs, an empty `chore: code review audit passed` commit on a detached HEAD (never silently rewriting published history), amend on the audit's own self-heal commits regardless of push state, and no commit at all on an already-pushed attached HEAD, where the `GAIA-Audit` status the orchestrator posts later carries the same signal on the current head instead (see [[PR Merge Workflow#Posting the status last]]). The stamp placement rule lives in `.claude/hooks/audit-stamp-trailer.sh`; the local merge hook that reads it is `.claude/hooks/pr-merge-audit-check.sh`. CI never reads the trailer to decide whether to run: it is consumed only by the local merge gate and by `.github/audit/resolve-audit-base.sh`'s incremental-base resolution.
 
 ## Skip rule (chore-deps PRs)
 
-PRs whose title starts with `chore(deps):` or `chore(deps-dev):` skip the audit entirely. These come from the `/update-deps` wrapper, which runs the full quality gate (`pnpm typecheck`, `pnpm lint`, `pnpm test`, `pnpm pw`, `pnpm build`) locally before pushing; the local pass is equivalent to the audit's CI signal for dep-only changes. The workflow's `Check chore-deps title` step reads `github.event.pull_request.title`, sets `skip=true` when the prefix matches, and the gate cascades through the rest of the steps. The terminal `Status: skipped (chore-deps PR)` step posts the explanation and reports `code-review-audit` as a green skipped check.
+PRs whose title starts with `chore(deps):` or `chore(deps-dev):` skip the audit entirely. These come from the `/update-deps` wrapper, which runs the full quality gate (`pnpm typecheck`, `pnpm lint`, `pnpm test`, `pnpm pw`, `pnpm build`) locally before pushing; the local pass is equivalent to the audit's CI signal for dep-only changes. The workflow's `Check chore-deps title` step reads `github.event.pull_request.title`, sets `skip=true` when the prefix matches, and the gate cascades through the rest of the steps. The `Write GAIA-Audit commit status (chore-deps skip)` step stamps the required `GAIA-Audit` status on HEAD so `code-review-audit` reports as a green skipped check.
 
 Other `chore:` prefixes (e.g. `chore: bump version`, `chore: tidy imports`) still run the audit; only the dep-specific narrowing skips. `tests.yml` and `chromatic.yml` carry the same skip pattern so all three required checks short-circuit on chore-deps PRs.
 
@@ -53,13 +44,13 @@ The `Check for source-code changes` step diffs only the **un-audited delta**: `<
 
 On this skip path the `Write GAIA-Audit commit status (out-of-scope skip)` step stamps a `GAIA-Audit` commit status (`<version> <tree>`) on HEAD, mirroring the full-audit path's status. An out-of-scope PR (CLI-only, docs-only, wiki-only, `.claude`-only) therefore satisfies the [[PR Merge Workflow]] merge hook with no local audit run; the agent would find nothing in scope to review. The description carries HEAD's own tree, since the hook checks tree equality against the content being merged.
 
-The stamp fires on the out-of-scope reason only. The already-audited reason (the `GAIA-Audit:` trailer already matches, so a status is redundant) and the workflow-mismatch reason (auto-approving a change to the audit gate itself would be a security hole) do not stamp. The `has_source == 'false'` condition structurally enforces this: both other reasons require `has_source == 'true'`. A PR whose copy of `code-review-audit.yml` differs from the default branch's gets no auto-stamp and still needs a local marker to merge.
+The stamp fires on the out-of-scope reason only. The workflow-mismatch reason (auto-approving a change to the audit gate itself would be a security hole) does not stamp; the `has_source == 'false'` condition structurally enforces this, since that reason requires `has_source == 'true'`. A PR whose copy of `code-review-audit.yml` differs from the default branch's gets no auto-stamp and still needs a local marker to merge.
 
 ## Workflow refresh on /update-gaia
 
 The installed `code-review-audit.yml` is not synced by `/update-gaia`'s manifest walk; it tracks its own template. When an update finds the installed workflow stale, `/update-gaia` refreshes it **inside the update PR** via a 3-way classify (`gaia setup-ci check-audit-drift --baseline <prior-template> --latest <new-template>`), overwriting only when the installed file is an un-customized copy of the prior release's template. Adopter customizations classify as `conflict` and are never clobbered; the workflow is adopter-tunable (see [[Update Workflow]] for the full verdict table).
 
-The refresh is deliberately self-modifying, and that is the point. A GAIA-update PR whose payload changes auditable files (a dependency or config bump making `has_source=true`) would otherwise run a **full** audit under the **stale** workflow, which cannot earn a clean stamp, then need a separate manual `/setup-gaia` commit. Landing the refresh in the same PR collapses both into one expected skip: the `Check workflow self-modification` step trips because the refreshed `code-review-audit.yml` no longer matches the copy on the default branch, the agent never runs, and the terminal `Status: skipped (workflow self-modification)` step reports green.
+The refresh is deliberately self-modifying, and that is the point. A GAIA-update PR whose payload changes auditable files (a dependency or config bump making `has_source=true`) would otherwise run a **full** audit under the **stale** workflow, which cannot earn a clean stamp, then need a separate manual `/setup-gaia` commit. Landing the refresh in the same PR collapses both into one expected skip: the `Check workflow self-modification` step trips because the refreshed `code-review-audit.yml` no longer matches the copy on the default branch, `reached_audit` resolves `false`, and the agent never runs. The job itself still reports green (no step failed); no `GAIA-Audit` status is stamped on this path, as the next paragraph explains.
 
 This is a UX/ordering cleanup, not a clean-stamp path. The self-mod-skip stamps no `GAIA-Audit` status (auto-approving a change to the audit gate would be a security hole). When the re-render is verbatim (the installed workflow's bytes equal the bundled `code-review-audit.yml.tmpl`), the merge hook's self-mod-only bypass clears the update PR locally with no audit run; the changed bytes are GAIA's own template, not adopter code, so there is nothing to review. The out-of-scope bypass cannot clear it (the workflow path is in scope), so this dedicated bypass is what makes the verbatim re-render mergeable. If the installed workflow carries adopter customizations (the re-render diverges from the template) or the PR touches another in-scope path, the bypass fail-closes and the PR merges on a local audit marker / `GAIA-Audit:` trailer instead. See [[PR Merge Workflow]]. Earning a CI stamp would require landing the workflow refresh on `main` in a separate PR merged before the payload, which is not worth it for a tooling-only update.
 
@@ -133,7 +124,7 @@ Confirmation honors either branch-protection model: classic branch protection fi
 
 The `Commit and push self-heal` step decides what, if anything, the audit commits back to the PR branch. It stages tracked modifications only (`git add -u`, never `git add -A`, so runner artifacts such as `.claude-pr/` never enter a commit), and refuses the entire self-heal when the staged diff touches an instruction/convention surface (`.claude/`, `.specify/`, `wiki/`) or exceeds ten files: both indicate the agent undoing intentional work rather than fixing a defect.
 
-The step also refuses in-band, rather than hard-aborting, when its own changed-path enumeration fails or when any other part of its body exits non-zero: an EXIT trap converts that into the same refusal shape the named reasons use, under its own `refused_reason`, so a tooling failure reports a truthful status instead of stranding the pull request on a required check that never posts. `Status - audit complete` carries the full ladder of refusal reasons.
+The step also refuses in-band, rather than hard-aborting, when its own changed-path enumeration fails or when any other part of its body exits non-zero: an EXIT trap converts that into the same refusal shape the named reasons use, under its own `refused_reason`, so a tooling failure reports a truthful status instead of stranding the pull request on a required check that never posts. The step's own log carries the full ladder of refusal reasons.
 
 Before that, the step resets `claude-code-action`'s untrusted-PR restore set to HEAD. The action restores a fixed set of sensitive config and hook paths (`.husky`, `.mcp.json`, `.claude.json`, `.gitmodules`, `.ripgreprc`, `CLAUDE.md`, `CLAUDE.local.md`) from the base branch into the runner's working tree before the agent runs, so an untrusted PR cannot inject a hook or MCP config that executes inside the action. When the PR legitimately modifies one of those paths, the base-branch copy predates the change, so the restore reverts it in the working tree. Without the reset, `git add -u` stages that revert and commits it as a self-heal, silently dropping what the PR added (a `.husky/pre-commit` guard is the canonical case). The agent is never an allowed editor of these surfaces, so the step runs `git checkout HEAD -- <path>` across the set: any working-tree delta on them is either the action's restore or a forbidden edit, and resetting to HEAD is correct either way. The action's restore set also includes `.claude`, whose reverts the instruction/convention refusal above already catches, so the reset loop covers the remaining paths. The list must track `claude-code-action`'s restore set; keep the loop rather than collapsing it.
 
@@ -141,13 +132,13 @@ Before that, the step resets `claude-code-action`'s untrusted-PR restore set to 
 
 When the audit's self-heal step pushes a new commit, GitHub does not fire `push` or `pull_request` events for the GITHUB_TOKEN-authored push, its recursion guard. Without intervention, the new HEAD has zero check runs, and branch protection blocks the merge indefinitely. The workflow closes that loop in three parts:
 
-1. **Stamp `code-review-audit` on the new HEAD.** The `Re-trigger and stamp required checks on new HEAD` step uses the Checks API to create a `code-review-audit` check run on the self-heal SHA with `conclusion=success`. The audit produced the new tree, so it is vouching for its own output. The version + tree binding lives in the separate `GAIA-Audit` commit status, and that status, not this check run, is the required check. The two are independent: a rejected status POST does not fail the stamp step, so this check run can exist on a SHA carrying no `GAIA-Audit` status, in which case the gate correctly stays shut and the run's terminal comment says so.
+1. **Stamp `code-review-audit` on the new HEAD.** The `Re-trigger and stamp required checks on new HEAD` step uses the Checks API to create a `code-review-audit` check run on the self-heal SHA with `conclusion=success`. The audit produced the new tree, so it is vouching for its own output. The version + tree binding lives in the separate `GAIA-Audit` commit status, and that status, not this check run, is the required check. The two are independent: a rejected status POST does not fail the stamp step, so this check run can exist on a SHA carrying no `GAIA-Audit` status, in which case the gate correctly stays shut.
 2. **Dispatch each `retrigger_workflows` entry via `workflow_dispatch`.** The step calls `gh workflow run <name> --ref <pr-branch>` for every workflow in the list. `workflow_dispatch` is one of the few event types allowed to start a new run under `GITHUB_TOKEN`, so the dispatched runs execute on the self-heal HEAD.
 3. **Poll each dispatched run to completion and stamp its jobs.** GitHub excludes `workflow_dispatch`-event check suites from `statusCheckRollup` when the suite's `pull_requests` link is empty, the case for every `GITHUB_TOKEN`-attributed dispatch. Branch protection reads the rollup, so the dispatched check runs alone never satisfy a required-check rule. The step polls each dispatched run via the Actions API, enumerates its jobs, and POSTs a matching check run per job to the self-heal HEAD via the Checks API. Direct-POST check runs land in the rollup regardless of suite linkage, the same mechanism the `code-review-audit` stamp in part 1 uses.
 
 Polling is parallel: one background process per dispatched workflow, so total wait time tracks the slowest dispatched run rather than the sum. Each poller resolves a run id within 90 s, polls for completion for up to 25 min, and tolerates internal failures by logging a warning rather than failing the step. A dispatch failure (workflow not present, missing `workflow_dispatch:` trigger) is also logged and tolerated; the audit does not fail the PR over an adopter-listed workflow that doesn't exist in their repo.
 
-The audit step's own timeout is derived from `budget_seconds` (rounded up to whole minutes) but clamped to a 45-minute ceiling under the job-level `timeout-minutes: 60` cap, leaving headroom for setup and for the push/status/comment steps that follow. A `budget_seconds` that would exceed the ceiling is capped with a workflow warning rather than left to run out the job's own timeout, which cancels the job instead of failing it and leaves the [[#Failed-run status backstop]] with nothing to catch.
+The audit step's own timeout is derived from `budget_seconds`, rounded up to whole minutes with a floor of one, under the job-level `timeout-minutes: 60` cap. A `budget_seconds` set high enough to exceed the job's own limit runs out that job-level timeout instead, which cancels the job rather than failing it and leaves the [[#Failed-run status backstop]] with nothing to catch.
 
 This mechanism is invisible when `push_fixes: false`; the audit posts comments and never advances HEAD.
 
@@ -170,16 +161,16 @@ A dispatched job also has to finish inside the poller's window. The poller waits
 Nothing in the pull-request lane exercises the dispatch path, so a break here is invisible until the first self-heal wedges a PR. Every condition above is a repo-visible property of the workflow files and the knob, which makes the whole invariant worth asserting deterministically rather than leaving to review.
 
 <!-- gaia:maintainer-only:start -->
-On `gaia-react/gaia` the knob carries three maintainer-only entries beyond the shipped defaults (`CLI Tests`, `Audit CI Tests`, `Distribution Audit (PR)`), wrapped in maintainer-only markers so the release scrub strips them: their workflows are release-excluded, and naming them on an adopter clone would dispatch workflows that do not exist there.
+On `gaia-react/gaia` the knob carries two maintainer-only entries beyond the shipped defaults (`CLI Tests`, `Audit CI Tests`), wrapped in maintainer-only markers so the release scrub strips them: their workflows are release-excluded, and naming them on an adopter clone would dispatch workflows that do not exist there.
 
 The assertion lives in `.gaia/scripts/tests/retrigger-reachability.bats`, covering every context in `.gaia/scripts/verify-required-checks.sh`'s declared-required list, including the step-level trap above.
 <!-- gaia:maintainer-only:end -->
 
 ## Failed-run status backstop
 
-Every `GAIA-Audit` status writer in the job carries GitHub's implicit `success()`, so a step that fails skips every writer after it and the job ends with no `GAIA-Audit` status at all: a required context the pull request then waits on forever, with nothing saying why. A last job step, gated on `failure()`, closes that gap: it posts a `failure` state linked to the run whenever the head still carries no `GAIA-Audit` status, and never overwrites one a writer already posted (success or pending alike), including a pending status the local-mode stand-down posted. Being last in the job means it also covers a failure in the re-trigger step, in a terminal comment step, and the audit-aborted step's deliberate `exit 1`.
+Every `GAIA-Audit` status writer in the job carries GitHub's implicit `success()`, so a step that fails skips every writer after it and the job ends with no `GAIA-Audit` status at all: a required context the pull request then waits on forever, with nothing saying why. A last job step, gated on `failure()`, closes that gap: it posts a `failure` state linked to the run whenever the head still carries no `GAIA-Audit` status, and never overwrites one a writer already posted (success or pending alike), including a pending status the local-mode stand-down posted. Being last in the job means it also covers a failure in the re-trigger step and the audit-aborted step's deliberate `exit 1`.
 
-A job that reaches its own `timeout-minutes` is cancelled rather than failed, so this step does not run and the check stays absent; see the audit step's own 45-minute ceiling above, which exists so the audit's own timeout fires as a failure this backstop can catch, ahead of the job-level cancellation.
+A job that reaches its own `timeout-minutes` is cancelled rather than failed, so this step does not run and the check stays absent; see the audit step's own timeout above, which fires as a failure this backstop can catch, ahead of the job-level cancellation, as long as `budget_seconds` stays under the job's own limit.
 
 ## How to enable as a required check
 
@@ -191,17 +182,17 @@ After the workflow lands on `main`, the maintainer (or an adopter applying the s
 4. Add `code-review-audit` to the required checks list. The check name is frozen; do not rename even if the workflow grows internal steps.
 5. If the rule also requires checks from sibling workflows (e.g. `Run Chromatic`, `Vitest and Playwright`), list those workflows in `retrigger_workflows` and satisfy the two reachability conditions in [[#Re-trigger reachability]], so the self-heal re-trigger restores them on the new HEAD. Without this, a self-heal push strands the PR with the sibling checks missing.
 
-## How to skip an audit run locally
+## How to clear the merge gate with a local audit
 
-The trailer handshake below is a way to make CI's own `code-review-audit` check report green quickly after a clean local run, without CI re-running the audit itself. A clean local run of the [[Code Review Audit Agent]] stamps the trailer automatically; the next push carries it, and CI's skip logic short-circuits, so `code-review-audit` reports green in seconds without spending CI audit tokens. The end-to-end recipe:
+This only avoids a CI audit run for an author resolved to `local` mode (`.gaia/audit-ci.yml`'s `default_mode`, the shipped default): CI stands down for these authors before it would invoke the agent at all (see [[#Per-author audit mode]]), so there is nothing for it to skip. An author resolved to `ci` mode (a fork PR, or an `audit_authors`/`override_label` override) gets no equivalent shortcut: CI always runs the frontend audit fresh on every push, whether or not HEAD already carries a matching local `GAIA-Audit:` trailer, since CI never reads that trailer (see above). The end-to-end local recipe:
 
 1. Spawn the audit agent on the PR branch (per [[PR Merge Workflow]]).
 2. Address every Critical and Important finding; re-run until the agent reports `Audit marker written for HEAD ... GAIA-Audit trailer ...; status: deferred to orchestrator; gh pr merge is unblocked.` (or, on an already-pushed HEAD, `... no stamp commit (HEAD already pushed); status: deferred to orchestrator ...`). The agent never posts the `GAIA-Audit` status itself.
 3. Push the branch if the report calls for it. On an already-pushed HEAD there is no trailer commit to push.
 4. Post the `GAIA-Audit` status once every dispatched member holds a marker: `bash .claude/hooks/post-audit-status.sh <a current member marker>` (see [[PR Merge Workflow#Posting the status last]]).
-5. Run `gh pr merge`. CI sees the matching trailer, or the matching status when no trailer is on HEAD, and reports `code-review-audit` as a green skipped check.
+5. Run `gh pr merge`. The `GAIA-Audit` status posted in step 4 already satisfies the required check.
 
-Editing HEAD between the local stamp and `gh pr merge` invalidates a trailer (tree mismatch) or rotates the digest a posted status carries; CI then runs a fresh audit.
+Editing HEAD between the local stamp and `gh pr merge` invalidates a trailer (tree mismatch) or rotates the digest a posted status carries; a fresh local pass is needed either way.
 
 <!-- gaia:maintainer-only:start -->
 
@@ -225,8 +216,7 @@ A workflow-touching PR edits copy #3, regenerates copy #2 with `pnpm bundle`, an
 - Workflow: `.github/workflows/code-review-audit.yml`
 - Workflow template (install source): bundled in the CLI binary; installed via `gaia automation install-audit-workflow`
 - Install primitive: `gaia automation install-audit-workflow`
-- Stamp helper (local): `.claude/hooks/audit-stamp-trailer.sh`
-- Skip-logic helper (CI): `.github/audit/check-trailer.sh`
+- Stamp helper (local and CI): `.claude/hooks/audit-stamp-trailer.sh`
 - Incremental-base helper (CI): `.github/audit/resolve-audit-base.sh` (argument-less form resolves the shared pull-request-wide base every non-agent caller uses; `--member <name>` resolves a per-member review base for a Code Audit Team member's own fence)
 - Config reader: `.gaia/scripts/read-audit-ci-config.sh`
 - Default config: `.gaia/audit-ci.yml`

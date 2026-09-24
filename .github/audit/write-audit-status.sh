@@ -35,9 +35,10 @@
 #
 # Step outputs. When $GITHUB_OUTPUT is set this writes `members_pending`,
 # `success_stamped`, `post_failed`, and, from the shared non-clobber read,
-# `success_live` / `read_failed`, which the terminal comment steps read so they
-# can never claim a stamp that did not happen. Callers with no `id:` simply have
-# no one reading them.
+# `success_live` / `read_failed`. Nothing in the workflow reads these outputs
+# today; the diagnostic that reaches an author is this script's own stderr
+# echo, printed into the workflow run log regardless of whether a caller
+# carries an `id:`.
 #
 # A REJECTED STATUS POST NEVER FAILS THE STEP, ON ANY PATH. The merge gate fails
 # closed without help: nothing posted means the required GAIA-Audit context is
@@ -49,35 +50,18 @@
 # closed that particular 422, but a rate limit, a 5xx, or an auth blip rejects a
 # POST the same way and is not closed by anything.
 #
-# The author's signal is `post_failed` instead, which the terminal comment steps
-# report by name. That is the more diagnostic half of the trade: a red job buries
-# its cause in a step log, and on the two skip paths it also SUPPRESSED the
-# comment step, so the case most in need of an explanation produced none.
+# The author's signal is this script's own stderr echo on the rejection path,
+# printed into the workflow run log. That is the more diagnostic half of the
+# trade: a red job buries its cause in a step log rather than surfacing it at
+# all, so failing the step in place of echoing would be strictly worse, not
+# better.
 #
-# `post_failed` covers BOTH posts, the success one and the pending one. It did
-# not always: the pending POST swallowed its own rejection through a bare
-# `|| true`, so on that path the comment steps read a non-empty `members_pending`
-# and told the author the gate was pending when no pending status had been posted
-# (gaia-react/gaia#1405). That was a wrong explanation rather than a wrong gate --
-# it failed closed, and it self-healed once the dispatched members ran locally --
-# but it is the same defect the ladders' SUCCESS_LIVE and READ_FAILED arms exist
-# to prevent, so it gets the same answer.
-#
-# The two posts differ in what the author is then told, because IN GATED MODE a
-# rejection on the PENDING path always co-occurs with a non-empty
-# `members_pending`: that POST fires only under a non-empty `pending`, which
-# gated mode has already published as `members_pending`. So the terminal ladders
-# report the combined state in one sentence -- the members only a local run can
-# clear, AND the rejection that means nothing was posted -- instead of picking
-# one of the two facts.
-#
-# STAND-DOWN MODE IS THE EXCEPTION, and it is inert rather than handled. That
-# mode never emits `members_pending` at all (there are no members to resolve),
-# so a rejection there publishes `post_failed` beside an EMPTY one. No ladder
-# ever sees that pair: the sole stand-down call site carries no `id:`, so
-# nothing reads its outputs. The unqualified claim would be wrong; the gated
-# qualification is what makes it true, and the missing `id:` is what makes the
-# stand-down case harmless.
+# `post_failed` covers BOTH posts, the success one and the pending one, and
+# both echo their own rejection message. IN GATED MODE a rejection on the
+# PENDING path always co-occurs with a non-empty `members_pending`, since that
+# POST fires only under a non-empty `pending`; the echoed message names the
+# members a local run can still clear alongside the rejection, rather than
+# picking one of the two facts.
 #
 # Two suites cover this script: one drives it directly for its argument
 # contract, and one executes every call site as the workflow runs them.
@@ -208,8 +192,8 @@ repo_root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
 # The base is the FULL-PR base, never the incremental audit base: membership is
 # a function of the whole PR diff (see that script's "Full-PR scope").
 #
-# Resolved before the digest so `members_pending` is published even when the
-# digest recompute then fails -- the terminal comment step reads it, and the
+# Resolved before the digest so `members_pending` is published, and `ctx`
+# below is built with it, even when the digest recompute then fails -- the
 # two skip paths already ordered it this way.
 # ---------------------------------------------------------------------------
 if [ "$have_base" -eq 1 ]; then
@@ -338,26 +322,14 @@ if [ -n "$pending" ]; then
   # unfulfilled, and the button stays shut. Fail-safe in every direction, so a
   # transient API error must not also red the job.
   #
-  # But not SILENT. `post_failed` is published here for the same reason the
-  # success path publishes it: without it the terminal comment steps read a
-  # non-empty `members_pending` and tell the author "GAIA-Audit is pending" about
-  # a status that was never posted. The gate is shut either way, so this is a
-  # wrong explanation rather than a wrong gate -- and a wrong explanation is
-  # exactly what the SUCCESS_LIVE and READ_FAILED arms of those ladders already
-  # exist to prevent, on claims those paths merely could not verify. This one is
-  # known false, so the same rule applies with more force.
-  #
-  # IN GATED MODE it always co-occurs with a non-empty `members_pending`: this
-  # branch runs only under a non-empty `pending`, and gated mode emitted
-  # `members_pending` from that same value. So the ladders combine the two rather
-  # than choosing between them, and hoisting their post_failed arm above
-  # members_pending would discard the half only a LOCAL member run can act on.
-  #
-  # In STAND-DOWN mode `pending` is the forced description and `members_pending`
-  # was never emitted, so this `post_failed` would stand alone. Nothing reads it:
-  # that call site carries no `id:`. The emit is published either way rather than
-  # gated on the mode, because a conditional emit would be a second rule to keep
-  # in step with the one `id:` that decides whether anyone is listening.
+  # But not SILENT. The member list, in gated mode, already reached the log via
+  # the unconditional echo above (`${ctx}` carries `members_pending`) before
+  # this POST was even attempted, so a rejection here does not lose it. What
+  # the rejection-specific echo below adds is the fact of the rejection itself:
+  # nothing was posted, and the gate stays shut regardless of what the POST
+  # would have said. `post_failed` is emitted alongside it for a caller that
+  # might one day read it; nothing in the workflow currently does (see the
+  # file header).
   if ! gh api "repos/${GITHUB_REPOSITORY}/statuses/${sha}" \
       --method POST \
       --field state=pending \

@@ -823,11 +823,9 @@
 .github/actions/gaia-ci-merge-and-watch/lib/wait-for-merge.sh	code-audit-maintainer-shell
 .github/actions/gaia-ci-stale-pr-skip/action.yml	-
 .github/audit/audit-success-present.sh	code-audit-maintainer-shell
-.github/audit/check-trailer.sh	code-audit-maintainer-shell
 .github/audit/gate-pending-members.sh	code-audit-maintainer-shell
 .github/audit/resolve-audit-base.sh	code-audit-maintainer-shell
 .github/audit/resolve-check-base.sh	code-audit-maintainer-shell
-.github/audit/tests/check-trailer.bats	code-audit-maintainer-shell
 .github/audit/tests/ci-clean-no-push-status.bats	code-audit-maintainer-shell
 .github/audit/tests/ci-decision-step.bats	code-audit-maintainer-shell
 .github/audit/tests/ci-status-member-gate.bats	code-audit-maintainer-shell
@@ -874,13 +872,10 @@
 .github/workflows/chromatic.yml	code-audit-frontend
 .github/workflows/cli-tests.yml	code-audit-frontend
 .github/workflows/code-review-audit.yml	code-audit-frontend
-.github/workflows/distribution-audit-pr.yml	code-audit-frontend
-.github/workflows/distribution.yml	code-audit-frontend
 .github/workflows/forensics-triage.yml	code-audit-frontend
 .github/workflows/release.yml	code-audit-frontend
 .github/workflows/shell-lint.yml	code-audit-frontend
 .github/workflows/tests.yml	code-audit-frontend
-.github/workflows/verify-required-checks.yml	code-audit-frontend
 .gitignore	-
 .husky/pre-commit	-
 .lintstagedrc.json	-

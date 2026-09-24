@@ -32,12 +32,7 @@ The canonical config is `doctor.config.ts`:
 
 ### Duplicate-config guard
 
-A deterministic check fails when more than one `doctor.config.*` or `react-doctor.config.*` file exists, because react-doctor itself gives no warning:
-
-- `.husky/pre-commit` ([[Pre-commit Hooks]]) fails the commit before a duplicate lands.
-- `.github/workflows/tests.yml` carries the CI backstop: an `Assert a single react-doctor config` step that runs unconditionally at the top of the `Vitest and Playwright` job, so a duplicate fails the suite even when the rest of it is gated off.
-
-The guard rides the already-required `Vitest and Playwright` check, so a duplicate config blocks the merge with no extra required-check context to manage. See [[Code Review Audit CI]] for how required checks gate merges.
+A deterministic check fails when more than one `doctor.config.*` or `react-doctor.config.*` file exists, because react-doctor itself gives no warning: `.husky/pre-commit` ([[Pre-commit Hooks]]) fails the commit before a duplicate lands.
 
 ## Acting on output
 

@@ -10,17 +10,17 @@
  * already states in its own header.
  *
  * Pinning alone would trade a mutable ref for a frozen one. `.tmpl` files sit
- * outside `.github/workflows/`, so Dependabot cannot see them
- * (`.github/dependabot.yml` says so in writing), and a frozen pin nobody
- * advances means adopters stop receiving upstream patches. The parity test
- * below (`every template pin matches the pin the maintainer workflows run`) is
- * the mechanism that keeps them moving: it asserts each template pin against
- * the pin the maintainer's own workflows run, which Dependabot bumps weekly.
- * Named rather than numbered, because an ordinal points at whichever test
- * happens to sit in that slot after the next insertion, and a maintainer
- * following it to diagnose a bump-drift red opens the wrong one. A bump lands in `.github/workflows/` first and turns this red until
- * the same pin is mirrored into the template. That is the same red-then-mirror
- * flow `dependabot.yml` already documents for `code-review-audit.yml`.
+ * outside `.github/workflows/`, so nothing that watches action pins by
+ * scanning workflow files can see them, and a frozen pin nobody advances means
+ * adopters stop receiving upstream patches. The parity test below (`every
+ * template pin matches the pin the maintainer workflows run`) is what holds
+ * them to the maintainer pins: it asserts each template pin against the pin the
+ * maintainer's own workflows run. Named rather than numbered, because an
+ * ordinal points at whichever test happens to sit in that slot after the next
+ * insertion, and a maintainer following it to diagnose a bump-drift red opens
+ * the wrong one. A bump lands in `.github/workflows/` first and turns this red
+ * until the same pin is mirrored into the template. The same red-then-mirror
+ * flow applies to `code-review-audit.yml`.
  *
  * The mirrored template reaches adopters on their next `/update-gaia`, which
  * does NOT re-render an installed workflow: `/update-gaia` refreshes

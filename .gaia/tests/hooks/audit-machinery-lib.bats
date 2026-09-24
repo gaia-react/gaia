@@ -120,7 +120,6 @@ EOF
 .claude/hooks/audit-stamp-trailer.sh
 .claude/hooks/local-janitor.sh
 .claude/hooks/block-selfheal-paths.sh
-.github/audit/check-trailer.sh
 .github/audit/resolve-audit-base.sh
 .github/audit/audit-success-present.sh
 .github/audit/gate-pending-members.sh

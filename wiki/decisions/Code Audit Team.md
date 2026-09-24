@@ -219,10 +219,6 @@ Two limits are new with this change: a hand-edited **sentence** inside a region 
 
 Neither the check nor its writer is wired into CI or a hook automatically: nothing gates a merge on either, so both are run by hand after a roster change (`bash .gaia/scripts/verify-audit-roster.sh`, then `bash .gaia/scripts/write-audit-remits.sh` to repair).
 
-<!-- gaia:maintainer-only:start -->
-On this repo, an advisory, deliberately-not-required, release-excluded `Audit Roster Drift` workflow also runs the check on every pull request, on pushes to `main`, and on manual dispatch, giving the maintainer team an earlier signal than a local run alone would. It carries no paths filter: the coverage invariant fires on a file added anywhere, so a filter over roster inputs would skip the check on exactly the pull requests it exists to catch. The `push:` arm is what stops two pull requests, each green in isolation, from composing into a red `main` when one removes a glob or an exemption while the other adds a file under that path.
-<!-- gaia:maintainer-only:end -->
-
 ## Ruleset-aware required-check confirmation
 
 `read-audit-ci-config.sh`'s `required_check_confirmed` helper (used by the per-author local/CI resolution) confirms the `GAIA-Audit` required check under either branch-protection model: classic branch protection (`required_status_checks` context, tried first, the only path an adopter repo with classic protection ever needs) or a repository ruleset (`GET repos/{owner}/{repo}/rules/branches/<branch>`). The ruleset read ships to every clone, adopter and maintainer alike, so a repository protected by a ruleset rather than classic branch protection confirms correctly too; a repo protected by classic branch protection alone never reaches the ruleset read. The confirmation is advisory only: whichever model confirms, or neither does, the resolved mode never changes.

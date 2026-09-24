@@ -20,8 +20,10 @@
 # not superset: a collapsed guard that widens fires an extra step, and one that
 # narrows drops a step, and only an exact-set assertion catches both.
 #
-# The eight terminal paths are the eight ways the job can conclude, named in the
-# workflow's own "Terminal status steps" comment.
+# The scenarios below are the ways the job can conclude. Most stamp a
+# `GAIA-Audit` commit status and end with no named terminal step of their own;
+# only an aborted audit reaches a step, `Status - audit aborted`, since that is
+# the one path with no earlier status write to fall back on.
 #
 # Assertion style follows .claude/rules/bats-assertions.md.
 
@@ -406,15 +408,6 @@ scenario_ctx() {
         "steps.source-changes.outputs.has_source=true" \
         "steps.workflow-self-mod.outputs.self_modified=true"
       ;;
-    trailer-match)
-      printf '%s\n' \
-        "steps.gate.outputs.gated=false" \
-        "steps.chore-deps.outputs.skip=false" \
-        "steps.source-changes.outputs.has_source=true" \
-        "steps.workflow-self-mod.outputs.self_modified=false" \
-        "steps.decision.outputs.should_run=true" \
-        "steps.trailer.outputs.skip=true"
-      ;;
     stand-down)
       printf '%s\n' \
         "steps.gate.outputs.gated=false" \
@@ -430,7 +423,6 @@ scenario_ctx() {
         "steps.source-changes.outputs.has_source=true" \
         "steps.workflow-self-mod.outputs.self_modified=false" \
         "steps.decision.outputs.should_run=true" \
-        "steps.trailer.outputs.skip=false" \
         "steps.config.outputs.push_fixes=true" \
         "steps.audit.outcome=failure" \
         "failed_at=Status - audit aborted"
@@ -442,7 +434,6 @@ scenario_ctx() {
         "steps.source-changes.outputs.has_source=true" \
         "steps.workflow-self-mod.outputs.self_modified=false" \
         "steps.decision.outputs.should_run=true" \
-        "steps.trailer.outputs.skip=false" \
         "steps.config.outputs.push_fixes=true" \
         "steps.audit.outcome=success" \
         "steps.push-fixes.outputs.pushed=true" \
@@ -455,7 +446,6 @@ scenario_ctx() {
         "steps.source-changes.outputs.has_source=true" \
         "steps.workflow-self-mod.outputs.self_modified=false" \
         "steps.decision.outputs.should_run=true" \
-        "steps.trailer.outputs.skip=false" \
         "steps.config.outputs.push_fixes=true" \
         "steps.audit.outcome=success" \
         "steps.push-fixes.outputs.pushed=false" \
@@ -472,7 +462,7 @@ scenario_ctx() {
 # on a terminal path of its own.
 BACKSTOP="Write GAIA-Audit commit status (failed run)"
 
-SCENARIOS="gated chore-deps no-source self-modified trailer-match stand-down aborted complete-pushed complete-clean"
+SCENARIOS="gated chore-deps no-source self-modified stand-down aborted complete-pushed complete-clean"
 
 # phase_step_body: the "Resolve audit phase" step's `run:` block, dedented to a
 # runnable script. Matches the `- name:` line exactly and stops at the next one.
@@ -553,39 +543,26 @@ assert_scenario() {
 }
 
 @test "terminal path: gate label missing" {
-  assert_scenario gated "Status - skipped (gate label missing)"
+  assert_scenario gated ""
 }
 
 @test "terminal path: chore-deps PR" {
   assert_scenario chore-deps "Check chore-deps title
-Write GAIA-Audit commit status (chore-deps skip)
-Status - skipped (chore-deps PR)"
+Write GAIA-Audit commit status (chore-deps skip)"
 }
 
 @test "terminal path: no source changes" {
   assert_scenario no-source "Check chore-deps title
 Resolve audit base
 Check for source-code changes
-Write GAIA-Audit commit status (out-of-scope skip)
-Status - skipped (no source changes)"
+Write GAIA-Audit commit status (out-of-scope skip)"
 }
 
 @test "terminal path: workflow self-modification" {
   assert_scenario self-modified "Check chore-deps title
 Resolve audit base
 Check for source-code changes
-Check workflow self-modification
-Status - skipped (workflow self-modification)"
-}
-
-@test "terminal path: audit trailer matches" {
-  assert_scenario trailer-match "Check chore-deps title
-Resolve audit base
-Check for source-code changes
-Check workflow self-modification
-Resolve audit decision
-Check audit trailer
-Status - skipped (trailer matches)"
+Check workflow self-modification"
 }
 
 @test "terminal path: local-mode stand-down" {
@@ -594,8 +571,7 @@ Resolve audit base
 Check for source-code changes
 Check workflow self-modification
 Resolve audit decision
-Stand down (local-mode, no override)
-Status - local-mode stand-down"
+Stand down (local-mode, no override)"
 }
 
 @test "terminal path: audit aborted" {
@@ -604,7 +580,6 @@ Resolve audit base
 Check for source-code changes
 Check workflow self-modification
 Resolve audit decision
-Check audit trailer
 Setup pnpm
 Setup Node
 Install dependencies
@@ -635,7 +610,6 @@ Resolve audit base
 Check for source-code changes
 Check workflow self-modification
 Resolve audit decision
-Check audit trailer
 Setup pnpm
 Setup Node
 Install dependencies
@@ -645,8 +619,7 @@ Run code-review-audit (claude-code-action)
 Print audit progress breadcrumbs
 Commit and push self-heal
 Write GAIA-Audit commit status
-Re-trigger and stamp required checks on new HEAD
-Status - audit complete"
+Re-trigger and stamp required checks on new HEAD"
 }
 
 @test "terminal path: audit complete, clean with no push" {
@@ -655,7 +628,6 @@ Resolve audit base
 Check for source-code changes
 Check workflow self-modification
 Resolve audit decision
-Check audit trailer
 Setup pnpm
 Setup Node
 Install dependencies
@@ -664,28 +636,25 @@ Resolve debt provenance
 Run code-review-audit (claude-code-action)
 Print audit progress breadcrumbs
 Commit and push self-heal
-Write GAIA-Audit commit status (clean, no push)
-Status - audit complete"
+Write GAIA-Audit commit status (clean, no push)"
 }
 
 # ---------------------------------------------------------------------------
 # Cross-path invariants. These hold independently of how the guards are spelled,
-# so they survive a refactor of the `if:` expressions and state what the
-# workflow'\''s own "Terminal status steps" comment claims.
+# so they survive a refactor of the `if:` expressions.
 # ---------------------------------------------------------------------------
 
-@test "invariant: exactly one terminal status comment fires on every path" {
+@test "invariant: the terminal 'Status - ' step fires only on the aborted path" {
   local scenario count fired
   for scenario in $SCENARIOS; do
     # Capture first so a harness abort fails the test rather than being read as
-    # a scenario that fired no status comment.
+    # a scenario that fired no status step.
     fired="$( fired_in "$scenario" )" || return 1
     count="$( printf '%s\n' "$fired" | grep -c '^Status - ' || true )"
-    if [ "$count" -ne 1 ]; then
-      printf 'scenario %s fired %s terminal status comments, expected 1\n' \
-        "$scenario" "$count" >&2
-      return 1
-    fi
+    case "$scenario" in
+      aborted) [ "$count" -eq 1 ] || return 1 ;;
+      *)       [ "$count" -eq 0 ] || return 1 ;;
+    esac
   done
 }
 
@@ -771,7 +740,6 @@ assert_stood_down() {
     "steps.source-changes.outputs.has_source=true" \
     "steps.workflow-self-mod.outputs.self_modified=false" \
     "steps.decision.outputs.should_run=true" \
-    "steps.trailer.outputs.skip=false" \
     "steps.config.outputs.push_fixes=true" \
     "steps.audit.outcome=success" \
     "steps.push-fixes.outputs.pushed=true" \
@@ -787,7 +755,6 @@ assert_stood_down() {
     "steps.source-changes.outputs.has_source=false" \
     "steps.workflow-self-mod.outputs.self_modified=false" \
     "steps.decision.outputs.should_run=true" \
-    "steps.trailer.outputs.skip=false" \
     "steps.config.outputs.push_fixes=true" \
     "steps.audit.outcome=success" \
     "steps.push-fixes.outputs.pushed=true" \
@@ -803,7 +770,6 @@ assert_stood_down() {
     "steps.source-changes.outputs.has_source=true" \
     "steps.workflow-self-mod.outputs.self_modified=true" \
     "steps.decision.outputs.should_run=true" \
-    "steps.trailer.outputs.skip=false" \
     "steps.config.outputs.push_fixes=true" \
     "steps.audit.outcome=success" \
     "steps.push-fixes.outputs.pushed=true" \
@@ -822,7 +788,6 @@ assert_stood_down() {
     "steps.source-changes.outputs.has_source=true" \
     "steps.workflow-self-mod.outputs.self_modified=" \
     "steps.decision.outputs.should_run=true" \
-    "steps.trailer.outputs.skip=false" \
     "steps.config.outputs.push_fixes=true" \
     "steps.audit.outcome=success" \
     "steps.push-fixes.outputs.pushed=true" \
@@ -945,7 +910,8 @@ PAIRS
   # Derived per element: every non-gated scenario, every step that runs on it.
   # A step's failure must leave the steps before it as they were and fire
   # exactly the backstop after it. The gated path is excluded here because it
-  # posts no GAIA-Audit status by design; the next test holds it.
+  # fires no guarded step at all, so it has no step whose failure this test
+  # could drive.
   local scenario step fired ran expected s guard pos_seen count
   # bats traces every simple command through an inherited DEBUG trap, which
   # costs more than the evaluation itself across this many failure points: with
@@ -990,12 +956,6 @@ RAN
   # Non-vacuity floor: the non-gated paths share a long unguarded prefix, so a
   # derivation that silently shrank would fall far below this.
   [ "$count" -ge 40 ]
-}
-
-@test "failed run: the gate-label-missing path posts nothing even when its comment fails" {
-  local fired
-  fired="$( fired_after_failure gated "Status - skipped (gate label missing)" )" || return 1
-  [ "$fired" = "Status - skipped (gate label missing)" ]
 }
 
 @test "failed run: the backstop never fires on a scenario that does not fail" {

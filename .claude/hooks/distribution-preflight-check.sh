@@ -1,42 +1,45 @@
 #!/bin/bash
 # PreToolUse Bash hook: DENY `gh pr create` when a file this branch newly ships
 # has no answer in the committed .gaia/manifest.json, so the maintainer learns
-# it before pushing instead of after the "Distribution Audit" CI job goes red.
+# it before pushing rather than only at a later manual `/distribution-audit`
+# run or at release time.
 #
-# This is a LOCAL PRE-FLIGHT for .github/workflows/distribution-audit-pr.yml and
-# deliberately enforces the same rule in two places. That duplication is the
-# point, not an oversight:
+# This is the only automatic check of the unanswered-file rule at PR-creation
+# time: there is no PR-time CI counterpart. Release time runs the same
+# underlying classifier but through a different mode (`--allow-undecided`,
+# see [[Release Workflow]] Step 10) that regenerates the manifest rather than
+# failing the build, so it is not a hard backstop for this rule either. This
+# hook therefore fails open on every uncertainty (see below) rather than
+# risking a false deny with nothing behind it to catch a genuine miss:
 #
-#   CI-only feedback is too late to be cheap. The CI job can only speak after a
-#   push, a PR, and a runner boot; by then the maintainer has context-switched
-#   away and pays a full round trip to answer a question the working tree could
-#   have answered instantly. This is the same reasoning that makes the pre-merge
-#   Code Audit Team default to a LOCAL producer rather than CI (see
-#   wiki/concepts/PR Merge Workflow.md, "Marker-first"): the deterministic gate
-#   stays authoritative in CI, and a local copy of it buys fast feedback.
+#   CI-only feedback is too late to be cheap. Waiting for a push, a PR, and a
+#   runner boot means the maintainer has context-switched away and pays a full
+#   round trip to answer a question the working tree could have answered
+#   instantly. This is the same reasoning that makes the pre-merge Code Audit
+#   Team default to a LOCAL producer rather than CI (see wiki/concepts/PR
+#   Merge Workflow.md, "Marker-first").
 #
-#   CI remains the authority. This hook is advisory-in-effect: it fails open on
-#   every uncertainty (see below), so it can only ever be a cheaper way to find
-#   out what CI would have told you. It cannot pass something CI would fail,
-#   because it never writes a marker or clears any gate; it only denies earlier.
+#   This hook is advisory-in-effect regardless: it fails open on every
+#   uncertainty (see below), so a maintainer who wants a strict answer still
+#   runs `/distribution-audit` by hand. It never writes a marker or clears any
+#   gate; it only denies earlier than a manual audit would have caught it.
 #
-# Recorded here rather than left implicit because an unexplained two-place rule
-# reads to a later audit as accidental drift. See wiki/decisions/Deliberate
-# Configuration Asymmetries.md for the sibling cases.
-#
-# WHAT THIS DOES NOT MIRROR: the CI gate has two further independent failure
-# conditions, region-declaration drift and the shipped-issue-reference lint, and
-# this hook evaluates neither. Both omissions are deliberate, and for the same
-# reason. The claim above is that this hook is only ever a cheaper way to find
-# out what CI would have told you, and that holds only while every arm here
-# answers from the same state CI audits:
+# WHAT THIS DOES NOT COVER: the underlying classifier (`gaia-maintainer
+# release manifest --check`) also reports region-declaration drift, and the
+# shipped-issue-reference lint (`.gaia/scripts/lint-shipped-issue-refs.sh`)
+# enforces a related rule; this hook evaluates neither. Both omissions are
+# deliberate, and for the same reason.
+# The claim above is that this hook is only ever a cheaper way to find out
+# what a full `/distribution-audit` run would tell you, and that holds only
+# while every arm here answers from the same state that full check reads:
 #
 #   The missing arm qualifies, and the intersection is precisely what makes it
 #   qualify. The file map behind `missing` is a git ls-files walk, which reads
 #   the INDEX, so a staged-but-uncommitted `git add` of a new file does reach
 #   `missing` on its own. Intersecting it with this branch's committed changed
 #   set (the three-dot diff below) is what drops that staged-only path, leaving
-#   the arm denying on committed state, the same state CI audits. Do not read
+#   the arm denying on committed state, the same state a full
+#   `/distribution-audit` run reads. Do not read
 #   the ls-files walk as confining the arm by itself, and do not drop the
 #   intersection on that belief.
 #
@@ -44,13 +47,11 @@
 #   the same --json report parsed below, and builds it by reading each
 #   shipped file's CONTENT off disk and diffing the marker-bearing paths it
 #   finds against the committed manifest's declaration, so an uncommitted edit
-#   that adds or removes a marker pair moves it. CI also leaves it unscoped on
-#   purpose, so a stale declaration cannot slip through on a PR that touches no
-#   declared path. Evaluated here, it would be the one arm that denies what CI
-#   would pass, on a working tree the PR never contains, and its remedy text
-#   would tell the maintainer to regenerate a manifest that is not stale.
-#   Narrowing it to the changed set instead would enforce a different rule than
-#   CI's, which that workflow's own inline comment rules out.
+#   that adds or removes a marker pair moves it. Evaluated here, it would deny
+#   on a working tree the PR never contains, and its remedy text would tell the
+#   maintainer to regenerate a manifest that is not stale. Narrowing it to the
+#   changed set instead would let a stale declaration slip through on a PR
+#   that touches no declared path.
 #
 #   The issue-reference lint does not qualify either, and it fails the same
 #   test. It reads each shipped file's CONTENT off disk, so an uncommitted edit
@@ -59,9 +60,11 @@
 #   drift is. Evaluated here it would deny on a working tree the PR never
 #   contains, which is exactly what the guarantee below forbids.
 #
-# So both stay CI-only and surface as a red check after the push. That gap in
-# local coverage is the accepted price of the guarantee that a deny here always
-# means a red check there.
+# So both stay uncovered here: region drift surfaces at a manual
+# `/distribution-audit` run or at release time, and the lint runs in
+# `.gaia/tests/whole-tree-invariants.sh`. That gap in local coverage is the accepted price of
+# the guarantee that a deny here always means `/distribution-audit` would flag
+# the same file.
 #
 # WHY `gh pr create` AND NOT `git push`: push-time would catch this one round
 # earlier, but it fires on every work-in-progress push to a branch that has no
@@ -75,11 +78,10 @@
 # .claude/settings.json but stripped at bundle time. Both halves are required
 # and neither is sufficient alone:
 #
-#   - The script cannot ship. It names `.gaia/cli/gaia-maintainer` and
-#     `.github/workflows/distribution-audit-pr.yml`, both release-excluded, and
-#     `.claude/**` is in scope for the `maintainer-paths` and
-#     `excluded-workflow-ref` leak-checks, so a shipped copy fails the release
-#     build outright. Independently of that, an adopter-side agent reading it
+#   - The script cannot ship. It names `.gaia/cli/gaia-maintainer`,
+#     release-excluded, and `.claude/**` is in scope for the `maintainer-paths`
+#     leak-check, so a shipped copy fails the release build outright.
+#     Independently of that, an adopter-side agent reading it
 #     would infer a release manifest, a distribution boundary, and a
 #     /distribution-audit command that do not exist on their clone, and act on
 #     that inference.
@@ -100,7 +102,7 @@
 # FAIL-OPEN on every uncertainty: no maintainer binary (adopter clone), no git,
 # an unresolvable base ref, a non-JSON report, or any exit >= 2 from the
 # checker. The gate exists to save a round trip, never to block a maintainer out
-# of their own PR; CI is the authority that actually fails the build.
+# of their own PR; a manual `/distribution-audit` run is the strict answer.
 #
 # ONE UNCERTAINTY IS DELIBERATELY NOT ON THAT LIST: a missing jq. This hook can
 # stop a tool call, which makes it blocking to the shared oracle
@@ -111,7 +113,7 @@
 # to a command naming `gh`, so the command that installs jq still runs, and this
 # hook reaches no adopter clone at all, which bounds the whole cost to a
 # maintainer on a machine where every other blocking hook is refusing for the
-# same reason. Nothing else about the CI-is-authoritative posture moves: on a
+# same reason. Nothing else about the fail-open posture moves: on a
 # machine WITH jq every arm below fails open exactly as listed, and this hook
 # writes no marker and clears no gate.
 
@@ -176,7 +178,7 @@ cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // ""' 2>/dev/null)
 # against a view in which every heredoc body it can prove is DATA is masked out.
 # What still arms is a body whose opener that proof cannot read as data, an
 # interpreter feed (`bash <<EOF`) among them, which is the safe direction on a
-# gate that is fail-open with CI authoritative.
+# gate that is fail-open by design.
 #
 # The fragment also captures the matched invocation's own argument text into
 # `cmd_tail`. Deriving it from the same regex that decided the match keeps one
@@ -204,7 +206,7 @@ cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // ""' 2>/dev/null)
 # narrows the changed set. Accepted, and the data proof does not close it: a
 # quoted span is never suppressed there, because a `bash -c` runs what it is
 # handed from inside one and a runner reached through a variable defeats any
-# list of interpreter names. The gate is fail-open with CI authoritative, and
+# list of interpreter names. The gate is fail-open by design, and
 # both accepted trades are pinned by tests below so neither can drift silently
 # into looking like a bug.
 #
@@ -250,7 +252,7 @@ fi
 # FAIL-OPEN with no arming library, deliberately unlike the merge gates, which
 # deny and name the missing file. This hook's contract, stated at the top, is
 # that it fails open on every uncertainty and can only ever be a cheaper way to
-# find out what .github/workflows/distribution-audit-pr.yml would have told you.
+# find out what a full `/distribution-audit` run would have told you.
 # A hook with that contract must not become the one guard that denies every Bash
 # tool call on a corrupted checkout.
 type gaia_verb_armed >/dev/null 2>&1 || exit 0
@@ -347,7 +349,7 @@ deny() {
 
 # Resolve the base ref the PR would target: an explicit --base/-B on the command
 # line wins, otherwise the repo's default branch, otherwise main. Prefer the
-# remote-tracking ref so the comparison matches what CI will see.
+# remote-tracking ref so the comparison matches what the PR will contain.
 # The flag must sit at a word boundary, and `gh` is a pflag CLI, so all three
 # shorthand forms are valid: `--base X`, `--base=X`, and for the single-letter
 # alias also `-BX` with no separator at all. Two patterns rather than one,
@@ -366,8 +368,8 @@ deny() {
 # argument parse, so a literal `--base <ref>` written inside this invocation's
 # own `--body` prose still matches. Word-boundary anchoring does not help there,
 # the body text has a space in front of the flag like a real argument does.
-# Accepted because the gate is fail-open and advisory, and CI is the authority
-# that catches what this misses. Be precise about the direction of that failure:
+# Accepted because the gate is fail-open and advisory, and a manual
+# `/distribution-audit` run is the strict answer for what this misses. Be precise about the direction of that failure:
 # a wrong base can under-report as easily as over-report. Resolving a narrower
 # base than the real one shrinks the three-dot changed set and can miss a
 # genuine offender, so the realistic worst case is a spurious allow, not only a
@@ -422,11 +424,9 @@ done
 # Files this branch adds or modifies on the head side. Three-dot compares from
 # the point HEAD diverged from base, so only this branch's own changes count.
 # Deletions are excluded; even if one slipped through it could never intersect
-# `missing`, which is built from a git ls-files walk of the head tree. This
-# derivation matches distribution-audit-pr.yml's changed-set step exactly, so
-# the two gates never disagree about which files this branch touched. It is the
-# changed set that matches, not the gate as a whole: see WHAT THIS DOES NOT
-# MIRROR in the header.
+# `missing`, which is built from a git ls-files walk of the head tree. See
+# WHAT THIS DOES NOT COVER in the header for what this narrower changed-set
+# scoping leaves out relative to a full `/distribution-audit` run.
 # `-z` because git's default `core.quotePath` C-quotes any path carrying
 # non-ASCII or control bytes, while `missing` below arrives raw through `jq -r`.
 # The two sides would then never intersect for exactly those paths, `offenders`
@@ -468,7 +468,7 @@ deny "Distribution pre-flight: ${count} newly-shipping file(s) on this branch ha
 
 ${offender_list}
 
-Every file that would newly reach adopters needs an explicit ship-or-withhold decision before it lands. Pushing without one turns the 'Distribution Audit' CI job red after the fact; this catches it now, locally, with no network round trip.
+Every file that would newly reach adopters needs an explicit ship-or-withhold decision before it lands. Pushing without one leaves it unanswered until a manual /distribution-audit run or release time; this catches it now, locally, with no network round trip.
 
 To unblock:
   1. Run /distribution-audit and answer ship-or-withhold for each file above.
@@ -478,4 +478,4 @@ To unblock:
 
 Landing the manifest answer first also keeps HEAD stable through the later audit-marker handshake (see wiki/concepts/PR Merge Workflow.md, step 1).
 
-This gate deliberately duplicates the unanswered-file rule from .github/workflows/distribution-audit-pr.yml; see this hook's header for why that rule is enforced in both places. It does not cover that workflow's second condition, region-declaration drift, which stays CI-only."
+This is the only automatic check of the unanswered-file rule at PR-creation time; see this hook's header for why it fails open rather than denying with certainty. It does not cover the underlying classifier's second condition, region-declaration drift, which only a manual /distribution-audit run or release time still catches."

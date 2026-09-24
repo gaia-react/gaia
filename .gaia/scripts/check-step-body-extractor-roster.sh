@@ -75,20 +75,17 @@ GAIA_SBX_STEP_HEADER='      - name:'
 # The family: step-BODY extractors over code-review-audit.yml, which are the
 # copies that must agree with one another about what the body is.
 GAIA_SBX_MEMBERS='.gaia/scripts/tests/debt-origin-contract.bats
-.github/audit/tests/ci-audit-step-timeout.bats
 .github/audit/tests/ci-base-resolution.bats
 .github/audit/tests/ci-guard-paths.bats
 .github/audit/tests/ci-status-member-gate.bats
 .github/audit/tests/ci-workflow-self-mod.bats
-.github/audit/tests/cra-status-upsert.bats
 .github/audit/tests/self-heal-scope-gate.bats'
 
 # Deliberately NOT the family, `<path>|<reason>`. Each is a candidate by the
 # criterion above and each answers no to "is this a step-body extractor over
 # code-review-audit.yml", so the answer is written down rather than left as an
 # omission this check could not tell from an oversight.
-GAIA_SBX_NOT_MEMBERS='.gaia/scripts/tests/distribution-audit-pr-gate.bats|step-body extractor bound to distribution-audit-pr.yml; it names code-review-audit.yml only in prose, and a copy over a different workflow answers to that workflow shape
-.github/audit/tests/ci-clean-no-push-status.bats|whole-BLOCK extractor: it keeps the step header line and the env: block undedented, so it answers to a different contract than the dedented run: body
+GAIA_SBX_NOT_MEMBERS='.github/audit/tests/ci-clean-no-push-status.bats|whole-BLOCK extractor: it keeps the step header line and the env: block undedented, so it answers to a different contract than the dedented run: body
 .gaia/scripts/tests/retrigger-reachability.bats|authors its own fixture workflow; the step headers are content it writes into a temp tree, not an extraction from code-review-audit.yml
 .gaia/tests/lib/audit-ci-shards.bats|doctors the workflow by replacing a step to build a mutant; it rewrites a step rather than extracting one'
 

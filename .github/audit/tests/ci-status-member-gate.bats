@@ -146,14 +146,7 @@ setup() {
   # subshell, so an assignment made inside run_step would not survive back here.
   STEP_OUTPUT="$BATS_TEST_TMPDIR/github-output"
   : > "$STEP_OUTPUT"
-  # Same subshell caveat: the comment-step stub's log and its $RUNNER_TEMP are
-  # declared here so assertions back in the test body can read them.
-  COMMENT_LOG="$BATS_TEST_TMPDIR/comment.log"
-  rm -f "$COMMENT_LOG"
-  RUNNER_TEMP_DIR="$BATS_TEST_TMPDIR/runner-temp"
-  mkdir -p "$RUNNER_TEMP_DIR"
   install_gh_mock
-  install_upsert_stub
 }
 
 # Fake `gh` on a prepended PATH: records every `gh api` WRITE argv.
@@ -288,25 +281,6 @@ count_pending_writers() {
   grep -v '^[[:space:]]*#' "${1:-$WORKFLOW}" | grep -cE -- "$PENDING_WRITER_RE"
 }
 
-# Stub the PR-comment upsert the terminal status steps shell out to, recording
-# the comment text ($2) so a test asserts what the AUTHOR is actually told
-# rather than grepping the step's YAML for a phrase. This stub's `$2`-is-body
-# assumption is pinned against the real script's own `Usage:` contract by
-# .github/audit/tests/cra-status-upsert.bats, which invokes the shipped script
-# directly rather than this fixture.
-#
-# The stub goes at the repo-relative path the steps invoke, under $SANDBOX: the
-# steps run from the workspace root, which `actions/checkout` has populated with
-# the repository, and $SANDBOX stands in for that root here.
-install_upsert_stub() {
-  mkdir -p "$SANDBOX/.github/audit"
-  cat > "$SANDBOX/.github/audit/cra-status-upsert.sh" <<EOF
-#!/usr/bin/env bash
-printf '%s\n' "\$2" >> "$COMMENT_LOG"
-EOF
-  chmod +x "$SANDBOX/.github/audit/cra-status-upsert.sh"
-}
-
 # Extract one step's `run:` shell body from the workflow YAML and dedent it.
 # Matches the `- name:` line EXACTLY, so "Write GAIA-Audit commit status" does
 # not also match its "(clean, no push)" / "(out-of-scope skip)" siblings.
@@ -439,51 +413,6 @@ run_step() {
        HEAD_SHA="$sha" \
        AUDIT_SHA="${3-$sha}" \
        PR_BASE_SHA="$(base_sha)" \
-       bash "$body" )
-}
-
-# Run the terminal comment step's body against the stubbed upsert, with the
-# outputs it consumes from the out-of-scope status step bound explicitly.
-run_comment_step() {
-  local body="$1" members_pending="$2" success_stamped="$3" success_live="${4:-}" read_failed="${5:-}" post_failed="${6:-}"
-  ( cd "$SANDBOX" \
-    && RUNNER_TEMP="$RUNNER_TEMP_DIR" \
-       PR_NUMBER="1" \
-       MEMBERS_PENDING="$members_pending" \
-       SUCCESS_STAMPED="$success_stamped" \
-       SUCCESS_LIVE="$success_live" \
-       READ_FAILED="$read_failed" \
-       POST_FAILED="$post_failed" \
-       bash "$body" )
-}
-
-# The audit-complete comment reads push-fixes' outcome fields on top of the same
-# five stamp-step outputs the skip comments read. The defaults here are the
-# ordinary clean run ("no fixes needed"), so a test binds only the field it is
-# about.
-#
-# THE FIVE SHARED FIELDS ARE IN run_comment_step's ORDER, deliberately. Both
-# helpers are called from adjacent tests with five same-named positional
-# arguments, so a mismatched order does not error, it binds the wrong field and
-# yields a test that passes for a reason other than the one it names. push_fixes
-# is appended last because the sibling has no equivalent.
-run_audit_complete_step() {
-  local body="$1" members_pending="${2:-}" success_stamped="${3:-}" success_live="${4:-}" \
-        read_failed="${5:-}" post_failed="${6:-}" push_fixes="${7:-true}" \
-        refused="${8:-false}" refused_reason="${9:-}"
-  ( cd "$SANDBOX" \
-    && RUNNER_TEMP="$RUNNER_TEMP_DIR" \
-       PR_NUMBER="1" \
-       PUSHED="false" \
-       REFUSED="$refused" \
-       REFUSED_COUNT="0" \
-       REFUSED_REASON="$refused_reason" \
-       PUSH_FIXES="$push_fixes" \
-       MEMBERS_PENDING="$members_pending" \
-       SUCCESS_STAMPED="$success_stamped" \
-       SUCCESS_LIVE="$success_live" \
-       READ_FAILED="$read_failed" \
-       POST_FAILED="$post_failed" \
        bash "$body" )
 }
 
@@ -788,10 +717,7 @@ run_audit_complete_step() {
   return 0
 }
 
-@test "out-of-scope skip: publishes members_pending so the PR comment can tell the truth" {
-  # Without this output the terminal comment step tells the author "the merge
-  # gate is satisfied with no local audit run" while the status is `pending` and
-  # the button is shut -- a green-sounding message over a closed gate.
+@test "out-of-scope skip: publishes members_pending naming the co-dispatched member" {
   body="$(extract_step_body 'Write GAIA-Audit commit status (out-of-scope skip)')"
   commit_maintainer_only_diff
   sha="$(git -C "$SANDBOX" rev-parse HEAD)"
@@ -800,11 +726,6 @@ run_audit_complete_step() {
   [ "$status" -eq 0 ]
 
   grep -qF "members_pending=code-audit-maintainer-node" "$STEP_OUTPUT"
-
-  # The comment step must consume it and drop the free-skip claim.
-  comment="$(extract_step_body 'Status - skipped (no source changes)')"
-  grep -qF 'MEMBERS_PENDING' "$comment"
-  grep -qF "GAIA-Audit is pending, not green" "$comment"
 }
 
 @test "out-of-scope skip: a genuinely unowned diff still posts success" {
@@ -934,7 +855,7 @@ run_audit_complete_step() {
   grep -qF "success_stamped=true" "$STEP_OUTPUT"
 }
 
-@test "chore-deps skip: publishes members_pending so the PR comment can tell the truth" {
+@test "chore-deps skip: publishes members_pending naming the co-dispatched member" {
   body="$(extract_step_body 'Write GAIA-Audit commit status (chore-deps skip)')"
   commit_mixed_diff
   sha="$(git -C "$SANDBOX" rev-parse HEAD)"
@@ -984,57 +905,6 @@ run_audit_complete_step() {
 
   [ ! -f "$POST_LOG" ]
   grep -qF "success_stamped=false" "$STEP_OUTPUT"
-}
-
-@test "comment: no status stamped means the comment never claims the merge gate is satisfied" {
-  body="$(extract_step_body 'Status - skipped (no source changes)')"
-
-  run run_comment_step "$body" "" "false"
-  [ "$status" -eq 0 ]
-
-  [ -f "$COMMENT_LOG" ]
-  # The free-skip claim is what #711 is about: it must not survive a no-stamp run.
-  grep -qF "the merge gate is satisfied" "$COMMENT_LOG" && return 1
-  grep -qF "merge gate is NOT satisfied" "$COMMENT_LOG"
-}
-
-@test "comment: an unset success_stamped is read as no-stamp, never as a stamp" {
-  # Fail-safe default. If the status step is ever reshaped so the output goes
-  # missing, the comment must degrade to the cautious message, not the green one.
-  body="$(extract_step_body 'Status - skipped (no source changes)')"
-
-  run run_comment_step "$body" "" ""
-  [ "$status" -eq 0 ]
-
-  [ -f "$COMMENT_LOG" ]
-  grep -qF "the merge gate is satisfied" "$COMMENT_LOG" && return 1
-  return 0
-}
-
-@test "comment: a real stamp still gets the free-skip message" {
-  body="$(extract_step_body 'Status - skipped (no source changes)')"
-
-  run run_comment_step "$body" "" "true"
-  [ "$status" -eq 0 ]
-
-  [ -f "$COMMENT_LOG" ]
-  grep -qF "the merge gate is satisfied" "$COMMENT_LOG"
-  grep -qF "merge gate is NOT satisfied" "$COMMENT_LOG" && return 1
-  return 0
-}
-
-@test "comment: a pending member still outranks the version guard in the message" {
-  # MEMBERS_PENDING is checked first: when a member is pending the status step
-  # posted `pending` and never reached the version guard, so that message wins.
-  body="$(extract_step_body 'Status - skipped (no source changes)')"
-
-  run run_comment_step "$body" "code-audit-maintainer-node" ""
-  [ "$status" -eq 0 ]
-
-  [ -f "$COMMENT_LOG" ]
-  grep -qF "GAIA-Audit is pending, not green" "$COMMENT_LOG"
-  grep -qF "the merge gate is satisfied" "$COMMENT_LOG" && return 1
-  return 0
 }
 
 # -----------------------------------------------------------------------------
@@ -1289,67 +1159,6 @@ run_audit_complete_step() {
   run run_step "$body" "$sha"
   [ "$status" -eq 0 ]
   grep -qF "success_live=true" "$STEP_OUTPUT"
-}
-
-@test "non-clobber: the PR comment says ALREADY GREEN, not 'run the members locally', when the gate is live" {
-  # Asserts what the AUTHOR actually reads, not just the step output. On this
-  # path members_pending is still non-empty (CI cannot see a local marker), and
-  # the comment step branches on members_pending FIRST -- so without the
-  # success_live branch the author is told to clear a merge gate that is already
-  # green. Under-claiming is as much a lie as over-claiming.
-  local body
-  body="$(extract_step_body "Status - skipped (no source changes)")"
-  run run_comment_step "$body" "code-audit-maintainer-shell" "false" "true"
-  [ "$status" -eq 0 ]
-
-  [ -f "$COMMENT_LOG" ]
-  grep -qF "already green" "$COMMENT_LOG"
-  grep -qF "No action needed" "$COMMENT_LOG"
-  # The misleading instruction must NOT appear.
-  grep -qF "run the dispatched member(s) locally" "$COMMENT_LOG" && return 1
-  return 0
-}
-
-@test "non-clobber: the PR comment STILL says 'pending' when no success is live (regression)" {
-  # The success_live branch must not swallow the genuinely-pending case.
-  local body
-  body="$(extract_step_body "Status - skipped (no source changes)")"
-  run run_comment_step "$body" "code-audit-maintainer-shell" "false" ""
-  [ "$status" -eq 0 ]
-
-  [ -f "$COMMENT_LOG" ]
-  grep -qF "pending, not green" "$COMMENT_LOG"
-  grep -qF "run the dispatched member(s) locally" "$COMMENT_LOG"
-}
-
-@test "read-failed: the PR comment says the gate's state is unknown, not 'pending, not green'" {
-  # The status step could not tell whether a success is already live (the
-  # non-clobber guard's read failed) and stamped nothing. Asserting "pending,
-  # not green" here would be a claim that exit never verified.
-  local body
-  body="$(extract_step_body "Status - skipped (no source changes)")"
-  run run_comment_step "$body" "code-audit-maintainer-shell" "false" "" "true"
-  [ "$status" -eq 0 ]
-
-  [ -f "$COMMENT_LOG" ]
-  grep -qF "could not be read, so its state is unknown" "$COMMENT_LOG"
-  grep -qF "pending, not green" "$COMMENT_LOG" && return 1
-  return 0
-}
-
-@test "read-failed: outranks members_pending, exactly as success_live does" {
-  # READ_FAILED and SUCCESS_LIVE are both checked before MEMBERS_PENDING, which
-  # stays non-empty on this path (CI cannot see a local marker). Without this
-  # ordering the members_pending branch would fire first and assert a state
-  # this step's own read never established.
-  local body
-  body="$(extract_step_body "Status - skipped (no source changes)")"
-  run run_comment_step "$body" "code-audit-maintainer-shell" "false" "" "true"
-  [ "$status" -eq 0 ]
-
-  [ -f "$COMMENT_LOG" ]
-  grep -qF "GAIA-Audit is pending, not green" "$COMMENT_LOG" && return 1
-  return 0
 }
 
 # -----------------------------------------------------------------------------
@@ -1686,19 +1495,6 @@ run_audit_complete_step() {
     grep -qE -- 'bash "?[^"]*write-audit-status\.sh' "$body" || return 1
   done
 }
-
-# -----------------------------------------------------------------------------
-# cra-status-upsert.sh: posting/updating the advisory status comment is purely
-# informational (the load-bearing gate is the GAIA-Audit commit status, POSTed
-# and non-clobber-guarded elsewhere in this file). A transient GitHub API
-# failure on this path must log to stderr and exit 0, never fail the job that
-# calls it.
-#
-# Those fail-soft branches are covered by the script's own suite,
-# .github/audit/tests/cra-status-upsert.bats, alongside the rest of its
-# behavior. This file keeps only install_upsert_stub(), the fixture the terminal
-# status steps shell out to when a test asserts what the AUTHOR is told.
-# -----------------------------------------------------------------------------
 
 # -----------------------------------------------------------------------------
 # Fail-closed preconditions, pinned on EVERY path rather than on the paths that
@@ -2094,43 +1890,6 @@ run_audit_complete_step() {
 # fine.
 # -----------------------------------------------------------------------------
 
-@test "out-of-scope comment: a rejected POST is reported as the cause, not a missing VERSION" {
-  body="$(extract_step_body 'Status - skipped (no source changes)')"
-  run run_comment_step "$body" "" "false" "" "" "true"
-  [ "$status" -eq 0 ]
-
-  [ -f "$COMMENT_LOG" ]
-  grep -qF "merge gate is NOT satisfied" "$COMMENT_LOG"
-  grep -qF "rejected" "$COMMENT_LOG"
-  grep -qF ".gaia/VERSION is missing" "$COMMENT_LOG" && return 1
-  return 0
-}
-
-@test "chore-deps comment: a rejected POST is reported as the cause, not a missing VERSION" {
-  body="$(extract_step_body 'Status - skipped (chore-deps PR)')"
-  run run_comment_step "$body" "" "false" "" "" "true"
-  [ "$status" -eq 0 ]
-
-  [ -f "$COMMENT_LOG" ]
-  grep -qF "merge gate is NOT satisfied" "$COMMENT_LOG"
-  grep -qF "rejected" "$COMMENT_LOG"
-  grep -qF ".gaia/VERSION is missing" "$COMMENT_LOG" && return 1
-  return 0
-}
-
-@test "audit-complete comment: a rejected POST on the stamp step is surfaced, not reported as plain success" {
-  # This step has no member/stamp branches of its own -- it reports what the
-  # audit DID -- so an unqualified "complete" line reads as green while the gate
-  # is shut. It is the only comment covering the push and clean-no-push paths.
-  body="$(extract_step_body 'Status - audit complete')"
-  run run_audit_complete_step "$body" "" "" "" "" "true"
-  [ "$status" -eq 0 ]
-
-  [ -f "$COMMENT_LOG" ]
-  grep -qF "code-review-audit complete" "$COMMENT_LOG"
-  grep -qF "merge gate is NOT satisfied" "$COMMENT_LOG"
-}
-
 @test "self-heal re-stamp check run does not assert that a GAIA-Audit status landed" {
   # Making the stamp step non-fatal un-skipped this one. It carries an implicit
   # success(), so before that change a rejected POST reddened the stamp step and
@@ -2156,62 +1915,6 @@ run_audit_complete_step() {
   return 0
 }
 
-@test "audit-complete comment: a stamp step that declined is surfaced, not read as a clean finish" {
-  # A rejected POST is one of five ways those stamp steps end with nothing
-  # stamped. Reporting only that one would leave the other four -- an absent
-  # .gaia/VERSION, an unrecomputable digest, an unproven-clean audit -- reading
-  # as "complete: no fixes needed" beside a shut gate.
-  body="$(extract_step_body 'Status - audit complete')"
-  run run_audit_complete_step "$body" "" "false"
-  [ "$status" -eq 0 ]
-
-  [ -f "$COMMENT_LOG" ]
-  grep -qF "code-review-audit complete" "$COMMENT_LOG"
-  grep -qF "merge gate is NOT satisfied" "$COMMENT_LOG"
-}
-
-@test "audit-complete comment: an enumeration-failure refusal names its own cause" {
-  # The refusal message is a switch on REFUSED_REASON whose ELSE arm is the
-  # >10-file threshold text. A reason with no arm of its own is reported to the
-  # pull request as "diff exceeded the 10-file safety threshold (touched  files)"
-  # -- false, empty-countered, and pointing the reader at the wrong gate.
-  body="$(extract_step_body 'Status - audit complete')"
-  run run_audit_complete_step "$body" "" "" "" "" "" "true" "true" "path-enumeration-failed"
-  [ "$status" -eq 0 ]
-
-  [ -f "$COMMENT_LOG" ]
-  grep -qF "changed-path enumeration failed" "$COMMENT_LOG"
-  grep -qF "10-file safety threshold" "$COMMENT_LOG" && return 1
-  return 0
-}
-
-@test "audit-complete comment: a step-abort refusal names its own cause" {
-  # Same shape as the enumeration-failure arm above, for the reason the trap
-  # that produces this reason exists: a reason with no arm of its own falls
-  # through to the ELSE and is reported to the pull request as "diff exceeded
-  # the 10-file safety threshold (touched  files)". On this reason that is
-  # worse than merely false -- the step may have died before it staged a single
-  # file, so the message names a gate the run never reached.
-  body="$(extract_step_body 'Status - audit complete')"
-  run run_audit_complete_step "$body" "" "" "" "" "" "true" "true" "step-aborted"
-  [ "$status" -eq 0 ]
-
-  [ -f "$COMMENT_LOG" ]
-  grep -qF "self-heal step aborted" "$COMMENT_LOG"
-  grep -qF "10-file safety threshold" "$COMMENT_LOG" && return 1
-  return 0
-}
-
-@test "audit-complete comment: a co-dispatched pending member is named, not reported as green" {
-  body="$(extract_step_body 'Status - audit complete')"
-  run run_audit_complete_step "$body" "code-audit-maintainer-shell" "false"
-  [ "$status" -eq 0 ]
-
-  [ -f "$COMMENT_LOG" ]
-  grep -qF "pending, not green" "$COMMENT_LOG"
-  grep -qF "code-audit-maintainer-shell" "$COMMENT_LOG"
-}
-
 # -----------------------------------------------------------------------------
 # The COMBINED state: a rejected pending POST, alongside the members it named.
 #
@@ -2227,171 +1930,6 @@ run_audit_complete_step() {
 # repair, and it is the wrong one for exactly this reason: it does not combine
 # the two facts, it discards the more actionable one.
 # -----------------------------------------------------------------------------
-
-@test "chore-deps comment: a rejected pending POST is reported with the members, not as a pending gate" {
-  body="$(extract_step_body 'Status - skipped (chore-deps PR)')"
-  run run_comment_step "$body" "code-audit-maintainer-shell" "false" "" "" "true"
-  [ "$status" -eq 0 ]
-
-  [ -f "$COMMENT_LOG" ]
-  # Both facts, one sentence: the members only a local run can clear...
-  grep -qF "code-audit-maintainer-shell" "$COMMENT_LOG"
-  # ...and the rejection that means no status was posted at all.
-  grep -qF "was rejected by GitHub" "$COMMENT_LOG"
-  grep -qF "NO status was posted on HEAD" "$COMMENT_LOG"
-  # The action is still the one that actually clears this gate.
-  grep -qF "run the dispatched member(s) locally" "$COMMENT_LOG"
-  # And it never claims the pending status that was never posted.
-  grep -qF "pending, not green" "$COMMENT_LOG" && return 1
-  return 0
-}
-
-@test "out-of-scope comment: a rejected pending POST is reported with the members, not as a pending gate" {
-  body="$(extract_step_body 'Status - skipped (no source changes)')"
-  run run_comment_step "$body" "code-audit-maintainer-shell" "false" "" "" "true"
-  [ "$status" -eq 0 ]
-
-  [ -f "$COMMENT_LOG" ]
-  grep -qF "code-audit-maintainer-shell" "$COMMENT_LOG"
-  grep -qF "was rejected by GitHub" "$COMMENT_LOG"
-  grep -qF "NO status was posted on HEAD" "$COMMENT_LOG"
-  grep -qF "run the dispatched member(s) locally" "$COMMENT_LOG"
-  grep -qF "pending, not green" "$COMMENT_LOG" && return 1
-  return 0
-}
-
-@test "audit-complete comment: a rejected pending POST is reported with the members, not as a pending gate" {
-  body="$(extract_step_body 'Status - audit complete')"
-  run run_audit_complete_step "$body" "code-audit-maintainer-shell" "false" "" "" "true"
-  [ "$status" -eq 0 ]
-
-  [ -f "$COMMENT_LOG" ]
-  grep -qF "code-audit-maintainer-shell" "$COMMENT_LOG"
-  grep -qF "was rejected by GitHub" "$COMMENT_LOG"
-  grep -qF "NO status was posted on HEAD" "$COMMENT_LOG"
-  grep -qF "run the dispatched member(s) locally" "$COMMENT_LOG"
-  grep -qF "pending, not green" "$COMMENT_LOG" && return 1
-  return 0
-}
-
-@test "the three combined-state comments give the author the same instruction" {
-  # The divergence-between-copies shape gaia-react/gaia#1286 exists to remove,
-  # applied to the arm that did not exist when that work landed. Three ladders
-  # now carry a second message for one state, and nothing but this test stops
-  # one of them from drifting into a different instruction than its siblings.
-  local step body
-  for step in \
-    'Status - skipped (chore-deps PR)' \
-    'Status - skipped (no source changes)' \
-    'Status - audit complete'
-  do
-    body="$(extract_step_body "$step")"
-    grep -qF 'The merge gate is NOT satisfied either way: run the dispatched member(s) locally to clear it' "$body" || {
-      echo "combined-state instruction missing or reworded in '${step}'" >&2
-      return 1
-    }
-  done
-}
-
-@test "all three terminal comment ladders test their arms in one order" {
-  # Every other test here binds ONE arm and asserts ONE message, so none of them
-  # can see order at all: reordering a ladder leaves every message byte-identical
-  # and the suite green. That is not an oversight in those tests, it is the
-  # nature of the invariant -- a drift is invisible to a per-arm test, and the
-  # day the arms stopped being mutually exclusive is the day it started costing
-  # an author the wrong instruction.
-  #
-  # THAT DAY HAS ARRIVED, and the expected sequence records it. The writer's
-  # pending POST now publishes post_failed instead of swallowing its rejection,
-  # so post_failed and members_pending co-occur -- always, not occasionally,
-  # since the pending POST fires only when members_pending is non-empty. The
-  # DOUBLED POST_FAILED below is that combined state: the first occurrence is
-  # the nested check inside the members-pending arm, which chooses between the
-  # plain and the combined message, and the second is the standalone arm that
-  # still covers a rejected SUCCESS POST, where members_pending is empty.
-  #
-  # The arm ORDER is what this pins; the combined-state MESSAGES are pinned by
-  # the sibling tests above, and their shared instruction by the test that
-  # follows them.
-  # An invariant that only bites in the future is exactly the kind prose cannot
-  # hold, because nothing re-reads prose on the day it starts mattering.
-  local expected="SUCCESS_LIVE READ_FAILED MEMBERS_PENDING POST_FAILED POST_FAILED SUCCESS_STAMPED"
-  local step body order
-  for step in \
-    'Status - skipped (chore-deps PR)' \
-    'Status - skipped (no source changes)' \
-    'Status - audit complete'
-  do
-    body="$(extract_step_body "$step")"
-    # `:-}` anchored, so the bare ${MEMBERS_PENDING} interpolations inside the
-    # message strings are not mistaken for guard positions.
-    order="$(grep -oE '\$\{(SUCCESS_LIVE|READ_FAILED|MEMBERS_PENDING|POST_FAILED|SUCCESS_STAMPED):-\}' "$body" \
-      | sed 's/[^A-Z_]//g' | tr '\n' ' ' | sed 's/ $//')"
-    if [ "$order" != "$expected" ]; then
-      echo "ladder drift in '${step}'" >&2
-      echo "  expected: ${expected}" >&2
-      echo "  actual:   ${order}" >&2
-      return 1
-    fi
-  done
-}
-
-@test "audit-complete comment: an unreadable status is reported as unknown, not as pending" {
-  # The one arm of the five with no coverage when the ladder landed, and the
-  # harness had a slot for it, so the gap read as covered. Without a test, an
-  # edit that drops or reorders this arm falls through to the members-pending
-  # one, which asserts "pending, not green" -- a claim about a status this path
-  # could not read.
-  body="$(extract_step_body 'Status - audit complete')"
-  run run_audit_complete_step "$body" "code-audit-maintainer-shell" "false" "" "true"
-  [ "$status" -eq 0 ]
-
-  [ -f "$COMMENT_LOG" ]
-  grep -qF "could not be read" "$COMMENT_LOG"
-  grep -qF "code-audit-maintainer-shell" "$COMMENT_LOG"
-  grep -qF "pending, not green" "$COMMENT_LOG" && return 1
-  return 0
-}
-
-@test "audit-complete comment: an already-live success is not warned about" {
-  # success_stamped is `false` on this path too -- the writer hoists it before
-  # the non-clobber guard -- so a no-stamp arm that ignored success_live would
-  # tell the author the gate is shut while it is green.
-  body="$(extract_step_body 'Status - audit complete')"
-  run run_audit_complete_step "$body" "code-audit-maintainer-shell" "false" "true"
-  [ "$status" -eq 0 ]
-
-  [ -f "$COMMENT_LOG" ]
-  grep -qF "code-review-audit complete" "$COMMENT_LOG"
-  grep -qF "merge gate is NOT satisfied" "$COMMENT_LOG" && return 1
-  grep -qF "pending, not green" "$COMMENT_LOG" && return 1
-  return 0
-}
-
-@test "audit-complete comment: advisory mode invents no merge-gate warning" {
-  # push_fixes=false runs NEITHER stamp step, so every output is empty. Testing
-  # the no-stamp arm for "not true" rather than the literal `false` would attach
-  # a gate warning to every advisory run, which posts no status by design.
-  body="$(extract_step_body 'Status - audit complete')"
-  run run_audit_complete_step "$body" "" "" "" "" "" "false"
-  [ "$status" -eq 0 ]
-
-  [ -f "$COMMENT_LOG" ]
-  grep -qF "advisory (push_fixes=false)" "$COMMENT_LOG"
-  grep -qF "merge gate is NOT satisfied" "$COMMENT_LOG" && return 1
-  return 0
-}
-
-@test "audit-complete comment: says nothing about the stamp when the status landed" {
-  body="$(extract_step_body 'Status - audit complete')"
-  run run_audit_complete_step "$body" "" "true"
-  [ "$status" -eq 0 ]
-
-  [ -f "$COMMENT_LOG" ]
-  grep -qF "code-review-audit complete" "$COMMENT_LOG"
-  grep -qF "merge gate is NOT satisfied" "$COMMENT_LOG" && return 1
-  return 0
-}
 
 # -----------------------------------------------------------------------------
 # Failed-run backstop

@@ -49,7 +49,7 @@ jobs:
     #
     # `pull-requests: read` is load-bearing for paths-filter, which resolves a
     # PR's changed files through the API (the same reasoning spelled out in
-    # verify-required-checks.yml). Omitting it works only while this repo is
+    # audit-ci-tests.yml). Omitting it works only while this repo is
     # public; the day it went private every run would 403 with "Resource not
     # accessible by integration", and since this is a required context that
     # would block every merge rather than redden one advisory check.
@@ -235,9 +235,7 @@ jobs:
               # `code=false`, the Vitest step skips, and the pins never run
               # against the change that invalidates them -- the stale pin first
               # fires on some later, unrelated `.gaia/cli/**` change, reddening a
-              # diff that did not cause it (#1510). `label-registry.yml` is no
-              # fallback: it runs the committed bundle's `labels docs --check`
-              # and `labels check`, and neither evaluates a Vitest assertion.
+              # diff that did not cause it (#1510).
               # Both files are listed because they change independently -- a
               # label edit moves the registry alone, a new enum value moves the
               # schema alone -- and either alone must re-run the job.
@@ -255,7 +253,7 @@ jobs:
               # green having run the divergence check zero times (#1513).
               # `audit-ci-tests.yml` is no fallback: it arms on the same glob but
               # runs bats shards only, and no bats suite reimplements this
-              # divergence check rather than approximate it.
+              # divergence check or even approximates it.
               # A glob rather than an itemized list, the same reasoning as the
               # workflows and actions globs above: the guard reads whatever
               # matches this name pattern, so a member added or removed later is
@@ -535,17 +533,17 @@ jobs:
         run: bash .gaia/scripts/check-cli-workspace-floors.sh --no-audit
 
   # PR-gated distribution harness. Before this job, the harness (run-all.sh,
-  # its scenarios, lib/) ran only at tag-push (release.yml) and manual
-  # workflow_dispatch (distribution.yml), so a change to the CLI bundle, the
-  # release-exclude set, or the scrub config that breaks the adopter tarball (a
-  # leak, a marker-strip regression, manifest drift) shipped through PR review
-  # and was caught only at release, when the fix is far more expensive.
+  # its scenarios, lib/) ran only at tag-push (release.yml), so a change to the
+  # CLI bundle, the release-exclude set, or the scrub config that breaks the
+  # adopter tarball (a leak, a marker-strip regression, manifest drift) shipped
+  # through PR review and was caught only at release, when the fix is far more
+  # expensive.
   #
   # This runs Layers 0+1 plus the adopter-flow regressions (07+) and the
   # deterministic marker-strip survival check. It passes NO
   # CLAUDE_CODE_OAUTH_TOKEN, so the Docker/secret-dependent scenarios (06, and
   # 15's advisory model probe) soft-pass-skip via their own guards; the full
-  # Layers 0+1+2 run stays with release.yml and distribution.yml, which have the
+  # Layers 0+1+2 run stays with release.yml, which has the
   # org secret. Not a declared-required context (see verify-required-checks.sh),
   # unlike the sibling cli-tests job. It shares that job's always-runs shape --
   # reporting green when the filter does not match -- so it is
@@ -773,7 +771,7 @@ jobs:
       #
       # It builds its own staging tree rather than reusing the step above,
       # which is what keeps it runnable standalone and inside run-all.sh for
-      # release.yml and distribution.yml. That second build is the entire cost:
+      # release.yml. That second build is the entire cost:
       # 3.3s measured end-to-end against a job that is otherwise 12s, versus
       # ~170s for the alternative of widening the harness filter to reach the
       # same files -- longer than the whole pull-request critical path, on

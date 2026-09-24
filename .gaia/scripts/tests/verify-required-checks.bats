@@ -23,7 +23,6 @@ setup() {
   FULL_RULESET="GAIA-Audit
 Audit CI Tests
 Run Chromatic
-Distribution Audit
 Vitest and Playwright
 Vitest (.gaia/cli)"
 }
@@ -117,7 +116,6 @@ Vitest (.gaia/cli)"
 @test "drift: exits 1 when a required context is missing live" {
   local partial="Audit CI Tests
 Run Chromatic
-Distribution Audit
 Vitest and Playwright
 Vitest (.gaia/cli)"
   run "$SCRIPT" --repo gaia-react/gaia --branch main \
@@ -129,7 +127,6 @@ Vitest (.gaia/cli)"
 @test "drift: reports exactly the missing context by name" {
   local partial="Audit CI Tests
 Run Chromatic
-Distribution Audit
 Vitest and Playwright
 Vitest (.gaia/cli)"
   run "$SCRIPT" --repo gaia-react/gaia --branch main \
@@ -159,7 +156,6 @@ Vitest (.gaia/cli)"
   assert_contains "GAIA-Audit"
   assert_contains "Audit CI Tests"
   assert_contains "Run Chromatic"
-  assert_contains "Distribution Audit"
   assert_contains "Vitest and Playwright"
   assert_contains "Vitest (.gaia/cli)"
 }

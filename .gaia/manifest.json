@@ -281,15 +281,12 @@
     ".gaia/templates/ci-issues/severity-important-revert-opened.md": "owned",
     ".gaia/templates/README.md": "owned",
     ".github/actions/gaia-ci-merge-and-watch/action.yml": "owned",
-    ".github/actions/gaia-ci-merge-and-watch/lib/read-ci-result.sh": "owned",
     ".github/actions/gaia-ci-merge-and-watch/lib/render-issue.sh": "owned",
     ".github/actions/gaia-ci-merge-and-watch/lib/wait-for-ci.sh": "owned",
     ".github/actions/gaia-ci-merge-and-watch/lib/wait-for-merge.sh": "owned",
     ".github/actions/gaia-ci-stale-pr-skip/action.yml": "owned",
     ".github/actions/gaia-setup-node/action.yml": "owned",
     ".github/audit/audit-success-present.sh": "owned",
-    ".github/audit/check-trailer.sh": "owned",
-    ".github/audit/cra-status-upsert.sh": "owned",
     ".github/audit/gate-pending-members.sh": "owned",
     ".github/audit/resolve-audit-base.sh": "owned",
     ".github/audit/resolve-check-base.sh": "owned",
@@ -682,7 +679,7 @@
     "wiki/overview.md": "wiki-owned",
     "wiki/README.md": "wiki-owned"
   },
-  "generated": "2026-09-23T23:59:16.000Z",
+  "generated": "2026-09-24T05:57:42.742Z",
   "regions": [
     {
       "endMarker": "<!-- gaia:audit-remit:end -->",

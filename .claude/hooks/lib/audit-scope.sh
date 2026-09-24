@@ -184,7 +184,6 @@ auditors:
       - ".gaia/VERSION"
       - ".claude/settings.json"
       - ".github/CODEOWNERS"
-      - ".github/dependabot.yml"
       - ".claude/agents/code-audit-*.md"
       - ".claude/rules/**"
     audience: maintainer

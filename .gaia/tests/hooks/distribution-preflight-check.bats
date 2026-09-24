@@ -77,11 +77,10 @@ setup() {
   # Advance main past the branch point with a MODIFICATION to a file the branch
   # does not touch. Without this the fixture is a linear chain, where two-dot
   # and three-dot diffs are identical by construction and the hook's three-dot
-  # comparison, which its own comments call load-bearing for parity with
-  # distribution-audit-pr.yml, cannot be observed by any test. A modification
-  # rather than an addition is what makes it visible: under two-dot it reports
-  # as `M` and passes the ACMR filter, whereas a main-only addition would report
-  # as `D` and be filtered out.
+  # comparison, which its own comments call load-bearing, cannot be observed by
+  # any test. A modification rather than an addition is what makes it visible:
+  # under two-dot it reports as `M` and passes the ACMR filter, whereas a
+  # main-only addition would report as `D` and be filtered out.
   git -C "$FIXTURE" checkout --quiet main
   printf 'base changed on main\n' > "$FIXTURE/base.txt"
   git -C "$FIXTURE" add base.txt
@@ -646,8 +645,8 @@ assert_allow() {
   #
   # This also pins the three-dot comparison itself. Under a two-dot diff the
   # main-side modification reports as `M`, passes the ACMR filter, lands in the
-  # changed set, intersects, and denies, silently breaking the parity with
-  # distribution-audit-pr.yml the hook's comments call load-bearing.
+  # changed set, intersects, and denies, silently breaking the comparison the
+  # hook's own comments call load-bearing.
   install_maintainer_mock '[{"file":"base.txt"}]'
   run_hook "gh pr create --title x"
   assert_allow
