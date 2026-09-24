@@ -614,9 +614,9 @@ gaia_verb_arm_view() {
 # over-arms.
 #
 # ABSTENTION IS WHOLE-INPUT, as in the walk above: an unterminated span, a
-# dollar-quoted word, a `)` in a context that holds the word `case` (a case arm's
-# bare `)` would close the substitution early and desync every quote after
-# it), a backslash before `$`, a backtick, or a backslash anywhere under
+# dollar-quoted word, a `${` carrying anything but a plain name, a `)` in a
+# context that holds the word `case` (a case arm's bare `)` would close the
+# substitution early and desync every quote after it), a backslash before `$`, a backtick, or a backslash anywhere under
 # backticks (the shell strips it before parsing the inner command, so the
 # escape is gone), a backtick under backticks inside quotes, a comment, a
 # heredoc body, or a nested substitution (bash closes the outer backquote

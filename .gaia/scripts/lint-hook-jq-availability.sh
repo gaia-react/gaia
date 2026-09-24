@@ -72,6 +72,10 @@ readonly SETTINGS=".claude/settings.json"
 # Blocking PreToolUse hooks whose jq arm still stands the hook down instead of
 # refusing.
 #
+# The current entries stand down by design, not pending a conversion: neither
+# guard protects a secret, main, or the merge gate, so a jq-less machine
+# losing them fails open on nothing that needs a refusal.
+#
 # It stays a named variable rather than going away with its last entry, because
 # the shape is what a conversion that cannot land in one change needs: a hook
 # registered before its arm can be written goes here, tracked by issue, and is
