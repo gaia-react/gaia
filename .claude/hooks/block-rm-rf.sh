@@ -605,8 +605,9 @@ main() {
       # absolute spelling of a repo-relative target otherwise means resolving the
       # repo root, and both routes there are closed: a live `git rev-parse` is the
       # computed state this guard is designed to do without, and a literal absolute
-      # prefix baked into a `.claude/`-distributed file would violate
-      # .claude/rules/instruction-files.md. A suffix needs neither.
+      # prefix baked into a `.claude/`-distributed file would violate the
+      # no-hardcoded-absolute-paths principle (root CLAUDE.md). A suffix needs
+      # neither.
       #
       # The widening is honest and small: it permits these scratch directories
       # under ANY parent, not just the current repo. The relative spelling already

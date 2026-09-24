@@ -322,27 +322,6 @@ terminal_segments() {
   }
 }
 
-@test "the dispatch rule's retry-prefix pointer names a file that carries the prefix" {
-  local line target quoted
-  line="$(grep -m1 -F -- 'hardened retry prefix is written out verbatim' "$RULE")"
-  [ -n "$line" ] || { echo "no retry-prefix pointer read in ${RULE_REL}" >&2; return 1; }
-
-  line="${line#*hardened retry prefix is written out verbatim}"
-  target="$(printf '%s\n' "$line" | grep -oE '`[^`]+\.md`' | head -n 1 | tr -d '`')"
-  [ -n "$target" ] || { echo "the retry-prefix pointer names no file" >&2; return 1; }
-  [ -f "$ROOT/$target" ] || { echo "the pointer names ${target}, which does not exist" >&2; return 1; }
-
-  # The quoted destination is the section title inside that file.
-  quoted="$(printf '%s\n' "$line" | sed -n 's/.*("\([^"]*\)").*/\1/p')"
-  [ -n "$quoted" ] || { echo "the retry-prefix pointer quotes no destination" >&2; return 1; }
-  grep -qF -- "$quoted" "$ROOT/$target" || {
-    echo "${target} does not carry the quoted destination '${quoted}'" >&2
-    return 1
-  }
-  # The prefix itself, not merely a section named for it.
-  grep -qF -- 'RETRY (hardened, one attempt only)' "$ROOT/$target"
-}
-
 @test "the dispatch rule cites no markdown path that has gone missing" {
   local p missing
   missing=''

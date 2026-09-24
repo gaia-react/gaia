@@ -131,9 +131,9 @@ fi
 # none of their own nudges.
 #
 # The discriminator is `.gaia/cli/src`, the CLI's TypeScript source. It is
-# release-excluded, so no adopter machine has it, mid-init or otherwise, and it
-# is already the marker `.claude/rules/gaia-folder.md` uses for "this repo is
-# GAIA itself". Tracked-ness cannot serve: create-gaia commits the whole
+# release-excluded, so no adopter machine has it, mid-init or otherwise, which
+# is what makes its presence mean "this repo is GAIA itself".
+# Tracked-ness cannot serve: create-gaia commits the whole
 # scaffold before it launches /gaia-init, so the command file is tracked
 # mid-init too.
 #

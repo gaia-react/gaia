@@ -112,7 +112,7 @@ Inspect the candidate's `is_oracle` flag and the pattern's nature:
 
 - **Oracle-class finding** (if `harden-tally` flags the candidate's `is_oracle` true, its `finding_class` is a tool id owned by a deterministic tool).
 
-  A deterministic check already exists for it. Recommend making that check BLOCKING or adding it to the quality gate, an enforcement edit, NOT a new prose rule. Point at `wiki/decisions/Quality Gate.md` and the tool's wiring (`.claude/rules/knip.md`, `.claude/rules/dep-audit.md`, the `code-audit-frontend` agent, or the relevant CI workflow). A `knip/*` class is the exception to the quality-gate route: the developer Quality Gate intentionally omits knip (see `.claude/rules/knip.md`), so route knip enforcement to the `code-audit-frontend` agent or CI, never the dev gate. Never draft prose for an oracle class.
+  A deterministic check already exists for it. Recommend making that check BLOCKING or adding it to the quality gate, an enforcement edit, NOT a new prose rule. Point at `wiki/decisions/Quality Gate.md` and the tool's wiring (`wiki/dependencies/knip.md`, `wiki/dependencies/pnpm-audit.md`, the `code-audit-frontend` agent, or the relevant CI workflow). A `knip/*` class is the exception to the quality-gate route: the developer Quality Gate intentionally omits knip (see `wiki/dependencies/knip.md`), so route knip enforcement to the `code-audit-frontend` agent or CI, never the dev gate. Never draft prose for an oracle class.
 
 - **Mechanizable holistic/rule pattern** (the pattern can be caught by a lint rule, a hook, or a test). Recommend a DETERMINISTIC CHECK. v1 produces a hook+script SKETCH only; it activates nothing, writes no `.claude/rules/` file for it, and claims no prune lifecycle over it.
 
@@ -256,7 +256,7 @@ Rules for filling it in:
 
 - **`paths:` is mandatory.** Derive the glob from the candidate's `area_tags` (e.g. an `area_tags` of `["app/components"]` becomes `app/components/**/*`). When `area_tags` is empty or holds non-path strings, fall back: derive the glob from the finding's bucket/surface (e.g. a `rule/*` React class scopes to `app/**/*`) or ask the human for the intended scope. One or more single-quoted globs, one per line. A rule with no `paths:` frontmatter is never produced, and an unscoped `**/*` glob is never emitted; path-scoping is what bounds per-task context weight regardless of how many promoted rules accumulate.
 - **The provenance marker is verbatim and single-line**, placed immediately after the closing `---` of the frontmatter, with `<class>` replaced by the actual finding_class. It references the `finding_class`, never a SPEC or UAT id.
-- **Body prose is present tense** and follows `.claude/rules/wiki-style.md`, which carries the authoritative ban list. Use repo-relative paths only (`.claude/rules/instruction-files.md`).
+- **Body prose is present tense** and follows `.claude/rules/wiki-style.md`, which carries the authoritative ban list. Use repo-relative paths only.
 - **Verify every path, script, and owner the rule cites before writing it.** Open each file and confirm it holds what the sentence says it holds. A rule that names the wrong owner teaches the wrong thing, and fixing it after the audit costs a whole extra round.
 <!-- gaia:maintainer-only:start -->
 - **Keep release-excluded citations inside a maintainer-only block** in any rule that ships (`.gaia/release-exclude` lists them, for example `.gaia/cli/src/**` and `.gaia/tests/**`). Visible, they dangle on an adopter clone and the release scrub's leak check flags them.

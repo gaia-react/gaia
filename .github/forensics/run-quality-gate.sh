@@ -28,7 +28,7 @@
 # exit code to short-circuit; the JSON summary feeds the issue comment.
 #
 # Knip caveat:
-#   .claude/rules/knip.md says "do not run mid-task / as part of the
+#   wiki/dependencies/knip.md says "do not run mid-task / as part of the
 #   Quality Gate, in-progress exports flag as false positives". That
 #   advice targets human/IDE Quality Gate use during active development.
 #   In the triage workflow the candidate fix is fully committed before

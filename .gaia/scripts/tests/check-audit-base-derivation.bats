@@ -209,7 +209,7 @@ The retired form was BASE_SHA=$(git merge-base HEAD main)BASE_REF and nothing el
 @test "fixture: a lowercase alias for the same bare derivation fails assertion 1" {
   local repo
   repo="$(make_fixture_repo drifted-alias)"
-  write_agent_file "$repo" code-audit-maintainer-prose.md "$DRIFTED_LOWERCASE_ALIAS"
+  write_agent_file "$repo" code-audit-maintainer-shell.md "$DRIFTED_LOWERCASE_ALIAS"
   commit_fixture_repo "$repo"
   run gaia_check_audit_base_derivation "$repo"
   [ "$status" -eq 1 ]
@@ -230,7 +230,7 @@ The retired form was BASE_SHA=$(git merge-base HEAD main)BASE_REF and nothing el
 @test "fixture: a drifted BASE_SHA sharing a line with FULL_BASE is still counted" {
   local repo
   repo="$(make_fixture_repo two-calls-one-line)"
-  write_agent_file "$repo" code-audit-maintainer-prose.md "$TWO_CALLS_ONE_LINE"
+  write_agent_file "$repo" code-audit-maintainer-shell.md "$TWO_CALLS_ONE_LINE"
   commit_fixture_repo "$repo"
   run gaia_check_audit_base_derivation "$repo"
   [ "$status" -eq 1 ]
@@ -260,7 +260,7 @@ The retired form was BASE_SHA=$(git merge-base HEAD main)BASE_REF and nothing el
 @test "fixture: a trailing BASE_REF comment does not vouch for a drifted call" {
   local repo
   repo="$(make_fixture_repo drift-base-ref-comment)"
-  write_agent_file "$repo" code-audit-maintainer-prose.md "$DRIFT_WITH_BASE_REF_COMMENT"
+  write_agent_file "$repo" code-audit-maintainer-shell.md "$DRIFT_WITH_BASE_REF_COMMENT"
   commit_fixture_repo "$repo"
   run gaia_check_audit_base_derivation "$repo"
   [ "$status" -eq 1 ]
@@ -675,7 +675,7 @@ full_changed=$(git -C "$AUDIT_ROOT" diff --name-only -z "${FULL_BASE}" 2>/dev/nu
 @test "fixture: prose naming the command and a base in one sentence is not a call" {
   local repo
   repo="$(make_fixture_repo diff-prose-mention)"
-  write_agent_file "$repo" code-audit-maintainer-prose.md "$DIFF_PROSE_MENTION_OK"
+  write_agent_file "$repo" code-audit-maintainer-shell.md "$DIFF_PROSE_MENTION_OK"
   commit_fixture_repo "$repo"
   run gaia_check_audit_base_derivation "$repo"
   [ "$status" -eq 0 ]
@@ -740,7 +740,7 @@ full_changed=$(git -C "$AUDIT_ROOT" diff --name-only -z "${FULL_BASE}" 2>/dev/nu
 @test "fixture: the correctly-ranged FULL_BASE self-skip diff passes assertion 3" {
   local repo
   repo="$(make_fixture_repo diff-full-base)"
-  write_agent_file "$repo" code-audit-maintainer-prose.md "$DIFF_FULL_BASE_OK"
+  write_agent_file "$repo" code-audit-maintainer-shell.md "$DIFF_FULL_BASE_OK"
   commit_fixture_repo "$repo"
   run gaia_check_audit_base_derivation "$repo"
   [ "$status" -eq 0 ]
@@ -750,7 +750,7 @@ full_changed=$(git -C "$AUDIT_ROOT" diff --name-only -z "${FULL_BASE}" 2>/dev/nu
 @test "fixture: a two-dot FULL_BASE self-skip diff fails assertion 3" {
   local repo
   repo="$(make_fixture_repo diff-full-base-two-dot)"
-  write_agent_file "$repo" code-audit-maintainer-prose.md "$DIFF_FULL_BASE_TWO_DOT"
+  write_agent_file "$repo" code-audit-maintainer-shell.md "$DIFF_FULL_BASE_TWO_DOT"
   commit_fixture_repo "$repo"
   run gaia_check_audit_base_derivation "$repo"
   [ "$status" -eq 1 ]
@@ -861,7 +861,7 @@ changed=$(git -C "$AUDIT_ROOT" diff --name-only "${BASE_SHA}...HEAD" | sort -z)
 @test "fixture: a -z belonging to a piped command does not count as the call passing -z" {
   local repo
   repo="$(make_fixture_repo diff-dash-z-after-pipe)"
-  write_agent_file "$repo" code-audit-maintainer-prose.md "$DIFF_DASH_Z_AFTER_PIPE"
+  write_agent_file "$repo" code-audit-maintainer-shell.md "$DIFF_DASH_Z_AFTER_PIPE"
   commit_fixture_repo "$repo"
   run gaia_check_audit_base_derivation "$repo"
   [ "$status" -eq 1 ]

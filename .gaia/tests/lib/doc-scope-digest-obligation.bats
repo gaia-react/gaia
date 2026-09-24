@@ -22,19 +22,10 @@
 #     next member registered reads that page, not the five existing
 #     definitions, so a drift there is invisible to every existing member's
 #     own conformance.
-#   Group 3: code-audit-maintainer-prose.md's compare-and-record
-#     instruction. The writer-side test suite proves the marker publishes
-#     and the exit status is 0 on a rotated scope for this member (its
-#     --scope-digest check is advisory, never blocking); nothing else proves
-#     the rotation is actually RECORDED as a finding rather than silently
-#     dropped, and this literal is the only mechanism holding that
-#     instruction in place.
-#
 # Honest limit: presence and byte-identity, not meaning and not behavior.
 # This suite cannot tell whether a member that carries the literal actually
-# captures anything at runtime, or whether the prose member's own findings
-# sidecar in a live run really carries a rotation record; it only proves the
-# instruction survives verbatim in the file a member or a human reads.
+# captures anything at runtime; it only proves the instruction survives
+# verbatim in the file a member or a human reads.
 #
 # Assertion style: .claude/rules/bats-assertions.md.
 #
@@ -57,18 +48,10 @@ setup() {
   done
   # An empty discovery has verified nothing; fail rather than pass vacuously.
   [ "${#AGENTS[@]}" -gt 0 ] || return 1
-  PROSE_MEMBER="$ROOT/.claude/agents/code-audit-maintainer-prose.md"
   REGISTRATION="$ROOT/wiki/concepts/Registering a Code Audit Team Member.md"
 
   # FC-2a, verbatim.
   OBLIGATION_LITERAL='Capture your own content digest at scope resolution with `.gaia/scripts/audit-scope-digest.sh --capture`, and at marker-write time read that captured value back with `--read` and pass it as `--scope-digest`; never re-derive it in the writing call, and a rotation between the two means the review was superseded and you must be re-dispatched on the new HEAD.'
-
-  # The prose member's compare-and-record instruction, verbatim (excludes
-  # the trailing "You still write your earned clearance and never block the
-  # merge." sentence that follows it in the file -- that sentence restates
-  # the member's advisory-only posture, stated and pinned separately in the
-  # member's own "Advisory-only" section, not part of this obligation).
-  COMPARE_AND_RECORD_LITERAL='Before writing your findings sidecar, read your captured scope digest back with `--read` and compare it to a fresh derive; when they differ, record the rotated review scope as a finding in the sidecar and say so in your report.'
 }
 
 # --- Group 1: FC-2a is byte-identical in every agent definition -----------
@@ -120,39 +103,4 @@ setup() {
     echo "obligation literal is present in $REGISTRATION but outside its step-1 section" >&2
     return 1
   }
-}
-
-# --- Group 3: the prose member's compare-and-record instruction ------------
-
-@test "Group 3: the compare-and-record instruction is present in the prose member's definition" {
-  grep -qF -- "$COMPARE_AND_RECORD_LITERAL" "$PROSE_MEMBER" || {
-    echo "compare-and-record instruction missing from $PROSE_MEMBER" >&2
-    return 1
-  }
-}
-
-@test "Group 3: the compare-and-record instruction appears exactly once" {
-  local count
-  count="$(grep -cF -- "$COMPARE_AND_RECORD_LITERAL" "$PROSE_MEMBER")"
-  [ "$count" -eq 1 ] || {
-    echo "compare-and-record instruction appears $count times in $PROSE_MEMBER, expected exactly 1" >&2
-    return 1
-  }
-}
-
-@test "Group 3: no other agent definition carries the prose member's compare-and-record instruction" {
-  # This instruction is specific to code-audit-maintainer-prose.md's
-  # advisory-only posture (it never refuses, so a rotated scope becomes a
-  # recorded finding instead of a block); the other four members' identical
-  # posture would be wrong for them, so it must not have been copy-pasted
-  # across the roster.
-  local f
-  for f in "${AGENTS[@]}"; do
-    [ "$f" = "$PROSE_MEMBER" ] && continue
-    grep -qF -- "$COMPARE_AND_RECORD_LITERAL" "$f" && {
-      echo "compare-and-record instruction unexpectedly present in $f" >&2
-      return 1
-    }
-  done
-  true
 }

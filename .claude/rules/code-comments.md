@@ -77,28 +77,7 @@ Linter and type-checker directives, test-environment and editor pragmas, generat
 
 ## Issue and PR references
 
-`#NNN` names an issue or a pull request out of one shared number space; the discriminator is the surrounding prose, never the number's kind. Judge any one of them by striking the number:
-
-1. Remove the `#NNN` and read what is left, together with its enclosing comment block: the maximal run of consecutive comment lines holding the reference, plus the single code line it annotates. Nothing further.
-2. If what remains still names what breaks, what the guard prevents, or what the test pins, the reference is **paired**, and the remedy is none. It stays; on a file an adopter receives it stays in the qualified form below, which is still a keep rather than a byte-identical line.
-3. If what remains says nothing a reader can act on, the reference is **unpaired**, and the remedy is one of three: restore the failure mode to the comment; drop the number and keep the text that stands on its own; or, where the number is a grammatical constituent of the sentence, rewrite the sentence so the claim stands without the citation. Never leave a bare id behind and never truncate a comment down to one. Delete the whole line only when nothing stands once the number is gone.
-
-A sentence whose only claim is when the code arrived, or by whose hand, is **provenance**, and its remedy is to lose that sentence while the block keeps its explanation. A reference is judged by what the surrounding comment asserts in the present tense, so provenance goes even when the block around it earns its place. A regression pin is not provenance: it states a present-tense hazard the code exists to prevent, and cites where that hazard was first observed.
-
-The verdict is decidable from the block alone, with no issue tracker, no git history, and no second reader. The remedy is not. Restoring a failure mode may take reading the issue, so the offline default is to drop the number or rewrite the sentence rather than guess at a hazard.
-
-A bats `@test` name takes the same test a comment takes: one pairing a number with a behavioural description passes and stays as written, an unpaired one does not. A `#NNN` inside data the repo parses is not a comment at all, and `## Comments that are not commentary` governs it instead.
-
-On a file an adopter receives, write the reference as `gaia-react/gaia#NNN`, so it names the repository the number belongs to rather than the reader's own. That obligation is a property of the file rather than of comment syntax, so it reaches comments, test names, and user-facing message strings alike, while the strike-the-number test governs comments only. It is scoped to shipped files that are not Markdown, because Markdown spends `#` on headings and on quoted counter-examples, where a whole-file scan reads as noise. On a release-excluded file the unqualified `#NNN` stays: no reader there can be misled about whose issue it is.
-
-Worked examples:
-
-- **paired** — `never seen, so a status posted there 422s and never lands (gaia-react/gaia#726)`
-- **paired** — `Invariant 7: every tracked path resolves an owner (#1245)`
-- **paired** — `forbidden from adding one, that is option A, ruled out in #1053`
-- **unpaired**, the number a grammatical constituent, so the remedy is a rewrite — `Verified against two Sonnet-5-only ledger records; #1088 must not disturb it.`
-- **provenance**, a clause claiming only when the rows arrived — ``No stored `unpriced` at all, which is every row written before #1088 landed``
-- **unpaired**, and dropping the number leaves a title that stands — ``Tests for `.gaia/scripts/verify-required-checks.sh` (#807)``
+`#NNN` names an issue or a pull request out of one shared number space. Keep a `#NNN` only beside the failure mode, the guard, or the test it names; a bare id with nothing else a reader can act on is not a comment worth keeping. On a file an adopter receives, write the reference as `gaia-react/gaia#NNN`, so it names the repository the number belongs to rather than the reader's own; that obligation reaches comments, test names, and user-facing message strings alike, is scoped to shipped files that are not Markdown (Markdown spends `#` on headings and quoted counter-examples), and does not reach a release-excluded file (no reader there can be misled about whose issue it is).
 
 <!-- gaia:maintainer-only:start -->
 ## Audit
@@ -113,7 +92,7 @@ bash .gaia/scripts/lint-shipped-issue-refs.sh
 
 That script is the gate rather than a command transcribed here, so the rule and the thing enforcing it cannot drift apart. It derives its file set from `.gaia/manifest.json`, skips Markdown and binary assets, and exempts a CSS short hex colour (`#333` is both a valid issue number and a valid colour); the script's own header states the exemption's accepted miss. `.gaia/scripts/tests/lint-shipped-issue-refs.bats` runs it on the real tree in Audit CI Tests, proves it reds on a regression and pins the release-boundary split the next paragraph states in prose.
 
-The grep below is a candidate list, not a gate. It surfaces qualified and unqualified references alike and asserts no silence, so a human triages its output at block level, where any non-empty match is a candidate for a verdict rather than a finding. The strike-the-number test applies on all four surfaces it sweeps. The qualification obligation applies to the shipped half only: the shipped `.claude/hooks/` scripts, and the shipped `.github/**` helper scripts under `.github/audit/` and `.github/actions/**/lib/`. `.gaia/tests/`, `.gaia/scripts/tests/`, and `.github/audit/tests/` are release-excluded and exempt from it, as are the release-excluded workflows. Neither comment rule's activation globs reach a `.yml`, so neither auto-loads on one, but the gate does reach every `.yml` the manifest ships, workflows and composite actions and issue templates alike. `.github/workflows/code-review-audit.yml` is absent from the manifest because it is regenerated from a shipped CLI template the gate already covers.
+The grep below is a candidate list, not a gate. It surfaces qualified and unqualified references alike and asserts no silence, so a human triages its output at block level, where any non-empty match is a candidate for a verdict rather than a finding. The judgment above applies on all four surfaces it sweeps. The qualification obligation applies to the shipped half only: the shipped `.claude/hooks/` scripts, and the shipped `.github/**` helper scripts under `.github/audit/` and `.github/actions/**/lib/`. `.gaia/tests/`, `.gaia/scripts/tests/`, and `.github/audit/tests/` are release-excluded and exempt from it, as are the release-excluded workflows. Neither comment rule's activation globs reach a `.yml`, so neither auto-loads on one, but the gate does reach every `.yml` the manifest ships, workflows and composite actions and issue templates alike. `.github/workflows/code-review-audit.yml` is absent from the manifest because it is regenerated from a shipped CLI template the gate already covers.
 
 ```bash
 grep -rnE '((^|[^A-Za-z0-9_/#-])|gaia-react/gaia)#[0-9]{2,4}([^0-9A-Fa-f]|$)' \

@@ -91,13 +91,11 @@ setup() {
     code-audit-github-workflows
     code-audit-maintainer-shell
     code-audit-maintainer-node
-    code-audit-maintainer-prose
   )
   SPECIALISTS=(
     code-audit-github-workflows
     code-audit-maintainer-shell
     code-audit-maintainer-node
-    code-audit-maintainer-prose
   )
 }
 
@@ -823,8 +821,6 @@ probe_deadlock() {
     ".github/workflows/fixture-ci.yml" ".claude/hooks/local-janitor.sh"
   probe_deadlock code-audit-maintainer-node \
     ".gaia/cli/src/fixture.ts" ".claude/hooks/local-janitor.sh"
-  probe_deadlock code-audit-maintainer-prose \
-    ".claude/skills/fixture/SKILL.md" ".claude/hooks/local-janitor.sh"
 }
 
 @test "deadlock: each specialist's self-skip prose is wired to the whole-PR list" {

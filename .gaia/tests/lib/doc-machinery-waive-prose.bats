@@ -159,7 +159,6 @@ setup() {
     "$FRONTEND"
     "$ROOT/.claude/agents/code-audit-github-workflows.md"
     "$ROOT/.claude/agents/code-audit-maintainer-node.md"
-    "$ROOT/.claude/agents/code-audit-maintainer-prose.md"
     "$ROOT/.claude/agents/code-audit-maintainer-shell.md"
   )
 

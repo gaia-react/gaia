@@ -33,7 +33,6 @@
 .gaia/statusline/preferred-base.sh
 .claude/agents/code-audit-maintainer-shell.md
 .claude/agents/code-audit-maintainer-node.md
-.claude/agents/code-audit-maintainer-prose.md
 .claude/commands/distribution-audit.md
 # Maintainer-only Code Audit Team spawn-list optimization; adopters resolve required members via resolve-audit-members.sh and the frontend self-skip is fail-closed on its absence.
 .gaia/scripts/resolve-audit-spawn.sh

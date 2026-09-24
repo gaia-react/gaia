@@ -87,7 +87,7 @@ LEDGER=".gaia/local/audit/${BASE_SHA}.rerun.json"
 ```
 '
 
-BAD_SIDECAR_LITERAL_BASE='Path: `.gaia/local/audit/${base}.code-audit-maintainer-prose.findings.json`
+BAD_SIDECAR_LITERAL_BASE='Path: `.gaia/local/audit/${base}.code-audit-maintainer-shell.findings.json`
 '
 
 NAMES_LEDGER_NO_CALL='The re-run ledger lives at .gaia/local/audit/whatever.rerun.json, built elsewhere.
@@ -134,12 +134,12 @@ LEDGER=".gaia/local/audit/${BASE_SHA}.rerun.json"
 @test "fixture: a bare \${base}.<member>.findings.json literal (member name interposed) fails assertion 1" {
   local repo
   repo="$(make_fixture_repo bad-sidecar)"
-  write_agent_file "$repo" code-audit-maintainer-prose.md "$BAD_SIDECAR_LITERAL_BASE"
+  write_agent_file "$repo" code-audit-maintainer-shell.md "$BAD_SIDECAR_LITERAL_BASE"
   commit_fixture_repo "$repo"
   run gaia_check_audit_key_callers "$repo"
   [ "$status" -eq 1 ]
-  grep -qF "code-audit-maintainer-prose.md" <<<"$output" || return 1
-  grep -qF '${base}.code-audit-maintainer-prose.findings.json' <<<"$output" || return 1
+  grep -qF "code-audit-maintainer-shell.md" <<<"$output" || return 1
+  grep -qF '${base}.code-audit-maintainer-shell.findings.json' <<<"$output" || return 1
 }
 
 BAD_LEDGER_LITERAL_KEY_BASE='```bash

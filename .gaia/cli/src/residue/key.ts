@@ -26,13 +26,13 @@
  */
 
 /**
- * The gate's frozen wrapped key grammar; group 1 is the inner key.
+ * The recognized wrapped key grammar; group 1 is the inner key.
  *
- * Spelled `[0-9]` rather than `\d` because a parity test compares this source
- * text against the gate's own POSIX ERE, which has no `\d` to compare to.
+ * Spelled `[0-9]` rather than `\d` to read the same as the POSIX ERE key
+ * grammar in `.gaia/scripts/check-debt-issue-metadata.sh` (`KEY_RE`).
  */
 export const KEY_PATTERN =
-  // eslint-disable-next-line sonarjs/concise-regex -- byte parity with the gate's ERE
+  // eslint-disable-next-line sonarjs/concise-regex -- same spelling as the POSIX ERE key grammar
   /<!-- gaia-debt-key: (v1 class=[^ ]+ path=[^>]+ line=[0-9]+) -->/;
 
 /** The filer's grammar, applied to a whole issue body; group 1 is the path. */

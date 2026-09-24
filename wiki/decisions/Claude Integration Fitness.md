@@ -59,7 +59,7 @@ Checks `CLAUDE.md` (root and any subfolder `CLAUDE.md`s the root names in its fo
 - Size vs. the project's stated size guidance.
 - Every `@`-import resolves to an existing file.
 - Every subfolder `CLAUDE.md` named in a folder map exists.
-- No absolute machine-local path used as an operative reference (an `@`-import target, a cited config or source path, or a path an instruction tells the agent to read or write). A home-directory path quoted as a counter-example or naming a location the prose forbids (e.g. the machine-local memory directory) is descriptive prose, not a finding, mirroring the prose carve-out in `.claude/rules/instruction-files.md`.
+- No absolute machine-local path used as an operative reference (an `@`-import target, a cited config or source path, or a path an instruction tells the agent to read or write). A home-directory path quoted as a counter-example or naming a location the prose forbids (e.g. the machine-local memory directory) is descriptive prose, not a finding.
 - No dead backticked path references (paths cited in backticks that do not exist on disk).
 
 One finding per defect, naming the location and the remediation.
@@ -86,7 +86,7 @@ Checks the GAIA installation:
 
 Checks wiki health by invoking the existing `gaia wiki` primitives; this category does not reimplement them:
 
-- `wiki/.state.json` staleness vs. `app/**` HEAD: if `commits_ahead` is non-zero, or `reachable` is false (the recorded `last_evaluated_sha` is unreachable from HEAD, e.g. after a rebase, which pins `commits_ahead` to zero), one `info` finding recommending `/gaia-wiki sync`.
+- `wiki/.state.json` staleness vs. `app/**` HEAD: if `commits_ahead` is non-zero, one `info` finding recommending `/gaia-wiki sync`.
 - `gaia wiki dead-paths`: any dead backticked path reference in wiki body prose is one `warning` finding per occurrence.
 - `gaia wiki orphans`: any orphan page (zero inbound links) is one `info` finding per page, recommending `/gaia-wiki sync` to cross-link or archive.
 

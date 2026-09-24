@@ -60,10 +60,6 @@ await page.goto('/');
 await hydration(page); // waits for <meta name="hydrated" content="true">
 ```
 
-## Asserting on errors, watch both channels
-
-Full pattern (both error channels, the self-heal reset order, the provenance caveat): `wiki/dependencies/Playwright.md` ("## Asserting on errors, watch both channels").
-
 ## MSW + real dev server
 
 E2E tests run against `pnpm dev` (localhost:5173). MSW browser worker is

@@ -91,11 +91,10 @@ export const DEFAULT_PREDICATES: AttributionPredicates = {
   keyPattern: KEY_PATTERN,
 };
 
-// The gate's `heading_re` and `top_bullet_re`, with POSIX `[[:space:]]` spelled
+// A Markdown heading and a top-level bullet, with POSIX `[[:space:]]` spelled
 // out member by member. A line never carries its own newline, but the class is
-// reproduced whole so each regex reads against the gate's source. `\d` and the
-// gate's `[0-9]` denote the same set here: JavaScript's `\d` is ASCII digits
-// under every flag.
+// reproduced whole. `\d` is ASCII digits under every flag, the same set as
+// `[0-9]`.
 const HEADING_PATTERN = /^#{1,6}[\t\n\v\f\r ]/;
 const TOP_BULLET_PATTERN = /^([-*+]|\d{1,9}[.)])[\t\n\v\f\r ]/;
 // A comment body may not contain another opener, so a code span quoting a
@@ -118,8 +117,7 @@ const TRAILING_SPACE_CHARACTERS = new Set(['\t', '\n', '\v', '\f', '\r', ' ']);
 
 // A backward walk rather than a `[…]+$` regex, which backtracks quadratically
 // on a long run, and rather than `trimEnd`, which strips the whole Unicode
-// whitespace set and would trim a heading the gate's `[[:space:]]` leaves
-// alone.
+// whitespace set and would trim a heading POSIX `[[:space:]]` leaves alone.
 const trimTrailingSpace = (line: string): string => {
   let end = line.length;
 
@@ -207,9 +205,9 @@ const closeUnit = (unit: OpenUnit, result: AttributionResult): void => {
   });
 };
 
-// The inner key of the leftmost grammar match on one line, or null. The gate
-// matches its key regex line by line, so this does too: a `>`-negated field
-// applied to a whole body would run past the end of its own comment.
+// The inner key of the leftmost grammar match on one line, or null. Matching
+// runs line by line: a `>`-negated field applied to a whole body would run
+// past the end of its own comment.
 const matchInnerKey = (line: string, keyPattern: RegExp): null | string => {
   const match = new RegExp(
     keyPattern.source,
@@ -219,9 +217,8 @@ const matchInnerKey = (line: string, keyPattern: RegExp): null | string => {
   return match?.[1] ?? null;
 };
 
-// The gate's `heading_text_sed`, over the same language HEADING_PATTERN
-// recognizes: a line that reads as a heading is a line this strips a marker
-// from. The pattern carries no `g` flag, so `replace` takes the one anchored
+// Heading text, over the same language HEADING_PATTERN recognizes: a line
+// that reads as a heading is a line this strips a marker from. The pattern carries no `g` flag, so `replace` takes the one anchored
 // match and neither call site has a `lastIndex` to carry between lines.
 const headingText = (line: string): string => line.replace(HEADING_PATTERN, '');
 

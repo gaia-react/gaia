@@ -212,13 +212,13 @@ write_baseline() {
   write_frontend_def "$dir"
   write_member_def "$dir" code-audit-github-workflows
   write_member_def "$dir" code-audit-maintainer-node
-  write_member_def "$dir" code-audit-maintainer-prose
+  write_member_def "$dir" code-audit-maintainer-extra
   write_member_def "$dir" code-audit-maintainer-shell
   write_healthy_workflow "$dir"
   write_resolver "$dir"
   write_settings "$dir"
   write_roster "$dir" code-audit-frontend code-audit-github-workflows \
-    code-audit-maintainer-node code-audit-maintainer-prose \
+    code-audit-maintainer-node code-audit-maintainer-extra \
     code-audit-maintainer-shell
   printf 'fixture\n' >"$dir/README.md"
 }
@@ -322,13 +322,13 @@ EOF
   local repo
   repo="$(make_fixture_repo paraphrase)"
   sed -i.bak 's/Capture your own content digest at scope resolution with/Capture the content digest at scope resolution using/' \
-    "$repo/.claude/agents/code-audit-maintainer-prose.md"
-  rm -f "$repo/.claude/agents/code-audit-maintainer-prose.md.bak"
+    "$repo/.claude/agents/code-audit-maintainer-extra.md"
+  rm -f "$repo/.claude/agents/code-audit-maintainer-extra.md.bak"
   git -C "$repo" add -A
   git -C "$repo" commit -q -m mutate
   run gaia_check_scope_digest_adoption "$repo"
   [ "$status" -eq 1 ]
-  grep -qF ".claude/agents/code-audit-maintainer-prose.md: obligation literal present 0 times, expected exactly 1" <<<"$output" || return 1
+  grep -qF ".claude/agents/code-audit-maintainer-extra.md: obligation literal present 0 times, expected exactly 1" <<<"$output" || return 1
 }
 
 @test "fixture: a definition mentioning capture only outside its Remit-and-self-skip region fails (assertion-3 boundary)" {
@@ -564,13 +564,13 @@ EOF
   # A second, unrelated defect the earlier assertions catch. The status has
   # to report a finding, not the environment, or an operator repairs the
   # JSON and never learns the definition is broken too.
-  perl -0pi -e 's/ --scope-digest "\$D_SCOPE"//g' "$repo/.claude/agents/code-audit-maintainer-prose.md"
+  perl -0pi -e 's/ --scope-digest "\$D_SCOPE"//g' "$repo/.claude/agents/code-audit-maintainer-extra.md"
   git -C "$repo" add -A
   git -C "$repo" commit -q -m mutate
   run gaia_check_scope_digest_adoption "$repo"
   [ "$status" -eq 1 ]
   grep -qF '.claude/settings.json: unreadable or not valid JSON; permission grants cannot be checked' <<<"$output" || return 1
-  grep -qF '.claude/agents/code-audit-maintainer-prose.md: earned call site missing --scope-digest' <<<"$output" || return 1
+  grep -qF '.claude/agents/code-audit-maintainer-extra.md: earned call site missing --scope-digest' <<<"$output" || return 1
 }
 
 @test "assertion 4: a truncated definition scan names the definitions, not the settings file" {
@@ -640,7 +640,7 @@ EOF
   local repo
   repo="$(make_fixture_repo jq-absent-defective)"
   perl -0pi -e 's/ --scope-digest "\$D_SCOPE"//g' \
-    "$repo/.claude/agents/code-audit-maintainer-prose.md"
+    "$repo/.claude/agents/code-audit-maintainer-extra.md"
   git -C "$repo" add -A
   git -C "$repo" commit -q -m mutate
   PATH="$(path_shim_without jq)"
@@ -648,7 +648,7 @@ EOF
   # 1, not 2. The environment note is real and still printed, but a status of 2
   # would report the missing tool as the run's verdict and bury the finding.
   [ "$status" -eq 1 ]
-  grep -qF '.claude/agents/code-audit-maintainer-prose.md: earned call site missing --scope-digest' <<<"$output" || return 1
+  grep -qF '.claude/agents/code-audit-maintainer-extra.md: earned call site missing --scope-digest' <<<"$output" || return 1
   grep -qF 'jq not found; assertion 4 cannot read .claude/settings.json' <<<"$output" || return 1
 }
 

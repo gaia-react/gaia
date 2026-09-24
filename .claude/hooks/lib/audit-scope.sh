@@ -206,22 +206,6 @@ auditors:
       - ".gaia/scripts/**/*.mjs"
     audience: maintainer
     push_fixes: false
-  - name: code-audit-maintainer-prose
-    globs:
-      - ".claude/skills/**/*.md"
-      - ".claude/agents/*/**"
-      - ".claude/commands/**/*.md"
-      - ".claude/instructions/**/*.md"
-      - ".claude/agents/worthiness-evaluator.md"
-      - ".gaia/cli/health/**/*.md"
-      - ".github/forensics/prompt.md"
-      - ".github/forensics/apply-fix-prompt.md"
-      - ".specify/extensions/gaia/commands/*.md"
-      - ".specify/extensions/gaia/rules/*.md"
-      - ".specify/extensions/gaia/templates/*.md"
-      - ".specify/presets/**/*.md"
-    audience: maintainer
-    push_fixes: false
   # gaia:maintainer-only:end
 YAML
 }
