@@ -47,9 +47,10 @@
 #      section's own docblock below carries the reasoning, including why the
 #      universe is the tracked files of the repository ROOTED AT --root and
 #      nothing wider.
-#   3. Roster-reader drift, checked before 1 and 2: this check's raw-glob scrape
-#      and the classifier's compiled globs must agree per member on the count,
-#      or no other verdict is produced.
+#   3. Roster-reader drift: this check's raw-glob scrape and the classifier's
+#      compiled globs must agree per member on the count. On drift the
+#      remit-parity and unowned-dialect verdicts are withheld; region-shape and
+#      coverage verdicts still render.
 #
 # THE BOUNDED DIALECT a glob must fit to be classified. The classifier compiles
 # three constructs (glob_to_regex, in the roster module sourced below):

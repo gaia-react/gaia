@@ -13,4 +13,4 @@ Exit 0 real, 1 no-op, 2 usage error. **Pass a count when you know one**: a trunc
 
 **Poll the file, not the notification**, and **never classify at the moment the dispatch call returns**: the `Agent` call returns dispatch metadata immediately, before the agent has done anything, so classifying there reads a no-op on a dispatch still running correctly and spends the one hardened re-dispatch on it.
 
-Full contract for this shape, including the moving-path (--findings-root) case and what the terminal action is: the `No-op guard against silent subagents` section of `wiki/concepts/Code Review Audit Agent.md`.
+Full contract for this shape, including what the terminal action is: the `No-op guard against silent subagents` section of `wiki/concepts/Code Review Audit Agent.md`. An artifact whose path moves between rounds (`--findings-root`): `wiki/concepts/PR Merge Workflow.md` ("No-op detection and retry for each dispatched member").

@@ -205,9 +205,9 @@ const closeUnit = (unit: OpenUnit, result: AttributionResult): void => {
   });
 };
 
-// The inner key of the leftmost grammar match on one line, or null. The gate
-// matches its key regex line by line, so this does too: a `>`-negated field
-// applied to a whole body would run past the end of its own comment.
+// The inner key of the leftmost grammar match on one line, or null. Matching
+// runs line by line: a `>`-negated field applied to a whole body would run
+// past the end of its own comment.
 const matchInnerKey = (line: string, keyPattern: RegExp): null | string => {
   const match = new RegExp(
     keyPattern.source,
@@ -217,9 +217,8 @@ const matchInnerKey = (line: string, keyPattern: RegExp): null | string => {
   return match?.[1] ?? null;
 };
 
-// The gate's `heading_text_sed`, over the same language HEADING_PATTERN
-// recognizes: a line that reads as a heading is a line this strips a marker
-// from. The pattern carries no `g` flag, so `replace` takes the one anchored
+// Heading text, over the same language HEADING_PATTERN recognizes: a line
+// that reads as a heading is a line this strips a marker from. The pattern carries no `g` flag, so `replace` takes the one anchored
 // match and neither call site has a `lastIndex` to carry between lines.
 const headingText = (line: string): string => line.replace(HEADING_PATTERN, '');
 

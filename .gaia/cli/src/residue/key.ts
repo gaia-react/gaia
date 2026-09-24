@@ -28,8 +28,8 @@
 /**
  * The recognized wrapped key grammar; group 1 is the inner key.
  *
- * Spelled `[0-9]` rather than `\d` to read the same as the POSIX ERE spelling
- * of the key grammar the filer documents.
+ * Spelled `[0-9]` rather than `\d` to read the same as the POSIX ERE key
+ * grammar in `.gaia/scripts/check-debt-issue-metadata.sh` (`KEY_RE`).
  */
 export const KEY_PATTERN =
   // eslint-disable-next-line sonarjs/concise-regex -- same spelling as the POSIX ERE key grammar

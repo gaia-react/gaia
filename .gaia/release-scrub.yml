@@ -390,7 +390,7 @@ transforms:
           # same reason these are lines and not paths; the
           # `/Users/` forms ship in the captured Storybook parser stack trace
           # under app/components/Errors/ErrorStack, `/home/bar` ships nowhere
-          # yet and is here so following the rule cannot fail the bundle.
+          # yet and is here so writing that placeholder cannot fail the bundle.
           #
           # Covers each placeholder used as a path PREFIX, which is how every
           # shipped instance spells them. A bare mention still flags; the two
