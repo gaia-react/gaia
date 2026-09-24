@@ -11,8 +11,8 @@
 # default 20000 cap would resurrect every out-of-window record in any
 # ordinarily-sized ledger, which criteria 4 and 5 below rule out).
 #
-# Every fixture writes ledger lines directly (never depends on the spawn
-# oracle running) and sources audit-respawn-lib.sh for the ledger-path helper
+# Every fixture writes ledger lines directly (never depends on a live
+# writer running) and sources audit-respawn-lib.sh for the ledger-path helper
 # and the retention/cap knobs, so the suite and the script under test cannot
 # drift on either.
 #

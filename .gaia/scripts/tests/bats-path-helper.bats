@@ -313,11 +313,11 @@ real_tool() {
 }
 
 @test "path_allowlist gives each call its own directory, so a suite can hold more than one list" {
-  # The property that lets each converted caller keep its own enumeration, and
-  # that resolve-audit-spawn.bats needs twice over: its jq-absent and
-  # sha256-absent fixtures are different enumerations of the same subject's
-  # needs, and a primitive with one directory per suite would have the second
-  # call overwrite the first.
+  # The property that lets each converted caller keep its own enumeration: a
+  # suite pinning two different missing-tool fixtures for the same subject
+  # (a jq-absent case and a sha256-absent case, say) needs two different
+  # enumerations of that subject's needs, and a primitive with one directory
+  # per suite would have the second call overwrite the first.
   local shared="$BATS_TEST_TMPDIR/shared"
   mkdir -p "$shared"
   real_tool "$shared" gaia-fixture-first

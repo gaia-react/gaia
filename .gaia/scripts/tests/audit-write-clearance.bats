@@ -530,8 +530,7 @@ scrub_maintainer_only() {
   # Provision the adopter shape (all UNTRACKED, so they never join the diff):
   #  1. scrub the maintainer-only block from the roster config, and
   #  2. scrub it from the resolver's builtin_roster fallback too, and
-  #  3. omit resolve-audit-spawn.sh (genuinely unshipped), and
-  #  4. omit the two maintainer agent definitions.
+  #  3. omit the two maintainer agent definitions.
   scrub_maintainer_only "$THIS_DIR/../../audit-ci.yml" > "$ADOPTER/.gaia/audit-ci.yml"
   scrub_maintainer_only "$RESOLVER" > "$ADOPTER/.gaia/scripts/resolve-audit-members.sh"
   chmod +x "$ADOPTER/.gaia/scripts/resolve-audit-members.sh"

@@ -141,7 +141,7 @@ gh pr create --title "<commit subject>" --body-file <pr-body-file>
 Before any `gh pr merge`:
 
 ```bash
-bash .gaia/scripts/resolve-audit-spawn.sh
+bash .gaia/scripts/resolve-audit-members.sh
 ```
 
 Empty output confirms no marker is owed. If it names any member, spawn each member it names and complete the marker handshake in `wiki/concepts/PR Merge Workflow.md` like any in-scope PR.

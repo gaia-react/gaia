@@ -28,9 +28,8 @@
 #   OUTSIDE  a non-repository temp directory. This is the bats process's OWN
 #            cwd for every test in this file (set once in setup()).
 #
-# Eight stages, one per #1055 instance (README.md FC-5/FC-6, task doc table):
+# Seven stages, one per #1055 instance (README.md FC-5/FC-6, task doc table):
 #   1  resolve-audit-members.sh    --root flag
-#   2  resolve-audit-spawn.sh      no root argument, D-3's fail-closed guard
 #   3  audit-member-digest.sh      --root flag
 #   4  audit-write-clearance.sh    --root flag, subdirectory rejection
 #   5  audit-stamp-trailer.sh      no root argument, caller anchors via cd
@@ -46,8 +45,7 @@
 # confirmed to turn that stage's own assertion red, then restored
 # byte-identical and checksum-verified. Every mutation is applied to this
 # fixture's OWN copy under $MAIN, never to the real checked-out files this
-# session is running under. Stage 2's guard already reflects Phase 2's D-3;
-# its mutation reintroduces the pre-D-3 fail-open shape.
+# session is running under.
 #
 # Stages 5 and 6 take no root argument at all (Phase 2 was explicitly
 # forbidden from adding one, that is option A, ruled out in #1053), so there
@@ -195,7 +193,7 @@ setup() {
   cp "$REPO_ROOT/.gaia/audit-ci.yml" "$MAIN/.gaia/audit-ci.yml"
 
   local f
-  for f in resolve-audit-members.sh resolve-audit-spawn.sh audit-member-digest.sh \
+  for f in resolve-audit-members.sh audit-member-digest.sh \
            audit-write-clearance.sh main-root-lib.sh audit-key-lib.sh; do
     cp "$REPO_ROOT/.gaia/scripts/$f" "$MAIN/.gaia/scripts/$f"
     chmod +x "$MAIN/.gaia/scripts/$f"
@@ -243,7 +241,6 @@ setup() {
   done
 
   SCRIPT_RESOLVE_MEMBERS="$MAIN/.gaia/scripts/resolve-audit-members.sh"
-  SCRIPT_RESOLVE_SPAWN="$MAIN/.gaia/scripts/resolve-audit-spawn.sh"
   SCRIPT_MEMBER_DIGEST="$MAIN/.gaia/scripts/audit-member-digest.sh"
   SCRIPT_WRITE_CLEARANCE="$MAIN/.gaia/scripts/audit-write-clearance.sh"
   HOOK_STAMP="$MAIN/.claude/hooks/audit-stamp-trailer.sh"
@@ -598,51 +595,6 @@ run_audit_root_block() {
   restored_sum="$(sha_of "$SCRIPT_RESOLVE_MEMBERS")"
   [ "$restored_sum" = "$orig_sum" ] || { echo "restore did not reproduce the original bytes" >&2; return 1; }
   [ "$went_red" -eq 1 ] || { echo "stage 1 stayed green under its mutation control; the assertion is vacuous" >&2; return 1; }
-}
-
-# -----------------------------------------------------------------------------
-# Stage 2: resolve-audit-spawn.sh (anchor: none -- takes no root argument).
-# Instance 6. Phase 2's D-3.
-# -----------------------------------------------------------------------------
-
-@test "stage 2 (anchor: none) from OUTSIDE: fails closed to code-audit-frontend rather than answering nobody owed" {
-  run_stdout_only bash "$SCRIPT_RESOLVE_SPAWN"
-  [ "$status" -eq 0 ]
-  [ "$output" = "code-audit-frontend" ]
-}
-
-@test "stage 2 non-vacuity (source mutation): restoring the pre-D-3 fail-open guard turns the assertion red; byte-identical restore verified" {
-  local orig_sum start mutated_sum went_red=0 restored_sum
-  orig_sum="$(backup_file "$SCRIPT_RESOLVE_SPAWN")"
-
-  run_stdout_only bash "$SCRIPT_RESOLVE_SPAWN"
-  if [ "$status" -ne 0 ] || [ "$output" != "code-audit-frontend" ]; then
-    echo "baseline (unmutated) stage 2 check failed" >&2
-    restore_file "$SCRIPT_RESOLVE_SPAWN" "$orig_sum"
-    return 1
-  fi
-
-  start=$(grep -n '^if \[ -z "\$repo_root" \]; then$' "$SCRIPT_RESOLVE_SPAWN" | head -1 | cut -d: -f1)
-  if [ -z "$start" ]; then
-    echo "could not locate the not-a-repository guard" >&2
-    restore_file "$SCRIPT_RESOLVE_SPAWN" "$orig_sum"
-    return 1
-  fi
-  mutate_lines "$SCRIPT_RESOLVE_SPAWN" "$start" $((start + 4)) '[ -n "$repo_root" ] || exit 0'
-  mutated_sum="$(sha_of "$SCRIPT_RESOLVE_SPAWN")"
-  if [ "$mutated_sum" = "$orig_sum" ]; then
-    echo "mutation did not change the file" >&2
-    restore_file "$SCRIPT_RESOLVE_SPAWN" "$orig_sum"
-    return 1
-  fi
-
-  run_stdout_only bash "$SCRIPT_RESOLVE_SPAWN"
-  { [ "$status" -eq 0 ] && [ "$output" = "code-audit-frontend" ]; } || went_red=1
-
-  restore_file "$SCRIPT_RESOLVE_SPAWN" "$orig_sum"
-  restored_sum="$(sha_of "$SCRIPT_RESOLVE_SPAWN")"
-  [ "$restored_sum" = "$orig_sum" ] || { echo "restore did not reproduce the original bytes" >&2; return 1; }
-  [ "$went_red" -eq 1 ] || { echo "stage 2 stayed green under its mutation control; the assertion is vacuous" >&2; return 1; }
 }
 
 # -----------------------------------------------------------------------------

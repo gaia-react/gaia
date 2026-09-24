@@ -185,9 +185,9 @@ audit_provenance_changed_files() {
 # reads no git, touches no filesystem.
 #
 # The only definition of "does an empty change set at this trust level mean
-# there is nothing left to audit" tree-wide. Neither the spawn oracle nor the
-# merge gate owns a copy, which is what keeps the two from reaching opposite
-# verdicts about the same provenance.
+# there is nothing left to audit" tree-wide. Neither the merge gate nor the
+# member resolver owns a copy, which is what keeps the two from reaching
+# opposite verdicts about the same provenance.
 audit_provenance_empty_is_decisive() {
   case "$1" in
     remote | supplied) return 0 ;;

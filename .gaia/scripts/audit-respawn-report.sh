@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # audit-respawn-report.sh: the Code Audit Team re-spawn attribution query.
 #
-# .gaia/scripts/resolve-audit-spawn.sh appends one "spawn" breadcrumb per
-# considered member to .gaia/local/telemetry/audit-respawn.jsonl every time
-# its digest-marker-presence filter runs: the member, its content digest,
-# whether it was cleared, the branch, HEAD, and the merge-base of HEAD and
-# origin/main. .gaia/scripts/audit-scope-digest.sh appends a second, sibling
+# A "spawn" breadcrumb is appended one per considered member to
+# .gaia/local/telemetry/audit-respawn.jsonl, recording: the member, its
+# content digest, whether it was cleared, the branch, HEAD, and the
+# merge-base of HEAD and origin/main. .gaia/scripts/audit-scope-digest.sh
+# appends a second, sibling
 # "scope" record where a member resolves its review scope, recording the
 # digest that member's clearance will attest to. Both record kinds land in
 # the same ledger, discriminated by a `kind` field (absent on a pre-addition
@@ -47,10 +47,10 @@
 # whose nearest predecessor is another schema-2 spawn record, or has no
 # predecessor at all, is neither decidable nor undeterminable: no member
 # resolved a scope before it, so nothing was left undecided, and it is
-# excluded from both counts. This is load-bearing -- the oracle appends one
-# spawn breadcrumb per member it considers on EVERY run, so spawn-follows-
-# spawn recurs forever; counting it as undeterminable would make that bucket
-# unable to reach zero.
+# excluded from both counts. This is load-bearing -- a spawn breadcrumb is
+# appended per considered member on every run that writes one, so spawn-
+# follows-spawn recurs forever; counting it as undeterminable would make
+# that bucket unable to reach zero.
 #
 # Reported counts, over in-window spawn pairs unless noted:
 #   records                      every record (both kinds) whose own ts >= since
@@ -83,7 +83,7 @@
 #      the count is a lower bound on total incidence.
 #   3. Attribution is a query over recorded facts, never a judgement the
 #      resolver makes; refining the rule needs no ledger migration.
-#   4. The later half of a mid-flight pair is the NEXT ORACLE OBSERVATION, not
+#   4. The later half of a mid-flight pair is the NEXT SPAWN OBSERVATION, not
 #      the marker write itself, so mid_flight_rotations approximates the
 #      window it names rather than measuring it exactly.
 #
@@ -94,9 +94,8 @@
 #     --root <path>   Repo root override, default `git rev-parse --show-toplevel`.
 #     --help | -h     Usage, exit 0.
 #
-# Exit codes. Unlike the oracle and the retention sweep, this is a human-
-# facing query tool, so it reports its inability to answer rather than
-# swallowing it:
+# Exit codes. Unlike the retention sweep, this is a human-facing query
+# tool, so it reports its inability to answer rather than swallowing it:
 #   0  a report was produced. Includes the absent-ledger case (all counts
 #      zero), which is a real answer, not an error.
 #   1  the question cannot be answered: jq missing, an unresolvable root, an
@@ -369,7 +368,7 @@ printf '  - the pairing needs an observation taken while the member was cleared,
 printf '    is a lower bound on total incidence\n'
 printf '  - attribution is a query over recorded facts, not a judgement the resolver\n'
 printf '    makes\n'
-printf '  - the later half of a mid-flight pair is the next oracle observation, not the\n'
+printf '  - the later half of a mid-flight pair is the next spawn observation, not the\n'
 printf '    marker write itself, so it approximates the window it names\n'
 
 exit 0

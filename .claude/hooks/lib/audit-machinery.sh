@@ -51,9 +51,6 @@ AUDIT_MACHINERY_PATHS="$(cat <<'EOF'
 .gaia/scripts/audit-seed-dispositions.sh
 .claude/hooks/lib/audit-dispositions.sh
 .gaia/scripts/resolve-audit-members.sh
-# gaia:maintainer-only:start
-.gaia/scripts/resolve-audit-spawn.sh
-# gaia:maintainer-only:end
 .claude/hooks/pr-merge-audit-check.sh
 .claude/hooks/audit-disposition-check.sh
 .claude/hooks/post-audit-status.sh

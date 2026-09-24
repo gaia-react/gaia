@@ -10,7 +10,6 @@
       "Bash(bash .gaia/scripts/plan-archive.sh:*)",
       "Bash(bash .gaia/scripts/plan-resume-point.sh:*)",
       "Bash(bash .gaia/scripts/pr-wait-merge.sh:*)",
-      "Bash(bash .gaia/scripts/resolve-audit-spawn.sh:*)",
       "Bash(bash .specify/extensions/gaia/lib/plan-allocator.sh:*)",
       "Bash(corepack enable pnpm)",
       "Bash(gh pr checks:*)",

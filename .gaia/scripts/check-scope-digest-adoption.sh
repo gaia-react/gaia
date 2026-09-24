@@ -102,8 +102,8 @@ GAIA_SDA_START_ANCHOR=()
 # Assertion 3's scope-resolution region start anchor. Nearly every member
 # resolves its scope (and captures there) directly under its own
 # "## Remit and self-skip" section, which is the default. code-audit-frontend
-# is the standing exception: its "Remit and self-skip" only decides whether
-# it reviews at all, and the resolver command that actually derives
+# is the standing exception: its "Remit and self-skip" section states the
+# remit only, and the resolver command that actually derives
 # KEY_BASE/BASE_SHA/D_SCOPE lives under "### How to run" inside
 # "## Rules-Based Audit" instead (that file's own "Re-run carry-forward
 # ledger" section names this location). Giving every member the default

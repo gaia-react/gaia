@@ -4,10 +4,10 @@
 # Adoption check for the shared base-provenance resolver
 # (.claude/hooks/lib/audit-base-provenance.sh).
 #
-# Nothing keeps the spawn oracle, the pull-request merge gate, the Code
-# Audit Team member resolver, and the worthiness presence gate from drifting
-# apart except that none of them owns a private copy of the base-derivation
-# rule. This check makes that property machine-checked: the resolver stays a
+# Nothing keeps the pull-request merge gate, the Code Audit Team member
+# resolver, and the worthiness presence gate from drifting apart except that
+# none of them owns a private copy of the base-derivation rule. This check
+# makes that property machine-checked: the resolver stays a
 # singleton, the named consumers call it, and no file regrows the
 # origin-then-local fallback chain the resolver replaces, in a spelling the
 # scan recognizes.
@@ -30,12 +30,6 @@
 # check-audit-base-derivation.sh is a different check over a different
 # concern: it governs the Code Audit Team member agents' REVIEW base, not
 # this diff-provenance resolver. It is not extended for this purpose.
-#
-# One of the named consumers, .gaia/scripts/resolve-audit-spawn.sh, is
-# itself release-excluded, so its adoption assertion is only ever complete
-# on a maintainer clone. That is not a gap this check has to close: this
-# check is release-excluded too (see .gaia/release-exclude), so it never
-# runs against an adopter clone missing that file.
 #
 # Dual-mode, mirroring check-resolver-singleton.sh: source it for
 # gaia_check_base_provenance_adoption, or run it directly as a script.
@@ -68,7 +62,6 @@ GAIA_PROVENANCE_TEST_EXCLUDES=(':!*.bats' ':!*/tests/*' ':!*/__tests__/*' ':!*.t
 
 # The consumers the spec names, in the order it lists them.
 GAIA_PROVENANCE_CONSUMERS=(
-  '.gaia/scripts/resolve-audit-spawn.sh'
   '.claude/hooks/pr-merge-audit-check.sh'
   '.gaia/scripts/resolve-audit-members.sh'
   '.claude/hooks/worthiness-presence-check.sh'

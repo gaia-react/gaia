@@ -661,21 +661,9 @@ setup() {
   printf '%s\n' "$section" | grep -qF -- 'under the heading `## Accepted residuals (recorded, not fixed)`' || return 1
 }
 
-@test "Group A: section B-mw (code-audit-frontend.md) carries the accept-and-note heading, with its article" {
-  local section
-  section="$(extract_section_or_fail "$FRONTEND" '^### B-mw\. Machinery-path waive' '^#{2,3} ')" || return 1
-  printf '%s\n' "$section" | grep -qF -- 'under the heading `## Accepted residuals (recorded, not fixed)`' || return 1
-}
-
 # --- Group B: the three entry fields, at every carrying surface ------------
 # Mirrors Group 3. The digest-economics section states its accept-and-note
-# fields once, so a section-scoped grep is safe there. code-audit-
-# frontend.md states the same three field literals a second time, in the
-# pre-existing waive instruction that shares section B-mw's span with the
-# new accept-and-note paragraph; a section-scoped grep there would pass on
-# the waive text alone and miss a mutation of the new paragraph, so that
-# assertion is scoped to the accept-and-note paragraph by its own lead
-# sentence instead.
+# fields once, so a section-scoped grep is safe there.
 
 @test "Group B: the digest-economics section states all three accept-and-note entry fields" {
   local section
@@ -683,18 +671,6 @@ setup() {
   printf '%s\n' "$section" | grep -qF -- "file:line" || return 1
   printf '%s\n' "$section" | grep -qF -- "failure mode" || return 1
   printf '%s\n' "$section" | grep -qF -- "dedup key" || return 1
-}
-
-@test "Group B: the B-mw accept-and-note paragraph states all three entry fields" {
-  local para
-  para="$(extract_paragraph_from_lead "$FRONTEND" 'A sibling disposition, recorded the same way.')"
-  [ -n "$para" ] || {
-    echo "the sibling-disposition paragraph matched nothing in $FRONTEND; a scoped assertion here would pass vacuously" >&2
-    return 1
-  }
-  printf '%s\n' "$para" | grep -qF -- "file:line" || return 1
-  printf '%s\n' "$para" | grep -qF -- "failure mode" || return 1
-  printf '%s\n' "$para" | grep -qF -- "dedup key" || return 1
 }
 
 # --- Group C: the two headings stay distinct --------------------------------
@@ -777,11 +753,6 @@ setup() {
 # New group: the check now refuses a keyless entry beneath the canonical
 # WAIVE heading too, judged on contract C3's wrapped grammar, so the waive
 # prose must state that wrapped form rather than "its dedup key" alone.
-# Section B-mw states the wrapped form twice, once in the pre-existing waive
-# instruction and once in the new accept-and-note paragraph beside it, so
-# its assertion below pins enough surrounding text to land on the waive
-# occurrence specifically rather than passing on the accept-and-note
-# occurrence alone.
 
 @test "Group H: cross-remit section states the wrapped dedup-key grammar for a waived finding" {
   local section

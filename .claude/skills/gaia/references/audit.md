@@ -629,7 +629,7 @@ Otherwise the working tree carries the applied `wiki/` / `.claude/` / `CLAUDE.md
    Subject: `chore(audit): <concise summary of what was pruned / shrunk / promoted>`. The diff is expected to touch only out-of-scope surfaces (`wiki/`, `.claude/`, root `CLAUDE.md`), in which case the PR clears the merge gate through the PR Merge Workflow's **out-of-scope bypass** with no `code-audit-frontend` marker. Do not assume it. Before `gh pr merge`, run
 
    ```bash
-   bash .gaia/scripts/resolve-audit-spawn.sh
+   bash .gaia/scripts/resolve-audit-members.sh
    ```
 
    Empty output confirms the bypass applies and no marker is owed (this also covers the rare case of an audit edit to a nested `CLAUDE.md` under an in-scope path such as `app/`, which would otherwise silently defeat the bypass). If it names any member, spawn each member it names and complete the marker handshake in `wiki/concepts/PR Merge Workflow.md` like any in-scope PR; once that page's `#### Posting the status last` conditions hold, post the status yourself, `bash .claude/hooks/post-audit-status.sh <path to a current member marker>`, before `gh pr merge`. Run the Quality Gate first **only** if the applied diff touched a gate-affecting file (`.ts|tsx|js|jsx|mjs|cjs|css` or gate config); a docs-only audit diff has nothing for it to check.

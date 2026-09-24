@@ -1,10 +1,10 @@
 #!/usr/bin/env bats
 #
 # Conformance suite for .gaia/scripts/audit-respawn-lib.sh: the shared
-# ledger helper for the audit re-spawn measurement instrument. Four
-# consumers depend on this file (the oracle's breadcrumb writer, the
-# scope-digest capture script, the retention sweep, and the attribution
-# query), so this suite is the one place their shared contract is proven.
+# ledger helper for the audit re-spawn measurement instrument. Its
+# consumers (the scope-digest capture script, the retention sweep, and the
+# attribution query) depend on this file, so this suite is the one place
+# their shared contract is proven.
 #
 # What it proves, in the section order below:
 #   1. source-time purity, no side effects

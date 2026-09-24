@@ -151,10 +151,11 @@ code-audit-maintainer-shell"
 # Under git's default `core.quotePath`, `diff --name-only` wraps any path
 # carrying non-ASCII or control bytes in double quotes and backslash-escapes
 # the bytes, so the path arrives as a token that matches no remit glob. This
-# resolver's answer is then an EMPTY member set, which resolve-audit-spawn.sh
-# reads as "nobody owns anything here" and answers with the default member. The
-# specialist that owns the file is never named and the merge completes looking
-# audited, which is why the derivation reads `--name-only -z`.
+# resolver's answer is then an EMPTY member set, which the fail-closed
+# convention around it reads as "nobody owns anything here" and answers with
+# the default member. The specialist that owns the file is never named and
+# the merge completes looking audited, which is why the derivation reads
+# `--name-only -z`.
 
 @test "a non-ASCII path is classified rather than C-quoted into no member" {
   write_full_roster
