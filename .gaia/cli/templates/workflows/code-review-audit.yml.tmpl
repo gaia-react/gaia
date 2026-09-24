@@ -27,8 +27,8 @@ name: Code Review Audit
 # Required-check semantics under classic branch protection: the job is
 # green-by-design on every code path (including a local-mode stand-down where
 # no audit ran); the GATE is the `GAIA-Audit` commit STATUS, not the job name.
-# Each path still reaches a terminal "set check status / comment" step so the
-# job concludes cleanly. A `pending` GAIA-Audit status (the stand-down) blocks
+# Each path still reaches a terminal status step so the job concludes
+# cleanly. A `pending` GAIA-Audit status (the stand-down) blocks
 # the merge button; a `success` status with HEAD's version+tree clears it. All
 # gating is expressed at the step level (mirrors `.github/workflows/tests.yml`).
 #
@@ -138,8 +138,8 @@ jobs:
           # echoed: a substitution inside echo's argument is a status `set -e`
           # cannot see, so a predicate that failed to run would write an empty
           # `skip` that satisfies neither the skip=='true' nor the skip=='false'
-          # arms below, firing no terminal status writer and no terminal
-          # comment step, and leaving the merge gate unsatisfiable in silence.
+          # arms below, firing no terminal status writer and leaving the merge
+          # gate unsatisfiable in silence.
           skip="$(bash .gaia/scripts/chore-deps-skip.sh "$PR_TITLE")"
           echo "skip=${skip}" >> "$GITHUB_OUTPUT"
 
@@ -171,9 +171,10 @@ jobs:
           echo "base=${base}" >> "$GITHUB_OUTPUT"
           # The audit key's first half must be a SHA. `base` above is a ref name
           # on the two commonest paths -- the no-anchor answer (the first audit
-          # of any PR) and the helper-failure fallback are both the literal
-          # `origin/main` -- and audit-scope-digest.sh builds its scope-file path
-          # from it, so a slash there escapes into the path and the write fails.
+          # of any PR, `origin/<the branch this PR merges into>`) and the
+          # helper-failure fallback (the literal `origin/main`) -- and
+          # audit-scope-digest.sh builds its scope-file path from it, so a
+          # slash there escapes into the path and the write fails.
           # Resolve it once here and let the digest calls key on this, while the
           # diff prose keeps the readable ref above.
           # `--verify --quiet` on the fallback is load-bearing, not decoration.
@@ -467,8 +468,8 @@ jobs:
           steps.phase.outputs.reached_audit == 'true' &&
           steps.decision.outputs.should_run == 'true'
         # Continue on failure: max-turns / SDK / API errors must not strand
-        # the PR check in a half-state. The status-summary terminal steps
-        # below comment the outcome regardless.
+        # the PR check in a half-state. The terminal status steps below
+        # record the outcome regardless.
         continue-on-error: true
         timeout-minutes: ${{ fromJSON(steps.timeout.outputs.minutes) }}
         uses: anthropics/claude-code-action@63322d7b2bc79e7b621b89f41b53ceb8e5a5d314 # v1.0

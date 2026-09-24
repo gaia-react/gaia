@@ -46,13 +46,11 @@
 #   the same --json report parsed below, and builds it by reading each
 #   shipped file's CONTENT off disk and diffing the marker-bearing paths it
 #   finds against the committed manifest's declaration, so an uncommitted edit
-#   that adds or removes a marker pair moves it. CI also leaves it unscoped on
-#   purpose, so a stale declaration cannot slip through on a PR that touches no
-#   declared path. Evaluated here, it would be the one arm that denies what CI
-#   would pass, on a working tree the PR never contains, and its remedy text
-#   would tell the maintainer to regenerate a manifest that is not stale.
-#   Narrowing it to the changed set instead would enforce a different rule than
-#   CI's, which that workflow's own inline comment rules out.
+#   that adds or removes a marker pair moves it. Evaluated here, it would deny
+#   on a working tree the PR never contains, and its remedy text would tell the
+#   maintainer to regenerate a manifest that is not stale. Narrowing it to the
+#   changed set instead would let a stale declaration slip through on a PR
+#   that touches no declared path.
 #
 #   The issue-reference lint does not qualify either, and it fails the same
 #   test. It reads each shipped file's CONTENT off disk, so an uncommitted edit
@@ -102,7 +100,7 @@
 # FAIL-OPEN on every uncertainty: no maintainer binary (adopter clone), no git,
 # an unresolvable base ref, a non-JSON report, or any exit >= 2 from the
 # checker. The gate exists to save a round trip, never to block a maintainer out
-# of their own PR; CI is the authority that actually fails the build.
+# of their own PR; a manual `/distribution-audit` run is the strict answer.
 #
 # ONE UNCERTAINTY IS DELIBERATELY NOT ON THAT LIST: a missing jq. This hook can
 # stop a tool call, which makes it blocking to the shared oracle
@@ -349,7 +347,7 @@ deny() {
 
 # Resolve the base ref the PR would target: an explicit --base/-B on the command
 # line wins, otherwise the repo's default branch, otherwise main. Prefer the
-# remote-tracking ref so the comparison matches what CI will see.
+# remote-tracking ref so the comparison matches what the PR will contain.
 # The flag must sit at a word boundary, and `gh` is a pflag CLI, so all three
 # shorthand forms are valid: `--base X`, `--base=X`, and for the single-letter
 # alias also `-BX` with no separator at all. Two patterns rather than one,
@@ -368,8 +366,8 @@ deny() {
 # argument parse, so a literal `--base <ref>` written inside this invocation's
 # own `--body` prose still matches. Word-boundary anchoring does not help there,
 # the body text has a space in front of the flag like a real argument does.
-# Accepted because the gate is fail-open and advisory, and CI is the authority
-# that catches what this misses. Be precise about the direction of that failure:
+# Accepted because the gate is fail-open and advisory, and a manual
+# `/distribution-audit` run is the strict answer for what this misses. Be precise about the direction of that failure:
 # a wrong base can under-report as easily as over-report. Resolving a narrower
 # base than the real one shrinks the three-dot changed set and can miss a
 # genuine offender, so the realistic worst case is a spurious allow, not only a

@@ -72,8 +72,8 @@ In this order:
    check, stage, scrub, runtime-deps, distribution gate, tarball.
 6. `.github/workflows/cli-tests.yml` — compare its `on:` triggers against
    `release.yml`'s to confirm which PRs actually exercise which gate.
-7. `.gaia/tests/distribution/` layout — `README.md` plus the 8 numbered
-   scenarios and `lib/`.
+7. `.gaia/tests/distribution/` layout — `README.md` plus the numbered
+   scenario scripts and `lib/`.
 
 ## Output
 

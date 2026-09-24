@@ -95,7 +95,7 @@ runs:
         MERGE_SHA: ${{ steps.wait-for-merge.outputs.merge_sha }}
       run: |
         set -euo pipefail
-        result_json="$(${GITHUB_ACTION_PATH}/lib/wait-for-ci.sh "$MERGE_SHA")"
+        result_json="$("${GITHUB_ACTION_PATH}"/lib/wait-for-ci.sh "$MERGE_SHA")"
         echo "result=$result_json" >> "$GITHUB_OUTPUT"
         echo "conclusion=$(jq -r '.conclusion' <<<"$result_json")" >> "$GITHUB_OUTPUT"
         echo "run_url=$(jq -r '.run_url // ""' <<<"$result_json")" >> "$GITHUB_OUTPUT"
@@ -195,7 +195,7 @@ runs:
         REVERT_MERGE_SHA: ${{ steps.wait-for-revert-merge.outputs.revert_merge_sha }}
       run: |
         set -euo pipefail
-        result_json="$(${GITHUB_ACTION_PATH}/lib/wait-for-ci.sh "$REVERT_MERGE_SHA")"
+        result_json="$("${GITHUB_ACTION_PATH}"/lib/wait-for-ci.sh "$REVERT_MERGE_SHA")"
         echo "revert_conclusion=$(jq -r '.conclusion' <<<"$result_json")" >> "$GITHUB_OUTPUT"
         echo "revert_run_url=$(jq -r '.run_url // ""' <<<"$result_json")" >> "$GITHUB_OUTPUT"
 

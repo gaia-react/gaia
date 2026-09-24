@@ -464,6 +464,7 @@ for lib_file in audit-scope.sh audit-machinery.sh audit-rules-changed.sh audit-c
   # existence test admits an unparseable lib, and under errexit bash 3.2.57
   # dies at the load rather than at the `||`. Same shape, same reason.
   set +e
+  # shellcheck source=/dev/null
   [ -f "${lib_dir}/${lib_file}" ] && . "${lib_dir}/${lib_file}" 2>/dev/null
   set -e
 done

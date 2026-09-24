@@ -7,7 +7,7 @@
 #
 # Enforced by the sibling bats suite
 # .gaia/scripts/tests/lint-shipped-issue-refs.bats, which the `Audit CI Tests`
-# job runs on every pull request, and by `.gaia/tests/whole-tree-invariants.sh`
+# job runs when a harness path changes, and by `.gaia/tests/whole-tree-invariants.sh`
 # as a maintainer-run local step before the first audit dispatch. Also runnable
 # directly: `bats .gaia/scripts/tests/lint-shipped-issue-refs.bats`.
 #
@@ -104,7 +104,7 @@ fi
 # reds
 # the build on a colour, which is a false positive on a line that has NO
 # correct repair -- the author cannot write `gaia-react/gaia#333` for a shade of
-# grey -- and this gate runs on every pull request. A two-digit candidate cannot
+# grey -- and this gate runs on every harness change. A two-digit candidate cannot
 # be a colour at all and so is never exempted, whatever surrounds it.
 scan_file() {
   local f="$1"
